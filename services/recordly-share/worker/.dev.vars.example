@@ -1,0 +1,17 @@
+# The shared secret Recordly uses to authenticate with this worker.
+# During the Deploy to Cloudflare flow you'll be prompted to set secrets — paste
+# a value here. Or set it later: Worker → Settings → Variables and Secrets → add
+# a Secret named API_SECRET.
+#
+# Generate a strong value with:  openssl rand -hex 32
+API_SECRET=
+# Local integration tests only. Never enable this in production.
+ALLOW_API_SECRET_UPLOADS=false
+
+# Use the same public Supabase project configuration as the desktop app so
+# signed-in users can publish without seeing an API-secret field.
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_YOUR_KEY
+
+# Only this Supabase user may administer this single-owner deployment.
+OWNER_USER_ID=

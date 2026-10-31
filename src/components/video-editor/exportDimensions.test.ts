@@ -2,8 +2,25 @@ import { describe, expect, it } from "vitest";
 import {
 	calculateMp4ExportDimensions,
 	calculateMp4SourceDimensions,
+	capMp4ShareDimensions,
 	shouldDebounceMp4SupportProbe,
 } from "./exportDimensions";
+
+describe("capMp4ShareDimensions", () => {
+	it("caps landscape shares at 1080p without upscaling", () => {
+		expect(capMp4ShareDimensions(3840, 2160)).toEqual({ width: 1920, height: 1080 });
+		expect(capMp4ShareDimensions(1280, 720)).toEqual({ width: 1280, height: 720 });
+	});
+
+	it("caps portrait and square shares within equivalent 1080p bounds", () => {
+		expect(capMp4ShareDimensions(2160, 3840)).toEqual({ width: 1080, height: 1920 });
+		expect(capMp4ShareDimensions(2160, 2160)).toEqual({ width: 1080, height: 1080 });
+	});
+
+	it("keeps unusual aspect ratios and even dimensions", () => {
+		expect(capMp4ShareDimensions(3441, 1441)).toEqual({ width: 1920, height: 802 });
+	});
+});
 
 describe("calculateMp4SourceDimensions", () => {
 	it("keeps native exports at the source dimensions", () => {

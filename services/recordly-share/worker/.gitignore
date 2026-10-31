@@ -1,0 +1,10 @@
+.wrangler/
+node_modules/
+.dev.vars
+web/.astro/
+videos/
+
+# Ship prebuilt share-page assets so the Deploy-to-Cloudflare button (which
+# clones this repo) serves them without a build step. Overrides root `dist/`.
+!web/dist/
+!web/dist/**

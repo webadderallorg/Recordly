@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WEBCAM_OVERLAY } from "../../components/video-editor/types";
 
@@ -90,6 +92,11 @@ vi.mock("./localMediaSource", () => ({
 
 import { FrameRenderer } from "./frameRenderer";
 
+const rendererSource = readFileSync(
+	fileURLToPath(new URL("./frameRenderer.ts", import.meta.url)),
+	"utf8",
+);
+
 type MockFunction = ReturnType<typeof vi.fn>;
 type MockContext = {
 	beginPath: MockFunction;
@@ -105,6 +112,7 @@ type MockContext = {
 	scale: MockFunction;
 	clearRect: MockFunction;
 	filter: string;
+	fillStyle: string;
 };
 type MockCanvas = ReturnType<typeof createMockCanvas>;
 type FrameRendererTestAccess = {
@@ -122,6 +130,16 @@ type FrameRendererTestAccess = {
 		outputHeight: number,
 	) => void;
 };
+
+describe("FrameRenderer mask hierarchy", () => {
+	it("keeps the mask in the video wrapper when camera transforms change", () => {
+		expect(rendererSource).toContain(
+			"this.cameraContainer.addChild(this.videoEffectsContainer)",
+		);
+		expect(rendererSource).toContain("this.videoEffectsContainer.addChild(this.maskGraphics)");
+		expect(rendererSource).not.toContain("this.cameraContainer.addChild(this.maskGraphics)");
+	});
+});
 
 type Listener = {
 	callback: () => void;
@@ -234,6 +252,7 @@ function createMockContext() {
 		scale: vi.fn(),
 		clearRect: vi.fn(),
 		filter: "",
+		fillStyle: "",
 	};
 }
 
@@ -270,6 +289,24 @@ function createRenderer() {
 }
 
 describe("FrameRenderer webcam export path", () => {
+	it("composites the background during a gap without source layers", async () => {
+		const renderer = createRenderer();
+		const camera = { visible: true };
+		const context = createMockContext();
+		const app = { stage: {}, renderer: { render: vi.fn() } };
+		const composite = vi.fn();
+		Object.assign(renderer, {
+			app,
+			cameraContainer: camera,
+			videoContainer: {},
+			compositeCtx: context,
+			compositeWithShadows: composite,
+		});
+		await renderer.renderFrame(null, 0, 0, 33333, 1500000);
+		expect(camera.visible).toBe(false);
+		expect(app.renderer.render).toHaveBeenCalledWith(app.stage);
+		expect(composite).toHaveBeenCalledWith(false);
+	});
 	const createdCanvases: ReturnType<typeof createMockCanvas>[] = [];
 
 	beforeEach(() => {

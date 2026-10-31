@@ -406,6 +406,76 @@ if CommandLine.arguments.contains("--export-images") {
 	exit(0)
 }
 
+func mouseInteractionCallback(
+	proxy: CGEventTapProxy,
+	type: CGEventType,
+	event: CGEvent,
+	refcon: UnsafeMutableRawPointer?
+) -> Unmanaged<CGEvent>? {
+	let action: String
+	let button: Int
+	switch type {
+	case .leftMouseDown:
+		action = "mousedown"
+		button = 1
+	case .leftMouseUp:
+		action = "mouseup"
+		button = 1
+	case .rightMouseDown:
+		action = "mousedown"
+		button = 2
+	case .rightMouseUp:
+		action = "mouseup"
+		button = 2
+	case .otherMouseDown:
+		guard event.getIntegerValueField(.mouseEventButtonNumber) == 2 else {
+			return Unmanaged.passUnretained(event)
+		}
+		action = "mousedown"
+		button = 3
+	case .otherMouseUp:
+		guard event.getIntegerValueField(.mouseEventButtonNumber) == 2 else {
+			return Unmanaged.passUnretained(event)
+		}
+		action = "mouseup"
+		button = 3
+	default:
+		return Unmanaged.passUnretained(event)
+	}
+
+	print("INTERACTION:\(action):\(button)")
+	fflush(stdout)
+	return Unmanaged.passUnretained(event)
+}
+
+let mouseEventTypes: [CGEventType] = [
+	.leftMouseDown,
+	.leftMouseUp,
+	.rightMouseDown,
+	.rightMouseUp,
+	.otherMouseDown,
+	.otherMouseUp,
+]
+let mouseEventMask = mouseEventTypes.reduce(CGEventMask(0)) { mask, type in
+	mask | (CGEventMask(1) << type.rawValue)
+}
+let mouseEventTap = CGEvent.tapCreate(
+	tap: .cgSessionEventTap,
+	place: .headInsertEventTap,
+	options: .listenOnly,
+	eventsOfInterest: mouseEventMask,
+	callback: mouseInteractionCallback,
+	userInfo: nil
+)
+if let mouseEventTap,
+	let eventTapSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, mouseEventTap, 0) {
+	CFRunLoopAddSource(CFRunLoopGetMain(), eventTapSource, .commonModes)
+	CGEvent.tapEnable(tap: mouseEventTap, enable: true)
+} else {
+	fputs("Mouse interaction event tap unavailable; click telemetry disabled\n", stderr)
+	fflush(stderr)
+}
+
 var lastState = ""
 func emitStateIfNeeded() {
 	let state = currentSystemCursorType()
@@ -433,4 +503,3 @@ DispatchQueue.global(qos: .utility).async {
 }
 
 RunLoop.main.run()
-

@@ -1,3 +1,5 @@
+import { TimelinePresentation } from "../../core/TimelinePresentation";
+import { KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import type {
 	DragEndEvent,
 	DragMoveEvent,
@@ -10,7 +12,7 @@ import type {
 import { TimelineContext } from "dnd-timeline";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useCallback, useRef } from "react";
-import type { TimelineRegionSpan } from "../../core/timelineTypes";
+import type { ClipSequenceSpan, TimelineRegionSpan } from "../../core/timelineTypes";
 import { clampRange, resolveDragEnd, resolveResizeEnd } from "../../dnd/engine";
 
 interface TimelineWrapperProps {
@@ -22,7 +24,7 @@ interface TimelineWrapperProps {
 	minItemDurationMs: number;
 	minVisibleRangeMs: number;
 	gridSizeMs?: number;
-	onItemSpanChange: (id: string, span: Span, rowId?: string) => void;
+	onItemSpanChange: (id: string, span: ClipSequenceSpan, rowId?: string) => void;
 	resolveTargetRowId?: (id: string, proposedRowId: string) => string;
 	allRegionSpans?: TimelineRegionSpan[];
 	onLiveSpanPreviewChange?: (id: string, span: Span | null) => void;
@@ -44,10 +46,16 @@ export default function TimelineWrapper({
 	onLiveSpanPreviewChange,
 	onDraggingChange,
 }: TimelineWrapperProps) {
+	// Treat small pointer jitter as a selection, never as a persisted timeline edit.
+	const sensors = useSensors(
+		useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+		useSensor(KeyboardSensor),
+	);
 	const totalMs = Math.max(0, Math.round(videoDuration * 1000));
 
 	const onResizeEnd = useCallback(
 		(event: ResizeEndEvent) => {
+			if (Math.abs(event.delta.x) <= 4) return;
 			const updatedSpan = event.active.data.current.getSpanFromResizeEvent?.(event);
 			if (!updatedSpan) return;
 
@@ -66,6 +74,7 @@ export default function TimelineWrapper({
 
 	const onDragEnd = useCallback(
 		(event: DragEndEvent) => {
+			if (Math.hypot(event.delta.x, event.delta.y) <= 4) return;
 			const proposedRowId = event.over?.id as string;
 			const updatedSpan = event.active.data.current.getSpanFromDragEvent?.(event);
 			if (!updatedSpan || !proposedRowId) return;
@@ -174,7 +183,7 @@ export default function TimelineWrapper({
 			} else {
 				showTooltip(null);
 			}
-			const moved = Math.hypot(event.delta?.x ?? 0, event.delta?.y ?? 0) > 0.01;
+			const moved = Math.hypot(event.delta?.x ?? 0, event.delta?.y ?? 0) > 4;
 			if (moved) {
 				onLiveSpanPreviewChange?.(event.active.id as string, previewSpan);
 			}
@@ -249,6 +258,7 @@ export default function TimelineWrapper({
 
 	return (
 		<TimelineContext
+			sensors={sensors}
 			range={range}
 			onRangeChanged={handleRangeChange}
 			onResizeEnd={onResizeEndWithTooltip}
@@ -267,7 +277,14 @@ export default function TimelineWrapper({
 			resizeHandleWidth={28}
 		>
 			<div className="relative h-full min-h-0">
-				{children}
+				<TimelinePresentation
+					regions={allRegionSpans}
+					totalMs={totalMs}
+					minItemDurationMs={minItemDurationMs}
+					hasOverlap={hasOverlap}
+				>
+					{children}
+				</TimelinePresentation>
 				{/* Floating tooltip shown during drag/resize */}
 				<div
 					ref={tooltipRef}

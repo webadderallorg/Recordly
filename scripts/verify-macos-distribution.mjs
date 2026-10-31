@@ -2,11 +2,14 @@
 
 import { spawnSync } from "node:child_process";
 import {
+	closeSync,
 	existsSync,
 	lstatSync,
 	mkdtempSync,
+	openSync,
 	readdirSync,
 	readFileSync,
+	readSync,
 	rmSync,
 	statSync,
 	writeFileSync,
@@ -19,6 +22,7 @@ import {
 	collectArchitectureErrors,
 	collectCodeSigningMetadataErrors,
 	collectEntitlementErrors,
+	hasMachOMagic,
 } from "./macos-distribution-policy.mjs";
 
 const projectRoot = process.cwd();
@@ -26,7 +30,6 @@ const packageJson = JSON.parse(readFileSync(path.join(projectRoot, "package.json
 const productName = packageJson.productName ?? packageJson.name ?? "Recordly";
 const expectedBundleId = "dev.recordly.app";
 const commandTimeoutMs = 5 * 60 * 1000;
-const fileClassificationBatchSize = 100;
 const maxReportDetailLength = 4_000;
 
 function parseArguments(argv) {
@@ -174,6 +177,17 @@ function walkRegularFiles(rootPath) {
 	return files;
 }
 
+function isMachOBinary(filePath) {
+	const header = new Uint8Array(4);
+	const descriptor = openSync(filePath, "r");
+	try {
+		const bytesRead = readSync(descriptor, header, 0, header.byteLength, 0);
+		return bytesRead === header.byteLength && hasMachOMagic(header);
+	} finally {
+		closeSync(descriptor);
+	}
+}
+
 function extractPlist(commandResult) {
 	const output = [commandResult.stdout, commandResult.stderr].filter(Boolean).join("\n");
 	const xmlStart = output.indexOf("<?xml");
@@ -281,23 +295,7 @@ function verifyEntitlements(appPath, label, tempRoot, check) {
 
 function verifyMachOBinaries(appPath, arch, check) {
 	check("packaged app: nested Mach-O signatures and architectures", () => {
-		const machOBinaries = [];
-		const regularFiles = walkRegularFiles(appPath);
-		for (let index = 0; index < regularFiles.length; index += fileClassificationBatchSize) {
-			const batch = regularFiles.slice(index, index + fileClassificationBatchSize);
-			const fileTypes = runProcess("file", ["-b", ...batch]).stdout.split(/\r?\n/);
-			if (fileTypes.length !== batch.length) {
-				throw new Error(
-					`file classification returned ${fileTypes.length} rows for ${batch.length} paths`,
-				);
-			}
-
-			for (let batchIndex = 0; batchIndex < batch.length; batchIndex += 1) {
-				if (fileTypes[batchIndex].includes("Mach-O")) {
-					machOBinaries.push(batch[batchIndex]);
-				}
-			}
-		}
+		const machOBinaries = walkRegularFiles(appPath).filter(isMachOBinary);
 
 		if (machOBinaries.length === 0) {
 			throw new Error("no Mach-O binaries were found in the app bundle");

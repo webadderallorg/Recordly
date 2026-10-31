@@ -19,7 +19,8 @@
 	},
 	"clip": {
 		"title": "片段",
-		"mute": "静音",
+		"mute": "将片段静音",
+		"resetAudioSettings": "重置音频设置",
 		"mutedState": "音频已静音",
 		"unmutedState": "音频正在播放",
 		"separateClipFromAudio": "将剪辑与音频分离",
@@ -35,6 +36,7 @@
 			"macos": "macOS",
 			"tahoe": "Tahoe",
 			"tahoe-inverted": "Tahoe 反相",
+			"windows11": "Windows 11",
 			"dot": "圆点",
 			"figma": "Minimal",
 			"lavender": "Lavender",
@@ -43,12 +45,8 @@
 			"amongus": "Among Us",
 			"turtle": "Turtle"
 		},
-		"backgroundBlur": "背景模糊",
+		"backgroundBlur": "模糊",
 		"zoomMotionBlur": "缩放运动模糊",
-		"temporalZoomMotionBlur": "Temporal Zoom Blur",
-		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
-		"zoomMotionBlurSamples": "Blur Samples",
-		"zoomMotionBlurShutter": "Shutter",
 		"auto": "Auto",
 		"connectZooms": "连接缩放",
 		"connectZoomsDescription": "将连续的缩放区域平滑连接为一次连续的镜头移动。",
@@ -254,5 +252,11 @@
 		"micLabel": "麦克风",
 		"mixedLabel": "来源",
 		"deleteRegion": "删除音频"
+	},
+	"updates": {
+		"experimentalDescription": "你已选择接收实验性更新，因此可以在 Recordly 最新更新广泛发布之前选择先行测试。",
+		"title": "更新",
+		"experimental": "实验性更新",
+		"saveFailed": "无法更改更新频道。"
 	}
 }

@@ -1,23 +1,39 @@
-import * as SliderPrimitive from "@radix-ui/react-slider";
-import * as React from "react";
+import { Slider as HeroSlider } from "@heroui/react";
+import { forwardRef, type ComponentProps } from "react";
 
-import { cn } from "@/lib/utils";
-
-const Slider = React.forwardRef<
-	React.ElementRef<typeof SliderPrimitive.Root>,
-	React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root>
->(({ className, ...props }, ref) => (
-	<SliderPrimitive.Root
-		ref={ref}
-		className={cn("relative flex w-full touch-none select-none items-center", className)}
-		{...props}
-	>
-		<SliderPrimitive.Track className="relative h-2.5 w-full grow overflow-hidden rounded-full bg-foreground/10">
-			<SliderPrimitive.Range className="absolute h-full bg-[#2563EB]" />
-		</SliderPrimitive.Track>
-		<SliderPrimitive.Thumb className="block h-5 w-5 rounded-full border-2 border-[#2563EB] bg-[#2563EB] shadow transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/50 disabled:pointer-events-none disabled:opacity-50" />
-	</SliderPrimitive.Root>
-));
-Slider.displayName = SliderPrimitive.Root.displayName;
-
-export { Slider };
+type SliderProps = Omit<
+	Omit<ComponentProps<typeof HeroSlider>, "children"> & { children?: import("react").ReactNode },
+	"onChange" | "onChangeEnd" | "value" | "defaultValue"
+> & {
+	value?: number[];
+	defaultValue?: number[];
+	min?: number;
+	max?: number;
+	disabled?: boolean;
+	onValueChange?: (value: number[]) => void;
+	onValueCommit?: (value: number[]) => void;
+};
+export const Slider = forwardRef<HTMLDivElement, SliderProps>(function Slider(
+	{ min, max, disabled, onValueChange, onValueCommit, children, ...props },
+	ref,
+) {
+	return (
+		<HeroSlider
+			{...props}
+			ref={ref}
+			minValue={min}
+			maxValue={max}
+			isDisabled={disabled}
+			onChange={(value) => onValueChange?.(Array.isArray(value) ? value : [value])}
+			onChangeEnd={(value) => onValueCommit?.(Array.isArray(value) ? value : [value])}
+		>
+			{children}
+			<HeroSlider.Track>
+				<HeroSlider.Fill />
+				{(props.value ?? props.defaultValue ?? [0]).map((_, index) => (
+					<HeroSlider.Thumb key={index} index={index} />
+				))}
+			</HeroSlider.Track>
+		</HeroSlider>
+	);
+});

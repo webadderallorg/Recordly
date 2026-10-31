@@ -13,7 +13,6 @@ export interface CursorMotionPreset {
 	cursorSpringStiffnessMultiplier: number;
 	cursorSpringDampingMultiplier: number;
 	cursorSpringMassMultiplier: number;
-	cursorMotionBlur: number;
 	cursorClickBounce: number;
 	cursorClickBounceDuration: number;
 }
@@ -26,7 +25,6 @@ export interface CursorMotionPresetSelectionInput {
 	cursorSpringStiffnessMultiplier: number;
 	cursorSpringDampingMultiplier: number;
 	cursorSpringMassMultiplier: number;
-	cursorMotionBlur: number;
 	cursorClickBounce: number;
 	cursorClickBounceDuration: number;
 }
@@ -35,8 +33,7 @@ const SHARED_CURSOR_PRESET_VALUES = {
 	cursorSize: 2.5,
 	cursorSmoothing: 0.67,
 	cursorSpringMassMultiplier: 1.29,
-	cursorMotionBlur: 0.4,
-	cursorClickBounce: 3.5,
+	cursorClickBounce: 2,
 	cursorClickBounceDuration: 350,
 } as const;
 
@@ -76,7 +73,6 @@ export function getMatchingCursorMotionPresetId(
 			preset.cursorSpringStiffnessMultiplier === values.cursorSpringStiffnessMultiplier &&
 			preset.cursorSpringDampingMultiplier === values.cursorSpringDampingMultiplier &&
 			preset.cursorSpringMassMultiplier === values.cursorSpringMassMultiplier &&
-			preset.cursorMotionBlur === values.cursorMotionBlur &&
 			preset.cursorClickBounce === values.cursorClickBounce &&
 			preset.cursorClickBounceDuration === values.cursorClickBounceDuration
 		) {

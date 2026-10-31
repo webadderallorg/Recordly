@@ -6,7 +6,7 @@ import { resolveDeleteSelectionTarget } from "./utils/timelineSelectionUtils";
 interface UseTimelineKeyboardShortcutsParams {
 	isMac: boolean;
 	keyShortcuts: TimelineShortcutBindings;
-	isTimelineFocusedRef: RefObject<boolean>;
+	isTimelineFocusedRef: RefObject<boolean | null>;
 	hasAnyZoomBlocks: boolean;
 	activateSelectAllZooms: () => void;
 	annotationCount: number;
@@ -58,45 +58,28 @@ export function useTimelineKeyboardShortcuts({
 }: UseTimelineKeyboardShortcutsParams) {
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.defaultPrevented || e.isComposing) return;
 			const eventTarget = e.target;
 			if (
 				eventTarget instanceof HTMLInputElement ||
 				eventTarget instanceof HTMLTextAreaElement ||
 				eventTarget instanceof HTMLSelectElement ||
-				(eventTarget instanceof HTMLElement && eventTarget.isContentEditable)
+				(eventTarget instanceof HTMLElement &&
+					(eventTarget.isContentEditable ||
+						eventTarget.closest(
+							'[data-recording-library], [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
+						)))
 			) {
 				return;
 			}
 
-			if (!isTimelineFocusedRef.current) {
-				return;
-			}
-
-			if (matchesShortcut(e, { key: "a", ctrl: true }, isMac)) {
-				if (!hasAnyZoomBlocks) {
-					return;
-				}
-				e.preventDefault();
-				activateSelectAllZooms();
-				return;
-			}
-
-			if (matchesShortcut(e, keyShortcuts.addKeyframe, isMac)) addKeyframe();
-			if (matchesShortcut(e, keyShortcuts.addZoom, isMac)) handleAddZoom();
-			if (matchesShortcut(e, keyShortcuts.splitClip, isMac)) handleSplitClip();
-			if (matchesShortcut(e, keyShortcuts.addAnnotation, isMac)) {
-				handleAddAnnotation();
-			}
-
-			if (e.key === "Tab" && annotationCount > 0) {
-				if (cycleAnnotationsAtCurrentTime(e.shiftKey)) {
-					e.preventDefault();
-				}
-			}
-
+			// Selection survives inspector focus; deletion follows the selected block.
 			if (
-				e.key === "Delete" ||
-				e.key === "Backspace" ||
+				((e.key === "Delete" || e.key === "Backspace") &&
+					!e.ctrlKey &&
+					!e.metaKey &&
+					!e.altKey &&
+					!e.shiftKey) ||
 				matchesShortcut(e, keyShortcuts.deleteSelected, isMac)
 			) {
 				const target = resolveDeleteSelectionTarget({
@@ -123,6 +106,33 @@ export function useTimelineKeyboardShortcuts({
 					deleteSelectedAudio();
 				} else if (target === "caption") {
 					deleteSelectedCaption();
+				}
+				return;
+			}
+
+			if (!isTimelineFocusedRef.current) {
+				return;
+			}
+
+			if (matchesShortcut(e, { key: "a", ctrl: true }, isMac)) {
+				if (!hasAnyZoomBlocks) {
+					return;
+				}
+				e.preventDefault();
+				activateSelectAllZooms();
+				return;
+			}
+
+			if (matchesShortcut(e, keyShortcuts.addKeyframe, isMac)) addKeyframe();
+			if (matchesShortcut(e, keyShortcuts.addZoom, isMac)) handleAddZoom();
+			if (matchesShortcut(e, keyShortcuts.splitClip, isMac)) handleSplitClip();
+			if (matchesShortcut(e, keyShortcuts.addAnnotation, isMac)) {
+				handleAddAnnotation();
+			}
+
+			if (e.key === "Tab" && annotationCount > 0) {
+				if (cycleAnnotationsAtCurrentTime(e.shiftKey)) {
+					e.preventDefault();
 				}
 			}
 		};

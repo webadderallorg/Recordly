@@ -13,9 +13,7 @@ import {
 	windowsCaptureTargetPath,
 	windowsNativeCaptureActive,
 } from "../state";
-import {
-	AudioSyncAdjustment,
-} from "../types";
+import { AudioSyncAdjustment } from "../types";
 import { moveFileWithOverwrite } from "../utils";
 import { emitRecordingInterrupted } from "./events";
 
@@ -135,7 +133,9 @@ export function waitForWindowsCaptureStop(
 
 		const onClose = (code: number | null) => {
 			finish(() => {
-				const match = windowsCaptureOutputBuffer.match(/Recording stopped\. Output path: (.+)/);
+				const match = windowsCaptureOutputBuffer.match(
+					/Recording stopped\. Output path: (.+)/,
+				);
 				if (match?.[1]) {
 					resolve(match[1].trim());
 					return;
@@ -254,9 +254,7 @@ export async function muxNativeWindowsVideoWithAudio(
 		}
 	}
 
-	console.log(
-		`[PERF:MAIN] muxNativeWindowsVideoWithAudio: COMPLETED in ${Date.now() - start}ms`,
-	);
+	console.log(`[PERF:MAIN] muxNativeWindowsVideoWithAudio: COMPLETED in ${Date.now() - start}ms`);
 
 	return {
 		muxed: false,

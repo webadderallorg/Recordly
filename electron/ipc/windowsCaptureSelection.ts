@@ -21,6 +21,24 @@ export type ResolvedWindowsCaptureDisplay = {
 	bounds: WindowsCaptureDisplayBounds;
 };
 
+export function convertPhysicalBoundsToDip(
+	bounds: WindowsCaptureDisplayBounds,
+	convertPoint: (point: { x: number; y: number }) => { x: number; y: number },
+): WindowsCaptureDisplayBounds {
+	const topLeft = convertPoint({ x: bounds.x, y: bounds.y });
+	const bottomRight = convertPoint({
+		x: bounds.x + bounds.width,
+		y: bounds.y + bounds.height,
+	});
+
+	return {
+		x: topLeft.x,
+		y: topLeft.y,
+		width: Math.max(1, bottomRight.x - topLeft.x),
+		height: Math.max(1, bottomRight.y - topLeft.y),
+	};
+}
+
 export type ResolvedWindowsCaptureTarget =
 	| {
 			kind: "window";

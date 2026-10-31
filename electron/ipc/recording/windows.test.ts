@@ -1,8 +1,15 @@
 import { EventEmitter } from "node:events";
+import { readFileSync } from "node:fs";
 import { PassThrough } from "node:stream";
+import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setWindowsCaptureOutputBuffer, setWindowsCaptureTargetPath } from "../state";
 import { waitForWindowsCaptureStop } from "./windows";
+
+const windowsCaptureSource = readFileSync(
+	fileURLToPath(new URL("../../native/wgc-capture/src/wgc_session.cpp", import.meta.url)),
+	"utf8",
+);
 
 vi.mock("electron", () => ({
 	app: {
@@ -98,5 +105,26 @@ describe("waitForWindowsCaptureStop", () => {
 			),
 		).rejects.toThrow("Timed out waiting for native Windows capture to stop");
 		expect(proc.kill).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("native Windows window capture", () => {
+	it("crops monitor frames to the selected window bounds", () => {
+		expect(windowsCaptureSource).not.toContain("CreateForWindow(");
+		expect(windowsCaptureSource).toContain("DwmGetWindowAttribute(");
+		expect(windowsCaptureSource).toContain("CopySubresourceRegion(cropTexture_");
+	});
+
+	it("maps desktop bounds into WGC texture coordinates and keeps the encoder size fixed", () => {
+		expect(windowsCaptureSource).toContain("normalized * framePoolWidth_");
+		expect(windowsCaptureSource).toContain(
+			"d3dDevice_->CreateTexture2D(&desc, nullptr, &resizedTexture)",
+		);
+		expect(windowsCaptureSource).not.toContain("nextWidth != captureWidth_");
+	});
+
+	it("does not expose desktop pixels when the selected window shrinks", () => {
+		expect(windowsCaptureSource).toContain("(std::min)(mappedWidth");
+		expect(windowsCaptureSource).toContain("ClearRenderTargetView");
 	});
 });

@@ -22,4 +22,3 @@ export interface SourceAudioTrackWithPeaks extends SourceAudioTrackMetaItem {
 
 export const SOURCE_AUDIO_FALLBACK_TOAST_ID = "source-audio-fallback-error";
 export const SOURCE_AUDIO_NORMALIZE_GAIN = 1.35;
-

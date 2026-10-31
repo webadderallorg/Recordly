@@ -55,10 +55,7 @@ export function useTimelineSelection({
 		if (totalMs === 0) return;
 		const time = Math.max(0, Math.min(currentTimeMs, totalMs));
 		if (keyframes.some((kf) => Math.abs(kf.time - time) < 1)) return;
-		setKeyframes((prev) => [
-			...prev,
-			{ id: globalThis.crypto.randomUUID(), time },
-		]);
+		setKeyframes((prev) => [...prev, { id: globalThis.crypto.randomUUID(), time }]);
 	}, [currentTimeMs, totalMs, keyframes]);
 
 	const deleteSelectedKeyframe = useCallback(() => {
@@ -106,21 +103,21 @@ export function useTimelineSelection({
 	]);
 
 	const deleteSelectedClip = useCallback(() => {
-		if (!selectedClipId || !onClipDelete || !onSelectClip) return;
+		if (!selectedClipId || !onClipDelete) return;
 		onClipDelete(selectedClipId);
-		onSelectClip(null);
+		onSelectClip?.(null);
 	}, [selectedClipId, onClipDelete, onSelectClip]);
 
 	const deleteSelectedAnnotation = useCallback(() => {
-		if (!selectedAnnotationId || !onAnnotationDelete || !onSelectAnnotation) return;
+		if (!selectedAnnotationId || !onAnnotationDelete) return;
 		onAnnotationDelete(selectedAnnotationId);
-		onSelectAnnotation(null);
+		onSelectAnnotation?.(null);
 	}, [selectedAnnotationId, onAnnotationDelete, onSelectAnnotation]);
 
 	const deleteSelectedAudio = useCallback(() => {
-		if (!selectedAudioId || !onAudioDelete || !onSelectAudio) return;
+		if (!selectedAudioId || !onAudioDelete) return;
 		onAudioDelete(selectedAudioId);
-		onSelectAudio(null);
+		onSelectAudio?.(null);
 	}, [selectedAudioId, onAudioDelete, onSelectAudio]);
 
 	const deleteSelectedCaption = useCallback(() => {
@@ -151,6 +148,7 @@ export function useTimelineSelection({
 	const handleSelectZoom = useCallback(
 		(id: string | null) => {
 			setSelectAllBlocksActive(false);
+			setSelectedKeyframeId(null);
 			onSelectZoom(id);
 		},
 		[onSelectZoom],
@@ -159,6 +157,7 @@ export function useTimelineSelection({
 	const handleSelectClip = useCallback(
 		(id: string | null) => {
 			setSelectAllBlocksActive(false);
+			setSelectedKeyframeId(null);
 			onSelectClip?.(id);
 		},
 		[onSelectClip],
@@ -167,6 +166,7 @@ export function useTimelineSelection({
 	const handleSelectAnnotation = useCallback(
 		(id: string | null) => {
 			setSelectAllBlocksActive(false);
+			setSelectedKeyframeId(null);
 			onSelectAnnotation?.(id);
 		},
 		[onSelectAnnotation],
@@ -175,6 +175,7 @@ export function useTimelineSelection({
 	const handleSelectAudio = useCallback(
 		(id: string | null) => {
 			setSelectAllBlocksActive(false);
+			setSelectedKeyframeId(null);
 			onSelectAudio?.(id);
 		},
 		[onSelectAudio],
@@ -183,6 +184,7 @@ export function useTimelineSelection({
 	const handleSelectCaption = useCallback(
 		(id: string | null) => {
 			setSelectAllBlocksActive(false);
+			setSelectedKeyframeId(null);
 			onSelectCaption?.(id);
 		},
 		[onSelectCaption],

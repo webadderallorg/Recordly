@@ -1,6 +1,7 @@
-import { Keyboard, ArrowCounterClockwise as RotateCcw } from "@phosphor-icons/react";
+import { Kbd, Description, Modal } from "@heroui/react";
+import { Keyboard, ArrowCounterClockwise as RotateCcw } from "@/components/ui/icons";
 import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -126,111 +127,121 @@ export function ShortcutsConfigDialog() {
 				if (!open) handleClose();
 			}}
 		>
-			<DialogContent className="bg-editor-dialog border-foreground/10 text-foreground max-w-[460px]">
-				<DialogHeader>
-					<DialogTitle className="flex items-center gap-2 text-sm">
-						<Keyboard className="w-4 h-4 text-[#2563EB]" />
+			<DialogContent className="max-w-lg max-h-[85vh] overflow-hidden">
+				<DialogHeader className="shrink-0">
+					<DialogTitle className="flex items-center gap-2 text-base font-semibold">
+						<Keyboard className="w-4 h-4 text-accent" />
 						{t("shortcutsConfig.title")}
 					</DialogTitle>
 				</DialogHeader>
 
-				<div className="space-y-0.5">
-					<p className="text-[10px] text-muted-foreground/70 mb-2 uppercase tracking-wide font-semibold">
-						{t("shortcutsConfig.configurable")}
-					</p>
-					{SHORTCUT_ACTIONS.map((action) => {
-						const isCapturing = captureFor === action;
-						const hasConflict = conflict?.forAction === action;
-						return (
-							<div key={action}>
-								<div className="flex items-center justify-between py-1.5 px-1 border-b border-foreground/5">
-									<span className="text-sm text-muted-foreground">
-										{SHORTCUT_LABELS[action]}
-									</span>
-									<button
-										type="button"
-										onClick={() => {
-											setConflict(null);
-											setCaptureFor(isCapturing ? null : action);
-										}}
-										title={
-											isCapturing
-												? t("shortcutsConfig.pressEscToCancel")
-												: t("shortcutsConfig.clickToChange")
-										}
-										className={[
-											"px-2 py-1 rounded text-xs font-mono border transition-all min-w-[90px] text-center select-none",
-											isCapturing
-												? "bg-[#2563EB]/20 border-[#2563EB] text-[#2563EB] animate-pulse"
-												: hasConflict
-													? "bg-amber-500/10 border-amber-500/50 text-amber-400"
-													: "bg-foreground/5 border-foreground/10 text-foreground hover:border-[#2563EB]/50 hover:text-[#2563EB] cursor-pointer",
-										].join(" ")}
-									>
-										{isCapturing
-											? t("shortcutsConfig.pressAKey")
-											: formatBinding(draft[action], isMac)}
-									</button>
-								</div>
-								{hasConflict && conflict?.conflictWith.type === "configurable" && (
-									<div className="flex items-center justify-between px-1 py-1.5 mb-0.5 bg-amber-500/10 border border-amber-500/20 rounded text-xs">
-										<span className="text-amber-400">
-											{t("shortcutsConfig.alreadyUsedBy", undefined, {
-												action: SHORTCUT_LABELS[
-													conflict.conflictWith.action
-												],
-											})}
+				<Modal.Body className="min-h-0 space-y-6 overflow-y-auto">
+					<div className="space-y-0.5">
+						<p className="mb-3 text-[13px] font-medium text-foreground">
+							{t("shortcutsConfig.configurable")}
+						</p>
+						{SHORTCUT_ACTIONS.map((action) => {
+							const isCapturing = captureFor === action;
+							const hasConflict = conflict?.forAction === action;
+							return (
+								<div key={action}>
+									<div className="flex items-center justify-between gap-4 border-b border-separator py-3">
+										<span className="text-[13px] text-foreground">
+											{SHORTCUT_LABELS[action]}
 										</span>
-										<div className="flex gap-1.5">
-											<button
-												type="button"
-												onClick={handleSwap}
-												className="px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded text-amber-300 font-medium transition-colors"
-											>
-												{t("shortcutsConfig.swap")}
-											</button>
-											<button
-												type="button"
-												onClick={handleCancelConflict}
-												className="px-2 py-0.5 bg-foreground/5 hover:bg-foreground/10 border border-foreground/10 rounded text-muted-foreground transition-colors"
-											>
-												{t("shortcutsConfig.cancel")}
-											</button>
-										</div>
+										<Button
+											type="button"
+											variant="secondary"
+											size="sm"
+											aria-label={
+												isCapturing
+													? `${SHORTCUT_LABELS[action]}: ${t("shortcutsConfig.pressAKey")}`
+													: `Change ${SHORTCUT_LABELS[action]} shortcut, currently ${formatBinding(draft[action], isMac)}`
+											}
+											onClick={() => {
+												setConflict(null);
+												setCaptureFor(isCapturing ? null : action);
+											}}
+											title={
+												isCapturing
+													? t("shortcutsConfig.pressEscToCancel")
+													: t("shortcutsConfig.clickToChange")
+											}
+											className={[
+												"px-2 py-1 text-xs min-w-[90px] text-center select-none",
+												isCapturing
+													? "animate-pulse"
+													: hasConflict
+														? "text-warning"
+														: "cursor-pointer",
+											].join(" ")}
+										>
+											{isCapturing
+												? t("shortcutsConfig.pressAKey")
+												: formatBinding(draft[action], isMac)}
+										</Button>
 									</div>
-								)}
+									{hasConflict &&
+										conflict?.conflictWith.type === "configurable" && (
+											<div className="flex items-center justify-between px-1 py-1.5 mb-0.5 bg-warning-soft border border-warning/20 rounded text-xs">
+												<span className="text-warning">
+													{t("shortcutsConfig.alreadyUsedBy", undefined, {
+														action: SHORTCUT_LABELS[
+															conflict.conflictWith.action
+														],
+													})}
+												</span>
+												<div className="flex gap-1.5">
+													<Button
+														variant="ghost"
+														type="button"
+														onClick={handleSwap}
+														className="px-2 py-0.5 text-warning"
+													>
+														{t("shortcutsConfig.swap")}
+													</Button>
+													<Button
+														variant="ghost"
+														type="button"
+														onClick={handleCancelConflict}
+														className="px-2 py-0.5"
+													>
+														{t("shortcutsConfig.cancel")}
+													</Button>
+												</div>
+											</div>
+										)}
+								</div>
+							);
+						})}
+					</div>
+
+					<div className="space-y-0.5 mt-2">
+						<p className="mb-3 text-[13px] font-medium text-foreground">
+							{t("shortcutsConfig.fixed")}
+						</p>
+						{FIXED_SHORTCUTS.map(({ label, display }) => (
+							<div
+								key={label}
+								className="flex items-center justify-between gap-4 border-b border-separator py-3 last:border-0"
+							>
+								<span className="text-[13px] text-foreground">{label}</span>
+								<Kbd className="min-w-[90px] justify-center">{display}</Kbd>
 							</div>
-						);
-					})}
-				</div>
+						))}
+					</div>
 
-				<div className="space-y-0.5 mt-2">
-					<p className="text-[10px] text-muted-foreground/70 mb-2 uppercase tracking-wide font-semibold">
-						{t("shortcutsConfig.fixed")}
-					</p>
-					{FIXED_SHORTCUTS.map(({ label, display }) => (
-						<div
-							key={label}
-							className="flex items-center justify-between py-1.5 px-1 border-b border-foreground/5 last:border-0"
-						>
-							<span className="text-sm text-muted-foreground">{label}</span>
-							<kbd className="px-2 py-1 bg-foreground/5 border border-foreground/10 rounded text-xs font-mono text-muted-foreground min-w-[90px] text-center">
-								{display}
-							</kbd>
-						</div>
-					))}
-				</div>
+					<Description className="mt-2 text-xs">
+						{t("shortcutsConfig.instructions")}
+					</Description>
+				</Modal.Body>
 
-				<p className="text-[10px] text-muted-foreground/70 mt-1">
-					{t("shortcutsConfig.instructions")}
-				</p>
-
-				<DialogFooter className="flex gap-2 sm:justify-between mt-2">
+				<DialogFooter className="flex shrink-0 gap-2 sm:justify-between mt-2">
 					<Button
 						title={t("shortcutsConfig.resetToDefaults")}
 						variant="ghost"
 						size="sm"
-						className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 gap-1.5 max-w-[200px]"
+						className="gap-1.5 max-w-[200px]"
 						onClick={handleReset}
 					>
 						<RotateCcw className="w-3 h-3" />
@@ -240,11 +251,7 @@ export function ShortcutsConfigDialog() {
 						<Button variant="ghost" size="sm" onClick={handleClose}>
 							{t("shortcutsConfig.cancel")}
 						</Button>
-						<Button
-							size="sm"
-							className="bg-[#2563EB] hover:bg-[#1d4ed8] text-white"
-							onClick={handleSave}
-						>
+						<Button size="sm" onClick={handleSave}>
 							{t("shortcutsConfig.save")}
 						</Button>
 					</div>

@@ -76,9 +76,7 @@ function convertNamedExports(namedSpec, indent = "") {
 }
 
 function convertExportLine(line) {
-	const singleLineMatch = line.match(
-		/^([ \t]*)export\s*\{\s*([^}]*)\s*\}\s*;?[ \t]*$/,
-	);
+	const singleLineMatch = line.match(/^([ \t]*)export\s*\{\s*([^}]*)\s*\}\s*;?[ \t]*$/);
 	if (singleLineMatch) {
 		const [, indent, namedSpec] = singleLineMatch;
 		return convertNamedExports(namedSpec, indent);
@@ -235,10 +233,7 @@ function replaceImportMetaUrlInCode(line, state) {
 			continue;
 		}
 
-		if (
-			line.startsWith(token, index) &&
-			hasTokenBoundary(line, index, index + token.length)
-		) {
+		if (line.startsWith(token, index) && hasTokenBoundary(line, index, index + token.length)) {
 			normalizedLine += IMPORT_META_URL_CJS_REPLACEMENT;
 			changed = true;
 			index += token.length - 1;
@@ -322,10 +317,7 @@ function containsImportMetaInCode(line, state) {
 			continue;
 		}
 
-		if (
-			line.startsWith(token, index) &&
-			hasTokenBoundary(line, index, index + token.length)
-		) {
+		if (line.startsWith(token, index) && hasTokenBoundary(line, index, index + token.length)) {
 			return true;
 		}
 	}

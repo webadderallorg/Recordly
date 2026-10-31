@@ -1,0 +1,16 @@
+{
+  "name": "recordly-share",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --config wrangler.jsonc",
+    "deploy": "wrangler deploy --config wrangler.jsonc",
+    "db:init": "wrangler d1 execute recordly-share-db --file=./schema.sql",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.9.12",
+    "vitest": "^3.2.0",
+    "wrangler": "^4.98.0"
+  }
+}

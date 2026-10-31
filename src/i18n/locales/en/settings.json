@@ -1,4 +1,10 @@
 {
+	"updates": {
+		"title": "Updates",
+		"experimental": "Experimental updates",
+		"experimentalDescription": "You've opted into experimental updates so you have the choice to test the latest update of Recordly before it's widely available.",
+		"saveFailed": "Failed to change the update channel."
+	},
 	"zoom": {
 		"level": "Zoom Level",
 		"selectRegion": "Select a zoom region to adjust",
@@ -19,7 +25,8 @@
 	},
 	"clip": {
 		"title": "Clip",
-		"mute": "Mute",
+		"mute": "Mute clip",
+		"resetAudioSettings": "Reset audio settings",
 		"mutedState": "Audio is muted",
 		"unmutedState": "Audio is playing",
 		"separateClipFromAudio": "Separate clip from audio",
@@ -35,6 +42,7 @@
 			"macos": "macOS",
 			"tahoe": "Tahoe",
 			"tahoe-inverted": "Tahoe Inverted",
+			"windows11": "Windows 11",
 			"dot": "Dot",
 			"figma": "Minimal",
 			"lavender": "Lavender",
@@ -43,12 +51,8 @@
 			"amongus": "Among Us",
 			"turtle": "Turtle"
 		},
-		"backgroundBlur": "Background Blur",
+		"backgroundBlur": "Blur",
 		"zoomMotionBlur": "Zoom Motion Blur",
-		"temporalZoomMotionBlur": "Temporal Zoom Blur",
-		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
-		"zoomMotionBlurSamples": "Blur Samples",
-		"zoomMotionBlurShutter": "Shutter",
 		"auto": "Auto",
 		"connectZooms": "Connect Zooms",
 		"connectZoomsDescription": "Smooth consecutive zoom regions into a continuous camera move.",

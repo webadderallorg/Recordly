@@ -1,10 +1,57 @@
 {
+	"cloud": {
+		"signInRequired": "공유 링크를 만들기 전에 Recordly에 로그인하세요.",
+		"prepareFailed": "현재 편집본을 공유할 준비를 하지 못했습니다.",
+		"uploadFailed": "클라우드 업로드에 실패했습니다.",
+		"linkCreated": "공유 링크가 생성되었습니다",
+		"linkCopied": "링크가 복사되었습니다",
+		"copyFailed": "링크를 복사하지 못했습니다. 직접 선택하여 복사하세요.",
+		"copied": "복사됨",
+		"copy": "복사",
+		"preparing": "현재 편집본 준비 중…",
+		"createLink": "링크 만들기",
+		"heading": "클라우드에 공유",
+		"ready": "동영상을 공유할 준비가 되었습니다.",
+		"openPage": "공유 페이지 열기",
+		"notes": "메모",
+		"publish": "게시하고 링크 만들기",
+		"createLinkTitle": "공유 가능한 링크 만들기",
+		"notesPlaceholder": "시청자를 위한 설명, 안내 또는 간단한 요약을 추가하세요…",
+		"description": "현재 편집본을 Recordly 시청 및 피드백 페이지에 게시합니다. 다운로드할 필요가 없습니다. 공유 동영상은 최대 1080p로 준비됩니다.",
+		"uploading": "업로드 중… {progress}%",
+		"googleUnavailable": "Google 로그인이 아직 활성화되지 않았습니다. 이메일을 사용하거나 Recordly 관리자에게 Google 연결을 요청하세요.",
+		"xUnavailable": "X 로그인이 아직 활성화되지 않았습니다. 이메일을 사용하거나 Recordly 관리자에게 X 연결을 요청하세요.",
+		"providerUnavailable": "이 로그인 방식은 아직 활성화되지 않았습니다. 이메일을 사용하세요.",
+		"enterEmail": "먼저 이메일 주소를 입력하세요.",
+		"resetSent": "비밀번호 재설정 이메일을 보냈습니다.",
+		"accountHeading": "내 Recordly 계정",
+		"signInHeading": "Recordly에 로그인",
+		"signInShareDescription": "이 동영상을 게시하고 공유 링크를 관리하려면 로그인하세요.",
+		"signInDescription": "녹화 및 공유 링크에 접근하세요.",
+		"signingOut": "로그아웃 중…",
+		"signOut": "로그아웃",
+		"signingIn": "로그인 중…",
+		"signIn": "로그인",
+		"or": "또는",
+		"email": "이메일",
+		"password": "비밀번호",
+		"forgotPassword": "비밀번호를 잊으셨나요?",
+		"unavailable": "이 버전에서는 아직 클라우드 로그인을 사용할 수 없습니다. 동영상은 계속 컴퓨터에 저장할 수 있습니다.",
+		"createShareLink": "공유 링크 만들기",
+		"done": "완료",
+		"addingVideo": "동영상 추가 중…",
+		"preparingFootage": "타임라인에 사용할 영상과 오디오를 준비하고 있습니다."
+	},
+	"library": {
+		"videos": "동영상"
+	},
 	"playback": {
 		"play": "재생",
 		"pause": "일시 정지",
 		"skipBack": "뒤로 건너뛰기",
 		"skipForward": "앞으로 건너뛰기",
-		"muteUnmute": "음소거/해제"
+		"muteUnmute": "음소거/해제",
+		"volume": "미리보기 볼륨"
 	},
 	"annotations": {
 		"settings": "주석 설정",
@@ -112,8 +159,18 @@
 		"showInFolder": "폴더에서 보기"
 	},
 	"project": {
-		"untitled": "제목 없음"
+		"untitled": "제목 없음",
+		"unsavedChangesTitle": "저장되지 않은 변경 사항",
+		"unsavedChangesDescription": "{{action}} 전에 현재 프로젝트를 저장하시겠습니까?",
+		"discardChanges": "변경 사항 버리기",
+		"saveProject": "프로젝트 저장"
 	},
+	"exportTips": {
+		"autoZooms": "팁: 설정에서 자동 적용 확대를 끌 수 있습니다",
+		"experimentalBuilds": "팁: 설정에서 실험적 빌드 액세스를 켜 보세요",
+		"cursorAppearance": "팁: 커서 모양을 사용자 지정할 수 있습니다"
+	},
+	"account": { "title": "계정", "comingSoon": "계정 기능 준비 중" },
 	"nativeCaptureUnavailable": {
 		"title": "문제가 생긴 것은 아니지만, 애니메이션 커서 오버레이를 렌더링할 수 없습니다.",
 		"description": "이 장치는 네이티브 캡처를 지원하지 않습니다. 아직 확인하지 못한 여러 이유가 있을 수 있습니다. Recordly는 계속 작동하지만 커서 스무딩은 사용할 수 없습니다.",

@@ -1,28 +1,25 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { createCountdownController } from "../../countdownController";
 import fs from "node:fs/promises";
-import { app, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
+import { hasAppSetting, readAppSettingsStore, writeAppSettingsStore } from "../../appSettingsStore";
 import { hideCursor } from "../../cursorHider";
-import { closeCountdownWindow, createCountdownWindow, getCountdownWindow } from "../../windows";
+import { createCountdownWindow } from "../../windows";
+import { COUNTDOWN_SETTINGS_FILE, RECORDINGS_SETTINGS_FILE, SHORTCUTS_FILE } from "../constants";
 import {
-	APP_SETTINGS_FILE,
-	COUNTDOWN_SETTINGS_FILE,
-	RECORDINGS_SETTINGS_FILE,
-	SHORTCUTS_FILE,
-} from "../constants";
+	createRecordingPreferencesStore,
+	type RecordingPreferencesPatch,
+} from "../settings/recordingPreferencesStore";
 import {
-	countdownCancelled,
 	countdownInProgress,
 	countdownRemaining,
-	countdownTimer,
-	setCountdownCancelled,
 	setCountdownInProgress,
 	setCountdownRemaining,
-	setCountdownTimer,
 } from "../state";
 import { parseJsonWithByteOrderMark } from "../utils";
 
 const BROWSER_MICROPHONE_PROFILE_ENV = "RECORDLY_BROWSER_MIC_PROFILE";
-const DEFAULT_BROWSER_MICROPHONE_PROFILE = "processed";
+const DEFAULT_BROWSER_MICROPHONE_PROFILE = "no-agc";
+const recordingPreferencesStore = createRecordingPreferencesStore(RECORDINGS_SETTINGS_FILE);
 const BROWSER_MICROPHONE_PROFILES = new Set([
 	"processed",
 	"no-agc",
@@ -42,31 +39,24 @@ function getBrowserMicrophoneProfileFromEnv() {
 	};
 }
 
-function readAppSettingsStore(): Record<string, unknown> {
-	try {
-		const content = readFileSync(APP_SETTINGS_FILE, "utf-8");
-		const parsed = parseJsonWithByteOrderMark<unknown>(content);
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-			return {};
-		}
-
-		return parsed as Record<string, unknown>;
-	} catch {
-		return {};
-	}
-}
-
-function writeAppSettingsStore(store: Record<string, unknown>) {
-	writeFileSync(APP_SETTINGS_FILE, JSON.stringify(store, null, 2), "utf-8");
-}
-
-function hasAppSetting(store: Record<string, unknown>, key: string): boolean {
-	return Reflect.getOwnPropertyDescriptor(store, key) !== undefined;
-}
-
 export function registerSettingsHandlers() {
+	ipcMain.handle(
+		"get-window-fullscreen",
+		(event) => BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false,
+	);
 	ipcMain.handle("app:getVersion", () => {
 		return app.getVersion();
+	});
+
+	ipcMain.handle("get-window-chrome", (event) => {
+		const win = BrowserWindow.fromWebContents(event.sender);
+		return {
+			trafficLightsVisible:
+				process.platform === "darwin" &&
+				!!win &&
+				!win.isFullScreen() &&
+				!win.isSimpleFullScreen(),
+		};
 	});
 
 	ipcMain.handle("get-platform", () => {
@@ -144,8 +134,7 @@ export function registerSettingsHandlers() {
 	// ---------------------------------------------------------------------------
 	ipcMain.handle("get-recording-preferences", async () => {
 		try {
-			const content = await fs.readFile(RECORDINGS_SETTINGS_FILE, "utf-8");
-			const parsed = parseJsonWithByteOrderMark<Record<string, unknown>>(content);
+			const parsed = await recordingPreferencesStore.read();
 			return {
 				success: true,
 				microphoneEnabled: parsed.microphoneEnabled === true,
@@ -154,6 +143,9 @@ export function registerSettingsHandlers() {
 						? parsed.microphoneDeviceId
 						: undefined,
 				systemAudioEnabled: parsed.systemAudioEnabled === true,
+				webcamEnabled: parsed.webcamEnabled === true,
+				webcamDeviceId:
+					typeof parsed.webcamDeviceId === "string" ? parsed.webcamDeviceId : undefined,
 			};
 		} catch {
 			return {
@@ -161,6 +153,8 @@ export function registerSettingsHandlers() {
 				microphoneEnabled: false,
 				microphoneDeviceId: undefined,
 				systemAudioEnabled: false,
+				webcamEnabled: false,
+				webcamDeviceId: undefined,
 			};
 		}
 	});
@@ -169,37 +163,15 @@ export function registerSettingsHandlers() {
 		return getBrowserMicrophoneProfileFromEnv();
 	});
 
-	ipcMain.handle(
-		"set-recording-preferences",
-		async (
-			_,
-			prefs: {
-				microphoneEnabled?: boolean;
-				microphoneDeviceId?: string;
-				systemAudioEnabled?: boolean;
-			},
-		) => {
-			try {
-				let existing: Record<string, unknown> = {};
-				try {
-					const content = await fs.readFile(RECORDINGS_SETTINGS_FILE, "utf-8");
-					existing = parseJsonWithByteOrderMark<Record<string, unknown>>(content);
-				} catch {
-					// file doesn't exist yet
-				}
-				const merged = { ...existing, ...prefs };
-				await fs.writeFile(
-					RECORDINGS_SETTINGS_FILE,
-					JSON.stringify(merged, null, 2),
-					"utf-8",
-				);
-				return { success: true };
-			} catch (error) {
-				console.error("Failed to save recording preferences:", error);
-				return { success: false, error: String(error) };
-			}
-		},
-	);
+	ipcMain.handle("set-recording-preferences", async (_, prefs: RecordingPreferencesPatch) => {
+		try {
+			await recordingPreferencesStore.update(prefs);
+			return { success: true };
+		} catch (error) {
+			console.error("Failed to save recording preferences:", error);
+			return { success: false, error: String(error) };
+		}
+	});
 
 	ipcMain.handle("get-countdown-delay", async () => {
 		try {
@@ -225,79 +197,12 @@ export function registerSettingsHandlers() {
 		}
 	});
 
-	ipcMain.handle("start-countdown", async (_, seconds: number) => {
-		if (countdownInProgress) {
-			return { success: false, error: "Countdown already in progress" };
-		}
-
-		setCountdownInProgress(true);
-		setCountdownCancelled(false);
-		setCountdownRemaining(seconds);
-
-		const countdownWin = createCountdownWindow();
-
-		if (countdownWin.webContents.isLoadingMainFrame()) {
-			await new Promise<void>((resolve) => {
-				countdownWin.webContents.once("did-finish-load", () => {
-					resolve();
-				});
-			});
-		}
-
-		return new Promise<{ success: boolean; cancelled?: boolean }>((resolve) => {
-			let remaining = seconds;
-			setCountdownRemaining(remaining);
-
-			countdownWin.webContents.send("countdown-tick", remaining);
-
-			setCountdownTimer(
-				setInterval(() => {
-					if (countdownCancelled) {
-						if (countdownTimer) {
-							clearInterval(countdownTimer);
-							setCountdownTimer(null);
-						}
-						closeCountdownWindow();
-						setCountdownInProgress(false);
-						setCountdownRemaining(null);
-						resolve({ success: false, cancelled: true });
-						return;
-					}
-
-					remaining--;
-					setCountdownRemaining(remaining);
-
-					if (remaining <= 0) {
-						if (countdownTimer) {
-							clearInterval(countdownTimer);
-							setCountdownTimer(null);
-						}
-						closeCountdownWindow();
-						setCountdownInProgress(false);
-						setCountdownRemaining(null);
-						resolve({ success: true });
-					} else {
-						const win = getCountdownWindow();
-						if (win && !win.isDestroyed()) {
-							win.webContents.send("countdown-tick", remaining);
-						}
-					}
-				}, 1000),
-			);
-		});
+	const countdown = createCountdownController(createCountdownWindow, (remaining) => {
+		setCountdownRemaining(remaining);
+		setCountdownInProgress(remaining !== null);
 	});
-
-	ipcMain.handle("cancel-countdown", () => {
-		setCountdownCancelled(true);
-		setCountdownInProgress(false);
-		setCountdownRemaining(null);
-		if (countdownTimer) {
-			clearInterval(countdownTimer);
-			setCountdownTimer(null);
-		}
-		closeCountdownWindow();
-		return { success: true };
-	});
+	ipcMain.handle("start-countdown", (_, seconds: number) => countdown.start(seconds));
+	ipcMain.handle("cancel-countdown", () => countdown.cancel());
 
 	ipcMain.handle("get-active-countdown", () => {
 		return {

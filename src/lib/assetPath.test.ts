@@ -1,5 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getExportableVideoUrl, getRenderableAssetUrl, getRenderableVideoUrl } from "./assetPath";
+import {
+	getAssetPath,
+	getWallpaperThumbnailUrl,
+	getExportableVideoUrl,
+	getRenderableAssetUrl,
+	getRenderableVideoUrl,
+} from "./assetPath";
+
+describe("getAssetPath", () => {
+	beforeEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("uses the packaged asset directory from an HTTP renderer", async () => {
+		vi.stubGlobal("window", {
+			location: { protocol: "http:" },
+			electronAPI: {
+				getAssetBasePath: vi.fn(
+					async () => "file:///Applications/Recordly.app/Contents/Resources/assets/",
+				),
+			},
+		});
+
+		await expect(getAssetPath("wallpapers/tahoe-light.jpg")).resolves.toBe(
+			"file:///Applications/Recordly.app/Contents/Resources/assets/wallpapers/tahoe-light.jpg",
+		);
+	});
+
+	it("uses root-relative assets when the dev server has no packaged asset base", async () => {
+		vi.stubGlobal("window", {
+			location: { protocol: "http:" },
+			electronAPI: {
+				getAssetBasePath: vi.fn(async () => null),
+			},
+		});
+
+		await expect(getAssetPath("wallpapers/tahoe-light.jpg")).resolves.toBe(
+			"/wallpapers/tahoe-light.jpg",
+		);
+	});
+});
 
 describe("getRenderableAssetUrl", () => {
 	beforeEach(() => {
@@ -85,3 +125,14 @@ describe("getExportableVideoUrl", () => {
 		);
 	});
 });
+
+ it("requests a cached thumbnail for a dev wallpaper instead of loading the original", async () => {
+  const generateWallpaperThumbnail = vi.fn(async () => ({ success: true, data: new Uint8Array([255, 216, 255]) }));
+  vi.stubGlobal("window", { location: { protocol: "http:" }, electronAPI: { getAssetBasePath: async () => null, generateWallpaperThumbnail } });
+  const url = await getWallpaperThumbnailUrl("/wallpapers/thumbnail-regression.jpg");
+  expect(url).toBe("data:image/jpeg;base64,/9j/");
+  expect(generateWallpaperThumbnail).toHaveBeenCalledWith("/wallpapers/thumbnail-regression.jpg");
+  await expect(getWallpaperThumbnailUrl("/wallpapers/thumbnail-regression.jpg")).resolves.toBe(url);
+  expect(generateWallpaperThumbnail).toHaveBeenCalledTimes(1);
+  vi.unstubAllGlobals();
+ });

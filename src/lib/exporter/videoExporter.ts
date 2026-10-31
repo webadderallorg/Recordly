@@ -1,3 +1,4 @@
+import { requiresClipTimelineRendering } from "./clipTimeline";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -8,8 +9,8 @@ import type {
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
-	SpeedRegion,
 	SourceAudioTrackSettings,
+	SpeedRegion,
 	TrimRegion,
 	WebcamOverlaySettings,
 	ZoomMotionBlurTuning,
@@ -38,6 +39,7 @@ import type {
 	ExportProgress,
 	ExportResult,
 } from "./types";
+import { ENCODED_H264_COLOR_SPACE_FALLBACK, EXPORT_CANVAS_COLOR_SPACE } from "./videoColorSpace";
 
 const DEFAULT_MAX_ENCODE_QUEUE = 240;
 const PROGRESS_SAMPLE_WINDOW_MS = 1_000;
@@ -53,9 +55,6 @@ interface VideoExporterConfig extends ExportConfig {
 	backgroundBlur: number;
 	zoomMotionBlur?: number;
 	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
-	zoomTemporalMotionBlur?: number;
-	zoomMotionBlurSampleCount?: number | null;
-	zoomMotionBlurShutterFraction?: number | null;
 	connectZooms?: boolean;
 	zoomInDurationMs?: number;
 	zoomInOverlapMs?: number;
@@ -90,7 +89,6 @@ interface VideoExporterConfig extends ExportConfig {
 	cursorClickBounceDuration?: number;
 	cursorSway?: number;
 	zoomSmoothness?: number;
-	frame?: string | null;
 	audioRegions?: AudioRegion[];
 	clipRegions?: ClipRegion[];
 	sourceAudioFallbackPaths?: string[];
@@ -206,7 +204,9 @@ export class VideoExporter {
 			const shouldUseFfmpegAudioFallback =
 				!useNativeEncoder &&
 				audioPlan.audioMode !== "none" &&
-				(shouldUsePitchPreservingFfmpegAudio || !(await isAacAudioEncodingSupported()));
+				(requiresClipTimelineRendering(this.config.clipRegions) ||
+					shouldUsePitchPreservingFfmpegAudio ||
+					!(await isAacAudioEncodingSupported()));
 
 			if (!useNativeEncoder) {
 				await this.initializeEncoder();
@@ -214,6 +214,7 @@ export class VideoExporter {
 
 			// Initialize frame renderer
 			this.renderer = new FrameRenderer({
+				timelineEffects: this.config.clipRegions !== undefined,
 				width: this.config.width,
 				height: this.config.height,
 				preferredRenderBackend: undefined,
@@ -224,9 +225,6 @@ export class VideoExporter {
 				backgroundBlur: this.config.backgroundBlur,
 				zoomMotionBlur: this.config.zoomMotionBlur,
 				zoomMotionBlurTuning: this.config.zoomMotionBlurTuning,
-				zoomTemporalMotionBlur: this.config.zoomTemporalMotionBlur,
-				zoomMotionBlurSampleCount: this.config.zoomMotionBlurSampleCount,
-				zoomMotionBlurShutterFraction: this.config.zoomMotionBlurShutterFraction,
 				connectZooms: this.config.connectZooms,
 				zoomInDurationMs: this.config.zoomInDurationMs,
 				zoomInOverlapMs: this.config.zoomInOverlapMs,
@@ -265,7 +263,6 @@ export class VideoExporter {
 				cursorClickBounceDuration: this.config.cursorClickBounceDuration,
 				cursorSway: this.config.cursorSway,
 				zoomSmoothness: this.config.zoomSmoothness,
-				frame: this.config.frame,
 			});
 			await this.renderer.initialize();
 
@@ -282,6 +279,7 @@ export class VideoExporter {
 			const effectiveDuration = this.streamingDecoder.getEffectiveDuration(
 				this.config.trimRegions,
 				this.config.speedRegions,
+				this.config.clipRegions,
 			);
 			this.effectiveDurationSec = effectiveDuration;
 			const totalFrames = Math.ceil(effectiveDuration * this.config.frameRate);
@@ -327,6 +325,7 @@ export class VideoExporter {
 					this.processedFrameCount = frameIndex;
 					this.reportProgress(frameIndex, totalFrames);
 				},
+				this.config.clipRegions,
 			);
 
 			if (this.cancelled) {
@@ -413,6 +412,7 @@ export class VideoExporter {
 								this.config.sourceAudioFallbackPaths,
 								this.config.sourceAudioFallbackStartDelayMsByPath,
 								this.config.sourceAudioTrackSettings,
+								this.config.clipRegions,
 							),
 							"audio processing",
 							"audio",
@@ -572,6 +572,7 @@ export class VideoExporter {
 		}
 
 		if (
+			requiresClipTimelineRendering(this.config.clipRegions) ||
 			speedRegions.length > 0 ||
 			audioRegions.length > 0 ||
 			sourceAudioFallbackPaths.length > 1 ||
@@ -590,6 +591,7 @@ export class VideoExporter {
 			);
 			const trimRegions = this.config.trimRegions ?? [];
 			const canUsePrimaryAudioFiltergraph =
+				!requiresClipTimelineRendering(this.config.clipRegions) &&
 				Boolean(primaryAudioSourcePath) &&
 				!hasTimedSourceAudioFallback &&
 				(usesEmbeddedPrimaryAudio ||
@@ -684,23 +686,39 @@ export class VideoExporter {
 			return false;
 		}
 
-		const encoderConfig: VideoEncoderConfig = {
+		const buildEncoderConfig = (
+			hardwareAcceleration: VideoEncoderConfig["hardwareAcceleration"],
+		): VideoEncoderConfig => ({
 			codec: "avc1.640034",
 			width: this.config.width,
 			height: this.config.height,
 			bitrate: this.config.bitrate,
 			framerate: this.config.frameRate,
-			hardwareAcceleration: "prefer-hardware",
+			hardwareAcceleration,
 			avc: { format: "annexb" },
-		};
+		});
+
+		// Hardware H.264 is unavailable on many Linux builds because VA-API is
+		// disabled (see electron/gpuSwitches.ts); software encoding still works.
+		let encoderConfig = buildEncoderConfig("prefer-hardware");
 
 		try {
 			const support = await VideoEncoder.isConfigSupported(encoderConfig);
 			if (!support.supported) {
+				const softwareConfig = buildEncoderConfig("prefer-software");
+				const softwareSupport = await VideoEncoder.isConfigSupported(softwareConfig);
+
+				if (!softwareSupport.supported) {
+					console.warn(
+						`[VideoExporter] Native H.264 Annex B encoding is unsupported at ${this.config.width}x${this.config.height}`,
+					);
+					return false;
+				}
+
+				encoderConfig = softwareConfig;
 				console.warn(
-					`[VideoExporter] Native H.264 Annex B encoding is unsupported at ${this.config.width}x${this.config.height}`,
+					`[VideoExporter] Native hardware H.264 encoding is unavailable at ${this.config.width}x${this.config.height}; using software encoding instead.`,
 				);
-				return false;
 			}
 		} catch (error) {
 			console.warn("[VideoExporter] Native encoder support check failed:", error);
@@ -825,12 +843,7 @@ export class VideoExporter {
 		const frame = new VideoFrame(canvas, {
 			timestamp,
 			duration: frameDuration,
-			colorSpace: {
-				primaries: "bt709",
-				transfer: "iec61966-2-1",
-				matrix: "rgb",
-				fullRange: true,
-			},
+			colorSpace: EXPORT_CANVAS_COLOR_SPACE,
 		});
 		this.nativeH264Encoder.encode(frame, { keyFrame: frameIndex % 300 === 0 });
 		frame.close();
@@ -1077,12 +1090,7 @@ export class VideoExporter {
 		const exportFrame = new VideoFrame(canvas, {
 			timestamp,
 			duration: frameDuration,
-			colorSpace: {
-				primaries: "bt709",
-				transfer: "iec61966-2-1",
-				matrix: "rgb",
-				fullRange: true,
-			},
+			colorSpace: EXPORT_CANVAS_COLOR_SPACE,
 		});
 
 		while (
@@ -1270,12 +1278,8 @@ export class VideoExporter {
 					try {
 						if (isFirstChunk && this.videoDescription) {
 							// Add decoder config for the first chunk
-							const colorSpace = this.videoColorSpace || {
-								primaries: "bt709",
-								transfer: "iec61966-2-1",
-								matrix: "rgb",
-								fullRange: true,
-							};
+							const colorSpace =
+								this.videoColorSpace || ENCODED_H264_COLOR_SPACE_FALLBACK;
 
 							const metadata: EncodedVideoChunkMetadata = {
 								decoderConfig: {

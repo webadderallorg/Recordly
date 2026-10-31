@@ -36,7 +36,7 @@ Platform notes:
 
 - **macOS** uses native ScreenCaptureKit-based capture helpers.
 - **Windows** uses a native Windows Graphics Capture (WGC) helper on supported builds, with native WASAPI audio support.
-- **Linux** records through Electron capture APIs. Cursor hiding is not supported on Linux today.
+- **Linux** records through Electron capture APIs. X11 uses a screen/window source list; Wayland opens the system picker when recording starts. Cursor hiding is not supported on Linux today.
 
 ---
 

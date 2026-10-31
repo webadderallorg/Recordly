@@ -19,7 +19,8 @@
 	},
 	"clip": {
 		"title": "Clip",
-		"mute": "Sourdine",
+		"mute": "Couper le son du clip",
+		"resetAudioSettings": "Réinitialiser les réglages audio",
 		"mutedState": "Le son est coupé",
 		"unmutedState": "Le son est activé",
 		"separateClipFromAudio": "Séparer le clip de l'audio",
@@ -35,6 +36,7 @@
 			"macos": "macOS",
 			"tahoe": "Tahoe",
 			"tahoe-inverted": "Tahoe inversé",
+			"windows11": "Windows 11",
 			"dot": "Point",
 			"figma": "Minimal",
 			"lavender": "Lavande",
@@ -43,12 +45,8 @@
 			"amongus": "Among Us",
 			"turtle": "Tortue"
 		},
-		"backgroundBlur": "Flou d’arrière-plan",
+		"backgroundBlur": "Flou",
 		"zoomMotionBlur": "Flou de mouvement du zoom",
-		"temporalZoomMotionBlur": "Temporal Zoom Blur",
-		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
-		"zoomMotionBlurSamples": "Blur Samples",
-		"zoomMotionBlurShutter": "Shutter",
 		"auto": "Auto",
 		"connectZooms": "Relier les zooms",
 		"connectZoomsDescription": "Lisse les zones de zoom consécutives pour créer un mouvement de caméra continu.",
@@ -254,5 +252,11 @@
 		"micLabel": "Microphone",
 		"mixedLabel": "Source",
 		"deleteRegion": "Supprimer la zone audio"
+	},
+	"updates": {
+		"experimentalDescription": "Vous avez activé les mises à jour expérimentales, vous pouvez donc tester la dernière mise à jour de Recordly avant sa disponibilité générale.",
+		"title": "Mises à jour",
+		"experimental": "Mises à jour expérimentales",
+		"saveFailed": "Impossible de changer le canal de mise à jour."
 	}
 }

@@ -102,3 +102,23 @@ export function calculateMp4ExportDimensions(
 		height: normalizeEvenDimension(baseHeight * qualityScale),
 	};
 }
+
+const SHARED_VIDEO_LONG_SIDE_MAX = 1920;
+const SHARED_VIDEO_SHORT_SIDE_MAX = 1080;
+
+export function capMp4ShareDimensions(
+	width: number,
+	height: number,
+): { width: number; height: number } {
+	const normalizedWidth = normalizeEvenDimension(width);
+	const normalizedHeight = normalizeEvenDimension(height);
+	const landscape = normalizedWidth >= normalizedHeight;
+	const maxWidth = landscape ? SHARED_VIDEO_LONG_SIDE_MAX : SHARED_VIDEO_SHORT_SIDE_MAX;
+	const maxHeight = landscape ? SHARED_VIDEO_SHORT_SIDE_MAX : SHARED_VIDEO_LONG_SIDE_MAX;
+	const scale = Math.min(1, maxWidth / normalizedWidth, maxHeight / normalizedHeight);
+
+	return {
+		width: normalizeEvenDimension(normalizedWidth * scale),
+		height: normalizeEvenDimension(normalizedHeight * scale),
+	};
+}

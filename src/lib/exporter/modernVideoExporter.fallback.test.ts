@@ -76,7 +76,127 @@ describe("ModernVideoExporter native fallback routing", () => {
 
 	afterEach(() => {
 		vi.clearAllMocks();
+		if (vi.isMockFunction(console.error)) console.error.mockRestore();
 		vi.unstubAllGlobals();
+	});
+
+	it.each([
+		...["MacIntel", "Win32", "Linux x86_64"].flatMap((platform) => [
+			{ platform, configured: undefined, expected: "webgl" },
+			{ platform, configured: "webgpu" as const, expected: "webgpu" },
+			{ platform, configured: "webgl" as const, expected: "webgl" },
+		]),
+	])("uses $expected as the Lightning render backend on $platform when configured backend is $configured", async ({
+		platform,
+		configured,
+		expected,
+	}) => {
+		vi.stubGlobal("navigator", { platform });
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#101010",
+			padding: 0,
+			borderRadius: 0,
+			backgroundBlur: 0,
+			shadowIntensity: 0,
+			showShadow: false,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			backendPreference: "webcodecs",
+			preferredRenderBackend: configured,
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean }>;
+			initializeEncoder: () => Promise<unknown>;
+		};
+		vi.spyOn(exporter, "initializeEncoder").mockResolvedValue({
+			codec: "avc1.640034",
+			hardwareAcceleration: "prefer-hardware",
+		});
+
+		const result = await exporter.export();
+
+		expect(result.success).toBe(true);
+		const { FrameRenderer } = await import("./modernFrameRenderer");
+		expect(FrameRenderer).toHaveBeenCalledOnce();
+		expect(FrameRenderer).toHaveBeenCalledWith(
+			expect.objectContaining({ preferredRenderBackend: expected }),
+		);
+	}, 15_000);
+
+	it("removes failed native writes without creating an unhandled rejection", async () => {
+		const exporter = new ModernVideoExporter({} as never) as unknown as {
+			trackNativeWritePromise: (write: Promise<void>) => void;
+			nativeWritePromises: Set<Promise<void>>;
+		};
+		const write = Promise.reject(new Error("Native write failed"));
+		exporter.trackNativeWritePromise(write);
+		await expect(write).rejects.toThrow("Native write failed");
+		expect(exporter.nativeWritePromises.size).toBe(0);
+	});
+
+	it.each([
+		"returned",
+		"thrown",
+		"write",
+		"cancelled",
+		"both-fail",
+		"decode",
+	])("handles a native runtime failure: %s", async (failure) => {
+		vi.stubGlobal("navigator", { platform: "Win32" });
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#000000",
+			backendPreference: "auto",
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean; error?: string }>;
+			cancel: () => void;
+			initializeEncoder: () => Promise<unknown>;
+			tryStartNativeVideoExport: () => Promise<boolean>;
+			finishNativeVideoExport: () => Promise<unknown>;
+			nativeEncoderError: Error | null;
+		};
+		const log = vi.spyOn(console, "error").mockImplementation(() => {});
+		const start = vi.spyOn(exporter, "tryStartNativeVideoExport").mockResolvedValue(true);
+		const initialize = vi.spyOn(exporter, "initializeEncoder").mockImplementation(async () => {
+			if (failure === "both-fail") throw new Error("WebCodecs unavailable");
+			return { hardwareAcceleration: "prefer-hardware" };
+		});
+		vi.spyOn(exporter, "finishNativeVideoExport").mockImplementation(async () => {
+			if (failure === "cancelled") exporter.cancel();
+			if (failure === "thrown" || failure === "cancelled")
+				throw new Error("Native finish failed");
+			return { success: false, error: "Native finish failed" };
+		});
+		if (failure === "write" || failure === "decode") {
+			mocks.streamingDecoderDecodeAll.mockImplementationOnce(async () => {
+				const error = new Error(
+					failure === "write" ? "Native write failed" : "Source decode failed",
+				);
+				if (failure === "write") exporter.nativeEncoderError = error;
+				throw error;
+			});
+		}
+		const result = await exporter.export();
+		expect(start).toHaveBeenCalledTimes(1);
+		const shouldRetry = failure !== "cancelled" && failure !== "decode";
+		expect(initialize).toHaveBeenCalledTimes(shouldRetry ? 1 : 0);
+		expect(result.success).toBe(shouldRetry && failure !== "both-fail");
+		if (shouldRetry)
+			expect(log).toHaveBeenCalledWith(
+				expect.stringContaining("restarting once with WebCodecs"),
+			);
+		if (failure === "both-fail") {
+			expect(result.error).toContain("Native finish failed");
+			expect(result.error).toContain("WebCodecs unavailable");
+		}
+		if (failure === "cancelled") expect(result.error).toBe("Export cancelled");
 	});
 
 	it("falls back to WebCodecs instead of surfacing a native error when Breeze is unavailable", async () => {
@@ -288,6 +408,114 @@ describe("ModernVideoExporter native fallback routing", () => {
 		]);
 		expect(mocks.streamingDecoderDecodeAll).toHaveBeenCalledTimes(2);
 		expect(mocks.muxerFinalize).toHaveBeenCalledTimes(1);
+	});
+
+	it("builds actionable diagnostics for input decoder failures", () => {
+		vi.stubGlobal("navigator", {
+			platform: "Win32",
+			userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+		});
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1200,
+			height: 570,
+			frameRate: 60,
+			bitrate: 8_000_000,
+			backendPreference: "auto",
+		} as never) as unknown as {
+			buildLightningExportError: (error: unknown) => string;
+			sourceVideoInfo: typeof mocks.videoInfo;
+			renderBackend: "webgpu";
+			encodeBackend: "ffmpeg";
+			encoderName: string;
+			processedFrameCount: number;
+			totalExportStartTimeMs: number;
+			mediaSourceRetryAttempted: boolean;
+			effectiveDurationSec: number;
+			runtimeDiagnostics: {
+				appVersion: string;
+				userAgent: string;
+				logicalProcessors: number;
+				deviceMemoryGb: number;
+				hardware: RendererExportHardwareInfo;
+			};
+			backpressureProfile: {
+				name: string;
+				maxDecodeQueue: number;
+				maxPendingFrames: number;
+				maxEncodeQueue: number;
+			};
+		};
+		exporter.sourceVideoInfo = mocks.videoInfo;
+		exporter.renderBackend = "webgpu";
+		exporter.encodeBackend = "ffmpeg";
+		exporter.encoderName = "h264-stream-copy";
+		exporter.processedFrameCount = 314;
+		exporter.totalExportStartTimeMs = 1;
+		exporter.mediaSourceRetryAttempted = true;
+		exporter.effectiveDurationSec = 10;
+		exporter.runtimeDiagnostics = {
+			appVersion: "1.4.0",
+			userAgent: "RecordlyTest/1.0 Electron/43.1.0",
+			logicalProcessors: 12,
+			deviceMemoryGb: 8,
+			hardware: {
+				platform: "win32",
+				release: "10.0.26100",
+				arch: "x64",
+				cpuModel: "AMD Ryzen 9 7900X",
+				logicalProcessors: 24,
+				totalMemoryGb: 31.8,
+				machineModel: "Custom PC",
+				gpus: [
+					{
+						name: "NVIDIA GeForce RTX 4070",
+						vendor: "NVIDIA",
+						active: true,
+					},
+				],
+				gpuFeatures: {
+					videoDecode: "enabled",
+					videoEncode: "enabled",
+					webgl: "enabled",
+					webgpu: "enabled",
+				},
+			},
+		};
+		exporter.backpressureProfile = {
+			name: "webcodecs-balanced-plus",
+			maxDecodeQueue: 12,
+			maxPendingFrames: 32,
+			maxEncodeQueue: 72,
+		};
+
+		const report = exporter.buildLightningExportError(
+			new Error(
+				"[VIDEO_DECODE_ENCODING_ERROR] VideoDecoder failure: EncodingError: bad frame",
+			),
+		);
+
+		expect(report).toContain("Failure code: VIDEO_DECODE_ENCODING_ERROR");
+		expect(report).toContain("Failure stage: Input video decoding");
+		expect(report).toContain("Output: 1200x570 @ 60 FPS; 8.00 Mbps; mode=default");
+		expect(report).toContain("Recordly version: 1.4.0");
+		expect(report).toContain("Runtime: RecordlyTest/1.0 Electron/43.1.0");
+		expect(report).toContain("System: win32 10.0.26100 (x64); model=Custom PC");
+		expect(report).toContain("CPU: AMD Ryzen 9 7900X; 24 logical processors");
+		expect(report).toContain("Memory: 31.8 GB");
+		expect(report).toContain("GPU 1: NVIDIA GeForce RTX 4070; active");
+		expect(report).toContain(
+			"GPU acceleration: video decode=enabled; video encode=enabled; WebGL=enabled; WebGPU=enabled",
+		);
+		expect(report).toContain("Source: h264 1920x1080 @ 30.000 FPS; 1.000s");
+		expect(report).toContain("Source audio: none");
+		expect(report).toContain("Progress at failure: 314/600 (52.3%) rendered frames after");
+		expect(report).toContain("Media source retry: attempted with a fresh source");
+		expect(report).toContain(
+			"Pipeline tuning: webcodecs-balanced-plus; decode queue=12; pending frames=32; encode queue=72",
+		);
+		expect(report).toContain("If only this recording fails");
+		expect(report).not.toContain("Windows Lightning exports can use WebCodecs or FFmpeg");
 	});
 
 	it("forwards cursor click-effect settings into the modern frame renderer", async () => {

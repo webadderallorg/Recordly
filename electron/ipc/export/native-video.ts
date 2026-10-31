@@ -1,3 +1,11 @@
+import { probeNativeVideoMetadata, type NativeVideoMetadataProbe } from "../ffmpeg/metadata";
+export {
+	probeNativeVideoMetadata,
+	parseNativeVideoMetadataProbeOutput,
+	parseFfmpegDurationSeconds,
+	parseFfmpegFrameRate,
+	type NativeVideoMetadataProbe,
+} from "../ffmpeg/metadata";
 import type { ChildProcessByStdio } from "node:child_process";
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs/promises";
@@ -56,6 +64,7 @@ const NATIVE_STATIC_LAYOUT_SOURCE_PROXY_MAX_BITRATE = 80_000_000;
 const NATIVE_STATIC_LAYOUT_SOURCE_PROXY_CONTAINERS = new Set([".mp4", ".m4v", ".mov"]);
 
 type ElectronGpuDeviceLike = {
+	active?: boolean;
 	vendorId?: number | string;
 	vendorString?: string;
 	deviceString?: string;
@@ -63,7 +72,30 @@ type ElectronGpuDeviceLike = {
 
 type ElectronGpuInfoLike = {
 	gpuDevice?: ElectronGpuDeviceLike[];
+	machineModelName?: string;
+	machineModelVersion?: string;
 };
+
+export interface ExportHardwareInfo {
+	platform: NodeJS.Platform;
+	release: string;
+	arch: string;
+	cpuModel: string | null;
+	logicalProcessors: number;
+	totalMemoryGb: number;
+	machineModel: string | null;
+	gpus: Array<{
+		name: string;
+		vendor: string | null;
+		active: boolean | null;
+	}>;
+	gpuFeatures: {
+		videoDecode: string | null;
+		videoEncode: string | null;
+		webgl: string | null;
+		webgpu: string | null;
+	};
+}
 
 export type NativeVideoExportSession = {
 	ffmpegProcess: ChildProcessByStdio<Writable, null, Readable>;
@@ -282,20 +314,6 @@ export interface NvidiaCudaExportSummary {
 	gpuSummary?: unknown;
 	outputVideo?: unknown;
 	outputAudio?: unknown;
-}
-
-export interface NativeVideoMetadataProbe {
-	width: number;
-	height: number;
-	duration: number;
-	mediaStartTime?: number;
-	streamStartTime?: number;
-	streamDuration?: number;
-	frameRate: number;
-	codec: string;
-	hasAudio: boolean;
-	audioCodec?: string;
-	audioSampleRate?: number;
 }
 
 export interface NativeVideoStreamStatsProbe {
@@ -935,116 +953,6 @@ export interface NativeExportCapabilities {
 		explicitDisabled: boolean;
 		userOptInRequired: boolean;
 	};
-}
-
-export function parseFfmpegDurationSeconds(value: string): number | null {
-	const parts = value.trim().split(":");
-	if (parts.length !== 3) {
-		return null;
-	}
-
-	const [hours, minutes, seconds] = parts.map(Number);
-	if (![hours, minutes, seconds].every(Number.isFinite)) {
-		return null;
-	}
-
-	return hours * 3600 + minutes * 60 + seconds;
-}
-
-export function parseFfmpegFrameRate(line: string): number | null {
-	const fpsMatch = line.match(/,\s*([0-9]+(?:\.[0-9]+)?)\s*fps\b/i);
-	if (fpsMatch) {
-		const frameRate = Number(fpsMatch[1]);
-		return Number.isFinite(frameRate) && frameRate > 0 ? frameRate : null;
-	}
-
-	const tbrMatch = line.match(/,\s*([0-9]+(?:\.[0-9]+)?)\s*tbr\b/i);
-	if (tbrMatch) {
-		const frameRate = Number(tbrMatch[1]);
-		return Number.isFinite(frameRate) && frameRate > 0 ? frameRate : null;
-	}
-
-	return null;
-}
-
-export function parseNativeVideoMetadataProbeOutput(
-	output: string,
-): NativeVideoMetadataProbe | null {
-	const durationMatch = output.match(
-		/Duration:\s*([0-9:.]+),\s*start:\s*(-?[0-9]+(?:\.[0-9]+)?)/i,
-	);
-	const duration = durationMatch ? parseFfmpegDurationSeconds(durationMatch[1]) : null;
-	if (!duration || duration <= 0) {
-		return null;
-	}
-
-	const mediaStartTime = durationMatch ? Number(durationMatch[2]) : 0;
-	const lines = output.split(/\r?\n/);
-	const videoLine = lines.find((line) => /\bVideo:\s*/i.test(line));
-	if (!videoLine) {
-		return null;
-	}
-
-	const dimensionsMatch = videoLine.match(/,\s*([0-9]{2,5})x([0-9]{2,5})(?:[,\s]|$)/);
-	if (!dimensionsMatch) {
-		return null;
-	}
-
-	const width = Number(dimensionsMatch[1]);
-	const height = Number(dimensionsMatch[2]);
-	if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-		return null;
-	}
-
-	const videoCodecMatch = videoLine.match(/Video:\s*([^,\r\n]+)/i);
-	const videoStartMatch = videoLine.match(/\bstart:\s*(-?[0-9]+(?:\.[0-9]+)?)/i);
-	const frameRate = parseFfmpegFrameRate(videoLine) ?? 60;
-	const audioLine = lines.find((line) => /\bAudio:\s*/i.test(line));
-	const audioCodecMatch = audioLine?.match(/Audio:\s*([^,\r\n]+)/i);
-	const audioSampleRateMatch = audioLine?.match(/,\s*([0-9]+)\s*Hz\b/i);
-
-	return {
-		width,
-		height,
-		duration,
-		mediaStartTime: Number.isFinite(mediaStartTime) ? mediaStartTime : 0,
-		streamStartTime: videoStartMatch ? Number(videoStartMatch[1]) : mediaStartTime,
-		streamDuration: duration,
-		frameRate,
-		codec: videoCodecMatch?.[1]?.trim() || "unknown",
-		hasAudio: Boolean(audioLine),
-		audioCodec: audioCodecMatch?.[1]?.trim(),
-		audioSampleRate: audioSampleRateMatch ? Number(audioSampleRateMatch[1]) : undefined,
-	};
-}
-
-export async function probeNativeVideoMetadata(
-	ffmpegPath: string,
-	inputPath: string,
-): Promise<NativeVideoMetadataProbe> {
-	let output = "";
-	try {
-		const result = await execFileAsync(ffmpegPath, ["-hide_banner", "-i", inputPath], {
-			timeout: 30_000,
-			maxBuffer: 4 * 1024 * 1024,
-		});
-		output = `${result.stdout}\n${result.stderr}`;
-	} catch (error) {
-		const processOutput = error as { stdout?: unknown; stderr?: unknown };
-		output = [processOutput.stdout, processOutput.stderr]
-			.filter((value): value is string => typeof value === "string")
-			.join("\n");
-		if (!output) {
-			throw error;
-		}
-	}
-
-	const metadata = parseNativeVideoMetadataProbeOutput(output);
-	if (!metadata) {
-		throw new Error("Unable to parse native video metadata from FFmpeg output");
-	}
-
-	return metadata;
 }
 
 export async function probeNativeVideoStreamStats(
@@ -1867,6 +1775,95 @@ export function hasNvidiaGpuDeviceInGpuInfo(gpuInfo: unknown) {
 
 	const devices = (gpuInfo as ElectronGpuInfoLike).gpuDevice;
 	return Array.isArray(devices) && devices.some(isNvidiaGpuDevice);
+}
+
+function getGpuVendorLabel(device: ElectronGpuDeviceLike): string | null {
+	if (device.vendorString?.trim()) {
+		return device.vendorString.trim();
+	}
+
+	const rawVendorId = device.vendorId;
+	const vendorId =
+		typeof rawVendorId === "number"
+			? rawVendorId
+			: typeof rawVendorId === "string"
+				? rawVendorId.toLowerCase().startsWith("0x")
+					? Number.parseInt(rawVendorId.slice(2), 16)
+					: Number.parseInt(rawVendorId, 10)
+				: Number.NaN;
+	return (
+		{
+			[0x1002]: "AMD",
+			[0x106b]: "Apple",
+			[0x10de]: "NVIDIA",
+			[0x8086]: "Intel",
+		}[vendorId] ?? null
+	);
+}
+
+/** Reduces Electron's GPU response to support-safe hardware fields. */
+export function sanitizeExportGpuInfo(
+	gpuInfo: unknown,
+): Pick<ExportHardwareInfo, "machineModel" | "gpus"> {
+	if (!gpuInfo || typeof gpuInfo !== "object") {
+		return { machineModel: null, gpus: [] };
+	}
+
+	const info = gpuInfo as ElectronGpuInfoLike;
+	const machineModel =
+		[info.machineModelName, info.machineModelVersion]
+			.filter((value): value is string => Boolean(value?.trim()))
+			.join(" ") || null;
+	const gpus = Array.isArray(info.gpuDevice)
+		? info.gpuDevice.map((device) => {
+				const vendor = getGpuVendorLabel(device);
+				return {
+					name: device.deviceString?.trim() || vendor || "Unknown GPU",
+					vendor,
+					active: typeof device.active === "boolean" ? device.active : null,
+				};
+			})
+		: [];
+
+	return { machineModel, gpus };
+}
+
+/** Captures sanitized hardware and GPU acceleration details for export support reports. */
+export async function getExportHardwareInfo(): Promise<ExportHardwareInfo> {
+	let sanitizedGpuInfo: Pick<ExportHardwareInfo, "machineModel" | "gpus"> = {
+		machineModel: null,
+		gpus: [],
+	};
+	try {
+		sanitizedGpuInfo = sanitizeExportGpuInfo(await app.getGPUInfo("complete"));
+	} catch {
+		// Hardware diagnostics are best effort and must not affect exporting.
+	}
+
+	let gpuFeatureStatus: Record<string, string> = {};
+	try {
+		gpuFeatureStatus = app.getGPUFeatureStatus() as unknown as Record<string, string>;
+	} catch {
+		// GPU feature status can be unavailable before Chromium finishes GPU initialization.
+	}
+
+	const cpuModel = os.cpus()[0]?.model?.replace(/\s+/g, " ").trim() || null;
+	return {
+		platform: process.platform,
+		release: os.release(),
+		arch: process.arch,
+		cpuModel,
+		logicalProcessors: os.cpus().length,
+		totalMemoryGb: Math.round((os.totalmem() / 1024 ** 3) * 10) / 10,
+		machineModel: sanitizedGpuInfo.machineModel,
+		gpus: sanitizedGpuInfo.gpus,
+		gpuFeatures: {
+			videoDecode: gpuFeatureStatus.video_decode ?? null,
+			videoEncode: gpuFeatureStatus.video_encode ?? null,
+			webgl: gpuFeatureStatus.webgl ?? null,
+			webgpu: gpuFeatureStatus.webgpu ?? null,
+		},
+	};
 }
 
 async function hasNvidiaGpuForCudaExportCandidate() {

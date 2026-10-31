@@ -15,6 +15,7 @@ import {
 } from "@/components/video-editor/types";
 import { drawSquircleOnCanvas } from "@/lib/geometry/squircle";
 
+/** Draw the active caption using the same typography and timing as preview. */
 export function renderCaptions(
 	ctx: CanvasRenderingContext2D,
 	cues: CaptionCue[],
@@ -30,7 +31,7 @@ export function renderCaptions(
 	ctx.save();
 
 	const fontSize = getCaptionScaledFontSize(settings.fontSize, width, settings.maxWidth);
-	ctx.font = `${CAPTION_FONT_WEIGHT} ${fontSize}px ${getDefaultCaptionFontFamily()}`;
+	ctx.font = `${CAPTION_FONT_WEIGHT} ${fontSize}px ${settings.fontFamily || getDefaultCaptionFontFamily()}`;
 	const padding = getCaptionPadding(fontSize);
 
 	const activeCaptionLayout = buildActiveCaptionLayout({

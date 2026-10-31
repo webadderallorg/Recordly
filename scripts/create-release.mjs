@@ -72,9 +72,12 @@ function loadNotes({ notes, notesFile }) {
 }
 
 function resolveGhBinary() {
-	const candidates = [process.env.GH_BIN, "gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh"].filter(
-		Boolean,
-	);
+	const candidates = [
+		process.env.GH_BIN,
+		"gh",
+		"/opt/homebrew/bin/gh",
+		"/usr/local/bin/gh",
+	].filter(Boolean);
 
 	for (const candidate of candidates) {
 		try {

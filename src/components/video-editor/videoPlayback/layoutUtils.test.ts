@@ -56,10 +56,10 @@ describe("computePaddedLayout", () => {
 });
 
 describe("scalePreviewBorderRadius", () => {
-	it("matches export scaling against the logical preview size", () => {
-		expect(scalePreviewBorderRadius(1920, 1080, 16)).toBeCloseTo(16, 6);
-		expect(scalePreviewBorderRadius(960, 540, 16)).toBeCloseTo(8, 6);
-		expect(scalePreviewBorderRadius(1440, 810, 16)).toBeCloseTo(12, 6);
+	it("uses a percentage of the content's shorter side", () => {
+		expect(scalePreviewBorderRadius(1920, 1080, 8)).toBeCloseTo(86.4, 6);
+		expect(scalePreviewBorderRadius(960, 540, 8)).toBeCloseTo(43.2, 6);
+		expect(scalePreviewBorderRadius(500, 1000, 8)).toBeCloseTo(40, 6);
 	});
 
 	it("clamps invalid or empty preview sizes to zero", () => {

@@ -56,3 +56,16 @@ describe("timeline core/time", () => {
 		expect(huge.intervalMs).toBeGreaterThanOrEqual(typical.intervalMs);
 	});
 });
+
+describe("readable timeline ruler", () => {
+	it("carries fractional rounding into the next minute", () => {
+		expect(formatTimeLabel(59999, 100)).toBe("1:00.00");
+		expect(formatPlayheadTime(59999)).toBe("1:00.0");
+		expect(formatTimeLabel(3599999, 100)).toBe("1:00:00.00");
+	});
+	it("reduces tick density in narrow windows", () => {
+		expect(calculateAxisScale(10000, 400).intervalMs).toBeGreaterThan(
+			calculateAxisScale(10000, 1600).intervalMs,
+		);
+	});
+});

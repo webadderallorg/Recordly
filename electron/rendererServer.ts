@@ -28,6 +28,15 @@ function getContentType(filePath: string): string {
 	return MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
 }
 
+function getCacheControl(filePath: string): string {
+	// Vite fingerprints production assets, so they can be reused across the HUD,
+	// picker, toast, and editor windows without revalidation. Keep index.html
+	// uncached because it points at the current fingerprinted files.
+	return /-[A-Za-z0-9_-]{8,}\.[^.]+$/.test(path.basename(filePath))
+		? "public, max-age=31536000, immutable"
+		: "no-cache";
+}
+
 function resolveRequestedFilePath(rootDir: string, requestPathname: string): string | null {
 	const trimmedPathname = requestPathname === "/" ? "/index.html" : requestPathname;
 
@@ -72,7 +81,7 @@ async function servePackagedRendererRequest(
 		const fileContents = await fs.readFile(filePath);
 
 		response.writeHead(200, {
-			"Cache-Control": "no-cache",
+			"Cache-Control": getCacheControl(filePath),
 			"Content-Type": getContentType(filePath),
 		});
 

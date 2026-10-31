@@ -1,4 +1,5 @@
-import { ArrowsMerge, Scissors, Trash } from "@phosphor-icons/react";
+import { TextArea, Input } from "@/components/ui/input";
+import { ArrowsMerge, Scissors, Trash } from "@/components/ui/icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useScopedT } from "@/contexts/I18nContext";
@@ -111,7 +112,8 @@ function CaptionEditor({
 				<span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
 					{t("captions.editor.text", "Text")}
 				</span>
-				<textarea
+				<TextArea
+					data-caption-text-editor
 					value={draftText}
 					rows={3}
 					// Freshly-added captions start empty — focus the field so the
@@ -131,7 +133,7 @@ function CaptionEditor({
 							event.currentTarget.blur();
 						}
 					}}
-					className="min-h-[4.5rem] w-full resize-none rounded-md border border-foreground/10 bg-background/60 px-2 py-1.5 text-sm text-foreground outline-none focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]"
+					className="min-h-[4.5rem] w-full resize-none px-2 py-1.5 text-sm"
 				/>
 			</label>
 
@@ -140,7 +142,7 @@ function CaptionEditor({
 					<span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
 						{t("captions.editor.start", "Start")}
 					</span>
-					<input
+					<Input
 						value={startValue}
 						onChange={(event) => setStartValue(event.target.value)}
 						onBlur={commitTiming}
@@ -149,14 +151,14 @@ function CaptionEditor({
 								event.currentTarget.blur();
 							}
 						}}
-						className="w-full rounded-md border border-foreground/10 bg-background/60 px-2 py-1 font-mono text-xs tabular-nums text-foreground outline-none focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]"
+						className="w-full px-2 py-1 text-xs tabular-nums"
 					/>
 				</label>
 				<label className="flex flex-1 flex-col gap-1">
 					<span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
 						{t("captions.editor.end", "End")}
 					</span>
-					<input
+					<Input
 						value={endValue}
 						onChange={(event) => setEndValue(event.target.value)}
 						onBlur={commitTiming}
@@ -165,37 +167,39 @@ function CaptionEditor({
 								event.currentTarget.blur();
 							}
 						}}
-						className="w-full rounded-md border border-foreground/10 bg-background/60 px-2 py-1 font-mono text-xs tabular-nums text-foreground outline-none focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]"
+						className="w-full px-2 py-1 text-xs tabular-nums"
 					/>
 				</label>
 			</div>
 
 			<div className="grid grid-cols-3 gap-2">
-				<button
+				<Button
+					variant="ghost"
 					type="button"
 					onClick={() =>
 						onSplit(cue.id, clampNumber(currentTimeMs, cue.startMs, cue.endMs))
 					}
-					className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-foreground/10 bg-foreground/5 text-xs font-medium text-foreground transition-colors hover:bg-foreground/10"
+					className="flex h-9 items-center justify-center gap-1.5 text-xs"
 				>
 					<Scissors className="h-4 w-4" />
 					{t("captions.editor.split", "Split")}
-				</button>
-				<button
+				</Button>
+				<Button
+					variant="ghost"
 					type="button"
 					disabled={!canMerge}
 					onClick={() => onMerge(cue.id)}
-					className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-foreground/10 bg-foreground/5 text-xs font-medium text-foreground transition-colors hover:bg-foreground/10 disabled:opacity-40"
+					className="flex h-9 items-center justify-center gap-1.5 text-xs"
 				>
 					<ArrowsMerge className="h-4 w-4" />
 					{t("captions.editor.merge", "Merge")}
-				</button>
+				</Button>
 				<Button
 					type="button"
 					variant="destructive"
 					size="sm"
 					onClick={() => onDelete(cue.id)}
-					className="h-9 gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 text-xs text-red-400 transition-all hover:border-red-500/30 hover:bg-red-500/20"
+					className="h-9 gap-1.5 text-xs"
 				>
 					<Trash className="h-3 w-3" />
 					{t("captions.editor.delete", "Delete")}

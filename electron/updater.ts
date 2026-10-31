@@ -4,8 +4,11 @@ import type { MessageBoxOptions, MessageBoxReturnValue } from "electron";
 import { app, BrowserWindow, dialog } from "electron";
 import { autoUpdater } from "electron-updater";
 import { USER_DATA_PATH } from "./appPaths";
+import { readAppSetting, writeAppSetting } from "./appSettingsStore";
+import { EXPERIMENTAL_UPDATE_DESCRIPTION, getUpdateChannelConfiguration } from "./updateChannel";
 
 const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const INITIAL_UPDATE_CHECK_DELAY_MS = 15 * 1000;
 export const UPDATE_REMINDER_DELAY_MS = 3 * 60 * 60 * 1000;
 const DISMISSED_READY_REMINDER_DELAY_MS = 5 * 60 * 1000;
 const AUTO_UPDATES_DISABLED = process.env.RECORDLY_DISABLE_AUTO_UPDATES === "1";
@@ -13,9 +16,12 @@ const UPDATE_FEED_URL_OVERRIDE = process.env.RECORDLY_UPDATE_FEED_URL?.trim() ??
 const UPDATER_LOG_PATH =
 	process.env.RECORDLY_UPDATER_LOG_PATH?.trim() || path.join(USER_DATA_PATH, "updater.log");
 const DEV_UPDATE_PREVIEW_VERSION = "9.9.9";
+const DEV_UPDATE_PREVIEW_IS_EXPERIMENTAL =
+	process.env.RECORDLY_DEV_PREVIEW_EXPERIMENTAL_UPDATE === "1";
 const DEV_UPDATE_PREVIEW_PROGRESS_STEP_MS = 300;
 const DEV_UPDATE_PREVIEW_PROGRESS_INCREMENT = 20;
 const ONE_MEGABYTE = 1024 * 1024;
+const EXPERIMENTAL_UPDATES_SETTING_KEY = "experimentalUpdatesEnabled";
 
 export type UpdateToastPhase = "available" | "downloading" | "ready" | "error";
 
@@ -41,6 +47,7 @@ export interface UpdateToastPayload {
 	phase: UpdateToastPhase;
 	delayMs: number;
 	isPreview?: boolean;
+	isExperimental?: boolean;
 	progressPercent?: number;
 	transferredBytes?: number;
 	totalBytes?: number;
@@ -65,6 +72,7 @@ let updaterInitialized = false;
 let updateCheckInProgress = false;
 let manualCheckRequested = false;
 let periodicCheckTimer: NodeJS.Timeout | null = null;
+let initialCheckTimer: NodeJS.Timeout | null = null;
 let deferredReminderTimer: NodeJS.Timeout | null = null;
 let devPreviewProgressTimer: NodeJS.Timeout | null = null;
 let currentToastPayload: UpdateToastPayload | null = null;
@@ -124,6 +132,32 @@ function configureUpdateFeed() {
 	writeUpdaterLog(`Using overridden update feed: ${UPDATE_FEED_URL_OVERRIDE}`);
 }
 
+export function getExperimentalUpdatesEnabled() {
+	return readAppSetting(EXPERIMENTAL_UPDATES_SETTING_KEY) === true;
+}
+
+function applyExperimentalUpdatesPreference() {
+	const enabled = getExperimentalUpdatesEnabled();
+	const { channel, allowPrerelease, allowDowngrade } = getUpdateChannelConfiguration(enabled);
+	autoUpdater.channel = channel;
+	autoUpdater.allowPrerelease = allowPrerelease;
+	// Changing channels enables downgrades inside electron-updater. Recordly never
+	// needs that behaviour: opting out waits for the next stable version instead.
+	autoUpdater.allowDowngrade = allowDowngrade;
+	writeUpdaterLog(
+		`Update channel configured: ${enabled ? "experimental" : "stable"} (${channel}).`,
+	);
+	return enabled;
+}
+
+export function setExperimentalUpdatesEnabled(enabled: boolean) {
+	writeAppSetting(EXPERIMENTAL_UPDATES_SETTING_KEY, enabled);
+	applyExperimentalUpdatesPreference();
+	skippedVersion = null;
+	writeUpdaterLog(`Experimental updates ${enabled ? "enabled" : "disabled"} by user.`);
+	return enabled;
+}
+
 function canUseAutoUpdates() {
 	return !AUTO_UPDATES_DISABLED && app.isPackaged && !process.mas;
 }
@@ -141,6 +175,10 @@ function showMessageBox(
 	getMainWindow: () => BrowserWindow | null,
 	options: MessageBoxOptions,
 ): Promise<MessageBoxReturnValue> {
+	if (process.platform !== "darwin") {
+		return dialog.showMessageBox(options);
+	}
+
 	const window = getDialogWindow(getMainWindow);
 	return window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
 }
@@ -171,12 +209,22 @@ function emitUpdateToastState(
 	return sendToRenderer("update-toast-state", payload);
 }
 
-function createAvailableUpdateToastPayload(version: string): UpdateToastPayload {
+function getCurrentToastExperimentalFlag() {
+	return currentToastPayload?.isExperimental ?? getExperimentalUpdatesEnabled();
+}
+
+function createAvailableUpdateToastPayload(
+	version: string,
+	isExperimental = getExperimentalUpdatesEnabled(),
+): UpdateToastPayload {
 	return {
 		version,
 		phase: "available",
-		detail: "Install the latest version now, or remind yourself to come back to it later.",
+		detail: isExperimental
+			? EXPERIMENTAL_UPDATE_DESCRIPTION
+			: "Install the latest version now, or remind yourself to come back to it later.",
 		delayMs: UPDATE_REMINDER_DELAY_MS,
+		isExperimental,
 		primaryAction: "install-and-restart",
 	};
 }
@@ -184,6 +232,7 @@ function createAvailableUpdateToastPayload(version: string): UpdateToastPayload 
 function createDownloadingUpdateToastPayload(
 	version: string,
 	progress: DownloadProgressSnapshot = {},
+	isExperimental = getCurrentToastExperimentalFlag(),
 ): UpdateToastPayload {
 	const normalizedProgress = Math.max(
 		0,
@@ -217,6 +266,7 @@ function createDownloadingUpdateToastPayload(
 					? `${remainingMb.toFixed(1)} MB left before Recordly restarts.`
 					: "Downloading the update now. Recordly will restart when it finishes.",
 		delayMs: UPDATE_REMINDER_DELAY_MS,
+		isExperimental,
 		progressPercent: normalizedProgress,
 		transferredBytes,
 		totalBytes,
@@ -226,22 +276,31 @@ function createDownloadingUpdateToastPayload(
 	};
 }
 
-function createDownloadedUpdateToastPayload(version: string): UpdateToastPayload {
+function createDownloadedUpdateToastPayload(
+	version: string,
+	isExperimental = getCurrentToastExperimentalFlag(),
+): UpdateToastPayload {
 	return {
 		version,
 		phase: "ready",
 		detail: "The update is ready. Install and restart now, or remind yourself later.",
 		delayMs: UPDATE_REMINDER_DELAY_MS,
+		isExperimental,
 		primaryAction: "install-and-restart",
 	};
 }
 
-function createUpdateErrorToastPayload(version: string, error: unknown): UpdateToastPayload {
+function createUpdateErrorToastPayload(
+	version: string,
+	error: unknown,
+	isExperimental = getCurrentToastExperimentalFlag(),
+): UpdateToastPayload {
 	return {
 		version,
 		phase: "error",
 		detail: `The update could not be downloaded. ${String(error)}`,
 		delayMs: UPDATE_REMINDER_DELAY_MS,
+		isExperimental,
 		primaryAction: "install-and-restart",
 	};
 }
@@ -510,9 +569,12 @@ export function previewUpdateToast(sendToRenderer: UpdateToastSender) {
 	return emitUpdateToastState(sendToRenderer, {
 		version: DEV_UPDATE_PREVIEW_VERSION,
 		phase: "available",
-		detail: "This is a development preview of the in-app update toast.",
+		detail: DEV_UPDATE_PREVIEW_IS_EXPERIMENTAL
+			? EXPERIMENTAL_UPDATE_DESCRIPTION
+			: "This is a development preview of the in-app update toast.",
 		delayMs: UPDATE_REMINDER_DELAY_MS,
 		isPreview: true,
+		isExperimental: DEV_UPDATE_PREVIEW_IS_EXPERIMENTAL,
 	});
 }
 
@@ -520,12 +582,19 @@ async function showAvailableUpdateDialog(
 	getMainWindow: () => BrowserWindow | null,
 	version: string,
 	sendToRenderer?: UpdateToastSender,
+	options?: { isPreview?: boolean; isExperimental?: boolean },
 ) {
+	const isPreview = Boolean(options?.isPreview);
+	const isExperimental = options?.isExperimental ?? getExperimentalUpdatesEnabled();
 	const result = await showMessageBox(getMainWindow, {
 		type: "info",
-		title: "Update Available",
-		message: `Recordly ${version} is available.`,
-		detail: "Install and restart now, or remind me later.",
+		title: isExperimental ? "Experimental Update Available" : "Update Available",
+		message: `Recordly ${version} is available${isExperimental ? " on the experimental channel" : ""}.`,
+		detail: isPreview
+			? `${isExperimental ? EXPERIMENTAL_UPDATE_DESCRIPTION : "This is a development preview of the standard update flow."} No real update will be installed.`
+			: isExperimental
+				? EXPERIMENTAL_UPDATE_DESCRIPTION
+				: "Install and restart now, or remind me later.",
 		buttons: ["Install & Restart", "Later"],
 		defaultId: 0,
 		cancelId: 1,
@@ -533,7 +602,21 @@ async function showAvailableUpdateDialog(
 	});
 
 	if (result.response === 0) {
+		if (isPreview) {
+			await showMessageBox(getMainWindow, {
+				type: "info",
+				title: "Preview Only",
+				message: "No real update was installed.",
+				detail: "This was only a manual development preview of the update prompt.",
+			});
+			return;
+		}
+
 		await downloadAvailableUpdate(sendToRenderer, { installAfterDownload: true });
+		return;
+	}
+
+	if (isPreview) {
 		return;
 	}
 
@@ -588,6 +671,29 @@ async function showDownloadedUpdateDialog(
 	}
 }
 
+export function previewNativeUpdateDialog(getMainWindow: () => BrowserWindow | null) {
+	return showAvailableUpdateDialog(getMainWindow, DEV_UPDATE_PREVIEW_VERSION, undefined, {
+		isPreview: true,
+		isExperimental: DEV_UPDATE_PREVIEW_IS_EXPERIMENTAL,
+	});
+}
+
+async function showUpdateErrorDialog(
+	getMainWindow: () => BrowserWindow | null,
+	version: string,
+	error: unknown,
+) {
+	await showMessageBox(getMainWindow, {
+		type: "error",
+		title: "Update Failed",
+		message: `Recordly ${version} could not be downloaded.`,
+		detail: String(error),
+		buttons: ["OK"],
+		defaultId: 0,
+		noLink: true,
+	});
+}
+
 export async function checkForAppUpdates(
 	getMainWindow: () => BrowserWindow | null,
 	options?: { manual?: boolean },
@@ -616,6 +722,7 @@ export async function checkForAppUpdates(
 
 	manualCheckRequested = Boolean(options?.manual);
 	updateCheckInProgress = true;
+	applyExperimentalUpdatesPreference();
 	setUpdateStatusSummary({ status: "checking", detail: "Checking for updates..." });
 	writeUpdaterLog(`Starting ${manualCheckRequested ? "manual" : "automatic"} update check.`);
 
@@ -650,6 +757,7 @@ export function setupAutoUpdates(
 
 	updaterInitialized = true;
 	configureUpdateFeed();
+	applyExperimentalUpdatesPreference();
 	autoUpdater.autoDownload = false;
 	autoUpdater.autoInstallOnAppQuit = false;
 	writeUpdaterLog(`Updater initialized. logPath=${UPDATER_LOG_PATH}`);
@@ -687,10 +795,8 @@ export function setupAutoUpdates(
 			return;
 		}
 
-		if (manualCheckRequested) {
-			void showAvailableUpdateDialog(getMainWindow, info.version, sendToRenderer);
-			manualCheckRequested = false;
-		}
+		void showAvailableUpdateDialog(getMainWindow, info.version, sendToRenderer);
+		manualCheckRequested = false;
 	});
 
 	autoUpdater.on("update-not-available", () => {
@@ -753,10 +859,13 @@ export function setupAutoUpdates(
 			downloadInProgress = false;
 			downloadToastDismissed = false;
 			installAfterDownloadRequested = false;
-			emitUpdateToastState(
+			const shownInRenderer = emitUpdateToastState(
 				sendToRenderer,
 				createUpdateErrorToastPayload(availableVersion, error),
 			);
+			if (!shownInRenderer) {
+				void showUpdateErrorDialog(getMainWindow, availableVersion, error);
+			}
 		}
 	});
 
@@ -798,7 +907,10 @@ export function setupAutoUpdates(
 		void showDownloadedUpdateDialog(getMainWindow, info.version);
 	});
 
-	void checkForAppUpdates(getMainWindow);
+	initialCheckTimer = setTimeout(() => {
+		initialCheckTimer = null;
+		void checkForAppUpdates(getMainWindow);
+	}, INITIAL_UPDATE_CHECK_DELAY_MS);
 	periodicCheckTimer = setInterval(() => {
 		void checkForAppUpdates(getMainWindow);
 	}, UPDATE_CHECK_INTERVAL_MS);
@@ -806,6 +918,10 @@ export function setupAutoUpdates(
 	app.on("before-quit", () => {
 		clearDeferredReminderTimer();
 		clearDevPreviewProgressTimer();
+		if (initialCheckTimer) {
+			clearTimeout(initialCheckTimer);
+			initialCheckTimer = null;
+		}
 		if (periodicCheckTimer) {
 			clearInterval(periodicCheckTimer);
 			periodicCheckTimer = null;

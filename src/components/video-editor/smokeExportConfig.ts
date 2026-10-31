@@ -110,9 +110,15 @@ export function getSmokeExportConfig(search: string): SmokeExportConfig {
 					: enabled && params.get("smokeBackendPreference") === "breeze"
 						? "breeze"
 						: undefined,
-		renderBackend: enabled ? parseSmokeRenderBackend(params.get("smokeRenderBackend")) : undefined,
-		maxEncodeQueue: enabled ? parseSmokeExportNumber(params.get("smokeMaxEncodeQueue")) : undefined,
-		maxDecodeQueue: enabled ? parseSmokeExportNumber(params.get("smokeMaxDecodeQueue")) : undefined,
+		renderBackend: enabled
+			? parseSmokeRenderBackend(params.get("smokeRenderBackend"))
+			: undefined,
+		maxEncodeQueue: enabled
+			? parseSmokeExportNumber(params.get("smokeMaxEncodeQueue"))
+			: undefined,
+		maxDecodeQueue: enabled
+			? parseSmokeExportNumber(params.get("smokeMaxDecodeQueue"))
+			: undefined,
 		maxPendingFrames: enabled
 			? parseSmokeExportNumber(params.get("smokeMaxPendingFrames"))
 			: undefined,

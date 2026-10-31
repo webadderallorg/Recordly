@@ -2,9 +2,21 @@ import type { Application } from "pixi.js";
 import { describe, expect, it, vi } from "vitest";
 import {
 	destroyPixiApplication,
+	destroyPixiContainer,
 	initializePixiApplication,
 	initializePixiApplicationWithTimeout,
 } from "./pixiApplicationLifecycle";
+
+function createContainer(destroyed = false) {
+	const container = {
+		destroyed,
+		destroy: vi.fn(() => {
+			container.destroyed = true;
+		}),
+		parent: { removeChild: vi.fn() },
+	};
+	return container;
+}
 
 function createApplication(init: () => Promise<void> = async () => undefined) {
 	return {
@@ -16,6 +28,19 @@ function createApplication(init: () => Promise<void> = async () => undefined) {
 }
 
 describe("Pixi application lifecycle", () => {
+	it("safely ignores display objects already destroyed by their application", () => {
+		const liveContainer = createContainer();
+		destroyPixiContainer(liveContainer as never);
+		destroyPixiContainer(liveContainer as never);
+		expect(liveContainer.parent.removeChild).toHaveBeenCalledTimes(1);
+		expect(liveContainer.destroy).toHaveBeenCalledTimes(1);
+
+		const destroyedContainer = createContainer(true);
+		destroyPixiContainer(destroyedContainer as never);
+		expect(destroyedContainer.parent.removeChild).not.toHaveBeenCalled();
+		expect(destroyedContainer.destroy).not.toHaveBeenCalled();
+	});
+
 	it("cleans a failed initialization without running uninitialized plugins", async () => {
 		const initializationError = new Error("No available renderer");
 		const app = createApplication(async () => {

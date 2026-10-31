@@ -2,6 +2,7 @@
 
 #include <windows.graphics.capture.interop.h>
 #include <Windows.Graphics.Capture.h>
+#include <dwmapi.h>
 #include <inspectable.h>
 
 #include <winrt/Windows.Foundation.h>
@@ -9,6 +10,8 @@
 
 #include <iostream>
 #include <chrono>
+#include <algorithm>
+#include <cmath>
 
 // IDirect3DDxgiInterfaceAccess is a COM interface for getting the DXGI interface
 // from a WinRT IDirect3DSurface
@@ -88,26 +91,6 @@ winrt::Windows::Graphics::Capture::GraphicsCaptureItem WgcSession::createCapture
 
     if (FAILED(hr)) {
         std::cerr << "ERROR: CreateForMonitor failed: 0x" << std::hex << hr << std::endl;
-        return nullptr;
-    }
-
-    return item;
-}
-
-winrt::Windows::Graphics::Capture::GraphicsCaptureItem WgcSession::createCaptureItemForWindow(HWND hwnd) {
-    auto factory = winrt::get_activation_factory<
-        winrt::Windows::Graphics::Capture::GraphicsCaptureItem>();
-
-    auto interop = factory.as<IGraphicsCaptureItemInterop>();
-
-    winrt::Windows::Graphics::Capture::GraphicsCaptureItem item{nullptr};
-    HRESULT hr = interop->CreateForWindow(
-        hwnd,
-        winrt::guid_of<ABI::Windows::Graphics::Capture::IGraphicsCaptureItem>(),
-        winrt::put_abi(item));
-
-    if (FAILED(hr)) {
-        std::cerr << "ERROR: CreateForWindow failed: 0x" << std::hex << hr << std::endl;
         return nullptr;
     }
 
@@ -205,8 +188,96 @@ bool WgcSession::initialize(HWND hwnd, int fps) {
         return false;
     }
 
-    captureItem_ = createCaptureItemForWindow(hwnd);
-    return initializeWithItem(fps);
+    HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    if (!monitor) return false;
+
+    captureItem_ = createCaptureItemForMonitor(monitor);
+    return initializeWithItem(fps) && initializeWindowCrop(hwnd);
+}
+
+bool WgcSession::initializeWindowCrop(HWND hwnd) {
+    windowHandle_ = hwnd;
+    MONITORINFO monitorInfo{};
+    monitorInfo.cbSize = sizeof(monitorInfo);
+    if (!GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &monitorInfo)) return false;
+    monitorBounds_ = monitorInfo.rcMonitor;
+
+    return updateWindowCropRect(true);
+}
+
+bool WgcSession::updateWindowCropRect(bool initializeSize) {
+    RECT windowBounds{};
+    if (FAILED(DwmGetWindowAttribute(windowHandle_, DWMWA_EXTENDED_FRAME_BOUNDS, &windowBounds, sizeof(windowBounds))) &&
+        !GetWindowRect(windowHandle_, &windowBounds)) return false;
+    RECT clipped{};
+    if (!IntersectRect(&clipped, &windowBounds, &monitorBounds_)) return false;
+
+    const LONG monitorWidth = monitorBounds_.right - monitorBounds_.left;
+    const LONG monitorHeight = monitorBounds_.bottom - monitorBounds_.top;
+    if (monitorWidth <= 0 || monitorHeight <= 0 || framePoolWidth_ < 2 || framePoolHeight_ < 2) return false;
+
+    // WGC textures are in capture-surface pixels, while Win32 monitor/window
+    // rectangles can be DPI-virtualized. Map both edges into texture space
+    // instead of assuming those coordinate systems are identical.
+    const auto mapX = [this, monitorWidth](LONG desktopX) {
+        const double normalized = static_cast<double>(desktopX - monitorBounds_.left) /
+            static_cast<double>(monitorWidth);
+        return std::clamp(
+            static_cast<LONG>(std::llround(normalized * framePoolWidth_)),
+            0L,
+            static_cast<LONG>(framePoolWidth_));
+    };
+    const auto mapY = [this, monitorHeight](LONG desktopY) {
+        const double normalized = static_cast<double>(desktopY - monitorBounds_.top) /
+            static_cast<double>(monitorHeight);
+        return std::clamp(
+            static_cast<LONG>(std::llround(normalized * framePoolHeight_)),
+            0L,
+            static_cast<LONG>(framePoolHeight_));
+    };
+
+    LONG left = mapX(clipped.left);
+    LONG top = mapY(clipped.top);
+    LONG right = mapX(clipped.right);
+    LONG bottom = mapY(clipped.bottom);
+    const LONG mappedWidth = (right - left) & ~1L;
+    const LONG mappedHeight = (bottom - top) & ~1L;
+    if (mappedWidth < 2 || mappedHeight < 2) return false;
+
+    if (initializeSize) {
+        captureWidth_ = static_cast<int>(mappedWidth);
+        captureHeight_ = static_cast<int>(mappedHeight);
+
+        D3D11_TEXTURE2D_DESC desc{};
+        desc.Width = static_cast<UINT>(captureWidth_);
+        desc.Height = static_cast<UINT>(captureHeight_);
+        desc.MipLevels = 1;
+        desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        desc.SampleDesc.Count = 1;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+
+        ComPtr<ID3D11Texture2D> resizedTexture;
+        if (FAILED(d3dDevice_->CreateTexture2D(&desc, nullptr, &resizedTexture))) return false;
+        ComPtr<ID3D11RenderTargetView> renderTargetView;
+        if (FAILED(d3dDevice_->CreateRenderTargetView(resizedTexture.Get(), nullptr, &renderTargetView))) return false;
+        cropTexture_ = resizedTexture;
+        cropRenderTargetView_ = renderTargetView;
+    }
+
+    if (!cropTexture_ || !cropRenderTargetView_) return false;
+
+    // The encoder's dimensions are fixed for the lifetime of the MP4. Keep the
+    // crop texture fixed too: reallocating it after a resize made the encoder
+    // pad the changed frame with black bars. If the selected window shrinks,
+    // copy only its current area so the crop never exposes nearby desktop pixels.
+    const LONG copyWidth = (std::min)(mappedWidth, static_cast<LONG>(captureWidth_));
+    const LONG copyHeight = (std::min)(mappedHeight, static_cast<LONG>(captureHeight_));
+    left = std::clamp(left, 0L, static_cast<LONG>(framePoolWidth_) - copyWidth);
+    top = std::clamp(top, 0L, static_cast<LONG>(framePoolHeight_) - copyHeight);
+    cropRect_ = {left, top, left + copyWidth, top + copyHeight};
+    return true;
 }
 
 void WgcSession::setFrameCallback(FrameCallback callback) {
@@ -243,6 +314,8 @@ void WgcSession::stopCapture() {
         framePool_.Close();
         framePool_ = nullptr;
     }
+    cropTexture_.Reset();
+    cropRenderTargetView_.Reset();
 }
 
 void WgcSession::onFrameArrived(
@@ -283,7 +356,18 @@ void WgcSession::onFrameArrived(
     HRESULT hr = access->GetInterface(IID_PPV_ARGS(&texture));
 
     if (SUCCEEDED(hr) && texture && frameCallback_) {
-        frameCallback_(texture.Get(), frameTimeHns);
+        if (windowHandle_ && cropTexture_ && updateWindowCropRect()) {
+            constexpr float clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+            d3dContext_->ClearRenderTargetView(cropRenderTargetView_.Get(), clearColor);
+            D3D11_BOX sourceBox{
+                static_cast<UINT>(cropRect_.left), static_cast<UINT>(cropRect_.top), 0,
+                static_cast<UINT>(cropRect_.right), static_cast<UINT>(cropRect_.bottom), 1,
+            };
+            d3dContext_->CopySubresourceRegion(cropTexture_.Get(), 0, 0, 0, 0, texture.Get(), 0, &sourceBox);
+            frameCallback_(cropTexture_.Get(), frameTimeHns);
+        } else if (!windowHandle_) {
+            frameCallback_(texture.Get(), frameTimeHns);
+        }
     }
 
     frame.Close();

@@ -54,16 +54,16 @@ jobs:
           gh release download "${{ steps.tag.outputs.tag }}" \
             --repo "${{ github.repository }}" \
             --dir /tmp/recordly-release \
-            --pattern "Recordly-*-arm64.dmg" \
-            --pattern "Recordly-*-x64.dmg"
+            --pattern "Recordly-arm64.dmg" \
+            --pattern "Recordly-x64.dmg"
 
       - name: Compute checksums
         id: sha
         shell: bash
         run: |
           set -euo pipefail
-          ARM_FILE=$(find /tmp/recordly-release -maxdepth 1 -name 'Recordly-*-arm64.dmg' | head -n 1)
-          INTEL_FILE=$(find /tmp/recordly-release -maxdepth 1 -name 'Recordly-*-x64.dmg' | head -n 1)
+          ARM_FILE=$(find /tmp/recordly-release -maxdepth 1 -name 'Recordly-arm64.dmg' | head -n 1)
+          INTEL_FILE=$(find /tmp/recordly-release -maxdepth 1 -name 'Recordly-x64.dmg' | head -n 1)
 
           if [ -z "$ARM_FILE" ] || [ -z "$INTEL_FILE" ]; then
             echo "Unable to locate macOS release artifacts for ${{ steps.tag.outputs.tag }}"

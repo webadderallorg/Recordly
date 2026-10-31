@@ -1,6 +1,17 @@
 export const DEFAULT_LOCALE = "en" as const;
 
-export const SUPPORTED_LOCALES = ["en", "es", "fr", "de", "it", "nl", "ko", "pt-BR", "zh-CN", "zh-TW"] as const;
+export const SUPPORTED_LOCALES = [
+	"en",
+	"es",
+	"fr",
+	"de",
+	"it",
+	"nl",
+	"ko",
+	"pt-BR",
+	"zh-CN",
+	"zh-TW",
+] as const;
 
 export const I18N_NAMESPACES = [
 	"common",
@@ -10,7 +21,6 @@ export const I18N_NAMESPACES = [
 	"settings",
 	"dialogs",
 	"shortcuts",
-	"extensions",
 ] as const;
 
 export type AppLocale = (typeof SUPPORTED_LOCALES)[number];

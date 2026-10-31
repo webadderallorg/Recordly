@@ -1,10 +1,57 @@
 {
+	"cloud": {
+		"signInRequired": "Sign in to Recordly before creating a shared link.",
+		"prepareFailed": "Could not prepare the current edit for sharing.",
+		"uploadFailed": "Cloud upload failed.",
+		"linkCreated": "Share link created",
+		"linkCopied": "Link copied",
+		"copyFailed": "Could not copy link. Select and copy it manually.",
+		"copied": "Copied",
+		"copy": "Copy",
+		"preparing": "Preparing the current edit…",
+		"createLink": "Create link",
+		"heading": "Share to the cloud",
+		"ready": "Your video is ready to share.",
+		"openPage": "Open share page",
+		"notes": "Notes",
+		"publish": "Publish and create link",
+		"createLinkTitle": "Create a shareable link",
+		"notesPlaceholder": "Add context, instructions, or a short summary for viewers…",
+		"description": "Publish the current edit to a Recordly viewing and feedback page. No download is required. Shared videos are prepared at up to 1080p.",
+		"uploading": "Uploading… {progress}%",
+		"googleUnavailable": "Google sign-in isn't enabled yet. Use email for now, or ask your Recordly administrator to connect Google.",
+		"xUnavailable": "X sign-in isn't enabled yet. Use email for now, or ask your Recordly administrator to connect X.",
+		"providerUnavailable": "This sign-in method isn't enabled for Recordly yet. Use email for now.",
+		"enterEmail": "Enter your email address first.",
+		"resetSent": "Password reset email sent.",
+		"accountHeading": "Your Recordly account",
+		"signInHeading": "Sign into Recordly",
+		"signInShareDescription": "Sign in to publish this video and manage its shared link.",
+		"signInDescription": "Access your recordings and shared links.",
+		"signingOut": "Signing out…",
+		"signOut": "Sign out",
+		"signingIn": "Signing in…",
+		"signIn": "Sign in",
+		"or": "or",
+		"email": "Email",
+		"password": "Password",
+		"forgotPassword": "Forgot password?",
+		"unavailable": "Cloud sign-in isn’t available in this build yet. You can still save videos to your computer.",
+		"createShareLink": "Create share link",
+		"done": "Done",
+		"addingVideo": "Adding video…",
+		"preparingFootage": "Preparing footage and audio for your timeline."
+	},
+	"library": {
+		"videos": "Videos"
+	},
 	"playback": {
 		"play": "Play",
 		"pause": "Pause",
 		"skipBack": "Skip Back",
 		"skipForward": "Skip Forward",
-		"muteUnmute": "Mute/Unmute"
+		"muteUnmute": "Mute/Unmute",
+		"volume": "Preview volume"
 	},
 	"annotations": {
 		"settings": "Annotation Settings",
@@ -111,8 +158,18 @@
 		"showInFolder": "Show In Folder"
 	},
 	"project": {
-		"untitled": "Untitled"
+		"untitled": "Untitled",
+		"unsavedChangesTitle": "Unsaved changes",
+		"unsavedChangesDescription": "Save your current project before you {{action}}?",
+		"discardChanges": "Discard changes",
+		"saveProject": "Save project"
 	},
+	"exportTips": {
+		"autoZooms": "Tip: Turn off auto-applied zooms in settings",
+		"experimentalBuilds": "Tip: Try experimental builds by turning on access in settings",
+		"cursorAppearance": "Tip: You can customise your cursor appearance"
+	},
+	"account": { "title": "Account", "comingSoon": "Account coming soon" },
 	"nativeCaptureUnavailable": {
 		"title": "Nothing’s broken, but we won’t be able to render an animated cursor overlay.",
 		"description": "Your device does not support native capture. This could be for a variety of reasons we haven’t figured out yet. This doesn’t break Recordly, but it does make cursor smoothing impossible.",

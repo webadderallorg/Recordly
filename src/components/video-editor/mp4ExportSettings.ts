@@ -19,10 +19,7 @@ export function resolveMp4ExportSettings({
 	exportEncodingMode,
 	mp4FrameRate,
 }: {
-	smokeExportConfig: Pick<
-		SmokeExportConfig,
-		"enabled" | "quality" | "encodingMode" | "fps"
-	>;
+	smokeExportConfig: Pick<SmokeExportConfig, "enabled" | "quality" | "encodingMode" | "fps">;
 	settings: Pick<ExportSettings, "quality" | "encodingMode" | "mp4FrameRate">;
 	exportQuality: ExportQuality;
 	exportEncodingMode: ExportEncodingMode;

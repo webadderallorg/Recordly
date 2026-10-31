@@ -6,6 +6,17 @@ import { DEFAULT_ZOOM_MOTION_BLUR_TUNING, type ZoomMotionBlurTuning } from "../t
 const MIN_DIRECTIONAL_BLUR_MAGNITUDE = 0.01;
 const DIRECTIONAL_BLUR_KERNEL_SIZE = 13;
 const DIRECTIONAL_BLUR_OFFSET_DIVISOR = 32;
+const SPATIAL_PAN_SHUTTER_MULTIPLIER = 4;
+// Spatial equivalent of a longer exposure. This extends the one-pass zoom
+// trail without multiplying scene renders like temporal accumulation does.
+const SPATIAL_ZOOM_SHUTTER_MULTIPLIER = 4;
+
+export interface DirectionalMotionBlur {
+	velocity: { x: number; y: number };
+	magnitude: number;
+	kernelSize: number;
+	offset: number;
+}
 
 export interface MotionBlurState {
 	lastFrameTimeMs: number;
@@ -41,6 +52,7 @@ interface TransformParams {
 	transformOverride?: AppliedTransform;
 	motionBlurState?: MotionBlurState;
 	frameTimeMs?: number;
+	motionSample?: { previousTransform: AppliedTransform; deltaMs: number } | null;
 }
 
 interface AppliedTransform {
@@ -247,25 +259,41 @@ function resolveFpsScale(deltaSeconds: number) {
 	return fps / 60;
 }
 
-function resolveBlurChannels(
+export function computeDirectionalMotionBlur(
+	delta: { x: number; y: number },
+	motionBlurAmount: number,
+	deltaSeconds: number,
+	strengthMultiplier = 1,
+): DirectionalMotionBlur {
+	const scale = motionBlurAmount * resolveFpsScale(deltaSeconds) * strengthMultiplier;
+	const velocity = {
+		x: delta.x * scale,
+		y: delta.y * scale,
+	};
+	const magnitude = Math.hypot(velocity.x, velocity.y);
+	const isActive = magnitude >= MIN_DIRECTIONAL_BLUR_MAGNITUDE;
+
+	return {
+		velocity: isActive ? velocity : createZeroPoint(),
+		magnitude: isActive ? magnitude : 0,
+		kernelSize: DIRECTIONAL_BLUR_KERNEL_SIZE,
+		offset: isActive ? -magnitude / DIRECTIONAL_BLUR_OFFSET_DIVISOR : 0,
+	};
+}
+
+function resolveZoomBlurStrength(
 	motionBlurAmount: number,
 	motionBlurTuning: ZoomMotionBlurTuning,
 	deltaSeconds: number,
 ) {
 	const fpsScale = resolveFpsScale(deltaSeconds);
-
-	return {
-		motion:
-			motionBlurAmount *
-			fpsScale *
-			(motionBlurTuning.maxDirectionalBlurPx /
-				DEFAULT_ZOOM_MOTION_BLUR_TUNING.maxDirectionalBlurPx),
-		zoom:
-			motionBlurAmount *
-			fpsScale *
-			(motionBlurTuning.maxRadialBlurStrength /
-				DEFAULT_ZOOM_MOTION_BLUR_TUNING.maxRadialBlurStrength),
-	};
+	return (
+		motionBlurAmount *
+		fpsScale *
+		SPATIAL_ZOOM_SHUTTER_MULTIPLIER *
+		(motionBlurTuning.maxRadialBlurStrength /
+			DEFAULT_ZOOM_MOTION_BLUR_TUNING.maxRadialBlurStrength)
+	);
 }
 
 function computeMoveDelta(previousQuad: TransformQuad, currentQuad: TransformQuad) {
@@ -283,6 +311,9 @@ function computeSizeDelta(previousQuad: TransformQuad, currentQuad: TransformQua
 }
 
 function computeZoomStrength(previousQuad: TransformQuad, currentQuad: TransformQuad) {
+	// Keep the spatial approximation sampling inward. Sampling outward during
+	// expansion can leave the filter's captured texture and produce transparent
+	// or black frames; true directionality requires temporal/overscanned input.
 	return Math.abs(1 - currentQuad.diagonal / Math.max(0.0001, previousQuad.diagonal));
 }
 
@@ -303,22 +334,22 @@ function classifyMotionMode(
 				Math.max(0.0001, currentQuad.diagonal) / Math.max(0.0001, previousQuad.diagonal),
 			),
 		) / Math.max(0.0001, deltaSeconds);
-	const moveActive = moveVelocity >= motionBlurTuning.panVelocityThreshold;
-	const zoomActive = zoomVelocity >= motionBlurTuning.zoomVelocityThreshold;
+	const moveActive = moveDistance > 0.001 && moveVelocity > motionBlurTuning.panVelocityThreshold;
+	const zoomActive =
+		zoomDistance > 0.001 && zoomVelocity > motionBlurTuning.zoomVelocityThreshold;
 
 	if (!moveActive && !zoomActive) {
 		return null;
 	}
 
-	if (moveActive && !zoomActive) {
-		return "move";
-	}
-
-	if (zoomActive && !moveActive) {
+	// Any meaningful scale change is a zoom. The inferred zoom center already
+	// accounts for the translation caused by an off-center zoom, so routing it
+	// through pan blur would turn a straight radial zoom into a directional smear.
+	if (zoomActive) {
 		return "zoom";
 	}
 
-	return zoomDistance > moveDistance ? "zoom" : "move";
+	return "move";
 }
 
 function createZeroPoint(): Point2D {
@@ -340,40 +371,30 @@ function analyzeCameraStep({
 	motionBlurTuning: ZoomMotionBlurTuning;
 	deltaSeconds: number;
 }): CameraStepAnalysis {
-	const mode = classifyMotionMode(
-		previousQuad,
-		currentQuad,
-		motionBlurTuning,
-		deltaSeconds,
-	);
+	const mode = classifyMotionMode(previousQuad, currentQuad, motionBlurTuning, deltaSeconds);
 	const moveDelta = computeMoveDelta(previousQuad, currentQuad);
-	const blurChannels = resolveBlurChannels(
+	const zoomBlurStrength = resolveZoomBlurStrength(
 		motionBlurAmount,
 		motionBlurTuning,
 		deltaSeconds,
 	);
-	const moveBlurVelocity = {
-		x: moveDelta.x * blurChannels.motion,
-		y: moveDelta.y * blurChannels.motion,
-	};
-	const moveBlurMagnitude = Math.hypot(moveBlurVelocity.x, moveBlurVelocity.y);
+	const directionalBlur = computeDirectionalMotionBlur(
+		moveDelta,
+		motionBlurAmount,
+		deltaSeconds,
+		SPATIAL_PAN_SHUTTER_MULTIPLIER *
+			(motionBlurTuning.maxDirectionalBlurPx /
+				DEFAULT_ZOOM_MOTION_BLUR_TUNING.maxDirectionalBlurPx),
+	);
 
 	return {
 		mode,
 		moveVelocity: moveDelta,
-		moveBlurVelocity:
-			mode === "move" && moveBlurMagnitude >= MIN_DIRECTIONAL_BLUR_MAGNITUDE
-				? moveBlurVelocity
-				: createZeroPoint(),
-		moveBlurOffset:
-			mode === "move" && moveBlurMagnitude >= MIN_DIRECTIONAL_BLUR_MAGNITUDE
-				? -moveBlurMagnitude / DIRECTIONAL_BLUR_OFFSET_DIVISOR
-				: 0,
+		moveBlurVelocity: mode === "move" ? directionalBlur.velocity : createZeroPoint(),
+		moveBlurOffset: mode === "move" ? directionalBlur.offset : 0,
 		zoomCenter: inferZoomCenterFromQuads(previousQuad, currentQuad, stageSize),
 		zoomStrength:
-			mode === "zoom"
-				? computeZoomStrength(previousQuad, currentQuad) * blurChannels.zoom
-				: 0,
+			mode === "zoom" ? computeZoomStrength(previousQuad, currentQuad) * zoomBlurStrength : 0,
 	};
 }
 
@@ -475,6 +496,7 @@ export function applyZoomTransform({
 	transformOverride,
 	motionBlurState,
 	frameTimeMs,
+	motionSample,
 }: TransformParams): AppliedTransform {
 	if (
 		stageSize.width <= 0 ||
@@ -504,7 +526,26 @@ export function applyZoomTransform({
 	cameraContainer.position.set(transform.x, transform.y);
 	const resolvedTuning = resolveMotionBlurTuning(motionBlurTuning);
 
-	if (motionBlurState && motionBlurFilter && motionBlurAmount > 0 && isPlaying) {
+	if (motionBlurFilter && motionBlurAmount > 0 && motionSample && motionSample.deltaMs > 0) {
+		const analysis = analyzeCameraStep({
+			previousQuad: computeTransformQuad(baseMask, motionSample.previousTransform),
+			currentQuad: computeTransformQuad(baseMask, transform),
+			stageSize,
+			motionBlurAmount,
+			motionBlurTuning: resolvedTuning,
+			deltaSeconds: motionSample.deltaMs / 1000,
+		});
+		applyCameraStepBlur({ analysis, motionBlurFilter, zoomBlurFilter });
+		if (motionBlurState) {
+			motionBlurState.prevCamX = transform.x;
+			motionBlurState.prevCamY = transform.y;
+			motionBlurState.prevCamScale = transform.scale;
+			motionBlurState.lastFrameTimeMs = frameTimeMs ?? performance.now();
+			motionBlurState.initialized = true;
+		}
+	} else if (motionSample === null) {
+		resetMotionEffects(zoomBlurFilter, motionBlurFilter, motionBlurState);
+	} else if (motionBlurState && motionBlurFilter && motionBlurAmount > 0 && isPlaying) {
 		const now = frameTimeMs ?? performance.now();
 
 		if (!motionBlurState.initialized) {

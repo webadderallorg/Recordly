@@ -1,0 +1,42 @@
+---
+export interface Props {
+  title: string;
+}
+import '../styles/global.css';
+
+---
+
+<!DOCTYPE html>
+<html lang="en" >
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <script is:inline>
+    (() => {
+      const media = matchMedia('(prefers-color-scheme: dark)');
+      let preference = 'system';
+      try { preference = localStorage.getItem('recordly.theme') || 'system'; } catch {}
+      const apply = () => {
+        const theme = preference === 'light' || preference === 'dark' ? preference : media.matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+        document.documentElement.style.colorScheme = theme;
+      };
+      apply();
+      media.addEventListener('change', () => {
+        try { preference = localStorage.getItem('recordly.theme') || 'system'; } catch {}
+        apply();
+      });
+      window.addEventListener('storage', event => {
+        if (event.key === 'recordly.theme' || event.key === null) { preference = event.newValue || 'system'; apply(); }
+      });
+    })();
+  </script>
+  <title>{Astro.props.title}</title>
+  <slot name="head" />
+</head>
+<body>
+  <slot />
+</body>
+</html>

@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	computeCursorFollowFocus,
-	createCursorFollowCameraState,
-} from "./cursorFollowCamera";
+import { computeCursorFollowFocus, createCursorFollowCameraState } from "./cursorFollowCamera";
 
 describe("computeCursorFollowFocus", () => {
 	it("holds the camera while the cursor stays inside the safe zone", () => {

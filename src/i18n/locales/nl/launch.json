@@ -1,5 +1,6 @@
 {
 	"recording": {
+		"home": "Start",
 		"disableSystemAudio": "Systeemaudio uitschakelen",
 		"enableSystemAudio": "Systeemaudio inschakelen",
 		"disableMicrophone": "Microfoon uitschakelen",
@@ -76,5 +77,20 @@
 		"microphoneDenied": "Microfoontoegang is geweigerd. De opname gaat verder zonder microfoonaudio.",
 		"failedToStart": "Opname starten mislukt: {{error}}",
 		"failedToStartGeneric": "Opname starten mislukt"
+	},
+	"updateToast": {
+		"availableTitle": "Update beschikbaar",
+		"experimentalAvailableTitle": "Experimentele update beschikbaar",
+		"experimentalDescription": "Je hebt experimentele updates ingeschakeld, dus je kunt de nieuwste update van Recordly testen voordat die breed beschikbaar is.",
+		"downloadingTitle": "Update downloaden",
+		"readyTitle": "Klaar om opnieuw te starten",
+		"checkErrorTitle": "Kan niet controleren op updates",
+		"downloadErrorTitle": "Kan de update niet downloaden",
+		"experimentalBadge": "Experimenteel",
+		"previewBadge": "Preview",
+		"notNow": "Niet nu",
+		"updateNow": "Nu updaten",
+		"restartToUpdate": "Opnieuw starten om te updaten",
+		"tryAgain": "Opnieuw proberen"
 	}
 }

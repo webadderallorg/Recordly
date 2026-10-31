@@ -1,9 +1,26 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	convertPhysicalBoundsToDip,
 	resolveWindowsCaptureDisplay,
 	resolveWindowsCaptureTarget,
 } from "./windowsCaptureSelection";
+
+describe("convertPhysicalBoundsToDip", () => {
+	it("converts both physical edges so mixed-DPI window sizes stay aligned", () => {
+		expect(
+			convertPhysicalBoundsToDip({ x: 240, y: 60, width: 938, height: 1030 }, (point) => ({
+				x: point.x / 1.5,
+				y: point.y / 1.5,
+			})),
+		).toEqual({
+			x: 160,
+			y: 40,
+			width: 625.3333333333334,
+			height: 686.6666666666666,
+		});
+	});
+});
 
 describe("resolveWindowsCaptureDisplay", () => {
 	const primaryDisplay = {

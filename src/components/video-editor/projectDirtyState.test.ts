@@ -119,3 +119,19 @@ describe("hasUnsavedProjectChanges", () => {
 		expect(hasUnsavedProjectChanges(current, saved)).toBe(true);
 	});
 });
+
+it("does not mark legacy export preferences as project edits", () => {
+	const original = createProjectData();
+	const legacy = {
+		...original,
+		editor: { ...original.editor, exportQuality: "high", mp4FrameRate: 60 },
+	};
+	expect(hasUnsavedProjectChanges(original, legacy)).toBe(false);
+	expect(hasUnsavedProjectChanges(legacy, original)).toBe(false);
+	expect(
+		hasUnsavedProjectChanges(
+			{ ...legacy, editor: { ...legacy.editor, wallpaper: "#000000" } },
+			original,
+		),
+	).toBe(true);
+});

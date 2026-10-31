@@ -1,4 +1,4 @@
-import { fromFileUrl } from "./projectPersistence";
+import { getLocalFilePathFromResource } from "@/lib/exporter/mediaResource";
 
 type AutoCaptionSourceOptions = {
 	videoSourcePath?: string | null;
@@ -9,19 +9,19 @@ type AutoCaptionSourceOptions = {
 
 export function resolveAutoCaptionSourcePath(options: AutoCaptionSourceOptions): string | null {
 	if (options.videoSourcePath) {
-		return options.videoSourcePath;
+		return getLocalFilePathFromResource(options.videoSourcePath);
 	}
 
 	if (options.videoPath) {
-		return fromFileUrl(options.videoPath);
+		return getLocalFilePathFromResource(options.videoPath);
 	}
 
 	if (options.recordingSessionVideoPath) {
-		return fromFileUrl(options.recordingSessionVideoPath);
+		return getLocalFilePathFromResource(options.recordingSessionVideoPath);
 	}
 
 	if (options.currentVideoPath) {
-		return fromFileUrl(options.currentVideoPath);
+		return getLocalFilePathFromResource(options.currentVideoPath);
 	}
 
 	return null;

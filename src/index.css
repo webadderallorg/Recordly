@@ -1,19 +1,65 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "@heroui/styles";
+@plugin "tailwindcss-animate";
+@custom-variant dark (&:where(.dark, .dark *));
+@source "../index.html";
+
+/* DM Sans is bundled for consistent typography and offline desktop use. */
+@font-face {
+	font-family: "DM Sans";
+	src: url("./assets/fonts/dm-sans/DMSans-Variable.ttf") format("truetype");
+	font-style: normal;
+	font-weight: 100 1000;
+	font-display: swap;
+}
+@font-face {
+	font-family: "DM Sans";
+	src: url("./assets/fonts/dm-sans/DMSans-Italic-Variable.ttf") format("truetype");
+	font-style: italic;
+	font-weight: 100 1000;
+	font-display: swap;
+}
+
+/* Layout aliases only. All component colors and styling come from HeroUI's default theme. */
+@theme inline {
+	--font-sans: var(--app-font-sans);
+	--color-primary: var(--accent);
+	--color-primary-foreground: var(--accent-foreground);
+	--color-secondary: var(--default);
+	--color-secondary-foreground: var(--default-foreground);
+	--color-muted-foreground: var(--muted);
+	--color-card: var(--surface);
+	--color-card-foreground: var(--surface-foreground);
+	--color-popover: var(--overlay);
+	--color-popover-foreground: var(--overlay-foreground);
+	--color-destructive: var(--danger);
+	--color-destructive-foreground: var(--danger-foreground);
+	--color-input: var(--field-border);
+	--color-ring: var(--focus);
+	--color-editor-bg: var(--background);
+	--color-editor-header: var(--surface);
+	--color-editor-panel: var(--surface);
+	--color-editor-surface: var(--surface);
+	--color-editor-surface-alt: var(--surface-secondary);
+	--color-editor-dialog: var(--overlay);
+	--color-editor-dialog-alt: var(--surface-secondary);
+	--color-editor-timeline: var(--background);
+	--color-editor-row: var(--surface);
+	--color-editor-subrow: var(--surface-secondary);
+}
 
 @layer base {
-	/* Disable Electron/Chromium focus highlight (yellow/orange ring) */
-	*:focus:not(:focus-visible) {
-		outline: none !important;
+	:root {
+		--app-font-sans:
+			"DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+		--brand-accent: var(--accent);
+		--brand-accent-rgb: 0, 111, 238;
+		--primary: var(--accent);
+		--primary-foreground: var(--accent-foreground);
+		--muted-foreground: var(--muted);
+		--destructive: var(--danger);
+		--input: var(--field-border);
 	}
-
-	*:focus-visible {
-		outline: 2px solid rgb(var(--brand-accent-rgb));
-		outline-offset: 2px;
-		-webkit-tap-highlight-color: transparent;
-	}
-
 	html,
 	body,
 	#root {
@@ -21,133 +67,32 @@
 		height: 100%;
 		margin: 0;
 	}
-
+	body {
+		background: var(--background);
+		color: var(--foreground);
+		font-family: var(--app-font-sans);
+		user-select: none;
+	}
 	html.hud-overlay-window,
 	body.hud-overlay-window,
 	#root.hud-overlay-window {
 		overflow: hidden;
 	}
-
-	:root {
-		--app-font-sans: "SF Pro Display", "SF Pro Text", Helvetica, sans-serif;
-		--brand-accent: #2563eb;
-		--brand-accent-rgb: 37, 99, 235;
-		--background: 0 0% 100%;
-		--foreground: 20 14.3% 4.1%;
-		--card: 0 0% 100%;
-		--card-foreground: 20 14.3% 4.1%;
-		--popover: 0 0% 100%;
-		--popover-foreground: 20 14.3% 4.1%;
-		--primary: 221 83% 53%;
-		--primary-foreground: 210 40% 98%;
-		--secondary: 60 4.8% 95.9%;
-		--secondary-foreground: 24 9.8% 10%;
-		--muted: 60 4.8% 95.9%;
-		--muted-foreground: 25 5.3% 44.7%;
-		--accent: 214 100% 97%;
-		--accent-foreground: 221 83% 40%;
-		--destructive: 0 84.2% 60.2%;
-		--destructive-foreground: 60 9.1% 97.8%;
-		--border: 20 5.9% 90%;
-		--input: 20 5.9% 90%;
-		--ring: 221 83% 53%;
-		--chart-1: 12 76% 61%;
-		--chart-2: 173 58% 39%;
-		--chart-3: 197 37% 24%;
-		--chart-4: 43 74% 66%;
-		--chart-5: 27 87% 67%;
-		--radius: 0.5rem;
-
-		/* Editor surface colors — light mode */
-		--editor-bg: 0 0% 100%;
-		--editor-header: 0 0% 97%;
-		--editor-panel: 0 0% 98%;
-		--editor-surface: 0 0% 97%;
-		--editor-surface-alt: 0 0% 95%;
-		--editor-dialog: 0 0% 100%;
-		--editor-dialog-alt: 0 0% 98%;
-		--editor-timeline: 220 13% 91%;
-		--editor-row: 220 13% 88%;
-		--editor-subrow: 220 13% 85%;
-
-		/* Slider track colors — light mode */
-		--slider-track: 0 0% 0% / 0.12;
-		--slider-thumb: 0 0% 10%;
-		--slider-thumb-shadow: 0 0% 0% / 0.22;
-		--slider-glow: 0 0% 0% / 0.35;
+	input,
+	textarea {
+		user-select: text;
 	}
-	.dark {
-		--background: 20 14.3% 4.1%;
-		--foreground: 60 9.1% 97.8%;
-		--card: 20 14.3% 4.1%;
-		--card-foreground: 60 9.1% 97.8%;
-		--popover: 20 14.3% 4.1%;
-		--popover-foreground: 60 9.1% 97.8%;
-		--primary: 221 83% 53%;
-		--primary-foreground: 210 40% 98%;
-		--secondary: 12 6.5% 15.1%;
-		--secondary-foreground: 60 9.1% 97.8%;
-		--muted: 12 6.5% 15.1%;
-		--muted-foreground: 24 5.4% 63.9%;
-		--accent: 217 33% 17%;
-		--accent-foreground: 210 40% 98%;
-		--destructive: 0 62.8% 30.6%;
-		--destructive-foreground: 60 9.1% 97.8%;
-		--border: 12 6.5% 15.1%;
-		--input: 12 6.5% 15.1%;
-		--ring: 221 83% 53%;
-		--chart-1: 220 70% 50%;
-		--chart-2: 160 60% 45%;
-		--chart-3: 30 80% 55%;
-		--chart-4: 280 65% 60%;
-		--chart-5: 340 75% 55%;
-
-		/* Editor surface colors — dark mode */
-		--editor-bg: 240 6% 7%;
-		--editor-header: 240 5% 8.5%;
-		--editor-panel: 240 5% 9%;
-		--editor-surface: 240 4% 10%;
-		--editor-surface-alt: 240 5% 11%;
-		--editor-dialog: 240 10% 3%;
-		--editor-dialog-alt: 237 9% 5%;
-		--editor-timeline: 240 6% 7%;
-		--editor-row: 240 4% 10%;
-		--editor-subrow: 240 7% 15%;
-
-		/* Slider track colors — dark mode */
-		--slider-track: 0 0% 100% / 0.12;
-		--slider-thumb: 0 0% 100%;
-		--slider-thumb-shadow: 0 0% 100% / 0.32;
-		--slider-glow: 0 0% 100% / 0.5;
-	}
-}
-
-@layer base {
-	* {
-		@apply border-border;
-	}
-	body {
-		@apply bg-background text-foreground;
-
-		-webkit-user-select: none;
-		user-select: none;
-		font-family: var(--app-font-sans);
-	}
-
 	button,
 	input,
 	textarea,
-	select {
-		font: inherit;
-	}
-
-	body .font-mono,
-	body kbd {
-		font-family: var(--app-font-sans);
+	select,
+	[role="button"],
+	[role="slider"],
+	[role="switch"] {
+		-webkit-app-region: no-drag;
 	}
 }
 
-/* Smooth timeline cursor animations */
 @layer utilities {
 	.timeline-cursor-smooth {
 		will-change: transform;
@@ -155,119 +100,115 @@
 			left 33ms linear,
 			right 33ms linear;
 	}
-
-	.indeterminate-progress {
-		position: relative;
-		overflow: hidden;
-		isolation: isolate;
-	}
-
-	.indeterminate-progress::before {
-		content: "";
-		position: absolute;
-		inset: 0;
-		width: 38%;
-		min-width: 3.5rem;
-		border-radius: inherit;
-		background: linear-gradient(
-			90deg,
-			rgba(37, 99, 235, 0) 0%,
-			rgba(37, 99, 235, 0.35) 18%,
-			rgba(96, 165, 250, 0.92) 52%,
-			rgba(37, 99, 235, 0.3) 82%,
-			rgba(37, 99, 235, 0) 100%
-		);
-		animation: indeterminate-progress 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-	}
-
-	/* Hidden scrollbar - still scrollable but invisible */
 	.custom-scrollbar {
-		scrollbar-width: none; /* Firefox */
-		-ms-overflow-style: none; /* IE/Edge */
-	}
-
-	.custom-scrollbar::-webkit-scrollbar {
-		display: none; /* Chrome, Safari, Opera */
-	}
-
-	/* Smooth playback scrubber */
-	input[type="range"] {
-		-webkit-appearance: none;
-		appearance: none;
-	}
-
-	input[type="range"]::-webkit-slider-runnable-track {
-		border-radius: 100px;
-		height: 4px;
-		background: hsl(var(--slider-track));
-	}
-
-	input[type="range"]::-moz-range-track {
-		border-radius: 100px;
-		height: 4px;
-		background: hsl(var(--slider-track));
-	}
-
-	input[type="range"]::-webkit-slider-thumb {
-		-webkit-appearance: none;
-		appearance: none;
-		width: 16px;
-		height: 16px;
-		border-radius: 50%;
-		background: hsl(var(--slider-thumb));
-		cursor: pointer;
-		box-shadow: 0 2px 8px hsl(var(--slider-thumb-shadow));
-		border: 2px solid hsl(var(--slider-thumb));
-		transition: all 0.08s ease-out;
-	}
-
-	input[type="range"]::-webkit-slider-thumb:hover {
-		background: hsl(var(--slider-thumb));
-		transform: scale(1.15);
-		box-shadow: 0 3px 10px hsl(var(--slider-glow));
-		border-color: var(--brand-accent);
-	}
-
-	input[type="range"]::-webkit-slider-thumb:active {
-		transform: scale(1.25);
-	}
-
-	input[type="range"]::-moz-range-thumb {
-		width: 16px;
-		height: 16px;
-		border-radius: 50%;
-		background: hsl(var(--slider-thumb));
-		cursor: pointer;
-		border: 2px solid hsl(var(--slider-thumb));
-		box-shadow: 0 2px 8px hsl(var(--slider-thumb-shadow));
-		transition: all 0.08s ease-out;
-	}
-
-	input[type="range"]::-moz-range-thumb:hover {
-		background: hsl(var(--slider-thumb));
-		transform: scale(1.15);
-		box-shadow: 0 3px 10px hsl(var(--slider-glow));
-		border-color: var(--brand-accent);
-	}
-
-	input[type="range"]::-moz-range-thumb:active {
-		transform: scale(1.25);
+		scrollbar-width: thin;
+		scrollbar-color: var(--scrollbar-thumb) transparent;
 	}
 }
 
-@keyframes indeterminate-progress {
-	0% {
-		transform: translateX(-150%);
+/* Responsive geometry belongs to the editor, leaving HeroUI control styles intact. */
+.editor-header-start,
+.editor-header-end {
+	white-space: nowrap;
+}
+.editor-playback {
+	container-type: inline-size;
+}
+@container (max-width: 760px) {
+	.editor-playback-tools {
+		grid-row: 2;
+		grid-column: 1 / -1;
+		justify-content: center;
+		padding-bottom: 8px;
 	}
-
-	60% {
-		transform: translateX(270%);
+	.editor-playback-center {
+		grid-row: 1;
+		grid-column: 2;
 	}
-
-	100% {
-		transform: translateX(270%);
+	.editor-playback-volume {
+		grid-row: 1;
+		grid-column: 3;
+	}
+}
+@container (max-width: 520px) {
+	.editor-playback-volume .slider {
+		display: none;
 	}
 }
 
+/* HeroUI owns control focus rings; native controls use the same accent token.
+   Do not outline dialogs or other programmatically focused containers. */
+:root,
+.dark {
+ --focus: var(--accent);
+}
+:focus-visible:not([data-rac]):not([role="dialog"]):not([role="alertdialog"]):not([tabindex="-1"]) {
+ outline: 2px solid var(--focus);
+ outline-offset: 2px;
+}
+::selection {
+ background: var(--accent-soft);
+ color: var(--foreground);
+}
 
+@container (max-width: 110px) {
+	.zoom-icon,
+	.zoom-mode {
+		display: none;
+	}
+}
+@container (min-height: 40px) and (min-width: 110px) {
+	.zoom-mode {
+		display: block;
+		margin-left: 0;
+		font-size: 10px;
+		text-align: center;
+	}
+}
+@container (max-height: 39px) {
+	.zoom-mode {
+		margin-left: 4px;
+	}
+}
 
+@keyframes editor-section-enter {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+.editor-section-enter {
+	animation: editor-section-enter 180ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+	.editor-section-enter {
+		animation: none;
+	}
+}
+
+.dashboard-surface .folder-row > button {
+  background: transparent;
+}
+
+.inline-project-name {
+ background: transparent;
+ border: 0;
+ border-radius: 0;
+ box-shadow: none;
+ outline: none;
+ padding: 0;
+ color: inherit;
+}
+.inline-project-name:focus { outline: none; box-shadow: none; }
+.inline-project-name:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.dashboard-shell {
+ background-color: color-mix(in srgb, var(--background) 92%, var(--foreground) 8%);
+}
+
+.dark .dashboard-shell { background-color: var(--background); }
+.dark .dashboard-shell > .card { background-color: color-mix(in srgb, var(--background) 92%, var(--foreground) 8%); }
+
+.dashboard-settings .custom-scrollbar { padding-inline: 0; scrollbar-gutter: auto !important; }

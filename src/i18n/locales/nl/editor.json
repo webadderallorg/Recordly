@@ -1,10 +1,57 @@
 {
+	"cloud": {
+		"signInRequired": "Meld je aan bij Recordly voordat je een deellink maakt.",
+		"prepareFailed": "De huidige montage kon niet worden voorbereid om te delen.",
+		"uploadFailed": "Uploaden naar de cloud mislukt.",
+		"linkCreated": "Deellink gemaakt",
+		"linkCopied": "Link gekopieerd",
+		"copyFailed": "De link kon niet worden gekopieerd. Selecteer en kopieer deze handmatig.",
+		"copied": "Gekopieerd",
+		"copy": "Kopiëren",
+		"preparing": "Huidige montage voorbereiden…",
+		"createLink": "Link maken",
+		"heading": "Delen in de cloud",
+		"ready": "Je video is klaar om te delen.",
+		"openPage": "Deelpagina openen",
+		"notes": "Notities",
+		"publish": "Publiceren en link maken",
+		"createLinkTitle": "Een deellink maken",
+		"notesPlaceholder": "Voeg context, instructies of een korte samenvatting voor kijkers toe…",
+		"description": "Publiceer de huidige montage op een Recordly-pagina om te bekijken en feedback te geven. Downloaden is niet nodig. Video’s worden voorbereid tot 1080p.",
+		"uploading": "Uploaden… {progress}%",
+		"googleUnavailable": "Aanmelden met Google is nog niet ingeschakeld. Gebruik e-mail of vraag je Recordly-beheerder om Google te koppelen.",
+		"xUnavailable": "Aanmelden met X is nog niet ingeschakeld. Gebruik e-mail of vraag je Recordly-beheerder om X te koppelen.",
+		"providerUnavailable": "Deze aanmeldmethode is nog niet ingeschakeld. Gebruik voorlopig e-mail.",
+		"enterEmail": "Voer eerst je e-mailadres in.",
+		"resetSent": "E-mail om je wachtwoord te herstellen verzonden.",
+		"accountHeading": "Je Recordly-account",
+		"signInHeading": "Aanmelden bij Recordly",
+		"signInShareDescription": "Meld je aan om deze video te publiceren en de deellink te beheren.",
+		"signInDescription": "Bekijk je opnamen en gedeelde links.",
+		"signingOut": "Afmelden…",
+		"signOut": "Afmelden",
+		"signingIn": "Aanmelden…",
+		"signIn": "Aanmelden",
+		"or": "of",
+		"email": "E-mail",
+		"password": "Wachtwoord",
+		"forgotPassword": "Wachtwoord vergeten?",
+		"unavailable": "Aanmelden bij de cloud is nog niet beschikbaar in deze versie. Je kunt video’s wel op je computer opslaan.",
+		"createShareLink": "Deellink maken",
+		"done": "Gereed",
+		"addingVideo": "Video toevoegen…",
+		"preparingFootage": "Video en audio voorbereiden voor je tijdlijn."
+	},
+	"library": {
+		"videos": "Video’s"
+	},
 	"playback": {
 		"play": "Afspelen",
 		"pause": "Pauzeren",
 		"skipBack": "Terug springen",
 		"skipForward": "Vooruit springen",
-		"muteUnmute": "Dempen/dempen opheffen"
+		"muteUnmute": "Dempen/dempen opheffen",
+		"volume": "Voorbeeldvolume"
 	},
 	"annotations": {
 		"settings": "Annotatie-instellingen",
@@ -112,8 +159,18 @@
 		"showInFolder": "Tonen in map"
 	},
 	"project": {
-		"untitled": "Naamloos"
+		"untitled": "Naamloos",
+		"unsavedChangesTitle": "Niet-opgeslagen wijzigingen",
+		"unsavedChangesDescription": "Wil je het huidige project opslaan voordat je {{action}}?",
+		"discardChanges": "Wijzigingen negeren",
+		"saveProject": "Project opslaan"
 	},
+	"exportTips": {
+		"autoZooms": "Tip: Schakel automatisch toegepaste zooms uit in de instellingen",
+		"experimentalBuilds": "Tip: Schakel toegang tot experimentele builds in via de instellingen",
+		"cursorAppearance": "Tip: Je kunt het uiterlijk van je cursor aanpassen"
+	},
+	"account": { "title": "Account", "comingSoon": "Account binnenkort beschikbaar" },
 	"nativeCaptureUnavailable": {
 		"title": "Er is niets kapot, maar we kunnen geen geanimeerde cursor-overlay renderen.",
 		"description": "Je apparaat ondersteunt geen native capture. Dit kan verschillende oorzaken hebben die we nog niet hebben achterhaald. Recordly blijft werken, maar cursor smoothing is dan niet mogelijk.",

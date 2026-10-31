@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AudioRegion, SpeedRegion } from "@/components/video-editor/types";
+import type { AudioRegion, SpeedRegion, ZoomRegion } from "@/components/video-editor/types";
 import { ModernVideoExporter } from "./modernVideoExporter";
 import type { DecodedVideoInfo } from "./streamingDecoder";
 
@@ -70,6 +70,16 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 			wallpaper: string,
 		) => CanvasGradient | null;
 		getNativeStaticLayoutCursorSize: (contentWidth: number) => number;
+		getNativeStaticLayoutZoomTelemetry: (
+			layout: {
+				centerOffsetX: number;
+				centerOffsetY: number;
+				croppedDisplayWidth: number;
+				croppedDisplayHeight: number;
+			},
+			totalFrames: number,
+			cursorTelemetry: undefined,
+		) => Array<{ timeMs: number; scale: number; x: number; y: number }> | undefined;
 	};
 }
 
@@ -78,6 +88,32 @@ afterEach(() => {
 });
 
 describe("ModernVideoExporter native static-layout eligibility", () => {
+	it("uses configured zoom transition durations for native telemetry", () => {
+		const zoomRegions: ZoomRegion[] = [
+			{
+				id: "zoom-1",
+				startMs: 0,
+				endMs: 4_000,
+				depth: 2,
+				focus: { cx: 0.5, cy: 0.5 },
+				mode: "manual",
+			},
+		];
+		const layout = {
+			centerOffsetX: 0,
+			centerOffsetY: 0,
+			croppedDisplayWidth: 1920,
+			croppedDisplayHeight: 1080,
+		};
+		const fastExporter = createExporter({ zoomRegions, zoomInDurationMs: 100 });
+		const slowExporter = createExporter({ zoomRegions, zoomInDurationMs: 2_000 });
+
+		const fastSamples = fastExporter.getNativeStaticLayoutZoomTelemetry(layout, 60, undefined);
+		const slowSamples = slowExporter.getNativeStaticLayoutZoomTelemetry(layout, 60, undefined);
+
+		expect(fastSamples?.[30].scale).toBeGreaterThan(slowSamples?.[30].scale ?? 0);
+	});
+
 	it("allows native static-layout eligibility for VP9/WebM sources so main can proxy them", () => {
 		const exporter = createExporter();
 
@@ -236,12 +272,12 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		).toBeNull();
 	});
 
-	it("scales native static-layout cursor size with a minimum visible floor", () => {
+	it("preserves the cursor-to-video ratio at every native static-layout size", () => {
 		const exporter = createExporter({ cursorSize: 3, cursorStyle: "tahoe" });
 
 		expect(exporter.getNativeStaticLayoutCursorSize(1920)).toBeCloseTo(84, 6);
-		expect(exporter.getNativeStaticLayoutCursorSize(960)).toBeCloseTo(46.2, 6);
-		expect(exporter.getNativeStaticLayoutCursorSize(480)).toBeCloseTo(46.2, 6);
+		expect(exporter.getNativeStaticLayoutCursorSize(960)).toBeCloseTo(42, 6);
+		expect(exporter.getNativeStaticLayoutCursorSize(480)).toBeCloseTo(21, 6);
 	});
 
 	it("skips native static-layout when cursor click effects are enabled", () => {
@@ -286,21 +322,6 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				60,
 			),
 		).toBe("unsupported-cursor-click-effect");
-	});
-
-	it("reports frame overlays as the remaining native overlay blocker", () => {
-		const exporter = createExporter({ frame: "macbook" });
-
-		expect(
-			exporter.getNativeStaticLayoutSkipReason(
-				{
-					audioMode: "copy-source",
-					audioSourcePath: "recording.mp4",
-				},
-				videoInfo,
-				60,
-			),
-		).toBe("unsupported-frame-overlay");
 	});
 
 	it("allows native static-layout with background blur", () => {
@@ -385,7 +406,6 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			annotationRegions: [{ id: "annotation-1", startMs: 0, endMs: 1_000 }],
 			autoCaptions: [{ id: "caption-1", text: "hello", startMs: 0, endMs: 1_000 }],
 			webcam: { enabled: true },
-			frame: "macbook",
 			cropRegion: { x: 0.1, y: 0, width: 0.9, height: 1 },
 		});
 
@@ -403,8 +423,8 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			"unsupported-background-video",
 			"unsupported-annotation-overlay",
 			"unsupported-caption-overlay",
+			"native-webcam-style-mismatch",
 			"unsupported-webcam-source",
-			"unsupported-frame-overlay",
 		]);
 	});
 
@@ -693,7 +713,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		).toBeNull();
 	});
 
-	it("allows slow-speed webcam timelines through native source-time mapping", () => {
+	it("uses the shared renderer for slow-speed webcam timelines", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 0.5 },
 		];
@@ -714,10 +734,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				63,
 			),
-		).toBeNull();
+		).toBe("native-webcam-style-mismatch");
 	});
 
-	it("skips native static layout for rectangular webcam overlays", () => {
+	it("uses the shared renderer for rectangular webcam overlays", () => {
 		const exporter = createExporter({
 			webcam: {
 				enabled: true,
@@ -736,10 +756,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				60,
 			),
-		).toBe("unsupported-rectangular-webcam-overlay");
+		).toBe("native-webcam-style-mismatch");
 	});
 
-	it("allows native speed timelines with a resolvable webcam source", () => {
+	it("uses the shared renderer for native speed timelines with a webcam", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
 		];
@@ -767,6 +787,6 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				59,
 			),
-		).toBeNull();
+		).toBe("native-webcam-style-mismatch");
 	});
 });

@@ -1,70 +1,108 @@
-"use client";
-
-import * as PopoverPrimitive from "@radix-ui/react-popover";
-import * as React from "react";
-
+import { Popover as HeroPopover } from "@heroui/react";
+import { createContext, useContext, useState, type ComponentProps, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-
-function Popover({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
-	return <PopoverPrimitive.Root data-slot="popover" {...props} />;
-}
-
-function PopoverTrigger({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
-	return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />;
-}
-
-function PopoverContent({
-	className,
-	align = "center",
-	sideOffset = 4,
-	animated = true,
-	usePortal = true,
-	unstyled = false,
+import { useUNSAFE_PortalContext } from "react-aria";
+const ModalContext = createContext(true);
+const CloseContext = createContext<(() => void) | undefined>(undefined);
+export function Popover({
+	open,
+	defaultOpen,
+	onOpenChange,
+	modal = true,
+	children,
 	...props
-}: React.ComponentProps<typeof PopoverPrimitive.Content> & {
-	animated?: boolean;
+}: Omit<ComponentProps<typeof HeroPopover>, "isOpen"> & { open?: boolean; modal?: boolean }) {
+	const [internalOpen, setInternalOpen] = useState(defaultOpen ?? false);
+	const changeOpen = (value: boolean) => {
+		setInternalOpen(value);
+		onOpenChange?.(value);
+	};
+	return (
+		<ModalContext.Provider value={modal}>
+			<CloseContext.Provider value={() => changeOpen(false)}>
+				<HeroPopover {...props} isOpen={open ?? internalOpen} onOpenChange={changeOpen}>
+					{children}
+				</HeroPopover>
+			</CloseContext.Provider>
+		</ModalContext.Provider>
+	);
+}
+export function PopoverTrigger({ children }: { asChild?: boolean; children: ReactNode }) {
+	return <>{children}</>;
+}
+type ContentProps = Omit<ComponentProps<typeof HeroPopover.Content>, "children"> & {
+	children: ReactNode;
+	align?: "start" | "center" | "end";
+	side?: "top" | "bottom" | "left" | "right";
+	alignOffset?: number;
+	sideOffset?: number;
+	avoidCollisions?: boolean;
+	collisionPadding?: number;
 	usePortal?: boolean;
 	unstyled?: boolean;
-}) {
-	const content = (
-		<PopoverPrimitive.Content
-			data-slot="popover-content"
-			align={align}
-			sideOffset={sideOffset}
-			className={cn(
-				!unstyled &&
-					"bg-popover text-popover-foreground z-50 w-72 rounded-md border p-4 shadow-md outline-hidden",
-				unstyled && "z-50 outline-hidden",
-				animated &&
-					"data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-(--radix-popover-content-transform-origin)",
-				className,
-			)}
-			{...props}
-		/>
-	);
-
-	if (usePortal === false) {
-		return content;
-	}
-
-	return <PopoverPrimitive.Portal>{content}</PopoverPrimitive.Portal>;
-}
-
-function PopoverAnchor({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Anchor>) {
-	return <PopoverPrimitive.Anchor data-slot="popover-anchor" {...props} />;
-}
-
-function PopoverArrow({
+	animated?: boolean;
+};
+export function PopoverContent({
+	children,
 	className,
+	side = "bottom",
+	align = "center",
+	sideOffset = 8,
+	alignOffset = 0,
+	avoidCollisions = true,
+	collisionPadding = 12,
+	usePortal = true,
+	unstyled: _unstyled,
+	animated: _animated,
 	...props
-}: React.ComponentProps<typeof PopoverPrimitive.Arrow>) {
+}: ContentProps) {
+	const modal = useContext(ModalContext);
+	const scopedPortalContainer = useUNSAFE_PortalContext().getContainer?.();
+	const close = useContext(CloseContext);
+	const placement = (align === "center" ? side : `${side} ${align}`) as ComponentProps<
+		typeof HeroPopover.Content
+	>["placement"];
 	return (
-		<PopoverPrimitive.Arrow
-			data-slot="popover-arrow"
-			className={cn("fill-popover", className)}
+		<HeroPopover.Content
 			{...props}
-		/>
+			placement={placement}
+			offset={sideOffset}
+			crossOffset={alignOffset}
+			shouldFlip={avoidCollisions}
+			containerPadding={collisionPadding}
+			isNonModal={!modal}
+			UNSTABLE_portalContainer={
+				usePortal
+					? undefined
+					: (scopedPortalContainer ?? document.getElementById("root") ?? undefined)
+			}
+			className="max-w-[calc(100vw-24px)]"
+		>
+			<HeroPopover.Dialog
+				aria-label={props["aria-label"] ?? "Options"}
+				className={cn("max-w-full max-h-[min(80vh,640px)] overflow-y-auto p-4", className)}
+			>
+				<div
+					className="contents"
+					onKeyDownCapture={(event) => {
+						// Choice groups can consume Escape; dismiss before their keyboard handler.
+						// A nested portalled menu handles its own Escape first.
+						if (
+							event.key === "Escape" &&
+							!event.defaultPrevented &&
+							!props.isKeyboardDismissDisabled &&
+							event.currentTarget.contains(event.target as Node)
+						) {
+							event.preventDefault();
+							event.stopPropagation();
+							close?.();
+						}
+					}}
+				>
+					{children}
+				</div>
+			</HeroPopover.Dialog>
+		</HeroPopover.Content>
 	);
 }
-
-export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor, PopoverArrow };
+export const PopoverArrow = HeroPopover.Arrow;

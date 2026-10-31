@@ -1,4 +1,4 @@
-import { TimerIcon } from "@phosphor-icons/react";
+import { TimerIcon } from "@/components/ui/icons";
 import type { ReactElement } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
 import styles from "../LaunchWindow.module.css";

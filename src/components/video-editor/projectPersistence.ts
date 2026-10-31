@@ -1,26 +1,8 @@
+import { getLocalMediaServerPath } from "@/lib/localMediaUrl";
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
-import type {
-	ExportBackendPreference,
-	ExportEncodingMode,
-	ExportFormat,
-	ExportMp4FrameRate,
-	ExportPipelineModel,
-	ExportQuality,
-	GifFrameRate,
-	GifQualityPreset,
-	GifSizePreset,
-} from "@/lib/exporter";
-import { isValidGifQualityPreset, isValidMp4FrameRate } from "@/lib/exporter";
-import {
-	TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT,
-	TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION,
-	TEMPORAL_MOTION_BLUR_MAX_SAMPLE_COUNT,
-	TEMPORAL_MOTION_BLUR_MAX_SHUTTER_FRACTION,
-	TEMPORAL_MOTION_BLUR_MIN_SAMPLE_COUNT,
-	TEMPORAL_MOTION_BLUR_MIN_SHUTTER_FRACTION,
-} from "@/lib/exporter/temporalMotionBlur";
 import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
+import { closeClipGaps, rippleRegionAnchors, rippleRegions } from "./clipSequence";
 import { CURSOR_MOTION_PRESETS, resolveCursorMotionPresetId } from "./cursorMotionPresets";
 import {
 	ADVANCED_VERTICAL_PADDING_MAX,
@@ -47,18 +29,19 @@ import {
 	DEFAULT_CURSOR_CLICK_EFFECT_DURATION_MS,
 	DEFAULT_CURSOR_CLICK_EFFECT_OPACITY,
 	DEFAULT_CURSOR_CLICK_EFFECT_SCALE,
+	DEFAULT_CURSOR_MOTION_BLUR,
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_CURSOR_SWAY,
 	DEFAULT_FIGURE_DATA,
 	DEFAULT_PADDING,
 	DEFAULT_PLAYBACK_SPEED,
-	DEFAULT_WEBCAM_CORNER_RADIUS,
 	DEFAULT_WEBCAM_MARGIN,
 	DEFAULT_WEBCAM_OVERLAY,
 	DEFAULT_WEBCAM_POSITION_PRESET,
 	DEFAULT_WEBCAM_POSITION_X,
 	DEFAULT_WEBCAM_POSITION_Y,
 	DEFAULT_WEBCAM_REACT_TO_ZOOM,
+	DEFAULT_WEBCAM_ROUNDNESS,
 	DEFAULT_WEBCAM_SHADOW,
 	DEFAULT_WEBCAM_SIZE,
 	DEFAULT_WEBCAM_TIME_OFFSET_MS,
@@ -80,9 +63,21 @@ import {
 	type ZoomRegion,
 	type ZoomTransitionEasing,
 } from "./types";
-import { normalizeWebcamCropRegion } from "./webcamOverlay";
+import { convertLegacyWebcamRadiusToRoundness, normalizeWebcamCropRegion } from "./webcamOverlay";
 
-export const PROJECT_VERSION = 1;
+export const PROJECT_VERSION = 2;
+export const MACOS_DEFAULT_BORDER_RADIUS_PERCENT = 8;
+const LEGACY_BORDER_RADIUS_REFERENCE_PX = 1080;
+
+export function getDefaultBorderRadiusPercent(
+	platform = typeof navigator === "undefined" ? "" : navigator.platform,
+): number {
+	return /mac/i.test(platform) ? MACOS_DEFAULT_BORDER_RADIUS_PERCENT : 0;
+}
+
+export function legacyBorderRadiusPixelsToPercent(value: number): number {
+	return (value / LEGACY_BORDER_RADIUS_REFERENCE_PX) * 100;
+}
 
 const DEFAULT_MOTION_PRESET = CURSOR_MOTION_PRESETS.focused;
 
@@ -92,9 +87,6 @@ export interface ProjectEditorState {
 	backgroundBlur: number;
 	zoomMotionBlur: number;
 	zoomMotionBlurTuning: ZoomMotionBlurTuning;
-	zoomTemporalMotionBlur: number;
-	zoomMotionBlurSampleCount: number | null;
-	zoomMotionBlurShutterFraction: number | null;
 	connectZooms: boolean;
 	zoomInDurationMs: number;
 	zoomInOverlapMs: number;
@@ -128,8 +120,6 @@ export interface ProjectEditorState {
 	cursorSway: number;
 	borderRadius: number;
 	padding: Padding;
-	/** Selected frame ID (e.g. "recordly.frames/browser-dark"), or null for none */
-	frame: string | null;
 	cropRegion: CropRegion;
 	zoomRegions: ZoomRegion[];
 	trimRegions: TrimRegion[];
@@ -145,16 +135,6 @@ export interface ProjectEditorState {
 	aspectRatio: AspectRatio;
 	sourceAudioTrackSettingsByClip?: Record<string, SourceAudioTrackSettings>;
 	defaultSourceAudioTrackSettings?: SourceAudioTrackSettings;
-	exportEncodingMode: ExportEncodingMode;
-	exportBackendPreference: ExportBackendPreference;
-	exportPipelineModel: ExportPipelineModel;
-	exportQuality: ExportQuality;
-	mp4FrameRate: ExportMp4FrameRate;
-	exportFormat: ExportFormat;
-	gifFrameRate: GifFrameRate;
-	gifLoop: boolean;
-	gifSizePreset: GifSizePreset;
-	gifQualityPreset: GifQualityPreset;
 }
 
 export interface EditorProjectData {
@@ -182,34 +162,6 @@ export function stripPersistedDevMotionBlurSettings<T extends PersistedDevMotion
 	const { zoomMotionBlurTuning: _zoomMotionBlurTuning, ...persistedEditor } = editor;
 
 	return persistedEditor;
-}
-
-export function normalizeExportEncodingMode(value: unknown): ExportEncodingMode {
-	if (value === "fast" || value === "balanced" || value === "quality") {
-		return value;
-	}
-
-	return "balanced";
-}
-
-export function normalizeExportBackendPreference(value: unknown): ExportBackendPreference {
-	if (value === "auto" || value === "webcodecs" || value === "breeze") {
-		return value;
-	}
-
-	return "auto";
-}
-
-export function normalizeExportPipelineModel(value: unknown): ExportPipelineModel {
-	if (value === "modern" || value === "legacy") {
-		return value;
-	}
-
-	return "modern";
-}
-
-export function normalizeExportMp4FrameRate(value: unknown): ExportMp4FrameRate {
-	return typeof value === "number" && isValidMp4FrameRate(value) ? value : 30;
 }
 
 function normalizeZoomTransitionEasing(
@@ -272,6 +224,8 @@ export function toFileUrl(filePath: string): string {
 
 export function fromFileUrl(fileUrl: string): string {
 	const value = fileUrl.trim();
+	const serverPath = getLocalMediaServerPath(value);
+	if (serverPath) return serverPath;
 	if (!isFileUrl(value)) {
 		return fileUrl;
 	}
@@ -320,15 +274,20 @@ export function deriveNextId(prefix: string, ids: string[]): number {
  * media server is unavailable.
  */
 export async function resolveVideoUrl(sourcePath: string): Promise<string> {
+	const trimmedSourcePath = fromFileUrl(sourcePath.trim());
+	if (/^(?:https?:|blob:|data:)/i.test(trimmedSourcePath)) {
+		return trimmedSourcePath;
+	}
+	const localPath = fromFileUrl(trimmedSourcePath);
 	try {
-		const result = await window.electronAPI.getLocalMediaUrl(sourcePath);
+		const result = await window.electronAPI.getLocalMediaUrl(localPath);
 		if (result.success) {
 			return result.url;
 		}
 	} catch {
 		// Media server unavailable — fall through to file:// URL.
 	}
-	return toFileUrl(sourcePath);
+	return toFileUrl(localPath);
 }
 
 export function validateProjectData(candidate: unknown): candidate is EditorProjectData {
@@ -342,27 +301,6 @@ export function validateProjectData(candidate: unknown): candidate is EditorProj
 }
 
 export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): ProjectEditorState {
-	const normalizeTemporalBlurSampleCount = (value: unknown): number => {
-		if (!isFiniteNumber(value)) {
-			return TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT;
-		}
-
-		const roundedValue = Math.round(value);
-		const clampedValue = clamp(
-			roundedValue,
-			TEMPORAL_MOTION_BLUR_MIN_SAMPLE_COUNT,
-			TEMPORAL_MOTION_BLUR_MAX_SAMPLE_COUNT,
-		);
-
-		if (clampedValue % 2 === 1) {
-			return clampedValue;
-		}
-
-		return clampedValue >= TEMPORAL_MOTION_BLUR_MAX_SAMPLE_COUNT
-			? clampedValue - 1
-			: clampedValue + 1;
-	};
-
 	const validAspectRatios = new Set<AspectRatio>(ASPECT_RATIOS);
 	const legacyMotionBlurEnabled = (editor as Partial<{ motionBlurEnabled: boolean }>)
 		.motionBlurEnabled;
@@ -403,11 +341,6 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			? clamp(rawZoomMotionBlurTuning.zoomSafeZoneRadiusPx, 0, 80)
 			: DEFAULT_ZOOM_MOTION_BLUR_TUNING.zoomSafeZoneRadiusPx,
 	};
-	const normalizedZoomTemporalMotionBlur = isFiniteNumber(
-		(editor as Partial<ProjectEditorState>).zoomTemporalMotionBlur,
-	)
-		? clamp((editor as Partial<ProjectEditorState>).zoomTemporalMotionBlur as number, 0, 2)
-		: normalizedZoomMotionBlur;
 	const normalizedBackgroundBlur = isFiniteNumber(
 		(editor as Partial<ProjectEditorState>).backgroundBlur,
 	)
@@ -415,18 +348,6 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		: legacyShowBlur
 			? 2
 			: 0;
-	const normalizedZoomMotionBlurSampleCount = normalizeTemporalBlurSampleCount(
-		(editor as Partial<ProjectEditorState>).zoomMotionBlurSampleCount,
-	);
-	const normalizedZoomMotionBlurShutterFraction = isFiniteNumber(
-		(editor as Partial<ProjectEditorState>).zoomMotionBlurShutterFraction,
-	)
-		? clamp(
-				(editor as Partial<ProjectEditorState>).zoomMotionBlurShutterFraction as number,
-				TEMPORAL_MOTION_BLUR_MIN_SHUTTER_FRACTION,
-				TEMPORAL_MOTION_BLUR_MAX_SHUTTER_FRACTION,
-			)
-		: TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION;
 	const normalizedZoomInDurationMs = isFiniteNumber(editor.zoomInDurationMs)
 		? clamp(editor.zoomInDurationMs, 60, 4000)
 		: DEFAULT_MOTION_PRESET.zoomInDurationMs;
@@ -521,11 +442,30 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 						: rawStart + 1000;
 					const startMs = Math.max(0, Math.min(rawStart, rawEnd));
 					const endMs = Math.max(startMs + 1, rawEnd);
+					const sourceStartMs = isFiniteNumber(region.sourceStartMs)
+						? Math.max(0, Math.round(region.sourceStartMs))
+						: undefined;
+					let sourceMinMs = isFiniteNumber(region.sourceMinMs)
+						? Math.max(0, Math.round(region.sourceMinMs))
+						: undefined;
+					let sourceMaxMs = isFiniteNumber(region.sourceMaxMs)
+						? Math.max(0, Math.round(region.sourceMaxMs))
+						: undefined;
+					if (
+						sourceMaxMs !== undefined &&
+						sourceMaxMs < Math.max(sourceMinMs ?? 0, sourceStartMs ?? startMs)
+					) {
+						sourceMinMs = undefined;
+						sourceMaxMs = undefined;
+					}
 					return {
 						id: region.id,
 						startMs,
 						endMs,
-						speed: isFiniteNumber(region.speed) ? region.speed : 1,
+						sourceStartMs,
+						sourceMinMs,
+						sourceMaxMs,
+						speed: isFiniteNumber(region.speed) && region.speed > 0 ? region.speed : 1,
 						muted: typeof region.muted === "boolean" ? region.muted : false,
 						showSourceAudio:
 							typeof region.showSourceAudio === "boolean"
@@ -534,6 +474,13 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 					};
 				})
 		: [];
+
+	// Migrate before applying editor state, so loaded history and the saved baseline
+	// both begin with the same canonical sequence rather than recording a repair edit.
+	const sequenceClips = closeClipGaps(normalizedClipRegions);
+	const sequenceChanged = sequenceClips.some(
+		(clip, index) => clip !== normalizedClipRegions[index],
+	);
 
 	const normalizedAutoFullTrackClipId =
 		typeof editor.autoFullTrackClipId === "string" ? editor.autoFullTrackClipId : null;
@@ -609,20 +556,12 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 								? region.imageContent
 								: undefined,
 						position: {
-							x: clamp(
-								isFiniteNumber(region.position?.x)
-									? region.position.x
-									: DEFAULT_ANNOTATION_POSITION.x,
-								0,
-								100,
-							),
-							y: clamp(
-								isFiniteNumber(region.position?.y)
-									? region.position.y
-									: DEFAULT_ANNOTATION_POSITION.y,
-								0,
-								100,
-							),
+							x: isFiniteNumber(region.position?.x)
+								? region.position.x
+								: DEFAULT_ANNOTATION_POSITION.x,
+							y: isFiniteNumber(region.position?.y)
+								? region.position.y
+								: DEFAULT_ANNOTATION_POSITION.y,
 						},
 						size: {
 							width: clamp(
@@ -630,14 +569,14 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 									? region.size.width
 									: DEFAULT_ANNOTATION_SIZE.width,
 								1,
-								200,
+								10000,
 							),
 							height: clamp(
 								isFiniteNumber(region.size?.height)
 									? region.size.height
 									: DEFAULT_ANNOTATION_SIZE.height,
 								1,
-								200,
+								10000,
 							),
 						},
 						style: {
@@ -855,9 +794,6 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		cursorSpringMassMultiplier: isFiniteNumber(editor.cursorSpringMassMultiplier)
 			? clamp(editor.cursorSpringMassMultiplier, 0.25, 3)
 			: DEFAULT_MOTION_PRESET.cursorSpringMassMultiplier,
-		cursorMotionBlur: isFiniteNumber((editor as Partial<ProjectEditorState>).cursorMotionBlur)
-			? clamp((editor as Partial<ProjectEditorState>).cursorMotionBlur as number, 0, 2)
-			: DEFAULT_MOTION_PRESET.cursorMotionBlur,
 		cursorClickBounce: isFiniteNumber((editor as Partial<ProjectEditorState>).cursorClickBounce)
 			? clamp((editor as Partial<ProjectEditorState>).cursorClickBounce as number, 0, 5)
 			: DEFAULT_MOTION_PRESET.cursorClickBounce,
@@ -903,9 +839,6 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		backgroundBlur: normalizedBackgroundBlur,
 		zoomMotionBlur: normalizedZoomMotionBlur,
 		zoomMotionBlurTuning: normalizedZoomMotionBlurTuning,
-		zoomTemporalMotionBlur: normalizedZoomTemporalMotionBlur,
-		zoomMotionBlurSampleCount: normalizedZoomMotionBlurSampleCount,
-		zoomMotionBlurShutterFraction: normalizedZoomMotionBlurShutterFraction,
 		connectZooms: typeof editor.connectZooms === "boolean" ? editor.connectZooms : true,
 		zoomInDurationMs: normalizedMotionPreset.zoomInDurationMs,
 		zoomInOverlapMs: normalizedZoomInOverlapMs,
@@ -946,13 +879,15 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		zoomSmoothness: DEFAULT_ZOOM_SMOOTHNESS,
 		zoomClassicMode:
 			typeof editor.zoomClassicMode === "boolean" ? editor.zoomClassicMode : false,
-		cursorMotionBlur: normalizedMotionPreset.cursorMotionBlur,
+		cursorMotionBlur: DEFAULT_CURSOR_MOTION_BLUR,
 		cursorClickBounce: normalizedMotionPreset.cursorClickBounce,
 		cursorClickBounceDuration: normalizedMotionPreset.cursorClickBounceDuration,
 		cursorSway: isFiniteNumber((editor as Partial<ProjectEditorState>).cursorSway)
 			? clamp((editor as Partial<ProjectEditorState>).cursorSway as number, 0, 2)
 			: DEFAULT_CURSOR_SWAY,
-		borderRadius: typeof editor.borderRadius === "number" ? editor.borderRadius : 12.5,
+		borderRadius: isFiniteNumber(editor.borderRadius)
+			? clamp(editor.borderRadius, 0, 50)
+			: getDefaultBorderRadiusPercent(),
 		padding: (() => {
 			const p = editor.padding;
 			if (p && typeof p === "object") {
@@ -980,24 +915,40 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			}
 			return { ...DEFAULT_PADDING };
 		})(),
-		frame: typeof editor.frame === "string" ? editor.frame : null,
 		cropRegion: {
 			x: cropX,
 			y: cropY,
 			width: cropWidth,
 			height: cropHeight,
 		},
-		zoomRegions: normalizedZoomRegions,
+		zoomRegions: sequenceChanged
+			? rippleRegions(normalizedZoomRegions, normalizedClipRegions, sequenceClips)
+			: normalizedZoomRegions,
 		trimRegions: normalizedTrimRegions,
-		clipRegions: normalizedClipRegions,
+		clipRegions: sequenceClips,
 		autoFullTrackClipId: normalizedAutoFullTrackClipId,
 		autoFullTrackClipEndMs: normalizedAutoFullTrackClipEndMs,
 		speedRegions: normalizedSpeedRegions,
-		annotationRegions: normalizedAnnotationRegions,
-		audioRegions: normalizedAudioRegions,
+		annotationRegions: sequenceChanged
+			? rippleRegions(normalizedAnnotationRegions, normalizedClipRegions, sequenceClips)
+			: normalizedAnnotationRegions,
+		audioRegions: sequenceChanged
+			? rippleRegionAnchors(normalizedAudioRegions, normalizedClipRegions, sequenceClips)
+			: normalizedAudioRegions,
 		autoCaptions: normalizedAutoCaptions,
 		autoCaptionSettings: normalizedAutoCaptionSettings,
 		webcam: {
+			visibleRanges: Array.isArray(webcam.visibleRanges)
+				? webcam.visibleRanges
+						.filter(
+							(range) =>
+								isFiniteNumber(range?.startMs) &&
+								isFiniteNumber(range?.endMs) &&
+								range.startMs >= 0 &&
+								range.endMs > range.startMs,
+						)
+						.map(({ startMs, endMs }) => ({ startMs, endMs }))
+				: undefined,
 			enabled:
 				typeof webcam.enabled === "boolean"
 					? webcam.enabled
@@ -1054,9 +1005,23 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 					: legacyZoomScaleEffect != null
 						? legacyZoomScaleEffect > 0
 						: DEFAULT_WEBCAM_REACT_TO_ZOOM,
-			cornerRadius: isFiniteNumber(webcam.cornerRadius)
-				? clamp(webcam.cornerRadius, 0, 160)
-				: DEFAULT_WEBCAM_CORNER_RADIUS,
+			roundness: isFiniteNumber(webcam.roundness)
+				? clamp(webcam.roundness, 0, 100)
+				: isFiniteNumber(webcam.cornerRadius)
+					? convertLegacyWebcamRadiusToRoundness(
+							webcam.cornerRadius,
+							isFiniteNumber(webcam.width)
+								? webcam.width
+								: isFiniteNumber(webcam.size)
+									? webcam.size
+									: DEFAULT_WEBCAM_SIZE,
+							isFiniteNumber(webcam.height)
+								? webcam.height
+								: isFiniteNumber(webcam.size)
+									? webcam.size
+									: DEFAULT_WEBCAM_SIZE,
+						)
+					: DEFAULT_WEBCAM_ROUNDNESS,
 			shadow: isFiniteNumber(webcam.shadow)
 				? clamp(webcam.shadow, 0, 1)
 				: DEFAULT_WEBCAM_SHADOW,
@@ -1083,35 +1048,6 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				isCustomAspectRatio(editor.aspectRatio))
 				? (editor.aspectRatio as AspectRatio)
 				: "16:9",
-		exportEncodingMode: normalizeExportEncodingMode(editor.exportEncodingMode),
-		exportBackendPreference: normalizeExportBackendPreference(editor.exportBackendPreference),
-		exportPipelineModel: normalizeExportPipelineModel(editor.exportPipelineModel),
-		exportQuality:
-			editor.exportQuality === "medium" ||
-			editor.exportQuality === "good" ||
-			editor.exportQuality === "high" ||
-			editor.exportQuality === "source"
-				? editor.exportQuality
-				: "source",
-		mp4FrameRate: normalizeExportMp4FrameRate(editor.mp4FrameRate),
-		exportFormat: editor.exportFormat === "gif" ? "gif" : "mp4",
-		gifFrameRate:
-			editor.gifFrameRate === 15 ||
-			editor.gifFrameRate === 20 ||
-			editor.gifFrameRate === 25 ||
-			editor.gifFrameRate === 30
-				? editor.gifFrameRate
-				: 15,
-		gifLoop: typeof editor.gifLoop === "boolean" ? editor.gifLoop : true,
-		gifSizePreset:
-			editor.gifSizePreset === "medium" ||
-			editor.gifSizePreset === "large" ||
-			editor.gifSizePreset === "original"
-				? editor.gifSizePreset
-				: "medium",
-		gifQualityPreset: isValidGifQualityPreset(editor.gifQualityPreset)
-			? editor.gifQualityPreset
-			: "balanced",
 	};
 }
 
@@ -1124,6 +1060,29 @@ export function createProjectData(
 		version: PROJECT_VERSION,
 		...(typeof projectId === "string" && projectId.trim().length > 0 ? { projectId } : {}),
 		videoPath,
-		editor,
+		editor: stripProjectUserPreferences(editor),
 	};
+}
+
+// Older project files may contain app preferences. Never write or compare them as edits.
+export function stripProjectUserPreferences<T extends object>(editor: T): T {
+	const result = { ...editor };
+	for (const key of [
+		"exportEncodingMode",
+		"exportBackendPreference",
+		"exportPipelineModel",
+		"exportQuality",
+		"mp4FrameRate",
+		"exportFormat",
+		"gifFrameRate",
+		"gifLoop",
+		"gifSizePreset",
+		"publishDestination",
+		"includeCaptionSidecar",
+		"whisperExecutablePath",
+		"whisperModelPath",
+	]) {
+		delete (result as Record<string, unknown>)[key];
+	}
+	return result;
 }

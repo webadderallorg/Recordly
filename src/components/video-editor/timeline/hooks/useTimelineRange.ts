@@ -4,7 +4,7 @@ import { createInitialRange, normalizeWheelDeltaToPixels } from "../core/time";
 
 interface UseTimelineRangeParams {
 	totalMs: number;
-	timelineContainerRef: RefObject<HTMLDivElement>;
+	timelineContainerRef: RefObject<HTMLDivElement | null>;
 }
 
 export interface TimelineWheelPanDeltaInput {

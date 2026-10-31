@@ -6,12 +6,6 @@ import type { Readable, Writable } from "node:stream";
 import type { SaveDialogOptions } from "electron";
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import {
-	parseCaptionSidecarPayload,
-	type CaptionSidecarPayload,
-	withCaptionSidecarMessage,
-	writeCaptionSidecarsBestEffort,
-} from "./exportCaptionSidecars";
-import {
 	closeExportStream,
 	isOwnedExportPath,
 	openExportStream,
@@ -24,6 +18,7 @@ import {
 	enqueueNativeVideoExportFrameWrites,
 	exportNativeStaticLayoutVideo,
 	flushNativeVideoExportPendingWriteRequests,
+	getExportHardwareInfo,
 	getNativeExportCapabilities,
 	getNativeVideoExportMaxQueuedWriteBytes,
 	getNativeVideoExportSessionError,
@@ -51,6 +46,12 @@ import {
 } from "../nativeVideoExport";
 import { isAllowedLocalReadPath, resolveApprovedLocalMediaPath } from "../project/manager";
 import { approveUserPath } from "../utils";
+import {
+	type CaptionSidecarPayload,
+	parseCaptionSidecarPayload,
+	withCaptionSidecarMessage,
+	writeCaptionSidecarsBestEffort,
+} from "./exportCaptionSidecars";
 
 function getPartialExportDestinationPath(destinationPath: string) {
 	const parsed = path.parse(destinationPath);
@@ -75,12 +76,7 @@ export async function moveExportedTempFile(tempPath: string, destinationPath: st
 		return;
 	} catch (error) {
 		const code = (error as NodeJS.ErrnoException).code;
-		if (
-			code !== "EXDEV" &&
-			code !== "EPERM" &&
-			code !== "ENOTEMPTY" &&
-			code !== "EEXIST"
-		) {
+		if (code !== "EXDEV" && code !== "EPERM" && code !== "ENOTEMPTY" && code !== "EEXIST") {
 			throw error;
 		}
 		// Cross-device or Windows permission quirks — fall back to copy + unlink so
@@ -113,9 +109,7 @@ export async function moveExportedTempFile(tempPath: string, destinationPath: st
 				await fs.rename(partialDestinationPath, destinationPath);
 			} catch (replaceError) {
 				if (movedExistingDestination) {
-					await fs
-						.rename(backupDestinationPath, destinationPath)
-						.catch(() => undefined);
+					await fs.rename(backupDestinationPath, destinationPath).catch(() => undefined);
 				}
 				throw replaceError;
 			}
@@ -428,6 +422,21 @@ export function registerExportHandlers() {
 			};
 		} catch (error) {
 			console.warn("[native-export-capabilities] Failed:", error);
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
+	});
+
+	ipcMain.handle("get-export-hardware-info", async () => {
+		try {
+			return {
+				success: true,
+				hardware: await getExportHardwareInfo(),
+			};
+		} catch (error) {
+			console.warn("[export-hardware-info] Failed:", error);
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : String(error),

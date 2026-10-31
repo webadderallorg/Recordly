@@ -1,9 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { chmod, mkdir } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 const projectRoot = process.cwd();
 const nativeRoot = path.join(projectRoot, "electron", "native");
+const moduleCacheRoot = path.join(os.tmpdir(), "recordly-swift-module-cache");
 
 if (process.platform !== "darwin") {
 	console.log("[build-native-helpers] Skipping: host platform is not macOS.");
@@ -61,6 +63,11 @@ for (const target of getTargetConfigs()) {
 			["-O", "-target", target.swiftTarget, sourcePath, "-o", outputPath],
 			{
 				encoding: "utf8",
+				env: {
+					...process.env,
+					CLANG_MODULE_CACHE_PATH: path.join(moduleCacheRoot, "clang"),
+					SWIFT_MODULECACHE_PATH: path.join(moduleCacheRoot, "swift"),
+				},
 				timeout: 120000,
 			},
 		);

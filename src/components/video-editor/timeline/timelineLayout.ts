@@ -1,6 +1,6 @@
-export const TIMELINE_AXIS_HEIGHT_PX = 32;
-export const TIMELINE_ROW_MIN_HEIGHT_PX = 28;
-export const TIMELINE_VISIBLE_ROW_COUNT = 2;
+export const TIMELINE_AXIS_HEIGHT_PX = 20;
+export const TIMELINE_ROW_MIN_HEIGHT_PX = 32;
+export const TIMELINE_CLIP_ROW_HEIGHT_PX = TIMELINE_ROW_MIN_HEIGHT_PX * 2;
 
 function normalizeRowCount(rowCount: number) {
 	if (!Number.isFinite(rowCount)) {
@@ -11,19 +11,15 @@ function normalizeRowCount(rowCount: number) {
 }
 
 export function getTimelineRowsMinHeightPx(rowCount: number) {
-	return normalizeRowCount(rowCount) * TIMELINE_ROW_MIN_HEIGHT_PX;
+	const count = normalizeRowCount(rowCount);
+	// Clip stays full height. Zoom shares its space only when another lane exists.
+	return count
+		? TIMELINE_CLIP_ROW_HEIGHT_PX +
+				(count === 2 ? 2 : count - 1) * TIMELINE_ROW_MIN_HEIGHT_PX +
+				count * 2
+		: 0;
 }
 
 export function getTimelineContentMinHeightPx(rowCount: number) {
 	return TIMELINE_AXIS_HEIGHT_PX + getTimelineRowsMinHeightPx(rowCount);
-}
-
-export function getTimelineViewportStretchFactor(rowCount: number) {
-	const normalizedRowCount = normalizeRowCount(rowCount);
-
-	if (normalizedRowCount <= 0) {
-		return 1;
-	}
-
-	return Math.max(1, normalizedRowCount / TIMELINE_VISIBLE_ROW_COUNT);
 }

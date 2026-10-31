@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { deriveNextId } from "./projectPersistence";
 
 import {
+	type ClipRegion,
+	clipsToTrims,
 	extendAutoFullTrackClip,
 	findClipAtTimelineTime,
 	getTimelineDurationMs,
@@ -115,6 +117,20 @@ describe("extendAutoFullTrackClip", () => {
 });
 
 describe("clip timeline mapping", () => {
+	it("selects the next source at an exact cut, but keeps fractional times before it in the previous clip", () => {
+		const clips = [
+			{ id: "a", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 3 },
+			{ id: "b", startMs: 1000, endMs: 2000, sourceStartMs: 6000, speed: 1 },
+		];
+		expect(mapTimelineTimeToSourceTime(1000, clips)).toBe(6000);
+		expect(mapTimelineTimeToSourceTime(999.9, clips)).toBe(3000);
+		expect(mapTimelineTimeToSourceTime(2000, clips)).toBe(7000);
+		const sourceAdjacent = [
+			clips[0],
+			{ ...clips[1], startMs: 2000, endMs: 3000, sourceStartMs: 3000 },
+		];
+		expect(mapSourceTimeToTimelineTime(3000, sourceAdjacent)).toBe(2000);
+	});
 	const clips = [
 		{ id: "clip-1", startMs: 0, endMs: 4_000, speed: 1 },
 		{ id: "clip-2", startMs: 6_000, endMs: 8_000, speed: 2 },
@@ -140,6 +156,16 @@ describe("clip timeline mapping", () => {
 		expect(mapSourceTimeToTimelineTime(5_900, clips)).toBe(6_000);
 	});
 
+	it("maps gaps between different source and timeline positions", () => {
+		const movedClips = [
+			{ id: "clip-1", startMs: 0, endMs: 4_000, sourceStartMs: 0, speed: 1 },
+			{ id: "clip-2", startMs: 6_000, endMs: 8_000, sourceStartMs: 10_000, speed: 1 },
+		];
+
+		expect(mapTimelineTimeToSourceTime(5_900, movedClips)).toBe(10_000);
+		expect(mapSourceTimeToTimelineTime(9_900, movedClips)).toBe(6_000);
+	});
+
 	it("finds clips only inside visible kept spans", () => {
 		expect(findClipAtTimelineTime(500, clips)?.id).toBe("clip-1");
 		expect(findClipAtTimelineTime(5_000, clips)).toBeNull();
@@ -155,7 +181,12 @@ describe("clip timeline mapping", () => {
 		);
 
 		expect(clipsFromTrims.map((clip) => clip.id)).toEqual(["clip-1", "clip-2", "clip-3"]);
-		expect(deriveNextId("clip", clipsFromTrims.map((clip) => clip.id))).toBe(4);
+		expect(
+			deriveNextId(
+				"clip",
+				clipsFromTrims.map((clip) => clip.id),
+			),
+		).toBe(4);
 	});
 });
 
@@ -169,12 +200,49 @@ describe("getTimelineDurationMs", () => {
 		).toBe(20_000);
 	});
 
-	it("keeps the source duration when speed edits make clips shorter", () => {
+	it("shortens the timeline when speed edits make clips shorter", () => {
 		expect(
-			getTimelineDurationMs(
-				[{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 2 }],
-				10_000,
-			),
-		).toBe(10_000);
+			getTimelineDurationMs([{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 2 }], 10_000),
+		).toBe(5_000);
+	});
+});
+
+describe("clipsToTrims", () => {
+	it("trims the source ranges no clip covers", () => {
+		const clips: ClipRegion[] = [
+			{ id: "clip-1", startMs: 0, endMs: 10_000, speed: 1 },
+			{ id: "clip-2", startMs: 10_000, endMs: 20_000, sourceStartMs: 30_000, speed: 1 },
+		];
+
+		expect(clipsToTrims(clips, 60_000)).toEqual([
+			{ id: "trim-gap-1", startMs: 10_000, endMs: 30_000 },
+			{ id: "trim-gap-2", startMs: 40_000, endMs: 60_000 },
+		]);
+	});
+
+	it("covers source ranges that sit out of order on the timeline", () => {
+		// A moved clip keeps its source in-point, so the clip that comes first on
+		// the timeline can read from later in the recording.
+		const clips: ClipRegion[] = [
+			{ id: "clip-1", startMs: 0, endMs: 10_000, sourceStartMs: 20_000, speed: 1 },
+			{ id: "clip-2", startMs: 10_000, endMs: 20_000, sourceStartMs: 0, speed: 1 },
+		];
+
+		// Source [0,10] and [20,30] are both in use; only the gaps go.
+		expect(clipsToTrims(clips, 40_000)).toEqual([
+			{ id: "trim-gap-1", startMs: 10_000, endMs: 20_000 },
+			{ id: "trim-gap-2", startMs: 30_000, endMs: 40_000 },
+		]);
+	});
+
+	it("merges overlapping source spans instead of trimming between them", () => {
+		const clips: ClipRegion[] = [
+			{ id: "clip-1", startMs: 0, endMs: 20_000, sourceStartMs: 0, speed: 1 },
+			{ id: "clip-2", startMs: 20_000, endMs: 30_000, sourceStartMs: 10_000, speed: 1 },
+		];
+
+		expect(clipsToTrims(clips, 40_000)).toEqual([
+			{ id: "trim-gap-1", startMs: 20_000, endMs: 40_000 },
+		]);
 	});
 });

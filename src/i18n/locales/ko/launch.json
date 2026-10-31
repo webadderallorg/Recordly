@@ -1,5 +1,6 @@
 {
 	"recording": {
+		"home": "홈",
 		"disableSystemAudio": "시스템 오디오 끄기",
 		"enableSystemAudio": "시스템 오디오 켜기",
 		"disableMicrophone": "마이크 끄기",
@@ -76,5 +77,20 @@
 		"microphoneDenied": "마이크 접근이 거부되었습니다. 마이크 오디오 없이 녹화를 계속합니다.",
 		"failedToStart": "녹화 시작에 실패했습니다: {{error}}",
 		"failedToStartGeneric": "녹화 시작에 실패했습니다"
+	},
+	"updateToast": {
+		"availableTitle": "업데이트 사용 가능",
+		"experimentalAvailableTitle": "실험적 업데이트 사용 가능",
+		"experimentalDescription": "실험적 업데이트를 선택했으므로 Recordly의 최신 업데이트가 널리 제공되기 전에 먼저 테스트해 볼 수 있습니다.",
+		"downloadingTitle": "업데이트 다운로드 중",
+		"readyTitle": "다시 시작할 준비 완료",
+		"checkErrorTitle": "업데이트를 확인할 수 없습니다",
+		"downloadErrorTitle": "업데이트를 다운로드할 수 없습니다",
+		"experimentalBadge": "실험적",
+		"previewBadge": "미리보기",
+		"notNow": "나중에",
+		"updateNow": "지금 업데이트",
+		"restartToUpdate": "다시 시작하여 업데이트",
+		"tryAgain": "다시 시도"
 	}
 }

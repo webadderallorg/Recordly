@@ -56,7 +56,9 @@ describe("exportCaptionSidecars", () => {
 	});
 
 	it("returns a warning result instead of throwing when sidecar writes fail", async () => {
-		const writeFileSpy = vi.spyOn(fs, "writeFile").mockRejectedValueOnce(new Error("disk full"));
+		const writeFileSpy = vi
+			.spyOn(fs, "writeFile")
+			.mockRejectedValueOnce(new Error("disk full"));
 
 		await expect(
 			writeCaptionSidecarsBestEffort("/tmp/export.mp4", {

@@ -1,5 +1,6 @@
 {
 	"recording": {
+		"home": "主页",
 		"disableSystemAudio": "禁用系统音频",
 		"enableSystemAudio": "启用系统音频",
 		"disableMicrophone": "禁用麦克风",
@@ -76,5 +77,20 @@
 		"microphoneDenied": "麦克风访问被拒绝。将继续录制但不包含麦克风音频。",
 		"failedToStart": "录制启动失败：{{error}}",
 		"failedToStartGeneric": "录制启动失败"
+	},
+	"updateToast": {
+		"availableTitle": "有可用更新",
+		"experimentalAvailableTitle": "有可用的实验性更新",
+		"experimentalDescription": "你已选择接收实验性更新，因此可以在 Recordly 最新更新广泛发布之前选择先行测试。",
+		"downloadingTitle": "正在下载更新",
+		"readyTitle": "已准备好重新启动",
+		"checkErrorTitle": "无法检查更新",
+		"downloadErrorTitle": "无法下载更新",
+		"experimentalBadge": "实验性",
+		"previewBadge": "预览",
+		"notNow": "暂不",
+		"updateNow": "立即更新",
+		"restartToUpdate": "重新启动以更新",
+		"tryAgain": "重试"
 	}
 }

@@ -1,45 +1,30 @@
-"use client";
-
-import * as TogglePrimitive from "@radix-ui/react-toggle";
-import { cva, type VariantProps } from "class-variance-authority";
-import * as React from "react";
-
+import { ToggleButton } from "@heroui/react";
 import { cn } from "@/lib/utils";
-
-const toggleVariants = cva(
-	"inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors hover:bg-muted hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=on]:bg-accent data-[state=on]:text-accent-foreground",
-	{
-		variants: {
-			variant: {
-				default: "bg-transparent",
-				outline:
-					"border border-input bg-transparent hover:bg-accent hover:text-accent-foreground",
-			},
-			size: {
-				default: "h-10 px-3",
-				sm: "h-9 px-2.5",
-				lg: "h-11 px-5",
-			},
-		},
-		defaultVariants: {
-			variant: "default",
-			size: "default",
-		},
-	},
-);
-
-const Toggle = React.forwardRef<
-	React.ElementRef<typeof TogglePrimitive.Root>,
-	React.ComponentPropsWithoutRef<typeof TogglePrimitive.Root> &
-		VariantProps<typeof toggleVariants>
->(({ className, variant, size, ...props }, ref) => (
-	<TogglePrimitive.Root
-		ref={ref}
-		className={cn(toggleVariants({ variant, size, className }))}
-		{...props}
-	/>
-));
-
-Toggle.displayName = TogglePrimitive.Root.displayName;
-
-export { Toggle, toggleVariants };
+import type { ComponentProps } from "react";
+type Props = Omit<ComponentProps<typeof ToggleButton>, "size" | "variant"> & {
+	pressed?: boolean;
+	onPressedChange?: (value: boolean) => void;
+	disabled?: boolean;
+	size?: "default" | "sm" | "lg";
+	variant?: "default" | "outline";
+};
+export function Toggle({ pressed, onPressedChange, disabled, size, variant, ...props }: Props) {
+	return (
+		<ToggleButton
+			{...props}
+			isSelected={pressed}
+			onChange={onPressedChange}
+			isDisabled={disabled}
+			size={size === "default" ? "md" : size}
+			variant="ghost"
+			className={(state) =>
+				cn(
+					variant === "outline" && "border border-border bg-transparent",
+					typeof props.className === "function"
+						? props.className(state)
+						: props.className,
+				)
+			}
+		/>
+	);
+}

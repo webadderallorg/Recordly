@@ -369,3 +369,23 @@ describe("segmentCuesIntoPhrases", () => {
 		expect(segmentCuesIntoPhrases([], [])).toEqual([]);
 	});
 });
+
+it("keeps the last timed word when an adjacent untimed cue overlaps padded edges", () => {
+	const result = segmentCuesIntoPhrases(
+		[
+			{
+				id: "timed",
+				startMs: 0,
+				endMs: 1200,
+				text: "Hello.",
+				words: [{ text: "Hello.", startMs: 0, endMs: 1000 }],
+			},
+			{ id: "untimed", startMs: 950, endMs: 2000, text: "Next sentence." },
+		],
+		[],
+		{ minCaptionMs: 0, edgePadMs: 100 },
+	);
+	const timed = result.find((cue) => cue.words?.length)!;
+	expect(timed.endMs).toBeGreaterThanOrEqual(1000);
+	expect(result.some((cue) => cue.text === "Next sentence.")).toBe(true);
+});

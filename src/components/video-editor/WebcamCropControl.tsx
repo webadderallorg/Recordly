@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { CropRegion } from "./types";
-import { getWebcamPreviewTargetTimeSeconds } from "./videoPlayback/webcamSync";
+import {
+	getWebcamPreviewTargetTimeSeconds,
+	isWebcamMediaSynchronized,
+} from "./videoPlayback/webcamSync";
 import { normalizeWebcamCropRegion } from "./webcamOverlay";
 
 type CropHandle = "move" | "nw" | "ne" | "sw" | "se";
@@ -135,6 +138,9 @@ export function WebcamCropControl({
 	const [activeHandle, setActiveHandle] = useState<CropHandle | null>(null);
 	const [draftVisualCrop, setDraftVisualCrop] = useState<CropRegion | null>(null);
 	const [previewFrame, setPreviewFrame] = useState<PreviewFrame | null>(null);
+	const synchronizedPreviewSrcRef = useRef<string | null>(null);
+	const [synchronizedPreviewSrc, setSynchronizedPreviewSrc] = useState<string | null>(null);
+	const previewSynchronized = previewSrc !== null && synchronizedPreviewSrc === previewSrc;
 	const hasPreviewFrame = previewSrc !== null && previewFrame?.src === previewSrc;
 	const previewAspectRatio =
 		hasPreviewFrame && previewFrame && previewFrame.width > 0 && previewFrame.height > 0
@@ -178,6 +184,35 @@ export function WebcamCropControl({
 			targetTime <= 0 && webcamDuration !== null && webcamDuration > 0
 				? Math.min(1 / 60, webcamDuration)
 				: targetTime;
+
+		if (
+			synchronizedPreviewSrcRef.current !== previewSrc &&
+			!isWebcamMediaSynchronized({
+				currentTime: video.currentTime,
+				targetTime: mediaTargetTime,
+				readyState: video.readyState,
+				isSeeking: video.seeking,
+			})
+		) {
+			video.pause();
+			if (
+				video.readyState >= HTMLMediaElement.HAVE_METADATA &&
+				!video.seeking &&
+				Math.abs(video.currentTime - mediaTargetTime) > 0.01
+			) {
+				try {
+					video.currentTime = mediaTargetTime;
+				} catch {
+					/* The next media-ready event retries once the source accepts seeks. */
+				}
+			}
+			return;
+		}
+
+		if (synchronizedPreviewSrcRef.current !== previewSrc) {
+			synchronizedPreviewSrcRef.current = previewSrc;
+			setSynchronizedPreviewSrc(previewSrc);
+		}
 		const driftThreshold = previewPlaying ? 0.35 : 0.01;
 
 		if (Math.abs(video.currentTime - mediaTargetTime) > driftThreshold) {
@@ -213,6 +248,13 @@ export function WebcamCropControl({
 	useEffect(() => {
 		syncPreviewMedia();
 	}, [syncPreviewMedia]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: The source identity intentionally resets cached synchronization state.
+	useEffect(() => {
+		synchronizedPreviewSrcRef.current = null;
+		setSynchronizedPreviewSrc(null);
+		setPreviewFrame(null);
+	}, [previewSrc]);
 
 	const commitVisualCrop = (nextVisualCrop: CropRegion, immediate = false) => {
 		const nextCrop = mirrored
@@ -355,7 +397,7 @@ export function WebcamCropControl({
 					src={previewSrc}
 					className="pointer-events-none absolute inset-0 block h-full w-full object-fill"
 					style={{
-						opacity: hasPreviewFrame ? 1 : 0,
+						opacity: hasPreviewFrame && previewSynchronized ? 1 : 0,
 						transform: mirrored ? "scaleX(-1)" : undefined,
 					}}
 					muted
@@ -364,6 +406,7 @@ export function WebcamCropControl({
 					aria-hidden="true"
 					onLoadedMetadata={handlePreviewFrameReady}
 					onLoadedData={handlePreviewFrameReady}
+					onCanPlay={handlePreviewFrameReady}
 					onSeeked={handlePreviewFrameReady}
 				/>
 			) : null}

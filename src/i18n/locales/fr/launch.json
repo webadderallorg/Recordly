@@ -1,5 +1,6 @@
 {
 	"recording": {
+		"home": "Accueil",
 		"disableSystemAudio": "Désactiver l’audio système",
 		"enableSystemAudio": "Activer l’audio système",
 		"disableMicrophone": "Désactiver le microphone",
@@ -76,5 +77,20 @@
 		"microphoneDenied": "L’accès au microphone a été refusé. L’enregistrement continuera sans audio du microphone.",
 		"failedToStart": "Échec du démarrage de l’enregistrement : {{error}}",
 		"failedToStartGeneric": "Échec du démarrage de l’enregistrement"
+	},
+	"updateToast": {
+		"availableTitle": "Mise à jour disponible",
+		"experimentalAvailableTitle": "Mise à jour expérimentale disponible",
+		"experimentalDescription": "Vous avez activé les mises à jour expérimentales, vous pouvez donc tester la dernière mise à jour de Recordly avant sa disponibilité générale.",
+		"downloadingTitle": "Téléchargement de la mise à jour",
+		"readyTitle": "Prêt à redémarrer",
+		"checkErrorTitle": "Impossible de vérifier les mises à jour",
+		"downloadErrorTitle": "Impossible de télécharger la mise à jour",
+		"experimentalBadge": "Expérimental",
+		"previewBadge": "Aperçu",
+		"notNow": "Plus tard",
+		"updateNow": "Mettre à jour",
+		"restartToUpdate": "Redémarrer pour mettre à jour",
+		"tryAgain": "Réessayer"
 	}
 }

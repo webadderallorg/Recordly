@@ -8,9 +8,15 @@
     "node_modules/ffmpeg-static/**",
     "node_modules/ffprobe-static/**",
     "node_modules/uiohook-napi/**",
-    "electron/native/**"
+    "electron/native/bin/**"
   ],
   "productName": "Recordly",
+  "protocols": [
+    {
+      "name": "Recordly authentication",
+      "schemes": ["recordly"]
+    }
+  ],
   "npmRebuild": true,
   "buildDependenciesFromSource": true,
   "compression": "normal",
@@ -19,8 +25,13 @@
   },
   "files": [
     "dist",
+    "!dist/wallpapers/**",
     "dist-electron",
-    "electron/native",
+    "electron/native/bin",
+    "!electron/native/bin/**/whisper-bench*",
+    "!electron/native/bin/**/whisper-quantize*",
+    "!electron/native/bin/**/whisper-server*",
+    "!electron/native/bin/**/whisper-vad-speech-segments*",
     "!node_modules/ffprobe-static/bin/darwin/**",
     "!node_modules/ffprobe-static/bin/linux/**",
     "!node_modules/ffprobe-static/bin/win32/ia32/**",
@@ -105,10 +116,15 @@
     "target": [
       "nsis"
     ],
-    "icon": "icons/icons/win/icon.ico"
-    ,
+    "icon": "icons/icons/win/icon.ico",
     "executableName": "Recordly",
     "artifactName": "${productName}-windows-${arch}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Recordly"
   }
 }
-

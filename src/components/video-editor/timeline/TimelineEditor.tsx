@@ -1,4 +1,4 @@
-import { Plus } from "@phosphor-icons/react";
+import { Plus } from "@/components/ui/icons";
 import type { Span } from "dnd-timeline";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -23,6 +23,7 @@ import KeyframeMarkers from "./components/markers/KeyframeMarkers";
 import TimelineCanvas from "./components/viewport/TimelineCanvas";
 import TimelineWrapper from "./components/wrapper/TimelineWrapper";
 import { calculateTimelineScale } from "./core/time";
+import type { ClipSequenceSpan } from "./core/timelineTypes";
 import { useTimelineAudioPeaks } from "./hooks/useTimelineAudioPeaks";
 import { useTimelineEditorRuntime } from "./hooks/useTimelineEditorRuntime";
 import { useTimelineRange } from "./hooks/useTimelineRange";
@@ -51,7 +52,7 @@ export interface TimelineEditorProps {
 	onTrimSpanChange?: (id: string, span: Span) => void;
 	clipRegions?: ClipRegion[];
 	onClipSplit?: (splitMs: number) => void;
-	onClipSpanChange?: (id: string, span: Span) => void;
+	onClipSpanChange?: (id: string, span: ClipSequenceSpan) => void;
 	onClipDelete?: (id: string) => void;
 	selectedClipId?: string | null;
 	onSelectClip?: (id: string | null) => void;
@@ -419,10 +420,12 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		}
 
 		return (
-			<div className="flex-1 min-h-0 flex flex-col bg-editor-bg overflow-hidden">
+			<div className="flex-1 min-h-0 flex flex-col bg-transparent overflow-hidden">
 				<div
 					ref={timelineContainerRef}
-					className="flex-1 min-h-0 overflow-auto bg-editor-bg relative"
+					data-testid="timeline-scroll"
+					style={{ outline: "none", boxShadow: "none" }}
+					className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto bg-transparent relative px-3"
 					tabIndex={0}
 					onFocus={() => {
 						isTimelineFocusedRef.current = true;
@@ -430,8 +433,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					onBlur={() => {
 						isTimelineFocusedRef.current = false;
 					}}
-					onMouseDown={() => {
-						timelineContainerRef.current?.focus();
+					onPointerDownCapture={() => {
+						timelineContainerRef.current?.focus({ preventScroll: true });
 						isTimelineFocusedRef.current = true;
 					}}
 					onClick={() => {
@@ -480,6 +483,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							timelineRef={timelineContainerRef}
 						/>
 						<TimelineCanvas
+							videoPath={videoPath}
 							items={timelineItems}
 							videoDurationMs={totalMs}
 							currentTimeMs={currentTimeMs}

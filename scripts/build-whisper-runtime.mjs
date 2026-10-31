@@ -1,4 +1,5 @@
 import { execFileSync, execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, rmSync } from "node:fs";
 import { chmod, cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { get as httpsGet } from "node:https";
@@ -15,6 +16,8 @@ const nativeRoot = path.join(projectRoot, "electron", "native");
 const cacheRoot = path.join(projectRoot, ".tmp", "whisper-runtime");
 const archivePath = path.join(cacheRoot, `${whisperVersion}.tar.gz`);
 const extractRoot = path.join(cacheRoot, `src-${whisperVersion}`);
+const windowsX64ArchivePath = path.join(cacheRoot, `${whisperVersion}-windows-x64.zip`);
+const windowsX64ArchiveSha256 = "74f973345cb52ef5ba3ec9e7e7af8e48cc8c71722d1528603b80588a11f82e3e";
 
 function getHostArch() {
 	return process.arch === "arm64" ? "arm64" : "x64";
@@ -225,6 +228,75 @@ async function downloadFile(url, destinationPath) {
 	});
 }
 
+async function getFileSha256(filePath) {
+	return createHash("sha256")
+		.update(await readFile(filePath))
+		.digest("hex");
+}
+
+async function findDirectoryContaining(rootPath, fileName) {
+	const pending = [rootPath];
+	while (pending.length > 0) {
+		const currentPath = pending.shift();
+		const entries = await readdir(currentPath, { withFileTypes: true });
+		if (entries.some((entry) => entry.isFile() && entry.name === fileName)) {
+			return currentPath;
+		}
+		for (const entry of entries) {
+			if (entry.isDirectory()) {
+				pending.push(path.join(currentPath, entry.name));
+			}
+		}
+	}
+	return null;
+}
+
+async function stageWindowsX64PrebuiltRuntime(target) {
+	if (target.platform !== "win32" || target.arch !== "x64") {
+		return false;
+	}
+
+	await mkdir(cacheRoot, { recursive: true });
+	const archiveUrl = `https://github.com/ggml-org/whisper.cpp/releases/download/${whisperVersion}/whisper-bin-x64.zip`;
+	let archiveIsValid =
+		existsSync(windowsX64ArchivePath) &&
+		(await getFileSha256(windowsX64ArchivePath)) === windowsX64ArchiveSha256;
+	if (!archiveIsValid) {
+		await rm(windowsX64ArchivePath, { force: true });
+		console.log(
+			`[build-whisper-runtime] Downloading official whisper.cpp ${whisperVersion} Windows x64 runtime...`,
+		);
+		await downloadFile(archiveUrl, windowsX64ArchivePath);
+		archiveIsValid = (await getFileSha256(windowsX64ArchivePath)) === windowsX64ArchiveSha256;
+	}
+
+	if (!archiveIsValid) {
+		throw new Error(
+			"[build-whisper-runtime] Windows x64 runtime archive failed its SHA-256 integrity check.",
+		);
+	}
+
+	const prebuiltExtractRoot = path.join(cacheRoot, `prebuilt-${target.archTag}`);
+	await rm(prebuiltExtractRoot, { recursive: true, force: true });
+	await mkdir(prebuiltExtractRoot, { recursive: true });
+	execFileSync("tar", ["-xf", windowsX64ArchivePath, "-C", prebuiltExtractRoot], {
+		stdio: "inherit",
+	});
+
+	const runtimeDir = await findDirectoryContaining(prebuiltExtractRoot, "whisper-cli.exe");
+	if (!runtimeDir) {
+		throw new Error(
+			"[build-whisper-runtime] Official Windows archive did not contain whisper-cli.exe.",
+		);
+	}
+
+	const runtimeEntries = (await readdir(runtimeDir)).filter(
+		(entry) => /^(whisper|ggml)/i.test(entry) || entry.toLowerCase().endsWith(".dll"),
+	);
+	await stageRuntimeArtifacts(target, runtimeDir, runtimeEntries);
+	return true;
+}
+
 async function ensureSourceTree() {
 	const extractedSourceDir = path.join(
 		extractRoot,
@@ -366,6 +438,31 @@ async function stageRuntimeArtifacts(target, candidateDir, runtimeEntries) {
 
 async function main() {
 	const targets = getTargetConfigs();
+
+	// Official whisper.cpp releases include a signed, portable Windows x64
+	// runtime. Prefer it so developers and packaged builds do not require a full
+	// Visual Studio C++ installation just to enable captions.
+	for (const target of targets) {
+		if (!(await shouldSkipBuild(target))) {
+			try {
+				await stageWindowsX64PrebuiltRuntime(target);
+			} catch (error) {
+				console.warn(
+					"[build-whisper-runtime] Failed to stage the official Windows runtime; falling back to a source build:",
+					error,
+				);
+			}
+		}
+	}
+
+	const stagedChecks = await Promise.all(targets.map((target) => shouldSkipBuild(target)));
+	if (stagedChecks.every(Boolean)) {
+		console.log(
+			`[build-whisper-runtime] Whisper runtime ${whisperVersion} is staged for ${targets.map((target) => target.archTag).join(", ")}.`,
+		);
+		return;
+	}
+
 	const cmake = findCmake();
 
 	if (!cmake) {

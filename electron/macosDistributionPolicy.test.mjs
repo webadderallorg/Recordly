@@ -5,6 +5,7 @@ import {
 	collectCodeSigningMetadataErrors,
 	collectEntitlementErrors,
 	expectedMachOArchitecture,
+	hasMachOMagic,
 	parseLipoArchitectures,
 } from "../scripts/macos-distribution-policy.mjs";
 
@@ -95,6 +96,20 @@ describe("macOS distribution entitlement policy", () => {
 });
 
 describe("macOS distribution architecture policy", () => {
+	it("recognizes thin and universal Mach-O magic bytes without parsing file output", () => {
+		for (const header of [
+			[0xfe, 0xed, 0xfa, 0xce],
+			[0xcf, 0xfa, 0xed, 0xfe],
+			[0xca, 0xfe, 0xba, 0xbe],
+			[0xbf, 0xba, 0xfe, 0xca],
+		]) {
+			expect(hasMachOMagic(Uint8Array.from(header))).toBe(true);
+		}
+
+		expect(hasMachOMagic(Uint8Array.from([0x7f, 0x45, 0x4c, 0x46]))).toBe(false);
+		expect(hasMachOMagic(Uint8Array.from([0xfe, 0xed, 0xfa]))).toBe(false);
+	});
+
 	it("parses thin and fat lipo output", () => {
 		expect(parseLipoArchitectures("Non-fat file: App is architecture: arm64")).toEqual([
 			"arm64",

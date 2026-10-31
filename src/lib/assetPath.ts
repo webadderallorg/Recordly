@@ -1,3 +1,4 @@
+import { getLocalMediaServerPath } from "./localMediaUrl";
 import { resolveAvailableWallpaperPath } from "./wallpapers";
 
 function encodeRelativeAssetPath(relativePath: string): string {
@@ -59,19 +60,13 @@ export async function getAssetPath(relativePath: string): Promise<string> {
 	const isWebContext =
 		typeof window !== "undefined" && Boolean(window.location?.protocol?.startsWith("http"));
 
-	if (isWebContext) {
-		return `/${encodedRelativePath}`;
-	}
-
 	try {
 		if (typeof window !== "undefined") {
 			if (typeof window.electronAPI?.getAssetBasePath === "function") {
 				const base = await window.electronAPI.getAssetBasePath();
-				if (!base) {
-					throw new Error(`Failed to resolve asset base path for ${relativePath}`);
+				if (base) {
+					return new URL(encodedRelativePath, ensureTrailingSlash(base)).toString();
 				}
-
-				return new URL(encodedRelativePath, ensureTrailingSlash(base)).toString();
 			}
 		}
 	} catch (error) {
@@ -80,8 +75,13 @@ export async function getAssetPath(relativePath: string): Promise<string> {
 		}
 	}
 
-	// Fallback for web/dev server: public/wallpapers are served at '/wallpapers/...'
-	return `/${encodedRelativePath}`;
+	if (isWebContext) {
+		// Dev and browser contexts serve public assets from the site root. Packaged
+		// Electron windows resolve above to the single extraResources asset copy.
+		return `/${encodedRelativePath}`;
+	}
+
+	throw new Error(`Failed to resolve asset base path for ${relativePath}`);
 }
 
 const BASE64_CHUNK_SIZE = 0x8000;
@@ -187,6 +187,8 @@ function isBundledAssetPath(asset: string): boolean {
 }
 
 export async function getRenderableVideoUrl(asset: string): Promise<string> {
+	const serverPath = getLocalMediaServerPath(asset);
+	if (serverPath) return resolveLocalMediaUrl(serverPath);
 	if (
 		!asset ||
 		asset.startsWith("blob:") ||
@@ -274,11 +276,13 @@ export async function getWallpaperThumbnailUrl(asset: string): Promise<string> {
 	const cached = thumbnailCache.get(asset);
 	if (cached) return cached;
 
-	const localFilePath = toLocalFilePath(
-		asset.startsWith("/") && !asset.startsWith("//")
-			? await getAssetPath(asset.replace(/^\//, ""))
-			: asset,
-	);
+	const localFilePath =
+		(asset.startsWith("/wallpapers/") ? asset : null) ??
+		toLocalFilePath(
+			asset.startsWith("/") && !asset.startsWith("//")
+				? await getAssetPath(asset.replace(/^\//, ""))
+				: asset,
+		);
 	if (
 		!localFilePath ||
 		typeof window === "undefined" ||

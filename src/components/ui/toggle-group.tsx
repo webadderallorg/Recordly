@@ -1,58 +1,52 @@
-"use client";
-
-import * as ToggleGroupPrimitive from "@radix-ui/react-toggle-group";
-import { type VariantProps } from "class-variance-authority";
-import * as React from "react";
-import { toggleVariants } from "@/components/ui/toggle";
-import { cn } from "@/lib/utils";
-
-const ToggleGroupContext = React.createContext<VariantProps<typeof toggleVariants>>({
-	size: "default",
-	variant: "default",
-});
-
-const ToggleGroup = React.forwardRef<
-	React.ElementRef<typeof ToggleGroupPrimitive.Root>,
-	React.ComponentPropsWithoutRef<typeof ToggleGroupPrimitive.Root> &
-		VariantProps<typeof toggleVariants>
->(({ className, variant, size, children, ...props }, ref) => (
-	<ToggleGroupPrimitive.Root
-		ref={ref}
-		className={cn("flex items-center justify-center gap-1", className)}
-		{...props}
-	>
-		<ToggleGroupContext.Provider value={{ variant, size }}>
-			{children}
-		</ToggleGroupContext.Provider>
-	</ToggleGroupPrimitive.Root>
-));
-
-ToggleGroup.displayName = ToggleGroupPrimitive.Root.displayName;
-
-const ToggleGroupItem = React.forwardRef<
-	React.ElementRef<typeof ToggleGroupPrimitive.Item>,
-	React.ComponentPropsWithoutRef<typeof ToggleGroupPrimitive.Item> &
-		VariantProps<typeof toggleVariants>
->(({ className, children, variant, size, ...props }, ref) => {
-	const context = React.useContext(ToggleGroupContext);
-
-	return (
-		<ToggleGroupPrimitive.Item
-			ref={ref}
-			className={cn(
-				toggleVariants({
-					variant: context.variant || variant,
-					size: context.size || size,
-				}),
-				className,
-			)}
-			{...props}
-		>
-			{children}
-		</ToggleGroupPrimitive.Item>
+import { ToggleButtonGroup, ToggleButton } from "@heroui/react";
+import { type ComponentProps } from "react";
+type Props = Omit<ComponentProps<typeof ToggleButtonGroup>, "onSelectionChange" | "size"> & {
+	value?: string | string[];
+	defaultValue?: string | string[];
+	disabled?: boolean;
+	size?: "default" | "sm" | "lg";
+	variant?: "default" | "outline";
+} & (
+		| { type: "single"; onValueChange?: (value: string) => void }
+		| { type: "multiple"; onValueChange?: (value: string[]) => void }
 	);
-});
-
-ToggleGroupItem.displayName = ToggleGroupPrimitive.Item.displayName;
-
-export { ToggleGroup, ToggleGroupItem };
+const keys = (value?: string | string[]) =>
+	value === undefined ? undefined : Array.isArray(value) ? value : value ? [value] : [];
+export function ToggleGroup({
+	type,
+	value,
+	defaultValue,
+	onValueChange,
+	disabled,
+	size,
+	variant: _variant,
+	...props
+}: Props) {
+	return (
+		<ToggleButtonGroup
+			{...props}
+			selectionMode={type}
+			selectedKeys={keys(value)}
+			defaultSelectedKeys={keys(defaultValue)}
+			isDisabled={disabled}
+			size={size === "default" ? "md" : size}
+			onSelectionChange={(selection) => {
+				const values = Array.from(selection, String);
+				if (type === "single")
+					(onValueChange as ((v: string) => void) | undefined)?.(values[0] ?? "");
+				else (onValueChange as ((v: string[]) => void) | undefined)?.(values);
+			}}
+		/>
+	);
+}
+export function ToggleGroupItem({
+	value,
+	disabled,
+	...props
+}: Omit<ComponentProps<typeof ToggleButton>, "id"> & {
+	value: string;
+	disabled?: boolean;
+	title?: string;
+}) {
+	return <ToggleButton {...props} id={value} isDisabled={disabled} />;
+}

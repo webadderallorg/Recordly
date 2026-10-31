@@ -219,10 +219,7 @@ export const GIF_SIZE_PRESETS: Record<GifSizePreset, { maxHeight: number; label:
 	original: { maxHeight: Infinity, label: "Original" },
 };
 
-export const GIF_QUALITY_PRESETS: Record<
-	GifQualityPreset,
-	{ quality: number; label: string }
-> = {
+export const GIF_QUALITY_PRESETS: Record<GifQualityPreset, { quality: number; label: string }> = {
 	high: { quality: 1, label: "High" },
 	balanced: { quality: 10, label: "Balanced" },
 	small: { quality: 20, label: "Small file" },

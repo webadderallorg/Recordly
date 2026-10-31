@@ -19,7 +19,8 @@
 	},
 	"clip": {
 		"title": "Clip",
-		"mute": "Dempen",
+		"mute": "Clip dempen",
+		"resetAudioSettings": "Audio-instellingen resetten",
 		"mutedState": "Audio is gedempt",
 		"unmutedState": "Audio wordt afgespeeld",
 		"separateClipFromAudio": "Clip van audio scheiden",
@@ -35,6 +36,7 @@
 			"macos": "macOS",
 			"tahoe": "Tahoe",
 			"tahoe-inverted": "Tahoe omgekeerd",
+			"windows11": "Windows 11",
 			"dot": "Punt",
 			"figma": "Minimaal",
 			"lavender": "Lavendel",
@@ -43,12 +45,8 @@
 			"amongus": "Among Us",
 			"turtle": "Schildpad"
 		},
-		"backgroundBlur": "Achtergrondvervaging",
+		"backgroundBlur": "Vervaging",
 		"zoomMotionBlur": "Zoom-bewegingsonscherpte",
-		"temporalZoomMotionBlur": "Temporal Zoom Blur",
-		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
-		"zoomMotionBlurSamples": "Blur Samples",
-		"zoomMotionBlurShutter": "Shutter",
 		"auto": "Auto",
 		"connectZooms": "Zooms verbinden",
 		"connectZoomsDescription": "Maak opeenvolgende zoomgebieden vloeiend tot een doorlopende camerabeweging.",
@@ -254,5 +252,11 @@
 		"micLabel": "Microfoon",
 		"mixedLabel": "Bron",
 		"deleteRegion": "Audio verwijderen"
+	},
+	"updates": {
+		"experimentalDescription": "Je hebt experimentele updates ingeschakeld, dus je kunt de nieuwste update van Recordly testen voordat die breed beschikbaar is.",
+		"title": "Updates",
+		"experimental": "Experimentele updates",
+		"saveFailed": "Kan het updatekanaal niet wijzigen."
 	}
 }

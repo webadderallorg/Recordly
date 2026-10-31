@@ -1,6 +1,9 @@
 import { BrowserWindow } from "electron";
+import { registerAnnouncementHandlers } from "./register/announcements";
+import { registerCapturePickerHandlers } from "./register/capturePicker";
 import { registerAssetHandlers } from "./register/assets";
 import { registerCaptionHandlers } from "./register/captions";
+import { registerCloudShareHandlers } from "./register/cloudShare";
 import { registerExportHandlers } from "./register/export";
 import { registerPermissionHandlers } from "./register/permissions";
 import { registerProjectHandlers } from "./register/project";
@@ -57,16 +60,19 @@ export function registerIpcHandlers(
 	getSourceSelectorWindow: () => BrowserWindow | null,
 	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
 ) {
-	registerSourceHandlers({
+	const { pickSourceList } = registerSourceHandlers({
 		createEditorWindow,
 		createSourceSelectorWindow,
 		getSourceSelectorWindow,
 	});
+	registerCapturePickerHandlers({ pickSourceList });
 	registerRecordingHandlers(onRecordingStateChange);
 	registerPermissionHandlers();
+	registerAnnouncementHandlers();
 	registerAssetHandlers();
 	registerExportHandlers();
 	registerCaptionHandlers();
+	registerCloudShareHandlers();
 	registerProjectHandlers();
 	registerSettingsHandlers();
 }

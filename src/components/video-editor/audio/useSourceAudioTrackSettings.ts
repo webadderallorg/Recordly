@@ -5,110 +5,115 @@ import type {
 } from "@/components/video-editor/audio/audioTypes";
 
 interface UseSourceAudioTrackSettingsParams {
-  selectedClipId: string | null;
-  activeClipId: string | null;
-  sourceAudioTrackSettingsByClip: Record<string, SourceAudioTrackSettings>;
-  setSourceAudioTrackSettingsByClip: React.Dispatch<
-    React.SetStateAction<Record<string, SourceAudioTrackSettings>>
-  >;
-  defaultSourceAudioTrackSettings: SourceAudioTrackSettings;
-  setDefaultSourceAudioTrackSettings: React.Dispatch<React.SetStateAction<SourceAudioTrackSettings>>;
+	selectedClipId: string | null;
+	activeClipId: string | null;
+	sourceAudioTrackSettingsByClip: Record<string, SourceAudioTrackSettings>;
+	setSourceAudioTrackSettingsByClip: React.Dispatch<
+		React.SetStateAction<Record<string, SourceAudioTrackSettings>>
+	>;
+	defaultSourceAudioTrackSettings: SourceAudioTrackSettings;
+	setDefaultSourceAudioTrackSettings: React.Dispatch<
+		React.SetStateAction<SourceAudioTrackSettings>
+	>;
 }
 
 export interface UseSourceAudioTrackSettingsResult {
-  sourceAudioTrackMeta: SourceAudioTrackMeta;
-  activeSourceAudioTrackSettings: SourceAudioTrackSettings;
-  selectedClipSourceAudioTrackSettings: SourceAudioTrackSettings;
-  getSourceAudioTrackSettingsForClip: (clipId: string | null) => SourceAudioTrackSettings;
-  onSourceAudioTracksMetaChange: (tracks: SourceAudioTrackMeta) => void;
-  onSelectedClipSourceAudioTrackVolumeChange: (id: string, volume: number) => void;
-  onSelectedClipSourceAudioTrackNormalizeChange: (id: string, normalize: boolean) => void;
+	sourceAudioTrackMeta: SourceAudioTrackMeta;
+	activeSourceAudioTrackSettings: SourceAudioTrackSettings;
+	selectedClipSourceAudioTrackSettings: SourceAudioTrackSettings;
+	getSourceAudioTrackSettingsForClip: (clipId: string | null) => SourceAudioTrackSettings;
+	onSourceAudioTracksMetaChange: (tracks: SourceAudioTrackMeta) => void;
+	onSelectedClipSourceAudioTrackVolumeChange: (id: string, volume: number) => void;
+	onSelectedClipSourceAudioTrackNormalizeChange: (id: string, normalize: boolean) => void;
 }
 
 function isSameTrackMeta(left: SourceAudioTrackMeta, right: SourceAudioTrackMeta): boolean {
-  if (left.length !== right.length) return false;
-  for (let index = 0; index < left.length; index += 1) {
-    const leftTrack = left[index];
-    const rightTrack = right[index];
-    if (!leftTrack || !rightTrack) return false;
-    if (leftTrack.id !== rightTrack.id || leftTrack.label !== rightTrack.label) {
-      return false;
-    }
-  }
-  return true;
+	if (left.length !== right.length) return false;
+	for (let index = 0; index < left.length; index += 1) {
+		const leftTrack = left[index];
+		const rightTrack = right[index];
+		if (!leftTrack || !rightTrack) return false;
+		if (leftTrack.id !== rightTrack.id || leftTrack.label !== rightTrack.label) {
+			return false;
+		}
+	}
+	return true;
 }
 
 export function useSourceAudioTrackSettings({
-  selectedClipId,
-  activeClipId,
-  sourceAudioTrackSettingsByClip,
-  setSourceAudioTrackSettingsByClip,
-  defaultSourceAudioTrackSettings,
-  setDefaultSourceAudioTrackSettings,
+	selectedClipId,
+	activeClipId,
+	sourceAudioTrackSettingsByClip,
+	setSourceAudioTrackSettingsByClip,
+	defaultSourceAudioTrackSettings,
+	setDefaultSourceAudioTrackSettings,
 }: UseSourceAudioTrackSettingsParams): UseSourceAudioTrackSettingsResult {
-  const [sourceAudioTrackMeta, setSourceAudioTrackMeta] = useState<SourceAudioTrackMeta>([]);
+	const [sourceAudioTrackMeta, setSourceAudioTrackMeta] = useState<SourceAudioTrackMeta>([]);
 
-  const activeSourceAudioTrackSettings = useMemo(() => {
-    if (!activeClipId) {
-      return defaultSourceAudioTrackSettings;
-    }
-    return {
-      ...defaultSourceAudioTrackSettings,
-      ...(sourceAudioTrackSettingsByClip[activeClipId] ?? {}),
-    };
-  }, [activeClipId, defaultSourceAudioTrackSettings, sourceAudioTrackSettingsByClip]);
+	const activeSourceAudioTrackSettings = useMemo(() => {
+		if (!activeClipId) {
+			return defaultSourceAudioTrackSettings;
+		}
+		return {
+			...defaultSourceAudioTrackSettings,
+			...(sourceAudioTrackSettingsByClip[activeClipId] ?? {}),
+		};
+	}, [activeClipId, defaultSourceAudioTrackSettings, sourceAudioTrackSettingsByClip]);
 
-  const selectedClipSourceAudioTrackSettings = useMemo(() => {
-    if (!selectedClipId) {
-      return defaultSourceAudioTrackSettings;
-    }
-    return {
-      ...defaultSourceAudioTrackSettings,
-      ...(sourceAudioTrackSettingsByClip[selectedClipId] ?? {}),
-    };
-  }, [defaultSourceAudioTrackSettings, selectedClipId, sourceAudioTrackSettingsByClip]);
+	const selectedClipSourceAudioTrackSettings = useMemo(() => {
+		if (!selectedClipId) {
+			return defaultSourceAudioTrackSettings;
+		}
+		return {
+			...defaultSourceAudioTrackSettings,
+			...(sourceAudioTrackSettingsByClip[selectedClipId] ?? {}),
+		};
+	}, [defaultSourceAudioTrackSettings, selectedClipId, sourceAudioTrackSettingsByClip]);
 
-  const onSourceAudioTracksMetaChange = useCallback((tracks: SourceAudioTrackMeta) => {
-    setSourceAudioTrackMeta((prev) => (isSameTrackMeta(prev, tracks) ? prev : tracks));
-    setDefaultSourceAudioTrackSettings((prev) => {
-      const next: SourceAudioTrackSettings = {};
-      for (const track of tracks) {
-        next[track.id] = prev[track.id] ?? { volume: 1, normalize: false };
-      }
-      const prevKeys = Object.keys(prev);
-      const nextKeys = Object.keys(next);
-      if (prevKeys.length !== nextKeys.length) {
-        return next;
-      }
-      for (const key of nextKeys) {
-        const prevSetting = prev[key];
-        const nextSetting = next[key];
-        if (!prevSetting || !nextSetting) {
-          return next;
-        }
-        if (
-          prevSetting.volume !== nextSetting.volume ||
-          prevSetting.normalize !== nextSetting.normalize
-        ) {
-          return next;
-        }
-      }
-      return prev;
-    });
-  }, []);
+	const onSourceAudioTracksMetaChange = useCallback(
+		(tracks: SourceAudioTrackMeta) => {
+			setSourceAudioTrackMeta((prev) => (isSameTrackMeta(prev, tracks) ? prev : tracks));
+			setDefaultSourceAudioTrackSettings((prev) => {
+				const next: SourceAudioTrackSettings = {};
+				for (const track of tracks) {
+					next[track.id] = prev[track.id] ?? { volume: 1, normalize: false };
+				}
+				const prevKeys = Object.keys(prev);
+				const nextKeys = Object.keys(next);
+				if (prevKeys.length !== nextKeys.length) {
+					return next;
+				}
+				for (const key of nextKeys) {
+					const prevSetting = prev[key];
+					const nextSetting = next[key];
+					if (!prevSetting || !nextSetting) {
+						return next;
+					}
+					if (
+						prevSetting.volume !== nextSetting.volume ||
+						prevSetting.normalize !== nextSetting.normalize
+					) {
+						return next;
+					}
+				}
+				return prev;
+			});
+		},
+		[setDefaultSourceAudioTrackSettings],
+	);
 
-  const getSourceAudioTrackSettingsForClip = useCallback(
-    (clipId: string | null): SourceAudioTrackSettings => {
-      if (!clipId) {
-        return defaultSourceAudioTrackSettings;
-      }
-      return {
-        ...defaultSourceAudioTrackSettings,
-        ...(sourceAudioTrackSettingsByClip[clipId] ?? {}),
-      };
-    },
-    [defaultSourceAudioTrackSettings, sourceAudioTrackSettingsByClip],
-  );
+	const getSourceAudioTrackSettingsForClip = useCallback(
+		(clipId: string | null): SourceAudioTrackSettings => {
+			if (!clipId) {
+				return defaultSourceAudioTrackSettings;
+			}
+			return {
+				...defaultSourceAudioTrackSettings,
+				...(sourceAudioTrackSettingsByClip[clipId] ?? {}),
+			};
+		},
+		[defaultSourceAudioTrackSettings, sourceAudioTrackSettingsByClip],
+	);
 
 	const onSelectedClipSourceAudioTrackVolumeChange = useCallback(
 		(id: string, volume: number) => {
@@ -137,7 +142,7 @@ export function useSourceAudioTrackSettings({
 				};
 			});
 		},
-		[defaultSourceAudioTrackSettings, selectedClipId],
+		[defaultSourceAudioTrackSettings, selectedClipId, setSourceAudioTrackSettingsByClip],
 	);
 
 	const onSelectedClipSourceAudioTrackNormalizeChange = useCallback(
@@ -161,16 +166,16 @@ export function useSourceAudioTrackSettings({
 				};
 			});
 		},
-		[defaultSourceAudioTrackSettings, selectedClipId],
+		[defaultSourceAudioTrackSettings, selectedClipId, setSourceAudioTrackSettingsByClip],
 	);
 
-  return {
-    sourceAudioTrackMeta,
-    activeSourceAudioTrackSettings,
-    selectedClipSourceAudioTrackSettings,
-    getSourceAudioTrackSettingsForClip,
-    onSourceAudioTracksMetaChange,
-    onSelectedClipSourceAudioTrackVolumeChange,
-    onSelectedClipSourceAudioTrackNormalizeChange,
-  };
+	return {
+		sourceAudioTrackMeta,
+		activeSourceAudioTrackSettings,
+		selectedClipSourceAudioTrackSettings,
+		getSourceAudioTrackSettingsForClip,
+		onSourceAudioTracksMetaChange,
+		onSelectedClipSourceAudioTrackVolumeChange,
+		onSelectedClipSourceAudioTrackNormalizeChange,
+	};
 }

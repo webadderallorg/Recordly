@@ -1,12 +1,36 @@
 import { describe, expect, it } from "vitest";
 import {
+	convertLegacyWebcamRadiusToRoundness,
 	getCropMatchedWebcamHeightPercent,
+	getWebcamCornerRadiusPx,
 	getWebcamCropSourceRect,
 	getWebcamOverlayDimensionsPx,
 	getWebcamOverlayPosition,
 	isWebcamCropRegionDefault,
 	normalizeWebcamCropRegion,
+	scaleWebcamOverlayPixels,
 } from "./webcamOverlay";
+
+describe("webcam roundness", () => {
+	it("uses a stronger response curve while preserving the endpoints", () => {
+		expect(getWebcamCornerRadiusPx(0, 640, 360)).toBe(0);
+		expect(getWebcamCornerRadiusPx(25, 640, 360)).toBe(90);
+		expect(getWebcamCornerRadiusPx(50, 640, 360)).toBeCloseTo(127.28, 1);
+		expect(getWebcamCornerRadiusPx(100, 640, 360)).toBe(180);
+	});
+
+	it("converts legacy reference pixels without changing the approximate shape", () => {
+		expect(convertLegacyWebcamRadiusToRoundness(90, 40, 40)).toBeCloseTo(17.36, 1);
+	});
+});
+
+describe("scaleWebcamOverlayPixels", () => {
+	it("keeps webcam pixel controls proportional between preview and export", () => {
+		expect(scaleWebcamOverlayPixels(24, 960)).toBe(12);
+		expect(scaleWebcamOverlayPixels(24, 1920)).toBe(24);
+		expect(scaleWebcamOverlayPixels(24, 3840)).toBe(48);
+	});
+});
 
 describe("normalizeWebcamCropRegion", () => {
 	it("defaults to the full webcam frame", () => {

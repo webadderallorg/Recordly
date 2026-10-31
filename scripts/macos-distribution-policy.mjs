@@ -1,5 +1,9 @@
 const TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/;
 
+const MACH_O_MAGIC_NUMBERS = new Set([
+	0xfeedface, 0xfeedfacf, 0xcefaedfe, 0xcffaedfe, 0xcafebabe, 0xcafebabf, 0xbebafeca, 0xbfbafeca,
+]);
+
 export const REQUIRED_MACOS_ENTITLEMENTS = Object.freeze([
 	"com.apple.security.cs.allow-jit",
 	"com.apple.security.cs.allow-unsigned-executable-memory",
@@ -23,6 +27,15 @@ export function assertValidAppleTeamId(teamId) {
 	if (!TEAM_ID_PATTERN.test(teamId)) {
 		throw new Error("APPLE_TEAM_ID must be exactly 10 uppercase letters or digits");
 	}
+}
+
+export function hasMachOMagic(header) {
+	if (!(header instanceof Uint8Array) || header.byteLength < 4) {
+		return false;
+	}
+
+	const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
+	return MACH_O_MAGIC_NUMBERS.has(view.getUint32(0, false));
 }
 
 export function collectCodeSigningMetadataErrors(details, expectedTeamId) {

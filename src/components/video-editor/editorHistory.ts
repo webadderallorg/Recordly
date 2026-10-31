@@ -44,9 +44,7 @@ export function resetEditorHistoryStack(stack: EditorHistoryStack): void {
 	stack.future = [];
 }
 
-export function cloneEditorHistorySnapshot(
-	snapshot: EditorHistorySnapshot,
-): EditorHistorySnapshot {
+export function cloneEditorHistorySnapshot(snapshot: EditorHistorySnapshot): EditorHistorySnapshot {
 	return globalThis.structuredClone(snapshot);
 }
 

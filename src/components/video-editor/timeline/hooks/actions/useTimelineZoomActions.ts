@@ -113,7 +113,9 @@ export function useTimelineZoomActions({
 		}
 
 		if (disableSuggestedZooms) {
-			timelineNotifications.info("Suggested zooms are unavailable while cursor looping is enabled.");
+			timelineNotifications.info(
+				"Suggested zooms are unavailable while cursor looping is enabled.",
+			);
 			return;
 		}
 

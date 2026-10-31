@@ -32,6 +32,7 @@ const GIF_WORKER_URL = new URL("gif.js/dist/gif.worker.js", import.meta.url).toS
 const PROGRESS_SAMPLE_WINDOW_MS = 1_000;
 
 interface GifExporterConfig {
+	clipRegions?: import("@/components/video-editor/types").ClipRegion[];
 	videoUrl: string;
 	width: number;
 	height: number;
@@ -48,9 +49,6 @@ interface GifExporterConfig {
 	backgroundBlur: number;
 	zoomMotionBlur?: number;
 	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
-	zoomTemporalMotionBlur?: number;
-	zoomMotionBlurSampleCount?: number | null;
-	zoomMotionBlurShutterFraction?: number | null;
 	connectZooms?: boolean;
 	zoomInDurationMs?: number;
 	zoomInOverlapMs?: number;
@@ -91,7 +89,6 @@ interface GifExporterConfig {
 	cursorClickBounce?: number;
 	cursorClickBounceDuration?: number;
 	cursorSway?: number;
-	frame?: string | null;
 	previewWidth?: number;
 	previewHeight?: number;
 	maxDecodeQueue?: number;
@@ -143,6 +140,7 @@ export function buildGifFrameRendererConfig(
 ) {
 	return {
 		width: config.width,
+		timelineEffects: config.clipRegions !== undefined,
 		height: config.height,
 		wallpaper: config.wallpaper,
 		zoomRegions: config.zoomRegions,
@@ -151,9 +149,6 @@ export function buildGifFrameRendererConfig(
 		backgroundBlur: config.backgroundBlur,
 		zoomMotionBlur: config.zoomMotionBlur,
 		zoomMotionBlurTuning: config.zoomMotionBlurTuning,
-		zoomTemporalMotionBlur: config.zoomTemporalMotionBlur,
-		zoomMotionBlurSampleCount: config.zoomMotionBlurSampleCount,
-		zoomMotionBlurShutterFraction: config.zoomMotionBlurShutterFraction,
 		connectZooms: config.connectZooms,
 		zoomInDurationMs: config.zoomInDurationMs,
 		zoomInOverlapMs: config.zoomInOverlapMs,
@@ -198,7 +193,6 @@ export function buildGifFrameRendererConfig(
 		cursorClickBounce: config.cursorClickBounce,
 		cursorClickBounceDuration: config.cursorClickBounceDuration,
 		cursorSway: config.cursorSway,
-		frame: config.frame,
 	};
 }
 
@@ -264,6 +258,7 @@ export class GifExporter {
 			const effectiveDuration = this.streamingDecoder.getEffectiveDuration(
 				this.config.trimRegions,
 				this.config.speedRegions,
+				this.config.clipRegions,
 			);
 			const totalFrames = Math.ceil(effectiveDuration * this.config.frameRate);
 
@@ -305,6 +300,7 @@ export class GifExporter {
 					frameIndex++;
 					this.reportProgress(frameIndex, totalFrames);
 				},
+				this.config.clipRegions,
 			);
 
 			if (this.cancelled) {

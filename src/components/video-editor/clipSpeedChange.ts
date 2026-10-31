@@ -90,9 +90,7 @@ export function planClipSpeedChange(params: {
 
 	return {
 		clipRegions: clipRegions.map((candidate) =>
-			candidate.id === selectedClipId
-				? { ...candidate, speed, endMs: newEndMs }
-				: candidate,
+			candidate.id === selectedClipId ? { ...candidate, speed, endMs: newEndMs } : candidate,
 		),
 		zoomRegions: nextZoomRegions,
 	};

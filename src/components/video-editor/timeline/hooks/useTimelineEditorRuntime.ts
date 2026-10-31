@@ -12,7 +12,7 @@ import type {
 	ZoomFocus,
 	ZoomRegion,
 } from "../../types";
-import type { TimelineShortcutBindings } from "../core/timelineTypes";
+import type { ClipSequenceSpan, TimelineShortcutBindings } from "../core/timelineTypes";
 import type { TimelineEditorHandle } from "../TimelineEditor";
 import { useTimelineAudioActions } from "./actions/useTimelineAudioActions";
 import { useTimelineCaptionActions } from "./actions/useTimelineCaptionActions";
@@ -43,7 +43,7 @@ interface UseTimelineEditorRuntimeParams {
 	onTrimSpanChange?: (id: string, span: Span) => void;
 	clipRegions: ClipRegion[];
 	onClipSplit?: (splitMs: number) => void;
-	onClipSpanChange?: (id: string, span: Span) => void;
+	onClipSpanChange?: (id: string, span: ClipSequenceSpan) => void;
 	onClipDelete?: (id: string) => void;
 	selectedClipId?: string | null;
 	onSelectClip?: (id: string | null) => void;
@@ -69,7 +69,7 @@ interface UseTimelineEditorRuntimeParams {
 	onSelectCaption?: (id: string | null) => void;
 	isMac: boolean;
 	keyShortcuts: TimelineShortcutBindings;
-	isTimelineFocusedRef: RefObject<boolean>;
+	isTimelineFocusedRef: RefObject<boolean | null>;
 }
 
 export function useTimelineEditorRuntime({

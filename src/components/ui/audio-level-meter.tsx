@@ -1,37 +1,18 @@
-interface AudioLevelMeterProps {
-	level: number;
-	className?: string;
-}
-
-const bars = [
-	{ threshold: 10, height: "30%" },
-	{ threshold: 25, height: "45%" },
-	{ threshold: 45, height: "60%" },
-	{ threshold: 65, height: "75%" },
-	{ threshold: 85, height: "90%" },
-];
-
-function getBarColor(level: number, threshold: number) {
-	if (!level || level < threshold) return "bg-slate-700";
-	if (threshold > 80) return "bg-red-500";
-	if (threshold > 60) return "bg-yellow-500";
-	if (threshold > 40) return "bg-blue-500";
-	return "bg-blue-400";
-}
-
-export function AudioLevelMeter({ level, className = "" }: AudioLevelMeterProps) {
+import { Meter } from "@heroui/react";
+export function AudioLevelMeter({ level, className }: { level: number; className?: string }) {
 	return (
-		<div className={`flex items-end justify-between gap-1.5 h-6 ${className}`}>
-			{bars.map((bar, index) => (
-				<div
-					key={index}
-					className={`flex-1 rounded-sm transition-all duration-100 ease-out ${getBarColor(level, bar.threshold)}`}
-					style={{
-						height: level >= bar.threshold ? bar.height : "15%",
-						opacity: level >= bar.threshold ? 1 : 0.4,
-					}}
-				/>
-			))}
-		</div>
+		<Meter
+			aria-label="Microphone level"
+			value={Math.min(100, Math.max(0, level))}
+			minValue={0}
+			maxValue={100}
+			size="sm"
+			color={level > 85 ? "danger" : level > 65 ? "warning" : "accent"}
+			className={className}
+		>
+			<Meter.Track>
+				<Meter.Fill />
+			</Meter.Track>
+		</Meter>
 	);
 }

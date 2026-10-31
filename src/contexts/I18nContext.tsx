@@ -17,7 +17,6 @@ import {
 import enCommon from "@/i18n/locales/en/common.json";
 import enDialogs from "@/i18n/locales/en/dialogs.json";
 import enEditor from "@/i18n/locales/en/editor.json";
-import enExtensions from "@/i18n/locales/en/extensions.json";
 import enLaunch from "@/i18n/locales/en/launch.json";
 import enSettings from "@/i18n/locales/en/settings.json";
 import enShortcuts from "@/i18n/locales/en/shortcuts.json";
@@ -25,7 +24,6 @@ import enTimeline from "@/i18n/locales/en/timeline.json";
 import esCommon from "@/i18n/locales/es/common.json";
 import esDialogs from "@/i18n/locales/es/dialogs.json";
 import esEditor from "@/i18n/locales/es/editor.json";
-import esExtensions from "@/i18n/locales/es/extensions.json";
 import esLaunch from "@/i18n/locales/es/launch.json";
 import esSettings from "@/i18n/locales/es/settings.json";
 import esShortcuts from "@/i18n/locales/es/shortcuts.json";
@@ -33,7 +31,6 @@ import esTimeline from "@/i18n/locales/es/timeline.json";
 import frCommon from "@/i18n/locales/fr/common.json";
 import frDialogs from "@/i18n/locales/fr/dialogs.json";
 import frEditor from "@/i18n/locales/fr/editor.json";
-import frExtensions from "@/i18n/locales/fr/extensions.json";
 import frLaunch from "@/i18n/locales/fr/launch.json";
 import frSettings from "@/i18n/locales/fr/settings.json";
 import frShortcuts from "@/i18n/locales/fr/shortcuts.json";
@@ -41,7 +38,6 @@ import frTimeline from "@/i18n/locales/fr/timeline.json";
 import deCommon from "@/i18n/locales/de/common.json";
 import deDialogs from "@/i18n/locales/de/dialogs.json";
 import deEditor from "@/i18n/locales/de/editor.json";
-import deExtensions from "@/i18n/locales/de/extensions.json";
 import deLaunch from "@/i18n/locales/de/launch.json";
 import deSettings from "@/i18n/locales/de/settings.json";
 import deShortcuts from "@/i18n/locales/de/shortcuts.json";
@@ -49,7 +45,6 @@ import deTimeline from "@/i18n/locales/de/timeline.json";
 import itCommon from "@/i18n/locales/it/common.json";
 import itDialogs from "@/i18n/locales/it/dialogs.json";
 import itEditor from "@/i18n/locales/it/editor.json";
-import itExtensions from "@/i18n/locales/it/extensions.json";
 import itLaunch from "@/i18n/locales/it/launch.json";
 import itSettings from "@/i18n/locales/it/settings.json";
 import itShortcuts from "@/i18n/locales/it/shortcuts.json";
@@ -57,7 +52,6 @@ import itTimeline from "@/i18n/locales/it/timeline.json";
 import koCommon from "@/i18n/locales/ko/common.json";
 import koDialogs from "@/i18n/locales/ko/dialogs.json";
 import koEditor from "@/i18n/locales/ko/editor.json";
-import koExtensions from "@/i18n/locales/ko/extensions.json";
 import koLaunch from "@/i18n/locales/ko/launch.json";
 import koSettings from "@/i18n/locales/ko/settings.json";
 import koShortcuts from "@/i18n/locales/ko/shortcuts.json";
@@ -65,7 +59,6 @@ import koTimeline from "@/i18n/locales/ko/timeline.json";
 import nlCommon from "@/i18n/locales/nl/common.json";
 import nlDialogs from "@/i18n/locales/nl/dialogs.json";
 import nlEditor from "@/i18n/locales/nl/editor.json";
-import nlExtensions from "@/i18n/locales/nl/extensions.json";
 import nlLaunch from "@/i18n/locales/nl/launch.json";
 import nlSettings from "@/i18n/locales/nl/settings.json";
 import nlShortcuts from "@/i18n/locales/nl/shortcuts.json";
@@ -73,7 +66,6 @@ import nlTimeline from "@/i18n/locales/nl/timeline.json";
 import ptBRCommon from "@/i18n/locales/pt-BR/common.json";
 import ptBRDialogs from "@/i18n/locales/pt-BR/dialogs.json";
 import ptBREditor from "@/i18n/locales/pt-BR/editor.json";
-import ptBRExtensions from "@/i18n/locales/pt-BR/extensions.json";
 import ptBRLaunch from "@/i18n/locales/pt-BR/launch.json";
 import ptBRSettings from "@/i18n/locales/pt-BR/settings.json";
 import ptBRShortcuts from "@/i18n/locales/pt-BR/shortcuts.json";
@@ -81,7 +73,6 @@ import ptBRTimeline from "@/i18n/locales/pt-BR/timeline.json";
 import zhCNCommon from "@/i18n/locales/zh-CN/common.json";
 import zhCNDialogs from "@/i18n/locales/zh-CN/dialogs.json";
 import zhCNEditor from "@/i18n/locales/zh-CN/editor.json";
-import zhCNExtensions from "@/i18n/locales/zh-CN/extensions.json";
 import zhCNLaunch from "@/i18n/locales/zh-CN/launch.json";
 import zhCNSettings from "@/i18n/locales/zh-CN/settings.json";
 import zhCNShortcuts from "@/i18n/locales/zh-CN/shortcuts.json";
@@ -89,7 +80,6 @@ import zhCNTimeline from "@/i18n/locales/zh-CN/timeline.json";
 import zhTWCommon from "@/i18n/locales/zh-TW/common.json";
 import zhTWDialogs from "@/i18n/locales/zh-TW/dialogs.json";
 import zhTWEditor from "@/i18n/locales/zh-TW/editor.json";
-import zhTWExtensions from "@/i18n/locales/zh-TW/extensions.json";
 import zhTWLaunch from "@/i18n/locales/zh-TW/launch.json";
 import zhTWSettings from "@/i18n/locales/zh-TW/settings.json";
 import zhTWShortcuts from "@/i18n/locales/zh-TW/shortcuts.json";
@@ -108,7 +98,6 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		settings: enSettings,
 		dialogs: enDialogs,
 		shortcuts: enShortcuts,
-		extensions: enExtensions,
 	},
 	es: {
 		common: esCommon,
@@ -118,7 +107,6 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		settings: esSettings,
 		dialogs: esDialogs,
 		shortcuts: esShortcuts,
-		extensions: esExtensions,
 	},
 	fr: {
 		common: frCommon,
@@ -128,7 +116,6 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		settings: frSettings,
 		dialogs: frDialogs,
 		shortcuts: frShortcuts,
-		extensions: frExtensions,
 	},
 	de: {
 		common: deCommon,
@@ -138,7 +125,6 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		settings: deSettings,
 		dialogs: deDialogs,
 		shortcuts: deShortcuts,
-		extensions: deExtensions,
 	},
 	it: {
 		common: itCommon,
@@ -148,7 +134,6 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		settings: itSettings,
 		dialogs: itDialogs,
 		shortcuts: itShortcuts,
-		extensions: itExtensions,
 	},
 	nl: {
 		common: nlCommon,
@@ -158,7 +143,6 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		settings: nlSettings,
 		dialogs: nlDialogs,
 		shortcuts: nlShortcuts,
-		extensions: nlExtensions,
 	},
 	ko: {
 		common: koCommon,
@@ -168,7 +152,6 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		settings: koSettings,
 		dialogs: koDialogs,
 		shortcuts: koShortcuts,
-		extensions: koExtensions,
 	},
 	"pt-BR": {
 		common: ptBRCommon,
@@ -178,7 +161,6 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		settings: ptBRSettings,
 		dialogs: ptBRDialogs,
 		shortcuts: ptBRShortcuts,
-		extensions: ptBRExtensions,
 	},
 	"zh-CN": {
 		common: zhCNCommon,
@@ -188,7 +170,6 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		settings: zhCNSettings,
 		dialogs: zhCNDialogs,
 		shortcuts: zhCNShortcuts,
-		extensions: zhCNExtensions,
 	},
 	"zh-TW": {
 		common: zhTWCommon,
@@ -198,7 +179,6 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		settings: zhTWSettings,
 		dialogs: zhTWDialogs,
 		shortcuts: zhTWShortcuts,
-		extensions: zhTWExtensions,
 	},
 } as const;
 

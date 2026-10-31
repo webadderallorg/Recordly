@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveExportStartSettings } from "./exportStartSettings";
+import { resolveExportStartSettings, resolveShareExportSettings } from "./exportStartSettings";
 
 const baseOptions = {
 	sourceWidth: 1920,
@@ -76,5 +76,26 @@ describe("resolveExportStartSettings", () => {
 			width: 1234,
 			height: 678,
 		});
+	});
+});
+
+it("locks sharing to fast 30 fps source quality without changing Local settings", () => {
+	const local = resolveExportStartSettings({
+		...baseOptions,
+		mp4FrameRate: 60,
+		exportEncodingMode: "quality",
+	});
+	expect(resolveShareExportSettings(local)).toMatchObject({
+		format: "mp4",
+		quality: "source",
+		encodingMode: "fast",
+		mp4FrameRate: 30,
+		includeCaptionSidecar: false,
+	});
+	expect(local).toMatchObject({
+		encodingMode: "quality",
+		mp4FrameRate: 60,
+		quality: "good",
+		includeCaptionSidecar: true,
 	});
 });

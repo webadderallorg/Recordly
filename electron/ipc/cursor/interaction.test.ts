@@ -11,14 +11,30 @@ vi.mock("electron", () => ({
 	},
 }));
 
-import { repairBundledUiohookBinaryForCurrentArch } from "./interaction";
+import {
+	repairBundledUiohookBinaryForCurrentArch,
+	shouldStartGlobalInteractionHook,
+} from "./interaction";
+
+describe("shouldStartGlobalInteractionHook", () => {
+	it("does not start the synchronous uiohook event tap on macOS", () => {
+		expect(shouldStartGlobalInteractionHook("darwin")).toBe(false);
+	});
+
+	it("keeps global interaction capture enabled on Windows and Linux", () => {
+		expect(shouldStartGlobalInteractionHook("win32")).toBe(true);
+		expect(shouldStartGlobalInteractionHook("linux")).toBe(true);
+	});
+});
 
 describe("repairBundledUiohookBinaryForCurrentArch", () => {
 	const tempRoots: string[] = [];
 
 	afterEach(async () => {
 		await Promise.all(
-			tempRoots.splice(0).map((tempRoot) => fs.rm(tempRoot, { recursive: true, force: true })),
+			tempRoots
+				.splice(0)
+				.map((tempRoot) => fs.rm(tempRoot, { recursive: true, force: true })),
 		);
 	});
 
@@ -36,9 +52,14 @@ describe("repairBundledUiohookBinaryForCurrentArch", () => {
 
 		const log = vi.fn();
 		const repaired = repairBundledUiohookBinaryForCurrentArch(
-			Object.assign(new Error("mach-o file, but is an incompatible architecture (have 'x86_64', need 'arm64')"), {
-				code: "ERR_DLOPEN_FAILED",
-			}),
+			Object.assign(
+				new Error(
+					"mach-o file, but is an incompatible architecture (have 'x86_64', need 'arm64')",
+				),
+				{
+					code: "ERR_DLOPEN_FAILED",
+				},
+			),
 			{ packageRoot, platform: "darwin", arch: "arm64", log },
 		);
 

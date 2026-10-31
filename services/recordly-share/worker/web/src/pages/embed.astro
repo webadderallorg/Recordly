@@ -1,0 +1,24 @@
+---
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+    video { width: 100%; height: 100%; object-fit: contain; }
+  </style>
+</head>
+<body>
+  <video id="player" controls autoplay playsinline></video>
+  <script>
+    const path = window.location.pathname;
+    const code = path.split('/').pop() || '';
+    const vid = document.getElementById('player') as HTMLVideoElement;
+    vid.poster = `/og/${code}`;
+    vid.src = `/v/${code}`;
+  </script>
+</body>
+</html>

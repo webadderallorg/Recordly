@@ -1,10 +1,57 @@
 {
+	"cloud": {
+		"signInRequired": "创建共享链接前，请先登录 Recordly。",
+		"prepareFailed": "无法准备当前剪辑以供分享。",
+		"uploadFailed": "云端上传失败。",
+		"linkCreated": "共享链接已创建",
+		"linkCopied": "链接已复制",
+		"copyFailed": "无法复制链接，请选中后手动复制。",
+		"copied": "已复制",
+		"copy": "复制",
+		"preparing": "正在准备当前剪辑…",
+		"createLink": "创建链接",
+		"heading": "分享到云端",
+		"ready": "视频已准备好，可以分享了。",
+		"openPage": "打开分享页面",
+		"notes": "备注",
+		"publish": "发布并创建链接",
+		"createLinkTitle": "创建可分享的链接",
+		"notesPlaceholder": "为观看者添加背景信息、说明或简短摘要…",
+		"description": "将当前剪辑发布到 Recordly 观看和反馈页面，无需下载。分享的视频最高为 1080p。",
+		"uploading": "正在上传… {progress}%",
+		"googleUnavailable": "尚未启用 Google 登录。请使用邮箱，或请 Recordly 管理员连接 Google。",
+		"xUnavailable": "尚未启用 X 登录。请使用邮箱，或请 Recordly 管理员连接 X。",
+		"providerUnavailable": "尚未启用此登录方式，请先使用邮箱。",
+		"enterEmail": "请先输入邮箱地址。",
+		"resetSent": "密码重置邮件已发送。",
+		"accountHeading": "你的 Recordly 账户",
+		"signInHeading": "登录 Recordly",
+		"signInShareDescription": "登录后即可发布此视频并管理共享链接。",
+		"signInDescription": "访问你的录制内容和共享链接。",
+		"signingOut": "正在退出…",
+		"signOut": "退出登录",
+		"signingIn": "正在登录…",
+		"signIn": "登录",
+		"or": "或",
+		"email": "邮箱",
+		"password": "密码",
+		"forgotPassword": "忘记密码？",
+		"unavailable": "此版本尚不支持云端登录，你仍然可以将视频保存到电脑。",
+		"createShareLink": "创建共享链接",
+		"done": "完成",
+		"addingVideo": "正在添加视频…",
+		"preparingFootage": "正在为时间轴准备视频和音频。"
+	},
+	"library": {
+		"videos": "视频"
+	},
 	"playback": {
 		"play": "播放",
 		"pause": "暂停",
 		"skipBack": "后退",
 		"skipForward": "前进",
-		"muteUnmute": "静音/取消静音"
+		"muteUnmute": "静音/取消静音",
+		"volume": "预览音量"
 	},
 	"annotations": {
 		"settings": "注释设置",
@@ -111,8 +158,18 @@
 		"showInFolder": "在文件夹中显示"
 	},
 	"project": {
-		"untitled": "未命名"
+		"untitled": "未命名",
+		"unsavedChangesTitle": "未保存的更改",
+		"unsavedChangesDescription": "在{{action}}之前保存当前项目吗？",
+		"discardChanges": "放弃更改",
+		"saveProject": "保存项目"
 	},
+	"exportTips": {
+		"autoZooms": "提示：可在设置中关闭自动应用的缩放",
+		"experimentalBuilds": "提示：可在设置中开启实验版本访问权限",
+		"cursorAppearance": "提示：你可以自定义光标外观"
+	},
+	"account": { "title": "账户", "comingSoon": "账户功能即将推出" },
 	"nativeCaptureUnavailable": {
 		"title": "没有出错，但我们无法渲染动画光标叠加层。",
 		"description": "你的设备不支持原生捕获。这可能是由我们尚未确定的多种原因造成的。Recordly 仍可继续运行，但无法进行光标平滑处理。",

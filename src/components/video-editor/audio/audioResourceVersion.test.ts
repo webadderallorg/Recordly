@@ -36,13 +36,10 @@ describe("getAudioResourceVersionKey", () => {
 	});
 
 	it("cache-busts only the trusted loopback media URL after finalization", () => {
-		const localUrl =
-			"http://127.0.0.1:43123/video?path=C%3A%5CRecordly%5Crecording.mic.wav";
+		const localUrl = "http://127.0.0.1:43123/video?path=C%3A%5CRecordly%5Crecording.mic.wav";
 		const versionedUrl = new URL(getVersionedAudioResourceUrl(localUrl, 2));
 
-		expect(versionedUrl.searchParams.get("path")).toBe(
-			"C:\\Recordly\\recording.mic.wav",
-		);
+		expect(versionedUrl.searchParams.get("path")).toBe("C:\\Recordly\\recording.mic.wav");
 		expect(versionedUrl.searchParams.get("recordlyAudioVersion")).toBe("2");
 		expect(getVersionedAudioResourceUrl("https://cdn.example/audio.wav?sig=abc", 2)).toBe(
 			"https://cdn.example/audio.wav?sig=abc",
@@ -50,8 +47,7 @@ describe("getAudioResourceVersionKey", () => {
 	});
 
 	it("uses one cache scope for every version of a loopback resource", () => {
-		const baseUrl =
-			"http://127.0.0.1:43123/video?path=C%3A%5CRecordly%5Crecording.mic.wav";
+		const baseUrl = "http://127.0.0.1:43123/video?path=C%3A%5CRecordly%5Crecording.mic.wav";
 		const versionedUrl = `${baseUrl}&recordlyAudioVersion=4`;
 
 		expect(getAudioResourceCacheScope(versionedUrl)).toBe(baseUrl);

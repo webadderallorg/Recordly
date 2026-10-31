@@ -23,7 +23,7 @@ import {
 	setNativeCaptureTargetPath,
 	setNativeScreenRecordingActive,
 } from "../state";
-import { isAutoRecordingPath, moveFileWithOverwrite } from "../utils";
+import { moveFileWithOverwrite } from "../utils";
 import {
 	getFileSizeIfPresent,
 	recordNativeCaptureDiagnostics,
@@ -31,7 +31,6 @@ import {
 } from "./diagnostics";
 import { emitRecordingInterrupted } from "./events";
 import { getFinalMacCompanionAudioPath } from "./macCompanionAudio";
-import { pruneAutoRecordings } from "./prune";
 
 export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStreams) {
 	return new Promise<void>((resolve, reject) => {
@@ -64,6 +63,49 @@ export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStream
 			);
 		};
 
+		const cleanup = () => {
+			clearTimeout(timer);
+			process.stdout.off("data", onStdout);
+			process.off("error", onError);
+			process.off("exit", onExit);
+		};
+
+		process.stdout.on("data", onStdout);
+		process.once("error", onError);
+		process.once("exit", onExit);
+	});
+}
+
+export function waitForNativeCaptureCommand(
+	process: ChildProcessWithoutNullStreams,
+	marker: "Recording paused" | "Recording resumed",
+) {
+	return new Promise<void>((resolve, reject) => {
+		const timer = setTimeout(() => {
+			cleanup();
+			reject(new Error(`Timed out waiting for ScreenCaptureKit helper: ${marker}`));
+		}, 5000);
+
+		let stdoutBuffer = "";
+		const onStdout = (chunk: Buffer) => {
+			stdoutBuffer += chunk.toString();
+			if (stdoutBuffer.includes(marker)) {
+				cleanup();
+				resolve();
+			}
+		};
+		const onError = (error: Error) => {
+			cleanup();
+			reject(error);
+		};
+		const onExit = (code: number | null) => {
+			cleanup();
+			reject(
+				new Error(
+					`Native capture helper exited before ${marker.toLowerCase()} (code ${code ?? "unknown"})`,
+				),
+			);
+		};
 		const cleanup = () => {
 			clearTimeout(timer);
 			process.stdout.off("data", onStdout);
@@ -226,9 +268,6 @@ export async function finalizeStoredVideo(videoPath: string) {
 		await persistPendingCursorTelemetry(videoPath);
 	} catch (error) {
 		console.warn("[mac-stop] Failed to persist cursor telemetry:", error);
-	}
-	if (isAutoRecordingPath(videoPath)) {
-		await pruneAutoRecordings([videoPath]);
 	}
 
 	if (

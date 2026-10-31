@@ -1,10 +1,57 @@
 {
+	"cloud": {
+		"signInRequired": "Accedi a Recordly prima di creare un link condiviso.",
+		"prepareFailed": "Impossibile preparare il montaggio attuale per la condivisione.",
+		"uploadFailed": "Caricamento sul cloud non riuscito.",
+		"linkCreated": "Link di condivisione creato",
+		"linkCopied": "Link copiato",
+		"copyFailed": "Impossibile copiare il link. Selezionalo e copialo manualmente.",
+		"copied": "Copiato",
+		"copy": "Copia",
+		"preparing": "Preparazione del montaggio attuale…",
+		"createLink": "Crea link",
+		"heading": "Condividi sul cloud",
+		"ready": "Il video è pronto per la condivisione.",
+		"openPage": "Apri pagina condivisa",
+		"notes": "Note",
+		"publish": "Pubblica e crea link",
+		"createLinkTitle": "Crea un link condivisibile",
+		"notesPlaceholder": "Aggiungi contesto, istruzioni o un breve riepilogo per gli spettatori…",
+		"description": "Pubblica il montaggio attuale su una pagina Recordly per visualizzarlo e commentarlo. Non è necessario scaricarlo. I video vengono preparati fino a 1080p.",
+		"uploading": "Caricamento… {progress}%",
+		"googleUnavailable": "L’accesso con Google non è ancora abilitato. Usa l’e-mail o chiedi all’amministratore di Recordly di collegare Google.",
+		"xUnavailable": "L’accesso con X non è ancora abilitato. Usa l’e-mail o chiedi all’amministratore di Recordly di collegare X.",
+		"providerUnavailable": "Questo metodo di accesso non è ancora abilitato. Usa l’e-mail.",
+		"enterEmail": "Inserisci prima il tuo indirizzo e-mail.",
+		"resetSent": "E-mail per reimpostare la password inviata.",
+		"accountHeading": "Il tuo account Recordly",
+		"signInHeading": "Accedi a Recordly",
+		"signInShareDescription": "Accedi per pubblicare questo video e gestirne il link condiviso.",
+		"signInDescription": "Accedi alle tue registrazioni e ai link condivisi.",
+		"signingOut": "Disconnessione…",
+		"signOut": "Esci",
+		"signingIn": "Accesso…",
+		"signIn": "Accedi",
+		"or": "oppure",
+		"email": "E-mail",
+		"password": "Password",
+		"forgotPassword": "Password dimenticata?",
+		"unavailable": "L’accesso al cloud non è ancora disponibile in questa versione. Puoi comunque salvare i video sul computer.",
+		"createShareLink": "Crea link di condivisione",
+		"done": "Fine",
+		"addingVideo": "Aggiunta del video…",
+		"preparingFootage": "Preparazione di video e audio per la timeline."
+	},
+	"library": {
+		"videos": "Video"
+	},
 	"playback": {
 		"play": "Riproduci",
 		"pause": "Pausa",
 		"skipBack": "Indietro",
 		"skipForward": "Avanti",
-		"muteUnmute": "Disattiva/Attiva audio"
+		"muteUnmute": "Disattiva/Attiva audio",
+		"volume": "Volume anteprima"
 	},
 	"annotations": {
 		"settings": "Impostazioni annotazione",
@@ -111,8 +158,18 @@
 		"showInFolder": "Mostra nella cartella"
 	},
 	"project": {
-		"untitled": "Senza titolo"
+		"untitled": "Senza titolo",
+		"unsavedChangesTitle": "Modifiche non salvate",
+		"unsavedChangesDescription": "Salvare il progetto corrente prima di {{action}}?",
+		"discardChanges": "Ignora modifiche",
+		"saveProject": "Salva progetto"
 	},
+	"exportTips": {
+		"autoZooms": "Suggerimento: Disattiva gli zoom applicati automaticamente nelle impostazioni",
+		"experimentalBuilds": "Suggerimento: Attiva l’accesso alle build sperimentali nelle impostazioni",
+		"cursorAppearance": "Suggerimento: Puoi personalizzare l’aspetto del cursore"
+	},
+	"account": { "title": "Account", "comingSoon": "Account in arrivo" },
 	"nativeCaptureUnavailable": {
 		"title": "Niente è rotto, ma non sarà possibile renderizzare un overlay del cursore animato.",
 		"description": "Il tuo dispositivo non supporta la cattura nativa. Le cause possono essere varie e non ancora identificate. Recordly funziona comunque, ma non è possibile applicare lo smoothing del cursore.",

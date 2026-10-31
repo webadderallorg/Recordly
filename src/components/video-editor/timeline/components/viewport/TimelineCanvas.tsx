@@ -1,4 +1,5 @@
-import { Plus } from "@phosphor-icons/react";
+import { useTimelinePresentation } from "../../core/TimelinePresentation";
+import { Plus } from "@/components/ui/icons";
 import { useTimelineContext } from "dnd-timeline";
 import {
 	type MouseEvent,
@@ -36,13 +37,17 @@ import Item from "../../Item";
 import glassStyles from "../../ItemGlass.module.css";
 import Row from "../../Row";
 import {
+	type ClipPresentation,
+	getEmbeddedCaptionSpan,
+	getTimeAtClipSeam,
+	getRegionDisplaySpan,
+	getPlayheadDisplayTime,
+} from "../../core/clipPresentation";
+import {
 	getTimelineContentMinHeightPx,
 	getTimelineRowsMinHeightPx,
-	getTimelineViewportStretchFactor,
 	TIMELINE_AXIS_HEIGHT_PX,
 } from "../../timelineLayout";
-import TimelineAxis from "../axis/TimelineAxis";
-import ClipMarkerOverlay from "../overlays/ClipMarkerOverlay";
 import PlaybackCursor from "../playhead/PlaybackCursor";
 
 const HINT_CLIP = "Press C to split clip";
@@ -50,6 +55,7 @@ const HINT_ANNOTATION = "Press A to add annotation";
 const HINT_AUDIO = "Click music icon to add audio";
 
 interface TimelineCanvasProps {
+	videoPath?: string | null;
 	items: TimelineRenderItem[];
 	videoDurationMs: number;
 	currentTimeMs: number;
@@ -84,6 +90,7 @@ interface TimelineCanvasProps {
 }
 
 interface LaneHoverParams {
+	clipPresentation?: ClipPresentation[];
 	direction: string;
 	rangeStart: number;
 	visibleDurationMs: number;
@@ -109,6 +116,7 @@ interface LaneHoverParams {
  * add/can-place callbacks.
  */
 function useTimelineLaneHover({
+	clipPresentation,
 	direction,
 	rangeStart,
 	visibleDurationMs,
@@ -133,9 +141,14 @@ function useTimelineLaneHover({
 					: Math.max(0, Math.min(clientX - rect.left, rect.width));
 			const ratio = position / rect.width;
 			const nextMs = rangeStart + ratio * visibleDurationMs;
-			setHoverMs(Math.max(0, Math.min(nextMs, videoDurationMs)));
+			setHoverMs(
+				getTimeAtClipSeam(
+					Math.max(0, Math.min(nextMs, videoDurationMs)),
+					clipPresentation ?? [],
+				),
+			);
 		},
-		[direction, rangeStart, videoDurationMs, visibleDurationMs],
+		[direction, rangeStart, videoDurationMs, visibleDurationMs, clipPresentation],
 	);
 
 	const onMouseEnter = useCallback(
@@ -167,12 +180,32 @@ function useTimelineLaneHover({
 		(event: MouseEvent<HTMLDivElement>) => {
 			event.stopPropagation();
 			// Respect the lane's enabled flag so a hidden ghost can't still add on click.
-			if (!enabled || !onAddAtMs || hoverMs === null) return;
-			const startMs = Math.max(0, Math.min(hoverMs, videoDurationMs));
+			if (!enabled || isDragging || !onAddAtMs || event.button !== 0) return;
+			if ((event.target as HTMLElement).closest("[data-timeline-item]")) return;
+			const rect = event.currentTarget.getBoundingClientRect();
+			if (rect.width <= 0) return;
+			const x = direction === "rtl" ? rect.right - event.clientX : event.clientX - rect.left;
+			const startMs = getTimeAtClipSeam(
+				Math.max(
+					0,
+					Math.min(rangeStart + (x / rect.width) * visibleDurationMs, videoDurationMs),
+				),
+				clipPresentation ?? [],
+			);
 			if (canPlaceAtMs && !canPlaceAtMs(startMs)) return;
 			onAddAtMs(startMs);
 		},
-		[enabled, canPlaceAtMs, onAddAtMs, videoDurationMs, hoverMs],
+		[
+			clipPresentation,
+			enabled,
+			isDragging,
+			direction,
+			rangeStart,
+			visibleDurationMs,
+			canPlaceAtMs,
+			onAddAtMs,
+			videoDurationMs,
+		],
 	);
 
 	const reset = useCallback(() => {
@@ -213,7 +246,6 @@ function useTimelineLaneHover({
 	return {
 		reset,
 		ghostStartMs,
-		ghostStartOffsetPx,
 		ghostWidthPx,
 		canShowGhost,
 		onMouseEnter,
@@ -225,6 +257,7 @@ function useTimelineLaneHover({
 }
 
 interface TimelineHoverParams {
+	clipPresentation: ClipPresentation[];
 	direction: string;
 	sidebarWidth: number;
 	rangeStart: number;
@@ -242,6 +275,7 @@ interface TimelineHoverParams {
 }
 
 function useTimelineHover({
+	clipPresentation,
 	direction,
 	sidebarWidth,
 	rangeStart,
@@ -272,9 +306,11 @@ function useTimelineHover({
 			const clampedX = Math.max(0, Math.min(contentX, contentWidth));
 			const ratio = clampedX / contentWidth;
 			const nextMs = rangeStart + ratio * visibleDurationMs;
-			setTimelineHoverMs(Math.max(0, Math.min(nextMs, videoDurationMs)));
+			setTimelineHoverMs(
+				getTimeAtClipSeam(Math.max(0, Math.min(nextMs, videoDurationMs)), clipPresentation),
+			);
 		},
-		[direction, rangeStart, sidebarWidth, videoDurationMs, visibleDurationMs],
+		[direction, rangeStart, sidebarWidth, videoDurationMs, visibleDurationMs, clipPresentation],
 	);
 
 	const handleTimelineMouseEnter = useCallback(
@@ -294,6 +330,7 @@ function useTimelineHover({
 	);
 
 	const zoom = useTimelineLaneHover({
+		clipPresentation,
 		direction,
 		rangeStart,
 		visibleDurationMs,
@@ -307,6 +344,7 @@ function useTimelineHover({
 	});
 
 	const caption = useTimelineLaneHover({
+		clipPresentation,
 		direction,
 		rangeStart,
 		visibleDurationMs,
@@ -328,7 +366,14 @@ function useTimelineHover({
 	}, [zoom.reset, caption.reset]);
 
 	const timelineGhostOffsetPx =
-		timelineHoverMs === null ? 0 : valueToPixels(Math.max(0, timelineHoverMs - rangeStart));
+		timelineHoverMs === null
+			? 0
+			: valueToPixels(
+					Math.max(
+						0,
+						getPlayheadDisplayTime(timelineHoverMs, clipPresentation) - rangeStart,
+					),
+				);
 	const canShowGhostPlayhead = isTimelineHovered && timelineHoverMs !== null;
 
 	return {
@@ -339,7 +384,6 @@ function useTimelineHover({
 		handleTimelineMouseLeave,
 		canShowGhostZoom: zoom.canShowGhost,
 		ghostStartMs: zoom.ghostStartMs,
-		ghostStartOffsetPx: zoom.ghostStartOffsetPx,
 		ghostWidthPx: zoom.ghostWidthPx,
 		handleZoomRowMouseEnter: zoom.onMouseEnter,
 		handleZoomRowMouseMove: zoom.onMouseMove,
@@ -348,7 +392,6 @@ function useTimelineHover({
 		handleZoomRowClick: zoom.onClick,
 		canShowGhostCaption: caption.canShowGhost,
 		captionGhostStartMs: caption.ghostStartMs,
-		captionGhostStartOffsetPx: caption.ghostStartOffsetPx,
 		captionGhostWidthPx: caption.ghostWidthPx,
 		handleCaptionRowMouseEnter: caption.onMouseEnter,
 		handleCaptionRowMouseMove: caption.onMouseMove,
@@ -359,6 +402,7 @@ function useTimelineHover({
 }
 
 interface TimelineCanvasRowsProps {
+	videoPath?: string | null;
 	items: TimelineRenderItem[];
 	videoDurationMs: number;
 	selectAllBlocksActive: boolean;
@@ -380,7 +424,6 @@ interface TimelineCanvasRowsProps {
 	direction: string;
 	canShowGhostZoom: boolean;
 	ghostStartMs: number | null;
-	ghostStartOffsetPx: number;
 	ghostWidthPx: number;
 	onZoomRowMouseEnter: MouseEventHandler<HTMLDivElement>;
 	onZoomRowMouseMove: MouseEventHandler<HTMLDivElement>;
@@ -390,7 +433,6 @@ interface TimelineCanvasRowsProps {
 	captionsEnabled?: boolean;
 	canShowGhostCaption: boolean;
 	captionGhostStartMs: number | null;
-	captionGhostStartOffsetPx: number;
 	captionGhostWidthPx: number;
 	onCaptionRowMouseEnter: MouseEventHandler<HTMLDivElement>;
 	onCaptionRowMouseMove: MouseEventHandler<HTMLDivElement>;
@@ -438,8 +480,8 @@ function AudioItemWithWaveform({
 }
 
 const TimelineCanvasRows = memo(function TimelineCanvasRows({
+	videoPath,
 	items,
-	videoDurationMs,
 	selectAllBlocksActive,
 	selectedZoomId,
 	selectedClipId,
@@ -459,7 +501,6 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	direction,
 	canShowGhostZoom,
 	ghostStartMs,
-	ghostStartOffsetPx,
 	ghostWidthPx,
 	onZoomRowMouseEnter,
 	onZoomRowMouseMove,
@@ -469,7 +510,6 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	captionsEnabled = false,
 	canShowGhostCaption,
 	captionGhostStartMs,
-	captionGhostStartOffsetPx,
 	captionGhostWidthPx,
 	onCaptionRowMouseEnter,
 	onCaptionRowMouseMove,
@@ -477,6 +517,11 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	onCaptionRowMouseDown,
 	onCaptionRowClick,
 }: TimelineCanvasRowsProps) {
+	const {
+		pixelsToValue,
+		valueToPixels,
+		range: { start: rangeStart },
+	} = useTimelineContext();
 	const hiddenIds = useMemo(() => new Set(liveHiddenItemIds ?? []), [liveHiddenItemIds]);
 	const { clipItems, zoomItems, captionItems, annotationRows, audioRows } = useMemo(() => {
 		const nextClipItems: TimelineRenderItem[] = [];
@@ -535,11 +580,131 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 		};
 	}, [items]);
 
+	const { clips } = useTimelinePresentation();
+	const clipPresentation = useMemo(
+		() =>
+			clipItems.map((item) => ({
+				...item,
+				displaySpan: getRegionDisplaySpan(item.span, clips),
+			})),
+		[clipItems, clips],
+	);
+
+	const zoomGhost =
+		ghostStartMs === null
+			? null
+			: getRegionDisplaySpan(
+					{ start: ghostStartMs, end: ghostStartMs + pixelsToValue(ghostWidthPx) },
+					clipPresentation,
+				);
+	const zoomGhostOffsetPx = zoomGhost ? valueToPixels(zoomGhost.start - rangeStart) : 0;
+	const zoomGhostWidthPx = zoomGhost ? valueToPixels(zoomGhost.end - zoomGhost.start) : 0;
+	const embeddedGhost =
+		captionGhostStartMs === null
+			? null
+			: getEmbeddedCaptionSpan(
+					{
+						start: captionGhostStartMs,
+						end: captionGhostStartMs + pixelsToValue(captionGhostWidthPx),
+					},
+					clipPresentation,
+				);
+	const embeddedGhostOffset = embeddedGhost ? valueToPixels(embeddedGhost.start - rangeStart) : 0;
+	const embeddedGhostWidth = embeddedGhost
+		? valueToPixels(embeddedGhost.end - embeddedGhost.start)
+		: 0;
+
 	return (
 		<>
-			<Row id={CLIP_ROW_ID} isEmpty={clipItems.length === 0} hint={HINT_CLIP}>
-				<ClipMarkerOverlay videoDurationMs={videoDurationMs} />
-				{clipItems.map((item) => (
+			{(captionsEnabled || captionItems.length > 0) && (
+				<Row
+					id={CAPTION_ROW_ID}
+					caption
+					isEmpty={captionItems.length === 0}
+					onMouseEnter={onCaptionRowMouseEnter}
+					onMouseMove={onCaptionRowMouseMove}
+					onMouseLeave={onCaptionRowMouseLeave}
+					onMouseDown={onCaptionRowMouseDown}
+					onClick={onCaptionRowClick}
+				>
+					{clipPresentation.map((clip) => (
+						<div
+							key={clip.id}
+							data-caption-add-target
+							className="absolute inset-y-0 pointer-events-auto"
+							style={{
+								[direction === "rtl" ? "right" : "left"]: valueToPixels(
+									clip.displaySpan.start - rangeStart,
+								),
+								width: valueToPixels(clip.displaySpan.end - clip.displaySpan.start),
+							}}
+						/>
+					))}
+
+					{canShowGhostCaption && embeddedGhost && (
+						<div
+							data-testid="timeline-add-preview"
+							className="absolute inset-0 z-[3] pointer-events-none"
+						>
+							<div
+								className="absolute top-1/2 -translate-y-1/2 h-[85%] min-h-[18px]"
+								style={
+									direction === "rtl"
+										? {
+												right: `${embeddedGhostOffset}px`,
+												width: `${embeddedGhostWidth}px`,
+											}
+										: {
+												left: `${embeddedGhostOffset}px`,
+												width: `${embeddedGhostWidth}px`,
+											}
+								}
+							>
+								<div
+									className={cn(
+										glassStyles.glassCaption,
+										glassStyles.embeddedCaption,
+										"w-full h-full overflow-hidden flex items-center justify-center cursor-default relative opacity-80",
+									)}
+								>
+									<div className="relative z-10 inline-flex h-4 w-4 items-center justify-center rounded-full border border-white/45 bg-white/15 text-white">
+										<Plus className="h-2.5 w-2.5" />
+									</div>
+								</div>
+							</div>
+						</div>
+					)}
+					{captionItems.map((item) => {
+						const displaySpan = getEmbeddedCaptionSpan(item.span, clipPresentation);
+						if (!displaySpan) return null;
+						return (
+							<Item
+								id={item.id}
+								key={item.id}
+								rowId={item.rowId}
+								span={item.span}
+								isSelected={item.id === selectedCaptionId}
+								onSelectId={onSelectCaption}
+								onDoubleClick={() => {
+									const editor = document.querySelector<HTMLTextAreaElement>(
+										"[data-caption-text-editor]",
+									);
+									editor?.focus();
+									editor?.select();
+								}}
+								variant="caption"
+								clipPresentation={clipPresentation}
+								embedded
+								displaySpan={displaySpan}
+							>
+								{item.label}
+							</Item>
+						);
+					})}
+				</Row>
+			)}
+			<Row filmstrip id={CLIP_ROW_ID} isEmpty={clipItems.length === 0} hint={HINT_CLIP}>
+				{clipPresentation.map((item) => (
 					<Item
 						id={item.id}
 						key={item.id}
@@ -548,11 +713,41 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 						isSelected={item.id === selectedClipId}
 						onSelectId={onSelectClip}
 						variant="clip"
+						displaySpan={item.displaySpan}
+						sharedLeftGrip={clipPresentation.some(
+							(other) => other.span.end === item.span.start,
+						)}
+						sharedRightGrip={clipPresentation.some(
+							(other) => other.span.start === item.span.end,
+						)}
+						videoPath={videoPath}
+						sourceSpan={item.sourceSpan ?? item.span}
 						speedValue={item.speedValue}
 					>
 						{item.label}
 					</Item>
 				))}
+				{clipPresentation.map((left) => {
+					const right = clipPresentation.find(
+						(clip) => clip.span.start === left.span.end,
+					);
+					if (!right) return null;
+					const seam = (left.displaySpan.end + right.displaySpan.start) / 2;
+					return (
+						<div
+							key={`seam-${left.id}`}
+							data-testid="clip-seam-grip"
+							aria-hidden="true"
+							className={cn(glassStyles.zoomEndCap, glassStyles.clipHandle)}
+							style={{
+								height: "59.5%",
+								pointerEvents: "none",
+								[direction === "rtl" ? "right" : "left"]:
+									valueToPixels(seam - rangeStart) - 2,
+							}}
+						/>
+					);
+				})}
 			</Row>
 			{showSourceAudioTrack &&
 				sourceAudioTracks.map((track) => (
@@ -588,6 +783,12 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 
 			<Row
 				id={ZOOM_ROW_ID}
+				compact={
+					annotationRows.length +
+						audioRows.length +
+						(showSourceAudioTrack ? sourceAudioTracks.length : 0) >
+					0
+				}
 				isEmpty={zoomItems.length === 0}
 				onMouseEnter={onZoomRowMouseEnter}
 				onMouseMove={onZoomRowMouseMove}
@@ -596,24 +797,27 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				onClick={onZoomRowClick}
 			>
 				{canShowGhostZoom && ghostStartMs !== null && (
-					<div className="absolute inset-0 z-[3] pointer-events-none">
+					<div
+						data-testid="timeline-add-preview"
+						className="absolute inset-0 z-[3] pointer-events-none"
+					>
 						<div
 							className="absolute top-1/2 -translate-y-1/2 h-[85%] min-h-[22px]"
 							style={
 								direction === "rtl"
 									? {
-											right: `${ghostStartOffsetPx}px`,
-											width: `${ghostWidthPx}px`,
+											right: `${zoomGhostOffsetPx}px`,
+											width: `${zoomGhostWidthPx}px`,
 										}
 									: {
-											left: `${ghostStartOffsetPx}px`,
-											width: `${ghostWidthPx}px`,
+											left: `${zoomGhostOffsetPx}px`,
+											width: `${zoomGhostWidthPx}px`,
 										}
 							}
 						>
 							<div
 								className={cn(
-									glassStyles.glassPurple,
+									glassStyles.glassBlue,
 									"w-full h-full overflow-hidden flex items-center justify-center cursor-default relative opacity-80",
 								)}
 							>
@@ -644,61 +848,6 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 						</Item>
 					))}
 			</Row>
-
-			{(captionsEnabled || captionItems.length > 0) && (
-				<Row
-					id={CAPTION_ROW_ID}
-					isEmpty={captionItems.length === 0}
-					onMouseEnter={onCaptionRowMouseEnter}
-					onMouseMove={onCaptionRowMouseMove}
-					onMouseLeave={onCaptionRowMouseLeave}
-					onMouseDown={onCaptionRowMouseDown}
-					onClick={onCaptionRowClick}
-				>
-					{canShowGhostCaption && captionGhostStartMs !== null && (
-						<div className="absolute inset-0 z-[3] pointer-events-none">
-							<div
-								className="absolute top-1/2 -translate-y-1/2 h-[85%] min-h-[22px]"
-								style={
-									direction === "rtl"
-										? {
-												right: `${captionGhostStartOffsetPx}px`,
-												width: `${captionGhostWidthPx}px`,
-											}
-										: {
-												left: `${captionGhostStartOffsetPx}px`,
-												width: `${captionGhostWidthPx}px`,
-											}
-								}
-							>
-								<div
-									className={cn(
-										glassStyles.glassCaption,
-										"w-full h-full overflow-hidden flex items-center justify-center cursor-default relative opacity-80",
-									)}
-								>
-									<div className="relative z-10 inline-flex h-4 w-4 items-center justify-center rounded-full border border-white/45 bg-white/15 text-white">
-										<Plus className="h-2.5 w-2.5" />
-									</div>
-								</div>
-							</div>
-						</div>
-					)}
-					{captionItems.map((item) => (
-						<Item
-							id={item.id}
-							key={item.id}
-							rowId={item.rowId}
-							span={item.span}
-							isSelected={item.id === selectedCaptionId}
-							onSelectId={onSelectCaption}
-							variant="caption"
-						>
-							{item.label}
-						</Item>
-					))}
-				</Row>
-			)}
 
 			{annotationRows.map(({ rowId, items: rowItems }, index) => (
 				<Row
@@ -747,6 +896,7 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 });
 
 export default function TimelineCanvas({
+	videoPath,
 	items,
 	videoDurationMs,
 	currentTimeMs,
@@ -781,6 +931,7 @@ export default function TimelineCanvas({
 }: TimelineCanvasProps) {
 	const { setTimelineRef, style, sidebarWidth, direction, range, valueToPixels, pixelsToValue } =
 		useTimelineContext();
+	const { clips: clipPresentation } = useTimelinePresentation();
 	const localTimelineRef = useRef<HTMLDivElement | null>(null);
 	const [isSeeking, setIsSeeking] = useState(false);
 	const seekRafRef = useRef<number | null>(null);
@@ -796,7 +947,7 @@ export default function TimelineCanvas({
 
 	const handleTimelineClick = useCallback(
 		(e: MouseEvent<HTMLDivElement>) => {
-			if (isSeeking) return;
+			if (isSeeking || (e.target as Element).closest("[data-timeline-item]")) return;
 			if (!onSeek || videoDurationMs <= 0) return;
 
 			if (onClearBlockSelection) {
@@ -817,10 +968,11 @@ export default function TimelineCanvas({
 			if (clickX < 0) return;
 			const relativeMs = pixelsToValue(clickX);
 			const absoluteMs = Math.max(0, Math.min(range.start + relativeMs, videoDurationMs));
-			onSeek(absoluteMs / 1000);
+			onSeek(getTimeAtClipSeam(absoluteMs, clipPresentation) / 1000);
 		},
 		[
 			isSeeking,
+			clipPresentation,
 			onSeek,
 			onSelectZoom,
 			onSelectClip,
@@ -843,9 +995,12 @@ export default function TimelineCanvas({
 					? rect.right - sidebarWidth - clientX
 					: clientX - rect.left - sidebarWidth;
 			const relativeMs = pixelsToValue(clickX);
-			return Math.max(0, Math.min(range.start + relativeMs, videoDurationMs));
+			return getTimeAtClipSeam(
+				Math.max(0, Math.min(range.start + relativeMs, videoDurationMs)),
+				clipPresentation,
+			);
 		},
-		[direction, pixelsToValue, range.start, sidebarWidth, videoDurationMs],
+		[direction, pixelsToValue, range.start, sidebarWidth, videoDurationMs, clipPresentation],
 	);
 
 	const handleTimelineMouseDown = useCallback(
@@ -931,22 +1086,15 @@ export default function TimelineCanvas({
 	const timelineRowCount = useMemo(() => {
 		const annotationRowIds = new Set<string>();
 		const audioRowIds = new Set<string>();
-		let hasCaptionRow = false;
 		for (const item of items) {
 			if (isAnnotationTrackRowId(item.rowId)) annotationRowIds.add(item.rowId);
 			if (isAudioTrackRowId(item.rowId)) audioRowIds.add(item.rowId);
-			if (item.rowId === CAPTION_ROW_ID) hasCaptionRow = true;
 		}
 		const sourceAudioRows = showSourceAudioTrack ? sourceAudioTracks.length : 0;
-		// The caption lane is always shown when captions are enabled (even before any cue
-		// exists), so count it whenever captionsEnabled — not only when a caption item is
-		// present — or the min-height/stretch math undersizes the empty lane.
-		const captionRows = hasCaptionRow || captionsEnabled ? 1 : 0;
-		return 2 + sourceAudioRows + annotationRowIds.size + audioRowIds.size + captionRows;
-	}, [items, showSourceAudioTrack, sourceAudioTracks.length, captionsEnabled]);
+		return 2 + sourceAudioRows + annotationRowIds.size + audioRowIds.size;
+	}, [items, showSourceAudioTrack, sourceAudioTracks.length]);
 	const timelineRowsMinHeightPx = getTimelineRowsMinHeightPx(timelineRowCount);
 	const timelineContentMinHeightPx = getTimelineContentMinHeightPx(timelineRowCount);
-	const timelineViewportStretchFactor = getTimelineViewportStretchFactor(timelineRowCount);
 	const sideProperty = direction === "rtl" ? "right" : "left";
 	const {
 		canShowGhostPlayhead,
@@ -956,7 +1104,6 @@ export default function TimelineCanvas({
 		handleTimelineMouseLeave,
 		canShowGhostZoom,
 		ghostStartMs,
-		ghostStartOffsetPx,
 		ghostWidthPx,
 		handleZoomRowMouseEnter,
 		handleZoomRowMouseMove,
@@ -965,7 +1112,6 @@ export default function TimelineCanvas({
 		handleZoomRowClick,
 		canShowGhostCaption,
 		captionGhostStartMs,
-		captionGhostStartOffsetPx,
 		captionGhostWidthPx,
 		handleCaptionRowMouseEnter,
 		handleCaptionRowMouseMove,
@@ -973,6 +1119,7 @@ export default function TimelineCanvas({
 		handleCaptionRowMouseDown,
 		handleCaptionRowClick,
 	} = useTimelineHover({
+		clipPresentation,
 		direction,
 		sidebarWidth,
 		rangeStart: range.start,
@@ -994,7 +1141,9 @@ export default function TimelineCanvas({
 			ref={setRefs}
 			style={{
 				...style,
-				height: `max(100%, ${timelineContentMinHeightPx}px, calc(${TIMELINE_AXIS_HEIGHT_PX}px + (100% - ${TIMELINE_AXIS_HEIGHT_PX}px) * ${timelineViewportStretchFactor}))`,
+				height: "100%",
+				minHeight: timelineContentMinHeightPx,
+				overflow: "visible",
 			}}
 			className="select-none bg-editor-bg relative cursor-pointer group flex flex-col"
 			onMouseDown={handleTimelineMouseDown}
@@ -1003,8 +1152,9 @@ export default function TimelineCanvas({
 			onMouseMove={handleTimelineMouseMove}
 			onMouseLeave={handleTimelineMouseLeave}
 		>
-			<TimelineAxis videoDurationMs={videoDurationMs} currentTimeMs={currentTimeMs} />
+			<div aria-hidden="true" style={{ height: TIMELINE_AXIS_HEIGHT_PX, flexShrink: 0 }} />
 			<PlaybackCursor
+				clips={clipPresentation}
 				currentTimeMs={currentTimeMs}
 				videoDurationMs={videoDurationMs}
 				onSeek={onSeek}
@@ -1032,6 +1182,7 @@ export default function TimelineCanvas({
 				style={{ minHeight: timelineRowsMinHeightPx }}
 			>
 				<TimelineCanvasRows
+					videoPath={videoPath}
 					items={items}
 					videoDurationMs={videoDurationMs}
 					selectAllBlocksActive={selectAllBlocksActive}
@@ -1053,7 +1204,6 @@ export default function TimelineCanvas({
 					direction={direction}
 					canShowGhostZoom={canShowGhostZoom}
 					ghostStartMs={ghostStartMs}
-					ghostStartOffsetPx={ghostStartOffsetPx}
 					ghostWidthPx={ghostWidthPx}
 					onZoomRowMouseEnter={handleZoomRowMouseEnter}
 					onZoomRowMouseMove={handleZoomRowMouseMove}
@@ -1063,7 +1213,6 @@ export default function TimelineCanvas({
 					captionsEnabled={captionsEnabled}
 					canShowGhostCaption={canShowGhostCaption}
 					captionGhostStartMs={captionGhostStartMs}
-					captionGhostStartOffsetPx={captionGhostStartOffsetPx}
 					captionGhostWidthPx={captionGhostWidthPx}
 					onCaptionRowMouseEnter={handleCaptionRowMouseEnter}
 					onCaptionRowMouseMove={handleCaptionRowMouseMove}

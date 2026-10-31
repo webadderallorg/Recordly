@@ -1,24 +1,36 @@
 import {
-	FilmSlate as Film,
 	Gauge,
+	MagnifyingGlassPlus as ZoomIn,
 	ChatCircle as MessageSquare,
 	MusicNotes as Music,
-	MouseLeftClickIcon as PhMouseLeftClick,
 	Scissors,
 	SpeakerX,
-	MagnifyingGlassPlus as ZoomIn,
-} from "@phosphor-icons/react";
-import type { Span } from "dnd-timeline";
-import { useItem } from "dnd-timeline";
-import { useMemo } from "react";
+} from "@/components/ui/icons";
+import { ClipFilmstrip } from "./components/filmstrip/ClipFilmstrip";
+import type { Span, GetSpanFromDragEvent, GetSpanFromResizeEvent } from "dnd-timeline";
+import { useItem, useTimelineContext } from "dnd-timeline";
+import { useCallback, useMemo, useRef } from "react";
+import { useDndMonitor } from "@dnd-kit/core";
+import { useTimelinePresentation } from "./core/TimelinePresentation";
+import { getRegionDisplaySpan, snapRegionSpan } from "./core/clipPresentation";
+import { resolveDragEnd, resolveResizeEnd } from "./dnd/engine";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { formatClipSpeedLabel } from "../clipSpeedChange";
+import { getTimeAtClipSeam, type ClipPresentation } from "./core/clipPresentation";
+import { formatPlayheadTime } from "./core/time";
 import AudioWaveform from "./components/waveform/AudioWaveform";
 import type { AudioPeaksData } from "./core/timelineTypes";
 import glassStyles from "./ItemGlass.module.css";
 
 interface ItemProps {
+	clipPresentation?: ClipPresentation[];
+	sharedLeftGrip?: boolean;
+	sharedRightGrip?: boolean;
+	displaySpan?: Span;
+	embedded?: boolean;
+	videoPath?: string | null;
+	sourceSpan?: Span;
 	id: string;
 	span: Span;
 	rowId: string;
@@ -26,6 +38,7 @@ interface ItemProps {
 	children: React.ReactNode;
 	isSelected?: boolean;
 	onSelect?: () => void;
+	onDoubleClick?: () => void;
 	onSelectId?: (id: string) => void;
 	zoomDepth?: number;
 	zoomMode?: "auto" | "manual";
@@ -50,23 +63,21 @@ const ZOOM_LABELS: Record<number, string> = {
 	6: "5×",
 };
 
-function formatMs(ms: number): string {
-	const totalSeconds = ms / 1000;
-	const minutes = Math.floor(totalSeconds / 60);
-	const seconds = totalSeconds % 60;
-	if (minutes > 0) {
-		return `${minutes}:${seconds.toFixed(1).padStart(4, "0")}`;
-	}
-	return `${seconds.toFixed(1)}s`;
-}
-
 export default function Item({
+	clipPresentation: suppliedPresentation,
 	id,
+	sharedLeftGrip = false,
+	sharedRightGrip = false,
+	embedded = false,
+	videoPath,
+	sourceSpan,
 	span,
+	displaySpan: suppliedDisplaySpan,
 	rowId,
 	disabled = false,
 	isSelected = false,
 	onSelect,
+	onDoubleClick,
 	onSelectId,
 	zoomDepth = 1,
 	zoomMode = "auto",
@@ -81,22 +92,115 @@ export default function Item({
 	loadingLabel,
 	children,
 }: ItemProps) {
+	const timeline = useTimelineContext();
+	const presentation = useTimelinePresentation();
+	const clipPresentation =
+		variant === "clip" ? undefined : (suppliedPresentation ?? presentation.clips);
+	const displaySpan = clipPresentation?.length
+		? getRegionDisplaySpan(span, clipPresentation)
+		: (suppliedDisplaySpan ?? span);
+	const nodeRef = useRef<HTMLDivElement | null>(null);
+	const targets = useMemo(
+		() => [
+			...new Set(
+				presentation.regions
+					.filter((region) => region.id !== id)
+					.flatMap((region) => [region.start, region.end]),
+			),
+		],
+		[presentation.regions, id],
+	);
+	const snap = (next: Span, edge?: "start" | "end") =>
+		snapRegionSpan(next, targets, presentation.clips, timeline.pixelsToValue(1), edge);
+	const getMediaSpanFromDrag: GetSpanFromDragEvent = (event) => {
+		if (!("delta" in event)) return span;
+		const dragged = timeline.getSpanFromDragEvent(event);
+		if (!dragged) return null;
+		if (clipPresentation) {
+			const start = getTimeAtClipSeam(dragged.start, clipPresentation);
+			return snap({ start, end: start + span.end - span.start });
+		}
+		const visualOffset = displaySpan.start - span.start;
+		return { start: dragged.start - visualOffset, end: dragged.end - visualOffset };
+	};
+	const getMediaSpanFromResize: GetSpanFromResizeEvent = (event) => {
+		const delta = timeline.pixelsToValue(event.delta.x);
+		const edge = event.direction;
+		if (clipPresentation)
+			return snap(
+				{
+					...span,
+					[edge]: getTimeAtClipSeam(displaySpan[edge] + delta, clipPresentation),
+				},
+				edge,
+			);
+		const scale = (span.end - span.start) / (displaySpan.end - displaySpan.start);
+		return { ...span, [edge]: span[edge] + delta * scale };
+	};
+
+	const paintPreview = (preview: Span, deltaY = 0) => {
+		const node = nodeRef.current;
+		if (!node || !clipPresentation) return;
+		const display = getRegionDisplaySpan(preview, clipPresentation);
+		const side = timeline.direction === "rtl" ? "right" : "left";
+		node.style[side] = `${timeline.valueToPixels(display.start - timeline.range.start)}px`;
+		node.style.width = `${timeline.valueToPixels(display.end - display.start)}px`;
+		node.style.transform = deltaY ? `translateY(${deltaY}px)` : "none";
+	};
+	const { previewConfig } = presentation;
+	useDndMonitor({
+		onDragMove(event) {
+			if (event.active.id !== id || !clipPresentation) return;
+			const next = getMediaSpanFromDrag(event);
+			if (next) {
+				const resolved = resolveDragEnd(id, next, rowId, previewConfig);
+				paintPreview(resolved?.span ?? span, event.delta.y);
+			}
+		},
+		onDragEnd(event) {
+			if (event.active.id === id) paintPreview(span);
+		},
+		onDragCancel(event) {
+			if (event.active.id === id) paintPreview(span);
+		},
+	});
 	const { setNodeRef, attributes, listeners, itemStyle, itemContentStyle } = useItem({
 		id,
-		span,
+		span: displaySpan,
 		disabled: disabled || isLoading,
-		data: { rowId },
+		data: {
+			rowId,
+			span,
+			getSpanFromDragEvent: getMediaSpanFromDrag,
+			getSpanFromResizeEvent: getMediaSpanFromResize,
+		},
+		resizeHandleWidth: variant === "clip" ? 12 : undefined,
+		onResizeMove(event) {
+			if (!clipPresentation) return;
+			const next = getMediaSpanFromResize(event);
+			if (next) {
+				const resolved = resolveResizeEnd(id, next, previewConfig);
+				if (resolved) paintPreview(resolved);
+			}
+		},
 	});
 
+	const attachRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			nodeRef.current = node;
+			setNodeRef(node);
+		},
+		[setNodeRef],
+	);
 	const timeLabel = useMemo(
-		() => `${formatMs(span.start)} – ${formatMs(span.end)}`,
+		() => `${formatPlayheadTime(span.start)} – ${formatPlayheadTime(span.end)}`,
 		[span.start, span.end],
 	);
 
 	if (isLoading) {
 		return (
 			<div
-				ref={setNodeRef}
+				ref={attachRef}
 				style={{
 					...itemStyle,
 					height: "100%",
@@ -106,13 +210,15 @@ export default function Item({
 				{...listeners}
 				{...attributes}
 				data-timeline-item="true"
+				data-variant={variant}
+				data-start-ms={span.start}
+				data-end-ms={span.end}
 				onMouseDownCapture={(event) => event.stopPropagation()}
 				onClickCapture={(event) => event.stopPropagation()}
 			>
 				<Skeleton
-					variant="clip"
-					animation="shimmer-premium"
-					label={loadingLabel || "Loading..."}
+					animationType="shimmer"
+					aria-label={loadingLabel || "Loading..."}
 					className="w-full"
 					style={{ height: "85%", minHeight: 22 }}
 				/>
@@ -130,7 +236,7 @@ export default function Item({
 	const clipSpeedLabel = isClip ? formatClipSpeedLabel(speedValue ?? 1) : null;
 
 	const glassClass = isZoom
-		? glassStyles.glassPurple
+		? glassStyles.glassBlue
 		: isTrim
 			? glassStyles.glassRed
 			: isClip
@@ -152,23 +258,38 @@ export default function Item({
 		...itemStyle,
 		minWidth: MIN_ITEM_PX,
 		height: "100%",
-		overflow: "hidden",
+		overflow: isClip ? "visible" : "hidden",
+		pointerEvents: "auto" as const,
 	};
 
 	return (
 		<div
-			ref={setNodeRef}
+			ref={attachRef}
 			style={safeItemStyle}
 			{...listeners}
 			{...attributes}
 			data-timeline-item="true"
+			data-variant={variant}
+			data-start-ms={span.start}
+			data-end-ms={span.end}
+			aria-label={
+				isClip
+					? `Clip${clipSpeedLabel ? ` ${clipSpeedLabel}` : ""} · ${timeLabel}`
+					: undefined
+			}
 			onPointerDownCapture={handleSelect}
+			onDoubleClick={(event) => {
+				if (!onDoubleClick) return;
+				event.stopPropagation();
+				onDoubleClick();
+			}}
 			className="group h-full"
 		>
 			<div
 				className="h-full"
 				style={{
 					...itemContentStyle,
+					overflow: isClip ? "visible" : "hidden",
 					minWidth: MIN_ITEM_PX,
 					height: "100%",
 					display: "flex",
@@ -178,26 +299,52 @@ export default function Item({
 				<div
 					className={cn(
 						glassClass,
-						"w-full overflow-hidden flex items-center justify-center gap-1.5 cursor-grab active:cursor-grabbing relative",
+						"timeline-block w-full flex items-center justify-center gap-1.5 relative",
 						isSelected && glassStyles.selected,
+						embedded && glassStyles.embeddedCaption,
+						isClip ? "overflow-visible" : "overflow-hidden",
 					)}
 					style={{
 						height: "85%",
-						minHeight: 22,
+						minHeight: embedded ? 18 : 22,
 						minWidth: MIN_ITEM_PX,
+						containerType: "size",
 					}}
 					onClick={(event) => {
 						event.stopPropagation();
 					}}
 				>
+					{isClip && videoPath && (
+						<ClipFilmstrip
+							path={videoPath}
+							span={span}
+							sourceSpan={sourceSpan ?? span}
+						/>
+					)}
 					<div
-						className={cn(glassStyles.zoomEndCap, glassStyles.left)}
-						style={{ cursor: "col-resize", pointerEvents: "auto" }}
+						className={cn(
+							glassStyles.zoomEndCap,
+							glassStyles.left,
+							isClip && glassStyles.clipHandle,
+						)}
+						style={{
+							cursor: "col-resize",
+							pointerEvents: isClip ? "none" : "auto",
+							display: isClip && sharedLeftGrip ? "none" : undefined,
+						}}
 						title="Resize left"
 					/>
 					<div
-						className={cn(glassStyles.zoomEndCap, glassStyles.right)}
-						style={{ cursor: "col-resize", pointerEvents: "auto" }}
+						className={cn(
+							glassStyles.zoomEndCap,
+							glassStyles.right,
+							isClip && glassStyles.clipHandle,
+						)}
+						style={{
+							cursor: "col-resize",
+							pointerEvents: isClip ? "none" : "auto",
+							display: isClip && sharedRightGrip ? "none" : undefined,
+						}}
 						title="Resize right"
 					/>
 					{showAudioWaveform && waveformPeaks && (
@@ -216,80 +363,53 @@ export default function Item({
 							<SpeakerX className="w-3 h-3 text-red-300/90 shrink-0" />
 						</div>
 					)}
-					{/* Content */}
-					<div className="relative z-10 flex flex-col items-center justify-center text-black/70 dark:text-white/90 opacity-80 group-hover:opacity-100 transition-opacity select-none overflow-hidden">
-						<div className="flex items-center gap-1.5">
-							{isZoom ? (
+					{/* Normal-speed clips show only the filmstrip and resize handles. */}
+					{(!isClip || clipSpeedLabel) && (
+						<div
+							title={`${isZoom ? `${ZOOM_LABELS[zoomDepth]} ${zoomMode === "manual" ? "Manual" : "Auto"}` : typeof children === "string" ? children : "Clip"} · ${timeLabel}`}
+							className={cn(
+								"relative z-10 flex max-w-full items-center justify-center gap-1 px-1 text-[11px] font-medium text-black/70 dark:text-white/90 select-none overflow-hidden",
+								isClip &&
+									"rounded bg-black/65 px-2 py-1 text-white dark:text-white",
+								(isZoom || embedded) && "text-white dark:text-white",
+								embedded && "w-full justify-start px-2",
+							)}
+						>
+							{isClip ? (
+								clipSpeedLabel
+							) : isZoom ? (
 								<>
-									<ZoomIn className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
+									<ZoomIn
+										aria-hidden="true"
+										className="zoom-icon size-3 shrink-0"
+									/>
+									<span className="zoom-value whitespace-nowrap">
 										{ZOOM_LABELS[zoomDepth] || `${zoomDepth}×`}
-									</span>
-								</>
-							) : isTrim ? (
-								<>
-									<Scissors className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
-										Trim
-									</span>
-								</>
-							) : isClip ? (
-								<>
-									<Film className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
-										Clip
-									</span>
-									{clipSpeedLabel && (
-										<span className="rounded-[4px] bg-black/10 px-1 text-[9px] font-bold tabular-nums text-black/65 dark:bg-white/15 dark:text-white/80">
-											{clipSpeedLabel}
+										<span className="zoom-mode font-normal">
+											{zoomMode === "manual" ? "Manual" : "Auto"}
 										</span>
-									)}
-								</>
-							) : isSpeed ? (
-								<>
-									<Gauge className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
-										{speedValue !== undefined ? `${speedValue}×` : "Speed"}
 									</span>
 								</>
-							) : isAudio ? (
-								<>
-									<Music className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight truncate max-w-full">
-										{children}
-									</span>
-								</>
+							) : embedded ? (
+								<span className="truncate">{children}</span>
 							) : (
 								<>
-									<MessageSquare className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
-										{children}
+									{isTrim ? (
+										<Scissors className="size-3 shrink-0" />
+									) : isSpeed ? (
+										<Gauge className="size-3 shrink-0" />
+									) : isAudio ? (
+										<Music className="size-3 shrink-0" />
+									) : (
+										<MessageSquare className="size-3 shrink-0" />
+									)}
+									<span className="truncate">
+										{isTrim ? "Trim" : isSpeed ? `${speedValue}×` : children}
 									</span>
 								</>
 							)}
 						</div>
-						{isZoom ? (
-							<div
-								className={`flex items-center gap-0.5 transition-opacity ${isSelected ? "opacity-70" : "opacity-0 group-hover:opacity-50"}`}
-							>
-								<PhMouseLeftClick
-									className="w-2.5 h-2.5 shrink-0"
-									weight={zoomMode === "manual" ? "regular" : "fill"}
-								/>
-								<span className="text-[9px] font-medium tracking-tight whitespace-nowrap">
-									{zoomMode === "manual" ? "Manual" : "Auto"}
-								</span>
-							</div>
-						) : (
-							<span
-								className={`text-[9px] tabular-nums tracking-tight whitespace-nowrap transition-opacity ${
-									isSelected ? "opacity-60" : "opacity-0 group-hover:opacity-40"
-								}`}
-							>
-								{timeLabel}
-							</span>
-						)}
-					</div>
+					)}
 				</div>
 			</div>
 		</div>

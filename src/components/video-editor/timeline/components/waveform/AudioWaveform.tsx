@@ -1,3 +1,4 @@
+import { useTheme } from "@/contexts/ThemeContext";
 import { useTimelineContext } from "dnd-timeline";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { AudioPeaksData } from "../../core/timelineTypes";
@@ -25,6 +26,7 @@ function AudioWaveformComponent({
 	className,
 }: AudioWaveformProps) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
+	const { theme } = useTheme();
 	const { range } = useTimelineContext();
 	const [resizeKey, setResizeKey] = useState(0);
 	const lastDrawAtRef = useRef(0);
@@ -44,6 +46,7 @@ function AudioWaveformComponent({
 		}
 	}, []);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: resizeKey intentionally redraws the canvas after ResizeObserver notifications.
 	useEffect(() => {
 		const canvas = canvasRef.current;
 		if (!canvas) return;
@@ -79,15 +82,15 @@ function AudioWaveformComponent({
 			const visibleStartMs = segmentStartMs ?? range.start;
 			const visibleEndMs = segmentEndMs ?? range.end;
 			const visibleDurationMs = visibleEndMs - visibleStartMs;
-			
+
 			if (visibleDurationMs <= 0) return;
 
 			const midY = height / 2;
 			ctx.beginPath();
-			
+
 			for (let px = 0; px < width; px++) {
 				const t = visibleStartMs + (px / width) * visibleDurationMs;
-				
+
 				// If the timeline time is beyond the actual audio duration, we draw nothing (flat line)
 				if (t < 0 || t > durationMs) continue;
 
@@ -95,25 +98,35 @@ function AudioWaveformComponent({
 				const leftIndex = Math.floor(exactIndex);
 				const rightIndex = Math.min(peakData.length - 1, leftIndex + 1);
 				const mix = exactIndex - leftIndex;
-				
+
 				let amplitude = peakData[leftIndex] * (1 - mix) + peakData[rightIndex] * mix;
-				
+
 				if (normalize) amplitude = Math.sqrt(Math.max(0, amplitude));
 				amplitude = Math.max(0, Math.min(1, amplitude * gain));
-				
+
 				const barHeight = amplitude * midY * 0.85;
 
 				ctx.moveTo(px, midY - barHeight);
 				ctx.lineTo(px, midY + barHeight);
 			}
 
-			ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+			ctx.strokeStyle = theme === "dark" ? "rgba(255, 255, 255, 0.65)" : "rgba(0, 0, 0, 0.6)";
 			ctx.lineWidth = dpr;
 			ctx.stroke();
 		};
 		rafId = requestAnimationFrame(draw);
 		return () => cancelAnimationFrame(rafId);
-	}, [gain, normalize, peaks, range.start, range.end, resizeKey, segmentStartMs, segmentEndMs]);
+	}, [
+		gain,
+		normalize,
+		peaks,
+		range.start,
+		range.end,
+		resizeKey,
+		segmentStartMs,
+		segmentEndMs,
+		theme,
+	]);
 
 	return (
 		<canvas

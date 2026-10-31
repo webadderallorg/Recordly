@@ -9,6 +9,21 @@ const NATIVE_EXPORT_INPUT_BYTES_PER_PIXEL = 4;
 const MIN_EDITED_TRACK_TEMPO_SPEED = 0.5;
 const MAX_EDITED_TRACK_TEMPO_SPEED = 2;
 
+export const FFMPEG_BT709_VIDEO_COLOR_ARGS = [
+	"-colorspace",
+	"bt709",
+	"-color_primaries",
+	"bt709",
+	"-color_trc",
+	"bt709",
+	"-color_range",
+	"tv",
+] as const;
+
+const FFMPEG_AUTO_TO_VIDEO_RANGE_FILTER = "scale=in_range=auto:out_range=tv:sws_dither=bayer";
+const FFMPEG_AUTO_TO_FULL_RANGE_FILTER = "scale=in_range=auto:out_range=full";
+const FFMPEG_FULL_TO_VIDEO_RANGE_FILTER = "scale=in_range=full:out_range=tv:sws_dither=bayer";
+
 export type NativeExportEncodingMode = "fast" | "balanced" | "quality";
 
 export type NativeVideoExportAudioMode = "none" | "copy-source" | "trim-source" | "edited-track";
@@ -296,7 +311,7 @@ export function buildNativeVideoExportArgs(
 		"-i",
 		"pipe:0",
 		"-vf",
-		"vflip",
+		`vflip,${FFMPEG_FULL_TO_VIDEO_RANGE_FILTER}`,
 		"-an",
 		"-c:v",
 		encoder,
@@ -309,7 +324,14 @@ export function buildNativeVideoExportArgs(
 		args.push(...getLibx264ModeArgs(options.encodingMode));
 	}
 
-	args.push("-pix_fmt", "yuv420p", "-movflags", "+faststart", outputPath);
+	args.push(
+		"-pix_fmt",
+		"yuv420p",
+		...FFMPEG_BT709_VIDEO_COLOR_ARGS,
+		"-movflags",
+		"+faststart",
+		outputPath,
+	);
 	return args;
 }
 
@@ -328,7 +350,7 @@ export function buildNativeCudaOverlayStaticLayoutArgs(
 		"-i",
 		config.inputPath,
 		"-filter_complex",
-		`color=c=${backgroundColor}:s=${config.width}x${config.height}:r=${config.frameRate}:d=${durationSec},format=nv12,hwupload_cuda[bg];[0:v]scale_cuda=w=${config.contentWidth}:h=${config.contentHeight}:format=nv12,fps=${config.frameRate}[fg];[bg][fg]overlay_cuda=${config.offsetX}:${config.offsetY}:shortest=0:repeatlast=1:eof_action=repeat,trim=duration=${durationSec},setpts=PTS-STARTPTS[out]`,
+		`color=c=${backgroundColor}:s=${config.width}x${config.height}:r=${config.frameRate}:d=${durationSec},format=nv12,setrange=limited,hwupload_cuda[bg];[0:v]scale_cuda=w=${config.contentWidth}:h=${config.contentHeight}:format=nv12:passthrough=0,hwdownload,format=nv12,${FFMPEG_AUTO_TO_VIDEO_RANGE_FILTER},fps=${config.frameRate},hwupload_cuda[fg];[bg][fg]overlay_cuda=${config.offsetX}:${config.offsetY}:shortest=0:repeatlast=1:eof_action=repeat,trim=duration=${durationSec},setpts=PTS-STARTPTS[out]`,
 		"-map",
 		"[out]",
 		"-an",
@@ -338,6 +360,7 @@ export function buildNativeCudaOverlayStaticLayoutArgs(
 		"h264_nvenc",
 		...getNvencStaticLayoutModeArgs(config.encodingMode),
 		...getBitrateArgs(config.bitrate),
+		...FFMPEG_BT709_VIDEO_COLOR_ARGS,
 		"-movflags",
 		"+faststart",
 		config.outputPath,
@@ -359,7 +382,7 @@ export function buildNativeCudaScaleCpuPadStaticLayoutArgs(
 		"-i",
 		config.inputPath,
 		"-vf",
-		`scale_cuda=w=${config.contentWidth}:h=${config.contentHeight}:format=nv12:passthrough=0,hwdownload,format=nv12,fps=${config.frameRate},pad=w=${config.width}:h=${config.height}:x=${config.offsetX}:y=${config.offsetY}:color=${backgroundColor}`,
+		`scale_cuda=w=${config.contentWidth}:h=${config.contentHeight}:format=nv12:passthrough=0,hwdownload,format=nv12,${FFMPEG_AUTO_TO_VIDEO_RANGE_FILTER},fps=${config.frameRate},pad=w=${config.width}:h=${config.height}:x=${config.offsetX}:y=${config.offsetY}:color=${backgroundColor}`,
 		"-map",
 		"0:v:0",
 		"-an",
@@ -371,6 +394,7 @@ export function buildNativeCudaScaleCpuPadStaticLayoutArgs(
 		...getBitrateArgs(config.bitrate),
 		"-pix_fmt",
 		"yuv420p",
+		...FFMPEG_BT709_VIDEO_COLOR_ARGS,
 		"-movflags",
 		"+faststart",
 		config.outputPath,
@@ -514,10 +538,10 @@ export function buildNativePrecompositedStaticLayoutArgs(
 		);
 	}
 
-	const foregroundFilter = `[0:v]scale_cuda=w=${config.contentWidth}:h=${config.contentHeight}:format=nv12:passthrough=0,hwdownload,format=nv12,fps=${config.frameRate},format=rgba[fgbase]`;
+	const foregroundFilter = `[0:v]scale_cuda=w=${config.contentWidth}:h=${config.contentHeight}:format=nv12:passthrough=0,hwdownload,format=nv12,${FFMPEG_AUTO_TO_FULL_RANGE_FILTER},fps=${config.frameRate},format=rgba[fgbase]`;
 	const maskFilter = useMask ? ";[2:v]format=gray[mask];[fgbase][mask]alphamerge[fg]" : "";
 	const foregroundLabel = useMask ? "fg" : "fgbase";
-	const filterComplex = `${foregroundFilter}${maskFilter};[1:v]format=rgba[bg];[bg][${foregroundLabel}]overlay=x=${config.offsetX}:y=${config.offsetY}:format=auto,trim=duration=${durationSec},setpts=PTS-STARTPTS,format=yuv420p[out]`;
+	const filterComplex = `${foregroundFilter}${maskFilter};[1:v]format=rgba[bg];[bg][${foregroundLabel}]overlay=x=${config.offsetX}:y=${config.offsetY}:format=auto,trim=duration=${durationSec},setpts=PTS-STARTPTS,${FFMPEG_FULL_TO_VIDEO_RANGE_FILTER},format=yuv420p[out]`;
 
 	args.push(
 		"-filter_complex",
@@ -533,6 +557,7 @@ export function buildNativePrecompositedStaticLayoutArgs(
 		...getBitrateArgs(config.bitrate),
 		"-pix_fmt",
 		"yuv420p",
+		...FFMPEG_BT709_VIDEO_COLOR_ARGS,
 		"-movflags",
 		"+faststart",
 		config.outputPath,

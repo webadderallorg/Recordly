@@ -1,0 +1,33 @@
+{
+  // ── For the "Deploy to Cloudflare" button / fresh self-hosters ONLY ──
+  // Bindings are intentionally ID-less so Cloudflare auto-provisions a fresh D1
+  // database and R2 bucket in the DEPLOYER's account. The worker creates its own
+  // schema at runtime, so no migrations need to run.
+  //
+  // npm run deploy uses this wrangler.jsonc configuration.
+  // Supply a separate explicit --config path for any deployment-specific configuration.
+  //
+  "name": "recordly-share",
+  "main": "src/index.js",
+  "compatibility_date": "2024-11-01",
+  "compatibility_flags": ["service_binding_extra_handlers"],
+  "assets": {
+    "directory": "./web/dist",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "recordly-share-db"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "VIDEOS_BUCKET",
+      "bucket_name": "recordly-videos"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 3 * * *"]
+  }
+}

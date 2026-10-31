@@ -53,10 +53,10 @@ export function GifOptionsPanel({
 					onValueChange={(value) => onFrameRateChange(Number(value) as GifFrameRate)}
 					disabled={disabled}
 				>
-					<SelectTrigger className="w-full bg-foreground/5 border-foreground/10 text-foreground hover:bg-foreground/10">
+					<SelectTrigger className="w-full">
 						<SelectValue />
 					</SelectTrigger>
-					<SelectContent className="bg-editor-surface-alt border-foreground/10 z-[100]">
+					<SelectContent className="z-[100]">
 						{GIF_FRAME_RATES.map((rate) => (
 							<SelectItem
 								key={rate.value}
@@ -80,10 +80,10 @@ export function GifOptionsPanel({
 					onValueChange={(value) => onSizePresetChange(value as GifSizePreset)}
 					disabled={disabled}
 				>
-					<SelectTrigger className="w-full bg-foreground/5 border-foreground/10 text-foreground hover:bg-foreground/10">
+					<SelectTrigger className="w-full">
 						<SelectValue />
 					</SelectTrigger>
-					<SelectContent className="bg-editor-surface-alt border-foreground/10 z-[100]">
+					<SelectContent className="z-[100]">
 						{sizePresetOptions.map((option) => (
 							<SelectItem
 								key={option.value}
@@ -109,9 +109,16 @@ export function GifOptionsPanel({
 					<label className="text-sm font-medium text-foreground">
 						{t("gifOptions.loopAnimation")}
 					</label>
-					<p className="text-xs text-muted-foreground/70">{t("gifOptions.loopDescription")}</p>
+					<p className="text-xs text-muted-foreground/70">
+						{t("gifOptions.loopDescription")}
+					</p>
 				</div>
-				<Switch checked={loop} onCheckedChange={onLoopChange} disabled={disabled} />
+				<Switch
+					aria-label={t("gifOptions.loopAnimation")}
+					checked={loop}
+					onCheckedChange={onLoopChange}
+					disabled={disabled}
+				/>
 			</div>
 		</div>
 	);

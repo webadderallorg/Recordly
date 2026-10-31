@@ -1,4 +1,4 @@
-import type { EditorProjectData } from "./projectPersistence";
+import { stripProjectUserPreferences, type EditorProjectData } from "./projectPersistence";
 
 function isComparableObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
@@ -47,10 +47,10 @@ function omitTransientWebcamMediaFields(project: EditorProjectData | null) {
 		return project;
 	}
 
-	const editor = project.editor as Record<string, unknown>;
+	const editor = stripProjectUserPreferences(project.editor) as Record<string, unknown>;
 	const webcam = editor.webcam;
 	if (!isComparableObject(webcam)) {
-		return project;
+		return { ...project, editor };
 	}
 
 	const {

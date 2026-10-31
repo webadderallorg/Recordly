@@ -1,6 +1,11 @@
+import { Card } from "@heroui/react";
+import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useState } from "react";
 
+import { useI18n } from "@/contexts/I18nContext";
+
 export function CountdownOverlay() {
+	const { t } = useI18n();
 	const [countdown, setCountdown] = useState<number | null>(null);
 
 	useEffect(() => {
@@ -40,31 +45,20 @@ export function CountdownOverlay() {
 	}
 
 	return (
-		<div
-			className="fixed inset-0 flex items-center justify-center select-none cursor-pointer"
-			onClick={handleCancel}
-			onKeyDown={(e) => e.key === "Escape" && handleCancel()}
-		>
-			<div
-				className="flex items-center justify-center rounded-3xl"
-				style={{
-					width: 180,
-					height: 180,
-					background: "rgba(0, 0, 0, 0.85)",
-					backdropFilter: "blur(20px)",
-				}}
-			>
-				<span
-					className="text-white font-bold tabular-nums"
-					style={{
-						fontSize: "100px",
-						lineHeight: 1,
-						textShadow: "0 0 30px rgba(255,255,255,0.2)",
+		<div className="fixed inset-0 flex items-center justify-center" onClick={handleCancel}>
+			<Card className="size-44 items-center justify-center gap-1" aria-live="assertive">
+				<span className="text-7xl tabular-nums">{countdown}</span>
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={(event) => {
+						event.stopPropagation();
+						handleCancel();
 					}}
 				>
-					{countdown}
-				</span>
-			</div>
+					{t("common.actions.cancel", "Cancel")}
+				</Button>
+			</Card>
 		</div>
 	);
 }

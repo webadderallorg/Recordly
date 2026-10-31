@@ -4,31 +4,31 @@ const path = require("node:path");
 const drawHeight = 256;
 const padding = 2;
 const cursorTypes = [
-  "arrow",
-  "text",
-  "pointer",
-  "crosshair",
-  "open-hand",
-  "closed-hand",
-  "resize-ew",
-  "resize-ns",
-  "not-allowed",
+	"arrow",
+	"text",
+	"pointer",
+	"crosshair",
+	"open-hand",
+	"closed-hand",
+	"resize-ew",
+	"resize-ns",
+	"not-allowed",
 ];
 const tahoeAssets = {
-  arrow: ["pointer-1__14-6.svg", 0.14, 0.06],
-  text: ["ibeam-1__50-44.svg", 0.5, 0.44],
-  pointer: ["pointinghand-1__40-10.svg", 0.4, 0.1],
-  crosshair: ["crosshair-1__50-50.svg", 0.5, 0.5],
-  "open-hand": ["openhand-1__55-57.svg", 0.55, 0.57],
-  "closed-hand": ["closedhand-1__50-46.svg", 0.5, 0.46],
-  "resize-ew": ["resizeeastwest-1__50-50.svg", 0.5, 0.5],
-  "resize-ns": ["resizenorthsouth-1__50-49.svg", 0.5, 0.49],
-  "not-allowed": ["notallowed-1__23-0.svg", 0.23, 0],
+	arrow: ["pointer-1__14-6.svg", 0.14, 0.06],
+	text: ["ibeam-1__50-44.svg", 0.5, 0.44],
+	pointer: ["../golden-gate/pointinghand.svg", 12 / 32, 8 / 32],
+	crosshair: ["crosshair-1__50-50.svg", 0.5, 0.5],
+	"open-hand": ["../golden-gate/openhand.svg", 15 / 32, 16 / 32],
+	"closed-hand": ["../golden-gate/closedhand.svg", 15 / 32, 16 / 32],
+	"resize-ew": ["resizeeastwest-1__50-50.svg", 0.5, 0.5],
+	"resize-ns": ["resizenorthsouth-1__50-49.svg", 0.5, 0.49],
+	"not-allowed": ["notallowed-1__23-0.svg", 0.23, 0],
 };
 
 function arg(name, fallback = "") {
-  const index = process.argv.indexOf(name);
-  return index >= 0 && index + 1 < process.argv.length ? process.argv[index + 1] : fallback;
+	const index = process.argv.indexOf(name);
+	return index >= 0 && index + 1 < process.argv.length ? process.argv[index + 1] : fallback;
 }
 
 const repoRoot = arg("--repo-root");
@@ -36,41 +36,43 @@ const atlasRgbaPath = arg("--output-rgba");
 const atlasMetadataPath = arg("--output-metadata");
 
 if (!repoRoot || !atlasRgbaPath || !atlasMetadataPath) {
-  console.error("Usage: electron render-tahoe-cursor-atlas.cjs --repo-root <repo> --output-rgba <raw> --output-metadata <tsv>");
-  process.exit(1);
+	console.error(
+		"Usage: electron render-tahoe-cursor-atlas.cjs --repo-root <repo> --output-rgba <raw> --output-metadata <tsv>",
+	);
+	process.exit(1);
 }
 
 const assets = cursorTypes.map((type, index) => {
-  const [fileName, anchorX, anchorY] = tahoeAssets[type];
-  return {
-    type,
-    index,
-    filePath: path.join(repoRoot, "src", "assets", "cursors", "tahoe", fileName),
-    anchorX,
-    anchorY,
-  };
+	const [fileName, anchorX, anchorY] = tahoeAssets[type];
+	return {
+		type,
+		index,
+		filePath: path.join(repoRoot, "src", "assets", "cursors", "tahoe", fileName),
+		anchorX,
+		anchorY,
+	};
 });
 
 app.disableHardwareAcceleration();
 
 app.whenReady().then(async () => {
-  const window = new BrowserWindow({
-    show: false,
-    width: 1,
-    height: 1,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      backgroundThrottling: false,
-    },
-  });
+	const window = new BrowserWindow({
+		show: false,
+		width: 1,
+		height: 1,
+		webPreferences: {
+			nodeIntegration: true,
+			contextIsolation: false,
+			backgroundThrottling: false,
+		},
+	});
 
-  ipcMain.once("atlas-ready", (_event, result) => {
-    console.log(JSON.stringify(result));
-    app.quit();
-  });
+	ipcMain.once("atlas-ready", (_event, result) => {
+		console.log(JSON.stringify(result));
+		app.quit();
+	});
 
-  const html = `
+	const html = `
 <!doctype html>
 <meta charset="utf-8">
 <script>
@@ -139,5 +141,5 @@ function loadImage(asset) {
 });
 </script>`;
 
-  await window.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+	await window.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
 });

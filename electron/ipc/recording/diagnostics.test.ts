@@ -134,6 +134,42 @@ describe("getCompanionAudioFallbackPaths", () => {
 		]);
 	});
 
+	it("returns both mac sidecars instead of the video when a system sidecar exists", async () => {
+		const videoPath = path.join(tempRoot, "recording.mp4");
+		const systemPath = path.join(tempRoot, "recording.system.m4a");
+		const micPath = path.join(tempRoot, "recording.mic.m4a");
+
+		await Promise.all([
+			fs.writeFile(videoPath, "video"),
+			fs.writeFile(systemPath, "system"),
+			fs.writeFile(micPath, "mic"),
+		]);
+
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				const error = new Error("ffmpeg probe found embedded audio") as Error & {
+					stderr?: string;
+				};
+				error.stderr = "Stream #0:1: Audio: aac";
+				callback(error, "", error.stderr);
+			},
+		);
+
+		const { getCompanionAudioFallbackPaths } = await import("./diagnostics");
+
+		// The inline mp4 track holds system audio only, so returning [videoPath]
+		// here silently dropped the microphone.
+		await expect(getCompanionAudioFallbackPaths(videoPath)).resolves.toEqual([
+			systemPath,
+			micPath,
+		]);
+	});
+
 	it("prefers the mac mic companion alone when embedded audio already exists and no system sidecar is present", async () => {
 		const videoPath = path.join(tempRoot, "recording.mp4");
 		const micPath = path.join(tempRoot, "recording.mic.m4a");

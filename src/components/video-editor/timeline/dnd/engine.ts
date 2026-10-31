@@ -1,6 +1,6 @@
 import type { Range, Span } from "dnd-timeline";
 import { CLIP_ROW_ID } from "../core/constants";
-import type { TimelineRegionSpan } from "../core/timelineTypes";
+import type { ClipSequenceSpan, TimelineRegionSpan } from "../core/timelineTypes";
 
 export interface DndEngineConfig {
 	totalMs: number;
@@ -110,103 +110,23 @@ export function clampResizedSpanToNeighbours(
 	return { start: Math.max(0, start), end: Math.min(end, totalMs || end) };
 }
 
-function getClipDragTotalMs(
-	activeItem: TimelineRegionSpan | undefined,
-	rowId: string | undefined,
-	span: Span,
-	totalMs: number,
-) {
-	if (activeItem?.rowId !== CLIP_ROW_ID || rowId !== CLIP_ROW_ID) {
-		return totalMs;
-	}
-
-	return Math.max(totalMs, Math.ceil(span.end));
-}
-
-function spansOverlap(left: Span, right: Span) {
-	return left.start < right.end && left.end > right.start;
-}
-
-function placeSpanAfterSibling(
+/** A primary-track drag inserts into the sequence; it never searches for empty time. */
+function resolveClipSequenceDrag(
+	activeItem: TimelineRegionSpan,
 	siblings: TimelineRegionSpan[],
-	siblingIndex: number,
-	duration: number,
-): Span {
-	let start = siblings[siblingIndex].end;
-
-	for (let index = siblingIndex + 1; index < siblings.length; index += 1) {
-		const sibling = siblings[index];
-		if (start + duration <= sibling.start) {
-			break;
-		}
-		start = sibling.end;
-	}
-
-	return { start, end: start + duration };
-}
-
-function placeSpanBeforeSibling(
-	siblings: TimelineRegionSpan[],
-	siblingIndex: number,
-	duration: number,
-): Span | null {
-	let end = siblings[siblingIndex].start;
-
-	for (let index = siblingIndex - 1; index >= 0; index -= 1) {
-		const sibling = siblings[index];
-		if (end - duration >= sibling.end) {
-			break;
-		}
-		end = sibling.start;
-	}
-
-	const start = end - duration;
-	if (start < 0) {
-		return null;
-	}
-
-	return { start, end };
-}
-
-function resolveClipDragInsertionSpan(params: {
-	activeItem: TimelineRegionSpan;
-	siblings: TimelineRegionSpan[];
-	proposedStart: number;
-	duration: number;
-}): Span | null {
-	const { activeItem, siblings, proposedStart, duration } = params;
-	const proposedSpan = { start: proposedStart, end: proposedStart + duration };
-	const proposedCenter = proposedStart + duration / 2;
-	const delta = proposedStart - activeItem.start;
-
-	if (delta > 0) {
-		const nextIndex = siblings.findIndex(
-			(sibling) =>
-				sibling.start >= activeItem.end &&
-				spansOverlap(proposedSpan, sibling) &&
-				proposedCenter >= sibling.start,
-		);
-		if (nextIndex >= 0) {
-			return placeSpanAfterSibling(siblings, nextIndex, duration);
-		}
-
-		return null;
-	}
-
-	if (delta < 0) {
-		for (let index = siblings.length - 1; index >= 0; index -= 1) {
-			const sibling = siblings[index];
-			if (
-				sibling.end <= activeItem.start &&
-				spansOverlap(proposedSpan, sibling) &&
-				proposedCenter <= sibling.end
-			) {
-				return placeSpanBeforeSibling(siblings, index, duration);
-			}
-		}
-	}
-
-	return null;
+	proposedStart: number,
+): ClipSequenceSpan {
+	const duration = activeItem.end - activeItem.start;
+	const center = proposedStart + duration / 2;
+	const movingRight = proposedStart > activeItem.start;
+	const sequenceIndex = siblings.filter((sibling) => {
+		const siblingCenter = (sibling.start + sibling.end) / 2;
+		return movingRight ? siblingCenter <= center : siblingCenter < center;
+	}).length;
+	const start = siblings
+		.slice(0, sequenceIndex)
+		.reduce((sum, sibling) => sum + sibling.end - sibling.start, 0);
+	return { start, end: start + duration, sequenceIndex };
 }
 
 export function clampDraggedSpanToNeighbours(
@@ -227,25 +147,12 @@ export function clampDraggedSpanToNeighbours(
 		Math.min(minItemDurationMs, totalMs || minItemDurationMs),
 	);
 	const proposedStart = Number.isFinite(span.start) ? span.start : activeItem.start;
-	const proposedSpan = { start: proposedStart, end: proposedStart + duration };
 
-	if (activeItem.rowId === CLIP_ROW_ID && rowId === CLIP_ROW_ID) {
-		const insertionSpan = resolveClipDragInsertionSpan({
-			activeItem,
-			siblings,
-			proposedStart,
-			duration,
-		});
-		if (insertionSpan) {
-			const insertionTotalMs = getClipDragTotalMs(activeItem, rowId, insertionSpan, totalMs);
-			return clampSpanToBounds(insertionSpan, {
-				totalMs: insertionTotalMs,
-				minItemDurationMs,
-			});
-		}
+	if (activeItem.rowId === CLIP_ROW_ID && (rowId ?? activeItem.rowId) === CLIP_ROW_ID) {
+		return resolveClipSequenceDrag(activeItem, siblings, proposedStart);
 	}
 
-	const effectiveTotalMs = getClipDragTotalMs(activeItem, rowId, proposedSpan, totalMs);
+	const effectiveTotalMs = totalMs;
 
 	const previousSibling = [...siblings]
 		.reverse()
@@ -274,6 +181,24 @@ export function resolveResizeEnd(
 	>,
 ): Span | null {
 	const { totalMs, minItemDurationMs, allRegionSpans, hasOverlap } = config;
+	const activeItem = allRegionSpans.find((region) => region.id === activeItemId);
+	if (activeItem?.rowId === CLIP_ROW_ID) {
+		if (!Number.isFinite(updatedSpan.start) || !Number.isFinite(updatedSpan.end)) return null;
+		// Source limits are enforced by the clip command. Negative left edges and
+		// extension beyond the old sequence end reveal trimmed source before repacking.
+		const minDuration = Math.max(1, minItemDurationMs);
+		const resizedLeft =
+			updatedSpan.start !== activeItem.start && updatedSpan.end === activeItem.end;
+		return resizedLeft
+			? {
+					start: Math.min(updatedSpan.start, updatedSpan.end - minDuration),
+					end: updatedSpan.end,
+				}
+			: {
+					start: updatedSpan.start,
+					end: Math.max(updatedSpan.end, updatedSpan.start + minDuration),
+				};
+	}
 	let clamped = clampSpanToBounds(updatedSpan, { totalMs, minItemDurationMs });
 	const effectiveMinDuration =
 		totalMs > 0 ? Math.min(minItemDurationMs, totalMs) : minItemDurationMs;
@@ -307,7 +232,7 @@ export function resolveDragEnd(
 		"allRegionSpans" | "totalMs" | "minItemDurationMs" | "hasOverlap"
 	>,
 	resolveTargetRowId?: (id: string, proposedRowId: string) => string,
-): { span: Span; rowId: string } | null {
+): { span: ClipSequenceSpan; rowId: string } | null {
 	const { allRegionSpans, totalMs, minItemDurationMs, hasOverlap } = config;
 	const resolvedRowId = resolveTargetRowId?.(activeItemId, proposedRowId) ?? proposedRowId;
 
@@ -316,7 +241,20 @@ export function resolveDragEnd(
 		? activeItem.end - activeItem.start
 		: updatedSpan.end - updatedSpan.start;
 	const dragSpan: Span = { start: updatedSpan.start, end: updatedSpan.start + originalDuration };
-	const effectiveTotalMs = getClipDragTotalMs(activeItem, resolvedRowId, dragSpan, totalMs);
+	if (activeItem?.rowId === CLIP_ROW_ID && resolvedRowId === CLIP_ROW_ID) {
+		const proposedStart = Number.isFinite(updatedSpan.start)
+			? updatedSpan.start
+			: activeItem.start;
+		return {
+			span: resolveClipSequenceDrag(
+				activeItem,
+				getSiblingSpans(activeItemId, resolvedRowId, allRegionSpans),
+				proposedStart,
+			),
+			rowId: resolvedRowId,
+		};
+	}
+	const effectiveTotalMs = totalMs;
 
 	let clamped = clampSpanToBounds(dragSpan, { totalMs: effectiveTotalMs, minItemDurationMs });
 	if (hasOverlap(clamped, activeItemId, resolvedRowId)) {

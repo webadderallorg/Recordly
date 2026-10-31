@@ -1,4 +1,4 @@
-import type { Application } from "pixi.js";
+import type { Application, Container } from "pixi.js";
 
 type PixiInitializationState = "initializing" | "initialized" | "failed";
 type PixiInitOptions = Parameters<Application["init"]>[0];
@@ -87,7 +87,9 @@ export async function initializePixiApplicationWithTimeout(
 	const timeoutPromise = new Promise<never>((_, reject) => {
 		timeoutId = setTimeout(() => {
 			reject(
-				new Error(`Initialization timed out after ${timeoutMs}ms for ${backendLabel} renderer`),
+				new Error(
+					`Initialization timed out after ${timeoutMs}ms for ${backendLabel} renderer`,
+				),
 			);
 		}, timeoutMs);
 	});
@@ -105,4 +107,10 @@ export function destroyPixiApplication(app: Application | null, context: string)
 	destroyRequests.add(app);
 	destroyContexts.set(app, context);
 	if (initializationStates.get(app) !== "initializing") completeDestroy(app);
+}
+
+export function destroyPixiContainer(container: Container | null): void {
+	if (!container || container.destroyed) return;
+	container.parent?.removeChild(container);
+	container.destroy();
 }

@@ -3,16 +3,24 @@ import { useEffect, useState, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 import { formatPlayheadTime } from "../../core/time";
 
+import {
+	getPlayheadDisplayTime,
+	getTimeAtClipSeam,
+	type ClipPresentation,
+} from "../../core/clipPresentation";
+
 interface PlaybackCursorProps {
+	clips: ClipPresentation[];
 	currentTimeMs: number;
 	videoDurationMs: number;
 	onSeek?: (time: number) => void;
-	timelineRef: RefObject<HTMLDivElement>;
+	timelineRef: RefObject<HTMLDivElement | null>;
 	keyframes?: { id: string; time: number }[];
 	isLoading?: boolean;
 }
 
 export default function PlaybackCursor({
+	clips,
 	currentTimeMs,
 	videoDurationMs,
 	onSeek,
@@ -23,6 +31,7 @@ export default function PlaybackCursor({
 	const { sidebarWidth, direction, range, valueToPixels, pixelsToValue } = useTimelineContext();
 	const sideProperty = direction === "rtl" ? "right" : "left";
 	const [isDragging, setIsDragging] = useState(false);
+	const [isHovered, setIsHovered] = useState(false);
 
 	useEffect(() => {
 		if (!isDragging) return;
@@ -30,9 +39,15 @@ export default function PlaybackCursor({
 		const handleMouseMove = (e: MouseEvent) => {
 			if (!timelineRef.current || !onSeek) return;
 			const rect = timelineRef.current.getBoundingClientRect();
-			const clickX = e.clientX - rect.left - sidebarWidth;
+			const clickX =
+				direction === "rtl"
+					? rect.right - sidebarWidth - e.clientX
+					: e.clientX - rect.left - sidebarWidth;
 			const relativeMs = pixelsToValue(clickX);
-			let absoluteMs = Math.max(0, Math.min(range.start + relativeMs, videoDurationMs));
+			let absoluteMs = getTimeAtClipSeam(
+				Math.max(0, Math.min(range.start + relativeMs, videoDurationMs)),
+				clips,
+			);
 
 			const snapThresholdMs = 150;
 			const nearbyKeyframe = keyframes.find(
@@ -62,6 +77,7 @@ export default function PlaybackCursor({
 		};
 	}, [
 		isDragging,
+		clips,
 		onSeek,
 		timelineRef,
 		sidebarWidth,
@@ -70,60 +86,56 @@ export default function PlaybackCursor({
 		videoDurationMs,
 		pixelsToValue,
 		keyframes,
+		direction,
 	]);
 
 	if (videoDurationMs <= 0 || currentTimeMs < 0) return null;
 	const clampedTime = Math.min(currentTimeMs, videoDurationMs);
 	if (clampedTime < range.start || clampedTime > range.end) return null;
 
-	const offset = valueToPixels(clampedTime - range.start);
+	const offset = valueToPixels(getPlayheadDisplayTime(clampedTime, clips) - range.start);
 
+	const expanded = isHovered || isDragging || isLoading;
+	// Keep the timestamp inside the viewport even at either end of the timeline.
+	const width = valueToPixels(range.end - range.start);
+	const capShift = Math.max(0, 34 - offset) - Math.max(0, 34 - (width - offset));
 	return (
-		<div
-			className="absolute top-0 bottom-0 z-50 group/cursor"
-			style={{
-				[sideProperty === "right" ? "marginRight" : "marginLeft"]: `${sidebarWidth - 1}px`,
-				pointerEvents: "none",
-			}}
-		>
+		<div data-testid="timeline-playhead" className="absolute inset-0 z-50 pointer-events-none">
 			<div
-				className="absolute top-0 bottom-0 w-[2px] bg-[#2563EB] shadow-[0_0_10px_rgba(37,99,235,0.5)] cursor-ew-resize pointer-events-auto hover:shadow-[0_0_15px_rgba(37,99,235,0.7)] transition-shadow"
-				style={{ [sideProperty]: `${offset}px` }}
-				onMouseDown={(e) => {
-					e.stopPropagation();
-					setIsDragging(true);
-				}}
+				className="absolute top-0 bottom-0 w-px bg-red-500"
+				style={{ [sideProperty]: sidebarWidth + offset }}
 			>
-				<div
-					className="absolute -top-1 left-1/2 -translate-x-1/2 hover:scale-125 transition-transform"
-					style={{ width: "16px", height: "16px" }}
+				<button
+					type="button"
+					aria-label={`Playhead ${formatPlayheadTime(clampedTime)}`}
+					data-testid="playhead-cap"
+					onMouseEnter={() => setIsHovered(true)}
+					onMouseLeave={() => setIsHovered(false)}
+					onFocus={() => setIsHovered(true)}
+					onBlur={() => setIsHovered(false)}
+					onClick={(event) => event.stopPropagation()}
+					onMouseDown={(event) => {
+						if (event.button !== 0) return;
+						event.preventDefault();
+						event.stopPropagation();
+						setIsDragging(true);
+					}}
+					className="absolute top-0 h-4 rounded-full bg-red-500 text-white cursor-ew-resize pointer-events-auto overflow-hidden transition-[width,transform] duration-150"
+					style={{
+						width: expanded ? 68 : 16,
+						left: "50%",
+						transform: `translateX(calc(-50% + ${expanded ? (direction === "rtl" ? -capShift : capShift) : 0}px))`,
+					}}
 				>
-					<div className="w-3 h-3 mx-auto mt-[2px] bg-[#2563EB] rotate-45 rounded-sm shadow-lg border border-foreground/20" />
-				</div>
-				<div
-					className={cn(
-						"absolute -top-6 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-black/80 text-[10px] text-white/90 font-medium tabular-nums whitespace-nowrap border border-foreground/10 shadow-lg pointer-events-none transition-opacity",
-						(isDragging || isLoading) ? "opacity-100" : "opacity-0",
-					)}
-				>
-					<div className="flex items-center">
-						{formatPlayheadTime(clampedTime).split("").map((char, i) => (
-							<span
-								key={i}
-								className={cn(
-									"leading-5 whitespace-pre",
-									isLoading && "bg-gradient-to-r from-white/40 via-white to-white/40 bg-clip-text text-transparent animate-text-shimmer"
-								)}
-								style={isLoading ? {
-									animationDelay: `${i * 0.05}s`,
-									animationDuration: "2.5s",
-								} : undefined}
-							>
-								{char}
-							</span>
-						))}
-					</div>
-				</div>
+					<span
+						className={cn(
+							"block whitespace-nowrap text-[10px] font-medium tabular-nums transition-opacity",
+							expanded ? "opacity-100" : "opacity-0",
+						)}
+					>
+						{formatPlayheadTime(clampedTime)}
+					</span>
+				</button>
 			</div>
 		</div>
 	);

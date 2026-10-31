@@ -97,7 +97,9 @@ if (!cmake) {
 			binaryName: "recordly-gpu-export.exe",
 		});
 		if (!verification.ok) {
-			console.error(formatNativeHelperManifestWarning("build-windows-gpu-export", verification));
+			console.error(
+				formatNativeHelperManifestWarning("build-windows-gpu-export", verification),
+			);
 			process.exit(1);
 		}
 		console.log(`[build-windows-gpu-export] Using bundled helper: ${bundledExePath}`);
@@ -123,11 +125,14 @@ try {
 		prefix: "build-windows-gpu-export",
 		clearCache: clearCmakeCache,
 		configure: (generator, toolset) =>
-			execSync(`${cmake} .. -G "${generator}" -A ${generatorArch}${toolset ? ` -T ${toolset}` : ""}`, {
-				cwd: buildDir,
-				stdio: "inherit",
-				timeout: 120000,
-			}),
+			execSync(
+				`${cmake} .. -G "${generator}" -A ${generatorArch}${toolset ? ` -T ${toolset}` : ""}`,
+				{
+					cwd: buildDir,
+					stdio: "inherit",
+					timeout: 120000,
+				},
+			),
 	});
 } catch (error) {
 	console.error("[build-windows-gpu-export] CMake configure failed:", error.message);

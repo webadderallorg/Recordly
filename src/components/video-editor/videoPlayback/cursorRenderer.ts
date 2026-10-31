@@ -2,7 +2,6 @@ import { Assets, BlurFilter, Container, Graphics, Sprite, Texture } from "pixi.j
 import { MotionBlurFilter } from "pixi-filters/motion-blur";
 import minimalCursorUrl from "@/assets/cursors/custom/minimal-cursor.svg";
 import { getRenderableAssetUrl } from "@/lib/assetPath";
-import { extensionHost } from "@/lib/extensions";
 import {
 	type CursorClickEffectStyle,
 	type CursorStyle,
@@ -16,6 +15,7 @@ import {
 	DEFAULT_CURSOR_STYLE,
 	normalizeCursorClickEffectColor,
 } from "../types";
+import { getCursorViewportScale } from "./cursorScale";
 import { computeCursorSwayRotation } from "./cursorSway";
 import { type CursorViewportRect, projectCursorPositionToViewport } from "./cursorViewport";
 import {
@@ -26,9 +26,13 @@ import {
 	stepSpringValue,
 } from "./motionSmoothing";
 import { cursorSetAssets, getCursorStyleSizeMultiplier } from "./uploadedCursorAssets";
+import { computeDirectionalMotionBlur } from "./zoomTransform";
+import { interpolateCursorPosition } from "./cursorPosition";
+import { computeCursorFrameBlur } from "./frameMotionSample";
+export { interpolateCursorPosition } from "./cursorPosition";
 
 type CursorAssetKey = NonNullable<CursorTelemetryPoint["cursorType"]>;
-type StatefulCursorStyle = Extract<CursorStyle, "macos" | "tahoe" | "tahoe-inverted">;
+type StatefulCursorStyle = Extract<CursorStyle, "macos" | "tahoe" | "tahoe-inverted" | "windows11">;
 type SingleCursorStyle = Extract<CursorStyle, "dot" | "figma">;
 type CursorPackStyle = Exclude<CursorStyle, StatefulCursorStyle | SingleCursorStyle>;
 type CursorPackVariant = "default" | "pointer";
@@ -110,9 +114,10 @@ export interface CursorRenderConfig {
 	style: CursorStyle;
 }
 
-const REFERENCE_WIDTH = 1920;
-const MIN_CURSOR_VIEWPORT_SCALE = 0.55;
-const CURSOR_MOTION_BLUR_BASE_MULTIPLIER = 0.08;
+const MIN_CURSOR_VIEWPORT_SCALE = 0;
+// Keep the cursor visually responsive while sharing the camera's frame-rate
+// normalization, kernel, and directional offset formula.
+const CURSOR_DIRECTIONAL_BLUR_STRENGTH = 2;
 const CURSOR_TIME_DISCONTINUITY_MS = 100;
 const CURSOR_SWAY_SMOOTHING_MULTIPLIER = 0.7;
 const CURSOR_SWAY_SMOOTHING_OFFSET = 0.18;
@@ -123,6 +128,7 @@ const CURSOR_SHADOW_OFFSET_X = 0;
 const CURSOR_SHADOW_OFFSET_Y = 2;
 const CURSOR_SHADOW_BLUR = 3;
 const CURSOR_SHADOW_PADDING = 12;
+const MIN_RASTERIZED_CURSOR_HEIGHT = 512;
 const NATIVE_CURSOR_ATLAS_DRAW_HEIGHT = 256;
 const NATIVE_CURSOR_ATLAS_PADDING = 2;
 
@@ -171,24 +177,11 @@ const SUPPORTED_CURSOR_KEYS: CursorAssetKey[] = [
 	"not-allowed",
 ];
 
-const DEFAULT_CURSOR_PACK_ANCHOR = { x: 0.08, y: 0.08 } as const;
 const CURSOR_PACK_POINTER_TYPES = new Set<CursorAssetKey>(["pointer", "open-hand", "closed-hand"]);
 const BUILTIN_CURSOR_PACK_SOURCES: Record<string, CursorPackSource> = {};
 
 function getCursorPackSources(): Record<string, CursorPackSource> {
-	const sources: Record<string, CursorPackSource> = { ...BUILTIN_CURSOR_PACK_SOURCES };
-
-	for (const cursorStyle of extensionHost.getContributedCursorStyles()) {
-		const hotspot = cursorStyle.cursorStyle.hotspot ?? DEFAULT_CURSOR_PACK_ANCHOR;
-		sources[cursorStyle.id] = {
-			defaultUrl: cursorStyle.resolvedDefaultUrl,
-			pointerUrl: cursorStyle.resolvedClickUrl ?? cursorStyle.resolvedDefaultUrl,
-			defaultAnchor: hotspot,
-			pointerAnchor: hotspot,
-		};
-	}
-
-	return sources;
+	return { ...BUILTIN_CURSOR_PACK_SOURCES };
 }
 
 function buildCursorPackSourcesSignature(sources: Record<string, CursorPackSource>): string {
@@ -202,7 +195,12 @@ function buildCursorPackSourcesSignature(sources: Record<string, CursorPackSourc
 }
 
 function isStatefulCursorStyle(style: CursorStyle): style is StatefulCursorStyle {
-	return style === "macos" || style === "tahoe" || style === "tahoe-inverted";
+	return (
+		style === "macos" ||
+		style === "tahoe" ||
+		style === "tahoe-inverted" ||
+		style === "windows11"
+	);
 }
 
 function isSingleCursorStyle(style: CursorStyle): style is SingleCursorStyle {
@@ -285,11 +283,16 @@ async function createCursorPackAsset(
 async function createRasterizedCursorAsset(
 	url: string,
 	anchor: { x: number; y: number },
+	options: { preserveCanvas?: boolean } = {},
 ): Promise<LoadedCursorAsset> {
 	const image = await loadImage(url);
 	const sourceCanvas = document.createElement("canvas");
-	sourceCanvas.width = image.naturalWidth;
-	sourceCanvas.height = image.naturalHeight;
+	const rasterScale =
+		image.naturalHeight > 0
+			? Math.max(1, MIN_RASTERIZED_CURSOR_HEIGHT / image.naturalHeight)
+			: 1;
+	sourceCanvas.width = Math.max(1, Math.round(image.naturalWidth * rasterScale));
+	sourceCanvas.height = Math.max(1, Math.round(image.naturalHeight * rasterScale));
 	const sourceCtx = sourceCanvas.getContext("2d");
 	if (!sourceCtx) {
 		await Assets.load(url);
@@ -304,7 +307,21 @@ async function createRasterizedCursorAsset(
 	}
 
 	sourceCtx.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
-	sourceCtx.drawImage(image, 0, 0);
+	sourceCtx.drawImage(image, 0, 0, sourceCanvas.width, sourceCanvas.height);
+
+	if (options.preserveCanvas) {
+		const dataUrl = sourceCanvas.toDataURL("image/png");
+		await Assets.load(dataUrl);
+		const rasterizedImage = await loadImage(dataUrl);
+		const texture = configureCursorTexture(Texture.from(dataUrl));
+		return {
+			texture,
+			image: rasterizedImage,
+			aspectRatio: sourceCanvas.height > 0 ? sourceCanvas.width / sourceCanvas.height : 1,
+			anchorX: clamp(anchor.x, 0, 1),
+			anchorY: clamp(anchor.y, 0, 1),
+		};
+	}
 
 	const trimmed = trimCanvasToAlpha(sourceCanvas, {
 		x: sourceCanvas.width * clamp(anchor.x, 0, 1),
@@ -557,6 +574,7 @@ export async function preloadCursorAssets() {
 							const asset = await createRasterizedCursorAsset(
 								sourceAsset.url,
 								sourceAsset.fallbackAnchor,
+								{ preserveCanvas: sourceAsset.preserveCanvas },
 							);
 
 							return [key, asset] as const;
@@ -575,9 +593,10 @@ export async function preloadCursorAssets() {
 				) as Partial<Record<CursorAssetKey, LoadedCursorAsset>>;
 			}
 
-			const [macosAssets, tahoeAssets] = await Promise.all([
+			const [macosAssets, tahoeAssets, windows11Assets] = await Promise.all([
 				loadCursorSet("macos"),
 				loadCursorSet("tahoe"),
+				loadCursorSet("windows11"),
 			]);
 
 			const invertedEntries = await Promise.all(
@@ -589,6 +608,7 @@ export async function preloadCursorAssets() {
 			loadedCursorSetAssets = {
 				macos: macosAssets,
 				tahoe: tahoeAssets,
+				windows11: windows11Assets,
 				"tahoe-inverted": Object.fromEntries(invertedEntries) as Partial<
 					Record<CursorAssetKey, LoadedCursorAsset>
 				>,
@@ -686,50 +706,6 @@ export async function buildNativeCursorAtlas(
 	};
 }
 
-/**
- * Interpolates cursor position from telemetry samples at a given time.
- * Uses linear interpolation between the two nearest samples.
- */
-export function interpolateCursorPosition(
-	samples: CursorTelemetryPoint[],
-	timeMs: number,
-): { cx: number; cy: number } | null {
-	if (!samples || samples.length === 0) return null;
-
-	if (timeMs <= samples[0].timeMs) {
-		return { cx: samples[0].cx, cy: samples[0].cy };
-	}
-
-	if (timeMs >= samples[samples.length - 1].timeMs) {
-		return {
-			cx: samples[samples.length - 1].cx,
-			cy: samples[samples.length - 1].cy,
-		};
-	}
-
-	let lo = 0;
-	let hi = samples.length - 1;
-	while (lo < hi - 1) {
-		const mid = (lo + hi) >> 1;
-		if (samples[mid].timeMs <= timeMs) {
-			lo = mid;
-		} else {
-			hi = mid;
-		}
-	}
-
-	const a = samples[lo];
-	const b = samples[hi];
-	const span = b.timeMs - a.timeMs;
-	if (span <= 0) return { cx: a.cx, cy: a.cy };
-
-	const t = (timeMs - a.timeMs) / span;
-	return {
-		cx: a.cx + (b.cx - a.cx) * t,
-		cy: a.cy + (b.cy - a.cy) * t,
-	};
-}
-
 function findLatestSample(samples: CursorTelemetryPoint[], timeMs: number) {
 	if (samples.length === 0) return null;
 
@@ -805,13 +781,6 @@ function findLatestStableCursorType(samples: CursorTelemetryPoint[], timeMs: num
 	}
 
 	return findLatestSample(samples, timeMs)?.cursorType ?? "arrow";
-}
-
-function getCursorViewportScale(
-	viewport: CursorViewportRect,
-	minViewportScale = MIN_CURSOR_VIEWPORT_SCALE,
-) {
-	return Math.max(minViewportScale, viewport.width / REFERENCE_WIDTH);
 }
 
 function getCursorSwaySpringConfig(smoothingFactor: number, springTuning: CursorSpringTuning) {
@@ -1231,6 +1200,10 @@ export class PixiCursorOverlay {
 		}
 	}
 
+	setFilterResolution(resolution: number) {
+		this.cursorMotionBlurFilter.resolution = Math.max(1, resolution);
+	}
+
 	setClickBounce(clickBounce: number) {
 		this.config.clickBounce = Math.max(0, clickBounce);
 	}
@@ -1313,6 +1286,7 @@ export class PixiCursorOverlay {
 		viewport: CursorViewportRect,
 		visible: boolean,
 		freeze = false,
+		previousFrameTimeMs?: number | null,
 	): void {
 		if (samples.length === 0 || viewport.width <= 0 || viewport.height <= 0) {
 			this.container.visible = false;
@@ -1346,7 +1320,7 @@ export class PixiCursorOverlay {
 
 		const h =
 			this.config.dotRadius *
-			getCursorViewportScale(viewport, this.config.minViewportScale);
+			getCursorViewportScale(viewport.width, this.config.minViewportScale);
 		const { cursorType, clickSample, clickBounceProgress, clickProgress } =
 			getCursorVisualState(
 				samples,
@@ -1522,7 +1496,21 @@ export class PixiCursorOverlay {
 			this.customCursorSprite.rotation = swayRotation;
 		}
 
-		this.applyCursorMotionBlur(px, py, timeMs, shouldFreezeCursorMotion);
+		if (shouldFreezeCursorMotion && previousFrameTimeMs !== undefined) {
+			const blur = computeCursorFrameBlur(
+				samples,
+				timeMs,
+				previousFrameTimeMs,
+				viewport,
+				this.config.motionBlur,
+				CURSOR_DIRECTIONAL_BLUR_STRENGTH,
+			);
+			this.cursorMotionBlurFilter.velocity = blur.velocity;
+			this.cursorMotionBlurFilter.kernelSize = blur.kernelSize;
+			this.cursorMotionBlurFilter.offset = blur.offset;
+		} else {
+			this.applyCursorMotionBlur(px, py, timeMs, shouldFreezeCursorMotion);
+		}
 		this.lastRenderedPoint = shouldShowCursorSprite ? { px, py } : null;
 		this.lastRenderedTimeMs = timeMs;
 	}
@@ -1572,17 +1560,16 @@ export class PixiCursorOverlay {
 		const deltaMs = Math.max(1, timeMs - this.lastRenderedTimeMs);
 		const dx = px - this.lastRenderedPoint.px;
 		const dy = py - this.lastRenderedPoint.py;
-		const velocityScale =
-			(1000 / deltaMs) * this.config.motionBlur * CURSOR_MOTION_BLUR_BASE_MULTIPLIER;
-		const velocity = {
-			x: dx * velocityScale,
-			y: dy * velocityScale,
-		};
-		const magnitude = Math.hypot(velocity.x, velocity.y);
+		const blur = computeDirectionalMotionBlur(
+			{ x: dx, y: dy },
+			this.config.motionBlur,
+			deltaMs / 1000,
+			CURSOR_DIRECTIONAL_BLUR_STRENGTH,
+		);
 
-		this.cursorMotionBlurFilter.velocity = magnitude > 0.05 ? velocity : { x: 0, y: 0 };
-		this.cursorMotionBlurFilter.kernelSize = magnitude > 3 ? 9 : magnitude > 1 ? 7 : 5;
-		this.cursorMotionBlurFilter.offset = magnitude > 0.5 ? -0.25 : 0;
+		this.cursorMotionBlurFilter.velocity = blur.velocity;
+		this.cursorMotionBlurFilter.kernelSize = blur.kernelSize;
+		this.cursorMotionBlurFilter.offset = blur.offset;
 	}
 
 	reset(): void {
@@ -1642,7 +1629,7 @@ export function drawCursorOnCanvas(
 
 	const px = viewport.x + smoothedState.x * viewport.width;
 	const py = viewport.y + smoothedState.y * viewport.height;
-	const h = config.dotRadius * getCursorViewportScale(viewport, config.minViewportScale);
+	const h = config.dotRadius * getCursorViewportScale(viewport.width, config.minViewportScale);
 	const { cursorType, clickSample, clickBounceProgress, clickProgress } = getCursorVisualState(
 		samples,
 		timeMs,

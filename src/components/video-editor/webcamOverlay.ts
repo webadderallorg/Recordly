@@ -1,9 +1,39 @@
 import type { CropRegion, WebcamCorner, WebcamPositionPreset } from "./types";
 
 const MIN_WEBCAM_OVERLAY_SIZE_PX = 56;
+export const WEBCAM_REFERENCE_VIEWPORT_WIDTH = 1920;
+const WEBCAM_REFERENCE_VIEWPORT_HEIGHT = 1080;
 
 function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
+}
+
+export function scaleWebcamOverlayPixels(value: number, containerWidth: number): number {
+	const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0;
+	const safeWidth = Number.isFinite(containerWidth) ? Math.max(0, containerWidth) : 0;
+	return safeValue * (safeWidth / WEBCAM_REFERENCE_VIEWPORT_WIDTH);
+}
+
+export function getWebcamCornerRadiusPx(
+	roundnessPercent: number,
+	width: number,
+	height: number,
+): number {
+	const safeRoundness = Number.isFinite(roundnessPercent) ? clamp(roundnessPercent, 0, 100) : 0;
+	const strengthenedRoundness = Math.sqrt(safeRoundness / 100);
+	return (Math.max(0, Math.min(width, height)) / 2) * strengthenedRoundness;
+}
+
+export function convertLegacyWebcamRadiusToRoundness(
+	radiusPixels: number,
+	widthPercent: number,
+	heightPercent: number,
+): number {
+	const referenceShortSide =
+		WEBCAM_REFERENCE_VIEWPORT_HEIGHT *
+		(clamp(Math.min(widthPercent, heightPercent), 10, 100) / 100);
+	const normalizedRadius = clamp(Math.max(0, radiusPixels) / (referenceShortSide / 2), 0, 1);
+	return normalizedRadius ** 2 * 100;
 }
 
 export function getWebcamPositionForPreset(preset: WebcamPositionPreset): { x: number; y: number } {

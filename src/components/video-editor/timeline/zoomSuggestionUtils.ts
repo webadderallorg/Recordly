@@ -43,7 +43,15 @@ export interface InteractionZoomSuggestionResult {
 export function shouldAutoApplyFreshRecordingZoomsForSource(
 	sourceWidth?: number,
 	sourceHeight?: number,
+	platform?: string,
 ): boolean {
+	// Window capture on Windows legitimately produces portrait and near-square
+	// sources. Click telemetry is already normalized to that captured window, so
+	// its aspect ratio is not a reason to suppress interaction-based zooms.
+	if (platform === "win32") {
+		return true;
+	}
+
 	if (
 		!Number.isFinite(sourceWidth) ||
 		!Number.isFinite(sourceHeight) ||

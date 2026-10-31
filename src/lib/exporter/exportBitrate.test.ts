@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { getMp4ExportBitrate, getSourceQualityBitrate } from "./exportBitrate";
 
 describe("export bitrate policy", () => {
-	it("keeps source-quality exports at a fuller screen-recording bitrate", () => {
-		expect(getSourceQualityBitrate(1920, 1080)).toBe(30_000_000);
+	it("uses the web-delivery source-quality caps", () => {
+		expect(getSourceQualityBitrate(1280, 720)).toBe(8_000_000);
+		expect(getSourceQualityBitrate(1920, 1080)).toBe(12_000_000);
+		expect(getSourceQualityBitrate(3840, 2160)).toBe(45_000_000);
 		expect(
 			getMp4ExportBitrate({
 				width: 1920,
@@ -12,7 +14,7 @@ describe("export bitrate policy", () => {
 				quality: "source",
 				encodingMode: "quality",
 			}),
-		).toBe(30_000_000);
+		).toBe(12_000_000);
 		expect(
 			getMp4ExportBitrate({
 				width: 1920,
@@ -21,7 +23,7 @@ describe("export bitrate policy", () => {
 				quality: "source",
 				encodingMode: "balanced",
 			}),
-		).toBe(22_500_000);
+		).toBe(9_600_000);
 	});
 
 	it("raises high-resolution 60fps source-quality exports above the 30fps budget", () => {
@@ -41,9 +43,9 @@ describe("export bitrate policy", () => {
 			frameRate: 60,
 		});
 
-		expect(thirtyFpsBitrate).toBe(50_000_000);
+		expect(thirtyFpsBitrate).toBe(20_555_556);
 		expect(sixtyFpsBitrate).toBeGreaterThan(thirtyFpsBitrate);
-		expect(sixtyFpsBitrate).toBe(70_710_678);
+		expect(sixtyFpsBitrate).toBe(29_069_946);
 	});
 
 	it("keeps modern native static-layout source exports high enough for screen text", () => {
@@ -56,7 +58,7 @@ describe("export bitrate policy", () => {
 				encodingMode: "balanced",
 				useModernNativeStaticLayout: true,
 			}),
-		).toBe(22_500_000);
+		).toBe(9_600_000);
 		expect(
 			getMp4ExportBitrate({
 				width: 1920,
@@ -66,7 +68,7 @@ describe("export bitrate policy", () => {
 				encodingMode: "quality",
 				useModernNativeStaticLayout: true,
 			}),
-		).toBe(30_000_000);
+		).toBe(12_000_000);
 	});
 
 	it("scales modern native static-layout source exports at 60fps", () => {
@@ -87,9 +89,9 @@ describe("export bitrate policy", () => {
 			frameRate: 60,
 		});
 
-		expect(thirtyFpsBitrate).toBe(30_000_000);
+		expect(thirtyFpsBitrate).toBe(12_000_000);
 		expect(sixtyFpsBitrate).toBeGreaterThan(thirtyFpsBitrate);
-		expect(sixtyFpsBitrate).toBe(42_426_407);
+		expect(sixtyFpsBitrate).toBe(16_970_563);
 	});
 
 	it("does not raise fast exports when the requested bitrate is already lower than the cap", () => {
@@ -102,7 +104,7 @@ describe("export bitrate policy", () => {
 				encodingMode: "fast",
 				useModernNativeStaticLayout: true,
 			}),
-		).toBe(3_000_000);
+		).toBe(6_000_000);
 	});
 
 	it("scales the modern native cap with output pixel rate", () => {
@@ -115,6 +117,6 @@ describe("export bitrate policy", () => {
 				encodingMode: "quality",
 				useModernNativeStaticLayout: true,
 			}),
-		).toBe(72_000_000);
+		).toBe(45_000_000);
 	});
 });

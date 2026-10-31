@@ -371,7 +371,12 @@ export async function renderAnnotations(
 	);
 
 	const sortedAnnotations = [...activeAnnotations].sort((a, b) => a.zIndex - b.zIndex);
-	const annotationRect = coordinateRect ?? { x: 0, y: 0, width: canvasWidth, height: canvasHeight };
+	const annotationRect = coordinateRect ?? {
+		x: 0,
+		y: 0,
+		width: canvasWidth,
+		height: canvasHeight,
+	};
 
 	for (const annotation of sortedAnnotations) {
 		const rect = transformAnnotationRect(

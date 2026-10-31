@@ -52,8 +52,14 @@ jobs:
         continue-on-error: true
         run: npm run format:check
 
-      - name: Test
+      # Real recording-import tests require the binary skipped by --ignore-scripts.
+      - name: Install FFmpeg for integration tests
+        id: ffmpeg
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm rebuild ffmpeg-static
+
+      - name: Test
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.ffmpeg.outcome == 'success' }}
         run: npm test
 
       # Main currently has known locale-parity debt covered by PR #710. Keep the

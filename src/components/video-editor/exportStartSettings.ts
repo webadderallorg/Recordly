@@ -68,3 +68,15 @@ export function resolveExportStartSettings({
 				: undefined,
 	};
 }
+
+export function resolveShareExportSettings(settings: ExportSettings): ExportSettings {
+	return {
+		...settings,
+		format: "mp4",
+		quality: "source",
+		encodingMode: "fast",
+		mp4FrameRate: 30,
+		includeCaptionSidecar: false,
+		gifConfig: undefined,
+	};
+}

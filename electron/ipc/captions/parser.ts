@@ -31,7 +31,7 @@ export function parseWhisperJsonWords(tokens: unknown): CaptionWordPayload[] {
 
 		const tokenData = token as WhisperJsonToken;
 		const tokenText = typeof tokenData.text === "string" ? tokenData.text : "";
-		if (!tokenText) {
+		if (!tokenText || /^\[_[^\]]+\]$/.test(tokenText)) {
 			continue;
 		}
 
@@ -49,11 +49,13 @@ export function parseWhisperJsonWords(tokens: unknown): CaptionWordPayload[] {
 				continue;
 			}
 
-			if (tokenStartMs == null || tokenEndMs == null || tokenEndMs <= tokenStartMs) {
-				return [];
-			}
-
 			const previousWord = words.length > 0 ? words[words.length - 1] : null;
+			if (previousWord && !nextLeadingSpace && /^\p{P}+$/u.test(part)) {
+				previousWord.text += part;
+				continue;
+			}
+			if (tokenStartMs == null || tokenEndMs == null || tokenEndMs <= tokenStartMs) return [];
+
 			if (!previousWord || nextLeadingSpace) {
 				words.push({
 					text: part,
@@ -179,5 +181,7 @@ export function parseSrtCues(content: string): CaptionCuePayload[] {
 
 export function shouldRetryWhisperWithoutJson(error: unknown): boolean {
 	const message = error instanceof Error ? error.message : String(error);
-	return /unknown argument|output-json-full|output-json|ojf|\boj\b/i.test(message);
+	return /(?:unknown|unrecognized|unsupported) (?:argument|option)[:\s=]+['"]?--?(?:ojf|output-json-full)\b/i.test(
+		message,
+	);
 }

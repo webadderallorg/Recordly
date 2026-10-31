@@ -42,9 +42,39 @@ describe("local media path policy", () => {
 	afterEach(async () => {
 		vi.resetModules();
 		vi.doUnmock("electron");
+		vi.doUnmock("../../mediaServer");
+		vi.doUnmock("./firstFrameThumbnail");
 		if (tempRoot) {
 			await fs.rm(tempRoot, { recursive: true, force: true });
 		}
+	});
+
+	it("reads library previews without switching the active project and rejects unknown projects", async () => {
+		vi.doMock("../../mediaServer", () => ({
+			getMediaServerBaseUrl: () => "http://127.0.0.1:1234",
+			buildMediaUrl: (base: string, file: string) =>
+				`${base}/media?path=${encodeURIComponent(file)}`,
+		}));
+		const manager = await import("./manager");
+		const state = await import("../state");
+		const source = path.join(tempRoot, "video.mp4");
+		await fs.writeFile(source, "video");
+		const projectsDir = await manager.getProjectsDir();
+		const projectPath = path.join(projectsDir, "preview.recordly");
+		await fs.writeFile(
+			projectPath,
+			JSON.stringify({ version: 1, videoPath: source, editor: {} }),
+		);
+		state.setCurrentProjectPath("active.recordly");
+		state.setCurrentVideoPath("active.mp4");
+		const result = await manager.readProjectPreview(projectPath);
+		expect(result.videoUrl).toContain(encodeURIComponent(source));
+		expect(result.webcamUrl).toBeNull();
+		expect(state.currentProjectPath).toBe("active.recordly");
+		expect(state.currentVideoPath).toBe("active.mp4");
+		await expect(
+			manager.readProjectPreview(path.join(tempRoot, "unknown.recordly")),
+		).rejects.toThrow("not in the library");
 	});
 
 	it("rejects existing media files outside allowed directories until they are approved", async () => {
@@ -143,6 +173,34 @@ describe("local media path policy", () => {
 		await expect(resolveApprovedLocalMediaPath(symlinkInsideUserData)).resolves.toBeNull();
 	});
 
+	it("generates a missing project poster once and keeps it cached", async () => {
+		const png = Buffer.alloc(24);
+		Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(png);
+		png.writeUInt32BE(640, 16);
+		png.writeUInt32BE(480, 20);
+		const generate = vi.fn().mockResolvedValue(png);
+		vi.doMock("./firstFrameThumbnail", () => ({ createProjectFirstFrameThumbnail: generate }));
+		const manager = await import("./manager");
+		const source = path.join(tempRoot, "source.mp4");
+		const projectPath = path.join(tempRoot, "test.recordly");
+		await fs.writeFile(source, "video");
+		await fs.writeFile(
+			projectPath,
+			JSON.stringify({ version: 2, videoPath: source, editor: {} }),
+		);
+		const before = await fs.readFile(projectPath, "utf8");
+		const entry = await manager.buildProjectLibraryEntry(projectPath, tempRoot);
+		expect(entry?.thumbnailPath).toBeNull();
+		await manager.refreshProjectThumbnail(projectPath, await fs.stat(projectPath));
+		expect((await manager.buildProjectLibraryEntry(projectPath, tempRoot))?.thumbnailPath).toBe(
+			manager.getProjectThumbnailPath(projectPath),
+		);
+		expect(generate).toHaveBeenCalledWith(source);
+		await manager.buildProjectLibraryEntry(projectPath, tempRoot);
+		expect(generate).toHaveBeenCalledTimes(1);
+		expect(await fs.readFile(projectPath, "utf8")).toBe(before);
+	});
+
 	it("preserves an existing project thumbnail when no replacement is provided", async () => {
 		const projectPath = path.join(tempRoot, "Projects", "demo.recordly");
 		const thumbnailDataUrl = `data:image/png;base64,${Buffer.from("png-thumbnail").toString("base64")}`;
@@ -228,5 +286,83 @@ describe("local media path policy", () => {
 		const result = await loadProjectFromPath(projectPath);
 		expect(result.success).toBe(true);
 		await expect(resolveApprovedLocalMediaPath(audioPath)).resolves.toBe(resolvedAudioPath);
+	});
+	it("returns a library entry while a thumbnail decode is still pending", async () => {
+		let release!: (data: Buffer) => void;
+		const pending = new Promise<Buffer>((resolve) => {
+			release = resolve;
+		});
+		const generate = vi.fn(() => pending);
+		vi.doMock("./firstFrameThumbnail", () => ({ createProjectFirstFrameThumbnail: generate }));
+		const manager = await import("./manager");
+		const source = path.join(tempRoot, "slow.mp4");
+		const projectPath = path.join(tempRoot, "slow.recordly");
+		await fs.writeFile(source, "video");
+		await fs.writeFile(
+			projectPath,
+			JSON.stringify({ version: 2, videoPath: source, editor: {} }),
+		);
+		const ready = vi.fn();
+		const entry = await manager.buildProjectLibraryEntry(projectPath, tempRoot, ready);
+		expect(entry?.path).toBe(projectPath);
+		expect(entry?.thumbnailPath).toBeNull();
+		const task = manager.refreshProjectThumbnail(projectPath, await fs.stat(projectPath));
+		expect(ready).not.toHaveBeenCalled();
+		release(Buffer.from("fixture thumbnail"));
+		await task;
+		expect(generate).toHaveBeenCalledTimes(1);
+		expect(ready).toHaveBeenCalledWith(expect.objectContaining({ path: projectPath }));
+	});
+
+	it("replaces a thumbnail symlink without overwriting its target", async () => {
+		vi.doMock("./firstFrameThumbnail", () => ({
+			createProjectFirstFrameThumbnail: vi.fn().mockResolvedValue(Buffer.from("new poster")),
+		}));
+		const manager = await import("./manager");
+		const source = path.join(tempRoot, "source.mp4");
+		const projectPath = path.join(tempRoot, "linked.recordly");
+		const target = path.join(tempRoot, "private.txt");
+		await fs.writeFile(source, "video");
+		await fs.writeFile(
+			projectPath,
+			JSON.stringify({ version: 2, videoPath: source, editor: {} }),
+		);
+		await fs.writeFile(target, "must remain intact");
+		const thumbnail = manager.getProjectThumbnailPath(projectPath);
+		try {
+			await fs.symlink(target, thumbnail);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "EPERM") return;
+			throw error;
+		}
+		await manager.refreshProjectThumbnail(projectPath, await fs.stat(projectPath));
+		expect(await fs.readFile(target, "utf8")).toBe("must remain intact");
+		expect((await fs.lstat(thumbnail)).isSymbolicLink()).toBe(false);
+		expect(await fs.readFile(thumbnail, "utf8")).toBe("new poster");
+	});
+
+	it("discards a thumbnail when the project changes during decoding", async () => {
+		let release!: (data: Buffer) => void;
+		const pending = new Promise<Buffer>((resolve) => {
+			release = resolve;
+		});
+		const generate = vi.fn(() => pending);
+		vi.doMock("./firstFrameThumbnail", () => ({ createProjectFirstFrameThumbnail: generate }));
+		const manager = await import("./manager");
+		const source = path.join(tempRoot, "source.mp4");
+		const projectPath = path.join(tempRoot, "edited.recordly");
+		await fs.writeFile(source, "video");
+		await fs.writeFile(
+			projectPath,
+			JSON.stringify({ version: 2, videoPath: source, editor: {} }),
+		);
+		const task = manager.refreshProjectThumbnail(projectPath, await fs.stat(projectPath));
+		await vi.waitFor(() => expect(generate).toHaveBeenCalled());
+		await fs.appendFile(projectPath, " ");
+		release(Buffer.from("obsolete poster"));
+		expect(await task).toBeNull();
+		await expect(fs.stat(manager.getProjectThumbnailPath(projectPath))).rejects.toMatchObject({
+			code: "ENOENT",
+		});
 	});
 });

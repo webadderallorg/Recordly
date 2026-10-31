@@ -86,25 +86,20 @@
 	z-index: 10;
 }
 
-.glassPurple {
+.glassBlue {
 	position: relative;
 	border-radius: 8px;
-	background: #4a2a69;
-	border: 1px solid #5c3385;
-	transition:
-		background 0.15s ease,
-		border-color 0.15s ease;
+	background: var(--accent);
+	border: 1px solid transparent;
+	transition: background 0.15s ease;
 }
 
-.glassPurple:hover {
-	background: #593180;
-	border-color: #733da7;
+.glassBlue:hover {
+	background: color-mix(in srgb, var(--accent) 88%, white);
 }
 
-.glassPurple.selected {
-	background: #643690;
-	border-color: #a855f7;
-	box-shadow: inset 0 0 0 1.5px #a855f7;
+.glassBlue.selected {
+	border-color: color-mix(in srgb, var(--accent) 60%, white);
 	z-index: 10;
 }
 
@@ -197,113 +192,99 @@
 
 /* --- Light-mode overrides --- */
 :global(:root:not(.dark)) .glassGreen {
-	background: linear-gradient(180deg, #dbeafe 0%, #93c5fd 100%);
+	background: #93c5fd;
 	border-color: #60a5fa;
 }
 :global(:root:not(.dark)) .glassGreen:hover {
-	background: linear-gradient(180deg, #bfdbfe 0%, #60a5fa 100%);
+	background: #60a5fa;
 	border-color: #3b82f6;
 }
 :global(:root:not(.dark)) .glassGreen.selected {
-	background: linear-gradient(180deg, #93c5fd 0%, #3b82f6 100%);
+	background: #3b82f6;
 	border-color: #2563eb;
 	box-shadow: inset 0 0 0 1.5px #2563eb;
 }
 
 :global(:root:not(.dark)) .glassRed {
-	background: linear-gradient(180deg, #fee2e2 0%, #fca5a5 100%);
+	background: #fca5a5;
 	border-color: #f87171;
 }
 :global(:root:not(.dark)) .glassRed:hover {
-	background: linear-gradient(180deg, #fecaca 0%, #f87171 100%);
+	background: #f87171;
 	border-color: #ef4444;
 }
 :global(:root:not(.dark)) .glassRed.selected {
-	background: linear-gradient(180deg, #fca5a5 0%, #ef4444 100%);
+	background: #ef4444;
 	border-color: #ef4444;
 	box-shadow: inset 0 0 0 1.5px #ef4444;
 }
 
 :global(:root:not(.dark)) .glassYellow {
-	background: linear-gradient(180deg, #fef9c3 0%, #fde047 100%);
+	background: #fde047;
 	border-color: #facc15;
 }
 :global(:root:not(.dark)) .glassYellow:hover {
-	background: linear-gradient(180deg, #fef08a 0%, #facc15 100%);
+	background: #facc15;
 	border-color: #eab308;
 }
 :global(:root:not(.dark)) .glassYellow.selected {
-	background: linear-gradient(180deg, #fde047 0%, #eab308 100%);
+	background: #eab308;
 	border-color: #b4a046;
 	box-shadow: inset 0 0 0 1.5px #b4a046;
 }
 
 :global(:root:not(.dark)) .glassAmber {
-	background: linear-gradient(180deg, #fef3c7 0%, #fcd34d 100%);
+	background: #fcd34d;
 	border-color: #fbbf24;
 }
 :global(:root:not(.dark)) .glassAmber:hover {
-	background: linear-gradient(180deg, #fde68a 0%, #fbbf24 100%);
+	background: #fbbf24;
 	border-color: #f59e0b;
 }
 :global(:root:not(.dark)) .glassAmber.selected {
-	background: linear-gradient(180deg, #fcd34d 0%, #f59e0b 100%);
+	background: #f59e0b;
 	border-color: #f59e0b;
 	box-shadow: inset 0 0 0 1.5px #f59e0b;
 }
 
-:global(:root:not(.dark)) .glassPurple {
-	background: linear-gradient(180deg, #f3e8ff 0%, #d8b4fe 100%);
-	border-color: #c084fc;
-}
-:global(:root:not(.dark)) .glassPurple:hover {
-	background: linear-gradient(180deg, #e9d5ff 0%, #c084fc 100%);
-	border-color: #a855f7;
-}
-:global(:root:not(.dark)) .glassPurple.selected {
-	background: linear-gradient(180deg, #d8b4fe 0%, #a855f7 100%);
-	border-color: #a855f7;
-	box-shadow: inset 0 0 0 1.5px #a855f7;
-}
-
 :global(:root:not(.dark)) .glassCyan {
-	background: linear-gradient(180deg, #dbeafe 0%, #93c5fd 100%);
+	background: #93c5fd;
 	border-color: #60a5fa;
 }
 :global(:root:not(.dark)) .glassCyan:hover {
-	background: linear-gradient(180deg, #bfdbfe 0%, #60a5fa 100%);
+	background: #60a5fa;
 	border-color: #3b82f6;
 }
 :global(:root:not(.dark)) .glassCyan.selected {
-	background: linear-gradient(180deg, #93c5fd 0%, #3b82f6 100%);
+	background: #3b82f6;
 	border-color: #2563eb;
 	box-shadow: inset 0 0 0 1.5px #2563eb;
 }
 
 :global(:root:not(.dark)) .glassDarkGreen {
-	background: linear-gradient(180deg, #dcfce7 0%, #86efac 100%);
+	background: #86efac;
 	border-color: #4ade80;
 }
 :global(:root:not(.dark)) .glassDarkGreen:hover {
-	background: linear-gradient(180deg, #bbf7d0 0%, #4ade80 100%);
+	background: #4ade80;
 	border-color: #22c55e;
 }
 :global(:root:not(.dark)) .glassDarkGreen.selected {
-	background: linear-gradient(180deg, #86efac 0%, #22c55e 100%);
+	background: #22c55e;
 	border-color: #22c55e;
 	box-shadow: inset 0 0 0 1.5px #22c55e;
 }
 
 :global(:root:not(.dark)) .glassCaption {
-	background: linear-gradient(180deg, #fce7f3 0%, #f9a8d4 100%);
+	background: #f9a8d4;
 	border-color: #f472b6;
 }
 :global(:root:not(.dark)) .glassCaption:hover {
-	background: linear-gradient(180deg, #fbcfe8 0%, #f472b6 100%);
+	background: #f472b6;
 	border-color: #ec4899;
 }
 :global(:root:not(.dark)) .glassCaption.selected {
-	background: linear-gradient(180deg, #f9a8d4 0%, #ec4899 100%);
+	background: #ec4899;
 	border-color: #ec4899;
 	box-shadow: inset 0 0 0 1.5px #ec4899;
 }
@@ -323,7 +304,7 @@
 .glassRed:hover .zoomEndCap,
 .glassYellow:hover .zoomEndCap,
 .glassAmber:hover .zoomEndCap,
-.glassPurple:hover .zoomEndCap,
+.glassBlue:hover .zoomEndCap,
 .glassCyan:hover .zoomEndCap,
 .glassDarkGreen:hover .zoomEndCap,
 .glassCaption:hover .zoomEndCap {
@@ -344,4 +325,50 @@
 .zoomEndCap::before,
 .zoomEndCap::after {
 	content: none;
+}
+
+/* Keep clip handles visible using the original theme-aware handle colors. */
+.zoomEndCap.clipHandle {
+	opacity: 1;
+}
+
+/* Clip grips sit outside the filmstrip; the clip boundary is the trim target. */
+.zoomEndCap.clipHandle.left {
+	left: -9px;
+}
+.zoomEndCap.clipHandle.right {
+	right: -9px;
+}
+
+/* Caption previews share the filmstrip, with enough contrast over any footage. */
+.glassCaption.embeddedCaption,
+:global(:root:not(.dark)) .glassCaption.embeddedCaption {
+	border-radius: 4px;
+}
+
+/* Caption selection uses the same primary blue as the editor controls. */
+.glassCaption.selected,
+:global(:root:not(.dark)) .glassCaption.selected,
+.glassCaption.embeddedCaption.selected,
+:global(:root:not(.dark)) .glassCaption.embeddedCaption.selected {
+	border-color: var(--accent);
+	box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+/* Compact caption lane inside the filmstrip. */
+.glassCaption,
+.glassCaption.embeddedCaption,
+:global(:root:not(.dark)) .glassCaption,
+:global(:root:not(.dark)) .glassCaption.embeddedCaption {
+	background: #b58b12;
+	border-color: #facc15;
+}
+.glassCaption:hover,
+.glassCaption.embeddedCaption:hover {
+	background: #c49a18;
+}
+.glassCaption.selected,
+:global(:root:not(.dark)) .glassCaption.selected {
+	border-color: #fde047;
+	box-shadow: inset 0 0 0 1.5px #fde047;
 }

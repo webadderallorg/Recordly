@@ -3,6 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("electron", () => ({
 	app: {
 		getAppPath: vi.fn(() => process.cwd()),
+		getGPUFeatureStatus: vi.fn(() => ({
+			video_decode: "enabled",
+			video_encode: "enabled",
+			webgl: "enabled",
+			webgpu: "enabled",
+		})),
 		getGPUInfo: vi.fn(async () => ({ gpuDevice: [] })),
 		getPath: vi.fn(() => process.env.TEMP ?? process.cwd()),
 		isPackaged: false,
@@ -55,6 +61,7 @@ import {
 	buildNativeVideoAudioMuxArgs,
 	canCopyAudioCodecIntoMp4,
 	getExperimentalNvidiaCudaExportSkipReason,
+	getExportHardwareInfo,
 	getNativeExportCapabilities,
 	getNativeGpuCompositorStallTimeoutMs,
 	getNativeStaticLayoutSourceProxyBitrate,
@@ -75,6 +82,7 @@ import {
 	parseWindowsGpuExportProgressLine,
 	parseWindowsGpuExportSummary,
 	resolveExperimentalNvidiaCudaExportScriptPath,
+	sanitizeExportGpuInfo,
 	shouldCreateNativeStaticLayoutSourceProxy,
 	validateNativeStaticLayoutSourceProxyMetadata,
 	validateNativeVideoStreamStats,
@@ -84,6 +92,7 @@ import {
 
 const electronAppMock = app as unknown as {
 	getAppPath: ReturnType<typeof vi.fn>;
+	getGPUFeatureStatus: ReturnType<typeof vi.fn>;
 	getGPUInfo: ReturnType<typeof vi.fn>;
 	isPackaged: boolean;
 };
@@ -409,6 +418,59 @@ describe("getNativeExportCapabilities", () => {
 		expect(capabilities.nvidiaCuda.hasNvidiaGpu).toBe(
 			process.platform === "win32" ? true : null,
 		);
+	});
+});
+
+describe("export hardware diagnostics", () => {
+	it("sanitizes machine and GPU details without exposing raw device identifiers", () => {
+		const hardware = sanitizeExportGpuInfo({
+			machineModelName: "MacBookPro",
+			machineModelVersion: "18,2",
+			gpuDevice: [
+				{
+					active: true,
+					vendorId: "0x10de",
+					deviceId: 9999,
+					deviceString: "NVIDIA GeForce RTX 4070",
+				},
+			],
+		});
+
+		expect(hardware).toEqual({
+			machineModel: "MacBookPro 18,2",
+			gpus: [
+				{
+					name: "NVIDIA GeForce RTX 4070",
+					vendor: "NVIDIA",
+					active: true,
+				},
+			],
+		});
+		expect(JSON.stringify(hardware)).not.toContain("deviceId");
+		expect(JSON.stringify(hardware)).not.toContain("vendorId");
+	});
+
+	it("returns system capacity and GPU acceleration status", async () => {
+		electronAppMock.getGPUInfo.mockResolvedValueOnce({
+			gpuDevice: [{ active: true, vendorId: 0x8086 }],
+		});
+
+		const hardware = await getExportHardwareInfo();
+
+		expect(electronAppMock.getGPUInfo).toHaveBeenCalledWith("complete");
+		expect(hardware).toMatchObject({
+			platform: process.platform,
+			arch: process.arch,
+			gpus: [{ name: "Intel", vendor: "Intel", active: true }],
+			gpuFeatures: {
+				videoDecode: "enabled",
+				videoEncode: "enabled",
+				webgl: "enabled",
+				webgpu: "enabled",
+			},
+		});
+		expect(hardware.logicalProcessors).toBeGreaterThan(0);
+		expect(hardware.totalMemoryGb).toBeGreaterThan(0);
 	});
 });
 

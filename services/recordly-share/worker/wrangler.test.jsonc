@@ -1,0 +1,28 @@
+{
+  // Test-only config consumed by vitest.config.js (@cloudflare/vitest-pool-workers).
+  // Mirrors the production bindings with local-only resources.
+  "name": "recordly-share-test",
+  "main": "src/index.js",
+  "compatibility_date": "2024-11-01",
+  "compatibility_flags": ["service_binding_extra_handlers"],
+  "assets": {
+    "directory": "./web/dist",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "recordly-share-db",
+      "database_id": "recordly-share-test"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "VIDEOS_BUCKET",
+      "bucket_name": "recordly-videos"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 3 * * *"]
+  }
+}

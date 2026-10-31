@@ -55,47 +55,54 @@ function electronMainCjsGuardPlugin(): Plugin {
 }
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
 	plugins: [
 		react(),
-		electron({
-			main: {
-				// Shortcut of `build.lib.entry`.
-				entry: "electron/main.ts",
-				vite: {
-					build: {
-						lib: {
+		...(mode === "ui" || process.env.RECORDLY_RENDERER_ONLY === "1"
+			? []
+			: [
+					electron({
+						main: {
+							// Shortcut of `build.lib.entry`.
 							entry: "electron/main.ts",
-							formats: ["cjs"],
-							fileName: (_format, entryName) => `${entryName}.cjs`,
-						},
-						rollupOptions: {
-							external: ["ffmpeg-static", "uiohook-napi"],
-							output: {
-								format: "cjs",
-								inlineDynamicImports: true,
-								entryFileNames: "[name].cjs",
-								chunkFileNames: "[name]-[hash].cjs",
+							vite: {
+								build: {
+									lib: {
+										entry: "electron/main.ts",
+										formats: ["cjs"],
+										fileName: (_format, entryName) => `${entryName}.cjs`,
+									},
+									rollupOptions: {
+										external: ["ffmpeg-static", "uiohook-napi"],
+										output: {
+											format: "cjs",
+											inlineDynamicImports: true,
+											entryFileNames: "[name].cjs",
+											chunkFileNames: "[name]-[hash].cjs",
+										},
+									},
+								},
+								plugins: [
+									electronMainCjsOutputPlugin(),
+									electronMainCjsGuardPlugin(),
+								],
 							},
 						},
-					},
-					plugins: [electronMainCjsOutputPlugin(), electronMainCjsGuardPlugin()],
-				},
-			},
-			preload: {
-				// Shortcut of `build.rollupOptions.input`.
-				// Preload scripts may contain Web assets, so use the `build.rollupOptions.input` instead `build.lib.entry`.
-				input: path.join(__dirname, "electron/preload.ts"),
-			},
-			// Polyfill the Electron and Node.js API for the renderer process.
-			// If you want to use Node.js in the renderer process, enable `nodeIntegration` in the main process.
-			// See https://github.com/electron-vite/vite-plugin-electron-renderer
-			renderer:
-				process.env.NODE_ENV === "test"
-					? // https://github.com/electron-vite/vite-plugin-electron-renderer/issues/78#issuecomment-2053600808
-						undefined
-					: {},
-		}),
+						preload: {
+							// Shortcut of `build.rollupOptions.input`.
+							// Preload scripts may contain Web assets, so use the `build.rollupOptions.input` instead `build.lib.entry`.
+							input: path.join(__dirname, "electron/preload.ts"),
+						},
+						// Polyfill the Electron and Node.js API for the renderer process.
+						// If you want to use Node.js in the renderer process, enable `nodeIntegration` in the main process.
+						// See https://github.com/electron-vite/vite-plugin-electron-renderer
+						renderer:
+							process.env.NODE_ENV === "test"
+								? // https://github.com/electron-vite/vite-plugin-electron-renderer/issues/78#issuecomment-2053600808
+									undefined
+								: {},
+					}),
+				]),
 	],
 	resolve: {
 		alias: {
@@ -104,6 +111,8 @@ export default defineConfig({
 	},
 	optimizeDeps: {
 		entries: ["index.html"],
+		// React Aria imports this CommonJS shim through its ESM collection modules.
+		include: ["use-sync-external-store/shim"],
 		exclude: [
 			"react-icons/bs",
 			"react-icons/fa",
@@ -126,7 +135,6 @@ export default defineConfig({
 		rollupOptions: {
 			output: {
 				manualChunks: {
-					pixi: ["pixi.js"],
 					"react-vendor": ["react", "react-dom"],
 					"video-processing": ["mediabunny", "mp4box", "@fix-webm-duration/fix"],
 				},
@@ -134,4 +142,4 @@ export default defineConfig({
 		},
 		chunkSizeWarningLimit: 1000,
 	},
-});
+}));

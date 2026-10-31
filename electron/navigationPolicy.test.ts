@@ -224,7 +224,9 @@ describe("navigation event handlers", () => {
 
 		// history.replaceState() changes getURL() without crossing a document-navigation boundary.
 		currentUrl = "file:///opt/Recordly/dist/index.html?windowType=source-selector";
-		const willNavigate = on.mock.calls.find(([eventName]) => eventName === "will-navigate")?.[1];
+		const willNavigate = on.mock.calls.find(
+			([eventName]) => eventName === "will-navigate",
+		)?.[1];
 		if (typeof willNavigate !== "function") {
 			throw new Error("will-navigate handler was not registered");
 		}
@@ -250,7 +252,9 @@ describe("navigation event handlers", () => {
 		);
 
 		const didNavigate = on.mock.calls.find(([eventName]) => eventName === "did-navigate")?.[1];
-		const willNavigate = on.mock.calls.find(([eventName]) => eventName === "will-navigate")?.[1];
+		const willNavigate = on.mock.calls.find(
+			([eventName]) => eventName === "will-navigate",
+		)?.[1];
 		if (typeof didNavigate !== "function" || typeof willNavigate !== "function") {
 			throw new Error("navigation handlers were not registered");
 		}

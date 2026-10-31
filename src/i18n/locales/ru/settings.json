@@ -19,7 +19,8 @@
 	},
 	"clip": {
 		"title": "Клип",
-		"mute": "Без звука",
+		"mute": "Отключить звук клипа",
+		"resetAudioSettings": "Сбросить настройки звука",
 		"mutedState": "Звук выключен",
 		"unmutedState": "Звук включен",
 		"separateClipFromAudio": "Отделить аудио от клипа",
@@ -35,6 +36,7 @@
 			"macos": "macOS",
 			"tahoe": "Tahoe",
 			"tahoe-inverted": "Tahoe (инверсия)",
+			"windows11": "Windows 11",
 			"dot": "Точка",
 			"figma": "Минималистичный",
 			"lavender": "Лаванда",
@@ -43,12 +45,8 @@
 			"amongus": "Among Us",
 			"turtle": "Черепаха"
 		},
-		"backgroundBlur": "Размытие фона",
+		"backgroundBlur": "Размытие",
 		"zoomMotionBlur": "Размытие при зуме",
-		"temporalZoomMotionBlur": "Временное размытие зума",
-		"temporalZoomMotionBlurDescription": "Настройка плавности зума по времени и кадрам.",
-		"zoomMotionBlurSamples": "Образцы размытия",
-		"zoomMotionBlurShutter": "Выдержка",
 		"auto": "Авто",
 		"connectZooms": "Связать зумы",
 		"connectZoomsDescription": "Плавный переход между зумами.",
@@ -254,5 +252,11 @@
 		"micLabel": "Микрофон",
 		"mixedLabel": "Источник",
 		"deleteRegion": "Удалить аудио"
+	},
+	"updates": {
+		"title": "Обновления",
+		"experimental": "Экспериментальные обновления",
+		"saveFailed": "Не удалось изменить канал обновлений.",
+		"experimentalDescription": "Вы включили экспериментальные обновления, поэтому можете протестировать последнее обновление Recordly до его широкого выпуска."
 	}
 }

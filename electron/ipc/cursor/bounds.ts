@@ -1,20 +1,21 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { NativeMacWindowSource, WindowBounds, SelectedSource } from "../types";
-import {
-	selectedSource,
-	setSelectedWindowBounds,
-	interactionCaptureCleanup,
-	setInteractionCaptureCleanup,
-	windowBoundsCaptureInterval,
-	setWindowBoundsCaptureInterval,
-	cachedNativeMacWindowSources,
-	setCachedNativeMacWindowSources,
-	cachedNativeMacWindowSourcesAtMs,
-	setCachedNativeMacWindowSourcesAtMs,
-} from "../state";
-import { parseWindowId } from "../utils";
 import { ensureNativeWindowListBinary } from "../paths/binaries";
+import {
+	cachedNativeMacWindowSources,
+	cachedNativeMacWindowSourcesAtMs,
+	interactionCaptureCleanup,
+	selectedSource,
+	setCachedNativeMacWindowSources,
+	setCachedNativeMacWindowSourcesAtMs,
+	setInteractionCaptureCleanup,
+	setSelectedWindowBounds,
+	setWindowBoundsCaptureInterval,
+	windowBoundsCaptureInterval,
+} from "../state";
+import type { NativeMacWindowSource, SelectedSource, WindowBounds } from "../types";
+import { parseWindowId } from "../utils";
+import { resolveWindowsWindowBounds } from "../windowsWindowControl";
 
 const execFileAsync = promisify(execFile);
 
@@ -55,6 +56,41 @@ export async function getNativeMacWindowSources(options?: { maxAgeMs?: number })
 		return entries;
 	} catch {
 		return cachedNativeMacWindowSources ?? ([] as NativeMacWindowSource[]);
+	}
+}
+
+/** On-screen windows ordered front to back, for finding the window under a point. */
+export async function getNativeMacWindowsFrontToBack(options?: {
+	strict?: boolean;
+}): Promise<NativeMacWindowSource[]> {
+	if (process.platform !== "darwin") {
+		return [];
+	}
+
+	try {
+		const binaryPath = await ensureNativeWindowListBinary();
+		const { stdout } = await execFileAsync(binaryPath, ["--z-order"], {
+			timeout: 10000,
+			maxBuffer: 10 * 1024 * 1024,
+		});
+		const parsed: unknown = JSON.parse(stdout);
+		if (!Array.isArray(parsed)) {
+			if (options?.strict) throw new Error("Unable to read window positions.");
+			return [];
+		}
+		return parsed.filter(
+			(entry): entry is NativeMacWindowSource =>
+				Boolean(entry) &&
+				typeof entry === "object" &&
+				typeof (entry as NativeMacWindowSource).id === "string",
+		);
+	} catch (error) {
+		if (options?.strict)
+			throw new Error(
+				"Unable to detect windows. Check screen recording permission and try again.",
+			);
+		console.warn("Failed to list windows front to back:", error);
+		return [];
 	}
 }
 
@@ -119,7 +155,9 @@ export function parseXwininfoBounds(stdout: string): WindowBounds | null {
 	};
 }
 
-export async function resolveLinuxWindowBounds(source: SelectedSource): Promise<WindowBounds | null> {
+export async function resolveLinuxWindowBounds(
+	source: SelectedSource,
+): Promise<WindowBounds | null> {
 	const windowId = parseWindowId(source?.id);
 
 	if (windowId) {
@@ -132,8 +170,10 @@ export async function resolveLinuxWindowBounds(source: SelectedSource): Promise<
 				return bounds;
 			}
 		} catch {
-			// fall back to title lookup below
+			return null;
 		}
+		// Do not track a different same-title window after the selected ID disappears.
+		return null;
 	}
 
 	const windowTitle =
@@ -147,67 +187,6 @@ export async function resolveLinuxWindowBounds(source: SelectedSource): Promise<
 			timeout: 1500,
 		});
 		const bounds = parseXwininfoBounds(stdout);
-		return bounds && bounds.width > 0 && bounds.height > 0 ? bounds : null;
-	} catch {
-		return null;
-	}
-}
-
-export async function resolveWindowsWindowBounds(source: SelectedSource): Promise<WindowBounds | null> {
-	const windowId = parseWindowId(source?.id);
-	const windowTitle =
-		typeof source.windowTitle === "string" ? source.windowTitle.trim() : source.name.trim();
-
-	if (!windowId && !windowTitle) {
-		return null;
-	}
-
-	const script = [
-		"param([string]$windowId, [string]$windowTitle)",
-		'Add-Type -TypeDefinition @"',
-		"using System;",
-		"using System.Runtime.InteropServices;",
-		"public static class RecordlyWindowBounds {",
-		"  [StructLayout(LayoutKind.Sequential)]",
-		"  public struct RECT {",
-		"    public int Left;",
-		"    public int Top;",
-		"    public int Right;",
-		"    public int Bottom;",
-		"  }",
-		'  [DllImport("user32.dll")]',
-		"  [return: MarshalAs(UnmanagedType.Bool)]",
-		"  public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);",
-		"}",
-		'"@',
-		"$handle = [Int64]0",
-		"if ($windowId) {",
-		"  $handle = [Int64]$windowId",
-		"}",
-		"$escapedWindowTitle = if ($windowTitle) { [WildcardPattern]::Escape($windowTitle) } else { $null }",
-		"if ($handle -le 0 -and $windowTitle) {",
-		'  $matchingProcess = Get-Process | Where-Object { $_.MainWindowTitle -eq $windowTitle -or ($escapedWindowTitle -and $_.MainWindowTitle -like "*$escapedWindowTitle*") } | Select-Object -First 1',
-		"  if ($matchingProcess) {",
-		"    $handle = $matchingProcess.MainWindowHandle.ToInt64()",
-		"  }",
-		"}",
-		"if ($handle -le 0) {",
-		"  exit 1",
-		"}",
-		"$rect = New-Object RecordlyWindowBounds+RECT",
-		"if (-not [RecordlyWindowBounds]::GetWindowRect([IntPtr]$handle, [ref]$rect)) {",
-		"  exit 1",
-		"}",
-		"@{ x = $rect.Left; y = $rect.Top; width = $rect.Right - $rect.Left; height = $rect.Bottom - $rect.Top } | ConvertTo-Json -Compress",
-	].join("\n");
-
-	try {
-		const { stdout } = await execFileAsync(
-			"powershell.exe",
-			["-NoProfile", "-Command", script, String(windowId ?? ""), windowTitle],
-			{ timeout: 1500 },
-		);
-		const bounds = JSON.parse(stdout) as WindowBounds;
 		return bounds && bounds.width > 0 && bounds.height > 0 ? bounds : null;
 	} catch {
 		return null;
@@ -259,7 +238,9 @@ export function startWindowBoundsCapture() {
 	}
 
 	void refreshSelectedWindowBounds();
-	setWindowBoundsCaptureInterval(setInterval(() => {
-		void refreshSelectedWindowBounds();
-	}, 250));
+	setWindowBoundsCaptureInterval(
+		setInterval(() => {
+			void refreshSelectedWindowBounds();
+		}, 250),
+	);
 }

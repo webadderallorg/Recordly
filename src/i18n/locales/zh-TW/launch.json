@@ -1,5 +1,6 @@
 {
 	"recording": {
+		"home": "首頁",
 		"disableSystemAudio": "停用系統音訊",
 		"enableSystemAudio": "啟用系統音訊",
 		"disableMicrophone": "停用麥克風",
@@ -44,15 +45,15 @@
 		"cancel": "取消",
 		"more": "更多",
 		"update": {
-		"update": "更新",
-		"updated": "已更新",
-		"idleTitle": "檢查更新。",
-		"checkingTitle": "正在檢查更新...",
-		"downloadingTitle": "正在下載更新...",
-		"errorTitle": "檢查更新失敗，點一下重試。",
-		"upToDateTitle": "Recordly {{version}} 已是最新版本。",
-		"availableTitle": "Recordly {{version}} 已推出新版本。",
-		"availableGenericTitle": "有可用更新。"
+			"update": "更新",
+			"updated": "已更新",
+			"idleTitle": "檢查更新。",
+			"checkingTitle": "正在檢查更新...",
+			"downloadingTitle": "正在下載更新...",
+			"errorTitle": "檢查更新失敗，點一下重試。",
+			"upToDateTitle": "Recordly {{version}} 已是最新版本。",
+			"availableTitle": "Recordly {{version}} 已推出新版本。",
+			"availableGenericTitle": "有可用更新。"
 		}
 	},
 	"sourceSelector": {
@@ -76,5 +77,20 @@
 		"microphoneDenied": "麥克風存取遭拒，將在沒有麥克風音訊的情況下繼續錄製。",
 		"failedToStart": "無法開始錄製：{{error}}",
 		"failedToStartGeneric": "無法開始錄製"
+	},
+	"updateToast": {
+		"availableTitle": "有可用更新",
+		"experimentalAvailableTitle": "有可用的實驗性更新",
+		"experimentalDescription": "你已選擇接收實驗性更新，因此可以在 Recordly 最新更新廣泛推出之前選擇先行測試。",
+		"downloadingTitle": "正在下載更新",
+		"readyTitle": "已準備好重新啟動",
+		"checkErrorTitle": "無法檢查更新",
+		"downloadErrorTitle": "無法下載更新",
+		"experimentalBadge": "實驗性",
+		"previewBadge": "預覽",
+		"notNow": "暫不",
+		"updateNow": "立即更新",
+		"restartToUpdate": "重新啟動以更新",
+		"tryAgain": "重試"
 	}
 }

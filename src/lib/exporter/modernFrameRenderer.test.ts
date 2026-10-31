@@ -202,6 +202,34 @@ function createRenderer() {
 	});
 }
 
+it("bypasses blur annotation compositing during gaps and clears stale composite frames", async () => {
+	const renderer = createRenderer();
+	const camera = { visible: true };
+	const canvas = createMockCanvas();
+	const render = vi.fn();
+	const compose = vi.fn();
+	const webcam = { visible: true };
+	const captions = { visible: true };
+	Object.assign(renderer, {
+		app: { canvas, render },
+		videoContainer: {},
+		videoMaskGraphics: {},
+		cameraContainer: camera,
+		webcamRootContainer: webcam,
+		captionContainer: captions,
+		hasActiveBlurAnnotations: () => true,
+		composeBlurAnnotationFrame: compose,
+		outputCanvasOverride: createMockCanvas(),
+	});
+	await renderer.renderFrame(null, 0, 0, 33333, 1500000);
+	expect(camera.visible).toBe(false);
+	expect(webcam.visible).toBe(false);
+	expect(captions.visible).toBe(false);
+	expect(compose).not.toHaveBeenCalled();
+	expect(render).toHaveBeenCalledOnce();
+	expect(renderer.getCanvas()).toBe(canvas);
+});
+
 describe("ModernFrameRenderer Pixi lifecycle", () => {
 	it("continues to the next backend when failed-init cleanup would throw", async () => {
 		pixiApplicationInstancesMock.length = 0;
@@ -218,7 +246,9 @@ describe("ModernFrameRenderer Pixi lifecycle", () => {
 			};
 			renderer.config.preferredRenderBackend = "webgpu";
 
-			await expect(renderer.createPixiApplication({} as HTMLCanvasElement)).resolves.toMatchObject({
+			await expect(
+				renderer.createPixiApplication({} as HTMLCanvasElement),
+			).resolves.toMatchObject({
 				backend: "webgl",
 			});
 
@@ -226,6 +256,34 @@ describe("ModernFrameRenderer Pixi lifecycle", () => {
 			expect(pixiApplicationInstancesMock[0].destroy).not.toHaveBeenCalled();
 			expect(pixiApplicationInstancesMock[0].stage.destroy).toHaveBeenCalledTimes(1);
 			expect(pixiApplicationInstancesMock[0].renderer.destroy).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("defaults to WebGL when no backend is preferred, even when WebGPU is available", async () => {
+		pixiApplicationInstancesMock.length = 0;
+		pixiInitializationErrorsMock.length = 0;
+		// Linux Chromium exposes navigator.gpu, but Pixi's WebGPU bind-group path crashes
+		// with "Cannot read properties of undefined (reading '_resourceType')".
+		vi.stubGlobal("navigator", { gpu: {} });
+
+		try {
+			const renderer = createRenderer() as unknown as {
+				config: { preferredRenderBackend?: "webgl" | "webgpu" };
+				createPixiApplication: (
+					canvas: HTMLCanvasElement,
+				) => Promise<{ backend: "webgl" | "webgpu" }>;
+			};
+			renderer.config.preferredRenderBackend = undefined;
+
+			await expect(renderer.createPixiApplication({} as HTMLCanvasElement)).resolves
+				.toMatchObject({
+					backend: "webgl",
+				});
+
+			expect(pixiInitializationErrorsMock).toHaveLength(0);
+			expect(pixiApplicationInstancesMock).toHaveLength(1);
 		} finally {
 			vi.unstubAllGlobals();
 		}
@@ -287,45 +345,6 @@ describe("ModernFrameRenderer blur export path", () => {
 		expect(renderAnnotations).toHaveBeenCalledTimes(1);
 		expect(renderer.getCanvas()).not.toBe(sourceCanvas);
 		expect(renderer.capturePixelsForNativeExport()).not.toBeNull();
-	});
-
-	it("uses the sampled scene transform for blur annotations during temporal blur", async () => {
-		const renderer = createRenderer() as any;
-		renderer.config.zoomTemporalMotionBlur = 1;
-		renderer.config.zoomMotionBlurSampleCount = 3;
-		renderer.config.zoomMotionBlurShutterFraction = 0.5;
-		renderer.app = { canvas: createMockCanvas() };
-		renderer.annotationScaleFactor = 1;
-		renderer.annotationAssets = { imageCache: new Map() };
-		renderer.updateCaptionLayer = vi.fn();
-		renderer.renderSceneSample = vi.fn(async (sampleTimestamp: number) => ({
-			timeMs: sampleTimestamp / 1000,
-			cursorTimeMs: sampleTimestamp / 1000,
-			backgroundTimelineTimeMs: sampleTimestamp / 1000,
-			sceneTransform: { scale: 1.75, x: 120, y: -48 },
-			zoom: { scale: 1, focusX: 0.5, focusY: 0.5, progress: 0 },
-		}));
-
-		await renderer.renderTemporalMotionBlurFrame(1_000_000, 1_000_000, 1_000_000, 33_333, {
-			stageSize: { width: 1920, height: 1080 },
-			videoSize: { width: 1920, height: 1080 },
-			baseScale: 1,
-			baseOffset: { x: 0, y: 0 },
-			maskRect: {
-				x: 0,
-				y: 0,
-				width: 1920,
-				height: 1080,
-				sourceCrop: { x: 0, y: 0, width: 1, height: 1 },
-			},
-		});
-
-		expect(renderAnnotations).toHaveBeenCalled();
-		expect(vi.mocked(renderAnnotations).mock.lastCall?.[7]).toEqual({
-			scale: 1.75,
-			x: 120,
-			y: -48,
-		});
 	});
 
 	it("prefers decoder-backed sync for video wallpapers during export", async () => {
@@ -639,14 +658,14 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 			};
 			renderer.config.webcamUrl = "file:///tmp/webcam.webm";
 
-				await renderer.setupWebcamSource();
-				const syncPromise = renderer.syncWebcamFrame(1);
+			await renderer.setupWebcamSource();
+			const syncPromise = renderer.syncWebcamFrame(1);
 
 			await vi.advanceTimersByTimeAsync(5_001);
-				await expect(syncPromise).resolves.toBeUndefined();
+			await expect(syncPromise).resolves.toBeUndefined();
 
-				expect(cancelForwardFrameSourceMock).toHaveBeenCalled();
-				expect(destroyForwardFrameSourceMock).toHaveBeenCalled();
+			expect(cancelForwardFrameSourceMock).toHaveBeenCalled();
+			expect(destroyForwardFrameSourceMock).toHaveBeenCalled();
 			expect(revoke).toHaveBeenCalled();
 			expect(renderer.webcamForwardFrameSource).toBeNull();
 			expect(renderer.webcamVideoElement).toBeNull();
@@ -825,43 +844,69 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 	});
 });
 
-describe("ModernFrameRenderer temporal webcam sync", () => {
-	it("pins webcam sync to the frame center during temporal blur sampling", async () => {
-		const renderer = createRenderer() as any;
-		renderer.config.annotationRegions = [];
-		renderer.config.zoomTemporalMotionBlur = 1;
-		renderer.config.zoomMotionBlurSampleCount = 3;
-		renderer.config.zoomMotionBlurShutterFraction = 0.5;
-		renderer.app = { canvas: createMockCanvas() };
-		renderer.updateCaptionLayer = vi.fn();
-		renderer.renderSceneSample = vi.fn(async (sampleTimestamp: number) => ({
-			timeMs: sampleTimestamp / 1000,
-			cursorTimeMs: sampleTimestamp / 1000,
-			backgroundTimelineTimeMs: sampleTimestamp / 1000,
-			sceneTransform: { scale: 1, x: 0, y: 0 },
-			zoom: { scale: 1, focusX: 0.5, focusY: 0.5, progress: 0 },
-		}));
-
-		await renderer.renderTemporalMotionBlurFrame(1_000_000, 1_000_000, 1_000_000, 33_333, {
-			stageSize: { width: 1920, height: 1080 },
-			videoSize: { width: 1920, height: 1080 },
-			baseScale: 1,
-			baseOffset: { x: 0, y: 0 },
-			maskRect: {
-				x: 0,
-				y: 0,
+describe("ModernFrameRenderer frame sequencing", () => {
+	it("resumes visual layers after a background gap", async () => {
+		const renderer = createRenderer();
+		const sceneCanvas = createMockCanvas();
+		const gapCanvas = createMockCanvas();
+		gapCanvas.width = 1920;
+		gapCanvas.height = 1080;
+		const render = vi.fn();
+		const syncWebcam = vi.fn();
+		const syncBackground = vi.fn();
+		const updateAnnotations = vi.fn();
+		const updateCaptions = vi.fn();
+		const updateWebcam = vi.fn();
+		const updateAnimation = vi.fn();
+		const camera = { visible: true };
+		Object.assign(renderer, {
+			config: {
 				width: 1920,
 				height: 1080,
-				sourceCrop: { x: 0, y: 0, width: 1, height: 1 },
+				timelineEffects: true,
+				zoomMotionBlur: 0.5,
 			},
+			app: { canvas: sceneCanvas, render },
+			videoContainer: {},
+			videoMaskGraphics: {},
+			cameraContainer: camera,
+			videoSprite: {},
+			videoTextureSource: { update: vi.fn() },
+			layoutCache: {
+				stageSize: { width: 1920, height: 1080 },
+				maskRect: { x: 0, y: 0, width: 1920, height: 1080 },
+			},
+			resolveDetachedVideoFrameSource: async (frame: VideoFrame) => frame,
+			ensureExportCompositeCanvas: () => ({ canvas: gapCanvas, context: gapCanvas.context }),
+			webcamForwardFrameSource: {},
+			backgroundForwardFrameSource: {},
+			syncWebcamFrame: syncWebcam,
+			syncBackgroundFrame: syncBackground,
+			updateAnimationState: updateAnimation,
+			updateAnnotationLayer: updateAnnotations,
+			updateCaptionLayer: updateCaptions,
+			updateWebcamOverlay: updateWebcam,
 		});
+		await renderer.renderFrame({} as VideoFrame, 0, 0, 33_333, 0);
+		expect(renderer.getCanvas()).toBe(sceneCanvas);
 
-		expect(renderer.renderSceneSample).toHaveBeenCalledTimes(3);
-		expect(renderer.renderSceneSample.mock.calls.map((call: unknown[]) => call[6])).toEqual([
-			1, 1, 1,
-		]);
-		expect(
-			new Set(renderer.renderSceneSample.mock.calls.map((call: unknown[]) => call[0])).size,
-		).toBeGreaterThan(1);
+		await renderer.renderFrame(null, 0, 0, 33_333, 1_500_000);
+		expect(updateAnimation).toHaveBeenLastCalledWith(1500, 0);
+		expect(renderer.getCanvas()).toBe(sceneCanvas);
+		expect(render).toHaveBeenCalledTimes(2);
+		expect(syncBackground).toHaveBeenCalledTimes(2);
+		expect(camera.visible).toBe(false);
+		for (const callback of [syncWebcam, updateAnnotations, updateCaptions, updateWebcam]) {
+			expect(callback).toHaveBeenCalledTimes(1);
+		}
+
+		await renderer.renderFrame({} as VideoFrame, 6_000_000, 6_000_000, 33_333, 2_000_000);
+		expect(renderer.getCanvas()).toBe(sceneCanvas);
+		expect(camera.visible).toBe(true);
+		expect(render).toHaveBeenCalledTimes(3);
+		expect(syncWebcam).toHaveBeenLastCalledWith(6);
+		expect(syncBackground).toHaveBeenLastCalledWith(2);
+		expect(updateAnnotations).toHaveBeenLastCalledWith(2000);
+		expect(updateCaptions).toHaveBeenLastCalledWith(6000);
 	});
 });

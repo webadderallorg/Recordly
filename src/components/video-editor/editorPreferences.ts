@@ -1,8 +1,8 @@
+import { normalizeExportPreferences, type ExportPreferences } from "./exportPreferences";
 import { loadAppSetting, saveAppSetting } from "../../lib/appSettings";
 import {
-	normalizeExportBackendPreference,
-	normalizeExportMp4FrameRate,
-	normalizeExportPipelineModel,
+	getDefaultBorderRadiusPercent,
+	legacyBorderRadiusPixelsToPercent,
 	normalizeProjectEditor,
 	type ProjectEditorState,
 	stripPersistedDevMotionBlurSettings,
@@ -15,9 +15,6 @@ type PersistedEditorControls = Pick<
 	| "backgroundBlur"
 	| "zoomMotionBlur"
 	| "zoomMotionBlurTuning"
-	| "zoomTemporalMotionBlur"
-	| "zoomMotionBlurSampleCount"
-	| "zoomMotionBlurShutterFraction"
 	| "connectZooms"
 	| "zoomInDurationMs"
 	| "zoomInOverlapMs"
@@ -49,31 +46,21 @@ type PersistedEditorControls = Pick<
 	| "cursorSway"
 	| "borderRadius"
 	| "padding"
-	| "frame"
 	| "webcam"
 	| "aspectRatio"
-	| "exportEncodingMode"
-	| "exportBackendPreference"
-	| "exportPipelineModel"
-	| "exportQuality"
-	| "mp4FrameRate"
-	| "exportFormat"
-	| "gifFrameRate"
-	| "gifLoop"
-	| "gifSizePreset"
-	| "gifQualityPreset"
 >;
 
 type PartialEditorControls = Partial<PersistedEditorControls>;
 
 type PresetAutoCaptionSettings = ProjectEditorState["autoCaptionSettings"];
 type PresetCropRegion = ProjectEditorState["cropRegion"];
+type PresetWebcamSettings = Omit<ProjectEditorState["webcam"], "sourcePath" | "visibleRanges">;
 
-export interface EditorPresetSnapshot extends PersistedEditorControls {
+export interface EditorPresetSnapshot extends Omit<PersistedEditorControls, "webcam"> {
+	borderRadiusUnit: "percent";
 	cropRegion: PresetCropRegion;
+	webcam: PresetWebcamSettings;
 	autoCaptionSettings: PresetAutoCaptionSettings;
-	whisperExecutablePath: string | null;
-	whisperModelPath: string | null;
 }
 
 export interface EditorPreset {
@@ -84,7 +71,8 @@ export interface EditorPreset {
 	snapshot: EditorPresetSnapshot;
 }
 
-export interface EditorPreferences extends PersistedEditorControls {
+export interface EditorPreferences extends PersistedEditorControls, ExportPreferences {
+	borderRadiusUnit: "percent";
 	customAspectWidth: string;
 	customAspectHeight: string;
 	customWallpapers: string[];
@@ -104,9 +92,6 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	backgroundBlur: DEFAULT_EDITOR_CONTROLS.backgroundBlur,
 	zoomMotionBlur: DEFAULT_EDITOR_CONTROLS.zoomMotionBlur,
 	zoomMotionBlurTuning: DEFAULT_EDITOR_CONTROLS.zoomMotionBlurTuning,
-	zoomTemporalMotionBlur: DEFAULT_EDITOR_CONTROLS.zoomTemporalMotionBlur,
-	zoomMotionBlurSampleCount: DEFAULT_EDITOR_CONTROLS.zoomMotionBlurSampleCount,
-	zoomMotionBlurShutterFraction: DEFAULT_EDITOR_CONTROLS.zoomMotionBlurShutterFraction,
 	connectZooms: DEFAULT_EDITOR_CONTROLS.connectZooms,
 	zoomInDurationMs: DEFAULT_EDITOR_CONTROLS.zoomInDurationMs,
 	zoomInOverlapMs: DEFAULT_EDITOR_CONTROLS.zoomInOverlapMs,
@@ -137,20 +122,11 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	cursorClickBounceDuration: DEFAULT_EDITOR_CONTROLS.cursorClickBounceDuration,
 	cursorSway: DEFAULT_EDITOR_CONTROLS.cursorSway,
 	borderRadius: DEFAULT_EDITOR_CONTROLS.borderRadius,
+	borderRadiusUnit: "percent",
 	padding: DEFAULT_EDITOR_CONTROLS.padding,
-	frame: DEFAULT_EDITOR_CONTROLS.frame,
 	webcam: DEFAULT_EDITOR_CONTROLS.webcam,
 	aspectRatio: DEFAULT_EDITOR_CONTROLS.aspectRatio,
-	exportEncodingMode: DEFAULT_EDITOR_CONTROLS.exportEncodingMode,
-	exportBackendPreference: DEFAULT_EDITOR_CONTROLS.exportBackendPreference,
-	exportPipelineModel: DEFAULT_EDITOR_CONTROLS.exportPipelineModel,
-	exportQuality: DEFAULT_EDITOR_CONTROLS.exportQuality,
-	mp4FrameRate: DEFAULT_EDITOR_CONTROLS.mp4FrameRate,
-	exportFormat: DEFAULT_EDITOR_CONTROLS.exportFormat,
-	gifFrameRate: DEFAULT_EDITOR_CONTROLS.gifFrameRate,
-	gifLoop: DEFAULT_EDITOR_CONTROLS.gifLoop,
-	gifSizePreset: DEFAULT_EDITOR_CONTROLS.gifSizePreset,
-	gifQualityPreset: DEFAULT_EDITOR_CONTROLS.gifQualityPreset,
+	...normalizeExportPreferences({}),
 	customAspectWidth: "16",
 	customAspectHeight: "9",
 	customWallpapers: [],
@@ -213,16 +189,22 @@ function normalizeEditorPresetSnapshot(candidate: unknown): EditorPresetSnapshot
 	const normalizedCropRegion = normalizeProjectEditor({
 		cropRegion: raw.cropRegion,
 	}).cropRegion;
+	const normalizedControls = normalizeEditorControls(
+		normalizedPreferences,
+		normalizedPreferences,
+	);
+	const {
+		sourcePath: _sourcePath,
+		visibleRanges: _visibleRanges,
+		...webcam
+	} = normalizedControls.webcam;
 
 	return {
-		...normalizeEditorControls(normalizedPreferences, normalizedPreferences),
+		...normalizedControls,
+		borderRadiusUnit: "percent",
+		webcam,
 		cropRegion: normalizedCropRegion,
 		autoCaptionSettings: normalizePresetAutoCaptionSettings(raw.autoCaptionSettings),
-		whisperExecutablePath:
-			normalizeNullablePath(raw.whisperExecutablePath) ??
-			normalizedPreferences.whisperExecutablePath,
-		whisperModelPath:
-			normalizeNullablePath(raw.whisperModelPath) ?? normalizedPreferences.whisperModelPath,
 	};
 }
 
@@ -338,28 +320,8 @@ function normalizeEditorControls(
 		cursorSway: sanitizedRaw.cursorSway ?? fallback.cursorSway,
 		borderRadius: sanitizedRaw.borderRadius ?? fallback.borderRadius,
 		padding: sanitizedRaw.padding ?? fallback.padding,
-		frame: sanitizedRaw.frame !== undefined ? sanitizedRaw.frame : fallback.frame,
 		webcam: sanitizedRaw.webcam ?? fallback.webcam,
 		aspectRatio: sanitizedRaw.aspectRatio ?? fallback.aspectRatio,
-		exportEncodingMode: sanitizedRaw.exportEncodingMode ?? fallback.exportEncodingMode,
-		exportBackendPreference:
-			sanitizedRaw.exportBackendPreference === undefined
-				? fallback.exportBackendPreference
-				: normalizeExportBackendPreference(sanitizedRaw.exportBackendPreference),
-		exportPipelineModel:
-			sanitizedRaw.exportPipelineModel === undefined
-				? fallback.exportPipelineModel
-				: normalizeExportPipelineModel(sanitizedRaw.exportPipelineModel),
-		exportQuality: sanitizedRaw.exportQuality ?? fallback.exportQuality,
-		mp4FrameRate:
-			sanitizedRaw.mp4FrameRate === undefined
-				? fallback.mp4FrameRate
-				: normalizeExportMp4FrameRate(sanitizedRaw.mp4FrameRate),
-		exportFormat: sanitizedRaw.exportFormat ?? fallback.exportFormat,
-		gifFrameRate: sanitizedRaw.gifFrameRate ?? fallback.gifFrameRate,
-		gifLoop: sanitizedRaw.gifLoop ?? fallback.gifLoop,
-		gifSizePreset: sanitizedRaw.gifSizePreset ?? fallback.gifSizePreset,
-		gifQualityPreset: sanitizedRaw.gifQualityPreset ?? fallback.gifQualityPreset,
 	};
 
 	const normalized = normalizeProjectEditor(candidate);
@@ -370,9 +332,6 @@ function normalizeEditorControls(
 		backgroundBlur: normalized.backgroundBlur,
 		zoomMotionBlur: normalized.zoomMotionBlur,
 		zoomMotionBlurTuning: normalized.zoomMotionBlurTuning,
-		zoomTemporalMotionBlur: normalized.zoomTemporalMotionBlur,
-		zoomMotionBlurSampleCount: normalized.zoomMotionBlurSampleCount,
-		zoomMotionBlurShutterFraction: normalized.zoomMotionBlurShutterFraction,
 		connectZooms: normalized.connectZooms,
 		zoomInDurationMs: normalized.zoomInDurationMs,
 		zoomInOverlapMs: normalized.zoomInOverlapMs,
@@ -404,19 +363,8 @@ function normalizeEditorControls(
 		cursorSway: normalized.cursorSway,
 		borderRadius: normalized.borderRadius,
 		padding: normalized.padding,
-		frame: normalized.frame,
 		webcam: normalized.webcam,
 		aspectRatio: normalized.aspectRatio,
-		exportEncodingMode: normalized.exportEncodingMode,
-		exportBackendPreference: normalized.exportBackendPreference,
-		exportPipelineModel: normalized.exportPipelineModel,
-		exportQuality: normalized.exportQuality,
-		mp4FrameRate: normalized.mp4FrameRate,
-		exportFormat: normalized.exportFormat,
-		gifFrameRate: normalized.gifFrameRate,
-		gifLoop: normalized.gifLoop,
-		gifSizePreset: normalized.gifSizePreset,
-		gifQualityPreset: normalized.gifQualityPreset,
 	};
 }
 
@@ -426,9 +374,21 @@ export function normalizeEditorPreferences(
 ): EditorPreferences {
 	const raw =
 		candidate && typeof candidate === "object" ? (candidate as Partial<EditorPreferences>) : {};
+	const controls =
+		raw.borderRadiusUnit === "percent" || typeof raw.borderRadius !== "number"
+			? raw
+			: {
+					...raw,
+					borderRadius:
+						raw.borderRadius === 0
+							? getDefaultBorderRadiusPercent()
+							: legacyBorderRadiusPixelsToPercent(raw.borderRadius),
+				};
 
 	return {
-		...normalizeEditorControls(raw, fallback),
+		...normalizeEditorControls(controls, fallback),
+		...normalizeExportPreferences({ ...fallback, ...raw }),
+		borderRadiusUnit: "percent",
 		customAspectWidth: normalizePositiveIntegerString(
 			raw.customAspectWidth,
 			fallback.customAspectWidth,

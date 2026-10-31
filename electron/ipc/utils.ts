@@ -1,3 +1,4 @@
+import { getLocalMediaServerPath } from "../../src/lib/localMediaUrl";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -46,7 +47,7 @@ export function normalizeVideoSourcePath(videoPath?: string | null): string | nu
 		}
 	}
 
-	return trimmed;
+	return getLocalMediaServerPath(trimmed) ?? trimmed;
 }
 
 export function stripJsonByteOrderMark(content: string) {
@@ -129,4 +130,3 @@ export function approveUserPath(filePath: string | null | undefined): void {
 		// Ignore invalid paths; later reads will surface the underlying error.
 	}
 }
-

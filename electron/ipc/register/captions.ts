@@ -247,7 +247,8 @@ export function registerCaptionHandlers() {
 				return {
 					success: false,
 					error: String(error),
-					message: "Failed to generate auto captions",
+					message:
+						error instanceof Error ? error.message : "Failed to generate auto captions",
 				};
 			}
 		},

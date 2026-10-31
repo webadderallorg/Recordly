@@ -1,40 +1,400 @@
+import { createSourceListPicker } from "../../sourceListPicker";
+import { writeAppSetting } from "../../appSettingsStore";
+import { getSessionCaptureSource, validateCaptureSource } from "../captureSelection";
+import { createRecordingEditorNavigation } from "../../recordingEditorNavigation";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { app, BrowserWindow, desktopCapturer, ipcMain } from "electron";
+import { app, BrowserWindow, desktopCapturer, ipcMain, systemPreferences } from "electron";
+import {
+	setHudRecordingPreparationActive,
+	createHudOverlayWindow,
+	getHudOverlayWindow,
+	reassertHudOverlayMousePassthrough,
+} from "../../windows";
 import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
-import { selectedSource, setSelectedSource } from "../state";
-import type { SelectedSource } from "../types";
-import { getScreen, parseWindowId } from "../utils";
-import { getDisplayBoundsForSource, getDisplayWorkAreaForSource } from "../recording/ffmpeg";
-import { getScreenSourceIdForDisplay } from "./sourceMapping";
 import {
 	getNativeMacWindowSources,
-	resolveMacWindowBounds,
-	resolveWindowsWindowBounds,
 	resolveLinuxWindowBounds,
+	resolveMacWindowBounds,
 	stopWindowBoundsCapture,
 } from "../cursor/bounds";
-import { reassertHudOverlayMousePassthrough } from "../../windows";
+import { getDisplayBoundsForSource, getDisplayWorkAreaForSource } from "../recording/ffmpeg";
+import { isCursorCaptureActive, selectedSource, setSelectedSource } from "../state";
+import type { SelectedSource, WindowBounds } from "../types";
+import { getSourceArea } from "../sourceArea";
+import { getScreen, parseWindowId } from "../utils";
+import { bringWindowsWindowForward, resolveWindowsWindowBounds } from "../windowsWindowControl";
+import {
+	getScreenSourceIdForDisplay,
+	isLikelyLinuxWaylandSession,
+	LINUX_PORTAL_SCREEN_SOURCE_ID,
+} from "./sourceMapping";
 
 const execFileAsync = promisify(execFile);
 const SOURCE_LIST_CACHE_TTL_MS = 1200;
-let sourceListCache:
-	| {
-			key: string;
-			expiresAt: number;
-			value: Array<Record<string, unknown>>;
-	  }
-	| null = null;
+let sourceListCache: {
+	key: string;
+	expiresAt: number;
+	value: SelectedSource[];
+} | null = null;
 
 function normalizeDesktopSourceName(value: string) {
 	return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function broadcastSelectedSourceChange() {
+export function broadcastSelectedSourceChange() {
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) {
 			window.webContents.send("selected-source-changed", selectedSource);
 		}
+	}
+}
+
+export async function bringSelectedWindowForward(
+	source: SelectedSource,
+): Promise<WindowBounds | null> {
+	const windowId = parseWindowId(source.id);
+	if (!windowId) return null;
+
+	try {
+		if (process.platform === "darwin") {
+			const rawAppName = source.appName || source.name?.split(" — ")[0]?.trim();
+			const appName =
+				rawAppName && /^[\w .&()+'-]{1,64}$/.test(rawAppName) ? rawAppName : null;
+			if (!appName) return null;
+			await execFileAsync("open", ["-a", appName], { timeout: 2000 });
+			try {
+				systemPreferences?.isTrustedAccessibilityClient?.(true);
+				const { stdout } = await execFileAsync(
+					"osascript",
+					[
+						"-e",
+						"on run argv",
+						"-e",
+						'tell application "System Events" to tell process (item 1 of argv)',
+						"-e",
+						"repeat with candidate in windows",
+						"-e",
+						"try",
+						"-e",
+						'if value of attribute "AXWindowNumber" of candidate is (item 2 of argv) as integer then',
+						"-e",
+						'perform action "AXRaise" of candidate',
+						"-e",
+						"set windowPosition to position of candidate",
+						"-e",
+						"set windowSize to size of candidate",
+						"-e",
+						'return ((item 1 of windowPosition) as text) & "," & ((item 2 of windowPosition) as text) & "," & ((item 1 of windowSize) as text) & "," & ((item 2 of windowSize) as text)',
+						"-e",
+						"end if",
+						"-e",
+						"end try",
+						"-e",
+						"end repeat",
+						"-e",
+						"end tell",
+						"-e",
+						"end run",
+						"--",
+						appName,
+						String(windowId),
+					],
+					{ timeout: 2000 },
+				);
+				const [x, y, width, height] = stdout.trim().split(",").map(Number);
+				if ([x, y, width, height].every(Number.isFinite) && width > 0 && height > 0) {
+					await new Promise((resolve) => setTimeout(resolve, 250));
+					return { x, y, width, height };
+				}
+			} catch {
+				// App activation still works without macOS Accessibility permission.
+			}
+		} else if (process.platform === "win32") {
+			await bringWindowsWindowForward(windowId);
+		} else if (process.platform === "linux") {
+			await execFileAsync("wmctrl", ["-i", "-a", `0x${windowId.toString(16)}`], {
+				timeout: 1500,
+			});
+		}
+		await new Promise((resolve) => setTimeout(resolve, 250));
+	} catch {
+		// Raising the source is best-effort; selection and capture can still continue.
+	}
+	return null;
+}
+
+export async function getDesktopSources(
+	opts?: Electron.SourcesOptions,
+	options?: { strict?: boolean },
+): Promise<SelectedSource[]> {
+	if (process.platform === "linux" && isLikelyLinuxWaylandSession(process.env)) {
+		return opts?.types && !opts.types.includes("screen")
+			? []
+			: [{ id: LINUX_PORTAL_SCREEN_SOURCE_ID, name: "System picker", sourceType: "screen" }];
+	}
+	const cacheKey = JSON.stringify({
+		types: opts?.types,
+		thumbnailSize: opts?.thumbnailSize,
+		fetchWindowIcons: opts?.fetchWindowIcons,
+	});
+	if (
+		!options?.strict &&
+		sourceListCache &&
+		sourceListCache.key === cacheKey &&
+		sourceListCache.expiresAt > Date.now()
+	) {
+		return sourceListCache.value;
+	}
+
+	const includeScreens = Array.isArray(opts?.types) ? opts.types.includes("screen") : true;
+	const includeWindows = Array.isArray(opts?.types) ? opts.types.includes("window") : true;
+	const includeWindowIcons = Boolean(opts?.fetchWindowIcons);
+	const electronTypes = [
+		...(includeScreens ? ["screen" as const] : []),
+		...(includeWindows ? ["window" as const] : []),
+	];
+	const electronSources =
+		electronTypes.length > 0
+			? await desktopCapturer
+					.getSources({
+						...opts,
+						types: electronTypes,
+					})
+					.catch((error) => {
+						if (options?.strict)
+							throw new Error(
+								"Unable to detect recording sources. Check capture permission and try again.",
+							);
+						console.warn(
+							"desktopCapturer.getSources failed (screen recording permission may be missing):",
+							error,
+						);
+						return [];
+					})
+			: [];
+	const ownWindowNames = new Set(
+		[
+			app.getName(),
+			"Recordly",
+			...BrowserWindow.getAllWindows().flatMap((win) => {
+				const title = win.getTitle().trim();
+				return title ? [title] : [];
+			}),
+		]
+			.map((name) => normalizeDesktopSourceName(name))
+			.filter(Boolean),
+	);
+	const ownAppName = normalizeDesktopSourceName(app.getName());
+
+	const displays = includeScreens
+		? [...getScreen().getAllDisplays()].sort(
+				(left, right) =>
+					left.bounds.x - right.bounds.x ||
+					left.bounds.y - right.bounds.y ||
+					left.id - right.id,
+			)
+		: [];
+	const primaryDisplayId = includeScreens ? String(getScreen().getPrimaryDisplay().id) : "";
+	const electronScreenSourcesByDisplayId = new Map(
+		electronSources
+			.filter((source) => source.id.startsWith("screen:"))
+			.map((source) => [String(source.display_id ?? ""), source] as const),
+	);
+	// On Linux, desktopCapturer display_id values may not match screen.getAllDisplays() IDs.
+	// Keep an ordered list so we can fall back to position-based matching.
+	const electronScreenSourcesByIndex = electronSources.filter((source) =>
+		source.id.startsWith("screen:"),
+	);
+
+	const screenSources = displays.map((display, index) => {
+		const displayId = String(display.id);
+		const matchedSource =
+			electronScreenSourcesByDisplayId.get(displayId) ??
+			(electronScreenSourcesByIndex.length === displays.length
+				? electronScreenSourcesByIndex[index]
+				: undefined);
+		if (options?.strict && !matchedSource)
+			throw new Error("Unable to identify this screen. Try the picker again.");
+		const displayName =
+			displayId === primaryDisplayId
+				? `Screen ${index + 1} (Primary)`
+				: `Screen ${index + 1}`;
+
+		return {
+			id: getScreenSourceIdForDisplay({
+				displayId,
+				env: process.env,
+				matchedSourceId: matchedSource?.id,
+				platform: process.platform,
+			}),
+			name: displayName,
+			originalName: matchedSource?.name ?? displayName,
+			display_id: displayId,
+			thumbnail: matchedSource?.thumbnail ? matchedSource.thumbnail.toDataURL() : null,
+			appIcon: null,
+			sourceType: "screen" as const,
+		};
+	});
+
+	if (process.platform !== "darwin" || !includeWindows) {
+		const windowSources = electronSources
+			.filter((source) => source.id.startsWith("window:"))
+			.filter((source) => {
+				const normalizedName = normalizeDesktopSourceName(source.name);
+				if (!normalizedName) {
+					return true;
+				}
+
+				if (ALLOW_RECORDLY_WINDOW_CAPTURE && normalizedName.includes("recordly")) {
+					return true;
+				}
+
+				for (const ownName of ownWindowNames) {
+					if (!ownName) continue;
+					if (normalizedName === ownName) {
+						return false;
+					}
+				}
+
+				return true;
+			})
+			.map((source) => ({
+				id: source.id,
+				name: source.name,
+				originalName: source.name,
+				display_id: source.display_id,
+				thumbnail: source.thumbnail ? source.thumbnail.toDataURL() : null,
+				appIcon: includeWindowIcons && source.appIcon ? source.appIcon.toDataURL() : null,
+				sourceType: "window" as const,
+			}));
+		const result = [...screenSources, ...windowSources];
+		sourceListCache = {
+			key: cacheKey,
+			expiresAt: Date.now() + SOURCE_LIST_CACHE_TTL_MS,
+			value: result,
+		};
+		return result;
+	}
+
+	try {
+		const nativeWindowSources = await getNativeMacWindowSources();
+		const electronWindowSourceMap = new Map(
+			electronSources
+				.filter((source) => source.id.startsWith("window:"))
+				.map((source) => [source.id, source] as const),
+		);
+
+		const mergedWindowSources = nativeWindowSources
+			.filter((source) => {
+				const normalizedWindowName = normalizeDesktopSourceName(
+					source.windowTitle ?? source.name,
+				);
+				const normalizedAppName = normalizeDesktopSourceName(source.appName ?? "");
+
+				if (
+					!ALLOW_RECORDLY_WINDOW_CAPTURE &&
+					normalizedAppName &&
+					normalizedAppName === ownAppName
+				) {
+					return false;
+				}
+
+				if (
+					ALLOW_RECORDLY_WINDOW_CAPTURE &&
+					(normalizedAppName === "recordly" || normalizedWindowName?.includes("recordly"))
+				) {
+					return true;
+				}
+
+				if (!normalizedWindowName) {
+					return true;
+				}
+
+				for (const ownName of ownWindowNames) {
+					if (!ownName) continue;
+					if (normalizedWindowName === ownName) {
+						return false;
+					}
+				}
+
+				return true;
+			})
+			.map((source) => {
+				const electronWindowSource = electronWindowSourceMap.get(source.id);
+				return {
+					id: source.id,
+					name: source.name,
+					originalName: source.name,
+					display_id: source.display_id ?? electronWindowSource?.display_id ?? "",
+					thumbnail: electronWindowSource?.thumbnail
+						? electronWindowSource.thumbnail.toDataURL()
+						: null,
+					appIcon: includeWindowIcons
+						? (source.appIcon ??
+							(electronWindowSource?.appIcon
+								? electronWindowSource.appIcon.toDataURL()
+								: null))
+						: null,
+					appName: source.appName,
+					windowTitle: source.windowTitle,
+					bundleId: source.bundleId,
+					sourceType: "window" as const,
+				};
+			});
+
+		const result = [...screenSources, ...mergedWindowSources];
+		sourceListCache = {
+			key: cacheKey,
+			expiresAt: Date.now() + SOURCE_LIST_CACHE_TTL_MS,
+			value: result,
+		};
+		return result;
+	} catch (error) {
+		console.warn("Falling back to Electron window enumeration on macOS:", error);
+
+		const windowSources = electronSources
+			.filter((source) => source.id.startsWith("window:"))
+			.filter((source) => {
+				const normalizedName = normalizeDesktopSourceName(source.name);
+				if (!normalizedName) {
+					return true;
+				}
+
+				if (ALLOW_RECORDLY_WINDOW_CAPTURE && normalizedName.includes("recordly")) {
+					return true;
+				}
+
+				for (const ownName of ownWindowNames) {
+					if (!ownName) continue;
+					if (
+						normalizedName === ownName ||
+						normalizedName.includes(ownName) ||
+						ownName.includes(normalizedName)
+					) {
+						return false;
+					}
+				}
+
+				return true;
+			})
+			.map((source) => ({
+				id: source.id,
+				name: source.name,
+				originalName: source.name,
+				display_id: source.display_id,
+				thumbnail: source.thumbnail ? source.thumbnail.toDataURL() : null,
+				appIcon: includeWindowIcons && source.appIcon ? source.appIcon.toDataURL() : null,
+				sourceType: "window" as const,
+			}));
+
+		const result = [...screenSources, ...windowSources];
+		sourceListCache = {
+			key: cacheKey,
+			expiresAt: Date.now() + SOURCE_LIST_CACHE_TTL_MS,
+			value: result,
+		};
+		return result;
 	}
 }
 
@@ -47,327 +407,52 @@ export function registerSourceHandlers({
 	createSourceSelectorWindow: () => BrowserWindow;
 	getSourceSelectorWindow: () => BrowserWindow | null;
 }) {
-	ipcMain.handle("get-sources", async (_, opts) => {
-		const cacheKey = JSON.stringify({
-			types: opts?.types,
-			thumbnailSize: opts?.thumbnailSize,
-			fetchWindowIcons: opts?.fetchWindowIcons,
-		});
-		if (sourceListCache && sourceListCache.key === cacheKey && sourceListCache.expiresAt > Date.now()) {
-			return sourceListCache.value;
+	const recordingNavigation = createRecordingEditorNavigation(createEditorWindow);
+	const sourceListPicker = createSourceListPicker(
+		() => getSourceSelectorWindow() ?? createSourceSelectorWindow(),
+	);
+	ipcMain.handle("get-sources", (_, opts) => getDesktopSources(opts));
+
+	ipcMain.handle("select-source", async (event, source: SelectedSource) => {
+		if (isCursorCaptureActive) return selectedSource;
+		const fromSelector = getSourceSelectorWindow()?.webContents === event.sender;
+		if (process.platform === "linux") {
+			const validated = await validateCaptureSource(source);
+			if (!validated)
+				throw new Error(
+					"That window or screen is no longer available. Refresh the source list.",
+				);
+			source = validated;
 		}
-
-		const includeScreens = Array.isArray(opts?.types) ? opts.types.includes("screen") : true;
-		const includeWindows = Array.isArray(opts?.types) ? opts.types.includes("window") : true;
-		const includeWindowIcons = Boolean(opts?.fetchWindowIcons);
-		const electronTypes = [
-			...(includeScreens ? ["screen" as const] : []),
-			...(includeWindows ? ["window" as const] : []),
-		];
-		const electronSources =
-			electronTypes.length > 0
-				? await desktopCapturer
-						.getSources({
-							...opts,
-							types: electronTypes,
-						})
-						.catch((error) => {
-							console.warn(
-								"desktopCapturer.getSources failed (screen recording permission may be missing):",
-								error,
-							);
-							return [];
-						})
-				: [];
-		const ownWindowNames = new Set(
-			[
-				app.getName(),
-				"Recordly",
-				...BrowserWindow.getAllWindows().flatMap((win) => {
-					const title = win.getTitle().trim();
-					return title ? [title] : [];
-				}),
-			]
-				.map((name) => normalizeDesktopSourceName(name))
-				.filter(Boolean),
-		);
-		const ownAppName = normalizeDesktopSourceName(app.getName());
-
-		const displays = includeScreens
-			? [...getScreen().getAllDisplays()].sort(
-					(left, right) =>
-						left.bounds.x - right.bounds.x ||
-						left.bounds.y - right.bounds.y ||
-						left.id - right.id,
-				)
-			: [];
-		const primaryDisplayId = includeScreens ? String(getScreen().getPrimaryDisplay().id) : "";
-		const electronScreenSourcesByDisplayId = new Map(
-			electronSources
-				.filter((source) => source.id.startsWith("screen:"))
-				.map((source) => [String(source.display_id ?? ""), source] as const),
-		);
-		// On Linux, desktopCapturer display_id values may not match screen.getAllDisplays() IDs.
-		// Keep an ordered list so we can fall back to position-based matching.
-		const electronScreenSourcesByIndex = electronSources.filter((source) =>
-			source.id.startsWith("screen:"),
-		);
-
-		const screenSources = displays.map((display, index) => {
-			const displayId = String(display.id);
-			const matchedSource =
-				electronScreenSourcesByDisplayId.get(displayId) ??
-				(electronScreenSourcesByIndex.length === displays.length
-					? electronScreenSourcesByIndex[index]
-					: undefined);
-			const displayName =
-				displayId === primaryDisplayId
-					? `Screen ${index + 1} (Primary)`
-					: `Screen ${index + 1}`;
-
-			return {
-				id: getScreenSourceIdForDisplay({
-					displayId,
-					env: process.env,
-					matchedSourceId: matchedSource?.id,
-					platform: process.platform,
-				}),
-				name: displayName,
-				originalName: matchedSource?.name ?? displayName,
-				display_id: displayId,
-				thumbnail: matchedSource?.thumbnail ? matchedSource.thumbnail.toDataURL() : null,
-				appIcon: null,
-				sourceType: "screen" as const,
-			};
-		});
-
-		if (process.platform !== "darwin" || !includeWindows) {
-			const windowSources = electronSources
-				.filter((source) => source.id.startsWith("window:"))
-				.filter((source) => {
-					const normalizedName = normalizeDesktopSourceName(source.name);
-					if (!normalizedName) {
-						return true;
-					}
-
-					if (ALLOW_RECORDLY_WINDOW_CAPTURE && normalizedName.includes("recordly")) {
-						return true;
-					}
-
-					for (const ownName of ownWindowNames) {
-						if (!ownName) continue;
-						if (normalizedName === ownName) {
-							return false;
-						}
-					}
-
-					return true;
-				})
-				.map((source) => ({
-					id: source.id,
-					name: source.name,
-					originalName: source.name,
-					display_id: source.display_id,
-					thumbnail: source.thumbnail ? source.thumbnail.toDataURL() : null,
-					appIcon:
-						includeWindowIcons && source.appIcon ? source.appIcon.toDataURL() : null,
-					sourceType: "window" as const,
-				}));
-			const result = [...screenSources, ...windowSources];
-			sourceListCache = {
-				key: cacheKey,
-				expiresAt: Date.now() + SOURCE_LIST_CACHE_TTL_MS,
-				value: result,
-			};
-			return result;
+		if (source.id?.startsWith("window:")) {
+			await bringSelectedWindowForward(source);
 		}
-
-		try {
-			const nativeWindowSources = await getNativeMacWindowSources();
-			const electronWindowSourceMap = new Map(
-				electronSources
-					.filter((source) => source.id.startsWith("window:"))
-					.map((source) => [source.id, source] as const),
-			);
-
-			const mergedWindowSources = nativeWindowSources
-				.filter((source) => {
-					const normalizedWindowName = normalizeDesktopSourceName(
-						source.windowTitle ?? source.name,
-					);
-					const normalizedAppName = normalizeDesktopSourceName(source.appName ?? "");
-
-					if (
-						!ALLOW_RECORDLY_WINDOW_CAPTURE &&
-						normalizedAppName &&
-						normalizedAppName === ownAppName
-					) {
-						return false;
-					}
-
-					if (
-						ALLOW_RECORDLY_WINDOW_CAPTURE &&
-						(normalizedAppName === "recordly" ||
-							normalizedWindowName?.includes("recordly"))
-					) {
-						return true;
-					}
-
-					if (!normalizedWindowName) {
-						return true;
-					}
-
-					for (const ownName of ownWindowNames) {
-						if (!ownName) continue;
-						if (normalizedWindowName === ownName) {
-							return false;
-						}
-					}
-
-					return true;
-				})
-				.map((source) => {
-					const electronWindowSource = electronWindowSourceMap.get(source.id);
-					return {
-						id: source.id,
-						name: source.name,
-						originalName: source.name,
-						display_id: source.display_id ?? electronWindowSource?.display_id ?? "",
-						thumbnail: electronWindowSource?.thumbnail
-							? electronWindowSource.thumbnail.toDataURL()
-							: null,
-						appIcon:
-							includeWindowIcons
-								? (source.appIcon ??
-									(electronWindowSource?.appIcon
-										? electronWindowSource.appIcon.toDataURL()
-										: null))
-								: null,
-						appName: source.appName,
-						windowTitle: source.windowTitle,
-						sourceType: "window" as const,
-					};
-				});
-
-			const result = [...screenSources, ...mergedWindowSources];
-			sourceListCache = {
-				key: cacheKey,
-				expiresAt: Date.now() + SOURCE_LIST_CACHE_TTL_MS,
-				value: result,
-			};
-			return result;
-		} catch (error) {
-			console.warn("Falling back to Electron window enumeration on macOS:", error);
-
-			const windowSources = electronSources
-				.filter((source) => source.id.startsWith("window:"))
-				.filter((source) => {
-					const normalizedName = normalizeDesktopSourceName(source.name);
-					if (!normalizedName) {
-						return true;
-					}
-
-					if (ALLOW_RECORDLY_WINDOW_CAPTURE && normalizedName.includes("recordly")) {
-						return true;
-					}
-
-					for (const ownName of ownWindowNames) {
-						if (!ownName) continue;
-						if (
-							normalizedName === ownName ||
-							normalizedName.includes(ownName) ||
-							ownName.includes(normalizedName)
-						) {
-							return false;
-						}
-					}
-
-					return true;
-				})
-				.map((source) => ({
-					id: source.id,
-					name: source.name,
-					originalName: source.name,
-					display_id: source.display_id,
-					thumbnail: source.thumbnail ? source.thumbnail.toDataURL() : null,
-					appIcon:
-						includeWindowIcons && source.appIcon ? source.appIcon.toDataURL() : null,
-					sourceType: "window" as const,
-				}));
-
-			const result = [...screenSources, ...windowSources];
-			sourceListCache = {
-				key: cacheKey,
-				expiresAt: Date.now() + SOURCE_LIST_CACHE_TTL_MS,
-				value: result,
-			};
-			return result;
-		}
-	});
-
-	ipcMain.handle("select-source", (_, source: SelectedSource) => {
+		if (isCursorCaptureActive) return selectedSource;
+		if (fromSelector && getSourceSelectorWindow()?.webContents !== event.sender)
+			return selectedSource;
 		setSelectedSource(source);
 		broadcastSelectedSourceChange();
+		if (sourceListPicker.isSender(event.sender)) sourceListPicker.complete(source);
 		stopWindowBoundsCapture();
 		const sourceSelectorWin = getSourceSelectorWindow();
 		if (sourceSelectorWin) {
 			sourceSelectorWin.close();
 		}
+		app.focus({ steal: true });
 		return selectedSource;
 	});
 
 	ipcMain.handle("show-source-highlight", async (_, source: SelectedSource) => {
 		try {
 			const isWindow = source.id?.startsWith("window:");
-			const windowId = isWindow ? parseWindowId(source.id) : null;
 
-			// ── 1. Bring window to front ──
-			if (isWindow && process.platform === "darwin") {
-				const rawAppName = source.appName || source.name?.split(" — ")[0]?.trim();
-				const appName =
-					rawAppName && /^[\w .&()+'-]{1,64}$/.test(rawAppName) ? rawAppName : null;
-				if (appName) {
-					try {
-						await execFileAsync(
-							"osascript",
-							[
-								"-e",
-								"on run argv",
-								"-e",
-								"tell application (item 1 of argv) to activate",
-								"-e",
-								"end run",
-								"--",
-								appName,
-							],
-							{ timeout: 2000 },
-						);
-						await new Promise((resolve) => setTimeout(resolve, 350));
-					} catch {
-						/* ignore */
-					}
-				}
-			} else if (windowId && process.platform === "linux") {
-				try {
-					await execFileAsync("wmctrl", ["-i", "-a", `0x${windowId.toString(16)}`], {
-						timeout: 1500,
-					});
-				} catch {
-					try {
-						await execFileAsync("xdotool", ["windowactivate", String(windowId)], {
-							timeout: 1500,
-						});
-					} catch {
-						/* not available */
-					}
-				}
-				await new Promise((resolve) => setTimeout(resolve, 250));
-			}
+			// ── 1. Resolve bounds ──
+			let bounds: { x: number; y: number; width: number; height: number } | null =
+				getSourceArea(source);
 
-			// ── 2. Resolve bounds ──
-			let bounds: { x: number; y: number; width: number; height: number } | null = null;
-
-			if (source.id?.startsWith("screen:")) {
+			if (bounds) {
+				// An area highlights exactly the rectangle that will be recorded.
+			} else if (source.id?.startsWith("screen:")) {
 				bounds =
 					process.platform === "darwin"
 						? getDisplayWorkAreaForSource(source)
@@ -380,6 +465,17 @@ export function registerSourceHandlers({
 				} else if (process.platform === "linux") {
 					bounds = await resolveLinuxWindowBounds(source);
 				}
+			}
+
+			// A window highlight must never silently become a fullscreen highlight.
+			// If HWND bounds cannot be resolved, skip the animation and report the
+			// failure so the next selection can retry with the same window source.
+			if (isWindow && (!bounds || bounds.width <= 0 || bounds.height <= 0)) {
+				console.warn("Unable to resolve selected window bounds for highlight", {
+					sourceId: source.id,
+					platform: process.platform,
+				});
+				return { success: false };
 			}
 
 			if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
@@ -396,7 +492,7 @@ export function registerSourceHandlers({
 
 			const resolvedBounds = bounds;
 
-			// ── 3. Show traveling wave highlight ──
+			// ── 2. Show traveling wave highlight ──
 			// On macOS, screen highlights use workArea and no outward padding —
 			// macOS clamps window positions below the menu bar so outward
 			// padding only works on the left/top while right/bottom run off-screen.
@@ -404,10 +500,10 @@ export function registerSourceHandlers({
 			const isMacScreen = isScreen && process.platform === "darwin";
 			const pad = isMacScreen ? 0 : 6;
 			const highlightWin = new BrowserWindow({
-				x: resolvedBounds.x - pad,
-				y: resolvedBounds.y - pad,
-				width: resolvedBounds.width + pad * 2,
-				height: resolvedBounds.height + pad * 2,
+				x: Math.round(resolvedBounds.x - pad),
+				y: Math.round(resolvedBounds.y - pad),
+				width: Math.max(1, Math.round(resolvedBounds.width + pad * 2)),
+				height: Math.max(1, Math.round(resolvedBounds.height + pad * 2)),
 				frame: false,
 				transparent: true,
 				alwaysOnTop: true,
@@ -415,10 +511,19 @@ export function registerSourceHandlers({
 				hasShadow: false,
 				resizable: false,
 				focusable: false,
+				show: false,
+				...(process.platform === "darwin" ? { type: "panel" as const } : {}),
 				webPreferences: { nodeIntegration: false, contextIsolation: true },
 			});
 
 			highlightWin.setIgnoreMouseEvents(true);
+			highlightWin.setAlwaysOnTop(true, "screen-saver");
+			if (process.platform === "darwin") {
+				highlightWin.setVisibleOnAllWorkspaces(true, {
+					visibleOnFullScreen: true,
+					skipTransformProcessType: true,
+				});
+			}
 
 			const borderRadius = isMacScreen ? 0 : 10;
 			const glowInset = isMacScreen ? 0 : -4;
@@ -435,11 +540,11 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
   background:conic-gradient(from var(--angle,0deg),
     transparent 0%,
     transparent 60%,
-    rgba(99,96,245,.15) 70%,
-    rgba(99,96,245,.9) 80%,
-    rgba(123,120,255,1) 85%,
-    rgba(99,96,245,.9) 90%,
-    rgba(99,96,245,.15) 95%,
+    rgba(37,99,235,.15) 70%,
+    rgba(37,99,235,.9) 80%,
+    rgba(117,166,255,1) 85%,
+    rgba(37,99,235,.9) 90%,
+    rgba(37,99,235,.15) 95%,
     transparent 100%
   );
   -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
@@ -453,9 +558,9 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
   background:conic-gradient(from var(--angle,0deg),
     transparent 0%,
     transparent 65%,
-    rgba(99,96,245,.3) 78%,
-    rgba(123,120,255,.5) 85%,
-    rgba(99,96,245,.3) 92%,
+    rgba(37,99,235,.3) 78%,
+    rgba(117,166,255,.5) 85%,
+    rgba(37,99,235,.3) 92%,
     transparent 100%
   );
   -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
@@ -483,15 +588,18 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 </style></head><body>
 <div class="glow-wrap"></div>
 <div class="border-wrap"></div>
-</body></html>`
+</body></html>`;
 
 			try {
-				await highlightWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+				await highlightWin.loadURL(
+					`data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
+				);
+				highlightWin.showInactive();
 			} catch (loadError) {
 				if (!highlightWin.isDestroyed()) {
-					highlightWin.close()
+					highlightWin.close();
 				}
-				throw loadError
+				throw loadError;
 			}
 
 			// The highlight window appearing (even with focusable:false) can corrupt
@@ -501,8 +609,8 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 			reassertHudOverlayMousePassthrough();
 
 			const highlightCloseTimer = setTimeout(() => {
-				if (!highlightWin.isDestroyed()) highlightWin.close()
-			}, 1700)
+				if (!highlightWin.isDestroyed()) highlightWin.close();
+			}, 1700);
 
 			highlightWin.on("closed", () => {
 				clearTimeout(highlightCloseTimer);
@@ -511,32 +619,67 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 				reassertHudOverlayMousePassthrough();
 			});
 
-			return { success: true }
-    } catch (error) {
-      console.error('Failed to show source highlight:', error)
-      return { success: false }
-    }
-  })
+			return { success: true };
+		} catch (error) {
+			console.error("Failed to show source highlight:", error);
+			return { success: false };
+		}
+	});
 
-  ipcMain.handle('get-selected-source', () => {
-    return selectedSource
-  })
+	ipcMain.handle("get-selected-source", () => {
+		return getSessionCaptureSource();
+	});
 
-  ipcMain.handle('open-source-selector', () => {
-    const sourceSelectorWin = getSourceSelectorWindow()
-    if (sourceSelectorWin) {
-      sourceSelectorWin.focus()
-      return
-    }
-    createSourceSelectorWindow()
-  })
-  ipcMain.handle('switch-to-editor', () => {
-    console.log('[switch-to-editor] Opening editor window')
-    const sourceSelectorWin = getSourceSelectorWindow()
-    if (sourceSelectorWin && !sourceSelectorWin.isDestroyed()) {
-      sourceSelectorWin.close()
-    }
-    createEditorWindow()
-  })
-
+	ipcMain.handle("open-source-selector", async () => {
+		if (isCursorCaptureActive) return;
+		if (process.platform === "linux" && isLikelyLinuxWaylandSession(process.env)) {
+			setSelectedSource({
+				id: LINUX_PORTAL_SCREEN_SOURCE_ID,
+				name: "System picker",
+				sourceType: "screen",
+			});
+			broadcastSelectedSourceChange();
+			return;
+		}
+		const sourceSelectorWin = getSourceSelectorWindow();
+		if (sourceSelectorWin) {
+			sourceSelectorWin.focus();
+			return;
+		}
+		createSourceSelectorWindow();
+	});
+	ipcMain.handle("show-recording-hud", (event) => {
+		setHudRecordingPreparationActive(true);
+		recordingNavigation.setReturnWindow(BrowserWindow.fromWebContents(event.sender));
+		const hud = getHudOverlayWindow();
+		if (hud && !hud.isDestroyed()) {
+			hud.show();
+			hud.focus();
+		} else {
+			createHudOverlayWindow();
+		}
+	});
+	ipcMain.handle("show-recording-permissions", () => {
+		if (isCursorCaptureActive) return;
+		writeAppSetting("recordly.onboarding.permissionsRequested", true);
+		setHudRecordingPreparationActive(false);
+		recordingNavigation.open(false);
+		for (const window of BrowserWindow.getAllWindows()) {
+			if (!window.isDestroyed()) window.webContents.send("recording-permissions-requested");
+		}
+	});
+	ipcMain.handle("show-project-dashboard", () => {
+		setHudRecordingPreparationActive(false);
+		recordingNavigation.open(false);
+	});
+	ipcMain.handle("switch-to-editor", () => {
+		setHudRecordingPreparationActive(false);
+		console.log("[switch-to-editor] Opening editor window");
+		const sourceSelectorWin = getSourceSelectorWindow();
+		if (sourceSelectorWin && !sourceSelectorWin.isDestroyed()) {
+			sourceSelectorWin.close();
+		}
+		recordingNavigation.open();
+	});
+	return { pickSourceList: () => sourceListPicker.open() };
 }

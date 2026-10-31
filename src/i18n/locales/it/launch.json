@@ -1,5 +1,6 @@
 {
 	"recording": {
+		"home": "Home",
 		"disableSystemAudio": "Disabilita audio di sistema",
 		"enableSystemAudio": "Abilita audio di sistema",
 		"disableMicrophone": "Disabilita microfono",
@@ -76,5 +77,20 @@
 		"microphoneDenied": "L'accesso al microfono è stato negato. La registrazione continuerà senza audio del microfono.",
 		"failedToStart": "Avvio della registrazione non riuscito: {{error}}",
 		"failedToStartGeneric": "Avvio della registrazione non riuscito"
+	},
+	"updateToast": {
+		"availableTitle": "Aggiornamento disponibile",
+		"experimentalAvailableTitle": "Aggiornamento sperimentale disponibile",
+		"experimentalDescription": "Hai attivato gli aggiornamenti sperimentali, quindi puoi scegliere di provare l'ultimo aggiornamento di Recordly prima che sia disponibile per tutti.",
+		"downloadingTitle": "Download dell'aggiornamento",
+		"readyTitle": "Pronto per il riavvio",
+		"checkErrorTitle": "Impossibile verificare gli aggiornamenti",
+		"downloadErrorTitle": "Impossibile scaricare l'aggiornamento",
+		"experimentalBadge": "Sperimentale",
+		"previewBadge": "Anteprima",
+		"notNow": "Non ora",
+		"updateNow": "Aggiorna ora",
+		"restartToUpdate": "Riavvia per aggiornare",
+		"tryAgain": "Riprova"
 	}
 }

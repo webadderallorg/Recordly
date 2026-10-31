@@ -109,9 +109,7 @@ describe("getSmokeExportConfig", () => {
 describe("getDevOpenRecordingConfig", () => {
 	it("reads dev-open paths independently from smoke export", () => {
 		expect(
-			getDevOpenRecordingConfig(
-				"?devOpenInput=/tmp/input.mp4&devOpenWebcam=/tmp/webcam.mp4",
-			),
+			getDevOpenRecordingConfig("?devOpenInput=/tmp/input.mp4&devOpenWebcam=/tmp/webcam.mp4"),
 		).toEqual({
 			inputPath: "/tmp/input.mp4",
 			webcamInputPath: "/tmp/webcam.mp4",

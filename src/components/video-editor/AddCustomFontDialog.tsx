@@ -1,6 +1,6 @@
-import { Plus } from "@phosphor-icons/react";
+import { Plus } from "@/components/ui/icons";
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -131,16 +131,12 @@ export function AddCustomFontDialog({ onFontAdded }: AddCustomFontDialogProps) {
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogTrigger asChild>
-				<Button
-					variant="outline"
-					size="sm"
-					className="w-full bg-foreground/5 border-foreground/10 text-foreground hover:bg-foreground/10 h-9 text-xs"
-				>
+				<Button variant="outline" size="sm" className="w-full h-9 text-xs">
 					<Plus className="w-3 h-3 mr-1" />
 					{t("addFont.title")}
 				</Button>
 			</DialogTrigger>
-			<DialogContent className="bg-editor-surface-alt border-foreground/10 text-foreground">
+			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>{t("addFont.heading")}</DialogTitle>
 					<DialogDescription className="text-muted-foreground">
@@ -158,7 +154,6 @@ export function AddCustomFontDialog({ onFontAdded }: AddCustomFontDialogProps) {
 							placeholder={t("addFont.urlPlaceholder")}
 							value={importUrl}
 							onChange={(e) => handleImportUrlChange(e.target.value)}
-							className="bg-foreground/5 border-foreground/10 text-foreground"
 						/>
 						<p className="text-xs text-muted-foreground">{t("addFont.urlHelp")}</p>
 					</div>
@@ -172,24 +167,15 @@ export function AddCustomFontDialog({ onFontAdded }: AddCustomFontDialogProps) {
 							placeholder={t("addFont.namePlaceholder")}
 							value={fontName}
 							onChange={(e) => setFontName(e.target.value)}
-							className="bg-foreground/5 border-foreground/10 text-foreground"
 						/>
 						<p className="text-xs text-muted-foreground">{t("addFont.nameHelp")}</p>
 					</div>
 
 					<div className="flex justify-end gap-2 mt-6">
-						<Button
-							variant="outline"
-							onClick={() => handleOpenChange(false)}
-							className="bg-foreground/5 border-foreground/10 text-foreground hover:bg-foreground/10"
-						>
+						<Button variant="outline" onClick={() => handleOpenChange(false)}>
 							{t("addFont.cancel")}
 						</Button>
-						<Button
-							onClick={handleAdd}
-							disabled={loading}
-							className="bg-blue-600 hover:bg-blue-700 text-white"
-						>
+						<Button onClick={handleAdd} disabled={loading}>
 							{loading ? t("addFont.adding") : t("addFont.addFont")}
 						</Button>
 					</div>

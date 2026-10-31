@@ -45,3 +45,7 @@ electron/native/bin/*/whisper-runtime.json
 tmp-*.ps1
 .tmp-*.ps1
 gpu-export-probe.mp4
+
+# Browser test output
+test-results/
+playwright-report/

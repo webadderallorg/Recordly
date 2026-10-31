@@ -1,0 +1,106 @@
+import { useEffect } from "react";
+import type { AspectRatio } from "@/utils/aspectRatioUtils";
+import { saveEditorPreferences } from "../editorPreferences";
+import type { useAppearanceState } from "../state/useAppearanceState";
+
+type Input = {
+	appearance: ReturnType<typeof useAppearanceState>;
+	aspectRatio: AspectRatio;
+	whisperExecutablePath: string | null;
+	whisperModelPath: string | null;
+};
+
+export function useEditorPreferencesPersistence({
+	appearance,
+	aspectRatio,
+	whisperExecutablePath,
+	whisperModelPath,
+}: Input) {
+	useEffect(() => {
+		saveEditorPreferences({
+			wallpaper: appearance.wallpaper,
+			shadowIntensity: appearance.shadowIntensity,
+			backgroundBlur: appearance.backgroundBlur,
+			zoomMotionBlur: appearance.zoomMotionBlur,
+			zoomMotionBlurTuning: appearance.zoomMotionBlurTuning,
+			autoApplyFreshRecordingAutoZooms: appearance.autoApplyFreshRecordingAutoZooms,
+			connectZooms: appearance.connectZooms,
+			zoomInDurationMs: appearance.zoomInDurationMs,
+			zoomInOverlapMs: appearance.zoomInOverlapMs,
+			zoomOutDurationMs: appearance.zoomOutDurationMs,
+			connectedZoomGapMs: appearance.connectedZoomGapMs,
+			connectedZoomDurationMs: appearance.connectedZoomDurationMs,
+			zoomInEasing: appearance.zoomInEasing,
+			zoomOutEasing: appearance.zoomOutEasing,
+			connectedZoomEasing: appearance.connectedZoomEasing,
+			showCursor: appearance.showCursor,
+			loopCursor: appearance.loopCursor,
+			cursorStyle: appearance.cursorStyle,
+			cursorSize: appearance.cursorSize,
+			cursorSmoothing: appearance.cursorSmoothing,
+			cursorSpringStiffnessMultiplier: appearance.cursorSpringStiffnessMultiplier,
+			cursorSpringDampingMultiplier: appearance.cursorSpringDampingMultiplier,
+			cursorSpringMassMultiplier: appearance.cursorSpringMassMultiplier,
+			cameraSpringStiffnessMultiplier: appearance.cameraSpringStiffnessMultiplier,
+			cameraSpringDampingMultiplier: appearance.cameraSpringDampingMultiplier,
+			cameraSpringMassMultiplier: appearance.cameraSpringMassMultiplier,
+			cursorMotionBlur: appearance.cursorMotionBlur,
+			cursorClickEffect: appearance.cursorClickEffect,
+			cursorClickEffectColor: appearance.cursorClickEffectColor,
+			cursorClickEffectScale: appearance.cursorClickEffectScale,
+			cursorClickEffectOpacity: appearance.cursorClickEffectOpacity,
+			cursorClickEffectDurationMs: appearance.cursorClickEffectDurationMs,
+			cursorClickBounce: appearance.cursorClickBounce,
+			cursorClickBounceDuration: appearance.cursorClickBounceDuration,
+			cursorSway: appearance.cursorSway,
+			borderRadius: appearance.borderRadius,
+			padding: appearance.padding,
+			webcam: appearance.webcam,
+			aspectRatio,
+			whisperExecutablePath,
+			whisperModelPath,
+		});
+	}, [
+		appearance.wallpaper,
+		appearance.shadowIntensity,
+		appearance.backgroundBlur,
+		appearance.zoomMotionBlur,
+		appearance.zoomMotionBlurTuning,
+		appearance.autoApplyFreshRecordingAutoZooms,
+		appearance.connectZooms,
+		appearance.zoomInDurationMs,
+		appearance.zoomInOverlapMs,
+		appearance.zoomOutDurationMs,
+		appearance.connectedZoomGapMs,
+		appearance.connectedZoomDurationMs,
+		appearance.zoomInEasing,
+		appearance.zoomOutEasing,
+		appearance.connectedZoomEasing,
+		appearance.showCursor,
+		appearance.loopCursor,
+		appearance.cursorStyle,
+		appearance.cursorSize,
+		appearance.cursorSmoothing,
+		appearance.cursorSpringStiffnessMultiplier,
+		appearance.cursorSpringDampingMultiplier,
+		appearance.cursorSpringMassMultiplier,
+		appearance.cameraSpringStiffnessMultiplier,
+		appearance.cameraSpringDampingMultiplier,
+		appearance.cameraSpringMassMultiplier,
+		appearance.cursorMotionBlur,
+		appearance.cursorClickEffect,
+		appearance.cursorClickEffectColor,
+		appearance.cursorClickEffectScale,
+		appearance.cursorClickEffectOpacity,
+		appearance.cursorClickEffectDurationMs,
+		appearance.cursorClickBounce,
+		appearance.cursorClickBounceDuration,
+		appearance.cursorSway,
+		appearance.borderRadius,
+		appearance.padding,
+		appearance.webcam,
+		aspectRatio,
+		whisperExecutablePath,
+		whisperModelPath,
+	]);
+}

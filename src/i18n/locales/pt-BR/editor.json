@@ -1,10 +1,57 @@
 {
+	"cloud": {
+		"signInRequired": "Entre no Recordly antes de criar um link compartilhado.",
+		"prepareFailed": "Não foi possível preparar a edição atual para compartilhar.",
+		"uploadFailed": "Falha no envio para a nuvem.",
+		"linkCreated": "Link de compartilhamento criado",
+		"linkCopied": "Link copiado",
+		"copyFailed": "Não foi possível copiar o link. Selecione e copie manualmente.",
+		"copied": "Copiado",
+		"copy": "Copiar",
+		"preparing": "Preparando a edição atual…",
+		"createLink": "Criar link",
+		"heading": "Compartilhar na nuvem",
+		"ready": "Seu vídeo está pronto para compartilhar.",
+		"openPage": "Abrir página compartilhada",
+		"notes": "Notas",
+		"publish": "Publicar e criar link",
+		"createLinkTitle": "Criar um link compartilhável",
+		"notesPlaceholder": "Adicione contexto, instruções ou um breve resumo para os espectadores…",
+		"description": "Publique a edição atual em uma página do Recordly para assistir e comentar. Não é necessário baixar. Os vídeos são preparados em até 1080p.",
+		"uploading": "Enviando… {progress}%",
+		"googleUnavailable": "O login com Google ainda não está habilitado. Use e-mail ou peça ao administrador do Recordly para conectar o Google.",
+		"xUnavailable": "O login com X ainda não está habilitado. Use e-mail ou peça ao administrador do Recordly para conectar o X.",
+		"providerUnavailable": "Este método de login ainda não está habilitado. Use e-mail por enquanto.",
+		"enterEmail": "Digite seu endereço de e-mail primeiro.",
+		"resetSent": "E-mail de redefinição de senha enviado.",
+		"accountHeading": "Sua conta Recordly",
+		"signInHeading": "Entrar no Recordly",
+		"signInShareDescription": "Entre para publicar este vídeo e gerenciar seu link compartilhado.",
+		"signInDescription": "Acesse suas gravações e links compartilhados.",
+		"signingOut": "Saindo…",
+		"signOut": "Sair",
+		"signingIn": "Entrando…",
+		"signIn": "Entrar",
+		"or": "ou",
+		"email": "E-mail",
+		"password": "Senha",
+		"forgotPassword": "Esqueceu a senha?",
+		"unavailable": "O login na nuvem ainda não está disponível nesta versão. Você ainda pode salvar vídeos no computador.",
+		"createShareLink": "Criar link compartilhado",
+		"done": "Concluído",
+		"addingVideo": "Adicionando vídeo…",
+		"preparingFootage": "Preparando vídeo e áudio para a linha do tempo."
+	},
+	"library": {
+		"videos": "Vídeos"
+	},
 	"playback": {
 		"play": "Reproduzir",
 		"pause": "Pausar",
 		"skipBack": "Voltar",
 		"skipForward": "Avançar",
-		"muteUnmute": "Silenciar/ativar som"
+		"muteUnmute": "Silenciar/ativar som",
+		"volume": "Volume da prévia"
 	},
 	"annotations": {
 		"settings": "Configurações de anotação",
@@ -111,8 +158,18 @@
 		"showInFolder": "Mostrar na pasta"
 	},
 	"project": {
-		"untitled": "Sem título"
+		"untitled": "Sem título",
+		"unsavedChangesTitle": "Alterações não salvas",
+		"unsavedChangesDescription": "Salvar o projeto atual antes de {{action}}?",
+		"discardChanges": "Descartar alterações",
+		"saveProject": "Salvar projeto"
 	},
+	"exportTips": {
+		"autoZooms": "Dica: Desative os zooms aplicados automaticamente nas configurações",
+		"experimentalBuilds": "Dica: Ative o acesso a versões experimentais nas configurações",
+		"cursorAppearance": "Dica: Você pode personalizar a aparência do cursor"
+	},
+	"account": { "title": "Conta", "comingSoon": "Conta em breve" },
 	"nativeCaptureUnavailable": {
 		"title": "Nada está quebrado, mas não poderemos renderizar uma sobreposição animada do cursor.",
 		"description": "Seu dispositivo não oferece suporte à captura nativa. Isso pode acontecer por vários motivos que ainda não identificamos. O Recordly continuará funcionando, mas a suavização do cursor ficará indisponível.",

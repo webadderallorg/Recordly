@@ -1,8 +1,4 @@
-import type {
-	ExportBackendPreference,
-	ExportPipelineModel,
-	ExportSettings,
-} from "@/lib/exporter";
+import type { ExportBackendPreference, ExportPipelineModel, ExportSettings } from "@/lib/exporter";
 import type { SmokeExportConfig } from "./smokeExportConfig";
 
 export type Mp4ExportRouting = {

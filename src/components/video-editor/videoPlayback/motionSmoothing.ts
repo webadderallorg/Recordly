@@ -35,10 +35,7 @@ function clampSpringMultiplier(value: number | undefined) {
 	return Math.min(3, Math.max(0.25, numericValue));
 }
 
-function applyCursorSpringTuning(
-	config: SpringConfig,
-	tuning?: CursorSpringTuning,
-): SpringConfig {
+function applyCursorSpringTuning(config: SpringConfig, tuning?: CursorSpringTuning): SpringConfig {
 	return {
 		...config,
 		stiffness: config.stiffness * clampSpringMultiplier(tuning?.stiffnessMultiplier),
@@ -226,13 +223,16 @@ export function getCursorSpringConfig(
 	const clamped = Math.min(CURSOR_SMOOTHING_MAX, Math.max(CURSOR_SMOOTHING_MIN, smoothingFactor));
 
 	if (clamped <= 0) {
-		return applyCursorSpringTuning({
-			stiffness: 1000,
-			damping: 100,
-			mass: 1,
-			restDelta: 0.0001,
-			restSpeed: 0.001,
-		}, tuning);
+		return applyCursorSpringTuning(
+			{
+				stiffness: 1000,
+				damping: 100,
+				mass: 1,
+				restDelta: 0.0001,
+				restSpeed: 0.001,
+			},
+			tuning,
+		);
 	}
 
 	if (clamped <= CURSOR_SMOOTHING_LEGACY_MAX) {
@@ -245,13 +245,16 @@ export function getCursorSpringConfig(
 			),
 		);
 
-		return applyCursorSpringTuning({
-			stiffness: (760 - legacyNormalized * 420) * DEFAULT_CURSOR_STIFFNESS_BOOST,
-			damping: 34 + legacyNormalized * 24,
-			mass: 0.85 + legacyNormalized * 0.55,
-			restDelta: 0.0002,
-			restSpeed: 0.01,
-		}, tuning);
+		return applyCursorSpringTuning(
+			{
+				stiffness: (760 - legacyNormalized * 420) * DEFAULT_CURSOR_STIFFNESS_BOOST,
+				damping: 34 + legacyNormalized * 24,
+				mass: 0.85 + legacyNormalized * 0.55,
+				restDelta: 0.0002,
+				restSpeed: 0.01,
+			},
+			tuning,
+		);
 	}
 
 	const extendedNormalized = Math.min(
@@ -263,13 +266,16 @@ export function getCursorSpringConfig(
 		),
 	);
 
-	return applyCursorSpringTuning({
-		stiffness: (340 - extendedNormalized * 180) * DEFAULT_CURSOR_STIFFNESS_BOOST,
-		damping: 58 + extendedNormalized * 22,
-		mass: 1.35 + extendedNormalized * 0.45,
-		restDelta: 0.0002,
-		restSpeed: 0.01,
-	}, tuning);
+	return applyCursorSpringTuning(
+		{
+			stiffness: (340 - extendedNormalized * 180) * DEFAULT_CURSOR_STIFFNESS_BOOST,
+			damping: 58 + extendedNormalized * 22,
+			mass: 1.35 + extendedNormalized * 0.45,
+			restDelta: 0.0002,
+			restSpeed: 0.01,
+		},
+		tuning,
+	);
 }
 
 export function getZoomSpringConfig(
@@ -279,13 +285,16 @@ export function getZoomSpringConfig(
 	const clamped = Math.max(0, Math.min(1, smoothnessFactor));
 
 	if (clamped <= 0) {
-		return applyCursorSpringTuning({
-			stiffness: 1000,
-			damping: 100,
-			mass: 1,
-			restDelta: 0.0001,
-			restSpeed: 0.001,
-		}, tuning);
+		return applyCursorSpringTuning(
+			{
+				stiffness: 1000,
+				damping: 100,
+				mass: 1,
+				restDelta: 0.0001,
+				restSpeed: 0.001,
+			},
+			tuning,
+		);
 	}
 
 	// Map 0-1 slider to the internal 0-2 spring range so that
@@ -297,11 +306,14 @@ export function getZoomSpringConfig(
 	// The overshoot clamp in stepSpringValue prevents wobble even at
 	// this low damping, so animations stay fast and responsive.
 	// Higher scaled → lower stiffness + higher mass → slower, floatier settle.
-	return applyCursorSpringTuning({
-		stiffness: 100 / scaled,
-		damping: 21,
-		mass: 1.0 * scaled,
-		restDelta: 0.0005,
-		restSpeed: 0.015,
-	}, tuning);
+	return applyCursorSpringTuning(
+		{
+			stiffness: 100 / scaled,
+			damping: 21,
+			mass: 1.0 * scaled,
+			restDelta: 0.0005,
+			restSpeed: 0.015,
+		},
+		tuning,
+	);
 }

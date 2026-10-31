@@ -1,6 +1,7 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { CURSOR_MOTION_PRESETS } from "./cursorMotionPresets";
+import { DEFAULT_CURSOR_MOTION_BLUR } from "./types";
 import {
 	fromFileUrl,
 	normalizeProjectEditor,
@@ -253,7 +254,6 @@ describe("Motion preset normalization", () => {
 			cursorSpringStiffnessMultiplier: smooth.cursorSpringStiffnessMultiplier,
 			cursorSpringDampingMultiplier: smooth.cursorSpringDampingMultiplier,
 			cursorSpringMassMultiplier: smooth.cursorSpringMassMultiplier,
-			cursorMotionBlur: smooth.cursorMotionBlur,
 			cursorClickBounce: smooth.cursorClickBounce,
 			cursorClickBounceDuration: smooth.cursorClickBounceDuration,
 		} as any);
@@ -288,7 +288,7 @@ describe("Motion preset normalization", () => {
 		);
 		expect(result.cursorSpringDampingMultiplier).toBe(focused.cursorSpringDampingMultiplier);
 		expect(result.cursorSpringMassMultiplier).toBe(focused.cursorSpringMassMultiplier);
-		expect(result.cursorMotionBlur).toBe(focused.cursorMotionBlur);
+		expect(result.cursorMotionBlur).toBe(DEFAULT_CURSOR_MOTION_BLUR);
 		expect(result.cursorClickBounce).toBe(focused.cursorClickBounce);
 		expect(result.cursorClickBounceDuration).toBe(focused.cursorClickBounceDuration);
 	});

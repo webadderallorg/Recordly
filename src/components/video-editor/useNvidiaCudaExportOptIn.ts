@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
 
-export const NVIDIA_CUDA_EXPORT_OPT_IN_SETTING_KEY =
-	"recordly.export.experimentalNvidiaCuda";
+export const NVIDIA_CUDA_EXPORT_OPT_IN_SETTING_KEY = "recordly.export.experimentalNvidiaCuda";
 
 type NativeExportCapabilitiesResult = {
 	capabilities?: {
@@ -12,9 +11,7 @@ type NativeExportCapabilitiesResult = {
 	};
 } | null;
 
-export function isNvidiaCudaExportAvailable(
-	result: NativeExportCapabilitiesResult | undefined,
-) {
+export function isNvidiaCudaExportAvailable(result: NativeExportCapabilitiesResult | undefined) {
 	return result?.capabilities?.nvidiaCuda?.available === true;
 }
 
@@ -33,11 +30,7 @@ export function saveNvidiaCudaExportOptIn(enabled: boolean) {
 	return saveAppSetting(NVIDIA_CUDA_EXPORT_OPT_IN_SETTING_KEY, enabled);
 }
 
-export function useNvidiaCudaExportOptIn({
-	onEnabled,
-}: {
-	onEnabled?: () => void;
-} = {}) {
+export function useNvidiaCudaExportOptIn({ onEnabled }: { onEnabled?: () => void } = {}) {
 	const [nvidiaCudaExportAvailable, setNvidiaCudaExportAvailable] = useState(false);
 	const [experimentalNvidiaCudaExport, setExperimentalNvidiaCudaExportState] = useState(
 		loadInitialNvidiaCudaExportOptIn,
@@ -75,10 +68,7 @@ export function useNvidiaCudaExportOptIn({
 
 	const setExperimentalNvidiaCudaExport = useCallback(
 		(enabled: boolean) => {
-			const nextEnabled = resolveNvidiaCudaExportOptIn(
-				enabled,
-				nvidiaCudaExportAvailable,
-			);
+			const nextEnabled = resolveNvidiaCudaExportOptIn(enabled, nvidiaCudaExportAvailable);
 			setExperimentalNvidiaCudaExportState(nextEnabled);
 			saveNvidiaCudaExportOptIn(nextEnabled);
 			if (nextEnabled) {

@@ -607,13 +607,58 @@ jobs:
       - name: Stage release assets
         shell: bash
         env:
-          IS_PRERELEASE: ${{ needs.prepare-release.outputs.prerelease }}
           RELEASE_SCOPE: ${{ needs.prepare-release.outputs.release_scope }}
+          IS_PRERELEASE: ${{ needs.prepare-release.outputs.prerelease }}
         run: |
           set -euo pipefail
           shopt -s nullglob
 
           mkdir -p release-assets/upload
+
+          if [ "$IS_PRERELEASE" = "true" ] && [ "$RELEASE_SCOPE" != "all" ]; then
+            echo "Prerelease beta updates must include all platforms so every opted-in client can resolve beta metadata."
+            exit 1
+          fi
+
+          required_metadata=(
+            release-assets/windows-x64/latest.yml
+            release-assets/linux-x64/latest-linux.yml
+          )
+
+          if [ "$RELEASE_SCOPE" = "all" ]; then
+            required_metadata+=(release-assets/macos-merged/latest-mac.yml)
+          fi
+
+          for file in "${required_metadata[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "Required update metadata is missing: $file"
+              exit 1
+            fi
+          done
+
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            cp release-assets/windows-x64/latest.yml release-assets/windows-x64/beta.yml
+            cp release-assets/linux-x64/latest-linux.yml release-assets/linux-x64/beta-linux.yml
+            update_metadata=(
+              release-assets/windows-x64/beta.yml
+              release-assets/linux-x64/beta-linux.yml
+            )
+
+            if [ "$RELEASE_SCOPE" = "all" ]; then
+              cp release-assets/macos-merged/latest-mac.yml release-assets/macos-merged/beta-mac.yml
+              update_metadata+=(release-assets/macos-merged/beta-mac.yml)
+            fi
+          else
+            update_metadata=(
+              release-assets/windows-x64/latest.yml
+              release-assets/linux-x64/latest-linux.yml
+            )
+
+            if [ "$RELEASE_SCOPE" = "all" ]; then
+              update_metadata+=(release-assets/macos-merged/latest-mac.yml)
+            fi
+          fi
+
           assets=(
             release-assets/windows-x64/*.exe
             release-assets/windows-x64/*.blockmap
@@ -632,13 +677,7 @@ jobs:
             )
           fi
 
-          if [ "$IS_PRERELEASE" != "true" ]; then
-            assets+=(
-              release-assets/macos-merged/latest-mac.yml
-              release-assets/windows-x64/latest*.yml
-              release-assets/linux-x64/latest-linux.yml
-            )
-          fi
+          assets+=("${update_metadata[@]}")
 
           if [ ${#assets[@]} -eq 0 ]; then
             echo "No release assets found to checksum."

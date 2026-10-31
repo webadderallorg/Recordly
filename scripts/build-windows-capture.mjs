@@ -128,11 +128,14 @@ try {
 		prefix: "build-windows-capture",
 		clearCache: clearCmakeCache,
 		configure: (generator, toolset) =>
-			execSync(`${cmake} .. -G "${generator}" -A ${generatorArch}${toolset ? ` -T ${toolset}` : ""}`, {
-				cwd: buildDir,
-				stdio: "inherit",
-				timeout: 120000,
-			}),
+			execSync(
+				`${cmake} .. -G "${generator}" -A ${generatorArch}${toolset ? ` -T ${toolset}` : ""}`,
+				{
+					cwd: buildDir,
+					stdio: "inherit",
+					timeout: 120000,
+				},
+			),
 	});
 } catch (error) {
 	console.error("[build-windows-capture] CMake configure failed:", error.message);

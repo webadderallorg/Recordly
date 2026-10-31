@@ -1,3 +1,6 @@
+import { resolveDisplayMediaSource } from "./ipc/register/sourceMapping";
+import { createSaveBeforeCloseController } from "./saveBeforeClose";
+import { clearRecordingTrashUndo } from "./ipc/recording/library";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -6,19 +9,18 @@ import {
 	BrowserWindow,
 	desktopCapturer,
 	dialog,
+	webContents as electronWebContents,
 	ipcMain,
 	Menu,
-	Notification,
 	nativeImage,
 	session,
 	shell,
 	systemPreferences,
 	Tray,
-	webContents as electronWebContents,
 } from "electron";
 import { RECORDINGS_DIR } from "./appPaths";
+import { createAuthCallbackController } from "./authCallback";
 import { showCursor } from "./cursorHider";
-import { registerExtensionIpcHandlers } from "./extensions/extensionIpc";
 import { getGpuSwitches } from "./gpuSwitches";
 import {
 	cleanupAllExportStreams,
@@ -28,23 +30,22 @@ import {
 	registerIpcHandlers,
 } from "./ipc/handlers";
 import { ensureMediaServer } from "./mediaServer";
+import { hardenWebContentsNavigation, shouldHardenWebContentsType } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
-import {
-	hardenWebContentsNavigation,
-	shouldHardenWebContentsType,
-} from "./navigationPolicy";
-import type { UpdateToastPayload } from "./updater";
 import {
 	checkForAppUpdates,
 	deferUpdateReminder,
 	dismissUpdateToast,
 	downloadAvailableUpdate,
 	getCurrentUpdateToastPayload,
+	getExperimentalUpdatesEnabled,
 	getUpdaterLogPath,
 	getUpdateStatusSummary,
 	installDownloadedUpdateNow,
+	previewNativeUpdateDialog,
 	previewUpdateToast,
+	setExperimentalUpdatesEnabled,
 	setupAutoUpdates,
 	skipAvailableUpdateVersion,
 } from "./updater";
@@ -56,6 +57,7 @@ import {
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
 	isHudOverlayMousePassthroughSupported,
+	beginHudCaptureProtection,
 	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
 	setHudOverlayRecordingActive,
 	showUpdateToastWindow,
@@ -66,7 +68,7 @@ const IS_SMOKE_EXPORT = process.env.RECORDLY_SMOKE_EXPORT === "1";
 
 function ignoreBrokenConsolePipe(stream: NodeJS.WritableStream | undefined) {
 	stream?.on("error", (error: NodeJS.ErrnoException) => {
-		if (error.code === "EPIPE") {
+		if (error.code === "EPIPE" || error.code === "EIO") {
 			return;
 		}
 		throw error;
@@ -179,10 +181,9 @@ let trayContextMenu: Menu | null = null;
 let selectedSourceName = "";
 let editorHasUnsavedChanges = false;
 let isForceClosing = false;
+let isAppQuitting = false;
 let isCreatingMainWindow = false;
 let isCreatingEditorWindow = false;
-let activeUpdateNotification: Notification | null = null;
-let activeUpdateNotificationKey: string | null = null;
 const shouldEnforceSingleInstanceLock = !IS_DEV;
 const hasSingleInstanceLock = shouldEnforceSingleInstanceLock
 	? app.requestSingleInstanceLock()
@@ -191,6 +192,11 @@ const hasSingleInstanceLock = shouldEnforceSingleInstanceLock
 if (!hasSingleInstanceLock) {
 	app.quit();
 }
+
+const authCallbacks = createAuthCallbackController({
+	isDev: IS_DEV,
+	focusApp: () => focusOrCreateMainWindow(),
+});
 
 function closeEditorWindowBypassingUnsavedPrompt(window: BrowserWindow | null) {
 	if (!window || window.isDestroyed()) {
@@ -202,6 +208,22 @@ function closeEditorWindowBypassingUnsavedPrompt(window: BrowserWindow | null) {
 		editorHasUnsavedChanges = false;
 	}
 	window.close();
+}
+
+function closeEditorWindowToHud(window: BrowserWindow | null) {
+	if (!window || window.isDestroyed()) {
+		return;
+	}
+
+	// The HUD renderer normally remains hidden while the editor is open so
+	// recording finalization can continue. Restore that HUD before destroying
+	// the editor, keeping Recordly in its ready-to-record state on the taskbar.
+	window.hide();
+	if (mainWindow === window) {
+		mainWindow = null;
+	}
+	createWindow();
+	closeEditorWindowBypassingUnsavedPrompt(window);
 }
 
 function restoreWindowSafely(window: BrowserWindow | null) {
@@ -258,6 +280,14 @@ function getRecordingTrayIcon() {
 }
 
 function showHudOverlayFromTray() {
+	const updateToast = getUpdateToastWindow();
+	if (updateToast?.isVisible()) {
+		updateToast.show();
+		updateToast.moveTop();
+		updateToast.focus();
+		return true;
+	}
+
 	const hud = getHudOverlayWindow();
 	if (!hud) {
 		return false;
@@ -329,6 +359,14 @@ function focusOrCreateMainWindow() {
 		return;
 	}
 
+	const updateToast = getUpdateToastWindow();
+	if (updateToast?.isVisible()) {
+		updateToast.show();
+		updateToast.moveTop();
+		updateToast.focus();
+		return;
+	}
+
 	if (!mainWindow || mainWindow.isDestroyed()) {
 		const existingHud = getHudOverlayWindow();
 		if (existingHud && !existingHud.isDestroyed()) {
@@ -392,10 +430,13 @@ function sendEditorMenuAction(
 		targetWindow = mainWindow;
 		if (!targetWindow || targetWindow.isDestroyed()) return;
 
-		targetWindow.webContents.once("did-finish-load", () => {
+		const send = () => {
 			if (!targetWindow || targetWindow.isDestroyed()) return;
 			targetWindow.webContents.send(channel);
-		});
+		};
+		if (targetWindow.webContents.isLoadingMainFrame())
+			targetWindow.webContents.once("did-finish-load", send);
+		else send();
 		return;
 	}
 
@@ -404,26 +445,23 @@ function sendEditorMenuAction(
 
 function setupApplicationMenu() {
 	const isMac = process.platform === "darwin";
-	if (!isMac) {
-		Menu.setApplicationMenu(null);
-		return;
-	}
-
 	const template: Electron.MenuItemConstructorOptions[] = [];
-	template.push({
-		label: app.name,
-		submenu: [
-			{ role: "about" },
-			{ type: "separator" },
-			{ role: "services" },
-			{ type: "separator" },
-			{ role: "hide" },
-			{ role: "hideOthers" },
-			{ role: "unhide" },
-			{ type: "separator" },
-			{ role: "quit" },
-		],
-	});
+	if (isMac) {
+		template.push({
+			label: app.name,
+			submenu: [
+				{ role: "about" },
+				{ type: "separator" },
+				{ role: "services" },
+				{ type: "separator" },
+				{ role: "hide" },
+				{ role: "hideOthers" },
+				{ role: "unhide" },
+				{ type: "separator" },
+				{ role: "quit" },
+			],
+		});
+	}
 
 	template.push(
 		{
@@ -444,7 +482,12 @@ function setupApplicationMenu() {
 					accelerator: "CmdOrCtrl+Shift+S",
 					click: () => sendEditorMenuAction("menu-save-project-as"),
 				},
-				...(isMac ? [] : [{ type: "separator" as const }, { role: "quit" as const }]),
+				...(isMac
+					? []
+					: [
+							{ type: "separator" as const },
+							{ role: "quit" as const, accelerator: "CmdOrCtrl+Q" },
+						]),
 			],
 		},
 		{
@@ -528,6 +571,12 @@ function createTray() {
 	tray.on("double-click", () => focusOrCreateMainWindow());
 }
 
+function shouldUseTray() {
+	// macOS and Windows expose Recordly through their Dock/taskbar. Keep the
+	// tray entry only on Linux, where it remains the primary app entry point.
+	return process.platform === "linux";
+}
+
 function getPublicAssetPath(filename: string) {
 	return path.join(process.env.VITE_PUBLIC || RENDERER_DIST, filename);
 }
@@ -555,124 +604,16 @@ function syncDockIcon() {
 	}
 }
 
-function getUpdateNotificationTitle(payload: UpdateToastPayload) {
-	switch (payload.phase) {
-		case "available":
-			return `Recordly ${payload.version} is available`;
-		case "downloading":
-			return `Downloading Recordly ${payload.version}`;
-		case "ready":
-			return `Recordly ${payload.version} is ready`;
-		case "error":
-			return `Recordly ${payload.version} needs attention`;
-	}
-}
-
-function getUpdateNotificationBody(payload: UpdateToastPayload) {
-	switch (payload.phase) {
-		case "available":
-			return "Click to install the update and restart Recordly.";
-		case "downloading":
-			return "Recordly is downloading the update and will restart when it is ready.";
-		case "ready":
-			return "Click to install the downloaded update and restart.";
-		case "error":
-			return payload.primaryAction === "install-and-restart"
-				? "Click to try the install again."
-				: "Click to retry checking for updates.";
-	}
-}
-
-function clearActiveUpdateNotification() {
-	if (activeUpdateNotification) {
-		activeUpdateNotification.close();
-		activeUpdateNotification = null;
-	}
-	activeUpdateNotificationKey = null;
-}
-
 function sendUpdateToastToWindows(channel: "update-toast-state", payload: unknown) {
 	if (process.platform !== "darwin") {
-		if (!payload) {
-			clearActiveUpdateNotification();
-			return true;
-		}
-
-		const updatePayload = payload as UpdateToastPayload;
-		if (updatePayload.phase === "downloading") {
-			return true;
-		}
-
-		if (!Notification.isSupported()) {
-			return false;
-		}
-
-		const notificationKey = [
-			updatePayload.phase,
-			updatePayload.version,
-			updatePayload.detail,
-		].join(":");
-		if (activeUpdateNotificationKey === notificationKey) {
-			return true;
-		}
-
-		clearActiveUpdateNotification();
-		const notification = new Notification({
-			title: getUpdateNotificationTitle(updatePayload),
-			body: getUpdateNotificationBody(updatePayload),
-			icon: getAppImage(getPlatformAppIconFilename(128)),
-			silent: false,
-		});
-
-		notification.on("click", () => {
-			focusOrCreateMainWindow();
-			switch (updatePayload.phase) {
-				case "available":
-					void downloadAvailableUpdate(sendUpdateToastToWindows, {
-						installAfterDownload: true,
-					});
-					break;
-				case "ready":
-					installDownloadedUpdateNow(sendUpdateToastToWindows);
-					break;
-				case "error":
-					if (updatePayload.primaryAction === "install-and-restart") {
-						void downloadAvailableUpdate(sendUpdateToastToWindows, {
-							installAfterDownload: true,
-						});
-					} else {
-						void checkForAppUpdates(getUpdateDialogWindow, { manual: true });
-					}
-					break;
-				default:
-					break;
-			}
-		});
-
-		notification.on("close", () => {
-			if (activeUpdateNotification === notification) {
-				activeUpdateNotification = null;
-				activeUpdateNotificationKey = null;
-			}
-		});
-
-		notification.show();
-		// On Win10, showing a native notification can break setIgnoreMouseEvents
-		// forwarding on the transparent HUD overlay.  Re-assert it after a short
-		// delay so the renderer's hover detection keeps working.
-		reassertHudOverlayMouseState();
-		activeUpdateNotification = notification;
-		activeUpdateNotificationKey = notificationKey;
-		return true;
+		return false;
 	}
 
 	if (!payload) {
 		const existingWindow = getUpdateToastWindow();
-		if (!existingWindow) {
-			return false;
+		if (existingWindow) {
+			existingWindow.webContents.send(channel, null);
 		}
-
-		existingWindow.webContents.send(channel, null);
 		hideUpdateToastWindow();
 		return true;
 	}
@@ -736,7 +677,35 @@ ipcMain.handle("get-update-status-summary", () => {
 	return getUpdateStatusSummary();
 });
 
-ipcMain.handle("preview-update-toast", () => {
+ipcMain.handle("get-experimental-updates-enabled", () => {
+	return getExperimentalUpdatesEnabled();
+});
+
+ipcMain.handle("set-experimental-updates-enabled", async (_event, enabled: unknown) => {
+	if (typeof enabled !== "boolean") {
+		return { success: false, enabled: getExperimentalUpdatesEnabled() };
+	}
+
+	try {
+		const savedValue = setExperimentalUpdatesEnabled(enabled);
+		await checkForAppUpdates(getUpdateDialogWindow);
+		return { success: true, enabled: savedValue };
+	} catch (error) {
+		console.error("Failed to update experimental updates preference:", error);
+		return {
+			success: false,
+			enabled: getExperimentalUpdatesEnabled(),
+			error: String(error),
+		};
+	}
+});
+
+ipcMain.handle("preview-update-toast", async () => {
+	if (process.platform !== "darwin") {
+		await previewNativeUpdateDialog(getUpdateDialogWindow);
+		return { success: true };
+	}
+
 	return { success: previewUpdateToast(sendUpdateToastToWindows) };
 });
 
@@ -847,33 +816,49 @@ function createEditorWindowWrapper() {
 		editorHasUnsavedChanges = false;
 	});
 
+	const closeAfterSave = () => {
+		if (process.platform === "win32" && !isAppQuitting) closeEditorWindowToHud(editorWindow);
+		else closeEditorWindowBypassingUnsavedPrompt(editorWindow);
+	};
+	let closeSaveRequestId = 0;
+	const closeSave = createSaveBeforeCloseController({
+		requestSave: () =>
+			editorWindow.webContents.send("request-save-before-close", ++closeSaveRequestId),
+		subscribe: (done) => {
+			const saved = (event: Electron.IpcMainEvent, success: unknown, requestId: unknown) => {
+				if (event.sender === editorWindow.webContents && requestId === closeSaveRequestId)
+					done(success === true);
+			};
+			ipcMain.on("save-before-close-done", saved);
+			return () => ipcMain.removeListener("save-before-close-done", saved);
+		},
+		offerDiscard: async () => {
+			const result = await dialog.showMessageBox(editorWindow, {
+				type: "warning",
+				buttons: ["Discard & Close", "Cancel"],
+				defaultId: 1,
+				cancelId: 1,
+				title: "Project could not be saved",
+				message: "Saving failed or did not respond. Discard unsaved changes and close?",
+			});
+			return result.response === 0;
+		},
+		close: closeAfterSave,
+		cancel: () => {
+			isAppQuitting = false;
+		},
+	});
+	editorWindow.once("closed", closeSave.dispose);
 	editorWindow.on("close", (event) => {
 		if (isForceClosing || !editorHasUnsavedChanges) {
+			if (process.platform === "win32" && !isForceClosing && !isAppQuitting) {
+				event.preventDefault();
+				closeEditorWindowToHud(editorWindow);
+			}
 			return;
 		}
-
 		event.preventDefault();
-
-		const choice = dialog.showMessageBoxSync(editorWindow, {
-			type: "warning",
-			buttons: ["Save & Close", "Discard & Close", "Cancel"],
-			defaultId: 0,
-			cancelId: 2,
-			title: "Unsaved Changes",
-			message: "You have unsaved changes.",
-			detail: "Do you want to save your project before closing?",
-		});
-
-		if (choice === 0) {
-			editorWindow.webContents.send("request-save-before-close");
-			ipcMain.once("save-before-close-done", (_event, saved: boolean) => {
-				if (saved) {
-					closeEditorWindowBypassingUnsavedPrompt(editorWindow);
-				}
-			});
-		} else if (choice === 1) {
-			closeEditorWindowBypassingUnsavedPrompt(editorWindow);
-		}
+		closeSave.start();
 	});
 
 	return editorWindow;
@@ -890,6 +875,11 @@ function createSourceSelectorWindowWrapper() {
 // On macOS, applications and their menu bar stay active until the user quits
 // explicitly with Cmd + Q.
 app.on("before-quit", () => {
+	isAppQuitting = true;
+	authCallbacks.close();
+	void clearRecordingTrashUndo().catch((error) =>
+		console.warn("Could not clear recording undo cache", error),
+	);
 	killWindowsCaptureProcess();
 	showCursor();
 	cleanupNativeVideoExportSessions();
@@ -903,17 +893,31 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
+	if (getHudOverlayWindow()?.isVisible()) return;
 	// On OS X it's common to re-create a window in the app when the
 	// dock icon is clicked and there are no other windows open.
 	focusOrCreateMainWindow();
 });
 
-app.on("second-instance", () => {
+app.on("second-instance", (_event, commandLine) => {
+	const authCallback = authCallbacks.find(commandLine);
+	if (authCallback) authCallbacks.dispatch(authCallback);
 	focusOrCreateMainWindow();
 });
 
 // Register all IPC handlers when app is ready
 app.whenReady().then(async () => {
+	authCallbacks.startDevServer();
+	if (process.defaultApp && process.argv[1]) {
+		app.setAsDefaultProtocolClient(authCallbacks.protocol, process.execPath, [
+			path.resolve(process.argv[1]),
+		]);
+	} else {
+		app.setAsDefaultProtocolClient(authCallbacks.protocol);
+	}
+	const startupAuthCallback = authCallbacks.find(process.argv);
+	if (startupAuthCallback) authCallbacks.dispatch(startupAuthCallback);
+
 	if (process.platform === "win32") {
 		app.setAppUserModelId("dev.recordly.app");
 	}
@@ -960,17 +964,11 @@ app.whenReady().then(async () => {
 	// Recordly does not use WebHID, Web Serial, or WebUSB. Do not grant devices by default.
 	session.defaultSession.setDevicePermissionHandler(() => false);
 
-	if (process.platform === "darwin") {
-		const cameraStatus = systemPreferences.getMediaAccessStatus("camera");
-		if (cameraStatus !== "granted") {
-			await systemPreferences.askForMediaAccess("camera");
-		}
-
-		const micStatus = systemPreferences.getMediaAccessStatus("microphone");
-		if (micStatus !== "granted") {
-			await systemPreferences.askForMediaAccess("microphone");
-		}
-	} else if (process.platform === "win32") {
+	// macOS prompts for camera and microphone access at the point of use. Asking
+	// here blocks the first window behind two modal OS permission flows and makes
+	// a fresh install look hung. Windows has no equivalent request API, so retain
+	// its diagnostic warnings.
+	if (process.platform === "win32") {
 		const cameraStatus = systemPreferences.getMediaAccessStatus("camera");
 		const micStatus = systemPreferences.getMediaAccessStatus("microphone");
 		if (cameraStatus !== "granted") {
@@ -1002,26 +1000,29 @@ app.whenReady().then(async () => {
 			}
 		}, 100);
 	});
+	if (process.platform === "darwin" && app.dock) {
+		await app.dock.show();
+	}
 	syncDockIcon();
-	createTray();
-	updateTrayMenu();
+	if (shouldUseTray()) {
+		createTray();
+		updateTrayMenu();
+	}
 	setupApplicationMenu();
-	// Ensure recordings directory exists
-	await ensureRecordingsDir();
-
-	if (!VITE_DEV_SERVER_URL) {
-		try {
-			await ensurePackagedRendererServer(RENDERER_DIST);
-		} catch (error) {
-			console.warn("[renderer-server] Failed to start packaged renderer server:", error);
-		}
-	}
-
-	try {
-		await ensureMediaServer();
-	} catch (error) {
-		console.warn("[media-server] Failed to start media server:", error);
-	}
+	await Promise.all([
+		ensureRecordingsDir(),
+		!VITE_DEV_SERVER_URL
+			? ensurePackagedRendererServer(RENDERER_DIST).catch((error) => {
+					console.warn(
+						"[renderer-server] Failed to start packaged renderer server:",
+						error,
+					);
+				})
+			: Promise.resolve(),
+		ensureMediaServer().catch((error) => {
+			console.warn("[media-server] Failed to start media server:", error);
+		}),
+	]);
 
 	registerIpcHandlers(
 		createEditorWindowWrapper,
@@ -1031,8 +1032,10 @@ app.whenReady().then(async () => {
 		(recording: boolean, sourceName: string) => {
 			selectedSourceName = sourceName;
 			setHudOverlayRecordingActive(recording);
-			if (!tray) createTray();
-			updateTrayMenu(recording);
+			if (shouldUseTray()) {
+				if (!tray) createTray();
+				updateTrayMenu(recording);
+			}
 			if (recording) {
 				reassertHudOverlayMouseState();
 			}
@@ -1041,8 +1044,6 @@ app.whenReady().then(async () => {
 			}
 		},
 	);
-
-	registerExtensionIpcHandlers();
 
 	if (IS_SMOKE_EXPORT || process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT) {
 		await logSmokeExportGpuDiagnostics();
@@ -1063,6 +1064,16 @@ app.whenReady().then(async () => {
 
 	createWindow();
 	setupAutoUpdates(getUpdateDialogWindow, sendUpdateToastToWindows);
+	if (IS_DEV && process.env.RECORDLY_DEV_PREVIEW_UPDATE === "1") {
+		setTimeout(() => {
+			if (process.platform === "darwin") {
+				previewUpdateToast(sendUpdateToastToWindows);
+				return;
+			}
+
+			void previewNativeUpdateDialog(getUpdateDialogWindow);
+		}, 750);
+	}
 
 	// Register the display media handler so that renderer's getDisplayMedia()
 	// calls land on the pre-selected source without showing a system picker.
@@ -1101,36 +1112,21 @@ app.whenReady().then(async () => {
 				return;
 			}
 
-			const sourceId = getSelectedSourceId();
-			// On Linux/Wayland, calling desktopCapturer.getSources() itself
-			// invokes the xdg-desktop-portal picker. If we then return one of
-			// those sources, Chromium triggers a SECOND portal because the
-			// pre-enumerated source IDs are stale on Wayland. To collapse this
-			// into a single portal invocation, when the Linux portal sentinel
-			// is set we skip getSources entirely and hand back a synthetic
-			// source id; Chromium then opens the portal once to actually
-			// resolve the capture.
-			// Default to the sentinel on Linux when no source has been
-			// pre-selected (e.g. fresh session where the renderer skipped the
-			// source picker entirely). This avoids calling getSources() which
-			// would itself trigger an extra portal dialog.
-			const isLinuxPortalSentinel =
-				process.platform === "linux" && (sourceId === "screen:linux-portal" || !sourceId);
-			if (isLinuxPortalSentinel) {
-				callback({ video: { id: "screen:0:0", name: "Entire screen" } });
-				return;
-			}
-			const sources = await desktopCapturer.getSources({ types: ["screen", "window"] });
-			const source = sourceId
-				? (sources.find((s) => s.id === sourceId) ?? sources[0])
-				: sources[0];
-			if (source) {
-				callback({
-					video: { id: source.id, name: source.name },
-				});
-			} else {
-				callback({});
-			}
+			// Browser and Linux portal capture starts as soon as this callback
+			// resolves, before recording-state-changed is emitted.
+			beginHudCaptureProtection();
+
+			const video = await resolveDisplayMediaSource({
+				platform: process.platform,
+				env: process.env,
+				selectedSourceId: getSelectedSourceId(),
+				getSources: () =>
+					desktopCapturer.getSources({
+						types: ["screen", "window"],
+						thumbnailSize: { width: 0, height: 0 },
+					}),
+			});
+			callback(video ? { video } : {});
 		} catch (error) {
 			console.error("setDisplayMediaRequestHandler error:", error);
 			callback({});

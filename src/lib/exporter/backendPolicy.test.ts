@@ -53,7 +53,7 @@ describe("backendPolicy", () => {
 				backendPreference: "auto",
 				platform: "win32",
 				nativeStaticLayoutAvailable: true,
-				nativeStaticLayoutSkipReasons: ["unsupported-frame-overlay"],
+				nativeStaticLayoutSkipReasons: ["unsupported-caption-overlay"],
 			}),
 		).toEqual({
 			selectedRoute: "breeze-stream",

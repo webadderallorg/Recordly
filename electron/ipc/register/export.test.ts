@@ -55,9 +55,7 @@ describe("moveExportedTempFile", () => {
 
 		await moveExportedTempFile(tempPath, destinationPath);
 
-		await expect(fs.readFile(destinationPath, "utf8")).resolves.toBe(
-			"recordly-export",
-		);
+		await expect(fs.readFile(destinationPath, "utf8")).resolves.toBe("recordly-export");
 		await expect(fs.access(tempPath)).rejects.toThrow();
 	});
 
