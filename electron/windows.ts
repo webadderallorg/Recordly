@@ -11,6 +11,7 @@ import {
 	shouldProtectHudCapture,
 } from "../src/lib/hudCaptureProtection";
 import { USER_DATA_PATH } from "./appPaths";
+import { isLinuxX11Session } from "./gpuSwitches";
 import {
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
@@ -142,6 +143,14 @@ export function isHudOverlayMousePassthroughSupported(): boolean {
 	return process.platform !== "linux";
 }
 
+// Wayland forbids client-side window placement, so the HUD must be dragged by
+// the compositor via -webkit-app-region. On X11 the HUD is non-focusable, which
+// makes it override-redirect: the window manager ignores app-region drags, but
+// setBounds() works, so the drag IPC moves the window instead.
+export function isHudOverlayNativeDragRequired(): boolean {
+	return process.platform === "linux" && !isLinuxX11Session(process.env, process.argv);
+}
+
 function loadHudOverlayCaptureProtectionSetting(): boolean {
 	if (hudOverlayCaptureProtectionLoaded) {
 		return hudOverlayHiddenFromCapture;
@@ -253,7 +262,21 @@ function applyHudOverlayBounds() {
 	if (!hudOverlayWindow || hudOverlayWindow.isDestroyed()) {
 		return;
 	}
-	hudOverlayWindow.setBounds(getHudOverlayBounds(), false);
+	// Keep a user-dragged fallback HUD where it was placed instead of snapping
+	// it back to the bottom-center of the display.
+	const nextBounds =
+		hudUserPosition && !isHudOverlayMousePassthroughSupported()
+			? resizeHudOverlayFallbackBounds(
+					getHudOverlayDisplay().workArea,
+					hudOverlayWindow.getBounds(),
+					shouldExpandHudOverlayFallback({
+						fallbackExpanded: hudOverlayFallbackExpanded,
+						recordingActive: hudOverlayRecordingActive,
+						webcamPreviewVisible: hudOverlayWebcamPreviewVisible,
+					}),
+				)
+			: getHudOverlayBounds();
+	hudOverlayWindow.setBounds(nextBounds, false);
 
 	positionUpdateToastWindow();
 	if (!hudOverlayWindow.isVisible()) {
@@ -386,13 +409,12 @@ let hudDragFixedSize: { width: number; height: number } | null = null;
 ipcMain.on("hud-overlay-drag", (_event, phase: string, screenX: number, screenY: number) => {
 	if (!hudOverlayWindow || hudOverlayWindow.isDestroyed()) return;
 
-	// On Linux the compositor (especially Wayland) refuses programmatic window
-	// placement, so BrowserWindow.setBounds() with x/y is silently ignored and
-	// the HUD appears "stuck".  The renderer marks the drag handle as
-	// -webkit-app-region: drag on Linux, letting the OS move the window for us.
-	// The resulting position is captured by the win.on("moved", ...) listener
-	// below so `hudUserPosition` stays in sync.
-	if (process.platform === "linux") {
+	// On Wayland the compositor refuses programmatic window placement, so
+	// BrowserWindow.setBounds() with x/y is silently ignored. The renderer marks
+	// the drag handle as -webkit-app-region: drag there, letting the compositor
+	// move the window. The resulting position is captured by the
+	// win.on("moved", ...) listener below so `hudUserPosition` stays in sync.
+	if (isHudOverlayNativeDragRequired()) {
 		return;
 	}
 
@@ -453,6 +475,7 @@ ipcMain.handle("get-hud-overlay-mouse-passthrough-supported", () => {
 	return {
 		success: true,
 		supported: isHudOverlayMousePassthroughSupported(),
+		nativeDrag: isHudOverlayNativeDragRequired(),
 	};
 });
 
@@ -642,8 +665,8 @@ export function createHudOverlayWindow(): BrowserWindow {
 
 	hudOverlayWindow = win;
 
-	// On Linux the HUD is dragged by the OS via -webkit-app-region (Wayland
-	// forbids client-side positioning). Mirror moved bounds into drag state.
+	// On Wayland the HUD is dragged by the compositor via -webkit-app-region
+	// (client-side positioning is forbidden). Mirror moved bounds into drag state.
 	if (process.platform === "linux") {
 		win.on("moved", () => {
 			if (win.isDestroyed()) return;

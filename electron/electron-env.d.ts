@@ -231,6 +231,7 @@ interface Window {
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;
 			supported: boolean;
+			nativeDrag?: boolean;
 		}>;
 		setHudOverlayCaptureProtection: (
 			enabled: boolean,
