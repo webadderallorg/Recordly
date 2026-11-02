@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { compareEncodedColorDescription } from "./encodedColorDescription.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -870,6 +871,31 @@ async function ffprobeCsvAsync(args, progressOptions = null) {
 			resolvePromise(stdout);
 		});
 	});
+}
+
+/**
+ * Reads the colour description the ENCODER actually wrote into the output
+ * elementary stream and compares it with the tags the export intends to ship.
+ * See encodedColorDescription.mjs for why this must never be swallowed.
+ */
+function verifyEncodedColorDescription(encodedPath, expectedTags) {
+	try {
+		const stream = ffprobeJson([
+			"-select_streams",
+			"v:0",
+			"-show_entries",
+			"stream=color_primaries,color_transfer,color_space,color_range",
+			encodedPath,
+		]).streams?.[0];
+		return compareEncodedColorDescription(stream, expectedTags);
+	} catch (error) {
+		return {
+			verified: false,
+			reason: `probe-failed: ${error instanceof Error ? error.message : String(error)}`,
+			expected: expectedTags,
+			actual: null,
+		};
+	}
 }
 
 function getVideoInfo(inputPath) {
@@ -2036,6 +2062,32 @@ if (nativeSummary?.outputCodec && nativeSummary.outputCodec !== outputCodec) {
 	fail(`Native output codec mismatch: expected ${outputCodec}, got ${nativeSummary.outputCodec}`);
 }
 
+// Verify the colour description the encoder actually wrote into the elementary
+// stream before it is muxed. The mux step always writes the intended `colr`
+// box, so a mismatch here means the SPS VUI disagrees with the container and a
+// bitstream-first player will render the identical bytes with a different
+// (purple/magenta, at 4K) interpretation. Loud, never silent.
+// Runs whenever an encoded elementary stream exists on disk, including the
+// reused-intermediates path where the encode step itself was skipped.
+const encodedColorDescription = existsSync(encodedPath)
+	? verifyEncodedColorDescription(encodedPath, outputColorTags)
+	: null;
+if (encodedColorDescription && !encodedColorDescription.verified) {
+	process.stderr.write(
+		`[nvidia-cuda-pipeline] WARNING encoded colour description mismatch: ${
+			encodedColorDescription.reason
+		} (expected ${JSON.stringify(outputColorTags)}, actual ${JSON.stringify(
+			encodedColorDescription.actual,
+		)})\n`,
+	);
+}
+if (nativeSummary) {
+	nativeSummary.colorDescriptionVerified = encodedColorDescription
+		? encodedColorDescription.verified
+		: null;
+	nativeSummary.colorDescriptionMismatch = encodedColorDescription?.reason ?? null;
+}
+
 const elementaryStreamInputArgs = [
 	"-f",
 	elementaryStreamFormat,
@@ -2279,6 +2331,8 @@ console.log(
 				endToEnd: Number((performance.now() - pipelineStartedAt).toFixed(2)),
 			},
 			nativeSummary,
+			outputColorTags: outputColorTags,
+			encodedColorDescription: encodedColorDescription,
 			nativeProcessPriorityBoosted: encode.priorityBoosted ?? false,
 			gpuSamples: encode.gpuSamples ?? [],
 			gpuSummary: encode.gpuSummary ?? null,

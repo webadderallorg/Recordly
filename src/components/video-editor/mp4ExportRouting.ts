@@ -38,7 +38,6 @@ export function resolveMp4ExportRouting({
 	exportVideoCodec: ExportVideoCodec;
 	exportEncoderPreference: ExportEncoderPreference;
 	experimentalNvidiaCudaExport: boolean;
-	nvidiaCudaExportAvailable: boolean;
 }): Mp4ExportRouting {
 	// HEVC and any explicit encoder preference stay on the modern pipeline. HEVC
 	// can use the native CUDA compositor for Auto/Hardware, with rawvideo reserved

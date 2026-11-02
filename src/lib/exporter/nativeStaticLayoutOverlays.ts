@@ -156,8 +156,12 @@ export type NativeStaticLayoutOverlayLayer = {
 	pixelFormat: typeof NATIVE_STATIC_LAYOUT_OVERLAY_PIXEL_FORMAT;
 };
 
+export function getRgbaByteSize(width: number, height: number): number {
+	return width * height * 4;
+}
+
 export function getNativeStaticLayoutOverlayFrameByteSize(width: number, height: number): number {
-	return Math.max(0, Math.round(width)) * Math.max(0, Math.round(height)) * 4;
+	return getRgbaByteSize(Math.max(0, Math.round(width)), Math.max(0, Math.round(height)));
 }
 
 export function areNativeStaticLayoutOverlayFramesEqual(
@@ -167,10 +171,44 @@ export function areNativeStaticLayoutOverlayFramesEqual(
 	if (left === right) {
 		return true;
 	}
-	if (left.byteLength !== right.byteLength) {
+	const byteLength = left.byteLength;
+	if (byteLength !== right.byteLength) {
 		return false;
 	}
-	for (let index = 0; index < left.byteLength; index += 1) {
+
+	// 32-bit compares need both views to share a 4-byte phase. Captured frames
+	// and tile copies normally start aligned at offset 0; mixed phases and the
+	// sub-word tail fall back to byte compares.
+	if ((left.byteOffset & 3) !== (right.byteOffset & 3)) {
+		for (let index = 0; index < byteLength; index += 1) {
+			if (left[index] !== right[index]) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	const headEnd = Math.min((4 - (left.byteOffset & 3)) & 3, byteLength);
+	for (let head = 0; head < headEnd; head += 1) {
+		if (left[head] !== right[head]) {
+			return false;
+		}
+	}
+
+	let index = headEnd;
+	const wordCount = (byteLength - headEnd) >>> 2;
+	if (wordCount > 0) {
+		const leftWords = new Uint32Array(left.buffer, left.byteOffset + headEnd, wordCount);
+		const rightWords = new Uint32Array(right.buffer, right.byteOffset + headEnd, wordCount);
+		for (let word = 0; word < wordCount; word += 1) {
+			if (leftWords[word] !== rightWords[word]) {
+				return false;
+			}
+		}
+		index = headEnd + wordCount * 4;
+	}
+
+	for (; index < byteLength; index += 1) {
 		if (left[index] !== right[index]) {
 			return false;
 		}

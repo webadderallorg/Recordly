@@ -1,5 +1,17 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import {
+	chmodSync,
+	closeSync,
+	fsyncSync,
+	openSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import fs from "node:fs/promises";
+import path from "node:path";
 import { app, ipcMain } from "electron";
 import { hideCursor } from "../../cursorHider";
 import { closeCountdownWindow, createCountdownWindow, getCountdownWindow } from "../../windows";
@@ -42,22 +54,84 @@ function getBrowserMicrophoneProfileFromEnv() {
 	};
 }
 
-function readAppSettingsStore(): Record<string, unknown> {
+// A read must be distinguishable from "the file does not exist yet": a
+// transient parse/read failure must never be treated as an empty store, because
+// the next write would then replace every persisted setting with a single key.
+type AppSettingsStoreReadResult =
+	| { ok: true; store: Record<string, unknown> }
+	| { ok: false; error: unknown };
+
+function describeError(error: unknown) {
+	return error instanceof Error ? error.message : String(error);
+}
+
+function readAppSettingsStore(): AppSettingsStoreReadResult {
+	let content: string;
 	try {
-		const content = readFileSync(APP_SETTINGS_FILE, "utf-8");
-		const parsed = parseJsonWithByteOrderMark<unknown>(content);
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-			return {};
+		content = readFileSync(APP_SETTINGS_FILE, "utf-8");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+			return { ok: true, store: {} };
 		}
 
-		return parsed as Record<string, unknown>;
+		return { ok: false, error };
+	}
+
+	let parsed: unknown;
+	try {
+		parsed = parseJsonWithByteOrderMark<unknown>(content);
+	} catch (error) {
+		return { ok: false, error: new Error(`invalid JSON (${describeError(error)})`) };
+	}
+
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return { ok: false, error: new Error("expected a JSON object") };
+	}
+
+	return { ok: true, store: parsed as Record<string, unknown> };
+}
+
+function readExistingFileMode(filePath: string): number | undefined {
+	try {
+		return statSync(filePath).mode & 0o777;
 	} catch {
-		return {};
+		// Without a readable mode the write still proceeds with the default; the
+		// existing permissions cannot be preserved, but settings must not be lost.
+		return undefined;
 	}
 }
 
 function writeAppSettingsStore(store: Record<string, unknown>) {
-	writeFileSync(APP_SETTINGS_FILE, JSON.stringify(store, null, 2), "utf-8");
+	const serialized = JSON.stringify(store, null, 2);
+	const directory = path.dirname(APP_SETTINGS_FILE);
+	const temporaryPath = path.join(
+		directory,
+		`.${path.basename(APP_SETTINGS_FILE)}.${process.pid}-${randomUUID()}.tmp`,
+	);
+	const existingMode = readExistingFileMode(APP_SETTINGS_FILE);
+
+	try {
+		const handle = openSync(temporaryPath, "wx");
+		try {
+			writeFileSync(handle, serialized, "utf-8");
+			if (existingMode !== undefined) {
+				chmodSync(temporaryPath, existingMode);
+			}
+			fsyncSync(handle);
+		} finally {
+			closeSync(handle);
+		}
+
+		// Same-directory rename replaces the target atomically, so a crash between
+		// truncation and completion can no longer leave a partial settings file.
+		renameSync(temporaryPath, APP_SETTINGS_FILE);
+	} finally {
+		try {
+			rmSync(temporaryPath, { force: true });
+		} catch {
+			// Best effort: a leftover temp file must not mask the write failure.
+		}
+	}
 }
 
 function hasAppSetting(store: Record<string, unknown>, key: string): boolean {
@@ -80,10 +154,20 @@ export function registerSettingsHandlers() {
 				return;
 			}
 
-			const store = readAppSettingsStore();
+			const read = readAppSettingsStore();
+			if (!read.ok) {
+				console.error("Failed to read app settings store:", read.error);
+				event.returnValue = {
+					success: false,
+					value: null,
+					error: describeError(read.error),
+				};
+				return;
+			}
+
 			event.returnValue = {
 				success: true,
-				value: hasAppSetting(store, key) ? store[key] : null,
+				value: hasAppSetting(read.store, key) ? read.store[key] : null,
 			};
 		} catch (error) {
 			console.error("Failed to read app setting:", error);
@@ -98,13 +182,24 @@ export function registerSettingsHandlers() {
 				return;
 			}
 
-			const store = readAppSettingsStore();
+			const read = readAppSettingsStore();
+			if (!read.ok) {
+				const message = describeError(read.error);
+				console.error(
+					`Refusing to save app setting "${key}" because the settings store could not be read:`,
+					read.error,
+				);
+				event.returnValue = { success: false, error: message };
+				return;
+			}
+
+			const store = read.store;
 			store[key] = value;
 			writeAppSettingsStore(store);
 			event.returnValue = { success: true };
 		} catch (error) {
 			console.error("Failed to save app setting:", error);
-			event.returnValue = { success: false };
+			event.returnValue = { success: false, error: describeError(error) };
 		}
 	});
 

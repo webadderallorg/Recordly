@@ -402,8 +402,89 @@ describe("CursorSpriteCapturer", () => {
 		expect(rt.destroy).toHaveBeenCalledWith(true);
 	});
 
+	it("reports a visible cursor strip when any captured frame has a non-transparent pixel", () => {
+		const capturer = makeCapturer();
+		const bounds: CursorRect = { x: 100, y: 100, width: 10, height: 10 };
+		(renderer.extract.pixels as ReturnType<typeof vi.fn>).mockImplementation(
+			({ target }: { target: { width: number; height: number } }) => {
+				const pixels = new Uint8ClampedArray(target.width * target.height * 4);
+				// A single opaque pixel is enough: the guard only needs to
+				// distinguish a drawn cursor from an empty readback.
+				pixels[3] = 255;
+				return pixels;
+			},
+		);
+
+		capturer.capture(bounds);
+
+		const strip = capturer.finish();
+		expect(strip).not.toBeNull();
+		if (!strip) return;
+		expect(strip.hasVisiblePixels).toBe(true);
+		expect(strip.cursorVisibleFrames).toBe(1);
+		capturer.destroy();
+	});
+
+	it("flags an all-transparent strip as having no visible pixels", () => {
+		const capturer = makeCapturer();
+		const bounds: CursorRect = { x: 100, y: 100, width: 10, height: 10 };
+		(renderer.extract.pixels as ReturnType<typeof vi.fn>).mockReturnValue(
+			new Uint8ClampedArray(50 * 50 * 4),
+		);
+
+		capturer.capture(bounds);
+
+		const strip = capturer.finish();
+		expect(strip).not.toBeNull();
+		if (!strip) return;
+		expect(strip.hasVisiblePixels).toBe(false);
+		// The renderer still reported the container as visible, which is exactly
+		// the combination the exporter turns into a loud preparation failure.
+		expect(strip.cursorVisibleFrames).toBe(1);
+		capturer.destroy();
+	});
+
+	it("does not count frames as visible when the cursor container is hidden", () => {
+		const capturer = makeCapturer();
+		container.visible = false;
+		(renderer.extract.pixels as ReturnType<typeof vi.fn>).mockReturnValue(
+			new Uint8ClampedArray(50 * 50 * 4),
+		);
+
+		capturer.capture({ x: 100, y: 100, width: 10, height: 10 });
+
+		const strip = capturer.finish();
+		expect(strip).not.toBeNull();
+		if (!strip) return;
+		expect(strip.cursorVisibleFrames).toBe(0);
+		expect(strip.hasVisiblePixels).toBe(false);
+		capturer.destroy();
+	});
+
+	it("keeps the visibility verdict when a frame is reused by content signature", () => {
+		const capturer = makeCapturer();
+		const bounds: CursorRect = { x: 100, y: 100, width: 10, height: 10 };
+		(renderer.extract.pixels as ReturnType<typeof vi.fn>).mockImplementation(
+			({ target }: { target: { width: number; height: number } }) => {
+				const pixels = new Uint8ClampedArray(target.width * target.height * 4);
+				pixels[3] = 200;
+				return pixels;
+			},
+		);
+
+		capturer.capture(bounds, "sig-a");
+		capturer.capture(bounds, "sig-a");
+
+		const strip = capturer.finish();
+		expect(strip).not.toBeNull();
+		if (!strip) return;
+		expect(strip.frameCount).toBe(2);
+		expect(strip.hasVisiblePixels).toBe(true);
+		expect(strip.cursorVisibleFrames).toBe(2);
+		capturer.destroy();
+	});
+
 	it("supports precomputed fixed sprite dimensions via options", () => {
-		renderer = createMockRenderer();
 		const fixed = new CursorSpriteCapturer({
 			renderer,
 			cursorContainer: container as never,

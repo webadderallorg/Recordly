@@ -84,6 +84,9 @@ export interface TimelineEditorProps {
 	onSelectCaption?: (id: string | null) => void;
 	videoPath?: string | null;
 	videoSourcePath?: string | null;
+	// Changes only when the edited source/project changes: a new source starts
+	// fitted, while a duration change of the same source keeps zoom/pan.
+	resetRangeKey?: string | number;
 	cursorTelemetrySourcePath?: string | null;
 	// Authoritative companion sidecar paths reported by the main process for the
 	// finalized recording (system/mic sidecars that actually exist). On Windows
@@ -175,6 +178,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onSelectCaption,
 			videoPath,
 			videoSourcePath,
+			resetRangeKey,
 			cursorTelemetrySourcePath,
 			sourceSidecarPaths = EMPTY_SOURCE_SIDECAR_PATHS,
 			sourceSidecarPendingPaths = EMPTY_SOURCE_SIDECAR_PATHS,
@@ -207,8 +211,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 
 		const timelineContainerRef = useRef<HTMLDivElement>(null);
 		const isTimelineFocusedRef = useRef(false);
-		const { setRange, clampedRange, handleTimelineWheel } = useTimelineRange({
+		const { setRange, range, handleTimelineWheel } = useTimelineRange({
 			totalMs,
+			minVisibleRangeMs: timelineScale.minVisibleRangeMs,
+			resetRangeKey,
 			timelineContainerRef,
 		});
 
@@ -261,6 +267,12 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 
 			return { previewSpans, hiddenZoomIds };
 		}, [clipRegions, liveSpanPreviewById, zoomRegions]);
+		// Stable identity between preview recomputes: an inline Array.from here would
+		// re-render TimelineCanvasRows on every playhead tick.
+		const liveHiddenItemIds = useMemo(
+			() => Array.from(liveZoomPreview.hiddenZoomIds),
+			[liveZoomPreview.hiddenZoomIds],
+		);
 		const { shortcuts: keyShortcuts, isMac } = useShortcuts();
 		const { peaks: sourceAudioPeaks, loading: sourceAudioLoading } = useTimelineAudioPeaks(
 			videoPath,
@@ -494,12 +506,11 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					onWheel={handleTimelineWheel}
 				>
 					<TimelineWrapper
-						range={clampedRange}
+						range={range}
 						videoDuration={videoDuration}
 						hasOverlap={hasOverlap}
 						onRangeChange={setRange}
 						minItemDurationMs={timelineScale.minItemDurationMs}
-						minVisibleRangeMs={timelineScale.minVisibleRangeMs}
 						onItemSpanChange={handleItemSpanChange}
 						resolveTargetRowId={getResolvedDropRowId}
 						allRegionSpans={allRegionSpans}
@@ -561,7 +572,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							getSourceAudioTrackSettingsForClip={getSourceAudioTrackSettingsForClip}
 							showSourceAudioTrack={showSourceAudioTrack}
 							liveSpanPreviewById={liveZoomPreview.previewSpans}
-							liveHiddenItemIds={Array.from(liveZoomPreview.hiddenZoomIds)}
+							liveHiddenItemIds={liveHiddenItemIds}
 							isDragging={isDragging}
 							isLoading={isLoading}
 						/>

@@ -362,13 +362,15 @@ describe("ModernVideoExporter native overlay preparation", () => {
 		expect(mocks.frameRendererRenderOverlayFrame).toHaveBeenCalledTimes(30);
 		expect(api.openExportStream).not.toHaveBeenCalledWith({ extension: "rgba" });
 		expect(api.openExportStream).toHaveBeenCalledWith({ extension: "tiledrgba" });
-		expect(api.writeExportStreamChunk).toHaveBeenCalledTimes(TILE_COUNT);
+		// The whole payload is contiguous and below the 16 MiB batch cap, so the
+		// tiles go out as a single coalesced write instead of one per tile.
+		expect(api.writeExportStreamChunk).toHaveBeenCalledTimes(1);
 		const lastTiledWrite = api.writeExportStreamChunk.mock.calls[
 			api.writeExportStreamChunk.mock.calls.length - 1
 		] as [string, number, Uint8Array];
 		expect(lastTiledWrite[0]).toBe("overlay-tiledrgba");
-		expect(lastTiledWrite[1]).toBe((TILE_COUNT - 1) * TILE_BYTE_SIZE);
-		expect(lastTiledWrite[2]).toHaveLength(TILE_BYTE_SIZE);
+		expect(lastTiledWrite[1]).toBe(0);
+		expect(lastTiledWrite[2]).toHaveLength(STATIC_TILED_PAYLOAD_BYTES);
 		expect(api.discardExportedTemp).not.toHaveBeenCalledWith("C:/Temp/overlay.rgba");
 		expect(mocks.frameRendererDestroy).toHaveBeenCalledTimes(1);
 		expect(exporter.nativeStaticLayoutOverlayFailure).toBeNull();

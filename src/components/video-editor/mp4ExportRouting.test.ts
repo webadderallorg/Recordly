@@ -13,7 +13,6 @@ const baseOptions = {
 	exportVideoCodec: "h264" as const,
 	exportEncoderPreference: "auto" as const,
 	experimentalNvidiaCudaExport: false,
-	nvidiaCudaExportAvailable: false,
 };
 
 describe("resolveMp4ExportRouting", () => {
@@ -80,24 +79,14 @@ describe("resolveMp4ExportRouting", () => {
 		});
 	});
 
-	it("enables NVIDIA CUDA from the persisted opt-in without racing the async GPU probe", () => {
+	it("enables NVIDIA CUDA from the persisted opt-in without consulting the async GPU probe", () => {
 		// The runtime static-layout attempt is the authoritative capability check;
-		// a stale/async availability probe must not disable a working route (the
-		// opt-in hook already forces the toggle off when the helper/GPU is truly
-		// unavailable).
+		// the opt-in hook already forces the toggle off when the helper/GPU is
+		// truly unavailable, so routing never reads the availability probe.
 		expect(
 			resolveMp4ExportRouting({
 				...baseOptions,
 				experimentalNvidiaCudaExport: true,
-				nvidiaCudaExportAvailable: true,
-			}).useExperimentalNvidiaCudaExport,
-		).toBe(true);
-
-		expect(
-			resolveMp4ExportRouting({
-				...baseOptions,
-				experimentalNvidiaCudaExport: true,
-				nvidiaCudaExportAvailable: false,
 			}).useExperimentalNvidiaCudaExport,
 		).toBe(true);
 
@@ -106,7 +95,6 @@ describe("resolveMp4ExportRouting", () => {
 				...baseOptions,
 				settings: { pipelineModel: "legacy" },
 				experimentalNvidiaCudaExport: true,
-				nvidiaCudaExportAvailable: true,
 			}).useExperimentalNvidiaCudaExport,
 		).toBe(false);
 
@@ -114,7 +102,6 @@ describe("resolveMp4ExportRouting", () => {
 			resolveMp4ExportRouting({
 				...baseOptions,
 				experimentalNvidiaCudaExport: false,
-				nvidiaCudaExportAvailable: true,
 			}).useExperimentalNvidiaCudaExport,
 		).toBe(false);
 	});
@@ -136,7 +123,6 @@ describe("resolveMp4ExportRouting", () => {
 			...baseOptions,
 			exportVideoCodec: "hevc",
 			experimentalNvidiaCudaExport: true,
-			nvidiaCudaExportAvailable: true,
 		});
 
 		expect(result).toMatchObject({
@@ -154,7 +140,6 @@ describe("resolveMp4ExportRouting", () => {
 			exportVideoCodec: "hevc",
 			exportEncoderPreference: "hardware",
 			experimentalNvidiaCudaExport: true,
-			nvidiaCudaExportAvailable: true,
 		});
 
 		expect(result.useExperimentalNvidiaCudaExport).toBe(true);
@@ -168,7 +153,6 @@ describe("resolveMp4ExportRouting", () => {
 			exportVideoCodec: "hevc",
 			exportEncoderPreference: "cpu",
 			experimentalNvidiaCudaExport: true,
-			nvidiaCudaExportAvailable: true,
 		});
 
 		expect(result.useExperimentalNvidiaCudaExport).toBe(false);
@@ -205,7 +189,6 @@ describe("resolveMp4ExportRouting", () => {
 			exportVideoCodec: "h264",
 			exportEncoderPreference: "hardware",
 			experimentalNvidiaCudaExport: true,
-			nvidiaCudaExportAvailable: true,
 		});
 		expect(result.useExperimentalNvidiaCudaExport).toBe(true);
 		expect(result.needsNativeRawFrame).toBe(false);
@@ -236,7 +219,6 @@ describe("resolveMp4ExportRouting", () => {
 			exportVideoCodec: "hevc",
 			exportEncoderPreference: "hardware",
 			experimentalNvidiaCudaExport: false,
-			nvidiaCudaExportAvailable: true,
 		});
 
 		expect(result.nvidiaCudaCompositorRequired).toBe(true);
@@ -246,27 +228,12 @@ describe("resolveMp4ExportRouting", () => {
 		expect(result.backendPreference).toBe("auto");
 	});
 
-	it("keeps HEVC Hardware on the mandatory CUDA route even when the async capability probe is stale", () => {
-		const result = resolveMp4ExportRouting({
-			...baseOptions,
-			exportVideoCodec: "hevc",
-			exportEncoderPreference: "hardware",
-			experimentalNvidiaCudaExport: false,
-			nvidiaCudaExportAvailable: false,
-		});
-
-		expect(result.nvidiaCudaCompositorRequired).toBe(true);
-		expect(result.useExperimentalNvidiaCudaExport).toBe(true);
-		expect(result.needsNativeRawFrame).toBe(false);
-	});
-
 	it("does not mark H.264, HEVC Auto, or HEVC CPU as mandatory CUDA routes", () => {
 		const h264Auto = resolveMp4ExportRouting({
 			...baseOptions,
 			exportVideoCodec: "h264",
 			exportEncoderPreference: "auto",
 			experimentalNvidiaCudaExport: true,
-			nvidiaCudaExportAvailable: true,
 		});
 		expect(h264Auto.nvidiaCudaCompositorRequired).toBe(false);
 		expect(h264Auto.useExperimentalNvidiaCudaExport).toBe(true);
@@ -277,7 +244,6 @@ describe("resolveMp4ExportRouting", () => {
 			exportVideoCodec: "hevc",
 			exportEncoderPreference: "auto",
 			experimentalNvidiaCudaExport: true,
-			nvidiaCudaExportAvailable: true,
 		});
 		expect(hevcAuto.nvidiaCudaCompositorRequired).toBe(false);
 		expect(hevcAuto.useExperimentalNvidiaCudaExport).toBe(true);
@@ -288,7 +254,6 @@ describe("resolveMp4ExportRouting", () => {
 			exportVideoCodec: "hevc",
 			exportEncoderPreference: "cpu",
 			experimentalNvidiaCudaExport: true,
-			nvidiaCudaExportAvailable: true,
 		});
 		expect(hevcCpu.nvidiaCudaCompositorRequired).toBe(false);
 		expect(hevcCpu.useExperimentalNvidiaCudaExport).toBe(false);
@@ -301,7 +266,6 @@ describe("resolveMp4ExportRouting", () => {
 			exportVideoCodec: "hevc",
 			exportEncoderPreference: "auto",
 			experimentalNvidiaCudaExport: false,
-			nvidiaCudaExportAvailable: true,
 		});
 		expect(toggledOff.useExperimentalNvidiaCudaExport).toBe(false);
 		expect(toggledOff.needsNativeRawFrame).toBe(true);

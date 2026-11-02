@@ -1,16 +1,26 @@
+import { getRgbaByteSize } from "./nativeStaticLayoutOverlays";
+
 const RGBA_BYTES_PER_PIXEL = 4;
 
 let nativeFrameCaptureMode: "video-frame-rgba" | "canvas-readback" | null = null;
 let nativeFrameCaptureFallbackWarned = false;
 let fallbackCanvas: HTMLCanvasElement | OffscreenCanvas | null = null;
 let fallbackContext: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null = null;
+// Reusable RGBA destination for VideoFrame.copyTo. Native export frame captures
+// are sequential (never pipelined), so one buffer per byte size avoids a fresh
+// multi-MB allocation per frame. A transferable write path detaches the buffer
+// (byteLength 0), which fails the size check and allocates a fresh one.
+let reusableFrameBuffer: Uint8Array | null = null;
 
 function getRgbaLayout(width: number): PlaneLayout[] {
 	return [{ offset: 0, stride: width * RGBA_BYTES_PER_PIXEL }];
 }
 
-function getRgbaByteSize(width: number, height: number): number {
-	return width * height * RGBA_BYTES_PER_PIXEL;
+function acquireFrameBuffer(byteSize: number): Uint8Array {
+	if (!reusableFrameBuffer || reusableFrameBuffer.byteLength !== byteSize) {
+		reusableFrameBuffer = new Uint8Array(byteSize);
+	}
+	return reusableFrameBuffer;
 }
 
 function getFallbackReadbackContext(
@@ -54,13 +64,12 @@ function captureCanvasFrameWithReadback(
 	context.clearRect(0, 0, outWidth, outHeight);
 	context.drawImage(canvas, 0, 0, outWidth, outHeight);
 	const imageData = context.getImageData(0, 0, outWidth, outHeight);
-	return new Uint8Array(imageData.data);
+	return new Uint8Array(imageData.data.buffer);
 }
 
 export async function captureCanvasFrameForNativeExport(
 	canvas: HTMLCanvasElement,
 	timestamp: number,
-	_flipVertical = false,
 	targetWidth?: number,
 	targetHeight?: number,
 ): Promise<Uint8Array> {
@@ -68,7 +77,7 @@ export async function captureCanvasFrameForNativeExport(
 	const outHeight = targetHeight ?? canvas.height;
 
 	if (nativeFrameCaptureMode !== "canvas-readback") {
-		const buffer = new Uint8Array(getRgbaByteSize(outWidth, outHeight));
+		const buffer = acquireFrameBuffer(getRgbaByteSize(outWidth, outHeight));
 		const frame = new VideoFrame(canvas, { timestamp });
 
 		try {

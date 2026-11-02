@@ -157,6 +157,24 @@ export interface CursorSpriteStripData {
 	frames: Uint8Array;
 	/** Exactly one top-left output position per frame, in ascending index. */
 	positions: readonly NativeCursorSpritePosition[];
+	/**
+	 * Whether at least one captured frame contains a non-transparent pixel.
+	 *
+	 * A renderer readback that silently yields an empty target (backend/context
+	 * loss, a target that was never drawn into) produces a perfectly valid,
+	 * correctly sized strip of transparent pixels. Shipping that as the cursor
+	 * strip yields a video with no cursor at all and no error anywhere, so
+	 * callers must treat `false` as a preparation failure unless the cursor is
+	 * genuinely hidden for the whole export.
+	 */
+	hasVisiblePixels: boolean;
+	/**
+	 * Number of captured frames where the renderer reported the cursor container
+	 * as visible. Combined with {@link hasVisiblePixels} this distinguishes a
+	 * silent empty readback (container visible, pixels missing) from an export
+	 * whose cursor is legitimately never shown.
+	 */
+	cursorVisibleFrames: number;
 }
 
 interface CursorSpriteFrameRecord {
@@ -166,6 +184,44 @@ interface CursorSpriteFrameRecord {
 	data: Uint8Array;
 	/** Content signature this frame was rendered from, or null when unknown. */
 	contentSignature?: string | null;
+	/** Whether this frame's RGBA buffer contains a non-transparent pixel. */
+	hasVisiblePixels?: boolean;
+	/** Whether the renderer reported the cursor container as visible. */
+	cursorWasVisible?: boolean;
+}
+
+/**
+ * Upper bound on pixels inspected per frame by {@link frameHasVisiblePixels}.
+ * The cursor occupies a large share of its expanded ROI, so a strided sample
+ * this dense cannot miss a drawn cursor while keeping the per-frame cost
+ * negligible next to the GPU readback it follows.
+ */
+const VISIBLE_PIXEL_SAMPLE_BUDGET = 16384;
+
+/**
+ * Strided alpha probe over one RGBA frame. Returns true as soon as any sampled
+ * pixel is non-transparent. Cheap and allocation-free so it can run on every
+ * captured frame.
+ */
+export function frameHasVisiblePixels(
+	pixels: Uint8Array | Uint8ClampedArray,
+	width: number,
+	height: number,
+): boolean {
+	const pixelCount = width * height;
+	if (pixelCount <= 0 || pixels.length < pixelCount * 4) {
+		return false;
+	}
+	const stride = Math.max(1, Math.ceil(Math.sqrt(pixelCount / VISIBLE_PIXEL_SAMPLE_BUDGET)));
+	for (let y = 0; y < height; y += stride) {
+		const rowStart = y * width * 4;
+		for (let x = 0; x < width; x += stride) {
+			if (pixels[rowStart + x * 4 + 3] !== 0) {
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 /** Minimal pixi renderer surface the capturer needs, for deterministic tests. */
@@ -438,6 +494,8 @@ export class CursorSpriteCapturer {
 				height: previous.height,
 				data: previous.data,
 				contentSignature,
+				hasVisiblePixels: previous.hasVisiblePixels,
+				cursorWasVisible: previous.cursorWasVisible,
 			});
 			return { captured: true, position: { x: roi.x, y: roi.y } };
 		}
@@ -480,6 +538,12 @@ export class CursorSpriteCapturer {
 			height: renderTexture.height,
 			data,
 			contentSignature: contentSignature ?? null,
+			hasVisiblePixels: frameHasVisiblePixels(
+				data,
+				renderTexture.width,
+				renderTexture.height,
+			),
+			cursorWasVisible: this.cursorContainer.visible,
 		};
 		this.records.push(record);
 		return { captured: true, position: { x: roi.x, y: roi.y } };
@@ -510,6 +574,8 @@ export class CursorSpriteCapturer {
 			frameCount: this.records.length,
 			frames,
 			positions,
+			hasVisiblePixels: this.records.some((record) => record.hasVisiblePixels === true),
+			cursorVisibleFrames: this.records.filter((record) => record.cursorWasVisible).length,
 		};
 	}
 

@@ -277,7 +277,7 @@ describe("ModernFrameRenderer blur export path", () => {
 		});
 	});
 
-	it("uses a composited canvas and disables pixel readback when blur post-processing is active", async () => {
+	it("uses a composited canvas when blur post-processing is active", async () => {
 		const renderer = createRenderer() as any;
 		const sourceCanvas = createMockCanvas();
 
@@ -289,7 +289,6 @@ describe("ModernFrameRenderer blur export path", () => {
 
 		expect(renderAnnotations).toHaveBeenCalledTimes(1);
 		expect(renderer.getCanvas()).not.toBe(sourceCanvas);
-		expect(renderer.capturePixelsForNativeExport()).not.toBeNull();
 	});
 
 	it("builds the overlay layout cache lazily so a fresh overlay renderer can render frames", async () => {

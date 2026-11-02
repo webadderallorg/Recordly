@@ -72,6 +72,46 @@ export function createInitialRange(totalMs: number): Range {
 	return { start: 0, end: FALLBACK_RANGE_MS };
 }
 
+export interface TimelineRangeReconcileInput {
+	totalMs: number;
+	previousTotalMs: number;
+	minVisibleRangeMs: number;
+}
+
+/**
+ * Keeps the user's zoom/pan window while the timeline duration changes.
+ * Returning the previous object (identity) means "nothing to do".
+ */
+export function reconcileTimelineRange(
+	previous: Range,
+	{ totalMs, previousTotalMs, minVisibleRangeMs }: TimelineRangeReconcileInput,
+): Range {
+	if (!Number.isFinite(totalMs) || totalMs <= 0) {
+		return previous;
+	}
+
+	if (!Number.isFinite(previousTotalMs) || previousTotalMs <= 0) {
+		return { start: 0, end: totalMs };
+	}
+
+	// The window covered the whole timeline, so keep it fitted as the timeline grows.
+	if (previous.start <= 0 && Math.abs(previous.end - previousTotalMs) <= 1) {
+		return { start: 0, end: totalMs };
+	}
+
+	const minSpan = Math.min(Math.max(minVisibleRangeMs, 1), totalMs);
+	const rawSpan = Math.max(0, previous.end - previous.start);
+	const span = Math.min(Math.max(rawSpan, minSpan), totalMs);
+	const start = Math.max(0, Math.min(previous.start, totalMs - span));
+	const end = start + span;
+
+	if (start === previous.start && end === previous.end) {
+		return previous;
+	}
+
+	return { start, end };
+}
+
 export function normalizeWheelDeltaToPixels(delta: number, deltaMode: number) {
 	if (deltaMode === 1) {
 		return delta * 16;

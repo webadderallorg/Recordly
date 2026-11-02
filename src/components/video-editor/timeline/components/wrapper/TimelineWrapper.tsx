@@ -11,17 +11,16 @@ import { TimelineContext } from "dnd-timeline";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useCallback, useRef } from "react";
 import type { TimelineRegionSpan } from "../../core/timelineTypes";
-import { clampRange, resolveDragEnd, resolveResizeEnd } from "../../dnd/engine";
+import { resolveDragEnd, resolveResizeEnd } from "../../dnd/engine";
 
 interface TimelineWrapperProps {
 	children: ReactNode;
 	range: Range;
 	videoDuration: number;
 	hasOverlap: (newSpan: Span, excludeId?: string, rowId?: string) => boolean;
+	// Already clamped by useTimelineRange; this component adds no clamp policy of its own.
 	onRangeChange: Dispatch<SetStateAction<Range>>;
 	minItemDurationMs: number;
-	minVisibleRangeMs: number;
-	gridSizeMs?: number;
 	onItemSpanChange: (id: string, span: Span, rowId?: string) => void;
 	resolveTargetRowId?: (id: string, proposedRowId: string) => string;
 	allRegionSpans?: TimelineRegionSpan[];
@@ -36,8 +35,6 @@ export default function TimelineWrapper({
 	hasOverlap,
 	onRangeChange,
 	minItemDurationMs,
-	minVisibleRangeMs,
-	gridSizeMs: _gridSizeMs,
 	onItemSpanChange,
 	resolveTargetRowId,
 	allRegionSpans = [],
@@ -230,27 +227,10 @@ export default function TimelineWrapper({
 		[hideTooltip, onDraggingChange, onLiveSpanPreviewChange],
 	);
 
-	const handleRangeChange = useCallback(
-		(updater: (previous: Range) => Range) => {
-			onRangeChange((prev) => {
-				const normalized =
-					totalMs > 0 ? clampRange(prev, { totalMs, minVisibleRangeMs }) : prev;
-				const desired = updater(normalized);
-
-				if (totalMs > 0) {
-					return clampRange(desired, { totalMs, minVisibleRangeMs });
-				}
-
-				return desired;
-			});
-		},
-		[minVisibleRangeMs, onRangeChange, totalMs],
-	);
-
 	return (
 		<TimelineContext
 			range={range}
-			onRangeChanged={handleRangeChange}
+			onRangeChanged={onRangeChange}
 			onResizeEnd={onResizeEndWithTooltip}
 			onResizeMove={onResizeMove}
 			onDragStart={onDragStart}

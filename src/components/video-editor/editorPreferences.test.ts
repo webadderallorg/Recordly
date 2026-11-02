@@ -57,7 +57,10 @@ function stubElectronSettings(initialValues: Record<string, unknown> = {}) {
 describe("editorPreferences", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
 		Reflect.deleteProperty(globalThis, "electronAPI");
+		// Clears the module-level marker for a preserved corrupt blob.
+		loadEditorPreferences();
 	});
 
 	it("normalizes invalid values back to safe defaults", () => {
@@ -558,5 +561,61 @@ describe("editorPreferences", () => {
 			exportBitrateMode: "custom",
 			exportBitrateMbps: 70,
 		});
+	});
+
+	it("warns and preserves an unparseable stored preference blob", () => {
+		const corrupt = "{ not valid json";
+		const localStorage = createStorageMock({ [EDITOR_PREFERENCES_STORAGE_KEY]: corrupt });
+		vi.stubGlobal("localStorage", localStorage);
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+		expect(loadEditorPreferences()).toEqual(DEFAULT_EDITOR_PREFERENCES);
+		expect(warnSpy).toHaveBeenCalledTimes(1);
+		expect(String(warnSpy.mock.calls[0]?.[0])).toContain(EDITOR_PREFERENCES_STORAGE_KEY);
+
+		// Startup effects also save default values; the corrupt blob must survive.
+		saveEditorPreferences({ customWallpapers: [] });
+
+		expect(localStorage.getItem(EDITOR_PREFERENCES_STORAGE_KEY)).toBe(corrupt);
+	});
+
+	it("keeps the corrupt blob when a save only writes default values", () => {
+		const corrupt = '{"wallpaper": ';
+		const localStorage = createStorageMock({ [EDITOR_PREFERENCES_STORAGE_KEY]: corrupt });
+		vi.stubGlobal("localStorage", localStorage);
+		vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+		saveEditorPreferences({ showCursor: DEFAULT_EDITOR_PREFERENCES.showCursor });
+
+		expect(localStorage.getItem(EDITOR_PREFERENCES_STORAGE_KEY)).toBe(corrupt);
+	});
+
+	it("replaces the corrupt blob once a preference actually changes", () => {
+		const localStorage = createStorageMock({
+			[EDITOR_PREFERENCES_STORAGE_KEY]: "not json",
+		});
+		vi.stubGlobal("localStorage", localStorage);
+		vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+		saveEditorPreferences({ showCursor: false });
+
+		const stored = JSON.parse(
+			localStorage.getItem(EDITOR_PREFERENCES_STORAGE_KEY) ?? "null",
+		) as Record<string, unknown>;
+		expect(stored).toMatchObject({ showCursor: false });
+		expect(loadEditorPreferences().showCursor).toBe(false);
+	});
+
+	it("warns when localStorage cannot be read", () => {
+		const localStorage = createStorageMock();
+		localStorage.getItem = () => {
+			throw new Error("storage disabled");
+		};
+		vi.stubGlobal("localStorage", localStorage);
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+		expect(loadEditorPreferences()).toEqual(DEFAULT_EDITOR_PREFERENCES);
+		expect(warnSpy).toHaveBeenCalledTimes(1);
+		expect(String(warnSpy.mock.calls[0]?.[0])).toContain(EDITOR_PREFERENCES_STORAGE_KEY);
 	});
 });

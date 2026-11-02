@@ -1,10 +1,30 @@
 import type { Range } from "dnd-timeline";
-import { useCallback, useEffect, useMemo, useState, type RefObject, type WheelEvent } from "react";
-import { createInitialRange, normalizeWheelDeltaToPixels } from "../core/time";
+import {
+	type Dispatch,
+	type RefObject,
+	type SetStateAction,
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+	type WheelEvent,
+} from "react";
+import {
+	createInitialRange,
+	normalizeWheelDeltaToPixels,
+	reconcileTimelineRange,
+} from "../core/time";
+import { clampRange } from "../dnd/engine";
+
+type TimelineRangeResetKey = string | number | undefined;
 
 interface UseTimelineRangeParams {
 	totalMs: number;
+	minVisibleRangeMs: number;
 	timelineContainerRef: RefObject<HTMLDivElement>;
+	resetRangeKey?: string | number;
 }
 
 export interface TimelineWheelPanDeltaInput {
@@ -41,22 +61,81 @@ export function resolveTimelineWheelPanDeltaPx({
 	return 0;
 }
 
-export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineRangeParams) {
-	const [range, setRange] = useState<Range>(() => createInitialRange(totalMs));
+/**
+ * A new source (or project) must start fitted, while a duration change of the
+ * same source keeps the user's zoom/pan window.
+ */
+export function resolveTimelineRangeReset(input: {
+	previousResetKey: TimelineRangeResetKey;
+	resetKey: TimelineRangeResetKey;
+	totalMs: number;
+}): Range | null {
+	if (input.previousResetKey === input.resetKey) {
+		return null;
+	}
+
+	return createInitialRange(input.totalMs);
+}
+
+export function useTimelineRange({
+	totalMs,
+	minVisibleRangeMs,
+	timelineContainerRef,
+	resetRangeKey,
+}: UseTimelineRangeParams) {
+	const [storedRange, setStoredRange] = useState<Range>(() => createInitialRange(totalMs));
+	const previousTotalRef = useRef(totalMs);
+	const resetKeyRef = useRef<TimelineRangeResetKey>(resetRangeKey);
+
+	// Single clamp authority: every write (dnd-timeline pan/zoom, wheel pan) is
+	// clamped here so consumers never need their own clamp policy.
+	const setRange = useCallback<Dispatch<SetStateAction<Range>>>(
+		(update) => {
+			setStoredRange((previous) => {
+				const desired = typeof update === "function" ? update(previous) : update;
+				return totalMs > 0 ? clampRange(desired, { totalMs, minVisibleRangeMs }) : desired;
+			});
+		},
+		[minVisibleRangeMs, totalMs],
+	);
 
 	useEffect(() => {
-		setRange(createInitialRange(totalMs));
-	}, [totalMs]);
+		const previousTotalMs = previousTotalRef.current;
+		if (previousTotalMs === totalMs) {
+			return;
+		}
+
+		previousTotalRef.current = totalMs;
+		setStoredRange((previous) =>
+			reconcileTimelineRange(previous, { totalMs, previousTotalMs, minVisibleRangeMs }),
+		);
+	}, [minVisibleRangeMs, totalMs]);
+
+	useLayoutEffect(() => {
+		const nextRange = resolveTimelineRangeReset({
+			previousResetKey: resetKeyRef.current,
+			resetKey: resetRangeKey,
+			totalMs,
+		});
+		if (!nextRange) {
+			return;
+		}
+
+		resetKeyRef.current = resetRangeKey;
+		previousTotalRef.current = totalMs;
+		setStoredRange(nextRange);
+	}, [resetRangeKey, totalMs]);
 
 	const clampedRange = useMemo<Range>(() => {
-		if (totalMs === 0) {
-			return range;
+		if (totalMs <= 0) {
+			return storedRange;
 		}
-		return {
-			start: Math.max(0, Math.min(range.start, totalMs)),
-			end: Math.min(range.end, totalMs),
-		};
-	}, [range, totalMs]);
+
+		const clamped = clampRange(storedRange, { totalMs, minVisibleRangeMs });
+		return clamped.start === storedRange.start && clamped.end === storedRange.end
+			? storedRange
+			: clamped;
+	}, [minVisibleRangeMs, storedRange, totalMs]);
 
 	const panTimelineRange = useCallback(
 		(deltaMs: number) => {
@@ -71,7 +150,7 @@ export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineR
 				return { start: nextStart, end: nextStart + visibleSpan };
 			});
 		},
-		[totalMs],
+		[setRange, totalMs],
 	);
 
 	const handleTimelineWheel = useCallback(
@@ -111,9 +190,8 @@ export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineR
 	);
 
 	return {
-		range,
+		range: clampedRange,
 		setRange,
-		clampedRange,
 		handleTimelineWheel,
 	};
 }

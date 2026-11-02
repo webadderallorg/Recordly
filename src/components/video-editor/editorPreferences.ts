@@ -177,6 +177,16 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	whisperModelPath: null,
 };
 
+// Normalized defaults are the fixed point a corrupt-blob fallback round-trips
+// to, which raw DEFAULT_EDITOR_PREFERENCES is not (derived fields are clamped).
+const DEFAULT_PERSISTED_EDITOR_PREFERENCES = stripPersistedDevMotionBlurSettings(
+	normalizeEditorPreferences(DEFAULT_EDITOR_PREFERENCES),
+);
+
+// Raw localStorage value kept while it cannot be parsed, so a save triggered by
+// startup defaults does not replace recoverable user data.
+let corruptPersistedPreferences: string | null = null;
+
 function normalizeBoolean(value: unknown, fallback: boolean): boolean {
 	return typeof value === "boolean" ? value : fallback;
 }
@@ -487,20 +497,63 @@ export function normalizeEditorPreferences(
 	};
 }
 
+function isSamePreferenceValue(left: unknown, right: unknown): boolean {
+	if (Object.is(left, right)) {
+		return true;
+	}
+	if (!left || !right || typeof left !== "object" || typeof right !== "object") {
+		return false;
+	}
+	if (Array.isArray(left) !== Array.isArray(right)) {
+		return false;
+	}
+
+	const leftRecord = left as Record<string, unknown>;
+	const rightRecord = right as Record<string, unknown>;
+	const leftKeys = Object.keys(leftRecord);
+	const rightKeys = Object.keys(rightRecord);
+	if (leftKeys.length !== rightKeys.length) {
+		return false;
+	}
+
+	return leftKeys.every(
+		(key) =>
+			rightKeys.includes(key) && isSamePreferenceValue(leftRecord[key], rightRecord[key]),
+	);
+}
+
 export function loadEditorPreferences(): EditorPreferences {
 	const persisted = loadAppSetting<unknown>(EDITOR_PREFERENCES_STORAGE_KEY);
 	if (persisted !== null) {
+		corruptPersistedPreferences = null;
 		return normalizeEditorPreferences(persisted);
 	}
 
+	let stored: string | null = null;
 	try {
-		const stored = globalThis.localStorage?.getItem(EDITOR_PREFERENCES_STORAGE_KEY);
-		if (!stored) {
-			return DEFAULT_EDITOR_PREFERENCES;
-		}
+		stored = globalThis.localStorage?.getItem(EDITOR_PREFERENCES_STORAGE_KEY) ?? null;
+	} catch (error) {
+		console.warn(
+			`[editorPreferences] Could not read "${EDITOR_PREFERENCES_STORAGE_KEY}" from localStorage.`,
+			error,
+		);
+	}
 
-		return normalizeEditorPreferences(JSON.parse(stored));
-	} catch {
+	if (!stored) {
+		corruptPersistedPreferences = null;
+		return DEFAULT_EDITOR_PREFERENCES;
+	}
+
+	try {
+		const parsed = JSON.parse(stored);
+		corruptPersistedPreferences = null;
+		return normalizeEditorPreferences(parsed);
+	} catch (error) {
+		corruptPersistedPreferences = stored;
+		console.warn(
+			`[editorPreferences] Stored "${EDITOR_PREFERENCES_STORAGE_KEY}" is not valid JSON; using defaults and keeping the stored value until a preference changes.`,
+			error,
+		);
 		return DEFAULT_EDITOR_PREFERENCES;
 	}
 }
@@ -510,8 +563,21 @@ export function saveEditorPreferences(preferences: Partial<EditorPreferences>): 
 		const current = loadEditorPreferences();
 		const merged = normalizeEditorPreferences({ ...current, ...preferences }, current);
 		const persisted = stripPersistedDevMotionBlurSettings(merged);
-		saveAppSetting(EDITOR_PREFERENCES_STORAGE_KEY, persisted);
-		saveLocalStorageJson(EDITOR_PREFERENCES_STORAGE_KEY, persisted);
+
+		// A corrupt blob must survive until the user actually changes something;
+		// startup effects also call this with default values.
+		if (
+			corruptPersistedPreferences !== null &&
+			isSamePreferenceValue(persisted, DEFAULT_PERSISTED_EDITOR_PREFERENCES)
+		) {
+			return;
+		}
+
+		const savedToAppSettings = saveAppSetting(EDITOR_PREFERENCES_STORAGE_KEY, persisted);
+		const savedToLocalStorage = saveLocalStorageJson(EDITOR_PREFERENCES_STORAGE_KEY, persisted);
+		if (savedToAppSettings || savedToLocalStorage) {
+			corruptPersistedPreferences = null;
+		}
 	} catch {
 		// Ignore storage failures so editor controls still work.
 	}

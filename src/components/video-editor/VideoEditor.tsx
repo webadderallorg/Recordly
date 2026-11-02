@@ -639,6 +639,15 @@ export default function VideoEditor() {
 	const [exportEncoderPreference, setExportEncoderPreference] = useState<ExportEncoderPreference>(
 		initialEditorPreferences.exportEncoderPreference ?? "auto",
 	);
+	// applyLoadedProject reads these through refs: keeping the values out of its
+	// dependency list keeps it (and the boot effect) stable when the export
+	// popup changes codec/encoder.
+	const exportVideoCodecRef = useRef(exportVideoCodec);
+	const exportEncoderPreferenceRef = useRef(exportEncoderPreference);
+	useEffect(() => {
+		exportVideoCodecRef.current = exportVideoCodec;
+		exportEncoderPreferenceRef.current = exportEncoderPreference;
+	}, [exportEncoderPreference, exportVideoCodec]);
 	const [exportBitrateMode, setExportBitrateMode] = useState<ExportBitrateMode>(
 		initialEditorPreferences.exportBitrateMode ?? "auto",
 	);
@@ -709,6 +718,17 @@ export default function VideoEditor() {
 	const headerLeftControlsPaddingClass = appPlatform === "darwin" ? "pl-[76px]" : "";
 
 	const videoPlaybackRef = useRef<VideoPlaybackRef>(null);
+	const currentTimeRef = useRef(currentTime);
+	const videoPathRef = useRef(videoPath);
+	const previewRemountRef = useRef<{ videoPath: string | null; timeSeconds: number } | null>(
+		null,
+	);
+	useEffect(() => {
+		currentTimeRef.current = currentTime;
+	}, [currentTime]);
+	useEffect(() => {
+		videoPathRef.current = videoPath;
+	}, [videoPath]);
 	const projectBrowserTriggerRef = useRef<HTMLButtonElement | null>(null);
 	const projectBrowserFallbackTriggerRef = useRef<HTMLButtonElement | null>(null);
 	const projectNameInputRef = useRef<HTMLInputElement | null>(null);
@@ -727,6 +747,14 @@ export default function VideoEditor() {
 	const pendingFreshRecordingAutoZoomPathRef = useRef<string | null>(null);
 	const editorHistoryRef = useRef(createEditorHistoryStack());
 	const applyingHistoryRef = useRef(false);
+	// Source identity (source path + project path) of the last successfully applied
+	// project, used to avoid destructive resets when the same project is re-applied.
+	const lastAppliedSourceKeyRef = useRef<string | null>(null);
+	const applyLoadedProjectRef = useRef<
+		((candidate: unknown, path?: string | null) => Promise<boolean>) | null
+	>(null);
+	const autoApplyFreshRecordingAutoZoomsRef = useRef(autoApplyFreshRecordingAutoZooms);
+	const initialLoadStartedRef = useRef(false);
 	const pendingExportSaveRef = useRef<PendingExportSave | null>(null);
 	const pendingTelemetryRetryTimeoutRef = useRef<number | null>(null);
 	const pendingFreshRecordingAutoSuggestTimeoutRef = useRef<number | null>(null);
@@ -1382,8 +1410,58 @@ export default function VideoEditor() {
 	}, []);
 
 	const remountPreview = useCallback(() => {
+		// The remounted preview starts at media time 0; remember where the playhead
+		// was (and for which media) so it can be restored once it reports ready.
+		previewRemountRef.current = {
+			videoPath: videoPathRef.current,
+			timeSeconds: currentTimeRef.current,
+		};
 		setIsPreviewReady(false);
 		setPreviewVersion((version) => version + 1);
+	}, []);
+
+	const handlePreviewReadyChange = useCallback((ready: boolean) => {
+		setIsPreviewReady(ready);
+		if (!ready) {
+			return;
+		}
+
+		const remount = previewRemountRef.current;
+		previewRemountRef.current = null;
+		// Only restore for the same media; a different source must keep its own
+		// starting position.
+		if (!remount || remount.videoPath !== videoPathRef.current) {
+			return;
+		}
+		const remountTimeSeconds = remount.timeSeconds;
+		if (!Number.isFinite(remountTimeSeconds) || remountTimeSeconds <= 0) {
+			return;
+		}
+
+		// One-shot restore. A zero playhead is the remount's own reset (the fresh
+		// element starts at 0), so only a playhead that has clearly moved elsewhere
+		// (user seek or playback) skips the restore.
+		const playheadSeconds = currentTimeRef.current;
+		if (playheadSeconds !== 0 && Math.abs(playheadSeconds - remountTimeSeconds) > 1) {
+			return;
+		}
+		const video = videoPlaybackRef.current?.video;
+		if (!video) {
+			return;
+		}
+		const targetSeconds =
+			Number.isFinite(video.duration) && video.duration > 0
+				? Math.min(remountTimeSeconds, video.duration)
+				: remountTimeSeconds;
+		if (Math.abs(video.currentTime - targetSeconds) <= 0.05) {
+			return;
+		}
+		try {
+			video.currentTime = targetSeconds;
+		} catch {
+			return;
+		}
+		setCurrentTime(targetSeconds);
 	}, []);
 
 	const clearPendingProjectAutosave = useCallback(() => {
@@ -2087,15 +2165,21 @@ export default function VideoEditor() {
 			const normalizedEditor = normalizeProjectEditor(
 				stripPersistedDevMotionBlurSettings(project.editor ?? {}),
 			);
+			// Re-applying the same source + project (e.g. a caller reloading the
+			// active project) must not disturb the playhead, selection, or undo.
+			const sourceKey = `${sourcePath}::${path ?? ""}`;
+			const isSameSource = lastAppliedSourceKeyRef.current === sourceKey;
 
-			try {
-				videoPlaybackRef.current?.pause();
-			} catch {
-				// no-op
+			if (!isSameSource) {
+				try {
+					videoPlaybackRef.current?.pause();
+				} catch {
+					// no-op
+				}
+				setIsPlaying(false);
+				setCurrentTime(0);
+				setDuration(0);
 			}
-			setIsPlaying(false);
-			setCurrentTime(0);
-			setDuration(0);
 
 			setError(null);
 			setVideoSourcePath(sourcePath);
@@ -2195,8 +2279,8 @@ export default function VideoEditor() {
 			setGifSizePreset(normalizedEditor.gifSizePreset);
 			const restoredExportCodecEncoder = resolveRestoredExportCodecEncoder(
 				project.editor,
-				exportVideoCodec,
-				exportEncoderPreference,
+				exportVideoCodecRef.current,
+				exportEncoderPreferenceRef.current,
 			);
 			setExportVideoCodec(restoredExportCodecEncoder.exportVideoCodec);
 			setExportEncoderPreference(restoredExportCodecEncoder.exportEncoderPreference);
@@ -2205,10 +2289,12 @@ export default function VideoEditor() {
 				normalizedEditor.exportBitrateMbps ?? EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS,
 			);
 
-			setSelectedZoomId(null);
-			setSelectedClipId(null);
-			setSelectedAnnotationId(null);
-			setSelectedAudioId(null);
+			if (!isSameSource) {
+				setSelectedZoomId(null);
+				setSelectedClipId(null);
+				setSelectedAnnotationId(null);
+				setSelectedAudioId(null);
+			}
 
 			nextZoomIdRef.current = deriveNextId(
 				"zoom",
@@ -2232,8 +2318,10 @@ export default function VideoEditor() {
 					0,
 				) + 1;
 
-			resetEditorHistoryStack(editorHistoryRef.current);
-			applyingHistoryRef.current = false;
+			if (!isSameSource) {
+				resetEditorHistoryStack(editorHistoryRef.current);
+				applyingHistoryRef.current = false;
+			}
 			syncHistoryButtons();
 
 			setLastSavedSnapshot(
@@ -2245,14 +2333,13 @@ export default function VideoEditor() {
 					),
 				),
 			);
+			lastAppliedSourceKeyRef.current = sourceKey;
 			await refreshProjectLibrary();
 			return true;
 		},
 		[
 			applySessionPresentation,
 			buildPersistedEditorState,
-			exportEncoderPreference,
-			exportVideoCodec,
 			refreshProjectLibrary,
 			syncHistoryButtons,
 		],
@@ -2268,6 +2355,14 @@ export default function VideoEditor() {
 			lastSavedSnapshot?.projectId ?? null,
 		);
 	}, [currentPersistedEditorState, currentSourcePath, lastSavedSnapshot?.projectId]);
+
+	useEffect(() => {
+		applyLoadedProjectRef.current = applyLoadedProject;
+	}, [applyLoadedProject]);
+
+	useEffect(() => {
+		autoApplyFreshRecordingAutoZoomsRef.current = autoApplyFreshRecordingAutoZooms;
+	}, [autoApplyFreshRecordingAutoZooms]);
 
 	const resolveProjectSaveDialog = useCallback((saved: boolean) => {
 		const pendingDialog = pendingProjectSaveDialogRef.current;
@@ -2356,6 +2451,12 @@ export default function VideoEditor() {
 		[currentProjectPath, webcam.timeOffsetMs],
 	);
 
+	// Installing a video source outside resetSourceScopedEditorState still changes
+	// source identity, so the next project apply must not be treated as a re-apply.
+	const invalidateLastAppliedSourceKey = useCallback(() => {
+		lastAppliedSourceKeyRef.current = null;
+	}, []);
+
 	const resetSourceScopedEditorState = useCallback(() => {
 		setZoomRegions([]);
 		setTrimRegions([]);
@@ -2384,10 +2485,12 @@ export default function VideoEditor() {
 		nextAnnotationZIndexRef.current = 1;
 		pendingFreshRecordingAutoSuggestTelemetryCountRef.current = 0;
 		autoSuggestedVideoPathRef.current = null;
+		// A different source was installed, so the next project apply must reset.
+		invalidateLastAppliedSourceKey();
 		resetEditorHistoryStack(editorHistoryRef.current);
 		applyingHistoryRef.current = false;
 		syncHistoryButtons();
-	}, [syncHistoryButtons]);
+	}, [invalidateLastAppliedSourceKey, syncHistoryButtons]);
 
 	const handleUploadWebcam = useCallback(async () => {
 		const result = await window.electronAPI.openVideoFilePicker();
@@ -2439,6 +2542,13 @@ export default function VideoEditor() {
 	);
 
 	useEffect(() => {
+		// Boot-once guard: this effect must never load the project twice for one
+		// mount, no matter which dependency changes later.
+		if (initialLoadStartedRef.current) {
+			return;
+		}
+		initialLoadStartedRef.current = true;
+
 		async function loadInitialData() {
 			try {
 				if (smokeExportConfig.enabled && smokeExportConfig.projectPath) {
@@ -2453,7 +2563,7 @@ export default function VideoEditor() {
 						);
 						return;
 					}
-					const restored = await applyLoadedProject(
+					const restored = await applyLoadedProjectRef.current?.(
 						projectResult.project,
 						projectResult.path ?? smokeExportConfig.projectPath,
 					);
@@ -2478,9 +2588,8 @@ export default function VideoEditor() {
 					setCurrentProjectPath(null);
 					setLastSavedSnapshot(null);
 					resetSourceScopedEditorState();
-					pendingFreshRecordingAutoZoomPathRef.current = autoApplyFreshRecordingAutoZooms
-						? sourceVideoUrl
-						: null;
+					pendingFreshRecordingAutoZoomPathRef.current =
+						autoApplyFreshRecordingAutoZoomsRef.current ? sourceVideoUrl : null;
 					setWebcam((prev) => ({
 						...prev,
 						enabled: Boolean(webcamSourcePath),
@@ -2536,7 +2645,7 @@ export default function VideoEditor() {
 
 				const currentProjectResult = await window.electronAPI.loadCurrentProjectFile();
 				if (currentProjectResult.success && currentProjectResult.project) {
-					const restored = await applyLoadedProject(
+					const restored = await applyLoadedProjectRef.current?.(
 						currentProjectResult.project,
 						currentProjectResult.path ?? null,
 					);
@@ -2573,9 +2682,8 @@ export default function VideoEditor() {
 					setCurrentProjectPath(null);
 					setLastSavedSnapshot(null);
 					resetSourceScopedEditorState();
-					pendingFreshRecordingAutoZoomPathRef.current = autoApplyFreshRecordingAutoZooms
-						? sourceVideoUrl
-						: null;
+					pendingFreshRecordingAutoZoomPathRef.current =
+						autoApplyFreshRecordingAutoZoomsRef.current ? sourceVideoUrl : null;
 					applySessionPresentation(sessionResult.session);
 					setWebcam((prev) => ({
 						...prev,
@@ -2616,9 +2724,7 @@ export default function VideoEditor() {
 
 		loadInitialData();
 	}, [
-		applyLoadedProject,
 		applySessionPresentation,
-		autoApplyFreshRecordingAutoZooms,
 		devOpenRecordingConfig.inputPath,
 		devOpenRecordingConfig.webcamInputPath,
 		initialEditorPreferences,
@@ -2932,6 +3038,7 @@ export default function VideoEditor() {
 		}
 
 		if (sourcePath !== videoSourcePath) {
+			invalidateLastAppliedSourceKey();
 			setVideoSourcePath(sourcePath);
 			setVideoPath(await resolveVideoUrl(sourcePath));
 		}
@@ -2973,6 +3080,7 @@ export default function VideoEditor() {
 		}
 	}, [
 		autoCaptionSettings.language,
+		invalidateLastAppliedSourceKey,
 		isGeneratingCaptions,
 		webcam.sourcePath,
 		syncActiveVideoSource,
@@ -4896,7 +5004,6 @@ export default function VideoEditor() {
 						exportVideoCodec: effectiveExportVideoCodec,
 						exportEncoderPreference: effectiveExportEncoderPreference,
 						experimentalNvidiaCudaExport,
-						nvidiaCudaExportAvailable,
 					});
 					// HEVC and any explicit Hardware/CPU encoder choice bypass the
 					// WebCodecs dimension probe and always route through the H.264-
@@ -5340,7 +5447,6 @@ export default function VideoEditor() {
 			exportBitrateMode,
 			exportBitrateMbps,
 			experimentalNvidiaCudaExport,
-			nvidiaCudaExportAvailable,
 			borderRadius,
 			padding,
 			cropRegion,
@@ -5751,7 +5857,7 @@ export default function VideoEditor() {
 			ref={playbackRef}
 			videoPath={videoPath || ""}
 			onDurationChange={setDuration}
-			onPreviewReadyChange={setIsPreviewReady}
+			onPreviewReadyChange={handlePreviewReadyChange}
 			onTimeUpdate={setCurrentTime}
 			currentTime={currentTime}
 			onPlayStateChange={setIsPlaying}
@@ -7065,6 +7171,7 @@ export default function VideoEditor() {
 						onSeek={handleTimelineSeek}
 						videoPath={videoPath}
 						videoSourcePath={videoSourcePath}
+						resetRangeKey={videoSourcePath ?? videoPath ?? ""}
 						cursorTelemetrySourcePath={cursorTelemetrySourcePath}
 						sourceSidecarPaths={audio.sourceAudioFallbackPaths}
 						sourceSidecarPendingPaths={audio.pendingSidecarPaths}

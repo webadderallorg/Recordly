@@ -111,6 +111,7 @@ import {
 	getNativeTiledOverlayTileCount,
 	getNativeTiledOverlayTileIndex,
 	getNativeTiledOverlayTileRows,
+	getRgbaByteSize,
 	NATIVE_CURSOR_SPRITE_LAYER_KIND,
 	NATIVE_TILED_OVERLAY_MAX_CHANGED_TILE_FRACTION,
 	NATIVE_TILED_OVERLAY_MAX_PAYLOAD_BYTES_FRACTION,
@@ -465,6 +466,12 @@ const NATIVE_OVERLAY_PREPARATION_PROGRESS_INTERVAL_MS = 300;
 // remove per-frame IPC round-trips for static overlay stretches, while capping
 // the chunk so a long identical run never buffers the whole 4K sidecar at once.
 const NATIVE_RAW_OVERLAY_RUN_BATCH_MAX_BYTES = 48 * 1024 * 1024;
+
+// Upper bound in bytes for one coalesced tiled-overlay IPC chunk. Changed tiles
+// are contiguous in the tiled payload stream, so a run of tiles is staged and
+// written as one chunk instead of one writeExportStreamChunk call per 128x128
+// tile (a 4K layer is ~510 tiles).
+const NATIVE_TILED_OVERLAY_WRITE_BATCH_MAX_BYTES = 16 * 1024 * 1024;
 const HEVC_NATIVE_STATIC_LAYOUT_ROUTES = new Set([
 	"cuda-overlay",
 	"cuda-scale-cpu-pad",
@@ -3397,6 +3404,34 @@ export class ModernVideoExporter {
 				);
 				return null;
 			}
+			// A silent empty readback is the one failure this path cannot detect on
+			// its own: the strip is correctly sized and every frame lands where it
+			// should, but every pixel is transparent, so the compositor blends
+			// nothing and the export ships with no cursor at all. When the renderer
+			// itself reported the cursor as visible for at least one frame, an
+			// all-transparent strip is a lost readback, so treat it as an explicit
+			// preparation failure (fall back / fail loudly) instead of a successful
+			// export. A cursor the renderer never reported as visible is not a
+			// failure: nothing would have been drawn either way.
+			if (strip.cursorVisibleFrames > 0 && !strip.hasVisiblePixels) {
+				this.recordNativeStaticLayoutOverlayFailure(
+					"cursor-sprite-empty",
+					`Cursor-sprite capture returned fully transparent ${strip.width}x${strip.height} frames for ${
+						strip.cursorVisibleFrames
+					} frames where the cursor was reported visible`,
+				);
+				console.warn(
+					"[VideoExporter] Cursor-sprite capture produced no visible pixels; the native cursor strip would export an invisible cursor",
+					{
+						frameCount: strip.frameCount,
+						cursorVisibleFrames: strip.cursorVisibleFrames,
+						spriteWidth: strip.width,
+						spriteHeight: strip.height,
+						cursorTelemetrySamples: this.config.cursorTelemetry?.length ?? 0,
+					},
+				);
+				return null;
+			}
 
 			const spriteWrite = await api.writeExportStreamChunk(spriteStreamId, 0, strip.frames);
 			if (!spriteWrite.success) {
@@ -4521,7 +4556,8 @@ export class ModernVideoExporter {
 		let tiledPayloadOffset = 0;
 		let tiledAbandoned = false;
 		let rawFallbackReason: NativeTiledOverlayRawFallbackReason | null = null;
-		const rawPhysicalBytes = this.config.width * this.config.height * 4 * totalFrames;
+		const rawPhysicalBytes =
+			getRgbaByteSize(this.config.width, this.config.height) * totalFrames;
 		const maxTiledPayloadBytes =
 			rawPhysicalBytes * NATIVE_TILED_OVERLAY_MAX_PAYLOAD_BYTES_FRACTION;
 
@@ -4642,71 +4678,86 @@ export class ModernVideoExporter {
 				}
 				renderedFrameCount += 1;
 
-				if (!tiledOnly) {
-					if (runFrame === null) {
-						runFrame = frame;
-						runStartFrameIndex = frameIndex;
-					} else if (!areNativeStaticLayoutOverlayFramesEqual(frame, runFrame)) {
-						await flushRawIdenticalRun(frameIndex);
-						runFrame = frame;
-						runStartFrameIndex = frameIndex;
-					}
-				}
-
-				if (tiledAbandoned) {
-					continue;
-				}
-
+				// Tiles partition the whole frame, so a frame with no changed tiles is
+				// byte-identical to its predecessor. That replaces the full-frame scan
+				// while tiling is active; the scan stays as the fallback for raw-only
+				// frames and for the frame that abandons tiling mid-way.
+				const tilingCoveredFrame = !tiledAbandoned;
 				const changedTiles: NativeTiledOverlayTileRecord[] = [];
-				for (let tileY = 0; tileY < tileRows; tileY += 1) {
-					for (let tileX = 0; tileX < tileColumns; tileX += 1) {
-						const tileIndex = getNativeTiledOverlayTileIndex(tileX, tileY, tileColumns);
-						this.extractNativeTiledOverlayTileInto(
-							scratchTile,
-							frame,
-							this.config.width,
-							this.config.height,
-							tileX,
-							tileY,
-						);
-						const previous = previousTiles[tileIndex];
-						if (
-							previous !== null &&
-							areNativeStaticLayoutOverlayFramesEqual(previous, scratchTile)
-						) {
-							continue;
+				if (!tiledAbandoned) {
+					for (let tileY = 0; tileY < tileRows; tileY += 1) {
+						for (let tileX = 0; tileX < tileColumns; tileX += 1) {
+							const tileIndex = getNativeTiledOverlayTileIndex(
+								tileX,
+								tileY,
+								tileColumns,
+							);
+							this.extractNativeTiledOverlayTileInto(
+								scratchTile,
+								frame,
+								this.config.width,
+								this.config.height,
+								tileX,
+								tileY,
+							);
+							const previous = previousTiles[tileIndex];
+							if (
+								previous !== null &&
+								areNativeStaticLayoutOverlayFramesEqual(previous, scratchTile)
+							) {
+								continue;
+							}
+							if (
+								tiledPayloadOffset + NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE >=
+								maxTiledPayloadBytes
+							) {
+								tiledAbandoned = true;
+								rawFallbackReason = "payload-bytes-exceed-raw";
+								tiledPayloadBuffers.length = 0;
+								staticTiles.length = 0;
+								frameDeltas.length = 0;
+								previousTiles.length = 0;
+								break;
+							}
+							const tileCopy = scratchTile.slice();
+							const record: NativeTiledOverlayTileRecord = {
+								tileIndex,
+								byteOffset: tiledPayloadOffset,
+								byteLength: NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE,
+							};
+							tiledPayloadBuffers.push(tileCopy);
+							tiledPayloadOffset += NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE;
+							previousTiles[tileIndex] = tileCopy;
+							if (frameIndex === 0) {
+								staticTiles.push(record);
+							} else {
+								changedTiles.push(record);
+							}
 						}
-						if (
-							tiledPayloadOffset + NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE >=
-							maxTiledPayloadBytes
-						) {
-							tiledAbandoned = true;
-							rawFallbackReason = "payload-bytes-exceed-raw";
-							tiledPayloadBuffers.length = 0;
-							staticTiles.length = 0;
-							frameDeltas.length = 0;
-							previousTiles.length = 0;
+						if (tiledAbandoned) {
 							break;
 						}
-						const tileCopy = scratchTile.slice();
-						const record: NativeTiledOverlayTileRecord = {
-							tileIndex,
-							byteOffset: tiledPayloadOffset,
-							byteLength: NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE,
-						};
-						tiledPayloadBuffers.push(tileCopy);
-						tiledPayloadOffset += NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE;
-						previousTiles[tileIndex] = tileCopy;
-						if (frameIndex === 0) {
-							staticTiles.push(record);
-						} else {
-							changedTiles.push(record);
-						}
-					}
-					if (tiledAbandoned) {
-						break;
 					}
 				}
+
+				if (!tiledOnly) {
+					const frameMatchesRun =
+						runFrame !== null &&
+						(tilingCoveredFrame && !tiledAbandoned
+							? changedTiles.length === 0
+							: areNativeStaticLayoutOverlayFramesEqual(frame, runFrame));
+					if (runFrame === null) {
+						// Snapshot the run's first frame: the capture buffer is reused
+						// by the next capture.
+						runFrame = frame.slice();
+						runStartFrameIndex = frameIndex;
+					} else if (!frameMatchesRun) {
+						await flushRawIdenticalRun(frameIndex);
+						runFrame = frame.slice();
+						runStartFrameIndex = frameIndex;
+					}
+				}
+
 				if (tiledAbandoned) {
 					continue;
 				}
@@ -4800,23 +4851,58 @@ export class ModernVideoExporter {
 							);
 						}
 						const activeTiledStreamId = tiledStream.streamId;
+						// Tiles are contiguous in the payload stream, so a consecutive
+						// run of tiles is one write at its first tile's byte offset.
+						const tilesPerWrite = Math.max(
+							1,
+							Math.floor(
+								NATIVE_TILED_OVERLAY_WRITE_BATCH_MAX_BYTES /
+									NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE,
+							),
+						);
+						const tileStagingBuffer = new Uint8Array(
+							tilesPerWrite * NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE,
+						);
+						let stagedTileCount = 0;
+						let stagedByteOffset = 0;
+						const flushStagedTiles = async (): Promise<void> => {
+							if (stagedTileCount === 0) {
+								return;
+							}
+							const result = await api.writeExportStreamChunk(
+								activeTiledStreamId,
+								stagedByteOffset,
+								tileStagingBuffer.subarray(
+									0,
+									stagedTileCount * NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE,
+								),
+							);
+							if (!result.success) {
+								throw new Error(
+									result.error ?? "Failed to write tiled overlay tiles",
+								);
+							}
+							stagedTileCount = 0;
+						};
 						for (
 							let bufferIndex = 0;
 							bufferIndex < tiledPayloadBuffers.length;
 							bufferIndex += 1
 						) {
-							const offset = bufferIndex * NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE;
-							const result = await api.writeExportStreamChunk(
-								activeTiledStreamId,
-								offset,
+							if (stagedTileCount === 0) {
+								stagedByteOffset =
+									bufferIndex * NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE;
+							}
+							tileStagingBuffer.set(
 								tiledPayloadBuffers[bufferIndex]!,
+								stagedTileCount * NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE,
 							);
-							if (!result.success) {
-								throw new Error(
-									result.error ?? "Failed to write tiled overlay tile",
-								);
+							stagedTileCount += 1;
+							if (stagedTileCount === tilesPerWrite) {
+								await flushStagedTiles();
 							}
 						}
+						await flushStagedTiles();
 						const tiledClosed = await api.closeExportStream(activeTiledStreamId);
 						if (!tiledClosed.success || !tiledClosed.tempPath) {
 							throw new Error(
@@ -6445,9 +6531,7 @@ export class ModernVideoExporter {
 
 		const canvas = this.renderer!.getCanvas();
 		const captureStartedAt = this.getNowMs();
-		// Flip rows vertically: buildNativeVideoExportArgs applies an FFmpeg vflip for
-		// rawvideo input, so we counter-rotate before writing the RGBA frame.
-		const rawFrame = await captureCanvasFrameForNativeExport(canvas, timestamp, true);
+		const rawFrame = await captureCanvasFrameForNativeExport(canvas, timestamp);
 		this.nativeCaptureTimeMs += this.getNowMs() - captureStartedAt;
 		if (this.cancelled) return;
 
@@ -6760,10 +6844,15 @@ export class ModernVideoExporter {
 					this.encoder.encodeQueueSize,
 					this.encodeQueue,
 				);
-			} else {
-				console.warn(
-					`[Frame ${frameIndex}] Encoder not ready! State: ${this.encoder?.state}`,
+			} else if (!this.cancelled) {
+				// A frame that cannot be encoded would silently shorten the export;
+				// fail loudly instead of producing a truncated file.
+				const encoderState = this.encoder?.state ?? "unavailable";
+				const encoderNotReadyError = new Error(
+					`WebCodecs encoder is not configured (state: ${encoderState}) at frame ${frameIndex}`,
 				);
+				this.encoderError = encoderNotReadyError;
+				throw encoderNotReadyError;
 			}
 		} finally {
 			exportFrame.close();

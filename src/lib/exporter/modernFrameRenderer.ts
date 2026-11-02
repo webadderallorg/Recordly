@@ -1045,8 +1045,11 @@ export class FrameRenderer {
 		const canvas = document.createElement("canvas");
 		canvas.width = targetWidth;
 		canvas.height = targetHeight;
+		// Staging canvases are only ever texture-upload sources for Pixi, never
+		// read back with getImageData/readPixels, so keep them off the CPU-backed
+		// readback path.
 		const context = configureHighQuality2DContext(
-			canvas.getContext("2d", { willReadFrequently: true }),
+			canvas.getContext("2d", { willReadFrequently: false }),
 		);
 		if (!context) {
 			return null;
@@ -3975,28 +3978,6 @@ export class FrameRenderer {
 		}
 
 		return this.outputCanvasOverride ?? (this.app.canvas as HTMLCanvasElement);
-	}
-
-	capturePixelsForNativeExport(): Uint8ClampedArray | null {
-		if (!this.app) {
-			return null;
-		}
-
-		const finalCanvas =
-			this.outputCanvasOverride ??
-			(this.shouldCompositeExtensionFrame() ? this.compositeCanvas : null);
-
-		if (finalCanvas) {
-			const context = finalCanvas.getContext("2d");
-			return context
-				? context.getImageData(0, 0, finalCanvas.width, finalCanvas.height).data
-				: null;
-		}
-
-		const result = this.app.renderer.extract.pixels(this.app.stage);
-		const pixels = result.pixels;
-
-		return pixels instanceof Uint8ClampedArray ? pixels : new Uint8ClampedArray(pixels);
 	}
 
 	getRendererBackend(): ExportRenderBackend {

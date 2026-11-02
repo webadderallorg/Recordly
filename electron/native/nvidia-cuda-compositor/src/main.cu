@@ -2764,9 +2764,10 @@ private:
     // Bounded wait timeout for a growing streaming overlay file. The wait is
     // cancel-responsive (checks layer.stop between retries) and uses the same
     // generous budget as the prepare stall guard so a slow renderer baking
-    // overlays does not prematurely fail the export. Diagnostic-only counters
+    // overlays does not prematurely fail the export. Retries sleep for a short
+    // fixed interval rather than spinning. Diagnostic-only counters
     // (streamWaitCount_/streamWaitMs_) track the total wait across all frames.
-    static constexpr int kStreamingWaitIntervalMs = 100;
+    static constexpr int kStreamingWaitIntervalMs = 10;
     static constexpr int kStreamingWaitTimeoutMs = 10 * 60 * 1000;
 
     void readFrameIntoPinned(LoadedLayer& layer, int slot, int frameIndex) {
@@ -4658,8 +4659,8 @@ __global__ void zoomBlurNv12Kernel(
     float centerY,
     float strength) {
     constexpr int kZoomBlurSamples = 13;
-    const int x = blockIdx.x * blockDim.x + threadIdx.x;
-    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+    const int x = regionLeft + blockIdx.x * blockDim.x + threadIdx.x;
+    const int y = regionTop + blockIdx.y * blockDim.y + threadIdx.y;
     if (x < regionLeft || x >= regionRight || y < regionTop || y >= regionBottom ||
         x >= dstWidth || y >= dstHeight) {
         return;
@@ -4715,10 +4716,15 @@ __global__ void zoomBlurNv12Kernel(
     }
 }
 
-__device__ void rgbaToNv12Yuv(int r, int g, int b, unsigned char& y, unsigned char& u, unsigned char& v) {
-    y = clampByteDevice(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16);
+// Chroma-only conversion for the 2x2 chroma pass, which needs no luma.
+__device__ void rgbaToNv12Uv(int r, int g, int b, unsigned char& u, unsigned char& v) {
     u = clampByteDevice(((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128);
     v = clampByteDevice(((112 * r - 94 * g - 18 * b + 128) >> 8) + 128);
+}
+
+__device__ void rgbaToNv12Yuv(int r, int g, int b, unsigned char& y, unsigned char& u, unsigned char& v) {
+    y = clampByteDevice(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16);
+    rgbaToNv12Uv(r, g, b, u, v);
 }
 
 // Blends a transparent top-down RGBA overlay layer over the composed NV12
@@ -4803,10 +4809,9 @@ __global__ void blendOverlayRgbaNv12Kernel(
                 const int r = overlay[sampleOffset];
                 const int g = overlay[sampleOffset + 1];
                 const int b = overlay[sampleOffset + 2];
-                unsigned char sampleYValue = 0;
                 unsigned char sampleU = 0;
                 unsigned char sampleV = 0;
-                rgbaToNv12Yuv(r, g, b, sampleYValue, sampleU, sampleV);
+                rgbaToNv12Uv(r, g, b, sampleU, sampleV);
                 alphaSum += sampleAlpha;
                 uSum += static_cast<int>(sampleU) * sampleAlpha;
                 vSum += static_cast<int>(sampleV) * sampleAlpha;
@@ -4934,10 +4939,9 @@ __global__ void blendTiledOverlayRgbaNv12Kernel(
                 const int r = tiles[sampleOffset];
                 const int g = tiles[sampleOffset + 1];
                 const int b = tiles[sampleOffset + 2];
-                unsigned char sampleYValue = 0;
                 unsigned char sampleU = 0;
                 unsigned char sampleV = 0;
-                rgbaToNv12Yuv(r, g, b, sampleYValue, sampleU, sampleV);
+                rgbaToNv12Uv(r, g, b, sampleU, sampleV);
                 alphaSum += sampleAlpha;
                 uSum += static_cast<int>(sampleU) * sampleAlpha;
                 vSum += static_cast<int>(sampleV) * sampleAlpha;
@@ -5415,28 +5419,28 @@ public:
         // 4K H.264 sources: BT.709 primaries/transfer/matrix, limited range.
         // Set BEFORE CreateEncoder; the rest of the minimal-first config (RC /
         // AQ / tuning) is untouched.
-        {
-            NV_ENC_CONFIG_H264_VUI_PARAMETERS& hevcVui =
-                encodeConfig.encodeCodecConfig.hevcConfig.hevcVUIParameters;
-            hevcVui.videoSignalTypePresentFlag = 1;
-            hevcVui.videoFormat = NV_ENC_VUI_VIDEO_FORMAT_UNSPECIFIED;
-            hevcVui.videoFullRangeFlag = 0;
-            hevcVui.colourDescriptionPresentFlag = 1;
-            hevcVui.colourPrimaries = NV_ENC_VUI_COLOR_PRIMARIES_BT709;
-            hevcVui.transferCharacteristics = NV_ENC_VUI_TRANSFER_CHARACTERISTIC_BT709;
-            hevcVui.colourMatrix = NV_ENC_VUI_MATRIX_COEFFS_BT709;
-        }
-        {
-            NV_ENC_CONFIG_H264_VUI_PARAMETERS& h264Vui =
-                encodeConfig.encodeCodecConfig.h264Config.h264VUIParameters;
-            h264Vui.videoSignalTypePresentFlag = 1;
-            h264Vui.videoFormat = NV_ENC_VUI_VIDEO_FORMAT_UNSPECIFIED;
-            h264Vui.videoFullRangeFlag = 0;
-            h264Vui.colourDescriptionPresentFlag = 1;
-            h264Vui.colourPrimaries = NV_ENC_VUI_COLOR_PRIMARIES_BT709;
-            h264Vui.transferCharacteristics = NV_ENC_VUI_TRANSFER_CHARACTERISTIC_BT709;
-            h264Vui.colourMatrix = NV_ENC_VUI_MATRIX_COEFFS_BT709;
-        }
+        //
+        // NOTE: `encodeCodecConfig` is a UNION of h264Config/hevcConfig, and the
+        // two VUI members sit at DIFFERENT offsets inside their structs
+        // (NV_ENC_CONFIG_H264::h264VUIParameters is 8 bytes later than
+        // NV_ENC_CONFIG_HEVC::hevcVUIParameters). Writing both VUI blocks
+        // unconditionally therefore let the H.264 block overwrite the tail of the
+        // HEVC VUI with a shifted copy of itself, which shipped an HEVC SPS with
+        // video_full_range_flag=1 and colour_primaries=0 instead of the intended
+        // limited-range BT.709. External players then guess a 4K color space for
+        // the mislabelled stream and render the identical bytes with a
+        // purple/magenta cast. Only the selected codec's VUI may ever be written.
+        NV_ENC_CONFIG_H264_VUI_PARAMETERS& activeVui =
+            layoutOptions_.outputCodec == OutputCodec::HEVC
+            ? encodeConfig.encodeCodecConfig.hevcConfig.hevcVUIParameters
+            : encodeConfig.encodeCodecConfig.h264Config.h264VUIParameters;
+        activeVui.videoSignalTypePresentFlag = 1;
+        activeVui.videoFormat = NV_ENC_VUI_VIDEO_FORMAT_UNSPECIFIED;
+        activeVui.videoFullRangeFlag = 0;
+        activeVui.colourDescriptionPresentFlag = 1;
+        activeVui.colourPrimaries = NV_ENC_VUI_COLOR_PRIMARIES_BT709;
+        activeVui.transferCharacteristics = NV_ENC_VUI_TRANSFER_CHARACTERISTIC_BT709;
+        activeVui.colourMatrix = NV_ENC_VUI_MATRIX_COEFFS_BT709;
         encoder_.CreateEncoder(&initializeParams);
         nvencConfigUsed_.rcMode =
             encodeConfig.rcParams.rateControlMode == NV_ENC_PARAMS_RC_VBR ? "vbr" : "cbr";
@@ -6151,22 +6155,22 @@ public:
         const auto compositeEnd = std::chrono::steady_clock::now();
         compositeMs_ += elapsedMs(compositeStart, compositeEnd);
 
-        std::vector<std::vector<uint8_t>> packets;
+        // Reused across frames; NvEncoder::EncodeFrame clears the vector on
+        // entry, so packet ordering and content are unchanged.
         const auto nvencStart = std::chrono::steady_clock::now();
-        encoder_.EncodeFrame(packets);
+        encoder_.EncodeFrame(packets_);
         const auto nvencEnd = std::chrono::steady_clock::now();
         nvencMs_ += elapsedMs(nvencStart, nvencEnd);
         const auto writeStart = std::chrono::steady_clock::now();
-        writePackets(packets);
+        writePackets(packets_);
         const auto writeEnd = std::chrono::steady_clock::now();
         packetWriteMs_ += elapsedMs(writeStart, writeEnd);
         ++frames_;
     }
 
     void finish() {
-        std::vector<std::vector<uint8_t>> packets;
-        encoder_.EndEncode(packets);
-        writePackets(packets);
+        encoder_.EndEncode(packets_);
+        writePackets(packets_);
         encoder_.DestroyEncoder();
         output_.close();
         if (copyStream_) {
@@ -7027,6 +7031,18 @@ private:
         float centerX,
         float centerY,
         float strength) {
+        // Clamp to the frame so the region-sized launch and the region-limited
+        // copy-back stay in bounds for every caller.
+        const int left = std::max(0, std::min(regionLeft, width_));
+        const int top = std::max(0, std::min(regionTop, height_));
+        const int right = std::max(left, std::min(regionRight, width_));
+        const int bottom = std::max(top, std::min(regionBottom, height_));
+        const int regionWidth = right - left;
+        const int regionHeight = bottom - top;
+        if (regionWidth <= 0 || regionHeight <= 0) {
+            return;
+        }
+
         const size_t requiredBytes =
             static_cast<size_t>(framePitch) * static_cast<size_t>(height_) +
             static_cast<size_t>(framePitch) * static_cast<size_t>(height_ / 2);
@@ -7041,7 +7057,9 @@ private:
         }
 
         const dim3 block(16, 16);
-        const dim3 grid((width_ + block.x - 1) / block.x, (height_ + block.y - 1) / block.y);
+        const dim3 grid(
+            (regionWidth + block.x - 1) / block.x,
+            (regionHeight + block.y - 1) / block.y);
         zoomBlurNv12Kernel<<<grid, block, 0, copyStream_>>>(
             frame,
             framePitch,
@@ -7051,37 +7069,58 @@ private:
             zoomBlurScratch_,
             framePitch,
             frameChromaOffset,
-            regionLeft,
-            regionTop,
-            regionRight,
-            regionBottom,
+            left,
+            top,
+            right,
+            bottom,
             centerX,
             centerY,
             strength);
         checkCuda(cudaGetLastError(), "zoomBlurNv12Kernel");
 
+        // The scratch is never initialized, so only the rect the kernel wrote
+        // may be copied back; a full-frame copy would push stale margin bytes
+        // into the frame. Source and destination share the frame pitch, so
+        // column-limited copies are exact.
         checkCuda(
             cudaMemcpy2DAsync(
-                frame,
+                frame + static_cast<size_t>(top) * static_cast<size_t>(framePitch) +
+                    static_cast<size_t>(left),
                 static_cast<size_t>(framePitch),
-                zoomBlurScratch_,
+                zoomBlurScratch_ + static_cast<size_t>(top) * static_cast<size_t>(framePitch) +
+                    static_cast<size_t>(left),
                 static_cast<size_t>(framePitch),
-                static_cast<size_t>(width_),
-                static_cast<size_t>(height_),
+                static_cast<size_t>(regionWidth),
+                static_cast<size_t>(regionHeight),
                 cudaMemcpyDeviceToDevice,
                 copyStream_),
             "cudaMemcpy2DAsync zoom blur Y");
-        checkCuda(
-            cudaMemcpy2DAsync(
-                frame + frameChromaOffset,
-                static_cast<size_t>(framePitch),
-                zoomBlurScratch_ + static_cast<size_t>(framePitch) * static_cast<size_t>(height_),
-                static_cast<size_t>(framePitch),
-                static_cast<size_t>(width_),
-                static_cast<size_t>(height_ / 2),
-                cudaMemcpyDeviceToDevice,
-                copyStream_),
-            "cudaMemcpy2DAsync zoom blur UV");
+
+        // Chroma is written only on even coordinates, so the written rows and
+        // columns start at ceil(region/2) and end at the plane bounds.
+        const int uvLeft = (left + 1) / 2;
+        const int uvTop = (top + 1) / 2;
+        const int uvRight = std::min(width_ / 2, (right + 1) / 2);
+        const int uvBottom = std::min(height_ / 2, (bottom + 1) / 2);
+        const int uvWidth = (uvRight - uvLeft) * 2;
+        const int uvHeight = uvBottom - uvTop;
+        if (uvWidth > 0 && uvHeight > 0) {
+            const size_t uvOffset =
+                static_cast<size_t>(frameChromaOffset) +
+                static_cast<size_t>(uvTop) * static_cast<size_t>(framePitch) +
+                static_cast<size_t>(uvLeft) * 2u;
+            checkCuda(
+                cudaMemcpy2DAsync(
+                    frame + uvOffset,
+                    static_cast<size_t>(framePitch),
+                    zoomBlurScratch_ + uvOffset,
+                    static_cast<size_t>(framePitch),
+                    static_cast<size_t>(uvWidth),
+                    static_cast<size_t>(uvHeight),
+                    cudaMemcpyDeviceToDevice,
+                    copyStream_),
+                "cudaMemcpy2DAsync zoom blur UV");
+        }
         ++zoomBlurFrames_;
     }
 
@@ -7240,6 +7279,7 @@ private:
     }
 
     NvEncoderCuda encoder_;
+    std::vector<std::vector<uint8_t>> packets_;
     std::ofstream output_;
     int width_ = 0;
     int height_ = 0;

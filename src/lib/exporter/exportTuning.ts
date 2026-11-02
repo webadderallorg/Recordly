@@ -1,9 +1,9 @@
+import { getRgbaByteSize } from "./nativeStaticLayoutOverlays";
 import type { ExportEncodeBackend, ExportEncodingMode, ExportNativeTransportMode } from "./types";
 
 const DEFAULT_ENCODING_MODE: ExportEncodingMode = "balanced";
 type WebCodecsLatencyMode = "quality" | "realtime";
 const BASELINE_PIXELS_PER_SECOND = 1280 * 720 * 60;
-const RAW_FRAME_BYTES_PER_PIXEL = 4;
 const CONSERVATIVE_RAW_FRAME_LIMIT = 2;
 
 const LATENCY_MODE_PREFERENCES: Record<ExportEncodingMode, readonly WebCodecsLatencyMode[]> = {
@@ -92,9 +92,7 @@ export interface NativeRawFrameBackpressureLimits {
 }
 
 export function getNativeRawFrameByteSize(width: number, height: number): number {
-	return (
-		Math.max(1, Math.floor(width)) * Math.max(1, Math.floor(height)) * RAW_FRAME_BYTES_PER_PIXEL
-	);
+	return getRgbaByteSize(Math.max(1, Math.floor(width)), Math.max(1, Math.floor(height)));
 }
 
 export function getNativeRawFrameBackpressureLimits(options: {

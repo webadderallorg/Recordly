@@ -64,6 +64,22 @@ describe("native static-layout overlay layers", () => {
 		expect(areNativeStaticLayoutOverlayFramesEqual(shortFrame, frameA)).toBe(false);
 	});
 
+	it("compares unaligned views without dropping their leading bytes", () => {
+		const backingLeft = new Uint8Array([9, 1, 2, 3, 4, 5, 6]);
+		const backingRight = new Uint8Array([8, 1, 2, 3, 4, 5, 6]);
+		const left = backingLeft.subarray(1);
+		const right = backingRight.subarray(1);
+
+		expect(areNativeStaticLayoutOverlayFramesEqual(left, right)).toBe(true);
+
+		backingRight[1] = 0;
+		expect(areNativeStaticLayoutOverlayFramesEqual(left, right)).toBe(false);
+
+		backingRight[1] = 1;
+		backingRight[6] = 7;
+		expect(areNativeStaticLayoutOverlayFramesEqual(left, right)).toBe(false);
+	});
+
 	it("rejects layers with an invalid effective frame count", () => {
 		const options = {
 			outputWidth: 1920,

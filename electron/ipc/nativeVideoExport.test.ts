@@ -574,7 +574,6 @@ describe("native raw-frame orientation", () => {
 		const frame = await captureCanvasFrameForNativeExport(
 			{ width: 1, height: 2 } as HTMLCanvasElement,
 			0,
-			true,
 		);
 		expect([...frame]).toEqual([255, 0, 0, 255, 0, 0, 255, 255]);
 

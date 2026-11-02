@@ -6,6 +6,7 @@ import {
 	formatPlayheadTime,
 	formatTimeLabel,
 	normalizeWheelDeltaToPixels,
+	reconcileTimelineRange,
 } from "./time";
 
 describe("timeline core/time", () => {
@@ -54,5 +55,73 @@ describe("timeline core/time", () => {
 		expect(tiny.gridMs).toBeGreaterThan(0);
 		expect(typical.intervalMs).toBeGreaterThanOrEqual(tiny.intervalMs);
 		expect(huge.intervalMs).toBeGreaterThanOrEqual(typical.intervalMs);
+	});
+
+	it("keeps a fitted timeline fitted when the duration grows", () => {
+		expect(
+			reconcileTimelineRange(
+				{ start: 0, end: 10_000 },
+				{ totalMs: 20_000, previousTotalMs: 10_000, minVisibleRangeMs: 300 },
+			),
+		).toEqual({ start: 0, end: 20_000 });
+	});
+
+	it("preserves a zoomed window when the duration grows", () => {
+		const zoomed = { start: 2000, end: 4000 };
+		const next = reconcileTimelineRange(zoomed, {
+			totalMs: 20_000,
+			previousTotalMs: 10_000,
+			minVisibleRangeMs: 300,
+		});
+
+		expect(next).toEqual(zoomed);
+		expect(next).toBe(zoomed);
+	});
+
+	it("clamps a zoomed window to the new duration when the timeline shrinks", () => {
+		expect(
+			reconcileTimelineRange(
+				{ start: 8000, end: 10_000 },
+				{ totalMs: 4000, previousTotalMs: 10_000, minVisibleRangeMs: 300 },
+			),
+		).toEqual({ start: 2000, end: 4000 });
+	});
+
+	it("leaves the range untouched while the duration is unknown", () => {
+		const previous = { start: 1000, end: 3000 };
+		const next = reconcileTimelineRange(previous, {
+			totalMs: 0,
+			previousTotalMs: 10_000,
+			minVisibleRangeMs: 300,
+		});
+
+		expect(next).toBe(previous);
+	});
+
+	it("fits the range when a duration becomes known for the first time", () => {
+		expect(
+			reconcileTimelineRange(
+				{ start: 0, end: 1000 },
+				{ totalMs: 12_500, previousTotalMs: 0, minVisibleRangeMs: 300 },
+			),
+		).toEqual({ start: 0, end: 12_500 });
+	});
+
+	it("respects the minimum visible range when clamping", () => {
+		expect(
+			reconcileTimelineRange(
+				{ start: 1000, end: 1100 },
+				{ totalMs: 20_000, previousTotalMs: 10_000, minVisibleRangeMs: 300 },
+			),
+		).toEqual({ start: 1000, end: 1300 });
+	});
+
+	it("shifts the window start only when the span would overflow", () => {
+		expect(
+			reconcileTimelineRange(
+				{ start: 9000, end: 10_000 },
+				{ totalMs: 9500, previousTotalMs: 10_000, minVisibleRangeMs: 300 },
+			),
+		).toEqual({ start: 8500, end: 9500 });
 	});
 });
