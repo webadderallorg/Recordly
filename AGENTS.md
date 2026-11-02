@@ -23,15 +23,12 @@ machine, not for reviewability by strangers. We can do whatever we want with the
 code. Two hard exceptions: keep the product name "Recordly" unchanged, and keep
 the LICENSE file / license terms unchanged.
 
-- Remotes: `origin` = webadderallorg/Recordly (upstream reference), `mine` =
-  nmzpy/Recordly (fork). Treat both as read-only references by default. NEVER open
-  PRs against origin, never push local work to origin, and only push to `mine` if
-  deliberately asked.
-- Staying current with upstream: periodically `git fetch origin`. When an upstream
-  change is wanted, cherry-pick or hand-port individual commits onto the local line;
-  resolve conflicts in favor of local behavior and re-run gates after each port.
-  Rebase-merge from origin/main wholesale is allowed ONLY when explicitly requested,
-  because it can clobber heavy local work.
+- Remotes: only `mine` = nmzpy/Recordly (fork). The upstream remote
+  (webadderallorg/Recordly) was removed at the operator's request; do not re-add it,
+  do not fetch from it, and do not track upstream releases or PRs. Only push to
+  `mine` if deliberately asked.
+- This line no longer follows upstream. Treat the local tree as authoritative and
+  optimize for what works on this machine.
 - Commits are for us, not for show: checkpoint-style commits on `main` are fine,
   batching related edits into one commit is fine. Still avoid committing scratch
   media (`mp4-work/`, temp fixtures), generated binaries, `.tmp/` output, or
