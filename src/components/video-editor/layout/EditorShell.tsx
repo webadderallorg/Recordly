@@ -152,7 +152,10 @@ export function EditorShell(props: Props) {
 		),
 		[settingsPanelProps, showOnboarding, auth.user],
 	);
-	const onboarding = (
+	// Opt-in for local-only development and packaged builds. This only skips
+	// onboarding; hosted cloud features still require real authentication.
+	const skipOnboarding = import.meta.env.VITE_SKIP_ONBOARDING === "true";
+	const onboarding = skipOnboarding ? null : (
 		<OnboardingController
 			requestNonce={onboardingRequest}
 			ready={!project.loading && !auth.loading}

@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { getHyprlandSocketPath, hyprlandCursorMonitor } from "./hyprland";
 import {
 	CURSOR_SAMPLE_INTERVAL_MS,
 	CURSOR_TELEMETRY_VERSION,
@@ -100,6 +101,7 @@ export async function writeCursorTelemetry(videoPath: string, samples: unknown) 
 }
 
 export function stopCursorCapture() {
+	hyprlandCursorMonitor.stop();
 	if (cursorCaptureInterval) {
 		clearTimeout(cursorCaptureInterval);
 		setCursorCaptureInterval(null);
@@ -166,16 +168,20 @@ export function getCursorCaptureElapsedMs(nowMs = Date.now()) {
 }
 
 export function getNormalizedCursorPoint() {
-	const fallbackCursor = getScreen().getCursorScreenPoint();
+	const hyprlandCursor = process.platform === "linux" ? hyprlandCursorMonitor.getPoint() : null;
 	const linuxCursorCache = process.platform === "linux" ? linuxCursorScreenPoint : null;
 	const isLinuxCacheFresh = !!linuxCursorCache && Date.now() - linuxCursorCache.updatedAt <= 1000;
 
 	const primarySf =
 		process.platform !== "darwin" ? getScreen().getPrimaryDisplay().scaleFactor || 1 : 1;
 
-	const cursor = isLinuxCacheFresh
-		? { x: linuxCursorCache.x / primarySf, y: linuxCursorCache.y / primarySf }
-		: fallbackCursor;
+	// Prefer compositor coordinates even when the XWayland hook has a fresh
+	// event. Hyprland positions are already logical: do not divide by scale.
+	const cursor =
+		hyprlandCursor ??
+		(isLinuxCacheFresh
+			? { x: linuxCursorCache.x / primarySf, y: linuxCursorCache.y / primarySf }
+			: getScreen().getCursorScreenPoint());
 
 	// Areas are fixed rectangles, so they normalize like a window that never moves.
 	const windowBounds = selectedSource?.id?.startsWith("window:")
@@ -301,6 +307,8 @@ export function snapshotCursorTelemetryForPersistence() {
 
 export function startCursorSampling() {
 	stopCursorCapture();
+	const hyprlandSocketPath = getHyprlandSocketPath();
+	if (hyprlandSocketPath) hyprlandCursorMonitor.start(hyprlandSocketPath);
 
 	// Use recursive setTimeout with drift compensation instead of setInterval.
 	// Under CPU load setInterval bunches or skips callbacks, creating large gaps

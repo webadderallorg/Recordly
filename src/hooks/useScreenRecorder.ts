@@ -1,9 +1,10 @@
 import { acquireBrowserScreenCapture, isCapturePermissionDismissed } from "./browserScreenCapture";
+import { startBrowserRecorder } from "./browserRecorderStart";
 import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
-import { hasRecordlySession } from "@/lib/auth/recordlyAuth";
+import { canStartLocalRecording } from "@/lib/auth/localRecordingAccess";
 import {
 	getVideoExtensionForMimeType,
 	isWebmMimeType,
@@ -548,7 +549,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, []);
 
 	const preparePermissions = useCallback(async () => {
-		if (!(await hasRecordlySession().catch(() => false))) {
+		if (!(await canStartLocalRecording())) {
 			await window.electronAPI.showRecordingPermissions();
 			return false;
 		}
@@ -2135,13 +2136,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				}),
 			);
 
+			let browserRecordingStarted = false;
 			mediaRecorder.current = recorder;
 			recorder.ondataavailable = (event) => {
 				if (event.data && event.data.size > 0) chunks.current.push(event.data);
 			};
 			recorder.onstop = async () => {
 				cleanupCapturedMedia();
-				if (chunks.current.length === 0) {
+				if (!browserRecordingStarted || chunks.current.length === 0) {
+					chunks.current = [];
 					setFinalizing(false);
 					return;
 				}
@@ -2220,16 +2223,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			recorder.onerror = () => {
 				setRecording(false);
 			};
-			const mainStartedAt = Date.now();
+			if (startWasCancelled()) return;
+			const mainStartedAt = await startBrowserRecorder(recorder, RECORDER_TIMESLICE_MS);
+			if (startWasCancelled()) return;
+			browserRecordingStarted = true;
 			beginWebcamCapture();
 			resetRecordingClock(mainStartedAt);
 			webcamTimeOffsetMs.current =
 				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
-			if (startWasCancelled()) return;
-			recorder.start(RECORDER_TIMESLICE_MS);
 			setRecording(true);
 			try {
-				await window.electronAPI?.setRecordingState(true);
+				await window.electronAPI?.setRecordingState(true, mainStartedAt);
 			} catch (stateError) {
 				console.warn("Failed to notify main process that recording started:", stateError);
 			}
