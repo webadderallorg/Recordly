@@ -1,0 +1,368 @@
+/* Ported from the live shots.so upgrade-modal DOM/CSS, inspected 2026-10-17.
+ * Original hierarchy and layout declarations are retained below, scoped here.
+ * Adaptations: Recordly theme tokens, local media, HeroUI controls and one plan. */
+.pricing-modal.upgrade-modal {
+	font-family: var(--app-font-sans, "DM Sans", sans-serif);
+	width: min(680px, calc(100vw - 16px));
+	max-width: none;
+	height: calc(100dvh - 32px);
+	max-height: 880px;
+	padding: 0;
+	background: var(--surface);
+	position: relative;
+	overflow: hidden;
+}
+.pricing-close {
+	z-index: 10;
+	left: auto;
+	right: 14px;
+	top: 14px;
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--surface) 60%, transparent);
+	backdrop-filter: blur(4px) saturate(150%);
+}
+.pricing-body {
+	margin: 0;
+	padding: 0;
+	gap: 0;
+}
+.pricing-modal .upgrade-modal-head {
+	flex-direction: column;
+	gap: 16px;
+	display: flex;
+	position: relative;
+	padding: 0;
+	isolation: isolate;
+}
+.pricing-modal .upgrade-modal-head .cover {
+	aspect-ratio: 2 / 1;
+	z-index: -1;
+	width: 100%;
+	margin-bottom: -120px;
+	position: relative;
+	overflow: hidden;
+}
+.pricing-modal .upgrade-modal-head .cover video {
+	object-fit: cover;
+	width: 100%;
+	height: 100%;
+}
+.pricing-modal .upgrade-modal-head .cover::before {
+	content: "";
+	z-index: 1;
+	background:
+		linear-gradient(0deg, var(--surface) 0, transparent 50%),
+		linear-gradient(0deg, var(--surface) 0, transparent 100%);
+	position: absolute;
+	inset: 0;
+}
+.pricing-modal .upgrade-modal-head .copy {
+	text-align: center;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	padding: 0 24px;
+	display: flex;
+}
+.pricing-heading-offer {
+	margin-bottom: 8px;
+}
+.pricing-intro {
+	letter-spacing: -0.35px;
+	font-size: var(--text-base);
+	font-weight: 500;
+	line-height: var(--text-base--line-height);
+	color: var(--muted);
+}
+.pricing-modal .slideshow-component {
+	width: 100%;
+	position: relative;
+}
+.pricing-modal .slideshow-component .items-scroll {
+	scroll-snap-type: x mandatory;
+	scroll-behavior: smooth;
+	width: 100%;
+	height: max-content;
+	position: relative;
+	overflow: auto hidden;
+	container-type: inline-size;
+	scrollbar-width: none;
+}
+.pricing-modal .slideshow-component .items-scroll::-webkit-scrollbar {
+	width: 0;
+	height: 0;
+	display: none;
+}
+.pricing-modal .slideshow-component .items-scroll .all-items {
+	align-items: center;
+	gap: 10px;
+	width: max-content;
+	height: 100%;
+	display: flex;
+	padding: 24px;
+}
+.pricing-modal .slideshow-component .items-scroll .all-items .slideshow-item {
+	flex-shrink: 0;
+	height: max-content;
+}
+.pricing-modal .slideshow-component .items-scroll .all-items .slideshow-item.is-list {
+	scroll-snap-align: start;
+	width: max-content;
+	scroll-margin: 24px;
+}
+.pricing-modal .perk-card {
+	--perk-color: var(--accent);
+	background: var(--surface-secondary);
+	box-shadow: inset 0 0 0 1px var(--separator);
+	border-radius: var(--radius-2xl);
+	flex-direction: column;
+	display: flex;
+	position: relative;
+	overflow: hidden;
+	color: var(--surface-foreground);
+	aspect-ratio: 8.5 / 10;
+	width: 240px;
+}
+.pricing-modal .perk-card .copy {
+	flex-direction: column;
+	order: 2;
+	gap: 5px;
+	padding: 12px 24px 24px;
+	display: flex;
+}
+.pricing-modal .perk-card .cover {
+	flex: 1 1 0%;
+	order: 1;
+	overflow: hidden;
+	mask-image: linear-gradient(transparent, #000 15%, #000 80%, transparent);
+}
+.pricing-modal .perk-card h3 {
+	letter-spacing: -0.35px;
+	font-size: var(--text-base);
+	font-weight: 500;
+	line-height: var(--text-base--line-height);
+}
+/* Decorative icon artwork for the fallback upgrade benefits. */
+.pricing-modal .perk-card .cover {
+	display: grid;
+	place-items: center;
+	color: var(--perk-color);
+	background: radial-gradient(
+		ellipse at center,
+		color-mix(in srgb, var(--perk-color) 22%, transparent),
+		transparent 75%
+	);
+}
+.pricing-modal .perk-retention {
+	--perk-color: color-mix(in srgb, var(--foreground) 20%, #9774e8);
+}
+.pricing-modal .perk-support {
+	--perk-color: color-mix(in srgb, var(--foreground) 20%, #e05e9a);
+}
+.pricing-modal .slideshow-component .nav-buttons.inline-mode {
+	justify-content: center;
+	gap: 10px;
+	display: flex;
+	padding: 0 0 16px;
+}
+.pricing-modal .slideshow-component .nav-buttons.inline-mode > * {
+	background: color-mix(in srgb, var(--foreground) 12%, transparent);
+	border-radius: 50%;
+}
+.pricing-modal .plans-info {
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	padding: 16px 24px;
+	display: flex;
+	position: relative;
+	width: 100%;
+	max-width: 540px;
+	margin: 0 auto;
+}
+.pricing-modal .plans-tabs-switch {
+	background: color-mix(in srgb, var(--foreground) 6%, transparent);
+	border-radius: 50px;
+	gap: 2px;
+	width: 100%;
+	max-width: 378px;
+	padding: 2px;
+	display: flex;
+	position: relative;
+	margin-bottom: 12px;
+}
+.pricing-modal .pricing-interval-option {
+	flex: 1 1 0%;
+	border-radius: 50px;
+	justify-content: center;
+	padding: 10px 12px;
+	cursor: pointer;
+}
+.pricing-modal .pricing-interval-option:has(input:checked) {
+	background: var(--surface);
+	box-shadow: 0 1px 4px #00000014;
+}
+.pricing-modal .pricing-interval-option .radio__control {
+	display: none;
+}
+.pricing-saving {
+	border: 2px solid var(--surface);
+	z-index: 2;
+	width: max-content;
+	position: absolute;
+	top: -55%;
+	right: -5%;
+	transform: rotate(3deg);
+	background: #ff2a2a;
+	color: white;
+	border-radius: var(--radius-2xl);
+	padding: 3px 8px;
+	font-size: var(--text-xs);
+	line-height: 18px;
+}
+.pricing-price {
+	color: var(--foreground);
+	font-size: 32px;
+	font-weight: 600;
+	letter-spacing: -0.04em;
+}
+.pricing-price span {
+	font-size: var(--text-xs);
+	font-weight: 400;
+	letter-spacing: 0;
+	color: var(--foreground);
+}
+.pricing-regular-price {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+}
+.pricing-regular-price del {
+	font-size: 16px;
+	color: var(--muted);
+	text-decoration-thickness: 1px;
+}
+.pricing-price-banner {
+	padding: 3px 8px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--danger) 12%, transparent);
+	color: var(--danger);
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 16px;
+}
+.pricing-early-bird-label {
+	font-size: var(--text-xs);
+	color: var(--muted);
+}
+.pricing-discount {
+	color: var(--foreground);
+	font-size: var(--text-xs);
+	font-weight: 600;
+}
+.pricing-period {
+	font-size: var(--text-xs);
+	color: var(--muted);
+}
+.pricing-cta {
+	width: 100%;
+	max-width: 378px;
+	margin-top: 8px;
+	min-height: 44px;
+	border-radius: 999px;
+}
+.pricing-feedback {
+	padding: 12px 14px;
+	margin: 0 24px 16px;
+	border-radius: var(--radius-lg);
+	background: var(--accent-soft);
+	font-size: var(--text-xs);
+	line-height: 1.6;
+}
+.pricing-error {
+	margin: 0 24px 16px;
+	font-size: var(--text-xs);
+	color: var(--danger);
+	line-height: 1.5;
+}
+@media (max-width: 800px) {
+	.pricing-modal .upgrade-modal-head .cover {
+		aspect-ratio: 4 / 3;
+	}
+	.pricing-modal .upgrade-modal-head .copy > * {
+		max-width: 70%;
+	}
+	.pricing-saving {
+		top: -45%;
+		right: -2%;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.pricing-modal .upgrade-modal-head video {
+		visibility: hidden;
+	}
+	.pricing-modal .upgrade-modal-head .cover {
+		background: url("/auth/recordly-demo.jpg?v=20261105-flat-publishing") center / cover;
+	}
+	.pricing-modal .slideshow-component .items-scroll {
+		scroll-behavior: auto;
+	}
+}
+.cloud-usage-card {
+	gap: 12px;
+	padding: 14px;
+	border: 1px solid var(--separator);
+	border-radius: var(--radius-lg);
+	box-shadow: none;
+	background: var(--surface);
+}
+.cloud-usage-heading {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+}
+.cloud-usage-heading .card__title {
+	font-size: var(--text-xs);
+	font-weight: 600;
+}
+.cloud-usage-card .card__content {
+	display: flex;
+	flex-direction: column;
+	gap: 9px;
+}
+.cloud-usage-card .card__content p {
+	font-size: 11px;
+	color: var(--muted);
+	line-height: 1.5;
+}
+.cloud-usage-card .card__content .cloud-usage-count {
+	color: var(--foreground);
+	font-size: var(--text-xs);
+	font-weight: 500;
+}
+.cloud-usage-card .card__footer {
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+}
+.cloud-usage-retry {
+	height: 25px;
+	padding: 0;
+	justify-content: flex-start;
+}
+
+.pricing-modal .pricing-interval-option .radio__content {
+	justify-content: center;
+	width: 100%;
+}
+
+.pricing-renewal {
+	max-width: 378px;
+	color: var(--muted);
+	font-size: var(--text-xs);
+	line-height: 1.6;
+	text-align: center;
+}

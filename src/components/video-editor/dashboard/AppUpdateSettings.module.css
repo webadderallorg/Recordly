@@ -1,0 +1,128 @@
+.updates {
+	--settings-section-gap: 0px;
+}
+
+.header {
+	padding-bottom: 12px;
+}
+
+.updates .header h2 {
+	font-size: 14px;
+}
+
+.updates .preferences + .preferences {
+	border-top: 1px solid var(--separator);
+}
+
+.status {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 12px 0;
+	border-bottom: 1px solid var(--separator);
+}
+
+.updates .preferences :global(.settings-row) {
+	border: 0;
+}
+
+.versionRow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px 24px;
+}
+
+.statusContent {
+	min-width: 0;
+}
+.statusHeading {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.icon {
+	display: grid;
+	place-items: center;
+	flex-shrink: 0;
+	width: 20px;
+	height: 20px;
+	color: var(--accent);
+}
+.success {
+	color: var(--success);
+}
+.danger {
+	color: var(--danger);
+}
+.copy {
+	min-width: 0;
+}
+.copy h3,
+.rowLabel h3 {
+	margin: 0;
+	color: var(--foreground);
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1.5;
+}
+.rowLabel p {
+	margin: 4px 0 0;
+	color: var(--muted);
+	font-size: 12px;
+}
+.detail {
+	margin: 8px 0 0;
+	color: var(--muted);
+	font-size: 12px;
+	line-height: 1.6;
+}
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	justify-content: flex-end;
+}
+.error {
+	margin: 12px 0 0;
+	color: var(--danger);
+	font-size: 12px;
+	line-height: 1.6;
+}
+.progress {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 12px;
+}
+.progress > :first-child {
+	flex: 1;
+}
+.progress > span {
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+	color: var(--muted);
+}
+.spin {
+	animation: spin 1.5s linear infinite;
+}
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.spin {
+		animation: none;
+	}
+}
+
+@container settings-content (max-width: 480px) {
+	.versionRow {
+		flex-wrap: wrap;
+	}
+	.actions {
+		justify-content: flex-start;
+	}
+}

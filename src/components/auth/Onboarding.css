@@ -1,45 +1,422 @@
-/* Fit permissions in the window instead of scrolling behind the footer. */
-@media (max-height: 800px) {
-	.onboarding-permissions [data-onboarding-body] {
-		padding-top: 12px;
-		padding-bottom: 12px;
+.onboarding-window-drag {
+	-webkit-app-region: drag;
+}
+
+.onboarding-window-close {
+	-webkit-app-region: no-drag;
+}
+
+.onboarding-layout {
+	--onboarding-page-padding: clamp(20px, 5vw, 40px);
+	--onboarding-banner-overlap: clamp(48px, 10vh, 96px);
+	position: relative;
+	isolation: isolate;
+	overflow: hidden;
+}
+
+.onboarding-ambience {
+	position: absolute;
+	inset: 0;
+	z-index: -2;
+	pointer-events: none;
+	overflow: hidden;
+}
+
+.onboarding-blob {
+	position: absolute;
+	width: 90%;
+	aspect-ratio: 1;
+	border-radius: 50%;
+	background: radial-gradient(circle, color-mix(in srgb, var(--accent) 8%, transparent) 0%, color-mix(in srgb, var(--accent) 3.5%, transparent) 35%, transparent 70%);
+}
+
+.onboarding-blob-one {
+	left: -42%;
+	top: -30%;
+	animation: onboarding-blob-one 12s ease-in-out infinite alternate;
+}
+
+.onboarding-blob-two {
+	right: -42%;
+	bottom: -30%;
+	animation: onboarding-blob-two 15s ease-in-out infinite alternate;
+}
+
+.onboarding-blob-three {
+	width: 75%;
+	left: -32%;
+	bottom: -28%;
+	animation: onboarding-blob-three 10s ease-in-out infinite alternate;
+}
+
+.onboarding-artwork {
+	/* Artwork owns spare height on both pages and gives up space for controls
+	 * in a small window. */
+	flex: 1 1 clamp(112px, 30vh, 320px);
+	min-height: 64px;
+	margin-bottom: calc(-1 * var(--onboarding-banner-overlap));
+	z-index: -1;
+	/* Fade the video itself so the animated colour underneath remains continuous. */
+	mask-image: linear-gradient(to bottom, #000 0%, rgb(0 0 0 / 80%) 38%, rgb(0 0 0 / 20%) 76%, transparent 100%);
+	-webkit-mask-image: linear-gradient(to bottom, #000 0%, rgb(0 0 0 / 80%) 38%, rgb(0 0 0 / 20%) 76%, transparent 100%);
+}
+
+
+.onboarding-body {
+	padding: 24px var(--onboarding-page-padding);
+	overscroll-behavior: contain;
+	scrollbar-gutter: stable;
+}
+
+.onboarding-header {
+	gap: 8px;
+}
+
+.onboarding-title-logo {
+	width: 1.05em;
+	height: 1.05em;
+	flex-shrink: 0;
+	background: var(--accent);
+	mask-size: contain;
+	mask-repeat: no-repeat;
+	mask-position: center;
+	-webkit-mask-size: contain;
+	-webkit-mask-repeat: no-repeat;
+	-webkit-mask-position: center;
+}
+
+.recordly-signin-hero {
+	display: block;
+	font-size: clamp(26px, 5.4vw, 32px);
+	line-height: 1.2;
+}
+
+.onboarding-footer {
+	padding: 12px clamp(20px, 5vw, 40px) 8px;
+}
+
+.onboarding-footer > div {
+	max-width: 760px;
+}
+
+.onboarding-layout .onboarding-navigation {
+	padding-block: 0 8px;
+}
+
+/* Keep permission controls together; spare height belongs to the demo above. */
+.onboarding-layout[data-onboarding-stage="permissions"] .onboarding-stage-content {
+	flex: 0 1 auto;
+}
+
+.onboarding-permissions > .onboarding-body {
+	flex: 1 1 auto;
+	padding-bottom: 8px;
+}
+
+.onboarding-permissions .onboarding-body-content {
+	max-width: 760px;
+}
+
+.onboarding-permission-list {
+	display: grid;
+	gap: 32px;
+	padding-block: 8px;
+}
+
+.onboarding-permission-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	align-items: start;
+	gap: clamp(24px, 5vw, 48px);
+}
+
+.onboarding-permission-action {
+	min-width: 0;
+}
+
+.onboarding-permission-action .onboarding-permission-button,
+.onboarding-permission-granted {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	width: 100%;
+	min-height: 52px;
+	height: auto;
+	padding: 12px 16px;
+	font-size: 14px;
+	font-weight: 500;
+	line-height: 1.5;
+	text-align: center;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+.onboarding-permission-granted {
+	border: 1px solid color-mix(in srgb, var(--success) 25%, transparent);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--success) 8%, transparent);
+}
+
+.onboarding-permission-granted svg {
+	flex-shrink: 0;
+}
+
+/* Account forms keep their natural height. The demo gives up space before
+ * the controls do; permissions retain their separate scrollable body. */
+.onboarding-layout[data-onboarding-stage="account"] {
+	--onboarding-page-padding: clamp(16px, 3vw, 24px);
+}
+
+/* Reserve space comparable to permissions so both titles start at the same
+ * height. Short windows can reduce the reserve while the form keeps its size. */
+.onboarding-layout[data-onboarding-stage="account"] .onboarding-stage-content {
+	flex: 0 0 min(65%, 380px);
+	min-height: min-content;
+}
+
+.onboarding-layout[data-onboarding-stage="account"] .onboarding-body {
+	flex: 0 0 auto;
+	overflow: visible;
+	padding-block: 24px 12px;
+	scrollbar-gutter: auto;
+}
+
+.onboarding-layout[data-onboarding-stage="account"] .onboarding-body-content,
+.recordly-signin-controls {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.onboarding-layout[data-onboarding-stage="account"] .onboarding-body-content > * {
+	margin-block: 0;
+}
+
+.recordly-signin-content-popup {
+	gap: 16px;
+	padding: 20px 16px 16px;
+}
+
+.recordly-signin-content [data-signin-fields] {
+	--signin-field-spacing: 12px;
+}
+
+.recordly-signin-content [data-signin-fields] > * {
+	margin-block: 0;
+}
+
+.recordly-signin-content [data-signin-fields] {
+	display: flex;
+	flex-direction: column;
+	gap: var(--signin-field-spacing);
+}
+
+.recordly-signin-content [data-signin-form] {
+	gap: var(--signin-field-spacing);
+}
+
+.recordly-signin-artwork {
+	flex: 1 1 144px;
+	min-height: 40px;
+}
+
+.onboarding-layout[data-onboarding-stage="account"] .onboarding-navigation {
+	padding-block: 0 8px;
+}
+
+@media (max-height: 650px) {
+	.recordly-signin-content-popup {
+		gap: 12px;
+		padding-block: 12px;
 	}
-	.onboarding-permissions [data-onboarding-body] > div > :not(:last-child) {
-		margin-bottom: 12px;
+
+	.recordly-signin-content [data-signin-fields] {
+		--signin-field-spacing: 8px;
 	}
-	.onboarding-permissions .modal__header {
-		gap: 6px;
+
+	.onboarding-layout[data-onboarding-stage="account"] .onboarding-body {
+		padding-block: 24px 8px;
 	}
-	.onboarding-permissions [data-onboarding-brand] {
-		margin-bottom: 0;
-	}
-	.onboarding-permissions [data-onboarding-brand] img {
-		width: 32px;
-		height: 32px;
-	}
-	.onboarding-permissions .modal__heading {
-		font-size: 24px;
-	}
-	.onboarding-permissions .onboarding-permission-row {
+
+	.onboarding-layout[data-onboarding-stage="account"] .onboarding-body-content,
+	.recordly-signin-controls {
 		gap: 10px;
-		padding: 10px;
-	}
-	.onboarding-permissions .onboarding-permission-row > div:first-child {
-		width: 32px;
-		height: 32px;
-	}
-	.onboarding-permissions .onboarding-permission-row p,
-	.onboarding-permissions .onboarding-permission-help p {
-		line-height: 16px;
 	}
 }
 
-@media (max-height: 800px) and (max-width: 440px) {
-	.onboarding-permissions .onboarding-permission-row p {
-		display: none;
+@media (min-width: 768px) {
+	.recordly-signin-dialog-wide .recordly-signin-artwork {
+		min-height: 0;
 	}
-	.onboarding-permissions .onboarding-permission-row .button {
-		height: 32px;
-		min-height: 32px;
+}
+
+@media (max-height: 500px) {
+	.onboarding-layout[data-onboarding-stage="account"] .onboarding-stage-content {
+		flex-shrink: 1;
 	}
+
+	.recordly-signin-content-popup {
+		gap: 8px;
+		padding-block: 8px;
+	}
+
+	.recordly-signin-content-popup [data-signin-fields] {
+		--signin-field-spacing: 6px;
+	}
+
+	.recordly-signin-header {
+		gap: 4px;
+	}
+
+	.recordly-signin-header img {
+		width: 36px;
+		height: 36px;
+	}
+
+	.recordly-signin-header .heading-display {
+		font-size: 28px;
+		line-height: 36px;
+	}
+
+	.recordly-signin-content-popup [data-signin-form] input,
+	.recordly-signin-content-popup [data-signin-form] button[type="submit"] {
+		height: 44px;
+	}
+}
+
+/* Keep account controls inset while leaving the consent notice its full width. */
+.onboarding-layout[data-onboarding-stage="account"] .recordly-signin-controls {
+	width: 100%;
+	max-width: 420px;
+	margin-inline: auto;
+}
+
+/* Code entry is a separate step: clear the video and space its few actions. */
+.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"]) {
+	--onboarding-banner-overlap: 0px;
+}
+
+.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"]) .recordly-signin-controls {
+	gap: 24px;
+}
+
+.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"]) .onboarding-body-content {
+	gap: 20px;
+}
+
+.recordly-signin-content [data-signin-fields][data-signin-step="code"] {
+	--signin-field-spacing: 20px;
+}
+
+.recordly-signin-content [data-signin-code-entry] {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.recordly-signin-content [data-signin-code-entry] > * {
+	margin-block: 0;
+}
+
+@media (max-height: 500px) {
+	.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"]) {
+		--onboarding-banner-overlap: 24px;
+	}
+
+	.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"]) .recordly-signin-controls,
+	.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"]) .onboarding-body-content,
+	.recordly-signin-content [data-signin-code-entry] {
+		gap: 12px;
+	}
+
+	.recordly-signin-content [data-signin-fields][data-signin-step="code"] {
+		--signin-field-spacing: 12px;
+	}
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.onboarding-artwork {
+		animation: onboarding-artwork-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+	}
+}
+
+@keyframes onboarding-artwork-enter {
+	from {
+		opacity: 0;
+		transform: scale(0.985) translateY(-8px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@media (max-width: 520px) {
+	.onboarding-layout[data-onboarding-stage="account"] .onboarding-stage-content {
+		flex-basis: min(70%, 420px);
+	}
+
+	.onboarding-permission-row {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 12px;
+	}
+}
+
+/* Carousel pages share a frame so shorter permission content cannot resize the
+ * demo or move the title during a slide. Each page scrolls inside that frame. */
+.onboarding-layout[data-onboarding-carousel] .onboarding-stage-content {
+	flex: 0 1 min(65%, 380px);
+	min-height: 0;
+}
+
+.onboarding-layout[data-onboarding-carousel] .onboarding-stage-content > * {
+	height: 100%;
+}
+
+.onboarding-layout[data-onboarding-carousel] .recordly-signin-content {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.onboarding-layout[data-onboarding-carousel] .onboarding-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	scrollbar-gutter: stable;
+}
+
+.onboarding-carousel-footer {
+	/* Production keeps this slot before sign-in makes the actions available. */
+	min-height: 64px;
+}
+
+@media (max-width: 520px) {
+	.onboarding-layout[data-onboarding-carousel] .onboarding-stage-content {
+		flex-basis: min(70%, 420px);
+	}
+
+	[data-onboarding-preview-actions] {
+		/* Back and Skip can wrap as the primary action widens. Reserve both rows. */
+		min-height: 92px;
+		align-content: flex-end;
+	}
+}
+
+@keyframes onboarding-blob-one {
+	from { transform: translate(-8%, -5%) scale(1); }
+	50% { transform: translate(10%, 2%) scale(1.06); }
+	to { transform: translate(3%, 12%) scale(1.02); }
+}
+
+@keyframes onboarding-blob-two {
+	from { transform: translate(6%, 8%) scale(1.04); }
+	50% { transform: translate(-10%, 2%) scale(1); }
+	to { transform: translate(-3%, -12%) scale(1.08); }
+}
+
+@keyframes onboarding-blob-three {
+	from { transform: translate(-6%, 8%) scale(0.96); }
+	50% { transform: translate(8%, 2%) scale(1.04); }
+	to { transform: translate(2%, -10%) scale(1); }
 }

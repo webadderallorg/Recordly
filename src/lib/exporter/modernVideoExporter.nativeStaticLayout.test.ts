@@ -1,8 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AudioRegion, SpeedRegion, ZoomRegion } from "@/components/video-editor/types";
+import { computePaddedLayout } from "@/components/video-editor/videoPlayback/layoutUtils";
+import { getNativeStaticLayoutSkipReasons } from "./modernNativeStaticEligibility";
 import { ModernVideoExporter } from "./modernVideoExporter";
+import { exporterInternals } from "./modernVideoExporter.testSupport";
+import { NativeStaticLayoutBackgroundAssets } from "./nativeStaticLayoutBackground";
 import type { DecodedVideoInfo } from "./streamingDecoder";
 
+const telemetryLayout = computePaddedLayout({
+	width: 1920,
+	height: 1080,
+	padding: 0,
+	cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+	videoWidth: 1920,
+	videoHeight: 1080,
+});
 const videoInfo: DecodedVideoInfo = {
 	width: 1920,
 	height: 1080,
@@ -12,9 +24,8 @@ const videoInfo: DecodedVideoInfo = {
 	codec: "h264",
 	hasAudio: true,
 	audioCodec: "aac",
-	audioSampleRate: 48_000,
+	audioSampleRate: 48000,
 };
-
 function createExporter(overrides: Record<string, unknown> = {}) {
 	vi.stubGlobal("window", {
 		electronAPI: {
@@ -22,13 +33,12 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 			nativeStaticLayoutExportCancel: vi.fn(),
 		},
 	});
-
 	return new ModernVideoExporter({
 		videoUrl: "file:///recording.mp4",
 		width: 1920,
 		height: 1080,
 		frameRate: 30,
-		bitrate: 8_000_000,
+		bitrate: 8000000,
 		wallpaper: "#101010",
 		padding: 0,
 		borderRadius: 0,
@@ -38,87 +48,165 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 		cropRegion: { x: 0, y: 0, width: 1, height: 1 },
 		experimentalNativeExport: true,
 		...overrides,
-	} as never) as unknown as {
-		buildNativeAudioPlan: (videoInfo: DecodedVideoInfo) => unknown;
-		buildNativeStaticLayoutVideoTimelineSegments: (videoInfo: DecodedVideoInfo) => Array<{
-			sourceStartMs: number;
-			sourceEndMs: number;
-			outputStartMs: number;
-			outputEndMs: number;
-			speed: number;
-		}>;
-		getNativeStaticLayoutEffectiveDuration: (videoInfo: DecodedVideoInfo) => number;
-		getNativeStaticLayoutSkipReason: (
-			audioPlan: unknown,
-			videoInfo: DecodedVideoInfo,
-			effectiveDurationSec: number,
-		) => string | null;
-		getNativeStaticLayoutSkipReasons: (
-			audioPlan: unknown,
-			videoInfo: DecodedVideoInfo,
-			effectiveDurationSec: number,
-		) => string[];
-		getNativeStaticLayoutSourceCrop: (videoInfo: DecodedVideoInfo) => {
-			x: number;
-			y: number;
-			width: number;
-			height: number;
-		};
-		resolveNativeStaticLayoutBackground: () => Promise<unknown>;
-		createNativeStaticLayoutGradient: (
-			ctx: CanvasRenderingContext2D,
-			wallpaper: string,
-		) => CanvasGradient | null;
-		getNativeStaticLayoutCursorSize: (contentWidth: number) => number;
-		getNativeStaticLayoutZoomTelemetry: (
-			layout: {
-				centerOffsetX: number;
-				centerOffsetY: number;
-				croppedDisplayWidth: number;
-				croppedDisplayHeight: number;
-			},
-			totalFrames: number,
-			cursorTelemetry: undefined,
-		) => Array<{ timeMs: number; scale: number; x: number; y: number }> | undefined;
-	};
+	} as never);
 }
-
 afterEach(() => {
 	vi.unstubAllGlobals();
 });
-
 describe("ModernVideoExporter native static-layout eligibility", () => {
+	it("uses rendered frames for cursor idle fades while preserving native eligibility when disabled", () => {
+		const options = {
+			showCursor: true,
+			cursorTelemetry: [
+				{ timeMs: 0, cx: 0.5, cy: 0.5 },
+				{ timeMs: 3000, cx: 0.5, cy: 0.5 },
+			],
+		};
+		const idle = exporterInternals(createExporter(options));
+		expect(idle.operations.getNativeStaticLayoutSkipReason({ audioMode: "none" }, videoInfo, 60)).toBe("unsupported-cursor-idle-fade");
+		for (const override of [
+			{ cursorIdleHide: { enabled: false } },
+			{ showCursor: false },
+			{ cursorTelemetry: [{ timeMs: 0, cx: 0.1, cy: 0.5 }, { timeMs: 3000, cx: 0.9, cy: 0.5 }] },
+		]) {
+			const exporter = exporterInternals(createExporter({ ...options, ...override }));
+			expect(exporter.operations.getNativeStaticLayoutSkipReason({ audioMode: "none" }, videoInfo, 60)).toBeNull();
+		}
+	});
+	it.each([
+		false,
+		true,
+	])("preserves camera blur with experimental GPU enabled=%s", (experimentalNvidiaCudaExport) => {
+		const exporter = createExporter({
+			experimentalNvidiaCudaExport,
+			zoomMotionBlur: 1,
+			zoomRegions: [
+				{
+					id: "zoom",
+					startMs: 0,
+					endMs: 4000,
+					depth: 2,
+					focus: { cx: 0.5, cy: 0.5 },
+					mode: "manual",
+				},
+			],
+		});
+		expect(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
+				{ audioMode: "none" },
+				videoInfo,
+				60,
+			),
+		).toBe("native-zoom-motion-blur-mismatch");
+	});
+	it("centers a source click in a cropped native export", () => {
+		const exporter = createExporter({
+			cropRegion: { x: 0.5, y: 0.2, width: 0.5, height: 0.6 },
+			zoomClassicMode: true,
+			zoomInDurationMs: 200,
+			zoomOutDurationMs: 300,
+			zoomRegions: [
+				{
+					id: "zoom",
+					startMs: 0,
+					endMs: 4000,
+					depth: 6,
+					focus: { cx: 0.6, cy: 0.4 },
+					mode: "auto",
+				},
+			],
+		});
+		const samples = exporterInternals(exporter).operations.getNativeStaticLayoutZoomTelemetry(
+			{
+				...telemetryLayout,
+				centerOffsetX: 0,
+				centerOffsetY: 0,
+				croppedDisplayWidth: 1920,
+				croppedDisplayHeight: 1080,
+			},
+			91,
+		);
+		const frame = samples![75];
+		expect(frame.scale).toBe(5);
+		expect(frame.x + 0.2 * 1920 * frame.scale).toBeCloseTo(960);
+		expect(frame.y + (1 / 3) * 1080 * frame.scale).toBeCloseTo(540);
+	});
+	it("follows source telemetry in cropped native exports even with the cursor hidden", () => {
+		const options = {
+			cropRegion: { x: 0.5, y: 0, width: 0.5, height: 1 },
+			zoomSmoothness: 0,
+			cursorTelemetry: [
+				{ timeMs: 0, cx: 0.75, cy: 0.5 },
+				{ timeMs: 1000, cx: 0.85, cy: 0.5 },
+			],
+			zoomRegions: [
+				{
+					id: "zoom",
+					startMs: 0,
+					endMs: 5000,
+					depth: 6,
+					focus: { cx: 0.75, cy: 0.5 },
+					mode: "auto",
+				},
+			],
+		};
+		const layout = {
+			...telemetryLayout,
+			centerOffsetX: 0,
+			centerOffsetY: 0,
+			croppedDisplayWidth: 1920,
+			croppedDisplayHeight: 1080,
+		};
+		const hidden = exporterInternals(
+			createExporter({
+				...options,
+				showCursor: false,
+			}),
+		).operations.getNativeStaticLayoutZoomTelemetry(layout, 91);
+		const visible = exporterInternals(
+			createExporter({
+				...options,
+				showCursor: true,
+			}),
+		).operations.getNativeStaticLayoutZoomTelemetry(layout, 91);
+		expect(hidden).toEqual(visible);
+		const frame = hidden![90];
+		const clickX = (frame.x + 0.7 * 1920 * frame.scale) / 1920;
+		expect(clickX).toBeGreaterThanOrEqual(0.25);
+		expect(clickX).toBeLessThanOrEqual(0.75);
+	});
 	it("uses configured zoom transition durations for native telemetry", () => {
 		const zoomRegions: ZoomRegion[] = [
 			{
 				id: "zoom-1",
 				startMs: 0,
-				endMs: 4_000,
+				endMs: 4000,
 				depth: 2,
 				focus: { cx: 0.5, cy: 0.5 },
 				mode: "manual",
 			},
 		];
 		const layout = {
+			...telemetryLayout,
 			centerOffsetX: 0,
 			centerOffsetY: 0,
 			croppedDisplayWidth: 1920,
 			croppedDisplayHeight: 1080,
 		};
 		const fastExporter = createExporter({ zoomRegions, zoomInDurationMs: 100 });
-		const slowExporter = createExporter({ zoomRegions, zoomInDurationMs: 2_000 });
-
-		const fastSamples = fastExporter.getNativeStaticLayoutZoomTelemetry(layout, 60, undefined);
-		const slowSamples = slowExporter.getNativeStaticLayoutZoomTelemetry(layout, 60, undefined);
-
+		const slowExporter = createExporter({ zoomRegions, zoomInDurationMs: 2000 });
+		const fastSamples = exporterInternals(
+			fastExporter,
+		).operations.getNativeStaticLayoutZoomTelemetry(layout, 60);
+		const slowSamples = exporterInternals(
+			slowExporter,
+		).operations.getNativeStaticLayoutZoomTelemetry(layout, 60);
 		expect(fastSamples?.[30].scale).toBeGreaterThan(slowSamples?.[30].scale ?? 0);
 	});
-
 	it("allows native static-layout eligibility for VP9/WebM sources so main can proxy them", () => {
 		const exporter = createExporter();
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{ audioMode: "none" },
 				{
 					...videoInfo,
@@ -129,12 +217,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBeNull();
 	});
-
 	it("carries embedded audio codec into native mux options", () => {
 		const exporter = createExporter();
-
 		expect(
-			exporter.buildNativeAudioPlan({
+			exporterInternals(exporter).operations.buildNativeAudioPlan({
 				...videoInfo,
 				codec: "vp9 (Profile 0)",
 				audioCodec: "opus",
@@ -144,30 +230,26 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			audioSourceCodec: "opus",
 		});
 	});
-
 	it("allows native static-layout for H.264 source metadata", () => {
 		const exporter = createExporter();
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{ audioMode: "none" },
 				{ ...videoInfo, codec: "avc1.640034" },
 				60,
 			),
 		).toBeNull();
 	});
-
 	it("uses FFmpeg filtergraph audio for speed edits with a single external source track", () => {
 		const speedRegions: SpeedRegion[] = [
-			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
+			{ id: "speed-1", startMs: 1000, endMs: 4000, speed: 1.5 },
 		];
 		const exporter = createExporter({
 			speedRegions,
 			sourceAudioFallbackPaths: ["C:\\recordly\\recording.system.wav"],
 		});
-
 		expect(
-			exporter.buildNativeAudioPlan({
+			exporterInternals(exporter).operations.buildNativeAudioPlan({
 				...videoInfo,
 				hasAudio: false,
 				audioCodec: undefined,
@@ -177,15 +259,14 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			audioMode: "edited-track",
 			strategy: "filtergraph-fast-path",
 			audioSourcePath: "C:\\recordly\\recording.system.wav",
-			audioSourceSampleRate: 48_000,
+			audioSourceSampleRate: 48000,
 			editedTrackSegments: [
-				{ startMs: 0, endMs: 1_000, speed: 1 },
-				{ startMs: 1_000, endMs: 4_000, speed: 1.5 },
-				{ startMs: 4_000, endMs: 60_000, speed: 1 },
+				{ startMs: 0, endMs: 1000, speed: 1 },
+				{ startMs: 1000, endMs: 4000, speed: 1.5 },
+				{ startMs: 4000, endMs: 60000, speed: 1 },
 			],
 		});
 	});
-
 	it("mixes companion sidecar audio when the source MP4 also has an audio track", () => {
 		const videoPath = "C:\\recordly\\recording.mp4";
 		const micPath = "C:\\recordly\\recording.mic.wav";
@@ -193,27 +274,26 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			videoUrl: `file:///${videoPath.replace(/\\/g, "/")}`,
 			sourceAudioFallbackPaths: [micPath],
 		});
-
-		expect(exporter.buildNativeAudioPlan(videoInfo)).toMatchObject({
+		expect(
+			exporterInternals(exporter).operations.buildNativeAudioPlan(videoInfo),
+		).toMatchObject({
 			audioMode: "edited-track",
 			strategy: "offline-render-fallback",
 			sourceAudioFallbackPaths: [expect.stringMatching(/recording\.mp4$/), micPath],
 		});
 	});
-
 	it("keeps timed companion audio on the offline render path", () => {
 		const audioPath = "C:\\recordly\\recording.system.wav";
 		const speedRegions: SpeedRegion[] = [
-			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
+			{ id: "speed-1", startMs: 1000, endMs: 4000, speed: 1.5 },
 		];
 		const exporter = createExporter({
 			speedRegions,
 			sourceAudioFallbackPaths: [audioPath],
 			sourceAudioFallbackStartDelayMsByPath: { [audioPath]: 250 },
 		});
-
 		expect(
-			exporter.buildNativeAudioPlan({
+			exporterInternals(exporter).operations.buildNativeAudioPlan({
 				...videoInfo,
 				hasAudio: false,
 				audioCodec: undefined,
@@ -225,21 +305,19 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			sourceAudioFallbackPaths: [audioPath],
 		});
 	});
-
 	it("allows native video when only the audio track needs offline editing", () => {
 		const audioRegions: AudioRegion[] = [
 			{
 				id: "audio-1",
 				audioPath: "file:///overlay.wav",
-				startMs: 1_000,
-				endMs: 4_000,
+				startMs: 1000,
+				endMs: 4000,
 				volume: 0.85,
 			},
 		];
 		const exporter = createExporter({ audioRegions });
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "edited-track",
 					strategy: "offline-render-fallback",
@@ -249,19 +327,17 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBeNull();
 	});
-
 	it("allows cursor overlay native static-layout without the experimental native flag", () => {
 		const exporter = createExporter({
 			experimentalNativeExport: false,
 			showCursor: true,
 			cursorTelemetry: [
 				{ timeMs: 0, cx: 0.25, cy: 0.35 },
-				{ timeMs: 1_000, cx: 0.5, cy: 0.55 },
+				{ timeMs: 1000, cx: 0.5, cy: 0.55 },
 			],
 		});
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "copy-source",
 					audioSourcePath: "recording.mp4",
@@ -271,30 +347,35 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBeNull();
 	});
-
 	it("preserves the cursor-to-video ratio at every native static-layout size", () => {
 		const exporter = createExporter({ cursorSize: 3, cursorStyle: "tahoe" });
-
 		// Native sizing includes texture padding; the visible Golden Gate body
 		// occupies 859 of its 958 pixels. Compare visible height with the viewport.
 		const bodyFraction = 859 / 958;
-		expect(exporter.getNativeStaticLayoutCursorSize(1920) * bodyFraction).toBeCloseTo(84, 6);
-		expect(exporter.getNativeStaticLayoutCursorSize(960) * bodyFraction).toBeCloseTo(42, 6);
-		expect(exporter.getNativeStaticLayoutCursorSize(480) * bodyFraction).toBeCloseTo(21, 6);
+		expect(
+			exporterInternals(exporter).operations.getNativeStaticLayoutCursorSize(1920) *
+				bodyFraction,
+		).toBeCloseTo(84, 6);
+		expect(
+			exporterInternals(exporter).operations.getNativeStaticLayoutCursorSize(960) *
+				bodyFraction,
+		).toBeCloseTo(42, 6);
+		expect(
+			exporterInternals(exporter).operations.getNativeStaticLayoutCursorSize(480) *
+				bodyFraction,
+		).toBeCloseTo(21, 6);
 	});
-
 	it("skips native static-layout when cursor click effects are enabled", () => {
 		const exporter = createExporter({
 			showCursor: true,
 			cursorClickEffect: "echo",
 			cursorTelemetry: [
 				{ timeMs: 0, cx: 0.25, cy: 0.35 },
-				{ timeMs: 1_000, cx: 0.5, cy: 0.55, interactionType: "click" },
+				{ timeMs: 1000, cx: 0.5, cy: 0.55, interactionType: "click" },
 			],
 		});
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "copy-source",
 					audioSourcePath: "recording.mp4",
@@ -304,19 +385,17 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBe("unsupported-cursor-click-effect");
 	});
-
 	it("skips native static-layout when click effects are enabled and cursor is hidden", () => {
 		const exporter = createExporter({
 			showCursor: false,
 			cursorClickEffect: "echo",
 			cursorTelemetry: [
 				{ timeMs: 0, cx: 0.25, cy: 0.35 },
-				{ timeMs: 1_000, cx: 0.5, cy: 0.55, interactionType: "click" },
+				{ timeMs: 1000, cx: 0.5, cy: 0.55, interactionType: "click" },
 			],
 		});
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "copy-source",
 					audioSourcePath: "recording.mp4",
@@ -326,12 +405,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBe("unsupported-cursor-click-effect");
 	});
-
 	it("allows native static-layout with background blur", () => {
 		const exporter = createExporter({ backgroundBlur: 12 });
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "copy-source",
 					audioSourcePath: "recording.mp4",
@@ -341,14 +418,12 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBeNull();
 	});
-
 	it("allows non-default crop when native source crop coordinates are valid", () => {
 		const exporter = createExporter({
 			cropRegion: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
 		});
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "copy-source",
 					audioSourcePath: "recording.mp4",
@@ -357,40 +432,43 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				60,
 			),
 		).toBeNull();
-		expect(exporter.getNativeStaticLayoutSourceCrop(videoInfo)).toEqual({
+		expect(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSourceCrop(videoInfo),
+		).toEqual({
 			x: 192,
 			y: 108,
 			width: 1536,
 			height: 864,
 		});
 	});
-
 	it("uses the default wallpaper for native static-layout when the project has no wallpaper", async () => {
 		const exporter = createExporter({ wallpaper: "" });
 		const electronAPI = window.electronAPI as typeof window.electronAPI & {
 			getAssetBasePath: () => Promise<string>;
-			listAssetDirectory: () => Promise<{ success: true; files: string[] }>;
+			listAssetDirectory: () => Promise<{
+				success: true;
+				files: string[];
+			}>;
 		};
 		electronAPI.getAssetBasePath = vi.fn(async () => "file:///C:/Recordly/resources/");
 		electronAPI.listAssetDirectory = vi.fn(async () => ({
-			success: true,
+			success: true as const,
 			files: ["tahoe-light.jpg"],
 		}));
-
-		await expect(exporter.resolveNativeStaticLayoutBackground()).resolves.toEqual({
+		await expect(
+			exporterInternals(exporter).operations.resolveNativeStaticLayoutBackground(),
+		).resolves.toEqual({
 			backgroundColor: "#101010",
 			backgroundImagePath: "C:/Recordly/resources/wallpapers/tahoe-light.jpg",
 		});
 	});
-
 	it("reports video backgrounds while speed can use native timeline maps", () => {
 		const exporter = createExporter({
 			wallpaper: "file:///C:/Recordly/background.webm",
-			speedRegions: [{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 }],
+			speedRegions: [{ id: "speed-1", startMs: 1000, endMs: 4000, speed: 1.5 }],
 		});
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "edited-track",
 					strategy: "offline-render-fallback",
@@ -400,20 +478,20 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBe("unsupported-background-video");
 	});
-
 	it("collects every native static-layout blocker for beta diagnostics", () => {
 		const exporter = createExporter({
 			width: 1921,
 			wallpaper: "file:///C:/Recordly/background.webm",
-			speedRegions: [{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 }],
-			annotationRegions: [{ id: "annotation-1", startMs: 0, endMs: 1_000 }],
-			autoCaptions: [{ id: "caption-1", text: "hello", startMs: 0, endMs: 1_000 }],
+			speedRegions: [{ id: "speed-1", startMs: 1000, endMs: 4000, speed: 1.5 }],
+			annotationRegions: [{ id: "annotation-1", startMs: 0, endMs: 1000 }],
+			autoCaptions: [{ id: "caption-1", text: "hello", startMs: 0, endMs: 1000 }],
 			webcam: { enabled: true },
 			cropRegion: { x: 0.1, y: 0, width: 0.9, height: 1 },
 		});
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReasons(
+			getNativeStaticLayoutSkipReasons(
+				exporterInternals(exporter).session,
+				exporterInternals(exporter).operations,
 				{
 					audioMode: "edited-track",
 					strategy: "offline-render-fallback",
@@ -430,17 +508,18 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			"unsupported-webcam-source",
 		]);
 	});
-
 	it("reports invalid crop geometry instead of passing native export bad coordinates", () => {
 		const exporter = createExporter({
 			cropRegion: { x: 0, y: 0, width: 0, height: 1 },
 		});
-
-		expect(exporter.getNativeStaticLayoutSkipReason({ audioMode: "none" }, videoInfo, 60)).toBe(
-			"invalid-crop-region",
-		);
+		expect(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
+				{ audioMode: "none" },
+				videoInfo,
+				60,
+			),
+		).toBe("invalid-crop-region");
 	});
-
 	it("materializes uploaded data-url image backgrounds for native static-layout", async () => {
 		const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 		const dataUrl = `data:image/jpeg;base64,${Buffer.from(jpegBytes).toString("base64")}`;
@@ -461,8 +540,9 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			tempPath: "C:/Temp/recordly-background.jpg",
 			bytesWritten: jpegBytes.byteLength,
 		}));
-
-		await expect(exporter.resolveNativeStaticLayoutBackground()).resolves.toEqual({
+		await expect(
+			exporterInternals(exporter).operations.resolveNativeStaticLayoutBackground(),
+		).resolves.toEqual({
 			backgroundColor: "#101010",
 			backgroundImagePath: "C:/Temp/recordly-background.jpg",
 			temporaryPath: "C:/Temp/recordly-background.jpg",
@@ -474,58 +554,64 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		expect(Array.from(chunk as Uint8Array)).toEqual(Array.from(jpegBytes));
 		expect(electronAPI.closeExportStream).toHaveBeenCalledWith("background-stream");
 	});
-
 	it("parses rgba color stops in native gradient backgrounds", () => {
-		const exporter = createExporter();
+		const backgrounds = new NativeStaticLayoutBackgroundAssets({
+			wallpaper: "#101010",
+			width: 1920,
+			height: 1080,
+		});
 		const gradient = { addColorStop: vi.fn() };
 		const ctx = {
 			createLinearGradient: vi.fn(() => gradient),
 			createRadialGradient: vi.fn(() => gradient),
 		} as unknown as CanvasRenderingContext2D;
-
-		const result = exporter.createNativeStaticLayoutGradient(
+		const result = backgrounds.createGradient(
 			ctx,
 			"linear-gradient( 111.6deg,  rgba(114,167,232,1) 9.4%, rgba(253,129,82,1) 43.9%, rgba(249,202,86,1) 86.3% )",
 		);
-
 		expect(result).toBe(gradient);
 		expect(gradient.addColorStop).toHaveBeenCalledTimes(3);
-		expect(gradient.addColorStop).toHaveBeenNthCalledWith(1, 0, "rgba(114,167,232,1)");
-		expect(gradient.addColorStop).toHaveBeenNthCalledWith(2, 0.5, "rgba(253,129,82,1)");
-		expect(gradient.addColorStop).toHaveBeenNthCalledWith(3, 1, "rgba(249,202,86,1)");
+		expect(gradient.addColorStop).toHaveBeenNthCalledWith(1, 0.094, "rgba(114,167,232,1)");
+		expect(gradient.addColorStop).toHaveBeenNthCalledWith(2, 0.439, "rgba(253,129,82,1)");
+		expect(gradient.addColorStop).toHaveBeenNthCalledWith(3, 0.863, "rgba(249,202,86,1)");
 	});
-
 	it("allows non-tail trim timelines with native static-layout", () => {
 		const exporter = createExporter({
-			trimRegions: [{ id: "trim-1", startMs: 10_000, endMs: 12_000 }],
+			trimRegions: [{ id: "trim-1", startMs: 10000, endMs: 12000 }],
 		});
-		const effectiveDuration = exporter.getNativeStaticLayoutEffectiveDuration(videoInfo);
-
+		const effectiveDuration =
+			exporterInternals(exporter).operations.getNativeStaticLayoutEffectiveDuration(
+				videoInfo,
+			);
 		expect(effectiveDuration).toBeCloseTo(58, 3);
-		expect(exporter.buildNativeStaticLayoutVideoTimelineSegments(videoInfo)).toEqual([
+		expect(
+			exporterInternals(exporter).operations.buildNativeStaticLayoutVideoTimelineSegments(
+				videoInfo,
+			),
+		).toEqual([
 			{
 				sourceStartMs: 0,
-				sourceEndMs: 10_000,
+				sourceEndMs: 10000,
 				outputStartMs: 0,
-				outputEndMs: 10_000,
+				outputEndMs: 10000,
 				speed: 1,
 			},
 			{
-				sourceStartMs: 12_000,
-				sourceEndMs: 60_000,
-				outputStartMs: 10_000,
-				outputEndMs: 58_000,
+				sourceStartMs: 12000,
+				sourceEndMs: 60000,
+				outputStartMs: 10000,
+				outputEndMs: 58000,
 				speed: 1,
 			},
 		]);
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "trim-source",
 					audioSourcePath: "recording.mp4",
 					trimSegments: [
-						{ startMs: 0, endMs: 10_000 },
-						{ startMs: 12_000, endMs: 60_000 },
+						{ startMs: 0, endMs: 10000 },
+						{ startMs: 12000, endMs: 60000 },
 					],
 				},
 				videoInfo,
@@ -533,21 +619,19 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBeNull();
 	});
-
 	it("requires the Windows GPU compositor for non-tail trim timelines", () => {
 		const exporter = createExporter({
 			experimentalNativeExport: false,
-			trimRegions: [{ id: "trim-1", startMs: 10_000, endMs: 12_000 }],
+			trimRegions: [{ id: "trim-1", startMs: 10000, endMs: 12000 }],
 		});
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "trim-source",
 					audioSourcePath: "recording.mp4",
 					trimSegments: [
-						{ startMs: 0, endMs: 10_000 },
-						{ startMs: 12_000, endMs: 60_000 },
+						{ startMs: 0, endMs: 10000 },
+						{ startMs: 12000, endMs: 60000 },
 					],
 				},
 				videoInfo,
@@ -555,15 +639,13 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBe("native-timeline-requires-windows-gpu");
 	});
-
 	it("requires the Windows GPU compositor for speed timelines", () => {
 		const speedRegions: SpeedRegion[] = [
-			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
+			{ id: "speed-1", startMs: 1000, endMs: 4000, speed: 1.5 },
 		];
 		const exporter = createExporter({ experimentalNativeExport: false, speedRegions });
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "edited-track",
 					strategy: "offline-render-fallback",
@@ -573,30 +655,30 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBe("native-timeline-requires-windows-gpu");
 	});
-
 	it("uses speed timeline duration during native static-layout preflight", () => {
 		const speedRegions: SpeedRegion[] = [
-			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
+			{ id: "speed-1", startMs: 1000, endMs: 4000, speed: 1.5 },
 		];
 		const exporter = createExporter({ speedRegions });
-
-		expect(exporter.getNativeStaticLayoutEffectiveDuration(videoInfo)).toBeCloseTo(59, 3);
+		expect(
+			exporterInternals(exporter).operations.getNativeStaticLayoutEffectiveDuration(
+				videoInfo,
+			),
+		).toBeCloseTo(59, 3);
 	});
-
 	it("builds native timeline maps for the editor speed range endpoints", () => {
 		const speedRegions: SpeedRegion[] = [
-			{ id: "speed-1", startMs: 1_000, endMs: 2_000, speed: 0.25 },
-			{ id: "speed-2", startMs: 4_000, endMs: 5_000, speed: 30 },
+			{ id: "speed-1", startMs: 1000, endMs: 2000, speed: 0.25 },
+			{ id: "speed-2", startMs: 4000, endMs: 5000, speed: 30 as SpeedRegion["speed"] },
 		];
 		const exporter = createExporter({ speedRegions });
-
 		expect(
-			exporter
-				.buildNativeStaticLayoutVideoTimelineSegments(videoInfo)
+			exporterInternals(exporter)
+				.operations.buildNativeStaticLayoutVideoTimelineSegments(videoInfo)
 				.map((segment) => segment.speed),
 		).toEqual([1, 0.25, 1, 30, 1]);
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "edited-track",
 					strategy: "offline-render-fallback",
@@ -606,38 +688,40 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBeNull();
 	});
-
 	it("allows native speed timelines through the Windows GPU timeline map", () => {
 		const speedRegions: SpeedRegion[] = [
-			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
+			{ id: "speed-1", startMs: 1000, endMs: 4000, speed: 1.5 },
 		];
 		const exporter = createExporter({ speedRegions });
-
-		expect(exporter.buildNativeStaticLayoutVideoTimelineSegments(videoInfo)).toEqual([
+		expect(
+			exporterInternals(exporter).operations.buildNativeStaticLayoutVideoTimelineSegments(
+				videoInfo,
+			),
+		).toEqual([
 			{
 				sourceStartMs: 0,
-				sourceEndMs: 1_000,
+				sourceEndMs: 1000,
 				outputStartMs: 0,
-				outputEndMs: 1_000,
+				outputEndMs: 1000,
 				speed: 1,
 			},
 			{
-				sourceStartMs: 1_000,
-				sourceEndMs: 4_000,
-				outputStartMs: 1_000,
-				outputEndMs: 3_000,
+				sourceStartMs: 1000,
+				sourceEndMs: 4000,
+				outputStartMs: 1000,
+				outputEndMs: 3000,
 				speed: 1.5,
 			},
 			{
-				sourceStartMs: 4_000,
-				sourceEndMs: 60_000,
-				outputStartMs: 3_000,
-				outputEndMs: 59_000,
+				sourceStartMs: 4000,
+				sourceEndMs: 60000,
+				outputStartMs: 3000,
+				outputEndMs: 59000,
 				speed: 1,
 			},
 		]);
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "edited-track",
 					strategy: "offline-render-fallback",
@@ -647,15 +731,13 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBeNull();
 	});
-
 	it("rejects native static-layout when speed edits are outside the editor speed range", () => {
 		const speedRegions: SpeedRegion[] = [
-			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 31 },
+			{ id: "speed-1", startMs: 1000, endMs: 4000, speed: 31 as SpeedRegion["speed"] },
 		];
 		const exporter = createExporter({ speedRegions });
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "edited-track",
 					strategy: "offline-render-fallback",
@@ -665,24 +747,22 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBe("unsupported-native-speed-timeline");
 	});
-
 	it("allows speed-only projects when audio and video share filtergraph segments", () => {
 		const speedRegions: SpeedRegion[] = [
-			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
+			{ id: "speed-1", startMs: 1000, endMs: 4000, speed: 1.5 },
 		];
 		const exporter = createExporter({ speedRegions });
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "edited-track",
 					strategy: "filtergraph-fast-path",
 					audioSourcePath: "recording.mp4",
-					audioSourceSampleRate: 48_000,
+					audioSourceSampleRate: 48000,
 					editedTrackSegments: [
-						{ startMs: 0, endMs: 1_000, speed: 1 },
-						{ startMs: 1_000, endMs: 4_000, speed: 1.5 },
-						{ startMs: 4_000, endMs: 60_000, speed: 1 },
+						{ startMs: 0, endMs: 1000, speed: 1 },
+						{ startMs: 1000, endMs: 4000, speed: 1.5 },
+						{ startMs: 4000, endMs: 60000, speed: 1 },
 					],
 				},
 				videoInfo,
@@ -690,24 +770,22 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBeNull();
 	});
-
 	it("allows slow-speed timelines through native frame duplication", () => {
 		const speedRegions: SpeedRegion[] = [
-			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 0.5 },
+			{ id: "speed-1", startMs: 1000, endMs: 4000, speed: 0.5 },
 		];
 		const exporter = createExporter({ speedRegions });
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "edited-track",
 					strategy: "filtergraph-fast-path",
 					audioSourcePath: "recording.mp4",
-					audioSourceSampleRate: 48_000,
+					audioSourceSampleRate: 48000,
 					editedTrackSegments: [
-						{ startMs: 0, endMs: 1_000, speed: 1 },
-						{ startMs: 1_000, endMs: 4_000, speed: 0.5 },
-						{ startMs: 4_000, endMs: 60_000, speed: 1 },
+						{ startMs: 0, endMs: 1000, speed: 1 },
+						{ startMs: 1000, endMs: 4000, speed: 0.5 },
+						{ startMs: 4000, endMs: 60000, speed: 1 },
 					],
 				},
 				videoInfo,
@@ -715,10 +793,9 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBeNull();
 	});
-
 	it("uses the shared renderer for slow-speed webcam timelines", () => {
 		const speedRegions: SpeedRegion[] = [
-			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 0.5 },
+			{ id: "speed-1", startMs: 1000, endMs: 4000, speed: 0.5 },
 		];
 		const exporter = createExporter({
 			speedRegions,
@@ -727,9 +804,8 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				sourcePath: "C:\\recordly\\webcam.mp4",
 			},
 		});
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "edited-track",
 					strategy: "offline-render-fallback",
@@ -739,7 +815,6 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBe("native-webcam-style-mismatch");
 	});
-
 	it("uses the shared renderer for rectangular webcam overlays", () => {
 		const exporter = createExporter({
 			webcam: {
@@ -749,9 +824,8 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				height: 35,
 			},
 		});
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "edited-track",
 					strategy: "offline-render-fallback",
@@ -761,10 +835,9 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			),
 		).toBe("native-webcam-style-mismatch");
 	});
-
 	it("uses the shared renderer for native speed timelines with a webcam", () => {
 		const speedRegions: SpeedRegion[] = [
-			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
+			{ id: "speed-1", startMs: 1000, endMs: 4000, speed: 1.5 },
 		];
 		const exporter = createExporter({
 			speedRegions,
@@ -773,18 +846,17 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				sourcePath: "C:\\recordly\\webcam.mp4",
 			},
 		});
-
 		expect(
-			exporter.getNativeStaticLayoutSkipReason(
+			exporterInternals(exporter).operations.getNativeStaticLayoutSkipReason(
 				{
 					audioMode: "edited-track",
 					strategy: "filtergraph-fast-path",
 					audioSourcePath: "recording.mp4",
-					audioSourceSampleRate: 48_000,
+					audioSourceSampleRate: 48000,
 					editedTrackSegments: [
-						{ startMs: 0, endMs: 1_000, speed: 1 },
-						{ startMs: 1_000, endMs: 4_000, speed: 1.5 },
-						{ startMs: 4_000, endMs: 60_000, speed: 1 },
+						{ startMs: 0, endMs: 1000, speed: 1 },
+						{ startMs: 1000, endMs: 4000, speed: 1.5 },
+						{ startMs: 4000, endMs: 60000, speed: 1 },
 					],
 				},
 				videoInfo,

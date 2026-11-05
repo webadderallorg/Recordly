@@ -27,6 +27,33 @@ describe("resolveExportStatusModel", () => {
 		expect(status.renderSpeedFps).toBeNull();
 	});
 
+	it("keeps GIF encoding indeterminate even when every frame is rendered", () => {
+		const status = resolveExportStatusModel({
+			isExporting: true,
+			exportProgress: progress({ phase: "finalizing", percentage: 95, renderProgress: 100 }),
+			exportFormat: "gif",
+			exportPipelineModel: "modern",
+		});
+
+		expect(status.isGifFinalizing).toBe(true);
+		expect(status.isExportFinalSaveIndeterminate).toBe(true);
+		expect(status.isExportMuxingAndSaving).toBe(false);
+		expect(status.exportDisplayProgress).toBe(95);
+	});
+
+	it.each([
+		99.9, 100, 104,
+	])("reserves GIF completion until saving succeeds (%s)", (percentage) => {
+		const status = resolveExportStatusModel({
+			isExporting: true,
+			exportProgress: progress({ percentage }),
+			exportFormat: "gif",
+			exportPipelineModel: "modern",
+		});
+
+		expect(Math.round(status.exportDisplayProgress)).toBe(95);
+	});
+
 	it("marks legacy MP4 progress separately from the modern path", () => {
 		const status = resolveExportStatusModel({
 			isExporting: true,

@@ -1,0 +1,190 @@
+/* Port of the frame picker layout delivered by shots.so in
+   /_next/static/css/de3248a8ef4a1ba5.css. HeroUI supplies the controls and theme. */
+.aspect-ratio-picker {
+	width: 320px;
+	max-width: calc(100vw - 24px);
+	border-radius: 16px;
+	outline: 1px solid color-mix(in srgb, var(--foreground) 6%, transparent);
+	outline-offset: -1px;
+	box-shadow: 0 12px 24px #00000052;
+}
+.aspect-ratio-picker__dialog {
+	padding: 0;
+}
+.aspect-ratio-picker__body {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	height: 70vh;
+	max-height: min(70vh, var(--available-height, 70vh));
+	padding: 12px;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+.aspect-ratio-picker__trigger-shape {
+	height: 10px;
+	max-width: 18px;
+	border: 1px solid currentColor;
+	border-radius: 3px;
+	opacity: 0.65;
+}
+.aspect-ratio-picker__custom {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	flex-shrink: 0;
+	gap: 8px;
+}
+.aspect-ratio-picker__field {
+	position: relative;
+	flex: 1;
+	min-width: 0;
+}
+.aspect-ratio-picker__field > [data-slot="label"] {
+	position: absolute;
+	z-index: 1;
+	top: 10px;
+	left: 10px;
+	color: color-mix(in srgb, var(--foreground) 60%, transparent);
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 16px;
+	letter-spacing: 0.4px;
+	pointer-events: none;
+}
+.aspect-ratio-picker__field input {
+	width: 100%;
+	min-width: 0;
+	height: 36px;
+	padding: 7px 10px 7px 26px;
+	font-size: 16px;
+	line-height: 20px;
+	text-align: right;
+	appearance: textfield;
+}
+.aspect-ratio-picker__field input::-webkit-inner-spin-button,
+.aspect-ratio-picker__field input::-webkit-outer-spin-button {
+	appearance: none;
+	margin: 0;
+}
+.aspect-ratio-picker__groups,
+.aspect-ratio-picker__platform {
+	display: flex;
+	flex-direction: column;
+	flex-shrink: 0;
+	gap: 12px;
+}
+.aspect-ratio-picker__divider {
+	flex-shrink: 0;
+	width: calc(100% - 16px);
+	margin-inline: 8px;
+}
+.aspect-ratio-picker__grid {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 8px;
+}
+.aspect-ratio-picker__grid .aspect-ratio-picker__option {
+	flex-basis: calc(33.3% - 6px);
+	min-width: 0;
+	margin: 0;
+	gap: 0;
+}
+.aspect-ratio-picker__item {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 0;
+	width: 100%;
+	min-width: 0;
+	padding: 0;
+	font-weight: 400;
+	text-align: center;
+	cursor: pointer;
+}
+.aspect-ratio-picker__icon-wrapper {
+	position: relative;
+	width: 100%;
+	aspect-ratio: 5 / 4.5;
+	overflow: hidden;
+}
+.aspect-ratio-picker__item.is-portrait .aspect-ratio-picker__icon-wrapper {
+	aspect-ratio: 4.5 / 5;
+}
+.aspect-ratio-picker__icon-display {
+	position: absolute;
+	inset: 8px;
+}
+.aspect-ratio-picker__shape {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	max-height: 100%;
+	margin: auto auto 0;
+	border: 1.5px solid color-mix(in srgb, var(--foreground) 6%, transparent);
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--foreground) 8%, transparent);
+	transition:
+		background 0.2s,
+		outline-color 0.2s;
+}
+.aspect-ratio-picker__shape img,
+.aspect-ratio-picker__shape svg {
+	width: 16px;
+	height: 16px;
+}
+.aspect-ratio-picker__option[data-selected] .aspect-ratio-picker__shape {
+	outline: 1.5px solid color-mix(in srgb, var(--foreground) 50%, transparent);
+	outline-offset: 2.5px;
+}
+.aspect-ratio-picker__item[data-focus-visible="true"] .aspect-ratio-picker__shape {
+	outline: 2px solid var(--focus);
+	outline-offset: 2.5px;
+}
+.aspect-ratio-picker__item[data-hovered="true"] .aspect-ratio-picker__shape {
+	background: color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+.aspect-ratio-picker__details {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	width: 100%;
+	min-width: 0;
+}
+.aspect-ratio-picker__name {
+	overflow: hidden;
+	font-size: 11px;
+	line-height: 14px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.aspect-ratio-picker__ratio {
+	color: color-mix(in srgb, var(--foreground) 60%, transparent);
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 16px;
+}
+.aspect-ratio-picker__platform .aspect-ratio-picker__heading {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 -4px 8px;
+	font-size: 17px;
+	font-weight: 500;
+	line-height: 24px;
+}
+.aspect-ratio-picker__heading img,
+.aspect-ratio-picker__heading svg {
+	width: 20px;
+	height: 20px;
+}
+.aspect-ratio-picker__youtube {
+	color: #ff0000;
+}
+@media (prefers-reduced-motion: reduce) {
+	.aspect-ratio-picker__shape {
+		transition: none;
+	}
+}

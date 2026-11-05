@@ -74,7 +74,7 @@ export function findConflict(
 
 export const DEFAULT_SHORTCUTS: ShortcutsConfig = {
 	addZoom: { key: "z" },
-	splitClip: { key: "c" },
+	splitClip: { key: "b", ctrl: true },
 	addAnnotation: { key: "a" },
 	addKeyframe: { key: "f" },
 	deleteSelected: { key: "d", ctrl: true },
@@ -131,6 +131,14 @@ export function mergeWithDefaults(partial: Partial<ShortcutsConfig>): ShortcutsC
 		if (partial[action]) {
 			merged[action] = partial[action] as ShortcutBinding;
 		}
+	}
+	// Saved configurations include the previous C default. Upgrade that binding
+	// while preserving custom shortcuts and avoiding collisions with other actions.
+	if (
+		bindingsEqual(merged.splitClip, { key: "c" }) &&
+		!findConflict(DEFAULT_SHORTCUTS.splitClip, "splitClip", merged)
+	) {
+		merged.splitClip = DEFAULT_SHORTCUTS.splitClip;
 	}
 	return merged;
 }

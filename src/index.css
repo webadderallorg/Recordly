@@ -4,6 +4,21 @@
 @custom-variant dark (&:where(.dark, .dark *));
 @source "../index.html";
 
+/* Keep desktop scroll areas free of scrollbar chrome, including HeroUI portals
+   and popup menus. Preserve overflow so wheel, touch and keyboard scrolling work.
+   Important overrides component scrollbar utilities and inline stable gutters. */
+:root,
+* {
+	scrollbar-width: none !important;
+	scrollbar-gutter: auto !important;
+}
+
+*::-webkit-scrollbar {
+	display: none !important;
+	width: 0 !important;
+	height: 0 !important;
+}
+
 /* DM Sans is bundled for consistent typography and offline desktop use. */
 @font-face {
 	font-family: "DM Sans";
@@ -106,6 +121,20 @@
 	}
 }
 
+/* Reusable display heading for Cloud, sign-in, and onboarding screens. */
+.heading-display {
+	font-size: 33px;
+	font-weight: 500;
+	line-height: 40px;
+	letter-spacing: -1.1px;
+}
+
+.modal__heading:not(.heading-display) {
+	font-size: var(--text-lg);
+	font-weight: 600;
+	line-height: var(--text-lg--line-height);
+}
+
 /* Responsive geometry belongs to the editor, leaving HeroUI control styles intact. */
 .editor-header-start,
 .editor-header-end {
@@ -136,38 +165,67 @@
 	}
 }
 
-/* HeroUI owns control focus rings; native controls use the same accent token.
-   Do not outline dialogs or other programmatically focused containers. */
 :root,
 .dark {
  --focus: var(--accent);
 }
-:focus-visible:not([data-rac]):not([role="dialog"]):not([role="alertdialog"]):not([tabindex="-1"]) {
- outline: 2px solid var(--focus);
- outline-offset: 2px;
+
+/* Disable Chromium's rectangular focus outline for every input modality.
+   Component selection borders and field treatments keep their own styling. */
+:focus,
+:focus-visible {
+ outline: none;
+}
+
+/* Fields use a defined border and a quiet halo, leaving button keyboard rings
+   and HeroUI's invalid/disabled field treatments intact. */
+:is(.input, .textarea, .input-group):not([data-invalid="true"]):not([aria-invalid="true"]):not([data-disabled="true"]):not(:disabled):is(:focus, [data-focused="true"]),
+.input-group:not([data-invalid="true"]):not([aria-invalid="true"]):not([data-disabled="true"]):has(.input-group__input:focus),
+.share-link-field:has(> input:focus) {
+ border-color: color-mix(in oklab, var(--accent) 65%, var(--field-border));
+ box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 12%, transparent);
+ outline: none;
+}
+
+/* Only the text field owns the group halo; tabbing to Copy focuses that button. */
+.share-link-field > input,
+.share-link-field > input:focus-visible {
+ outline: none;
+ box-shadow: none;
+}
+.share-link-field > input:not(:focus) {
+ text-overflow: ellipsis;
+}
+
+@media (forced-colors: active) {
+ :is(.input, .textarea):focus,
+ .input-group:has(.input-group__input:focus),
+ .share-link-field:has(> input:focus) {
+  outline: 2px solid Highlight;
+  outline-offset: 2px;
+ }
 }
 ::selection {
- background: var(--accent-soft);
- color: var(--foreground);
+ background: var(--accent);
+ color: var(--accent-foreground);
 }
 
 @container (max-width: 110px) {
 	.zoom-icon,
-	.zoom-mode {
+	.zoom-mode,
+	.zoom-title {
 		display: none;
 	}
-}
-@container (min-height: 40px) and (min-width: 110px) {
-	.zoom-mode {
-		display: block;
-		margin-left: 0;
-		font-size: 10px;
-		text-align: center;
+	.zoom-details {
+		font-size: 11px;
 	}
 }
 @container (max-height: 39px) {
-	.zoom-mode {
-		margin-left: 4px;
+	.zoom-title {
+		display: none;
+	}
+	.zoom-details {
+		font-size: 11px;
 	}
 }
 
@@ -193,6 +251,8 @@
 }
 
 .inline-project-name {
+ field-sizing: content;
+ min-width: 1ch;
  background: transparent;
  border: 0;
  border-radius: 0;
@@ -201,14 +261,46 @@
  padding: 0;
  color: inherit;
 }
-.inline-project-name:focus { outline: none; box-shadow: none; }
-.inline-project-name:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.inline-project-name:focus {
+ background: transparent;
+ box-shadow: none;
+}
+.inline-project-name:focus-visible { outline: none; }
 
-.dashboard-shell {
- background-color: color-mix(in srgb, var(--background) 92%, var(--foreground) 8%);
+@media (forced-colors: active) {
+ .inline-project-name:focus { outline: 2px solid Highlight; outline-offset: 2px; }
 }
 
-.dark .dashboard-shell { background-color: var(--background); }
-.dark .dashboard-shell > .card { background-color: color-mix(in srgb, var(--background) 92%, var(--foreground) 8%); }
+.dashboard-shell {
+ background-color: var(--background);
+}
+
+.app-frame-overlay {
+	background: transparent;
+	backdrop-filter: none;
+}
+.app-frame-container[data-entering="true"] {
+	animation: app-frame-enter 120ms ease-out;
+}
+.app-frame-container[data-exiting="true"] {
+	animation: app-frame-enter 90ms ease-in reverse;
+}
+@keyframes app-frame-enter {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+/* Home replaces the page. Fading either modal layer exposes the editor below. */
+.dashboard-page-overlay[data-entering="true"],
+.dashboard-page-overlay[data-exiting="true"],
+.dashboard-page-container[data-entering="true"],
+.dashboard-page-container[data-exiting="true"] {
+	animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+	.app-frame-container[data-entering="true"],
+	.app-frame-container[data-exiting="true"] {
+		animation: none;
+	}
+}
 
 .dashboard-settings .custom-scrollbar { padding-inline: 0; scrollbar-gutter: auto !important; }

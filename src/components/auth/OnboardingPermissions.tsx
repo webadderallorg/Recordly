@@ -1,214 +1,267 @@
-import { useCallback, useEffect, useState } from "react";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { Button } from "@heroui/react";
-import { ArrowLeft, ArrowRight, Check, Cursor, Monitor } from "@phosphor-icons/react";
-import { OnboardingBody, OnboardingFooter, OnboardingHeader } from "./OnboardingLayout";
+import { ArrowLeft, Check } from "@phosphor-icons/react";
+import { motion, useReducedMotion } from "motion/react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useScopedT } from "@/contexts/I18nContext";
+import {
+	OnboardingBody,
+	OnboardingFooter,
+	OnboardingHeader,
+	OnboardingPrimaryAction,
+	OnboardingTitle,
+} from "./OnboardingLayout";
 import { PermissionsConfetti } from "./PermissionsConfetti";
 
 export function OnboardingPermissions({
 	onBack,
 	onFinish,
+	preview = false,
+	showFooter = true,
+	onReadyChange,
 }: {
-	onBack: () => void;
+	onBack?: () => void;
 	onFinish: () => void;
+	preview?: boolean;
+	showFooter?: boolean;
+	onReadyChange?: (ready: boolean) => void;
 }) {
+	const t = useScopedT("onboarding");
+	const reduceMotion = useReducedMotion();
 	const [platform, setPlatform] = useState<"checking" | "mac" | "other">("checking");
 	const [screenGranted, setScreenGranted] = useState(false);
 	const [accessibilityGranted, setAccessibilityGranted] = useState(false);
+	const [simulatedMissing, setSimulatedMissing] = useState({ screen: false, accessibility: false });
 	const [busy, setBusy] = useState<string>();
 	const [error, setError] = useState<string>();
+	const mounted = useRef(false);
+	const refreshing = useRef(false);
+	const canSimulate = import.meta.env.DEV && preview;
+	// Preview resets only the displayed state; macOS remains the source of actual grants.
+	const granted = {
+		screen: screenGranted && !(canSimulate && simulatedMissing.screen),
+		accessibility: accessibilityGranted && !(canSimulate && simulatedMissing.accessibility),
+	};
+	const canFinish = !error && platform !== "checking" &&
+		(platform !== "mac" || (granted.screen && granted.accessibility && !busy));
+	useLayoutEffect(() => {
+		onReadyChange?.(canFinish);
+	}, [canFinish, onReadyChange]);
 	const refresh = useCallback(async () => {
-		const [screen, accessibility] = await Promise.all([
-			window.electronAPI.getScreenRecordingPermissionStatus(),
-			window.electronAPI.getAccessibilityPermissionStatus(),
-		]);
-		if (!screen.success || !accessibility.success)
-			throw new Error("Could not check permissions. Try again.");
-		setScreenGranted(screen.status === "granted");
-		setAccessibilityGranted(accessibility.trusted);
-		setError(undefined);
-		return screen.status === "granted" && accessibility.trusted;
-	}, []);
+		if (refreshing.current) return;
+		refreshing.current = true;
+		try {
+			const [screen, accessibility] = await Promise.all([
+				window.electronAPI.getScreenRecordingPermissionStatus(),
+				window.electronAPI.getAccessibilityPermissionStatus(),
+			]);
+			if (!mounted.current) return;
+			if (!screen?.success || !accessibility?.success) throw new Error(t("checkFailed"));
+			setScreenGranted(screen.status === "granted");
+			setAccessibilityGranted(accessibility.trusted);
+			setError(undefined);
+		} finally {
+			refreshing.current = false;
+		}
+	}, [t]);
 
 	useEffect(() => {
+		mounted.current = true;
 		let disposed = false;
 		void (async () => {
 			try {
 				const mac = (await window.electronAPI.getPlatform()) === "darwin";
+				if (disposed) return;
 				if (mac) await refresh();
 				if (!disposed) setPlatform(mac ? "mac" : "other");
-			} catch (error) {
+			} catch {
 				if (!disposed) {
-					setError(String(error));
+					setError(t("checkFailed"));
 					setPlatform("mac");
 				}
 			}
 		})();
 		return () => {
+			mounted.current = false;
 			disposed = true;
 		};
-	}, [refresh]);
+	}, [refresh, t]);
 
 	useEffect(() => {
 		if (platform !== "mac") return;
 		const check = () => {
-			void refresh().catch((error) => setError(String(error)));
+			void refresh().catch(() => {
+				if (mounted.current) setError(t("checkFailed"));
+			});
 		};
 		const visible = () => {
 			if (document.visibilityState === "visible") check();
 		};
 		window.addEventListener("focus", check);
 		document.addEventListener("visibilitychange", visible);
+		const timer = window.setInterval(check, 3000);
 		return () => {
+			window.clearInterval(timer);
 			window.removeEventListener("focus", check);
 			document.removeEventListener("visibilitychange", visible);
 		};
-	}, [platform, refresh]);
+	}, [platform, refresh, t]);
 	const allow = async (permission: "screen" | "accessibility") => {
 		if (busy) return;
+		const testSetup = canSimulate && simulatedMissing[permission];
 		setBusy(permission);
 		try {
-			if (permission === "accessibility") {
+			if (testSetup) {
+				const opened = await (permission === "screen"
+					? window.electronAPI.openScreenRecordingPreferences(true)
+					: window.electronAPI.openAccessibilityPreferences(true));
+				if (!opened.success) throw new Error(t("openSettingsFailed"));
+			} else if (permission === "accessibility") {
 				const result = await window.electronAPI.requestAccessibilityPermission();
-				if (!result.success)
-					throw new Error(result.error || "Could not request Accessibility access.");
+				if (!result.success) throw new Error(t("accessibilityFailed"));
 				if (!result.trusted) {
 					const opened = await window.electronAPI.openAccessibilityPreferences();
-					if (!opened.success)
-						throw new Error(opened.error || "Could not open System Settings.");
+					if (!opened.success) throw new Error(t("openSettingsFailed"));
 				}
 			} else {
 				const result = await window.electronAPI.openScreenRecordingPreferences();
-				if (!result.success)
-					throw new Error(result.error || "Could not open System Settings.");
+				if (!result.success) throw new Error(t("openSettingsFailed"));
 			}
 			await refresh();
-		} catch (error) {
-			setError(error instanceof Error ? error.message : String(error));
+			if (testSetup) setSimulatedMissing((current) => ({ ...current, [permission]: false }));
+		} catch {
+			setError(t("permissionFailed"));
 		} finally {
 			setBusy(undefined);
 		}
 	};
 
 	return (
-		<div className="onboarding-permissions relative flex min-h-0 flex-col">
+		<div
+			className="onboarding-permissions relative flex h-full min-h-0 flex-col"
+			aria-busy={platform === "checking"}
+		>
 			<PermissionsConfetti
-				ready={platform === "mac" && screenGranted && accessibilityGranted && !error}
+				ready={platform === "mac" && granted.screen && granted.accessibility && !error}
 			/>
-			<OnboardingBody scrollable={false}>
-				{platform === "checking" ? (
-					<p role="status" className="py-12 text-center text-sm text-muted">
-						Checking permissions…
-					</p>
-				) : (
+			<OnboardingBody>
+				<OnboardingHeader
+					centered
+					title={<OnboardingTitle text={t("allowTitle")} />}
+					description={platform === "other" ? t("otherDescription") : undefined}
+				/>
+				{canSimulate && platform !== "other" && (
+					<div
+						className="flex flex-wrap items-center gap-2 text-xs text-muted"
+						data-permission-preview-controls
+					>
+						<Button
+							variant="secondary"
+							size="sm"
+							isDisabled={platform === "checking" || Boolean(busy)}
+							onPress={() => {
+								setSimulatedMissing({ screen: true, accessibility: true });
+								setError(undefined);
+							}}
+						>
+							{t("simulatePermissions", "Simulate permissions")}
+						</Button>
+					</div>
+				)}
+				{platform !== "other" && (
 					<>
-						<OnboardingHeader
-							title="Allow Recordly to record"
-							description={
-								platform === "mac"
-									? "Enable these permissions in macOS System Settings."
-									: "Your screen is captured only when you start a recording. Microphone and camera access are requested when you use them."
-							}
-						/>
-						{platform === "mac" && (
-							<>
-								<div className="space-y-3">
-									{[
-										{
-											key: "screen" as const,
-											name: "Screen Recording",
-											description:
-												"Capture a screen, window or selected area.",
-											granted: screenGranted,
-											icon: Monitor,
-										},
-										{
-											key: "accessibility" as const,
-											name: "Accessibility",
-											description: "Track your cursor and highlight clicks.",
-											granted: accessibilityGranted,
-											icon: Cursor,
-										},
-									].map(({ key, name, description, granted, icon: Icon }) => (
-										<div
-											key={key}
-											className="onboarding-permission-row flex items-center gap-3 rounded-2xl border border-separator p-4"
-										>
-											<div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-surface-secondary text-accent">
-												<Icon size={22} aria-hidden="true" />
-											</div>
-											<div className="min-w-0 flex-1">
-												<h3 className="text-sm font-semibold">{name}</h3>
-												<p className="mt-1 text-xs leading-relaxed text-muted">
-													{description}
-												</p>
-											</div>
-											{granted ? (
-												<span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-success">
-													<Check size={16} aria-hidden="true" />
-													Allowed
-												</span>
-											) : (
-												<Button
-													variant="secondary"
-													className="h-11 shrink-0 rounded-xl"
-													isDisabled={Boolean(busy)}
-													onPress={() => void allow(key)}
-													aria-label={`Allow ${name}`}
-												>
-													{busy === key ? "Opening…" : "Allow"}
-												</Button>
-											)}
-										</div>
-									))}
-								</div>
-								<div className="onboarding-permission-help flex items-center gap-3">
-									<p className="flex-1 text-xs leading-relaxed text-muted">
-										{screenGranted && accessibilityGranted
-											? "Your screen is captured only when you start recording. Microphone and camera access are requested when you use them."
-											: "Return after enabling access. macOS may require restarting Recordly."}
-									</p>
-									{(!screenGranted || !accessibilityGranted) && (
-										<Button
-											variant="ghost"
-											size="sm"
-											className="shrink-0"
-											isDisabled={Boolean(busy)}
-											onPress={() =>
-												void refresh().catch((error) =>
-													setError(String(error)),
-												)
-											}
-										>
-											Check again
-										</Button>
-									)}
-								</div>
-								{error && (
-									<p role="alert" className="text-sm text-danger">
-										{error}
-									</p>
-								)}
-							</>
+						<div className="onboarding-permission-list">
+							{[
+								{
+									key: "screen" as const,
+									name: t("screen"),
+									description: t("screenDescription"),
+									granted: granted.screen,
+								},
+								{
+									key: "accessibility" as const,
+									name: t("accessibility"),
+									description: t("accessibilityDescription"),
+									granted: granted.accessibility,
+								},
+							].map(({ key, name, description, granted }, index) => (
+								<motion.div
+									key={key}
+									initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+									animate={{ opacity: 1, y: 0 }}
+									transition={{
+										duration: reduceMotion ? 0 : 0.3,
+										delay: reduceMotion ? 0 : 0.1 + index * 0.07,
+										ease: [0.22, 1, 0.36, 1],
+									}}
+									className="onboarding-permission-row"
+								>
+									<div className="min-w-0">
+										<h3 className="text-base font-semibold">{name}</h3>
+										<p className="mt-1.5 text-sm leading-relaxed text-muted">
+											{description}
+										</p>
+									</div>
+									<div className="onboarding-permission-action">
+										{granted ? (
+											<span
+												role="status"
+												aria-live="polite"
+												aria-label={`${name}: ${t("allowed")}`}
+												className="onboarding-permission-granted text-success"
+											>
+												<Check size={22} aria-hidden="true" />
+												{t("allowed")}
+											</span>
+										) : (
+											<Button
+												variant="secondary"
+												className="onboarding-permission-button w-full rounded-xl text-accent"
+												isDisabled={
+													platform === "checking" || Boolean(busy)
+												}
+												onPress={() => void allow(key)}
+												aria-label={t("allowPermission", undefined, {
+													permission: name,
+												})}
+											>
+												{platform === "checking"
+													? t("checking")
+													: busy === key
+														? t("opening")
+														: t("allowPermission", undefined, {
+																permission: name,
+															})}
+											</Button>
+										)}
+									</div>
+								</motion.div>
+							))}
+						</div>
+						{error && (
+							<p role="alert" className="text-sm text-danger">
+								{error} <ErrorReportButton error={error} />
+							</p>
 						)}
 					</>
 				)}
 			</OnboardingBody>
-			<OnboardingFooter>
-				<Button variant="ghost" aria-label="Back to account" onPress={onBack}>
-					<ArrowLeft size={16} />
-					Back
-				</Button>
-				<Button
-					isDisabled={
-						platform === "checking" ||
-						(platform === "mac" &&
-							(!screenGranted || !accessibilityGranted || Boolean(busy)))
-					}
+			{showFooter && <OnboardingFooter>
+				{onBack ? (
+					<Button variant="ghost" aria-label={t("backToAccount")} onPress={onBack}>
+						<ArrowLeft size={16} />
+						{t("back")}
+					</Button>
+				) : (
+					<div />
+				)}
+				<OnboardingPrimaryAction
+					isDisabled={!canFinish}
 					onPress={onFinish}
 				>
-					Start recording <ArrowRight size={16} />
-				</Button>
-			</OnboardingFooter>
+					{t("startRecording")}
+				</OnboardingPrimaryAction>
+			</OnboardingFooter>}
 		</div>
 	);
 }

@@ -1,0 +1,296 @@
+.split-upgrade-backdrop {
+	background: #08080d99;
+	backdrop-filter: blur(10px);
+}
+
+.split-upgrade-modal {
+	width: min(600px, calc(100vw - 48px));
+	max-width: none;
+	max-height: calc(100dvh - 48px);
+	padding: 0;
+	border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+	border-radius: 24px;
+	background: var(--surface);
+	color: var(--foreground);
+	box-shadow:
+		0 32px 100px #0004,
+		0 1px 0 #ffffff18 inset;
+	overflow: hidden;
+	font-family: var(--app-font-sans, "DM Sans", sans-serif);
+}
+
+.split-upgrade-close {
+	position: absolute;
+	inset: 16px 16px auto auto;
+	z-index: 3;
+	width: 30px;
+	height: 30px;
+	min-width: 30px;
+	border: 0;
+	border-radius: 50%;
+	background: var(--surface);
+	color: var(--foreground);
+	box-shadow: 0 2px 12px #0002;
+}
+
+.split-upgrade-close:hover {
+	background: color-mix(in srgb, var(--foreground) 12%, var(--surface));
+	color: var(--foreground);
+}
+
+.split-upgrade-body {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	margin: 0;
+	padding: 0;
+	min-height: 0;
+	color: var(--foreground);
+	overflow-y: auto;
+}
+
+.split-upgrade-copy {
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+	min-width: 0;
+	padding: 24px;
+}
+
+.split-upgrade-details {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 24px;
+	align-items: center;
+}
+
+.split-upgrade-header .recordly-signin-hero {
+	text-wrap: balance;
+}
+
+.split-upgrade-benefits h3 {
+	margin-bottom: 18px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--muted);
+}
+
+.split-upgrade-benefits ul {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 10px;
+}
+
+.split-upgrade-benefits li {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	font-size: 12px;
+	line-height: 1.5;
+	color: color-mix(in srgb, var(--foreground) 85%, var(--surface));
+}
+
+.split-upgrade-check {
+	display: grid;
+	place-items: center;
+	flex: 0 0 17px;
+	height: 17px;
+	margin-top: 1px;
+	border-radius: 50%;
+	background: var(--accent);
+	color: var(--accent-foreground);
+}
+
+.split-upgrade-heart {
+	display: grid;
+	place-items: center;
+	flex: 0 0 17px;
+	height: 17px;
+	margin-top: 1px;
+	font-size: 16px;
+	line-height: 1;
+}
+
+.split-upgrade-purchase {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-top: 0;
+}
+
+.split-upgrade-plans {
+	gap: 0;
+}
+
+.split-upgrade-plan {
+	min-height: 82px;
+	padding: 15px 16px;
+	border: 1px solid var(--separator);
+	border-radius: 14px;
+	background: color-mix(in srgb, var(--foreground) 2%, var(--surface));
+	box-shadow: none;
+}
+
+.split-upgrade-plan[data-selected="true"] {
+	border-color: color-mix(in srgb, var(--accent) 40%, var(--separator));
+	background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+.split-upgrade-plan .radio__content {
+	display: flex;
+	flex: 1;
+	width: 100%;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.split-upgrade-plan-name {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.split-upgrade-plan-name .label {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--foreground);
+}
+
+.split-upgrade-plan-name > span {
+	color: var(--muted);
+	font-size: 11px;
+	line-height: 1.4;
+}
+
+.split-upgrade-plan .pricing-price-offer {
+	text-align: end;
+}
+
+.split-upgrade-plan .pricing-price {
+	font-size: 27px;
+	font-weight: 650;
+	letter-spacing: -0.8px;
+	line-height: 1.2;
+	white-space: nowrap;
+}
+
+.split-upgrade-plan .pricing-price span {
+	font-size: 11px;
+	font-weight: 400;
+	letter-spacing: 0;
+	color: var(--muted);
+}
+
+.split-upgrade-plan .pricing-regular-price {
+	justify-content: flex-end;
+	gap: 6px;
+	margin-bottom: 4px;
+}
+
+.split-upgrade-plan .pricing-regular-price del {
+	font-size: 11px;
+	color: var(--muted);
+}
+
+.split-upgrade-plan .pricing-price-banner {
+	margin: 0;
+	padding: 2px 6px;
+	border-radius: 5px;
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 1.3;
+	background: var(--success-soft);
+	color: var(--success-soft-foreground);
+}
+
+.split-upgrade-actions {
+	display: grid;
+	grid-template-columns: 1fr;
+}
+
+.split-upgrade-actions > button {
+	width: 100%;
+	min-height: 46px;
+}
+
+.split-upgrade-purchase .pricing-payment-methods {
+	padding: 0;
+}
+
+.split-upgrade-purchase .pricing-error,
+.split-upgrade-purchase .pricing-feedback {
+	margin: 0;
+	font-size: 12px;
+}
+
+.split-upgrade-body > .onboarding-layout {
+	height: auto;
+	flex: 0 0 auto;
+}
+
+/* Use the sign-in shell's fade, ambience and overlap; only size its slots. */
+.split-upgrade-body .onboarding-artwork {
+	flex: 0 0 clamp(180px, 35dvh, 320px);
+}
+
+.split-upgrade-body .onboarding-layout[data-onboarding-stage] .onboarding-stage-content {
+	flex: 0 0 auto;
+}
+
+@media (min-width: 601px) and (max-height: 740px) {
+	.split-upgrade-copy {
+		gap: 20px;
+		padding: 24px;
+	}
+	.split-upgrade-benefits ul {
+		gap: 8px;
+	}
+	.split-upgrade-benefits li {
+		font-size: 12px;
+		line-height: 1.4;
+	}
+	.split-upgrade-purchase {
+		gap: 8px;
+	}
+	.split-upgrade-plan {
+		min-height: 70px;
+		padding-block: 10px;
+	}
+}
+
+@media (max-width: 600px) {
+	.split-upgrade-modal {
+		width: min(480px, calc(100vw - 24px));
+		max-height: calc(100dvh - 24px);
+		border-radius: 24px;
+	}
+	.split-upgrade-copy {
+		gap: 24px;
+		padding: 26px;
+	}
+	.split-upgrade-details {
+		grid-template-columns: 1fr;
+		gap: 24px;
+	}
+	.split-upgrade-benefits ul {
+		grid-template-columns: 1fr;
+		gap: 11px;
+	}
+	.split-upgrade-plan {
+		padding-inline: 12px;
+	}
+}
+
+@media (max-width: 360px) {
+	.split-upgrade-copy {
+		padding-inline: 20px;
+	}
+	.split-upgrade-plan .radio__content {
+		flex-wrap: wrap;
+	}
+	.split-upgrade-plan .pricing-price-offer {
+		flex: 1 0 100%;
+	}
+}

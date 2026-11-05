@@ -3,7 +3,6 @@ import {
   Button,
   Card,
   Chip,
-  Input,
   Label,
   Spinner,
   Tabs,
@@ -14,12 +13,13 @@ import {
 import {
   ChatCircleIcon,
   ClockIcon,
-  LinkSimpleIcon,
   PaperPlaneTiltIcon,
 } from '@phosphor-icons/react';
-import { useEffect, useState, type Dispatch, type SetStateAction, type RefObject } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction, type RefObject } from 'react';
 import {
   fetchComments,
+  CommentSignInError,
+  type CommentAccountState,
   formatDate,
   formatTimestamp,
   postComment,
@@ -27,8 +27,10 @@ import {
   type ShareData,
 } from '../scripts/api';
 import { timestampParts } from '../scripts/shareModel';
-import { copyLink, Notice } from './ShareUI';
+import { Notice } from './ShareUI';
 import PagedPanel from './PagedPanel';
+import CommentAccount from './CommentAccount';
+import OwnCommentActions from './OwnCommentActions';
 
 interface Props {
   data: ShareData;
@@ -53,7 +55,17 @@ export default function ShareFeedback({
   selectedTab,
   setSelectedTab,
 }: Props) {
-  const [name, setName] = useState('');
+  const [account, setAccount] = useState<CommentAccountState | null>(null);
+  const accountRef = useRef(account);
+  accountRef.current = account;
+  const [ownershipKey, setOwnershipKey] = useState<string>();
+  const ownershipKeyRef = useRef(ownershipKey);
+  ownershipKeyRef.current = ownershipKey;
+  const [reload, setReload] = useState(0);
+  const mutationVersion = useRef(0);
+  const [reauthenticate, setReauthenticate] = useState(0);
+  const draftKey = `recordly-comment-draft:${data.shareCode}`;
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const [text, setText] = useState('');
   const [lockedTime, setLockedTime] = useState<number | null>(null);
   const [posting, setPosting] = useState(false);
@@ -68,15 +80,18 @@ export default function ShareFeedback({
   );
 
   useEffect(() => {
-    try {
-      setName(localStorage.getItem('recordly-comment-name') || '');
-    } catch {
-      /* Storage can be disabled. */
-    }
     let cancelled = false;
-    fetchComments(data.shareCode)
+    const requestVersion = mutationVersion.current;
+    const viewer = accountRef.current;
+    setOwnershipKey(undefined);
+    setLoading(true);
+    setPage(1);
+    Promise.resolve(viewer?.getAccessToken())
+      .then((token) => fetchComments(data.shareCode, 1, 50, token))
       .then((result) => {
         if (cancelled) return;
+        if (requestVersion !== mutationVersion.current) { setReload((current) => current + 1); return; }
+        setOwnershipKey(viewer?.key);
         setComments([...result.comments].sort((a, b) => a.timestamp - b.timestamp));
         setTotal(result.total);
         setLoading(false);
@@ -90,12 +105,35 @@ export default function ShareFeedback({
     return () => {
       cancelled = true;
     };
-  }, [data.shareCode, setComments]);
+  }, [data.shareCode, account?.key, reload, setComments]);
+
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(draftKey);
+      if (saved) {
+        const draft = JSON.parse(saved);
+        if (typeof draft.text === 'string' && draft.text.length <= 2000 && Number.isFinite(draft.time) && draft.time >= 0) {
+          setText(draft.text); setLockedTime(draft.time);
+        }
+      }
+    } catch { /* The composer remains usable without storage. */ }
+    setDraftLoaded(true);
+  }, [draftKey]);
+  useEffect(() => {
+    if (!draftLoaded) return;
+    try {
+      if (text) sessionStorage.setItem(draftKey, JSON.stringify({ text, time: lockedTime ?? time }));
+      else sessionStorage.removeItem(draftKey);
+    } catch { /* Keep the in-memory draft when storage is unavailable. */ }
+  }, [draftLoaded, draftKey, text, lockedTime, time]);
 
   async function loadMore() {
     setMoreLoading(true);
     try {
-      const result = await fetchComments(data.shareCode, page + 1);
+      const viewer = accountRef.current;
+      const version = mutationVersion.current;
+      const result = await fetchComments(data.shareCode, page + 1, 50, await viewer?.getAccessToken());
+      if (viewer?.key !== accountRef.current?.key || version !== mutationVersion.current) return;
       setComments((current) => [...new Map([...current, ...result.comments].map((comment) => [comment.id, comment])).values()].sort((a, b) => a.timestamp - b.timestamp || a.id - b.id));
       setTotal(result.total);
       setPage(page + 1);
@@ -107,35 +145,37 @@ export default function ShareFeedback({
   }
 
   async function submit() {
-    if (posting || !name.trim() || !text.trim()) return;
+    if (data.video.feedback_enabled === false || posting || !account || account.needsDisplayName || !text.trim()) return;
     const timestamp = lockedTime ?? time;
+    const viewer = account;
     setPosting(true);
     setError('');
     try {
-      const id = await postComment(data.shareCode, timestamp, name.trim(), text.trim());
+      const result = await postComment(data.shareCode, timestamp, text.trim(), await viewer.getAccessToken());
+      if (accountRef.current?.key !== viewer.key) return;
+      mutationVersion.current++;
+      const inheritOwnership = ownershipKeyRef.current === viewer.key;
+      setOwnershipKey(viewer.key);
       setComments((current) =>
         [
-          ...current,
+          ...(inheritOwnership ? current : current.map((comment) => ({ ...comment, can_manage: false }))),
           {
-            id,
+            id: result.id,
+            can_manage: true,
             timestamp,
-            author_name: name.trim(),
+            author_name: result.author_name,
             text: text.trim(),
             created_at: new Date().toISOString().slice(0, 19),
           },
         ].sort((a, b) => a.timestamp - b.timestamp),
       );
-      setTotal(total + 1);
+      setTotal((current) => current + 1);
       setText('');
       setLockedTime(null);
-      try {
-        localStorage.setItem('recordly-comment-name', name.trim());
-      } catch {
-        /* Posting does not require storage. */
-      }
       toast.success(`Comment posted at ${formatTimestamp(timestamp)}`);
-    } catch {
-      setError('Could not post your comment. Your draft is saved here—please try again.');
+    } catch (cause) {
+      if (cause instanceof CommentSignInError) setReauthenticate((current) => current + 1);
+      setError(cause instanceof Error ? cause.message : 'Could not post your comment. Your draft is saved here—please try again.');
     } finally {
       setPosting(false);
     }
@@ -159,18 +199,6 @@ export default function ShareFeedback({
               )}
               <Tabs.Indicator />
             </Tabs.Tab>
-            {data.segments.length > 0 && (
-              <Tabs.Tab id="transcript">
-                Transcript
-                <Tabs.Indicator />
-              </Tabs.Tab>
-            )}
-            {(data.video.summary || data.chapters.length > 0) && (
-              <Tabs.Tab id="details">
-                Details
-                <Tabs.Indicator />
-              </Tabs.Tab>
-            )}
           </Tabs.List>
         </Tabs.ListContainer>
         <Tabs.Panel id="comments">
@@ -182,8 +210,8 @@ export default function ShareFeedback({
             ) : !comments.length ? (
               <div className="empty-feedback">
                 <ChatCircleIcon size={28} />
-                <h2>Start the conversation</h2>
-                <p>Leave feedback at the exact moment you’re watching.</p>
+                <h2>{data.video.feedback_enabled === false ? "No comments yet" : "Start the conversation"}</h2>
+                <p>{data.video.feedback_enabled === false ? "The creator has turned off new comments." : "Leave feedback at the exact moment you’re watching."}</p>
               </div>
             ) : (
               comments.map((comment, i) => (
@@ -226,6 +254,25 @@ export default function ShareFeedback({
                     )}
                   </p>
                   <span className="comment-date">{formatDate(comment.created_at)}</span>
+                  {account && ownershipKey === account.key && comment.can_manage && <OwnCommentActions
+                    key={`${comment.id}:${account.key}`}
+                    comment={comment}
+                    shareCode={data.shareCode}
+                    account={account}
+                    canEdit={data.video.feedback_enabled !== false}
+                    onUpdated={(text) => {
+                      mutationVersion.current++;
+                      setComments((current) => current.map((item) => item.id === comment.id ? { ...item, text } : item));
+                    }}
+                    onDeleted={() => {
+                      mutationVersion.current++;
+                      setComments((current) => current.filter((item) => item.id !== comment.id));
+                      setTotal((current) => Math.max(0, current - 1));
+                      // Deletion shifts API offsets; refill the first page before loading more.
+                      setReload((current) => current + 1);
+                    }}
+                    onReauthenticate={() => setReauthenticate((current) => current + 1)}
+                  />}
                 </article>
               ))
             )}
@@ -241,91 +288,23 @@ export default function ShareFeedback({
             )}
           </PagedPanel>
         </Tabs.Panel>
-        {data.segments.length > 0 && (
-          <Tabs.Panel id="transcript">
-            <PagedPanel label="Transcript">
-              {data.segments.map((segment, i) => (
-                <article
-                  key={i}
-                  className="transcript-item"
-                  data-active={time >= segment.start_time && time < segment.end_time}
-                >
-                  <div className="transcript-heading">
-                    <Button size="sm" variant="ghost" onPress={() => seek(segment.start_time)}>
-                      <span className="timestamp">{formatTimestamp(segment.start_time)}</span>
-                    </Button>
-                    {segment.speaker && <span>{segment.speaker}</span>}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      isIconOnly
-                      className="copy-timestamp"
-                      aria-label={`Copy link to ${formatTimestamp(segment.start_time)}`}
-                      onPress={() => void copyLink(segment.start_time)}
-                    >
-                      <LinkSimpleIcon size={15} />
-                    </Button>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    className="transcript-seek"
-                    onPress={() => seek(segment.start_time)}
-                  >
-                    {segment.text}
-                  </Button>
-                </article>
-              ))}
-            </PagedPanel>
-          </Tabs.Panel>
-        )}
-        {(data.video.summary || data.chapters.length > 0) && (
-          <Tabs.Panel id="details">
-            <PagedPanel label="Details">
-              <section className="recording-details">
-                <h2>Recording</h2>
-                <p>{data.video.title}</p>
-              </section>
-              {data.video.summary && (
-                <section className="recording-details">
-                  <h2>Summary</h2>
-                  <p>{data.video.summary}</p>
-                </section>
-              )}
-              {data.chapters.length > 0 && (
-                <section className="recording-details">
-                  <h2>Chapters</h2>
-                  <div className="chapter-list">
-                    {data.chapters.map((chapter, index) => (
-                      <Button
-                        key={index}
-                        size="sm"
-                        variant="ghost"
-                        onPress={() => seek(chapter.timestamp)}
-                      >
-                        <span className="timestamp">{formatTimestamp(chapter.timestamp)}</span>
-                        {chapter.title}
-                      </Button>
-                    ))}
-                  </div>
-                </section>
-              )}
-            </PagedPanel>
-          </Tabs.Panel>
-        )}
       </Tabs>
+      {data.video.feedback_enabled === false && <p className="p-4 text-sm text-muted">The creator has turned off new comments and reactions.</p>}
+      {error && <div className="p-4"><Notice>{error}</Notice></div>}
+      {<CommentAccount
+        canComment={data.video.feedback_enabled !== false}
+        onChange={setAccount}
+        reauthenticate={reauthenticate}
+        returnTo={() => `/s/${data.shareCode}?t=${Math.max(0, lockedTime ?? time)}`}
+      />}
       <form
         className="composer"
-        hidden={selectedTab !== 'comments'}
+        hidden={selectedTab !== 'comments' || data.video.feedback_enabled === false || !account || account.needsDisplayName}
         onSubmit={(e) => {
           e.preventDefault();
           void submit();
         }}
       >
-        {error && <Notice>{error}</Notice>}
-        <TextField name="author" value={name} onChange={setName} isRequired isDisabled={posting}>
-          <Label>Name</Label>
-          <Input maxLength={100} autoComplete="name" placeholder="Name" />
-        </TextField>
         <TextField
           name="comment"
           value={text}
@@ -364,7 +343,7 @@ export default function ShareFeedback({
             type="submit"
             size="sm"
             isPending={posting}
-            isDisabled={!name.trim() || !text.trim() || posting}
+            isDisabled={!account || !text.trim() || posting}
           >
             <PaperPlaneTiltIcon size={15} />
             {posting ? 'Posting…' : 'Post'}

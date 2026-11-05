@@ -1,0 +1,38 @@
+/* The baked lens map is neutral in the center and curves only at the rim. */
+.wallpaper-tile {
+	/* Match the map's 30px radius at 256 × 192, including when tiles resize. */
+	border-radius: 11.71875% / 15.625%;
+}
+
+.wallpaper-tile > img,
+.wallpaper-tile > video,
+.wallpaper-tile > .wallpaper-swatch {
+	filter: var(--wallpaper-glass-filter);
+}
+
+.wallpaper-add-surface {
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	background: var(--button-bg);
+	pointer-events: none;
+}
+
+.wallpaper-tile:hover > .wallpaper-add-surface {
+	background: var(--button-bg-hover);
+}
+
+.wallpaper-tile::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	border-radius: inherit;
+	pointer-events: none;
+	mask:
+		linear-gradient(#fff 0 0) content-box,
+		linear-gradient(#fff 0 0);
+	mask-composite: exclude;
+	padding: 1px;
+	background: rgb(255 255 255 / 26%);
+}

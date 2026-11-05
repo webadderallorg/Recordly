@@ -1,0 +1,36 @@
+/* Payment provider badges. */
+.pricing-payment-methods {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 12px;
+	width: 100%;
+	max-width: 540px;
+	margin: 0 auto;
+	padding: 20px 20px 0;
+}
+
+.pricing-payment-method {
+	position: relative;
+	width: 50px;
+	aspect-ratio: 16 / 10;
+	overflow: hidden;
+	border-radius: 100px;
+	background: #fff;
+}
+
+.pricing-payment-method::after {
+	position: absolute;
+	inset: 0;
+	border: 1px solid rgb(0 0 0 / 6%);
+	border-radius: inherit;
+	pointer-events: none;
+	content: "";
+}
+
+.pricing-payment-method img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}

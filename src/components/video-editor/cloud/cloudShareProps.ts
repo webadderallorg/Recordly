@@ -1,0 +1,20 @@
+export type Props = {
+	projectRevision?: string;
+	existingShareUrl?: string;
+	linkIsStale?: boolean;
+	onRegenerate?: () => void;
+	projectPath?: string | null;
+	filePath?: string;
+	projectTitle: string;
+	prepareFile?: () => Promise<string | undefined>;
+	preparationProgress?: number;
+	onCancelPrepare?: () => void;
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
+	hideTrigger?: boolean;
+	authToken?: string;
+	accountId?: string;
+	inline?: boolean;
+	onBusyChange?: (busy: boolean) => void;
+	onRequestSignIn?: () => void;
+};

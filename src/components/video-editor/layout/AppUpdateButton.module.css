@@ -1,0 +1,57 @@
+.trigger {
+	height: 36px;
+	flex-shrink: 0;
+	gap: 6px;
+	padding-inline: 12px;
+}
+.card {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	width: 360px;
+	font-size: 13px;
+}
+.message {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+	flex: 1;
+}
+.icon {
+	display: grid;
+	place-items: center;
+	flex-shrink: 0;
+	width: 32px;
+	height: 32px;
+	border-radius: 9px;
+	background: color-mix(in oklab, var(--accent) 10%, transparent);
+	color: var(--accent);
+}
+.ready {
+	background: color-mix(in oklab, var(--success) 10%, transparent);
+	color: var(--success);
+}
+.failed {
+	background: color-mix(in oklab, var(--danger) 10%, transparent);
+	color: var(--danger);
+}
+.copy {
+	min-width: 0;
+	flex: 1;
+}
+.title {
+	margin: 0;
+	font-weight: 500;
+}
+.progress {
+	max-width: 320px;
+	margin-top: 8px;
+}
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-left: auto;
+}

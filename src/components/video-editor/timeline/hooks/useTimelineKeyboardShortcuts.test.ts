@@ -135,3 +135,36 @@ it("keeps creation and select-all shortcuts scoped to the timeline", () => {
 	expect(params.handleAddZoom).not.toHaveBeenCalled();
 	expect(params.activateSelectAllZooms).not.toHaveBeenCalled();
 });
+
+describe.each([true, false])("split shortcut, macOS=%s", (isMac) => {
+	const modifiers = isMac ? { metaKey: true } : { ctrlKey: true };
+	it("splits on Cmd/Ctrl+B and consumes the browser shortcut", () => {
+		const { press, params } = setup({ isMac, isTimelineFocusedRef: { current: true } });
+		expect(press({ key: "b", ...modifiers }).preventDefault).toHaveBeenCalledOnce();
+		expect(params.handleSplitClip).toHaveBeenCalledOnce();
+	});
+	it("does not repeat splits or match bare B/C or extra modifiers", () => {
+		const { press, params } = setup({ isMac, isTimelineFocusedRef: { current: true } });
+		press({ key: "b", ...modifiers, repeat: true });
+		press({ key: "b" });
+		press({ key: "c" });
+		press({ key: "b", ...modifiers, shiftKey: true });
+		expect(params.handleSplitClip).not.toHaveBeenCalled();
+	});
+	it("leaves editable fields and unfocused timelines alone", () => {
+		const { press, params } = setup({ isMac, isTimelineFocusedRef: { current: true } });
+		for (const target of [
+			new Input(),
+			new Textarea(),
+			Object.assign(new Element(), { isContentEditable: true }),
+			Object.assign(new Element(), { inOverlay: true }),
+		]) {
+			const event = press({ key: "b", ...modifiers, target });
+			expect(event.preventDefault).not.toHaveBeenCalled();
+		}
+		expect(params.handleSplitClip).not.toHaveBeenCalled();
+		const unfocused = setup({ isMac });
+		unfocused.press({ key: "b", ...modifiers });
+		expect(unfocused.params.handleSplitClip).not.toHaveBeenCalled();
+	});
+});

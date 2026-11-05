@@ -15,8 +15,8 @@ import {
 	getVersionedAudioResourceUrl,
 	isAudioResourceLoadCurrent,
 } from "./audioResourceVersion";
+import { syncPreviewAudioTime } from "./previewAudioSeek";
 
-const SOURCE_AUDIO_PREVIEW_PLAYING_SEEK_DRIFT_SECONDS = 0.18;
 const SOURCE_AUDIO_PREVIEW_PAUSED_SEEK_DRIFT_SECONDS = 0.01;
 
 interface UseAudioPreviewSyncParams {
@@ -79,7 +79,13 @@ export function useAudioPreviewSync({
 	const sourceAudioContextRef = useRef<AudioContext | null>(null);
 	const sourceAudioMasterGainRef = useRef<GainNode | null>(null);
 	const sourceAudioResumePromiseRef = useRef<Promise<void> | null>(null);
-	const lastSourceAudioSyncTimeRef = useRef<number | null>(null);
+	const lastSourceAudioSyncTimeRef = useRef<{
+		sourceTime: number;
+		timelineTime: number;
+		playbackRate: number;
+		wallTime: number;
+		isPlaying: boolean;
+	} | null>(null);
 	const [sourceLoadVersion, setSourceLoadVersion] = useState(0);
 
 	const ensureSourceAudioContext = useCallback(() => {
@@ -351,9 +357,7 @@ export function useAudioPreviewSync({
 			if (isPlaying && isInRegion) {
 				enablePitchPreservingPlayback(audio);
 				const audioOffset = (currentTimeMs - startMs) / 1000;
-				if (Math.abs(audio.currentTime - audioOffset) > 0.2) {
-					audio.currentTime = audioOffset;
-				}
+				syncPreviewAudioTime(audio, audioOffset, 0.2);
 				const syncedPlaybackRate = getMediaSyncPlaybackRate({
 					basePlaybackRate: 1,
 					currentTime: audio.currentTime,
@@ -381,12 +385,21 @@ export function useAudioPreviewSync({
 		// A newly resolved source must pass the same playback checks as timeline updates.
 		void sourceLoadVersion;
 
-		const previousTimelineTime = lastSourceAudioSyncTimeRef.current;
+		const previousSync = lastSourceAudioSyncTimeRef.current;
+		const wallTime = performance.now() / 1000;
+		// A delayed render or a fast clip can advance source time by more than a
+		// quarter second without seeking. Compare the clocks, not a fixed step.
 		const timelineJumped =
-			previousTimelineTime === null || Math.abs(currentTime - previousTimelineTime) > 0.25;
-		const driftThreshold = isPlaying
-			? SOURCE_AUDIO_PREVIEW_PLAYING_SEEK_DRIFT_SECONDS
-			: SOURCE_AUDIO_PREVIEW_PAUSED_SEEK_DRIFT_SECONDS;
+			previousSync === null ||
+			!previousSync.isPlaying ||
+			Math.abs(
+				currentTime -
+					previousSync.sourceTime -
+					(timelineTime - previousSync.timelineTime) * previousSync.playbackRate,
+			) > 0.05 ||
+			Math.abs(
+				timelineTime - previousSync.timelineTime - (wallTime - previousSync.wallTime),
+			) > 0.12;
 		if (sourceAudioMasterGainRef.current) {
 			sourceAudioMasterGainRef.current.gain.value = isCurrentClipMuted
 				? 0
@@ -411,39 +424,25 @@ export function useAudioPreviewSync({
 
 			enablePitchPreservingPlayback(audio);
 			const audioDuration = resolvePreviewMediaDuration(audio.duration, duration);
-			const isMicCompanionTrack = /\.mic\./i.test(sourceAudioPath);
-			const rawStartDelaySeconds = estimateCompanionAudioStartDelaySeconds(
+			// Use the same recorded offset as export, including late microphones.
+			// The shared estimator already bounds guesses for legacy recordings.
+			const startDelaySeconds = estimateCompanionAudioStartDelaySeconds(
 				duration,
 				audioDuration,
 				sourceAudioFallbackStartDelayMsByPath[sourceAudioPath],
 			);
-			const maxPreviewStartDelaySeconds = isMicCompanionTrack ? 2 : 5;
-			const startDelaySeconds = isMicCompanionTrack
-				? 0
-				: Number.isFinite(duration) &&
-						(rawStartDelaySeconds >= Math.max(0, duration - 0.01) ||
-							rawStartDelaySeconds >
-								Math.max(maxPreviewStartDelaySeconds, duration * 0.9))
-					? 0
-					: rawStartDelaySeconds;
 			const beforeAudioStart = currentTime + 0.001 < startDelaySeconds;
 			const targetTime = clampMediaTimeToDuration(
 				currentTime - startDelaySeconds,
 				audioDuration,
 			);
 
-			const shouldSeek =
-				timelineJumped ||
-				(!isPlaying && Math.abs(audio.currentTime - targetTime) > driftThreshold) ||
-				(isPlaying && Math.abs(audio.currentTime - targetTime) > 0.9);
-			if (shouldSeek) {
-				try {
-					if (!audio.paused) audio.pause();
-					audio.currentTime = targetTime;
-				} catch {
-					// no-op
-				}
-			}
+			syncPreviewAudioTime(
+				audio,
+				targetTime,
+				!isPlaying || timelineJumped ? SOURCE_AUDIO_PREVIEW_PAUSED_SEEK_DRIFT_SECONDS : 0.9,
+				true,
+			);
 
 			// KISS for companion source tracks: fixed playback rate avoids audible flutter/stutter
 			// from continuous micro-corrections on system audio.
@@ -468,7 +467,13 @@ export function useAudioPreviewSync({
 			}
 		}
 
-		lastSourceAudioSyncTimeRef.current = currentTime;
+		lastSourceAudioSyncTimeRef.current = {
+			sourceTime: currentTime,
+			timelineTime,
+			playbackRate: sourcePlaybackRate,
+			wallTime,
+			isPlaying,
+		};
 		return () => {
 			cancelled = true;
 			for (const { audio, resume } of seekedListeners) {
@@ -478,6 +483,7 @@ export function useAudioPreviewSync({
 	}, [
 		sourceLoadVersion,
 		currentTime,
+		timelineTime,
 		duration,
 		sourcePlaybackRate,
 		getSourceTrackPreviewGain,

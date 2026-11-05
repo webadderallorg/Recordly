@@ -1,16 +1,21 @@
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { Card } from "@heroui/react";
+import { CloudUsageCard } from "@/components/billing/CloudUsageCard";
+import { useBilling } from "@/components/billing/BillingProvider";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { sidebarCardConfig } from "./sidebarCardConfig";
 
-export function SidebarCards() {
-	if (!sidebarCardConfig.enabled || sidebarCardConfig.cards.length === 0) return null;
+export function SidebarCards({ onSignIn }: { onSignIn?: () => void }) {
+	const { t: uiText } = useUiLocale();
+	const { user, status, usagePreview } = useBilling();
+	const showCloudUsage = user && (status?.billing.plan ?? usagePreview?.plan) === "free";
 	return (
-		<div
-			aria-label="Sidebar announcements"
-			className="mb-4 max-h-[35vh] space-y-3 overflow-y-auto"
-		>
-			{sidebarCardConfig.cards.map((card) => (
+		<div aria-label={uiText("ui.sidebarAnnouncements")} className="mb-4 shrink-0 space-y-3">
+			{showCloudUsage && (
+				<CloudUsageCard onSignIn={onSignIn} lowStorageOnly showUpgrade={false} />
+			)}
+			{(sidebarCardConfig.enabled ? sidebarCardConfig.cards : []).map((card) => (
 				<Card key={card.id} className="gap-3 overflow-hidden p-3 shadow-none">
 					{card.image && (
 						<img
@@ -47,13 +52,13 @@ export function SidebarCards() {
 										.then((result) => {
 											if (!result.success)
 												throw new Error(
-													result.error || "Could not open link",
+													result.error || uiText("ui.couldNotOpenLink"),
 												);
 										})
 										.catch((error) => toast.error(String(error)))
 								}
 							>
-								{card.linkLabel ?? "Learn more"}
+								{card.linkLabel ?? uiText("ui.learnMore")}
 							</Button>
 						</Card.Footer>
 					)}
