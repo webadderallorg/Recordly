@@ -1,0 +1,10 @@
+Phone updated for Recordly
+
+Your Recordly account phone number changed from {{ .OldPhone }} to {{ .Phone }}.
+
+If you didn't make this change, contact support immediately.
+
+This is a security notification for your Recordly account.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

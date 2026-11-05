@@ -139,7 +139,7 @@ describe("applyZoomTransform motion blur routing", () => {
 		expect(zoomBlurFilter.radius).toBe(-1);
 	});
 
-	it("keeps a zoom on the radial path even when its center moves farther than its size", () => {
+	it("keeps a fast pan directional despite a small scale change", () => {
 		const motionBlurState = createMotionBlurState();
 		const motionBlurFilter = {
 			velocity: { x: 0, y: 0 },
@@ -177,9 +177,8 @@ describe("applyZoomTransform motion blur routing", () => {
 			frameTimeMs: 1016,
 		});
 
-		expect(zoomBlurFilter.strength).toBeGreaterThan(0);
-		expect(Math.hypot(motionBlurFilter.velocity.x, motionBlurFilter.velocity.y)).toBe(0);
-		expect(zoomBlurFilter.innerRadius).toBe(0);
+		expect(zoomBlurFilter.strength).toBe(0);
+		expect(motionBlurFilter.velocity.x).toBeGreaterThan(0);
 	});
 });
 
@@ -212,5 +211,107 @@ describe("paused camera frame blur", () => {
 		applyZoomTransform({ ...params, motionSample: null });
 		expect(zoomBlurFilter.strength).toBe(0);
 		expect(motionBlurFilter.velocity.x).toBe(0);
+	});
+});
+
+describe("scene shutter timing matches webcam discontinuities", () => {
+	function createScene() {
+		const motionBlurFilter = { velocity: { x: 0, y: 0 }, kernelSize: 5, offset: 0 };
+		const zoomBlurFilter = { strength: 0, center: { x: 0, y: 0 }, innerRadius: 0, radius: -1 };
+		const params = {
+			cameraContainer: createStubContainer() as never,
+			motionBlurFilter: motionBlurFilter as never,
+			zoomBlurFilter: zoomBlurFilter as never,
+			stageSize: { width: 1000, height: 800 },
+			baseMask: { x: 0, y: 0, width: 1000, height: 800 },
+			zoomScale: 1,
+			focusX: 0.5,
+			focusY: 0.5,
+			isPlaying: true,
+			motionBlurAmount: 0.5,
+			motionBlurState: createMotionBlurState(),
+		};
+		const render = (timeMs: number, x: number) =>
+			applyZoomTransform({
+				...params,
+				frameTimeMs: timeMs,
+				transformOverride: { scale: 1, x, y: 0 },
+			});
+		return { params, render, motionBlurFilter, zoomBlurFilter };
+	}
+
+	it.each([
+		-16, 0, 500,
+	])("clears a discontinuous %s ms step and resumes from the new pose", (gapMs) => {
+		const { render, motionBlurFilter } = createScene();
+		render(0, 0);
+		render(16, 10);
+		expect(motionBlurFilter.velocity.x).toBeGreaterThan(0);
+		render(16 + gapMs, 100);
+		expect(motionBlurFilter.velocity).toEqual({ x: 0, y: 0 });
+		render(32 + gapMs, 110);
+		expect(motionBlurFilter.velocity.x).toBeCloseTo(10 * 0.5 * 3 * (1000 / 60 / 16));
+	});
+
+	it("holds the shutter when the same content frame is rendered again", () => {
+		const { render, motionBlurFilter } = createScene();
+		render(0, 0);
+		render(16, 10);
+		const velocity = { ...motionBlurFilter.velocity };
+		const offset = motionBlurFilter.offset;
+		render(16, 10);
+		expect(motionBlurFilter.velocity).toEqual(velocity);
+		expect(motionBlurFilter.offset).toBe(offset);
+	});
+
+	it("uses the full valid frame interval instead of inflating blur after a slow frame", () => {
+		const { render, motionBlurFilter } = createScene();
+		render(0, 0);
+		render(90, 54);
+		expect(motionBlurFilter.velocity.x).toBeCloseTo(54 * 0.5 * 3 * (1000 / 60 / 90));
+	});
+
+	it.each([Number.NaN, Number.POSITIVE_INFINITY])("clears an invalid %s timestamp", (timeMs) => {
+		const { render, motionBlurFilter } = createScene();
+		render(0, 0);
+		render(16, 10);
+		render(timeMs, 100);
+		expect(motionBlurFilter.velocity).toEqual({ x: 0, y: 0 });
+	});
+
+	it.each([
+		Number.NaN,
+		Number.POSITIVE_INFINITY,
+	])("disables an invalid %s blur amount", (amount) => {
+		const { params, render, motionBlurFilter } = createScene();
+		render(0, 0);
+		render(16, 10);
+		applyZoomTransform({
+			...params,
+			frameTimeMs: 32,
+			motionBlurAmount: amount,
+			transformOverride: { scale: 1, x: 20, y: 0 },
+		});
+		expect(motionBlurFilter.velocity).toEqual({ x: 0, y: 0 });
+	});
+
+	it.each([
+		-16,
+		0,
+		500,
+		Number.NaN,
+		Number.POSITIVE_INFINITY,
+	])("rejects an explicit %s ms shutter interval", (deltaMs) => {
+		const { params, render, motionBlurFilter, zoomBlurFilter } = createScene();
+		render(0, 0);
+		render(16, 10);
+		applyZoomTransform({
+			...params,
+			frameTimeMs: 32,
+			transformOverride: { scale: 1.1, x: 100, y: 0 },
+			motionSample: { previousTransform: { scale: 1, x: 0, y: 0 }, deltaMs },
+		});
+		expect(motionBlurFilter.velocity).toEqual({ x: 0, y: 0 });
+		expect(zoomBlurFilter.strength).toBe(0);
 	});
 });

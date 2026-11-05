@@ -1,10 +1,10 @@
 // Adapted from Voom (MIT), Copyright (c) 2026 Aritro Paul.
 // See ../../LICENSE and ../../../../THIRD_PARTY_NOTICES.md for attribution.
 
-import { handleRequest } from "./router.js";
 import { errorResponse } from "./http.js";
-import { ensureSchema } from "./schema.js";
 import { cleanupExpired } from "./library.js";
+import { handleRequest } from "./router.js";
+import { ensureSchema } from "./schema.js";
 
 export default {
 	async fetch(request, env) {
@@ -28,6 +28,8 @@ export default {
 	},
 
 	async scheduled(event, env) {
+		if (env.HOSTED_MODE === "true")
+			throw new Error("Hosted deployments require the separate private service");
 		try {
 			await ensureSchema(env);
 			await cleanupExpired(env);
@@ -38,11 +40,10 @@ export default {
 	},
 };
 
+export { dashboardPassword, expectedSessionToken } from "./auth.js";
+export { generateSalt, sha256Hex, timingSafeEqual } from "./crypto.js";
+export { parseCookies } from "./http.js";
+export { escapeHTML, formatVTTTime } from "./media.js";
 // Kept for existing consumers and the Worker integration tests.
 export { __resetSchemaCacheForTests } from "./schema.js";
 export { generateShareCode } from "./uploads.js";
-export { escapeHTML } from "./media.js";
-export { parseCookies } from "./http.js";
-export { timingSafeEqual, sha256Hex, generateSalt } from "./crypto.js";
-export { formatVTTTime } from "./media.js";
-export { expectedSessionToken, dashboardPassword } from "./auth.js";

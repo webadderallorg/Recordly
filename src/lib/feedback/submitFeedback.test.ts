@@ -79,3 +79,9 @@ it("aborts a stalled request after one minute and permits a subsequent submissio
 		vi.useRealTimers();
 	}
 });
+
+it("preserves omitted diagnostics when logs are disabled by the caller", async () => {
+	await submitFeedback({ ...input, logs: null });
+	const [, { body }] = api.invoke.mock.calls[0];
+	expect(body.has("logs")).toBe(false);
+});

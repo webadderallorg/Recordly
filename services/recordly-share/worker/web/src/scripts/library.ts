@@ -6,40 +6,43 @@ export interface LibraryVideo {
   height: number;
   file_size: number;
   created_at: string;
-  expires_at: string;
+  expires_at: string | null;
   view_count: number;
   is_meeting: number;
   summary: string | null;
+  upload_completed?: number;
   is_protected: number;
 }
 
-export async function fetchVideos(): Promise<LibraryVideo[]> {
-  const res = await fetch('/api/videos', { credentials: 'include' });
-  if (res.status === 401) {
-    window.location.href = '/library/login';
-    return [];
-  }
-  if (!res.ok) throw new Error(`Failed to load videos (${res.status})`);
-  const data = await res.json();
-  return data.videos || [];
+async function libraryRequest(path: string, accessToken?: string, method = 'GET') {
+  const response = await fetch(path, {
+    method, credentials: 'include',
+    ...(accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : {}),
+  });
+  if (response.status === 401 && !accessToken) window.location.href = '/library/login';
+  if (!response.ok) throw new Error(`Cloud request failed (${response.status})`);
+  return response.json();
 }
 
-export async function renewVideo(shareCode: string): Promise<string | null> {
-  const res = await fetch(`/api/renew/${shareCode}`, {
-    method: 'POST',
-    credentials: 'include',
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
+export async function fetchVideos(accessToken?: string): Promise<LibraryVideo[]> {
+  const videos: LibraryVideo[] = [];
+  let cursor: string | undefined;
+  do {
+    const data = await libraryRequest(`/api/videos${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, accessToken);
+    videos.push(...(data.videos || []));
+    cursor = data.nextCursor;
+  } while (cursor);
+  return videos.filter(video => video.upload_completed !== 0);
+}
+
+export async function renewVideo(shareCode: string, accessToken?: string): Promise<string | null> {
+  const data = await libraryRequest(`/api/renew/${shareCode}`, accessToken, 'POST');
   return data.expiresAt || null;
 }
 
-export async function deleteVideo(shareCode: string): Promise<boolean> {
-  const res = await fetch(`/api/delete/${shareCode}`, {
-    method: 'DELETE',
-    credentials: 'include',
-  });
-  return res.ok;
+export async function deleteVideo(shareCode: string, accessToken?: string): Promise<boolean> {
+  await libraryRequest(`/api/delete/${shareCode}`, accessToken, 'DELETE');
+  return true;
 }
 
 export function formatDuration(seconds: number): string {

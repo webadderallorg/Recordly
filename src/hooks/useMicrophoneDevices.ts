@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/I18nContext";
 import { useEffect, useState } from "react";
 
 export interface MicrophoneDevice {
@@ -9,6 +10,7 @@ export interface MicrophoneDevice {
 let hasRequestedMicrophoneLabels = false;
 
 export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?: string) {
+	const { t } = useI18n();
 	const [devices, setDevices] = useState<MicrophoneDevice[]>([]);
 	const [selectedDeviceId, setSelectedDeviceId] = useState<string>("default");
 	const [isLoading, setIsLoading] = useState(false);
@@ -33,7 +35,11 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 					.filter((device) => device.kind === "audioinput")
 					.map((device) => ({
 						deviceId: device.deviceId,
-						label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
+						label:
+							device.label ||
+							t("notifications.microphone", "Microphone {{id}}", {
+								id: device.deviceId.slice(0, 8),
+							}),
 						groupId: device.groupId,
 					}));
 
@@ -48,7 +54,11 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 						.filter((device) => device.kind === "audioinput")
 						.map((device) => ({
 							deviceId: device.deviceId,
-							label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
+							label:
+								device.label ||
+								t("notifications.microphone", "Microphone {{id}}", {
+									id: device.deviceId.slice(0, 8),
+								}),
 							groupId: device.groupId,
 						}));
 				}
@@ -85,7 +95,10 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 					const message =
 						error instanceof Error
 							? error.message
-							: "Failed to enumerate audio devices";
+							: t(
+									"notifications.microphoneDevicesFailed",
+									"Failed to enumerate audio devices",
+								);
 					setError(message);
 					setIsLoading(false);
 					console.error("Error loading microphone devices:", error);
@@ -107,7 +120,7 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 			mounted = false;
 			navigator.mediaDevices.removeEventListener("devicechange", handleDeviceChange);
 		};
-	}, [enabled, preferredDeviceId]);
+	}, [enabled, preferredDeviceId, t]);
 
 	return {
 		devices,

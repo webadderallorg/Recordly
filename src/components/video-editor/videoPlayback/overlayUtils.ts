@@ -1,12 +1,12 @@
-import { ZOOM_DEPTH_SCALES, type ZoomFocus, type ZoomRegion } from "../types";
-import { clampFocusToStage } from "./focusUtils";
+import { ZOOM_DEPTH_SCALES, type CropRegion, type ZoomFocus, type ZoomRegion } from "../types";
+import { clampFocusToStage, projectZoomFocusToViewport } from "./focusUtils";
 
 interface OverlayUpdateParams {
 	overlayEl: HTMLDivElement;
 	indicatorEl: HTMLDivElement;
 	region: ZoomRegion | null;
 	focusOverride?: ZoomFocus;
-	baseMask: { x: number; y: number; width: number; height: number };
+	baseMask: { x: number; y: number; width: number; height: number; sourceCrop?: CropRegion };
 	isPlaying: boolean;
 }
 
@@ -35,10 +35,14 @@ export function updateOverlayIndicator(params: OverlayUpdateParams) {
 	}
 
 	const zoomScale = ZOOM_DEPTH_SCALES[region.depth];
-	const focus = clampFocusToStage(focusOverride ?? region.focus, region.depth, {
-		width: stageWidth,
-		height: stageHeight,
-	});
+	const focus = clampFocusToStage(
+		focusOverride ?? projectZoomFocusToViewport(region, baseMask.sourceCrop),
+		region.depth,
+		{
+			width: stageWidth,
+			height: stageHeight,
+		},
+	);
 
 	const indicatorWidth = baseMask.width / zoomScale;
 	const indicatorHeight = baseMask.height / zoomScale;

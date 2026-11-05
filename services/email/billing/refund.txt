@@ -1,0 +1,14 @@
+Refund from Recordly
+
+Your refund has been issued to your original payment method. Your bank or payment provider handles when it appears in your account.
+
+Refund amount: {{ .RefundAmount }}
+Issued on: {{ .RefundDate }}
+Original invoice: {{ .InvoiceNumber }}
+
+View refund details: {{ .ActionURL }}
+
+Questions about your refund or subscription? Contact support.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

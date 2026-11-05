@@ -61,7 +61,7 @@ it("rejects streamed oversized bodies without trusting Content-Length", async ()
 	let cancelled = false;
 	const body = new ReadableStream({
 		start(controller) {
-			controller.enqueue(new Uint8Array(5000));
+			controller.enqueue(new Uint8Array(1_000_001));
 		},
 		cancel() {
 			cancelled = true;
@@ -85,4 +85,25 @@ it("returns a quota error and hides backend failures", async () => {
 	const response = await handle(request(valid()));
 	expect(response.status).toBe(500);
 	expect(await response.json()).toEqual({ code: "SUBMISSION_FAILED" });
+});
+
+it("stores bounded application logs through the support endpoint", async () => {
+	const report = {
+		schemaVersion: 2,
+		cloudPlan: "unknown",
+		format: "unknown",
+		context: "project-load",
+		error: "Failed to load video",
+		logs: JSON.stringify({ logs: ["decoder unavailable"] }),
+	};
+	expect((await handle(request(report))).status).toBe(200);
+	expect(backend.insert).toHaveBeenCalledWith(report);
+	for (const fields of [
+		{ logs: "a".repeat(290001) },
+		{ context: "private@example.com" },
+		{ error: "a".repeat(2001) },
+		{ user_id: "private" },
+	]) {
+		expect((await handle(request({ ...report, ...fields }))).status).toBe(400);
+	}
 });

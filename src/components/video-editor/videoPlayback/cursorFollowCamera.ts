@@ -1,5 +1,6 @@
-import type { CursorTelemetryPoint, ZoomFocus } from "../types";
-import { interpolateCursorPosition } from "./cursorRenderer";
+import type { CropRegion, CursorTelemetryPoint, ZoomFocus } from "../types";
+import { interpolateCursorPosition } from "./cursorPosition";
+import { projectCursorPositionToViewport } from "./cursorViewport";
 import { clampFocusToScale } from "./focusUtils";
 
 /**
@@ -16,6 +17,8 @@ export const SNAP_TO_EDGES_RATIO_MANUAL = 0.25;
 export const SNAP_TO_EDGES_RATIO_AUTO = 0.25;
 
 export interface CursorFollowCameraState {
+	/** Crop used by the persisted focus, which is in viewport coordinates. */
+	sourceCrop?: CropRegion;
 	/** Whether the state has been initialized with a starting position */
 	initialized: boolean;
 	/** Time of last update in ms (video time, not wall clock) */
@@ -34,11 +37,14 @@ export interface CursorFollowCameraState {
 }
 
 export interface CursorFollowConfig {
+	/** Shared envelope phase, including shallow zooms that never reach full strength. */
+	zoomingOut?: boolean;
 	/**
 	 * snapToEdgesRatio — how much of the screen edge pins the camera.
 	 * 0.25 for manual zooms, 0.25 for auto/system zooms.
 	 */
 	snapToEdgesRatio: number;
+	sourceCrop?: CropRegion;
 }
 
 export const DEFAULT_CURSOR_FOLLOW_CONFIG: CursorFollowConfig = {
@@ -59,6 +65,7 @@ export function createCursorFollowCameraState(): CursorFollowCameraState {
 }
 
 export function resetCursorFollowCamera(state: CursorFollowCameraState): void {
+	state.sourceCrop = undefined;
 	state.initialized = false;
 	state.lastTimeMs = 0;
 	state.focusX = 0.5;
@@ -139,9 +146,21 @@ export function computeCursorFollowFocus(
 	config: CursorFollowConfig = DEFAULT_CURSOR_FOLLOW_CONFIG,
 ): ZoomFocus {
 	const clampedRegionFocus = clampFocusToScale(regionFocus, zoomScale);
+	const crop = config.sourceCrop ?? { x: 0, y: 0, width: 1, height: 1 };
+	const previousCrop = state.sourceCrop ?? { x: 0, y: 0, width: 1, height: 1 };
+	if (
+		crop.x !== previousCrop.x ||
+		crop.y !== previousCrop.y ||
+		crop.width !== previousCrop.width ||
+		crop.height !== previousCrop.height
+	) {
+		resetCursorFollowCamera(state);
+	}
+	state.sourceCrop = { ...crop };
 
-	// If not zoomed (strength ≈ 0), reset state and return region focus
-	if (zoomStrength < 0.01) {
+	// Even the first faint entrance frame must aim at the live cursor. Seeding
+	// the springs with the saved focus here makes the visible zoom course-correct.
+	if (zoomStrength <= 0) {
 		if (state.wasZoomed) {
 			state.wasZoomed = false;
 			state.initialized = false;
@@ -150,8 +169,12 @@ export function computeCursorFollowFocus(
 		return clampedRegionFocus;
 	}
 
-	const cursorPos = interpolateCursorPosition(cursorSamples, timeMs);
-	if (!cursorPos) {
+	const sourceCursorPos = interpolateCursorPosition(cursorSamples, timeMs);
+	const cursorPos = sourceCursorPos
+		? projectCursorPositionToViewport(sourceCursorPos, config.sourceCrop)
+		: null;
+	// Hidden cursor movement outside the crop must not steer the visible camera.
+	if (!cursorPos?.visible) {
 		if (state.initialized) {
 			return { cx: state.focusX, cy: state.focusY };
 		}
@@ -163,16 +186,25 @@ export function computeCursorFollowFocus(
 	if (zoomStrength >= 0.99) {
 		state.reachedFullZoom = true;
 	}
+	const timeWentBackwards = state.initialized && timeMs + 0.5 < state.lastTimeMs;
 
-	// Zooming out: was fully zoomed but strength is now dropping — freeze camera
-	if (state.reachedFullZoom && zoomStrength < 0.99) {
+	// The envelope can turn around before reaching full zoom. Hold its framing
+	// on that descent, while a backwards seek still initializes the new target.
+	const zoomingOut = config.zoomingOut ?? (state.reachedFullZoom && zoomStrength < 0.99);
+	if (zoomingOut && state.initialized && !timeWentBackwards) {
 		return { cx: state.frozenFocusX, cy: state.frozenFocusY };
 	}
 
-	const timeWentBackwards = state.initialized && timeMs + 0.5 < state.lastTimeMs;
-
 	if (!state.initialized || !state.wasZoomed || timeWentBackwards) {
-		const initialFocus = clampedRegionFocus;
+		state.reachedFullZoom = zoomStrength >= 0.99;
+		// Apply the same safe-zone rule on the first frame: a saved click target
+		// may be far from the cursor by the time the zoom animation starts.
+		const initialFocus = recenterFocusWhenCursorLeavesSafeZone(
+			clampedRegionFocus,
+			{ cx: cursorPos.cx, cy: cursorPos.cy },
+			zoomScale,
+			config.snapToEdgesRatio,
+		);
 		state.lastTimeMs = timeMs;
 		state.initialized = true;
 		state.wasZoomed = true;

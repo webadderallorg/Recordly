@@ -1,0 +1,13 @@
+Confirm your payment to Recordly
+
+One last step: your bank needs you to confirm your payment for {{ .PlanName }}. Finish up on the secure payment page below.
+
+Amount: {{ .Amount }}
+Invoice: {{ .InvoiceNumber }}
+
+Confirm payment: {{ .ActionURL }}
+
+Never share your bank verification code or card details by email.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

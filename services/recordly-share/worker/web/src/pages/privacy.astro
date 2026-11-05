@@ -1,0 +1,58 @@
+---
+import Legal from '../layouts/Legal.astro';
+import { legalDetails } from '../legal/config';
+---
+<Legal title="Privacy policy" description="How Recordly handles your recordings, account information and payments.">
+  <h2>What this policy covers</h2>
+  <p>This policy covers the Recordly desktop application and the account, cloud sharing, billing and support services provided by Recordly. It does not replace the privacy policies of a separate self-hosting operator or an external service you choose to use.</p>
+  <h2>Local recording and editing</h2>
+  <p>The desktop app processes recordings and editable projects on your device. Depending on the permissions and features you enable, these can contain screen or window video, microphone and system audio, webcam footage, captions, cursor positions and click timing. Project files, settings and diagnostic files may also be stored locally.</p>
+  <p>Recording or editing does not by itself publish your recording. Cloud publishing sends the media you choose to share. Raw project files and local cursor records are not automatically uploaded as part of publishing an exported recording. Files you explicitly attach to a support report are handled as support information.</p>
+  <p>HEIC wallpaper conversion and local transcription run on your device. Downloading an application update or speech model still involves network requests to the relevant download provider.</p>
+  <h2>Information we handle</h2>
+  <ul>
+    <li><strong>Account information:</strong> your account ID, email address, display name, avatar and information returned by your chosen sign-in provider. Authentication tokens allow the app to maintain your session.</li>
+    <li><strong>Published recordings:</strong> video and audio you upload, thumbnails, titles, duration, size, captions or other recording metadata you provide, sharing settings, ownership and retention status.</li>
+    <li><strong>Viewer interactions:</strong> view counts, reactions, comment text, the name a commenter supplies and timestamps. Comments and names are visible to people who can access that recording. IP addresses and request metadata may be used or stored for delivery, abuse prevention and rate limiting.</li>
+    <li><strong>Billing information:</strong> Stripe customer and subscription identifiers, plan, payment status, billing period and payment-event records. Stripe collects payment details on its own checkout and portal. Recordly’s billing database does not store your full card number or security code.</li>
+    <li><strong>Support information:</strong> messages, account identifiers, attachments and diagnostic information sent with a report. The in-app feedback form automatically attaches relevant diagnostic logs, which can include application, device and export information. Review any files you attach and avoid including passwords, payment details or confidential recordings in a report.</li>
+    <li><strong>Technical information:</strong> request times, IP addresses, browser or device information available with requests, errors and security logs needed to operate and protect the service.</li>
+  </ul>
+  <h2>Why we use it</h2>
+  <p>We use this information to authenticate accounts, save and deliver published media, manage access and storage limits, process subscriptions, prevent fraud and abuse, investigate faults, answer requests and meet legal obligations. We do not sell personal information or use your published recordings to train AI models.</p>
+  <h2>Marketing emails</h2>
+  <p>Marketing emails about Recordly product news, tips and offers are optional. You can manage these emails in Account settings. We record your choice, the wording shown, its version and the time it was made with your account. Agreeing to the terms or acknowledging this privacy policy does not subscribe you to marketing. If you opt in, you can withdraw in Account settings, by using the unsubscribe link in a marketing email or by contacting us using the details below. Essential account, security, billing and service messages are separate from marketing.</p>
+  <h2>Who can access a recording</h2>
+  <p>A standard sharing link can be opened by anyone who obtains it, including someone to whom it is forwarded. A link is not a private account login. If you enable password protection, viewers also need the password. Share pages may expose the recording title, thumbnail, comments and other presentation information to authorised viewers.</p>
+  <p>Cloud recordings are not end-to-end encrypted. The operator and service providers may process content as needed to host it, provide support, protect the service or comply with law. Do not publish a recording containing passwords, confidential material or other people’s personal information without the necessary permission.</p>
+  <h2>Service providers and overseas processing</h2>
+  <ul>
+    <li><strong>Supabase:</strong> account authentication, account-related data and submitted feedback, including attachments.</li>
+    <li><strong>Cloudflare:</strong> hosting, media and metadata storage, network delivery, security and request processing.</li>
+    <li><strong>Google (Gmail):</strong> receiving and handling messages sent to our support address.</li>
+    <li><strong>Stripe:</strong> checkout, payment processing, subscriptions, invoices and the customer billing portal.</li>
+    <li><strong>Sign-in, email and download providers:</strong> the providers involved when you use social sign-in, receive a sign-in or support email, or download software or models.</li>
+  </ul>
+  <p>These providers may process information outside your country. {legalDetails.locations || 'The configured processing countries and hosting locations are awaiting confirmation before launch.'} Providers also apply their own privacy policies when they act independently, such as when Stripe processes payment information.</p>
+  <p>We may disclose information when reasonably necessary to comply with law, respond to a valid legal request or protect people and the service. If the service changes operator, any transfer of personal information must remain subject to applicable law and notice requirements.</p>
+  <h2>Storage, cookies and security</h2>
+  <p>The desktop app stores settings and project information locally. Sign-in sessions use the operating system’s encrypted credential storage when it is available, with a browser-storage fallback in supported preview or development environments. Hosted pages use local storage for preferences such as theme and a remembered commenter name. Password-protected recording access uses an unlock cookie.</p>
+  <p>Service providers use security and operational technologies needed to deliver their services. Blocking necessary storage may prevent sign-in or protected playback. We do not add advertising trackers to Recordly-hosted recording pages. A separately hosted marketing site or external page may have its own provider technologies.</p>
+  <p>We use access controls and authenticated server checks to protect accounts and uploads. No storage or transmission system is completely secure, and a sharing link or password can be redistributed by its recipient.</p>
+  <h2>How long information remains</h2>
+  <ul>
+    <li><strong>Local files:</strong> remain on your device until you remove them. Removing a cloud copy does not remove your local project or another person’s downloaded copy.</li>
+    <li><strong>Free hosted recordings:</strong> normally expire after 14 days and become unavailable. Cleanup removes expired media and associated recording records. Incomplete uploads may be cleaned up after one day.</li>
+    <li><strong>Paid retention:</strong> completed recordings granted Cloud retention have no scheduled expiry, including after cancellation. Upgrading also grants no-expiry retention to eligible, still-stored completed recordings. Expired or deleted media cannot be restored by upgrading.</li>
+    <li><strong>Deletion:</strong> deleting a cloud recording removes its media, thumbnail and associated comments, reactions and recording metadata through the service. Cached copies and provider recovery copies may take additional time to disappear; copies held by recipients are outside our control.</li>
+    <li><strong>Account, support, security and billing records:</strong> are retained as needed for the service, unresolved requests, fraud prevention and legal or accounting obligations. We review deletion requests individually and explain any records we must retain.</li>
+  </ul>
+  <h2>Your choices and requests</h2>
+  <p>You can change your profile, revoke app permissions in your operating system, sign out, stop publishing, cancel a subscription and delete cloud recordings using the controls available in Recordly. To request access, correction, account deletion or help with another privacy right, contact us using the details below. We may verify ownership before disclosing or deleting information.</p>
+  <p>If you request account deletion, tell us whether you also want all published media removed and any subscription cancelled. We will explain the steps and any information retained to meet legal obligations. Signing out or uninstalling the desktop app does not cancel a subscription or delete hosted media.</p>
+  <h2>Young users and complaints</h2>
+  <p>The hosted service is not designed for children who cannot lawfully consent to its use. If you need parental or guardian permission under applicable law, obtain it before creating an account or sharing personal information. Contact us if you believe a child’s information has been provided without the required permission.</p>
+  <p>Send privacy concerns in writing to the contact below. Describe what happened, the account or recording involved and the outcome you are seeking, without including passwords or full payment details. We will investigate and respond. If you are not satisfied with our response, or have not received one within a reasonable time, you may raise a complaint with the privacy regulator that has jurisdiction, including the <a href="https://www.oaic.gov.au/privacy/privacy-complaints">Office of the Australian Information Commissioner</a> where applicable. This policy does not limit rights available under applicable privacy law.</p>
+  <h2>Changes to this policy</h2>
+  <p>We will publish an updated version and effective date when this policy changes. Where required, we will give additional notice or obtain consent before a materially different use of your information.</p>
+</Legal>

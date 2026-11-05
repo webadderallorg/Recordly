@@ -12,6 +12,7 @@ export class VideoFileDecoder {
 
 	async loadVideo(videoUrl: string): Promise<DecodedVideoInfo> {
 		this.videoElement = document.createElement("video");
+		this.videoElement.crossOrigin = "anonymous";
 		this.videoElement.src = videoUrl;
 		this.videoElement.preload = "metadata";
 

@@ -1,3 +1,4 @@
+import type { SupportErrorReport } from "../../../services/supabase/functions/_shared/appErrorReport";
 import packageInfo from "../../../package.json";
 import type {
 	CloudPlan,
@@ -39,9 +40,8 @@ export function buildExportErrorReport(
 		?.split("\nSoftware decoder failure:")[0];
 	const output = bounded.match(/Output: (\d{1,5})x(\d{1,5}) @ (\d{1,3}(?:\.\d{1,3})?) FPS/);
 	const version =
-		bounded.match(/Recordly version: (\d{1,4}\.\d{1,4}\.\d{1,4})\b/)?.[1] ??
-		packageInfo.version.match(/^(\d{1,4}\.\d{1,4}\.\d{1,4})(?:[-+]|$)/)?.[1] ??
-		"0.0.0";
+		bounded.match(/Recordly version: (\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)(?=\s|$)/)?.[1] ??
+		packageInfo.version;
 	const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent;
 	const platform =
 		bounded.match(/Platform: (Windows|macOS|Linux)\b/)?.[1] ??
@@ -84,8 +84,8 @@ export function buildExportErrorReport(
 	};
 }
 
-/** Send only after a user clicks Send report. Never use the signed-in Supabase client. */
-export async function submitExportErrorReport(report: ExportErrorReport): Promise<void> {
+/** Send only after a user clicks Report error. Never use the signed-in Supabase client. */
+export async function submitExportErrorReport(report: SupportErrorReport): Promise<void> {
 	const url = import.meta.env.VITE_SUPABASE_URL?.trim();
 	const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
 	if (!url || !key)

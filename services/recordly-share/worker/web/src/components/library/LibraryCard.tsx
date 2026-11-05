@@ -1,4 +1,4 @@
-import { Avatar, Button, Dropdown } from "@heroui/react";
+import { Button, Dropdown } from "@heroui/react";
 import {
 	CheckIcon,
 	DotsThreeIcon,
@@ -7,7 +7,7 @@ import {
 	PlusIcon,
 } from "@phosphor-icons/react";
 import { useState } from "react";
-import { parseUTC, type LibraryVideo } from "../../scripts/library";
+import { formatDuration, parseUTC, type LibraryVideo } from "../../scripts/library";
 
 export type LibraryFolder = { id: string; name: string; codes: string[] };
 export function LibraryCard({
@@ -21,6 +21,7 @@ export function LibraryCard({
 	renew,
 	remove,
 	copy,
+	manage,
 }: {
 	video: LibraryVideo;
 	folders: LibraryFolder[];
@@ -29,11 +30,21 @@ export function LibraryCard({
 	selected: boolean;
 	toggleSelected: () => void;
 	busy: boolean;
-	renew: () => void;
+	renew?: () => void;
 	remove: () => void;
 	copy: () => void;
+	manage?: () => void;
 }) {
 	const [failed, setFailed] = useState(false);
+	const expires = video.expires_at ? parseUTC(video.expires_at) : null;
+	const expiryLabel = video.expires_at === null
+		? "No scheduled expiry"
+		: !expires || Number.isNaN(expires.getTime())
+			? "Expiry unknown"
+			: expires.getTime() <= Date.now()
+				? "Expired"
+				: `Expires ${expires.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+	const titleClass = "line-clamp-2 break-words pr-8 text-left text-[15px] font-semibold leading-6 text-foreground rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 	const assigned = folders.filter((folder) => folder.codes.includes(video.share_code));
 	return (
 		<li className="group min-w-0">
@@ -65,6 +76,9 @@ export function LibraryCard({
 							className="size-8 text-muted-foreground/20"
 						/>
 					)}
+					<span className="absolute bottom-2 right-2 rounded-md bg-black/75 px-2 py-1 text-xs font-medium text-white" aria-label={`Duration ${formatDuration(video.duration)}`}>
+						{formatDuration(video.duration)}
+					</span>
 				</div>
 				{selecting && (
 					<span
@@ -75,28 +89,25 @@ export function LibraryCard({
 				)}
 			</Button>
 			<div className="relative flex items-start justify-between gap-4 pt-5">
-				<Avatar
-					aria-label="Your library"
-					className="!size-[48px] shrink-0 !rounded-full bg-accent/15 text-accent"
-				>
-					<Avatar.Fallback className="!rounded-full bg-accent/15 text-xs font-medium text-accent">
-						LP
-					</Avatar.Fallback>
-				</Avatar>
-				<div className="h-12 min-w-0 flex-1">
-					<p
-						title={video.title}
-						className="truncate pr-8 text-[12px] font-medium leading-5"
-					>
-						{video.title}
-					</p>
-					<div className="mt-1 flex h-6 min-w-0 items-center gap-2">
-						<p className="shrink-0 text-[11px] text-muted-foreground">
-							{parseUTC(video.created_at).toLocaleDateString(undefined, {
-								month: "short",
-								day: "numeric",
-							})}
-						</p>
+				<div className="min-w-0 flex-1">
+					{selecting ? (
+						<button type="button" disabled={busy} aria-pressed={selected} onClick={toggleSelected} className={titleClass} title={video.title}>
+							{video.title}
+						</button>
+					) : (
+						<a href={`/s/${video.share_code}`} target="_blank" rel="noopener noreferrer" aria-disabled={busy || undefined} onClick={(event) => { if (busy) event.preventDefault(); }} className={titleClass} title={video.title}>
+							{video.title}
+						</a>
+					)}
+					<div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+						<span>{parseUTC(video.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
+						<span>{video.view_count.toLocaleString()} {video.view_count === 1 ? "view" : "views"}</span>
+					</div>
+					<div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+						<span>{expiryLabel}</span>
+						<span>{video.is_protected ? "Password protected" : "Anyone with the link"}</span>
+					</div>
+					<div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
 						{assigned.map((folder) => (
 							<button
 								key={folder.id}
@@ -112,7 +123,7 @@ export function LibraryCard({
 								variant="ghost"
 								size="sm"
 								aria-label={`Add folder to ${video.title}`}
-								className="h-6 min-w-0 shrink-0 gap-1.5 rounded-full px-2.5 text-[11px] text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
+								className="h-6 min-w-0 shrink-0 gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground"
 							>
 								<PlusIcon className="size-3" />
 								Add folder
@@ -172,9 +183,10 @@ export function LibraryCard({
 							<Dropdown.Item id="copy" onAction={copy}>
 								Copy link
 							</Dropdown.Item>
-							<Dropdown.Item id="renew" onAction={renew}>
+							{manage && <Dropdown.Item id="manage" onAction={manage}>Manage sharing</Dropdown.Item>}
+							{renew && <Dropdown.Item id="renew" onAction={renew}>
 								Renew share link
-							</Dropdown.Item>
+							</Dropdown.Item>}
 							<Dropdown.Item id="delete" onAction={remove} className="text-danger">
 								Delete recording
 							</Dropdown.Item>

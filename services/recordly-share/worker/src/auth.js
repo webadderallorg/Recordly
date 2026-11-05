@@ -1,8 +1,10 @@
+import { AVAILABLE_RECORDING_SQL, parseDatabaseTimestamp } from "./video.js";
 // Adapted from Voom (MIT), Copyright (c) 2026 Aritro Paul.
 // See ../../LICENSE and ../../../../THIRD_PARTY_NOTICES.md for attribution.
 
-import { generateSalt, sha256Hex, timingSafeEqual, hashRecordingPassword } from "./crypto.js";
+import { generateSalt, hashRecordingPassword, sha256Hex, timingSafeEqual } from "./crypto.js";
 import { errorResponse, jsonResponse, parseCookies } from "./http.js";
+import { limitedJson } from "./requestBody.js";
 
 export async function isAuthorized(request, env) {
 	const auth = request.headers.get("Authorization");
@@ -38,36 +40,6 @@ export async function isAuthorized(request, env) {
 	}
 }
 
-// Hosted accounts never inherit self-host API-secret or dashboard-cookie access.
-export async function hostedUser(request, env) {
-	const auth = request.headers.get("Authorization") || "";
-	if (!/^Bearer [^\s]+$/.test(auth) || auth.length > 8200) return null;
-	if (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return null;
-	try {
-		const base = new URL(env.SUPABASE_URL);
-		if (base.protocol !== "https:") return null;
-		const response = await fetch(new URL("/auth/v1/user", base), {
-			headers: { Authorization: auth, apikey: env.SUPABASE_PUBLISHABLE_KEY },
-			redirect: "error",
-			signal: AbortSignal.timeout(10000),
-		});
-		if (!response.ok) return null;
-		const user = await response.json();
-		if (
-			typeof user.id !== "string" ||
-			!user.id ||
-			!user.email ||
-			!user.email_confirmed_at ||
-			user.is_anonymous
-		)
-			return null;
-		if (env.STAGING_ALLOWED_USER_ID && user.id !== env.STAGING_ALLOWED_USER_ID) return null;
-		return { id: user.id };
-	} catch {
-		return null;
-	}
-}
-
 async function generateAuthToken(shareCode, expiresAt, apiSecret) {
 	const encoder = new TextEncoder();
 	const key = await crypto.subtle.importKey(
@@ -87,6 +59,26 @@ export async function verifyPasswordAuth(request, env, shareCode, video) {
 	const cookies = parseCookies(request.headers.get("Cookie") || "");
 	const authToken = cookies[`voom_auth_${shareCode}`];
 	if (!authToken) return false;
+	const parts = /^v2\.(\d{1,12})\.([a-f0-9]{64})$/.exec(authToken || "");
+	if (parts) {
+		const deadline = Number(parts[1]);
+		const seconds = Math.floor(Date.now() / 1000);
+		if (
+			!Number.isSafeInteger(deadline) ||
+			deadline <= seconds ||
+			deadline > seconds + 7 * 86400
+		)
+			return false;
+		const expected = await generateAuthToken(
+			`voom-video-v2:${shareCode}:`,
+			`${video.expires_at}:${deadline}`,
+			env.API_SECRET,
+		);
+		return timingSafeEqual(parts[2], expected);
+	}
+	// Old tokens rely on the recording's fixed retention deadline. They must not
+	// become permanent sessions when a recording has no expiration.
+	if (video.never_expires === 1 || !/^[a-f0-9]{64}$/.test(authToken || "")) return false;
 	const expected = await generateAuthToken(shareCode, video.expires_at, env.API_SECRET);
 	return timingSafeEqual(authToken, expected);
 }
@@ -123,7 +115,6 @@ export async function expectedSessionToken(
 }
 
 export async function isDashboardAuthed(request, env) {
-	if (env.HOSTED_MODE === "true") return false;
 	return (await isAuthorized(request, env)) || dashboardCookieAuthed(request, env);
 }
 
@@ -161,7 +152,7 @@ export function clearLoginRateLimit(ip) {
 
 export async function handleVerifyPassword(request, env, shareCode) {
 	const video = await env.DB.prepare(
-		"SELECT * FROM videos WHERE share_code = ? AND upload_completed = 1 AND datetime(expires_at) > datetime('now')",
+		`SELECT * FROM videos WHERE share_code = ? AND upload_completed = 1 AND ${AVAILABLE_RECORDING_SQL}`,
 	)
 		.bind(shareCode)
 		.first();
@@ -169,18 +160,23 @@ export async function handleVerifyPassword(request, env, shareCode) {
 	if (!video || !video.password_hash) return errorResponse("Not found", 404);
 	if (!env.API_SECRET) return errorResponse("Password protection is not configured", 503);
 
-	// Brute-force protection: 10 attempts per IP per video per 5 minutes.
-	const clientIP = request.headers.get("CF-Connecting-IP") || "unknown";
-	const recent = await env.DB.prepare(
-		"SELECT COUNT(*) as cnt FROM password_attempts WHERE video_id = ? AND client_ip = ? AND datetime(attempted_at) > datetime('now', '-5 minutes')",
-	)
-		.bind(video.id, clientIP)
-		.first();
-	if (recent && recent.cnt >= 10)
-		return errorResponse("Too many attempts — try again later", 429);
+	const body = await limitedJson(request, 8192);
+	const password = body.password;
+	if (typeof password !== "string" || password.length > 1024)
+		return errorResponse("Invalid password");
 
-	const body = await request.json();
-	const password = body.password || "";
+	// Reserve before expensive hashing. Count successful attempts too, and keep
+	// admission atomic so parallel guesses cannot all observe spare capacity.
+	const clientIP = request.headers.get("CF-Connecting-IP") || "unknown";
+	const admitted = await env.DB.prepare(
+		`INSERT INTO password_attempts (video_id, client_ip)
+		 SELECT ?, ? WHERE (SELECT COUNT(*) FROM password_attempts
+		 WHERE video_id = ? AND client_ip = ? AND attempted_at > datetime('now', '-5 minutes')) < 10`,
+	)
+		.bind(video.id, clientIP, video.id, clientIP)
+		.run();
+	if (!admitted.meta.changes)
+		return errorResponse("Too many attempts — try again later", 429);
 
 	const clientHash = await sha256Hex(password);
 	const slowHash = video.password_hash.startsWith("pbkdf2-sha256:210000:");
@@ -199,15 +195,22 @@ export async function handleVerifyPassword(request, env, shareCode) {
 	}
 
 	if (!matches) {
-		await env.DB.prepare("INSERT INTO password_attempts (video_id, client_ip) VALUES (?, ?)")
-			.bind(video.id, clientIP)
-			.run();
 		return jsonResponse({ error: "Incorrect password" }, 403);
 	}
 
 	// Issue an HMAC session token (never the stored hash).
-	const authToken = await generateAuthToken(shareCode, video.expires_at, env.API_SECRET);
-	const expires = new Date(video.expires_at + "Z");
+	const sevenDays = Math.floor(Date.now() / 1000) + 7 * 86400;
+	const deadline =
+		video.never_expires === 1
+			? sevenDays
+			: Math.min(sevenDays, Math.floor(parseDatabaseTimestamp(video.expires_at) / 1000));
+	const signature = await generateAuthToken(
+		`voom-video-v2:${shareCode}:`,
+		`${video.expires_at}:${deadline}`,
+		env.API_SECRET,
+	);
+	const authToken = `v2.${deadline}.${signature}`;
+	const expires = new Date(deadline * 1000);
 
 	return new Response(JSON.stringify({ ok: true }), {
 		status: 200,

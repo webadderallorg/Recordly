@@ -275,9 +275,12 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 	it("preserves the cursor-to-video ratio at every native static-layout size", () => {
 		const exporter = createExporter({ cursorSize: 3, cursorStyle: "tahoe" });
 
-		expect(exporter.getNativeStaticLayoutCursorSize(1920)).toBeCloseTo(84, 6);
-		expect(exporter.getNativeStaticLayoutCursorSize(960)).toBeCloseTo(42, 6);
-		expect(exporter.getNativeStaticLayoutCursorSize(480)).toBeCloseTo(21, 6);
+		// Native sizing includes texture padding; the visible Golden Gate body
+		// occupies 859 of its 958 pixels. Compare visible height with the viewport.
+		const bodyFraction = 859 / 958;
+		expect(exporter.getNativeStaticLayoutCursorSize(1920) * bodyFraction).toBeCloseTo(84, 6);
+		expect(exporter.getNativeStaticLayoutCursorSize(960) * bodyFraction).toBeCloseTo(42, 6);
+		expect(exporter.getNativeStaticLayoutCursorSize(480) * bodyFraction).toBeCloseTo(21, 6);
 	});
 
 	it("skips native static-layout when cursor click effects are enabled", () => {

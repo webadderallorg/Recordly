@@ -1,15 +1,14 @@
+import { AVAILABLE_RECORDING_SQL } from "./video.js";
+
 // Adapted from Voom (MIT), Copyright (c) 2026 Aritro Paul.
 // See ../../LICENSE and ../../../../THIRD_PARTY_NOTICES.md for attribution.
 
-import { handleHostedRecording, limitedJson } from "./hostedUploads.js";
-import { ensureSchema } from "./schema.js";
 import {
 	commentViewer,
 	handleCommentLogin,
 	handleCommentLogout,
 	handleCommentRegister,
 } from "./accounts.js";
-import { errorResponse, jsonResponse } from "./http.js";
 import {
 	checkLoginRateLimit,
 	clearLoginRateLimit,
@@ -17,13 +16,23 @@ import {
 	dashboardPassword,
 	expectedSessionToken,
 	handleVerifyPassword,
-	hostedUser,
 	isAuthorized,
 	isDashboardAuthed,
 	verifyPasswordAuth,
 } from "./auth.js";
 import { timingSafeEqual } from "./crypto.js";
+import { handleComment, handleGetComments, handleGetReactions, handleManageComment, handleReact } from "./feedback.js";
+import { errorResponse, jsonResponse } from "./http.js";
 import { handleCheckViews, handleDelete, handleListVideos, handleRenew } from "./library.js";
+import {
+	handleOGImage,
+	handleOGPage,
+	handleShareData,
+	handleVideoStream,
+	handleVTT,
+} from "./media.js";
+import { ensureSchema } from "./schema.js";
+import { handleReport } from "./moderation.js";
 import {
 	decodeUploadId,
 	handleMetadata,
@@ -35,33 +44,25 @@ import {
 	handleUploadData,
 	handleUploadThumbnail,
 } from "./uploads.js";
-import {
-	handleOGImage,
-	handleOGPage,
-	handleShareData,
-	handleVTT,
-	handleVideoStream,
-} from "./media.js";
-import { handleComment, handleGetComments, handleGetReactions, handleReact } from "./feedback.js";
 
 export async function handleRequest(request, env) {
 	const url = new URL(request.url);
 	const path = url.pathname;
-
-	const hosted = env.HOSTED_MODE === "true";
-	if (hosted) {
-		if (!env.REQUEST_RATE_LIMIT || !env.ACCOUNT_RATE_LIMIT)
-			return errorResponse("Hosted rate limits are not configured", 503);
-		const { success } = await env.REQUEST_RATE_LIMIT.limit({
-			key: request.headers.get("CF-Connecting-IP") || "local",
-		});
-		if (!success) return errorResponse("Too many requests. Try again in a minute.", 429);
-	}
-	await ensureSchema(env);
-	// The shared-password dashboard and legacy comment accounts are self-host only.
-	if (hosted && (path.startsWith("/library") || path.startsWith("/auth/"))) {
+	// Never let a stale hosted configuration fall back to single-owner access.
+	if (env.HOSTED_MODE === "true")
+		return errorResponse("Hosted deployments require the separate private service", 503);
+	if (path === "/api/billing" || path.startsWith("/api/billing/") || (path.startsWith("/billing/") && path !== "/billing/"))
 		return errorResponse("Not found", 404);
-	}
+
+	// Public policies must remain reachable during database outages.
+	if (
+		["/privacy", "/terms", "/billing", "/contact"].includes(path.replace(/\/$/, "")) &&
+		["GET", "HEAD"].includes(request.method) &&
+		env.ASSETS
+	)
+		return env.ASSETS.fetch(request);
+
+	await ensureSchema(env);
 
 	if (path === "/auth/session" && request.method === "GET") {
 		const viewer = await commentViewer(request, env);
@@ -139,41 +140,9 @@ export async function handleRequest(request, env) {
 			});
 		}
 
-		let ownerId = null;
-		if (hosted) {
-			const user = await hostedUser(request, env);
-			if (!user) return errorResponse("Verified sign-in required", 401);
-			ownerId = user.id;
-			if (!(await env.ACCOUNT_RATE_LIMIT.limit({ key: ownerId })).success)
-				return errorResponse("Too many account requests. Try again in a minute.", 429);
-			if (!["/api/health", "/api/videos", "/api/upload", "/api/check-views"].includes(path)) {
-				const route = path.match(
-					/^\/api\/(upload-data|upload-thumbnail|upload-multipart|upload-part|upload-complete|upload-abort|metadata|renew|delete)\/([a-z0-9]+)(?:\/([^/]+)(?:\/(\d+))?)?$/,
-				);
-				if (!route) return errorResponse("Not found", 404);
-				const expected =
-					{
-						"upload-data": "PUT",
-						"upload-thumbnail": "PUT",
-						"upload-part": "PUT",
-						delete: "DELETE",
-					}[route[1]] || "POST";
-				if (
-					request.method !== expected ||
-					(route[1] === "upload-part" ? !route[4] : route[4] !== undefined) ||
-					(["upload-part", "upload-complete", "upload-abort"].includes(route[1])
-						? !route[3]
-						: route[3] !== undefined)
-				)
-					return errorResponse("Not found", 404);
-				return handleHostedRecording(request, env, ownerId, ...route.slice(1));
-			}
-		} else if (
-			!(await isAuthorized(request, env)) &&
-			!(await dashboardCookieAuthed(request, env))
-		) {
+		const ownerId = null;
+		if (!(await isAuthorized(request, env)) && !(await dashboardCookieAuthed(request, env)))
 			return errorResponse("Unauthorized", 401);
-		}
 
 		// Connection check used by the desktop app to validate a worker URL + secret.
 		if (path === "/api/health" && request.method === "GET") {
@@ -181,7 +150,7 @@ export async function handleRequest(request, env) {
 		}
 
 		if (path === "/api/videos" && request.method === "GET") {
-			return handleListVideos(env, ownerId);
+			return handleListVideos(env, ownerId, request);
 		}
 
 		if (path === "/api/upload" && request.method === "POST") {
@@ -251,16 +220,7 @@ export async function handleRequest(request, env) {
 		}
 
 		if (path === "/api/check-views" && request.method === "POST") {
-			return handleCheckViews(
-				hosted
-					? new Request(request.url, {
-							method: "POST",
-							body: JSON.stringify(await limitedJson(request, 16384)),
-						})
-					: request,
-				env,
-				ownerId,
-			);
+			return handleCheckViews(request, env, ownerId);
 		}
 
 		return errorResponse("Not found", 404);
@@ -277,11 +237,10 @@ export async function handleRequest(request, env) {
 		});
 	}
 
-	if (hosted && request.method === "POST") {
-		request = new Request(request, { body: JSON.stringify(await limitedJson(request, 16384)) });
-	}
-
 	// Password verification (public)
+	const reportMatch = path.match(/^\/s\/([a-z0-9]+)\/report$/);
+	if (reportMatch && request.method === "POST") return handleReport(request, env, reportMatch[1]);
+
 	const verifyMatch = path.match(/^\/s\/([a-z0-9]+)\/verify-password$/);
 	if (verifyMatch && request.method === "POST") {
 		return handleVerifyPassword(request, env, verifyMatch[1]);
@@ -308,6 +267,11 @@ export async function handleRequest(request, env) {
 	if (commentMatch && request.method === "POST") {
 		return handleComment(request, env, commentMatch[1]);
 	}
+	const commentManageMatch = path.match(/^\/s\/([a-z0-9]+)\/comments\/([^/]+)$/);
+	if (commentManageMatch) {
+		if (!["PATCH", "DELETE"].includes(request.method)) return errorResponse("Not found", 404);
+		return handleManageComment(request, env, commentManageMatch[1], commentManageMatch[2]);
+	}
 	const commentGetMatch = path.match(/^\/s\/([a-z0-9]+)\/comments$/);
 	if (commentGetMatch && request.method === "GET") {
 		return handleGetComments(request, env, commentGetMatch[1]);
@@ -329,7 +293,12 @@ export async function handleRequest(request, env) {
 		) {
 			return handleOGPage(request, env, shareCode);
 		}
-		return env.ASSETS.fetch(new Request(new URL("/share", url), request));
+		const appRequest = new Request(new URL("/share", url), request);
+		// The static shell's validators do not describe per-recording metadata.
+		appRequest.headers.delete("If-None-Match");
+		appRequest.headers.delete("If-Modified-Since");
+		const appResponse = await env.ASSETS.fetch(appRequest);
+		return handleOGPage(request, env, shareCode, appResponse);
 	}
 
 	// Video streaming
@@ -355,7 +324,7 @@ export async function handleRequest(request, env) {
 	const thumbMatch = path.match(/^\/thumb\/([a-z0-9]+)$/);
 	if (thumbMatch && request.method === "GET") {
 		const video = await env.DB.prepare(
-			"SELECT password_hash, expires_at FROM videos WHERE share_code = ? AND datetime(expires_at) > datetime('now')",
+			`SELECT password_hash, expires_at, never_expires FROM videos WHERE share_code = ? AND upload_completed = 1 AND ${AVAILABLE_RECORDING_SQL}`,
 		)
 			.bind(thumbMatch[1])
 			.first();
@@ -369,9 +338,7 @@ export async function handleRequest(request, env) {
 				// Recheck the unlock cookie on every protected poster request.
 				headers: {
 					"Content-Type": "image/jpeg",
-					"Cache-Control": video.password_hash
-						? "private, no-store"
-						: "public, max-age=86400",
+					"Cache-Control": "private, no-store",
 				},
 			});
 		}
@@ -389,7 +356,7 @@ export async function handleRequest(request, env) {
 	}
 
 	if (path === "/") {
-		return new Response("Recordly Share", { status: 200 });
+		return Response.redirect(new URL("/library", url), 302);
 	}
 
 	// Fall through to static assets

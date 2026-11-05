@@ -11,6 +11,11 @@
   "main": "src/index.js",
   "compatibility_date": "2024-11-01",
   "compatibility_flags": ["service_binding_extra_handlers"],
+  // Rebuild from source even for direct Wrangler or Deploy-to-Cloudflare usage.
+  // The release guard requires reviewed legal configuration before publication.
+  "build": {
+    "command": "npm run build:web"
+  },
   "assets": {
     "directory": "./web/dist",
     "binding": "ASSETS"

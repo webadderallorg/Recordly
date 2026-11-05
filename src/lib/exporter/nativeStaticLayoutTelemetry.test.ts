@@ -2,6 +2,54 @@ import { describe, expect, it } from "vitest";
 import { buildNativeStaticLayoutCursorTelemetry } from "./nativeStaticLayoutTelemetry";
 
 describe("buildNativeStaticLayoutCursorTelemetry", () => {
+	it("exports a sustained press and releases after dragging", () => {
+		const samples = buildNativeStaticLayoutCursorTelemetry(
+			[
+				{
+					timeMs: 0,
+					cx: 0.1,
+					cy: 0.2,
+					cursorType: "arrow",
+					interactionType: "click",
+					mouseButton: 1,
+				},
+				{ timeMs: 3000, cx: 0.8, cy: 0.7, interactionType: "move" },
+				{ timeMs: 4000, cx: 0.9, cy: 0.8, interactionType: "mouseup", mouseButton: 1 },
+			],
+			{ frameRate: 30, durationSec: 5, cursorStyle: "pixel-hand" },
+		)!;
+		const held = samples.filter((sample) => sample.timeMs >= 1000 && sample.timeMs <= 3000);
+		expect(held.length).toBeGreaterThan(0);
+		expect(
+			held.every(
+				(sample) => sample.bounceScale === 0.92 && sample.cursorType === "closed-hand",
+			),
+		).toBe(true);
+		expect(held.at(-1)!.cx).toBeGreaterThan(held[0].cx);
+		expect(samples.at(-1)).toMatchObject({ bounceScale: 1, cursorType: "arrow" });
+	});
+	it("exports the pixel glove press pose and releases it, respecting bounce off", () => {
+		const telemetry = [
+			{ timeMs: 0, cx: 0.5, cy: 0.5, cursorType: "arrow" as const },
+			{ timeMs: 100, cx: 0.5, cy: 0.5, interactionType: "click" },
+		];
+		const options = {
+			frameRate: 60,
+			durationSec: 0.5,
+			cursorStyle: "pixel-hand",
+			clickBounce: 1,
+		};
+		const samples = buildNativeStaticLayoutCursorTelemetry(telemetry, options)!;
+		expect(samples.some((sample) => sample.cursorTypeIndex === 5)).toBe(true);
+		expect(samples[samples.length - 1]?.cursorType).toBe("arrow");
+		const disabled = buildNativeStaticLayoutCursorTelemetry(telemetry, {
+			...options,
+			clickBounce: 0,
+		})!;
+		expect(
+			disabled.every((sample) => sample.cursorTypeIndex === 0 && sample.bounceScale === 1),
+		).toBe(true);
+	});
 	it("filters invalid samples, clamps coordinates, and sorts by time", () => {
 		expect(
 			buildNativeStaticLayoutCursorTelemetry(

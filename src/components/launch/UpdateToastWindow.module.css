@@ -17,8 +17,24 @@
 	width: 32px;
 	height: 32px;
 	border-radius: 7px;
-	background: var(--default);
-	color: var(--muted-foreground);
+	background: color-mix(in oklab, var(--accent) 12%, transparent);
+	color: var(--accent);
+}
+
+.card {
+	max-width: 440px;
+	padding: 16px;
+	border: 1px solid var(--separator);
+	box-shadow: 0 8px 28px rgb(0 0 0 / 12%);
+}
+
+.iconReady {
+	background: color-mix(in oklab, var(--success) 12%, transparent);
+	color: var(--success);
+}
+
+.content > .error {
+	color: var(--danger);
 }
 
 .iconError {
@@ -33,6 +49,7 @@
 
 .headingRow {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 6px;
 	min-height: 19px;
@@ -58,6 +75,7 @@
 	justify-content: flex-end;
 	gap: 8px;
 	margin-top: 12px;
+	flex-wrap: wrap;
 }
 
 .progressBlock {
@@ -85,5 +103,11 @@
 @keyframes spin {
 	to {
 		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.spin {
+		animation: none;
 	}
 }

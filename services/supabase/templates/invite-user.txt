@@ -1,0 +1,10 @@
+You're invited to Recordly
+
+Your invitation's here. Set up your account and come make something with Recordly.
+
+Accept invitation: {{ .ConfirmationURL }}
+
+Not expecting an invitation? You can safely ignore this email.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

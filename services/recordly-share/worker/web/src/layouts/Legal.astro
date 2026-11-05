@@ -1,0 +1,64 @@
+---
+import Base from './Base.astro';
+import ThemeToggle from '../components/ThemeToggle';
+import { legalDetails, legalReady, LEGAL_VERSION } from '../legal/config';
+interface Props { title: string; description: string; }
+const { title, description } = Astro.props;
+const links = [['/privacy', 'Privacy'], ['/terms', 'Terms'], ['/billing', 'Billing & refunds'], ['/contact', 'Contact']];
+---
+<Base title={`${title} · Recordly`}>
+  <Fragment slot="head">
+    <meta name="description" content={description} />
+    {!legalReady && <meta name="robots" content="noindex, nofollow" />}
+  </Fragment>
+  <header class="legal-header">
+    <a href="https://recordly.dev" class="legal-brand">Recordly</a>
+    <ThemeToggle client:load />
+  </header>
+  <div class="legal-layout">
+    <nav aria-label="Legal and support" class="legal-nav">
+      {links.map(([href, label]) => <a href={href} aria-current={Astro.url.pathname.replace(/\/$/, '') === href ? 'page' : undefined}>{label}</a>)}
+    </nav>
+    <main class="legal-document">
+      {!legalReady && <aside class="legal-draft" role="note"><strong>Draft for review</strong><p>Prepared 18 October 2026. These documents are not yet effective. The support address, processing locations and launch date must be confirmed before publication or live billing.</p></aside>}
+      <div class="legal-eyebrow">Recordly · Version {LEGAL_VERSION}</div>
+      <h1>{title}</h1>
+      <p class="legal-intro">{description}</p>
+      {legalReady && <p class="legal-date">Effective {legalDetails.effectiveDate}</p>}
+      <slot />
+      <section id="contact" class="legal-operator">
+        <h2>Contact</h2>
+        {legalDetails.email ? <p>Email: <a href={`mailto:${legalDetails.email}`}>{legalDetails.email}</a></p> : <p>Public support email: awaiting verification. Until then, signed-in users can use Recordly’s in-app feedback form.</p>}
+      </section>
+      <footer class="legal-footer">{links.map(([href, label]) => <a href={href}>{label}</a>)}</footer>
+    </main>
+  </div>
+</Base>
+<style>
+  .legal-header { display:flex; align-items:center; justify-content:space-between; max-width:1120px; margin:auto; padding:24px; }
+  .legal-brand { color:var(--foreground); text-decoration:none; font-weight:700; font-size:20px; letter-spacing:-.04em; }
+  .legal-layout { display:grid; grid-template-columns:180px minmax(0,720px); gap:64px; max-width:1120px; margin:32px auto 80px; padding:0 24px; }
+  .legal-nav { display:flex; flex-direction:column; gap:8px; align-self:start; position:sticky; top:24px; }
+  .legal-nav a { padding:10px 12px; border-radius:10px; color:var(--muted); text-decoration:none; font-size:14px; }
+  .legal-nav a[aria-current=page] { background:var(--surface); color:var(--foreground); font-weight:600; }
+  .legal-document { min-width:0; font-size:15px; line-height:1.8; }
+  .legal-eyebrow,.legal-date { color:var(--muted); font-size:12px; }
+  .legal-document h1 { margin:10px 0 18px; font-size:clamp(32px,5vw,46px); line-height:1.15; letter-spacing:-.045em; font-weight:650; }
+  .legal-intro { color:var(--muted); font-size:17px; margin-bottom:36px; }
+  .legal-document :global(h2) { margin:36px 0 12px; font-size:20px; font-weight:600; letter-spacing:-.02em; line-height:1.4; }
+  .legal-document :global(h3) { margin:24px 0 10px; font-size:16px; font-weight:600; }
+  .legal-document :global(p) { margin:12px 0; }
+  .legal-document :global(ul),.legal-document :global(ol) { padding-left:22px; margin:12px 0; }
+  .legal-document :global(ul) { list-style:disc; }
+  .legal-document :global(ol) { list-style:decimal; }
+  .legal-document :global(li) { padding-left:4px; margin:8px 0; }
+  .legal-document :global(a) { color:var(--accent); text-underline-offset:3px; }
+  .legal-document :global(table) { border-collapse:collapse; width:100%; margin:20px 0; font-size:14px; }
+  .legal-document :global(th),.legal-document :global(td) { text-align:left; padding:12px 10px; border-bottom:1px solid var(--separator); vertical-align:top; }
+  .legal-draft { padding:18px 20px; margin-bottom:32px; background:var(--surface); border:1px solid var(--separator); border-radius:14px; font-size:13px; }
+  .legal-draft p { margin:6px 0 0; color:var(--muted); }
+  .legal-operator { margin-top:40px; padding-top:8px; border-top:1px solid var(--separator); }
+  .legal-footer { display:flex; flex-wrap:wrap; gap:20px; margin-top:40px; padding-top:24px; border-top:1px solid var(--separator); font-size:13px; }
+  @media(max-width:760px) { .legal-layout { display:block; margin-top:8px; } .legal-nav { position:static; flex-direction:row; flex-wrap:wrap; gap:4px; margin-bottom:32px; } .legal-nav a { padding:8px 10px; } }
+  @media print { .legal-header,.legal-nav,.legal-footer { display:none; } .legal-layout { display:block; margin:0; padding:0; } }
+</style>

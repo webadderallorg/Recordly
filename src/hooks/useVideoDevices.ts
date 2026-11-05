@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/I18nContext";
 import { useEffect, useState } from "react";
 
 export interface VideoDevice {
@@ -6,7 +7,8 @@ export interface VideoDevice {
 	groupId: string;
 }
 
-export function useVideoDevices(enabled: boolean = true) {
+export function useVideoDevices(enabled: boolean = true, preferredDeviceId?: string) {
+	const { t } = useI18n();
 	const [devices, setDevices] = useState<VideoDevice[]>([]);
 	const [selectedDeviceId, setSelectedDeviceId] = useState<string>("default");
 	const [isLoading, setIsLoading] = useState(false);
@@ -34,15 +36,20 @@ export function useVideoDevices(enabled: boolean = true) {
 					.filter((device) => device.kind === "videoinput")
 					.map((device, index) => ({
 						deviceId: device.deviceId,
-						label: device.label || `Camera ${index + 1}`,
+						label:
+							device.label ||
+							t("notifications.camera", "Camera {{index}}", { index: index + 1 }),
 						groupId: device.groupId,
 					}));
 
 				if (mounted && loadId === activeLoadId) {
 					setDevices(videoInputs);
 					setSelectedDeviceId((currentDeviceId) => {
-						if (currentDeviceId === "default" && videoInputs.length > 0) {
-							return videoInputs[0].deviceId;
+						if (
+							preferredDeviceId &&
+							videoInputs.some((device) => device.deviceId === preferredDeviceId)
+						) {
+							return preferredDeviceId;
 						}
 
 						if (
@@ -60,7 +67,10 @@ export function useVideoDevices(enabled: boolean = true) {
 					const message =
 						error instanceof Error
 							? error.message
-							: "Failed to enumerate video devices";
+							: t(
+									"notifications.cameraDevicesFailed",
+									"Failed to enumerate video devices",
+								);
 					setError(message);
 					console.error("Error loading video devices:", error);
 				}
@@ -83,7 +93,7 @@ export function useVideoDevices(enabled: boolean = true) {
 			mounted = false;
 			navigator.mediaDevices.removeEventListener("devicechange", handleDeviceChange);
 		};
-	}, [enabled]);
+	}, [enabled, preferredDeviceId, t]);
 
 	return {
 		devices,

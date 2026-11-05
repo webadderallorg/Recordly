@@ -170,6 +170,25 @@ describe("StreamingVideoDecoder decode failures", () => {
 		vi.unstubAllGlobals();
 	});
 
+	it("distinguishes the source metadata FPS from the decoder fallback without changing decoding defaults", async () => {
+		const known = await new StreamingVideoDecoder().loadMetadata("http://localhost/known.mp4");
+		expect(known).toMatchObject({ frameRate: 30, frameRateSource: "metadata" });
+		const info = await mockDemuxerGetMediaInfo();
+		mockDemuxerGetMediaInfo.mockResolvedValueOnce({
+			...info,
+			streams: info.streams.map((stream) => ({ ...stream, avg_frame_rate: "0/0" })),
+		});
+		const fallback = await new StreamingVideoDecoder().loadMetadata(
+			"http://localhost/unknown.mp4",
+		);
+		expect(fallback).toMatchObject({ frameRate: 60, frameRateSource: "fallback" });
+		const failure = buildVideoDecodeFailure(new Error("failed"), {
+			decoderConfig: { codec: "avc1.640034" },
+			sourceMetadata: fallback,
+		});
+		expect(failure.message).toContain("sourceFps=unknown; decodeFallbackFps=60");
+	});
+
 	it("does not emit frozen remaining frames after a decoder error", async () => {
 		const frames: Array<{ timestamp: number; close: ReturnType<typeof vi.fn> }> = [];
 		class FailingVideoDecoder {
@@ -464,6 +483,437 @@ describe("StreamingVideoDecoder decode failures", () => {
 			(Math.round(((reordered ? secondSource : firstSource) * 30) / 1000) * 1_000_000) / 30,
 		);
 		expect(decoder.getEffectiveDuration(undefined, undefined, clips)).toBe(1.2);
+	});
+	it.each([
+		false,
+		true,
+	])("stops each short clip run before decoding the source tail (reordered: %s)", async (reordered) => {
+		const info = await mockDemuxerGetMediaInfo();
+		mockDemuxerGetMediaInfo.mockResolvedValueOnce({
+			...info,
+			duration: 100,
+			streams: info.streams.map((stream) => ({ ...stream, duration: 100 })),
+		});
+		const readerCancelled = vi.fn();
+		mockDemuxerRead.mockImplementation(() => {
+			let index = 0;
+			return new ReadableStream({
+				pull(controller) {
+					if (index < 3000) controller.enqueue({ timestamp: (index++ * 1_000_000) / 30 });
+					else controller.close();
+				},
+				cancel: readerCancelled,
+			});
+		});
+		let decoded = 0;
+		const closes: ReturnType<typeof vi.fn>[] = [];
+		class ClipDecoder {
+			state = "unconfigured";
+			decodeQueueSize = 0;
+			constructor(private callbacks: { output: (frame: VideoFrame) => void }) {}
+			configure() {
+				this.state = "configured";
+			}
+			decode(chunk: EncodedVideoChunk) {
+				decoded++;
+				const close = vi.fn();
+				closes.push(close);
+				this.callbacks.output({
+					timestamp: chunk.timestamp,
+					close,
+				} as unknown as VideoFrame);
+			}
+			async flush() {}
+			close() {
+				this.state = "closed";
+			}
+		}
+		vi.stubGlobal("VideoDecoder", ClipDecoder);
+		const decoder = new StreamingVideoDecoder({ maxPendingFrames: 1 });
+		await decoder.loadMetadata("/tmp/long-source.mp4");
+		const frames: { timestamp: number; source: number; decoded: number }[] = [];
+		await decoder.decodeAll(
+			30,
+			undefined,
+			undefined,
+			async (frame, timestamp, source) => {
+				frames.push({ timestamp, source, decoded: frame!.timestamp });
+			},
+			[
+				{
+					id: "one",
+					startMs: 0,
+					endMs: 400,
+					sourceStartMs: reordered ? 2000 : 0,
+					speed: 1,
+				},
+				{
+					id: "two",
+					startMs: 400,
+					endMs: 800,
+					sourceStartMs: reordered ? 0 : 2000,
+					speed: 1,
+				},
+			],
+		);
+		expect(frames).toHaveLength(24);
+		for (let index = 0; index < frames.length; index++) {
+			const start = index < 12 !== reordered ? 0 : 2000;
+			expect(frames[index].timestamp).toBeCloseTo((index * 1_000_000) / 30);
+			expect(frames[index].source).toBeCloseTo(start + ((index % 12) * 1000) / 30);
+			expect(frames[index].decoded).toBeCloseTo(frames[index].source * 1000);
+		}
+		expect(decoded).toBeLessThan(120);
+		expect(readerCancelled).toHaveBeenCalledTimes(reordered ? 2 : 1);
+		for (const close of closes) expect(close).toHaveBeenCalledTimes(1);
+	});
+
+	it.each([
+		false,
+		true,
+	])("wakes cancellation while waiting for %s (false: demux read, true: decoder backpressure)", async (backpressure) => {
+		let readStarted!: () => void;
+		const started = new Promise<void>((resolve) => {
+			readStarted = resolve;
+		});
+		const readerCancelled = vi.fn();
+		mockDemuxerRead.mockImplementation(
+			() =>
+				new ReadableStream({
+					start(controller) {
+						if (backpressure) {
+							for (let i = 0; i < 100; i++)
+								controller.enqueue({ timestamp: i * 33_333 });
+						}
+						readStarted();
+					},
+					cancel: readerCancelled,
+				}),
+		);
+		const closed = vi.fn();
+		class WaitingDecoder {
+			state = "unconfigured";
+			decodeQueueSize = 0;
+			configure() {
+				this.state = "configured";
+			}
+			decode() {
+				this.decodeQueueSize++;
+			}
+			async flush() {}
+			close() {
+				this.state = "closed";
+				closed();
+			}
+		}
+		vi.stubGlobal("VideoDecoder", WaitingDecoder);
+		const decoder = new StreamingVideoDecoder({ maxDecodeQueue: 1 });
+		await decoder.loadMetadata("/tmp/stalled.mp4");
+		const onFrame = vi.fn();
+		const completion = decoder.decodeAll(30, undefined, undefined, onFrame);
+		await started;
+		// Let the producer reach its queue wait and the consumer await a frame.
+		for (let i = 0; i < 10; i++) await Promise.resolve();
+		decoder.cancel();
+		await completion;
+		expect(readerCancelled).toHaveBeenCalledTimes(1);
+		expect(closed).toHaveBeenCalledTimes(1);
+		expect(onFrame).not.toHaveBeenCalled();
+	});
+
+	it("retains a frame during an async consumer and closes late output after cancellation", async () => {
+		mockDemuxerRead.mockImplementation(
+			() =>
+				new ReadableStream({
+					start(controller) {
+						for (let i = 0; i < 20; i++) controller.enqueue({ timestamp: i * 33_333 });
+					},
+				}),
+		);
+		let emitLate!: (frame: VideoFrame) => void;
+		const closes: ReturnType<typeof vi.fn>[] = [];
+		class AsyncDecoder {
+			state = "unconfigured";
+			decodeQueueSize = 0;
+			constructor(private callbacks: { output: (frame: VideoFrame) => void }) {
+				emitLate = callbacks.output;
+			}
+			configure() {
+				this.state = "configured";
+			}
+			decode(chunk: EncodedVideoChunk) {
+				const close = vi.fn();
+				closes.push(close);
+				this.callbacks.output({
+					timestamp: chunk.timestamp,
+					close,
+				} as unknown as VideoFrame);
+			}
+			async flush() {}
+			close() {
+				this.state = "closed";
+			}
+		}
+		vi.stubGlobal("VideoDecoder", AsyncDecoder);
+		const decoder = new StreamingVideoDecoder({ maxPendingFrames: 1 });
+		await decoder.loadMetadata("/tmp/async.mp4");
+		let consumerStarted!: () => void;
+		let finishConsumer!: () => void;
+		const started = new Promise<void>((resolve) => {
+			consumerStarted = resolve;
+		});
+		const consumer = new Promise<void>((resolve) => {
+			finishConsumer = resolve;
+		});
+		let held!: VideoFrame;
+		const completion = decoder.decodeAll(30, undefined, undefined, async (frame) => {
+			held = frame!;
+			consumerStarted();
+			await consumer;
+			expect(held.close).not.toHaveBeenCalled();
+		});
+		await started;
+		decoder.cancel();
+		expect(held.close).not.toHaveBeenCalled();
+		const lateClose = vi.fn();
+		emitLate({ timestamp: 900_000, close: lateClose } as unknown as VideoFrame);
+		expect(lateClose).toHaveBeenCalledTimes(1);
+		finishConsumer();
+		await completion;
+		for (const close of closes) expect(close).toHaveBeenCalledTimes(1);
+	});
+
+	it("cleans up consumer failure without replaying it as a decoder failure", async () => {
+		mockDemuxerRead.mockImplementation(
+			() =>
+				new ReadableStream({
+					start(controller) {
+						for (let i = 0; i < 100; i++) controller.enqueue({ timestamp: i * 33_333 });
+					},
+				}),
+		);
+		const closes: ReturnType<typeof vi.fn>[] = [];
+		const closed = vi.fn();
+		class ConsumerDecoder {
+			state = "unconfigured";
+			decodeQueueSize = 0;
+			constructor(private callbacks: { output: (frame: VideoFrame) => void }) {}
+			configure() {
+				this.state = "configured";
+			}
+			decode(chunk: EncodedVideoChunk) {
+				const close = vi.fn();
+				closes.push(close);
+				this.callbacks.output({
+					timestamp: chunk.timestamp,
+					close,
+				} as unknown as VideoFrame);
+			}
+			async flush() {}
+			close() {
+				this.state = "closed";
+				closed();
+			}
+		}
+		vi.stubGlobal("VideoDecoder", ConsumerDecoder);
+		const decoder = new StreamingVideoDecoder({ maxPendingFrames: 1 });
+		await decoder.loadMetadata("/tmp/consumer-failure.mp4");
+		const failure = new Error("[VIDEO_DECODE_ENCODING_ERROR] consumer failed");
+		await expect(
+			decoder.decodeAll(30, undefined, undefined, async () => {
+				throw failure;
+			}),
+		).rejects.toBe(failure);
+		expect(mockDemuxerRead).toHaveBeenCalledTimes(1);
+		expect(closed).toHaveBeenCalledTimes(1);
+		for (const close of closes) expect(close).toHaveBeenCalledTimes(1);
+	});
+
+	it.each([
+		0, 5,
+	])("seeks a sample window without losing source PTS (media start %s)", async (mediaStart) => {
+		const info = await mockDemuxerGetMediaInfo();
+		mockDemuxerGetMediaInfo.mockResolvedValueOnce({
+			...info,
+			start_time: mediaStart,
+			streams: info.streams.map((stream) => ({ ...stream, start_time: mediaStart })),
+		});
+		mockDemuxerRead.mockImplementation(
+			(_type, start, end) =>
+				new ReadableStream({
+					start(controller) {
+						// Model a backward keyframe seek; do not include the recording prefix.
+						for (
+							let i = Math.floor((start * 30) / 15) * 15;
+							i <= Math.ceil(end * 30);
+							i++
+						) {
+							controller.enqueue({ timestamp: Math.round((i * 1_000_000) / 30) });
+						}
+						controller.close();
+					},
+				}),
+		);
+		class SampleDecoder {
+			state = "unconfigured";
+			decodeQueueSize = 0;
+			constructor(private callbacks: { output: (frame: VideoFrame) => void }) {}
+			configure() {
+				this.state = "configured";
+			}
+			decode(chunk: EncodedVideoChunk) {
+				this.callbacks.output({ timestamp: chunk.timestamp, close() {} } as VideoFrame);
+			}
+			async flush() {}
+			close() {
+				this.state = "closed";
+			}
+		}
+		vi.stubGlobal("VideoDecoder", SampleDecoder);
+		const decoder = new StreamingVideoDecoder();
+		await decoder.loadMetadata("/tmp/long.mp4");
+		const frames: Array<{ timestamp: number; source: number; decoded: number | undefined }> =
+			[];
+		await decoder.decodeSampleWindow(
+			30,
+			undefined,
+			undefined,
+			async (frame, timestamp, source) => {
+				frames.push({ timestamp, source, decoded: frame?.timestamp });
+			},
+			undefined,
+			45,
+			30,
+		);
+		expect(frames).toHaveLength(30);
+		for (let i = 0; i < frames.length; i++) {
+			expect(frames[i].timestamp).toBeCloseTo(((45 + i) * 1_000_000) / 30);
+			expect(frames[i].source).toBeCloseTo(((45 + i) * 1000) / 30);
+			expect(frames[i].decoded).toBeCloseTo(
+				Math.round((mediaStart + (45 + i) / 30) * 1_000_000),
+			);
+		}
+		expect(mockDemuxerRead.mock.calls.at(-1)?.[1]).toBeCloseTo(mediaStart + 1.5 - 1 / 30);
+	});
+
+	it("samples reordered clips and gaps with original timeline/source timestamps", async () => {
+		mockDemuxerRead.mockImplementation(
+			(_type, start, end) =>
+				new ReadableStream({
+					start(controller) {
+						for (let i = Math.floor(start * 30); i <= Math.ceil(end * 30); i++)
+							controller.enqueue({ timestamp: Math.round((i * 1_000_000) / 30) });
+						controller.close();
+					},
+				}),
+		);
+		class SampleDecoder {
+			state = "unconfigured";
+			decodeQueueSize = 0;
+			constructor(private callbacks: { output: (frame: VideoFrame) => void }) {}
+			configure() {
+				this.state = "configured";
+			}
+			decode(chunk: EncodedVideoChunk) {
+				this.callbacks.output({ timestamp: chunk.timestamp, close() {} } as VideoFrame);
+			}
+			async flush() {}
+			close() {
+				this.state = "closed";
+			}
+		}
+		vi.stubGlobal("VideoDecoder", SampleDecoder);
+		const decoder = new StreamingVideoDecoder();
+		await decoder.loadMetadata("/tmp/reordered.mp4");
+		const frames: Array<{ gap: boolean; timestamp: number; source: number }> = [];
+		await decoder.decodeSampleWindow(
+			30,
+			undefined,
+			undefined,
+			async (frame, timestamp, source) => {
+				frames.push({ gap: frame === null, timestamp, source });
+			},
+			[
+				{ id: "late", startMs: 0, endMs: 1800, sourceStartMs: 2000, speed: 0.5 },
+				{ id: "early", startMs: 2400, endMs: 3600, sourceStartMs: 0, speed: 2 },
+			],
+			45,
+			30,
+		);
+		expect(frames).toHaveLength(30);
+		expect(frames.map((frame) => frame.gap)).toEqual([
+			...Array(9).fill(false),
+			...Array(18).fill(true),
+			...Array(3).fill(false),
+		]);
+		expect(frames[0].source).toBeCloseTo(2750);
+		expect(frames[27].source).toBeCloseTo(0);
+		for (let i = 0; i < frames.length; i++)
+			expect(frames[i].timestamp).toBeCloseTo(((45 + i) * 1_000_000) / 30);
+	});
+	it("matches full decoding at a low-FPS sample boundary without decoding the remaining clip", async () => {
+		const info = await mockDemuxerGetMediaInfo();
+		mockDemuxerGetMediaInfo.mockResolvedValueOnce({
+			...info,
+			duration: 120,
+			streams: info.streams.map((stream) => ({
+				...stream,
+				duration: 120,
+				avg_frame_rate: "1/1",
+			})),
+		});
+		const readerCancelled = vi.fn();
+		mockDemuxerRead.mockImplementation(() => {
+			let index = 0;
+			return new ReadableStream({
+				pull(controller) {
+					if (index < 120) controller.enqueue({ timestamp: index++ * 1_000_000 });
+					else controller.close();
+				},
+				cancel: readerCancelled,
+			});
+		});
+		let chunksDecoded = 0;
+		class SampleDecoder {
+			state = "unconfigured";
+			decodeQueueSize = 0;
+			constructor(private callbacks: { output: (frame: VideoFrame) => void }) {}
+			configure() {
+				this.state = "configured";
+			}
+			decode(chunk: EncodedVideoChunk) {
+				chunksDecoded++;
+				this.callbacks.output({ timestamp: chunk.timestamp, close() {} } as VideoFrame);
+			}
+			async flush() {}
+			close() {
+				this.state = "closed";
+			}
+		}
+		vi.stubGlobal("VideoDecoder", SampleDecoder);
+		const decoder = new StreamingVideoDecoder();
+		await decoder.loadMetadata("/tmp/sparse.mp4");
+		const complete: number[] = [];
+		await decoder.decodeAll(3, undefined, undefined, async (frame) => {
+			complete.push(frame!.timestamp);
+		});
+		chunksDecoded = 0;
+		const sample: number[] = [];
+		await decoder.decodeSampleWindow(
+			3,
+			undefined,
+			undefined,
+			async (frame) => {
+				sample.push(frame!.timestamp);
+			},
+			undefined,
+			2,
+			1,
+		);
+		expect(sample).toEqual(complete.slice(2, 3));
+		expect(sample).toEqual([1_000_000]);
+		expect(chunksDecoded).toBeLessThan(40);
+		expect(readerCancelled).toHaveBeenCalled();
 	});
 });
 

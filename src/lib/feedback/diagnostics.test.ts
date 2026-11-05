@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import packageInfo from "../../../package.json";
 import { redactDiagnostic } from "./diagnostics";
 import { validateAttachments } from "./submitFeedback";
 
@@ -37,6 +38,7 @@ it("bounds final JSON bytes for Unicode, escapes, and oversized metadata", async
 		expect(data.logs.length).toBeLessThan(100);
 		expect(data.logs.at(-1)).toContain("99:");
 		expect(data.capturedAt).toBeTruthy();
+		expect(data.appVersion).toBe(packageInfo.version);
 	} finally {
 		warn.mockRestore();
 		vi.unstubAllGlobals();

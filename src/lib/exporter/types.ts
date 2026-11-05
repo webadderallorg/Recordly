@@ -1,4 +1,6 @@
 export interface ExportConfig {
+	/** Cloud delivery uses smaller encoding budgets; local exports omit this. */
+	deliveryProfile?: "cloud";
 	width: number;
 	height: number;
 	frameRate: number;
@@ -113,7 +115,57 @@ export interface ExportFfmpegAudioMuxBreakdown {
 	}>;
 }
 
+export interface ExportBackendAttempt {
+	route: "native-stream" | "native-static-layout" | "webcodecs" | "media-source" | "renderer";
+	status: "attempted" | "selected" | "unavailable" | "failed" | "retry" | "skipped";
+	elapsedMs: number;
+	codec?: string;
+	hardwareAcceleration?: "prefer-hardware" | "prefer-software" | "no-preference";
+	latencyMode?: "quality" | "realtime";
+	reason?: string;
+}
+
+export interface ExportDiagnosticSnapshot {
+	elapsedMs: number;
+	requestedBackend: ExportBackendPreference;
+	encoder?:
+		| {
+				api: "webcodecs";
+				codec: string;
+				hardwareAcceleration?: "prefer-hardware" | "prefer-software" | "no-preference";
+				latencyMode?: "quality" | "realtime";
+				// WebCodecs exposes a preference, not the selected GPU/vendor encoder.
+				hardwareEncoder: "not-exposed-by-webcodecs";
+		  }
+		| {
+				api: "ffmpeg";
+				codec: string;
+				hardwareEncoder: string;
+				hardwareAcceleration?: undefined;
+				latencyMode?: undefined;
+		  };
+	muxer?: "ffmpeg-stream-copy" | "ffmpeg-rawvideo" | "mediabunny" | "native-static-layout";
+	attempts: ExportBackendAttempt[];
+	environment: {
+		runtimeInfoStatus?: "available" | "unavailable" | "timed-out";
+		runtime?: RendererExportRuntimeInfo;
+		platform: string;
+		hardwareInfoStatus: "available" | "unavailable" | "timed-out";
+		appVersion?: string;
+		arch?: string;
+		gpus?: Array<{ name: string; vendor: string | null; active: boolean | null }>;
+		gpuFeatures?: {
+			videoDecode: string | null;
+			videoEncode: string | null;
+			webgl: string | null;
+			webgpu: string | null;
+		};
+	};
+}
+
 export interface ExportMetrics {
+	diagnostics?: ExportDiagnosticSnapshot;
+	/** Elapsed time of the current backend attempt; diagnostics.elapsedMs includes retries. */
 	totalElapsedMs: number;
 	metadataLoadMs?: number;
 	rendererInitMs?: number;
@@ -121,11 +173,13 @@ export interface ExportMetrics {
 	decodeLoopMs?: number;
 	frameCallbackMs?: number;
 	renderFrameMs?: number;
+	/** Time blocked by encoder capacity or native-write backpressure. */
 	encodeWaitMs?: number;
 	encodeWaitEvents?: number;
 	peakEncodeQueueSize?: number;
 	peakNativeWriteInFlight?: number;
 	nativeCaptureMs?: number;
+	/** Sum of native-write IPC latencies; overlapping writes can overlap wall-clock time. */
 	nativeWriteMs?: number;
 	finalizationMs?: number;
 	frameCount?: number;
@@ -146,6 +200,7 @@ export interface ExportMetrics {
 
 export interface ExportResult {
 	success: boolean;
+	failureStage?: "renderer" | "encoder" | "pipeline";
 	/**
 	 * Absolute path to a main-process temp file containing the finished export.
 	 * Preferred for MP4 output because it avoids loading multi-gigabyte files
@@ -172,7 +227,7 @@ export interface VideoFrameData {
 
 export type ExportEncodingMode = "fast" | "balanced" | "quality";
 
-export type ExportQuality = "medium" | "good" | "high" | "source";
+export type ExportQuality = "hd" | "medium" | "good" | "high" | "source" | "custom";
 
 export type ExportMp4FrameRate = 24 | 30 | 60;
 
@@ -184,6 +239,7 @@ export type GifFrameRate = 15 | 20 | 25 | 30;
 export type GifSizePreset = "medium" | "large" | "original";
 
 export interface GifExportConfig {
+	optimizeSize?: boolean;
 	frameRate: GifFrameRate;
 	loop: boolean;
 	sizePreset: GifSizePreset;

@@ -2,6 +2,10 @@ import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { env, SELF } from 'cloudflare:test';
 import worker, { sha256Hex } from '../src/index.js';
 
+import { localCommentHeaders } from './commentFixtures.js';
+let commentAuth;
+beforeAll(async () => { commentAuth = await localCommentHeaders(); });
+
 const AUTH = { Authorization: 'Bearer test-secret' };
 const BASE = 'https://share.test';
 
@@ -54,29 +58,25 @@ describe('auth', () => {
 });
 
 describe('comment accounts', () => {
-  it('allows comments without signing in and uses the supplied display name', async () => {
+  it('requires an account and derives the name from its session', async () => {
     const { shareCode } = await createShare();
     await completeUpload(shareCode);
-
+    const body = JSON.stringify({ timestamp: 2, author_name: 'Spoofed Creator', text: 'Account feedback' });
     const anonymous = await SELF.fetch(`${BASE}/s/${shareCode}/comment`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        timestamp: 2,
-        author_name: 'Link Reviewer',
-        text: 'No account required',
-      }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
     });
-    expect(anonymous.status).toBe(200);
-
+    expect(anonymous.status).toBe(401);
+    const signed = await SELF.fetch(`${BASE}/s/${shareCode}/comment`, {
+      method: 'POST', headers: { ...commentAuth, 'Content-Type': 'application/json' }, body,
+    });
+    expect(signed.status).toBe(200);
+    expect((await signed.json()).author_name).toBe('Signed-in Reviewer');
     const comments = await SELF.fetch(`${BASE}/s/${shareCode}/comments`);
     const data = await comments.json();
-    expect(data.comments).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        author_name: 'Link Reviewer',
-        text: 'No account required',
-      }),
-    ]));
+    expect(data.comments).toEqual([expect.objectContaining({ author_name: 'Signed-in Reviewer', text: 'Account feedback' })]);
+    expect(data.comments[0]).not.toHaveProperty('author_id');
+    const saved = await env.DB.prepare('SELECT author_id FROM comments WHERE id = ?').bind(data.comments[0].id).first();
+    expect(saved.author_id).toBeTruthy();
   });
 
   it('supports signing back in and invalidates a logged-out session', async () => {
@@ -110,6 +110,13 @@ describe('comment accounts', () => {
 
     const session = await SELF.fetch(`${BASE}/auth/session`, { headers: { Cookie: cookie } });
     expect(await session.json()).toEqual({ user: null });
+    const { shareCode } = await createShare();
+    await completeUpload(shareCode);
+    const rejected = await SELF.fetch(`${BASE}/s/${shareCode}/comment`, {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timestamp: 0, text: 'After logout' }),
+    });
+    expect(rejected.status).toBe(401);
   });
 });
 
@@ -380,6 +387,12 @@ describe('password protection', () => {
 
   it('hides title and thumbnail from the OG page and image', async () => {
     const shareCode = await protectedShare();
+    const ordinary = await SELF.fetch(`${BASE}/s/${shareCode}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const ordinaryHtml = await ordinary.text();
+    expect(ordinaryHtml).toContain('Protected video');
+    expect(ordinaryHtml).not.toContain('Test Recording');
+    expect(ordinaryHtml).not.toContain('property="og:video"');
+    expect(ordinaryHtml).not.toContain('property="og:image"');
     const og = await SELF.fetch(`${BASE}/s/${shareCode}`, { headers: { 'User-Agent': 'Twitterbot/1.0' } });
     expect(og.status).toBe(200);
     const html = await og.text();
@@ -396,6 +409,27 @@ describe('password protection', () => {
 });
 
 describe('OG page (public video)', () => {
+  it.each(['Slackbot 1.0', 'Twitterbot/1.0', 'Mozilla/5.0 AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15'])(
+    'exposes playable video and thumbnail metadata to %s', async (userAgent) => {
+      const { shareCode } = await createShare();
+      await completeUpload(shareCode);
+      const response = await SELF.fetch(`${BASE}/s/${shareCode}`, { headers: { 'User-Agent': userAgent } });
+      expect(response.status).toBe(200);
+      const html = await response.text();
+      expect(html).toContain(`<meta property="og:video" content="${BASE}/v/${shareCode}">`);
+      expect(html).toContain('<meta property="og:video:type" content="video/mp4">');
+      expect(html).toContain(`<meta property="og:image" content="${BASE}/og/${shareCode}">`);
+      expect(html).toContain(`<meta name="twitter:player" content="${BASE}/embed/${shareCode}">`);
+      if (userAgent.startsWith('Mozilla')) {
+        expect(html).toContain('astro-island');
+        expect(html.match(/<title>/g)).toHaveLength(1);
+      }
+      const media = await SELF.fetch(`${BASE}/v/${shareCode}`);
+      expect(media.status).toBe(200);
+      expect(media.headers.get('Content-Type')).toBe('video/mp4');
+    },
+  );
+
   it('escapes the title in meta tags', async () => {
     const { shareCode } = await createShare({ title: '<script>alert("x")</script>' });
     await completeUpload(shareCode);
@@ -436,16 +470,15 @@ describe('check-views', () => {
 });
 
 describe('error middleware', () => {
-  it('returns JSON 500 instead of an opaque error on handler crashes', async () => {
-    // Malformed JSON body → request.json() throws inside handleUpload.
+  it('returns JSON 400 for malformed upload JSON', async () => {
     const res = await SELF.fetch(`${BASE}/api/upload`, {
       method: 'POST',
       headers: { ...AUTH, 'Content-Type': 'application/json' },
       body: '{not json',
     });
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
     expect(res.headers.get('Content-Type')).toContain('application/json');
-    expect((await res.json()).error).toBe('Internal error');
+    expect((await res.json()).error).toBe('Invalid JSON body');
   });
 });
 
@@ -522,7 +555,7 @@ it('returns stable comment IDs and orders equal timestamps by ID', async () => {
   const ids = [];
   for (const text of ['first', 'second']) {
     const response = await SELF.fetch(`${BASE}/s/${shareCode}/comment`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { ...commentAuth, 'Content-Type': 'application/json' },
       body: JSON.stringify({ timestamp: 1, author_name: 'Viewer', text }),
     });
     expect(response.status).toBe(200);

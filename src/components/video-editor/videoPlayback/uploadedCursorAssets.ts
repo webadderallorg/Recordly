@@ -26,23 +26,23 @@ import windows11ResizeEwUrl from "../../../assets/cursors/windows11/resize-horiz
 import windows11ResizeNsUrl from "../../../assets/cursors/windows11/resize-vertical__48-50.svg";
 import windows11TextUrl from "../../../assets/cursors/windows11/text__50-50.svg";
 import type { CursorStyle, CursorTelemetryPoint } from "../types";
+import { communityCursorAssets } from "./communityCursorAssets";
+import { pixelGloveAssets } from "./pixelGloveAssets";
 
 type CursorAssetKey = NonNullable<CursorTelemetryPoint["cursorType"]>;
-type CursorSetStyle = Extract<CursorStyle, "macos" | "tahoe" | "tahoe-inverted" | "windows11">;
+type CursorSetStyle = Extract<
+	CursorStyle,
+	| "macos"
+	| "tahoe"
+	| "tahoe-inverted"
+	| "windows11"
+	| "bee"
+	| "catppuccin-pink"
+	| "breezex"
+	| "pixel-hand"
+>;
 
-const MACOS_POINTER_ASSET_HEIGHT = 746;
-const MACOS_POINTER_CONTENT_HEIGHT = 386;
-const TAHOE_POINTER_ASSET_HEIGHT = 958;
-const TAHOE_POINTER_CONTENT_HEIGHT = 851;
 const WINDOWS11_CURSOR_VIEWBOX_HEIGHT = 32;
-// Alpha bounds measured after correcting the bottom-up Windows system SVG coordinates.
-const WINDOWS11_ARROW_CONTENT_HEIGHT = 19.0625;
-
-// Measured from the raw pointer assets using the non-shadow pixel bounds.
-const MACOS_CURSOR_STYLE_SIZE_MULTIPLIER =
-	TAHOE_POINTER_CONTENT_HEIGHT /
-	TAHOE_POINTER_ASSET_HEIGHT /
-	(MACOS_POINTER_CONTENT_HEIGHT / MACOS_POINTER_ASSET_HEIGHT);
 
 export type UploadedCursorAsset = {
 	url: string;
@@ -82,6 +82,8 @@ export const cursorSetAssets: Record<
 	Exclude<CursorSetStyle, "tahoe-inverted">,
 	Record<CursorAssetKey, UploadedCursorAsset>
 > = {
+	...communityCursorAssets,
+	"pixel-hand": pixelGloveAssets,
 	macos: {
 		arrow: asset(macosArrowUrl, 34, 24),
 		text: asset(macosTextUrl, 50, 50),
@@ -119,16 +121,29 @@ export const cursorSetAssets: Record<
 	},
 };
 
-export const cursorStyleSizeMultipliers: Record<CursorSetStyle, number> = {
-	macos: MACOS_CURSOR_STYLE_SIZE_MULTIPLIER,
-	tahoe: 1,
-	"tahoe-inverted": 1,
-	windows11: WINDOWS11_CURSOR_VIEWBOX_HEIGHT / WINDOWS11_ARROW_CONTENT_HEIGHT,
+// Rendered image height / visible arrow body height (alpha >= 128), measured
+// after the renderer's trimming step. Transparent padding and shadows must not
+// determine how large a cursor looks. Other states keep the theme's proportions.
+export const cursorStyleSizeMultipliers: Record<
+	CursorSetStyle | "dot" | "figma" | "bold-outline",
+	number
+> = {
+	macos: 463 / 387,
+	tahoe: 958 / 859,
+	"tahoe-inverted": 958 / 859,
+	windows11: 512 / 304,
+	dot: 512 / 384,
+	figma: 430 / 353,
+	"bold-outline": 512 / 491,
+	"pixel-hand": 48 / 29,
+	bee: 474 / 448,
+	breezex: 394 / 368,
+	"catppuccin-pink": 384 / 352,
 };
 
 export function getCursorStyleSizeMultiplier(style: CursorStyle) {
 	return style in cursorStyleSizeMultipliers
-		? cursorStyleSizeMultipliers[style as CursorSetStyle]
+		? cursorStyleSizeMultipliers[style as keyof typeof cursorStyleSizeMultipliers]
 		: 1;
 }
 

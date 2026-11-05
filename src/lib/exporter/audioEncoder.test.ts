@@ -55,14 +55,74 @@ function fakeAudioBuffer(channels: Float32Array[]): AudioBuffer {
 describe("AudioProcessor offline render preparation", () => {
 	it("routes a muted full-track clip through offline audio rendering", async () => {
 		const processor = new AudioProcessor();
-		const render = vi.spyOn(processor as unknown as OfflineRenderTestHarness,
-			"renderAndMuxOfflineAudio").mockResolvedValue();
-		const clips = [{ id: "clip", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1, muted: true }];
+		const render = vi
+			.spyOn(processor as unknown as OfflineRenderTestHarness, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+		const clips = [
+			{ id: "clip", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1, muted: true },
+		];
 		const muxer = {} as never;
-		await processor.process(null, muxer, "recording.mp4", [], [], undefined,
-			[], [], undefined, undefined, clips);
-		expect(render).toHaveBeenCalledWith("recording.mp4", [], [], [], [],
-			undefined, undefined, clips, muxer);
+		await processor.process(
+			null,
+			muxer,
+			"recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			[],
+			undefined,
+			undefined,
+			clips,
+		);
+		expect(render).toHaveBeenCalledWith(
+			"recording.mp4",
+			[],
+			[],
+			[],
+			[],
+			undefined,
+			undefined,
+			clips,
+			muxer,
+			undefined,
+		);
+	});
+
+	it("routes full-track clip volume overrides through offline rendering and passes all overrides", async () => {
+		const processor = new AudioProcessor();
+		const render = vi
+			.spyOn(processor as unknown as OfflineRenderTestHarness, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+		const clips = [{ id: "clip", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1 }];
+		const overrides = { clip: { mixed: { volume: 0.2, normalize: true } } };
+		const muxer = {} as never;
+		await processor.process(
+			null,
+			muxer,
+			"recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			[],
+			undefined,
+			{},
+			clips,
+			overrides,
+		);
+		expect(render).toHaveBeenCalledWith(
+			"recording.mp4",
+			[],
+			[],
+			[],
+			[],
+			undefined,
+			{},
+			clips,
+			muxer,
+			overrides,
+		);
 	});
 
 	it("rejects a cancelled chunked render instead of returning a partial WAV", async () => {

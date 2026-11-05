@@ -10,11 +10,25 @@ export function scalePreviewBorderRadius(
 	width: number,
 	height: number,
 	borderRadiusPercent = 0,
+	frameSize?: { width: number; height: number },
 ): number {
 	if (width <= 0 || height <= 0) {
 		return 0;
 	}
 
+	// A video filling the output is the frame itself. Rounding its mask exposes
+	// wallpaper in the output corners, so only inset/letterboxed video is rounded.
+	// One rounded pixel on the shorter viewport side can shift the longer side
+	// by its aspect ratio. Treat that fitting error as full bleed too.
+	if (frameSize) {
+		const tolerance = Math.max(
+			1,
+			frameSize.width / frameSize.height,
+			frameSize.height / frameSize.width,
+		);
+		if (width >= frameSize.width - tolerance && height >= frameSize.height - tolerance)
+			return 0;
+	}
 	return (Math.min(width, height) * Math.min(50, Math.max(0, borderRadiusPercent))) / 100;
 }
 
@@ -229,6 +243,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 			layout.croppedDisplayWidth,
 			layout.croppedDisplayHeight,
 			borderRadius,
+			{ width, height },
 		),
 	});
 	maskGraphics.fill({ color: 0xffffff });

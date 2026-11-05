@@ -1,0 +1,16 @@
+You're all set with Recordly
+
+Your {{ .PlanName }} is ready. Let's make something worth sharing!
+
+Plan: {{ .PlanName }}
+Price: {{ .Amount }} / {{ .Interval }}
+Next renewal: {{ .RenewalDate }}
+
+Manage subscription: {{ .ActionURL }}
+
+Your cloud recordings stay available while Cloud is active. If Cloud ends, you have 7 days to save them or renew.
+
+You received this email because you subscribed to Recordly.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

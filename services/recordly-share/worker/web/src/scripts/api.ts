@@ -10,6 +10,7 @@ export interface VideoInfo {
   created_at: string;
   view_count: number;
   is_meeting: number;
+  feedback_enabled?: boolean;
 }
 
 export interface Segment {
@@ -42,6 +43,7 @@ export interface Expired {
 }
 
 export interface Comment {
+  can_manage?: boolean;
   id: number;
   timestamp: number;
   author_name: string;
@@ -112,25 +114,83 @@ export async function postReaction(shareCode: string, timestamp: number, emoji: 
   return res.ok;
 }
 
-export async function fetchComments(shareCode: string, page = 1, limit = 50): Promise<CommentsResponse> {
-  const res = await fetch(`/s/${shareCode}/comments?page=${page}&limit=${limit}`);
+export async function fetchComments(shareCode: string, page = 1, limit = 50, accessToken?: string): Promise<CommentsResponse> {
+  const res = await fetch(`/s/${shareCode}/comments?page=${page}&limit=${limit}`, {
+    credentials: 'include',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+  if (!res.ok) throw new Error('Could not load comments');
   return res.json();
+}
+
+export class CommentRateLimitError extends Error {
+  constructor() {
+    super('You’re commenting too quickly. Please wait a little and try again. Your draft is saved here.');
+  }
+}
+
+export interface CommentAccountState {
+  key: string;
+  needsDisplayName?: boolean;
+  displayName: string;
+  getAccessToken: () => Promise<string | undefined>;
+}
+
+export class CommentSignInError extends Error {
+  constructor() {
+    super('Your session expired. Sign in again to continue. Your draft is saved here.');
+  }
 }
 
 export async function postComment(
   shareCode: string,
   timestamp: number,
-  authorName: string,
-  text: string
-): Promise<number> {
+  text: string,
+  accessToken?: string,
+): Promise<{ id: number; author_name: string }> {
   const res = await fetch(`/s/${shareCode}/comment`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
     credentials: 'include',
-    body: JSON.stringify({ timestamp, author_name: authorName, text }),
+    body: JSON.stringify({ timestamp, text }),
   });
-  if (!res.ok) throw new Error('Could not post comment');
-  return (await res.json()).id;
+  if (res.status === 429) throw new CommentRateLimitError();
+  if (res.status === 401) throw new CommentSignInError();
+  if (res.status === 422) throw new Error('Choose a display name before commenting.');
+  if (res.status === 403) throw new Error('New comments are unavailable. The creator may have disabled feedback or your account may need verification. Your draft is saved here.');
+  if (!res.ok) throw new Error('Could not post your comment. Your draft is saved here—please try again.');
+  return res.json();
+}
+
+export async function updateOwnComment(shareCode: string, id: number, text: string, accessToken?: string): Promise<void> {
+  await changeOwnComment(shareCode, id, 'PATCH', accessToken, { text });
+}
+
+export async function deleteOwnComment(shareCode: string, id: number, accessToken?: string): Promise<void> {
+  await changeOwnComment(shareCode, id, 'DELETE', accessToken);
+}
+
+async function changeOwnComment(shareCode: string, id: number, method: 'PATCH' | 'DELETE', accessToken?: string, body?: { text: string }) {
+  const response = await fetch(`/s/${shareCode}/comments/${id}`, {
+    method,
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  if (response.status === 401) {
+    const data = await response.json().catch(() => null);
+    if (data?.error === 'Password required') throw new Error('This recording needs its password again. Reload the page to unlock it.');
+    throw new CommentSignInError();
+  }
+  if (response.status === 403) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error === 'Feedback is disabled for this recording'
+      ? 'The creator has turned off comment editing. You can still delete your own comments.'
+      : 'Your account could not be verified for this change. Please sign in again.');
+  }
+  if (response.status === 404) throw new Error('This comment is no longer available or belongs to another account.');
+  if (response.status === 429) throw new Error('Please wait a little before changing this comment again.');
+  if (!response.ok) throw new Error(method === 'PATCH' ? 'Could not save your changes. Your draft is still here—please try again.' : 'Could not delete your comment. Please try again.');
 }
 
 export async function fetchCommentUser(): Promise<CommentUser | null> {
@@ -164,7 +224,8 @@ async function submitCommentAuth(path: string, body: Record<string, string>): Pr
 }
 
 export async function signOutFromComments(): Promise<void> {
-  await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+  const response = await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+  if (!response.ok) throw new Error('Could not sign out. Please try again.');
 }
 
 export function formatDuration(seconds: number): string {
@@ -202,11 +263,42 @@ export function linkifyTimestamps(escapedText: string, duration: number): string
   });
 }
 
-export function formatDate(isoString: string): string {
-  const d = new Date(isoString + 'Z');
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+// Share pages and the library use the same Safari-safe UTC timestamp parser.
+export { formatDate } from './library.ts';
 
 export function escapeHTML(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+
+export type ReportReason = 'spam' | 'harassment' | 'illegal_content' | 'privacy' | 'copyright' | 'other';
+export interface ModerationSettings { feedbackEnabled: boolean; sharingEnabled: boolean; sharingBlocked?: boolean; }
+
+export async function reportRecording(shareCode: string, reason: ReportReason, details: string): Promise<void> {
+  const res = await fetch(`/s/${encodeURIComponent(shareCode)}/report`, {
+    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason, details: details.trim() }),
+  });
+  if (res.status === 429) throw new Error('Too many reports. Please wait before trying again. Your draft is saved here.');
+  if (!res.ok) throw new Error('Could not send your report. Your draft is saved here. Please try again.');
+}
+
+async function moderationRequest<T>(shareCode: string, accessToken: string, suffix = '', init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`/api/moderation/${encodeURIComponent(shareCode)}${suffix}`, {
+    ...init, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error(res.status === 401 ? 'Your session expired. Sign in again to manage this recording.' : 'Could not update sharing controls. Please try again.');
+  return res.status === 204 ? undefined as T : res.json();
+}
+export function fetchModeration(shareCode: string, accessToken: string): Promise<ModerationSettings> {
+  return moderationRequest(shareCode, accessToken);
+}
+export function updateModeration(shareCode: string, accessToken: string, settings: Partial<ModerationSettings>): Promise<ModerationSettings> {
+  return moderationRequest(shareCode, accessToken, '', { method: 'PATCH', body: JSON.stringify(settings) });
+}
+export function fetchModerationComments(shareCode: string, accessToken: string, page = 1): Promise<CommentsResponse> {
+  return moderationRequest(shareCode, accessToken, `/comments?page=${page}&limit=50`);
+}
+export function deleteModerationComment(shareCode: string, accessToken: string, commentId: number): Promise<void> {
+  return moderationRequest(shareCode, accessToken, `/comments/${commentId}`, { method: 'DELETE' });
 }

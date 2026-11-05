@@ -21,4 +21,17 @@ begin
   end if;
 end;
 $$;
+-- Exercise storage of a real-sized log snapshot after the application-report migration.
+insert into public.export_error_reports (cloud_plan, diagnostics)
+values ('unknown', jsonb_build_object('schemaVersion', 2, 'logs', repeat('x', 290000)));
+do $$
+begin
+  begin
+    insert into public.export_error_reports (cloud_plan, diagnostics)
+    values ('unknown', jsonb_build_object('logs', repeat('x', 1000001)));
+    raise exception 'Oversized diagnostic storage accepted';
+  exception when check_violation then null;
+  end;
+end;
+$$;
 rollback;

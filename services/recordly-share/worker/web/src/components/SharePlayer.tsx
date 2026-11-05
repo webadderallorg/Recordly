@@ -6,7 +6,6 @@ import {
   Dropdown,
   Label,
   Link,
-  Slider,
   ProgressBar,
   Spinner,
   Tooltip,
@@ -14,6 +13,7 @@ import {
 } from '@heroui/react';
 import {
   ArrowsOutIcon,
+  ArrowsInIcon,
   ArrowCounterClockwiseIcon,
   ClosedCaptioningIcon,
   PauseIcon,
@@ -25,10 +25,11 @@ import {
   RewindIcon,
   ChatCircleIcon,
 } from '@phosphor-icons/react';
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject, type CSSProperties } from 'react';
 import type { Comment, Reaction, ShareData } from '../scripts/api';
 import { formatTimestamp } from '../scripts/api';
 import { clusterTimeline, type TimelineItem } from '../scripts/shareModel';
+import { togglePlayerFullscreen, type FullscreenVideo } from '../scripts/playerFullscreen';
 
 interface Props {
   data: ShareData;
@@ -69,6 +70,21 @@ export default function SharePlayer({
   const markers = useRef<HTMLDivElement>(null);
   const [trackWidth, setTrackWidth] = useState(500);
   const [playing, setPlaying] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [nativeFullscreen, setNativeFullscreen] = useState(false);
+  const revealOnly = useRef(false);
+  const hideControls = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealControls = useCallback(() => {
+    setControlsVisible(true);
+    if (hideControls.current) clearTimeout(hideControls.current);
+    if (playing) hideControls.current = setTimeout(() => setControlsVisible(false), 2500);
+  }, [playing]);
+  useEffect(() => {
+    revealControls();
+    return () => { if (hideControls.current) clearTimeout(hideControls.current); };
+  }, [revealControls]);
   const [waiting, setWaiting] = useState(false);
   const [ended, setEnded] = useState(false);
   const [volume, setVolume] = useState(1);
@@ -105,13 +121,48 @@ export default function SharePlayer({
     }
   }, [videoRef]);
   const fullscreen = useCallback(async () => {
+    if (!shell.current || !videoRef.current) return;
     try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await shell.current?.requestFullscreen();
+      await togglePlayerFullscreen(shell.current, videoRef.current);
     } catch {
       toast.danger('Fullscreen is unavailable in this browser.');
     }
-  }, []);
+  }, [videoRef]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const update = () => setIsFullscreen(document.fullscreenElement === shell.current ||
+      (document as Document & { webkitFullscreenElement?: Element }).webkitFullscreenElement === shell.current);
+    const begin = () => { setNativeFullscreen(true); setIsFullscreen(true); };
+    const end = () => { setNativeFullscreen(false); setIsFullscreen(false); revealControls(); };
+    document.addEventListener('fullscreenchange', update);
+    document.addEventListener('webkitfullscreenchange', update);
+    video.addEventListener('webkitbeginfullscreen', begin);
+    video.addEventListener('webkitendfullscreen', end);
+    return () => {
+      document.removeEventListener('fullscreenchange', update);
+      document.removeEventListener('webkitfullscreenchange', update);
+      video.removeEventListener('webkitbeginfullscreen', begin);
+      video.removeEventListener('webkitendfullscreen', end);
+    };
+  }, [videoRef, revealControls]);
+
+  // Native iPhone fullscreen renders the video tracks instead of our caption overlay.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const update = () => {
+      for (const track of Array.from(video.textTracks)) track.mode = nativeFullscreen && captions ? 'showing' : 'hidden';
+    };
+    update();
+    video.textTracks.addEventListener('addtrack', update);
+    video.addEventListener('loadedmetadata', update);
+    return () => {
+      video.textTracks.removeEventListener('addtrack', update);
+      video.removeEventListener('loadedmetadata', update);
+    };
+  }, [videoRef, nativeFullscreen, captions]);
   async function pictureInPicture() {
     try {
       if (document.pictureInPictureElement) await document.exitPictureInPicture();
@@ -174,7 +225,18 @@ export default function SharePlayer({
   }, [seek, videoRef, togglePlay, toggleMute, fullscreen]);
 
   return (
-    <Card ref={shell} className="video-shell">
+    <Card ref={shell} className="video-shell" style={{
+      '--recording-aspect-ratio': data.video.width > 0 && data.video.height > 0 ? data.video.width / data.video.height : 16 / 9,
+    } as CSSProperties} role="region" aria-label="Video player"
+      data-controls-visible={!playing || controlsVisible || speedMenuOpen}
+      onPointerEnter={(event) => { if (event.pointerType === 'mouse') revealControls(); }}
+      onPointerMove={(event) => { if (event.pointerType === 'mouse') revealControls(); }}
+      onPointerDown={(event) => {
+        revealOnly.current = event.pointerType !== 'mouse' && playing && !controlsVisible;
+        revealControls();
+      }}
+      onPointerLeave={(event) => { if (event.pointerType === 'mouse' && playing) setControlsVisible(false); }}
+      onFocusCapture={revealControls}>
       <div className="video-stage">
         <video
           ref={videoRef}
@@ -182,7 +244,10 @@ export default function SharePlayer({
           poster={poster}
           preload="metadata"
           playsInline
-          onClick={() => void togglePlay()}
+          onClick={() => {
+            if (revealOnly.current) { revealOnly.current = false; revealControls(); }
+            else void togglePlay();
+          }}
           onPlay={() => {
             setPlaying(true);
             setEnded(false);
@@ -212,7 +277,7 @@ export default function SharePlayer({
             const start = Number(new URLSearchParams(location.search).get('t'));
             if (Number.isFinite(start) && start > 0 && start < video.duration)
               video.currentTime = start;
-            for (const track of Array.from(video.textTracks)) track.mode = 'hidden';
+            for (const track of Array.from(video.textTracks)) track.mode = (video as FullscreenVideo).webkitDisplayingFullscreen && captions ? 'showing' : 'hidden';
           }}
         >
           {data.segments.length > 0 && (
@@ -224,6 +289,7 @@ export default function SharePlayer({
             <Button
               isIconOnly
               size="lg"
+              className="video-play-button"
               aria-label={ended ? 'Replay recording' : 'Play recording'}
               onPress={() => void togglePlay()}
             >
@@ -289,8 +355,7 @@ export default function SharePlayer({
             </Button>
           </div>
         )}
-      </div>
-      <div className="video-toolbar">
+      <div className="video-toolbar" role="group" aria-label="Playback controls">
         <div ref={markers} className="timeline-markers" aria-label="Comments and reactions on the timeline">
           {clusterTimeline([
             ...comments.map((item): TimelineItem => ({ timestamp: item.timestamp, kind: 'comment', label: `${item.author_name}: ${item.text}` })),
@@ -373,26 +438,21 @@ export default function SharePlayer({
           >
             {muted || volume === 0 ? <SpeakerSlashIcon size={18} /> : <SpeakerHighIcon size={18} />}
           </Button>
-          <Slider
+          <input
             className="volume-control"
             aria-label="Volume"
-            minValue={0}
-            maxValue={1}
-            step={0.05}
+            type="range"
+            min={0} max={1} step={0.05}
             value={muted ? 0 : volume}
-            onChange={(value) => {
+            onChange={(event) => {
+              const value = Number(event.currentTarget.value);
               if (videoRef.current) {
-                videoRef.current.volume = Number(value);
-                videoRef.current.muted = Number(value) === 0;
-                if (Number(value)) savedVolume.current = Number(value);
+                videoRef.current.volume = value;
+                videoRef.current.muted = value === 0;
+                if (value) savedVolume.current = value;
               }
             }}
-          >
-            <Slider.Track>
-              <Slider.Fill />
-              <Slider.Thumb />
-            </Slider.Track>
-          </Slider>
+          />
           <span className="video-time">
             {formatTimestamp(time)} / {formatTimestamp(duration)}
           </span>
@@ -409,11 +469,11 @@ export default function SharePlayer({
               <ClosedCaptioningIcon size={18} />
             </Button>
           )}
-          <Dropdown>
+          <Dropdown onOpenChange={setSpeedMenuOpen}>
             <Button size="sm" variant="ghost" aria-label={`Playback speed: ${speed}×`}>
               {speed}×
             </Button>
-            <Dropdown.Popover>
+            <Dropdown.Popover UNSTABLE_portalContainer={isFullscreen ? shell.current ?? undefined : undefined}>
               <Dropdown.Menu
                 aria-label="Playback speed"
                 selectionMode="single"
@@ -447,12 +507,13 @@ export default function SharePlayer({
             isIconOnly
             size="sm"
             variant="ghost"
-            aria-label="Fullscreen"
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
             onPress={() => void fullscreen()}
           >
-            <ArrowsOutIcon size={18} />
+            {isFullscreen ? <ArrowsInIcon size={18} /> : <ArrowsOutIcon size={18} />}
           </Button>
         </div>
+      </div>
       </div>
     </Card>
   );

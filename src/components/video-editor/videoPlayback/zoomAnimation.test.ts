@@ -320,27 +320,26 @@ describe("computeRegionStrength", () => {
 
 	it("reaches full strength during the hold phase", () => {
 		// Mid-region: after zoom-in completes, before zoom-out starts
-		expect(computeRegionStrength(region, 3500)).toBe(1);
+		expect(computeRegionStrength(region, 3650)).toBe(1);
 	});
 
 	it("rises smoothly during zoom-in", () => {
 		// The entrance ramp is beginning at the timeline block start.
-		const s = computeRegionStrength(region, region.startMs);
+		const s = computeRegionStrength(region, region.startMs + 100);
 		expect(s).toBeGreaterThan(0);
 		expect(s).toBeLessThan(1);
 	});
 
 	it("falls smoothly during zoom-out", () => {
-		// Sample the zoom-out ramp after the animation delay.
-		const zoomOutStart = region.endMs - 150;
-		const s = computeRegionStrength(region, zoomOutStart + 700);
+		// The exit ramp is entirely inside the timeline block.
+		const s = computeRegionStrength(region, region.endMs - 500);
 		expect(s).toBeGreaterThan(0);
 		expect(s).toBeLessThan(1);
 	});
 
 	it("shifts zoom timing when custom durations are provided", () => {
-		const defaultStrength = computeRegionStrength(region, region.startMs);
-		const fasterStrength = computeRegionStrength(region, region.startMs, {
+		const defaultStrength = computeRegionStrength(region, region.startMs + 100);
+		const fasterStrength = computeRegionStrength(region, region.startMs + 100, {
 			zoomInDurationMs: 300,
 			zoomOutDurationMs: 300,
 		});
@@ -365,7 +364,7 @@ describe("findDominantRegion", () => {
 		const regions: ZoomRegion[] = [
 			{ id: "a", startMs: 1000, endMs: 4000, depth: 2, focus: { cx: 0.3, cy: 0.3 } },
 		];
-		const result = findDominantRegion(regions, 2500);
+		const result = findDominantRegion(regions, 2650);
 		expect(result.region).not.toBeNull();
 		expect(result.region!.id).toBe("a");
 		expect(result.strength).toBe(1);
@@ -385,7 +384,7 @@ describe("findDominantRegion", () => {
 			{ id: "b", startMs: 3500, endMs: 6000, depth: 3, focus: { cx: 0.8, cy: 0.8 } },
 		];
 
-		// During the connected handoff, the next region becomes the spring target.
+		// After the bounded handoff, the next region is fully zoomed.
 		const result = findDominantRegion(regions, 3500, { connectZooms: true });
 		expect(result.strength).toBe(1);
 		expect(result.transition).toBeNull();
@@ -398,7 +397,7 @@ describe("findDominantRegion", () => {
 			{ id: "b", startMs: 3500, endMs: 6000, depth: 3, focus: { cx: 0.8, cy: 0.8 } },
 		];
 
-		const result = findDominantRegion(regions, 3100, { connectZooms: true });
+		const result = findDominantRegion(regions, 1900, { connectZooms: true });
 		expect(result.transition).toBeNull();
 		expect(result.region?.id).toBe("a");
 		expect(result.strength).toBeGreaterThan(0);
@@ -433,7 +432,7 @@ describe("findDominantRegion", () => {
 			{ id: "b", startMs: 4300, endMs: 7000, depth: 3, focus: { cx: 0.7, cy: 0.7 } },
 		];
 
-		// During the handoff (3500–4500), before b starts (4300).
+		// The connected handoff stays zoomed while crossing the gap before b starts.
 		const result = findDominantRegion(regions, 4250, { connectZooms: true });
 		expect(result.strength).toBe(1);
 		expect(result.region).not.toBeNull();

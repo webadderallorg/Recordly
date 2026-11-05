@@ -1,0 +1,14 @@
+Staying with Recordly
+
+Glad you're sticking around! Your cancellation has been removed. Your {{ .PlanName }} subscription will continue and renew automatically.
+
+Plan: {{ .PlanName }}
+Next renewal: {{ .RenewalDate }}
+Expected total: {{ .Amount }}
+
+Manage subscription: {{ .ActionURL }}
+
+If you didn't make this change, contact support.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy
