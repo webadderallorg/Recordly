@@ -1,43 +1,69 @@
-import { AccountAvatar } from "@/components/ui/account-avatar";
-import type { User } from "@supabase/supabase-js";
-import { Camera, ClosedCaptioning, Cursor, Gear, FrameCorners } from "@/components/ui/icons";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import {
-	ToggleButtonGroup,
-	ToggleButton,
 	Button,
-	Tooltip,
 	Card,
-	Switch,
 	Label,
+	Switch,
+	ToggleButton,
+	ToggleButtonGroup,
+	Tooltip,
 } from "@heroui/react";
 import type { ComponentProps, ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { Camera, ClosedCaptioning, Cursor, FrameCorners, Gear } from "@/components/ui/icons";
 import type { useI18n } from "@/contexts/I18nContext";
 import ExtensionManager from "../ExtensionManager";
 import { SettingsPanel } from "../SettingsPanel";
 import type { EditorEffectSection } from "../types";
 
+function IconRailTooltip({ label, children }: { label: string; children: ReactNode }) {
+	const [open, setOpen] = useState(false);
+	const triggerRef = useRef<HTMLSpanElement>(null);
+	return (
+		<Tooltip isOpen={open} onOpenChange={setOpen}>
+			<span
+				ref={triggerRef}
+				className="inline-flex"
+				onMouseEnter={() => setOpen(true)}
+				onMouseLeave={() => setOpen(false)}
+				onFocus={(event) => {
+					if (event.target.matches(":focus-visible")) setOpen(true);
+				}}
+				onBlur={() => setOpen(false)}
+				onPointerDown={() => setOpen(false)}
+			>
+				{children}
+			</span>
+			<Tooltip.Content triggerRef={triggerRef} placement="right" offset={8} className="z-50">
+				{label}
+			</Tooltip.Content>
+		</Tooltip>
+	);
+}
+
 type Props = {
-	accountUser?: User | null;
 	panelContent?: ReactNode;
-	onAccountClick?: () => void;
 	t: ReturnType<typeof useI18n>["t"];
 	activeSection: EditorEffectSection;
 	setActiveSection: (section: EditorEffectSection) => void;
+	onOpenSettings: () => void;
 	settingsPanelProps: ComponentProps<typeof SettingsPanel>;
 };
 
 export function EditorSidebar({
 	t,
-	accountUser,
 	activeSection,
 	setActiveSection,
+	onOpenSettings,
 	settingsPanelProps,
 	panelContent,
-	onAccountClick,
 }: Props) {
+	const { t: uiText } = useUiLocale();
 	const [advancedSections, setAdvancedSections] = useState<Record<string, boolean>>({});
 	const advanced = advancedSections[activeSection] ?? false;
+	const selectedAnnotation = settingsPanelProps.annotationRegions?.find(
+		(region) => region.id === settingsPanelProps.selectedAnnotationId,
+	);
 	const hasAdvanced =
 		!settingsPanelProps.selectedAnnotationId &&
 		["scene", "frame", "crop", "cursor", "webcam", "captions", "settings", "zoom"].includes(
@@ -56,11 +82,6 @@ export function EditorSidebar({
 				id: "captions" as const,
 				label: t("settings.sections.captions", "Captions"),
 				icon: ClosedCaptioning,
-			},
-			{
-				id: "settings" as const,
-				label: t("settings.sections.settings", "Settings"),
-				icon: Gear,
 			},
 		],
 		[t],
@@ -84,7 +105,7 @@ export function EditorSidebar({
 					}}
 				>
 					{sections.map((section) => (
-						<Tooltip key={section.id}>
+						<IconRailTooltip key={section.id} label={section.label}>
 							<ToggleButton
 								id={section.id}
 								variant="ghost"
@@ -100,34 +121,35 @@ export function EditorSidebar({
 									className="size-5"
 								/>
 							</ToggleButton>
-							<Tooltip.Content placement="right">{section.label}</Tooltip.Content>
-						</Tooltip>
+						</IconRailTooltip>
 					))}
 				</ToggleButtonGroup>
-				<Tooltip>
-					<Button
-						variant="ghost"
-						isIconOnly
-						className="mt-auto"
-						aria-label="Recordly account"
-						onPress={onAccountClick}
-					>
-						<AccountAvatar user={accountUser} className="!size-7" />
-					</Button>
-					<Tooltip.Content placement="right">Account</Tooltip.Content>
-				</Tooltip>
+				<div className="mt-auto">
+					<IconRailTooltip label={uiText("ui.settings")}>
+						<Button
+							variant="ghost"
+							isIconOnly
+							aria-label={uiText("ui.settings")}
+							onPress={onOpenSettings}
+						>
+							<Gear weight="fill" className="size-5" aria-hidden="true" />
+						</Button>
+					</IconRailTooltip>
+				</div>
 			</nav>
 			<aside
-				aria-label={panelContent ? "Clips" : undefined}
+				aria-label={panelContent ? uiText("ui.clips") : undefined}
 				className="editor-inspector [--text-sm:0.8125rem] [--text-base:0.8125rem] flex w-[320px] min-h-0 flex-col"
 			>
-				<Card className="min-h-0 flex-1 gap-0 overflow-hidden p-0">
+				<Card className="app-frame-surface min-h-0 flex-1 gap-0 overflow-hidden rounded-3xl bg-surface p-0 shadow-sm">
 					{panelContent ?? (
 						<>
 							<header className="flex min-h-14 shrink-0 items-center justify-between gap-3 px-5 py-3">
 								<Card.Title className="text-[14px]">
 									{settingsPanelProps.selectedAnnotationId
-										? t("timeline.annotation.label", "Annotation")
+										? selectedAnnotation?.type === "blur"
+											? uiText("editing.mask", "Mask")
+											: t("timeline.annotation.label", "Annotation")
 										: (sections.find((section) => section.id === activeSection)
 												?.label ??
 											t(
@@ -146,10 +168,12 @@ export function EditorSidebar({
 												[activeSection]: value,
 											}))
 										}
-										aria-label="Advanced settings"
+										aria-label={uiText("ui.advancedSettings")}
 									>
 										<Switch.Content>
-											<Label className="text-xs">Advanced</Label>
+											<Label className="text-xs">
+												{uiText("ui.advanced")}
+											</Label>
 											<Switch.Control>
 												<Switch.Thumb />
 											</Switch.Control>

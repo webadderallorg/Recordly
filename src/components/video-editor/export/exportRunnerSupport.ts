@@ -1,8 +1,10 @@
 import type { RefObject } from "react";
 import { useCallback } from "react";
 import { toast } from "@/components/ui/toast";
-import type { SupportedMp4Dimensions } from "@/lib/exporter";
+import { translate } from "@/i18n/runtime";
+import type { ExportQuality, SupportedMp4Dimensions } from "@/lib/exporter";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
+import type { ShareResolution } from "../cloud/shareResolution";
 import type { getSmokeExportConfig } from "../smokeExportConfig";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
@@ -14,6 +16,7 @@ import type { useExportSession } from "./useExportSession";
 import type { useExportSettings } from "./useExportSettings";
 
 export type ExportRunnerInput = {
+	projectName: string;
 	videoPath: string | null;
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
 	isPlaying: boolean;
@@ -29,7 +32,8 @@ export type ExportRunnerInput = {
 	effectiveShowCursor: boolean;
 	ensureSupportedMp4SourceDimensions: (
 		frameRate: ReturnType<typeof useExportSettings>["mp4FrameRate"],
-		options?: { capTo1080p?: boolean },
+		quality?: ExportQuality,
+		shareResolution?: ShareResolution,
 	) => Promise<SupportedMp4Dimensions>;
 	captionSidecarPayload?: PendingExportSave["captionSidecar"];
 	experimentalNvidiaCudaExport: boolean;
@@ -39,32 +43,45 @@ export type ExportRunnerInput = {
 
 export function showExportErrorToast(message: string) {
 	const summary = summarizeErrorMessage(message);
-	toast.error(summary, {
-		description: summary === message ? undefined : message,
-		duration: 20_000,
+	toast.error(translate("notifications.exportFailed", "Export failed"), {
+		description: summary === message ? summary : message,
+		duration: Infinity,
 	});
 }
 
 export function useExportSuccessToast() {
 	return useCallback((filePath: string) => {
-		toast.success(`Exported successfully to ${filePath}`, {
-			action: {
-				label: "Show in Folder",
-				onClick: async () => {
-					try {
-						const result = await window.electronAPI.revealInFolder(filePath);
-						if (!result.success) {
+		toast.success(
+			translate("notifications.exportedTo", "Exported successfully to {{path}}", {
+				path: filePath,
+			}),
+			{
+				action: {
+					label: translate("notifications.showInFolder", "Show in Folder"),
+					onClick: async () => {
+						try {
+							const result = await window.electronAPI.revealInFolder(filePath);
+							if (!result.success) {
+								toast.error(
+									translate(
+										"notifications.revealFailed",
+										"Failed to reveal item in folder.",
+									),
+									{ description: result.error || result.message },
+								);
+							}
+						} catch (error) {
 							toast.error(
-								result.error ||
-									result.message ||
-									"Failed to reveal item in folder.",
+								translate(
+									"notifications.revealError",
+									"Failed to reveal item in folder: {{error}}",
+									{ error: String(error) },
+								),
 							);
 						}
-					} catch (error) {
-						toast.error(`Error revealing in folder: ${String(error)}`);
-					}
+					},
 				},
 			},
-		});
+		);
 	}, []);
 }

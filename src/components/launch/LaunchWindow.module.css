@@ -7,6 +7,9 @@
 }
 
 .bar {
+	cursor: grab;
+	touch-action: none;
+	user-select: none;
 	display: flex;
 	align-items: center;
 	gap: 10px;
@@ -27,9 +30,13 @@
 	display: flex;
 	align-items: center;
 	flex: 0 1 auto;
-	min-height: 46px;
+	min-height: 36px;
 	min-width: fit-content;
 	padding-right: 2px;
+}
+
+.bar[data-hud-dragging="true"] {
+	cursor: grabbing;
 }
 
 .barState {
@@ -40,6 +47,102 @@
 	white-space: nowrap;
 	min-width: fit-content;
 	pointer-events: auto;
+}
+
+.recordingControls {
+	--source-control-width: 120px;
+	position: relative;
+	display: grid;
+	grid-template-columns: 36px var(--source-control-width) repeat(5, 36px);
+	align-items: center;
+	width: max-content;
+	height: 36px;
+	gap: 8px;
+}
+
+.hudAction,
+.recordingControls > button {
+	width: 36px;
+	min-width: 36px;
+	height: 36px;
+	padding: 0;
+	border-radius: var(--radius-lg);
+	-webkit-app-region: no-drag;
+}
+
+.recordingControls .recordControl {
+	border-radius: 50%;
+}
+
+.recordingControls .sourceControl {
+	width: var(--source-control-width);
+	min-width: 0;
+	max-width: var(--source-control-width);
+	padding: 0 8px;
+	font-size: 13px;
+	justify-content: flex-start;
+}
+
+.sourceDivider {
+	position: absolute;
+	left: calc(36px + 8px + var(--source-control-width) + 4px);
+	top: 50%;
+	width: 1px;
+	height: 26px;
+	transform: translateY(-50%);
+	background: var(--separator);
+	pointer-events: none;
+}
+
+.recordingTimer {
+	width: 56px;
+	padding: 0;
+	color: var(--danger);
+}
+
+.captureControls {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 36px;
+}
+
+.captureDivider {
+	width: 1px;
+	height: 28px;
+	margin: 0 8px;
+	background: var(--separator);
+}
+
+.webcamHudDock {
+	position: absolute;
+	z-index: 1;
+	left: calc(100% + 10px + var(--hud-centering-inset, 0px));
+	bottom: 0;
+	cursor: grab;
+}
+
+.recordingWebcamPreview[data-hud-layout="stacked"] .webcamHudDock {
+	left: 50%;
+	top: calc(100% + 10px);
+	bottom: auto;
+	transform: translateX(-50%);
+}
+
+.recordingFinalizing {
+	display: flex;
+	justify-content: center;
+}
+
+.recordingBar {
+	border-color: var(--separator);
+	border-radius: 999px;
+	padding: 8px 14px;
+	box-shadow: 0 2px 8px rgb(0 0 0 / 0.1);
+}
+
+.recordingBar[data-recording-state="paused"] {
+	border-color: var(--warning);
 }
 
 .sep {
@@ -93,43 +196,6 @@
 	padding: 6px 10px 4px;
 }
 
-.finalizingState {
-	display: inline-flex;
-	align-items: center;
-	gap: 11px;
-	min-width: 238px;
-	color: var(--foreground);
-}
-
-.finalizingSpin {
-	color: var(--accent);
-	animation: finalizingSpin 0.9s linear infinite;
-}
-
-.finalizingCopy {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	font-size: 12px;
-	font-weight: 700;
-	line-height: 1.15;
-}
-
-.finalizingCopy small {
-	color: var(--muted);
-	font-size: 10px;
-	font-weight: 600;
-}
-
-@keyframes finalizingSpin {
-	from {
-		transform: rotate(0deg);
-	}
-	to {
-		transform: rotate(360deg);
-	}
-}
-
 .recDot {
 	width: 14px;
 	height: 14px;
@@ -150,14 +216,16 @@
 }
 
 .recordingWebcamPreview {
+	width: 230px;
+	height: 230px;
 	position: fixed;
-	right: 32px;
-	bottom: 120px;
-	overflow: hidden;
-	border-radius: 24px;
-	background: var(--launch-surface);
-	border: 1px solid var(--launch-border-strong);
-	box-shadow: var(--launch-bar-shadow);
+	left: 32px;
+	bottom: 32px;
+	overflow: visible;
+	border-radius: 0;
+	background: transparent;
+	border: 0;
+	box-shadow: none;
 	cursor: grab;
 	touch-action: none;
 	user-select: none;
@@ -169,37 +237,14 @@
 	cursor: grabbing;
 }
 
-.recordingWebcamPreviewResizeHandle {
-	position: absolute;
-	width: 20px;
-	height: 20px;
-}
-
-.recordingWebcamPreviewResizeHandle[data-resize-handle="nw"] {
-	top: 0;
-	left: 0;
-	cursor: nwse-resize;
-}
-
-.recordingWebcamPreviewResizeHandle[data-resize-handle="ne"] {
-	top: 0;
-	right: 0;
-	cursor: nesw-resize;
-}
-
-.recordingWebcamPreviewResizeHandle[data-resize-handle="sw"] {
-	bottom: 0;
-	left: 0;
-	cursor: nesw-resize;
-}
-
-.recordingWebcamPreviewResizeHandle[data-resize-handle="se"] {
-	bottom: 0;
-	right: 0;
-	cursor: nwse-resize;
+/* Pointer capture can leave the preview or cross HUD controls mid-drag. */
+:global(html[data-webcam-preview-cursor]),
+:global(html[data-webcam-preview-cursor] *) {
+	cursor: var(--webcam-preview-cursor) !important;
 }
 
 .recordingWebcamPreviewVideo {
+	background: var(--launch-surface);
 	display: block;
 	height: 100%;
 	width: 100%;

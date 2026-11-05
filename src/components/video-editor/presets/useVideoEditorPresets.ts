@@ -61,6 +61,7 @@ export function useVideoEditorPresets({
 			cursorClickBounce: appearance.cursorClickBounce,
 			cursorClickBounceDuration: appearance.cursorClickBounceDuration,
 			cursorSway: appearance.cursorSway,
+			cursorIdleHide: appearance.cursorIdleHide,
 			borderRadius: appearance.borderRadius,
 			borderRadiusUnit: "percent",
 			padding: { ...appearance.padding },
@@ -109,6 +110,7 @@ export function useVideoEditorPresets({
 			appearance.setCursorClickBounce(snapshot.cursorClickBounce);
 			appearance.setCursorClickBounceDuration(snapshot.cursorClickBounceDuration);
 			appearance.setCursorSway(snapshot.cursorSway);
+			appearance.setCursorIdleHide(snapshot.cursorIdleHide);
 			appearance.setBorderRadius(snapshot.borderRadius);
 			appearance.setPadding({ ...snapshot.padding });
 			appearance.setCropRegion({ ...snapshot.cropRegion });

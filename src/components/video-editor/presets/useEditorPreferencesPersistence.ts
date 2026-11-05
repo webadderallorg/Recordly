@@ -1,9 +1,16 @@
-import { useEffect } from "react";
+import { type MutableRefObject, useEffect, useRef } from "react";
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
-import { saveEditorPreferences } from "../editorPreferences";
+import { desktopWallpaperPreference } from "@/lib/desktopWallpaper";
+import {
+	type EditorPreferences,
+	type EditorPreferencesPatch,
+	saveEditorPreferences,
+} from "../editorPreferences";
 import type { useAppearanceState } from "../state/useAppearanceState";
 
 type Input = {
+	enabled: boolean;
+	restoringPreferencesRef: MutableRefObject<boolean>;
 	appearance: ReturnType<typeof useAppearanceState>;
 	aspectRatio: AspectRatio;
 	whisperExecutablePath: string | null;
@@ -11,19 +18,21 @@ type Input = {
 };
 
 export function useEditorPreferencesPersistence({
+	enabled,
+	restoringPreferencesRef,
 	appearance,
 	aspectRatio,
 	whisperExecutablePath,
 	whisperModelPath,
 }: Input) {
+	const previousRef = useRef<Partial<EditorPreferences> | null>(null);
 	useEffect(() => {
-		saveEditorPreferences({
-			wallpaper: appearance.wallpaper,
+		const current = {
+			wallpaper: desktopWallpaperPreference(appearance.wallpaper),
 			shadowIntensity: appearance.shadowIntensity,
 			backgroundBlur: appearance.backgroundBlur,
 			zoomMotionBlur: appearance.zoomMotionBlur,
 			zoomMotionBlurTuning: appearance.zoomMotionBlurTuning,
-			autoApplyFreshRecordingAutoZooms: appearance.autoApplyFreshRecordingAutoZooms,
 			connectZooms: appearance.connectZooms,
 			zoomInDurationMs: appearance.zoomInDurationMs,
 			zoomInOverlapMs: appearance.zoomInOverlapMs,
@@ -53,20 +62,48 @@ export function useEditorPreferencesPersistence({
 			cursorClickBounce: appearance.cursorClickBounce,
 			cursorClickBounceDuration: appearance.cursorClickBounceDuration,
 			cursorSway: appearance.cursorSway,
+			cursorIdleHide: appearance.cursorIdleHide,
 			borderRadius: appearance.borderRadius,
 			padding: appearance.padding,
 			webcam: appearance.webcam,
 			aspectRatio,
 			whisperExecutablePath,
 			whisperModelPath,
-		});
+		};
+		const previous = previousRef.current;
+		previousRef.current = current;
+		const restoring = restoringPreferencesRef.current;
+		restoringPreferencesRef.current = false;
+		if (!enabled || !previous || restoring) return;
+
+		// Save only changed controls. Another editor or a restored project can have
+		// different values for the rest of the controls, including webcam shadow.
+		const changes: EditorPreferencesPatch = {};
+		for (const key of Object.keys(current) as (keyof typeof current)[]) {
+			if (key === "webcam") {
+				const webcam = Object.fromEntries(
+					Object.entries(current.webcam).filter(
+						([field, value]) =>
+							JSON.stringify(value) !==
+							JSON.stringify(
+								previous.webcam?.[field as keyof EditorPreferences["webcam"]],
+							),
+					),
+				);
+				if (Object.keys(webcam).length) changes.webcam = webcam;
+			} else if (JSON.stringify(current[key]) !== JSON.stringify(previous[key])) {
+				Object.assign(changes, { [key]: current[key] });
+			}
+		}
+		if (Object.keys(changes).length) saveEditorPreferences(changes);
 	}, [
+		enabled,
+		restoringPreferencesRef,
 		appearance.wallpaper,
 		appearance.shadowIntensity,
 		appearance.backgroundBlur,
 		appearance.zoomMotionBlur,
 		appearance.zoomMotionBlurTuning,
-		appearance.autoApplyFreshRecordingAutoZooms,
 		appearance.connectZooms,
 		appearance.zoomInDurationMs,
 		appearance.zoomInOverlapMs,
@@ -96,6 +133,7 @@ export function useEditorPreferencesPersistence({
 		appearance.cursorClickBounce,
 		appearance.cursorClickBounceDuration,
 		appearance.cursorSway,
+		appearance.cursorIdleHide,
 		appearance.borderRadius,
 		appearance.padding,
 		appearance.webcam,

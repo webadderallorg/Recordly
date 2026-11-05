@@ -12,7 +12,9 @@ describe("clip split selection", () => {
 		let clips: ClipRegion[] = [{ id: "original", startMs: 0, endMs: 3_000, speed: 1 }];
 		let selectedClipId: string | null = null;
 		const nextClipIdRef = { current: 1 };
-		const setClipRegions = (value: ClipRegion[] | ((current: ClipRegion[]) => ClipRegion[])) => {
+		const setClipRegions = (
+			value: ClipRegion[] | ((current: ClipRegion[]) => ClipRegion[]),
+		) => {
 			clips = typeof value === "function" ? value(clips) : value;
 		};
 		const setSelectedClipId = (value: string | null) => {
@@ -24,6 +26,10 @@ describe("clip split selection", () => {
 				selectedClipId,
 				sourceDurationMs: 3_000,
 				nextClipIdRef,
+				nextZoomIdRef: { current: 1 },
+				zoomRegions: [],
+				getSourceAudioTrackSettingsForClip: () => ({}),
+				setSourceAudioTrackSettingsByClip: () => {},
 				setClipRegions,
 				setSelectedClipId,
 				setZoomRegions: () => {},

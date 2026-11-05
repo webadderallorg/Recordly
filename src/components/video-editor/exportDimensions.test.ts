@@ -2,25 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
 	calculateMp4ExportDimensions,
 	calculateMp4SourceDimensions,
-	capMp4ShareDimensions,
 	shouldDebounceMp4SupportProbe,
+	isValidCustomExportResolution,
+	fitCustomExportResolution,
 } from "./exportDimensions";
-
-describe("capMp4ShareDimensions", () => {
-	it("caps landscape shares at 1080p without upscaling", () => {
-		expect(capMp4ShareDimensions(3840, 2160)).toEqual({ width: 1920, height: 1080 });
-		expect(capMp4ShareDimensions(1280, 720)).toEqual({ width: 1280, height: 720 });
-	});
-
-	it("caps portrait and square shares within equivalent 1080p bounds", () => {
-		expect(capMp4ShareDimensions(2160, 3840)).toEqual({ width: 1080, height: 1920 });
-		expect(capMp4ShareDimensions(2160, 2160)).toEqual({ width: 1080, height: 1080 });
-	});
-
-	it("keeps unusual aspect ratios and even dimensions", () => {
-		expect(capMp4ShareDimensions(3441, 1441)).toEqual({ width: 1920, height: 802 });
-	});
-});
 
 describe("calculateMp4SourceDimensions", () => {
 	it("keeps native exports at the source dimensions", () => {
@@ -77,6 +62,37 @@ describe("calculateMp4SourceDimensions", () => {
 });
 
 describe("calculateMp4ExportDimensions", () => {
+	it("keeps a custom longest edge when the canvas changes to portrait or square", () => {
+		expect(
+			fitCustomExportResolution({ width: 2400, height: 1350 }, { width: 720, height: 1280 }),
+		).toEqual({ width: 1350, height: 2400 });
+		expect(
+			fitCustomExportResolution({ width: 2400, height: 1350 }, { width: 1000, height: 1000 }),
+		).toEqual({ width: 2400, height: 2400 });
+	});
+	it("exports HD at 720p", () => {
+		expect(calculateMp4ExportDimensions(3840, 2160, "hd")).toEqual({
+			width: 1280,
+			height: 720,
+		});
+	});
+
+	it("uses custom dimensions exactly and rejects invalid sizes before probing", () => {
+		expect(
+			calculateMp4ExportDimensions(1920, 1080, "custom", { width: 2400, height: 1350 }),
+		).toEqual({ width: 2400, height: 1350 });
+		for (const dimensions of [
+			{ width: 2401, height: 1350 },
+			{ width: 0, height: 1080 },
+			{ width: 8194, height: 4608 },
+			{ width: NaN, height: 1080 },
+		]) {
+			expect(isValidCustomExportResolution(dimensions)).toBe(false);
+			expect(() => calculateMp4ExportDimensions(1920, 1080, "custom", dimensions)).toThrow(
+				"even dimensions",
+			);
+		}
+	});
 	it("normalizes odd source dimensions to even export dimensions", () => {
 		const sourceDimensions = calculateMp4SourceDimensions(1919, 1079, "native");
 
@@ -93,8 +109,8 @@ describe("calculateMp4ExportDimensions", () => {
 		expect(
 			calculateMp4ExportDimensions(sourceDimensions.width, sourceDimensions.height, "high"),
 		).toEqual({
-			width: 1726,
-			height: 970,
+			width: 3840,
+			height: 2158,
 		});
 	});
 
@@ -110,8 +126,51 @@ describe("calculateMp4ExportDimensions", () => {
 		expect(
 			calculateMp4ExportDimensions(sourceDimensions.width, sourceDimensions.height, "high"),
 		).toEqual({
-			width: 972,
-			height: 1728,
+			width: 2160,
+			height: 3840,
+		});
+	});
+
+	it.each([
+		["medium", 1920, 1080],
+		["good", 2560, 1440],
+		["high", 3840, 2160],
+	] as const)("exports %s at its fixed landscape resolution", (preset, width, height) => {
+		expect(calculateMp4ExportDimensions(5120, 2880, preset)).toEqual({ width, height });
+	});
+
+	it.each([
+		["medium", 1920],
+		["good", 2560],
+		["high", 3840],
+	] as const)("preserves square and portrait shapes for %s", (preset, edge) => {
+		expect(calculateMp4ExportDimensions(1200, 1200, preset)).toEqual({
+			width: edge,
+			height: edge,
+		});
+		const portrait = calculateMp4ExportDimensions(1080, 1920, preset);
+		expect(portrait).toEqual({ width: (edge * 9) / 16, height: edge });
+	});
+
+	it("scales ultrawide and custom ratios proportionally without cropping", () => {
+		expect(calculateMp4ExportDimensions(2400, 1000, "high")).toEqual({
+			width: 3840,
+			height: 1600,
+		});
+		expect(calculateMp4ExportDimensions(3000, 2000, "good")).toEqual({
+			width: 2560,
+			height: 1706,
+		});
+	});
+
+	it("upscales fixed presets while Original retains a small recording's dimensions", () => {
+		expect(calculateMp4ExportDimensions(1280, 720, "high")).toEqual({
+			width: 3840,
+			height: 2160,
+		});
+		expect(calculateMp4ExportDimensions(1280, 720, "source")).toEqual({
+			width: 1280,
+			height: 720,
 		});
 	});
 });
@@ -159,4 +218,19 @@ describe("shouldDebounceMp4SupportProbe", () => {
 			}),
 		).toBe(false);
 	});
+});
+
+it("preserves 1440p and 4K originals for local and shared MP4 exports", () => {
+	for (const [width, height] of [
+		[2560, 1440],
+		[3840, 2160],
+		[2160, 3840],
+		[5120, 2880],
+	]) {
+		const source = calculateMp4SourceDimensions(width, height, "native");
+		expect(calculateMp4ExportDimensions(source.width, source.height, "source")).toEqual({
+			width,
+			height,
+		});
+	}
 });

@@ -15,6 +15,8 @@ type Handlers = Pick<
 	| "onSelectAnnotation"
 	| "onAnnotationPositionChange"
 	| "onAnnotationSizeChange"
+	| "onAnnotationContentChange"
+	| "onAnnotationDelete"
 >;
 
 type Props = {
@@ -126,6 +128,7 @@ export function EditorVideoPreview({
 			cursorClickBounce={appearance.cursorClickBounce}
 			cursorClickBounceDuration={appearance.cursorClickBounceDuration}
 			cursorSway={appearance.cursorSway}
+			cursorIdleHide={appearance.cursorIdleHide}
 			volume={
 				audio.shouldMutePreviewVideo || audio.isCurrentClipMuted
 					? 0

@@ -94,3 +94,40 @@ Set `RECORDLY_ANNOUNCEMENTS_URL` before launching the app to use a different HTT
 Add typed entries to `src/content/announcements.ts`. Bundled items use the same schema and are available offline. This is useful when a message should ship atomically with a new release.
 
 Remote content is treated as data only: HTML is not rendered, URLs are restricted, feeds are size-limited and time-limited, and malformed items are ignored.
+
+## Local announcement studio
+
+Run `npm run announcement-studio`, then open `http://127.0.0.1:3000`.
+The studio uses the current Recordly renderer and HeroUI styles directly, with an
+isolated desktop adapter and sample video. Its iframe has an independent viewport:
+choose desktop, laptop, compact or narrow sizes, or enter dimensions. The preview
+scales to fit without changing the app's responsive breakpoints. Theme switches
+apply inside the preview. **Open full size** opens a live preview window.
+
+Preview popups and notifications against the dashboard or editor. Header banners
+use the editor; dashboard image banners use the actual dashboard carousel. Edits
+update the preview immediately. Close/dismiss controls work; **Replay** restores
+the current draft. Native actions and account services are disabled in the preview.
+The dashboard starts with an empty sample library.
+
+Drafts save in this browser at the studio origin. Uploaded images/videos are held
+in memory for the server session (50 MB per file, 100 MB total); add the original
+file to `public/` at the exported path before integration. Reloading the studio
+requires choosing the local file again. Existing public media and HTTPS media can
+also be used by URL.
+
+**Copy JSON** and **Download** produce a current-schema feed for popups,
+notifications and header banners. Dashboard image banners produce the separate
+`AnnouncementConfig` for `src/components/video-editor/dashboard/announcementConfig.ts`.
+The preview bypasses delivery dates, audience and impression limits for authoring;
+export preserves them. Unsupported repeat/snooze/time-window options from the old
+studio are no longer offered. A blank aspect ratio uses the app's bundled default.
+
+Validation: `npx playwright test --config playwright.studio.config.ts` and
+`npx vitest run src/dev/announcementStudioModel.test.ts`.
+The studio has its own Vite configuration and does not launch Electron or enter the
+normal app bundle. Keep it local; it is a development tool, not a publishing flow.
+
+The studio disables source hot reload so background app development cannot close
+menus or interrupt authoring. Draft edits still preview immediately. Refresh the
+page deliberately when you want to load new application source changes.

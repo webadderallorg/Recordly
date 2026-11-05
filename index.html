@@ -10,13 +10,21 @@
       // Keep recording overlays transparent during their own startup.
       document.documentElement.dataset.windowType =
         new URLSearchParams(location.search).get("windowType") || "";
-      if (document.documentElement.dataset.windowType === "editor") {
+      const windowType = document.documentElement.dataset.windowType;
+      try {
+        window.electronAPI?.getWindowChrome?.().then((chrome) => {
+          document.documentElement.dataset.nativeTrafficLights = String(chrome.trafficLightsVisible);
+        }).catch(() => { /* Startup can continue without native window chrome details. */ });
+      } catch { /* Renderer-only previews have no native window controls. */ }
+      if (windowType === "editor") {
         let startupView = new URLSearchParams(location.search).get("startupView");
         try { startupView = window.electronAPI?.getEditorStartupView?.() || startupView; }
         catch { /* Fall back to the explicit destination if the bridge is unavailable. */ }
         try { if (localStorage.getItem("recordly.open-dashboard")) startupView = "home"; }
         catch { /* Home metadata can still be resolved through the desktop bridge. */ }
         document.documentElement.dataset.startupView = startupView === "home" ? "home" : "editor";
+      }
+      if (windowType === "editor" || windowType === "onboarding") {
         let preference = "system";
         try {
           preference = window.electronAPI?.getAppSetting("recordly.theme") ||
@@ -32,71 +40,132 @@
       .boot-shell { display: none; }
       html[data-window-type="editor"] { background: #f6f6f7; }
       html[data-window-type="editor"][data-theme="dark"] { background: #171719; }
+      html[data-window-type="onboarding"] { background: #f6f6f7; }
+      html[data-window-type="onboarding"][data-theme="dark"] { background: #171719; }
+      .boot-shell, .boot-shell * { box-sizing: border-box; }
       html[data-window-type="editor"] .boot-shell {
-        --boot-block: #e5e5e9;
+        --boot-block: #e5e5e9; --boot-surface: #fff; --boot-separator: #e5e5e9;
         position: fixed; inset: 0; flex-direction: column;
-        padding: 0 20px 20px; gap: 16px; box-sizing: border-box;
         background: #f6f6f7; overflow: hidden;
       }
-      html[data-theme="dark"] .boot-shell { --boot-block: #303034; background: #171719; }
+      html[data-theme="dark"] .boot-shell { --boot-block: #303034; --boot-surface: #202023; --boot-separator: #303034; background: #171719; }
       html[data-window-type="editor"] .boot-editor { display: flex; }
       html[data-window-type="editor"][data-startup-view="home"] .boot-editor { display: none; }
-      html[data-window-type="editor"][data-startup-view="home"] .boot-home { display: flex; flex-direction: row; padding: 0; gap: 0; }
-      .boot-home-sidebar { width: 192px; flex-shrink: 0; display: flex; flex-direction: column; gap: 20px; padding: 48px 16px 20px; box-sizing: border-box; }
-      .boot-home-sidebar i { height: 32px; flex-shrink: 0; }
-      .boot-home-sidebar i:first-child { width: 128px; height: 40px; }
-      .boot-home-sidebar i:nth-child(2) { height: 40px; }
-      .boot-home-sidebar i:last-child { margin-top: auto; }
-      .boot-home-panel { flex: 1; min-width: 0; margin: 12px 12px 12px 0; padding: 0 28px; border-radius: 16px; background: #fff; box-shadow: 0 1px 3px #0001; }
-      html[data-theme="dark"] .boot-home-panel { background: #202023; }
-      .boot-home-toolbar { display: flex; gap: 20px; height: 96px; align-items: center; padding-top: 20px; box-sizing: border-box; }
-      .boot-home-toolbar i:first-child { flex: 1; height: 44px; }
-      .boot-home-toolbar i:last-child { width: 96px; height: 40px; }
-      .boot-home-filters { display: flex; gap: 12px; padding: 20px 0 28px; }
-      .boot-home-filters i { width: 80px; height: 28px; border-radius: 20px; }
-      .boot-home-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,280px),1fr)); gap: 40px 28px; }
-      .boot-home-grid > div { display: flex; flex-direction: column; gap: 16px; }
-      .boot-home-grid i:first-child { aspect-ratio: 4/3; border-radius: 12px; }
-      .boot-home-grid i:nth-child(2) { width: 75%; height: 16px; }
-      .boot-home-grid i:nth-child(3) { width: 33%; height: 12px; }
-      @media (min-width: 1024px) { .boot-home-sidebar { width: 224px; } .boot-home-panel { padding: 0 40px; } .boot-home-grid { column-gap: 36px; } }
-      .boot-shell i { display: block; background: var(--boot-block); border-radius: 8px; }
-      .boot-header { height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; }
-      .boot-header i { width: 96px; height: 28px; }
-      .boot-header i:nth-child(2) { width: 144px; height: 16px; }
-      .boot-body { display: flex; flex: 1; min-height: 0; gap: 20px; }
-      .boot-rail { width: 28px; display: flex; flex-direction: column; gap: 16px; }
-      .boot-rail i { height: 32px; flex-shrink: 0; }
-      .boot-settings { width: min(28vw, 320px); padding: 20px; display: flex; flex-direction: column; gap: 24px; box-sizing: border-box; }
-      .boot-settings i { height: 20px; }
-      .boot-settings i:nth-child(3) { height: 140px; }
-      .boot-preview { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
-      .boot-preview i:first-child { flex: 1; }
-      .boot-preview i:last-child { width: 160px; height: 32px; margin: auto; border-radius: 20px; }
-      .boot-timeline { height: 22vh; min-height: 140px; max-height: 240px; display: flex; flex-direction: column; gap: 14px; }
-      .boot-timeline i { height: 24px; width: 240px; }
+      html[data-window-type="editor"][data-startup-view="home"] .boot-home { display: flex; }
+      .boot-shell i { display: block; flex-shrink: 0; background: var(--boot-block); border-radius: 8px; }
+      .boot-header { height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--boot-separator); }
+      .boot-header-start, .boot-header-end { display: flex; align-items: center; gap: 12px; }
+      .boot-header-start { min-width: 0; overflow: hidden; }
+      html[data-native-traffic-lights="true"] :is(.boot-header-start, .loading-frame-start) { padding-left: 76px; }
+      .boot-header-start i:first-child { width: 80px; height: 36px; }
+      .boot-header-start i:nth-child(2) { width: 112px; height: 16px; }
+      .boot-header-start i:nth-child(3) { width: 64px; height: 32px; }
+      .boot-header-end i { width: 112px; height: 36px; }
+      .boot-header-end .boot-history { width: 76px; }
+      .boot-header-end i:last-child { width: 36px; height: 36px; border-radius: 50%; }
+      .boot-body { display: flex; flex: 1; min-height: 0; padding-top: 12px; }
+      .boot-rail { width: 64px; flex-shrink: 0; display: flex; align-items: center; flex-direction: column; gap: 8px; padding: 10px 0; }
+      .boot-rail i { width: 40px; height: 40px; }
+      @media (min-width: 768px) { .boot-rail i { width: 36px; height: 36px; } }
+      .boot-settings { width: 320px; flex-shrink: 0; margin: 0 8px 12px 0; display: flex; flex-direction: column; border-radius: 24px; background: var(--boot-surface); box-shadow: 0 1px 3px #0001; overflow: hidden; }
+      .boot-settings-header { height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; }
+      .boot-settings-header i:first-child { width: 64px; height: 16px; }
+      .boot-settings-header i:last-child { width: 80px; height: 20px; border-radius: 24px; }
+      .boot-settings-body { padding: 4px 20px 24px; }
+      .boot-settings-body > i { height: 32px; }
+      .boot-background-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 20px; }
+      .boot-background-tabs i { height: 32px; border-radius: 24px; }
+      .boot-swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 16px; }
+      .boot-swatches i { aspect-ratio: 4/3; border-radius: 6px; }
+      .boot-settings-body > .boot-frame-heading { margin-top: 20px; }
+      .boot-setting-slider { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+      .boot-setting-slider i:first-child { height: 12px; width: 80px; }
+      .boot-setting-slider i:last-child { height: 20px; border-radius: 24px; }
+      .boot-preview { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+      .boot-preview-tools { height: 40px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-shrink: 0; }
+      .boot-preview-tools i { width: 64px; height: 28px; }
+      .boot-canvas { display: flex; flex: 1; min-height: 0; padding: 12px 16px; }
+      .boot-canvas i { width: 100%; flex: 1; border-radius: 12px; }
+      .boot-playback { height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; }
+      .boot-playback i:first-child { width: 96px; height: 32px; }
+      .boot-playback i:nth-child(2) { width: 160px; height: 36px; border-radius: 24px; }
+      .boot-playback i:last-child { width: 32px; height: 32px; }
+      .boot-timeline { height: clamp(188px, calc(22% - 4.32px), 288px); flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; padding: 8px 16px 16px; }
+      .boot-timeline i { height: 28px; width: 256px; }
       .boot-timeline i:nth-child(2) { height: 12px; width: 100%; }
       .boot-timeline i:nth-child(3) { height: 54px; width: 80%; }
-      .boot-timeline i:nth-child(4) { width: 33%; }
+      .boot-timeline i:nth-child(4) { height: 24px; width: 33%; }
+      .boot-home-body { display: flex; flex: 1; min-height: 0; }
+      .boot-home-sidebar { width: 192px; flex-shrink: 0; display: flex; flex-direction: column; padding: 12px 16px 20px; }
+      .boot-home-sidebar > i:first-child { height: 40px; margin-bottom: 20px; }
+      .boot-home-nav { display: flex; flex-direction: column; gap: 4px; }
+      .boot-home-nav i { height: 40px; }
+      .boot-home-folders { display: flex; flex-direction: column; gap: 16px; margin-top: 36px; }
+      .boot-home-folders i { height: 24px; }
+      .boot-home-folders i:first-child { width: 80px; height: 16px; }
+      .boot-home-sidebar > i:nth-last-child(2) { height: 88px; margin-top: auto; }
+      .boot-home-sidebar > i:last-child { height: 40px; margin-top: 4px; }
+      .boot-home-panel { flex: 1; min-width: 0; margin: 12px 12px 12px 0; padding: 0 28px; border-radius: 24px; background: var(--boot-surface); box-shadow: 0 1px 3px #0001; overflow: hidden; }
+      .boot-home-heading { display: flex; align-items: baseline; gap: 12px; padding-top: 28px; }
+      .boot-home-heading i:first-child { width: 144px; height: 28px; }
+      .boot-home-heading i:last-child { width: 80px; height: 16px; }
+      .boot-home-toolbar { display: flex; gap: 20px; padding: 16px 0 20px; }
+      .boot-home-toolbar i:first-child { flex: 1; height: 44px; }
+      .boot-home-toolbar i:last-child { width: 96px; height: 40px; }
+      .boot-home-filters { display: flex; gap: 8px; padding-bottom: 28px; }
+      .boot-home-filters i { width: 112px; height: 28px; }
+      .boot-home-filters i:first-child { width: 80px; }
+      .boot-home-filters i:last-child { width: 80px; margin-left: auto; }
+      .boot-home-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,280px),1fr)); gap: 40px 28px; padding-top: 8px; }
+      .boot-home-grid > div { display: flex; flex-direction: column; }
+      .boot-home-grid i:first-child { aspect-ratio: 4/3; border-radius: 12px; }
+      .boot-home-grid i:nth-child(2) { width: 75%; height: 20px; margin-top: 12px; }
+      .boot-home-grid i:nth-child(3) { width: 50%; height: 24px; margin-top: 6px; border-radius: 24px; }
+      @media (min-width: 1024px) { .boot-home-sidebar { width: 224px; } .boot-home-panel { padding: 0 40px; } .boot-home-grid { column-gap: 36px; } }
+      @media (min-width: 1440px) { .boot-home-grid { grid-template-columns: repeat(4,minmax(0,1fr)); } }
+
+      /* Shared geometry keeps the pre-JavaScript and React placeholders aligned. */
+      .loading-preview { container-type: inline-size; }
+      .loading-preview-stage { position: relative; container-type: size; display: flex; align-items: center; justify-content: center; flex: 1; min-width: 0; min-height: 0; }
+      .loading-preview-stage .loading-preview-frame { width: min(100cqw, calc(100cqh * 16 / 9)); height: min(100cqh, calc(100cqw * 9 / 16)); max-width: 100%; flex: none; }
+      .loading-recordly-mark { position: absolute; inset: 0; margin: auto; width: min(64px, 20cqw, 40cqh); height: min(64px, 20cqw, 40cqh); background: var(--foreground, #252527); mask: url('/app-icons/recordly-mark.svg') center / contain no-repeat; -webkit-mask: url('/app-icons/recordly-mark.svg') center / contain no-repeat; animation: loading-recordly-rotate 2.4s linear infinite; pointer-events: none; }
+      html[data-theme="dark"] .loading-recordly-mark { background: var(--foreground, #eeeef0); }
+      @keyframes loading-recordly-rotate { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .loading-recordly-mark { animation: none; } }
+      .loading-playback { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; min-height: 56px; flex-shrink: 0; padding: 0 16px; }
+      .loading-playback-tools, .loading-playback-center { width: 192px; height: 36px; }
+      .loading-playback-volume { width: 36px; height: 36px; justify-self: end; }
+      .loading-playback-center { border-radius: 24px; }
+      @container (max-width: 760px) {
+        .loading-playback-tools { grid-row: 2; grid-column: 1 / -1; justify-self: center; height: 44px; margin-bottom: 0; }
+        .loading-playback-center { grid-row: 1; grid-column: 2; }
+        .loading-playback-volume { grid-row: 1; grid-column: 3; }
+      }
+      .boot-home-section-title { width: 32px; height: 28px; margin-bottom: 16px; }
     </style>
   </head>
   <body>
     <div id="root">
       <div class="boot-shell boot-editor" role="status" aria-label="Loading editor" aria-busy="true">
-        <div class="boot-header" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="boot-header" aria-hidden="true"><div class="boot-header-start"><i></i><i></i><i></i></div><div class="boot-header-end"><i></i><i class="boot-history"></i><i></i></div></div>
         <div class="boot-body" aria-hidden="true">
-          <div class="boot-rail"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-          <div class="boot-settings"><i></i><i></i><i></i><i></i><i></i></div>
-          <div class="boot-preview"><i></i><i></i></div>
+          <div class="boot-rail"><i></i><i></i><i></i><i></i></div>
+          <div class="boot-settings"><div class="boot-settings-header"><i></i><i></i></div><div class="boot-settings-body"><i></i><div class="boot-background-tabs"><i></i><i></i><i></i><i></i></div><div class="boot-swatches"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><i class="boot-frame-heading"></i><div class="boot-setting-slider"><i></i><i></i></div><div class="boot-setting-slider"><i></i><i></i></div><div class="boot-setting-slider"><i></i><i></i></div></div></div>
+          <div class="boot-preview loading-preview"><div class="boot-preview-tools"><i></i><i></i></div><div class="boot-canvas"><div class="loading-preview-stage"><i class="loading-preview-frame"></i><span class="loading-recordly-mark"></span></div></div><div class="loading-playback"><i class="loading-playback-tools"></i><i class="loading-playback-center"></i><i class="loading-playback-volume"></i></div></div>
         </div>
         <div class="boot-timeline" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       </div>
       <div class="boot-shell boot-home" role="status" aria-label="Loading home" aria-busy="true">
-        <div class="boot-home-sidebar" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        <div class="boot-home-panel" aria-hidden="true">
-          <div class="boot-home-toolbar"><i></i><i></i></div>
-          <div class="boot-home-filters"><i></i><i></i></div>
-          <div class="boot-home-grid"><div><i></i><i></i><i></i></div><div><i></i><i></i><i></i></div><div><i></i><i></i><i></i></div></div>
+        <div class="boot-header" aria-hidden="true"><div class="boot-header-start"><i></i><i></i></div><div class="boot-header-end"><i></i><i></i></div></div>
+        <div class="boot-home-body" aria-hidden="true">
+          <div class="boot-home-sidebar"><i></i><div class="boot-home-nav"><i></i><i></i><i></i></div><div class="boot-home-folders"><i></i><i></i><i></i><i></i></div><i></i><i></i></div>
+          <div class="boot-home-panel">
+            <div class="boot-home-heading"><i></i><i></i></div>
+            <div class="boot-home-toolbar"><i></i><i></i></div>
+            <div class="boot-home-filters"><i></i><i></i><i></i><i></i></div>
+            <i class="boot-home-section-title"></i>
+            <div class="boot-home-grid"><div><i></i><i></i><i></i></div><div><i></i><i></i><i></i></div><div><i></i><i></i><i></i></div><div><i></i><i></i><i></i></div></div>
+          </div>
         </div>
       </div>
     </div>

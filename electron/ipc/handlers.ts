@@ -1,9 +1,14 @@
 import { BrowserWindow } from "electron";
+import { registerAuthStorageHandlers } from "../authStorage";
 import { registerAnnouncementHandlers } from "./register/announcements";
-import { registerCapturePickerHandlers } from "./register/capturePicker";
 import { registerAssetHandlers } from "./register/assets";
 import { registerCaptionHandlers } from "./register/captions";
+import { registerCapturePickerHandlers } from "./register/capturePicker";
+import { registerCloudBillingHandlers } from "./register/cloudBilling";
 import { registerCloudShareHandlers } from "./register/cloudShare";
+import { registerClipboardHandlers } from "./register/clipboard";
+import { registerExportDiagnosticHandlers } from "./register/exportDiagnostics";
+import { registerGifOptimizationHandlers } from "./register/gifOptimization";
 import { registerExportHandlers } from "./register/export";
 import { registerPermissionHandlers } from "./register/permissions";
 import { registerProjectHandlers } from "./register/project";
@@ -68,11 +73,16 @@ export function registerIpcHandlers(
 	registerCapturePickerHandlers({ pickSourceList });
 	registerRecordingHandlers(onRecordingStateChange);
 	registerPermissionHandlers();
+	registerAuthStorageHandlers();
+	registerClipboardHandlers();
 	registerAnnouncementHandlers();
 	registerAssetHandlers();
 	registerExportHandlers();
+	registerGifOptimizationHandlers();
+	registerExportDiagnosticHandlers();
 	registerCaptionHandlers();
 	registerCloudShareHandlers();
+	registerCloudBillingHandlers();
 	registerProjectHandlers();
 	registerSettingsHandlers();
 }

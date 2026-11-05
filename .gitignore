@@ -13,6 +13,15 @@ dist-electron
 dist-ssr
 *.local
 
+# Local credentials; keep only explicitly named templates in Git.
+.env
+.env.*
+!.env.example
+!.env.*.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -49,3 +58,19 @@ gpu-export-probe.mp4
 # Browser test output
 test-results/
 playwright-report/
+test-results-ui-*/
+output/
+.astro/
+
+# Local announcement studio build output
+announcement-studio/.next/
+announcement-studio/.vinext/
+announcement-studio/.wrangler/
+announcement-studio/next-env.d.ts
+
+# Downloaded website reference output is retained locally, not shipped.
+aside-react/extracted/
+
+# Local screenshot-generation harnesses; keep private paths out of source PRs.
+tests/ui/hero-frame.capture.spec.ts
+tests/ui/hero-capture.config.ts

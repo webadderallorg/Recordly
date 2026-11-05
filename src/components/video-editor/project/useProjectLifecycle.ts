@@ -28,8 +28,12 @@ import type { useTimelineState } from "../state/useTimelineState";
 import { DEFAULT_WEBCAM_TIME_OFFSET_MS } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 import { cloneStructured } from "../videoEditorUtils";
+import type { EditorHistoryStack } from "../editorHistory";
+import { persistEditorHistory, restoreEditorHistory } from "../editorHistoryPersistence";
+import { migrateLegacyTrimOnlyProject } from "./legacyTrimMigration";
 
 type Input = {
+	restoringPreferencesRef: MutableRefObject<boolean>;
 	t: (key: string) => string;
 	project: ReturnType<typeof useProjectState>;
 	appearance: ReturnType<typeof useAppearanceState>;
@@ -53,6 +57,8 @@ type Input = {
 		editor: Parameters<typeof createProjectData>[1],
 	) => Parameters<typeof createProjectData>[1];
 	resetHistory: () => void;
+	restoreHistory: (stack: EditorHistoryStack) => void;
+	persistedHistory: ReturnType<typeof persistEditorHistory>;
 	refs: {
 		nextZoomIdRef: MutableRefObject<number>;
 		nextClipIdRef: MutableRefObject<number>;
@@ -62,9 +68,6 @@ type Input = {
 		clipInitializedRef: MutableRefObject<boolean>;
 		autoFullTrackClipIdRef: MutableRefObject<string | null>;
 		autoFullTrackClipEndMsRef: MutableRefObject<number | null>;
-		pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
-		pendingFreshRecordingAutoSuggestTelemetryCountRef: MutableRefObject<number>;
-		autoSuggestedVideoPathRef: MutableRefObject<string | null>;
 	};
 };
 
@@ -77,14 +80,14 @@ export function useProjectLifecycle(input: Input) {
 		resolve(decision: UnsavedChangesDecision): void;
 	} | null>(null);
 
-	const applyLoadedProject = useCallback(async (candidate: unknown, path?: string | null) => {
+	const applyLoadedProject = useCallback(async (candidate: unknown, path?: string | null, isCurrent: () => boolean = () => true) => {
 		const current = inputRef.current;
 		const { project, appearance, timeline, refs } = current;
 		if (!validateProjectData(candidate)) return false;
 		const loadedProject = candidate;
 		const sourcePath = fromFileUrl(loadedProject.videoPath);
 		const persistedEditor = stripPersistedDevMotionBlurSettings(loadedProject.editor ?? {});
-		const editor = normalizeProjectEditor({
+		const normalizedEditor = normalizeProjectEditor({
 			...persistedEditor,
 			borderRadius:
 				loadedProject.version < 2 && typeof persistedEditor.borderRadius === "number"
@@ -93,17 +96,23 @@ export function useProjectLifecycle(input: Input) {
 						: legacyBorderRadiusPixelsToPercent(persistedEditor.borderRadius)
 					: persistedEditor.borderRadius,
 		});
-		try {
-			current.videoPlaybackRef.current?.pause();
-		} catch {
-			/* preview may be tearing down */
-		}
-		current.setIsPlaying(false);
-		current.setCurrentTime(0);
-		current.setDuration(0);
-		project.setError(null);
+		const hasSavedClipSequence = Array.isArray(persistedEditor.clipRegions);
+		// Probe before replacing any editor state, so a failed legacy migration is transactional.
+		const editor = await migrateLegacyTrimOnlyProject(
+			normalizedEditor,
+			hasSavedClipSequence,
+			async () => {
+				const result = await window.electronAPI.probeNativeVideoMetadata(sourcePath);
+				if (!result.success || !result.metadata) {
+					throw new Error("Could not read the recording duration for this legacy project.");
+				}
+				return result.metadata.duration * 1000;
+			},
+		);
 
-		refs.pendingFreshRecordingAutoZoomPathRef.current = null;
+		if (!isCurrent()) return false;
+		const videoUrl = await resolveVideoUrl(sourcePath);
+		if (!isCurrent()) return false;
 		if (editor.webcam.sourcePath) {
 			const result = await window.electronAPI.setCurrentRecordingSession?.(
 				{
@@ -123,11 +132,23 @@ export function useProjectLifecycle(input: Input) {
 			if (!result.success) throw new Error("Could not load project media");
 			current.applySessionPresentation(null);
 		}
-		const videoUrl = await resolveVideoUrl(sourcePath);
+		if (!isCurrent()) return false;
+		// Keep the current edit intact until the replacement source is ready.
+		try {
+			current.videoPlaybackRef.current?.pause();
+		} catch {
+			/* preview may be tearing down */
+		}
+		current.setIsPlaying(false);
+		current.setCurrentTime(0);
+		current.setDuration(0);
+		project.setError(null);
 		project.setVideoSourcePath(sourcePath);
 		project.setCurrentProjectPath(path ?? null);
 		project.setVideoPath(videoUrl);
 
+		// Restoring a project's look must not replace defaults for future recordings.
+		current.restoringPreferencesRef.current = true;
 		appearance.setWallpaper(editor.wallpaper);
 		appearance.setShadowIntensity(editor.shadowIntensity);
 		appearance.setBackgroundBlur(editor.backgroundBlur);
@@ -164,6 +185,7 @@ export function useProjectLifecycle(input: Input) {
 		appearance.setCursorClickBounce(editor.cursorClickBounce);
 		appearance.setCursorClickBounceDuration(editor.cursorClickBounceDuration);
 		appearance.setCursorSway(editor.cursorSway);
+		appearance.setCursorIdleHide(editor.cursorIdleHide);
 		appearance.setBorderRadius(editor.borderRadius);
 		appearance.setPadding(editor.padding);
 		appearance.setCropRegion(editor.cropRegion);
@@ -172,7 +194,7 @@ export function useProjectLifecycle(input: Input) {
 		timeline.setTrimRegions(editor.trimRegions);
 		timeline.setClipRegions(editor.clipRegions);
 		// An explicit empty clip list means the user deleted all footage, not a legacy project.
-		refs.clipInitializedRef.current = Array.isArray(persistedEditor.clipRegions);
+		refs.clipInitializedRef.current = hasSavedClipSequence || editor !== normalizedEditor;
 		refs.autoFullTrackClipIdRef.current = null;
 		refs.autoFullTrackClipEndMsRef.current = null;
 		timeline.setSpeedRegions(editor.speedRegions);
@@ -205,13 +227,15 @@ export function useProjectLifecycle(input: Input) {
 		);
 		refs.nextAnnotationZIndexRef.current =
 			editor.annotationRegions.reduce((max, region) => Math.max(max, region.zIndex), 0) + 1;
-		current.resetHistory();
+		const restoredHistory = restoreEditorHistory(loadedProject.history, editor);
+		current.restoreHistory(restoredHistory);
 		project.setLastSavedSnapshot(
 			cloneStructured(
 				createProjectData(
 					sourcePath,
 					current.buildPersistedEditorState(editor),
 					loadedProject.projectId ?? null,
+					persistEditorHistory(restoredHistory),
 				),
 			),
 		);
@@ -226,12 +250,14 @@ export function useProjectLifecycle(input: Input) {
 						input.currentSourcePath,
 						input.currentPersistedEditorState,
 						project.lastSavedSnapshot?.projectId ?? null,
+						input.persistedHistory,
 					)
 				: null,
 		[
 			input.currentSourcePath,
 			input.currentPersistedEditorState,
 			project.lastSavedSnapshot?.projectId,
+			input.persistedHistory,
 		],
 	);
 	const resolveProjectSaveDialog = useCallback(
@@ -346,8 +372,6 @@ export function useProjectLifecycle(input: Input) {
 		refs.nextAudioIdRef.current = 1;
 		refs.nextAnnotationIdRef.current = 1;
 		refs.nextAnnotationZIndexRef.current = 1;
-		refs.pendingFreshRecordingAutoSuggestTelemetryCountRef.current = 0;
-		refs.autoSuggestedVideoPathRef.current = null;
 		current.resetHistory();
 	}, []);
 	const handleUploadWebcam = useCallback(async () => {

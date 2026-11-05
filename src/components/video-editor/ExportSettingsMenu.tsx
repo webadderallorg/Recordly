@@ -1,7 +1,9 @@
-import { DownloadSimple as Download, FilmSlate as Film, Image } from "@/components/ui/icons";
-import { Card, Label, Description, TagGroup, Tag } from "@heroui/react";
-import type { ReactNode } from "react";
+import { Card, Description, Input, Label } from "@heroui/react";
+import { useOptionalBilling } from "@/components/billing/BillingProvider";
+import { canExportCaptionFiles } from "@/components/billing/captionFileAccess";
+import { PlusBadge } from "@/components/billing/PlusBadge";
 import { Button } from "@/components/ui/button";
+import { DownloadSimple as Download, FilmSlate as Film, Image } from "@/components/ui/icons";
 import { Switch } from "@/components/ui/switch";
 import { useScopedT } from "@/contexts/I18nContext";
 import type {
@@ -14,8 +16,17 @@ import type {
 	GifSizePreset,
 } from "@/lib/exporter";
 import { GIF_FRAME_RATES, GIF_SIZE_PRESETS, MP4_FRAME_RATES } from "@/lib/exporter";
+import type { GifSizeEstimateState } from "./export/useGifSizeEstimate";
+import { isValidCustomExportResolution } from "./exportDimensions";
+import { GifOptimizeSizeCheckbox } from "./GifOptimizeSizeCheckbox";
+import { ExportChoices } from "./settings/ExportChoices";
 
 interface ExportSettingsMenuProps {
+	advancedExportSettings?: boolean;
+	onAdvancedExportSettingsChange?: (enabled: boolean) => void;
+	customExportResolution?: { width: number; height: number };
+	onCustomExportResolutionChange?: (resolution: { width: number; height: number }) => void;
+	mp4SizeEstimate?: number | null;
 	exportFormat: ExportFormat;
 	onExportFormatChange?: (format: ExportFormat) => void;
 	exportQuality: ExportQuality;
@@ -31,9 +42,12 @@ interface ExportSettingsMenuProps {
 	showCaptionSidecarOption?: boolean;
 	includeCaptionSidecar?: boolean;
 	onIncludeCaptionSidecarChange?: (enabled: boolean) => void;
-	mp4OutputDimensions?: Record<"medium" | "good" | "high" | "source", { width: number; height: number }>;
+	mp4OutputDimensions?: Record<ExportQuality, { width: number; height: number }>;
 	gifFrameRate: GifFrameRate;
 	onGifFrameRateChange?: (rate: GifFrameRate) => void;
+	gifSizeEstimate?: GifSizeEstimateState | null;
+	gifOptimizeSize?: boolean;
+	onGifOptimizeSizeChange?: (enabled: boolean) => void;
 	gifLoop: boolean;
 	onGifLoopChange?: (loop: boolean) => void;
 	gifSizePreset: GifSizePreset;
@@ -46,57 +60,11 @@ interface ExportSettingsMenuProps {
 	linkMode?: boolean;
 }
 
-function Choices<T extends string | number>({
-	label,
-	value,
-	options,
-	onChange,
-}: {
-	label: string;
-	value: T;
-	options: { value: T; label: ReactNode; textValue?: string; description?: string }[];
-	onChange?: (value: T) => void;
-}) {
-	return (
-		<div className="flex flex-col gap-2">
-			<Label>{label}</Label>
-			<TagGroup
-				aria-label={label}
-				selectionMode="single"
-				disallowEmptySelection
-				selectedKeys={[String(value)]}
-				onSelectionChange={(keys) => {
-					if (keys === "all") return;
-					const selected = options.find((option) => keys.has(String(option.value)));
-					if (selected) onChange?.(selected.value);
-				}}
-				size="lg"
-			>
-				<TagGroup.List className="flex gap-2">
-					{options.map((option) => (
-						<Tag
-							key={option.value}
-							id={String(option.value)}
-							textValue={
-								option.textValue ??
-								(typeof option.label === "string"
-									? option.label
-									: String(option.value))
-							}
-							className="h-auto min-h-10 flex-1 justify-center flex-col gap-0.5 py-2"
-						>
-							{option.label}
-							{option.description && (
-								<span className="text-[10px] opacity-70">{option.description}</span>
-							)}
-						</Tag>
-					))}
-				</TagGroup.List>
-			</TagGroup>
-		</div>
-	);
-}
 export function ExportSettingsMenu({
+	advancedExportSettings = false,
+	onAdvancedExportSettingsChange,
+	customExportResolution = { width: 1920, height: 1080 },
+	onCustomExportResolutionChange,
 	exportFormat,
 	onExportFormatChange,
 	exportQuality,
@@ -115,6 +83,8 @@ export function ExportSettingsMenu({
 	mp4OutputDimensions,
 	gifFrameRate,
 	onGifFrameRateChange,
+	gifOptimizeSize = false,
+	onGifOptimizeSizeChange,
 	gifLoop,
 	onGifLoopChange,
 	gifSizePreset,
@@ -127,7 +97,29 @@ export function ExportSettingsMenu({
 	linkMode = false,
 }: ExportSettingsMenuProps) {
 	const tSettings = useScopedT("settings");
+	const tBilling = useScopedT("billing");
+	const billing = useOptionalBilling();
+	const captionFilesAvailable = canExportCaptionFiles(billing);
 	const isLegacyModel = exportPipelineModel === "legacy";
+	const invalidCustom =
+		exportFormat === "mp4" &&
+		exportQuality === "custom" &&
+		!isValidCustomExportResolution(customExportResolution);
+	const toggleAdvanced = (enabled: boolean) => {
+		if (!enabled && (exportQuality === "source" || exportQuality === "custom"))
+			onExportQualityChange?.("medium");
+		onAdvancedExportSettingsChange?.(enabled);
+	};
+	const resizeCustom = (axis: "width" | "height", value: number) => {
+		const source = mp4OutputDimensions?.source ?? { width: 1920, height: 1080 };
+		const ratio = source.width / source.height;
+		const other = axis === "width" ? value / ratio : value * ratio;
+		onCustomExportResolutionChange?.({
+			...customExportResolution,
+			[axis]: value,
+			[axis === "width" ? "height" : "width"]: Math.max(0, Math.round(other / 2) * 2),
+		});
+	};
 
 	return (
 		<Card className={className}>
@@ -138,7 +130,7 @@ export function ExportSettingsMenu({
 			)}
 			<Card.Content className="gap-4">
 				{!linkMode && (
-					<Choices
+					<ExportChoices
 						label={tSettings("export.format", "Format")}
 						value={exportFormat}
 						onChange={onExportFormatChange}
@@ -168,37 +160,131 @@ export function ExportSettingsMenu({
 				)}
 				{exportFormat === "mp4" ? (
 					<>
-						<Choices
-							label={tSettings("export.qualityTitle", "Quality")}
+						<ExportChoices
+							label={tSettings("export.resolutionTitle", "Resolution")}
+							headingAction={
+								<Switch
+									checked={advancedExportSettings}
+									onCheckedChange={toggleAdvanced}
+									size="sm"
+								>
+									<Label>{tSettings("export.advanced", "Advanced")}</Label>
+								</Switch>
+							}
+							columns={2}
 							value={exportQuality}
 							onChange={onExportQualityChange}
-							options={(["medium", "good", "high", "source"] as const).map(
-								(value, index) => ({
+							options={(["hd", "medium", "good", "high"] as const).map((value) => {
+								const label = { hd: "HD", medium: "FHD", good: "QHD", high: "4K" }[
+									value
+								];
+								const dimensions = mp4OutputDimensions?.[value];
+								const description = dimensions
+									? `${dimensions.width} × ${dimensions.height}`
+									: { hd: "720p", medium: "1080p", good: "1440p", high: "2160p" }[
+											value
+										];
+								return {
 									value,
-									label: tSettings(
-										`export.quality.${["low", "medium", "high", "original"][index]}`,
-									),
-									description: mp4OutputDimensions
-										? `${mp4OutputDimensions[value].width} × ${mp4OutputDimensions[value].height}`
-										: undefined,
-								}),
-							)}
+									label,
+									description,
+									textValue: `${label}, ${description}`,
+								};
+							})}
 						/>
-						<Choices
-							label={tSettings("export.encodingTitle", "Encoding")}
-							value={exportEncodingMode}
-							onChange={onExportEncodingModeChange}
-							options={(["fast", "balanced", "quality"] as const).map((value) => ({
-								value,
-								label: tSettings(
-									`export.encoding.${value}`,
-									{ fast: "Fast", balanced: "Balanced", quality: "Quality" }[
-										value
-									],
-								),
-							}))}
-						/>
-						<Choices
+						{advancedExportSettings && (
+							<>
+								<ExportChoices<ExportQuality>
+									label={tSettings(
+										"export.advancedResolution",
+										"Advanced resolution",
+									)}
+									value={exportQuality}
+									onChange={onExportQualityChange}
+									options={[
+										{
+											value: "source",
+											label: tSettings("export.quality.original", "Original"),
+											description: mp4OutputDimensions?.source
+												? `${mp4OutputDimensions.source.width} × ${mp4OutputDimensions.source.height}`
+												: undefined,
+										},
+										{
+											value: "custom",
+											label: tSettings("export.customResolution", "Custom"),
+										},
+									]}
+								/>
+								{exportQuality === "custom" && (
+									<div className="flex flex-col gap-2">
+										<div className="grid grid-cols-2 gap-2">
+											{(["width", "height"] as const).map((axis) => (
+												<label
+													key={axis}
+													className="flex flex-col gap-1 text-sm"
+												>
+													{tSettings(
+														`export.custom${axis === "width" ? "Width" : "Height"}`,
+														axis === "width"
+															? "Width (px)"
+															: "Height (px)",
+													)}
+													<Input
+														type="number"
+														min={2}
+														max={8192}
+														step={2}
+														aria-label={tSettings(
+															`export.custom${axis === "width" ? "Width" : "Height"}`,
+														)}
+														value={customExportResolution[axis] || ""}
+														onChange={(event) =>
+															resizeCustom(
+																axis,
+																Number(event.target.value),
+															)
+														}
+													/>
+												</label>
+											))}
+										</div>
+										<Description>
+											{tSettings(
+												"export.customResolutionHint",
+												"Width and height stay linked to the canvas aspect ratio. Use even dimensions from 2 to 8192 pixels.",
+											)}
+										</Description>
+										{invalidCustom && (
+											<p role="alert" className="text-xs text-danger">
+												{tSettings(
+													"export.invalidCustomResolution",
+													"Enter even dimensions between 2 and 8192 pixels.",
+												)}
+											</p>
+										)}
+									</div>
+								)}
+								<ExportChoices
+									label={tSettings("export.encodingTitle", "Encoding")}
+									value={exportEncodingMode}
+									onChange={onExportEncodingModeChange}
+									options={(["fast", "balanced", "quality"] as const).map(
+										(value) => ({
+											value,
+											label: tSettings(
+												`export.encoding.${value}`,
+												{
+													fast: "Fast",
+													balanced: "Balanced",
+													quality: "Quality",
+												}[value],
+											),
+										}),
+									)}
+								/>
+							</>
+						)}
+						<ExportChoices
 							label={tSettings("export.fpsTitle", "FPS")}
 							value={mp4FrameRate}
 							onChange={onMp4FrameRateChange}
@@ -218,14 +304,21 @@ export function ExportSettingsMenu({
 						{showCaptionSidecarOption && (
 							<div>
 								<Switch
-									checked={includeCaptionSidecar}
-									onCheckedChange={onIncludeCaptionSidecarChange}
+									checked={captionFilesAvailable && includeCaptionSidecar}
+									onCheckedChange={(enabled) => {
+										if (enabled && !captionFilesAvailable) {
+											billing?.openPricing();
+											return;
+										}
+										onIncludeCaptionSidecarChange?.(enabled);
+									}}
 								>
 									<Label>
 										{tSettings(
 											"export.captionSidecar.title",
 											"Export captions file",
 										)}
+										<PlusBadge className="ml-2" />
 									</Label>
 								</Switch>
 								<Description>
@@ -239,7 +332,7 @@ export function ExportSettingsMenu({
 					</>
 				) : (
 					<>
-						<Choices
+						<ExportChoices
 							label={tSettings("export.fpsTitle", "FPS")}
 							value={gifFrameRate}
 							onChange={onGifFrameRateChange}
@@ -248,7 +341,7 @@ export function ExportSettingsMenu({
 								label: String(rate.value),
 							}))}
 						/>
-						<Choices
+						<ExportChoices
 							label={tSettings("export.size", "Size")}
 							value={gifSizePreset}
 							onChange={onGifSizePresetChange}
@@ -265,10 +358,47 @@ export function ExportSettingsMenu({
 						</Switch>
 					</>
 				)}
+				{exportFormat === "gif" && (
+					<div className="space-y-1 border-t border-foreground/10 pt-3">
+						<GifOptimizeSizeCheckbox
+							selected={gifOptimizeSize}
+							onChange={onGifOptimizeSizeChange}
+						/>
+						{gifOptimizeSize && (
+							<Description className="text-xs">
+								<span className="block">
+									{tSettings(
+										"export.optimizeTargetHint",
+										"Targets 90% smaller by reducing colors and resolution. Actual size may vary.",
+									)}
+								</span>
+							</Description>
+						)}
+					</div>
+				)}
+				{billing?.status?.billing.plan !== "pro" && (
+					<div className="space-y-1">
+						<p className="text-xs text-muted">
+							<Button
+								variant="link"
+								className="inline h-auto min-h-0 p-0 text-xs text-accent no-underline hover:underline"
+								onClick={() => billing?.openPricing()}
+							>
+								{tBilling("upgrade", "Upgrade to Cloud")}
+							</Button>{" "}
+							{tBilling("forCommercialUse", "for commercial use")}
+						</p>
+					</div>
+				)}
 			</Card.Content>
 			{!hideAction && (
 				<Card.Footer>
-					<Button size="lg" onClick={onExport} className="w-full">
+					<Button
+						size="lg"
+						disabled={invalidCustom}
+						onClick={onExport}
+						className="w-full"
+					>
 						<Download />
 						{tSettings("export.exportVideo", undefined, {
 							format: exportFormat === "gif" ? "GIF" : "Video",

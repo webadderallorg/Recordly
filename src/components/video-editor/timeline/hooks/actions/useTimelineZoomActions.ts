@@ -1,6 +1,7 @@
 import type { Span } from "dnd-timeline";
-import { useCallback, useEffect, useMemo } from "react";
-import type { CursorTelemetryPoint, ZoomFocus, ZoomRegion } from "../../../types";
+import { useCallback, useMemo } from "react";
+import type { ClipRegion, CursorTelemetryPoint, ZoomFocus, ZoomRegion } from "../../../types";
+import { DEFAULT_ZOOM_BLOCK_DURATION_MS } from "../../core/constants";
 import { buildInteractionZoomSuggestions } from "../../zoomSuggestionUtils";
 import { timelineNotifications } from "../utils/timelineNotifications";
 
@@ -12,14 +13,9 @@ interface UseTimelineZoomActionsParams {
 	};
 	regions: {
 		zoom: ZoomRegion[];
-		clip: { startMs: number; endMs: number }[];
+		clip: ClipRegion[];
 	};
 	cursorTelemetry: CursorTelemetryPoint[];
-	options: {
-		disableSuggestedZooms: boolean;
-	};
-	autoSuggestZoomsTrigger: number;
-	onAutoSuggestZoomsConsumed?: () => void;
 	onZoomAdded: (span: Span) => void;
 	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
 }
@@ -28,16 +24,13 @@ export function useTimelineZoomActions({
 	timeline,
 	regions,
 	cursorTelemetry,
-	options,
-	autoSuggestZoomsTrigger,
-	onAutoSuggestZoomsConsumed,
 	onZoomAdded,
 	onZoomSuggested,
 }: UseTimelineZoomActionsParams) {
 	const { videoDuration, totalMs, currentTimeMs } = timeline;
 	const { zoom: zoomRegions, clip: clipRegions } = regions;
-	const { disableSuggestedZooms } = options;
 	const defaultRegionDurationMs = useMemo(() => Math.min(1000, totalMs), [totalMs]);
+	const defaultZoomDurationMs = Math.min(DEFAULT_ZOOM_BLOCK_DURATION_MS, totalMs);
 
 	const canPlaceZoomAtMs = useCallback(
 		(startMs: number) => {
@@ -45,7 +38,7 @@ export function useTimelineZoomActions({
 				return false;
 			}
 
-			const defaultDuration = Math.min(defaultRegionDurationMs, totalMs);
+			const defaultDuration = defaultZoomDurationMs;
 			if (defaultDuration <= 0) {
 				return false;
 			}
@@ -71,7 +64,7 @@ export function useTimelineZoomActions({
 
 			return !isOverlapping && availableDuration >= defaultDuration;
 		},
-		[videoDuration, totalMs, defaultRegionDurationMs, clipRegions, zoomRegions],
+		[videoDuration, totalMs, defaultZoomDurationMs, clipRegions, zoomRegions],
 	);
 
 	const addZoomAtMs = useCallback(
@@ -80,7 +73,7 @@ export function useTimelineZoomActions({
 				return;
 			}
 
-			const defaultDuration = Math.min(defaultRegionDurationMs, totalMs);
+			const defaultDuration = defaultZoomDurationMs;
 			if (defaultDuration <= 0) {
 				return;
 			}
@@ -96,7 +89,7 @@ export function useTimelineZoomActions({
 
 			onZoomAdded({ start: startPos, end: startPos + defaultDuration });
 		},
-		[videoDuration, totalMs, defaultRegionDurationMs, canPlaceZoomAtMs, onZoomAdded],
+		[videoDuration, totalMs, defaultZoomDurationMs, canPlaceZoomAtMs, onZoomAdded],
 	);
 
 	const handleAddZoom = useCallback(() => {
@@ -109,13 +102,6 @@ export function useTimelineZoomActions({
 
 	const handleSuggestZooms = useCallback(() => {
 		if (!videoDuration || videoDuration === 0 || totalMs === 0) {
-			return;
-		}
-
-		if (disableSuggestedZooms) {
-			timelineNotifications.info(
-				"Suggested zooms are unavailable while cursor looping is enabled.",
-			);
 			return;
 		}
 
@@ -132,13 +118,14 @@ export function useTimelineZoomActions({
 			return;
 		}
 
-		const defaultDuration = Math.min(defaultRegionDurationMs, totalMs);
+		const defaultDuration = defaultZoomDurationMs;
 		if (defaultDuration <= 0) {
 			return;
 		}
 
 		const result = buildInteractionZoomSuggestions({
 			cursorTelemetry,
+			clipRegions,
 			totalMs,
 			defaultDurationMs: defaultDuration,
 			reservedSpans: zoomRegions
@@ -180,21 +167,12 @@ export function useTimelineZoomActions({
 	}, [
 		videoDuration,
 		totalMs,
-		disableSuggestedZooms,
 		onZoomSuggested,
 		cursorTelemetry,
-		defaultRegionDurationMs,
+		clipRegions,
+		defaultZoomDurationMs,
 		zoomRegions,
 	]);
-
-	useEffect(() => {
-		if (autoSuggestZoomsTrigger <= 0) {
-			return;
-		}
-
-		onAutoSuggestZoomsConsumed?.();
-		handleSuggestZooms();
-	}, [autoSuggestZoomsTrigger, handleSuggestZooms, onAutoSuggestZoomsConsumed]);
 
 	return {
 		defaultRegionDurationMs,

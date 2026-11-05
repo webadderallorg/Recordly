@@ -1,10 +1,12 @@
+import { useState } from "react";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
+import { Button } from "@/components/ui/button";
+import { ChatWarning, Cloud, GearSix, House, Plus } from "@/components/ui/icons";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
+import { CommunityLinks } from "../TutorialHelp";
+import { FolderRow } from "./FolderRow";
 import { RecordNewButton } from "./RecordNewButton";
 import { SidebarCards } from "./SidebarCards";
-import { FolderRow } from "./FolderRow";
-import { Cloud, File, GearSix, House, Plus, UserCircle } from "@/components/ui/icons";
-
-import { Button } from "@/components/ui/button";
 
 import type { DashboardProps } from "./types";
 
@@ -18,11 +20,11 @@ export function DashboardSidebar({
 	save,
 	section,
 	setSection,
+	openSettings,
 	metadata,
 	update,
 	navClass,
 	onSignIn,
-	accountLabel,
 }: Pick<
 	DashboardProps & DashboardModel,
 	| "busy"
@@ -31,26 +33,21 @@ export function DashboardSidebar({
 	| "save"
 	| "section"
 	| "setSection"
+	| "openSettings"
 	| "metadata"
 	| "update"
 	| "navClass"
 	| "onSignIn"
-	| "accountLabel"
+	| "authToken"
 >) {
+	const { t: uiText } = useUiLocale();
+	const [feedbackOpen, setFeedbackOpen] = useState(false);
 	return (
 		<>
 			<aside
-				aria-label="Library navigation"
-				className="flex w-48 shrink-0 flex-col bg-transparent px-4 pb-5 pt-12 lg:w-56"
+				aria-label={uiText("ui.libraryNavigation")}
+				className="flex min-h-0 w-48 shrink-0 flex-col bg-transparent px-4 pb-5 pt-3 lg:w-56"
 			>
-				<div className="mb-4 flex h-10 items-center gap-2.5 px-3">
-					<img
-						src={`${import.meta.env.BASE_URL}app-icons/recordly-64.png`}
-						alt=""
-						className="size-7 rounded-lg"
-					/>
-					<span className="text-[15px] font-semibold tracking-tight">Recordly</span>
-				</div>
 				<RecordNewButton busy={busy} run={run} className="mb-5 w-full" />
 				<nav className="space-y-1">
 					<Button
@@ -60,7 +57,7 @@ export function DashboardSidebar({
 						onClick={() => setSection("projects")}
 					>
 						<House weight="fill" className="size-[18px]" />
-						Home
+						{uiText("ui.home")}
 					</Button>
 					<Button
 						variant="ghost"
@@ -72,35 +69,25 @@ export function DashboardSidebar({
 							weight={section === "shared" ? "fill" : "regular"}
 							className="size-[18px]"
 						/>
-						Shared
-					</Button>
-					<Button
-						variant="ghost"
-						className={navClass(section === "raw")}
-						aria-current={section === "raw" ? "page" : undefined}
-						onClick={() => setSection("raw")}
-					>
-						<File
-							weight={section === "raw" ? "fill" : "regular"}
-							className="size-[18px]"
-						/>
-						Raw
+						{uiText("ui.sharedLinks")}
 					</Button>
 				</nav>
 				<div className="mb-2 mt-9 flex items-center justify-between pl-3">
 					<h2 className="text-[13px] font-semibold tracking-tight text-foreground/80">
-						Folders
+						{uiText("ui.folders")}
 					</h2>
 					<Button
 						variant="ghost"
 						size="icon"
 						className="size-7 min-w-7"
-						aria-label="New folder"
+						aria-label={uiText("ui.newFolder")}
 						onClick={() => {
-							let name = "Untitled folder",
+							let name = uiText("ui.untitledFolder"),
 								index = 1;
 							while (folders.some((folder) => folder.name === name))
-								name = `Untitled folder ${index++}`;
+								name = uiText("ui.untitledFolderNumber", undefined, {
+									number: index++,
+								});
 							save([
 								...folders,
 								{
@@ -134,27 +121,36 @@ export function DashboardSidebar({
 						/>
 					))}
 				</div>
-				<div className="space-y-1 pt-6">
-					<SidebarCards />
-					<FeedbackDialog showLabel className={navClass(false)} onSignIn={onSignIn} />
+				<div className="flex min-h-0 flex-col gap-1 pt-6">
+					<div className="min-h-0 overflow-y-auto">
+						<SidebarCards onSignIn={onSignIn} />
+					</div>
+					<Button
+						variant="ghost"
+						className={navClass(false)}
+						onClick={() => setFeedbackOpen(true)}
+					>
+						<ChatWarning weight="fill" className="size-[18px]" aria-hidden="true" />
+						{uiText("common.feedback.trigger", "Feedback")}
+					</Button>
 					<Button
 						variant="ghost"
 						className={navClass(section === "settings")}
 						aria-current={section === "settings" ? "page" : undefined}
-						onClick={() => setSection("settings")}
+						onClick={() => openSettings()}
 					>
-						<GearSix
-							weight={section === "settings" ? "fill" : "regular"}
-							className="size-[18px]"
-						/>
-						Settings
+						<GearSix weight="fill" className="size-[18px]" aria-hidden="true" />
+						{uiText("ui.settings")}
 					</Button>
-					<Button variant="ghost" className={navClass(false)} onClick={onSignIn}>
-						<UserCircle weight="fill" className="size-[18px] shrink-0" />
-						<span className="truncate">{accountLabel || "Sign in"}</span>
-					</Button>
+					<CommunityLinks />
 				</div>
 			</aside>
+			<FeedbackDialog
+				hideTrigger
+				open={feedbackOpen}
+				onOpenChange={setFeedbackOpen}
+				onSignIn={onSignIn}
+			/>
 		</>
 	);
 }

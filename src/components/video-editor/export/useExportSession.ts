@@ -1,4 +1,6 @@
-import { useCallback, useRef, useState } from "react";
+import type { GifSizeEstimateState } from "./useGifSizeEstimate";
+import type { GifOptimizationSummary } from "@/lib/exporter/gifOptimization";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExportProgress } from "@/lib/exporter";
 import { resolveSavingExportProgress } from "../exportProgressState";
 import type { PendingExportSave } from "./exportPersistence";
@@ -6,6 +8,10 @@ import type { PendingExportSave } from "./exportPersistence";
 export type CancelableExporter = { cancel(): void };
 
 export function useExportSession() {
+	const [mp4SizeEstimate, setMp4SizeEstimate] = useState<number | null>(null);
+	const [gifSizeEstimate, setGifSizeEstimate] = useState<GifSizeEstimateState | null>(null);
+	const [gifOptimization, setGifOptimization] = useState<GifOptimizationSummary | null>(null);
+	const [isOptimizingGif, setIsOptimizingGif] = useState(false);
 	const [isExporting, setIsExporting] = useState(false);
 	const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
 	const [exportError, setExportError] = useState<string | null>(null);
@@ -16,6 +22,12 @@ export function useExportSession() {
 	const exportRunIdRef = useRef(0);
 	const cancelledExportRunIdRef = useRef<number | null>(null);
 	const pendingExportSaveRef = useRef<PendingExportSave | null>(null);
+	useEffect(() => {
+		window.electronAPI.setExportInProgress?.(
+			isExporting || isOptimizingGif || hasPendingExportSave,
+		);
+	}, [isExporting, isOptimizingGif, hasPendingExportSave]);
+	useEffect(() => () => window.electronAPI.setExportInProgress?.(false), []);
 
 	const clearPendingExportSave = useCallback(() => {
 		const pendingSave = pendingExportSaveRef.current;
@@ -31,6 +43,14 @@ export function useExportSession() {
 	}, []);
 
 	return {
+		mp4SizeEstimate,
+		setMp4SizeEstimate,
+		gifSizeEstimate,
+		setGifSizeEstimate,
+		gifOptimization,
+		setGifOptimization,
+		isOptimizingGif,
+		setIsOptimizingGif,
 		isExporting,
 		setIsExporting,
 		exportProgress,

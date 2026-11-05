@@ -1,8 +1,10 @@
+import { translate } from "@/i18n/runtime";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	calculateOutputDimensions,
 	DEFAULT_MP4_CODEC,
 	type ExportMp4FrameRate,
+	type ExportQuality,
 	GIF_SIZE_PRESETS,
 	type GifSizePreset,
 	probeSupportedMp4Dimensions,
@@ -15,13 +17,18 @@ import {
 	calculateMp4SourceDimensions,
 	type Mp4SupportProbeSnapshot,
 	shouldDebounceMp4SupportProbe,
+	isValidCustomExportResolution,
+	fitCustomExportResolution,
 } from "../exportDimensions";
 import type { CropRegion } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
+import { capShareDimensions, type ShareResolution } from "../cloud/shareResolution";
 
 const MP4_CROP_PROBE_DEBOUNCE_MS = 200;
 
 type Input = {
+	onCustomExportResolutionChange?: (resolution: { width: number; height: number }) => void;
+	customExportResolution?: { width: number; height: number };
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
 	isPreviewReady: boolean;
 	aspectRatio: AspectRatio;
@@ -31,6 +38,8 @@ type Input = {
 };
 
 export function useExportDimensions({
+	onCustomExportResolutionChange,
+	customExportResolution,
 	videoPlaybackRef,
 	isPreviewReady,
 	aspectRatio,
@@ -71,6 +80,19 @@ export function useExportDimensions({
 			),
 		[sourceDimensions, aspectRatio, cropRegion],
 	);
+	useEffect(() => {
+		if (
+			!onCustomExportResolutionChange ||
+			!isValidCustomExportResolution(customExportResolution)
+		)
+			return;
+		const next = fitCustomExportResolution(customExportResolution!, desiredSourceDimensions);
+		if (
+			next.width !== customExportResolution!.width ||
+			next.height !== customExportResolution!.height
+		)
+			onCustomExportResolutionChange(next);
+	}, [customExportResolution, desiredSourceDimensions, onCustomExportResolutionChange]);
 	const outputDimensions = useMemo(() => {
 		const width = supportedSourceDimensions.encoderPath
 			? supportedSourceDimensions.width
@@ -79,29 +101,85 @@ export function useExportDimensions({
 			? supportedSourceDimensions.height
 			: desiredSourceDimensions.height;
 		return {
-			medium: calculateMp4ExportDimensions(width, height, "medium"),
-			good: calculateMp4ExportDimensions(width, height, "good"),
-			high: calculateMp4ExportDimensions(width, height, "high"),
+			hd: calculateMp4ExportDimensions(
+				desiredSourceDimensions.width,
+				desiredSourceDimensions.height,
+				"hd",
+			),
+			custom: isValidCustomExportResolution(customExportResolution)
+				? { ...customExportResolution! }
+				: { width: 0, height: 0 },
+			medium: calculateMp4ExportDimensions(
+				desiredSourceDimensions.width,
+				desiredSourceDimensions.height,
+				"medium",
+			),
+			good: calculateMp4ExportDimensions(
+				desiredSourceDimensions.width,
+				desiredSourceDimensions.height,
+				"good",
+			),
+			high: calculateMp4ExportDimensions(
+				desiredSourceDimensions.width,
+				desiredSourceDimensions.height,
+				"high",
+			),
 			source: calculateMp4ExportDimensions(width, height, "source"),
 		};
-	}, [supportedSourceDimensions, desiredSourceDimensions]);
+	}, [supportedSourceDimensions, desiredSourceDimensions, customExportResolution]);
 	const ensureSupportedSourceDimensions = useCallback(
-		async (frameRate: ExportMp4FrameRate) => {
+		async (
+			frameRate: ExportMp4FrameRate,
+			quality: ExportQuality = "source",
+			shareResolution?: ShareResolution,
+		) => {
+			const requested = calculateMp4ExportDimensions(
+				desiredSourceDimensions.width,
+				desiredSourceDimensions.height,
+				quality,
+				customExportResolution,
+			);
+			const target = shareResolution
+				? capShareDimensions(requested, shareResolution)
+				: requested;
+			// Cloud frames are encoded by bundled FFmpeg. Browser encoder support
+			// must not cap or reject a resolution that this encoder can handle.
+			if (shareResolution && typeof window.electronAPI?.nativeVideoExportStart === "function") {
+				return { ...target, capped: false, encoderPath: null };
+			}
 			const result = await probeSupportedMp4Dimensions({
-				width: desiredSourceDimensions.width,
-				height: desiredSourceDimensions.height,
+				width: target.width,
+				height: target.height,
 				frameRate,
 				codec: DEFAULT_MP4_CODEC,
 				getBitrate: getSourceQualityBitrate,
 			});
 			if (!result.encoderPath) {
 				throw new Error(
-					`Video encoding not supported on this system. Tried codec ${DEFAULT_MP4_CODEC} at ${frameRate} FPS up to ${desiredSourceDimensions.width}x${desiredSourceDimensions.height}.`,
+					translate(
+						"notifications.encodingUnsupported",
+						"Video encoding not supported on this system. Tried codec {{codec}} at {{fps}} FPS up to {{width}}x{{height}}.",
+						{
+							codec: DEFAULT_MP4_CODEC,
+							fps: frameRate,
+							width: target.width,
+							height: target.height,
+						},
+					),
+				);
+			}
+			if (quality !== "source" && result.capped) {
+				throw new Error(
+					translate(
+						"notifications.resolutionUnsupported",
+						"This system cannot export {{width}} × {{height}} at {{fps}} FPS. Choose a lower resolution or frame rate.",
+						{ width: target.width, height: target.height, fps: frameRate },
+					),
 				);
 			}
 			return result;
 		},
-		[desiredSourceDimensions],
+		[desiredSourceDimensions, customExportResolution],
 	);
 
 	useEffect(() => {

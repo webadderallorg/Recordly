@@ -1,13 +1,24 @@
-import { parseSharedRecordingDate } from "./sharedRecordingDate";
-import { FREE_RECORDING_LIMIT, notifyShareCapacityChanged } from "./shareCapacity";
+import { LocalizedError } from "@/components/feedback/LocalizedError";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
+import { Alert, Button } from "@heroui/react";
+import { toast } from "@/components/ui/toast";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { ArrowClockwise, ArrowSquareOut, Trash } from "@/components/ui/icons";
+import { DashboardAnnouncements } from "../dashboard/DashboardAnnouncements";
+import { DashboardFilters } from "../dashboard/DashboardFilters";
+import {
+	compareLibraryEntries,
+	defaultLibrarySortDirection,
+	type LibrarySort,
+	type LibrarySortDirection,
+} from "../dashboard/librarySort";
+import { DashboardToolbar } from "../dashboard/DashboardToolbar";
 import { LibrarySkeleton } from "../dashboard/LibrarySkeleton";
 import { ProjectCard } from "../dashboard/ProjectCard";
-import { DashboardToolbar } from "../dashboard/DashboardToolbar";
-import { DashboardFilters } from "../dashboard/DashboardFilters";
-import { DashboardAnnouncements } from "../dashboard/DashboardAnnouncements";
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Button } from "@heroui/react";
-import { ArrowClockwise, ArrowSquareOut, Trash } from "@/components/ui/icons";
+import { notifyShareCapacityChanged } from "./shareCapacity";
+import { parseSharedRecordingDate } from "./sharedRecordingDate";
+import { removeProjectShareLinksByUrl } from "./projectShareLinks";
 
 type Recording = {
 	code: string;
@@ -31,20 +42,34 @@ export function SharedRecordings({
 	standalone?: boolean;
 	accountLabel?: string;
 }) {
+	const { locale, t: uiText } = useUiLocale();
 	const [query, setQuery] = useState("");
 	const [period, setPeriod] = useState("all");
-	const [sort, setSort] = useState("recent");
+	const [sort, setSortCriterion] = useState<LibrarySort>("recent");
+	const [sortDirection, setSortDirection] = useState<LibrarySortDirection>("desc");
+	const setSort = (next: LibrarySort) => {
+		setSortCriterion(next);
+		setSortDirection(defaultLibrarySortDirection(next));
+	};
 	const [selected, setSelected] = useState<string[]>([]);
 	const [selecting, setSelecting] = useState(false);
 	const [expanded, setExpanded] = useState(standalone);
 	const [recordings, setRecordings] = useState<Recording[]>([]);
 	const [loading, setLoading] = useState(false);
+	const [loadingMore, setLoadingMore] = useState(false);
+	const [nextCursor, setNextCursor] = useState<string>();
+	const pagePending = useRef(false);
 	const [deleting, setDeleting] = useState<string>();
 	const [error, setError] = useState<string>();
+	const [errorSource, setErrorSource] = useState<"load" | "more" | "action">();
 	const loadGeneration = useRef(0);
 	const load = useCallback(async () => {
 		const generation = ++loadGeneration.current;
 		setLoading(true);
+		setLoadingMore(false);
+		pagePending.current = false;
+		setNextCursor(undefined);
+		setDeleting(undefined);
 		setRecordings([]);
 		setError(undefined);
 		try {
@@ -55,15 +80,61 @@ export function SharedRecordings({
 			});
 			if (generation !== loadGeneration.current) return;
 			if (!result.success)
-				throw new Error(result.error || "Could not load shared recordings.");
+				throw new Error(result.error || uiText("ui.couldNotLoadSharedRecordings"));
 			setRecordings(result.videos || []);
+			setNextCursor(result.nextCursor);
 		} catch (cause) {
-			if (generation === loadGeneration.current)
+			if (generation === loadGeneration.current) {
 				setError(cause instanceof Error ? cause.message : String(cause));
+				setErrorSource("load");
+			}
 		} finally {
 			if (generation === loadGeneration.current) setLoading(false);
 		}
-	}, [token, endpoint]);
+	}, [token, endpoint, uiText]);
+	const loadMore = async () => {
+		if (!nextCursor || loading || deleting || pagePending.current) return;
+		const generation = loadGeneration.current;
+		const cursor = nextCursor;
+		pagePending.current = true;
+		setLoadingMore(true);
+		setError(undefined);
+		try {
+			const result = await window.electronAPI.cloudShareManage({
+				token,
+				endpoint,
+				action: "list",
+				cursor,
+			});
+			if (generation !== loadGeneration.current) return;
+			if (!result.success)
+				throw new Error(result.error || uiText("ui.couldNotLoadMoreRecordings"));
+			if (result.nextCursor === cursor)
+				throw new Error(uiText("ui.couldNotAdvanceToTheNextRecordingsPage"));
+			setRecordings((current) => {
+				const known = new Set(current.map((recording) => recording.code));
+				return [
+					...current,
+					...(result.videos || []).filter((recording) => {
+						if (known.has(recording.code)) return false;
+						known.add(recording.code);
+						return true;
+					}),
+				];
+			});
+			setNextCursor(result.nextCursor);
+		} catch (cause) {
+			if (generation === loadGeneration.current) {
+				setError(cause instanceof Error ? cause.message : String(cause));
+				setErrorSource("more");
+			}
+		} finally {
+			if (generation === loadGeneration.current) {
+				pagePending.current = false;
+				setLoadingMore(false);
+			}
+		}
+	};
 	// biome-ignore lint/correctness/useExhaustiveDependencies: A new share URL must refresh this library.
 	useEffect(() => {
 		if (expanded) void load();
@@ -72,7 +143,10 @@ export function SharedRecordings({
 		};
 	}, [expanded, load, refreshKey]);
 	const remove = async (code: string) => {
-		if (!window.confirm("Delete this shared recording? This cannot be undone.")) return;
+		if (pagePending.current) return;
+		if (!window.confirm(uiText("ui.deleteThisSharedRecordingThisCannotBeUndone"))) return;
+		const generation = loadGeneration.current;
+		const deletedUrl = recordings.find((recording) => recording.code === code)?.url;
 		setDeleting(code);
 		setError(undefined);
 		try {
@@ -82,15 +156,84 @@ export function SharedRecordings({
 				action: "delete",
 				shareCode: code,
 			});
-			if (!result.success) throw new Error(result.error || "Could not delete recording.");
+			if (!result.success)
+				throw new Error(result.error || uiText("ui.couldNotDeleteRecording"));
+			if (deletedUrl) {
+				try {
+					removeProjectShareLinksByUrl(deletedUrl);
+				} catch (cause) {
+					toast.error(uiText("ui.couldNotSaveLibraryPreferences"));
+					console.warn(
+						"Recording deleted, but its saved project links could not be cleared",
+						cause,
+					);
+				}
+			}
+			// A confirmed server mutation remains valid after navigating to another library.
 			notifyShareCapacityChanged();
+			if (generation !== loadGeneration.current) return;
 			setRecordings((current) => current.filter((recording) => recording.code !== code));
 		} catch (cause) {
-			setError(cause instanceof Error ? cause.message : String(cause));
+			if (generation === loadGeneration.current) {
+				setError(cause instanceof Error ? cause.message : String(cause));
+				setErrorSource("action");
+			}
 		} finally {
-			setDeleting(undefined);
+			if (generation === loadGeneration.current) setDeleting(undefined);
 		}
 	};
+	const errorFeedback = error ? (
+		<Alert status="danger" role="alert" className="mb-4">
+			<Alert.Content>
+				<Alert.Description>
+					<LocalizedError
+						error={error}
+						summary={uiText(
+							errorSource === "more"
+								? "ui.couldNotLoadMoreRecordings"
+								: errorSource === "load"
+									? "ui.couldNotLoadSharedRecordings"
+									: "ui.couldNotCompleteAction",
+						)}
+					/>
+				</Alert.Description>
+				<ErrorReportButton error={error} context="cloud-library" />
+				{errorSource === "load" || errorSource === "more" ? (
+					<Button
+						variant="secondary"
+						size="sm"
+						className="mt-2"
+						isDisabled={loading || loadingMore || Boolean(deleting)}
+						onPress={() => void (errorSource === "more" ? loadMore() : load())}
+					>
+						{errorSource === "more"
+							? uiText("ui.retryLoadingMoreRecordings")
+							: uiText("ui.retryLoadingRecordings")}
+					</Button>
+				) : null}
+			</Alert.Content>
+		</Alert>
+	) : null;
+	const pagination =
+		nextCursor && !loading ? (
+			<div className="mt-5 flex flex-col items-center gap-2">
+				<p className="text-xs text-muted">
+					{uiText("ui.loadedRecordingsHint", undefined, {
+						count: recordings.length,
+						number: new Intl.NumberFormat(locale).format(recordings.length),
+					})}
+				</p>
+				<Button
+					variant="ghost"
+					onPress={() => void loadMore()}
+					isDisabled={loadingMore || Boolean(deleting)}
+				>
+					{loadingMore
+						? uiText("ui.loadingMoreRecordings")
+						: uiText("ui.loadMoreRecordings")}
+				</Button>
+			</div>
+		) : null;
 	if (standalone) {
 		const entries = recordings
 			.map((recording) => ({
@@ -106,40 +249,45 @@ export function SharedRecordings({
 			}))
 			.filter(
 				(entry) =>
-					entry.name.toLowerCase().includes(query.toLowerCase()) &&
+					entry.name
+						.toLocaleLowerCase(locale)
+						.includes(query.trim().toLocaleLowerCase(locale)) &&
 					(period === "all" ||
 						entry.updatedAt >= Date.now() - (period === "week" ? 7 : 30) * 86400000),
 			)
-			.sort((a, b) =>
-				sort === "name" ? a.name.localeCompare(b.name) : b.updatedAt - a.updatedAt,
-			);
+			.sort((a, b) => compareLibraryEntries(a, b, sort, locale, new Map(), sortDirection));
 		const run = async (action: () => Promise<unknown>) => {
 			try {
 				await action();
 			} catch (cause) {
 				setError(cause instanceof Error ? cause.message : String(cause));
+				setErrorSource("action");
 			}
 		};
 		return (
 			<div className="-mx-7 lg:-mx-10">
 				<DashboardAnnouncements />
 				<DashboardToolbar
+					title={uiText("ui.sharedLinks")}
 					query={query}
 					setQuery={setQuery}
 					isRaw={false}
 					onImportFile={load}
 					run={run}
 					busy={loading || Boolean(deleting)}
-					actionLabel="Refresh"
+					actionLabel={uiText("ui.refresh")}
 					action="refresh"
 				/>
 				<DashboardFilters
 					hideSelection
+					mediaSorts={false}
 					isRaw={false}
 					period={period}
 					setPeriod={setPeriod}
 					sort={sort}
 					setSort={setSort}
+					sortDirection={sortDirection}
+					setSortDirection={setSortDirection}
 					selecting={selecting}
 					setSelecting={setSelecting}
 					selected={selected}
@@ -149,17 +297,13 @@ export function SharedRecordings({
 					deleteEntries={async () => undefined}
 				/>
 				<div className="px-7 lg:px-10">
-					{error && (
-						<p role="alert" className="mb-4 text-sm text-danger">
-							{error}
-						</p>
-					)}
+					{errorFeedback}
 					{loading ? (
 						<LibrarySkeleton />
 					) : entries.length ? (
 						<ul
-							aria-label="Shared projects"
-							className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] gap-x-7 gap-y-10 lg:gap-x-9"
+							aria-label={uiText("ui.sharedProjects")}
+							className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] min-[1440px]:grid-cols-4 gap-x-7 gap-y-10 lg:gap-x-9"
 						>
 							{entries.map((entry) => (
 								<Fragment key={entry.path}>
@@ -168,7 +312,7 @@ export function SharedRecordings({
 										webUrl={entry.recording.url}
 										webReady={entry.recording.ready}
 										accountLabel={accountLabel}
-										busy={Boolean(deleting)}
+										busy={Boolean(deleting) || loadingMore}
 										selecting={false}
 										selected={[]}
 										toggleSelected={() => undefined}
@@ -180,7 +324,8 @@ export function SharedRecordings({
 													);
 												if (!result.success)
 													throw new Error(
-														result.error || "Could not open link.",
+														result.error ||
+															uiText("ui.couldNotOpenLink2"),
 													);
 											})
 										}
@@ -195,18 +340,41 @@ export function SharedRecordings({
 								</Fragment>
 							))}
 						</ul>
-					) : (
-						<div className="flex h-64 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
-							<span aria-hidden="true" className="text-4xl">
-								🦗
-							</span>
-							<p>
-								{query || period !== "all"
-									? "No matching projects"
-									: "It's looking empty in here..."}
+					) : error ? null : (
+						<div className="flex min-h-64 flex-col items-center justify-center gap-3 py-8 text-center text-sm text-muted-foreground">
+							<h2 className="text-base font-medium text-foreground">
+								{query.trim() || period !== "all"
+									? uiText("ui.noMatchingSharedRecordings")
+									: uiText("ui.noSharedRecordingsYet")}
+							</h2>
+							<p className="max-w-md">
+								{query.trim() || period !== "all"
+									? uiText("ui.tryAnotherSearchOrClearFiltersToSee")
+									: uiText("ui.recordAVideoThenChoosePublishAndLink")}
 							</p>
+							{query.trim() || period !== "all" ? (
+								<Button
+									variant="secondary"
+									onPress={() => {
+										setQuery("");
+										setPeriod("all");
+									}}
+								>
+									{uiText("ui.clearFilters")}
+								</Button>
+							) : (
+								<Button
+									variant="secondary"
+									onPress={() =>
+										void run(() => window.electronAPI.showRecordingHud())
+									}
+								>
+									{uiText("ui.recordAVideo")}
+								</Button>
+							)}
 						</div>
 					)}
+					{pagination}
 				</div>
 			</div>
 		);
@@ -216,7 +384,7 @@ export function SharedRecordings({
 		<section className="space-y-3 border-b border-foreground/10 pb-4">
 			<div className="flex items-center justify-between gap-2">
 				{standalone ? (
-					<h2 className="text-lg font-semibold">Shared recordings</h2>
+					<h2 className="text-lg font-semibold">{uiText("ui.sharedRecordings")}</h2>
 				) : (
 					<Button
 						variant="ghost"
@@ -224,7 +392,9 @@ export function SharedRecordings({
 						onPress={() => setExpanded((value) => !value)}
 						aria-expanded={expanded}
 					>
-						{expanded ? "Hide shared recordings" : "Manage shared recordings"}
+						{expanded
+							? uiText("ui.hideSharedRecordings")
+							: uiText("ui.manageSharedRecordings")}
 					</Button>
 				)}
 				{expanded && (
@@ -232,7 +402,7 @@ export function SharedRecordings({
 						variant="ghost"
 						size="sm"
 						isIconOnly
-						aria-label="Refresh recordings"
+						aria-label={uiText("ui.refreshRecordings")}
 						isDisabled={loading || Boolean(deleting)}
 						onPress={() => void load()}
 					>
@@ -244,8 +414,17 @@ export function SharedRecordings({
 				<>
 					<p className="text-xs text-muted">
 						{loading
-							? "Loading recordings…"
-							: `${recordings.length} of ${FREE_RECORDING_LIMIT} recordings · 1 GB each · Free links expire after 14 days`}
+							? uiText("ui.loadingRecordings")
+							: uiText(
+									nextCursor ? "ui.recordingsShown" : "ui.cloudRecordings",
+									undefined,
+									{
+										count: recordings.length,
+										number: new Intl.NumberFormat(locale).format(
+											recordings.length,
+										),
+									},
+								)}
 					</p>
 					{loading ? (
 						<LibrarySkeleton />
@@ -266,8 +445,11 @@ export function SharedRecordings({
 												{recording.title}
 											</p>
 											<p className="text-xs text-muted">
-												{(recording.size / 1024 / 1024).toFixed(1)} MB
-												{!recording.ready && " · Incomplete upload"}
+												{new Intl.NumberFormat(locale, {
+													maximumFractionDigits: 1,
+												}).format(recording.size / 1024 / 1024)}{" "}
+												{uiText("ui.mb")}
+												{!recording.ready && uiText("ui.IncompleteUpload")}
 											</p>
 										</div>
 										{recording.ready && (
@@ -275,7 +457,9 @@ export function SharedRecordings({
 												variant="ghost"
 												size="sm"
 												isIconOnly
-												aria-label={`Open ${recording.title}`}
+												aria-label={uiText("ui.openNamed", undefined, {
+													name: recording.title,
+												})}
 												onPress={() =>
 													void window.electronAPI.openExternalUrl(
 														recording.url,
@@ -289,8 +473,10 @@ export function SharedRecordings({
 											variant="ghost"
 											size="sm"
 											isIconOnly
-											aria-label={`Delete ${recording.title}`}
-											isDisabled={Boolean(deleting)}
+											aria-label={uiText("ui.deleteNamed", undefined, {
+												name: recording.title,
+											})}
+											isDisabled={Boolean(deleting) || loadingMore}
 											className="text-danger"
 											onPress={() => void remove(recording.code)}
 										>
@@ -300,17 +486,14 @@ export function SharedRecordings({
 								</li>
 							))}
 							{!recordings.length && !error && (
-								<li className="text-sm text-muted">No shared recordings yet.</li>
+								<li className="text-sm text-muted">
+									{uiText("ui.noSharedRecordingsYet2")}
+								</li>
 							)}
 						</ul>
 					)}
-					{error && (
-						<Alert status="danger">
-							<Alert.Content>
-								<Alert.Description>{error}</Alert.Description>
-							</Alert.Content>
-						</Alert>
-					)}
+					{pagination}
+					{errorFeedback}
 				</>
 			)}
 		</section>

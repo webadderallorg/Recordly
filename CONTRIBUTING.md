@@ -56,8 +56,52 @@ If you encounter a bug or have a feature request, please open an issue in the [I
 - Write clear, concise, and descriptive commit messages.
 - Include comments where necessary to explain complex code.
 
-## License
+## Contribution terms
 
-By contributing to this project, you agree that your contributions will be licensed under the [GNU Affero General Public License v3.0](./LICENSE.md).
+Recordly accepts contributions under the terms below. They give the Recordly project
+owner explicit rights to offer both open-source and separately licensed official
+builds. Contributors retain ownership of their contributions.
+
+### Copyright permissions
+
+By expressly accepting these terms for a contribution, you grant `webadderall`, the
+Recordly project owner, a worldwide, perpetual, irrevocable, non-exclusive,
+royalty-free copyright license to use, reproduce, modify, prepare derivative works
+of, publicly display, publicly perform, distribute, and sublicense your contribution
+and derivative works, in source or binary form.
+
+This grant expressly permits the project owner to distribute and sublicense your
+contribution under the [GNU Affero General Public License v3.0](./LICENSE.md)
+and under other licenses, including commercial or proprietary licenses, without
+requiring further permission or payment to you. It includes permission to offer
+official Recordly downloads free for personal use and under paid terms for business
+use. The project owner may transfer this grant to a successor owner of Recordly.
+
+Your contribution is also provided under the project's AGPLv3 license. The additional
+grant to the project owner does not remove rights already granted to recipients
+under AGPLv3. These contribution terms do not themselves change the license of an
+existing Recordly release or establish that every component can be commercially
+relicensed.
+
+### Your authority to contribute
+
+You confirm that you own the rights needed to make these grants or are authorized
+by the rights holder, including your employer where applicable. Identify any
+third-party code, assets, or other material included in your submission and provide
+their original licenses and required notices. These terms do not override those
+third-party licenses or grant rights you do not hold.
+
+### Acceptance and existing contributions
+
+For new submissions after these terms are published, explicitly confirm your
+acceptance in the pull request using the contribution-terms checkbox. Maintainers
+must verify that acceptance before merging; an unchecked template is not consent.
+For contributions made outside a pull request, record equivalent written acceptance
+identifying the contribution.
+
+These terms apply to the contributions identified in an accepted submission.
+Changing this guide does not retroactively obtain additional rights over earlier
+contributions. Earlier contributions require their existing license permissions or
+separate agreement from the relevant rights holder.
 
 Thank you for your contributions!

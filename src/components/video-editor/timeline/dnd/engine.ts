@@ -115,14 +115,21 @@ function resolveClipSequenceDrag(
 	activeItem: TimelineRegionSpan,
 	siblings: TimelineRegionSpan[],
 	proposedStart: number,
+	resolvedSequenceIndex?: number,
 ): ClipSequenceSpan {
 	const duration = activeItem.end - activeItem.start;
 	const center = proposedStart + duration / 2;
 	const movingRight = proposedStart > activeItem.start;
-	const sequenceIndex = siblings.filter((sibling) => {
-		const siblingCenter = (sibling.start + sibling.end) / 2;
-		return movingRight ? siblingCenter <= center : siblingCenter < center;
-	}).length;
+	// A drag preview already chose its insertion point. Its packed timestamp is
+	// not a pointer position: resolving that timestamp again can select another
+	// neighbor when the two clip durations differ, even by just a millisecond.
+	const sequenceIndex =
+		resolvedSequenceIndex !== undefined && Number.isInteger(resolvedSequenceIndex)
+			? Math.max(0, Math.min(siblings.length, resolvedSequenceIndex))
+			: siblings.filter((sibling) => {
+					const siblingCenter = (sibling.start + sibling.end) / 2;
+					return movingRight ? siblingCenter <= center : siblingCenter < center;
+				}).length;
 	const start = siblings
 		.slice(0, sequenceIndex)
 		.reduce((sum, sibling) => sum + sibling.end - sibling.start, 0);
@@ -225,7 +232,7 @@ export function resolveResizeEnd(
 
 export function resolveDragEnd(
 	activeItemId: string,
-	updatedSpan: Span,
+	updatedSpan: ClipSequenceSpan,
 	proposedRowId: string,
 	config: Pick<
 		DndEngineConfig,
@@ -250,6 +257,7 @@ export function resolveDragEnd(
 				activeItem,
 				getSiblingSpans(activeItemId, resolvedRowId, allRegionSpans),
 				proposedStart,
+				updatedSpan.sequenceIndex,
 			),
 			rowId: resolvedRowId,
 		};

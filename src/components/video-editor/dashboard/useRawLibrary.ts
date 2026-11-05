@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "@/contexts/I18nContext";
+import { toast } from "@/components/ui/toast";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 
 const HIDDEN_KEY = "recordly.raw-hidden.v1";
@@ -27,6 +29,7 @@ function loadNames(): Record<string, string> {
 	}
 }
 export function useRawLibrary(enabled: boolean) {
+	const { t } = useI18n();
 	const [entries, setEntries] = useState<ProjectLibraryEntry[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
@@ -68,9 +71,13 @@ export function useRawLibrary(enabled: boolean) {
 		return path;
 	};
 	const remove = async (paths: string[]) => {
-		localStorage.setItem(HIDDEN_KEY, JSON.stringify([...new Set([...loadHidden(), ...paths])]));
-		setEntries((previous) => previous.filter((entry) => !paths.includes(entry.path)));
-		return paths;
+		const result = await window.electronAPI.trashRecordingSources(paths);
+		if (!result.success) throw new Error(result.error);
+		const { deleted, errors } = result.value;
+		setEntries((previous) => previous.filter((entry) => !deleted.includes(entry.path)));
+		if (errors.length)
+			toast.error(t("ui.couldNotDeleteRecording"), { description: errors.join("\n") });
+		return deleted;
 	};
 	return { entries, error, loading, refresh, rename, remove };
 }

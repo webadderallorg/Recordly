@@ -46,7 +46,7 @@ export function EditorPresetMenu({ t, presets }: Props) {
 			<PopoverContent
 				align="end"
 				sideOffset={10}
-				aria-label="Presets"
+				aria-label={t("editor.presets.label", "Presets")}
 				className="w-[320px] p-4"
 			>
 				<div className="space-y-4">

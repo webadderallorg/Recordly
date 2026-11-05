@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Recordly browser pages</title>
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="identity"><strong>Recordly<span>.</span></strong><span class="draft-label">Browser pages</span></div>
+      <div class="controls">
+        <label>Page<select id="return-state"><option value="auth-received">Sign-in link received</option><option value="auth-error">Sign-in link failed</option><option value="billing-return">Back from checkout / billing</option></select></label>
+        <label>Appearance<select id="return-theme"><option value="light">Light</option><option value="dark">Dark</option></select></label>
+        <a class="preview-link" href="/">Email designs ↗</a>
+      </div>
+    </header>
+    <main><section class="canvas" aria-label="Browser page preview">
+      <iframe id="return-preview" title="Recordly return page preview" sandbox="allow-same-origin"></iframe>
+      <p class="status">Local preview · app-opening link disabled · no payment or sign-in is performed</p>
+    </section></main>
+    <script type="module" src="/src/dev/return-preview.ts"></script>
+  </body>
+</html>

@@ -1,4 +1,4 @@
-import { type MutableRefObject, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { useTimelineState } from "../state/useTimelineState";
 import { normalizeCursorTelemetry } from "../timeline/zoomSuggestionUtils";
 import type { CursorTelemetryPoint } from "../types";
@@ -13,8 +13,6 @@ type UseCursorTelemetryInput = {
 	duration: number;
 	loopCursor: boolean;
 	timeline: ReturnType<typeof useTimelineState>;
-	pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
-	autoSuggestedVideoPathRef: MutableRefObject<string | null>;
 };
 
 export function useCursorTelemetry({
@@ -23,8 +21,6 @@ export function useCursorTelemetry({
 	duration,
 	loopCursor,
 	timeline,
-	pendingFreshRecordingAutoZoomPathRef,
-	autoSuggestedVideoPathRef,
 }: UseCursorTelemetryInput) {
 	const pendingRetryTimeoutRef = useRef<number | null>(null);
 	const { setCursorTelemetry, setCursorTelemetrySourcePath } = timeline;
@@ -32,12 +28,9 @@ export function useCursorTelemetry({
 	useEffect(() => {
 		let mounted = true;
 		let retryAttempts = 0;
+		// A new recording may expose its video before the telemetry sidecar is ready.
 		const scheduleRetry = () => {
-			if (
-				pendingFreshRecordingAutoZoomPathRef.current !== videoPath ||
-				autoSuggestedVideoPathRef.current === videoPath ||
-				retryAttempts >= 12
-			) {
+			if (retryAttempts >= 12) {
 				return;
 			}
 			retryAttempts += 1;
@@ -81,14 +74,7 @@ export function useCursorTelemetry({
 				pendingRetryTimeoutRef.current = null;
 			}
 		};
-	}, [
-		videoPath,
-		videoSourcePath,
-		setCursorTelemetry,
-		setCursorTelemetrySourcePath,
-		pendingFreshRecordingAutoZoomPathRef,
-		autoSuggestedVideoPathRef,
-	]);
+	}, [videoPath, videoSourcePath, setCursorTelemetry, setCursorTelemetrySourcePath]);
 
 	const normalized = useMemo(() => {
 		if (timeline.cursorTelemetry.length === 0) return [] as CursorTelemetryPoint[];

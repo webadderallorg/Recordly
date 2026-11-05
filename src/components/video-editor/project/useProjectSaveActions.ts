@@ -1,3 +1,4 @@
+import { translate } from "@/i18n/runtime";
 import { moveProjectFolderReferences } from "../dashboard/useProjectFolders";
 import { moveProjectShareLink } from "../cloud/projectShareLinks";
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef } from "react";
@@ -5,8 +6,7 @@ import { toast } from "@/components/ui/toast";
 import { createProjectData, type EditorProjectData } from "../projectPersistence";
 import type { useProjectState } from "../state/useProjectState";
 import { cloneStructured, getErrorMessage } from "../videoEditorUtils";
-
-const PROJECT_AUTOSAVE_DELAY_MS = 500;
+import { startProjectAutosave } from "./projectAutosave";
 
 type SaveProjectOptions = {
 	silent?: boolean;
@@ -62,20 +62,36 @@ export function useProjectSaveActions({
 	const savingNameRef = useRef(false);
 	const activePathRef = useRef(currentProjectPath);
 	const activeSourceRef = useRef(currentSourcePath);
+	const activeProjectIdRef = useRef(lastSavedSnapshot?.projectId ?? null);
+	const sessionVersionRef = useRef(0);
+	const saveErrorRef = useRef<string | null>(null);
+	const reportSaveError = useCallback(
+		(message: string, description?: string, silent?: boolean) => {
+			const failure = JSON.stringify([sessionVersionRef.current, message, description]);
+			if (silent && saveErrorRef.current === failure) return;
+			saveErrorRef.current = failure;
+			toast.error(message, { id: "project-save-error", description });
+		},
+		[],
+	);
+	const wasLoadingRef = useRef(project.loading);
 	useLayoutEffect(() => {
+		// Different projects can share a source video. Loading or selecting one
+		// invalidates queued saves and completions from the previous editor session.
+		const projectId = lastSavedSnapshot?.projectId ?? null;
+		if (
+			activePathRef.current !== currentProjectPath ||
+			activeSourceRef.current !== currentSourcePath ||
+			activeProjectIdRef.current !== projectId ||
+			(project.loading && !wasLoadingRef.current)
+		)
+			sessionVersionRef.current++;
 		activePathRef.current = currentProjectPath;
-	}, [currentProjectPath]);
-	useLayoutEffect(() => {
 		activeSourceRef.current = currentSourcePath;
-	}, [currentSourcePath]);
-	const autosaveTimeoutRef = useRef<number | null>(null);
+		activeProjectIdRef.current = projectId;
+		wasLoadingRef.current = project.loading;
+	}, [currentProjectPath, currentSourcePath, lastSavedSnapshot?.projectId, project.loading]);
 	const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
-	const clearPendingAutosave = useCallback(() => {
-		if (autosaveTimeoutRef.current !== null) {
-			window.clearTimeout(autosaveTimeoutRef.current);
-			autosaveTimeoutRef.current = null;
-		}
-	}, []);
 	const queueSave = useCallback((task: () => Promise<boolean>) => {
 		const run = saveQueueRef.current.catch(() => undefined).then(task);
 		saveQueueRef.current = run.catch(() => undefined);
@@ -84,12 +100,20 @@ export function useProjectSaveActions({
 
 	const saveProject = useCallback(
 		async (forceSaveAs: boolean, options?: SaveProjectOptions) => {
-			clearPendingAutosave();
-			if (forceSaveAs) return openProjectSaveDialog(projectDisplayName || "Untitled Project");
+			if (forceSaveAs)
+				return openProjectSaveDialog(
+					projectDisplayName || translate("editor.project.untitled", "Untitled Project"),
+				);
+			let sessionVersion = sessionVersionRef.current;
 			return queueSave(async () => {
-				if (activeSourceRef.current !== currentSourcePath) return false;
+				if (
+					sessionVersionRef.current !== sessionVersion ||
+					activeSourceRef.current !== currentSourcePath
+				)
+					return false;
 				if (!currentSourcePath) {
-					if (!options?.silent) toast.error("No video loaded");
+					if (!options?.silent)
+						toast.error(translate("notifications.noVideo", "No video loaded"));
 					return false;
 				}
 
@@ -117,6 +141,7 @@ export function useProjectSaveActions({
 					const thumbnail = captureThumbnail
 						? ((await captureProjectThumbnail()) ?? undefined)
 						: undefined;
+					if (sessionVersionRef.current !== sessionVersion) return false;
 					const result = !targetPath
 						? await window.electronAPI.createProjectFile(projectData, thumbnail)
 						: await window.electronAPI.saveProjectFile(
@@ -125,16 +150,39 @@ export function useProjectSaveActions({
 								targetPath,
 								thumbnail,
 							);
+					if (sessionVersionRef.current !== sessionVersion)
+						return Boolean(result.success);
 					if (result.canceled) {
-						if (!options?.silent) toast.info("Project save canceled");
+						if (!options?.silent)
+							toast.info(
+								translate(
+									"notifications.projectSaveCanceled",
+									"Project save canceled",
+								),
+							);
 						return false;
 					}
 					if (!result.success) {
-						toast.error(result.message || "Failed to save project");
+						reportSaveError(
+							translate("notifications.saveProjectFailed", "Failed to save project"),
+							result.message,
+							options?.silent,
+						);
 						return false;
 					}
 
-					if (activeSourceRef.current !== currentSourcePath) return true;
+					if (
+						sessionVersionRef.current !== sessionVersion ||
+						activeSourceRef.current !== currentSourcePath
+					)
+						return true;
+					saveErrorRef.current = null;
+					toast.dismiss("project-save-error");
+					const savedProjectId = result.projectId ?? projectData.projectId ?? null;
+					if (activeProjectIdRef.current !== savedProjectId) {
+						activeProjectIdRef.current = savedProjectId;
+						sessionVersion = ++sessionVersionRef.current;
+					}
 					if (result.path) {
 						activePathRef.current = result.path;
 						setCurrentProjectPath(result.path);
@@ -145,6 +193,7 @@ export function useProjectSaveActions({
 								projectData.videoPath,
 								projectData.editor,
 								result.projectId ?? projectData.projectId ?? null,
+								projectData.history,
 							),
 						),
 					);
@@ -152,16 +201,25 @@ export function useProjectSaveActions({
 
 					return true;
 				} catch (error) {
-					toast.error(`Could not save project: ${getErrorMessage(error)}`);
+					if (sessionVersionRef.current !== sessionVersion) return false;
+					reportSaveError(
+						translate(
+							"notifications.saveProjectError",
+							"Could not save project: {{error}}",
+							{ error: getErrorMessage(error) },
+						),
+						undefined,
+						options?.silent,
+					);
 					return false;
 				} finally {
-					if (remount) remountPreview();
+					if (remount && sessionVersionRef.current === sessionVersion) remountPreview();
 				}
 			});
 		},
 		[
-			clearPendingAutosave,
 			queueSave,
+			reportSaveError,
 			currentSourcePath,
 			currentProjectSnapshot,
 			currentPersistedEditorState,
@@ -183,38 +241,56 @@ export function useProjectSaveActions({
 		() => window.electronAPI.onRequestSaveBeforeClose(() => saveProject(false)),
 		[saveProject],
 	);
-	useEffect(() => {
-		if (project.loading || !currentSourcePath || !hasUnsavedChanges) {
-			clearPendingAutosave();
-			return;
-		}
-		autosaveTimeoutRef.current = window.setTimeout(() => {
-			autosaveTimeoutRef.current = null;
-			void saveProject(false, {
-				silent: true,
-				remountPreviewAfterSave: false,
-				refreshLibraryAfterSave: false,
-				captureThumbnail: false,
-			});
-		}, PROJECT_AUTOSAVE_DELAY_MS);
-		return clearPendingAutosave;
-	}, [clearPendingAutosave, hasUnsavedChanges, saveProject, project.loading, currentSourcePath]);
-	useEffect(() => clearPendingAutosave, [clearPendingAutosave]);
+	const autosaveStateRef = useRef({
+		loading: project.loading,
+		currentSourcePath,
+		hasUnsavedChanges,
+		saveProject,
+	});
+	useLayoutEffect(() => {
+		autosaveStateRef.current = {
+			loading: project.loading,
+			currentSourcePath,
+			hasUnsavedChanges,
+			saveProject,
+		};
+	}, [project.loading, currentSourcePath, hasUnsavedChanges, saveProject]);
+	useEffect(
+		() =>
+			startProjectAutosave(() => {
+				const latest = autosaveStateRef.current;
+				if (latest.loading || !latest.currentSourcePath || !latest.hasUnsavedChanges)
+					return;
+				return latest.saveProject(false, {
+					silent: true,
+					remountPreviewAfterSave: false,
+					refreshLibraryAfterSave: false,
+					captureThumbnail: false,
+				});
+			}),
+		[],
+	);
 
 	const saveProjectWithName = useCallback(
 		async (name: string, mode: "rename" | "copy" = "rename") => {
 			const trimmedName = name.trim();
 			if (!trimmedName) {
-				toast.error("Project name is required");
+				toast.error(
+					translate("notifications.projectNameRequired", "Project name is required"),
+				);
 				return false;
 			}
 			if (!currentSourcePath) {
-				toast.error("No video loaded");
+				toast.error(translate("notifications.noVideo", "No video loaded"));
 				return false;
 			}
-			clearPendingAutosave();
+			let sessionVersion = sessionVersionRef.current;
 			return queueSave(async () => {
-				if (activeSourceRef.current !== currentSourcePath) return false;
+				if (
+					sessionVersionRef.current !== sessionVersion ||
+					activeSourceRef.current !== currentSourcePath
+				)
+					return false;
 				try {
 					const projectData =
 						currentProjectSnapshot?.videoPath === currentSourcePath
@@ -225,21 +301,41 @@ export function useProjectSaveActions({
 									lastSavedSnapshot?.projectId ?? null,
 								);
 					const previousPath = activePathRef.current;
+					const thumbnail = await captureProjectThumbnail();
+					if (sessionVersionRef.current !== sessionVersion) return false;
 					const result = await window.electronAPI.saveProjectFileNamed(
 						projectData,
 						trimmedName,
-						await captureProjectThumbnail(),
+						thumbnail,
 						mode,
 					);
+					if (sessionVersionRef.current !== sessionVersion)
+						return Boolean(result.success);
 					if (result.canceled) {
-						toast.info("Project save canceled");
+						toast.info(
+							translate("notifications.projectSaveCanceled", "Project save canceled"),
+						);
 						return false;
 					}
 					if (!result.success) {
-						toast.error(result.message || "Failed to save project");
+						toast.error(
+							translate("notifications.saveProjectFailed", "Failed to save project"),
+							{ description: result.message },
+						);
 						return false;
 					}
-					if (activeSourceRef.current !== currentSourcePath) return true;
+					if (
+						sessionVersionRef.current !== sessionVersion ||
+						activeSourceRef.current !== currentSourcePath
+					)
+						return true;
+					saveErrorRef.current = null;
+					toast.dismiss("project-save-error");
+					const savedProjectId = result.projectId ?? projectData.projectId ?? null;
+					if (activeProjectIdRef.current !== savedProjectId) {
+						activeProjectIdRef.current = savedProjectId;
+						sessionVersion = ++sessionVersionRef.current;
+					}
 					if (
 						mode === "rename" &&
 						previousPath &&
@@ -251,7 +347,10 @@ export function useProjectSaveActions({
 							moveProjectShareLink(previousPath, result.path);
 						} catch {
 							toast.error(
-								"Project renamed, but library preferences could not be updated",
+								translate(
+									"notifications.renamedPreferencesFailed",
+									"Project renamed, but library preferences could not be updated",
+								),
 							);
 						}
 					}
@@ -265,6 +364,7 @@ export function useProjectSaveActions({
 								projectData.videoPath,
 								projectData.editor,
 								result.projectId ?? projectData.projectId ?? null,
+								projectData.history,
 							),
 						),
 					);
@@ -272,12 +372,11 @@ export function useProjectSaveActions({
 
 					return true;
 				} finally {
-					remountPreview();
+					if (sessionVersionRef.current === sessionVersion) remountPreview();
 				}
 			});
 		},
 		[
-			clearPendingAutosave,
 			queueSave,
 			currentSourcePath,
 			currentProjectSnapshot,
@@ -296,7 +395,9 @@ export function useProjectSaveActions({
 			event?.preventDefault();
 			const name = projectSaveDialogDraft.trim();
 			if (!name) {
-				toast.error("Project name is required");
+				toast.error(
+					translate("notifications.projectNameRequired", "Project name is required"),
+				);
 				projectSaveDialogInputRef.current?.focus();
 				return;
 			}
@@ -305,7 +406,13 @@ export function useProjectSaveActions({
 			try {
 				saved = await saveProjectWithName(name, "copy");
 			} catch (error) {
-				toast.error(getErrorMessage(error));
+				toast.error(
+					translate(
+						"notifications.saveProjectError",
+						"Could not save project: {{error}}",
+						{ error: getErrorMessage(error) },
+					),
+				);
 			} finally {
 				setIsSavingProjectDialog(false);
 			}
@@ -340,7 +447,13 @@ export function useProjectSaveActions({
 			try {
 				saved = await saveProjectWithName(name, "rename");
 			} catch (error) {
-				toast.error(getErrorMessage(error));
+				toast.error(
+					translate(
+						"notifications.saveProjectError",
+						"Could not save project: {{error}}",
+						{ error: getErrorMessage(error) },
+					),
+				);
 			} finally {
 				setIsSavingProjectName(false);
 				savingNameRef.current = false;
