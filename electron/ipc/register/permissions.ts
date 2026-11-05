@@ -1,7 +1,23 @@
-import { desktopCapturer, ipcMain, shell, systemPreferences } from "electron";
+import { app, desktopCapturer, ipcMain, shell, systemPreferences } from "electron";
 import { getMacPrivacySettingsUrl } from "../utils";
+import { dismissPermissionAccessory, showPermissionAccessory, startPermissionAccessoryDrag } from "./permissionAccessory";
+
+async function presentDragAccessory(
+	permission: "screen" | "accessibility",
+	sender?: Electron.WebContents,
+	preview = false,
+) {
+	try {
+		await showPermissionAccessory(permission, sender, preview);
+	} catch (error) {
+		// System Settings is already open; keep its ordinary controls available.
+		console.warn("Could not present the native permission drag accessory:", error);
+	}
+}
 
 export function registerPermissionHandlers() {
+	ipcMain.handle("start-permission-accessory-drag", ({ sender }) => startPermissionAccessoryDrag(sender));
+	ipcMain.handle("close-permission-accessory", ({ sender }) => dismissPermissionAccessory(sender));
 	ipcMain.handle("open-external-url", async (_, url: string) => {
 		try {
 			// Security: only allow http/https URLs to prevent file:// or custom protocol abuse
@@ -57,14 +73,60 @@ export function registerPermissionHandlers() {
 		}
 	});
 
-	ipcMain.handle("open-screen-recording-preferences", async () => {
+	ipcMain.handle("get-media-permission-status", () => {
+		if (process.platform !== "darwin") {
+			return { success: true, microphone: "unknown", camera: "unknown" };
+		}
+
+		try {
+			return {
+				success: true,
+				microphone: systemPreferences.getMediaAccessStatus("microphone"),
+				camera: systemPreferences.getMediaAccessStatus("camera"),
+			};
+		} catch (error) {
+			console.error("Failed to get media permission status:", error);
+			return {
+				success: false,
+				microphone: "unknown",
+				camera: "unknown",
+				error: String(error),
+			};
+		}
+	});
+
+	ipcMain.handle("open-media-permission-preferences", async (_, device: unknown) => {
+		if (device !== "microphone" && device !== "camera") {
+			return { success: false, error: "Invalid media permission device" };
+		}
+		if (process.platform !== "darwin") {
+			return {
+				success: false,
+				error: "Media permission settings are unsupported on this platform",
+			};
+		}
+
+		try {
+			await shell.openExternal(getMacPrivacySettingsUrl(device));
+			return { success: true };
+		} catch (error) {
+			console.error(`Failed to open ${device} preferences:`, error);
+			return { success: false, error: String(error) };
+		}
+	});
+
+	ipcMain.handle("open-screen-recording-preferences", async (event, preview: unknown) => {
 		if (process.platform !== "darwin") {
 			return { success: true };
 		}
 
 		try {
 			// First-time access must register Recordly in macOS before its settings row can be enabled.
-			if (systemPreferences.getMediaAccessStatus("screen") === "not-determined") {
+			const testSetup = preview === true && !app.isPackaged;
+			if (
+				!testSetup &&
+				systemPreferences.getMediaAccessStatus("screen") === "not-determined"
+			) {
 				try {
 					await desktopCapturer.getSources({
 						types: ["screen"],
@@ -75,6 +137,7 @@ export function registerPermissionHandlers() {
 				}
 			}
 			await shell.openExternal(getMacPrivacySettingsUrl("screen"));
+			await presentDragAccessory("screen", event?.sender, testSetup);
 			return { success: true };
 		} catch (error) {
 			console.error("Failed to open Screen Recording preferences:", error);
@@ -82,13 +145,18 @@ export function registerPermissionHandlers() {
 		}
 	});
 
-	ipcMain.handle("open-accessibility-preferences", async () => {
+	ipcMain.handle("open-accessibility-preferences", async (event, preview: unknown) => {
 		if (process.platform !== "darwin") {
 			return { success: true };
 		}
 
 		try {
 			await shell.openExternal(getMacPrivacySettingsUrl("accessibility"));
+			await presentDragAccessory(
+				"accessibility",
+				event?.sender,
+				preview === true && !app.isPackaged,
+			);
 			return { success: true };
 		} catch (error) {
 			console.error("Failed to open Accessibility preferences:", error);

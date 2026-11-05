@@ -31,7 +31,10 @@ export function handleCursorMonitorStdout(chunk: Buffer) {
 		const interactionMatch = line.match(/^INTERACTION:(mousedown|mouseup)(?::([123]))?$/);
 		if (interactionMatch) {
 			if (interactionMatch[1] === "mouseup") {
-				recordCursorMouseUp();
+				const button = Number(interactionMatch[2]);
+				recordCursorMouseUp(
+					button === 1 || button === 2 || button === 3 ? button : undefined,
+				);
 			} else {
 				const button = Number(interactionMatch[2]);
 				recordCursorMouseDown(button === 2 || button === 3 ? button : 1);

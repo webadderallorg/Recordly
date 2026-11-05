@@ -64,6 +64,9 @@ export function normalizeCursorTelemetrySamples(rawSamples: unknown): CursorTele
 					point.interactionType === "mouseup"
 						? point.interactionType
 						: undefined,
+				...(point.mouseButton === 1 || point.mouseButton === 2 || point.mouseButton === 3
+					? { mouseButton: point.mouseButton }
+					: {}),
 				cursorType:
 					point.cursorType === "arrow" ||
 					point.cursorType === "text" ||
@@ -115,11 +118,29 @@ export function isCursorCapturePaused() {
 	return cursorCapturePauseStartedAtMs !== null;
 }
 
+function releaseHeldCursorButtons(timeMs: number) {
+	const held = new Set<1 | 2 | 3>();
+	for (const sample of activeCursorSamples) {
+		if (sample.interactionType === "mouseup") {
+			if (sample.mouseButton) held.delete(sample.mouseButton);
+			else held.clear();
+		} else if (sample.mouseButton && sample.interactionType !== "move") {
+			held.add(sample.mouseButton);
+		}
+	}
+	const last = activeCursorSamples[activeCursorSamples.length - 1];
+	if (last)
+		for (const button of held) {
+			pushCursorSample(last.cx, last.cy, timeMs, "mouseup", last.cursorType, button);
+		}
+}
+
 export function pauseCursorCapture(pausedAtMs: number) {
 	if (cursorCapturePauseStartedAtMs !== null) {
 		return;
 	}
 
+	releaseHeldCursorButtons(getCursorCaptureElapsedMs(pausedAtMs));
 	setCursorCapturePauseStartedAtMs(pausedAtMs);
 }
 
@@ -132,6 +153,7 @@ export function pauseCursorCaptureAtBoundary(pausedAtMs: number) {
 	setActiveCursorSamples(
 		activeCursorSamples.filter((sample) => sample.timeMs <= pausedElapsedMs),
 	);
+	releaseHeldCursorButtons(getCursorCaptureElapsedMs(pausedAtMs));
 	setCursorCapturePauseStartedAtMs(pausedAtMs);
 }
 
@@ -247,6 +269,7 @@ export function pushCursorSample(
 	timeMs: number,
 	interactionType: CursorInteractionType = "move",
 	cursorType?: CursorVisualType,
+	mouseButton?: 1 | 2 | 3,
 ) {
 	activeCursorSamples.push({
 		timeMs: Math.max(0, timeMs),
@@ -254,6 +277,7 @@ export function pushCursorSample(
 		cy,
 		interactionType,
 		cursorType: cursorType ?? currentCursorVisualType,
+		...(mouseButton ? { mouseButton } : {}),
 	} as CursorTelemetryPoint);
 
 	if (activeCursorSamples.length > MAX_CURSOR_SAMPLES) {

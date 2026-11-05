@@ -1,6 +1,7 @@
 export const DEFAULT_MP4_CODEC = "avc1.640033";
 export const MP4_CODEC_FALLBACK_LIST = [
 	DEFAULT_MP4_CODEC,
+	"avc1.640034", // H.264 level 5.2 supports 4K at 60 FPS.
 	"avc1.4d4033",
 	"avc1.420033",
 	"avc1.4d401f",
@@ -144,16 +145,20 @@ export async function resolveSupportedMp4EncoderPath(
 		bitrateMode: "variable",
 	};
 
-	for (const hardwareAcceleration of ["prefer-hardware", "prefer-software"] as const) {
-		const support = await VideoEncoder.isConfigSupported({
-			...baseConfig,
-			hardwareAcceleration,
-		});
-
-		if (support.supported) {
-			const result = { codec, hardwareAcceleration } satisfies SupportedMp4EncoderPath;
-			encoderSupportCache.set(cacheKey, result);
-			return result;
+	// Try the same codec paths as the exporter before reducing resolution.
+	// A level 5.1 rejection at 4K/60 must not silently shrink the output.
+	for (const candidate of getOrderedSupportedMp4EncoderCandidates({ codec })) {
+		try {
+			const support = await VideoEncoder.isConfigSupported({
+				...baseConfig,
+				...candidate,
+			});
+			if (support.supported) {
+				encoderSupportCache.set(cacheKey, candidate);
+				return candidate;
+			}
+		} catch {
+			// Some platforms throw for unsupported codec profiles; try the next path.
 		}
 	}
 

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+
 const execFileAsync = promisify(execFile);
 
 export interface NativeVideoMetadataProbe {
@@ -10,6 +11,7 @@ export interface NativeVideoMetadataProbe {
 	streamStartTime?: number;
 	streamDuration?: number;
 	frameRate: number;
+	frameRateSource?: "metadata" | "fallback";
 	codec: string;
 	hasAudio: boolean;
 	audioCodec?: string;
@@ -77,7 +79,8 @@ export function parseNativeVideoMetadataProbeOutput(
 
 	const videoCodecMatch = videoLine.match(/Video:\s*([^,\r\n]+)/i);
 	const videoStartMatch = videoLine.match(/\bstart:\s*(-?[0-9]+(?:\.[0-9]+)?)/i);
-	const frameRate = parseFfmpegFrameRate(videoLine) ?? 60;
+	const reportedFrameRate = parseFfmpegFrameRate(videoLine);
+	const frameRate = reportedFrameRate ?? 60;
 	const audioLine = lines.find((line) => /\bAudio:\s*/i.test(line));
 	const audioCodecMatch = audioLine?.match(/Audio:\s*([^,\r\n]+)/i);
 	const audioSampleRateMatch = audioLine?.match(/,\s*([0-9]+)\s*Hz\b/i);
@@ -90,6 +93,7 @@ export function parseNativeVideoMetadataProbeOutput(
 		streamStartTime: videoStartMatch ? Number(videoStartMatch[1]) : mediaStartTime,
 		streamDuration: duration,
 		frameRate,
+		frameRateSource: reportedFrameRate === null ? "fallback" : "metadata",
 		codec: videoCodecMatch?.[1]?.trim() || "unknown",
 		hasAudio: Boolean(audioLine),
 		audioCodec: audioCodecMatch?.[1]?.trim(),

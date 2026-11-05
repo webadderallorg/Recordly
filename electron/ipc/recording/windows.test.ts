@@ -52,6 +52,19 @@ describe("waitForWindowsCaptureStop", () => {
 		expect(proc.kill).not.toHaveBeenCalled();
 	});
 
+	it("accepts a finalized interrupted take even though the helper exits with an error", async () => {
+		const proc = new FakeCaptureProcess();
+		setWindowsCaptureOutputBuffer(
+			"CAPTURE_INTERRUPTED: WGC source failed\nRecording interrupted. Output path: C:\\Recordly\\capture.mp4\n",
+		);
+		const stopped = waitForWindowsCaptureStop(
+			proc as unknown as Parameters<typeof waitForWindowsCaptureStop>[0],
+			1000,
+		);
+		proc.emit("close", 1);
+		await expect(stopped).resolves.toBe("C:\\Recordly\\capture.mp4");
+	});
+
 	it("resolves the fallback target path when the helper closes cleanly without output path", async () => {
 		const proc = new FakeCaptureProcess();
 		setWindowsCaptureOutputBuffer("Recording stopped without output path");

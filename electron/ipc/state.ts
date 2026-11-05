@@ -14,6 +14,9 @@ import type {
 export let selectedSource: SelectedSource | null = null;
 
 // ── Project / video state ─────────────────────────────────────────────────────
+// Changes whenever a different editor project/recording context becomes active.
+// Async saves use this to avoid adopting results into a newer session.
+export let currentProjectContextVersion = 0;
 export let currentProjectPath: string | null = null;
 export let currentVideoPath: string | null = null;
 export let currentRecordingSession: RecordingSessionData | null = null;
@@ -39,6 +42,8 @@ export let nativeCursorMonitorOutputBuffer = "";
 export let windowsCaptureProcess: ChildProcessWithoutNullStreams | null = null;
 export let windowsCaptureOutputBuffer = "";
 export let windowsCaptureTargetPath: string | null = null;
+/** Actual helper output, retained independently of its final stdout marker. */
+export let windowsCaptureTempPath: string | null = null;
 export let windowsNativeCaptureActive = false;
 export let windowsCaptureStopRequested = false;
 export let windowsCapturePaused = false;
@@ -113,12 +118,17 @@ export function setSelectedSource(v: SelectedSource | null) {
 	selectedSource = v;
 }
 export function setCurrentProjectPath(v: string | null) {
+	if (currentProjectPath !== v) currentProjectContextVersion++;
 	currentProjectPath = v;
 }
 export function setCurrentVideoPath(v: string | null) {
+	// Setting a source starts a load even when another project uses the same video.
+	// Invalidate pending saves before that load performs any asynchronous work.
+	currentProjectContextVersion++;
 	currentVideoPath = v;
 }
 export function setCurrentRecordingSession(v: RecordingSessionData | null) {
+	if (currentRecordingSession !== v) currentProjectContextVersion++;
 	currentRecordingSession = v;
 }
 
@@ -162,6 +172,9 @@ export function setWindowsCaptureOutputBuffer(v: string) {
 }
 export function setWindowsCaptureTargetPath(v: string | null) {
 	windowsCaptureTargetPath = v;
+}
+export function setWindowsCaptureTempPath(v: string | null) {
+	windowsCaptureTempPath = v;
 }
 export function setWindowsNativeCaptureActive(v: boolean) {
 	windowsNativeCaptureActive = v;

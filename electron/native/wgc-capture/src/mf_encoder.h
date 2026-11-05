@@ -26,8 +26,9 @@ public:
 private:
     void normalizeWriteTimestampHnsLocked(int64_t timestampHns, int64_t& normalizedTimestampHns);
     bool normalizeTimelineTimestampHnsLocked(int64_t timestampHns, int64_t& normalizedTimestampHns) const;
-    bool extendLastFrameToLocked(int64_t timestampHns);
-    bool writeNv12SampleLocked(const std::vector<uint8_t>& frameBuffer, int64_t timestampHns);
+    bool extendLastFrameToLocked(int64_t timestampHns, bool includePartialFrame);
+    bool writeNv12SampleLocked(const std::vector<uint8_t>& frameBuffer, int64_t timestampHns,
+                               int64_t durationHns);
 
     ComPtr<IMFSinkWriter> sinkWriter_;
     ID3D11Device* device_ = nullptr;
@@ -42,7 +43,7 @@ private:
     int height_ = 0;
     int fps_ = 60;
     int64_t firstSampleTimeHns_ = -1;
-    int64_t lastSampleTimeHns_ = -1;
+    int64_t lastSampleEndTimeHns_ = -1;
     bool initialized_ = false;
     std::mutex mutex_;
 };

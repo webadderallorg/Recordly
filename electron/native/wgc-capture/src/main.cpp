@@ -438,23 +438,11 @@ int main(int argc, char* argv[]) {
     if (audioActive) loopback.stop();
     if (micActive) micCapture.stop();
 
-    if (session.hasFatalError()) {
-        std::cerr << "ERROR: WGC capture session failed during recording" << std::endl;
-        encoder.finalize();
-        DeleteFileW(outputPathW.c_str());
-        if (!config.audioOutputPath.empty()) {
-            const std::wstring audioPathW = utf8ToWide(config.audioOutputPath);
-            const std::wstring audioMetadataPathW = utf8ToWide(config.audioOutputPath + ".json");
-            DeleteFileW(audioPathW.c_str());
-            DeleteFileW(audioMetadataPathW.c_str());
-        }
-        if (!config.micOutputPath.empty()) {
-            const std::wstring micPathW = utf8ToWide(config.micOutputPath);
-            const std::wstring micMetadataPathW = utf8ToWide(config.micOutputPath + ".json");
-            DeleteFileW(micPathW.c_str());
-            DeleteFileW(micMetadataPathW.c_str());
-        }
-        return 1;
+    // A device/source failure can happen after minutes of valid capture. Finalize
+    // the same tracks as an ordinary stop; never discard that recoverable take.
+    const bool interrupted = session.hasFatalError();
+    if (interrupted) {
+        std::cout << "CAPTURE_INTERRUPTED: WGC capture session failed during recording" << std::endl;
     }
 
     if (audioActive) {
@@ -472,6 +460,7 @@ int main(int argc, char* argv[]) {
 
     if (frameCount.load() <= 0) {
         std::cerr << "ERROR: No video frames were captured before stop" << std::endl;
+        encoder.finalize();
         DeleteFileW(outputPathW.c_str());
         return 1;
     }
@@ -485,7 +474,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    std::cout << "Recording stopped. Output path: " << config.outputPath << std::endl;
+    std::cout << (interrupted ? "Recording interrupted. Output path: " : "Recording stopped. Output path: ")
+              << config.outputPath << std::endl;
     if (audioActive) {
         if (
             loopback.dataDiscontinuityCount() > 0 ||
@@ -534,5 +524,5 @@ int main(int argc, char* argv[]) {
     Sleep(100);
 
     // Fast exit to avoid WinRT/COM teardown crashes during apartment cleanup
-    ExitProcess(0);
+    ExitProcess(interrupted ? 1 : 0);
 }

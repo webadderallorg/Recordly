@@ -1,3 +1,5 @@
+import { recordingEditorLoading } from "../../recordingEditorLoading";
+import { recordingFocus } from "../recording/focus";
 import { createSourceListPicker } from "../../sourceListPicker";
 import { writeAppSetting } from "../../appSettingsStore";
 import { getSessionCaptureSource, validateCaptureSource } from "../captureSelection";
@@ -19,7 +21,12 @@ import {
 	stopWindowBoundsCapture,
 } from "../cursor/bounds";
 import { getDisplayBoundsForSource, getDisplayWorkAreaForSource } from "../recording/ffmpeg";
-import { isCursorCaptureActive, selectedSource, setSelectedSource } from "../state";
+import {
+	isCursorCaptureActive,
+	selectedSource,
+	setSelectedSource,
+	setCurrentProjectPath,
+} from "../state";
 import type { SelectedSource, WindowBounds } from "../types";
 import { getSourceArea } from "../sourceArea";
 import { getScreen, parseWindowId } from "../utils";
@@ -43,6 +50,7 @@ function normalizeDesktopSourceName(value: string) {
 }
 
 export function broadcastSelectedSourceChange() {
+	recordingFocus.sourceChanged(selectedSource);
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) {
 			window.webContents.send("selected-source-changed", selectedSource);
@@ -649,6 +657,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 		createSourceSelectorWindow();
 	});
 	ipcMain.handle("show-recording-hud", (event) => {
+		recordingEditorLoading.clearError();
 		setHudRecordingPreparationActive(true);
 		recordingNavigation.setReturnWindow(BrowserWindow.fromWebContents(event.sender));
 		const hud = getHudOverlayWindow();
@@ -669,8 +678,40 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 		}
 	});
 	ipcMain.handle("show-project-dashboard", () => {
+		recordingEditorLoading.clearError();
 		setHudRecordingPreparationActive(false);
 		recordingNavigation.open(false);
+	});
+	ipcMain.handle("open-loading-recording-editor", (event) => {
+		const sender = event.sender;
+		const owner = sender.id;
+		if (!recordingEditorLoading.begin(owner)) return { success: false };
+		const disconnected = () =>
+			recordingEditorLoading.finish(
+				owner,
+				"Recording preparation was interrupted. Your recording may still be available in Projects.",
+			);
+		sender.once("destroyed", disconnected);
+		void recordingEditorLoading.wait().finally(() => {
+			if (!sender.isDestroyed()) sender.removeListener("destroyed", disconnected);
+		});
+		setCurrentProjectPath(null);
+		setHudRecordingPreparationActive(false);
+		getHudOverlayWindow()?.hide();
+		try {
+			recordingNavigation.open();
+			return { success: true };
+		} catch (error) {
+			recordingEditorLoading.finish(owner, "Could not open the editor.");
+			throw error;
+		}
+	});
+	ipcMain.handle("wait-for-recording-editor", () => recordingEditorLoading.wait());
+	ipcMain.handle("finish-recording-editor", (event, error?: string) => {
+		recordingEditorLoading.finish(
+			event.sender.id,
+			typeof error === "string" ? error.slice(0, 2000) : undefined,
+		);
 	});
 	ipcMain.handle("switch-to-editor", () => {
 		setHudRecordingPreparationActive(false);

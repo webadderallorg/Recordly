@@ -1,3 +1,4 @@
+import { useScopedT } from "@/contexts/I18nContext";
 import {
 	ColorArea,
 	ColorField,
@@ -18,10 +19,11 @@ type PaletteProps = {
 	style?: React.CSSProperties;
 };
 export function ColorPalette({ color = "#000000", colors, onChange }: PaletteProps) {
+	const t = useScopedT("capture");
 	return (
 		<div className="flex flex-col gap-3">
 			<ColorSwatchPicker
-				aria-label="Colors"
+				aria-label={t("colors")}
 				value={color}
 				onChange={(value) => onChange({ hex: value.toString("hex") })}
 			>
@@ -50,6 +52,7 @@ export function ColorControl({
 	compact?: boolean;
 	onClear?: () => void;
 }) {
+	const t = useScopedT("capture");
 	return (
 		<ColorPicker
 			value={value === "transparent" ? "#00000000" : value}
@@ -62,7 +65,7 @@ export function ColorControl({
 			>
 				<ColorSwatch size="sm" />
 				<span className="truncate">
-					{compact ? (value === "transparent" ? "None" : value.toUpperCase()) : label}
+					{compact ? (value === "transparent" ? t("none") : value.toUpperCase()) : label}
 				</span>
 			</Button>
 			<ColorPicker.Popover>
@@ -76,7 +79,7 @@ export function ColorControl({
 						</ColorSlider.Track>
 					</ColorSlider>
 					{colors && (
-						<ColorSwatchPicker aria-label="Preset colors">
+						<ColorSwatchPicker aria-label={t("presetColors")}>
 							{colors.map((color) => (
 								<ColorSwatchPicker.Item key={color} color={color}>
 									<ColorSwatchPicker.Swatch />
@@ -86,12 +89,12 @@ export function ColorControl({
 						</ColorSwatchPicker>
 					)}
 					<ColorField>
-						<Label>Hex color</Label>
+						<Label>{t("hexColor")}</Label>
 						<Input />
 					</ColorField>
 					{onClear && (
 						<Button variant="ghost" onClick={onClear}>
-							Clear background
+							{t("clearBackground")}
 						</Button>
 					)}
 				</Popover.Dialog>

@@ -8,6 +8,7 @@
     "node_modules/ffmpeg-static/**",
     "node_modules/ffprobe-static/**",
     "node_modules/uiohook-napi/**",
+    "node_modules/sherpa-onnx-*/**",
     "electron/native/bin/**"
   ],
   "productName": "Recordly",
@@ -20,6 +21,7 @@
   "npmRebuild": true,
   "buildDependenciesFromSource": true,
   "compression": "normal",
+  "beforePack": "./scripts/prepare-distribution-notices.mjs",
   "directories": {
     "output": "release"
   },
@@ -28,6 +30,12 @@
     "!dist/wallpapers/**",
     "dist-electron",
     "electron/native/bin",
+    // Speech model weights belong in userData after an explicit model download.
+    "!**/ggml-*.bin",
+    "!**/*.onnx",
+    "!**/recordly-model.json",
+    "!node_modules/ffmpeg-static/ffmpeg.sources/**",
+    "!node_modules/ffmpeg-static/ffmpeg.ffprobe",
     "!electron/native/bin/**/whisper-bench*",
     "!electron/native/bin/**/whisper-quantize*",
     "!electron/native/bin/**/whisper-server*",
@@ -44,6 +52,11 @@
     "!LICENSE"
   ],
   "extraResources": [
+    {
+      "from": ".tmp/distribution-notices/${os}-${arch}",
+      "to": "licenses",
+      "filter": ["**/*"]
+    },
     {
       "from": "public/wallpapers",
       "to": "assets/wallpapers"

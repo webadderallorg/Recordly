@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "@heroui/styles";
+@source "../../../../../../src/components/auth/RecordlySignInFields.tsx";
+@source "../../../../../../src/components/auth/RecordlyPasswordForm.tsx";
 
 @font-face {
   font-family: 'DM Sans';
@@ -80,8 +82,8 @@
 }
 .share-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 350px;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 12px;
   width: 100%;
   flex: 1;
   min-height: 0;
@@ -90,7 +92,7 @@
 }
 .recording-column {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(160px, 1fr) clamp(200px, 29vh, 300px);
   gap: 12px;
   min-width: 0;
   min-height: 0;
@@ -328,6 +330,8 @@
   height: 440px;
 }
 .video-shell {
+  position: relative;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -378,12 +382,17 @@
   line-height: 1.8;
 }
 .video-toolbar {
-  flex-shrink: 0;
-  padding: 8px 12px;
+  position: absolute;
+  z-index: 3;
+  inset: auto 0 0;
+  padding: 32px 16px 10px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  background: var(--surface);
+  gap: 2px;
+  color: white;
+  background: linear-gradient(transparent, rgb(0 0 0 / .75));
+  opacity: 1;
+  transition: opacity 180ms ease;
 }
 .video-controls {
   display: flex;
@@ -391,13 +400,18 @@
   gap: 4px;
 }
 .video-controls .volume-control {
-  width: 72px;
+  width: 64px;
+  height: 16px;
   margin: 0 8px;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  accent-color: white;
 }
 .video-time {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  color: var(--muted);
+  color: rgb(255 255 255 / .85);
   margin: 0 8px;
   white-space: nowrap;
 }
@@ -566,7 +580,7 @@
 }
 @media (max-width: 1100px) {
   .share-workspace {
-    grid-template-columns: minmax(0, 1fr) 310px;
+    grid-template-columns: minmax(0, 1fr) 320px;
     gap: 12px;
     padding: 12px;
   }
@@ -574,7 +588,7 @@
     display: none;
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-width: 1000px) and (max-height: 500px) {
   .mobile-view-switch {
     display: flex;
     flex-shrink: 0;
@@ -588,6 +602,7 @@
   .recording-app[data-mobile-view="watch"] .share-workspace > aside {
     display: none;
   }
+  .recording-column .video-shell { aspect-ratio: var(--recording-aspect-ratio, 16 / 9); width: 100%; }
   .recording-app[data-mobile-view="feedback"] .recording-column {
     display: none;
   }
@@ -674,7 +689,7 @@
 .timestamp-reaction { position: absolute; bottom: 12%; font-size: 30px; animation: reaction-float 3s ease-out forwards; }
 @keyframes reaction-float { 0% { opacity: 0; transform: translateY(12px) scale(.7); } 15% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-100px) scale(1.1); } }
 @media (prefers-reduced-motion: reduce) { .timestamp-reaction { animation: none; } }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-width: 1000px) and (max-height: 500px) {
   .mobile-comment-button { display: inline-flex; flex-shrink: 0; }
   .mobile-feedback-back { display: flex; padding: 8px 12px 0; }
 }
@@ -705,10 +720,264 @@
 .dark .library-dashboard { background:var(--background); }
 .library-dashboard > .card { background:var(--background); }
 .dark .library-dashboard > .card { background:color-mix(in srgb,var(--background) 92%,var(--foreground) 8%); }
-.recording-app .viewer-heading { min-height:48px; gap:16px; }
-.viewer-identity { display:flex; align-items:flex-start; gap:16px; min-width:0; flex:1; }
-.viewer-caption { height:48px; min-width:0; flex:1; }
-.recording-app .viewer-heading .recording-title { display:block; font-size:12px; font-weight:500; line-height:20px; letter-spacing:normal; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.recording-app .viewer-heading .recording-meta { margin-top:4px; height:24px; font-size:11px; gap:8px; white-space:nowrap; }
-.viewer-heading-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
-@media(max-width:480px) { .recording-app .viewer-heading { flex-wrap:wrap; } .viewer-identity { flex-basis:100%; } .viewer-heading-actions { margin-left:auto; } }
+/* Mirror the editor's 56px header, 320px inspector and timeline panel.
+   The inspector spans the entire workspace; information stays under the preview. */
+.viewer-header {
+	height: 56px;
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 0 16px;
+	border-bottom: 1px solid var(--separator);
+}
+.viewer-breadcrumb,
+.viewer-heading-actions,
+.viewer-home {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+.viewer-home {
+	color: var(--foreground);
+	font-size: 13px;
+	font-weight: 500;
+	flex-shrink: 0;
+	padding: 8px 12px;
+	border-radius: var(--radius);
+	text-decoration: none;
+}
+.viewer-home:hover {
+	background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+.viewer-slash {
+	color: var(--muted);
+	margin: 0 8px;
+	font-size: 20px;
+	font-weight: 300;
+}
+.viewer-project-title {
+	font-size: 13px;
+	font-weight: 600;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.viewer-heading-actions {
+	flex-shrink: 0;
+}
+.recording-app {
+	background: var(--background);
+}
+.recording-app .video-shell {
+	background: transparent;
+	border-radius: 0;
+	box-shadow: none;
+}
+.recording-app .video-stage {
+	border-radius: var(--radius);
+	overflow: hidden;
+}
+.viewer-data {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	padding: 16px;
+	gap: 12px;
+	border-top: 1px solid var(--separator);
+}
+.viewer-data-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	flex-shrink: 0;
+}
+.viewer-identity {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+}
+.viewer-identity > div {
+	min-width: 0;
+}
+.viewer-identity .creator-name {
+	font-size: 13px;
+}
+.viewer-identity .recording-meta {
+	margin-top: 2px;
+}
+.viewer-details-tabs {
+	overflow: hidden;
+}
+.viewer-details-tabs .tabs__list {
+	width: auto;
+}
+.viewer-details-tabs .tabs__tab {
+	flex: initial;
+	padding-inline: 12px;
+}
+.viewer-details-tabs .recording-details {
+	margin-bottom: 12px;
+}
+.viewer-details-tabs .recording-details p {
+	font-size: 13px;
+}
+@media (max-width: 1100px) {
+	.viewer-data-heading {
+		align-items: flex-start;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+}
+@media (max-width: 760px), (max-width: 1000px) and (max-height: 500px) {
+	.viewer-header {
+		padding-inline: 8px;
+	}
+	.viewer-heading-actions {
+		gap: 4px;
+	}
+	.viewer-home {
+		padding-inline: 6px;
+	}
+	.viewer-slash {
+		margin-inline: 0;
+	}
+	.recording-app[data-mobile-view="watch"] .share-workspace {
+		overflow-y: auto;
+	}
+	.recording-column {
+		grid-template-rows: auto minmax(260px, 36dvh);
+    align-content: start;
+	}
+	.viewer-data {
+		padding: 12px 0;
+	}
+	.viewer-data-heading,
+	.viewer-data .reaction-rail {
+		width: 100%;
+	}
+	.viewer-data .reaction-rail {
+		margin-left: 0;
+	}
+}
+@media (max-height: 620px) and (min-width: 761px) {
+	.recording-column {
+		grid-template-rows: minmax(120px, 1fr) 180px;
+	}
+	.viewer-data {
+		padding: 8px;
+		gap: 4px;
+	}
+}
+
+/* Playback controls sit over the recording, with no separate toolbar panel. */
+.video-shell[data-controls-visible="false"]:not(:has(:focus-visible)) .video-toolbar {
+  opacity: 0;
+  pointer-events: none;
+}
+.video-toolbar .button { color: white; background: transparent; min-width: 32px; height: 32px; padding: 0 6px; border-radius: 8px; }
+.video-toolbar .button:hover, .video-toolbar .button[aria-pressed="true"] { background: rgb(255 255 255 / .16); }
+.video-toolbar .video-progress { padding: 7px 0; }
+.video-toolbar .progress-bar__track { height: 3px; background: rgb(255 255 255 / .3); }
+.video-toolbar .progress-bar__fill { background: white; }
+.video-toolbar .volume-control::-webkit-slider-runnable-track { height: 3px; border-radius: 3px; background: rgb(255 255 255 / .4); }
+.video-toolbar .volume-control::-webkit-slider-thumb { appearance: none; width: 10px; height: 10px; margin-top: -3.5px; border-radius: 50%; background: white; }
+.video-toolbar .volume-control::-moz-range-track { height: 3px; border-radius: 3px; background: rgb(255 255 255 / .4); }
+.video-toolbar .volume-control::-moz-range-thumb { width: 10px; height: 10px; border: 0; border-radius: 50%; background: white; }
+.video-toolbar .timeline-markers:empty { display: none; }
+.video-play-overlay .video-play-button { width: 56px; height: 56px; border-radius: 50%; background: rgb(0 0 0 / .45); color: white; backdrop-filter: blur(8px); border: 1px solid rgb(255 255 255 / .25); }
+.video-shell[data-controls-visible="true"] .video-caption,
+.video-shell:has(:focus-visible) .video-caption { bottom: 110px; }
+.video-caption { transition: bottom 180ms ease; }
+@container (max-width: 560px) {
+  .video-controls .skip-control, .video-controls .pip-control, .video-controls .volume-control { display: none; }
+  .video-toolbar { padding: 28px 8px 6px; }
+  .video-controls { gap: 2px; }
+  .video-controls .video-time { font-size: 11px; margin: 0 4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .video-toolbar, .video-caption { transition: none; }
+}
+
+/* Cloud sign-in shares desktop controls and the compact desktop modal geometry. */
+.cloud-auth-page { min-height: 100svh; }
+.cloud-auth-heading { font-size: 33px; font-weight: 500; line-height: 40px; letter-spacing: -1.1px; }
+.cloud-auth-theme { position: absolute; right: 16px; top: 16px; z-index: 1; border-radius: 999px; background: var(--surface); }
+.cloud-auth-password summary { cursor: pointer; color: var(--muted); font-size: 13px; text-align: center; }
+.cloud-auth-password summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+
+/* Mobile viewing keeps the title readable and the primary controls thumb-sized. */
+@media (max-width: 760px), (max-width: 1000px) and (max-height: 500px) {
+  .viewer-header {
+    height: auto;
+    min-height: 100px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 4px;
+  }
+  .viewer-breadcrumb { flex: 1 0 100%; }
+  .viewer-heading-actions { width: 100%; justify-content: flex-end; }
+  .viewer-header .button, .viewer-home { min-height: 44px; }
+  .viewer-heading-actions > :first-child { margin-right: auto; }
+  .viewer-project-title { font-size: 14px; }
+  .video-shell[data-controls-visible="true"] .video-caption { top: 12px; bottom: auto; font-size: 12px; }
+  .recording-column { grid-template-rows: auto minmax(300px, 1fr); }
+  .viewer-data .reaction-rail { flex-wrap: wrap; gap: 8px; }
+  .reaction-buttons { flex-wrap: wrap; }
+  .reaction-buttons .button { min-width: 44px; min-height: 44px; }
+  .mobile-comment-button, .mobile-feedback-back .button { min-height: 44px; }
+  .mobile-feedback-back { flex-shrink: 0; }
+  .composer input, .composer textarea, .gate-form input { font-size: 16px; }
+  .composer .button, .feedback-tabs .tabs__tab { min-height: 44px; }
+}
+@media (pointer: coarse), (max-width: 760px), (max-height: 500px) {
+  .video-toolbar .button { min-width: 44px; height: 44px; flex-shrink: 0; }
+  .video-toolbar { padding: 24px 8px max(6px, env(safe-area-inset-bottom)); }
+  .video-toolbar .video-progress { padding: 12px 0; }
+  .video-controls { gap: 0; }
+  .video-controls .video-time { position: absolute; top: 4px; right: 8px; margin: 0; font-size: 12px; }
+  .video-controls .skip-control, .video-controls .pip-control, .video-controls .volume-control { display: none; }
+  .video-seek-input { touch-action: pan-y; }
+  .timeline-markers .timeline-marker { min-width: 32px; height: 32px; }
+  .timeline-markers:not(:empty) { height: 32px; }
+}
+.video-shell:fullscreen,
+.recording-column .video-shell:fullscreen { width: 100%; height: 100%; aspect-ratio: auto; }
+.video-shell:fullscreen .video-stage { border-radius: 0; }
+.video-shell:fullscreen .video-toolbar {
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+}
+/* Older Safari exposes the prefixed container fullscreen selector. */
+.video-shell:-webkit-full-screen { width: 100%; height: 100%; background: black; }
+.video-shell:-webkit-full-screen .video-stage { aspect-ratio: auto; border-radius: 0; }
+
+@media (max-width: 640px) {
+  .library-dashboard > aside { padding: 12px 16px; }
+  .library-account-actions { display: flex; flex-wrap: wrap; padding-top: 12px; gap: 4px; }
+  .library-account-actions > .button { width: auto; min-height: 44px; flex: 1; padding-inline: 8px; }
+  .library-dashboard > .card > header { height: auto; padding: 16px 12px; }
+  .library-filters { padding: 0 12px 16px; gap: 8px; }
+  .library-filters > [aria-label="Time filters"] { flex-wrap: wrap; gap: 4px; }
+  .library-filters .button { min-height: 44px; }
+  .library-dashboard input { font-size: 16px; }
+  .library-folders .group { min-height: 44px; }
+  .library-folders .group > .button[aria-label] { opacity: 1; min-width: 44px; min-height: 44px; }
+}
+@container (max-width: 560px) {
+  .video-shell[data-controls-visible="true"] .video-caption { top: 12px; bottom: auto; font-size: 12px; }
+}
+.video-shell:fullscreen[data-controls-visible="true"] .video-caption { top: auto; bottom: 120px; }
+/* The gradient's transparent padding must not block the central play button. */
+.video-toolbar { pointer-events: none; }
+.video-toolbar .button, .video-progress, .video-toolbar .volume-control { pointer-events: auto; }
+.video-shell[data-controls-visible="false"]:not(:has(:focus-visible)) .video-toolbar * { pointer-events: none; }
+
+@media (min-width: 761px) and (max-width: 1000px) and (max-height: 500px) {
+  .recording-column .video-shell { aspect-ratio: auto; height: max(180px, calc(100dvh - 125px)); }
+  .recording-column .video-shell:fullscreen { height: 100%; }
+}

@@ -18,6 +18,11 @@ on:
           - all
           - windows-linux
 
+env:
+  VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+  VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+  VITE_CLOUD_SHARE_ENDPOINT: ${{ vars.VITE_CLOUD_SHARE_ENDPOINT }}
+
 permissions:
   contents: write
   actions: write
@@ -177,16 +182,30 @@ jobs:
       - name: Build native macOS helpers
         run: npm run build:platform-native-helpers
 
+      - name: Validate production cloud configuration
+        run: npm run release:check-cloud
+
       - name: Build macOS x64
         run: |
           npx tsc
           npx vite build
-          npx electron-builder --mac dir dmg zip --x64 --publish never
+          npx electron-builder --mac dir dmg zip --x64 --publish never \
+            -c.mac.forceCodeSigning=true \
+            -c.mac.notarize=true
 
       - name: Smoke test packaged macOS x64 paths
         env:
           PACKAGED_SMOKE_ARCH_TAGS: darwin-x64
         run: npm run smoke:packaged-binaries
+
+      - name: Verify signed and notarized macOS x64 distribution
+        run: >-
+          npm run verify:macos-distribution --
+          --release-dir release
+          --arch x64
+          --team-id "$APPLE_TEAM_ID"
+          --report "release/macos-distribution-report-x64.json"
+          --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Generate macOS x64 artifact checksums
         run: npm run checksums:release -- SHA256SUMS-macos-x64.txt
@@ -206,6 +225,7 @@ jobs:
             release/*.blockmap
             release/latest-mac.yml
             release/SHA256SUMS*.txt
+            release/macos-distribution-report-x64.json
           if-no-files-found: error
 
   build-macos-arm64:
@@ -279,16 +299,30 @@ jobs:
       - name: Build native macOS helpers
         run: npm run build:platform-native-helpers
 
+      - name: Validate production cloud configuration
+        run: npm run release:check-cloud
+
       - name: Build macOS arm64
         run: |
           npx tsc
           npx vite build
-          npx electron-builder --mac dir dmg zip --arm64 --publish never
+          npx electron-builder --mac dir dmg zip --arm64 --publish never \
+            -c.mac.forceCodeSigning=true \
+            -c.mac.notarize=true
 
       - name: Smoke test packaged macOS arm64 paths
         env:
           PACKAGED_SMOKE_ARCH_TAGS: darwin-arm64
         run: npm run smoke:packaged-binaries
+
+      - name: Verify signed and notarized macOS arm64 distribution
+        run: >-
+          npm run verify:macos-distribution --
+          --release-dir release
+          --arch arm64
+          --team-id "$APPLE_TEAM_ID"
+          --report "release/macos-distribution-report-arm64.json"
+          --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Generate macOS arm64 artifact checksums
         run: npm run checksums:release -- SHA256SUMS-macos-arm64.txt
@@ -308,6 +342,7 @@ jobs:
             release/*.blockmap
             release/latest-mac.yml
             release/SHA256SUMS*.txt
+            release/macos-distribution-report-arm64.json
           if-no-files-found: error
 
   merge-macos-update-metadata:
@@ -443,6 +478,9 @@ jobs:
       - name: Install app dependencies
         run: npx electron-builder install-app-deps
 
+      - name: Validate production cloud configuration
+        run: npm run release:check-cloud
+
       - name: Build Windows x64
         shell: pwsh
         run: |
@@ -516,6 +554,9 @@ jobs:
 
       - name: Install app dependencies
         run: npx electron-builder install-app-deps
+
+      - name: Validate production cloud configuration
+        run: npm run release:check-cloud
 
       - name: Build Linux x64
         run: |

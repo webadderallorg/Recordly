@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { verifyPackagedDistributionNotices } from "./verify-distribution-notices.mjs";
 
 const projectRoot = process.cwd();
-const releaseRoot = path.join(projectRoot, "release");
+const releaseRoot = path.resolve(projectRoot, process.env.RECORDLY_RELEASE_DIR || "release");
 const packageJson = JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
 const productName = packageJson.productName ?? packageJson.name ?? "Recordly";
 const packageName = packageJson.name ?? "recordly";
@@ -188,6 +189,11 @@ function getExpectedNativeHelperFiles(archTag) {
 	if (archTag.startsWith("darwin-")) {
 		return [
 			{
+				name: "recordly-permission-drag-helper",
+				label: "Permission drag helper",
+				executable: true,
+			},
+			{
 				name: "recordly-screencapturekit-helper",
 				label: "ScreenCaptureKit helper",
 				executable: true,
@@ -219,6 +225,8 @@ function verifyFfmpeg(unpackedRoot) {
 	const ffmpegPath = path.join(unpackedRoot, "node_modules", "ffmpeg-static", binaryName);
 
 	assertFile(ffmpegPath, "packaged FFmpeg binary", { executable: true });
+	const notices = verifyPackagedDistributionNotices(path.dirname(unpackedRoot), ffmpegPath);
+	console.log(`[packaged-smoke] Verified distribution notices and FFmpeg provenance for ${notices.platform}/${notices.arch}.`);
 
 	const output = execFileSync(ffmpegPath, ["-version"], {
 		encoding: "utf8",
@@ -231,6 +239,25 @@ function verifyFfmpeg(unpackedRoot) {
 	}
 
 	console.log(output.split(/\r?\n/, 1)[0]);
+}
+
+function verifyParakeetRuntime(unpackedRoot) {
+	const modules = path.join(unpackedRoot, "node_modules");
+	const platform = process.platform === "win32" ? "win" : process.platform;
+	const packages = readdirSync(modules).filter(name =>
+		name.startsWith(`sherpa-onnx-${platform}-`),
+	);
+	if (packages.length === 0) fail("the unpacked Parakeet native runtime is missing");
+	for (const name of packages) {
+		const directory = path.join(modules, name);
+		assertFile(path.join(directory, "sherpa-onnx.node"), `Parakeet addon (${name})`);
+		const files = readdirSync(directory);
+		for (const library of ["onnxruntime", "sherpa-onnx-c-api"]) {
+			const filename = files.find(file => file.includes(library) && /\.(?:dll|dylib|so)(?:\.|$)/.test(file));
+			if (!filename) fail(`Parakeet library ${library} is missing from ${name}`);
+			assertFile(path.join(directory, filename), `Parakeet ${library} (${name})`);
+		}
+	}
 }
 
 function verifyNativeHelpers(unpackedRoot) {
@@ -276,6 +303,7 @@ for (const unpackedRoot of unpackedRoots) {
 	console.log(`[packaged-smoke] root: ${relativePath(unpackedRoot)}`);
 	assertPackagedAppExecutable(unpackedRoot);
 	verifyFfmpeg(unpackedRoot);
+	verifyParakeetRuntime(unpackedRoot);
 	verifyNativeHelpers(unpackedRoot);
 }
 

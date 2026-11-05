@@ -1,4 +1,5 @@
 #include "mf_encoder.h"
+#include "frame_padding.h"
 #include <mfapi.h>
 #include <mferror.h>
 #include <codecapi.h>
@@ -177,7 +178,7 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
     nv12Buffer_.resize(ySize + uvSize);
     lastFrameBuffer_.clear();
     firstSampleTimeHns_ = -1;
-    lastSampleTimeHns_ = -1;
+    lastSampleEndTimeHns_ = -1;
 
     initialized_ = true;
     return true;
@@ -234,18 +235,19 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
     context_->Unmap(stagingTexture_.Get(), 0);
 
     // WGC may stop delivering frames while the scene is static; keep the MP4
-    // timeline continuous by repeating the previous frame before writing a new one.
+    // timeline continuous with one duration-bearing sample for each gap.
     int64_t normalizedTimestampHns = 0;
     normalizeWriteTimestampHnsLocked(timestampHns, normalizedTimestampHns);
 
-    if (!lastFrameBuffer_.empty() && !extendLastFrameToLocked(normalizedTimestampHns)) {
+    if (!lastFrameBuffer_.empty() && !extendLastFrameToLocked(normalizedTimestampHns, false)) {
         return false;
     }
 
-    bool wroteSample = writeNv12SampleLocked(nv12Buffer_, normalizedTimestampHns);
+    const int64_t frameDurationHns = 10000000LL / fps_;
+    bool wroteSample = writeNv12SampleLocked(
+        nv12Buffer_, normalizedTimestampHns, frameDurationHns);
     if (wroteSample) {
         lastFrameBuffer_ = nv12Buffer_;
-        lastSampleTimeHns_ = normalizedTimestampHns;
     }
     return wroteSample;
 }
@@ -258,7 +260,7 @@ bool MFEncoder::extendLastFrameTo(int64_t timestampHns) {
         return false;
     }
 
-    return extendLastFrameToLocked(normalizedTimestampHns);
+    return extendLastFrameToLocked(normalizedTimestampHns, true);
 }
 
 void MFEncoder::normalizeWriteTimestampHnsLocked(int64_t timestampHns, int64_t& normalizedTimestampHns) {
@@ -285,36 +287,33 @@ bool MFEncoder::normalizeTimelineTimestampHnsLocked(
     return true;
 }
 
-bool MFEncoder::extendLastFrameToLocked(int64_t timestampHns) {
+bool MFEncoder::extendLastFrameToLocked(int64_t timestampHns, bool includePartialFrame) {
     if (!initialized_ || !sinkWriter_) return false;
     if (lastFrameBuffer_.empty()) return false;
-    if (lastSampleTimeHns_ < 0) return false;
+    if (lastSampleEndTimeHns_ < 0) return false;
 
     if (fps_ <= 0) return false;
     const int64_t frameDurationHns = 10000000LL / fps_;
     if (frameDurationHns <= 0) return false;
-    if (timestampHns <= lastSampleTimeHns_ + frameDurationHns) {
-        return true;
-    }
+    // Avoid an extra sample for normal sub-frame timestamp jitter. At Stop,
+    // cover even a fractional final frame so the recording reaches its endpoint.
+    const auto padding = planFramePadding(
+        lastSampleEndTimeHns_, timestampHns, includePartialFrame ? 1 : frameDurationHns);
+    if (padding.durationHns == 0) return true;
 
-    int64_t nextSampleTimeHns = lastSampleTimeHns_ + frameDurationHns;
-    while (nextSampleTimeHns + frameDurationHns <= timestampHns) {
-        if (!writeNv12SampleLocked(lastFrameBuffer_, nextSampleTimeHns)) {
-            return false;
-        }
-        lastSampleTimeHns_ = nextSampleTimeHns;
-        nextSampleTimeHns += frameDurationHns;
-    }
-
-    return true;
+    // Encoding a duplicate at every nominal frame interval creates unbounded
+    // work after a static scene or a slow encoder. One sample holds the same
+    // image through the entire gap, including a fractional final frame at Stop.
+    return writeNv12SampleLocked(
+        lastFrameBuffer_, padding.timestampHns, padding.durationHns);
 }
 
-bool MFEncoder::writeNv12SampleLocked(const std::vector<uint8_t>& frameBuffer, int64_t timestampHns) {
-    if (frameBuffer.empty()) return false;
-    if (fps_ <= 0) return false;
-
-    const int64_t frameDurationHns = 10000000LL / fps_;
-    if (frameDurationHns <= 0) return false;
+bool MFEncoder::writeNv12SampleLocked(
+    const std::vector<uint8_t>& frameBuffer,
+    int64_t timestampHns,
+    int64_t durationHns
+) {
+    if (frameBuffer.empty() || durationHns <= 0) return false;
 
     // Create MF sample
     DWORD bufferSize = static_cast<DWORD>(frameBuffer.size());
@@ -336,11 +335,14 @@ bool MFEncoder::writeNv12SampleLocked(const std::vector<uint8_t>& frameBuffer, i
 
     sample->AddBuffer(buffer.Get());
     sample->SetSampleTime(timestampHns);
-    sample->SetSampleDuration(frameDurationHns);
+    sample->SetSampleDuration(durationHns);
 
     hr = sinkWriter_->WriteSample(streamIndex_, sample.Get());
     if (FAILED(hr)) {
         std::cerr << "ERROR: WriteSample failed: 0x" << std::hex << hr << std::endl;
+    }
+    if (SUCCEEDED(hr)) {
+        lastSampleEndTimeHns_ = timestampHns + durationHns;
     }
     return SUCCEEDED(hr);
 }
@@ -366,7 +368,7 @@ bool MFEncoder::finalize() {
     nv12Buffer_.shrink_to_fit();
     lastFrameBuffer_.shrink_to_fit();
     firstSampleTimeHns_ = -1;
-    lastSampleTimeHns_ = -1;
+    lastSampleEndTimeHns_ = -1;
     MFShutdown();
     return SUCCEEDED(hr);
 }

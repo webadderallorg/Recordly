@@ -1,17 +1,19 @@
-import { validateCaptureSource } from "../captureSelection";
-import { listCapturePickerWindows } from "../capturePickerSources";
 import { ipcMain } from "electron";
 import type { SourceListPickResult } from "../../sourceListPicker";
 import {
 	closeCapturePickerWindows,
 	createCapturePickerWindows,
+	getCapturePickerWindows,
 	isCapturePickerWebContents,
 } from "../../windows";
+import { listCapturePickerWindows } from "../capturePickerSources";
+import { validateCaptureSource } from "../captureSelection";
 import { stopWindowBoundsCapture } from "../cursor/bounds";
-import { isCursorCaptureActive, setSelectedSource } from "../state";
 import { createAreaSource, createWindowSource, normalizeCapturePick } from "../sourceArea";
+import { isCursorCaptureActive, setSelectedSource } from "../state";
 import type { CapturePick, CapturePickerWindow, SelectedSource } from "../types";
 import { getScreen } from "../utils";
+import { resizeCaptureWindow } from "../windowResize";
 import { getScreenSourceIdForDisplay, isLikelyLinuxWaylandSession } from "./sourceMapping";
 import { broadcastSelectedSourceChange, getDesktopSources } from "./sources";
 
@@ -45,8 +47,8 @@ async function createScreenSource(displayId: number): Promise<SelectedSource | n
 
 /**
  * The capture picker covers every display: hovering highlights the window under
- * the cursor, a click picks that window or the whole screen, and a drag draws an
- * area. The pick becomes the selected source.
+ * the cursor, clicking immediately selects that window or screen, and dragging
+ * creates an adjustable recording area.
  */
 export function registerCapturePickerHandlers({
 	pickSourceList,
@@ -63,6 +65,8 @@ export function registerCapturePickerHandlers({
 	};
 
 	let activePick: Promise<unknown> | null = null;
+	let resizing = false;
+	let resizeDone: Promise<void> = Promise.resolve();
 	const pickTarget = async () => {
 		if (isCursorCaptureActive) return { success: false, canceled: true };
 		if (process.platform === "linux" && isLikelyLinuxWaylandSession(process.env)) {
@@ -141,8 +145,72 @@ export function registerCapturePickerHandlers({
 		return activePick;
 	});
 
+	ipcMain.handle("resize-capture-window", async (event, input: unknown) => {
+		if (
+			!isCapturePickerWebContents(event.sender) ||
+			!resolvePendingPick ||
+			isCursorCaptureActive
+		)
+			return { success: false, error: "Open the source picker before resizing a window." };
+		if (resizing) return { success: false, error: "A window resize is already in progress." };
+		if (!input || typeof input !== "object" || Array.isArray(input))
+			return { success: false, error: "Invalid window size." };
+		const { windowId, width, height } = input as Record<string, unknown>;
+		if (
+			typeof windowId !== "string" ||
+			![width, height].every(
+				(n) => typeof n === "number" && Number.isSafeInteger(n) && n >= 100 && n <= 16384,
+			)
+		)
+			return { success: false, error: "Enter whole sizes from 100 to 16,384." };
+		const session = resolvePendingPick;
+		resizing = true;
+		let finishResize!: () => void;
+		resizeDone = new Promise<void>((resolve) => {
+			finishResize = resolve;
+		});
+		try {
+			const offered = (await pickableWindows).find((window) => window.id === windowId);
+			if (!offered) throw new Error("That window is no longer available.");
+			const fresh = (await listCapturePickerWindows()).find(
+				(window) => window.id === windowId,
+			);
+			if (!fresh) throw new Error("That window is no longer available.");
+			if (session !== resolvePendingPick || isCursorCaptureActive)
+				throw new Error("Window selection was canceled.");
+			const bounds = await resizeCaptureWindow(fresh, {
+				width: width as number,
+				height: height as number,
+			});
+			if (session !== resolvePendingPick || isCursorCaptureActive)
+				throw new Error("Window selection was canceled.");
+			const window = { ...fresh, ...bounds };
+			pickableWindows = Promise.resolve(
+				(await pickableWindows).map((entry) => (entry.id === window.id ? window : entry)),
+			);
+			for (const overlay of getCapturePickerWindows()) {
+				if (!overlay.isDestroyed())
+					overlay.webContents.send("capture-picker-window-resized", window);
+			}
+			return { success: true, window };
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : "Could not resize this window.",
+			};
+		} finally {
+			resizing = false;
+			finishResize();
+		}
+	});
+
 	ipcMain.handle("complete-capture-pick", async (event, input: unknown) => {
 		if (!isCapturePickerWebContents(event.sender)) return;
+		if (input && resizing) {
+			const session = resolvePendingPick;
+			await resizeDone;
+			if (session !== resolvePendingPick) return;
+		}
 		if (
 			input &&
 			typeof input === "object" &&
@@ -180,14 +248,9 @@ export function registerCapturePickerHandlers({
 				cursor: null,
 			};
 		}
-		const { x, y, width, height } = display.bounds;
-		const windows = (await pickableWindows).filter(
-			(window) =>
-				window.x < x + width &&
-				window.x + window.width > x &&
-				window.y < y + height &&
-				window.y + window.height > y,
-		);
+		// Preserve global stacking order so a window expanding onto another display
+		// can be inserted at its original rank by that display's overlay.
+		const windows = await pickableWindows;
 		return {
 			displayBounds: display.bounds,
 			allowArea: process.platform === "darwin",

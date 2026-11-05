@@ -50,6 +50,10 @@ final class ScreenCaptureRecorder {
     }
     func pauseCapture() async -> Bool { true }
     func resumeCapture() async -> Bool { true }
+    func updateHudExclusions(_ processIds: [Int32]) async throws {
+        print("BACKEND_HUD_EXCLUSIONS: \\(processIds)")
+        fflush(stdout)
+    }
 }
 ${service}
 extension RecorderService {
@@ -99,5 +103,22 @@ exit(success ? 0 : 1)
 		expect(result.status, result.stderr).toBe(1);
 		expect(result.stderr).toContain("Error starting capture");
 		expect(result.stdout).not.toContain("BACKEND_STOP");
+	});
+
+	it("removes HUD exclusions when Hide HUD is untoggled and reapplies them when toggled", () => {
+		const output = join(directory, "hud-recording");
+		const result = spawnSync(executable, [output], {
+			input: "hud-exclusions [734]\nhud-exclusions []\nhud-exclusions [734]\nstop\n",
+			encoding: "utf8",
+			timeout: 5_000,
+		});
+		expect(result.status, result.stderr).toBe(0);
+		expect(result.stdout.match(/BACKEND_HUD_EXCLUSIONS: .*/g)).toEqual([
+			"BACKEND_HUD_EXCLUSIONS: [734]",
+			"BACKEND_HUD_EXCLUSIONS: []",
+			"BACKEND_HUD_EXCLUSIONS: [734]",
+		]);
+		expect(result.stdout.match(/HUD capture filter updated/g)).toHaveLength(3);
+		expect(readFileSync(output, "utf8")).toBe("finalized");
 	});
 });

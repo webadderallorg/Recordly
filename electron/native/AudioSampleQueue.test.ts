@@ -69,18 +69,17 @@ func run(_ name: String) async -> String {
  writer.startSession(atSourceTime: .zero)
  var blocked = false
  let samples = AudioSampleQueue(isReady: { !blocked && input.isReadyForMoreMediaData }, canWrite: { writer.status == .writing }, append: { input.append($0) })
- for index in 0..<(name == "overflow" ? 400 : 100) {
+ for index in 0..<100 {
   if name == "gap" && index >= 40 && index < 60 { continue }
   if name == "tail" && index >= 80 { continue }
   if name == "leading" && index < 20 { continue }
-  blocked = (name == "stall" && index >= 40 && index < 60) || (name == "overflow" && index < 300)
-  if name == "overflow" && index >= 300 { try? await Task.sleep(nanoseconds: 1_000_000) }
-  let toneIndex = name == "overflow" ? (index >= 370 ? 70 : 0) : index
+  blocked = name == "stall" && index >= 40 && index < 60
+  let toneIndex = index
   samples.enqueue(tone(index: toneIndex, rate: name == "mono" ? 24_000 : 48_000, channels: name == "mono" ? 1 : 2, interleaved: name == "interleaved"), at: at(Double(index) / 100 - ((name == "partialOverlap" || name == "interleaved") && index == 50 ? 0.005 : 0)))
   if name == "overlap" && index == 50 { samples.enqueue(tone(index: index), at: at(0.50)) }
  }
  blocked = false
- let error = await samples.finish(at: at(name == "overflow" ? 4 : 1))
+ let error = await samples.finish(at: at(1))
  precondition(error == nil, name + ": " + String(describing: error))
  input.markAsFinished()
  await writer.finishWriting()
@@ -103,7 +102,7 @@ func run(_ name: String) async -> String {
 let done = DispatchSemaphore(value: 0)
 Task {
  var entries: [String] = []
- for name in ["contiguous", "gap", "stall", "tail", "leading", "overlap", "partialOverlap", "interleaved", "mono", "overflow"] { entries.append(await run(name)) }
+ for name in ["contiguous", "gap", "stall", "tail", "leading", "overlap", "partialOverlap", "interleaved", "mono"] { entries.append(await run(name)) }
  var blocked = true
  var writable = true
  let pressure = AudioSampleQueue(isReady: { !blocked }, canWrite: { writable }, append: { _ in true })
@@ -169,10 +168,9 @@ done.wait()
 		expect(results[name].marker).toBeCloseTo(0.7, 1);
 		expect(results[name].marker - results.contiguous.marker).toBeCloseTo(0, 2);
 	});
-	it("keeps later speech aligned after sustained overload exceeds the queue limit", () => {
-		expect(results.overflow.frames / 48_000).toBeCloseTo(4, 1);
-		expect(results.overflow.marker).toBeCloseTo(3.7, 1);
-		expect(results.overflow.marker - results.contiguous.marker).toBeCloseTo(3, 2);
+	it("reports sustained overload instead of silently dropping recorded speech", () => {
+		expect(pressure.failedFinish).toBe(true);
+		expect(pressure.dropped).toBeGreaterThan(0);
 	});
 	it("preserves an actual missing interval as silence", () => {
 		expect(results.gap.silentGap).toBe(true);

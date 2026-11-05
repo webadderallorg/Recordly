@@ -4,40 +4,11 @@ export interface GpuSwitches {
 	disableFeatures?: string[];
 }
 
-function normalizeLinuxWindowSystem(value: string | undefined): "wayland" | "x11" | null {
-	const normalized = value?.trim().toLowerCase();
-	if (normalized === "wayland" || normalized === "x11") {
-		return normalized;
-	}
-
-	return null;
-}
-
-function getForcedLinuxWindowSystem(env: NodeJS.ProcessEnv): "wayland" | "x11" | null {
-	return (
-		normalizeLinuxWindowSystem(env.OZONE_PLATFORM) ??
-		normalizeLinuxWindowSystem(env.ELECTRON_OZONE_PLATFORM_HINT)
-	);
-}
-
+// Let Chromium select its supported ANGLE/GL implementation by default. Forcing
+// native EGL on X11 can make the GPU process exit before preview or export starts.
 export function shouldForceLinuxEgl(env: NodeJS.ProcessEnv): boolean {
-	const forcedWindowSystem = getForcedLinuxWindowSystem(env);
-	if (forcedWindowSystem === "wayland") {
-		return false;
-	}
-	if (forcedWindowSystem === "x11") {
-		return true;
-	}
-
-	const sessionType = env.XDG_SESSION_TYPE?.toLowerCase();
-	if (sessionType === "wayland") {
-		return false;
-	}
-	if (sessionType === "x11") {
-		return true;
-	}
-
-	return !env.WAYLAND_DISPLAY;
+	const requested = env.RECORDLY_FORCE_EGL?.trim().toLowerCase();
+	return requested === "1" || requested === "true";
 }
 
 export function getGpuSwitches(
@@ -47,7 +18,10 @@ export function getGpuSwitches(
 	if (platform === "darwin") {
 		return {
 			useAngle: "metal",
-			disableFeatures: ["MacCatapLoopbackAudioForScreenShare"],
+			// Electron 43's separate audio service registers as a foreground app on
+			// macOS, adding a Dock icon whenever audio starts. Keep audio in-process
+			// until the upstream helper activation policy is fixed.
+			disableFeatures: ["MacCatapLoopbackAudioForScreenShare", "AudioServiceOutOfProcess"],
 		};
 	}
 

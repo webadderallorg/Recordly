@@ -27,6 +27,10 @@ function getTargetConfigs() {
 
 const helpers = [
 	{
+		source: "PermissionDragHelper.swift",
+		output: "recordly-permission-drag-helper",
+	},
+	{
 		source: "ScreenCaptureKitRecorder.swift",
 		output: "recordly-screencapturekit-helper",
 	},

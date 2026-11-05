@@ -1,0 +1,7 @@
+{
+  "package": "@esbuild/darwin-arm64",
+  "version": "0.25.12",
+  "npmGitHead": "208f539945b145e7c9d6d844290f81c3fe5af320",
+  "licenseUrl": "https://raw.githubusercontent.com/evanw/esbuild/208f539945b145e7c9d6d844290f81c3fe5af320/LICENSE.md",
+  "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+}
