@@ -20,7 +20,7 @@ async function seekInsideClip(page: Page, clip: Locator, fraction: number) {
 async function splitInsideClip(page: Page, clip: Locator, fraction: number) {
 	const count = await clipsFor(page).count();
 	await seekInsideClip(page, clip, fraction);
-	await page.getByRole("button", { name: "Split Clip (C)", exact: true }).click();
+	await page.getByRole("button", { name: /^Split Clip \(/ }).click();
 	await expect(clipsFor(page)).toHaveCount(count + 1);
 }
 

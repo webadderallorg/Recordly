@@ -68,11 +68,11 @@ test("selecting an untouched clip does not introduce a leading gap", async ({ pa
 	await expect(clip).toHaveAttribute("data-start-ms", "0");
 	await expect(clip).toHaveAttribute("data-end-ms", "6000");
 
-	await page.getByRole("button", { name: "Export", exact: true }).click();
-	const dialog = page.getByRole("dialog", { name: "Export", exact: true });
+	await page.getByRole("button", { name: "Publish", exact: true }).click();
+	const dialog = page.getByRole("dialog", { name: "Publish", exact: true });
 	const dialogBox = (await dialog.boundingBox())!;
 	const titleBox = (await dialog
-		.getByRole("heading", { name: "Export", exact: true })
+		.getByRole("heading", { name: "Publish", exact: true })
 		.boundingBox())!;
 	expect(titleBox.x - dialogBox.x).toBeGreaterThanOrEqual(16);
 	expect(titleBox.y - dialogBox.y).toBeGreaterThanOrEqual(16);

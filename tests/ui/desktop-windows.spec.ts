@@ -16,7 +16,7 @@ test("update window fits the desktop toast and can be dismissed", async ({ page 
 	await expect(
 		page.getByRole("heading", { name: "Update available", exact: true }),
 	).toBeVisible();
-	await expect(page.getByRole("button", { name: "Update now", exact: true })).toBeInViewport();
+	await expect(page.getByRole("button", { name: "Download update", exact: true })).toBeInViewport();
 	await page.screenshot({ path: "test-results/update-light.png", animations: "disabled" });
 	await page.getByRole("button", { name: "Not now", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-update-dismissed", "true");
@@ -27,15 +27,20 @@ test("editor inspector and playback controls fit a smaller desktop", async ({ pa
 	await installDesktopBridge(page);
 	await page.goto("/?windowType=editor");
 	await expect(page.getByRole("slider", { name: "Blur", exact: true })).toBeVisible();
-	await expect(page.getByRole("button", { name: "Export", exact: true })).toBeInViewport();
+	await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeInViewport();
 	await expect(page.getByRole("button", { name: "Play", exact: true })).toBeInViewport();
-	await page.getByRole("radio", { name: "Settings", exact: true }).click();
-	await page.getByRole("row", { name: "Motion", exact: true }).click();
+	await page.getByRole("button", { name: "Recordly account", exact: true }).click();
+	await page
+		.getByRole("dialog", { name: "Account menu", exact: true })
+		.getByRole("button", { name: "Settings", exact: true })
+		.click();
+	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+	await settings.getByRole("tab", { name: "Motion", exact: true }).click();
 	await expect(
-		page.getByRole("radiogroup", { name: "Motion Presets", exact: true }),
+		settings.getByRole("radiogroup", { name: "Presets", exact: true }),
 	).toBeVisible();
-	await page.getByText("Smooth", { exact: true }).click();
-	await expect(page.getByRole("radio", { name: "Smooth", exact: true })).toBeChecked();
+	await settings.getByText("Cinematic", { exact: true }).click();
+	await expect(settings.getByRole("radio", { name: /^Cinematic/ })).toBeChecked();
 	await expect
 		.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
 		.toBe(true);

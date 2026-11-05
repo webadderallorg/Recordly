@@ -1,0 +1,127 @@
+.policy-site {
+	min-height: 100svh;
+	display: flex;
+	flex-direction: column;
+}
+.policy-site > .nav {
+	width: min(1120px, 100%);
+	margin: 12px auto 0;
+}
+.policy-content {
+	width: min(672px, calc(100% - 48px));
+	margin: 60px auto 100px;
+	flex: 1;
+}
+.policy-heading {
+	text-align: center;
+	margin-bottom: 36px;
+}
+.policy-heading h1 {
+	font-size: clamp(34px, 4.5vw, 44px);
+	line-height: 1.15;
+}
+.policy-heading p {
+	max-width: 520px;
+	margin: 20px auto 0;
+	font-size: 18px;
+	color: var(--muted);
+}
+.policy-document {
+	font-size: 17px;
+	letter-spacing: -0.015em;
+	overflow-wrap: anywhere;
+	color: #454545;
+}
+.policy-document h2 {
+	font-size: 28px;
+	line-height: 1.2;
+	margin: 40px 0 14px;
+	color: #090b0c;
+}
+.policy-document p {
+	margin: 18px 0;
+	line-height: 1.8;
+}
+.policy-document a {
+	color: var(--blue);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+.policy-document a:hover {
+	color: #090b0c;
+}
+.policy-document ul,
+.policy-document ol {
+	padding-left: 24px;
+	margin: 20px 0;
+}
+.policy-document li {
+	margin: 10px 0;
+	padding-left: 4px;
+	line-height: 1.75;
+}
+.policy-document table {
+	width: 100%;
+	overflow-wrap: normal;
+	border-collapse: collapse;
+	margin: 24px 0;
+	font-size: 14px;
+	line-height: 1.6;
+}
+.policy-document th,
+.policy-document td {
+	text-align: left;
+	padding: 14px 10px;
+	border-bottom: 1px solid var(--line);
+	vertical-align: top;
+}
+.policy-document th {
+	font-weight: 500;
+	color: #090b0c;
+}
+.policy-draft {
+	padding-left: 16px;
+	border-left: 2px solid var(--line);
+	margin-bottom: 36px;
+	font-size: 13px;
+}
+.policy-draft p {
+	color: var(--muted);
+	margin: 6px 0 0;
+	line-height: 1.65;
+}
+.policy-contact {
+	border-top: 1px solid var(--line);
+	margin-top: 40px;
+}
+.policy-document .policy-version {
+	font-size: 12px;
+	color: var(--muted);
+	margin: 40px 0 0;
+}
+@media (max-width: 700px) {
+	.policy-content {
+		margin-top: 48px;
+		margin-bottom: 64px;
+	}
+	.policy-heading p {
+		font-size: 16px;
+	}
+	.policy-document {
+		font-size: 16px;
+	}
+	.policy-document h2 {
+		font-size: 25px;
+	}
+}
+@media print {
+	.policy-site > .nav,
+	.policy-site > .site-footer,
+	.policy-site > .skip {
+		display: none;
+	}
+	.policy-content {
+		width: 100%;
+		margin: 0;
+	}
+}

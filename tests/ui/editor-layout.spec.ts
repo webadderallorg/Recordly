@@ -8,6 +8,8 @@ test("advanced controls preserve values and remember each section's view", async
 	await expect(advanced).toBeVisible({ timeout: 20000 });
 	await expect(page.getByRole("switch", { name: "Link padding sides" })).toHaveCount(0);
 	const blur = page.getByRole("slider", { name: "Blur", exact: true });
+	await expect(blur).not.toBeVisible();
+	await page.getByRole("button", { name: "Background details", exact: true }).click();
 	await blur.focus();
 	await page.keyboard.press("ArrowRight");
 	const value = await blur.inputValue();
@@ -15,6 +17,10 @@ test("advanced controls preserve values and remember each section's view", async
 	await expect(page.getByRole("switch", { name: "Link padding sides" })).toBeVisible();
 	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
 	await expect(advanced).not.toBeChecked();
+	await page
+		.getByRole("grid", { name: "Shape", exact: true })
+		.getByRole("row", { name: "Squircle", exact: true })
+		.click();
 	await expect(page.getByRole("slider", { name: "Webcam Height" })).toHaveCount(0);
 	await page.locator("aside").getByText("Advanced", { exact: true }).click();
 	await expect(page.getByRole("slider", { name: "Webcam Height" })).toBeAttached();
@@ -23,19 +29,23 @@ test("advanced controls preserve values and remember each section's view", async
 		animations: "disabled",
 	});
 	await page.getByRole("radio", { name: "Scene", exact: true }).click();
+	await page.getByRole("button", { name: "Background details", exact: true }).click();
 	await expect(advanced).toBeChecked();
 	await expect(blur).toHaveValue(value);
 	await page.locator("aside").getByText("Advanced", { exact: true }).click();
 	await expect(blur).toHaveValue(value);
 	await page.getByRole("row", { name: "Color", exact: true }).click();
-	await page.getByRole("button", { name: "Custom color", exact: true }).click();
+	await page.getByRole("button", { name: "Add custom color", exact: true }).click();
 	await page.getByRole("textbox", { name: "Hex color", exact: true }).fill("#27AE60");
 	await page.keyboard.press("Tab");
 	await expect(page.getByRole("textbox", { name: "Hex color", exact: true })).toHaveValue(
 		"#27AE60",
 	);
-	await page.keyboard.press("Escape");
-	await page.getByRole("button", { name: "Custom color", exact: true }).click();
+	await page.getByRole("dialog", { name: "Custom color", exact: true })
+		.getByRole("button", { name: "Add", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Background color #27AE60", exact: true }))
+		.toHaveAttribute("aria-pressed", "true");
+	await page.getByRole("button", { name: "Add custom color", exact: true }).click();
 	await expect(page.getByRole("textbox", { name: "Hex color", exact: true })).toHaveValue(
 		"#27AE60",
 	);
@@ -71,7 +81,10 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 			);
 			const header = await page.locator(".editor-header").boundingBox();
 			const dividers = await page.locator(".editor-header").getByRole("separator").all();
-			expect(dividers).toHaveLength(2);
+			expect(dividers).toHaveLength(1);
+			await expect(
+				page.locator(".editor-header-start > span[aria-hidden=\"true\"]"),
+			).toHaveText("/");
 			for (const divider of dividers) {
 				const box = await divider.boundingBox();
 				expect(box!.height).toBe(20);
@@ -113,7 +126,7 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 					).toBe(true);
 				}
 			await expect(
-				page.getByRole("button", { name: "Export", exact: true }),
+				page.getByRole("button", { name: "Publish", exact: true }),
 			).toBeInViewport();
 			await expect(page.getByRole("button", { name: "Play", exact: true })).toBeInViewport();
 		}
@@ -126,7 +139,7 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 	await expect(page.getByRole("button", { name: "Rename project" })).toBeVisible();
 });
 
-test("header name edits in place and saves on blur without a boxed input", async ({ page }) => {
+test("header name edits directly without a selection box and saves on blur", async ({ page }) => {
 	await installDesktopBridge(page);
 	await page.addInitScript(() => {
 		window.electronAPI.saveProjectFileNamed = async (_data, name) => ({
@@ -137,11 +150,21 @@ test("header name edits in place and saves on blur without a boxed input", async
 	await page.goto("/?windowType=editor");
 	await expect(page.getByRole("button", { name: "Rename project" })).toContainText(
 		"Untitled Project",
+		{ timeout: 30000 },
 	);
-	await page.getByRole("button", { name: "Rename project" }).click();
+	await expect(page.locator('[data-variant="clip"]')).toHaveCount(1);
+	await expect(page.getByLabel("Loading preview")).toHaveCount(0);
+	const title = page.getByRole("button", { name: "Rename project" });
+	const originalTextBox = (await title.locator("span").boundingBox())!;
+	await title.click();
 	const input = page.getByRole("textbox", { name: "Project name" });
-	await expect(input).toHaveCSS("box-shadow", "none");
+	await expect(input).toBeFocused();
+	await expect(input).toHaveCSS("outline-style", "none");
 	await expect(input).toHaveCSS("border-top-width", "0px");
+	await expect(input).toHaveCSS("box-shadow", "none");
+	await expect(input).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+	await expect.poll(() => input.evaluate((node: HTMLInputElement) => node.selectionStart === node.selectionEnd)).toBe(true);
+	expect((await input.boundingBox())!.x).toBeCloseTo(originalTextBox.x, 0);
 	await input.fill("Launch demo");
 	await input.press("Tab");
 	await expect(page.getByRole("button", { name: "Rename project" })).toContainText("Launch demo");

@@ -1,0 +1,95 @@
+import React from "react";
+import { LegalDocument as Legal } from "./LegalDocument";
+
+export default function BillingPolicy() {
+	return (
+		<Legal
+			title="Billing & refunds"
+			description="Clear pricing, cancellation instructions and help with payment problems."
+		>
+			<h2>Cloud pricing</h2>
+			<table>
+				<thead>
+					<tr>
+						<th>Plan</th>
+						<th>Charge</th>
+						<th>Renewal</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>Cloud monthly</td>
+						<td>As shown in Recordly and checkout</td>
+						<td>Every month until cancelled</td>
+					</tr>
+				</tbody>
+			</table>
+			<p>
+				Cloud is billed monthly. Check the currency, total, taxes if applicable and renewal
+				interval on Stripe’s checkout before subscribing. Currency-conversion or bank fees may be
+				charged by your provider.
+			</p>
+			<h2>What Cloud includes</h2>
+			<p>
+				Unlimited cloud storage and playback bandwidth, with up to 10 GB per recording
+				and no stored-recording count cap. Cloud allows 200 new uploads per rolling seven days, including admitted uploads later
+				canceled or deleted. Daily upload-capacity and abuse protections also apply.
+				Completed cloud recordings have no scheduled expiry while Cloud is active. Hosted
+				storage does not include automatic backup of editable project files.
+			</p>
+			<h2>How to cancel</h2>
+			<ol>
+				<li>Sign into the Recordly account used for your purchase.</li>
+				<li>
+					Open <strong>Manage plan</strong> and choose{" "}
+					<strong>Manage subscription</strong>.
+				</li>
+				<li>
+					In Stripe’s secure portal, choose <strong>Cancel subscription</strong> and
+					complete the confirmation. Check the displayed end date.
+				</li>
+			</ol>
+			<p>
+				Normal cancellation stops the next renewal. Paid access continues until the current
+				paid period ends. After that, new uploads use the Free limits, and existing cloud recordings expire seven
+				days later. Save a copy or renew before that deadline. Stored recordings continue to
+				count toward applicable limits.
+				Signing out, uninstalling Recordly or deleting a recording does not stop a
+				subscription.
+			</p>
+			<h2>Receipts and payment details</h2>
+			<p>
+				The same portal provides invoices and payment-method management. Recordly uses the
+				account’s server-created Stripe customer to link billing; changing your checkout
+				email does not move your subscription to a different Recordly account.
+			</p>
+			<h2>Refund requests</h2>
+			<p>
+				Contact support with your account email, invoice reference, transaction date and a
+				brief explanation. Do not send a password, full card number or card security code.
+				Tell us if a payment is duplicated, unauthorised, charged after a confirmed
+				cancellation or related to a service problem.
+			</p>
+			<p>
+				Refund and cancellation rights under applicable consumer law apply regardless of
+				this policy. In particular, Australian Consumer Law guarantees cannot be excluded.
+				We assess requests in light of those rights and the circumstances. We do not promise
+				an automatic change-of-mind or prorated refund for unused time unless required by
+				law or agreed with you.
+			</p>
+			<p>
+				A refund or payment dispute can restrict new paid upload privileges while the
+				account is reconciled. Contact support if access is incorrect. Refunding a charge
+				and cancelling future renewals are separate actions; ask us to confirm both when
+				that is what you want.
+			</p>
+			<h2>Billing support</h2>
+			<p>
+				If you cannot access the portal, have lost access to the purchasing account or need
+				help with a refund, contact us using the details below. Keep your confirmation and
+				invoices. These instructions do not limit your right to seek assistance from your
+				bank, payment provider or consumer regulator.
+			</p>
+		</Legal>
+	);
+}

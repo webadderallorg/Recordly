@@ -65,7 +65,9 @@ test("Linux lists screens and windows and selects the requested window", async (
 test("a closed Linux window leaves the picker open and allows refresh", async ({ page }) => {
 	await openLinuxList(page, true);
 	await page.getByRole("button", { name: "Document", exact: true }).click();
-	await expect(page.getByRole("alert")).toContainText("no longer available");
+	await expect(page.getByRole("alert")).toContainText(
+		"Could not select that source. Try again after recording stops.",
+	);
 	await expect(page.locator("html")).not.toHaveAttribute("data-closed");
 	await expect(page.locator("html")).not.toHaveAttribute("data-selected");
 	const before = Number(await page.locator("html").getAttribute("data-refreshes"));

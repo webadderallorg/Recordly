@@ -1,0 +1,20 @@
+{
+	"name": "aside-react-landing",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vite --host 127.0.0.1",
+		"build": "vite build && node scripts/prerender-blog.mjs",
+		"preview": "vite preview --host 127.0.0.1"
+	},
+	"dependencies": {
+		"@solar-icons/react": "^2.3.0",
+		"motion": "^12.23.24",
+		"react": "18.3.1",
+		"react-dom": "18.3.1"
+	},
+	"devDependencies": {
+		"vite": "^8.3.0"
+	}
+}
