@@ -1,5 +1,6 @@
 {
 	"zoom": {
+		"applyAutoZooms": "Automatische zooms toepassen",
 		"cannotPlace": "Kan zoom hier niet plaatsen",
 		"existsOrNoSpace": "Er bestaat al een zoom op deze locatie of er is niet genoeg ruimte beschikbaar.",
 		"suggestHandlerUnavailable": "Zoomsuggestie-handler niet beschikbaar",

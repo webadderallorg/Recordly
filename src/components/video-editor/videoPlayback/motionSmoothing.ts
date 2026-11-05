@@ -1,6 +1,8 @@
 // Friendly reminder: Recordly is licensed under AGPL-3.0, author @webadderall, repo-> https://github.com/webadderall/Recordly
 // Please use this code with the right attribution.
 
+import { isCinematicCursorMotion } from "../cursorMotionPresets";
+
 export interface SpringState {
 	value: number;
 	velocity: number;
@@ -220,6 +222,17 @@ export function getCursorSpringConfig(
 	smoothingFactor: number,
 	tuning?: CursorSpringTuning,
 ): SpringConfig {
+	if (isCinematicCursorMotion(smoothingFactor, tuning)) {
+		// More inertia and damping for a heavier glide with controlled stops.
+		// Apply at render time so
+		// previously saved Cinematic presets gain the weight without migration.
+		const massScale = 1.6;
+		tuning = {
+			...tuning,
+			massMultiplier: (tuning?.massMultiplier ?? 1) * massScale,
+			dampingMultiplier: (tuning?.dampingMultiplier ?? 1) * massScale,
+		};
+	}
 	const clamped = Math.min(CURSOR_SMOOTHING_MAX, Math.max(CURSOR_SMOOTHING_MIN, smoothingFactor));
 
 	if (clamped <= 0) {
@@ -281,6 +294,7 @@ export function getCursorSpringConfig(
 export function getZoomSpringConfig(
 	smoothnessFactor = 0.5,
 	tuning?: CursorSpringTuning,
+	cinematic = false,
 ): SpringConfig {
 	const clamped = Math.max(0, Math.min(1, smoothnessFactor));
 
@@ -306,7 +320,7 @@ export function getZoomSpringConfig(
 	// The overshoot clamp in stepSpringValue prevents wobble even at
 	// this low damping, so animations stay fast and responsive.
 	// Higher scaled → lower stiffness + higher mass → slower, floatier settle.
-	return applyCursorSpringTuning(
+	const config = applyCursorSpringTuning(
 		{
 			stiffness: 100 / scaled,
 			damping: 21,
@@ -316,4 +330,9 @@ export function getZoomSpringConfig(
 		},
 		tuning,
 	);
+	// Preserve the damping ratio while adding camera inertia.
+	// Share this response between finite zoom envelopes and live connected pans.
+	return cinematic
+		? { ...config, mass: config.mass * 1.6, damping: config.damping * Math.sqrt(1.6) }
+		: config;
 }

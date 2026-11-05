@@ -1,4 +1,22 @@
 {
+	"aspectRatio": {
+		"native": "原始比例",
+		"widescreen": "宽屏",
+		"vertical": "竖屏",
+		"square": "正方形",
+		"squareUse": "Instagram · 社交动态",
+		"portrait": "竖幅",
+		"portraitUse": "Instagram · 信息流帖子",
+		"classic": "经典",
+		"desktop": "桌面",
+		"tall": "长竖屏",
+		"title": "画面比例",
+		"original": "保持原始画面比例",
+		"social": "社交平台预设",
+		"more": "更多比例",
+		"presets": "预设",
+		"standard": "标准"
+	},
 	"cloud": {
 		"signInRequired": "创建共享链接前，请先登录 Recordly。",
 		"prepareFailed": "无法准备当前剪辑以供分享。",
@@ -17,8 +35,8 @@
 		"publish": "发布并创建链接",
 		"createLinkTitle": "创建可分享的链接",
 		"notesPlaceholder": "为观看者添加背景信息、说明或简短摘要…",
-		"description": "将当前剪辑发布到 Recordly 观看和反馈页面，无需下载。分享的视频最高为 1080p。",
-		"uploading": "正在上传… {progress}%",
+		"description": "将当前剪辑发布到 Recordly 观看和反馈页面，无需下载。",
+		"uploading": "正在上传 · {{progress}}%",
 		"googleUnavailable": "尚未启用 Google 登录。请使用邮箱，或请 Recordly 管理员连接 Google。",
 		"xUnavailable": "尚未启用 X 登录。请使用邮箱，或请 Recordly 管理员连接 X。",
 		"providerUnavailable": "尚未启用此登录方式，请先使用邮箱。",
@@ -40,7 +58,24 @@
 		"createShareLink": "创建共享链接",
 		"done": "完成",
 		"addingVideo": "正在添加视频…",
-		"preparingFootage": "正在为时间轴准备视频和音频。"
+		"preparingFootage": "正在为时间轴准备视频和音频。",
+		"copyLink": "复制链接",
+		"shareLink": "分享链接",
+		"saveLinkFailed": "分享已创建，但无法将链接保存到本地",
+		"verifyPlanFailed": "无法验证你的云端方案。",
+		"refreshPlan": "刷新方案",
+		"share": "分享",
+		"signInToShare": "登录以分享",
+		"sharingUnavailable": "此版本暂不支持云端分享。",
+		"recordingLimit": "你已有 5 个云端录制。请先从“已分享”中删除一个，再分享其他录制。",
+		"checkStorageFailed": "无法检查云存储空间，请重试。",
+		"storageFull": "云存储空间已满。请先从“已分享”中删除一个录制，再分享其他录制。",
+		"videoPreview": "已发布视频的预览",
+		"previewUnavailable": "预览不可用。分享链接位于下方。",
+		"playPreview": "播放视频预览",
+		"title": "标题",
+		"checkSignIn": "检查登录状态",
+		"sessionRejected": "无法验证您的云端会话。请重新登录后分享。"
 	},
 	"library": {
 		"videos": "视频"
@@ -51,7 +86,8 @@
 		"skipBack": "后退",
 		"skipForward": "前进",
 		"muteUnmute": "静音/取消静音",
-		"volume": "预览音量"
+		"volume": "预览音量",
+		"seek": "播放位置"
 	},
 	"annotations": {
 		"settings": "注释设置",
@@ -89,9 +125,13 @@
 		"imageUploadError": "请上传 JPG、PNG、GIF 或 WebP 图片文件。",
 		"blurStrength": "模糊强度: {{strength}}",
 		"solidColor": "纯色 (审查)",
-		"borderRadius": "边框半径"
+		"borderRadius": "边框半径",
+		"imageUploadErrorDescription": "请选择 JPG、PNG、GIF 或 WebP 图片文件。",
+		"imageUploadFailed": "无法加载图片",
+		"imageUploadFailedDescription": "无法读取此图片。请选择其他文件或重试。",
+		"arrowDirectionOption": "箭头方向：{{direction}}",
+		"customColor": "自定义颜色"
 	},
-
 	"fontStyles": {
 		"classic": "经典",
 		"editor": "编辑器",
@@ -106,7 +146,8 @@
 		"mp4Video": "MP4 视频",
 		"mp4Description": "高质量视频文件",
 		"gifAnimation": "GIF 动画",
-		"gifDescription": "可分享的动态图片"
+		"gifDescription": "可分享的动态图片",
+		"title": "导出格式"
 	},
 	"gifOptions": {
 		"frameRate": "帧率",
@@ -162,14 +203,23 @@
 		"unsavedChangesTitle": "未保存的更改",
 		"unsavedChangesDescription": "在{{action}}之前保存当前项目吗？",
 		"discardChanges": "放弃更改",
-		"saveProject": "保存项目"
+		"saveProject": "保存项目",
+		"saveTitle": "保存项目",
+		"saveDescription": "为此项目命名。项目将保存到您的 Recordly 项目文件夹。",
+		"saveNameLabel": "项目名称",
+		"saving": "正在保存…",
+		"renameInput": "项目名称",
+		"renameTitle": "重命名项目"
 	},
 	"exportTips": {
-		"autoZooms": "提示：可在设置中关闭自动应用的缩放",
+		"autoZooms": "提示：可从缩放图层应用自动缩放",
 		"experimentalBuilds": "提示：可在设置中开启实验版本访问权限",
 		"cursorAppearance": "提示：你可以自定义光标外观"
 	},
-	"account": { "title": "账户", "comingSoon": "账户功能即将推出" },
+	"account": {
+		"title": "账户",
+		"comingSoon": "账户功能即将推出"
+	},
 	"nativeCaptureUnavailable": {
 		"title": "没有出错，但我们无法渲染动画光标叠加层。",
 		"description": "你的设备不支持原生捕获。这可能是由我们尚未确定的多种原因造成的。Recordly 仍可继续运行，但无法进行光标平滑处理。",
@@ -182,7 +232,14 @@
 		"completePercent": "已完成 {{percent}}%",
 		"issue": "导出问题",
 		"complete": "导出完成",
-		"savedSuccessfully": "文件已成功保存。"
+		"savedSuccessfully": "文件已成功保存。",
+		"renderSpeed": "渲染速度：{{fps}} 帧/秒",
+		"optimizingGif": "正在优化 GIF…",
+		"savingGif": "正在保存 GIF…",
+		"encodingGif": "正在完成 GIF…",
+		"errorCopied": "已复制错误",
+		"errorCopyFailed": "无法复制。请选择错误文本并手动复制。",
+		"copyError": "复制错误"
 	},
 	"export": {
 		"processingAudioEdits": "正在处理带有速度/叠加编辑的音频"
@@ -193,7 +250,34 @@
 	},
 	"timeline": {
 		"expand": "展开时间轴",
-		"collapse": "折叠时间轴"
+		"collapse": "折叠时间轴",
+		"unsupportedSpeed": "此设备不支持以该速度预览。"
 	},
-	"openRecordingsFolder": "打开录制文件夹"
+	"openRecordingsFolder": "打开录制文件夹",
+	"theme": {
+		"appearance": "外观",
+		"light": "浅色",
+		"dark": "深色",
+		"system": "跟随系统"
+	},
+	"presets": {
+		"open": "打开预设",
+		"label": "预设",
+		"saveCurrentAs": "将当前预设另存为",
+		"namePlaceholder": "预设名称",
+		"savedList": "已保存的预设",
+		"empty": "暂无预设。",
+		"deleteAriaLabel": "删除预设 {{name}}",
+		"toasts": {
+			"applied": "已应用预设“{{name}}”",
+			"saved": "已保存预设“{{name}}”",
+			"deleted": "已删除预设“{{name}}”"
+		},
+		"errors": {
+			"nameRequired": "请输入预设名称。",
+			"duplicateName": "已存在同名预设。",
+			"saveFailed": "无法保存此预设。请检查浏览器存储设置后重试。",
+			"deleteFailed": "无法删除此预设。请检查浏览器存储设置后重试。"
+		}
+	}
 }

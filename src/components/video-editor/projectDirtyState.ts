@@ -48,6 +48,11 @@ function omitTransientWebcamMediaFields(project: EditorProjectData | null) {
 	}
 
 	const editor = stripProjectUserPreferences(project.editor) as Record<string, unknown>;
+	// A loaded clip sequence projects these source gaps once duration is known.
+	// Only clip edits are user changes; legacy trim-only projects still compare trims.
+	if (Array.isArray(editor.clipRegions) && editor.clipRegions.length > 0) {
+		delete editor.trimRegions;
+	}
 	const webcam = editor.webcam;
 	if (!isComparableObject(webcam)) {
 		return { ...project, editor };

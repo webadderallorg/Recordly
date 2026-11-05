@@ -1,6 +1,6 @@
 {
 	"recording": {
-		"home": "Home",
+		"home": "Pagina iniziale",
 		"disableSystemAudio": "Disabilita audio di sistema",
 		"enableSystemAudio": "Abilita audio di sistema",
 		"disableMicrophone": "Disabilita microfono",
@@ -41,7 +41,7 @@
 		"rec": "REC",
 		"resume": "Riprendi",
 		"pause": "Pausa",
-		"stop": "Stop",
+		"stop": "Ferma",
 		"cancel": "Annulla",
 		"more": "Altro",
 		"update": {
@@ -90,6 +90,7 @@
 		"previewBadge": "Anteprima",
 		"notNow": "Non ora",
 		"updateNow": "Aggiorna ora",
+		"updateAndRestart": "Aggiorna e riavvia",
 		"restartToUpdate": "Riavvia per aggiornare",
 		"tryAgain": "Riprova"
 	}

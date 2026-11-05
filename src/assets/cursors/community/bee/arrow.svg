@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" fill="none">
+  <g filter="url(#filter0_d)">
+    <path d="M31.0012 157.123L31 157.039V42.1948C31 36.238 31.6541 30.5144 33.5931 25.6826C35.6302 20.6067 39.5809 15.514 46.2799 13.6666C52.3948 11.9803 58.1657 13.7796 62.3961 15.8839C66.7734 18.0614 71.1232 21.3596 75.3322 25.2046L160.811 100.978L160.851 101.013C167.179 106.675 169.78 115.445 169.988 122.444C170.177 128.824 168.296 140.201 157.598 144.678C153.385 146.44 148.239 146.645 144.785 146.731C142.774 146.78 140.603 146.782 138.471 146.784L138.418 146.784C136.221 146.785 134.003 146.787 131.71 146.83C122.334 147.007 113.192 147.896 105.68 151.285C98.218 154.651 91.6366 160.891 85.3323 167.848C84.1982 169.1 82.9004 170.573 81.5939 172.057C79.8 174.094 77.9876 176.152 76.552 177.688C74.1195 180.292 70.4436 184.063 66.0765 186.033C60.3907 188.598 54.7697 187.749 50.5579 185.969C46.4724 184.242 43.0852 181.435 40.5059 178.632C35.6553 173.361 31.1193 165.233 31.0012 157.123Z" fill="#000000"/>
+  </g>
+  <path d="M42.5834 42.1947C42.5833 21.0415 52.3197 19.8442 67.5813 33.8133L153.127 109.646C159.582 115.42 160.758 130.799 153.127 133.992C145.496 137.185 120.467 131.906 100.916 140.726C81.365 149.547 69.2212 171.906 61.3129 175.474C53.4045 179.042 42.7091 165.585 42.5834 156.955L42.5834 42.1947Z" fill="url(#bibata-bee)" stroke="#000000"/>
+  <defs>
+    <pattern id="bibata-bee" patternUnits="userSpaceOnUse" x="0" y="0" width="200" height="200">
+      <g>
+        <g transform="rotate(20 50 50) scale(2.4)">
+          <rect x="-20" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="-10" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="0" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="10" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="20" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="30" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="40" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="50" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="60" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="70" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="80" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="90" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="100" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="110" y="-10" width="10" height="120" fill="#000000"/>
+        </g>
+
+      </g>
+    </pattern>
+    <filter id="filter0_d" x="26" y="12" width="149" height="184.648" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"/>
+      <feOffset dy="4"/>
+      <feGaussianBlur stdDeviation="2.5"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.5 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow" result="shape"/>
+    </filter>
+  </defs>
+</svg>

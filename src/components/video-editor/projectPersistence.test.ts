@@ -40,6 +40,49 @@ describe("resolveVideoUrl", () => {
 });
 
 describe("normalizeProjectEditor", () => {
+	it("defaults the shadow to 50% while preserving saved intensity", () => {
+		expect(normalizeProjectEditor({}).shadowIntensity).toBe(0.5);
+		expect(normalizeProjectEditor({ shadowIntensity: 0 }).shadowIntensity).toBe(0);
+		expect(normalizeProjectEditor({ shadowIntensity: 0.8 }).shadowIntensity).toBe(0.8);
+	});
+
+	it("defaults new cameras to circle while preserving legacy project masks", () => {
+		expect(normalizeProjectEditor({}).webcam.shape).toBe("circle");
+		expect(normalizeProjectEditor({ webcam: { roundness: 69 } as never }).webcam).toMatchObject(
+			{ shape: "squircle", roundness: 69 },
+		);
+		for (const shape of ["circle", "squircle"] as const) {
+			const editor = normalizeProjectEditor({
+				webcam: { shape, width: 50, height: 30 } as never,
+			});
+			expect(normalizeProjectEditor(JSON.parse(JSON.stringify(editor))).webcam.shape).toBe(
+				shape,
+			);
+		}
+	});
+
+	it.each([
+		"source",
+		"viewport",
+	] as const)("retains %s zoom coordinates when reopening a saved project", (focusSpace) => {
+		const saved = {
+			zoomRegions: [
+				{
+					id: "crop-zoom",
+					startMs: 0,
+					endMs: 4000,
+					depth: 3,
+					focus: { cx: 0.6, cy: 0.4 },
+					mode: "manual",
+					focusSpace,
+				},
+			],
+		};
+		const editor = normalizeProjectEditor(saved);
+		expect(editor.zoomRegions[0].focusSpace).toBe(focusSpace);
+		expect(normalizeProjectEditor(editor).zoomRegions[0]).toEqual(editor.zoomRegions[0]);
+	});
+
 	it("ignores retired temporal blur fields when opening an older project", () => {
 		const savedEditor = {
 			zoomMotionBlur: 0.6,
@@ -120,7 +163,7 @@ describe("normalizeProjectEditor", () => {
 			} as never,
 		});
 
-		expect(editor.webcam.roundness).toBeCloseTo(17.36, 1);
+		expect(editor.webcam.roundness).toBeCloseTo(3.01, 2);
 		expect(editor.webcam.cornerRadius).toBeUndefined();
 	});
 
@@ -134,7 +177,7 @@ describe("normalizeProjectEditor", () => {
 
 		expect(editor.webcam.width).toBe(80);
 		expect(editor.webcam.height).toBe(80);
-		expect(editor.webcam.roundness).toBeCloseTo(4.34, 1);
+		expect(editor.webcam.roundness).toBeCloseTo(0.19, 2);
 	});
 });
 
@@ -186,6 +229,8 @@ describe("loaded clip sequence migration", () => {
 			audioRegions: value.audioRegions,
 			speedRegions: value.speedRegions,
 			autoCaptions: value.autoCaptions,
+			sourceAudioTrackSettingsByClip: value.sourceAudioTrackSettingsByClip ?? {},
+			defaultSourceAudioTrackSettings: value.defaultSourceAudioTrackSettings ?? {},
 			selectedZoomId: null,
 			selectedClipId: null,
 			selectedAnnotationId: null,
@@ -223,6 +268,27 @@ it("reopens persisted local media URLs using the current server port", async () 
 });
 
 describe("annotations across the canvas and imported webcam ranges", () => {
+	it("reopens previously frosted masks as the original blur without changing geometry or strength", () => {
+		const editor = normalizeProjectEditor({
+			annotationRegions: [
+				{
+					id: "frost",
+					type: "blur",
+					startMs: 0,
+					endMs: 1000,
+					blurMode: "frosted",
+					blurIntensity: 47,
+				},
+				{ id: "legacy", type: "blur", startMs: 0, endMs: 1000, blurIntensity: 12 },
+			] as never,
+		});
+		const reopened = normalizeProjectEditor(JSON.parse(JSON.stringify(editor)));
+		expect(reopened.annotationRegions[0]).toMatchObject({
+			blurIntensity: 47,
+		});
+		expect(reopened.annotationRegions[0]).not.toHaveProperty("blurMode");
+		expect(reopened.annotationRegions[1].blurIntensity).toBe(12);
+	});
 	it("preserves annotations outside the recording rectangle and webcam visibility when a project is reopened", () => {
 		const editor = normalizeProjectEditor({
 			annotationRegions: [
@@ -266,6 +332,22 @@ it("discards inverted saved source bounds while preserving the in-point", () => 
 	expect(editor.clipRegions[0]).toMatchObject({ sourceStartMs: 5000, speed: 1 });
 	expect(editor.clipRegions[0].sourceMinMs).toBeUndefined();
 	expect(editor.clipRegions[0].sourceMaxMs).toBeUndefined();
+});
+
+it("discards saved source audio overrides for absent clips before IDs can be reused", () => {
+	const kept = { mic: { volume: 0.4, normalize: true } };
+	const stale = { mic: { volume: 0, normalize: true } };
+	const editor = normalizeProjectEditor({
+		clipRegions: [{ id: "clip-1", startMs: 0, endMs: 2000, speed: 1 }],
+		sourceAudioTrackSettingsByClip: { "clip-1": kept, "clip-2": stale },
+	});
+	expect(editor.sourceAudioTrackSettingsByClip).toEqual({ "clip-1": kept });
+	expect(
+		normalizeProjectEditor({
+			clipRegions: [],
+			sourceAudioTrackSettingsByClip: { "clip-1": stale },
+		}).sourceAudioTrackSettingsByClip,
+	).toEqual({});
 });
 
 it("ignores legacy export preferences when opening and resaving a project", async () => {

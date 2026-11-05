@@ -1,5 +1,6 @@
 {
 	"zoom": {
+		"applyAutoZooms": "Apply auto zooms",
 		"cannotPlace": "Cannot place zoom here",
 		"existsOrNoSpace": "Zoom already exists at this location or not enough space available.",
 		"suggestHandlerUnavailable": "Zoom suggestion handler unavailable",

@@ -70,6 +70,8 @@ export function useEditorHistory({
 			annotationRegions,
 			audioRegions,
 			autoCaptions,
+			sourceAudioTrackSettingsByClip: {},
+			defaultSourceAudioTrackSettings: {},
 			selectedZoomId,
 			selectedClipId,
 			selectedAnnotationId,

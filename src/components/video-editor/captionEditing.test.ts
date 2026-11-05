@@ -72,7 +72,7 @@ describe("captionEditing", () => {
 		expect(layout?.hasWordTimings).toBe(false);
 	});
 
-	it("preserves cue identity and timing when editing captions with word timings", () => {
+	it("preserves cue bounds and drops word timings only where the edited word count changes", () => {
 		const cues: CaptionCue[] = [
 			{
 				id: "a",
@@ -102,11 +102,86 @@ describe("captionEditing", () => {
 			["a", 1_000, 2_000],
 			["b", 2_000, 3_000],
 		]);
-		expect(updated[0].words).toEqual([{ text: "Hi", startMs: 1_000, endMs: 2_000 }]);
+		expect(updated[0].words).toBeUndefined();
 		expect(updated[1].words).toEqual([
 			{ text: "大家好", startMs: 2_000, endMs: 2_400 },
 			{ text: "这个是我的屏幕", startMs: 2_400, endMs: 3_000, leadingSpace: true },
 		]);
+	});
+
+	it("preserves acoustic pauses and uneven word durations for same-count replacements", () => {
+		const cue: CaptionCue = {
+			id: "timed",
+			startMs: 0,
+			endMs: 1000,
+			text: "hello world",
+			words: [
+				{ text: "hello", startMs: 0, endMs: 120 },
+				{ text: "world", startMs: 700, endMs: 1000, leadingSpace: true },
+			],
+		};
+		const layout = buildActiveCaptionLayout({
+			cues: [cue],
+			timeMs: 100,
+			settings: DEFAULT_AUTO_CAPTION_SETTINGS,
+			maxWidthPx: 500,
+			measureText: (text) => text.length * 10,
+		});
+		const cues = [cue];
+		if (!layout) throw new Error("Expected visible caption");
+		expect(
+			updateCaptionCuesForEditedTarget(cues, layout.editTarget, " hello  world "),
+		).toBe(cues);
+		const updated = updateCaptionCuesForEditedTarget(
+			cues,
+			layout.editTarget,
+			"Hello everyone",
+		);
+		expect(updated[0].words).toEqual([
+			{ text: "Hello", startMs: 0, endMs: 120 },
+			{ text: "everyone", startMs: 700, endMs: 1000, leadingSpace: true },
+		]);
+	});
+
+	it("does not invent word timing when a partial-page edit changes word count", () => {
+		const cue: CaptionCue = {
+			id: "timed",
+			startMs: 0,
+			endMs: 1000,
+			text: "one two three",
+			words: [
+				{ text: "one", startMs: 0, endMs: 150 },
+				{ text: "two", startMs: 500, endMs: 700, leadingSpace: true },
+				{ text: "three", startMs: 800, endMs: 1000, leadingSpace: true },
+			],
+		};
+		const target: CaptionEditTarget = {
+			id: "partial",
+			startMs: 500,
+			endMs: 700,
+			text: "two",
+			words: [
+				{
+					cueId: cue.id,
+					cueWordIndex: 1,
+					text: "two",
+					startMs: 500,
+					endMs: 700,
+					leadingSpace: true,
+				},
+			],
+		};
+		const updated = updateCaptionCuesForEditedTarget([cue], target, "second word");
+		expect(updated[0].text).toBe("one second word three");
+		expect(updated[0].words).toBeUndefined();
+		const layout = buildActiveCaptionLayout({
+			cues: updated,
+			timeMs: 550,
+			settings: DEFAULT_AUTO_CAPTION_SETTINGS,
+			maxWidthPx: 500,
+			measureText: (text) => text.length * 10,
+		});
+		expect(layout?.hasWordTimings).toBe(false);
 	});
 
 	it("does not update captions when edited text is blank", () => {
@@ -139,6 +214,6 @@ describe("captionEditing", () => {
 		const updated = updateCaptionCuesForEditedTarget(cues, layout!.editTarget, "coughs");
 
 		expect(updated[0].text).toBe("coughs");
-		expect(updated[0].words).toEqual([{ text: "coughs", startMs: 1_000, endMs: 2_000 }]);
+		expect(updated[0].words).toBeUndefined();
 	});
 });

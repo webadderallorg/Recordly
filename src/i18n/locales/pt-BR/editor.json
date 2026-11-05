@@ -1,4 +1,22 @@
 {
+	"aspectRatio": {
+		"native": "Original",
+		"widescreen": "Tela ampla",
+		"vertical": "Vertical",
+		"square": "Quadrado",
+		"squareUse": "Instagram · Publicações sociais",
+		"portrait": "Retrato",
+		"portraitUse": "Instagram · Publicações do feed",
+		"classic": "Clássico",
+		"desktop": "Desktop",
+		"tall": "Alongado",
+		"title": "Proporção",
+		"original": "Manter as proporções originais",
+		"social": "Predefinições para redes sociais",
+		"more": "Mais proporções",
+		"presets": "Predefinições",
+		"standard": "Padrão"
+	},
 	"cloud": {
 		"signInRequired": "Entre no Recordly antes de criar um link compartilhado.",
 		"prepareFailed": "Não foi possível preparar a edição atual para compartilhar.",
@@ -17,8 +35,8 @@
 		"publish": "Publicar e criar link",
 		"createLinkTitle": "Criar um link compartilhável",
 		"notesPlaceholder": "Adicione contexto, instruções ou um breve resumo para os espectadores…",
-		"description": "Publique a edição atual em uma página do Recordly para assistir e comentar. Não é necessário baixar. Os vídeos são preparados em até 1080p.",
-		"uploading": "Enviando… {progress}%",
+		"description": "Publique a edição atual em uma página do Recordly para assistir e comentar. Não é necessário baixar.",
+		"uploading": "Enviando · {{progress}}%",
 		"googleUnavailable": "O login com Google ainda não está habilitado. Use e-mail ou peça ao administrador do Recordly para conectar o Google.",
 		"xUnavailable": "O login com X ainda não está habilitado. Use e-mail ou peça ao administrador do Recordly para conectar o X.",
 		"providerUnavailable": "Este método de login ainda não está habilitado. Use e-mail por enquanto.",
@@ -40,7 +58,24 @@
 		"createShareLink": "Criar link compartilhado",
 		"done": "Concluído",
 		"addingVideo": "Adicionando vídeo…",
-		"preparingFootage": "Preparando vídeo e áudio para a linha do tempo."
+		"preparingFootage": "Preparando vídeo e áudio para a linha do tempo.",
+		"copyLink": "Copiar link",
+		"shareLink": "Link de compartilhamento",
+		"saveLinkFailed": "O compartilhamento foi criado, mas não foi possível salvar o link localmente",
+		"verifyPlanFailed": "Não foi possível verificar seu plano de nuvem.",
+		"refreshPlan": "Atualizar plano",
+		"share": "Compartilhar",
+		"signInToShare": "Entre para compartilhar",
+		"sharingUnavailable": "O compartilhamento na nuvem ainda não está disponível nesta versão.",
+		"recordingLimit": "Você tem 5 gravações na nuvem. Exclua uma em Compartilhados antes de compartilhar outra.",
+		"checkStorageFailed": "Não foi possível verificar o armazenamento na nuvem. Tente novamente.",
+		"storageFull": "Seu armazenamento na nuvem está cheio. Exclua uma gravação de Compartilhados antes de compartilhar outra.",
+		"videoPreview": "Prévia do vídeo publicado",
+		"previewUnavailable": "Prévia indisponível. Seu link de compartilhamento está abaixo.",
+		"playPreview": "Reproduzir prévia do vídeo",
+		"title": "Título",
+		"checkSignIn": "Verificar acesso",
+		"sessionRejected": "Não foi possível verificar sua sessão na nuvem. Entre novamente para compartilhar."
 	},
 	"library": {
 		"videos": "Vídeos"
@@ -51,7 +86,8 @@
 		"skipBack": "Voltar",
 		"skipForward": "Avançar",
 		"muteUnmute": "Silenciar/ativar som",
-		"volume": "Volume da prévia"
+		"volume": "Volume da prévia",
+		"seek": "Posição da reprodução"
 	},
 	"annotations": {
 		"settings": "Configurações de anotação",
@@ -59,7 +95,7 @@
 		"text": "Texto",
 		"image": "Imagem",
 		"arrow": "Seta",
-		"blur": "Blur",
+		"blur": "Desfoque",
 		"textContent": "Conteúdo do texto",
 		"textPlaceholder": "Digite seu texto...",
 		"fontStyle": "Estilo da fonte",
@@ -89,24 +125,29 @@
 		"imageUploadError": "Envie um arquivo de imagem JPG, PNG, GIF ou WebP.",
 		"blurStrength": "Intensidade do blur: {{strength}}",
 		"solidColor": "Cor sólida (censura)",
-		"borderRadius": "Raio da borda"
+		"borderRadius": "Raio da borda",
+		"imageUploadErrorDescription": "Escolha um arquivo de imagem JPG, PNG, GIF ou WebP.",
+		"imageUploadFailed": "Não foi possível carregar a imagem",
+		"imageUploadFailedDescription": "Não foi possível ler esta imagem. Escolha outro arquivo ou tente novamente.",
+		"arrowDirectionOption": "Direção da seta: {{direction}}",
+		"customColor": "Cor personalizada"
 	},
-
 	"fontStyles": {
-		"classic": "Classic",
+		"classic": "Clássico",
 		"editor": "Editor",
-		"strong": "Strong",
-		"typewriter": "Typewriter",
-		"deco": "Deco",
-		"simple": "Simple",
-		"modern": "Modern",
-		"clean": "Clean"
+		"strong": "Forte",
+		"typewriter": "Máquina de escrever",
+		"deco": "Decorativo",
+		"simple": "Simples",
+		"modern": "Moderno",
+		"clean": "Limpo"
 	},
 	"format": {
 		"mp4Video": "Vídeo MP4",
 		"mp4Description": "Arquivo de vídeo em alta qualidade",
 		"gifAnimation": "Animação GIF",
-		"gifDescription": "Imagem animada para compartilhar"
+		"gifDescription": "Imagem animada para compartilhar",
+		"title": "Formato de exportação"
 	},
 	"gifOptions": {
 		"frameRate": "Taxa de quadros",
@@ -134,7 +175,7 @@
 		"adjustDesc": "Arraste as bordas da região vermelha para cobrir exatamente o que você quer remover."
 	},
 	"feedback": {
-		"trigger": "Feedback",
+		"trigger": "Comentários",
 		"title": "Feedback e contato",
 		"description": "Fale diretamente conosco ou abra uma issue se algo estiver com problema ou faltando.",
 		"emailLabel": "E-mail",
@@ -162,14 +203,23 @@
 		"unsavedChangesTitle": "Alterações não salvas",
 		"unsavedChangesDescription": "Salvar o projeto atual antes de {{action}}?",
 		"discardChanges": "Descartar alterações",
-		"saveProject": "Salvar projeto"
+		"saveProject": "Salvar projeto",
+		"saveTitle": "Salvar projeto",
+		"saveDescription": "Dê um nome a este projeto. Ele será salvo na sua pasta de projetos do Recordly.",
+		"saveNameLabel": "Nome do projeto",
+		"saving": "Salvando…",
+		"renameInput": "Nome do projeto",
+		"renameTitle": "Renomear projeto"
 	},
 	"exportTips": {
-		"autoZooms": "Dica: Desative os zooms aplicados automaticamente nas configurações",
+		"autoZooms": "Dica: Aplique zooms automáticos na camada Zoom",
 		"experimentalBuilds": "Dica: Ative o acesso a versões experimentais nas configurações",
 		"cursorAppearance": "Dica: Você pode personalizar a aparência do cursor"
 	},
-	"account": { "title": "Conta", "comingSoon": "Conta em breve" },
+	"account": {
+		"title": "Conta",
+		"comingSoon": "Conta em breve"
+	},
 	"nativeCaptureUnavailable": {
 		"title": "Nada está quebrado, mas não poderemos renderizar uma sobreposição animada do cursor.",
 		"description": "Seu dispositivo não oferece suporte à captura nativa. Isso pode acontecer por vários motivos que ainda não identificamos. O Recordly continuará funcionando, mas a suavização do cursor ficará indisponível.",
@@ -182,7 +232,14 @@
 		"completePercent": "{{percent}}% concluído",
 		"issue": "Problema na exportação",
 		"complete": "Exportação concluída",
-		"savedSuccessfully": "Seu arquivo foi salvo com sucesso."
+		"savedSuccessfully": "Seu arquivo foi salvo com sucesso.",
+		"renderSpeed": "Velocidade de renderização: {{fps}} FPS",
+		"optimizingGif": "Otimizando GIF…",
+		"savingGif": "Salvando GIF…",
+		"encodingGif": "Finalizando GIF…",
+		"errorCopied": "Erro copiado",
+		"errorCopyFailed": "Não foi possível copiar. Selecione o texto do erro e copie manualmente.",
+		"copyError": "Copiar erro"
 	},
 	"export": {
 		"processingAudioEdits": "Processando áudio com edições de velocidade/sobreposição"
@@ -193,7 +250,34 @@
 	},
 	"timeline": {
 		"expand": "Expandir linha do tempo",
-		"collapse": "Recolher linha do tempo"
+		"collapse": "Recolher linha do tempo",
+		"unsupportedSpeed": "Esta velocidade não é compatível com a prévia neste dispositivo."
 	},
-	"openRecordingsFolder": "Abrir pasta de gravações"
+	"openRecordingsFolder": "Abrir pasta de gravações",
+	"theme": {
+		"appearance": "Aparência",
+		"light": "Claro",
+		"dark": "Escuro",
+		"system": "Sistema"
+	},
+	"presets": {
+		"open": "Abrir predefinições",
+		"label": "Predefinições",
+		"saveCurrentAs": "Salvar a predefinição atual como",
+		"namePlaceholder": "Nome da predefinição",
+		"savedList": "Predefinições salvas",
+		"empty": "Ainda não há predefinições.",
+		"deleteAriaLabel": "Excluir predefinição {{name}}",
+		"toasts": {
+			"applied": "Predefinição “{{name}}” aplicada",
+			"saved": "Predefinição “{{name}}” salva",
+			"deleted": "Predefinição “{{name}}” excluída"
+		},
+		"errors": {
+			"nameRequired": "Digite um nome para a predefinição.",
+			"duplicateName": "Já existe uma predefinição com esse nome.",
+			"saveFailed": "Não foi possível salvar esta predefinição. Verifique as configurações de armazenamento do navegador e tente novamente.",
+			"deleteFailed": "Não foi possível excluir esta predefinição. Verifique as configurações de armazenamento do navegador e tente novamente."
+		}
+	}
 }

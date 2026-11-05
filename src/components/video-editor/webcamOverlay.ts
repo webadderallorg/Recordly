@@ -1,6 +1,9 @@
-import type { CropRegion, WebcamCorner, WebcamPositionPreset } from "./types";
+import { getSquircleSvgPath } from "@/lib/geometry/squircle";
+import type { CropRegion, WebcamCorner, WebcamPositionPreset, WebcamShape } from "./types";
 
-const MIN_WEBCAM_OVERLAY_SIZE_PX = 56;
+// Strongly rounded shoulders, with enough flatness to remain a squircle.
+export const WEBCAM_SQUIRCLE_EXPONENT = 2.4;
+
 export const WEBCAM_REFERENCE_VIEWPORT_WIDTH = 1920;
 const WEBCAM_REFERENCE_VIEWPORT_HEIGHT = 1080;
 
@@ -18,10 +21,33 @@ export function getWebcamCornerRadiusPx(
 	roundnessPercent: number,
 	width: number,
 	height: number,
+	shape?: WebcamShape,
 ): number {
+	if (shape === "circle") return Math.max(0, Math.min(width, height)) / 2;
 	const safeRoundness = Number.isFinite(roundnessPercent) ? clamp(roundnessPercent, 0, 100) : 0;
-	const strengthenedRoundness = Math.sqrt(safeRoundness / 100);
+	const strengthenedRoundness = (safeRoundness / 100) ** 0.25;
 	return (Math.max(0, Math.min(width, height)) / 2) * strengthenedRoundness;
+}
+
+export function getWebcamShapeExponent(shape?: WebcamShape): number {
+	return shape === "circle" ? 2 : WEBCAM_SQUIRCLE_EXPONENT;
+}
+
+export function getWebcamClipPath(
+	roundness: number,
+	width: number,
+	height: number,
+	shape?: WebcamShape,
+): string {
+	if (shape === "circle") return "circle(50% at 50% 50%)";
+	return `path('${getSquircleSvgPath({
+		x: 0,
+		y: 0,
+		width,
+		height,
+		radius: getWebcamCornerRadiusPx(roundness, width, height),
+		exponent: WEBCAM_SQUIRCLE_EXPONENT,
+	})}')`;
 }
 
 export function convertLegacyWebcamRadiusToRoundness(
@@ -33,7 +59,7 @@ export function convertLegacyWebcamRadiusToRoundness(
 		WEBCAM_REFERENCE_VIEWPORT_HEIGHT *
 		(clamp(Math.min(widthPercent, heightPercent), 10, 100) / 100);
 	const normalizedRadius = clamp(Math.max(0, radiusPixels) / (referenceShortSide / 2), 0, 1);
-	return normalizedRadius ** 2 * 100;
+	return normalizedRadius ** 4 * 100;
 }
 
 export function getWebcamPositionForPreset(preset: WebcamPositionPreset): { x: number; y: number } {
@@ -101,11 +127,13 @@ export function getWebcamOverlaySizePx({
 	const minDimension = Math.min(containerWidth, containerHeight);
 	const clampedSizePercent = clamp(sizePercent, 10, 100);
 	const safeMargin = Math.max(0, margin);
-	const maxSize = Math.max(MIN_WEBCAM_OVERLAY_SIZE_PX, minDimension - safeMargin * 2);
+	const maxSize = Math.max(0, minDimension - safeMargin * 2);
 	const scaledSize =
 		minDimension * (clampedSizePercent / 100) * getWebcamOverlayScale(zoomScale, reactToZoom);
 
-	return Math.min(maxSize, Math.max(MIN_WEBCAM_OVERLAY_SIZE_PX, scaledSize));
+	// The percentage control sets the base size. A preview-pixel minimum here
+	// stops portrait cameras mid-zoom and gives export a different final size.
+	return Math.min(maxSize, Math.max(0, scaledSize));
 }
 
 export function getWebcamOverlayDimensionsPx({
@@ -116,11 +144,13 @@ export function getWebcamOverlayDimensionsPx({
 	margin,
 	zoomScale,
 	reactToZoom,
+	shape,
 }: {
 	containerWidth: number;
 	containerHeight: number;
 	widthPercent: number;
 	heightPercent: number;
+	shape?: WebcamShape;
 	margin: number;
 	zoomScale: number;
 	reactToZoom: boolean;
@@ -137,7 +167,7 @@ export function getWebcamOverlayDimensionsPx({
 		height: getWebcamOverlaySizePx({
 			containerWidth,
 			containerHeight,
-			sizePercent: heightPercent,
+			sizePercent: shape === "circle" ? widthPercent : heightPercent,
 			margin,
 			zoomScale,
 			reactToZoom,

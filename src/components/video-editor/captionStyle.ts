@@ -2,7 +2,13 @@ import type { CaptionWordState } from "./captionLayout";
 import { DEFAULT_AUTO_CAPTION_SETTINGS } from "./types";
 
 export const CAPTION_FONT_WEIGHT = 400;
-export const CAPTION_LINE_HEIGHT = 1.32;
+export const CAPTION_LINE_HEIGHT = 1.4;
+
+export function getCaptionFontBaseline(fontSize: number, metrics: TextMetrics) {
+	const ascent = metrics.fontBoundingBoxAscent ?? fontSize * 0.8;
+	const descent = metrics.fontBoundingBoxDescent ?? fontSize * 0.2;
+	return (fontSize - ascent - descent) / 2 + ascent;
+}
 
 const DEFAULT_CAPTION_REFERENCE_WIDTH = 1920 * (DEFAULT_AUTO_CAPTION_SETTINGS.maxWidth / 100);
 
@@ -26,7 +32,7 @@ export function getCaptionScaledFontSize(
 export function getCaptionPadding(fontSize: number) {
 	return {
 		x: fontSize * 1.1,
-		y: fontSize * 0.78,
+		y: fontSize * 0.36,
 	};
 }
 
@@ -47,11 +53,17 @@ export function getCaptionTextMaxWidth(
 	);
 }
 
-export function getCaptionWordVisualState(_hasWordTimings: boolean, _state: CaptionWordState) {
-	// Per-word "spoken" highlighting is disabled: word-level timings from the
-	// transcriber are unreliable, so captions render as a single uniform block.
+export function getCaptionWordVisualState(hasWordTimings: boolean, state: CaptionWordState) {
 	return {
-		isInactive: false,
+		isInactive: hasWordTimings && state !== "active",
+		isHighlighted: hasWordTimings && state === "active",
 		opacity: 1,
 	};
 }
+
+export const CAPTION_WORD_HIGHLIGHT = {
+	fill: "rgba(255, 255, 255, 0.16)",
+	radiusEm: 0.22,
+	paddingXEm: 0.12,
+	paddingYEm: 0.06,
+};

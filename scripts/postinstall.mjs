@@ -40,6 +40,10 @@ function runScript(scriptName) {
 	return true;
 }
 
+if (!runScript("install:ffmpeg")) {
+	process.exit(1);
+}
+
 if (!runScript("rebuild:native")) {
 	process.exit(1);
 }

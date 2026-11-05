@@ -1,26 +1,86 @@
 {
-	"app": {
-		"name": "Recordly",
-		"editorTitle": "Editor de Recordly",
-		"subtitle": "Grabación de pantalla y edición",
-		"language": "Idioma",
-		"manageRecordings": "Abrir carpeta de grabaciones"
-	},
-	"actions": {
-		"cancel": "Cancelar",
-		"close": "Cerrar",
-		"export": "Exportar",
-		"load": "Cargar",
-		"redo": "Rehacer",
-		"reset": "Restablecer",
-		"save": "Guardar",
-		"undo": "Deshacer",
-		"delete": "Eliminar",
-		"done": "Hecho"
-	},
-	"errors": {
-		"invalidFileType": "Tipo de archivo inválido",
-		"failedToUploadImage": "Error al subir la imagen",
-		"fileReadError": "Hubo un error al leer el archivo."
-	}
+  "app": {
+    "name": "Recordly",
+    "editorTitle": "Editor de Recordly",
+    "subtitle": "Grabación de pantalla y edición",
+    "language": "Idioma",
+    "manageRecordings": "Abrir carpeta de grabaciones"
+  },
+  "actions": {
+    "cancel": "Cancelar",
+    "close": "Cerrar",
+    "export": "Exportar",
+    "load": "Cargar",
+    "redo": "Rehacer",
+    "reset": "Restablecer",
+    "save": "Guardar",
+    "undo": "Deshacer",
+    "delete": "Eliminar",
+    "done": "Hecho",
+    "retry": "Intentar de nuevo",
+    "apply": "Aplicar"
+  },
+  "errors": {
+    "invalidFileType": "Tipo de archivo inválido",
+    "failedToUploadImage": "Error al subir la imagen",
+    "fileReadError": "Hubo un error al leer el archivo."
+  },
+  "clipboard": {
+    "copy": "Copiar",
+    "errorCopied": "Error copiado",
+    "errorCopyFailed": "No se pudo copiar el error"
+  },
+  "feedback": {
+    "trigger": "Comentarios",
+    "send": "Enviar comentarios",
+    "thanks": "Gracias por tus comentarios",
+    "signInRequired": "Inicia sesión para enviar comentarios.",
+    "openHome": "Abre Inicio para iniciar sesión.",
+    "subject": "Asunto",
+    "subjectPlaceholder": "¿Qué tienes en mente?",
+    "description": "Descripción",
+    "descriptionPlaceholder": "Leemos todos los comentarios...",
+    "attachFiles": "Adjuntar archivos",
+    "removeFile": "Eliminar {{name}}",
+    "diagnostics": "Se adjuntarán los registros de diagnóstico pertinentes.",
+    "sending": "Enviando…",
+    "errors": {
+      "unavailable": "Los comentarios no están disponibles hasta que se configuren los servicios de cuenta.",
+      "signIn": "Vuelve a iniciar sesión para enviar comentarios.",
+      "invalid": "Revisa tus comentarios e inténtalo de nuevo.",
+      "attachments": "Adjunta hasta 5 archivos no vacíos que sumen 10 MB o menos.",
+      "limit": "Has alcanzado el límite de comentarios de hoy. Inténtalo mañana.",
+      "tooManyFiles": "Adjunta hasta 5 archivos.",
+      "emptyFile": "No se pueden adjuntar archivos vacíos.",
+      "filesTooLarge": "Los archivos adjuntos deben sumar 10 MB o menos.",
+      "sendFailed": "No se pudieron enviar los comentarios. Inténtalo de nuevo."
+    },
+    "missingMessage": "Cuéntanos más antes de enviar.",
+    "sentiment": "¿Cómo te sientes?",
+    "loving": "Me encanta",
+    "neutral": "Neutral",
+    "angry": "Enfadado"
+  },
+  "announcements": {
+    "openFailed": "No se pudo abrir el enlace.",
+    "dismiss": "Descartar",
+    "carousel": "Anuncios",
+    "previous": "Anuncio anterior",
+    "show": "Mostrar anuncio",
+    "next": "Siguiente anuncio"
+  },
+  "updates": {
+    "download": "Descargar actualización",
+    "actionFailed": "No se pudo actualizar. Inténtalo de nuevo.",
+    "notification": "Actualización de la aplicación",
+    "backgroundProgress": "Descargando Recordly {{version}} en segundo plano · {{progress}}",
+    "ready": "Recordly {{version}} está listo para instalarse.",
+    "failed": "No se pudo completar la actualización. Puedes intentarlo de nuevo.",
+    "available": "Recordly {{version}} está disponible.",
+    "saveFirst": "Guarda tu trabajo y reinicia cuando quieras.",
+    "later": "Más tarde",
+    "downloadingButton": "Descargando · {{progress}}"
+  },
+  "width": "Ancho",
+  "height": "Alto"
 }

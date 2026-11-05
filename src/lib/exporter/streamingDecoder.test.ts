@@ -133,6 +133,8 @@ const mockGetLocalMediaUrl = vi.fn(async (filePath: string) => ({
 describe("StreamingVideoDecoder decode failures", () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();
+		// restoreAllMocks restores spies; standalone vi.fn call histories need clearing.
+		vi.clearAllMocks();
 		mockDemuxerLoad.mockResolvedValue(undefined);
 		mockDemuxerGetDecoderConfig.mockResolvedValue({
 			codec: "avc1.640034",

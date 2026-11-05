@@ -1,0 +1,15 @@
+Authors:
+
+Jens Luetkens <j.luetkens@limitland.de>
+Ben Finney <ben+opendesktop@benfinney.id.au>
+
+Thanks to uga and his RedDot cursors
+  http://opendesktop.org/content/show.php/RedDotCursors?content=4805
+for the HowTos and Makefile skeleton.
+
+Thanks to "the socialist republic of null"
+  http://www.jmoiron.net/
+for the hint to use XCURSOR_DISCOVER=1 .
+
+And thanks to a lot of distributors, especially from
+www.opendesktop.org, for ideas, bug reports and fixes.

@@ -1,5 +1,6 @@
 {
 	"zoom": {
+		"applyAutoZooms": "Appliquer les zooms automatiques",
 		"cannotPlace": "Impossible de placer le zoom ici",
 		"existsOrNoSpace": "Un zoom existe déjà à cet emplacement ou il n’y a pas assez d’espace disponible.",
 		"suggestHandlerUnavailable": "Gestionnaire de suggestion de zoom indisponible",

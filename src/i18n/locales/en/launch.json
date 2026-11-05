@@ -90,6 +90,7 @@
 		"previewBadge": "Preview",
 		"notNow": "Not now",
 		"updateNow": "Update now",
+		"updateAndRestart": "Update & restart",
 		"restartToUpdate": "Restart to update",
 		"tryAgain": "Try again"
 	}

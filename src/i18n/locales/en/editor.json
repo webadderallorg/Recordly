@@ -1,4 +1,22 @@
 {
+	"aspectRatio": {
+		"native": "Native",
+		"widescreen": "Widescreen",
+		"vertical": "Vertical",
+		"square": "Square",
+		"squareUse": "Instagram · Social posts",
+		"portrait": "Portrait",
+		"portraitUse": "Instagram · Feed posts",
+		"classic": "Classic",
+		"desktop": "Desktop",
+		"tall": "Tall",
+		"title": "Aspect ratio",
+		"original": "Keep the original proportions",
+		"social": "Social presets",
+		"more": "More ratios",
+		"presets": "Presets",
+		"standard": "Standard"
+	},
 	"cloud": {
 		"signInRequired": "Sign in to Recordly before creating a shared link.",
 		"prepareFailed": "Could not prepare the current edit for sharing.",
@@ -17,8 +35,8 @@
 		"publish": "Publish and create link",
 		"createLinkTitle": "Create a shareable link",
 		"notesPlaceholder": "Add context, instructions, or a short summary for viewers…",
-		"description": "Publish the current edit to a Recordly viewing and feedback page. No download is required. Shared videos are prepared at up to 1080p.",
-		"uploading": "Uploading… {progress}%",
+		"description": "Publish the current edit to a Recordly viewing and feedback page. No download is required.",
+		"uploading": "Uploading · {{progress}}%",
 		"googleUnavailable": "Google sign-in isn't enabled yet. Use email for now, or ask your Recordly administrator to connect Google.",
 		"xUnavailable": "X sign-in isn't enabled yet. Use email for now, or ask your Recordly administrator to connect X.",
 		"providerUnavailable": "This sign-in method isn't enabled for Recordly yet. Use email for now.",
@@ -40,7 +58,24 @@
 		"createShareLink": "Create share link",
 		"done": "Done",
 		"addingVideo": "Adding video…",
-		"preparingFootage": "Preparing footage and audio for your timeline."
+		"preparingFootage": "Preparing footage and audio for your timeline.",
+		"copyLink": "Copy link",
+		"shareLink": "Share link",
+		"saveLinkFailed": "Share created, but its link could not be saved locally",
+		"verifyPlanFailed": "Could not verify your cloud plan.",
+		"refreshPlan": "Refresh plan",
+		"share": "Share",
+		"signInToShare": "Sign in to share",
+		"sharingUnavailable": "Cloud sharing is not available in this build yet.",
+		"recordingLimit": "You have 5 cloud recordings. Delete one from Shared before sharing another.",
+		"checkStorageFailed": "Could not check cloud storage. Try again.",
+		"storageFull": "Your cloud storage allowance is full. Delete a recording from Shared before sharing another.",
+		"videoPreview": "Published video preview",
+		"previewUnavailable": "Preview unavailable. Your share link is below.",
+		"playPreview": "Play video preview",
+		"title": "Title",
+		"checkSignIn": "Check sign-in",
+		"sessionRejected": "Your cloud session could not be verified. Sign in again to share."
 	},
 	"library": {
 		"videos": "Videos"
@@ -51,7 +86,8 @@
 		"skipBack": "Skip Back",
 		"skipForward": "Skip Forward",
 		"muteUnmute": "Mute/Unmute",
-		"volume": "Preview volume"
+		"volume": "Preview volume",
+		"seek": "Playback position"
 	},
 	"annotations": {
 		"settings": "Annotation Settings",
@@ -89,9 +125,13 @@
 		"imageUploadError": "Please upload a JPG, PNG, GIF, or WebP image file.",
 		"blurStrength": "Blur Strength: {{strength}}",
 		"solidColor": "Solid Color (Censorship)",
-		"borderRadius": "Border Radius"
+		"borderRadius": "Border Radius",
+		"imageUploadErrorDescription": "Choose a JPG, PNG, GIF, or WebP image file.",
+		"imageUploadFailed": "Could not load image",
+		"imageUploadFailedDescription": "Could not read this image. Choose another file or try again.",
+		"arrowDirectionOption": "Arrow direction: {{direction}}",
+		"customColor": "Custom color"
 	},
-
 	"fontStyles": {
 		"classic": "Classic",
 		"editor": "Editor",
@@ -106,7 +146,8 @@
 		"mp4Video": "MP4 Video",
 		"mp4Description": "High quality video file",
 		"gifAnimation": "GIF Animation",
-		"gifDescription": "Animated image for sharing"
+		"gifDescription": "Animated image for sharing",
+		"title": "Export format"
 	},
 	"gifOptions": {
 		"frameRate": "Frame Rate",
@@ -158,18 +199,27 @@
 		"showInFolder": "Show In Folder"
 	},
 	"project": {
-		"untitled": "Untitled",
+		"untitled": "Untitled Project",
 		"unsavedChangesTitle": "Unsaved changes",
 		"unsavedChangesDescription": "Save your current project before you {{action}}?",
 		"discardChanges": "Discard changes",
-		"saveProject": "Save project"
+		"saveProject": "Save project",
+		"saveTitle": "Save Project",
+		"saveDescription": "Name this project. It will be saved in your Recordly Projects folder.",
+		"saveNameLabel": "Project name",
+		"saving": "Saving...",
+		"renameInput": "Project name",
+		"renameTitle": "Rename project"
 	},
 	"exportTips": {
-		"autoZooms": "Tip: Turn off auto-applied zooms in settings",
+		"autoZooms": "Tip: Apply auto zooms from the Zoom layer",
 		"experimentalBuilds": "Tip: Try experimental builds by turning on access in settings",
 		"cursorAppearance": "Tip: You can customise your cursor appearance"
 	},
-	"account": { "title": "Account", "comingSoon": "Account coming soon" },
+	"account": {
+		"title": "Account",
+		"comingSoon": "Account coming soon"
+	},
 	"nativeCaptureUnavailable": {
 		"title": "Nothing’s broken, but we won’t be able to render an animated cursor overlay.",
 		"description": "Your device does not support native capture. This could be for a variety of reasons we haven’t figured out yet. This doesn’t break Recordly, but it does make cursor smoothing impossible.",
@@ -182,7 +232,14 @@
 		"completePercent": "{{percent}}% complete",
 		"issue": "Export issue",
 		"complete": "Export complete",
-		"savedSuccessfully": "Your file was saved successfully."
+		"savedSuccessfully": "Your file was saved successfully.",
+		"renderSpeed": "Render speed {{fps}} FPS",
+		"optimizingGif": "Optimizing GIF…",
+		"savingGif": "Saving GIF…",
+		"encodingGif": "Finishing GIF…",
+		"errorCopied": "Error copied",
+		"errorCopyFailed": "Couldn't copy. Select the error text and copy it manually.",
+		"copyError": "Copy error"
 	},
 	"export": {
 		"processingAudioEdits": "Processing audio with speed/overlay edits"
@@ -193,7 +250,34 @@
 	},
 	"timeline": {
 		"expand": "Expand Timeline",
-		"collapse": "Collapse Timeline"
+		"collapse": "Collapse Timeline",
+		"unsupportedSpeed": "This speed is not supported for preview on this device."
 	},
-	"openRecordingsFolder": "Open recordings folder"
+	"openRecordingsFolder": "Open recordings folder",
+	"theme": {
+		"appearance": "Appearance",
+		"light": "Light",
+		"dark": "Dark",
+		"system": "System"
+	},
+	"presets": {
+		"open": "Open presets",
+		"label": "Presets",
+		"saveCurrentAs": "Save current preset as",
+		"namePlaceholder": "Preset name",
+		"savedList": "Saved presets",
+		"empty": "No presets yet.",
+		"deleteAriaLabel": "Delete preset {{name}}",
+		"toasts": {
+			"applied": "Applied preset \"{{name}}\"",
+			"saved": "Saved preset \"{{name}}\"",
+			"deleted": "Deleted preset \"{{name}}\""
+		},
+		"errors": {
+			"nameRequired": "Enter a preset name.",
+			"duplicateName": "A preset with that name already exists.",
+			"saveFailed": "Could not save that preset. Check your browser storage settings and try again.",
+			"deleteFailed": "Could not delete that preset. Check your browser storage settings and try again."
+		}
+	}
 }

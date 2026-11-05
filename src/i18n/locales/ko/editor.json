@@ -1,4 +1,22 @@
 {
+	"aspectRatio": {
+		"native": "원본",
+		"widescreen": "와이드스크린",
+		"vertical": "세로",
+		"square": "정사각형",
+		"squareUse": "Instagram · 소셜 게시물",
+		"portrait": "세로형",
+		"portraitUse": "Instagram · 피드 게시물",
+		"classic": "클래식",
+		"desktop": "데스크톱",
+		"tall": "긴 세로",
+		"title": "화면 비율",
+		"original": "원본 비율 유지",
+		"social": "소셜 미디어 프리셋",
+		"more": "기타 비율",
+		"presets": "프리셋",
+		"standard": "표준"
+	},
 	"cloud": {
 		"signInRequired": "공유 링크를 만들기 전에 Recordly에 로그인하세요.",
 		"prepareFailed": "현재 편집본을 공유할 준비를 하지 못했습니다.",
@@ -17,8 +35,8 @@
 		"publish": "게시하고 링크 만들기",
 		"createLinkTitle": "공유 가능한 링크 만들기",
 		"notesPlaceholder": "시청자를 위한 설명, 안내 또는 간단한 요약을 추가하세요…",
-		"description": "현재 편집본을 Recordly 시청 및 피드백 페이지에 게시합니다. 다운로드할 필요가 없습니다. 공유 동영상은 최대 1080p로 준비됩니다.",
-		"uploading": "업로드 중… {progress}%",
+		"description": "현재 편집본을 Recordly 시청 및 피드백 페이지에 게시합니다. 다운로드할 필요가 없습니다.",
+		"uploading": "업로드 중 · {{progress}}%",
 		"googleUnavailable": "Google 로그인이 아직 활성화되지 않았습니다. 이메일을 사용하거나 Recordly 관리자에게 Google 연결을 요청하세요.",
 		"xUnavailable": "X 로그인이 아직 활성화되지 않았습니다. 이메일을 사용하거나 Recordly 관리자에게 X 연결을 요청하세요.",
 		"providerUnavailable": "이 로그인 방식은 아직 활성화되지 않았습니다. 이메일을 사용하세요.",
@@ -40,7 +58,24 @@
 		"createShareLink": "공유 링크 만들기",
 		"done": "완료",
 		"addingVideo": "동영상 추가 중…",
-		"preparingFootage": "타임라인에 사용할 영상과 오디오를 준비하고 있습니다."
+		"preparingFootage": "타임라인에 사용할 영상과 오디오를 준비하고 있습니다.",
+		"copyLink": "링크 복사",
+		"shareLink": "공유 링크",
+		"saveLinkFailed": "공유가 생성되었지만 링크를 로컬에 저장할 수 없습니다",
+		"verifyPlanFailed": "클라우드 요금제를 확인할 수 없습니다.",
+		"refreshPlan": "요금제 새로 고침",
+		"share": "공유",
+		"signInToShare": "공유하려면 로그인",
+		"sharingUnavailable": "이 빌드에서는 아직 클라우드 공유를 사용할 수 없습니다.",
+		"recordingLimit": "클라우드 녹화가 5개 있습니다. 다른 녹화를 공유하려면 공유됨에서 하나를 삭제하세요.",
+		"checkStorageFailed": "클라우드 저장 공간을 확인하지 못했습니다. 다시 시도하세요.",
+		"storageFull": "클라우드 저장 공간이 가득 찼습니다. 다른 녹화본을 공유하려면 먼저 공유됨에서 녹화본을 삭제하세요.",
+		"videoPreview": "게시된 동영상 미리보기",
+		"previewUnavailable": "미리보기를 사용할 수 없습니다. 공유 링크는 아래에 있습니다.",
+		"playPreview": "동영상 미리보기 재생",
+		"title": "제목",
+		"checkSignIn": "로그인 확인",
+		"sessionRejected": "클라우드 세션을 확인하지 못했습니다. 공유하려면 다시 로그인하세요."
 	},
 	"library": {
 		"videos": "동영상"
@@ -51,7 +86,8 @@
 		"skipBack": "뒤로 건너뛰기",
 		"skipForward": "앞으로 건너뛰기",
 		"muteUnmute": "음소거/해제",
-		"volume": "미리보기 볼륨"
+		"volume": "미리보기 볼륨",
+		"seek": "재생 위치"
 	},
 	"annotations": {
 		"settings": "주석 설정",
@@ -61,7 +97,6 @@
 		"arrow": "화살표",
 		"blur": "흐리게",
 		"textContent": "텍스트 내용",
-
 		"textPlaceholder": "텍스트를 입력하세요...",
 		"fontStyle": "글꼴 스타일",
 		"selectStyle": "스타일 선택",
@@ -90,9 +125,13 @@
 		"imageUploadError": "JPG, PNG, GIF 또는 WebP 이미지 파일을 업로드해 주세요.",
 		"blurStrength": "블러 강도: {{strength}}",
 		"solidColor": "단색 (검열)",
-		"borderRadius": "테두리 반경"
+		"borderRadius": "테두리 반경",
+		"imageUploadErrorDescription": "JPG, PNG, GIF 또는 WebP 이미지 파일을 선택하세요.",
+		"imageUploadFailed": "이미지를 불러오지 못했습니다",
+		"imageUploadFailedDescription": "이 이미지를 읽지 못했습니다. 다른 파일을 선택하거나 다시 시도하세요.",
+		"arrowDirectionOption": "화살표 방향: {{direction}}",
+		"customColor": "사용자 지정 색상"
 	},
-
 	"fontStyles": {
 		"classic": "클래식",
 		"editor": "에디터",
@@ -107,7 +146,8 @@
 		"mp4Video": "MP4 비디오",
 		"mp4Description": "고화질 비디오 파일",
 		"gifAnimation": "GIF 애니메이션",
-		"gifDescription": "공유용 애니메이션 이미지"
+		"gifDescription": "공유용 애니메이션 이미지",
+		"title": "내보내기 형식"
 	},
 	"gifOptions": {
 		"frameRate": "프레임 속도",
@@ -163,14 +203,23 @@
 		"unsavedChangesTitle": "저장되지 않은 변경 사항",
 		"unsavedChangesDescription": "{{action}} 전에 현재 프로젝트를 저장하시겠습니까?",
 		"discardChanges": "변경 사항 버리기",
-		"saveProject": "프로젝트 저장"
+		"saveProject": "프로젝트 저장",
+		"saveTitle": "프로젝트 저장",
+		"saveDescription": "프로젝트 이름을 입력하세요. Recordly 프로젝트 폴더에 저장됩니다.",
+		"saveNameLabel": "프로젝트 이름",
+		"saving": "저장 중…",
+		"renameInput": "프로젝트 이름",
+		"renameTitle": "프로젝트 이름 변경"
 	},
 	"exportTips": {
-		"autoZooms": "팁: 설정에서 자동 적용 확대를 끌 수 있습니다",
+		"autoZooms": "팁: 확대 레이어에서 자동 확대를 적용하세요",
 		"experimentalBuilds": "팁: 설정에서 실험적 빌드 액세스를 켜 보세요",
 		"cursorAppearance": "팁: 커서 모양을 사용자 지정할 수 있습니다"
 	},
-	"account": { "title": "계정", "comingSoon": "계정 기능 준비 중" },
+	"account": {
+		"title": "계정",
+		"comingSoon": "계정 기능 준비 중"
+	},
 	"nativeCaptureUnavailable": {
 		"title": "문제가 생긴 것은 아니지만, 애니메이션 커서 오버레이를 렌더링할 수 없습니다.",
 		"description": "이 장치는 네이티브 캡처를 지원하지 않습니다. 아직 확인하지 못한 여러 이유가 있을 수 있습니다. Recordly는 계속 작동하지만 커서 스무딩은 사용할 수 없습니다.",
@@ -183,7 +232,14 @@
 		"completePercent": "{{percent}}% 완료",
 		"issue": "내보내기 오류",
 		"complete": "내보내기 완료",
-		"savedSuccessfully": "파일이 성공적으로 저장되었습니다."
+		"savedSuccessfully": "파일이 성공적으로 저장되었습니다.",
+		"renderSpeed": "렌더링 속도: {{fps}} FPS",
+		"optimizingGif": "GIF 최적화 중…",
+		"savingGif": "GIF 저장 중…",
+		"encodingGif": "GIF 마무리 중…",
+		"errorCopied": "오류를 복사했습니다",
+		"errorCopyFailed": "복사하지 못했습니다. 오류 텍스트를 선택하여 직접 복사하세요.",
+		"copyError": "오류 복사"
 	},
 	"export": {
 		"processingAudioEdits": "속도/오버레이 편집으로 오디오 처리 중"
@@ -194,7 +250,34 @@
 	},
 	"timeline": {
 		"expand": "타임라인 펼치기",
-		"collapse": "타임라인 접기"
+		"collapse": "타임라인 접기",
+		"unsupportedSpeed": "이 기기에서는 이 속도로 미리보기를 재생할 수 없습니다."
 	},
-	"openRecordingsFolder": "녹화 폴더 열기"
+	"openRecordingsFolder": "녹화 폴더 열기",
+	"theme": {
+		"appearance": "화면 모드",
+		"light": "라이트",
+		"dark": "다크",
+		"system": "시스템"
+	},
+	"presets": {
+		"open": "프리셋 열기",
+		"label": "프리셋",
+		"saveCurrentAs": "현재 프리셋을 다른 이름으로 저장",
+		"namePlaceholder": "프리셋 이름",
+		"savedList": "저장된 프리셋",
+		"empty": "아직 프리셋이 없습니다.",
+		"deleteAriaLabel": "{{name}} 프리셋 삭제",
+		"toasts": {
+			"applied": "“{{name}}” 프리셋을 적용했습니다",
+			"saved": "“{{name}}” 프리셋을 저장했습니다",
+			"deleted": "“{{name}}” 프리셋을 삭제했습니다"
+		},
+		"errors": {
+			"nameRequired": "프리셋 이름을 입력하세요.",
+			"duplicateName": "같은 이름의 프리셋이 이미 있습니다.",
+			"saveFailed": "이 프리셋을 저장하지 못했습니다. 브라우저 저장소 설정을 확인하고 다시 시도하세요.",
+			"deleteFailed": "이 프리셋을 삭제하지 못했습니다. 브라우저 저장소 설정을 확인하고 다시 시도하세요."
+		}
+	}
 }

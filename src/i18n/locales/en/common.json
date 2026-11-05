@@ -1,26 +1,86 @@
 {
-	"app": {
-		"name": "Recordly",
-		"editorTitle": "Recordly Editor",
-		"subtitle": "Screen recording and editing",
-		"language": "Language",
-		"manageRecordings": "Open recordings folder"
-	},
-	"actions": {
-		"cancel": "Cancel",
-		"close": "Close",
-		"export": "Export",
-		"load": "Load",
-		"redo": "Redo",
-		"reset": "Reset",
-		"save": "Save",
-		"undo": "Undo",
-		"delete": "Delete",
-		"done": "Done"
-	},
-	"errors": {
-		"invalidFileType": "Invalid file type",
-		"failedToUploadImage": "Failed to upload image",
-		"fileReadError": "There was an error reading the file."
-	}
+  "app": {
+    "name": "Recordly",
+    "editorTitle": "Recordly Editor",
+    "subtitle": "Screen recording and editing",
+    "language": "Language",
+    "manageRecordings": "Open recordings folder"
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "export": "Export",
+    "load": "Load",
+    "redo": "Redo",
+    "reset": "Reset",
+    "save": "Save",
+    "undo": "Undo",
+    "delete": "Delete",
+    "done": "Done",
+    "retry": "Try again",
+    "apply": "Apply"
+  },
+  "errors": {
+    "invalidFileType": "Invalid file type",
+    "failedToUploadImage": "Failed to upload image",
+    "fileReadError": "There was an error reading the file."
+  },
+  "clipboard": {
+    "copy": "Copy",
+    "errorCopied": "Error copied",
+    "errorCopyFailed": "Could not copy error"
+  },
+  "feedback": {
+    "trigger": "Feedback",
+    "send": "Send feedback",
+    "thanks": "Thanks for your feedback",
+    "signInRequired": "Sign in to send feedback.",
+    "openHome": "Open Home to sign in.",
+    "missingMessage": "Tell us more before sending.",
+    "sentiment": "How do you feel?",
+    "loving": "Loving",
+    "neutral": "Neutral",
+    "angry": "Angry",
+    "subject": "Subject",
+    "subjectPlaceholder": "What’s on your mind?",
+    "description": "Description",
+    "descriptionPlaceholder": "We read all feedback...",
+    "attachFiles": "Attach files",
+    "removeFile": "Remove {{name}}",
+    "diagnostics": "Relevant diagnostic logs will be attached.",
+    "sending": "Sending…",
+    "errors": {
+      "unavailable": "Feedback is unavailable until account services are configured.",
+      "signIn": "Please sign in again to send feedback.",
+      "invalid": "Check your feedback, then try again.",
+      "attachments": "Attach up to 5 nonempty files totaling 10 MB or less.",
+      "limit": "You’ve reached today’s feedback limit. Please try again tomorrow.",
+      "tooManyFiles": "Attach up to 5 files.",
+      "emptyFile": "Empty files cannot be attached.",
+      "filesTooLarge": "Attachments must total 10 MB or less.",
+      "sendFailed": "Could not send feedback. Please try again."
+    }
+  },
+  "announcements": {
+    "openFailed": "Failed to open link.",
+    "dismiss": "Dismiss",
+    "carousel": "Announcements",
+    "previous": "Previous announcement",
+    "show": "Show announcement",
+    "next": "Next announcement"
+  },
+  "updates": {
+    "download": "Download update",
+    "actionFailed": "Could not update. Try again.",
+    "notification": "App update",
+    "backgroundProgress": "Downloading Recordly {{version}} in the background · {{progress}}",
+    "ready": "Recordly {{version}} is ready to install.",
+    "failed": "The update could not finish. You can try again.",
+    "available": "Recordly {{version}} is available.",
+    "saveFirst": "Save your work, then restart when you’re ready.",
+    "later": "Later",
+    "downloadingButton": "Downloading · {{progress}}"
+  },
+  "width": "Width",
+  "height": "Height"
 }

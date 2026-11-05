@@ -62,6 +62,7 @@ interface UpdateStatusSummary {
 	status: "idle" | "checking" | "up-to-date" | "available" | "downloading" | "ready" | "error";
 	currentVersion: string;
 	availableVersion: string | null;
+	progressPercent?: number;
 	detail?: string;
 }
 
@@ -176,6 +177,7 @@ interface RendererNativeVideoMetadataProbe {
 	streamStartTime?: number;
 	streamDuration?: number;
 	frameRate: number;
+	frameRateSource?: "metadata" | "fallback";
 	codec: string;
 	hasAudio: boolean;
 	audioCodec?: string;
@@ -193,6 +195,18 @@ interface RendererNativeExportCapabilities {
 		explicitDisabled: boolean;
 		userOptInRequired: boolean;
 	};
+}
+
+interface RendererExportRuntimeInfo {
+	appVersion: string;
+	platform: NodeJS.Platform;
+	/** Architecture of the Electron process, including translated builds. */
+	arch: string;
+	/** Native host OS product version from Electron, when available. */
+	osVersion?: string;
+	/** Kernel release from node:os, distinct from macOS product version. */
+	kernelRelease: string;
+	versions: { electron?: string; chromium?: string; node?: string; v8?: string };
 }
 
 interface RendererExportHardwareInfo {
@@ -218,6 +232,18 @@ interface RendererExportHardwareInfo {
 
 interface Window {
 	electronAPI: {
+		setAppLocale: (locale: string) => Promise<boolean>;
+		optimizeGif: (
+			requestId: string,
+			data: ArrayBuffer,
+		) => Promise<{ success: boolean; data?: Uint8Array; error?: string }>;
+		cancelGifOptimization: (requestId: string) => Promise<{ success: boolean }>;
+		writeClipboardText: (text: string) => Promise<{ success: boolean }>;
+		authStorageAvailable: () => Promise<boolean>;
+		authStorageMigrate: (items: Record<string, string>) => Promise<void>;
+		authStorageGetItem: (key: string) => Promise<string | null>;
+		authStorageSetItem: (key: string, value: string) => Promise<void>;
+		authStorageRemoveItem: (key: string) => Promise<void>;
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
 		hudOverlaySetSourceSelectionActive: (active: boolean) => void;
 		hudOverlayDrag: (phase: "start" | "move" | "end", screenX: number, screenY: number) => void;
@@ -238,6 +264,9 @@ interface Window {
 		getAssetBasePath: () => Promise<string | null>;
 		getSources: (opts: Electron.SourcesOptions) => Promise<ProcessedDesktopSource[]>;
 		showProjectDashboard: () => Promise<void>;
+		openLoadingRecordingEditor: () => Promise<{ success: boolean }>;
+		waitForRecordingEditor: () => Promise<{ error?: string }>;
+		finishRecordingEditor: (error?: string) => Promise<void>;
 		switchToEditor: () => Promise<void>;
 		openSourceSelector: () => Promise<void>;
 		selectSource: (source: ProcessedDesktopSource) => Promise<ProcessedDesktopSource>;
@@ -251,11 +280,21 @@ interface Window {
 			message?: string;
 		}>;
 		completeCapturePick: (pick: CapturePick | null) => Promise<void>;
+		resizeCaptureWindow: (input: {
+			windowId: string;
+			width: number;
+			height: number;
+		}) => Promise<
+			{ success: true; window: CapturePickerWindow } | { success: false; error: string }
+		>;
+		onCapturePickerWindowResized: (
+			callback: (window: CapturePickerWindow) => void,
+		) => () => void;
 		getCapturePickerContext: (displayId: number) => Promise<{
 			displayBounds: CaptureArea | null;
 			lastArea: CaptureArea | null;
 			allowArea: boolean;
-			/** On-screen windows on this display, front to back. */
+			/** Windows across displays, front to back; the picker clips them locally. */
 			windows: CapturePickerWindow[];
 			cursor: { x: number; y: number } | null;
 		}>;
@@ -281,6 +320,13 @@ interface Window {
 			userNotified?: boolean;
 			microphoneFallbackRequired?: boolean;
 		}>;
+		recoverRecordingOwner: () => Promise<void>;
+		reserveRecordingSession: () => Promise<{
+			success: boolean;
+			message: string;
+			token: string;
+		}>;
+		releaseRecordingStartup: (token: string) => void;
 		stopNativeScreenRecording: () => Promise<{
 			success: boolean;
 			path?: string;
@@ -326,6 +372,34 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		openRecordingFileStream: (
+			fileName: string,
+			mimeType: string,
+		) => Promise<{
+			success: boolean;
+			streamId?: string;
+			path?: string;
+			error?: string;
+		}>;
+		appendRecordingFileStream: (
+			streamId: string,
+			chunk: ArrayBuffer,
+		) => Promise<{
+			success: boolean;
+			error?: string;
+		}>;
+		closeRecordingFileStream: (
+			streamId: string,
+			durationMs?: number,
+		) => Promise<{
+			success: boolean;
+			path?: string;
+			message?: string;
+			error?: string;
+		}>;
+		discardRecordingFileStream: (
+			streamId: string,
+		) => Promise<{ success: boolean; error?: string }>;
 		storeRecordedVideo: (
 			videoData: ArrayBuffer,
 			fileName: string,
@@ -370,6 +444,7 @@ interface Window {
 			files?: string[];
 			error?: string;
 		}>;
+		getDesktopWallpaper: () => Promise<{ success: boolean; path?: string; error?: string }>;
 		readLocalFile: (
 			filePath: string,
 		) => Promise<{ success: boolean; data?: Uint8Array; error?: string }>;
@@ -484,6 +559,7 @@ interface Window {
 			bitrate: number;
 			encodingMode: "fast" | "balanced" | "quality";
 			inputMode?: "rawvideo" | "h264-stream";
+			deliveryProfile?: "cloud";
 		}) => Promise<{
 			success: boolean;
 			sessionId?: string;
@@ -660,8 +736,24 @@ interface Window {
 			status: string;
 			error?: string;
 		}>;
-		openScreenRecordingPreferences: () => Promise<{ success: boolean; error?: string }>;
-		openAccessibilityPreferences: () => Promise<{ success: boolean; error?: string }>;
+		getMediaPermissionStatus: () => Promise<{
+			success: boolean;
+			microphone: string;
+			camera: string;
+			error?: string;
+		}>;
+		openMediaPermissionPreferences: (device: "microphone" | "camera") => Promise<{
+			success: boolean;
+			error?: string;
+		}>;
+		openScreenRecordingPreferences: (
+			preview?: boolean,
+		) => Promise<{ success: boolean; error?: string }>;
+		startPermissionAccessoryDrag: () => Promise<{ success: boolean }>;
+		closePermissionAccessory: () => Promise<{ success: boolean }>;
+		openAccessibilityPreferences: (
+			preview?: boolean,
+		) => Promise<{ success: boolean; error?: string }>;
 		saveExportedVideo: (
 			videoData: ArrayBuffer,
 			fileName: string,
@@ -692,6 +784,7 @@ interface Window {
 			error?: string;
 			canceled?: boolean;
 		}>;
+		importWallpaperVideo: (file: File) => Promise<{ success: boolean; path?: string }>;
 		openVideoFilePicker: (options?: { includeProjects?: boolean }) => Promise<{
 			success: boolean;
 			kind?: "media" | "project";
@@ -736,10 +829,49 @@ interface Window {
 				error?: string;
 			}) => void,
 		) => () => void;
+		getCaptionModelStatus: (
+			modelId: import("../src/shared/captionModels").CaptionModelId,
+		) => Promise<{ success: boolean; exists: boolean; path?: string | null; error?: string }>;
+		downloadCaptionModel: (
+			modelId: import("../src/shared/captionModels").CaptionModelId,
+		) => Promise<{ success: boolean; path?: string; error?: string }>;
+		deleteCaptionModel: (
+			modelId: import("../src/shared/captionModels").CaptionModelId,
+		) => Promise<{ success: boolean; error?: string }>;
+		onCaptionModelDownloadProgress: (
+			callback: (
+				state: import("../src/shared/captionModels").CaptionModelDownloadProgress,
+			) => void,
+		) => () => void;
+
+		getParakeetModelStatus: () => Promise<{
+			success: boolean;
+			exists: boolean;
+			path?: string | null;
+			error?: string;
+		}>;
+		downloadParakeetModel: () => Promise<{
+			success: boolean;
+			path?: string;
+			alreadyDownloaded?: boolean;
+			error?: string;
+		}>;
+		deleteParakeetModel: () => Promise<{ success: boolean; error?: string }>;
+		onParakeetModelDownloadProgress: (
+			callback: (state: {
+				status: "idle" | "downloading" | "downloaded" | "error";
+				progress: number;
+				path?: string | null;
+				error?: string;
+			}) => void,
+		) => () => void;
 		generateAutoCaptions: (options: {
+			captionModelId?: import("../src/shared/captionModels").CaptionModelId;
 			videoPath: string;
 			whisperExecutablePath?: string;
-			whisperModelPath: string;
+			whisperModelPath?: string;
+			engine?: "parakeet" | "whisper";
+			parakeetModelPath?: string;
 			language?: string;
 		}) => Promise<{
 			success: boolean;
@@ -782,12 +914,20 @@ interface Window {
 			commit?: boolean,
 		) => Promise<{ success: boolean; error?: string }>;
 		cancelRecordingImport: () => Promise<{ success: boolean }>;
+		cacheProjectThumbnail: (
+			projectPath: string,
+			revision: string,
+			dataUrl: string,
+		) => Promise<import("../src/types/recordingLibrary").LibraryResult<string | null>>;
 		getProjectPreview: (
 			projectPath: string,
 		) => Promise<
 			import("../src/types/recordingLibrary").LibraryResult<
 				import("../src/types/projectPreview").ProjectPreviewData
 			>
+		>;
+		findDuplicateRecordingSources: () => Promise<
+			import("../src/types/recordingLibrary").LibraryResult<string[][]>
 		>;
 		listRecordings: (
 			includeSources?: boolean,
@@ -800,6 +940,12 @@ interface Window {
 			paths: string[],
 			removed: boolean,
 		) => Promise<import("../src/types/recordingLibrary").LibraryResult<null>>;
+		trashRecordingSources: (paths: string[]) => Promise<
+			import("../src/types/recordingLibrary").LibraryResult<{
+				deleted: string[];
+				errors: string[];
+			}>
+		>;
 		importRecording: (
 			currentPath: string,
 			recordingPath: string,
@@ -850,6 +996,7 @@ interface Window {
 		loadCurrentProjectFile: () => Promise<{
 			success: boolean;
 			path?: string;
+			missingRecordingPath?: string | null;
 			project?: unknown;
 			message?: string;
 			canceled?: boolean;
@@ -863,6 +1010,8 @@ interface Window {
 		showRecordingPermissions: () => Promise<void>;
 		onRecordingPermissionsRequested: (callback: () => void) => () => void;
 		showRecordingHud: () => Promise<void>;
+		showOnboardingWindow: (options?: { preview?: boolean }) => Promise<boolean>;
+		closeOnboardingWindow: () => Promise<boolean>;
 		createProjectFile: (
 			data: unknown,
 			thumbnail?: string | null,
@@ -905,13 +1054,25 @@ interface Window {
 			canceled?: boolean;
 			error?: string;
 		}>;
+		relinkProjectRecording: (filePath: string) => Promise<{
+			success: boolean;
+			path?: string;
+			project?: unknown;
+			message?: string;
+			canceled?: boolean;
+			error?: string;
+		}>;
 		openProjectsDirectory: () => Promise<{
 			success: boolean;
 			path?: string;
 			message?: string;
 			error?: string;
 		}>;
-		installDownloadedUpdate: () => Promise<{ success: boolean }>;
+		installDownloadedUpdate: () => Promise<{
+			success: boolean;
+			message?: string;
+			code?: "restart-blocked";
+		}>;
 		downloadAvailableUpdate: (
 			installAfterDownload?: boolean,
 		) => Promise<{ success: boolean; message?: string }>;
@@ -924,6 +1085,24 @@ interface Window {
 		getCurrentUpdateToastPayload: () => Promise<UpdateToastState | null>;
 		getUpdateStatusSummary: () => Promise<UpdateStatusSummary>;
 		getExperimentalUpdatesEnabled: () => Promise<boolean>;
+		getAutomaticUpdateDownloadsEnabled: () => Promise<boolean>;
+		setAutomaticUpdateDownloadsEnabled: (
+			enabled: boolean,
+		) => Promise<{ success: boolean; enabled: boolean; error?: string }>;
+		getApplicationPreferences: () => Promise<{
+			success: boolean;
+			showInDock: boolean;
+			hideWhileRecording: boolean;
+			launchAtLogin: boolean;
+			launchAtLoginSupported: boolean;
+			platform: string;
+			error?: string;
+		}>;
+		setApplicationPreferences: (patch: {
+			showInDock?: boolean;
+			hideWhileRecording?: boolean;
+			launchAtLogin?: boolean;
+		}) => ReturnType<Window["electronAPI"]["getApplicationPreferences"]>;
 		setExperimentalUpdatesEnabled: (enabled: boolean) => Promise<{
 			success: boolean;
 			enabled: boolean;
@@ -959,6 +1138,12 @@ interface Window {
 		revealInFolder: (
 			filePath: string,
 		) => Promise<{ success: boolean; error?: string; message?: string }>;
+		cloudShareBeginExport?: (input: {
+			endpoint: string;
+			token: string;
+			title: string;
+			uploadId: string;
+		}) => Promise<{ success: boolean }>;
 		cloudShareUpload: (input: {
 			filePath: string;
 			endpoint: string;
@@ -978,6 +1163,7 @@ interface Window {
 			token: string;
 			action: "list" | "delete";
 			shareCode?: string;
+			cursor?: string;
 		}) => Promise<{
 			success: boolean;
 			error?: string;
@@ -989,7 +1175,16 @@ interface Window {
 				ready: boolean;
 				url: string;
 			}>;
+			nextCursor?: string;
 		}>;
+		cloudBilling: (
+			input: import("../src/types/cloudBilling").CloudBillingInput,
+		) => Promise<import("../src/types/cloudBilling").CloudBillingResult>;
+		cloudBillingCancel: () => Promise<{ success: boolean }>;
+		cloudShareUpdateToken: (input: {
+			uploadId: string;
+			token: string;
+		}) => Promise<{ success: boolean }>;
 		cloudShareCancel: (uploadId: string) => Promise<{ success: boolean }>;
 		onCloudShareProgress: (
 			callback: (progress: {
@@ -1019,6 +1214,7 @@ interface Window {
 		getAppSetting: (key: string) => unknown;
 		setAppSetting: (key: string, value: unknown) => boolean;
 		setHasUnsavedChanges: (hasChanges: boolean) => void;
+		setExportInProgress: (active: boolean) => void;
 		onRequestSaveBeforeClose: (callback: () => Promise<boolean>) => () => void;
 		isNativeWindowsCaptureAvailable: () => Promise<{ available: boolean }>;
 		muxNativeWindowsRecording: (expectedDurationMs?: number) => Promise<{
@@ -1029,6 +1225,12 @@ interface Window {
 		}>;
 		/** Returns the app version from package.json */
 		getAppVersion: () => Promise<string>;
+		appendExportDiagnostic: (entry: string) => Promise<{ success: boolean }>;
+		getExportDiagnostics: () => Promise<{ success: boolean; logs: string[] }>;
+		getExportRuntimeInfo: () => Promise<{
+			success: boolean;
+			runtime?: RendererExportRuntimeInfo;
+		}>;
 		/** Returns the configured remote announcement feed, or null when unavailable. */
 		getAnnouncements: () => Promise<unknown | null>;
 		/** Hide the OS cursor before browser capture starts. */

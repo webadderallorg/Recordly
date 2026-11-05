@@ -1,5 +1,6 @@
 {
 	"zoom": {
+		"applyAutoZooms": "应用自动缩放",
 		"cannotPlace": "无法在此处放置缩放",
 		"existsOrNoSpace": "此位置已存在缩放或空间不足。",
 		"suggestHandlerUnavailable": "缩放建议处理不可用",

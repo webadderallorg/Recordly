@@ -1,5 +1,6 @@
 {
 	"zoom": {
+		"applyAutoZooms": "Применить автозум",
 		"cannotPlace": "Нельзя добавить зум здесь",
 		"existsOrNoSpace": "Зум уже есть или недостаточно места для его добавления.",
 		"suggestHandlerUnavailable": "Подсказки недоступны",

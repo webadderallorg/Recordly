@@ -1,5 +1,7 @@
-import { DEFAULT_ZOOM_IN_DURATION_MS, DEFAULT_ZOOM_OUT_DURATION_MS } from "./types";
+import { DEFAULT_CURSOR_CLICK_BOUNCE, DEFAULT_CURSOR_CLICK_BOUNCE_DURATION } from "./types";
+import type { CursorSpringTuning } from "./videoPlayback/motionSmoothing";
 
+// Keep the legacy "smooth" ID so existing preferences retain their preset.
 export type CursorMotionPresetId = "focused" | "smooth";
 
 export interface CursorMotionPreset {
@@ -29,34 +31,40 @@ export interface CursorMotionPresetSelectionInput {
 	cursorClickBounceDuration: number;
 }
 
-const SHARED_CURSOR_PRESET_VALUES = {
+const REGULAR_MOTION_VALUES = {
+	zoomSmoothness: 0.5,
+	zoomInDurationMs: 200,
+	zoomOutDurationMs: 200,
 	cursorSize: 2.5,
 	cursorSmoothing: 0.67,
+	cursorSpringStiffnessMultiplier: 1.35,
+	cursorSpringDampingMultiplier: 0.79,
 	cursorSpringMassMultiplier: 1.29,
-	cursorClickBounce: 2,
-	cursorClickBounceDuration: 350,
+	cursorClickBounce: DEFAULT_CURSOR_CLICK_BOUNCE,
+	cursorClickBounceDuration: DEFAULT_CURSOR_CLICK_BOUNCE_DURATION,
 } as const;
+
+const SMOOTH_MOTION_SPEED = 0.7;
 
 export const CURSOR_MOTION_PRESETS: Record<CursorMotionPresetId, CursorMotionPreset> = {
 	focused: {
 		id: "focused",
 		label: "Focused",
-		zoomSmoothness: 0.5,
-		zoomInDurationMs: 200,
-		zoomOutDurationMs: 200,
-		...SHARED_CURSOR_PRESET_VALUES,
-		cursorSpringStiffnessMultiplier: 1.35,
-		cursorSpringDampingMultiplier: 0.79,
+		...REGULAR_MOTION_VALUES,
+		zoomOutDurationMs: REGULAR_MOTION_VALUES.zoomOutDurationMs / 0.7,
 	},
 	smooth: {
 		id: "smooth",
-		label: "Smooth",
-		zoomSmoothness: 0.5,
-		zoomInDurationMs: DEFAULT_ZOOM_IN_DURATION_MS,
-		zoomOutDurationMs: DEFAULT_ZOOM_OUT_DURATION_MS,
-		...SHARED_CURSOR_PRESET_VALUES,
-		cursorSpringStiffnessMultiplier: 0.92,
-		cursorSpringDampingMultiplier: 1.36,
+		label: "Cinematic",
+		...REGULAR_MOTION_VALUES,
+		zoomInDurationMs: REGULAR_MOTION_VALUES.zoomInDurationMs / SMOOTH_MOTION_SPEED,
+		// Apply the zoom-out slowdown, then the overall zoom slowdown.
+		zoomOutDurationMs: REGULAR_MOTION_VALUES.zoomOutDurationMs / SMOOTH_MOTION_SPEED ** 2,
+		// Scale spring frequency while preserving its damping ratio and click timing.
+		cursorSpringStiffnessMultiplier:
+			REGULAR_MOTION_VALUES.cursorSpringStiffnessMultiplier * SMOOTH_MOTION_SPEED ** 2,
+		cursorSpringDampingMultiplier:
+			REGULAR_MOTION_VALUES.cursorSpringDampingMultiplier * SMOOTH_MOTION_SPEED,
 	},
 };
 
@@ -81,6 +89,28 @@ export function getMatchingCursorMotionPresetId(
 	}
 
 	return null;
+}
+
+/** Presets are persisted as motion values, rather than a separate preset ID. */
+export function isCinematicCursorMotion(smoothing: number, tuning?: CursorSpringTuning) {
+	const preset = CURSOR_MOTION_PRESETS.smooth;
+	return (
+		smoothing === preset.cursorSmoothing &&
+		tuning?.stiffnessMultiplier === preset.cursorSpringStiffnessMultiplier &&
+		tuning?.dampingMultiplier === preset.cursorSpringDampingMultiplier &&
+		tuning?.massMultiplier === preset.cursorSpringMassMultiplier
+	);
+}
+
+export function isCinematicZoomMotion(values: {
+	zoomInDurationMs?: number;
+	zoomOutDurationMs?: number;
+}) {
+	const preset = CURSOR_MOTION_PRESETS.smooth;
+	return (
+		values.zoomInDurationMs === preset.zoomInDurationMs &&
+		values.zoomOutDurationMs === preset.zoomOutDurationMs
+	);
 }
 
 export function resolveCursorMotionPresetId(

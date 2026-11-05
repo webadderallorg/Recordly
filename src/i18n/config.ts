@@ -8,6 +8,7 @@ export const SUPPORTED_LOCALES = [
 	"it",
 	"nl",
 	"ko",
+	"ja",
 	"pt-BR",
 	"zh-CN",
 	"zh-TW",
@@ -21,6 +22,14 @@ export const I18N_NAMESPACES = [
 	"settings",
 	"dialogs",
 	"shortcuts",
+	"onboarding",
+	"billing",
+	"ui",
+	"capture",
+	"editing",
+	"native",
+	"notifications",
+	"support",
 ] as const;
 
 export type AppLocale = (typeof SUPPORTED_LOCALES)[number];
