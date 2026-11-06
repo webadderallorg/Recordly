@@ -1,4 +1,5 @@
 import { type MouseEvent, type RefObject, useCallback, useEffect, useRef } from "react";
+import { getHudInteractiveBounds, isPointerOverHudSurface } from "../hudMousePassthrough";
 
 export function useLaunchHudInteractionState({
 	openId,
@@ -13,31 +14,52 @@ export function useLaunchHudInteractionState({
 }) {
 	const isMouseOverHudRef = useRef(false);
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+	const setIgnoring = useCallback((ignore: boolean) => {
+		window.electronAPI?.hudOverlaySetIgnoreMouse?.(ignore);
+	}, []);
 
 	useEffect(() => {
 		if (openId !== null) {
 			if (timeoutRef.current) clearTimeout(timeoutRef.current);
-			window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
+			setIgnoring(false);
 		} else {
 			// Proactively check if we should ignore mouse when popover closes
-			setTimeout(() => {
-				if (!isMouseOverHudRef.current) {
-					window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
+			timeoutRef.current = setTimeout(() => {
+				if (
+					!isMouseOverHudRef.current &&
+					!isHudDraggingRef.current &&
+					!isWebcamPreviewDraggingRef.current &&
+					!webcamPreviewDragStartRef.current
+				) {
+					setIgnoring(true);
 				}
 			}, 150);
 		}
-	}, [openId]);
+		return () => {
+			if (timeoutRef.current) clearTimeout(timeoutRef.current);
+		};
+	}, [
+		openId,
+		setIgnoring,
+		isHudDraggingRef,
+		isWebcamPreviewDraggingRef,
+		webcamPreviewDragStartRef,
+	]);
 
 	useEffect(() => {
 		const handleMouseOver = (e: globalThis.MouseEvent) => {
-			const target = e.target as HTMLElement | null;
-			if (!target) return;
-			const isInteractive = !!target.closest(".pointer-events-auto, [data-hud-interactive]");
+			// Electron forwards mousemove while clicks pass through. Target ancestry
+			// is unreliable there, especially inside transparent full-width wrappers.
+			const isInteractive = isPointerOverHudSurface(
+				getHudInteractiveBounds(document),
+				e.clientX,
+				e.clientY,
+			);
 
 			if (isInteractive) {
 				isMouseOverHudRef.current = true;
 				if (timeoutRef.current) clearTimeout(timeoutRef.current);
-				window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
+				setIgnoring(false);
 			} else if (openId === null) {
 				isMouseOverHudRef.current = false;
 				if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -49,26 +71,37 @@ export function useLaunchHudInteractionState({
 						!webcamPreviewDragStartRef.current &&
 						!isMouseOverHudRef.current
 					) {
-						window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
+						setIgnoring(true);
 					}
 				}, 0);
 			}
 		};
 
+		window.addEventListener("mousemove", handleMouseOver);
 		window.addEventListener("mouseover", handleMouseOver);
-		return () => window.removeEventListener("mouseover", handleMouseOver);
-	}, [openId, isHudDraggingRef, isWebcamPreviewDraggingRef, webcamPreviewDragStartRef]);
+		return () => {
+			window.removeEventListener("mousemove", handleMouseOver);
+			window.removeEventListener("mouseover", handleMouseOver);
+			if (timeoutRef.current) clearTimeout(timeoutRef.current);
+		};
+	}, [
+		openId,
+		isHudDraggingRef,
+		isWebcamPreviewDraggingRef,
+		webcamPreviewDragStartRef,
+		setIgnoring,
+	]);
 
 	const beginInteractiveHudAction = useCallback(() => {
 		isMouseOverHudRef.current = true;
-		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
-	}, []);
+		setIgnoring(false);
+	}, [setIgnoring]);
 
 	const handleHudMouseEnter = useCallback(() => {
 		isMouseOverHudRef.current = true;
 		if (timeoutRef.current) clearTimeout(timeoutRef.current);
-		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
-	}, []);
+		setIgnoring(false);
+	}, [setIgnoring]);
 
 	const handleHudMouseLeave = useCallback(
 		(event: MouseEvent<HTMLDivElement>) => {
@@ -89,11 +122,17 @@ export function useLaunchHudInteractionState({
 					!webcamPreviewDragStartRef.current &&
 					!isMouseOverHudRef.current
 				) {
-					window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
+					setIgnoring(true);
 				}
 			}, 0);
 		},
-		[openId, isHudDraggingRef, isWebcamPreviewDraggingRef, webcamPreviewDragStartRef],
+		[
+			openId,
+			isHudDraggingRef,
+			isWebcamPreviewDraggingRef,
+			webcamPreviewDragStartRef,
+			setIgnoring,
+		],
 	);
 
 	return {

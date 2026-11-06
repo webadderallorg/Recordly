@@ -6,7 +6,7 @@ import {
 	useEffect,
 	useRef,
 } from "react";
-import { shouldRestoreHudMousePassthroughAfterDrag } from "../hudMousePassthrough";
+import { getHudInteractiveBounds, isPointerOverHudSurface } from "../hudMousePassthrough";
 import {
 	DEFAULT_WEBCAM_PREVIEW_OFFSET,
 	type useWebcamPreviewGeometry,
@@ -235,11 +235,10 @@ export function useWebcamPreviewPointer({
 			if (event.currentTarget.hasPointerCapture(event.pointerId)) {
 				event.currentTarget.releasePointerCapture(event.pointerId);
 			}
-			const previewBounds = getDockBounds();
 			if (
 				releasePointer &&
-				shouldRestoreHudMousePassthroughAfterDrag(
-					previewBounds ?? null,
+				!isPointerOverHudSurface(
+					getHudInteractiveBounds(document),
 					releasePointer.clientX,
 					releasePointer.clientY,
 				)
@@ -250,7 +249,6 @@ export function useWebcamPreviewPointer({
 		[
 			applyWebcamPreviewDragPosition,
 			restorePreviewCursor,
-			getDockBounds,
 			setWebcamPreviewOffset,
 			webcamPreviewOffsetRef,
 		],

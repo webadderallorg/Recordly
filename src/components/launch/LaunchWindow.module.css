@@ -101,7 +101,21 @@
 	font-size: 20px;
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
-	animation: countdownTick 220ms ease-out;
+}
+
+.countdownDigits {
+	position: relative;
+	display: block;
+	width: 24px;
+	height: 24px;
+	overflow: hidden;
+}
+
+.countdownDigit {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
 }
 
 .countdownCancel {
@@ -122,21 +136,7 @@
 	transform: scale(1);
 }
 
-@keyframes countdownTick {
-	from {
-		opacity: 0;
-		transform: scale(0.7);
-	}
-	to {
-		opacity: 1;
-		transform: scale(1);
-	}
-}
-
 @media (prefers-reduced-motion: reduce) {
-	.countdownValue {
-		animation: none;
-	}
 	.countdownCancel {
 		transition: none;
 	}

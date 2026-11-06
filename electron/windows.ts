@@ -368,7 +368,7 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 		return;
 	}
 
-	if (ignore) {
+	if (hudOverlayIgnoringMouse) {
 		hudOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
 		return;
 	}
@@ -385,6 +385,7 @@ ipcMain.on("hud-overlay-set-source-selection-active", (_event, active: boolean) 
 	if (hudOverlaySourceSelectionActive) {
 		hudOverlayFallbackExpanded = false;
 		applyHudOverlayBounds();
+		setHudOverlayMousePassthrough(true);
 		return;
 	}
 

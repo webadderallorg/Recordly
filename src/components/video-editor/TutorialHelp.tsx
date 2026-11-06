@@ -1,4 +1,4 @@
-import { GithubLogo } from "@phosphor-icons/react";
+import { GithubLogo, XLogo } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { UpgradeButton } from "@/components/billing/UpgradeButton";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import { formatShortcut } from "@/utils/platformUtils";
 const RECORDLY_GITHUB_URL = "https://github.com/webadderallorg/Recordly";
 export const RECORDLY_ISSUES_URL = `${RECORDLY_GITHUB_URL}/issues`;
 const RECORDLY_DISCORD_URL = "https://discord.gg/sdv2FBVNgE";
+const RECORDLY_X_URL = "https://x.com/webadderall";
 export const APP_HEADER_ACTION_BUTTON_CLASS =
 	"h-7 px-2 text-xs text-muted-foreground hover:bg-foreground/10 hover:text-foreground transition-all gap-1.5";
 export const APP_HEADER_ICON_BUTTON_CLASS =
@@ -87,13 +88,14 @@ export function CommunityLinks() {
 		"size-7 min-w-7 rounded-lg p-0 text-muted hover:bg-foreground/5 hover:text-foreground";
 
 	return (
-		<div className="mt-2 flex shrink-0 items-center gap-1">
+		<div className="community-links mt-2 flex shrink-0 items-center gap-1">
 			<UpgradeButton
 				label={tBilling("upgradeShort", "Upgrade")}
 				showDiscount={false}
+				truncateLabel
 				className="h-8 min-w-0 flex-1 px-1.5 text-xs"
 			/>
-			<div className="flex items-center gap-1">
+			<div className="flex shrink-0 items-center gap-1">
 				<DiscordLinkButton className={buttonClassName} />
 				<Button
 					type="button"
@@ -111,6 +113,23 @@ export function CommunityLinks() {
 					}
 				>
 					<GithubLogo className="size-4" aria-hidden="true" />
+				</Button>
+				<Button
+					type="button"
+					variant="ghost"
+					size="sm"
+					isIconOnly
+					className={buttonClassName}
+					title="X"
+					aria-label="X"
+					onClick={() =>
+						void openExternalLink(
+							RECORDLY_X_URL,
+							t("feedback.openFailed", "Failed to open link."),
+						)
+					}
+				>
+					<XLogo className="size-4" aria-hidden="true" />
 				</Button>
 			</div>
 		</div>

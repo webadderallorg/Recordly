@@ -103,7 +103,11 @@ export function DashboardGrid({
 	const { t: uiText } = useUiLocale();
 	return (
 		<>
-			<main className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-7 pb-10 lg:px-10">
+			<main
+				className={section === "settings"
+					? "dashboard-settings-page flex min-h-0 flex-1 flex-col overflow-hidden px-7 lg:px-10"
+					: "custom-scrollbar min-h-0 flex-1 overflow-y-auto px-7 pb-10 lg:px-10"}
+			>
 				{error && (
 					<div className="mb-4 rounded-xl border border-danger/20 bg-danger/5 p-4 text-sm">
 						<p role="alert" className="text-danger">

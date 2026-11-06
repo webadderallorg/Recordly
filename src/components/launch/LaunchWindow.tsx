@@ -35,8 +35,8 @@ import {
 } from "./popovers/LaunchPopoverCoordinator";
 import { MicPopover } from "./popovers/MicPopover";
 import { WebcamPopover } from "./popovers/WebcamPopover";
-import { RecordingControls } from "./RecordingControls";
 import { RecordButton } from "./RecordButton";
+import { RecordingControls } from "./RecordingControls";
 
 export function LaunchWindow() {
 	return (
@@ -436,6 +436,7 @@ function LaunchWindowContent() {
 		>
 			<div
 				ref={hudBarRef}
+				data-hud-surface
 				onPointerDownCapture={finishHudTransition}
 				data-hud-dragging={isHudDragging}
 				className={`${styles.bar} ${styles.recordingBar} ${useNativeHudBarDrag ? styles.electronDrag : ""} launch-theme pointer-events-auto`}

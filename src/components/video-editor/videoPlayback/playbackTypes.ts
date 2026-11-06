@@ -1,6 +1,6 @@
-import type { CursorIdleHideSettings } from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
 import { Application, Container, Sprite } from "pixi.js";
 import type React from "react";
+import type { CursorIdleHideSettings } from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
 import { type AspectRatio } from "@/utils/aspectRatioUtils";
 import { type CaptionEditTarget } from "../captionEditing";
 import {
@@ -119,8 +119,16 @@ export interface VideoPlaybackProps {
 	suspendRendering?: boolean;
 }
 
+export type ComposedPreviewFrame = {
+	revision: number;
+	width: number;
+	height: number;
+	source: string;
+};
+
 export interface VideoPlaybackRef {
 	readonly isPlaying: boolean;
+	readonly composedFrame: ComposedPreviewFrame | null;
 	seekTimeline: (time: number) => void;
 	video: HTMLVideoElement | null;
 	app: Application | null;

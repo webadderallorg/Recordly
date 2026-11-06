@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+import { productionTest } from "./production";
 
 async function installSettingsBridge(page: Page) {
 	await installDesktopBridge(page);
@@ -161,7 +162,7 @@ test("library header account panel edits profile and opens Settings", async ({ p
 	await expect(home.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
 });
 
-test("account logout clears the session", async ({ page }) => {
+productionTest("account logout clears the session", async ({ page }) => {
 	await installSettingsBridge(page);
 	const home = await openDashboard(page);
 	await home.getByRole("button", { name: "Recordly account" }).click();

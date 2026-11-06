@@ -1,4 +1,7 @@
-/* Shared app preferences: stable navigation, independently scrolling content. */
+/* Bound both Home and modal settings; the tab panel owns all vertical scrolling. */
+.dashboard-settings-page {
+	overscroll-behavior: none;
+}
 .app-settings-dialog {
 	width: 100%;
 	max-width: min(960px, calc(100vw - 48px));
@@ -12,8 +15,14 @@
 	margin: 0;
 	padding: 0;
 	overflow: hidden;
+	overscroll-behavior: none;
 }
 .dashboard-settings {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-height: 0;
+	overflow: hidden;
 	--settings-section-gap: 16px;
 	--settings-row-inset: 10px;
 	--settings-content-gap: 8px;
@@ -29,6 +38,7 @@
 	padding: 0;
 }
 .dashboard-settings-title {
+	flex-shrink: 0;
 	margin: 0 0 16px;
 	padding-right: 32px;
 	color: var(--foreground);
@@ -38,15 +48,13 @@
 }
 .dashboard-settings-tabs {
 	display: grid;
+	flex: 1;
+	min-height: 0;
+	grid-template-rows: minmax(0, 1fr);
 	grid-template-columns: 144px minmax(0, 1fr);
 	gap: var(--settings-section-gap);
 	width: 100%;
 	align-items: stretch;
-}
-.app-settings-dialog .dashboard-settings-tabs {
-	flex: 1;
-	min-height: 0;
-	grid-template-rows: minmax(0, 1fr);
 }
 .dashboard-settings-tabs .tabs__list-container {
 	min-height: 0;
@@ -87,7 +95,7 @@
 	padding: 0 8px 16px 0;
 	outline-offset: -2px;
 }
-.app-settings-dialog .dashboard-settings-tab-panel {
+.dashboard-settings-tab-panel {
 	min-height: 0;
 	overflow-y: auto;
 	overscroll-behavior: contain;

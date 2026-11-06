@@ -104,12 +104,14 @@ export function useRecorderStop(
 				console.log("[PERF:RENDERER] IPC: stopNativeScreenRecording: STARTED");
 				let stopped: Promise<NativeCaptureStopResult>;
 				try {
-					stopped = window.electronAPI.stopNativeScreenRecording();
+					stopped = window.electronAPI.stopNativeScreenRecording().catch((error) => ({
+						success: false,
+						error: getErrorMessage(error),
+					}));
 				} catch (error) {
 					stopped = Promise.resolve({ success: false, error: getErrorMessage(error) });
 				}
-				// Stop capture first, then reveal the editor before finalizing any assets.
-				openLoadingEditor();
+				// Keep the Finishing HUD until capture returns a usable recording.
 				const micFallbackBlobPromise = stopMicFallbackRecorder();
 				const webcamPathPromise = stopWebcamRecorder();
 				const result = await stopped;
@@ -168,6 +170,7 @@ export function useRecorderStop(
 				}
 
 				const finalPath = result.path;
+				openLoadingEditor();
 
 				// 1. Finalize the session and switch to editor immediately (Optimistic UI)
 				// We pass null for webcamPath initially to avoid blocking on webcam disk writes/muxing.
@@ -289,7 +292,6 @@ export function useRecorderStop(
 			recorder.stop();
 			setRecording(false);
 			setFinalizing(true);
-			openLoadingEditor();
 			window.electronAPI?.setRecordingState(false);
 		}
 	});

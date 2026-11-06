@@ -1,7 +1,8 @@
 import { Spinner } from "@heroui/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect } from "react";
-import { XIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
+import { XIcon } from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
 import { useCountdownRemaining } from "./hooks/useCountdownRemaining";
 import styles from "./LaunchWindow.module.css";
@@ -21,6 +22,7 @@ export function RecordButton({
 }) {
 	const t = useScopedT("launch");
 	const remaining = useCountdownRemaining(countdownActive, countdownDelay);
+	const reducedMotion = useReducedMotion();
 	useEffect(() => {
 		if (!countdownActive) return;
 		const cancel = (event: KeyboardEvent) => {
@@ -49,13 +51,41 @@ export function RecordButton({
 		>
 			{countdownActive ? (
 				<>
-					<span
-						key={remaining}
-						className={styles.countdownValue}
-						role="status"
-						aria-live="polite"
-					>
-						{remaining && remaining > 0 ? remaining : <Spinner size="sm" />}
+					<span className={styles.countdownValue}>
+						<span
+							className="sr-only"
+							role="status"
+							aria-live="polite"
+							aria-atomic="true"
+						>
+							{remaining && remaining > 0 ? remaining : ""}
+						</span>
+						<span className={styles.countdownDigits} aria-hidden="true">
+							<AnimatePresence initial={false}>
+								<motion.span
+									key={remaining && remaining > 0 ? remaining : "starting"}
+									className={styles.countdownDigit}
+									data-countdown-number={
+										remaining && remaining > 0 ? remaining : "starting"
+									}
+									initial={{
+										opacity: reducedMotion ? 1 : 0,
+										y: reducedMotion ? 0 : 10,
+									}}
+									animate={{ opacity: 1, y: 0 }}
+									exit={{
+										opacity: reducedMotion ? 1 : 0,
+										y: reducedMotion ? 0 : -10,
+									}}
+									transition={{
+										duration: reducedMotion ? 0 : 0.22,
+										ease: "easeOut",
+									}}
+								>
+									{remaining && remaining > 0 ? remaining : <Spinner size="sm" />}
+								</motion.span>
+							</AnimatePresence>
+						</span>
 					</span>
 					<XIcon className={`${styles.countdownCancel} size-5`} aria-hidden="true" />
 				</>

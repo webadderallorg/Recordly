@@ -124,3 +124,87 @@ test("compact microphone and camera selectors preserve their original choices", 
 		.locator("[data-recording-state]")
 		.screenshot({ path: "test-results/recorder-restored-selectors.png" });
 });
+
+for (const reducedMotion of [false, true]) {
+	test(`countdown replacement ${reducedMotion ? "respects reduced motion" : "slides the old number up while the next enters"}`, async ({
+		page,
+	}) => {
+		await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
+		await installDesktopBridge(page);
+		await installDesktopBridgeOverrides(page, () => {
+			const ticks = new Set<(seconds: number) => void>();
+			let remaining: number | null = null;
+			window.addEventListener("test-countdown-tick", (event) => {
+				remaining = (event as CustomEvent<number>).detail;
+				ticks.forEach((tick) => tick(remaining!));
+			});
+			Object.assign(window.electronAPI, {
+				getActiveCountdown: async () => ({ success: true, seconds: remaining }),
+				onCountdownTick: (tick: (seconds: number) => void) => {
+					ticks.add(tick);
+					return () => ticks.delete(tick);
+				},
+				startCountdown: (seconds: number) => {
+					remaining = seconds;
+					ticks.forEach((tick) => tick(seconds));
+					return new Promise(() => undefined);
+				},
+				startNativeScreenRecording: async () => ({ success: true }),
+				pauseNativeScreenRecording: async () => ({ success: true }),
+			});
+		});
+		await page.goto("/?windowType=hud-overlay");
+		await page.getByRole("button", { name: "Record", exact: true }).click();
+		const countdown = page.getByRole("button", { name: "Cancel countdown", exact: true });
+		await expect(countdown.getByRole("status")).toHaveText("3");
+		await page.mouse.move(0, 0);
+		const before = await countdown.boundingBox();
+		if (!reducedMotion) {
+			const replacement = await page.evaluate(async () => {
+				window.dispatchEvent(new CustomEvent("test-countdown-tick", { detail: 2 }));
+				const deadline = performance.now() + 1000;
+				while (performance.now() < deadline) {
+					await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+					const previous = document.querySelector<HTMLElement>(
+						'[data-countdown-number="3"]',
+					);
+					const next = document.querySelector<HTMLElement>('[data-countdown-number="2"]');
+					if (!previous || !next) continue;
+					const oldStyle = getComputedStyle(previous);
+					const newStyle = getComputedStyle(next);
+					const oldY = new DOMMatrixReadOnly(oldStyle.transform).m42;
+					const newY = new DOMMatrixReadOnly(newStyle.transform).m42;
+					const oldOpacity = Number(oldStyle.opacity);
+					const newOpacity = Number(newStyle.opacity);
+					if (
+						oldY < 0 &&
+						newY > 0 &&
+						oldOpacity < 1 &&
+						oldOpacity > 0 &&
+						newOpacity > 0 &&
+						newOpacity < 1
+					)
+						return true;
+				}
+				return false;
+			});
+			expect(replacement).toBe(true);
+		} else {
+			await page.evaluate(() =>
+				window.dispatchEvent(new CustomEvent("test-countdown-tick", { detail: 2 })),
+			);
+			await expect(countdown.locator('[data-countdown-number="3"]')).toHaveCount(0);
+			await expect(countdown.locator('[data-countdown-number="2"]')).toHaveCSS(
+				"transform",
+				"none",
+			);
+			await expect(countdown.locator('[data-countdown-number="2"]')).toHaveCSS(
+				"opacity",
+				"1",
+			);
+		}
+		await expect(countdown.getByRole("status")).toHaveText("2");
+		await expect(countdown.locator('[data-countdown-number="3"]')).toHaveCount(0);
+		expect(await countdown.boundingBox()).toEqual(before);
+	});
+}
