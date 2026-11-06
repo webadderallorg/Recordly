@@ -1,13 +1,13 @@
 @font-face {
 	font-family: "DM Sans";
-	src: url("/assets/dm-sans-variable.ttf") format("truetype");
+	src: url("../public/assets/dm-sans-variable.ttf") format("truetype");
 	font-style: normal;
 	font-weight: 100 1000;
 	font-display: swap;
 }
 @font-face {
 	font-family: "DM Sans";
-	src: url("/assets/dm-sans-italic-variable.ttf") format("truetype");
+	src: url("../public/assets/dm-sans-italic-variable.ttf") format("truetype");
 	font-style: italic;
 	font-weight: 100 1000;
 	font-display: swap;

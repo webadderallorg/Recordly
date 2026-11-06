@@ -1,11 +1,22 @@
 import React from "react";
 import { LegalDocument as Legal } from "./LegalDocument";
 
-export default function TermsOfService() {
+export const termsTitle = "Terms of service";
+export const termsDescription = "The terms for Recordly accounts, cloud sharing and Cloud subscriptions.";
+
+/**
+ * @param {{
+ *   publication?: { details: typeof import("./config").legalDetails, ready: boolean, version: string },
+ *   siteLinks?: { home?: string, blog?: string, features?: string, pricing?: string | null }
+ * }} [props]
+ */
+export default function TermsOfService({ publication, siteLinks } = {}) {
 	return (
 		<Legal
-			title="Terms of service"
-			description="The terms for Recordly accounts, cloud sharing and Cloud subscriptions."
+			title={termsTitle}
+			description={termsDescription}
+			publication={publication}
+			siteLinks={siteLinks}
 		>
 			<h2>1. Scope and agreement</h2>
 			<p>

@@ -294,11 +294,9 @@ export function WebcamSettings({
 								updateWebcam({
 									shape,
 									...(shape === "rectangle"
-										? { roundness: 0 }
-										: shape === "squircle" &&
-												webcam?.shape === "rectangle" &&
-												webcam.roundness === 0
-											? { roundness: DEFAULT_WEBCAM_ROUNDNESS }
+										? { width: 60, size: 60 }
+										: shape === "squircle"
+											? { height: webcamWidth }
 											: {}),
 								});
 						}}
@@ -307,7 +305,7 @@ export function WebcamSettings({
 							{tSettings("effects.webcamCircle", "Circle")}
 						</ChoiceItem>
 						<ChoiceItem value="squircle">
-							{tSettings("effects.webcamSquircle", "Squircle")}
+							{tSettings("effects.webcamSquircle", "Square")}
 						</ChoiceItem>
 						<ChoiceItem value="rectangle">
 							{tSettings("effects.webcamRectangle", "Rectangle")}
@@ -320,7 +318,13 @@ export function WebcamSettings({
 					min={10}
 					max={100}
 					step={1}
-					onChange={(v) => updateWebcam({ width: v, size: v })}
+					onChange={(v) =>
+						updateWebcam({
+							width: v,
+							size: v,
+							...(webcam?.shape === "squircle" ? { height: v } : {}),
+						})
+					}
 					formatValue={(v) => `${Math.round(v)}%`}
 				/>
 				{(advanced || webcam?.shape === "rectangle") && webcam?.shape !== "circle" && (
@@ -368,6 +372,7 @@ export function WebcamSettings({
 													previewFrame.width,
 													previewFrame.height,
 													cropRegion,
+													webcam?.shape,
 												)
 											: webcamHeight,
 									})

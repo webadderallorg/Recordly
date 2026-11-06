@@ -93,7 +93,10 @@ describe("camera preview pixel density", () => {
 		vi.stubGlobal("document", {
 			createElement: () => {
 				const context = new Proxy(
-					{ scale: vi.fn() },
+					{
+						scale: vi.fn(),
+						createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+					},
 					{
 						get: (object, key) =>
 							key in object ? object[key as keyof typeof object] : () => {},

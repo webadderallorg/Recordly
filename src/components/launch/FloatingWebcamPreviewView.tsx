@@ -1,3 +1,4 @@
+import { getWebcamGlassRimImage } from "../video-editor/webcamGlassRim";
 import type { MouseEventHandler, ReactNode } from "react";
 import type { useWebcamPreviewOverlay } from "./hooks/useWebcamPreviewOverlay";
 import styles from "./LaunchWindow.module.css";
@@ -64,6 +65,14 @@ export function FloatingWebcamPreviewView({
 						transform: "scaleX(-1)",
 
 						clipPath: "circle(50%)",
+					}}
+				/>
+				<div
+					aria-hidden="true"
+					className="pointer-events-none absolute inset-0"
+					style={{
+						backgroundImage: getWebcamGlassRimImage(100, 100, 50, "circle"),
+						backgroundSize: "100% 100%",
 					}}
 				/>
 			</div>

@@ -1,3 +1,5 @@
+import { getWebcamGlassRimImage } from "../../video-editor/webcamGlassRim";
+import { getWebcamCornerRadiusPx } from "../../video-editor/webcamOverlay";
 import type { WebcamShape } from "../../video-editor/types";
 import { getWebcamClipPath } from "../../video-editor/webcamOverlay";
 import {
@@ -104,7 +106,7 @@ export function WebcamPopover({
 			{showWebcamControls && (
 				<div className="flex justify-center px-3 py-2">
 					<div
-						className="h-24 w-24 overflow-hidden bg-[var(--launch-hover)]"
+						className="relative h-24 w-24 overflow-hidden bg-[var(--launch-hover)]"
 						style={{
 							clipPath: getWebcamClipPath(roundness, 96, 96, shape),
 						}}
@@ -115,6 +117,19 @@ export function WebcamPopover({
 							muted
 							playsInline
 							style={{ transform: "scaleX(-1)" }}
+						/>
+						<div
+							aria-hidden="true"
+							className="pointer-events-none absolute inset-0"
+							style={{
+								backgroundImage: getWebcamGlassRimImage(
+									96,
+									96,
+									getWebcamCornerRadiusPx(roundness, 96, 96, shape),
+									shape,
+								),
+								backgroundSize: "100% 100%",
+							}}
 						/>
 					</div>
 				</div>

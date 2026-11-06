@@ -1,6 +1,8 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import { downloadPlatforms, getDownloadPlatform } from "./downloadPlatforms";
 
+import recordlyMark from "../public/assets/recordly-mark.svg?url";
+import recordlyMarkWhite from "../public/assets/recordly-mark-white.svg?url";
 const ASSET = "/assets/";
 const groups = {
 	Features: [
@@ -21,10 +23,10 @@ const groups = {
 	],
 };
 function Logo({ mark = false, light = false, ...props }) {
-	if (mark) return <img src={`${ASSET}recordly-mark.svg`} alt="" {...props} />;
+	if (mark) return <img src={recordlyMark} alt="" {...props} />;
 	return (
 		<span className="recordly-logo" {...props}>
-			<img src={`${ASSET}recordly-mark${light ? "" : "-white"}.svg`} alt="" />
+			<img src={light ? recordlyMark : recordlyMarkWhite} alt="" />
 			<span>Recordly</span>
 		</span>
 	);
@@ -59,7 +61,7 @@ function Download({ compact = false }) {
 	}, [open]);
 	const primary = (
 		<a className={`download ${compact ? "compact" : ""}`} href={selected.href}>
-			{!compact && <img className="download-mark" src={`${ASSET}recordly-mark-white.svg`} alt="" width="20" height="20" />}
+			{!compact && <img className="download-mark" src={recordlyMarkWhite} alt="" width="20" height="20" />}
 			{compact ? "Download" : `Download for ${selected.label}`}
 		</a>
 	);
@@ -93,7 +95,8 @@ function Download({ compact = false }) {
 		</div>
 	);
 }
-function Nav({ light = false }) {
+function Nav({ light = false, siteLinks = {} }) {
+	const { home = "/", blog = "/blog", pricing = "/pricing", features } = siteLinks;
 	const [mobile, setMobile] = useState(false);
 	const [open, setOpen] = useState(null);
 	const ref = useRef(null);
@@ -116,7 +119,7 @@ function Nav({ light = false }) {
 	}, []);
 	return (
 		<header className={`nav${light ? " nav-light" : ""}`} ref={ref}>
-			<a href="/" aria-label="Recordly home">
+			<a href={home} aria-label="Recordly home">
 				<Logo light={light} />
 			</a>
 			<button
@@ -130,7 +133,7 @@ function Nav({ light = false }) {
 			</button>
 			<nav id="navigation" className={mobile ? "is-open" : ""} aria-label="Main navigation">
 				{Object.entries(groups).map(([name, links]) => name === "Blog" ? (
-					<a key={name} href="/blog" onClick={() => { setOpen(null); setMobile(false); }}>Blog</a>
+					<a key={name} href={blog} onClick={() => { setOpen(null); setMobile(false); }}>Blog</a>
 				) : (
 					<div className="nav-group" key={name}>
 						<button
@@ -148,7 +151,7 @@ function Nav({ light = false }) {
 								{links.map(([label, href]) => (
 									<a
 										key={label}
-										href={light && href.startsWith("#") ? `/${href}` : href}
+										href={href.startsWith("#") ? features || (light ? `/${href}` : href) : href}
 										onClick={() => {
 											setOpen(null);
 											setMobile(false);
@@ -162,7 +165,7 @@ function Nav({ light = false }) {
 						)}
 					</div>
 				))}
-				<a href="/pricing">Pricing</a>
+				{pricing && <a href={pricing}>Pricing</a>}
 			</nav>
 			<div className="nav-download">
 				<Download compact />
@@ -170,7 +173,7 @@ function Nav({ light = false }) {
 		</header>
 	);
 }
-function SiteFooter() {
-	return <footer className="site-footer"><a href="/">© {new Date().getFullYear()} Recordly</a><nav aria-label="Footer"><a href="https://github.com/webadderallorg/Recordly">GitHub ↗</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/billing">Billing & refunds</a><a href="/contact">Contact</a></nav></footer>;
+function SiteFooter({ home = "/" }) {
+	return <footer className="site-footer"><a href={home}>© {new Date().getFullYear()} Recordly</a><nav aria-label="Footer"><a href="https://github.com/webadderallorg/Recordly">GitHub ↗</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/billing">Billing & refunds</a><a href="/contact">Contact</a></nav></footer>;
 }
 export { Logo, Download, Nav, SiteFooter };

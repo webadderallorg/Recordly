@@ -162,7 +162,7 @@ describe("normalizeProjectEditor", () => {
 			} as never,
 		});
 
-		expect(editor.webcam.roundness).toBeCloseTo(3.01, 2);
+		expect(editor.webcam.roundness).toBeCloseTo(41.67, 2);
 		expect(editor.webcam.cornerRadius).toBeUndefined();
 	});
 
@@ -176,7 +176,7 @@ describe("normalizeProjectEditor", () => {
 
 		expect(editor.webcam.width).toBe(80);
 		expect(editor.webcam.height).toBe(80);
-		expect(editor.webcam.roundness).toBeCloseTo(0.19, 2);
+		expect(editor.webcam.roundness).toBeCloseTo(20.83, 2);
 	});
 });
 

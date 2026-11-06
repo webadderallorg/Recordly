@@ -132,21 +132,22 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		videoSprite.visible = false;
 		videoSpriteRef.current = videoSprite;
 		let reportedTextureError = false;
-		let lastFrameAnnotations: PlaybackProps["annotationRegions"] | null = null;
+		let lastFramePrivacyKey: string | null = null;
 		let lastFrameCrop: { x: number; y: number; width: number; height: number } | null = null;
 		const updatePreviewTexture = () => {
-			const { annotationRegions } = sourceRedactionRef.current;
+			const { annotationRegions, privacyKey } = sourceRedactionRef.current;
 			const crop = baseMaskRef.current.sourceCrop ?? { x: 0, y: 0, width: 1, height: 1 };
 			if (video.seeking) {
 				// Keep the already-uploaded, privacy-composed image while decoding.
 				// An output edit invalidates that image until its masks can be rebuilt.
 				if (
-					annotationRegions !== lastFrameAnnotations ||
-					!lastFrameCrop ||
-					crop.x !== lastFrameCrop.x ||
-					crop.y !== lastFrameCrop.y ||
-					crop.width !== lastFrameCrop.width ||
-					crop.height !== lastFrameCrop.height
+					privacyKey !== lastFramePrivacyKey ||
+					(privacyKey !== "[]" &&
+						(!lastFrameCrop ||
+							crop.x !== lastFrameCrop.x ||
+							crop.y !== lastFrameCrop.y ||
+							crop.width !== lastFrameCrop.width ||
+							crop.height !== lastFrameCrop.height))
 				)
 					videoSprite.visible = false;
 				return;
@@ -158,7 +159,7 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 					cropRegion: crop,
 					timeMs: timelineTimeRef.current * 1000,
 				});
-				lastFrameAnnotations = annotationRegions;
+				lastFramePrivacyKey = privacyKey;
 				lastFrameCrop = { ...crop };
 				videoSprite.visible = true;
 				reportedTextureError = false;

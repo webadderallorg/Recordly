@@ -14,7 +14,6 @@ import { drawSquircleOnGraphics } from "@/lib/geometry/squircle";
 import type { FrameRenderContext } from "./modernFrameRenderer";
 import type { MutableVideoTextureSource, WebcamLayoutCache } from "./modernFrameTypes";
 import { applyCoverLayoutToSprite, areNearlyEqual } from "./modernFrameUtils";
-import { getWebcamShadowStrength } from "./shadowProfile";
 
 /** Owns webcam resources for one export renderer. */
 export class FrameWebcam {
@@ -231,6 +230,7 @@ export class FrameWebcam {
 			aspectSourceWidth,
 			aspectSourceHeight,
 			webcam.cropRegion,
+			webcam.shape,
 		);
 		const dimensions = getWebcamOverlayDimensionsPx({
 			shape: webcam.shape,
@@ -259,7 +259,6 @@ export class FrameWebcam {
 			dimensions.height,
 			webcam.shape,
 		);
-		const shadowStrength = getWebcamShadowStrength(webcam.shadow ?? 0);
 
 		this.context.scene.webcamRootContainer.visible = true;
 
@@ -278,7 +277,7 @@ export class FrameWebcam {
 		// Composite the clipped image before applying its shadow. A separate black
 		// silhouette and a GPU stencil have different edge coverage, exposing a rim.
 		const blur = this.webcamMotionBlur.render({
-			renderStill: shadowStrength > 0,
+			renderStill: true,
 			layout: { x: position.x, y: position.y, ...dimensions, radius },
 			shape: webcam.shape,
 			timeMs: frameTimeMs,
@@ -292,9 +291,11 @@ export class FrameWebcam {
 		});
 		if (blur) {
 			if (!this.webcamBlurSprite) {
-				this.webcamBlurSprite = new Sprite(
-					this.context.textures.createTextureFromSource(blur.canvas),
-				);
+				const texture = this.context.textures.createTextureFromSource(blur.canvas);
+				// The compositor retains and grows its backing canvas through zooms.
+				// Notify Sprite when the texture frame grows with that canvas.
+				texture.dynamic = true;
+				this.webcamBlurSprite = new Sprite(texture);
 				this.context.scene.webcamRootContainer.addChild(this.webcamBlurSprite);
 			} else {
 				this.webcamBlurSprite.texture.source.update();

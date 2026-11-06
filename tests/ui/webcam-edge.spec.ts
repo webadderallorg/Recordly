@@ -20,7 +20,7 @@ test("webcam edges, content and shadows align with blur enabled, settled and dis
 		}
 		expect(
 			[still, stopped, settled, disabled],
-			`${result.shape}, crop/mirror ${result.cropped}`,
+			`${result.shape}, shadow ${result.shadow}, crop/mirror ${result.cropped}`,
 		).toEqual([0, 0, 0, 0]);
 		// Eight additive shutter samples can amplify a one-level VideoFrame/canvas
 		// conversion difference. Stationary edges above must match exactly.

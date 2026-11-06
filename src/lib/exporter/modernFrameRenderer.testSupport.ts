@@ -13,6 +13,8 @@ export function createMockContext() {
 		lineTo: vi.fn(),
 		closePath: vi.fn(),
 		clip: vi.fn(),
+		stroke: vi.fn(),
+		createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
 		save: vi.fn(),
 		restore: vi.fn(),
 		getImageData: vi.fn(() => ({ data: new Uint8ClampedArray(0) })),

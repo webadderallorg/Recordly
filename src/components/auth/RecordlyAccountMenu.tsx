@@ -1,7 +1,7 @@
 import { ChatWarning } from "@/components/ui/icons";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { Modal } from "@heroui/react";
-import { FolderOpen, GearSix, Palette, SignIn, SignOut, UserCircle } from "@phosphor-icons/react";
+import { FolderOpen, GearSix, Palette, SignOut, UserCircle } from "@phosphor-icons/react";
 import type { User } from "@supabase/supabase-js";
 import { useContext, useEffect, useState } from "react";
 import { AccountSettings } from "@/components/auth/AccountSettings";
@@ -187,18 +187,6 @@ export function RecordlyAccountMenu({
 					>
 						<FolderOpen className="size-5" />
 						{t("ui.openRawFiles", "Open raw folder")}
-					</Button>
-
-					<Button
-						variant="ghost"
-						className="h-11 w-full justify-start gap-3 rounded-xl px-3 text-sm font-normal"
-						onClick={() => {
-							setOpen(false);
-							onSignIn();
-						}}
-					>
-						<SignIn className="size-5" />
-						{t("settings.account.signInAgain", "Sign in again")}
 					</Button>
 
 					<Button

@@ -212,6 +212,7 @@ export function drawWebcamOverlay(
 		sourceWidth,
 		sourceHeight,
 		webcam.cropRegion,
+		webcam.shape,
 	);
 	const dimensions = getWebcamOverlayDimensionsPx({
 		shape: webcam.shape,

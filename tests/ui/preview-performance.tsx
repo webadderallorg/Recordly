@@ -81,6 +81,7 @@ function Preview() {
 	const [padding, setPadding] = useState(20);
 	const [showCursor, setShowCursor] = useState(false);
 	const [showAnnotation, setShowAnnotation] = useState(false);
+	const [showRedaction, setShowRedaction] = useState(false);
 	const [suspended, setSuspended] = useState(false);
 	const [volume, setVolume] = useState(1);
 	const [parentRender, setParentRender] = useState(0);
@@ -207,6 +208,7 @@ function Preview() {
 			<button onClick={() => setPadding(padding === 20 ? 60 : 20)}>Change padding</button>
 			<button onClick={() => setShowCursor(!showCursor)}>Toggle cursor</button>
 			<button onClick={() => setShowAnnotation(!showAnnotation)}>Toggle annotation</button>
+			<button onClick={() => setShowRedaction(!showRedaction)}>Toggle redaction</button>
 			<button onClick={() => setSuspended(!suspended)}>Toggle suspension</button>
 			<button onClick={() => setVolume(volume ? 0 : 1)}>Toggle mute</button>
 			<button onClick={() => setClipMuted(!clipMuted)}>Toggle clip mute</button>
@@ -236,7 +238,25 @@ function Preview() {
 				padding={padding}
 				showCursor={showCursor}
 				cursorTelemetry={cursorTelemetry}
-				annotationRegions={showAnnotation ? [annotation] : empty}
+				annotationRegions={
+					showRedaction
+						? [
+								...(showAnnotation ? [annotation] : empty),
+								{
+									...annotation,
+									id: "privacy",
+									type: "blur",
+									startMs: 0,
+									endMs: 120_000,
+									position: { x: 0, y: 0 },
+									size: { width: 100, height: 100 },
+									blurColor: "#000000",
+								},
+							]
+						: showAnnotation
+							? [annotation]
+							: empty
+				}
 				autoCaptions={captions}
 				autoCaptionSettings={captionSettings}
 				volume={volume}
