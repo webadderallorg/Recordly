@@ -272,15 +272,6 @@ export function PlaybackView(input: PlaybackViewInput) {
 										/>
 									</div>
 								</div>
-								<div
-									data-webcam-glass-rim
-									aria-hidden="true"
-									className="pointer-events-none absolute inset-0"
-									style={{
-										backgroundImage: "var(--webcam-glass-rim)",
-										backgroundSize: "100% 100%",
-									}}
-								/>
 							</div>
 						</div>
 					) : null}

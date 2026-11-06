@@ -16,7 +16,6 @@ import {
 	getWebcamOverlayPosition,
 	scaleWebcamOverlayPixels,
 } from "../webcamOverlay";
-import { getWebcamGlassRimImage } from "../webcamGlassRim";
 import { findPreviewClipAtTimelineTime } from "./clipPlayback";
 import type { PlaybackProps } from "./playbackProps";
 import type { usePlaybackState } from "./usePlaybackState";
@@ -202,15 +201,6 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 			bubbleInner.style.overflow = "hidden";
 			bubbleInner.style.contain = "paint";
 			bubbleInner.style.clipPath = webcamClipPath;
-			bubbleInner.style.setProperty(
-				"--webcam-glass-rim",
-				getWebcamGlassRimImage(
-					scaledDimensions.width,
-					scaledDimensions.height,
-					scaledRadius,
-					webcam?.shape,
-				),
-			);
 			bubbleInner.style.setProperty("-webkit-clip-path", webcamClipPath);
 			const video = webcamVideoRef.current;
 			if (!video || video.readyState < 2 || !webcamMediaSynchronized) {

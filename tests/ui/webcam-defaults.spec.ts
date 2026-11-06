@@ -124,7 +124,7 @@ test("new recordings default to a circle and retain the squircle option", async 
 	await expect(mask).toHaveCSS("clip-path", "circle(50% at 50% 50%)");
 });
 
-test("Rectangle starts at 60% width, keeps Square roundness and shows a glass rim", async ({
+test("Rectangle starts at 60% width, keeps Square roundness", async ({
 	page,
 }) => {
 	await installDesktopBridge(page);
@@ -150,15 +150,12 @@ test("Rectangle starts at 60% width, keeps Square roundness and shows a glass ri
 	await expect(page.getByRole("slider", { name: "Webcam Width" })).toHaveValue("60");
 	await expect(page.getByRole("slider", { name: "Webcam Height" })).toHaveValue("40");
 	await expect(roundness).toHaveValue("25");
-	const rim = page.locator("[data-webcam-glass-rim]");
-	await expect(rim).toBeVisible();
-	await expect(rim).toHaveCSS("background-image", /data:image\/svg\+xml/);
 	await expect(page.locator("[data-webcam-overlay]")).toHaveAttribute(
 		"data-webcam-ready",
 		"true",
 	);
 	await page.screenshot({
-		path: "test-results/webcam-rectangle-glass-rim.png",
+		path: "test-results/webcam-rectangle-geometry.png",
 		animations: "disabled",
 	});
 	await page.getByRole("row", { name: "Square", exact: true }).click();

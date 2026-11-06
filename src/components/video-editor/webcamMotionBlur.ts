@@ -1,7 +1,6 @@
 import { getWebcamShadowFilter, getWebcamShadowPadding } from "@/lib/exporter/shadowProfile";
 import { drawSquircleOnCanvas } from "@/lib/geometry/squircle";
 import type { CropRegion, WebcamShape } from "./types";
-import { drawWebcamGlassRim } from "./webcamGlassRim";
 import { getWebcamCropSourceRect, getWebcamShapeExponent } from "./webcamOverlay";
 
 export interface WebcamMotionLayout {
@@ -218,16 +217,6 @@ export class WebcamMotionBlur {
 				sw * scale,
 				sh * scale,
 			);
-			ctx.restore();
-		}
-		ctx.restore();
-		ctx.save();
-		ctx.scale(resolution, resolution);
-		ctx.globalAlpha = 1 / this.samples.length;
-		for (const sample of this.samples) {
-			ctx.save();
-			ctx.translate(sample.x - x, sample.y - y);
-			drawWebcamGlassRim(ctx, sample.width, sample.height, sample.radius, options.shape);
 			ctx.restore();
 		}
 		ctx.restore();
