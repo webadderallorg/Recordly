@@ -111,27 +111,43 @@ export function CommunityLinks() {
 				truncateLabel
 				className="h-8 w-full min-w-0 px-1.5 text-xs"
 			/>
-			<div role="group" aria-label="Recordly" className="grid grid-cols-2 gap-1">
-				{links.map(({ label, accessibleLabel, url, Icon }) => (
+			<Dialog>
+				<DialogTrigger asChild>
 					<Button
-						key={label}
 						type="button"
 						variant="ghost"
 						size="sm"
-						className="h-8 w-full min-w-0 justify-start gap-1.5 rounded-lg px-1.5 text-[11px] text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
-						aria-label={accessibleLabel}
-						onClick={() =>
-							void openExternalLink(
-								url,
-								t("feedback.openFailed", "Failed to open link."),
-							)
-						}
+						className="h-8 w-full min-w-0 rounded-lg text-xs text-muted-foreground hover:text-foreground"
 					>
-						<Icon className="size-3.5 shrink-0" aria-hidden="true" />
-						<span>{label}</span>
+						{t("socials", "Socials")}
 					</Button>
-				))}
-			</div>
+				</DialogTrigger>
+				<DialogContent className="max-w-sm">
+					<DialogHeader>
+						<DialogTitle>{t("socials", "Socials")}</DialogTitle>
+					</DialogHeader>
+					<div className="grid grid-cols-4 gap-2">
+						{links.map(({ label, accessibleLabel, url, Icon }) => (
+							<Button
+								key={label}
+								type="button"
+								variant="ghost"
+								className="h-20 w-full min-w-0 flex-col gap-2 rounded-xl px-1 text-xs text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
+								aria-label={accessibleLabel}
+								onClick={() =>
+									void openExternalLink(
+										url,
+										t("feedback.openFailed", "Failed to open link."),
+									)
+								}
+							>
+								<Icon className="size-7 shrink-0" aria-hidden="true" />
+								<span>{label}</span>
+							</Button>
+						))}
+					</div>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

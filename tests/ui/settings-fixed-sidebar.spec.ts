@@ -148,7 +148,7 @@ for (const { width, height, theme } of [
 	{ width: 1000, height: 600, theme: "dark" },
 	{ width: 1280, height: 760, theme: "light" },
 ] as const) {
-	test(`Home community links are labeled and open Recordly accounts (${theme}, ${width}×${height})`, async ({
+	test(`Home Socials modal opens Recordly accounts (${theme}, ${width}×${height})`, async ({
 		page,
 	}) => {
 		test.setTimeout(60000);
@@ -165,8 +165,12 @@ for (const { width, height, theme } of [
 		await page.goto("/?windowType=editor");
 		await page.getByRole("button", { name: "Home", exact: true }).click();
 		const home = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
-		const links = home.getByRole("group", { name: "Recordly", exact: true });
-		await expect(links.getByRole("button")).toHaveCount(4);
+		const socials = home.getByRole("button", { name: "Socials", exact: true });
+		await expect(socials).toBeInViewport({ ratio: 1 });
+		await expect(home.getByRole("button", { name: "YouTube", exact: true })).toHaveCount(0);
+		await socials.click();
+		const links = page.getByRole("dialog", { name: "Socials", exact: true });
+		await expect(links).toBeVisible();
 		const url = page.url();
 		for (const [name, label, target] of [
 			["Join Discord", "Discord", "https://discord.gg/sdv2FBVNgE"],
@@ -186,13 +190,16 @@ for (const { width, height, theme } of [
 			await expect(page.locator("html")).toHaveAttribute("data-opened-community-url", target);
 			await expect(page).toHaveURL(url);
 		}
-		await home
-			.locator("aside")
-			.screenshot({ path: test.info().outputPath(`community-${theme}.png`) });
+		await links.screenshot({ path: test.info().outputPath(`socials-${theme}.png`) });
+		await page.keyboard.press("Escape");
+		await expect(links).toBeHidden();
+		await expect(socials).toBeFocused();
+		await expect(home).toBeVisible();
+		await home.locator("aside").screenshot({ path: test.info().outputPath(`footer-${theme}.png`) });
 	});
 }
 
-test("Japanese community footer fits Upgrade and labeled links without overlap", async ({
+test("Japanese community footer fits Upgrade and Socials without overlap", async ({
 	page,
 }) => {
 	test.setTimeout(60000);
@@ -232,18 +239,15 @@ test("Japanese community footer fits Upgrade and labeled links without overlap",
 			).toBe(true);
 		}
 		boxes.push(box);
-		const text = button.locator("span").first();
-		expect(await text.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
-			true,
-		);
 	}
-	const socialBounds = (await footer
-		.getByRole("group", { name: "Recordly", exact: true })
-		.boundingBox())!;
-	const upgradeBounds = (await upgrade.boundingBox())!;
-	expect(socialBounds.y).toBeGreaterThanOrEqual(upgradeBounds.y + upgradeBounds.height);
-	await expect(footer.getByRole("button", { name: "GitHub", exact: true })).toBeVisible();
-	await expect(footer.getByRole("button", { name: "X", exact: true })).toBeVisible();
-	await expect(footer.getByRole("button", { name: "YouTube", exact: true })).toBeVisible();
-	await footer.screenshot({ path: test.info().outputPath("community-ja.png") });
+	await expect(footer.getByRole("button")).toHaveCount(2);
+	const socials = footer.getByRole("button", { name: "SNS", exact: true });
+	await expect(socials).toBeVisible();
+	await socials.click();
+	const modal = page.getByRole("dialog", { name: "SNS", exact: true });
+	await expect(modal.getByRole("button", { name: "YouTube", exact: true })).toBeInViewport({ ratio: 1 });
+	await modal.screenshot({ path: test.info().outputPath("socials-ja.png") });
+	await modal.getByRole("button", { name: "閉じる", exact: true }).click();
+	await expect(modal).toBeHidden();
+	await expect(socials).toBeFocused();
 });
