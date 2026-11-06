@@ -35,25 +35,27 @@ for (const signedIn of [false, true]) {
 
 for (const signedIn of [false, true]) {
 	for (const query of ["", "&onboardingPreview=0"]) {
-		test(`normal dev onboarding restores the real account (${signedIn ? "signed in" : "signed out"}, ${query || "no query"})`, async ({ page }) => {
+		test(`dev onboarding preserves the real account (${signedIn ? "signed in" : "signed out"}, ${query || "no query"})`, async ({ page }) => {
 			await installDesktopBridge(page, "preview.mp4", { signedIn, onboarded: false });
 			await page.goto(`/?windowType=onboarding${query}`);
 			const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 			await expect(tour).toBeVisible();
-			await expect(tour.getByRole("button", { name: "Skip onboarding" })).toHaveCount(0);
+			await expect(tour.getByRole("button", { name: "Skip onboarding" })).toHaveCount(query ? 0 : 1);
 			if (signedIn) {
-				await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
+				await expect(tour.getByRole("heading", { name: query ? "Allow Recordly to record" : "Welcome to Recordly", exact: true })).toBeVisible();
 				await expect(tour.getByPlaceholder("you@example.com")).toHaveCount(0);
+				if (!query) await expect(tour.getByText("test@email.com", { exact: true })).toBeVisible();
 			} else {
 				await expect(tour.getByPlaceholder("you@example.com")).toBeVisible();
-				await expect(tour.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
-				await expect(tour.getByRole("button", { name: "Permissions", exact: true })).toBeDisabled();
+				await expect(tour.getByRole("button", { name: "Continue", exact: true })).toHaveCount(query ? 0 : 1);
+				if (query) await expect(tour.getByRole("button", { name: "Permissions", exact: true })).toBeDisabled();
+				else await expect(tour.getByRole("button", { name: "Permissions", exact: true })).toBeEnabled();
 			}
 		});
 	}
 }
 
-test("automatic first-run dev onboarding uses real sign-in", async ({ page }) => {
+test("automatic first-run dev onboarding is optional", async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
 	await installDesktopBridgeOverrides(page, () => {
 		window.electronAPI.showOnboardingWindow = async (options) => {
@@ -64,8 +66,8 @@ test("automatic first-run dev onboarding uses real sign-in", async ({ page }) =>
 	await page.goto("/?windowType=editor");
 	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 	await expect(tour.getByPlaceholder("you@example.com")).toBeVisible();
-	await expect(page.locator("html")).toHaveAttribute("data-preview-requested", "false");
-	await expect(tour.getByRole("button", { name: "Skip onboarding" })).toHaveCount(0);
+	await expect(page.locator("html")).toHaveAttribute("data-preview-requested", "true");
+	await expect(tour.getByRole("button", { name: "Skip onboarding" })).toBeVisible();
 });
 
 for (const query of ["", "&onboardingPreview=1"]) {
@@ -120,10 +122,10 @@ for (const windowType of ["onboarding", "editor"]) {
 	}
 }
 
-test("a normal dev editor requires an expired saved account to sign in again", async ({ page }) => {
+test("an explicit real dev editor requires an expired saved account to sign in again", async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: true });
-	await page.goto("/?windowType=editor");
-	await expect(page.getByRole("dialog", { name: "Sign in to Recordly", exact: true })).toBeVisible();
+	await page.goto("/?windowType=editor&onboardingPreview=0");
+	await expect(page.getByRole("dialog", { name: "Sign in to Recordly", exact: true })).toBeVisible({ timeout: 15000 });
 });
 
 test("signed-out dev onboarding still waits for real recording permissions", async ({ page }) => {

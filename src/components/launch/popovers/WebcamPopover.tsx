@@ -12,8 +12,6 @@ import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import type { DeviceOption } from "./launchPopoverTypes";
 import type { ReactElement } from "react";
 
-import styles from "../LaunchWindow.module.css";
-
 const POPOVER_ID = "webcam";
 
 export function WebcamPopover({
@@ -69,43 +67,21 @@ export function WebcamPopover({
 			trigger={trigger}
 			align="center"
 		>
-			<section className={styles.deviceSection} aria-label={t("recording.camera", "Camera")}>
-				<div className={styles.ddLabel}>{t("recording.camera", "Camera")}</div>
-				<DropdownItem
-					icon={<VideoOff size={16} />}
-					selected={!webcamEnabled}
-					onClick={() => {
-						onDisableWebcam();
-						requestClose(POPOVER_ID);
-					}}
-				>
-					{t("recording.off", "Off")}
-				</DropdownItem>
-				{videoDevices.map((device) => (
+			<div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--launch-label)]">
+				{t("recording.webcam")}
+			</div>
+			{webcamEnabled && (
+				<>
 					<DropdownItem
-						key={device.deviceId}
-						icon={<Video size={16} />}
-						selected={
-							webcamEnabled &&
-							(webcamDeviceId === device.deviceId ||
-								selectedVideoDeviceId === device.deviceId)
-						}
-						onClick={() => onSelectVideoDevice(device.deviceId)}
+						icon={<VideoOff size={16} />}
+						onClick={() => {
+							onDisableWebcam();
+							requestClose(POPOVER_ID);
+						}}
 					>
-						{device.label}
+						{t("recording.turnOffWebcam")}
 					</DropdownItem>
-				))}
-				{videoDevices.length === 0 && (
-					<div className={styles.deviceDescription}>{t("recording.noWebcamsFound")}</div>
-				)}
-			</section>
-			{webcamEnabled && (canToggleFloatingPreview || showWebcamControls) && (
-				<section
-					className={styles.deviceSection}
-					aria-label={t("recording.cameraPreview", "Preview")}
-				>
-					<div className={styles.ddLabel}>{t("recording.cameraPreview", "Preview")}</div>
-					{canToggleFloatingPreview && (
+					{canToggleFloatingPreview ? (
 						<DropdownItem
 							icon={
 								showFloatingWebcamPreview ? <EyeOff size={16} /> : <Eye size={16} />
@@ -117,24 +93,58 @@ export function WebcamPopover({
 								? t("recording.hideFloatingWebcamPreview")
 								: t("recording.showFloatingWebcamPreview")}
 						</DropdownItem>
-					)}
-					{showWebcamControls && (
-						<div className="flex justify-center px-3 py-2">
-							<div
-								className="h-24 w-24 overflow-hidden bg-[var(--launch-hover)]"
-								style={{ clipPath: getWebcamClipPath(roundness, 96, 96, shape) }}
-							>
-								<video
-									ref={setWebcamPreviewNode}
-									className="h-full w-full object-cover"
-									muted
-									playsInline
-									style={{ transform: "scaleX(-1)" }}
-								/>
-							</div>
-						</div>
-					)}
-				</section>
+					) : null}
+				</>
+			)}
+			{!webcamEnabled && (
+				<div className="px-3 py-2 text-xs text-[var(--launch-text-muted)]">
+					{t("recording.selectWebcamToEnable")}
+				</div>
+			)}
+			{showWebcamControls && (
+				<div className="flex justify-center px-3 py-2">
+					<div
+						className="h-24 w-24 overflow-hidden bg-[var(--launch-hover)]"
+						style={{
+							clipPath: getWebcamClipPath(roundness, 96, 96, shape),
+						}}
+					>
+						<video
+							ref={setWebcamPreviewNode}
+							className="h-full w-full object-cover"
+							muted
+							playsInline
+							style={{ transform: "scaleX(-1)" }}
+						/>
+					</div>
+				</div>
+			)}
+			{videoDevices.map((device) => (
+				<DropdownItem
+					key={device.deviceId}
+					icon={
+						webcamEnabled &&
+						(webcamDeviceId === device.deviceId ||
+							selectedVideoDeviceId === device.deviceId) ? (
+							<Video size={16} />
+						) : (
+							<VideoOff size={16} />
+						)
+					}
+					selected={
+						webcamEnabled &&
+						(webcamDeviceId === device.deviceId ||
+							selectedVideoDeviceId === device.deviceId)
+					}
+					onClick={() => onSelectVideoDevice(device.deviceId)}
+				>
+					{device.label}
+				</DropdownItem>
+			))}
+			{videoDevices.length === 0 && (
+				<div className="text-center text-xs text-[var(--launch-text-muted)] py-4">
+					{t("recording.noWebcamsFound")}
+				</div>
 			)}
 		</HudPopover>
 	);

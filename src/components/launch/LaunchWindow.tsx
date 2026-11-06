@@ -3,8 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	House,
 	MicrophoneIcon,
-	SpeakerHighIcon,
-	SpeakerXIcon,
+	MicrophoneSlashIcon,
 	MinusIcon,
 	MonitorIcon,
 	VideoCameraIcon,
@@ -317,9 +316,13 @@ function LaunchWindowContent() {
 						variant="ghost"
 						size="icon"
 						iconSize="lg"
-						title={t("recording.audio", "Audio")}
 						disabled={countdownActive}
-						className={`${styles.deviceControl} ${microphoneEnabled || systemAudioEnabled ? "text-accent" : ""}`}
+						title={
+							microphoneEnabled
+								? t("recording.disableMicrophone")
+								: t("recording.enableMicrophone")
+						}
+						className={microphoneEnabled ? "text-accent" : ""}
 					>
 						{microphoneEnabled ? (
 							<MicrophoneIcon
@@ -327,12 +330,9 @@ function LaunchWindowContent() {
 								className="size-5"
 								size={18}
 							/>
-						) : systemAudioEnabled ? (
-							<SpeakerHighIcon className="size-5" />
 						) : (
-							<SpeakerXIcon className="size-5" />
+							<MicrophoneSlashIcon className="size-5" />
 						)}
-						<span>{t("recording.audio", "Audio")}</span>
 					</Button>
 				}
 			/>
@@ -363,9 +363,13 @@ function LaunchWindowContent() {
 						variant="ghost"
 						size="icon"
 						iconSize="lg"
-						title={t("recording.camera", "Camera")}
 						disabled={countdownActive}
-						className={`${styles.deviceControl} ${webcamEnabled ? "text-accent" : ""}`}
+						title={
+							webcamEnabled
+								? t("recording.disableWebcam")
+								: t("recording.enableWebcam")
+						}
+						className={webcamEnabled ? "text-accent" : ""}
 					>
 						{webcamEnabled ? (
 							<VideoCameraIcon
@@ -376,7 +380,6 @@ function LaunchWindowContent() {
 						) : (
 							<VideoCameraSlashIcon className="size-5" />
 						)}
-						<span>{t("recording.camera", "Camera")}</span>
 					</Button>
 				}
 			/>

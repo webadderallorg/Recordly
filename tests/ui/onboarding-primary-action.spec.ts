@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge } from "./bridge";
 
+for (const side of [600, 760]) {
 for (const reducedMotion of ["no-preference", "reduce"] as const) {
-	test(`the same onboarding button widens into Start recording (${reducedMotion})`, async ({ page }) => {
-		await page.setViewportSize({ width: 760, height: 760 });
+	test(`the same onboarding button widens into Start recording (${reducedMotion}, ${side}px)`, async ({ page }) => {
+		await page.setViewportSize({ width: side, height: side });
 		await page.emulateMedia({ reducedMotion });
-		await installDesktopBridge(page);
+		await installDesktopBridge(page, "preview.mp4", { signedIn: false });
 		await page.goto("/?windowType=onboarding&onboardingPreview=1");
 		const dialog = page.getByRole("dialog", { name: "Welcome to Recordly" });
 		const primary = dialog.locator("[data-onboarding-primary-action]");
@@ -19,6 +20,7 @@ for (const reducedMotion of ["no-preference", "reduce"] as const) {
 			return opacity;
 		})).toBe(1);
 		const before = (await primary.boundingBox())!;
+		expect(before.height).toBe(44);
 		await primary.evaluate((element) => {
 			element.setAttribute("data-persistent-button", "true");
 			const samples: { width: number; right: number; bottom: number; opacity: number; connected: boolean }[] = [];
@@ -45,6 +47,7 @@ for (const reducedMotion of ["no-preference", "reduce"] as const) {
 			return (window as unknown as { finishButtonSamples: () => { width: number; right: number; bottom: number; opacity: number; connected: boolean }[] }).finishButtonSamples();
 		});
 		const after = (await primary.boundingBox())!;
+		expect(after.height).toBe(44);
 		await test.info().attach("button-animation", {
 			body: JSON.stringify({ before, after, samples }),
 			contentType: "application/json",
@@ -66,4 +69,5 @@ for (const reducedMotion of ["no-preference", "reduce"] as const) {
 		await expect(primary).toHaveAccessibleName("Continue");
 		await expect(primary).toHaveAttribute("data-persistent-button", "true");
 	});
+}
 }

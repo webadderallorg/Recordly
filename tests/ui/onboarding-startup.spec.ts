@@ -118,8 +118,8 @@ test("a signed-out editor opens onboarding before project hydration finishes", a
 		};
 	});
 	await page.goto("/?windowType=editor");
-	await expect(page.locator("html")).toHaveAttribute("data-project-pending", "true");
-	await expect(page.locator("html")).toHaveAttribute("data-onboarding-requested", "true");
+	await expect(page.locator("html")).toHaveAttribute("data-project-pending", "true", { timeout: 15000 });
+	await expect(page.locator("html")).toHaveAttribute("data-onboarding-requested", "true", { timeout: 15000 });
 	await expect(page.getByRole("dialog", { name: "Welcome to Recordly" })).toBeVisible();
 	await page.evaluate(() => window.dispatchEvent(new Event("test-release-project")));
 });

@@ -94,16 +94,61 @@ describe("onboarding account and permission restart", () => {
 		render();
 		const result = render();
 		expect(result?.type).toBe(RecordlySignInDialog);
-		expect(result?.props).toMatchObject({ onboarding: true, preview: false, user });
+		expect(result?.props).toMatchObject({ onboarding: true, preview: true, user });
 	});
 
-	it("keeps free navigation limited to the explicit development preview", () => {
-		window.location.search = "?windowType=onboarding&onboardingPreview=1";
+	it("keeps explicit real sign-in required in development", () => {
+		window.location.search = "?windowType=onboarding&onboardingPreview=0";
 		render();
-		expect(render()?.props.preview).toBe(true);
+		expect(render()?.props.preview).toBe(false);
+	});
+
+	for (const seen of [false, true]) {
+		for (const pending of [false, true]) {
+			it(`does not replay a dismissed dev tour after recording recreates the editor (seen=${seen}, pending=${pending})`, () => {
+				render();
+				render()?.props.onWindowClose();
+				expect(state.settings.get("recordly.dev.onboardingDismissed")).toBe(true);
+				state.settings.set(seenKey, seen);
+				state.settings.set(pendingKey, pending);
+				// Recording closes the HUD and creates a fresh editor renderer; hooks
+				// reset while app settings and the restored auth session survive.
+				state.slots = [];
+				window.location.search = "?windowType=editor";
+				render({ standalone: false });
+				render({ standalone: false });
+				expect(window.electronAPI.showOnboardingWindow).not.toHaveBeenCalled();
+			});
+		}
+	}
+
+	it("opens the optional dev window only once while account identity refreshes", () => {
+		window.location.search = "?windowType=editor";
+		render({ standalone: false });
+		render({ standalone: false, user: { ...user } });
+		expect(window.electronAPI.showOnboardingWindow).toHaveBeenCalledExactlyOnceWith({ preview: true });
+	});
+
+	it("preserves production account gating even if the dev tour was dismissed", () => {
+		vi.stubEnv("DEV", false);
+		state.settings.set("recordly.dev.onboardingDismissed", true);
+		state.settings.set(seenKey, true);
+		render({ standalone: false, user: null });
+		const result = render({ standalone: false, user: null });
+		expect(result?.props).toMatchObject({ requireSignIn: true, open: true, user: null });
+	});
+
+	it("requires production sign-in when a previously restored session expires", () => {
+		vi.stubEnv("DEV", false);
+		state.settings.set(seenKey, true);
+		render({ standalone: false });
+		render({ standalone: false, user: null });
+		const result = render({ standalone: false, user: null });
+		expect(result?.props).toMatchObject({ requireSignIn: true, open: true, user: null });
 	});
 
 	it("resumes unfinished first-run permissions after closing and restarting", async () => {
+		window.location.search = "?windowType=onboarding&onboardingPreview=0";
 		state.settings.set(pendingKey, true);
 		render();
 		const first = render();
@@ -124,6 +169,7 @@ describe("onboarding account and permission restart", () => {
 
 	it("resumes later permission recovery without rewriting completed onboarding", async () => {
 		state.settings.set(seenKey, true);
+		window.location.search = "?windowType=onboarding&onboardingPreview=0";
 		state.settings.set(pendingKey, true);
 		render();
 		const recovery = render();

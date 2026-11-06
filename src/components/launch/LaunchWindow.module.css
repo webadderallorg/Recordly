@@ -91,14 +91,6 @@
 	pointer-events: none;
 }
 
-.recordingControls .deviceControl {
-	width: auto;
-	min-width: 76px;
-	gap: 6px;
-	padding: 0 8px;
-	font-size: 12px;
-}
-
 .recordControl {
 	position: relative;
 }
@@ -148,18 +140,6 @@
 	.countdownCancel {
 		transition: none;
 	}
-}
-
-.deviceSection + .deviceSection {
-	border-top: 1px solid var(--separator);
-	margin-top: 6px;
-	padding-top: 6px;
-}
-
-.deviceDescription {
-	padding: 0 10px 6px;
-	color: var(--launch-text-muted);
-	font-size: 11px;
 }
 
 .recordingTimer {

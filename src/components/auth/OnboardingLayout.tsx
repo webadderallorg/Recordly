@@ -59,11 +59,11 @@ export function OnboardingLayout({
 			>
 				{children}
 			</motion.div>
-			{onStageChange ? (
+			{(onStageChange || footer) && (
 				<div className="onboarding-carousel-footer flex shrink-0 flex-col justify-end">
 					{footer}
 				</div>
-			) : footer}
+			)}
 			{showNavigation && (
 				<nav
 					aria-label={t("pages")}
@@ -223,6 +223,7 @@ export function OnboardingPrimaryAction({
 		>
 			<Button
 				data-onboarding-primary-action
+				className="h-11 rounded-xl"
 				variant="primary"
 				isDisabled={isDisabled}
 				onPress={onPress}

@@ -75,3 +75,12 @@ it("does not enable preview in packaged apps", async () => {
 	const onboarding = showOnboardingWindow({ preview: true }) as unknown as FakeWindow;
 	expect(onboarding.loadURL).toHaveBeenCalledWith("http://localhost:5173?windowType=onboarding");
 });
+
+it("keeps explicit real authentication distinct from the optional development tour", async () => {
+	const { showOnboardingWindow } = await import("./windows");
+	const onboarding = showOnboardingWindow({ preview: true }) as unknown as FakeWindow;
+	expect(showOnboardingWindow({ preview: false })).toBe(onboarding);
+	expect(onboarding.loadURL).toHaveBeenLastCalledWith(
+		"http://localhost:5173?windowType=onboarding&onboardingPreview=0",
+	);
+});

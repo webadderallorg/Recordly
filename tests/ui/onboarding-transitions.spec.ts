@@ -8,7 +8,7 @@ for (const [width, height] of [[760, 760], [600, 600], [420, 760], [390, 760], [
 		}) => {
 			await page.setViewportSize({ width, height });
 			await page.emulateMedia({ reducedMotion });
-			await installDesktopBridge(page);
+			await installDesktopBridge(page, "preview.mp4", { signedIn: false });
 			await installDesktopBridgeOverrides(page, () => {
 				const ready = new Promise<void>((resolve) => {
 					Object.assign(window, { finishPermissionCheck: resolve });

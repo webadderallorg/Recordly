@@ -88,7 +88,7 @@ for (const cancel of ["none", "pointer", "escape"] as const) {
 	});
 }
 
-test("audio choices separate computer sounds from microphone and camera remains selectable", async ({
+test("compact microphone and camera selectors preserve their original choices", async ({
 	page,
 }) => {
 	await installDesktopBridge(page);
@@ -105,23 +105,22 @@ test("audio choices separate computer sounds from microphone and camera remains 
 			] as MediaDeviceInfo[];
 	});
 	await page.goto("/?windowType=hud-overlay");
-	await page.getByRole("button", { name: "Audio", exact: true }).click();
-	await expect(page.getByRole("region", { name: "Computer audio", exact: true })).toBeVisible();
-	await expect(page.getByRole("region", { name: "Microphone", exact: true })).toBeVisible();
+	const microphone = page.getByRole("button", { name: "Enable microphone", exact: true });
+	await expect(microphone).toHaveText("");
+	await microphone.click();
+	await expect(page.getByText("Microphone", { exact: true })).toBeVisible();
 	await expect(
-		page
-			.getByRole("region", { name: "Microphone", exact: true })
-			.getByRole("button", { name: "Off", exact: true }),
-	).toHaveAttribute("aria-pressed", "true");
+		page.getByRole("button", { name: "Disable system audio", exact: true }),
+	).toBeVisible();
+	await expect(page.getByText("Select a microphone to enable", { exact: true })).toBeVisible();
 	await page.keyboard.press("Escape");
-	await page.getByRole("button", { name: "Camera", exact: true }).click();
+	const camera = page.getByRole("button", { name: "Enable webcam overlay", exact: true });
+	await expect(camera).toHaveText("");
+	await camera.click();
+	await expect(page.getByText("Webcam", { exact: true })).toBeVisible();
+	await expect(page.getByText("Select a webcam to enable", { exact: true })).toBeVisible();
 	await expect(page.getByRole("button", { name: "Built-in camera", exact: true })).toBeVisible();
-	await expect(
-		page
-			.getByRole("region", { name: "Camera", exact: true })
-			.getByRole("button", { name: "Off", exact: true }),
-	).toHaveAttribute("aria-pressed", "true");
 	await page
 		.locator("[data-recording-state]")
-		.screenshot({ path: "test-results/recorder-device-controls.png" });
+		.screenshot({ path: "test-results/recorder-restored-selectors.png" });
 });

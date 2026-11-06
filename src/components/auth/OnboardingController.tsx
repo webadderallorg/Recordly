@@ -22,10 +22,11 @@ export function OnboardingController({
 	callbackError?: string;
 	standalone?: boolean;
 }) {
-	// Development previews are explicit; a normal dev launch restores the real account.
+	// The development tour is optional. Native permission requests and explicit
+	// real-flow tests use preview=0; neither mode changes the restored account.
 	const [preview, setPreview] = useState(
 		() => import.meta.env.DEV &&
-			new URLSearchParams(window.location.search).get("onboardingPreview") === "1",
+			new URLSearchParams(window.location.search).get("onboardingPreview") !== "0",
 	);
 	// The dedicated window can paint its account UI while session recovery runs.
 	// `ready` gates account-dependent routing, not the window's initial display.
@@ -36,6 +37,7 @@ export function OnboardingController({
 	const checked = useRef(false);
 	const handledRequest = useRef(0);
 	const openWindow = useCallback((windowPreview = preview) => {
+		checked.current = true;
 		setPreview(windowPreview);
 		setReturningSignIn(false);
 		if (standalone) setOpen(true);
@@ -57,8 +59,8 @@ export function OnboardingController({
 		}
 	}, [requestNonce, openWindow]);
 	const close = useCallback(() => {
+		checked.current = true;
 		if (preview) {
-			checked.current = true;
 			saveAppSetting(DEV_DISMISSED_KEY, true);
 		}
 		setStartWithPermissions(false);
@@ -67,7 +69,7 @@ export function OnboardingController({
 
 	useEffect(() => {
 		if (!ready) return;
-		if (preview && checked.current) return;
+		if (checked.current && (preview || standalone)) return;
 		if (!standalone) {
 			// A preview dismissal survives renderer/window recreation without marking
 			// production onboarding complete or replaying a stale permission request.
@@ -79,7 +81,8 @@ export function OnboardingController({
 			if (!preview && !user && seen && !permissionsRequested) {
 				setReturningSignIn(true);
 				setOpen(true);
-			} else if (permissionsRequested || !seen) {
+			} else if (!checked.current && (permissionsRequested || !seen)) {
+				// Session updates must not duplicate an in-flight native window request.
 				setReturningSignIn(false);
 				openWindow();
 			}

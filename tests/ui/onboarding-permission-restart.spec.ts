@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
-test("normal dev onboarding restores account and permission progress after an OS restart", async ({ page }) => {
+test("explicit real dev onboarding restores account and permission progress after an OS restart", async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: true, onboarded: false });
 	await installDesktopBridgeOverrides(page, () => {
 		const get = window.electronAPI.getAppSetting;
@@ -32,7 +32,7 @@ test("normal dev onboarding restores account and permission progress after an OS
 			return { success: true };
 		};
 	});
-	await page.goto("/?windowType=onboarding");
+	await page.goto("/?windowType=onboarding&onboardingPreview=0");
 	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 	await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
 	await expect(tour.getByPlaceholder("you@example.com")).toHaveCount(0);
