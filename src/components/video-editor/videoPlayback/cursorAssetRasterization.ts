@@ -75,7 +75,7 @@ export async function createCursorPackAsset(
 export async function createRasterizedCursorAsset(
 	url: string,
 	anchor: { x: number; y: number },
-	options: { preserveCanvas?: boolean } = {},
+	options: { preserveCanvas?: boolean; hasBakedShadow?: boolean } = {},
 ): Promise<LoadedCursorAsset> {
 	const image = await loadImage(url);
 	const sourceCanvas = document.createElement("canvas");
@@ -90,6 +90,7 @@ export async function createRasterizedCursorAsset(
 		await Assets.load(url);
 		const texture = configureCursorTexture(Texture.from(url));
 		return {
+			hasBakedShadow: options.hasBakedShadow,
 			texture,
 			image,
 			aspectRatio: image.naturalHeight > 0 ? image.naturalWidth / image.naturalHeight : 1,
@@ -107,6 +108,7 @@ export async function createRasterizedCursorAsset(
 		const rasterizedImage = await loadImage(dataUrl);
 		const texture = configureCursorTexture(Texture.from(dataUrl));
 		return {
+			hasBakedShadow: options.hasBakedShadow,
 			texture,
 			image: rasterizedImage,
 			aspectRatio: sourceCanvas.height > 0 ? sourceCanvas.width / sourceCanvas.height : 1,
@@ -124,6 +126,7 @@ export async function createRasterizedCursorAsset(
 	const texture = configureCursorTexture(Texture.from(trimmed.dataUrl));
 
 	return {
+		hasBakedShadow: options.hasBakedShadow,
 		texture,
 		image: trimmedImage,
 		aspectRatio: trimmed.height > 0 ? trimmed.width / trimmed.height : 1,
@@ -227,6 +230,25 @@ export function trimCanvasToAlpha(canvas: HTMLCanvasElement, hotspot?: { x: numb
 	};
 }
 
+/** Invert body colors without turning an original black alpha shadow into a glow. */
+export function invertCursorPixelData(data: Uint8ClampedArray, preserveBakedShadow: boolean) {
+	for (let index = 0; index < data.length; index += 4) {
+		const alpha = data[index + 3];
+		if (alpha === 0) continue;
+		if (
+			preserveBakedShadow &&
+			alpha < 255 &&
+			data[index] === 0 &&
+			data[index + 1] === 0 &&
+			data[index + 2] === 0
+		)
+			continue;
+		data[index] = 255 - data[index];
+		data[index + 1] = 255 - data[index + 1];
+		data[index + 2] = 255 - data[index + 2];
+	}
+}
+
 export async function createInvertedCursorAsset(
 	asset: LoadedCursorAsset,
 ): Promise<LoadedCursorAsset> {
@@ -236,16 +258,7 @@ export async function createInvertedCursorAsset(
 	const ctx = canvas.getContext("2d")!;
 	ctx.drawImage(asset.image, 0, 0);
 	const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-	const { data } = imageData;
-	for (let index = 0; index < data.length; index += 4) {
-		if (data[index + 3] === 0) {
-			continue;
-		}
-
-		data[index] = 255 - data[index];
-		data[index + 1] = 255 - data[index + 1];
-		data[index + 2] = 255 - data[index + 2];
-	}
+	invertCursorPixelData(imageData.data, asset.hasBakedShadow === true);
 	ctx.putImageData(imageData, 0, 0);
 
 	const dataUrl = canvas.toDataURL("image/png");
@@ -256,6 +269,7 @@ export async function createInvertedCursorAsset(
 	return {
 		texture,
 		image,
+		hasBakedShadow: asset.hasBakedShadow,
 		aspectRatio: asset.aspectRatio,
 		anchorX: asset.anchorX,
 		anchorY: asset.anchorY,

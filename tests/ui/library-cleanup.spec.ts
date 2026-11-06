@@ -2,7 +2,13 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function option(page: Page, field: string, text: string) {
 	await page.getByRole("button", { name: new RegExp(field) }).click();
-	await page.getByRole("option", { name: text, exact: true }).click();
+	if (field === "Find") {
+		await page
+			.getByRole("menuitemcheckbox", { name: text, exact: true })
+			.or(page.getByRole("menuitem", { name: text, exact: true }))
+			.click();
+		await page.keyboard.press("Escape");
+	} else await page.getByRole("option", { name: text, exact: true }).click();
 }
 const cleanup = (page: Page) => page.getByRole("dialog", { name: "Clean up library", exact: true });
 test("cleanup previews timelines, dates and duplicate keepers before selecting, then clears hidden selections", async ({
@@ -16,7 +22,7 @@ test("cleanup previews timelines, dates and duplicate keepers before selecting, 
 	const dialog = cleanup(page);
 	const matches = dialog.getByRole("list", { name: "Cleanup matches" });
 	await expect(matches.getByRole("checkbox")).toHaveCount(2);
-	await expect(dialog.getByRole("button", { name: /Find/ })).toContainText("Unedited projects");
+	await expect(dialog.getByRole("button", { name: /Find/ })).toContainText("Unedited");
 	await expect(dialog).not.toContainText("Search, folder and time filters");
 	await expect(dialog).not.toContainText("Full-length timelines");
 	await expect(matches.locator("img")).toHaveCount(2);
@@ -52,7 +58,10 @@ test("cleanup previews timelines, dates and duplicate keepers before selecting, 
 		path: testInfo.outputPath("cleanup-duplicates.png"),
 		animations: "disabled",
 	});
-	await dialog.getByRole("button", { name: "Use selection (1)", exact: true }).click();
+	await dialog.getByRole("button", { name: "Delete selection (1)", exact: true }).click();
+	const review = page.getByRole("dialog", { name: "Review deletion", exact: true });
+	await expect(review).toBeVisible();
+	await review.getByRole("button", { name: "Cancel", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Original copy", exact: true })).toHaveAttribute(
 		"aria-pressed",
 		"true",
@@ -106,7 +115,9 @@ test("unreadable saved projects prevent source cleanup suggestions", async ({ pa
 	await page.getByRole("button", { name: "Raw files", exact: true }).click();
 	await page.getByRole("button", { name: "Clean up", exact: true }).click();
 	await expect(cleanup(page)).toContainText("Some projects could not be checked");
-	await expect(cleanup(page).getByRole("button", { name: "Use selection (0)" })).toBeDisabled();
+	await expect(
+		cleanup(page).getByRole("button", { name: "Delete selection (0)" }),
+	).toBeDisabled();
 });
 
 test("custom dates and timestamp choice narrow matches; the dialog fits a narrow window", async ({
@@ -137,7 +148,7 @@ test("custom dates and timestamp choice narrow matches; the dialog fits a narrow
 	await matches.getByText("Recent take", { exact: true }).click();
 	await expect(matches.getByRole("checkbox")).toBeChecked();
 	await matches.getByText("Recent take", { exact: true }).click();
-	await expect(dialog.getByRole("button", { name: "Use selection (0)" })).toBeDisabled();
+	await expect(dialog.getByRole("button", { name: "Delete selection (0)" })).toBeDisabled();
 	const bounds = (await dialog.boundingBox())!;
 	expect(bounds.x).toBeGreaterThanOrEqual(0);
 	expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
@@ -145,4 +156,27 @@ test("custom dates and timestamp choice narrow matches; the dialog fits a narrow
 		path: testInfo.outputPath("cleanup-narrow.png"),
 		animations: "disabled",
 	});
+});
+
+test("cleanup combines toggles and exposes an editable duration defaulting to five seconds", async ({
+	page,
+}) => {
+	await page.goto("/tests/ui/library-cleanup.html");
+	await page.getByRole("button", { name: "Clean up", exact: true }).click();
+	const dialog = cleanup(page);
+	await option(page, "Find", "Never exported");
+	await expect(dialog.getByRole("button", { name: /Find/ })).toContainText(
+		"Unedited & Not exported",
+	);
+	await option(page, "Find", "Never exported");
+	await expect(dialog.getByRole("button", { name: /Find/ })).not.toContainText("Not exported");
+	await option(page, "Find", "5 seconds or less");
+	const threshold = dialog.getByRole("spinbutton", { name: "Duration (seconds)" });
+	await expect(threshold).toHaveValue("5");
+	await threshold.fill("0");
+	await expect(dialog.getByRole("button", { name: /Delete selection/ })).toBeDisabled();
+	await threshold.fill("0.5");
+	await expect(
+		dialog.getByRole("list", { name: "Cleanup matches" }).getByRole("checkbox"),
+	).toHaveCount(0);
 });

@@ -18,6 +18,8 @@ export function ProjectHoverPreview({
 	const editor = useMemo(() => normalizeProjectEditor(data.project.editor), [data]);
 	const playback = useRef<VideoPlaybackRef>(null);
 	const started = useRef(false);
+	const stopping = useRef(false);
+	const [frameReady, setFrameReady] = useState(false);
 	const [time, setTime] = useState(0);
 	const [playing, setPlaying] = useState(false);
 	const [duration, setDuration] = useState(0);
@@ -68,6 +70,7 @@ export function ProjectHoverPreview({
 	}, [data.project.videoPath]);
 	const updateTime = useCallback(
 		(seconds: number) => {
+			if (stopping.current) return;
 			if (seconds >= 5) {
 				playback.current?.pause();
 				onFinish();
@@ -77,13 +80,22 @@ export function ProjectHoverPreview({
 	);
 	const updatePlaying = useCallback(
 		(value: boolean) => {
+			if (stopping.current) return;
 			setPlaying(value);
 			if (value) started.current = true;
 			else if (started.current) onFinish();
 		},
 		[onFinish],
 	);
+	const updateReady = useCallback((ready: boolean) => {
+		if (!stopping.current) setFrameReady(ready);
+	}, []);
 	useEffect(() => {
+		if (!frameReady || started.current) return;
+		void playback.current?.play().catch(onFinish);
+	}, [frameReady, onFinish]);
+	useEffect(() => {
+		stopping.current = false;
 		// A stalled decoder or unavailable GPU must leave the static thumbnail usable.
 		const timeout = window.setTimeout(onFinish, 15000);
 		const stopWhenHidden = () => {
@@ -91,6 +103,7 @@ export function ProjectHoverPreview({
 		};
 		document.addEventListener("visibilitychange", stopWhenHidden);
 		return () => {
+			stopping.current = true;
 			clearTimeout(timeout);
 			document.removeEventListener("visibilitychange", stopWhenHidden);
 			playback.current?.pause();
@@ -99,7 +112,8 @@ export function ProjectHoverPreview({
 	return (
 		<div
 			data-project-hover-preview
-			className={`pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden rounded-xl ${playing ? "opacity-100" : "opacity-0"}`}
+			data-preview-ready={frameReady}
+			className={`pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden rounded-xl ${frameReady ? "opacity-100" : "opacity-0"}`}
 			aria-hidden="true"
 		>
 			<div
@@ -108,7 +122,6 @@ export function ProjectHoverPreview({
 			>
 				<VideoPlayback
 					{...editor}
-					autoPlay
 					ref={playback}
 					videoPath={data.videoUrl}
 					webcamVideoPath={data.webcamUrl}
@@ -121,6 +134,7 @@ export function ProjectHoverPreview({
 					selectedZoomId={null}
 					onSelectZoom={ignore}
 					onZoomFocusChange={ignore}
+					onPreviewReadyChange={updateReady}
 					onDurationChange={updateDuration}
 					onTimeUpdate={updateTime}
 					onPlayStateChange={updatePlaying}

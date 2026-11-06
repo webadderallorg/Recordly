@@ -186,6 +186,7 @@
 		"cursorDebugMovedToDev": "La regolazione della molla del cursore è disponibile in Impostazioni > Sviluppo.",
 		"webcamShape": "Forma",
 		"webcamCircle": "Cerchio",
+		"webcamRectangle": "Rettangolo",
 		"webcamSquircle": "Quadrato arrotondato",
 		"webcamPosition": "Posizione",
 		"webcamCustomPosition": "Posizione personalizzata",

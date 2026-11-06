@@ -4,6 +4,7 @@ import { HomeLoadingSkeleton } from "./components/video-editor/dashboard/HomeLoa
 import { EditorLoadingSkeleton } from "./components/video-editor/layout/EditorLoadingSkeleton";
 import { useI18n } from "./contexts/I18nContext";
 import { getStartupView } from "./lib/startupView";
+import { RecordlyMark } from "./components/ui/RecordlyMark";
 
 const HudWindow = lazy(() => import("./components/launch/HudWindow"));
 const SourceSelector = lazy(() =>
@@ -31,7 +32,6 @@ export default function App() {
 		() => new URLSearchParams(window.location.search).get("windowType") || "",
 	);
 	const { t } = useI18n();
-	const appIconSrc = "/app-icons/recordly-128.png";
 
 	useEffect(() => {
 		document.documentElement.dataset.windowType = windowType;
@@ -106,11 +106,7 @@ export default function App() {
 			content = (
 				<div className="flex h-full w-full items-center justify-center bg-editor-bg text-foreground">
 					<Card className="flex-row items-center gap-4 px-6 py-5">
-						<img
-							src={appIconSrc}
-							alt={t("app.name", "Recordly")}
-							className="h-12 w-12 rounded-xl"
-						/>
+						<RecordlyMark className="size-12 text-accent" />
 						<div>
 							<h1 className="text-xl font-semibold tracking-tight">
 								{t("app.name", "Recordly")}

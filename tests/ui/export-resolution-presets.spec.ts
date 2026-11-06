@@ -46,6 +46,7 @@ test("an unsupported fixed preset reports an error instead of silently exporting
 	await page.goto("/tests/ui/export-resolution-presets.html?limit=1920");
 	await page.getByRole("row", { name: "4K, 3840 × 2160", exact: true }).click();
 	await page.getByRole("button", { name: "Export Video", exact: true }).click();
+	await expect(page.getByTestId("export-settings-result")).toContainText('"mp4FrameRate":60');
 	await expect(page.getByTestId("export-result")).toContainText(
 		"cannot export 3840 × 2160 at 60 FPS",
 	);
@@ -66,9 +67,12 @@ test("4K and QHD exports are available without a Cloud subscription", async ({ p
 		exact: true,
 	});
 	await expect(personalUse).toHaveCount(0);
-	await expect(page.getByRole("button", { name: "Upgrade to Cloud", exact: true })).toBeVisible();
-	await expect(page.getByText("Upgrade to Cloud for commercial use", { exact: true })).toBeVisible();
-	await page.screenshot({ path: test.info().outputPath("personal-use-export.png"), animations: "disabled" });
+	await expect(page.getByRole("button", { name: "Upgrade", exact: true })).toBeVisible();
+	await expect(page.getByText("Upgrade for commercial use", { exact: true })).toBeVisible();
+	await page.screenshot({
+		path: test.info().outputPath("personal-use-export.png"),
+		animations: "disabled",
+	});
 	await expect(page.getByRole("row", { name: /^Original/ })).toHaveCount(0);
 	await expect(page.getByRole("grid", { name: "Encoding", exact: true })).toHaveCount(0);
 	await page.getByRole("row", { name: "4K, 3840 × 2160", exact: true }).click();

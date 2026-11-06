@@ -20,7 +20,7 @@ export async function checkEdges() {
 	sourceContext.fillStyle = "#ef4444";
 	sourceContext.fillRect(260, 100, 40, 20);
 	const results = [];
-	for (const shape of ["circle", "squircle"] as const) {
+	for (const shape of ["circle", "squircle", "rectangle"] as const) {
 		for (const cropped of [false, true]) {
 			const images: ImageData[][] = [];
 			for (const [name, Renderer] of [
@@ -47,7 +47,7 @@ export async function checkEdges() {
 						shape,
 						width: 51.7,
 						height: 63.3,
-						roundness: 20,
+						roundness: shape === "rectangle" ? 0 : 20,
 						shadow: 0.2,
 						mirror: cropped,
 						cropRegion: cropped
@@ -102,6 +102,18 @@ export async function checkEdges() {
 			results.push({
 				shape,
 				cropped,
+				// Inside the rectangle's upper-left corner, above the circle's top edge.
+				rectangleCorners:
+					shape === "rectangle"
+						? images.map((frames) =>
+								Array.from(
+									frames[0].data.slice(
+										(127 * 640 + 448) * 4,
+										(127 * 640 + 448) * 4 + 4,
+									),
+								),
+							)
+						: [],
 				// Both production exporters must agree on every pixel, including the rim,
 				// shadow, landmarks, and fractional-size edges throughout the shutter.
 				exporterDifferences: images[0].map((frame, index) =>

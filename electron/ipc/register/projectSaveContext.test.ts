@@ -41,6 +41,7 @@ vi.mock("node:fs/promises", () => ({
 vi.mock("../project/atomicSave", () => ({
 	writeProjectFileAtomically: mocks.write,
 	getProjectBackupPath: (value: string) => `${value}.backup`,
+	getProjectBackupPaths: (value: string) => [`${value}.backup`, `${value}.bak`],
 }));
 vi.mock("../project/createUntitledProject", () => ({ createUntitledProject: mocks.create }));
 vi.mock("../project/manager", () => ({
@@ -51,6 +52,7 @@ vi.mock("../project/manager", () => ({
 	saveProjectThumbnail: mocks.thumbnail,
 	rememberRecentProject: mocks.recent,
 	getProjectThumbnailPath: (value: string) => `${value}.png`,
+	getProjectThumbnailPaths: (value: string) => [`${value}.png`],
 	loadRecentProjectPaths: async () => ["/projects/A.recordly", "/projects/B.recordly"],
 	saveRecentProjectPaths: vi.fn(),
 }));

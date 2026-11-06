@@ -7,6 +7,8 @@
 }
 .app-settings-dialog .app-settings-body {
 	display: flex;
+	flex: 1;
+	min-height: 0;
 	margin: 0;
 	padding: 0;
 	overflow: hidden;
@@ -44,6 +46,7 @@
 .app-settings-dialog .dashboard-settings-tabs {
 	flex: 1;
 	min-height: 0;
+	grid-template-rows: minmax(0, 1fr);
 }
 .dashboard-settings-tabs .tabs__list-container {
 	min-height: 0;
@@ -627,6 +630,7 @@ html[data-theme="dark"] .dashboard-settings {
 	gap: 16px;
 	border-right: 1px solid var(--separator);
 	padding-right: 14px;
+	min-width: 0;
 }
 .dashboard-settings-navigation .tabs__list-container {
 	flex: 1;
@@ -645,6 +649,13 @@ html[data-theme="dark"] .dashboard-settings {
 }
 /* All desktop categories fit together; only the preferences pane should scroll. */
 @media (min-width: 681px) {
+	.dashboard-settings-navigation {
+		overflow: clip;
+	}
+	.dashboard-settings-navigation > .dashboard-settings-tab-list {
+		flex: 0 0 auto;
+		padding: 0;
+	}
 	.dashboard-settings-navigation .tabs__list-container {
 		flex: 0 0 auto;
 		overflow: visible;
@@ -653,6 +664,27 @@ html[data-theme="dark"] .dashboard-settings {
 		height: auto;
 		margin-block: 0;
 		overflow: visible;
+	}
+}
+
+@media (min-width: 681px) and (max-height: 560px) {
+	.modal__container:has(> .app-settings-dialog) {
+		padding: 12px;
+	}
+	.app-settings-dialog {
+		height: calc(100dvh - 24px);
+		padding: 16px;
+	}
+	.dashboard-settings-title {
+		margin-bottom: 12px;
+	}
+	.dashboard-settings-navigation {
+		gap: 8px;
+	}
+	.dashboard-settings-navigation .tabs__tab {
+		height: auto;
+		min-height: 28px;
+		padding-block: 4px;
 	}
 }
 .dashboard-settings-navigation .tabs__list-container > .tabs__list-container__scroll-prev,

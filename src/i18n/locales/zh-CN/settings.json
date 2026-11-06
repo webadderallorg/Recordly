@@ -186,6 +186,7 @@
 		"cursorDebugMovedToDev": "光标弹簧调整位于“设置 > 开发”中。",
 		"webcamShape": "形状",
 		"webcamCircle": "圆形",
+		"webcamRectangle": "矩形",
 		"webcamSquircle": "圆角方形",
 		"webcamPosition": "位置",
 		"webcamCustomPosition": "自定义位置",

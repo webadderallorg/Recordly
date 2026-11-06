@@ -1,3 +1,8 @@
+/* Inline buttons otherwise leave a text-baseline gap under color/gradient rows. */
+[data-wallpaper-glass-theme] > .group {
+	display: flex;
+}
+
 /* The baked lens map is neutral in the center and curves only at the rim. */
 .wallpaper-tile {
 	/* Match the map's 30px radius at 256 × 192, including when tiles resize. */

@@ -551,7 +551,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.invoke("create-project-file", data, thumbnail),
 	renameLibraryProject: (path: string, name: string) =>
 		ipcRenderer.invoke("rename-library-project", path, name),
-	trashProjectFiles: (paths: string[]) => ipcRenderer.invoke("trash-project-files", paths),
+	reviewProjectDeletion: (paths: string[], protectedSources?: string[]) => ipcRenderer.invoke("review-project-deletion", paths, protectedSources),
+	trashProjectFiles: (paths: string[], options?: { includeSources?: boolean; protectedSources?: string[] }) => ipcRenderer.invoke("trash-project-files", paths, options),
 	showProjectDashboard: () => ipcRenderer.invoke("show-project-dashboard"),
 	openLoadingRecordingEditor: () => ipcRenderer.invoke("open-loading-recording-editor"),
 	waitForRecordingEditor: () => ipcRenderer.invoke("wait-for-recording-editor"),
@@ -942,8 +943,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.invoke("list-recordings", includeSources),
 	setRecordingsRemoved: (paths: string[], removed: boolean) =>
 		ipcRenderer.invoke("set-recordings-removed", paths, removed),
-	trashRecordingSources: (paths: string[]) =>
-		ipcRenderer.invoke("trash-recording-sources", paths),
+	trashRecordingSources: (paths: string[], protectedSources?: string[]) =>
+		ipcRenderer.invoke("trash-recording-sources", paths, protectedSources),
 	importRecording: (
 		currentPath: string,
 		recordingPath: string,

@@ -186,6 +186,7 @@
 		"cursorDebugMovedToDev": "Le réglage du ressort du curseur se trouve dans Paramètres > Développement.",
 		"webcamShape": "Forme",
 		"webcamCircle": "Cercle",
+		"webcamRectangle": "Rectangle",
 		"webcamSquircle": "Carré arrondi",
 		"webcamPosition": "Position",
 		"webcamCustomPosition": "Position personnalisée",

@@ -1,3 +1,4 @@
+import { Tabs as HeroTabs } from "@heroui/react";
 import {
 	createContext,
 	type ReactNode,
@@ -10,6 +11,7 @@ import {
 import { ChoiceGroup, ChoiceItem } from "@/components/ui/choice-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useI18n } from "@/contexts/I18nContext";
+import { useScrollFade } from "./settings/useScrollFade";
 
 export type SettingsSection =
 	| "appearance"
@@ -70,6 +72,8 @@ export function SettingsSections({
 		(category) => category !== "developer" || import.meta.env.DEV,
 	);
 	const active = available.includes(selected) ? selected : available[0];
+	const CategoryList = narrow ? TabsList : HeroTabs.List;
+	const scrollFade = useScrollFade(panel, active);
 	useLayoutEffect(() => {
 		if (active && panel.current) panel.current.scrollTop = 0;
 	}, [active]);
@@ -85,7 +89,7 @@ export function SettingsSections({
 					className="dashboard-settings-tabs"
 				>
 					<div className="dashboard-settings-navigation">
-						<TabsList
+						<CategoryList
 							aria-label={t("settings.categories.label", "Settings sections")}
 							className="dashboard-settings-tab-list"
 						>
@@ -94,7 +98,7 @@ export function SettingsSections({
 									{labels[category]}
 								</TabsTrigger>
 							))}
-						</TabsList>
+						</CategoryList>
 						{sidebarFooter && (
 							<div className="dashboard-settings-sidebar-footer">
 								{sidebarFooter(setSelected)}
@@ -108,7 +112,7 @@ export function SettingsSections({
 							category: labels[active],
 						})}
 						className="dashboard-settings-tab-panel space-y-6 scroll-shadow scroll-shadow--vertical scroll-shadow--fade scroll-shadow--hide-scrollbar [--scroll-shadow-size:16px]"
-						data-scroll-shadow-mode="auto"
+						data-scroll-shadow-mode={scrollFade}
 					>
 						{children}
 					</TabsContent>

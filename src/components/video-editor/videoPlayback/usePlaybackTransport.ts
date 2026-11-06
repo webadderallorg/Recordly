@@ -1,7 +1,8 @@
 import { Graphics, Sprite, Texture } from "pixi.js";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { destroyPixiContainer } from "@/lib/pixiApplicationLifecycle";
-import { createClipPlayback } from "./clipPlayback";
+import { createClipPlayback, findPreviewClipAtTimelineTime } from "./clipPlayback";
+import { subscribePreviewReadiness } from "./previewReadiness";
 import type { PlaybackProps } from "./playbackProps";
 import { createPlaybackAnimationState } from "./playbackTypes";
 import { PreviewFrameTexture } from "./previewFrameTexture";
@@ -78,6 +79,8 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		sourceRedactionRef,
 		updatePreviewTextureRef,
 	} = input;
+	const callbacksRef = useRef({ onTimeUpdate, onPlayStateChange, onPreviewReadyChange });
+	callbacksRef.current = { onTimeUpdate, onPlayStateChange, onPreviewReadyChange };
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: A new media path must reset the persistent video element.
 	useEffect(() => {
@@ -99,8 +102,8 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 	]);
 
 	useEffect(() => {
-		onPreviewReadyChange?.(videoReady);
-	}, [onPreviewReadyChange, videoReady]);
+		if (!videoReady || !pixiReady) callbacksRef.current.onPreviewReadyChange?.(false);
+	}, [videoReady, pixiReady]);
 
 	useEffect(() => {
 		if (!pixiReady || !videoReady) return;
@@ -184,6 +187,32 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 			cursorContainer.addChild(cursorOverlayRef.current.container);
 		}
 
+		const stopReadiness = subscribePreviewReadiness({
+			runner: app.renderer.runners.postrender,
+			isFrameReady: () => {
+				const openingGap =
+					clipRegionsRef.current.length > 0 &&
+					!findPreviewClipAtTimelineTime(
+						timelineTimeRef.current * 1000,
+						clipRegionsRef.current,
+					);
+				const composedTime = lastRenderedContentTimeRef.current;
+				return (
+					composedTime !== null &&
+					Math.abs(composedTime - timelineTimeRef.current * 1000) < 0.001 &&
+					!shouldSnapPausedFrameRef.current &&
+					!video.seeking &&
+					video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+					app.canvas.width > 0 &&
+					app.canvas.height > 0 &&
+					baseMaskRef.current.width > 0 &&
+					baseMaskRef.current.height > 0 &&
+					(videoSprite.visible || openingGap)
+				);
+			},
+			onChange: (ready) => callbacksRef.current.onPreviewReadyChange?.(ready),
+		});
+
 		animationStateRef.current = createPlaybackAnimationState();
 
 		layoutVideoContentRef.current?.();
@@ -202,12 +231,12 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 			onTime: (time, source) => {
 				timelineTimeRef.current = time;
 				if (source !== null) currentTimeRef.current = source * 1000;
-				onTimeUpdate(time);
+				callbacksRef.current.onTimeUpdate(time);
 				requestPreviewRender();
 			},
 			onPlaying: (playing) => {
 				isPlayingRef.current = playing;
-				onPlayStateChange(playing);
+				callbacksRef.current.onPlayStateChange(playing);
 			},
 			onError: (error) =>
 				onPlaybackErrorRef.current(error instanceof Error ? error.message : String(error)),
@@ -237,6 +266,7 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		video.addEventListener("seeking", handleSeeking);
 
 		return () => {
+			stopReadiness();
 			if (updatePreviewTextureRef.current === updatePreviewTexture) {
 				updatePreviewTextureRef.current = null;
 			}
@@ -258,8 +288,6 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 	}, [
 		autoPlay,
 		requestPreviewRender,
-		onPlayStateChange,
-		onTimeUpdate,
 		pixiReady,
 		videoReady,
 		videoRef,
@@ -285,6 +313,7 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		baseMaskRef,
 		sourceRedactionRef,
 		updatePreviewTextureRef,
+		lastRenderedContentTimeRef,
 	]);
 	return {};
 }

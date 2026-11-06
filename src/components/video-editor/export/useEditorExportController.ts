@@ -22,6 +22,7 @@ import { useExportStatusViewModel } from "./useExportStatusViewModel";
 import { useSmokeExportAutomation } from "./useSmokeExportAutomation";
 
 type Input = {
+	exportIdentity?: import("../dashboard/libraryExportHistory").LibraryExportIdentity;
 	t: ReturnType<typeof useI18n>["t"];
 	projectName: string;
 	videoPath: string | null;
@@ -84,6 +85,7 @@ export function useEditorExportController(input: Input) {
 	useEffect(() => setMp4SizeEstimate(mp4SizeEstimate), [mp4SizeEstimate, setMp4SizeEstimate]);
 	const runner = useExportRunner({
 		projectName: input.projectName,
+	exportIdentity: input.exportIdentity,
 		videoPath: input.videoPath,
 		videoPlaybackRef: input.videoPlaybackRef,
 		isPlaying: input.isPlaying,

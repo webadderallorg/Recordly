@@ -272,6 +272,30 @@ describe("local media path policy", () => {
 		await expect(hasFreshProjectThumbnail(thumbnailPath, 0)).resolves.toBe(true);
 	});
 
+	it("stores new previews outside an external project's folder and uses a fresh legacy preview without rewriting it", async () => {
+		const manager = await import("./manager");
+		const external = path.join(tempRoot, "ExternalProjects");
+		await fs.mkdir(external);
+		const projectPath = path.join(external, "only.recordly");
+		await fs.writeFile(projectPath, JSON.stringify({ version: 1, videoPath: "video.mp4", editor: {} }));
+		const header = Buffer.alloc(45);
+		Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(header);
+		header.write("IHDR", 12);
+		header.writeUInt32BE(640, 16);
+		header.writeUInt32BE(480, 20);
+		const dataUrl = `data:image/png;base64,${header.toString("base64")}`;
+		const cached = await manager.saveProjectThumbnail(projectPath, dataUrl);
+		expect(cached).toContain(path.join(userDataPath, "project-thumbnails"));
+		expect(await fs.readdir(external)).toEqual(["only.recordly"]);
+		expect((await manager.buildProjectLibraryEntry(projectPath, external))?.thumbnailPath).toBe(cached);
+		const legacy = manager.getLegacyProjectThumbnailPath(projectPath);
+		await fs.rename(cached!, legacy);
+		const before = await fs.stat(legacy);
+		expect((await manager.buildProjectLibraryEntry(projectPath, external))?.thumbnailPath).toBe(legacy);
+		expect((await fs.stat(legacy)).mtimeMs).toBe(before.mtimeMs);
+		await expect(fs.access(manager.getProjectThumbnailPath(projectPath))).rejects.toMatchObject({ code: "ENOENT" });
+	});
+
 	it("approves only a listed external project's current regular thumbnail for media transport", async () => {
 		const manager = await import("./manager");
 		const external = path.join(tempRoot, "ExternalProjects");
@@ -283,8 +307,9 @@ describe("local media path policy", () => {
 		header.write("IHDR", 12);
 		header.writeUInt32BE(640, 16);
 		header.writeUInt32BE(480, 20);
-		await manager.saveProjectThumbnail(projectPath, `data:image/png;base64,${header.toString("base64")}`);
-		const thumbnail = manager.getProjectThumbnailPath(projectPath);
+		const thumbnail = manager.getLegacyProjectThumbnailPath(projectPath);
+		const { encodeComposedThumbnail } = await import("./composedThumbnail");
+		await fs.writeFile(thumbnail, encodeComposedThumbnail(`data:image/png;base64,${header.toString("base64")}`));
 		const sibling = path.join(external, "private.png");
 		await fs.writeFile(sibling, "private");
 		await expect(manager.isAllowedLocalMediaPath(thumbnail)).resolves.toBe(false);
@@ -307,14 +332,15 @@ describe("local media path policy", () => {
 		header.write("IHDR", 12);
 		header.writeUInt32BE(640, 16);
 		header.writeUInt32BE(480, 20);
-		const thumbnail = manager.getProjectThumbnailPath(projectPath);
+		const thumbnail = manager.getLegacyProjectThumbnailPath(projectPath);
 		await fs.writeFile(thumbnail, header);
 		await manager.saveRecentProjectPaths([projectPath]);
 		expect((await manager.listProjectLibraryEntries()).entries[0]?.thumbnailPath).toBeNull();
 		await expect(manager.isAllowedLocalMediaPath(thumbnail)).resolves.toBe(false);
 		const targetProject = path.join(external, "unlisted.recordly");
 		await manager.saveProjectThumbnail(targetProject, `data:image/png;base64,${header.toString("base64")}`);
-		const target = manager.getProjectThumbnailPath(targetProject);
+		const target = manager.getLegacyProjectThumbnailPath(targetProject);
+		await fs.copyFile(manager.getProjectThumbnailPath(targetProject), target);
 		await fs.rm(thumbnail);
 		try {
 			await fs.symlink(target, thumbnail);
@@ -376,6 +402,26 @@ describe("local media path policy", () => {
 		expect(result.success).toBe(true);
 		expect(result.path).toBe(projectPath);
 		expect(result.project).toMatchObject({ videoPath });
+	});
+
+	it("loads a valid managed recovery generation without changing the damaged document", async () => {
+		const { loadProjectFromPath } = await import("./manager");
+		const { getProjectBackupPath, writeProjectFileAtomically } = await import("./atomicSave");
+		const videoPath = path.join(tempPath, "recover-video.mp4");
+		const projectPath = path.join(tempPath, "recover.recordly");
+		const contents = JSON.stringify({ version: 1, videoPath, editor: { wallpaper: "red" } });
+		await fs.writeFile(videoPath, "video");
+		await writeProjectFileAtomically(projectPath, contents);
+		await writeProjectFileAtomically(projectPath, contents);
+		expect(getProjectBackupPath(projectPath)).toContain(
+			path.join(userDataPath, "project-recovery"),
+		);
+		await fs.writeFile(projectPath, "damaged");
+		const result = await loadProjectFromPath(projectPath);
+		expect(result.success).toBe(true);
+		expect(result.recovered).toBe(true);
+		expect(result.project).toMatchObject({ editor: { wallpaper: "red" } });
+		expect(await fs.readFile(projectPath, "utf-8")).toBe("damaged");
 	});
 
 	it("rejects invalid project payloads before approving media paths", async () => {
@@ -459,6 +505,7 @@ describe("local media path policy", () => {
 		);
 		await fs.writeFile(target, "must remain intact");
 		const thumbnail = manager.getProjectThumbnailPath(projectPath);
+		await fs.mkdir(path.dirname(thumbnail), { recursive: true });
 		try {
 			await fs.symlink(target, thumbnail);
 		} catch (error) {

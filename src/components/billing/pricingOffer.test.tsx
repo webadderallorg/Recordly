@@ -68,7 +68,8 @@ describe("catalog-driven pricing and promotions", () => {
 	it("does not invent prices or offers when catalog data is missing", () => {
 		expect(renderToStaticMarkup(<EarlyBirdTag />)).toBe("");
 		const markup = renderToStaticMarkup(<UpgradeButton />);
-		expect(markup).toContain("Upgrade to Cloud");
+		expect(markup).toContain("Upgrade");
+		expect(markup).not.toContain("Upgrade to Cloud");
 		expect(markup).not.toContain("% off");
 	});
 	it("updates both badges with the calculated discount", () => {

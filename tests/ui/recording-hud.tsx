@@ -25,7 +25,6 @@ function Preview() {
 					formatTime={() => "01:05"}
 					onPauseResume={() => setPaused((value) => !value)}
 					onStopRecording={() => setAction("stop")}
-					onHideHud={() => setAction("hide")}
 					onCancelRecording={() => setAction("discard")}
 				/>
 			</div>

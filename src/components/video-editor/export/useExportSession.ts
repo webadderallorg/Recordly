@@ -8,6 +8,9 @@ import type { PendingExportSave } from "./exportPersistence";
 export type CancelableExporter = { cancel(): void };
 
 export function useExportSession() {
+	const exportIdentityRef = useRef<
+		import("../dashboard/libraryExportHistory").LibraryExportIdentity | null
+	>(null);
 	const [mp4SizeEstimate, setMp4SizeEstimate] = useState<number | null>(null);
 	const [gifSizeEstimate, setGifSizeEstimate] = useState<GifSizeEstimateState | null>(null);
 	const [gifOptimization, setGifOptimization] = useState<GifOptimizationSummary | null>(null);
@@ -43,6 +46,7 @@ export function useExportSession() {
 	}, []);
 
 	return {
+		exportIdentityRef,
 		mp4SizeEstimate,
 		setMp4SizeEstimate,
 		gifSizeEstimate,

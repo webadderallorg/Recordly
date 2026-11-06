@@ -186,6 +186,7 @@
 		"cursorDebugMovedToDev": "Die Cursor-Federabstimmung findest du unter Einstellungen > Entwicklung.",
 		"webcamShape": "Form",
 		"webcamCircle": "Kreis",
+		"webcamRectangle": "Rechteck",
 		"webcamSquircle": "Abgerundetes Quadrat",
 		"webcamPosition": "Position",
 		"webcamCustomPosition": "Eigene Position",

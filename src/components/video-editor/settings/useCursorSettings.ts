@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DEFAULT_EDITOR_PREFERENCES } from "@/components/video-editor/editorPreferences";
-import { DEFAULT_CURSOR_CLICK_BOUNCE, type CursorStyle } from "@/components/video-editor/types";
+import { type CursorStyle, DEFAULT_CURSOR_CLICK_BOUNCE } from "@/components/video-editor/types";
 import {
 	type CursorStylePreviewAsset,
 	getCursorStylePreview,
@@ -13,9 +13,9 @@ type CursorStyleOption = { value: CursorStyle; label: string };
 const BUILTIN_CURSOR_STYLE_OPTIONS: CursorStyleOption[] = [
 	{ value: "macos", label: "macOS" },
 	{ value: "tahoe", label: "Golden Gate" },
-	{ value: "windows11", label: "Windows 11" },
-	{ value: "dot", label: "Touch" },
 	{ value: "figma", label: "Minimal" },
+	{ value: "dot", label: "Touch" },
+	{ value: "windows11", label: "Windows 11" },
 	{ value: "bold-outline", label: "Bold Outline" },
 	{ value: "pixel-hand", label: "Pixel Glove" },
 	{ value: "breezex", label: "Linux (BreezeX)" },
@@ -81,9 +81,12 @@ export function useCursorSettings(
 	useEffect(() => {
 		let cancelled = false;
 		void Promise.all(
-			BUILTIN_CURSOR_STYLE_OPTIONS.map(
-				async ({ value }) => [value, await getCursorStylePreview(value)] as const,
-			),
+			BUILTIN_CURSOR_STYLE_OPTIONS.flatMap(({ value }) => [
+				getCursorStylePreview(value).then((asset) => [value, asset] as const),
+				getCursorStylePreview(value, "pointer").then(
+					(asset) => [`${value}:pointer`, asset] as const,
+				),
+			]),
 		)
 			.then((entries) => {
 				if (!cancelled) setBuiltInCursorPreviewUrls(Object.fromEntries(entries));

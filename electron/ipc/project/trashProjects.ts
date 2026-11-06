@@ -1,11 +1,12 @@
 import path from "node:path";
 import fs from "node:fs/promises";
-import { getProjectBackupPath } from "./atomicSave";
+import { getProjectBackupPaths } from "./atomicSave";
 
 type Dependencies = {
 	list: () => Promise<{ entries: Array<{ path: string }> }>;
 	trash: (path: string) => Promise<void>;
 	thumbnailPath: (path: string) => string;
+	thumbnailPaths?: (path: string) => string[];
 };
 /** Only library project files may be trashed; referenced recordings are never touched. */
 export async function trashLibraryProjects(paths: unknown, deps: Dependencies) {
@@ -26,8 +27,8 @@ export async function trashLibraryProjects(paths: unknown, deps: Dependencies) {
 			await deps.trash(projectPath);
 			deleted.push(projectPath);
 			for (const sidecar of [
-				deps.thumbnailPath(projectPath),
-				getProjectBackupPath(projectPath),
+				...(deps.thumbnailPaths?.(projectPath) ?? [deps.thumbnailPath(projectPath)]),
+				...getProjectBackupPaths(projectPath),
 			]) {
 				try {
 					await fs.access(sidecar);

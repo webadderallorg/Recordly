@@ -117,12 +117,12 @@ export function useWebcamPreviewOverlay({
 								deviceId: { exact: webcamDeviceId },
 								width: { ideal: 320 },
 								height: { ideal: 320 },
-								frameRate: { ideal: 24, max: 30 },
+								frameRate: { ideal: 60, max: 60 },
 							}
 						: {
 								width: { ideal: 320 },
 								height: { ideal: 320 },
-								frameRate: { ideal: 24, max: 30 },
+								frameRate: { ideal: 60, max: 60 },
 							},
 					audio: false,
 				});

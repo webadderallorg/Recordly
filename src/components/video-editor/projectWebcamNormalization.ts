@@ -28,7 +28,7 @@ export function normalizeProjectWebcam(editor: Partial<ProjectEditorState>): Web
 		: null;
 	return {
 		shape:
-			webcam.shape === "circle" || webcam.shape === "squircle"
+			webcam.shape === "circle" || webcam.shape === "squircle" || webcam.shape === "rectangle"
 				? webcam.shape
 				: editor.webcam
 					? "squircle"

@@ -208,3 +208,72 @@ it("protects canonical dependencies through folder aliases and blocks incomplete
 	expect(result.incomplete).toBe(true);
 	expect(result.candidates.size).toBe(0);
 });
+
+it("combines criteria with AND and allows duration thresholds to be changed", async () => {
+	vi.stubGlobal("window", {
+		electronAPI: {
+			getAppSetting: () => null,
+			getProjectPreview: async (path: string) => ({
+				success: true,
+				value: {
+					project: {
+						...project,
+						projectId: path,
+						videoPath: `/${path}.mp4`,
+						editor: path === "edited" ? { annotationRegions: [{}] } : {},
+					},
+				},
+			}),
+			probeNativeVideoMetadata: async (path: string) => ({
+				success: true,
+				metadata: {
+					duration: path.includes("long") ? 6 : path.includes("invalid") ? NaN : 5,
+				},
+			}),
+		},
+	});
+	const items = [
+		entry("short"),
+		entry("long"),
+		entry("edited"),
+		entry("invalid"),
+		entry("current", 1, true),
+	];
+	expect([
+		...(
+			await scanCleanup(
+				["short", "untouched", "neverExported"],
+				items,
+				items,
+				false,
+				() => false,
+			)
+		).candidates,
+	]).toEqual(["short"]);
+	expect([
+		...(await scanCleanup(["short", "untouched"], items, items, false, () => false, 6))
+			.candidates,
+	]).toEqual(["short", "long"]);
+	for (const threshold of [0, -1, NaN, Infinity])
+		expect(
+			(await scanCleanup("short", items, items, false, () => false, threshold)).candidates
+				.size,
+		).toBe(0);
+});
+it("does not suggest never-exported projects when persistent export history cannot be read", async () => {
+	vi.stubGlobal("window", {
+		electronAPI: {
+			getAppSetting: () => [],
+			getProjectPreview: async () => ({ success: true, value: { project } }),
+		},
+	});
+	const result = await scanCleanup(
+		"neverExported",
+		[entry("a")],
+		[entry("a")],
+		false,
+		() => false,
+	);
+	expect(result.candidates.size).toBe(0);
+	expect(result.skipped).toBeGreaterThan(0);
+});

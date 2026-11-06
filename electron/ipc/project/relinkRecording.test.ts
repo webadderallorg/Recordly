@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { writeProjectFileAtomically } from "./atomicSave";
+import { getProjectBackupPath, writeProjectFileAtomically } from "./atomicSave";
 
 const policy = vi.hoisted(() => ({ require: vi.fn() }));
 vi.mock("./manager", () => ({
@@ -66,7 +66,7 @@ it("reconnects only the source path, preserves edits/history/identity and backs 
 		...project,
 		videoPath: replacement,
 	});
-	await expect(fs.readFile(`${target}.bak`, "utf-8")).resolves.toBe(original);
+	await expect(fs.readFile(getProjectBackupPath(target), "utf-8")).resolves.toBe(original);
 });
 
 it("cancellation leaves the project and backups untouched", async () => {
@@ -76,7 +76,7 @@ it("cancellation leaves the project and backups untouched", async () => {
 	});
 	expect(probe).not.toHaveBeenCalled();
 	expect(JSON.parse(await fs.readFile(target, "utf-8"))).toEqual(project);
-	await expect(fs.access(`${target}.bak`)).rejects.toMatchObject({ code: "ENOENT" });
+	await expect(fs.access(getProjectBackupPath(target))).rejects.toMatchObject({ code: "ENOENT" });
 });
 
 it("does not replace a source that is already accessible", async () => {
@@ -162,4 +162,35 @@ it("rejects a supported filename symlink whose target cannot be served by the me
 	);
 	expect(probe).not.toHaveBeenCalled();
 	expect(JSON.parse(await fs.readFile(target, "utf-8"))).toEqual(project);
+});
+
+it("reconnects a recovered project with a damaged primary without losing the good backup", async () => {
+	const original = JSON.stringify(project);
+	await writeProjectFileAtomically(target, original);
+	await fs.writeFile(target, "damaged");
+	await expect(
+		relinkProjectRecording(target, async () => replacement, probe),
+	).resolves.toMatchObject({ success: true, path: target });
+	expect(JSON.parse(await fs.readFile(target, "utf-8"))).toEqual({
+		...project,
+		videoPath: replacement,
+	});
+	expect(await fs.readFile(getProjectBackupPath(target), "utf-8")).toBe(original);
+});
+
+it("does not overwrite a newer primary while reconnecting recovered media", async () => {
+	await writeProjectFileAtomically(target, JSON.stringify(project));
+	await fs.writeFile(target, "damaged");
+	const newer = { ...project, editor: { updated: true } };
+	await expect(
+		relinkProjectRecording(
+			target,
+			async () => {
+				await writeProjectFileAtomically(target, JSON.stringify(newer));
+				return replacement;
+			},
+			probe,
+		),
+	).rejects.toThrow("relinkProjectChanged");
+	expect(JSON.parse(await fs.readFile(target, "utf-8"))).toEqual(newer);
 });

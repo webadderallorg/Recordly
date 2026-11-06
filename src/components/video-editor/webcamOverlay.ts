@@ -25,12 +25,13 @@ export function getWebcamCornerRadiusPx(
 ): number {
 	if (shape === "circle") return Math.max(0, Math.min(width, height)) / 2;
 	const safeRoundness = Number.isFinite(roundnessPercent) ? clamp(roundnessPercent, 0, 100) : 0;
-	const strengthenedRoundness = (safeRoundness / 100) ** 0.25;
+	const strengthenedRoundness =
+		shape === "rectangle" ? safeRoundness / 100 : (safeRoundness / 100) ** 0.25;
 	return (Math.max(0, Math.min(width, height)) / 2) * strengthenedRoundness;
 }
 
 export function getWebcamShapeExponent(shape?: WebcamShape): number {
-	return shape === "circle" ? 2 : WEBCAM_SQUIRCLE_EXPONENT;
+	return shape === "circle" || shape === "rectangle" ? 2 : WEBCAM_SQUIRCLE_EXPONENT;
 }
 
 export function getWebcamClipPath(
@@ -40,6 +41,8 @@ export function getWebcamClipPath(
 	shape?: WebcamShape,
 ): string {
 	if (shape === "circle") return "circle(50% at 50% 50%)";
+	if (shape === "rectangle")
+		return `inset(0 round ${getWebcamCornerRadiusPx(roundness, width, height, shape)}px)`;
 	return `path('${getSquircleSvgPath({
 		x: 0,
 		y: 0,

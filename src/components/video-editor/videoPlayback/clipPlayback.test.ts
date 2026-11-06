@@ -337,4 +337,40 @@ describe("clip timeline playback", () => {
 		expect(findPreviewClipAtTimelineTime(4001, clips)).toBeNull();
 		expect(findPreviewClipAtTimelineTime(0, [])).toBeNull();
 	});
+	it("does not seek or redraw a paused frame when only clip mute metadata changes", () => {
+		const clips: ClipRegion[] = [
+			{ id: "a", startMs: 0, endMs: 4000, sourceStartMs: 2000, speed: 1 },
+		];
+		const { video, playback, onTime, onSourceSeek } = setup(clips);
+		playback.seek(1);
+		onTime.mockClear();
+		onSourceSeek.mockClear();
+		clips[0] = { ...clips[0], muted: true, showSourceAudio: true };
+		playback.refresh();
+		expect(video.currentTime).toBe(3);
+		expect(onSourceSeek).not.toHaveBeenCalled();
+		expect(onTime).not.toHaveBeenCalled();
+		clips[0] = { ...clips[0], sourceStartMs: 3000 };
+		playback.refresh();
+		expect(video.currentTime).toBe(4);
+		expect(onSourceSeek).toHaveBeenCalledWith("seek");
+	});
+	it("keeps the live decoder clock and cursor pose when a playing clip is muted between RAFs", async () => {
+		const clips: ClipRegion[] = [
+			{ id: "a", startMs: 0, endMs: 4000, sourceStartMs: 2000, speed: 1 },
+		];
+		const { video, playback, onSourceSeek, onTime } = setup(clips);
+		playback.seek(1);
+		await playback.play();
+		video.currentTime = 3.015;
+		onSourceSeek.mockClear();
+		vi.mocked(video.pause).mockClear();
+		clips[0] = { ...clips[0], muted: true };
+		playback.refresh();
+		expect(video.currentTime).toBe(3.015);
+		expect(onTime).toHaveBeenLastCalledWith(1.015, 3.015);
+		expect(onSourceSeek).not.toHaveBeenCalled();
+		expect(video.pause).not.toHaveBeenCalled();
+		expect(playback.isPlaying).toBe(true);
+	});
 });

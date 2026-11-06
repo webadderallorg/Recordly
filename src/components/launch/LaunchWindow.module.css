@@ -52,8 +52,7 @@
 .recordingControls {
 	--source-control-width: 120px;
 	position: relative;
-	display: grid;
-	grid-template-columns: 36px var(--source-control-width) repeat(5, 36px);
+	display: flex;
 	align-items: center;
 	width: max-content;
 	height: 36px;
@@ -84,14 +83,83 @@
 }
 
 .sourceDivider {
-	position: absolute;
-	left: calc(36px + 8px + var(--source-control-width) + 4px);
-	top: 50%;
 	width: 1px;
-	height: 26px;
-	transform: translateY(-50%);
+	height: 24px;
+	margin: 0 2px;
 	background: var(--separator);
+	flex-shrink: 0;
 	pointer-events: none;
+}
+
+.recordingControls .deviceControl {
+	width: auto;
+	min-width: 76px;
+	gap: 6px;
+	padding: 0 8px;
+	font-size: 12px;
+}
+
+.recordControl {
+	position: relative;
+}
+
+.countdownValue {
+	display: grid;
+	place-items: center;
+	font-size: 20px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	animation: countdownTick 220ms ease-out;
+}
+
+.countdownCancel {
+	position: absolute;
+	opacity: 0;
+	transform: scale(0.75);
+	transition:
+		opacity 120ms ease,
+		transform 120ms ease;
+}
+
+.recordControl[data-countdown]:is(:hover, :focus-visible) .countdownValue {
+	opacity: 0;
+}
+
+.recordControl[data-countdown]:is(:hover, :focus-visible) .countdownCancel {
+	opacity: 1;
+	transform: scale(1);
+}
+
+@keyframes countdownTick {
+	from {
+		opacity: 0;
+		transform: scale(0.7);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.countdownValue {
+		animation: none;
+	}
+	.countdownCancel {
+		transition: none;
+	}
+}
+
+.deviceSection + .deviceSection {
+	border-top: 1px solid var(--separator);
+	margin-top: 6px;
+	padding-top: 6px;
+}
+
+.deviceDescription {
+	padding: 0 10px 6px;
+	color: var(--launch-text-muted);
+	font-size: 11px;
 }
 
 .recordingTimer {

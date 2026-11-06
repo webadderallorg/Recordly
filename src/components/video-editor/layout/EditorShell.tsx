@@ -14,6 +14,7 @@ import { LoadingTransition } from "@/components/ui/loading-transition";
 import type { useI18n } from "@/contexts/I18nContext";
 import { getStartupView } from "@/lib/startupView";
 import { RECORDING_DRAG_TYPE } from "@/types/recordingLibrary";
+import { collectLibrarySourceProtection } from "../dashboard/librarySourceProtection";
 import { DashboardSettingsContext } from "../dashboard/DashboardSettings";
 import { HomeLoadingSkeleton } from "../dashboard/HomeLoadingSkeleton";
 import type { useEditorExportController } from "../export/useEditorExportController";
@@ -190,6 +191,10 @@ export function EditorShell(props: Props) {
 		openActions,
 		hasUnsavedChanges,
 	} = projectController;
+	const protectedSnapshotRef = useRef(lifecycle.currentProjectSnapshot);
+	protectedSnapshotRef.current = lifecycle.currentProjectSnapshot;
+	const getProtectedSourcePaths = useCallback(() => collectLibrarySourceProtection(protectedSnapshotRef.current), []);
+
 	const projectShareRevision = useMemo(
 		() => getProjectShareRevision(lifecycle.currentProjectSnapshot),
 		[lifecycle.currentProjectSnapshot],
@@ -244,6 +249,7 @@ export function EditorShell(props: Props) {
 					onImportFile={openActions.handleImportMediaOrProject}
 				/>
 				<EditorDialogs
+					getProtectedSourcePaths={getProtectedSourcePaths}
 					editorTitle={
 						project.videoPath && !project.error && !project.loading
 							? snapshot.projectDisplayName

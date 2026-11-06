@@ -1,6 +1,6 @@
 # Recordly cloud sharing
 
-Recordly's **Export** menu offers downloading the current edit or **Create share link**. The Account button at the bottom of the left toolbar opens sign-in. Sharing renders an MP4 to a temporary file, uploads it to Recordly Share, finalizes its metadata, and removes the temporary file when the dialog closes.
+Recordly's **Publish** menu can save the current edit as a local file or create a shared link. The account menu opens sign-in. Sharing renders an MP4 to a temporary file, uploads it to Recordly Share, finalizes its metadata, and removes the temporary file when the dialog closes.
 
 Development defaults to the local endpoint when `VITE_CLOUD_SHARE_ENDPOINT` is unset:
 
@@ -26,7 +26,7 @@ The service provides R2 video storage, D1 metadata, range streaming, a responsiv
 
 ## Comments
 
-Anyone with a valid link can watch a public recording and leave timestamped feedback using a display name. No account or sign-in is required. The existing per-IP rate limit and 2,000-character comment limit still apply.
+Anyone with a valid link can watch a public recording. Leaving timestamped feedback requires a signed-in account; Recordly Cloud uses the viewer’s verified Recordly account and profile name. The server derives comment authorship from the session, and viewers can edit or delete their own comments. Account and IP rate limits and the 2,000-character comment limit apply. Self-hosted viewers sign in to the account system configured by that service.
 
 ## Third-party licensing
 

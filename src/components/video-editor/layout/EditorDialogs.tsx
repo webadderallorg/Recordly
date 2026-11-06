@@ -23,6 +23,7 @@ type Translator = (
 ) => string;
 
 interface EditorDialogsProps {
+	getProtectedSourcePaths?: () => string[];
 	t: Translator;
 	projectSaveDialogOpen: boolean;
 	setProjectSaveDialogOpen: Dispatch<SetStateAction<boolean>>;
@@ -46,7 +47,7 @@ interface EditorDialogsProps {
 	projectErrorSource?: string;
 	projectErrorRecordingSource?: string;
 	onDashboardSignIn: () => void;
-	onDeleteProjects: (paths: string[]) => Promise<string[]>;
+	onDeleteProjects: (paths: string[], options?: { includeSources?: boolean; protectedSources?: string[] }) => Promise<string[]>;
 	onRenameProject: (path: string, name: string) => Promise<string>;
 	onShareProject: (path: string) => Promise<void>;
 	accountLabel?: string;
@@ -62,6 +63,7 @@ interface EditorDialogsProps {
 }
 
 export function EditorDialogs({
+	getProtectedSourcePaths,
 	t,
 	projectSaveDialogOpen,
 	setProjectSaveDialogOpen,
@@ -204,6 +206,7 @@ export function EditorDialogs({
 			</Dialog>
 
 			<Dashboard
+				getProtectedSourcePaths={getProtectedSourcePaths}
 				editorTitle={editorTitle}
 				headerLeftControlsPaddingClass={headerLeftControlsPaddingClass}
 				open={projectBrowserOpen}

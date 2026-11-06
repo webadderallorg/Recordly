@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	House,
 	MicrophoneIcon,
-	MicrophoneSlashIcon,
+	SpeakerHighIcon,
+	SpeakerXIcon,
 	MinusIcon,
 	MonitorIcon,
 	VideoCameraIcon,
@@ -36,6 +37,7 @@ import {
 import { MicPopover } from "./popovers/MicPopover";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { RecordingControls } from "./RecordingControls";
+import { RecordButton } from "./RecordButton";
 
 export function LaunchWindow() {
 	return (
@@ -226,7 +228,16 @@ function LaunchWindowContent() {
 		};
 	}, [syncSelectedSource, captureT]);
 
-	const openHome = () => {
+	const cancelPendingStart = useCallback(async () => {
+		try {
+			return await cancelRecordingStart();
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : String(error));
+			return false;
+		}
+	}, [cancelRecordingStart]);
+	const openHome = async () => {
+		if (!(await cancelPendingStart())) return;
 		localStorage.setItem("recordly.open-dashboard", String(Date.now()));
 		void window.electronAPI.showProjectDashboard();
 	};
@@ -250,7 +261,6 @@ function LaunchWindowContent() {
 			elapsed={elapsed}
 			onPauseResume={paused ? resumeRecording : pauseRecording}
 			onStopRecording={toggleRecording}
-			onHideHud={() => window.electronAPI?.hudOverlayHide?.()}
 			onCancelRecording={cancelRecording}
 			formatTime={formatTime}
 		/>
@@ -262,17 +272,13 @@ function LaunchWindowContent() {
 			aria-label={captureT("recordingSetup")}
 			className={styles.recordingControls}
 		>
-			<Button
-				type="button"
-				variant="destructive"
-				size="icon"
-				className={`${styles.electronNoDrag} ${styles.recordControl}`}
-				onClick={hasSelectedSource ? toggleRecording : () => void handlePickOnScreen()}
-				disabled={countdownActive || isPickerPending || !sourceReady}
-				title={t("recording.record")}
-			>
-				<div className={styles.recDot} />
-			</Button>
+			<RecordButton
+				countdownActive={countdownActive}
+				countdownDelay={countdownDelay}
+				disabled={isPickerPending || !sourceReady}
+				onRecord={hasSelectedSource ? toggleRecording : () => void handlePickOnScreen()}
+				onCancel={() => void cancelPendingStart()}
+			/>
 			<Button
 				variant="ghost"
 				size="lg"
@@ -293,7 +299,7 @@ function LaunchWindowContent() {
 			</Button>
 			<span aria-hidden="true" className={styles.sourceDivider} />
 			<MicPopover
-				disabled={recording}
+				disabled={recording || countdownActive}
 				systemAudioEnabled={systemAudioEnabled}
 				onToggleSystemAudio={() => setSystemAudioEnabled(!systemAudioEnabled)}
 				microphoneEnabled={microphoneEnabled}
@@ -311,12 +317,9 @@ function LaunchWindowContent() {
 						variant="ghost"
 						size="icon"
 						iconSize="lg"
-						title={
-							microphoneEnabled
-								? t("recording.disableMicrophone")
-								: t("recording.enableMicrophone")
-						}
-						className={microphoneEnabled ? "text-accent" : ""}
+						title={t("recording.audio", "Audio")}
+						disabled={countdownActive}
+						className={`${styles.deviceControl} ${microphoneEnabled || systemAudioEnabled ? "text-accent" : ""}`}
 					>
 						{microphoneEnabled ? (
 							<MicrophoneIcon
@@ -324,15 +327,18 @@ function LaunchWindowContent() {
 								className="size-5"
 								size={18}
 							/>
+						) : systemAudioEnabled ? (
+							<SpeakerHighIcon className="size-5" />
 						) : (
-							<MicrophoneSlashIcon className="size-5" />
+							<SpeakerXIcon className="size-5" />
 						)}
+						<span>{t("recording.audio", "Audio")}</span>
 					</Button>
 				}
 			/>
 
 			<WebcamPopover
-				disabled={recording}
+				disabled={recording || countdownActive}
 				webcamEnabled={webcamEnabled}
 				onDisableWebcam={() => setWebcamEnabled(false)}
 				canToggleFloatingPreview={canToggleFloatingWebcamPreview(
@@ -357,12 +363,9 @@ function LaunchWindowContent() {
 						variant="ghost"
 						size="icon"
 						iconSize="lg"
-						title={
-							webcamEnabled
-								? t("recording.disableWebcam")
-								: t("recording.enableWebcam")
-						}
-						className={webcamEnabled ? "text-accent" : ""}
+						title={t("recording.camera", "Camera")}
+						disabled={countdownActive}
+						className={`${styles.deviceControl} ${webcamEnabled ? "text-accent" : ""}`}
 					>
 						{webcamEnabled ? (
 							<VideoCameraIcon
@@ -373,6 +376,7 @@ function LaunchWindowContent() {
 						) : (
 							<VideoCameraSlashIcon className="size-5" />
 						)}
+						<span>{t("recording.camera", "Camera")}</span>
 					</Button>
 				}
 			/>
@@ -385,6 +389,7 @@ function LaunchWindowContent() {
 						variant="ghost"
 						size="icon"
 						iconSize="lg"
+						disabled={countdownActive}
 						title={`${t("recording.countdownDelay")}: ${countdownDelay === 0 ? t("recording.noDelay") : `${countdownDelay}s`}`}
 						className={countdownDelay > 0 ? "text-accent" : ""}
 					>
@@ -393,12 +398,14 @@ function LaunchWindowContent() {
 				}
 			/>
 
+			<span aria-hidden="true" className={styles.sourceDivider} />
 			{homeButton}
 			<Button
 				variant="ghost"
 				size="icon"
 				iconSize="lg"
 				onClick={() => window.electronAPI?.hudOverlayHide?.()}
+				disabled={countdownActive}
 				title={t("recording.hideHud")}
 			>
 				<MinusIcon className="size-5" />

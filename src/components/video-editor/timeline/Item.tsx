@@ -114,12 +114,12 @@ export default function Item({
 	const { previewConfig } = presentation;
 	const clipPresentation =
 		variant === "clip" ? undefined : (suppliedPresentation ?? presentation.clips);
-	const hasZoomTail = variant === "zoom";
+	const isZoom = variant === "zoom";
 	const toVisibleSpan = (next: Span) => {
-		if (!hasZoomTail) return next;
+		if (!isZoom) return next;
 		const visible = getZoomDisplaySpan(next, presentation.zoomTiming);
 		// Stored edits use whole milliseconds. Keep a snapped end on the same
-		// side of a clip seam after the hidden tail is projected away.
+		// side of a clip seam.
 		return { ...visible, end: Math.round(visible.end) };
 	};
 	const visibleSpan = toVisibleSpan(span);
@@ -156,7 +156,7 @@ export default function Item({
 		snapRegionSpan(next, targets, presentation.clips, timeline.pixelsToValue(1), edge);
 	const resizeZoom = (resized: Span, edge: "start" | "end") => {
 		// The untouched end must retain its fractional precision. Rounding it up
-		// can make a long zoom's exit tail exceed the timeline/neighbor boundary,
+		// can make a long zoom exceed the timeline/neighbor boundary,
 		// causing the constraint solver to collapse it to a much shorter interval.
 		const preciseSpan =
 			edge === "start"
@@ -212,9 +212,9 @@ export default function Item({
 				},
 				edge,
 			);
-			return hasZoomTail ? resizeZoom(resized, edge) : { ...span, [edge]: resized[edge] };
+			return isZoom ? resizeZoom(resized, edge) : { ...span, [edge]: resized[edge] };
 		}
-		if (hasZoomTail) {
+		if (isZoom) {
 			return resizeZoom({ ...visibleSpan, [edge]: visibleSpan[edge] + delta }, edge);
 		}
 		const scale = (span.end - span.start) / (displaySpan.end - displaySpan.start);
@@ -343,7 +343,6 @@ export default function Item({
 		);
 	}
 
-	const isZoom = variant === "zoom";
 	const isTrim = variant === "trim";
 	const isClip = variant === "clip";
 	const isSpeed = variant === "speed";

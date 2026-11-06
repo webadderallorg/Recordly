@@ -81,7 +81,8 @@ describe("Cinematic zoom weight", () => {
 			{ start: region.startMs, end: region.endMs },
 			presentation,
 		);
-		expect(computeRegionStrength(region, visible.end, cinematic)).toBeCloseTo(0.01, 8);
+		expect(visible.end).toBe(region.endMs);
+		expect(computeRegionStrength(region, visible.end, cinematic)).toBe(0);
 	});
 	it("carries the same weight through connected camera moves", () => {
 		const next = {

@@ -1,5 +1,12 @@
 {
 	"recording": {
+		"audio": "오디오",
+		"camera": "카메라",
+		"systemAudio": "컴퓨터 오디오",
+		"systemAudioDescription": "앱, 동영상 및 시스템 소리",
+		"off": "끄기",
+		"cameraPreview": "미리보기",
+		"cancelCountdown": "카운트다운 취소",
 		"home": "홈",
 		"disableSystemAudio": "시스템 오디오 끄기",
 		"enableSystemAudio": "시스템 오디오 켜기",

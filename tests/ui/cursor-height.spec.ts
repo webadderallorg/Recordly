@@ -138,12 +138,13 @@ test("picker thumbnails have the same visible height using renderer assets", asy
 	await page.goto("/?windowType=editor");
 	await page.getByRole("radio", { name: "Cursor", exact: true }).click();
 	const picker = page.getByRole("grid", { name: "Cursor Style", exact: true });
-	await expect(picker.locator("img")).toHaveCount(8);
+	await expect(picker.locator("img:visible")).toHaveCount(8);
 	await expect(picker.getByRole("row", { name: "Bibata Bee", exact: true })).toHaveCount(0);
 	const boldOutline = picker.getByRole("row", { name: "Bold Outline", exact: true });
 	await boldOutline.click();
 	await expect(boldOutline).toHaveAttribute("aria-selected", "true");
-	const heights = await picker.locator("img").evaluateAll(async (images) =>
+	await page.mouse.move(1200, 100);
+	const heights = await picker.locator("img:visible").evaluateAll(async (images) =>
 		Promise.all(
 			images.map(async (element) => {
 				const image = element as HTMLImageElement;

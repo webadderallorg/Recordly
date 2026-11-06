@@ -186,6 +186,7 @@
 		"cursorDebugMovedToDev": "De veerinstellingen van de cursor vind je in Instellingen > Ontwikkeling.",
 		"webcamShape": "Vorm",
 		"webcamCircle": "Cirkel",
+		"webcamRectangle": "Rechthoek",
 		"webcamSquircle": "Afgerond vierkant",
 		"webcamPosition": "Positie",
 		"webcamCustomPosition": "Eigen positie",

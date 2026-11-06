@@ -1,5 +1,9 @@
 import { Container, Sprite } from "pixi.js";
-import { getCursorIdleOpacity, normalizeCursorIdleHideSettings, type CursorIdleHideSettings } from "./cursorIdleVisibility";
+import {
+	getCursorIdleOpacity,
+	normalizeCursorIdleHideSettings,
+	type CursorIdleHideSettings,
+} from "./cursorIdleVisibility";
 import {
 	type CursorClickEffectStyle,
 	type CursorStyle,
@@ -106,7 +110,12 @@ export class PixiCursorOverlay {
 	}
 
 	setFilterResolution(resolution: number) {
-		this.visuals.cursorMotionBlurFilter.resolution = Math.max(1, resolution);
+		const filterResolution = Math.max(1, resolution);
+		this.visuals.cursorMotionBlurFilter.resolution = filterResolution;
+		this.visuals.customCursorShadowFilter.resolution = filterResolution;
+		for (const filter of Object.values(this.visuals.cursorShadowFilters)) {
+			filter.resolution = filterResolution;
+		}
 	}
 
 	setClickBounce(clickBounce: number) {
@@ -264,7 +273,11 @@ export class PixiCursorOverlay {
 		}
 
 		this.visuals.container.visible = true;
-		this.visuals.container.alpha = getCursorIdleOpacity(rawSamples, timeMs, this.config.idleHide);
+		this.visuals.container.alpha = getCursorIdleOpacity(
+			rawSamples,
+			timeMs,
+			this.config.idleHide,
+		);
 		this.cursorVisible = shouldShowCursorSprite;
 
 		let px = viewport.x + projectedTarget.cx * viewport.width;
@@ -343,7 +356,7 @@ export class PixiCursorOverlay {
 				this.visuals.cursorShadowSprites,
 			) as Array<[CursorAssetKey, Sprite]>) {
 				currentShadowSprite.visible =
-					key === spriteKey && !hasBakedCursorShadow(this.config.style);
+					key === spriteKey && !hasBakedCursorShadow(this.config.style, asset);
 			}
 
 			for (const [key, currentSprite] of Object.entries(this.visuals.cursorSprites) as Array<
@@ -378,7 +391,7 @@ export class PixiCursorOverlay {
 			const asset = isSingleCursorStyle(this.config.style)
 				? getCursorStyleAsset(this.config.style)
 				: getCursorPackStyleAsset(this.config.style, spriteKey);
-			const showSeparateShadow = !hasBakedCursorShadow(this.config.style);
+			const showSeparateShadow = !hasBakedCursorShadow(this.config.style, asset);
 			this.visuals.customCursorShadowSprite.texture = asset.texture;
 			this.visuals.customCursorShadowSprite.anchor.set(asset.anchorX, asset.anchorY);
 			this.visuals.customCursorShadowSprite.visible = showSeparateShadow;

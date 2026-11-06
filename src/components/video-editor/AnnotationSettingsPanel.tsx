@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useScopedT } from "../../contexts/I18nContext";
 import { getArrowComponent } from "./ArrowSvgs";
 import { AnnotationTextSettings } from "./settings/AnnotationTextSettings";
+import { useScrollFade } from "./settings/useScrollFade";
 import type { AnnotationRegion, AnnotationType, ArrowDirection, FigureData } from "./types";
 
 interface AnnotationSettingsPanelProps {
@@ -57,6 +58,8 @@ export function AnnotationSettingsPanel({
 	const te = useScopedT("editing");
 	const t = useScopedT("editor");
 	const fileInputRef = useRef<HTMLInputElement>(null);
+	const scrollRef = useRef<HTMLDivElement>(null);
+	const scrollFade = useScrollFade(scrollRef);
 	const [customFonts, setCustomFonts] = useState<CustomFont[]>([]);
 
 	const fontFamilies = useMemo(
@@ -126,7 +129,11 @@ export function AnnotationSettingsPanel({
 
 	return (
 		<Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden rounded-none bg-transparent p-0 shadow-none">
-			<div className="flex-1 min-h-0 px-5 pb-6 pt-1 overflow-y-auto custom-scrollbar">
+			<div
+				className="flex-1 min-h-0 px-5 pb-6 pt-1 overflow-y-auto custom-scrollbar scroll-shadow scroll-shadow--vertical scroll-shadow--fade scroll-shadow--hide-scrollbar [--scroll-shadow-size:16px]"
+				ref={scrollRef}
+				data-scroll-shadow-mode={scrollFade}
+			>
 				<div className="mb-6">
 					{/* Type Selector */}
 					<div className="space-y-4">

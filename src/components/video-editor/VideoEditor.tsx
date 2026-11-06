@@ -300,6 +300,11 @@ function VideoEditorContent() {
 	const exportController = useEditorExportController({
 		t,
 		projectName: projectController.snapshot.projectDisplayName,
+		exportIdentity: {
+			projectId: project.lastSavedSnapshot?.projectId,
+			projectPath: project.currentProjectPath ?? undefined,
+			sourcePath: project.videoSourcePath ?? undefined,
+		},
 		videoPath,
 		videoSourcePath,
 		videoPlaybackRef,

@@ -201,10 +201,19 @@ export function registerCloudShareHandlers() {
 					redirect: "error",
 					signal: AbortSignal.timeout(30000),
 				});
-				if (!response.ok)
-					throw new Error(
-						await responseError(response, "Could not manage shared recordings"),
-					);
+				if (!response.ok) {
+					let resourceMissing = false;
+					if (input.action === "delete" && response.status === 404 && response.headers.get("content-type")?.includes("application/json")) {
+						const body = await readJsonResponse(response.clone()).catch(() => null);
+						resourceMissing = Boolean(body && typeof body === "object" && "error" in body && body.error === "Video not found");
+					}
+					return {
+						success: false,
+						httpStatus: response.status,
+						resourceMissing,
+						error: await responseError(response, "Could not manage shared recordings"),
+					};
+				}
 				if (input.action === "delete") return { success: true };
 				return {
 					success: true,

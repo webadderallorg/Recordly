@@ -28,12 +28,12 @@ export function UpgradeButton({
 			variant={variant}
 			size={size}
 			className={`gap-2 ${className ?? ""}`}
-			aria-label={[label ?? t("upgrade", "Upgrade to Cloud"), discount]
+			aria-label={[label ?? t("upgradeShort", "Upgrade"), discount]
 				.filter(Boolean)
 				.join(", ")}
 			onPress={openPricing}
 		>
-			{label ?? t("upgrade", "Upgrade to Cloud")}
+			{label ?? t("upgradeShort", "Upgrade")}
 			{discount && (
 				<span className="shrink-0 whitespace-nowrap rounded-full bg-danger/10 px-1.5 py-0.5 text-[10px] font-medium leading-4 text-danger">
 					{discount}

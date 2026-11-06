@@ -36,6 +36,12 @@ const raw = ["same.mp4", "same.mic.wav", "unused.mp4", "duplicate.mp4"].map((nam
 let deleted: string[] = [];
 Object.assign(window, {
 	electronAPI: {
+		reviewProjectDeletion: async () => ({
+			success: true,
+			sourceCount: 1,
+			preservedSourceCount: 1,
+		}),
+		getAppSetting: () => null,
 		getRecordingThumbnail: async () => ({ success: true, value: thumbnail }),
 		getProjectPreview: async (path: string) => {
 			if (location.search.includes("unreadable") && path.includes("trimmed"))

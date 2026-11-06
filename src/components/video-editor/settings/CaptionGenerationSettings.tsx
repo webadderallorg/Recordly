@@ -1,7 +1,7 @@
 import { Dropdown, ProgressBar } from "@heroui/react";
 import { Button } from "@/components/ui/button";
 import { ColorControl } from "@/components/ui/color-picker";
-import { ClosedCaptioning, DotsThree } from "@/components/ui/icons";
+import { ClosedCaptioning, Trash } from "@/components/ui/icons";
 import {
 	Select,
 	SelectContent,
@@ -184,7 +184,7 @@ export function CaptionGenerationSettings({
 							className="size-9 min-w-9 shrink-0 text-muted-foreground"
 							aria-label={te("captionActions", "Caption actions")}
 						>
-							<DotsThree className="size-5" aria-hidden="true" />
+							<Trash className="size-5" aria-hidden="true" />
 						</Button>
 						<Dropdown.Popover placement="bottom end">
 							<Dropdown.Menu aria-label={te("captionActions", "Caption actions")}>

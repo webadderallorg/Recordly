@@ -94,6 +94,25 @@ beforeEach(() => {
 });
 
 describe("webcam settings controls", () => {
+	it("selects a sharp rectangle without losing the linked camera or timing", () => {
+		const onWebcamChange = vi.fn();
+		const tree = webcamView({ onWebcamChange });
+		control(tree, ChoiceGroup, (props) => props["aria-label"] === "Shape").onValueChange?.(
+			"rectangle",
+		);
+		expect(onWebcamChange).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				shape: "rectangle",
+				roundness: 0,
+				sourcePath: "/recordings/camera.mp4",
+				width: 40,
+				height: 40,
+				timeOffsetMs: 75,
+				visibleRanges: [{ startMs: 100, endMs: 2500 }],
+			}),
+		);
+	});
+
 	it("changes width and legacy size together while preserving footage and timing", () => {
 		const onWebcamChange = vi.fn();
 		const tree = webcamView({ onWebcamChange });

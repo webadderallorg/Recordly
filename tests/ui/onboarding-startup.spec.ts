@@ -47,7 +47,7 @@ for (const signedIn of [false, true]) {
 		});
 		// Even unavailable artwork cannot gate the form.
 		await page.route("**/auth/recordly-demo.*", (route) => route.abort());
-		await page.goto("/?windowType=onboarding", { waitUntil: "domcontentloaded" });
+		await page.goto("/?windowType=onboarding&onboardingPreview=1", { waitUntil: "domcontentloaded" });
 		const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 		await expect(page.locator("html")).toHaveAttribute("data-auth-pending", "true", {
 			timeout: 15000,

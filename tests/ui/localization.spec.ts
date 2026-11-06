@@ -125,9 +125,9 @@ for (const [index, locale] of SUPPORTED_LOCALES.entries()) {
 			library.getByRole("complementary", { name: ui.libraryNavigation }),
 		).toBeVisible();
 		await expect(
-			library.getByRole("button", { name: billing.upgrade, exact: true }),
+			library.getByRole("button", { name: billing.upgradeShort, exact: true }),
 		).toBeVisible();
-		await library.getByRole("button", { name: billing.upgrade, exact: true }).click();
+		await library.getByRole("button", { name: billing.upgradeShort, exact: true }).click();
 		const pricing = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
 		await expect(pricing).toBeVisible();
 		await expect(

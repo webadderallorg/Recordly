@@ -51,51 +51,60 @@ export function MicPopover({
 			trigger={trigger}
 			align="start"
 		>
-			<div className={styles.ddLabel}>{t("recording.microphone")}</div>
-			<DropdownItem
-				icon={
-					systemAudioEnabled ? <SpeakerHighIcon size={16} /> : <SpeakerXIcon size={16} />
-				}
-				selected={systemAudioEnabled}
-				onClick={onToggleSystemAudio}
+			<section
+				className={styles.deviceSection}
+				aria-label={t("recording.systemAudio", "Computer audio")}
 			>
-				{systemAudioEnabled
-					? t("recording.disableSystemAudio")
-					: t("recording.enableSystemAudio")}
-			</DropdownItem>
-			{microphoneEnabled && (
+				<div className={styles.ddLabel}>{t("recording.systemAudio", "Computer audio")}</div>
+				<div className={styles.deviceDescription}>
+					{t("recording.systemAudioDescription", "Apps, videos and system sounds")}
+				</div>
+				<DropdownItem
+					icon={
+						systemAudioEnabled ? (
+							<SpeakerHighIcon size={16} />
+						) : (
+							<SpeakerXIcon size={16} />
+						)
+					}
+					selected={systemAudioEnabled}
+					onClick={onToggleSystemAudio}
+				>
+					{systemAudioEnabled
+						? t("recording.disableSystemAudio")
+						: t("recording.enableSystemAudio")}
+				</DropdownItem>
+			</section>
+			<section className={styles.deviceSection} aria-label={t("recording.microphone")}>
+				<div className={styles.ddLabel}>{t("recording.microphone")}</div>
 				<DropdownItem
 					icon={<MicrophoneSlashIcon size={16} />}
+					selected={!microphoneEnabled}
 					onClick={() => {
 						onDisableMicrophone();
 						requestClose(POPOVER_ID);
 					}}
 				>
-					{t("recording.turnOffMicrophone")}
+					{t("recording.off", "Off")}
 				</DropdownItem>
-			)}
-			{!microphoneEnabled && (
-				<div className="px-3 py-2 text-xs text-[var(--launch-text-muted)]">
-					{t("recording.selectMicToEnable")}
-				</div>
-			)}
-			{devices.map((device) => (
-				<MicDeviceRow
-					key={device.deviceId}
-					device={device}
-					selected={
-						microphoneEnabled &&
-						(microphoneDeviceId === device.deviceId ||
-							selectedDeviceId === device.deviceId)
-					}
-					onSelect={() => onSelectDevice(device.deviceId)}
-				/>
-			))}
-			{devices.length === 0 && (
-				<div className="text-center text-xs text-[var(--launch-text-muted)] py-4">
-					{t("recording.noMicrophonesFound")}
-				</div>
-			)}
+				{devices.map((device) => (
+					<MicDeviceRow
+						key={device.deviceId}
+						device={device}
+						selected={
+							microphoneEnabled &&
+							(microphoneDeviceId === device.deviceId ||
+								selectedDeviceId === device.deviceId)
+						}
+						onSelect={() => onSelectDevice(device.deviceId)}
+					/>
+				))}
+				{devices.length === 0 && (
+					<div className={styles.deviceDescription}>
+						{t("recording.noMicrophonesFound")}
+					</div>
+				)}
+			</section>
 		</HudPopover>
 	);
 }

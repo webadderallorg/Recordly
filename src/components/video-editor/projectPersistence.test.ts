@@ -1,17 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import {
+	createEditorHistoryStack,
+	type EditorHistorySnapshot,
+	recordEditorHistorySnapshot,
+	undoEditorHistoryStack,
+} from "./editorHistory";
 import {
 	getDefaultBorderRadiusPercent,
 	legacyBorderRadiusPixelsToPercent,
 	normalizeProjectEditor,
 	resolveVideoUrl,
 } from "./projectPersistence";
-import {
-	createEditorHistoryStack,
-	recordEditorHistorySnapshot,
-	undoEditorHistoryStack,
-	type EditorHistorySnapshot,
-} from "./editorHistory";
 import { ADVANCED_VERTICAL_PADDING_MAX } from "./types";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -51,7 +50,7 @@ describe("normalizeProjectEditor", () => {
 		expect(normalizeProjectEditor({ webcam: { roundness: 69 } as never }).webcam).toMatchObject(
 			{ shape: "squircle", roundness: 69 },
 		);
-		for (const shape of ["circle", "squircle"] as const) {
+		for (const shape of ["circle", "squircle", "rectangle"] as const) {
 			const editor = normalizeProjectEditor({
 				webcam: { shape, width: 50, height: 30 } as never,
 			});

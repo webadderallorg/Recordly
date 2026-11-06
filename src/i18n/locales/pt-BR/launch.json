@@ -1,5 +1,12 @@
 {
 	"recording": {
+		"audio": "Áudio",
+		"camera": "Câmera",
+		"systemAudio": "Áudio do computador",
+		"systemAudioDescription": "Apps, vídeos e sons do sistema",
+		"off": "Desativado",
+		"cameraPreview": "Prévia",
+		"cancelCountdown": "Cancelar contagem regressiva",
 		"home": "Início",
 		"disableSystemAudio": "Desativar áudio do sistema",
 		"enableSystemAudio": "Ativar áudio do sistema",

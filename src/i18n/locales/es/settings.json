@@ -186,6 +186,7 @@
 		"cursorDebugMovedToDev": "El ajuste del resorte del cursor está en Ajustes > Desarrollo.",
 		"webcamShape": "Forma",
 		"webcamCircle": "Círculo",
+		"webcamRectangle": "Rectángulo",
 		"webcamSquircle": "Cuadrado redondeado",
 		"webcamPosition": "Posición",
 		"webcamCustomPosition": "Posición personalizada",

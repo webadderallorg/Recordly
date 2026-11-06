@@ -1,9 +1,16 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const pendingWrites = new Map<string, Promise<void>>();
+const pendingWrites = new Map<string, Promise<unknown>>();
+let recoveryDirectory: string | undefined;
+const recoveredGenerations = new Map<string, { primaryHash: string | null; contents: string }>();
+
+/** Configure once from the app's userData location; pure utilities use hidden sibling storage. */
+export function setProjectRecoveryDirectory(directory: string) {
+	recoveryDirectory = path.resolve(directory);
+}
 
 const unsupportedDirectorySyncErrors = new Set([
 	"EACCES",
@@ -16,7 +23,71 @@ const unsupportedDirectorySyncErrors = new Set([
 ]);
 
 export function getProjectBackupPath(projectPath: string): string {
+	const key = getQueueKey(projectPath);
+	const digest = createHash("sha256").update(key).digest("hex");
+	return path.join(
+		recoveryDirectory ?? path.join(path.dirname(key), ".recordly-recovery"),
+		`${digest}.recordly`,
+	);
+}
+
+export function getLegacyProjectBackupPath(projectPath: string): string {
 	return `${projectPath}.bak`;
+}
+
+export function getProjectBackupPaths(projectPath: string): string[] {
+	return [getProjectBackupPath(projectPath), getLegacyProjectBackupPath(projectPath)];
+}
+
+function contentHash(contents: string): string {
+	return createHash("sha256").update(contents).digest("hex");
+}
+
+/** A corrupt/missing primary may use a validated previous generation, without overwriting it. */
+export async function readProjectFileWithRecovery<T>(
+	projectPath: string,
+	parse: (contents: string) => T,
+): Promise<{ project: T; recovered: boolean; contents: string; primaryHash: string | null }> {
+	return queueProjectWrite(projectPath, async () => {
+		const key = getQueueKey(projectPath);
+		let primary: string | null = null;
+		let primaryError: unknown;
+		try {
+			primary = await fs.readFile(projectPath, "utf-8");
+			const project = parse(primary);
+			recoveredGenerations.delete(key);
+			return {
+				project,
+				recovered: false,
+				contents: primary,
+				primaryHash: contentHash(primary),
+			};
+		} catch (error) {
+			primaryError = error;
+			// Never bypass filesystem access failures by opening another path.
+			const code = (error as NodeJS.ErrnoException).code;
+			if (code && code !== "ENOENT") throw error;
+		}
+		for (const backupPath of getProjectBackupPaths(projectPath)) {
+			try {
+				const contents = await fs.readFile(backupPath, "utf-8");
+				const project = parse(contents);
+				recoveredGenerations.set(key, {
+					primaryHash: primary === null ? null : contentHash(primary),
+					contents,
+				});
+				return {
+					project,
+					recovered: true,
+					contents,
+					primaryHash: primary === null ? null : contentHash(primary),
+				};
+			} catch {
+				/* Try the legacy generation if the managed one is absent or invalid. */
+			}
+		}
+		throw primaryError;
+	});
 }
 
 function getQueueKey(projectPath: string): string {
@@ -109,14 +180,42 @@ async function commitProjectFile(projectPath: string, contents: string): Promise
 	const parentDir = path.dirname(targetPath);
 	const backupPath = getProjectBackupPath(targetPath);
 	const temporaryPath = createTemporaryPath(parentDir, "project");
-	const backupTemporaryPath = createTemporaryPath(parentDir, "backup");
+	const backupDir = path.dirname(backupPath);
+	const backupTemporaryPath = createTemporaryPath(backupDir, "backup");
 	const existingMode = await getExistingFileMode(targetPath);
 
 	try {
 		await writeSyncedTemporaryFile(temporaryPath, contents, existingMode);
-		await preservePreviousGeneration(targetPath, backupPath, backupTemporaryPath);
+		await fs.mkdir(backupDir, { recursive: true, mode: 0o700 });
+		await syncParentDirectory(path.dirname(backupDir));
+		const recovered = recoveredGenerations.get(getQueueKey(targetPath));
+		let recoveringSameGeneration = false;
+		if (recovered) {
+			let currentHash: string | null = null;
+			try {
+				currentHash = contentHash(await fs.readFile(targetPath, "utf-8"));
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			}
+			recoveringSameGeneration = currentHash === recovered.primaryHash;
+		}
+		if (recovered && recoveringSameGeneration) {
+			// Preserve the known-good generation instead of backing up the damaged primary.
+			await writeSyncedTemporaryFile(backupTemporaryPath, recovered.contents, 0o600);
+			await fs.rename(backupTemporaryPath, backupPath);
+		} else {
+			await preservePreviousGeneration(targetPath, backupPath, backupTemporaryPath);
+		}
+		await syncParentDirectory(backupDir);
 		await fs.rename(temporaryPath, targetPath);
 		await syncParentDirectory(parentDir);
+		recoveredGenerations.delete(getQueueKey(targetPath));
+		// The previous generation is durable in managed storage before retiring an old sidecar.
+		if (existingMode !== undefined || recoveringSameGeneration) {
+			await fs
+				.rm(getLegacyProjectBackupPath(targetPath), { force: true })
+				.catch(() => undefined);
+		}
 	} finally {
 		await Promise.all([
 			fs.rm(temporaryPath, { force: true }).catch(() => undefined),
@@ -133,26 +232,42 @@ export async function writeProjectFileAtomically(
 }
 
 /** Read/validate/update under the same queue as autosave to preserve concurrent edits. */
+export class ProjectFileChangedError extends Error {}
+
 export async function updateProjectFileAtomically(
 	projectPath: string,
 	update: (contents: string) => string,
+	snapshot?: { primaryHash: string | null; contents: string; recovered: boolean },
 ): Promise<void> {
 	return queueProjectWrite(projectPath, async () => {
-		const contents = update(await fs.readFile(projectPath, "utf-8"));
+		let primary: string | null = null;
+		try {
+			primary = await fs.readFile(projectPath, "utf-8");
+		} catch (error) {
+			if (!snapshot || (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		}
+		if (snapshot && (primary === null ? null : contentHash(primary)) !== snapshot.primaryHash) {
+			throw new ProjectFileChangedError("Project changed while updating");
+		}
+		const contents = update(snapshot?.contents ?? primary!);
+		if (snapshot?.recovered) {
+			recoveredGenerations.set(getQueueKey(projectPath), {
+				primaryHash: snapshot.primaryHash,
+				contents: snapshot.contents,
+			});
+		}
 		await commitProjectFile(projectPath, contents);
 	});
 }
 
-async function queueProjectWrite(projectPath: string, write: () => Promise<void>) {
+async function queueProjectWrite<T>(projectPath: string, write: () => Promise<T>): Promise<T> {
 	const queueKey = getQueueKey(projectPath);
 	const previousWrite = pendingWrites.get(queueKey) ?? Promise.resolve();
-	const currentWrite = previousWrite
-		.catch(() => undefined)
-		.then(write);
+	const currentWrite = previousWrite.catch(() => undefined).then(write);
 	pendingWrites.set(queueKey, currentWrite);
 
 	try {
-		await currentWrite;
+		return await currentWrite;
 	} finally {
 		if (pendingWrites.get(queueKey) === currentWrite) {
 			pendingWrites.delete(queueKey);

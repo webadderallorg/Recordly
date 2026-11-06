@@ -1,5 +1,12 @@
 {
 	"recording": {
+		"audio": "音频",
+		"camera": "摄像头",
+		"systemAudio": "电脑音频",
+		"systemAudioDescription": "应用、视频和系统声音",
+		"off": "关闭",
+		"cameraPreview": "预览",
+		"cancelCountdown": "取消倒计时",
 		"home": "主页",
 		"disableSystemAudio": "禁用系统音频",
 		"enableSystemAudio": "启用系统音频",

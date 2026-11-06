@@ -157,11 +157,11 @@ test("export offers a commercial-use tip and Cloud upgrade without the old discl
 	await expect(
 		page.getByRole("checkbox", { name: "I’ll use this for personal use.", exact: true }),
 	).toHaveCount(0);
-	await expect(page.getByText("Upgrade to Cloud for commercial use", { exact: true })).toBeVisible();
+	await expect(page.getByText("Upgrade for commercial use", { exact: true })).toBeVisible();
 	await page.getByRole("button", { name: "Export Video", exact: true }).click();
 	await expect(page.getByTestId("export-result")).toHaveText("1920 × 1080");
 	await page.goto("/tests/ui/export-resolution-presets.html?free&captions");
-	await page.getByRole("button", { name: "Upgrade to Cloud", exact: true }).click();
+	await page.getByRole("button", { name: "Upgrade", exact: true }).click();
 	await expect(page.getByRole("dialog", { name: "Recordly Cloud", exact: true })).toBeVisible();
 });
 
@@ -519,7 +519,7 @@ for (const plan of ["paid", "complimentary"] as const) {
 		await expect(page.getByTestId("verified-plan")).toHaveText("pro");
 		await expect(page.getByRole("button", { name: "Manage plan", exact: true })).toHaveCount(0);
 		await expect(
-			page.getByRole("button", { name: "Upgrade to Cloud", exact: true }),
+			page.getByRole("button", { name: /^Upgrade\b/ }),
 		).toHaveCount(0);
 		await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
 		await expect(

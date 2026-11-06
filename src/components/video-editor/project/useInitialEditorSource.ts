@@ -1,5 +1,7 @@
 /* biome-ignore-all lint/correctness/useExhaustiveDependencies: editor state setters are stable and initial source loading intentionally runs once per launch configuration. */
 import { useEffect, useRef } from "react";
+import { toast } from "@/components/ui/toast";
+import { translate as t } from "@/i18n/runtime";
 import { fromFileUrl, resolveVideoUrl } from "../projectPersistence";
 import type { getDevOpenRecordingConfig, getSmokeExportConfig } from "../smokeExportConfig";
 import type { useAppearanceState } from "../state/useAppearanceState";
@@ -71,6 +73,7 @@ export function useInitialEditorSource({
 						return;
 					}
 					project.setError(null);
+					if (result.recovered) toast.warning(t("editor.projectRecovered", "Recovered the previous saved version"));
 					return;
 				}
 
@@ -150,6 +153,7 @@ export function useInitialEditorSource({
 					currentProject.project &&
 					(await applyLoadedProject(currentProject.project, currentProject.path ?? null))
 				) {
+					if (currentProject.recovered) toast.warning(t("editor.projectRecovered", "Recovered the previous saved version"));
 					return;
 				}
 

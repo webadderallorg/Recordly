@@ -18,14 +18,22 @@ test("zoom presets work in the basic panel and preserve cursor settings", async 
 	await expect(presets).toBeVisible();
 	const preferences = () =>
 		page.evaluate(
-			() => JSON.parse(document.documentElement.dataset.savedZoomPresetProject ?? "{}").editor,
+			() =>
+				JSON.parse(document.documentElement.dataset.savedZoomPresetProject ?? "{}").editor,
 		);
 	await expect.poll(preferences).toBeDefined();
 	const before = await preferences();
+	const zoomBlock = page.locator('[data-variant="zoom"]').first();
+	const originalBounds = await zoomBlock.boundingBox();
+	const originalEnd = await zoomBlock.getAttribute("data-end-ms");
 	for (const preset of [CURSOR_MOTION_PRESETS.smooth, CURSOR_MOTION_PRESETS.focused]) {
 		const option = presets.getByRole("row", { name: preset.label, exact: true });
 		await option.click();
 		await expect(option).toHaveAttribute("aria-selected", "true");
+		await expect(zoomBlock).toHaveAttribute("data-end-ms", originalEnd!);
+		const afterBounds = await zoomBlock.boundingBox();
+		expect(afterBounds!.x).toBeCloseTo(originalBounds!.x, 1);
+		expect(afterBounds!.width).toBeCloseTo(originalBounds!.width, 1);
 		await expect.poll(preferences).toMatchObject({
 			zoomInDurationMs: preset.zoomInDurationMs,
 			zoomOutDurationMs: preset.zoomOutDurationMs,

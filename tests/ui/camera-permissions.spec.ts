@@ -40,7 +40,7 @@ test("editor mode never opens the camera and releases an active recorder preview
 		});
 	});
 	await page.goto("/?windowType=hud-overlay");
-	await expect(page.getByRole("button", { name: "Disable webcam" })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Camera", exact: true })).toBeVisible();
 	expect(await page.locator("html").getAttribute("data-camera-requests")).toBeNull();
 	await page.evaluate(() => window.dispatchEvent(new Event("test-leave-editor")));
 	await expect(page.locator("html")).toHaveAttribute("data-camera-requests", "1");
@@ -108,7 +108,7 @@ test("camera options preview preserves saved squircle rounding", async ({ page }
 	});
 	await page.goto("/?windowType=hud-overlay");
 	expect(await page.locator("html").getAttribute("data-shape-camera-requests")).toBeNull();
-	await page.getByRole("button", { name: "Disable webcam overlay", exact: true }).click();
+	await page.getByRole("button", { name: "Camera", exact: true }).click();
 	await expect(page.locator("[data-floating-webcam-preview]")).toHaveCount(0);
 	const camera = page.getByRole("dialog", { name: "Options", exact: true }).locator("video");
 	await expect(camera).toBeVisible();

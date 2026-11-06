@@ -4,6 +4,7 @@ import { ArrowLeft, Check } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
+import { saveAppSetting } from "@/lib/appSettings";
 import {
 	OnboardingBody,
 	OnboardingFooter,
@@ -37,6 +38,9 @@ export function OnboardingPermissions({
 	const mounted = useRef(false);
 	const refreshing = useRef(false);
 	const canSimulate = import.meta.env.DEV && preview;
+	useEffect(() => {
+		if (!preview) saveAppSetting("recordly.onboarding.permissionsRequested", true);
+	}, [preview]);
 	// Preview resets only the displayed state; macOS remains the source of actual grants.
 	const granted = {
 		screen: screenGranted && !(canSimulate && simulatedMissing.screen),
@@ -142,7 +146,7 @@ export function OnboardingPermissions({
 			aria-busy={platform === "checking"}
 		>
 			<PermissionsConfetti
-				ready={platform === "mac" && granted.screen && granted.accessibility && !error}
+				ready={platform === "mac" && canFinish}
 			/>
 			<OnboardingBody>
 				<OnboardingHeader

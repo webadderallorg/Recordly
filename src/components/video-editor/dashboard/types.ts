@@ -2,6 +2,7 @@ import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import type { AnnouncementConfig } from "./announcementConfig";
 export type DashboardProps = {
 	open: boolean;
+	getProtectedSourcePaths?: () => string[];
 	loading?: boolean;
 	libraryError?: string | null;
 	onRetryLibraryLoad?: () => Promise<void>;
@@ -13,7 +14,10 @@ export type DashboardProps = {
 	errorSource?: string;
 	errorRecordingSource?: string;
 	onSignIn: () => void;
-	onDeleteProjects: (paths: string[]) => Promise<string[]>;
+	onDeleteProjects: (
+		paths: string[],
+		options?: { includeSources?: boolean; protectedSources?: string[] },
+	) => Promise<string[]>;
 	onRenameProject: (path: string, name: string) => Promise<string>;
 	onShareProject: (path: string) => Promise<void>;
 	accountLabel?: string;

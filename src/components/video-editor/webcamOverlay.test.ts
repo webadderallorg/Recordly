@@ -3,10 +3,12 @@ import { getSquirclePathPoints } from "@/lib/geometry/squircle";
 import {
 	convertLegacyWebcamRadiusToRoundness,
 	getCropMatchedWebcamHeightPercent,
+	getWebcamClipPath,
 	getWebcamCornerRadiusPx,
 	getWebcamCropSourceRect,
 	getWebcamOverlayDimensionsPx,
 	getWebcamOverlayPosition,
+	getWebcamShapeExponent,
 	isWebcamCropRegionDefault,
 	normalizeWebcamCropRegion,
 	scaleWebcamOverlayPixels,
@@ -197,5 +199,32 @@ describe("circle geometry", () => {
 		});
 		expect(dimensions).toEqual({ width: 216, height: 216 });
 		expect(getWebcamCornerRadiusPx(0, dimensions.width, dimensions.height, "circle")).toBe(108);
+	});
+});
+
+describe("rectangle camera geometry", () => {
+	it("retains independent dimensions and square corners through zoom", () => {
+		const dimensions = getWebcamOverlayDimensionsPx({
+			containerWidth: 1920,
+			containerHeight: 1080,
+			widthPercent: 40,
+			heightPercent: 25,
+			margin: 24,
+			zoomScale: 2,
+			reactToZoom: true,
+			shape: "rectangle",
+		});
+		expect(dimensions).toEqual({ width: 216, height: 135 });
+		expect(getWebcamCornerRadiusPx(0, dimensions.width, dimensions.height, "rectangle")).toBe(
+			0,
+		);
+		expect(getWebcamClipPath(0, dimensions.width, dimensions.height, "rectangle")).toBe(
+			"inset(0 round 0px)",
+		);
+		expect(getWebcamShapeExponent("rectangle")).toBe(2);
+	});
+	it("uses conventional rounded corners independently of squircle curvature", () => {
+		expect(getWebcamCornerRadiusPx(50, 640, 360, "rectangle")).toBe(90);
+		expect(getWebcamCornerRadiusPx(50, 640, 360, "squircle")).toBeGreaterThan(150);
 	});
 });

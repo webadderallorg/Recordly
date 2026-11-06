@@ -159,7 +159,9 @@ function getConnectedRegionPairs(regions: ZoomRegion[], options: DominantRegionO
 		const currentRegion = sortedRegions[index];
 		const nextRegion = sortedRegions[index + 1];
 		const gapMs = nextRegion.startMs - currentRegion.endMs;
-		const gapLimit = options.connectedZoomGapMs ?? DEFAULT_CONNECTED_ZOOM_GAP_MS;
+		const gapLimit = Number.isFinite(options.connectedZoomGapMs)
+			? Math.max(0, Math.min(options.connectedZoomGapMs!, DEFAULT_CONNECTED_ZOOM_GAP_MS))
+			: DEFAULT_CONNECTED_ZOOM_GAP_MS;
 
 		if (
 			gapMs <= 0 ||

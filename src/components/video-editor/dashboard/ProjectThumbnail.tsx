@@ -29,9 +29,13 @@ export function ProjectThumbnail({
 	const thumbnailSource = useProjectThumbnailUrl(path, revision, visible);
 	const sourceKey = `${path}:${revision}`;
 	const sourceFailed = failedSource === sourceKey || thumbnailSource.failed;
-	const [preview, setPreview] = useState<ProjectPreviewData | null>(null);
-	const [metadata, setMetadata] = useState<ProjectPreviewData | null>(null);
 	const cacheKey = `${PROJECT_THUMBNAIL_RENDER_VERSION}:${projectPath ?? videoSource}:${revision}`;
+	const [preview, setPreview] = useState<ProjectPreviewData | null>(null);
+	const [metadataState, setMetadataState] = useState<{
+		key: string;
+		value: ProjectPreviewData;
+	} | null>(null);
+	const metadata = metadataState?.key === cacheKey ? metadataState.value : null;
 	const [sourceDuration, setSourceDuration] = useState<number | undefined>(
 		() => peekProjectThumbnail(cacheKey)?.duration,
 	);
@@ -91,6 +95,13 @@ export function ProjectThumbnail({
 		generatedThumbnail,
 		failedGenerationKey,
 	]);
+	useEffect(() => {
+		// A refreshed project must not replay the previous revision's source/settings.
+		setMetadataState(null);
+		setPreview(null);
+		setFailedGenerationKey(null);
+		setSourceDuration(peekProjectThumbnail(cacheKey)?.duration);
+	}, [cacheKey]);
 	const host = useRef<HTMLDivElement>(null);
 	const finish = useCallback(() => setPreview(null), []);
 	useEffect(() => {
@@ -133,7 +144,7 @@ export function ProjectThumbnail({
 			.getProjectPreview(projectPath)
 			.then((result) => {
 				if (active) {
-					if (result.success) setMetadata(result.value);
+					if (result.success) setMetadataState({ key: cacheKey, value: result.value });
 					else setFailedGenerationKey(cacheKey);
 				}
 			})
@@ -194,7 +205,9 @@ export function ProjectThumbnail({
 				(projectPath || videoSource) ? null : (
 				<ImageSquare weight="fill" className="size-8 text-muted-foreground/20" />
 			)}
-			{previewActive && preview && <ProjectHoverPreview data={preview} onFinish={finish} />}
+			{previewActive && preview && preview === metadata && (
+				<ProjectHoverPreview key={cacheKey} data={preview} onFinish={finish} />
+			)}
 			{visible &&
 				metadataSource &&
 				((path && !sourceFailed) || !videoSource) &&

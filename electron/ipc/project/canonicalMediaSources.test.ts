@@ -51,3 +51,29 @@ it("marks dependencies incomplete on access failure without failing ordinary pre
 		sourcePathsComplete: false,
 	});
 });
+
+it("opt-in deletion references retain missing main capture families through canonical parents", async () => {
+	const actual = path.join(root, "actual"),
+		alias = path.join(root, "alias");
+	await fs.mkdir(actual);
+	await fs.symlink(actual, alias);
+	const mic = path.join(actual, "capture.mic.wav");
+	await fs.writeFile(mic, "audio");
+	const project = { videoPath: path.join(alias, "capture.mp4") };
+	expect(await canonicalMediaSources(project, { preserveMissing: true })).toEqual({
+		sourcePaths: [path.join(actual, "capture.mp4")],
+		sourcePathsComplete: true,
+	});
+	const { prepareLibraryDeletion } = await import("./libraryDeletion");
+	const plan = await prepareLibraryDeletion(["/p/selected"], {
+		list: async () => ({ entries: [{ path: "/p/selected" }, { path: "/p/unselected" }] }),
+		backupPaths: () => [],
+		recordings: async () => [{ path: mic }],
+		readSources: async (p) =>
+			canonicalMediaSources(p === "/p/selected" ? { videoPath: mic } : project, {
+				preserveMissing: true,
+			}),
+	});
+	expect(plan.sourceOwners).toEqual({});
+	expect(plan.preservedSources).toEqual([mic]);
+});

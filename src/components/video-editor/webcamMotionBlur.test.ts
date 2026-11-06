@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	getWebcamMotionSamples,
 	WebcamMotionBlur,
@@ -84,5 +84,75 @@ describe("camera resize motion blur", () => {
 		expect(blur.render({ ...options, layout: small, timeMs: 32, playing: false })).toBeNull();
 		expect(blur.render({ ...options, layout: small, timeMs: 48 })).toBeNull();
 		expect(blur.render({ ...options, timeMs: 64, amount: 0 })).toBeNull();
+	});
+});
+
+describe("camera preview pixel density", () => {
+	it("preserves layout bounds at Retina density without growing backing stores every frame", () => {
+		const contexts: CanvasRenderingContext2D[] = [];
+		vi.stubGlobal("document", {
+			createElement: () => {
+				const context = new Proxy(
+					{ scale: vi.fn() },
+					{
+						get: (object, key) =>
+							key in object ? object[key as keyof typeof object] : () => {},
+					},
+				);
+				contexts.push(context as unknown as CanvasRenderingContext2D);
+				return { width: 0, height: 0, getContext: () => context };
+			},
+		});
+		try {
+			const blur = new WebcamMotionBlur();
+			const options = {
+				renderStill: true,
+				layout: { ...large, radius: 0 },
+				shape: "rectangle" as const,
+				source: {} as CanvasImageSource,
+				sourceWidth: 1280,
+				sourceHeight: 720,
+				mirror: false,
+				shadow: 0,
+				amount: 0,
+				playing: false,
+				timeMs: 0,
+			};
+			const normal = blur.render(options)!;
+			const normalBounds = {
+				x: normal.x,
+				y: normal.y,
+				width: normal.width,
+				height: normal.height,
+			};
+			const retina = blur.render({ ...options, resolution: 2 })!;
+			expect({
+				x: retina.x,
+				y: retina.y,
+				width: retina.width,
+				height: retina.height,
+			}).toEqual(normalBounds);
+			expect(retina.canvas.width).toBe(normalBounds.width * 2);
+			expect(retina.canvas.height).toBe(normalBounds.height * 2);
+			expect(contexts[0].scale).toHaveBeenLastCalledWith(2, 2);
+			const again = blur.render({ ...options, resolution: 2, timeMs: 16 })!;
+			expect(again.canvas).toBe(retina.canvas);
+			expect(again.canvas.width).toBe(normalBounds.width * 2);
+			expect(again.width).toBe(normalBounds.width);
+			for (const resolution of [1.1, 1.25, 1.5, 2.2, 3]) {
+				for (let frame = 1; frame <= 5; frame++) {
+					const fractional = blur.render({ ...options, resolution, timeMs: frame * 16 })!;
+					expect(fractional.canvas.width).toBe(
+						Math.ceil(normalBounds.width * resolution),
+					);
+					expect(fractional.canvas.height).toBe(
+						Math.ceil(normalBounds.height * resolution),
+					);
+				}
+			}
+			blur.destroy();
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });

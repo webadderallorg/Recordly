@@ -4,6 +4,8 @@ import { persistRecentMetadata } from "../project/recentMetadata";
 import { renameLibraryProject } from "../project/renameLibraryProject";
 import { createUntitledProject } from "../project/createUntitledProject";
 import { trashLibraryProjects } from "../project/trashProjects";
+import { prepareLibraryDeletion, protectedLibrarySources, recordingUsesSources, removableLibrarySources } from "../project/libraryDeletion";
+import { canonicalMediaSources } from "../project/canonicalMediaSources";
 import { getRecordingThumbnail } from "../recording/thumbnail";
 import { discardRecordingFiles } from "../recording/discardFiles";
 import { findDuplicateRecordingSources } from "../recording/duplicateSources";
@@ -18,14 +20,16 @@ import { RECORDINGS_DIR } from "../../appPaths";
 import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
 import { isTrustedRenderer } from "../../trustedRenderer";
 import { LEGACY_PROJECT_FILE_EXTENSIONS, PROJECT_FILE_EXTENSION } from "../constants";
-import { getProjectBackupPath, writeProjectFileAtomically } from "../project/atomicSave";
+import { getProjectBackupPaths, writeProjectFileAtomically } from "../project/atomicSave";
 import {
 	cacheProjectThumbnail,
 	getProjectsDir,
 	getProjectThumbnailPath,
+	getProjectThumbnailPaths,
 	isPathInsideDirectory,
 	isTrustedProjectPath,
 	listProjectLibraryEntries,
+	isLoadableProjectData,
 	loadProjectFromPath,
 	readProjectPreview,
 	loadRecentProjectPaths,
@@ -60,6 +64,29 @@ import {
 	normalizePath,
 	parseJsonWithByteOrderMark,
 } from "../utils";
+
+function libraryDeletionDependencies(protectedSources: unknown = []) {
+	if (!Array.isArray(protectedSources) || protectedSources.length > 10000 || protectedSources.some(value => typeof value !== "string" || value.length > 65536)) throw new Error("Invalid protected source references");
+	const additionalSources = (protectedSources as string[]).map(value => normalizeVideoSourcePath(value)).filter((value): value is string => Boolean(value && !/^(https?:|blob:|data:)/i.test(value)));
+
+	return {
+		list: listProjectLibraryEntries,
+		backupPaths: getProjectBackupPaths,
+		recordings: () => listRecordings(true),
+		activeSources: () => [currentVideoPath, currentRecordingSession?.videoPath, currentRecordingSession?.webcamPath, ...additionalSources].map((file) => normalizeVideoSourcePath(file)).filter((file): file is string => Boolean(file)),
+		readSources: async (file: string) => {
+			try {
+				if (!(await fs.lstat(file)).isFile()) throw new Error("Project reference is not a regular file");
+				const project = parseJsonWithByteOrderMark(await fs.readFile(file, "utf-8"));
+				if (!isLoadableProjectData(project)) throw new Error("Project reference could not be read");
+				return canonicalMediaSources(project, { preserveMissing: true });
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+				throw error;
+			}
+		},
+	};
+}
 
 function normalizeRecordingTimeOffsetMs(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : 0;
@@ -247,7 +274,7 @@ export function registerProjectHandlers() {
 				source,
 				name,
 				entries.entries.map((entry) => entry.path),
-				(value) => [getProjectThumbnailPath(value), getProjectBackupPath(value)],
+				(value) => [{ paths: getProjectThumbnailPaths(value), kind: "preview" }, getProjectBackupPaths(value)],
 			);
 			if (currentProjectPath && normalizePath(currentProjectPath) === normalizePath(source))
 				setCurrentProjectPath(target);
@@ -339,7 +366,7 @@ export function registerProjectHandlers() {
 			return { success: false, error: String(error) };
 		}
 	});
-	handle("trash-recording-sources", async (_, paths: unknown) => {
+	handle("trash-recording-sources", async (_, paths: unknown, protectedSources?: string[]) => {
 		try {
 			if (
 				nativeScreenRecordingActive ||
@@ -347,7 +374,13 @@ export function registerProjectHandlers() {
 				ffmpegScreenRecordingActive
 			)
 				throw new Error("Stop recording before deleting source files");
-			return { success: true, value: await trashRecordingSources(paths) };
+			if (!Array.isArray(paths) || !paths.length || paths.some((file) => typeof file !== "string")) throw new Error("Invalid source file selection");
+			const protectedReferences = await protectedLibrarySources(libraryDeletionDependencies(protectedSources));
+			const preserved = (paths as string[]).filter((file) => recordingUsesSources(file, protectedReferences));
+			const removable = (paths as string[]).filter((file) => !preserved.includes(file));
+			const result = removable.length ? await trashRecordingSources(removable) : { deleted: [], errors: [] as string[] };
+			if (preserved.length) result.errors.push(`Kept ${preserved.length} source files used by saved projects or the current editor.`);
+			return { success: true, value: result };
 		} catch (error) {
 			return { success: false, error: String(error) };
 		}
@@ -665,12 +698,12 @@ export function registerProjectHandlers() {
 								throw unlinkError;
 							}
 						});
-					await fs
-						.rm(getProjectThumbnailPath(activeProjectPath), { force: true })
-						.catch(() => undefined);
-					await fs
-						.rm(getProjectBackupPath(activeProjectPath), { force: true })
-						.catch(() => undefined);
+					await Promise.all(getProjectThumbnailPaths(activeProjectPath).map((thumbnailPath) =>
+						fs.rm(thumbnailPath, { force: true }).catch(() => undefined),
+					));
+					await Promise.all(getProjectBackupPaths(activeProjectPath).map((backupPath) =>
+						fs.rm(backupPath, { force: true }).catch(() => undefined),
+					));
 
 					const recentProjectPaths = await loadRecentProjectPaths();
 					const filteredRecentProjectPaths: string[] = [];
@@ -790,13 +823,39 @@ export function registerProjectHandlers() {
 			}
 		},
 	);
-	handle("trash-project-files", async (_, paths: unknown) => {
+	handle("review-project-deletion", async (_, paths: unknown, protectedSources?: string[]) => {
 		try {
+			const plan = await prepareLibraryDeletion(paths, libraryDeletionDependencies(protectedSources));
+			return { success: true, sourceCount: Object.keys(plan.sourceOwners).length, preservedSourceCount: plan.preservedSources.length };
+		} catch (error) { return { success: false, error: String(error) }; }
+	});
+	handle("trash-project-files", async (_, paths: unknown, options?: { includeSources?: boolean; protectedSources?: string[] }) => {
+		try {
+			if (options?.includeSources && (nativeScreenRecordingActive || windowsNativeCaptureActive || ffmpegScreenRecordingActive)) throw new Error("Stop recording before deleting source files");
+			const deps = libraryDeletionDependencies(options?.protectedSources);
+			const plan = options?.includeSources ? await prepareLibraryDeletion(paths, deps) : null;
 			const result = await trashLibraryProjects(paths, {
 				list: listProjectLibraryEntries,
 				trash: (filePath) => shell.trashItem(filePath),
 				thumbnailPath: getProjectThumbnailPath,
+				thumbnailPaths: getProjectThumbnailPaths,
 			});
+			const sourcesDeleted: string[] = [];
+			const sourcesKept = [...(plan?.preservedSources ?? [])];
+			if (plan && result.deleted.length && !result.errors.length) {
+				try {
+					// Re-read remaining projects/recovery copies after Trash, before touching media.
+					const protectedSources = await protectedLibrarySources(deps, new Set(result.deleted));
+					const { removable, kept } = removableLibrarySources(plan.sourceOwners, result.deleted, protectedSources);
+					sourcesKept.push(...kept);
+					for (let index = 0; index < removable.length; index += 500) {
+						const media = await trashRecordingSources(removable.slice(index, index + 500));
+						sourcesDeleted.push(...media.deleted); result.errors.push(...media.errors);
+					}
+
+				} catch { result.errors.push("Some source files could not be safely removed and were kept."); }
+			}
+			if (plan && result.errors.length) sourcesKept.push(...Object.keys(plan.sourceOwners).filter((file) => !sourcesDeleted.includes(file)));
 			if (currentProjectPath && result.deleted.includes(path.resolve(currentProjectPath)))
 				setCurrentProjectPath(null);
 			const warning = await persistRecentMetadata(async () =>
@@ -806,7 +865,7 @@ export function registerProjectHandlers() {
 					),
 				),
 			);
-			return { success: result.errors.length === 0, ...result, warning };
+			return { success: result.errors.length === 0, ...result, warning, sourcesDeleted, sourcesKept };
 		} catch (error) {
 			return { success: false, deleted: [], errors: [String(error)] };
 		}
@@ -855,8 +914,12 @@ export function registerProjectHandlers() {
 				});
 				return selected.canceled ? null : (selected.filePaths[0] ?? null);
 			}, undefined, isCurrent);
-			if (!result.success || !result.path) return result;
-			return await loadProjectFromPath(result.path, isCurrent);
+			if (!result.success || !("path" in result) || !result.path) return result;
+			const loaded = await loadProjectFromPath(result.path, isCurrent);
+			return {
+				...loaded,
+				recovered: Boolean(loaded.success && (("recovered" in result && result.recovered) || ("recovered" in loaded && loaded.recovered))),
+			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			const localized = message === "relinkRecordingInvalid" || message === "relinkRecordingTooShort" || message === "relinkProjectChanged"

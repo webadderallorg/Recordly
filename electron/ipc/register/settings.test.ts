@@ -1,19 +1,31 @@
+import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	handlers: new Map<string, (...args: unknown[]) => unknown>(),
+	send: vi.fn(),
+	focusStart: vi.fn(),
+	focusStop: vi.fn(),
 }));
 vi.mock("electron", () => ({
 	app: {},
-	BrowserWindow: {},
+	BrowserWindow: {
+		getAllWindows: () => [
+			{
+				isDestroyed: () => false,
+				webContents: { isDestroyed: () => false, send: mocks.send },
+			},
+		],
+	},
 	ipcMain: {
 		handle: (channel: string, handler: (...args: unknown[]) => unknown) =>
 			mocks.handlers.set(channel, handler),
 		on: vi.fn(),
 	},
 }));
-vi.mock("../recording/focus", () => ({ recordingFocus: {} }));
-vi.mock("../../windows", () => ({ createCountdownWindow: vi.fn() }));
+vi.mock("../recording/focus", () => ({
+	recordingFocus: { start: mocks.focusStart, stop: mocks.focusStop },
+}));
 vi.mock("../../cursorHider", () => ({ hideCursor: vi.fn() }));
 vi.mock("../../appSettingsStore", () => ({
 	hasAppSetting: vi.fn(),
@@ -63,5 +75,47 @@ describe("recording microphone profile configuration", () => {
 			browserMicrophoneProfile: "processed",
 			requestedBrowserMicrophoneProfile: "Processed",
 		});
+	});
+});
+
+describe("inline recording countdown", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		mocks.handlers.clear();
+		mocks.send.mockClear();
+		registerSettingsHandlers();
+	});
+	afterEach(() => {
+		mocks.handlers.get("cancel-countdown")?.();
+		vi.useRealTimers();
+	});
+
+	it("broadcasts inline ticks and clears the countdown after success", async () => {
+		const sender = Object.assign(new EventEmitter(), { isDestroyed: () => false });
+		const pending = mocks.handlers.get("start-countdown")!({ sender }, 3);
+		await vi.advanceTimersByTimeAsync(3000);
+		await expect(pending).resolves.toEqual({ success: true });
+		expect(mocks.send.mock.calls).toEqual([
+			["countdown-tick", 3],
+			["countdown-tick", 2],
+			["countdown-tick", 1],
+			["countdown-tick", 0],
+		]);
+		expect(sender.listenerCount("destroyed")).toBe(0);
+	});
+
+	it.each([
+		"destroyed",
+		"render-process-gone",
+	])("cancels when the recording owner exits via %s", async (event) => {
+		const sender = Object.assign(new EventEmitter(), { isDestroyed: () => false });
+		const pending = mocks.handlers.get("start-countdown")!({ sender }, 3);
+		sender.emit(event);
+		await expect(pending).resolves.toEqual({ success: false, cancelled: true });
+		expect(mocks.handlers.get("get-active-countdown")!()).toEqual({
+			success: true,
+			seconds: null,
+		});
+		expect(vi.getTimerCount()).toBe(0);
 	});
 });

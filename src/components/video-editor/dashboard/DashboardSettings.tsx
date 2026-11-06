@@ -289,13 +289,12 @@ export function DashboardSettings({
 									"settings.dashboard.recordingsFolder",
 									"Recordings folder",
 								)}
-								help={t(
+								help={<>
+									{t(
 									"settings.appPreferences.folderScope",
 									"Changing this location affects future recordings. Existing files stay in their current folders.",
-								)}
-								descriptionInline
-								description={
-									<span className="settings-folder-path" title={recordings}>
+									)}
+									<span className="mt-2 block break-all font-mono">
 										{recordings ||
 											folderErrors.recordings ||
 											t(
@@ -303,7 +302,7 @@ export function DashboardSettings({
 												"Loading folder location…",
 											)}
 									</span>
-								}
+								</>}
 							>
 								<div className="settings-actions">
 									<Button
@@ -356,13 +355,12 @@ export function DashboardSettings({
 						<div className="settings-item">
 							<SettingsRow
 								title={t("settings.dashboard.projectsFolder", "Projects folder")}
-								help={t(
+								help={<>
+									{t(
 									"settings.dashboard.autosave",
 									"Named projects save automatically.",
-								)}
-								descriptionInline
-								description={
-									<span className="settings-folder-path" title={directory}>
+									)}
+									<span className="mt-2 block break-all font-mono">
 										{directory ||
 											folderErrors.projects ||
 											t(
@@ -370,7 +368,7 @@ export function DashboardSettings({
 												"Loading folder location…",
 											)}
 									</span>
-								}
+								</>}
 							>
 								<Button
 									variant="secondary"

@@ -8,6 +8,7 @@ import {
 } from "../types";
 import type { CursorStylePreviewAsset } from "../videoPlayback/cursorRenderer";
 import { getCursorStyleSizeMultiplier } from "../videoPlayback/uploadedCursorAssets";
+import styles from "./CursorAppearancePreviews.module.css";
 
 const BUILTIN_CURSOR_PREVIEW_SIZE = 28;
 const BUILTIN_CURSOR_PREVIEW_FRAME_SIZE = 48;
@@ -42,7 +43,7 @@ const CURSOR_CLICK_EFFECT_OPTIONS: Array<{
 function CursorClickEffectPreview({ effect }: { effect: CursorClickEffectStyle }) {
 	return (
 		<div
-			className="relative flex items-center justify-center"
+			className={cn("relative flex items-center justify-center", styles.effectPreview)}
 			style={{
 				color: DEFAULT_CURSOR_CLICK_EFFECT_COLOR,
 				width: `${BUILTIN_CURSOR_PREVIEW_FRAME_SIZE}px`,
@@ -137,7 +138,10 @@ export function CursorClickEffectCards({
 							value={effect.id}
 							aria-label={label}
 							title={`${label} - ${description}`}
-							className={cn("group aspect-square h-auto min-w-0 p-3 text-left")}
+							className={cn(
+								"group aspect-square h-auto min-w-0 p-3 text-left",
+								styles.effectTile,
+							)}
 						>
 							<div className="flex h-full flex-col items-center justify-between gap-3">
 								<div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[8px] px-2 py-1.5">
@@ -168,20 +172,33 @@ export function CursorStylePreview({
 			className="flex items-center justify-center"
 			style={{ width: frameSize, height: frameSize }}
 		>
-			{previewUrls[style] && (
-				<img
-					src={previewUrls[style].url}
-					alt=""
-					draggable={false}
-					className="max-w-none"
-					style={{
-						height: previewSize * getCursorStyleSizeMultiplier(style),
-						transform: `translate(${previewUrls[style].offsetX * previewSize * getCursorStyleSizeMultiplier(style)}px, ${previewUrls[style].offsetY * previewSize * getCursorStyleSizeMultiplier(style)}px)`,
-						width: "auto",
-						imageRendering: style === "pixel-hand" ? "pixelated" : "auto",
-					}}
-				/>
-			)}
+			{(["arrow", "pointer"] as const).map((kind) => {
+				const asset =
+					previewUrls[kind === "arrow" ? style : `${style}:pointer`] ??
+					previewUrls[style];
+				if (!asset) return null;
+				const size = previewSize * getCursorStyleSizeMultiplier(style);
+				return (
+					<img
+						key={kind}
+						src={asset.url}
+						alt=""
+						draggable={false}
+						className={cn(
+							"max-w-none",
+							kind === "arrow"
+								? "group-hover:hidden group-focus-visible:hidden"
+								: "hidden group-hover:block group-focus-visible:block",
+						)}
+						style={{
+							height: size,
+							width: "auto",
+							transform: `translate(${asset.offsetX * size}px, ${asset.offsetY * size}px)`,
+							imageRendering: style === "pixel-hand" ? "pixelated" : "auto",
+						}}
+					/>
+				);
+			})}
 		</div>
 	);
 }

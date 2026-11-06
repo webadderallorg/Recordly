@@ -218,6 +218,11 @@ describe("floating webcam preview lifecycle and pointer ownership", () => {
 		const floatingVideo = video();
 		preview.setWebcamPreviewNode(popoverVideo as unknown as HTMLVideoElement);
 		preview.setRecordingWebcamPreviewNode(floatingVideo as unknown as HTMLVideoElement);
+		expect(getUserMedia).toHaveBeenCalledWith(
+			expect.objectContaining({
+				video: expect.objectContaining({ frameRate: { ideal: 60, max: 60 } }),
+			}),
+		);
 		expect(popoverVideo.srcObject).toBe(stream);
 		expect(floatingVideo.srcObject).toBe(stream);
 		expect(preview.setWebcamPreviewNode).toBe(initial.setWebcamPreviewNode);

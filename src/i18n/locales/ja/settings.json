@@ -195,6 +195,7 @@
 		"cursorDebugMovedToDev": "カーソルのばね調整は「設定」>「開発」で行えます。",
 		"webcamShape": "形状",
 		"webcamCircle": "円形",
+		"webcamRectangle": "長方形",
 		"webcamSquircle": "スクワークル",
 		"webcamPosition": "位置",
 		"webcamCustomPosition": "カスタム位置",

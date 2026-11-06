@@ -209,6 +209,7 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 				video && video.readyState >= 2 && webcamMediaSynchronized
 					? webcamMotionBlurRef.current.render({
 							layout: { x, y, ...scaledDimensions, radius: scaledRadius },
+							resolution: window.devicePixelRatio,
 							shape: webcam?.shape,
 							timeMs: timelineTimeRef.current * 1000,
 							playing: isPlayingRef.current && !isSeekingRef.current,
@@ -229,6 +230,8 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 				if (context) {
 					context.clearRect(0, 0, blurCanvas.width, blurCanvas.height);
 					context.drawImage(blur.canvas, 0, 0);
+					blurCanvas.style.width = `${blur.width}px`;
+					blurCanvas.style.height = `${blur.height}px`;
 					blurCanvas.style.left = `${blur.x}px`;
 					blurCanvas.style.top = `${blur.y}px`;
 					blurCanvas.style.display = "block";

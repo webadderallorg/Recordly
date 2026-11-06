@@ -384,7 +384,7 @@ export function ExportSettingsMenu({
 								className="inline h-auto min-h-0 p-0 text-xs text-accent no-underline hover:underline"
 								onClick={() => billing?.openPricing()}
 							>
-								{tBilling("upgrade", "Upgrade to Cloud")}
+								{tBilling("upgradeShort", "Upgrade")}
 							</Button>{" "}
 							{tBilling("forCommercialUse", "for commercial use")}
 						</p>
