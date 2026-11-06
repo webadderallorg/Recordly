@@ -102,6 +102,7 @@ type MockContext = {
 	beginPath: MockFunction;
 	moveTo: MockFunction;
 	lineTo: MockFunction;
+	arcTo: MockFunction;
 	closePath: MockFunction;
 	clip: MockFunction;
 	drawImage: MockFunction;
@@ -246,6 +247,7 @@ function createMockContext() {
 		beginPath: vi.fn(),
 		moveTo: vi.fn(),
 		lineTo: vi.fn(),
+		arcTo: vi.fn(),
 		closePath: vi.fn(),
 		clip: vi.fn(),
 		drawImage: vi.fn(),

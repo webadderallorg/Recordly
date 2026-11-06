@@ -26,9 +26,10 @@ export function parseStripeBillingUrl(value: unknown, action: "checkout" | "port
 	const url = new URL(value);
 	const origin =
 		action === "checkout" ? "https://checkout.stripe.com" : "https://billing.stripe.com";
-	const prefix = action === "checkout" ? "/c/pay/" : "/p/session/";
+	// Stripe currently returns both checkout URL formats.
+	const prefixes = action === "checkout" ? ["/c/pay/", "/g/pay/"] : ["/p/session/"];
 	const sessionPath =
-		url.pathname.startsWith(prefix) ||
+		prefixes.some((prefix) => url.pathname.startsWith(prefix)) ||
 		(action === "portal" &&
 			url.pathname === "/p/session" &&
 			Boolean(url.searchParams.get("secret")));

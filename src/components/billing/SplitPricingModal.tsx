@@ -105,7 +105,7 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 	const pending = Boolean(busy) || (Boolean(user) && pricingLoading);
 	const benefits = [
 		t("featureLicense", "Full commercial license"),
-		t("featureLinkSharing", "Share any video with a link"),
+		t("featureLinkSharing", "Share any video with a 24/7 link"),
 		t("featureStorage", "Unlimited cloud storage and bandwidth"),
 		t("featurePlayback", "Play cloud videos in FHD 1080p"),
 		t("featureCaptionExport", "Export caption SRT and VTT files"),
