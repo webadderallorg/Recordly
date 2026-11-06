@@ -144,32 +144,57 @@ for (const height of [600, 760]) {
 	});
 }
 
-test("Home community footer opens X beside Discord and GitHub", async ({ page }) => {
-	test.setTimeout(60000);
-	await page.setViewportSize({ width: 1000, height: 600 });
-	await page.emulateMedia({ reducedMotion: "reduce" });
-	await installDesktopBridge(page);
-	await installDesktopBridgeOverrides(page, () => {
-		window.electronAPI.openExternalUrl = async (url) => {
-			document.documentElement.dataset.openedCommunityUrl = url;
-			return { success: true };
-		};
+for (const { width, height, theme } of [
+	{ width: 1000, height: 600, theme: "dark" },
+	{ width: 1280, height: 760, theme: "light" },
+] as const) {
+	test(`Home community links are labeled and open Recordly accounts (${theme}, ${width}×${height})`, async ({
+		page,
+	}) => {
+		test.setTimeout(60000);
+		await page.setViewportSize({ width, height });
+		await page.emulateMedia({ reducedMotion: "reduce", colorScheme: theme });
+		await installDesktopBridge(page);
+		await page.addInitScript((value) => localStorage.setItem("recordly.theme", value), theme);
+		await installDesktopBridgeOverrides(page, () => {
+			window.electronAPI.openExternalUrl = async (url) => {
+				document.documentElement.dataset.openedCommunityUrl = url;
+				return { success: true };
+			};
+		});
+		await page.goto("/?windowType=editor");
+		await page.getByRole("button", { name: "Home", exact: true }).click();
+		const home = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
+		const links = home.getByRole("group", { name: "Recordly", exact: true });
+		await expect(links.getByRole("button")).toHaveCount(4);
+		const url = page.url();
+		for (const [name, label, target] of [
+			["Join Discord", "Discord", "https://discord.gg/sdv2FBVNgE"],
+			["GitHub", "GitHub", "https://github.com/webadderallorg/Recordly"],
+			["X", "X", "https://x.com/RecordlyHQ"],
+			["YouTube", "YouTube", "https://www.youtube.com/@recordlydev"],
+		]) {
+			const button = links.getByRole("button", { name, exact: true });
+			await expect(button).toHaveText(label);
+			await expect(button).toBeInViewport({ ratio: 1 });
+			if (name === "YouTube") {
+				await button.focus();
+				await page.keyboard.press("Enter");
+			} else {
+				await button.click();
+			}
+			await expect(page.locator("html")).toHaveAttribute("data-opened-community-url", target);
+			await expect(page).toHaveURL(url);
+		}
+		await home
+			.locator("aside")
+			.screenshot({ path: test.info().outputPath(`community-${theme}.png`) });
 	});
-	await page.goto("/?windowType=editor");
-	await page.getByRole("button", { name: "Home", exact: true }).click();
-	const home = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
-	const x = home.getByRole("button", { name: "X", exact: true });
-	await expect(home.getByRole("button", { name: "Join Discord", exact: true })).toBeVisible();
-	await expect(home.getByRole("button", { name: "GitHub", exact: true })).toBeVisible();
-	await expect(x).toBeVisible();
-	expect(await x.evaluate((button) => Array.from(button.parentElement!.querySelectorAll("button"), (item) => item.getAttribute("aria-label")))).toEqual(["Join Discord", "GitHub", "X"]);
-	const url = page.url();
-	await x.click();
-	await expect(page.locator("html")).toHaveAttribute("data-opened-community-url", "https://x.com/webadderall");
-	await expect(page).toHaveURL(url);
-});
+}
 
-test("Japanese community footer keeps its full Upgrade label accessible without overlapping social icons", async ({ page }) => {
+test("Japanese community footer fits Upgrade and labeled links without overlap", async ({
+	page,
+}) => {
 	test.setTimeout(60000);
 	await page.setViewportSize({ width: 1000, height: 600 });
 	await page.emulateMedia({ reducedMotion: "reduce" });
@@ -185,20 +210,40 @@ test("Japanese community footer keeps its full Upgrade label accessible without 
 	await expect(label).toHaveText("アップグレード");
 	await expect(label).toHaveCSS("text-overflow", "ellipsis");
 	await expect(label).toHaveCSS("overflow-x", "hidden");
-	// Exercise a label wider than this sidebar's available button space; its
-	// full text remains available to assistive technology and the title tooltip.
-	expect(await label.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+	// Upgrade has its own row so even the Japanese label fits at the narrow sidebar width.
+	expect(await label.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+		true,
+	);
 	await expect(label).toHaveAttribute("title", "アップグレード");
 	const bounds = (await footer.boundingBox())!;
-	let previousRight = bounds.x;
+	const boxes = [];
 	for (const button of await footer.getByRole("button").all()) {
 		await expect(button).toBeInViewport({ ratio: 1 });
 		const box = (await button.boundingBox())!;
-		expect(box.x).toBeGreaterThanOrEqual(previousRight);
+		expect(box.x).toBeGreaterThanOrEqual(bounds.x);
 		expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
-		previousRight = box.x + box.width;
+		expect(box.height).toBeGreaterThanOrEqual(32);
+		for (const previous of boxes) {
+			expect(
+				box.x >= previous.x + previous.width ||
+					box.x + box.width <= previous.x ||
+					box.y >= previous.y + previous.height ||
+					box.y + box.height <= previous.y,
+			).toBe(true);
+		}
+		boxes.push(box);
+		const text = button.locator("span").first();
+		expect(await text.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+			true,
+		);
 	}
+	const socialBounds = (await footer
+		.getByRole("group", { name: "Recordly", exact: true })
+		.boundingBox())!;
+	const upgradeBounds = (await upgrade.boundingBox())!;
+	expect(socialBounds.y).toBeGreaterThanOrEqual(upgradeBounds.y + upgradeBounds.height);
 	await expect(footer.getByRole("button", { name: "GitHub", exact: true })).toBeVisible();
 	await expect(footer.getByRole("button", { name: "X", exact: true })).toBeVisible();
+	await expect(footer.getByRole("button", { name: "YouTube", exact: true })).toBeVisible();
 	await footer.screenshot({ path: test.info().outputPath("community-ja.png") });
 });

@@ -1,4 +1,4 @@
-import { GithubLogo, XLogo } from "@phosphor-icons/react";
+import { GithubLogo, XLogo, YoutubeLogo } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { UpgradeButton } from "@/components/billing/UpgradeButton";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,8 @@ import { formatShortcut } from "@/utils/platformUtils";
 const RECORDLY_GITHUB_URL = "https://github.com/webadderallorg/Recordly";
 export const RECORDLY_ISSUES_URL = `${RECORDLY_GITHUB_URL}/issues`;
 const RECORDLY_DISCORD_URL = "https://discord.gg/sdv2FBVNgE";
-const RECORDLY_X_URL = "https://x.com/webadderall";
+const RECORDLY_X_URL = "https://x.com/RecordlyHQ";
+const RECORDLY_YOUTUBE_URL = "https://www.youtube.com/@recordlydev";
 export const APP_HEADER_ACTION_BUTTON_CLASS =
 	"h-7 px-2 text-xs text-muted-foreground hover:bg-foreground/10 hover:text-foreground transition-all gap-1.5";
 export const APP_HEADER_ICON_BUTTON_CLASS =
@@ -84,53 +85,52 @@ export function DiscordLinkButton({ className }: { className?: string }) {
 export function CommunityLinks() {
 	const t = useScopedT("editor");
 	const tBilling = useScopedT("billing");
-	const buttonClassName =
-		"size-7 min-w-7 rounded-lg p-0 text-muted hover:bg-foreground/5 hover:text-foreground";
+	const tEditing = useScopedT("editing");
+	const links = [
+		{
+			label: "Discord",
+			accessibleLabel: tEditing("joinDiscord", "Join Discord"),
+			url: RECORDLY_DISCORD_URL,
+			Icon: DiscordIcon,
+		},
+		{ label: "GitHub", accessibleLabel: "GitHub", url: RECORDLY_GITHUB_URL, Icon: GithubLogo },
+		{ label: "X", accessibleLabel: "X", url: RECORDLY_X_URL, Icon: XLogo },
+		{
+			label: "YouTube",
+			accessibleLabel: "YouTube",
+			url: RECORDLY_YOUTUBE_URL,
+			Icon: YoutubeLogo,
+		},
+	];
 
 	return (
-		<div className="community-links mt-2 flex shrink-0 items-center gap-1">
+		<div className="community-links mt-2 flex shrink-0 flex-col gap-2">
 			<UpgradeButton
 				label={tBilling("upgradeShort", "Upgrade")}
 				showDiscount={false}
 				truncateLabel
-				className="h-8 min-w-0 flex-1 px-1.5 text-xs"
+				className="h-8 w-full min-w-0 px-1.5 text-xs"
 			/>
-			<div className="flex shrink-0 items-center gap-1">
-				<DiscordLinkButton className={buttonClassName} />
-				<Button
-					type="button"
-					variant="ghost"
-					size="sm"
-					isIconOnly
-					className={buttonClassName}
-					title="GitHub"
-					aria-label="GitHub"
-					onClick={() =>
-						void openExternalLink(
-							RECORDLY_GITHUB_URL,
-							t("feedback.openFailed", "Failed to open link."),
-						)
-					}
-				>
-					<GithubLogo className="size-4" aria-hidden="true" />
-				</Button>
-				<Button
-					type="button"
-					variant="ghost"
-					size="sm"
-					isIconOnly
-					className={buttonClassName}
-					title="X"
-					aria-label="X"
-					onClick={() =>
-						void openExternalLink(
-							RECORDLY_X_URL,
-							t("feedback.openFailed", "Failed to open link."),
-						)
-					}
-				>
-					<XLogo className="size-4" aria-hidden="true" />
-				</Button>
+			<div role="group" aria-label="Recordly" className="grid grid-cols-2 gap-1">
+				{links.map(({ label, accessibleLabel, url, Icon }) => (
+					<Button
+						key={label}
+						type="button"
+						variant="ghost"
+						size="sm"
+						className="h-8 w-full min-w-0 justify-start gap-1.5 rounded-lg px-1.5 text-[11px] text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
+						aria-label={accessibleLabel}
+						onClick={() =>
+							void openExternalLink(
+								url,
+								t("feedback.openFailed", "Failed to open link."),
+							)
+						}
+					>
+						<Icon className="size-3.5 shrink-0" aria-hidden="true" />
+						<span>{label}</span>
+					</Button>
+				))}
 			</div>
 		</div>
 	);
