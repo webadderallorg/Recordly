@@ -2460,8 +2460,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, [markRecordingResumed, paused, recording, resumeMicFallbackRecorder]);
 
 	const cancelRecording = useCallback(() => {
-		recordingStartGeneration.current += 1;
+		// Bail out before touching anything shared (the generation counter,
+		// webcam refs) when there's no active recording to cancel - otherwise a
+		// stray/duplicate call (e.g. from a control that hasn't noticed the
+		// recording already stopped) can bump the generation counter and abort
+		// an unrelated recording that's in the middle of starting, or discard
+		// webcam state that belongs to it. cancelRecordingStart is the dedicated
+		// path for cancelling a recording that's still starting up.
 		if (!recording) return;
+		recordingStartGeneration.current += 1;
 		setPaused(false);
 		markRecordingResumed(Date.now());
 

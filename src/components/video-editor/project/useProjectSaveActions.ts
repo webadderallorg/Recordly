@@ -8,6 +8,22 @@ import { cloneStructured, getErrorMessage } from "../videoEditorUtils";
 
 const PROJECT_AUTOSAVE_DELAY_MS = 500;
 
+/**
+ * The close-before-save flow below is a long-running async closure (awaits a
+ * dialog, then a save) that calls back into hook-scoped functions. Those
+ * functions get a new identity every time their underlying state (snapshot,
+ * hasUnsavedChanges) changes, but a closure already in flight keeps whatever
+ * it captured when it started - so without this, it can act on stale state
+ * from before the edits that happened while it was awaiting.
+ */
+function useLatestRef<T>(value: T) {
+	const ref = useRef(value);
+	useLayoutEffect(() => {
+		ref.current = value;
+	}, [value]);
+	return ref;
+}
+
 type SaveProjectOptions = {
 	silent?: boolean;
 	remountPreviewAfterSave?: boolean;
@@ -72,12 +88,7 @@ export function useProjectSaveActions({
 	}, [currentSourcePath]);
 	const autosaveTimeoutRef = useRef<number | null>(null);
 	const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
-	// Always points at the latest scheduleAutosave. The close-before-save flow
-	// below is a long-running async closure (awaiting a dialog, then a save);
-	// calling scheduleAutosave directly would use whatever snapshot/handlers
-	// were current when that closure started, not the latest edits made while
-	// it was still awaiting.
-	const scheduleAutosaveRef = useRef<() => void>(() => undefined);
+	const hasUnsavedChangesRef = useLatestRef(hasUnsavedChanges);
 	const clearPendingAutosave = useCallback(() => {
 		if (autosaveTimeoutRef.current !== null) {
 			window.clearTimeout(autosaveTimeoutRef.current);
@@ -207,9 +218,8 @@ export function useProjectSaveActions({
 			});
 		}, PROJECT_AUTOSAVE_DELAY_MS);
 	}, [clearPendingAutosave, hasUnsavedChanges, saveProject, project.loading, currentSourcePath]);
-	useLayoutEffect(() => {
-		scheduleAutosaveRef.current = scheduleAutosave;
-	}, [scheduleAutosave]);
+	const scheduleAutosaveRef = useLatestRef(scheduleAutosave);
+	const saveProjectRef = useLatestRef(saveProject);
 
 	useEffect(
 		() =>
@@ -226,7 +236,24 @@ export function useProjectSaveActions({
 					return "cancel";
 				}
 				if (decision === "discard") return "discard";
-				const saved = await saveProject(false);
+
+				let saved = await saveProjectRef.current(false);
+				// Background edits (e.g. caption generation finishing) can land
+				// while the dialog was open, or while that save itself was still
+				// writing to disk. Keep saving the latest snapshot - via the ref,
+				// so each attempt reflects the newest edits, not the one captured
+				// when this handler started - until there's nothing left to
+				// persist, instead of closing with stale content. Bounded so a
+				// continuous stream of background edits can't hang the close
+				// indefinitely; raise the bound if that proves too tight in
+				// practice.
+				for (
+					let attempt = 0;
+					saved && hasUnsavedChangesRef.current && attempt < 3;
+					attempt++
+				) {
+					saved = await saveProjectRef.current(false);
+				}
 				// The main process now shows a native recovery dialog; if the user
 				// cancels there, this window stays open, so autosave must resume -
 				// via the ref, so a retry never re-arms with a stale snapshot or
@@ -234,7 +261,16 @@ export function useProjectSaveActions({
 				if (!saved) scheduleAutosaveRef.current();
 				return saved ? "save" : "save-failed";
 			}),
-		[saveProject, openUnsavedChangesDialog, clearPendingAutosave],
+		// The ref.current reads below are deliberately excluded from triggering
+		// a resubscribe (that's the point of the latest-ref pattern) - listed
+		// here only to satisfy the exhaustive-deps lint rule.
+		[
+			openUnsavedChangesDialog,
+			clearPendingAutosave,
+			hasUnsavedChangesRef.current,
+			saveProjectRef.current,
+			scheduleAutosaveRef.current,
+		],
 	);
 	useEffect(() => {
 		scheduleAutosave();
