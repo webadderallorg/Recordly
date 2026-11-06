@@ -189,6 +189,8 @@ jobs:
         run: |
           npx tsc
           npx vite build
+          npm run normalize:electron-main-cjs
+          npm run smoke:electron-main-cjs
           npx electron-builder --mac dir dmg zip --x64 --publish never \
             -c.mac.forceCodeSigning=true \
             -c.mac.notarize=true
@@ -306,6 +308,8 @@ jobs:
         run: |
           npx tsc
           npx vite build
+          npm run normalize:electron-main-cjs
+          npm run smoke:electron-main-cjs
           npx electron-builder --mac dir dmg zip --arm64 --publish never \
             -c.mac.forceCodeSigning=true \
             -c.mac.notarize=true
@@ -485,8 +489,15 @@ jobs:
         shell: pwsh
         run: |
           npm run build:platform-native-helpers
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx tsc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx vite build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run normalize:electron-main-cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run smoke:electron-main-cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx electron-builder --win dir nsis --x64 --publish never
 
       - name: Smoke test packaged Windows x64 paths
@@ -564,6 +575,8 @@ jobs:
           npm run build:platform-native-helpers
           npx tsc
           npx vite build
+          npm run normalize:electron-main-cjs
+          npm run smoke:electron-main-cjs
           npx electron-builder --linux dir AppImage --x64 --publish never
 
       - name: Smoke test packaged Linux x64 paths
