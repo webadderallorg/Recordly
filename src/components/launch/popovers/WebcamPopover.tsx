@@ -1,14 +1,16 @@
+import type { ReactElement } from "react";
 import {
 	Eye,
 	EyeSlash as EyeOff,
+	Gauge,
 	VideoCamera as Video,
 	VideoCameraSlash as VideoOff,
 } from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
-import { DropdownItem, HudPopover } from "./PopoverScaffold";
+import { WEBCAM_QUALITY_PRESETS, type WebcamQualityPreset } from "@/lib/webcamQuality";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import type { DeviceOption } from "./launchPopoverTypes";
-import type { ReactElement } from "react";
+import { DropdownItem, HudPopover } from "./PopoverScaffold";
 
 const POPOVER_ID = "webcam";
 
@@ -26,6 +28,8 @@ export function WebcamPopover({
 	webcamDeviceId,
 	selectedVideoDeviceId,
 	onSelectVideoDevice,
+	webcamQuality,
+	onSelectQuality,
 }: {
 	trigger: ReactElement;
 	disabled?: boolean;
@@ -40,6 +44,8 @@ export function WebcamPopover({
 	webcamDeviceId?: string;
 	selectedVideoDeviceId?: string;
 	onSelectVideoDevice: (deviceId: string) => void;
+	webcamQuality: WebcamQualityPreset;
+	onSelectQuality: (quality: WebcamQualityPreset) => void;
 }) {
 	const t = useScopedT("launch");
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
@@ -134,6 +140,23 @@ export function WebcamPopover({
 				<div className="text-center text-xs text-[var(--launch-text-muted)] py-4">
 					{t("recording.noWebcamsFound")}
 				</div>
+			)}
+			{webcamEnabled && (
+				<>
+					<div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--launch-label)]">
+						{t("recording.webcamQuality", "Quality")}
+					</div>
+					{WEBCAM_QUALITY_PRESETS.map((preset) => (
+						<DropdownItem
+							key={preset.id}
+							icon={<Gauge size={16} />}
+							selected={webcamQuality === preset.id}
+							onClick={() => onSelectQuality(preset.id)}
+						>
+							{preset.label}
+						</DropdownItem>
+					))}
+				</>
 			)}
 		</HudPopover>
 	);

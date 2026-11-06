@@ -191,6 +191,7 @@ export function useEditorProjectController(input: Input) {
 		captureProjectThumbnail: input.captureProjectThumbnail,
 		refreshProjectLibrary: input.refreshProjectLibrary,
 		remountPreview: input.remountPreview,
+		openUnsavedChangesDialog: lifecycle.openUnsavedChangesDialog,
 	});
 	const openActions = useProjectOpenActions({
 		project: input.project,

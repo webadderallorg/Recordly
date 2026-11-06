@@ -1,12 +1,28 @@
-import { moveProjectFolderReferences } from "../dashboard/useProjectFolders";
-import { moveProjectShareLink } from "../cloud/projectShareLinks";
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { toast } from "@/components/ui/toast";
+import { moveProjectShareLink } from "../cloud/projectShareLinks";
+import { moveProjectFolderReferences } from "../dashboard/useProjectFolders";
 import { createProjectData, type EditorProjectData } from "../projectPersistence";
 import type { useProjectState } from "../state/useProjectState";
 import { cloneStructured, getErrorMessage } from "../videoEditorUtils";
 
 const PROJECT_AUTOSAVE_DELAY_MS = 500;
+
+/**
+ * The close-before-save flow below is a long-running async closure (awaits a
+ * dialog, then a save) that calls back into hook-scoped functions. Those
+ * functions get a new identity every time their underlying state (snapshot,
+ * hasUnsavedChanges) changes, but a closure already in flight keeps whatever
+ * it captured when it started - so without this, it can act on stale state
+ * from before the edits that happened while it was awaiting.
+ */
+function useLatestRef<T>(value: T) {
+	const ref = useRef(value);
+	useLayoutEffect(() => {
+		ref.current = value;
+	}, [value]);
+	return ref;
+}
 
 type SaveProjectOptions = {
 	silent?: boolean;
@@ -29,6 +45,7 @@ type UseProjectSaveActionsInput = {
 	captureProjectThumbnail: () => Promise<string | null>;
 	refreshProjectLibrary: () => Promise<void>;
 	remountPreview: () => void;
+	openUnsavedChangesDialog: (actionLabel: string) => Promise<"cancel" | "discard" | "save">;
 };
 
 export function useProjectSaveActions({
@@ -45,6 +62,7 @@ export function useProjectSaveActions({
 	captureProjectThumbnail,
 	refreshProjectLibrary,
 	remountPreview,
+	openUnsavedChangesDialog,
 }: UseProjectSaveActionsInput) {
 	const {
 		currentProjectPath,
@@ -70,6 +88,7 @@ export function useProjectSaveActions({
 	}, [currentSourcePath]);
 	const autosaveTimeoutRef = useRef<number | null>(null);
 	const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+	const hasUnsavedChangesRef = useLatestRef(hasUnsavedChanges);
 	const clearPendingAutosave = useCallback(() => {
 		if (autosaveTimeoutRef.current !== null) {
 			window.clearTimeout(autosaveTimeoutRef.current);
@@ -177,17 +196,18 @@ export function useProjectSaveActions({
 	);
 
 	useEffect(() => {
+		console.log("[close-debug] renderer hasUnsavedChanges ->", hasUnsavedChanges, {
+			currentSourcePath,
+			hasSnapshot: Boolean(currentProjectSnapshot),
+		});
 		window.electronAPI.setHasUnsavedChanges(hasUnsavedChanges);
-	}, [hasUnsavedChanges]);
-	useEffect(
-		() => window.electronAPI.onRequestSaveBeforeClose(() => saveProject(false)),
-		[saveProject],
-	);
-	useEffect(() => {
+	}, [hasUnsavedChanges, currentSourcePath, currentProjectSnapshot]);
+	const scheduleAutosave = useCallback(() => {
 		if (project.loading || !currentSourcePath || !hasUnsavedChanges) {
 			clearPendingAutosave();
 			return;
 		}
+		clearPendingAutosave();
 		autosaveTimeoutRef.current = window.setTimeout(() => {
 			autosaveTimeoutRef.current = null;
 			void saveProject(false, {
@@ -197,9 +217,70 @@ export function useProjectSaveActions({
 				captureThumbnail: false,
 			});
 		}, PROJECT_AUTOSAVE_DELAY_MS);
-		return clearPendingAutosave;
 	}, [clearPendingAutosave, hasUnsavedChanges, saveProject, project.loading, currentSourcePath]);
-	useEffect(() => clearPendingAutosave, [clearPendingAutosave]);
+	const scheduleAutosaveRef = useLatestRef(scheduleAutosave);
+	const saveProjectRef = useLatestRef(saveProject);
+
+	useEffect(
+		() =>
+			window.electronAPI.onRequestSaveBeforeClose(async () => {
+				// Stop a new autosave from sneaking in while the user is deciding.
+				clearPendingAutosave();
+				const decision = await openUnsavedChangesDialog("close this project");
+				if (decision === "cancel") {
+					// ponytail: doesn't cancel an autosave that was already mid-flight
+					// when Discard/Save was picked - not worth cancelling an in-flight
+					// IPC file write for a sub-500ms race. Goes through the ref (see
+					// above) so it reflects any edits made while the dialog was open.
+					scheduleAutosaveRef.current();
+					return "cancel";
+				}
+				if (decision === "discard") return "discard";
+
+				let saved = await saveProjectRef.current(false);
+				// Background edits (e.g. caption generation finishing) can land
+				// while the dialog was open, or while that save itself was still
+				// writing to disk. Keep saving the latest snapshot - via the ref,
+				// so each attempt reflects the newest edits, not the one captured
+				// when this handler started - until there's nothing left to
+				// persist, instead of closing with stale content. Bounded so a
+				// continuous stream of background edits can't hang the close
+				// indefinitely; raise the bound if that proves too tight in
+				// practice.
+				for (
+					let attempt = 0;
+					saved && hasUnsavedChangesRef.current && attempt < 3;
+					attempt++
+				) {
+					saved = await saveProjectRef.current(false);
+				}
+				// Don't report success while something is still unsaved - whether
+				// because we ran out of retries above, or because an edit landed
+				// after the last save started but before it finished. Closing on
+				// "save" here would mean losing whatever that edit was.
+				if (hasUnsavedChangesRef.current) saved = false;
+				// The main process now shows a native recovery dialog; if the user
+				// cancels there, this window stays open, so autosave must resume -
+				// via the ref, so a retry never re-arms with a stale snapshot or
+				// clobbers a newer autosave scheduled for edits made during the save.
+				if (!saved) scheduleAutosaveRef.current();
+				return saved ? "save" : "save-failed";
+			}),
+		// The ref.current reads below are deliberately excluded from triggering
+		// a resubscribe (that's the point of the latest-ref pattern) - listed
+		// here only to satisfy the exhaustive-deps lint rule.
+		[
+			openUnsavedChangesDialog,
+			clearPendingAutosave,
+			hasUnsavedChangesRef.current,
+			saveProjectRef.current,
+			scheduleAutosaveRef.current,
+		],
+	);
+	useEffect(() => {
+		scheduleAutosave();
+		return clearPendingAutosave;
+	}, [scheduleAutosave, clearPendingAutosave]);
 
 	const saveProjectWithName = useCallback(
 		async (name: string, mode: "rename" | "copy" = "rename") => {

@@ -602,6 +602,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	storeRecordedVideo: (videoData: ArrayBuffer, fileName: string) => {
 		return ipcRenderer.invoke("store-recorded-video", videoData, fileName);
 	},
+	startWebcamChunkStream: (fileName: string) => {
+		return ipcRenderer.invoke("webcam-chunk-start", fileName);
+	},
+	appendWebcamChunk: (chunk: ArrayBuffer) => {
+		return ipcRenderer.invoke("webcam-chunk-append", chunk);
+	},
+	finalizeWebcamChunkStream: (options: { mimeType?: string; durationMs?: number }) => {
+		return ipcRenderer.invoke("webcam-chunk-finalize", options);
+	},
+	discardWebcamChunkStream: () => {
+		return ipcRenderer.invoke("webcam-chunk-discard");
+	},
 	storeMicrophoneSidecar: (
 		audioData: ArrayBuffer,
 		videoPath: string,
@@ -1093,15 +1105,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	setHasUnsavedChanges: (hasChanges: boolean) => {
 		ipcRenderer.send("set-has-unsaved-changes", hasChanges);
 	},
-	onRequestSaveBeforeClose: (callback: () => Promise<boolean>) => {
+	onRequestSaveBeforeClose: (
+		callback: () => Promise<"save" | "discard" | "cancel" | "save-failed">,
+	) => {
 		const listener = async (_event: Electron.IpcRendererEvent, requestId: unknown) => {
-			let saved = false;
+			let outcome: "save" | "discard" | "cancel" | "save-failed" = "cancel";
 			try {
-				saved = await callback();
+				outcome = await callback();
 			} catch {
-				saved = false;
+				outcome = "save-failed";
 			}
-			ipcRenderer.send("save-before-close-done", saved, requestId);
+			ipcRenderer.send("save-before-close-done", outcome, requestId);
 		};
 		ipcRenderer.on("request-save-before-close", listener);
 		return () => ipcRenderer.removeListener("request-save-before-close", listener);
@@ -1121,6 +1135,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		systemAudioEnabled?: boolean;
 		webcamEnabled?: boolean;
 		webcamDeviceId?: string;
+		webcamQuality?: string;
 	}) => ipcRenderer.invoke("set-recording-preferences", prefs),
 	getCountdownDelay: () => ipcRenderer.invoke("get-countdown-delay"),
 	setCountdownDelay: (delay: number) => ipcRenderer.invoke("set-countdown-delay", delay),

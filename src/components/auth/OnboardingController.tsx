@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
 import { RecordlySignInDialog } from "./RecordlySignInDialog";
 
@@ -35,17 +35,25 @@ export function OnboardingController({
 
 	useEffect(() => {
 		if (!ready) return;
+		// Check this before the "already seen" gates below so a permissions
+		// flow interrupted mid-way (e.g. app restart) reopens for guests too.
+		if (loadAppSetting<boolean>("recordly.onboarding.permissionsRequested")) {
+			setStartWithPermissions(true);
+			setOpen(true);
+			if (user) checked.current = true;
+			return;
+		}
 		if (!user) {
+			// Cloud sign-in isn't set up in this build - don't keep re-trapping
+			// someone who already chose to continue without an account.
+			if (!configured && loadAppSetting<boolean>(SEEN_KEY)) return;
 			setOpen(true);
 			return;
 		}
 		if (checked.current) return;
 		checked.current = true;
-		if (loadAppSetting<boolean>("recordly.onboarding.permissionsRequested")) {
-			setStartWithPermissions(true);
-			setOpen(true);
-		} else if (!loadAppSetting<boolean>(SEEN_KEY)) setOpen(true);
-	}, [ready, user]);
+		if (!loadAppSetting<boolean>(SEEN_KEY)) setOpen(true);
+	}, [ready, user, configured]);
 
 	useEffect(
 		() =>
@@ -63,6 +71,12 @@ export function OnboardingController({
 		void window.electronAPI.showRecordingHud();
 	};
 
+	const continueWithoutAccount = () => {
+		saveAppSetting(SEEN_KEY, true);
+		close();
+		void window.electronAPI.showRecordingHud();
+	};
+
 	return (
 		<RecordlySignInDialog
 			onboarding
@@ -70,12 +84,13 @@ export function OnboardingController({
 			variant="wide"
 			open={open}
 			onOpenChange={(value) => {
-				if (!value && user) close();
+				if (!value && (user || !configured)) close();
 			}}
 			user={user}
 			configured={configured}
 			callbackError={callbackError}
 			onAuthenticated={finish}
+			onContinueWithoutAccount={configured ? undefined : continueWithoutAccount}
 		/>
 	);
 }

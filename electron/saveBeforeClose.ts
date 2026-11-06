@@ -1,13 +1,19 @@
+type Outcome = "save" | "discard" | "cancel" | "save-failed";
+
 type Options = {
 	requestSave: () => void;
-	subscribe: (done: (saved: boolean) => void) => () => void;
+	subscribe: (done: (outcome: Outcome) => void) => () => void;
 	offerDiscard: () => Promise<boolean>;
 	close: () => void;
 	cancel: () => void;
 	timeoutMs?: number;
 };
 
-/** Saves before closing, with a cancellable recovery path for failed or missing replies. */
+/**
+ * Asks the renderer to resolve unsaved changes (save/discard/cancel) before
+ * closing, with a native-dialog recovery path if the renderer never replies
+ * or an explicit save fails.
+ */
 export function createSaveBeforeCloseController(options: Options) {
 	let pending = false;
 	let recovering = false;
@@ -20,12 +26,17 @@ export function createSaveBeforeCloseController(options: Options) {
 		unsubscribe?.();
 		unsubscribe = undefined;
 	};
-	const done = (saved: boolean) => {
+	const done = (outcome: Outcome) => {
 		if (!pending || recovering || disposed) return;
 		cleanup();
-		if (saved) {
+		if (outcome === "save" || outcome === "discard") {
 			pending = false;
 			options.close();
+			return;
+		}
+		if (outcome === "cancel") {
+			pending = false;
+			options.cancel();
 			return;
 		}
 		recovering = true;
@@ -50,10 +61,10 @@ export function createSaveBeforeCloseController(options: Options) {
 			pending = true;
 			try {
 				unsubscribe = options.subscribe(done);
-				timer = setTimeout(() => done(false), options.timeoutMs ?? 30_000);
+				timer = setTimeout(() => done("save-failed"), options.timeoutMs ?? 30_000);
 				options.requestSave();
 			} catch {
-				done(false);
+				done("save-failed");
 			}
 		},
 		dispose() {

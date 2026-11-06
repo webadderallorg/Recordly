@@ -330,6 +330,13 @@ interface Window {
 			videoData: ArrayBuffer,
 			fileName: string,
 		) => Promise<{ success: boolean; path?: string; message?: string }>;
+		startWebcamChunkStream: (fileName: string) => Promise<{ success: boolean; error?: string }>;
+		appendWebcamChunk: (chunk: ArrayBuffer) => Promise<{ success: boolean; error?: string }>;
+		finalizeWebcamChunkStream: (options: {
+			mimeType?: string;
+			durationMs?: number;
+		}) => Promise<{ success: boolean; path?: string; error?: string }>;
+		discardWebcamChunkStream: () => Promise<{ success: boolean }>;
 		storeMicrophoneSidecar: (
 			audioData: ArrayBuffer,
 			videoPath: string,
@@ -1019,7 +1026,9 @@ interface Window {
 		getAppSetting: (key: string) => unknown;
 		setAppSetting: (key: string, value: unknown) => boolean;
 		setHasUnsavedChanges: (hasChanges: boolean) => void;
-		onRequestSaveBeforeClose: (callback: () => Promise<boolean>) => () => void;
+		onRequestSaveBeforeClose: (
+			callback: () => Promise<"save" | "discard" | "cancel" | "save-failed">,
+		) => () => void;
 		isNativeWindowsCaptureAvailable: () => Promise<{ available: boolean }>;
 		muxNativeWindowsRecording: (expectedDurationMs?: number) => Promise<{
 			success: boolean;
@@ -1041,6 +1050,7 @@ interface Window {
 			systemAudioEnabled: boolean;
 			webcamEnabled: boolean;
 			webcamDeviceId?: string;
+			webcamQuality?: string;
 		}>;
 		getRecordingAudioLabConfig: () => Promise<{
 			browserMicrophoneProfile: string;
@@ -1052,6 +1062,7 @@ interface Window {
 			systemAudioEnabled?: boolean;
 			webcamEnabled?: boolean;
 			webcamDeviceId?: string;
+			webcamQuality?: string;
 		}) => Promise<{ success: boolean; error?: string }>;
 		/** Countdown timer before recording */
 		getCountdownDelay: () => Promise<{ success: boolean; delay: number }>;

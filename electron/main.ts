@@ -1,6 +1,3 @@
-import { resolveDisplayMediaSource } from "./ipc/register/sourceMapping";
-import { createSaveBeforeCloseController } from "./saveBeforeClose";
-import { clearRecordingTrashUndo } from "./ipc/recording/library";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -29,10 +26,13 @@ import {
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
+import { clearRecordingTrashUndo } from "./ipc/recording/library";
+import { resolveDisplayMediaSource } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
 import { hardenWebContentsNavigation, shouldHardenWebContentsType } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
+import { createSaveBeforeCloseController } from "./saveBeforeClose";
 import {
 	checkForAppUpdates,
 	deferUpdateReminder,
@@ -50,6 +50,7 @@ import {
 	skipAvailableUpdateVersion,
 } from "./updater";
 import {
+	beginHudCaptureProtection,
 	createEditorWindow,
 	createHudOverlayWindow,
 	createSourceSelectorWindow,
@@ -57,7 +58,6 @@ import {
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
 	isHudOverlayMousePassthroughSupported,
-	beginHudCaptureProtection,
 	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
 	setHudOverlayRecordingActive,
 	showUpdateToastWindow,
@@ -311,6 +311,7 @@ function showHudOverlayFromTray() {
 }
 
 ipcMain.on("set-has-unsaved-changes", (_event, hasChanges: boolean) => {
+	console.log("[close-debug] set-has-unsaved-changes received:", hasChanges);
 	editorHasUnsavedChanges = hasChanges;
 });
 
@@ -765,10 +766,12 @@ function updateTrayMenu(recording: boolean = false) {
 function createEditorWindowWrapper() {
 	const existingEditorWindow = getExistingEditorWindow();
 	if (existingEditorWindow) {
+		console.log("[close-debug] createEditorWindowWrapper: reusing existingEditorWindow");
 		mainWindow = existingEditorWindow;
 		restoreWindowSafely(existingEditorWindow);
 		return existingEditorWindow;
 	}
+	console.log("[close-debug] createEditorWindowWrapper: creating brand new window");
 
 	if (isCreatingEditorWindow) {
 		const currentWindow = mainWindow;
@@ -825,9 +828,17 @@ function createEditorWindowWrapper() {
 		requestSave: () =>
 			editorWindow.webContents.send("request-save-before-close", ++closeSaveRequestId),
 		subscribe: (done) => {
-			const saved = (event: Electron.IpcMainEvent, success: unknown, requestId: unknown) => {
-				if (event.sender === editorWindow.webContents && requestId === closeSaveRequestId)
-					done(success === true);
+			const saved = (event: Electron.IpcMainEvent, outcome: unknown, requestId: unknown) => {
+				if (event.sender === editorWindow.webContents && requestId === closeSaveRequestId) {
+					done(
+						outcome === "save" ||
+							outcome === "discard" ||
+							outcome === "cancel" ||
+							outcome === "save-failed"
+							? outcome
+							: "save-failed",
+					);
+				}
 			};
 			ipcMain.on("save-before-close-done", saved);
 			return () => ipcMain.removeListener("save-before-close-done", saved);
@@ -850,6 +861,12 @@ function createEditorWindowWrapper() {
 	});
 	editorWindow.once("closed", closeSave.dispose);
 	editorWindow.on("close", (event) => {
+		console.log(
+			"[close-debug] close event fired. isForceClosing:",
+			isForceClosing,
+			"editorHasUnsavedChanges:",
+			editorHasUnsavedChanges,
+		);
 		if (isForceClosing || !editorHasUnsavedChanges) {
 			if (process.platform === "win32" && !isForceClosing && !isAppQuitting) {
 				event.preventDefault();
