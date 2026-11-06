@@ -60,16 +60,22 @@ export function registerWebcamChunkStreamHandlers() {
 			}
 			try {
 				if (options?.mimeType && isWebmMimeType(options.mimeType) && options.durationMs) {
+					// Full-buffer rewrite, bounded by @fix-webm-duration/fix's
+					// Blob-only API. Upgrade to a streaming rewrite if hour+ 1080p60
+					// webcam files become common enough to matter.
 					const raw = await fs.readFile(videoPath);
 					const blob = new Blob([raw], { type: options.mimeType });
 					const fixed = await fixWebmDuration(blob, options.durationMs);
-					await fs.writeFile(videoPath, Buffer.from(await fixed.arrayBuffer()));
+					const tmpPath = `${videoPath}.tmp`;
+					await fs.writeFile(tmpPath, Buffer.from(await fixed.arrayBuffer()));
+					await fs.rename(tmpPath, videoPath);
 				}
 				return { success: true, path: videoPath };
 			} catch (error) {
 				console.error("Failed to finalize webcam recording:", error);
-				// The chunks already reached disk; return the path even if the
-				// duration-metadata fixup failed.
+				// The original chunks-on-disk file is untouched (we only ever write
+				// the duration fixup to a temp file), so it's still safe to return.
+				await fs.rm(`${videoPath}.tmp`, { force: true }).catch(() => undefined);
 				return { success: true, path: videoPath };
 			}
 		},

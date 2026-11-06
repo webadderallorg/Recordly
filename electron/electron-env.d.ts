@@ -1027,7 +1027,7 @@ interface Window {
 		setAppSetting: (key: string, value: unknown) => boolean;
 		setHasUnsavedChanges: (hasChanges: boolean) => void;
 		onRequestSaveBeforeClose: (
-			callback: () => Promise<"save" | "discard" | "cancel">,
+			callback: () => Promise<"save" | "discard" | "cancel" | "save-failed">,
 		) => () => void;
 		isNativeWindowsCaptureAvailable: () => Promise<{ available: boolean }>;
 		muxNativeWindowsRecording: (expectedDurationMs?: number) => Promise<{

@@ -831,7 +831,10 @@ function createEditorWindowWrapper() {
 			const saved = (event: Electron.IpcMainEvent, outcome: unknown, requestId: unknown) => {
 				if (event.sender === editorWindow.webContents && requestId === closeSaveRequestId) {
 					done(
-						outcome === "save" || outcome === "discard" || outcome === "cancel"
+						outcome === "save" ||
+							outcome === "discard" ||
+							outcome === "cancel" ||
+							outcome === "save-failed"
 							? outcome
 							: "save-failed",
 					);

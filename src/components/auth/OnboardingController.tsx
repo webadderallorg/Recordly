@@ -35,6 +35,14 @@ export function OnboardingController({
 
 	useEffect(() => {
 		if (!ready) return;
+		// Check this before the "already seen" gates below so a permissions
+		// flow interrupted mid-way (e.g. app restart) reopens for guests too.
+		if (loadAppSetting<boolean>("recordly.onboarding.permissionsRequested")) {
+			setStartWithPermissions(true);
+			setOpen(true);
+			if (user) checked.current = true;
+			return;
+		}
 		if (!user) {
 			// Cloud sign-in isn't set up in this build - don't keep re-trapping
 			// someone who already chose to continue without an account.
@@ -44,10 +52,7 @@ export function OnboardingController({
 		}
 		if (checked.current) return;
 		checked.current = true;
-		if (loadAppSetting<boolean>("recordly.onboarding.permissionsRequested")) {
-			setStartWithPermissions(true);
-			setOpen(true);
-		} else if (!loadAppSetting<boolean>(SEEN_KEY)) setOpen(true);
+		if (!loadAppSetting<boolean>(SEEN_KEY)) setOpen(true);
 	}, [ready, user, configured]);
 
 	useEffect(

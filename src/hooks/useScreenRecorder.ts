@@ -6,6 +6,7 @@ import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
 import {
 	DEFAULT_WEBCAM_QUALITY,
 	getWebcamQualityConfig,
+	WEBCAM_QUALITY_PRESETS,
 	type WebcamQualityPreset,
 } from "@/lib/webcamQuality";
 import { acquireBrowserScreenCapture, isCapturePermissionDismissed } from "./browserScreenCapture";
@@ -1002,6 +1003,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			return;
 		}
 
+		// A previously cancelled/stopped recorder's onstop may still be writing
+		// its last chunks and finalizing - let it fully settle first so it
+		// doesn't race the new session's shared discard flag or the main
+		// process's single active-stream slot.
+		if (webcamStopPromise.current) await webcamStopPromise.current;
+
 		try {
 			const quality = getWebcamQualityConfig(webcamQuality);
 			webcamStream.current = await navigator.mediaDevices.getUserMedia({
@@ -1042,6 +1049,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			webcamRecorder.current = recorder;
 			let hasWrittenChunk = false;
+			let appendFailed = false;
 			// Chunks arrive every RECORDER_TIMESLICE_MS; appends are chained so they
 			// land on disk in order instead of racing each other over IPC.
 			let writeQueue: Promise<void> = Promise.resolve();
@@ -1052,8 +1060,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				writeQueue = writeQueue
 					.then(() => chunk.arrayBuffer())
 					.then((buffer) => window.electronAPI.appendWebcamChunk(buffer))
-					.then(() => undefined)
+					.then((result) => {
+						if (!result.success) appendFailed = true;
+					})
 					.catch((error) => {
+						appendFailed = true;
 						console.error("Failed to append webcam chunk:", error);
 					});
 			};
@@ -1066,7 +1077,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				try {
 					await writeQueue;
 
-					if (webcamRecordingDiscarded.current || !hasWrittenChunk) {
+					if (webcamRecordingDiscarded.current || !hasWrittenChunk || appendFailed) {
 						await window.electronAPI.discardWebcamChunkStream();
 						webcamStopResolver.current?.(null);
 						return;
@@ -1532,7 +1543,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (result.webcamDeviceId) {
 					setWebcamDeviceId(result.webcamDeviceId);
 				}
-				if (result.webcamQuality) {
+				if (
+					WEBCAM_QUALITY_PRESETS.some((preset) => preset.id === result.webcamQuality)
+				) {
 					setWebcamQualityState(result.webcamQuality as WebcamQualityPreset);
 				}
 			}

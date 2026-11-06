@@ -185,22 +185,12 @@ export function useProjectSaveActions({
 		});
 		window.electronAPI.setHasUnsavedChanges(hasUnsavedChanges);
 	}, [hasUnsavedChanges, currentSourcePath, currentProjectSnapshot]);
-	useEffect(
-		() =>
-			window.electronAPI.onRequestSaveBeforeClose(async () => {
-				const decision = await openUnsavedChangesDialog("close this project");
-				if (decision === "cancel") return "cancel";
-				if (decision === "discard") return "discard";
-				const saved = await saveProject(false);
-				return saved ? "save" : "cancel";
-			}),
-		[saveProject, openUnsavedChangesDialog],
-	);
-	useEffect(() => {
+	const scheduleAutosave = useCallback(() => {
 		if (project.loading || !currentSourcePath || !hasUnsavedChanges) {
 			clearPendingAutosave();
 			return;
 		}
+		clearPendingAutosave();
 		autosaveTimeoutRef.current = window.setTimeout(() => {
 			autosaveTimeoutRef.current = null;
 			void saveProject(false, {
@@ -210,9 +200,31 @@ export function useProjectSaveActions({
 				captureThumbnail: false,
 			});
 		}, PROJECT_AUTOSAVE_DELAY_MS);
-		return clearPendingAutosave;
 	}, [clearPendingAutosave, hasUnsavedChanges, saveProject, project.loading, currentSourcePath]);
-	useEffect(() => clearPendingAutosave, [clearPendingAutosave]);
+
+	useEffect(
+		() =>
+			window.electronAPI.onRequestSaveBeforeClose(async () => {
+				// Stop a new autosave from sneaking in while the user is deciding.
+				clearPendingAutosave();
+				const decision = await openUnsavedChangesDialog("close this project");
+				if (decision === "cancel") {
+					// ponytail: doesn't cancel an autosave that was already mid-flight
+					// when Discard/Save was picked - not worth cancelling an in-flight
+					// IPC file write for a sub-500ms race.
+					scheduleAutosave();
+					return "cancel";
+				}
+				if (decision === "discard") return "discard";
+				const saved = await saveProject(false);
+				return saved ? "save" : "save-failed";
+			}),
+		[saveProject, openUnsavedChangesDialog, clearPendingAutosave, scheduleAutosave],
+	);
+	useEffect(() => {
+		scheduleAutosave();
+		return clearPendingAutosave;
+	}, [scheduleAutosave, clearPendingAutosave]);
 
 	const saveProjectWithName = useCallback(
 		async (name: string, mode: "rename" | "copy" = "rename") => {
