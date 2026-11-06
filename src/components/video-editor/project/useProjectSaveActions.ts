@@ -72,6 +72,12 @@ export function useProjectSaveActions({
 	}, [currentSourcePath]);
 	const autosaveTimeoutRef = useRef<number | null>(null);
 	const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+	// Always points at the latest scheduleAutosave. The close-before-save flow
+	// below is a long-running async closure (awaiting a dialog, then a save);
+	// calling scheduleAutosave directly would use whatever snapshot/handlers
+	// were current when that closure started, not the latest edits made while
+	// it was still awaiting.
+	const scheduleAutosaveRef = useRef<() => void>(() => undefined);
 	const clearPendingAutosave = useCallback(() => {
 		if (autosaveTimeoutRef.current !== null) {
 			window.clearTimeout(autosaveTimeoutRef.current);
@@ -201,6 +207,9 @@ export function useProjectSaveActions({
 			});
 		}, PROJECT_AUTOSAVE_DELAY_MS);
 	}, [clearPendingAutosave, hasUnsavedChanges, saveProject, project.loading, currentSourcePath]);
+	useLayoutEffect(() => {
+		scheduleAutosaveRef.current = scheduleAutosave;
+	}, [scheduleAutosave]);
 
 	useEffect(
 		() =>
@@ -211,20 +220,21 @@ export function useProjectSaveActions({
 				if (decision === "cancel") {
 					// ponytail: doesn't cancel an autosave that was already mid-flight
 					// when Discard/Save was picked - not worth cancelling an in-flight
-					// IPC file write for a sub-500ms race.
-					scheduleAutosave();
+					// IPC file write for a sub-500ms race. Goes through the ref (see
+					// above) so it reflects any edits made while the dialog was open.
+					scheduleAutosaveRef.current();
 					return "cancel";
 				}
 				if (decision === "discard") return "discard";
 				const saved = await saveProject(false);
 				// The main process now shows a native recovery dialog; if the user
-				// cancels there, this window stays open, so autosave must resume.
-				// (If they discard-and-close instead, the window is gone and this
-				// timer never fires.)
-				if (!saved) scheduleAutosave();
+				// cancels there, this window stays open, so autosave must resume -
+				// via the ref, so a retry never re-arms with a stale snapshot or
+				// clobbers a newer autosave scheduled for edits made during the save.
+				if (!saved) scheduleAutosaveRef.current();
 				return saved ? "save" : "save-failed";
 			}),
-		[saveProject, openUnsavedChangesDialog, clearPendingAutosave, scheduleAutosave],
+		[saveProject, openUnsavedChangesDialog, clearPendingAutosave],
 	);
 	useEffect(() => {
 		scheduleAutosave();
