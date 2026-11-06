@@ -1,7 +1,9 @@
+import { AnimatePresence, motion } from "motion/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	ArrowClockwiseIcon,
-	House,
 	DotsThreeVerticalIcon,
+	House,
 	MicrophoneIcon,
 	MicrophoneSlashIcon,
 	MinusIcon,
@@ -11,9 +13,8 @@ import {
 	VideoCameraSlashIcon,
 	XIcon,
 } from "@/components/ui/icons";
-import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
 import { Separator } from "@/components/ui/separator";
+import { toast } from "@/components/ui/toast";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
@@ -38,7 +39,6 @@ import {
 	useLaunchPopoverCoordinator,
 } from "./popovers/LaunchPopoverCoordinator";
 import { MicPopover } from "./popovers/MicPopover";
-import { toast } from "@/components/ui/toast";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { RecordingControls } from "./RecordingControls";
 
@@ -74,6 +74,8 @@ function LaunchWindowContent() {
 		setWebcamEnabled,
 		webcamDeviceId,
 		setWebcamDeviceId,
+		webcamQuality,
+		setWebcamQuality,
 		countdownDelay,
 		setCountdownDelay,
 		preparePermissions,
@@ -348,6 +350,8 @@ function LaunchWindowContent() {
 					setSelectedVideoDeviceId(deviceId);
 					setWebcamDeviceId(deviceId);
 				}}
+				webcamQuality={webcamQuality}
+				onSelectQuality={setWebcamQuality}
 				trigger={
 					<Button
 						variant="ghost"

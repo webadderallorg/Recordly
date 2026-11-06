@@ -7,6 +7,7 @@ export interface RecordingPreferencesPatch {
 	systemAudioEnabled?: boolean;
 	webcamEnabled?: boolean;
 	webcamDeviceId?: string;
+	webcamQuality?: string;
 }
 
 export function createRecordingPreferencesStore(filePath: string) {

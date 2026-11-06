@@ -1,12 +1,15 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createSaveBeforeCloseController } from "./saveBeforeClose";
+
+type Outcome = "save" | "discard" | "cancel" | "save-failed";
+
 afterEach(() => vi.useRealTimers());
 function fixture(discard = false) {
-	let reply!: (saved: boolean) => void;
+	let reply!: (outcome: Outcome) => void;
 	const unsubscribe = vi.fn();
 	const options = {
 		requestSave: vi.fn(),
-		subscribe: vi.fn((done: (saved: boolean) => void) => {
+		subscribe: vi.fn((done: (outcome: Outcome) => void) => {
 			reply = done;
 			return unsubscribe;
 		}),
@@ -18,7 +21,7 @@ function fixture(discard = false) {
 	return {
 		options,
 		unsubscribe,
-		reply: (saved: boolean) => reply(saved),
+		reply: (outcome: Outcome) => reply(outcome),
 		controller: createSaveBeforeCloseController(options),
 	};
 }
@@ -26,17 +29,34 @@ it("closes once after saving and removes the listener", () => {
 	const f = fixture();
 	f.controller.start();
 	f.controller.start();
-	f.reply(true);
-	f.reply(true);
+	f.reply("save");
+	f.reply("save");
 	expect(f.options.requestSave).toHaveBeenCalledTimes(1);
 	expect(f.options.close).toHaveBeenCalledTimes(1);
 	expect(f.unsubscribe).toHaveBeenCalledTimes(1);
 	expect(f.options.offerDiscard).not.toHaveBeenCalled();
 });
+it("closes directly when the user explicitly discards", () => {
+	const f = fixture();
+	f.controller.start();
+	f.reply("discard");
+	expect(f.options.close).toHaveBeenCalledTimes(1);
+	expect(f.options.offerDiscard).not.toHaveBeenCalled();
+});
+it("stays open and re-arms when the user cancels", () => {
+	const f = fixture();
+	f.controller.start();
+	f.reply("cancel");
+	expect(f.options.cancel).toHaveBeenCalledTimes(1);
+	expect(f.options.close).not.toHaveBeenCalled();
+	expect(f.options.offerDiscard).not.toHaveBeenCalled();
+	f.controller.start();
+	expect(f.options.requestSave).toHaveBeenCalledTimes(2);
+});
 it.each([true, false])("offers discard/cancel after failed save (discard=%s)", async (discard) => {
 	const f = fixture(discard);
 	f.controller.start();
-	f.reply(false);
+	f.reply("save-failed");
 	await vi.waitFor(() =>
 		expect(discard ? f.options.close : f.options.cancel).toHaveBeenCalledTimes(1),
 	);
@@ -51,7 +71,7 @@ it("recovers a hung renderer on timeout and ignores late replies", async () => {
 	const f = fixture();
 	f.controller.start();
 	await vi.advanceTimersByTimeAsync(100);
-	f.reply(true);
+	f.reply("save");
 	expect(f.options.offerDiscard).toHaveBeenCalledTimes(1);
 	expect(f.options.cancel).toHaveBeenCalledTimes(1);
 	expect(f.options.close).not.toHaveBeenCalled();
@@ -64,7 +84,7 @@ it("removes a pending timeout/listener when the window is destroyed", async () =
 	f.controller.start();
 	f.controller.dispose();
 	await vi.advanceTimersByTimeAsync(100);
-	f.reply(true);
+	f.reply("save");
 	expect(f.unsubscribe).toHaveBeenCalledTimes(1);
 	expect(f.options.close).not.toHaveBeenCalled();
 	expect(f.options.offerDiscard).not.toHaveBeenCalled();

@@ -1,28 +1,21 @@
-import { ArrowRight, GithubLogo } from "@phosphor-icons/react";
-import { OnboardingPermissions } from "./OnboardingPermissions";
 import {
-	OnboardingBody,
-	OnboardingFooter,
-	OnboardingHeader,
-	OnboardingLayout,
-} from "./OnboardingLayout";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useI18n } from "@/contexts/I18nContext";
-import { SignOut } from "@/components/ui/icons";
-import type { User } from "@supabase/supabase-js";
-import { Fragment, type FormEvent, useEffect, useState, useRef } from "react";
-import {
-	Modal,
+	Alert,
 	Button,
-	Form,
-	TextField,
-	Input,
-	Label,
 	Description,
 	FieldError,
+	Form,
+	Input,
+	Label,
+	Modal,
 	Separator,
-	Alert,
+	TextField,
 } from "@heroui/react";
+import { ArrowRight, GithubLogo } from "@phosphor-icons/react";
+import type { User } from "@supabase/supabase-js";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { type FormEvent, Fragment, useEffect, useRef, useState } from "react";
+import { SignOut } from "@/components/ui/icons";
+import { useI18n } from "@/contexts/I18nContext";
 import {
 	getEnabledSignInProviders,
 	type RecordlyOAuthProvider,
@@ -30,6 +23,13 @@ import {
 	signInWithSocial,
 	signOutRecordly,
 } from "@/lib/auth/recordlyAuth";
+import {
+	OnboardingBody,
+	OnboardingFooter,
+	OnboardingHeader,
+	OnboardingLayout,
+} from "./OnboardingLayout";
+import { OnboardingPermissions } from "./OnboardingPermissions";
 
 const MotionDialog = motion.create(Modal.Dialog);
 
@@ -46,6 +46,7 @@ type Props = {
 	configured: boolean;
 	callbackError?: string;
 	onAuthenticated: () => void;
+	onContinueWithoutAccount?: () => void;
 };
 
 function friendlyAuthError(
@@ -75,13 +76,17 @@ export function RecordlySignInDialog({
 	configured,
 	callbackError,
 	onAuthenticated,
+	onContinueWithoutAccount,
 }: Props) {
 	const { t } = useI18n();
 	const awaitingSignIn = useRef(false);
 	const wide = onboarding || variant === "wide";
 	const [showPermissions, setShowPermissions] = useState(false);
-	const requiresSignIn = onboarding && !user;
-	const permissions = onboarding && Boolean(user) && showPermissions;
+	const requiresSignIn = onboarding && !user && configured;
+	// Without cloud sign-in configured there's no account to require - treat
+	// "no cloud" the same as "already past the account step".
+	const canProceed = Boolean(user) || !configured;
+	const permissions = onboarding && canProceed && showPermissions;
 	const [email, setEmail] = useState("");
 	const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 	const [busy, setBusy] = useState<string>();
@@ -133,8 +138,8 @@ export function RecordlySignInDialog({
 	}, [open]);
 
 	useEffect(() => {
-		if (open && startWithPermissions && user) setShowPermissions(true);
-	}, [open, startWithPermissions, user]);
+		if (open && startWithPermissions && canProceed) setShowPermissions(true);
+	}, [open, startWithPermissions, canProceed]);
 
 	useEffect(() => {
 		if (!open) return;
@@ -435,6 +440,15 @@ export function RecordlySignInDialog({
 					{!configured && !user && (
 						<Description role="status">{t("editor.cloud.unavailable")}</Description>
 					)}
+					{onboarding && !configured && !user && onContinueWithoutAccount && (
+						<Button
+							variant="ghost"
+							className="mt-1 h-11 w-full rounded-xl"
+							onPress={onContinueWithoutAccount}
+						>
+							Continue without an account
+						</Button>
+					)}
 				</div>
 			</SignInBody>
 			{onboarding && user && (
@@ -484,9 +498,9 @@ export function RecordlySignInDialog({
 						{onboarding ? (
 							<OnboardingLayout
 								stage={permissions ? "permissions" : "account"}
-								canViewPermissions={Boolean(user)}
+								canViewPermissions={canProceed}
 								onStageChange={(stage) =>
-									setShowPermissions(stage === "permissions" && Boolean(user))
+									setShowPermissions(stage === "permissions" && canProceed)
 								}
 							>
 								<AnimatePresence
@@ -509,6 +523,8 @@ export function RecordlySignInDialog({
 												onBack={() => setShowPermissions(false)}
 												onFinish={() => {
 													if (user) onAuthenticated();
+													else if (!configured)
+														onContinueWithoutAccount?.();
 												}}
 											/>
 										) : (

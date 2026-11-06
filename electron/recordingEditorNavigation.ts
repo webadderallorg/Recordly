@@ -10,9 +10,14 @@ export function createRecordingEditorNavigation(createEditor: () => void) {
 			const target = returnWindow;
 			if (reload) returnWindow = null;
 			if (!target || target.isDestroyed()) {
+				console.log("[close-debug] recordingNavigation.open: creating fresh editor window");
 				createEditor();
 				return;
 			}
+			console.log(
+				"[close-debug] recordingNavigation.open: reusing existing window, reload:",
+				reload,
+			);
 			// Home flushed this editor's project before launching the HUD. Reload
 			// from the finalized recording session, clearing the previous project UI.
 			if (reload) target.reload();

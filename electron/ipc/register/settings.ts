@@ -1,7 +1,7 @@
-import { createCountdownController } from "../../countdownController";
 import fs from "node:fs/promises";
 import { app, BrowserWindow, ipcMain } from "electron";
 import { hasAppSetting, readAppSettingsStore, writeAppSettingsStore } from "../../appSettingsStore";
+import { createCountdownController } from "../../countdownController";
 import { hideCursor } from "../../cursorHider";
 import { createCountdownWindow } from "../../windows";
 import { COUNTDOWN_SETTINGS_FILE, RECORDINGS_SETTINGS_FILE, SHORTCUTS_FILE } from "../constants";
@@ -146,6 +146,8 @@ export function registerSettingsHandlers() {
 				webcamEnabled: parsed.webcamEnabled === true,
 				webcamDeviceId:
 					typeof parsed.webcamDeviceId === "string" ? parsed.webcamDeviceId : undefined,
+				webcamQuality:
+					typeof parsed.webcamQuality === "string" ? parsed.webcamQuality : undefined,
 			};
 		} catch {
 			return {
@@ -155,6 +157,7 @@ export function registerSettingsHandlers() {
 				systemAudioEnabled: false,
 				webcamEnabled: false,
 				webcamDeviceId: undefined,
+				webcamQuality: undefined,
 			};
 		}
 	});

@@ -1,7 +1,7 @@
-import { moveProjectFolderReferences } from "../dashboard/useProjectFolders";
-import { moveProjectShareLink } from "../cloud/projectShareLinks";
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { toast } from "@/components/ui/toast";
+import { moveProjectShareLink } from "../cloud/projectShareLinks";
+import { moveProjectFolderReferences } from "../dashboard/useProjectFolders";
 import { createProjectData, type EditorProjectData } from "../projectPersistence";
 import type { useProjectState } from "../state/useProjectState";
 import { cloneStructured, getErrorMessage } from "../videoEditorUtils";
@@ -29,6 +29,7 @@ type UseProjectSaveActionsInput = {
 	captureProjectThumbnail: () => Promise<string | null>;
 	refreshProjectLibrary: () => Promise<void>;
 	remountPreview: () => void;
+	openUnsavedChangesDialog: (actionLabel: string) => Promise<"cancel" | "discard" | "save">;
 };
 
 export function useProjectSaveActions({
@@ -45,6 +46,7 @@ export function useProjectSaveActions({
 	captureProjectThumbnail,
 	refreshProjectLibrary,
 	remountPreview,
+	openUnsavedChangesDialog,
 }: UseProjectSaveActionsInput) {
 	const {
 		currentProjectPath,
@@ -177,11 +179,22 @@ export function useProjectSaveActions({
 	);
 
 	useEffect(() => {
+		console.log("[close-debug] renderer hasUnsavedChanges ->", hasUnsavedChanges, {
+			currentSourcePath,
+			hasSnapshot: Boolean(currentProjectSnapshot),
+		});
 		window.electronAPI.setHasUnsavedChanges(hasUnsavedChanges);
-	}, [hasUnsavedChanges]);
+	}, [hasUnsavedChanges, currentSourcePath, currentProjectSnapshot]);
 	useEffect(
-		() => window.electronAPI.onRequestSaveBeforeClose(() => saveProject(false)),
-		[saveProject],
+		() =>
+			window.electronAPI.onRequestSaveBeforeClose(async () => {
+				const decision = await openUnsavedChangesDialog("close this project");
+				if (decision === "cancel") return "cancel";
+				if (decision === "discard") return "discard";
+				const saved = await saveProject(false);
+				return saved ? "save" : "cancel";
+			}),
+		[saveProject, openUnsavedChangesDialog],
 	);
 	useEffect(() => {
 		if (project.loading || !currentSourcePath || !hasUnsavedChanges) {

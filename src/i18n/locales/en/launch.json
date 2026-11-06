@@ -35,6 +35,7 @@
 		"showFloatingWebcamPreview": "Show Floating Preview",
 		"selectWebcamToEnable": "Select a webcam to enable",
 		"noWebcamsFound": "No webcams found",
+		"webcamQuality": "Quality",
 		"recordingsFolder": "Recordings Path",
 		"language": "Language",
 		"paused": "PAUSED",

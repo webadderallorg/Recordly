@@ -1,0 +1,5 @@
+allowBuilds:
+  electron-winstaller: true
+  esbuild: true
+  ffmpeg-static: true
+  uiohook-napi: true
