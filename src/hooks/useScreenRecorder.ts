@@ -1061,9 +1061,22 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			// Chunks arrive every RECORDER_TIMESLICE_MS; appends are chained so they
 			// land on disk in order instead of racing each other over IPC.
 			let writeQueue: Promise<void> = Promise.resolve();
+			// If disk/IPC falls behind the recorder, chunks would otherwise pile up
+			// in this chain (each holding its ArrayBuffer in memory) without bound
+			// - the exact unbounded-growth problem writing chunks to disk, instead
+			// of an in-memory Blob[], was meant to avoid. Cap the backlog and treat
+			// hitting the cap as a failure (discarded in onstop) rather than
+			// silently dropping chunks into a corrupt file.
+			const MAX_PENDING_WEBCAM_CHUNKS = 20;
+			let pendingChunkCount = 0;
 			recorder.ondataavailable = (event) => {
 				if (!event.data || event.data.size === 0) return;
+				if (pendingChunkCount >= MAX_PENDING_WEBCAM_CHUNKS) {
+					appendFailed = true;
+					return;
+				}
 				hasWrittenChunk = true;
+				pendingChunkCount++;
 				const chunk = event.data;
 				writeQueue = writeQueue
 					.then(() => chunk.arrayBuffer())
@@ -1074,6 +1087,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					.catch((error) => {
 						appendFailed = true;
 						console.error("Failed to append webcam chunk:", error);
+					})
+					.finally(() => {
+						pendingChunkCount--;
 					});
 			};
 			recorder.onerror = () => {

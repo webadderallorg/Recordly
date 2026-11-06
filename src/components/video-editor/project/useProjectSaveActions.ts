@@ -254,6 +254,11 @@ export function useProjectSaveActions({
 				) {
 					saved = await saveProjectRef.current(false);
 				}
+				// Don't report success while something is still unsaved - whether
+				// because we ran out of retries above, or because an edit landed
+				// after the last save started but before it finished. Closing on
+				// "save" here would mean losing whatever that edit was.
+				if (hasUnsavedChangesRef.current) saved = false;
 				// The main process now shows a native recovery dialog; if the user
 				// cancels there, this window stays open, so autosave must resume -
 				// via the ref, so a retry never re-arms with a stale snapshot or
