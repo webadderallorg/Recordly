@@ -1003,12 +1003,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			return;
 		}
 
-		// A previously cancelled/stopped recorder's onstop may still be writing
-		// its last chunks and finalizing - let it fully settle first so it
-		// doesn't race the new session's shared discard flag or the main
-		// process's single active-stream slot.
-		if (webcamStopPromise.current) await webcamStopPromise.current;
-
 		try {
 			const quality = getWebcamQualityConfig(webcamQuality);
 			webcamStream.current = await navigator.mediaDevices.getUserMedia({
@@ -1050,6 +1044,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			webcamRecorder.current = recorder;
 			let hasWrittenChunk = false;
 			let appendFailed = false;
+			let recorderErrored = false;
 			// Chunks arrive every RECORDER_TIMESLICE_MS; appends are chained so they
 			// land on disk in order instead of racing each other over IPC.
 			let writeQueue: Promise<void> = Promise.resolve();
@@ -1069,15 +1064,23 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					});
 			};
 			recorder.onerror = () => {
-				void window.electronAPI.discardWebcamChunkStream();
-				webcamStopResolver.current?.(null);
-				webcamStopResolver.current = null;
+				// Don't discard/resolve here: MediaRecorder fires `stop` right after
+				// `error`, and onstop below does the real cleanup (awaits writeQueue,
+				// then discards). Resolving early would let a new recording start
+				// before that cleanup finishes and race the single active-stream
+				// slot on the main process.
+				recorderErrored = true;
 			};
 			recorder.onstop = async () => {
 				try {
 					await writeQueue;
 
-					if (webcamRecordingDiscarded.current || !hasWrittenChunk || appendFailed) {
+					if (
+						webcamRecordingDiscarded.current ||
+						!hasWrittenChunk ||
+						appendFailed ||
+						recorderErrored
+					) {
 						await window.electronAPI.discardWebcamChunkStream();
 						webcamStopResolver.current?.(null);
 						return;
@@ -1155,6 +1158,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 
 		recordingSessionTimestamp.current = Date.now();
+		// Let a previous cancelled/stopped webcam recorder's onstop fully settle
+		// before resetting the shared clock it reads its own duration from -
+		// otherwise its duration ends up computed against the new session's
+		// timestamps instead of its own.
+		if (webcamStopPromise.current) await webcamStopPromise.current;
 		resetRecordingClock(recordingSessionTimestamp.current);
 		await prepareWebcamRecorder();
 

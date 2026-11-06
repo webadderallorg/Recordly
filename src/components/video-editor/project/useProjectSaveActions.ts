@@ -217,6 +217,11 @@ export function useProjectSaveActions({
 				}
 				if (decision === "discard") return "discard";
 				const saved = await saveProject(false);
+				// The main process now shows a native recovery dialog; if the user
+				// cancels there, this window stays open, so autosave must resume.
+				// (If they discard-and-close instead, the window is gone and this
+				// timer never fires.)
+				if (!saved) scheduleAutosave();
 				return saved ? "save" : "save-failed";
 			}),
 		[saveProject, openUnsavedChangesDialog, clearPendingAutosave, scheduleAutosave],
