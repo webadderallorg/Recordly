@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
-import { installDesktopBridge } from "./bridge";
+import { completeSupabaseSignIn } from "./auth";
+import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 async function openAppSettings(page: Page) {
 	await page.getByRole("button", { name: "Recordly account", exact: true }).click();
@@ -245,3 +246,77 @@ test("optional passwords validate confirmation and clear sensitive inputs after 
 	await expect(form.getByLabel("New password", { exact: true })).toHaveValue("");
 	await expect(form.getByLabel("Confirm password", { exact: true })).toHaveValue("");
 });
+
+for (const home of [false, true]) {
+	test(`signed-in ${home ? "Home" : "editor"} can start Apple reauthentication without signing out`, async ({
+		page,
+	}) => {
+		test.setTimeout(90000);
+		await page.emulateMedia({ reducedMotion: "reduce" });
+		await installDesktopBridge(page);
+		await installDesktopBridgeOverrides(page, () => {
+			window.electronAPI.openExternalUrl = async (url) => {
+				document.documentElement.dataset.reauthUrl = url;
+				return { success: true };
+			};
+		});
+		let logouts = 0;
+		page.on("request", (request) => {
+			if (request.url().includes("/auth/v1/logout")) logouts++;
+		});
+		await page.goto("/?windowType=editor");
+		await expect(
+			page.getByRole("button", { name: "Recordly account", exact: true }),
+		).toBeVisible({ timeout: 45000 });
+		if (home) await page.getByRole("button", { name: "Home", exact: true }).click();
+		const accountTrigger = home
+			? page
+					.getByRole("dialog", { name: "Projects dashboard", exact: true })
+					.getByRole("button", { name: "Recordly account", exact: true })
+			: page.getByRole("button", { name: "Recordly account", exact: true });
+		await accountTrigger.click();
+		await page
+			.getByRole("dialog", { name: "Account menu", exact: true })
+			.getByRole("button", { name: "Sign in again", exact: true })
+			.click();
+		const login = page.getByRole("dialog", { name: "Sign in to Recordly", exact: true });
+		await expect(login).toBeVisible();
+		const apple = login.getByRole("button", { name: "Continue with Apple", exact: true });
+		await expect(apple).toBeEnabled();
+		await apple.click();
+		await expect
+			.poll(() => page.locator("html").getAttribute("data-reauth-url"))
+			.not.toBeNull();
+		const url = new URL((await page.locator("html").getAttribute("data-reauth-url"))!);
+		expect(url.searchParams.get("provider")).toBe("apple");
+		expect(url.searchParams.get("code_challenge_method")).toBe("s256");
+		expect(url.searchParams.get("code_challenge")).toBeTruthy();
+		await login.getByRole("button", { name: "Close", exact: true }).click();
+		await expect(login).toBeHidden();
+		await accountTrigger.click();
+		await expect(
+			page
+				.getByRole("dialog", { name: "Account menu", exact: true })
+				.getByText("Test User", { exact: true }),
+		).toBeVisible();
+		await page
+			.getByRole("dialog", { name: "Account menu", exact: true })
+			.getByRole("button", { name: "Sign in again", exact: true })
+			.click();
+		await expect(login).toBeVisible();
+		await apple.click();
+		await completeSupabaseSignIn(page);
+		await expect(login).toBeHidden();
+		await expect(page.getByRole("dialog", { name: "Publish", exact: true })).toHaveCount(0);
+		await expect(page.getByRole("button", { name: "Export to MP4", exact: true })).toHaveCount(
+			0,
+		);
+		await accountTrigger.click();
+		await expect(
+			page
+				.getByRole("dialog", { name: "Account menu", exact: true })
+				.getByText("Test User", { exact: true }),
+		).toBeVisible();
+		expect(logouts).toBe(0);
+	});
+}

@@ -84,19 +84,23 @@ export function EditorShell(props: Props) {
 		"projects",
 	);
 	const auth = useRecordlyAuth();
-	const requestSignIn = (reason: SignInReason) => {
+	const resumeShareAfterSignIn = useRef(false);
+	const requestSignIn = (reason: SignInReason, resumeShare = false) => {
 		if (reason === "share" && auth.user) {
 			setShareRequestNonce((value) => value + 1);
 			return;
 		}
+		resumeShareAfterSignIn.current = reason === "share" || resumeShare;
 		setSignInReason(reason);
 		setSignInOpen(true);
 	};
 	const handleAuthenticated = useCallback(() => {
 		setSignInOpen(false);
-		if (signInReason === "share" || signInReason === "reauthenticate")
+		if (resumeShareAfterSignIn.current) {
+			resumeShareAfterSignIn.current = false;
 			setShareRequestNonce((value) => value + 1);
-	}, [signInReason]);
+		}
+	}, []);
 	const {
 		t,
 		project,
@@ -281,7 +285,7 @@ export function EditorShell(props: Props) {
 					projectErrorSource={
 						project.currentProjectPath ?? project.videoSourcePath ?? undefined
 					}
-					onDashboardSignIn={() => requestSignIn("account")}
+					onDashboardSignIn={() => requestSignIn(auth.user ? "reauthenticate" : "account")}
 					onDeleteProjects={openActions.handleDeleteProjects}
 					onRenameProject={openActions.handleRenameLibraryProject}
 					onShareProject={async (path) => {
@@ -326,7 +330,7 @@ export function EditorShell(props: Props) {
 								compact
 								placement="header"
 								triggerLabel={uiText("ui.recordlyAccount")}
-								onSignIn={() => requestSignIn("account")}
+								onSignIn={() => requestSignIn(auth.user ? "reauthenticate" : "account")}
 								onSettings={(section = "general") => {
 									setAppSettingsCategory(section);
 									setAppSettingsOpen(true);
@@ -367,9 +371,9 @@ export function EditorShell(props: Props) {
 						handleStartExportFromDropdown={dialogActions.handleStartExportFromDropdown}
 						prepareExportForShare={dialogActions.prepareExportForShare}
 						onRequestShareSignIn={() =>
-							requestSignIn(auth.user ? "reauthenticate" : "share")
+							requestSignIn(auth.user ? "reauthenticate" : "share", true)
 						}
-						onRequestFeedbackSignIn={() => requestSignIn("account")}
+						onRequestFeedbackSignIn={() => requestSignIn(auth.user ? "reauthenticate" : "account")}
 						shareRequestNonce={shareRequestNonce}
 						authToken={auth.accessToken}
 						accountId={auth.user?.id}

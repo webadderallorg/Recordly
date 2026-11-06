@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { completeSupabaseSignIn } from "./auth";
 import { installDesktopBridge } from "./bridge";
 
 test.beforeEach(async ({ page }) => {
@@ -7,7 +8,7 @@ test.beforeEach(async ({ page }) => {
 	await expect(page.locator('[data-variant="clip"]')).toHaveAttribute("data-end-ms", "6000", {
 		timeout: 20000,
 	});
-	await expect(page.getByLabel("Loading preview")).toHaveCount(0);
+	await expect(page.getByLabel("Loading preview")).toHaveCount(0, { timeout: 20000 });
 });
 
 test("narrow zooms retain the multiplier without a zoom icon", async ({ page }) => {
@@ -52,6 +53,7 @@ test("annotations can be dragged into the canvas background and survive undo", a
 });
 
 test("rejected cloud sessions can request reauthentication", async ({ page }) => {
+	test.setTimeout(60000);
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	// The desktop session remains signed in; only the cloud service rejects it.
@@ -76,7 +78,9 @@ test("rejected cloud sessions can request reauthentication", async ({ page }) =>
 	const email = dialog.getByRole("textbox", { name: /^Email\*?$/ });
 	await expect(email).toBeVisible();
 	await email.fill("test@email.com");
-	await expect(dialog.getByRole("button", { name: "Email me a code", exact: true })).toBeEnabled();
+	await expect(
+		dialog.getByRole("button", { name: "Email me a code", exact: true }),
+	).toBeEnabled();
 	await expect(dialog.locator("form")).toBeVisible();
 	await page.screenshot({ path: "test-results/cloud-sign-in.png", animations: "disabled" });
 	expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
@@ -85,7 +89,18 @@ test("rejected cloud sessions can request reauthentication", async ({ page }) =>
 	await page.getByRole("button", { name: "Recordly account", exact: true }).click();
 	const account = page.getByRole("dialog", { name: "Account menu", exact: true });
 	await expect(account).toBeVisible();
-	await expect(account.getByRole("button", { name: "Manage account", exact: true })).toBeVisible();
+	await expect(
+		account.getByRole("button", { name: "Manage account", exact: true }),
+	).toBeVisible();
 	await expect(account.getByText("Test User", { exact: true })).toBeVisible();
+	await page.keyboard.press("Escape");
+	await page.getByRole("button", { name: "Publish", exact: true }).click();
+	await page.getByRole("row", { name: "Create share link", exact: true }).click();
+	await publish.getByRole("button", { name: "Check sign-in", exact: true }).click();
+	await expect(dialog).toBeVisible();
+	await dialog.getByRole("button", { name: "Continue with Apple", exact: true }).click();
+	await completeSupabaseSignIn(page);
+	await expect(dialog).toBeHidden();
+	await expect(publish).toBeVisible();
 	expect(errors).toEqual([]);
 });
