@@ -109,6 +109,14 @@ export default function TermsOfService({ publication, siteLinks } = {}) {
 			</p>
 			<h2>7. Acceptable use</h2>
 			<p>
+				You are responsible for the content you upload, store or share, including its
+				legality and the rights, permissions and consents needed to use it. Recordly provides
+				hosting and sharing tools and does not endorse user content. Except to the extent
+				required by applicable law, we do not assume responsibility for user content or
+				undertake a general obligation to monitor, review or approve it. Hosting content
+				does not mean we have reviewed or approved it.
+			</p>
+			<p>
 				Do not use the service for unlawful content, child sexual abuse material, threats,
 				harassment, infringement, non-consensual intimate material, malware or disclosure of
 				information you are not entitled to publish. Do not evade storage limits or security
@@ -116,10 +124,12 @@ export default function TermsOfService({ publication, siteLinks } = {}) {
 				traffic or resell access without permission.
 			</p>
 			<p>
-				We may investigate reports and restrict access or remove content where reasonably
-				necessary to meet legal obligations, protect people or prevent serious abuse. Where
-				lawful and practical, we will explain the reason and offer a way to challenge an
-				error. We will not use this power to remove statutory refund rights.
+				We may restrict access or remove content where required by law or reasonably
+				necessary to enforce these terms, protect people or prevent serious abuse. This
+				does not create a commitment to investigate every report or review every recording.
+				Where lawful and practical, we will explain the reason for a restriction or removal
+				and offer a way to challenge an error. Nothing in this section excludes obligations
+				or liability that cannot lawfully be excluded, or removes statutory refund rights.
 			</p>
 			<h2>8. Payments that fail or are disputed</h2>
 			<p>

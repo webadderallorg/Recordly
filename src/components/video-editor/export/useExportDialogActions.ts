@@ -42,6 +42,10 @@ export function useExportDialogActions({
 			toast.error(translate("notifications.noVideo", "No video loaded"));
 			return;
 		}
+		if (session.isExporting) {
+			session.setShowExportDropdown(true);
+			return;
+		}
 
 		if (session.hasPendingExportSave) {
 			session.setShowExportDropdown(true);

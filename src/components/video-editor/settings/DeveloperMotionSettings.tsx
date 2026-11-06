@@ -71,12 +71,6 @@ export function DeveloperMotionSettings(props: Props) {
 					<div className="settings-dev-tools-header flex items-center justify-between gap-3">
 						<div>
 							<SectionLabel>{tSettings("effects.devSection", "Dev")}</SectionLabel>
-							<div className="mt-0.5 text-xs text-muted-foreground">
-								{tSettings(
-									"effects.devSectionHint",
-									"Temporary testing controls for native capture and motion tuning.",
-								)}
-							</div>
 						</div>
 						<span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium uppercase tracking-wider text-accent">
 							DEV
@@ -121,12 +115,6 @@ export function DeveloperMotionSettings(props: Props) {
 							<div className="text-sm font-medium text-foreground">
 								{tSettings("effects.cameraDebugTuning", "Camera Debug Tuning")}
 							</div>
-							<div className="mt-0.5 text-xs text-muted-foreground">
-								{tSettings(
-									"effects.cameraDebugTuningHint",
-									"Development-only spring tuning controls for camera motion.",
-								)}
-							</div>
 						</div>
 						<SliderControl
 							label={tSettings(
@@ -167,12 +155,6 @@ export function DeveloperMotionSettings(props: Props) {
 						<div>
 							<div className="text-sm font-medium text-foreground">
 								{tSettings("effects.cursorDebugTuning", "Cursor Debug Tuning")}
-							</div>
-							<div className="mt-0.5 text-xs text-muted-foreground">
-								{tSettings(
-									"effects.cursorDebugTuningHint",
-									"Development-only spring tuning controls.",
-								)}
 							</div>
 						</div>
 						<SliderControl

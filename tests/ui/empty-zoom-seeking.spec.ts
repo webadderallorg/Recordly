@@ -49,6 +49,11 @@ test("dismissing the inline auto-zoom prompt restores manual hover placement", a
 	const dismiss = page.getByRole("button", { name: "Dismiss", exact: true });
 	const applyBounds = (await apply.boundingBox())!;
 	const dismissBounds = (await dismiss.boundingBox())!;
+	// The minus stays inside the one Apply button silhouette, without an outer pill.
+	expect(dismissBounds.x).toBeGreaterThanOrEqual(applyBounds.x);
+	expect(dismissBounds.x + dismissBounds.width).toBeLessThanOrEqual(
+		applyBounds.x + applyBounds.width + 1,
+	);
 	expect(
 		Math.abs(
 			applyBounds.y + applyBounds.height / 2 - dismissBounds.y - dismissBounds.height / 2,

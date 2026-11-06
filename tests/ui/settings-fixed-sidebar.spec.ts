@@ -144,17 +144,18 @@ for (const height of [600, 760]) {
 	});
 }
 
-for (const { width, height, theme } of [
-	{ width: 1000, height: 600, theme: "dark" },
-	{ width: 1280, height: 760, theme: "light" },
+for (const { width, height, theme, signedIn } of [
+	{ width: 1000, height: 600, theme: "dark", signedIn: true },
+	{ width: 1280, height: 760, theme: "light", signedIn: true },
+	{ width: 1000, height: 600, theme: "light", signedIn: false },
 ] as const) {
-	test(`Home Socials modal opens Recordly accounts (${theme}, ${width}×${height})`, async ({
+	test(`Feedback Socials and Contact open Recordly accounts (${theme}, ${width}×${height}, signedIn=${signedIn})`, async ({
 		page,
 	}) => {
 		test.setTimeout(60000);
 		await page.setViewportSize({ width, height });
 		await page.emulateMedia({ reducedMotion: "reduce", colorScheme: theme });
-		await installDesktopBridge(page);
+		await installDesktopBridge(page, undefined, { signedIn });
 		await page.addInitScript((value) => localStorage.setItem("recordly.theme", value), theme);
 		await installDesktopBridgeOverrides(page, () => {
 			window.electronAPI.openExternalUrl = async (url) => {
@@ -165,9 +166,14 @@ for (const { width, height, theme } of [
 		await page.goto("/?windowType=editor");
 		await page.getByRole("button", { name: "Home", exact: true }).click();
 		const home = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
-		const socials = home.getByRole("button", { name: "Socials", exact: true });
+		await expect(home.getByRole("button", { name: "Socials", exact: true })).toHaveCount(0);
+		await expect(home.getByRole("button", { name: "Contact", exact: true })).toHaveCount(0);
+		await home.getByRole("button", { name: "Feedback", exact: true }).click();
+		const feedback = page.getByRole("dialog", { name: "Send feedback", exact: true });
+		if (signedIn) await feedback.getByRole("textbox", { name: "Description" }).fill("Keep my feedback draft");
+		const socials = feedback.getByRole("button", { name: "Socials", exact: true });
 		await expect(socials).toBeInViewport({ ratio: 1 });
-		const contact = home.getByRole("button", { name: "Contact", exact: true });
+		const contact = feedback.getByRole("button", { name: "Contact", exact: true });
 		await expect(contact).toBeInViewport({ ratio: 1 });
 		const socialsBox = (await socials.boundingBox())!;
 		const contactBox = (await contact.boundingBox())!;
@@ -201,8 +207,8 @@ for (const { width, height, theme } of [
 		await page.keyboard.press("Escape");
 		await expect(links).toBeHidden();
 		await expect(socials).toBeFocused();
-		await expect(home).toBeVisible();
-		await home.locator("aside").screenshot({ path: test.info().outputPath(`footer-${theme}.png`) });
+		await expect(feedback).toBeVisible();
+		await feedback.screenshot({ path: test.info().outputPath(`feedback-${theme}.png`) });
 		await contact.click();
 		const contactDialog = page.getByRole("dialog", { name: "Contact", exact: true });
 		await expect(contactDialog).toBeVisible();
@@ -218,12 +224,13 @@ for (const { width, height, theme } of [
 		await page.keyboard.press("Escape");
 		await expect(contactDialog).toBeHidden();
 		await expect(contact).toBeFocused();
-		await expect(home).toBeVisible();
+		await expect(feedback).toBeVisible();
+		if (signedIn) await expect(feedback.getByRole("textbox", { name: "Description" })).toHaveValue("Keep my feedback draft");
 
 	});
 }
 
-test("Japanese community footer fits Upgrade and Socials without overlap", async ({
+test("Japanese sidebar keeps Upgrade and feedback contains Socials", async ({
 	page,
 }) => {
 	test.setTimeout(60000);
@@ -237,7 +244,7 @@ test("Japanese community footer fits Upgrade and Socials without overlap", async
 	const footer = home.locator(".community-links");
 	const upgrade = footer.getByRole("button", { name: "アップグレード", exact: true });
 	await expect(upgrade).toBeVisible();
-	const label = upgrade.locator("span").first();
+	const label = upgrade.locator(".truncate");
 	await expect(label).toHaveText("アップグレード");
 	await expect(label).toHaveCSS("text-overflow", "ellipsis");
 	await expect(label).toHaveCSS("overflow-x", "hidden");
@@ -245,7 +252,7 @@ test("Japanese community footer fits Upgrade and Socials without overlap", async
 	expect(await label.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
 		true,
 	);
-	await expect(label).toHaveAttribute("title", "アップグレード");
+	await expect(upgrade.locator("[title]")).toHaveAttribute("title", "アップグレード");
 	const bounds = (await footer.boundingBox())!;
 	const boxes = [];
 	for (const button of await footer.getByRole("button").all()) {
@@ -264,8 +271,10 @@ test("Japanese community footer fits Upgrade and Socials without overlap", async
 		}
 		boxes.push(box);
 	}
-	await expect(footer.getByRole("button")).toHaveCount(3);
-	const socials = footer.getByRole("button", { name: "SNS", exact: true });
+	await expect(footer.getByRole("button")).toHaveCount(1);
+	await home.getByRole("button", { name: "フィードバック", exact: true }).click();
+	const feedback = page.getByRole("dialog", { name: "フィードバックを送信", exact: true });
+	const socials = feedback.getByRole("button", { name: "SNS", exact: true });
 	await expect(socials).toBeVisible();
 	await socials.click();
 	const modal = page.getByRole("dialog", { name: "SNS", exact: true });

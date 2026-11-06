@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExportResult } from "@/lib/exporter/types";
+import type { ExportProgress, ExportResult } from "@/lib/exporter/types";
 import type { ExportBranchContext } from "./exportBranchContext";
 import { runGifExport } from "./runGifExport";
 import { runMp4Export } from "./runMp4Export";
@@ -211,6 +211,21 @@ describe("project-named output", () => {
 });
 
 describe("MP4 recovery has one persistence boundary", () => {
+	it("preserves displayed progress while a compatibility retry prepares", async () => {
+		const { value, input } = context();
+		let progress: ExportProgress | null = {
+			currentFrame: 42,
+			totalFrames: 100,
+			percentage: 42,
+			estimatedTimeRemaining: 10,
+			phase: "extracting",
+		};
+		input.exportSession.setExportProgress.mockImplementation((update) => {
+			progress = typeof update === "function" ? update(progress) : update;
+		});
+		await runMp4Export(value);
+		expect(progress).toMatchObject({ percentage: 42, phase: "preparing" });
+	});
 	it.each([
 		"download",
 		"share",

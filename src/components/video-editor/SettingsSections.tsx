@@ -111,7 +111,8 @@ export function SettingsSections({
 						aria-label={t("settings.categories.panel", "{{category}} settings", {
 							category: labels[active],
 						})}
-						className="dashboard-settings-tab-panel space-y-6 scroll-shadow scroll-shadow--vertical scroll-shadow--fade scroll-shadow--hide-scrollbar [--scroll-shadow-size:16px]"
+						className="dashboard-settings-tab-panel space-y-6 scroll-shadow scroll-shadow--vertical scroll-shadow--fade [--scroll-shadow-size:32px]"
+						data-settings-section={active}
 						data-scroll-shadow-mode={scrollFade}
 					>
 						{children}

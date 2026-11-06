@@ -742,6 +742,9 @@ interface Window {
 			camera: string;
 			error?: string;
 		}>;
+		requestMediaPermission: (
+			device: "microphone" | "camera",
+		) => Promise<{ success: boolean; granted?: boolean; error?: string }>;
 		openMediaPermissionPreferences: (device: "microphone" | "camera") => Promise<{
 			success: boolean;
 			error?: string;

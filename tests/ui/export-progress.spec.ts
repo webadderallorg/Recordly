@@ -1,7 +1,71 @@
 import { expect, test } from "@playwright/test";
+import type { ExportProgress } from "@/lib/exporter";
+
+test("progress starts empty, moves smoothly forwards through stages, and resets for a new export", async ({
+	page,
+}) => {
+	await page.goto("/tests/ui/export-progress.html?modern&preparing");
+	const dialog = page.getByRole("dialog", { name: "Publish", exact: true });
+	const bar = dialog.getByRole("progressbar", { name: "Exporting" });
+	const fill = dialog.locator(".export-progress-fill");
+	await expect(bar).toHaveAttribute("aria-valuenow", "0");
+	await expect(fill).toHaveCSS("animation-name", "none");
+	await expect(fill).toHaveCSS("visibility", "hidden");
+	const push = (update: Partial<ExportProgress> | null) =>
+		page.evaluate((update) => {
+			window.dispatchEvent(
+				new CustomEvent("export-fixture-progress", {
+					detail:
+						update === null
+							? null
+							: {
+									phase: "extracting",
+									currentFrame: 0,
+									totalFrames: 100,
+									estimatedTimeRemaining: 10,
+									percentage: 0,
+									...update,
+								},
+				}),
+			);
+		}, update);
+	const sampleWidths = () =>
+		fill.evaluate(async (element) => {
+			const widths: number[] = [];
+			for (let frame = 0; frame < 12; frame++) {
+				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+				widths.push(element.getBoundingClientRect().width);
+			}
+			return widths;
+		});
+	await push({ percentage: 42 });
+	await expect(bar).toHaveAttribute("aria-valuenow", "42");
+	await expect(fill).toHaveCSS("transition-duration", "0.4s");
+	await expect(fill).toHaveCSS("transition-timing-function", "linear");
+	const before = await sampleWidths();
+	await push({ percentage: 7 });
+	await expect(bar).toHaveAttribute("aria-valuenow", "42");
+	const widths = [...before, ...(await sampleWidths())];
+	for (let index = 1; index < widths.length; index++) {
+		expect(widths[index]).toBeGreaterThanOrEqual(widths[index - 1] - 0.5);
+	}
+	await push({ percentage: 100 });
+	await expect(bar).toHaveAttribute("aria-valuenow", "99");
+	await push({ phase: "finalizing", percentage: 0, audioProgress: 0 });
+	await expect(bar).toHaveAttribute("aria-valuenow", "99");
+	await expect(dialog.getByText("99% complete", { exact: true })).toBeVisible();
+	await push({ phase: "saving", percentage: 100 });
+	await expect(bar).toHaveAttribute("aria-valuenow", "99");
+	await expect(dialog).not.toContainText("100%");
+	await push(null);
+	await expect(bar).toHaveAttribute("aria-valuenow", "0");
+	await expect(fill).toHaveCSS("visibility", "hidden");
+	await push({ percentage: 3 });
+	await expect(bar).toHaveAttribute("aria-valuenow", "3");
+});
 
 for (const mode of ["modern", "legacy", "gif"]) {
-	test(`${mode} export shows progress and rotating tips without implementation details`, async ({
+	test(`${mode} export shows progress without tips or implementation details`, async ({
 		page,
 	}) => {
 		await page.clock.install();
@@ -12,22 +76,14 @@ for (const mode of ["modern", "legacy", "gif"]) {
 			"42",
 		);
 		await expect(dialog.getByText("42% complete", { exact: true })).toBeVisible();
-		if (mode !== "link") {
-			await expect(dialog.locator(".export-animation")).toHaveCount(0);
-		}
-		await expect(
-			dialog.getByText("Tip: Turn off auto-applied zooms in settings", { exact: true }),
-		).toBeVisible();
+		await expect(dialog.locator(".export-paper-stack")).toBeVisible();
+		await expect(dialog).not.toContainText("Tip:");
 		await expect(dialog.getByRole("grid", { name: "Publish destination" })).toHaveCount(0);
 		await expect(dialog).not.toContainText(
 			/Breeze|Path:|WebGPU|Native skipped|Render speed|Processing audio|Lightning export|Promotional announcement|Extra announcement content/,
 		);
 		await page.clock.fastForward(6100);
-		await expect(
-			dialog.getByText("Tip: Try experimental builds by turning on access in settings", {
-				exact: true,
-			}),
-		).toBeVisible();
+		await expect(dialog).not.toContainText("Tip:");
 		await expect(dialog).not.toContainText(
 			/Promotional announcement|Extra announcement content/,
 		);
@@ -42,9 +98,7 @@ for (const phase of ["preparing", "finalizing", "saving", "audio"]) {
 		await page.goto(`/tests/ui/export-progress.html?modern&${phase}`);
 		const dialog = page.getByRole("dialog", { name: "Publish", exact: true });
 		await expect(dialog.getByRole("progressbar", { name: "Exporting" })).toBeVisible();
-		await expect(
-			dialog.getByText("Tip: Turn off auto-applied zooms in settings", { exact: true }),
-		).toBeVisible();
+		await expect(dialog).not.toContainText("Tip:");
 		await expect(dialog).not.toContainText(
 			/Breeze|Path:|WebGPU|Native skipped|Render speed|Muxing|Rendering audio|Processing audio/,
 		);
@@ -60,8 +114,9 @@ for (const [phase, label] of [
 		await page.goto(`/tests/ui/export-progress.html?gif&${phase}&complete-frames`);
 		const dialog = page.getByRole("dialog", { name: "Publish", exact: true });
 		await expect(dialog.getByText(label, { exact: true })).toBeVisible();
-		await expect(dialog.getByRole("progressbar", { name: "Exporting" })).not.toHaveAttribute(
+		await expect(dialog.getByRole("progressbar", { name: "Exporting" })).toHaveAttribute(
 			"aria-valuenow",
+			"95",
 		);
 		await expect(dialog).not.toContainText(/100%|0s|0 seconds/);
 		await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeEnabled();
@@ -90,7 +145,7 @@ test("GIF completion is shown after the file has been saved", async ({ page }) =
 	).toBeVisible();
 	await expect(dialog.getByText("export.gif", { exact: true })).toBeVisible();
 	await expect(dialog.getByRole("progressbar")).toHaveCount(0);
-	await expect(dialog.locator(".export-animation")).toHaveCount(0);
+	await expect(dialog.locator(".export-paper-stack")).toHaveCount(0);
 });
 
 test("link preparation shows overall share progress and remains cancellable", async ({ page }) => {

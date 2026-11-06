@@ -253,7 +253,7 @@ test("account popup contains feedback and settings, and editor controls follow t
 	await installSettingsBridge(page);
 	await page.goto("/?windowType=editor");
 	const header = page.locator("header.editor-header");
-	const upgrade = header.getByRole("button", { name: "Upgrade", exact: true });
+	const upgrade = header.getByRole("button", { name: "Get Recordly Cloud", exact: true });
 	await expect(upgrade).toBeVisible();
 	const headerFeedback = header.getByRole("button", { name: "Feedback", exact: true });
 	await expect(headerFeedback).toBeVisible();

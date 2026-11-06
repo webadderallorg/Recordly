@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { app, dialog, ipcMain } from "electron";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
@@ -17,6 +18,7 @@ vi.mock("electron", () => ({
 	},
 	ipcMain: {
 		handle: vi.fn(),
+		on: vi.fn(),
 	},
 	powerSaveBlocker: {
 		isStarted: () => true,
@@ -29,7 +31,8 @@ vi.mock("../ffmpeg/binary", () => ({
 	getFfmpegBinaryPath: () => "ffmpeg",
 }));
 
-import { moveExportedTempFile } from "./export";
+import { registerOwnedExportPath, releaseOwnedExportPath } from "../export/exportStream";
+import { moveExportedTempFile, registerExportHandlers } from "./export";
 
 const tempDirs: string[] = [];
 
@@ -44,6 +47,157 @@ afterEach(async () => {
 	await Promise.allSettled(
 		tempDirs.splice(0).map((dir) => fs.rm(dir, { force: true, recursive: true })),
 	);
+});
+
+describe("export save dialog names", () => {
+	it.each([
+		"save-exported-video",
+		"finalize-exported-video",
+	])("%s suggests the next numbered name and saves there", async (channel) => {
+		const dir = await makeTempDir();
+		vi.spyOn(app, "getPath").mockReturnValue(dir);
+		const originalPath = path.join(dir, "Untitled Project.mp4");
+		const numberedPath = path.join(dir, "Untitled Project 1.mp4");
+		const tempPath = path.join(dir, "export-temp.mp4");
+		await fs.writeFile(originalPath, "original-export");
+		await fs.writeFile(tempPath, "new-export");
+		registerOwnedExportPath(tempPath);
+		vi.mocked(dialog.showSaveDialog).mockResolvedValue({
+			canceled: false,
+			filePath: numberedPath,
+		});
+		vi.mocked(ipcMain.handle).mockClear();
+		registerExportHandlers();
+		const handler = vi
+			.mocked(ipcMain.handle)
+			.mock.calls.find(([name]) => name === channel)?.[1];
+		expect(handler).toBeDefined();
+		try {
+			const event = { sender: {} } as Electron.IpcMainInvokeEvent;
+			const result =
+				channel === "save-exported-video"
+					? await handler!(
+							event,
+							new TextEncoder().encode("new-export").buffer,
+							"Untitled Project.mp4",
+						)
+					: await handler!(event, { tempPath, fileName: "Untitled Project.mp4" });
+			expect(dialog.showSaveDialog).toHaveBeenLastCalledWith(
+				expect.objectContaining({
+					defaultPath: numberedPath,
+					properties: ["createDirectory", "showOverwriteConfirmation"],
+				}),
+			);
+			expect(result).toMatchObject({ success: true, path: numberedPath });
+			await expect(fs.readFile(originalPath, "utf8")).resolves.toBe("original-export");
+			await expect(fs.readFile(numberedPath, "utf8")).resolves.toBe("new-export");
+		} finally {
+			releaseOwnedExportPath(tempPath);
+		}
+	});
+
+	it.each([
+		["save-exported-video", "mp4"],
+		["finalize-exported-video", "mp4"],
+		["save-exported-video", "gif"],
+		["finalize-exported-video", "gif"],
+	])("%s numbers repeated %s exports in the folder selected by the user", async (channel, ext) => {
+		const dir = await makeTempDir();
+		const downloads = path.join(dir, "Downloads");
+		const selectedFolder = path.join(dir, "Chosen folder");
+		await fs.mkdir(downloads);
+		await fs.mkdir(selectedFolder);
+		vi.spyOn(app, "getPath").mockImplementation((name) =>
+			name === "downloads" ? downloads : dir,
+		);
+		const fileName = `Untitled Project.${ext}`;
+		await fs.writeFile(path.join(downloads, fileName), "download");
+		await fs.writeFile(path.join(downloads, `Untitled Project 1.${ext}`), "download 1");
+		vi.mocked(dialog.showSaveDialog).mockResolvedValue({
+			canceled: false,
+			filePath: path.join(selectedFolder, `Untitled Project 2.${ext}`),
+		});
+		vi.mocked(ipcMain.handle).mockClear();
+		registerExportHandlers();
+		const handler = vi.mocked(ipcMain.handle).mock.calls.find(([name]) => name === channel)![1];
+		const tempPath = path.join(dir, `export-temp.${ext}`);
+		const captionSidecar = {
+			format: "srt",
+			cues: [{ startMs: 0, endMs: 1000, text: "Caption" }],
+		};
+		try {
+			for (const [index, suffix] of ["", " 1", " 2"].entries()) {
+				await fs.writeFile(tempPath, `export ${index}`);
+				registerOwnedExportPath(tempPath);
+				const event = { sender: {} } as Electron.IpcMainInvokeEvent;
+				const result =
+					channel === "save-exported-video"
+						? await handler(
+								event,
+								new TextEncoder().encode(`export ${index}`).buffer,
+								fileName,
+								captionSidecar,
+							)
+						: await handler(event, { tempPath, fileName, captionSidecar });
+				const destination = path.join(selectedFolder, `Untitled Project${suffix}.${ext}`);
+				expect(result).toMatchObject({ success: true, path: destination });
+				await expect(fs.readFile(destination, "utf8")).resolves.toBe(`export ${index}`);
+				await expect(
+					fs.readFile(path.join(selectedFolder, `Untitled Project${suffix}.srt`), "utf8"),
+				).resolves.toContain("Caption");
+			}
+			await expect(fs.readFile(path.join(selectedFolder, fileName), "utf8")).resolves.toBe(
+				"export 0",
+			);
+			await expect(
+				fs.readFile(path.join(selectedFolder, `Untitled Project 1.${ext}`), "utf8"),
+			).resolves.toBe("export 1");
+			await expect(fs.readFile(path.join(downloads, fileName), "utf8")).resolves.toBe(
+				"download",
+			);
+			// A filename entered by the user is retained and numbered in that folder.
+			const renamedPath = path.join(selectedFolder, `My presentation.${ext}`);
+			await fs.writeFile(renamedPath, "existing presentation");
+			vi.mocked(dialog.showSaveDialog).mockResolvedValue({
+				canceled: false,
+				filePath: renamedPath,
+			});
+			await fs.writeFile(tempPath, "renamed export");
+			registerOwnedExportPath(tempPath);
+			const event = { sender: {} } as Electron.IpcMainInvokeEvent;
+			const renamedResult =
+				channel === "save-exported-video"
+					? await handler(
+							event,
+							new TextEncoder().encode("renamed export").buffer,
+							fileName,
+						)
+					: await handler(event, { tempPath, fileName });
+			expect(renamedResult).toMatchObject({
+				success: true,
+				path: path.join(selectedFolder, `My presentation 1.${ext}`),
+			});
+			await expect(fs.readFile(renamedPath, "utf8")).resolves.toBe("existing presentation");
+
+			vi.mocked(dialog.showSaveDialog).mockResolvedValue({ canceled: true, filePath: "" });
+			await fs.writeFile(tempPath, "canceled export");
+			registerOwnedExportPath(tempPath);
+			const filesBefore = await fs.readdir(selectedFolder);
+			const canceledResult =
+				channel === "save-exported-video"
+					? await handler(
+							event,
+							new TextEncoder().encode("canceled export").buffer,
+							fileName,
+						)
+					: await handler(event, { tempPath, fileName });
+			expect(canceledResult).toMatchObject({ success: false, canceled: true });
+			expect(await fs.readdir(selectedFolder)).toEqual(filesBefore);
+			await expect(fs.readFile(tempPath, "utf8")).resolves.toBe("canceled export");
+		} finally {
+			releaseOwnedExportPath(tempPath);
+		}
+	});
 });
 
 describe("moveExportedTempFile", () => {

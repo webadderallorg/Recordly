@@ -13,10 +13,10 @@ type CursorStyleOption = { value: CursorStyle; label: string };
 const BUILTIN_CURSOR_STYLE_OPTIONS: CursorStyleOption[] = [
 	{ value: "macos", label: "macOS" },
 	{ value: "tahoe", label: "Golden Gate" },
-	{ value: "figma", label: "Minimal" },
+	{ value: "bold-outline", label: "Bold Outline" },
 	{ value: "dot", label: "Touch" },
 	{ value: "windows11", label: "Windows 11" },
-	{ value: "bold-outline", label: "Bold Outline" },
+	{ value: "figma", label: "Minimal" },
 	{ value: "pixel-hand", label: "Pixel Glove" },
 	{ value: "breezex", label: "Linux (BreezeX)" },
 ];

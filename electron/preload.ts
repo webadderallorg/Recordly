@@ -749,6 +749,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getMediaPermissionStatus: () => {
 		return ipcRenderer.invoke("get-media-permission-status");
 	},
+	requestMediaPermission: (device: "microphone" | "camera") =>
+		ipcRenderer.invoke("request-media-permission", device),
 	openMediaPermissionPreferences: (device: "microphone" | "camera") => {
 		return ipcRenderer.invoke("open-media-permission-preferences", device);
 	},

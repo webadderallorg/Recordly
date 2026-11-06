@@ -161,20 +161,6 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 														<span>{benefit}</span>
 													</li>
 												))}
-												<li>
-													<span
-														className="split-upgrade-heart"
-														aria-hidden="true"
-													>
-														❤️
-													</span>
-													<span>
-														{t(
-															"featureSupport",
-															"Support solo development",
-														)}
-													</span>
-												</li>
 											</ul>
 										</section>
 										<div className="split-upgrade-purchase">
@@ -273,18 +259,6 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 													}
 												>
 													{t("returnToCheckout", "Return to checkout")}
-												</Button>
-											)}
-											{!plus && checkoutReady && portalAvailable && (
-												<Button
-													variant="ghost"
-													isDisabled={Boolean(busy) || loading}
-													onPress={() => void startBilling("portal")}
-												>
-													{t(
-														"previousSubscription",
-														"Manage previous subscription",
-													)}
 												</Button>
 											)}
 										</div>

@@ -1,6 +1,7 @@
 import { Label, Slider, Tooltip } from "@heroui/react";
 import {
 	memo,
+	type ReactNode,
 	type RefObject,
 	useCallback,
 	useEffect,
@@ -51,6 +52,8 @@ function SliderValueTooltip({
 interface SliderControlProps {
 	label: string;
 	ariaLabel?: string;
+	startContent?: ReactNode;
+	endContent?: ReactNode;
 	value: number;
 	min: number;
 	max: number;
@@ -61,6 +64,8 @@ interface SliderControlProps {
 export const SliderControl = memo(function SliderControl({
 	label,
 	ariaLabel,
+	startContent,
+	endContent,
 	value,
 	min,
 	max,
@@ -117,26 +122,45 @@ export const SliderControl = memo(function SliderControl({
 			className="my-1 w-full gap-y-2"
 		>
 			<Label className="text-xs">{label}</Label>
-			<Slider.Track
-				onPointerDownCapture={(event) => {
-					if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey)
-						return;
-					pointerActive.current = true;
-					setDragValue(value);
-				}}
-			>
-				<Slider.Fill />
-				<Slider.Thumb ref={thumbRef}>
-					{({ isDragging, isFocusVisible }) => (
-						<SliderValueTooltip
-							thumbRef={thumbRef}
-							isOpen={(isDragging && isPointerDragging) || isFocusVisible}
-							value={formattedValue}
-							position={dragValue ?? value}
-						/>
-					)}
-				</Slider.Thumb>
-			</Slider.Track>
+			<div className="flex min-w-0 items-center gap-2 [grid-area:track]">
+				{startContent && (
+					<span
+						aria-hidden="true"
+						className="pointer-events-none flex shrink-0 items-center text-muted-foreground"
+					>
+						{startContent}
+					</span>
+				)}
+				<Slider.Track
+					className="min-w-0 flex-1"
+					onPointerDownCapture={(event) => {
+						if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey)
+							return;
+						pointerActive.current = true;
+						setDragValue(value);
+					}}
+				>
+					<Slider.Fill />
+					<Slider.Thumb ref={thumbRef}>
+						{({ isDragging, isFocusVisible }) => (
+							<SliderValueTooltip
+								thumbRef={thumbRef}
+								isOpen={(isDragging && isPointerDragging) || isFocusVisible}
+								value={formattedValue}
+								position={dragValue ?? value}
+							/>
+						)}
+					</Slider.Thumb>
+				</Slider.Track>
+				{endContent && (
+					<span
+						aria-hidden="true"
+						className="pointer-events-none flex shrink-0 items-center text-muted-foreground"
+					>
+						{endContent}
+					</span>
+				)}
+			</div>
 		</Slider>
 	);
 });

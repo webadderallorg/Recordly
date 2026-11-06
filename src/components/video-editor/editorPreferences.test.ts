@@ -121,7 +121,9 @@ describe("editorPreferences", () => {
 	it("saves webcam controls independently and retains a zero shadow after reload", () => {
 		vi.stubGlobal("localStorage", createStorageMock());
 		stubElectronSettings();
-		saveEditorPreferences({ webcam: { shadow: 0.2, width: 55, roundness: 69 } });
+		saveEditorPreferences({
+			webcam: { shadow: 0.2, width: 55, roundness: 69 },
+		});
 		saveEditorPreferences({ webcam: { width: 60 } });
 		expect(loadEditorPreferences().webcam).toMatchObject({
 			shadow: 0.2,

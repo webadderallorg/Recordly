@@ -1,6 +1,11 @@
 import { app, desktopCapturer, ipcMain, shell, systemPreferences } from "electron";
 import { getMacPrivacySettingsUrl } from "../utils";
-import { dismissPermissionAccessory, showPermissionAccessory, startPermissionAccessoryDrag } from "./permissionAccessory";
+import { isTrustedRenderer } from "../../trustedRenderer";
+import {
+	dismissPermissionAccessory,
+	showPermissionAccessory,
+	startPermissionAccessoryDrag,
+} from "./permissionAccessory";
 
 async function presentDragAccessory(
 	permission: "screen" | "accessibility",
@@ -16,8 +21,12 @@ async function presentDragAccessory(
 }
 
 export function registerPermissionHandlers() {
-	ipcMain.handle("start-permission-accessory-drag", ({ sender }) => startPermissionAccessoryDrag(sender));
-	ipcMain.handle("close-permission-accessory", ({ sender }) => dismissPermissionAccessory(sender));
+	ipcMain.handle("start-permission-accessory-drag", ({ sender }) =>
+		startPermissionAccessoryDrag(sender),
+	);
+	ipcMain.handle("close-permission-accessory", ({ sender }) =>
+		dismissPermissionAccessory(sender),
+	);
 	ipcMain.handle("open-external-url", async (_, url: string) => {
 		try {
 			// Only the two displayed contact addresses may launch a mail client; other protocols stay blocked.
@@ -97,6 +106,29 @@ export function registerPermissionHandlers() {
 				camera: "unknown",
 				error: String(error),
 			};
+		}
+	});
+
+	ipcMain.handle("request-media-permission", async (event, device: unknown) => {
+		if (!event?.sender || !isTrustedRenderer(event))
+			return { success: false, error: "Untrusted media permission caller" };
+		if (device !== "microphone" && device !== "camera")
+			return { success: false, error: "Invalid media permission device" };
+		if (process.platform !== "darwin")
+			return {
+				success: false,
+				error: "Native media permission requests are unsupported on this platform",
+			};
+		try {
+			const status = systemPreferences.getMediaAccessStatus(device);
+			// Only a user's first-time Allow action should present a native prompt.
+			const granted =
+				status === "not-determined"
+					? await systemPreferences.askForMediaAccess(device)
+					: status === "granted";
+			return { success: true, granted };
+		} catch (error) {
+			return { success: false, error: String(error) };
 		}
 	});
 

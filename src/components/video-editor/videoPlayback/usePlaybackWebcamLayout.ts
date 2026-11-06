@@ -38,6 +38,7 @@ export type usePlaybackWebcamLayoutInput = Pick<
 	| "isPlayingRef"
 	| "isSeekingRef"
 	| "zoomMotionBlurRef"
+	| "animationStateRef"
 	| "isPlaying"
 >;
 export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
@@ -58,6 +59,7 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 		isPlayingRef,
 		isSeekingRef,
 		zoomMotionBlurRef,
+		animationStateRef,
 		isPlaying,
 	} = input;
 
@@ -209,8 +211,12 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 			const blur =
 				video && video.readyState >= 2 && webcamMediaSynchronized
 					? webcamMotionBlurRef.current.render({
+							// Keep one renderer throughout playback, including tiny zoom steps
+							// and frames at rest, so edges/shadows never switch mid-animation.
+							renderStill: isPlayingRef.current && !isSeekingRef.current,
 							layout: { x, y, ...scaledDimensions, radius: scaledRadius },
-							resolution: window.devicePixelRatio,
+							// Supersample small cameras even on standard-density displays.
+							resolution: Math.max(2, window.devicePixelRatio || 1),
 							shape: webcam?.shape,
 							timeMs: timelineTimeRef.current * 1000,
 							playing: isPlayingRef.current && !isSeekingRef.current,
@@ -277,10 +283,10 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 	useEffect(() => {
 		if (!isPlaying) {
 			webcamMotionBlurRef.current.reset();
-			if (webcamBlurCanvasRef.current) webcamBlurCanvasRef.current.style.display = "none";
-			if (webcamBubbleRef.current) webcamBubbleRef.current.style.visibility = "visible";
+			// Keep the native video at the exact pose where playback stopped.
+			applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
 		}
-	}, [isPlaying, webcamMotionBlurRef, webcamBlurCanvasRef, webcamBubbleRef]);
+	}, [isPlaying, webcamMotionBlurRef, applyWebcamBubbleLayout, animationStateRef]);
 	return {
 		webcamEnabled,
 		webcamMargin,

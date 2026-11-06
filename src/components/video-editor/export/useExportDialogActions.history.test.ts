@@ -24,6 +24,20 @@ function setup(finalize: () => Promise<unknown>) {
 	return { session, saved, actions, original };
 }
 afterEach(() => vi.unstubAllGlobals());
+it("reopens active export progress without resetting it", () => {
+	const session = {
+		isExporting: true,
+		setShowExportDropdown: vi.fn(),
+		setExportProgress: vi.fn(),
+	};
+	const actions = useExportDialogActions({
+		videoPath: "/recording.mp4",
+		session,
+	} as unknown as Parameters<typeof useExportDialogActions>[0]);
+	actions.handleOpenExportDropdown();
+	expect(session.setShowExportDropdown).toHaveBeenCalledWith(true);
+	expect(session.setExportProgress).not.toHaveBeenCalled();
+});
 it.each([
 	{ success: false, canceled: true },
 	{ success: false, message: "disk full" },

@@ -104,6 +104,9 @@ export function ApplicationSettings() {
 			)}
 			{preferences && (
 				<>
+					<header className="dashboard-settings-group dashboard-settings-subgroup">
+						<h2>{t("settings.application.behavior", "App behavior")}</h2>
+					</header>
 					<div className="settings-group">
 						{toggle(
 							showLabel,

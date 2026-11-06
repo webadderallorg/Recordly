@@ -1,7 +1,7 @@
 import { getWebcamShadowFilter, getWebcamShadowPadding } from "@/lib/exporter/shadowProfile";
-import { drawSquircleOnCanvas } from "@/lib/geometry/squircle";
 import type { CropRegion, WebcamShape } from "./types";
-import { getWebcamCropSourceRect, getWebcamShapeExponent } from "./webcamOverlay";
+import { getWebcamCropSourceRect } from "./webcamOverlay";
+import { traceWebcamShapeOnCanvas } from "./webcamShapePath";
 
 export interface WebcamMotionLayout {
 	x: number;
@@ -155,8 +155,13 @@ export class WebcamMotionBlur {
 			: 1;
 		const shadowSize = Math.min(layout.width, layout.height);
 		const padding = getWebcamShadowPadding(shadowSize, shadow) + 2;
-		const x = Math.floor(Math.min(...this.samples.map((s) => s.x)) - padding);
-		const y = Math.floor(Math.min(...this.samples.map((s) => s.y)) - padding);
+		// Align the backing store to physical pixels, including Retina displays.
+		const x =
+			Math.floor((Math.min(...this.samples.map((s) => s.x)) - padding) * resolution) /
+			resolution;
+		const y =
+			Math.floor((Math.min(...this.samples.map((s) => s.y)) - padding) * resolution) /
+			resolution;
 		// Keep backing stores large enough for the whole transition rather than
 		// reallocating canvas/GPU textures on every shrinking frame.
 		const width = Math.max(
@@ -194,11 +199,12 @@ export class WebcamMotionBlur {
 		for (const sample of this.samples) {
 			ctx.save();
 			ctx.translate(sample.x - x, sample.y - y);
-			drawSquircleOnCanvas(ctx, {
+			ctx.beginPath();
+			traceWebcamShapeOnCanvas(ctx, {
 				...sample,
 				x: 0,
 				y: 0,
-				exponent: getWebcamShapeExponent(options.shape),
+				shape: options.shape,
 			});
 			ctx.clip();
 			if (mirror) {
@@ -220,6 +226,7 @@ export class WebcamMotionBlur {
 			ctx.restore();
 		}
 		ctx.restore();
+
 		out.clearRect(0, 0, pixelWidth, pixelHeight);
 		out.save();
 		out.filter = getWebcamShadowFilter(shadowSize * resolution, shadow);

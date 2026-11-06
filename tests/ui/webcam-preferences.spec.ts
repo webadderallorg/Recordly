@@ -59,7 +59,7 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 				() => JSON.parse(localStorage.getItem("recordly.editor.preferences")!).webcam.width,
 			),
 		)
-		.toBe(41);
+		.toBe(31);
 	expect(await storedShadow()).toBe(0.2);
 
 	await page.getByRole("radio", { name: "Scene", exact: true }).click();
@@ -72,7 +72,7 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 						.shadowIntensity,
 			),
 		)
-		.toBe(0.68);
+		.toBe(0.51);
 	expect(await storedShadow()).toBe(0.2);
 	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
 

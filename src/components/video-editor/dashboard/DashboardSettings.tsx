@@ -154,9 +154,14 @@ export function DashboardSettings({
 					<header className="dashboard-settings-group">
 						<h2>{t("settings.categories.general", "General")}</h2>
 					</header>
-					<SettingsRow title={t("settings.appPreferences.appearance", "Appearance")}>
-						<ThemeAppearancePicker compact />
-					</SettingsRow>
+					<div className="settings-appearance">
+						<SettingsRow
+							title={t("settings.appPreferences.appearance", "Appearance")}
+							stacked
+						>
+							<ThemeAppearancePicker />
+						</SettingsRow>
+					</div>
 				</SettingsCategory>
 				<SettingsCategory category="shortcuts">
 					<header className="dashboard-settings-group">
@@ -208,18 +213,18 @@ export function DashboardSettings({
 								)}
 							</SettingsInfo>
 						</h2>
+						<p>
+							{t(
+								"settings.appPreferences.motionScope",
+								"Changes affect this project and are remembered for new projects. Saved projects keep their own settings.",
+							)}
+						</p>
 					</header>
 				</SettingsCategory>
 				<SettingsCategory category="developer">
 					<header className="dashboard-settings-group">
 						<h2 className="flex items-center gap-1.5">
 							{t("settings.effects.devSection", "Dev")}
-							<SettingsInfo label={t("settings.effects.devSection", "Dev")}>
-								{t(
-									"settings.effects.devSectionHint",
-									"Temporary testing controls for native capture and motion tuning.",
-								)}
-							</SettingsInfo>
 						</h2>
 					</header>
 				</SettingsCategory>
@@ -281,6 +286,12 @@ export function DashboardSettings({
 				<SettingsCategory category="general">
 					<header className="dashboard-settings-group dashboard-settings-subgroup">
 						<h2>{t("settings.appPreferences.storage", "Storage")}</h2>
+						<p>
+							{t(
+								"settings.appPreferences.folderScope",
+								"Changing this location affects future recordings. Existing files stay in their current folders.",
+							)}
+						</p>
 					</header>
 					<div className="settings-group">
 						<div className="settings-item">
@@ -289,12 +300,9 @@ export function DashboardSettings({
 									"settings.dashboard.recordingsFolder",
 									"Recordings folder",
 								)}
-								help={<>
-									{t(
-									"settings.appPreferences.folderScope",
-									"Changing this location affects future recordings. Existing files stay in their current folders.",
-									)}
-									<span className="mt-2 block break-all font-mono">
+								descriptionInline
+								description={
+									<span className="settings-folder-path">
 										{recordings ||
 											folderErrors.recordings ||
 											t(
@@ -302,7 +310,15 @@ export function DashboardSettings({
 												"Loading folder location…",
 											)}
 									</span>
-								</>}
+								}
+								help={
+									<>
+										{t(
+											"settings.appPreferences.folderScope",
+											"Changing this location affects future recordings. Existing files stay in their current folders.",
+										)}
+									</>
+								}
 							>
 								<div className="settings-actions">
 									<Button
@@ -355,12 +371,9 @@ export function DashboardSettings({
 						<div className="settings-item">
 							<SettingsRow
 								title={t("settings.dashboard.projectsFolder", "Projects folder")}
-								help={<>
-									{t(
-									"settings.dashboard.autosave",
-									"Named projects save automatically.",
-									)}
-									<span className="mt-2 block break-all font-mono">
+								descriptionInline
+								description={
+									<span className="settings-folder-path">
 										{directory ||
 											folderErrors.projects ||
 											t(
@@ -368,7 +381,15 @@ export function DashboardSettings({
 												"Loading folder location…",
 											)}
 									</span>
-								</>}
+								}
+								help={
+									<>
+										{t(
+											"settings.dashboard.autosave",
+											"Named projects save automatically.",
+										)}
+									</>
+								}
 							>
 								<Button
 									variant="secondary"

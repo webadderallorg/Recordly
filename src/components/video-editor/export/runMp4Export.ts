@@ -201,7 +201,7 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 				route: attempt.route,
 				initialError: attempt.initialError,
 			});
-			setExportProgress(null);
+			setExportProgress((previous) => previous && { ...previous, phase: "preparing" });
 		},
 		discardTempFile: (tempFilePath) =>
 			discardCancelledTemp({ fileName: "export.mp4", tempFilePath }),

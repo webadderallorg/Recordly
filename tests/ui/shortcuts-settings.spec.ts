@@ -41,6 +41,21 @@ test("Shortcuts has its own settings section with inline editing, save and reset
 	await split().click();
 	await page.keyboard.press("Meta+k");
 	await expect(split()).toHaveText("⌘ + K");
+	await expect(
+		panel.getByText(
+			"Click a shortcut then press the new key combination. Press Esc to cancel.",
+			{ exact: true },
+		),
+	).toBeInViewport();
+	await panel.evaluate((element) => {
+		element.scrollTop = element.scrollHeight;
+	});
+	await expect(panel.getByRole("button", { name: "Save", exact: true })).toBeInViewport({
+		ratio: 1,
+	});
+	await expect(panel.getByRole("button", { name: "Cancel", exact: true })).toBeInViewport({
+		ratio: 1,
+	});
 	await panel.getByRole("button", { name: "Save", exact: true }).click();
 	await expect
 		.poll(() => page.locator("html").getAttribute("data-saved-shortcuts"))

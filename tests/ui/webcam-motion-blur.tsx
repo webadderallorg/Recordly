@@ -192,7 +192,7 @@ export async function exportChecks(shadow = 0, nearStill = false) {
 		}
 		const stillContext = still.canvas.getContext("2d")!;
 		results.push({
-			circleShoulder: Array.from(stillContext.getImageData(475, 195, 1, 1).data),
+			circleShoulder: Array.from(stillContext.getImageData(470, 190, 1, 1).data),
 			circleCenter: Array.from(stillContext.getImageData(542, 262, 1, 1).data),
 			name,
 			maxShadowDifference,

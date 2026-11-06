@@ -25,18 +25,22 @@ export function UpgradeButton({
 		!showDiscount || percent === null ? null : t("discount", "{{percent}}% off", { percent });
 	if (status?.billing.plan === "pro") return null;
 	const text = label ?? t("upgradeShort", "Upgrade");
+	const visibleText = text.replace("Recordly", "").replace(/\s+/g, " ").trim();
 
 	return (
 		<Button
 			variant={variant}
 			size={size}
-			className={`gap-2 ${className ?? ""}`}
-			aria-label={[text, discount]
-				.filter(Boolean)
-				.join(", ")}
+			className={`gap-2 bg-editor-surface text-accent hover:bg-editor-surface-alt ${className ?? ""}`}
+			aria-label={[text, discount].filter(Boolean).join(", ")}
 			onPress={openPricing}
 		>
-			{truncateLabel ? <span className="min-w-0 truncate" title={text}>{text}</span> : text}
+			<span
+				className={truncateLabel ? "min-w-0 truncate" : "whitespace-nowrap"}
+				title={truncateLabel ? visibleText : undefined}
+			>
+				{visibleText}
+			</span>
 			{discount && (
 				<span className="shrink-0 whitespace-nowrap rounded-full bg-danger/10 px-1.5 py-0.5 text-[10px] font-medium leading-4 text-danger">
 					{discount}

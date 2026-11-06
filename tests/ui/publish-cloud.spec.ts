@@ -227,7 +227,7 @@ for (const destination of ["Save video", "Create share link"]) {
 				.evaluate((button: HTMLButtonElement) => button.click());
 		}
 		const publish = page.getByRole("dialog", { name: "Publish", exact: true });
-		const report = publish.getByRole("button", { name: "Report error", exact: true });
+		const report = publish.getByRole("button", { name: "Report Error", exact: true });
 		await expect(report).toBeVisible();
 		expect(reports).toHaveLength(0);
 		await report.click();

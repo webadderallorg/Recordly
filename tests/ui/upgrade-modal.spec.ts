@@ -91,7 +91,6 @@ for (const viewport of [
 			"Play cloud videos in FHD 1080p",
 			"Export caption SRT and VTT files",
 			"Priority support service",
-			"❤️Support solo development",
 		]);
 		await expect(
 			dialog.locator("[data-onboarding-artwork] .recordly-banner-light"),

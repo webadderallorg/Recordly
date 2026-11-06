@@ -101,16 +101,6 @@
 	color: var(--accent-foreground);
 }
 
-.split-upgrade-heart {
-	display: grid;
-	place-items: center;
-	flex: 0 0 17px;
-	height: 17px;
-	margin-top: 1px;
-	font-size: 16px;
-	line-height: 1;
-}
-
 .split-upgrade-purchase {
 	display: flex;
 	flex-direction: column;

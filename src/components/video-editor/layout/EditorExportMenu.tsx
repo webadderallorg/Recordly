@@ -18,6 +18,8 @@ import type { useExportSession } from "../export/useExportSession";
 import type { useExportSettings } from "../export/useExportSettings";
 import type { useExportStatusViewModel } from "../export/useExportStatusViewModel";
 import { GifOptimizationResult } from "../GifOptimizationResult";
+import glassStyles from "../timeline/ItemGlass.module.css";
+import { ExportPaperStack } from "./ExportPaperStack";
 
 type Props = {
 	projectRevision?: string;
@@ -37,7 +39,6 @@ type Props = {
 	handleRetrySaveExport: () => void;
 	handleStartExportFromDropdown: () => void;
 	revealExportedFile: () => void;
-	exportMessage: string | null;
 	projectTitle: string;
 	prepareExportForShare: () => Promise<string | undefined>;
 	onRequestShareSignIn: () => void;
@@ -91,7 +92,6 @@ export function EditorExportMenu(props: Props) {
 		handleRetrySaveExport,
 		handleStartExportFromDropdown,
 		revealExportedFile,
-		exportMessage,
 	} = props;
 	const {
 		exportQuality,
@@ -124,16 +124,8 @@ export function EditorExportMenu(props: Props) {
 		hasPendingExportSave,
 	} = exportSession;
 	const { gifOutputDimensions, mp4OutputDimensions } = exportDimensions;
-	const {
-		isExportPreparing,
-		isGifFinalizing,
-		exportDisplayProgress,
-		isExportSaving,
-		isRenderingAudio,
-		isExportFinalSaveIndeterminate,
-		exportFinalizingProgress,
-		exportPercentLabel,
-	} = exportStatus;
+	const { isGifFinalizing, exportDisplayProgress, isExportSaving, exportPercentLabel } =
+		exportStatus;
 
 	const settingsForm = (
 		<ExportSettingsMenu
@@ -291,37 +283,24 @@ export function EditorExportMenu(props: Props) {
 												{t("common.actions.cancel")}
 											</Button>
 										</div>
+										<ExportPaperStack />
 										<ProgressBar
+											className="export-progress"
 											aria-label={t(
 												"editor.exportStatus.exporting",
 												"Exporting",
 											)}
-											isIndeterminate={
-												isExportPreparing ||
-												exportSession.isOptimizingGif ||
-												isExportSaving ||
-												isExportFinalSaveIndeterminate
-											}
-											value={Math.min(
-												isRenderingAudio
-													? (exportProgress?.audioProgress ?? 0) * 100
-													: (exportFinalizingProgress ??
-															exportDisplayProgress),
-												100,
-											)}
+											value={exportDisplayProgress}
 										>
 											<ProgressBar.Track>
-												<ProgressBar.Fill />
+												<ProgressBar.Fill
+													className={`${glassStyles.glassBlue} export-progress-fill`}
+												/>
 											</ProgressBar.Track>
 										</ProgressBar>
 										{exportPercentLabel ? (
 											<p className="mt-2 text-xs text-muted-foreground">
 												{exportPercentLabel}
-											</p>
-										) : null}
-										{exportMessage ? (
-											<p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-												{exportMessage}
 											</p>
 										) : null}
 									</Card>

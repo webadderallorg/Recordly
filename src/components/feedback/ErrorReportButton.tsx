@@ -1,6 +1,5 @@
 import { useScopedT } from "@/contexts/I18nContext";
 import { useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { reportError } from "@/lib/feedback/errorReporting";
 
 export function ErrorReportButton({
@@ -36,11 +35,11 @@ function ReportAction({
 	const [failure, setFailure] = useState("");
 	const sending = useRef(false);
 	return (
-		<span className="inline-flex flex-wrap items-center gap-2" data-error-report>
-			<Button
+		<span data-error-report>
+			{" "}
+			<button
 				type="button"
-				variant="outline"
-				className="h-8 text-xs aria-disabled:opacity-50"
+				className="inline cursor-pointer rounded-sm border-0 bg-transparent p-0 align-baseline text-inherit underline underline-offset-2 hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 aria-disabled:cursor-default aria-disabled:opacity-50"
 				// Keep focus inside the containing dialog while preventing duplicate sends.
 				aria-disabled={state === "sending" || state === "sent"}
 				title={failure || t("reportTitle")}
@@ -76,9 +75,9 @@ function ReportAction({
 						: state === "failed"
 							? t("reportRetry")
 							: t("reportError")}
-			</Button>
-			<span role="status" className={compact ? "sr-only" : "text-xs text-muted-foreground"}>
-				{failure || (state === "sent" ? t("reportSuccess") : "")}
+			</button>
+			<span role="status" className={compact || state !== "failed" ? "sr-only" : undefined}>
+				{failure ? ` ${failure}` : state === "sent" ? t("reportSuccess") : ""}
 			</span>
 		</span>
 	);

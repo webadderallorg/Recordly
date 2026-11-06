@@ -236,8 +236,8 @@ test("permission recovery errors align with their row and retain error emphasis"
 		.getByRole("button", { name: "Open System Settings: Camera", exact: true })
 		.click();
 	const error = settings.getByRole("alert");
-	await expect(error).toHaveText("Could not open System Settings. Try again. Report error");
-	await expect(error.getByRole("button", { name: "Report error", exact: true })).toBeVisible();
+	await expect(error).toHaveText("Could not open System Settings. Try again. Report Error");
+	await expect(error.getByRole("button", { name: "Report Error", exact: true })).toBeVisible();
 	const style = await error.evaluate((element) => {
 		const description =
 			element.previousElementSibling!.querySelector(".settings-row-copy")!.lastElementChild!;
