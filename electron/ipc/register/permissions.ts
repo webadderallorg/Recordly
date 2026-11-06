@@ -20,9 +20,14 @@ export function registerPermissionHandlers() {
 	ipcMain.handle("close-permission-accessory", ({ sender }) => dismissPermissionAccessory(sender));
 	ipcMain.handle("open-external-url", async (_, url: string) => {
 		try {
-			// Security: only allow http/https URLs to prevent file:// or custom protocol abuse
+			// Only the two displayed contact addresses may launch a mail client; other protocols stay blocked.
 			const parsed = new URL(url);
-			if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+			if (
+				parsed.protocol !== "https:" &&
+				parsed.protocol !== "http:" &&
+				url !== "mailto:support@recordly.dev" &&
+				url !== "mailto:youngchen3442@gmail.com"
+			) {
 				return { success: false, error: `Blocked non-HTTP URL: ${parsed.protocol}` };
 			}
 			await shell.openExternal(url);

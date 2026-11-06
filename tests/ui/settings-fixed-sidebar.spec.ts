@@ -167,6 +167,13 @@ for (const { width, height, theme } of [
 		const home = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
 		const socials = home.getByRole("button", { name: "Socials", exact: true });
 		await expect(socials).toBeInViewport({ ratio: 1 });
+		const contact = home.getByRole("button", { name: "Contact", exact: true });
+		await expect(contact).toBeInViewport({ ratio: 1 });
+		const socialsBox = (await socials.boundingBox())!;
+		const contactBox = (await contact.boundingBox())!;
+		expect(contactBox.y).toBe(socialsBox.y);
+		expect(contactBox.x).toBeGreaterThanOrEqual(socialsBox.x + socialsBox.width);
+
 		await expect(home.getByRole("button", { name: "YouTube", exact: true })).toHaveCount(0);
 		await socials.click();
 		const links = page.getByRole("dialog", { name: "Socials", exact: true });
@@ -196,6 +203,23 @@ for (const { width, height, theme } of [
 		await expect(socials).toBeFocused();
 		await expect(home).toBeVisible();
 		await home.locator("aside").screenshot({ path: test.info().outputPath(`footer-${theme}.png`) });
+		await contact.click();
+		const contactDialog = page.getByRole("dialog", { name: "Contact", exact: true });
+		await expect(contactDialog).toBeVisible();
+		for (const email of ["support@recordly.dev", "youngchen3442@gmail.com"]) {
+			const emailButton = contactDialog.getByRole("button", { name: email, exact: true });
+			await expect(emailButton).toBeInViewport({ ratio: 1 });
+			await emailButton.focus();
+			await page.keyboard.press("Enter");
+			await expect(page.locator("html")).toHaveAttribute("data-opened-community-url", `mailto:${email}`);
+			await expect(page).toHaveURL(url);
+		}
+		await contactDialog.screenshot({ path: test.info().outputPath(`contact-${theme}.png`) });
+		await page.keyboard.press("Escape");
+		await expect(contactDialog).toBeHidden();
+		await expect(contact).toBeFocused();
+		await expect(home).toBeVisible();
+
 	});
 }
 
@@ -240,7 +264,7 @@ test("Japanese community footer fits Upgrade and Socials without overlap", async
 		}
 		boxes.push(box);
 	}
-	await expect(footer.getByRole("button")).toHaveCount(2);
+	await expect(footer.getByRole("button")).toHaveCount(3);
 	const socials = footer.getByRole("button", { name: "SNS", exact: true });
 	await expect(socials).toBeVisible();
 	await socials.click();
