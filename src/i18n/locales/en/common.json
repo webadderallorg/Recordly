@@ -36,6 +36,7 @@
     "thanks": "Thanks for your feedback",
     "signInRequired": "Sign in to send feedback.",
     "openHome": "Open Home to sign in.",
+    "orEmail": "Or email",
     "missingMessage": "Tell us more before sending.",
     "sentiment": "How do you feel?",
     "loving": "Loving",
@@ -47,7 +48,7 @@
     "descriptionPlaceholder": "We read all feedback...",
     "attachFiles": "Attach files",
     "removeFile": "Remove {{name}}",
-    "diagnostics": "Relevant diagnostic logs will be attached.",
+    "diagnostics": "Diagnostic logs attached. Feedback sent to support@recordly.dev",
     "sending": "Sending…",
     "errors": {
       "unavailable": "Feedback is unavailable until account services are configured.",

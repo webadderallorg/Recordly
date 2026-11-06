@@ -215,7 +215,9 @@ export function FeedbackDialog({
 									aria-label={t(`common.feedback.${item.value}`, item.label)}
 									aria-pressed={sentiment === item.value}
 									isDisabled={sending}
-									onPress={() => setSentiment(item.value)}
+									onPress={() =>
+										setSentiment(sentiment === item.value ? null : item.value)
+									}
 								>
 									<span aria-hidden="true">{item.emoji}</span>
 								</Button>
@@ -305,7 +307,7 @@ export function FeedbackDialog({
 						<Description className="text-xs">
 							{t(
 								"common.feedback.diagnostics",
-								"Relevant diagnostic logs will be attached.",
+								"Diagnostic logs attached. Feedback sent to support@recordly.dev",
 							)}
 						</Description>
 						{error && (
@@ -319,6 +321,24 @@ export function FeedbackDialog({
 								: t("common.feedback.send", "Send feedback")}
 						</Button>
 					</Form>
+				)}
+				{!sent && (
+					<p className="text-center text-xs text-muted">
+						{t("common.feedback.orEmail", "Or email")}{" "}
+						<a
+							href="mailto:support@recordly.dev"
+							className="underline underline-offset-4"
+							onClick={(event) => {
+								if (!window.electronAPI?.openExternalUrl) return;
+								event.preventDefault();
+								void window.electronAPI.openExternalUrl(
+									"mailto:support@recordly.dev",
+								);
+							}}
+						>
+							support@recordly.dev
+						</a>
+					</p>
 				)}
 			</DialogContent>
 		</Dialog>

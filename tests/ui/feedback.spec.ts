@@ -1,6 +1,79 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge } from "./bridge";
 
+for (const clearSelection of [false, true]) {
+	test(`feedback submits without an emoji${clearSelection ? " after clearing a selection" : ""}`, async ({
+		page,
+	}) => {
+		await installDesktopBridge(page);
+		let requestBody = "";
+		await page.route("**/functions/v1/submit-feedback", async (route) => {
+			requestBody = route.request().postData() ?? "";
+			await route.fulfill({ json: { success: true } });
+		});
+		await page.goto("/?windowType=editor");
+		await page.getByRole("button", { name: "Recordly account", exact: true }).click();
+		await page
+			.getByRole("dialog", { name: "Account menu", exact: true })
+			.getByRole("button", { name: "Feedback", exact: true })
+			.click();
+		const modal = page.getByRole("dialog", { name: "Send feedback", exact: true });
+		if (clearSelection) {
+			const loving = modal.getByRole("button", { name: "Loving", exact: true });
+			await loving.click();
+			await expect(loving).toHaveAttribute("aria-pressed", "true");
+			await loving.click();
+		}
+		await expect(modal.locator('[aria-pressed="true"]')).toHaveCount(0);
+		await modal.getByRole("button", { name: "Send feedback", exact: true }).click();
+		await expect(modal).toBeVisible();
+		expect(requestBody).toBe("");
+		await modal
+			.getByLabel("Description", { exact: true })
+			.fill("Please add more keyboard shortcuts.");
+		await modal.getByRole("button", { name: "Send feedback", exact: true }).click();
+		await expect(
+			page.getByRole("dialog", { name: "Thanks for your feedback", exact: true }),
+		).toBeVisible();
+		expect(requestBody).toContain('name="title"\r\n\r\nPlease add more keyboard shortcuts.');
+		expect(requestBody).not.toMatch(/🥰|😐|😠/u);
+	});
+}
+
+for (const signedIn of [false, true]) {
+	test(`feedback offers support email when signed ${signedIn ? "in" : "out"}`, async ({
+		page,
+	}) => {
+		await installDesktopBridge(page, undefined, { signedIn });
+		await page.addInitScript(() => {
+			window.electronAPI.openExternalUrl = async (url: string) => {
+				document.documentElement.dataset.openedExternalUrl = url;
+				return { success: true };
+			};
+		});
+		await page.goto("/?windowType=editor");
+		if (signedIn) {
+			await page.getByRole("button", { name: "Recordly account", exact: true }).click();
+			await page
+				.getByRole("dialog", { name: "Account menu", exact: true })
+				.getByRole("button", { name: "Feedback", exact: true })
+				.click();
+		} else {
+			await page.getByRole("button", { name: "Feedback", exact: true }).click();
+		}
+		const modal = page.getByRole("dialog", { name: "Send feedback", exact: true });
+		await expect(modal.getByText("Or email", { exact: false })).toBeVisible();
+		const email = modal.getByRole("link", { name: "support@recordly.dev", exact: true });
+		await expect(email).toHaveAttribute("href", "mailto:support@recordly.dev");
+		await email.click();
+		await expect(page.locator("html")).toHaveAttribute(
+			"data-opened-external-url",
+			"mailto:support@recordly.dev",
+		);
+		await expect(modal).toBeVisible();
+	});
+}
+
 test("feedback preserves a draft on failure, supports attachments, and includes diagnostics automatically", async ({
 	page,
 }) => {
@@ -31,7 +104,7 @@ test("feedback preserves a draft on failure, supports attachments, and includes 
 	await expect(modal.getByText("notes.txt", { exact: true })).toBeVisible();
 	await modal.getByRole("button", { name: "Remove notes.txt" }).click();
 	await expect(modal.getByText("notes.txt", { exact: true })).toHaveCount(0);
-	await expect(modal.getByText("Relevant diagnostic logs will be attached.")).toBeVisible();
+	await expect(modal.getByText("Diagnostic logs attached. Feedback sent to support@recordly.dev")).toBeVisible();
 	await expect(modal.getByRole("checkbox")).toHaveCount(0);
 	await expect(modal.getByLabel("Title", { exact: true })).toHaveCount(0);
 	await modal.getByRole("button", { name: "Send feedback", exact: true }).click();
