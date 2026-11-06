@@ -46,6 +46,10 @@ for (const width of [1440, 760, 420, 320]) {
 			expect(
 				await panel.evaluate((element) => element.scrollWidth <= element.clientWidth),
 			).toBe(true);
+			await settings.screenshot({
+				path: test.info().outputPath(`settings-modal-${width}-${theme}.png`),
+				animations: "disabled",
+			});
 			await settings.locator(".theme-appearance-picker").screenshot({
 				path: `test-results/appearance-proportions-${width}-${theme}.png`,
 				animations: "disabled",
