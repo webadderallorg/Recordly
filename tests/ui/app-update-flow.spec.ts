@@ -26,7 +26,7 @@ test("update available is a red header button to the right of the account in edi
 	await checkPlacement(editor);
 	await expect(page.locator(".app-update-banner")).toHaveCount(0);
 	await page.screenshot({
-		path: "output/update-flow/editor-update-available.png",
+		path: test.info().outputPath("editor-update-available.png"),
 		animations: "disabled",
 	});
 	await page.getByRole("button", { name: "Home", exact: true }).click();
@@ -36,9 +36,9 @@ test("update available is a red header button to the right of the account in edi
 	await checkPlacement(home.locator(".app-frame-header"));
 	await home
 		.getByRole("button", { name: "Update available", exact: true })
-		.screenshot({ path: "output/update-flow/home-update-button.png", animations: "disabled" });
+		.screenshot({ path: test.info().outputPath("home-update-button.png"), animations: "disabled" });
 	await page.screenshot({
-		path: "output/update-flow/home-update-available.png",
+		path: test.info().outputPath("home-update-available.png"),
 		animations: "disabled",
 	});
 	await home.getByRole("button", { name: "Update available", exact: true }).click();

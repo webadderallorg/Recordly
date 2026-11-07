@@ -56,6 +56,10 @@ describe("cleanup dates", () => {
 			matchesCleanupDate(entry("a", new Date("2026-10-05T00:00:00").getTime()), filter),
 		).toBe(false);
 		expect(matchesCleanupDate(entry("a"), { ...filter, from: "2026-10-06" })).toBe(false);
+		const inside = entry("inside", new Date("2026-10-05T12:00:00").getTime());
+		const after = entry("after", new Date("2026-10-08T12:00:00").getTime());
+		expect(matchesCleanupDate(inside, { ...filter, from: "2026-10-06" })).toBe(false);
+		expect(matchesCleanupDate(after, { ...filter, from: "2026-10-06" })).toBe(false);
 		expect(matchesCleanupDate(entry("a"), { ...filter, from: "invalid" })).toBe(false);
 	});
 });

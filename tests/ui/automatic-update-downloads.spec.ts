@@ -51,7 +51,7 @@ test("automatic downloads are off initially and save either choice across reload
 			has: page.getByRole("switch", { name: "Automatically download updates", exact: true }),
 		})
 		.scrollIntoViewIfNeeded();
-	await settings.screenshot({ path: "output/update-flow/automatic-downloads-off.png" });
+	await settings.screenshot({ path: test.info().outputPath("automatic-downloads-off.png") });
 	await toggle.focus();
 	await toggle.press("Space");
 	await expect(toggle).toBeChecked();
@@ -172,7 +172,7 @@ test("Settings keeps update actions available after notification dismissal and s
 	await status.getByRole("button", { name: "Download update", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-update-restart", "false");
 	await expect(status.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "42");
-	await settings.screenshot({ path: "output/update-flow/settings-downloading.png" });
+	await settings.screenshot({ path: test.info().outputPath("settings-downloading.png") });
 	await page.evaluate(() =>
 		window.dispatchEvent(
 			new CustomEvent("test-settings-update", {
@@ -181,7 +181,7 @@ test("Settings keeps update actions available after notification dismissal and s
 		),
 	);
 	await expect(status).toContainText("Recordly 1.5.0 is ready to install.");
-	await settings.screenshot({ path: "output/update-flow/settings-ready.png" });
+	await settings.screenshot({ path: test.info().outputPath("settings-ready.png") });
 	await page.setViewportSize({ width: 760, height: 720 });
 	await expect(
 		status.getByRole("button", { name: "Restart to update", exact: true }),
@@ -189,11 +189,11 @@ test("Settings keeps update actions available after notification dismissal and s
 	expect(await settings.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
 		true,
 	);
-	await settings.screenshot({ path: "output/update-flow/settings-ready-narrow.png" });
+	await settings.screenshot({ path: test.info().outputPath("settings-ready-narrow.png") });
 	await page.setViewportSize({ width: 1440, height: 1000 });
 	await page.emulateMedia({ colorScheme: "dark" });
 	await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-	await settings.screenshot({ path: "output/update-flow/settings-ready-dark.png" });
+	await settings.screenshot({ path: test.info().outputPath("settings-ready-dark.png") });
 	await page.emulateMedia({ colorScheme: "light" });
 	await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 	await status.getByRole("button", { name: "Restart to update", exact: true }).click();
@@ -208,5 +208,5 @@ test("Settings keeps update actions available after notification dismissal and s
 	await expect(
 		status.getByRole("button", { name: "Restart to update", exact: true }),
 	).toBeEnabled();
-	await settings.screenshot({ path: "output/update-flow/settings-ready-blocked.png" });
+	await settings.screenshot({ path: test.info().outputPath("settings-ready-blocked.png") });
 });

@@ -78,7 +78,7 @@ test("custom aspect ratio uses a compact dialog, locks resizing and supports mov
 	await openCrop(page);
 	await page.getByRole("button", { name: "Aspect ratio", exact: true }).click();
 	await expect(page.getByRole("dialog")).toBeVisible();
-	await page.screenshot({ path: "/tmp/recordly-crop-ratio.png" });
+	await page.screenshot({ path: test.info().outputPath("recordly-crop-ratio.png") });
 	await page.getByRole("spinbutton", { name: "Width", exact: true }).fill("0");
 	await expect(page.getByRole("button", { name: "Apply", exact: true })).toBeDisabled();
 	await page.getByRole("spinbutton", { name: "Width", exact: true }).fill("3");
@@ -104,7 +104,7 @@ test("custom aspect ratio uses a compact dialog, locks resizing and supports mov
 	expect(moved.width).toBeCloseTo(box.width, 0);
 	expect(moved.height).toBeCloseTo(box.height, 0);
 	expect(moved.x).toBeGreaterThan(box.x + 10);
-	await page.screenshot({ path: "/tmp/recordly-inline-crop.png" });
+	await page.screenshot({ path: test.info().outputPath("recordly-inline-crop.png") });
 });
 
 for (const ratio of [1, 3]) {
@@ -139,6 +139,6 @@ for (const ratio of [1, 3]) {
 		expect(Math.abs(content!.height - outer!.height)).toBeLessThan(2);
 		expect(content!.y + content!.height).toBeLessThanOrEqual(stage!.y + stage!.height + 1);
 		expect(content!.x + content!.width).toBeLessThanOrEqual(stage!.x + stage!.width + 1);
-		await page.screenshot({ path: `/tmp/recordly-auto-crop-${ratio}.png` });
+		await page.screenshot({ path: test.info().outputPath(`recordly-auto-crop-${ratio}.png`) });
 	});
 }

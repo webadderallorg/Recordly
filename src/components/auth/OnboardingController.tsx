@@ -37,6 +37,7 @@ export function OnboardingController({
 	const [startWithPermissions, setStartWithPermissions] = useState(false);
 	const checked = useRef(false);
 	const handledRequest = useRef(0);
+	const finishingPermissions = useRef(false);
 	const openWindow = useCallback(
 		(windowPreview = preview) => {
 			checked.current = true;
@@ -120,14 +121,39 @@ export function OnboardingController({
 	);
 
 	const finishPermissions = () => {
-		if (!preview && !user) return;
-		if (!preview) saveAppSetting("recordly.onboarding.permissionsRequested", false);
-		close();
+		if ((!preview && !user) || finishingPermissions.current) return;
+		finishingPermissions.current = true;
+		let restorePermissionsRequest = false;
+		let previousPreviewDismissal: boolean | null = null;
+		let markedPreviewDismissed = false;
 		// Recreate the HUD before closing the last window, including on Windows/Linux.
 		void window.electronAPI
 			.showRecordingHud()
-			.then(() => window.electronAPI.closeOnboardingWindow())
-			.catch(() => console.error("[onboarding] Could not return to the recording HUD."));
+			.then(() => {
+				// Native close may destroy this renderer before its next continuation.
+				if (preview) {
+					previousPreviewDismissal = loadAppSetting<boolean>(DEV_DISMISSED_KEY);
+					saveAppSetting(DEV_DISMISSED_KEY, true);
+					markedPreviewDismissed = true;
+				} else {
+					restorePermissionsRequest =
+						loadAppSetting<boolean>("recordly.onboarding.permissionsRequested") ===
+						true;
+					saveAppSetting("recordly.onboarding.permissionsRequested", false);
+				}
+				return window.electronAPI.closeOnboardingWindow();
+			})
+			.then(() => close())
+			.catch(() => {
+				if (restorePermissionsRequest)
+					saveAppSetting("recordly.onboarding.permissionsRequested", true);
+				if (markedPreviewDismissed)
+					saveAppSetting(DEV_DISMISSED_KEY, previousPreviewDismissal);
+				console.error("[onboarding] Could not return to the recording HUD.");
+			})
+			.finally(() => {
+				finishingPermissions.current = false;
+			});
 	};
 	const finish = () => {
 		if (!preview && !user) return;

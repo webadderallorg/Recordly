@@ -22,6 +22,20 @@ export type ProjectShareLink = {
 	revision?: string;
 	accountId?: string;
 };
+function readBrowserLinks(): Record<string, unknown> {
+	// A corrupt browser cache must not prevent recording a new successful share.
+	// Keep storage access errors distinct from malformed serialized cache data.
+	const raw = localStorage.getItem(KEY);
+	let value: unknown;
+	try {
+		value = JSON.parse(raw || "{}");
+	} catch {
+		return {};
+	}
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+}
 function readLinks(): Record<string, ProjectShareLink> {
 	const api = getNativeSettingsApi();
 	let missingNativeKey = false;
@@ -43,9 +57,9 @@ function readLinks(): Record<string, ProjectShareLink> {
 		// to resurrect an older browser-origin snapshot.
 		stored = result.found
 			? (result.value ?? {})
-			: JSON.parse(localStorage.getItem(KEY) || "{}");
+			: readBrowserLinks();
 	} else {
-		stored = JSON.parse(localStorage.getItem(KEY) || "{}");
+		stored = readBrowserLinks();
 	}
 	if (!stored || typeof stored !== "object" || Array.isArray(stored))
 		throw new Error("Saved share links could not be read");

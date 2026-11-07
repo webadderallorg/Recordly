@@ -58,10 +58,10 @@ test("settings anchors live usage and account actions below compact navigation",
 	const navigation = settings.locator(".dashboard-settings-navigation");
 	const account = navigation.getByRole("button", { name: "Manage account", exact: true }).last();
 	await expect(account).toBeVisible();
-	await settings.screenshot({ path: "output/update-flow/settings-sidebar.png" });
+	await settings.screenshot({ path: test.info().outputPath("settings-sidebar.png") });
 	await page.emulateMedia({ colorScheme: "dark" });
 	await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-	await settings.screenshot({ path: "output/update-flow/settings-sidebar-dark.png" });
+	await settings.screenshot({ path: test.info().outputPath("settings-sidebar-dark.png") });
 	await page.setViewportSize({ width: 760, height: 720 });
 	await expect(account).toBeVisible();
 	await settings.getByRole("tab", { name: "General", exact: true }).scrollIntoViewIfNeeded();
@@ -74,7 +74,7 @@ test("settings anchors live usage and account actions below compact navigation",
 		const arrowBounds = await nextArrow.boundingBox();
 		expect(arrowBounds!.y).toBeGreaterThanOrEqual(tabBounds!.y + tabBounds!.height - 1);
 	}
-	await settings.screenshot({ path: "output/update-flow/settings-sidebar-narrow.png" });
+	await settings.screenshot({ path: test.info().outputPath("settings-sidebar-narrow.png") });
 	await usage.getByRole("button", { name: "Dismiss", exact: true }).click();
 	await expect(usage).toHaveCount(0);
 	await expect(account).toBeFocused();
