@@ -76,7 +76,9 @@ test("rejected cloud sessions can request reauthentication", async ({ page }) =>
 	const email = dialog.getByRole("textbox", { name: /^Email\*?$/ });
 	await expect(email).toBeVisible();
 	await email.fill("test@email.com");
-	await expect(dialog.getByRole("button", { name: "Email me a code", exact: true })).toBeEnabled();
+	await expect(
+		dialog.getByRole("button", { name: "Email me a code", exact: true }),
+	).toBeEnabled();
 	await expect(dialog.locator("form")).toBeVisible();
 	await page.screenshot({ path: "test-results/cloud-sign-in.png", animations: "disabled" });
 	expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
@@ -85,7 +87,9 @@ test("rejected cloud sessions can request reauthentication", async ({ page }) =>
 	await page.getByRole("button", { name: "Recordly account", exact: true }).click();
 	const account = page.getByRole("dialog", { name: "Account menu", exact: true });
 	await expect(account).toBeVisible();
-	await expect(account.getByRole("button", { name: "Manage account", exact: true })).toBeVisible();
+	await expect(
+		account.getByRole("button", { name: "Manage account", exact: true }),
+	).toBeVisible();
 	await expect(account.getByText("Test User", { exact: true })).toBeVisible();
 	expect(errors).toEqual([]);
 });

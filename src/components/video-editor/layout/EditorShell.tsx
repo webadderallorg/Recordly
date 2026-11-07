@@ -488,7 +488,9 @@ export function EditorShell(props: Props) {
 						</div>
 						<AutoZoomNudgeContext.Provider value={shouldNudgeAutoZooms}>
 							<EditorTimelinePanel
-								getAnnotationPlacement={() => ui.videoPlaybackRef.current?.getAnnotationPlacement?.() ?? null}
+								getAnnotationPlacement={() =>
+									ui.videoPlaybackRef.current?.getAnnotationPlacement?.() ?? null
+								}
 								zoomPresentationOptions={appearance}
 								panelRef={timelinePanelRef}
 								timelineRef={ui.timelineRef}
@@ -542,12 +544,17 @@ export function EditorShell(props: Props) {
 					source={errorSource ?? undefined}
 					onRetry={project.videoSourcePath ? () => void retrySource() : undefined}
 					retrying={retryingSource}
-					onLocate={isMissingProjectRecording(project.error) && project.currentProjectPath ? () => {
-						if (retryingSource) return;
-						setRetryingSource(true);
-						void projectController.openActions.handleRelinkProjectRecording(project.currentProjectPath!)
-							.finally(() => setRetryingSource(false));
-					} : undefined}
+					onLocate={
+						isMissingProjectRecording(project.error) && project.currentProjectPath
+							? () => {
+									if (retryingSource) return;
+									setRetryingSource(true);
+									void projectController.openActions
+										.handleRelinkProjectRecording(project.currentProjectPath!)
+										.finally(() => setRetryingSource(false));
+								}
+							: undefined
+					}
 					onDismiss={() =>
 						project.error &&
 						setDismissedError({ message: project.error, source: errorSource })

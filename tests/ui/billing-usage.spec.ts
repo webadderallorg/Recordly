@@ -157,7 +157,9 @@ test("export offers a commercial-use tip and Cloud upgrade without the old discl
 	await expect(
 		page.getByRole("checkbox", { name: "I’ll use this for personal use.", exact: true }),
 	).toHaveCount(0);
-	await expect(page.getByText("Upgrade to Cloud for commercial use", { exact: true })).toBeVisible();
+	await expect(
+		page.getByText("Upgrade to Cloud for commercial use", { exact: true }),
+	).toBeVisible();
 	await page.getByRole("button", { name: "Export Video", exact: true }).click();
 	await expect(page.getByTestId("export-result")).toHaveText("1920 × 1080");
 	await page.goto("/tests/ui/export-resolution-presets.html?free&captions");

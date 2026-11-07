@@ -1,7 +1,4 @@
-import {
-	getVideoShadowFilter,
-	VIDEO_SHADOW_REFERENCE_WIDTH,
-} from "@/lib/exporter/shadowProfile";
+import { getVideoShadowFilter, VIDEO_SHADOW_REFERENCE_WIDTH } from "@/lib/exporter/shadowProfile";
 
 export type SceneEffectMetrics = {
 	viewportScale: number;

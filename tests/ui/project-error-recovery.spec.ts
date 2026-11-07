@@ -64,7 +64,9 @@ test("preview failures use a dismissible popup without replacing the editor", as
 	expect(await failedPreview.evaluate((video) => video.isConnected)).toBe(true);
 	await expect(page.getByRole("button", { name: "Home", exact: true })).toBeVisible();
 	await page.getByRole("radio", { name: "Captions", exact: true }).click();
-	await expect(page.getByRole("button", { name: "Parakeet v3 Speech model", exact: true })).toBeVisible();
+	await expect(
+		page.getByRole("button", { name: "Parakeet v3 Speech model", exact: true }),
+	).toBeVisible();
 	// Repeated error callbacks from the same failed preview must not reopen it.
 	await preview.dispatchEvent("error");
 	await expect(popup).toHaveCount(0);

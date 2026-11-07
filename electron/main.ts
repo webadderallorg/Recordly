@@ -570,7 +570,11 @@ function setupApplicationMenu() {
 					? []
 					: [
 							{ type: "separator" as const },
-							{ label: nativeT("quit"), role: "quit" as const, accelerator: "CmdOrCtrl+Q" },
+							{
+								label: nativeT("quit"),
+								role: "quit" as const,
+								accelerator: "CmdOrCtrl+Q",
+							},
 						]),
 			],
 		},
@@ -603,8 +607,16 @@ function setupApplicationMenu() {
 		{
 			label: nativeT("window"),
 			submenu: isMac
-				? [{ label: nativeT("minimize"), role: "minimize" }, { label: nativeT("zoom"), role: "zoom" }, { type: "separator" }, { label: nativeT("front"), role: "front" }]
-				: [{ label: nativeT("minimize"), role: "minimize" }, { label: nativeT("close"), role: "close" }],
+				? [
+						{ label: nativeT("minimize"), role: "minimize" },
+						{ label: nativeT("zoom"), role: "zoom" },
+						{ type: "separator" },
+						{ label: nativeT("front"), role: "front" },
+					]
+				: [
+						{ label: nativeT("minimize"), role: "minimize" },
+						{ label: nativeT("close"), role: "close" },
+					],
 		},
 		{
 			label: nativeT("help"),
@@ -720,7 +732,13 @@ function sendUpdateToastToWindows(
 	payload: ReturnType<typeof getCurrentUpdateToastPayload>,
 ) {
 	const hud = getHudOverlayWindow();
-	const editorVisible = Boolean(mainWindow && mainWindow !== hud && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized());
+	const editorVisible = Boolean(
+		mainWindow &&
+			mainWindow !== hud &&
+			!mainWindow.isDestroyed() &&
+			mainWindow.isVisible() &&
+			!mainWindow.isMinimized(),
+	);
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed() && window !== getUpdateToastWindow()) {
 			window.webContents.send(channel, payload);
@@ -826,14 +844,21 @@ ipcMain.handle("get-experimental-updates-enabled", () => {
 	return getExperimentalUpdatesEnabled();
 });
 
-ipcMain.handle("get-automatic-update-downloads-enabled", () => getAutomaticUpdateDownloadsEnabled());
+ipcMain.handle("get-automatic-update-downloads-enabled", () =>
+	getAutomaticUpdateDownloadsEnabled(),
+);
 ipcMain.handle("set-automatic-update-downloads-enabled", (_event, enabled: unknown) => {
-	if (typeof enabled !== "boolean") return { success: false, enabled: getAutomaticUpdateDownloadsEnabled() };
+	if (typeof enabled !== "boolean")
+		return { success: false, enabled: getAutomaticUpdateDownloadsEnabled() };
 	try {
 		const saved = setAutomaticUpdateDownloadsEnabled(enabled, sendUpdateToastToWindows);
 		return { success: saved === enabled, enabled: saved };
 	} catch (error) {
-		return { success: false, enabled: getAutomaticUpdateDownloadsEnabled(), error: String(error) };
+		return {
+			success: false,
+			enabled: getAutomaticUpdateDownloadsEnabled(),
+			error: String(error),
+		};
 	}
 });
 
@@ -896,7 +921,9 @@ function refreshTrayPresence() {
 function updateTrayMenu(recording: boolean = false) {
 	if (!tray) return;
 	const trayIcon = recording ? getRecordingTrayIcon() : getDefaultTrayIcon();
-	const trayToolTip = recording ? nativeT("stopTooltip", { source: selectedSourceName }) : "Recordly";
+	const trayToolTip = recording
+		? nativeT("stopTooltip", { source: selectedSourceName })
+		: "Recordly";
 	const menuTemplate = recording
 		? [
 				{
@@ -1079,7 +1106,8 @@ app.on("window-all-closed", () => {
 app.on("activate", activateDesktopEntryPoint);
 
 app.on("second-instance", async (_event, commandLine, _workingDirectory, additionalData) => {
-	if ((additionalData as { recordlyRecordingLock?: boolean })?.recordlyRecordingLock === true) return;
+	if ((additionalData as { recordlyRecordingLock?: boolean })?.recordlyRecordingLock === true)
+		return;
 	const authCallback = authCallbacks.find(commandLine);
 	if (authCallback) {
 		const routed = await authCallbacks.route(authCallback);

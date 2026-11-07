@@ -36,10 +36,16 @@ export default function App() {
 	useEffect(() => {
 		document.documentElement.dataset.windowType = windowType;
 		const syncWindowChrome = (chrome: { trafficLightsVisible: boolean }) => {
-			document.documentElement.dataset.nativeTrafficLights = String(chrome.trafficLightsVisible);
+			document.documentElement.dataset.nativeTrafficLights = String(
+				chrome.trafficLightsVisible,
+			);
 		};
-		void window.electronAPI?.getWindowChrome?.().then(syncWindowChrome).catch(() => undefined);
-		const unsubscribeWindowChrome = window.electronAPI?.onWindowChromeChanged?.(syncWindowChrome);
+		void window.electronAPI
+			?.getWindowChrome?.()
+			.then(syncWindowChrome)
+			.catch(() => undefined);
+		const unsubscribeWindowChrome =
+			window.electronAPI?.onWindowChromeChanged?.(syncWindowChrome);
 
 		if (
 			windowType === "hud-overlay" ||

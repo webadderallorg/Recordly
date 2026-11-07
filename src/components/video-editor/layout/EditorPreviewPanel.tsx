@@ -136,7 +136,12 @@ export function EditorPreviewPanel(props: Props) {
 			<div className="flex min-h-0 flex-1 flex-col">
 				<div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
 					<div className="flex h-10 shrink-0 items-center justify-center gap-3">
-						<AspectRatioPicker value={aspectRatio} onChange={setAspectRatio} sourceWidth={videoPlaybackRef.current?.video?.videoWidth} sourceHeight={videoPlaybackRef.current?.video?.videoHeight} />
+						<AspectRatioPicker
+							value={aspectRatio}
+							onChange={setAspectRatio}
+							sourceWidth={videoPlaybackRef.current?.video?.videoWidth}
+							sourceHeight={videoPlaybackRef.current?.video?.videoHeight}
+						/>
 						<div className="h-4 w-px bg-foreground/20" />
 						<Button
 							variant="ghost"
@@ -166,10 +171,16 @@ export function EditorPreviewPanel(props: Props) {
 									videoPlaybackRef.current?.pause();
 									setIsPlaying(false);
 									const nextTrack = timeline.annotationRegions.reduce(
-										(next, region) => Math.max(next, (region.trackIndex ?? 0) + 1),
+										(next, region) =>
+											Math.max(next, (region.trackIndex ?? 0) + 1),
 										0,
 									);
-									timelineRef.current?.addAnnotation(nextTrack, type, videoPlaybackRef.current?.getAnnotationPlacement?.() ?? undefined);
+									timelineRef.current?.addAnnotation(
+										nextTrack,
+										type,
+										videoPlaybackRef.current?.getAnnotationPlacement?.() ??
+											undefined,
+									);
 								}}
 							/>
 						)}
@@ -242,8 +253,10 @@ export function EditorPreviewPanel(props: Props) {
 										onZoomFocusChange: zoomCommands.handleZoomFocusChange,
 										onEditAutoCaption: handleSaveAutoCaptionEdit,
 										onSelectAnnotation: handleSelectAnnotation,
-										onAnnotationContentChange: annotationCommands.handleAnnotationContentChange,
-										onAnnotationDelete: annotationCommands.handleAnnotationDelete,
+										onAnnotationContentChange:
+											annotationCommands.handleAnnotationContentChange,
+										onAnnotationDelete:
+											annotationCommands.handleAnnotationDelete,
 										onAnnotationPositionChange:
 											annotationCommands.handleAnnotationPositionChange,
 										onAnnotationSizeChange:
@@ -350,7 +363,9 @@ export function EditorPreviewPanel(props: Props) {
 							size="icon"
 							className={`h-9 w-9  ${isPlaying ? "bg-foreground/10 text-foreground hover:bg-foreground/20" : "bg-neutral-800 text-white hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-white/90"} `}
 							onClick={playback.togglePlayPause}
-							title={isPlaying ? t("editor.playback.pause") : t("editor.playback.play")}
+							title={
+								isPlaying ? t("editor.playback.pause") : t("editor.playback.play")
+							}
 						>
 							{isPlaying ? (
 								<Pause className="h-3.5 w-3.5" weight="fill" />

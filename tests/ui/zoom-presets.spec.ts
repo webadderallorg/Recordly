@@ -18,7 +18,8 @@ test("zoom presets work in the basic panel and preserve cursor settings", async 
 	await expect(presets).toBeVisible();
 	const preferences = () =>
 		page.evaluate(
-			() => JSON.parse(document.documentElement.dataset.savedZoomPresetProject ?? "{}").editor,
+			() =>
+				JSON.parse(document.documentElement.dataset.savedZoomPresetProject ?? "{}").editor,
 		);
 	await expect.poll(preferences).toBeDefined();
 	const before = await preferences();

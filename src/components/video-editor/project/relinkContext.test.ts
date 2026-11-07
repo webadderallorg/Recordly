@@ -14,7 +14,8 @@ function scheduleEffect(effect: () => void | (() => void), deps: readonly unknow
 		previous &&
 		previous.deps.length === deps.length &&
 		previous.deps.every((value, i) => Object.is(value, deps[i]))
-	) return;
+	)
+		return;
 	hooks.effects.push(() => {
 		previous?.cleanup?.();
 		hooks.effectSlots[index] = { deps, cleanup: effect() };
@@ -93,7 +94,6 @@ function render(
 	hooks.index = 0;
 	hooks.effectIndex = 0;
 	hooks.effects = [];
-	// biome-ignore lint/correctness/useHookAtTopLevel: This test intentionally mocks React hooks to simulate a component render.
 	const actions = useProjectOpenActions({
 		project,
 		applyLoadedProject,

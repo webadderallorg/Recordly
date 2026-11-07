@@ -1,6 +1,10 @@
 import { app, desktopCapturer, ipcMain, shell, systemPreferences } from "electron";
 import { getMacPrivacySettingsUrl } from "../utils";
-import { dismissPermissionAccessory, showPermissionAccessory, startPermissionAccessoryDrag } from "./permissionAccessory";
+import {
+	dismissPermissionAccessory,
+	showPermissionAccessory,
+	startPermissionAccessoryDrag,
+} from "./permissionAccessory";
 
 async function presentDragAccessory(
 	permission: "screen" | "accessibility",
@@ -16,8 +20,12 @@ async function presentDragAccessory(
 }
 
 export function registerPermissionHandlers() {
-	ipcMain.handle("start-permission-accessory-drag", ({ sender }) => startPermissionAccessoryDrag(sender));
-	ipcMain.handle("close-permission-accessory", ({ sender }) => dismissPermissionAccessory(sender));
+	ipcMain.handle("start-permission-accessory-drag", ({ sender }) =>
+		startPermissionAccessoryDrag(sender),
+	);
+	ipcMain.handle("close-permission-accessory", ({ sender }) =>
+		dismissPermissionAccessory(sender),
+	);
 	ipcMain.handle("open-external-url", async (_, url: string) => {
 		try {
 			// Security: only allow http/https URLs to prevent file:// or custom protocol abuse

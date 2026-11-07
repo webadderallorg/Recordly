@@ -50,7 +50,8 @@ for (const failure of ["none", "stop", "delete", "delete-result"] as const) {
 				deleteRecordingFile: async () => {
 					event("delete");
 					if (failure === "delete") throw new Error("Could not delete the take");
-					if (failure === "delete-result") return { success: false, error: "File is locked" };
+					if (failure === "delete-result")
+						return { success: false, error: "File is locked" };
 					return { success: true };
 				},
 			});
@@ -96,10 +97,16 @@ for (const failure of ["none", "stop", "delete", "delete-result"] as const) {
 			if (failure === "none") {
 				await record.click();
 				await expect(controls).toBeVisible();
-				await expect(page.locator("html")).toHaveAttribute("data-capture-events", "start-1,stop,delete,start-2");
+				await expect(page.locator("html")).toHaveAttribute(
+					"data-capture-events",
+					"start-1,stop,delete,start-2",
+				);
 			} else {
 				await record.click();
-				await expect(page.locator("html")).toHaveAttribute("data-capture-events", "start-1,stop,delete,delete");
+				await expect(page.locator("html")).toHaveAttribute(
+					"data-capture-events",
+					"start-1,stop,delete,delete",
+				);
 				await expect(record).toBeEnabled();
 			}
 		}

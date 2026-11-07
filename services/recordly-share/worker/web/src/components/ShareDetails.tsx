@@ -69,9 +69,7 @@ export default function ShareDetails({
 					)}
 				</Tabs.List>
 			</Tabs.ListContainer>
-			<Tabs.Panel id="overview">
-				{overview}
-			</Tabs.Panel>
+			<Tabs.Panel id="overview">{overview}</Tabs.Panel>
 			{data.segments.length > 0 && (
 				<Tabs.Panel id="transcript">
 					<PagedPanel label="Transcript">

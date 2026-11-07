@@ -6,8 +6,15 @@ import { drawSquircleOnGraphics } from "@/lib/geometry/squircle";
 
 async function run() {
 	const app = new Application();
-	await app.init({ width: 320, height: 180, background: "#000000", antialias: true,
-		resolution: 1, preference: "webgl", autoStart: false });
+	await app.init({
+		width: 320,
+		height: 180,
+		background: "#000000",
+		antialias: true,
+		resolution: 1,
+		preference: "webgl",
+		autoStart: false,
+	});
 	document.body.append(app.canvas);
 	app.stage.addChild(new Graphics().rect(0, 0, 320, 180).fill(0x000000));
 	const effects = new Container();
@@ -51,6 +58,13 @@ async function run() {
 	const squareBlended = readPixels();
 	round();
 	const replacedBlended = readPixels();
-	document.body.dataset.result = JSON.stringify({ defaultBlended, blended, squareBlended, replacedBlended });
+	document.body.dataset.result = JSON.stringify({
+		defaultBlended,
+		blended,
+		squareBlended,
+		replacedBlended,
+	});
 }
-run().catch(error => { document.body.dataset.error = String(error); });
+run().catch((error) => {
+	document.body.dataset.error = String(error);
+});

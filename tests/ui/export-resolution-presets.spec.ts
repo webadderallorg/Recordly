@@ -67,8 +67,13 @@ test("4K and QHD exports are available without a Cloud subscription", async ({ p
 	});
 	await expect(personalUse).toHaveCount(0);
 	await expect(page.getByRole("button", { name: "Upgrade to Cloud", exact: true })).toBeVisible();
-	await expect(page.getByText("Upgrade to Cloud for commercial use", { exact: true })).toBeVisible();
-	await page.screenshot({ path: test.info().outputPath("personal-use-export.png"), animations: "disabled" });
+	await expect(
+		page.getByText("Upgrade to Cloud for commercial use", { exact: true }),
+	).toBeVisible();
+	await page.screenshot({
+		path: test.info().outputPath("personal-use-export.png"),
+		animations: "disabled",
+	});
 	await expect(page.getByRole("row", { name: /^Original/ })).toHaveCount(0);
 	await expect(page.getByRole("grid", { name: "Encoding", exact: true })).toHaveCount(0);
 	await page.getByRole("row", { name: "4K, 3840 × 2160", exact: true }).click();

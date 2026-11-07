@@ -64,8 +64,7 @@ function friendlyAuthError(
 		}
 		if (action === "azure")
 			return ot("providerUnavailable", undefined, { provider: "Microsoft" });
-		if (action === "apple")
-			return ot("providerUnavailable", undefined, { provider: "Apple" });
+		if (action === "apple") return ot("providerUnavailable", undefined, { provider: "Apple" });
 		return t("editor.cloud.providerUnavailable");
 	}
 	return ot("signInFailed");
@@ -390,7 +389,10 @@ export function RecordlySignInDialog({
 							<Alert.Content>
 								<Alert.Description>{message}</Alert.Description>
 								{!linkSent && (
-									<ErrorReportButton error={reportDiagnostic ?? message} context="sign-in" />
+									<ErrorReportButton
+										error={reportDiagnostic ?? message}
+										context="sign-in"
+									/>
 								)}
 							</Alert.Content>
 						</Alert>
@@ -446,40 +448,53 @@ export function RecordlySignInDialog({
 							<OnboardingLayout
 								stage={permissions ? "permissions" : "account"}
 								canViewPermissions={canViewPermissions}
-								footer={canViewPermissions && (
-									<OnboardingFooter>
-										<div
-											className="flex min-w-0 flex-wrap items-center gap-1"
-											data-onboarding-preview-actions={import.meta.env.DEV && preview ? "true" : undefined}
-										>
-											<Button
-												variant="ghost"
-												className={permissions ? undefined : "invisible"}
-												aria-hidden={!permissions || undefined}
-												isDisabled={!permissions}
-												aria-label={ot("backToAccount")}
-												onPress={() => setShowPermissions(false)}
+								footer={
+									canViewPermissions && (
+										<OnboardingFooter>
+											<div
+												className="flex min-w-0 flex-wrap items-center gap-1"
+												data-onboarding-preview-actions={
+													import.meta.env.DEV && preview
+														? "true"
+														: undefined
+												}
 											>
-												<ArrowLeft size={16} /> {ot("back")}
-											</Button>
-											{import.meta.env.DEV && preview && (
-												<Button variant="ghost" onPress={onAuthenticated}>
-													{ot("skipOnboarding", "Skip onboarding")}
+												<Button
+													variant="ghost"
+													className={
+														permissions ? undefined : "invisible"
+													}
+													aria-hidden={!permissions || undefined}
+													isDisabled={!permissions}
+													aria-label={ot("backToAccount")}
+													onPress={() => setShowPermissions(false)}
+												>
+													<ArrowLeft size={16} /> {ot("back")}
 												</Button>
-											)}
-										</div>
-										<OnboardingPrimaryAction
-											isDisabled={permissions ? !permissionsReady : disabled}
-											onPress={() => {
-												if (permissions) {
-													if (permissionsReady) onAuthenticated();
-												} else setShowPermissions(true);
-											}}
-										>
-											{ot(permissions ? "startRecording" : "continue")}
-										</OnboardingPrimaryAction>
-									</OnboardingFooter>
-								)}
+												{import.meta.env.DEV && preview && (
+													<Button
+														variant="ghost"
+														onPress={onAuthenticated}
+													>
+														{ot("skipOnboarding", "Skip onboarding")}
+													</Button>
+												)}
+											</div>
+											<OnboardingPrimaryAction
+												isDisabled={
+													permissions ? !permissionsReady : disabled
+												}
+												onPress={() => {
+													if (permissions) {
+														if (permissionsReady) onAuthenticated();
+													} else setShowPermissions(true);
+												}}
+											>
+												{ot(permissions ? "startRecording" : "continue")}
+											</OnboardingPrimaryAction>
+										</OnboardingFooter>
+									)
+								}
 								onStageChange={(stage) =>
 									setShowPermissions(
 										stage === "permissions" && canViewPermissions,

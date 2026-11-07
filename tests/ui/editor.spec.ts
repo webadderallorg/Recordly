@@ -41,9 +41,13 @@ test("editor loads video, switches tools and edits export options", async ({ pag
 		.getByRole("button", { name: "Appearance", exact: true })
 		.click();
 	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
-	await expect(settings.getByRole("radiogroup", { name: "Appearance", exact: true })).toBeVisible();
-	await settings.getByRole("radiogroup", { name: "Appearance", exact: true })
-		.getByText("Dark", { exact: true }).click();
+	await expect(
+		settings.getByRole("radiogroup", { name: "Appearance", exact: true }),
+	).toBeVisible();
+	await settings
+		.getByRole("radiogroup", { name: "Appearance", exact: true })
+		.getByText("Dark", { exact: true })
+		.click();
 	await expect(settings.getByRole("radio", { name: "Dark", exact: true })).toBeChecked();
 	await expect(page.locator("html")).toHaveClass(/dark/);
 	await page.screenshot({
@@ -51,8 +55,10 @@ test("editor loads video, switches tools and edits export options", async ({ pag
 		fullPage: true,
 		animations: "disabled",
 	});
-	await settings.getByRole("radiogroup", { name: "Appearance", exact: true })
-		.getByText("Light", { exact: true }).click();
+	await settings
+		.getByRole("radiogroup", { name: "Appearance", exact: true })
+		.getByText("Light", { exact: true })
+		.click();
 	await expect(settings.getByRole("radio", { name: "Light", exact: true })).toBeChecked();
 	await expect(page.locator("html")).not.toHaveClass(/dark/);
 	await page.keyboard.press("Escape");
@@ -90,7 +96,9 @@ test("editor loads video, switches tools and edits export options", async ({ pag
 		.getByRole("dialog", { name: "Aspect ratio", exact: true })
 		.getByRole("radio", { name: "1:1", exact: true })
 		.press("Space");
-	await expect(page.getByRole("button", { name: "Aspect ratio: 1:1", exact: true })).toBeVisible();
+	await expect(
+		page.getByRole("button", { name: "Aspect ratio: 1:1", exact: true }),
+	).toBeVisible();
 	await page.keyboard.press("Escape");
 	await expect(page.getByRole("button", { name: "Open presets", exact: true })).toHaveCount(0);
 	await page.getByRole("button", { name: "Add Layer", exact: true }).click();
@@ -141,7 +149,9 @@ test("recorder countdown and native source selection keep the HUD responsive", a
 	await page.getByRole("button", { name: "Countdown delay", exact: false }).click();
 	await page.getByRole("button", { name: "5 sec", exact: true }).click();
 	await expect(page.getByRole("dialog")).toHaveCount(0);
-	await expect(page.getByRole("button", { name: "Countdown delay: 5s", exact: true })).toBeVisible();
+	await expect(
+		page.getByRole("button", { name: "Countdown delay: 5s", exact: true }),
+	).toBeVisible();
 	const source = page.getByRole("button", { name: "Choose recording source", exact: true });
 	await expect(source).toContainText("Built-in Display");
 	await source.click();

@@ -21,13 +21,13 @@ for (const width of [1440, 760, 420, 320]) {
 			const dimensions = await picker.boundingBox();
 			expect(dimensions!.height).toBeLessThanOrEqual(40);
 			const panel = settings.getByRole("tabpanel");
-			expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-			await settings
-				.locator(".theme-appearance-picker")
-				.screenshot({
-					path: `test-results/appearance-proportions-${width}-${theme}.png`,
-					animations: "disabled",
-				});
+			expect(
+				await panel.evaluate((element) => element.scrollWidth <= element.clientWidth),
+			).toBe(true);
+			await settings.locator(".theme-appearance-picker").screenshot({
+				path: `test-results/appearance-proportions-${width}-${theme}.png`,
+				animations: "disabled",
+			});
 		}
 	});
 }

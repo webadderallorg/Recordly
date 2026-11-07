@@ -183,7 +183,9 @@ test("a subscription needing attention opens its existing portal", async ({ page
 	await expect(card.getByText(/Your subscription needs attention/)).toBeVisible();
 	await card.getByRole("button", { name: "Manage subscription", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-billing-action", "portal");
-	await expect(card.getByRole("button", { name: "Upgrade to Cloud", exact: true })).toHaveCount(0);
+	await expect(card.getByRole("button", { name: "Upgrade to Cloud", exact: true })).toHaveCount(
+		0,
+	);
 });
 
 test("portal errors keep management available for retry without exposing provider diagnostics", async ({

@@ -86,7 +86,9 @@ export function isExportErrorReport(value: unknown): value is ExportErrorReport 
 		value.appVersion !== undefined &&
 		(typeof value.appVersion !== "string" ||
 			value.appVersion.length > 128 ||
-			!/^\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(value.appVersion))
+			!/^\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
+				value.appVersion,
+			))
 	)
 		return false;
 	return (

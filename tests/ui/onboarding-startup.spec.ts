@@ -81,9 +81,7 @@ for (const signedIn of [false, true]) {
 		expect(await email.boundingBox()).toEqual(before);
 		await expect(email).toHaveValue("person@example.com");
 		await tour.getByRole("button", { name: "Continue", exact: true }).click();
-		await expect(
-			tour.getByRole("heading", { name: "Allow Recordly to record" }),
-		).toBeVisible();
+		await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
 		await page.evaluate(() => window.dispatchEvent(new Event("test-release-auth")));
 		await expect(tour).toHaveAttribute("data-onboarding-state", "permissions");
 	});

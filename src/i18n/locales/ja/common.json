@@ -1,86 +1,86 @@
 {
-  "app": {
-    "name": "Recordly",
-    "editorTitle": "Recordly エディター",
-    "subtitle": "画面録画と動画編集",
-    "language": "言語",
-    "manageRecordings": "録画フォルダーを開く"
-  },
-  "actions": {
-    "cancel": "キャンセル",
-    "close": "閉じる",
-    "export": "書き出す",
-    "load": "読み込む",
-    "redo": "やり直す",
-    "reset": "リセット",
-    "save": "保存",
-    "undo": "元に戻す",
-    "delete": "削除",
-    "done": "完了",
-    "retry": "再試行",
-    "apply": "適用"
-  },
-  "errors": {
-    "invalidFileType": "対応していないファイル形式です",
-    "failedToUploadImage": "画像をアップロードできませんでした",
-    "fileReadError": "ファイルの読み込み中にエラーが発生しました。"
-  },
-  "clipboard": {
-    "copy": "コピー",
-    "errorCopied": "エラーをコピーしました",
-    "errorCopyFailed": "エラーをコピーできませんでした"
-  },
-  "feedback": {
-    "trigger": "フィードバック",
-    "send": "フィードバックを送信",
-    "thanks": "フィードバックありがとうございます",
-    "signInRequired": "フィードバックを送信するにはログインしてください。",
-    "openHome": "ホームを開いてログインしてください。",
-    "missingMessage": "送信する前に内容を入力してください。",
-    "sentiment": "使い心地はいかがですか？",
-    "loving": "満足",
-    "neutral": "普通",
-    "angry": "不満",
-    "subject": "件名",
-    "subjectPlaceholder": "ご意見をお聞かせください",
-    "description": "詳細",
-    "descriptionPlaceholder": "すべてのフィードバックに目を通しています…",
-    "attachFiles": "ファイルを添付",
-    "removeFile": "{{name}}を削除",
-    "diagnostics": "関連する診断ログが添付されます。",
-    "sending": "送信中…",
-    "errors": {
-      "unavailable": "アカウントサービスが設定されるまで、フィードバックは利用できません。",
-      "signIn": "フィードバックを送信するには、もう一度ログインしてください。",
-      "invalid": "フィードバックの内容を確認して、再試行してください。",
-      "attachments": "空でないファイルを5個まで、合計10 MB以下で添付してください。",
-      "limit": "本日のフィードバック送信回数の上限に達しました。明日もう一度お試しください。",
-      "tooManyFiles": "添付できるファイルは5個までです。",
-      "emptyFile": "空のファイルは添付できません。",
-      "filesTooLarge": "添付ファイルの合計サイズは10 MB以下にしてください。",
-      "sendFailed": "フィードバックを送信できませんでした。もう一度お試しください。"
-    }
-  },
-  "announcements": {
-    "openFailed": "リンクを開けませんでした。",
-    "dismiss": "閉じる",
-    "carousel": "お知らせ",
-    "previous": "前のお知らせ",
-    "show": "お知らせを表示",
-    "next": "次のお知らせ"
-  },
-  "updates": {
-    "download": "アップデートをダウンロード",
-    "actionFailed": "アップデートできませんでした。もう一度お試しください。",
-    "notification": "アプリのアップデート",
-    "backgroundProgress": "Recordly {{version}}をバックグラウンドでダウンロード中 · {{progress}}",
-    "ready": "Recordly {{version}}をインストールできます。",
-    "failed": "アップデートを完了できませんでした。もう一度お試しいただけます。",
-    "available": "Recordly {{version}}が利用可能です。",
-    "saveFirst": "作業を保存してから、準備ができたら再起動してください。",
-    "later": "後で",
-    "downloadingButton": "ダウンロード中 · {{progress}}"
-  },
-  "width": "幅",
-  "height": "高さ"
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Recordly エディター",
+		"subtitle": "画面録画と動画編集",
+		"language": "言語",
+		"manageRecordings": "録画フォルダーを開く"
+	},
+	"actions": {
+		"cancel": "キャンセル",
+		"close": "閉じる",
+		"export": "書き出す",
+		"load": "読み込む",
+		"redo": "やり直す",
+		"reset": "リセット",
+		"save": "保存",
+		"undo": "元に戻す",
+		"delete": "削除",
+		"done": "完了",
+		"retry": "再試行",
+		"apply": "適用"
+	},
+	"errors": {
+		"invalidFileType": "対応していないファイル形式です",
+		"failedToUploadImage": "画像をアップロードできませんでした",
+		"fileReadError": "ファイルの読み込み中にエラーが発生しました。"
+	},
+	"clipboard": {
+		"copy": "コピー",
+		"errorCopied": "エラーをコピーしました",
+		"errorCopyFailed": "エラーをコピーできませんでした"
+	},
+	"feedback": {
+		"trigger": "フィードバック",
+		"send": "フィードバックを送信",
+		"thanks": "フィードバックありがとうございます",
+		"signInRequired": "フィードバックを送信するにはログインしてください。",
+		"openHome": "ホームを開いてログインしてください。",
+		"missingMessage": "送信する前に内容を入力してください。",
+		"sentiment": "使い心地はいかがですか？",
+		"loving": "満足",
+		"neutral": "普通",
+		"angry": "不満",
+		"subject": "件名",
+		"subjectPlaceholder": "ご意見をお聞かせください",
+		"description": "詳細",
+		"descriptionPlaceholder": "すべてのフィードバックに目を通しています…",
+		"attachFiles": "ファイルを添付",
+		"removeFile": "{{name}}を削除",
+		"diagnostics": "関連する診断ログが添付されます。",
+		"sending": "送信中…",
+		"errors": {
+			"unavailable": "アカウントサービスが設定されるまで、フィードバックは利用できません。",
+			"signIn": "フィードバックを送信するには、もう一度ログインしてください。",
+			"invalid": "フィードバックの内容を確認して、再試行してください。",
+			"attachments": "空でないファイルを5個まで、合計10 MB以下で添付してください。",
+			"limit": "本日のフィードバック送信回数の上限に達しました。明日もう一度お試しください。",
+			"tooManyFiles": "添付できるファイルは5個までです。",
+			"emptyFile": "空のファイルは添付できません。",
+			"filesTooLarge": "添付ファイルの合計サイズは10 MB以下にしてください。",
+			"sendFailed": "フィードバックを送信できませんでした。もう一度お試しください。"
+		}
+	},
+	"announcements": {
+		"openFailed": "リンクを開けませんでした。",
+		"dismiss": "閉じる",
+		"carousel": "お知らせ",
+		"previous": "前のお知らせ",
+		"show": "お知らせを表示",
+		"next": "次のお知らせ"
+	},
+	"updates": {
+		"download": "アップデートをダウンロード",
+		"actionFailed": "アップデートできませんでした。もう一度お試しください。",
+		"notification": "アプリのアップデート",
+		"backgroundProgress": "Recordly {{version}}をバックグラウンドでダウンロード中 · {{progress}}",
+		"ready": "Recordly {{version}}をインストールできます。",
+		"failed": "アップデートを完了できませんでした。もう一度お試しいただけます。",
+		"available": "Recordly {{version}}が利用可能です。",
+		"saveFirst": "作業を保存してから、準備ができたら再起動してください。",
+		"later": "後で",
+		"downloadingButton": "ダウンロード中 · {{progress}}"
+	},
+	"width": "幅",
+	"height": "高さ"
 }

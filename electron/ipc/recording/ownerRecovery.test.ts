@@ -17,7 +17,10 @@ async function drain() {
 	for (let i = 0; i < 20; i++) await Promise.resolve();
 }
 describe("native recording owner recovery", () => {
-	it.each(["result", "throw"])("allows discard to retry a failed stop (%s) and record again", async (failure) => {
+	it.each([
+		"result",
+		"throw",
+	])("allows discard to retry a failed stop (%s) and record again", async (failure) => {
 		const { owner, deps, recovery } = setup();
 		await recovery.start(owner, async () => ({ success: true }));
 		recovery.setUserRecording(true);
@@ -29,11 +32,15 @@ describe("native recording owner recovery", () => {
 			await expect(recovery.stop()).rejects.toThrow("helper busy");
 		}
 		// A failed stop must keep ownership until the actual capture is stopped.
-		expect(await recovery.start(owner, async () => ({ success: true }))).toMatchObject({ success: false });
+		expect(await recovery.start(owner, async () => ({ success: true }))).toMatchObject({
+			success: false,
+		});
 		await expect(recovery.stop()).resolves.toMatchObject({ success: true });
 		expect(deps.stop).toHaveBeenCalledTimes(2);
 		recovery.setUserRecording(false);
-		expect(await recovery.start(owner, async () => ({ success: true }))).toMatchObject({ success: true });
+		expect(await recovery.start(owner, async () => ({ success: true }))).toMatchObject({
+			success: true,
+		});
 	});
 
 	it("finishes an unmounted owner's recording without a navigation event", async () => {

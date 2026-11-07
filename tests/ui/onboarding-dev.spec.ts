@@ -3,11 +3,19 @@ import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 import { productionTest } from "./production";
 
 for (const signedIn of [false, true]) {
-	test(`skipping dev onboarding keeps the HUD open (${signedIn ? "signed in" : "signed out"})`, async ({ page }) => {
+	test(`skipping dev onboarding keeps the HUD open (${signedIn ? "signed in" : "signed out"})`, async ({
+		page,
+	}) => {
 		await installDesktopBridge(page, "preview.mp4", { signedIn, onboarded: false });
 		await installDesktopBridgeOverrides(page, () => {
-			window.electronAPI.getScreenRecordingPermissionStatus = async () => ({ success: true, status: "denied" });
-			window.electronAPI.getAccessibilityPermissionStatus = async () => ({ success: true, trusted: false });
+			window.electronAPI.getScreenRecordingPermissionStatus = async () => ({
+				success: true,
+				status: "denied",
+			});
+			window.electronAPI.getAccessibilityPermissionStatus = async () => ({
+				success: true,
+				trusted: false,
+			});
 			window.electronAPI.showRecordingHud = async () => {
 				window.location.assign("/?windowType=hud-overlay");
 			};
@@ -15,7 +23,9 @@ for (const signedIn of [false, true]) {
 		await page.clock.install();
 		await page.goto("/?windowType=onboarding");
 		await page.getByRole("button", { name: "Skip onboarding", exact: true }).click();
-		await expect(page.getByRole("group", { name: "Recording setup", exact: true })).toBeVisible();
+		await expect(
+			page.getByRole("group", { name: "Recording setup", exact: true }),
+		).toBeVisible();
 		// Run startup timers before asserting that preview never opens permissions.
 		await page.clock.runFor(1000);
 		await expect(page.locator("html")).not.toHaveAttribute("data-permissions-opened");
@@ -24,14 +34,20 @@ for (const signedIn of [false, true]) {
 		await expect(page.locator("html")).toHaveAttribute("data-permissions-opened", "true");
 	});
 
-	productionTest(`production HUD still checks access on startup (${signedIn ? "signed in" : "signed out"})`, async ({ page }) => {
-		await installDesktopBridge(page, "preview.mp4", { signedIn, onboarded: true });
-		await installDesktopBridgeOverrides(page, () => {
-			window.electronAPI.getScreenRecordingPermissionStatus = async () => ({ success: true, status: "denied" });
-		});
-		await page.goto("/?windowType=hud-overlay");
-		await expect(page.locator("html")).toHaveAttribute("data-permissions-opened", "true");
-	});
+	productionTest(
+		`production HUD still checks access on startup (${signedIn ? "signed in" : "signed out"})`,
+		async ({ page }) => {
+			await installDesktopBridge(page, "preview.mp4", { signedIn, onboarded: true });
+			await installDesktopBridgeOverrides(page, () => {
+				window.electronAPI.getScreenRecordingPermissionStatus = async () => ({
+					success: true,
+					status: "denied",
+				});
+			});
+			await page.goto("/?windowType=hud-overlay");
+			await expect(page.locator("html")).toHaveAttribute("data-permissions-opened", "true");
+		},
+	);
 }
 
 for (const signedIn of [false, true]) {
@@ -105,12 +121,20 @@ for (const query of ["", "&onboardingPreview=1"]) {
 
 for (const windowType of ["onboarding", "editor"]) {
 	for (const stage of ["account", "permissions"]) {
-		test(`dev can skip ${stage} onboarding from ${windowType} without permission grants or completion writes`, async ({ page }) => {
+		test(`dev can skip ${stage} onboarding from ${windowType} without permission grants or completion writes`, async ({
+			page,
+		}) => {
 			await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
 			await installDesktopBridgeOverrides(page, () => {
 				window.electronAPI.showOnboardingWindow = async () => false;
-				window.electronAPI.getScreenRecordingPermissionStatus = async () => ({ success: true, status: "denied" });
-				window.electronAPI.getAccessibilityPermissionStatus = async () => ({ success: true, trusted: false });
+				window.electronAPI.getScreenRecordingPermissionStatus = async () => ({
+					success: true,
+					status: "denied",
+				});
+				window.electronAPI.getAccessibilityPermissionStatus = async () => ({
+					success: true,
+					trusted: false,
+				});
 				const setSetting = window.electronAPI.setAppSetting;
 				window.electronAPI.setAppSetting = (key, value) => {
 					if (key.startsWith("recordly.onboarding."))
@@ -122,7 +146,9 @@ for (const windowType of ["onboarding", "editor"]) {
 			const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 			if (stage === "permissions") {
 				await tour.getByRole("button", { name: "Continue", exact: true }).click();
-				await expect(tour.getByRole("button", { name: "Start recording", exact: true })).toBeDisabled();
+				await expect(
+					tour.getByRole("button", { name: "Start recording", exact: true }),
+				).toBeDisabled();
 			}
 			await tour.getByRole("button", { name: "Skip onboarding", exact: true }).click();
 			await expect(tour).not.toBeVisible();

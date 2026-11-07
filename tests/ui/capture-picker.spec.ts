@@ -571,10 +571,12 @@ test("a window expanding from another display keeps its frontmost hit-test rank"
 	await page.mouse.move(200, 300);
 	await expect(page.getByText("Notes — Launch checklist · 400 × 500")).toBeVisible();
 	await page.mouse.click(200, 300);
-	await expect.poll(() => pick(page)).toMatchObject({
-		kind: "window",
-		windowId: "window:101:0",
-	});
+	await expect
+		.poll(() => pick(page))
+		.toMatchObject({
+			kind: "window",
+			windowId: "window:101:0",
+		});
 });
 
 for (const theme of ["light", "dark"] as const) {
@@ -590,12 +592,14 @@ for (const theme of ["light", "dark"] as const) {
 			page.getByText(/Click a window|drag an area|Move or resize the area|Esc to cancel/i),
 		).toHaveCount(0);
 		await page.mouse.click(600, 300);
-		await expect.poll(() => pick(page)).toEqual({
-			kind: "window",
-			windowId: "window:101:0",
-			displayId: 1,
-			record: false,
-		});
+		await expect
+			.poll(() => pick(page))
+			.toEqual({
+				kind: "window",
+				windowId: "window:101:0",
+				displayId: 1,
+				record: false,
+			});
 		await expect(page.getByRole("form", { name: "Window size" })).toHaveCount(0);
 		await expect(page.getByRole("button", { name: "Select window", exact: true })).toHaveCount(
 			0,

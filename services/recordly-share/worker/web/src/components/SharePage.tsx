@@ -191,7 +191,10 @@ function Recording({ data }: { data: ShareData }) {
 											size="sm"
 											variant="ghost"
 											aria-label={`${label}${counts[emoji] ? `, ${counts[emoji]} ${counts[emoji] === 1 ? "reaction" : "reactions"}` : ""}`}
-											isDisabled={reacting !== null || video.feedback_enabled === false}
+											isDisabled={
+												reacting !== null ||
+												video.feedback_enabled === false
+											}
 											onPress={() => void react(emoji)}
 										>
 											<span aria-hidden="true">{emoji}</span>

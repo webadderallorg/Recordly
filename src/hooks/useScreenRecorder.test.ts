@@ -215,10 +215,18 @@ describe("stopAndDiscardNativeCapture", () => {
 
 	it("does not confirm deletion when IPC resolves with a failure result", async () => {
 		const result = await stopAndDiscardNativeCapture({
-			stopNativeScreenRecording: vi.fn().mockResolvedValue({ success: true, path: "/take.mp4" }),
-			deleteRecordingFile: vi.fn().mockResolvedValue({ success: false, error: "file locked" }),
+			stopNativeScreenRecording: vi
+				.fn()
+				.mockResolvedValue({ success: true, path: "/take.mp4" }),
+			deleteRecordingFile: vi
+				.fn()
+				.mockResolvedValue({ success: false, error: "file locked" }),
 		});
-		expect(result).toMatchObject({ stopSucceeded: true, deleteSucceeded: false, path: "/take.mp4" });
+		expect(result).toMatchObject({
+			stopSucceeded: true,
+			deleteSucceeded: false,
+			path: "/take.mp4",
+		});
 		expect(result.error).toEqual(new Error("file locked"));
 	});
 

@@ -153,9 +153,17 @@ export function useInitialEditorSource({
 					return;
 				}
 
-				if (!currentProject.success && currentProject.path && currentProject.missingRecordingPath) {
+				if (
+					!currentProject.success &&
+					currentProject.path &&
+					currentProject.missingRecordingPath
+				) {
 					project.setCurrentProjectPath(currentProject.path);
-					project.setError(currentProject.error || currentProject.message || "Project video file not found");
+					project.setError(
+						currentProject.error ||
+							currentProject.message ||
+							"Project video file not found",
+					);
 					return;
 				}
 				const sessionResult = await window.electronAPI.getCurrentRecordingSession?.();

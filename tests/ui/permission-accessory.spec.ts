@@ -25,7 +25,10 @@ for (const colorScheme of ["light", "dark"] as const) {
 				page.getByRole("heading", { name: "Drag to System Settings", exact: true }),
 			).toBeVisible();
 			await expect(
-				page.getByRole("button", { name: `Drag Recordly ${name} to System Settings`, exact: true }),
+				page.getByRole("button", {
+					name: `Drag Recordly ${name} to System Settings`,
+					exact: true,
+				}),
 			).toBeVisible();
 			await expect(page.getByText("Electron", { exact: true })).toHaveCount(0);
 			await expect(page.getByAltText("Recordly")).toBeVisible();

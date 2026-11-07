@@ -36,7 +36,8 @@ export function registerAssetHandlers() {
 	ipcMain.handle("generate-wallpaper-thumbnail", async (event, filePath: unknown) => {
 		try {
 			if (!isTrustedRenderer(event)) throw new Error("Untrusted local file request");
-			if (typeof filePath !== "string" || !filePath) throw new Error("Invalid wallpaper path");
+			if (typeof filePath !== "string" || !filePath)
+				throw new Error("Invalid wallpaper path");
 			const bundled = filePath.startsWith("/wallpapers/");
 			const wallpaperRoot = path.resolve(getAssetRootPath(), "wallpapers");
 			const candidate = bundled

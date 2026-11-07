@@ -42,7 +42,9 @@ for (const width of [390, 760]) {
 		const controls = onboarding.locator("[data-permission-preview-controls]");
 		await expect(controls.getByRole("button")).toHaveCount(1);
 		await controls.getByRole("button", { name: "Simulate permissions", exact: true }).click();
-		await onboarding.getByRole("button", { name: "Allow Screen Recording", exact: true }).click();
+		await onboarding
+			.getByRole("button", { name: "Allow Screen Recording", exact: true })
+			.click();
 		await expect(page.locator("html")).toHaveAttribute("data-screen-opened", "true");
 		await onboarding.getByRole("button", { name: "Allow Accessibility", exact: true }).click();
 		await expect(page.locator("html")).toHaveAttribute("data-accessibility-opened", "true");
@@ -56,9 +58,7 @@ for (const width of [390, 760]) {
 	});
 }
 
-test("dev simulation resets granted rows and uses their normal Allow buttons", async ({
-	page,
-}) => {
+test("dev simulation resets granted rows and uses their normal Allow buttons", async ({ page }) => {
 	await page.setViewportSize({ width: 760, height: 760 });
 	await page.emulateMedia({ reducedMotion: "reduce" });
 	await installDesktopBridge(page);
@@ -90,11 +90,17 @@ test("dev simulation resets granted rows and uses their normal Allow buttons", a
 	// Automatic status refresh must not undo the reset before the user clicks a row.
 	await page.evaluate(() => window.dispatchEvent(new Event("focus")));
 	await page.clock.runFor(3100);
-	await expect(onboarding.getByRole("button", { name: "Allow Screen Recording", exact: true })).toBeVisible();
-	await expect(onboarding.getByRole("button", { name: "Allow Accessibility", exact: true })).toBeVisible();
+	await expect(
+		onboarding.getByRole("button", { name: "Allow Screen Recording", exact: true }),
+	).toBeVisible();
+	await expect(
+		onboarding.getByRole("button", { name: "Allow Accessibility", exact: true }),
+	).toBeVisible();
 	await onboarding.getByRole("button", { name: "Allow Screen Recording", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-screen-opened", "true");
-	await expect(onboarding.getByRole("status", { name: "Screen Recording: Allowed", exact: true })).toBeVisible();
+	await expect(
+		onboarding.getByRole("status", { name: "Screen Recording: Allowed", exact: true }),
+	).toBeVisible();
 	await expect(start).toBeDisabled();
 	await onboarding.getByRole("button", { name: "Allow Accessibility", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-accessibility-opened", "true");
