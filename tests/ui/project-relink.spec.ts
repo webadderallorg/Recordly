@@ -46,14 +46,15 @@ test("missing startup recording can be located without autosaving an empty edit"
 			};
 		};
 	});
+	await page.clock.install();
 	await page.goto("/?windowType=editor");
 	const error = page.getByRole("dialog", { name: "The project’s recording is unavailable" });
 	await expect(error).toBeVisible();
 	const locate = error.getByRole("button", { name: "Locate recording", exact: true });
 	await locate.click();
 	await expect(error).toBeVisible();
-	// Give the existing autosave debounce time to run; a source-less recovery must never save.
-	await page.waitForTimeout(800);
+	// Run multiple autosave ticks; a source-less recovery must never save.
+	await page.clock.runFor(800);
 	await expect(page.locator("html")).not.toHaveAttribute("data-unexpected-save", "true");
 	await locate.click();
 	await expect(error).toHaveCount(0);

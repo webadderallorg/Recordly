@@ -1,6 +1,11 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { randomUUID } from "node:crypto";
 
-type CommandMarker = "Recording paused" | "Recording resumed" | "HUD capture filter updated";
+type CommandMarker =
+	| "Recording paused"
+	| "Recording resumed"
+	| "HUD capture filter updated"
+	| `HUD capture filter updated ${string}`;
 const stdinStates = new WeakMap<ChildProcessWithoutNullStreams, { error: Error | null }>();
 
 /** Keep a listener for the pipe's lifetime, including errors emitted after helper exit. */
@@ -54,7 +59,10 @@ function observeNativeCaptureCommand(
 		let stdoutBuffer = "";
 		const onStdout = (chunk: Buffer) => {
 			stdoutBuffer += chunk.toString();
-			if (marker && stdoutBuffer.includes(marker)) {
+			const acknowledged = marker?.startsWith("HUD capture filter updated ")
+				? stdoutBuffer.split(/\r?\n/).slice(0, -1).includes(marker)
+				: marker && stdoutBuffer.includes(marker);
+			if (acknowledged) {
 				applied = true;
 				complete();
 			}
@@ -109,4 +117,17 @@ export function sendNativeCaptureCommand(
 	marker?: CommandMarker,
 ) {
 	return observeNativeCaptureCommand(process, marker, command);
+}
+
+/** A late filter acknowledgement must never complete a subsequent settings update. */
+export function sendNativeHudCaptureExclusions(
+	process: ChildProcessWithoutNullStreams,
+	processIds: number[],
+) {
+	const commandId = randomUUID();
+	return sendNativeCaptureCommand(
+		process,
+		`hud-exclusions ${JSON.stringify({ commandId, processIds })}\n`,
+		`HUD capture filter updated ${commandId}`,
+	);
 }

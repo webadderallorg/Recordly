@@ -63,6 +63,7 @@ test("missing billing facts and header newlines fail closed", () => {
 
 test("rejects unsafe or untrusted payment links", () => {
 	for (const ActionURL of [
+		"not-an-absolute-url",
 		"javascript:alert(1)",
 		"http://billing.stripe.com/x",
 		"https://billing.stripe.com.evil.example/x",

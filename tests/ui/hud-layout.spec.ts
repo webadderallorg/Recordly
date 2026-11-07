@@ -197,5 +197,8 @@ test("floating webcam preview ignores a legacy saved resize preference", async (
 	const bounds = (await preview.boundingBox())!;
 	expect([bounds.width, bounds.height]).toEqual([230, 230]);
 	await expect(preview.locator("[data-resize-handle]")).toHaveCount(0);
-	await expect(preview.locator("video")).toHaveCSS("clip-path", "circle(50%)");
+	await expect(preview.locator("video")).toHaveCSS(
+		"clip-path",
+		/^circle\(50%(?: at 50% 50%)?\)$/,
+	);
 });

@@ -571,6 +571,10 @@ test("a window expanding from another display keeps its frontmost hit-test rank"
 	await page.mouse.move(200, 300);
 	await expect(page.getByText("Notes — Launch checklist · 400 × 500")).toBeVisible();
 	await page.mouse.click(200, 300);
+	await expect.poll(() => pick(page)).toMatchObject({
+		kind: "window",
+		windowId: "window:101:0",
+	});
 });
 
 for (const theme of ["light", "dark"] as const) {

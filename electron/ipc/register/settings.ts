@@ -4,7 +4,6 @@ import fs from "node:fs/promises";
 import { app, BrowserWindow, ipcMain } from "electron";
 import {
 	hasAppSetting,
-	readAppSettingsStore,
 	readAppSettingsStoreWithStatus,
 	writeAppSettingsStore,
 } from "../../appSettingsStore";
@@ -101,7 +100,12 @@ export function registerSettingsHandlers() {
 				return;
 			}
 
-			const store = readAppSettingsStore();
+			const result = readAppSettingsStoreWithStatus();
+			if (!result.success) {
+				event.returnValue = { success: false };
+				return;
+			}
+			const store = result.store;
 			store[key] = value;
 			writeAppSettingsStore(store);
 			event.returnValue = { success: true };

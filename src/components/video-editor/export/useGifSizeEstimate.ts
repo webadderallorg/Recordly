@@ -73,7 +73,9 @@ export function useGifSizeEstimate(input: ExportRunnerInput) {
 			})
 		: "";
 	const configRef = useRef(config);
-	if (config) configRef.current = config;
+	useEffect(() => {
+		if (config) configRef.current = config;
+	}, [config]);
 	const { setGifSizeEstimate } = session;
 	useEffect(() => {
 		if (!enabled) {

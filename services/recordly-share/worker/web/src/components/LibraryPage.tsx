@@ -23,9 +23,10 @@ import {
 	SignOutIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
 	fetchVideos,
+	LibrarySignInRedirectError,
 	renewVideo,
 	deleteVideo,
 	parseUTC,
@@ -67,19 +68,28 @@ export default function LibraryPage({ accessToken, onSignOut, accountSettings, f
 	const [pending, setPending] = useState<string | null>(null);
 	const [managing, setManaging] = useState<LibraryVideo | null>(null);
 	const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null);
+	const tokenRef = useRef(accessToken);
+	useEffect(() => { tokenRef.current = accessToken; }, [accessToken]);
+	const loadGeneration = useRef(0);
 	const load = useCallback(async () => {
+		const generation = ++loadGeneration.current;
+		let redirecting = false;
 		setLoading(true);
 		setError("");
 		try {
-			setVideos(await fetchVideos(accessToken));
-		} catch {
-			setError("Could not load your recordings. Please try again.");
+			const result = await fetchVideos(tokenRef.current);
+			if (generation === loadGeneration.current) setVideos(result);
+		} catch (cause) {
+			redirecting = cause instanceof LibrarySignInRedirectError;
+			if (!redirecting && generation === loadGeneration.current)
+				setError("Could not load your recordings. Please try again.");
 		} finally {
-			setLoading(false);
+			if (!redirecting && generation === loadGeneration.current) setLoading(false);
 		}
-	}, [accessToken]);
+	}, []);
 	useEffect(() => {
 		void load();
+		return () => { loadGeneration.current++; };
 	}, [load]);
 	async function renew(code: string) {
 		setPending(code);
@@ -92,8 +102,8 @@ export default function LibraryPage({ accessToken, onSignOut, accountSettings, f
 				),
 			);
 			toast.success("Share link renewed");
-		} catch {
-			toast.danger("Could not renew this link. Try again.");
+		} catch (cause) {
+			if (!(cause instanceof LibrarySignInRedirectError)) toast.danger("Could not renew this link. Try again.");
 		} finally {
 			setPending(null);
 		}
@@ -105,8 +115,8 @@ export default function LibraryPage({ accessToken, onSignOut, accountSettings, f
 			setVideos((current) => current.filter((video) => video.share_code !== code));
 			toast.success("Recording deleted");
 			return true;
-		} catch {
-			toast.danger("Could not delete this recording. Try again.");
+		} catch (cause) {
+			if (!(cause instanceof LibrarySignInRedirectError)) toast.danger("Could not delete this recording. Try again.");
 			return false;
 		} finally {
 			setPending(null);

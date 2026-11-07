@@ -10,6 +10,7 @@ import {
 	type ClipRegion,
 	type CursorClickEffectStyle,
 	type CursorStyle,
+	type CursorTelemetryPoint,
 	type Padding,
 	type WebcamOverlaySettings,
 	type ZoomFocus,

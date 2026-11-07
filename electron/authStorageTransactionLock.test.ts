@@ -247,6 +247,26 @@ it("waits for a live choosing owner without deleting its incomplete acquisition"
 	expect(await fs.readdir(directory)).toEqual([path.basename(existing)]);
 });
 
+it("ignores unrelated hidden and ordinary files without removing them", async () => {
+	await fs.mkdir(directory, { recursive: true });
+	for (const name of [
+		".DS_Store",
+		".publish-other",
+		"notes.txt",
+		"0-invalid.ticket",
+		"-1-invalid.ticket",
+	])
+		await fs.writeFile(path.join(directory, name), "unrelated");
+	expect(await withAuthStorageTransaction(directory, async () => true)).toBe(true);
+	expect((await fs.readdir(directory)).sort()).toEqual([
+		"-1-invalid.ticket",
+		".DS_Store",
+		".publish-other",
+		"0-invalid.ticket",
+		"notes.txt",
+	]);
+});
+
 it("leaves an owner with unknown liveness intact", async () => {
 	const unknownPid = 2147483647;
 	const existing = await marker(unknownPid);
@@ -262,7 +282,7 @@ it("leaves an owner with unknown liveness intact", async () => {
 });
 
 it.each([
-	0, -1, 2147483648,
+	2147483648,
 ])("rejects invalid PID %s before any liveness probe for that PID", async (pid) => {
 	const existing = await marker(pid);
 	const kill = vi.spyOn(process, "kill");

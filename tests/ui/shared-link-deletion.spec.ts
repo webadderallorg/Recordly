@@ -31,7 +31,9 @@ for (const { fails, delayed, nativeFails } of [
 							: null;
 				window.electronAPI.getAppSettingWithStatus = (key) => ({
 					success: true,
-					found: key === "recordly.onboarding.v1.seen" || key === "recordly.project-share-links.v1",
+					found:
+						key === "recordly.onboarding.v1.seen" ||
+						key === "recordly.project-share-links.v1",
 					value: window.electronAPI.getAppSetting(key),
 				});
 				window.electronAPI.setAppSetting = (key, value) => {

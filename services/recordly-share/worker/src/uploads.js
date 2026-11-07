@@ -34,7 +34,7 @@ export async function handleUpload(request, env) {
 		expiresAt, storedHash, salt, cta_url || null, cta_text || null).run();
 	const baseUrl = new URL(request.url).origin;
 	return jsonResponse({
-		shareCode, progressiveUpload: false, parallelUploads: true, reservationBytes: fileSize,
+		shareCode, progressiveUpload: false, parallelUploads: true, reservationBytes: finiteNonnegative(fileSize),
 		uploadURL: `${baseUrl}/api/upload-data/${shareCode}`,
 		shareURL: `${baseUrl}/s/${shareCode}`, expiresAt,
 	});

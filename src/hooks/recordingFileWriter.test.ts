@@ -99,4 +99,27 @@ describe("recording chunk persistence", () => {
 		await writer.discard();
 		expect(api.discardRecordingFileStream).toHaveBeenCalledTimes(2);
 	});
+	it("returns a cancellation cleanup failure without rejecting and allows a later cleanup retry", async () => {
+		const { api, writer } = setup();
+		writer.write(new Blob(["private recording"]));
+		await vi.waitFor(() => expect(api.appendRecordingFileStream).toHaveBeenCalledOnce());
+		writer.cancel();
+		api.discardRecordingFileStream.mockResolvedValueOnce({
+			success: false,
+			error: "Cannot unlink",
+		});
+		await expect(writer.finish()).resolves.toEqual({
+			success: false,
+			path: "/partial.webm",
+			message: "Cannot unlink Partial recording: /partial.webm",
+		});
+		expect(api.closeRecordingFileStream).not.toHaveBeenCalled();
+		await expect(writer.finish()).resolves.toEqual({
+			success: false,
+			message: "Recording cancelled.",
+		});
+		expect(api.discardRecordingFileStream).toHaveBeenCalledTimes(2);
+		await writer.discard();
+		expect(api.discardRecordingFileStream).toHaveBeenCalledTimes(2);
+	});
 });

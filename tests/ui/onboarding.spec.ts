@@ -745,5 +745,5 @@ test("welcome mark and video blend into floating blue blobs regardless of reduce
 	await expect
 		.poll(async () => Math.abs((await position()) - initialPosition), { timeout: 6000 })
 		.toBeGreaterThan(8);
-	await page.screenshot({ path: "output/logo-ideas-2026-10-23/welcome-pulse-preview.png" });
+	await page.screenshot({ path: test.info().outputPath("welcome-pulse-preview.png") });
 });

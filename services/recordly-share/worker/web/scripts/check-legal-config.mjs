@@ -6,6 +6,9 @@ const required = [
 	"PUBLIC_LEGAL_PROCESSING_LOCATIONS",
 	"PUBLIC_LEGAL_EFFECTIVE_DATE",
 ];
+for (const key of required) {
+	if (typeof environment[key] === "string") environment[key] = environment[key].trim();
+}
 const missing = required.filter((key) => !environment[key]?.trim());
 if (environment.PUBLIC_LEGAL_APPROVED !== "true")
 	missing.push("PUBLIC_LEGAL_APPROVED=true after operator review");

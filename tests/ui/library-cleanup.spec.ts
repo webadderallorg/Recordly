@@ -1,13 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 
 async function option(page: Page, field: string, text: string) {
-	await page.getByRole("button", { name: new RegExp(field) }).click();
+	const trigger = page.getByRole("button", { name: new RegExp(field) });
+	await trigger.click();
 	if (field === "Find") {
 		await page
 			.getByRole("menuitemcheckbox", { name: text, exact: true })
 			.or(page.getByRole("menuitem", { name: text, exact: true }))
 			.click();
-		await page.keyboard.press("Escape");
+		if ((await trigger.getAttribute("aria-expanded")) === "true")
+			await page.keyboard.press("Escape");
 	} else await page.getByRole("option", { name: text, exact: true }).click();
 }
 const cleanup = (page: Page) => page.getByRole("dialog", { name: "Clean up library", exact: true });

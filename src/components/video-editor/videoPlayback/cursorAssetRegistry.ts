@@ -232,7 +232,10 @@ export async function preloadCursorAssets() {
 			if (!loadedCursorAssets.arrow) {
 				throw new Error("Failed to initialize the fallback arrow cursor asset");
 			}
-		})();
+		})().catch((error) => {
+			cursorAssetsPromise = null;
+			throw error;
+		});
 	}
 
 	await cursorAssetsPromise;

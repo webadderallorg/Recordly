@@ -20,6 +20,7 @@ function mount(openId: string | null = null, platform: string | null = "darwin")
 		isWebcamPreviewDraggingRef: { current: false },
 		webcamPreviewDragStartRef: { current: null as unknown },
 	};
+	// biome-ignore lint/correctness/useHookAtTopLevel: This test intentionally mocks React hooks to simulate a component render.
 	const actions = useLaunchHudInteractionState({ openId, platform, ...refs });
 	cleanup = effects.splice(0).map((effect) => effect());
 	return { ...refs, actions };

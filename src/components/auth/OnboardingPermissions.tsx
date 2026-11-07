@@ -71,6 +71,7 @@ export function OnboardingPermissions({
 			setScreenGranted(screen.status === "granted");
 			setAccessibilityGranted(accessibility.trusted);
 			setStatusError(undefined);
+			if (screen.status === "granted" && accessibility.trusted) setRequestError(undefined);
 		} finally {
 			refreshing.current = false;
 		}
