@@ -475,7 +475,7 @@ function LaunchWindowContent() {
 								className={`${styles.recordingControls} ${styles.recordingFinalizing} gap-2 text-sm text-muted-foreground`}
 							>
 								<Spinner size="sm" />
-								Finishing recording…
+								{captureT("finishingRecording", "Finishing recording…")}
 							</div>
 						) : recording || restarting ? (
 							recordingControls

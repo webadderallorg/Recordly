@@ -93,7 +93,11 @@ export function DashboardSettings({
 					);
 				setHideHud(protection.enabled);
 			} catch (error) {
-				if (active) setFeedback({ area: "hud", error: String(error) });
+				if (active)
+					setFeedback({
+						area: "hud",
+						error: error instanceof Error ? error.message : String(error),
+					});
 			}
 		})();
 		return () => {
@@ -276,6 +280,19 @@ export function DashboardSettings({
 							</SettingsRow>
 							{status("hud")}
 						</div>
+					)}
+					{!captureSupported && status("hud")}
+					{hideHud === undefined && feedback?.area === "hud" && feedback.error && (
+						<Button
+							size="sm"
+							variant="secondary"
+							onClick={() => {
+								setFeedback(undefined);
+								setReload((value) => value + 1);
+							}}
+						>
+							{t("settings.application.retry", "Try again")}
+						</Button>
 					)}
 				</SettingsCategory>
 				<SettingsCategory category="general">

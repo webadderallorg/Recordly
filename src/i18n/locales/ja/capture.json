@@ -12,6 +12,7 @@
 	"actions": "操作",
 	"action": "操作",
 	"recordingControls": "録画コントロール",
+	"finishingRecording": "録画を仕上げています…",
 	"discardingRecording": "録画を破棄中",
 	"recording": "録画中",
 	"discardRecording": "録画を破棄",

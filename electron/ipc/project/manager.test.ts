@@ -244,7 +244,20 @@ describe("local media path policy", () => {
 		// Keep the fractional revision in the past so an immediate edit is always newer.
 		await fs.utimes(projectPath, new Date(), Math.floor(Date.now() / 1000) - 2 + 0.123456);
 		preview = await manager.readProjectPreview(projectPath);
-		await manager.cacheProjectThumbnail(projectPath, preview.revision!, dataUrl);
+		// A cache volume may retain less timestamp precision than the project volume.
+		const writeTimes = fs.utimes.bind(fs);
+		const stamp = vi.spyOn(fs, "utimes").mockImplementationOnce((file, accessed, modified) =>
+			writeTimes(
+				file,
+				accessed,
+				typeof modified === "number" ? Math.floor(modified * 1000) / 1000 : modified,
+			),
+		);
+		try {
+			await manager.cacheProjectThumbnail(projectPath, preview.revision!, dataUrl);
+		} finally {
+			stamp.mockRestore();
+		}
 		expect((await manager.buildProjectLibraryEntry(projectPath, tempRoot))?.thumbnailPath).toBe(
 			target,
 		);

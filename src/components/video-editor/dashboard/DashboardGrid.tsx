@@ -125,7 +125,9 @@ export function DashboardGrid({
 						</p>
 						{errorRecordingSource && errorRecordingSource !== errorSource && (
 							<p className="mt-2 select-text break-words text-muted-foreground">
-								Recording: {errorSourceName(errorRecordingSource)}
+								{uiText("ui.recordingSource", "Recording: {{name}}", {
+									name: errorSourceName(errorRecordingSource),
+								})}
 							</p>
 						)}
 						<div className="mt-3">

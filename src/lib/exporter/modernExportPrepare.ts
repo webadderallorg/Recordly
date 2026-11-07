@@ -56,9 +56,11 @@ export async function prepareExportAttempt(
 	session.native.nativeStaticLayoutBackgroundSkipReason = null;
 	session.sourceVideoInfo = null;
 	session.metrics.totalExportStartTimeMs = getNowMs();
-	const backendPreference = control.nativeFailure
-		? "webcodecs"
-		: (session.config.backendPreference ?? "auto");
+	// Forced software constrains routing too, including cloud and native fallbacks.
+	const backendPreference =
+		control.nativeFailure || session.config.forceSoftwareEncoding
+			? "webcodecs"
+			: (session.config.backendPreference ?? "auto");
 	const runtimePlatform = hooks.getRuntimePlatform();
 	let useNativeEncoder = false;
 	let triedNativeStaticLayoutWithProbe = false;
@@ -79,8 +81,12 @@ export async function prepareExportAttempt(
 			reason: "windows-auto-static-layout-disabled",
 		});
 	}
-	const cloudCompression = session.config.deliveryProfile === "cloud" && !control.nativeFailure;
+	const cloudCompression =
+		session.config.deliveryProfile === "cloud" &&
+		!control.nativeFailure &&
+		!session.config.forceSoftwareEncoding;
 	const shouldTryNativeStaticLayout =
+		!session.config.forceSoftwareEncoding &&
 		!cloudCompression &&
 		!control.nativeFailure &&
 		(backendPreference === "breeze" ||

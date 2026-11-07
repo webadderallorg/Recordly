@@ -167,7 +167,7 @@ for (const plan of ["free", "pro", "loading", "unavailable"] as const) {
 		});
 
 		await page.goto(`/?windowType=editor&gifPlan=${plan}`);
-		await expect(page.getByRole("row", { name: "Color", exact: true })).toBeVisible();
+		await expect(page.getByRole("row", { name: "Colors", exact: true })).toBeVisible();
 		await expect
 			.poll(() =>
 				page

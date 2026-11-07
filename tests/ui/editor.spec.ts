@@ -11,7 +11,6 @@ test("editor loads video, switches tools and edits export options", async ({ pag
 	await expect(page.getByRole("navigation", { name: "Editor tools" })).toBeVisible({
 		timeout: 20000,
 	});
-	await page.getByRole("button", { name: "Background details", exact: true }).click();
 	await expect(page.getByRole("slider", { name: "Blur", exact: true })).toBeVisible();
 	await expect
 		.poll(() =>
@@ -28,7 +27,7 @@ test("editor loads video, switches tools and edits export options", async ({ pag
 		animations: "disabled",
 	});
 	const inspectorWidth = (await page.locator("aside").boundingBox())?.width;
-	await page.getByRole("row", { name: "Color", exact: true }).click();
+	await page.getByRole("row", { name: "Colors", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Add custom color", exact: true })).toBeVisible();
 	await page.getByRole("button", { name: "Add custom color", exact: true }).click();
 	await expect(page.getByRole("dialog", { name: "Custom color", exact: true })).toBeVisible();
@@ -86,9 +85,13 @@ test("editor loads video, switches tools and edits export options", async ({ pag
 	await expect(crop).toBeVisible();
 	await crop.getByRole("button", { name: "Done", exact: true }).click();
 	await expect(crop).toHaveCount(0);
-	await page.getByRole("button", { name: "Original aspect ratio", exact: true }).click();
-	await page.getByRole("menuitem", { name: "1:1", exact: true }).click();
-	await expect(page.getByRole("button", { name: "1:1", exact: true })).toBeVisible();
+	await page.getByRole("button", { name: /^Aspect ratio:/ }).click();
+	await page
+		.getByRole("dialog", { name: "Aspect ratio", exact: true })
+		.getByRole("radio", { name: "1:1", exact: true })
+		.press("Space");
+	await expect(page.getByRole("button", { name: "Aspect ratio: 1:1", exact: true })).toBeVisible();
+	await page.keyboard.press("Escape");
 	await expect(page.getByRole("button", { name: "Open presets", exact: true })).toHaveCount(0);
 	await page.getByRole("button", { name: "Add Layer", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Annotation", exact: true }).click();

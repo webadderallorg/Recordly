@@ -392,7 +392,15 @@ export function createAuthFlowRelay<Owner>(options: {
 			let live = 0;
 			for (const name of await fs.readdir(recordsDirectory)) {
 				if (!name.startsWith(`${options.protocol}.`) || !name.endsWith(".enc")) continue;
-				const prior = await readRecord(name);
+				let prior: Registration | null;
+				try {
+					prior = await readRecord(name);
+				} catch {
+					// Unreadable unrelated generations still occupy capacity. Preserve
+					// them without blocking a different, verifiable sign-in flow.
+					live++;
+					continue;
+				}
 				if (!prior) continue;
 				if (dead(prior.pid))
 					await fs

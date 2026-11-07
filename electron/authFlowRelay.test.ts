@@ -324,3 +324,82 @@ it.each([
 ])("rejects invalid callback before registry/relay lookup: %s", (url) => {
 	expect(parseFlowCallback(url, "recordly")).toBeNull();
 });
+
+it.each([
+	"decrypt",
+	"JSON",
+	"shape",
+])("preserves unrelated %s failures while registering a new exact route", async (failure) => {
+	const a = relay();
+	const launcher = relay();
+	const records = path.join(directory, "flows");
+	await fs.mkdir(records, { recursive: true });
+	const damagedId = "flow_broken";
+	const damaged = path.join(records, `recordly.${damagedId}.${"a".repeat(32)}.enc`);
+	const bytes =
+		failure === "decrypt"
+			? Buffer.from("unreadable ciphertext")
+			: failure === "JSON"
+				? encrypt("{invalid JSON")
+				: encrypt(JSON.stringify({ version: 1, protocol: "recordly" }));
+	await fs.writeFile(damaged, bytes);
+	const current = owner("new-owner");
+	await a.instance.register("flow_alice", "exact-verifier", current);
+	expect(await launcher.instance.route(callback("flow_alice"))).toBe("forwarded");
+	expect(a.deliver).toHaveBeenCalledExactlyOnceWith(current, callback("flow_alice"));
+	expect(await launcher.instance.route(callback(damagedId))).toBe("unavailable");
+	await expect(
+		launcher.instance.register(damagedId, "must-not-replace", owner("other")),
+	).rejects.toThrow("unlock");
+	expect(await fs.readFile(damaged)).toEqual(bytes);
+	expect(a.hasVerifier).toHaveBeenCalledExactlyOnceWith("exact-verifier");
+	expect(launcher.deliver).not.toHaveBeenCalled();
+});
+
+it("counts unreadable generations toward the 128-route limit without deleting them", async () => {
+	const a = relay();
+	const launcher = relay();
+	const records = path.join(directory, "flows");
+	await fs.mkdir(records, { recursive: true });
+	const bytes = Buffer.from("unreadable ciphertext");
+	const files = Array.from({ length: 127 }, (_, n) =>
+		path.join(records, `recordly.corrupt_${String(n).padStart(3, "0")}.${"a".repeat(32)}.enc`),
+	);
+	await Promise.all(files.map((file) => fs.writeFile(file, bytes)));
+	await a.instance.register("flow_alice", "exact-verifier", owner("a"));
+	expect(await fs.readdir(records)).toHaveLength(128);
+	expect(await launcher.instance.route(callback("flow_alice"))).toBe("forwarded");
+	await expect(
+		launcher.instance.register("flow_bob00", "other-verifier", owner("b")),
+	).rejects.toThrow("Too many sign-in return routes");
+	expect(await fs.readdir(records)).toHaveLength(128);
+	for (const file of files) expect(await fs.readFile(file)).toEqual(bytes);
+});
+
+it("still removes only readable proven-dead generations while preserving ancient live and unreadable records", async () => {
+	const a = relay();
+	const b = relay();
+	await a.instance.register("flow_alice", "alice-verifier", owner("a"));
+	const live = await record("flow_alice");
+	const liveBytes = await fs.readFile(live.file);
+	await fs.utimes(live.file, new Date(0), new Date(0));
+	const deadPid = 2147483647;
+	const deadNonce = "b".repeat(32);
+	const deadRecord = { ...live.value, flowId: "flow_dead0", pid: deadPid, nonce: deadNonce };
+	const deadFile = path.join(directory, "flows", `recordly.flow_dead0.${deadNonce}.enc`);
+	await fs.writeFile(deadFile, encrypt(JSON.stringify(deadRecord)));
+	const damaged = path.join(directory, "flows", `recordly.flow_broken.${"c".repeat(32)}.enc`);
+	const damagedBytes = Buffer.from("unreadable ciphertext");
+	await fs.writeFile(damaged, damagedBytes);
+	const realKill = process.kill.bind(process);
+	vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+		if (pid === deadPid)
+			throw Object.assign(new Error("Exited fixture process"), { code: "ESRCH" });
+		return realKill(pid, signal);
+	});
+	await b.instance.register("flow_bob00", "bob-verifier", owner("b"));
+	await expect(fs.access(deadFile)).rejects.toMatchObject({ code: "ENOENT" });
+	expect(await fs.readFile(live.file)).toEqual(liveBytes);
+	expect(await fs.readFile(damaged)).toEqual(damagedBytes);
+	expect(await b.instance.route(callback("flow_alice"))).toBe("forwarded");
+});

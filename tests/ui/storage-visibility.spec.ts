@@ -47,7 +47,6 @@ for (const storageBytes of [
 		await expect(settings).toBeVisible();
 		await expect(settings.getByRole("region", { name: "Cloud usage", exact: true })).toHaveCount(0);
 		await settings.getByRole("button", { name: "Manage account", exact: true }).click();
-		await settings.getByRole("tab", { name: "Plan & billing", exact: true }).click();
 		await expect(settings.getByLabel("Cloud usage", { exact: true })).toContainText("Cloud storage");
 	});
 }

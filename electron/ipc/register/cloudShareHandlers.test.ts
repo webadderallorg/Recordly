@@ -192,7 +192,12 @@ describe("cloud share IPC lifecycle", () => {
 		});
 	}
 	function server(holdMetadata = false, partBytes?: number) {
-		const requests: { path: string; method?: string; body?: string }[] = [];
+		const requests: {
+			path: string;
+			method?: string;
+			body?: string;
+			authorization: string | null;
+		}[] = [];
 		let releaseMetadata: (() => void) | undefined;
 		const metadataGate = holdMetadata
 			? new Promise<void>((resolve) => {
@@ -208,6 +213,7 @@ describe("cloud share IPC lifecycle", () => {
 					path: url.pathname,
 					method: init.method,
 					body: typeof init.body === "string" ? init.body : undefined,
+					authorization: new Headers(init.headers).get("authorization"),
 				});
 				if (url.pathname === "/api/upload")
 					return json({
@@ -324,6 +330,105 @@ describe("cloud share IPC lifecycle", () => {
 			expect.objectContaining({ uploadId: id }),
 		);
 		expect(owner.listenerCount("destroyed")).toBe(0);
+	});
+
+	it("uses the validated final-upload token for an existing progressive upload without a separate refresh IPC", async () => {
+		const remote = server();
+		const id = uploadId();
+		expect(begin(id)).toEqual({ success: true });
+		await vi.waitFor(() =>
+			expect(
+				remote.requests.some((request) => request.path.includes("upload-multipart")),
+			).toBe(true),
+		);
+		expect(
+			remote.requests.find((request) => request.path === "/api/upload")?.authorization,
+		).toBe("Bearer token");
+		expect(
+			await call("cloud-share-upload", owner, {
+				endpoint,
+				token: "fresh-final-token",
+				uploadId: id,
+				filePath: finalPath,
+			}),
+		).toMatchObject({ success: true });
+		for (const path of [
+			"upload-part/",
+			"upload-complete/",
+			"/api/metadata/",
+			"upload-thumbnail/",
+		]) {
+			const requests = remote.requests.filter((request) => request.path.includes(path));
+			expect(requests.length).toBeGreaterThan(0);
+			expect(
+				requests.every((request) => request.authorization === "Bearer fresh-final-token"),
+			).toBe(true);
+		}
+		expect(remote.requests.filter((request) => request.path === "/api/upload")).toHaveLength(1);
+		expect(owner.listenerCount("destroyed")).toBe(0);
+	});
+
+	it("uses the fresh final-upload token to clean up a progressive reservation after invalid final input", async () => {
+		const remote = server();
+		const id = uploadId();
+		expect(begin(id)).toEqual({ success: true });
+		await vi.waitFor(() =>
+			expect(
+				remote.requests.some((request) => request.path.includes("upload-multipart")),
+			).toBe(true),
+		);
+		expect(
+			await call("cloud-share-upload", owner, {
+				endpoint,
+				token: "fresh-cleanup-token",
+				uploadId: id,
+				filePath: "",
+			}),
+		).toMatchObject({ success: false, error: "Export a video before sharing it." });
+		await vi.waitFor(() =>
+			expect(remote.requests.some((request) => request.path === "/api/delete/abc123")).toBe(
+				true,
+			),
+		);
+		expect(
+			remote.requests.find((request) => request.path === "/api/delete/abc123")?.authorization,
+		).toBe("Bearer fresh-cleanup-token");
+		expect(owner.listenerCount("destroyed")).toBe(0);
+	});
+
+	it.each([
+		"another renderer",
+		"invalid token",
+	])("does not replace progressive credentials from %s during final upload", async (attempt) => {
+		const remote = server();
+		const id = uploadId();
+		expect(begin(id)).toEqual({ success: true });
+		await vi.waitFor(() =>
+			expect(
+				remote.requests.some((request) => request.path.includes("upload-multipart")),
+			).toBe(true),
+		);
+		expect(
+			await call("cloud-share-upload", attempt === "another renderer" ? stranger : owner, {
+				endpoint,
+				token: attempt === "invalid token" ? "invalid\ntoken" : "foreign-token",
+				uploadId: id,
+				filePath: finalPath,
+			}),
+		).toMatchObject({ success: false });
+		expect(owner.listenerCount("destroyed")).toBe(1);
+		expect(call("cloud-share-cancel", owner, id)).toEqual({ success: true });
+		await vi.waitFor(() =>
+			expect(remote.requests.some((request) => request.path === "/api/delete/abc123")).toBe(
+				true,
+			),
+		);
+		expect(
+			remote.requests.find((request) => request.path === "/api/delete/abc123")?.authorization,
+		).toBe("Bearer token");
+		expect(remote.requests.some((request) => request.path.includes("/api/metadata/"))).toBe(
+			false,
+		);
 	});
 
 	it("uses parallel multipart for finished clips below the old 50 MiB cutoff", async () => {
