@@ -3,8 +3,23 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const hooks = vi.hoisted(() => ({
 	refs: [] as { current: unknown }[],
 	index: 0,
-	effects: [] as (() => void | (() => void))[],
+	effects: [] as (() => void)[],
+	effectSlots: [] as { deps: readonly unknown[]; cleanup?: void | (() => void) }[],
+	effectIndex: 0,
 }));
+function scheduleEffect(effect: () => void | (() => void), deps: readonly unknown[]) {
+	const index = hooks.effectIndex++;
+	const previous = hooks.effectSlots[index];
+	if (
+		previous &&
+		previous.deps.length === deps.length &&
+		previous.deps.every((value, i) => Object.is(value, deps[i]))
+	) return;
+	hooks.effects.push(() => {
+		previous?.cleanup?.();
+		hooks.effectSlots[index] = { deps, cleanup: effect() };
+	});
+}
 vi.mock("react", async (original) => ({
 	...(await original<typeof import("react")>()),
 	useRef: (value: unknown) => {
@@ -13,7 +28,8 @@ vi.mock("react", async (original) => ({
 		return hooks.refs[index];
 	},
 	useCallback: (callback: unknown) => callback,
-	useEffect: (effect: () => void | (() => void)) => hooks.effects.push(effect),
+	useEffect: scheduleEffect,
+	useLayoutEffect: scheduleEffect,
 }));
 vi.mock("@/components/ui/toast", () => ({
 	toast: { warning: vi.fn(), error: vi.fn(), dismiss: vi.fn(), success: vi.fn() },
@@ -47,6 +63,19 @@ function deferred<T>() {
 	return { promise, resolve, reject };
 }
 
+function bridge(electronAPI: Record<string, unknown>) {
+	vi.stubGlobal("window", {
+		addEventListener: vi.fn(),
+		removeEventListener: vi.fn(),
+		electronAPI: {
+			onMenuLoadProject: vi.fn(),
+			onMenuSaveProject: vi.fn(),
+			onMenuSaveProjectAs: vi.fn(),
+			...electronAPI,
+		},
+	});
+}
+
 const initialProject = () => ({
 	currentProjectPath: "/projects/current.recordly",
 	videoSourcePath: source as string | null,
@@ -59,8 +88,12 @@ function render(
 	project: ReturnType<typeof initialProject>,
 	applyLoadedProject = vi.fn().mockResolvedValue(true),
 	override: Partial<Parameters<typeof useProjectOpenActions>[0]> = {},
+	commit = true,
 ) {
 	hooks.index = 0;
+	hooks.effectIndex = 0;
+	hooks.effects = [];
+	// biome-ignore lint/correctness/useHookAtTopLevel: This test intentionally mocks React hooks to simulate a component render.
 	const actions = useProjectOpenActions({
 		project,
 		applyLoadedProject,
@@ -68,14 +101,18 @@ function render(
 		refreshProjectLibrary: vi.fn().mockResolvedValue(undefined),
 		...override,
 	} as unknown as Parameters<typeof useProjectOpenActions>[0]);
+	if (commit) for (const effect of hooks.effects.splice(0)) effect();
 	return { ...actions, applyLoadedProject };
 }
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	vi.stubGlobal("localStorage", { getItem: () => null, removeItem: vi.fn() });
 	hooks.refs = [];
 	hooks.index = 0;
 	hooks.effects = [];
+	hooks.effectSlots = [];
+	hooks.effectIndex = 0;
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -85,7 +122,7 @@ it.each([
 ])("accepts a same-source URL refresh during relink, raw source absent=%s", async (absent) => {
 	const pending = deferred<typeof result>();
 	const relink = vi.fn(() => pending.promise);
-	vi.stubGlobal("window", { electronAPI: { relinkProjectRecording: relink } });
+	bridge({ relinkProjectRecording: relink });
 	const project = initialProject();
 	if (absent) project.videoSourcePath = null;
 	const actions = render(project);
@@ -106,7 +143,7 @@ it.each([
 
 it("compares the canonical source rather than file URL spelling", async () => {
 	const pending = deferred<typeof result>();
-	vi.stubGlobal("window", { electronAPI: { relinkProjectRecording: () => pending.promise } });
+	bridge({ relinkProjectRecording: () => pending.promise });
 	const project = initialProject();
 	const actions = render(project);
 	const request = actions.handleRelinkProjectRecording(target);
@@ -123,7 +160,7 @@ it.each([
 ])("rejects a true %s switch while relinking", async (kind) => {
 	const pending = deferred<typeof result>();
 	const relink = vi.fn(() => pending.promise);
-	vi.stubGlobal("window", { electronAPI: { relinkProjectRecording: relink } });
+	bridge({ relinkProjectRecording: relink });
 	const project = initialProject();
 	if (kind === "fallback-source") project.videoSourcePath = null;
 	const actions = render(project);
@@ -146,7 +183,7 @@ it.each([
 it("does not revive a request after switching away and back to the same identity", async () => {
 	const pending = deferred<typeof result>();
 	const relink = vi.fn(() => pending.promise);
-	vi.stubGlobal("window", { electronAPI: { relinkProjectRecording: relink } });
+	bridge({ relinkProjectRecording: relink });
 	const project = initialProject();
 	const actions = render(project);
 	const request = actions.handleRelinkProjectRecording(target);
@@ -161,7 +198,7 @@ it("does not revive a request after switching away and back to the same identity
 it("does not invoke native relink after a context switch during the unsaved-change save", async () => {
 	const saving = deferred<boolean>();
 	const relink = vi.fn();
-	vi.stubGlobal("window", { electronAPI: { relinkProjectRecording: relink } });
+	bridge({ relinkProjectRecording: relink });
 	const project = initialProject();
 	const actions = render(project, undefined, {
 		hasUnsavedChanges: true,
@@ -177,15 +214,38 @@ it("does not invoke native relink after a context switch during the unsaved-chan
 it.each([false, true])("ignores completion after unmount, native failure=%s", async (failed) => {
 	const pending = deferred<typeof result>();
 	const relink = vi.fn(() => pending.promise);
-	vi.stubGlobal("window", { electronAPI: { relinkProjectRecording: relink } });
+	bridge({ relinkProjectRecording: relink });
 	const actions = render(initialProject());
-	const cleanup = hooks.effects[0]();
 	const request = actions.handleRelinkProjectRecording(target);
 	await vi.waitFor(() => expect(relink).toHaveBeenCalled());
-	cleanup?.();
+	for (const slot of hooks.effectSlots) slot.cleanup?.();
 	if (failed) pending.reject(new Error("native error"));
 	else pending.resolve(result);
 	expect(await request).toBe(false);
 	expect(actions.applyLoadedProject).not.toHaveBeenCalled();
 	expect(toast.error).not.toHaveBeenCalled();
+});
+
+it("does not invalidate an active relink for a discarded render of another project", async () => {
+	const pending = deferred<typeof result>();
+	const relink = vi.fn(() => pending.promise);
+	bridge({ relinkProjectRecording: relink });
+	const project = initialProject();
+	const actions = render(project);
+	const request = actions.handleRelinkProjectRecording(target);
+	await vi.waitFor(() => expect(relink).toHaveBeenCalled());
+	// React began work for a different identity, but discarded it before commit.
+	render(
+		{ ...project, currentProjectPath: "/projects/uncommitted.recordly" },
+		undefined,
+		{},
+		false,
+	);
+	pending.resolve(result);
+	expect(await request).toBe(true);
+	expect(actions.applyLoadedProject).toHaveBeenCalledWith(
+		result.project,
+		target,
+		expect.any(Function),
+	);
 });

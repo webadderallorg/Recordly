@@ -1508,11 +1508,11 @@ final class RecorderService {
 		return succeeded
 	}
 
-	func updateHudExclusions(_ processIds: [Int32]) {
+	func updateHudExclusions(_ processIds: [Int32], commandId: String? = nil) {
 		enqueue {
 			do {
 				try await self.recorder.updateHudExclusions(processIds)
-				print("HUD capture filter updated")
+				print("HUD capture filter updated" + (commandId.map { " " + $0 } ?? ""))
 				fflush(stdout)
 			} catch {
 				fputs("Error updating HUD capture filter: \(error.localizedDescription)\n", stderr)
@@ -1571,12 +1571,22 @@ if let configData = CommandLine.arguments[1].data(using: .utf8),
 let service = RecorderService()
 service.start(configJSON: CommandLine.arguments[1])
 
+struct HudExclusionCommand: Decodable {
+	let commandId: String
+	let processIds: [Int32]
+}
+
 DispatchQueue.global(qos: .utility).async {
-	while let input = readLine(strippingNewline: true)?.lowercased() {
+	while let rawInput = readLine(strippingNewline: true) {
+		let input = rawInput.lowercased()
 		if input.hasPrefix("hud-exclusions "),
-		   let data = String(input.dropFirst("hud-exclusions ".count)).data(using: .utf8),
-		   let processIds = try? JSONDecoder().decode([Int32].self, from: data) {
-			service.updateHudExclusions(processIds)
+		   let data = String(rawInput.dropFirst("hud-exclusions ".count)).data(using: .utf8) {
+			if let command = try? JSONDecoder().decode(HudExclusionCommand.self, from: data),
+			   UUID(uuidString: command.commandId) != nil {
+				service.updateHudExclusions(command.processIds, commandId: command.commandId)
+			} else if let processIds = try? JSONDecoder().decode([Int32].self, from: data) {
+				service.updateHudExclusions(processIds)
+			}
 			continue
 		}
 		if input == "pause" {

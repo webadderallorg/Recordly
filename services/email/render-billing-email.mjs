@@ -29,7 +29,12 @@ export function renderBillingEmail(template, values) {
 		footer: interpolate(template.footer),
 		actionUrl: interpolate(template.actionUrl),
 	};
-	const url = new URL(item.actionUrl);
+	let url;
+	try {
+		url = new URL(item.actionUrl);
+	} catch {
+		throw new Error("Unsupported billing action URL");
+	}
 	// Do not turn arbitrary webhook metadata into links in trusted billing mail.
 	if (
 		url.protocol !== "https:" ||

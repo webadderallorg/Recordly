@@ -16,6 +16,9 @@ import {
 import { resolveRecordedVideoStoragePath } from "../storagePath";
 import { finishWebmRecording } from "../webmDuration";
 
+// Whole-file fallback uses Electron's structured-clone transport; long recordings stream instead.
+const MAX_RECORDING_FILE_BYTES = 512 * 1024 * 1024;
+
 export function registerRecordingFiles() {
 	const recordingStreams = new RecordingFileStreams();
 
@@ -153,8 +156,14 @@ export function registerRecordingFiles() {
 		}
 	});
 
-	ipcMain.handle("store-recorded-video", async (_, videoData: ArrayBuffer, fileName: unknown) => {
+	ipcMain.handle("store-recorded-video", async (event, videoData: unknown, fileName: unknown) => {
 		try {
+			trust(event);
+			if (
+				!(videoData instanceof ArrayBuffer) ||
+				videoData.byteLength > MAX_RECORDING_FILE_BYTES
+			)
+				throw new Error("Invalid recording data");
 			const recordingsDir = await getRecordingsDir();
 			const videoPath = resolveRecordedVideoStoragePath(recordingsDir, fileName);
 			await fs.writeFile(videoPath, Buffer.from(videoData), { flag: "wx", mode: 0o600 });

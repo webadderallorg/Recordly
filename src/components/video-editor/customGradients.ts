@@ -12,6 +12,9 @@ const MAX_CUSTOM_GRADIENTS = 50;
 const HEX_COLOR = /^#[\da-f]{6}$/i;
 
 export function createCustomGradient({ angle, colors }: CustomGradient): string {
+	if (colors.length < 2 || colors.length > MAX_GRADIENT_COLORS) {
+		throw new RangeError("Custom gradients need 2 to 5 colors");
+	}
 	const direction = ((Math.round(angle) % 360) + 360) % 360;
 	const stops = colors.map(
 		(color, index) =>

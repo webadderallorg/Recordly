@@ -78,7 +78,15 @@ export class RecordingFileWriter {
 	async finish(durationMs?: number): Promise<Result> {
 		await this.queue;
 		if (this.cancelled) {
-			await this.discard();
+			try {
+				await this.discard();
+			} catch (error) {
+				return {
+					success: false,
+					path: this.path,
+					message: error instanceof Error ? error.message : String(error),
+				};
+			}
 			return { success: false, message: "Recording cancelled." };
 		}
 		if (!this.streamId)

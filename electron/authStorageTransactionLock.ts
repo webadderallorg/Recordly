@@ -70,8 +70,7 @@ function provenDead(pid: number): boolean {
 async function liveTickets(directory: string): Promise<Ticket[]> {
 	const tickets: Ticket[] = [];
 	for (const name of await fs.readdir(directory)) {
-		if (name.startsWith(".publish-")) continue;
-		if (!TICKET_NAME.test(name)) throw new AuthStorageBusyError();
+		if (!TICKET_NAME.test(name)) continue;
 		const filePath = path.join(directory, name);
 		const ticket = await readTicket(filePath);
 		if (!ticket) continue;

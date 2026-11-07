@@ -2,7 +2,10 @@ import { translate } from "@/i18n/runtime";
 import { createClient, type Provider, type User } from "@supabase/supabase-js";
 import { marketingEmailMetadata, type SignupConsent, signupConsentMetadata } from "./signupConsent";
 import { traceAuthOperation } from "./authDiagnostics";
-import { createPendingSignupConsentStore } from "./pendingSignupConsent";
+import {
+	createPendingSignupConsentStore,
+	createSignupConsentRetryStore,
+} from "./pendingSignupConsent";
 import {
 	saveSignupConsentForAccount,
 	SignupConsentScopeChangedError,
@@ -167,6 +170,8 @@ const authStorageKey = supabaseUrl
 	? `sb-${new URL(supabaseUrl).hostname.split(".")[0]}-auth-token`
 	: "";
 const pendingSignupConsent = createPendingSignupConsentStore(authStorage, authStorageKey);
+const signupConsentRetries = createSignupConsentRetryStore(authStorage, authStorageKey);
+const consentRetryInFlight = new Map<string, Promise<void>>();
 
 export const recordlyAuth = recordlyAuthConfigured
 	? createClient(supabaseUrl!, supabasePublishableKey!, {
@@ -186,6 +191,76 @@ function requireAuth() {
 		throw new Error(translate("support.authUnconfigured"));
 	}
 	return recordlyAuth;
+}
+
+function persistAcceptedSignupConsent(
+	account: { userId: string; accessToken: string },
+	metadata: ReturnType<typeof signupConsentMetadata>,
+): Promise<void> {
+	const existing = consentRetryInFlight.get(account.userId);
+	if (existing) return existing;
+	const operation = (async () => {
+		let accepted = metadata;
+		try {
+			await signupConsentRetries.set(account.userId, metadata);
+			accepted = (await signupConsentRetries.get(account.userId)) ?? metadata;
+		} catch {
+			// Continue the initial account-bound save if optional queue locking fails.
+		}
+		try {
+			await traceAuthOperation("callback-consent-save", () =>
+				saveSignupConsentForAccount(
+					{ url: supabaseUrl!, publishableKey: supabasePublishableKey! },
+					account,
+					accepted.signup_consent,
+					{
+						isCurrent: async () => {
+							try {
+								const current = await requireAuth().auth.getSession();
+								return (
+									!current.error &&
+									current.data.session?.user.id === account.userId
+								);
+							} catch {
+								return false;
+							}
+						},
+					},
+				),
+			);
+			await signupConsentRetries.remove(account.userId);
+		} catch (error) {
+			// The code was consumed successfully. Keep only the account-bound notice
+			// for a later session restore/event; never replay the one-use code.
+			if (!(error instanceof SignupConsentScopeChangedError))
+				console.warn("[auth] Signed in; signup preferences will be retried.");
+		}
+	})();
+	consentRetryInFlight.set(account.userId, operation);
+	void operation
+		.finally(() => {
+			if (consentRetryInFlight.get(account.userId) === operation)
+				consentRetryInFlight.delete(account.userId);
+		})
+		.catch(() => undefined);
+	return operation;
+}
+
+/** Retry this signed-in account's accepted notice without reusing an OAuth code. */
+export async function retryPendingSignupConsent(): Promise<void> {
+	try {
+		const current = await requireAuth().auth.getSession();
+		const session = current.data.session;
+		if (current.error || !session?.user.id || session.user.is_anonymous) return;
+		const metadata = await signupConsentRetries.get(session.user.id);
+		if (metadata)
+			await persistAcceptedSignupConsent(
+				{ userId: session.user.id, accessToken: session.access_token },
+				metadata,
+			);
+	} catch {
+		// Retain the receipt for the next session event or application launch.
+	}
 }
 
 export async function signInWithEmail(
@@ -357,36 +432,22 @@ async function exchangeAuthCallback(url: string): Promise<void> {
 	// Record the acknowledgement made in this exact successful PKCE flow. Account
 	// age and client clocks cannot establish whether the notice was accepted.
 	// Existing consent and email preferences, including an unsubscribe, stay intact.
-	if (
-		pendingConsent &&
-		data?.user?.id &&
-		data.session?.access_token &&
-		Reflect.getOwnPropertyDescriptor(data.user.user_metadata ?? {}, "signup_consent") ===
-			undefined
-	) {
-		const account = { userId: data.user.id, accessToken: data.session.access_token };
-		const acceptedConsent = pendingConsent.signup_consent;
-		try {
-			await traceAuthOperation("callback-consent-save", () =>
-				saveSignupConsentForAccount(consentConfig, account, acceptedConsent, {
-					isCurrent: async () => {
-						try {
-							const current = await client.auth.getSession();
-							return (
-								!current.error && current.data.session?.user.id === account.userId
-							);
-						} catch {
-							return false;
-						}
-					},
-				}),
+	try {
+		if (
+			pendingConsent &&
+			data?.user?.id &&
+			data.session?.access_token &&
+			Reflect.getOwnPropertyDescriptor(data.user.user_metadata ?? {}, "signup_consent") ===
+				undefined
+		) {
+			await persistAcceptedSignupConsent(
+				{ userId: data.user.id, accessToken: data.session.access_token },
+				pendingConsent,
 			);
-		} catch (error) {
-			// A later sign-in owns the current UI. Never apply this flow's notice to it.
-			if (!(error instanceof SignupConsentScopeChangedError)) throw error;
 		}
+	} finally {
+		if (pendingChallenge) await pendingSignupConsent.remove(pendingChallenge);
 	}
-	if (pendingChallenge) await pendingSignupConsent.remove(pendingChallenge);
 }
 
 export async function signOutRecordly(): Promise<void> {

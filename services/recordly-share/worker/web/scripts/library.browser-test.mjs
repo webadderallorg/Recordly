@@ -1,12 +1,18 @@
 // Local fixtures only; no account or cloud mutations.
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect as baseExpect } from '@playwright/test';
 const expect = baseExpect.configure({ timeout: 15_000 });
 const root = fileURLToPath(new URL('../', import.meta.url));
 const port = Number(process.env.LIBRARY_TEST_PORT || 5198);
 const base = `http://127.0.0.1:${port}`;
-const server = spawn(process.execPath, [fileURLToPath(new URL('../node_modules/astro/bin/astro.mjs', import.meta.url)), 'dev', '--ignore-lock', '--host', '127.0.0.1', '--port', String(port)], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+const require = createRequire(import.meta.url);
+const astroPackage = require.resolve('astro/package.json');
+const astroBin = join(dirname(astroPackage), require(astroPackage).bin.astro);
+const server = spawn(process.execPath, [astroBin, 'dev', '--ignore-lock', '--host', '127.0.0.1', '--port', String(port)], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
 let output = '', browser;
 server.stdout.on('data', chunk => { output += chunk; });
 server.stderr.on('data', chunk => { output += chunk; });
@@ -50,11 +56,11 @@ try {
   await page.getByRole('button', { name: 'Clear filters' }).click();
   await expect(page.getByRole('link', { name: video.title, exact: true })).toBeVisible();
   await page.addStyleTag({ content: 'astro-dev-toolbar { display: none !important; }' });
-  await page.screenshot({ path: '/tmp/recordly-library-desktop.png', fullPage: true });
+  await page.screenshot({ path: join(tmpdir(), 'recordly-library-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('button', { name: `Add folder to ${video.title}` })).toBeVisible();
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('Mobile library overflows horizontally');
-  await page.screenshot({ path: '/tmp/recordly-library-mobile.png', fullPage: true });
+  await page.screenshot({ path: join(tmpdir(), 'recordly-library-mobile.png'), fullPage: true });
   videos = [{ ...video, expires_at: '2000-01-01T00:00:00Z', is_protected: 0, view_count: 1 }];
   await page.reload();
   await expect(page.getByText('Expired', { exact: true })).toBeVisible();

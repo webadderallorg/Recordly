@@ -12,6 +12,11 @@ describe("custom gradient backgrounds", () => {
 			createCustomGradient({ angle: -90, colors: ["#FF0000", "#00FF00", "#0000FF"] }),
 		).toBe("linear-gradient(270deg, #ff0000 0%, #00ff00 50%, #0000ff 100%)");
 	});
+	it.each([0, 1, 6])("rejects gradients with %i colors before generating invalid stops", (count) => {
+		expect(() =>
+			createCustomGradient({ angle: 135, colors: Array(count).fill("#123456") }),
+		).toThrow(RangeError);
+	});
 	it("round trips a five-color gradient through saved preferences", () => {
 		const definition = {
 			angle: 45,
