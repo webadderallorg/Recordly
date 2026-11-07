@@ -14,12 +14,19 @@ export interface LibraryVideo {
   is_protected: number;
 }
 
+export class LibrarySignInRedirectError extends Error {
+  constructor() { super('Redirecting to library sign-in'); }
+}
+
 async function libraryRequest(path: string, accessToken?: string, method = 'GET') {
   const response = await fetch(path, {
     method, credentials: 'include',
     ...(accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : {}),
   });
-  if (response.status === 401 && !accessToken) window.location.href = '/library/login';
+  if (response.status === 401 && !accessToken) {
+    window.location.href = '/library/login';
+    throw new LibrarySignInRedirectError();
+  }
   if (!response.ok) throw new Error(`Cloud request failed (${response.status})`);
   return response.json();
 }
@@ -36,12 +43,12 @@ export async function fetchVideos(accessToken?: string): Promise<LibraryVideo[]>
 }
 
 export async function renewVideo(shareCode: string, accessToken?: string): Promise<string | null> {
-  const data = await libraryRequest(`/api/renew/${shareCode}`, accessToken, 'POST');
+  const data = await libraryRequest(`/api/renew/${encodeURIComponent(shareCode)}`, accessToken, 'POST');
   return data.expiresAt || null;
 }
 
 export async function deleteVideo(shareCode: string, accessToken?: string): Promise<boolean> {
-  await libraryRequest(`/api/delete/${shareCode}`, accessToken, 'DELETE');
+  await libraryRequest(`/api/delete/${encodeURIComponent(shareCode)}`, accessToken, 'DELETE');
   return true;
 }
 

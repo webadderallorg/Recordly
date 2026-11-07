@@ -39,6 +39,7 @@ vi.mock("../windows", () => ({
 }));
 
 import { registerNativeControls } from "./nativeControls";
+import { isNativeWindowsCaptureAvailable } from "../windows";
 
 const frame = { url: "http://127.0.0.1:43820/?windowType=editor" };
 const trusted = { sender: { mainFrame: frame }, senderFrame: frame } as Electron.IpcMainInvokeEvent;
@@ -94,6 +95,34 @@ it("rejects missing, foreign and embedded callers before inspecting or approving
 	expect(mocks.resolve).not.toHaveBeenCalled();
 	expect(mocks.fallback).not.toHaveBeenCalled();
 	expect([...mocks.approved]).toEqual([source]);
+});
+
+it.each([
+	"pause-native-screen-recording",
+	"resume-native-screen-recording",
+	"is-native-windows-capture-available",
+	"get-last-native-capture-diagnostics",
+])("rejects foreign and embedded callers before handling %s", async (channel) => {
+	const handler = new Map(vi.mocked(ipcMain.handle).mock.calls).get(channel)!;
+	const foreign = { url: "https://foreign.test/" };
+	for (const event of [
+		{ sender: { mainFrame: foreign }, senderFrame: foreign },
+		{ sender: trusted.sender, senderFrame: { ...frame } },
+		{ sender: trusted.sender },
+	]) {
+		await expect(handler(event as Electron.IpcMainInvokeEvent)).rejects.toThrow(
+			"Untrusted recording caller",
+		);
+	}
+	expect(isNativeWindowsCaptureAvailable).not.toHaveBeenCalled();
+});
+
+it("allows the trusted document to inspect native Windows capture availability", async () => {
+	vi.mocked(isNativeWindowsCaptureAvailable).mockResolvedValueOnce(true);
+	const handler = new Map(vi.mocked(ipcMain.handle).mock.calls).get(
+		"is-native-windows-capture-available",
+	)!;
+	await expect(handler(trusted)).resolves.toEqual({ available: true });
 });
 
 it("does not let a trusted renderer approve an arbitrary existing source", async () => {

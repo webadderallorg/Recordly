@@ -95,6 +95,16 @@ describe("getRenderableVideoUrl", () => {
 		expect(getLocalMediaUrl).toHaveBeenCalledWith("/Users/egg/My video.mp4");
 	});
 
+	it.each([
+		"file:///Users/egg/100%.mp4",
+		"file:///Users/egg/bad%E0%A4.mp4",
+	])("preserves malformed persisted file URLs without rejecting: %s", async (asset) => {
+		const getLocalMediaUrl = vi.fn();
+		vi.stubGlobal("window", { electronAPI: { getLocalMediaUrl } });
+		await expect(getRenderableVideoUrl(asset)).resolves.toBe(asset);
+		expect(getLocalMediaUrl).not.toHaveBeenCalled();
+	});
+
 	it("falls back to a file URL for absolute local video paths", async () => {
 		await expect(getRenderableVideoUrl("/Users/egg/Desktop/bg.mp4")).resolves.toBe(
 			"file:///Users/egg/Desktop/bg.mp4",

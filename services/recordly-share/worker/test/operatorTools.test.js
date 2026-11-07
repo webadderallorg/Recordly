@@ -35,7 +35,7 @@ it("rejects unsafe operator inputs and supports bounded read-only reports/stats"
 it("rolls back the audit entry when its moderation mutation fails", async () => {
 	await env.DB.prepare("CREATE TRIGGER fail_suspension BEFORE INSERT ON account_restrictions WHEN NEW.owner_id = 'rollback-test' BEGIN SELECT RAISE(ABORT,'simulated failure'); END").run();
 	try {
-		await expect(env.DB.prepare(moderationSql("suspend-account", "rollback-test", "Test rollback")).run()).rejects.toThrow();
+		await expect(env.DB.prepare(moderationSql("suspend-account", "rollback-test", "Test rollback")).run()).rejects.toThrow("simulated failure");
 		expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM moderation_actions WHERE target = 'rollback-test'").first()).n).toBe(0);
 	} finally {
 		await env.DB.prepare("DROP TRIGGER fail_suspension").run();

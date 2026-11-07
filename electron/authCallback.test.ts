@@ -5,6 +5,10 @@ const state = vi.hoisted(() => ({
 	request: undefined as ((request: unknown, response: unknown) => void) | undefined,
 	send: vi.fn(),
 	foreignSend: vi.fn(),
+	relayRoute: vi.fn(),
+}));
+vi.mock("./authFlowRelay", () => ({
+	createAuthFlowRelay: () => ({ route: state.relayRoute, close: async () => undefined }),
 }));
 vi.mock("node:http", () => ({
 	createServer: (handler: (request: unknown, response: unknown) => void) => {
@@ -13,7 +17,12 @@ vi.mock("node:http", () => ({
 	},
 }));
 vi.mock("electron", () => ({
-	app: { on: vi.fn(), isReady: () => false, getAppPath: () => "/recordly" },
+	app: {
+		on: vi.fn(),
+		isReady: () => false,
+		getAppPath: () => "/recordly",
+		getPath: () => "/recordly",
+	},
 	ipcMain: { handle: vi.fn() },
 	BrowserWindow: {
 		getAllWindows: () => [
@@ -122,4 +131,31 @@ it("reopens the app without replacing its pending sign-in callback", async () =>
 	open(event, "recordly://app/open?redirect=https://foreign.test");
 	expect(focusApp).toHaveBeenCalledOnce();
 	ready.mockRestore();
+});
+
+it("finishes a rejected dev relay request with a non-reflecting error page", async () => {
+	const { createAuthCallbackController } = await import("./authCallback");
+	state.relayRoute.mockRejectedValueOnce(new Error("PRIVATE_RELAY_FAILURE"));
+	const controller = createAuthCallbackController({
+		isDev: true,
+		flowRoutingEnabled: true,
+		focusApp: vi.fn(),
+	});
+	controller.startDevServer();
+	const response = { writeHead: vi.fn(), end: vi.fn() };
+	state.request!(
+		{
+			method: "GET",
+			headers: { host: "127.0.0.1:43821" },
+			url: "/auth/callback?code=PRIVATE_CALLBACK_CODE",
+		},
+		response,
+	);
+	for (let n = 0; n < 5; n++) await Promise.resolve();
+	expect(response.writeHead).toHaveBeenCalledWith(200, expect.any(Object));
+	const html = response.end.mock.calls[0][0];
+	expect(html).toContain("request a fresh one");
+	expect(html).not.toContain("PRIVATE_CALLBACK_CODE");
+	expect(html).not.toContain("PRIVATE_RELAY_FAILURE");
+	controller.close();
 });

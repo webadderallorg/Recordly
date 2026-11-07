@@ -77,7 +77,8 @@ export function registerNativeControls(
 		};
 	});
 
-	ipcMain.handle("pause-native-screen-recording", async () => {
+	ipcMain.handle("pause-native-screen-recording", async (event) => {
+		if (!isTrustedRenderer(event)) throw new Error("Untrusted recording caller");
 		if (process.platform === "win32") {
 			if (!windowsNativeCaptureActive || !windowsCaptureProcess) {
 				return { success: false, message: "No native Windows screen recording is active." };
@@ -128,7 +129,8 @@ export function registerNativeControls(
 		}
 	});
 
-	ipcMain.handle("resume-native-screen-recording", async () => {
+	ipcMain.handle("resume-native-screen-recording", async (event) => {
+		if (!isTrustedRenderer(event)) throw new Error("Untrusted recording caller");
 		if (process.platform === "win32") {
 			if (!windowsNativeCaptureActive || !windowsCaptureProcess) {
 				return { success: false, message: "No native Windows screen recording is active." };
@@ -179,11 +181,13 @@ export function registerNativeControls(
 		}
 	});
 
-	ipcMain.handle("is-native-windows-capture-available", async () => {
+	ipcMain.handle("is-native-windows-capture-available", async (event) => {
+		if (!isTrustedRenderer(event)) throw new Error("Untrusted recording caller");
 		return { available: await isNativeWindowsCaptureAvailable() };
 	});
 
-	ipcMain.handle("get-last-native-capture-diagnostics", async () => {
+	ipcMain.handle("get-last-native-capture-diagnostics", async (event) => {
+		if (!isTrustedRenderer(event)) throw new Error("Untrusted recording caller");
 		return { success: true, diagnostics: lastNativeCaptureDiagnostics };
 	});
 

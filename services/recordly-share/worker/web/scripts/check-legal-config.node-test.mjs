@@ -36,3 +36,13 @@ test("reviewed publication config does not require a public personal name", () =
 	const result = run(reviewed);
 	assert.equal(result.status, 0, result.stderr);
 });
+
+test("publication validates the same trimmed detail values as the legal pages", () => {
+	const result = run({ ...reviewed,
+		PUBLIC_LEGAL_SUPPORT_EMAIL: " support@recordly.dev ",
+		PUBLIC_LEGAL_PROCESSING_LOCATIONS: " Australia ",
+		PUBLIC_LEGAL_EFFECTIVE_DATE: " 2026-10-19 ",
+	});
+	assert.equal(result.status, 0, result.stderr);
+	assert.equal(run({ ...reviewed, PUBLIC_LEGAL_APPROVED: " true " }).status, 1);
+});

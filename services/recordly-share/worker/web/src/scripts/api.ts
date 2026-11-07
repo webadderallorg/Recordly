@@ -190,7 +190,12 @@ export async function postComment(
     body: JSON.stringify({ timestamp, text }),
   });
   if (res.status === 429) throw new CommentRateLimitError();
-  if (res.status === 401) throw new CommentSignInError();
+  if (res.status === 401) {
+    const data = await res.json().catch(() => null);
+    if (data?.error === 'Password required')
+      throw new Error('This recording needs its password again. Reload the page to unlock it. Your draft is saved here.');
+    throw new CommentSignInError();
+  }
   if (res.status === 422) throw new Error('Choose a display name before commenting.');
   if (res.status === 403) throw new Error('New comments are unavailable. The creator may have disabled feedback or your account may need verification. Your draft is saved here.');
   if (!res.ok) throw new Error('Could not post your comment. Your draft is saved here—please try again.');

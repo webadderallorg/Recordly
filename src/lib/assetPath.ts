@@ -197,7 +197,12 @@ function isBundledAssetPath(asset: string): boolean {
 export async function getRenderableVideoUrl(asset: string): Promise<string> {
 	const serverPath = getLocalMediaServerPath(asset);
 	if (serverPath) return resolveLocalMediaUrl(serverPath);
-	const localFilePath = toLocalFilePath(asset);
+	let localFilePath: string | null = null;
+	try {
+		localFilePath = toLocalFilePath(asset);
+	} catch {
+		// Malformed persisted file URLs retain the pass-through behavior below.
+	}
 	if (localFilePath) return resolveLocalMediaUrl(localFilePath);
 	if (
 		!asset ||

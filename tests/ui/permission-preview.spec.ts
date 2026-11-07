@@ -72,6 +72,7 @@ test("dev simulation resets granted rows and uses their normal Allow buttons", a
 			return { success: true };
 		};
 	});
+	await page.clock.install();
 	await page.goto("/?windowType=onboarding&onboardingPreview=1");
 	const onboarding = page.getByRole("dialog", { name: "Welcome to Recordly" });
 	await onboarding.getByRole("button", { name: "Continue", exact: true }).click();
@@ -88,7 +89,7 @@ test("dev simulation resets granted rows and uses their normal Allow buttons", a
 	await expect(start).toBeDisabled();
 	// Automatic status refresh must not undo the reset before the user clicks a row.
 	await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-	await page.waitForTimeout(3100);
+	await page.clock.runFor(3100);
 	await expect(onboarding.getByRole("button", { name: "Allow Screen Recording", exact: true })).toBeVisible();
 	await expect(onboarding.getByRole("button", { name: "Allow Accessibility", exact: true })).toBeVisible();
 	await onboarding.getByRole("button", { name: "Allow Screen Recording", exact: true }).click();

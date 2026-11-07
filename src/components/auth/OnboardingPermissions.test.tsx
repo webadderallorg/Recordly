@@ -134,7 +134,7 @@ it("keeps a failed permission request visible through successful status polls an
 	await flush();
 	expect(alert()).toBeUndefined();
 });
-it("allows completion after permissions recover without silently removing the failed-request report", async () => {
+it("clears a stale failed-request report after status checks verify all permissions recovered", async () => {
 	render();
 	await flush();
 	render();
@@ -149,9 +149,7 @@ it("allows completion after permissions recover without silently removing the fa
 	await flush();
 	const tree = render();
 	expect(tree.find((node) => node.type === "primary")?.props.isDisabled).toBe(false);
-	expect(tree.find((node) => node.props?.role === "alert")?.props.children[0]).toBe(
-		"permissionFailed",
-	);
+	expect(tree.find((node) => node.props?.role === "alert")).toBeUndefined();
 });
 it("clears a status-check error when the permission service recovers", async () => {
 	vi.mocked(window.electronAPI.getScreenRecordingPermissionStatus).mockRejectedValueOnce(

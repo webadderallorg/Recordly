@@ -71,7 +71,7 @@ export function createAuthCallbackController({
 						["", "about:blank"].includes(owner.getURL())),
 				hasVerifier: async (key) => (await readNativeAuthStorageValue(key)) !== null,
 				deliver: (owner, url) => {
-				if (closed || owner.isDestroyed()) return false;
+					if (closed || owner.isDestroyed()) return false;
 					const pending = pendingByOwner.get(owner) ?? [];
 					if (!pending.includes(url)) {
 						if (pending.length >= 8) return false;
@@ -270,8 +270,9 @@ export function createAuthCallbackController({
 				);
 			};
 			if (relay)
-				void route(appUrl.href).then((result) =>
-					finish(result === "unavailable" || result === "invalid"),
+				void route(appUrl.href).then(
+					(result) => finish(result === "unavailable" || result === "invalid"),
+					() => finish(true),
 				);
 			else {
 				dispatch(appUrl.href);

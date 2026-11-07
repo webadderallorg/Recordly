@@ -72,7 +72,7 @@ test("Stop opens the loading editor while native finalization is pending", async
 	await expect(editor.locator(".loading-recordly-mark")).toBeVisible();
 	await expect(page.locator("html")).toHaveAttribute("data-native-stop-pending", "true");
 	await editor.screenshot({
-		path: "/tmp/recordly-editor-finalization-20261105/loading-editor.png",
+		path: test.info().outputPath("loading-editor.png"),
 	});
 	await page.evaluate(() => window.dispatchEvent(new Event("release-native-stop")));
 	await expect(editor.getByRole("navigation", { name: "Editor tools" })).toBeVisible();

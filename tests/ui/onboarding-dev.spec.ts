@@ -12,11 +12,12 @@ for (const signedIn of [false, true]) {
 				window.location.assign("/?windowType=hud-overlay");
 			};
 		});
+		await page.clock.install();
 		await page.goto("/?windowType=onboarding");
 		await page.getByRole("button", { name: "Skip onboarding", exact: true }).click();
 		await expect(page.getByRole("group", { name: "Recording setup", exact: true })).toBeVisible();
-		// Allow startup auth and permission checks to settle before asserting no redirect.
-		await page.waitForTimeout(500);
+		// Run startup timers before asserting that preview never opens permissions.
+		await page.clock.runFor(1000);
 		await expect(page.locator("html")).not.toHaveAttribute("data-permissions-opened");
 		// Skipping the tour does not allow an actual recording without the required access.
 		await page.getByRole("button", { name: "Record", exact: true }).click();

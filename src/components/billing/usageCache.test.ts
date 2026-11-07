@@ -113,3 +113,15 @@ it("restores native settings even when the renderer has a different browser stor
 	expect(readUsageCache(endpoint, "first")).toEqual(snapshot);
 	expect(readUsageCache(endpoint, "second")).toBeNull();
 });
+
+it.each([
+	{ ...snapshot, updatedAt: snapshot.updatedAt - 31 * 86400_000 },
+	{ ...snapshot, version: 2 },
+])("uses a valid browser snapshot when the native snapshot is invalid: %j", (native) => {
+	vi.stubGlobal("electronAPI", {
+		getAppSetting: () => native,
+		setAppSetting: () => false,
+	});
+	writeUsageCache(endpoint, "first", snapshot);
+	expect(readUsageCache(endpoint, "first")).toEqual(snapshot);
+});
