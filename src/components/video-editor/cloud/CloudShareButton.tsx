@@ -1,5 +1,6 @@
 import {
 	checkShareCapacity,
+	notifyShareCapacityChanged,
 	RECORDING_LIMIT_MESSAGE,
 	subscribeShareCapacityChanges,
 } from "./shareCapacity";
@@ -212,9 +213,10 @@ export function CloudShareButton({
 			}
 			setProgress(100);
 			setShareUrl(result.shareUrl);
+			notifyShareCapacityChanged();
 			if (projectPath) {
 				try {
-					saveProjectShareLink(projectPath, result.shareUrl);
+					saveProjectShareLink(projectPath, result.shareUrl, { accountId });
 				} catch {
 					toast.error("Share created, but its link could not be saved locally");
 				}
@@ -229,7 +231,7 @@ export function CloudShareButton({
 			setUploadId(undefined);
 			activeUploadId.current = undefined;
 		}
-	}, [projectPath, authToken, filePath, notes, prepareFile, projectTitle, t]);
+	}, [projectPath, accountId, authToken, filePath, notes, prepareFile, projectTitle, t]);
 
 	const handleCancel = useCallback(async () => {
 		cancelRequestedRef.current = true;

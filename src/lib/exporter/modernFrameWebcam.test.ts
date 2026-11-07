@@ -446,4 +446,35 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 			});
 		}
 	});
+	it("keeps a resizing blur canvas texture dynamic across export frames", () => {
+		const renderer = createRenderer();
+		renderer.config.webcam = { ...DEFAULT_WEBCAM_OVERLAY, enabled: true };
+		renderer.currentVideoTime = 0;
+		renderer.webcamMedia.webcamVideoElement = {
+			currentTime: 0, readyState: 2, seeking: false, videoWidth: 640,
+			videoHeight: 360, duration: Number.NaN,
+		};
+		renderer.scene.webcamRootContainer = {
+			visible: false, addChild: vi.fn(), position: { set: vi.fn() },
+		};
+		renderer.scene.webcamContainer = { addChildAt: vi.fn() };
+		renderer.scene.webcamMaskGraphics = {};
+		renderer.motion.animationState = { appliedScale: 1 };
+		const canvas = createMockCanvas();
+		canvas.width = 100;
+		canvas.height = 100;
+		vi.spyOn(renderer.webcam.webcamMotionBlur, "render").mockReturnValue({
+			canvas, x: 0, y: 0,
+		});
+		renderer.webcam.updateWebcamOverlay();
+		const sprite = renderer.webcam.webcamBlurSprite;
+		expect(sprite).toBeTruthy();
+		expect(sprite?.texture.dynamic).toBe(true);
+		canvas.width = 160;
+		canvas.height = 120;
+		renderer.webcam.updateWebcamOverlay();
+		expect(renderer.webcam.webcamBlurSprite).toBe(sprite);
+		expect(sprite?.texture.source.update).toHaveBeenCalledOnce();
+	});
+
 });

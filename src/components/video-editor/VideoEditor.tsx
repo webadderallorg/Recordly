@@ -1,4 +1,5 @@
 /* biome-ignore-all lint/correctness/useExhaustiveDependencies: setters returned by the editor's domain-state hooks are stable React dispatchers. */
+import { BillingProvider } from "@/components/billing/BillingProvider";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
@@ -22,6 +23,14 @@ import { useTimelineState } from "./state/useTimelineState";
 import { useNvidiaCudaExportOptIn } from "./useNvidiaCudaExportOptIn";
 
 export default function VideoEditor() {
+	return (
+		<BillingProvider>
+			<VideoEditorContent />
+		</BillingProvider>
+	);
+}
+
+function VideoEditorContent() {
 	const { t } = useI18n();
 	const smokeExportConfig = useMemo(
 		() => getSmokeExportConfig(typeof window === "undefined" ? "" : window.location.search),

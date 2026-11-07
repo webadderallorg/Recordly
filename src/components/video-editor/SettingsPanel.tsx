@@ -991,7 +991,6 @@ export function SettingsPanel({
 	whisperModelDownloadProgress = 0,
 	isGeneratingCaptions = false,
 	onAutoCaptionSettingsChange,
-	onPickWhisperModel,
 	onGenerateAutoCaptions,
 	onClearAutoCaptions,
 	onDownloadWhisperSmallModel,
@@ -2015,18 +2014,6 @@ export function SettingsPanel({
 			</div>
 
 			<div className="py-2 space-y-3">
-				{advanced && (
-					<div>
-						<Button
-							type="button"
-							variant="outline"
-							onClick={onPickWhisperModel}
-							className="h-9 w-full px-4 text-sm"
-						>
-							{tSettings("captions.useCustomModel", "Use custom")}
-						</Button>
-					</div>
-				)}
 				<div className="flex items-center justify-between gap-3">
 					<div className="text-sm font-medium text-foreground">
 						{tSettings("captions.language", "Language")}

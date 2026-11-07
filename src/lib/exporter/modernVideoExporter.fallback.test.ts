@@ -110,6 +110,134 @@ describe("ModernVideoExporter native fallback routing", () => {
 		expect(initialize).toHaveBeenCalledTimes(scenario === "success" ? 0 : 1);
 		expect(exporterInternals(exporter).session.config.bitrate).toBe(6_000_000);
 	});
+	it.each(
+		[
+			{
+				name: "cloud",
+				platform: "MacIntel",
+				backendPreference: "webcodecs",
+				deliveryProfile: "cloud",
+				staticRoute: false,
+			},
+			{
+				name: "platform auto",
+				platform: "MacIntel",
+				backendPreference: "auto",
+				staticRoute: false,
+			},
+			{
+				name: "auto software escalation",
+				platform: "Linux x86_64",
+				backendPreference: "auto",
+				staticRoute: false,
+			},
+			{
+				name: "Breeze static",
+				platform: "Linux x86_64",
+				backendPreference: "breeze",
+				staticRoute: true,
+			},
+			{
+				name: "experimental static",
+				platform: "Linux x86_64",
+				backendPreference: "webcodecs",
+				experimentalNvidiaCudaExport: true,
+				staticRoute: true,
+			},
+		].flatMap((scenario) =>
+			[undefined, false, true].map((forceSoftwareEncoding) => ({
+				...scenario,
+				forceSoftwareEncoding,
+			})),
+		),
+	)("respects forceSoftwareEncoding=$forceSoftwareEncoding across $name export routing", async ({
+		platform,
+		backendPreference,
+		deliveryProfile,
+		experimentalNvidiaCudaExport,
+		staticRoute,
+		forceSoftwareEncoding,
+	}) => {
+		vi.stubGlobal("navigator", { platform });
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#000000",
+			backendPreference,
+			preferredRenderBackend: "webgpu",
+			deliveryProfile,
+			experimentalNvidiaCudaExport,
+			forceSoftwareEncoding,
+		} as never);
+		const operations = exporterInternals(exporter).operations;
+		const nativeStart = vi
+			.spyOn(operations, "tryStartNativeVideoExport")
+			.mockResolvedValue(true);
+		const staticLayout = vi
+			.spyOn(operations, "tryExportNativeStaticLayout")
+			.mockResolvedValue({ success: true, tempFilePath: "/tmp/static.mp4" });
+		vi.spyOn(operations, "loadNativeStaticLayoutVideoInfo").mockResolvedValue(mocks.videoInfo);
+		vi.spyOn(operations, "finishNativeVideoExport").mockResolvedValue({
+			success: true,
+			tempFilePath: "/tmp/native.mp4",
+		});
+		const initialize = vi
+			.spyOn(operations, "initializeEncoder")
+			.mockResolvedValue({ codec: "avc1.640033", hardwareAcceleration: "prefer-software" });
+		const result = await exporter.export();
+		expect(result.success).toBe(true);
+		if (forceSoftwareEncoding) {
+			expect(nativeStart).not.toHaveBeenCalled();
+			expect(staticLayout).not.toHaveBeenCalled();
+			expect(initialize).toHaveBeenCalledOnce();
+			const { FrameRenderer } = await import("./modernFrameRenderer");
+			expect(FrameRenderer).toHaveBeenCalledWith(
+				expect.objectContaining({
+					width: 1920,
+					height: 1080,
+					preferredRenderBackend: "webgpu",
+				}),
+			);
+		} else {
+			expect(staticLayout).toHaveBeenCalledTimes(staticRoute ? 1 : 0);
+			expect(nativeStart).toHaveBeenCalledTimes(staticRoute ? 0 : 1);
+		}
+		expect(exporterInternals(exporter).session.config.bitrate).toBe(8_000_000);
+	});
+	it("fails forced software cleanly when software WebCodecs is unavailable without retrying native hardware", async () => {
+		vi.stubGlobal("navigator", { platform: "Linux x86_64" });
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#000000",
+			backendPreference: "auto",
+			forceSoftwareEncoding: true,
+		} as never);
+		const operations = exporterInternals(exporter).operations;
+		const nativeStart = vi
+			.spyOn(operations, "tryStartNativeVideoExport")
+			.mockResolvedValue(true);
+		const staticLayout = vi.spyOn(operations, "tryExportNativeStaticLayout");
+		vi.spyOn(operations, "initializeEncoder").mockRejectedValue(
+			new Error("Software encoder unavailable"),
+		);
+		vi.spyOn(operations, "finishNativeVideoExport").mockResolvedValue({
+			success: true,
+			tempFilePath: "/tmp/native.mp4",
+		});
+		const result = await exporter.export();
+		expect(result.success).toBe(false);
+		expect(result.error).toContain("Software encoder unavailable");
+		expect(nativeStart).not.toHaveBeenCalled();
+		expect(staticLayout).not.toHaveBeenCalled();
+	});
+
 	it("removes failed native writes without creating an unhandled rejection", async () => {
 		const exporter = new ModernVideoExporter({} as never);
 		const write = Promise.reject(new Error("Native write failed"));
