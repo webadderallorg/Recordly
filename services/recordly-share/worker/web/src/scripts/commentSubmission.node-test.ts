@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { CommentRateLimitError, CommentSignInError, postComment, fetchComments, signOutFromComments, updateOwnComment, deleteOwnComment } from './api.ts';
+import { CommentRateLimitError, CommentSignInError, commentAccessTokenForAccount, postComment, fetchComments, fetchCommentsForViewer, signOutFromComments, updateOwnComment, deleteOwnComment } from './api.ts';
 import { commentDisplayName, commentProfileName, saveCommentReturn, takeCommentReturn } from './commentAuth.ts';
 
 const originalFetch = globalThis.fetch;
@@ -79,6 +79,57 @@ test('ownership-aware lists carry only the current access token', async () => {
     return Response.json({ comments: [{ id: 1, can_manage: true }], total: 1, page: 2, limit: 50 });
   };
   assert.equal((await fetchComments('fixture', 2, 50, 'current-account')).comments[0].can_manage, true);
+});
+
+test('public lists survive a failed optional token refresh without inheriting management rights', async () => {
+  let requests = 0;
+  globalThis.fetch = async (url, init) => {
+    requests++;
+    assert.equal(String(url), '/s/fixture/comments?page=2&limit=50');
+    assert.equal(new Headers(init?.headers).has('Authorization'), false);
+    return Response.json({ comments: [{ id: 1, text: 'Public feedback', can_manage: true }], total: 1, page: 2, limit: 50 });
+  };
+  const result = await fetchCommentsForViewer('fixture', 2, 50, {
+    key: 'old-account', displayName: 'Member', getAccessToken: async () => { throw new Error('Refresh unavailable'); },
+  });
+  assert.equal(requests, 1);
+  assert.equal(result.ownershipKey, undefined);
+  assert.equal(result.comments[0].text, 'Public feedback');
+  assert.equal(result.comments[0].can_manage, false);
+});
+
+test('successful cloud and local-cookie viewers retain only their resolved ownership scope', async () => {
+  for (const token of ['current-token', undefined]) {
+    globalThis.fetch = async (_url, init) => {
+      assert.equal(new Headers(init?.headers).get('Authorization'), token ? `Bearer ${token}` : null);
+      assert.equal(init?.credentials, 'include');
+      return Response.json({ comments: [{ id: 1, can_manage: true }], total: 1 });
+    };
+    const result = await fetchCommentsForViewer('fixture', 1, 50, {
+      key: token ? 'cloud-account' : 'local:fixture@example.test', displayName: 'Member', getAccessToken: async () => token,
+    });
+    assert.equal(result.ownershipKey, token ? 'cloud-account' : 'local:fixture@example.test');
+    assert.equal(result.comments[0].can_manage, true);
+  }
+});
+
+test('anonymous fallback still reports actual public-read failures', async () => {
+  globalThis.fetch = async () => new Response('{}', { status: 503 });
+  await assert.rejects(fetchCommentsForViewer('fixture', 1, 50, {
+    key: 'old-account', displayName: 'Member', getAccessToken: async () => { throw new Error('Refresh unavailable'); },
+  }), /Could not load comments/);
+});
+
+test('a captured comment account never returns another account token after a session switch', () => {
+  const session = (id: string, token: string) => ({ user: { id }, access_token: token });
+  assert.equal(commentAccessTokenForAccount('account-a', { data: { session: session('account-a', 'token-a') } }), 'token-a');
+  assert.equal(commentAccessTokenForAccount('account-a', { data: { session: session('account-a', 'refreshed-token-a') } }), 'refreshed-token-a');
+  for (const result of [
+    { data: { session: session('account-b', 'token-b') } },
+    { data: { session: null } },
+    { error: new Error('Refresh failed'), data: { session: session('account-a', 'token-a') } },
+    { data: { session: session('account-a', '') } },
+  ]) assert.throws(() => commentAccessTokenForAccount('account-a', result), /Sign in again.*draft is saved/);
 });
 
 

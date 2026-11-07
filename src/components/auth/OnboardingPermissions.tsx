@@ -33,7 +33,9 @@ export function OnboardingPermissions({
 	const [accessibilityGranted, setAccessibilityGranted] = useState(false);
 	const [simulatedMissing, setSimulatedMissing] = useState({ screen: false, accessibility: false });
 	const [busy, setBusy] = useState<string>();
-	const [error, setError] = useState<string>();
+	const [statusError, setStatusError] = useState<string>();
+	const [requestError, setRequestError] = useState<string>();
+	const error = requestError ?? statusError;
 	const mounted = useRef(false);
 	const refreshing = useRef(false);
 	const canSimulate = import.meta.env.DEV && preview;
@@ -42,7 +44,7 @@ export function OnboardingPermissions({
 		screen: screenGranted && !(canSimulate && simulatedMissing.screen),
 		accessibility: accessibilityGranted && !(canSimulate && simulatedMissing.accessibility),
 	};
-	const canFinish = !error && platform !== "checking" &&
+	const canFinish = !statusError && platform !== "checking" &&
 		(platform !== "mac" || (granted.screen && granted.accessibility && !busy));
 	useLayoutEffect(() => {
 		onReadyChange?.(canFinish);
@@ -59,7 +61,7 @@ export function OnboardingPermissions({
 			if (!screen?.success || !accessibility?.success) throw new Error(t("checkFailed"));
 			setScreenGranted(screen.status === "granted");
 			setAccessibilityGranted(accessibility.trusted);
-			setError(undefined);
+			setStatusError(undefined);
 		} finally {
 			refreshing.current = false;
 		}
@@ -76,7 +78,7 @@ export function OnboardingPermissions({
 				if (!disposed) setPlatform(mac ? "mac" : "other");
 			} catch {
 				if (!disposed) {
-					setError(t("checkFailed"));
+					setStatusError(t("checkFailed"));
 					setPlatform("mac");
 				}
 			}
@@ -91,7 +93,7 @@ export function OnboardingPermissions({
 		if (platform !== "mac") return;
 		const check = () => {
 			void refresh().catch(() => {
-				if (mounted.current) setError(t("checkFailed"));
+				if (mounted.current) setStatusError(t("checkFailed"));
 			});
 		};
 		const visible = () => {
@@ -128,9 +130,10 @@ export function OnboardingPermissions({
 				if (!result.success) throw new Error(t("openSettingsFailed"));
 			}
 			await refresh();
+			setRequestError(undefined);
 			if (testSetup) setSimulatedMissing((current) => ({ ...current, [permission]: false }));
 		} catch {
-			setError(t("permissionFailed"));
+			setRequestError(t("permissionFailed"));
 		} finally {
 			setBusy(undefined);
 		}
@@ -142,7 +145,7 @@ export function OnboardingPermissions({
 			aria-busy={platform === "checking"}
 		>
 			<PermissionsConfetti
-				ready={platform === "mac" && granted.screen && granted.accessibility && !error}
+				ready={platform === "mac" && granted.screen && granted.accessibility && !statusError}
 			/>
 			<OnboardingBody>
 				<OnboardingHeader
@@ -161,7 +164,8 @@ export function OnboardingPermissions({
 							isDisabled={platform === "checking" || Boolean(busy)}
 							onPress={() => {
 								setSimulatedMissing({ screen: true, accessibility: true });
-								setError(undefined);
+								setStatusError(undefined);
+								setRequestError(undefined);
 							}}
 						>
 							{t("simulatePermissions", "Simulate permissions")}

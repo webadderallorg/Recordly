@@ -27,6 +27,7 @@ import { moveFileWithOverwrite } from "../utils";
 import { emitRecordingInterrupted } from "./events";
 import { parseNativeCaptureInterruption } from "./interruption";
 import { validateRecordedVideo } from "./diagnostics";
+import { attachNativeCaptureStdinLifecycle } from "./nativeCaptureCommand";
 
 const WINDOWS_CAPTURE_STOP_TIMEOUT_MS = 45_000;
 
@@ -122,7 +123,12 @@ export function waitForWindowsCaptureStop(
 	proc: ChildProcessWithoutNullStreams,
 	timeoutMs = WINDOWS_CAPTURE_STOP_TIMEOUT_MS,
 ) {
+	const stdinState = attachNativeCaptureStdinLifecycle(proc);
 	return new Promise<string>((resolve, reject) => {
+		if (stdinState.error) {
+			reject(stdinState.error);
+			return;
+		}
 		let settled = false;
 		const finish = (callback: () => void) => {
 			if (settled) return;
@@ -174,10 +180,12 @@ export function waitForWindowsCaptureStop(
 		const cleanup = () => {
 			clearTimeout(timer);
 			proc.off("close", onClose);
+			proc.stdin.off("error", onError);
 			proc.off("error", onError);
 		};
 
 		proc.once("close", onClose);
+		proc.stdin.once("error", onError);
 		proc.once("error", onError);
 	});
 }
@@ -186,6 +194,7 @@ export function attachWindowsCaptureLifecycle(
 	proc: ChildProcessWithoutNullStreams,
 	onInterrupted?: () => void,
 ) {
+	attachNativeCaptureStdinLifecycle(proc);
 	proc.once("close", () => {
 		if (windowsCaptureProcess && windowsCaptureProcess !== proc) return;
 		const wasActive = windowsNativeCaptureActive;

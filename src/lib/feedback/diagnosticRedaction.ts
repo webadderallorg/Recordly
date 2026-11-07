@@ -40,19 +40,15 @@ function redactTokens(value: string): string {
 }
 
 export function redactDiagnostic(value: string): string {
-	return redactTokens(value.replace(/Bearer\s+[^\s"']+/gi, "Bearer [redacted]"))
+	return redactTokens(value.replace(/\b(Bearer|Basic)\s+[^\s"']+/gi, "$1 [redacted]"))
 		.replace(/recordly(?:-dev)?:\/\/[^\s"']+/gi, "[auth callback]")
 		.replace(
-			/((?:code[_-]?verifier|code[_-]?challenge|authorization[_-]?code|captcha(?:[_-]?response)?|otp)["']?\s*[:=]\s*)[^\s,}]+/gi,
-			"$1[redacted]",
-		)
-		.replace(
-			/((?:token|password|secret|authorization|api[_-]?key)["']?\s*[:=]\s*)[^\s,}]+/gi,
+			/((?:code[_-]?verifier|code[_-]?challenge|authorization[_-]?code|captcha(?:[_-]?response)?|otp|token|password|secret|authorization|api[_-]?key)["']?\s*[:=]\s*)(?:(?:Bearer|Basic)\s+)?(?:"(?:\\.|[^"\\])*(?:"|$)|'(?:\\.|[^'\\])*(?:'|$)|[^\s,}]+)/gi,
 			"$1[redacted]",
 		)
 		.replace(/(?<![A-Z0-9._%+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
 		.replace(
-			/(?:file:\/\/[^\s"']*|(?:\/Users\/|\/home\/|\/Volumes\/|\/private\/|\/tmp\/|\/var\/|[A-Z]:[\\/]|\\\\)[^\r\n"']+)/gi,
+			/(?:file:\/\/[^\s"']*|(?:\/Users\/|\/home\/|\/Volumes\/|\/private\/|\/tmp\/|\/var\/|\/run\/media\/|\/media\/|\/mnt\/|[A-Z]:[\\/]|\\\\)[^\r\n"']+)/gi,
 			"[local path]",
 		)
 		.replace(/https?:\/\/[^\s"']+/g, "[url]")

@@ -107,11 +107,24 @@ export async function stopMacCapture() {
 		return await finalizeStoredVideo(finalVideoPath);
 	} catch (error) {
 		console.error("Failed to stop native ScreenCaptureKit recording:", error);
-		if (error instanceof NativeCaptureStopTimeoutError && error.captureStillRunning) {
+		if (
+			nativeCaptureProcess ||
+			(error instanceof NativeCaptureStopTimeoutError && error.captureStillRunning)
+		) {
 			// kill() is only a request. Keep the process/path reservation until
 			// its actual close; recovery must not inspect a live writer's MP4.
 			// Let the normal interruption lifecycle handle an eventual late close.
 			setNativeCaptureStopRequested(false);
+			// A failed pipe write does not confirm process exit. Ask it to terminate,
+			// then leave paths/ownership reserved for the close lifecycle and recovery.
+			if (!(error instanceof NativeCaptureStopTimeoutError)) {
+				try {
+					if (nativeCaptureProcess && !nativeCaptureProcess.killed)
+						nativeCaptureProcess.kill("SIGTERM");
+				} catch {
+					// A refused signal must not release a live writer's reservation.
+				}
+			}
 			return {
 				success: false,
 				message: "The capture helper has not exited.",

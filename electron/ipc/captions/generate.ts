@@ -345,17 +345,22 @@ async function generateCaptionsForSource(
 		// Whisper cues run sentences together and don't break on pauses. Re-segment them
 		// into one caption per sentence/phrase using Whisper's own word stream (punctuation
 		// + pauses), backed by ground-truth acoustic silence (ffmpeg `silencedetect`).
-		// Failure here must not block caption generation — fall back to raw.
+		// Optional acoustic detection must not erase timing-based phrase boundaries.
 		let cuesToReturn = cues;
 		try {
 			const silences = await detectSilenceIntervals({ ffmpegPath, wavPath });
 			// An empty result is a valid resegmentation (e.g. every transcribed word fell
 			// inside a long detected silence and was dropped as a hallucination), so take it
-			// as-is. Only a thrown exception should fall back to the raw cues.
+			// as-is. Only a thrown exception should use timing-only segmentation.
 			cuesToReturn = segmentCuesIntoPhrases(cues, silences);
 		} catch (error) {
+			try {
+				cuesToReturn = segmentCuesIntoPhrases(cues, []);
+			} catch {
+				// Keep the transcript if segmentation itself is unavailable too.
+			}
 			console.warn(
-				"[auto-captions] Silence-aware re-segmentation failed, using raw cues:",
+				"[auto-captions] Silence-aware re-segmentation failed, keeping available phrase boundaries:",
 				error,
 			);
 		}

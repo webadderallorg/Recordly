@@ -193,7 +193,9 @@ export function useExportDialogActions({
 		}
 
 		const errorMessage =
-			translate("notifications.saveVideoFailed", "Failed to save video") +
+			(pendingSave.fileName.toLowerCase().endsWith(".gif")
+				? translate("notifications.saveGifFailed", "Failed to save GIF")
+				: translate("notifications.saveVideoFailed", "Failed to save video")) +
 			(saveResult.message ? `: ${saveResult.message}` : "");
 		recordExportDiagnostic("save-failed", { error: errorMessage });
 		session.setExportError(errorMessage);

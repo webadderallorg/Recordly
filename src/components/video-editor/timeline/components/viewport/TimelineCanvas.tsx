@@ -255,6 +255,7 @@ export default function TimelineCanvas({
 		rangeEnd: range.end,
 		videoDurationMs,
 		zoomQuickAddEnabled:
+			isLoading ||
 			autoZoomsDismissed ||
 			!onApplyAutoZooms ||
 			items.some((item) => item.rowId === ZOOM_ROW_ID),

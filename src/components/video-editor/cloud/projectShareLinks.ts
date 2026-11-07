@@ -1,16 +1,20 @@
-import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
+import { saveAppSetting } from "@/lib/appSettings";
 import type { EditorProjectData } from "../projectPersistence";
 
 const KEY = "recordly.project-share-links.v1";
 // A confirmed remote deletion must stay hidden even if native settings cannot be updated.
 const deletedShareUrls = new Set<string>();
-function hasNativeSettingsApi() {
+type NativeSettingsApi = Pick<Window["electronAPI"], "getAppSetting" | "setAppSetting"> &
+	Partial<Pick<Window["electronAPI"], "getAppSettingWithStatus">>;
+function getNativeSettingsApi(): NativeSettingsApi | null {
 	const api = (
 		globalThis as typeof globalThis & {
-			electronAPI?: { getAppSetting?: unknown; setAppSetting?: unknown };
+			electronAPI?: NativeSettingsApi;
 		}
 	).electronAPI;
-	return typeof api?.getAppSetting === "function" && typeof api?.setAppSetting === "function";
+	return typeof api?.getAppSetting === "function" && typeof api?.setAppSetting === "function"
+		? api
+		: null;
 }
 export type ProjectShareLink = {
 	url: string;
@@ -19,52 +23,68 @@ export type ProjectShareLink = {
 	accountId?: string;
 };
 function readLinks(): Record<string, ProjectShareLink> {
-	try {
+	const api = getNativeSettingsApi();
+	let missingNativeKey = false;
+	let stored: unknown;
+	if (api) {
 		// Packaged windows receive a new loopback origin on each launch. Native
 		// settings keep links and their owner/revision metadata across those origins.
-		const native = loadAppSetting<unknown>(KEY);
-		const stored = native ?? JSON.parse(localStorage.getItem(KEY) || "{}");
-		if (!stored || typeof stored !== "object" || Array.isArray(stored)) return {};
-		const links = Object.fromEntries(
-			Object.entries(stored).flatMap(([path, value]) => {
-				const raw = typeof value === "string" ? { url: value, sharedAt: 0 } : value;
-				if (!raw || typeof raw !== "object") return [];
-				const entry = raw as Record<string, unknown>;
-				if (
-					!entry ||
-					typeof entry !== "object" ||
-					typeof entry.url !== "string" ||
-					!/^https?:\/\//.test(entry.url) ||
-					deletedShareUrls.has(entry.url)
-				)
-					return [];
-				return [
-					[
-						path,
-						{
-							url: entry.url,
-							sharedAt: typeof entry.sharedAt === "number" ? entry.sharedAt : 0,
-							...(typeof entry.revision === "string"
-								? { revision: entry.revision }
-								: {}),
-							...(typeof entry.accountId === "string"
-								? { accountId: entry.accountId }
-								: {}),
-						},
-					],
-				];
-			}),
-		);
-		// Migrate an existing browser-origin snapshot once. An empty native map is
-		// authoritative too, so deleted links cannot reappear from an older origin.
-		if (native === null) saveAppSetting(KEY, links);
-		return links;
-	} catch {
-		return {};
+		let result: ReturnType<Window["electronAPI"]["getAppSettingWithStatus"]>;
+		try {
+			if (typeof api.getAppSettingWithStatus !== "function") throw new Error();
+			result = api.getAppSettingWithStatus(KEY);
+		} catch {
+			throw new Error("Could not read share links from desktop settings");
+		}
+		if (result?.success !== true || typeof result.found !== "boolean")
+			throw new Error("Could not read share links from desktop settings");
+		missingNativeKey = !result.found;
+		// A present null value is an explicit empty native value, never permission
+		// to resurrect an older browser-origin snapshot.
+		stored = result.found
+			? (result.value ?? {})
+			: JSON.parse(localStorage.getItem(KEY) || "{}");
+	} else {
+		stored = JSON.parse(localStorage.getItem(KEY) || "{}");
 	}
+	if (!stored || typeof stored !== "object" || Array.isArray(stored))
+		throw new Error("Saved share links could not be read");
+	const links = Object.fromEntries(
+		Object.entries(stored).flatMap(([path, value]) => {
+			const raw = typeof value === "string" ? { url: value, sharedAt: 0 } : value;
+			if (!raw || typeof raw !== "object") return [];
+			const entry = raw as Record<string, unknown>;
+			if (
+				!entry ||
+				typeof entry !== "object" ||
+				typeof entry.url !== "string" ||
+				!/^https?:\/\//.test(entry.url) ||
+				deletedShareUrls.has(entry.url)
+			)
+				return [];
+			return [
+				[
+					path,
+					{
+						url: entry.url,
+						sharedAt: typeof entry.sharedAt === "number" ? entry.sharedAt : 0,
+						...(typeof entry.revision === "string" ? { revision: entry.revision } : {}),
+						...(typeof entry.accountId === "string"
+							? { accountId: entry.accountId }
+							: {}),
+					},
+				],
+			];
+		}),
+	);
+	// Migrate an existing browser-origin snapshot once. An empty native map is
+	// authoritative too, so deleted links cannot reappear from an older origin.
+	if (missingNativeKey && !saveAppSetting(KEY, links))
+		throw new Error("Could not migrate share links to desktop settings");
+	return links;
 }
 function writeLinks(links: Record<string, ProjectShareLink>) {
-	const nativeSettingsAvailable = hasNativeSettingsApi();
+	const nativeSettingsAvailable = getNativeSettingsApi() !== null;
 	const savedNatively = saveAppSetting(KEY, links);
 	try {
 		localStorage.setItem(KEY, JSON.stringify(links));
@@ -75,10 +95,22 @@ function writeLinks(links: Record<string, ProjectShareLink>) {
 		throw new Error("Could not save share links to desktop settings");
 }
 export function getProjectShare(path: string, accountId?: string): ProjectShareLink | undefined {
-	const entry = readLinks()[path];
-	return entry?.accountId && entry.accountId !== accountId ? undefined : entry;
+	try {
+		const entry = readLinks()[path];
+		return entry?.accountId && entry.accountId !== accountId ? undefined : entry;
+	} catch {
+		return undefined;
+	}
 }
 export function getProjectShareLink(path: string): string | undefined {
+	try {
+		return getProjectShareLinkStrict(path);
+	} catch {
+		return undefined;
+	}
+}
+/** Destructive eligibility must distinguish an absent link from unreadable storage. */
+export function getProjectShareLinkStrict(path: string): string | undefined {
 	return readLinks()[path]?.url;
 }
 export function isProjectShareStale(

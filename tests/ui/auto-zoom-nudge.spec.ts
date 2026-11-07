@@ -1,11 +1,24 @@
-import { expect, test } from "@playwright/test";
-import { installDesktopBridge } from "./bridge";
+import { expect, type Page, test } from "@playwright/test";
+import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+
+async function installAutoZoomBridge(page: Page) {
+	await installDesktopBridge(page, "filmstrip.mp4");
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.getCursorTelemetry = async () => ({
+			success: true,
+			samples: [
+				{ timeMs: 0, cx: 0.2, cy: 0.5, interactionType: "move" },
+				{ timeMs: 6000, cx: 0.8, cy: 0.5, interactionType: "move" },
+			],
+		});
+	});
+}
 
 test("auto zoom nudge repeats until a project edit, and stays dismissed after undo", async ({
 	page,
 }) => {
 	test.setTimeout(90000);
-	await installDesktopBridge(page, "filmstrip.mp4");
+	await installAutoZoomBridge(page);
 	await page.goto("/?windowType=editor");
 	const apply = page.getByRole("button", { name: "Apply auto zooms", exact: true });
 	await expect(apply).toBeVisible({ timeout: 20000 });
@@ -45,7 +58,7 @@ test("auto zoom nudge repeats until a project edit, and stays dismissed after un
 
 test("appearance edits also stop the auto zoom nudge", async ({ page }) => {
 	test.setTimeout(90000);
-	await installDesktopBridge(page, "filmstrip.mp4");
+	await installAutoZoomBridge(page);
 	await page.goto("/?windowType=editor");
 	const apply = page.getByRole("button", { name: "Apply auto zooms", exact: true });
 	await expect(apply).toHaveCSS("animation-duration", "3s", { timeout: 20000 });
@@ -58,7 +71,7 @@ test("appearance edits also stop the auto zoom nudge", async ({ page }) => {
 test("auto zoom nudge keeps repeating without an edit", async ({ page }) => {
 	test.setTimeout(90000);
 	await page.clock.install();
-	await installDesktopBridge(page, "filmstrip.mp4");
+	await installAutoZoomBridge(page);
 	await page.goto("/?windowType=editor");
 	const apply = page.getByRole("button", { name: "Apply auto zooms", exact: true });
 	await expect(apply).toHaveCSS("animation-duration", "3s", { timeout: 20000 });

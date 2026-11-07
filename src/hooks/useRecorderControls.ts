@@ -60,6 +60,8 @@ export function useRecorderControls(
 		| "recording"
 		| "paused"
 		| "webcamRecorder"
+		| "webcamStopResolver"
+		| "webcamStopPromise"
 		| "pauseMicFallbackRecorder"
 		| "markRecordingPaused"
 		| "setPaused"
@@ -95,6 +97,8 @@ export function useRecorderControls(
 		recording,
 		paused,
 		webcamRecorder,
+		webcamStopResolver,
+		webcamStopPromise,
 		pauseMicFallbackRecorder,
 		markRecordingPaused,
 		setPaused,
@@ -300,6 +304,10 @@ export function useRecorderControls(
 			webcamWriter.current = null;
 			screenWriter.current = null;
 
+			// The onstop handler is detached below, so settle every waiter explicitly.
+			webcamStopResolver.current?.(null);
+			webcamStopResolver.current = null;
+			webcamStopPromise.current = null;
 			if (webcamRecorder.current && webcamRecorder.current.state !== "inactive") {
 				webcamRecorder.current.ondataavailable = null;
 				webcamRecorder.current.onstop = null;
@@ -381,6 +389,8 @@ export function useRecorderControls(
 		webcamWriter,
 		screenWriter,
 		webcamRecorder,
+		webcamStopResolver,
+		webcamStopPromise,
 		webcamStartTime,
 		webcamTimeOffsetMs,
 		webcamStream,

@@ -124,6 +124,19 @@ it("keeps normal browser-preview persistence when no desktop bridge exists", asy
 	expect(values.has(project)).toBe(false);
 });
 
+it("never falls back to browser or memory credentials when explicit flow routing requires secure native storage", async () => {
+	vi.stubEnv("VITE_OAUTH_FLOW_ID_REDIRECTS", "true");
+	const native = bridge();
+	native.authStorageAvailable.mockResolvedValue(false);
+	values.set(project, "plaintext-session");
+	const auth = await storage(native);
+	await expect(auth.getItem(project)).rejects.toThrow();
+	await expect(auth.setItem(project, "must-not-save")).rejects.toThrow();
+	await expect(auth.removeItem(project)).rejects.toThrow();
+	expect(values.has(project)).toBe(false);
+	expect(native.authStorageSetItem).not.toHaveBeenCalled();
+});
+
 it("still supports desktop memory-only sign-in if browser storage is inaccessible", async () => {
 	const native = bridge();
 	native.authStorageAvailable.mockResolvedValue(false);

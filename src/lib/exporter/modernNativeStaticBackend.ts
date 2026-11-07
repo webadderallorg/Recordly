@@ -160,12 +160,22 @@ export async function exportNativeStaticLayout(
 	const sourceCrop = hooks.isDefaultCropRegion()
 		? null
 		: hooks.getNativeStaticLayoutSourceCrop(videoInfo);
-	const borderRadius = scalePreviewBorderRadius(
-		contentWidth,
-		contentHeight,
+	// Decide whether the video fills the frame before rounding for the encoder.
+	// Even-size rounding can otherwise turn a full-frame fit into a rounded inset.
+	const logicalBorderRadius = scalePreviewBorderRadius(
+		layout.croppedDisplayWidth,
+		layout.croppedDisplayHeight,
 		session.config.borderRadius ?? 0,
 		{ width: session.config.width, height: session.config.height },
 	);
+	const borderRadius =
+		logicalBorderRadius === 0
+			? 0
+			: scalePreviewBorderRadius(
+					contentWidth,
+					contentHeight,
+					session.config.borderRadius ?? 0,
+				);
 	const shadowIntensity = session.config.showShadow
 		? Math.min(1, Math.max(0, session.config.shadowIntensity))
 		: 0;

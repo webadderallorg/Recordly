@@ -1,5 +1,5 @@
 import { BrowserWindow } from "electron";
-import { registerAuthStorageHandlers } from "../authStorage";
+import { type AuthFlowStorageHooks, registerAuthStorageHandlers } from "../authStorage";
 import { registerAnnouncementHandlers } from "./register/announcements";
 import { registerAssetHandlers } from "./register/assets";
 import { registerCaptionHandlers } from "./register/captions";
@@ -64,6 +64,7 @@ export function registerIpcHandlers(
 	_getMainWindow: () => BrowserWindow | null,
 	getSourceSelectorWindow: () => BrowserWindow | null,
 	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
+	authFlowStorageHooks?: AuthFlowStorageHooks,
 ) {
 	const { pickSourceList } = registerSourceHandlers({
 		createEditorWindow,
@@ -73,7 +74,7 @@ export function registerIpcHandlers(
 	registerCapturePickerHandlers({ pickSourceList });
 	registerRecordingHandlers(onRecordingStateChange);
 	registerPermissionHandlers();
-	registerAuthStorageHandlers();
+	registerAuthStorageHandlers(authFlowStorageHooks);
 	registerClipboardHandlers();
 	registerAnnouncementHandlers();
 	registerAssetHandlers();

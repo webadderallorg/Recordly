@@ -290,6 +290,18 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			systemSidecarLoading,
 		]);
 		void sourceAudioTrackSettings;
+		const autoZoomSourceReady = Boolean(
+			videoPath &&
+				Number.isFinite(videoDuration) &&
+				videoDuration > 0 &&
+				(!videoSourcePath || cursorTelemetrySourcePath === videoSourcePath),
+		);
+		// The imperative toolbar action shares this runtime: never suggest regions
+		// from telemetry that belongs to a previous source while the new one loads.
+		const autoZoomTelemetry = useMemo(
+			() => (autoZoomSourceReady ? cursorTelemetry : []),
+			[autoZoomSourceReady, cursorTelemetry],
+		);
 
 		const {
 			keyframes,
@@ -321,7 +333,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			totalMs,
 			currentTimeMs,
 			safeMinDurationMs,
-			cursorTelemetry,
+			cursorTelemetry: autoZoomTelemetry,
 			zoomRegions,
 			onZoomAdded,
 			onZoomSuggested,
@@ -504,7 +516,11 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							videoDurationMs={totalMs}
 							currentTimeMs={currentTimeMs}
 							onSeek={onSeek}
-							onApplyAutoZooms={onZoomSuggested ? handleSuggestZooms : undefined}
+							onApplyAutoZooms={
+								onZoomSuggested && autoZoomTelemetry.length >= 2
+									? handleSuggestZooms
+									: undefined
+							}
 							onAddZoomAtMs={addZoomAtMs}
 							canPlaceZoomAtMs={canPlaceZoomAtMs}
 							onAddCaptionAtMs={addCaptionAtMs}

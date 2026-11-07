@@ -9,6 +9,7 @@ import {
 	NativeAudioPlan,
 } from "./legacyVideoExporterContext";
 import { getLocalFilePath } from "./localMediaSource";
+import { resolveSourceAudioFallbackPaths } from "./sourceAudioFallback";
 import { type DecodedVideoInfo } from "./streamingDecoder";
 
 export function getNativeVideoSourcePath(
@@ -65,6 +66,10 @@ export function buildNativeAudioPlan(
 	const localVideoSourcePath = context.getNativeVideoSourcePath();
 	const primaryAudioSourcePath =
 		(videoInfo.hasAudio ? localVideoSourcePath : null) ?? sourceAudioFallbackPaths[0] ?? null;
+	const hasSupplementalAudio =
+		Boolean(videoInfo.hasAudio) &&
+		resolveSourceAudioFallbackPaths(context.config.videoUrl, sourceAudioFallbackPaths)
+			.externalAudioPaths.length > 0;
 	const usesEmbeddedPrimaryAudio =
 		Boolean(videoInfo.hasAudio) && primaryAudioSourcePath === localVideoSourcePath;
 	const primaryAudioSourceSampleRate = usesEmbeddedPrimaryAudio
@@ -80,6 +85,7 @@ export function buildNativeAudioPlan(
 		speedRegions.length > 0 ||
 		audioRegions.length > 0 ||
 		sourceAudioFallbackPaths.length > 1 ||
+		hasSupplementalAudio ||
 		hasTimedSourceAudioFallback ||
 		hasNonDefaultSourceTrackSettings(context.config.sourceAudioTrackSettings) ||
 		hasClipSourceAudioOverrides(

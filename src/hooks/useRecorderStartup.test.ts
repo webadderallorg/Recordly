@@ -175,4 +175,23 @@ describe("recording startup coordination", () => {
 		expect(api.finishRecordingStartup).toHaveBeenCalledOnce();
 		expect(api.releaseRecordingStartup).toHaveBeenCalledWith("owner");
 	});
+	it.each([
+		false,
+		true,
+	])("preserves prepared sidecar filename identity through countdown (native fallback: %s)", async (nativeFallback) => {
+		const context = createContext();
+		context.recordingSessionTimestamp.current = 1000;
+		context.prepareRecordingStart.mockResolvedValue({
+			selectedSource: source,
+			useNativeMacScreenCapture: false,
+			useNativeWindowsCapture: nativeFallback,
+		});
+		vi.mocked(startNativeRecorder).mockResolvedValue("browser-fallback");
+		vi.spyOn(Date, "now").mockReturnValue(5000);
+		await start(context);
+		expect(api.startCountdown).toHaveBeenCalledOnce();
+		expect(context.recordingSessionTimestamp.current).toBe(1000);
+		expect(context.resetRecordingClock).toHaveBeenCalledWith(5000);
+		expect(startBrowserRecorder).toHaveBeenCalledWith(context, expect.any(Object));
+	});
 });

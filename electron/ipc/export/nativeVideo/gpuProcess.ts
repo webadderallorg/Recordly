@@ -290,6 +290,7 @@ export async function runExperimentalWindowsGpuStaticLayoutExport(
 	}>((resolve, reject) => {
 		const child = spawn(executablePath, args, {
 			stdio: ["ignore", "pipe", "pipe"],
+			windowsHide: true,
 		});
 		session.currentProcess = child;
 		if (session.terminating) {

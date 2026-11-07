@@ -30,21 +30,24 @@ export function recordAuthEvent(
 /** Select error fields explicitly. Never serialize sessions, request bodies or callback URLs. */
 export function describeAuthFailure(stage: AuthStage, error: unknown): string {
 	const lines = [`[auth] ${stage}: failed`];
+	const stacks: string[] = [];
 	let current = error;
 	for (let depth = 0; depth < 3 && current != null; depth++) {
 		if (depth) lines.push("Caused by:");
 		if (typeof current === "string") {
-			lines.push(redactDiagnostic(current));
+			lines.push(redactDiagnostic(current).slice(0, 300));
 			break;
 		}
 		if (typeof current !== "object") break;
 		try {
 			const detail = current as Record<string, unknown>;
-			for (const key of ["name", "code", "status", "message", "stack"] as const) {
+			for (const key of ["name", "code", "status", "message"] as const) {
 				const value = detail[key];
 				if (typeof value === "string" || (key === "status" && typeof value === "number"))
-					lines.push(`${key}: ${redactDiagnostic(String(value))}`);
+					lines.push(`${key}: ${redactDiagnostic(String(value)).slice(0, key === "message" ? 300 : 80)}`);
 			}
+			// Structured causes take priority over potentially long outer stacks.
+			if (typeof detail.stack === "string") stacks.push(redactDiagnostic(detail.stack));
 			current = detail.cause ?? detail.originalError;
 		} catch {
 			// Reporting an unusual thrown value must not replace the original failure.
@@ -52,7 +55,7 @@ export function describeAuthFailure(stage: AuthStage, error: unknown): string {
 			break;
 		}
 	}
-	return redactDiagnostic(lines.join("\n"));
+	return redactDiagnostic([...lines, ...stacks.map((stack) => `stack: ${stack}`)].join("\n"));
 }
 
 export function captureAuthFailure(stage: AuthStage, error: unknown): string {
