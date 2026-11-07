@@ -104,3 +104,41 @@ npm test
 The web build resolves shared desktop authentication components against its own
 React, HeroUI and icon dependencies; a root Electron dependency installation is
 not required.
+
+## Recovering a recording moderation lock
+
+A stopped Worker invocation or a failed lock cleanup can leave a row in
+`recording_locks`. The service deliberately keeps that recording busy. The row's
+`created_at` does not prove that its action has stopped, so it must not be expired
+or removed automatically based on age.
+
+Recovery requires an operator with direct access to the deployment's D1 database:
+
+1. Stop new invocations that can mutate that database, including public requests,
+   service bindings and scheduled work. Confirm that previous invocations and
+   their database operations have ended. If quiescence cannot be established,
+   keep the lock and investigate with the hosting provider.
+2. While the service remains quiescent, inspect the exact recording's lock:
+
+   ```sql
+   SELECT share_code, token, created_at FROM recording_locks
+   WHERE share_code = '<recording-code>';
+   ```
+
+3. Remove only the observed lock, matching both its recording code and token:
+
+   ```sql
+   DELETE FROM recording_locks
+   WHERE share_code = '<recording-code>' AND token = '<observed-lock-token>'
+   RETURNING share_code, token, created_at;
+   ```
+
+   Preserve the returned row in the maintenance record. Zero returned rows means
+   that this lock was already removed or changed; inspect again rather than
+   deleting a different token or clearing the table.
+4. Resume service after maintenance is complete and retry the owner's operation.
+
+The SQL can be run with `wrangler d1 execute` using the explicit deployment
+configuration, database and `--local` or `--remote` selection. This is a manual
+maintenance procedure; changing a token or checking a confirmation box does not
+establish that an earlier Worker action has ended.

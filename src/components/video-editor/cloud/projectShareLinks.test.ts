@@ -309,3 +309,71 @@ it("never bases native writes on an invalid existing map", () => {
 	expect(write).not.toHaveBeenCalled();
 	expect(browserRead).not.toHaveBeenCalled();
 });
+
+it.each([
+	[false, "{broken"],
+	[false, "[]"],
+	[false, "null"],
+	[false, "3"],
+	[true, "{broken"],
+	[true, "[]"],
+	[true, "null"],
+	[true, "3"],
+] as const)("replaces corrupt browser share links after a successful share, native settings=%s, cache=%s", (native, corrupt) => {
+	const key = "recordly.project-share-links.v1";
+	const settings = native ? installNativeSettings() : null;
+	const values = new Map([[key, corrupt]]);
+	vi.stubGlobal("localStorage", {
+		getItem: (name: string) => values.get(name) ?? null,
+		setItem: (name: string, value: string) => values.set(name, value),
+	});
+	expect(() =>
+		saveProjectShareLink("current", "https://example.test/current", { accountId: "owner" }),
+	).not.toThrow();
+	expect(getProjectShareLinkStrict("missing")).toBeUndefined();
+	expect(getProjectShare("current", "owner")).toMatchObject({
+		url: "https://example.test/current",
+		accountId: "owner",
+	});
+	expect(JSON.parse(values.get(key)!)).toEqual({
+		current: {
+			url: "https://example.test/current",
+			accountId: "owner",
+			sharedAt: expect.any(Number),
+		},
+	});
+	if (settings) expect(settings.get(key)).toEqual(JSON.parse(values.get(key)!));
+});
+
+it("does not treat a failed native read as permission to replace corrupt browser history", () => {
+	const nativeWrite = vi.fn(() => true);
+	const browserRead = vi.fn(() => "{broken");
+	const browserWrite = vi.fn();
+	vi.stubGlobal("electronAPI", {
+		getAppSetting: () => null,
+		getAppSettingWithStatus: () => ({ success: false }),
+		setAppSetting: nativeWrite,
+	});
+	vi.stubGlobal("localStorage", { getItem: browserRead, setItem: browserWrite });
+	expect(() => saveProjectShareLink("current", "https://example.test/current")).toThrow(
+		"desktop settings",
+	);
+	expect(nativeWrite).not.toHaveBeenCalled();
+	expect(browserRead).not.toHaveBeenCalled();
+	expect(browserWrite).not.toHaveBeenCalled();
+});
+
+it("keeps browser storage access failures fatal for strict eligibility and mutations", () => {
+	const browserWrite = vi.fn();
+	vi.stubGlobal("localStorage", {
+		getItem: () => {
+			throw new Error("Browser storage unavailable");
+		},
+		setItem: browserWrite,
+	});
+	expect(() => getProjectShareLinkStrict("current")).toThrow("Browser storage unavailable");
+	expect(() => saveProjectShareLink("current", "https://example.test/current")).toThrow(
+		"Browser storage unavailable",
+	);
+	expect(browserWrite).not.toHaveBeenCalled();
+});
