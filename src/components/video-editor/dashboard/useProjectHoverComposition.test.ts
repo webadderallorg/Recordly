@@ -36,7 +36,6 @@ function mount(enabled: boolean, sourcePath: string | undefined, webcamUrl: stri
 		querySelector: () => null,
 		querySelectorAll: () => [],
 	});
-	// biome-ignore lint/correctness/useHookAtTopLevel: React primitives are deliberately mocked to exercise the hook's resource lifecycle.
 	useProjectHoverComposition({
 		data: { videoUrl: "http://localhost/recording.mp4", webcamUrl },
 		playback: {

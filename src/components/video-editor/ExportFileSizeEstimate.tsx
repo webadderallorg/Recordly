@@ -26,9 +26,13 @@ export function ExportFileSizeEstimate({
 				</span>
 			)}
 			<span className="flex shrink-0 items-center gap-2 whitespace-nowrap font-medium tabular-nums">
-				{typeof bytes === "number" && Number.isFinite(bytes) &&
-					typeof originalBytes === "number" && Number.isFinite(originalBytes) && (
-						<s className="font-normal text-muted-foreground">≈ {formatGifBytes(originalBytes)}</s>
+				{typeof bytes === "number" &&
+					Number.isFinite(bytes) &&
+					typeof originalBytes === "number" &&
+					Number.isFinite(originalBytes) && (
+						<s className="font-normal text-muted-foreground">
+							≈ {formatGifBytes(originalBytes)}
+						</s>
 					)}
 				{typeof bytes === "number" && Number.isFinite(bytes)
 					? `≈ ${formatGifBytes(bytes)}`

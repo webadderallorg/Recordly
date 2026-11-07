@@ -80,7 +80,9 @@ for (const onboarding of [true, false]) {
 			path: `test-results/signin-fit-${onboarding ? "onboarding" : "popup"}-600.png`,
 		});
 		await dialog.getByPlaceholder("you@example.com").fill("test@email.com");
-		await dialog.getByRole("button", { name: "Or use password to sign in", exact: true }).click();
+		await dialog
+			.getByRole("button", { name: "Or use password to sign in", exact: true })
+			.click();
 		await expect(dialog.getByLabel("Password", { exact: true })).toBeVisible();
 		await expectFormFits(dialog);
 		await dialog.getByRole("button", { name: "Sign in with email code", exact: true }).click();

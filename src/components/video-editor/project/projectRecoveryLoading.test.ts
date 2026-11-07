@@ -100,14 +100,12 @@ it("does not show a recovery warning for a normal project open", async () => {
 it("hydrates the recovered launch project and reports recovery after application", async () => {
 	vi.stubGlobal("window", {
 		electronAPI: {
-			loadCurrentProjectFile: vi
-				.fn()
-				.mockResolvedValue({
-					success: true,
-					recovered: true,
-					project: recoveredProject,
-					path,
-				}),
+			loadCurrentProjectFile: vi.fn().mockResolvedValue({
+				success: true,
+				recovered: true,
+				project: recoveredProject,
+				path,
+			}),
 		},
 	});
 	const apply = vi.fn().mockResolvedValue(true);

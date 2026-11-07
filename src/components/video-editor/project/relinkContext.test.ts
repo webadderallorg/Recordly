@@ -14,7 +14,8 @@ function scheduleEffect(effect: () => void | (() => void), deps: readonly unknow
 		previous &&
 		previous.deps.length === deps.length &&
 		previous.deps.every((value, i) => Object.is(value, deps[i]))
-	) return;
+	)
+		return;
 	hooks.effects.push(() => {
 		previous?.cleanup?.();
 		hooks.effectSlots[index] = { deps, cleanup: effect() };
@@ -34,7 +35,9 @@ vi.mock("react", async (original) => ({
 vi.mock("@/components/ui/toast", () => ({
 	toast: { warning: vi.fn(), error: vi.fn(), dismiss: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
-vi.mock("@/i18n/runtime", () => ({ translate: vi.fn((_key: string, fallback: string) => fallback) }));
+vi.mock("@/i18n/runtime", () => ({
+	translate: vi.fn((_key: string, fallback: string) => fallback),
+}));
 vi.mock("../projectPersistence", async () => ({
 	fromFileUrl: (await import("../projectMediaPaths")).fromFileUrl,
 	resolveVideoUrl: vi.fn(),
@@ -94,7 +97,6 @@ function render(
 	hooks.index = 0;
 	hooks.effectIndex = 0;
 	hooks.effects = [];
-	// biome-ignore lint/correctness/useHookAtTopLevel: This test intentionally mocks React hooks to simulate a component render.
 	const actions = useProjectOpenActions({
 		project,
 		applyLoadedProject,

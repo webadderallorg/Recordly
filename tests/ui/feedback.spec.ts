@@ -104,7 +104,11 @@ test("feedback preserves a draft on failure, supports attachments, and includes 
 	await expect(modal.getByText("notes.txt", { exact: true })).toBeVisible();
 	await modal.getByRole("button", { name: "Remove notes.txt" }).click();
 	await expect(modal.getByText("notes.txt", { exact: true })).toHaveCount(0);
-	await expect(modal.getByText("Diagnostic logs will be attached. Feedback will be sent to support@recordly.dev.")).toBeVisible();
+	await expect(
+		modal.getByText(
+			"Diagnostic logs will be attached. Feedback will be sent to support@recordly.dev.",
+		),
+	).toBeVisible();
 	await expect(modal.getByRole("checkbox")).toHaveCount(0);
 	await expect(modal.getByLabel("Title", { exact: true })).toHaveCount(0);
 	await modal.getByRole("button", { name: "Send feedback", exact: true }).click();

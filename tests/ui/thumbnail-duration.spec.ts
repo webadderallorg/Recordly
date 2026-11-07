@@ -68,7 +68,6 @@ test("project thumbnails show timeline and source durations in the bottom right"
 	await page.screenshot({ path: "test-results/thumbnail-durations.png", animations: "disabled" });
 });
 
-
 test("saved local thumbnails use approved HTTP transport without losing capability queries", async ({
 	page,
 }) => {

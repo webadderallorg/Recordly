@@ -6,7 +6,11 @@ export function LegalLinks({ consent = false }: { consent?: boolean }) {
 	let origin = "https://videos.recordly.dev";
 	try {
 		const endpoint = new URL(CLOUD_SHARE_ENDPOINT);
-		if (["https:", "http:"].includes(endpoint.protocol) && !endpoint.username && !endpoint.password)
+		if (
+			["https:", "http:"].includes(endpoint.protocol) &&
+			!endpoint.username &&
+			!endpoint.password
+		)
 			origin = endpoint.origin;
 	} catch {
 		// Account consent remains available when cloud sharing is not configured.

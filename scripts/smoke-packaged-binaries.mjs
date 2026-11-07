@@ -226,7 +226,9 @@ function verifyFfmpeg(unpackedRoot) {
 
 	assertFile(ffmpegPath, "packaged FFmpeg binary", { executable: true });
 	const notices = verifyPackagedDistributionNotices(path.dirname(unpackedRoot), ffmpegPath);
-	console.log(`[packaged-smoke] Verified distribution notices and FFmpeg provenance for ${notices.platform}/${notices.arch}.`);
+	console.log(
+		`[packaged-smoke] Verified distribution notices and FFmpeg provenance for ${notices.platform}/${notices.arch}.`,
+	);
 
 	const output = execFileSync(ffmpegPath, ["-version"], {
 		encoding: "utf8",
@@ -244,7 +246,7 @@ function verifyFfmpeg(unpackedRoot) {
 function verifyParakeetRuntime(unpackedRoot) {
 	const modules = path.join(unpackedRoot, "node_modules");
 	const platform = process.platform === "win32" ? "win" : process.platform;
-	const packages = readdirSync(modules).filter(name =>
+	const packages = readdirSync(modules).filter((name) =>
 		name.startsWith(`sherpa-onnx-${platform}-`),
 	);
 	if (packages.length === 0) fail("the unpacked Parakeet native runtime is missing");
@@ -253,7 +255,9 @@ function verifyParakeetRuntime(unpackedRoot) {
 		assertFile(path.join(directory, "sherpa-onnx.node"), `Parakeet addon (${name})`);
 		const files = readdirSync(directory);
 		for (const library of ["onnxruntime", "sherpa-onnx-c-api"]) {
-			const filename = files.find(file => file.includes(library) && /\.(?:dll|dylib|so)(?:\.|$)/.test(file));
+			const filename = files.find(
+				(file) => file.includes(library) && /\.(?:dll|dylib|so)(?:\.|$)/.test(file),
+			);
 			if (!filename) fail(`Parakeet library ${library} is missing from ${name}`);
 			assertFile(path.join(directory, filename), `Parakeet ${library} (${name})`);
 		}

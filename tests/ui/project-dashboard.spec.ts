@@ -201,8 +201,13 @@ test("home dashboard searches, sorts, opens projects and returns to the editor",
 	await cards.first().click();
 	await expect(cards.first()).toHaveAttribute("aria-pressed", "true");
 	await home.getByRole("button", { name: "Review deletion…", exact: true }).click();
-	await page.getByRole("dialog", { name: "Review deletion", exact: true }).getByRole("button", { name: "Move to Trash", exact: true }).click();
-	await expect(page.getByRole("dialog", { name: "Review deletion", exact: true })).not.toBeVisible();
+	await page
+		.getByRole("dialog", { name: "Review deletion", exact: true })
+		.getByRole("button", { name: "Move to Trash", exact: true })
+		.click();
+	await expect(
+		page.getByRole("dialog", { name: "Review deletion", exact: true }),
+	).not.toBeVisible();
 	await expect(cards).toHaveCount(2);
 	await page.screenshot({ path: "test-results/project-dashboard.png", animations: "disabled" });
 	await page.evaluate(() => document.documentElement.classList.add("dark"));
@@ -333,8 +338,13 @@ test("deletion refreshes the grid and keeps unselected projects", async ({ page 
 		.filter({ hasNot: page.locator("img") })
 		.first()
 		.click();
-	await page.getByRole("dialog", { name: "Review deletion", exact: true }).getByRole("button", { name: "Move to Trash", exact: true }).click();
-	await expect(page.getByRole("dialog", { name: "Review deletion", exact: true })).not.toBeVisible();
+	await page
+		.getByRole("dialog", { name: "Review deletion", exact: true })
+		.getByRole("button", { name: "Move to Trash", exact: true })
+		.click();
+	await expect(
+		page.getByRole("dialog", { name: "Review deletion", exact: true }),
+	).not.toBeVisible();
 	await expect(
 		home.getByRole("list").getByRole("button", { name: "Delete", exact: true }),
 	).toHaveCount(0);
@@ -539,11 +549,16 @@ test("account menu opens the raw folder without a sidebar shortcut", async ({ pa
 	const home = page.getByRole("dialog", { name: "Projects dashboard" });
 	const sidebar = home.getByRole("complementary", { name: "Library navigation" });
 	await expect(sidebar.getByRole("button", { name: /Open raw/ })).toHaveCount(0);
-	await expect(sidebar.getByRole("button", { name: "Original recordings", exact: true })).toHaveCount(0);
+	await expect(
+		sidebar.getByRole("button", { name: "Original recordings", exact: true }),
+	).toHaveCount(0);
 	await home.getByRole("button", { name: "Recordly account", exact: true }).click();
 	const menu = page.getByRole("dialog", { name: "Account menu", exact: true });
 	await expect(menu.getByRole("button", { name: "Open raw folder", exact: true })).toBeVisible();
-	await menu.screenshot({ path: test.info().outputPath("raw-folder-menu.png"), animations: "disabled" });
+	await menu.screenshot({
+		path: test.info().outputPath("raw-folder-menu.png"),
+		animations: "disabled",
+	});
 	await menu.getByRole("button", { name: "Open raw folder", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-raw-folder-opened", "true");
 	await expect(menu).not.toBeVisible();

@@ -45,9 +45,13 @@ for (const storageBytes of [
 		await navigation.getByRole("button", { name: "Settings", exact: true }).click();
 		const settings = dashboard.getByRole("region", { name: "Dashboard settings", exact: true });
 		await expect(settings).toBeVisible();
-		await expect(settings.getByRole("region", { name: "Cloud usage", exact: true })).toHaveCount(0);
+		await expect(
+			settings.getByRole("region", { name: "Cloud usage", exact: true }),
+		).toHaveCount(0);
 		await settings.getByRole("button", { name: "Manage account", exact: true }).click();
-		await expect(settings.getByLabel("Cloud usage", { exact: true })).toContainText("Cloud storage");
+		await expect(settings.getByLabel("Cloud usage", { exact: true })).toContainText(
+			"Cloud storage",
+		);
 	});
 }
 

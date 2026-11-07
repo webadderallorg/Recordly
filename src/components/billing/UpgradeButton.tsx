@@ -31,12 +31,16 @@ export function UpgradeButton({
 			variant={variant}
 			size={size}
 			className={`gap-2 ${className ?? ""}`}
-			aria-label={[text, discount]
-				.filter(Boolean)
-				.join(", ")}
+			aria-label={[text, discount].filter(Boolean).join(", ")}
 			onPress={openPricing}
 		>
-			{truncateLabel ? <span className="min-w-0 truncate" title={text}>{text}</span> : text}
+			{truncateLabel ? (
+				<span className="min-w-0 truncate" title={text}>
+					{text}
+				</span>
+			) : (
+				text
+			)}
 			{discount && (
 				<span className="shrink-0 whitespace-nowrap rounded-full bg-danger/10 px-1.5 py-0.5 text-[10px] font-medium leading-4 text-danger">
 					{discount}

@@ -52,9 +52,17 @@ it("retains evidence from an unsaved recording and fails closed for corrupt stor
 
 it("distinguishes a missing history from a failed native read and never writes after failure", () => {
 	const write = vi.fn();
-	const read = vi.fn<Window["electronAPI"]["getAppSettingWithStatus"]>(() => ({ success: true, found: false, value: null }));
+	const read = vi.fn<Window["electronAPI"]["getAppSettingWithStatus"]>(() => ({
+		success: true,
+		found: false,
+		value: null,
+	}));
 	vi.stubGlobal("window", {
-		electronAPI: { getAppSetting: () => null, getAppSettingWithStatus: read, setAppSetting: write },
+		electronAPI: {
+			getAppSetting: () => null,
+			getAppSettingWithStatus: read,
+			setAppSetting: write,
+		},
 	});
 	expect(readLibraryExportHistory()).toEqual({ available: true, records: {} });
 	read.mockReturnValue({ success: false, value: null });

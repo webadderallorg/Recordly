@@ -335,12 +335,18 @@ export function FeedbackDialog({
 									.then((result) => {
 										if (!result.success) {
 											toast.error(
-												result.error || t("editor.feedback.openFailed", "Failed to open link."),
+												result.error ||
+													t(
+														"editor.feedback.openFailed",
+														"Failed to open link.",
+													),
 											);
 										}
 									})
 									.catch(() => {
-										toast.error(t("editor.feedback.openFailed", "Failed to open link."));
+										toast.error(
+											t("editor.feedback.openFailed", "Failed to open link."),
+										);
 									});
 							}}
 						>

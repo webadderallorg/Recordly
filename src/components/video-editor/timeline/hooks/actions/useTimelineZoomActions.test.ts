@@ -28,7 +28,6 @@ function setup(overrides: Partial<Params> = {}) {
 		onZoomSuggested: vi.fn(),
 		...overrides,
 	};
-	// biome-ignore lint/correctness/useHookAtTopLevel: This test intentionally mocks React hooks to simulate a component render.
 	const actions = useTimelineZoomActions(params);
 	return { params, actions };
 }

@@ -71,7 +71,10 @@ export function useRawLibrary(enabled: boolean, getProtectedSourcePaths?: () => 
 		return path;
 	};
 	const remove = async (paths: string[]) => {
-		const result = await window.electronAPI.trashRecordingSources(paths, getProtectedSourcePaths?.());
+		const result = await window.electronAPI.trashRecordingSources(
+			paths,
+			getProtectedSourcePaths?.(),
+		);
 		if (!result.success) throw new Error(result.error);
 		const { deleted, errors } = result.value;
 		setEntries((previous) => previous.filter((entry) => !deleted.includes(entry.path)));

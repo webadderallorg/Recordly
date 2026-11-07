@@ -24,7 +24,9 @@ test("editor sections open at the top after scrolling another section", async ({
 });
 
 for (const width of [1200, 420]) {
-	test(`settings content scrolls independently and resets on category change at ${width}px`, async ({ page }) => {
+	test(`settings content scrolls independently and resets on category change at ${width}px`, async ({
+		page,
+	}) => {
 		await page.setViewportSize({ width, height: 720 });
 		await installDesktopBridge(page);
 		await page.goto("/?windowType=editor");
@@ -50,6 +52,8 @@ for (const width of [1200, 420]) {
 		await expect(settings.getByRole("button", { name: "Save", exact: true })).toBeInViewport();
 		await settings.getByRole("tab", { name: "General", exact: true }).click();
 		await expect.poll(() => panel.evaluate((element) => element.scrollTop)).toBe(0);
-		await expect(settings.getByRole("radiogroup", { name: "Appearance", exact: true })).toBeInViewport();
+		await expect(
+			settings.getByRole("radiogroup", { name: "Appearance", exact: true }),
+		).toBeInViewport();
 	});
 }

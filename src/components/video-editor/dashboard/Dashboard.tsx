@@ -21,8 +21,14 @@ export function Dashboard(props: DashboardProps) {
 	return (
 		<>
 			<Modal isOpen={props.open} onOpenChange={props.onOpenChange}>
-				<Modal.Backdrop variant="transparent" className="app-frame-overlay dashboard-page-overlay">
-					<Modal.Container size="full" className="app-frame-container dashboard-page-container">
+				<Modal.Backdrop
+					variant="transparent"
+					className="app-frame-overlay dashboard-page-overlay"
+				>
+					<Modal.Container
+						size="full"
+						className="app-frame-container dashboard-page-container"
+					>
 						<Modal.Dialog
 							aria-label={uiText("ui.projectsDashboard")}
 							className="dashboard-surface dashboard-shell flex h-full flex-col gap-0 rounded-none bg-background p-0 text-foreground"
@@ -105,7 +111,10 @@ export function Dashboard(props: DashboardProps) {
 												title={model.activeFolder?.name}
 												count={model.visible.length}
 											/>
-											<DashboardFilters {...view} onCleanup={() => model.setCleanupOpen(true)} />
+											<DashboardFilters
+												{...view}
+												onCleanup={() => model.setCleanupOpen(true)}
+											/>
 										</>
 									)}
 									<DashboardGrid {...view} />

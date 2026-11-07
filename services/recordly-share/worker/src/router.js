@@ -21,7 +21,13 @@ import {
 	verifyPasswordAuth,
 } from "./auth.js";
 import { timingSafeEqual } from "./crypto.js";
-import { handleComment, handleGetComments, handleGetReactions, handleManageComment, handleReact } from "./feedback.js";
+import {
+	handleComment,
+	handleGetComments,
+	handleGetReactions,
+	handleManageComment,
+	handleReact,
+} from "./feedback.js";
 import { errorResponse, jsonResponse } from "./http.js";
 import { handleCheckViews, handleDelete, handleListVideos, handleRenew } from "./library.js";
 import {
@@ -51,7 +57,11 @@ export async function handleRequest(request, env) {
 	// Never let a stale hosted configuration fall back to single-owner access.
 	if (env.HOSTED_MODE === "true")
 		return errorResponse("Hosted deployments require the separate private service", 503);
-	if (path === "/api/billing" || path.startsWith("/api/billing/") || (path.startsWith("/billing/") && path !== "/billing/"))
+	if (
+		path === "/api/billing" ||
+		path.startsWith("/api/billing/") ||
+		(path.startsWith("/billing/") && path !== "/billing/")
+	)
 		return errorResponse("Not found", 404);
 
 	// Public policies must remain reachable during database outages.

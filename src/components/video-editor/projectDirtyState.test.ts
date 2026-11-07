@@ -136,11 +136,11 @@ it("does not mark legacy export preferences as project edits", () => {
 	).toBe(true);
 });
 
-
 it("still detects trim-only edits without an authoritative clip sequence", () => {
 	const saved = createProjectData();
-	const current = { ...saved, editor: { ...saved.editor,
-		trimRegions: [{ id: "trim-1", startMs: 500, endMs: 1000 }],
-	} };
+	const current = {
+		...saved,
+		editor: { ...saved.editor, trimRegions: [{ id: "trim-1", startMs: 500, endMs: 1000 }] },
+	};
 	expect(hasUnsavedProjectChanges(current, saved)).toBe(true);
 });

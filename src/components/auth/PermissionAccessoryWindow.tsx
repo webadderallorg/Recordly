@@ -52,7 +52,11 @@ export default function PermissionAccessoryWindow() {
 							className="size-9 shrink-0"
 						/>
 						<span className="flex-1 text-left">{applicationLabel}</span>
-						<DotsSixVertical size={18} aria-hidden="true" className="shrink-0 text-muted" />
+						<DotsSixVertical
+							size={18}
+							aria-hidden="true"
+							className="shrink-0 text-muted"
+						/>
 					</Button>
 				</div>
 				<p className="text-xs leading-relaxed text-muted">

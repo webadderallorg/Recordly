@@ -288,7 +288,10 @@ it.each([
 	expect(result.skipped).toBeGreaterThan(0);
 });
 
-it.each([false, true])("revalidates never-exported cleanup if link-cache reads fail after history succeeds, raw=%s", async (raw) => {
+it.each([
+	false,
+	true,
+])("revalidates never-exported cleanup if link-cache reads fail after history succeeds, raw=%s", async (raw) => {
 	let unavailable = false;
 	const getStatus = vi.fn((key: string) =>
 		key === "recordly.project-share-links.v1" && unavailable

@@ -19,7 +19,9 @@ test("email code verification recovers from expiry without changing the target a
 	await expect(slots).toHaveCount(6);
 	await dialog.getByLabel("Enter code sent to test@email.com", { exact: true }).fill("12345");
 	await expect(slots).toHaveText(["1", "2", "3", "4", "5", ""]);
-	await dialog.getByLabel("Enter code sent to test@email.com", { exact: true }).press("Backspace");
+	await dialog
+		.getByLabel("Enter code sent to test@email.com", { exact: true })
+		.press("Backspace");
 	await expect(slots).toHaveText(["1", "2", "3", "4", "", ""]);
 	await expect(
 		dialog.getByRole("button", { name: "Verify and continue", exact: true }),

@@ -127,7 +127,9 @@
 	border: 1.5px solid var(--separator);
 	border-radius: 0.625rem;
 	background: color-mix(in srgb, var(--foreground) 8%, transparent);
-	transition: background-color 200ms, outline-color 200ms;
+	transition:
+		background-color 200ms,
+		outline-color 200ms;
 }
 
 .aspect-ratio-picker__option[data-selected] .aspect-ratio-picker__shape {

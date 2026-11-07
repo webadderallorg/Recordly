@@ -12,10 +12,36 @@ for (const height of [720, 600, 480, 360]) {
 		await page.setViewportSize({ width: 1000, height });
 		const navigation = settings.locator(".dashboard-settings-navigation");
 		const account = navigation.getByRole("button", { name: "Manage account", exact: true });
-		await test.info().attach("sidebar-layout", { contentType: "application/json", body: JSON.stringify(await navigation.evaluate((element) => {
-			const nodes = [element.closest(".app-settings-dialog")!, element, ...element.querySelectorAll(".dashboard-settings-tab-list, .tabs__tab, .dashboard-settings-sidebar-footer")];
-			return nodes.map((node) => { const rect = node.getBoundingClientRect(); const style = getComputedStyle(node); return { className: node.className, text: node.textContent, rect: {x:rect.x,y:rect.y,width:rect.width,height:rect.height}, clientHeight:node.clientHeight, scrollHeight:node.scrollHeight, height:style.height, padding:style.padding, overflow:style.overflow, minHeight:style.minHeight, gap:style.gap }; });
-		})) });
+		await test.info().attach("sidebar-layout", {
+			contentType: "application/json",
+			body: JSON.stringify(
+				await navigation.evaluate((element) => {
+					const nodes = [
+						element.closest(".app-settings-dialog")!,
+						element,
+						...element.querySelectorAll(
+							".dashboard-settings-tab-list, .tabs__tab, .dashboard-settings-sidebar-footer",
+						),
+					];
+					return nodes.map((node) => {
+						const rect = node.getBoundingClientRect();
+						const style = getComputedStyle(node);
+						return {
+							className: node.className,
+							text: node.textContent,
+							rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+							clientHeight: node.clientHeight,
+							scrollHeight: node.scrollHeight,
+							height: style.height,
+							padding: style.padding,
+							overflow: style.overflow,
+							minHeight: style.minHeight,
+							gap: style.gap,
+						};
+					});
+				}),
+			),
+		});
 		await expect(account).toBeInViewport({ ratio: 1 });
 		for (const tab of await navigation.getByRole("tab").all()) {
 			await expect(tab).toBeInViewport({ ratio: 1 });
@@ -54,12 +80,17 @@ for (const height of [720, 600, 480, 360]) {
 	});
 }
 
-
 test("storage locations stay in their info tooltips", async ({ page }) => {
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
-		window.electronAPI.getRecordingsDirectory = async () => ({ success: true, path: "/Users/creator/Documents/Recordly/Recordings" });
-		window.electronAPI.getProjectsDirectory = async () => ({ success: true, path: "/Users/creator/Documents/Recordly/Projects" });
+		window.electronAPI.getRecordingsDirectory = async () => ({
+			success: true,
+			path: "/Users/creator/Documents/Recordly/Recordings",
+		});
+		window.electronAPI.getProjectsDirectory = async () => ({
+			success: true,
+			path: "/Users/creator/Documents/Recordly/Projects",
+		});
 	});
 	await page.goto("/?windowType=editor");
 	await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -79,7 +110,9 @@ test("storage locations stay in their info tooltips", async ({ page }) => {
 });
 
 for (const height of [600, 760]) {
-	test(`Home settings only scrolls the right pane and contains wheel input at ${height}px`, async ({ page }) => {
+	test(`Home settings only scrolls the right pane and contains wheel input at ${height}px`, async ({
+		page,
+	}) => {
 		test.setTimeout(60000);
 		await page.emulateMedia({ reducedMotion: "reduce" });
 		await page.setViewportSize({ width: 1280, height });
@@ -104,24 +137,44 @@ for (const height of [600, 760]) {
 			ancestors: await panel.evaluate((element) => {
 				const offsets = [];
 				for (let node = element.parentElement; node; node = node.parentElement)
-					offsets.push({ tag: node.tagName, className: node.className, top: node.scrollTop, left: node.scrollLeft });
+					offsets.push({
+						tag: node.tagName,
+						className: node.className,
+						top: node.scrollTop,
+						left: node.scrollLeft,
+					});
 				return { offsets, windowX: window.scrollX, windowY: window.scrollY };
 			}),
 		});
 		// Wait for native wheel handling and its compositor frames before checking
 		// positions, including wheel input past the panel's top and bottom edges.
-		const settleWheel = () => page.evaluate(() => new Promise<void>((resolve) => {
-			let frame = 0;
-			const tick = () => { if (++frame === 6) resolve(); else requestAnimationFrame(tick); };
-			requestAnimationFrame(tick);
-		}));
+		const settleWheel = () =>
+			page.evaluate(
+				() =>
+					new Promise<void>((resolve) => {
+						let frame = 0;
+						const tick = () => {
+							if (++frame === 6) resolve();
+							else requestAnimationFrame(tick);
+						};
+						requestAnimationFrame(tick);
+					}),
+			);
 		const before = await fixedBounds();
 		await panel.hover();
 		await page.mouse.wheel(0, 10000);
 		await settleWheel();
 		await test.info().attach("home-settings-wheel", {
 			contentType: "application/json",
-			body: JSON.stringify({ before, after: await fixedBounds(), panelScroll: await panel.evaluate((element) => ({ top: element.scrollTop, height: element.clientHeight, content: element.scrollHeight })) }),
+			body: JSON.stringify({
+				before,
+				after: await fixedBounds(),
+				panelScroll: await panel.evaluate((element) => ({
+					top: element.scrollTop,
+					height: element.clientHeight,
+					content: element.scrollHeight,
+				})),
+			}),
 		});
 		await expect.poll(() => panel.evaluate((element) => element.scrollTop)).toBeGreaterThan(50);
 		await expect(settings.getByText("Experimental updates", { exact: true })).toBeInViewport();
@@ -202,7 +255,9 @@ for (const { width, height, theme } of [
 		await expect(links).toBeHidden();
 		await expect(socials).toBeFocused();
 		await expect(home).toBeVisible();
-		await home.locator("aside").screenshot({ path: test.info().outputPath(`footer-${theme}.png`) });
+		await home
+			.locator("aside")
+			.screenshot({ path: test.info().outputPath(`footer-${theme}.png`) });
 		await contact.click();
 		const contactDialog = page.getByRole("dialog", { name: "Contact", exact: true });
 		await expect(contactDialog).toBeVisible();
@@ -211,7 +266,10 @@ for (const { width, height, theme } of [
 			await expect(emailButton).toBeInViewport({ ratio: 1 });
 			await emailButton.focus();
 			await page.keyboard.press("Enter");
-			await expect(page.locator("html")).toHaveAttribute("data-opened-community-url", `mailto:${email}`);
+			await expect(page.locator("html")).toHaveAttribute(
+				"data-opened-community-url",
+				`mailto:${email}`,
+			);
 			await expect(page).toHaveURL(url);
 		}
 		await contactDialog.screenshot({ path: test.info().outputPath(`contact-${theme}.png`) });
@@ -219,13 +277,10 @@ for (const { width, height, theme } of [
 		await expect(contactDialog).toBeHidden();
 		await expect(contact).toBeFocused();
 		await expect(home).toBeVisible();
-
 	});
 }
 
-test("Japanese community footer fits Upgrade and Socials without overlap", async ({
-	page,
-}) => {
+test("Japanese community footer fits Upgrade and Socials without overlap", async ({ page }) => {
 	test.setTimeout(60000);
 	await page.setViewportSize({ width: 1000, height: 600 });
 	await page.emulateMedia({ reducedMotion: "reduce" });
@@ -269,7 +324,9 @@ test("Japanese community footer fits Upgrade and Socials without overlap", async
 	await expect(socials).toBeVisible();
 	await socials.click();
 	const modal = page.getByRole("dialog", { name: "SNS", exact: true });
-	await expect(modal.getByRole("button", { name: "YouTube", exact: true })).toBeInViewport({ ratio: 1 });
+	await expect(modal.getByRole("button", { name: "YouTube", exact: true })).toBeInViewport({
+		ratio: 1,
+	});
 	await modal.screenshot({ path: test.info().outputPath("socials-ja.png") });
 	await modal.getByRole("button", { name: "閉じる", exact: true }).click();
 	await expect(modal).toBeHidden();

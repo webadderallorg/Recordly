@@ -1,87 +1,87 @@
 {
-  "app": {
-    "name": "Recordly",
-    "editorTitle": "Recordly Editor",
-    "subtitle": "Bildschirmaufzeichnung und -bearbeitung",
-    "language": "Sprache",
-    "manageRecordings": "Aufzeichnungsordner öffnen"
-  },
-  "actions": {
-    "cancel": "Abbrechen",
-    "close": "Schließen",
-    "export": "Exportieren",
-    "load": "Laden",
-    "redo": "Wiederherstellen",
-    "reset": "Zurücksetzen",
-    "save": "Speichern",
-    "undo": "Rückgängig",
-    "delete": "Löschen",
-    "done": "Fertig",
-    "retry": "Erneut versuchen",
-    "apply": "Anwenden"
-  },
-  "errors": {
-    "invalidFileType": "Ungültiger Dateityp",
-    "failedToUploadImage": "Bild konnte nicht hochgeladen werden",
-    "fileReadError": "Beim Lesen der Datei ist ein Fehler aufgetreten."
-  },
-  "clipboard": {
-    "copy": "Kopieren",
-    "errorCopied": "Fehler kopiert",
-    "errorCopyFailed": "Fehler konnte nicht kopiert werden"
-  },
-  "feedback": {
-    "trigger": "Feedback",
-    "send": "Feedback senden",
-    "thanks": "Danke für dein Feedback",
-    "signInRequired": "Melde dich an, um Feedback zu senden.",
-    "openHome": "Öffne die Startseite, um dich anzumelden.",
-    "orEmail": "Oder per E-Mail an",
-    "subject": "Betreff",
-    "subjectPlaceholder": "Was möchtest du uns mitteilen?",
-    "description": "Beschreibung",
-    "descriptionPlaceholder": "Wir lesen jedes Feedback...",
-    "attachFiles": "Dateien anhängen",
-    "removeFile": "{{name}} entfernen",
-    "diagnostics": "Beim Absenden werden Diagnoseprotokolle angehängt. Feedback wird an support@recordly.dev gesendet.",
-    "sending": "Wird gesendet…",
-    "errors": {
-      "unavailable": "Feedback ist erst verfügbar, wenn die Kontodienste eingerichtet sind.",
-      "signIn": "Melde dich erneut an, um Feedback zu senden.",
-      "invalid": "Prüfe dein Feedback und versuche es erneut.",
-      "attachments": "Hänge bis zu 5 nicht leere Dateien mit insgesamt höchstens 10 MB an.",
-      "limit": "Du hast das heutige Feedback-Limit erreicht. Versuche es morgen erneut.",
-      "tooManyFiles": "Hänge bis zu 5 Dateien an.",
-      "emptyFile": "Leere Dateien können nicht angehängt werden.",
-      "filesTooLarge": "Anhänge dürfen insgesamt höchstens 10 MB groß sein.",
-      "sendFailed": "Feedback konnte nicht gesendet werden. Versuche es erneut."
-    },
-    "missingMessage": "Erzähl uns vor dem Senden mehr.",
-    "sentiment": "Wie fühlst du dich?",
-    "loving": "Begeistert",
-    "neutral": "Neutral",
-    "angry": "Verärgert"
-  },
-  "announcements": {
-    "openFailed": "Link konnte nicht geöffnet werden.",
-    "dismiss": "Schließen",
-    "carousel": "Ankündigungen",
-    "previous": "Vorherige Ankündigung",
-    "show": "Ankündigung anzeigen",
-    "next": "Nächste Ankündigung"
-  },
-  "updates": {
-    "download": "Update herunterladen",
-    "actionFailed": "Update fehlgeschlagen. Versuche es erneut.",
-    "notification": "App-Update",
-    "backgroundProgress": "Recordly {{version}} wird im Hintergrund heruntergeladen · {{progress}}",
-    "ready": "Recordly {{version}} ist zur Installation bereit.",
-    "failed": "Das Update konnte nicht abgeschlossen werden. Du kannst es erneut versuchen.",
-    "available": "Recordly {{version}} ist verfügbar.",
-    "saveFirst": "Speichere deine Arbeit und starte neu, wenn du bereit bist.",
-    "later": "Später",
-    "downloadingButton": "Wird heruntergeladen · {{progress}}"
-  },
-  "width": "Breite",
-  "height": "Höhe"
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Recordly Editor",
+		"subtitle": "Bildschirmaufzeichnung und -bearbeitung",
+		"language": "Sprache",
+		"manageRecordings": "Aufzeichnungsordner öffnen"
+	},
+	"actions": {
+		"cancel": "Abbrechen",
+		"close": "Schließen",
+		"export": "Exportieren",
+		"load": "Laden",
+		"redo": "Wiederherstellen",
+		"reset": "Zurücksetzen",
+		"save": "Speichern",
+		"undo": "Rückgängig",
+		"delete": "Löschen",
+		"done": "Fertig",
+		"retry": "Erneut versuchen",
+		"apply": "Anwenden"
+	},
+	"errors": {
+		"invalidFileType": "Ungültiger Dateityp",
+		"failedToUploadImage": "Bild konnte nicht hochgeladen werden",
+		"fileReadError": "Beim Lesen der Datei ist ein Fehler aufgetreten."
+	},
+	"clipboard": {
+		"copy": "Kopieren",
+		"errorCopied": "Fehler kopiert",
+		"errorCopyFailed": "Fehler konnte nicht kopiert werden"
+	},
+	"feedback": {
+		"trigger": "Feedback",
+		"send": "Feedback senden",
+		"thanks": "Danke für dein Feedback",
+		"signInRequired": "Melde dich an, um Feedback zu senden.",
+		"openHome": "Öffne die Startseite, um dich anzumelden.",
+		"orEmail": "Oder per E-Mail an",
+		"subject": "Betreff",
+		"subjectPlaceholder": "Was möchtest du uns mitteilen?",
+		"description": "Beschreibung",
+		"descriptionPlaceholder": "Wir lesen jedes Feedback...",
+		"attachFiles": "Dateien anhängen",
+		"removeFile": "{{name}} entfernen",
+		"diagnostics": "Beim Absenden werden Diagnoseprotokolle angehängt. Feedback wird an support@recordly.dev gesendet.",
+		"sending": "Wird gesendet…",
+		"errors": {
+			"unavailable": "Feedback ist erst verfügbar, wenn die Kontodienste eingerichtet sind.",
+			"signIn": "Melde dich erneut an, um Feedback zu senden.",
+			"invalid": "Prüfe dein Feedback und versuche es erneut.",
+			"attachments": "Hänge bis zu 5 nicht leere Dateien mit insgesamt höchstens 10 MB an.",
+			"limit": "Du hast das heutige Feedback-Limit erreicht. Versuche es morgen erneut.",
+			"tooManyFiles": "Hänge bis zu 5 Dateien an.",
+			"emptyFile": "Leere Dateien können nicht angehängt werden.",
+			"filesTooLarge": "Anhänge dürfen insgesamt höchstens 10 MB groß sein.",
+			"sendFailed": "Feedback konnte nicht gesendet werden. Versuche es erneut."
+		},
+		"missingMessage": "Erzähl uns vor dem Senden mehr.",
+		"sentiment": "Wie fühlst du dich?",
+		"loving": "Begeistert",
+		"neutral": "Neutral",
+		"angry": "Verärgert"
+	},
+	"announcements": {
+		"openFailed": "Link konnte nicht geöffnet werden.",
+		"dismiss": "Schließen",
+		"carousel": "Ankündigungen",
+		"previous": "Vorherige Ankündigung",
+		"show": "Ankündigung anzeigen",
+		"next": "Nächste Ankündigung"
+	},
+	"updates": {
+		"download": "Update herunterladen",
+		"actionFailed": "Update fehlgeschlagen. Versuche es erneut.",
+		"notification": "App-Update",
+		"backgroundProgress": "Recordly {{version}} wird im Hintergrund heruntergeladen · {{progress}}",
+		"ready": "Recordly {{version}} ist zur Installation bereit.",
+		"failed": "Das Update konnte nicht abgeschlossen werden. Du kannst es erneut versuchen.",
+		"available": "Recordly {{version}} ist verfügbar.",
+		"saveFirst": "Speichere deine Arbeit und starte neu, wenn du bereit bist.",
+		"later": "Später",
+		"downloadingButton": "Wird heruntergeladen · {{progress}}"
+	},
+	"width": "Breite",
+	"height": "Höhe"
 }

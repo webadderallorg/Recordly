@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-test("rounded recording masks retain antialiasing through blur passes and radius changes", async ({ page }) => {
+test("rounded recording masks retain antialiasing through blur passes and radius changes", async ({
+	page,
+}) => {
 	const errors: string[] = [];
-	page.on("pageerror", error => errors.push(error.message));
+	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto("/tests/ui/rounded-mask.html");
 	await expect(page.locator("body")).toHaveAttribute("data-result", /blended/);
 	const result = JSON.parse((await page.locator("body").getAttribute("data-result"))!);

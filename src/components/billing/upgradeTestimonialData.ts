@@ -180,7 +180,8 @@ export const upgradeTestimonials: UpgradeTestimonial[] = [
 		author: "Beths_Space",
 		handle: "u/Beths_Space",
 		platform: "Reddit",
-		avatarUrl: "https://styles.redditmedia.com/t5_3pxkm4/styles/profileIcon_snoo34026c00-15bd-4188-9f80-9ed2116f656e-headshot.png?width=256&height=256&crop=256:256,smart&s=c485ffac2cb582514d1e249f00004fac9786f5b8",
+		avatarUrl:
+			"https://styles.redditmedia.com/t5_3pxkm4/styles/profileIcon_snoo34026c00-15bd-4188-9f80-9ed2116f656e-headshot.png?width=256&height=256&crop=256:256,smart&s=c485ffac2cb582514d1e249f00004fac9786f5b8",
 		quote: "Just downloaded and tested for like 5 minutes and immediately love it. Thank you so much for creating this!",
 		url: "https://www.reddit.com/r/macapps/comments/1rsf44t/comment/ojaaw2i/",
 		excerpt: false,
@@ -232,7 +233,8 @@ export const upgradeTestimonials: UpgradeTestimonial[] = [
 		author: "No_Wheel4431",
 		handle: "u/No_Wheel4431",
 		platform: "Reddit",
-		avatarUrl: "https://i.redd.it/snoovatar/avatars/631ed82c-c8ea-4c1f-8c52-1e2d148de1b7-headshot.png",
+		avatarUrl:
+			"https://i.redd.it/snoovatar/avatars/631ed82c-c8ea-4c1f-8c52-1e2d148de1b7-headshot.png",
 		quote: "This is really smooth! Well done",
 		url: "https://www.reddit.com/r/macapps/comments/1rsf44t/comment/oa99juv/",
 		excerpt: false,
@@ -265,7 +267,8 @@ export const upgradeTestimonials: UpgradeTestimonial[] = [
 		author: "toast",
 		handle: "u/toast",
 		platform: "Reddit",
-		avatarUrl: "https://styles.redditmedia.com/t5_21ng95/styles/profileIcon_snoo32e7e85c-8444-471c-b150-5531b891b0f9-headshot-f.png?width=256&height=256&crop=256:256,smart&s=204a9d56254139f31760b5e78dcbd70a579f519e",
+		avatarUrl:
+			"https://styles.redditmedia.com/t5_21ng95/styles/profileIcon_snoo32e7e85c-8444-471c-b150-5531b891b0f9-headshot-f.png?width=256&height=256&crop=256:256,smart&s=204a9d56254139f31760b5e78dcbd70a579f519e",
 		quote: "this looks great, and very timely! I was just thinking about how to record a short demo video of a webapp I've been building and this looks great, thanks!",
 		url: "https://www.reddit.com/r/macapps/comments/1rsf44t/comment/oa9heox/",
 		excerpt: false,

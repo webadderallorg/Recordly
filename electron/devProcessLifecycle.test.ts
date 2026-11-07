@@ -2,7 +2,10 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createElectronDevLifecycle, type ElectronDevQueue } from "../scripts/electronDevProcessLifecycle";
+import {
+	createElectronDevLifecycle,
+	type ElectronDevQueue,
+} from "../scripts/electronDevProcessLifecycle";
 
 function fixture() {
 	const children: ChildProcess[] = [];

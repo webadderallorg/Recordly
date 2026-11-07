@@ -1,87 +1,87 @@
 {
-  "app": {
-    "name": "Recordly",
-    "editorTitle": "Editor Recordly",
-    "subtitle": "Registrazione e modifica dello schermo",
-    "language": "Lingua",
-    "manageRecordings": "Apri cartella registrazioni"
-  },
-  "actions": {
-    "cancel": "Annulla",
-    "close": "Chiudi",
-    "export": "Esporta",
-    "load": "Carica",
-    "redo": "Ripeti",
-    "reset": "Ripristina",
-    "save": "Salva",
-    "undo": "Annulla",
-    "delete": "Elimina",
-    "done": "Fatto",
-    "retry": "Riprova",
-    "apply": "Applica"
-  },
-  "errors": {
-    "invalidFileType": "Tipo di file non valido",
-    "failedToUploadImage": "Caricamento immagine non riuscito",
-    "fileReadError": "Si è verificato un errore durante la lettura del file."
-  },
-  "clipboard": {
-    "copy": "Copia",
-    "errorCopied": "Errore copiato",
-    "errorCopyFailed": "Impossibile copiare l’errore"
-  },
-  "feedback": {
-    "trigger": "Commenti",
-    "send": "Invia commenti",
-    "thanks": "Grazie per i tuoi commenti",
-    "signInRequired": "Accedi per inviare commenti.",
-    "openHome": "Apri Home per accedere.",
-    "orEmail": "Oppure scrivi a",
-    "subject": "Oggetto",
-    "subjectPlaceholder": "Cosa vorresti dirci?",
-    "description": "Descrizione",
-    "descriptionPlaceholder": "Leggiamo tutti i commenti...",
-    "attachFiles": "Allega file",
-    "removeFile": "Rimuovi {{name}}",
-    "diagnostics": "I registri diagnostici verranno allegati. Il feedback verrà inviato a support@recordly.dev.",
-    "sending": "Invio…",
-    "errors": {
-      "unavailable": "I commenti saranno disponibili dopo la configurazione dei servizi dell’account.",
-      "signIn": "Accedi di nuovo per inviare commenti.",
-      "invalid": "Controlla i tuoi commenti, poi riprova.",
-      "attachments": "Allega fino a 5 file non vuoti, per un totale massimo di 10 MB.",
-      "limit": "Hai raggiunto il limite di commenti per oggi. Riprova domani.",
-      "tooManyFiles": "Allega fino a 5 file.",
-      "emptyFile": "Non è possibile allegare file vuoti.",
-      "filesTooLarge": "Gli allegati non devono superare i 10 MB complessivi.",
-      "sendFailed": "Impossibile inviare i commenti. Riprova."
-    },
-    "missingMessage": "Raccontaci di più prima di inviare.",
-    "sentiment": "Come ti senti?",
-    "loving": "Entusiasta",
-    "neutral": "Neutrale",
-    "angry": "Arrabbiato"
-  },
-  "announcements": {
-    "openFailed": "Impossibile aprire il link.",
-    "dismiss": "Ignora",
-    "carousel": "Annunci",
-    "previous": "Annuncio precedente",
-    "show": "Mostra annuncio",
-    "next": "Annuncio successivo"
-  },
-  "updates": {
-    "download": "Scarica aggiornamento",
-    "actionFailed": "Impossibile aggiornare. Riprova.",
-    "notification": "Aggiornamento dell’app",
-    "backgroundProgress": "Download di Recordly {{version}} in background · {{progress}}",
-    "ready": "Recordly {{version}} è pronto per l’installazione.",
-    "failed": "Impossibile completare l’aggiornamento. Puoi riprovare.",
-    "available": "Recordly {{version}} è disponibile.",
-    "saveFirst": "Salva il tuo lavoro, poi riavvia quando vuoi.",
-    "later": "Più tardi",
-    "downloadingButton": "Download · {{progress}}"
-  },
-  "width": "Larghezza",
-  "height": "Altezza"
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Editor Recordly",
+		"subtitle": "Registrazione e modifica dello schermo",
+		"language": "Lingua",
+		"manageRecordings": "Apri cartella registrazioni"
+	},
+	"actions": {
+		"cancel": "Annulla",
+		"close": "Chiudi",
+		"export": "Esporta",
+		"load": "Carica",
+		"redo": "Ripeti",
+		"reset": "Ripristina",
+		"save": "Salva",
+		"undo": "Annulla",
+		"delete": "Elimina",
+		"done": "Fatto",
+		"retry": "Riprova",
+		"apply": "Applica"
+	},
+	"errors": {
+		"invalidFileType": "Tipo di file non valido",
+		"failedToUploadImage": "Caricamento immagine non riuscito",
+		"fileReadError": "Si è verificato un errore durante la lettura del file."
+	},
+	"clipboard": {
+		"copy": "Copia",
+		"errorCopied": "Errore copiato",
+		"errorCopyFailed": "Impossibile copiare l’errore"
+	},
+	"feedback": {
+		"trigger": "Commenti",
+		"send": "Invia commenti",
+		"thanks": "Grazie per i tuoi commenti",
+		"signInRequired": "Accedi per inviare commenti.",
+		"openHome": "Apri Home per accedere.",
+		"orEmail": "Oppure scrivi a",
+		"subject": "Oggetto",
+		"subjectPlaceholder": "Cosa vorresti dirci?",
+		"description": "Descrizione",
+		"descriptionPlaceholder": "Leggiamo tutti i commenti...",
+		"attachFiles": "Allega file",
+		"removeFile": "Rimuovi {{name}}",
+		"diagnostics": "I registri diagnostici verranno allegati. Il feedback verrà inviato a support@recordly.dev.",
+		"sending": "Invio…",
+		"errors": {
+			"unavailable": "I commenti saranno disponibili dopo la configurazione dei servizi dell’account.",
+			"signIn": "Accedi di nuovo per inviare commenti.",
+			"invalid": "Controlla i tuoi commenti, poi riprova.",
+			"attachments": "Allega fino a 5 file non vuoti, per un totale massimo di 10 MB.",
+			"limit": "Hai raggiunto il limite di commenti per oggi. Riprova domani.",
+			"tooManyFiles": "Allega fino a 5 file.",
+			"emptyFile": "Non è possibile allegare file vuoti.",
+			"filesTooLarge": "Gli allegati non devono superare i 10 MB complessivi.",
+			"sendFailed": "Impossibile inviare i commenti. Riprova."
+		},
+		"missingMessage": "Raccontaci di più prima di inviare.",
+		"sentiment": "Come ti senti?",
+		"loving": "Entusiasta",
+		"neutral": "Neutrale",
+		"angry": "Arrabbiato"
+	},
+	"announcements": {
+		"openFailed": "Impossibile aprire il link.",
+		"dismiss": "Ignora",
+		"carousel": "Annunci",
+		"previous": "Annuncio precedente",
+		"show": "Mostra annuncio",
+		"next": "Annuncio successivo"
+	},
+	"updates": {
+		"download": "Scarica aggiornamento",
+		"actionFailed": "Impossibile aggiornare. Riprova.",
+		"notification": "Aggiornamento dell’app",
+		"backgroundProgress": "Download di Recordly {{version}} in background · {{progress}}",
+		"ready": "Recordly {{version}} è pronto per l’installazione.",
+		"failed": "Impossibile completare l’aggiornamento. Puoi riprovare.",
+		"available": "Recordly {{version}} è disponibile.",
+		"saveFirst": "Salva il tuo lavoro, poi riavvia quando vuoi.",
+		"later": "Più tardi",
+		"downloadingButton": "Download · {{progress}}"
+	},
+	"width": "Larghezza",
+	"height": "Altezza"
 }

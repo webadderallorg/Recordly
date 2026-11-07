@@ -1,87 +1,87 @@
 {
-  "app": {
-    "name": "Recordly",
-    "editorTitle": "Recordly 編輯器",
-    "subtitle": "螢幕錄製與編輯",
-    "language": "語言",
-    "manageRecordings": "打開錄製影像文件夾"
-  },
-  "actions": {
-    "cancel": "取消",
-    "close": "關閉",
-    "export": "導出",
-    "load": "讀取",
-    "redo": "重做",
-    "reset": "重置",
-    "save": "保存",
-    "undo": "撤銷",
-    "delete": "刪除",
-    "done": "完成",
-    "retry": "重試",
-    "apply": "套用"
-  },
-  "errors": {
-    "invalidFileType": "無效的檔案類型",
-    "failedToUploadImage": "上傳圖片失敗",
-    "fileReadError": "讀取檔案時出錯。"
-  },
-  "clipboard": {
-    "copy": "複製",
-    "errorCopied": "已複製錯誤資訊",
-    "errorCopyFailed": "無法複製錯誤資訊"
-  },
-  "feedback": {
-    "trigger": "意見回饋",
-    "send": "傳送意見回饋",
-    "thanks": "感謝你的意見回饋",
-    "signInRequired": "登入以傳送意見回饋。",
-    "openHome": "開啟首頁以登入。",
-    "orEmail": "或寄送郵件至",
-    "subject": "主旨",
-    "subjectPlaceholder": "你有什麼想法？",
-    "description": "說明",
-    "descriptionPlaceholder": "我們會閱讀所有意見回饋...",
-    "attachFiles": "附加檔案",
-    "removeFile": "移除 {{name}}",
-    "diagnostics": "將附上診斷記錄。意見回饋將傳送至 support@recordly.dev。",
-    "sending": "正在傳送…",
-    "errors": {
-      "unavailable": "設定帳號服務後才能使用意見回饋功能。",
-      "signIn": "請重新登入以傳送意見回饋。",
-      "invalid": "請檢查意見內容，然後再試一次。",
-      "attachments": "最多可附加 5 個非空白檔案，總大小不得超過 10 MB。",
-      "limit": "你已達到今天的意見回饋次數上限。請明天再試。",
-      "tooManyFiles": "最多可附加 5 個檔案。",
-      "emptyFile": "無法附加空白檔案。",
-      "filesTooLarge": "附件總大小不得超過 10 MB。",
-      "sendFailed": "無法傳送意見回饋。請再試一次。"
-    },
-    "missingMessage": "請先詳細說明再傳送。",
-    "sentiment": "你的感受如何？",
-    "loving": "很喜歡",
-    "neutral": "普通",
-    "angry": "生氣"
-  },
-  "announcements": {
-    "openFailed": "無法開啟連結。",
-    "dismiss": "關閉",
-    "carousel": "公告",
-    "previous": "上一則公告",
-    "show": "顯示公告",
-    "next": "下一則公告"
-  },
-  "updates": {
-    "download": "下載更新",
-    "actionFailed": "無法更新。請再試一次。",
-    "notification": "應用程式更新",
-    "backgroundProgress": "正在背景下載 Recordly {{version}} · {{progress}}",
-    "ready": "Recordly {{version}} 已準備好安裝。",
-    "failed": "無法完成更新。你可以再試一次。",
-    "available": "Recordly {{version}} 已推出。",
-    "saveFirst": "請先儲存工作，準備好後再重新啟動。",
-    "later": "稍後",
-    "downloadingButton": "正在下載 · {{progress}}"
-  },
-  "width": "寬度",
-  "height": "高度"
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Recordly 編輯器",
+		"subtitle": "螢幕錄製與編輯",
+		"language": "語言",
+		"manageRecordings": "打開錄製影像文件夾"
+	},
+	"actions": {
+		"cancel": "取消",
+		"close": "關閉",
+		"export": "導出",
+		"load": "讀取",
+		"redo": "重做",
+		"reset": "重置",
+		"save": "保存",
+		"undo": "撤銷",
+		"delete": "刪除",
+		"done": "完成",
+		"retry": "重試",
+		"apply": "套用"
+	},
+	"errors": {
+		"invalidFileType": "無效的檔案類型",
+		"failedToUploadImage": "上傳圖片失敗",
+		"fileReadError": "讀取檔案時出錯。"
+	},
+	"clipboard": {
+		"copy": "複製",
+		"errorCopied": "已複製錯誤資訊",
+		"errorCopyFailed": "無法複製錯誤資訊"
+	},
+	"feedback": {
+		"trigger": "意見回饋",
+		"send": "傳送意見回饋",
+		"thanks": "感謝你的意見回饋",
+		"signInRequired": "登入以傳送意見回饋。",
+		"openHome": "開啟首頁以登入。",
+		"orEmail": "或寄送郵件至",
+		"subject": "主旨",
+		"subjectPlaceholder": "你有什麼想法？",
+		"description": "說明",
+		"descriptionPlaceholder": "我們會閱讀所有意見回饋...",
+		"attachFiles": "附加檔案",
+		"removeFile": "移除 {{name}}",
+		"diagnostics": "將附上診斷記錄。意見回饋將傳送至 support@recordly.dev。",
+		"sending": "正在傳送…",
+		"errors": {
+			"unavailable": "設定帳號服務後才能使用意見回饋功能。",
+			"signIn": "請重新登入以傳送意見回饋。",
+			"invalid": "請檢查意見內容，然後再試一次。",
+			"attachments": "最多可附加 5 個非空白檔案，總大小不得超過 10 MB。",
+			"limit": "你已達到今天的意見回饋次數上限。請明天再試。",
+			"tooManyFiles": "最多可附加 5 個檔案。",
+			"emptyFile": "無法附加空白檔案。",
+			"filesTooLarge": "附件總大小不得超過 10 MB。",
+			"sendFailed": "無法傳送意見回饋。請再試一次。"
+		},
+		"missingMessage": "請先詳細說明再傳送。",
+		"sentiment": "你的感受如何？",
+		"loving": "很喜歡",
+		"neutral": "普通",
+		"angry": "生氣"
+	},
+	"announcements": {
+		"openFailed": "無法開啟連結。",
+		"dismiss": "關閉",
+		"carousel": "公告",
+		"previous": "上一則公告",
+		"show": "顯示公告",
+		"next": "下一則公告"
+	},
+	"updates": {
+		"download": "下載更新",
+		"actionFailed": "無法更新。請再試一次。",
+		"notification": "應用程式更新",
+		"backgroundProgress": "正在背景下載 Recordly {{version}} · {{progress}}",
+		"ready": "Recordly {{version}} 已準備好安裝。",
+		"failed": "無法完成更新。你可以再試一次。",
+		"available": "Recordly {{version}} 已推出。",
+		"saveFirst": "請先儲存工作，準備好後再重新啟動。",
+		"later": "稍後",
+		"downloadingButton": "正在下載 · {{progress}}"
+	},
+	"width": "寬度",
+	"height": "高度"
 }

@@ -122,7 +122,9 @@ export function ZoomSettings(props: Props) {
 					aria-label={tSettings("effects.motionPresetsTitle", "Presets")}
 					value={activePreset?.id ?? ""}
 					onValueChange={(value) => {
-						const preset = Object.values(CURSOR_MOTION_PRESETS).find((item) => item.id === value);
+						const preset = Object.values(CURSOR_MOTION_PRESETS).find(
+							(item) => item.id === value,
+						);
 						if (!preset) return;
 						onZoomInDurationMsChange?.(preset.zoomInDurationMs);
 						onZoomOutDurationMsChange?.(preset.zoomOutDurationMs);

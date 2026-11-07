@@ -124,9 +124,7 @@ test("new recordings default to a circle and retain the squircle option", async 
 	await expect(mask).toHaveCSS("clip-path", "circle(50% at 50% 50%)");
 });
 
-test("Rectangle starts at 60% width, keeps Square roundness", async ({
-	page,
-}) => {
+test("Rectangle starts at 60% width, keeps Square roundness", async ({ page }) => {
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
 		window.electronAPI.getCurrentRecordingSession = async () => ({

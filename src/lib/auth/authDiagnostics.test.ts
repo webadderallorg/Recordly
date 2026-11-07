@@ -114,9 +114,22 @@ it("retains nested SDK causes before long outer messages and stacks exhaust the 
 	};
 	const diagnostic = describeAuthFailure("callback-completion", error);
 	expect(diagnostic.length).toBeLessThanOrEqual(2000);
-	for (const detail of ["AuthUnknownError", "AuthApiError", "flow_state_expired", "status: 400", "Final storage cause"])
+	for (const detail of [
+		"AuthUnknownError",
+		"AuthApiError",
+		"flow_state_expired",
+		"status: 400",
+		"Final storage cause",
+	])
 		expect(diagnostic).toContain(detail);
 	expect(diagnostic.indexOf("Final storage cause")).toBeLessThan(diagnostic.indexOf("stack:"));
-	for (const secret of ["person@example.test", "private-token", "private-code", "private-verifier", "must-not-serialize", "/Users/private"])
+	for (const secret of [
+		"person@example.test",
+		"private-token",
+		"private-code",
+		"private-verifier",
+		"must-not-serialize",
+		"/Users/private",
+	])
 		expect(diagnostic).not.toContain(secret);
 });

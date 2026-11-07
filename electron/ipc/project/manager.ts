@@ -1,4 +1,8 @@
-import { getProjectStorageKey, readProjectFileWithRecovery, setProjectRecoveryDirectory } from "./atomicSave";
+import {
+	getProjectStorageKey,
+	readProjectFileWithRecovery,
+	setProjectRecoveryDirectory,
+} from "./atomicSave";
 import { encodeComposedThumbnail } from "./composedThumbnail";
 import { createHash, randomUUID } from "node:crypto";
 import { createProjectFirstFrameThumbnail } from "./firstFrameThumbnail";
@@ -296,17 +300,20 @@ export function getLegacyProjectThumbnailPath(projectPath: string) {
 export function getProjectThumbnailPaths(projectPath: string) {
 	const resolved = path.resolve(projectPath);
 	const oldKey = process.platform === "win32" ? resolved.toLowerCase() : resolved;
-	return [...new Set([
-		getProjectThumbnailPath(projectPath),
-		projectThumbnailStoragePath(oldKey),
-		getLegacyProjectThumbnailPath(projectPath),
-	])];
+	return [
+		...new Set([
+			getProjectThumbnailPath(projectPath),
+			projectThumbnailStoragePath(oldKey),
+			getLegacyProjectThumbnailPath(projectPath),
+		]),
+	];
 }
 
 async function findFreshProjectThumbnail(projectPath: string, modifiedAt: number) {
 	for (const thumbnailPath of getProjectThumbnailPaths(projectPath)) {
 		const stats = await fs.lstat(thumbnailPath).catch(() => null);
-		if (stats?.isFile() && await hasFreshProjectThumbnail(thumbnailPath, modifiedAt)) return thumbnailPath;
+		if (stats?.isFile() && (await hasFreshProjectThumbnail(thumbnailPath, modifiedAt)))
+			return thumbnailPath;
 	}
 	return null;
 }
@@ -379,9 +386,13 @@ export async function requireLibraryProject(projectPath: string) {
 	const normalized = normalizePath(projectPath);
 	if (!hasProjectFileExtension(normalized)) throw new Error("Project is not in the library");
 	const projectsDir = normalizePath(await getProjectsDir());
-	if (path.dirname(normalized) === projectsDir && (await fs.lstat(normalized)).isFile()) return normalized;
+	if (path.dirname(normalized) === projectsDir && (await fs.lstat(normalized)).isFile())
+		return normalized;
 	const recent = await loadRecentProjectPaths();
-	if (!recent.some((entry) => normalizePath(entry) === normalized) || !(await fs.stat(normalized)).isFile())
+	if (
+		!recent.some((entry) => normalizePath(entry) === normalized) ||
+		!(await fs.stat(normalized)).isFile()
+	)
 		throw new Error("Project is not in the library");
 	return normalized;
 }
@@ -391,8 +402,13 @@ function projectPreviewRevision(stats: Stats) {
 }
 
 /** Persist generated previews without changing the project or overwriting a newer edit. */
-export async function cacheProjectThumbnail(projectPath: string, revision: string, dataUrl: string) {
-	if (typeof projectPath !== "string" || typeof revision !== "string") throw new Error("Invalid project revision");
+export async function cacheProjectThumbnail(
+	projectPath: string,
+	revision: string,
+	dataUrl: string,
+) {
+	if (typeof projectPath !== "string" || typeof revision !== "string")
+		throw new Error("Invalid project revision");
 	const normalizedPath = await requireLibraryProject(projectPath);
 	const stats = await fs.stat(normalizedPath);
 	if (projectPreviewRevision(stats) !== revision) return null;
@@ -581,7 +597,8 @@ export async function readProjectPreview(projectPath: string): Promise<ProjectPr
 	const normalizedPath = await requireLibraryProject(projectPath);
 	const revision = await fs.stat(normalizedPath);
 	const project = parseJsonWithByteOrderMark(await fs.readFile(normalizedPath, "utf-8"));
-	if (!sameProjectRevision(revision, await fs.stat(normalizedPath))) throw new Error("Project changed while loading its preview");
+	if (!sameProjectRevision(revision, await fs.stat(normalizedPath)))
+		throw new Error("Project changed while loading its preview");
 	if (!isLoadableProjectData(project)) throw new Error("Invalid project file format");
 	const media = await resolveProjectMediaSources(project);
 	if (!media.success) throw new Error(media.message);
@@ -594,7 +611,7 @@ export async function readProjectPreview(projectPath: string): Promise<ProjectPr
 		project: project as ProjectPreviewData["project"],
 		videoUrl: buildMediaUrl(baseUrl, media.videoPath),
 		webcamUrl: media.webcamPath ? buildMediaUrl(baseUrl, media.webcamPath) : null,
-		...await canonicalMediaSources(project),
+		...(await canonicalMediaSources(project)),
 	};
 }
 
@@ -675,7 +692,10 @@ export async function loadProjectFromPath(projectPath: string, isCurrent = () =>
 	}
 	if (!isCurrent()) return { success: false, canceled: true };
 	await rememberRecentProject(normalizedPath);
-	if (await replaceApprovedSessionLocalReadPaths(approvedProjectPaths, isCurrent) === false || !isCurrent())
+	if (
+		(await replaceApprovedSessionLocalReadPaths(approvedProjectPaths, isCurrent)) === false ||
+		!isCurrent()
+	)
 		return { success: false, canceled: true };
 
 	setCurrentProjectPath(normalizedPath);

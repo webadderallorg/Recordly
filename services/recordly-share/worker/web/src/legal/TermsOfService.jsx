@@ -1,7 +1,8 @@
 import { RecordlyLegalDocument as Legal } from "./RecordlyLegalDocument";
 
 export const termsTitle = "Terms of service";
-export const termsDescription = "The terms for Recordly accounts, cloud sharing and Cloud subscriptions.";
+export const termsDescription =
+	"The terms for Recordly accounts, cloud sharing and Cloud subscriptions.";
 
 export default function TermsOfService() {
 	return (
@@ -11,8 +12,9 @@ export default function TermsOfService() {
 				These terms govern the hosted Recordly services provided by Recordly. Read them
 				together with the <a href="/privacy">privacy policy</a> and{" "}
 				<a href="/billing">billing and refund policy</a> before using a hosted account or
-				purchasing Cloud. The open-source desktop software remains governed by its applicable
-				software licences; these terms do not remove rights granted by those licences.
+				purchasing Cloud. The open-source desktop software remains governed by its
+				applicable software licences; these terms do not remove rights granted by those
+				licences.
 			</p>
 			<p>
 				You must have the authority and legal capacity to agree to these terms. If you need
@@ -57,29 +59,31 @@ export default function TermsOfService() {
 				licence. Optional hosted services have the limits displayed in the app and at
 				checkout. At launch, Free allows five stored cloud recordings of up to 1 GB each,
 				normally expiring after 7 days. Cloud includes unlimited cloud storage and playback
-				bandwidth, with up to 10 GB per recording. Cloud allows 200 new uploads per rolling seven days, including admitted uploads later
-				canceled or deleted. Daily upload-capacity and abuse protections also apply. GB means one billion bytes.
+				bandwidth, with up to 10 GB per recording. Cloud allows 200 new uploads per rolling
+				seven days, including admitted uploads later canceled or deleted. Daily
+				upload-capacity and abuse protections also apply. GB means one billion bytes.
 				Reserved and incomplete uploads may count toward capacity.
 			</p>
 			<p>
-				Cloud recordings have no scheduled expiry while Cloud is active. A verified upgrade also
-				protects eligible recordings still stored at the time of upgrade. When Cloud ends, those
-				recordings expire after a seven-day grace period. Save a copy or renew before that
-				deadline. Upgrading cannot recover expired or deleted files. New uploads after Cloud
-				ends follow the Free limits; stored recordings continue to count toward applicable
-				limits.
+				Cloud recordings have no scheduled expiry while Cloud is active. A verified upgrade
+				also protects eligible recordings still stored at the time of upgrade. When Cloud
+				ends, those recordings expire after a seven-day grace period. Save a copy or renew
+				before that deadline. Upgrading cannot recover expired or deleted files. New uploads
+				after Cloud ends follow the Free limits; stored recordings continue to count toward
+				applicable limits.
 			</p>
 			<p>
-				“No expiry” applies only while Cloud is active. Cloud recordings expire seven days after
-				Cloud ends. It does not prevent deletion you request, lawful removal or removal
-				necessary to address serious abuse. It is not a guarantee of uninterrupted service
-				or a separate disaster-recovery copy.
+				“No expiry” applies only while Cloud is active. Cloud recordings expire seven days
+				after Cloud ends. It does not prevent deletion you request, lawful removal or
+				removal necessary to address serious abuse. It is not a guarantee of uninterrupted
+				service or a separate disaster-recovery copy.
 			</p>
 			<h2>6. Prices, renewals and cancellation</h2>
 			<p>
-				Cloud is a recurring subscription. Current pricing and any promotional offers appear in Recordly. Checkout
-				displays the amount, currency, interval and any applicable taxes before you pay.
-				Your payment provider or bank may apply currency-conversion fees.
+				Cloud is a recurring subscription. Current pricing and any promotional offers appear
+				in Recordly. Checkout displays the amount, currency, interval and any applicable
+				taxes before you pay. Your payment provider or bank may apply currency-conversion
+				fees.
 			</p>
 			<p>
 				Your subscription renews automatically at its stated interval until cancelled. Use{" "}
@@ -92,8 +96,8 @@ export default function TermsOfService() {
 			<p>
 				We will give advance notice of a material price or plan change before it applies to
 				a renewal, with the opportunity to cancel. We will not charge a different price for
-				an already-paid period without your agreement. Cloud recording retention follows the Free and Cloud rules
-				above.
+				an already-paid period without your agreement. Cloud recording retention follows the
+				Free and Cloud rules above.
 			</p>
 			<h2>7. Acceptable use</h2>
 			<p>
@@ -113,10 +117,9 @@ export default function TermsOfService() {
 			<p>
 				Paid upload privileges depend on a valid, paid subscription. Failed payments,
 				cancellation taking effect, refunds or disputes may suspend those privileges while
-				billing is resolved. If Cloud access ends, existing cloud recordings receive the seven-day grace period
-				described above. Contact support if the account or
-				billing status is wrong; do not start multiple subscriptions to bypass a
-				restriction.
+				billing is resolved. If Cloud access ends, existing cloud recordings receive the
+				seven-day grace period described above. Contact support if the account or billing
+				status is wrong; do not start multiple subscriptions to bypass a restriction.
 			</p>
 			<h2>9. Availability, changes and closure</h2>
 			<p>

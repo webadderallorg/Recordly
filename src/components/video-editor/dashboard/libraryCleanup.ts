@@ -224,9 +224,12 @@ export async function scanCleanup(
 						projectId: project.projectId,
 						projectPath: entry.path,
 						sourcePath: project.videoPath,
-					}) || Boolean(rules.includes("neverExported")
-						? getProjectShareLinkStrict(entry.path)
-						: getProjectShareLink(entry.path));
+					}) ||
+					Boolean(
+						rules.includes("neverExported")
+							? getProjectShareLinkStrict(entry.path)
+							: getProjectShareLink(entry.path),
+					);
 				collectPaths(project, references);
 				collectPaths(preview.value.videoUrl, references);
 				collectPaths(preview.value.webcamUrl, references);

@@ -1,7 +1,9 @@
 import { translate } from "@/i18n/runtime";
 
 export function isMissingProjectRecording(error: unknown) {
-	return /Project video file not found/i.test(error instanceof Error ? error.message : String(error));
+	return /Project video file not found/i.test(
+		error instanceof Error ? error.message : String(error),
+	);
 }
 /** Keep diagnostics available without treating every failed read as a missing project. */
 export function projectLoadError(error: unknown) {

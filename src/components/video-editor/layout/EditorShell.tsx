@@ -197,7 +197,10 @@ export function EditorShell(props: Props) {
 	} = projectController;
 	const protectedSnapshotRef = useRef(lifecycle.currentProjectSnapshot);
 	protectedSnapshotRef.current = lifecycle.currentProjectSnapshot;
-	const getProtectedSourcePaths = useCallback(() => collectLibrarySourceProtection(protectedSnapshotRef.current), []);
+	const getProtectedSourcePaths = useCallback(
+		() => collectLibrarySourceProtection(protectedSnapshotRef.current),
+		[],
+	);
 
 	const projectShareRevision = useMemo(
 		() => getProjectShareRevision(lifecycle.currentProjectSnapshot),
@@ -285,7 +288,9 @@ export function EditorShell(props: Props) {
 					projectErrorSource={
 						project.currentProjectPath ?? project.videoSourcePath ?? undefined
 					}
-					onDashboardSignIn={() => requestSignIn(auth.user ? "reauthenticate" : "account")}
+					onDashboardSignIn={() =>
+						requestSignIn(auth.user ? "reauthenticate" : "account")
+					}
 					onDeleteProjects={openActions.handleDeleteProjects}
 					onRenameProject={openActions.handleRenameLibraryProject}
 					onShareProject={async (path) => {
@@ -330,7 +335,9 @@ export function EditorShell(props: Props) {
 								compact
 								placement="header"
 								triggerLabel={uiText("ui.recordlyAccount")}
-								onSignIn={() => requestSignIn(auth.user ? "reauthenticate" : "account")}
+								onSignIn={() =>
+									requestSignIn(auth.user ? "reauthenticate" : "account")
+								}
 								onSettings={(section = "general") => {
 									setAppSettingsCategory(section);
 									setAppSettingsOpen(true);
@@ -373,7 +380,9 @@ export function EditorShell(props: Props) {
 						onRequestShareSignIn={() =>
 							requestSignIn(auth.user ? "reauthenticate" : "share", true)
 						}
-						onRequestFeedbackSignIn={() => requestSignIn(auth.user ? "reauthenticate" : "account")}
+						onRequestFeedbackSignIn={() =>
+							requestSignIn(auth.user ? "reauthenticate" : "account")
+						}
 						shareRequestNonce={shareRequestNonce}
 						authToken={auth.accessToken}
 						accountId={auth.user?.id}
@@ -498,7 +507,9 @@ export function EditorShell(props: Props) {
 						</div>
 						<AutoZoomNudgeContext.Provider value={shouldNudgeAutoZooms}>
 							<EditorTimelinePanel
-								getAnnotationPlacement={() => ui.videoPlaybackRef.current?.getAnnotationPlacement?.() ?? null}
+								getAnnotationPlacement={() =>
+									ui.videoPlaybackRef.current?.getAnnotationPlacement?.() ?? null
+								}
 								zoomPresentationOptions={appearance}
 								panelRef={timelinePanelRef}
 								timelineRef={ui.timelineRef}
@@ -552,12 +563,17 @@ export function EditorShell(props: Props) {
 					source={errorSource ?? undefined}
 					onRetry={project.videoSourcePath ? () => void retrySource() : undefined}
 					retrying={retryingSource}
-					onLocate={isMissingProjectRecording(project.error) && project.currentProjectPath ? () => {
-						if (retryingSource) return;
-						setRetryingSource(true);
-						void projectController.openActions.handleRelinkProjectRecording(project.currentProjectPath!)
-							.finally(() => setRetryingSource(false));
-					} : undefined}
+					onLocate={
+						isMissingProjectRecording(project.error) && project.currentProjectPath
+							? () => {
+									if (retryingSource) return;
+									setRetryingSource(true);
+									void projectController.openActions
+										.handleRelinkProjectRecording(project.currentProjectPath!)
+										.finally(() => setRetryingSource(false));
+								}
+							: undefined
+					}
 					onDismiss={() =>
 						project.error &&
 						setDismissedError({ message: project.error, source: errorSource })

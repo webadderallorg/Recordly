@@ -1,7 +1,7 @@
 {
-  "package": "dnd-timeline",
-  "version": "2.2.0",
-  "npmGitHead": "54bf316cb88f06e57266a829065e3421c7266420",
-  "licenseUrl": "https://raw.githubusercontent.com/samuelarbibe/dnd-timeline/54bf316cb88f06e57266a829065e3421c7266420/LICENSE",
-  "sha256": "ce36c5ccf396e099faa6825ff5434416549c065ea9a00d64f2a593467ef65fb8"
+	"package": "dnd-timeline",
+	"version": "2.2.0",
+	"npmGitHead": "54bf316cb88f06e57266a829065e3421c7266420",
+	"licenseUrl": "https://raw.githubusercontent.com/samuelarbibe/dnd-timeline/54bf316cb88f06e57266a829065e3421c7266420/LICENSE",
+	"sha256": "ce36c5ccf396e099faa6825ff5434416549c065ea9a00d64f2a593467ef65fb8"
 }

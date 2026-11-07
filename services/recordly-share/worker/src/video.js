@@ -10,8 +10,7 @@ export function finiteNonnegative(value) {
 
 // Shared by every public recording endpoint. Keep access decisions in SQLite,
 // whose datetime() accepts both legacy SQL timestamps and canonical ISO dates.
-export const AVAILABLE_RECORDING_SQL =
-	`(never_expires = 1 OR datetime(expires_at) > datetime('now'))
+export const AVAILABLE_RECORDING_SQL = `(never_expires = 1 OR datetime(expires_at) > datetime('now'))
  AND NOT EXISTS (SELECT 1 FROM recording_controls rc WHERE rc.share_code = videos.share_code
  AND (rc.sharing_disabled = 1 OR rc.operator_blocked = 1))
  AND NOT EXISTS (SELECT 1 FROM account_restrictions ar WHERE ar.owner_id = videos.owner_id AND ar.suspended = 1)`;

@@ -25,9 +25,13 @@ export async function handleReact(request, env, shareCode) {
 		if (!authed) return errorResponse("Unauthorized", 401);
 	}
 
-	const controls = await env.DB.prepare("SELECT feedback_disabled FROM recording_controls WHERE share_code = ?")
-		.bind(shareCode).first();
-	if (controls?.feedback_disabled === 1) return errorResponse("Feedback is disabled for this recording", 403);
+	const controls = await env.DB.prepare(
+		"SELECT feedback_disabled FROM recording_controls WHERE share_code = ?",
+	)
+		.bind(shareCode)
+		.first();
+	if (controls?.feedback_disabled === 1)
+		return errorResponse("Feedback is disabled for this recording", 403);
 
 	const body = await limitedJson(request, 1024);
 	const { timestamp, emoji } = body;
@@ -97,9 +101,13 @@ export async function handleComment(request, env, shareCode) {
 		if (!authed) return errorResponse("Password required", 401);
 	}
 
-	const controls = await env.DB.prepare("SELECT feedback_disabled FROM recording_controls WHERE share_code = ?")
-		.bind(shareCode).first();
-	if (controls?.feedback_disabled === 1) return errorResponse("Feedback is disabled for this recording", 403);
+	const controls = await env.DB.prepare(
+		"SELECT feedback_disabled FROM recording_controls WHERE share_code = ?",
+	)
+		.bind(shareCode)
+		.first();
+	if (controls?.feedback_disabled === 1)
+		return errorResponse("Feedback is disabled for this recording", 403);
 
 	// A video password unlocks viewing only; it never grants account identity.
 	const viewer = await commentAccount(request, env);
@@ -110,7 +118,8 @@ export async function handleComment(request, env, shareCode) {
 	const authorName = viewer.display_name;
 	const authorId = String(viewer.id);
 	if (!Number.isFinite(timestamp) || timestamp < 0) return errorResponse("Invalid timestamp");
-	if (typeof text !== "string" || text.trim().length === 0) return errorResponse("Text is required");
+	if (typeof text !== "string" || text.trim().length === 0)
+		return errorResponse("Text is required");
 	if (text.length > 2000) return errorResponse("Text too long");
 
 	// Admit and insert atomically: five comments per IP/five minutes, with a
@@ -126,8 +135,21 @@ export async function handleComment(request, env, shareCode) {
 		 AND (SELECT COUNT(*) FROM comments WHERE video_id = ? AND created_at > datetime('now', '-1 minute')) < 200
 		 AND NOT EXISTS (SELECT 1 FROM recording_controls WHERE share_code = ? AND feedback_disabled = 1)`,
 	)
-		.bind(video.id, timestamp, authorName, authorId, text.trim(), clientIP,
-			video.id, video.id, clientIP, video.id, authorId, video.id, shareCode)
+		.bind(
+			video.id,
+			timestamp,
+			authorName,
+			authorId,
+			text.trim(),
+			clientIP,
+			video.id,
+			video.id,
+			clientIP,
+			video.id,
+			authorId,
+			video.id,
+			shareCode,
+		)
 		.run();
 	if (!inserted.meta.changes) return errorResponse("Rate limit exceeded", 429);
 
@@ -170,7 +192,10 @@ export async function handleGetComments(request, env, shareCode) {
 		.all();
 
 	return jsonResponse({
-		comments: (comments.results || []).map((comment) => ({ ...comment, can_manage: comment.can_manage === 1 })),
+		comments: (comments.results || []).map((comment) => ({
+			...comment,
+			can_manage: comment.can_manage === 1,
+		})),
 		total: total ? total.cnt : 0,
 		page,
 		limit,
@@ -183,7 +208,9 @@ export async function handleManageComment(request, env, shareCode, commentId) {
 		return errorResponse("Not found", 404);
 	const video = await env.DB.prepare(
 		`SELECT id, password_hash, expires_at, never_expires FROM videos WHERE share_code = ? AND upload_completed = 1 AND ${AVAILABLE_RECORDING_SQL}`,
-	).bind(shareCode).first();
+	)
+		.bind(shareCode)
+		.first();
 	if (!video) return errorResponse("Not found", 404);
 	if (!(await verifyPasswordAuth(request, env, shareCode, video)))
 		return errorResponse("Password required", 401);
@@ -191,31 +218,46 @@ export async function handleManageComment(request, env, shareCode, commentId) {
 	if (viewer instanceof Response) return viewer;
 	if (!viewer) return errorResponse("Sign in to Recordly to manage your comments", 401);
 	const authorId = String(viewer.id);
-	const owned = await env.DB.prepare("SELECT id FROM comments WHERE id = ? AND video_id = ? AND author_id = ?")
-		.bind(Number(commentId), video.id, authorId).first();
+	const owned = await env.DB.prepare(
+		"SELECT id FROM comments WHERE id = ? AND video_id = ? AND author_id = ?",
+	)
+		.bind(Number(commentId), video.id, authorId)
+		.first();
 	if (!owned) return errorResponse("Not found", 404);
 
 	if (request.method === "DELETE") {
 		// Removing one's own comment remains available when new feedback is disabled.
-		const result = await env.DB.prepare(`DELETE FROM comments WHERE id = ? AND video_id = ? AND author_id = ?
+		const result =
+			await env.DB.prepare(`DELETE FROM comments WHERE id = ? AND video_id = ? AND author_id = ?
 		 AND EXISTS (SELECT 1 FROM videos WHERE id = ? AND upload_completed = 1 AND ${AVAILABLE_RECORDING_SQL})`)
-			.bind(Number(commentId), video.id, authorId, video.id).run();
+				.bind(Number(commentId), video.id, authorId, video.id)
+				.run();
 		return result.meta.changes ? jsonResponse({ ok: true }) : errorResponse("Not found", 404);
 	}
 
-	const controls = await env.DB.prepare("SELECT feedback_disabled FROM recording_controls WHERE share_code = ?")
-		.bind(shareCode).first();
-	if (controls?.feedback_disabled === 1) return errorResponse("Feedback is disabled for this recording", 403);
+	const controls = await env.DB.prepare(
+		"SELECT feedback_disabled FROM recording_controls WHERE share_code = ?",
+	)
+		.bind(shareCode)
+		.first();
+	if (controls?.feedback_disabled === 1)
+		return errorResponse("Feedback is disabled for this recording", 403);
 	const body = await limitedJson(request, 16384);
-	if (typeof body.text !== "string" || !body.text.trim()) return errorResponse("Text is required");
+	if (typeof body.text !== "string" || !body.text.trim())
+		return errorResponse("Text is required");
 	if (body.text.length > 2000) return errorResponse("Text too long");
-	const result = await env.DB.prepare(`UPDATE comments SET text = ? WHERE id = ? AND video_id = ? AND author_id = ?
+	const result =
+		await env.DB.prepare(`UPDATE comments SET text = ? WHERE id = ? AND video_id = ? AND author_id = ?
 	 AND EXISTS (SELECT 1 FROM videos WHERE id = ? AND upload_completed = 1 AND ${AVAILABLE_RECORDING_SQL})
 	 AND NOT EXISTS (SELECT 1 FROM recording_controls WHERE share_code = ? AND feedback_disabled = 1)`)
-		.bind(body.text.trim(), Number(commentId), video.id, authorId, video.id, shareCode).run();
+			.bind(body.text.trim(), Number(commentId), video.id, authorId, video.id, shareCode)
+			.run();
 	if (!result.meta.changes) {
-		const current = await env.DB.prepare("SELECT feedback_disabled FROM recording_controls WHERE share_code = ?")
-			.bind(shareCode).first();
+		const current = await env.DB.prepare(
+			"SELECT feedback_disabled FROM recording_controls WHERE share_code = ?",
+		)
+			.bind(shareCode)
+			.first();
 		return current?.feedback_disabled === 1
 			? errorResponse("Feedback is disabled for this recording", 403)
 			: errorResponse("Not found", 404);

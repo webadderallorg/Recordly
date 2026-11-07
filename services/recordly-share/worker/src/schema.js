@@ -9,8 +9,7 @@
 import { ABUSE_SCHEMA } from "./abuseSchema.js";
 
 const SCHEMA_VERSION = 13;
-const COMPLETED_LIBRARY_INDEX =
-	`CREATE INDEX IF NOT EXISTS idx_videos_completed_created ON videos(datetime(created_at) DESC, id DESC) WHERE upload_completed = 1`;
+const COMPLETED_LIBRARY_INDEX = `CREATE INDEX IF NOT EXISTS idx_videos_completed_created ON videos(datetime(created_at) DESC, id DESC) WHERE upload_completed = 1`;
 const FEEDBACK_INDEXES = [
 	`CREATE INDEX IF NOT EXISTS idx_comments_account_window ON comments(video_id, author_id, created_at)`,
 	`CREATE INDEX IF NOT EXISTS idx_comments_video_window ON comments(video_id, created_at)`,

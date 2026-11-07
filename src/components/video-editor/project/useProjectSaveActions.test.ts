@@ -102,17 +102,30 @@ it("reports a persistent autosave failure once and clears it after recovery", as
 it.each(["save", "copy"])("retains history in the %s payload and saved baseline", async (mode) => {
 	const stack = createEditorHistoryStack();
 	recordEditorHistorySnapshot(stack, createProjectHistorySnapshot({}));
-	recordEditorHistorySnapshot(stack, { ...createProjectHistorySnapshot({}), selectedClipId: "clip-1" });
+	recordEditorHistorySnapshot(stack, {
+		...createProjectHistorySnapshot({}),
+		selectedClipId: "clip-1",
+	});
 	const history = persistEditorHistory(stack);
 	const result = { success: true, path: "/projects/Saved.recordly", projectId: "A" };
 	bridge.saveProjectFile.mockResolvedValue(result);
 	bridge.saveProjectFileNamed.mockResolvedValue(result);
-	const actions = render(undefined, undefined, undefined, {
-		projectSaveDialogDraft: "Saved", setIsSavingProjectDialog: vi.fn(),
-	}, history);
+	const actions = render(
+		undefined,
+		undefined,
+		undefined,
+		{
+			projectSaveDialogDraft: "Saved",
+			setIsSavingProjectDialog: vi.fn(),
+		},
+		history,
+	);
 	if (mode === "save") await actions.saveProject(false, options);
 	else await actions.handleProjectSaveDialogSubmit();
-	expect((mode === "save" ? bridge.saveProjectFile : bridge.saveProjectFileNamed).mock.calls[0][0].history).toEqual(history);
+	expect(
+		(mode === "save" ? bridge.saveProjectFile : bridge.saveProjectFileNamed).mock.calls[0][0]
+			.history,
+	).toEqual(history);
 	expect(setters.setLastSavedSnapshot).toHaveBeenCalledWith(expect.objectContaining({ history }));
 });
 

@@ -8,21 +8,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ userData: "", requests: 0 }));
 vi.mock("electron", () => ({ app: { getPath: () => state.userData } }));
 vi.mock("node:https", () => ({
-	get: (
-		_url: string,
-		_options: unknown,
-		callback: (response: unknown) => void,
-	) => {
+	get: (_url: string, _options: unknown, callback: (response: unknown) => void) => {
 		state.requests += 1;
 		const request = new EventEmitter();
 		queueMicrotask(() => {
-			const response = Object.assign(
-				Readable.from([Buffer.from("truncated model")]),
-				{
-					statusCode: 200,
-					headers: {},
-				},
-			);
+			const response = Object.assign(Readable.from([Buffer.from("truncated model")]), {
+				statusCode: 200,
+				headers: {},
+			});
 			callback(response);
 		});
 		return request;
@@ -43,8 +36,7 @@ const sender = () =>
 		isDestroyed: () => false,
 		send: vi.fn(),
 	}) as unknown as Electron.WebContents;
-const directory = () =>
-	path.join(state.userData, "captions", "parakeet-tdt-0.6b-v3-int8");
+const directory = () => path.join(state.userData, "captions", "parakeet-tdt-0.6b-v3-int8");
 
 async function createInstalledModel() {
 	await fs.mkdir(directory(), { recursive: true });
@@ -61,9 +53,7 @@ async function createInstalledModel() {
 }
 
 beforeEach(async () => {
-	state.userData = await fs.mkdtemp(
-		path.join(os.tmpdir(), "recordly-parakeet-model-test-"),
-	);
+	state.userData = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-parakeet-model-test-"));
 	state.requests = 0;
 });
 afterEach(async () => {
@@ -84,9 +74,7 @@ describe("Parakeet model installation", () => {
 
 	it("requires the pinned revision and every complete model component", async () => {
 		await createInstalledModel();
-		await expect(
-			assertParakeetModelDirectory(directory()),
-		).resolves.toBeUndefined();
+		await expect(assertParakeetModelDirectory(directory())).resolves.toBeUndefined();
 		await fs.truncate(path.join(directory(), "decoder.int8.onnx"), 12);
 		await expect(assertParakeetModelDirectory(directory())).rejects.toThrow(
 			"decoder.int8.onnx",
@@ -95,9 +83,7 @@ describe("Parakeet model installation", () => {
 			path.join(directory(), "recordly-model.json"),
 			JSON.stringify({ revision: "old", verified: true }),
 		);
-		await expect(assertParakeetModelDirectory(directory())).rejects.toThrow(
-			"outdated",
-		);
+		await expect(assertParakeetModelDirectory(directory())).rejects.toThrow("outdated");
 	});
 
 	it("shares installation across windows and reuses a ready model without network", async () => {
@@ -105,20 +91,19 @@ describe("Parakeet model installation", () => {
 		const first = sender();
 		const second = sender();
 		expect(
-			await Promise.all([
-				downloadParakeetModel(first),
-				downloadParakeetModel(second),
-			]),
+			await Promise.all([downloadParakeetModel(first), downloadParakeetModel(second)]),
 		).toEqual([directory(), directory()]);
 		expect(state.requests).toBe(0);
-		expect(first.send).toHaveBeenCalledWith(
-			"parakeet-model-download-progress",
-			{ status: "downloaded", progress: 100, path: directory() },
-		);
-		expect(second.send).toHaveBeenCalledWith(
-			"parakeet-model-download-progress",
-			{ status: "downloaded", progress: 100, path: directory() },
-		);
+		expect(first.send).toHaveBeenCalledWith("parakeet-model-download-progress", {
+			status: "downloaded",
+			progress: 100,
+			path: directory(),
+		});
+		expect(second.send).toHaveBeenCalledWith("parakeet-model-download-progress", {
+			status: "downloaded",
+			progress: 100,
+			path: directory(),
+		});
 	});
 
 	it("rejects truncated downloads, removes staging files, and prevents deletion races", async () => {
@@ -144,18 +129,15 @@ describe("Parakeet model installation", () => {
 
 	it("deletes only the Parakeet installation", async () => {
 		await createInstalledModel();
-		await fs.writeFile(
-			path.join(state.userData, "keep.txt"),
-			"other user data",
-		);
+		await fs.writeFile(path.join(state.userData, "keep.txt"), "other user data");
 		await deleteParakeetModel();
 		expect(await getParakeetModelStatus()).toEqual({
 			success: true,
 			exists: false,
 			path: null,
 		});
-		expect(
-			await fs.readFile(path.join(state.userData, "keep.txt"), "utf8"),
-		).toBe("other user data");
+		expect(await fs.readFile(path.join(state.userData, "keep.txt"), "utf8")).toBe(
+			"other user data",
+		);
 	});
 });

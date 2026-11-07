@@ -306,20 +306,22 @@ export function DashboardSettings({
 									"settings.dashboard.recordingsFolder",
 									"Recordings folder",
 								)}
-								help={<>
-									{t(
-									"settings.appPreferences.folderScope",
-									"Changing this location affects future recordings. Existing files stay in their current folders.",
-									)}
-									<span className="mt-2 block break-all font-mono">
-										{recordings ||
-											folderErrors.recordings ||
-											t(
-												"settings.appPreferences.loadingFolder",
-												"Loading folder location…",
-											)}
-									</span>
-								</>}
+								help={
+									<>
+										{t(
+											"settings.appPreferences.folderScope",
+											"Changing this location affects future recordings. Existing files stay in their current folders.",
+										)}
+										<span className="mt-2 block break-all font-mono">
+											{recordings ||
+												folderErrors.recordings ||
+												t(
+													"settings.appPreferences.loadingFolder",
+													"Loading folder location…",
+												)}
+										</span>
+									</>
+								}
 							>
 								<div className="settings-actions">
 									<Button
@@ -377,20 +379,22 @@ export function DashboardSettings({
 						<div className="settings-item">
 							<SettingsRow
 								title={t("settings.dashboard.projectsFolder", "Projects folder")}
-								help={<>
-									{t(
-									"settings.dashboard.autosave",
-									"Named projects save automatically.",
-									)}
-									<span className="mt-2 block break-all font-mono">
-										{directory ||
-											folderErrors.projects ||
-											t(
-												"settings.appPreferences.loadingFolder",
-												"Loading folder location…",
-											)}
-									</span>
-								</>}
+								help={
+									<>
+										{t(
+											"settings.dashboard.autosave",
+											"Named projects save automatically.",
+										)}
+										<span className="mt-2 block break-all font-mono">
+											{directory ||
+												folderErrors.projects ||
+												t(
+													"settings.appPreferences.loadingFolder",
+													"Loading folder location…",
+												)}
+										</span>
+									</>
+								}
 							>
 								<Button
 									variant="secondary"

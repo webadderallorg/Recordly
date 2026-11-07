@@ -85,7 +85,7 @@ export function useEditorExportController(input: Input) {
 	useEffect(() => setMp4SizeEstimate(mp4SizeEstimate), [mp4SizeEstimate, setMp4SizeEstimate]);
 	const runner = useExportRunner({
 		projectName: input.projectName,
-	exportIdentity: input.exportIdentity,
+		exportIdentity: input.exportIdentity,
 		videoPath: input.videoPath,
 		videoPlaybackRef: input.videoPlaybackRef,
 		isPlaying: input.isPlaying,

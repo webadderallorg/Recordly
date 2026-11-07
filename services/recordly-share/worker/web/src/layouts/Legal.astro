@@ -1,10 +1,18 @@
 ---
-import Base from './Base.astro';
-import ThemeToggle from '../components/ThemeToggle';
-import { legalDetails, legalReady, LEGAL_VERSION } from '../legal/config';
-interface Props { title: string; description: string; }
+import Base from "./Base.astro";
+import ThemeToggle from "../components/ThemeToggle";
+import { legalDetails, legalReady, LEGAL_VERSION } from "../legal/config";
+interface Props {
+	title: string;
+	description: string;
+}
 const { title, description } = Astro.props;
-const links = [['/privacy', 'Privacy'], ['/terms', 'Terms'], ['/billing', 'Billing & refunds'], ['/contact', 'Contact']];
+const links = [
+	["/privacy", "Privacy"],
+	["/terms", "Terms"],
+	["/billing", "Billing & refunds"],
+	["/contact", "Contact"],
+];
 ---
 <Base title={`${title} · Recordly`}>
   <Fragment slot="head">

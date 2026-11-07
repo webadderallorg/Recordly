@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
-test("explicit real dev onboarding restores account and permission progress after an OS restart", async ({ page }) => {
+test("explicit real dev onboarding restores account and permission progress after an OS restart", async ({
+	page,
+}) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: true, onboarded: false });
 	await installDesktopBridgeOverrides(page, () => {
 		const get = window.electronAPI.getAppSetting;
@@ -19,16 +21,23 @@ test("explicit real dev onboarding restores account and permission progress afte
 			status: localStorage.getItem("test-screen-granted") === "true" ? "granted" : "denied",
 		});
 		window.electronAPI.getAccessibilityPermissionStatus = async () => ({
-			success: true, trusted: localStorage.getItem("test-accessibility-granted") === "true",
+			success: true,
+			trusted: localStorage.getItem("test-accessibility-granted") === "true",
 		});
-		window.electronAPI.requestAccessibilityPermission = async () => ({ success: true, trusted: false, prompted: true });
+		window.electronAPI.requestAccessibilityPermission = async () => ({
+			success: true,
+			trusted: false,
+			prompted: true,
+		});
 		window.electronAPI.openScreenRecordingPreferences = async () => {
 			localStorage.setItem("test-screen-granted", "true");
 			return { success: true };
 		};
 		window.electronAPI.openAccessibilityPreferences = async () => {
 			localStorage.setItem("test-accessibility-granted", "true");
-			await new Promise<void>((resolve) => window.addEventListener("test-settings-closed", () => resolve(), { once: true }));
+			await new Promise<void>((resolve) =>
+				window.addEventListener("test-settings-closed", () => resolve(), { once: true }),
+			);
 			return { success: true };
 		};
 	});
@@ -53,6 +62,18 @@ test("explicit real dev onboarding restores account and permission progress afte
 	await expect(tour.getByRole("button", { name: "Start recording", exact: true })).toBeEnabled();
 	await expect(page.locator("[data-permissions-confetti]")).toBeVisible();
 	await tour.getByRole("button", { name: "Start recording", exact: true }).click();
-	await expect.poll(() => page.evaluate(() => localStorage.getItem("test-onboarding:recordly.onboarding.v1.seen"))).toBe("true");
-	await expect.poll(() => page.evaluate(() => localStorage.getItem("test-onboarding:recordly.onboarding.permissionsRequested"))).toBe("false");
+	await expect
+		.poll(() =>
+			page.evaluate(() =>
+				localStorage.getItem("test-onboarding:recordly.onboarding.v1.seen"),
+			),
+		)
+		.toBe("true");
+	await expect
+		.poll(() =>
+			page.evaluate(() =>
+				localStorage.getItem("test-onboarding:recordly.onboarding.permissionsRequested"),
+			),
+		)
+		.toBe("false");
 });

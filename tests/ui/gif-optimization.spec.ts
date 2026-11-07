@@ -120,9 +120,7 @@ for (const plan of ["free", "pro", "loading", "unavailable"] as const) {
 				return { success: true, path: `/exports/${name}` };
 			};
 			window.electronAPI.cloudBilling = async ({ action }) => {
-				const prices = [
-					{ interval: "monthly" as const, unitAmount: 900, currency: "usd" },
-				];
+				const prices = [{ interval: "monthly" as const, unitAmount: 900, currency: "usd" }];
 				if (action === "catalog")
 					return {
 						success: true,

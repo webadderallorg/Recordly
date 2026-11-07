@@ -46,15 +46,19 @@ vi.mock("../settings/recordingPreferencesStore", () => ({
 vi.mock("../utils", () => ({ parseJsonWithByteOrderMark: JSON.parse }));
 
 import { registerSettingsHandlers } from "./settings";
-import { hasAppSetting, readAppSettingsStoreWithStatus, writeAppSettingsStore } from "../../appSettingsStore";
+import {
+	hasAppSetting,
+	readAppSettingsStoreWithStatus,
+	writeAppSettingsStore,
+} from "../../appSettingsStore";
 
 describe("app setting read status", () => {
 	beforeEach(() => {
 		mocks.syncHandlers.clear();
 		vi.mocked(readAppSettingsStoreWithStatus).mockReset();
 		vi.mocked(writeAppSettingsStore).mockReset();
-		vi.mocked(hasAppSetting).mockImplementation((store, key) =>
-			Reflect.getOwnPropertyDescriptor(store, key) !== undefined,
+		vi.mocked(hasAppSetting).mockImplementation(
+			(store, key) => Reflect.getOwnPropertyDescriptor(store, key) !== undefined,
 		);
 		registerSettingsHandlers();
 	});
@@ -68,9 +72,15 @@ describe("app setting read status", () => {
 	it("returns successful empty and existing values without conflating storage failure", () => {
 		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({ success: true, store: {} });
 		expect(read("history")).toEqual({ success: true, found: false, value: null });
-		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({ success: true, store: { history: 123 } });
+		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({
+			success: true,
+			store: { history: 123 },
+		});
 		expect(read("history")).toEqual({ success: true, found: true, value: 123 });
-		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({ success: true, store: { history: null } });
+		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({
+			success: true,
+			store: { history: null },
+		});
 		expect(read("history")).toEqual({ success: true, found: true, value: null });
 		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({ success: false });
 		expect(read("history")).toEqual({ success: false, value: null });
@@ -91,7 +101,9 @@ describe("app setting read status", () => {
 	it("preserves other settings when updating a successfully read store", () => {
 		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({
 			success: true,
-			store: { "recordly.project-share-links.v1": { project: "https://example.test/v/share" } },
+			store: {
+				"recordly.project-share-links.v1": { project: "https://example.test/v/share" },
+			},
 		});
 		expect(write("volume", 0.5)).toEqual({ success: true });
 		expect(writeAppSettingsStore).toHaveBeenCalledExactlyOnceWith({

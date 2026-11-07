@@ -261,7 +261,8 @@ export function RecordingPermissionsSettings({ onReview }: { onReview?: () => vo
 								</SettingsRow>
 								{actionError?.permission === id && (
 									<p role="alert" className="settings-row-note text-danger">
-										{actionError.message} <ErrorReportButton error={actionError.message} />
+										{actionError.message}{" "}
+										<ErrorReportButton error={actionError.message} />
 									</p>
 								)}
 								{status === "restricted" && (

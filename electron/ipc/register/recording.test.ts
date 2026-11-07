@@ -23,17 +23,14 @@ vi.mock("electron", () => ({
 	},
 	ipcMain: {
 		handle: (channel: string, handler: (...args: unknown[]) => unknown) => {
-			if (mocks.handlers.has(channel))
-				throw new Error(`Duplicate channel: ${channel}`);
+			if (mocks.handlers.has(channel)) throw new Error(`Duplicate channel: ${channel}`);
 			mocks.handlers.set(channel, handler);
 		},
 		on: (channel: string, listener: (...args: unknown[]) => unknown) =>
 			mocks.listeners.set(channel, listener),
 	},
 	BrowserWindow: {
-		getAllWindows: () => [
-			{ isDestroyed: () => false, webContents: { send: mocks.broadcast } },
-		],
+		getAllWindows: () => [{ isDestroyed: () => false, webContents: { send: mocks.broadcast } }],
 	},
 	dialog: { showMessageBox: vi.fn() },
 	shell: { showItemInFolder: vi.fn(), openExternal: vi.fn() },
@@ -98,8 +95,7 @@ import {
 import { registerRecordingHandlers } from "./recording";
 
 const platform = process.platform;
-const invoke = (channel: string, ...args: unknown[]) =>
-	mocks.handlers.get(channel)!(...args);
+const invoke = (channel: string, ...args: unknown[]) => mocks.handlers.get(channel)!(...args);
 const sender = () => Object.assign(new EventEmitter(), { id: 42 });
 
 describe("recording IPC composition", () => {
@@ -114,9 +110,7 @@ describe("recording IPC composition", () => {
 		setWindowsPendingVideoPath(null);
 		Object.defineProperty(process, "platform", { value: "linux" });
 	});
-	afterEach(() =>
-		Object.defineProperty(process, "platform", { value: platform }),
-	);
+	afterEach(() => Object.defineProperty(process, "platform", { value: platform }));
 
 	it("registers every recording route once without acquiring hardware or ownership", () => {
 		registerRecordingHandlers();
@@ -166,10 +160,7 @@ describe("recording IPC composition", () => {
 			success: true,
 			token: expect.any(String),
 		});
-		mocks.listeners.get("recording-startup-finished")!(
-			event,
-			"different-token",
-		);
+		mocks.listeners.get("recording-startup-finished")!(event, "different-token");
 		expect(invoke("reserve-recording-session", event)).toMatchObject({
 			success: false,
 		});
@@ -214,12 +205,7 @@ describe("recording IPC composition", () => {
 			expect(() => invoke(channel, event, true)).toThrow(/caller/);
 		}
 		await expect(
-			invoke(
-				"open-recording-file-stream",
-				event,
-				"recording.webm",
-				"video/webm",
-			),
+			invoke("open-recording-file-stream", event, "recording.webm", "video/webm"),
 		).resolves.toMatchObject({
 			success: false,
 			error: expect.stringContaining("Untrusted"),
@@ -241,13 +227,10 @@ describe("recording IPC composition", () => {
 		expect(isCursorCaptureActive).toBe(false);
 		expect(mocks.showCursor).toHaveBeenCalledOnce();
 		expect(changed).toHaveBeenLastCalledWith(false, "Second screen");
-		expect(mocks.broadcast).toHaveBeenLastCalledWith(
-			"recording-state-changed",
-			{
-				recording: false,
-				sourceName: "Second screen",
-			},
-		);
+		expect(mocks.broadcast).toHaveBeenLastCalledWith("recording-state-changed", {
+			recording: false,
+			sourceName: "Second screen",
+		});
 	});
 
 	it("shares a Windows interrupted-recovery failure across repeated requests", async () => {
@@ -286,14 +269,10 @@ describe("recording IPC composition", () => {
 			.mockResolvedValueOnce({ success: false, message: "Still closing" })
 			.mockResolvedValueOnce({ success: false, message: "Closed but invalid" });
 		registerRecordingHandlers();
-		await expect(
-			invoke("recover-native-screen-recording"),
-		).resolves.toMatchObject({
+		await expect(invoke("recover-native-screen-recording")).resolves.toMatchObject({
 			message: "Still closing",
 		});
-		await expect(
-			invoke("recover-native-screen-recording"),
-		).resolves.toMatchObject({
+		await expect(invoke("recover-native-screen-recording")).resolves.toMatchObject({
 			message: "Closed but invalid",
 		});
 		expect(mocks.recoverWindows).toHaveBeenCalledTimes(2);
@@ -313,12 +292,7 @@ describe("recording IPC composition", () => {
 			error: expect.stringContaining("Only WebM"),
 		});
 		await expect(
-			invoke(
-				"append-recording-file-stream",
-				{ sender: sender() },
-				"id",
-				"invalid",
-			),
+			invoke("append-recording-file-stream", { sender: sender() }, "id", "invalid"),
 		).resolves.toMatchObject({
 			success: false,
 			error: expect.stringContaining("Invalid recording chunk"),

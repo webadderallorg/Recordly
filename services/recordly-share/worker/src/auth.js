@@ -175,8 +175,7 @@ export async function handleVerifyPassword(request, env, shareCode) {
 	)
 		.bind(video.id, clientIP, video.id, clientIP)
 		.run();
-	if (!admitted.meta.changes)
-		return errorResponse("Too many attempts — try again later", 429);
+	if (!admitted.meta.changes) return errorResponse("Too many attempts — try again later", 429);
 
 	const clientHash = await sha256Hex(password);
 	const slowHash = video.password_hash.startsWith("pbkdf2-sha256:210000:");

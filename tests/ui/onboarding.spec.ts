@@ -155,9 +155,11 @@ test("settings opens permissions and both pages keep the same layout", async ({ 
 	await expect(tour.locator("[data-onboarding-brand]")).toHaveCount(0);
 	const navigationBounds = (await pages.boundingBox())!;
 	expect(navigationBounds.y).toBeGreaterThan(startBounds.y + startBounds.height);
-	await expect.poll(() =>
-		tour.getByRole("button", { name: "Start recording", exact: true }).boundingBox(),
-	).toEqual(startBounds);
+	await expect
+		.poll(() =>
+			tour.getByRole("button", { name: "Start recording", exact: true }).boundingBox(),
+		)
+		.toEqual(startBounds);
 	await tour.getByRole("button", { name: "Start recording", exact: true }).click();
 	await expect(tour).not.toBeVisible();
 	await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
@@ -173,32 +175,34 @@ test("settings opens permissions and both pages keep the same layout", async ({ 
 	await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
 });
 
-productionTest("first launch opens permissions directly for signed-in users and persists completion", async ({
-	page,
-}) => {
-	await installDesktopBridge(page);
-	await installDesktopBridgeOverrides(page, () => {
-		window.electronAPI.getAppSetting = (key) => JSON.parse(localStorage.getItem(key) || "null");
-		window.electronAPI.setAppSetting = (key, value) => {
-			localStorage.setItem(key, JSON.stringify(value));
-			return true;
-		};
-	});
-	await page.goto("/?windowType=editor");
-	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
-	await expect(tour).toBeVisible({ timeout: 15000 });
-	await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
-	await expect(page.locator("[data-permissions-confetti]")).toBeVisible();
-	await tour.getByRole("button", { name: "Start recording", exact: true }).click();
-	await expect
-		.poll(() => page.evaluate(() => localStorage.getItem("recordly.onboarding.v1.seen")))
-		.toBe("true");
-	await page.reload();
-	await expect(page.getByRole("button", { name: "Home", exact: true })).toBeVisible({
-		timeout: 15000,
-	});
-	await expect(tour).not.toBeVisible();
-});
+productionTest(
+	"first launch opens permissions directly for signed-in users and persists completion",
+	async ({ page }) => {
+		await installDesktopBridge(page);
+		await installDesktopBridgeOverrides(page, () => {
+			window.electronAPI.getAppSetting = (key) =>
+				JSON.parse(localStorage.getItem(key) || "null");
+			window.electronAPI.setAppSetting = (key, value) => {
+				localStorage.setItem(key, JSON.stringify(value));
+				return true;
+			};
+		});
+		await page.goto("/?windowType=editor");
+		const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
+		await expect(tour).toBeVisible({ timeout: 15000 });
+		await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
+		await expect(page.locator("[data-permissions-confetti]")).toBeVisible();
+		await tour.getByRole("button", { name: "Start recording", exact: true }).click();
+		await expect
+			.poll(() => page.evaluate(() => localStorage.getItem("recordly.onboarding.v1.seen")))
+			.toBe("true");
+		await page.reload();
+		await expect(page.getByRole("button", { name: "Home", exact: true })).toBeVisible({
+			timeout: 15000,
+		});
+		await expect(tour).not.toBeVisible();
+	},
+);
 
 test("onboarding fits a compact window with reduced motion", async ({ page }) => {
 	await installDesktopBridge(page);
@@ -221,9 +225,7 @@ test("onboarding fits a compact window with reduced motion", async ({ page }) =>
 	await expect(
 		tour.getByRole("button", { name: "Start recording", exact: true }),
 	).toBeInViewport();
-	await expect(
-		tour.locator("[data-onboarding-artwork] [data-recordly-demo]"),
-	).toBeInViewport();
+	await expect(tour.locator("[data-onboarding-artwork] [data-recordly-demo]")).toBeInViewport();
 	for (const size of [
 		{ width: 450, height: 450 },
 		{ width: 390, height: 390 },
@@ -292,9 +294,7 @@ test("short dark windows keep the banner and navigation visible while the accoun
 	await tour.getByRole("button", { name: "Back to account" }).click();
 	const bounds = await tour.boundingBox();
 	await expect(tour.getByRole("button", { name: "Continue", exact: true })).toBeInViewport();
-	await expect(
-		tour.locator("[data-onboarding-artwork] [data-recordly-demo]"),
-	).toBeInViewport();
+	await expect(tour.locator("[data-onboarding-artwork] [data-recordly-demo]")).toBeInViewport();
 	expect(await tour.boundingBox()).toEqual(bounds);
 	await expect(tour).toHaveJSProperty("scrollWidth", bounds!.width);
 	await page.screenshot({ path: "test-results/onboarding-narrow-account.png" });
@@ -302,63 +302,64 @@ test("short dark windows keep the banner and navigation visible while the accoun
 	await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
 });
 
-productionTest("square onboarding uses consistent typography and scrolls permissions above fixed actions", async ({
-	page,
-}) => {
-	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
-	await page.setViewportSize({ width: 450, height: 450 });
-	await page.emulateMedia({ reducedMotion: "reduce" });
-	await page.goto("/?windowType=onboarding");
-	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
-	const typography = () =>
-		tour.getByRole("heading", { level: 2 }).evaluate((element) => {
-			const heading = getComputedStyle(element);
-			const logo = element.querySelector<HTMLImageElement>(".onboarding-title-logo")!;
-			const header = element.closest<HTMLElement>(".onboarding-header")!;
-			return {
-				fontFamily: heading.fontFamily,
-				fontSize: heading.fontSize,
-				fontWeight: heading.fontWeight,
-				lineHeight: heading.lineHeight,
-				letterSpacing: heading.letterSpacing,
-				logoWidth: logo.getBoundingClientRect().width,
-				logoHeight: logo.getBoundingClientRect().height,
-				headerGap: getComputedStyle(header).gap,
-			};
+productionTest(
+	"square onboarding uses consistent typography and scrolls permissions above fixed actions",
+	async ({ page }) => {
+		await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
+		await page.setViewportSize({ width: 450, height: 450 });
+		await page.emulateMedia({ reducedMotion: "reduce" });
+		await page.goto("/?windowType=onboarding");
+		const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
+		const typography = () =>
+			tour.getByRole("heading", { level: 2 }).evaluate((element) => {
+				const heading = getComputedStyle(element);
+				const logo = element.querySelector<HTMLImageElement>(".onboarding-title-logo")!;
+				const header = element.closest<HTMLElement>(".onboarding-header")!;
+				return {
+					fontFamily: heading.fontFamily,
+					fontSize: heading.fontSize,
+					fontWeight: heading.fontWeight,
+					lineHeight: heading.lineHeight,
+					letterSpacing: heading.letterSpacing,
+					logoWidth: logo.getBoundingClientRect().width,
+					logoHeight: logo.getBoundingClientRect().height,
+					headerGap: getComputedStyle(header).gap,
+				};
+			});
+		await expect(tour.getByRole("heading", { name: "Welcome to Recordly" })).toBeVisible();
+		const accountTypography = await typography();
+		const accountBanner = await tour.locator("[data-onboarding-artwork]").boundingBox();
+		await tour.getByPlaceholder("you@example.com").fill("test@email.com");
+		await tour.getByRole("button", { name: "Email me a code" }).click();
+		await expect(tour.getByText(/Enter code sent to/)).toBeVisible();
+		await completeSupabaseSignIn(page);
+		await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
+		expect(await typography()).toEqual(accountTypography);
+		const permissionBanner = (await tour.locator("[data-onboarding-artwork]").boundingBox())!;
+		// The banner grows into spare space, so its height can change when the page content does.
+		expect(permissionBanner.width).toBe(accountBanner!.width);
+		expect(permissionBanner.height).toBeGreaterThanOrEqual(64);
+		const body = tour.locator("[data-onboarding-body]");
+		await expect(body).toHaveCSS("overflow-y", "auto");
+		await expect
+			.poll(() => body.evaluate((element) => element.scrollHeight - element.clientHeight))
+			.toBeGreaterThan(0);
+		await body.evaluate((element) => {
+			element.scrollTop = element.scrollHeight;
 		});
-	await expect(tour.getByRole("heading", { name: "Welcome to Recordly" })).toBeVisible();
-	const accountTypography = await typography();
-	const accountBanner = await tour.locator("[data-onboarding-artwork]").boundingBox();
-	await tour.getByPlaceholder("you@example.com").fill("test@email.com");
-	await tour.getByRole("button", { name: "Email me a code" }).click();
-	await expect(tour.getByText(/Enter code sent to/)).toBeVisible();
-	await completeSupabaseSignIn(page);
-	await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
-	expect(await typography()).toEqual(accountTypography);
-	const permissionBanner = (await tour.locator("[data-onboarding-artwork]").boundingBox())!;
-	// The banner grows into spare space, so its height can change when the page content does.
-	expect(permissionBanner.width).toBe(accountBanner!.width);
-	expect(permissionBanner.height).toBeGreaterThanOrEqual(64);
-	const body = tour.locator("[data-onboarding-body]");
-	await expect(body).toHaveCSS("overflow-y", "auto");
-	await expect
-		.poll(() => body.evaluate((element) => element.scrollHeight - element.clientHeight))
-		.toBeGreaterThan(0);
-	await body.evaluate((element) => {
-		element.scrollTop = element.scrollHeight;
-	});
-	await expect(
-		tour.getByText("Microphone and camera access are requested when you use them.", {
-			exact: false,
-		}),
-	).toBeInViewport();
-	await expect(tour.getByRole("button", { name: "Start recording" })).toBeInViewport();
-	await expect(tour.getByRole("navigation", { name: "Onboarding pages" })).toBeInViewport();
-	const bodyBounds = (await body.boundingBox())!;
-	const footerBounds = (await tour.locator(".onboarding-footer").boundingBox())!;
-	expect(bodyBounds.y + bodyBounds.height).toBeLessThanOrEqual(footerBounds.y);
-	await page.screenshot({ path: "test-results/onboarding-square-permissions.png" });
-});
+		await expect(
+			tour.getByText("Microphone and camera access are requested when you use them.", {
+				exact: false,
+			}),
+		).toBeInViewport();
+		await expect(tour.getByRole("button", { name: "Start recording" })).toBeInViewport();
+		await expect(tour.getByRole("navigation", { name: "Onboarding pages" })).toBeInViewport();
+		const bodyBounds = (await body.boundingBox())!;
+		const footerBounds = (await tour.locator(".onboarding-footer").boundingBox())!;
+		expect(bodyBounds.y + bodyBounds.height).toBeLessThanOrEqual(footerBounds.y);
+		await page.screenshot({ path: "test-results/onboarding-square-permissions.png" });
+	},
+);
 
 productionTest("sign-in is mandatory even after onboarding was completed", async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: true });
@@ -380,50 +381,54 @@ productionTest("sign-in is mandatory even after onboarding was completed", async
 	await expect(tour).toBeVisible();
 });
 
-productionTest("Supabase email callback advances to permissions only after a session is returned", async ({
-	page,
-}) => {
-	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
-	await installDesktopBridgeOverrides(page, () => {
-		window.electronAPI.getAppSetting = (key) => JSON.parse(localStorage.getItem(key) || "null");
-		window.electronAPI.setAppSetting = (key, value) => {
-			localStorage.setItem(key, JSON.stringify(value));
-			return true;
-		};
-	});
-	await page.goto("/?windowType=editor");
-	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
-	await tour.getByPlaceholder("you@example.com").fill("test@email.com");
-	const otpRequest = page.waitForRequest((request) => request.url().includes("/auth/v1/otp"));
-	await tour.getByRole("button", { name: "Email me a code" }).click();
-	expect((await otpRequest).postDataJSON()).toMatchObject({
-		email: "test@email.com",
-		create_user: true,
-	});
-	await expect(tour.getByText(/Enter code sent to/)).toBeVisible();
-	await expect(tour).toHaveAttribute("data-onboarding-state", "login");
-	const exchange = page.waitForRequest((request) => request.url().includes("/auth/v1/token"));
-	await completeSupabaseSignIn(page);
-	expect((await exchange).postDataJSON()).toMatchObject({
-		auth_code: "ui-auth-code",
-		code_verifier: expect.any(String),
-	});
-	await expect(tour).toHaveAttribute("data-onboarding-state", "permissions");
-	await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
-	await expect(
-		tour
-			.getByRole("navigation", { name: "Onboarding pages" })
-			.getByRole("button", { name: "Permissions", exact: true }),
-	).toBeEnabled();
-	await expect(tour.getByRole("button", { name: "Start recording", exact: true })).toBeEnabled();
-	await tour.getByRole("button", { name: "Start recording", exact: true }).click();
-	await expect(tour).not.toBeVisible();
-	await page.reload();
-	await expect(page.getByRole("button", { name: "Home", exact: true })).toBeVisible({
-		timeout: 15000,
-	});
-	await expect(tour).not.toBeVisible();
-});
+productionTest(
+	"Supabase email callback advances to permissions only after a session is returned",
+	async ({ page }) => {
+		await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
+		await installDesktopBridgeOverrides(page, () => {
+			window.electronAPI.getAppSetting = (key) =>
+				JSON.parse(localStorage.getItem(key) || "null");
+			window.electronAPI.setAppSetting = (key, value) => {
+				localStorage.setItem(key, JSON.stringify(value));
+				return true;
+			};
+		});
+		await page.goto("/?windowType=editor");
+		const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
+		await tour.getByPlaceholder("you@example.com").fill("test@email.com");
+		const otpRequest = page.waitForRequest((request) => request.url().includes("/auth/v1/otp"));
+		await tour.getByRole("button", { name: "Email me a code" }).click();
+		expect((await otpRequest).postDataJSON()).toMatchObject({
+			email: "test@email.com",
+			create_user: true,
+		});
+		await expect(tour.getByText(/Enter code sent to/)).toBeVisible();
+		await expect(tour).toHaveAttribute("data-onboarding-state", "login");
+		const exchange = page.waitForRequest((request) => request.url().includes("/auth/v1/token"));
+		await completeSupabaseSignIn(page);
+		expect((await exchange).postDataJSON()).toMatchObject({
+			auth_code: "ui-auth-code",
+			code_verifier: expect.any(String),
+		});
+		await expect(tour).toHaveAttribute("data-onboarding-state", "permissions");
+		await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
+		await expect(
+			tour
+				.getByRole("navigation", { name: "Onboarding pages" })
+				.getByRole("button", { name: "Permissions", exact: true }),
+		).toBeEnabled();
+		await expect(
+			tour.getByRole("button", { name: "Start recording", exact: true }),
+		).toBeEnabled();
+		await tour.getByRole("button", { name: "Start recording", exact: true }).click();
+		await expect(tour).not.toBeVisible();
+		await page.reload();
+		await expect(page.getByRole("button", { name: "Home", exact: true })).toBeVisible({
+			timeout: 15000,
+		});
+		await expect(tour).not.toBeVisible();
+	},
+);
 
 test("missing macOS permissions gate Start recording until access is allowed", async ({ page }) => {
 	await installDesktopBridge(page);
@@ -565,31 +570,32 @@ test("HUD routes missing permissions to onboarding without opening System Settin
 	await expect(page.locator("html")).not.toHaveAttribute("data-settings-opened");
 });
 
-productionTest("a permission request opens its page even after onboarding was already completed", async ({
-	page,
-}) => {
-	await installDesktopBridge(page);
-	await installDesktopBridgeOverrides(page, () => {
-		window.electronAPI.getAppSetting = (key) =>
-			key === "recordly.onboarding.v1.seen" ||
-			key === "recordly.onboarding.permissionsRequested"
-				? true
-				: null;
-		window.electronAPI.getScreenRecordingPermissionStatus = async () => ({
-			success: true,
-			status: "denied",
+productionTest(
+	"a permission request opens its page even after onboarding was already completed",
+	async ({ page }) => {
+		await installDesktopBridge(page);
+		await installDesktopBridgeOverrides(page, () => {
+			window.electronAPI.getAppSetting = (key) =>
+				key === "recordly.onboarding.v1.seen" ||
+				key === "recordly.onboarding.permissionsRequested"
+					? true
+					: null;
+			window.electronAPI.getScreenRecordingPermissionStatus = async () => ({
+				success: true,
+				status: "denied",
+			});
 		});
-	});
-	await page.goto("/?windowType=editor");
-	const tour = page.getByRole("dialog", { name: "Permissions", exact: true });
-	await expect(tour).toBeVisible({ timeout: 15000 });
-	await expect(tour.getByRole("navigation")).toHaveCount(0);
-	await expect(tour.getByRole("button", { name: "Back to account" })).toHaveCount(0);
-	await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
-	await expect(
-		tour.getByRole("button", { name: "Continue without signing in" }),
-	).not.toBeVisible();
-});
+		await page.goto("/?windowType=editor");
+		const tour = page.getByRole("dialog", { name: "Permissions", exact: true });
+		await expect(tour).toBeVisible({ timeout: 15000 });
+		await expect(tour.getByRole("navigation")).toHaveCount(0);
+		await expect(tour.getByRole("button", { name: "Back to account" })).toHaveCount(0);
+		await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
+		await expect(
+			tour.getByRole("button", { name: "Continue without signing in" }),
+		).not.toBeVisible();
+	},
+);
 
 for (const platform of ["darwin", "win32", "linux"]) {
 	test(`${platform} HUD requires a Supabase session before recording`, async ({ page }) => {
@@ -681,9 +687,7 @@ for (const signedIn of [true, false]) {
 	});
 }
 
-test("Review permission setup uses onboarding preview in development", async ({
-	page,
-}) => {
+test("Review permission setup uses onboarding preview in development", async ({ page }) => {
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
 		window.electronAPI.showOnboardingWindow = async (options) => {
