@@ -43,36 +43,60 @@ export async function probeNativeVideoEncoder(
 	);
 
 	return new Promise<boolean>((resolve) => {
-		const process = spawn(ffmpegPath, args, {
-			stdio: ["pipe", "ignore", "pipe"],
-		});
+		let process: ReturnType<typeof spawn>;
+		try {
+			process = spawn(ffmpegPath, args, { stdio: ["pipe", "ignore", "pipe"] });
+		} catch {
+			void removeTemporaryExportFile(outputPath);
+			resolve(false);
+			return;
+		}
 		let stderrOutput = "";
-		const timeout = setTimeout(() => {
+		let settled = false;
+		let timeout: ReturnType<typeof setTimeout>;
+		const finish = (success: boolean) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timeout);
+			void removeTemporaryExportFile(outputPath);
+			resolve(success);
+		};
+		const fail = () => {
+			if (settled) return;
+			finish(false);
 			try {
 				process.kill("SIGKILL");
 			} catch {
 				// ignore
 			}
-			resolve(false);
-		}, 15000);
+		};
+		timeout = setTimeout(fail, 15000);
+		// Keep the handlers installed through shutdown: a failed probe can emit
+		// another stream/process error while its child is being terminated.
+		process.on("error", fail);
+		process.stdin?.on("error", fail);
 
-		process.stderr.on("data", (chunk: Buffer) => {
+		process.stderr?.on("data", (chunk: Buffer) => {
 			stderrOutput += chunk.toString();
 		});
 
 		process.on("close", (code) => {
-			clearTimeout(timeout);
-			void removeTemporaryExportFile(outputPath);
+			if (settled) void removeTemporaryExportFile(outputPath);
 			if (code !== 0 && stderrOutput.trim().length > 0) {
 				console.warn(
 					`[native-export] Encoder probe failed for ${encoderName}:`,
 					stderrOutput.trim(),
 				);
 			}
-			resolve(code === 0);
+			finish(code === 0);
 		});
 
-		process.stdin.end(Buffer.alloc(getNativeVideoInputByteSize(64, 64), 0));
+		try {
+			if (!process.stdin) fail();
+			else process.stdin.end(Buffer.alloc(getNativeVideoInputByteSize(64, 64), 0));
+		} catch {
+			fail();
+		}
 	});
 }
 

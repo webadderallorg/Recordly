@@ -60,6 +60,26 @@ describe("current-word caption layout", () => {
 			measureText: (text) => text.length * 10,
 		});
 
+	it("lays out unsorted saved cues in time order without mutating their array", () => {
+		const middle = { id: "middle", startMs: 1200, endMs: 2000, text: "middle phrase" };
+		const last = { id: "last", startMs: 2400, endMs: 3200, text: "last phrase" };
+		const unsorted = [last, cue, middle];
+		for (const time of [100, 700, 1300, 1900, 2500, 3100]) {
+			expect(layout(time, unsorted)).toEqual(layout(time, [cue, middle, last]));
+		}
+		expect(unsorted).toEqual([last, cue, middle]);
+	});
+
+	it("retains the established input ordering for cues with equal start times", () => {
+		const sameStart = { ...cue, id: "same-start", text: "same start", words: undefined };
+		const later = { id: "later", startMs: 2000, endMs: 3000, text: "later" };
+		for (const time of [100, 600, 2100]) {
+			expect(layout(time, [later, cue, sameStart])).toEqual(
+				layout(time, [cue, sameStart, later]),
+			);
+		}
+	});
+
 	it("finishes Pop in 90ms while Fade retains its 180ms entrance", () => {
 		const animated = (animationStyle: "pop" | "fade", timeMs: number) =>
 			buildActiveCaptionLayout({

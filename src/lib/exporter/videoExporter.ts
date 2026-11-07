@@ -29,7 +29,7 @@ import {
 } from "./finalizationTimeout";
 import { FrameRenderer } from "./frameRenderer";
 import { getLocalFilePath } from "./localMediaSource";
-import type { SupportedMp4EncoderPath } from "./mp4Support";
+import { MP4_CODEC_FALLBACK_LIST, type SupportedMp4EncoderPath } from "./mp4Support";
 import { VideoMuxer } from "./muxer";
 import { type DecodedVideoInfo, StreamingVideoDecoder } from "./streamingDecoder";
 import type {
@@ -1247,11 +1247,17 @@ export class VideoExporter {
 		this.chunkCount = 0;
 		let videoDescription: Uint8Array | undefined;
 
-		// Ordered from most capable to most compatible. avc1.PPCCLL where PP=profile, CC=constraints, LL=level.
-		// High 5.1 → Main 5.1 → Baseline 5.1 → Main 3.1 → Baseline 3.1
-		const CODEC_FALLBACK_LIST = this.config.codec
-			? [this.config.codec]
-			: ["avc1.640033", "avc1.4d4033", "avc1.420033", "avc1.4d401f", "avc1.42001f"];
+		// The full-size probe may require another H.264 level/profile. Keep its
+		// selected codec first and retain the configured codec and compatibility paths.
+		const CODEC_FALLBACK_LIST = [
+			...new Set(
+				[
+					this.config.preferredEncoderPath?.codec,
+					this.config.codec,
+					...MP4_CODEC_FALLBACK_LIST,
+				].filter((codec): codec is string => Boolean(codec)),
+			),
+		];
 
 		let resolvedCodec: string | null = null;
 
@@ -1297,8 +1303,7 @@ export class VideoExporter {
 						}
 					} catch (error) {
 						console.error("Muxing error:", error);
-						const muxingError =
-							error instanceof Error ? error : new Error(String(error));
+						const muxingError = error instanceof Error ? error : new Error(String(error));
 						if (!this.encoderError) {
 							this.encoderError = muxingError;
 						}
@@ -1325,6 +1330,14 @@ export class VideoExporter {
 			latencyMode: "quality",
 			bitrateMode: "variable",
 		};
+		const supported = async (config: VideoEncoderConfig) => {
+			try {
+				return (await VideoEncoder.isConfigSupported(config)).supported;
+			} catch {
+				// Unsupported profiles can throw rather than return supported:false.
+				return false;
+			}
+		};
 
 		for (const candidateCodec of CODEC_FALLBACK_LIST) {
 			const hwConfig: VideoEncoderConfig = {
@@ -1332,12 +1345,9 @@ export class VideoExporter {
 				codec: candidateCodec,
 				hardwareAcceleration: "prefer-hardware",
 			};
-			const hwSupport = await VideoEncoder.isConfigSupported(hwConfig);
-			if (hwSupport.supported) {
+			if (await supported(hwConfig)) {
 				resolvedCodec = candidateCodec;
-				console.log(
-					`[VideoExporter] Using hardware acceleration with codec ${candidateCodec}`,
-				);
+				console.log(`[VideoExporter] Using hardware acceleration with codec ${candidateCodec}`);
 				this.encoder.configure(hwConfig);
 				return;
 			}
@@ -1347,8 +1357,7 @@ export class VideoExporter {
 				codec: candidateCodec,
 				hardwareAcceleration: "prefer-software",
 			};
-			const swSupport = await VideoEncoder.isConfigSupported(swConfig);
-			if (swSupport.supported) {
+			if (await supported(swConfig)) {
 				resolvedCodec = candidateCodec;
 				console.log(`[VideoExporter] Using software encoding with codec ${candidateCodec}`);
 				this.encoder.configure(swConfig);

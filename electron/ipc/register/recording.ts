@@ -72,11 +72,12 @@ import {
 	finalizeStoredVideo,
 	muxNativeMacRecordingWithAudio,
 	recoverNativeMacCaptureOutput,
-	waitForNativeCaptureCommand,
+	NativeCaptureStopTimeoutError,
 	waitForNativeCaptureStart,
 	waitForNativeCaptureStop,
 } from "../recording/mac";
 import { resolveRecordedVideoStoragePath } from "../recording/storagePath";
+import { sendNativeCaptureCommand } from "../recording/nativeCaptureCommand";
 import {
 	attachWindowsCaptureLifecycle,
 	isNativeWindowsCaptureAvailable,
@@ -1226,6 +1227,30 @@ export function registerRecordingHandlers(
 				return await finalizeStoredVideo(finalVideoPath);
 			} catch (error) {
 				console.error("Failed to stop native ScreenCaptureKit recording:", error);
+				if (
+					nativeCaptureProcess ||
+					(error instanceof NativeCaptureStopTimeoutError && error.captureStillRunning)
+				) {
+					// kill() is only a request. Keep the process/path reservation until
+					// its actual close; recovery must not inspect a live writer's MP4.
+					// Let the normal interruption lifecycle handle an eventual late close.
+					setNativeCaptureStopRequested(false);
+					// A failed pipe write does not confirm process exit. Ask it to terminate,
+					// then leave paths/ownership reserved for the close lifecycle and recovery.
+					if (!(error instanceof NativeCaptureStopTimeoutError)) {
+						try {
+							if (nativeCaptureProcess && !nativeCaptureProcess.killed)
+								nativeCaptureProcess.kill("SIGTERM");
+						} catch {
+							// A refused signal must not release a live writer's reservation.
+						}
+					}
+					return {
+						success: false,
+						message: "The capture helper has not exited.",
+						error: String(error),
+					};
+				}
 				const fallbackPath = nativeCaptureTargetPath;
 				const fallbackSystemAudioPath = nativeCaptureSystemAudioPath;
 				const fallbackMicrophonePath = nativeCaptureMicrophonePath;
@@ -1334,7 +1359,7 @@ export function registerRecordingHandlers(
 			}
 
 			try {
-				windowsCaptureProcess.stdin.write("pause\n");
+				await sendNativeCaptureCommand(windowsCaptureProcess, "pause\n");
 				setWindowsCapturePaused(true);
 				return { success: true };
 			} catch (error) {
@@ -1362,12 +1387,7 @@ export function registerRecordingHandlers(
 		}
 
 		try {
-			const commandApplied = waitForNativeCaptureCommand(
-				nativeCaptureProcess,
-				"Recording paused",
-			);
-			nativeCaptureProcess.stdin.write("pause\n");
-			await commandApplied;
+			await sendNativeCaptureCommand(nativeCaptureProcess, "pause\n", "Recording paused");
 			setNativeCapturePaused(true);
 			return { success: true };
 		} catch (error) {
@@ -1390,7 +1410,7 @@ export function registerRecordingHandlers(
 			}
 
 			try {
-				windowsCaptureProcess.stdin.write("resume\n");
+				await sendNativeCaptureCommand(windowsCaptureProcess, "resume\n");
 				setWindowsCapturePaused(false);
 				return { success: true };
 			} catch (error) {
@@ -1418,12 +1438,7 @@ export function registerRecordingHandlers(
 		}
 
 		try {
-			const commandApplied = waitForNativeCaptureCommand(
-				nativeCaptureProcess,
-				"Recording resumed",
-			);
-			nativeCaptureProcess.stdin.write("resume\n");
-			await commandApplied;
+			await sendNativeCaptureCommand(nativeCaptureProcess, "resume\n", "Recording resumed");
 			setNativeCapturePaused(false);
 			return { success: true };
 		} catch (error) {

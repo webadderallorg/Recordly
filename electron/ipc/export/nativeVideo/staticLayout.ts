@@ -39,6 +39,12 @@ export async function exportNativeStaticLayoutVideo(
 	if (!Number.isFinite(options.durationSec) || options.durationSec <= 0) {
 		throw new Error("Native static layout export requires a positive duration");
 	}
+	const sessionId =
+		options.sessionId ??
+		`recordly-static-layout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+	if (typeof sessionId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(sessionId)) {
+		throw new Error("Native static layout export requires a safe session ID");
+	}
 	options = await normalizeNativeStaticLayoutBackground(options);
 	if (
 		options.webcamInputPath &&
@@ -52,6 +58,12 @@ export async function exportNativeStaticLayoutVideo(
 	) {
 		throw new Error("Native zoom telemetry requires the Windows GPU compositor");
 	}
+	if (
+		options.cursorTelemetry?.length &&
+		!(options.experimentalWindowsGpuCompositor && process.platform === "win32")
+	) {
+		throw new Error("Native cursor telemetry requires the Windows GPU compositor");
+	}
 
 	const chunkDurationSec = Math.max(1, Math.min(300, options.chunkDurationSec ?? 120));
 	const chunks = buildNativeStaticLayoutChunks(options.durationSec, chunkDurationSec);
@@ -59,9 +71,6 @@ export async function exportNativeStaticLayoutVideo(
 		throw new Error("Native static layout export produced no chunks");
 	}
 
-	const sessionId =
-		options.sessionId ??
-		`recordly-static-layout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 	const session: NativeStaticLayoutExportSession = {
 		terminating: false,
 		currentProcess: null,
@@ -227,7 +236,6 @@ export async function exportNativeStaticLayoutVideo(
 		};
 	} catch (error) {
 		await removeTemporaryExportFile(videoOnlyPath);
-		await removeTemporaryExportFile(videoOnlyPath.replace(/\.mp4$/, "-final.mp4"));
 		throw error;
 	} finally {
 		nativeStaticLayoutExportSessions.delete(sessionId);

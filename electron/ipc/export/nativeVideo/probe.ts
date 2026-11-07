@@ -8,7 +8,20 @@ import {
 export async function probeNativeVideoStreamStats(
 	ffprobePath: string,
 	inputPath: string,
+	expected?: { durationSec: number; targetFrames: number },
 ): Promise<NativeVideoStreamStatsProbe> {
+	// Counting frames scans the completed video. Allow real-time decoding at
+	// half speed (or 15 fps for high-frame-rate video), plus startup overhead.
+	const duration = Number.isFinite(expected?.durationSec)
+		? Math.max(0, expected!.durationSec)
+		: 0;
+	const frames = Number.isFinite(expected?.targetFrames)
+		? Math.max(0, expected!.targetFrames)
+		: 0;
+	const timeout = Math.min(
+		2_147_483_647,
+		Math.max(120_000, Math.ceil(Math.max(duration, frames / 30) * 2000) + 30_000),
+	);
 	const result = await execFileAsync(
 		ffprobePath,
 		[
@@ -23,7 +36,7 @@ export async function probeNativeVideoStreamStats(
 			"json",
 			inputPath,
 		],
-		{ timeout: 120_000, maxBuffer: 2 * 1024 * 1024 },
+		{ timeout, maxBuffer: 2 * 1024 * 1024 },
 	);
 	const stats = parseNativeVideoStreamStatsProbeOutput(result.stdout);
 	if (!stats) {
@@ -41,7 +54,7 @@ export async function validateNativeVideoOutputFile(
 		targetFrames: number;
 	},
 ) {
-	const stats = await probeNativeVideoStreamStats(ffprobePath, videoPath);
+	const stats = await probeNativeVideoStreamStats(ffprobePath, videoPath, expected);
 	const issues = validateNativeVideoStreamStats(stats, expected);
 	if (issues.length > 0) {
 		throw new Error(`Native video output is invalid: ${issues.join("; ")}`);
