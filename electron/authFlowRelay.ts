@@ -459,6 +459,14 @@ export function createAuthFlowRelay<Owner>(options: {
 			);
 			if (!record || record.instance === instance) return "unavailable";
 			return await new Promise<FlowRelayResult>((resolve) => {
+				let deadline: ReturnType<typeof setTimeout> | undefined;
+				let settled = false;
+				const settle = (result: FlowRelayResult) => {
+					if (settled) return;
+					settled = true;
+					if (deadline !== undefined) clearTimeout(deadline);
+					resolve(result);
+				};
 				// A dead process's PID and port can be reused. Only the actual owner
 				// can decrypt this envelope and prove it accepted the exact request.
 				const envelope = encryptFlowCallback(record, callback.url);
@@ -478,14 +486,17 @@ export function createAuthFlowRelay<Owner>(options: {
 						let body = "";
 						response.on("data", (chunk) => {
 							body += chunk;
-							if (body.length > 256) response.destroy();
+							if (body.length > 256) {
+								settle("unavailable");
+								response.destroy();
+							}
 						});
-						response.on("error", () => resolve("unavailable"));
-						response.on("aborted", () => resolve("unavailable"));
+						response.on("error", () => settle("unavailable"));
+						response.on("aborted", () => settle("unavailable"));
 						response.on("end", () => {
 							try {
 								const reply = JSON.parse(body);
-								resolve(
+								settle(
 									response.statusCode === 200 &&
 										reply.accepted === true &&
 										sameProof(
@@ -496,14 +507,26 @@ export function createAuthFlowRelay<Owner>(options: {
 										: "unavailable",
 								);
 							} catch {
-								resolve("unavailable");
+								settle("unavailable");
 							}
 						});
 					},
 				);
-				request.setTimeout(5000, () => request.destroy());
-				request.on("error", () => resolve("unavailable"));
-				request.end(payload);
+				deadline = setTimeout(() => {
+					settle("unavailable");
+					request.destroy();
+				}, 5000);
+				request.setTimeout(5000, () => {
+					settle("unavailable");
+					request.destroy();
+				});
+				request.on("error", () => settle("unavailable"));
+				try {
+					request.end(payload);
+				} catch {
+					settle("unavailable");
+					request.destroy();
+				}
 			});
 		} catch {
 			return "unavailable";

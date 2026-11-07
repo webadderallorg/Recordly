@@ -279,7 +279,7 @@
     "checkingDeletion": "Verifica dei file sorgente e dei collegamenti cloud…",
     "reviewSources": "Registrazioni sorgente da rimuovere: {{count}}. File sorgente condivisi conservati: {{kept}}.",
     "cloudDeleteFailed": "Impossibile eliminare il video nel cloud di {{name}}. Il progetto e le relative registrazioni sorgente sono stati conservati.",
-    "sharedSourcesKept": "Sono stati conservati {{count}} file sorgente usati da altri progetti o dall’editor attuale.",
+    "sharedSourcesKept": "File sorgente conservati: {{count}}.",
     "signInToDeleteCloud": "Accedi all’account proprietario del video condiviso prima di eliminare {{name}}.",
     "cloudOriginMismatch": "Il collegamento cloud salvato per {{name}} appartiene a un altro server. Il progetto e i relativi file sorgente sono stati conservati.",
     "deletionFailed": "Impossibile eliminare alcuni elementi selezionati.",

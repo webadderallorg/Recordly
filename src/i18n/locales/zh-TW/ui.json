@@ -279,7 +279,7 @@
     "checkingDeletion": "正在檢查來源檔案和雲端連結…",
     "reviewSources": "要移除的原始錄製：{{count}}。保留的共用來源檔案：{{kept}}。",
     "cloudDeleteFailed": "無法刪除 {{name}} 的雲端影片。其專案和原始錄製已保留。",
-    "sharedSourcesKept": "已保留其他專案或目前編輯器正在使用的 {{count}} 個來源檔案。",
+    "sharedSourcesKept": "已保留的來源檔案：{{count}} 個。",
     "signInToDeleteCloud": "刪除 {{name}} 前，請登入擁有該共用影片的帳戶。",
     "cloudOriginMismatch": "{{name}} 中儲存的雲端連結屬於另一台伺服器。其專案和來源檔案已保留。",
     "deletionFailed": "無法刪除部分所選項目。",

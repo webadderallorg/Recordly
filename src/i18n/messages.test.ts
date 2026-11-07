@@ -11,6 +11,7 @@ describe("translation lookup", () => {
 		const catalog = catalogs[`./locales/${locale}/ui.json`];
 		for (const count of [0, 1, 2, 1234]) {
 			const category = new Intl.PluralRules(locale).select(count);
+			expect(Object.hasOwn(catalog, `projectCount_${category}`)).toBe(true);
 			const number = new Intl.NumberFormat(locale).format(count);
 			const expected = (
 				catalog[`projectCount_${category}`] ?? catalog.projectCount_other

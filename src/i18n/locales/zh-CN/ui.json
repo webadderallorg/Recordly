@@ -279,7 +279,7 @@
     "checkingDeletion": "正在检查源文件和云端链接…",
     "reviewSources": "要移除的原始录制：{{count}}。保留的共享源文件：{{kept}}。",
     "cloudDeleteFailed": "无法删除 {{name}} 的云端视频。其项目和原始录制已保留。",
-    "sharedSourcesKept": "已保留其他项目或当前编辑器正在使用的 {{count}} 个源文件。",
+    "sharedSourcesKept": "已保留的源文件：{{count}} 个。",
     "signInToDeleteCloud": "删除 {{name}} 前，请登录拥有该共享视频的账户。",
     "cloudOriginMismatch": "{{name}} 中保存的云端链接属于另一台服务器。其项目和源文件已保留。",
     "deletionFailed": "无法删除部分所选项目。",

@@ -279,7 +279,7 @@
     "checkingDeletion": "원본 파일과 클라우드 링크 확인 중…",
     "reviewSources": "삭제할 원본 녹화: {{count}}개. 유지할 공유 원본 파일: {{kept}}개.",
     "cloudDeleteFailed": "{{name}}의 클라우드 동영상을 삭제할 수 없습니다. 프로젝트와 원본 녹화는 유지되었습니다.",
-    "sharedSourcesKept": "다른 프로젝트나 현재 편집기에서 사용하는 원본 파일 {{count}}개를 유지했습니다.",
+    "sharedSourcesKept": "유지된 원본 파일: {{count}}개.",
     "signInToDeleteCloud": "{{name}}을(를) 삭제하기 전에 공유 동영상을 소유한 계정에 로그인하세요.",
     "cloudOriginMismatch": "{{name}}에 저장된 클라우드 링크는 다른 서버에 속합니다. 프로젝트와 원본 파일은 유지되었습니다.",
     "deletionFailed": "선택한 항목 중 일부를 삭제할 수 없습니다.",

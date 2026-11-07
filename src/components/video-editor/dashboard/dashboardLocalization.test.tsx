@@ -42,6 +42,7 @@ describe("dashboard localization", () => {
 			expect(html).toContain(messages.yourProjects);
 			expect(html).toContain(messages.searchProjects);
 			const category = new Intl.PluralRules(locale).select(count);
+			expect(Object.hasOwn(messages, `projectCount_${category}`)).toBe(true);
 			const expected = (
 				messages[`projectCount_${category}`] ?? messages.projectCount_other
 			).replace("{{number}}", new Intl.NumberFormat(locale).format(count));

@@ -384,7 +384,7 @@ export function useProjectOpenActions({
 					),
 					{ description: result.errors.join("\n") },
 				);
-			if (result.sourcesKept?.length) toast.info(translate("ui.cleanup.sharedSourcesKept", "Kept {{count}} source files used by other projects or the current editor.", { count: result.sourcesKept.length }));
+			if (result.sourcesKept?.length) toast.info(translate("ui.cleanup.sharedSourcesKept", "Source files kept: {{count}}.", { count: result.sourcesKept.length }));
 			return result.deleted;
 		},
 		[project, refreshProjectLibrary],

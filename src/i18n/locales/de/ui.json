@@ -279,7 +279,7 @@
     "checkingDeletion": "Quelldateien und Cloud-Links werden geprüft…",
     "reviewSources": "Zu entfernende Quellaufnahmen: {{count}}. Beibehaltene gemeinsam genutzte Quelldateien: {{kept}}.",
     "cloudDeleteFailed": "Das Cloud-Video für {{name}} konnte nicht gelöscht werden. Das Projekt und seine Quellaufnahmen wurden beibehalten.",
-    "sharedSourcesKept": "{{count}} Quelldateien wurden beibehalten, da sie von anderen Projekten oder im aktuellen Editor verwendet werden.",
+    "sharedSourcesKept": "Beibehaltene Quelldateien: {{count}}.",
     "signInToDeleteCloud": "Melde dich vor dem Löschen von {{name}} bei dem Konto an, dem das geteilte Video gehört.",
     "cloudOriginMismatch": "Der gespeicherte Cloud-Link für {{name}} gehört zu einem anderen Server. Das Projekt und seine Quelldateien wurden beibehalten.",
     "deletionFailed": "Einige ausgewählte Elemente konnten nicht gelöscht werden.",
