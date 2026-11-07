@@ -1303,7 +1303,8 @@ export class VideoExporter {
 						}
 					} catch (error) {
 						console.error("Muxing error:", error);
-						const muxingError = error instanceof Error ? error : new Error(String(error));
+						const muxingError =
+							error instanceof Error ? error : new Error(String(error));
 						if (!this.encoderError) {
 							this.encoderError = muxingError;
 						}
@@ -1347,7 +1348,9 @@ export class VideoExporter {
 			};
 			if (await supported(hwConfig)) {
 				resolvedCodec = candidateCodec;
-				console.log(`[VideoExporter] Using hardware acceleration with codec ${candidateCodec}`);
+				console.log(
+					`[VideoExporter] Using hardware acceleration with codec ${candidateCodec}`,
+				);
 				this.encoder.configure(hwConfig);
 				return;
 			}

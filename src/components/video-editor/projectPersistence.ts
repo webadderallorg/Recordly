@@ -104,7 +104,9 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 	return {
 		wallpaper: typeof editor.wallpaper === "string" ? editor.wallpaper : DEFAULT_WALLPAPER_PATH,
 		shadowIntensity:
-			typeof editor.shadowIntensity === "number" ? editor.shadowIntensity : DEFAULT_SHADOW_INTENSITY,
+			typeof editor.shadowIntensity === "number"
+				? editor.shadowIntensity
+				: DEFAULT_SHADOW_INTENSITY,
 		backgroundBlur: normalizedBackgroundBlur,
 		zoomMotionBlur: normalizedZoomMotionBlur,
 		zoomMotionBlurTuning: normalizedZoomMotionBlurTuning,
