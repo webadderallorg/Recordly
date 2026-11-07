@@ -279,7 +279,7 @@
     "checkingDeletion": "Comprobando archivos de origen y enlaces de la nube…",
     "reviewSources": "Grabaciones de origen que se eliminarán: {{count}}. Archivos de origen compartidos conservados: {{kept}}.",
     "cloudDeleteFailed": "No se pudo eliminar el vídeo en la nube de {{name}}. Se conservaron su proyecto y sus grabaciones de origen.",
-    "sharedSourcesKept": "Se conservaron {{count}} archivos de origen que usan otros proyectos o el editor actual.",
+    "sharedSourcesKept": "Archivos de origen conservados: {{count}}.",
     "signInToDeleteCloud": "Inicia sesión en la cuenta propietaria del vídeo compartido antes de eliminar {{name}}.",
     "cloudOriginMismatch": "El enlace de la nube guardado para {{name}} pertenece a otro servidor. Se conservaron su proyecto y sus archivos de origen.",
     "deletionFailed": "No se pudieron eliminar algunos elementos seleccionados.",

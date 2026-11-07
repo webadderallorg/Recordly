@@ -279,7 +279,7 @@
     "checkingDeletion": "元ファイルとクラウドリンクを確認中…",
     "reviewSources": "削除する元録画：{{count}}件。保持する共有元ファイル：{{kept}}件。",
     "cloudDeleteFailed": "{{name}}のクラウド動画を削除できませんでした。プロジェクトと元録画は保持されました。",
-    "sharedSourcesKept": "他のプロジェクトや現在のエディターで使用している元ファイル{{count}}件を保持しました。",
+    "sharedSourcesKept": "保持した元ファイル：{{count}}件。",
     "signInToDeleteCloud": "{{name}}を削除する前に、共有動画を所有するアカウントにログインしてください。",
     "cloudOriginMismatch": "{{name}}に保存されたクラウドリンクは別のサーバーのものです。プロジェクトと元ファイルは保持されました。",
     "deletionFailed": "選択した項目の一部を削除できませんでした。",

@@ -279,7 +279,7 @@
     "checkingDeletion": "Verificando arquivos de origem e links da nuvem…",
     "reviewSources": "Gravações de origem a remover: {{count}}. Arquivos de origem compartilhados mantidos: {{kept}}.",
     "cloudDeleteFailed": "Não foi possível excluir o vídeo na nuvem de {{name}}. O projeto e suas gravações de origem foram mantidos.",
-    "sharedSourcesKept": "Foram mantidos {{count}} arquivos de origem usados por outros projetos ou pelo editor atual.",
+    "sharedSourcesKept": "Arquivos de origem mantidos: {{count}}.",
     "signInToDeleteCloud": "Entre na conta proprietária do vídeo compartilhado antes de excluir {{name}}.",
     "cloudOriginMismatch": "O link da nuvem salvo para {{name}} pertence a outro servidor. O projeto e seus arquivos de origem foram mantidos.",
     "deletionFailed": "Não foi possível excluir alguns itens selecionados.",

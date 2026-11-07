@@ -368,6 +368,11 @@ export function DashboardSettings({
 								</div>
 							</SettingsRow>
 							{status("recordings")}
+							{folderErrors.recordings && (
+								<p role="alert" className="settings-inline-feedback text-danger">
+									{folderErrors.recordings}
+								</p>
+							)}
 						</div>
 						<div className="settings-item">
 							<SettingsRow
@@ -399,6 +404,11 @@ export function DashboardSettings({
 								</Button>
 							</SettingsRow>
 							{status("projects")}
+							{folderErrors.projects && (
+								<p role="alert" className="settings-inline-feedback text-danger">
+									{folderErrors.projects}
+								</p>
+							)}
 						</div>
 					</div>
 					{(folderErrors.recordings || folderErrors.projects) && (

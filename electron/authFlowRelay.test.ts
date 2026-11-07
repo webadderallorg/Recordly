@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
-import { createServer, request } from "node:http";
+import { createServer, type IncomingMessage, request, type ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -402,4 +402,132 @@ it("still removes only readable proven-dead generations while preserving ancient
 	expect(await fs.readFile(live.file)).toEqual(liveBytes);
 	expect(await fs.readFile(damaged)).toEqual(damagedBytes);
 	expect(await b.instance.route(callback("flow_alice"))).toBe("forwarded");
+});
+
+async function foreignRoute(
+	handler: (incoming: IncomingMessage, response: ServerResponse) => void,
+) {
+	const a = relay();
+	const launcher = relay();
+	await a.instance.register("flow_alice", "exact-verifier", owner("a"));
+	const original = await record("flow_alice");
+	const listener = createServer(handler);
+	await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
+	const address = listener.address();
+	if (!address || typeof address === "string") throw new Error("Missing fixture port");
+	await fs.writeFile(
+		original.file,
+		encrypt(JSON.stringify({ ...original.value, port: address.port })),
+	);
+	return {
+		a,
+		launcher,
+		value: original.value,
+		close: async () => {
+			listener.closeAllConnections();
+			await new Promise<void>((resolve) => listener.close(() => resolve()));
+		},
+	};
+}
+
+it("bounds forwarding by five seconds even while an unrelated listener keeps sending response bytes", async () => {
+	let received!: (response: ServerResponse) => void;
+	const receiving = new Promise<ServerResponse>((resolve) => {
+		received = resolve;
+	});
+	let observed = "";
+	const fixture = await foreignRoute((incoming, response) => {
+		incoming.on("data", (chunk) => {
+			observed += chunk.toString();
+		});
+		incoming.on("end", () => {
+			response.writeHead(200, { "Content-Type": "application/json" });
+			response.write("{");
+			received(response);
+		});
+	});
+	try {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		const completed = vi.fn();
+		const forwarding = fixture.launcher.instance
+			.route(callback("flow_alice", "SLOW_PRIVATE_AUTH_CODE"))
+			.then((result) => {
+				completed(result);
+				return result;
+			});
+		const response = await receiving;
+		const disconnected = new Promise<void>((resolve) => response.once("close", resolve));
+		for (let second = 0; second < 4; second++) {
+			response.write(" ");
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(completed).not.toHaveBeenCalled();
+		}
+		response.write(" ");
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		await vi.advanceTimersByTimeAsync(999);
+		expect(completed).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+		expect(completed).toHaveBeenCalledExactlyOnceWith("unavailable");
+		expect(await forwarding).toBe("unavailable");
+		await disconnected;
+		expect(response.destroyed).toBe(true);
+		expect(vi.getTimerCount()).toBe(0);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(completed).toHaveBeenCalledOnce();
+		expect(observed).not.toContain("SLOW_PRIVATE_AUTH_CODE");
+		expect(observed).not.toContain(fixture.value.capability);
+		expect(fixture.a.deliver).not.toHaveBeenCalled();
+	} finally {
+		vi.useRealTimers();
+		await fixture.close();
+	}
+});
+
+it.each([
+	"aborted response",
+	"invalid response",
+	"oversized response",
+	"request error",
+])("clears the forwarding deadline after %s", async (failure) => {
+	const fixture = await foreignRoute((incoming, response) => {
+		if (failure === "request error") {
+			incoming.socket.destroy();
+			return;
+		}
+		incoming.resume();
+		incoming.on("end", () => {
+			response.writeHead(200, { "Content-Type": "application/json" });
+			if (failure === "aborted response") {
+				response.write("{");
+				setImmediate(() => response.destroy());
+			} else if (failure === "oversized response") response.write("x".repeat(257));
+			else response.end("invalid JSON");
+		});
+	});
+	try {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		expect(await fixture.launcher.instance.route(callback("flow_alice"))).toBe("unavailable");
+		expect(vi.getTimerCount()).toBe(0);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(fixture.a.deliver).not.toHaveBeenCalled();
+	} finally {
+		vi.useRealTimers();
+		await fixture.close();
+	}
+});
+
+it("clears the forwarding deadline after a valid authenticated acknowledgement", async () => {
+	const a = relay();
+	const launcher = relay();
+	await a.instance.register("flow_alice", "exact-verifier", owner("a"));
+	try {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		expect(await launcher.instance.route(callback("flow_alice"))).toBe("forwarded");
+		expect(vi.getTimerCount()).toBe(0);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(a.deliver).toHaveBeenCalledOnce();
+	} finally {
+		vi.useRealTimers();
+	}
 });

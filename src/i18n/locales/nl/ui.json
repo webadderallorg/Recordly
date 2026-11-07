@@ -279,7 +279,7 @@
     "checkingDeletion": "Bronbestanden en cloudlinks controleren…",
     "reviewSources": "Te verwijderen bronopnamen: {{count}}. Behouden gedeelde bronbestanden: {{kept}}.",
     "cloudDeleteFailed": "De cloudvideo van {{name}} kon niet worden verwijderd. Het project en de bronopnamen zijn behouden.",
-    "sharedSourcesKept": "{{count}} bronbestanden behouden die door andere projecten of de huidige editor worden gebruikt.",
+    "sharedSourcesKept": "Behouden bronbestanden: {{count}}.",
     "signInToDeleteCloud": "Meld je aan bij het account dat eigenaar is van de gedeelde video voordat je {{name}} verwijdert.",
     "cloudOriginMismatch": "De opgeslagen cloudlink voor {{name}} hoort bij een andere server. Het project en de bronbestanden zijn behouden.",
     "deletionFailed": "Sommige geselecteerde items konden niet worden verwijderd.",
