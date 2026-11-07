@@ -38,7 +38,8 @@ test("reviewed publication config does not require a public personal name", () =
 });
 
 test("publication validates the same trimmed detail values as the legal pages", () => {
-	const result = run({ ...reviewed,
+	const result = run({
+		...reviewed,
 		PUBLIC_LEGAL_SUPPORT_EMAIL: " support@recordly.dev ",
 		PUBLIC_LEGAL_PROCESSING_LOCATIONS: " Australia ",
 		PUBLIC_LEGAL_EFFECTIVE_DATE: " 2026-10-19 ",

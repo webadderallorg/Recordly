@@ -10,6 +10,7 @@ import { resolveExportStartSettings, resolveShareExportSettings } from "../expor
 import type { VideoPlaybackRef } from "../VideoPlayback";
 import type { useExportSession } from "./useExportSession";
 import type { useExportSettings } from "./useExportSettings";
+import { showCaptionSidecarWarning } from "./exportRunnerSupport";
 
 type ExportSession = ReturnType<typeof useExportSession>;
 type ExportSettingsState = ReturnType<typeof useExportSettings>;
@@ -194,6 +195,7 @@ export function useExportDialogActions({
 			session.setExportError(null);
 			session.setExportedFilePath(saveResult.path);
 			showExportSuccessToast(saveResult.path, exportIdentity);
+			showCaptionSidecarWarning(saveResult);
 			session.setShowExportDropdown(true);
 			return;
 		}

@@ -1,7 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
-for (const [width, height] of [[760, 760], [600, 600], [420, 760], [390, 760], [390, 540]]) {
+for (const [width, height] of [
+	[760, 760],
+	[600, 600],
+	[420, 760],
+	[390, 760],
+	[390, 540],
+]) {
 	for (const reducedMotion of ["no-preference", "reduce"] as const) {
 		test(`onboarding keeps its frame through both transitions and permission loading (${reducedMotion}, ${width}x${height})`, async ({
 			page,
@@ -22,9 +28,14 @@ for (const [width, height] of [[760, 760], [600, 600], [420, 760], [390, 760], [
 			await page.goto("/?windowType=onboarding&onboardingPreview=1");
 			const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 			const artwork = tour.locator("[data-onboarding-artwork]");
-			await expect.poll(() => artwork.evaluate((element) =>
-				new DOMMatrixReadOnly(getComputedStyle(element).transform).isIdentity,
-			)).toBe(true);
+			await expect
+				.poll(() =>
+					artwork.evaluate(
+						(element) =>
+							new DOMMatrixReadOnly(getComputedStyle(element).transform).isIdentity,
+					),
+				)
+				.toBe(true);
 			await expect(tour.getByPlaceholder("you@example.com")).toBeVisible();
 			const initialHeading = (await tour.getByRole("heading", { level: 2 }).boundingBox())!;
 			if (reducedMotion === "no-preference")
@@ -35,7 +46,9 @@ for (const [width, height] of [[760, 760], [600, 600], [420, 760], [390, 760], [
 				const samples: number[][] = [];
 				let frame = 0;
 				const sample = () => {
-					const footer = layout.querySelector(".onboarding-footer")!.getBoundingClientRect();
+					const footer = layout
+						.querySelector(".onboarding-footer")!
+						.getBoundingClientRect();
 					samples.push([
 						content.clientHeight,
 						content.getBoundingClientRect().y,
@@ -86,7 +99,9 @@ for (const [width, height] of [[760, 760], [600, 600], [420, 760], [390, 760], [
 			).toBeEnabled();
 			const loadedHeight = await artwork.evaluate((element) => element.clientHeight);
 			expect(Math.abs(loadedHeight - loadingHeight)).toBeLessThanOrEqual(1);
-			const permissionHeading = (await tour.getByRole("heading", { level: 2 }).boundingBox())!;
+			const permissionHeading = (await tour
+				.getByRole("heading", { level: 2 })
+				.boundingBox())!;
 			expect(Math.abs(permissionHeading.y - initialHeading.y)).toBeLessThanOrEqual(1);
 			if (reducedMotion === "no-preference") {
 				await tour.screenshot({ path: test.info().outputPath(`permissions-${width}.png`) });
@@ -96,14 +111,20 @@ for (const [width, height] of [[760, 760], [600, 600], [420, 760], [390, 760], [
 			const samples = await page.evaluate(async () => {
 				const start = performance.now();
 				while (performance.now() - start < 650) await new Promise(requestAnimationFrame);
-				return (window as unknown as { finishTransitionSamples: () => number[][] }).finishTransitionSamples();
+				return (
+					window as unknown as { finishTransitionSamples: () => number[][] }
+				).finishTransitionSamples();
 			});
 			await test.info().attach("frame-positions", {
 				body: JSON.stringify({ initialFrame, samples }),
 				contentType: "application/json",
 			});
 			for (let metric = 0; metric < initialFrame.length; metric++) {
-				expect(Math.max(...samples.map((sample) => Math.abs(sample[metric] - initialFrame[metric])))).toBeLessThanOrEqual(1);
+				expect(
+					Math.max(
+						...samples.map((sample) => Math.abs(sample[metric] - initialFrame[metric])),
+					),
+				).toBeLessThanOrEqual(1);
 			}
 		});
 	}

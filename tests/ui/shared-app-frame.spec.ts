@@ -38,7 +38,9 @@ for (const width of [1440, 800]) {
 		await page.goto("/?windowType=editor");
 		const editorHeader = page.locator(".editor-header");
 		await expect(editorHeader).toBeVisible({ timeout: 30000 });
-		await expect(page.getByRole("button", { name: "Join Discord", exact: true })).toHaveCount(0);
+		await expect(page.getByRole("button", { name: "Join Discord", exact: true })).toHaveCount(
+			0,
+		);
 		const editorAccount = editorHeader.getByRole("button", {
 			name: "Recordly account",
 			exact: true,
@@ -89,7 +91,9 @@ for (const width of [1440, 800]) {
 		await expect(resume).toHaveClass(/button--ghost/);
 		await resume.click();
 		await expect(home).toHaveCount(0);
-		await expect(page.getByRole("button", { name: "Join Discord", exact: true })).toHaveCount(0);
+		await expect(page.getByRole("button", { name: "Join Discord", exact: true })).toHaveCount(
+			0,
+		);
 		await expect(editorAccount).toBeVisible();
 		await expect(page.locator(".editor-inspector")).toBeVisible();
 		await expect(page.locator("html")).not.toHaveAttribute("data-project-reopened");

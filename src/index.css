@@ -66,7 +66,8 @@
 @layer base {
 	:root {
 		--app-font-sans:
-			"DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			"DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+			sans-serif;
 		--brand-accent: var(--accent);
 		--brand-accent-rgb: 0, 111, 238;
 		--primary: var(--accent);
@@ -167,47 +168,51 @@
 
 :root,
 .dark {
- --focus: var(--accent);
+	--focus: var(--accent);
 }
 
 /* Disable Chromium's rectangular focus outline for every input modality.
    Component selection borders and field treatments keep their own styling. */
 :focus,
 :focus-visible {
- outline: none;
+	outline: none;
 }
 
 /* Fields use a defined border and a quiet halo, leaving button keyboard rings
    and HeroUI's invalid/disabled field treatments intact. */
-:is(.input, .textarea, .input-group):not([data-invalid="true"]):not([aria-invalid="true"]):not([data-disabled="true"]):not(:disabled):is(:focus, [data-focused="true"]),
-.input-group:not([data-invalid="true"]):not([aria-invalid="true"]):not([data-disabled="true"]):has(.input-group__input:focus),
+:is(.input, .textarea, .input-group):not([data-invalid="true"]):not([aria-invalid="true"]):not(
+		[data-disabled="true"]
+	):not(:disabled):is(:focus, [data-focused="true"]),
+.input-group:not([data-invalid="true"]):not([aria-invalid="true"]):not([data-disabled="true"]):has(
+		.input-group__input:focus
+	),
 .share-link-field:has(> input:focus) {
- border-color: color-mix(in oklab, var(--accent) 65%, var(--field-border));
- box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 12%, transparent);
- outline: none;
+	border-color: color-mix(in oklab, var(--accent) 65%, var(--field-border));
+	box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 12%, transparent);
+	outline: none;
 }
 
 /* Only the text field owns the group halo; tabbing to Copy focuses that button. */
 .share-link-field > input,
 .share-link-field > input:focus-visible {
- outline: none;
- box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 .share-link-field > input:not(:focus) {
- text-overflow: ellipsis;
+	text-overflow: ellipsis;
 }
 
 @media (forced-colors: active) {
- :is(.input, .textarea):focus,
- .input-group:has(.input-group__input:focus),
- .share-link-field:has(> input:focus) {
-  outline: 2px solid Highlight;
-  outline-offset: 2px;
- }
+	:is(.input, .textarea):focus,
+	.input-group:has(.input-group__input:focus),
+	.share-link-field:has(> input:focus) {
+		outline: 2px solid Highlight;
+		outline-offset: 2px;
+	}
 }
 ::selection {
- background: var(--accent);
- color: var(--accent-foreground);
+	background: var(--accent);
+	color: var(--accent-foreground);
 }
 
 @container (max-width: 110px) {
@@ -247,40 +252,47 @@
 }
 
 .dashboard-surface .folder-row > button {
-  background: transparent;
+	background: transparent;
 }
 
 .inline-project-name {
- field-sizing: content;
- min-width: 1ch;
- background: transparent;
- border: 0;
- border-radius: 0;
- box-shadow: none;
- outline: none;
- padding: 0;
- color: inherit;
+	field-sizing: content;
+	min-width: 1ch;
+	background: transparent;
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+	outline: none;
+	padding: 0;
+	color: inherit;
 }
 .inline-project-name:focus {
- background: transparent;
- box-shadow: none;
+	background: transparent;
+	box-shadow: none;
 }
 /* Explicit editor keyboard targets retain focus treatment above unlayered resets. */
 .inline-project-name:focus-visible,
 [class~="focus-visible:outline-2"][class~="focus-visible:outline-accent"]:focus-visible,
-[class~="focus-visible:outline-2"][class~="focus-visible:outline-accent"]:has(> textarea:focus-visible) {
- outline: 2px solid var(--focus);
- outline-offset: 2px;
+[class~="focus-visible:outline-2"][class~="focus-visible:outline-accent"]:has(
+		> textarea:focus-visible
+	) {
+	outline: 2px solid var(--focus);
+	outline-offset: 2px;
 }
 
 @media (forced-colors: active) {
- .inline-project-name:focus,
- [class~="focus-visible:outline-2"][class~="focus-visible:outline-accent"]:focus-visible,
- [class~="focus-visible:outline-2"][class~="focus-visible:outline-accent"]:has(> textarea:focus-visible) { outline: 2px solid Highlight; outline-offset: 2px; }
+	.inline-project-name:focus,
+	[class~="focus-visible:outline-2"][class~="focus-visible:outline-accent"]:focus-visible,
+	[class~="focus-visible:outline-2"][class~="focus-visible:outline-accent"]:has(
+			> textarea:focus-visible
+		) {
+		outline: 2px solid Highlight;
+		outline-offset: 2px;
+	}
 }
 
 .dashboard-shell {
- background-color: var(--background);
+	background-color: var(--background);
 }
 
 .app-frame-overlay {
@@ -294,8 +306,12 @@
 	animation: app-frame-enter 90ms ease-in reverse;
 }
 @keyframes app-frame-enter {
-	from { opacity: 0; }
-	to { opacity: 1; }
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
 }
 /* Home replaces the page. Fading either modal layer exposes the editor below. */
 .dashboard-page-overlay[data-entering="true"],
@@ -311,4 +327,7 @@
 	}
 }
 
-.dashboard-settings .custom-scrollbar { padding-inline: 0; scrollbar-gutter: auto !important; }
+.dashboard-settings .custom-scrollbar {
+	padding-inline: 0;
+	scrollbar-gutter: auto !important;
+}

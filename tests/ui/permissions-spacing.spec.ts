@@ -23,7 +23,9 @@ for (const colorScheme of ["light", "dark"] as const) {
 			const action = dialog.getByRole("button", { name: "Start recording", exact: true });
 			await expect(action).toBeEnabled();
 			await expect(action).toBeInViewport({ ratio: 1 });
-			await expect(dialog.getByRole("heading", { name: "Allow Recordly to record", exact: true })).toBeInViewport({ ratio: 1 });
+			await expect(
+				dialog.getByRole("heading", { name: "Allow Recordly to record", exact: true }),
+			).toBeInViewport({ ratio: 1 });
 			const banner = (await dialog.locator("[data-onboarding-artwork]").boundingBox())!;
 			// Spare height belongs to the demo, keeping the permission rows near the footer.
 			expect(banner.height).toBeGreaterThan(180);
@@ -69,8 +71,9 @@ test("permissions keep the footer reachable when the banner must shrink", async 
 	});
 	await page.goto("/?windowType=onboarding");
 	const dialog = page.getByRole("dialog", { name: "Permissions", exact: true });
-	await expect(dialog.getByRole("button", { name: "Start recording", exact: true }))
-		.toBeInViewport({ ratio: 1 });
+	await expect(
+		dialog.getByRole("button", { name: "Start recording", exact: true }),
+	).toBeInViewport({ ratio: 1 });
 	for (const name of ["Allow Screen Recording", "Allow Accessibility"]) {
 		const action = dialog.getByRole("button", { name, exact: true });
 		await action.scrollIntoViewIfNeeded();

@@ -75,5 +75,6 @@
 	"locateRecording": "Localizar grabación",
 	"recordingRelinkFailed": "No se pudo volver a vincular la grabación",
 	"pauseRecordingTrackFailed": "La grabación de pantalla se pausó, pero no se pudo pausar una pista de cámara o audio.",
-	"resumeRecordingTrackFailed": "La grabación de pantalla se reanudó, pero no se pudo reanudar una pista de cámara o audio."
+	"resumeRecordingTrackFailed": "La grabación de pantalla se reanudó, pero no se pudo reanudar una pista de cámara o audio.",
+	"captionFilesSaveFailed": "El vídeo se guardó, pero no se pudieron guardar algunos archivos de subtítulos."
 }

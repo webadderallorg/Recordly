@@ -14,7 +14,17 @@ export function generateShareCode() {
 
 export async function handleUpload(request, env) {
 	const body = await limitedJson(request, 16384);
-	const { title, duration, width, height, hasWebcam, fileSize, password_hash, cta_url, cta_text } = body;
+	const {
+		title,
+		duration,
+		width,
+		height,
+		hasWebcam,
+		fileSize,
+		password_hash,
+		cta_url,
+		cta_text,
+	} = body;
 	if (typeof title !== "string" || !title.trim() || title.length > 200)
 		return errorResponse("Title must be between 1 and 200 characters");
 	if (password_hash && !env.API_SECRET)
@@ -29,14 +39,31 @@ export async function handleUpload(request, env) {
 		`INSERT INTO videos (share_code, title, duration, width, height, has_webcam,
 		 file_size, expires_at, password_hash, password_salt, cta_url, cta_text)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-	).bind(shareCode, title, finiteNonnegative(duration), finiteNonnegative(width),
-		finiteNonnegative(height), hasWebcam ? 1 : 0, finiteNonnegative(fileSize),
-		expiresAt, storedHash, salt, cta_url || null, cta_text || null).run();
+	)
+		.bind(
+			shareCode,
+			title,
+			finiteNonnegative(duration),
+			finiteNonnegative(width),
+			finiteNonnegative(height),
+			hasWebcam ? 1 : 0,
+			finiteNonnegative(fileSize),
+			expiresAt,
+			storedHash,
+			salt,
+			cta_url || null,
+			cta_text || null,
+		)
+		.run();
 	const baseUrl = new URL(request.url).origin;
 	return jsonResponse({
-		shareCode, progressiveUpload: false, parallelUploads: true, reservationBytes: finiteNonnegative(fileSize),
+		shareCode,
+		progressiveUpload: false,
+		parallelUploads: true,
+		reservationBytes: finiteNonnegative(fileSize),
 		uploadURL: `${baseUrl}/api/upload-data/${shareCode}`,
-		shareURL: `${baseUrl}/s/${shareCode}`, expiresAt,
+		shareURL: `${baseUrl}/s/${shareCode}`,
+		expiresAt,
 	});
 }
 

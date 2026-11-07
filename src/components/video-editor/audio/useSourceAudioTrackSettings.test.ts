@@ -15,14 +15,15 @@ it("preserves saved source volume while metadata disappears and rediscovers trac
 		defaults = typeof update === "function" ? update(defaults) : update;
 	});
 	const setByClip = vi.fn();
-	const render = () => useSourceAudioTrackSettings({
-		selectedClipId: "clip-1",
-		activeClipId: "clip-1",
-		sourceAudioTrackSettingsByClip: {},
-		setSourceAudioTrackSettingsByClip: setByClip,
-		defaultSourceAudioTrackSettings: defaults,
-		setDefaultSourceAudioTrackSettings: setDefaults,
-	});
+	const render = () =>
+		useSourceAudioTrackSettings({
+			selectedClipId: "clip-1",
+			activeClipId: "clip-1",
+			sourceAudioTrackSettingsByClip: {},
+			setSourceAudioTrackSettingsByClip: setByClip,
+			defaultSourceAudioTrackSettings: defaults,
+			setDefaultSourceAudioTrackSettings: setDefaults,
+		});
 	const audio = render();
 	audio.onSourceAudioTracksMetaChange([]);
 	audio.onSourceAudioTracksMetaChange([{ id: "mixed", label: "Recording" }]);

@@ -1,7 +1,9 @@
 import { expect, it } from "vitest";
 import { matchesMediaSignature, validatedJpegStream } from "../src/mediaValidation.js";
 
-const mp4 = new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0, 105, 115, 111, 109, 0, 0, 0, 0]);
+const mp4 = new Uint8Array([
+	0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0, 105, 115, 111, 109, 0, 0, 0, 0,
+]);
 
 it("peeks fragmented JPEG bytes without draining or changing the remaining stream", async () => {
 	const bytes = new Uint8Array([255, 216, 255, 217, 1, 2, 3, 4]);

@@ -517,9 +517,7 @@ for (const plan of ["paid", "complimentary"] as const) {
 		});
 		await expect(page.getByTestId("verified-plan")).toHaveText("pro");
 		await expect(page.getByRole("button", { name: "Manage plan", exact: true })).toHaveCount(0);
-		await expect(
-			page.getByRole("button", { name: /^Upgrade\b/ }),
-		).toHaveCount(0);
+		await expect(page.getByRole("button", { name: /^Upgrade\b/ })).toHaveCount(0);
 		await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
 		await expect(
 			page.getByRole("heading", { name: "Unlock the full power of Recordly" }),

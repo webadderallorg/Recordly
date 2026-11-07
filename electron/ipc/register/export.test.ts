@@ -239,6 +239,7 @@ describe("export save dialog names", () => {
 				success: true,
 				path: destination,
 				message: expect.stringContaining("Captions could not be saved"),
+				captionSidecarFailed: true,
 			});
 			await expect(fs.readFile(destination, "utf8")).resolves.toBe("new video");
 			await expect(fs.readFile(existingCaption, "utf8")).resolves.toBe("concurrent captions");
@@ -394,6 +395,76 @@ describe("export save dialog names", () => {
 			expect(canceledResult).toMatchObject({ success: false, canceled: true });
 			expect(await fs.readdir(selectedFolder)).toEqual(filesBefore);
 			await expect(fs.readFile(tempPath, "utf8")).resolves.toBe("canceled export");
+		} finally {
+			releaseOwnedExportPath(tempPath);
+		}
+	});
+});
+
+describe("caption status for export destinations", () => {
+	it.each([
+		{ channel: "save-exported-video", outputPath: false },
+		{ channel: "write-exported-video-to-path", outputPath: true },
+		{ channel: "finalize-exported-video", outputPath: false },
+		{ channel: "finalize-exported-video", outputPath: true },
+	] as const)("$channel with explicit path $outputPath returns a safe caption failure flag without failing the video", async ({
+		channel,
+		outputPath,
+	}) => {
+		const dir = await makeTempDir();
+		vi.spyOn(app, "getPath").mockReturnValue(dir);
+		const destination = path.join(dir, "export.mp4");
+		const tempPath = path.join(dir, "export-temp.mp4");
+		const captionSidecar = {
+			format: "both",
+			cues: [{ startMs: 0, endMs: 1000, text: "Caption" }],
+		};
+		vi.mocked(ipcMain.handle).mockClear();
+		registerExportHandlers();
+		vi.mocked(dialog.showSaveDialog).mockResolvedValue({
+			canceled: false,
+			filePath: destination,
+		});
+		const handler = vi.mocked(ipcMain.handle).mock.calls.find(([name]) => name === channel)![1];
+		const write = fs.writeFile.bind(fs);
+		let failCaptions = false;
+		vi.spyOn(fs, "writeFile").mockImplementation(async (...args) => {
+			if (failCaptions && String(args[0]).endsWith(".vtt"))
+				throw new Error("EACCES: /private/captions/transcript.vtt");
+			return write(...args);
+		});
+		try {
+			for (const failed of [false, true]) {
+				failCaptions = failed;
+				await fs.rm(destination, { force: true });
+				await fs.rm(destination.replace(/\.mp4$/, ".srt"), { force: true });
+				await fs.rm(destination.replace(/\.mp4$/, ".vtt"), { force: true });
+				await fs.writeFile(tempPath, "video");
+				registerOwnedExportPath(tempPath);
+				const event = { sender: {} } as Electron.IpcMainInvokeEvent;
+				const result =
+					channel === "finalize-exported-video"
+						? await handler(event, {
+								tempPath,
+								fileName: "export.mp4",
+								outputPath: outputPath ? destination : undefined,
+								captionSidecar,
+							})
+						: await handler(
+								event,
+								new TextEncoder().encode("video").buffer,
+								outputPath ? destination : "export.mp4",
+								captionSidecar,
+							);
+				expect(result).toMatchObject({
+					success: true,
+					path: destination,
+					captionSidecarFailed: failed,
+				});
+				expect(result.message).not.toContain("/private/captions");
+				expect(result.error).toBeUndefined();
+				await expect(fs.readFile(destination, "utf8")).resolves.toBe("video");
+			}
 		} finally {
 			releaseOwnedExportPath(tempPath);
 		}

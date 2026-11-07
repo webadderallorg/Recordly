@@ -226,7 +226,9 @@ test("rapid duration edits run one scan and cannot delete using old threshold re
 	await page.clock.runFor(250);
 	await expect.poll(counters).toEqual({ reads: 5, probes: 4 });
 	await expect(dialog.getByRole("status").filter({ hasText: /^Matches: 0$/ })).toBeVisible();
-	await expect(dialog.getByText("Checking saved projects and media…", { exact: true })).toHaveCount(0);
+	await expect(
+		dialog.getByText("Checking saved projects and media…", { exact: true }),
+	).toHaveCount(0);
 	await expect(matches.getByRole("checkbox")).toHaveCount(0);
 	await expect(deletion).toBeDisabled();
 	await page.clock.resume();

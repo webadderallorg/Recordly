@@ -46,16 +46,25 @@ export function RecordingPermissionsDialog({
 							stage="permissions"
 							canViewPermissions
 							showNavigation={false}
-							footer={(
+							footer={
 								<OnboardingFooter>
 									<div aria-hidden="true" />
-									<OnboardingPrimaryAction isDisabled={!ready} onPress={() => { if (ready) onFinish(); }}>
+									<OnboardingPrimaryAction
+										isDisabled={!ready}
+										onPress={() => {
+											if (ready) onFinish();
+										}}
+									>
 										{t("startRecording")}
 									</OnboardingPrimaryAction>
 								</OnboardingFooter>
-							)}
+							}
 						>
-							<OnboardingPermissions showFooter={false} onReadyChange={setReady} onFinish={onFinish} />
+							<OnboardingPermissions
+								showFooter={false}
+								onReadyChange={setReady}
+								onFinish={onFinish}
+							/>
 						</OnboardingLayout>
 						<Button
 							isIconOnly

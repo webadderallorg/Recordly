@@ -142,10 +142,14 @@ describe("isWebcamMediaSynchronized", () => {
 	});
 });
 
-
 describe("imported webcam visibility", () => {
 	it("hides screen-only spans and uses source-time boundaries", () => {
-		const webcam = { visibleRanges: [{ startMs: 1200, endMs: 2000 }, { startMs: 4000, endMs: 5000 }] };
+		const webcam = {
+			visibleRanges: [
+				{ startMs: 1200, endMs: 2000 },
+				{ startMs: 4000, endMs: 5000 },
+			],
+		};
 		expect(isWebcamVisibleAtSourceTime(webcam, 1)).toBe(false);
 		expect(isWebcamVisibleAtSourceTime(webcam, 1.2)).toBe(true);
 		expect(isWebcamVisibleAtSourceTime(webcam, 2)).toBe(false);

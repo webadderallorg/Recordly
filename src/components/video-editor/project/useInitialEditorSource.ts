@@ -73,7 +73,10 @@ export function useInitialEditorSource({
 						return;
 					}
 					project.setError(null);
-					if (result.recovered) toast.warning(t("editor.projectRecovered", "Recovered the previous saved version"));
+					if (result.recovered)
+						toast.warning(
+							t("editor.projectRecovered", "Recovered the previous saved version"),
+						);
 					return;
 				}
 
@@ -153,13 +156,24 @@ export function useInitialEditorSource({
 					currentProject.project &&
 					(await applyLoadedProject(currentProject.project, currentProject.path ?? null))
 				) {
-					if (currentProject.recovered) toast.warning(t("editor.projectRecovered", "Recovered the previous saved version"));
+					if (currentProject.recovered)
+						toast.warning(
+							t("editor.projectRecovered", "Recovered the previous saved version"),
+						);
 					return;
 				}
 
-				if (!currentProject.success && currentProject.path && currentProject.missingRecordingPath) {
+				if (
+					!currentProject.success &&
+					currentProject.path &&
+					currentProject.missingRecordingPath
+				) {
 					project.setCurrentProjectPath(currentProject.path);
-					project.setError(currentProject.error || currentProject.message || "Project video file not found");
+					project.setError(
+						currentProject.error ||
+							currentProject.message ||
+							"Project video file not found",
+					);
 					return;
 				}
 				const sessionResult = await window.electronAPI.getCurrentRecordingSession?.();

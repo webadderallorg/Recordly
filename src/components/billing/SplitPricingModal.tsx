@@ -1,7 +1,11 @@
 import { Button, Label, Modal, Radio, RadioGroup } from "@heroui/react";
 import { Check } from "@phosphor-icons/react";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
-import { OnboardingHeader, OnboardingHeroTitle, OnboardingLayout } from "@/components/auth/OnboardingLayout";
+import {
+	OnboardingHeader,
+	OnboardingHeroTitle,
+	OnboardingLayout,
+} from "@/components/auth/OnboardingLayout";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import type { CloudBillingPrice } from "@/types/cloudBilling";
 import { useBilling } from "./BillingProvider";
@@ -135,7 +139,10 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 											centered
 											title={
 												<OnboardingHeroTitle
-													text={t("upgradeHeading", "Unlock Recordly's full power").replace("Recordly", "{{brand}}")}
+													text={t(
+														"upgradeHeading",
+														"Unlock Recordly's full power",
+													).replace("Recordly", "{{brand}}")}
 												/>
 											}
 											description={t(

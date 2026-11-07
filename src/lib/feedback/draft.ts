@@ -34,7 +34,9 @@ export function getFeedbackDraft(userId: string | undefined): FeedbackDraft {
 				? saved.sentiment
 				: null,
 		message: [saved?.subject, saved?.message]
-			.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+			.filter(
+				(value): value is string => typeof value === "string" && value.trim().length > 0,
+			)
 			.join("\n\n")
 			.slice(0, 10000),
 		files: [],

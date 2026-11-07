@@ -88,7 +88,11 @@ for (const standalone of [false, true]) {
 		const start = permissions.getByRole("button", { name: "Start recording", exact: true });
 		await expect(start).toBeDisabled();
 		expect((await start.boundingBox())!.height).toBe(44);
-		expect((await permissions.getByRole("button", { name: "Allow Screen Recording", exact: true }).boundingBox())!.height).toBe(44);
+		expect(
+			(await permissions
+				.getByRole("button", { name: "Allow Screen Recording", exact: true })
+				.boundingBox())!.height,
+		).toBe(44);
 		await permissions
 			.getByRole("button", { name: "Allow Screen Recording", exact: true })
 			.click();

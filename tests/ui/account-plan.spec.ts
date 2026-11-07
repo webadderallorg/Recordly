@@ -165,9 +165,7 @@ for (const mode of ["unavailable", "loading"] as const) {
 			),
 		).toBeVisible();
 		await expect(card.getByText("Free", { exact: true })).toHaveCount(0);
-		await expect(
-			card.getByRole("button", { name: /^Upgrade\b/ }),
-		).toHaveCount(0);
+		await expect(card.getByRole("button", { name: /^Upgrade\b/ })).toHaveCount(0);
 		await page.evaluate(() => {
 			document.documentElement.dataset.planReady = "true";
 			document.dispatchEvent(new Event("release-plan"));

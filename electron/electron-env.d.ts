@@ -675,6 +675,7 @@ interface Window {
 			path?: string;
 			canceled?: boolean;
 			message?: string;
+			captionSidecarFailed?: boolean;
 			error?: string;
 		}>;
 		discardExportedTemp: (tempPath: string) => Promise<{ success: boolean; error?: string }>;
@@ -768,7 +769,13 @@ interface Window {
 					text: string;
 				}>;
 			},
-		) => Promise<{ success: boolean; path?: string; message?: string; canceled?: boolean }>;
+		) => Promise<{
+			success: boolean;
+			path?: string;
+			message?: string;
+			captionSidecarFailed?: boolean;
+			canceled?: boolean;
+		}>;
 		writeExportedVideoToPath: (
 			videoData: ArrayBuffer,
 			outputPath: string,
@@ -784,6 +791,7 @@ interface Window {
 			success: boolean;
 			path?: string;
 			message?: string;
+			captionSidecarFailed?: boolean;
 			error?: string;
 			canceled?: boolean;
 		}>;
@@ -944,7 +952,10 @@ interface Window {
 			paths: string[],
 			removed: boolean,
 		) => Promise<import("../src/types/recordingLibrary").LibraryResult<null>>;
-		trashRecordingSources: (paths: string[], protectedSources?: string[]) => Promise<
+		trashRecordingSources: (
+			paths: string[],
+			protectedSources?: string[],
+		) => Promise<
 			import("../src/types/recordingLibrary").LibraryResult<{
 				deleted: string[];
 				errors: string[];
@@ -1032,11 +1043,25 @@ interface Window {
 			path: string,
 			name: string,
 		) => Promise<{ success: boolean; path?: string; error?: string }>;
-		reviewProjectDeletion: (paths: string[], protectedSources?: string[]) => Promise<{ success: boolean; sourceCount?: number; preservedSourceCount?: number; error?: string }>;
+		reviewProjectDeletion: (
+			paths: string[],
+			protectedSources?: string[],
+		) => Promise<{
+			success: boolean;
+			sourceCount?: number;
+			preservedSourceCount?: number;
+			error?: string;
+		}>;
 		trashProjectFiles: (
 			paths: string[],
 			options?: { includeSources?: boolean; protectedSources?: string[] },
-		) => Promise<{ success: boolean; deleted: string[]; errors: string[]; sourcesDeleted?: string[]; sourcesKept?: string[] }>;
+		) => Promise<{
+			success: boolean;
+			deleted: string[];
+			errors: string[];
+			sourcesDeleted?: string[];
+			sourcesKept?: string[];
+		}>;
 		onProjectThumbnailReady: (
 			callback: (ready: { path: string; thumbnailPath: string; updatedAt: number }) => void,
 		) => () => void;
@@ -1224,9 +1249,9 @@ interface Window {
 		saveShortcuts: (shortcuts: unknown) => Promise<{ success: boolean; error?: string }>;
 		getEditorStartupView: () => "home" | "editor";
 		getAppSetting: (key: string) => unknown;
-		getAppSettingWithStatus: (key: string) =>
-			| { success: true; found: boolean; value: unknown }
-			| { success: false; value: null };
+		getAppSettingWithStatus: (
+			key: string,
+		) => { success: true; found: boolean; value: unknown } | { success: false; value: null };
 		setAppSetting: (key: string, value: unknown) => boolean;
 		setHasUnsavedChanges: (hasChanges: boolean) => void;
 		setExportInProgress: (active: boolean) => void;

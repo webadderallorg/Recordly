@@ -2,12 +2,17 @@ import { expect, test } from "@playwright/test";
 import { installDesktopBridge } from "./bridge";
 
 for (const theme of ["light", "dark"]) {
-	test(`Cloud content scrolls without a persistent scrollbar in ${theme} mode`, async ({ page }) => {
+	test(`Cloud content scrolls without a persistent scrollbar in ${theme} mode`, async ({
+		page,
+	}) => {
 		await installDesktopBridge(page);
 		await page.addInitScript((theme) => localStorage.setItem("recordly.theme", theme), theme);
 		await page.setViewportSize({ width: 1000, height: 700 });
 		await page.goto("/?windowType=editor");
-		await page.getByRole("button", { name: /^Upgrade(?:,|$)/ }).first().click();
+		await page
+			.getByRole("button", { name: /^Upgrade(?:,|$)/ })
+			.first()
+			.click();
 		const modal = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
 		await expect(modal).toBeVisible();
 		const body = modal.locator(".pricing-body");

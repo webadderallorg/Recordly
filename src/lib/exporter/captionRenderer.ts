@@ -9,10 +9,7 @@ import {
 	getCaptionScaledRadius,
 	getCaptionTextMaxWidth,
 } from "@/components/video-editor/captionStyle";
-import {
-	type AutoCaptionSettings,
-	type CaptionCue,
-} from "@/components/video-editor/types";
+import { type AutoCaptionSettings, type CaptionCue } from "@/components/video-editor/types";
 
 /** Draw the active caption using the same typography and timing as preview. */
 export function renderCaptions(

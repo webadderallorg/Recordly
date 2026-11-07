@@ -923,6 +923,7 @@ export function registerExportHandlers() {
 						"Video exported successfully",
 						captionSidecarResult,
 					),
+					captionSidecarFailed: Boolean(captionSidecarResult.error),
 				};
 			} catch (error) {
 				console.error("Failed to save exported video:", error);
@@ -971,6 +972,7 @@ export function registerExportHandlers() {
 						"Video exported successfully",
 						captionSidecarResult,
 					),
+					captionSidecarFailed: Boolean(captionSidecarResult.error),
 					canceled: false,
 				};
 			} catch (error) {
@@ -1037,6 +1039,7 @@ export function registerExportHandlers() {
 							"Video exported successfully",
 							captionSidecarResult,
 						),
+						captionSidecarFailed: Boolean(captionSidecarResult.error),
 					};
 				}
 
@@ -1093,6 +1096,7 @@ export function registerExportHandlers() {
 						"Video exported successfully",
 						captionSidecarResult,
 					),
+					captionSidecarFailed: Boolean(captionSidecarResult.error),
 				};
 			} catch (error) {
 				console.error("Failed to finalize exported video:", error);

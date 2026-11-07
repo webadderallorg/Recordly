@@ -19,7 +19,9 @@ vi.mock("@/lib/exporter/gifExporter", () => ({
 		cancel() {}
 	},
 }));
-vi.mock("@/components/ui/toast", () => ({ toast: { info: vi.fn(), error: vi.fn() } }));
+vi.mock("@/components/ui/toast", () => ({
+	toast: { info: vi.fn(), error: vi.fn(), warning: vi.fn() },
+}));
 vi.mock("@/i18n/runtime", () => ({ translate: (_key: string, fallback: string) => fallback }));
 vi.mock("@/lib/exporter/modernVideoExporter", () => ({
 	ModernVideoExporter: class {
@@ -54,7 +56,11 @@ vi.mock("./exportPersistence", () => ({
 	streamExportBlobToTempFile: mocks.streamBlob,
 	writeSmokeExportReport: vi.fn(),
 }));
-vi.mock("./exportRunnerSupport", () => ({ showExportErrorToast: vi.fn() }));
+vi.mock("./exportRunnerSupport", async (importOriginal) => ({
+	...(await importOriginal<typeof import("./exportRunnerSupport")>()),
+	showExportErrorToast: vi.fn(),
+}));
+import { toast } from "@/components/ui/toast";
 
 function context(destination: "download" | "share" = "download") {
 	let cancelled = false;
@@ -335,6 +341,56 @@ describe("Cloud caption-file exports", () => {
 			null,
 			undefined,
 		);
+	});
+});
+
+describe("caption-file partial success feedback", () => {
+	it.each([
+		"disk",
+		"blob",
+	] as const)("keeps a %s video saved and warns only for failed caption files", async (storage) => {
+		for (const captionSidecarFailed of [undefined, false, true]) {
+			vi.clearAllMocks();
+			const { value, input } = context();
+			const saveResult = {
+				success: true,
+				path: "/saved/export.mp4",
+				captionSidecarFailed,
+				message: "EACCES: /private/captions/transcript.vtt",
+			};
+			if (storage === "disk") {
+				mocks.modernExport.mockResolvedValueOnce({
+					success: true,
+					tempFilePath: "/tmp/export.mp4",
+				});
+				vi.stubGlobal("window", {
+					electronAPI: { finalizeExportedVideo: vi.fn(async () => saveResult) },
+				});
+			} else {
+				mocks.saveBlob.mockResolvedValueOnce({
+					saveResult,
+					pendingSave: { fileName: "export.mp4" },
+				});
+			}
+			try {
+				await expect(runMp4Export(value)).resolves.toEqual({ exit: false });
+				expect(value.showExportSuccessToast).toHaveBeenCalledWith(saveResult.path);
+				expect(input.exportSession.setExportedFilePath).toHaveBeenCalledWith(
+					saveResult.path,
+				);
+				expect(toast.error).not.toHaveBeenCalled();
+				if (captionSidecarFailed) {
+					expect(toast.warning).toHaveBeenCalledExactlyOnceWith(
+						"Video saved, but some caption files could not be saved.",
+						{ duration: Infinity },
+					);
+				} else {
+					expect(toast.warning).not.toHaveBeenCalled();
+				}
+			} finally {
+				vi.unstubAllGlobals();
+			}
+		}
 	});
 });
 

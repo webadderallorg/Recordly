@@ -61,8 +61,8 @@ describe("studio runtime compatibility", () => {
 			const valid = { ...draft, mediaAlt };
 			expect(validateDraft(valid)).toEqual([]);
 			expect(
-				parseAnnouncementFeed({ announcements: [buildAnnouncement(valid)] }).announcements[0]
-					.media?.alt,
+				parseAnnouncementFeed({ announcements: [buildAnnouncement(valid)] })
+					.announcements[0].media?.alt,
 			).toBe(alt);
 		}
 		expect(validateDraft({ ...draft, mediaAlt: `${alt}b` })).toEqual([

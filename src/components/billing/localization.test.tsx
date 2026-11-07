@@ -103,7 +103,9 @@ describe.each(SUPPORTED_LOCALES)("billing UI in %s", (locale) => {
 		expect(markup).toContain(active.messages.benefitsPricing);
 		expect(markup).toContain(active.messages.testimonials);
 		if (locale !== "en") {
-			expect(markup).not.toContain("Commercial use requires an active Recordly Cloud subscription.");
+			expect(markup).not.toContain(
+				"Commercial use requires an active Recordly Cloud subscription.",
+			);
 			expect(markup).not.toContain("Community testimonials");
 		}
 	});

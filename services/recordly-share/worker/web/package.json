@@ -1,35 +1,35 @@
 {
-  "name": "recordly-share-web",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
-    "check": "astro check",
-    "test": "node --experimental-strip-types --test src/scripts/shareModel.node-test.ts src/scripts/playerFullscreen.node-test.ts src/scripts/cloudLibrary.node-test.ts src/scripts/cloudAuth.node-test.ts src/scripts/commentSubmission.node-test.ts src/scripts/moderation.node-test.ts scripts/check-legal-config.node-test.mjs",
-    "test:mobile": "node scripts/mobile-player.browser-test.mjs",
-    "build:release": "node scripts/check-legal-config.mjs && astro build"
-  },
-  "dependencies": {
-    "@astrojs/react": "^6.0.6",
-    "@heroui/react": "^3.2.6",
-    "@heroui/styles": "^3.2.6",
-    "@phosphor-icons/react": "^2.1.10",
-    "@supabase/supabase-js": "^2.118.0",
-    "@tailwindcss/vite": "^4.3.3",
-    "astro": "^7.4.2",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "tailwindcss": "^4.3.3"
-  },
-  "devDependencies": {
-    "@astrojs/check": "^0.9.10",
-    "@playwright/test": "1.63.0",
-    "@types/node": "^24.13.6",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "typescript": "^6.0.3"
-  }
+	"name": "recordly-share-web",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "astro dev",
+		"build": "astro build",
+		"preview": "astro preview",
+		"check": "astro check",
+		"test": "node --experimental-strip-types --test src/scripts/shareModel.node-test.ts src/scripts/playerFullscreen.node-test.ts src/scripts/cloudLibrary.node-test.ts src/scripts/cloudAuth.node-test.ts src/scripts/commentSubmission.node-test.ts src/scripts/moderation.node-test.ts scripts/check-legal-config.node-test.mjs",
+		"test:mobile": "node scripts/mobile-player.browser-test.mjs",
+		"build:release": "node scripts/check-legal-config.mjs && astro build"
+	},
+	"dependencies": {
+		"@astrojs/react": "^6.0.6",
+		"@heroui/react": "^3.2.6",
+		"@heroui/styles": "^3.2.6",
+		"@phosphor-icons/react": "^2.1.10",
+		"@supabase/supabase-js": "^2.118.0",
+		"@tailwindcss/vite": "^4.3.3",
+		"astro": "^7.4.2",
+		"react": "^19.3.0",
+		"react-dom": "^19.3.0",
+		"tailwindcss": "^4.3.3"
+	},
+	"devDependencies": {
+		"@astrojs/check": "^0.9.10",
+		"@playwright/test": "1.63.0",
+		"@types/node": "^24.13.6",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
+		"typescript": "^6.0.3"
+	}
 }

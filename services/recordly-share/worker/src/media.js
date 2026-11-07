@@ -202,10 +202,14 @@ export async function handleShareData(request, env, shareCode) {
 
 	const ownerProfile = video.owner_id
 		? await env.DB.prepare("SELECT display_name FROM creator_profiles WHERE owner_id = ?")
-			.bind(video.owner_id).first()
+				.bind(video.owner_id)
+				.first()
 		: null;
-	const controls = await env.DB.prepare("SELECT feedback_disabled FROM recording_controls WHERE share_code = ?")
-		.bind(shareCode).first();
+	const controls = await env.DB.prepare(
+		"SELECT feedback_disabled FROM recording_controls WHERE share_code = ?",
+	)
+		.bind(shareCode)
+		.first();
 	return jsonResponse({
 		video: {
 			feedback_enabled: controls?.feedback_disabled !== 1,
@@ -225,10 +229,9 @@ export async function handleShareData(request, env, shareCode) {
 		segments: segments.results || [],
 		chapters: chapters.results || [],
 		shareCode,
-		creator:
-			video.owner_id
-				? { name: ownerProfile?.display_name || "Recordly creator" }
-				: typeof env.CREATOR_NAME === "string" && env.CREATOR_NAME.trim()
+		creator: video.owner_id
+			? { name: ownerProfile?.display_name || "Recordly creator" }
+			: typeof env.CREATOR_NAME === "string" && env.CREATOR_NAME.trim()
 				? {
 						name: env.CREATOR_NAME.trim().slice(0, 100),
 						bio:
@@ -253,10 +256,14 @@ function sharePageResponse(html, appResponse) {
 		// biome-ignore lint/correctness/noUndeclaredVariables: HTMLRewriter is a Cloudflare Workers runtime global.
 		const response = new HTMLRewriter()
 			.on("head title", {
-				element(element) { element.remove(); },
+				element(element) {
+					element.remove();
+				},
 			})
 			.on("head", {
-				element(element) { element.append(head, { html: true }); },
+				element(element) {
+					element.append(head, { html: true });
+				},
 			})
 			.transform(appResponse);
 		response.headers.delete("ETag");
@@ -270,7 +277,7 @@ function sharePageResponse(html, appResponse) {
 		headers: {
 			"Content-Type": "text/html; charset=utf-8",
 			"Cache-Control": "private, no-store",
-			"Vary": "User-Agent",
+			Vary: "User-Agent",
 		},
 	});
 }

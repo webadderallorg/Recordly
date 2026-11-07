@@ -219,7 +219,10 @@ export function RecordlySignInFields({
 							)}
 							{label}
 							{providersKnown && !providers.includes(provider) && (
-								<span id={`${providerDescriptionId}-${provider}`} className="sr-only">
+								<span
+									id={`${providerDescriptionId}-${provider}`}
+									className="sr-only"
+								>
 									{labels.providerDisabled(label)}
 								</span>
 							)}

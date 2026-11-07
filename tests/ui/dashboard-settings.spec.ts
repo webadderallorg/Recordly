@@ -70,7 +70,9 @@ for (const fails of [false, true]) {
 				.getByRole("tabpanel", { name: /^Recording settings/ })
 				.getByRole("alert");
 			await expect(failure).toContainText("Could not complete action");
-			await expect(failure.getByText("Could not update capture protection")).not.toBeVisible();
+			await expect(
+				failure.getByText("Could not update capture protection"),
+			).not.toBeVisible();
 			await failure.getByRole("button", { name: "Technical details", exact: true }).click();
 			await expect(failure.getByText("Could not update capture protection")).toBeVisible();
 			await expect(toggle).toBeChecked();
@@ -85,43 +87,62 @@ for (const fails of [false, true]) {
 for (const failure of ["recordings", "projects", "both"] as const) {
 	test(`folder read errors explain retry and recover in place (${failure})`, async ({ page }) => {
 		await installSettingsBridge(page);
-		await installDesktopBridgeOverrides(page, (failure) => {
-			let failing = true;
-			let recordingsReads = 0;
-			let projectsReads = 0;
-			window.addEventListener("test-allow-folder-reads", () => { failing = false; });
-			window.electronAPI.getRecordingsDirectory = async () => {
-				document.documentElement.dataset.recordingsReads = String(++recordingsReads);
-				if (failing && failure !== "projects") throw new Error("Recordings folder unavailable");
-				return { success: true, path: "/restored/recordings" };
-			};
-			window.electronAPI.getProjectsDirectory = async () => {
-				document.documentElement.dataset.projectsReads = String(++projectsReads);
-				if (failing && failure !== "recordings") return { success: false };
-				return { success: true, path: "/restored/projects" };
-			};
-			window.electronAPI.openRecordingsFolder = async () => {
-				document.documentElement.dataset.openedFolder = "recordings";
-				return { success: true };
-			};
-			window.electronAPI.openProjectsDirectory = async () => {
-				document.documentElement.dataset.openedFolder = "projects";
-				return { success: true };
-			};
-		}, failure);
+		await installDesktopBridgeOverrides(
+			page,
+			(failure) => {
+				let failing = true;
+				let recordingsReads = 0;
+				let projectsReads = 0;
+				window.addEventListener("test-allow-folder-reads", () => {
+					failing = false;
+				});
+				window.electronAPI.getRecordingsDirectory = async () => {
+					document.documentElement.dataset.recordingsReads = String(++recordingsReads);
+					if (failing && failure !== "projects")
+						throw new Error("Recordings folder unavailable");
+					return { success: true, path: "/restored/recordings" };
+				};
+				window.electronAPI.getProjectsDirectory = async () => {
+					document.documentElement.dataset.projectsReads = String(++projectsReads);
+					if (failing && failure !== "recordings") return { success: false };
+					return { success: true, path: "/restored/projects" };
+				};
+				window.electronAPI.openRecordingsFolder = async () => {
+					document.documentElement.dataset.openedFolder = "recordings";
+					return { success: true };
+				};
+				window.electronAPI.openProjectsDirectory = async () => {
+					document.documentElement.dataset.openedFolder = "projects";
+					return { success: true };
+				};
+			},
+			failure,
+		);
 		await page.goto("/?windowType=editor");
 		await page.getByRole("button", { name: "Recordly account", exact: true }).click();
-		await page.getByRole("dialog", { name: "Account menu", exact: true })
-			.getByRole("button", { name: "Settings", exact: true }).click();
+		await page
+			.getByRole("dialog", { name: "Account menu", exact: true })
+			.getByRole("button", { name: "Settings", exact: true })
+			.click();
 		const settings = page.getByRole("dialog", { name: "Settings", exact: true });
 		await settings.getByRole("tab", { name: "General", exact: true }).click();
 		const panel = settings.getByRole("tabpanel", { name: /^General settings/ });
 		const folders = [
-			{ area: "recordings", title: "Recordings folder", error: "Recordings folder unavailable" },
-			{ area: "projects", title: "Projects folder", error: "Folder location is unavailable." },
+			{
+				area: "recordings",
+				title: "Recordings folder",
+				error: "Recordings folder unavailable",
+			},
+			{
+				area: "projects",
+				title: "Projects folder",
+				error: "Folder location is unavailable.",
+			},
 		] as const;
 		for (const folder of folders) {
-			const row = panel.locator(".settings-item").filter({ has: page.getByText(folder.title, { exact: true }) });
+			const row = panel
+				.locator(".settings-item")
+				.filter({ has: page.getByText(folder.title, { exact: true }) });
 			const open = row.getByRole("button", { name: "Open folder", exact: true });
 			if (failure === folder.area || failure === "both") {
 				await expect(row.getByText(folder.error, { exact: true })).toBeVisible();
@@ -132,14 +153,17 @@ for (const failure of ["recordings", "projects", "both"] as const) {
 		const retry = panel.getByRole("button", { name: "Try again", exact: true });
 		await expect(retry).toBeVisible();
 		const counts = await page.locator("html").evaluate((node) => ({
-			recordings: Number(node.dataset.recordingsReads), projects: Number(node.dataset.projectsReads),
+			recordings: Number(node.dataset.recordingsReads),
+			projects: Number(node.dataset.projectsReads),
 		}));
 		const url = page.url();
 		await page.evaluate(() => window.dispatchEvent(new Event("test-allow-folder-reads")));
 		await retry.click();
 		await expect(retry).toHaveCount(0);
 		for (const folder of folders) {
-			const row = panel.locator(".settings-item").filter({ has: page.getByText(folder.title, { exact: true }) });
+			const row = panel
+				.locator(".settings-item")
+				.filter({ has: page.getByText(folder.title, { exact: true }) });
 			const open = row.getByRole("button", { name: "Open folder", exact: true });
 			await expect(open).toBeEnabled();
 			await expect(row.getByText(folder.error, { exact: true })).toHaveCount(0);
@@ -148,7 +172,8 @@ for (const failure of ["recordings", "projects", "both"] as const) {
 			await expect(page.locator("html")).toHaveAttribute("data-opened-folder", folder.area);
 		}
 		const updated = await page.locator("html").evaluate((node) => ({
-			recordings: Number(node.dataset.recordingsReads), projects: Number(node.dataset.projectsReads),
+			recordings: Number(node.dataset.recordingsReads),
+			projects: Number(node.dataset.projectsReads),
 		}));
 		expect(updated.recordings).toBeGreaterThan(counts.recordings);
 		expect(updated.projects).toBeGreaterThan(counts.projects);
@@ -156,7 +181,9 @@ for (const failure of ["recordings", "projects", "both"] as const) {
 	});
 }
 
-test("folder read errors override saved paths and announce later retry failures", async ({ page }) => {
+test("folder read errors override saved paths and announce later retry failures", async ({
+	page,
+}) => {
 	await installSettingsBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
 		let phase = 0;
@@ -165,36 +192,54 @@ test("folder read errors override saved paths and announce later retry failures"
 		});
 		window.electronAPI.getRecordingsDirectory = async () => {
 			if (phase === 1) throw new Error("Recordings folder read failed");
-			return { success: true, path: phase === 0 ? "/initial/recordings" : "/restored/recordings" };
+			return {
+				success: true,
+				path: phase === 0 ? "/initial/recordings" : "/restored/recordings",
+			};
 		};
 		window.electronAPI.getProjectsDirectory = async () => {
 			if (phase === 0) return { success: false };
 			if (phase === 2) throw new Error("Projects folder read failed");
-			return { success: true, path: phase === 1 ? "/initial/projects" : "/restored/projects" };
+			return {
+				success: true,
+				path: phase === 1 ? "/initial/projects" : "/restored/projects",
+			};
 		};
 	});
 	await page.goto("/?windowType=editor");
 	await page.getByRole("button", { name: "Recordly account", exact: true }).click();
-	await page.getByRole("dialog", { name: "Account menu", exact: true })
-		.getByRole("button", { name: "Settings", exact: true }).click();
+	await page
+		.getByRole("dialog", { name: "Account menu", exact: true })
+		.getByRole("button", { name: "Settings", exact: true })
+		.click();
 	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
 	await settings.getByRole("tab", { name: "General", exact: true }).click();
 	const panel = settings.getByRole("tabpanel", { name: /^General settings/ });
-	const recordings = panel.locator(".settings-item")
+	const recordings = panel
+		.locator(".settings-item")
 		.filter({ has: page.getByText("Recordings folder", { exact: true }) });
-	const projects = panel.locator(".settings-item")
+	const projects = panel
+		.locator(".settings-item")
 		.filter({ has: page.getByText("Projects folder", { exact: true }) });
 	const recordingsPath = recordings.locator(".settings-folder-path");
 	const projectsPath = projects.locator(".settings-folder-path");
 	const retry = panel.getByRole("button", { name: "Try again", exact: true });
-	const setPhase = (phase: number) => page.evaluate((phase) =>
-		window.dispatchEvent(new CustomEvent("test-folder-phase", { detail: phase })), phase);
+	const setPhase = (phase: number) =>
+		page.evaluate(
+			(phase) =>
+				window.dispatchEvent(new CustomEvent("test-folder-phase", { detail: phase })),
+			phase,
+		);
 	await expect(recordingsPath).toHaveText("/initial/recordings");
-	await expect(projects.getByText("Folder location is unavailable.", { exact: true })).toBeVisible();
+	await expect(
+		projects.getByText("Folder location is unavailable.", { exact: true }),
+	).toBeVisible();
 	await setPhase(1);
 	await retry.click();
 	await expect(projectsPath).toHaveText("/initial/projects");
-	await expect(recordings.getByText("Recordings folder read failed", { exact: true })).toBeVisible();
+	await expect(
+		recordings.getByText("Recordings folder read failed", { exact: true }),
+	).toBeVisible();
 	await expect(recordings.getByRole("alert")).toHaveText("Recordings folder read failed");
 	await expect(recordingsPath).not.toContainText("/initial/recordings");
 	await expect(projects.getByRole("alert")).toHaveCount(0);
@@ -216,38 +261,48 @@ test("folder read errors override saved paths and announce later retry failures"
 for (const failure of ["result", "error", "non-error"] as const) {
 	test(`HUD visibility read failure can retry in place (${failure})`, async ({ page }) => {
 		await installSettingsBridge(page);
-		await installDesktopBridgeOverrides(page, (failure) => {
-			let failing = true;
-			let reads = 0;
-			window.addEventListener("test-allow-hud-read", () => {
-				failing = false;
-			});
-			window.electronAPI.getHudOverlayCaptureProtection = async () => {
-				document.documentElement.dataset.hudProtectionReads = String(++reads);
-				if (failing) {
-					if (failure === "error") throw new Error("HUD bridge unavailable");
-					if (failure === "non-error") return Promise.reject("HUD bridge disconnected");
-					return { success: false, enabled: true };
-				}
-				return { success: true, enabled: false };
-			};
-			window.electronAPI.setHudOverlayCaptureProtection = async (enabled) => {
-				document.documentElement.dataset.hideHudRequested = String(enabled);
-				return { success: true, enabled };
-			};
-		}, failure);
+		await installDesktopBridgeOverrides(
+			page,
+			(failure) => {
+				let failing = true;
+				let reads = 0;
+				window.addEventListener("test-allow-hud-read", () => {
+					failing = false;
+				});
+				window.electronAPI.getHudOverlayCaptureProtection = async () => {
+					document.documentElement.dataset.hudProtectionReads = String(++reads);
+					if (failing) {
+						if (failure === "error") throw new Error("HUD bridge unavailable");
+						if (failure === "non-error")
+							return Promise.reject("HUD bridge disconnected");
+						return { success: false, enabled: true };
+					}
+					return { success: true, enabled: false };
+				};
+				window.electronAPI.setHudOverlayCaptureProtection = async (enabled) => {
+					document.documentElement.dataset.hideHudRequested = String(enabled);
+					return { success: true, enabled };
+				};
+			},
+			failure,
+		);
 		const home = await openDashboard(page);
 		await home.getByRole("button", { name: "Recordly account" }).click();
-		await page.getByRole("dialog", { name: "Account menu", exact: true })
-			.getByRole("button", { name: "Settings", exact: true }).click();
+		await page
+			.getByRole("dialog", { name: "Account menu", exact: true })
+			.getByRole("button", { name: "Settings", exact: true })
+			.click();
 		await home.getByRole("tab", { name: "Recording", exact: true }).click();
 		const panel = home.getByRole("tabpanel", { name: /^Recording settings/ });
 		const retry = panel.getByRole("button", { name: "Try again", exact: true });
 		await expect(panel.getByRole("alert")).toBeVisible();
 		await expect(retry).toBeVisible();
-		const failureText = failure === "result"
-			? "Could not update capture protection"
-			: failure === "error" ? "HUD bridge unavailable" : "HUD bridge disconnected";
+		const failureText =
+			failure === "result"
+				? "Could not update capture protection"
+				: failure === "error"
+					? "HUD bridge unavailable"
+					: "HUD bridge disconnected";
 		await panel.getByRole("button", { name: "Technical details", exact: true }).click();
 		await expect(panel.getByText(failureText, { exact: true })).toBeVisible();
 		await expect(panel.getByText(`Error: ${failureText}`, { exact: true })).toHaveCount(0);
@@ -256,14 +311,18 @@ for (const failure of ["result", "error", "non-error"] as const) {
 		await page.evaluate(() => window.dispatchEvent(new Event("test-allow-hud-read")));
 		await retry.click();
 		const toggle = panel.getByRole("switch", {
-			name: "Hide recording controls from captured video", exact: true,
+			name: "Hide recording controls from captured video",
+			exact: true,
 		});
 		await expect(toggle).toBeEnabled();
 		await expect(toggle).not.toBeChecked();
 		await expect(panel.getByRole("alert")).toHaveCount(0);
 		await expect(retry).toHaveCount(0);
-		await expect.poll(async () => Number(await page.locator("html")
-			.getAttribute("data-hud-protection-reads"))).toBeGreaterThan(reads);
+		await expect
+			.poll(async () =>
+				Number(await page.locator("html").getAttribute("data-hud-protection-reads")),
+			)
+			.toBeGreaterThan(reads);
 		await expect(page.locator("html")).not.toHaveAttribute("data-hide-hud-requested");
 		expect(page.url()).toBe(url);
 	});

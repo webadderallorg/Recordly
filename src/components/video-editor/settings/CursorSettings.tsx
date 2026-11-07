@@ -96,11 +96,7 @@ export function CursorSettings(props: Props) {
 		onCursorSwayChange,
 	} = props;
 	const { te, tSettings, formatNumber } = useSettingsTranslations();
-	const {
-		lastCursorBounceStrength,
-		cursorPreviewUrls,
-		cursorStyleOptions,
-	} = props.cursor;
+	const { lastCursorBounceStrength, cursorPreviewUrls, cursorStyleOptions } = props.cursor;
 	return (
 		<section className="flex flex-col gap-4">
 			{advanced && (

@@ -73,13 +73,15 @@ const CAPTURE_PICKER_READY_TIMEOUT_MS = 1500;
 // Synchronous and metadata-only so the HTML boot shell matches its destination,
 // including reloads of a Home window after a fresh recording finishes.
 ipcMain.on("get-editor-startup-view", (event) => {
-	event.returnValue = recordingEditorLoading.active ? "editor" : resolveEditorStartupView({
-		projectPath: currentProjectPath,
-		videoPath: currentVideoPath,
-		recordingVideoPath: currentRecordingSession?.videoPath,
-		devInput: process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT,
-		smokeExport: process.env.RECORDLY_SMOKE_EXPORT === "1",
-	});
+	event.returnValue = recordingEditorLoading.active
+		? "editor"
+		: resolveEditorStartupView({
+				projectPath: currentProjectPath,
+				videoPath: currentVideoPath,
+				recordingVideoPath: currentRecordingSession?.videoPath,
+				devInput: process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT,
+				smokeExport: process.env.RECORDLY_SMOKE_EXPORT === "1",
+			});
 });
 
 function getEditorWindowQuery(): Record<string, string> {

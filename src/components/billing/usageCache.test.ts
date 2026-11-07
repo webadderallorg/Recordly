@@ -60,7 +60,10 @@ it("rejects expired and future-dated snapshots", () => {
 	expect(readUsageCache(endpoint, "first")).toBeNull();
 });
 
-it.each([null, 1e11])("reads only display metrics from a Cloud snapshot with limit %s", (storageLimitBytes) => {
+it.each([
+	null,
+	1e11,
+])("reads only display metrics from a Cloud snapshot with limit %s", (storageLimitBytes) => {
 	values.set(
 		usageCacheKey(endpoint, "first"),
 		JSON.stringify({

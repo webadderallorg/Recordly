@@ -374,7 +374,10 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				{zoomItems.length === 0 && onApplyAutoZooms && (
 					<div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
 						<div
-							className={cn("relative inline-flex", shouldNudgeAutoZooms && nudgeStyles.nudge)}
+							className={cn(
+								"relative inline-flex",
+								shouldNudgeAutoZooms && nudgeStyles.nudge,
+							)}
 						>
 							<Button
 								variant="secondary"

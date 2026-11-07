@@ -5,10 +5,13 @@ import { installDesktopBridge } from "./bridge";
 
 async function captureSignInReports(page: Page) {
 	const reports: { error: string; logs: string }[] = [];
-	await page.route("https://auth.recordly.test/functions/v1/submit-export-error", async (route) => {
-		reports.push(route.request().postDataJSON());
-		await route.fulfill({ json: { success: true } });
-	});
+	await page.route(
+		"https://auth.recordly.test/functions/v1/submit-export-error",
+		async (route) => {
+			reports.push(route.request().postDataJSON());
+			await route.fulfill({ json: { success: true } });
+		},
+	);
 	return reports;
 }
 
@@ -38,7 +41,9 @@ test("sign-in keeps all providers visible and marks unavailable providers disabl
 	await expect(
 		login.getByRole("button", { name: "Continue with Apple", exact: true }),
 	).toHaveAccessibleDescription("Apple sign-in is not enabled yet");
-	await expect(login.getByRole("button", { name: "Continue with GitHub", exact: true })).toHaveCount(0);
+	await expect(
+		login.getByRole("button", { name: "Continue with GitHub", exact: true }),
+	).toHaveCount(0);
 	const email = login.getByRole("textbox", { name: /^Email\*?$/ });
 	const emailCode = login.getByRole("button", { name: "Email me a code" });
 	await expect(login.locator("[data-signin-divider]")).toHaveText("or");
@@ -47,7 +52,7 @@ test("sign-in keeps all providers visible and marks unavailable providers disabl
 		exact: true,
 	});
 	await expect(passwordSwitch).toHaveCount(1);
-	const emailLabel = login.locator('[data-signin-form] label').filter({ hasText: /^Email/ });
+	const emailLabel = login.locator("[data-signin-form] label").filter({ hasText: /^Email/ });
 	const labelBounds = (await emailLabel.boundingBox())!;
 	const linkBounds = (await passwordSwitch.boundingBox())!;
 	expect(
@@ -164,13 +169,16 @@ test("a rejected Supabase callback keeps sign-in mandatory", async ({ page }) =>
 	await expect(login).toHaveAttribute("data-onboarding-state", "login");
 	await expect(login.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
 	await expect(
-		login.getByRole("navigation", { name: "Onboarding pages" })
+		login
+			.getByRole("navigation", { name: "Onboarding pages" })
 			.getByRole("button", { name: "Permissions", exact: true }),
 	).toBeDisabled();
 	await page.keyboard.press("Escape");
 	await expect(login).toBeVisible();
 	await login.getByRole("button", { name: "Use a different email", exact: true }).click();
-	await expect(login.getByRole("textbox", { name: /^Email\*?$/ })).toHaveValue("owner@example.test");
+	await expect(login.getByRole("textbox", { name: /^Email\*?$/ })).toHaveValue(
+		"owner@example.test",
+	);
 	await login.getByRole("button", { name: "Email me a code" }).click();
 	await expect(
 		login.getByRole("textbox", { name: "Enter code sent to owner@example.test", exact: true }),
@@ -213,7 +221,9 @@ test("restored Supabase sessions show the account and sign-out requires authenti
 	await page.getByRole("button", { name: "Recordly account", exact: true }).click();
 	const account = page.getByRole("dialog", { name: "Account menu", exact: true });
 	await expect(account.getByText("Test User", { exact: true })).toBeVisible();
-	await expect(account.getByRole("button", { name: "Manage account", exact: true })).toBeVisible();
+	await expect(
+		account.getByRole("button", { name: "Manage account", exact: true }),
+	).toBeVisible();
 	await expect(account.locator('img[src$="login-banner.png"]')).toHaveCount(0);
 	const logout = page.waitForRequest((request) => request.url().includes("/auth/v1/logout"));
 	await account.getByRole("button", { name: "Log out", exact: true }).click();
@@ -388,10 +398,14 @@ for (const fails of [false, true]) {
 			await expect(feedback).toContainText(
 				"Could not save this account change. Check your details and connection, then try again.",
 			);
-			await expect(feedback.getByRole("button", { name: "Report Error", exact: true })).toBeVisible();
+			await expect(
+				feedback.getByRole("button", { name: "Report Error", exact: true }),
+			).toBeVisible();
 			await feedback.locator("summary").click();
 			await expect(feedback.locator("details")).toHaveAttribute("open", "");
-			await expect(feedback.locator("details")).toContainText("Could not save email preference.");
+			await expect(feedback.locator("details")).toContainText(
+				"Could not save email preference.",
+			);
 			await expect(checkbox).not.toBeChecked();
 		} else {
 			await expect(

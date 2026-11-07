@@ -75,5 +75,6 @@
 	"locateRecording": "Locate recording",
 	"recordingRelinkFailed": "Could not reconnect the recording",
 	"pauseRecordingTrackFailed": "The screen recording paused, but a camera or audio track could not pause.",
-	"resumeRecordingTrackFailed": "The screen recording resumed, but a camera or audio track could not resume."
+	"resumeRecordingTrackFailed": "The screen recording resumed, but a camera or audio track could not resume.",
+	"captionFilesSaveFailed": "Video saved, but some caption files could not be saved."
 }

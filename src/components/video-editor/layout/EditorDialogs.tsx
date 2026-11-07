@@ -47,7 +47,10 @@ interface EditorDialogsProps {
 	projectErrorSource?: string;
 	projectErrorRecordingSource?: string;
 	onDashboardSignIn: () => void;
-	onDeleteProjects: (paths: string[], options?: { includeSources?: boolean; protectedSources?: string[] }) => Promise<string[]>;
+	onDeleteProjects: (
+		paths: string[],
+		options?: { includeSources?: boolean; protectedSources?: string[] },
+	) => Promise<string[]>;
 	onRenameProject: (path: string, name: string) => Promise<string>;
 	onShareProject: (path: string) => Promise<void>;
 	accountLabel?: string;

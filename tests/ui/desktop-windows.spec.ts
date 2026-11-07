@@ -16,7 +16,9 @@ test("update window fits the desktop toast and can be dismissed", async ({ page 
 	await expect(
 		page.getByRole("heading", { name: "Update available", exact: true }),
 	).toBeVisible();
-	await expect(page.getByRole("button", { name: "Download update", exact: true })).toBeInViewport();
+	await expect(
+		page.getByRole("button", { name: "Download update", exact: true }),
+	).toBeInViewport();
 	await page.screenshot({ path: "test-results/update-light.png", animations: "disabled" });
 	await page.getByRole("button", { name: "Not now", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-update-dismissed", "true");
@@ -36,9 +38,7 @@ test("editor inspector and playback controls fit a smaller desktop", async ({ pa
 		.click();
 	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
 	await settings.getByRole("tab", { name: "Motion", exact: true }).click();
-	await expect(
-		settings.getByRole("radiogroup", { name: "Presets", exact: true }),
-	).toBeVisible();
+	await expect(settings.getByRole("radiogroup", { name: "Presets", exact: true })).toBeVisible();
 	await settings.getByText("Cinematic", { exact: true }).click();
 	await expect(settings.getByRole("radio", { name: /^Cinematic/ })).toBeChecked();
 	await expect

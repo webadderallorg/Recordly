@@ -55,9 +55,7 @@ function readLinks(): Record<string, ProjectShareLink> {
 		missingNativeKey = !result.found;
 		// A present null value is an explicit empty native value, never permission
 		// to resurrect an older browser-origin snapshot.
-		stored = result.found
-			? (result.value ?? {})
-			: readBrowserLinks();
+		stored = result.found ? (result.value ?? {}) : readBrowserLinks();
 	} else {
 		stored = readBrowserLinks();
 	}

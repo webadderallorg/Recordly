@@ -30,15 +30,20 @@ test("progress starts empty, moves smoothly forwards through stages, and resets 
 				}),
 			);
 		}, update);
-	const initialWidth = await fill.evaluate((element) => parseFloat(getComputedStyle(element).width));
+	const initialWidth = await fill.evaluate((element) =>
+		parseFloat(getComputedStyle(element).width),
+	);
 	await push({ percentage: 42 });
 	await expect(bar).toHaveAttribute("aria-valuenow", "42");
 	await expect(fill).toHaveCSS("transition-duration", "0.4s");
 	await expect(fill).toHaveCSS("transition-timing-function", "linear");
 	const widths = await fill.evaluate((element) => {
-		const transition = element.getAnimations().find(
-			(animation) => animation instanceof CSSTransition && animation.transitionProperty === "width",
-		);
+		const transition = element
+			.getAnimations()
+			.find(
+				(animation) =>
+					animation instanceof CSSTransition && animation.transitionProperty === "width",
+			);
 		if (!transition) throw new Error("Expected the progress width transition");
 		transition.pause();
 		const samples = [0, 200, 400].map((time) => {
@@ -52,10 +57,9 @@ test("progress starts empty, moves smoothly forwards through stages, and resets 
 	expect(widths[2]).toBeGreaterThan(widths[1]);
 	await push({ percentage: 7 });
 	await expect(bar).toHaveAttribute("aria-valuenow", "42");
-	expect(await fill.evaluate((element) => parseFloat(getComputedStyle(element).width))).toBeCloseTo(
-		widths[2],
-		1,
-	);
+	expect(
+		await fill.evaluate((element) => parseFloat(getComputedStyle(element).width)),
+	).toBeCloseTo(widths[2], 1);
 	await push({ percentage: 100 });
 	await expect(bar).toHaveAttribute("aria-valuenow", "99");
 	await push({ phase: "finalizing", percentage: 0, audioProgress: 0 });

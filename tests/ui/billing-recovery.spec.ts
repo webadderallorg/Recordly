@@ -218,7 +218,9 @@ test("canceled customers can resubscribe without duplicate billing management", 
 }) => {
 	const dialog = await prepare(page, "canceled");
 	await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toBeEnabled();
-	await expect(dialog.getByRole("button", { name: "Manage previous subscription", exact: true })).toHaveCount(0);
+	await expect(
+		dialog.getByRole("button", { name: "Manage previous subscription", exact: true }),
+	).toHaveCount(0);
 	await dialog.getByRole("button", { name: "Get started", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-billing-action", "checkout");
 });

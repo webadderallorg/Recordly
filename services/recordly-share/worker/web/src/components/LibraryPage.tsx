@@ -55,8 +55,16 @@ export function LibraryLogin() {
 	);
 }
 
-export default function LibraryPage({ accessToken, onSignOut, accountSettings, folderStorageKey = "recordly-cloud-folders" }: {
- accessToken?: string; onSignOut?: () => void; accountSettings?: ReactNode; folderStorageKey?: string;
+export default function LibraryPage({
+	accessToken,
+	onSignOut,
+	accountSettings,
+	folderStorageKey = "recordly-cloud-folders",
+}: {
+	accessToken?: string;
+	onSignOut?: () => void;
+	accountSettings?: ReactNode;
+	folderStorageKey?: string;
 } = {}) {
 	const [section, setSection] = useState("shared");
 	const [query, setQuery] = useState("");
@@ -69,7 +77,9 @@ export default function LibraryPage({ accessToken, onSignOut, accountSettings, f
 	const [managing, setManaging] = useState<LibraryVideo | null>(null);
 	const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null);
 	const tokenRef = useRef(accessToken);
-	useEffect(() => { tokenRef.current = accessToken; }, [accessToken]);
+	useEffect(() => {
+		tokenRef.current = accessToken;
+	}, [accessToken]);
 	const loadGeneration = useRef(0);
 	const load = useCallback(async () => {
 		const generation = ++loadGeneration.current;
@@ -89,7 +99,9 @@ export default function LibraryPage({ accessToken, onSignOut, accountSettings, f
 	}, []);
 	useEffect(() => {
 		void load();
-		return () => { loadGeneration.current++; };
+		return () => {
+			loadGeneration.current++;
+		};
 	}, [load]);
 	async function renew(code: string) {
 		setPending(code);
@@ -103,7 +115,8 @@ export default function LibraryPage({ accessToken, onSignOut, accountSettings, f
 			);
 			toast.success("Share link renewed");
 		} catch (cause) {
-			if (!(cause instanceof LibrarySignInRedirectError)) toast.danger("Could not renew this link. Try again.");
+			if (!(cause instanceof LibrarySignInRedirectError))
+				toast.danger("Could not renew this link. Try again.");
 		} finally {
 			setPending(null);
 		}
@@ -116,7 +129,8 @@ export default function LibraryPage({ accessToken, onSignOut, accountSettings, f
 			toast.success("Recording deleted");
 			return true;
 		} catch (cause) {
-			if (!(cause instanceof LibrarySignInRedirectError)) toast.danger("Could not delete this recording. Try again.");
+			if (!(cause instanceof LibrarySignInRedirectError))
+				toast.danger("Could not delete this recording. Try again.");
 			return false;
 		} finally {
 			setPending(null);
@@ -131,9 +145,7 @@ export default function LibraryPage({ accessToken, onSignOut, accountSettings, f
 	const [deleting, setDeleting] = useState(false);
 	useEffect(() => {
 		try {
-			const saved: unknown = JSON.parse(
-				localStorage.getItem(folderStorageKey) || "[]",
-			);
+			const saved: unknown = JSON.parse(localStorage.getItem(folderStorageKey) || "[]");
 			if (Array.isArray(saved))
 				setFolders(
 					saved.filter(
@@ -211,7 +223,15 @@ export default function LibraryPage({ accessToken, onSignOut, accountSettings, f
 	return (
 		<>
 			<Notifications />
-            {managing && accessToken && <SharingControls key={managing.share_code} code={managing.share_code} title={managing.title} accessToken={accessToken} onClose={() => setManaging(null)} />}
+			{managing && accessToken && (
+				<SharingControls
+					key={managing.share_code}
+					code={managing.share_code}
+					title={managing.title}
+					accessToken={accessToken}
+					onClose={() => setManaging(null)}
+				/>
+			)}
 			<div className="library-dashboard flex h-full flex-row gap-0 rounded-none bg-background p-0 text-foreground">
 				<aside
 					aria-label="Library navigation"
@@ -477,7 +497,11 @@ export default function LibraryPage({ accessToken, onSignOut, accountSettings, f
 						{section === "settings" ? (
 							<div className="space-y-5 py-10">
 								<h1 className="text-lg font-semibold">Library settings</h1>
-								{accountSettings && <section className="max-w-md rounded-xl border border-separator p-5">{accountSettings}</section>}
+								{accountSettings && (
+									<section className="max-w-md rounded-xl border border-separator p-5">
+										{accountSettings}
+									</section>
+								)}
 								<p className="text-sm text-muted">
 									Folders are saved in this browser. Recordings and share links
 									are stored by your sharing service.
@@ -488,7 +512,18 @@ export default function LibraryPage({ accessToken, onSignOut, accountSettings, f
 							</div>
 						) : (
 							<>
-								{error && <div className="mb-5 space-y-3"><Notice>{error}</Notice><Button variant="secondary" isDisabled={loading} onPress={() => void load()}>Try again</Button></div>}
+								{error && (
+									<div className="mb-5 space-y-3">
+										<Notice>{error}</Notice>
+										<Button
+											variant="secondary"
+											isDisabled={loading}
+											onPress={() => void load()}
+										>
+											Try again
+										</Button>
+									</div>
+								)}
 								<ul
 									aria-label="Your recordings"
 									className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] gap-x-7 gap-y-10 lg:gap-x-9"
@@ -520,8 +555,16 @@ export default function LibraryPage({ accessToken, onSignOut, accountSettings, f
 													}
 													busy={busy}
 													copy={() => void copy(video.share_code)}
-													manage={accessToken ? () => setManaging(video) : undefined}
-													 renew={accessToken ? undefined : () => void renew(video.share_code)}
+													manage={
+														accessToken
+															? () => setManaging(video)
+															: undefined
+													}
+													renew={
+														accessToken
+															? undefined
+															: () => void renew(video.share_code)
+													}
 													remove={() =>
 														setConfirmDelete([video.share_code])
 													}
@@ -532,17 +575,34 @@ export default function LibraryPage({ accessToken, onSignOut, accountSettings, f
 									<div className="flex h-64 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
 										<CloudIcon weight="fill" className="size-8 opacity-40" />
 										<h1 className="text-base font-semibold text-foreground">
-											{!videos.length ? "No shared recordings yet" : hasFilters ? "No recordings match your filters" : "This folder is empty"}
+											{!videos.length
+												? "No shared recordings yet"
+												: hasFilters
+													? "No recordings match your filters"
+													: "This folder is empty"}
 										</h1>
 										<p className="max-w-md text-center">
-											{!videos.length ? "Publish a recording from the Recordly app to see it here." : hasFilters ? "Try a different search or clear your filters." : `Add recordings to ${activeFolder?.name || "this folder"} from the Shared view using Add folder.`}
+											{!videos.length
+												? "Publish a recording from the Recordly app to see it here."
+												: hasFilters
+													? "Try a different search or clear your filters."
+													: `Add recordings to ${activeFolder?.name || "this folder"} from the Shared view using Add folder.`}
 										</p>
-										<Button variant="secondary" onPress={() => {
-											if (!videos.length) setHelp(true);
-											else if (hasFilters) { setQuery(""); setPeriod("all"); }
-											else setSection("shared");
-										}}>
-											{!videos.length ? "How to publish a recording" : hasFilters ? "Clear filters" : "Browse shared recordings"}
+										<Button
+											variant="secondary"
+											onPress={() => {
+												if (!videos.length) setHelp(true);
+												else if (hasFilters) {
+													setQuery("");
+													setPeriod("all");
+												} else setSection("shared");
+											}}
+										>
+											{!videos.length
+												? "How to publish a recording"
+												: hasFilters
+													? "Clear filters"
+													: "Browse shared recordings"}
 										</Button>
 									</div>
 								)}
@@ -560,8 +620,8 @@ export default function LibraryPage({ accessToken, onSignOut, accountSettings, f
 							</Modal.Header>
 							<Modal.Body>
 								<p>
-									Open a project in Recordly, choose Publish, then Link.
-									Create a share link and your recording will appear here.
+									Open a project in Recordly, choose Publish, then Link. Create a
+									share link and your recording will appear here.
 								</p>
 							</Modal.Body>
 							<Modal.Footer>

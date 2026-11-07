@@ -5,15 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import ffmpeg from "ffmpeg-static";
-import {
-	afterEach,
-	beforeAll,
-	beforeEach,
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as state from "../state";
 
 // These regressions exercise real FFmpeg/FFprobe subprocesses, including cold starts.
@@ -31,16 +23,12 @@ vi.mock("./windows", async (original) => {
 	const actual = await original<typeof import("./windows")>();
 	return {
 		...actual,
-		waitForWindowsCaptureStop: (
-			proc: Parameters<typeof actual.waitForWindowsCaptureStop>[0],
-		) => actual.waitForWindowsCaptureStop(proc, 10),
+		waitForWindowsCaptureStop: (proc: Parameters<typeof actual.waitForWindowsCaptureStop>[0]) =>
+			actual.waitForWindowsCaptureStop(proc, 10),
 	};
 });
 import { stopWindowsCapture } from "./handlers/stopWindowsCapture";
-import {
-	attachWindowsCaptureLifecycle,
-	recoverNativeWindowsCaptureOutput,
-} from "./windows";
+import { attachWindowsCaptureLifecycle, recoverNativeWindowsCaptureOutput } from "./windows";
 import { RecordingProcessGuard } from "./processGuard";
 
 class CaptureProcess extends EventEmitter {
@@ -61,9 +49,7 @@ describe("Windows stop failure preserves closed-output recovery", () => {
 	let video: Buffer;
 	let proc: CaptureProcess;
 	beforeAll(async () => {
-		const fixtureDir = await fs.mkdtemp(
-			path.join(os.tmpdir(), "recordly-stop-fixture-"),
-		);
+		const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-stop-fixture-"));
 		try {
 			const fixturePath = path.join(fixtureDir, "fixture.mp4");
 			execFileSync(ffmpeg!, [
@@ -87,17 +73,12 @@ describe("Windows stop failure preserves closed-output recovery", () => {
 		}
 	});
 	beforeEach(async () => {
-		directory = await fs.mkdtemp(
-			path.join(os.tmpdir(), "recordly-stop-recovery-"),
-		);
+		directory = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-stop-recovery-"));
 		temporary = path.join(directory, "temporary.mp4");
 		destination = path.join(directory, "recording.mp4");
 		await fs.writeFile(temporary, video);
 		for (const kind of ["system", "mic"]) {
-			await fs.writeFile(
-				temporary.replace(".mp4", `.${kind}.wav`),
-				`${kind} retained audio`,
-			);
+			await fs.writeFile(temporary.replace(".mp4", `.${kind}.wav`), `${kind} retained audio`);
 			await fs.writeFile(
 				temporary.replace(".mp4", `.${kind}.wav.json`),
 				'{"startDelayMs":12}',
@@ -131,9 +112,7 @@ describe("Windows stop failure preserves closed-output recovery", () => {
 		const guard = new RecordingProcessGuard();
 		guard.track(proc);
 		const next = guard.wrap(async () => ({ success: true }));
-		let recovering:
-			| ReturnType<typeof recoverNativeWindowsCaptureOutput>
-			| undefined;
+		let recovering: ReturnType<typeof recoverNativeWindowsCaptureOutput> | undefined;
 		attachWindowsCaptureLifecycle(
 			proc as unknown as Parameters<typeof attachWindowsCaptureLifecycle>[0],
 			() => {
@@ -158,15 +137,12 @@ describe("Windows stop failure preserves closed-output recovery", () => {
 		});
 		expect((await fs.readFile(destination)).equals(video)).toBe(true);
 		for (const kind of ["system", "mic"]) {
-			expect(
-				await fs.readFile(destination.replace(".mp4", `.${kind}.wav`), "utf8"),
-			).toBe(`${kind} retained audio`);
+			expect(await fs.readFile(destination.replace(".mp4", `.${kind}.wav`), "utf8")).toBe(
+				`${kind} retained audio`,
+			);
 			expect(
 				JSON.parse(
-					await fs.readFile(
-						destination.replace(".mp4", `.${kind}.wav.json`),
-						"utf8",
-					),
+					await fs.readFile(destination.replace(".mp4", `.${kind}.wav.json`), "utf8"),
 				),
 			).toEqual({ startDelayMs: 12 });
 		}
@@ -230,13 +206,18 @@ describe("Windows stop failure preserves closed-output recovery", () => {
 		attachWindowsCaptureLifecycle(
 			proc as unknown as Parameters<typeof attachWindowsCaptureLifecycle>[0],
 		);
-		vi.spyOn(proc.stdin, "write").mockImplementation(() => { throw new Error("pipe closed"); });
+		vi.spyOn(proc.stdin, "write").mockImplementation(() => {
+			throw new Error("pipe closed");
+		});
 		await expect(stopWindowsCapture()).resolves.toMatchObject({ success: false });
 		expect(proc.kill).toHaveBeenCalledOnce();
 		expect(state.windowsCaptureProcess).toBe(proc);
 		await expect(recoverNativeWindowsCaptureOutput()).resolves.toBeNull();
 		proc.emit("close", 1);
-		await expect(recoverNativeWindowsCaptureOutput()).resolves.toMatchObject({ success: true, path: destination });
+		await expect(recoverNativeWindowsCaptureOutput()).resolves.toMatchObject({
+			success: true,
+			path: destination,
+		});
 	});
 
 	it("handles asynchronous stop EPIPE and keeps capture reserved until closed recovery", async () => {
@@ -272,9 +253,7 @@ describe("Windows stop failure preserves closed-output recovery", () => {
 		expect((await fs.stat(temporary)).size).toBe(0);
 		expect(state.windowsCaptureTempPath).toBe(temporary);
 		expect(state.windowsCaptureTargetPath).toBe(destination);
-		expect(state.windowsSystemAudioPath).toBe(
-			destination.replace(".mp4", ".system.wav"),
-		);
+		expect(state.windowsSystemAudioPath).toBe(destination.replace(".mp4", ".system.wav"));
 		await expect(fs.access(destination)).rejects.toThrow();
 	});
 });

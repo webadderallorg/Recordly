@@ -73,7 +73,9 @@ test("Home shows recent completed shares, scrolls sideways, opens links, and ref
 test("Home can retry a failed shared-video load", async ({ page }) => {
 	const home = await installShares(page, true);
 	const featured = home.getByRole("region", { name: "Recently shared videos" });
-	const failure = featured.getByRole("status").filter({ hasText: "Could not load shared videos." });
+	const failure = featured
+		.getByRole("status")
+		.filter({ hasText: "Could not load shared videos." });
 	await expect(failure).toContainText("Could not load shared videos.");
 	await expect(failure.getByText("Cloud is temporarily unavailable")).not.toBeVisible();
 	await failure.getByRole("button", { name: "Technical details", exact: true }).click();

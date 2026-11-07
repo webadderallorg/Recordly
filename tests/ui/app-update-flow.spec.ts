@@ -34,9 +34,10 @@ test("update available is a red header button to the right of the account in edi
 	await expect(home).toBeVisible();
 	await expect(home).not.toHaveAttribute("data-entering");
 	await checkPlacement(home.locator(".app-frame-header"));
-	await home
-		.getByRole("button", { name: "Update available", exact: true })
-		.screenshot({ path: test.info().outputPath("home-update-button.png"), animations: "disabled" });
+	await home.getByRole("button", { name: "Update available", exact: true }).screenshot({
+		path: test.info().outputPath("home-update-button.png"),
+		animations: "disabled",
+	});
 	await page.screenshot({
 		path: test.info().outputPath("home-update-available.png"),
 		animations: "disabled",

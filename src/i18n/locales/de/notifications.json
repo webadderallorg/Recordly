@@ -75,5 +75,6 @@
 	"locateRecording": "Aufnahme suchen",
 	"recordingRelinkFailed": "Die Aufnahme konnte nicht erneut verknüpft werden",
 	"pauseRecordingTrackFailed": "Die Bildschirmaufnahme wurde pausiert, aber eine Kamera- oder Audiospur konnte nicht pausiert werden.",
-	"resumeRecordingTrackFailed": "Die Bildschirmaufnahme wurde fortgesetzt, aber eine Kamera- oder Audiospur konnte nicht fortgesetzt werden."
+	"resumeRecordingTrackFailed": "Die Bildschirmaufnahme wurde fortgesetzt, aber eine Kamera- oder Audiospur konnte nicht fortgesetzt werden.",
+	"captionFilesSaveFailed": "Das Video wurde gespeichert, aber einige Untertiteldateien konnten nicht gespeichert werden."
 }

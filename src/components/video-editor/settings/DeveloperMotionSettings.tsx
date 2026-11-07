@@ -56,11 +56,7 @@ export function DeveloperMotionSettings(props: Props) {
 							"Review sign-in and recording permissions.",
 						)}
 					>
-						<Button
-							variant="secondary"
-							size="sm"
-							onClick={() => onShowOnboarding()}
-						>
+						<Button variant="secondary" size="sm" onClick={() => onShowOnboarding()}>
 							{te("showOnboarding", "Show onboarding")}
 						</Button>
 					</SettingsRow>
