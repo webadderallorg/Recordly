@@ -63,7 +63,7 @@ test("webcam import, anchor placement, precise adjustment and removal stay disco
 	await expect(camera).toBeHidden();
 	await show.press("Space");
 	await expect(camera).toBeVisible();
-	await page.getByRole("button", { name: "Delete footage", exact: true }).click();
+	await page.getByRole("button", { name: "Remove from project", exact: true }).click();
 	await expect(sidebar.getByText("Add a webcam video", { exact: true })).toBeVisible();
 	await expect(camera).toHaveCount(0);
 	await page.getByRole("button", { name: "Upload footage", exact: true }).click();

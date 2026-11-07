@@ -49,8 +49,22 @@ project link is insufficient. Include any later modifications and build inputs
 in the corresponding-source artifact as well. Do not treat a green binary smoke
 test as proof that the source artifact was published.
 
-On other platforms, `ffmpeg-static` binaries keep their own applicable licenses
-and source obligations. Verify the actual compiled license and configuration of
-each release artifact. In particular, the official `b6.1.1` macOS arm64 binary
-contains `--enable-nonfree` and says it is not legally redistributable; reinstalling
-that same artifact does not correct the problem.
+## Windows and Linux packaging is blocked
+
+Windows and Linux installers are currently blocked by
+`scripts/ffmpeg-source-clearance.mjs`, both before packaging and when validating an
+existing package. Developer installs remain available, but the approved upstream
+binary checksums do not establish source clearance.
+
+Before enabling distribution for either platform, collect and verify the matching
+FFmpeg sources, sources for every statically linked dependency, notices, and build
+materials for the exact executable. Publish that complete corresponding-source
+bundle alongside the installer. A verified binary hash, upstream README, generic
+project link, or a newer source version does not replace that bundle. The packaging
+gate must continue to reject the target until its source bundle is reviewed and
+configured.
+
+For every platform, verify the actual compiled license and configuration of the
+release artifact. In particular, the official `b6.1.1` macOS arm64 binary contains
+`--enable-nonfree` and says it is not legally redistributable; reinstalling that
+same artifact does not correct the problem.

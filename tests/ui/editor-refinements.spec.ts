@@ -76,8 +76,10 @@ test("advanced controls, webcam defaults and captions have consistent layouts", 
 	await page.getByRole("row", { name: "Square", exact: true }).click();
 	await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveCount(0);
 	await expect(page.getByRole("button", { name: "Replace footage", exact: true })).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Webcam source", exact: true })).toHaveCount(0);
+	await page.getByRole("switch", { name: "Advanced settings", exact: true }).press("Space");
 	await expect(page.getByRole("button", { name: "Webcam source", exact: true })).toBeVisible();
-	const remove = page.getByRole("button", { name: "Delete footage", exact: true });
+	const remove = page.getByRole("button", { name: "Remove from project", exact: true });
 	await remove.scrollIntoViewIfNeeded();
 	await expect(remove).toBeVisible();
 	await expectButtonsFit(page.locator("aside"));

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { env, SELF } from 'cloudflare:test';
 import worker, { sha256Hex } from '../src/index.js';
+import { withRecordingLock } from '../src/recordingLock.js';
 
 import { localCommentHeaders } from './commentFixtures.js';
 let commentAuth;
@@ -277,6 +278,16 @@ describe('password protection', () => {
     const res = await SELF.fetch(`${BASE}/s/${shareCode}/data`);
     expect(res.status).toBe(401);
     expect((await res.json()).password_protected).toBe(true);
+  });
+
+  it('distinguishes an expired recording unlock from an account sign-in failure when posting', async () => {
+    const shareCode = await protectedShare();
+    const response = await SELF.fetch(`${BASE}/s/${shareCode}/comment`, {
+      method: 'POST', headers: { ...commentAuth, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timestamp: 1, text: 'Keep this draft' }),
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: 'Password required' });
   });
 
   it('gates reactions, comments, and the thumbnail behind the password', async () => {
@@ -675,4 +686,41 @@ it('upgrades salted legacy recording passwords only after correct verification',
   const row = await env.DB.prepare('SELECT password_hash FROM videos WHERE share_code = ?').bind(shareCode).first();
   expect(row.password_hash).toMatch(/^pbkdf2-sha256:210000:[0-9a-f]{64}$/);
   expect((await verify(password)).status).toBe(200);
+});
+
+
+it('keeps an old live lock exclusive and recovers an orphan only by its exact observed token', async () => {
+  const code = crypto.randomUUID();
+  let entered;
+  let release;
+  const started = new Promise(resolve => { entered = resolve; });
+  const finish = new Promise(resolve => { release = resolve; });
+  const running = withRecordingLock(env, code, async () => {
+    entered();
+    await finish;
+    return new Response('first action completed');
+  });
+  await started;
+  try {
+    await env.DB.prepare("UPDATE recording_locks SET created_at = '2000-01-01' WHERE share_code = ?").bind(code).run();
+    const contender = vi.fn(async () => new Response('must not run'));
+    expect((await withRecordingLock(env, code, contender)).status).toBe(409);
+    expect(contender).not.toHaveBeenCalled();
+    expect((await env.DB.prepare('DELETE FROM recording_locks WHERE share_code = ? AND token = ? RETURNING token').bind(code, 'different-token').all()).results).toEqual([]);
+    expect((await withRecordingLock(env, code, contender)).status).toBe(409);
+  } finally {
+    release();
+    await running;
+  }
+  // No invocation owns this simulated orphan: maintenance is quiescent by construction.
+  const orphanToken = crypto.randomUUID();
+  await env.DB.prepare("INSERT INTO recording_locks (share_code, token, created_at) VALUES (?, ?, '2000-01-01')").bind(code, orphanToken).run();
+  const contender = vi.fn(async () => new Response('recovered action'));
+  expect((await withRecordingLock(env, code, contender)).status).toBe(409);
+  expect(contender).not.toHaveBeenCalled();
+  const removed = await env.DB.prepare('DELETE FROM recording_locks WHERE share_code = ? AND token = ? RETURNING share_code, token, created_at').bind(code, orphanToken).all();
+  expect(removed.results).toEqual([{ share_code: code, token: orphanToken, created_at: '2000-01-01' }]);
+  expect(await (await withRecordingLock(env, code, contender)).text()).toBe('recovered action');
+  expect(contender).toHaveBeenCalledOnce();
+  expect(await env.DB.prepare('SELECT token FROM recording_locks WHERE share_code = ?').bind(code).first()).toBeNull();
 });

@@ -89,6 +89,8 @@ beforeEach(() => {
 	state.settings.clear();
 	state.writes = [];
 	vi.clearAllMocks();
+	hud.mockReset().mockResolvedValue(undefined);
+	closeWindow.mockReset().mockResolvedValue(undefined);
 	vi.stubEnv("DEV", true);
 	vi.stubGlobal("window", {
 		location: { search: "?windowType=onboarding" },
@@ -218,6 +220,115 @@ it("handles HUD recreation rejection without closing the only native window", as
 	for (let n = 0; n < 5; n++) await Promise.resolve();
 	expect(hud).toHaveBeenCalledOnce();
 	expect(closeWindow).not.toHaveBeenCalled();
+	expect(render()?.props.open).toBe(true);
+	expect(state.settings.get("recordly.dev.onboardingDismissed")).toBeUndefined();
 	expect(error).toHaveBeenCalledWith("[onboarding] Could not return to the recording HUD.");
+	error.mockRestore();
+});
+
+for (const rejectedStep of ["hud", "close"] as const) {
+	it(`keeps permission recovery open and retries when ${rejectedStep} rejects`, async () => {
+		const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		vi.stubEnv("DEV", false);
+		state.settings.set(seenKey, true);
+		state.settings.set(pendingKey, true);
+		render();
+		const recovery = render();
+		expect(recovery?.type).toBe(RecordingPermissionsDialog);
+		expect(recovery?.props.open).toBe(true);
+		if (rejectedStep === "hud") {
+			hud.mockImplementationOnce(async () => {
+				expect(state.settings.get(pendingKey)).toBe(true);
+				throw new Error("HUD unavailable");
+			});
+		} else {
+			closeWindow.mockImplementationOnce(async () => {
+				// Persist completion before the native window can destroy this renderer.
+				expect(state.settings.get(pendingKey)).toBe(false);
+				throw new Error("Window close failed");
+			});
+		}
+		recovery?.props.onFinish();
+		recovery?.props.onFinish();
+		for (let n = 0; n < 10; n++) await Promise.resolve();
+		expect(hud).toHaveBeenCalledOnce();
+		expect(closeWindow).toHaveBeenCalledTimes(rejectedStep === "hud" ? 0 : 1);
+		expect(state.settings.get(pendingKey)).toBe(true);
+		expect(state.settings.get(seenKey)).toBe(true);
+		const retry = render();
+		expect(retry?.type).toBe(RecordingPermissionsDialog);
+		expect(retry?.props.open).toBe(true);
+		closeWindow.mockImplementation(async () => {
+			expect(state.settings.get(pendingKey)).toBe(false);
+			expect(render()?.props.open).toBe(true);
+		});
+		retry?.props.onFinish();
+		for (let n = 0; n < 10; n++) await Promise.resolve();
+		expect(hud).toHaveBeenCalledTimes(2);
+		expect(closeWindow).toHaveBeenCalledTimes(rejectedStep === "hud" ? 1 : 2);
+		expect(state.settings.get(pendingKey)).toBe(false);
+		expect(render()?.props).toMatchObject({ open: false, startWithPermissions: false });
+		expect(error).toHaveBeenCalledExactlyOnceWith(
+			"[onboarding] Could not return to the recording HUD.",
+		);
+		error.mockRestore();
+	});
+}
+
+it("keeps the existing dialog visible throughout the pending native handoff", async () => {
+	vi.stubEnv("DEV", false);
+	state.settings.set(seenKey, true);
+	state.settings.set(pendingKey, true);
+	let releaseHud!: () => void;
+	let releaseClose!: () => void;
+	hud.mockImplementationOnce(
+		() =>
+			new Promise<void>((resolve) => {
+				releaseHud = resolve;
+			}),
+	);
+	closeWindow.mockImplementationOnce(
+		() =>
+			new Promise<void>((resolve) => {
+				releaseClose = resolve;
+			}),
+	);
+	render();
+	render()?.props.onFinish();
+	expect(render()?.props.open).toBe(true);
+	expect(state.settings.get(pendingKey)).toBe(true);
+	expect(closeWindow).not.toHaveBeenCalled();
+	releaseHud();
+	for (let n = 0; n < 3; n++) await Promise.resolve();
+	expect(closeWindow).toHaveBeenCalledOnce();
+	expect(state.settings.get(pendingKey)).toBe(false);
+	expect(render()?.props.open).toBe(true);
+	releaseClose();
+	for (let n = 0; n < 10; n++) await Promise.resolve();
+	expect(render()?.props.open).toBe(false);
+});
+
+it("persists the dev dismissal before native destruction and restores it if close rejects", async () => {
+	const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+	state.settings.set(pendingKey, true);
+	closeWindow.mockImplementationOnce(async () => {
+		expect(state.settings.get("recordly.dev.onboardingDismissed")).toBe(true);
+		expect(render()?.props.open).toBe(true);
+		throw new Error("Close unavailable");
+	});
+	render();
+	render()?.props.onAuthenticated();
+	for (let n = 0; n < 10; n++) await Promise.resolve();
+	expect(render()?.props).toMatchObject({ open: true, preview: true });
+	expect(state.settings.get("recordly.dev.onboardingDismissed")).not.toBe(true);
+	expect(state.settings.get(pendingKey)).toBe(true);
+	closeWindow.mockImplementation(async () => {
+		expect(state.settings.get("recordly.dev.onboardingDismissed")).toBe(true);
+	});
+	render()?.props.onAuthenticated();
+	for (let n = 0; n < 10; n++) await Promise.resolve();
+	expect(state.settings.get("recordly.dev.onboardingDismissed")).toBe(true);
+	expect(state.settings.get(pendingKey)).toBe(true);
+	expect(render()?.props.open).toBe(false);
 	error.mockRestore();
 });

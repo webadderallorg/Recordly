@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { translate } from "@/i18n/runtime";
 
 const verifyOtp = vi.hoisted(() => vi.fn());
 const getUser = vi.hoisted(() => vi.fn());
@@ -142,12 +143,27 @@ it.each([
 
 it("rejects opt-in OAuth before provider initiation when the secure native store is unavailable", async () => {
 	vi.stubEnv("VITE_OAUTH_FLOW_ID_REDIRECTS", "true");
+	vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_fixture");
 	const openExternalUrl = vi.fn();
+	const available = vi.fn(async () => false);
+	const migrate = vi.fn(async () => undefined);
 	vi.stubGlobal("window", {
-		electronAPI: { authStorageAvailable: async () => false, openExternalUrl },
+		electronAPI: {
+			authStorageAvailable: available,
+			authStorageMigrate: migrate,
+			authStorageGetItem: async () => null,
+			authStorageSetItem: async () => undefined,
+			authStorageRemoveItem: async () => undefined,
+			openExternalUrl,
+		},
 	});
 	const auth = await import("./recordlyAuth");
-	await expect(auth.signInWithSocial("apple", { legalAccepted: true })).rejects.toThrow();
+	expect(auth.recordlyAuthConfigured).toBe(true);
+	await expect(auth.signInWithSocial("apple", { legalAccepted: true })).rejects.toThrow(
+		translate("support.authInsecure"),
+	);
+	expect(available).toHaveBeenCalledOnce();
+	expect(migrate).not.toHaveBeenCalled();
 	expect(oauth).not.toHaveBeenCalled();
 	expect(openExternalUrl).not.toHaveBeenCalled();
 });
@@ -159,7 +175,7 @@ it.each([
 ])("never borrows the legacy verifier in opt-in callbacks: %s", async (url) => {
 	vi.stubEnv("VITE_OAUTH_FLOW_ID_REDIRECTS", "true");
 	const { auth } = await pendingOAuthFixture(false);
-	await expect(auth.completeAuthCallback(url)).rejects.toThrow();
+	await expect(auth.completeAuthCallback(url)).rejects.toThrow(translate("support.authNewLink"));
 	expect(exchange).not.toHaveBeenCalled();
 });
 

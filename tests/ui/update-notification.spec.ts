@@ -47,7 +47,7 @@ test("separate update notification downloads without restarting and shows progre
 	await page.getByRole("button", { name: "Download update", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-auto-restart", "false");
 	await expect(page.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "42");
-	await page.screenshot({ path: "output/update-flow/notification.png" });
+	await page.screenshot({ path: test.info().outputPath("notification.png") });
 });
 
 test("downloaded update notification waits for an explicit restart", async ({ page }) => {
@@ -117,7 +117,7 @@ test("a blocked restart stays visible and can be retried from the notification",
 	expect(bounds).not.toBeNull();
 	expect(bounds!.y).toBeGreaterThanOrEqual(0);
 	expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(236);
-	await page.screenshot({ path: "output/update-flow/notification-ready-blocked.png" });
+	await page.screenshot({ path: test.info().outputPath("notification-ready-blocked.png") });
 });
 
 for (const locale of ["de", "fr", "zh-TW"]) {
@@ -145,7 +145,7 @@ for (const locale of ["de", "fr", "zh-TW"]) {
 		expect(bounds!.x).toBeGreaterThanOrEqual(0);
 		expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(236);
 		expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(420);
-		await page.screenshot({ path: `output/update-flow/notification-${locale}.png` });
+		await page.screenshot({ path: test.info().outputPath(`notification-${locale}.png`) });
 	});
 }
 
