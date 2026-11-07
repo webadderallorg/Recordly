@@ -20,7 +20,7 @@ import {
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
 import { getHudOverlayTaskbarOptions } from "./hudOverlayWindowOptions";
-import { waitForNativeCaptureCommand } from "./ipc/recording/nativeCaptureCommand";
+import { sendNativeCaptureCommand } from "./ipc/recording/nativeCaptureCommand";
 import {
 	currentProjectPath,
 	currentRecordingSession,
@@ -500,19 +500,16 @@ async function setHudCaptureProtection(enabled: boolean) {
 	// before saving the preference or reporting that the change succeeded.
 	if (process.platform === "darwin" && nativeCaptureProcess) {
 		try {
-			const applied = waitForNativeCaptureCommand(
-				nativeCaptureProcess,
-				"HUD capture filter updated",
-			);
 			const excludedProcessIds = getHudCaptureExcludedProcessIds(
 				"darwin",
 				Boolean(enabled),
 				process.pid,
 			);
-			nativeCaptureProcess.stdin.write(
+			await sendNativeCaptureCommand(
+				nativeCaptureProcess,
 				`hud-exclusions ${JSON.stringify(excludedProcessIds)}\n`,
+				"HUD capture filter updated",
 			);
-			await applied;
 		} catch (error) {
 			console.warn("Failed to update HUD capture filter:", error);
 			return { success: false, enabled: hudOverlayHiddenFromCapture };

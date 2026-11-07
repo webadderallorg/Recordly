@@ -445,7 +445,9 @@ export async function getUsableCompanionAudioCandidates(
 		}
 	}
 
-	return candidates;
+	// Mixed native/browser layouts can share only one path with an earlier layout.
+	// Prefer a complete pair without discarding any usable fallback files.
+	return candidates.sort((left, right) => right.usablePaths.length - left.usablePaths.length);
 }
 
 async function readCompanionAudioTimingMetadata(

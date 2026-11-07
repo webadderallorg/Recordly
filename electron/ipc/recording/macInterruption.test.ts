@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	setNativeCaptureOutputBuffer,
@@ -22,7 +23,7 @@ describe("native partial capture error propagation", () => {
 		setNativeCaptureOutputBuffer("");
 	});
 	it("reports a finalized partial capture with the actual failure", () => {
-		const child = new EventEmitter();
+		const child = Object.assign(new EventEmitter(), { stdin: new PassThrough() });
 		attachNativeCaptureLifecycle(child as Parameters<typeof attachNativeCaptureLifecycle>[0]);
 		setNativeCaptureOutputBuffer(
 			"CAPTURE_INTERRUPTED: Screen sharing was revoked\nRecording interrupted. Output path: /take.mp4",
@@ -34,7 +35,7 @@ describe("native partial capture error propagation", () => {
 		});
 	});
 	it("never treats an interrupted helper as successful even when a normal marker also appears", async () => {
-		const child = new EventEmitter();
+		const child = Object.assign(new EventEmitter(), { stdin: new PassThrough() });
 		const stopped = waitForNativeCaptureStop(
 			child as Parameters<typeof waitForNativeCaptureStop>[0],
 		);

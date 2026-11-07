@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AudioRegion, SpeedRegion, ZoomRegion } from "@/components/video-editor/types";
+import {
+	computePaddedLayout,
+	scalePreviewBorderRadius,
+} from "@/components/video-editor/videoPlayback/layoutUtils";
 import { ModernVideoExporter } from "./modernVideoExporter";
+import { roundNativeStaticLayoutContentSize } from "./nativeStaticLayoutGeometry";
 import type { DecodedVideoInfo } from "./streamingDecoder";
 
 const videoInfo: DecodedVideoInfo = {
@@ -39,6 +44,12 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 		experimentalNativeExport: true,
 		...overrides,
 	} as never) as unknown as {
+		tryExportNativeStaticLayout: (
+			videoInfo: DecodedVideoInfo,
+			audioPlan: { audioMode: "none" },
+			effectiveDuration: number,
+			totalFrames: number,
+		) => Promise<{ success: boolean } | null>;
 		buildNativeAudioPlan: (videoInfo: DecodedVideoInfo) => unknown;
 		buildNativeStaticLayoutVideoTimelineSegments: (videoInfo: DecodedVideoInfo) => Array<{
 			sourceStartMs: number;
@@ -88,6 +99,54 @@ afterEach(() => {
 });
 
 describe("ModernVideoExporter native static-layout eligibility", () => {
+	it.each([
+		{ name: "a full frame", sourceWidth: 1920, sourceHeight: 1080, padding: 0 },
+		{ name: "a near-full frame before even rounding", sourceWidth: 1919, sourceHeight: 1080, padding: 0 },
+		{ name: "a letterboxed video", sourceWidth: 1440, sourceHeight: 1080, padding: 0 },
+		{ name: "a padded video", sourceWidth: 1920, sourceHeight: 1080, padding: 20 },
+	])("preserves preview corner treatment for $name", async ({ sourceWidth, sourceHeight, padding }) => {
+		const exporter = createExporter({ borderRadius: 5, padding });
+		const nativeExport = vi.mocked(window.electronAPI.nativeStaticLayoutExport);
+		nativeExport.mockResolvedValue({ success: true, tempPath: "/tmp/export.mp4" });
+		const source = { ...videoInfo, width: sourceWidth, height: sourceHeight };
+		const result = await exporter.tryExportNativeStaticLayout(
+			source,
+			{ audioMode: "none" },
+			60,
+			1800,
+		);
+		expect(result?.success).toBe(true);
+		expect(nativeExport).toHaveBeenCalledTimes(1);
+		const request = nativeExport.mock.calls[0][0];
+		const layout = computePaddedLayout({
+			width: 1920,
+			height: 1080,
+			padding,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			videoWidth: sourceWidth,
+			videoHeight: sourceHeight,
+		});
+		const encodedSize = roundNativeStaticLayoutContentSize({
+			width: layout.croppedDisplayWidth,
+			height: layout.croppedDisplayHeight,
+		});
+		expect({ width: request.contentWidth, height: request.contentHeight }).toEqual(encodedSize);
+		const previewRadius = scalePreviewBorderRadius(
+			layout.croppedDisplayWidth,
+			layout.croppedDisplayHeight,
+			5,
+			{ width: 1920, height: 1080 },
+		);
+		if (padding === 0 && sourceWidth >= 1919) {
+			expect(previewRadius).toBe(0);
+			expect(request.borderRadius).toBe(0);
+			if (sourceWidth === 1919) expect(encodedSize).toEqual({ width: 1918, height: 1080 });
+		} else {
+			expect(previewRadius).toBeGreaterThan(0);
+			// The inset radius stays proportional to the even content actually encoded.
+			expect(request.borderRadius).toBeCloseTo(Math.min(encodedSize.width, encodedSize.height) * 0.05);
+		}
+	});
 	it("uses configured zoom transition durations for native telemetry", () => {
 		const zoomRegions: ZoomRegion[] = [
 			{

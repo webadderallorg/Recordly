@@ -19,6 +19,11 @@ export async function installDesktopBridge(
 			electronAPI: {
 				getAppSetting: (key: string) =>
 					key === "recordly.onboarding.v1.seen" ? true : null,
+				getAppSettingWithStatus: (key: string) => ({
+					success: true,
+					found: key === "recordly.onboarding.v1.seen",
+					value: key === "recordly.onboarding.v1.seen" ? true : null,
+				}),
 				finishRecordingStartup: async () => undefined,
 				showProjectDashboard: async () => {
 					document.documentElement.dataset.dashboardOpened = "true";

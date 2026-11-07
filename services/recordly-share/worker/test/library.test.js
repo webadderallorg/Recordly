@@ -91,6 +91,20 @@ describe('GET /api/videos', () => {
     expect(video.is_protected).toBe(1);
     expect(video).not.toHaveProperty('password_hash');
   });
+
+  it('reports permanent recordings without expiry consistently in both library contracts', async () => {
+    const permanent = await createAndCompleteShare({ title: 'Permanent recording' });
+    const expiring = await createAndCompleteShare({ title: 'Expiring recording' });
+    await env.DB.prepare("UPDATE videos SET never_expires = 1, expires_at = '2000-01-01 00:00:00' WHERE share_code = ?").bind(permanent).run();
+    await env.DB.prepare("UPDATE videos SET expires_at = '2099-01-01 00:00:00' WHERE share_code = ?").bind(expiring).run();
+    for (const path of ['/api/videos', '/api/videos?page=1']) {
+      const response = await SELF.fetch(`${BASE}${path}`, { headers: AUTH });
+      expect(response.status).toBe(200);
+      const { videos } = await response.json();
+      expect(videos.find((video) => video.share_code === permanent)?.expires_at).toBeNull();
+      expect(videos.find((video) => video.share_code === expiring)?.expires_at).toBe('2099-01-01 00:00:00');
+    }
+  });
 });
 
 describe('Dashboard login/logout', () => {

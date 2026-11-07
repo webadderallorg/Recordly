@@ -3014,6 +3014,7 @@ export class FrameRenderer {
 			layout.croppedDisplayWidth,
 			layout.croppedDisplayHeight,
 			borderRadius,
+			{ width, height },
 		);
 
 		this.videoMaskGraphics.clear();

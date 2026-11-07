@@ -2483,11 +2483,22 @@ export class ModernVideoExporter {
 		const sourceCrop = this.isDefaultCropRegion()
 			? null
 			: this.getNativeStaticLayoutSourceCrop(videoInfo);
-		const borderRadius = scalePreviewBorderRadius(
-			contentWidth,
-			contentHeight,
+		// Decide whether the video fills the frame before rounding for the encoder.
+		// Even-size rounding can otherwise turn a full-frame fit into a rounded inset.
+		const logicalBorderRadius = scalePreviewBorderRadius(
+			layout.croppedDisplayWidth,
+			layout.croppedDisplayHeight,
 			this.config.borderRadius ?? 0,
+			{ width: this.config.width, height: this.config.height },
 		);
+		const borderRadius =
+			logicalBorderRadius === 0
+				? 0
+				: scalePreviewBorderRadius(
+						contentWidth,
+						contentHeight,
+						this.config.borderRadius ?? 0,
+					);
 		const shadowIntensity = this.config.showShadow
 			? Math.min(1, Math.max(0, this.config.shadowIntensity))
 			: 0;

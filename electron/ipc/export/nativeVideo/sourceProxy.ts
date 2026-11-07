@@ -8,6 +8,7 @@ import {
 } from "./constants";
 import { formatCliNumber, getFfmpegFailureMessage } from "./layout";
 import { runFfmpegWithMetrics } from "./process";
+import { validateNativeStaticLayoutTimelineSegments } from "./timeline";
 import {
 	type NativeStaticLayoutExportOptions,
 	type NativeStaticLayoutExportSession,
@@ -127,6 +128,21 @@ export function shouldCreateWindowsGpuWebcamProxy(filePath: string) {
 	return extension !== ".mp4" && extension !== ".m4v" && extension !== ".mov";
 }
 
+function getWindowsGpuWebcamProxyDuration(options: NativeStaticLayoutExportOptions) {
+	const segments = validateNativeStaticLayoutTimelineSegments(
+		options.timelineSegments,
+		options.durationSec,
+	);
+	const offsetMs = options.webcamTimeOffsetMs ?? 0;
+	if (!Number.isFinite(offsetMs)) throw new Error("Webcam time offset must be finite");
+	// The native compositor maps output time back to source time, then subtracts
+	// this offset. Preserve every required source sample, even after trims/speed
+	// edits, while retaining at least the original unedited proxy coverage.
+	let sourceEndMs = options.durationSec * 1000;
+	for (const segment of segments) sourceEndMs = Math.max(sourceEndMs, segment.sourceEndMs);
+	return Math.max(options.durationSec, (sourceEndMs - offsetMs) / 1000);
+}
+
 export function buildWindowsGpuWebcamProxyArgs(
 	options: NativeStaticLayoutExportOptions,
 	outputPath: string,
@@ -148,7 +164,7 @@ export function buildWindowsGpuWebcamProxyArgs(
 		"0:v:0",
 		"-an",
 		"-t",
-		formatCliNumber(options.durationSec),
+		formatCliNumber(getWindowsGpuWebcamProxyDuration(options)),
 		"-vf",
 		`scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1,fps=${frameRate}`,
 		"-c:v",
@@ -184,7 +200,10 @@ export async function prepareWindowsGpuWebcamInput(
 	const result = await runFfmpegWithMetrics(
 		ffmpegPath,
 		buildWindowsGpuWebcamProxyArgs(options, outputPath),
-		Math.max(5 * 60 * 1000, options.durationSec * 1000),
+		Math.min(
+			2_147_483_647,
+			Math.max(5 * 60 * 1000, getWindowsGpuWebcamProxyDuration(options) * 1000),
+		),
 		session,
 	);
 	if (!result.success) {

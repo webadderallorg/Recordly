@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 
 // Match the existing website wordmark: original app mark + bundled DM Sans,
@@ -29,9 +30,9 @@ html,body{margin:0;background:transparent}
 		))
 	)
 		throw new Error("DM Sans did not load");
-	const output = new URL("recordly-logo-with-text.png", import.meta.url);
-	await page.locator(".wordmark").screenshot({ path: output.pathname, omitBackground: true });
-	console.log(`Built transparent Recordly logo with DM Sans wordmark: ${output.pathname}`);
+	const output = fileURLToPath(new URL("recordly-logo-with-text.png", import.meta.url));
+	await page.locator(".wordmark").screenshot({ path: output, omitBackground: true });
+	console.log(`Built transparent Recordly logo with DM Sans wordmark: ${output}`);
 } finally {
 	await browser.close();
 }

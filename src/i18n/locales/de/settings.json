@@ -558,7 +558,7 @@
 	},
 	"cloudUsage": {
 		"label": "Cloud-Nutzung",
-		"plus": "Cloud-Cloud-Speicher",
+		"plus": "Cloud-Speicher",
 		"recordings": "Cloud-Aufnahmen",
 		"signIn": "Melde dich an, um Aufnahmen zu teilen und deine Cloud-Nutzung anzusehen.",
 		"loading": "Nutzung wird geladen…",
