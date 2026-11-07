@@ -1878,7 +1878,7 @@ export function registerRecordingHandlers(
 		}
 	});
 
-	ipcMain.handle("set-recording-state", (_, recording: boolean) => {
+	ipcMain.handle("set-recording-state", (_, recording: boolean, startedAtMs?: unknown) => {
 		if (recording) {
 			stopCursorCapture();
 			stopInteractionCapture();
@@ -1887,7 +1887,7 @@ export function registerRecordingHandlers(
 			setIsCursorCaptureActive(true);
 			setActiveCursorSamples([]);
 			setPendingCursorSamples([]);
-			setCursorCaptureStartTimeMs(Date.now());
+			setCursorCaptureStartTimeMs(normalizeRendererTimestampMs(startedAtMs));
 			resetCursorCaptureClock();
 			setLinuxCursorScreenPoint(null);
 			setLastLeftClick(null);
