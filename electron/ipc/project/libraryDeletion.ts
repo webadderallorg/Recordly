@@ -4,7 +4,7 @@ import { canonicalSourceReference } from "./canonicalSourceReference";
 type Sources = { sourcePaths: string[]; sourcePathsComplete: boolean };
 export type LibraryDeletionDependencies = {
 	list: () => Promise<{ entries: Array<{ path: string }> }>;
-	readSources: (path: string) => Promise<Sources | null>;
+	readSources: (path: string, kind?: "primary" | "recovery") => Promise<Sources | null>;
 	backupPaths: (path: string) => string[];
 	recordings: () => Promise<Array<{ path: string }>>;
 	activeSources?: () => string[] | Promise<string[]>;
@@ -44,7 +44,7 @@ export async function protectedLibrarySources(
 	for (const entry of (await deps.list()).entries) {
 		if (excluding.has(path.resolve(entry.path))) continue;
 		for (const file of [entry.path, ...deps.backupPaths(entry.path)]) {
-			const data = await deps.readSources(file);
+			const data = await deps.readSources(file, file === entry.path ? "primary" : "recovery");
 			if (!data && file !== entry.path) continue;
 			if (!data || !data.sourcePathsComplete)
 				throw new Error(
@@ -72,7 +72,7 @@ export async function prepareLibraryDeletion(paths: unknown, deps: LibraryDeleti
 	for (const project of selected) {
 		const references = new Set<string>();
 		for (const file of [project, ...deps.backupPaths(project)]) {
-			const data = await deps.readSources(file);
+			const data = await deps.readSources(file, file === project ? "primary" : "recovery");
 			if (!data && file !== project) continue;
 			if (!data || !data.sourcePathsComplete)
 				throw new Error(

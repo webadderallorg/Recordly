@@ -147,6 +147,7 @@ export class FrameWebcam {
 		frameTimeMs = referenceTimeSeconds * 1000,
 	): void {
 		const webcam = this.context.config.webcam;
+		const webcamShape = webcam?.shape ?? "squircle";
 		if (
 			!webcam?.enabled ||
 			!isWebcamVisibleAtSourceTime(webcam, referenceTimeSeconds) ||
@@ -230,10 +231,10 @@ export class FrameWebcam {
 			aspectSourceWidth,
 			aspectSourceHeight,
 			webcam.cropRegion,
-			webcam.shape,
+			webcamShape,
 		);
 		const dimensions = getWebcamOverlayDimensionsPx({
-			shape: webcam.shape,
+			shape: webcamShape,
 			containerWidth: this.context.config.width,
 			containerHeight: this.context.config.height,
 			widthPercent,
@@ -257,13 +258,13 @@ export class FrameWebcam {
 			webcam.roundness ?? DEFAULT_WEBCAM_ROUNDNESS,
 			dimensions.width,
 			dimensions.height,
-			webcam.shape,
+			webcamShape,
 		);
 
 		this.context.scene.webcamRootContainer.visible = true;
 
 		const nextLayout: WebcamLayoutCache = {
-			exponent: getWebcamShapeExponent(webcam.shape),
+			exponent: getWebcamShapeExponent(webcamShape),
 			sourceWidth: renderableWebcamSource.width,
 			sourceHeight: renderableWebcamSource.height,
 			width: dimensions.width,
@@ -279,7 +280,7 @@ export class FrameWebcam {
 		const blur = this.webcamMotionBlur.render({
 			renderStill: true,
 			layout: { x: position.x, y: position.y, ...dimensions, radius },
-			shape: webcam.shape,
+			shape: webcamShape,
 			timeMs: frameTimeMs,
 			playing: true,
 			amount: this.context.config.zoomMotionBlur ?? 0,

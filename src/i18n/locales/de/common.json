@@ -43,7 +43,7 @@
     "descriptionPlaceholder": "Wir lesen jedes Feedback...",
     "attachFiles": "Dateien anhängen",
     "removeFile": "{{name}} entfernen",
-    "diagnostics": "Diagnoseprotokolle angehängt. Feedback an support@recordly.dev gesendet",
+    "diagnostics": "Beim Absenden werden Diagnoseprotokolle angehängt. Feedback wird an support@recordly.dev gesendet.",
     "sending": "Wird gesendet…",
     "errors": {
       "unavailable": "Feedback ist erst verfügbar, wenn die Kontodienste eingerichtet sind.",

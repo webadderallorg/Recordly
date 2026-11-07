@@ -100,8 +100,13 @@ export function createAuthCallbackController({
 							if (present.has(flow.verifierKey)) continue;
 							// A peer SDK may have explicitly evicted this verifier. Index
 							// absence alone never proves inactivity; exact slot absence does.
-							await relay.release(id, flow.owner);
-							if (flowOwners.get(id) === flow) flowOwners.delete(id);
+							try {
+								await relay.release(id, flow.owner);
+								if (flowOwners.get(id) === flow) flowOwners.delete(id);
+							} catch {
+								// Keep failed housekeeping for retry; registration below
+								// still enforces ownership, storage access and capacity.
+							}
 						}
 					}
 					const owner = event.sender;

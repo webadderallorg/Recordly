@@ -43,7 +43,7 @@
     "descriptionPlaceholder": "Nous lisons tous les commentaires...",
     "attachFiles": "Joindre des fichiers",
     "removeFile": "Retirer {{name}}",
-    "diagnostics": "Journaux de diagnostic joints. Commentaires envoyés à support@recordly.dev",
+    "diagnostics": "Les journaux de diagnostic seront joints. Les commentaires seront envoyés à support@recordly.dev.",
     "sending": "Envoi…",
     "errors": {
       "unavailable": "Les commentaires seront disponibles une fois les services de compte configurés.",
