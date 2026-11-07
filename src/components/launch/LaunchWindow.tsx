@@ -159,6 +159,8 @@ function LaunchWindowContent() {
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } =
 		useLaunchHudInteractionState({
 			openId,
+			platform,
+			recordingState: `${recording}:${finalizing}`,
 			isHudDraggingRef,
 			isWebcamPreviewDraggingRef,
 			webcamPreviewDragStartRef,
@@ -186,6 +188,8 @@ function LaunchWindowContent() {
 		} finally {
 			pickerPending.current = false;
 			setIsPickerPending(false);
+			// The native picker temporarily overrides passthrough outside this hook.
+			beginInteractiveHudAction();
 		}
 	}, [
 		captureT,

@@ -181,9 +181,7 @@ export function FeedbackDialog({
 							setError("");
 							try {
 								await submitFeedback({
-									title: `${sentiments.find((item) => item.value === sentiment)?.emoji ?? ""} ${message.trim()}`
-										.trim()
-										.slice(0, 160),
+									title: `${sentiments.find((item) => item.value === sentiment)?.emoji ?? ""} ${message}`,
 									subject: "other",
 									message,
 									files,
@@ -315,7 +313,7 @@ export function FeedbackDialog({
 						<Description className={styles.diagnostics}>
 							{t(
 								"common.feedback.diagnostics",
-								"Diagnostic logs attached. Feedback sent to support@recordly.dev",
+								"Diagnostic logs will be attached. Feedback will be sent to support@recordly.dev.",
 							)}
 						</Description>
 						{error && (
@@ -323,7 +321,12 @@ export function FeedbackDialog({
 								{error} <ErrorReportButton error={error} />
 							</Description>
 						)}
-						<Button type="submit" size="sm" isDisabled={sending} className={styles.submit}>
+						<Button
+							type="submit"
+							size="sm"
+							isDisabled={sending}
+							className={styles.submit}
+						>
 							{sending
 								? t("common.feedback.sending", "Sending…")
 								: t("common.feedback.send", "Send feedback")}

@@ -43,7 +43,7 @@
     "descriptionPlaceholder": "我们会阅读所有反馈...",
     "attachFiles": "添加附件",
     "removeFile": "移除 {{name}}",
-    "diagnostics": "已附上诊断日志。反馈发送至 support@recordly.dev",
+    "diagnostics": "将附上诊断日志。反馈将发送至 support@recordly.dev。",
     "sending": "正在发送…",
     "errors": {
       "unavailable": "配置账户服务后才能使用反馈功能。",

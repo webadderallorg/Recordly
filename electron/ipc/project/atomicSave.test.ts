@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -113,6 +114,131 @@ describe("writeProjectFileAtomically", () => {
 	it("uses distinct recovery paths for identical project names in different directories", () => {
 		expect(getProjectBackupPath(path.join(tempDir, "a", "demo.recordly"))).not.toBe(
 			getProjectBackupPath(path.join(tempDir, "b", "demo.recordly")),
+		);
+	});
+
+	it("recovers through a parent directory alias even when the primary is missing", async () => {
+		const realDir = path.join(tempDir, "real");
+		const aliasDir = path.join(tempDir, "alias");
+		await fs.mkdir(realDir);
+		await fs.symlink(realDir, aliasDir, process.platform === "win32" ? "junction" : "dir");
+		const realProject = path.join(realDir, "demo.recordly");
+		const aliasProject = path.join(aliasDir, "demo.recordly");
+		await writeProjectFileAtomically(realProject, '{"revision":1}');
+		await writeProjectFileAtomically(realProject, '{"revision":2}');
+		expect(getProjectBackupPath(aliasProject)).toBe(getProjectBackupPath(realProject));
+		await fs.writeFile(realProject, "damaged");
+		await expect(readProjectFileWithRecovery(aliasProject, JSON.parse)).resolves.toMatchObject({
+			project: { revision: 1 },
+			recovered: true,
+		});
+		await fs.unlink(realProject);
+		await expect(readProjectFileWithRecovery(aliasProject, JSON.parse)).resolves.toMatchObject({
+			project: { revision: 1 },
+			recovered: true,
+		});
+	});
+
+	it("matches the filesystem case policy without merging distinct case-sensitive files", async () => {
+		const upper = path.join(tempDir, "Case.recordly");
+		const lower = path.join(tempDir, "case.recordly");
+		await fs.writeFile(upper, '{"revision":1}');
+		const lowerExists = await fs.access(lower).then(
+			() => true,
+			() => false,
+		);
+		if (lowerExists) {
+			expect(getProjectBackupPath(upper)).toBe(getProjectBackupPath(lower));
+			await fs.unlink(upper);
+			expect(getProjectBackupPath(upper)).toBe(getProjectBackupPath(lower));
+		} else {
+			expect(getProjectBackupPath(upper)).not.toBe(getProjectBackupPath(lower));
+		}
+	});
+
+	it("serializes simultaneous saves through different parent aliases", async () => {
+		const actual = path.join(tempDir, "actual");
+		const alias = path.join(tempDir, "alias");
+		await fs.mkdir(actual);
+		await fs.symlink(actual, alias, process.platform === "win32" ? "junction" : "dir");
+		const target = path.join(actual, "demo.recordly");
+		await writeProjectFileAtomically(target, '{"revision":1}');
+		await Promise.all([
+			writeProjectFileAtomically(target, '{"revision":2}'),
+			writeProjectFileAtomically(path.join(alias, "demo.recordly"), '{"revision":3}'),
+		]);
+		expect(await fs.readFile(target, "utf-8")).toBe('{"revision":3}');
+		expect(await fs.readFile(getProjectBackupPath(target), "utf-8")).toBe('{"revision":2}');
+	});
+
+	it.skipIf(process.platform === "win32")(
+		"replaces a leaf symlink without changing its target or backup identity",
+		async () => {
+			const target = path.join(tempDir, "target.recordly");
+			await fs.writeFile(target, '{"revision":1}');
+			await fs.symlink(target, projectPath);
+			const backup = getProjectBackupPath(projectPath);
+			await writeProjectFileAtomically(projectPath, '{"revision":2}');
+			expect(getProjectBackupPath(projectPath)).toBe(backup);
+			expect((await fs.lstat(projectPath)).isSymbolicLink()).toBe(false);
+			expect(await fs.readFile(target, "utf-8")).toBe('{"revision":1}');
+			expect(await fs.readFile(backup, "utf-8")).toBe('{"revision":1}');
+		},
+	);
+
+	it("can still read a managed backup written under the previous lexical path hash", async () => {
+		const key = process.platform === "win32" ? projectPath.toLowerCase() : projectPath;
+		const oldBackup = path.join(
+			path.dirname(key),
+			".recordly-recovery",
+			`${createHash("sha256").update(key).digest("hex")}.recordly`,
+		);
+		await fs.mkdir(path.dirname(oldBackup), { recursive: true });
+		await fs.writeFile(oldBackup, '{"revision":1}');
+		await fs.writeFile(projectPath, "damaged");
+		await expect(readProjectFileWithRecovery(projectPath, JSON.parse)).resolves.toMatchObject({
+			project: { revision: 1 },
+			recovered: true,
+		});
+		await writeProjectFileAtomically(projectPath, '{"revision":3}');
+		expect(await fs.readFile(getProjectBackupPath(projectPath), "utf-8")).toBe(
+			'{"revision":1}',
+		);
+		if (oldBackup !== getProjectBackupPath(projectPath)) {
+			await expect(fs.access(oldBackup)).rejects.toMatchObject({ code: "ENOENT" });
+		}
+	});
+
+	it.each([
+		["managed", "damaged"],
+		["legacy", "damaged"],
+		["managed", "missing"],
+		["legacy", "missing"],
+	])("keeps the valid %s generation on direct save with a %s primary", async (kind, state) => {
+		const backup =
+			kind === "managed"
+				? getProjectBackupPath(projectPath)
+				: getLegacyProjectBackupPath(projectPath);
+		await fs.mkdir(path.dirname(backup), { recursive: true });
+		await fs.writeFile(backup, '{"revision":1}');
+		if (state === "damaged") await fs.writeFile(projectPath, '{"broken":');
+		await writeProjectFileAtomically(projectPath, '{"revision":3}');
+		expect(await fs.readFile(projectPath, "utf-8")).toBe('{"revision":3}');
+		expect(await fs.readFile(getProjectBackupPath(projectPath), "utf-8")).toBe(
+			'{"revision":1}',
+		);
+		await expectNoTemporaryArtifacts();
+	});
+
+	it("does not retire an invalid legacy generation unless a valid replacement is durable", async () => {
+		await fs.writeFile(projectPath, "damaged primary");
+		await fs.writeFile(
+			getLegacyProjectBackupPath(projectPath),
+			"damaged but potentially repairable backup",
+		);
+		await writeProjectFileAtomically(projectPath, '{"revision":3}');
+		expect(await fs.readFile(getLegacyProjectBackupPath(projectPath), "utf-8")).toBe(
+			"damaged but potentially repairable backup",
 		);
 	});
 

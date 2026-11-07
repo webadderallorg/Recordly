@@ -46,6 +46,7 @@ vi.mock("./parakeetModel", () => ({
 }));
 
 import { generateAutoCaptionsFromVideo } from "./generate";
+import * as captionSegmentation from "./segment";
 
 const options = { videoPath: "/video.mp4", whisperModelPath: "/model.bin" };
 const srt = "1\n00:00:00,000 --> 00:00:02,000\nHello world.\n";
@@ -173,6 +174,62 @@ describe("caption generation pipeline", () => {
 			return { stderr: "" };
 		});
 		expect((await generateAutoCaptionsFromVideo(options)).cues[0].text).toBe("Hello world.");
+	});
+
+	it("still returns the transcript when both segmentation attempts fail", async () => {
+		const segment = vi
+			.spyOn(captionSegmentation, "segmentCuesIntoPhrases")
+			.mockImplementation(() => {
+				throw new Error("segmentation unavailable");
+			});
+		try {
+			expect((await generateAutoCaptionsFromVideo(options)).cues[0].text).toBe(
+				"Hello world.",
+			);
+		} finally {
+			segment.mockRestore();
+		}
+	});
+
+	it("keeps Parakeet phrase boundaries and word timings when silence detection fails", async () => {
+		mocks.managedModel.mockResolvedValue({
+			id: "parakeet-en",
+			engine: "parakeet",
+			path: "/verified/parakeet",
+		});
+		const words = [
+			{ text: "Hello", startMs: 0, endMs: 900 },
+			{ text: "world.", startMs: 1000, endMs: 1800, leadingSpace: true },
+			{ text: "Next", startMs: 2500, endMs: 3000, leadingSpace: true },
+			{ text: "phrase.", startMs: 3100, endMs: 3900, leadingSpace: true },
+		];
+		mocks.parakeet.mockResolvedValue([
+			{
+				id: "caption-1",
+				startMs: 0,
+				endMs: 3900,
+				text: "Hello world. Next phrase.",
+				words,
+			},
+		]);
+		mocks.exec.mockImplementation(async (_file: string, args: string[]) => {
+			if (args.includes("-af")) throw new Error("silence filter failed");
+			return { stderr: "" };
+		});
+		const result = await generateAutoCaptionsFromVideo({
+			videoPath: "/video.mp4",
+			captionModelId: "parakeet-en",
+		});
+		expect(result.cues.map(({ text }) => text)).toEqual(["Hello world.", "Next phrase."]);
+		expect(
+			result.cues
+				.flatMap((cue) => cue.words ?? [])
+				.map(({ text, startMs, endMs }) => ({
+					text,
+					startMs,
+					endMs,
+				})),
+		).toEqual(words.map(({ text, startMs, endMs }) => ({ text, startMs, endMs })));
 	});
 });
 

@@ -8,7 +8,9 @@
 
 import { ABUSE_SCHEMA } from "./abuseSchema.js";
 
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 13;
+const COMPLETED_LIBRARY_INDEX =
+	`CREATE INDEX IF NOT EXISTS idx_videos_completed_created ON videos(datetime(created_at) DESC, id DESC) WHERE upload_completed = 1`;
 const FEEDBACK_INDEXES = [
 	`CREATE INDEX IF NOT EXISTS idx_comments_account_window ON comments(video_id, author_id, created_at)`,
 	`CREATE INDEX IF NOT EXISTS idx_comments_video_window ON comments(video_id, created_at)`,
@@ -50,6 +52,7 @@ const SCHEMA_STATEMENTS = [
   )`,
 	`CREATE INDEX IF NOT EXISTS idx_videos_owner ON videos(owner_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_videos_owner_created ON videos(owner_id, datetime(created_at) DESC, id DESC)`,
+	COMPLETED_LIBRARY_INDEX,
 	`CREATE INDEX IF NOT EXISTS idx_videos_share_code ON videos(share_code)`,
 	`CREATE INDEX IF NOT EXISTS idx_videos_expires_at ON videos(expires_at)`,
 	`CREATE TABLE IF NOT EXISTS transcript_segments (
@@ -121,6 +124,7 @@ const SCHEMA_STATEMENTS = [
 // cannot add columns to existing tables), so any change that ALTERs an
 // existing table MUST appear here under a bumped SCHEMA_VERSION.
 const SCHEMA_MIGRATIONS = {
+	13: [COMPLETED_LIBRARY_INDEX],
 	12: [
 		`ALTER TABLE comments ADD COLUMN author_id TEXT`,
 		`CREATE INDEX IF NOT EXISTS idx_comments_account_window ON comments(video_id, author_id, created_at)`,

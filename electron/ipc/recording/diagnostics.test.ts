@@ -156,7 +156,16 @@ describe("getCompanionAudioFallbackPaths", () => {
 				callback(error, "", stderr);
 			},
 		);
-		const { getCompanionAudioFallbackPaths } = await import("./diagnostics");
+		const { getCompanionAudioFallbackPaths, getUsableCompanionAudioCandidates } = await import(
+			"./diagnostics"
+		);
+		const candidates = await getUsableCompanionAudioCandidates(videoPath);
+		expect(candidates[0]).toMatchObject({
+			platform: "mac",
+			systemPath,
+			micPath,
+			usablePaths: [systemPath, micPath],
+		});
 		await expect(getCompanionAudioFallbackPaths(videoPath)).resolves.toEqual([
 			systemPath,
 			micPath,

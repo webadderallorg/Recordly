@@ -62,7 +62,9 @@ for (const signedIn of [false, true]) {
 			await page.getByRole("button", { name: "Feedback", exact: true }).click();
 		}
 		const modal = page.getByRole("dialog", { name: "Send feedback", exact: true });
-		await expect(modal.getByRole("link", { name: "support@recordly.dev", exact: true })).toHaveCount(0);
+		await expect(
+			modal.getByRole("link", { name: "support@recordly.dev", exact: true }),
+		).toHaveCount(0);
 		await modal.getByRole("button", { name: "Contact", exact: true }).click();
 		const contact = page.getByRole("dialog", { name: "Contact", exact: true });
 		const email = contact.getByRole("button", { name: "support@recordly.dev", exact: true });
@@ -106,16 +108,36 @@ test("feedback preserves a draft on failure, supports attachments, and includes 
 	await expect(modal.getByText("notes.txt", { exact: true })).toBeVisible();
 	await modal.getByRole("button", { name: "Remove notes.txt" }).click();
 	await expect(modal.getByText("notes.txt", { exact: true })).toHaveCount(0);
-	await expect(modal.getByText("Diagnostic logs attached. Feedback sent to support@recordly.dev")).toBeVisible();
+	await expect(
+		modal.getByText(
+			"Diagnostic logs will be attached. Feedback will be sent to support@recordly.dev.",
+		),
+	).toBeVisible();
 	await expect(modal.getByRole("checkbox")).toHaveCount(0);
 	await expect(modal.getByLabel("Title", { exact: true })).toHaveCount(0);
 	await modal.getByRole("button", { name: "Send feedback", exact: true }).click();
 	await expect(modal.getByRole("alert")).toHaveText(
 		"Could not send feedback. Please try again. Report Error",
 	);
-	await expect(
-		modal.getByRole("alert").getByRole("button", { name: "Report Error", exact: true }),
-	).toBeVisible();
+	const report = modal
+		.getByRole("alert")
+		.getByRole("button", { name: "Report Error", exact: true });
+	await expect(report).toBeVisible();
+	// Keyboard focus remains visible despite the global outline reset.
+	await page.keyboard.press("Tab");
+	await report.focus();
+	await expect.poll(() => report.evaluate((node) => node.matches(":focus-visible"))).toBe(true);
+	await expect(report).not.toHaveCSS("box-shadow", "none");
+	// Pointer focus still suppresses the ring, including shortcut-induced :focus-visible.
+	await report.dispatchEvent("pointerdown", { button: 0, pointerId: 1 });
+	await expect(report).toHaveAttribute("data-pointer-focus", "");
+	await expect
+		.poll(() =>
+			report.evaluate((node) =>
+				getComputedStyle(node).getPropertyValue("--tw-ring-color").trim(),
+			),
+		)
+		.toBe("transparent");
 	await expect(modal.getByRole("button", { name: "Angry", exact: true })).toHaveAttribute(
 		"aria-pressed",
 		"true",

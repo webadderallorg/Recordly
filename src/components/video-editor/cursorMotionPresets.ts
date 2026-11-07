@@ -46,6 +46,20 @@ const REGULAR_MOTION_VALUES = {
 
 const SMOOTH_MOTION_SPEED = 0.7;
 
+// Published projects store preset values, so retain the old Smooth identity
+// when its complete tuple predates the current Cinematic tuning.
+const LEGACY_SMOOTH_MOTION_VALUES: CursorMotionPresetSelectionInput = {
+	zoomInDurationMs: 1522.575,
+	zoomOutDurationMs: 1015.05,
+	cursorSize: 2.5,
+	cursorSmoothing: 0.67,
+	cursorSpringStiffnessMultiplier: 0.92,
+	cursorSpringDampingMultiplier: 1.36,
+	cursorSpringMassMultiplier: 1.29,
+	cursorClickBounce: 2,
+	cursorClickBounceDuration: 350,
+};
+
 export const CURSOR_MOTION_PRESETS: Record<CursorMotionPresetId, CursorMotionPreset> = {
 	focused: {
 		id: "focused",
@@ -87,6 +101,13 @@ export function getMatchingCursorMotionPresetId(
 			return presetId;
 		}
 	}
+
+	if (
+		Object.entries(LEGACY_SMOOTH_MOTION_VALUES).every(
+			([key, value]) => values[key as keyof CursorMotionPresetSelectionInput] === value,
+		)
+	)
+		return "smooth";
 
 	return null;
 }

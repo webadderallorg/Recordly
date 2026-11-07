@@ -109,6 +109,29 @@ describe("schema migration paths", () => {
 		__resetSchemaCacheForTests();
 	});
 
+	it("upgrades completed-library pages without sorting or changing tied-date order", async () => {
+		const first = await (await upload()).json();
+		const second = await (await upload()).json();
+		await upload();
+		await env.DB.prepare(
+			"UPDATE videos SET upload_completed = 1, created_at = '2026-11-01 12:00:00' WHERE share_code IN (?, ?)",
+		).bind(first.shareCode, second.shareCode).run();
+		const pageQuery = "SELECT id, share_code FROM videos WHERE upload_completed = 1 ORDER BY datetime(created_at) DESC, id DESC LIMIT 51";
+		// Reprepare after DDL: cached EXPLAIN statements can retain an old plan.
+		const plan = async (phase) => (await env.DB.prepare(`EXPLAIN QUERY PLAN ${pageQuery} /* ${phase} */`).all()).results.map((row) => row.detail).join("\n");
+		expect(await plan("fresh")).not.toContain("TEMP B-TREE");
+		await env.DB.prepare("DROP INDEX idx_videos_completed_created").run();
+		await env.DB.prepare("UPDATE _meta SET value = '12' WHERE key = 'schema_version'").run();
+		expect(await plan("previous-schema")).toContain("TEMP B-TREE");
+		__resetSchemaCacheForTests();
+		const response = await SELF.fetch(`${BASE}/api/videos?page=1`, { headers: AUTH });
+		expect(response.status).toBe(200);
+		expect((await response.json()).videos.map((video) => video.share_code)).toEqual([
+			second.shareCode, first.shareCode,
+		]);
+		expect(await plan("upgraded")).not.toContain("TEMP B-TREE");
+	});
+
 	it("adds account identity without changing existing guest comments", async () => {
 		const response = await upload();
 		const { shareCode } = await response.json();
@@ -158,7 +181,7 @@ describe("schema migration paths", () => {
 		for (const table of ["recording_controls", "account_restrictions", "abuse_reports", "moderation_actions", "upload_admissions"])
 			expect(await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").bind(table).first()).not.toBeNull();
 		expect(await env.DB.prepare("SELECT share_code FROM videos WHERE share_code = ?").bind(shareCode).first()).toEqual({ share_code: shareCode });
-		expect((await env.DB.prepare("SELECT value FROM _meta WHERE key = 'schema_version'").first()).value).toBe("12");
+		expect((await env.DB.prepare("SELECT value FROM _meta WHERE key = 'schema_version'").first()).value).toBe("13");
 	});
 
 	it("migrates a pre-versioning database (tables exist, no _meta)", async () => {
@@ -173,7 +196,7 @@ describe("schema migration paths", () => {
 		const meta = await env.DB.prepare(
 			`SELECT value FROM _meta WHERE key = 'schema_version'`,
 		).first();
-		expect(meta.value).toBe("12");
+		expect(meta.value).toBe("13");
 		expect(await videoColumns()).toContain("never_expires");
 		expect(
 			await env.DB.prepare(

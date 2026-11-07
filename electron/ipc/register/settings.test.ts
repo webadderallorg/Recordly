@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	handlers: new Map<string, (...args: unknown[]) => unknown>(),
+	syncHandlers: new Map<string, (...args: unknown[]) => unknown>(),
 	send: vi.fn(),
 	focusStart: vi.fn(),
 	focusStop: vi.fn(),
@@ -20,7 +21,8 @@ vi.mock("electron", () => ({
 	ipcMain: {
 		handle: (channel: string, handler: (...args: unknown[]) => unknown) =>
 			mocks.handlers.set(channel, handler),
-		on: vi.fn(),
+		on: (channel: string, handler: (...args: unknown[]) => unknown) =>
+			mocks.syncHandlers.set(channel, handler),
 	},
 }));
 vi.mock("../recording/focus", () => ({
@@ -30,6 +32,7 @@ vi.mock("../../cursorHider", () => ({ hideCursor: vi.fn() }));
 vi.mock("../../appSettingsStore", () => ({
 	hasAppSetting: vi.fn(),
 	readAppSettingsStore: vi.fn(),
+	readAppSettingsStoreWithStatus: vi.fn(),
 	writeAppSettingsStore: vi.fn(),
 }));
 vi.mock("../constants", () => ({
@@ -43,6 +46,40 @@ vi.mock("../settings/recordingPreferencesStore", () => ({
 vi.mock("../utils", () => ({ parseJsonWithByteOrderMark: JSON.parse }));
 
 import { registerSettingsHandlers } from "./settings";
+import { hasAppSetting, readAppSettingsStoreWithStatus } from "../../appSettingsStore";
+
+describe("app setting read status", () => {
+	beforeEach(() => {
+		mocks.syncHandlers.clear();
+		vi.mocked(readAppSettingsStoreWithStatus).mockReset();
+		vi.mocked(hasAppSetting).mockImplementation((store, key) =>
+			Reflect.getOwnPropertyDescriptor(store, key) !== undefined,
+		);
+		registerSettingsHandlers();
+	});
+
+	const read = (key: unknown) => {
+		const event = { returnValue: undefined as unknown };
+		mocks.syncHandlers.get("app-settings:get")!(event, key);
+		return event.returnValue;
+	};
+
+	it("returns successful empty and existing values without conflating storage failure", () => {
+		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({ success: true, store: {} });
+		expect(read("history")).toEqual({ success: true, found: false, value: null });
+		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({ success: true, store: { history: 123 } });
+		expect(read("history")).toEqual({ success: true, found: true, value: 123 });
+		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({ success: true, store: { history: null } });
+		expect(read("history")).toEqual({ success: true, found: true, value: null });
+		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({ success: false });
+		expect(read("history")).toEqual({ success: false, value: null });
+	});
+
+	it.each([null, "", 1])("rejects invalid setting keys without reading storage: %j", (key) => {
+		expect(read(key)).toEqual({ success: false, value: null });
+		expect(readAppSettingsStoreWithStatus).not.toHaveBeenCalled();
+	});
+});
 
 describe("recording microphone profile configuration", () => {
 	beforeEach(() => {

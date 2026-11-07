@@ -39,7 +39,7 @@ function ReportAction({
 			{" "}
 			<button
 				type="button"
-				className="inline cursor-pointer rounded-sm border-0 bg-transparent p-0 align-baseline text-inherit underline underline-offset-2 hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 aria-disabled:cursor-default aria-disabled:opacity-50"
+				className="inline cursor-pointer rounded-sm border-0 bg-transparent p-0 align-baseline text-inherit underline underline-offset-2 hover:opacity-80 focus-visible:ring-2 focus-visible:ring-current aria-disabled:cursor-default aria-disabled:opacity-50"
 				// Keep focus inside the containing dialog while preventing duplicate sends.
 				aria-disabled={state === "sending" || state === "sent"}
 				title={failure || t("reportTitle")}

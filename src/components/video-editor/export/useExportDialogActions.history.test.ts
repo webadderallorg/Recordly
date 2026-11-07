@@ -5,10 +5,10 @@ vi.mock("@/components/billing/captionFileAccess", () => ({ canExportCaptionFiles
 vi.mock("@/components/ui/toast", () => ({ toast: { info: vi.fn(), error: vi.fn() } }));
 vi.mock("@/lib/feedback/exportDiagnostics", () => ({ recordExportDiagnostic: vi.fn() }));
 import { useExportDialogActions } from "./useExportDialogActions";
-function setup(finalize: () => Promise<unknown>) {
+function setup(finalize: () => Promise<unknown>, fileName = "fake.mp4") {
 	const original = { projectId: "original", sourcePath: "/r/original.mp4" };
 	const session = {
-		pendingExportSaveRef: { current: { tempFilePath: "/tmp/fake.mp4", fileName: "fake.mp4" } },
+		pendingExportSaveRef: { current: { tempFilePath: `/tmp/${fileName}`, fileName } },
 		exportIdentityRef: { current: original },
 		setHasPendingExportSave: vi.fn(),
 		setExportError: vi.fn(),
@@ -57,4 +57,19 @@ it("Save Again keeps the original export identity while its save dialog is pendi
 	resolve({ success: true, path: "/saved/export.mp4" });
 	await pending;
 	expect(saved).toHaveBeenCalledWith("/saved/export.mp4", original);
+});
+
+it.each([
+	["export.gif", "Failed to save GIF"],
+	["export.GIF", "Failed to save GIF"],
+	["export.mp4", "Failed to save video"],
+])("Save Again reports the saved format for %s", async (fileName, message) => {
+	const { actions, session, saved } = setup(
+		async () => ({ success: false, message: "disk full" }),
+		fileName,
+	);
+	await actions.handleRetrySaveExport();
+	expect(session.setExportError).toHaveBeenCalledWith(`${message}: disk full`);
+	expect(session.pendingExportSaveRef.current).not.toBeNull();
+	expect(saved).not.toHaveBeenCalled();
 });

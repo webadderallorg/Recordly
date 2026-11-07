@@ -1,8 +1,8 @@
 import type { User } from "@supabase/supabase-js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
-import { RecordlySignInDialog } from "./RecordlySignInDialog";
 import { RecordingPermissionsDialog } from "./RecordingPermissionsDialog";
+import { RecordlySignInDialog } from "./RecordlySignInDialog";
 
 const SEEN_KEY = "recordly.onboarding.v1.seen";
 const DEV_DISMISSED_KEY = "recordly.dev.onboardingDismissed";
@@ -25,7 +25,8 @@ export function OnboardingController({
 	// The development tour is optional. Native permission requests and explicit
 	// real-flow tests use preview=0; neither mode changes the restored account.
 	const [preview, setPreview] = useState(
-		() => import.meta.env.DEV &&
+		() =>
+			import.meta.env.DEV &&
 			new URLSearchParams(window.location.search).get("onboardingPreview") !== "0",
 	);
 	// The dedicated window can paint its account UI while session recovery runs.
@@ -36,19 +37,25 @@ export function OnboardingController({
 	const [startWithPermissions, setStartWithPermissions] = useState(false);
 	const checked = useRef(false);
 	const handledRequest = useRef(0);
-	const openWindow = useCallback((windowPreview = preview) => {
-		checked.current = true;
-		setPreview(windowPreview);
-		setReturningSignIn(false);
-		if (standalone) setOpen(true);
-		else
-			void window.electronAPI.showOnboardingWindow({ preview: windowPreview }).then((shown) => {
-				if (!shown) {
-					setInlineFallback(true);
-					setOpen(true);
-				}
-			});
-	}, [standalone, preview]);
+	const openWindow = useCallback(
+		(windowPreview = preview) => {
+			checked.current = true;
+			setPreview(windowPreview);
+			setReturningSignIn(false);
+			if (standalone) setOpen(true);
+			else
+				void window.electronAPI
+					.showOnboardingWindow({ preview: windowPreview })
+					.catch(() => false)
+					.then((shown) => {
+						if (!shown) {
+							setInlineFallback(true);
+							setOpen(true);
+						}
+					});
+		},
+		[standalone, preview],
+	);
 	useEffect(() => {
 		if (requestNonce > handledRequest.current) {
 			handledRequest.current = requestNonce;
@@ -128,8 +135,11 @@ export function OnboardingController({
 	};
 
 	if (
-		startWithPermissions && !preview && user &&
-		loadAppSetting<boolean>(SEEN_KEY) === true && (standalone || inlineFallback)
+		startWithPermissions &&
+		!preview &&
+		user &&
+		loadAppSetting<boolean>(SEEN_KEY) === true &&
+		(standalone || inlineFallback)
 	)
 		return (
 			<RecordingPermissionsDialog

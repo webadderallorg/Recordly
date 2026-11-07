@@ -371,6 +371,7 @@
 		"deleteRegion": "Audio löschen"
 	},
 	"updates": {
+		"loadFailed": "Der Update-Kanal konnte nicht geladen werden. Bitte versuche es erneut.",
 		"automaticDownloads": "Updates automatisch herunterladen",
 		"automaticDownloadsDescription": "Lade neue Updates im Hintergrund herunter. Du entscheidest, wann du neu startest.",
 		"downloadPreferenceFailed": "Automatische Update-Downloads konnten nicht geladen oder gespeichert werden. Versuche es erneut.",
@@ -561,7 +562,7 @@
 	},
 	"cloudUsage": {
 		"label": "Cloud-Nutzung",
-		"plus": "Cloud-Cloud-Speicher",
+		"plus": "Cloud-Speicher",
 		"recordings": "Cloud-Aufnahmen",
 		"signIn": "Melde dich an, um Aufnahmen zu teilen und deine Cloud-Nutzung anzusehen.",
 		"loading": "Nutzung wird geladen…",

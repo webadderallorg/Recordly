@@ -1,7 +1,14 @@
-import { translate } from "@/i18n/runtime";
 import { createClient, type Provider, type User } from "@supabase/supabase-js";
-import { marketingEmailMetadata, type SignupConsent, signupConsentMetadata } from "./signupConsent";
+import { translate } from "@/i18n/runtime";
 import { traceAuthOperation } from "./authDiagnostics";
+import { oauthFlowIdRedirectsEnabled } from "./oauthFlowRedirects";
+import { createPendingSignupConsentStore } from "./pendingSignupConsent";
+import { marketingEmailMetadata, type SignupConsent, signupConsentMetadata } from "./signupConsent";
+import {
+	SignupConsentScopeChangedError,
+	saveSignupConsentForAccount,
+	validateSignupConsentAuthConfig,
+} from "./signupConsentTransport";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
 const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
@@ -109,8 +116,14 @@ function createAuthStorage() {
 		return nativeReady;
 	};
 	return {
+		async requireSecureNative(): Promise<void> {
+			if (oauthFlowIdRedirectsEnabled && !(await nativeStorage()))
+				throw new Error(translate("support.authInsecure"));
+		},
 		async getItem(key: string): Promise<string | null> {
 			const native = await nativeStorage();
+			if (oauthFlowIdRedirectsEnabled && !native)
+				throw new Error(translate("support.authInsecure"));
 			if (native) return native.authStorageGetItem(key);
 			return memoryOnly
 				? (memory.get(key) ?? null)
@@ -118,6 +131,8 @@ function createAuthStorage() {
 		},
 		async setItem(key: string, value: string): Promise<void> {
 			const native = await nativeStorage();
+			if (oauthFlowIdRedirectsEnabled && !native)
+				throw new Error(translate("support.authInsecure"));
 			if (native) await native.authStorageSetItem(key, value);
 			else {
 				const local = memoryOnly ? undefined : browserStorage();
@@ -127,6 +142,8 @@ function createAuthStorage() {
 		},
 		async removeItem(key: string): Promise<void> {
 			const native = await nativeStorage();
+			if (oauthFlowIdRedirectsEnabled && !native)
+				throw new Error(translate("support.authInsecure"));
 			if (native) await native.authStorageRemoveItem(key);
 			else {
 				if (!memoryOnly) browserStorage()?.removeItem(key);
@@ -160,13 +177,16 @@ const authStorage = createAuthStorage();
 const authStorageKey = supabaseUrl
 	? `sb-${new URL(supabaseUrl).hostname.split(".")[0]}-auth-token`
 	: "";
-const pendingConsentKey = (challenge: string) => `${authStorageKey}-signup-consent-${challenge}`;
+const pendingSignupConsent = createPendingSignupConsentStore(authStorage, authStorageKey);
 
 export const recordlyAuth = recordlyAuthConfigured
 	? createClient(supabaseUrl!, supabasePublishableKey!, {
 			auth: {
 				storage: authStorage,
 				flowType: "pkce",
+				...(oauthFlowIdRedirectsEnabled
+					? { experimental: { appendPkceFlowIdToRedirects: true } }
+					: {}),
 				persistSession: true,
 				// Dev previews must not poll the account in the background.
 				autoRefreshToken: !import.meta.env.DEV,
@@ -205,6 +225,7 @@ export async function sendSignInCode(
 ): Promise<void> {
 	const metadata = signupConsentMetadata(consent);
 	const client = requireAuth();
+	await authStorage.requireSecureNative();
 	const { error } = await client.auth.signInWithOtp({
 		email,
 		// Supabase applies this metadata only when creating a user. Signing in
@@ -268,6 +289,7 @@ export async function signInWithSocial(
 ): Promise<void> {
 	const metadata = signupConsentMetadata(consent);
 	const client = requireAuth();
+	await authStorage.requireSecureNative();
 	const { data, error } = await client.auth.signInWithOAuth({
 		provider: provider as Provider,
 		options: {
@@ -282,18 +304,18 @@ export async function signInWithSocial(
 	if (!challenge) throw new Error(translate("support.authInsecure"));
 	// Bind the choice to this exact PKCE flow, never to the next arbitrary user
 	// who happens to sign in. No tokens or verifiers are stored here.
-	const key = pendingConsentKey(challenge);
-	localStorage.setItem(key, JSON.stringify(metadata));
+	await pendingSignupConsent.set(challenge, metadata);
 	try {
 		await openAuthUrl(data.url);
 	} catch (error) {
-		localStorage.removeItem(key);
+		await pendingSignupConsent.remove(challenge);
 		throw error;
 	}
 }
 
 export async function signInWithSaml(email: string): Promise<void> {
 	const client = requireAuth();
+	await authStorage.requireSecureNative();
 	const domain = email.trim().split("@")[1];
 	if (!domain) throw new Error(translate("support.workEmailInvalid"));
 	const { data, error } = await client.auth.signInWithSSO({
@@ -307,6 +329,8 @@ export async function signInWithSaml(email: string): Promise<void> {
 async function exchangeAuthCallback(url: string): Promise<void> {
 	const params = new URL(url).searchParams;
 	const providerError = params.get("error_description") || params.get("error");
+	if (params.get("error") === "flow_unavailable")
+		throw new Error(translate("support.authNewLink"));
 	if (providerError) throw new Error(providerError);
 	const code = params.get("code");
 	if (!code) {
@@ -314,7 +338,14 @@ async function exchangeAuthCallback(url: string): Promise<void> {
 	}
 	const client = requireAuth();
 	const flowId = params.get("sb_flow_id");
-	let pendingKey: string | undefined;
+	if (
+		oauthFlowIdRedirectsEnabled &&
+		(!flowId ||
+			!/^[A-Za-z0-9_-]{8,64}$/.test(flowId) ||
+			params.getAll("sb_flow_id").length !== 1)
+	)
+		throw new Error(translate("support.authNewLink"));
+	let pendingChallenge: string | undefined;
 	let pendingConsent: ReturnType<typeof signupConsentMetadata> | undefined;
 	// Read the verifier before Supabase consumes it during the exchange.
 	const verifier = await traceAuthOperation("callback-verifier", () =>
@@ -324,6 +355,7 @@ async function exchangeAuthCallback(url: string): Promise<void> {
 				: `${authStorageKey}-code-verifier`,
 		),
 	);
+	if (oauthFlowIdRedirectsEnabled && !verifier) throw new Error(translate("support.authNewLink"));
 	if (verifier) {
 		// Supabase serializes storage values as JSON, including verifier strings.
 		const decodedVerifier: unknown = JSON.parse(verifier);
@@ -337,23 +369,11 @@ async function exchangeAuthCallback(url: string): Promise<void> {
 			.replace(/\+/g, "-")
 			.replace(/\//g, "_")
 			.replace(/=+$/, "");
-		pendingKey = pendingConsentKey(challenge);
-		const stored = globalThis.localStorage?.getItem(pendingKey);
-		if (stored) {
-			try {
-				const metadata = JSON.parse(stored) as ReturnType<typeof signupConsentMetadata>;
-				const age = Date.now() - Date.parse(metadata.signup_consent.recorded_at);
-				if (
-					age >= 0 &&
-					age < 60 * 60 * 1000 &&
-					metadata.signup_consent.legal_accepted === true
-				)
-					pendingConsent = metadata;
-			} catch {
-				/* Invalid pending data never grants marketing permission. */
-			}
-		}
+		pendingChallenge = challenge;
+		pendingConsent = (await pendingSignupConsent.get(challenge)) ?? undefined;
 	}
+	const consentConfig = { url: supabaseUrl!, publishableKey: supabasePublishableKey! };
+	if (pendingConsent) validateSignupConsentAuthConfig(consentConfig);
 	const { data } = await traceAuthOperation("callback-token-exchange", async () => {
 		const result = flowId
 			? await client.auth.exchangeCodeForSession(code, { flowId })
@@ -361,21 +381,39 @@ async function exchangeAuthCallback(url: string): Promise<void> {
 		if (result.error) throw result.error;
 		return result;
 	});
-	// Existing accounts keep their saved preferences, including an unsubscribe.
-	// A login choice is only saved for an account created during this flow.
-	const createdAt = Date.parse(data?.user?.created_at ?? "");
+	// Record the acknowledgement made in this exact successful PKCE flow. Account
+	// age and client clocks cannot establish whether the notice was accepted.
+	// Existing consent and email preferences, including an unsubscribe, stay intact.
 	if (
 		pendingConsent &&
-		data?.user &&
-		!data.user.user_metadata?.signup_consent &&
-		createdAt >= Date.parse(pendingConsent.signup_consent.recorded_at)
+		data?.user?.id &&
+		data.session?.access_token &&
+		Reflect.getOwnPropertyDescriptor(data.user.user_metadata ?? {}, "signup_consent") ===
+			undefined
 	) {
-		await traceAuthOperation("callback-consent-save", async () => {
-			const { error: saveError } = await client.auth.updateUser({ data: pendingConsent });
-			if (saveError) throw saveError;
-		});
+		const account = { userId: data.user.id, accessToken: data.session.access_token };
+		const acceptedConsent = pendingConsent.signup_consent;
+		try {
+			await traceAuthOperation("callback-consent-save", () =>
+				saveSignupConsentForAccount(consentConfig, account, acceptedConsent, {
+					isCurrent: async () => {
+						try {
+							const current = await client.auth.getSession();
+							return (
+								!current.error && current.data.session?.user.id === account.userId
+							);
+						} catch {
+							return false;
+						}
+					},
+				}),
+			);
+		} catch (error) {
+			// A later sign-in owns the current UI. Never apply this flow's notice to it.
+			if (!(error instanceof SignupConsentScopeChangedError)) throw error;
+		}
 	}
-	if (pendingKey) globalThis.localStorage?.removeItem(pendingKey);
+	if (pendingChallenge) await pendingSignupConsent.remove(pendingChallenge);
 }
 
 export async function signOutRecordly(): Promise<void> {
@@ -428,7 +466,7 @@ async function exchangeCallbackAcrossWindows(url: string): Promise<void> {
 	} catch {
 		/* Storage can be unavailable outside the desktop renderer. */
 	}
-	if (!storage || !globalThis.navigator?.locks || !globalThis.crypto?.subtle) {
+	if (!globalThis.navigator?.locks || !globalThis.crypto?.subtle) {
 		await exchangeAuthCallback(url);
 		return;
 	}
@@ -440,14 +478,33 @@ async function exchangeCallbackAcrossWindows(url: string): Promise<void> {
 	).join("");
 	await navigator.locks.request("recordly-auth-callback", async () => {
 		const key = "recordly.auth.completed-callback";
-		if (storage.getItem(key) === fingerprint) {
+		const nativeKey = `${authStorageKey}-completed-callback`;
+		let completed: string | null = null;
+		try {
+			completed = await authStorage.getItem(nativeKey);
+		} catch {
+			/* Bookkeeping is optional. */
+		}
+		try {
+			if (completed === null) completed = storage?.getItem(key) ?? null;
+		} catch {
+			/* Browser storage may be blocked. */
+		}
+		if (completed === fingerprint) {
 			const { data, error } = await requireAuth().auth.getSession();
-			if (!error && data.session) return;
+			if (error) throw error;
+			if (!data.session) throw new Error(translate("support.authNewLink"));
+			return;
 		}
 		await exchangeAuthCallback(url);
+		try {
+			await authStorage.setItem(nativeKey, fingerprint);
+		} catch {
+			/* Auth already succeeded. */
+		}
 		// Store only a fingerprint, never the callback URL or authorization code.
 		try {
-			storage.setItem(key, fingerprint);
+			storage?.setItem(key, fingerprint);
 		} catch {
 			// A failed bookkeeping write must not turn a successful sign-in into an error.
 		}

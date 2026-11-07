@@ -32,6 +32,7 @@ describe("growing share upload orchestration", () => {
 	afterEach(async () => {
 		for (const { controller } of running) controller.abort();
 		await Promise.all(running.splice(0).map(({ upload }) => upload.cancel()));
+		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
 		await fs.rm(directory, { recursive: true, force: true });
 	});
@@ -247,4 +248,46 @@ describe("growing share upload orchestration", () => {
 		expect(progressiveShareFfmpegArgs(args(finalAudio))).toEqual(["-y", finalAudio]);
 		await upload.cancel();
 	});
+
+	it("settles and cleans up when the finalized file is missing", async () => {
+		const remote = server();
+		const { ownerId, upload } = start();
+		await vi.waitFor(() => expect(remote.paths).toContain("/api/upload-multipart/abc123"));
+		expect(await upload.finish(path.join(directory, "missing-final.mp4"))).toBeUndefined();
+		expect(remote.paths).toContain("/api/upload-abort/abc123/multipart");
+		expect(remote.paths).toContain("/api/delete/abc123");
+		expect(remote.completed).toBeUndefined();
+		const replacement = start(ownerId);
+		await replacement.upload.cancel();
+	}, 1500);
+
+	it.each(["ENOENT", "EACCES"])("settles when a finalized path stat later fails with%s", async (code) => {
+		const final = path.join(directory, "final.mp4");
+		await fs.writeFile(final, "final video");
+		const stat = await fs.stat(final);
+		const remote = server();
+		const { upload } = start();
+		await vi.waitFor(() => expect(remote.paths).toContain("/api/upload-multipart/abc123"));
+		vi.spyOn(fs, "stat").mockResolvedValueOnce(stat).mockRejectedValue(Object.assign(new Error("File unavailable"), { code }));
+		expect(await upload.finish(final)).toBeUndefined();
+		expect(remote.paths).toContain("/api/upload-abort/abc123/multipart");
+		expect(remote.paths).toContain("/api/delete/abc123");
+		expect(remote.completed).toBeUndefined();
+	}, 1500);
+
+	it("keeps polling an unfinished file that has not been created yet", async () => {
+		const partBytes = 5 * 1024 * 1024;
+		const file = path.join(directory, "not-created-yet.mp4");
+		const remote = server(true, partBytes);
+		const { ownerId, upload } = start();
+		observeShareExportSource(ownerId, file);
+		await vi.waitFor(() => expect(remote.paths).toContain("/api/upload-multipart/abc123"));
+		await new Promise((resolve) => setTimeout(resolve, 275));
+		expect(remote.paths.some((item) => item.includes("upload-abort"))).toBe(false);
+		await fs.writeFile(file, Buffer.alloc(partBytes + 8));
+		await vi.waitFor(() => expect(remote.parts).toHaveLength(1), { timeout: 3000 });
+		expect((await upload.finish(file))?.shareCode).toBe("abc123");
+		expect(remote.completed?.finalSize).toBe(partBytes + 8);
+	});
+
 });

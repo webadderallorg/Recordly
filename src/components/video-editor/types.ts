@@ -432,7 +432,7 @@ export function trimsToClips(trims: TrimRegion[], totalDurationMs: number): Clip
 		if (trim.startMs > cursor) {
 			clips.push({ id: `clip-${clipId++}`, startMs: cursor, endMs: trim.startMs, speed: 1 });
 		}
-		cursor = trim.endMs;
+		cursor = Math.max(cursor, trim.endMs);
 	}
 	if (cursor < totalDurationMs) {
 		clips.push({ id: `clip-${clipId++}`, startMs: cursor, endMs: totalDurationMs, speed: 1 });

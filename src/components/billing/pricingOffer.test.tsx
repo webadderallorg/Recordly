@@ -40,6 +40,16 @@ beforeEach(() => {
 });
 
 describe("catalog-driven pricing and promotions", () => {
+	it("uses the displayed Cloud label in the accessible name, including its discount", () => {
+		expect(renderToStaticMarkup(<UpgradeButton label="Get Recordly Cloud" />)).toContain(
+			'aria-label="Get Cloud"',
+		);
+		state.prices = [price];
+		expect(renderToStaticMarkup(<UpgradeButton label="Get Recordly Cloud" />)).toContain(
+			'aria-label="Get Cloud, 40% off"',
+		);
+	});
+
 	it("preserves verified promotional fields across IPC and renderer parsing", () => {
 		const catalog = parse([price]);
 		expect(getPlusPrice(catalog)).toEqual(price);

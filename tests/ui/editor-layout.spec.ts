@@ -1,15 +1,24 @@
 import { expect, test } from "@playwright/test";
-import { installDesktopBridge } from "./bridge";
+import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 test("advanced controls preserve values and remember each section's view", async ({ page }) => {
 	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.getCurrentRecordingSession = async () => ({
+			success: true,
+			session: {
+				videoPath: `${location.origin}/tests/ui/fixtures/preview.mp4`,
+				webcamPath: `${location.origin}/tests/ui/fixtures/preview.mp4`,
+				timeOffsetMs: 0,
+			},
+		});
+	});
 	await page.goto("/?windowType=editor");
 	const advanced = page.getByRole("switch", { name: "Advanced settings" });
 	await expect(advanced).toBeVisible({ timeout: 20000 });
 	await expect(page.getByRole("switch", { name: "Link padding sides" })).toHaveCount(0);
 	const blur = page.getByRole("slider", { name: "Blur", exact: true });
-	await expect(blur).not.toBeVisible();
-	await page.getByRole("button", { name: "Background details", exact: true }).click();
+	await expect(blur).toBeVisible();
 	await blur.focus();
 	await page.keyboard.press("ArrowRight");
 	const value = await blur.inputValue();
@@ -29,22 +38,24 @@ test("advanced controls preserve values and remember each section's view", async
 		animations: "disabled",
 	});
 	await page.getByRole("radio", { name: "Scene", exact: true }).click();
-	await page.getByRole("button", { name: "Background details", exact: true }).click();
 	await expect(advanced).toBeChecked();
 	await expect(blur).toHaveValue(value);
 	await page.locator("aside").getByText("Advanced", { exact: true }).click();
 	await expect(blur).toHaveValue(value);
-	await page.getByRole("row", { name: "Color", exact: true }).click();
+	await page.getByRole("row", { name: "Colors", exact: true }).click();
 	await page.getByRole("button", { name: "Add custom color", exact: true }).click();
 	await page.getByRole("textbox", { name: "Hex color", exact: true }).fill("#27AE60");
 	await page.keyboard.press("Tab");
 	await expect(page.getByRole("textbox", { name: "Hex color", exact: true })).toHaveValue(
 		"#27AE60",
 	);
-	await page.getByRole("dialog", { name: "Custom color", exact: true })
-		.getByRole("button", { name: "Add", exact: true }).click();
-	await expect(page.getByRole("button", { name: "Background color #27AE60", exact: true }))
-		.toHaveAttribute("aria-pressed", "true");
+	await page
+		.getByRole("dialog", { name: "Custom color", exact: true })
+		.getByRole("button", { name: "Add", exact: true })
+		.click();
+	await expect(
+		page.getByRole("button", { name: "Background color #27AE60", exact: true }),
+	).toHaveAttribute("aria-pressed", "true");
 	await page.getByRole("button", { name: "Add custom color", exact: true }).click();
 	await expect(page.getByRole("textbox", { name: "Hex color", exact: true })).toHaveValue(
 		"#27AE60",
@@ -83,7 +94,7 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 			const dividers = await page.locator(".editor-header").getByRole("separator").all();
 			expect(dividers).toHaveLength(1);
 			await expect(
-				page.locator(".editor-header-start > span[aria-hidden=\"true\"]"),
+				page.locator('.editor-header-start > span[aria-hidden="true"]'),
 			).toHaveText("/");
 			for (const divider of dividers) {
 				const box = await divider.boundingBox();
@@ -163,7 +174,11 @@ test("header name edits directly without a selection box and saves on blur", asy
 	await expect(input).toHaveCSS("border-top-width", "0px");
 	await expect(input).toHaveCSS("box-shadow", "none");
 	await expect(input).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-	await expect.poll(() => input.evaluate((node: HTMLInputElement) => node.selectionStart === node.selectionEnd)).toBe(true);
+	await expect
+		.poll(() =>
+			input.evaluate((node: HTMLInputElement) => node.selectionStart === node.selectionEnd),
+		)
+		.toBe(true);
 	expect((await input.boundingBox())!.x).toBeCloseTo(originalTextBox.x, 0);
 	await input.fill("Launch demo");
 	await input.press("Tab");

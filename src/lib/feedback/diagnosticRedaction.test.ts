@@ -5,6 +5,26 @@ import { redactDiagnostic } from "./diagnosticRedaction";
 
 describe("diagnostic token and email privacy", () => {
 	it.each([
+		["Authorization: Basic dXNlcjpmYWtlLW9ubHk=", "Authorization: [redacted]"],
+		["Basic dXNlcjpmYWtlLW9ubHk=", "Basic [redacted]"],
+		['{"authorization": "Basic dXNlcjpmYWtlLW9ubHk="}', '{"authorization": [redacted]}'],
+		['password="fake password with spaces" status=400', "password=[redacted] status=400"],
+		["secret='fake value, with } punctuation' status=400", "secret=[redacted] status=400"],
+		['secret="fake \\"quoted\\" value" status=400', "secret=[redacted] status=400"],
+		['password="unfinished fake value', "password=[redacted]"],
+	])("redacts the entire credential in %s", (input, expected) => {
+		expect(redactDiagnostic(input)).toBe(expected);
+	});
+
+	it.each([
+		"/media/tester/external/private-recording.mp4",
+		"/run/media/tester/external/private-recording.mp4",
+		"/mnt/external/private-recording.mp4",
+	])("redacts Linux mounted-drive paths in %s", (filePath) => {
+		expect(redactDiagnostic(`Cannot read "${filePath}"`)).toBe('Cannot read "[local path]"');
+	});
+
+	it.each([
 		["eyJpayload.signature.payload", "[token]"],
 		["prefix-eyJpayload.signature.payload---", "prefix-[token]---"],
 		["prefix_eyJpayload.signature.payload", "prefix_eyJpayload.signature.payload"],

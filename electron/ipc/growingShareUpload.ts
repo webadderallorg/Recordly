@@ -46,6 +46,7 @@ export function startGrowingShareUpload(options: {
 	let growingPath: string | undefined;
 	let finalPath: string | undefined;
 	let finalSize: number | undefined;
+	let finalizationError: unknown;
 	let uploadedBytes = 0;
 	let ticket: Ticket | undefined;
 	const origin = new URL(options.endpoint).origin;
@@ -67,9 +68,14 @@ export function startGrowingShareUpload(options: {
 		async getPart(index, signal, partBytes) {
 			for (;;) {
 				signal.throwIfAborted();
+				if (finalizationError) throw finalizationError;
 				const candidate = finalPath ?? growingPath;
 				if (candidate) {
-					const stat = await fs.stat(candidate).catch(() => undefined);
+					const stat = await fs.stat(candidate).catch((error) => {
+						// Only an unfinished export may still be creating/replacing its file.
+						if (candidate === finalPath) throw error;
+						return undefined;
+					});
 					const offset = index * partBytes;
 					if (stat && (finalPath || stat.size >= offset + partBytes)) {
 						if (stat.size > reservationBytes)
@@ -87,6 +93,7 @@ export function startGrowingShareUpload(options: {
 		async finalize(signal) {
 			while (!finalPath) {
 				signal.throwIfAborted();
+				if (finalizationError) throw finalizationError;
 				await wait();
 			}
 			const stat = await fs.stat(finalPath);
@@ -175,9 +182,14 @@ export function startGrowingShareUpload(options: {
 		async finish(filePath: string) {
 			// The reservation is an upper bound, not the number of bytes to upload.
 			// Rebase bytes already sent while exporting as soon as the final size is known.
-			const stat = await fs.stat(filePath).catch(() => undefined);
-			finalSize = stat?.size;
-			finalPath = filePath;
+			try {
+				const stat = await fs.stat(filePath);
+				finalSize = stat.size;
+				finalPath = filePath;
+			} catch (error) {
+				// Wake the polling source through its normal failure/cleanup path.
+				finalizationError = error;
+			}
 			if (finalSize !== undefined && finalSize > 0)
 				options.onProgress(Math.min(uploadedBytes, finalSize), finalSize);
 			return task;

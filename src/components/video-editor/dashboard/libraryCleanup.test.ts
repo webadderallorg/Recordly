@@ -210,9 +210,11 @@ it("protects canonical dependencies through folder aliases and blocks incomplete
 });
 
 it("combines criteria with AND and allows duration thresholds to be changed", async () => {
+	vi.stubGlobal("localStorage", { getItem: () => null, setItem: vi.fn() });
 	vi.stubGlobal("window", {
 		electronAPI: {
 			getAppSetting: () => null,
+			getAppSettingWithStatus: () => ({ success: true, found: false, value: null }),
 			getProjectPreview: async (path: string) => ({
 				success: true,
 				value: {
@@ -260,10 +262,14 @@ it("combines criteria with AND and allows duration thresholds to be changed", as
 				.size,
 		).toBe(0);
 });
-it("does not suggest never-exported projects when persistent export history cannot be read", async () => {
+it.each([
+	{ success: true, found: true, value: [] },
+	{ success: false, value: null },
+])("does not suggest never-exported projects when persistent export history cannot be read: %j", async (history) => {
 	vi.stubGlobal("window", {
 		electronAPI: {
 			getAppSetting: () => [],
+			getAppSettingWithStatus: () => history,
 			getProjectPreview: async () => ({ success: true, value: { project } }),
 		},
 	});
@@ -276,4 +282,36 @@ it("does not suggest never-exported projects when persistent export history cann
 	);
 	expect(result.candidates.size).toBe(0);
 	expect(result.skipped).toBeGreaterThan(0);
+});
+
+it.each([false, true])("revalidates never-exported cleanup if link-cache reads fail after history succeeds, raw=%s", async (raw) => {
+	let unavailable = false;
+	const getStatus = vi.fn((key: string) =>
+		key === "recordly.project-share-links.v1" && unavailable
+			? { success: false, value: null }
+			: { success: true, found: true, value: {} },
+	);
+	const api = {
+		getAppSetting: () => null,
+		getAppSettingWithStatus: getStatus,
+		setAppSetting: vi.fn(() => true),
+		getProjectPreview: async () => ({ success: true, value: { project } }),
+	};
+	vi.stubGlobal("window", { electronAPI: api });
+	vi.stubGlobal("electronAPI", api);
+	const browserRead = vi.fn();
+	vi.stubGlobal("localStorage", { getItem: browserRead, setItem: vi.fn() });
+	const items = [entry(raw ? project.videoPath : "/projects/a.recordly")];
+	const projects = [entry("/projects/a.recordly")];
+	const first = await scanCleanup("neverExported", items, projects, raw, () => false);
+	expect(first.candidates.size).toBe(1);
+	unavailable = true;
+	getStatus.mockClear();
+	const revalidated = await scanCleanup("neverExported", items, projects, raw, () => false);
+	expect(getStatus.mock.calls[0][0]).toBe("recordly.library-export-history.v1");
+	expect(revalidated.candidates.size).toBe(0);
+	expect(revalidated.skipped).toBeGreaterThan(0);
+	if (raw) expect(revalidated.incomplete).toBe(true);
+	expect(browserRead).not.toHaveBeenCalled();
+	expect(api.setAppSetting).not.toHaveBeenCalled();
 });

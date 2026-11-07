@@ -10,6 +10,7 @@ const updateUser = vi.hoisted(() => vi.fn(async (_update: unknown) => ({ error: 
 const password = vi.hoisted(() => vi.fn());
 const getSession = vi.hoisted(() => vi.fn());
 const signOut = vi.hoisted(() => vi.fn(async () => ({ error: null })));
+const clientConfiguration = vi.hoisted(() => vi.fn());
 const oauth = vi.hoisted(() =>
 	vi.fn(async (_options: unknown) => ({
 		data: { url: "https://auth.example.test/oauth" },
@@ -17,19 +18,22 @@ const oauth = vi.hoisted(() =>
 	})),
 );
 vi.mock("@supabase/supabase-js", () => ({
-	createClient: () => ({
-		auth: {
-			exchangeCodeForSession: exchange,
-			signInWithOAuth: oauth,
-			signInWithOtp: emailOtp,
-			verifyOtp,
-			getUser,
-			signInWithPassword: password,
-			getSession,
-			signOut,
-			updateUser,
-		},
-	}),
+	createClient: (...args: unknown[]) => {
+		clientConfiguration(...args);
+		return {
+			auth: {
+				exchangeCodeForSession: exchange,
+				signInWithOAuth: oauth,
+				signInWithOtp: emailOtp,
+				verifyOtp,
+				getUser,
+				signInWithPassword: password,
+				getSession,
+				signOut,
+				updateUser,
+			},
+		};
+	},
 }));
 beforeEach(() => {
 	vi.resetModules();
@@ -42,6 +46,7 @@ beforeEach(() => {
 	getSession.mockReset();
 	signOut.mockClear();
 	updateUser.mockClear();
+	clientConfiguration.mockClear();
 	vi.stubEnv("VITE_SUPABASE_URL", "https://auth.example.test");
 	vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "test-key");
 });
@@ -115,6 +120,56 @@ it("reports an unavailable Auth settings endpoint instead of assuming providers 
 afterEach(() => {
 	vi.unstubAllEnvs();
 	vi.unstubAllGlobals();
+	vi.useRealTimers();
+});
+
+it.each([
+	undefined,
+	"false",
+	"true",
+])("enables SDK flow-id redirects only for explicit true (%s)", async (flag) => {
+	vi.stubEnv("VITE_OAUTH_FLOW_ID_REDIRECTS", flag);
+	await import("./recordlyAuth");
+	const config = clientConfiguration.mock.calls[0][2];
+	expect(config.auth.experimental).toEqual(
+		flag === "true" ? { appendPkceFlowIdToRedirects: true } : undefined,
+	);
+});
+
+it("rejects opt-in OAuth before provider initiation when the secure native store is unavailable", async () => {
+	vi.stubEnv("VITE_OAUTH_FLOW_ID_REDIRECTS", "true");
+	const openExternalUrl = vi.fn();
+	vi.stubGlobal("window", {
+		electronAPI: { authStorageAvailable: async () => false, openExternalUrl },
+	});
+	const auth = await import("./recordlyAuth");
+	await expect(auth.signInWithSocial("apple", { legalAccepted: true })).rejects.toThrow();
+	expect(oauth).not.toHaveBeenCalled();
+	expect(openExternalUrl).not.toHaveBeenCalled();
+});
+
+it.each([
+	"recordly://auth/callback?code=private",
+	"recordly://auth/callback?code=private&sb_flow_id=flow_missing",
+	"recordly://auth/callback?code=private&sb_flow_id=flow_alice&sb_flow_id=flow_bob00",
+])("never borrows the legacy verifier in opt-in callbacks: %s", async (url) => {
+	vi.stubEnv("VITE_OAUTH_FLOW_ID_REDIRECTS", "true");
+	const { auth } = await pendingOAuthFixture(false);
+	await expect(auth.completeAuthCallback(url)).rejects.toThrow();
+	expect(exchange).not.toHaveBeenCalled();
+});
+
+it("uses only the explicit stored flow verifier for opt-in completion", async () => {
+	vi.stubEnv("VITE_OAUTH_FLOW_ID_REDIRECTS", "true");
+	const { auth, native } = await pendingOAuthFixture(false);
+	native.set(
+		"sb-auth-auth-token-flow-flow_alice-code-verifier",
+		JSON.stringify("exact-flow-verifier"),
+	);
+	await auth.completeAuthCallback(
+		"recordly://auth/callback?code=matching-code&sb_flow_id=flow_alice",
+	);
+	expect(exchange).toHaveBeenCalledExactlyOnceWith("matching-code", { flowId: "flow_alice" });
 });
 
 it("exchanges a callback once when live and pending delivery overlap", async () => {
@@ -229,53 +284,22 @@ it("rejects signup without legal acknowledgement before contacting Auth", async 
 });
 
 for (const existing of [false, true]) {
-	it(`OAuth saves the matching signup choice only for ${existing ? "existing (no overwrite)" : "new"} accounts`, async () => {
-		const store = new Map<string, string>();
-		vi.stubGlobal("localStorage", {
-			getItem: (key: string) => store.get(key) ?? null,
-			setItem: (key: string, value: string) => store.set(key, value),
-			removeItem: (key: string) => store.delete(key),
-		});
-		const native = new Map<string, string>();
-		vi.stubGlobal("window", {
-			electronAPI: {
-				openExternalUrl: async () => ({ success: true }),
-				authStorageAvailable: async () => true,
-				authStorageMigrate: async (snapshot: Record<string, string>) => {
-					for (const [key, value] of Object.entries(snapshot)) native.set(key, value);
-				},
-				authStorageGetItem: async (key: string) => native.get(key) ?? null,
-				authStorageSetItem: async (key: string, value: string) => {
-					native.set(key, value);
-				},
-				authStorageRemoveItem: async (key: string) => {
-					native.delete(key);
-				},
-			},
-		});
-		const verifier = "a-test-pkce-verifier";
-		const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
-		const challenge = Buffer.from(hash).toString("base64url");
-		store.set("sb-auth-auth-token-code-verifier", JSON.stringify(verifier));
-		oauth.mockResolvedValueOnce({
-			data: { url: `https://auth.example.test/oauth?code_challenge=${challenge}` },
-			error: null,
-		});
-		const { signInWithSocial, completeAuthCallback } = await import("./recordlyAuth");
-		await signInWithSocial("google", { legalAccepted: true });
-		exchange.mockResolvedValueOnce({
-			data: {
-				user: {
-					created_at: existing ? "2020-01-01T00:00:00Z" : new Date().toISOString(),
-					user_metadata: {},
-				},
-			},
-			error: null,
-		} as never);
-		await completeAuthCallback("recordly://auth/callback?code=consent-test");
-		if (existing) expect(updateUser).not.toHaveBeenCalled();
-		else
-			expect(updateUser).toHaveBeenCalledWith({
+	it(`OAuth records matching legal acceptance without replacing an existing acknowledgement (${existing})`, async () => {
+		const { auth, native, challenge, requests, user } = await pendingOAuthFixture();
+		await auth.signInWithSocial("google", { legalAccepted: true });
+		const previous = existing
+			? {
+					signup_consent: { legal_accepted: true, marketing_emails: false },
+					email_preferences: { marketing_emails: false },
+				}
+			: {};
+		user.user_metadata = previous;
+		exchange.mockResolvedValueOnce(consentExchange(previous));
+		await auth.completeAuthCallback("recordly://auth/callback?code=consent-test");
+		const writes = requests.mock.calls.filter(([, init]) => init?.method === "PUT");
+		expect(writes).toHaveLength(existing ? 0 : 1);
+		if (!existing)
+			expect(JSON.parse(writes[0][1]!.body as string)).toEqual({
 				data: {
 					signup_consent: expect.objectContaining({
 						legal_accepted: true,
@@ -283,31 +307,326 @@ for (const existing of [false, true]) {
 					}),
 				},
 			});
-		expect(store.has(`sb-auth-auth-token-signup-consent-${challenge}`)).toBe(false);
+		expect(updateUser).not.toHaveBeenCalled();
+		expect(native.has(`sb-auth-auth-token-signup-consent-${challenge}`)).toBe(false);
 	});
 }
 
-it("does not attribute an abandoned OAuth choice to another login flow", async () => {
-	const store = new Map<string, string>();
+function consentExchange(
+	userMetadata: Record<string, unknown> = {},
+	createdAt = "2026-11-07T00:00:00Z",
+) {
+	const user = { id: "account-a", created_at: createdAt, user_metadata: userMetadata };
+	return {
+		data: { user, session: { access_token: "account-a-token", user } },
+		error: null,
+	} as never;
+}
+
+async function pendingOAuthFixture(prepareProvider = true) {
+	vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_fixture");
+	const native = new Map<string, string>();
+	const user = {
+		id: "account-a",
+		user_metadata: { email_preferences: { marketing_emails: false } } as Record<
+			string,
+			unknown
+		>,
+	};
+	const requests = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+		if (init?.method === "PUT") {
+			const body = JSON.parse(init.body as string) as { data: Record<string, unknown> };
+			user.user_metadata = { ...user.user_metadata, ...body.data };
+		}
+		return Response.json(user);
+	});
+	vi.stubGlobal("fetch", requests);
+	getSession.mockResolvedValue({
+		data: { session: { access_token: "account-a-token", user: { id: "account-a" } } },
+		error: null,
+	});
+	const fail = () => {
+		throw new Error("Browser storage blocked");
+	};
 	vi.stubGlobal("localStorage", {
-		getItem: (key: string) => store.get(key) ?? null,
-		setItem: (key: string, value: string) => store.set(key, value),
-		removeItem: (key: string) => store.delete(key),
+		get length() {
+			return fail();
+		},
+		getItem: fail,
+		setItem: fail,
+		removeItem: fail,
 	});
-	vi.stubGlobal("window", { electronAPI: { openExternalUrl: async () => ({ success: true }) } });
-	oauth.mockResolvedValueOnce({
-		data: { url: "https://auth.example.test/oauth?code_challenge=abandoned" },
-		error: null,
+	const openExternalUrl = vi.fn(async () => ({ success: true }));
+	const remove = vi.fn(async (key: string) => {
+		native.delete(key);
 	});
-	const { signInWithSocial, completeAuthCallback } = await import("./recordlyAuth");
-	await signInWithSocial("google", { legalAccepted: true });
-	store.set("sb-auth-auth-token-code-verifier", JSON.stringify("another-flow-verifier"));
-	exchange.mockResolvedValueOnce({
-		data: { user: { created_at: new Date().toISOString(), user_metadata: {} } },
-		error: null,
-	} as never);
-	await completeAuthCallback("recordly://auth/callback?code=different-flow");
+	const set = vi.fn(async (key: string, value: string) => {
+		native.set(key, value);
+	});
+	const get = vi.fn(async (key: string) => native.get(key) ?? null);
+	vi.stubGlobal("window", {
+		electronAPI: {
+			openExternalUrl,
+			authStorageAvailable: async () => true,
+			authStorageMigrate: async () => undefined,
+			authStorageGetItem: get,
+			authStorageSetItem: set,
+			authStorageRemoveItem: remove,
+		},
+	});
+	const verifier = "pending-consent-flow-verifier";
+	const challenge = Buffer.from(
+		await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
+	).toString("base64url");
+	native.set("sb-auth-auth-token-code-verifier", JSON.stringify(verifier));
+	if (prepareProvider)
+		oauth.mockResolvedValueOnce({
+			data: { url: `https://auth.example.test/oauth?code_challenge=${challenge}` },
+			error: null,
+		});
+	return {
+		auth: await import("./recordlyAuth"),
+		native,
+		challenge,
+		openExternalUrl,
+		remove,
+		get,
+		set,
+		requests,
+		user,
+	};
+}
+
+it("completes OAuth in another renderer with blocked browser storage and keeps an existing unsubscribe", async () => {
+	const { auth, native, challenge, openExternalUrl, requests, user } =
+		await pendingOAuthFixture();
+	await auth.signInWithSocial("google", { legalAccepted: true });
+	expect(openExternalUrl).toHaveBeenCalledOnce();
+	expect(native.has(`sb-auth-auth-token-signup-consent-${challenge}`)).toBe(true);
+	vi.resetModules();
+	const nextRenderer = await import("./recordlyAuth");
+	exchange.mockResolvedValueOnce(
+		consentExchange({ email_preferences: { marketing_emails: false } }, "2020-01-01T00:00:00Z"),
+	);
+	await expect(
+		nextRenderer.completeAuthCallback("recordly://auth/callback?code=accepted-flow"),
+	).resolves.toBeUndefined();
+	expect(exchange).toHaveBeenCalledExactlyOnceWith("accepted-flow");
+	expect(requests.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(1);
+	expect(user.user_metadata.email_preferences).toEqual({ marketing_emails: false });
 	expect(updateUser).not.toHaveBeenCalled();
+	expect(native.has(`sb-auth-auth-token-signup-consent-${challenge}`)).toBe(false);
+});
+
+it.each([
+	"2020-01-01T00:00:00Z",
+	"2050-01-01T00:00:00Z",
+])("keeps actual flow consent when the client clock changes to %s", async (callbackTime) => {
+	vi.useFakeTimers({ toFake: ["Date"] });
+	vi.setSystemTime(new Date("2040-01-01T00:00:00Z"));
+	const { auth, requests } = await pendingOAuthFixture();
+	await auth.signInWithSocial("apple", { legalAccepted: true });
+	vi.setSystemTime(new Date(callbackTime));
+	exchange.mockResolvedValueOnce(consentExchange());
+	await auth.completeAuthCallback("recordly://auth/callback?code=clock-independent");
+	expect(requests.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(1);
+	expect(updateUser).not.toHaveBeenCalled();
+});
+
+it.each([
+	null,
+	false,
+])("preserves an explicitly stored acknowledgement value (%s)", async (stored) => {
+	const { auth } = await pendingOAuthFixture();
+	await auth.signInWithSocial("google", { legalAccepted: true });
+	exchange.mockResolvedValueOnce(consentExchange({ signup_consent: stored }));
+	await auth.completeAuthCallback("recordly://auth/callback?code=stored-preference");
+	expect(updateUser).not.toHaveBeenCalled();
+});
+
+it("does not create consent when a successful callback has no matching acknowledgement", async () => {
+	const { auth } = await pendingOAuthFixture(false);
+	exchange.mockResolvedValueOnce(consentExchange());
+	await auth.completeAuthCallback("recordly://auth/callback?code=no-choice");
+	expect(updateUser).not.toHaveBeenCalled();
+});
+
+it("does not turn consent cleanup failure into an authentication failure", async () => {
+	const { auth, remove, requests } = await pendingOAuthFixture();
+	await auth.signInWithSocial("google", { legalAccepted: true });
+	remove.mockRejectedValueOnce(new Error("Cleanup unavailable"));
+	exchange.mockResolvedValueOnce(consentExchange());
+	await expect(
+		auth.completeAuthCallback("recordly://auth/callback?code=cleanup-failure"),
+	).resolves.toBeUndefined();
+	expect(requests.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(1);
+	expect(updateUser).not.toHaveBeenCalled();
+	getSession.mockResolvedValue({ data: { session: { user: { id: "signed-in" } } }, error: null });
+	vi.resetModules();
+	await (await import("./recordlyAuth")).completeAuthCallback(
+		"recordly://auth/callback?code=cleanup-failure",
+	);
+	expect(exchange).toHaveBeenCalledOnce();
+});
+
+it("ignores an optional fingerprint read failure and deduplicates the completed exchange across renderers", async () => {
+	const { auth, get } = await pendingOAuthFixture();
+	await auth.signInWithSocial("google", { legalAccepted: true });
+	get.mockRejectedValueOnce(new Error("Bookkeeping read unavailable"));
+	exchange.mockResolvedValueOnce(consentExchange());
+	const url = "recordly://auth/callback?code=fingerprint-read";
+	await expect(auth.completeAuthCallback(url)).resolves.toBeUndefined();
+	getSession.mockResolvedValue({ data: { session: { user: { id: "signed-in" } } }, error: null });
+	vi.resetModules();
+	await (await import("./recordlyAuth")).completeAuthCallback(url);
+	expect(exchange).toHaveBeenCalledOnce();
+});
+
+it("deduplicates another renderer when native fingerprint persistence failed after recording its memory marker", async () => {
+	const { auth, native, set } = await pendingOAuthFixture();
+	await auth.signInWithSocial("google", { legalAccepted: true });
+	set.mockImplementationOnce(async (key, value) => {
+		native.set(key, value);
+		throw new Error("Persistence unavailable");
+	});
+	exchange.mockResolvedValueOnce(consentExchange());
+	const url = "recordly://auth/callback?code=fingerprint-write";
+	await expect(auth.completeAuthCallback(url)).resolves.toBeUndefined();
+	getSession.mockResolvedValue({ data: { session: { user: { id: "signed-in" } } }, error: null });
+	vi.resetModules();
+	await (await import("./recordlyAuth")).completeAuthCallback(url);
+	expect(exchange).toHaveBeenCalledOnce();
+});
+
+it("does not treat a completion fingerprint as a session or retry its used code after sign-out", async () => {
+	const { auth } = await pendingOAuthFixture();
+	await auth.signInWithSocial("google", { legalAccepted: true });
+	exchange.mockResolvedValueOnce(consentExchange());
+	const url = "recordly://auth/callback?code=completed-before-signout";
+	await auth.completeAuthCallback(url);
+	getSession.mockResolvedValue({ data: { session: null }, error: null });
+	vi.resetModules();
+	await expect((await import("./recordlyAuth")).completeAuthCallback(url)).rejects.toThrow(
+		"Request a new sign-in link",
+	);
+	expect(exchange).toHaveBeenCalledOnce();
+});
+
+it("does not infer legal acceptance if its persisted record cannot be read", async () => {
+	const { auth, get } = await pendingOAuthFixture();
+	await auth.signInWithSocial("google", { legalAccepted: true });
+	const original = get.getMockImplementation()!;
+	get.mockImplementation(async (key) => {
+		if (key.includes("-signup-consent-")) throw new Error("Metadata unreadable");
+		return original(key);
+	});
+	vi.resetModules();
+	exchange.mockResolvedValueOnce(consentExchange());
+	await expect(
+		(await import("./recordlyAuth")).completeAuthCallback(
+			"recordly://auth/callback?code=unreadable-choice",
+		),
+	).resolves.toBeUndefined();
+	expect(updateUser).not.toHaveBeenCalled();
+});
+
+it("preserves the browser launch error if legacy consent cleanup also fails", async () => {
+	const { auth, openExternalUrl } = await pendingOAuthFixture();
+	openExternalUrl.mockRejectedValueOnce(new Error("Browser launch failed"));
+	await expect(auth.signInWithSocial("google", { legalAccepted: true })).rejects.toThrow(
+		"Browser launch failed",
+	);
+});
+
+it("does not send an old flow's legal acceptance after another account takes over during the profile read", async () => {
+	const { auth, requests, user } = await pendingOAuthFixture();
+	await auth.signInWithSocial("google", { legalAccepted: true });
+	exchange.mockResolvedValueOnce(consentExchange());
+	requests.mockImplementationOnce(async (_url, init) => {
+		expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer account-a-token");
+		getSession.mockResolvedValue({
+			data: { session: { access_token: "account-b-token", user: { id: "account-b" } } },
+			error: null,
+		});
+		return Response.json(user);
+	});
+	await expect(
+		auth.completeAuthCallback("recordly://auth/callback?code=account-switch-during-read"),
+	).resolves.toBeUndefined();
+	expect(requests.mock.calls.map(([, init]) => init?.method)).toEqual(["GET"]);
+	expect(user.user_metadata.signup_consent).toBeUndefined();
+	expect(updateUser).not.toHaveBeenCalled();
+});
+
+it("binds the legal-only write to the exchanged account even if the active account switches at PUT", async () => {
+	const { auth, requests, user } = await pendingOAuthFixture();
+	const other = {
+		id: "account-b",
+		user_metadata: { email_preferences: { marketing_emails: false } } as Record<
+			string,
+			unknown
+		>,
+	};
+	await auth.signInWithSocial("google", { legalAccepted: true });
+	exchange.mockResolvedValueOnce(consentExchange());
+	requests.mockImplementation(async (_url, init) => {
+		const authorization = new Headers(init?.headers).get("Authorization");
+		expect(authorization).toBe("Bearer account-a-token");
+		if (init?.method === "PUT") {
+			getSession.mockResolvedValue({
+				data: { session: { access_token: "account-b-token", user: { id: other.id } } },
+				error: null,
+			});
+			const patch = JSON.parse(init.body as string) as { data: Record<string, unknown> };
+			expect(Object.keys(patch.data)).toEqual(["signup_consent"]);
+			user.user_metadata = { ...user.user_metadata, ...patch.data };
+		}
+		return Response.json(user);
+	});
+	await expect(
+		auth.completeAuthCallback("recordly://auth/callback?code=account-switch-at-write"),
+	).resolves.toBeUndefined();
+	expect(user.user_metadata.signup_consent).toMatchObject({ legal_accepted: true });
+	expect(user.user_metadata.email_preferences).toEqual({ marketing_emails: false });
+	expect(other.user_metadata).toEqual({ email_preferences: { marketing_emails: false } });
+	expect(updateUser).not.toHaveBeenCalled();
+});
+
+it.each([
+	null,
+	false,
+])("preserves acknowledgement discovered in the fresh server profile (%s)", async (stored) => {
+	const { auth, requests, user } = await pendingOAuthFixture();
+	await auth.signInWithSocial("google", { legalAccepted: true });
+	exchange.mockResolvedValueOnce(consentExchange());
+	user.user_metadata.signup_consent = stored;
+	await auth.completeAuthCallback("recordly://auth/callback?code=already-accepted-on-server");
+	expect(requests.mock.calls.map(([, init]) => init?.method)).toEqual(["GET"]);
+	expect(user.user_metadata.signup_consent).toBe(stored);
+	expect(updateUser).not.toHaveBeenCalled();
+});
+
+it("rejects a private auth key before exchanging a pending legal-consent callback", async () => {
+	const { auth, requests } = await pendingOAuthFixture();
+	await auth.signInWithSocial("google", { legalAccepted: true });
+	vi.resetModules();
+	vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_secret_fixture");
+	const callback = await import("./recordlyAuth");
+	await expect(
+		callback.completeAuthCallback("recordly://auth/callback?code=invalid-public-config"),
+	).rejects.toThrow("Secure signup preferences configuration is unavailable");
+	expect(exchange).not.toHaveBeenCalled();
+	expect(requests).not.toHaveBeenCalled();
+});
+
+it("does not attribute an abandoned OAuth choice to another login flow", async () => {
+	const { auth, native, challenge } = await pendingOAuthFixture();
+	await auth.signInWithSocial("google", { legalAccepted: true });
+	native.set("sb-auth-auth-token-code-verifier", JSON.stringify("another-flow-verifier"));
+	exchange.mockResolvedValueOnce(consentExchange());
+	await auth.completeAuthCallback("recordly://auth/callback?code=different-flow");
+	expect(updateUser).not.toHaveBeenCalled();
+	expect(native.has(`sb-auth-auth-token-signup-consent-${challenge}`)).toBe(true);
 });
 
 for (const enabled of [true, false]) {

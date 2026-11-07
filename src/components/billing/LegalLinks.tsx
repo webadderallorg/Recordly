@@ -3,13 +3,13 @@ import { CLOUD_SHARE_ENDPOINT } from "@/components/video-editor/cloud/endpoint";
 
 export function LegalLinks({ consent = false }: { consent?: boolean }) {
 	const t = useScopedT("billing");
-	let origin: string;
+	let origin = "https://videos.recordly.dev";
 	try {
 		const endpoint = new URL(CLOUD_SHARE_ENDPOINT);
-		if (!["https:", "http:"].includes(endpoint.protocol)) return null;
-		origin = endpoint.origin;
+		if (["https:", "http:"].includes(endpoint.protocol) && !endpoint.username && !endpoint.password)
+			origin = endpoint.origin;
 	} catch {
-		return null;
+		// Account consent remains available when cloud sharing is not configured.
 	}
 	if (consent) {
 		const parts = t(

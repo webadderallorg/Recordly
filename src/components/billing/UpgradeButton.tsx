@@ -32,7 +32,7 @@ export function UpgradeButton({
 			variant={variant}
 			size={size}
 			className={`gap-2 bg-editor-surface text-accent hover:bg-editor-surface-alt ${className ?? ""}`}
-			aria-label={[text, discount].filter(Boolean).join(", ")}
+			aria-label={[visibleText || text, discount].filter(Boolean).join(", ")}
 			onPress={openPricing}
 		>
 			<span

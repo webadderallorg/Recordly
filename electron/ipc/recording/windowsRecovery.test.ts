@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -164,7 +165,7 @@ describe("Windows interrupted recording recovery", () => {
 			report: async () => {},
 		});
 		await ownership.start(owner, async () => ({ success: true }));
-		const child = new EventEmitter();
+		const child = Object.assign(new EventEmitter(), { stdin: new PassThrough() });
 		let recovery!: ReturnType<typeof finalizer.recover>;
 		setWindowsNativeCaptureActive(true);
 		attachWindowsCaptureLifecycle(
@@ -199,7 +200,7 @@ describe("Windows interrupted recording recovery", () => {
 	});
 
 	it("does not clear or recover a replacement session when an older child closes", () => {
-		const previous = new EventEmitter();
+		const previous = Object.assign(new EventEmitter(), { stdin: new PassThrough() });
 		const replacement = new EventEmitter();
 		const interrupted = vi.fn();
 		setNativeScreenRecordingActive(true);
@@ -213,7 +214,7 @@ describe("Windows interrupted recording recovery", () => {
 	});
 
 	it("surfaces the actual interruption to the renderer when capture exits", () => {
-		const child = new EventEmitter();
+		const child = Object.assign(new EventEmitter(), { stdin: new PassThrough() });
 		setWindowsNativeCaptureActive(true);
 		attachWindowsCaptureLifecycle(child as Parameters<typeof attachWindowsCaptureLifecycle>[0]);
 		child.emit("close", 1);

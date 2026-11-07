@@ -3,25 +3,56 @@ import { getHudInteractiveBounds, isPointerOverHudSurface } from "../hudMousePas
 
 export function useLaunchHudInteractionState({
 	openId,
+	platform,
+	recordingState,
 	isHudDraggingRef,
 	isWebcamPreviewDraggingRef,
 	webcamPreviewDragStartRef,
 }: {
 	openId: string | null;
+	platform?: string | null;
+	recordingState?: string;
 	isHudDraggingRef: RefObject<boolean>;
 	isWebcamPreviewDraggingRef: RefObject<boolean>;
 	webcamPreviewDragStartRef: RefObject<unknown>;
 }) {
 	const isMouseOverHudRef = useRef(false);
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-	const setIgnoring = useCallback((ignore: boolean) => {
-		window.electronAPI?.hudOverlaySetIgnoreMouse?.(ignore);
-	}, []);
+	const lastIgnoringRef = useRef<{ ignore: boolean; recordingState?: string } | null>(null);
+	const setIgnoring = useCallback(
+		(ignore: boolean, force = false) => {
+			const dragging =
+				isHudDraggingRef.current ||
+				isWebcamPreviewDraggingRef.current ||
+				webcamPreviewDragStartRef.current;
+			// Windows needs repeated native reassertions; preserve them while platform
+			// discovery or a drag is in progress as well.
+			if (
+				!force &&
+				platform &&
+				platform !== "win32" &&
+				!dragging &&
+				lastIgnoringRef.current?.ignore === ignore &&
+				lastIgnoringRef.current.recordingState === recordingState
+			)
+				return;
+			if (!window.electronAPI?.hudOverlaySetIgnoreMouse) return;
+			lastIgnoringRef.current = { ignore, recordingState };
+			window.electronAPI.hudOverlaySetIgnoreMouse(ignore);
+		},
+		[
+			platform,
+			recordingState,
+			isHudDraggingRef,
+			isWebcamPreviewDraggingRef,
+			webcamPreviewDragStartRef,
+		],
+	);
 
 	useEffect(() => {
 		if (openId !== null) {
 			if (timeoutRef.current) clearTimeout(timeoutRef.current);
-			setIgnoring(false);
+			setIgnoring(false, true);
 		} else {
 			// Proactively check if we should ignore mouse when popover closes
 			timeoutRef.current = setTimeout(() => {
@@ -94,13 +125,13 @@ export function useLaunchHudInteractionState({
 
 	const beginInteractiveHudAction = useCallback(() => {
 		isMouseOverHudRef.current = true;
-		setIgnoring(false);
+		setIgnoring(false, true);
 	}, [setIgnoring]);
 
 	const handleHudMouseEnter = useCallback(() => {
 		isMouseOverHudRef.current = true;
 		if (timeoutRef.current) clearTimeout(timeoutRef.current);
-		setIgnoring(false);
+		setIgnoring(false, true);
 	}, [setIgnoring]);
 
 	const handleHudMouseLeave = useCallback(

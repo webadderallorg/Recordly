@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+
 vi.mock("./parakeetModel", () => ({ assertParakeetModelDirectory: vi.fn() }));
+
 import { mergeParakeetWindows, parseParakeetWords } from "./parakeet";
 
 describe("Parakeet word timestamps", () => {
@@ -95,6 +97,23 @@ describe("Parakeet word timestamps", () => {
 
 describe("Parakeet overlapping audio windows", () => {
 	const word = (text: string, startMs: number, endMs: number) => ({ text, startMs, endMs });
+	it("uses neighboring words to align a repeated word despite shifted estimates", () => {
+		const previous = [
+			word("go", 29000, 29080),
+			word("left", 29100, 29180),
+			word("go", 29200, 29280),
+			word("right", 29300, 29380),
+		];
+		const next = [
+			word("go", 29010, 29090),
+			word("right", 29110, 29190),
+			word("now", 29400, 29480),
+		];
+		const result = mergeParakeetWindows(previous, next, 30000);
+		expect(result.map(({ text }) => text)).toEqual(["go", "left", "go", "right", "now"]);
+		// Alignment chooses existing word estimates; it must not manufacture timing.
+		expect(result.every((item) => [...previous, ...next].includes(item))).toBe(true);
+	});
 	it("keeps a seam word once when independent estimates shift to opposite sides", () => {
 		const left = [word("Hello", 29000, 29300), word("world.", 29900, 30000)];
 		const right = [

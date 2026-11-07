@@ -1,16 +1,7 @@
 ---
-// Reuse the landing site's actual document and visual source; do not maintain a second Terms copy.
-import TermsOfService, { termsTitle, termsDescription } from '../../../../../../aside-react/src/legal/TermsOfService.jsx';
-import '../../../../../../aside-react/src/styles.css';
-import { legalDetails, legalReady, LEGAL_VERSION } from '../legal/config';
-// Keep the shared header, using only routes available on the current marketing host.
-const siteLinks = {
-  home: 'https://recordly.dev/',
-  blog: 'https://recordly.dev/blog',
-  features: 'https://recordly.dev/#core-features',
-  pricing: null,
-};
-const publication = { details: legalDetails, ready: legalReady, version: LEGAL_VERSION };
+import TermsOfService, { termsTitle, termsDescription } from '../legal/TermsOfService.jsx';
+import '../legal/recordly-terms.css';
+import { legalReady } from '../legal/config';
 ---
 <!doctype html>
 <html lang="en">
@@ -22,7 +13,5 @@ const publication = { details: legalDetails, ready: legalReady, version: LEGAL_V
     <meta name="robots" content={legalReady ? 'index, follow' : 'noindex, nofollow'} />
     <link rel="canonical" href="https://videos.recordly.dev/terms" />
   </head>
-  <body>
-    <TermsOfService publication={publication} siteLinks={siteLinks} client:load />
-  </body>
+  <body><TermsOfService /></body>
 </html>

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "@/components/ui/toast";
 import { useRecorderWebcam } from "./useRecorderWebcam";
+import { useRecorderControls } from "./useRecorderControls";
 
 vi.mock("react", () => ({
 	useCallback: <T>(callback: T) => callback,
@@ -285,5 +286,32 @@ describe("recorder webcam sidecar", () => {
 		await expect(webcam.stopWebcamRecorder()).resolves.toBeNull();
 		expect(toast.error).not.toHaveBeenCalled();
 		expect(track.stop).toHaveBeenCalledOnce();
+	});
+	it("settles a canceled take's webcam promise before another capture starts", async () => {
+		const webcam = createWebcam();
+		await webcam.prepareWebcamRecorder();
+		webcam.beginWebcamCapture();
+		const cancelledTake = webcam.webcamStopPromise.current;
+		Object.assign(window.electronAPI, {
+			setRecordingState: vi.fn().mockResolvedValue({ success: true }),
+		});
+		const controls = useRecorderControls({
+			...webcam,
+			screenWriter: { current: null },
+			recordingActive: { current: true },
+			recordingStartGeneration: { current: 1 },
+			nativeScreenRecording: { current: false },
+			mediaRecorder: { current: null },
+			cleanupCapturedMedia: vi.fn(),
+			setPaused: vi.fn(),
+			markRecordingResumed: vi.fn(),
+			setRecording: vi.fn(),
+		} as unknown as Parameters<typeof useRecorderControls>[0]);
+		await expect(controls.cancelRecording()).resolves.toBe(true);
+		await expect(cancelledTake).resolves.toBeNull();
+		expect(webcam.webcamStopPromise.current).toBeNull();
+		await webcam.prepareWebcamRecorder();
+		webcam.beginWebcamCapture();
+		await expect(webcam.stopWebcamRecorder()).resolves.toBe("/recording-1000-webcam.webm");
 	});
 });

@@ -1,8 +1,8 @@
-import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { Button } from "@heroui/react";
 import { ArrowLeft, Check } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { useScopedT } from "@/contexts/I18nContext";
 import { saveAppSetting } from "@/lib/appSettings";
 import {
@@ -32,9 +32,14 @@ export function OnboardingPermissions({
 	const [platform, setPlatform] = useState<"checking" | "mac" | "other">("checking");
 	const [screenGranted, setScreenGranted] = useState(false);
 	const [accessibilityGranted, setAccessibilityGranted] = useState(false);
-	const [simulatedMissing, setSimulatedMissing] = useState({ screen: false, accessibility: false });
+	const [simulatedMissing, setSimulatedMissing] = useState({
+		screen: false,
+		accessibility: false,
+	});
 	const [busy, setBusy] = useState<string>();
-	const [error, setError] = useState<string>();
+	const [statusError, setStatusError] = useState<string>();
+	const [requestError, setRequestError] = useState<string>();
+	const error = requestError ?? statusError;
 	const mounted = useRef(false);
 	const refreshing = useRef(false);
 	const canSimulate = import.meta.env.DEV && preview;
@@ -46,7 +51,9 @@ export function OnboardingPermissions({
 		screen: screenGranted && !(canSimulate && simulatedMissing.screen),
 		accessibility: accessibilityGranted && !(canSimulate && simulatedMissing.accessibility),
 	};
-	const canFinish = !error && platform !== "checking" &&
+	const canFinish =
+		!statusError &&
+		platform !== "checking" &&
 		(platform !== "mac" || (granted.screen && granted.accessibility && !busy));
 	useLayoutEffect(() => {
 		onReadyChange?.(canFinish);
@@ -63,7 +70,7 @@ export function OnboardingPermissions({
 			if (!screen?.success || !accessibility?.success) throw new Error(t("checkFailed"));
 			setScreenGranted(screen.status === "granted");
 			setAccessibilityGranted(accessibility.trusted);
-			setError(undefined);
+			setStatusError(undefined);
 		} finally {
 			refreshing.current = false;
 		}
@@ -80,7 +87,7 @@ export function OnboardingPermissions({
 				if (!disposed) setPlatform(mac ? "mac" : "other");
 			} catch {
 				if (!disposed) {
-					setError(t("checkFailed"));
+					setStatusError(t("checkFailed"));
 					setPlatform("mac");
 				}
 			}
@@ -95,7 +102,7 @@ export function OnboardingPermissions({
 		if (platform !== "mac") return;
 		const check = () => {
 			void refresh().catch(() => {
-				if (mounted.current) setError(t("checkFailed"));
+				if (mounted.current) setStatusError(t("checkFailed"));
 			});
 		};
 		const visible = () => {
@@ -132,9 +139,10 @@ export function OnboardingPermissions({
 				if (!result.success) throw new Error(t("openSettingsFailed"));
 			}
 			await refresh();
+			setRequestError(undefined);
 			if (testSetup) setSimulatedMissing((current) => ({ ...current, [permission]: false }));
 		} catch {
-			setError(t("permissionFailed"));
+			setRequestError(t("permissionFailed"));
 		} finally {
 			setBusy(undefined);
 		}
@@ -145,9 +153,7 @@ export function OnboardingPermissions({
 			className="onboarding-permissions relative flex h-full min-h-0 flex-col"
 			aria-busy={platform === "checking"}
 		>
-			<PermissionsConfetti
-				ready={platform === "mac" && canFinish}
-			/>
+			<PermissionsConfetti ready={platform === "mac" && canFinish} />
 			<OnboardingBody>
 				<OnboardingHeader
 					centered
@@ -165,7 +171,8 @@ export function OnboardingPermissions({
 							isDisabled={platform === "checking" || Boolean(busy)}
 							onPress={() => {
 								setSimulatedMissing({ screen: true, accessibility: true });
-								setError(undefined);
+								setRequestError(undefined);
+								setStatusError(undefined);
 							}}
 						>
 							{t("simulatePermissions", "Simulate permissions")}
@@ -250,22 +257,21 @@ export function OnboardingPermissions({
 					</>
 				)}
 			</OnboardingBody>
-			{showFooter && <OnboardingFooter>
-				{onBack ? (
-					<Button variant="ghost" aria-label={t("backToAccount")} onPress={onBack}>
-						<ArrowLeft size={16} />
-						{t("back")}
-					</Button>
-				) : (
-					<div />
-				)}
-				<OnboardingPrimaryAction
-					isDisabled={!canFinish}
-					onPress={onFinish}
-				>
-					{t("startRecording")}
-				</OnboardingPrimaryAction>
-			</OnboardingFooter>}
+			{showFooter && (
+				<OnboardingFooter>
+					{onBack ? (
+						<Button variant="ghost" aria-label={t("backToAccount")} onPress={onBack}>
+							<ArrowLeft size={16} />
+							{t("back")}
+						</Button>
+					) : (
+						<div />
+					)}
+					<OnboardingPrimaryAction isDisabled={!canFinish} onPress={onFinish}>
+						{t("startRecording")}
+					</OnboardingPrimaryAction>
+				</OnboardingFooter>
+			)}
 		</div>
 	);
 }

@@ -86,4 +86,25 @@ describe("hover composition loading", () => {
 		s.gate.refresh();
 		expect(s.onVisibilityChange.mock.calls).toEqual([[false], [true], [false]]);
 	});
+	it("requests a fresh paused composition when a secondary decoder settles after the last draw", () => {
+		const s = setup();
+		s.status.prerequisitesReady = true;
+		s.status.frameValid = false;
+		s.gate.refresh();
+		s.status.revision++;
+		s.gate.postrender();
+		expect(s.onVisibilityChange.mock.calls).toEqual([[false]]);
+		s.status.frameValid = true;
+		s.gate.refresh();
+		expect(s.requestComposition).toHaveBeenCalledTimes(2);
+		s.gate.refresh(); // Repeated settled notifications cannot queue duplicate draws.
+		expect(s.requestComposition).toHaveBeenCalledTimes(2);
+		s.gate.postrender();
+		expect(s.onVisibilityChange.mock.calls).toEqual([[false]]);
+		s.status.revision++;
+		s.gate.postrender();
+		expect(s.onVisibilityChange).toHaveBeenLastCalledWith(true);
+		s.gate.refresh();
+		expect(s.requestComposition).toHaveBeenCalledTimes(2);
+	});
 });

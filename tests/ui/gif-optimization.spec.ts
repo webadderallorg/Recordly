@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
-import { compressGifBuffer } from "../../electron/ipc/export/gifOptimization";
 import { expect, test } from "@playwright/test";
+import { compressGifBuffer } from "../../electron/ipc/export/gifOptimization";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 const ffmpegPath = createRequire(import.meta.url)("ffmpeg-static") as string;
@@ -120,9 +120,7 @@ for (const plan of ["free", "pro", "loading", "unavailable"] as const) {
 				return { success: true, path: `/exports/${name}` };
 			};
 			window.electronAPI.cloudBilling = async ({ action }) => {
-				const prices = [
-					{ interval: "monthly" as const, unitAmount: 900, currency: "usd" },
-				];
+				const prices = [{ interval: "monthly" as const, unitAmount: 900, currency: "usd" }];
 				if (action === "catalog")
 					return {
 						success: true,
@@ -167,7 +165,7 @@ for (const plan of ["free", "pro", "loading", "unavailable"] as const) {
 		});
 
 		await page.goto(`/?windowType=editor&gifPlan=${plan}`);
-		await expect(page.getByRole("row", { name: "Color", exact: true })).toBeVisible();
+		await expect(page.getByRole("row", { name: "Colors", exact: true })).toBeVisible();
 		await expect
 			.poll(() =>
 				page

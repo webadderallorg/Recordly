@@ -93,3 +93,30 @@ it("retains bounded causal errors and strips private stack paths and callback co
 		describeAuthFailure("callback-completion", "x".repeat(10000)).length,
 	).toBeLessThanOrEqual(2000);
 });
+
+it("retains nested SDK causes before long outer messages and stacks exhaust the report budget", () => {
+	const error = {
+		name: "AuthUnknownError",
+		message: `Outer storage failure ${"x".repeat(5000)}`,
+		stack: `Error\n${" at save (/Users/private/account.ts:4)\n".repeat(1000)}`,
+		cause: {
+			name: "AuthApiError",
+			code: "flow_state_expired",
+			status: 400,
+			message: "SDK cause person@example.test token=private-token",
+			stack: "at https://auth.example.test/callback?code=private-code",
+			cause: {
+				name: "TypeError",
+				message: "Final storage cause code_verifier=private-verifier",
+				access_token: "must-not-serialize",
+			},
+		},
+	};
+	const diagnostic = describeAuthFailure("callback-completion", error);
+	expect(diagnostic.length).toBeLessThanOrEqual(2000);
+	for (const detail of ["AuthUnknownError", "AuthApiError", "flow_state_expired", "status: 400", "Final storage cause"])
+		expect(diagnostic).toContain(detail);
+	expect(diagnostic.indexOf("Final storage cause")).toBeLessThan(diagnostic.indexOf("stack:"));
+	for (const secret of ["person@example.test", "private-token", "private-code", "private-verifier", "must-not-serialize", "/Users/private"])
+		expect(diagnostic).not.toContain(secret);
+});

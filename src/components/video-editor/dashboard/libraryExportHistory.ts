@@ -20,12 +20,19 @@ const identityKeys = (identity: LibraryExportIdentity) =>
 
 export function readLibraryExportHistory(): { available: boolean; records: History } {
 	try {
-		const native =
-			typeof window !== "undefined" &&
-			typeof window.electronAPI?.getAppSetting === "function";
-		const raw = native
-			? window.electronAPI.getAppSetting(KEY)
-			: JSON.parse(localStorage.getItem(KEY) || "null");
+		const api = typeof window !== "undefined" ? window.electronAPI : undefined;
+		let raw: unknown;
+		if (typeof api?.getAppSettingWithStatus === "function") {
+			const result = api.getAppSettingWithStatus(KEY);
+			if (result?.success !== true) return { available: false, records: {} };
+			raw = result.value;
+		} else if (typeof api?.getAppSetting === "function") {
+			// The legacy getter maps failed native reads to null, so null is not evidence
+			// of an empty history. Never use that ambiguity for cleanup suggestions.
+			return { available: false, records: {} };
+		} else {
+			raw = JSON.parse(localStorage.getItem(KEY) || "null");
+		}
 		if (raw === null || raw === undefined) return { available: true, records: {} };
 		if (
 			typeof raw !== "object" ||

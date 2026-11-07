@@ -29,6 +29,11 @@ for (const { fails, delayed, nativeFails } of [
 						: key === "recordly.project-share-links.v1"
 							? structuredClone(links)
 							: null;
+				window.electronAPI.getAppSettingWithStatus = (key) => ({
+					success: true,
+					found: key === "recordly.onboarding.v1.seen" || key === "recordly.project-share-links.v1",
+					value: window.electronAPI.getAppSetting(key),
+				});
 				window.electronAPI.setAppSetting = (key, value) => {
 					if (key === "recordly.project-share-links.v1") {
 						if (nativeFails) return false;

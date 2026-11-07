@@ -45,10 +45,13 @@ for (const storageBytes of [
 		await navigation.getByRole("button", { name: "Settings", exact: true }).click();
 		const settings = dashboard.getByRole("region", { name: "Dashboard settings", exact: true });
 		await expect(settings).toBeVisible();
-		await expect(settings.getByRole("region", { name: "Cloud usage", exact: true })).toHaveCount(0);
+		await expect(
+			settings.getByRole("region", { name: "Cloud usage", exact: true }),
+		).toHaveCount(0);
 		await settings.getByRole("button", { name: "Manage account", exact: true }).click();
-		await settings.getByRole("tab", { name: "Plan & billing", exact: true }).click();
-		await expect(settings.getByLabel("Cloud usage", { exact: true })).toContainText("Cloud storage");
+		await expect(settings.getByLabel("Cloud usage", { exact: true })).toContainText(
+			"Cloud storage",
+		);
 	});
 }
 
@@ -89,7 +92,10 @@ for (const signedIn of [false, true]) {
 		for (const width of [1440, 800]) {
 			await page.setViewportSize({ width, height: 1000 });
 			const bounds = [];
-			const settingsButton = navigation.getByRole("button", { name: "Settings", exact: true });
+			const settingsButton = navigation.getByRole("button", {
+				name: "Settings",
+				exact: true,
+			});
 			await expect(settingsButton).toHaveText("Settings");
 			const settingsBounds = (await settingsButton.boundingBox())!;
 			for (const name of ["Upgrade", "Join Discord", "GitHub"]) {

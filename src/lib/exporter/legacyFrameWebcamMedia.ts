@@ -3,6 +3,7 @@ import { clampMediaTimeToDuration } from "@/lib/mediaTiming";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import type { LegacyFrameRendererContext } from "./legacyFrameRendererContext";
 import { resolveMediaElementSource } from "./localMediaSource";
+import { WEBCAM_MEDIA_ELEMENT_READY_TIMEOUT_MS } from "./modernFrameUtils";
 
 export async function setupWebcamSource(
 	context: Pick<
@@ -19,6 +20,7 @@ export async function setupWebcamSource(
 		| "pendingMediaCancellations"
 		| "mediaCancelled"
 	>,
+	preferMediaElementSampling = context.config.preferMediaElementSampling,
 ): Promise<void> {
 	const webcamUrl = context.config.webcamUrl;
 	if (!context.config.webcam?.enabled || !webcamUrl) {
@@ -42,7 +44,7 @@ export async function setupWebcamSource(
 	context.cleanupWebcamSource?.();
 	context.cleanupWebcamSource = null;
 
-	if (!context.config.preferMediaElementSampling) {
+	if (!preferMediaElementSampling) {
 		try {
 			const frameSource = new ForwardFrameSource();
 			await frameSource.initialize(webcamUrl);
@@ -73,6 +75,7 @@ export async function setupWebcamSource(
 	video.load();
 
 	await new Promise<void>((resolve, reject) => {
+		let readyTimeout: number | null = null;
 		const onReady = () => {
 			if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
 				return;
@@ -85,6 +88,7 @@ export async function setupWebcamSource(
 			reject(new Error("Failed to load webcam source for export"));
 		};
 		const cleanup = () => {
+			if (readyTimeout !== null) window.clearTimeout(readyTimeout);
 			context.pendingMediaCancellations.delete(onError);
 			video.removeEventListener("loadeddata", onReady);
 			video.removeEventListener("canplay", onReady);
@@ -104,16 +108,22 @@ export async function setupWebcamSource(
 		video.addEventListener("canplaythrough", onReady, { once: true });
 		video.addEventListener("error", onError, { once: true });
 		context.pendingMediaCancellations.add(onError);
+		readyTimeout = window.setTimeout(onError, WEBCAM_MEDIA_ELEMENT_READY_TIMEOUT_MS);
 	}).catch((error) => {
 		console.warn("[FrameRenderer] Webcam overlay unavailable during export:", error);
 		context.webcamVideoElement = null;
 	});
 
-	if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+	if (!context.mediaCancelled && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
 		context.webcamVideoElement = video;
 		return;
 	}
 
+	video.pause();
+	video.src = "";
+	video.load();
+	context.cleanupWebcamSource?.();
+	context.cleanupWebcamSource = null;
 	context.webcamVideoElement = null;
 	context.webcamFrameCacheCanvas = null;
 	context.webcamFrameCacheCtx = null;
@@ -130,6 +140,9 @@ export async function syncWebcamFrame(
 		| "webcamDecodedFrame"
 		| "lastSyncedWebcamTime"
 		| "webcamSeekPromise"
+		| "cleanupWebcamSource"
+		| "webcamFrameCacheCanvas"
+		| "webcamFrameCacheCtx"
 		| "pendingMediaCancellations"
 		| "mediaCancelled"
 	>,
@@ -144,14 +157,38 @@ export async function syncWebcamFrame(
 	});
 
 	if (context.webcamForwardFrameSource) {
+		const frameSource = context.webcamForwardFrameSource;
 		const clampedTime = clampMediaTimeToDuration(webcamTargetTime, null);
-		const decodedFrame = await context.webcamForwardFrameSource.getFrameAtTime(clampedTime);
-		context.closeWebcamDecodedFrame();
-		context.webcamDecodedFrame = decodedFrame;
-		if (decodedFrame) {
-			context.lastSyncedWebcamTime = clampedTime;
+		try {
+			const decodedFrame = await frameSource.getFrameAtTime(clampedTime);
+			context.closeWebcamDecodedFrame();
+			context.webcamDecodedFrame = decodedFrame;
+			if (decodedFrame) context.lastSyncedWebcamTime = clampedTime;
+			return;
+		} catch (error) {
+			console.warn(
+				"[FrameRenderer] Webcam decoder failed; retrying media element sync:",
+				error,
+			);
+			frameSource.cancel();
+			void frameSource.destroy();
+			if (context.webcamForwardFrameSource === frameSource) {
+				context.webcamForwardFrameSource = null;
+			}
+			context.closeWebcamDecodedFrame();
+			context.lastSyncedWebcamTime = null;
+			if (context.mediaCancelled) return;
+			try {
+				await setupWebcamSource(context, true);
+			} catch (fallbackError) {
+				console.warn(
+					"[FrameRenderer] Webcam media element fallback unavailable:",
+					fallbackError,
+				);
+				context.webcamVideoElement = null;
+				return;
+			}
 		}
-		return;
 	}
 
 	const webcamVideo = context.webcamVideoElement;

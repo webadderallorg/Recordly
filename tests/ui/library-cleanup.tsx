@@ -42,6 +42,7 @@ Object.assign(window, {
 			preservedSourceCount: 1,
 		}),
 		getAppSetting: () => null,
+		getAppSettingWithStatus: () => ({ success: true, found: false, value: null }),
 		getRecordingThumbnail: async () => ({ success: true, value: thumbnail }),
 		getProjectPreview: async (path: string) => {
 			if (location.search.includes("unreadable") && path.includes("trimmed"))

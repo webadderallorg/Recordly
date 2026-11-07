@@ -31,7 +31,7 @@
   "commercialRequirement": "Für die kommerzielle Nutzung ist ein aktives Recordly Cloud-Abonnement erforderlich.",
   "featureShare": "Videos in Full HD mit 1080p teilen",
   "featureStorage": "Unbegrenzter Cloud-Speicher und unbegrenzte Bandbreite",
-  "featureWeeklyUploads": "{{count}} neue Uploads innerhalb der letzten 7 Tage",
+  "featureWeeklyUploads": "Bis zu {{count}} neue Uploads pro rollierendem 7-Tage-Zeitraum",
   "featureUploadFallback": "Größere Aufnahmen hochladen",
   "featureLinks": "Geteilte Links bleiben verfügbar, solange Cloud aktiv ist",
   "featureExisting": "Bestehende Cloud-Aufnahmen behalten, solange Cloud aktiv ist",

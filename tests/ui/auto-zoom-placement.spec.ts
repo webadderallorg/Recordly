@@ -129,11 +129,12 @@ test("auto zooms explain missing telemetry without adding a zoom", async ({ page
 	await installDesktopBridge(page, "filmstrip.mp4");
 	await page.goto("/?windowType=editor");
 	const apply = page.getByRole("button", { name: "Apply auto zooms", exact: true });
-	await expect(apply).toBeVisible({ timeout: 20000 });
-	await apply.click();
+	await expect(page.getByRole("button", { name: "Add Zoom (Z)", exact: true })).toBeVisible();
+	await expect(apply).toHaveCount(0);
+	await page.getByRole("button", { name: "Suggest Zooms from Cursor", exact: true }).click();
 	await expect(page.getByText("No cursor telemetry available", { exact: true })).toBeVisible();
 	await expect(page.locator('[data-variant="zoom"]')).toHaveCount(0);
-	await expect(apply).toBeVisible();
+	await expect(apply).toHaveCount(0);
 });
 
 for (const scenario of [

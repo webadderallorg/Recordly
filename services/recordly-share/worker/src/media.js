@@ -282,7 +282,18 @@ export async function handleOGPage(request, env, shareCode, appResponse) {
 		.bind(shareCode)
 		.first();
 
-	if (!video) return new Response("Not found", { status: 404 });
+	if (!video) {
+		if (!appResponse?.ok) return new Response("Not found", { status: 404 });
+		// Let the existing viewer load its unavailable state from /s/:code/data.
+		// The generic shell contains no recording metadata, and must not be cached.
+		const headers = new Headers(appResponse.headers);
+		headers.delete("ETag");
+		headers.delete("Last-Modified");
+		headers.delete("Content-Length");
+		headers.set("Cache-Control", "private, no-store");
+		headers.append("Vary", "User-Agent");
+		return new Response(appResponse.body, { status: 404, headers });
+	}
 
 	const baseUrl = new URL(request.url).origin;
 

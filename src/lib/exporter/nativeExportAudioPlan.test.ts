@@ -61,4 +61,14 @@ describe.each([
 			}).audioMode,
 		).toBe("copy-source");
 	});
+	it("mixes one supplemental microphone with embedded source audio even at zero delay", () => {
+		expect(plan({ ...base, sourceAudioFallbackPaths: ["/tmp/source.mic.webm"] })).toMatchObject(
+			{ audioMode: "edited-track", strategy: "offline-render-fallback" },
+		);
+	});
+	it("does not mistake an embedded-source alias for an additional microphone", () => {
+		expect(
+			plan({ ...base, sourceAudioFallbackPaths: ["file:///tmp/source.mp4"] }).audioMode,
+		).toBe("copy-source");
+	});
 });
