@@ -1,8 +1,12 @@
 /**
- * start() requests recording; Chromium emits `start` when the muxer begins
- * producing data. Starting telemetry at the request includes portal/encoder
- * startup latency that is absent from the media's zero-based timeline.
- * This is a startup boundary, not a frame-accurate encoder timestamp.
+ * Wait for startup success, but do not confuse muxer output with media time zero.
+ * Chromium can buffer audio before the first video frame and only emit `start`
+ * when both track headers are ready. In that case the saved audio already covers
+ * the wait, so duration, telemetry and webcam offsets must retain the request
+ * clock. Video-only recordings keep the first-output startup boundary.
+ *
+ * Both boundaries are wall-clock approximations, not encoder timestamps. In
+ * particular this does not remove a missing-video interval from the media.
  */
 export function startBrowserRecorder(
 	recorder: MediaRecorder,
@@ -10,6 +14,8 @@ export function startBrowserRecorder(
 	timeoutMs = 15_000,
 ): Promise<number> {
 	return new Promise((resolve, reject) => {
+		const hasAudio = recorder.stream.getAudioTracks().length > 0;
+		let requestedAtMs: number;
 		const cleanup = () => {
 			clearTimeout(timeout);
 			recorder.removeEventListener("start", onStart);
@@ -23,7 +29,7 @@ export function startBrowserRecorder(
 				onStop();
 				return;
 			}
-			const startedAtMs = Date.now();
+			const startedAtMs = hasAudio ? requestedAtMs : Date.now();
 			cleanup();
 			resolve(startedAtMs);
 		};
@@ -48,6 +54,7 @@ export function startBrowserRecorder(
 		recorder.addEventListener("error", onError);
 		recorder.addEventListener("stop", onStop);
 		try {
+			requestedAtMs = Date.now();
 			recorder.start(timesliceMs);
 		} catch (error) {
 			cleanup();
