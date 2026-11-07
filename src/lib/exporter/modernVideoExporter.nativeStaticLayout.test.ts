@@ -5,6 +5,7 @@ import {
 	scalePreviewBorderRadius,
 } from "@/components/video-editor/videoPlayback/layoutUtils";
 import { ModernVideoExporter } from "./modernVideoExporter";
+import { FrameRenderer } from "./modernFrameRenderer";
 import { roundNativeStaticLayoutContentSize } from "./nativeStaticLayoutGeometry";
 import type { DecodedVideoInfo } from "./streamingDecoder";
 
@@ -101,6 +102,126 @@ afterEach(() => {
 });
 
 describe("ModernVideoExporter native static-layout eligibility", () => {
+	it("uses only software encoder candidates for recovery without changing codec or ordinary preference", () => {
+		const preferred = { codec: "avc1.640034", hardwareAcceleration: "prefer-hardware" };
+		const config = { codec: preferred.codec, preferredEncoderPath: preferred };
+		const ordinary = new ModernVideoExporter(config as never) as unknown as {
+			getEncoderCandidates: () => (typeof preferred)[];
+		};
+		expect(ordinary.getEncoderCandidates()[0]).toEqual(preferred);
+		const recovery = new ModernVideoExporter({
+			...config,
+			forceSoftwareEncoding: true,
+		} as never) as unknown as { getEncoderCandidates: () => (typeof preferred)[] };
+		const candidates = recovery.getEncoderCandidates();
+		expect(candidates.length).toBeGreaterThan(0);
+		expect(
+			candidates.every((candidate) => candidate.hardwareAcceleration === "prefer-software"),
+		).toBe(true);
+		expect(candidates[0].codec).toBe(preferred.codec);
+	});
+
+	function sampleRenderedCamera(overrides: Record<string, unknown>, timeMs: number) {
+		const renderer = new FrameRenderer({
+			width: 1920,
+			height: 1080,
+			wallpaper: "#000000",
+			zoomRegions: [],
+			showShadow: false,
+			shadowIntensity: 0,
+			backgroundBlur: 0,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			videoWidth: 1920,
+			videoHeight: 1080,
+			...overrides,
+		} as never) as unknown as {
+			cameraContainer: unknown;
+			layoutCache: unknown;
+			updateAnimationState: (time: number) => number;
+			animationState: { scale: number; focusX: number; focusY: number };
+		};
+		renderer.cameraContainer = {};
+		renderer.layoutCache = {
+			stageSize: { width: 1920, height: 1080 },
+			maskRect: { x: 0, y: 0, width: 1920, height: 1080 },
+		};
+		renderer.updateAnimationState(timeMs);
+		return renderer.animationState;
+	}
+	it("projects auto-follow through the source crop in rendered export frames", () => {
+		const state = sampleRenderedCamera(
+			{
+				cropRegion: { x: 0.5, y: 0.2, width: 0.5, height: 0.6 },
+				zoomRegions: [
+					{
+						id: "auto",
+						startMs: 0,
+						endMs: 4000,
+						depth: 6,
+						focus: { cx: 0.6, cy: 0.4 },
+						mode: "auto",
+					},
+				],
+				cursorTelemetry: [
+					{ timeMs: 0, cx: 0.6, cy: 0.4 },
+					{ timeMs: 3000, cx: 0.6, cy: 0.4 },
+				],
+			},
+			2000,
+		);
+		expect(state.focusX).toBeCloseTo(0.2);
+		expect(state.focusY).toBeCloseTo(1 / 3);
+	});
+	it("honors configured zoom connection gaps and duration in rendered export frames", () => {
+		const sample = (connectedZoomGapMs: number, connectedZoomDurationMs = 600) =>
+			sampleRenderedCamera(
+				{
+					connectZooms: true,
+					connectedZoomGapMs,
+					connectedZoomDurationMs,
+					zoomClassicMode: true,
+					zoomInDurationMs: 100,
+					zoomOutDurationMs: 100,
+					zoomRegions: [
+						{
+							id: "first",
+							startMs: 0,
+							endMs: 1000,
+							depth: 2,
+							focus: { cx: 0.5, cy: 0.5 },
+							mode: "manual",
+						},
+						{
+							id: "second",
+							startMs: 2000,
+							endMs: 3000,
+							depth: 4,
+							focus: { cx: 0.5, cy: 0.5 },
+							mode: "manual",
+						},
+					],
+				},
+				1500,
+			).scale;
+		expect(sample(3000)).toBeGreaterThan(sample(100));
+		expect(sample(3000, 100)).toBeGreaterThan(sample(3000, 1000));
+	});
+
+	it("rejects traversal through the live native bundled-background resolver", async () => {
+		vi.stubGlobal("window", {
+			electronAPI: { getAssetBasePath: vi.fn(async () => "file:///Recordly/resources/") },
+		});
+		const exporter = new ModernVideoExporter({} as never) as unknown as {
+			resolveNativeBundledAssetPath: (path: string) => Promise<string | null>;
+		};
+		await expect(
+			exporter.resolveNativeBundledAssetPath("/wallpapers/known.jpg/../../../../private.png"),
+		).resolves.toBeNull();
+		await expect(
+			exporter.resolveNativeBundledAssetPath("/wallpapers/%2e%2e%5cprivate.png"),
+		).resolves.toBeNull();
+	});
+
 	it("exports the pixel-glove held click pose through the native exporter", () => {
 		const exporter = createExporter({
 			showCursor: true,

@@ -2017,35 +2017,56 @@ export class ModernVideoExporter {
 	}
 
 	private async resolveNativeBundledAssetPath(assetPath: string): Promise<string | null> {
-		const normalizedAssetPath = assetPath.replace(/^\/+/, "");
-		const [assetDirectory, fileName] = normalizedAssetPath.split("/");
-		if (!assetDirectory || !fileName) {
+		const segments = assetPath.replace(/^\/+/, "").split("/");
+		if (segments.length !== 2) return null;
+		const [assetDirectory, encodedFileName] = segments;
+		if (assetDirectory !== "wallpapers" && assetDirectory !== "app-icons") return null;
+
+		let fileName: string;
+		try {
+			fileName = decodeURIComponent(encodedFileName);
+		} catch {
+			return null;
+		}
+		if (
+			!fileName ||
+			fileName === "." ||
+			fileName === ".." ||
+			fileName !== fileName.trimEnd() ||
+			fileName.endsWith(".") ||
+			/[/:\\\p{Cc}]/u.test(fileName)
+		) {
 			return null;
 		}
 
 		try {
 			const result = await window.electronAPI?.listAssetDirectory?.(assetDirectory);
-			if (
-				result?.success &&
-				result.files &&
-				!result.files.includes(decodeURIComponent(fileName))
-			) {
+			if (result?.success && result.files && !result.files.includes(fileName)) {
 				console.warn("[VideoExporter] Native static layout wallpaper asset is missing", {
 					assetPath,
 				});
 				return null;
 			}
 		} catch {
-			// Keep native export opportunistic when directory probing is unavailable.
+			// Directory probing is optional; path containment is always enforced below.
 		}
 
 		const assetBasePath = await window.electronAPI?.getAssetBasePath?.();
-		if (!assetBasePath) {
+		if (!assetBasePath) return null;
+		try {
+			const base = new URL(assetBasePath.endsWith("/") ? assetBasePath : `${assetBasePath}/`);
+			const assetUrl = new URL(`${assetDirectory}/${encodeURIComponent(fileName)}`, base);
+			if (
+				assetUrl.protocol !== base.protocol ||
+				assetUrl.host !== base.host ||
+				!assetUrl.pathname.startsWith(base.pathname)
+			) {
+				return null;
+			}
+			return getLocalFilePath(assetUrl.href);
+		} catch {
 			return null;
 		}
-
-		const assetUrl = new URL(normalizedAssetPath, assetBasePath).toString();
-		return getLocalFilePath(assetUrl);
 	}
 
 	private async renderEditedAudioForNativeMux(
@@ -3511,10 +3532,13 @@ export class ModernVideoExporter {
 	}
 
 	private getEncoderCandidates(): SupportedMp4EncoderPath[] {
-		return getOrderedSupportedMp4EncoderCandidates({
+		const candidates = getOrderedSupportedMp4EncoderCandidates({
 			codec: this.config.codec,
 			preferredEncoderPath: this.config.preferredEncoderPath,
 		});
+		return this.config.forceSoftwareEncoding
+			? candidates.filter((candidate) => candidate.hardwareAcceleration === "prefer-software")
+			: candidates;
 	}
 
 	private disposeEncoder(): void {
