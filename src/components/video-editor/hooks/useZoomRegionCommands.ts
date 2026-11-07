@@ -138,7 +138,11 @@ export function useZoomRegionCommands({
 			setZoomRegions((current) =>
 				current.map((region) =>
 					region.id === id
-						? { ...region, focus: clampFocusToDepth(focus, region.depth) }
+						? {
+								...region,
+								focus: clampFocusToDepth(focus, region.depth),
+								focusSpace: "viewport",
+							}
 						: region,
 				),
 			);

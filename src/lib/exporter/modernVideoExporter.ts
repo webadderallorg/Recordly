@@ -313,7 +313,8 @@ export class ModernVideoExporter {
 				this.nativeStaticLayoutBackgroundSkipReason = null;
 				this.sourceVideoInfo = null;
 				this.totalExportStartTimeMs = this.getNowMs();
-				const backendPreference = nativeFailure
+				// Forced software constrains routing as well as encoder candidates.
+				const backendPreference = nativeFailure || this.config.forceSoftwareEncoding
 					? "webcodecs"
 					: (this.config.backendPreference ?? "auto");
 				const runtimePlatform = this.getRuntimePlatform();
@@ -322,6 +323,7 @@ export class ModernVideoExporter {
 				const prefersNativeStaticLayoutBeforeBreeze =
 					shouldPreferNativeStaticLayoutBeforeBreeze(runtimePlatform, backendPreference);
 				const shouldTryNativeStaticLayout =
+					!this.config.forceSoftwareEncoding &&
 					!nativeFailure &&
 					(backendPreference === "breeze" ||
 						this.config.experimentalNvidiaCudaExport === true ||

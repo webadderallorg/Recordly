@@ -6,6 +6,8 @@ import {
 } from "@/components/video-editor/videoPlayback/layoutUtils";
 import { ModernVideoExporter } from "./modernVideoExporter";
 import { FrameRenderer } from "./modernFrameRenderer";
+import { VideoMuxer } from "./muxer";
+import { StreamingVideoDecoder } from "./streamingDecoder";
 import { roundNativeStaticLayoutContentSize } from "./nativeStaticLayoutGeometry";
 import type { DecodedVideoInfo } from "./streamingDecoder";
 
@@ -102,6 +104,149 @@ afterEach(() => {
 });
 
 describe("ModernVideoExporter native static-layout eligibility", () => {
+	it.each(
+		[
+			{
+				name: "platform auto",
+				platform: "MacIntel",
+				backendPreference: "auto",
+				staticRoute: false,
+			},
+			{
+				name: "auto software escalation",
+				platform: "Linux x86_64",
+				backendPreference: "auto",
+				staticRoute: false,
+			},
+			{
+				name: "Breeze static",
+				platform: "Linux x86_64",
+				backendPreference: "breeze",
+				staticRoute: true,
+			},
+			{
+				name: "experimental static",
+				platform: "Linux x86_64",
+				backendPreference: "webcodecs",
+				experimentalNvidiaCudaExport: true,
+				staticRoute: true,
+			},
+		].flatMap((scenario) =>
+			[undefined, false, true].map((forceSoftwareEncoding) => ({
+				...scenario,
+				forceSoftwareEncoding,
+			})),
+		),
+	)("respects forcedSoftware=$forceSoftwareEncoding for complete $name export", async ({
+		platform,
+		backendPreference,
+		experimentalNvidiaCudaExport,
+		staticRoute,
+		forceSoftwareEncoding,
+	}) => {
+		vi.stubGlobal("navigator", { platform });
+		vi.stubGlobal("window", { electronAPI: {} });
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#000000",
+			backendPreference,
+			experimentalNvidiaCudaExport,
+			forceSoftwareEncoding,
+		} as never);
+		const operations = exporter as unknown as {
+			tryStartNativeVideoExport: () => Promise<boolean>;
+			tryExportNativeStaticLayout: () => Promise<{ success: boolean; tempFilePath: string }>;
+			loadNativeStaticLayoutVideoInfo: () => Promise<typeof videoInfo>;
+			finishNativeVideoExport: () => Promise<{ success: boolean; tempFilePath: string }>;
+			initializeEncoder: () => Promise<{
+				codec: string;
+				hardwareAcceleration: "prefer-software";
+			}>;
+		};
+		try {
+			vi.spyOn(StreamingVideoDecoder.prototype, "loadMetadata").mockResolvedValue({
+				...videoInfo,
+				hasAudio: false,
+				audioCodec: undefined,
+				audioSampleRate: undefined,
+			});
+			vi.spyOn(StreamingVideoDecoder.prototype, "getEffectiveDuration").mockReturnValue(0);
+			vi.spyOn(StreamingVideoDecoder.prototype, "decodeAll").mockResolvedValue(undefined);
+			vi.spyOn(FrameRenderer.prototype, "initialize").mockResolvedValue(undefined);
+			vi.spyOn(VideoMuxer.prototype, "initialize").mockResolvedValue(undefined);
+			vi.spyOn(VideoMuxer.prototype, "finalize").mockResolvedValue({
+				mode: "buffer",
+				blob: new Blob([], { type: "video/mp4" }),
+			});
+			const start = vi.spyOn(operations, "tryStartNativeVideoExport").mockResolvedValue(true);
+			const layout = vi
+				.spyOn(operations, "tryExportNativeStaticLayout")
+				.mockResolvedValue({ success: true, tempFilePath: "/tmp/static.mp4" });
+			vi.spyOn(operations, "loadNativeStaticLayoutVideoInfo").mockResolvedValue(videoInfo);
+			vi.spyOn(operations, "finishNativeVideoExport").mockResolvedValue({
+				success: true,
+				tempFilePath: "/tmp/native.mp4",
+			});
+			const initialize = vi
+				.spyOn(operations, "initializeEncoder")
+				.mockResolvedValue({
+					codec: "avc1.640033",
+					hardwareAcceleration: "prefer-software",
+				});
+			const result = await exporter.export();
+			expect(result.success).toBe(true);
+			if (forceSoftwareEncoding) {
+				expect(start).not.toHaveBeenCalled();
+				expect(layout).not.toHaveBeenCalled();
+				expect(initialize).toHaveBeenCalledOnce();
+			} else {
+				expect(layout).toHaveBeenCalledTimes(staticRoute ? 1 : 0);
+				expect(start).toHaveBeenCalledTimes(staticRoute ? 0 : 1);
+			}
+		} finally {
+			vi.restoreAllMocks();
+		}
+	});
+	it("does not retry native hardware when forced software encoding is unavailable", async () => {
+		vi.stubGlobal("navigator", { platform: "Linux x86_64" });
+		vi.stubGlobal("window", { electronAPI: {} });
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#000000",
+			backendPreference: "auto",
+			forceSoftwareEncoding: true,
+		} as never);
+		const operations = exporter as unknown as {
+			tryStartNativeVideoExport: () => Promise<boolean>;
+			initializeEncoder: () => Promise<never>;
+			finishNativeVideoExport: () => Promise<{ success: boolean; tempFilePath: string }>;
+		};
+		try {
+			const start = vi.spyOn(operations, "tryStartNativeVideoExport").mockResolvedValue(true);
+			vi.spyOn(operations, "initializeEncoder").mockRejectedValue(
+				new Error("Software encoder unavailable"),
+			);
+			vi.spyOn(operations, "finishNativeVideoExport").mockResolvedValue({
+				success: true,
+				tempFilePath: "/tmp/native.mp4",
+			});
+			const result = await exporter.export();
+			expect(result.success).toBe(false);
+			expect(result.error).toContain("Software encoder unavailable");
+			expect(start).not.toHaveBeenCalled();
+		} finally {
+			vi.restoreAllMocks();
+		}
+	});
+
 	it("uses only software encoder candidates for recovery without changing codec or ordinary preference", () => {
 		const preferred = { codec: "avc1.640034", hardwareAcceleration: "prefer-hardware" };
 		const config = { codec: preferred.codec, preferredEncoderPath: preferred };
