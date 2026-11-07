@@ -94,7 +94,7 @@ export async function handleComment(request, env, shareCode) {
 	// Password check
 	if (video.password_hash) {
 		const authed = await verifyPasswordAuth(request, env, shareCode, video);
-		if (!authed) return errorResponse("Unauthorized", 401);
+		if (!authed) return errorResponse("Password required", 401);
 	}
 
 	const controls = await env.DB.prepare("SELECT feedback_disabled FROM recording_controls WHERE share_code = ?")

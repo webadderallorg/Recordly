@@ -124,3 +124,75 @@ describe("native static-layout background asset lifecycle", () => {
 		).resolves.toBeUndefined();
 	});
 });
+
+describe("native bundled background containment", () => {
+	function resolveBundled(assetPath: string) {
+		return (
+			createAssets("#ffffff") as unknown as {
+				resolveBundledAssetPath: (path: string) => Promise<string | null>;
+			}
+		).resolveBundledAssetPath(assetPath);
+	}
+
+	it.each([
+		true,
+		false,
+	])("rejects nested, encoded and backslash path escapes with directory probe=%s", async (probe) => {
+		vi.stubGlobal("window", {
+			electronAPI: {
+				getAssetBasePath: vi.fn(async () => "file:///Recordly/resources/"),
+				...(probe
+					? {
+							listAssetDirectory: vi.fn(async () => ({
+								success: true,
+								files: ["known.jpg"],
+							})),
+						}
+					: {}),
+			},
+		});
+		for (const asset of [
+			"/wallpapers/known.jpg/../../../../private.png",
+			"/wallpapers/../private.png",
+			"/wallpapers/%2e%2e/private.png",
+			"/wallpapers/known.jpg\\..\\..\\private.png",
+			"/wallpapers/%2e%2e%2fprivate.png",
+			"/wallpapers/%2e%2e%5cprivate.png",
+			"/wallpapers/%2fprivate.png",
+			"/wallpapers/%",
+			"/wallpapers//known.jpg",
+			"/wallpapers/.",
+			"/app-icons/..",
+			"/wallpapers/..%20",
+			"/wallpapers/...",
+			"/wallpapers/known.jpg.",
+			"/wallpapers/known.jpg%20",
+			"/wallpapers/C%3aprivate.png",
+			"/wallpapers/known.jpg%3astream",
+			"/wallpapers/%00hidden.png",
+			"/wallpapers/tab%09.jpg",
+			"/wallpapers/control%7f.png",
+		]) {
+			await expect(resolveBundled(asset), asset).resolves.toBeNull();
+		}
+	});
+
+	it.each([
+		"file:///Recordly/resources/",
+		"file:///C:/Recordly/resources/",
+	])("preserves valid bundled filenames under %s", async (base) => {
+		vi.stubGlobal("window", {
+			electronAPI: {
+				getAssetBasePath: vi.fn(async () => base),
+				listAssetDirectory: vi.fn(async () => ({
+					success: true,
+					files: ["known file.jpg"],
+				})),
+			},
+		});
+		const result = await resolveBundled("/wallpapers/known%20file.jpg");
+		expect(result?.replace(/\\/g, "/")).toMatch(
+			/(?:C:)?\/Recordly\/resources\/wallpapers\/known file\.jpg$/,
+		);
+	});
+});

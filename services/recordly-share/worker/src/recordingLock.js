@@ -1,7 +1,8 @@
 import { errorResponse } from "./http.js";
 
-// Serialize upload/delete/finalize for a recording across Worker isolates. A crash
-// leaves a lock for maintenance instead of allowing a competing writer through.
+// Serialize owner moderation for a recording across Worker isolates. A crash
+// leaves a lock rather than admitting a second writer. See the README maintenance
+// procedure: lock age alone is never proof that the previous action has ended.
 export async function withRecordingLock(env, code, action) {
 	const token = crypto.randomUUID();
 	const result = await env.DB.prepare(
