@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
 	attachNativeCaptureStdinLifecycle,
 	sendNativeCaptureCommand,
+	sendNativeHudCaptureExclusions,
 	waitForNativeCaptureCommand,
 } from "./nativeCaptureCommand";
 
@@ -71,6 +72,42 @@ it("rejects pending command acknowledgement on a pipe error", async () => {
 	const failure = new Error("pipe closed");
 	child.stdin.emit("error", failure);
 	await expect(command).rejects.toBe(failure);
+	expect(vi.getTimerCount()).toBe(0);
+});
+
+it("does not let a timed-out HUD update acknowledge a later command", async () => {
+	const child = helper();
+	const payloads: { commandId: string; processIds: number[] }[] = [];
+	vi.spyOn(child.stdin, "write").mockImplementation((chunk, callback) => {
+		payloads.push(JSON.parse(String(chunk).slice("hud-exclusions ".length)));
+		(callback as () => void)();
+		return true;
+	});
+	const first = sendNativeHudCaptureExclusions(child, [734]);
+	const failed = expect(first).rejects.toThrow("Timed out");
+	await vi.advanceTimersByTimeAsync(5000);
+	await failed;
+	let applied = false;
+	const second = sendNativeHudCaptureExclusions(child, []).then(() => {
+		applied = true;
+	});
+	expect(payloads[0].commandId).not.toBe(payloads[1].commandId);
+	expect(payloads.map((payload) => payload.processIds)).toEqual([[734], []]);
+	child.stdout.emit("data", Buffer.from(`HUD capture filter updated ${payloads[0].commandId}\n`));
+	await Promise.resolve();
+	expect(applied).toBe(false);
+	// Match whole acknowledgement lines, including when stdout splits one across chunks.
+	child.stdout.emit(
+		"data",
+		Buffer.from(`HUD capture filter updated ${payloads[1].commandId}extra\n`),
+	);
+	child.stdout.emit("data", Buffer.from(`HUD capture filter updated ${payloads[1].commandId}`));
+	await Promise.resolve();
+	expect(applied).toBe(false);
+	child.stdout.emit("data", Buffer.from("\n"));
+	await second;
+	expect(applied).toBe(true);
+	expect(child.stdout.listenerCount("data")).toBe(0);
 	expect(vi.getTimerCount()).toBe(0);
 });
 it("rejects later writes after an idle pipe failure without reopening or adding listeners", async () => {

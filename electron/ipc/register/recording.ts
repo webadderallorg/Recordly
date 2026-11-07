@@ -14,6 +14,8 @@ import {
 } from "electron";
 import { getHudCaptureExcludedProcessIds } from "../../../src/lib/hudCaptureProtection";
 import { showCursor } from "../../cursorHider";
+import { isTrustedRenderer } from "../../trustedRenderer";
+import { parseNativeCaptureInterruption } from "../recording/interruption";
 import {
 	beginHudCaptureProtection,
 	getHudOverlayCaptureProtectionEnabled,
@@ -400,6 +402,22 @@ async function resolveExistingPath(...candidates: Array<string | null | undefine
 	}
 
 	return null;
+}
+
+/** Preserve recovery details while identifying interrupted captures as partial. */
+function withMacInterruptionNotice<T extends object>(recovered: T) {
+	const interruption = parseNativeCaptureInterruption(nativeCaptureOutputBuffer);
+	return interruption
+		? {
+				...recovered,
+				error: [
+					"error" in recovered ? recovered.error : undefined,
+					`Recording interrupted: ${interruption}. A partial recording was saved.`,
+				]
+					.filter(Boolean)
+					.join(" "),
+			}
+		: recovered;
 }
 
 export function registerRecordingHandlers(
@@ -1164,7 +1182,7 @@ export function registerRecordingHandlers(
 			if (!nativeScreenRecordingActive) {
 				const recovered = await recoverNativeMacCaptureOutput();
 				if (recovered) {
-					return recovered;
+					return withMacInterruptionNotice(recovered);
 				}
 
 				return { success: false, message: "No native screen recording is active." };
@@ -1305,7 +1323,7 @@ export function registerRecordingHandlers(
 								);
 							}
 						}
-						return await finalizeStoredVideo(fallbackPath);
+						return withMacInterruptionNotice(await finalizeStoredVideo(fallbackPath));
 					} catch {
 						// File doesn't exist or isn't accessible
 					}
@@ -1313,7 +1331,7 @@ export function registerRecordingHandlers(
 
 				const recovered = await recoverNativeMacCaptureOutput();
 				if (recovered) {
-					return recovered;
+					return withMacInterruptionNotice(recovered);
 				}
 
 				return {
@@ -1348,7 +1366,8 @@ export function registerRecordingHandlers(
 		};
 	});
 
-	ipcMain.handle("pause-native-screen-recording", async () => {
+	ipcMain.handle("pause-native-screen-recording", async (event) => {
+		if (!isTrustedRenderer(event)) throw new Error("Untrusted recording caller");
 		if (process.platform === "win32") {
 			if (!windowsNativeCaptureActive || !windowsCaptureProcess) {
 				return { success: false, message: "No native Windows screen recording is active." };
@@ -1399,7 +1418,8 @@ export function registerRecordingHandlers(
 		}
 	});
 
-	ipcMain.handle("resume-native-screen-recording", async () => {
+	ipcMain.handle("resume-native-screen-recording", async (event) => {
+		if (!isTrustedRenderer(event)) throw new Error("Untrusted recording caller");
 		if (process.platform === "win32") {
 			if (!windowsNativeCaptureActive || !windowsCaptureProcess) {
 				return { success: false, message: "No native Windows screen recording is active." };
@@ -1459,11 +1479,13 @@ export function registerRecordingHandlers(
 		}
 	});
 
-	ipcMain.handle("is-native-windows-capture-available", async () => {
+	ipcMain.handle("is-native-windows-capture-available", async (event) => {
+		if (!isTrustedRenderer(event)) throw new Error("Untrusted recording caller");
 		return { available: await isNativeWindowsCaptureAvailable() };
 	});
 
-	ipcMain.handle("get-last-native-capture-diagnostics", async () => {
+	ipcMain.handle("get-last-native-capture-diagnostics", async (event) => {
+		if (!isTrustedRenderer(event)) throw new Error("Untrusted recording caller");
 		return { success: true, diagnostics: lastNativeCaptureDiagnostics };
 	});
 
@@ -1830,8 +1852,11 @@ export function registerRecordingHandlers(
 		},
 	);
 
-	ipcMain.handle("store-recorded-video", async (_, videoData: ArrayBuffer, fileName: unknown) => {
+	ipcMain.handle("store-recorded-video", async (event, videoData: unknown, fileName: unknown) => {
 		try {
+			if (!isTrustedRenderer(event)) throw new Error("Untrusted recording caller");
+			if (!(videoData instanceof ArrayBuffer) || videoData.byteLength > 512 * 1024 * 1024)
+				throw new Error("Invalid recording data");
 			const recordingsDir = await getRecordingsDir();
 			const videoPath = resolveRecordedVideoStoragePath(recordingsDir, fileName);
 			await fs.writeFile(videoPath, Buffer.from(videoData));
