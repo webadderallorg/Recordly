@@ -590,7 +590,7 @@ for (const theme of ["light", "dark"] as const) {
 			page.getByText(/Click a window|drag an area|Move or resize the area|Esc to cancel/i),
 		).toHaveCount(0);
 		await page.mouse.click(600, 300);
-		expect(await pick(page)).toEqual({
+		await expect.poll(() => pick(page)).toEqual({
 			kind: "window",
 			windowId: "window:101:0",
 			displayId: 1,

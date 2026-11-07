@@ -51,6 +51,83 @@ afterEach(async () => {
 
 describe("export save dialog names", () => {
 	it.each([
+		"save-exported-video",
+		"finalize-exported-video",
+	])("%s lets the user choose a working folder when Downloads cannot be inspected", async (channel) => {
+		const dir = await makeTempDir();
+		const downloads = path.join(dir, "Downloads");
+		const chosen = path.join(dir, "Chosen folder");
+		await fs.writeFile(downloads, "not a directory");
+		await fs.mkdir(chosen);
+		vi.spyOn(app, "getPath").mockImplementation((name) =>
+			name === "downloads" ? downloads : dir,
+		);
+		const destination = path.join(chosen, "clip.mp4");
+		const tempPath = path.join(dir, "export-temp.mp4");
+		await fs.writeFile(tempPath, "new video");
+		registerOwnedExportPath(tempPath);
+		vi.mocked(dialog.showSaveDialog)
+			.mockClear()
+			.mockResolvedValue({ canceled: false, filePath: destination });
+		vi.mocked(ipcMain.handle).mockClear();
+		registerExportHandlers();
+		const handler = vi.mocked(ipcMain.handle).mock.calls.find(([name]) => name === channel)![1];
+		try {
+			const event = { sender: {} } as Electron.IpcMainInvokeEvent;
+			const result =
+				channel === "save-exported-video"
+					? await handler(event, new TextEncoder().encode("new video").buffer, "clip.mp4")
+					: await handler(event, { tempPath, fileName: "clip.mp4" });
+			expect(dialog.showSaveDialog).toHaveBeenCalledExactlyOnceWith(
+				expect.objectContaining({
+					defaultPath: path.join(downloads, "clip.mp4"),
+				}),
+			);
+			expect(result).toMatchObject({ success: true, path: destination });
+			await expect(fs.readFile(destination, "utf8")).resolves.toBe("new video");
+			await expect(fs.readFile(downloads, "utf8")).resolves.toBe("not a directory");
+		} finally {
+			releaseOwnedExportPath(tempPath);
+		}
+	});
+
+	it.each([
+		"save-exported-video",
+		"finalize-exported-video",
+	])("%s still rejects a chosen folder whose destination cannot be inspected", async (channel) => {
+		const dir = await makeTempDir();
+		const blocked = path.join(dir, "Chosen folder");
+		await fs.writeFile(blocked, "not a directory");
+		vi.spyOn(app, "getPath").mockReturnValue(dir);
+		const destination = path.join(blocked, "clip.mp4");
+		const tempPath = path.join(dir, "export-temp.mp4");
+		await fs.writeFile(tempPath, "new video");
+		registerOwnedExportPath(tempPath);
+		vi.mocked(dialog.showSaveDialog)
+			.mockClear()
+			.mockResolvedValue({ canceled: false, filePath: destination });
+		vi.mocked(ipcMain.handle).mockClear();
+		registerExportHandlers();
+		const handler = vi.mocked(ipcMain.handle).mock.calls.find(([name]) => name === channel)![1];
+		try {
+			const event = { sender: {} } as Electron.IpcMainInvokeEvent;
+			const result =
+				channel === "save-exported-video"
+					? await handler(event, new TextEncoder().encode("new video").buffer, "clip.mp4")
+					: await handler(event, { tempPath, fileName: "clip.mp4" });
+			expect(dialog.showSaveDialog).toHaveBeenCalledTimes(1);
+			expect(result).toMatchObject({
+				success: false,
+				error: expect.stringContaining("ENOTDIR"),
+			});
+			await expect(fs.readFile(blocked, "utf8")).resolves.toBe("not a directory");
+			await expect(fs.readFile(tempPath, "utf8")).resolves.toBe("new video");
+		} finally {
+			releaseOwnedExportPath(tempPath);
+		}
+	});
+
+	it.each([
 		["save-exported-video", "srt"],
 		["finalize-exported-video", "srt"],
 		["save-exported-video", "vtt"],

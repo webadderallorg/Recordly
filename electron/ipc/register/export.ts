@@ -884,7 +884,7 @@ export function registerExportHandlers() {
 					defaultPath: await getAvailableExportPath(
 						path.join(app.getPath("downloads"), fileName),
 						getCaptionSidecarExtensions(sidecarPayload),
-					),
+					).catch(() => path.join(app.getPath("downloads"), fileName)),
 					filters,
 					properties: ["createDirectory", "showOverwriteConfirmation"],
 				};
@@ -1050,7 +1050,7 @@ export function registerExportHandlers() {
 					defaultPath: await getAvailableExportPath(
 						path.join(app.getPath("downloads"), fileName),
 						getCaptionSidecarExtensions(sidecarPayload),
-					),
+					).catch(() => path.join(app.getPath("downloads"), fileName)),
 					filters,
 					properties: ["createDirectory", "showOverwriteConfirmation"],
 				};
