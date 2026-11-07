@@ -81,6 +81,8 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 			wallpaper: string,
 		) => CanvasGradient | null;
 		getNativeStaticLayoutCursorSize: (contentWidth: number) => number;
+		effectiveDurationSec: number;
+		getNativeStaticLayoutCursorTelemetry: () => Array<{ cursorType?: string }> | undefined;
 		getNativeStaticLayoutZoomTelemetry: (
 			layout: {
 				centerOffsetX: number;
@@ -99,12 +101,152 @@ afterEach(() => {
 });
 
 describe("ModernVideoExporter native static-layout eligibility", () => {
+	it("exports the pixel-glove held click pose through the native exporter", () => {
+		const exporter = createExporter({
+			showCursor: true,
+			cursorStyle: "pixel-hand",
+			cursorTelemetry: [
+				{
+					timeMs: 0,
+					cx: 0.5,
+					cy: 0.5,
+					cursorType: "arrow",
+					interactionType: "click",
+					mouseButton: 1,
+				},
+				{ timeMs: 1000, cx: 0.6, cy: 0.5, interactionType: "move" },
+				{ timeMs: 2000, cx: 0.6, cy: 0.5, interactionType: "mouseup", mouseButton: 1 },
+			],
+		});
+		exporter.effectiveDurationSec = 3;
+		expect(
+			exporter
+				.getNativeStaticLayoutCursorTelemetry()
+				?.some((sample) => sample.cursorType === "closed-hand"),
+		).toBe(true);
+	});
+	it("centers a source click within the cropped native frame", () => {
+		const exporter = createExporter({
+			cropRegion: { x: 0.5, y: 0.2, width: 0.5, height: 0.6 },
+			zoomClassicMode: true,
+			zoomInDurationMs: 200,
+			zoomOutDurationMs: 300,
+			zoomRegions: [
+				{
+					id: "crop",
+					startMs: 0,
+					endMs: 4000,
+					depth: 6,
+					focus: { cx: 0.6, cy: 0.4 },
+					mode: "auto",
+				},
+			],
+		});
+		const layout = {
+			centerOffsetX: 0,
+			centerOffsetY: 0,
+			croppedDisplayWidth: 1920,
+			croppedDisplayHeight: 1080,
+		};
+		const frame = exporter.getNativeStaticLayoutZoomTelemetry(layout, 91, undefined)![75];
+		expect(frame.scale).toBe(5);
+		expect(frame.x + 0.2 * 1920 * frame.scale).toBeCloseTo(960);
+		expect(frame.y + (1 / 3) * 1080 * frame.scale).toBeCloseTo(540);
+	});
+	it("honors the configured connection gap between native zoom regions", () => {
+		const zoomRegions = [
+			{
+				id: "first",
+				startMs: 0,
+				endMs: 1000,
+				depth: 2,
+				focus: { cx: 0.5, cy: 0.5 },
+				mode: "manual",
+			},
+			{
+				id: "second",
+				startMs: 2000,
+				endMs: 3000,
+				depth: 2,
+				focus: { cx: 0.5, cy: 0.5 },
+				mode: "manual",
+			},
+		];
+		const layout = {
+			centerOffsetX: 0,
+			centerOffsetY: 0,
+			croppedDisplayWidth: 1920,
+			croppedDisplayHeight: 1080,
+		};
+		const common = {
+			zoomRegions,
+			connectZooms: true,
+			zoomClassicMode: true,
+			zoomInDurationMs: 100,
+			zoomOutDurationMs: 100,
+		};
+		const joined = createExporter({
+			...common,
+			connectedZoomGapMs: 3000,
+		}).getNativeStaticLayoutZoomTelemetry(layout, 90, undefined)!;
+		const separated = createExporter({
+			...common,
+			connectedZoomGapMs: 100,
+		}).getNativeStaticLayoutZoomTelemetry(layout, 90, undefined)!;
+		expect(joined[45].scale).toBeGreaterThan(separated[45].scale);
+	});
+	it("applies configured camera spring tuning to native zooms", () => {
+		const zoomRegions = [
+			{
+				id: "first",
+				startMs: 0,
+				endMs: 1000,
+				depth: 2,
+				focus: { cx: 0.3, cy: 0.5 },
+				mode: "manual",
+			},
+			{
+				id: "second",
+				startMs: 1200,
+				endMs: 4000,
+				depth: 4,
+				focus: { cx: 0.7, cy: 0.5 },
+				mode: "manual",
+			},
+		];
+		const layout = {
+			centerOffsetX: 0,
+			centerOffsetY: 0,
+			croppedDisplayWidth: 1920,
+			croppedDisplayHeight: 1080,
+		};
+		const common = { zoomRegions, connectZooms: true, connectedZoomGapMs: 3000 };
+		const soft = createExporter({
+			...common,
+			cameraSpringStiffnessMultiplier: 0.1,
+		}).getNativeStaticLayoutZoomTelemetry(layout, 90, undefined)!;
+		const firm = createExporter({
+			...common,
+			cameraSpringStiffnessMultiplier: 5,
+		}).getNativeStaticLayoutZoomTelemetry(layout, 90, undefined)!;
+		expect(firm[60].scale).toBeGreaterThan(soft[60].scale);
+	});
+
 	it.each([
 		{ name: "a full frame", sourceWidth: 1920, sourceHeight: 1080, padding: 0 },
-		{ name: "a near-full frame before even rounding", sourceWidth: 1919, sourceHeight: 1080, padding: 0 },
+		{
+			name: "a near-full frame before even rounding",
+			sourceWidth: 1919,
+			sourceHeight: 1080,
+			padding: 0,
+		},
 		{ name: "a letterboxed video", sourceWidth: 1440, sourceHeight: 1080, padding: 0 },
 		{ name: "a padded video", sourceWidth: 1920, sourceHeight: 1080, padding: 20 },
-	])("preserves preview corner treatment for $name", async ({ sourceWidth, sourceHeight, padding }) => {
+	])("preserves preview corner treatment for $name", async ({
+		sourceWidth,
+		sourceHeight,
+		padding,
+	}) => {
 		const exporter = createExporter({ borderRadius: 5, padding });
 		const nativeExport = vi.mocked(window.electronAPI.nativeStaticLayoutExport);
 		nativeExport.mockResolvedValue({ success: true, tempPath: "/tmp/export.mp4" });
@@ -144,7 +286,9 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		} else {
 			expect(previewRadius).toBeGreaterThan(0);
 			// The inset radius stays proportional to the even content actually encoded.
-			expect(request.borderRadius).toBeCloseTo(Math.min(encodedSize.width, encodedSize.height) * 0.05);
+			expect(request.borderRadius).toBeCloseTo(
+				Math.min(encodedSize.width, encodedSize.height) * 0.05,
+			);
 		}
 	});
 	it("uses configured zoom transition durations for native telemetry", () => {

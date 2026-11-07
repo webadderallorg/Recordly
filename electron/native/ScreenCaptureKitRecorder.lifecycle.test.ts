@@ -121,4 +121,30 @@ exit(success ? 0 : 1)
 		expect(result.stdout.match(/HUD capture filter updated/g)).toHaveLength(3);
 		expect(readFileSync(output, "utf8")).toBe("finalized");
 	});
+
+	it("echoes the applied HUD command identity in order", () => {
+		const output = join(directory, "hud-command-recording");
+		const firstId = "0bc26112-9457-4577-8901-3143c3591afb";
+		const secondId = "392209bf-6b2b-49b9-a72b-688493dc0f9b";
+		const commands = [
+			{ commandId: firstId, processIds: [734] },
+			{ commandId: secondId, processIds: [] },
+		];
+		const result = spawnSync(executable, [output], {
+			input:
+				commands.map((command) => `hud-exclusions ${JSON.stringify(command)}\n`).join("") +
+				"stop\n",
+			encoding: "utf8",
+			timeout: 5_000,
+		});
+		expect(result.status, result.stderr).toBe(0);
+		expect(result.stdout.match(/HUD capture filter updated .*/g)).toEqual([
+			`HUD capture filter updated ${firstId}`,
+			`HUD capture filter updated ${secondId}`,
+		]);
+		expect(result.stdout.match(/BACKEND_HUD_EXCLUSIONS: .*/g)).toEqual([
+			"BACKEND_HUD_EXCLUSIONS: [734]",
+			"BACKEND_HUD_EXCLUSIONS: []",
+		]);
+	});
 });

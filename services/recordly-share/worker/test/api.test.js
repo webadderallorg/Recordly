@@ -558,9 +558,10 @@ describe('review security fixes', () => {
 
   it('coerces untrusted dimensions at upload and when rendering older rows', async () => {
     const payload = '\"><script>alert(1)</script>';
-    const { shareCode } = await createShare({ width: payload, height: payload, duration: 'invalid', fileSize: -1 });
+    const { shareCode, reservationBytes } = await createShare({ width: payload, height: payload, duration: 'invalid', fileSize: -1 });
+    expect(reservationBytes).toBe(0);
     const row = await env.DB.prepare('SELECT width, height, duration, file_size FROM videos WHERE share_code = ?').bind(shareCode).first();
-    expect(row).toMatchObject({ width: 0, height: 0, duration: 0, file_size: 0 });
+    expect(row).toMatchObject({ width: 0, height: 0, duration: 0, file_size: reservationBytes });
     await completeUpload(shareCode);
     await env.DB.prepare('UPDATE videos SET width = ?, height = ? WHERE share_code = ?').bind(payload, payload, shareCode).run();
     const response = await SELF.fetch(`${BASE}/s/${shareCode}`, { headers: { 'User-Agent': 'Twitterbot/1.0' } });

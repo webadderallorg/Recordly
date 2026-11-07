@@ -1,40 +1,16 @@
 import type {
-	AnnotationRegion,
-	AudioRegion,
-	AutoCaptionSettings,
-	CaptionCue,
-	ClipRegion,
-	CropRegion,
-	CursorClickEffectStyle,
-	CursorStyle,
 	CursorTelemetryPoint,
-	Padding,
 	SourceAudioTrackSettings,
-	SpeedRegion,
-	TrimRegion,
-	WebcamOverlaySettings,
-	ZoomMotionBlurTuning,
-	ZoomRegion,
-	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
 import { DEFAULT_WEBCAM_ROUNDNESS } from "@/components/video-editor/types";
-import { createCursorFollowCameraState } from "@/components/video-editor/videoPlayback/cursorFollowCamera";
 import { buildNativeCursorAtlas } from "@/components/video-editor/videoPlayback/cursorRenderer";
 import { getCursorViewportScale } from "@/components/video-editor/videoPlayback/cursorScale";
 import {
 	computePaddedLayout,
 	scalePreviewBorderRadius,
 } from "@/components/video-editor/videoPlayback/layoutUtils";
-import {
-	createSpringState,
-	getZoomSpringConfig,
-	resetSpringState,
-	stepSpringValue,
-} from "@/components/video-editor/videoPlayback/motionSmoothing";
 import { getSceneEffectMetrics } from "@/components/video-editor/videoPlayback/sceneEffects";
-import { resolveSceneZoomTarget } from "@/components/video-editor/videoPlayback/sceneMotion";
 import { getCursorStyleSizeMultiplier } from "@/components/video-editor/videoPlayback/uploadedCursorAssets";
-import { computeZoomTransform } from "@/components/video-editor/videoPlayback/zoomTransform";
 import {
 	getWebcamCornerRadiusPx,
 	getWebcamOverlayPosition,
@@ -77,13 +53,14 @@ import {
 	type SupportedMp4EncoderPath,
 } from "./mp4Support";
 import { VideoMuxer } from "./muxer";
+import type { VideoExporterConfig } from "./modernVideoExporterConfig";
+import { getNativeStaticLayoutZoomTelemetry } from "./nativeStaticLayoutOverlays";
 import { roundNativeStaticLayoutContentSize } from "./nativeStaticLayoutGeometry";
 import { buildNativeStaticLayoutCursorTelemetry } from "./nativeStaticLayoutTelemetry";
 import { getWebcamShadowStrength } from "./shadowProfile";
 import { resolveSourceAudioFallbackPaths } from "./sourceAudioFallback";
 import { type DecodedVideoInfo, StreamingVideoDecoder } from "./streamingDecoder";
 import type {
-	ExportConfig,
 	ExportEncodeBackend,
 	ExportFfmpegAudioMuxBreakdown,
 	ExportFinalizationStageMetrics,
@@ -93,68 +70,6 @@ import type {
 	ExportResult,
 } from "./types";
 import { ENCODED_H264_COLOR_SPACE_FALLBACK, EXPORT_CANVAS_COLOR_SPACE } from "./videoColorSpace";
-
-interface VideoExporterConfig extends ExportConfig {
-	videoUrl: string;
-	wallpaper: string;
-	zoomRegions: ZoomRegion[];
-	trimRegions?: TrimRegion[];
-	speedRegions?: SpeedRegion[];
-	showShadow: boolean;
-	shadowIntensity: number;
-	backgroundBlur: number;
-	zoomMotionBlur?: number;
-	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
-	connectZooms?: boolean;
-	zoomInDurationMs?: number;
-	zoomInOverlapMs?: number;
-	zoomOutDurationMs?: number;
-	connectedZoomGapMs?: number;
-	connectedZoomDurationMs?: number;
-	zoomInEasing?: ZoomTransitionEasing;
-	zoomOutEasing?: ZoomTransitionEasing;
-	connectedZoomEasing?: ZoomTransitionEasing;
-	borderRadius?: number;
-	padding?: Padding | number;
-	videoPadding?: Padding | number;
-	cropRegion: CropRegion;
-	webcam?: WebcamOverlaySettings;
-	webcamUrl?: string | null;
-	annotationRegions?: AnnotationRegion[];
-	autoCaptions?: CaptionCue[];
-	autoCaptionSettings?: AutoCaptionSettings;
-	cursorTelemetry?: CursorTelemetryPoint[];
-	showCursor?: boolean;
-	cursorStyle?: CursorStyle;
-	cursorSize?: number;
-	cursorSmoothing?: number;
-	cursorSpringStiffnessMultiplier?: number;
-	cursorSpringDampingMultiplier?: number;
-	cursorSpringMassMultiplier?: number;
-	cameraSpringStiffnessMultiplier?: number;
-	cameraSpringDampingMultiplier?: number;
-	cameraSpringMassMultiplier?: number;
-	cursorMotionBlur?: number;
-	cursorClickEffect?: CursorClickEffectStyle;
-	cursorClickEffectColor?: string;
-	cursorClickEffectScale?: number;
-	cursorClickEffectOpacity?: number;
-	cursorClickEffectDurationMs?: number;
-	cursorClickBounce?: number;
-	cursorClickBounceDuration?: number;
-	cursorSway?: number;
-	zoomSmoothness?: number;
-	zoomClassicMode?: boolean;
-	audioRegions?: AudioRegion[];
-	clipRegions?: ClipRegion[];
-	sourceAudioFallbackPaths?: string[];
-	sourceAudioFallbackStartDelayMsByPath?: Record<string, number>;
-	sourceAudioTrackSettings?: SourceAudioTrackSettings;
-	previewWidth?: number;
-	previewHeight?: number;
-	onProgress?: (progress: ExportProgress) => void;
-	preferredEncoderPath?: SupportedMp4EncoderPath | null;
-}
 
 interface ExportRuntimeDiagnostics {
 	appVersion?: string;
@@ -2280,6 +2195,7 @@ export class ModernVideoExporter {
 		return buildNativeStaticLayoutCursorTelemetry(telemetry, {
 			frameRate: this.config.frameRate,
 			durationSec: this.effectiveDurationSec || 0,
+			cursorStyle: this.config.cursorStyle,
 			clickBounce: this.config.cursorClickBounce,
 			clickBounceDurationMs: this.config.cursorClickBounceDuration,
 			sourceCrop: this.config.cropRegion,
@@ -2301,7 +2217,7 @@ export class ModernVideoExporter {
 	private getNativeStaticLayoutZoomTelemetry(
 		layout: ReturnType<typeof computePaddedLayout>,
 		totalFrames: number,
-		cursorTelemetry:
+		_cursorTelemetry:
 			| Array<{
 					timeMs: number;
 					cx: number;
@@ -2312,93 +2228,7 @@ export class ModernVideoExporter {
 			  }>
 			| undefined,
 	): NativeStaticLayoutZoomSample[] | undefined {
-		const zoomRegions = this.config.zoomRegions ?? [];
-		if (zoomRegions.length === 0 || totalFrames <= 0) {
-			return undefined;
-		}
-
-		const stageSize = { width: this.config.width, height: this.config.height };
-		const baseMask = {
-			x: layout.centerOffsetX,
-			y: layout.centerOffsetY,
-			width: layout.croppedDisplayWidth,
-			height: layout.croppedDisplayHeight,
-			sourceCrop: this.config.cropRegion,
-		};
-		const cursorFollowCamera = createCursorFollowCameraState();
-		const springScale = createSpringState(1);
-		const springX = createSpringState(0);
-		const springY = createSpringState(0);
-		const zoomSpringConfig = getZoomSpringConfig(this.config.zoomSmoothness);
-		const frameDurationMs = 1000 / Math.max(1, this.config.frameRate);
-		const samples: NativeStaticLayoutZoomSample[] = [];
-		let lastContentTimeMs: number | null = null;
-		let appliedScale = 1;
-		let appliedX = 0;
-		let appliedY = 0;
-
-		for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
-			const timeMs = frameIndex * frameDurationMs;
-			const target = resolveSceneZoomTarget({
-				zoomRegions,
-				timeMs,
-				connectZooms: this.config.connectZooms,
-				zoomInDurationMs: this.config.zoomInDurationMs,
-				zoomOutDurationMs: this.config.zoomOutDurationMs,
-				zoomClassicMode: this.config.zoomClassicMode,
-				cursorTelemetry: cursorTelemetry ?? [],
-				cursorFollowCamera,
-			});
-
-			const projectedTransform = computeZoomTransform({
-				stageSize,
-				baseMask,
-				zoomScale: target.scale,
-				zoomProgress: target.progress,
-				focusX: target.focus.cx,
-				focusY: target.focus.cy,
-			});
-			const deltaMs =
-				lastContentTimeMs !== null ? timeMs - lastContentTimeMs : frameDurationMs;
-			lastContentTimeMs = timeMs;
-
-			if (this.config.zoomClassicMode) {
-				appliedScale = projectedTransform.scale;
-				appliedX = projectedTransform.x;
-				appliedY = projectedTransform.y;
-				resetSpringState(springScale, appliedScale);
-				resetSpringState(springX, appliedX);
-				resetSpringState(springY, appliedY);
-			} else {
-				appliedScale = stepSpringValue(
-					springScale,
-					projectedTransform.scale,
-					deltaMs,
-					zoomSpringConfig,
-				);
-				appliedX = stepSpringValue(
-					springX,
-					projectedTransform.x,
-					deltaMs,
-					zoomSpringConfig,
-				);
-				appliedY = stepSpringValue(
-					springY,
-					projectedTransform.y,
-					deltaMs,
-					zoomSpringConfig,
-				);
-			}
-
-			samples.push({
-				timeMs,
-				scale: appliedScale,
-				x: appliedX,
-				y: appliedY,
-			});
-		}
-
-		return samples;
+		return getNativeStaticLayoutZoomTelemetry(this.config, layout, totalFrames);
 	}
 
 	private async tryExportNativeStaticLayout(
