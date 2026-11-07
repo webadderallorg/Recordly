@@ -55,7 +55,10 @@ async function readShareCapacity(endpoint: string, token: string): Promise<boole
 				: { success: false, httpStatus: 404 };
 	} catch (error) {
 		// Only an explicitly absent old IPC handler is a compatibility fallback.
-		if (!(error instanceof Error) || !/No handler registered for ['"]cloud-billing['"]$/.test(error.message))
+		if (
+			!(error instanceof Error) ||
+			!/No handler registered for ['"]cloud-billing['"]$/.test(error.message)
+		)
 			throw error;
 		result = { success: false, httpStatus: 404 };
 	}
@@ -66,7 +69,10 @@ async function readShareCapacity(endpoint: string, token: string): Promise<boole
 		if (![404, 405, 501].includes(result.httpStatus ?? 0))
 			throw new Error(
 				result.error ||
-					translate("editor.cloud.checkStorageFailed", "Could not check cloud storage. Try again."),
+					translate(
+						"editor.cloud.checkStorageFailed",
+						"Could not check cloud storage. Try again.",
+					),
 			);
 		// Unsupported legacy billing routes still use the worker's free quota.
 		const legacy = await window.electronAPI.cloudShareManage({

@@ -86,7 +86,6 @@ it("preserves omitted diagnostics when logs are disabled by the caller", async (
 	expect(body.has("logs")).toBe(false);
 });
 
-
 it("normalizes a multiline title without changing the multiline message", async () => {
 	const message = "  First line\n\nSecond line 🙂  ";
 	await submitFeedback({ ...input, title: " \n First \r\n second\t line\u00a0rest ", message });

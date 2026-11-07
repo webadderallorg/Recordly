@@ -314,9 +314,10 @@ export class ModernVideoExporter {
 				this.sourceVideoInfo = null;
 				this.totalExportStartTimeMs = this.getNowMs();
 				// Forced software constrains routing as well as encoder candidates.
-				const backendPreference = nativeFailure || this.config.forceSoftwareEncoding
-					? "webcodecs"
-					: (this.config.backendPreference ?? "auto");
+				const backendPreference =
+					nativeFailure || this.config.forceSoftwareEncoding
+						? "webcodecs"
+						: (this.config.backendPreference ?? "auto");
 				const runtimePlatform = this.getRuntimePlatform();
 				let useNativeEncoder = false;
 				let triedNativeStaticLayoutWithProbe = false;

@@ -191,12 +191,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				success: true,
 				tempFilePath: "/tmp/native.mp4",
 			});
-			const initialize = vi
-				.spyOn(operations, "initializeEncoder")
-				.mockResolvedValue({
-					codec: "avc1.640033",
-					hardwareAcceleration: "prefer-software",
-				});
+			const initialize = vi.spyOn(operations, "initializeEncoder").mockResolvedValue({
+				codec: "avc1.640033",
+				hardwareAcceleration: "prefer-software",
+			});
 			const result = await exporter.export();
 			expect(result.success).toBe(true);
 			if (forceSoftwareEncoding) {

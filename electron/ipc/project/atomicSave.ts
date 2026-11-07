@@ -146,9 +146,7 @@ export async function updateProjectFileAtomically(
 async function queueProjectWrite(projectPath: string, write: () => Promise<void>) {
 	const queueKey = getQueueKey(projectPath);
 	const previousWrite = pendingWrites.get(queueKey) ?? Promise.resolve();
-	const currentWrite = previousWrite
-		.catch(() => undefined)
-		.then(write);
+	const currentWrite = previousWrite.catch(() => undefined).then(write);
 	pendingWrites.set(queueKey, currentWrite);
 
 	try {
