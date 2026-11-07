@@ -740,13 +740,21 @@ test("sidebar cards, separate Import, and shortcut settings use the dashboard fl
 	page,
 }) => {
 	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.saveShortcuts = async (value) => {
+			document.documentElement.dataset.savedShortcuts = JSON.stringify(value);
+			return { success: true };
+		};
+	});
 	await page.goto("/?windowType=editor");
 	await page.getByRole("button", { name: "Home", exact: true }).click();
 	const home = page.getByRole("dialog", { name: "Projects dashboard" });
 	const sidebar = home.getByRole("complementary", { name: "Library navigation" });
 	await expect(sidebar.getByRole("button", { name: "Import", exact: true })).toHaveCount(0);
 	await expect(sidebar.getByRole("img", { name: "Placeholder banner" })).toHaveCount(0);
-	await expect(sidebar.getByRole("button", { name: "Settings", exact: true })).toHaveCount(0);
+	const settingsButton = sidebar.getByRole("button", { name: "Settings", exact: true });
+	await expect(settingsButton).toHaveCount(1);
+	await expect(settingsButton).toBeVisible();
 	const importButton = home.getByRole("button", { name: "Import", exact: true });
 	const all = home.getByRole("button", { name: "All", exact: true });
 	expect((await importButton.boundingBox())!.y - (await all.boundingBox())!.y).toBeLessThan(0);
@@ -754,8 +762,8 @@ test("sidebar cards, separate Import, and shortcut settings use the dashboard fl
 		"Import",
 	);
 	await openDashboardSettings(page, home);
-	await home.getByRole("button", { name: "Edit shortcuts", exact: true }).click();
-	const shortcuts = page.getByRole("dialog", { name: "Keyboard Shortcuts", exact: true });
+	await home.getByRole("tab", { name: "Shortcuts", exact: true }).click();
+	const shortcuts = home.getByRole("tabpanel", { name: /^Shortcuts settings/ });
 	await expect(shortcuts).toBeVisible();
 	const change = shortcuts.getByRole("button", { name: /^Change Add Zoom shortcut, currently / });
 	await change.click();
@@ -768,15 +776,22 @@ test("sidebar cards, separate Import, and shortcut settings use the dashboard fl
 	await shortcuts.getByRole("button", { name: "Save", exact: true }).scrollIntoViewIfNeeded();
 	await page.screenshot({ path: "test-results/dashboard-shortcuts.png", animations: "disabled" });
 	await shortcuts.getByRole("button", { name: "Save", exact: true }).click();
+	await expect
+		.poll(() => page.locator("html").getAttribute("data-saved-shortcuts"))
+		.toContain('"addZoom":{"key":"j"}');
+	await expect(shortcuts).toBeVisible();
+	await home.getByRole("tab", { name: "General", exact: true }).click();
 	await expect(shortcuts).not.toBeVisible();
-	await home.getByRole("button", { name: "Edit shortcuts", exact: true }).click();
+	await home.getByRole("tab", { name: "Shortcuts", exact: true }).click();
 	await expect(change).toHaveText("J");
 	await expect(change).toHaveAccessibleName("Change Add Zoom shortcut, currently J");
 	await page.setViewportSize({ width: 800, height: 600 });
+	await shortcuts.getByRole("button", { name: "Save", exact: true }).scrollIntoViewIfNeeded();
 	await expect(shortcuts.getByRole("button", { name: "Save", exact: true })).toBeInViewport();
-	await expect(
-		shortcuts.getByRole("heading", { name: "Keyboard Shortcuts", exact: true }),
-	).toBeInViewport();
+	const shortcutsHeading = shortcuts.getByRole("heading", { level: 2 });
+	await expect(shortcutsHeading).toContainText("Shortcuts");
+	await shortcutsHeading.scrollIntoViewIfNeeded();
+	await expect(shortcutsHeading).toBeInViewport();
 	await page.screenshot({
 		path: "test-results/dashboard-shortcuts-compact.png",
 		animations: "disabled",
