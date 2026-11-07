@@ -81,6 +81,62 @@ for (const fails of [false, true]) {
 	});
 }
 
+for (const failure of ["result", "error", "non-error"] as const) {
+	test(`HUD visibility read failure can retry in place (${failure})`, async ({ page }) => {
+		await installSettingsBridge(page);
+		await installDesktopBridgeOverrides(page, (failure) => {
+			let failing = true;
+			let reads = 0;
+			window.addEventListener("test-allow-hud-read", () => {
+				failing = false;
+			});
+			window.electronAPI.getHudOverlayCaptureProtection = async () => {
+				document.documentElement.dataset.hudProtectionReads = String(++reads);
+				if (failing) {
+					if (failure === "error") throw new Error("HUD bridge unavailable");
+					if (failure === "non-error") return Promise.reject("HUD bridge disconnected");
+					return { success: false, enabled: true };
+				}
+				return { success: true, enabled: false };
+			};
+			window.electronAPI.setHudOverlayCaptureProtection = async (enabled) => {
+				document.documentElement.dataset.hideHudRequested = String(enabled);
+				return { success: true, enabled };
+			};
+		}, failure);
+		const home = await openDashboard(page);
+		await home.getByRole("button", { name: "Recordly account" }).click();
+		await page.getByRole("dialog", { name: "Account menu", exact: true })
+			.getByRole("button", { name: "Settings", exact: true }).click();
+		await home.getByRole("tab", { name: "Recording", exact: true }).click();
+		const panel = home.getByRole("tabpanel", { name: /^Recording settings/ });
+		const retry = panel.getByRole("button", { name: "Try again", exact: true });
+		await expect(panel.getByRole("alert")).toBeVisible();
+		await expect(retry).toBeVisible();
+		const failureText = failure === "result"
+			? "Could not update capture protection"
+			: failure === "error" ? "HUD bridge unavailable" : "HUD bridge disconnected";
+		await panel.getByRole("button", { name: "Technical details", exact: true }).click();
+		await expect(panel.getByText(failureText, { exact: true })).toBeVisible();
+		await expect(panel.getByText(`Error: ${failureText}`, { exact: true })).toHaveCount(0);
+		const reads = Number(await page.locator("html").getAttribute("data-hud-protection-reads"));
+		const url = page.url();
+		await page.evaluate(() => window.dispatchEvent(new Event("test-allow-hud-read")));
+		await retry.click();
+		const toggle = panel.getByRole("switch", {
+			name: "Hide recording controls from captured video", exact: true,
+		});
+		await expect(toggle).toBeEnabled();
+		await expect(toggle).not.toBeChecked();
+		await expect(panel.getByRole("alert")).toHaveCount(0);
+		await expect(retry).toHaveCount(0);
+		await expect.poll(async () => Number(await page.locator("html")
+			.getAttribute("data-hud-protection-reads"))).toBeGreaterThan(reads);
+		await expect(page.locator("html")).not.toHaveAttribute("data-hide-hud-requested");
+		expect(page.url()).toBe(url);
+	});
+}
+
 test("Settings uses compact themes and keyboard tabs, and persists appearance", async ({
 	page,
 }) => {

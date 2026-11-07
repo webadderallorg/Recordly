@@ -175,7 +175,9 @@ export function useProjectOpenActions({
 			refreshProjectLibrary,
 		],
 	);
-	latestRelink.current = handleRelinkProjectRecording;
+	useLayoutEffect(() => {
+		latestRelink.current = handleRelinkProjectRecording;
+	}, [handleRelinkProjectRecording]);
 
 	const handleOpenProjectFromLibrary = useCallback(
 		async (projectPath: string) => {
@@ -214,7 +216,9 @@ export function useProjectOpenActions({
 			reportOpenError,
 		],
 	);
-	latestOpen.current = handleOpenProjectFromLibrary;
+	useLayoutEffect(() => {
+		latestOpen.current = handleOpenProjectFromLibrary;
+	}, [handleOpenProjectFromLibrary]);
 
 	const handleImportMediaOrProject = useCallback(async () => {
 		if (opening.current) return;

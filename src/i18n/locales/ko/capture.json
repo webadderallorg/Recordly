@@ -12,6 +12,7 @@
 	"actions": "작업",
 	"action": "작업",
 	"recordingControls": "녹화 제어",
+	"finishingRecording": "녹화를 마무리하는 중…",
 	"discardingRecording": "녹화 삭제 중",
 	"recording": "녹화 중",
 	"discardRecording": "녹화 삭제",

@@ -292,9 +292,9 @@ export class FrameWebcam {
 		});
 		if (blur) {
 			if (!this.webcamBlurSprite) {
-				this.webcamBlurSprite = new Sprite(
-					this.context.textures.createTextureFromSource(blur.canvas),
-				);
+				const texture = this.context.textures.createTextureFromSource(blur.canvas);
+				texture.dynamic = true;
+				this.webcamBlurSprite = new Sprite(texture);
 				this.context.scene.webcamRootContainer.addChild(this.webcamBlurSprite);
 			} else {
 				this.webcamBlurSprite.texture.source.update();

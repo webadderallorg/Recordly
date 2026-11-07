@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -56,7 +57,7 @@ describe("desktop wallpaper source", () => {
 });
 
 describe("modern macOS wallpaper providers", () => {
-	const assetID = "6511D2B5-E185-4886-9505-B4004E920D27";
+	const assetID = randomUUID().toUpperCase();
 	const preference = JSON.stringify({
 		provider: "com.apple.wallpaper.choice.aerials",
 		assetID,
