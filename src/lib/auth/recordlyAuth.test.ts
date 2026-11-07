@@ -44,6 +44,10 @@ beforeEach(() => {
 	updateUser.mockClear();
 	vi.stubEnv("VITE_SUPABASE_URL", "https://auth.example.test");
 	vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "test-key");
+	// Generic Node cases model no browser APIs. Node versions expose different
+	// Navigator/Web Storage subsets; desktop fixtures supply their own below.
+	vi.stubGlobal("navigator", {});
+	vi.stubGlobal("localStorage", undefined);
 });
 
 it("sends former demo credentials to Supabase even during development", async () => {
@@ -269,7 +273,28 @@ function consentExchange(
 	} as never;
 }
 
+function queuedBrowserLocks() {
+	const pending = new Map<string, Promise<void>>();
+	return {
+		request<T>(name: string, callback: () => T | Promise<T>): Promise<T> {
+			const result = (pending.get(name) ?? Promise.resolve()).then(callback);
+			const released = result.then(
+				() => undefined,
+				() => undefined,
+			);
+			pending.set(name, released);
+			void released.then(() => {
+				if (pending.get(name) === released) pending.delete(name);
+			});
+			return result;
+		},
+	};
+}
+
 async function pendingOAuthFixture(prepareProvider = true) {
+	// Electron's trusted renderer has Web Locks. Keep one queued lock manager
+	// across simulated renderer module reloads instead of using Node's version.
+	vi.stubGlobal("navigator", { locks: queuedBrowserLocks() });
 	vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_fixture");
 	const native = new Map<string, string>();
 	const user = {
@@ -413,6 +438,56 @@ it("does not turn consent cleanup failure into an authentication failure", async
 		"recordly://auth/callback?code=cleanup-failure",
 	);
 	expect(exchange).toHaveBeenCalledOnce();
+});
+
+it("serializes simultaneous renderer callbacks before reading their shared completion marker", async () => {
+	const { auth } = await pendingOAuthFixture(false);
+	vi.resetModules();
+	const secondRenderer = await import("./recordlyAuth");
+	let release!: () => void;
+	let entered!: () => void;
+	const exchanging = new Promise<void>((resolve) => {
+		entered = resolve;
+	});
+	const hold = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	exchange.mockImplementationOnce(async () => {
+		entered();
+		await hold;
+		return consentExchange();
+	});
+	const url = "recordly://auth/callback?code=simultaneous-code";
+	const first = auth.completeAuthCallback(url);
+	await exchanging;
+	const second = secondRenderer.completeAuthCallback(url);
+	try {
+		release();
+		await Promise.all([first, second]);
+		expect(exchange).toHaveBeenCalledExactlyOnceWith("simultaneous-code");
+	} finally {
+		release();
+	}
+});
+
+it("keeps single-renderer completion working when Web Locks are unavailable", async () => {
+	const { auth, get } = await pendingOAuthFixture(false);
+	vi.stubGlobal("navigator", {});
+	exchange.mockResolvedValueOnce(consentExchange());
+	const url = "recordly://auth/callback?code=no-locks";
+	await Promise.all([auth.completeAuthCallback(url), auth.completeAuthCallback(url)]);
+	expect(exchange).toHaveBeenCalledExactlyOnceWith("no-locks");
+	expect(get.mock.calls.some(([key]) => key.endsWith("-completed-callback"))).toBe(false);
+});
+
+it("does not consume a verifier-bound callback when Web Crypto is unavailable", async () => {
+	const { auth, requests } = await pendingOAuthFixture(false);
+	vi.stubGlobal("crypto", { subtle: undefined });
+	await expect(
+		auth.completeAuthCallback("recordly://auth/callback?code=no-crypto"),
+	).rejects.toThrow();
+	expect(exchange).not.toHaveBeenCalled();
+	expect(requests).not.toHaveBeenCalled();
 });
 
 it("ignores an optional fingerprint read failure and deduplicates the completed exchange across renderers", async () => {
@@ -677,4 +752,58 @@ it("only saves optional passwords for a verified account", async () => {
 	});
 	await expect(updateRecordlyPassword("test-only-password")).rejects.toThrow();
 	expect(updateUser).not.toHaveBeenCalled();
+});
+
+it("marks a consumed callback complete, cleans flow consent, and retries persistence after restart", async () => {
+	const { auth, native, challenge, requests, user } = await pendingOAuthFixture();
+	const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+	await auth.signInWithSocial("apple", { legalAccepted: true });
+	exchange.mockResolvedValueOnce(consentExchange());
+	requests.mockResolvedValueOnce(new Response("unavailable", { status: 503 }));
+	const url = "recordly://auth/callback?code=consent-save-retry";
+	await expect(auth.completeAuthCallback(url)).resolves.toBeUndefined();
+	expect(native.has(`sb-auth-auth-token-signup-consent-${challenge}`)).toBe(false);
+	expect(native.get("sb-auth-auth-token-completed-callback")).toMatch(/^[a-f0-9]{64}$/);
+	const receipt = native.get("sb-auth-auth-token-signup-consent-retry:account-a")!;
+	expect(receipt).toContain('"userId":"account-a"');
+	expect(receipt).not.toContain("account-a-token");
+	expect(user.user_metadata.signup_consent).toBeUndefined();
+	vi.resetModules();
+	const restored = await import("./recordlyAuth");
+	await expect(restored.completeAuthCallback(url)).resolves.toBeUndefined();
+	expect(exchange).toHaveBeenCalledExactlyOnceWith("consent-save-retry");
+	await restored.retryPendingSignupConsent();
+	expect(user.user_metadata.signup_consent).toMatchObject({ legal_accepted: true });
+	expect(user.user_metadata.email_preferences).toEqual({ marketing_emails: false });
+	expect(native.has("sb-auth-auth-token-signup-consent-retry:account-a")).toBe(false);
+	expect(exchange).toHaveBeenCalledOnce();
+	warning.mockRestore();
+});
+
+it("retains an account-scoped consent retry across account switches without writing to the new account", async () => {
+	const { auth, native, requests, user } = await pendingOAuthFixture();
+	const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+	await auth.signInWithSocial("google", { legalAccepted: true });
+	exchange.mockResolvedValueOnce(consentExchange());
+	requests.mockRejectedValueOnce(new Error("offline"));
+	await auth.completeAuthCallback("recordly://auth/callback?code=retry-account-scope");
+	requests.mockClear();
+	getSession.mockResolvedValue({
+		data: { session: { user: { id: "account-b" }, access_token: "account-b-token" } },
+		error: null,
+	});
+	await auth.retryPendingSignupConsent();
+	expect(requests).not.toHaveBeenCalled();
+	expect(native.has("sb-auth-auth-token-signup-consent-retry:account-a")).toBe(true);
+	getSession.mockResolvedValue({
+		data: { session: { user: { id: "account-a" }, access_token: "account-a-renewed-token" } },
+		error: null,
+	});
+	await auth.retryPendingSignupConsent();
+	expect(new Headers(requests.mock.calls[0][1]?.headers).get("Authorization")).toBe(
+		"Bearer account-a-renewed-token",
+	);
+	expect(user.user_metadata.signup_consent).toMatchObject({ legal_accepted: true });
+	expect(exchange).toHaveBeenCalledOnce();
+	warning.mockRestore();
 });

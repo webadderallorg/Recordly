@@ -21,13 +21,8 @@ export function usageCacheKey(endpoint: string, userId: string): string {
 	return `recordly:cloud-usage:v1:${encodeURIComponent(endpoint)}:${encodeURIComponent(userId)}`;
 }
 
-export function readUsageCache(endpoint: string, userId: string): CachedCloudUsage | null {
+function parseUsageCache(raw: string | null | undefined): CachedCloudUsage | null {
 	try {
-		const key = usageCacheKey(endpoint, userId);
-		// Packaged renderer ports change between launches. Native settings survive
-		// origin changes; browser storage also supports previews and older builds.
-		const native = loadAppSetting<unknown>(key);
-		const raw = native !== null ? JSON.stringify(native) : localStorage.getItem(key);
 		if (!raw || raw.length > 4096) return null;
 		const value = JSON.parse(raw) as CachedCloudUsage;
 		if (
@@ -62,6 +57,23 @@ export function readUsageCache(endpoint: string, userId: string): CachedCloudUsa
 				storageLimitBytes: value.usage.storageLimitBytes,
 			},
 		};
+	} catch {
+		return null;
+	}
+}
+
+export function readUsageCache(endpoint: string, userId: string): CachedCloudUsage | null {
+	const key = usageCacheKey(endpoint, userId);
+	// Packaged renderer ports change between launches. Prefer valid native
+	// settings, then try the browser snapshot if a native write had failed.
+	try {
+		const native = parseUsageCache(JSON.stringify(loadAppSetting<unknown>(key)));
+		if (native) return native;
+	} catch {
+		// A corrupt native value must not hide a valid display-only browser cache.
+	}
+	try {
+		return parseUsageCache(localStorage.getItem(key));
 	} catch {
 		return null;
 	}

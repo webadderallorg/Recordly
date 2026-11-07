@@ -41,7 +41,9 @@ export function readAppSetting(key: string): unknown {
 }
 
 export function writeAppSetting(key: string, value: unknown) {
-	const store = readAppSettingsStore();
+	const result = readAppSettingsStoreWithStatus();
+	if (!result.success) throw new Error("Could not read app settings before saving");
+	const store = result.store;
 	store[key] = value;
 	writeAppSettingsStore(store);
 }

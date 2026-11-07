@@ -107,7 +107,8 @@ export function OnboardingController({
 		// Recreate the HUD before closing the last window, including on Windows/Linux.
 		void window.electronAPI
 			.showRecordingHud()
-			.then(() => window.electronAPI.closeOnboardingWindow());
+			.then(() => window.electronAPI.closeOnboardingWindow())
+			.catch(() => console.error("[onboarding] Could not return to the recording HUD."));
 	};
 	const finish = () => {
 		if (!preview && !user) return;

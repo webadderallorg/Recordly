@@ -168,3 +168,12 @@ test('missing profile names require name entry without using the email', () => {
   assert.equal(commentProfileName({ full_name: '  ', email: 'private@example.test' }), undefined);
   assert.equal(commentProfileName({ full_name: ' Reviewer ' }), 'Reviewer');
 });
+
+test('expired recording passwords do not trigger account sign-in when posting', async () => {
+  globalThis.fetch = async () => Response.json({ error: 'Password required' }, { status: 401 });
+  await assert.rejects(postComment('fixture', 12, 'My draft', 'current-account'), (error) => {
+    assert.ok(!(error instanceof CommentSignInError));
+    assert.match(String(error), /password again.*draft is saved here/);
+    return true;
+  });
+});
