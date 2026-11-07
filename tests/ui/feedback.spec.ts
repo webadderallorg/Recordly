@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { installDesktopBridge } from "./bridge";
+import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 for (const clearSelection of [false, true]) {
 	test(`feedback submits without an emoji${clearSelection ? " after clearing a selection" : ""}`, async ({
@@ -45,7 +45,7 @@ for (const signedIn of [false, true]) {
 		page,
 	}) => {
 		await installDesktopBridge(page, undefined, { signedIn });
-		await page.addInitScript(() => {
+		await installDesktopBridgeOverrides(page, () => {
 			window.electronAPI.openExternalUrl = async (url: string) => {
 				document.documentElement.dataset.openedExternalUrl = url;
 				return { success: true };

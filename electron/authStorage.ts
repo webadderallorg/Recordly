@@ -8,14 +8,17 @@ import { getPackagedRendererBaseUrl } from "./rendererServer";
 
 const MAX_VALUE_LENGTH = 256 * 1024;
 const MAX_STORE_LENGTH = 1024 * 1024;
-const MAX_KEYS = 16;
 const MAX_PENDING_CONSENTS = 5;
+const MAX_CONSENT_RETRIES = 5;
+const MAX_KEYS = 16 + MAX_CONSENT_RETRIES;
 const MAX_CONSENT_LENGTH = 8192;
 const COMPLETED_CALLBACK_KEY = /^sb-[a-z0-9-]{1,100}-auth-token-completed-callback$/;
 const PENDING_CONSENT_KEY = /^sb-[a-z0-9-]{1,100}-auth-token-signup-consent-[A-Za-z0-9_-]{43}$/;
+const CONSENT_RETRY_KEY =
+	/^sb-[a-z0-9-]{1,100}-auth-token-signup-consent-retry:[A-Za-z0-9_-]{1,128}$/;
 // Supabase stores a bounded index and one verifier per pending PKCE flow.
 const AUTH_KEY =
-	/^sb-[a-z0-9-]{1,100}-auth-token(?:-code-verifier|-user|-flows-code-verifier|-flow-[A-Za-z0-9_-]{8,64}-code-verifier|-signup-consent-[A-Za-z0-9_-]{43}|-completed-callback)?$/;
+	/^sb-[a-z0-9-]{1,100}-auth-token(?:-code-verifier|-user|-flows-code-verifier|-flow-[A-Za-z0-9_-]{8,64}-code-verifier|-signup-consent-[A-Za-z0-9_-]{43}|-signup-consent-retry:[A-Za-z0-9_-]{1,128}|-completed-callback)?$/;
 type AuthEntries = Record<string, string>;
 export type AuthFlowStorageHooks = {
 	prepareSet: (
@@ -71,9 +74,13 @@ function validateEntries(value: unknown): AuthEntries {
 	if (values.length > MAX_KEYS) throw new Error("Authentication storage is too large.");
 	const result: AuthEntries = Object.create(null);
 	let pendingConsents = 0;
+	let consentRetries = 0;
 	for (const [key, item] of values) {
 		if (PENDING_CONSENT_KEY.test(key) && ++pendingConsents > MAX_PENDING_CONSENTS) {
 			throw new Error("Too many pending signup acknowledgements.");
+		}
+		if (CONSENT_RETRY_KEY.test(key) && ++consentRetries > MAX_CONSENT_RETRIES) {
+			throw new Error("Too many signup acknowledgement retries.");
 		}
 		assertKey(key);
 		if (typeof item !== "string" || item.length > MAX_VALUE_LENGTH) {
@@ -82,7 +89,10 @@ function validateEntries(value: unknown): AuthEntries {
 		if (COMPLETED_CALLBACK_KEY.test(key) && !/^[0-9a-f]{64}$/.test(item)) {
 			throw new Error("Invalid completed callback fingerprint.");
 		}
-		if (PENDING_CONSENT_KEY.test(key) && item.length > MAX_CONSENT_LENGTH) {
+		if (
+			(PENDING_CONSENT_KEY.test(key) || CONSENT_RETRY_KEY.test(key)) &&
+			item.length > MAX_CONSENT_LENGTH
+		) {
 			throw new Error("Pending signup acknowledgement is too large.");
 		}
 		result[key] = item;
@@ -213,6 +223,11 @@ export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): v
 						PENDING_CONSENT_KEY.test(item),
 					);
 					for (const expired of consents.slice(0, -MAX_PENDING_CONSENTS))
+						delete next[expired];
+					const retries = Object.keys(next).filter((item) =>
+						CONSENT_RETRY_KEY.test(item),
+					);
+					for (const expired of retries.slice(0, -MAX_CONSENT_RETRIES))
 						delete next[expired];
 					await save(next);
 				});

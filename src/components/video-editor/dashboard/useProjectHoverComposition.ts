@@ -214,6 +214,14 @@ export function useProjectHoverComposition({
 		};
 		refresh = () => {
 			if (!active) return;
+			if (
+				committed.current.webcam.enabled &&
+				committed.current.webcam.sourcePath &&
+				!data.webcamUrl
+			) {
+				fail();
+				return;
+			}
 			listenToMedia();
 			gate.refresh();
 		};

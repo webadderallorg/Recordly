@@ -6,11 +6,20 @@ Recordly Share is the self-hosted video publishing and review service used by Re
 
 ```sh
 cp .dev.vars.example .dev.vars
-cp web/.env.legal.example web/.env.production.local
-# Review and complete the legal publication details before the guarded build.
 npm ci
-npm run dev
+npm --prefix web ci
+npm --prefix web run build
+npm test
 ```
+
+This non-publishing path builds draft viewer pages and runs the Worker locally
+through its test harness, including API and database checks. It does not require
+legal approval. For interactive viewer work, run `npm --prefix web run dev`.
+
+Starting the interactive Worker with `npm run dev` uses the same guarded build
+hook as deployment. Before using that command, copy `web/.env.legal.example` to
+`web/.env.production.local` and complete the operator review described below.
+Do not mark unreviewed details as approved just to start local development.
 
 Set `OWNER_USER_ID` to the deployment owner’s Supabase user ID. Only that user may administer this single-owner library. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` in `.dev.vars` to the same public project configuration used by the desktop app. Recordly sends the signed-in user's access token when it publishes to:
 

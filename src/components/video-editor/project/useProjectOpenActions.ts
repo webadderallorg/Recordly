@@ -5,6 +5,7 @@ import {
 	type SetStateAction,
 	useCallback,
 	useEffect,
+	useLayoutEffect,
 	useRef,
 } from "react";
 import type { useProjectSaveActions } from "./useProjectSaveActions";
@@ -60,23 +61,27 @@ export function useProjectOpenActions({
 	const latestRelink = useRef<(path: string) => Promise<unknown>>(async () => undefined);
 	const opening = useRef(false);
 	const mounted = useRef(true);
-	const relinkContext = useRef({ projectPath: "", sourcePath: "", generation: 0 });
 	const projectPath = fromFileUrl(project.currentProjectPath || "").replace(/\\/g, "/");
 	// A media-server capability/port refresh does not replace the underlying source.
 	const sourcePath = fromFileUrl(project.videoSourcePath || project.videoPath || "").replace(
 		/\\/g,
 		"/",
 	);
-	if (
-		relinkContext.current.projectPath !== projectPath ||
-		relinkContext.current.sourcePath !== sourcePath
-	) {
-		relinkContext.current = {
-			projectPath,
-			sourcePath,
-			generation: relinkContext.current.generation + 1,
-		};
-	}
+	const relinkContext = useRef({ projectPath, sourcePath, generation: 0 });
+	// Invalidate only committed identity changes; a discarded React render must
+	// not suppress an authorized relink for the project that is still displayed.
+	useLayoutEffect(() => {
+		if (
+			relinkContext.current.projectPath !== projectPath ||
+			relinkContext.current.sourcePath !== sourcePath
+		) {
+			relinkContext.current = {
+				projectPath,
+				sourcePath,
+				generation: relinkContext.current.generation + 1,
+			};
+		}
+	}, [projectPath, sourcePath]);
 	useEffect(() => {
 		mounted.current = true;
 		return () => {

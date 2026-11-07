@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { fetchVideos, deleteVideo } from './library.ts';
+import { fetchVideos, deleteVideo, renewVideo, LibrarySignInRedirectError } from './library.ts';
 
 test('cloud library follows account-scoped cursor pages and hides unfinished uploads', async t => {
   const requests: { path: string; options?: RequestInit }[] = [];
@@ -40,4 +40,28 @@ test('share dates accept SQLite and ISO timestamps without appending a second ti
   assert.equal(formatDate('2026-10-24 00:00:00'), formatDate('2026-10-24T00:00:00Z'));
   assert.doesNotMatch(formatDate('2026-10-24T00:00:00Z'), /Invalid Date/);
   assert.equal(formatDate('invalid'), '—');
+});
+
+test('library mutations encode share codes as one path segment', async t => {
+  const paths: unknown[] = [];
+  t.mock.method(globalThis, 'fetch', async (path: unknown) => {
+    paths.push(path);
+    return Response.json({ expiresAt: '2099-01-01' });
+  });
+  await renewVideo('a/b?#', 'owner-token');
+  await deleteVideo('a/b?#', 'owner-token');
+  assert.deepEqual(paths, ['/api/renew/a%2Fb%3F%23', '/api/delete/a%2Fb%3F%23']);
+});
+
+test('expired library cookies report navigation separately from request failures', async t => {
+  const window = { location: { href: '' } };
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: window });
+  t.after(() => {
+    if (previous) Object.defineProperty(globalThis, 'window', previous);
+    else Reflect.deleteProperty(globalThis, 'window');
+  });
+  t.mock.method(globalThis, 'fetch', async () => Response.json({}, { status: 401 }));
+  await assert.rejects(fetchVideos(), LibrarySignInRedirectError);
+  assert.equal(window.location.href, '/library/login');
 });

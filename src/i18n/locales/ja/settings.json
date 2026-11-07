@@ -154,7 +154,7 @@
 		"webcamFootageDescription": "この動画にはウェブカメラ映像がリンクされていません",
 		"uploadWebcamFootage": "映像を追加",
 		"replaceWebcamFootage": "映像を置き換え",
-		"removeWebcamFootage": "映像を削除",
+		"removeWebcamFootage": "プロジェクトから外す",
 		"webcamFootageAdded": "ウェブカメラ映像をリンクしました",
 		"webcamFootageRemoved": "ウェブカメラ映像を削除しました",
 		"webcamSize": "ウェブカメラのサイズ",

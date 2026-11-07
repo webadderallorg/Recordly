@@ -80,7 +80,7 @@ test("Stop keeps the Finishing HUD until a recording is ready, then opens the ed
 	await expect(editor.getByRole("status", { name: "Loading editor", exact: true })).toBeVisible();
 	await expect(editor.locator(".loading-recordly-mark")).toBeVisible();
 	await editor.screenshot({
-		path: "/tmp/recordly-editor-finalization-20261105/loading-editor.png",
+		path: test.info().outputPath("loading-editor.png"),
 	});
 	releaseEditor();
 	await expect(editor.getByRole("navigation", { name: "Editor tools" })).toBeVisible({

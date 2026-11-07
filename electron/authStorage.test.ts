@@ -331,3 +331,71 @@ it("keeps only the latest project completion marker without evicting credentials
 	expect(await invoke("get", second)).toBe("b".repeat(64));
 	expect(await invoke("get", "sb-first-auth-token")).toBe("session-fixture");
 });
+
+it("stores a bounded encrypted consent retry receipt independently of per-flow acknowledgements", async () => {
+	const key = "sb-recordlytest-auth-token-signup-consent-retry:account-a";
+	const receipt = JSON.stringify([{ userId: "account-a", metadata: { legal_accepted: true } }]);
+	await invoke("set", key, receipt);
+	expect(await invoke("get", key)).toBe(receipt);
+	expect(() => invoke("set", key, "x".repeat(8193))).toThrow("acknowledgement is too large");
+	expect(await invoke("get", key)).toBe(receipt);
+	await invoke("remove", key);
+	expect(await invoke("get", key)).toBeNull();
+});
+
+it("bounds per-account consent retries without evicting sessions, verifiers, or flow acknowledgements", async () => {
+	const prefix = "sb-recordlytest-auth-token";
+	const entries = new Map<string, string>([
+		[prefix, "session"],
+		[`${prefix}-user`, "user"],
+		[`${prefix}-code-verifier`, "legacy-verifier"],
+		[`${prefix}-flows-code-verifier`, "flow-index"],
+		[`${prefix}-completed-callback`, "a".repeat(64)],
+	]);
+	for (let n = 0; n < 5; n++) {
+		entries.set(`${prefix}-flow-pending0${n}-code-verifier`, `verifier-${n}`);
+		entries.set(
+			`${prefix}-signup-consent-${String.fromCharCode(97 + n).repeat(43)}`,
+			`consent-${n}`,
+		);
+	}
+	for (const [key, value] of entries) await invoke("set", key, value);
+	for (let n = 0; n < 6; n++)
+		await invoke("set", `${prefix}-signup-consent-retry:account-${n}`, `retry-${n}`);
+	expect(await invoke("get", `${prefix}-signup-consent-retry:account-0`)).toBeNull();
+	for (let n = 1; n < 6; n++)
+		expect(await invoke("get", `${prefix}-signup-consent-retry:account-${n}`)).toBe(
+			`retry-${n}`,
+		);
+	for (const [key, value] of entries) expect(await invoke("get", key)).toBe(value);
+});
+
+it.each([
+	"sb-recordlytest-auth-token-signup-consent-retry:",
+	"sb-recordlytest-auth-token-signup-consent-retry:../other",
+	`sb-recordlytest-auth-token-signup-consent-retry:${"a".repeat(129)}`,
+	"sb-recordlytest-auth-token-signup-consent-retry",
+])("rejects an unbounded or unscoped consent retry key %s", (key) => {
+	expect(() => invoke("set", key, "value")).toThrow("Invalid authentication storage key");
+});
+
+it("fails closed on an externally corrupted retry count without replacing the encrypted store", async () => {
+	const prefix = "sb-recordlytest-auth-token";
+	await invoke("set", prefix, "saved-session");
+	const file = path.join(native.directory, "private-auth", "session.enc");
+	const corrupt = JSON.stringify({
+		version: 1,
+		entries: {
+			[prefix]: "saved-session",
+			...Object.fromEntries(
+				Array.from({ length: 6 }, (_, n) => [
+					`${prefix}-signup-consent-retry:account-${n}`,
+					"receipt",
+				]),
+			),
+		},
+	});
+	await fs.writeFile(file, corrupt);
+	await expect(invoke("set", prefix, "must-not-replace")).rejects.toThrow("Could not unlock");
+	expect(await fs.readFile(file, "utf8")).toBe(corrupt);
+});

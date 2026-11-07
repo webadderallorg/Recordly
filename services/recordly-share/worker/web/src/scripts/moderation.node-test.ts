@@ -25,7 +25,7 @@ test('owner controls and comment moderation carry bearer auth only to the owner 
   const requests: Array<{ url: unknown; init: RequestInit | undefined }> = [];
   globalThis.fetch = async (url, init) => {
     requests.push({ url, init });
-    assert.equal((init?.headers as Record<string, string>).Authorization, 'Bearer test-token');
+    assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer test-token');
     return init?.method === 'DELETE' ? new Response(null, { status: 204 }) : Response.json({ feedbackEnabled: false, sharingEnabled: true });
   };
   await fetchModeration('example', 'test-token');

@@ -187,7 +187,9 @@ export function useExportDimensions({
 
 	const sourceProbeRef = useRef(ensureSupportedSourceDimensions);
 	// Explicit custom validation stays fresh without restarting the source-only probe.
-	sourceProbeRef.current = ensureSupportedSourceDimensions;
+	useEffect(() => {
+		sourceProbeRef.current = ensureSupportedSourceDimensions;
+	}, [ensureSupportedSourceDimensions]);
 	useEffect(() => {
 		const probeSource = sourceProbeRef.current;
 		let cancelled = false;

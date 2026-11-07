@@ -132,8 +132,11 @@ export default function SharePlayer({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const update = () => setIsFullscreen(document.fullscreenElement === shell.current ||
-      (document as Document & { webkitFullscreenElement?: Element }).webkitFullscreenElement === shell.current);
+    const update = () => {
+      setIsFullscreen(document.fullscreenElement === shell.current ||
+        (document as Document & { webkitFullscreenElement?: Element }).webkitFullscreenElement === shell.current);
+      revealControls();
+    };
     const begin = () => { setNativeFullscreen(true); setIsFullscreen(true); };
     const end = () => { setNativeFullscreen(false); setIsFullscreen(false); revealControls(); };
     document.addEventListener('fullscreenchange', update);

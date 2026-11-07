@@ -92,9 +92,14 @@ for (const [index, locale] of SUPPORTED_LOCALES.entries()) {
 		).toBe(common.actions.cancel);
 		expect(await page.evaluate(() => localStorage.getItem("recordly.locale"))).toBe(locale);
 		await expect(page.getByText(common.app.language, { exact: true }).first()).toBeVisible();
-		await expect(
-			page.getByText(settings.appPreferences.languageDescription, { exact: true }),
-		).toBeVisible();
+		await page
+			.locator(".settings-language-field")
+			.getByRole("button", { name: common.app.language, exact: true })
+			.hover();
+		await expect(page.getByRole("tooltip")).toHaveText(
+			settings.appPreferences.languageDescription,
+		);
+		await page.mouse.move(0, 0);
 		await expect(
 			page.getByRole("tab", { name: settings.categories.general, exact: true }),
 		).toBeVisible();
@@ -124,15 +129,19 @@ for (const [index, locale] of SUPPORTED_LOCALES.entries()) {
 		await expect(
 			library.getByRole("complementary", { name: ui.libraryNavigation }),
 		).toBeVisible();
-		await expect(
-			library.getByRole("button", { name: billing.getCloud, exact: true }),
-		).toBeVisible();
-		await library.getByRole("button", { name: billing.getCloud, exact: true }).click();
+		const cloudLabel = billing.getCloud.replace("Recordly", "").replace(/\s+/g, " ").trim();
+		const escapedCloudLabel = cloudLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		const upgrade = library.getByRole("button", {
+			name: new RegExp(`^${escapedCloudLabel}(?:, .+)?$`),
+		});
+		await expect(upgrade).toBeVisible();
+		await expect(upgrade.getByText(cloudLabel, { exact: true })).toBeVisible();
+		await upgrade.click();
 		const pricing = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
 		await expect(pricing).toBeVisible();
-		await expect(
-			pricing.getByRole("heading", { name: billing.heading, exact: true }),
-		).toBeVisible();
+		const pricingHeading = pricing.getByRole("heading", { level: 2 });
+		await expect(pricingHeading).toBeVisible();
+		await expect(pricingHeading).toHaveText(billing.upgradeHeading);
 		await expect(pricing.getByText(billing.intro, { exact: true })).toBeVisible();
 		await expect(pricing).not.toContainText(/\b(?:ui|billing|settings)\.[a-zA-Z]/);
 		await page.setViewportSize({ width: 440, height: 820 });

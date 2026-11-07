@@ -1,10 +1,15 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const hooks = vi.hoisted(() => ({ effects: [] as (() => unknown)[] }));
+const hooks = vi.hoisted(() => ({
+	effects: [] as (() => unknown)[],
+	layoutEffects: [] as (() => void | (() => void))[],
+	layoutCleanups: [] as (() => void)[],
+}));
 vi.mock("react", async (original) => ({
 	...(await original<typeof import("react")>()),
 	useRef: (value: unknown) => ({ current: value }),
 	useEffect: (effect: () => unknown) => hooks.effects.push(effect),
+	useLayoutEffect: (effect: () => void | (() => void)) => hooks.layoutEffects.push(effect),
 	useCallback: (callback: unknown) => callback,
 }));
 vi.mock("@/components/ui/toast", () => ({
@@ -28,8 +33,19 @@ const path = "/projects/recovered.recordly";
 beforeEach(() => {
 	vi.clearAllMocks();
 	hooks.effects = [];
+	hooks.layoutEffects = [];
+	hooks.layoutCleanups = [];
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+	for (const cleanup of hooks.layoutCleanups) cleanup();
+	vi.unstubAllGlobals();
+});
+function commitLayoutEffects() {
+	for (const effect of hooks.layoutEffects.splice(0)) {
+		const cleanup = effect();
+		if (cleanup) hooks.layoutCleanups.push(cleanup);
+	}
+}
 
 it.each([
 	true,
@@ -47,6 +63,7 @@ it.each([
 		hasUnsavedChanges: false,
 		refreshProjectLibrary: vi.fn().mockResolvedValue(undefined),
 	} as unknown as Parameters<typeof useProjectOpenActions>[0]);
+	commitLayoutEffects();
 	await actions.handleOpenProjectFromLibrary(path);
 	expect(apply).toHaveBeenCalledWith(recoveredProject, path);
 	if (applied) {
@@ -75,6 +92,7 @@ it("does not show a recovery warning for a normal project open", async () => {
 		hasUnsavedChanges: false,
 		refreshProjectLibrary: vi.fn().mockResolvedValue(undefined),
 	} as unknown as Parameters<typeof useProjectOpenActions>[0]);
+	commitLayoutEffects();
 	await actions.handleOpenProjectFromLibrary(path);
 	expect(toast.warning).not.toHaveBeenCalled();
 });

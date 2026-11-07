@@ -20,7 +20,7 @@ import {
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
 import { getHudOverlayTaskbarOptions } from "./hudOverlayWindowOptions";
-import { sendNativeCaptureCommand } from "./ipc/recording/nativeCaptureCommand";
+import { sendNativeHudCaptureExclusions } from "./ipc/recording/nativeCaptureCommand";
 import {
 	currentProjectPath,
 	currentRecordingSession,
@@ -343,7 +343,9 @@ function setHudOverlayFallbackExpanded(expanded: boolean) {
 }
 
 function setHudOverlayMousePassthrough(ignore: boolean) {
-	hudOverlayIgnoringMouse =
+	// Retain the latest requested state while source selection temporarily forces passthrough.
+	hudOverlayIgnoringMouse = ignore;
+	const effectiveIgnore =
 		hudOverlaySourceSelectionActive && !hudOverlayRecordingActive ? true : ignore;
 
 	if (hudOverlayMouseReassertTimer) {
@@ -362,13 +364,13 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 
 	if (!isHudOverlayMousePassthroughSupported()) {
 		if (process.platform !== "linux") {
-			setHudOverlayFallbackExpanded(!ignore);
+			setHudOverlayFallbackExpanded(!effectiveIgnore);
 		}
 		hudOverlayWindow.setIgnoreMouseEvents(false);
 		return;
 	}
 
-	if (hudOverlayIgnoringMouse) {
+	if (effectiveIgnore) {
 		hudOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
 		return;
 	}
@@ -385,7 +387,7 @@ ipcMain.on("hud-overlay-set-source-selection-active", (_event, active: boolean) 
 	if (hudOverlaySourceSelectionActive) {
 		hudOverlayFallbackExpanded = false;
 		applyHudOverlayBounds();
-		setHudOverlayMousePassthrough(true);
+		setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 		return;
 	}
 
@@ -506,11 +508,7 @@ async function setHudCaptureProtection(enabled: boolean) {
 				Boolean(enabled),
 				process.pid,
 			);
-			await sendNativeCaptureCommand(
-				nativeCaptureProcess,
-				`hud-exclusions ${JSON.stringify(excludedProcessIds)}\n`,
-				"HUD capture filter updated",
-			);
+			await sendNativeHudCaptureExclusions(nativeCaptureProcess, excludedProcessIds);
 		} catch (error) {
 			console.warn("Failed to update HUD capture filter:", error);
 			return { success: false, enabled: hudOverlayHiddenFromCapture };

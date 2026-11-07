@@ -9,6 +9,7 @@ import {
 	readAppSetting,
 	readAppSettingsStore,
 	readAppSettingsStoreWithStatus,
+	writeAppSetting,
 } from "./appSettingsStore";
 
 beforeEach(() => vi.clearAllMocks());
@@ -49,4 +50,53 @@ it("retains a valid history and distinguishes a missing key", () => {
 	});
 	expect(readAppSetting("history")).toEqual({ "project:old": 123 });
 	expect(readAppSetting("missing")).toBeNull();
+});
+
+it.each([
+	"{broken",
+	"[]",
+	"null",
+	"3",
+])("never overwrites malformed settings through a preference writer: %s", (content) => {
+	files.read.mockReturnValue(content);
+	expect(() => writeAppSetting("theme", "dark")).toThrow(
+		"Could not read app settings before saving",
+	);
+	expect(files.write).not.toHaveBeenCalled();
+});
+
+it.each([
+	"EACCES",
+	"EBUSY",
+	"EIO",
+])("never overwrites settings when the preference writer cannot read: %s", (code) => {
+	files.read.mockImplementation(() => {
+		throw Object.assign(new Error("unavailable"), { code });
+	});
+	expect(() => writeAppSetting("theme", "dark")).toThrow(
+		"Could not read app settings before saving",
+	);
+	expect(files.write).not.toHaveBeenCalled();
+});
+
+it("creates a first-run setting when the file is confirmed missing", () => {
+	files.read.mockImplementation(() => {
+		throw Object.assign(new Error("missing"), { code: "ENOENT" });
+	});
+	writeAppSetting("theme", "dark");
+	expect(files.write).toHaveBeenCalledExactlyOnceWith(
+		"/test/app-settings.json",
+		JSON.stringify({ theme: "dark" }, null, 2),
+		"utf-8",
+	);
+});
+
+it("preserves unrelated settings when a preference writer updates a valid file", () => {
+	files.read.mockReturnValue('{"history":{"project:old":123}}');
+	writeAppSetting("theme", "dark");
+	expect(files.write).toHaveBeenCalledExactlyOnceWith(
+		"/test/app-settings.json",
+		JSON.stringify({ history: { "project:old": 123 }, theme: "dark" }, null, 2),
+		"utf-8",
+	);
 });

@@ -46,12 +46,13 @@ vi.mock("../settings/recordingPreferencesStore", () => ({
 vi.mock("../utils", () => ({ parseJsonWithByteOrderMark: JSON.parse }));
 
 import { registerSettingsHandlers } from "./settings";
-import { hasAppSetting, readAppSettingsStoreWithStatus } from "../../appSettingsStore";
+import { hasAppSetting, readAppSettingsStoreWithStatus, writeAppSettingsStore } from "../../appSettingsStore";
 
 describe("app setting read status", () => {
 	beforeEach(() => {
 		mocks.syncHandlers.clear();
 		vi.mocked(readAppSettingsStoreWithStatus).mockReset();
+		vi.mocked(writeAppSettingsStore).mockReset();
 		vi.mocked(hasAppSetting).mockImplementation((store, key) =>
 			Reflect.getOwnPropertyDescriptor(store, key) !== undefined,
 		);
@@ -73,6 +74,30 @@ describe("app setting read status", () => {
 		expect(read("history")).toEqual({ success: true, found: true, value: null });
 		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({ success: false });
 		expect(read("history")).toEqual({ success: false, value: null });
+	});
+
+	const write = (key: unknown, value: unknown) => {
+		const event = { returnValue: undefined as unknown };
+		mocks.syncHandlers.get("app-settings:set")!(event, key, value);
+		return event.returnValue;
+	};
+
+	it("does not replace unreadable settings with a partial map", () => {
+		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({ success: false });
+		expect(write("volume", 0.5)).toEqual({ success: false });
+		expect(writeAppSettingsStore).not.toHaveBeenCalled();
+	});
+
+	it("preserves other settings when updating a successfully read store", () => {
+		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({
+			success: true,
+			store: { "recordly.project-share-links.v1": { project: "https://example.test/v/share" } },
+		});
+		expect(write("volume", 0.5)).toEqual({ success: true });
+		expect(writeAppSettingsStore).toHaveBeenCalledExactlyOnceWith({
+			"recordly.project-share-links.v1": { project: "https://example.test/v/share" },
+			volume: 0.5,
+		});
 	});
 
 	it.each([null, "", 1])("rejects invalid setting keys without reading storage: %j", (key) => {

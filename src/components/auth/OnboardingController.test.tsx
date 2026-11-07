@@ -209,3 +209,15 @@ for (const rejected of [false, true]) {
 		expect(result?.props).toMatchObject({ onboarding: true, open: true });
 	});
 }
+
+it("handles HUD recreation rejection without closing the only native window", async () => {
+	const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+	hud.mockRejectedValueOnce(new Error("Native window unavailable"));
+	render();
+	render()?.props.onAuthenticated();
+	for (let n = 0; n < 5; n++) await Promise.resolve();
+	expect(hud).toHaveBeenCalledOnce();
+	expect(closeWindow).not.toHaveBeenCalled();
+	expect(error).toHaveBeenCalledWith("[onboarding] Could not return to the recording HUD.");
+	error.mockRestore();
+});

@@ -5,6 +5,7 @@ import {
 	completeAuthCallback,
 	recordlyAuth,
 	recordlyAuthConfigured,
+	retryPendingSignupConsent,
 } from "@/lib/auth/recordlyAuth";
 
 export function useRecordlyAuth() {
@@ -34,6 +35,7 @@ export function useRecordlyAuth() {
 					setAccessToken(data.session?.access_token);
 					setLoading(false);
 				}
+				if (data.session) void retryPendingSignupConsent();
 			})
 			.catch((error) => {
 				if (mounted && !authEventReceived) {
@@ -42,6 +44,8 @@ export function useRecordlyAuth() {
 				}
 			});
 		const { data: listener } = recordlyAuth.auth.onAuthStateChange((event, session) => {
+			// SDK session methods must run after the auth event callback releases its lock.
+			if (session) queueMicrotask(() => void retryPendingSignupConsent());
 			if (mounted) {
 				if (event === "SIGNED_IN" || event === "SIGNED_OUT")
 					recordAuthEvent(

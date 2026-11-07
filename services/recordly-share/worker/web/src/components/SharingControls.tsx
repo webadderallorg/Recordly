@@ -12,15 +12,17 @@ export default function SharingControls({ code, title, accessToken, onClose }: {
   const [pending, setPending] = useState(false);
   const [loading, setLoading] = useState(true);
   const busy = useRef(false);
+  const commentRequest = useRef(0);
   useEffect(() => {
     let cancelled = false;
+    const request = ++commentRequest.current;
     Promise.all([fetchModeration(code, accessToken), fetchModerationComments(code, accessToken)])
       .then(([state, result]) => {
-        if (cancelled) return;
+        if (cancelled || request !== commentRequest.current) return;
         setSettings(state); setComments(result.comments); setTotal(result.total);
       }).catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load sharing controls.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; commentRequest.current++; };
   }, [code, accessToken]);
   async function perform(action: () => Promise<void>) {
     if (busy.current) return;
@@ -30,7 +32,9 @@ export default function SharingControls({ code, title, accessToken, onClose }: {
     finally { busy.current = false; setPending(false); }
   }
   async function loadComments(nextPage: number) {
+    const request = ++commentRequest.current;
     const result = await fetchModerationComments(code, accessToken, nextPage);
+    if (request !== commentRequest.current) return;
     setComments(result.comments); setTotal(result.total); setPage(nextPage);
   }
   return <Modal isOpen onOpenChange={(open) => { if (!open && !busy.current) onClose(); }}>
@@ -59,7 +63,11 @@ export default function SharingControls({ code, title, accessToken, onClose }: {
                   await deleteModerationComment(code, accessToken, comment.id);
                   setComments((current) => current.filter((item) => item.id !== comment.id));
                   setTotal((current) => Math.max(0, current - 1));
-                  await loadComments(comments.length === 1 && page > 1 ? page - 1 : page);
+                  try {
+                    await loadComments(comments.length === 1 && page > 1 ? page - 1 : page);
+                  } catch {
+                    setError('Comment deleted, but the list could not refresh. Close and reopen sharing controls to try again.');
+                  }
                 })}>Delete</Button>
               </li>)}
             </ul>
