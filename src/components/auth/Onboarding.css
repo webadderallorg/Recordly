@@ -27,7 +27,12 @@
 	width: 90%;
 	aspect-ratio: 1;
 	border-radius: 50%;
-	background: radial-gradient(circle, color-mix(in srgb, var(--accent) 8%, transparent) 0%, color-mix(in srgb, var(--accent) 3.5%, transparent) 35%, transparent 70%);
+	background: radial-gradient(
+		circle,
+		color-mix(in srgb, var(--accent) 8%, transparent) 0%,
+		color-mix(in srgb, var(--accent) 3.5%, transparent) 35%,
+		transparent 70%
+	);
 }
 
 .onboarding-blob-one {
@@ -57,10 +62,21 @@
 	margin-bottom: calc(-1 * var(--onboarding-banner-overlap));
 	z-index: -1;
 	/* Fade the video itself so the animated colour underneath remains continuous. */
-	mask-image: linear-gradient(to bottom, #000 0%, rgb(0 0 0 / 80%) 38%, rgb(0 0 0 / 20%) 76%, transparent 100%);
-	-webkit-mask-image: linear-gradient(to bottom, #000 0%, rgb(0 0 0 / 80%) 38%, rgb(0 0 0 / 20%) 76%, transparent 100%);
+	mask-image: linear-gradient(
+		to bottom,
+		#000 0%,
+		rgb(0 0 0 / 80%) 38%,
+		rgb(0 0 0 / 20%) 76%,
+		transparent 100%
+	);
+	-webkit-mask-image: linear-gradient(
+		to bottom,
+		#000 0%,
+		rgb(0 0 0 / 80%) 38%,
+		rgb(0 0 0 / 20%) 76%,
+		transparent 100%
+	);
 }
-
 
 .onboarding-body {
 	padding: 24px var(--onboarding-page-padding);
@@ -297,11 +313,13 @@
 	--onboarding-banner-overlap: 0px;
 }
 
-.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"]) .recordly-signin-controls {
+.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"])
+	.recordly-signin-controls {
 	gap: 24px;
 }
 
-.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"]) .onboarding-body-content {
+.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"])
+	.onboarding-body-content {
 	gap: 20px;
 }
 
@@ -324,8 +342,10 @@
 		--onboarding-banner-overlap: 24px;
 	}
 
-	.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"]) .recordly-signin-controls,
-	.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"]) .onboarding-body-content,
+	.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"])
+		.recordly-signin-controls,
+	.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"])
+		.onboarding-body-content,
 	.recordly-signin-content [data-signin-code-entry] {
 		gap: 12px;
 	}
@@ -404,19 +424,37 @@
 }
 
 @keyframes onboarding-blob-one {
-	from { transform: translate(-8%, -5%) scale(1); }
-	50% { transform: translate(10%, 2%) scale(1.06); }
-	to { transform: translate(3%, 12%) scale(1.02); }
+	from {
+		transform: translate(-8%, -5%) scale(1);
+	}
+	50% {
+		transform: translate(10%, 2%) scale(1.06);
+	}
+	to {
+		transform: translate(3%, 12%) scale(1.02);
+	}
 }
 
 @keyframes onboarding-blob-two {
-	from { transform: translate(6%, 8%) scale(1.04); }
-	50% { transform: translate(-10%, 2%) scale(1); }
-	to { transform: translate(-3%, -12%) scale(1.08); }
+	from {
+		transform: translate(6%, 8%) scale(1.04);
+	}
+	50% {
+		transform: translate(-10%, 2%) scale(1);
+	}
+	to {
+		transform: translate(-3%, -12%) scale(1.08);
+	}
 }
 
 @keyframes onboarding-blob-three {
-	from { transform: translate(-6%, 8%) scale(0.96); }
-	50% { transform: translate(8%, 2%) scale(1.04); }
-	to { transform: translate(2%, -10%) scale(1); }
+	from {
+		transform: translate(-6%, 8%) scale(0.96);
+	}
+	50% {
+		transform: translate(8%, 2%) scale(1.04);
+	}
+	to {
+		transform: translate(2%, -10%) scale(1);
+	}
 }

@@ -41,7 +41,9 @@ function deleteVideoStatements(env, videoId) {
 		env.DB.prepare("DELETE FROM comments WHERE video_id = ?").bind(videoId),
 		env.DB.prepare("DELETE FROM transcript_segments WHERE video_id = ?").bind(videoId),
 		env.DB.prepare("DELETE FROM password_attempts WHERE video_id = ?").bind(videoId),
-		env.DB.prepare("DELETE FROM recording_controls WHERE share_code = (SELECT share_code FROM videos WHERE id = ?)").bind(videoId),
+		env.DB.prepare(
+			"DELETE FROM recording_controls WHERE share_code = (SELECT share_code FROM videos WHERE id = ?)",
+		).bind(videoId),
 		env.DB.prepare("DELETE FROM videos WHERE id = ?").bind(videoId),
 	];
 }
@@ -50,7 +52,9 @@ function deleteVideoStatements(env, videoId) {
 
 export async function cleanupExpired(env) {
 	// Admission history outlives deletion/cancellation; only old days are pruned.
-	await env.DB.prepare("DELETE FROM upload_admissions WHERE created_at < datetime('now', '-30 days')").run();
+	await env.DB.prepare(
+		"DELETE FROM upload_admissions WHERE created_at < datetime('now', '-30 days')",
+	).run();
 
 	// Drop stale password rate-limit rows so the table can't grow unboundedly.
 	await env.DB.prepare(

@@ -37,14 +37,16 @@ export function LibraryCard({
 }) {
 	const [failed, setFailed] = useState(false);
 	const expires = video.expires_at ? parseUTC(video.expires_at) : null;
-	const expiryLabel = video.expires_at === null
-		? "No scheduled expiry"
-		: !expires || Number.isNaN(expires.getTime())
-			? "Expiry unknown"
-			: expires.getTime() <= Date.now()
-				? "Expired"
-				: `Expires ${expires.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
-	const titleClass = "line-clamp-2 break-words pr-8 text-left text-[15px] font-semibold leading-6 text-foreground rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+	const expiryLabel =
+		video.expires_at === null
+			? "No scheduled expiry"
+			: !expires || Number.isNaN(expires.getTime())
+				? "Expiry unknown"
+				: expires.getTime() <= Date.now()
+					? "Expired"
+					: `Expires ${expires.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+	const titleClass =
+		"line-clamp-2 break-words pr-8 text-left text-[15px] font-semibold leading-6 text-foreground rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 	const assigned = folders.filter((folder) => folder.codes.includes(video.share_code));
 	return (
 		<li className="group min-w-0">
@@ -76,7 +78,10 @@ export function LibraryCard({
 							className="size-8 text-muted-foreground/20"
 						/>
 					)}
-					<span className="absolute bottom-2 right-2 rounded-md bg-black/75 px-2 py-1 text-xs font-medium text-white" aria-label={`Duration ${formatDuration(video.duration)}`}>
+					<span
+						className="absolute bottom-2 right-2 rounded-md bg-black/75 px-2 py-1 text-xs font-medium text-white"
+						aria-label={`Duration ${formatDuration(video.duration)}`}
+					>
 						{formatDuration(video.duration)}
 					</span>
 				</div>
@@ -91,21 +96,49 @@ export function LibraryCard({
 			<div className="relative flex items-start justify-between gap-4 pt-5">
 				<div className="min-w-0 flex-1">
 					{selecting ? (
-						<button type="button" disabled={busy} aria-pressed={selected} onClick={toggleSelected} className={titleClass} title={video.title}>
+						<button
+							type="button"
+							disabled={busy}
+							aria-pressed={selected}
+							onClick={toggleSelected}
+							className={titleClass}
+							title={video.title}
+						>
 							{video.title}
 						</button>
 					) : (
-						<a href={`/s/${video.share_code}`} target="_blank" rel="noopener noreferrer" aria-disabled={busy || undefined} onClick={(event) => { if (busy) event.preventDefault(); }} className={titleClass} title={video.title}>
+						<a
+							href={`/s/${video.share_code}`}
+							target="_blank"
+							rel="noopener noreferrer"
+							aria-disabled={busy || undefined}
+							onClick={(event) => {
+								if (busy) event.preventDefault();
+							}}
+							className={titleClass}
+							title={video.title}
+						>
 							{video.title}
 						</a>
 					)}
 					<div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-						<span>{parseUTC(video.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
-						<span>{video.view_count.toLocaleString()} {video.view_count === 1 ? "view" : "views"}</span>
+						<span>
+							{parseUTC(video.created_at).toLocaleDateString(undefined, {
+								month: "short",
+								day: "numeric",
+								year: "numeric",
+							})}
+						</span>
+						<span>
+							{video.view_count.toLocaleString()}{" "}
+							{video.view_count === 1 ? "view" : "views"}
+						</span>
 					</div>
 					<div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
 						<span>{expiryLabel}</span>
-						<span>{video.is_protected ? "Password protected" : "Anyone with the link"}</span>
+						<span>
+							{video.is_protected ? "Password protected" : "Anyone with the link"}
+						</span>
 					</div>
 					<div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
 						{assigned.map((folder) => (
@@ -183,10 +216,16 @@ export function LibraryCard({
 							<Dropdown.Item id="copy" onAction={copy}>
 								Copy link
 							</Dropdown.Item>
-							{manage && <Dropdown.Item id="manage" onAction={manage}>Manage sharing</Dropdown.Item>}
-							{renew && <Dropdown.Item id="renew" onAction={renew}>
-								Renew share link
-							</Dropdown.Item>}
+							{manage && (
+								<Dropdown.Item id="manage" onAction={manage}>
+									Manage sharing
+								</Dropdown.Item>
+							)}
+							{renew && (
+								<Dropdown.Item id="renew" onAction={renew}>
+									Renew share link
+								</Dropdown.Item>
+							)}
 							<Dropdown.Item id="delete" onAction={remove} className="text-danger">
 								Delete recording
 							</Dropdown.Item>

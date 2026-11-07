@@ -110,7 +110,9 @@ export async function installDesktopBridge(
 					}),
 					setAppSetting: () => true,
 					getApplicationPreferences: async () => applicationPreferences,
-					setApplicationPreferences: async (patch: Partial<typeof applicationPreferences>) => {
+					setApplicationPreferences: async (
+						patch: Partial<typeof applicationPreferences>,
+					) => {
 						applicationPreferences = { ...applicationPreferences, ...patch };
 						return applicationPreferences;
 					},

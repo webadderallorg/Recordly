@@ -1,6 +1,11 @@
 import { ipcMain } from "electron";
 import { beforeEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ resolve: vi.fn(), buildUrl: vi.fn(), remember: vi.fn(), replace: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+	resolve: vi.fn(),
+	buildUrl: vi.fn(),
+	remember: vi.fn(),
+	replace: vi.fn(),
+}));
 vi.mock("electron", () => ({
 	app: { isPackaged: false, getPath: () => "/recordly-user", getAppPath: () => "/recordly" },
 	ipcMain: { handle: vi.fn() },
@@ -35,8 +40,13 @@ beforeEach(() => {
 	handlers = new Map(vi.mocked(ipcMain.handle).mock.calls);
 });
 
-it.each([true, false])("preserves project audio approvals only when keeping the project (preserve=%s)", async (preserveProjectPath) => {
-	const result = await handlers.get("set-current-video-path")!(trusted, "/recording.mp4", { preserveProjectPath });
+it.each([
+	true,
+	false,
+])("preserves project audio approvals only when keeping the project (preserve=%s)", async (preserveProjectPath) => {
+	const result = await handlers.get("set-current-video-path")!(trusted, "/recording.mp4", {
+		preserveProjectPath,
+	});
 	expect(result).toMatchObject({ success: true });
 	if (preserveProjectPath) {
 		expect(mocks.replace).not.toHaveBeenCalled();

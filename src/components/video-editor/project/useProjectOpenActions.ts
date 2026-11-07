@@ -124,7 +124,10 @@ export function useProjectOpenActions({
 			const isCurrent = () =>
 				mounted.current && relinkContext.current.generation === generation;
 			try {
-				if (!(await confirmReplaceSourceWithUnsavedChanges("locate recording")) || !isCurrent())
+				if (
+					!(await confirmReplaceSourceWithUnsavedChanges("locate recording")) ||
+					!isCurrent()
+				)
 					return false;
 				const result = await window.electronAPI.relinkProjectRecording(projectPath);
 				if (result.canceled || !isCurrent()) return false;

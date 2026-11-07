@@ -301,13 +301,19 @@ export function registerProjectHandlers() {
 			return { success: false, error: String(error) };
 		}
 	});
-	handle("cache-project-thumbnail", async (_, projectPath: string, revision: string, dataUrl: string) => {
-		try {
-			return { success: true, value: await cacheProjectThumbnail(projectPath, revision, dataUrl) };
-		} catch (error) {
-			return { success: false, error: String(error) };
-		}
-	});
+	handle(
+		"cache-project-thumbnail",
+		async (_, projectPath: string, revision: string, dataUrl: string) => {
+			try {
+				return {
+					success: true,
+					value: await cacheProjectThumbnail(projectPath, revision, dataUrl),
+				};
+			} catch (error) {
+				return { success: false, error: String(error) };
+			}
+		},
+	);
 	handle("get-project-preview", async (_, projectPath: string) => {
 		try {
 			return { success: true, value: await readProjectPreview(projectPath) };
@@ -317,7 +323,11 @@ export function registerProjectHandlers() {
 	});
 	handle("find-duplicate-recording-sources", async () => {
 		try {
-			if (nativeScreenRecordingActive || windowsNativeCaptureActive || ffmpegScreenRecordingActive)
+			if (
+				nativeScreenRecordingActive ||
+				windowsNativeCaptureActive ||
+				ffmpegScreenRecordingActive
+			)
 				throw new Error("Stop recording before scanning source files");
 			return { success: true, value: await findDuplicateRecordingSources() };
 		} catch (error) {
@@ -843,24 +853,41 @@ export function registerProjectHandlers() {
 			relinkingProjects.add(key);
 			acquired = true;
 			const contextVersion = currentProjectContextVersion;
-			const isCurrent = () => currentProjectContextVersion === contextVersion &&
-				!nativeScreenRecordingActive && !windowsNativeCaptureActive && !ffmpegScreenRecordingActive;
+			const isCurrent = () =>
+				currentProjectContextVersion === contextVersion &&
+				!nativeScreenRecordingActive &&
+				!windowsNativeCaptureActive &&
+				!ffmpegScreenRecordingActive;
 			if (!isCurrent()) return { success: false, canceled: true };
-			const result = await relinkProjectRecording(key, async (missingPath) => {
-				const selected = await dialog.showOpenDialog({
-					title: nativeT("locateProjectRecording"),
-					defaultPath: missingPath,
-					filters: [{ name: nativeT("replacementRecording"), extensions: ["mp4", "mov", "webm", "mkv", "avi"] }],
-					properties: ["openFile"],
-				});
-				return selected.canceled ? null : (selected.filePaths[0] ?? null);
-			}, undefined, isCurrent);
+			const result = await relinkProjectRecording(
+				key,
+				async (missingPath) => {
+					const selected = await dialog.showOpenDialog({
+						title: nativeT("locateProjectRecording"),
+						defaultPath: missingPath,
+						filters: [
+							{
+								name: nativeT("replacementRecording"),
+								extensions: ["mp4", "mov", "webm", "mkv", "avi"],
+							},
+						],
+						properties: ["openFile"],
+					});
+					return selected.canceled ? null : (selected.filePaths[0] ?? null);
+				},
+				undefined,
+				isCurrent,
+			);
 			if (!result.success || !result.path) return result;
 			return await loadProjectFromPath(result.path, isCurrent);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			const localized = message === "relinkRecordingInvalid" || message === "relinkRecordingTooShort" || message === "relinkProjectChanged"
-				? nativeT(message) : message;
+			const localized =
+				message === "relinkRecordingInvalid" ||
+				message === "relinkRecordingTooShort" ||
+				message === "relinkProjectChanged"
+					? nativeT(message)
+					: message;
 			return { success: false, error: localized };
 		} finally {
 			if (key && acquired) relinkingProjects.delete(key);

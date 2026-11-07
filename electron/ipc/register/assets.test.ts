@@ -39,13 +39,11 @@ beforeEach(async () => {
 	);
 	state.assetRoot = directory;
 	state.userData = path.join(directory, "user-data");
-	state.decode
-		.mockReset()
-		.mockReturnValue({
-			isEmpty: () => false,
-			getSize: () => ({ width: 100, height: 100 }),
-			resize: () => ({ toJPEG: () => Buffer.from("jpeg") }),
-		});
+	state.decode.mockReset().mockReturnValue({
+		isEmpty: () => false,
+		getSize: () => ({ width: 100, height: 100 }),
+		resize: () => ({ toJPEG: () => Buffer.from("jpeg") }),
+	});
 	state.allowed.clear();
 	vi.mocked(ipcMain.handle).mockClear();
 	registerAssetHandlers();

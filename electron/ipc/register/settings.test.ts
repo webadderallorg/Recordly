@@ -92,7 +92,9 @@ describe("app setting write status", () => {
 	it("preserves other settings when updating a successfully read store", () => {
 		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({
 			success: true,
-			store: { "recordly.project-share-links.v1": { project: "https://example.test/v/share" } },
+			store: {
+				"recordly.project-share-links.v1": { project: "https://example.test/v/share" },
+			},
 		});
 		expect(write("volume", 0.5)).toEqual({ success: true });
 		expect(writeAppSettingsStore).toHaveBeenCalledExactlyOnceWith({
@@ -100,5 +102,4 @@ describe("app setting write status", () => {
 			volume: 0.5,
 		});
 	});
-
 });

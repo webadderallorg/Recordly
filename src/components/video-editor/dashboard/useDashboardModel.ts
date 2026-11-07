@@ -154,32 +154,60 @@ export function useDashboardModel({
 	// Selections always describe the visible result set, never hidden matches.
 	useEffect(() => {
 		const paths = new Set(visible.map((entry) => entry.path));
-		setSelected((previous) => previous.some((path) => !paths.has(path)) ? previous.filter((path) => paths.has(path)) : previous);
+		setSelected((previous) =>
+			previous.some((path) => !paths.has(path))
+				? previous.filter((path) => paths.has(path))
+				: previous,
+		);
 	}, [visible]);
 	const deleteEntries = async (paths: string[]) => {
 		if (busy) return;
 		setPendingDelete(visible.filter((entry) => paths.includes(entry.path)));
 	};
-	const confirmDelete = () => run(async () => {
-		if (!pendingDelete.length) return;
-		if (pendingDelete.some((reviewed) => !libraryEntries.some((entry) => entry.path === reviewed.path && entry.updatedAt === reviewed.updatedAt))) {
-			setPendingDelete([]);
-			throw new Error(uiText("ui.cleanup.changed", "The library changed. Review your selection again."));
-		}
-		const paths = pendingDelete.map((entry) => entry.path);
-		const deleted: string[] = [];
-		try {
-			for (let index = 0; index < paths.length; index += 500) {
-				deleted.push(...await (isRaw ? raw.remove : onDeleteProjects)(paths.slice(index, index + 500)));
+	const confirmDelete = () =>
+		run(async () => {
+			if (!pendingDelete.length) return;
+			if (
+				pendingDelete.some(
+					(reviewed) =>
+						!libraryEntries.some(
+							(entry) =>
+								entry.path === reviewed.path &&
+								entry.updatedAt === reviewed.updatedAt,
+						),
+				)
+			) {
+				setPendingDelete([]);
+				throw new Error(
+					uiText(
+						"ui.cleanup.changed",
+						"The library changed. Review your selection again.",
+					),
+				);
 			}
-		} finally {
-			if (!isRaw) removeProjectShareLinks(deleted);
-			save(folders.map((folder) => ({ ...folder, paths: folder.paths.filter((path) => !deleted.includes(path)) })));
-			setSelected((current) => current.filter((path) => !deleted.includes(path)));
-			if (selected.every((path) => deleted.includes(path))) setSelecting(false);
-			setPendingDelete([]);
-		}
-	});
+			const paths = pendingDelete.map((entry) => entry.path);
+			const deleted: string[] = [];
+			try {
+				for (let index = 0; index < paths.length; index += 500) {
+					deleted.push(
+						...(await (isRaw ? raw.remove : onDeleteProjects)(
+							paths.slice(index, index + 500),
+						)),
+					);
+				}
+			} finally {
+				if (!isRaw) removeProjectShareLinks(deleted);
+				save(
+					folders.map((folder) => ({
+						...folder,
+						paths: folder.paths.filter((path) => !deleted.includes(path)),
+					})),
+				);
+				setSelected((current) => current.filter((path) => !deleted.includes(path)));
+				if (selected.every((path) => deleted.includes(path))) setSelecting(false);
+				setPendingDelete([]);
+			}
+		});
 
 	const openEntry = (entry: ProjectLibraryEntry) =>
 		entry.rawSource

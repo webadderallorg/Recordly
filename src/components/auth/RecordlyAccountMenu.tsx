@@ -175,7 +175,10 @@ export function RecordlyAccountMenu({
 								setOpen(false);
 							} catch {
 								setError(
-									t("settings.appPreferences.openFolderFailed", "Could not open this folder."),
+									t(
+										"settings.appPreferences.openFolderFailed",
+										"Could not open this folder.",
+									),
 								);
 							} finally {
 								setOpeningRawFolder(false);

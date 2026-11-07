@@ -399,9 +399,10 @@ it("restores on volumes without hard links and preserves conflicts", async () =>
 });
 
 it("Raw includes camera and audio sources without including metadata or symlinks", async () => {
- const files = ["screen.mp4", "screen.webcam.mp4", "screen.mic.wav", "screen.system.m4a"];
- for (const name of [...files, "screen.cursor.json"]) await fs.writeFile(path.join(state.root, name), "fixture");
- await fs.symlink(path.join(state.root, "screen.mp4"), path.join(state.root, "linked.mp4"));
- expect((await listRecordings(true)).map(entry => entry.name).sort()).toEqual(files.sort());
- expect((await listRecordings()).map(entry => entry.name)).toEqual(["screen.mp4"]);
+	const files = ["screen.mp4", "screen.webcam.mp4", "screen.mic.wav", "screen.system.m4a"];
+	for (const name of [...files, "screen.cursor.json"])
+		await fs.writeFile(path.join(state.root, name), "fixture");
+	await fs.symlink(path.join(state.root, "screen.mp4"), path.join(state.root, "linked.mp4"));
+	expect((await listRecordings(true)).map((entry) => entry.name).sort()).toEqual(files.sort());
+	expect((await listRecordings()).map((entry) => entry.name)).toEqual(["screen.mp4"]);
 });

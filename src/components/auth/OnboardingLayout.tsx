@@ -62,7 +62,9 @@ export function OnboardingLayout({
 				<div className="onboarding-carousel-footer flex shrink-0 flex-col justify-end">
 					{footer}
 				</div>
-			) : footer}
+			) : (
+				footer
+			)}
 			{showNavigation && (
 				<nav
 					aria-label={t("pages")}
@@ -102,7 +104,9 @@ export function OnboardingBody({
 			data-onboarding-body
 			className={`onboarding-body ${scrollable ? "min-h-0 flex-1 overflow-y-auto" : "shrink-0"}`}
 		>
-			<div className="onboarding-body-content mx-auto w-full max-w-[560px] space-y-6">{children}</div>
+			<div className="onboarding-body-content mx-auto w-full max-w-[560px] space-y-6">
+				{children}
+			</div>
 		</div>
 	);
 }
@@ -210,11 +214,15 @@ export function OnboardingPrimaryAction({
 		if (!button || !label) return;
 		const measure = () => {
 			const style = getComputedStyle(button);
-			setWidth(Math.ceil(
-				label.offsetWidth +
-				Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight) +
-				Number.parseFloat(style.borderLeftWidth) + Number.parseFloat(style.borderRightWidth),
-			));
+			setWidth(
+				Math.ceil(
+					label.offsetWidth +
+						Number.parseFloat(style.paddingLeft) +
+						Number.parseFloat(style.paddingRight) +
+						Number.parseFloat(style.borderLeftWidth) +
+						Number.parseFloat(style.borderRightWidth),
+				),
+			);
 		};
 		measure();
 		const observer = new ResizeObserver(measure);
@@ -236,7 +244,10 @@ export function OnboardingPrimaryAction({
 				onPress={onPress}
 				style={{ width: "100%", overflow: "hidden" }}
 			>
-				<span ref={setLabel} className="flex w-max shrink-0 items-center gap-2 whitespace-nowrap">
+				<span
+					ref={setLabel}
+					className="flex w-max shrink-0 items-center gap-2 whitespace-nowrap"
+				>
 					{children} <ArrowRight size={16} aria-hidden="true" />
 				</span>
 			</Button>

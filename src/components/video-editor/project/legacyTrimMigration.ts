@@ -18,7 +18,9 @@ export async function migrateLegacyTrimOnlyProject(
 	return {
 		...editor,
 		clipRegions: clips,
-		trimRegions: clips.length ? clipsToTrims(clips, Math.round(durationMs)) : editor.trimRegions,
+		trimRegions: clips.length
+			? clipsToTrims(clips, Math.round(durationMs))
+			: editor.trimRegions,
 		zoomRegions: rippleRegions(editor.zoomRegions, sourceClips, clips),
 		annotationRegions: rippleRegions(editor.annotationRegions, sourceClips, clips),
 		audioRegions: rippleRegionAnchors(editor.audioRegions, sourceClips, clips),

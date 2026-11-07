@@ -44,7 +44,9 @@ export function describeAuthFailure(stage: AuthStage, error: unknown): string {
 			for (const key of ["name", "code", "status", "message"] as const) {
 				const value = detail[key];
 				if (typeof value === "string" || (key === "status" && typeof value === "number"))
-					lines.push(`${key}: ${redactDiagnostic(String(value)).slice(0, key === "message" ? 300 : 80)}`);
+					lines.push(
+						`${key}: ${redactDiagnostic(String(value)).slice(0, key === "message" ? 300 : 80)}`,
+					);
 			}
 			// Structured causes take priority over potentially long outer stacks.
 			if (typeof detail.stack === "string") stacks.push(redactDiagnostic(detail.stack));

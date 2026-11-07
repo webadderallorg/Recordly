@@ -261,14 +261,19 @@ describe("growing share upload orchestration", () => {
 		await replacement.upload.cancel();
 	}, 1500);
 
-	it.each(["ENOENT", "EACCES"])("settles when a finalized path stat later fails with%s", async (code) => {
+	it.each([
+		"ENOENT",
+		"EACCES",
+	])("settles when a finalized path stat later fails with%s", async (code) => {
 		const final = path.join(directory, "final.mp4");
 		await fs.writeFile(final, "final video");
 		const stat = await fs.stat(final);
 		const remote = server();
 		const { upload } = start();
 		await vi.waitFor(() => expect(remote.paths).toContain("/api/upload-multipart/abc123"));
-		vi.spyOn(fs, "stat").mockResolvedValueOnce(stat).mockRejectedValue(Object.assign(new Error("File unavailable"), { code }));
+		vi.spyOn(fs, "stat")
+			.mockResolvedValueOnce(stat)
+			.mockRejectedValue(Object.assign(new Error("File unavailable"), { code }));
 		expect(await upload.finish(final)).toBeUndefined();
 		expect(remote.paths).toContain("/api/upload-abort/abc123/multipart");
 		expect(remote.paths).toContain("/api/delete/abc123");
@@ -289,5 +294,4 @@ describe("growing share upload orchestration", () => {
 		expect((await upload.finish(file))?.shareCode).toBe("abc123");
 		expect(remote.completed?.finalSize).toBe(partBytes + 8);
 	});
-
 });

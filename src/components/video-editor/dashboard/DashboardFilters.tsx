@@ -45,7 +45,12 @@ export function DashboardFilters({
 	| "visible"
 	| "busy"
 	| "deleteEntries"
-> & { hideSelection?: boolean; mediaSorts?: boolean; sortMetadataLoading?: boolean; onCleanup?: () => void }) {
+> & {
+	hideSelection?: boolean;
+	mediaSorts?: boolean;
+	sortMetadataLoading?: boolean;
+	onCleanup?: () => void;
+}) {
 	const { locale, t: uiText } = useUiLocale();
 	const directionDescriptionId = useId();
 	const selectedSort = isRaw && sort === "recent" ? "created" : sort;
@@ -219,9 +224,17 @@ export function DashboardFilters({
 						variant="ghost"
 						size="sm"
 						disabled={busy || !visible.length}
-						onClick={() => setSelected(selected.length === visible.length ? [] : visible.map((e) => e.path))}
+						onClick={() =>
+							setSelected(
+								selected.length === visible.length
+									? []
+									: visible.map((e) => e.path),
+							)
+						}
 					>
-						{selected.length === visible.length && visible.length > 0 ? uiText("ui.cleanup.deselectAll", "Deselect all") : uiText("ui.cleanup.selectVisible", "Select all visible")}
+						{selected.length === visible.length && visible.length > 0
+							? uiText("ui.cleanup.deselectAll", "Deselect all")
+							: uiText("ui.cleanup.selectVisible", "Select all visible")}
 					</Button>
 					<span>
 						{uiText("ui.selectedCount", undefined, {

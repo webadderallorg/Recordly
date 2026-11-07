@@ -40,8 +40,9 @@ export function buildExportErrorReport(
 		?.split("\nSoftware decoder failure:")[0];
 	const output = bounded.match(/Output: (\d{1,5})x(\d{1,5}) @ (\d{1,3}(?:\.\d{1,3})?) FPS/);
 	const version =
-		bounded.match(/Recordly version: (\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)(?=\s|$)/)?.[1] ??
-		packageInfo.version;
+		bounded.match(
+			/Recordly version: (\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)(?=\s|$)/,
+		)?.[1] ?? packageInfo.version;
 	const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent;
 	const platform =
 		bounded.match(/Platform: (Windows|macOS|Linux)\b/)?.[1] ??
