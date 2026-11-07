@@ -15,7 +15,7 @@ Copy the whole folder while Recordly is closed. Keep that backup outside the fol
 ## Open a v1.4 project in the beta
 
 1. Open the existing project and check its clip timing, audio, webcam, captions, and effects.
-2. Before making edits, choose **File → Save As** and give the beta copy a new name. Keep the original v1.4 project unchanged.
+2. Before making edits, choose **File → Save Project As…** (⌘⇧S on macOS; Ctrl+Shift+S on Windows/Linux) and save the beta copy under a new name, separate from the original v1.4 project. Keep the original unchanged.
 3. Edit and export the beta copy. Check the exported video before relying on it for important work.
 
 The beta changes how clip timing is stored. Both versions can label a project as schema version 2; that number does not mean a beta-saved project is safe to reopen in v1.4. In particular, v1.4 ignores the beta's `sourceStartMs` field, which can make a clip use a different part of the source recording. Keep using the beta for beta-saved copies.

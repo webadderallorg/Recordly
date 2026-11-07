@@ -47,7 +47,7 @@ test("zoom presets work in the basic panel and preserve cursor settings", async 
 		"true",
 	);
 	await page.locator("aside").screenshot({
-		path: "test-results/zoom-presets-panel.png",
+		path: test.info().outputPath("zoom-presets-panel.png"),
 		animations: "disabled",
 	});
 });

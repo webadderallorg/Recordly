@@ -151,7 +151,7 @@ it("finishes a rejected dev relay request with a non-reflecting error page", asy
 		},
 		response,
 	);
-	for (let n = 0; n < 5; n++) await Promise.resolve();
+	await vi.waitFor(() => expect(response.end).toHaveBeenCalledOnce());
 	expect(response.writeHead).toHaveBeenCalledWith(200, expect.any(Object));
 	const html = response.end.mock.calls[0][0];
 	expect(html).toContain("request a fresh one");
