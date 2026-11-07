@@ -249,3 +249,53 @@ it("does not invalidate an active relink for a discarded render of another proje
 		expect.any(Function),
 	);
 });
+
+it.each([
+	false,
+	true,
+])("keeps toast retry on committed handlers after discarded render, missing recording=%s", async (missing) => {
+	const open = vi
+		.fn()
+		.mockResolvedValueOnce({
+			success: false,
+			error: missing
+				? "Project video file not found: missing.mp4"
+				: "Project temporarily busy",
+		})
+		.mockResolvedValue({ success: true, project: result.project, path: target });
+	const relink = vi.fn().mockResolvedValue(result);
+	bridge({ openProjectFileAtPath: open, relinkProjectRecording: relink });
+	const project = initialProject();
+	const applyCommitted = vi.fn().mockResolvedValue(true);
+	const actions = render(project, applyCommitted);
+	await actions.handleOpenProjectFromLibrary(target);
+	const retry = vi.mocked(toast.error).mock.calls.at(-1)?.[1]?.action?.onClick;
+	expect(retry).toBeTypeOf("function");
+	const saveDiscarded = vi.fn().mockResolvedValue(false);
+	render(
+		{ ...project, currentProjectPath: "/projects/discarded.recordly" },
+		vi.fn(),
+		{ hasUnsavedChanges: true, saveProject: saveDiscarded },
+		false,
+	);
+	retry?.();
+	await vi.waitFor(() =>
+		expect(applyCommitted).toHaveBeenCalledWith(
+			result.project,
+			target,
+			...(missing ? [expect.any(Function)] : []),
+		),
+	);
+	expect(saveDiscarded).not.toHaveBeenCalled();
+	expect(missing ? relink : open).toHaveBeenCalledTimes(missing ? 1 : 2);
+	// The same persistent toast action must adopt a later committed handler.
+	const saveNext = vi.fn().mockResolvedValue(true);
+	const applyNext = vi.fn().mockResolvedValue(true);
+	render({ ...project, currentProjectPath: "/projects/committed.recordly" }, applyNext, {
+		hasUnsavedChanges: true,
+		saveProject: saveNext,
+	});
+	retry?.();
+	await vi.waitFor(() => expect(applyNext).toHaveBeenCalled());
+	expect(saveNext).toHaveBeenCalledOnce();
+});

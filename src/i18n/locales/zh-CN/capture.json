@@ -12,6 +12,7 @@
 	"actions": "操作",
 	"action": "操作",
 	"recordingControls": "录制控制",
+	"finishingRecording": "正在完成录制…",
 	"discardingRecording": "正在放弃录制",
 	"recording": "正在录制",
 	"discardRecording": "放弃录制",
