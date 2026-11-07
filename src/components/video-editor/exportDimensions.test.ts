@@ -315,6 +315,7 @@ vi.mock("@/lib/exporter", () => ({
 	probeSupportedMp4Dimensions: probes.probe,
 }));
 import { useExportDimensions } from "./export/useExportDimensions";
+import { startNativeVideoExport } from "@/lib/exporter/modernNativeStreamStart";
 const encoderPath = { codec: "avc1.640034", hardwareAcceleration: "prefer-hardware" };
 function sourceInput() {
 	return {
@@ -405,5 +406,100 @@ describe("source support probe lifecycle", () => {
 		resolve({ width: 640, height: 360, capped: true, encoderPath });
 		await flushProbe();
 		expect(hooks.writes()).toBe(writes);
+	});
+});
+
+describe("MP4 dimension validation follows the export route", () => {
+	it.each([
+		"auto",
+		"breeze",
+	] as const)("preserves local custom dimensions for the modern %s rawvideo fallback", async (backendPreference) => {
+		const start = vi.fn(async () => ({ success: true, sessionId: "raw-session" }));
+		window.electronAPI.nativeVideoExportStart = start;
+		vi.stubGlobal("VideoEncoder", undefined);
+		const input = sourceInput();
+		input.customExportResolution = { width: 3840, height: 2160 };
+		const dimensions = hooks.render(() => useExportDimensions(input));
+		await flushProbe();
+		probes.probe.mockClear();
+		probes.probe.mockResolvedValue({
+			width: 1920,
+			height: 1080,
+			capped: true,
+			encoderPath,
+		});
+		const supported = await dimensions.ensureSupportedMp4SourceDimensions(
+			60,
+			"custom",
+			undefined,
+			{ pipelineModel: "modern", backendPreference },
+		);
+		expect(supported).toEqual({ width: 3840, height: 2160, capped: false, encoderPath: null });
+		expect(probes.probe).not.toHaveBeenCalled();
+		const session = {
+			config: { ...supported, frameRate: 60, bitrate: 32_000_000, encodingMode: "quality" },
+			cancelled: false,
+			native: {},
+			flow: {},
+			metrics: {},
+		} as unknown as Parameters<typeof startNativeVideoExport>[0];
+		await expect(startNativeVideoExport(session, {})).resolves.toBe(true);
+		expect(start).toHaveBeenCalledWith({
+			width: 3840,
+			height: 2160,
+			frameRate: 60,
+			bitrate: 32_000_000,
+			encodingMode: "quality",
+			inputMode: "rawvideo",
+		});
+	});
+	it.each([
+		{
+			name: "browser-only modern",
+			native: true,
+			route: { pipelineModel: "modern", backendPreference: "webcodecs" },
+		},
+		{
+			name: "legacy",
+			native: true,
+			route: { pipelineModel: "legacy", backendPreference: "webcodecs" },
+		},
+		{
+			name: "missing native bridge",
+			native: false,
+			route: { pipelineModel: "modern", backendPreference: "auto" },
+		},
+		{ name: "source support probe", native: true, route: undefined },
+	] as const)("keeps browser resolution validation for $name", async ({ native, route }) => {
+		if (native) window.electronAPI.nativeVideoExportStart = vi.fn();
+		const dimensions = hooks.render(() => useExportDimensions(sourceInput()));
+		await flushProbe();
+		probes.probe.mockResolvedValue({ width: 1280, height: 720, capped: true, encoderPath });
+		await expect(
+			dimensions.ensureSupportedMp4SourceDimensions(60, "high", undefined, route),
+		).rejects.toThrow("This system cannot export");
+		probes.probe.mockResolvedValue({
+			width: 3840,
+			height: 2160,
+			capped: false,
+			encoderPath: null,
+		});
+		await expect(
+			dimensions.ensureSupportedMp4SourceDimensions(60, "high", undefined, route),
+		).rejects.toThrow("Video encoding not supported");
+	});
+	it("retains the cloud cap when its native route does not support browser encoding", async () => {
+		window.electronAPI.nativeVideoExportStart = vi.fn();
+		const dimensions = hooks.render(() => useExportDimensions(sourceInput()));
+		await flushProbe();
+		probes.probe.mockClear();
+		probes.probe.mockRejectedValue(new Error("No WebCodecs encoder"));
+		await expect(
+			dimensions.ensureSupportedMp4SourceDimensions(30, "source", 720, {
+				pipelineModel: "modern",
+				backendPreference: "breeze",
+			}),
+		).resolves.toEqual({ width: 1280, height: 720, capped: false, encoderPath: null });
+		expect(probes.probe).not.toHaveBeenCalled();
 	});
 });
