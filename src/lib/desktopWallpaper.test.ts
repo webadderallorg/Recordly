@@ -5,10 +5,90 @@ import {
 	getDesktopWallpaperPath,
 } from "./desktopWallpaper";
 import { getAvailableWallpapers } from "./wallpapers";
+import { usePlaybackWallpaper } from "../components/video-editor/videoPlayback/usePlaybackWallpaper";
+
+const playback = vi.hoisted(() => ({ values: [] as unknown[], cursor: 0 }));
+vi.mock("react", () => ({
+	useState: (initial: unknown) => {
+		const index = playback.cursor++;
+		playback.values[index] = initial;
+		return [
+			initial,
+			(value: unknown) => {
+				playback.values[index] = value;
+			},
+		];
+	},
+	useEffect: (effect: () => void) => effect(),
+}));
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("desktop wallpaper", () => {
+	it.each([
+		[
+			String.raw`C:\Users\Example\desktop image.png`,
+			"file:///C:/Users/Example/desktop%20image.png",
+		],
+		[String.raw`\\server\share\desktop image.png`, "file://server/share/desktop%20image.png"],
+		["/Users/Example/desktop image.png", "file:///Users/Example/desktop%20image.png"],
+	])("previews an absolute desktop image without treating %s as a bundled asset", async (path, url) => {
+		const getAssetBasePath = vi.fn(async () => "file:///app/assets/");
+		vi.stubGlobal("window", {
+			location: { protocol: "http:", origin: "http://localhost" },
+			electronAPI: {
+				getDesktopWallpaper: vi.fn(async () => ({ success: true, path })),
+				getAssetBasePath,
+				readLocalFile: vi.fn(async () => ({ success: false })),
+			},
+		});
+		const originalPath = await getDesktopWallpaperPath();
+		playback.values = [];
+		playback.cursor = 0;
+		usePlaybackWallpaper({
+			wallpaper: originalPath ?? "",
+			previewViewportWidth: 1000,
+			backgroundBlur: 0,
+			showShadow: false,
+			shadowIntensity: 0,
+			lockedVideoDimensionsRef: { current: null },
+			videoRef: { current: null },
+		} as Parameters<typeof usePlaybackWallpaper>[0]);
+		await vi.waitFor(() => expect(playback.values[0]).toBe(url));
+		expect(playback.values[1]).toBe("image");
+		expect(getAssetBasePath).not.toHaveBeenCalled();
+		expect(originalPath).toBe(path);
+	});
+
+	it.each([
+		"/wallpapers/tahoe-light.jpg",
+		"wallpapers/tahoe-light.jpg",
+	])("preserves bundled wallpaper URL resolution for %s", async (path) => {
+		const getAssetBasePath = vi.fn(async () => "file:///app/assets/");
+		vi.stubGlobal("window", {
+			location: { protocol: "http:", origin: "http://localhost" },
+			electronAPI: { getAssetBasePath },
+		});
+		playback.values = [];
+		playback.cursor = 0;
+		usePlaybackWallpaper({
+			wallpaper: path,
+			previewViewportWidth: 1000,
+			backgroundBlur: 0,
+			showShadow: false,
+			shadowIntensity: 0,
+			lockedVideoDimensionsRef: { current: null },
+			videoRef: { current: null },
+		} as Parameters<typeof usePlaybackWallpaper>[0]);
+		await vi.waitFor(() =>
+			expect(playback.values[0]).toBe(
+				"http://localhost/__recordly_assets/wallpapers/tahoe-light.jpg",
+			),
+		);
+		expect(playback.values[1]).toBe("image");
+		expect(getAssetBasePath).toHaveBeenCalledOnce();
+	});
+
 	it("shares a single snapshot request and places it before bundled wallpapers", async () => {
 		const path = `/Users/example/Recordly/desktop-wallpapers/${"a".repeat(64)}.png`;
 		const getDesktopWallpaper = vi.fn(async () => ({ success: true, path }));

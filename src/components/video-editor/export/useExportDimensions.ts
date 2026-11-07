@@ -21,6 +21,7 @@ import {
 	fitCustomExportResolution,
 } from "../exportDimensions";
 import type { CropRegion } from "../types";
+import type { Mp4ExportRouting } from "../mp4ExportRouting";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 import { capShareDimensions, type ShareResolution } from "../cloud/shareResolution";
 
@@ -132,6 +133,7 @@ export function useExportDimensions({
 			frameRate: ExportMp4FrameRate,
 			quality: ExportQuality = "source",
 			shareResolution?: ShareResolution,
+			route?: Pick<Mp4ExportRouting, "pipelineModel" | "backendPreference">,
 		) => {
 			const requested = calculateMp4ExportDimensions(
 				desiredSourceDimensions.width,
@@ -142,10 +144,13 @@ export function useExportDimensions({
 			const target = shareResolution
 				? capShareDimensions(requested, shareResolution)
 				: requested;
-			// Cloud frames are encoded by bundled FFmpeg. Browser encoder support
-			// must not cap or reject a resolution that this encoder can handle.
+			// Modern native routes can encode raw frames with bundled FFmpeg when
+			// WebCodecs cannot encode this size. Browser-only routes still probe below.
+			const canUseNativeEncoder = route
+				? route.pipelineModel === "modern" && route.backendPreference !== "webcodecs"
+				: shareResolution !== undefined;
 			if (
-				shareResolution &&
+				canUseNativeEncoder &&
 				typeof window.electronAPI?.nativeVideoExportStart === "function"
 			) {
 				return { ...target, capped: false, encoderPath: null };

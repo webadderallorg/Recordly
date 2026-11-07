@@ -5,6 +5,7 @@ import { translate } from "@/i18n/runtime";
 import type { ExportQuality, SupportedMp4Dimensions } from "@/lib/exporter";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import type { ShareResolution } from "../cloud/shareResolution";
+import type { Mp4ExportRouting } from "../mp4ExportRouting";
 import type { getSmokeExportConfig } from "../smokeExportConfig";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
@@ -34,6 +35,7 @@ export type ExportRunnerInput = {
 		frameRate: ReturnType<typeof useExportSettings>["mp4FrameRate"],
 		quality?: ExportQuality,
 		shareResolution?: ShareResolution,
+		route?: Pick<Mp4ExportRouting, "pipelineModel" | "backendPreference">,
 	) => Promise<SupportedMp4Dimensions>;
 	captionSidecarPayload?: PendingExportSave["captionSidecar"];
 	experimentalNvidiaCudaExport: boolean;
