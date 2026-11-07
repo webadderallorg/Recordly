@@ -111,6 +111,9 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 		sharing
 			? getShareResolution(plan?.loading ? undefined : plan?.status?.billing.plan)
 			: undefined,
+		sharing
+			? { pipelineModel: "modern", backendPreference: "breeze" }
+			: { pipelineModel, backendPreference },
 	);
 	if (exportWasCancelled()) return { exit: true };
 	const { width: exportWidth, height: exportHeight } = supportedSourceDimensions;
