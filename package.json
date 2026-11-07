@@ -17,7 +17,7 @@
 	"scripts": {
 		"dev": "vite --config vite.config.ts",
 		"postinstall": "node scripts/postinstall.mjs",
-    "install:ffmpeg": "node scripts/install-ffmpeg-static.mjs",
+		"install:ffmpeg": "node scripts/install-ffmpeg-static.mjs",
 		"build": "npm run build:platform-native-helpers && tsc && vite build --config vite.config.ts && npm run normalize:electron-main-cjs && npm run smoke:electron-main-cjs && electron-builder",
 		"lint": "biome lint .",
 		"lint:fix": "biome lint --write .",

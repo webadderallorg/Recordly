@@ -1,86 +1,86 @@
 {
-  "app": {
-    "name": "Recordly",
-    "editorTitle": "Recordly 编辑器",
-    "subtitle": "屏幕录制与编辑",
-    "language": "语言",
-    "manageRecordings": "打开录制文件夹"
-  },
-  "actions": {
-    "cancel": "取消",
-    "close": "关闭",
-    "export": "导出",
-    "load": "加载",
-    "redo": "重做",
-    "reset": "重置",
-    "save": "保存",
-    "undo": "撤销",
-    "delete": "删除",
-    "done": "完成",
-    "retry": "重试",
-    "apply": "应用"
-  },
-  "errors": {
-    "invalidFileType": "无效的文件类型",
-    "failedToUploadImage": "上传图片失败",
-    "fileReadError": "读取文件时出错。"
-  },
-  "clipboard": {
-    "copy": "复制",
-    "errorCopied": "已复制错误信息",
-    "errorCopyFailed": "无法复制错误信息"
-  },
-  "feedback": {
-    "trigger": "反馈",
-    "send": "发送反馈",
-    "thanks": "感谢你的反馈",
-    "signInRequired": "登录以发送反馈。",
-    "openHome": "打开首页以登录。",
-    "subject": "主题",
-    "subjectPlaceholder": "你有什么想法？",
-    "description": "说明",
-    "descriptionPlaceholder": "我们会阅读所有反馈...",
-    "attachFiles": "添加附件",
-    "removeFile": "移除 {{name}}",
-    "diagnostics": "将附上相关诊断日志。",
-    "sending": "正在发送…",
-    "errors": {
-      "unavailable": "配置账户服务后才能使用反馈功能。",
-      "signIn": "请重新登录以发送反馈。",
-      "invalid": "请检查反馈内容，然后重试。",
-      "attachments": "最多可添加 5 个非空文件，总大小不得超过 10 MB。",
-      "limit": "你已达到今天的反馈次数上限。请明天再试。",
-      "tooManyFiles": "最多可添加 5 个文件。",
-      "emptyFile": "无法添加空文件。",
-      "filesTooLarge": "附件总大小不得超过 10 MB。",
-      "sendFailed": "无法发送反馈。请重试。"
-    },
-    "missingMessage": "请先详细说明再发送。",
-    "sentiment": "你的感受如何？",
-    "loving": "很喜欢",
-    "neutral": "一般",
-    "angry": "生气"
-  },
-  "announcements": {
-    "openFailed": "无法打开链接。",
-    "dismiss": "关闭",
-    "carousel": "公告",
-    "previous": "上一条公告",
-    "show": "显示公告",
-    "next": "下一条公告"
-  },
-  "updates": {
-    "download": "下载更新",
-    "actionFailed": "无法更新。请重试。",
-    "notification": "应用更新",
-    "backgroundProgress": "正在后台下载 Recordly {{version}} · {{progress}}",
-    "ready": "Recordly {{version}} 已准备好安装。",
-    "failed": "无法完成更新。你可以重试。",
-    "available": "Recordly {{version}} 已推出。",
-    "saveFirst": "请先保存工作，然后在准备好时重新启动。",
-    "later": "稍后",
-    "downloadingButton": "正在下载 · {{progress}}"
-  },
-  "width": "宽度",
-  "height": "高度"
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Recordly 编辑器",
+		"subtitle": "屏幕录制与编辑",
+		"language": "语言",
+		"manageRecordings": "打开录制文件夹"
+	},
+	"actions": {
+		"cancel": "取消",
+		"close": "关闭",
+		"export": "导出",
+		"load": "加载",
+		"redo": "重做",
+		"reset": "重置",
+		"save": "保存",
+		"undo": "撤销",
+		"delete": "删除",
+		"done": "完成",
+		"retry": "重试",
+		"apply": "应用"
+	},
+	"errors": {
+		"invalidFileType": "无效的文件类型",
+		"failedToUploadImage": "上传图片失败",
+		"fileReadError": "读取文件时出错。"
+	},
+	"clipboard": {
+		"copy": "复制",
+		"errorCopied": "已复制错误信息",
+		"errorCopyFailed": "无法复制错误信息"
+	},
+	"feedback": {
+		"trigger": "反馈",
+		"send": "发送反馈",
+		"thanks": "感谢你的反馈",
+		"signInRequired": "登录以发送反馈。",
+		"openHome": "打开首页以登录。",
+		"subject": "主题",
+		"subjectPlaceholder": "你有什么想法？",
+		"description": "说明",
+		"descriptionPlaceholder": "我们会阅读所有反馈...",
+		"attachFiles": "添加附件",
+		"removeFile": "移除 {{name}}",
+		"diagnostics": "将附上相关诊断日志。",
+		"sending": "正在发送…",
+		"errors": {
+			"unavailable": "配置账户服务后才能使用反馈功能。",
+			"signIn": "请重新登录以发送反馈。",
+			"invalid": "请检查反馈内容，然后重试。",
+			"attachments": "最多可添加 5 个非空文件，总大小不得超过 10 MB。",
+			"limit": "你已达到今天的反馈次数上限。请明天再试。",
+			"tooManyFiles": "最多可添加 5 个文件。",
+			"emptyFile": "无法添加空文件。",
+			"filesTooLarge": "附件总大小不得超过 10 MB。",
+			"sendFailed": "无法发送反馈。请重试。"
+		},
+		"missingMessage": "请先详细说明再发送。",
+		"sentiment": "你的感受如何？",
+		"loving": "很喜欢",
+		"neutral": "一般",
+		"angry": "生气"
+	},
+	"announcements": {
+		"openFailed": "无法打开链接。",
+		"dismiss": "关闭",
+		"carousel": "公告",
+		"previous": "上一条公告",
+		"show": "显示公告",
+		"next": "下一条公告"
+	},
+	"updates": {
+		"download": "下载更新",
+		"actionFailed": "无法更新。请重试。",
+		"notification": "应用更新",
+		"backgroundProgress": "正在后台下载 Recordly {{version}} · {{progress}}",
+		"ready": "Recordly {{version}} 已准备好安装。",
+		"failed": "无法完成更新。你可以重试。",
+		"available": "Recordly {{version}} 已推出。",
+		"saveFirst": "请先保存工作，然后在准备好时重新启动。",
+		"later": "稍后",
+		"downloadingButton": "正在下载 · {{progress}}"
+	},
+	"width": "宽度",
+	"height": "高度"
 }

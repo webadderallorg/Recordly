@@ -1212,9 +1212,9 @@ interface Window {
 		saveShortcuts: (shortcuts: unknown) => Promise<{ success: boolean; error?: string }>;
 		getEditorStartupView: () => "home" | "editor";
 		getAppSetting: (key: string) => unknown;
-		getAppSettingWithStatus: (key: string) =>
-			| { success: true; found: boolean; value: unknown }
-			| { success: false; value: null };
+		getAppSettingWithStatus: (
+			key: string,
+		) => { success: true; found: boolean; value: unknown } | { success: false; value: null };
 		setAppSetting: (key: string, value: unknown) => boolean;
 		setHasUnsavedChanges: (hasChanges: boolean) => void;
 		setExportInProgress: (active: boolean) => void;

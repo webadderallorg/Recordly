@@ -114,13 +114,29 @@ describe("schema migration paths", () => {
 		const { shareCode } = await response.json();
 		await env.DB.prepare("DROP INDEX idx_comments_account_window").run();
 		await env.DB.prepare("ALTER TABLE comments DROP COLUMN author_id").run();
-		await env.DB.prepare("INSERT INTO comments(video_id,timestamp,author_name,text) SELECT id,2,'Old guest','Existing feedback' FROM videos WHERE share_code=?").bind(shareCode).run();
-		await env.DB.prepare("UPDATE _meta SET value=? WHERE key='schema_version'").bind("11").run();
+		await env.DB.prepare(
+			"INSERT INTO comments(video_id,timestamp,author_name,text) SELECT id,2,'Old guest','Existing feedback' FROM videos WHERE share_code=?",
+		)
+			.bind(shareCode)
+			.run();
+		await env.DB.prepare("UPDATE _meta SET value=? WHERE key='schema_version'")
+			.bind("11")
+			.run();
 		__resetSchemaCacheForTests();
 		expect((await upload()).status).toBe(200);
-		expect(await env.DB.prepare("SELECT author_name,text,author_id FROM comments WHERE video_id=(SELECT id FROM videos WHERE share_code=?)").bind(shareCode).first()).toEqual({ author_name: "Old guest", text: "Existing feedback", author_id: null });
+		expect(
+			await env.DB.prepare(
+				"SELECT author_name,text,author_id FROM comments WHERE video_id=(SELECT id FROM videos WHERE share_code=?)",
+			)
+				.bind(shareCode)
+				.first(),
+		).toEqual({ author_name: "Old guest", text: "Existing feedback", author_id: null });
 		const index = await env.DB.prepare("PRAGMA index_info(idx_comments_account_window)").all();
-		expect(index.results.map((column) => column.name)).toEqual(["video_id", "author_id", "created_at"]);
+		expect(index.results.map((column) => column.name)).toEqual([
+			"video_id",
+			"author_id",
+			"created_at",
+		]);
 	});
 
 	it("adds feedback rate indexes when upgrading version nine", async () => {
@@ -150,15 +166,40 @@ describe("schema migration paths", () => {
 	it("adds moderation and admission history when upgrading version ten without changing media", async () => {
 		const response = await upload();
 		const { shareCode } = await response.json();
-		for (const table of ["recording_controls", "account_restrictions", "abuse_reports", "moderation_actions", "upload_admissions"])
+		for (const table of [
+			"recording_controls",
+			"account_restrictions",
+			"abuse_reports",
+			"moderation_actions",
+			"upload_admissions",
+		])
 			await env.DB.prepare(`DROP TABLE ${table}`).run();
 		await env.DB.prepare("UPDATE _meta SET value = '10' WHERE key = 'schema_version'").run();
 		__resetSchemaCacheForTests();
 		expect((await upload()).status).toBe(200);
-		for (const table of ["recording_controls", "account_restrictions", "abuse_reports", "moderation_actions", "upload_admissions"])
-			expect(await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").bind(table).first()).not.toBeNull();
-		expect(await env.DB.prepare("SELECT share_code FROM videos WHERE share_code = ?").bind(shareCode).first()).toEqual({ share_code: shareCode });
-		expect((await env.DB.prepare("SELECT value FROM _meta WHERE key = 'schema_version'").first()).value).toBe("12");
+		for (const table of [
+			"recording_controls",
+			"account_restrictions",
+			"abuse_reports",
+			"moderation_actions",
+			"upload_admissions",
+		])
+			expect(
+				await env.DB.prepare(
+					"SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+				)
+					.bind(table)
+					.first(),
+			).not.toBeNull();
+		expect(
+			await env.DB.prepare("SELECT share_code FROM videos WHERE share_code = ?")
+				.bind(shareCode)
+				.first(),
+		).toEqual({ share_code: shareCode });
+		expect(
+			(await env.DB.prepare("SELECT value FROM _meta WHERE key = 'schema_version'").first())
+				.value,
+		).toBe("12");
 	});
 
 	it("migrates a pre-versioning database (tables exist, no _meta)", async () => {

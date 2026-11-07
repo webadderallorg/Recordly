@@ -11,7 +11,12 @@ import { RecordlyPasswordForm } from "../../../../../../src/components/auth/Reco
 import settingsCopy from "../../../../../../src/i18n/locales/en/settings.json";
 import { RecordlyDemoVideo } from "../../../../../../src/components/ui/RecordlyDemoVideo";
 import copy from "../../../../../../src/i18n/locales/en/onboarding.json";
-import { beginCloudOAuth, cloudSignupMetadata, completeCloudCallback, CloudSignupConsentRetryError } from "../scripts/cloudAuth";
+import {
+	beginCloudOAuth,
+	cloudSignupMetadata,
+	completeCloudCallback,
+	CloudSignupConsentRetryError,
+} from "../scripts/cloudAuth";
 import ThemeToggle from "./ThemeToggle";
 import { commentAccessTokenForAccount, type CommentAccountState } from "../scripts/api";
 import { commentProfileName, takeCommentReturn } from "../scripts/commentAuth";
@@ -41,6 +46,7 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 	const [providers, setProviders] = useState<SignInProvider[]>([]);
 	const [providersKnown, setProvidersKnown] = useState(false);
 	const [loadingProviders, setLoadingProviders] = useState(true);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: The parent loads config before mounting; keep one Supabase client for this mount.
 	useEffect(() => {
 		let active = true;
 		let unsubscribe = () => {
@@ -48,11 +54,16 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 		};
 		async function initialize() {
 			try {
-				const config = authConfig || await (async () => {
-					const response = await fetch("/cloud/config");
-					if (!response.ok) throw new Error("Cloud sign-in is unavailable. Please try again later.");
-					return response.json();
-				})();
+				const config =
+					authConfig ||
+					(await (async () => {
+						const response = await fetch("/cloud/config");
+						if (!response.ok)
+							throw new Error(
+								"Cloud sign-in is unavailable. Please try again later.",
+							);
+						return response.json();
+					})());
 				const auth = createClient(config.url, config.publishableKey, {
 					auth: {
 						flowType: "pkce",
@@ -98,8 +109,20 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 				setClient(auth);
 				try {
 					let returnTo: string | null = null;
-					if (await completeCloudCallback(auth, location.href, (challenge) => { returnTo = takeCommentReturn(challenge); }, config)) {
-						if (returnTo) { location.replace(returnTo); return; }
+					if (
+						await completeCloudCallback(
+							auth,
+							location.href,
+							(challenge) => {
+								returnTo = takeCommentReturn(challenge);
+							},
+							config,
+						)
+					) {
+						if (returnTo) {
+							location.replace(returnTo);
+							return;
+						}
 						history.replaceState(null, "", "/library");
 					}
 				} catch (cause) {
@@ -134,15 +157,19 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 		if (!onCommentAccountChange) return;
 		const usable = session && !session.user.is_anonymous && session.user.email_confirmed_at;
 		const accountKey = session?.user.id ?? "";
-		onCommentAccountChange(usable && client ? {
-			key: accountKey,
-			needsDisplayName: !commentProfileName(session.user.user_metadata),
-			displayName: commentProfileName(session.user.user_metadata) || "",
-			getAccessToken: async () => {
-				const result = await client.auth.getSession();
-				return commentAccessTokenForAccount(accountKey, result);
-			},
-		} : null);
+		onCommentAccountChange(
+			usable && client
+				? {
+						key: accountKey,
+						needsDisplayName: !commentProfileName(session.user.user_metadata),
+						displayName: commentProfileName(session.user.user_metadata) || "",
+						getAccessToken: async () => {
+							const result = await client.auth.getSession();
+							return commentAccessTokenForAccount(accountKey, result);
+						},
+					}
+				: null,
+		);
 		if (usable) setSignInOpen(false);
 	}, [session, client, onCommentAccountChange]);
 	useEffect(() => {
@@ -194,19 +221,45 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 		}
 		setSession(null);
 	}
-	if (commentAccount && !signInOpen) return (
-		<div className="space-y-2 p-4 text-sm">
-			{loading ? <Spinner size="sm" aria-label="Checking Recordly account" /> : session && !session.user.is_anonymous && session.user.email_confirmed_at ? <>
-				{client && <CommentProfileName key={session.user.id} client={client} user={session.user} onSaved={(user) => {
-					setSession((current) => current?.user.id === user.id ? { ...current, user } : current);
-				}} />}
-				<Button size="sm" variant="ghost" onPress={() => void signOut()}>Sign out</Button>
-			</> : <>
-				<p>{commentAccount.canComment ? "Sign in with your Recordly account to comment." : "Sign in with your Recordly account to manage your comments."}</p>
-				<Button size="sm" onPress={() => setSignInOpen(true)}>Sign in or create account</Button>
-			</>}
-		</div>
-	);
+	if (commentAccount && !signInOpen)
+		return (
+			<div className="space-y-2 p-4 text-sm">
+				{loading ? (
+					<Spinner size="sm" aria-label="Checking Recordly account" />
+				) : session && !session.user.is_anonymous && session.user.email_confirmed_at ? (
+					<>
+						{client && (
+							<CommentProfileName
+								key={session.user.id}
+								client={client}
+								user={session.user}
+								onSaved={(user) => {
+									setSession((current) =>
+										current?.user.id === user.id
+											? { ...current, user }
+											: current,
+									);
+								}}
+							/>
+						)}
+						<Button size="sm" variant="ghost" onPress={() => void signOut()}>
+							Sign out
+						</Button>
+					</>
+				) : (
+					<>
+						<p>
+							{commentAccount.canComment
+								? "Sign in with your Recordly account to comment."
+								: "Sign in with your Recordly account to manage your comments."}
+						</p>
+						<Button size="sm" onPress={() => setSignInOpen(true)}>
+							Sign in or create account
+						</Button>
+					</>
+				)}
+			</div>
+		);
 	if (loading)
 		return (
 			<CenteredCard>
@@ -242,15 +295,29 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 	const AuthContainer = commentAccount ? "div" : "main";
 	return (
 		<AuthContainer className={commentAccount ? undefined : "cloud-auth-page"}>
-			<Modal isOpen onOpenChange={(open) => { if (commentAccount) setSignInOpen(open); }}>
-				<Modal.Backdrop variant="blur" isDismissable={Boolean(commentAccount)} isKeyboardDismissDisabled={!commentAccount}>
+			<Modal
+				isOpen
+				onOpenChange={(open) => {
+					if (commentAccount) setSignInOpen(open);
+				}}
+			>
+				<Modal.Backdrop
+					variant="blur"
+					isDismissable={Boolean(commentAccount)}
+					isKeyboardDismissDisabled={!commentAccount}
+				>
 					<Modal.Container size="cover" placement="center" className="p-4 sm:p-8">
 						<Modal.Dialog
 							aria-label={copy.signInLabel}
 							className="cloud-auth-dialog relative h-auto min-h-0 w-full max-w-[600px] max-h-[calc(100dvh-48px)] gap-0 overflow-y-auto p-2"
 						>
-							{commentAccount && <Modal.CloseTrigger aria-label="Close sign-in" className="z-20" />}
-							<div className="cloud-auth-theme" style={commentAccount ? { left: 16, right: "auto" } : undefined}>
+							{commentAccount && (
+								<Modal.CloseTrigger aria-label="Close sign-in" className="z-20" />
+							)}
+							<div
+								className="cloud-auth-theme"
+								style={commentAccount ? { left: 16, right: "auto" } : undefined}
+							>
 								<ThemeToggle />
 							</div>
 							<div className="relative h-32 shrink-0 overflow-hidden rounded-2xl sm:h-36">
@@ -270,7 +337,9 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 											</Modal.Heading>
 										</div>
 										<p className="text-balance text-sm leading-relaxed text-muted">
-											{commentAccount ? "Sign in to leave feedback or manage your comments. Watching stays open to everyone with the link." : copy.tagline}
+											{commentAccount
+												? "Sign in to leave feedback or manage your comments. Watching stays open to everyone with the link."
+												: copy.tagline}
 										</p>
 									</Modal.Header>
 									<RecordlySignInFields

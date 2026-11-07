@@ -32,17 +32,22 @@ export function OnboardingController({
 	const [startWithPermissions, setStartWithPermissions] = useState(false);
 	const checked = useRef(false);
 	const finishingPermissions = useRef(false);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: preview is fixed for this renderer build; retain its explicit callback/effect lifetime.
 	const openWindow = useCallback(() => {
 		setReturningSignIn(false);
 		if (standalone) setOpen(true);
 		else
-			void window.electronAPI.showOnboardingWindow({ preview }).catch(() => false).then((shown) => {
-				if (!shown) {
-					setInlineFallback(true);
-					setOpen(true);
-				}
-			});
+			void window.electronAPI
+				.showOnboardingWindow({ preview })
+				.catch(() => false)
+				.then((shown) => {
+					if (!shown) {
+						setInlineFallback(true);
+						setOpen(true);
+					}
+				});
 	}, [standalone, preview]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: preview is fixed for this renderer build; retain its explicit callback/effect lifetime.
 	useEffect(() => {
 		if (requestNonce > 0) {
 			setStartWithPermissions(!preview);
@@ -50,6 +55,7 @@ export function OnboardingController({
 			openWindow();
 		}
 	}, [requestNonce, openWindow, preview]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: preview is fixed for this renderer build; retain its explicit callback/effect lifetime.
 	const close = useCallback(() => {
 		if (preview) {
 			checked.current = true;
@@ -59,6 +65,7 @@ export function OnboardingController({
 		setOpen(false);
 	}, [preview]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: preview is fixed for this renderer build; retain its explicit callback/effect lifetime.
 	useEffect(() => {
 		if (!ready) return;
 		if (preview && checked.current) return;

@@ -27,7 +27,8 @@ export class RecordingProcessGuard {
 				if (!this.releaseLease)
 					return {
 						success: false as const,
-						message: "A recording is already starting or active in this Recordly instance.",
+						message:
+							"A recording is already starting or active in this Recordly instance.",
 					};
 			}
 			this.starting = true;

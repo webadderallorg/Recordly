@@ -60,10 +60,19 @@ afterEach(() => {
 describe("ModernVideoExporter native static-layout eligibility", () => {
 	it.each([
 		{ name: "a full frame", sourceWidth: 1920, sourceHeight: 1080, padding: 0 },
-		{ name: "a near-full frame before even rounding", sourceWidth: 1919, sourceHeight: 1080, padding: 0 },
+		{
+			name: "a near-full frame before even rounding",
+			sourceWidth: 1919,
+			sourceHeight: 1080,
+			padding: 0,
+		},
 		{ name: "a letterboxed video", sourceWidth: 1440, sourceHeight: 1080, padding: 0 },
 		{ name: "a padded video", sourceWidth: 1920, sourceHeight: 1080, padding: 20 },
-	])("preserves preview corner treatment for $name", async ({ sourceWidth, sourceHeight, padding }) => {
+	])("preserves preview corner treatment for $name", async ({
+		sourceWidth,
+		sourceHeight,
+		padding,
+	}) => {
 		const exporter = createExporter({ borderRadius: 5, padding });
 		const nativeExport = vi.mocked(window.electronAPI.nativeStaticLayoutExport);
 		nativeExport.mockResolvedValue({ success: true, tempPath: "/tmp/export.mp4" });
@@ -103,7 +112,9 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		} else {
 			expect(previewRadius).toBeGreaterThan(0);
 			// The inset radius stays proportional to the even content actually encoded.
-			expect(request.borderRadius).toBeCloseTo(Math.min(encodedSize.width, encodedSize.height) * 0.05);
+			expect(request.borderRadius).toBeCloseTo(
+				Math.min(encodedSize.width, encodedSize.height) * 0.05,
+			);
 		}
 	});
 	it("uses rendered frames for cursor idle fades while preserving native eligibility when disabled", () => {
@@ -115,14 +126,27 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			],
 		};
 		const idle = exporterInternals(createExporter(options));
-		expect(idle.operations.getNativeStaticLayoutSkipReason({ audioMode: "none" }, videoInfo, 60)).toBe("unsupported-cursor-idle-fade");
+		expect(
+			idle.operations.getNativeStaticLayoutSkipReason({ audioMode: "none" }, videoInfo, 60),
+		).toBe("unsupported-cursor-idle-fade");
 		for (const override of [
 			{ cursorIdleHide: { enabled: false } },
 			{ showCursor: false },
-			{ cursorTelemetry: [{ timeMs: 0, cx: 0.1, cy: 0.5 }, { timeMs: 3000, cx: 0.9, cy: 0.5 }] },
+			{
+				cursorTelemetry: [
+					{ timeMs: 0, cx: 0.1, cy: 0.5 },
+					{ timeMs: 3000, cx: 0.9, cy: 0.5 },
+				],
+			},
 		]) {
 			const exporter = exporterInternals(createExporter({ ...options, ...override }));
-			expect(exporter.operations.getNativeStaticLayoutSkipReason({ audioMode: "none" }, videoInfo, 60)).toBeNull();
+			expect(
+				exporter.operations.getNativeStaticLayoutSkipReason(
+					{ audioMode: "none" },
+					videoInfo,
+					60,
+				),
+			).toBeNull();
 		}
 	});
 	it.each([

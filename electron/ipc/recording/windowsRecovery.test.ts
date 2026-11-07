@@ -205,8 +205,13 @@ describe("Windows interrupted recording recovery", () => {
 		const interrupted = vi.fn();
 		setNativeScreenRecordingActive(true);
 		setWindowsNativeCaptureActive(true);
-		setWindowsCaptureProcess(replacement as unknown as Parameters<typeof setWindowsCaptureProcess>[0]);
-		attachWindowsCaptureLifecycle(previous as unknown as Parameters<typeof attachWindowsCaptureLifecycle>[0], interrupted);
+		setWindowsCaptureProcess(
+			replacement as unknown as Parameters<typeof setWindowsCaptureProcess>[0],
+		);
+		attachWindowsCaptureLifecycle(
+			previous as unknown as Parameters<typeof attachWindowsCaptureLifecycle>[0],
+			interrupted,
+		);
 		previous.emit("close", 1);
 		expect(interrupted).not.toHaveBeenCalled();
 		expect(nativeScreenRecordingActive).toBe(true);

@@ -31,7 +31,10 @@ export function OnboardingPermissions({
 	const [platform, setPlatform] = useState<"checking" | "mac" | "other">("checking");
 	const [screenGranted, setScreenGranted] = useState(false);
 	const [accessibilityGranted, setAccessibilityGranted] = useState(false);
-	const [simulatedMissing, setSimulatedMissing] = useState({ screen: false, accessibility: false });
+	const [simulatedMissing, setSimulatedMissing] = useState({
+		screen: false,
+		accessibility: false,
+	});
 	const [busy, setBusy] = useState<string>();
 	const [statusError, setStatusError] = useState<string>();
 	const [requestError, setRequestError] = useState<string>();
@@ -44,7 +47,9 @@ export function OnboardingPermissions({
 		screen: screenGranted && !(canSimulate && simulatedMissing.screen),
 		accessibility: accessibilityGranted && !(canSimulate && simulatedMissing.accessibility),
 	};
-	const canFinish = !statusError && platform !== "checking" &&
+	const canFinish =
+		!statusError &&
+		platform !== "checking" &&
 		(platform !== "mac" || (granted.screen && granted.accessibility && !busy));
 	useLayoutEffect(() => {
 		onReadyChange?.(canFinish);
@@ -146,7 +151,9 @@ export function OnboardingPermissions({
 			aria-busy={platform === "checking"}
 		>
 			<PermissionsConfetti
-				ready={platform === "mac" && granted.screen && granted.accessibility && !statusError}
+				ready={
+					platform === "mac" && granted.screen && granted.accessibility && !statusError
+				}
 			/>
 			<OnboardingBody>
 				<OnboardingHeader
@@ -251,22 +258,21 @@ export function OnboardingPermissions({
 					</>
 				)}
 			</OnboardingBody>
-			{showFooter && <OnboardingFooter>
-				{onBack ? (
-					<Button variant="ghost" aria-label={t("backToAccount")} onPress={onBack}>
-						<ArrowLeft size={16} />
-						{t("back")}
-					</Button>
-				) : (
-					<div />
-				)}
-				<OnboardingPrimaryAction
-					isDisabled={!canFinish}
-					onPress={onFinish}
-				>
-					{t("startRecording")}
-				</OnboardingPrimaryAction>
-			</OnboardingFooter>}
+			{showFooter && (
+				<OnboardingFooter>
+					{onBack ? (
+						<Button variant="ghost" aria-label={t("backToAccount")} onPress={onBack}>
+							<ArrowLeft size={16} />
+							{t("back")}
+						</Button>
+					) : (
+						<div />
+					)}
+					<OnboardingPrimaryAction isDisabled={!canFinish} onPress={onFinish}>
+						{t("startRecording")}
+					</OnboardingPrimaryAction>
+				</OnboardingFooter>
+			)}
 		</div>
 	);
 }

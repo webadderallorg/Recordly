@@ -14,7 +14,10 @@ export type DiscardNativeCaptureResult = {
 
 type DeleteRecordingFile = (path: string) => Promise<{ success: boolean; error?: string }>;
 
-export async function deleteNativeCaptureFile(path: string, deleteRecordingFile: DeleteRecordingFile) {
+export async function deleteNativeCaptureFile(
+	path: string,
+	deleteRecordingFile: DeleteRecordingFile,
+) {
 	const result = await deleteRecordingFile(path);
 	if (!result.success) throw new Error(result.error || "Could not delete the recording.");
 }

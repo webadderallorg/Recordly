@@ -1,5 +1,8 @@
 import { isWebcamCropRegionDefault } from "@/components/video-editor/webcamOverlay";
-import { getCursorIdleIntervals, normalizeCursorIdleHideSettings } from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
+import {
+	getCursorIdleIntervals,
+	normalizeCursorIdleHideSettings,
+} from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
 import { isVideoWallpaperSource } from "@/lib/wallpapers";
 import { requiresClipTimelineRendering } from "./clipTimeline";
 import { getNowMs } from "./modernExportConstants";
@@ -160,10 +163,13 @@ export function getNativeStaticLayoutSkipReasons(
 	if (hasCursorClickEffect) {
 		reasons.push("unsupported-cursor-click-effect");
 	}
-	if (session.config.showCursor === true && getCursorIdleIntervals(
-		session.config.cursorTelemetry ?? [],
-		normalizeCursorIdleHideSettings(session.config.cursorIdleHide),
-	).length > 0) {
+	if (
+		session.config.showCursor === true &&
+		getCursorIdleIntervals(
+			session.config.cursorTelemetry ?? [],
+			normalizeCursorIdleHideSettings(session.config.cursorIdleHide),
+		).length > 0
+	) {
 		// Native compositors lack cursor alpha animation. Encode shared-renderer
 		// frames when a qualifying pause actually needs a fade.
 		reasons.push("unsupported-cursor-idle-fade");

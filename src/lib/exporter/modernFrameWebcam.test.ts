@@ -451,11 +451,17 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 		renderer.config.webcam = { ...DEFAULT_WEBCAM_OVERLAY, enabled: true };
 		renderer.currentVideoTime = 0;
 		renderer.webcamMedia.webcamVideoElement = {
-			currentTime: 0, readyState: 2, seeking: false, videoWidth: 640,
-			videoHeight: 360, duration: Number.NaN,
+			currentTime: 0,
+			readyState: 2,
+			seeking: false,
+			videoWidth: 640,
+			videoHeight: 360,
+			duration: Number.NaN,
 		};
 		renderer.scene.webcamRootContainer = {
-			visible: false, addChild: vi.fn(), position: { set: vi.fn() },
+			visible: false,
+			addChild: vi.fn(),
+			position: { set: vi.fn() },
 		};
 		renderer.scene.webcamContainer = { addChildAt: vi.fn() };
 		renderer.scene.webcamMaskGraphics = {};
@@ -464,7 +470,9 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 		canvas.width = 100;
 		canvas.height = 100;
 		vi.spyOn(renderer.webcam.webcamMotionBlur, "render").mockReturnValue({
-			canvas, x: 0, y: 0,
+			canvas,
+			x: 0,
+			y: 0,
 		});
 		renderer.webcam.updateWebcamOverlay();
 		const sprite = renderer.webcam.webcamBlurSprite;
@@ -476,5 +484,4 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 		expect(renderer.webcam.webcamBlurSprite).toBe(sprite);
 		expect(sprite?.texture.source.update).toHaveBeenCalledOnce();
 	});
-
 });
