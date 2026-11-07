@@ -320,12 +320,15 @@ export function DashboardSettings({
 								descriptionInline
 								description={
 									<span className="settings-folder-path">
-										{recordings ||
-											folderErrors.recordings ||
+										{folderErrors.recordings ? (
+											<span role="alert">{folderErrors.recordings}</span>
+										) : (
+											recordings ||
 											t(
 												"settings.appPreferences.loadingFolder",
 												"Loading folder location…",
-											)}
+											)
+										)}
 									</span>
 								}
 								help={
@@ -391,12 +394,15 @@ export function DashboardSettings({
 								descriptionInline
 								description={
 									<span className="settings-folder-path">
-										{directory ||
-											folderErrors.projects ||
+										{folderErrors.projects ? (
+											<span role="alert">{folderErrors.projects}</span>
+										) : (
+											directory ||
 											t(
 												"settings.appPreferences.loadingFolder",
 												"Loading folder location…",
-											)}
+											)
+										)}
 									</span>
 								}
 								help={

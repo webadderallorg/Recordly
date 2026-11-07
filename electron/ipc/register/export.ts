@@ -55,6 +55,7 @@ import { isAllowedLocalReadPath, resolveApprovedLocalMediaPath } from "../projec
 import { approveUserPath } from "../utils";
 import {
 	type CaptionSidecarPayload,
+	getCaptionSidecarExtensions,
 	parseCaptionSidecarPayload,
 	withCaptionSidecarMessage,
 	writeCaptionSidecarsBestEffort,
@@ -882,6 +883,7 @@ export function registerExportHandlers() {
 					title: isGif ? nativeT("saveGif") : nativeT("saveVideo"),
 					defaultPath: await getAvailableExportPath(
 						path.join(app.getPath("downloads"), fileName),
+						getCaptionSidecarExtensions(sidecarPayload),
 					),
 					filters,
 					properties: ["createDirectory", "showOverwriteConfirmation"],
@@ -900,8 +902,13 @@ export function registerExportHandlers() {
 				}
 
 				const destinationPath = await saveExportToAvailablePath(
-					getSelectedExportPath(result.filePath, saveDialogOptions.defaultPath!, fileName),
+					getSelectedExportPath(
+						result.filePath,
+						saveDialogOptions.defaultPath!,
+						fileName,
+					),
 					(destination) => fs.writeFile(destination, Buffer.from(videoData)),
+					getCaptionSidecarExtensions(sidecarPayload),
 				);
 				const captionSidecarResult = await writeCaptionSidecarsBestEffort(
 					destinationPath,
@@ -1042,6 +1049,7 @@ export function registerExportHandlers() {
 					title: isGif ? nativeT("saveGif") : nativeT("saveVideo"),
 					defaultPath: await getAvailableExportPath(
 						path.join(app.getPath("downloads"), fileName),
+						getCaptionSidecarExtensions(sidecarPayload),
 					),
 					filters,
 					properties: ["createDirectory", "showOverwriteConfirmation"],
@@ -1062,8 +1070,13 @@ export function registerExportHandlers() {
 				}
 
 				const destinationPath = await saveExportToAvailablePath(
-					getSelectedExportPath(result.filePath, saveDialogOptions.defaultPath!, fileName),
+					getSelectedExportPath(
+						result.filePath,
+						saveDialogOptions.defaultPath!,
+						fileName,
+					),
 					(destination) => moveExportedTempFile(tempPath, destination),
+					getCaptionSidecarExtensions(sidecarPayload),
 				);
 				releaseOwnedExportPath(tempPath);
 				const captionSidecarResult = await writeCaptionSidecarsBestEffort(

@@ -195,13 +195,15 @@ function Preview() {
 					<button
 						onClick={() =>
 							playback.current?.seekTimeline(
-								(4000 + timingPhases.zoomOutStart) / 2000,
+								(zooms[0].endMs + timingPhases.zoomOutStart) / 2000,
 							)
 						}
 					>
 						Seek exit midpoint
 					</button>
-					<button onClick={() => playback.current?.seekTimeline(4)}>Seek zoom end</button>
+					<button onClick={() => playback.current?.seekTimeline(zooms[0].endMs / 1000)}>
+						Seek zoom end
+					</button>
 				</>
 			)}
 			<button

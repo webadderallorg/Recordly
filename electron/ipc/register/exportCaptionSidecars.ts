@@ -17,6 +17,13 @@ export type CaptionSidecarWriteResult = {
 	error: string | null;
 };
 
+export function getCaptionSidecarExtensions(
+	payload: CaptionSidecarPayload | null,
+): readonly ("srt" | "vtt")[] {
+	if (!payload) return [];
+	return payload.format === "both" ? ["srt", "vtt"] : [payload.format];
+}
+
 function toSrtTimestamp(totalMs: number): string {
 	const ms = Math.max(0, Math.round(totalMs));
 	const hours = Math.floor(ms / 3_600_000);
@@ -116,11 +123,17 @@ export async function writeCaptionSidecars(
 	const basePath = path.join(parsed.dir, parsed.name);
 
 	if (payload.format === "srt" || payload.format === "both") {
-		await fs.writeFile(`${basePath}.srt`, serializeSrt(payload.cues), "utf8");
+		await fs.writeFile(`${basePath}.srt`, serializeSrt(payload.cues), {
+			encoding: "utf8",
+			flag: "wx",
+		});
 	}
 
 	if (payload.format === "vtt" || payload.format === "both") {
-		await fs.writeFile(`${basePath}.vtt`, serializeVtt(payload.cues), "utf8");
+		await fs.writeFile(`${basePath}.vtt`, serializeVtt(payload.cues), {
+			encoding: "utf8",
+			flag: "wx",
+		});
 	}
 }
 

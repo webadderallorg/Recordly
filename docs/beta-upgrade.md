@@ -4,13 +4,15 @@ Before installing the beta, quit Recordly and back up your projects, their origi
 
 A `.recordly` project references media files on disk; it does not contain them. Include the screen recording, webcam recording, imported audio, and any accompanying audio, cursor, or session files in your backup. Preserve their folder locations, or retain a backup that can be restored to those locations. Include a custom recordings folder if you chose one.
 
-The default settings and recordings folder is:
+The default settings folder is:
 
 - macOS: `~/Library/Application Support/Recordly/`
 - Windows: `%APPDATA%\Recordly\`
 - Linux: `~/.config/Recordly/` (or `$XDG_CONFIG_HOME/Recordly/` if configured)
 
-Copy the whole folder while Recordly is closed. Keep that backup outside the folder the beta will use. Also back up projects and media stored elsewhere.
+Recordings normally use a `recordings` subfolder there. For Windows Store installations, recordings and projects instead default to your `Videos\Recordly\` folder; settings remain in `%APPDATA%\Recordly\`. Back up both folders.
+
+Copy the whole settings folder while Recordly is closed. Keep that backup outside the folder the beta will use. Also back up projects and media stored elsewhere.
 
 ## Open a v1.4 project in the beta
 

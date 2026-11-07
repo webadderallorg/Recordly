@@ -354,9 +354,56 @@ it("applies the new compression profile exclusively to cloud shares", async () =
 			backendPreference: "breeze",
 		}),
 	);
-	expect(share.input.ensureSupportedMp4SourceDimensions).toHaveBeenCalledWith(30, "source", 720);
+	expect(share.input.ensureSupportedMp4SourceDimensions).toHaveBeenCalledWith(30, "source", 720, {
+		pipelineModel: "modern",
+		backendPreference: "breeze",
+	});
 });
 
+it.each([
+	{
+		name: "default native auto",
+		settings: {},
+		smoke: {},
+		expected: { pipelineModel: "modern", backendPreference: "auto" },
+	},
+	{
+		name: "legacy",
+		settings: { pipelineModel: "legacy" },
+		smoke: {},
+		expected: { pipelineModel: "legacy", backendPreference: "webcodecs" },
+	},
+	{
+		name: "browser-only smoke",
+		settings: {},
+		smoke: { enabled: true, useNativeExport: false },
+		expected: { pipelineModel: "modern", backendPreference: "webcodecs" },
+	},
+	{
+		name: "native smoke",
+		settings: {},
+		smoke: { enabled: true, useNativeExport: true },
+		expected: { pipelineModel: "modern", backendPreference: "breeze" },
+	},
+] as const)("validates download dimensions using the $name export route", async ({
+	settings,
+	smoke,
+	expected,
+}) => {
+	const { value, input } = context();
+	Object.assign(value.settings, settings);
+	Object.assign(input.smokeExportConfig, smoke);
+	input.ensureSupportedMp4SourceDimensions.mockRejectedValueOnce(
+		new Error("dimension validation"),
+	);
+	await expect(runMp4Export(value)).rejects.toThrow("dimension validation");
+	expect(input.ensureSupportedMp4SourceDimensions).toHaveBeenCalledWith(
+		30,
+		"medium",
+		undefined,
+		expected,
+	);
+});
 describe("local exports without a Cloud subscription", () => {
 	it.each([
 		"high",

@@ -2,19 +2,32 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 // Suggest a free name before opening the save dialog.
-export async function getAvailableExportPath(requestedPath: string): Promise<string> {
+export async function getAvailableExportPath(
+	requestedPath: string,
+	sidecarExtensions: readonly string[] = [],
+): Promise<string> {
 	const { dir, name, ext } = path.parse(requestedPath);
 	let candidate = requestedPath;
 	let suffix = 1;
 	while (true) {
-		try {
-			await fs.lstat(candidate);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-				return candidate;
+		const candidateName = path.parse(candidate).name;
+		const outputs = [
+			candidate,
+			...sidecarExtensions.map((extension) =>
+				path.join(dir, `${candidateName}.${extension}`),
+			),
+		];
+		let occupied = false;
+		for (const output of outputs) {
+			try {
+				await fs.lstat(output);
+				occupied = true;
+				break;
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 			}
-			throw error;
 		}
+		if (!occupied) return candidate;
 		candidate = path.join(dir, `${name} ${suffix++}${ext}`);
 	}
 }
@@ -34,9 +47,10 @@ export function getSelectedExportPath(
 export async function saveExportToAvailablePath(
 	requestedPath: string,
 	writeExport: (destinationPath: string) => Promise<void>,
+	sidecarExtensions: readonly string[] = [],
 ): Promise<string> {
 	while (true) {
-		const destinationPath = await getAvailableExportPath(requestedPath);
+		const destinationPath = await getAvailableExportPath(requestedPath, sidecarExtensions);
 		let reservation;
 		try {
 			reservation = await fs.open(destinationPath, "wx");

@@ -47,6 +47,32 @@ describe("getAvailableExportPath", () => {
 		);
 	});
 
+	it.each([
+		"srt",
+		"vtt",
+	])("skips orphan %s captions when selecting the video name", async (format) => {
+		const dir = await makeTempDir();
+		const requested = path.join(dir, "clip.mp4");
+		await fs.writeFile(requested, "original video");
+		const orphan = path.join(dir, `clip 1.${format}`);
+		await fs.writeFile(orphan, "unrelated captions");
+		await expect(getAvailableExportPath(requested, [format])).resolves.toBe(
+			path.join(dir, "clip 2.mp4"),
+		);
+		await expect(fs.readFile(orphan, "utf8")).resolves.toBe("unrelated captions");
+	});
+
+	it("checks both requested caption formats while ignoring an unrequested format", async () => {
+		const dir = await makeTempDir();
+		const requested = path.join(dir, "clip.mp4");
+		await fs.writeFile(path.join(dir, "clip.vtt"), "VTT only");
+		await fs.writeFile(path.join(dir, "clip 1.srt"), "SRT only");
+		await expect(getAvailableExportPath(requested, ["srt"])).resolves.toBe(requested);
+		await expect(getAvailableExportPath(requested, ["srt", "vtt"])).resolves.toBe(
+			path.join(dir, "clip 2.mp4"),
+		);
+	});
+
 	it.skipIf(process.platform === "win32")(
 		"treats directories and dangling symlinks as occupied names",
 		async () => {
@@ -60,6 +86,20 @@ describe("getAvailableExportPath", () => {
 			await expect(getAvailableExportPath(requested)).resolves.toBe(
 				path.join(dir, "Untitled Project 2.mp4"),
 			);
+			await fs.mkdir(path.join(dir, "Untitled Project 2.srt"));
+			await fs.symlink(
+				path.join(dir, "missing.srt"),
+				path.join(dir, "Untitled Project 3.srt"),
+			);
+			await expect(getAvailableExportPath(requested, ["srt"])).resolves.toBe(
+				path.join(dir, "Untitled Project 4.mp4"),
+			);
+			expect((await fs.lstat(path.join(dir, "Untitled Project 2.srt"))).isDirectory()).toBe(
+				true,
+			);
+			expect(
+				(await fs.lstat(path.join(dir, "Untitled Project 3.srt"))).isSymbolicLink(),
+			).toBe(true);
 		},
 	);
 
@@ -84,6 +124,30 @@ describe("getAvailableExportPath", () => {
 			"first",
 			"second",
 		]);
+	});
+
+	it("reserves distinct caption-safe names for concurrent saves", async () => {
+		const dir = await makeTempDir();
+		const requested = path.join(dir, "clip.mp4");
+		const orphan = path.join(dir, "clip.srt");
+		await fs.writeFile(orphan, "unrelated captions");
+		const paths = await Promise.all(
+			["first", "second"].map((content) =>
+				saveExportToAvailablePath(
+					requested,
+					(destination) => fs.writeFile(destination, content),
+					["srt"],
+				),
+			),
+		);
+		expect(new Set(paths)).toEqual(
+			new Set([path.join(dir, "clip 1.mp4"), path.join(dir, "clip 2.mp4")]),
+		);
+		expect(await Promise.all(paths.map((file) => fs.readFile(file, "utf8")))).toEqual([
+			"first",
+			"second",
+		]);
+		await expect(fs.readFile(orphan, "utf8")).resolves.toBe("unrelated captions");
 	});
 
 	it("removes a failed save reservation and preserves the existing export", async () => {

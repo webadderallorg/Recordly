@@ -51,6 +51,129 @@ afterEach(async () => {
 
 describe("export save dialog names", () => {
 	it.each([
+		["save-exported-video", "srt"],
+		["finalize-exported-video", "srt"],
+		["save-exported-video", "vtt"],
+		["finalize-exported-video", "vtt"],
+		["save-exported-video", "both"],
+		["finalize-exported-video", "both"],
+	] as const)("%s preserves orphan %s captions when numbering an export", async (channel, format) => {
+		const dir = await makeTempDir();
+		vi.spyOn(app, "getPath").mockReturnValue(dir);
+		const original = path.join(dir, "clip.mp4");
+		await fs.writeFile(original, "original video");
+		const orphan = path.join(dir, `clip 1.${format === "both" ? "srt" : format}`);
+		await fs.writeFile(orphan, "unrelated captions");
+		if (format === "both") await fs.writeFile(path.join(dir, "clip 2.vtt"), "other captions");
+		const tempPath = path.join(dir, "export-temp.mp4");
+		await fs.writeFile(tempPath, "new video");
+		registerOwnedExportPath(tempPath);
+		vi.mocked(dialog.showSaveDialog).mockImplementation(async (options) => ({
+			canceled: false,
+			filePath: (options as Electron.SaveDialogOptions).defaultPath!,
+		}));
+		vi.mocked(ipcMain.handle).mockClear();
+		registerExportHandlers();
+		const handler = vi.mocked(ipcMain.handle).mock.calls.find(([name]) => name === channel)![1];
+		const captionSidecar = {
+			format,
+			cues: [{ startMs: 0, endMs: 1000, text: "New captions" }],
+		};
+		try {
+			const event = { sender: {} } as Electron.IpcMainInvokeEvent;
+			const result =
+				channel === "save-exported-video"
+					? await handler(
+							event,
+							new TextEncoder().encode("new video").buffer,
+							"clip.mp4",
+							captionSidecar,
+						)
+					: await handler(event, { tempPath, fileName: "clip.mp4", captionSidecar });
+			const destination = path.join(dir, `clip ${format === "both" ? 3 : 2}.mp4`);
+			expect(result).toMatchObject({ success: true, path: destination });
+			await expect(fs.readFile(original, "utf8")).resolves.toBe("original video");
+			await expect(fs.readFile(orphan, "utf8")).resolves.toBe("unrelated captions");
+			if (format === "both") {
+				await expect(fs.readFile(path.join(dir, "clip 2.vtt"), "utf8")).resolves.toBe(
+					"other captions",
+				);
+			}
+			await expect(fs.readFile(destination, "utf8")).resolves.toBe("new video");
+			for (const extension of format === "both" ? ["srt", "vtt"] : [format]) {
+				await expect(
+					fs.readFile(destination.replace(/\.mp4$/, `.${extension}`), "utf8"),
+				).resolves.toContain("New captions");
+			}
+		} finally {
+			releaseOwnedExportPath(tempPath);
+		}
+	});
+
+	it.each([
+		"save-exported-video",
+		"finalize-exported-video",
+	])("%s keeps the video successful when a caption appears after its name is reserved", async (channel) => {
+		const dir = await makeTempDir();
+		vi.spyOn(app, "getPath").mockReturnValue(dir);
+		const destination = path.join(dir, "clip.mp4");
+		const existingCaption = path.join(dir, "clip.vtt");
+		const tempPath = path.join(dir, "export-temp.mp4");
+		await fs.writeFile(tempPath, "new video");
+		registerOwnedExportPath(tempPath);
+		vi.mocked(dialog.showSaveDialog).mockResolvedValue({
+			canceled: false,
+			filePath: destination,
+		});
+		vi.mocked(ipcMain.handle).mockClear();
+		registerExportHandlers();
+		const handler = vi.mocked(ipcMain.handle).mock.calls.find(([name]) => name === channel)![1];
+		const write = fs.writeFile.bind(fs);
+		if (channel === "save-exported-video") {
+			vi.spyOn(fs, "writeFile").mockImplementation(async (...args) => {
+				await write(...args);
+				if (String(args[0]) === destination)
+					await write(existingCaption, "concurrent captions", { flag: "wx" });
+			});
+		} else {
+			const rename = fs.rename.bind(fs);
+			vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+				await rename(from, to);
+				if (String(to) === destination)
+					await write(existingCaption, "concurrent captions", { flag: "wx" });
+			});
+		}
+		const captionSidecar = {
+			format: "both",
+			cues: [{ startMs: 0, endMs: 1000, text: "New captions" }],
+		};
+		try {
+			const event = { sender: {} } as Electron.IpcMainInvokeEvent;
+			const result =
+				channel === "save-exported-video"
+					? await handler(
+							event,
+							new TextEncoder().encode("new video").buffer,
+							"clip.mp4",
+							captionSidecar,
+						)
+					: await handler(event, { tempPath, fileName: "clip.mp4", captionSidecar });
+			expect(result).toMatchObject({
+				success: true,
+				path: destination,
+				message: expect.stringContaining("Captions could not be saved"),
+			});
+			await expect(fs.readFile(destination, "utf8")).resolves.toBe("new video");
+			await expect(fs.readFile(existingCaption, "utf8")).resolves.toBe("concurrent captions");
+			await expect(fs.readFile(path.join(dir, "clip.srt"), "utf8")).resolves.toContain(
+				"New captions",
+			);
+		} finally {
+			releaseOwnedExportPath(tempPath);
+		}
+	});
+
+	it.each([
 		"save-exported-video",
 		"finalize-exported-video",
 	])("%s suggests the next numbered name and saves there", async (channel) => {
