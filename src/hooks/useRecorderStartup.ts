@@ -19,7 +19,6 @@ export function useRecorderStartup(context: RecorderContext) {
 		stopWebcamRecorder,
 		countdownDelay,
 		setCountdownActive,
-		recordingSessionTimestamp,
 		resetRecordingClock,
 		setRecording,
 		nativeScreenRecording,
@@ -85,8 +84,7 @@ export function useRecorderStartup(context: RecorderContext) {
 				} finally {
 					setCountdownActive(false);
 				}
-				recordingSessionTimestamp.current = Date.now();
-				resetRecordingClock(recordingSessionTimestamp.current);
+				resetRecordingClock(Date.now());
 			}
 
 			let nativeWindowsCaptureStartFailed = false;
@@ -116,8 +114,7 @@ export function useRecorderStartup(context: RecorderContext) {
 				} finally {
 					setCountdownActive(false);
 				}
-				recordingSessionTimestamp.current = Date.now();
-				resetRecordingClock(recordingSessionTimestamp.current);
+				resetRecordingClock(Date.now());
 			}
 
 			if (startWasCancelled()) return;

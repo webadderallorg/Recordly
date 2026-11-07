@@ -372,6 +372,7 @@
 		"deleteRegion": "Eliminar audio"
 	},
 	"updates": {
+		"loadFailed": "No se pudo cargar el canal de actualizaciones. Inténtalo de nuevo.",
 		"automaticDownloads": "Descargar actualizaciones automáticamente",
 		"automaticDownloadsDescription": "Descarga las nuevas actualizaciones en segundo plano. Tú decides cuándo reiniciar.",
 		"downloadPreferenceFailed": "No se pudo cargar o guardar la descarga automática de actualizaciones. Inténtalo de nuevo.",

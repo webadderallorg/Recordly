@@ -365,4 +365,36 @@ describe("local media path policy", () => {
 			code: "ENOENT",
 		});
 	});
+	it.skipIf(process.platform === "win32")(
+		"does not approve a replacement symlink target after validating its previous target",
+		async () => {
+			const manager = await import("./manager");
+			const { approvedLocalReadPaths } = await import("../state");
+			const approvedTarget = path.join(tempRoot, "approved.mp4");
+			const replacementTarget = path.join(tempRoot, "unapproved.mp4");
+			const alias = path.join(tempPath, "changing.mp4");
+			await fs.writeFile(approvedTarget, "approved recording");
+			await fs.writeFile(replacementTarget, "private recording");
+			await fs.symlink(approvedTarget, alias);
+			await manager.rememberApprovedLocalReadPath(approvedTarget);
+			const canonicalApproved = await fs.realpath(approvedTarget);
+			const canonicalReplacement = await fs.realpath(replacementTarget);
+			const originalRealpath = fs.realpath.bind(fs);
+			const resolve = vi.spyOn(fs, "realpath").mockImplementationOnce(async (value) => {
+				const previous = await originalRealpath(value);
+				await fs.unlink(alias);
+				await fs.symlink(replacementTarget, alias);
+				return previous;
+			});
+			try {
+				expect(await manager.resolveApprovedLocalMediaPath(alias)).toBe(canonicalApproved);
+				expect(approvedLocalReadPaths.has(alias)).toBe(true);
+				expect(approvedLocalReadPaths.has(approvedTarget)).toBe(true);
+				expect(approvedLocalReadPaths.has(canonicalReplacement)).toBe(false);
+				expect(manager.isAllowedLocalReadPath(alias)).toBe(false);
+			} finally {
+				resolve.mockRestore();
+			}
+		},
+	);
 });

@@ -35,7 +35,7 @@ export function OnboardingController({
 		setReturningSignIn(false);
 		if (standalone) setOpen(true);
 		else
-			void window.electronAPI.showOnboardingWindow({ preview }).then((shown) => {
+			void window.electronAPI.showOnboardingWindow({ preview }).catch(() => false).then((shown) => {
 				if (!shown) {
 					setInlineFallback(true);
 					setOpen(true);

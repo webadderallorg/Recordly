@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import type { CaptionCuePayload, CaptionWordPayload } from "../types";
-import { buildCaptionTextFromWords } from "./parser";
 import { assertParakeetModelDirectory } from "./parakeetModel";
+import { buildCaptionTextFromWords } from "./parser";
 
 export interface ParakeetResult {
 	text: string;
@@ -87,8 +87,10 @@ export function mergeParakeetWindows(
 					matches++;
 			}
 			const score =
-				matches * 100 -
-				Math.abs(previous[left].startMs - next[right].startMs) * 100 -
+				// One neighboring-word match outweighs small TDT timing jitter, but
+				// not a different repeated occurrence hundreds of milliseconds away.
+				matches * 250 -
+				Math.abs(previous[left].startMs - next[right].startMs) -
 				Math.abs(next[right].startMs - seamMs) * 0.001;
 			if (!anchor || score > anchor.score) anchor = { left, right, score };
 		}

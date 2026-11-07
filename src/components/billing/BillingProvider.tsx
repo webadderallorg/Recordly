@@ -1,4 +1,3 @@
-import { translate } from "@/contexts/I18nContext";
 import type { User } from "@supabase/supabase-js";
 import {
 	createContext,
@@ -6,18 +5,20 @@ import {
 	useCallback,
 	useContext,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
 } from "react";
 import { useRecordlyAuth } from "@/components/auth/useRecordlyAuth";
-import { recoverBillingSession } from "@/lib/auth/recoverBillingSession";
-import { CLOUD_SHARE_ENDPOINT } from "@/components/video-editor/cloud/endpoint";
 import {
 	invalidateCloudBillingReads,
 	readCloudBilling,
 } from "@/components/video-editor/cloud/cloudBillingReads";
+import { CLOUD_SHARE_ENDPOINT } from "@/components/video-editor/cloud/endpoint";
 import { subscribeShareCapacityChanges } from "@/components/video-editor/cloud/shareCapacity";
+import { translate } from "@/contexts/I18nContext";
+import { recoverBillingSession } from "@/lib/auth/recoverBillingSession";
 import {
 	type CloudBillingInterval,
 	parseCloudBillingCatalog,
@@ -28,6 +29,8 @@ import { type CachedCloudUsage, readUsageCache, writeUsageCache } from "./usageC
 
 type Status = ReturnType<typeof parseCloudBillingStatus>;
 type Catalog = ReturnType<typeof parseCloudBillingCatalog>;
+type AccountOwner = { userId: string | undefined };
+
 type LegacyUsage = { recordings: number; storageBytes: number };
 
 interface BillingContextValue {
@@ -99,7 +102,7 @@ async function readLegacyUsage(token: string): Promise<LegacyUsage> {
 export function BillingProvider({ children }: { children: ReactNode }) {
 	const auth = useRecordlyAuth();
 	const [status, setStatus] = useState<Status | null>(null);
-	const [statusOwner, setStatusOwner] = useState<string | null>(null);
+	const [statusOwner, setStatusOwner] = useState<AccountOwner | null>(null);
 	const [catalog, setCatalog] = useState<Catalog | null>(null);
 	const [catalogLoading, setCatalogLoading] = useState(false);
 	const [fallbackUsage, setFallbackUsage] = useState<LegacyUsage | null>(null);
@@ -108,14 +111,28 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 	const [needsSignIn, setNeedsSignIn] = useState(false);
 	const [catalogError, setCatalogError] = useState<string | null>(null);
 	const [pricingOpen, setPricingOpen] = useState(false);
-	const [busy, setBusy] = useState<"checkout" | "portal" | null>(null);
+	const [busy, setBusy] = useState<{ owner: AccountOwner; action: "checkout" | "portal" } | null>(
+		null,
+	);
 	const [awaitingCheckout, setAwaitingCheckout] = useState(false);
 	const [pollUntil, setPollUntil] = useState(0);
 	const request = useRef(0);
-	const usageRequest = useRef<{ key: string; promise: Promise<void> } | null>(null);
-	const catalogRequest = useRef<{ key: string; promise: Promise<void> } | null>(null);
+	const usageRequest = useRef<{
+		key: string;
+		owner: AccountOwner;
+		promise: Promise<void>;
+	} | null>(null);
+	const catalogRequest = useRef<{
+		key: string;
+		owner: AccountOwner;
+		promise: Promise<void>;
+	} | null>(null);
 	const mounted = useRef(true);
 	const userId = auth.user?.id;
+	// Token rotation refreshes requests, but does not change who owns a verified
+	// plan or an open checkout. A new account lifetime also guards A → B → A.
+	const accountKey = useMemo<AccountOwner>(() => ({ userId }), [userId]);
+	const currentAccountKey = useRef(accountKey);
 	const storedUsage = useMemo(
 		() => (userId ? readUsageCache(CLOUD_SHARE_ENDPOINT, userId) : null),
 		[userId],
@@ -131,12 +148,15 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 		: null;
 	const authKey = `${userId ?? ""}:${auth.accessToken ?? ""}`;
 	const currentAuthKey = useRef(authKey);
-	currentAuthKey.current = authKey;
-	const busyRef = useRef(false);
+	useLayoutEffect(() => {
+		currentAccountKey.current = accountKey;
+		currentAuthKey.current = authKey;
+	}, [accountKey, authKey]);
+	const busyRef = useRef<{ owner: AccountOwner } | null>(null);
 	const sessionRecoveryAttempted = useRef(false);
 	const previousUserId = useRef(auth.user?.id);
-	const verifiedStatus = statusOwner === authKey ? status : null;
-	const verifiedFallbackUsage = statusOwner === authKey ? fallbackUsage : null;
+	const verifiedStatus = statusOwner === accountKey ? status : null;
+	const verifiedFallbackUsage = statusOwner === accountKey ? fallbackUsage : null;
 
 	useEffect(() => {
 		mounted.current = true;
@@ -152,12 +172,18 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 		(fresh = false): Promise<void> => {
 			if (auth.loading) return Promise.resolve();
 			const key = authKey;
+			if (currentAuthKey.current !== key || currentAccountKey.current !== accountKey)
+				return Promise.resolve();
 			// Focus and visibility often fire together. Share the pending usage read
 			// instead of invalidating its result and starting another provider request.
-			if (usageRequest.current?.key === key) return usageRequest.current.promise;
+			if (usageRequest.current?.key === key && usageRequest.current.owner === accountKey)
+				return usageRequest.current.promise;
 			const id = ++request.current;
 			const current = () =>
-				mounted.current && request.current === id && currentAuthKey.current === key;
+				mounted.current &&
+				request.current === id &&
+				currentAuthKey.current === key &&
+				currentAccountKey.current === accountKey;
 			const rememberUsage = (
 				plan: CachedCloudUsage["plan"],
 				usage: CachedCloudUsage["usage"],
@@ -183,8 +209,11 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 				CLOUD_SHARE_ENDPOINT && typeof window.electronAPI.cloudBilling === "function";
 			// Pricing is independent of usage: a slow public catalog must not keep a
 			// completed account read behind a loading indicator.
-			if (billingAvailable && catalogRequest.current?.key !== key) {
-				const pending = { key, promise: Promise.resolve() };
+			if (
+				billingAvailable &&
+				(catalogRequest.current?.key !== key || catalogRequest.current.owner !== accountKey)
+			) {
+				const pending = { key, owner: accountKey, promise: Promise.resolve() };
 				catalogRequest.current = pending;
 				setCatalogLoading(true);
 				pending.promise = (async () => {
@@ -200,6 +229,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 						if (
 							!mounted.current ||
 							currentAuthKey.current !== key ||
+							currentAccountKey.current !== accountKey ||
 							catalogRequest.current !== pending
 						)
 							return;
@@ -209,6 +239,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 						if (
 							!mounted.current ||
 							currentAuthKey.current !== key ||
+							currentAccountKey.current !== accountKey ||
 							catalogRequest.current !== pending
 						)
 							return;
@@ -222,7 +253,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 					}
 				})();
 			}
-			const pending = { key, promise: Promise.resolve() };
+			const pending = { key, owner: accountKey, promise: Promise.resolve() };
 			usageRequest.current = pending;
 			pending.promise = (async () => {
 				try {
@@ -333,7 +364,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 					setError(message);
 				} finally {
 					if (current()) {
-						setStatusOwner(key);
+						setStatusOwner(accountKey);
 						setLoading(false);
 					}
 					if (usageRequest.current === pending) usageRequest.current = null;
@@ -341,7 +372,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 			})();
 			return pending.promise;
 		},
-		[auth.loading, userId, auth.accessToken, authKey],
+		[auth.loading, userId, auth.accessToken, authKey, accountKey],
 	);
 
 	useEffect(() => {
@@ -414,7 +445,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 		action: "checkout" | "portal",
 		interval: CloudBillingInterval = "monthly",
 	) => {
-		if (busyRef.current) return;
+		if (busyRef.current?.owner === accountKey) return;
 		if (!auth.user || !auth.accessToken) {
 			setPricingOpen(true);
 			return;
@@ -444,10 +475,11 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 			);
 			return;
 		}
-		busyRef.current = true;
-		setBusy(action);
+		const operation = { owner: accountKey };
+		busyRef.current = operation;
+		setBusy({ owner: accountKey, action });
 		setError(null);
-		const key = authKey;
+		const key = accountKey;
 		try {
 			const result = await window.electronAPI.cloudBilling({
 				endpoint: CLOUD_SHARE_ENDPOINT,
@@ -455,7 +487,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 				action,
 				...(action === "checkout" ? { interval } : {}),
 			});
-			if (!mounted.current || currentAuthKey.current !== key) return;
+			if (!mounted.current || currentAccountKey.current !== key) return;
 			if (!result.success)
 				throw new Error(
 					result.error ||
@@ -470,10 +502,13 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 			}
 			await refresh(true);
 		} catch (failure) {
-			if (mounted.current && currentAuthKey.current === key) setError(errorMessage(failure));
+			if (mounted.current && currentAccountKey.current === key)
+				setError(errorMessage(failure));
 		} finally {
-			busyRef.current = false;
-			if (mounted.current) setBusy(null);
+			if (busyRef.current === operation) {
+				busyRef.current = null;
+				if (mounted.current) setBusy(null);
+			}
 		}
 	};
 
@@ -485,9 +520,9 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 				catalogLoading,
 				fallbackUsage: verifiedFallbackUsage,
 				usagePreview,
-				loading: loading || auth.loading || statusOwner !== authKey,
-				error: statusOwner === authKey ? error || catalogError : null,
-				needsSignIn: statusOwner === authKey && needsSignIn,
+				loading: loading || auth.loading || statusOwner !== accountKey,
+				error: statusOwner === accountKey ? error || catalogError : null,
+				needsSignIn: statusOwner === accountKey && needsSignIn,
 				user: auth.user,
 				refresh: () => refresh(true),
 				openPricing: () => {
@@ -496,9 +531,9 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 				},
 				pricingOpen,
 				setPricingOpen,
-				busy,
+				busy: busy?.owner === accountKey ? busy.action : null,
 				startBilling,
-				awaitingCheckout: statusOwner === authKey ? awaitingCheckout : false,
+				awaitingCheckout: statusOwner === accountKey ? awaitingCheckout : false,
 			}}
 		>
 			{children}

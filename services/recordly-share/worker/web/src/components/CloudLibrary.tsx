@@ -11,9 +11,9 @@ import { RecordlyPasswordForm } from "../../../../../../src/components/auth/Reco
 import settingsCopy from "../../../../../../src/i18n/locales/en/settings.json";
 import { RecordlyDemoVideo } from "../../../../../../src/components/ui/RecordlyDemoVideo";
 import copy from "../../../../../../src/i18n/locales/en/onboarding.json";
-import { beginCloudOAuth, cloudSignupMetadata, completeCloudCallback } from "../scripts/cloudAuth";
+import { beginCloudOAuth, cloudSignupMetadata, completeCloudCallback, CloudSignupConsentRetryError } from "../scripts/cloudAuth";
 import ThemeToggle from "./ThemeToggle";
-import type { CommentAccountState } from "../scripts/api";
+import { commentAccessTokenForAccount, type CommentAccountState } from "../scripts/api";
 import { commentProfileName, takeCommentReturn } from "../scripts/commentAuth";
 
 import CommentProfileName from "./CommentProfileName";
@@ -29,6 +29,7 @@ interface Props {
 }
 
 export default function CloudLibrary({ authConfig, commentAccount }: Props = {}) {
+	const onCommentAccountChange = commentAccount?.onChange;
 	const [signInOpen, setSignInOpen] = useState(false);
 	const [client, setClient] = useState<SupabaseClient | null>(null);
 	const [session, setSession] = useState<Session | null>(null);
@@ -97,12 +98,13 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 				setClient(auth);
 				try {
 					let returnTo: string | null = null;
-					if (await completeCloudCallback(auth, location.href, (challenge) => { returnTo = takeCommentReturn(challenge); })) {
+					if (await completeCloudCallback(auth, location.href, (challenge) => { returnTo = takeCommentReturn(challenge); }, config)) {
 						if (returnTo) { location.replace(returnTo); return; }
 						history.replaceState(null, "", "/library");
 					}
 				} catch (cause) {
-					history.replaceState(null, "", "/library");
+					if (!(cause instanceof CloudSignupConsentRetryError))
+						history.replaceState(null, "", "/library");
 					if (active)
 						setError(cause instanceof Error ? cause.message : copy.signInFailed);
 				}
@@ -129,20 +131,20 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 	}, []);
 
 	useEffect(() => {
-		if (!commentAccount) return;
+		if (!onCommentAccountChange) return;
 		const usable = session && !session.user.is_anonymous && session.user.email_confirmed_at;
-		commentAccount.onChange(usable && client ? {
-			key: session.user.id,
+		const accountKey = session?.user.id ?? "";
+		onCommentAccountChange(usable && client ? {
+			key: accountKey,
 			needsDisplayName: !commentProfileName(session.user.user_metadata),
 			displayName: commentProfileName(session.user.user_metadata) || "",
 			getAccessToken: async () => {
 				const result = await client.auth.getSession();
-				if (result.error || !result.data.session) throw new Error("Sign in again to post your comment. Your draft is saved here.");
-				return result.data.session.access_token;
+				return commentAccessTokenForAccount(accountKey, result);
 			},
 		} : null);
 		if (usable) setSignInOpen(false);
-	}, [session, client, commentAccount?.onChange]);
+	}, [session, client, onCommentAccountChange]);
 	useEffect(() => {
 		if (commentAccount?.reauthenticate) setSignInOpen(true);
 	}, [commentAccount?.reauthenticate]);

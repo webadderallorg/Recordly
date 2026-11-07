@@ -41,6 +41,16 @@ export function validateAttachments(files: File[]) {
 		);
 	return null;
 }
+// The Edge handler limits titles by UTF-16 length, not by code-point count.
+export function normalizeFeedbackTitle(value: string) {
+	const singleLine = value.replace(/\s+/gu, " ").trim();
+	let title = "";
+	for (const character of singleLine) {
+		if (title.length + character.length > 160) break;
+		title += character;
+	}
+	return title.trimEnd();
+}
 export async function submitFeedback(input: {
 	title: string;
 	subject: string;
@@ -56,7 +66,7 @@ export async function submitFeedback(input: {
 	const validation = validateAttachments(input.files);
 	if (validation) throw new FeedbackError(validation);
 	const body = new FormData();
-	body.set("title", input.title.trim());
+	body.set("title", normalizeFeedbackTitle(input.title));
 	body.set("subject", input.subject);
 	body.set("message", input.message.trim());
 	if (input.logs !== null) body.set("logs", input.logs);

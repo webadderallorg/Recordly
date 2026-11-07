@@ -177,9 +177,7 @@ export function FeedbackDialog({
 							setError("");
 							try {
 								await submitFeedback({
-									title: `${sentiments.find((item) => item.value === sentiment)?.emoji ?? ""} ${message.trim()}`
-										.trim()
-										.slice(0, 160),
+									title: `${sentiments.find((item) => item.value === sentiment)?.emoji ?? ""} ${message}`,
 									subject: "other",
 									message,
 									files,

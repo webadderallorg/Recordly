@@ -85,3 +85,24 @@ it("preserves omitted diagnostics when logs are disabled by the caller", async (
 	const [, { body }] = api.invoke.mock.calls[0];
 	expect(body.has("logs")).toBe(false);
 });
+
+
+it("normalizes a multiline title without changing the multiline message", async () => {
+	const message = "  First line\n\nSecond line 🙂  ";
+	await submitFeedback({ ...input, title: " \n First \r\n second\t line\u00a0rest ", message });
+	const [, { body }] = api.invoke.mock.calls[0];
+	expect(body.get("title")).toBe("First second line rest");
+	expect(body.get("message")).toBe(message.trim());
+	expect(message).toBe("  First line\n\nSecond line 🙂  ");
+});
+
+it.each([
+	["x".repeat(159) + "😀 tail", "x".repeat(159)],
+	["x".repeat(158) + "😀 tail", "x".repeat(158) + "😀"],
+	["😀".repeat(81), "😀".repeat(80)],
+])("keeps Unicode intact within the server's160 UTF-16-unit title limit", async (title, expected) => {
+	await submitFeedback({ ...input, title });
+	const [, { body }] = api.invoke.mock.calls[0];
+	expect(body.get("title")).toBe(expected);
+	expect(String(body.get("title")).length).toBeLessThanOrEqual(160);
+});

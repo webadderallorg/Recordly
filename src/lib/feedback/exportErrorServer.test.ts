@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { exportErrorHandler } from "../../../services/supabase/functions/submit-export-error/handler";
 import { buildExportErrorReport } from "./exportErrorReporting";
+
 const backend = { reserve: vi.fn(), insert: vi.fn() };
 const handle = exportErrorHandler(backend);
 const valid = () =>
@@ -28,6 +29,7 @@ it("accepts a no-account report and reserves bounded quota before storage", asyn
 	const report = valid();
 	expect((await handle(request(report))).status).toBe(200);
 	expect(backend.insert).toHaveBeenCalledWith(report);
+	expect(backend.reserve).toHaveBeenCalledWith(report);
 	expect(backend.reserve.mock.invocationCallOrder[0]).toBeLessThan(
 		backend.insert.mock.invocationCallOrder[0],
 	);
@@ -86,6 +88,13 @@ it("returns a quota error and hides backend failures", async () => {
 	expect(response.status).toBe(500);
 	expect(await response.json()).toEqual({ code: "SUBMISSION_FAILED" });
 });
+it("does not report success or insert when the quota service fails", async () => {
+	backend.reserve.mockRejectedValue(new Error("private database detail"));
+	const response = await handle(request(valid()));
+	expect(response.status).toBe(500);
+	expect(await response.json()).toEqual({ code: "SUBMISSION_FAILED" });
+	expect(backend.insert).not.toHaveBeenCalled();
+});
 
 it("stores bounded application logs through the support endpoint", async () => {
 	const report = {
@@ -98,6 +107,7 @@ it("stores bounded application logs through the support endpoint", async () => {
 	};
 	expect((await handle(request(report))).status).toBe(200);
 	expect(backend.insert).toHaveBeenCalledWith(report);
+	expect(backend.reserve).toHaveBeenCalledWith(report);
 	for (const fields of [
 		{ logs: "a".repeat(290001) },
 		{ context: "private@example.com" },

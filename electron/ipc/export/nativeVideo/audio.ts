@@ -162,7 +162,6 @@ export async function muxNativeVideoExportAudio(
 		`${path.basename(videoPath, path.extname(videoPath))}-final.mp4`,
 	);
 
-	replaceShareExportSource(videoPath, outputPath);
 	const args = buildNativeVideoAudioMuxArgs(
 		videoPath,
 		audioInputPath,
@@ -171,7 +170,14 @@ export async function muxNativeVideoExportAudio(
 		onProgress ? { progressPipe: 2 } : {},
 	);
 
+	let ownsOutput = false;
 	try {
+		// Reserve the derived artifact exclusively. Never overwrite or later remove
+		// an existing recording, audio input, symlink, or another export's result.
+		const output = await fs.open(outputPath, "wx", 0o600);
+		ownsOutput = true;
+		await output.close();
+		replaceShareExportSource(videoPath, outputPath);
 		const ffmpegExecStartedAt = getNowMs();
 		await runFfmpegAudioMux(ffmpegPath, args, 15 * 60 * 1000, options, onProgress, session);
 		metrics.ffmpegExecMs = getNowMs() - ffmpegExecStartedAt;
@@ -186,6 +192,11 @@ export async function muxNativeVideoExportAudio(
 			outputPath,
 			metrics,
 		};
+	} catch (error) {
+		// The caller only learns this derived path after a successful mux. Remove
+		// a partial result here so failed buffer exports cannot leave it behind.
+		if (ownsOutput) await removeTemporaryExportFile(outputPath);
+		throw error;
 	} finally {
 		await Promise.allSettled(
 			tempArtifacts.map((artifactPath) => removeTemporaryExportFile(artifactPath)),

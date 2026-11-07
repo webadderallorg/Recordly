@@ -1,19 +1,19 @@
 import { ProgressBar } from "@heroui/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
+import { LocalizedError } from "@/components/feedback/LocalizedError";
+import { Button } from "@/components/ui/button";
 import {
 	ArrowClockwiseIcon,
 	CheckCircleIcon,
 	DownloadSimpleIcon,
 	WarningCircleIcon,
 } from "@/components/ui/icons";
-import styles from "./AppUpdateSettings.module.css";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
-import { LocalizedError } from "@/components/feedback/LocalizedError";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useI18n } from "@/contexts/I18nContext";
-import { SettingsRow } from "../SettingsRow";
 import { SettingsInfo } from "../SettingsInfo";
+import { SettingsRow } from "../SettingsRow";
+import styles from "./AppUpdateSettings.module.css";
 
 type Summary = Awaited<ReturnType<Window["electronAPI"]["getUpdateStatusSummary"]>>;
 
@@ -28,7 +28,7 @@ export function AppUpdateSettings() {
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string>();
 	const [friendlyError, setFriendlyError] = useState(false);
-	const [channelError, setChannelError] = useState<string>();
+	const [channelError, setChannelError] = useState<{ message: string; cause?: string }>();
 	const mounted = useRef(false);
 	const root = useRef<HTMLDivElement>(null);
 	const pending = useRef(false);
@@ -58,11 +58,15 @@ export function AppUpdateSettings() {
 				setExperimental(enabled);
 				setChannelError(undefined);
 			}
-		} catch {
+		} catch (cause) {
 			if (mounted.current)
-				setChannelError(
-					t("settings.updates.saveFailed", "Failed to change the update channel."),
-				);
+				setChannelError({
+					message: t(
+						"settings.updates.loadFailed",
+						"Could not load the update channel. Try again.",
+					),
+					cause: cause instanceof Error ? cause.message : String(cause),
+				});
 		}
 	}, [t]);
 	const loadDownloadPreference = useCallback(async () => {
@@ -142,7 +146,9 @@ export function AppUpdateSettings() {
 		} catch (error) {
 			if (mounted.current) {
 				if (area === "channel")
-					setChannelError(error instanceof Error ? error.message : String(error));
+					setChannelError({
+						message: error instanceof Error ? error.message : String(error),
+					});
 				else if (area === "downloads")
 					setDownloadPreferenceError(
 						t(
@@ -472,7 +478,12 @@ export function AppUpdateSettings() {
 				{channelError && (
 					<div className="settings-row-note">
 						<p role="alert" className="text-danger">
-							{channelError} <ErrorReportButton error={channelError} />
+							{channelError.message}{" "}
+							<ErrorReportButton
+								error={[channelError.message, channelError.cause]
+									.filter(Boolean)
+									.join("\n")}
+							/>
 						</p>
 						{experimental === undefined && (
 							<Button
