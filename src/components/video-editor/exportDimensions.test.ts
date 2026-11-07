@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	calculateMp4ExportDimensions,
 	calculateMp4SourceDimensions,
@@ -233,4 +233,177 @@ it("preserves 1440p and 4K originals for local and shared MP4 exports", () => {
 			height,
 		});
 	}
+});
+
+// Match React's hook identity/effect cleanup behavior without allocating codecs or a browser.
+const hooks = vi.hoisted(() => {
+	const slots: unknown[] = [];
+	let cursor = 0;
+	let effects: (() => void)[] = [];
+	let writes = 0;
+	const same = (a: readonly unknown[], b: readonly unknown[]) =>
+		a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
+	function memo<T>(factory: () => T, deps: readonly unknown[]): T {
+		const index = cursor++;
+		const previous = slots[index] as { deps: readonly unknown[]; value: T } | undefined;
+		if (previous && same(previous.deps, deps)) return previous.value;
+		const value = factory();
+		slots[index] = { deps, value };
+		return value;
+	}
+	return {
+		reset() {
+			slots.length = 0;
+			cursor = 0;
+			effects = [];
+			writes = 0;
+		},
+		render<T>(factory: () => T): T {
+			cursor = 0;
+			effects = [];
+			const result = factory();
+			for (const effect of effects) effect();
+			return result;
+		},
+		dispose() {
+			for (const slot of slots) (slot as { cleanup?: () => void } | undefined)?.cleanup?.();
+		},
+		writes: () => writes,
+		useMemo: memo,
+		useCallback: <T>(callback: T, deps: readonly unknown[]) => memo(() => callback, deps),
+		useRef<T>(current: T) {
+			const index = cursor++;
+			slots[index] ??= { current };
+			return slots[index] as { current: T };
+		},
+		useState<T>(initial: T) {
+			const index = cursor++;
+			let state = slots[index] as { value: T; set: (next: T) => void } | undefined;
+			if (!state) {
+				const created = {
+					value: initial,
+					set: (next: T) => {
+						created.value = next;
+						writes++;
+					},
+				};
+				slots[index] = created;
+				state = created;
+			}
+			return [state.value, state.set] as const;
+		},
+		useEffect(effect: () => void | (() => void), deps: readonly unknown[]) {
+			const index = cursor++;
+			const previous = slots[index] as
+				| { deps: readonly unknown[]; cleanup?: () => void }
+				| undefined;
+			if (previous && same(previous.deps, deps)) return;
+			effects.push(() => {
+				previous?.cleanup?.();
+				slots[index] = { deps, cleanup: effect() };
+			});
+		},
+	};
+});
+const probes = vi.hoisted(() => ({ probe: vi.fn() }));
+vi.mock("react", () => hooks);
+vi.mock("@/i18n/runtime", () => ({ translate: (_key: string, fallback: string) => fallback }));
+vi.mock("@/lib/exporter", () => ({
+	DEFAULT_MP4_CODEC: "avc1.640034",
+	GIF_SIZE_PRESETS: {},
+	calculateOutputDimensions: (width: number, height: number) => ({ width, height }),
+	probeSupportedMp4Dimensions: probes.probe,
+}));
+import { useExportDimensions } from "./export/useExportDimensions";
+const encoderPath = { codec: "avc1.640034", hardwareAcceleration: "prefer-hardware" };
+function sourceInput() {
+	return {
+		customExportResolution: { width: 1600, height: 900 },
+		onCustomExportResolutionChange: vi.fn(),
+		videoPlaybackRef: { current: { video: { videoWidth: 1920, videoHeight: 1080 } } },
+		isPreviewReady: true,
+		aspectRatio: "native",
+		cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+		mp4FrameRate: 30,
+		gifSizePreset: "original",
+	} as unknown as Parameters<typeof useExportDimensions>[0];
+}
+const flushProbe = async () => {
+	await Promise.resolve();
+	await Promise.resolve();
+};
+beforeEach(() => {
+	hooks.reset();
+	probes.probe.mockReset();
+	probes.probe.mockImplementation(
+		async ({ width, height }: { width: number; height: number }) => ({
+			width,
+			height,
+			capped: false,
+			encoderPath,
+		}),
+	);
+	vi.stubGlobal("window", { setTimeout, clearTimeout, electronAPI: {} });
+});
+afterEach(() => {
+	hooks.dispose();
+	vi.unstubAllGlobals();
+});
+describe("source support probe lifecycle", () => {
+	it("does not restart source probing for custom edits while explicit validation uses the latest size", async () => {
+		const input = sourceInput();
+		hooks.render(() => useExportDimensions(input));
+		await flushProbe();
+		input.customExportResolution = { width: 2400, height: 1350 };
+		input.onCustomExportResolutionChange = vi.fn();
+		const changed = hooks.render(() => useExportDimensions(input));
+		expect(probes.probe).toHaveBeenCalledTimes(1);
+		expect(changed.supportedMp4SourceDimensions.encoderPath).toEqual(encoderPath);
+		await changed.ensureSupportedMp4SourceDimensions(30, "custom");
+		expect(probes.probe).toHaveBeenLastCalledWith(
+			expect.objectContaining({ width: 2400, height: 1350 }),
+		);
+	});
+	it("ignores an older source probe after a real frame-rate change", async () => {
+		const input = sourceInput();
+		let old!: (value: unknown) => void;
+		let current!: (value: unknown) => void;
+		probes.probe
+			.mockReturnValueOnce(
+				new Promise((resolve) => {
+					old = resolve;
+				}),
+			)
+			.mockReturnValueOnce(
+				new Promise((resolve) => {
+					current = resolve;
+				}),
+			);
+		hooks.render(() => useExportDimensions(input));
+		input.mp4FrameRate = 60;
+		hooks.render(() => useExportDimensions(input));
+		const expected = { width: 1280, height: 720, capped: true, encoderPath };
+		current(expected);
+		await flushProbe();
+		old({ width: 640, height: 360, capped: true, encoderPath });
+		await flushProbe();
+		expect(hooks.render(() => useExportDimensions(input)).supportedMp4SourceDimensions).toEqual(
+			expected,
+		);
+		expect(probes.probe).toHaveBeenCalledTimes(2);
+	});
+	it("does not publish a probe result after unmount", async () => {
+		let resolve!: (value: unknown) => void;
+		probes.probe.mockReturnValueOnce(
+			new Promise((done) => {
+				resolve = done;
+			}),
+		);
+		hooks.render(() => useExportDimensions(sourceInput()));
+		hooks.dispose();
+		const writes = hooks.writes();
+		resolve({ width: 640, height: 360, capped: true, encoderPath });
+		await flushProbe();
+		expect(hooks.writes()).toBe(writes);
+	});
 });

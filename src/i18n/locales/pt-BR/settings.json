@@ -372,6 +372,7 @@
 		"deleteRegion": "Excluir áudio"
 	},
 	"updates": {
+		"loadFailed": "Não foi possível carregar o canal de atualizações. Tente novamente.",
 		"automaticDownloads": "Baixar atualizações automaticamente",
 		"automaticDownloadsDescription": "Baixe novas atualizações em segundo plano. Você escolhe quando reiniciar.",
 		"downloadPreferenceFailed": "Não foi possível carregar ou salvar os downloads automáticos de atualizações. Tente novamente.",

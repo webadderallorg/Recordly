@@ -144,7 +144,10 @@ export function useExportDimensions({
 				: requested;
 			// Cloud frames are encoded by bundled FFmpeg. Browser encoder support
 			// must not cap or reject a resolution that this encoder can handle.
-			if (shareResolution && typeof window.electronAPI?.nativeVideoExportStart === "function") {
+			if (
+				shareResolution &&
+				typeof window.electronAPI?.nativeVideoExportStart === "function"
+			) {
 				return { ...target, capped: false, encoderPath: null };
 			}
 			const result = await probeSupportedMp4Dimensions({
@@ -182,7 +185,11 @@ export function useExportDimensions({
 		[desiredSourceDimensions, customExportResolution],
 	);
 
+	const sourceProbeRef = useRef(ensureSupportedSourceDimensions);
+	// Explicit custom validation stays fresh without restarting the source-only probe.
+	sourceProbeRef.current = ensureSupportedSourceDimensions;
 	useEffect(() => {
+		const probeSource = sourceProbeRef.current;
 		let cancelled = false;
 		const requestId = ++requestRef.current;
 		const snapshot: Mp4SupportProbeSnapshot = {
@@ -198,7 +205,7 @@ export function useExportDimensions({
 		const fallback = { ...desiredSourceDimensions, capped: false, encoderPath: null };
 		setSupportedSourceDimensions(fallback);
 		const runProbe = () => {
-			void ensureSupportedSourceDimensions(mp4FrameRate)
+			void probeSource(mp4FrameRate)
 				.then((result) => {
 					if (!cancelled && requestId === requestRef.current)
 						setSupportedSourceDimensions(result);
@@ -216,13 +223,7 @@ export function useExportDimensions({
 			cancelled = true;
 			if (timeoutId !== null) window.clearTimeout(timeoutId);
 		};
-	}, [
-		sourceDimensions,
-		desiredSourceDimensions,
-		aspectRatio,
-		mp4FrameRate,
-		ensureSupportedSourceDimensions,
-	]);
+	}, [sourceDimensions, desiredSourceDimensions, aspectRatio, mp4FrameRate]);
 
 	return {
 		gifOutputDimensions,

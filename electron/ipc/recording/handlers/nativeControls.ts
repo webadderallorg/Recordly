@@ -1,7 +1,11 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { ipcMain } from "electron";
 import { isTrustedRenderer } from "../../../trustedRenderer";
-import { rememberApprovedLocalReadPath } from "../../project/manager";
+import { COMPANION_AUDIO_LAYOUTS } from "../../constants";
+import { normalizeVideoSourcePath, resolveApprovedLocalMediaPath } from "../../project/manager";
 import {
+	approvedLocalReadPaths,
 	lastNativeCaptureDiagnostics,
 	nativeCapturePaused,
 	nativeCaptureProcess,
@@ -13,7 +17,8 @@ import {
 	windowsNativeCaptureActive,
 } from "../../state";
 import { getCompanionAudioFallbackInfo } from "../diagnostics";
-import { recoverNativeMacCaptureOutput, waitForNativeCaptureCommand } from "../mac";
+import { recoverNativeMacCaptureOutput } from "../mac";
+import { sendNativeCaptureCommand } from "../nativeCaptureCommand";
 import { isNativeWindowsCaptureAvailable, recoverNativeWindowsCaptureOutput } from "../windows";
 
 import type { RecordingHandlerContext } from "./handlerContext";
@@ -83,7 +88,7 @@ export function registerNativeControls(
 			}
 
 			try {
-				windowsCaptureProcess.stdin.write("pause\n");
+				await sendNativeCaptureCommand(windowsCaptureProcess, "pause\n");
 				setWindowsCapturePaused(true);
 				return { success: true };
 			} catch (error) {
@@ -111,12 +116,7 @@ export function registerNativeControls(
 		}
 
 		try {
-			const commandApplied = waitForNativeCaptureCommand(
-				nativeCaptureProcess,
-				"Recording paused",
-			);
-			nativeCaptureProcess.stdin.write("pause\n");
-			await commandApplied;
+			await sendNativeCaptureCommand(nativeCaptureProcess, "pause\n", "Recording paused");
 			setNativeCapturePaused(true);
 			return { success: true };
 		} catch (error) {
@@ -139,7 +139,7 @@ export function registerNativeControls(
 			}
 
 			try {
-				windowsCaptureProcess.stdin.write("resume\n");
+				await sendNativeCaptureCommand(windowsCaptureProcess, "resume\n");
 				setWindowsCapturePaused(false);
 				return { success: true };
 			} catch (error) {
@@ -167,12 +167,7 @@ export function registerNativeControls(
 		}
 
 		try {
-			const commandApplied = waitForNativeCaptureCommand(
-				nativeCaptureProcess,
-				"Recording resumed",
-			);
-			nativeCaptureProcess.stdin.write("resume\n");
-			await commandApplied;
+			await sendNativeCaptureCommand(nativeCaptureProcess, "resume\n", "Recording resumed");
 			setNativeCapturePaused(false);
 			return { success: true };
 		} catch (error) {
@@ -192,17 +187,49 @@ export function registerNativeControls(
 		return { success: true, diagnostics: lastNativeCaptureDiagnostics };
 	});
 
-	ipcMain.handle("get-video-audio-fallback-paths", async (_event, videoPath: string) => {
-		if (!videoPath) {
-			return { success: true, paths: [], startDelayMsByPath: {} };
-		}
-
+	ipcMain.handle("get-video-audio-fallback-paths", async (event, videoPath: unknown) => {
 		try {
-			const { paths, startDelayMsByPath } = await getCompanionAudioFallbackInfo(videoPath);
-			await Promise.all([
-				rememberApprovedLocalReadPath(videoPath),
-				...paths.map((fallbackPath) => rememberApprovedLocalReadPath(fallbackPath)),
-			]);
+			if (!event?.sender || !isTrustedRenderer(event))
+				throw new Error("Untrusted recording caller");
+			if (typeof videoPath !== "string") throw new Error("Invalid recording source");
+			const sourcePath = normalizeVideoSourcePath(videoPath);
+			if (!sourcePath) return { success: true, paths: [], startDelayMsByPath: {} };
+			const approvedSource = await resolveApprovedLocalMediaPath(sourcePath);
+			if (!approvedSource) throw new Error("Recording source is outside approved locations");
+
+			const fallback = await getCompanionAudioFallbackInfo(approvedSource);
+			const basePath = approvedSource.replace(/\.[^.]+$/u, "");
+			const companions = new Set(
+				COMPANION_AUDIO_LAYOUTS.flatMap(({ systemSuffix, micSuffix }) => [
+					`${basePath}${systemSuffix}`,
+					`${basePath}${micSuffix}`,
+				]),
+			);
+			const paths: string[] = [];
+			for (const fallbackPath of fallback.paths) {
+				if (fallbackPath === approvedSource) {
+					paths.push(fallbackPath);
+					continue;
+				}
+				if (!companions.has(fallbackPath)) continue;
+				if (!(await resolveApprovedLocalMediaPath(fallbackPath))) {
+					const canonicalPath = await fs.realpath(fallbackPath).catch(() => null);
+					const stat = await fs.lstat(fallbackPath).catch(() => null);
+					// A selected recording includes its normal sidecars, never an implicit
+					// approval of a symlink target outside the selected recording.
+					if (canonicalPath !== path.resolve(fallbackPath) || !stat?.isFile()) continue;
+					// Remember only the checked path. Re-resolving it while approving could
+					// accidentally approve a replacement symlink's unrelated target.
+					approvedLocalReadPaths.add(canonicalPath);
+				}
+				paths.push(fallbackPath);
+			}
+			const startDelayMsByPath = Object.fromEntries(
+				paths.flatMap((audioPath) => {
+					const delay = fallback.startDelayMsByPath[audioPath];
+					return typeof delay === "number" ? [[audioPath, delay]] : [];
+				}),
+			);
 			return { success: true, paths, startDelayMsByPath };
 		} catch (error) {
 			console.error("Failed to resolve companion audio fallback paths:", error);

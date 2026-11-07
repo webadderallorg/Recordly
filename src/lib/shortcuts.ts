@@ -18,6 +18,12 @@ export interface ShortcutBinding {
 }
 
 export type ShortcutsConfig = Record<ShortcutAction, ShortcutBinding>;
+export const SHORTCUTS_VERSION = 1;
+export type StoredShortcutsConfig = Partial<ShortcutsConfig> & { version?: number };
+
+export function serializeShortcuts(config: ShortcutsConfig) {
+	return { ...config, version: SHORTCUTS_VERSION };
+}
 
 export interface FixedShortcut {
 	label: string;
@@ -125,7 +131,7 @@ export function formatBinding(binding: ShortcutBinding, isMac: boolean): string 
 	return parts.join(" + ");
 }
 
-export function mergeWithDefaults(partial: Partial<ShortcutsConfig>): ShortcutsConfig {
+export function mergeWithDefaults(partial: StoredShortcutsConfig): ShortcutsConfig {
 	const merged = { ...DEFAULT_SHORTCUTS };
 	for (const action of SHORTCUT_ACTIONS) {
 		if (partial[action]) {
@@ -135,6 +141,7 @@ export function mergeWithDefaults(partial: Partial<ShortcutsConfig>): ShortcutsC
 	// Saved configurations include the previous C default. Upgrade that binding
 	// while preserving custom shortcuts and avoiding collisions with other actions.
 	if (
+		(partial.version ?? 0) < SHORTCUTS_VERSION &&
 		bindingsEqual(merged.splitClip, { key: "c" }) &&
 		!findConflict(DEFAULT_SHORTCUTS.splitClip, "splitClip", merged)
 	) {

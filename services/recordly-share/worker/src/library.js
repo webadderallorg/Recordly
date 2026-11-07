@@ -176,7 +176,8 @@ export async function handleListVideos(env, ownerId = null, request) {
 	}
 	// Preserve the self-host web dashboard's existing unpaginated contract.
 	const rows = await env.DB.prepare(
-		`SELECT share_code, title, duration, width, height, file_size, created_at, expires_at,
+		`SELECT share_code, title, duration, width, height, file_size, created_at,
+            CASE WHEN never_expires = 1 THEN NULL ELSE expires_at END AS expires_at,
             view_count, is_meeting, summary, upload_completed, (password_hash IS NOT NULL) AS is_protected
      FROM videos
      WHERE (upload_completed = 1 OR ? IS NOT NULL) AND (? IS NULL OR owner_id = ?)

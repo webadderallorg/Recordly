@@ -59,8 +59,31 @@ export function useProjectOpenActions({
 	const latestOpen = useRef<(path: string) => Promise<unknown>>(async () => undefined);
 	const latestRelink = useRef<(path: string) => Promise<unknown>>(async () => undefined);
 	const opening = useRef(false);
-	const latestProject = useRef(project);
-	latestProject.current = project;
+	const mounted = useRef(true);
+	const relinkContext = useRef({ projectPath: "", sourcePath: "", generation: 0 });
+	const projectPath = fromFileUrl(project.currentProjectPath || "").replace(/\\/g, "/");
+	// A media-server capability/port refresh does not replace the underlying source.
+	const sourcePath = fromFileUrl(project.videoSourcePath || project.videoPath || "").replace(
+		/\\/g,
+		"/",
+	);
+	if (
+		relinkContext.current.projectPath !== projectPath ||
+		relinkContext.current.sourcePath !== sourcePath
+	) {
+		relinkContext.current = {
+			projectPath,
+			sourcePath,
+			generation: relinkContext.current.generation + 1,
+		};
+	}
+	useEffect(() => {
+		mounted.current = true;
+		return () => {
+			mounted.current = false;
+			relinkContext.current.generation++;
+		};
+	}, []);
 	const reportOpenError = useCallback((error: unknown, path?: string) => {
 		const { title, description } = projectLoadError(error);
 		console.warn("Could not open file:", error);
@@ -92,14 +115,12 @@ export function useProjectOpenActions({
 		async (projectPath: string) => {
 			if (opening.current) return false;
 			opening.current = true;
+			const generation = relinkContext.current.generation;
+			const isCurrent = () =>
+				mounted.current && relinkContext.current.generation === generation;
 			try {
-				if (!(await confirmReplaceSourceWithUnsavedChanges("locate recording")))
+				if (!(await confirmReplaceSourceWithUnsavedChanges("locate recording")) || !isCurrent())
 					return false;
-				const initial = latestProject.current;
-				const isCurrent = () =>
-					latestProject.current.currentProjectPath === initial.currentProjectPath &&
-					latestProject.current.videoSourcePath === initial.videoSourcePath &&
-					latestProject.current.videoPath === initial.videoPath;
 				const result = await window.electronAPI.relinkProjectRecording(projectPath);
 				if (result.canceled || !isCurrent()) return false;
 				if (!result.success)
@@ -122,6 +143,7 @@ export function useProjectOpenActions({
 				await refreshProjectLibrary();
 				return true;
 			} catch (error) {
+				if (!isCurrent()) return false;
 				toast.error(
 					translate(
 						"notifications.recordingRelinkFailed",

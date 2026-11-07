@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CURSOR_MOTION_PRESETS, getMatchingCursorMotionPresetId } from "./cursorMotionPresets";
 
 import {
 	getDefaultBorderRadiusPercent,
@@ -373,4 +374,69 @@ it("ignores legacy export preferences when opening and resaving a project", asyn
 		expect(createProjectData("/clip.mp4", legacyEditor).editor).not.toHaveProperty(key);
 	}
 	expect(legacyEditor.exportQuality).toBe("high");
+});
+
+it("keeps independently timed effects when saved clips only need array sorting", () => {
+	const editor = normalizeProjectEditor({
+		clipRegions: [
+			{ id: "later", startMs: 1000, endMs: 2000, speed: 1 },
+			{ id: "first", startMs: 0, endMs: 1000, speed: 1 },
+		],
+		annotationRegions: [
+			{ id: "after-footage", type: "text", content: "Keep", startMs: 2500, endMs: 2800 },
+		] as never,
+		zoomRegions: [{ id: "late-zoom", startMs: 2500, endMs: 2800, depth: 2 }] as never,
+	});
+	expect(editor.clipRegions.map(({ id }) => id)).toEqual(["first", "later"]);
+	expect(editor.annotationRegions).toHaveLength(1);
+	expect(editor.annotationRegions[0]).toMatchObject({
+		id: "after-footage",
+		startMs: 2500,
+		endMs: 2800,
+	});
+	expect(editor.zoomRegions[0]).toMatchObject({ id: "late-zoom", startMs: 2500, endMs: 2800 });
+	expect(normalizeProjectEditor(editor).annotationRegions).toEqual(editor.annotationRegions);
+});
+
+describe("legacy motion preset compatibility", () => {
+	const legacySmooth = {
+		zoomInDurationMs: 1522.575,
+		zoomOutDurationMs: 1015.05,
+		cursorSize: 2.5,
+		cursorSmoothing: 0.67,
+		cursorSpringStiffnessMultiplier: 0.92,
+		cursorSpringDampingMultiplier: 1.36,
+		cursorSpringMassMultiplier: 1.29,
+		cursorClickBounce: 2,
+		cursorClickBounceDuration: 350,
+	};
+
+	it("loads a published Smooth tuple as Cinematic rather than Focused", () => {
+		expect(getMatchingCursorMotionPresetId(legacySmooth)).toBe("smooth");
+		const result = normalizeProjectEditor(legacySmooth);
+		const cinematic = CURSOR_MOTION_PRESETS.smooth;
+		expect(result.zoomInDurationMs).toBe(cinematic.zoomInDurationMs);
+		expect(result.zoomOutDurationMs).toBe(cinematic.zoomOutDurationMs);
+		expect(result.cursorSpringStiffnessMultiplier).toBe(
+			cinematic.cursorSpringStiffnessMultiplier,
+		);
+		expect(result.cursorSpringDampingMultiplier).toBe(cinematic.cursorSpringDampingMultiplier);
+		expect(getMatchingCursorMotionPresetId(normalizeProjectEditor(result))).toBe("smooth");
+	});
+
+	it("does not mistake a custom tuple for the legacy preset or change new-project defaults", () => {
+		expect(
+			getMatchingCursorMotionPresetId({
+				...legacySmooth,
+				cursorSpringDampingMultiplier: 1.361,
+			}),
+		).toBeNull();
+		const focused = CURSOR_MOTION_PRESETS.focused;
+		expect(normalizeProjectEditor({})).toMatchObject({
+			zoomInDurationMs: focused.zoomInDurationMs,
+			zoomOutDurationMs: focused.zoomOutDurationMs,
+			cursorSpringStiffnessMultiplier: focused.cursorSpringStiffnessMultiplier,
+			cursorSpringDampingMultiplier: focused.cursorSpringDampingMultiplier,
+		});
+	});
 });

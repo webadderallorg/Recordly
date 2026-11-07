@@ -33,6 +33,7 @@ import {
 } from "./diagnostics";
 import { emitRecordingInterrupted } from "./events";
 import { getFinalMacCompanionAudioPath } from "./macCompanionAudio";
+import { attachNativeCaptureStdinLifecycle } from "./nativeCaptureCommand";
 
 export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStreams) {
 	return new Promise<void>((resolve, reject) => {
@@ -95,7 +96,12 @@ export function waitForNativeCaptureStop(
 	process: ChildProcessWithoutNullStreams,
 	options: { timeoutMs?: number; terminateGraceMs?: number; killGraceMs?: number } = {},
 ) {
+	const stdinState = attachNativeCaptureStdinLifecycle(process);
 	return new Promise<string>((resolve, reject) => {
+		if (stdinState.error) {
+			reject(stdinState.error);
+			return;
+		}
 		let timedOut = false;
 		let timer: ReturnType<typeof setTimeout>;
 		const onClose = (code: number | null) => {
@@ -135,6 +141,7 @@ export function waitForNativeCaptureStop(
 		const cleanup = () => {
 			clearTimeout(timer);
 			process.off("close", onClose);
+			process.stdin.off("error", onError);
 			process.off("error", onError);
 		};
 		const signal = (value: NodeJS.Signals) => {
@@ -145,6 +152,7 @@ export function waitForNativeCaptureStop(
 			}
 		};
 		process.once("close", onClose);
+		process.stdin.on("error", onError);
 		process.on("error", onError);
 		timer = setTimeout(() => {
 			timedOut = true;
@@ -195,6 +203,7 @@ export async function muxNativeMacRecordingWithAudio(
 }
 
 export function attachNativeCaptureLifecycle(process: ChildProcessWithoutNullStreams) {
+	attachNativeCaptureStdinLifecycle(process);
 	process.once("close", () => {
 		const wasActive = nativeScreenRecordingActive;
 		setNativeCaptureProcess(null);

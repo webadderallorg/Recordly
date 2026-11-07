@@ -77,6 +77,11 @@ export async function installDesktopBridge(
 					},
 					getAppSetting: (key: string) =>
 						key === "recordly.onboarding.v1.seen" ? onboarded : null,
+					getAppSettingWithStatus: (key: string) => ({
+						success: true,
+						found: key === "recordly.onboarding.v1.seen",
+						value: key === "recordly.onboarding.v1.seen" ? onboarded : null,
+					}),
 					reserveRecordingSession: async () => ({
 						success: true,
 						message: "",

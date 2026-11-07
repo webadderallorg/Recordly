@@ -414,7 +414,14 @@ export async function decodeVideoStreamAttempt(
 		if (!decodeError && heldFrame && segmentIdx < segments.length) {
 			while (!context.cancelled && segmentIdx < segments.length) {
 				const segment = segments[segmentIdx];
-				if (heldFrameSec < segment.startSec - epsilonSec) {
+				// A sample window can start between the final source frame and EOF.
+				// Its one-frame read pre-roll is still eligible for that in-duration sample.
+				const hasEligibleWindowPreroll =
+					readWindow &&
+					segmentIdx === 0 &&
+					segment.startSec < effectiveVideoDuration &&
+					heldFrameSec >= readWindow.startSec - epsilonSec;
+				if (heldFrameSec < segment.startSec - epsilonSec && !hasEligibleWindowPreroll) {
 					break;
 				}
 

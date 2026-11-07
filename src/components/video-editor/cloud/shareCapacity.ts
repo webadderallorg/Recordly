@@ -1,5 +1,5 @@
 import { translate } from "@/i18n/runtime";
-import { parseCloudBillingStatus } from "@/types/cloudBilling";
+import { type CloudBillingResult, parseCloudBillingStatus } from "@/types/cloudBilling";
 import { invalidateCloudBillingReads, readCloudBilling } from "./cloudBillingReads";
 
 export const FREE_RECORDING_LIMIT = 5;
@@ -47,14 +47,28 @@ export async function checkShareCapacity(
 }
 
 async function readShareCapacity(endpoint: string, token: string): Promise<boolean> {
-	let result;
+	let result: CloudBillingResult;
 	try {
-		result = await readCloudBilling(endpoint, "status", token);
-	} catch {
-		// During rollout, older desktop bridges and workers still enforce the free quota.
+		result =
+			typeof window.electronAPI.cloudBilling === "function"
+				? await readCloudBilling(endpoint, "status", token)
+				: { success: false, httpStatus: 404 };
+	} catch (error) {
+		// Only an explicitly absent old IPC handler is a compatibility fallback.
+		if (!(error instanceof Error) || !/No handler registered for ['"]cloud-billing['"]$/.test(error.message))
+			throw error;
+		result = { success: false, httpStatus: 404 };
 	}
-	if (!result?.success) {
-		if (result && requiresSignIn(result)) throw new ShareSignInRequiredError();
+	if (!result.success) {
+		if (requiresSignIn(result)) throw new ShareSignInRequiredError();
+		if (/confirm your email/i.test(result.error ?? ""))
+			throw new ShareEmailVerificationRequiredError();
+		if (![404, 405, 501].includes(result.httpStatus ?? 0))
+			throw new Error(
+				result.error ||
+					translate("editor.cloud.checkStorageFailed", "Could not check cloud storage. Try again."),
+			);
+		// Unsupported legacy billing routes still use the worker's free quota.
 		const legacy = await window.electronAPI.cloudShareManage({
 			endpoint,
 			token,

@@ -15,9 +15,9 @@ import {
   ClockIcon,
   PaperPlaneTiltIcon,
 } from '@phosphor-icons/react';
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction, type RefObject } from 'react';
 import {
-  fetchComments,
+  fetchCommentsForViewer,
   CommentSignInError,
   type CommentAccountState,
   formatDate,
@@ -57,10 +57,16 @@ export default function ShareFeedback({
 }: Props) {
   const [account, setAccount] = useState<CommentAccountState | null>(null);
   const accountRef = useRef(account);
-  accountRef.current = account;
   const [ownershipKey, setOwnershipKey] = useState<string>();
   const ownershipKeyRef = useRef(ownershipKey);
-  ownershipKeyRef.current = ownershipKey;
+  const commentsRef = useRef(comments);
+  const shareCodeRef = useRef(data.shareCode);
+  useLayoutEffect(() => {
+    accountRef.current = account;
+    ownershipKeyRef.current = ownershipKey;
+    commentsRef.current = comments;
+    shareCodeRef.current = data.shareCode;
+  }, [account, ownershipKey, comments, data.shareCode]);
   const [reload, setReload] = useState(0);
   const mutationVersion = useRef(0);
   const [reauthenticate, setReauthenticate] = useState(0);
@@ -68,6 +74,7 @@ export default function ShareFeedback({
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [text, setText] = useState('');
   const [lockedTime, setLockedTime] = useState<number | null>(null);
+  const draftRevision = useRef(0);
   const [posting, setPosting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -79,6 +86,7 @@ export default function ShareFeedback({
     -1,
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: auth and explicit reload transitions restart the request; refs retain committed ownership.
   useEffect(() => {
     let cancelled = false;
     const requestVersion = mutationVersion.current;
@@ -86,18 +94,17 @@ export default function ShareFeedback({
     setOwnershipKey(undefined);
     setLoading(true);
     setPage(1);
-    Promise.resolve(viewer?.getAccessToken())
-      .then((token) => fetchComments(data.shareCode, 1, 50, token))
+    fetchCommentsForViewer(data.shareCode, 1, 50, viewer)
       .then((result) => {
-        if (cancelled) return;
+        if (cancelled || viewer?.key !== accountRef.current?.key || shareCodeRef.current !== data.shareCode) return;
         if (requestVersion !== mutationVersion.current) { setReload((current) => current + 1); return; }
-        setOwnershipKey(viewer?.key);
+        setOwnershipKey(result.ownershipKey);
         setComments([...result.comments].sort((a, b) => a.timestamp - b.timestamp));
         setTotal(result.total);
         setLoading(false);
       })
       .catch(() => {
-        if (!cancelled) {
+        if (!cancelled && viewer?.key === accountRef.current?.key && shareCodeRef.current === data.shareCode) {
           setError('Comments could not be loaded. Reload the page to try again.');
           setLoading(false);
         }
@@ -108,6 +115,7 @@ export default function ShareFeedback({
   }, [data.shareCode, account?.key, reload, setComments]);
 
   useEffect(() => {
+    draftRevision.current++;
     try {
       const saved = sessionStorage.getItem(draftKey);
       if (saved) {
@@ -128,17 +136,23 @@ export default function ShareFeedback({
   }, [draftLoaded, draftKey, text, lockedTime, time]);
 
   async function loadMore() {
+    const viewer = accountRef.current;
     setMoreLoading(true);
     try {
-      const viewer = accountRef.current;
       const version = mutationVersion.current;
-      const result = await fetchComments(data.shareCode, page + 1, 50, await viewer?.getAccessToken());
-      if (viewer?.key !== accountRef.current?.key || version !== mutationVersion.current) return;
-      setComments((current) => [...new Map([...current, ...result.comments].map((comment) => [comment.id, comment])).values()].sort((a, b) => a.timestamp - b.timestamp || a.id - b.id));
+      const result = await fetchCommentsForViewer(data.shareCode, page + 1, 50, viewer);
+      if (viewer?.key !== accountRef.current?.key || version !== mutationVersion.current || shareCodeRef.current !== data.shareCode) return;
+      const inheritOwnership = ownershipKeyRef.current === result.ownershipKey;
+      setOwnershipKey(result.ownershipKey);
+      setComments((current) => [...new Map([
+        ...(inheritOwnership ? current : current.map((comment) => ({ ...comment, can_manage: false }))),
+        ...result.comments,
+      ].map((comment) => [comment.id, comment])).values()].sort((a, b) => a.timestamp - b.timestamp || a.id - b.id));
       setTotal(result.total);
       setPage(page + 1);
     } catch {
-      toast.danger('Could not load more comments. Try again.');
+      if (viewer?.key === accountRef.current?.key && shareCodeRef.current === data.shareCode)
+        toast.danger('Could not load more comments. Try again.');
     } finally {
       setMoreLoading(false);
     }
@@ -148,32 +162,49 @@ export default function ShareFeedback({
     if (data.video.feedback_enabled === false || posting || !account || account.needsDisplayName || !text.trim()) return;
     const timestamp = lockedTime ?? time;
     const viewer = account;
+    const submittedText = text;
+    const revision = draftRevision.current;
     setPosting(true);
     setError('');
     try {
-      const result = await postComment(data.shareCode, timestamp, text.trim(), await viewer.getAccessToken());
-      if (accountRef.current?.key !== viewer.key) return;
+      const accessToken = await viewer.getAccessToken();
+      if (accountRef.current?.key !== viewer.key || shareCodeRef.current !== data.shareCode) return;
+      const result = await postComment(data.shareCode, timestamp, submittedText.trim(), accessToken);
+      if (draftRevision.current === revision || shareCodeRef.current !== data.shareCode) {
+        try {
+          const saved = JSON.parse(sessionStorage.getItem(draftKey) || 'null');
+          if (saved?.text === submittedText && saved.time === timestamp) sessionStorage.removeItem(draftKey);
+        } catch { /* Successful posting does not depend on draft storage. */ }
+      }
+      if (shareCodeRef.current !== data.shareCode) return;
       mutationVersion.current++;
-      const inheritOwnership = ownershipKeyRef.current === viewer.key;
-      setOwnershipKey(viewer.key);
+      const currentViewer = accountRef.current;
+      const inheritOwnership = ownershipKeyRef.current === currentViewer?.key;
+      const known = commentsRef.current.some((comment) => comment.id === result.id);
+      setOwnershipKey(currentViewer?.key);
       setComments((current) =>
-        [
+        [...new Map([
           ...(inheritOwnership ? current : current.map((comment) => ({ ...comment, can_manage: false }))),
           {
             id: result.id,
-            can_manage: true,
+            can_manage: currentViewer?.key === viewer.key,
             timestamp,
             author_name: result.author_name,
-            text: text.trim(),
+            text: submittedText.trim(),
             created_at: new Date().toISOString().slice(0, 19),
           },
-        ].sort((a, b) => a.timestamp - b.timestamp),
+        ].map((comment) => [comment.id, comment])).values()].sort((a, b) => a.timestamp - b.timestamp),
       );
-      setTotal((current) => current + 1);
-      setText('');
-      setLockedTime(null);
+      if (!known) setTotal((current) => current + 1);
+      // The new account's list may have completed before the server inserted this post.
+      if (currentViewer?.key !== viewer.key) setReload((current) => current + 1);
+      if (draftRevision.current === revision) {
+        setText('');
+        setLockedTime(null);
+      }
       toast.success(`Comment posted at ${formatTimestamp(timestamp)}`);
     } catch (cause) {
+      if (accountRef.current?.key !== viewer.key || shareCodeRef.current !== data.shareCode) return;
       if (cause instanceof CommentSignInError) setReauthenticate((current) => current + 1);
       setError(cause instanceof Error ? cause.message : 'Could not post your comment. Your draft is saved here—please try again.');
     } finally {
@@ -309,6 +340,7 @@ export default function ShareFeedback({
           name="comment"
           value={text}
           onChange={(value) => {
+            draftRevision.current++;
             setText(value);
             setLockedTime(value.trim() ? (lockedTime ?? time) : null);
           }}
@@ -334,7 +366,7 @@ export default function ShareFeedback({
             size="sm"
             variant="ghost"
             aria-label={`Comment timestamp ${formatTimestamp(lockedTime ?? time)}. Use current video time`}
-            onPress={() => setLockedTime(time)}
+            onPress={() => { draftRevision.current++; setLockedTime(time); }}
           >
             <ClockIcon size={14} />
             <span className="timestamp">{formatTimestamp(lockedTime ?? time)}</span>
