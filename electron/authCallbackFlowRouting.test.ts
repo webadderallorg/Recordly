@@ -21,6 +21,9 @@ const state = vi.hoisted(() => ({
 	flows: new Map<string, { owner: Owner; key: string }>(),
 	remote: new Map<string, Promise<"forwarded" | "unavailable"> | "forwarded" | "unavailable">(),
 	routed: vi.fn(),
+	releaseError: undefined as Error | undefined,
+	registerError: undefined as Error | undefined,
+	releaseAttempts: [] as string[],
 	getVerifier: vi.fn(async (_key: string): Promise<string | null> => '"verifier"'),
 	windows: [] as Owner[],
 }));
@@ -55,12 +58,15 @@ vi.mock("./authFlowRelay", () => ({
 		state.options = options;
 		return {
 			register: vi.fn(async (flowId: string, key: string, owner: Owner) => {
+				if (state.registerError) throw state.registerError;
 				state.flows.set(flowId, { owner, key });
 				return async () => {
 					state.flows.delete(flowId);
 				};
 			}),
 			release: vi.fn(async (flowId: string) => {
+				state.releaseAttempts.push(flowId);
+				if (state.releaseError) throw state.releaseError;
 				state.flows.delete(flowId);
 			}),
 			close: vi.fn(async () => undefined),
@@ -109,6 +115,9 @@ beforeEach(() => {
 	state.remote.clear();
 	state.routed.mockClear();
 	state.flows.clear();
+	state.releaseError = undefined;
+	state.registerError = undefined;
+	state.releaseAttempts = [];
 	state.windows = [];
 	state.getVerifier.mockReset().mockResolvedValue('"verifier"');
 });
@@ -448,5 +457,67 @@ it("does not release an owned flow when another project removes the same textual
 	);
 	expect(state.flows.has("flow_alice")).toBe(true);
 	expect(await controller.route(url)).toBe("local");
+	controller.close();
+});
+
+it.each(["AuthStorageBusyError", "EPERM"])(
+	"retries failed stale-route cleanup without blocking a new verifier (%s)",
+	async (failure) => {
+		const { createAuthCallbackController } = await import("./authCallback");
+		const controller = createAuthCallbackController({
+			isDev: false,
+			focusApp: vi.fn(),
+			flowRoutingEnabled: true,
+		});
+		const alice = owner(1),
+			bob = owner(2);
+		state.windows = [alice, bob];
+		const bobKey = "sb-recordlytest-auth-token-flow-flow_bob00-code-verifier";
+		const nextKey = "sb-recordlytest-auth-token-flow-flow_next0-code-verifier";
+		await controller.flowStorageHooks!.prepareSet(event(alice), key, []);
+		state.getVerifier.mockImplementation(async (candidate) =>
+			candidate === key ? null : '"verifier"',
+		);
+		state.releaseError = Object.assign(new Error(failure), { code: failure });
+		await expect(
+			controller.flowStorageHooks!.prepareSet(event(bob), bobKey, []),
+		).resolves.toEqual(expect.any(Function));
+		expect(state.flows.has("flow_alice")).toBe(true);
+		expect(await controller.route(url)).toBe("unavailable");
+		expect(alice.send).not.toHaveBeenCalledWith("auth:callback", url);
+		const bobUrl = url.replace("flow_alice", "flow_bob00");
+		expect(await controller.route(bobUrl)).toBe("local");
+		expect(bob.send).toHaveBeenCalledWith("auth:callback", bobUrl);
+		state.releaseError = undefined;
+		await controller.flowStorageHooks!.prepareSet(event(bob), nextKey, [bobKey]);
+		expect(state.releaseAttempts).toEqual(["flow_alice", "flow_alice"]);
+		expect(state.flows.has("flow_alice")).toBe(false);
+		expect(state.flows.has("flow_bob00")).toBe(true);
+		await controller.flowStorageHooks!.prepareSet(event(bob), nextKey, [bobKey, nextKey]);
+		expect(state.releaseAttempts).toEqual(["flow_alice", "flow_alice"]);
+		controller.close();
+	},
+);
+
+it.each([
+	"Too many pending sign-in flows.",
+	"This sign-in flow already belongs to another window.",
+])("preserves strict registration rejection after cleanup failure: %s", async (message) => {
+	const { createAuthCallbackController } = await import("./authCallback");
+	const controller = createAuthCallbackController({
+		isDev: false,
+		focusApp: vi.fn(),
+		flowRoutingEnabled: true,
+	});
+	const alice = owner(1);
+	await controller.flowStorageHooks!.prepareSet(event(alice), key, []);
+	state.releaseError = new Error("Cleanup unavailable");
+	state.registerError = new Error(message);
+	const nextKey = "sb-recordlytest-auth-token-flow-flow_next0-code-verifier";
+	await expect(
+		controller.flowStorageHooks!.prepareSet(event(alice), nextKey, []),
+	).rejects.toBe(state.registerError);
+	expect(state.flows.has("flow_alice")).toBe(true);
+	expect(state.flows.has("flow_next0")).toBe(false);
 	controller.close();
 });
