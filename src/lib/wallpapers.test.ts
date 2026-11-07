@@ -19,7 +19,9 @@ describe("wallpapers", () => {
 	it("keeps the curated wallpaper list and default path aligned", () => {
 		expect(DEFAULT_WALLPAPER_PATH).toBe("/wallpapers/tahoe-light.jpg");
 		expect(DEFAULT_WALLPAPER_RELATIVE_PATH).toBe("wallpapers/tahoe-light.jpg");
-		expect(BUILT_IN_WALLPAPERS.at(0)?.publicPath).toBe("/wallpapers/golden-gate-day-no-vignette.png");
+		expect(BUILT_IN_WALLPAPERS.at(0)?.publicPath).toBe(
+			"/wallpapers/golden-gate-day-no-vignette.png",
+		);
 		expect(BUILT_IN_WALLPAPERS.at(1)?.publicPath).toBe("/wallpapers/windows-11-bloom.jpg");
 		expect(BUILT_IN_WALLPAPERS.at(2)?.publicPath).toBe(DEFAULT_WALLPAPER_PATH);
 		expect(BUILT_IN_WALLPAPERS.at(3)?.publicPath).toBe("/wallpapers/tahoe-dark.jpg");

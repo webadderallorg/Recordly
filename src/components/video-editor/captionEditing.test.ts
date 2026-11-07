@@ -129,14 +129,10 @@ describe("captionEditing", () => {
 		});
 		const cues = [cue];
 		if (!layout) throw new Error("Expected visible caption");
-		expect(
-			updateCaptionCuesForEditedTarget(cues, layout.editTarget, " hello  world "),
-		).toBe(cues);
-		const updated = updateCaptionCuesForEditedTarget(
+		expect(updateCaptionCuesForEditedTarget(cues, layout.editTarget, " hello  world ")).toBe(
 			cues,
-			layout.editTarget,
-			"Hello everyone",
 		);
+		const updated = updateCaptionCuesForEditedTarget(cues, layout.editTarget, "Hello everyone");
 		expect(updated[0].words).toEqual([
 			{ text: "Hello", startMs: 0, endMs: 120 },
 			{ text: "everyone", startMs: 700, endMs: 1000, leadingSpace: true },
