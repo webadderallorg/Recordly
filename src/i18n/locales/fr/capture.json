@@ -12,6 +12,7 @@
 	"actions": "Actions",
 	"action": "Action",
 	"recordingControls": "Commandes d’enregistrement",
+	"finishingRecording": "Finalisation de l’enregistrement…",
 	"discardingRecording": "Suppression de l’enregistrement",
 	"recording": "Enregistrement en cours",
 	"discardRecording": "Supprimer l’enregistrement",

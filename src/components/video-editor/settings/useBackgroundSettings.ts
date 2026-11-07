@@ -163,13 +163,13 @@ export function useBackgroundSettings(
 				const result = await window.electronAPI.importWallpaperVideo(file);
 				if (!result.success || !result.path) throw new Error("Unreadable video");
 				const filePath = result.path;
-				setCustomImages((prev) => [filePath, ...prev]);
+				setCustomImages((prev) => (prev.includes(filePath) ? prev : [filePath, ...prev]));
 				onWallpaperChange(filePath);
 				toast.success(te("videoBackgroundAdded", "Video background added"));
 				return;
 			}
 			const dataUrl = await prepareWallpaperImage(file);
-			setCustomImages((prev) => [...prev, dataUrl]);
+			setCustomImages((prev) => (prev.includes(dataUrl) ? prev : [...prev, dataUrl]));
 			onWallpaperChange(dataUrl);
 			toast.success(tSettings("background.uploadSuccess"));
 		} catch {
@@ -196,7 +196,7 @@ export function useBackgroundSettings(
 				});
 				return;
 			}
-			setCustomImages((prev) => [filePath, ...prev]);
+			setCustomImages((prev) => (prev.includes(filePath) ? prev : [filePath, ...prev]));
 			onWallpaperChange(filePath);
 			toast.success(te("videoBackgroundAdded", "Video background added"));
 		} catch {

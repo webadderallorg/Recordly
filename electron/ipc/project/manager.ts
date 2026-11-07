@@ -403,7 +403,7 @@ export async function cacheProjectThumbnail(projectPath: string, revision: strin
 		await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
 		await fs.writeFile(temporary, png, { flag: "wx" });
 		// A subsequent project edit must invalidate the cached frame, even if it races this write.
-		await fs.utimes(temporary, new Date(), stats.mtimeMs / 1000);
+		await fs.utimes(temporary, new Date(), Math.ceil(stats.mtimeMs) / 1000);
 		if (!sameProjectRevision(stats, await fs.stat(normalizedPath))) return null;
 		await fs.rename(temporary, target);
 		return target;

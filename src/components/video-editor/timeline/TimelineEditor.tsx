@@ -379,12 +379,15 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			ids: string[];
 			clips: ClipRegion[];
 		} | null>(null);
-		const selectedClipIds =
-			clipSelection?.primaryId === selectedClipId && clipSelection?.clips === clipRegions
-				? clipSelection.ids
-				: selectedClipId
-					? [selectedClipId]
-					: [];
+		const selectedClipIds = useMemo(
+			() =>
+				clipSelection?.primaryId === selectedClipId && clipSelection?.clips === clipRegions
+					? clipSelection.ids
+					: selectedClipId
+						? [selectedClipId]
+						: [],
+			[clipSelection, selectedClipId, clipRegions],
+		);
 		useEffect(() => {
 			if (
 				clipSelection &&

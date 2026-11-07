@@ -511,7 +511,7 @@ test("a queued selection can still be canceled with Escape", async ({ page }) =>
 	await page.mouse.click(1380, 200);
 	await expect(page.locator("html")).toHaveAttribute("data-queued", "true");
 	await page.keyboard.press("Escape");
-	expect(await pick(page)).toBeNull();
+	await expect.poll(() => pick(page)).toBeNull();
 });
 
 test("a window expanding from another display keeps its frontmost hit-test rank", async ({

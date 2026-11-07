@@ -126,7 +126,7 @@ test("Clips supports selection, remove all, undo and real timeline drag insertio
 	await expect(panel.locator("[data-recording-path]")).toHaveCount(2);
 	await expect(panel.getByRole("img", { name: "Preview of second.mp4" })).toBeVisible();
 	await page.screenshot({
-		path: "test-results/videos-panel.png",
+		path: test.info().outputPath("videos-panel.png"),
 		animations: "disabled",
 	});
 	await page.getByRole("radio", { name: "Scene", exact: true }).click();
@@ -265,7 +265,7 @@ test("dashboard project list scrolls vertically with long names", async ({ page 
 	await entry.last().scrollIntoViewIfNeeded();
 	await expect(entry.last()).toBeInViewport();
 	await page.screenshot({
-		path: "test-results/dashboard-projects-vertical.png",
+		path: test.info().outputPath("dashboard-projects-vertical.png"),
 	});
 });
 
@@ -355,7 +355,7 @@ test("Clips shows original filenames and truncates long names beside real still 
 		.toBe(true);
 	expect(await panel.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
 	await page.screenshot({
-		path: "test-results/videos-filenames.png",
+		path: test.info().outputPath("videos-filenames.png"),
 		animations: "disabled",
 	});
 });

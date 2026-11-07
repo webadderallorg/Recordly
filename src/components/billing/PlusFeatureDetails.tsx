@@ -56,10 +56,10 @@ export function PlusFeatureDetails({
 		Briefcase,
 		FileText,
 		Monitor,
-		Link,
+		InfinityIcon,
 		CloudArrowUp,
 		...(limits?.plusWeeklyUploadLimit ? [CloudArrowUp] : []),
-		InfinityIcon,
+		Link,
 		ArrowClockwise,
 		Sparkle,
 	];

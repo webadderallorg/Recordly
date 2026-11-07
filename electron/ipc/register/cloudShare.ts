@@ -271,6 +271,7 @@ export function registerCloudShareHandlers() {
 					ownerId: event.sender.id,
 					token,
 				};
+				activeUpload.token = token;
 				activeUpload.finishing = true;
 				const controller = activeUpload.controller;
 				activeUploads.set(uploadId, activeUpload);

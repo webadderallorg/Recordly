@@ -332,3 +332,52 @@ it("persists the dev dismissal before native destruction and restores it if clos
 	expect(render()?.props.open).toBe(false);
 	error.mockRestore();
 });
+
+it("opens production permission recovery only once for each new request nonce", () => {
+	vi.stubEnv("DEV", false);
+	window.location.search = "?windowType=editor";
+	state.settings.set(seenKey, true);
+	vi.mocked(window.electronAPI.showOnboardingWindow).mockResolvedValue(true);
+	render({ standalone: false, requestNonce: 1 });
+	render({ standalone: false, requestNonce: 1, user: { ...user } });
+	expect(state.settings.get(pendingKey)).toBe(true);
+	expect(window.electronAPI.showOnboardingWindow).toHaveBeenCalledExactlyOnceWith({
+		preview: false,
+	});
+	render({ standalone: false, requestNonce: 2 });
+	render({ standalone: false, requestNonce: 2, user: { ...user } });
+	expect(window.electronAPI.showOnboardingWindow).toHaveBeenCalledTimes(2);
+	expect(vi.mocked(window.electronAPI.showOnboardingWindow).mock.calls[1]).toEqual([
+		{ preview: false },
+	]);
+	expect(state.settings.get(seenKey)).toBe(true);
+	expect(state.writes.some(([key]) => key === seenKey)).toBe(false);
+});
+
+it("opens real permission recovery from a native event even after the dev tour was dismissed", async () => {
+	window.location.search = "?windowType=editor";
+	state.settings.set(seenKey, true);
+	state.settings.set("recordly.dev.onboardingDismissed", true);
+	render({ standalone: false });
+	expect(window.electronAPI.showOnboardingWindow).not.toHaveBeenCalled();
+	const requestPermissions = vi
+		.mocked(window.electronAPI.onRecordingPermissionsRequested)
+		.mock.calls.at(-1)?.[0];
+	expect(requestPermissions).toBeTypeOf("function");
+	requestPermissions!();
+	expect(state.settings.get(pendingKey)).toBe(true);
+	expect(window.electronAPI.showOnboardingWindow).toHaveBeenCalledExactlyOnceWith({
+		preview: false,
+	});
+	await vi.waitFor(() => {
+		const recovery = render({ standalone: false });
+		expect(recovery?.type).toBe(RecordingPermissionsDialog);
+		expect(recovery?.props.open).toBe(true);
+	});
+	expect(window.electronAPI.showOnboardingWindow).toHaveBeenCalledOnce();
+	expect(state.settings.get(seenKey)).toBe(true);
+	expect(state.settings.get("recordly.dev.onboardingDismissed")).toBe(true);
+	expect(
+		state.writes.some(([key]) => key === seenKey || key === "recordly.dev.onboardingDismissed"),
+	).toBe(false);
+});

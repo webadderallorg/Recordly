@@ -50,11 +50,23 @@ test("webcam import, anchor placement, precise adjustment and removal stay disco
 		"true",
 	);
 	await expect(page.getByRole("switch", { name: "Custom position", exact: true })).toHaveCount(0);
+	const topRight = page.getByRole("row", { name: "Top right", exact: true });
+	await topRight.click();
+	await expect(topRight).toHaveAttribute("aria-selected", "true");
+	const beforeAdjustment = (await camera.boundingBox())!;
+	const preview = (await page.locator("[data-preview-overlay]").boundingBox())!;
+	const horizontalTravel = preview.width - beforeAdjustment.width;
+	expect(horizontalTravel).toBeGreaterThan(0);
 	const horizontal = page.getByRole("slider", { name: "Horizontal", exact: true });
 	await horizontal.focus();
 	await horizontal.press("Home");
 	await horizontal.press("ArrowRight");
 	await expect(horizontal).toHaveValue("1");
+	// Manual position must move the rendered camera across the available preview,
+	// rather than merely updating the slider or hiding a redundant label.
+	await expect
+		.poll(async () => beforeAdjustment.x - (await camera.boundingBox())!.x)
+		.toBeGreaterThan(horizontalTravel / 2);
 	await expect(sidebar.getByText("Custom position", { exact: true })).toHaveCount(0);
 	await page.getByRole("row", { name: "Center", exact: true }).click();
 	await expect(horizontal).toHaveValue("50");
