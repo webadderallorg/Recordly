@@ -480,9 +480,9 @@ export interface CaptionLayoutOptions {
 export function prepareCaptionLayout(
 	options: CaptionLayoutOptions,
 ): (timeMs: number) => ActiveCaptionLayout | null {
-	const sourceWords = flattenCaptionWords(options.cues);
-	if (sourceWords.length === 0) return () => null;
 	const sortedCues = [...options.cues].sort((left, right) => left.startMs - right.startMs);
+	const sourceWords = flattenCaptionWords(sortedCues);
+	if (sourceWords.length === 0) return () => null;
 	const cuesById = new Map(options.cues.map((cue) => [cue.id, cue]));
 	const maxRows = clamp(Math.round(options.settings.maxRows || 1), 1, 4);
 	const words: CaptionWordLayout[] = sourceWords.map((word, index) => ({

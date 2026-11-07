@@ -224,9 +224,9 @@
   "selectedCount_other": "{{number}} selecionados",
   "recordingSource": "Gravação: {{name}}",
   "cleanup": {
-    "allHelp": "Revise os itens por data. O projeto aberto é excluído.",
-    "untouchedHelp": "Linhas do tempo completas sem cortes, recortes, zooms, legendas, anotações ou áudio adicionado. As configurações de aparência podem variar. O projeto aberto é excluído.",
-    "rawDuplicateHelp": "Somente arquivos com conteúdo idêntico. Mantém uma cópia e exclui as fontes usadas por projetos salvos conhecidos.",
+    "allHelp": "Revise os itens por data. O projeto aberto não aparece nas sugestões.",
+    "untouchedHelp": "Linhas do tempo completas sem cortes, recortes, zooms, legendas, anotações ou áudio adicionado. As configurações de aparência podem variar. O projeto aberto não aparece nas sugestões.",
+    "rawDuplicateHelp": "Somente arquivos com conteúdo idêntico. Mantém uma cópia e não sugere a exclusão de fontes usadas por projetos salvos conhecidos.",
     "projectDuplicateHelp": "Mesma fonte e configurações salvas do editor idênticas. Mantém o projeto aberto ou a cópia salva mais recentemente. Edições diferentes são mantidas.",
     "unusedHelp": "Fontes não usadas pelos projetos desta biblioteca nem pelas faixas associadas. Não é possível verificar edições não salvas ou projetos fora desta biblioteca.",
     "title": "Limpar biblioteca",
