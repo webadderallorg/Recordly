@@ -173,6 +173,12 @@ export function validateDraft(draft: StudioDraft): string[] {
 	}
 	if (draft.presentation === "dashboard-banner" && draft.mediaType === "video")
 		errors.push("Dashboard banners support images only.");
+	if (
+		draft.presentation === "popup" &&
+		draft.mediaType !== "none" &&
+		draft.mediaAlt.trim().length > 300
+	)
+		errors.push("Media alt text must be 300 characters or fewer.");
 	if (draft.posterUrl && !safeMedia(draft.posterUrl))
 		errors.push("Poster must use HTTPS or a /public-path.");
 	if (draft.actionEnabled) {

@@ -1,7 +1,8 @@
 import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ProjectPreviewData } from "@/types/projectPreview";
-import type { WebcamOverlaySettings } from "../types";
+import type { AnnotationRegion, WebcamOverlaySettings } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
+import { preloadProjectHoverFonts } from "./projectHoverFonts";
 import { createHoverCompositionGate } from "./projectHoverReadiness";
 
 /** Keep every layer below one visibility gate until the same, complete scene is drawn. */
@@ -13,6 +14,7 @@ export function useProjectHoverComposition({
 	metadataReady,
 	telemetryReady,
 	annotationImages,
+	annotations,
 	aspectRatio,
 	webcam,
 	timelineTime,
@@ -25,6 +27,7 @@ export function useProjectHoverComposition({
 	metadataReady: boolean;
 	telemetryReady: boolean;
 	annotationImages: readonly string[];
+	annotations: readonly AnnotationRegion[];
 	aspectRatio: number;
 	webcam: WebcamOverlaySettings;
 	timelineTime: RefObject<number>;
@@ -53,6 +56,7 @@ export function useProjectHoverComposition({
 		const videos = new Map<HTMLVideoElement, () => void>();
 		let decodedBackground: { video: HTMLVideoElement; source: string } | null = null;
 		let refresh: () => void = () => undefined;
+		let annotationFontsReady = false;
 		const fail = () => {
 			if (active) onFailure();
 		};
@@ -152,11 +156,11 @@ export function useProjectHoverComposition({
 					committed.current.metadataReady &&
 					committed.current.telemetryReady &&
 					annotationImagesReady &&
+					annotationFontsReady &&
 					(mediaReady(video) || retainedMain) &&
 					backgroundReady &&
 					(cameraReady || retainedCamera) &&
-					element.querySelector('[data-preview-captions-ready="true"]') !== null &&
-					(!document.fonts || document.fonts.status === "loaded"),
+					element.querySelector('[data-preview-captions-ready="true"]') !== null,
 				canRetain: frameMatches,
 				frameValid:
 					frameMatches &&
@@ -238,9 +242,15 @@ export function useProjectHoverComposition({
 		};
 		element.addEventListener("load", refresh, true);
 		element.addEventListener("error", imageError, true);
-		document.fonts?.addEventListener("loading", refresh);
-		document.fonts?.addEventListener("loadingdone", refresh);
-		document.fonts?.addEventListener("loadingerror", refresh);
+		// Caption readiness is reported by this preview. Global font events also
+		// include unrelated UI and must not hide or seek an established composition.
+		void preloadProjectHoverFonts(annotations, document.fonts)
+			.then(() => {
+				if (!active) return;
+				annotationFontsReady = true;
+				refresh();
+			})
+			.catch(fail);
 		refresh();
 		return () => {
 			active = false;
@@ -258,10 +268,16 @@ export function useProjectHoverComposition({
 			}
 			element.removeEventListener("load", refresh, true);
 			element.removeEventListener("error", imageError, true);
-			document.fonts?.removeEventListener("loading", refresh);
-			document.fonts?.removeEventListener("loadingdone", refresh);
-			document.fonts?.removeEventListener("loadingerror", refresh);
 		};
-	}, [rendererReady, data, playback, host, timelineTime, onFailure, annotationImages]);
+	}, [
+		rendererReady,
+		data,
+		playback,
+		host,
+		timelineTime,
+		onFailure,
+		annotationImages,
+		annotations,
+	]);
 	return visible;
 }

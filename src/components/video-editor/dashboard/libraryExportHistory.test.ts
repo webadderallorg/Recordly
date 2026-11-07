@@ -10,6 +10,7 @@ it("stores positive export evidence durably without confusing projects sharing s
 	vi.stubGlobal("window", {
 		electronAPI: {
 			getAppSetting: () => saved,
+			getAppSettingWithStatus: () => ({ success: true, found: saved !== null, value: saved }),
 			setAppSetting: (_key: string, value: unknown) => {
 				saved = value;
 				return true;
@@ -29,6 +30,7 @@ it("retains evidence from an unsaved recording and fails closed for corrupt stor
 	vi.stubGlobal("window", {
 		electronAPI: {
 			getAppSetting: () => saved,
+			getAppSettingWithStatus: () => ({ success: true, found: saved !== null, value: saved }),
 			setAppSetting: (_key: string, v: unknown) => {
 				saved = v;
 				return true;
@@ -46,4 +48,22 @@ it("retains evidence from an unsaved recording and fails closed for corrupt stor
 	expect(readLibraryExportHistory().available).toBe(false);
 	expect(recordLibraryExport({ projectId: "b" })).toBe(false);
 	expect(recordLibraryExport({})).toBe(false);
+});
+
+it("distinguishes a missing history from a failed native read and never writes after failure", () => {
+	const write = vi.fn();
+	const read = vi.fn<Window["electronAPI"]["getAppSettingWithStatus"]>(() => ({ success: true, found: false, value: null }));
+	vi.stubGlobal("window", {
+		electronAPI: { getAppSetting: () => null, getAppSettingWithStatus: read, setAppSetting: write },
+	});
+	expect(readLibraryExportHistory()).toEqual({ available: true, records: {} });
+	read.mockReturnValue({ success: false, value: null });
+	expect(readLibraryExportHistory()).toEqual({ available: false, records: {} });
+	expect(recordLibraryExport({ projectId: "previously-exported" })).toBe(false);
+	expect(write).not.toHaveBeenCalled();
+});
+
+it("does not treat a legacy getter's null fallback as an empty persistent history", () => {
+	vi.stubGlobal("window", { electronAPI: { getAppSetting: () => null } });
+	expect(readLibraryExportHistory()).toEqual({ available: false, records: {} });
 });

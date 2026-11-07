@@ -68,15 +68,17 @@ test("paused preview sleeps, refreshes edits and seeks, and resumes continuous p
 		.poll(() => page.evaluate(() => window.performancePreview.api!.videoSprite!.width))
 		.not.toBe(initial);
 	await expect.poll(async () => (await observe(page)).renders).toBe(0);
-	for (const action of ["Toggle cursor", "Toggle annotation"]) {
-		const count = await page.evaluate(() => window.performancePreview.renders);
-		await page.getByRole("button", { name: action, exact: true }).click();
-		await expect
-			.poll(() => page.evaluate(() => window.performancePreview.renders))
-			.toBeGreaterThan(count);
-		await expect.poll(async () => (await observe(page)).renders).toBe(0);
-	}
+	const count = await page.evaluate(() => window.performancePreview.renders);
+	await page.getByRole("button", { name: "Toggle cursor", exact: true }).click();
+	await expect
+		.poll(() => page.evaluate(() => window.performancePreview.renders))
+		.toBeGreaterThan(count);
+	await expect.poll(async () => (await observe(page)).renders).toBe(0);
+	// Text annotations update their HTML overlay without redrawing source pixels.
+	await page.getByRole("button", { name: "Toggle annotation", exact: true }).click();
 	await expect(page.locator('[data-annotation-id="text"]')).toBeVisible();
+	await expect(page.locator('[data-annotation-id="text"]')).toContainText("Example");
+	await expect.poll(async () => (await observe(page)).renders).toBe(0);
 	await page.evaluate(() => window.performancePreview.api!.seekTimeline(5.5));
 	await expect(page.locator('[data-annotation-id="text"]')).toHaveCount(0);
 	await expect.poll(async () => (await observe(page)).renders).toBe(0);

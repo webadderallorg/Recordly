@@ -373,6 +373,7 @@
 		"deleteRegion": "오디오 삭제"
 	},
 	"updates": {
+		"loadFailed": "업데이트 채널을 불러올 수 없습니다. 다시 시도하세요.",
 		"automaticDownloads": "업데이트 자동 다운로드",
 		"automaticDownloadsDescription": "새 업데이트를 백그라운드에서 다운로드합니다. 재시작할 시점은 직접 선택하세요.",
 		"downloadPreferenceFailed": "업데이트 자동 다운로드 설정을 불러오거나 저장하지 못했습니다. 다시 시도하세요.",

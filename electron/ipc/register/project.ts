@@ -865,7 +865,7 @@ export function registerProjectHandlers() {
 					),
 				),
 			);
-			return { success: result.errors.length === 0, ...result, warning, sourcesDeleted, sourcesKept };
+			return { success: result.errors.length === 0, ...result, warning, sourcesDeleted, sourcesKept: [...new Set(sourcesKept)] };
 		} catch (error) {
 			return { success: false, deleted: [], errors: [String(error)] };
 		}

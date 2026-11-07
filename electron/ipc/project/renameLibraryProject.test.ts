@@ -137,3 +137,63 @@ it("rolls back a preview replacement when distinct recovery backups still confli
 		await fs.rm(dir, { recursive: true, force: true });
 	}
 });
+
+it.each([
+	true,
+	false,
+])("retires orphan target previews without following symlinks (source preview: %s)", async (withPreview) => {
+	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-rename-orphan-"));
+	const source = path.join(dir, "Source.recordly"),
+		target = path.join(dir, "Target.recordly");
+	const victim = path.join(dir, "unrelated.txt");
+	const sidecars = (file: string) => [
+		{ paths: [`${file}.managed.png`, `${file}.png`], kind: "preview" as const },
+	];
+	try {
+		await fs.writeFile(source, "source project");
+		await fs.writeFile(victim, "preserve unrelated contents");
+		await fs.symlink(victim, sidecars(target)[0].paths[0]);
+		await fs.writeFile(sidecars(target)[0].paths[1], "orphan legacy preview");
+		if (withPreview) await fs.writeFile(sidecars(source)[0].paths[0], "source preview");
+		expect(await renameLibraryProject(source, "Target", [source], sidecars)).toBe(target);
+		expect(await fs.readFile(target, "utf8")).toBe("source project");
+		expect(await fs.readFile(victim, "utf8")).toBe("preserve unrelated contents");
+		await expect(fs.access(sidecars(target)[0].paths[1])).rejects.toMatchObject({
+			code: "ENOENT",
+		});
+		if (withPreview) {
+			expect((await fs.lstat(sidecars(target)[0].paths[0])).isSymbolicLink()).toBe(false);
+			expect(await fs.readFile(sidecars(target)[0].paths[0], "utf8")).toBe("source preview");
+		} else
+			await expect(fs.access(sidecars(target)[0].paths[0])).rejects.toMatchObject({
+				code: "ENOENT",
+			});
+	} finally {
+		await fs.rm(dir, { recursive: true, force: true });
+	}
+});
+
+it("preserves an orphan target recovery generation rather than overwriting it on rename", async () => {
+	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-rename-target-backup-"));
+	const source = path.join(dir, "Source.recordly"),
+		target = path.join(dir, "Target.recordly");
+	const sidecars = (file: string) => [[`${file}.backup`, `${file}.bak`]];
+	try {
+		await fs.writeFile(source, "source project");
+		await fs.writeFile(sidecars(source)[0][0], "source recovery generation");
+		await fs.writeFile(sidecars(target)[0][0], "target recovery generation");
+		await expect(
+			renameLibraryProject(source, "Target", [source], sidecars),
+		).rejects.toMatchObject({ code: "EEXIST" });
+		expect(await fs.readFile(source, "utf8")).toBe("source project");
+		expect(await fs.readFile(sidecars(source)[0][0], "utf8")).toBe(
+			"source recovery generation",
+		);
+		expect(await fs.readFile(sidecars(target)[0][0], "utf8")).toBe(
+			"target recovery generation",
+		);
+		await expect(fs.access(target)).rejects.toMatchObject({ code: "ENOENT" });
+	} finally {
+		await fs.rm(dir, { recursive: true, force: true });
+	}
+});

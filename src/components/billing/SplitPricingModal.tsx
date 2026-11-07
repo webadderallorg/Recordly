@@ -99,9 +99,11 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 			? t("signIn", "Sign in to continue")
 			: paymentPending
 				? t("checkPayment", "Check payment status")
-				: plus || manageSubscription
-					? t("manage", "Manage subscription")
-					: t("start", "Get started");
+				: retryPricing
+					? t("retryPricing", "Retry loading pricing")
+					: plus || manageSubscription
+						? t("manage", "Manage subscription")
+						: t("start", "Get started");
 	const pending = Boolean(busy) || (Boolean(user) && pricingLoading);
 	const benefits = [
 		t("featureLicense", "Full commercial license"),

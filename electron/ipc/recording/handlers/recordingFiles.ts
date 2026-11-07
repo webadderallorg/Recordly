@@ -20,6 +20,7 @@ export function registerRecordingFiles() {
 	const recordingStreams = new RecordingFileStreams();
 
 	async function finishStream(filePath: string) {
+		if (!/\.webm$/i.test(filePath)) return filePath;
 		let finishedPath = filePath;
 		try {
 			finishedPath = await finishWebmRecording(getFfmpegBinaryPath(), filePath);
@@ -156,8 +157,12 @@ export function registerRecordingFiles() {
 		try {
 			const recordingsDir = await getRecordingsDir();
 			const videoPath = resolveRecordedVideoStoragePath(recordingsDir, fileName);
-			await fs.writeFile(videoPath, Buffer.from(videoData));
-			return await finalizeStoredVideo(videoPath);
+			await fs.writeFile(videoPath, Buffer.from(videoData), { flag: "wx", mode: 0o600 });
+			const filePath = await finishStream(videoPath);
+			return await finalizeKeepingPath(filePath, async (savedPath) => {
+				await rememberApprovedLocalReadPath(savedPath);
+				return await finalizeStoredVideo(savedPath);
+			});
 		} catch (error) {
 			console.error("Failed to store video:", error);
 			return {

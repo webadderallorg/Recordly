@@ -1,8 +1,8 @@
 import type { User } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OnboardingController } from "./OnboardingController";
-import { RecordlySignInDialog } from "./RecordlySignInDialog";
 import { RecordingPermissionsDialog } from "./RecordingPermissionsDialog";
+import { RecordlySignInDialog } from "./RecordlySignInDialog";
 
 const state = vi.hoisted(() => ({
 	slots: [] as { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void }[],
@@ -12,18 +12,25 @@ const state = vi.hoisted(() => ({
 	writes: [] as [string, unknown][],
 }));
 const same = (left?: readonly unknown[], right?: readonly unknown[]) =>
-	left !== undefined && right !== undefined && left.length === right.length &&
+	left !== undefined &&
+	right !== undefined &&
+	left.length === right.length &&
 	left.every((value, index) => Object.is(value, right[index]));
 vi.mock("react", async (importOriginal) => ({
-	...await importOriginal<typeof import("react")>(),
+	...(await importOriginal<typeof import("react")>()),
 	useState: (initial: unknown) => {
 		const index = state.index++;
-		if (!state.slots[index]) state.slots[index] = {
-			value: typeof initial === "function" ? initial() : initial,
-		};
-		return [state.slots[index].value, (next: unknown) => {
-			state.slots[index].value = typeof next === "function" ? next(state.slots[index].value) : next;
-		}];
+		if (!state.slots[index])
+			state.slots[index] = {
+				value: typeof initial === "function" ? initial() : initial,
+			};
+		return [
+			state.slots[index].value,
+			(next: unknown) => {
+				state.slots[index].value =
+					typeof next === "function" ? next(state.slots[index].value) : next;
+			},
+		];
 	},
 	useRef: (initial: unknown) => {
 		const index = state.index++;
@@ -66,7 +73,12 @@ const closeWindow = vi.fn(async () => undefined);
 function render(overrides: Partial<Parameters<typeof OnboardingController>[0]> = {}) {
 	state.index = 0;
 	const result = OnboardingController({
-		requestNonce: 0, ready: true, user, configured: true, standalone: true, ...overrides,
+		requestNonce: 0,
+		ready: true,
+		user,
+		configured: true,
+		standalone: true,
+		...overrides,
 	});
 	for (const effect of state.effects.splice(0)) effect();
 	return result;
@@ -126,7 +138,9 @@ describe("onboarding account and permission restart", () => {
 		window.location.search = "?windowType=editor";
 		render({ standalone: false });
 		render({ standalone: false, user: { ...user } });
-		expect(window.electronAPI.showOnboardingWindow).toHaveBeenCalledExactlyOnceWith({ preview: true });
+		expect(window.electronAPI.showOnboardingWindow).toHaveBeenCalledExactlyOnceWith({
+			preview: true,
+		});
 	});
 
 	it("preserves production account gating even if the dev tour was dismissed", () => {
@@ -180,3 +194,18 @@ describe("onboarding account and permission restart", () => {
 		expect(state.writes.some(([key]) => key === seenKey)).toBe(false);
 	});
 });
+
+for (const rejected of [false, true]) {
+	it(`opens the existing inline onboarding fallback when native creation ${rejected ? "rejects" : "returns false"}`, async () => {
+		vi.mocked(window.electronAPI.showOnboardingWindow).mockImplementation(async () => {
+			if (rejected) throw new Error("Window unavailable");
+			return false;
+		});
+		window.location.search = "?windowType=editor";
+		render({ standalone: false });
+		for (let i = 0; i < 4; i++) await Promise.resolve();
+		const result = render({ standalone: false });
+		expect(result?.type).toBe(RecordlySignInDialog);
+		expect(result?.props).toMatchObject({ onboarding: true, open: true });
+	});
+}

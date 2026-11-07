@@ -260,7 +260,7 @@ export default function TimelineCanvas({
 		rangeStart: range.start,
 		rangeEnd: range.end,
 		videoDurationMs,
-		zoomQuickAddEnabled: !isLoading && !showAutoZoomPrompt,
+		zoomQuickAddEnabled: !showAutoZoomPrompt,
 		onAddZoomAtMs,
 		canPlaceZoomAtMs,
 		onAddCaptionAtMs,

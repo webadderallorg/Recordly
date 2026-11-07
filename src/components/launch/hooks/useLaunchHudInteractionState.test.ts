@@ -14,15 +14,15 @@ let cleanup: Array<void | (() => void)>;
 let regions: Array<{ dataset: Record<string, string>; getBoundingClientRect: () => typeof bar }>;
 let host: EventTarget;
 const ignoreMouse = vi.fn();
-function mount(openId: string | null = null) {
+function mount(openId: string | null = null, platform: string | null = "darwin") {
 	const refs = {
 		isHudDraggingRef: { current: false },
 		isWebcamPreviewDraggingRef: { current: false },
 		webcamPreviewDragStartRef: { current: null as unknown },
 	};
-	useLaunchHudInteractionState({ openId, ...refs });
+	const actions = useLaunchHudInteractionState({ openId, platform, ...refs });
 	cleanup = effects.splice(0).map((effect) => effect());
-	return refs;
+	return { ...refs, actions };
 }
 function move(x: number, y: number) {
 	// Forwarded events may target the transparent body, rather than a HUD descendant.
@@ -110,5 +110,44 @@ describe("HUD forwarded mouse movement", () => {
 		ignoreMouse.mockClear();
 		move(500, 730);
 		expect(ignoreMouse).not.toHaveBeenCalled();
+	});
+});
+
+describe("HUD mouse IPC state changes", () => {
+	it("skips repeated ordinary moves but retains state transitions", () => {
+		mount();
+		move(500, 730);
+		move(510, 730);
+		move(520, 730);
+		expect(ignoreMouse.mock.calls).toEqual([[false]]);
+		move(100, 730);
+		move(110, 730);
+		expect(ignoreMouse.mock.calls).toEqual([[false], [true]]);
+		move(500, 730);
+		expect(ignoreMouse.mock.calls).toEqual([[false], [true], [false]]);
+	});
+	it.each(["win32", null])("retains native reassertions for platform %s", (platform) => {
+		mount(null, platform);
+		move(500, 730);
+		move(510, 730);
+		expect(ignoreMouse.mock.calls).toEqual([[false], [false]]);
+	});
+	it.each([
+		"isHudDraggingRef",
+		"isWebcamPreviewDraggingRef",
+		"webcamPreviewDragStartRef",
+	] as const)("retains repeated interactive updates during %s", (key) => {
+		const refs = mount();
+		refs[key].current = true;
+		move(500, 730);
+		move(510, 730);
+		expect(ignoreMouse.mock.calls).toEqual([[false], [false]]);
+	});
+	it("forces an interactive reset after an external native override", () => {
+		const { actions } = mount();
+		move(500, 730);
+		ignoreMouse.mockClear();
+		actions.beginInteractiveHudAction();
+		expect(ignoreMouse).toHaveBeenCalledExactlyOnceWith(false);
 	});
 });

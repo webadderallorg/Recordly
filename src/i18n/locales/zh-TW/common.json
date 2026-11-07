@@ -43,7 +43,7 @@
     "descriptionPlaceholder": "我們會閱讀所有意見回饋...",
     "attachFiles": "附加檔案",
     "removeFile": "移除 {{name}}",
-    "diagnostics": "已附上診斷記錄。意見回饋傳送至 support@recordly.dev",
+    "diagnostics": "將附上診斷記錄。意見回饋將傳送至 support@recordly.dev。",
     "sending": "正在傳送…",
     "errors": {
       "unavailable": "設定帳號服務後才能使用意見回饋功能。",

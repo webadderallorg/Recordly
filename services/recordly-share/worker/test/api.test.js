@@ -409,6 +409,47 @@ describe('password protection', () => {
 });
 
 describe('OG page (public video)', () => {
+  it.each(['missing', 'expired', 'disabled'])('keeps the human viewer available for an unavailable %s recording without exposing metadata', async (state) => {
+    let shareCode = 'a'.repeat(64);
+    if (state !== 'missing') {
+      ({ shareCode } = await createShare({ title: 'Private unavailable title' }));
+      await completeUpload(shareCode);
+      if (state === 'expired') {
+        await env.DB.prepare("UPDATE videos SET expires_at = datetime('now', '-1 day'), summary = 'Private summary' WHERE share_code = ?").bind(shareCode).run();
+      } else {
+        await env.DB.prepare('INSERT INTO recording_controls (share_code, sharing_disabled) VALUES (?, 1)').bind(shareCode).run();
+      }
+    }
+    const human = await SELF.fetch(`${BASE}/s/${shareCode}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    expect(human.status).toBe(404);
+    expect(human.headers.get('Content-Type')).toContain('text/html');
+    expect(human.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(human.headers.get('Vary')).toContain('User-Agent');
+    expect(human.headers.has('ETag')).toBe(false);
+    expect(human.headers.has('Last-Modified')).toBe(false);
+    const html = await human.text();
+    expect(html).toContain('astro-island');
+    expect(html).not.toContain('Private unavailable title');
+    expect(html).not.toContain('Private summary');
+    expect(html).not.toContain('property="og:video"');
+    const data = await SELF.fetch(`${BASE}/s/${shareCode}/data`);
+    expect(data.status).toBe(404);
+    expect(await data.json()).toEqual({ expired: true });
+    const bot = await SELF.fetch(`${BASE}/s/${shareCode}`, { headers: { 'User-Agent': 'Twitterbot/1.0' } });
+    expect(bot.status).toBe(404);
+    expect(await bot.text()).toBe('Not found');
+    expect((await SELF.fetch(`${BASE}/v/${shareCode}`)).status).toBe(404);
+  });
+
+  it('does not return a failed asset response as an unavailable recording shell', async () => {
+    const response = await worker.fetch(new Request(`${BASE}/s/${'b'.repeat(64)}`, { headers: { 'User-Agent': 'Mozilla/5.0' } }), {
+      ...env,
+      ASSETS: { fetch: async () => new Response('Asset failure details', { status: 503 }) },
+    });
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe('Not found');
+  });
+
   it.each(['Slackbot 1.0', 'Twitterbot/1.0', 'Mozilla/5.0 AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15'])(
     'exposes playable video and thumbnail metadata to %s', async (userAgent) => {
       const { shareCode } = await createShare();

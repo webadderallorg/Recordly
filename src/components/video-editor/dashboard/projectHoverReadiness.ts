@@ -42,7 +42,16 @@ export function createHoverCompositionGate({
 			requestComposition();
 			return;
 		}
-		if (!rendered || visible || status.revision < requiredRevision) return;
+		if (visible || status.revision < requiredRevision) return;
+		if (!rendered) {
+			// A decoder can settle after the last paused composition. Ask for a new
+			// draw rather than exposing pixels from before that resource was ready.
+			if (status.canRetain && status.frameValid) {
+				requiredRevision = status.revision + 1;
+				requestComposition();
+			}
+			return;
+		}
 		if (status.canRetain && status.frameValid) {
 			show(true);
 		} else if (!status.canRetain) {

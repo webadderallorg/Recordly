@@ -10,6 +10,7 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
+import { toast } from "@/components/ui/toast";
 import { ChatWarning, File, X } from "@/components/ui/icons";
 import { collectFeedbackDiagnostics } from "@/lib/feedback/diagnostics";
 import {
@@ -177,9 +178,7 @@ export function FeedbackDialog({
 							setError("");
 							try {
 								await submitFeedback({
-									title: `${sentiments.find((item) => item.value === sentiment)?.emoji ?? ""} ${message.trim()}`
-										.trim()
-										.slice(0, 160),
+									title: `${sentiments.find((item) => item.value === sentiment)?.emoji ?? ""} ${message}`,
 									subject: "other",
 									message,
 									files,
@@ -307,7 +306,7 @@ export function FeedbackDialog({
 						<Description className="text-xs">
 							{t(
 								"common.feedback.diagnostics",
-								"Diagnostic logs attached. Feedback sent to support@recordly.dev",
+								"Diagnostic logs will be attached. Feedback will be sent to support@recordly.dev.",
 							)}
 						</Description>
 						{error && (
@@ -331,9 +330,18 @@ export function FeedbackDialog({
 							onClick={(event) => {
 								if (!window.electronAPI?.openExternalUrl) return;
 								event.preventDefault();
-								void window.electronAPI.openExternalUrl(
-									"mailto:support@recordly.dev",
-								);
+								void window.electronAPI
+									.openExternalUrl("mailto:support@recordly.dev")
+									.then((result) => {
+										if (!result.success) {
+											toast.error(
+												result.error || t("editor.feedback.openFailed", "Failed to open link."),
+											);
+										}
+									})
+									.catch(() => {
+										toast.error(t("editor.feedback.openFailed", "Failed to open link."));
+									});
 							}}
 						>
 							support@recordly.dev

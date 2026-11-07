@@ -265,10 +265,18 @@
  background: transparent;
  box-shadow: none;
 }
-.inline-project-name:focus-visible { outline: none; }
+/* Explicit editor keyboard targets retain focus treatment above unlayered resets. */
+.inline-project-name:focus-visible,
+[class~="focus-visible:outline-2"][class~="focus-visible:outline-accent"]:focus-visible,
+[class~="focus-visible:outline-2"][class~="focus-visible:outline-accent"]:has(> textarea:focus-visible) {
+ outline: 2px solid var(--focus);
+ outline-offset: 2px;
+}
 
 @media (forced-colors: active) {
  .inline-project-name:focus { outline: 2px solid Highlight; outline-offset: 2px; }
+ [class~="focus-visible:outline-2"][class~="focus-visible:outline-accent"]:focus-visible,
+ [class~="focus-visible:outline-2"][class~="focus-visible:outline-accent"]:has(> textarea:focus-visible) { outline: 2px solid Highlight; outline-offset: 2px; }
 }
 
 .dashboard-shell {

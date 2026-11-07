@@ -3,7 +3,14 @@ import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 test.setTimeout(90000);
 
-type DelayedLayer = "webcam" | "background" | "caption" | "video" | "metadata" | "annotation";
+type DelayedLayer =
+	| "webcam"
+	| "background"
+	| "caption"
+	| "text"
+	| "video"
+	| "metadata"
+	| "annotation";
 
 async function openProject(page: Page, layer: DelayedLayer) {
 	await installDesktopBridge(page);
@@ -47,24 +54,41 @@ async function openProject(page: Page, layer: DelayedLayer) {
 											? `${location.origin}/tests/ui/fixtures/background.webm`
 											: "#304060",
 								annotationRegions:
-									layer === "annotation"
+									layer === "text"
 										? [
 												{
-													id: "delayed-image",
-													type: "image",
+													id: "later-text",
+													type: "text",
 													startMs: 1000,
 													endMs: 6000,
-													content:
-														"data:image/svg+xml," +
-														encodeURIComponent(
-															'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect id="hover-annotation" width="64" height="64" fill="#ff3200"/></svg>',
-														),
+													content: "Later words",
 													position: { x: 50, y: 50 },
-													size: { width: 35, height: 35 },
+													size: { width: 60, height: 25 },
+													style: {
+														fontFamily: '"DM Sans"',
+														fontStyle: "italic",
+													},
 													zIndex: 1,
 												},
 											]
-										: [],
+										: layer === "annotation"
+											? [
+													{
+														id: "delayed-image",
+														type: "image",
+														startMs: 1000,
+														endMs: 6000,
+														content:
+															"data:image/svg+xml," +
+															encodeURIComponent(
+																'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect id="hover-annotation" width="64" height="64" fill="#ff3200"/></svg>',
+															),
+														position: { x: 50, y: 50 },
+														size: { width: 35, height: 35 },
+														zIndex: 1,
+													},
+												]
+											: [],
 								webcam: {
 									enabled: layer === "webcam",
 									sourcePath:
@@ -125,7 +149,7 @@ async function sampleLoadingFrames(page: Page, milliseconds = 900) {
 	}, milliseconds);
 }
 
-for (const layer of ["webcam", "background", "caption"] as const) {
+for (const layer of ["webcam", "background", "caption", "text"] as const) {
 	test(`hover keeps its thumbnail for every frame while ${layer} loads, including reentry`, async ({
 		page,
 	}) => {
@@ -139,15 +163,18 @@ for (const layer of ["webcam", "background", "caption"] as const) {
 				? "**/hover-camera.mp4"
 				: layer === "background"
 					? "**/hover-wallpaper.png"
-					: /TikTokSans-Variable\.ttf(?:\?.*)?$/;
+					: layer === "text"
+						? /DMSans-Italic-Variable\.ttf(?:\?.*)?$/
+						: /TikTokSans-Variable\.ttf(?:\?.*)?$/;
+		const fontLayer = layer === "caption" || layer === "text";
 		await page.route(resource, async (route) => {
-			if (layer === "caption" && route.request().resourceType() !== "font") {
+			if (fontLayer && route.request().resourceType() !== "font") {
 				await route.continue();
 				return;
 			}
 			requested = true;
 			await pending;
-			if (layer === "caption") await route.continue();
+			if (fontLayer) await route.continue();
 			else
 				await route.fulfill({
 					path:
@@ -163,6 +190,8 @@ for (const layer of ["webcam", "background", "caption"] as const) {
 			const hover = card.locator("[data-project-hover-preview]");
 			await expect(hover).toHaveCount(1);
 			await expect.poll(() => requested).toBe(true);
+			if (layer === "text")
+				await expect(hover.locator('[data-annotation-id="later-text"]')).toHaveCount(0);
 			await expect
 				.poll(() =>
 					hover
@@ -183,6 +212,11 @@ for (const layer of ["webcam", "background", "caption"] as const) {
 			release();
 			await expect(hover).toHaveCSS("opacity", "1", { timeout: 15000 });
 			if (layer === "caption") await expect(hover.getByText("Ready together")).toBeVisible();
+			if (layer === "text") {
+				await expect(hover.getByText("Later words")).toBeVisible();
+				const frames = await sampleLoadingFrames(page, 500);
+				expect(frames.exposedFrames).toBe(frames.frames);
+			}
 			if (layer === "webcam")
 				await expect(hover.locator("[data-webcam-overlay]")).toHaveAttribute(
 					"data-webcam-ready",
@@ -198,6 +232,57 @@ for (const layer of ["webcam", "background", "caption"] as const) {
 		}
 	});
 }
+
+test("unrelated document font loading cannot hide or seek an established hover", async ({
+	page,
+}) => {
+	let release!: () => void;
+	const pending = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	let requested = false;
+	await page.route("**/unrelated-hover-font.ttf", async (route) => {
+		requested = true;
+		await pending;
+		await route.fulfill({
+			path: "src/assets/fonts/dm-sans/DMSans-Italic-Variable.ttf",
+			contentType: "font/ttf",
+		});
+	});
+	try {
+		const card = await openProject(page, "video");
+		await card.hover();
+		const hover = card.locator("[data-project-hover-preview]");
+		await expect(hover).toHaveCSS("opacity", "1", { timeout: 15000 });
+		await hover.evaluate((element) => {
+			const video = element.querySelector<HTMLVideoElement>('video[src$="/filmstrip.mp4"]')!;
+			element.dataset.unrelatedFontSeeks = "0";
+			video.addEventListener("seeking", () => {
+				element.dataset.unrelatedFontSeeks = String(
+					Number(element.dataset.unrelatedFontSeeks) + 1,
+				);
+			});
+			const face = new FontFace(
+				"Unrelated hover font",
+				`url("${location.origin}/unrelated-hover-font.ttf")`,
+			);
+			document.fonts.add(face);
+			void face.load();
+		});
+		await expect.poll(() => requested).toBe(true);
+		await expect.poll(() => page.evaluate(() => document.fonts.status)).toBe("loading");
+		const loading = await sampleLoadingFrames(page, 600);
+		expect(loading.frames).toBeGreaterThan(8);
+		expect(loading.exposedFrames).toBe(loading.frames);
+		release();
+		await expect.poll(() => page.evaluate(() => document.fonts.status)).toBe("loaded");
+		const loaded = await sampleLoadingFrames(page, 400);
+		expect(loaded.exposedFrames).toBe(loaded.frames);
+		await expect(hover).toHaveAttribute("data-unrelated-font-seeks", "0");
+	} finally {
+		release();
+	}
+});
 
 test("missing composed media falls back to the static thumbnail", async ({ page }) => {
 	let abort!: () => void;

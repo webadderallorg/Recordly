@@ -154,6 +154,7 @@ function ProjectHoverPreviewSession({ data, onFinish }: Props) {
 		metadataReady: sourceDimensions !== null,
 		telemetryReady: telemetry.loaded,
 		annotationImages,
+		annotations: editor.annotationRegions,
 		aspectRatio,
 		webcam: editor.webcam,
 		timelineTime,

@@ -1,5 +1,0 @@
-Aceternity UI — Sticky Scroll Reveal
-https://ui.aceternity.com/components/sticky-scroll-reveal
-Source: https://ui.aceternity.com/registry/sticky-scroll-reveal.json
-Retrieved 2026-10-22. Original source preserved alongside adapted component.
-Adaptations: JSX/CSS instead of TypeScript/Tailwind; page scroll target per upstream guidance; sticky text and frame with crossfades; reduced motion fallback; equal-length stages.

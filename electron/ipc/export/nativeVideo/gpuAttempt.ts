@@ -327,7 +327,11 @@ export async function tryNativeStaticGpuExport({
 				error,
 			);
 			await removeTemporaryExportFile(videoOnlyPath);
-			if (options.webcamInputPath || options.zoomTelemetry?.length) {
+			if (
+				options.webcamInputPath ||
+				options.zoomTelemetry?.length ||
+				options.cursorTelemetry?.length
+			) {
 				throw error;
 			}
 		}

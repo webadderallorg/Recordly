@@ -851,6 +851,92 @@ describe("StreamingVideoDecoder decode failures", () => {
 		for (let i = 0; i < frames.length; i++)
 			expect(frames[i].timestamp).toBeCloseTo(((45 + i) * 1_000_000) / 30);
 	});
+	it.each([
+		false,
+		true,
+	])("matches full decoding for final 24fps source samples at 60fps (truncated tail: %s)", async (truncated) => {
+		const info = await mockDemuxerGetMediaInfo();
+		mockDemuxerGetMediaInfo.mockResolvedValueOnce({
+			...info,
+			duration: 1,
+			streams: info.streams.map((stream) => ({
+				...stream,
+				duration: 1,
+				avg_frame_rate: "24/1",
+			})),
+		});
+		mockDemuxerRead.mockImplementation(
+			(_type, start) =>
+				new ReadableStream({
+					start(controller) {
+						// Seek backwards to a nearby keyframe, without inventing a frame at EOF.
+						for (
+							let index = Math.floor((start * 24) / 12) * 12;
+							index < (truncated ? 23 : 24);
+							index++
+						) {
+							controller.enqueue({ timestamp: Math.round((index * 1_000_000) / 24) });
+						}
+						controller.close();
+					},
+				}),
+		);
+		class SampleDecoder {
+			state = "unconfigured";
+			decodeQueueSize = 0;
+			constructor(private callbacks: { output: (frame: VideoFrame) => void }) {}
+			configure() {
+				this.state = "configured";
+			}
+			decode(chunk: EncodedVideoChunk) {
+				this.callbacks.output({ timestamp: chunk.timestamp, close() {} } as VideoFrame);
+			}
+			async flush() {}
+			close() {
+				this.state = "closed";
+			}
+		}
+		vi.stubGlobal("VideoDecoder", SampleDecoder);
+		const decoder = new StreamingVideoDecoder();
+		await decoder.loadMetadata("/tmp/last-source-frame.mp4");
+		const complete: number[] = [];
+		await decoder.decodeAll(60, undefined, undefined, async (frame) => {
+			complete.push(frame!.timestamp);
+		});
+		const sample: number[] = [];
+		const sampling = decoder.decodeSampleWindow(
+			60,
+			undefined,
+			undefined,
+			async (frame) => {
+				sample.push(frame!.timestamp);
+			},
+			undefined,
+			59,
+			1,
+		);
+		if (truncated) {
+			// Do not conceal a missing tail longer than the eligible one-frame pre-roll.
+			await expect(sampling).rejects.toThrow("Missing decoded sample frame");
+		} else {
+			await expect(sampling).resolves.toBeUndefined();
+			expect(sample).toEqual(complete.slice(59, 60));
+			expect(sample).toEqual([958333]);
+			const beyondDuration: number[] = [];
+			await decoder.decodeSampleWindow(
+				60,
+				undefined,
+				undefined,
+				async (frame) => {
+					beyondDuration.push(frame!.timestamp);
+				},
+				undefined,
+				60,
+				1,
+			);
+			expect(beyondDuration).toEqual([]);
+		}
+	});
 	it("matches full decoding at a low-FPS sample boundary without decoding the remaining clip", async () => {
 		const info = await mockDemuxerGetMediaInfo();
 		mockDemuxerGetMediaInfo.mockResolvedValueOnce({

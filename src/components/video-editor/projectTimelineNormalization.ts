@@ -130,9 +130,8 @@ export function normalizeProjectTimeline(editor: Partial<ProjectEditorState>) {
 	// both begin with the same canonical sequence rather than recording a repair edit.
 	const sequenceClips = closeClipGaps(normalizedClipRegions);
 
-	const sequenceChanged = sequenceClips.some(
-		(clip, index) => clip !== normalizedClipRegions[index],
-	);
+	const originalClips = new Set(normalizedClipRegions);
+	const sequenceChanged = sequenceClips.some((clip) => !originalClips.has(clip));
 
 	const normalizedAutoFullTrackClipId =
 		typeof editor.autoFullTrackClipId === "string" ? editor.autoFullTrackClipId : null;

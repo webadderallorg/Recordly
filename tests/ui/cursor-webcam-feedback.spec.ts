@@ -294,3 +294,38 @@ test.describe("Retina camera preview", () => {
 		await expect(page.locator("[data-webcam-overlay]")).toHaveCSS("visibility", "visible");
 	});
 });
+
+test("custom swatch removals update reserved gallery rows without changing selection", async ({
+	page,
+}) => {
+	await installDesktopBridge(page);
+	await page.addInitScript(() => {
+		localStorage.setItem(
+			"recordly.editor.preferences",
+			JSON.stringify({
+				wallpaper: "#123456",
+				customColors: ["#010100", "#010101", "#010102", "#010103"],
+				customGradients: ["linear-gradient(1deg, #123456 0%, #654321 100%)"],
+			}),
+		);
+	});
+	await page.goto("/?windowType=editor");
+	await page.getByRole("row", { name: "Colors", exact: true }).click();
+	const reservedSlots = page
+		.getByTestId("background-slider")
+		.locator(':scope > [aria-hidden="true"] > div');
+	const selected = page.getByRole("button", { name: "Background color #123456", exact: true });
+	await expect(selected).toHaveAttribute("aria-pressed", "true");
+	await expect(reservedSlots).toHaveCount(31);
+	await page.getByRole("button", { name: "Remove custom color #010100", exact: true }).click();
+	// This removal crosses a five-column row boundary while the selection stays unchanged.
+	await expect(reservedSlots).toHaveCount(30);
+	await expect(selected).toHaveAttribute("aria-pressed", "true");
+	await page.getByRole("button", { name: "Remove Custom gradient 1", exact: true }).click();
+	await expect(reservedSlots).toHaveCount(29);
+	await expect(selected).toHaveAttribute("aria-pressed", "true");
+	await expect(page.getByRole("row", { name: "Colors", exact: true })).toHaveAttribute(
+		"aria-selected",
+		"true",
+	);
+});

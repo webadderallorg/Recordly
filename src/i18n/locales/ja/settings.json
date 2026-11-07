@@ -1,5 +1,6 @@
 {
 	"updates": {
+		"loadFailed": "アップデートチャンネルを読み込めませんでした。もう一度お試しください。",
 		"automaticDownloads": "アップデートを自動ダウンロード",
 		"automaticDownloadsDescription": "新しいアップデートをバックグラウンドでダウンロードします。再起動のタイミングは選べます。",
 		"downloadPreferenceFailed": "アップデートの自動ダウンロード設定を読み込み、または保存できませんでした。もう一度お試しください。",

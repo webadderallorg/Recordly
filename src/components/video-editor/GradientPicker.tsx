@@ -25,6 +25,7 @@ export function GradientPicker({
 	value,
 	presets,
 	onChange,
+	onCustomChange,
 	tileClassName,
 	embedded = false,
 	open: controlledOpen,
@@ -37,6 +38,7 @@ export function GradientPicker({
 	presets: readonly string[];
 	onChange: (gradient: string) => void;
 	tileClassName: (selected: boolean) => string;
+	onCustomChange?: () => void;
 }) {
 	const te = useScopedT("editing");
 	const [custom, setCustom] = useState(() => loadEditorPreferences().customGradients);
@@ -59,6 +61,7 @@ export function GradientPicker({
 		const normalized = normalizeCustomGradients(next);
 		setCustom(normalized);
 		saveEditorPreferences({ customGradients: normalized });
+		onCustomChange?.();
 	};
 	return (
 		<>

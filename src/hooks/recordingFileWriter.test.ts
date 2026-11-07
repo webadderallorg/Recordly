@@ -37,13 +37,14 @@ describe("recording chunk persistence", () => {
 		).toEqual(["a", "bc"]);
 		expect(api.closeRecordingFileStream).toHaveBeenCalledWith("1", 100);
 	});
-	it("reports disk failures and retains the successfully written partial path", async () => {
+	it("reports disk failures with the path returned by close", async () => {
 		const { api, writer, fail } = setup();
 		api.appendRecordingFileStream.mockRejectedValueOnce(new Error("Disk full"));
 		writer.write(new Blob(["a"]));
 		const result = await writer.finish();
 		expect(result.success).toBe(false);
 		expect(result.path).toBe("/final.mp4");
+		expect(result.message).toBe("Disk full Partial recording: /final.mp4");
 		expect(fail).toHaveBeenCalledOnce();
 	});
 	it("reports file open failures instead of keeping an unbounded memory fallback", async () => {

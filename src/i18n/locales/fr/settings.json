@@ -373,6 +373,7 @@
 		"deleteRegion": "Supprimer la zone audio"
 	},
 	"updates": {
+		"loadFailed": "Impossible de charger le canal de mise à jour. Réessayez.",
 		"automaticDownloads": "Télécharger automatiquement les mises à jour",
 		"automaticDownloadsDescription": "Téléchargez les nouvelles mises à jour en arrière-plan. Vous choisissez quand redémarrer.",
 		"downloadPreferenceFailed": "Impossible de charger ou d’enregistrer le téléchargement automatique des mises à jour. Réessayez.",

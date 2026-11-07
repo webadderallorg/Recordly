@@ -1223,6 +1223,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		};
 		return result?.success ? (result.value ?? null) : null;
 	},
+	getAppSettingWithStatus: (key: string) => {
+		const result = ipcRenderer.sendSync("app-settings:get", key) as {
+			success?: boolean;
+			found?: boolean;
+			value?: unknown;
+		};
+		return result?.success === true && typeof result.found === "boolean"
+			? { success: true as const, found: result.found, value: result.value ?? null }
+			: { success: false as const, value: null };
+	},
 	setAppSetting: (key: string, value: unknown) => {
 		const result = ipcRenderer.sendSync("app-settings:set", key, value) as {
 			success?: boolean;

@@ -19,9 +19,8 @@ import instagram from "@/assets/aspect-ratio/instagram.png";
 import twitter from "@/assets/aspect-ratio/twitter.png";
 import "./AspectRatioPicker.css";
 
-// Frame picker structure, ratios and platform groups from https://shots.so/.
-// Layout ported from its delivered de3248a8ef4a1ba5.css stylesheet; interaction
-// primitives are HeroUI. Platform artwork is bundled locally for offline use.
+// Standard frame ratios and common platform sizes, using HeroUI radio controls.
+// Platform artwork is bundled locally for offline use.
 const RATIOS = ["16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16"] as const;
 const PLATFORMS = [
 	{

@@ -63,6 +63,11 @@ export async function renameLibraryProject(
 					if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 				}
 			}
+			if (previous[i].kind === "preview" && next[i].kind === "preview") {
+				// The primary target was absent before our exclusive link. Its old previews
+				// are orphaned caches; unlink them without following possible symlinks.
+				for (const preview of next[i].paths) await fs.rm(preview, { force: true });
+			}
 			if (!existing) continue;
 			await fs.mkdir(path.dirname(next[i].paths[0]), { recursive: true, mode: 0o700 });
 			await fs.copyFile(existing.path, next[i].paths[0], fs.constants.COPYFILE_EXCL);

@@ -54,6 +54,21 @@ describe("studio runtime compatibility", () => {
 			),
 		).toEqual({ ...defaults, title: "Saved title" });
 	});
+	it("keeps popup alt text within the runtime parser's 300-character boundary", () => {
+		const draft = { ...defaults, mediaType: "image" as const, mediaUrl: "/demo.png" };
+		const alt = "a".repeat(300);
+		for (const mediaAlt of [alt, ` ${alt} `]) {
+			const valid = { ...draft, mediaAlt };
+			expect(validateDraft(valid)).toEqual([]);
+			expect(
+				parseAnnouncementFeed({ announcements: [buildAnnouncement(valid)] }).announcements[0]
+					.media?.alt,
+			).toBe(alt);
+		}
+		expect(validateDraft({ ...draft, mediaAlt: `${alt}b` })).toEqual([
+			"Media alt text must be 300 characters or fewer.",
+		]);
+	});
 	it("preserves negative priority and trims dashboard destinations", () => {
 		expect(buildAnnouncement({ ...defaults, priority: -20 }).priority).toBe(-20);
 		expect(

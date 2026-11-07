@@ -136,6 +136,41 @@ export interface CommentAccountState {
   getAccessToken: () => Promise<string | undefined>;
 }
 
+export function commentAccessTokenForAccount(
+  accountId: string,
+  result: {
+    error?: unknown;
+    data: { session: { user: { id: string }; access_token: string } | null };
+  },
+): string {
+  const session = result.data.session;
+  if (result.error || !accountId || !session || session.user.id !== accountId || !session.access_token)
+    throw new Error('Sign in again to post your comment. Your draft is saved here.');
+  return session.access_token;
+}
+
+/** Public comments remain readable when refreshing an optional viewer session fails. */
+export async function fetchCommentsForViewer(
+  shareCode: string,
+  page: number,
+  limit: number,
+  viewer: CommentAccountState | null,
+): Promise<CommentsResponse & { ownershipKey?: string }> {
+  let accessToken: string | undefined;
+  let ownershipKey = viewer?.key;
+  try {
+    accessToken = await viewer?.getAccessToken();
+  } catch {
+    ownershipKey = undefined;
+  }
+  const result = await fetchComments(shareCode, page, limit, accessToken);
+  return {
+    ...result,
+    ownershipKey,
+    comments: result.comments.map((comment) => ownershipKey ? comment : { ...comment, can_manage: false }),
+  };
+}
+
 export class CommentSignInError extends Error {
   constructor() {
     super('Your session expired. Sign in again to continue. Your draft is saved here.');

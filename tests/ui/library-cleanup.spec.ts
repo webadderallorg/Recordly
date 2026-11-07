@@ -180,3 +180,52 @@ test("cleanup combines toggles and exposes an editable duration defaulting to fi
 		dialog.getByRole("list", { name: "Cleanup matches" }).getByRole("checkbox"),
 	).toHaveCount(0);
 });
+
+test("rapid duration edits run one scan and cannot delete using old threshold results", async ({
+	page,
+}) => {
+	await page.goto("/tests/ui/library-cleanup.html");
+	await page.getByRole("button", { name: "Clean up", exact: true }).click();
+	const dialog = cleanup(page);
+	await option(page, "Find", "5 seconds or less");
+	const matches = dialog.getByRole("list", { name: "Cleanup matches" });
+	await expect(matches.getByRole("checkbox")).toHaveCount(2);
+	await page.evaluate(() => {
+		const counters = { reads: 0, probes: 0 };
+		Object.assign(window, { cleanupScanCounters: counters });
+		const read = window.electronAPI.getProjectPreview.bind(window.electronAPI);
+		const probe = window.electronAPI.probeNativeVideoMetadata.bind(window.electronAPI);
+		window.electronAPI.getProjectPreview = async (...args) => {
+			counters.reads++;
+			return read(...args);
+		};
+		window.electronAPI.probeNativeVideoMetadata = async (...args) => {
+			counters.probes++;
+			return probe(...args);
+		};
+	});
+	await page.clock.install();
+	await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
+	const counters = () =>
+		page.evaluate(
+			() =>
+				(window as unknown as { cleanupScanCounters: { reads: number; probes: number } })
+					.cleanupScanCounters,
+		);
+	const threshold = dialog.getByRole("spinbutton", { name: "Duration (seconds)" });
+	const deletion = dialog.getByRole("button", { name: /Delete selection/ });
+	for (const value of ["0.5", "10", "0.25"]) {
+		await threshold.fill(value);
+		await expect(deletion).toBeDisabled();
+		await expect(matches.getByRole("checkbox")).toHaveCount(0);
+		await page.clock.runFor(40);
+	}
+	await expect.poll(counters).toEqual({ reads: 0, probes: 0 });
+	await page.clock.runFor(250);
+	await expect.poll(counters).toEqual({ reads: 5, probes: 4 });
+	await expect(dialog.getByRole("status").filter({ hasText: /^Matches: 0$/ })).toBeVisible();
+	await expect(dialog.getByText("Checking saved projects and media…", { exact: true })).toHaveCount(0);
+	await expect(matches.getByRole("checkbox")).toHaveCount(0);
+	await expect(deletion).toBeDisabled();
+	await page.clock.resume();
+});

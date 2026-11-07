@@ -1,4 +1,4 @@
-import { readProjectFileWithRecovery, setProjectRecoveryDirectory } from "./atomicSave";
+import { getProjectStorageKey, readProjectFileWithRecovery, setProjectRecoveryDirectory } from "./atomicSave";
 import { encodeComposedThumbnail } from "./composedThumbnail";
 import { createHash, randomUUID } from "node:crypto";
 import { createProjectFirstFrameThumbnail } from "./firstFrameThumbnail";
@@ -38,7 +38,9 @@ import {
 	parseJsonWithByteOrderMark,
 } from "../utils";
 
-setProjectRecoveryDirectory(path.join(USER_DATA_PATH, "project-recovery"));
+setProjectRecoveryDirectory(path.join(USER_DATA_PATH, "project-recovery"), (contents) =>
+	isLoadableProjectData(parseJsonWithByteOrderMark(contents)),
+);
 
 export { normalizePath, normalizeVideoSourcePath };
 
@@ -163,7 +165,10 @@ export async function resolveApprovedLocalMediaPath(candidatePath: string): Prom
 		return null;
 	}
 
-	await rememberApprovedLocalReadPath(candidatePath);
+	// Register only the literal and the target checked above. Resolving the alias
+	// again could approve a replacement symlink target that was never validated.
+	approvedLocalReadPaths.add(normalizePath(candidatePath));
+	approvedLocalReadPaths.add(normalizePath(realPath));
 	return realPath;
 }
 
@@ -276,8 +281,10 @@ export function hasProjectFileExtension(filePath: string) {
 }
 
 export function getProjectThumbnailPath(projectPath: string) {
-	const resolved = path.resolve(projectPath);
-	const key = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+	return projectThumbnailStoragePath(getProjectStorageKey(projectPath));
+}
+
+function projectThumbnailStoragePath(key: string) {
 	const digest = createHash("sha256").update(key).digest("hex");
 	return path.join(USER_DATA_PATH, "project-thumbnails", `${digest}.png`);
 }
@@ -287,7 +294,13 @@ export function getLegacyProjectThumbnailPath(projectPath: string) {
 }
 
 export function getProjectThumbnailPaths(projectPath: string) {
-	return [getProjectThumbnailPath(projectPath), getLegacyProjectThumbnailPath(projectPath)];
+	const resolved = path.resolve(projectPath);
+	const oldKey = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+	return [...new Set([
+		getProjectThumbnailPath(projectPath),
+		projectThumbnailStoragePath(oldKey),
+		getLegacyProjectThumbnailPath(projectPath),
+	])];
 }
 
 async function findFreshProjectThumbnail(projectPath: string, modifiedAt: number) {

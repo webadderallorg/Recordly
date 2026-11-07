@@ -5,6 +5,9 @@ export function useRecorderSubscriptions(
 	context: Pick<
 		RecorderStopContext,
 		| "stopRecording"
+		| "stopMicFallbackRecorder"
+		| "stopWebcamRecorder"
+		| "microphoneFallback"
 		| "setRecording"
 		| "recordingStartGeneration"
 		| "nativeScreenRecording"
@@ -21,6 +24,9 @@ export function useRecorderSubscriptions(
 ) {
 	const {
 		stopRecording,
+		stopMicFallbackRecorder,
+		stopWebcamRecorder,
+		microphoneFallback,
 		setRecording,
 		recordingStartGeneration,
 		nativeScreenRecording,
@@ -57,24 +63,38 @@ export function useRecorderSubscriptions(
 					nativeScreenRecording.current = false;
 					nativeWindowsRecording.current = false;
 					nativeWarmStartActive.current = false;
-					cleanupCapturedMedia();
-					await window.electronAPI.setRecordingState(false);
-
-					// A closed source window can still leave a valid partial take.
-					toast.error(state.message);
-					{
+					const startDelayMs = microphoneFallback.startDelayMs;
+					const microphone = stopMicFallbackRecorder().catch((error) => {
+						console.warn("Could not finalize the interrupted microphone:", error);
+						return null;
+					});
+					const webcam = stopWebcamRecorder().catch((error) => {
+						console.warn("Could not finalize the interrupted webcam:", error);
+						return null;
+					});
+					let recoveredPath: string | null = null;
+					try {
 						try {
-							const recoveredPath = await recoverNativeRecordingSession();
-							if (recoveredPath) {
-								return;
-							}
-						} catch (recoveryError) {
-							console.error(
-								"Failed to recover interrupted native screen recording:",
-								recoveryError,
-							);
+							await window.electronAPI.setRecordingState(false);
+						} catch (error) {
+							console.warn("Could not reset interrupted recording state:", error);
 						}
+						// Keep microphone chunks and timing metadata until recovery stores the sidecar.
+						toast.error(state.message);
+						recoveredPath = await recoverNativeRecordingSession(
+							microphone,
+							startDelayMs,
+						);
+					} catch (recoveryError) {
+						console.error(
+							"Failed to recover interrupted native screen recording:",
+							recoveryError,
+						);
+					} finally {
+						await Promise.allSettled([microphone, webcam]);
+						cleanupCapturedMedia();
 					}
+					if (recoveredPath) return;
 
 					if (state.reason === "window-unavailable" && !hasPromptedForReselect.current) {
 						hasPromptedForReselect.current = true;
@@ -156,6 +176,9 @@ export function useRecorderSubscriptions(
 		recoverNativeRecordingSession,
 		setRecording,
 		stopRecording,
+		stopMicFallbackRecorder,
+		stopWebcamRecorder,
+		microphoneFallback,
 		recordingStartGeneration,
 		nativeScreenRecording,
 		nativeWindowsRecording,

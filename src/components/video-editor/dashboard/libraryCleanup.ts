@@ -2,7 +2,7 @@ import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import type { EditorProjectData } from "../projectPersistence";
 import { fromFileUrl } from "../projectMediaPaths";
 import { getTimelineDurationMs } from "../types";
-import { getProjectShareLink } from "../cloud/projectShareLinks";
+import { getProjectShareLink, getProjectShareLinkStrict } from "../cloud/projectShareLinks";
 import { hasLibraryExport, readLibraryExportHistory } from "./libraryExportHistory";
 import { readLibraryMediaInfo } from "./librarySort";
 
@@ -224,7 +224,9 @@ export async function scanCleanup(
 						projectId: project.projectId,
 						projectPath: entry.path,
 						sourcePath: project.videoPath,
-					}) || Boolean(getProjectShareLink(entry.path));
+					}) || Boolean(rules.includes("neverExported")
+						? getProjectShareLinkStrict(entry.path)
+						: getProjectShareLink(entry.path));
 				collectPaths(project, references);
 				collectPaths(preview.value.videoUrl, references);
 				collectPaths(preview.value.webcamUrl, references);

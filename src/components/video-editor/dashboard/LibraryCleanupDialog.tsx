@@ -49,25 +49,40 @@ export function LibraryCleanupDialog({
 		from: "",
 		to: "",
 	});
-	const [scan, setScan] = useState<CleanupScan | null>(null);
+	const scanRequest = useMemo(
+		() => ({ rules, shortSeconds, entries, projects, isRaw }),
+		[rules, shortSeconds, entries, projects, isRaw],
+	);
+	const [scanResult, setScanResult] = useState<{
+		request: typeof scanRequest;
+		result: CleanupScan;
+	} | null>(null);
+	// Controls invalidate old matches immediately, before the debounced effect runs.
+	const scan = scanResult?.request === scanRequest ? scanResult.result : null;
 	const [error, setError] = useState(false);
 	const [excluded, setExcluded] = useState<string[]>([]);
 	useEffect(() => {
 		let cancelled = false;
-		setScan(null);
+		const { rules, entries, projects, isRaw, shortSeconds } = scanRequest;
+		setScanResult(null);
 		setError(false);
 		setExcluded([]);
-		void scanCleanup(rules, entries, projects, isRaw, () => cancelled, shortSeconds)
-			.then((result) => {
-				if (!cancelled) setScan(result);
-			})
-			.catch(() => {
-				if (!cancelled) setError(true);
-			});
+		const startScan = () => {
+			void scanCleanup(rules, entries, projects, isRaw, () => cancelled, shortSeconds)
+				.then((result) => {
+					if (!cancelled) setScanResult({ request: scanRequest, result });
+				})
+				.catch(() => {
+					if (!cancelled) setError(true);
+				});
+		};
+		const timer = rules.includes("short") ? setTimeout(startScan, 250) : null;
+		if (timer === null) startScan();
 		return () => {
 			cancelled = true;
+			if (timer !== null) clearTimeout(timer);
 		};
-	}, [rules, shortSeconds, entries, projects, isRaw]);
+	}, [scanRequest]);
 	const invalidDates =
 		dates.period === "custom" && Boolean(dates.from && dates.to && dates.from > dates.to);
 	const matches = useMemo(

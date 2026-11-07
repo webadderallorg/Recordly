@@ -1,4 +1,5 @@
 import { ChildProcess } from "node:child_process";
+import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	nativeCaptureProcess,
@@ -30,6 +31,7 @@ type CaptureProcess = Parameters<typeof waitForNativeCaptureStop>[0];
 
 function createCaptureProcess() {
 	const child = new ChildProcess();
+	child.stdin = new PassThrough();
 	const kill = vi.spyOn(child, "kill").mockReturnValue(true);
 	return { child, kill, process: child as CaptureProcess };
 }
@@ -63,6 +65,16 @@ describe("macOS native stop deadline", () => {
 		await vi.advanceTimersByTimeAsync(200);
 		expect(kill).not.toHaveBeenCalled();
 		expect(child.listenerCount("close")).toBe(0);
+	});
+
+	it("rejects a failed stop pipe without losing the lifetime error listener", async () => {
+		const { child, process } = createCaptureProcess();
+		const stopped = waitForNativeCaptureStop(process, deadlines);
+		const failure = new Error("synthetic EPIPE");
+		child.stdin!.emit("error", failure);
+		await expect(stopped).rejects.toBe(failure);
+		expect(() => child.stdin!.emit("error", new Error("late pipe error"))).not.toThrow();
+		expect(vi.getTimerCount()).toBe(0);
 	});
 
 	it("waits for actual close after SIGTERM and never invents successful output", async () => {

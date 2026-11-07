@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import {
 	getProjectShare,
 	getProjectShareLink,
+	getProjectShareLinkStrict,
 	moveProjectShareLink,
 	removeProjectShareLinks,
 	removeProjectShareLinksByUrl,
@@ -28,6 +29,11 @@ function installNativeSettings() {
 	const settings = new Map<string, unknown>();
 	vi.stubGlobal("electronAPI", {
 		getAppSetting: (key: string) => settings.get(key) ?? null,
+		getAppSettingWithStatus: (key: string) => ({
+			success: true,
+			found: settings.has(key),
+			value: settings.get(key) ?? null,
+		}),
 		setAppSetting: (key: string, value: unknown) => {
 			settings.set(key, structuredClone(value));
 			return true;
@@ -166,6 +172,11 @@ it("clears active deleted URLs even when both persistence stores fail", () => {
 	const deleted = "https://example.test/s/storage-unavailable";
 	vi.stubGlobal("electronAPI", {
 		getAppSetting: () => ({ project: { url: deleted, sharedAt: 1 } }),
+		getAppSettingWithStatus: () => ({
+			success: true,
+			found: true,
+			value: { project: { url: deleted, sharedAt: 1 } },
+		}),
 		setAppSetting: () => false,
 	});
 	vi.stubGlobal("localStorage", {
@@ -195,6 +206,11 @@ it("does not resurrect deleted aliases when native writes fail but browser stora
 	const values = new Map<string, string>();
 	vi.stubGlobal("electronAPI", {
 		getAppSetting: () => structuredClone(native),
+		getAppSettingWithStatus: () => ({
+			success: true,
+			found: true,
+			value: structuredClone(native),
+		}),
 		setAppSetting: () => false,
 	});
 	vi.stubGlobal("localStorage", {
@@ -216,4 +232,80 @@ it("does not resurrect deleted aliases when native writes fail but browser stora
 	expect(JSON.parse(values.get("recordly.project-share-links.v1")!)).toEqual({
 		regenerated: native.regenerated,
 	});
+});
+
+it.each([
+	"failed",
+	"throws",
+	"legacyGetter",
+	"missingFound",
+])("does not migrate or write a browser snapshot after an uncertain native read: %s", (mode) => {
+	const write = vi.fn(() => true);
+	const browserRead = vi.fn(() => JSON.stringify({ old: "https://example.test/stale" }));
+	const browserWrite = vi.fn();
+	vi.stubGlobal("electronAPI", {
+		getAppSetting: () => null,
+		getAppSettingWithStatus:
+			mode === "legacyGetter"
+				? undefined
+				: () => {
+						if (mode === "throws") throw new Error("Storage failed");
+						if (mode === "missingFound") return { success: true, value: null };
+						return { success: false, value: null };
+					},
+		setAppSetting: write,
+	});
+	vi.stubGlobal("localStorage", { getItem: browserRead, setItem: browserWrite });
+	expect(getProjectShare("old", "owner")).toBeUndefined();
+	expect(getProjectShareLink("old")).toBeUndefined();
+	expect(() => saveProjectShareLink("new", "https://example.test/new")).toThrow(
+		"desktop settings",
+	);
+	expect(() => moveProjectShareLink("old", "renamed")).toThrow("desktop settings");
+	expect(() => removeProjectShareLinks(["old"])).toThrow("desktop settings");
+	expect(write).not.toHaveBeenCalled();
+	expect(browserRead).not.toHaveBeenCalled();
+	expect(browserWrite).not.toHaveBeenCalled();
+});
+
+it("treats a present null native map as cleared without resurrecting browser links", () => {
+	const write = vi.fn(() => true);
+	const browserRead = vi.fn(() => JSON.stringify({ old: "https://example.test/stale" }));
+	vi.stubGlobal("electronAPI", {
+		getAppSetting: () => null,
+		getAppSettingWithStatus: () => ({ success: true, found: true, value: null }),
+		setAppSetting: write,
+	});
+	vi.stubGlobal("localStorage", { getItem: browserRead, setItem: vi.fn() });
+	expect(getProjectShareLink("old")).toBeUndefined();
+	expect(write).not.toHaveBeenCalled();
+	expect(browserRead).not.toHaveBeenCalled();
+	saveProjectShareLink("new", "https://example.test/new");
+	expect(write).toHaveBeenCalledExactlyOnceWith("recordly.project-share-links.v1", {
+		new: { url: "https://example.test/new", sharedAt: expect.any(Number) },
+	});
+});
+
+it("keeps a genuinely missing native and browser key available as an empty cache", () => {
+	const settings = installNativeSettings();
+	vi.stubGlobal("localStorage", { getItem: () => null, setItem: vi.fn() });
+	expect(getProjectShareLinkStrict("missing")).toBeUndefined();
+	expect(settings.get("recordly.project-share-links.v1")).toEqual({});
+});
+
+it("never bases native writes on an invalid existing map", () => {
+	const write = vi.fn(() => true);
+	const browserRead = vi.fn(() => JSON.stringify({ old: "https://example.test/stale" }));
+	vi.stubGlobal("electronAPI", {
+		getAppSetting: () => [],
+		getAppSettingWithStatus: () => ({ success: true, found: true, value: [] }),
+		setAppSetting: write,
+	});
+	vi.stubGlobal("localStorage", { getItem: browserRead, setItem: vi.fn() });
+	expect(getProjectShareLink("old")).toBeUndefined();
+	expect(() => saveProjectShareLink("new", "https://example.test/new")).toThrow(
+		"could not be read",
+	);
+	expect(write).not.toHaveBeenCalled();
+	expect(browserRead).not.toHaveBeenCalled();
 });

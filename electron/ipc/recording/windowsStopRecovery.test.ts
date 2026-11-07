@@ -239,6 +239,26 @@ describe("Windows stop failure preserves closed-output recovery", () => {
 		await expect(recoverNativeWindowsCaptureOutput()).resolves.toMatchObject({ success: true, path: destination });
 	});
 
+	it("handles asynchronous stop EPIPE and keeps capture reserved until closed recovery", async () => {
+		attachWindowsCaptureLifecycle(
+			proc as unknown as Parameters<typeof attachWindowsCaptureLifecycle>[0],
+		);
+		vi.spyOn(proc.stdin, "write").mockImplementation(() => {
+			queueMicrotask(() => proc.stdin.emit("error", new Error("synthetic EPIPE")));
+			return true;
+		});
+		await expect(stopWindowsCapture()).resolves.toMatchObject({ success: false });
+		expect(proc.kill).toHaveBeenCalledOnce();
+		expect(state.windowsCaptureProcess).toBe(proc);
+		await expect(recoverNativeWindowsCaptureOutput()).resolves.toBeNull();
+		proc.emit("close", 1);
+		expect(() => proc.stdin.emit("error", new Error("late EPIPE"))).not.toThrow();
+		await expect(recoverNativeWindowsCaptureOutput()).resolves.toMatchObject({
+			success: true,
+			path: destination,
+		});
+	});
+
 	it("retains invalid closed output and destinations without claiming recovery", async () => {
 		await fs.writeFile(temporary, "");
 		attachWindowsCaptureLifecycle(

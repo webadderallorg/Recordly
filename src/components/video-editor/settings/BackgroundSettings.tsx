@@ -21,6 +21,8 @@ type Props = Pick<ResolvedSettingsPanelProps, (typeof backgroundSettingsKeys)[nu
 export function BackgroundSettings(props: Props) {
 	const { onWallpaperChange } = props;
 	const [gradientOpen, setGradientOpen] = useState(false);
+	const [swatchRevision, setSwatchRevision] = useState(0);
+	const refreshCustomSwatches = () => setSwatchRevision((revision) => revision + 1);
 	const { tSettings, t } = useSettingsTranslations();
 	const {
 		backgroundTab,
@@ -39,8 +41,11 @@ export function BackgroundSettings(props: Props) {
 	const galleryRef = useRef<HTMLDivElement>(null);
 	const galleryFade = useScrollFade(galleryRef, backgroundTab);
 	// Reserve the same gallery footprint for every tab without mounting hidden media.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: refresh saved custom swatches on tab/selection changes, not every playback tick.
-	const preferences = useMemo(() => loadEditorPreferences(), [backgroundTab, selected]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: refresh saved custom swatches on tab/selection/custom list changes, not every playback tick.
+	const preferences = useMemo(
+		() => loadEditorPreferences(),
+		[backgroundTab, selected, swatchRevision],
+	);
 	const colors = new Set(
 		[
 			...colorPalette,
@@ -182,6 +187,7 @@ export function BackgroundSettings(props: Props) {
 									tileClassName={wallpaperTileClass}
 									onChange={onWallpaperChange}
 									onCreateGradient={() => setGradientOpen(true)}
+									onCustomChange={refreshCustomSwatches}
 								>
 									<GradientPicker
 										value={selected}
@@ -189,6 +195,7 @@ export function BackgroundSettings(props: Props) {
 										tileClassName={wallpaperTileClass}
 										onChange={onWallpaperChange}
 										embedded
+										onCustomChange={refreshCustomSwatches}
 										open={gradientOpen}
 										onOpenChange={setGradientOpen}
 									/>

@@ -373,6 +373,7 @@
 		"deleteRegion": "刪除音訊"
 	},
 	"updates": {
+		"loadFailed": "無法載入更新頻道，請再試一次。",
 		"automaticDownloads": "自動下載更新",
 		"automaticDownloadsDescription": "在背景下載新更新。由你決定何時重新啟動。",
 		"downloadPreferenceFailed": "無法載入或儲存自動下載更新設定。請重試。",
