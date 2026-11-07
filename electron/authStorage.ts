@@ -24,6 +24,7 @@ export type AuthFlowStorageHooks = {
 	prepareSet: (
 		event: IpcMainInvokeEvent,
 		key: string,
+		persistedKeys?: readonly string[],
 	) => Promise<(() => Promise<void>) | undefined>;
 	didRemove: (event: IpcMainInvokeEvent, key: string) => Promise<void>;
 };
@@ -103,6 +104,34 @@ function validateEntries(value: unknown): AuthEntries {
 	return result;
 }
 
+function readStoredValue(entries: AuthEntries, key: string): string | null {
+	const prefix = /^(sb-[a-z0-9-]{1,100}-auth-token)-flows-code-verifier$/.exec(key)?.[1];
+	if (!prefix) return entries[key] ?? null;
+	const present = new Set<string>();
+	for (const candidate of Object.keys(entries)) {
+		const slot =
+			/^(sb-[a-z0-9-]{1,100}-auth-token)-flow-([A-Za-z0-9_-]{8,64})-code-verifier$/.exec(
+				candidate,
+			);
+		if (slot?.[1] === prefix) present.add(slot[2]);
+	}
+	let stored: unknown;
+	try {
+		stored = JSON.parse(entries[key] ?? "null");
+	} catch {
+		// The index is bookkeeping; exact persisted verifier slots are authoritative.
+	}
+	const ids = new Set<string>(
+		Array.isArray(stored)
+			? stored.filter((id) => typeof id === "string" && present.has(id))
+			: [],
+	);
+	for (const id of present) ids.add(id);
+	// SDK starts race their index read/modify/write. Repair reads without deleting
+	// any active slot; only the SDK's normal explicit ring removals evict verifiers.
+	return ids.size || key in entries ? JSON.stringify([...ids]) : null;
+}
+
 function storagePath(): string {
 	return path.join(app.getPath("userData"), "private-auth", "session.enc");
 }
@@ -170,7 +199,7 @@ function transaction<T>(operation: () => Promise<T>): Promise<T> {
 
 export function readNativeAuthStorageValue(key: string): Promise<string | null> {
 	assertKey(key);
-	return serialize(() => transaction(async () => (await load()).entries[key] ?? null));
+	return serialize(() => transaction(async () => readStoredValue((await load()).entries, key)));
 }
 
 export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): void {
@@ -194,7 +223,7 @@ export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): v
 		return serialize(async () =>
 			completedCallback?.key === key
 				? completedCallback.fingerprint
-				: transaction(async () => (await load()).entries[key] ?? null),
+				: transaction(async () => readStoredValue((await load()).entries, key)),
 		);
 	});
 	ipcMain.handle("auth-storage:set", (event, key: unknown, value: unknown) => {
@@ -202,7 +231,15 @@ export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): v
 		assertKey(key);
 		const validated = validateEntries({ [key]: value });
 		return serialize(async () => {
-			const rollback = await flowHooks?.prepareSet(event, key);
+			// This process's queue spans snapshot, registration and commit/rollback.
+			// Only queued prepareSet calls add owned routes, so no earlier own route
+			// can still be preparing its verifier when this snapshot is captured.
+			const persistedKeys =
+				flowHooks &&
+				/^sb-[a-z0-9-]{1,100}-auth-token-flow-[A-Za-z0-9_-]{8,64}-code-verifier$/.test(key)
+					? await transaction(async () => Object.keys((await load()).entries))
+					: undefined;
+			const rollback = await flowHooks?.prepareSet(event, key, persistedKeys);
 			if (COMPLETED_CALLBACK_KEY.test(key)) {
 				// Keep one non-secret completion marker available to all our windows even
 				// if optional bookkeeping cannot be persisted after a successful exchange.

@@ -405,3 +405,48 @@ it("cleans a destroyed registered owner's routing without transferring its pendi
 	expect(state.flows.has("flow_alice")).toBe(false);
 	controller.close();
 });
+
+it("preserves active unindexed registrations and prunes only exact verifiers missing after a peer deletion", async () => {
+	const { createAuthCallbackController } = await import("./authCallback");
+	const controller = createAuthCallbackController({
+		isDev: false,
+		focusApp: vi.fn(),
+		flowRoutingEnabled: true,
+	});
+	const alice = owner(1),
+		bob = owner(2);
+	state.windows = [alice, bob];
+	const aliceKey = "sb-recordlytest-auth-token-flow-flow_alice-code-verifier";
+	const bobKey = "sb-recordlytest-auth-token-flow-flow_bob00-code-verifier";
+	await controller.flowStorageHooks!.prepareSet(event(alice), aliceKey, []);
+	// No SDK index is present in this snapshot. The exact active slot suffices.
+	await controller.flowStorageHooks!.prepareSet(event(bob), bobKey, [aliceKey]);
+	expect(state.flows.has("flow_alice")).toBe(true);
+	expect(await controller.route(url)).toBe("local");
+	expect(alice.send).toHaveBeenCalledWith("auth:callback", url);
+	const nextKey = "sb-recordlytest-auth-token-flow-flow_next0-code-verifier";
+	await controller.flowStorageHooks!.prepareSet(event(bob), nextKey, [bobKey]);
+	expect(state.flows.has("flow_alice")).toBe(false);
+	expect(state.flows.has("flow_bob00")).toBe(true);
+	expect(state.flows.has("flow_next0")).toBe(true);
+	controller.close();
+});
+
+it("does not release an owned flow when another project removes the same textual flow ID", async () => {
+	const { createAuthCallbackController } = await import("./authCallback");
+	const controller = createAuthCallbackController({
+		isDev: false,
+		focusApp: vi.fn(),
+		flowRoutingEnabled: true,
+	});
+	const alice = owner(1);
+	state.windows = [alice];
+	await controller.flowStorageHooks!.prepareSet(event(alice), key, []);
+	await controller.flowStorageHooks!.didRemove(
+		event(alice),
+		"sb-other-auth-token-flow-flow_alice-code-verifier",
+	);
+	expect(state.flows.has("flow_alice")).toBe(true);
+	expect(await controller.route(url)).toBe("local");
+	controller.close();
+});

@@ -206,7 +206,11 @@ it("binds the installed SDK's actual redirect flow ID to its trusted initiating 
 	const redirect = new URL(new URL(result.data.url!).searchParams.get("redirect_to")!);
 	const flowId = redirect.searchParams.get("sb_flow_id");
 	expect(flowId).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
-	expect(prepared).toHaveBeenCalledWith(event, `${storageKey}-flow-${flowId}-code-verifier`);
+	expect(prepared).toHaveBeenCalledWith(
+		event,
+		`${storageKey}-flow-${flowId}-code-verifier`,
+		expect.any(Array),
+	);
 	expect(await invoke("get", `${storageKey}-flow-${flowId}-code-verifier`)).toBeTruthy();
 	await invoke("remove", `${storageKey}-flow-${flowId}-code-verifier`);
 	expect(removed).toHaveBeenCalledWith(event, `${storageKey}-flow-${flowId}-code-verifier`);
@@ -367,7 +371,23 @@ it("bounds per-account consent retries without evicting sessions, verifiers, or 
 		expect(await invoke("get", `${prefix}-signup-consent-retry:account-${n}`)).toBe(
 			`retry-${n}`,
 		);
-	for (const [key, value] of entries) expect(await invoke("get", key)).toBe(value);
+	for (const [key, value] of entries) {
+		if (key === `${prefix}-flows-code-verifier`)
+			expect(JSON.parse((await invoke("get", key)) as string)).toEqual([
+				"pending00",
+				"pending01",
+				"pending02",
+				"pending03",
+				"pending04",
+			]);
+		else expect(await invoke("get", key)).toBe(value);
+	}
+	// Repair is read-only: the original bookkeeping value was not replaced.
+	expect(
+		JSON.parse(
+			await fs.readFile(path.join(native.directory, "private-auth/session.enc"), "utf8"),
+		).entries[`${prefix}-flows-code-verifier`],
+	).toBe("flow-index");
 });
 
 it.each([
@@ -398,4 +418,187 @@ it("fails closed on an externally corrupted retry count without replacing the en
 	await fs.writeFile(file, corrupt);
 	await expect(invoke("set", prefix, "must-not-replace")).rejects.toThrow("Could not unlock");
 	expect(await fs.readFile(file, "utf8")).toBe(corrupt);
+});
+
+it("repairs a lost flow-index update from exact persisted slots without deleting active verifiers", async () => {
+	const prefix = "sb-recordlytest-auth-token";
+	const first = `${prefix}-flow-flow_alice-code-verifier`;
+	const second = `${prefix}-flow-flow_bob00-code-verifier`;
+	const other = "sb-other-auth-token-flow-flow_other-code-verifier";
+	await invoke("set", first, '"alice-verifier"');
+	await invoke("set", second, '"bob-verifier"');
+	await invoke("set", other, '"other-verifier"');
+	await invoke(
+		"set",
+		`${prefix}-flows-code-verifier`,
+		JSON.stringify(["flow_bob00", "flow_absent", "flow_bob00"]),
+	);
+	expect(JSON.parse((await invoke("get", `${prefix}-flows-code-verifier`)) as string)).toEqual([
+		"flow_bob00",
+		"flow_alice",
+	]);
+	expect(await invoke("get", first)).toBe('"alice-verifier"');
+	expect(await invoke("get", second)).toBe('"bob-verifier"');
+	expect(await invoke("get", other)).toBe('"other-verifier"');
+	await invoke("set", `${prefix}-flows-code-verifier`, "invalid JSON");
+	expect(JSON.parse((await invoke("get", `${prefix}-flows-code-verifier`)) as string)).toEqual([
+		"flow_alice",
+		"flow_bob00",
+	]);
+});
+
+it("keeps nested project namespaces out of another project's repaired flow index", async () => {
+	const prefix = "sb-a-auth-token";
+	const nestedPrefix = `${prefix}-flow-nested-auth-token`;
+	const ownKey = `${prefix}-flow-current0-code-verifier`;
+	const nestedKey = `${nestedPrefix}-flow-abcdefgh-code-verifier`;
+	await invoke("set", ownKey, '"own-verifier"');
+	await invoke("set", nestedKey, '"nested-project-verifier"');
+	// The broad flow-ID grammar could treat this whole suffix as one ID. Use
+	// the same full greedy project-prefix parser as native route ownership.
+	await invoke(
+		"set",
+		`${prefix}-flows-code-verifier`,
+		JSON.stringify(["current0", "nested-auth-token-flow-abcdefgh"]),
+	);
+	expect(JSON.parse((await invoke("get", `${prefix}-flows-code-verifier`)) as string)).toEqual([
+		"current0",
+	]);
+	expect(
+		JSON.parse((await invoke("get", `${nestedPrefix}-flows-code-verifier`)) as string),
+	).toEqual(["abcdefgh"]);
+	expect(await invoke("get", nestedKey)).toBe('"nested-project-verifier"');
+	expect(await invoke("get", ownKey)).toBe('"own-verifier"');
+});
+
+it("does not register against an empty snapshot when saved auth cannot be read", async () => {
+	const prepare = vi.fn(async () => undefined);
+	const { registerAuthStorageHandlers } = await import("./authStorage");
+	registerAuthStorageHandlers({ prepareSet: prepare, didRemove: async () => undefined });
+	const prefix = "sb-recordlytest-auth-token";
+	await invoke("set", prefix, "session");
+	prepare.mockClear();
+	const file = path.join(native.directory, "private-auth/session.enc");
+	await fs.writeFile(file, "corrupt saved credentials");
+	await expect(
+		invoke("set", `${prefix}-flow-flow_alice-code-verifier`, '"verifier"'),
+	).rejects.toThrow("Could not unlock");
+	expect(prepare).not.toHaveBeenCalled();
+	expect(await fs.readFile(file, "utf8")).toBe("corrupt saved credentials");
+});
+
+it("holds the local registration queue through verifier commit before providing the next snapshot", async () => {
+	const prepare = vi.fn(
+		async (_event: unknown, _key: string, _keys?: readonly string[]) => undefined,
+	);
+	const { registerAuthStorageHandlers } = await import("./authStorage");
+	registerAuthStorageHandlers({ prepareSet: prepare, didRemove: async () => undefined });
+	const firstKey = "sb-recordlytest-auth-token-flow-flow_alice-code-verifier";
+	const secondKey = "sb-recordlytest-auth-token-flow-flow_bob00-code-verifier";
+	let release!: () => void;
+	let entered!: () => void;
+	const committing = new Promise<void>((resolve) => {
+		entered = resolve;
+	});
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const rename = fs.rename.bind(fs);
+	let paused = false;
+	vi.spyOn(fs, "rename").mockImplementation(async (...args) => {
+		if (
+			!paused &&
+			String(args[1]) === path.join(native.directory, "private-auth/session.enc")
+		) {
+			paused = true;
+			entered();
+			await held;
+		}
+		return rename(...args);
+	});
+	const first = invoke("set", firstKey, '"alice-verifier"');
+	await committing;
+	const second = invoke("set", secondKey, '"bob-verifier"');
+	try {
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(prepare).toHaveBeenCalledOnce();
+		expect(prepare.mock.calls[0][2]).toEqual([]);
+		release();
+		await Promise.all([first, second]);
+		expect(prepare.mock.calls[1][2]).toContain(firstKey);
+		expect(await invoke("get", firstKey)).toBe('"alice-verifier"');
+	} finally {
+		release();
+		await Promise.allSettled([first, second]);
+	}
+});
+
+it.each([
+	"same-client",
+	"two-renderers",
+])("keeps actual SDK concurrent starts in the native effective index (%s)", async (mode) => {
+	const prefix = "sb-recordlytest-auth-token",
+		indexKey = `${prefix}-flows-code-verifier`;
+	let held = false,
+		reads = 0,
+		release!: () => void,
+		gate: Promise<void>;
+	const makeClient = () =>
+		createClient("https://recordlytest.supabase.co", "public-fixture", {
+			auth: {
+				storageKey: prefix,
+				flowType: "pkce",
+				persistSession: true,
+				autoRefreshToken: false,
+				detectSessionInUrl: false,
+				experimental: { appendPkceFlowIdToRedirects: true },
+				storage: {
+					getItem: async (key) => {
+						const snapshot = (await invoke("get", key)) as string | null;
+						if (held && key === indexKey) {
+							if (++reads === 2) {
+								held = false;
+								release();
+							}
+							await gate;
+						}
+						return snapshot;
+					},
+					setItem: async (key, value) => {
+						await invoke("set", key, value);
+					},
+					removeItem: async (key) => {
+						await invoke("remove", key);
+					},
+				},
+			},
+		});
+	const a = makeClient(),
+		b = mode === "same-client" ? a : makeClient();
+	await Promise.all([a.auth.initialize(), b.auth.initialize()]);
+	for (let pair = 0; pair < 5; pair++) {
+		reads = 0;
+		gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		held = true;
+		const results = await Promise.all(
+			[a, b].map((client) =>
+				client.auth.signInWithOAuth({
+					provider: "apple",
+					options: { redirectTo: "recordly://auth/callback", skipBrowserRedirect: true },
+				}),
+			),
+		);
+		expect(results.every((result) => result.error === null)).toBe(true);
+		const entries = JSON.parse(
+			await fs.readFile(path.join(native.directory, "private-auth/session.enc"), "utf8"),
+		).entries;
+		const slots = Object.keys(entries).filter((key) => key.startsWith(`${prefix}-flow-`));
+		const index = JSON.parse((await invoke("get", indexKey)) as string);
+		expect(index).toHaveLength(slots.length);
+		expect(index.length).toBeLessThanOrEqual(5);
+		for (const key of slots)
+			expect(index).toContain(key.slice(`${prefix}-flow-`.length, -"-code-verifier".length));
+	}
 });

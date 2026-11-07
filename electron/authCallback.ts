@@ -56,7 +56,7 @@ export function createAuthCallbackController({
 	const startupUrls: string[] = [];
 	const startupSeen = new Set<string>();
 	const pendingByOwner = new Map<WebContents, string[]>();
-	const flowOwners = new Map<string, WebContents>();
+	const flowOwners = new Map<string, { owner: WebContents; verifierKey: string }>();
 	const observedOwners = new WeakSet<WebContents>();
 	const relay = flowRoutingEnabled
 		? createAuthFlowRelay<WebContents>({
@@ -91,19 +91,29 @@ export function createAuthCallbackController({
 		/^sb-[a-z0-9-]{1,100}-auth-token-flow-([A-Za-z0-9_-]{8,64})-code-verifier$/.exec(key)?.[1];
 	const flowStorageHooks: AuthFlowStorageHooks | undefined = relay
 		? {
-				prepareSet: async (event, key) => {
+				prepareSet: async (event, key, persistedKeys) => {
 					const flowId = flowKey(key);
 					if (!flowId) return;
+					if (persistedKeys) {
+						const present = new Set(persistedKeys);
+						for (const [id, flow] of flowOwners) {
+							if (present.has(flow.verifierKey)) continue;
+							// A peer SDK may have explicitly evicted this verifier. Index
+							// absence alone never proves inactivity; exact slot absence does.
+							await relay.release(id, flow.owner);
+							if (flowOwners.get(id) === flow) flowOwners.delete(id);
+						}
+					}
 					const owner = event.sender;
-					const alreadyOwned = flowOwners.get(flowId) === owner;
+					const alreadyOwned = flowOwners.get(flowId)?.owner === owner;
 					const rollback = await relay.register(flowId, key, owner);
-					flowOwners.set(flowId, owner);
+					flowOwners.set(flowId, { owner, verifierKey: key });
 					if (!observedOwners.has(owner)) {
 						observedOwners.add(owner);
 						owner.once("destroyed", () => {
 							pendingByOwner.delete(owner);
 							for (const [id, candidate] of flowOwners)
-								if (candidate === owner) {
+								if (candidate.owner === owner) {
 									flowOwners.delete(id);
 									void relay.release(id, owner).catch(() => undefined);
 								}
@@ -111,16 +121,16 @@ export function createAuthCallbackController({
 					}
 					return async () => {
 						await rollback();
-						if (!alreadyOwned && flowOwners.get(flowId) === owner)
+						if (!alreadyOwned && flowOwners.get(flowId)?.owner === owner)
 							flowOwners.delete(flowId);
 					};
 				},
 				didRemove: async (_event, key) => {
 					const flowId = flowKey(key);
-					const owner = flowId && flowOwners.get(flowId);
-					if (flowId && owner) {
+					const flow = flowId && flowOwners.get(flowId);
+					if (flowId && flow && flow.verifierKey === key) {
 						flowOwners.delete(flowId);
-						await relay.release(flowId, owner);
+						await relay.release(flowId, flow.owner);
 					}
 				},
 			}
