@@ -43,7 +43,7 @@
     "descriptionPlaceholder": "Leggiamo tutti i commenti...",
     "attachFiles": "Allega file",
     "removeFile": "Rimuovi {{name}}",
-    "diagnostics": "Registri diagnostici allegati. Feedback inviato a support@recordly.dev",
+    "diagnostics": "I registri diagnostici verranno allegati. Il feedback verrà inviato a support@recordly.dev.",
     "sending": "Invio…",
     "errors": {
       "unavailable": "I commenti saranno disponibili dopo la configurazione dei servizi dell’account.",

@@ -43,7 +43,7 @@
     "descriptionPlaceholder": "We lezen alle feedback...",
     "attachFiles": "Bestanden bijvoegen",
     "removeFile": "{{name}} verwijderen",
-    "diagnostics": "Diagnostische logboeken bijgevoegd. Feedback verzonden naar support@recordly.dev",
+    "diagnostics": "Diagnostische logboeken zullen worden bijgevoegd. Feedback zal naar support@recordly.dev worden verzonden.",
     "sending": "Verzenden…",
     "errors": {
       "unavailable": "Feedback is pas beschikbaar nadat de accountdiensten zijn ingesteld.",

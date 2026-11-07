@@ -74,9 +74,11 @@ function libraryDeletionDependencies(protectedSources: unknown = []) {
 		backupPaths: getProjectBackupPaths,
 		recordings: () => listRecordings(true),
 		activeSources: () => [currentVideoPath, currentRecordingSession?.videoPath, currentRecordingSession?.webcamPath, ...additionalSources].map((file) => normalizeVideoSourcePath(file)).filter((file): file is string => Boolean(file)),
-		readSources: async (file: string) => {
+		readSources: async (file: string, kind: "primary" | "recovery" = "recovery") => {
 			try {
-				if (!(await fs.lstat(file)).isFile()) throw new Error("Project reference is not a regular file");
+				// Listed primaries may be leaf symlinks; recovery generations remain strict.
+				const stat = kind === "primary" ? await fs.stat(file) : await fs.lstat(file);
+				if (!stat.isFile()) throw new Error("Project reference is not a regular file");
 				const project = parseJsonWithByteOrderMark(await fs.readFile(file, "utf-8"));
 				if (!isLoadableProjectData(project)) throw new Error("Project reference could not be read");
 				return canonicalMediaSources(project, { preserveMissing: true });

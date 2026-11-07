@@ -43,7 +43,7 @@
     "descriptionPlaceholder": "모든 피드백을 읽고 있습니다...",
     "attachFiles": "파일 첨부",
     "removeFile": "{{name}} 제거",
-    "diagnostics": "진단 로그가 첨부되었습니다. 피드백이 support@recordly.dev로 전송됩니다",
+    "diagnostics": "제출하면 진단 로그가 첨부되고 피드백이 support@recordly.dev로 전송됩니다.",
     "sending": "전송 중…",
     "errors": {
       "unavailable": "계정 서비스가 구성되어야 피드백을 보낼 수 있습니다.",

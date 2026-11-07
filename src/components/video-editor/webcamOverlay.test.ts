@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getSquirclePathPoints } from "@/lib/geometry/squircle";
 import {
 	convertLegacyWebcamRadiusToRoundness,
@@ -233,4 +233,89 @@ it("keeps a Square camera square when its source crop has a different aspect", (
 	const crop = { x: 0, y: 0, width: 0.5, height: 1 };
 	expect(getCropMatchedWebcamHeightPercent(40, 40, 1920, 1080, crop, "squircle")).toBe(40);
 	expect(getCropMatchedWebcamHeightPercent(40, 40, 1920, 1080, crop, "rectangle")).toBe(45);
+});
+
+import { usePlaybackWebcamLayout } from "./videoPlayback/usePlaybackWebcamLayout";
+
+const previewMemo = vi.hoisted(() => ({
+	dependencies: null as readonly unknown[] | null,
+	value: undefined as unknown,
+}));
+vi.mock("react", async (importOriginal) => ({
+	...(await importOriginal<typeof import("react")>()),
+	useCallback: <T>(callback: T) => callback,
+	useEffect: () => undefined,
+	useMemo: (factory: () => unknown, dependencies: readonly unknown[]) => {
+		if (
+			!previewMemo.dependencies ||
+			dependencies.some(
+				(value, index) => !Object.is(value, previewMemo.dependencies?.[index]),
+			)
+		) {
+			previewMemo.value = factory();
+			previewMemo.dependencies = [...dependencies];
+		}
+		return previewMemo.value;
+	},
+}));
+
+function previewWebcamFixture(shape?: "circle" | "rectangle" | "squircle") {
+	previewMemo.dependencies = null;
+	const bubble = { style: {} as Record<string, string> };
+	const input = {
+		webcam: {
+			enabled: true,
+			shape,
+			width: 30,
+			height: 30,
+			cropRegion: { x: 0, y: 0, width: 0.5, height: 1 },
+		},
+		webcamVideoDimensions: { width: 1920, height: 1080 },
+		webcamBubbleRef: { current: bubble },
+		webcamBlurCanvasRef: { current: null },
+		webcamBubbleInnerRef: { current: { style: { setProperty: vi.fn() } } },
+		overlayRef: { current: { clientWidth: 1920, clientHeight: 1080 } },
+		webcamVideoPath: "/camera.webm",
+		timelineTimeRef: { current: 0 },
+		clipRegionsRef: { current: [{ id: "clip", startMs: 0, endMs: 1000, speed: 1 }] },
+		currentTimeRef: { current: 0 },
+		webcamMotionBlurRef: { current: { reset: vi.fn(), destroy: vi.fn() } },
+		webcamVideoRef: { current: null },
+		webcamMediaSynchronized: false,
+		isPlayingRef: { current: false },
+		isSeekingRef: { current: false },
+		zoomMotionBlurRef: { current: 0 },
+		animationStateRef: { current: { appliedScale: 1 } },
+		isPlaying: false,
+	} as unknown as Parameters<typeof usePlaybackWebcamLayout>[0];
+	// This harness evaluates geometry with mocked hooks, including dependency-aware memoization.
+	const useLayout = () => usePlaybackWebcamLayout(input);
+	return { input, bubble, layout: useLayout };
+}
+
+it("keeps circle preview content proportional after switching from unequal rectangle dimensions", () => {
+	const fixture = previewWebcamFixture("rectangle");
+	fixture.input.webcam = { ...fixture.input.webcam!, width: 30, height: 20 };
+	const rectangle = fixture.layout().webcamCropPreviewContentStyle;
+	expect(
+		(Number.parseFloat(String(rectangle.width)) / Number.parseFloat(String(rectangle.height))) *
+			1.5,
+	).toBeCloseTo(1920 / 1080);
+	fixture.input.webcam = { ...fixture.input.webcam!, shape: "circle" };
+	const circle = fixture.layout();
+	circle.applyWebcamBubbleLayout(1);
+	expect(fixture.bubble.style.width).toBe(fixture.bubble.style.height);
+	expect(
+		Number.parseFloat(String(circle.webcamCropPreviewContentStyle.width)) /
+			Number.parseFloat(String(circle.webcamCropPreviewContentStyle.height)),
+	).toBeCloseTo(1920 / 1080);
+});
+
+it("keeps direct preview inputs with an omitted shape square despite their source crop", () => {
+	const fixture = previewWebcamFixture();
+	const layout = fixture.layout();
+	layout.applyWebcamBubbleLayout(1);
+	expect(layout.webcamHeight).toBe(30);
+	expect(fixture.bubble.style.width).toBe("324px");
+	expect(fixture.bubble.style.height).toBe("324px");
 });

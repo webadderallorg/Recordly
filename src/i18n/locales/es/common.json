@@ -43,7 +43,7 @@
     "descriptionPlaceholder": "Leemos todos los comentarios...",
     "attachFiles": "Adjuntar archivos",
     "removeFile": "Eliminar {{name}}",
-    "diagnostics": "Registros de diagnóstico adjuntos. Comentarios enviados a support@recordly.dev",
+    "diagnostics": "Se adjuntarán los registros de diagnóstico. Los comentarios se enviarán a support@recordly.dev.",
     "sending": "Enviando…",
     "errors": {
       "unavailable": "Los comentarios no están disponibles hasta que se configuren los servicios de cuenta.",
