@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, vi } from "vitest";
 import { env, SELF } from "cloudflare:test";
 import worker, { sha256Hex } from "../src/index.js";
 import { withRecordingLock } from "../src/recordingLock.js";
+import { cleanupExpired } from "../src/library.js";
 
 import { localCommentHeaders } from "./commentFixtures.js";
 let commentAuth;
@@ -938,4 +939,129 @@ it("keeps an old live lock exclusive and recovers an orphan only by its exact ob
 			.bind(code)
 			.first(),
 	).toBeNull();
+});
+
+describe("report IP cleanup", () => {
+	it("clears expired reporter IPs while preserving reports and moderation history", async () => {
+		const { shareCode } = await createShare();
+		await completeUpload(shareCode);
+		const target = crypto.randomUUID();
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT INTO abuse_reports (share_code,reason,details,client_ip,created_at) VALUES (?,'spam','old report','198.51.100.240',datetime('now','-2 hours'))",
+			).bind(shareCode),
+			env.DB.prepare(
+				"INSERT INTO abuse_reports (share_code,reason,details,client_ip,created_at) VALUES (?,'privacy','boundary report','198.51.100.241',datetime('now','-1 hour'))",
+			).bind(shareCode),
+			env.DB.prepare(
+				"INSERT INTO abuse_reports (share_code,reason,details,client_ip,created_at) VALUES (?,'other','active report','198.51.100.242',datetime('now','-59 minutes'))",
+			).bind(shareCode),
+			env.DB.prepare(
+				"INSERT INTO abuse_reports (share_code,reason,details,client_ip,created_at) VALUES (?,'spam','already cleared','',datetime('now','-3 hours'))",
+			).bind(shareCode),
+			env.DB.prepare(
+				"INSERT INTO moderation_actions (action,target,reason) VALUES ('suspend-account',?,'Keep the audit record')",
+			).bind(target),
+		]);
+		const reports = await env.DB.prepare(
+			"SELECT id,share_code,reason,details,created_at FROM abuse_reports WHERE share_code = ? ORDER BY id",
+		)
+			.bind(shareCode)
+			.all();
+		const audit = await env.DB.prepare("SELECT * FROM moderation_actions WHERE target = ?")
+			.bind(target)
+			.all();
+		await env.DB.prepare(
+			"UPDATE videos SET expires_at = datetime('now','-1 day') WHERE share_code = ?",
+		)
+			.bind(shareCode)
+			.run();
+		await cleanupExpired(env);
+		expect(
+			await env.DB.prepare("SELECT id FROM videos WHERE share_code = ?")
+				.bind(shareCode)
+				.first(),
+		).toBeNull();
+		expect(
+			(
+				await env.DB.prepare(
+					"SELECT id,share_code,reason,details,created_at FROM abuse_reports WHERE share_code = ? ORDER BY id",
+				)
+					.bind(shareCode)
+					.all()
+			).results,
+		).toEqual(reports.results);
+		const addresses = await env.DB.prepare(
+			"SELECT details,client_ip FROM abuse_reports WHERE share_code = ? ORDER BY id",
+		)
+			.bind(shareCode)
+			.all();
+		expect(addresses.results).toEqual([
+			{ details: "old report", client_ip: "" },
+			{ details: "boundary report", client_ip: "" },
+			{ details: "active report", client_ip: "198.51.100.242" },
+			{ details: "already cleared", client_ip: "" },
+		]);
+		expect(
+			(
+				await env.DB.prepare("SELECT * FROM moderation_actions WHERE target = ?")
+					.bind(target)
+					.all()
+			).results,
+		).toEqual(audit.results);
+		expect(
+			(
+				await env.DB.prepare(
+					"SELECT suspended FROM account_restrictions WHERE owner_id = ?",
+				)
+					.bind(target)
+					.first()
+			).suspended,
+		).toBe(1);
+		await cleanupExpired(env);
+		expect(
+			(
+				await env.DB.prepare(
+					"SELECT details,client_ip FROM abuse_reports WHERE share_code = ? ORDER BY id",
+				)
+					.bind(shareCode)
+					.all()
+			).results,
+		).toEqual(addresses.results);
+	});
+
+	it("retains active per-IP and per-recording report admission caps after cleanup", async () => {
+		const { shareCode: first } = await createShare();
+		const { shareCode: second } = await createShare();
+		await completeUpload(first);
+		await completeUpload(second);
+		const ip = "198.51.100.244";
+		await env.DB.batch([
+			...Array.from({ length: 3 }, () =>
+				env.DB.prepare(
+					"INSERT INTO abuse_reports (share_code,reason,details,client_ip,created_at) VALUES (?,'spam','old',?,datetime('now','-2 hours'))",
+				).bind(first, ip),
+			),
+			...Array.from({ length: 3 }, () =>
+				env.DB.prepare(
+					"INSERT INTO abuse_reports (share_code,reason,details,client_ip) VALUES (?,'spam','active',?)",
+				).bind(first, ip),
+			),
+			...Array.from({ length: 20 }, (_, i) =>
+				env.DB.prepare(
+					"INSERT INTO abuse_reports (share_code,reason,details,client_ip) VALUES (?,'spam','active recording report',?)",
+				).bind(second, `203.0.113.${i + 1}`),
+			),
+		]);
+		await cleanupExpired(env);
+		const report = (code, clientIp) =>
+			SELF.fetch(`${BASE}/s/${code}/report`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json", "CF-Connecting-IP": clientIp },
+				body: JSON.stringify({ reason: "spam", details: "New report" }),
+			});
+		expect((await report(first, ip)).status).toBe(429);
+		expect((await report(second, "198.51.100.245")).status).toBe(429);
+		expect((await report(first, "198.51.100.245")).status).toBe(200);
+	});
 });
