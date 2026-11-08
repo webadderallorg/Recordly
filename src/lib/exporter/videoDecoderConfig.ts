@@ -58,7 +58,7 @@ export async function getVideoDecoderConfig(demuxer: WebDemuxer): Promise<VideoD
 	const config = await demuxer.getDecoderConfig("video");
 	if (config.codec !== "vp09" && config.codec !== "vp9") return config;
 
-	const { streams } = await demuxer.getMediaInfo();
+	const { streams, duration, start_time: mediaStartTime } = await demuxer.getMediaInfo();
 	const stream = streams.find((candidate) => candidate.codec_type_string === "video");
 	// Do not assume profile 0 / 8-bit: imported VP9 can also be 10/12-bit or 4:4:4.
 	const pixelFormat = /^(yuvj?(420|422|444)p|gbrp)(?:(10|12)(?:le|be))?$/.exec(
@@ -81,10 +81,33 @@ export async function getVideoDecoderConfig(demuxer: WebDemuxer): Promise<VideoD
 			);
 		}
 	} else {
-		// A one-packet seek does not consume the export stream: both callers start
-		// a fresh, explicitly positioned read after configuring their decoder.
-		const packet = await demuxer.seekMediaPacket("video", 0);
-		({ profile, bitDepth } = readVp9KeyframeFormat(packet.data));
+		// A recording can begin with seconds of audio before its first video packet.
+		// seekMediaPacket("video", 0) fails in that case. Read forward instead, with
+		// an explicit end so the demuxer does not stop before the first video frame.
+		const readEnd =
+			Math.max(
+				duration + (mediaStartTime || 0),
+				(stream.duration || duration) + (stream.start_time || mediaStartTime || 0),
+			) + 0.5;
+		const reader = demuxer.readMediaPacket("video", 0, readEnd).getReader();
+		try {
+			const { value: packet, done } = await reader.read();
+			if (done || !packet) {
+				throw new DOMException(
+					"Cannot determine VP9 format: no video packets found.",
+					"NotSupportedError",
+				);
+			}
+			({ profile, bitDepth } = readVp9KeyframeFormat(packet.data));
+		} finally {
+			// Await cancellation before either caller starts its own positioned read.
+			// Otherwise the probe and export could compete for the demuxer worker.
+			try {
+				await reader.cancel();
+			} finally {
+				reader.releaseLock();
+			}
+		}
 	}
 
 	// WebM commonly has no declared level (FFmpeg reports -99). Estimate the
