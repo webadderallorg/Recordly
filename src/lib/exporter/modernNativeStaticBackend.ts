@@ -4,6 +4,7 @@ import {
 	scalePreviewBorderRadius,
 } from "@/components/video-editor/videoPlayback/layoutUtils";
 import { getSceneEffectMetrics } from "@/components/video-editor/videoPlayback/sceneEffects";
+import { redactDiagnostic } from "@/lib/feedback/diagnosticRedaction";
 import { normalizeLightningRuntimePlatform } from "./backendPolicy";
 import {
 	getNowMs,
@@ -389,6 +390,12 @@ export async function exportNativeStaticLayout(
 			console.warn("[VideoExporter] Native static layout export unavailable", {
 				error: result.error,
 			});
+			session.native.nativeStaticLayoutSkipReason = redactDiagnostic(
+				result.error || "native-static-export-unavailable",
+			).slice(0, 300);
+			session.native.nativeStaticLayoutSkipReasons = [
+				session.native.nativeStaticLayoutSkipReason,
+			];
 			restoreEncoderState();
 			return null;
 		}

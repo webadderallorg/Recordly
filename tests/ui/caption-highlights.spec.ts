@@ -4,6 +4,22 @@ async function seek(page: Page, timeMs: number) {
 	await page.getByRole("spinbutton", { name: "Time", exact: true }).fill(String(timeMs));
 }
 
+async function readCaptionRenderingResult(page: Page) {
+	const body = page.locator("body");
+	await expect
+		.poll(() =>
+			body.evaluate((node) => node.hasAttribute("data-error") || node.hasAttribute("data-result")),
+		)
+		.toBe(true);
+	const { error, result } = await body.evaluate((node) => ({
+		error: node.getAttribute("data-error"),
+		result: node.getAttribute("data-result"),
+	}));
+	if (error !== null) throw new Error(`Caption rendering fixture failed: ${error}`);
+	if (result === null) throw new Error("Caption rendering fixture completed without a result");
+	return JSON.parse(result);
+}
+
 test("fixed-size word highlights follow speech without reviving captions after a pause", async ({
 	page,
 }, testInfo) => {
@@ -88,8 +104,7 @@ test("legacy and modern export highlight the active word and round the black bac
 	page,
 }) => {
 	await page.goto("/tests/ui/caption-rendering.html");
-	await expect(page.locator("body")).toHaveAttribute("data-result", /samples/);
-	const result = JSON.parse((await page.locator("body").getAttribute("data-result"))!);
+	const result = await readCaptionRenderingResult(page);
 	for (const sample of result.samples) {
 		expect(sample.heldMatchesActive).toBe(true);
 		expect(sample.activePixelsDiffer).toBe(true);
@@ -163,8 +178,7 @@ test("all caption styles render their foreground and background in both export p
 	page,
 }) => {
 	await page.goto("/tests/ui/caption-rendering.html");
-	await expect(page.locator("body")).toHaveAttribute("data-result", /styles/);
-	const result = JSON.parse((await page.locator("body").getAttribute("data-result"))!);
+	const result = await readCaptionRenderingResult(page);
 	expect(result.styles).toHaveLength(6);
 	for (const style of result.styles) {
 		expect(new Set(style.widths).size, style.id).toBe(1);

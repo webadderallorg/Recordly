@@ -3,6 +3,8 @@ import { memo, useContext, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { MagicWand, MinusIcon, Plus } from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
+import { useShortcuts } from "@/contexts/ShortcutsContext";
+import { formatBinding } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import { getEmbeddedCaptionSpan, getRegionDisplaySpan } from "../../core/clipPresentation";
 import {
@@ -29,12 +31,6 @@ import { AutoZoomNudgeContext } from "../../useAutoZoomNudge";
 import { AudioItemWithWaveform } from "./AudioItemWithWaveform";
 import nudgeStyles from "./AutoZoomNudge.module.css";
 import type { TimelineCanvasRowsProps } from "./TimelineCanvasTypes";
-
-const HINT_CLIP = "Press C to split clip";
-
-const HINT_ANNOTATION = "Press A to add annotation";
-
-const HINT_AUDIO = "Click music icon to add audio";
 
 export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	videoPath,
@@ -78,6 +74,14 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	onCaptionRowClick,
 }: TimelineCanvasRowsProps) {
 	const t = useScopedT("timeline");
+	const { shortcuts, isMac } = useShortcuts();
+	const hintClip = t("hints.splitClip", "Press {{binding}} to split clip", {
+		binding: formatBinding(shortcuts.splitClip, isMac),
+	});
+	const hintAnnotation = t("hints.addAnnotation", "Press {{binding}} to add annotation", {
+		binding: formatBinding(shortcuts.addAnnotation, isMac),
+	});
+	const hintAudio = t("hints.addAudio", "Click music icon to add audio");
 	const commonT = useScopedT("common");
 	const shouldNudgeAutoZooms = useContext(AutoZoomNudgeContext);
 	const {
@@ -273,7 +277,7 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 					})}
 				</Row>
 			)}
-			<Row filmstrip id={CLIP_ROW_ID} isEmpty={clipItems.length === 0} hint={HINT_CLIP}>
+			<Row filmstrip id={CLIP_ROW_ID} isEmpty={clipItems.length === 0} hint={hintClip}>
 				{clipPresentation.map((item) => (
 					<Item
 						id={item.id}
@@ -466,7 +470,7 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 					key={rowId}
 					id={rowId}
 					isEmpty={rowItems.length === 0}
-					hint={index === 0 ? HINT_ANNOTATION : undefined}
+					hint={index === 0 ? hintAnnotation : undefined}
 				>
 					{rowItems.map((item) => (
 						<Item
@@ -489,7 +493,7 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 					key={rowId}
 					id={rowId}
 					isEmpty={rowItems.length === 0}
-					hint={index === 0 ? HINT_AUDIO : undefined}
+					hint={index === 0 ? hintAudio : undefined}
 				>
 					{rowItems.map((item) => (
 						<AudioItemWithWaveform

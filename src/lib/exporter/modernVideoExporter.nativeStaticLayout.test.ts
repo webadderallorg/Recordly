@@ -59,6 +59,73 @@ afterEach(() => {
 });
 describe("ModernVideoExporter native static-layout eligibility", () => {
 	it.each([
+		"details",
+		"no-error",
+		"missing-path",
+	] as const)("retains a safe unavailable native-attempt reason for %s", async (mode) => {
+		const exporter = createExporter();
+		const { session, operations } = exporterInternals(exporter);
+		const initialEncoder = {
+			encodeBackend: session.metrics.encodeBackend,
+			encoderName: session.metrics.encoderName,
+			diagnosticEncoder: session.metrics.diagnosticEncoder,
+			diagnosticMuxer: session.metrics.diagnosticMuxer,
+		};
+		const privateError =
+			"Native layout failed for /Users/example/private-source.mov\nAuthorization: Bearer fixture-token\napi_key=fixture-key\n" +
+			"x".repeat(450);
+		const nativeExport = vi.mocked(window.electronAPI.nativeStaticLayoutExport);
+		nativeExport.mockResolvedValue({
+			success: mode === "missing-path",
+			error: mode === "details" ? privateError : undefined,
+		});
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		try {
+			await expect(
+				operations.tryExportNativeStaticLayout(videoInfo, { audioMode: "none" }, 60, 1800),
+			).resolves.toBeNull();
+			expect(nativeExport).toHaveBeenCalledOnce();
+			const reason = session.native.nativeStaticLayoutSkipReason;
+			expect(reason).toBeTruthy();
+			expect(session.native.nativeStaticLayoutSkipReasons).toEqual([reason]);
+			const diagnostics = session.metrics.buildDiagnosticSnapshot();
+			expect(diagnostics.attempts.at(-1)).toMatchObject({
+				route: "native-static-layout",
+				status: "unavailable",
+				reason,
+			});
+			expect(session.metrics.buildExportMetrics().nativeStaticLayoutSkipReasons).toEqual([
+				reason,
+			]);
+			if (mode === "details") {
+				expect(reason).toHaveLength(300);
+				expect(reason).toContain("[local path]");
+				expect(reason).toContain("[redacted]");
+			} else expect(reason).toBe("native-static-export-unavailable");
+			const recorded = JSON.stringify({
+				diagnostics,
+				reasons: session.native.nativeStaticLayoutSkipReasons,
+			});
+			for (const privateValue of [
+				"/Users/example",
+				"private-source.mov",
+				"fixture-token",
+				"fixture-key",
+			])
+				expect(recorded).not.toContain(privateValue);
+			expect({
+				encodeBackend: session.metrics.encodeBackend,
+				encoderName: session.metrics.encoderName,
+				diagnosticEncoder: session.metrics.diagnosticEncoder,
+				diagnosticMuxer: session.metrics.diagnosticMuxer,
+			}).toEqual(initialEncoder);
+			expect(session.native.nativeStaticLayoutSessionId).toBeNull();
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it.each([
 		{ name: "a full frame", sourceWidth: 1920, sourceHeight: 1080, padding: 0 },
 		{
 			name: "a near-full frame before even rounding",

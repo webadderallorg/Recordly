@@ -80,6 +80,26 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 describe("browser recording editor boundary", () => {
+	it("does not start a webcam companion or recording clock when stream acquisition finished after cancellation", async () => {
+		const context = createContext();
+		context.webcamTimeOffsetMs.current = 123;
+		await startBrowserRecorder(
+			context as unknown as Parameters<typeof startBrowserRecorder>[0],
+			{
+				videoTrack: {
+					getSettings: () => ({ width: 1920, height: 1080 }),
+				} as MediaStreamTrack,
+				systemAudioIncluded: false,
+				startWasCancelled: () => true,
+			},
+		);
+		expect(context.beginWebcamCapture).not.toHaveBeenCalled();
+		expect(context.resetRecordingClock).not.toHaveBeenCalled();
+		expect(context.webcamTimeOffsetMs.current).toBe(123);
+		expect(context.mediaRecorder.current.state).toBe("inactive");
+		expect(context.setRecording).not.toHaveBeenCalled();
+		expect(window.electronAPI.setRecordingState).not.toHaveBeenCalled();
+	});
 	it("retains the Finishing HUD until file persistence succeeds", async () => {
 		let resolve!: (result: { success: boolean; path: string }) => void;
 		writer.finish.mockReturnValue(

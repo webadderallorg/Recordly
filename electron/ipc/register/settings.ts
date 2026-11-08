@@ -218,8 +218,12 @@ export function registerSettingsHandlers() {
 		setCountdownRemaining(remaining);
 		setCountdownInProgress(remaining !== null);
 		for (const win of BrowserWindow.getAllWindows()) {
-			if (!win.isDestroyed() && !win.webContents.isDestroyed())
+			if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
+			try {
 				win.webContents.send("countdown-tick", remaining ?? 0);
+			} catch (error) {
+				console.warn("Could not deliver countdown tick:", error);
+			}
 		}
 	});
 	ipcMain.handle("start-countdown", async (event, seconds: number) => {
