@@ -105,6 +105,7 @@ type MockContext = {
 	arcTo: MockFunction;
 	closePath: MockFunction;
 	clip: MockFunction;
+	stroke: MockFunction;
 	drawImage: MockFunction;
 	fillRect: MockFunction;
 	save: MockFunction;
@@ -250,6 +251,7 @@ function createMockContext() {
 		arcTo: vi.fn(),
 		closePath: vi.fn(),
 		clip: vi.fn(),
+		stroke: vi.fn(),
 		drawImage: vi.fn(),
 		fillRect: vi.fn(),
 		save: vi.fn(),
@@ -529,7 +531,7 @@ describe("FrameRenderer webcam export path", () => {
 
 		renderer.drawWebcamOverlay(outputContext as unknown as CanvasRenderingContext2D, 1280, 720);
 
-		const bubbleCanvas = createdCanvases[0];
+		const bubbleCanvas = createdCanvases.at(-1)!;
 		expect(bubbleCanvas).toBeDefined();
 		expect((bubbleCanvas.context as MockContext).drawImage.mock.calls[0][0]).toBe(
 			cachedFrameCanvas,
@@ -561,7 +563,7 @@ describe("FrameRenderer webcam export path", () => {
 
 		renderer.drawWebcamOverlay(outputContext as unknown as CanvasRenderingContext2D, 1280, 720);
 
-		const bubbleCanvas = createdCanvases[0];
+		const bubbleCanvas = createdCanvases.at(-1)!;
 		expect(bubbleCanvas).toBeDefined();
 		expect((bubbleCanvas.context as MockContext).drawImage.mock.calls[0][0]).toBe(
 			cachedFrameCanvas,
@@ -589,10 +591,14 @@ describe("FrameRenderer webcam export path", () => {
 		renderer.drawWebcamOverlay(outputContext as unknown as CanvasRenderingContext2D, 1280, 720);
 
 		const cacheCanvas = createdCanvases[0];
-		const bubbleCanvas = createdCanvases[1];
+		const bubbleCanvas = createdCanvases.at(-1)!;
 		expect(cacheCanvas).toBeDefined();
 		expect((cacheCanvas.context as MockContext).drawImage.mock.calls[0][0]).toBe(webcamVideo);
 		expect((bubbleCanvas.context as MockContext).drawImage.mock.calls[0][0]).toBe(cacheCanvas);
+		expect(bubbleCanvas.context.stroke).toHaveBeenCalledOnce();
+		expect(bubbleCanvas.context.drawImage.mock.invocationCallOrder[0]).toBeLessThan(
+			bubbleCanvas.context.stroke.mock.invocationCallOrder[0],
+		);
 		expect((outputContext as MockContext).drawImage.mock.calls[0][0]).toBe(
 			createdCanvases.at(-1),
 		);
@@ -623,7 +629,7 @@ describe("FrameRenderer webcam export path", () => {
 		renderer.drawWebcamOverlay(outputContext as unknown as CanvasRenderingContext2D, 1280, 720);
 
 		const cacheCanvas = createdCanvases[0];
-		const bubbleCanvas = createdCanvases[1];
+		const bubbleCanvas = createdCanvases.at(-1)!;
 		expect(cacheCanvas).toBeDefined();
 		expect((cacheCanvas.context as MockContext).drawImage.mock.calls[0][0]).toBe(webcamVideo);
 		expect((bubbleCanvas.context as MockContext).drawImage.mock.calls[0][0]).toBe(cacheCanvas);

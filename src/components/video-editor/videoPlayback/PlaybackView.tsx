@@ -1,4 +1,5 @@
 import { formatAspectRatioForCSS } from "@/utils/aspectRatioUtils";
+import { GLASS_RIM_COLOR } from "../glassRim";
 import { PlaybackAnnotations } from "./PlaybackAnnotations";
 import { PlaybackCaptions } from "./PlaybackCaptions";
 import type { PlaybackProps } from "./playbackProps";
@@ -272,6 +273,20 @@ export function PlaybackView(input: PlaybackViewInput) {
 										/>
 									</div>
 								</div>
+								<svg
+									data-webcam-glass-rim
+									aria-hidden="true"
+									focusable="false"
+									className="pointer-events-none absolute inset-0 h-full w-full"
+									style={{
+										opacity:
+											webcamVideoDimensions && webcamMediaSynchronized
+												? 1
+												: 0,
+									}}
+								>
+									<path fill="none" stroke={GLASS_RIM_COLOR} />
+								</svg>
 							</div>
 						</div>
 					) : null}

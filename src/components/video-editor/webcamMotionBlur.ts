@@ -1,4 +1,5 @@
 import { getWebcamShadowFilter, getWebcamShadowPadding } from "@/lib/exporter/shadowProfile";
+import { drawWebcamGlassRim } from "./glassRim";
 import type { CropRegion, WebcamShape } from "./types";
 import { getWebcamCropSourceRect } from "./webcamOverlay";
 import { traceWebcamShapeOnCanvas } from "./webcamShapePath";
@@ -197,22 +198,31 @@ export class WebcamMotionBlur {
 		ctx.globalAlpha = 1 / this.samples.length;
 		const { sx, sy, sw, sh } = getWebcamCropSourceRect(cropRegion, sourceWidth, sourceHeight);
 		for (const sample of this.samples) {
-			ctx.save();
-			ctx.translate(sample.x - x, sample.y - y);
-			ctx.beginPath();
-			traceWebcamShapeOnCanvas(ctx, {
+			// Reuse the output as scratch until the final shadow pass. The rim must
+			// composite over each pose before weighted accumulation, not add light to it.
+			out.clearRect(0, 0, pixelWidth, pixelHeight);
+			out.save();
+			out.scale(resolution, resolution);
+			out.imageSmoothingEnabled = true;
+			out.imageSmoothingQuality = "high";
+			out.globalCompositeOperation = "source-over";
+			out.globalAlpha = 1;
+			out.translate(sample.x - x, sample.y - y);
+			out.beginPath();
+			traceWebcamShapeOnCanvas(out, {
 				...sample,
 				x: 0,
 				y: 0,
 				shape: options.shape,
 			});
-			ctx.clip();
+			out.clip();
+			out.save();
 			if (mirror) {
-				ctx.translate(sample.width, 0);
-				ctx.scale(-1, 1);
+				out.translate(sample.width, 0);
+				out.scale(-1, 1);
 			}
 			const scale = Math.max(sample.width / sw, sample.height / sh);
-			ctx.drawImage(
+			out.drawImage(
 				source,
 				sx,
 				sy,
@@ -223,7 +233,20 @@ export class WebcamMotionBlur {
 				sw * scale,
 				sh * scale,
 			);
-			ctx.restore();
+			out.restore();
+			drawWebcamGlassRim(out, { ...sample, x: 0, y: 0, shape: options.shape });
+			out.restore();
+			ctx.drawImage(
+				this.output,
+				0,
+				0,
+				pixelWidth,
+				pixelHeight,
+				0,
+				0,
+				pixelWidth / resolution,
+				pixelHeight / resolution,
+			);
 		}
 		ctx.restore();
 

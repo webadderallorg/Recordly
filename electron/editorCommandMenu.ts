@@ -34,15 +34,33 @@ export function captureEditorMenuTarget(
 function runOnTarget(target: Target, action: (window: BrowserWindow) => void) {
 	const window = target.window;
 	if (!window || !target.isValid(window)) return;
+	const deadline = Date.now() + 400;
 	if (window.isMinimized()) window.restore();
 	if (!target.isValid(window)) return;
 	window.show();
 	if (!target.isValid(window)) return;
 	window.focus();
-	if (!target.isValid(window) || !window.isFocused()) return;
-	window.webContents.focus();
-	if (!target.isValid(window) || !window.isFocused() || !window.webContents.isFocused()) return;
-	action(window);
+	let contentsFocusRequested = false;
+	const checkFocus = () => {
+		if (!target.isValid(window) || Date.now() > deadline) return;
+		if (!window.isFocused()) {
+			// Once acquired, losing focus cancels the command instead of reclaiming it.
+			if (contentsFocusRequested) return;
+		} else {
+			if (!contentsFocusRequested) {
+				contentsFocusRequested = true;
+				window.webContents.focus();
+			}
+			if (!target.isValid(window) || !window.isFocused()) return;
+			if (window.webContents.isFocused()) {
+				if (target.isValid(window) && Date.now() <= deadline) action(window);
+				return;
+			}
+		}
+		const remaining = deadline - Date.now();
+		if (remaining > 0) setTimeout(checkFocus, Math.min(20, remaining));
+	};
+	checkFocus();
 }
 
 /** Shared labels/actions; the ordinary application menu retains its native Edit roles. */

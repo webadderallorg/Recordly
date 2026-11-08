@@ -1,4 +1,4 @@
-import { getSquirclePathPoints } from "@/lib/geometry/squircle";
+import { getSquirclePathPoints, getSquircleSvgPath } from "@/lib/geometry/squircle";
 import type { WebcamShape } from "./types";
 import { getWebcamShapeExponent } from "./webcamOverlay";
 
@@ -9,6 +9,15 @@ interface WebcamContour {
 	height: number;
 	radius: number;
 	shape?: WebcamShape;
+}
+
+/** The same rounded arcs and square contour used by the Canvas compositor. */
+export function getWebcamShapeSvgPath(contour: WebcamContour): string {
+	const { x, y, width, height, shape } = contour;
+	if (shape !== "circle" && shape !== "rectangle")
+		return getSquircleSvgPath({ ...contour, exponent: getWebcamShapeExponent(shape) });
+	const r = Math.max(0, Math.min(contour.radius, width / 2, height / 2));
+	return `M ${x + r} ${y} H ${x + width - r} A ${r} ${r} 0 0 1 ${x + width} ${y + r} V ${y + height - r} A ${r} ${r} 0 0 1 ${x + width - r} ${y + height} H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + height - r} V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} Z`;
 }
 
 // Keep preview/compositor clipping consistent with CSS circle()/inset() curves.

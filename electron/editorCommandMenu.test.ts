@@ -11,7 +11,10 @@ import {
 } from "./editorCommandMenu";
 
 const translate = nativeT;
-afterEach(() => setNativeLocale("en"));
+afterEach(() => {
+	setNativeLocale("en");
+	vi.useRealTimers();
+});
 const click = (item: MenuItemConstructorOptions) => (item.click as () => void)();
 
 function fixture() {
@@ -67,6 +70,12 @@ function fixture() {
 		menus,
 		onProjectAction,
 		events,
+		setWindowFocused: (value: boolean) => {
+			focused = value;
+		},
+		setContentsFocused: (value: boolean) => {
+			contentsFocused = value;
+		},
 		close: () => {
 			alive = false;
 		},
@@ -221,20 +230,26 @@ describe("hidden-Dock editor command access", () => {
 		expect(f.onProjectAction).not.toHaveBeenCalled();
 	});
 
-	it("does nothing if native window focus does not arrive", () => {
+	it("does nothing if native window focus does not arrive", async () => {
+		vi.useFakeTimers();
 		const f = fixture();
 		vi.mocked(f.window.focus).mockImplementation(() => f.events.push("focus-denied"));
 		click(f.menus[1].submenu[4]);
+		await vi.advanceTimersByTimeAsync(400);
 		expect(f.events).toEqual(["restore", "show", "focus-denied"]);
+		expect(vi.getTimerCount()).toBe(0);
 	});
 
-	it("does not focus or edit when the captured contents cannot receive focus", () => {
+	it("does not focus or edit when the captured contents cannot receive focus", async () => {
+		vi.useFakeTimers();
 		const f = fixture();
 		vi.mocked(f.window.webContents.focus).mockImplementation(() =>
 			f.events.push("contents-focus-denied"),
 		);
 		click(f.menus[1].submenu[4]);
+		await vi.advanceTimersByTimeAsync(400);
 		expect(f.events).toEqual(["restore", "show", "focus", "contents-focus-denied"]);
+		expect(vi.getTimerCount()).toBe(0);
 	});
 
 	it.each([
@@ -258,6 +273,137 @@ describe("hidden-Dock editor command access", () => {
 		}
 		expect(f.events).toEqual([]);
 		expect(f.onProjectAction).not.toHaveBeenCalled();
+	});
+
+	it("waits for late native window focus, then executes exactly once without refocusing", async () => {
+		vi.useFakeTimers();
+		const f = fixture();
+		vi.mocked(f.window.focus).mockImplementation(() => f.events.push("focus-request"));
+		click(f.menus[0].submenu[2]);
+		await vi.advanceTimersByTimeAsync(39);
+		expect(f.onProjectAction).not.toHaveBeenCalled();
+		f.setWindowFocused(true);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(f.onProjectAction).toHaveBeenCalledExactlyOnceWith("menu-save-project-as", f.window);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(f.window.focus).toHaveBeenCalledOnce();
+		expect(f.window.show).toHaveBeenCalledOnce();
+		expect(f.window.webContents.focus).toHaveBeenCalledOnce();
+		expect(f.onProjectAction).toHaveBeenCalledOnce();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("waits for late contents focus after the native window, then targets the same contents", async () => {
+		vi.useFakeTimers();
+		const f = fixture();
+		vi.mocked(f.window.webContents.focus).mockImplementation(() =>
+			f.events.push("contents-focus-request"),
+		);
+		click(f.menus[1].submenu[0]);
+		await vi.advanceTimersByTimeAsync(59);
+		expect(f.events).not.toContain("undo");
+		f.setContentsFocused(true);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(f.events.at(-1)).toBe("undo");
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(f.events.filter((event) => event === "undo")).toHaveLength(1);
+		expect(f.window.focus).toHaveBeenCalledOnce();
+		expect(f.window.webContents.focus).toHaveBeenCalledOnce();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("does not run a timed-out command even if focus arrives later", async () => {
+		vi.useFakeTimers();
+		const f = fixture();
+		vi.mocked(f.window.focus).mockImplementation(() => f.events.push("focus-request"));
+		click(f.menus[0].submenu[1]);
+		await vi.advanceTimersByTimeAsync(400);
+		expect(vi.getTimerCount()).toBe(0);
+		f.setWindowFocused(true);
+		f.setContentsFocused(true);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(f.onProjectAction).not.toHaveBeenCalled();
+		expect(f.window.focus).toHaveBeenCalledOnce();
+	});
+
+	it.each([
+		"closed",
+		"contents-destroyed",
+		"owner-lost",
+		"navigation",
+	])("cancels a delayed command when the target becomes %s", async (change) => {
+		vi.useFakeTimers();
+		const f = fixture();
+		vi.mocked(f.window.focus).mockImplementation(() => f.events.push("focus-request"));
+		click(f.menus[0].submenu[1]);
+		await vi.advanceTimersByTimeAsync(10);
+		if (change === "closed") f.close();
+		if (change === "contents-destroyed") f.destroyContents();
+		if (change === "owner-lost") f.registry.clear();
+		if (change === "navigation") f.navigate();
+		f.setWindowFocused(true);
+		await vi.advanceTimersByTimeAsync(10);
+		expect(f.onProjectAction).not.toHaveBeenCalled();
+		expect(f.window.webContents.focus).not.toHaveBeenCalled();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("does not reclaim native focus lost while waiting for contents focus", async () => {
+		vi.useFakeTimers();
+		const f = fixture();
+		vi.mocked(f.window.webContents.focus).mockImplementation(() =>
+			f.events.push("contents-focus-request"),
+		);
+		click(f.menus[1].submenu[0]);
+		await vi.advanceTimersByTimeAsync(10);
+		f.setWindowFocused(false);
+		await vi.advanceTimersByTimeAsync(10);
+		expect(vi.getTimerCount()).toBe(0);
+		f.setWindowFocused(true);
+		f.setContentsFocused(true);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(f.events).not.toContain("undo");
+		expect(f.window.focus).toHaveBeenCalledOnce();
+		expect(f.window.webContents.focus).toHaveBeenCalledOnce();
+	});
+
+	it("revalidates after contents focus before executing a deferred action", async () => {
+		vi.useFakeTimers();
+		const f = fixture();
+		vi.mocked(f.window.focus).mockImplementation(() => f.events.push("focus-request"));
+		vi.mocked(f.window.webContents.focus).mockImplementation(() => {
+			f.events.push("contents-focus-and-navigate");
+			f.setContentsFocused(true);
+			f.navigate();
+		});
+		click(f.menus[0].submenu[0]);
+		f.setWindowFocused(true);
+		await vi.advanceTimersByTimeAsync(20);
+		expect(f.onProjectAction).not.toHaveBeenCalled();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("does not dispatch if a native focus call returns after the deadline", () => {
+		vi.useFakeTimers();
+		const f = fixture();
+		const started = Date.now();
+		vi.mocked(f.window.webContents.focus).mockImplementation(() => {
+			f.setContentsFocused(true);
+			vi.setSystemTime(started + 401);
+		});
+		click(f.menus[0].submenu[1]);
+		expect(f.onProjectAction).not.toHaveBeenCalled();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("keeps an already-focused command immediate with no timer", () => {
+		vi.useFakeTimers();
+		const f = fixture();
+		f.setWindowFocused(true);
+		f.setContentsFocused(true);
+		click(f.menus[0].submenu[0]);
+		expect(f.onProjectAction).toHaveBeenCalledExactlyOnceWith("menu-load-project", f.window);
+		expect(vi.getTimerCount()).toBe(0);
 	});
 
 	it("uses the current existing native translations for both menus", () => {

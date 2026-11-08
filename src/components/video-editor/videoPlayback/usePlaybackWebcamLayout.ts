@@ -1,6 +1,7 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo } from "react";
 import { getWebcamShadowFilter } from "@/lib/exporter/shadowProfile";
+import { getWebcamGlassRimPath, getWebcamGlassRimWidth } from "../glassRim";
 import {
 	DEFAULT_WEBCAM_REACT_TO_ZOOM,
 	DEFAULT_WEBCAM_ROUNDNESS,
@@ -208,6 +209,25 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 			bubbleInner.style.contain = "paint";
 			bubbleInner.style.clipPath = webcamClipPath;
 			bubbleInner.style.setProperty("-webkit-clip-path", webcamClipPath);
+			const rim = bubbleInner.querySelector<SVGSVGElement>("[data-webcam-glass-rim]");
+			if (rim) {
+				const viewBox = `0 0 ${scaledDimensions.width} ${scaledDimensions.height}`;
+				if (rim.getAttribute("viewBox") !== viewBox) rim.setAttribute("viewBox", viewBox);
+				const path = rim.querySelector("path");
+				const contour = getWebcamGlassRimPath({
+					...scaledDimensions,
+					radius: scaledRadius,
+					shape: webcamShape,
+				});
+				if (path) {
+					const strokeWidth = String(
+						getWebcamGlassRimWidth(scaledDimensions.width, scaledDimensions.height) * 2,
+					);
+					if (path.getAttribute("stroke-width") !== strokeWidth)
+						path.setAttribute("stroke-width", strokeWidth);
+					if (path.getAttribute("d") !== contour) path.setAttribute("d", contour);
+				}
+			}
 			const video = webcamVideoRef.current;
 			if (!video || video.readyState < 2 || !webcamMediaSynchronized) {
 				webcamMotionBlurRef.current.reset();

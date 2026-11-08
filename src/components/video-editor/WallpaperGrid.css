@@ -39,5 +39,5 @@
 		linear-gradient(#fff 0 0);
 	mask-composite: exclude;
 	padding: 1px;
-	background: rgb(255 255 255 / 26%);
+	background: var(--glass-rim-color, rgb(255 255 255 / 26%));
 }

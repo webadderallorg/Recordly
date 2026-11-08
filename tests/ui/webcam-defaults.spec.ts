@@ -47,6 +47,7 @@ for (const savedRoundness of [undefined, 0, 69, 100]) {
 				}),
 			)
 			.toBe(expected);
+		await expect(page.locator("[data-webcam-glass-rim] path")).toHaveAttribute("d", /^M/);
 		// Full roundness should soften the corners while keeping a squircle.
 		if (expected === 100) {
 			const shape = await mask.evaluate((node) => {
@@ -102,6 +103,7 @@ test("new recordings default to a circle and retain the squircle option", async 
 	await expect(page.getByRole("slider", { name: "Webcam Shadow" })).toHaveValue("0.2");
 	const mask = page.locator('div[style*="clip-path"][style*="contain: paint"]:has(video)');
 	await expect(mask).toHaveCSS("clip-path", "circle(50% at 50% 50%)");
+	await expect(page.locator("[data-webcam-glass-rim] path")).toHaveAttribute("d", /^M/);
 	await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveCount(0);
 	const width = page.getByRole("slider", { name: "Webcam Width" });
 	await expect(width).toHaveValue("30");
@@ -127,9 +129,10 @@ test("new recordings default to a circle and retain the squircle option", async 
 	await circle.click();
 	await expect(width).toHaveValue("30");
 	await expect(mask).toHaveCSS("clip-path", "circle(50% at 50% 50%)");
+	await expect(page.locator("[data-webcam-glass-rim] path")).toHaveAttribute("d", /^M/);
 });
 
-test("Rectangle starts at 30% height in 16:9 and keeps Square roundness without a border", async ({
+test("Rectangle starts at 30% height in 16:9 and keeps Square roundness with a thin glass rim", async ({
 	page,
 }) => {
 	await installDesktopBridge(page);
@@ -168,7 +171,24 @@ test("Rectangle starts at 30% height in 16:9 and keeps Square roundness without 
 		.toBeCloseTo(16 / 9, 2);
 	await expect(roundness).toHaveValue("25");
 	const rim = page.locator("[data-webcam-glass-rim]");
-	await expect(rim).toHaveCount(0);
+	await expect(rim).toBeVisible();
+	await expect(rim.locator("path")).toHaveAttribute("fill", "none");
+	await expect(rim.locator("path")).toHaveAttribute("stroke", "rgb(255 255 255 / 26%)");
+	await expect
+		.poll(() =>
+			rim.evaluate((element) => {
+				const bounds = element.getBoundingClientRect();
+				return (
+					Number(element.querySelector("path")!.getAttribute("stroke-width")) /
+					Math.min(bounds.width, bounds.height)
+				);
+			}),
+		)
+		.toBeCloseTo(0.005, 5);
+	await expect(rim.locator("path")).toHaveAttribute("d", /^M/);
+	const rectanglePath = await rim.locator("path").getAttribute("d");
+	const originalRim = await rim.elementHandle();
+	const originalFootage = await page.locator("[data-webcam-overlay] video").elementHandle();
 	await expect(page.locator("[data-webcam-overlay]")).toHaveAttribute(
 		"data-webcam-ready",
 		"true",
@@ -188,6 +208,17 @@ test("Rectangle starts at 30% height in 16:9 and keeps Square roundness without 
 	await page.getByRole("row", { name: "Square", exact: true }).click();
 	await expect(page.getByRole("slider", { name: "Webcam Width" })).toHaveValue("30");
 	await expect(roundness).toHaveValue("25");
+	await expect(rim.locator("path")).not.toHaveAttribute("d", rectanglePath!);
+	expect(
+		await originalRim!.evaluate(
+			(node) => node === document.querySelector("[data-webcam-glass-rim]"),
+		),
+	).toBe(true);
+	expect(
+		await originalFootage!.evaluate(
+			(node) => node === document.querySelector("[data-webcam-overlay] video"),
+		),
+	).toBe(true);
 	await expect
 		.poll(() =>
 			page.locator("[data-webcam-overlay]").evaluate((element) => {
@@ -196,4 +227,24 @@ test("Rectangle starts at 30% height in 16:9 and keeps Square roundness without 
 			}),
 		)
 		.toBeLessThan(1);
+	const renderedCamera = page.locator("[data-webcam-motion-blur]");
+	await page.getByRole("button", { name: "Play", exact: true }).click();
+	await expect(renderedCamera).toBeVisible();
+	await expect(rim).toBeHidden();
+	await page.getByRole("button", { name: "Pause", exact: true }).click();
+	await expect(renderedCamera).toBeHidden();
+	await expect(rim).toBeVisible();
+	expect(
+		await originalRim!.evaluate(
+			(node) => node === document.querySelector("[data-webcam-glass-rim]"),
+		),
+	).toBe(true);
+	expect(
+		await originalFootage!.evaluate(
+			(node) => node === document.querySelector("[data-webcam-overlay] video"),
+		),
+	).toBe(true);
+	await page.locator("[data-webcam-overlay]").screenshot({
+		path: test.info().outputPath("paused-camera-rim.png"),
+	});
 });
