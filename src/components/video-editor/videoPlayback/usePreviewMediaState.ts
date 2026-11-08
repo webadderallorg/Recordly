@@ -16,8 +16,13 @@ export function usePreviewMediaState(
 	const videoRef = useRef<HTMLVideoElement | null>(null);
 
 	const previewVideoSourceRef = useRef(new PreviewVideoSource());
+	const previewRenderLoopRef = useRef<ReturnType<typeof createPreviewRenderLoop> | null>(null);
 
 	const attachVideo = useCallback((video: HTMLVideoElement | null) => {
+		if (video !== videoRef.current) {
+			// Ref detachment precedes passive cleanup. Stop sampling before the source is destroyed.
+			previewRenderLoopRef.current?.dispose();
+		}
 		// VideoSource.destroy() clears the media URL, so only destroy it when
 		// React detaches the element, never during a layout effect cleanup.
 		previewVideoSourceRef.current.setVideo(video);
@@ -64,7 +69,6 @@ export function usePreviewMediaState(
 
 	const lastRenderedContentTimeRef = useRef<number | null>(null);
 
-	const previewRenderLoopRef = useRef<ReturnType<typeof createPreviewRenderLoop> | null>(null);
 	const requestPreviewRender = useCallback(() => {
 		previewRenderLoopRef.current?.requestRender();
 	}, []);
