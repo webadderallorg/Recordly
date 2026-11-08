@@ -100,4 +100,43 @@ describe("studio runtime compatibility", () => {
 			}),
 		).toHaveLength(2);
 	});
+	it.each([
+		["id", "Use an ID between 1 and 100 characters."],
+		["title", "Use a title between 1 and 160 characters."],
+		["body", "Use a message between 1 and 2,000 characters."],
+	] as const)("does not blame a valid action when the %s is missing", (field, message) => {
+		for (const action of [
+			{ actionType: "section", actionDestination: "settings" },
+			{ actionType: "url", actionDestination: "https://recordly.dev" },
+		] as const) {
+			expect(
+				validateDraft({ ...defaults, [field]: "  ", actionEnabled: true, ...action }),
+			).toEqual([message]);
+		}
+	});
+	it.each([
+		{ actionLabel: "" },
+		{ actionType: "url", actionDestination: "http://recordly.dev" },
+		{ actionType: "section", actionDestination: "not-an-editor-section" },
+	] as const)("still rejects an invalid action on an otherwise valid draft: %o", (action) => {
+		expect(validateDraft({ ...defaults, actionEnabled: true, ...action })).toEqual([
+			"Use an action label (up to 80 characters) and a valid HTTPS URL or editor section.",
+		]);
+	});
+	it("keeps independent dashboard presentation errors when a required field is missing", () => {
+		expect(
+			validateDraft({
+				...defaults,
+				id: "",
+				presentation: "dashboard-banner",
+				mediaType: "video",
+				mediaUrl: "/demo.mp4",
+				actionEnabled: true,
+			}),
+		).toEqual([
+			"Use an ID between 1 and 100 characters.",
+			"Dashboard banners support images only.",
+			"Dashboard banners link to an HTTPS URL.",
+		]);
+	});
 });

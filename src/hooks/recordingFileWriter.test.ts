@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { RecordingFileWriter } from "./recordingFileWriter";
+
 function setup() {
 	const api = {
 		openRecordingFileStream: vi.fn(async () => ({
@@ -54,12 +55,74 @@ describe("recording chunk persistence", () => {
 		expect(await writer.finish()).toMatchObject({ success: false, message: "No space" });
 		expect(api.appendRecordingFileStream).not.toHaveBeenCalled();
 	});
-	it("bounds backlog and stops accepting chunks when storage stalls", async () => {
+	it("accepts a single large chunk on an empty queue and drains it in ordered bounded IPC writes", async () => {
 		const { api, writer, fail } = setup();
-		writer.write(new Blob([new Uint8Array(33 * 1024 * 1024)]));
+		const slices = Array.from({ length: 9 }, (_, index) =>
+			new Uint8Array((index === 8 ? 1 : 4) * 1024 * 1024).fill(index),
+		);
+		writer.write(new Blob(slices));
+		await expect(writer.finish(100)).resolves.toEqual({ success: true, path: "/final.mp4" });
+		expect(fail).not.toHaveBeenCalled();
+		expect(api.openRecordingFileStream).toHaveBeenCalledOnce();
+		expect(api.appendRecordingFileStream.mock.calls).toHaveLength(9);
+		for (const [index, call] of api.appendRecordingFileStream.mock.calls.entries()) {
+			const bytes = new Uint8Array(call[1]);
+			expect(bytes.byteLength).toBe(slices[index].byteLength);
+			expect(bytes[0]).toBe(index);
+			expect(bytes.at(-1)).toBe(index);
+		}
+		expect(api.closeRecordingFileStream.mock.invocationCallOrder[0]).toBeGreaterThan(
+			api.appendRecordingFileStream.mock.invocationCallOrder.at(-1)!,
+		);
+	});
+	it.each([
+		16, 33,
+	])("bounds queued backlog while a %s MiB chunk is already stalled", async (sizeMiB) => {
+		const { api, writer, fail } = setup();
+		let release!: () => void;
+		api.appendRecordingFileStream.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					release = () => resolve({ success: true });
+				}),
+		);
+		writer.write(new Blob([new Uint8Array(sizeMiB * 1024 * 1024)]));
+		await vi.waitFor(() => expect(api.appendRecordingFileStream).toHaveBeenCalledOnce());
+		if (sizeMiB === 16) writer.write(new Blob([new Uint8Array(16 * 1024 * 1024)]));
+		expect(fail).not.toHaveBeenCalled();
+		writer.write(new Blob(["overflow"]));
+		writer.write(new Blob(["ignored after failure"]));
 		expect(fail).toHaveBeenCalledOnce();
-		expect((await writer.finish()).success).toBe(false);
-		expect(api.openRecordingFileStream).not.toHaveBeenCalled();
+		const finished = writer.finish();
+		expect(api.closeRecordingFileStream).not.toHaveBeenCalled();
+		release();
+		await expect(finished).resolves.toMatchObject({ success: false, path: "/final.mp4" });
+		expect((await finished).message).toContain("Partial recording: /final.mp4");
+		expect(api.appendRecordingFileStream).toHaveBeenCalledOnce();
+		expect(api.closeRecordingFileStream).toHaveBeenCalledOnce();
+	});
+	it("stops draining a large chunk and discards its stream when cancelled", async () => {
+		const { api, writer, fail } = setup();
+		let release!: () => void;
+		api.appendRecordingFileStream.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					release = () => resolve({ success: true });
+				}),
+		);
+		writer.write(new Blob([new Uint8Array(33 * 1024 * 1024)]));
+		await vi.waitFor(() => expect(api.appendRecordingFileStream).toHaveBeenCalledOnce());
+		writer.cancel();
+		const finished = writer.finish();
+		release();
+		await expect(finished).resolves.toEqual({
+			success: false,
+			message: "Recording cancelled.",
+		});
+		expect(fail).not.toHaveBeenCalled();
+		expect(api.appendRecordingFileStream).toHaveBeenCalledOnce();
+		expect(api.discardRecordingFileStream).toHaveBeenCalledExactlyOnceWith("1");
+		expect(api.closeRecordingFileStream).not.toHaveBeenCalled();
 	});
 	it("splits large recorder chunks into bounded IPC messages", async () => {
 		const { api, writer } = setup();

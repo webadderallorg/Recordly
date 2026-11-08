@@ -182,9 +182,9 @@ export function validateDraft(draft: StudioDraft): string[] {
 	if (draft.posterUrl && !safeMedia(draft.posterUrl))
 		errors.push("Poster must use HTTPS or a /public-path.");
 	if (draft.actionEnabled) {
-		const action = parseAnnouncementFeed({ announcements: [buildAnnouncement(draft)] })
-			.announcements[0]?.action;
-		if (!action)
+		const announcement = parseAnnouncementFeed({ announcements: [buildAnnouncement(draft)] })
+			.announcements[0];
+		if (announcement && !announcement.action)
 			errors.push(
 				"Use an action label (up to 80 characters) and a valid HTTPS URL or editor section.",
 			);

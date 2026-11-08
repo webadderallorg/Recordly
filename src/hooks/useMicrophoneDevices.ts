@@ -31,22 +31,22 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 				setError(null);
 
 				let allDevices = await navigator.mediaDevices.enumerateDevices();
-				let audioInputs = allDevices
-					.filter((device) => device.kind === "audioinput")
-					.map((device) => ({
-						deviceId: device.deviceId,
-						label:
-							device.label ||
-							t("notifications.microphone", "Microphone {{id}}", {
-								id: device.deviceId.slice(0, 8),
-							}),
-						groupId: device.groupId,
-					}));
+				const rawAudioInputs = allDevices.filter((device) => device.kind === "audioinput");
+				let audioInputs = rawAudioInputs.map((device) => ({
+					deviceId: device.deviceId,
+					label:
+						device.label ||
+						t("notifications.microphone", "Microphone {{id}}", {
+							id: device.deviceId.slice(0, 8),
+						}),
+					groupId: device.groupId,
+				}));
 
 				const needsLabelPermission =
-					audioInputs.length > 0 && audioInputs.every((device) => !device.label.trim());
+					rawAudioInputs.length > 0 &&
+					rawAudioInputs.every((device) => !device.label.trim());
 
-				if (needsLabelPermission && !hasRequestedMicrophoneLabels) {
+				if (mounted && needsLabelPermission && !hasRequestedMicrophoneLabels) {
 					hasRequestedMicrophoneLabels = true;
 					permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 					allDevices = await navigator.mediaDevices.enumerateDevices();
