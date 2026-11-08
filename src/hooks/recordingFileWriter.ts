@@ -28,7 +28,8 @@ export class RecordingFileWriter {
 	}
 	write(chunk: Blob) {
 		if (this.cancelled || this.failure || !chunk.size) return;
-		if (this.pendingBytes + chunk.size > 32 * 1024 * 1024) {
+		// A single delayed recorder Blob drains in slices; bound additional queued data.
+		if (this.pendingBytes > 0 && this.pendingBytes + chunk.size > 32 * 1024 * 1024) {
 			this.fail(
 				new Error(
 					"Recording storage cannot keep up. The partial recording will be preserved.",
