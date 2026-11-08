@@ -1,4 +1,22 @@
 {
+	"aspectRatio": {
+		"native": "原始比例",
+		"widescreen": "寬螢幕",
+		"vertical": "直向",
+		"square": "正方形",
+		"squareUse": "Instagram · 社群貼文",
+		"portrait": "直幅",
+		"portraitUse": "Instagram · 動態消息貼文",
+		"classic": "經典",
+		"desktop": "桌面",
+		"tall": "長直式",
+		"title": "畫面比例",
+		"original": "保留原始畫面比例",
+		"social": "社群平台預設",
+		"more": "更多比例",
+		"presets": "預設",
+		"standard": "標準"
+	},
 	"cloud": {
 		"signInRequired": "建立分享連結前，請先登入 Recordly。",
 		"prepareFailed": "無法準備目前的剪輯以供分享。",
@@ -17,8 +35,8 @@
 		"publish": "發布並建立連結",
 		"createLinkTitle": "建立可分享的連結",
 		"notesPlaceholder": "為觀眾新增背景資訊、說明或簡短摘要…",
-		"description": "將目前的剪輯發布到 Recordly 觀看及回饋頁面，無需下載。分享的影片最高為 1080p。",
-		"uploading": "正在上傳… {progress}%",
+		"description": "將目前的剪輯發布到 Recordly 觀看及回饋頁面，無需下載。",
+		"uploading": "正在上傳 · {{progress}}%",
 		"googleUnavailable": "尚未啟用 Google 登入。請使用電子郵件，或請 Recordly 管理員連結 Google。",
 		"xUnavailable": "尚未啟用 X 登入。請使用電子郵件，或請 Recordly 管理員連結 X。",
 		"providerUnavailable": "尚未啟用此登入方式，請先使用電子郵件。",
@@ -40,7 +58,24 @@
 		"createShareLink": "建立分享連結",
 		"done": "完成",
 		"addingVideo": "正在新增影片…",
-		"preparingFootage": "正在為時間軸準備影片與音訊。"
+		"preparingFootage": "正在為時間軸準備影片與音訊。",
+		"copyLink": "複製連結",
+		"shareLink": "分享連結",
+		"saveLinkFailed": "分享已建立，但無法將連結儲存至本機",
+		"verifyPlanFailed": "無法驗證你的雲端方案。",
+		"refreshPlan": "重新整理方案",
+		"share": "分享",
+		"signInToShare": "登入以分享",
+		"sharingUnavailable": "此版本尚未提供雲端分享功能。",
+		"recordingLimit": "你已有 5 個雲端錄製。請先從「已分享」中刪除一個，再分享其他錄製。",
+		"checkStorageFailed": "無法檢查雲端儲存空間，請重試。",
+		"storageFull": "雲端儲存空間已滿。請先從「已分享」中刪除一個錄製，再分享其他錄製。",
+		"videoPreview": "已發布影片的預覽",
+		"previewUnavailable": "無法使用預覽。分享連結位於下方。",
+		"playPreview": "播放影片預覽",
+		"title": "標題",
+		"checkSignIn": "檢查登入狀態",
+		"sessionRejected": "無法驗證您的雲端工作階段。請重新登入後分享。"
 	},
 	"library": {
 		"videos": "影片"
@@ -51,7 +86,8 @@
 		"skipBack": "後退",
 		"skipForward": "前進",
 		"muteUnmute": "靜音/取消靜音",
-		"volume": "預覽音量"
+		"volume": "預覽音量",
+		"seek": "播放位置"
 	},
 	"annotations": {
 		"settings": "註釋設定",
@@ -89,9 +125,13 @@
 		"imageUploadError": "請上傳 JPG、PNG、GIF 或 WebP 圖片檔案。",
 		"blurStrength": "模糊強度: {{strength}}",
 		"solidColor": "純色 (審查)",
-		"borderRadius": "邊框半徑"
+		"borderRadius": "邊框半徑",
+		"imageUploadErrorDescription": "請選擇 JPG、PNG、GIF 或 WebP 圖片檔案。",
+		"imageUploadFailed": "無法載入圖片",
+		"imageUploadFailedDescription": "無法讀取此圖片。請選擇其他檔案或重試。",
+		"arrowDirectionOption": "箭頭方向：{{direction}}",
+		"customColor": "自訂色彩"
 	},
-
 	"fontStyles": {
 		"classic": "經典",
 		"editor": "編輯器",
@@ -106,7 +146,8 @@
 		"mp4Video": "MP4 視訊",
 		"mp4Description": "高品質視訊檔案",
 		"gifAnimation": "GIF 動畫",
-		"gifDescription": "可分享的動態圖片"
+		"gifDescription": "可分享的動態圖片",
+		"title": "匯出格式"
 	},
 	"gifOptions": {
 		"frameRate": "影格率",
@@ -162,14 +203,23 @@
 		"unsavedChangesTitle": "未儲存的變更",
 		"unsavedChangesDescription": "要在{{action}}之前儲存目前的專案嗎？",
 		"discardChanges": "捨棄變更",
-		"saveProject": "儲存專案"
+		"saveProject": "儲存專案",
+		"saveTitle": "儲存專案",
+		"saveDescription": "為此專案命名。專案將儲存至您的 Recordly 專案資料夾。",
+		"saveNameLabel": "專案名稱",
+		"saving": "正在儲存…",
+		"renameInput": "專案名稱",
+		"renameTitle": "重新命名專案"
 	},
 	"exportTips": {
-		"autoZooms": "提示：可在設定中關閉自動套用的縮放",
+		"autoZooms": "提示：可從縮放圖層套用自動縮放",
 		"experimentalBuilds": "提示：可在設定中開啟實驗版本存取權",
 		"cursorAppearance": "提示：你可以自訂游標外觀"
 	},
-	"account": { "title": "帳號", "comingSoon": "帳號功能即將推出" },
+	"account": {
+		"title": "帳號",
+		"comingSoon": "帳號功能即將推出"
+	},
 	"nativeCaptureUnavailable": {
 		"title": "沒有出錯，但我們無法轉譯動畫游標覆蓋層。",
 		"description": "你的裝置不支援原生擷取。這可能是由我們尚未釐清的多種原因造成的。Recordly 仍可繼續運作，但無法進行游標平滑處理。",
@@ -182,7 +232,14 @@
 		"completePercent": "已完成 {{percent}}%",
 		"issue": "匯出問題",
 		"complete": "匯出完成",
-		"savedSuccessfully": "檔案已成功保存。"
+		"savedSuccessfully": "檔案已成功保存。",
+		"renderSpeed": "算繪速度：{{fps}} 影格/秒",
+		"optimizingGif": "正在最佳化 GIF…",
+		"savingGif": "正在儲存 GIF…",
+		"encodingGif": "正在完成 GIF…",
+		"errorCopied": "已複製錯誤",
+		"errorCopyFailed": "無法複製。請選取錯誤文字並手動複製。",
+		"copyError": "複製錯誤"
 	},
 	"export": {
 		"processingAudioEdits": "正在處理帶有速度/疊加編輯的音訊"
@@ -193,7 +250,34 @@
 	},
 	"timeline": {
 		"expand": "展開時間軸",
-		"collapse": "摺疊時間軸"
+		"collapse": "摺疊時間軸",
+		"unsupportedSpeed": "此裝置不支援以此速度預覽。"
 	},
-	"openRecordingsFolder": "打開錄製資料夾"
+	"openRecordingsFolder": "打開錄製資料夾",
+	"theme": {
+		"appearance": "外觀",
+		"light": "淺色",
+		"dark": "深色",
+		"system": "跟隨系統"
+	},
+	"presets": {
+		"open": "開啟預設",
+		"label": "預設",
+		"saveCurrentAs": "將目前預設另存為",
+		"namePlaceholder": "預設名稱",
+		"savedList": "已儲存的預設",
+		"empty": "尚無預設。",
+		"deleteAriaLabel": "刪除預設 {{name}}",
+		"toasts": {
+			"applied": "已套用預設「{{name}}」",
+			"saved": "已儲存預設「{{name}}」",
+			"deleted": "已刪除預設「{{name}}」"
+		},
+		"errors": {
+			"nameRequired": "請輸入預設名稱。",
+			"duplicateName": "已存在同名預設。",
+			"saveFailed": "無法儲存此預設。請檢查瀏覽器儲存設定後重試。",
+			"deleteFailed": "無法刪除此預設。請檢查瀏覽器儲存設定後重試。"
+		}
+	}
 }

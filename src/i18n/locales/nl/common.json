@@ -1,7 +1,7 @@
 {
 	"app": {
 		"name": "Recordly",
-		"editorTitle": "Recordly Editor",
+		"editorTitle": "Recordly-editor",
 		"subtitle": "Schermopname en bewerking",
 		"language": "Taal",
 		"manageRecordings": "Opnamemap openen"
@@ -16,11 +16,71 @@
 		"save": "Opslaan",
 		"undo": "Ongedaan maken",
 		"delete": "Verwijderen",
-		"done": "Klaar"
+		"done": "Klaar",
+		"retry": "Opnieuw proberen",
+		"apply": "Toepassen"
 	},
 	"errors": {
 		"invalidFileType": "Ongeldig bestandstype",
 		"failedToUploadImage": "Afbeelding uploaden mislukt",
 		"fileReadError": "Er is een fout opgetreden bij het lezen van het bestand."
-	}
+	},
+	"clipboard": {
+		"copy": "Kopiëren",
+		"errorCopied": "Fout gekopieerd",
+		"errorCopyFailed": "Kan de fout niet kopiëren"
+	},
+	"feedback": {
+		"trigger": "Feedback",
+		"send": "Feedback verzenden",
+		"thanks": "Bedankt voor je feedback",
+		"signInRequired": "Meld je aan om feedback te verzenden.",
+		"openHome": "Open Start om je aan te melden.",
+		"subject": "Onderwerp",
+		"subjectPlaceholder": "Wat wil je ons vertellen?",
+		"description": "Beschrijving",
+		"descriptionPlaceholder": "We lezen alle feedback...",
+		"attachFiles": "Bestanden bijvoegen",
+		"removeFile": "{{name}} verwijderen",
+		"diagnostics": "Relevante diagnostische logboeken worden bijgevoegd.",
+		"sending": "Verzenden…",
+		"errors": {
+			"unavailable": "Feedback is pas beschikbaar nadat de accountdiensten zijn ingesteld.",
+			"signIn": "Meld je opnieuw aan om feedback te verzenden.",
+			"invalid": "Controleer je feedback en probeer het opnieuw.",
+			"attachments": "Voeg maximaal 5 niet-lege bestanden toe van in totaal maximaal 10 MB.",
+			"limit": "Je hebt de feedbacklimiet voor vandaag bereikt. Probeer het morgen opnieuw.",
+			"tooManyFiles": "Voeg maximaal 5 bestanden toe.",
+			"emptyFile": "Lege bestanden kunnen niet worden bijgevoegd.",
+			"filesTooLarge": "Bijlagen mogen samen maximaal 10 MB groot zijn.",
+			"sendFailed": "Kan de feedback niet verzenden. Probeer het opnieuw."
+		},
+		"missingMessage": "Vertel ons meer voordat je verzendt.",
+		"sentiment": "Hoe voel je je?",
+		"loving": "Enthousiast",
+		"neutral": "Neutraal",
+		"angry": "Boos"
+	},
+	"announcements": {
+		"openFailed": "Link kon niet worden geopend.",
+		"dismiss": "Sluiten",
+		"carousel": "Aankondigingen",
+		"previous": "Vorige aankondiging",
+		"show": "Aankondiging tonen",
+		"next": "Volgende aankondiging"
+	},
+	"updates": {
+		"download": "Update downloaden",
+		"actionFailed": "Bijwerken mislukt. Probeer het opnieuw.",
+		"notification": "App-update",
+		"backgroundProgress": "Recordly {{version}} op de achtergrond downloaden · {{progress}}",
+		"ready": "Recordly {{version}} is klaar om te installeren.",
+		"failed": "De update kon niet worden voltooid. Je kunt het opnieuw proberen.",
+		"available": "Recordly {{version}} is beschikbaar.",
+		"saveFirst": "Sla je werk op en start opnieuw wanneer je klaar bent.",
+		"later": "Later",
+		"downloadingButton": "Downloaden · {{progress}}"
+	},
+	"width": "Breedte",
+	"height": "Hoogte"
 }

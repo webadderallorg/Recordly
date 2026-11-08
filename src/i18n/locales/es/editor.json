@@ -1,4 +1,22 @@
 {
+	"aspectRatio": {
+		"native": "Original",
+		"widescreen": "Panorámico",
+		"vertical": "Vertical",
+		"square": "Cuadrado",
+		"squareUse": "Instagram · Publicaciones sociales",
+		"portrait": "Retrato",
+		"portraitUse": "Instagram · Publicaciones del feed",
+		"classic": "Clásico",
+		"desktop": "Escritorio",
+		"tall": "Alargado",
+		"title": "Relación de aspecto",
+		"original": "Mantener las proporciones originales",
+		"social": "Preajustes para redes sociales",
+		"more": "Más proporciones",
+		"presets": "Preajustes",
+		"standard": "Estándar"
+	},
 	"cloud": {
 		"signInRequired": "Inicia sesión en Recordly antes de crear un enlace compartido.",
 		"prepareFailed": "No se pudo preparar la edición actual para compartirla.",
@@ -17,8 +35,8 @@
 		"publish": "Publicar y crear enlace",
 		"createLinkTitle": "Crear un enlace para compartir",
 		"notesPlaceholder": "Añade contexto, instrucciones o un breve resumen para los espectadores…",
-		"description": "Publica la edición actual en una página de Recordly para verla y comentarla. No es necesario descargarla. Los vídeos se preparan con una resolución de hasta 1080p.",
-		"uploading": "Subiendo… {progress}%",
+		"description": "Publica la edición actual en una página de Recordly para verla y comentarla. No es necesario descargarla.",
+		"uploading": "Subiendo · {{progress}}%",
 		"googleUnavailable": "El inicio de sesión con Google aún no está habilitado. Usa el correo o pide al administrador de Recordly que conecte Google.",
 		"xUnavailable": "El inicio de sesión con X aún no está habilitado. Usa el correo o pide al administrador de Recordly que conecte X.",
 		"providerUnavailable": "Este método de inicio de sesión aún no está habilitado. Usa el correo.",
@@ -40,7 +58,24 @@
 		"createShareLink": "Crear enlace compartido",
 		"done": "Listo",
 		"addingVideo": "Añadiendo vídeo…",
-		"preparingFootage": "Preparando vídeo y audio para la línea de tiempo."
+		"preparingFootage": "Preparando vídeo y audio para la línea de tiempo.",
+		"copyLink": "Copiar enlace",
+		"shareLink": "Compartir enlace",
+		"saveLinkFailed": "Se creó el recurso compartido, pero no se pudo guardar su enlace localmente",
+		"verifyPlanFailed": "No se pudo verificar tu plan de la nube.",
+		"refreshPlan": "Actualizar plan",
+		"share": "Compartir",
+		"signInToShare": "Inicia sesión para compartir",
+		"sharingUnavailable": "La función de compartir en la nube aún no está disponible en esta versión.",
+		"recordingLimit": "Tienes 5 grabaciones en la nube. Elimina una de Compartidos antes de compartir otra.",
+		"checkStorageFailed": "No se pudo comprobar el almacenamiento en la nube. Inténtalo de nuevo.",
+		"storageFull": "Tu almacenamiento en la nube está lleno. Elimina una grabación de Compartidos antes de compartir otra.",
+		"videoPreview": "Vista previa del vídeo publicado",
+		"previewUnavailable": "Vista previa no disponible. Tu enlace para compartir está abajo.",
+		"playPreview": "Reproducir vista previa del vídeo",
+		"title": "Título",
+		"checkSignIn": "Comprobar inicio de sesión",
+		"sessionRejected": "No se pudo verificar tu sesión en la nube. Inicia sesión de nuevo para compartir."
 	},
 	"library": {
 		"videos": "Vídeos"
@@ -51,7 +86,8 @@
 		"skipBack": "Retroceder",
 		"skipForward": "Avanzar",
 		"muteUnmute": "Silenciar/activar sonido",
-		"volume": "Volumen de vista previa"
+		"volume": "Volumen de vista previa",
+		"seek": "Posición de reproducción"
 	},
 	"annotations": {
 		"settings": "Configuración de anotaciones",
@@ -89,15 +125,19 @@
 		"imageUploadError": "Por favor sube un archivo de imagen JPG, PNG, GIF o WebP.",
 		"blurStrength": "Fuerza del Desenfoque: {{strength}}",
 		"solidColor": "Color Sólido (Censura)",
-		"borderRadius": "Radio del Borde"
+		"borderRadius": "Radio del Borde",
+		"imageUploadErrorDescription": "Elige un archivo de imagen JPG, PNG, GIF o WebP.",
+		"imageUploadFailed": "No se pudo cargar la imagen",
+		"imageUploadFailedDescription": "No se pudo leer esta imagen. Elige otro archivo o inténtalo de nuevo.",
+		"arrowDirectionOption": "Dirección de la flecha: {{direction}}",
+		"customColor": "Color personalizado"
 	},
-
 	"fontStyles": {
 		"classic": "Clásico",
 		"editor": "Editor",
 		"strong": "Fuerte",
 		"typewriter": "Máquina de escribir",
-		"deco": "Deco",
+		"deco": "Decorativo",
 		"simple": "Simple",
 		"modern": "Moderno",
 		"clean": "Limpio"
@@ -106,7 +146,8 @@
 		"mp4Video": "Video MP4",
 		"mp4Description": "Archivo de video de alta calidad",
 		"gifAnimation": "Animación GIF",
-		"gifDescription": "Imagen animada para compartir"
+		"gifDescription": "Imagen animada para compartir",
+		"title": "Formato de exportación"
 	},
 	"gifOptions": {
 		"frameRate": "Velocidad de cuadros",
@@ -162,14 +203,23 @@
 		"unsavedChangesTitle": "Cambios sin guardar",
 		"unsavedChangesDescription": "¿Quieres guardar el proyecto actual antes de {{action}}?",
 		"discardChanges": "Descartar cambios",
-		"saveProject": "Guardar proyecto"
+		"saveProject": "Guardar proyecto",
+		"saveTitle": "Guardar proyecto",
+		"saveDescription": "Dale un nombre a este proyecto. Se guardará en tu carpeta de proyectos de Recordly.",
+		"saveNameLabel": "Nombre del proyecto",
+		"saving": "Guardando…",
+		"renameInput": "Nombre del proyecto",
+		"renameTitle": "Cambiar nombre del proyecto"
 	},
 	"exportTips": {
-		"autoZooms": "Consejo: Desactiva los zooms automáticos en la configuración",
+		"autoZooms": "Consejo: Aplica zooms automáticos desde la capa Zoom",
 		"experimentalBuilds": "Consejo: Activa el acceso a versiones experimentales en la configuración",
 		"cursorAppearance": "Consejo: Puedes personalizar la apariencia del cursor"
 	},
-	"account": { "title": "Cuenta", "comingSoon": "Cuenta próximamente" },
+	"account": {
+		"title": "Cuenta",
+		"comingSoon": "Cuenta próximamente"
+	},
 	"nativeCaptureUnavailable": {
 		"title": "Nada está roto, pero no podremos renderizar una superposición de cursor animada.",
 		"description": "Tu dispositivo no es compatible con la captura nativa. Esto puede deberse a varias razones que todavía no hemos identificado. Recordly seguirá funcionando, pero hará imposible el suavizado del cursor.",
@@ -182,7 +232,14 @@
 		"completePercent": "{{percent}}% completado",
 		"issue": "Problema de exportación",
 		"complete": "Exportación completada",
-		"savedSuccessfully": "Tu archivo se guardó correctamente."
+		"savedSuccessfully": "Tu archivo se guardó correctamente.",
+		"renderSpeed": "Velocidad de renderizado: {{fps}} FPS",
+		"optimizingGif": "Optimizando GIF…",
+		"savingGif": "Guardando GIF…",
+		"encodingGif": "Finalizando GIF…",
+		"errorCopied": "Error copiado",
+		"errorCopyFailed": "No se pudo copiar. Selecciona el texto del error y cópialo manualmente.",
+		"copyError": "Copiar error"
 	},
 	"export": {
 		"processingAudioEdits": "Procesando audio con ediciones de velocidad/superposición"
@@ -193,7 +250,34 @@
 	},
 	"timeline": {
 		"expand": "Expandir línea de tiempo",
-		"collapse": "Contraer línea de tiempo"
+		"collapse": "Contraer línea de tiempo",
+		"unsupportedSpeed": "Este dispositivo no permite previsualizar a esta velocidad."
 	},
-	"openRecordingsFolder": "Abrir carpeta de grabaciones"
+	"openRecordingsFolder": "Abrir carpeta de grabaciones",
+	"theme": {
+		"appearance": "Apariencia",
+		"light": "Claro",
+		"dark": "Oscuro",
+		"system": "Sistema"
+	},
+	"presets": {
+		"open": "Abrir ajustes preestablecidos",
+		"label": "Ajustes preestablecidos",
+		"saveCurrentAs": "Guardar el ajuste actual como",
+		"namePlaceholder": "Nombre del ajuste",
+		"savedList": "Ajustes guardados",
+		"empty": "Aún no hay ajustes preestablecidos.",
+		"deleteAriaLabel": "Eliminar ajuste {{name}}",
+		"toasts": {
+			"applied": "Se aplicó el ajuste «{{name}}»",
+			"saved": "Se guardó el ajuste «{{name}}»",
+			"deleted": "Se eliminó el ajuste «{{name}}»"
+		},
+		"errors": {
+			"nameRequired": "Introduce un nombre para el ajuste.",
+			"duplicateName": "Ya existe un ajuste con ese nombre.",
+			"saveFailed": "No se pudo guardar el ajuste. Comprueba la configuración de almacenamiento del navegador e inténtalo de nuevo.",
+			"deleteFailed": "No se pudo eliminar el ajuste. Comprueba la configuración de almacenamiento del navegador e inténtalo de nuevo."
+		}
+	}
 }

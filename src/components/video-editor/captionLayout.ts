@@ -35,6 +35,7 @@ interface CaptionPageLayout {
 }
 
 export interface ActiveCaptionLayout {
+	fontBaselinePx?: number;
 	cue: CaptionCue;
 	blockKey: string;
 	visibleLines: CaptionLineLayout[];
@@ -59,6 +60,7 @@ type CaptionSourceWord = {
 };
 
 const CAPTION_ENTER_MS = 180;
+const CAPTION_POP_MS = 90;
 // Keep the exit symmetric with the entrance so captions fade out with the
 // same opacity/translateY/scale curve and duration they faded in with.
 const CAPTION_EXIT_MS = CAPTION_ENTER_MS;
@@ -123,18 +125,7 @@ function splitCaptionWords(cue: CaptionCue) {
 	}));
 }
 
-function getActiveCaptionCue(cues: CaptionCue[], timeMs: number) {
-	for (const cue of cues) {
-		if (timeMs >= cue.startMs && timeMs <= cue.endMs) {
-			return cue;
-		}
-	}
-
-	return null;
-}
-
-function isWithinCaptionCoverage(cues: CaptionCue[], timeMs: number) {
-	const sorted = [...cues].sort((left, right) => left.startMs - right.startMs);
+function isWithinCaptionCoverage(sorted: CaptionCue[], timeMs: number) {
 	for (let index = 0; index < sorted.length; index += 1) {
 		const cue = sorted[index];
 		if (timeMs < cue.startMs) {
@@ -144,7 +135,7 @@ function isWithinCaptionCoverage(cues: CaptionCue[], timeMs: number) {
 		const bridgesGap =
 			next !== undefined && next.startMs - cue.endMs < CAPTION_BLOCK_GAP_BREAK_MS;
 		const effectiveEndMs = bridgesGap ? Math.max(cue.endMs, next.startMs) : cue.endMs;
-		if (timeMs <= effectiveEndMs) {
+		if (timeMs < effectiveEndMs) {
 			return true;
 		}
 	}
@@ -252,7 +243,7 @@ function getCaptionAnimationState(
 	}
 }
 
-function buildCaptionPages(options: {
+function buildCaptionPagesForCue(options: {
 	lines: CaptionLineLayout[];
 	words: CaptionWordLayout[];
 	maxRows: number;
@@ -326,6 +317,41 @@ function buildCaptionPages(options: {
 		);
 	}
 
+	return pages;
+}
+
+function buildCaptionPages(
+	options: Parameters<typeof buildCaptionPagesForCue>[0] & { cues: CaptionCue[] },
+) {
+	// A row limit applies within a phrase. Packing lines from different cues into
+	// one page exposes the next phrase early and keeps the previous one on screen.
+	const groups: CaptionLineLayout[][] = [];
+	for (const line of options.lines) {
+		const previous = groups[groups.length - 1];
+		if (previous?.[0].words[0].cueId === line.words[0].cueId) previous.push(line);
+		else groups.push([line]);
+	}
+	const cuesById = new Map(options.cues.map((cue) => [cue.id, cue]));
+	const pages = groups.flatMap((lines) => {
+		const firstWord = options.words[lines[0].startWordIndex];
+		const cue = cuesById.get(firstWord.cueId)!;
+		const cuePages = buildCaptionPagesForCue({
+			...options,
+			lines,
+			cue,
+		});
+		// Cue bounds own phrase visibility; word starts control highlight handoffs.
+		// Otherwise a delayed first word can resurrect the previous phrase after silence.
+		cuePages[0].startMs = cue.startMs;
+		cuePages[cuePages.length - 1].endMs = cue.endMs;
+		return cuePages;
+	});
+	for (let index = 0; index < pages.length - 1; index += 1) {
+		const gap = pages[index + 1].startMs - pages[index].endMs;
+		if (gap < CAPTION_BLOCK_GAP_BREAK_MS) {
+			pages[index].endMs = pages[index + 1].startMs;
+		}
+	}
 	return pages;
 }
 
@@ -412,7 +438,7 @@ function buildCaptionLines(options: {
 
 function getVisibleCaptionPageIndex(pages: CaptionPageLayout[], timeMs: number) {
 	for (let index = 0; index < pages.length; index += 1) {
-		if (timeMs >= pages[index].startMs && timeMs <= pages[index].endMs) {
+		if (timeMs >= pages[index].startMs && timeMs < pages[index].endMs) {
 			return index;
 		}
 	}
@@ -432,62 +458,35 @@ function getVisibleCaptionText(lines: CaptionLineLayout[]) {
 		.join(" ");
 }
 
-export function buildActiveCaptionLayout(options: {
+export interface CaptionLayoutOptions {
+	fontBaselinePx?: number;
 	cues: CaptionCue[];
-	timeMs: number;
 	settings: AutoCaptionSettings;
 	maxWidthPx: number;
 	measureText: (text: string) => number;
-}) {
-	const sourceWords = flattenCaptionWords(options.cues);
-	if (sourceWords.length === 0) {
-		return null;
-	}
+}
 
-	if (!isWithinCaptionCoverage(options.cues, options.timeMs)) {
-		return null;
-	}
-
-	let activeWordIndex = -1;
-	activeWordIndex = sourceWords.findIndex(
-		(word) => options.timeMs >= word.startMs && options.timeMs < word.endMs,
-	);
-	if (activeWordIndex < 0) {
-		activeWordIndex = sourceWords.findIndex((word) => options.timeMs < word.startMs);
-		activeWordIndex =
-			activeWordIndex < 0
-				? sourceWords.length - 1
-				: clamp(activeWordIndex - 1, 0, sourceWords.length - 1);
-	}
+/** Prepare word timing, wrapping and pages once; sampling only updates visible words/animation. */
+export function prepareCaptionLayout(
+	options: CaptionLayoutOptions,
+): (timeMs: number) => ActiveCaptionLayout | null {
+	const sortedCues = [...options.cues].sort((left, right) => left.startMs - right.startMs);
+	const sourceWords = flattenCaptionWords(sortedCues);
+	if (sourceWords.length === 0) return () => null;
+	const cuesById = new Map(options.cues.map((cue) => [cue.id, cue]));
 	const maxRows = clamp(Math.round(options.settings.maxRows || 1), 1, 4);
-
-	const words: CaptionWordLayout[] = sourceWords.map((word, index) => {
-		return {
-			cueId: word.cueId,
-			cueWordIndex: word.cueWordIndex,
-			text: word.text,
-			index,
-			forcedBreakBefore: word.forcedBreakBefore,
-			leadingSpace: word.leadingSpace,
-			startMs: word.startMs,
-			endMs: word.endMs,
-			hasRealTiming: word.hasRealTiming,
-			state:
-				index < activeWordIndex
-					? "spoken"
-					: index === activeWordIndex
-						? "active"
-						: "upcoming",
-		};
-	});
-
+	const words: CaptionWordLayout[] = sourceWords.map((word, index) => ({
+		...word,
+		index,
+		state: "upcoming",
+	}));
 	const lines = buildCaptionLines({
 		words,
 		maxWidthPx: options.maxWidthPx,
 		measureText: options.measureText,
 	});
-
 	const pages = buildCaptionPages({
+		cues: options.cues,
 		lines,
 		words,
 		maxRows,
@@ -499,86 +498,122 @@ export function buildActiveCaptionLayout(options: {
 			text: "",
 		},
 	});
-	const visiblePageIndex = getVisibleCaptionPageIndex(pages, options.timeMs);
-	if (visiblePageIndex < 0) {
-		return null;
-	}
-	const visiblePage = pages[visiblePageIndex] ?? null;
-	const visibleLines = visiblePage?.lines ?? lines.slice(0, maxRows);
-	const activeWord = activeWordIndex >= 0 ? words[activeWordIndex] : null;
-	const activeWordProgress = activeWord
-		? clamp01(
-				(options.timeMs - activeWord.startMs) /
-					Math.max(1, activeWord.endMs - activeWord.startMs),
+	const preparePage = (page: CaptionPageLayout) => {
+		const visibleWords = page.lines.flatMap((line) => line.words);
+		const hasWordTimings = visibleWords.every((word) => word.hasRealTiming);
+		const blockKey = `${Math.round(page.startMs)}-${Math.round(page.endMs)}`;
+		const spokenEndMs = visibleWords.reduce(
+			(end, word) => Math.max(end, word.endMs),
+			page.startMs,
+		);
+		const maxExitDurationMs =
+			options.settings.animationStyle === "pop" ? CAPTION_POP_MS : CAPTION_EXIT_MS;
+		return {
+			page,
+			blockKey,
+			hasWordTimings,
+			cue: cuesById.get(visibleWords[0].cueId) ?? options.cues[0],
+			willDisappear:
+				options.settings.animationStyle !== "none" &&
+				!isWithinCaptionCoverage(sortedCues, page.endMs),
+			exitDurationMs: hasWordTimings
+				? Math.min(maxExitDurationMs, Math.max(0, page.endMs - spokenEndMs))
+				: maxExitDurationMs,
+			editTarget: {
+				id: `${blockKey}:${visibleWords.map((word) => `${word.cueId}:${word.cueWordIndex}`).join("|")}`,
+				startMs: page.startMs,
+				endMs: page.endMs,
+				text: getVisibleCaptionText(page.lines),
+				words: visibleWords.map((word) => ({
+					cueId: word.cueId,
+					cueWordIndex: word.cueWordIndex,
+					startMs: word.startMs,
+					endMs: word.endMs,
+					text: word.text,
+					leadingSpace: word.leadingSpace,
+				})),
+			} satisfies CaptionEditTarget,
+		};
+	};
+	// One-off export callers only need metadata for the visible page. Preview keeps
+	// each visited page for subsequent frames and backward seeks.
+	const preparedPages = new Map<number, ReturnType<typeof preparePage>>();
+	const enterDurationMs =
+		options.settings.animationStyle === "pop" ? CAPTION_POP_MS : CAPTION_ENTER_MS;
+	return (timeMs) => {
+		if (!isWithinCaptionCoverage(sortedCues, timeMs)) return null;
+		const visiblePageIndex = getVisibleCaptionPageIndex(pages, timeMs);
+		if (visiblePageIndex < 0) return null;
+		let prepared = preparedPages.get(visiblePageIndex);
+		if (!prepared) {
+			prepared = preparePage(pages[visiblePageIndex]);
+			preparedPages.set(visiblePageIndex, prepared);
+		}
+		// The visible page owns the cue through overlaps and bridged gaps.
+		const currentCue = prepared.cue;
+		// Hold emphasis through acoustic gaps; a cue lead-in cannot highlight its predecessor.
+		let activeWordIndex = -1;
+		sourceWords.forEach((word, index) => {
+			if (word.cueId !== currentCue.id) return;
+			if (
+				timeMs >= word.startMs &&
+				(activeWordIndex < 0 || word.startMs >= sourceWords[activeWordIndex].startMs)
 			)
-		: 0;
-	const animationStartMs = visiblePage?.startMs ?? sourceWords[0].startMs;
-	const animationEndMs = visiblePage?.endMs ?? sourceWords[sourceWords.length - 1].endMs;
-	const pageStartWordIndex = visibleLines[0]?.startWordIndex ?? 0;
-	const visibleWords = visibleLines.flatMap((line) => line.words);
-	const visibleHasWordTimings = visibleWords.every((word) => word.hasRealTiming);
-	const pageCueId = sourceWords[pageStartWordIndex]?.cueId ?? sourceWords[0].cueId;
-	const activeCue =
-		getActiveCaptionCue(options.cues, options.timeMs) ??
-		options.cues.find((candidate) => candidate.id === pageCueId) ??
-		options.cues[0];
-	// `animationEndMs` is stretched to the next page's start (see buildCaptionPages)
-	// so consecutive pages stay on screen with no gap. That's right for continuous
-	// speech, but pages are built from every cue flattened together — so when a
-	// caption component (cue) is the last before a pause, its stitched end points
-	// across the silence into the next cue. exitProgress would then stay pinned at
-	// 1 and the caption would vanish with no fade. Anchor the exit to the real end
-	// of the visible words instead, and only when nothing follows within the
-	// gap-break window (otherwise keep the stitched end so continuous page swaps
-	// don't flicker).
-	const visibleContentEndMs = visibleWords.reduce(
-		(latest, word) => Math.max(latest, word.endMs),
-		animationStartMs,
-	);
-	const willDisappear =
-		options.settings.animationStyle !== "none" &&
-		!isWithinCaptionCoverage(options.cues, visibleContentEndMs + 1);
-	const exitAnchorMs = willDisappear ? visibleContentEndMs : animationEndMs;
-	const enterProgress = clamp01((options.timeMs - animationStartMs) / CAPTION_ENTER_MS);
-	const exitProgress = clamp01((exitAnchorMs - options.timeMs) / CAPTION_EXIT_MS);
-	const animation = getCaptionAnimationState(
-		options.settings.animationStyle,
-		enterProgress,
-		exitProgress,
-	);
-	// On a real disappearance the per-style opacity only eases to its readability
-	// floor (~0.3) before the element unmounts, which reads as a snap. Fade fully
-	// to 0 across the exit window so the caption leaves smoothly.
-	const opacity = willDisappear ? animation.opacity * exitProgress : animation.opacity;
+				activeWordIndex = index;
+		});
+		const activeWord = words[activeWordIndex];
+		const visibleLines = prepared.page.lines.map((line) => ({
+			...line,
+			words: line.words.map(
+				(word): CaptionWordLayout => ({
+					...word,
+					state:
+						word.index === activeWordIndex
+							? "active"
+							: timeMs >= word.startMs
+								? "spoken"
+								: "upcoming",
+				}),
+			),
+		}));
+		const enterProgress = clamp01((timeMs - prepared.page.startMs) / enterDurationMs);
+		const exitProgress =
+			prepared.willDisappear && prepared.exitDurationMs > 0
+				? clamp01((prepared.page.endMs - timeMs) / prepared.exitDurationMs)
+				: 1;
+		const animation = getCaptionAnimationState(
+			options.settings.animationStyle,
+			enterProgress,
+			exitProgress,
+		);
+		return {
+			fontBaselinePx: options.fontBaselinePx,
+			cue: currentCue,
+			blockKey: prepared.blockKey,
+			visibleLines,
+			hasWordTimings: prepared.hasWordTimings,
+			activeWordIndex,
+			activeWordProgress: activeWord
+				? clamp01(
+						(timeMs - activeWord.startMs) /
+							Math.max(1, activeWord.endMs - activeWord.startMs),
+					)
+				: 0,
+			editTarget: prepared.editTarget,
+			visiblePageIndex,
+			opacity: prepared.willDisappear ? animation.opacity * exitProgress : animation.opacity,
+			translateY: animation.translateY,
+			scale: animation.scale,
+		};
+	};
+}
 
-	return {
-		cue: activeCue,
-		blockKey: `${Math.round(animationStartMs)}-${Math.round(animationEndMs)}`,
-		visibleLines,
-		hasWordTimings: visibleHasWordTimings,
-		activeWordIndex,
-		activeWordProgress,
-		editTarget: {
-			id: `${Math.round(animationStartMs)}-${Math.round(animationEndMs)}:${visibleWords
-				.map((word) => `${word.cueId}:${word.cueWordIndex}`)
-				.join("|")}`,
-			startMs: animationStartMs,
-			endMs: animationEndMs,
-			text: getVisibleCaptionText(visibleLines),
-			words: visibleWords.map((word) => ({
-				cueId: word.cueId,
-				cueWordIndex: word.cueWordIndex,
-				startMs: word.startMs,
-				endMs: word.endMs,
-				text: word.text,
-				leadingSpace: word.leadingSpace,
-			})),
-		},
-		visiblePageIndex,
-		opacity,
-		translateY: animation.translateY,
-		scale: animation.scale,
-	} satisfies ActiveCaptionLayout;
+/** One-off layout for callers that do not retain a prepared timeline. */
+export function buildActiveCaptionLayout(options: CaptionLayoutOptions & { timeMs: number }) {
+	// Avoid preparing a transcript during gaps for one-off callers.
+	const sortedCues = [...options.cues].sort((left, right) => left.startMs - right.startMs);
+	if (!isWithinCaptionCoverage(sortedCues, options.timeMs)) return null;
+	return prepareCaptionLayout(options)(options.timeMs);
 }
 
 function isFiniteNumber(value: unknown): value is number {

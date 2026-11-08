@@ -1,0 +1,47 @@
+{
+	"zoom": {
+		"applyAutoZooms": "自動ズームを適用",
+		"cannotPlace": "ここにズームを配置できません",
+		"existsOrNoSpace": "この位置には既にズームがあるか、十分な空きがありません。",
+		"suggestHandlerUnavailable": "ズーム候補の生成機能を利用できません",
+		"noTelemetry": "カーソルの動作データがありません",
+		"recordFirst": "カーソルの動きに基づく候補を生成するには、先に画面を録画してください。",
+		"noUsableTelemetry": "利用できるカーソルの動作データがありません",
+		"notEnoughMovement": "録画に含まれるカーソルの移動データが足りません。",
+		"noInteractionMoments": "明確な操作箇所が見つかりませんでした",
+		"tryRecording": "重要な操作の前後でカーソルを止めたり、クリックしたりして録画してみてください。",
+		"noAutoZoomSlots": "自動ズームを配置できる区間がありません",
+		"dwellPointsOverlap": "検出された停止位置が、既存のズーム区間と重なっています。",
+		"addedSuggestions": "操作に基づくズーム候補を {{count}} 件追加しました",
+		"label": "ズーム {{index}}",
+		"addZoom": "ズームを追加 (Z)",
+		"suggestZooms": "カーソルの動きからズームを提案"
+	},
+	"trim": {
+		"cannotPlace": "ここにトリミングを配置できません",
+		"existsOrNoSpace": "この位置には既にトリミング区間があるか、十分な空きがありません。",
+		"label": "トリミング {{index}}",
+		"addTrim": "トリミングを追加 (T)"
+	},
+	"speed": {
+		"cannotPlace": "ここに速度変更を配置できません",
+		"existsOrNoSpace": "この位置には既に速度変更区間があるか、十分な空きがありません。",
+		"label": "速度"
+	},
+	"annotation": {
+		"label": "注釈",
+		"image": "画像",
+		"addAnnotation": "注釈を追加 (A)"
+	},
+	"audio": {
+		"label": "音声"
+	},
+	"addSpeed": "速度変更を追加 (S)",
+	"resizeLeft": "左端を調整",
+	"resizeRight": "右端を調整",
+	"hints": {
+		"splitClip": "{{binding}} キーでクリップを分割",
+		"addAnnotation": "{{binding}} キーで注釈を追加",
+		"addAudio": "音楽アイコンをクリックして音声を追加"
+	}
+}

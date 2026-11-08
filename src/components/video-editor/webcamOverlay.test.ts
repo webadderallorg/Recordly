@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { getSquirclePathPoints } from "@/lib/geometry/squircle";
 import {
 	convertLegacyWebcamRadiusToRoundness,
 	getCropMatchedWebcamHeightPercent,
@@ -9,18 +10,41 @@ import {
 	isWebcamCropRegionDefault,
 	normalizeWebcamCropRegion,
 	scaleWebcamOverlayPixels,
+	WEBCAM_SQUIRCLE_EXPONENT,
 } from "./webcamOverlay";
 
 describe("webcam roundness", () => {
-	it("uses a stronger response curve while preserving the endpoints", () => {
+	it.each([
+		25, 69, 100,
+	])("softens camera corners at %s%% while retaining a squircle", (roundness) => {
+		const radius = getWebcamCornerRadiusPx(roundness, 400, 400);
+		const rect = { x: 0, y: 0, width: 400, height: 400, radius };
+		const camera = getSquirclePathPoints({ ...rect, exponent: WEBCAM_SQUIRCLE_EXPONENT });
+		const original = getSquirclePathPoints(rect);
+		const circle = getSquirclePathPoints({ ...rect, exponent: 2 });
+		// At the top-right diagonal, the tuned mask cuts further into the corner
+		// than the old squircle, but retains a flatter shoulder than a circle.
+		const diagonal = (points: typeof camera) =>
+			points.find(
+				(point) =>
+					point.x > 400 - radius &&
+					point.y < radius &&
+					Math.abs(point.x - (400 - radius) - (radius - point.y)) < 0.001,
+			)!;
+		expect(diagonal(camera).y).toBeGreaterThan(diagonal(original).y);
+		expect(diagonal(camera).y).toBeLessThan(diagonal(circle).y);
+	});
+
+	it("makes low and middle slider values much more effective while preserving the endpoints", () => {
+		expect(getWebcamCornerRadiusPx(10, 640, 360)).toBeCloseTo(101.22, 1);
 		expect(getWebcamCornerRadiusPx(0, 640, 360)).toBe(0);
-		expect(getWebcamCornerRadiusPx(25, 640, 360)).toBe(90);
-		expect(getWebcamCornerRadiusPx(50, 640, 360)).toBeCloseTo(127.28, 1);
+		expect(getWebcamCornerRadiusPx(25, 640, 360)).toBeCloseTo(127.28, 1);
+		expect(getWebcamCornerRadiusPx(50, 640, 360)).toBeCloseTo(151.36, 1);
 		expect(getWebcamCornerRadiusPx(100, 640, 360)).toBe(180);
 	});
 
 	it("converts legacy reference pixels without changing the approximate shape", () => {
-		expect(convertLegacyWebcamRadiusToRoundness(90, 40, 40)).toBeCloseTo(17.36, 1);
+		expect(convertLegacyWebcamRadiusToRoundness(90, 40, 40)).toBeCloseTo(3.01, 2);
 	});
 });
 
@@ -63,6 +87,40 @@ describe("getWebcamOverlayDimensionsPx", () => {
 			width: 400,
 			height: 200,
 		});
+	});
+	it("keeps shrinking below 56 preview pixels in portrait and preserves export proportions", () => {
+		const dimensions = (scale: number, zoomScale: number) =>
+			getWebcamOverlayDimensionsPx({
+				containerWidth: 160 * scale,
+				containerHeight: ((160 * 16) / 9) * scale,
+				widthPercent: 50,
+				heightPercent: 30,
+				margin: 2 * scale,
+				zoomScale,
+				reactToZoom: true,
+			});
+		for (const zoom of [1, 1.25, 1.5, 2, 3]) {
+			const preview = dimensions(1, zoom);
+			const exported = dimensions(6, zoom);
+			expect(preview.width).toBeCloseTo(80 / zoom);
+			expect(preview.height).toBeCloseTo(48 / zoom);
+			expect(exported.width).toBeCloseTo(preview.width * 6);
+			expect(exported.height).toBeCloseTo(preview.height * 6);
+			expect(preview.width / preview.height).toBeCloseTo(5 / 3);
+		}
+	});
+	it("fits the available frame even when it is smaller than the old minimum", () => {
+		expect(
+			getWebcamOverlayDimensionsPx({
+				containerWidth: 40,
+				containerHeight: 70,
+				widthPercent: 100,
+				heightPercent: 100,
+				margin: 5,
+				zoomScale: 1,
+				reactToZoom: false,
+			}),
+		).toEqual({ width: 30, height: 30 });
 	});
 });
 
@@ -122,5 +180,22 @@ describe("getWebcamCropSourceRect", () => {
 			sw: 960,
 			sh: 810,
 		});
+	});
+});
+
+describe("circle geometry", () => {
+	it("keeps the camera circular despite rectangular crop or height settings", () => {
+		const dimensions = getWebcamOverlayDimensionsPx({
+			containerWidth: 1920,
+			containerHeight: 1080,
+			widthPercent: 40,
+			heightPercent: 25,
+			margin: 24,
+			zoomScale: 2,
+			reactToZoom: true,
+			shape: "circle",
+		});
+		expect(dimensions).toEqual({ width: 216, height: 216 });
+		expect(getWebcamCornerRadiusPx(0, dimensions.width, dimensions.height, "circle")).toBe(108);
 	});
 });

@@ -40,7 +40,9 @@
 		"addSuccess": "字体 \"{{name}}\" 添加成功",
 		"addFailed": "添加字体失败",
 		"loadTimeout": "字体加载超时。请检查 URL 后重试。",
-		"loadFailed": "无法加载字体。请确认 Google Fonts URL 是否正确。"
+		"loadFailed": "无法加载字体。请确认 Google Fonts URL 是否正确。",
+		"alreadyAdded": "此字体已添加。",
+		"cancel": "取消"
 	},
 	"shortcutsConfig": {
 		"title": "键盘快捷键",

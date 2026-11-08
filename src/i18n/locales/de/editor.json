@@ -1,4 +1,22 @@
 {
+	"aspectRatio": {
+		"native": "Original",
+		"widescreen": "Breitbild",
+		"vertical": "Vertikal",
+		"square": "Quadratisch",
+		"squareUse": "Instagram · Social-Media-Beiträge",
+		"portrait": "Hochformat",
+		"portraitUse": "Instagram · Feed-Beiträge",
+		"classic": "Klassisch",
+		"desktop": "Desktop",
+		"tall": "Schmales Hochformat",
+		"title": "Seitenverhältnis",
+		"original": "Ursprüngliche Proportionen beibehalten",
+		"social": "Vorlagen für soziale Medien",
+		"more": "Weitere Formate",
+		"presets": "Voreinstellungen",
+		"standard": "Standard"
+	},
 	"cloud": {
 		"signInRequired": "Melde dich bei Recordly an, bevor du einen Freigabelink erstellst.",
 		"prepareFailed": "Der aktuelle Schnitt konnte nicht zum Teilen vorbereitet werden.",
@@ -17,8 +35,8 @@
 		"publish": "Veröffentlichen und Link erstellen",
 		"createLinkTitle": "Einen Freigabelink erstellen",
 		"notesPlaceholder": "Füge Kontext, Anweisungen oder eine kurze Zusammenfassung für Zuschauer hinzu…",
-		"description": "Veröffentliche den aktuellen Schnitt auf einer Recordly-Seite zum Ansehen und Kommentieren. Ein Download ist nicht nötig. Videos werden mit bis zu 1080p vorbereitet.",
-		"uploading": "Wird hochgeladen… {progress}%",
+		"description": "Veröffentliche den aktuellen Schnitt auf einer Recordly-Seite zum Ansehen und Kommentieren. Ein Download ist nicht nötig.",
+		"uploading": "Hochladen · {{progress}}%",
 		"googleUnavailable": "Die Google-Anmeldung ist noch nicht aktiviert. Nutze E-Mail oder bitte deinen Recordly-Administrator, Google zu verbinden.",
 		"xUnavailable": "Die X-Anmeldung ist noch nicht aktiviert. Nutze E-Mail oder bitte deinen Recordly-Administrator, X zu verbinden.",
 		"providerUnavailable": "Diese Anmeldemethode ist noch nicht aktiviert. Nutze vorerst E-Mail.",
@@ -40,7 +58,24 @@
 		"createShareLink": "Freigabelink erstellen",
 		"done": "Fertig",
 		"addingVideo": "Video wird hinzugefügt…",
-		"preparingFootage": "Video und Audio werden für die Zeitleiste vorbereitet."
+		"preparingFootage": "Video und Audio werden für die Zeitleiste vorbereitet.",
+		"copyLink": "Link kopieren",
+		"shareLink": "Freigabelink",
+		"saveLinkFailed": "Die Freigabe wurde erstellt, aber ihr Link konnte nicht lokal gespeichert werden",
+		"verifyPlanFailed": "Dein Cloud-Tarif konnte nicht überprüft werden.",
+		"refreshPlan": "Tarif aktualisieren",
+		"share": "Teilen",
+		"signInToShare": "Zum Teilen anmelden",
+		"sharingUnavailable": "Cloud-Freigaben sind in dieser Version noch nicht verfügbar.",
+		"recordingLimit": "Du hast 5 Cloud-Aufnahmen. Lösche eine unter Geteilt, bevor du eine weitere teilst.",
+		"checkStorageFailed": "Der Cloud-Speicher konnte nicht geprüft werden. Versuche es erneut.",
+		"storageFull": "Dein Cloud-Speicher ist voll. Lösche eine Aufnahme unter Geteilt, bevor du eine weitere teilst.",
+		"videoPreview": "Vorschau des veröffentlichten Videos",
+		"previewUnavailable": "Vorschau nicht verfügbar. Dein Freigabelink steht unten.",
+		"playPreview": "Videovorschau abspielen",
+		"title": "Titel",
+		"checkSignIn": "Anmeldung prüfen",
+		"sessionRejected": "Deine Cloud-Sitzung konnte nicht überprüft werden. Melde dich erneut an, um zu teilen."
 	},
 	"library": {
 		"videos": "Videos"
@@ -51,7 +86,8 @@
 		"skipBack": "Zurück springen",
 		"skipForward": "Vorwärts springen",
 		"muteUnmute": "Stummschalten/Stummschaltung aufheben",
-		"volume": "Vorschaulautstärke"
+		"volume": "Vorschaulautstärke",
+		"seek": "Wiedergabeposition"
 	},
 	"annotations": {
 		"settings": "Einstellungen für Anmerkungen",
@@ -89,7 +125,12 @@
 		"imageUploadError": "Bitte lade eine JPG-, PNG-, GIF- oder WebP-Bilddatei hoch.",
 		"blurStrength": "Unschärfestärke: {{strength}}",
 		"solidColor": "Einfarbig (Zensur)",
-		"borderRadius": "Randradius"
+		"borderRadius": "Randradius",
+		"imageUploadErrorDescription": "Wähle eine JPG-, PNG-, GIF- oder WebP-Bilddatei.",
+		"imageUploadFailed": "Bild konnte nicht geladen werden",
+		"imageUploadFailedDescription": "Dieses Bild konnte nicht gelesen werden. Wähle eine andere Datei oder versuche es erneut.",
+		"arrowDirectionOption": "Pfeilrichtung: {{direction}}",
+		"customColor": "Benutzerdefinierte Farbe"
 	},
 	"fontStyles": {
 		"classic": "Klassisch",
@@ -99,13 +140,14 @@
 		"deco": "Dekorativ",
 		"simple": "Einfach",
 		"modern": "Modern",
-		"clean": "Clean"
+		"clean": "Klar"
 	},
 	"format": {
 		"mp4Video": "MP4-Video",
 		"mp4Description": "Hochwertige Videodatei",
 		"gifAnimation": "GIF-Animation",
-		"gifDescription": "Animiertes Bild zum Teilen"
+		"gifDescription": "Animiertes Bild zum Teilen",
+		"title": "Exportformat"
 	},
 	"gifOptions": {
 		"frameRate": "Bildfrequenz",
@@ -161,14 +203,23 @@
 		"unsavedChangesTitle": "Ungespeicherte Änderungen",
 		"unsavedChangesDescription": "Möchtest du dein aktuelles Projekt speichern, bevor du {{action}}?",
 		"discardChanges": "Änderungen verwerfen",
-		"saveProject": "Projekt speichern"
+		"saveProject": "Projekt speichern",
+		"saveTitle": "Projekt speichern",
+		"saveDescription": "Benenne dieses Projekt. Es wird in deinem Recordly-Projektordner gespeichert.",
+		"saveNameLabel": "Projektname",
+		"saving": "Wird gespeichert…",
+		"renameInput": "Projektname",
+		"renameTitle": "Projekt umbenennen"
 	},
 	"exportTips": {
-		"autoZooms": "Tipp: Automatisch angewendete Zooms können in den Einstellungen deaktiviert werden",
+		"autoZooms": "Tipp: Automatische Zooms in der Zoom-Spur anwenden",
 		"experimentalBuilds": "Tipp: Aktiviere den Zugriff auf experimentelle Builds in den Einstellungen",
 		"cursorAppearance": "Tipp: Du kannst das Aussehen deines Cursors anpassen"
 	},
-	"account": { "title": "Konto", "comingSoon": "Konto demnächst verfügbar" },
+	"account": {
+		"title": "Konto",
+		"comingSoon": "Konto demnächst verfügbar"
+	},
 	"nativeCaptureUnavailable": {
 		"title": "Es ist nichts kaputt, aber wir können kein animiertes Cursor-Overlay rendern.",
 		"description": "Ihr Gerät unterstützt keine native Erfassung. Dies kann verschiedene Gründe haben, die wir noch nicht ermittelt haben. Recordly funktioniert weiterhin, aber eine Cursor-Glättung ist nicht möglich.",
@@ -181,7 +232,14 @@
 		"completePercent": "{{percent}} % abgeschlossen",
 		"issue": "Problem beim Export",
 		"complete": "Export abgeschlossen",
-		"savedSuccessfully": "Deine Datei wurde erfolgreich gespeichert."
+		"savedSuccessfully": "Deine Datei wurde erfolgreich gespeichert.",
+		"renderSpeed": "Rendergeschwindigkeit: {{fps}} FPS",
+		"optimizingGif": "GIF wird optimiert…",
+		"savingGif": "GIF wird gespeichert…",
+		"encodingGif": "GIF wird fertiggestellt…",
+		"errorCopied": "Fehler kopiert",
+		"errorCopyFailed": "Kopieren fehlgeschlagen. Wähle den Fehlertext aus und kopiere ihn manuell.",
+		"copyError": "Fehler kopieren"
 	},
 	"export": {
 		"processingAudioEdits": "Audio mit Geschwindigkeits-/Overlay-Bearbeitungen wird verarbeitet"
@@ -192,7 +250,34 @@
 	},
 	"timeline": {
 		"expand": "Zeitleiste erweitern",
-		"collapse": "Zeitleiste reduzieren"
+		"collapse": "Zeitleiste reduzieren",
+		"unsupportedSpeed": "Diese Geschwindigkeit wird auf diesem Gerät für die Vorschau nicht unterstützt."
 	},
-	"openRecordingsFolder": "Aufnahmeordner öffnen"
+	"openRecordingsFolder": "Aufnahmeordner öffnen",
+	"theme": {
+		"appearance": "Darstellung",
+		"light": "Hell",
+		"dark": "Dunkel",
+		"system": "System"
+	},
+	"presets": {
+		"open": "Vorlagen öffnen",
+		"label": "Vorlagen",
+		"saveCurrentAs": "Aktuelle Vorlage speichern als",
+		"namePlaceholder": "Name der Vorlage",
+		"savedList": "Gespeicherte Vorlagen",
+		"empty": "Noch keine Vorlagen vorhanden.",
+		"deleteAriaLabel": "Vorlage {{name}} löschen",
+		"toasts": {
+			"applied": "Vorlage „{{name}}“ angewendet",
+			"saved": "Vorlage „{{name}}“ gespeichert",
+			"deleted": "Vorlage „{{name}}“ gelöscht"
+		},
+		"errors": {
+			"nameRequired": "Gib einen Namen für die Vorlage ein.",
+			"duplicateName": "Eine Vorlage mit diesem Namen existiert bereits.",
+			"saveFailed": "Diese Vorlage konnte nicht gespeichert werden. Prüfe die Speichereinstellungen deines Browsers und versuche es erneut.",
+			"deleteFailed": "Diese Vorlage konnte nicht gelöscht werden. Prüfe die Speichereinstellungen deines Browsers und versuche es erneut."
+		}
+	}
 }

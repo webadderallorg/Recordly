@@ -1,5 +1,12 @@
 reviews:
   profile: assertive
+  # Review source changes; rebuilt binaries and generated output have separate checks.
+  path_filters:
+    - "!electron/native/bin/*/recordly-*"
+    - "!electron/native/bin/**/*.exe"
+    - "!services/recordly-share/worker/web/dist/**"
+    - "!services/browser-pages/assets.generated.mjs"
+    - "!**/package-lock.json"
   auto_review:
     enabled: true
     base_branches:

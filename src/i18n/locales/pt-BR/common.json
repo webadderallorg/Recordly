@@ -16,11 +16,71 @@
 		"save": "Salvar",
 		"undo": "Desfazer",
 		"delete": "Excluir",
-		"done": "Concluído"
+		"done": "Concluído",
+		"retry": "Tentar novamente",
+		"apply": "Aplicar"
 	},
 	"errors": {
 		"invalidFileType": "Tipo de arquivo inválido",
 		"failedToUploadImage": "Falha ao enviar imagem",
 		"fileReadError": "Ocorreu um erro ao ler o arquivo."
-	}
+	},
+	"clipboard": {
+		"copy": "Copiar",
+		"errorCopied": "Erro copiado",
+		"errorCopyFailed": "Não foi possível copiar o erro"
+	},
+	"feedback": {
+		"trigger": "Comentários",
+		"send": "Enviar comentários",
+		"thanks": "Obrigado pelos comentários",
+		"signInRequired": "Entre para enviar comentários.",
+		"openHome": "Abra a página inicial para entrar.",
+		"subject": "Assunto",
+		"subjectPlaceholder": "O que você gostaria de compartilhar?",
+		"description": "Descrição",
+		"descriptionPlaceholder": "Lemos todos os comentários...",
+		"attachFiles": "Anexar arquivos",
+		"removeFile": "Remover {{name}}",
+		"diagnostics": "Os registros de diagnóstico relevantes serão anexados.",
+		"sending": "Enviando…",
+		"errors": {
+			"unavailable": "O envio de comentários ficará disponível após a configuração dos serviços da conta.",
+			"signIn": "Entre novamente para enviar comentários.",
+			"invalid": "Confira seus comentários e tente novamente.",
+			"attachments": "Anexe até 5 arquivos não vazios, com tamanho total de até 10 MB.",
+			"limit": "Você atingiu o limite de comentários de hoje. Tente novamente amanhã.",
+			"tooManyFiles": "Anexe até 5 arquivos.",
+			"emptyFile": "Não é possível anexar arquivos vazios.",
+			"filesTooLarge": "Os anexos devem totalizar no máximo 10 MB.",
+			"sendFailed": "Não foi possível enviar os comentários. Tente novamente."
+		},
+		"missingMessage": "Conte-nos mais antes de enviar.",
+		"sentiment": "Como você se sente?",
+		"loving": "Adorando",
+		"neutral": "Neutro",
+		"angry": "Irritado"
+	},
+	"announcements": {
+		"openFailed": "Não foi possível abrir o link.",
+		"dismiss": "Dispensar",
+		"carousel": "Anúncios",
+		"previous": "Anúncio anterior",
+		"show": "Mostrar anúncio",
+		"next": "Próximo anúncio"
+	},
+	"updates": {
+		"download": "Baixar atualização",
+		"actionFailed": "Não foi possível atualizar. Tente novamente.",
+		"notification": "Atualização do aplicativo",
+		"backgroundProgress": "Baixando Recordly {{version}} em segundo plano · {{progress}}",
+		"ready": "Recordly {{version}} está pronto para instalar.",
+		"failed": "Não foi possível concluir a atualização. Você pode tentar novamente.",
+		"available": "Recordly {{version}} está disponível.",
+		"saveFirst": "Salve seu trabalho e reinicie quando estiver pronto.",
+		"later": "Mais tarde",
+		"downloadingButton": "Baixando · {{progress}}"
+	},
+	"width": "Largura",
+	"height": "Altura"
 }

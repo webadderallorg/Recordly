@@ -134,6 +134,8 @@ export interface CursorTelemetryPoint {
 	cx: number;
 	cy: number;
 	interactionType?: CursorInteractionType;
+	/** Button whose down/up transition this sample records. */
+	mouseButton?: 1 | 2 | 3;
 	cursorType?: CursorVisualType;
 }
 

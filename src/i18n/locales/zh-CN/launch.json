@@ -90,6 +90,7 @@
 		"previewBadge": "预览",
 		"notNow": "暂不",
 		"updateNow": "立即更新",
+		"updateAndRestart": "更新并重启",
 		"restartToUpdate": "重新启动以更新",
 		"tryAgain": "重试"
 	}

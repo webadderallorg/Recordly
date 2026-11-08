@@ -1,0 +1,86 @@
+.recordly-banner-preview {
+	display: block;
+	overflow: hidden;
+}
+
+.recordly-banner-stage {
+	position: relative;
+	display: block;
+	width: 100%;
+	height: 100%;
+	isolation: isolate;
+}
+
+.recordly-banner-still,
+.recordly-banner-stage video {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.recordly-banner-preview img,
+.recordly-banner-stage video {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	object-position: center;
+}
+
+.recordly-banner-preview .recordly-banner-dark {
+	display: none;
+}
+
+:root.dark .recordly-banner-preview .recordly-banner-light {
+	display: none;
+}
+
+:root.dark .recordly-banner-preview .recordly-banner-dark {
+	display: block;
+}
+
+.recordly-banner-still {
+	filter: saturate(1.04) contrast(1.025);
+}
+
+.recordly-banner-still::after {
+	position: absolute;
+	inset: 0;
+	content: "";
+	pointer-events: none;
+	background:
+		radial-gradient(ellipse at center, transparent 45%, #00000020 100%),
+		repeating-linear-gradient(0deg, #0000000b 0 1px, transparent 1px 3px),
+		repeating-linear-gradient(90deg, #ffffff08 0 1px, transparent 1px 3px);
+}
+
+.recordly-banner-stage video {
+	visibility: hidden;
+}
+
+.recordly-banner-preview[data-banner-phase="still"] .recordly-banner-still {
+	animation: recordly-banner-slow-zoom 2500ms linear both;
+}
+
+.recordly-banner-preview[data-banner-phase="video"] .recordly-banner-still {
+	visibility: hidden;
+}
+
+.recordly-banner-preview[data-banner-phase="video"] video {
+	visibility: visible;
+}
+
+@keyframes recordly-banner-slow-zoom {
+	from {
+		transform: scale(1);
+	}
+	to {
+		transform: scale(1.045);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.recordly-banner-preview[data-banner-phase="still"] .recordly-banner-still {
+		animation: none;
+	}
+}

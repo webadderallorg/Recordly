@@ -79,14 +79,65 @@ describe("connected sequence content", () => {
 			{ startMs: 0, endMs: 4000 },
 		]);
 	});
-	it("preserves an effect spanning clips whose order is reversed", () => {
+	it("preserves only the original footage when an effect's clips are reversed", () => {
 		const after = closeClipGaps([
 			{ ...clips[1], sourceStartMs: 2800, startMs: -3200, endMs: 0 },
 			clips[0],
 		]);
 		expect(
 			rippleRegions([{ id: "annotation", startMs: 2000, endMs: 4000 }], clips, after),
-		).toEqual([{ id: "annotation", startMs: 0, endMs: 6000 }]);
+		).toEqual([
+			{ id: "annotation", startMs: 0, endMs: 1200 },
+			{ id: "annotation-part-1", startMs: 5200, endMs: 6000 },
+		]);
+	});
+	it("keeps an inserted clip free of effects that spanned its new neighbors", () => {
+		const before = [
+			{ id: "a", startMs: 0, endMs: 1000, speed: 1 },
+			{ id: "b", startMs: 1000, endMs: 2000, speed: 1 },
+			{ id: "c", startMs: 2000, endMs: 3000, speed: 1 },
+		];
+		const after = reorderClipSequence(before, "c", 1);
+		const effect = { id: "zoom", startMs: 500, endMs: 1500, depth: 2 };
+		expect(rippleRegions([effect], before, after)).toEqual([
+			{ ...effect, endMs: 1000 },
+			{ ...effect, id: "zoom-part-1", startMs: 2000, endMs: 2500 },
+		]);
+		expect(effect).toEqual({ id: "zoom", startMs: 500, endMs: 1500, depth: 2 });
+	});
+	it("merges touching pieces after deleting footage instead of duplicating the effect", () => {
+		const before = [
+			{ id: "a", startMs: 0, endMs: 1000, speed: 1 },
+			{ id: "b", startMs: 1000, endMs: 2000, speed: 1 },
+			{ id: "c", startMs: 2000, endMs: 3000, speed: 1 },
+		];
+		expect(
+			rippleRegions(
+				[{ id: "annotation", startMs: 500, endMs: 2500, content: "Keep" }],
+				before,
+				closeClipGaps([before[0], before[2]]),
+			),
+		).toEqual([{ id: "annotation", startMs: 500, endMs: 1500, content: "Keep" }]);
+	});
+	it("allocates distinct fragment IDs even when a saved region already uses the suffix", () => {
+		const before = [
+			{ id: "a", startMs: 0, endMs: 1000, speed: 1 },
+			{ id: "b", startMs: 1000, endMs: 2000, speed: 1 },
+			{ id: "c", startMs: 2000, endMs: 3000, speed: 1 },
+		];
+		const after = reorderClipSequence(before, "c", 1);
+		const regions = [
+			{ id: "annotation", startMs: 500, endMs: 1500 },
+			{ id: "annotation-part-1", startMs: 2100, endMs: 2200 },
+		];
+		const result = rippleRegions(regions, before, after);
+		expect(result.map((region) => region.id)).toEqual([
+			"annotation",
+			"annotation-part-2",
+			"annotation-part-1",
+		]);
+		expect(new Set(result.map((region) => region.id)).size).toBe(result.length);
+		expect(rippleRegions(regions, before, after)).toEqual(result);
 	});
 	it("removes effects supported solely by deleted footage", () => {
 		expect(

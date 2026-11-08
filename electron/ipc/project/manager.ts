@@ -158,7 +158,10 @@ export async function resolveApprovedLocalMediaPath(candidatePath: string): Prom
 		return null;
 	}
 
-	await rememberApprovedLocalReadPath(candidatePath);
+	// Register only the literal and the target checked above. Resolving the alias
+	// again could approve a replacement symlink target that was never validated.
+	approvedLocalReadPaths.add(normalizePath(candidatePath));
+	approvedLocalReadPaths.add(normalizePath(realPath));
 	return realPath;
 }
 

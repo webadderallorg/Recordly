@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" fill="none">
+  <g filter="url(#filter0_d)">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M99.25 18C103.392 18 106.75 21.3579 106.75 25.5V89.75H171C175.142 89.75 178.5 93.1079 178.5 97.25C178.5 101.392 175.142 104.75 171 104.75H106.75V169C106.75 173.142 103.392 176.5 99.25 176.5C95.1079 176.5 91.75 173.142 91.75 169V104.75H27.5C23.3579 104.75 20 101.392 20 97.25C20 93.1079 23.3579 89.75 27.5 89.75H91.75V25.5C91.75 21.3579 95.1079 18 99.25 18Z" fill="#000000"/>
+    <path d="M110.75 25.5C110.75 19.1487 105.601 14 99.25 14C92.8987 14 87.75 19.1487 87.75 25.5V85.75H27.5C21.1487 85.75 16 90.8987 16 97.25C16 103.601 21.1487 108.75 27.5 108.75H87.75V169C87.75 175.351 92.8987 180.5 99.25 180.5C105.601 180.5 110.75 175.351 110.75 169V108.75H171C177.351 108.75 182.5 103.601 182.5 97.25C182.5 90.8987 177.351 85.75 171 85.75H110.75V25.5Z" stroke="#000000" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M99.25 18C103.392 18 106.75 21.3579 106.75 25.5V89.75H171C175.142 89.75 178.5 93.1079 178.5 97.25C178.5 101.392 175.142 104.75 171 104.75H106.75V169C106.75 173.142 103.392 176.5 99.25 176.5C95.1079 176.5 91.75 173.142 91.75 169V104.75H27.5C23.3579 104.75 20 101.392 20 97.25C20 93.1079 23.3579 89.75 27.5 89.75H91.75V25.5C91.75 21.3579 95.1079 18 99.25 18Z" fill="url(#bibata-bee)" stroke="#000000"/>
+  <defs>
+    <pattern id="bibata-bee" patternUnits="userSpaceOnUse" x="0" y="0" width="200" height="200">
+      <g>
+        <g transform="rotate(20 50 50) scale(2.4)">
+          <rect x="-20" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="-10" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="0" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="10" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="20" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="30" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="40" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="50" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="60" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="70" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="80" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="90" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="100" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="110" y="-10" width="10" height="120" fill="#000000"/>
+        </g>
+
+      </g>
+    </pattern>
+    <filter id="filter0_d" x="7" y="9" width="184.5" height="184.5" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"/>
+      <feOffset dy="4"/>
+      <feGaussianBlur stdDeviation="2.5"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.5 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow" result="shape"/>
+    </filter>
+  </defs>
+</svg>

@@ -19,9 +19,17 @@ describe("wallpapers", () => {
 	it("keeps the curated wallpaper list and default path aligned", () => {
 		expect(DEFAULT_WALLPAPER_PATH).toBe("/wallpapers/tahoe-light.jpg");
 		expect(DEFAULT_WALLPAPER_RELATIVE_PATH).toBe("wallpapers/tahoe-light.jpg");
-		expect(BUILT_IN_WALLPAPERS.at(0)?.publicPath).toBe(DEFAULT_WALLPAPER_PATH);
-		expect(BUILT_IN_WALLPAPERS.at(1)?.publicPath).toBe("/wallpapers/tahoe-dark.jpg");
-		expect(BUILT_IN_WALLPAPERS).toHaveLength(25);
+		expect(BUILT_IN_WALLPAPERS.at(0)?.publicPath).toBe(
+			"/wallpapers/golden-gate-day-no-vignette.png",
+		);
+		expect(BUILT_IN_WALLPAPERS.at(1)?.publicPath).toBe("/wallpapers/windows-11-bloom.jpg");
+		expect(BUILT_IN_WALLPAPERS.at(2)?.publicPath).toBe(DEFAULT_WALLPAPER_PATH);
+		expect(BUILT_IN_WALLPAPERS.at(3)?.publicPath).toBe("/wallpapers/tahoe-dark.jpg");
+		expect(BUILT_IN_WALLPAPERS.at(4)?.publicPath).toBe("/wallpapers/macos-hello-black.jpg");
+		expect(BUILT_IN_WALLPAPERS.some((wallpaper) => wallpaper.id === "iridescent-9")).toBe(
+			false,
+		);
+		expect(BUILT_IN_WALLPAPERS).toHaveLength(24);
 	});
 
 	it("preserves the curated order when asset discovery returns extra files", async () => {
@@ -32,23 +40,23 @@ describe("wallpapers", () => {
 					files: [
 						"wallpaper1.jpg",
 						"energy-17.jpg",
-						"midnight-8.jpg",
+						"macos-hello-black.jpg",
 						"wallpaper4.jpg",
 						"wispysky.mp4",
-						"cityscape.jpg",
-						"ipad-17-light.jpg",
+						"golden-gate-day-no-vignette.png",
+						"recordly-hero.png",
 					],
 				})),
 			},
 		});
 
 		await expect(getAvailableWallpapers()).resolves.toEqual([
-			BUILT_IN_WALLPAPERS[2],
+			BUILT_IN_WALLPAPERS[0],
 			BUILT_IN_WALLPAPERS[4],
-			BUILT_IN_WALLPAPERS[15],
+			BUILT_IN_WALLPAPERS[6],
 			BUILT_IN_WALLPAPERS[16],
+			BUILT_IN_WALLPAPERS[22],
 			BUILT_IN_WALLPAPERS[23],
-			BUILT_IN_WALLPAPERS[24],
 		]);
 	});
 

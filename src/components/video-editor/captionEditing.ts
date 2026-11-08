@@ -107,7 +107,18 @@ export function normalizeCaptionWordSpacing(words: CaptionCueWord[]): CaptionCue
 }
 
 function shouldPreserveCaptionWords(cue: CaptionCue) {
-	return Array.isArray(cue.words) && cue.words.length > 0;
+	return (
+		Array.isArray(cue.words) &&
+		cue.words.length > 0 &&
+		cue.words.every(
+			(word) =>
+				typeof word.text === "string" &&
+				word.text.trim().length > 0 &&
+				Number.isFinite(word.startMs) &&
+				Number.isFinite(word.endMs) &&
+				word.endMs > word.startMs,
+		)
+	);
 }
 
 export function updateCaptionCuesForEditedTarget(
@@ -116,7 +127,11 @@ export function updateCaptionCuesForEditedTarget(
 	text: string,
 ): CaptionCue[] {
 	const normalizedText = normalizeCaptionEditText(text);
-	if (!normalizedText || target.words.length === 0) {
+	if (
+		!normalizedText ||
+		target.words.length === 0 ||
+		normalizedText === normalizeCaptionEditText(target.text)
+	) {
 		return cues;
 	}
 
@@ -141,7 +156,10 @@ export function updateCaptionCuesForEditedTarget(
 		})
 		.filter((segment) => Number.isFinite(segment.startMs) && Number.isFinite(segment.endMs));
 	const editedWordsByCue = new Map<string, CaptionCueWord[]>();
-	const tokenCountsByCue = distributeEditedTokensAcrossCueSegments(tokens.length, cueSegments);
+	const tokenCountsByCue =
+		tokens.length === target.words.length
+			? new Map([...targetWordsByCue].map(([id, words]) => [id, words.length]))
+			: distributeEditedTokensAcrossCueSegments(tokens.length, cueSegments);
 	let tokenCursor = 0;
 
 	for (const segment of cueSegments) {
@@ -152,9 +170,21 @@ export function updateCaptionCuesForEditedTarget(
 
 		const segmentTokens = tokens.slice(tokenCursor, tokenCursor + tokenCount);
 		tokenCursor += tokenCount;
+		const originalWords = targetWordsByCue.get(segment.cue.id) ?? [];
 		editedWordsByCue.set(
 			segment.cue.id,
-			buildCaptionWordsForEditedText(segmentTokens.join(" "), segment.startMs, segment.endMs),
+			segmentTokens.length === originalWords.length
+				? originalWords.map((word, index) => ({
+						text: segmentTokens[index],
+						startMs: word.startMs,
+						endMs: word.endMs,
+						...(word.leadingSpace ? { leadingSpace: true } : {}),
+					}))
+				: buildCaptionWordsForEditedText(
+						segmentTokens.join(" "),
+						segment.startMs,
+						segment.endMs,
+					),
 		);
 	}
 
@@ -171,7 +201,11 @@ export function updateCaptionCuesForEditedTarget(
 			...keptWords,
 			...(editedWordsByCue.get(cue.id) ?? []),
 		]);
-		const shouldKeepWords = shouldPreserveCaptionWords(cue);
+		// A changed word count has no reliable alignment. Use synthetic ranges only
+		// to reconstruct the edited text, never to drive current-word highlighting.
+		const shouldKeepWords =
+			shouldPreserveCaptionWords(cue) &&
+			(editedWordsByCue.get(cue.id)?.length ?? 0) === targetWords.length;
 
 		return {
 			id: cue.id,

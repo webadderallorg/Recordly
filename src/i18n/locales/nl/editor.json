@@ -1,4 +1,22 @@
 {
+	"aspectRatio": {
+		"native": "Origineel",
+		"widescreen": "Breedbeeld",
+		"vertical": "Verticaal",
+		"square": "Vierkant",
+		"squareUse": "Instagram · Socialmediaberichten",
+		"portrait": "Portret",
+		"portraitUse": "Instagram · Feedberichten",
+		"classic": "Klassiek",
+		"desktop": "Desktop",
+		"tall": "Langwerpig",
+		"title": "Beeldverhouding",
+		"original": "Originele verhoudingen behouden",
+		"social": "Voorinstellingen voor sociale media",
+		"more": "Meer verhoudingen",
+		"presets": "Voorinstellingen",
+		"standard": "Standaard"
+	},
 	"cloud": {
 		"signInRequired": "Meld je aan bij Recordly voordat je een deellink maakt.",
 		"prepareFailed": "De huidige montage kon niet worden voorbereid om te delen.",
@@ -17,8 +35,8 @@
 		"publish": "Publiceren en link maken",
 		"createLinkTitle": "Een deellink maken",
 		"notesPlaceholder": "Voeg context, instructies of een korte samenvatting voor kijkers toe…",
-		"description": "Publiceer de huidige montage op een Recordly-pagina om te bekijken en feedback te geven. Downloaden is niet nodig. Video’s worden voorbereid tot 1080p.",
-		"uploading": "Uploaden… {progress}%",
+		"description": "Publiceer de huidige montage op een Recordly-pagina om te bekijken en feedback te geven. Downloaden is niet nodig.",
+		"uploading": "Uploaden · {{progress}}%",
 		"googleUnavailable": "Aanmelden met Google is nog niet ingeschakeld. Gebruik e-mail of vraag je Recordly-beheerder om Google te koppelen.",
 		"xUnavailable": "Aanmelden met X is nog niet ingeschakeld. Gebruik e-mail of vraag je Recordly-beheerder om X te koppelen.",
 		"providerUnavailable": "Deze aanmeldmethode is nog niet ingeschakeld. Gebruik voorlopig e-mail.",
@@ -40,7 +58,24 @@
 		"createShareLink": "Deellink maken",
 		"done": "Gereed",
 		"addingVideo": "Video toevoegen…",
-		"preparingFootage": "Video en audio voorbereiden voor je tijdlijn."
+		"preparingFootage": "Video en audio voorbereiden voor je tijdlijn.",
+		"copyLink": "Link kopiëren",
+		"shareLink": "Deellink",
+		"saveLinkFailed": "Het gedeelde item is aangemaakt, maar de link kon niet lokaal worden opgeslagen",
+		"verifyPlanFailed": "Kan je cloudabonnement niet verifiëren.",
+		"refreshPlan": "Abonnement vernieuwen",
+		"share": "Delen",
+		"signInToShare": "Aanmelden om te delen",
+		"sharingUnavailable": "Delen via de cloud is nog niet beschikbaar in deze versie.",
+		"recordingLimit": "Je hebt 5 cloudopnamen. Verwijder er een uit Gedeeld voordat je er nog een deelt.",
+		"checkStorageFailed": "Kan de cloudopslag niet controleren. Probeer het opnieuw.",
+		"storageFull": "Je cloudopslag is vol. Verwijder een opname uit Gedeeld voordat je er nog een deelt.",
+		"videoPreview": "Voorbeeld van gepubliceerde video",
+		"previewUnavailable": "Voorbeeld niet beschikbaar. Je deellink staat hieronder.",
+		"playPreview": "Videovoorbeeld afspelen",
+		"title": "Titel",
+		"checkSignIn": "Aanmelding controleren",
+		"sessionRejected": "Je cloudsessie kon niet worden gecontroleerd. Meld je opnieuw aan om te delen."
 	},
 	"library": {
 		"videos": "Video’s"
@@ -51,7 +86,8 @@
 		"skipBack": "Terug springen",
 		"skipForward": "Vooruit springen",
 		"muteUnmute": "Dempen/dempen opheffen",
-		"volume": "Voorbeeldvolume"
+		"volume": "Voorbeeldvolume",
+		"seek": "Afspeelpositie"
 	},
 	"annotations": {
 		"settings": "Annotatie-instellingen",
@@ -61,7 +97,6 @@
 		"arrow": "Pijl",
 		"blur": "Vervagen",
 		"textContent": "Tekstinhoud",
-
 		"textPlaceholder": "Voer je tekst in...",
 		"fontStyle": "Lettertype",
 		"selectStyle": "Selecteer stijl",
@@ -90,15 +125,19 @@
 		"imageUploadError": "Upload een JPG-, PNG-, GIF- of WebP-afbeelding.",
 		"blurStrength": "Vervagingssterkte: {{strength}}",
 		"solidColor": "Effen Kleur (Censuur)",
-		"borderRadius": "Hoekradius"
+		"borderRadius": "Hoekradius",
+		"imageUploadErrorDescription": "Kies een JPG-, PNG-, GIF- of WebP-afbeelding.",
+		"imageUploadFailed": "Afbeelding kon niet worden geladen",
+		"imageUploadFailedDescription": "Deze afbeelding kon niet worden gelezen. Kies een ander bestand of probeer opnieuw.",
+		"arrowDirectionOption": "Pijlrichting: {{direction}}",
+		"customColor": "Aangepaste kleur"
 	},
-
 	"fontStyles": {
 		"classic": "Klassiek",
-		"editor": "Editor",
+		"editor": "Redacteur",
 		"strong": "Sterk",
 		"typewriter": "Typemachine",
-		"deco": "Deco",
+		"deco": "Decoratief",
 		"simple": "Simpel",
 		"modern": "Modern",
 		"clean": "Schoon"
@@ -107,7 +146,8 @@
 		"mp4Video": "MP4-video",
 		"mp4Description": "Videobestand van hoge kwaliteit",
 		"gifAnimation": "GIF-animatie",
-		"gifDescription": "Geanimeerde afbeelding om te delen"
+		"gifDescription": "Geanimeerde afbeelding om te delen",
+		"title": "Exportformaat"
 	},
 	"gifOptions": {
 		"frameRate": "Framesnelheid",
@@ -163,14 +203,23 @@
 		"unsavedChangesTitle": "Niet-opgeslagen wijzigingen",
 		"unsavedChangesDescription": "Wil je het huidige project opslaan voordat je {{action}}?",
 		"discardChanges": "Wijzigingen negeren",
-		"saveProject": "Project opslaan"
+		"saveProject": "Project opslaan",
+		"saveTitle": "Project opslaan",
+		"saveDescription": "Geef dit project een naam. Het wordt opgeslagen in je Recordly-projectenmap.",
+		"saveNameLabel": "Projectnaam",
+		"saving": "Opslaan…",
+		"renameInput": "Projectnaam",
+		"renameTitle": "Project hernoemen"
 	},
 	"exportTips": {
-		"autoZooms": "Tip: Schakel automatisch toegepaste zooms uit in de instellingen",
+		"autoZooms": "Tip: Pas automatische zooms toe vanuit de Zoom-laag",
 		"experimentalBuilds": "Tip: Schakel toegang tot experimentele builds in via de instellingen",
 		"cursorAppearance": "Tip: Je kunt het uiterlijk van je cursor aanpassen"
 	},
-	"account": { "title": "Account", "comingSoon": "Account binnenkort beschikbaar" },
+	"account": {
+		"title": "Account",
+		"comingSoon": "Account binnenkort beschikbaar"
+	},
 	"nativeCaptureUnavailable": {
 		"title": "Er is niets kapot, maar we kunnen geen geanimeerde cursor-overlay renderen.",
 		"description": "Je apparaat ondersteunt geen native capture. Dit kan verschillende oorzaken hebben die we nog niet hebben achterhaald. Recordly blijft werken, maar cursor smoothing is dan niet mogelijk.",
@@ -183,7 +232,14 @@
 		"completePercent": "{{percent}}% voltooid",
 		"issue": "Exportprobleem",
 		"complete": "Export voltooid",
-		"savedSuccessfully": "Je bestand is succesvol opgeslagen."
+		"savedSuccessfully": "Je bestand is succesvol opgeslagen.",
+		"renderSpeed": "Rendersnelheid: {{fps}} FPS",
+		"optimizingGif": "GIF optimaliseren…",
+		"savingGif": "GIF opslaan…",
+		"encodingGif": "GIF afronden…",
+		"errorCopied": "Fout gekopieerd",
+		"errorCopyFailed": "Kopiëren mislukt. Selecteer de fouttekst en kopieer deze handmatig.",
+		"copyError": "Fout kopiëren"
 	},
 	"export": {
 		"processingAudioEdits": "Audio verwerken met snelheids-/overlay-bewerkingen"
@@ -194,7 +250,34 @@
 	},
 	"timeline": {
 		"expand": "Tijdlijn uitvouwen",
-		"collapse": "Tijdlijn samenvouwen"
+		"collapse": "Tijdlijn samenvouwen",
+		"unsupportedSpeed": "Deze snelheid wordt op dit apparaat niet ondersteund voor het voorbeeld."
 	},
-	"openRecordingsFolder": "Opnamemap openen"
+	"openRecordingsFolder": "Opnamemap openen",
+	"theme": {
+		"appearance": "Weergave",
+		"light": "Licht",
+		"dark": "Donker",
+		"system": "Systeem"
+	},
+	"presets": {
+		"open": "Voorinstellingen openen",
+		"label": "Voorinstellingen",
+		"saveCurrentAs": "Huidige voorinstelling opslaan als",
+		"namePlaceholder": "Naam van voorinstelling",
+		"savedList": "Opgeslagen voorinstellingen",
+		"empty": "Nog geen voorinstellingen.",
+		"deleteAriaLabel": "Voorinstelling {{name}} verwijderen",
+		"toasts": {
+			"applied": "Voorinstelling ‘{{name}}’ toegepast",
+			"saved": "Voorinstelling ‘{{name}}’ opgeslagen",
+			"deleted": "Voorinstelling ‘{{name}}’ verwijderd"
+		},
+		"errors": {
+			"nameRequired": "Voer een naam voor de voorinstelling in.",
+			"duplicateName": "Er bestaat al een voorinstelling met die naam.",
+			"saveFailed": "Deze voorinstelling kon niet worden opgeslagen. Controleer de opslaginstellingen van je browser en probeer opnieuw.",
+			"deleteFailed": "Deze voorinstelling kon niet worden verwijderd. Controleer de opslaginstellingen van je browser en probeer opnieuw."
+		}
+	}
 }

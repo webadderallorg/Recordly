@@ -1,7 +1,7 @@
 {
 	"app": {
 		"name": "Recordly",
-		"editorTitle": "Recordly Editor",
+		"editorTitle": "Éditeur Recordly",
 		"subtitle": "Enregistrement et édition d’écran",
 		"language": "Langue",
 		"manageRecordings": "Ouvrir le dossier des enregistrements"
@@ -16,11 +16,71 @@
 		"save": "Enregistrer",
 		"undo": "Annuler",
 		"delete": "Supprimer",
-		"done": "Terminé"
+		"done": "Terminé",
+		"retry": "Réessayer",
+		"apply": "Appliquer"
 	},
 	"errors": {
 		"invalidFileType": "Type de fichier invalide",
 		"failedToUploadImage": "Échec du téléchargement de l’image",
 		"fileReadError": "Une erreur s’est produite lors de la lecture du fichier."
-	}
+	},
+	"clipboard": {
+		"copy": "Copier",
+		"errorCopied": "Erreur copiée",
+		"errorCopyFailed": "Impossible de copier l’erreur"
+	},
+	"feedback": {
+		"trigger": "Commentaires",
+		"send": "Envoyer des commentaires",
+		"thanks": "Merci pour vos commentaires",
+		"signInRequired": "Connectez-vous pour envoyer des commentaires.",
+		"openHome": "Ouvrez l’accueil pour vous connecter.",
+		"subject": "Objet",
+		"subjectPlaceholder": "Que souhaitez-vous nous dire ?",
+		"description": "Description",
+		"descriptionPlaceholder": "Nous lisons tous les commentaires...",
+		"attachFiles": "Joindre des fichiers",
+		"removeFile": "Retirer {{name}}",
+		"diagnostics": "Les journaux de diagnostic pertinents seront joints.",
+		"sending": "Envoi…",
+		"errors": {
+			"unavailable": "Les commentaires seront disponibles une fois les services de compte configurés.",
+			"signIn": "Reconnectez-vous pour envoyer des commentaires.",
+			"invalid": "Vérifiez vos commentaires, puis réessayez.",
+			"attachments": "Joignez jusqu’à 5 fichiers non vides, pour un total maximal de 10 Mo.",
+			"limit": "Vous avez atteint la limite de commentaires pour aujourd’hui. Réessayez demain.",
+			"tooManyFiles": "Joignez jusqu’à 5 fichiers.",
+			"emptyFile": "Les fichiers vides ne peuvent pas être joints.",
+			"filesTooLarge": "La taille totale des pièces jointes ne doit pas dépasser 10 Mo.",
+			"sendFailed": "Impossible d’envoyer les commentaires. Réessayez."
+		},
+		"missingMessage": "Dites-nous-en plus avant d’envoyer.",
+		"sentiment": "Que ressentez-vous ?",
+		"loving": "J’adore",
+		"neutral": "Neutre",
+		"angry": "En colère"
+	},
+	"announcements": {
+		"openFailed": "Impossible d’ouvrir le lien.",
+		"dismiss": "Ignorer",
+		"carousel": "Annonces",
+		"previous": "Annonce précédente",
+		"show": "Afficher l’annonce",
+		"next": "Annonce suivante"
+	},
+	"updates": {
+		"download": "Télécharger la mise à jour",
+		"actionFailed": "Impossible d’effectuer la mise à jour. Réessayez.",
+		"notification": "Mise à jour de l’application",
+		"backgroundProgress": "Téléchargement de Recordly {{version}} en arrière-plan · {{progress}}",
+		"ready": "Recordly {{version}} est prêt à être installé.",
+		"failed": "La mise à jour n’a pas pu aboutir. Vous pouvez réessayer.",
+		"available": "Recordly {{version}} est disponible.",
+		"saveFirst": "Enregistrez votre travail, puis redémarrez quand vous le souhaitez.",
+		"later": "Plus tard",
+		"downloadingButton": "Téléchargement · {{progress}}"
+	},
+	"width": "Largeur",
+	"height": "Hauteur"
 }
