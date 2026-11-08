@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
+import type { Server } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("media server path policy", () => {
+	let server: Server | undefined;
 	let tempRoot: string;
 	let appDataPath: string;
 	let userDataPath: string;
@@ -40,6 +42,12 @@ describe("media server path policy", () => {
 	});
 
 	afterEach(async () => {
+		if (server) {
+			server.closeAllConnections();
+			await new Promise<void>((resolve) => server!.close(() => resolve()));
+			server = undefined;
+		}
+		vi.unstubAllEnvs();
 		vi.resetModules();
 		vi.doUnmock("electron");
 		if (tempRoot) {
@@ -61,6 +69,52 @@ describe("media server path policy", () => {
 		await rememberApprovedLocalReadPath(videoPath);
 
 		expect(isAllowedMediaPath(videoPath)).toBe(true);
+	});
+
+	it("requires a per-file capability and trusted origin while preserving range playback", async () => {
+		vi.stubEnv("VITE_DEV_SERVER_URL", "http://localhost:5173/");
+		const first = path.join(tempRoot, "recording.mp4");
+		const second = path.join(tempRoot, "second.mp4");
+		await Promise.all([fs.writeFile(first, "test-video"), fs.writeFile(second, "other-video")]);
+		const { approvedLocalReadPaths } = await import("./ipc/state");
+		approvedLocalReadPaths.add(await fs.realpath(first));
+		approvedLocalReadPaths.add(await fs.realpath(second));
+		const { createMediaServer, buildMediaUrl } = await import("./mediaServer");
+		server = createMediaServer();
+		await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+		const address = server.address();
+		if (!address || typeof address === "string") throw new Error("Missing TCP address");
+		const mediaUrl = buildMediaUrl(`http://127.0.0.1:${address.port}`, first);
+		const noToken = new URL(mediaUrl);
+		noToken.searchParams.delete("token");
+		expect((await fetch(noToken)).status).toBe(403);
+		const tampered = new URL(mediaUrl);
+		tampered.searchParams.set("path", second);
+		expect((await fetch(tampered)).status).toBe(403);
+		expect(
+			(await fetch(mediaUrl, { headers: { Origin: "https://attacker.example" } })).status,
+		).toBe(403);
+		expect((await fetch(mediaUrl, { method: "POST" })).status).toBe(405);
+		const range = await fetch(mediaUrl, {
+			headers: { Origin: "http://localhost:5173", Range: "bytes=0-3" },
+		});
+		expect(range.status).toBe(206);
+		expect(range.headers.get("access-control-allow-origin")).toBe("http://localhost:5173");
+		expect(range.headers.get("content-range")).toBe("bytes 0-3/10");
+		expect(await range.text()).toBe("test");
+		const fallback = await fetch(mediaUrl, { headers: { Origin: "null" } });
+		expect(fallback.status).toBe(200);
+		expect(fallback.headers.get("access-control-allow-origin")).toBe("null");
+		expect((await fetch(noToken, { headers: { Origin: "null" } })).status).toBe(403);
+		const head = await fetch(mediaUrl, { method: "HEAD" });
+		expect(head.status).toBe(200);
+		expect(head.headers.get("content-length")).toBe("10");
+		expect(await head.text()).toBe("");
+		const preflight = await fetch(mediaUrl, {
+			method: "OPTIONS",
+			headers: { Origin: "http://localhost:5173" },
+		});
+		expect(preflight.status).toBe(204);
 	});
 
 	it("rejects missing media files outside the allowed directories", async () => {

@@ -1,5 +1,5 @@
 /* biome-ignore-all lint/correctness/useExhaustiveDependencies: editor state setters are stable and initial source loading intentionally runs once per launch configuration. */
-import { type MutableRefObject, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { fromFileUrl, resolveVideoUrl } from "../projectPersistence";
 import type { getDevOpenRecordingConfig, getSmokeExportConfig } from "../smokeExportConfig";
 import type { useAppearanceState } from "../state/useAppearanceState";
@@ -19,7 +19,6 @@ type Input = {
 	smokeConfig: ReturnType<typeof getSmokeExportConfig>;
 	devConfig: ReturnType<typeof getDevOpenRecordingConfig>;
 	videoSourcePath: string | null;
-	pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
 	applyLoadedProject: (candidate: unknown, path?: string | null) => Promise<boolean>;
 	resetSourceScopedEditorState: () => void;
 	applySessionPresentation: (session: SessionPresentation | null | undefined) => void;
@@ -32,7 +31,6 @@ export function useInitialEditorSource({
 	smokeConfig,
 	devConfig,
 	videoSourcePath,
-	pendingFreshRecordingAutoZoomPathRef,
 	applyLoadedProject,
 	resetSourceScopedEditorState,
 	applySessionPresentation,
@@ -49,6 +47,8 @@ export function useInitialEditorSource({
 
 		async function loadInitialData() {
 			try {
+				const recording = await window.electronAPI.waitForRecordingEditor?.();
+				if (recording?.error) throw new Error(recording.error);
 				if (smokeConfig.enabled && smokeConfig.projectPath) {
 					const result = await window.electronAPI.openProjectFileAtPath(
 						smokeConfig.projectPath,
@@ -94,8 +94,6 @@ export function useInitialEditorSource({
 					project.setCurrentProjectPath(null);
 					project.setLastSavedSnapshot(null);
 					resetSourceScopedEditorState();
-					pendingFreshRecordingAutoZoomPathRef.current =
-						appearance.autoApplyFreshRecordingAutoZooms ? sourceUrl : null;
 					appearance.setWebcam((previous) => ({
 						...previous,
 						visibleRanges: undefined,
@@ -131,7 +129,6 @@ export function useInitialEditorSource({
 					project.setCurrentProjectPath(null);
 					project.setLastSavedSnapshot(null);
 					resetSourceScopedEditorState();
-					pendingFreshRecordingAutoZoomPathRef.current = null;
 					appearance.setWebcam((previous) => ({
 						...previous,
 						visibleRanges: undefined,
@@ -156,6 +153,19 @@ export function useInitialEditorSource({
 					return;
 				}
 
+				if (
+					!currentProject.success &&
+					currentProject.path &&
+					currentProject.missingRecordingPath
+				) {
+					project.setCurrentProjectPath(currentProject.path);
+					project.setError(
+						currentProject.error ||
+							currentProject.message ||
+							"Project video file not found",
+					);
+					return;
+				}
 				const sessionResult = await window.electronAPI.getCurrentRecordingSession?.();
 				if (sessionResult?.success && sessionResult.session?.videoPath) {
 					const sourcePath = fromFileUrl(sessionResult.session.videoPath);
@@ -165,8 +175,6 @@ export function useInitialEditorSource({
 					project.setCurrentProjectPath(null);
 					project.setLastSavedSnapshot(null);
 					resetSourceScopedEditorState();
-					pendingFreshRecordingAutoZoomPathRef.current =
-						appearance.autoApplyFreshRecordingAutoZooms ? sourceUrl : null;
 					applySessionPresentation(sessionResult.session);
 					appearance.setWebcam((previous) => ({
 						...previous,
@@ -191,7 +199,6 @@ export function useInitialEditorSource({
 				project.setCurrentProjectPath(null);
 				project.setLastSavedSnapshot(null);
 				resetSourceScopedEditorState();
-				pendingFreshRecordingAutoZoomPathRef.current = null;
 				applySessionPresentation(null);
 				appearance.setWebcam((previous) => ({
 					...previous,
@@ -247,10 +254,4 @@ export function useInitialEditorSource({
 			cancelled = true;
 		};
 	}, [appearance.webcam.sourcePath, appearance.setResolvedWebcamVideoUrl]);
-
-	useEffect(() => {
-		if (!appearance.autoApplyFreshRecordingAutoZooms) {
-			pendingFreshRecordingAutoZoomPathRef.current = null;
-		}
-	}, [appearance.autoApplyFreshRecordingAutoZooms, pendingFreshRecordingAutoZoomPathRef]);
 }

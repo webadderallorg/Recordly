@@ -83,6 +83,18 @@ describe("editorPreferences", () => {
 		Reflect.deleteProperty(globalThis, "electronAPI");
 	});
 
+	it("drops the retired automatic zoom preference from stored settings", () => {
+		vi.stubGlobal(
+			"localStorage",
+			createStorageMock({
+				[EDITOR_PREFERENCES_STORAGE_KEY]: JSON.stringify({
+					autoApplyFreshRecordingAutoZooms: true,
+				}),
+			}),
+		);
+		expect(loadEditorPreferences()).not.toHaveProperty("autoApplyFreshRecordingAutoZooms");
+	});
+
 	it("normalizes invalid values back to safe defaults", () => {
 		expect(
 			normalizeEditorPreferences({
@@ -106,8 +118,66 @@ describe("editorPreferences", () => {
 		});
 	});
 
-	it("defaults MP4 exports to source quality", () => {
-		expect(DEFAULT_EDITOR_PREFERENCES.exportQuality).toBe("source");
+	it("saves webcam controls independently and retains a zero shadow after reload", () => {
+		vi.stubGlobal("localStorage", createStorageMock());
+		stubElectronSettings();
+		saveEditorPreferences({ webcam: { shadow: 0.2, width: 55, roundness: 69 } });
+		saveEditorPreferences({ webcam: { width: 60 } });
+		expect(loadEditorPreferences().webcam).toMatchObject({
+			shadow: 0.2,
+			width: 60,
+			roundness: 69,
+		});
+		saveEditorPreferences({ webcam: { shadow: 0 } });
+		saveEditorPreferences({ shadowIntensity: 0.67 });
+		expect(loadEditorPreferences().webcam.shadow).toBe(0);
+	});
+
+	it("defaults MP4 exports to FHD with advanced settings collapsed", () => {
+		expect(DEFAULT_EDITOR_PREFERENCES.exportQuality).toBe("medium");
+		expect(DEFAULT_EDITOR_PREFERENCES.advancedExportSettings).toBe(false);
+		expect(DEFAULT_EDITOR_PREFERENCES.exportEncodingMode).toBe("balanced");
+	});
+
+	it("defaults fresh editor preferences to a 50% shadow", () => {
+		vi.stubGlobal("localStorage", createStorageMock());
+		stubElectronSettings();
+		expect(DEFAULT_EDITOR_PREFERENCES.shadowIntensity).toBe(0.5);
+		expect(loadEditorPreferences().shadowIntensity).toBe(0.5);
+	});
+
+	it("keeps encoding mode when Advanced collapses and reopens after a restart", () => {
+		vi.stubGlobal("localStorage", createStorageMock());
+		saveEditorPreferences({
+			advancedExportSettings: true,
+			exportQuality: "medium",
+			exportEncodingMode: "quality",
+		});
+		saveEditorPreferences({ advancedExportSettings: false });
+		expect(loadEditorPreferences()).toMatchObject({
+			advancedExportSettings: false,
+			exportQuality: "medium",
+			exportEncodingMode: "quality",
+		});
+	});
+
+	it("restores valid advanced custom resolution preferences and rejects invalid sizes", () => {
+		expect(
+			normalizeEditorPreferences({
+				exportQuality: "custom",
+				advancedExportSettings: true,
+				customExportResolution: { width: 2400, height: 1350 },
+			}),
+		).toMatchObject({
+			exportQuality: "custom",
+			advancedExportSettings: true,
+			customExportResolution: { width: 2400, height: 1350 },
+		});
+		expect(
+			normalizeEditorPreferences({ customExportResolution: { width: 8193, height: 1080 } })
+				.customExportResolution,
+		).toEqual({ width: 1920, height: 1080 });
+		expect(normalizeEditorPreferences({ exportQuality: "hd" }).exportQuality).toBe("hd");
 	});
 
 	it("defaults cursor preferences to Tahoe at 2.5x with gentler sway", () => {
@@ -308,7 +378,6 @@ describe("editorPreferences", () => {
 			customAspectWidth: "4",
 			customAspectHeight: "5",
 			customWallpapers: ["data:image/jpeg;base64,abc", "data:image/jpeg;base64,abc"],
-			autoApplyFreshRecordingAutoZooms: false,
 		});
 
 		expect(loadEditorPreferences()).toMatchObject({
@@ -338,7 +407,6 @@ describe("editorPreferences", () => {
 			customAspectWidth: "4",
 			customAspectHeight: "5",
 			customWallpapers: ["data:image/jpeg;base64,abc"],
-			autoApplyFreshRecordingAutoZooms: false,
 		});
 	});
 
@@ -533,6 +601,8 @@ describe("user preferences stay independent from projects and presets", () => {
 	it("defaults Publish to Link and persists Local and export settings across reloads", () => {
 		vi.stubGlobal("localStorage", createStorageMock());
 		expect(loadEditorPreferences().publishDestination).toBe("link");
+		expect(loadEditorPreferences().mp4FrameRate).toBe(30);
+		expect(normalizeEditorPreferences({ mp4FrameRate: 25 as never }).mp4FrameRate).toBe(30);
 		saveEditorPreferences({
 			publishDestination: "local",
 			exportQuality: "high",
@@ -578,5 +648,17 @@ describe("user preferences stay independent from projects and presets", () => {
 			"whisperModelPath",
 		])
 			expect(loaded).not.toHaveProperty(key);
+	});
+});
+
+describe("camera shape preferences", () => {
+	it("adopts circle for new recordings and retains explicit shape choices", () => {
+		expect(normalizeEditorPreferences({}).webcam.shape).toBe("circle");
+		expect(
+			normalizeEditorPreferences({ webcam: { size: 60, roundness: 69 } as never }).webcam,
+		).toMatchObject({ shape: "circle", width: 60, height: 60, roundness: 69 });
+		expect(
+			normalizeEditorPreferences({ webcam: { shape: "squircle" } as never }).webcam.shape,
+		).toBe("squircle");
 	});
 });

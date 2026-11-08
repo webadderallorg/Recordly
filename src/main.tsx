@@ -1,4 +1,6 @@
+import { AppErrorBoundary } from "./components/feedback/AppErrorBoundary";
 import { installFeedbackDiagnostics } from "./lib/feedback/diagnostics";
+import { installPointerFocusGuard } from "./lib/pointerFocus";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.tsx";
@@ -7,6 +9,8 @@ import { ThemeProvider } from "./contexts/ThemeContext.tsx";
 import "./index.css";
 
 installFeedbackDiagnostics();
+const removePointerFocusGuard = installPointerFocusGuard();
+import.meta.hot?.dispose(removePointerFocusGuard);
 
 document.documentElement.dataset.platform = /mac/i.test(navigator.platform) ? "macos" : "other";
 
@@ -20,7 +24,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 	<React.StrictMode>
 		<ThemeProvider>
 			<I18nProvider>
-				<App />
+				<AppErrorBoundary>
+					<App />
+				</AppErrorBoundary>
 			</I18nProvider>
 		</ThemeProvider>
 	</React.StrictMode>,

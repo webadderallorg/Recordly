@@ -16,6 +16,29 @@ export function gifEstimateTelemetryKey(value: object | undefined): number {
 	return id;
 }
 
+/** Compare the bounded config fields before walking large immutable render inputs. */
+export function createGifEstimateKeyMemo() {
+	let previous: Record<string, unknown> | null = null;
+	let previousKey = "";
+	return (input: Record<string, unknown>): string => {
+		const keys = Object.keys(input);
+		const snapshot = previous;
+		const previousKeys = snapshot ? Object.keys(snapshot) : [];
+		if (
+			snapshot &&
+			keys.length === previousKeys.length &&
+			keys.every(
+				(key, index) => key === previousKeys[index] && Object.is(snapshot[key], input[key]),
+			)
+		)
+			return previousKey;
+		const key = JSON.stringify(input);
+		previous = input;
+		previousKey = key;
+		return key;
+	};
+}
+
 export function getCachedGifSizeEstimate(key: string): GifSizeEstimate | undefined {
 	const entry = cache.get(key);
 	if (!entry) return;

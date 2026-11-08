@@ -93,6 +93,7 @@ describe("timeline model", () => {
 	});
 
 	it("builds all variant labels for annotation and audio", () => {
+		expect(getAnnotationLabel({ ...BASE_ANNOTATION, type: "blur", content: "" })).toBe("Mask");
 		expect(getAnnotationLabel({ ...BASE_ANNOTATION, type: "text", content: "   " })).toBe(
 			"Empty text",
 		);

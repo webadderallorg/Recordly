@@ -7,6 +7,7 @@ export function useProjectState() {
 	const [videoSourcePath, setVideoSourcePath] = useState<string | null>(null);
 	const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null);
 	const [projectLibraryLoading, setProjectLibraryLoading] = useState(true);
+	const [projectLibraryError, setProjectLibraryError] = useState<string | null>(null);
 	const [projectLibraryEntries, setProjectLibraryEntries] = useState<ProjectLibraryEntry[]>([]);
 	const [projectBrowserOpen, setProjectBrowserOpen] = useState(false);
 	const [isEditingProjectName, setIsEditingProjectName] = useState(false);
@@ -31,6 +32,8 @@ export function useProjectState() {
 		setCurrentProjectPath,
 		projectLibraryLoading,
 		setProjectLibraryLoading,
+		projectLibraryError,
+		setProjectLibraryError,
 		projectLibraryEntries,
 		setProjectLibraryEntries,
 		projectBrowserOpen,

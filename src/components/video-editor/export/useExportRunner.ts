@@ -1,26 +1,27 @@
 import { useCallback, useRef } from "react";
+import { useOptionalBilling } from "@/components/billing/BillingProvider";
 import { toast } from "@/components/ui/toast";
-import { getMp4ExportBitrate } from "@/lib/exporter/exportBitrate";
-import { DEFAULT_MP4_CODEC } from "@/lib/exporter/mp4Support";
+import { translate } from "@/i18n/runtime";
 import type { ExportSettings } from "@/lib/exporter/types";
-import { calculateMp4ExportDimensions, capMp4ShareDimensions } from "../exportDimensions";
-import { resolveMp4ExportRouting } from "../mp4ExportRouting";
-import { resolveMp4ExportSettings } from "../mp4ExportSettings";
+import { createExportDiagnostics } from "@/lib/feedback/exportDiagnostics";
 import { createSmokeExportProgressSampler } from "../smokeExportProgress";
-import { buildExportRenderOptions } from "./buildExportRenderOptions";
-import {
-	type PendingExportSave,
-	saveExportBlob,
-	streamExportBlobToTempFile,
-	writeSmokeExportReport,
-} from "./exportPersistence";
+import type { ExportBranchContext } from "./exportBranchContext";
+import { type PendingExportSave, writeSmokeExportReport } from "./exportPersistence";
 import {
 	type ExportRunnerInput,
 	showExportErrorToast,
 	useExportSuccessToast,
 } from "./exportRunnerSupport";
+import { stopGifSizeEstimates } from "./gifEstimateCache";
+import { runGifExport } from "./runGifExport";
+import { runMp4Export } from "./runMp4Export";
+import { useGifSizeEstimate } from "./useGifSizeEstimate";
 
 export function useExportRunner(input: ExportRunnerInput) {
+	useGifSizeEstimate(input);
+	const billing = useOptionalBilling();
+	const billingRef = useRef(billing);
+	billingRef.current = billing;
 	const inputRef = useRef(input);
 	inputRef.current = input;
 	const showExportSuccessToast = useExportSuccessToast();
@@ -30,57 +31,35 @@ export function useExportRunner(input: ExportRunnerInput) {
 			settings: ExportSettings,
 			options?: { destination?: "download" | "share" },
 		): Promise<string | undefined> => {
+			const runInput = inputRef.current;
 			const {
 				videoPath,
 				videoPlaybackRef,
 				isPlaying,
 				appearance,
-				timeline,
-				exportSettings,
 				exportSession,
-				audio,
 				smokeExportConfig,
-				effectiveSpeedRegions,
-				effectiveZoomRegions,
-				effectiveCursorTelemetry,
-				effectiveShowCursor,
-				ensureSupportedMp4SourceDimensions,
-				captionSidecarPayload,
-				experimentalNvidiaCudaExport,
-				nvidiaCudaExportAvailable,
 				remountPreview,
-			} = inputRef.current;
-			const { shadowIntensity, padding } = appearance;
-			const { audioRegions, clipRegions, selectedClipId } = timeline;
-			const {
-				exportQuality,
-				exportEncodingMode,
-				exportBackendPreference,
-				exportPipelineModel,
-				mp4FrameRate,
-			} = exportSettings;
+			} = runInput;
+			const { shadowIntensity } = appearance;
 			const {
 				setIsExporting,
 				setExportProgress,
 				setExportError,
 				setShowExportDropdown,
-				setExportedFilePath,
-				setHasPendingExportSave,
 				exporterRef,
-				pendingExportSaveRef,
 				clearPendingExportSave,
-				markExportAsSaving,
 				exportRunIdRef,
 				cancelledExportRunIdRef,
 			} = exportSession;
 			if (!videoPath) {
-				toast.error("No video loaded");
+				toast.error(translate("notifications.noVideo", "No video loaded"));
 				return;
 			}
 
 			const video = videoPlaybackRef.current?.video;
 			if (!video) {
-				toast.error("Video not ready");
+				toast.error(translate("notifications.videoNotReady", "Video not ready"));
 				return;
 			}
 
@@ -97,8 +76,14 @@ export function useExportRunner(input: ExportRunnerInput) {
 					.catch(() => undefined);
 			};
 
+			const diagnostics = createExportDiagnostics(
+				settings,
+				options?.destination ?? "download",
+			);
 			setIsExporting(true);
 			setExportProgress(null);
+			exportSession.setGifOptimization(null);
+			exportSession.setIsOptimizingGif(false);
 			setExportError(null);
 			clearPendingExportSave();
 			const smokeExportStartedAt = smokeExportConfig.enabled ? performance.now() : null;
@@ -111,6 +96,10 @@ export function useExportRunner(input: ExportRunnerInput) {
 				if (wasPlaying) {
 					videoPlaybackRef.current?.pause();
 				}
+
+				// Drain preview estimates before real exports claim decoder/GPU/encoder resources.
+				await stopGifSizeEstimates();
+				if (exportWasCancelled()) return;
 
 				// Get preview CONTAINER dimensions for scaling
 				const playbackRef = videoPlaybackRef.current;
@@ -128,404 +117,30 @@ export function useExportRunner(input: ExportRunnerInput) {
 				const smokeProgressSamples = smokeProgressSampler.samples;
 				const recordSmokeProgress = smokeProgressSampler.record;
 
-				if (settings.format === "gif" && settings.gifConfig) {
-					// GIF Export
-					const { GifExporter } = await import("@/lib/exporter/gifExporter");
-					if (exportWasCancelled()) return;
-					const gifExporter = new GifExporter({
-						videoUrl: videoPath,
-						width: settings.gifConfig.width,
-						height: settings.gifConfig.height,
-						frameRate: settings.gifConfig.frameRate,
-						loop: settings.gifConfig.loop,
-						sizePreset: settings.gifConfig.sizePreset,
-						...buildExportRenderOptions({
-							appearance,
-							timeline,
-							effectiveSpeedRegions,
-							effectiveZoomRegions,
-							effectiveCursorTelemetry,
-							effectiveShowCursor,
-							previewWidth,
-							previewHeight,
-							shadowIntensity: effectiveShadowIntensity,
-							onProgress: (progress) => {
-								if (exportWasCancelled()) return;
-								recordSmokeProgress(progress);
-								setExportProgress(progress);
-							},
-						}),
-						videoPadding: padding,
-						maxDecodeQueue: smokeExportConfig.maxDecodeQueue,
-						maxPendingFrames: smokeExportConfig.maxPendingFrames,
-					});
-
-					exporterRef.current = gifExporter;
-					const result = await gifExporter.export();
-					if (exportWasCancelled()) return;
-
-					if (result.success && result.blob) {
-						const timestamp = Date.now();
-						const fileName = `export-${timestamp}.gif`;
-						if (options?.destination === "share") {
-							const tempPath = await streamExportBlobToTempFile(result.blob, "gif");
-							if (!tempPath)
-								throw new Error("Could not prepare the GIF for sharing.");
-							return tempPath;
-						}
-						markExportAsSaving();
-
-						const { saveResult, pendingSave } = await saveExportBlob(
-							result.blob,
-							fileName,
-							smokeExportConfig.enabled ? smokeExportConfig.outputPath : null,
-						);
-						if (exportWasCancelled()) {
-							await discardCancelledTemp(pendingSave);
-							return;
-						}
-
-						if (saveResult.canceled) {
-							pendingExportSaveRef.current = pendingSave;
-							setHasPendingExportSave(true);
-							setExportError(
-								"Save dialog canceled. Click Save Again to save without re-rendering.",
-							);
-							toast.info("Save canceled. You can save again without re-exporting.");
-							keepExportDialogOpen = true;
-						} else if (saveResult.success && saveResult.path) {
-							if (smokeExportStartedAt !== null) {
-								console.log(
-									`[smoke-export] Completed in ${Math.round(performance.now() - smokeExportStartedAt)}ms (${saveResult.path})`,
-								);
-							}
-							showExportSuccessToast(saveResult.path);
-							setExportedFilePath(saveResult.path);
-							if (smokeExportConfig.enabled) {
-								window.close();
-								return;
-							}
-						} else {
-							setExportError(saveResult.message || "Failed to save GIF");
-							toast.error(saveResult.message || "Failed to save GIF");
-							if (smokeExportConfig.enabled) {
-								window.close();
-								return;
-							}
-						}
-					} else {
-						setExportError(result.error || "GIF export failed");
-						toast.error(result.error || "GIF export failed");
-						if (smokeExportConfig.enabled) {
-							window.close();
-							return;
-						}
-					}
-				} else {
-					// MP4 Export
-					const { quality, encodingMode, selectedMp4FrameRate } =
-						resolveMp4ExportSettings({
-							smokeExportConfig: {
-								enabled: smokeExportConfig.enabled,
-								quality: smokeExportConfig.quality,
-								encodingMode: smokeExportConfig.encodingMode,
-								fps: smokeExportConfig.fps,
-							},
-							settings,
-							exportQuality,
-							exportEncodingMode,
-							mp4FrameRate,
-						});
-					const {
-						pipelineModel,
-						useExperimentalNativeExport,
-						useExperimentalNvidiaCudaExport,
-						backendPreference,
-					} = resolveMp4ExportRouting({
-						smokeExportConfig: {
-							enabled: smokeExportConfig.enabled,
-							pipelineModel: smokeExportConfig.pipelineModel,
-							useNativeExport: smokeExportConfig.useNativeExport,
-							backendPreference: smokeExportConfig.backendPreference,
-						},
-						settings,
-						exportPipelineModel,
-						exportBackendPreference,
-						experimentalNvidiaCudaExport,
-						nvidiaCudaExportAvailable,
-					});
-					const supportedSourceDimensions = await ensureSupportedMp4SourceDimensions(
-						selectedMp4FrameRate,
-						{
-							capTo1080p: options?.destination === "share",
-						},
-					);
-					if (exportWasCancelled()) return;
-					const requestedDimensions = calculateMp4ExportDimensions(
-						supportedSourceDimensions.width,
-						supportedSourceDimensions.height,
-						quality,
-					);
-					const { width: exportWidth, height: exportHeight } =
-						options?.destination === "share"
-							? capMp4ShareDimensions(
-									requestedDimensions.width,
-									requestedDimensions.height,
-								)
-							: requestedDimensions;
-					const bitrate = getMp4ExportBitrate({
-						width: exportWidth,
-						height: exportHeight,
-						frameRate: selectedMp4FrameRate,
-						quality,
-						encodingMode,
-						useModernNativeStaticLayout: useExperimentalNativeExport,
-					});
-					const sourceAudioTrackSettingsForExport =
-						selectedClipId !== null
-							? audio.selectedClipSourceAudioTrackSettings
-							: audio.activeSourceAudioTrackSettings;
-
-					const exporterConfig = {
-						videoUrl: videoPath,
-						width: exportWidth,
-						height: exportHeight,
-						frameRate: selectedMp4FrameRate,
-						bitrate,
-						codec: DEFAULT_MP4_CODEC,
-						encodingMode,
-						preferredEncoderPath: supportedSourceDimensions.encoderPath,
-						preferredRenderBackend: smokeExportConfig.renderBackend,
-						experimentalNativeExport: useExperimentalNativeExport,
-						experimentalNvidiaCudaExport: useExperimentalNvidiaCudaExport,
-						maxEncodeQueue: smokeExportConfig.maxEncodeQueue,
-						maxDecodeQueue: smokeExportConfig.maxDecodeQueue,
-						maxPendingFrames: smokeExportConfig.maxPendingFrames,
-						...buildExportRenderOptions({
-							appearance,
-							timeline,
-							effectiveSpeedRegions,
-							effectiveZoomRegions,
-							effectiveCursorTelemetry,
-							effectiveShowCursor,
-							previewWidth,
-							previewHeight,
-							shadowIntensity: effectiveShadowIntensity,
-							onProgress: (progress) => {
-								if (exportWasCancelled()) return;
-								recordSmokeProgress(progress);
-								setExportProgress(progress);
-							},
-						}),
-						audioRegions,
-						clipRegions,
-						sourceAudioFallbackPaths: audio.sourceAudioFallbackPaths,
-						sourceAudioFallbackStartDelayMsByPath:
-							audio.sourceAudioFallbackStartDelayMsByPath,
-						sourceAudioTrackSettings: sourceAudioTrackSettingsForExport,
-					};
-
-					const Exporter =
-						pipelineModel === "modern"
-							? (await import("@/lib/exporter/modernVideoExporter"))
-									.ModernVideoExporter
-							: (await import("@/lib/exporter/videoExporter")).VideoExporter;
-					if (exportWasCancelled()) return;
-					const exporter =
-						pipelineModel === "modern"
-							? new Exporter({ ...exporterConfig, backendPreference })
-							: new Exporter(exporterConfig);
-
-					exporterRef.current = exporter;
-					const result = await exporter.export();
-					if (exportWasCancelled()) return;
-					const smokeExportElapsedMs =
-						smokeExportStartedAt !== null
-							? Math.round(performance.now() - smokeExportStartedAt)
-							: undefined;
-
-					if (result.success && (result.blob || result.tempFilePath)) {
-						const timestamp = Date.now();
-						const fileName = `export-${timestamp}.mp4`;
-						if (options?.destination === "share") {
-							if (result.tempFilePath) return result.tempFilePath;
-							if (result.blob) {
-								const tempPath = await streamExportBlobToTempFile(
-									result.blob,
-									"mp4",
-								);
-								if (tempPath) return tempPath;
-							}
-							throw new Error("Could not prepare the video for sharing.");
-						}
-						const sidecarForThisExport =
-							settings.includeCaptionSidecar && captionSidecarPayload
-								? captionSidecarPayload
-								: undefined;
-						markExportAsSaving();
-
-						let saveResult: {
-							success: boolean;
-							path?: string;
-							message?: string;
-							canceled?: boolean;
-						};
-						let pendingOnCancel: PendingExportSave;
-
-						if (result.tempFilePath) {
-							// Preferred path: main process already holds the finished MP4 on
-							// disk, so we just ask it to move the temp file into place. This
-							// avoids ever allocating a multi-GiB ArrayBuffer in the renderer.
-							saveResult = await window.electronAPI.finalizeExportedVideo({
-								tempPath: result.tempFilePath,
-								fileName,
-								outputPath:
-									smokeExportConfig.enabled && smokeExportConfig.outputPath
-										? smokeExportConfig.outputPath
-										: null,
-								captionSidecar: sidecarForThisExport,
-							});
-							if (exportWasCancelled()) {
-								await discardCancelledTemp({
-									fileName,
-									tempFilePath: result.tempFilePath,
-									captionSidecar: sidecarForThisExport,
-								});
-								return;
-							}
-							pendingOnCancel = {
-								fileName,
-								tempFilePath: result.tempFilePath,
-								captionSidecar: sidecarForThisExport,
-							};
-						} else if (result.blob) {
-							// Legacy fallback: some export paths still surface a Blob, but in
-							// Electron we stream it into a temp file first so save/finalize
-							// never requires a giant renderer ArrayBuffer.
-							const blobSave = await saveExportBlob(
-								result.blob,
-								fileName,
-								smokeExportConfig.enabled ? smokeExportConfig.outputPath : null,
-								sidecarForThisExport,
-							);
-							if (exportWasCancelled()) {
-								await discardCancelledTemp(blobSave.pendingSave);
-								return;
-							}
-							saveResult = blobSave.saveResult;
-							pendingOnCancel = blobSave.pendingSave;
-						} else {
-							saveResult = { success: false, message: "Export produced no output" };
-							pendingOnCancel = { fileName };
-						}
-
-						if (saveResult.canceled) {
-							if (smokeExportConfig.enabled) {
-								await writeSmokeExportReport(smokeExportConfig.outputPath, {
-									success: false,
-									phase: "save",
-									format: "mp4",
-									pipelineModel,
-									backendPreference,
-									encodingMode,
-									shadowIntensity: effectiveShadowIntensity,
-									elapsedMs: smokeExportElapsedMs,
-									error: "Save canceled",
-									progressSamples: smokeProgressSamples,
-									metrics: result.metrics,
-								});
-							}
-							pendingExportSaveRef.current = pendingOnCancel;
-							setHasPendingExportSave(true);
-							setExportError(
-								"Save dialog canceled. Click Save Again to save without re-rendering.",
-							);
-							toast.info("Save canceled. You can save again without re-exporting.");
-							keepExportDialogOpen = true;
-						} else if (saveResult.success && saveResult.path) {
-							if (smokeExportConfig.enabled) {
-								await writeSmokeExportReport(smokeExportConfig.outputPath, {
-									success: true,
-									phase: "saved",
-									format: "mp4",
-									pipelineModel,
-									backendPreference,
-									encodingMode,
-									shadowIntensity: effectiveShadowIntensity,
-									elapsedMs: smokeExportElapsedMs,
-									outputPath: saveResult.path,
-									progressSamples: smokeProgressSamples,
-									metrics: result.metrics,
-								});
-							}
-							if (smokeExportStartedAt !== null) {
-								console.log(
-									`[smoke-export] Completed in ${Math.round(performance.now() - smokeExportStartedAt)}ms (${saveResult.path})`,
-								);
-							}
-							showExportSuccessToast(saveResult.path);
-							setExportedFilePath(saveResult.path);
-							if (smokeExportConfig.enabled) {
-								window.close();
-								return;
-							}
-						} else {
-							if (smokeExportConfig.enabled) {
-								await writeSmokeExportReport(smokeExportConfig.outputPath, {
-									success: false,
-									phase: "save",
-									format: "mp4",
-									pipelineModel,
-									backendPreference,
-									encodingMode,
-									shadowIntensity: effectiveShadowIntensity,
-									elapsedMs: smokeExportElapsedMs,
-									error: saveResult.message || "Failed to save video",
-									progressSamples: smokeProgressSamples,
-									metrics: result.metrics,
-								});
-							}
-							setExportError(saveResult.message || "Failed to save video");
-							showExportErrorToast(saveResult.message || "Failed to save video");
-							// Keep the pending-save entry so the user can retry without
-							// re-rendering. The temp file is still on disk (the main
-							// process only moves/deletes it on success) and the
-							// ArrayBuffer fallback still references its in-memory blob.
-							if (pendingOnCancel.tempFilePath || pendingOnCancel.arrayBuffer) {
-								pendingExportSaveRef.current = pendingOnCancel;
-								setHasPendingExportSave(true);
-								keepExportDialogOpen = true;
-							}
-							if (smokeExportConfig.enabled) {
-								window.close();
-								return;
-							}
-						}
-					} else {
-						if (smokeExportConfig.enabled) {
-							await writeSmokeExportReport(smokeExportConfig.outputPath, {
-								success: false,
-								phase: "export",
-								format: "mp4",
-								pipelineModel,
-								backendPreference,
-								encodingMode,
-								shadowIntensity: effectiveShadowIntensity,
-								elapsedMs: smokeExportElapsedMs,
-								error: result.error || "Export failed",
-								progressSamples: smokeProgressSamples,
-								metrics: result.metrics,
-							});
-						}
-						setExportError(result.error || "Export failed");
-						showExportErrorToast(result.error || "Export failed");
-						keepExportDialogOpen = options?.destination !== "share";
-						if (smokeExportConfig.enabled) {
-							window.close();
-							return;
-						}
-					}
-				}
+				const branchContext: ExportBranchContext = {
+					input: { ...runInput, videoPath },
+					settings,
+					options,
+					billingRef,
+					previewWidth,
+					previewHeight,
+					effectiveShadowIntensity,
+					diagnostics,
+					smokeExportStartedAt,
+					recordSmokeProgress,
+					smokeProgressSamples,
+					exportWasCancelled,
+					discardCancelledTemp,
+					showExportSuccessToast,
+					setKeepExportDialogOpen: (open) => {
+						keepExportDialogOpen = open;
+					},
+				};
+				const outcome =
+					settings.format === "gif" && settings.gifConfig
+						? await runGifExport(branchContext)
+						: await runMp4Export(branchContext);
+				if (outcome.exit) return outcome.path;
 
 				if (wasPlaying) {
 					await videoPlaybackRef.current?.play().catch(() => undefined);
@@ -534,8 +149,16 @@ export function useExportRunner(input: ExportRunnerInput) {
 				}
 			} catch (error) {
 				if (exportWasCancelled()) return;
+				exportSession.setIsOptimizingGif(false);
 				console.error("Export error:", error);
-				const errorMessage = error instanceof Error ? error.message : "Unknown error";
+				const errorMessage =
+					error instanceof Error
+						? error.message
+						: translate(
+								"notifications.unexpectedError",
+								"An unexpected error occurred",
+							);
+				diagnostics.record("exception", { error: errorMessage });
 				if (smokeExportConfig.enabled) {
 					await writeSmokeExportReport(smokeExportConfig.outputPath, {
 						success: false,
@@ -555,6 +178,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 					window.close();
 				}
 			} finally {
+				if (exportWasExplicitlyCancelled()) diagnostics.record("canceled");
 				if (exportWasExplicitlyCancelled() && exportRunIdRef.current === exportRunId + 1) {
 					video.currentTime = restoreTime;
 					if (wasPlaying) {

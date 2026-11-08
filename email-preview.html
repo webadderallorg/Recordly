@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Recordly Email Preview</title>
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="identity"><strong>Recordly<span>.</span></strong><span class="draft-label">Email design · local draft</span></div>
+      <div class="controls">
+        <label>Email<select id="template"><option value="signin">Sign in</option><option value="signup">Verify email</option></select></label>
+        <label>Appearance<select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select></label>
+        <label>Width<select id="width"><option value="desktop">Desktop</option><option value="mobile">Mobile</option></select></label>
+        <label>Rendering<select id="rendering"><option value="normal">Normal</option><option value="blocked">Images blocked</option><option value="unstyled">No formatting</option><option value="plain">Plain text</option></select></label>
+        <button id="toggle-editor" type="button" aria-expanded="false">Edit copy</button>
+        <a class="preview-link" href="/return-preview.html">Browser pages ↗</a>
+      </div>
+    </header>
+    <main>
+      <aside id="editor" hidden>
+        <h1>Make it yours</h1>
+        <p>Your changes appear immediately and are saved as a draft in this browser.</p>
+        <label>Heading<input id="heading" type="text"></label>
+        <label>Message<textarea id="message" rows="5"></textarea></label>
+        <button id="reset" type="button">Reset this draft</button>
+        <details><summary>Raw HTML</summary><textarea id="source" rows="22" spellcheck="false" aria-label="Email HTML"></textarea></details>
+      </aside>
+      <section class="canvas" aria-label="Email preview">
+        <iframe id="preview" title="Recordly email preview" sandbox="allow-same-origin"></iframe>
+        <p class="status" id="status" role="status">Live preview · sample data · no email is sent</p>
+      </section>
+    </main>
+    <script type="module" src="/src/dev/email-preview.ts"></script>
+  </body>
+</html>

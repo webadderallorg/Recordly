@@ -1,9 +1,9 @@
 import { Card } from "@heroui/react";
 import { lazy, Suspense, useEffect, useState } from "react";
-import { useI18n } from "./contexts/I18nContext";
-import { getStartupView } from "./lib/startupView";
 import { HomeLoadingSkeleton } from "./components/video-editor/dashboard/HomeLoadingSkeleton";
 import { EditorLoadingSkeleton } from "./components/video-editor/layout/EditorLoadingSkeleton";
+import { useI18n } from "./contexts/I18nContext";
+import { getStartupView } from "./lib/startupView";
 
 const HudWindow = lazy(() => import("./components/launch/HudWindow"));
 const SourceSelector = lazy(() =>
@@ -23,6 +23,8 @@ const UpdateToastWindow = lazy(() =>
 );
 const EditorWindow = lazy(() => import("./components/video-editor/EditorWindow"));
 const CapturePicker = lazy(() => import("./components/capture-picker/CapturePicker"));
+const OnboardingWindow = lazy(() => import("./components/auth/OnboardingWindow"));
+const PermissionAccessoryWindow = lazy(() => import("./components/auth/PermissionAccessoryWindow"));
 
 export default function App() {
 	const [windowType] = useState(
@@ -33,12 +35,24 @@ export default function App() {
 
 	useEffect(() => {
 		document.documentElement.dataset.windowType = windowType;
+		const syncWindowChrome = (chrome: { trafficLightsVisible: boolean }) => {
+			document.documentElement.dataset.nativeTrafficLights = String(
+				chrome.trafficLightsVisible,
+			);
+		};
+		void window.electronAPI
+			?.getWindowChrome?.()
+			.then(syncWindowChrome)
+			.catch(() => undefined);
+		const unsubscribeWindowChrome =
+			window.electronAPI?.onWindowChromeChanged?.(syncWindowChrome);
 
 		if (
 			windowType === "hud-overlay" ||
 			windowType === "source-selector" ||
 			windowType === "countdown" ||
 			windowType === "update-toast" ||
+			windowType === "permission-accessory" ||
 			windowType === "capture-picker"
 		) {
 			document.body.style.background = "transparent";
@@ -56,13 +70,16 @@ export default function App() {
 			document.body.style.overflow = "visible";
 			document.getElementById("root")?.style.setProperty("overflow", "visible");
 		}
+		return () => unsubscribeWindowChrome?.();
 	}, [windowType]);
 
 	useEffect(() => {
 		document.title =
-			windowType === "editor"
-				? t("app.editorTitle", "Recordly Editor")
-				: t("app.name", "Recordly");
+			windowType === "onboarding"
+				? t("onboarding.welcomeLabel", "Welcome to Recordly")
+				: windowType === "editor"
+					? t("app.editorTitle", "Recordly Editor")
+					: t("app.name", "Recordly");
 	}, [windowType, t]);
 
 	let content;
@@ -84,6 +101,12 @@ export default function App() {
 			break;
 		case "capture-picker":
 			content = <CapturePicker />;
+			break;
+		case "onboarding":
+			content = <OnboardingWindow />;
+			break;
+		case "permission-accessory":
+			content = <PermissionAccessoryWindow />;
 			break;
 		default:
 			content = (

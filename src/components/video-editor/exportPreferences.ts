@@ -1,3 +1,4 @@
+import { isValidCustomExportResolution } from "./exportDimensions";
 import type {
 	ExportBackendPreference,
 	ExportEncodingMode,
@@ -11,6 +12,8 @@ import type {
 import { isValidMp4FrameRate } from "@/lib/exporter/types";
 
 export interface ExportPreferences {
+	advancedExportSettings: boolean;
+	customExportResolution: { width: number; height: number };
 	exportEncodingMode: ExportEncodingMode;
 	exportBackendPreference: ExportBackendPreference;
 	exportPipelineModel: ExportPipelineModel;
@@ -23,6 +26,8 @@ export interface ExportPreferences {
 	publishDestination: "link" | "local";
 	includeCaptionSidecar: boolean;
 }
+
+export const DEFAULT_MP4_EXPORT_FRAME_RATE: ExportMp4FrameRate = 30;
 
 export function normalizeExportEncodingMode(value: unknown): ExportEncodingMode {
 	if (value === "fast" || value === "balanced" || value === "quality") {
@@ -47,21 +52,32 @@ export function normalizeExportPipelineModel(_value: unknown): ExportPipelineMod
 }
 
 export function normalizeExportMp4FrameRate(value: unknown): ExportMp4FrameRate {
-	return typeof value === "number" && isValidMp4FrameRate(value) ? value : 30;
+	return typeof value === "number" && isValidMp4FrameRate(value)
+		? value
+		: DEFAULT_MP4_EXPORT_FRAME_RATE;
 }
 
 export function normalizeExportPreferences(raw: Partial<ExportPreferences>): ExportPreferences {
 	return {
+		advancedExportSettings:
+			raw.advancedExportSettings === true ||
+			raw.exportQuality === "source" ||
+			raw.exportQuality === "custom",
+		customExportResolution: isValidCustomExportResolution(raw.customExportResolution)
+			? { ...raw.customExportResolution! }
+			: { width: 1920, height: 1080 },
 		exportEncodingMode: normalizeExportEncodingMode(raw.exportEncodingMode),
 		exportBackendPreference: normalizeExportBackendPreference(raw.exportBackendPreference),
 		exportPipelineModel: normalizeExportPipelineModel(raw.exportPipelineModel),
 		exportQuality:
+			raw.exportQuality === "hd" ||
 			raw.exportQuality === "medium" ||
 			raw.exportQuality === "good" ||
 			raw.exportQuality === "high" ||
-			raw.exportQuality === "source"
+			raw.exportQuality === "source" ||
+			raw.exportQuality === "custom"
 				? raw.exportQuality
-				: "source",
+				: "medium",
 		mp4FrameRate: normalizeExportMp4FrameRate(raw.mp4FrameRate),
 		exportFormat: raw.exportFormat === "gif" ? "gif" : "mp4",
 		gifFrameRate:

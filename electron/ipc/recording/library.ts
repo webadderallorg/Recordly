@@ -13,6 +13,48 @@ const isRecording = (name: string) =>
 	/\.(mp4|mov|webm|mkv|m4v)$/i.test(name) && !/[.-]webcam[.-]/i.test(name);
 const batchKey = (paths: string[]) => JSON.stringify([...new Set(paths)].sort());
 
+/** Trash only the selected source files, without also removing companion tracks. */
+export function trashRecordingSources(paths: unknown) {
+	const task = mutation.then(async () => {
+		if (
+			!Array.isArray(paths) ||
+			!paths.length ||
+			paths.length > 500 ||
+			paths.some((value) => typeof value !== "string")
+		)
+			throw new Error("Invalid source file selection");
+		const root = await fs.realpath(await getRecordingsDir());
+		const selected = [...new Set(paths as string[])];
+		// Validate the entire selection before moving anything. Never follow symlinks.
+		for (const file of selected) {
+			if (
+				path.dirname(file) !== root ||
+				!/\.(mp4|mov|webm|mkv|m4v|wav|m4a|mp3|ogg|flac)$/i.test(file) ||
+				!(await fs.lstat(file)).isFile()
+			)
+				throw new Error(
+					"Source file is outside the recordings library or is not a regular media file",
+				);
+		}
+		const deleted: string[] = [];
+		const errors: string[] = [];
+		for (const file of selected) {
+			try {
+				await shell.trashItem(file);
+				deleted.push(file);
+			} catch {
+				errors.push(`Could not move ${path.basename(file)} to Trash`);
+			}
+		}
+		return { deleted, errors };
+	});
+	mutation = task.then(
+		() => undefined,
+		() => undefined,
+	);
+	return task;
+}
+
 export function listRecordings(includeSources = false): Promise<RecordingLibraryEntry[]> {
 	const task = mutation.then(async () => {
 		const root = await fs.realpath(await getRecordingsDir());
@@ -31,7 +73,13 @@ export function listRecordings(includeSources = false): Promise<RecordingLibrary
 		}
 		const result: RecordingLibraryEntry[] = [];
 		for (const entry of entries) {
-			if (!entry.isFile() || !(includeSources ? /\.(mp4|mov|webm|mkv|m4v|wav|m4a|mp3|ogg|flac)$/i.test(entry.name) : isRecording(entry.name))) continue;
+			if (
+				!entry.isFile() ||
+				!(includeSources
+					? /\.(mp4|mov|webm|mkv|m4v|wav|m4a|mp3|ogg|flac)$/i.test(entry.name)
+					: isRecording(entry.name))
+			)
+				continue;
 			const filePath = path.join(root, entry.name);
 			const stat = await fs.stat(filePath);
 			if (!stat.size) continue;

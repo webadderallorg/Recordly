@@ -1,10 +1,12 @@
+import { translate } from "@/i18n/runtime";
 import {
 	type Dispatch,
-	type MutableRefObject,
 	type RefObject,
 	type SetStateAction,
 	useCallback,
 	useEffect,
+	useLayoutEffect,
+	useRef,
 } from "react";
 import type { useProjectSaveActions } from "./useProjectSaveActions";
 import { toast } from "@/components/ui/toast";
@@ -12,6 +14,7 @@ import { fromFileUrl, resolveVideoUrl } from "../projectPersistence";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";
 import { DEFAULT_WEBCAM_TIME_OFFSET_MS } from "../types";
+import { errorSourceName, isMissingProjectRecording, projectLoadError } from "./projectLoadError";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 
 type Set<T> = Dispatch<SetStateAction<T>>;
@@ -20,12 +23,15 @@ type UseProjectOpenActionsInput = {
 	project: ReturnType<typeof useProjectState>;
 	appearance: ReturnType<typeof useAppearanceState>;
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
-	pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
 	hasUnsavedChanges: boolean;
 	setIsPlaying: Set<boolean>;
 	setCurrentTime: Set<number>;
 	setDuration: Set<number>;
-	applyLoadedProject: (candidate: unknown, path?: string | null) => Promise<boolean>;
+	applyLoadedProject: (
+		candidate: unknown,
+		path?: string | null,
+		isCurrent?: () => boolean,
+	) => Promise<boolean>;
 	openUnsavedChangesDialog: (actionLabel: string) => Promise<"save" | "discard" | "cancel">;
 	saveProject: ReturnType<typeof useProjectSaveActions>["saveProject"];
 	refreshProjectLibrary: () => Promise<void>;
@@ -39,7 +45,6 @@ export function useProjectOpenActions({
 	project,
 	appearance,
 	videoPlaybackRef,
-	pendingFreshRecordingAutoZoomPathRef,
 	hasUnsavedChanges,
 	setIsPlaying,
 	setCurrentTime,
@@ -52,6 +57,57 @@ export function useProjectOpenActions({
 	handleSaveProject,
 	handleSaveProjectAs,
 }: UseProjectOpenActionsInput) {
+	const latestOpen = useRef<(path: string) => Promise<unknown>>(async () => undefined);
+	const latestRelink = useRef<(path: string) => Promise<unknown>>(async () => undefined);
+	const opening = useRef(false);
+	const mounted = useRef(true);
+	const projectPath = fromFileUrl(project.currentProjectPath || "").replace(/\\/g, "/");
+	// A media-server capability/port refresh does not replace the underlying source.
+	const sourcePath = fromFileUrl(project.videoSourcePath || project.videoPath || "").replace(
+		/\\/g,
+		"/",
+	);
+	const relinkContext = useRef({ projectPath, sourcePath, generation: 0 });
+	// Invalidate only committed identity changes; a discarded React render must
+	// not suppress an authorized relink for the project that is still displayed.
+	useLayoutEffect(() => {
+		if (
+			relinkContext.current.projectPath !== projectPath ||
+			relinkContext.current.sourcePath !== sourcePath
+		) {
+			relinkContext.current = {
+				projectPath,
+				sourcePath,
+				generation: relinkContext.current.generation + 1,
+			};
+		}
+	}, [projectPath, sourcePath]);
+	useEffect(() => {
+		mounted.current = true;
+		return () => {
+			mounted.current = false;
+			relinkContext.current.generation++;
+		};
+	}, []);
+	const reportOpenError = useCallback((error: unknown, path?: string) => {
+		const { title, description } = projectLoadError(error);
+		console.warn("Could not open file:", error);
+		toast.error(path ? `${title}: ${errorSourceName(path)}` : title, {
+			id: "project-open-error",
+			description,
+			action: path
+				? {
+						label: isMissingProjectRecording(error)
+							? translate("notifications.locateRecording", "Locate recording")
+							: translate("notifications.tryAgain", "Try again"),
+						onClick: () =>
+							void (
+								isMissingProjectRecording(error) ? latestRelink : latestOpen
+							).current(path),
+					}
+				: undefined,
+		});
+	}, []);
 	const confirmReplaceSourceWithUnsavedChanges = useCallback(
 		async (_actionLabel: string) => {
 			if (!hasUnsavedChanges) return true;
@@ -60,27 +116,59 @@ export function useProjectOpenActions({
 		[hasUnsavedChanges, saveProject],
 	);
 
-	const handleOpenProjectFromLibrary = useCallback(
+	const handleRelinkProjectRecording = useCallback(
 		async (projectPath: string) => {
-			if (!(await confirmReplaceSourceWithUnsavedChanges("open another project"))) return;
+			if (opening.current) return false;
+			opening.current = true;
+			const generation = relinkContext.current.generation;
+			const isCurrent = () =>
+				mounted.current && relinkContext.current.generation === generation;
 			try {
-				const result = await window.electronAPI.openProjectFileAtPath(projectPath);
-				if (result.canceled) return;
-				if (!result.success) {
-					project.setError(result.error || result.message || "Failed to load project");
-					return;
+				if (
+					!(await confirmReplaceSourceWithUnsavedChanges("locate recording")) ||
+					!isCurrent()
+				)
+					return false;
+				const result = await window.electronAPI.relinkProjectRecording(projectPath);
+				if (result.canceled || !isCurrent()) return false;
+				if (!result.success)
+					throw new Error(
+						result.error || result.message || "Failed to reconnect recording",
+					);
+				if (
+					!(await applyLoadedProject(
+						result.project,
+						result.path ?? projectPath,
+						isCurrent,
+					))
+				) {
+					if (!isCurrent()) return false;
+					throw new Error("Invalid project file format");
 				}
-				if (!(await applyLoadedProject(result.project, result.path ?? null))) {
-					project.setError("Could not load project: invalid project file format");
-					return;
-				}
+				project.setError(null);
 				project.setProjectBrowserOpen(false);
+				toast.dismiss("project-open-error");
 				await refreshProjectLibrary();
 				return true;
 			} catch (error) {
-				project.setError(
-					`Could not load project: ${error instanceof Error ? error.message : String(error)}`,
+				if (!isCurrent()) return false;
+				toast.error(
+					translate(
+						"notifications.recordingRelinkFailed",
+						"Could not reconnect the recording",
+					),
+					{
+						id: "project-open-error",
+						description: error instanceof Error ? error.message : String(error),
+						action: {
+							label: translate("notifications.locateRecording", "Locate recording"),
+							onClick: () => void latestRelink.current(projectPath),
+						},
+					},
 				);
+				return false;
+			} finally {
+				opening.current = false;
 			}
 		},
 		[
@@ -90,30 +178,86 @@ export function useProjectOpenActions({
 			refreshProjectLibrary,
 		],
 	);
+	useLayoutEffect(() => {
+		latestRelink.current = handleRelinkProjectRecording;
+	}, [handleRelinkProjectRecording]);
+
+	const handleOpenProjectFromLibrary = useCallback(
+		async (projectPath: string) => {
+			if (opening.current) return;
+			opening.current = true;
+			try {
+				if (!(await confirmReplaceSourceWithUnsavedChanges("open another project"))) return;
+				const result = await window.electronAPI.openProjectFileAtPath(projectPath);
+				if (result.canceled) return;
+				if (!result.success) {
+					reportOpenError(
+						result.error || result.message || "Failed to load project",
+						projectPath,
+					);
+					return;
+				}
+				if (!(await applyLoadedProject(result.project, result.path ?? null))) {
+					reportOpenError("Invalid project file format", projectPath);
+					return;
+				}
+				project.setProjectBrowserOpen(false);
+				toast.dismiss("project-open-error");
+				await refreshProjectLibrary();
+				return true;
+			} catch (error) {
+				reportOpenError(error, projectPath);
+			} finally {
+				opening.current = false;
+			}
+		},
+		[
+			applyLoadedProject,
+			confirmReplaceSourceWithUnsavedChanges,
+			project,
+			refreshProjectLibrary,
+			reportOpenError,
+		],
+	);
+	useLayoutEffect(() => {
+		latestOpen.current = handleOpenProjectFromLibrary;
+	}, [handleOpenProjectFromLibrary]);
 
 	const handleImportMediaOrProject = useCallback(async () => {
-		if (!(await confirmReplaceSourceWithUnsavedChanges("import a file"))) return;
+		if (opening.current) return;
+		opening.current = true;
 		try {
+			if (!(await confirmReplaceSourceWithUnsavedChanges("import a file"))) return;
 			const result = await window.electronAPI.openVideoFilePicker({ includeProjects: true });
 			if (result.canceled) return;
 			if (!result.success) {
-				toast.error(result.message || "Failed to import file");
+				reportOpenError(
+					result.error || result.message || "Failed to import file",
+					result.path,
+				);
 				return;
 			}
 			if (result.kind === "project" || result.project) {
 				if (!(await applyLoadedProject(result.project, result.path ?? null))) {
-					project.setError("Could not load project: invalid project file format");
+					reportOpenError("Invalid project file format");
 					return;
 				}
 				project.setProjectBrowserOpen(false);
+				toast.dismiss("project-open-error");
 				await refreshProjectLibrary();
 				toast.success(
-					result.path ? `Project loaded from ${result.path}` : "Project loaded",
+					result.path
+						? translate(
+								"notifications.projectLoadedFrom",
+								"Project loaded from {{path}}",
+								{ path: result.path },
+							)
+						: translate("notifications.projectLoaded", "Project loaded"),
 				);
 				return;
 			}
 			if (!result.path) {
-				toast.error("No media file selected");
+				toast.error(translate("notifications.noMediaSelected", "No media file selected"));
 				return;
 			}
 
@@ -136,8 +280,6 @@ export function useProjectOpenActions({
 			project.setCurrentProjectPath(null);
 			project.setLastSavedSnapshot(null);
 			resetSourceScopedEditorState();
-			pendingFreshRecordingAutoZoomPathRef.current =
-				appearance.autoApplyFreshRecordingAutoZooms ? sourceVideoUrl : null;
 			appearance.setWebcam((previous) => ({
 				...previous,
 				visibleRanges: undefined,
@@ -146,13 +288,15 @@ export function useProjectOpenActions({
 				timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 			}));
 			applySessionPresentation(null);
+			project.setError(null);
+			toast.dismiss("project-open-error");
 			project.setProjectBrowserOpen(false);
 			await refreshProjectLibrary();
-			toast.success("Media imported");
+			toast.success(translate("notifications.mediaImported", "Media imported"));
 		} catch (error) {
-			project.setError(
-				`Could not load file: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			reportOpenError(error);
+		} finally {
+			opening.current = false;
 		}
 	}, [
 		confirmReplaceSourceWithUnsavedChanges,
@@ -164,9 +308,9 @@ export function useProjectOpenActions({
 		setCurrentTime,
 		setDuration,
 		resetSourceScopedEditorState,
-		pendingFreshRecordingAutoZoomPathRef,
 		applySessionPresentation,
 		refreshProjectLibrary,
+		reportOpenError,
 	]);
 
 	const handleOpenProjectBrowser = useCallback(async () => {
@@ -232,7 +376,14 @@ export function useProjectOpenActions({
 				project.setLastSavedSnapshot(null);
 			}
 			await refreshProjectLibrary();
-			if (result.errors.length) toast.error(result.errors.join("\n"));
+			if (result.errors.length)
+				toast.error(
+					translate(
+						"notifications.deleteProjectsFailed",
+						"Could not delete some projects",
+					),
+					{ description: result.errors.join("\n") },
+				);
 			return result.deleted;
 		},
 		[project, refreshProjectLibrary],
@@ -250,6 +401,7 @@ export function useProjectOpenActions({
 	);
 
 	return {
+		handleRelinkProjectRecording,
 		handleRenameLibraryProject,
 		handleOpenProjectFromLibrary,
 		handleImportMediaOrProject,

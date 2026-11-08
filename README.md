@@ -392,7 +392,12 @@ Pull requests are welcome.
 
 # License
 
-Recordly is licensed under the **AGPL 3.0**.
+Recordly is licensed under the **[GNU AGPLv3](LICENSE.md)**.
+
+Copyright (C) 2026 webadderall
+
+Third-party copyright and license notices are provided in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 

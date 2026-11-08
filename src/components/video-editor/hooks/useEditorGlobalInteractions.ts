@@ -48,7 +48,7 @@ export function useEditorGlobalInteractions({
 			}
 			if (event.defaultPrevented || event.isComposing) return;
 			const target = event.target as HTMLElement | null;
-			if (target?.closest?.("[data-recording-library]")) return;
+			if (target?.closest?.("[data-recording-library], [data-inline-crop]")) return;
 			const editable =
 				target instanceof HTMLInputElement ||
 				target instanceof HTMLTextAreaElement ||

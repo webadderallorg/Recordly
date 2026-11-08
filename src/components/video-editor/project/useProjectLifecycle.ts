@@ -28,8 +28,12 @@ import type { useTimelineState } from "../state/useTimelineState";
 import { DEFAULT_WEBCAM_TIME_OFFSET_MS } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 import { cloneStructured } from "../videoEditorUtils";
+import type { EditorHistoryStack } from "../editorHistory";
+import { persistEditorHistory, restoreEditorHistory } from "../editorHistoryPersistence";
+import { migrateLegacyTrimOnlyProject } from "./legacyTrimMigration";
 
 type Input = {
+	restoringPreferencesRef: MutableRefObject<boolean>;
 	t: (key: string) => string;
 	project: ReturnType<typeof useProjectState>;
 	appearance: ReturnType<typeof useAppearanceState>;
@@ -53,6 +57,8 @@ type Input = {
 		editor: Parameters<typeof createProjectData>[1],
 	) => Parameters<typeof createProjectData>[1];
 	resetHistory: () => void;
+	restoreHistory: (stack: EditorHistoryStack) => void;
+	persistedHistory: ReturnType<typeof persistEditorHistory>;
 	refs: {
 		nextZoomIdRef: MutableRefObject<number>;
 		nextClipIdRef: MutableRefObject<number>;
@@ -62,9 +68,6 @@ type Input = {
 		clipInitializedRef: MutableRefObject<boolean>;
 		autoFullTrackClipIdRef: MutableRefObject<string | null>;
 		autoFullTrackClipEndMsRef: MutableRefObject<number | null>;
-		pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
-		pendingFreshRecordingAutoSuggestTelemetryCountRef: MutableRefObject<number>;
-		autoSuggestedVideoPathRef: MutableRefObject<string | null>;
 	};
 };
 
@@ -77,147 +80,176 @@ export function useProjectLifecycle(input: Input) {
 		resolve(decision: UnsavedChangesDecision): void;
 	} | null>(null);
 
-	const applyLoadedProject = useCallback(async (candidate: unknown, path?: string | null) => {
-		const current = inputRef.current;
-		const { project, appearance, timeline, refs } = current;
-		if (!validateProjectData(candidate)) return false;
-		const loadedProject = candidate;
-		const sourcePath = fromFileUrl(loadedProject.videoPath);
-		const persistedEditor = stripPersistedDevMotionBlurSettings(loadedProject.editor ?? {});
-		const editor = normalizeProjectEditor({
-			...persistedEditor,
-			borderRadius:
-				loadedProject.version < 2 && typeof persistedEditor.borderRadius === "number"
-					? persistedEditor.borderRadius === 0
-						? getDefaultBorderRadiusPercent()
-						: legacyBorderRadiusPixelsToPercent(persistedEditor.borderRadius)
-					: persistedEditor.borderRadius,
-		});
-		try {
-			current.videoPlaybackRef.current?.pause();
-		} catch {
-			/* preview may be tearing down */
-		}
-		current.setIsPlaying(false);
-		current.setCurrentTime(0);
-		current.setDuration(0);
-		project.setError(null);
-
-		refs.pendingFreshRecordingAutoZoomPathRef.current = null;
-		if (editor.webcam.sourcePath) {
-			const result = await window.electronAPI.setCurrentRecordingSession?.(
-				{
-					videoPath: sourcePath,
-					webcamPath: editor.webcam.sourcePath,
-					timeOffsetMs: editor.webcam.timeOffsetMs,
-				},
-				{ preserveProjectPath: Boolean(path) },
-			);
-			if (result && !result.success) throw new Error("Could not load project media");
-			const session = await window.electronAPI.getCurrentRecordingSession?.();
-			current.applySessionPresentation(session?.success ? session.session : null);
-		} else {
-			const result = await window.electronAPI.setCurrentVideoPath(sourcePath, {
-				preserveProjectPath: Boolean(path),
+	const applyLoadedProject = useCallback(
+		async (candidate: unknown, path?: string | null, isCurrent: () => boolean = () => true) => {
+			const current = inputRef.current;
+			const { project, appearance, timeline, refs } = current;
+			if (!validateProjectData(candidate)) return false;
+			const loadedProject = candidate;
+			const sourcePath = fromFileUrl(loadedProject.videoPath);
+			const persistedEditor = stripPersistedDevMotionBlurSettings(loadedProject.editor ?? {});
+			const normalizedEditor = normalizeProjectEditor({
+				...persistedEditor,
+				borderRadius:
+					loadedProject.version < 2 && typeof persistedEditor.borderRadius === "number"
+						? persistedEditor.borderRadius === 0
+							? getDefaultBorderRadiusPercent()
+							: legacyBorderRadiusPixelsToPercent(persistedEditor.borderRadius)
+						: persistedEditor.borderRadius,
 			});
-			if (!result.success) throw new Error("Could not load project media");
-			current.applySessionPresentation(null);
-		}
-		const videoUrl = await resolveVideoUrl(sourcePath);
-		project.setVideoSourcePath(sourcePath);
-		project.setCurrentProjectPath(path ?? null);
-		project.setVideoPath(videoUrl);
+			const hasSavedClipSequence = Array.isArray(persistedEditor.clipRegions);
+			// Probe before replacing any editor state, so a failed legacy migration is transactional.
+			const editor = await migrateLegacyTrimOnlyProject(
+				normalizedEditor,
+				hasSavedClipSequence,
+				async () => {
+					const result = await window.electronAPI.probeNativeVideoMetadata(sourcePath);
+					if (!result.success || !result.metadata) {
+						throw new Error(
+							"Could not read the recording duration for this legacy project.",
+						);
+					}
+					return result.metadata.duration * 1000;
+				},
+			);
 
-		appearance.setWallpaper(editor.wallpaper);
-		appearance.setShadowIntensity(editor.shadowIntensity);
-		appearance.setBackgroundBlur(editor.backgroundBlur);
-		appearance.setZoomMotionBlur(editor.zoomMotionBlur);
-		appearance.setZoomMotionBlurTuning({ ...editor.zoomMotionBlurTuning });
-		appearance.setConnectZooms(editor.connectZooms);
-		appearance.setZoomInDurationMs(editor.zoomInDurationMs);
-		appearance.setZoomInOverlapMs(editor.zoomInOverlapMs);
-		appearance.setZoomOutDurationMs(editor.zoomOutDurationMs);
-		appearance.setConnectedZoomGapMs(editor.connectedZoomGapMs);
-		appearance.setConnectedZoomDurationMs(editor.connectedZoomDurationMs);
-		appearance.setZoomInEasing(editor.zoomInEasing);
-		appearance.setZoomOutEasing(editor.zoomOutEasing);
-		appearance.setConnectedZoomEasing(editor.connectedZoomEasing);
-		appearance.setShowCursor(editor.showCursor);
-		appearance.setLoopCursor(editor.loopCursor);
-		appearance.setCursorStyle(editor.cursorStyle);
-		appearance.setCursorSize(editor.cursorSize);
-		appearance.setCursorSmoothing(editor.cursorSmoothing);
-		appearance.setCursorSpringStiffnessMultiplier(editor.cursorSpringStiffnessMultiplier);
-		appearance.setCursorSpringDampingMultiplier(editor.cursorSpringDampingMultiplier);
-		appearance.setCursorSpringMassMultiplier(editor.cursorSpringMassMultiplier);
-		appearance.setCameraSpringStiffnessMultiplier(editor.cameraSpringStiffnessMultiplier);
-		appearance.setCameraSpringDampingMultiplier(editor.cameraSpringDampingMultiplier);
-		appearance.setCameraSpringMassMultiplier(editor.cameraSpringMassMultiplier);
-		appearance.setCursorClickEffect(editor.cursorClickEffect);
-		appearance.setCursorClickEffectColor(editor.cursorClickEffectColor);
-		appearance.setCursorClickEffectScale(editor.cursorClickEffectScale);
-		appearance.setCursorClickEffectOpacity(editor.cursorClickEffectOpacity);
-		appearance.setCursorClickEffectDurationMs(editor.cursorClickEffectDurationMs);
-		appearance.setZoomSmoothness(editor.zoomSmoothness);
-		appearance.setZoomClassicMode(editor.zoomClassicMode);
-		appearance.setCursorMotionBlur(editor.cursorMotionBlur);
-		appearance.setCursorClickBounce(editor.cursorClickBounce);
-		appearance.setCursorClickBounceDuration(editor.cursorClickBounceDuration);
-		appearance.setCursorSway(editor.cursorSway);
-		appearance.setBorderRadius(editor.borderRadius);
-		appearance.setPadding(editor.padding);
-		appearance.setCropRegion(editor.cropRegion);
-		appearance.setWebcam(editor.webcam);
-		timeline.setZoomRegions(editor.zoomRegions);
-		timeline.setTrimRegions(editor.trimRegions);
-		timeline.setClipRegions(editor.clipRegions);
-		// An explicit empty clip list means the user deleted all footage, not a legacy project.
-		refs.clipInitializedRef.current = Array.isArray(persistedEditor.clipRegions);
-		refs.autoFullTrackClipIdRef.current = null;
-		refs.autoFullTrackClipEndMsRef.current = null;
-		timeline.setSpeedRegions(editor.speedRegions);
-		timeline.setAnnotationRegions(editor.annotationRegions);
-		timeline.setAudioRegions(editor.audioRegions);
-		timeline.setSourceAudioTrackSettingsByClip(editor.sourceAudioTrackSettingsByClip ?? {});
-		timeline.setDefaultSourceAudioTrackSettings(editor.defaultSourceAudioTrackSettings ?? {});
-		timeline.setAutoCaptions(editor.autoCaptions);
-		timeline.setAutoCaptionSettings(editor.autoCaptionSettings);
-		current.setAspectRatio(editor.aspectRatio);
-		timeline.setSelectedZoomId(null);
-		timeline.setSelectedClipId(null);
-		timeline.setSelectedAnnotationId(null);
-		timeline.setSelectedAudioId(null);
-		refs.nextZoomIdRef.current = deriveNextId(
-			"zoom",
-			editor.zoomRegions.map(({ id }) => id),
-		);
-		refs.nextClipIdRef.current = deriveNextId(
-			"clip",
-			editor.clipRegions.map(({ id }) => id),
-		);
-		refs.nextAudioIdRef.current = deriveNextId(
-			"audio",
-			editor.audioRegions.map(({ id }) => id),
-		);
-		refs.nextAnnotationIdRef.current = deriveNextId(
-			"annotation",
-			editor.annotationRegions.map(({ id }) => id),
-		);
-		refs.nextAnnotationZIndexRef.current =
-			editor.annotationRegions.reduce((max, region) => Math.max(max, region.zIndex), 0) + 1;
-		current.resetHistory();
-		project.setLastSavedSnapshot(
-			cloneStructured(
-				createProjectData(
-					sourcePath,
-					current.buildPersistedEditorState(editor),
-					loadedProject.projectId ?? null,
+			if (!isCurrent()) return false;
+			const videoUrl = await resolveVideoUrl(sourcePath);
+			if (!isCurrent()) return false;
+			if (editor.webcam.sourcePath) {
+				const result = await window.electronAPI.setCurrentRecordingSession?.(
+					{
+						videoPath: sourcePath,
+						webcamPath: editor.webcam.sourcePath,
+						timeOffsetMs: editor.webcam.timeOffsetMs,
+					},
+					{ preserveProjectPath: Boolean(path) },
+				);
+				if (result && !result.success) throw new Error("Could not load project media");
+				const session = await window.electronAPI.getCurrentRecordingSession?.();
+				current.applySessionPresentation(session?.success ? session.session : null);
+			} else {
+				const result = await window.electronAPI.setCurrentVideoPath(sourcePath, {
+					preserveProjectPath: Boolean(path),
+				});
+				if (!result.success) throw new Error("Could not load project media");
+				current.applySessionPresentation(null);
+			}
+			if (!isCurrent()) return false;
+			// Keep the current edit intact until the replacement source is ready.
+			try {
+				current.videoPlaybackRef.current?.pause();
+			} catch {
+				/* preview may be tearing down */
+			}
+			current.setIsPlaying(false);
+			current.setCurrentTime(0);
+			current.setDuration(0);
+			project.setError(null);
+			project.setVideoSourcePath(sourcePath);
+			project.setCurrentProjectPath(path ?? null);
+			project.setVideoPath(videoUrl);
+
+			// Restoring a project's look must not replace defaults for future recordings.
+			current.restoringPreferencesRef.current = true;
+			appearance.setWallpaper(editor.wallpaper);
+			appearance.setShadowIntensity(editor.shadowIntensity);
+			appearance.setBackgroundBlur(editor.backgroundBlur);
+			appearance.setZoomMotionBlur(editor.zoomMotionBlur);
+			appearance.setZoomMotionBlurTuning({ ...editor.zoomMotionBlurTuning });
+			appearance.setConnectZooms(editor.connectZooms);
+			appearance.setZoomInDurationMs(editor.zoomInDurationMs);
+			appearance.setZoomInOverlapMs(editor.zoomInOverlapMs);
+			appearance.setZoomOutDurationMs(editor.zoomOutDurationMs);
+			appearance.setConnectedZoomGapMs(editor.connectedZoomGapMs);
+			appearance.setConnectedZoomDurationMs(editor.connectedZoomDurationMs);
+			appearance.setZoomInEasing(editor.zoomInEasing);
+			appearance.setZoomOutEasing(editor.zoomOutEasing);
+			appearance.setConnectedZoomEasing(editor.connectedZoomEasing);
+			appearance.setShowCursor(editor.showCursor);
+			appearance.setLoopCursor(editor.loopCursor);
+			appearance.setCursorStyle(editor.cursorStyle);
+			appearance.setCursorSize(editor.cursorSize);
+			appearance.setCursorSmoothing(editor.cursorSmoothing);
+			appearance.setCursorSpringStiffnessMultiplier(editor.cursorSpringStiffnessMultiplier);
+			appearance.setCursorSpringDampingMultiplier(editor.cursorSpringDampingMultiplier);
+			appearance.setCursorSpringMassMultiplier(editor.cursorSpringMassMultiplier);
+			appearance.setCameraSpringStiffnessMultiplier(editor.cameraSpringStiffnessMultiplier);
+			appearance.setCameraSpringDampingMultiplier(editor.cameraSpringDampingMultiplier);
+			appearance.setCameraSpringMassMultiplier(editor.cameraSpringMassMultiplier);
+			appearance.setCursorClickEffect(editor.cursorClickEffect);
+			appearance.setCursorClickEffectColor(editor.cursorClickEffectColor);
+			appearance.setCursorClickEffectScale(editor.cursorClickEffectScale);
+			appearance.setCursorClickEffectOpacity(editor.cursorClickEffectOpacity);
+			appearance.setCursorClickEffectDurationMs(editor.cursorClickEffectDurationMs);
+			appearance.setZoomSmoothness(editor.zoomSmoothness);
+			appearance.setZoomClassicMode(editor.zoomClassicMode);
+			appearance.setCursorMotionBlur(editor.cursorMotionBlur);
+			appearance.setCursorClickBounce(editor.cursorClickBounce);
+			appearance.setCursorClickBounceDuration(editor.cursorClickBounceDuration);
+			appearance.setCursorSway(editor.cursorSway);
+			appearance.setCursorIdleHide(editor.cursorIdleHide);
+			appearance.setBorderRadius(editor.borderRadius);
+			appearance.setPadding(editor.padding);
+			appearance.setCropRegion(editor.cropRegion);
+			appearance.setWebcam(editor.webcam);
+			timeline.setZoomRegions(editor.zoomRegions);
+			timeline.setTrimRegions(editor.trimRegions);
+			timeline.setClipRegions(editor.clipRegions);
+			// An explicit empty clip list means the user deleted all footage, not a legacy project.
+			refs.clipInitializedRef.current = hasSavedClipSequence || editor !== normalizedEditor;
+			refs.autoFullTrackClipIdRef.current = null;
+			refs.autoFullTrackClipEndMsRef.current = null;
+			timeline.setSpeedRegions(editor.speedRegions);
+			timeline.setAnnotationRegions(editor.annotationRegions);
+			timeline.setAudioRegions(editor.audioRegions);
+			timeline.setSourceAudioTrackSettingsByClip(editor.sourceAudioTrackSettingsByClip ?? {});
+			timeline.setDefaultSourceAudioTrackSettings(
+				editor.defaultSourceAudioTrackSettings ?? {},
+			);
+			timeline.setAutoCaptions(editor.autoCaptions);
+			timeline.setAutoCaptionSettings(editor.autoCaptionSettings);
+			current.setAspectRatio(editor.aspectRatio);
+			timeline.setSelectedZoomId(null);
+			timeline.setSelectedClipId(null);
+			timeline.setSelectedAnnotationId(null);
+			timeline.setSelectedAudioId(null);
+			refs.nextZoomIdRef.current = deriveNextId(
+				"zoom",
+				editor.zoomRegions.map(({ id }) => id),
+			);
+			refs.nextClipIdRef.current = deriveNextId(
+				"clip",
+				editor.clipRegions.map(({ id }) => id),
+			);
+			refs.nextAudioIdRef.current = deriveNextId(
+				"audio",
+				editor.audioRegions.map(({ id }) => id),
+			);
+			refs.nextAnnotationIdRef.current = deriveNextId(
+				"annotation",
+				editor.annotationRegions.map(({ id }) => id),
+			);
+			refs.nextAnnotationZIndexRef.current =
+				editor.annotationRegions.reduce((max, region) => Math.max(max, region.zIndex), 0) +
+				1;
+			const restoredHistory = restoreEditorHistory(loadedProject.history, editor);
+			current.restoreHistory(restoredHistory);
+			project.setLastSavedSnapshot(
+				cloneStructured(
+					createProjectData(
+						sourcePath,
+						current.buildPersistedEditorState(editor),
+						loadedProject.projectId ?? null,
+						persistEditorHistory(restoredHistory),
+					),
 				),
-			),
-		);
-		await current.refreshProjectLibrary();
-		return true;
-	}, []);
+			);
+			await current.refreshProjectLibrary();
+			return true;
+		},
+		[],
+	);
 
 	const currentProjectSnapshot = useMemo(
 		() =>
@@ -226,12 +258,14 @@ export function useProjectLifecycle(input: Input) {
 						input.currentSourcePath,
 						input.currentPersistedEditorState,
 						project.lastSavedSnapshot?.projectId ?? null,
+						input.persistedHistory,
 					)
 				: null,
 		[
 			input.currentSourcePath,
 			input.currentPersistedEditorState,
 			project.lastSavedSnapshot?.projectId,
+			input.persistedHistory,
 		],
 	);
 	const resolveProjectSaveDialog = useCallback(
@@ -346,8 +380,6 @@ export function useProjectLifecycle(input: Input) {
 		refs.nextAudioIdRef.current = 1;
 		refs.nextAnnotationIdRef.current = 1;
 		refs.nextAnnotationZIndexRef.current = 1;
-		refs.pendingFreshRecordingAutoSuggestTelemetryCountRef.current = 0;
-		refs.autoSuggestedVideoPathRef.current = null;
 		current.resetHistory();
 	}, []);
 	const handleUploadWebcam = useCallback(async () => {

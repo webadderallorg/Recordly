@@ -21,6 +21,7 @@ import { useEditorUiState } from "./state/useEditorUiState";
 import { useProjectState } from "./state/useProjectState";
 import { useTimelineState } from "./state/useTimelineState";
 import { useNvidiaCudaExportOptIn } from "./useNvidiaCudaExportOptIn";
+import { getEffectiveNativeAspectRatio } from "./videoPlayback/playbackTypes";
 
 export default function VideoEditor() {
 	return (
@@ -50,7 +51,6 @@ function VideoEditorContent() {
 	const { showCursor, setShowCursor, cropRegion, setCropRegion } = appearance;
 	const ui = useEditorUiState(initialEditorPreferences, cropRegion, setCropRegion);
 	const {
-		appPlatform,
 		isPlaying,
 		setIsPlaying,
 		currentTime,
@@ -81,7 +81,6 @@ function VideoEditorContent() {
 		setPreviewVersion,
 		isPreviewReady,
 		setIsPreviewReady,
-		setAutoSuggestZoomsTrigger,
 		videoPlaybackRef,
 		projectNameInputRef,
 		projectSaveDialogInputRef,
@@ -93,10 +92,6 @@ function VideoEditorContent() {
 		nextAudioIdRef,
 		nextAnnotationIdRef,
 		nextAnnotationZIndexRef,
-		autoSuggestedVideoPathRef,
-		pendingFreshRecordingAutoZoomPathRef,
-		pendingFreshRecordingAutoSuggestTimeoutRef,
-		pendingFreshRecordingAutoSuggestTelemetryCountRef,
 		timelineRef,
 		applySessionPresentation,
 	} = ui;
@@ -158,15 +153,6 @@ function VideoEditorContent() {
 			: undefined;
 	const { shortcuts, isMac } = useShortcuts();
 
-	useEffect(() => {
-		autoSuggestedVideoPathRef.current = null;
-		pendingFreshRecordingAutoSuggestTelemetryCountRef.current = 0;
-		if (pendingFreshRecordingAutoSuggestTimeoutRef.current !== null) {
-			window.clearTimeout(pendingFreshRecordingAutoSuggestTimeoutRef.current);
-			pendingFreshRecordingAutoSuggestTimeoutRef.current = null;
-		}
-	}, []);
-
 	const presets = useVideoEditorPresets({
 		t,
 		appearance,
@@ -202,10 +188,6 @@ function VideoEditorContent() {
 			if (pending?.tempFilePath && typeof window !== "undefined") {
 				void window.electronAPI.discardExportedTemp?.(pending.tempFilePath);
 			}
-			if (pendingFreshRecordingAutoSuggestTimeoutRef.current !== null) {
-				window.clearTimeout(pendingFreshRecordingAutoSuggestTimeoutRef.current);
-				pendingFreshRecordingAutoSuggestTimeoutRef.current = null;
-			}
 		};
 	}, []);
 
@@ -214,6 +196,8 @@ function VideoEditorContent() {
 	}, [refreshProjectLibrary]);
 
 	const exportDimensions = useExportDimensions({
+		customExportResolution: exportSettings.customExportResolution,
+		onCustomExportResolutionChange: exportSettings.setCustomExportResolution,
 		videoPlaybackRef,
 		isPreviewReady,
 		aspectRatio,
@@ -262,9 +246,6 @@ function VideoEditorContent() {
 		clipInitializedRef,
 		autoFullTrackClipIdRef,
 		autoFullTrackClipEndMsRef,
-		pendingFreshRecordingAutoZoomPathRef,
-		pendingFreshRecordingAutoSuggestTelemetryCountRef,
-		autoSuggestedVideoPathRef,
 		applySessionPresentation,
 		refreshProjectLibrary,
 		captureProjectThumbnail,
@@ -281,7 +262,6 @@ function VideoEditorContent() {
 		t,
 		shortcuts,
 		isMac,
-		appPlatform,
 		timeline,
 		appearance,
 		videoPath,
@@ -291,10 +271,7 @@ function VideoEditorContent() {
 		currentTime,
 		isPlaying,
 		previewVolume,
-		loading,
-		isPreviewReady,
 		setActiveEffectSection,
-		setAutoSuggestZoomsTrigger,
 		videoPlaybackRef,
 		timelineRef,
 		nextZoomIdRef,
@@ -305,10 +282,6 @@ function VideoEditorContent() {
 		clipInitializedRef,
 		autoFullTrackClipIdRef,
 		autoFullTrackClipEndMsRef,
-		autoSuggestedVideoPathRef,
-		pendingFreshRecordingAutoZoomPathRef,
-		pendingFreshRecordingAutoSuggestTimeoutRef,
-		pendingFreshRecordingAutoSuggestTelemetryCountRef,
 		handleUndo,
 		handleRedo,
 	});
@@ -326,6 +299,7 @@ function VideoEditorContent() {
 
 	const exportController = useEditorExportController({
 		t,
+		projectName: projectController.snapshot.projectDisplayName,
 		videoPath,
 		videoSourcePath,
 		videoPlaybackRef,
@@ -357,7 +331,10 @@ function VideoEditorContent() {
 		(() => {
 			const previewVideo = videoPlaybackRef.current?.video;
 			if (previewVideo && previewVideo.videoHeight > 0) {
-				return previewVideo.videoWidth / previewVideo.videoHeight;
+				return getEffectiveNativeAspectRatio(
+					{ width: previewVideo.videoWidth, height: previewVideo.videoHeight },
+					cropRegion,
+				);
 			}
 			return 16 / 9;
 		})(),

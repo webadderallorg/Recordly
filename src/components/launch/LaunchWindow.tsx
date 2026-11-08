@@ -1,30 +1,26 @@
+import { Spinner } from "@heroui/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-	ArrowClockwiseIcon,
 	House,
-	DotsThreeVerticalIcon,
 	MicrophoneIcon,
 	MicrophoneSlashIcon,
 	MinusIcon,
 	MonitorIcon,
-	TimerIcon,
 	VideoCameraIcon,
 	VideoCameraSlashIcon,
-	XIcon,
 } from "@/components/ui/icons";
-import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Separator } from "@/components/ui/separator";
+import { toast } from "@/components/ui/toast";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { useVideoDevices } from "../../hooks/useVideoDevices";
 import { Button } from "../ui/button";
+import { CountdownDelayIcon } from "./CountdownDelayIcon";
 import { HudInteractionContext } from "./contexts/HudInteractionContext";
-import {
-	canToggleFloatingWebcamPreview,
-	WEBCAM_PREVIEW_RESIZE_HANDLES,
-} from "./floatingWebcamPreview";
+import { FloatingWebcamPreviewView } from "./FloatingWebcamPreviewView";
+import { canToggleFloatingWebcamPreview } from "./floatingWebcamPreview";
 import { useHudBarDrag } from "./hooks/useHudBarDrag";
+import { useHudStateTransition } from "./hooks/useHudStateTransition";
 import { useLaunchHudInteractionState } from "./hooks/useLaunchHudInteractionState";
 import { useLaunchWindowActions } from "./hooks/useLaunchWindowActions";
 import { useLaunchWindowSystemState } from "./hooks/useLaunchWindowSystemState";
@@ -38,7 +34,6 @@ import {
 	useLaunchPopoverCoordinator,
 } from "./popovers/LaunchPopoverCoordinator";
 import { MicPopover } from "./popovers/MicPopover";
-import { toast } from "@/components/ui/toast";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { RecordingControls } from "./RecordingControls";
 
@@ -52,12 +47,14 @@ export function LaunchWindow() {
 
 function LaunchWindowContent() {
 	const t = useScopedT("launch");
+	const captureT = useScopedT("capture");
 	const { openId } = useLaunchPopoverCoordinator();
 
 	const {
 		recording,
 		paused,
 		finalizing,
+		restarting,
 		countdownActive,
 		toggleRecording,
 		pauseRecording,
@@ -94,7 +91,7 @@ function LaunchWindowContent() {
 		devices: videoDevices,
 		selectedDeviceId: selectedVideoDeviceId,
 		setSelectedDeviceId: setSelectedVideoDeviceId,
-	} = useVideoDevices(webcamEnabled || openId === "webcam");
+	} = useVideoDevices(webcamEnabled || openId === "webcam", webcamDeviceId);
 
 	const { hudOverlayMousePassthroughSupported, platform } =
 		useLaunchWindowSystemState(preparePermissions);
@@ -113,30 +110,25 @@ function LaunchWindowContent() {
 		}
 	}, [selectedVideoDeviceId, setWebcamDeviceId]);
 
-	const {
-		showFloatingWebcamPreview,
-		setShowFloatingWebcamPreview,
-		showRecordingWebcamPreview,
-		webcamPreviewOffset,
-		webcamPreviewSize,
-		recordingWebcamPreviewContainerRef,
-		isWebcamPreviewDraggingRef,
-		webcamPreviewDragStartRef,
-		handleWebcamPreviewPointerDown,
-		handleWebcamPreviewPointerMove,
-		handleWebcamPreviewPointerUp,
-		handleWebcamPreviewResizePointerDown,
-		handleWebcamPreviewResizePointerMove,
-		handleWebcamPreviewResizePointerUp,
-		setWebcamPreviewNode,
-		setRecordingWebcamPreviewNode,
-	} = useWebcamPreviewOverlay({
+	const webcamPreview = useWebcamPreviewOverlay({
 		webcamEnabled,
 		webcamDeviceId,
 		showWebcamControls,
 		webcamPopoverOpen: openId === "webcam",
 		hudOverlayMousePassthroughSupported,
+		hudBarRef,
 	});
+	const {
+		webcamPreviewRoundness,
+		webcamPreviewShape,
+		showFloatingWebcamPreview,
+		setShowFloatingWebcamPreview,
+		showRecordingWebcamPreview,
+		recordingWebcamPreviewContainerRef,
+		isWebcamPreviewDraggingRef,
+		webcamPreviewDragStartRef,
+		setWebcamPreviewNode,
+	} = webcamPreview;
 
 	useEffect(() => {
 		window.electronAPI?.hudOverlaySetWebcamPreviewVisible?.(showRecordingWebcamPreview);
@@ -160,6 +152,7 @@ function LaunchWindowContent() {
 		hudContentRef,
 		hudBarRef,
 		recordingWebcamPreviewContainerRef,
+		docked: showRecordingWebcamPreview,
 	});
 
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } =
@@ -169,11 +162,6 @@ function LaunchWindowContent() {
 			isWebcamPreviewDraggingRef,
 			webcamPreviewDragStartRef,
 		});
-
-	const hudStateTransition = {
-		duration: 0.24,
-		ease: [0.22, 1, 0.36, 1] as const,
-	};
 
 	const pickerPending = useRef(false);
 	const [isPickerPending, setIsPickerPending] = useState(false);
@@ -193,12 +181,13 @@ function LaunchWindowContent() {
 				else toast.error(result.message);
 			}
 		} catch {
-			toast.error("Unable to open the source picker.");
+			toast.error(captureT("pickerError"));
 		} finally {
 			pickerPending.current = false;
 			setIsPickerPending(false);
 		}
 	}, [
+		captureT,
 		recording,
 		cancelRecordingStart,
 		preparePermissions,
@@ -222,7 +211,7 @@ function LaunchWindowContent() {
 			.catch(() => {
 				if (mounted) {
 					setSourceReady(true);
-					toast.error("Unable to load the recording source. Pick a screen again.");
+					toast.error(captureT("sourceLoadError"));
 				}
 			});
 
@@ -235,7 +224,7 @@ function LaunchWindowContent() {
 			mounted = false;
 			cleanup?.();
 		};
-	}, [syncSelectedSource]);
+	}, [syncSelectedSource, captureT]);
 
 	const openHome = () => {
 		localStorage.setItem("recordly.open-dashboard", String(Date.now()));
@@ -256,9 +245,8 @@ function LaunchWindowContent() {
 
 	const recordingControls = (
 		<RecordingControls
-			onHome={openHome}
+			busy={restarting}
 			paused={paused}
-			microphoneEnabled={microphoneEnabled}
 			elapsed={elapsed}
 			onPauseResume={paused ? resumeRecording : pauseRecording}
 			onStopRecording={toggleRecording}
@@ -269,27 +257,41 @@ function LaunchWindowContent() {
 	);
 
 	const idleControls = (
-		<>
+		<div
+			role="group"
+			aria-label={captureT("recordingSetup")}
+			className={styles.recordingControls}
+		>
+			<Button
+				type="button"
+				variant="destructive"
+				size="icon"
+				className={`${styles.electronNoDrag} ${styles.recordControl}`}
+				onClick={hasSelectedSource ? toggleRecording : () => void handlePickOnScreen()}
+				disabled={countdownActive || isPickerPending || !sourceReady}
+				title={t("recording.record")}
+			>
+				<div className={styles.recDot} />
+			</Button>
 			<Button
 				variant="ghost"
 				size="lg"
-				className={`${styles.electronNoDrag} group gap-2 px-3 min-w-0 max-w-[180px] shrink-0`}
+				className={`${styles.electronNoDrag} ${styles.sourceControl} group gap-2`}
 				title={selectedSource}
-				aria-label="Choose recording source"
+				aria-label={captureT("chooseSource")}
 				disabled={isPickerPending || !sourceReady || recording || finalizing}
 				onClick={() => void handlePickOnScreen()}
 			>
 				<MonitorIcon size={18} className="size-5 shrink-0" />
-				<div className="flex-1 min-w-0 overflow-hidden">
+				<div className="min-w-0 overflow-hidden">
 					{hasSelectedSource ? (
 						<MarqueeText text={selectedSource} />
 					) : (
-						<span>Pick screen</span>
+						<span>{captureT("pickSource")}</span>
 					)}
 				</div>
 			</Button>
-			<Separator orientation="vertical" className="mx-[5px] h-6 self-center" />
-
+			<span aria-hidden="true" className={styles.sourceDivider} />
 			<MicPopover
 				disabled={recording}
 				systemAudioEnabled={systemAudioEnabled}
@@ -338,7 +340,9 @@ function LaunchWindowContent() {
 				)}
 				showFloatingWebcamPreview={showFloatingWebcamPreview}
 				onToggleFloatingPreview={() => setShowFloatingWebcamPreview((current) => !current)}
-				showWebcamControls={showWebcamControls}
+				showWebcamControls={showWebcamControls && !showRecordingWebcamPreview}
+				roundness={webcamPreviewRoundness}
+				shape={webcamPreviewShape}
 				setWebcamPreviewNode={setWebcamPreviewNode}
 				videoDevices={videoDevices}
 				webcamDeviceId={webcamDeviceId}
@@ -381,33 +385,15 @@ function LaunchWindowContent() {
 						variant="ghost"
 						size="icon"
 						iconSize="lg"
-						title={t("recording.countdownDelay")}
+						title={`${t("recording.countdownDelay")}: ${countdownDelay === 0 ? t("recording.noDelay") : `${countdownDelay}s`}`}
 						className={countdownDelay > 0 ? "text-accent" : ""}
 					>
-						<TimerIcon
-							weight={openId === "countdown" ? "fill" : "regular"}
-							className="size-5"
-						/>
+						<CountdownDelayIcon seconds={countdownDelay} className="size-5" />
 					</Button>
 				}
 			/>
 
-			<Button
-				type="button"
-				variant="destructive"
-				size="icon"
-				className={styles.electronNoDrag}
-				onClick={hasSelectedSource ? toggleRecording : () => void handlePickOnScreen()}
-				disabled={countdownActive || isPickerPending || !sourceReady}
-				title={t("recording.record")}
-			>
-				<div className={styles.recDot} />
-			</Button>
-
-			<Separator orientation="vertical" className="mx-[5px] h-6 self-center" />
-
 			{homeButton}
-
 			<Button
 				variant="ghost"
 				size="icon"
@@ -417,40 +403,82 @@ function LaunchWindowContent() {
 			>
 				<MinusIcon className="size-5" />
 			</Button>
-
-			<Button
-				variant="ghost"
-				size="icon"
-				iconSize="lg"
-				onClick={() => window.electronAPI?.hudOverlayClose?.()}
-				title={t("recording.closeApp")}
-			>
-				<XIcon className="size-5" />
-			</Button>
-		</>
-	);
-
-	const finalizingControls = (
-		<div className={styles.finalizingState}>
-			<ArrowClockwiseIcon size={15} className={styles.finalizingSpin} />
-			<div className={styles.finalizingCopy}>
-				<span>{t("recording.preparing", "Preparing recording")}</span>
-				<small>{t("recording.preparingSubtitle", "Opening the editor in a moment")}</small>
-			</div>
 		</div>
 	);
 
-	const hudMode = finalizing ? "finalizing" : recording ? "recording" : "idle";
 	const useNativeHudBarDrag =
 		platform === "linux" || hudOverlayMousePassthroughSupported === false;
-	const shouldAnimateHudLayout = !recording && !showRecordingWebcamPreview && !isHudDragging;
+	const finishHudTransition = useHudStateTransition(
+		hudBarRef,
+		finalizing && !restarting ? "finalizing" : recording || restarting ? "recording" : "idle",
+		showRecordingWebcamPreview,
+	);
+
+	const hudBar = (
+		<div
+			ref={hudBarTransformRef}
+			className={showRecordingWebcamPreview ? styles.webcamHudDock : undefined}
+			style={{
+				transform: showRecordingWebcamPreview
+					? undefined
+					: `translate3d(${recordingHudOffset.x}px, ${recordingHudOffset.y}px, 0)`,
+			}}
+		>
+			<div
+				ref={hudBarRef}
+				onPointerDownCapture={finishHudTransition}
+				data-hud-dragging={isHudDragging}
+				className={`${styles.bar} ${styles.recordingBar} ${useNativeHudBarDrag ? styles.electronDrag : ""} launch-theme pointer-events-auto`}
+				data-recording-state={
+					finalizing
+						? "finalizing"
+						: recording
+							? paused
+								? "paused"
+								: "recording"
+							: "idle"
+				}
+				onPointerDown={
+					showRecordingWebcamPreview || useNativeHudBarDrag
+						? undefined
+						: handleHudBarPointerDown
+				}
+				onPointerMove={showRecordingWebcamPreview ? undefined : handleHudBarPointerMove}
+				onPointerUp={showRecordingWebcamPreview ? undefined : handleHudBarPointerUp}
+				onPointerCancel={showRecordingWebcamPreview ? undefined : handleHudBarPointerUp}
+				onLostPointerCapture={
+					showRecordingWebcamPreview ? undefined : handleHudBarPointerUp
+				}
+				onMouseEnter={handleHudMouseEnter}
+				onMouseLeave={handleHudMouseLeave}
+			>
+				<div className={styles.barStateViewport}>
+					<div className={styles.barState}>
+						{finalizing && !restarting ? (
+							<div
+								role="status"
+								className={`${styles.recordingControls} ${styles.recordingFinalizing} gap-2 text-sm text-muted-foreground`}
+							>
+								<Spinner size="sm" />
+								{captureT("finishingRecording", "Finishing recording…")}
+							</div>
+						) : recording || restarting ? (
+							recordingControls
+						) : (
+							idleControls
+						)}
+					</div>
+				</div>
+			</div>
+		</div>
+	);
 
 	return (
 		<HudInteractionContext.Provider
 			value={{ onMouseEnter: handleHudMouseEnter, onMouseLeave: handleHudMouseLeave }}
 		>
 			<div
-				className="w-full flex justify-center bg-transparent overflow-visible items-end pb-5 pointer-events-none"
+				className="w-full flex justify-center bg-transparent overflow-visible items-end pb-6 pointer-events-none"
 				style={{ height: "100vh" }}
 			>
 				<div
@@ -458,112 +486,16 @@ function LaunchWindowContent() {
 					className="flex items-center overflow-visible flex-col-reverse pointer-events-none"
 				>
 					<div className="flex flex-col items-center pointer-events-none p-2">
-						<div
-							ref={hudBarTransformRef}
-							style={{
-								transform: `translate3d(${recordingHudOffset.x}px, ${recordingHudOffset.y}px, 0)`,
-							}}
-						>
-							<motion.div
-								ref={hudBarRef}
-								layout={shouldAnimateHudLayout}
-								transition={hudStateTransition}
-								className={`${styles.bar} launch-theme mb-2 pointer-events-auto`}
-								onMouseEnter={handleHudMouseEnter}
-								onMouseLeave={handleHudMouseLeave}
-							>
-								<div
-									// Linux compositors and non-passthrough Windows fallback windows
-									// need native window dragging; the JS drag path only translates
-									// content inside the HUD window.
-									className={`flex items-center px-0.5 cursor-grab active:cursor-grabbing ${
-										useNativeHudBarDrag ? styles.electronDrag : ""
-									}`}
-									onPointerDown={handleHudBarPointerDown}
-									onPointerMove={handleHudBarPointerMove}
-									onPointerUp={handleHudBarPointerUp}
-									onPointerCancel={handleHudBarPointerUp}
-								>
-									<DotsThreeVerticalIcon
-										weight="fill"
-										size={18}
-										className="text-[#6b6b78]"
-									/>
-								</div>
-
-								<div className={styles.barStateViewport}>
-									<AnimatePresence initial={false} mode="wait">
-										<motion.div
-											key={hudMode}
-											layout={shouldAnimateHudLayout}
-											className={styles.barState}
-											initial={{
-												opacity: 0,
-												y: 10,
-												scale: 0.985,
-												filter: "blur(8px)",
-											}}
-											animate={{
-												opacity: 1,
-												y: 0,
-												scale: 1,
-												filter: "blur(0px)",
-											}}
-											exit={{
-												opacity: 0,
-												y: -10,
-												scale: 0.985,
-												filter: "blur(6px)",
-											}}
-											transition={hudStateTransition}
-										>
-											{finalizing
-												? finalizingControls
-												: recording
-													? recordingControls
-													: idleControls}
-										</motion.div>
-									</AnimatePresence>
-								</div>
-							</motion.div>
-						</div>
+						{!showRecordingWebcamPreview && hudBar}
 						{showRecordingWebcamPreview && (
-							<div
-								ref={recordingWebcamPreviewContainerRef}
-								className={`${styles.recordingWebcamPreview} ${styles.electronNoDrag} pointer-events-auto`}
-								data-hud-interactive
+							<FloatingWebcamPreviewView
+								preview={webcamPreview}
+								hudBar={hudBar}
+								finishHudTransition={finishHudTransition}
+								handleHudMouseEnter={handleHudMouseEnter}
+								handleHudMouseLeave={handleHudMouseLeave}
 								title={t("recording.webcam")}
-								style={{
-									transform: `translate(${webcamPreviewOffset.x}px, ${webcamPreviewOffset.y}px)`,
-									width: webcamPreviewSize.width,
-									height: webcamPreviewSize.height,
-								}}
-								onMouseEnter={handleHudMouseEnter}
-								onMouseLeave={handleHudMouseLeave}
-								onPointerDown={handleWebcamPreviewPointerDown}
-								onPointerMove={handleWebcamPreviewPointerMove}
-								onPointerUp={handleWebcamPreviewPointerUp}
-								onPointerCancel={handleWebcamPreviewPointerUp}
-							>
-								<video
-									ref={setRecordingWebcamPreviewNode}
-									className={styles.recordingWebcamPreviewVideo}
-									muted
-									playsInline
-									style={{ transform: "scaleX(-1)" }}
-								/>
-								{WEBCAM_PREVIEW_RESIZE_HANDLES.map((handle) => (
-									<div
-										key={handle}
-										data-resize-handle={handle}
-										className={styles.recordingWebcamPreviewResizeHandle}
-										onPointerDown={handleWebcamPreviewResizePointerDown}
-										onPointerMove={handleWebcamPreviewResizePointerMove}
-										onPointerUp={handleWebcamPreviewResizePointerUp}
-										onPointerCancel={handleWebcamPreviewResizePointerUp}
-									/>
-								))}
-							</div>
+							/>
 						)}
 					</div>
 				</div>

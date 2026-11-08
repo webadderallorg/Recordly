@@ -1,3 +1,5 @@
+import { nativeT } from "../../nativeI18n";
+import { observeShareExportSource, progressiveShareFfmpegArgs } from "../growingShareUpload";
 import type { ChildProcessByStdio } from "node:child_process";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
@@ -258,6 +260,7 @@ export function registerExportHandlers() {
 				bitrate: number;
 				encodingMode: NativeExportEncodingMode;
 				inputMode?: "rawvideo" | "h264-stream";
+				deliveryProfile?: "cloud";
 			},
 		) => {
 			try {
@@ -269,6 +272,7 @@ export function registerExportHandlers() {
 				const inputMode = options.inputMode ?? "rawvideo";
 				const sessionId = `recordly-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 				const outputPath = path.join(app.getPath("temp"), `${sessionId}.mp4`);
+				observeShareExportSource(event.sender.id, outputPath);
 
 				let encoderName: string;
 				let ffmpegArgs: string[];
@@ -285,7 +289,7 @@ export function registerExportHandlers() {
 					ffmpegArgs = buildNativeVideoExportArgs(encoderName, options, outputPath);
 				}
 
-				const ffmpegProcess = spawn(ffmpegPath, ffmpegArgs, {
+				const ffmpegProcess = spawn(ffmpegPath, progressiveShareFfmpegArgs(ffmpegArgs), {
 					stdio: ["pipe", "ignore", "pipe"],
 				}) as ChildProcessByStdio<Writable, null, Readable>;
 				// For rawvideo, frames are a fixed RGBA size. For h264-stream, chunks are variable.
@@ -463,6 +467,7 @@ export function registerExportHandlers() {
 
 						event.sender.send("native-static-layout-export-progress", progress);
 					},
+					(filePath) => observeShareExportSource(event.sender.id, filePath),
 				);
 				registerOwnedExportPath(result.outputPath);
 				const primaryBackend = result.metrics.chunks[0]?.backend;
@@ -769,9 +774,10 @@ export function registerExportHandlers() {
 		},
 	);
 
-	ipcMain.handle("export-stream-open", async (_event, options?: { extension?: string }) => {
+	ipcMain.handle("export-stream-open", async (event, options?: { extension?: string }) => {
 		try {
 			const result = await openExportStream(options);
+			observeShareExportSource(event.sender.id, result.tempPath);
 			return { success: true, streamId: result.streamId, tempPath: result.tempPath };
 		} catch (error) {
 			return { success: false, error: String(error) };
@@ -864,11 +870,11 @@ export function registerExportHandlers() {
 				// Determine file type from extension
 				const isGif = fileName.toLowerCase().endsWith(".gif");
 				const filters = isGif
-					? [{ name: "GIF Image", extensions: ["gif"] }]
-					: [{ name: "MP4 Video", extensions: ["mp4"] }];
+					? [{ name: nativeT("gifImage"), extensions: ["gif"] }]
+					: [{ name: nativeT("mp4Video"), extensions: ["mp4"] }];
 				const parentWindow = BrowserWindow.fromWebContents(event.sender);
 				const saveDialogOptions: SaveDialogOptions = {
-					title: isGif ? "Save Exported GIF" : "Save Exported Video",
+					title: isGif ? nativeT("saveGif") : nativeT("saveVideo"),
 					defaultPath: path.join(app.getPath("downloads"), fileName),
 					filters,
 					properties: ["createDirectory", "showOverwriteConfirmation"],
@@ -1019,11 +1025,11 @@ export function registerExportHandlers() {
 
 				const isGif = fileName.toLowerCase().endsWith(".gif");
 				const filters = isGif
-					? [{ name: "GIF Image", extensions: ["gif"] }]
-					: [{ name: "MP4 Video", extensions: ["mp4"] }];
+					? [{ name: nativeT("gifImage"), extensions: ["gif"] }]
+					: [{ name: nativeT("mp4Video"), extensions: ["mp4"] }];
 				const parentWindow = BrowserWindow.fromWebContents(event.sender);
 				const saveDialogOptions: SaveDialogOptions = {
-					title: isGif ? "Save Exported GIF" : "Save Exported Video",
+					title: isGif ? nativeT("saveGif") : nativeT("saveVideo"),
 					defaultPath: path.join(app.getPath("downloads"), fileName),
 					filters,
 					properties: ["createDirectory", "showOverwriteConfirmation"],

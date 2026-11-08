@@ -1,8 +1,10 @@
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
+import { useShortcuts } from "@/contexts/ShortcutsContext";
+import { formatBinding } from "@/lib/shortcuts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import {
 	CaretDown,
-	Check,
 	Crop,
 	MagicWand,
 	MagnifyingGlassPlus,
@@ -26,7 +28,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { useI18n } from "@/contexts/I18nContext";
-import { ASPECT_RATIOS, type AspectRatio, getAspectRatioLabel } from "@/utils/aspectRatioUtils";
+import type { AspectRatio } from "@/utils/aspectRatioUtils";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import type { CaptionEditTarget } from "../captionEditing";
 import type { useAnnotationRegionCommands } from "../hooks/useAnnotationRegionCommands";
@@ -37,7 +39,13 @@ import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
 import type { TimelineEditorHandle } from "../timeline/TimelineEditor";
 import type { VideoPlaybackRef } from "../VideoPlayback";
+import { InlineCropEditor } from "./InlineCropEditor";
 import { EditorVideoPreview } from "./EditorVideoPreview";
+import { AspectRatioPicker } from "./AspectRatioPicker";
+import { AnnotationToolbar } from "./AnnotationToolbar";
+
+// Temporarily hide the toolbar while retaining the annotation tools.
+const SHOW_ANNOTATION_TOOLBAR = false;
 
 type Props = {
 	t: ReturnType<typeof useI18n>["t"];
@@ -62,8 +70,10 @@ type Props = {
 	annotationCommands: ReturnType<typeof useAnnotationRegionCommands>;
 	effectiveCursorTelemetry: ReturnType<typeof useTimelineState>["cursorTelemetry"];
 	effectiveShowCursor: boolean;
-	isCropped: boolean;
 	handleOpenCropEditor: () => void;
+	isCropping: boolean;
+	onCancelCrop: () => void;
+	onDoneCrop: () => void;
 	handleSaveAutoCaptionEdit: (target: CaptionEditTarget, text: string) => void;
 	handleSelectAnnotation: (id: string | null) => void;
 	setDuration: Dispatch<SetStateAction<number>>;
@@ -82,6 +92,8 @@ function formatTime(seconds: number) {
 }
 
 export function EditorPreviewPanel(props: Props) {
+	const { locale, t: uiText } = useUiLocale();
+	const { shortcuts, isMac } = useShortcuts();
 	const {
 		t,
 		videoPath,
@@ -105,8 +117,10 @@ export function EditorPreviewPanel(props: Props) {
 		annotationCommands,
 		effectiveCursorTelemetry,
 		effectiveShowCursor,
-		isCropped,
 		handleOpenCropEditor,
+		isCropping,
+		onCancelCrop,
+		onDoneCrop,
 		handleSaveAutoCaptionEdit,
 		handleSelectAnnotation,
 		setDuration,
@@ -122,58 +136,81 @@ export function EditorPreviewPanel(props: Props) {
 			<div className="flex min-h-0 flex-1 flex-col">
 				<div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
 					<div className="flex h-10 shrink-0 items-center justify-center gap-3">
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button
-									variant="ghost"
-									size="sm"
-									className="h-7 gap-1 px-2 text-xs"
-								>
-									<span className="font-medium">
-										{getAspectRatioLabel(aspectRatio)}
-									</span>
-									<CaretDown className="h-3 w-3" />
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="center">
-								{ASPECT_RATIOS.map((ratio) => (
-									<DropdownMenuItem
-										key={ratio}
-										onClick={() => setAspectRatio(ratio)}
-										className="flex cursor-pointer items-center justify-between gap-3 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
-									>
-										<span>{getAspectRatioLabel(ratio)}</span>
-										{aspectRatio === ratio ? (
-											<Check className="h-3 w-3 text-[#2563EB]" />
-										) : null}
-									</DropdownMenuItem>
-								))}
-							</DropdownMenuContent>
-						</DropdownMenu>
+						<AspectRatioPicker
+							value={aspectRatio}
+							onChange={setAspectRatio}
+							sourceWidth={videoPlaybackRef.current?.video?.videoWidth}
+							sourceHeight={videoPlaybackRef.current?.video?.videoHeight}
+						/>
 						<div className="h-4 w-px bg-foreground/20" />
 						<Button
 							variant="ghost"
 							size="sm"
-							onClick={handleOpenCropEditor}
+							onClick={() => {
+								setIsPlaying(false);
+								handleOpenCropEditor();
+							}}
+							disabled={!videoPath || !isPreviewReady || isCropping}
+							aria-pressed={isCropping}
 							className="h-7 gap-1.5 px-2 text-xs"
 						>
 							<Crop className="h-3.5 w-3.5" />
-							<span className="font-medium">{t("settings.crop.title")}</span>
-							{isCropped ? (
-								<span className="h-1.5 w-1.5 rounded-full bg-[#2563EB]" />
-							) : null}
+							<span className="font-medium">
+								{t("settings.sections.crop", "Crop")}
+							</span>
 						</Button>
 					</div>
 					<div
-						className="flex min-h-0 w-full flex-1 items-stretch px-4 py-3"
+						className="flex min-h-0 w-full flex-1 items-stretch gap-3 px-4 py-3"
 						style={{ flex: "1 1 auto", margin: 0 }}
 					>
+						{SHOW_ANNOTATION_TOOLBAR && (
+							<AnnotationToolbar
+								disabled={!videoPath || !isPreviewReady || isCropping}
+								onAdd={(type) => {
+									videoPlaybackRef.current?.pause();
+									setIsPlaying(false);
+									const nextTrack = timeline.annotationRegions.reduce(
+										(next, region) =>
+											Math.max(next, (region.trackIndex ?? 0) + 1),
+										0,
+									);
+									timelineRef.current?.addAnnotation(
+										nextTrack,
+										type,
+										videoPlaybackRef.current?.getAnnotationPlacement?.() ??
+											undefined,
+									);
+								}}
+							/>
+						)}
 						<div
-							className="editor-preview-stage flex min-h-0 min-w-0 flex-1 items-center justify-center"
+							className="editor-preview-stage relative flex min-h-0 min-w-0 flex-1 items-center justify-center"
 							style={{ containerType: "size" }}
+							onPointerDownCapture={(event) => {
+								if (
+									event.button === 0 &&
+									!isCropping &&
+									timeline.selectedAnnotationId &&
+									event.target instanceof Element &&
+									!event.target.closest("[data-annotation-id]")
+								) {
+									handleSelectAnnotation(null);
+								}
+							}}
 						>
+							{isCropping && (
+								<InlineCropEditor
+									videoElement={videoPlaybackRef.current?.video ?? null}
+									cropRegion={appearance.cropRegion}
+									onCropChange={appearance.setCropRegion}
+									onCancel={onCancelCrop}
+									onDone={onDoneCrop}
+								/>
+							)}
 							<div
-								className="editor-preview-frame relative"
+								className={`editor-preview-frame relative${isPreviewReady ? " loading-content-enter" : ""}`}
+								inert={isCropping}
 								style={{
 									width: `min(100cqw, calc(100cqh * ${previewAspectRatioValue}))`,
 									height: `min(100cqh, calc(100cqw / ${previewAspectRatioValue}))`,
@@ -181,12 +218,14 @@ export function EditorPreviewPanel(props: Props) {
 									maxWidth: "100%",
 									margin: "0 auto",
 									boxSizing: "border-box",
+									opacity: isCropping ? 0 : 1,
+									transition: "none",
 								}}
 							>
 								{videoPath && !isPreviewReady && (
 									<Skeleton
-										aria-label="Loading preview"
-										className="pointer-events-none absolute inset-0 z-20 h-full w-full rounded-xl"
+										aria-label={uiText("ui.loadingPreview")}
+										className="pointer-events-none absolute inset-0 z-20 h-full w-full rounded-none"
 									/>
 								)}
 								<EditorVideoPreview
@@ -195,9 +234,9 @@ export function EditorPreviewPanel(props: Props) {
 									aspectRatio={aspectRatio}
 									playbackRef={videoPlaybackRef}
 									currentTime={currentTime}
-									isPlaying={isPlaying}
+									isPlaying={isPlaying && !isCropping}
 									previewVolume={previewVolume}
-									suspendRendering={suspendRendering}
+									suspendRendering={suspendRendering || isCropping}
 									appearance={appearance}
 									timeline={timeline}
 									audio={audio}
@@ -214,6 +253,10 @@ export function EditorPreviewPanel(props: Props) {
 										onZoomFocusChange: zoomCommands.handleZoomFocusChange,
 										onEditAutoCaption: handleSaveAutoCaptionEdit,
 										onSelectAnnotation: handleSelectAnnotation,
+										onAnnotationContentChange:
+											annotationCommands.handleAnnotationContentChange,
+										onAnnotationDelete:
+											annotationCommands.handleAnnotationDelete,
 										onAnnotationPositionChange:
 											annotationCommands.handleAnnotationPositionChange,
 										onAnnotationSizeChange:
@@ -281,22 +324,23 @@ export function EditorPreviewPanel(props: Props) {
 						<MagnifyingGlassPlus className="h-4 w-4" />
 					</Button>
 					<Button
-						onClick={() => timelineRef.current?.suggestZooms()}
-						variant="ghost"
-						size="icon"
-						className="h-9 w-9"
-						title={t("timeline.zoom.suggestZooms")}
-					>
-						<MagicWand className="h-4 w-4" />
-					</Button>
-					<Button
 						onClick={() => timelineRef.current?.splitClip()}
 						variant="ghost"
 						size="icon"
 						className="h-9 w-9"
-						title={t("editor.toolbar.splitClip")}
+						title={`${uiText("editing.splitClip", "Split Clip")} (${formatBinding(shortcuts.splitClip, isMac)})`}
 					>
 						<Scissors className="h-4 w-4" />
+					</Button>
+					<Button
+						onClick={() => timelineRef.current?.suggestZooms()}
+						variant="ghost"
+						size="icon"
+						className="h-9 w-9"
+						aria-label={t("timeline.zoom.suggestZooms")}
+						title={t("timeline.zoom.suggestZooms")}
+					>
+						<MagicWand className="h-4 w-4" />
 					</Button>
 				</div>
 
@@ -319,7 +363,9 @@ export function EditorPreviewPanel(props: Props) {
 							size="icon"
 							className={`h-9 w-9  ${isPlaying ? "bg-foreground/10 text-foreground hover:bg-foreground/20" : "bg-neutral-800 text-white hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-white/90"} `}
 							onClick={playback.togglePlayPause}
-							title={isPlaying ? "Pause" : "Play"}
+							title={
+								isPlaying ? t("editor.playback.pause") : t("editor.playback.play")
+							}
 						>
 							{isPlaying ? (
 								<Pause className="h-3.5 w-3.5" weight="fill" />
@@ -363,11 +409,13 @@ export function EditorPreviewPanel(props: Props) {
 						<PopoverContent
 							side="top"
 							sideOffset={10}
-							aria-label="Preview volume"
+							aria-label={uiText("ui.previewVolume")}
 							className="flex w-14 flex-col items-center gap-3 p-3"
 						>
 							<span className="text-[10px] tabular-nums text-muted-foreground">
-								{Math.round(previewVolume * 100)}%
+								{new Intl.NumberFormat(locale, { style: "percent" }).format(
+									previewVolume,
+								)}
 							</span>
 							<Slider
 								aria-label={t("editor.playback.volume", "Preview volume")}

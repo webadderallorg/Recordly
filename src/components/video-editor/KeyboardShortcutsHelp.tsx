@@ -11,6 +11,16 @@ import { formatShortcut } from "@/utils/platformUtils";
 export function KeyboardShortcutsHelp() {
 	const { shortcuts, isMac, openConfig } = useShortcuts();
 	const t = useScopedT("editor");
+	const ts = useScopedT("shortcuts");
+	const te = useScopedT("editing");
+	const actionLabel = (action: keyof typeof SHORTCUT_LABELS) =>
+		action === "splitClip"
+			? te("splitClip", "Split Clip")
+			: ts(`actions.${action}`, SHORTCUT_LABELS[action]);
+	const bindingLabel = (text: string) =>
+		text
+			.replace(/\bSpace\b/g, te("spaceKey", "Space"))
+			.replace(/\bScroll\b/g, te("scrollKey", "Scroll"));
 
 	const [scrollLabels, setScrollLabels] = useState({
 		pan: "Shift + Scroll",
@@ -51,8 +61,8 @@ export function KeyboardShortcutsHelp() {
 				<div className="space-y-1.5 text-[10px]">
 					{SHORTCUT_ACTIONS.map((action) => (
 						<div key={action} className="flex items-center justify-between">
-							<span className="text-muted-foreground">{SHORTCUT_LABELS[action]}</span>
-							<Kbd>{formatBinding(shortcuts[action], isMac)}</Kbd>
+							<span className="text-muted-foreground">{actionLabel(action)}</span>
+							<Kbd>{bindingLabel(formatBinding(shortcuts[action], isMac))}</Kbd>
 						</div>
 					))}
 
@@ -61,13 +71,13 @@ export function KeyboardShortcutsHelp() {
 							<span className="text-muted-foreground">
 								{t("keyboardShortcuts.panTimeline")}
 							</span>
-							<Kbd>{scrollLabels.pan}</Kbd>
+							<Kbd>{bindingLabel(scrollLabels.pan)}</Kbd>
 						</div>
 						<div className="flex items-center justify-between mt-1.5">
 							<span className="text-muted-foreground">
 								{t("keyboardShortcuts.zoomTimeline")}
 							</span>
-							<Kbd>{scrollLabels.zoom}</Kbd>
+							<Kbd>{bindingLabel(scrollLabels.zoom)}</Kbd>
 						</div>
 						<div className="flex items-center justify-between mt-1.5">
 							<span className="text-muted-foreground">

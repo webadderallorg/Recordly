@@ -10,10 +10,10 @@ import {
 	type ZoomMode,
 	type ZoomRegion,
 } from "../types";
+import { getZoomFocusSpace } from "../videoPlayback/focusUtils";
 
 interface UseZoomRegionCommandsParams {
 	setSelectedClipId: Dispatch<SetStateAction<string | null>>;
-	videoPath: string | null;
 	setZoomRegions: Dispatch<SetStateAction<ZoomRegion[]>>;
 	selectedZoomId: string | null;
 	setSelectedZoomId: Dispatch<SetStateAction<string | null>>;
@@ -22,13 +22,10 @@ interface UseZoomRegionCommandsParams {
 	setSelectedCaptionId: Dispatch<SetStateAction<string | null>>;
 	setActiveEffectSection: Dispatch<SetStateAction<EditorEffectSection>>;
 	nextZoomIdRef: MutableRefObject<number>;
-	autoSuggestedVideoPathRef: MutableRefObject<string | null>;
-	pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
 }
 
 export function useZoomRegionCommands({
 	setSelectedClipId,
-	videoPath,
 	setZoomRegions,
 	selectedZoomId,
 	setSelectedZoomId,
@@ -37,8 +34,6 @@ export function useZoomRegionCommands({
 	setSelectedCaptionId,
 	setActiveEffectSection,
 	nextZoomIdRef,
-	autoSuggestedVideoPathRef,
-	pendingFreshRecordingAutoZoomPathRef,
 }: UseZoomRegionCommandsParams) {
 	const handleSelectZoom = useCallback(
 		(id: string | null) => {
@@ -63,13 +58,6 @@ export function useZoomRegionCommands({
 		],
 	);
 
-	const markFreshRecordingSuggestion = useCallback(() => {
-		if (videoPath && pendingFreshRecordingAutoZoomPathRef.current === videoPath) {
-			autoSuggestedVideoPathRef.current = videoPath;
-			pendingFreshRecordingAutoZoomPathRef.current = null;
-		}
-	}, [autoSuggestedVideoPathRef, pendingFreshRecordingAutoZoomPathRef, videoPath]);
-
 	const handleZoomAdded = useCallback(
 		(span: Span) => {
 			const id = `zoom-${nextZoomIdRef.current++}`;
@@ -80,10 +68,10 @@ export function useZoomRegionCommands({
 				endMs: Math.round(span.end),
 				depth,
 				focus: clampFocusToDepth({ cx: 0.5, cy: 0.5 }, depth),
+				focusSpace: "viewport",
 				// Mode describes camera tracking behavior, not how the region was created.
 				mode: "auto",
 			};
-			markFreshRecordingSuggestion();
 			setZoomRegions((current) => [...current, newRegion]);
 			setSelectedZoomId(id);
 			setSelectedAnnotationId(null);
@@ -91,7 +79,6 @@ export function useZoomRegionCommands({
 			setSelectedCaptionId(null);
 		},
 		[
-			markFreshRecordingSuggestion,
 			nextZoomIdRef,
 			setSelectedAnnotationId,
 			setSelectedClipId,
@@ -109,12 +96,12 @@ export function useZoomRegionCommands({
 				endMs: Math.round(span.end),
 				depth: DEFAULT_AUTO_ZOOM_DEPTH,
 				focus: clampFocusToDepth(focus, DEFAULT_AUTO_ZOOM_DEPTH),
+				focusSpace: "source",
 				mode: "auto",
 			};
-			markFreshRecordingSuggestion();
 			setZoomRegions((current) => [...current, newRegion]);
 		},
-		[markFreshRecordingSuggestion, nextZoomIdRef, setZoomRegions],
+		[nextZoomIdRef, setZoomRegions],
 	);
 
 	const handleZoomSpanChange = useCallback(
@@ -167,7 +154,9 @@ export function useZoomRegionCommands({
 			if (!selectedZoomId) return;
 			setZoomRegions((current) =>
 				current.map((region) =>
-					region.id === selectedZoomId ? { ...region, mode } : region,
+					region.id === selectedZoomId
+						? { ...region, mode, focusSpace: getZoomFocusSpace(region) }
+						: region,
 				),
 			);
 		},

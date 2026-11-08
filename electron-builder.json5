@@ -65,7 +65,7 @@
   "publish": [
     {
       "provider": "github",
-      "owner": "webadderall",
+      "owner": "webadderallorg",
       "repo": "Recordly",
       "tagNamePrefix": "v",
       "publishAutoUpdate": true
@@ -89,6 +89,9 @@
     "icon": "icons/icons/mac/icon.icns",
     "artifactName": "${productName}-${arch}.${ext}",
     "extendInfo": {
+      // The main app restores its Dock icon through desktopPresence. Declaring
+      // an accessory launch identity keeps Chromium media helpers out of the Dock.
+      "LSUIElement": true,
       "NSAudioCaptureUsageDescription": "Recordly needs audio capture permission to record system audio.",
       "NSCameraUsageDescription": "Recordly needs camera access to record webcam video.",
       "NSMicrophoneUsageDescription": "Recordly needs microphone access to record voice audio.",

@@ -100,3 +100,121 @@ describe("wallpapers", () => {
 		);
 	});
 });
+
+const wallpaperHooks = vi.hoisted(() => ({
+	states: [] as unknown[],
+	index: 0,
+	effects: [] as (() => void)[],
+	prepare: vi.fn(async (file: File) => `data:image/png;base64,${file.name}`),
+	save: vi.fn(),
+}));
+vi.mock("react", async (original) => ({
+	...(await original<typeof import("react")>()),
+	useState: (initial: unknown) => {
+		const index = wallpaperHooks.index++;
+		if (!(index in wallpaperHooks.states))
+			wallpaperHooks.states[index] = typeof initial === "function" ? initial() : initial;
+		return [
+			wallpaperHooks.states[index],
+			(update: unknown) => {
+				wallpaperHooks.states[index] =
+					typeof update === "function" ? update(wallpaperHooks.states[index]) : update;
+			},
+		];
+	},
+	useEffect: (effect: () => void) => wallpaperHooks.effects.push(effect),
+	useMemo: (factory: () => unknown) => factory(),
+	useRef: (value: unknown) => ({ current: value }),
+}));
+vi.mock("@/components/video-editor/editorPreferences", () => ({
+	DEFAULT_EDITOR_PREFERENCES: { wallpaper: "#000000", backgroundBlur: 0 },
+	loadEditorPreferences: () => ({ customWallpapers: [] }),
+	saveEditorPreferences: wallpaperHooks.save,
+}));
+vi.mock("@/components/video-editor/useWallpaperPreviews", () => ({
+	useWallpaperPreviews: () => ({ wallpapers: [], previews: {} }),
+}));
+vi.mock("@/components/video-editor/settings/useSettingsTranslations", () => ({
+	useSettingsTranslations: () => ({
+		te: (_key: string, fallback: string) => fallback,
+		tSettings: (key: string) => key,
+	}),
+}));
+vi.mock("@/lib/assetPath", () => ({ peekWallpaperThumbnailUrl: () => undefined }));
+vi.mock("@/lib/wallpaperUpload", async (original) => ({
+	...(await original<typeof import("./wallpaperUpload")>()),
+	prepareWallpaperImage: wallpaperHooks.prepare,
+}));
+vi.mock("@/components/ui/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+import { useBackgroundSettings } from "@/components/video-editor/settings/useBackgroundSettings";
+
+describe("uploaded wallpaper list", () => {
+	beforeEach(() => {
+		wallpaperHooks.states = [];
+		wallpaperHooks.index = 0;
+		wallpaperHooks.effects = [];
+		vi.clearAllMocks();
+	});
+	afterEach(() => vi.unstubAllGlobals());
+
+	function render(onWallpaperChange: (path: string) => void) {
+		wallpaperHooks.index = 0;
+		wallpaperHooks.effects = [];
+		// biome-ignore lint/correctness/useHookAtTopLevel: React hooks are intentionally mocked to exercise the upload callbacks and state commits.
+		const settings = useBackgroundSettings(
+			{ selected: "#000000", onWallpaperChange },
+			{ customWallpapers: ["older"] } as never,
+			true,
+		);
+		for (const effect of wallpaperHooks.effects) effect();
+		return settings;
+	}
+	it.each([
+		"image",
+		"video-file",
+		"video-picker",
+	])("keeps repeated %s imports unique without reordering existing entries", async (kind) => {
+		const onWallpaperChange = vi.fn();
+		const suffix = kind === "image" ? "png" : "mp4";
+		const paths = ["first", "second", "first"].map((name) =>
+			kind === "image"
+				? `data:image/png;base64,${name}.${suffix}`
+				: `/imports/${name}.${suffix}`,
+		);
+		const picker = vi
+			.fn()
+			.mockResolvedValueOnce({ success: true, path: paths[0] })
+			.mockResolvedValueOnce({ success: true, path: paths[1] })
+			.mockResolvedValueOnce({ success: true, path: paths[2] });
+		vi.stubGlobal("window", {
+			electronAPI: {
+				openVideoFilePicker: picker,
+				importWallpaperVideo: vi.fn(async (file: File) => ({
+					success: true,
+					path: `/imports/${file.name}`,
+				})),
+			},
+		});
+		let settings = render(onWallpaperChange);
+		for (const name of ["first", "second", "first"]) {
+			if (kind === "video-picker") await settings.handleVideoUpload();
+			else
+				await settings.handleImageUpload({
+					target: {
+						files: [
+							new File([name], `${name}.${suffix}`, {
+								type: kind === "image" ? "image/png" : "video/mp4",
+							}),
+						],
+						value: "selected",
+					},
+				} as unknown as React.ChangeEvent<HTMLInputElement>);
+			settings = render(onWallpaperChange);
+		}
+		const expected =
+			kind === "image" ? ["older", paths[0], paths[1]] : [paths[1], paths[0], "older"];
+		expect(settings.customImages).toEqual(expected);
+		expect(wallpaperHooks.save).toHaveBeenLastCalledWith({ customWallpapers: expected });
+		expect(onWallpaperChange.mock.calls.map(([path]) => path)).toEqual(paths);
+	});
+});

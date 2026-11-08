@@ -2,13 +2,18 @@
 
 Recordly's **Export** menu offers downloading the current edit or **Create share link**. The Account button at the bottom of the left toolbar opens sign-in. Sharing renders an MP4 to a temporary file, uploads it to Recordly Share, finalizes its metadata, and removes the temporary file when the dialog closes.
 
-The desktop app defaults to the local development endpoint:
+Development defaults to the local endpoint when `VITE_CLOUD_SHARE_ENDPOINT` is unset:
 
 ```text
 http://localhost:8787/api/upload
 ```
 
-The endpoint is intentionally not user-configurable. All builds currently use the local service above. Production service integration is planned but is not selected by any build. Publishing requires the user's Recordly access token. No share API secret is exposed in the app.
+The endpoint is intentionally not user-configurable. Packaged builds require an
+explicit `VITE_CLOUD_SHARE_ENDPOINT`; without it, cloud sharing is unavailable.
+Production releases target `https://videos.recordly.dev/api/upload`. The production
+service must be deployed and verified before release. Publishing requires the
+user's Recordly access token. No share API secret is exposed in the app. Hosted deployment and subscription
+operations are maintained with the separate private service.
 
 ## Publishing protocol
 
@@ -21,7 +26,7 @@ The service provides R2 video storage, D1 metadata, range streaming, a responsiv
 
 ## Comments
 
-Anyone with a valid link can watch a public recording and leave timestamped feedback using a display name. No account or sign-in is required. The existing per-IP rate limit and 2,000-character comment limit still apply.
+Anyone with a valid link can watch a public recording. Leaving timestamped comments requires a signed-in account; Recordly Cloud uses the viewer’s verified Recordly account and profile name. The server derives comment authorship from the session, and viewers can edit or delete their own comments. Account and IP rate limits and the 2,000-character comment limit apply. The self-hosted worker requires a separate, signed-in account local to that instance; a supplied display name alone does not authorize a comment.
 
 ## Third-party licensing
 

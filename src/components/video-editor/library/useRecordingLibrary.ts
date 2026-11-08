@@ -1,15 +1,10 @@
+import { useScopedT } from "@/contexts/I18nContext";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import type { RecordingLibraryEntry } from "@/types/recordingLibrary";
 import { packClipSequence, rippleRegionAnchors, rippleRegions } from "../clipSequence";
-import {
-	type ZoomRegion,
-	sortClipRegions,
-	DEFAULT_AUTO_ZOOM_DEPTH,
-	clampFocusToDepth,
-} from "../types";
-import { buildInteractionZoomSuggestions } from "../timeline/zoomSuggestionUtils";
+import { sortClipRegions } from "../types";
 import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
 import type { useEditorUiState } from "../state/useEditorUiState";
@@ -20,6 +15,7 @@ export function useRecordingLibrary(
 	ui: ReturnType<typeof useEditorUiState>,
 	appearance: ReturnType<typeof useAppearanceState>,
 ) {
+	const te = useScopedT("editing");
 	const [open, setOpen] = useState(false);
 	const [entries, setEntries] = useState<RecordingLibraryEntry[]>([]);
 	const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -66,7 +62,11 @@ export function useRecordingLibrary(
 			setEntries((previous) => previous.filter((entry) => !paths.includes(entry.path)));
 			setSelected(new Set());
 		} catch (error) {
-			toast.error(`Could not remove videos: ${String(error)}`);
+			toast.error(
+				te("removeVideosFailed", "Could not remove videos: {{error}}", {
+					error: String(error),
+				}),
+			);
 		} finally {
 			lock.current = false;
 			setBusy(false);
@@ -83,7 +83,11 @@ export function useRecordingLibrary(
 			setRemoved((previous) => previous.slice(0, -1));
 			await refresh();
 		} catch (error) {
-			toast.error(`Could not restore videos: ${String(error)}`);
+			toast.error(
+				te("restoreVideosFailed", "Could not restore videos: {{error}}", {
+					error: String(error),
+				}),
+			);
 		} finally {
 			lock.current = false;
 			setBusy(false);
@@ -98,7 +102,11 @@ export function useRecordingLibrary(
 		try {
 			await window.electronAPI.cancelRecordingImport();
 		} catch (error) {
-			toast.error(`Could not stop import processing: ${String(error)}`);
+			toast.error(
+				te("stopImportFailed", "Could not stop import processing: {{error}}", {
+					error: String(error),
+				}),
+			);
 		}
 	};
 	const addToTimeline = async (paths: string | string[], index?: number) => {
@@ -119,7 +127,6 @@ export function useRecordingLibrary(
 			let webcam = initial.appearance.webcam;
 			let sourcePath = source;
 			let insertAt = Math.min(before.length, Math.max(0, index ?? before.length));
-			const addedZooms: ZoomRegion[] = [];
 			let id = "";
 			let completed = 0;
 			for (const path of [...new Set(typeof paths === "string" ? [paths] : paths)]) {
@@ -132,7 +139,10 @@ export function useRecordingLibrary(
 				completed++;
 				if (current.current.project.videoSourcePath !== source)
 					throw new Error(
-						"The project changed while importing. Add the recordings again.",
+						te(
+							"projectChangedWhileImporting",
+							"The project changed while importing. Add the recordings again.",
+						),
 					);
 				media = result.value;
 				sourcePath = media.path;
@@ -153,43 +163,30 @@ export function useRecordingLibrary(
 					speed: 1,
 				});
 				sequence = packClipSequence(next);
-				if (current.current.appearance.autoApplyFreshRecordingAutoZooms) {
-					const telemetry = await window.electronAPI.getCursorTelemetry(media.path);
-					const start = media.sourceStartMs;
-					const duration = media.durationMs;
-					const offset = sequence.find((clip) => clip.id === id)!.startMs;
-					const suggestions = buildInteractionZoomSuggestions({
-						cursorTelemetry: (telemetry.success ? telemetry.samples : [])
-							.filter(
-								(point) => point.timeMs >= start && point.timeMs < start + duration,
-							)
-							.map((point) => ({ ...point, timeMs: point.timeMs - start })),
-						totalMs: duration,
-						defaultDurationMs: Math.min(1000, duration),
-						reservedSpans: [],
-					}).suggestions;
-					addedZooms.push(
-						...suggestions.map((zoom) => ({
-							id: `zoom-${initial.ui.nextZoomIdRef.current++}`,
-							startMs: offset + zoom.start,
-							endMs: offset + zoom.end,
-							depth: DEFAULT_AUTO_ZOOM_DEPTH,
-							focus: clampFocusToDepth(zoom.focus, DEFAULT_AUTO_ZOOM_DEPTH),
-							mode: "auto" as const,
-						})),
-					);
-				}
 			}
 			if (!media) return;
 			const { project, timeline, ui, appearance } = current.current;
 			if (project.videoSourcePath !== source)
-				throw new Error("The project changed while importing. Add the recordings again.");
+				throw new Error(
+					te(
+						"projectChangedWhileImporting",
+						"The project changed while importing. Add the recordings again.",
+					),
+				);
 			// Prepare cleanup while retaining rollback ownership until the project check passes.
 			const prepared = await window.electronAPI.finishRecordingImport(media.path);
 			if (!prepared.success)
-				throw new Error(prepared.error || "Could not finalize imported media");
+				throw new Error(
+					prepared.error ||
+						te("couldNotFinalizeImportedMedia", "Could not finalize imported media"),
+				);
 			if (current.current.project.videoSourcePath !== source)
-				throw new Error("The project changed while importing. Add the recordings again.");
+				throw new Error(
+					te(
+						"projectChangedWhileImporting",
+						"The project changed while importing. Add the recordings again.",
+					),
+				);
 			// Send acceptance before synchronous project state updates; no await can switch projects here.
 			void window.electronAPI
 				.finishRecordingImport(media.path, true)
@@ -200,10 +197,7 @@ export function useRecordingLibrary(
 			ui.setCurrentTime((sequence.find((clip) => clip.id === id)?.startMs ?? 0) / 1000);
 			ui.setDuration(media.totalDurationMs / 1000);
 			timeline.setClipRegions(sequence);
-			timeline.setZoomRegions((current) => [
-				...rippleRegions(current, before, sequence),
-				...addedZooms,
-			]);
+			timeline.setZoomRegions((current) => rippleRegions(current, before, sequence));
 			timeline.setAnnotationRegions((current) => rippleRegions(current, before, sequence));
 			timeline.setAudioRegions((current) => rippleRegionAnchors(current, before, sequence));
 			timeline.setSelectedClipId(id);
@@ -220,11 +214,18 @@ export function useRecordingLibrary(
 			ui.setPreviewVersion((version) => version + 1);
 			toast.success(
 				completed === 1
-					? "Video added to timeline"
-					: `${completed} videos added to timeline`,
+					? te("videoAddedToTimeline", "Video added to timeline")
+					: te("videosAddedToTimeline", "{{count}} videos added to timeline", {
+							count: completed,
+						}),
 			);
 		} catch (error) {
-			if (!cancelled.current) toast.error(`Could not add video: ${String(error)}`);
+			if (!cancelled.current)
+				toast.error(
+					te("addVideoFailed", "Could not add video: {{error}}", {
+						error: String(error),
+					}),
+				);
 		} finally {
 			try {
 				const cleanup = await window.electronAPI.finishRecordingImport(

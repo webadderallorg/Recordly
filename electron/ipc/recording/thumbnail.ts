@@ -24,50 +24,59 @@ export async function getRecordingThumbnail(candidate: string): Promise<string> 
 	const existing = pending.get(key);
 	if (existing) return existing;
 	const cache = path.join(app.getPath("userData"), "recording-thumbnails", `${key}.jpg`);
-	const task = queue.then(async () => {
+	const task = (async () => {
 		let jpeg: Buffer;
 		try {
 			jpeg = await fs.readFile(cache);
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-			const result = await run(
-				getFfmpegBinaryPath(),
-				[
-					"-hide_banner",
-					"-loglevel",
-					"error",
-					"-nostdin",
-					"-threads",
-					"1",
-					"-i",
-					file,
-					"-frames:v",
-					"1",
-					"-an",
-					"-vf",
-					"scale=160:90:force_original_aspect_ratio=increase,crop=160:90",
-					"-q:v",
-					"5",
-					"-f",
-					"image2pipe",
-					"-c:v",
-					"mjpeg",
-					"pipe:1",
-				],
-				{ encoding: "buffer", maxBuffer: 512 * 1024, timeout: 15000, windowsHide: true },
+			const generation = queue.then(async () => {
+				const result = await run(
+					getFfmpegBinaryPath(),
+					[
+						"-hide_banner",
+						"-loglevel",
+						"error",
+						"-nostdin",
+						"-threads",
+						"1",
+						"-i",
+						file,
+						"-frames:v",
+						"1",
+						"-an",
+						"-vf",
+						"scale=160:90:force_original_aspect_ratio=increase,crop=160:90",
+						"-q:v",
+						"5",
+						"-f",
+						"image2pipe",
+						"-c:v",
+						"mjpeg",
+						"pipe:1",
+					],
+					{
+						encoding: "buffer",
+						maxBuffer: 512 * 1024,
+						timeout: 15000,
+						windowsHide: true,
+					},
+				);
+				const jpeg = result.stdout;
+				if (!jpeg.length) throw new Error("Recording has no preview frame");
+				await fs.mkdir(path.dirname(cache), { recursive: true });
+				await fs.writeFile(cache, jpeg);
+				return jpeg;
+			});
+			queue = generation.then(
+				() => undefined,
+				() => undefined,
 			);
-			jpeg = result.stdout;
-			if (!jpeg.length) throw new Error("Recording has no preview frame");
-			await fs.mkdir(path.dirname(cache), { recursive: true });
-			await fs.writeFile(cache, jpeg);
+			jpeg = await generation;
 		}
 		return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
-	});
+	})();
 	pending.set(key, task);
-	queue = task.then(
-		() => undefined,
-		() => undefined,
-	);
 	try {
 		return await task;
 	} finally {

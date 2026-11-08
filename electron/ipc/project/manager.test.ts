@@ -135,6 +135,20 @@ describe("local media path policy", () => {
 		expect(isAllowedMediaPath(videoPath)).toBe(true);
 	});
 
+	it("serves approved native M4A companions with the MP4 audio content type", async () => {
+		const micPath = path.join(userDataPath, "recording.mic.m4a");
+		await fs.writeFile(micPath, "audio");
+		const { rememberApprovedLocalReadPath, resolveApprovedLocalMediaPath } = await import(
+			"./manager"
+		);
+		const { getMediaContentType } = await import("../../mediaTypes");
+		await rememberApprovedLocalReadPath(micPath);
+		await expect(resolveApprovedLocalMediaPath(micPath)).resolves.toBe(
+			await fs.realpath(micPath),
+		);
+		expect(getMediaContentType(micPath)).toBe("audio/mp4");
+	});
+
 	it("rejects existing non-media files when resolving local media URLs", async () => {
 		const downloadsPath = path.join(tempRoot, "Downloads");
 		const textPath = path.join(downloadsPath, "notes.txt");
@@ -173,7 +187,7 @@ describe("local media path policy", () => {
 		await expect(resolveApprovedLocalMediaPath(symlinkInsideUserData)).resolves.toBeNull();
 	});
 
-	it("generates a missing project poster once and keeps it cached", async () => {
+	it("rejects cached source-only posters so the renderer can include saved padding", async () => {
 		const png = Buffer.alloc(24);
 		Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(png);
 		png.writeUInt32BE(640, 16);
@@ -192,27 +206,199 @@ describe("local media path policy", () => {
 		const entry = await manager.buildProjectLibraryEntry(projectPath, tempRoot);
 		expect(entry?.thumbnailPath).toBeNull();
 		await manager.refreshProjectThumbnail(projectPath, await fs.stat(projectPath));
-		expect((await manager.buildProjectLibraryEntry(projectPath, tempRoot))?.thumbnailPath).toBe(
-			manager.getProjectThumbnailPath(projectPath),
-		);
+		expect(
+			(await manager.buildProjectLibraryEntry(projectPath, tempRoot))?.thumbnailPath,
+		).toBeNull();
 		expect(generate).toHaveBeenCalledWith(source);
 		await manager.buildProjectLibraryEntry(projectPath, tempRoot);
 		expect(generate).toHaveBeenCalledTimes(1);
 		expect(await fs.readFile(projectPath, "utf8")).toBe(before);
 	});
 
+	it("persists composed previews across listing and rejects a stale revision or unknown project", async () => {
+		vi.doMock("../../mediaServer", () => ({
+			getMediaServerBaseUrl: () => "http://127.0.0.1:1234",
+			buildMediaUrl: (_base: string, file: string) => file,
+		}));
+		const manager = await import("./manager");
+		const source = path.join(tempRoot, "cached-video.mp4");
+		const projectPath = path.join(await manager.getProjectsDir(), "cached.recordly");
+		await fs.writeFile(source, "video");
+		const content = JSON.stringify({ version: 2, videoPath: source, editor: {} });
+		await fs.writeFile(projectPath, content);
+		// Include an integer revision, which legacy source-only posters used too.
+		await fs.utimes(projectPath, new Date(), Math.floor(Date.now() / 1000));
+		let preview = await manager.readProjectPreview(projectPath);
+		const header = Buffer.alloc(45);
+		Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(header);
+		header.write("IHDR", 12);
+		header.writeUInt32BE(640, 16);
+		header.writeUInt32BE(480, 20);
+		const dataUrl = `data:image/png;base64,${header.toString("base64")}`;
+		const target = await manager.cacheProjectThumbnail(projectPath, preview.revision!, dataUrl);
+		expect(target).toBe(manager.getProjectThumbnailPath(projectPath));
+		expect((await manager.buildProjectLibraryEntry(projectPath, tempRoot))?.thumbnailPath).toBe(
+			target,
+		);
+		expect(await fs.readFile(projectPath, "utf8")).toBe(content);
+		// Keep the fractional revision in the past so an immediate edit is always newer.
+		await fs.utimes(projectPath, new Date(), Math.floor(Date.now() / 1000) - 2 + 0.123456);
+		preview = await manager.readProjectPreview(projectPath);
+		// A cache volume may retain less timestamp precision than the project volume.
+		const writeTimes = fs.utimes.bind(fs);
+		const stamp = vi
+			.spyOn(fs, "utimes")
+			.mockImplementationOnce((file, accessed, modified) =>
+				writeTimes(
+					file,
+					accessed,
+					typeof modified === "number" ? Math.floor(modified * 1000) / 1000 : modified,
+				),
+			);
+		try {
+			await manager.cacheProjectThumbnail(projectPath, preview.revision!, dataUrl);
+		} finally {
+			stamp.mockRestore();
+		}
+		expect((await manager.buildProjectLibraryEntry(projectPath, tempRoot))?.thumbnailPath).toBe(
+			target,
+		);
+		const before = await fs.readFile(target!);
+		await fs.appendFile(projectPath, " ");
+		await expect(
+			manager.cacheProjectThumbnail(projectPath, preview.revision!, dataUrl),
+		).resolves.toBeNull();
+		expect(await fs.readFile(target!)).toEqual(before);
+		expect(
+			(await manager.buildProjectLibraryEntry(projectPath, tempRoot))?.thumbnailPath,
+		).toBeNull();
+		await expect(
+			manager.cacheProjectThumbnail(
+				path.join(tempRoot, "unknown.recordly"),
+				preview.revision!,
+				dataUrl,
+			),
+		).rejects.toThrow();
+	});
+
 	it("preserves an existing project thumbnail when no replacement is provided", async () => {
 		const projectPath = path.join(tempRoot, "Projects", "demo.recordly");
-		const thumbnailDataUrl = `data:image/png;base64,${Buffer.from("png-thumbnail").toString("base64")}`;
+		const header = Buffer.alloc(45);
+		Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(header);
+		header.write("IHDR", 12);
+		header.writeUInt32BE(640, 16);
+		header.writeUInt32BE(480, 20);
+		const thumbnailDataUrl = `data:image/png;base64,${header.toString("base64")}`;
 		await fs.mkdir(path.dirname(projectPath), { recursive: true });
 
 		const { getProjectThumbnailPath, saveProjectThumbnail } = await import("./manager");
 		const thumbnailPath = getProjectThumbnailPath(projectPath);
 
 		await saveProjectThumbnail(projectPath, thumbnailDataUrl);
+		const saved = await fs.readFile(thumbnailPath);
 		await saveProjectThumbnail(projectPath, undefined);
 
-		await expect(fs.readFile(thumbnailPath, "utf8")).resolves.toBe("png-thumbnail");
+		await expect(fs.readFile(thumbnailPath)).resolves.toEqual(saved);
+		const { hasFreshProjectThumbnail } = await import("./thumbnailFreshness");
+		await expect(hasFreshProjectThumbnail(thumbnailPath, 0)).resolves.toBe(true);
+	});
+
+	it("approves only a listed external project's current regular thumbnail for media transport", async () => {
+		const manager = await import("./manager");
+		const external = path.join(tempRoot, "ExternalProjects");
+		await fs.mkdir(external);
+		const projectPath = path.join(external, "cat.recordly");
+		await fs.writeFile(
+			projectPath,
+			JSON.stringify({ version: 1, videoPath: "video.mp4", editor: {} }),
+		);
+		const header = Buffer.alloc(45);
+		Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(header);
+		header.write("IHDR", 12);
+		header.writeUInt32BE(640, 16);
+		header.writeUInt32BE(480, 20);
+		await manager.saveProjectThumbnail(
+			projectPath,
+			`data:image/png;base64,${header.toString("base64")}`,
+		);
+		const thumbnail = manager.getProjectThumbnailPath(projectPath);
+		const sibling = path.join(external, "private.png");
+		await fs.writeFile(sibling, "private");
+		await expect(manager.isAllowedLocalMediaPath(thumbnail)).resolves.toBe(false);
+		await manager.saveRecentProjectPaths([projectPath]);
+		const { entries } = await manager.listProjectLibraryEntries();
+		expect(entries.find((entry) => entry.path === projectPath)?.thumbnailPath).toBe(thumbnail);
+		await expect(manager.resolveApprovedLocalMediaPath(thumbnail)).resolves.toBe(
+			await fs.realpath(thumbnail),
+		);
+		await expect(manager.isAllowedLocalMediaPath(sibling)).resolves.toBe(false);
+		await expect(manager.isAllowedLocalMediaPath(external)).resolves.toBe(false);
+	});
+
+	it("does not approve linked or obsolete external thumbnail sidecars", async () => {
+		const manager = await import("./manager");
+		const external = path.join(tempRoot, "ExternalProjects");
+		await fs.mkdir(external);
+		const projectPath = path.join(external, "cat.recordly");
+		await fs.writeFile(
+			projectPath,
+			JSON.stringify({ version: 1, videoPath: "video.mp4", editor: {} }),
+		);
+		const header = Buffer.alloc(45);
+		Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(header);
+		header.write("IHDR", 12);
+		header.writeUInt32BE(640, 16);
+		header.writeUInt32BE(480, 20);
+		const thumbnail = manager.getProjectThumbnailPath(projectPath);
+		await fs.writeFile(thumbnail, header);
+		await manager.saveRecentProjectPaths([projectPath]);
+		expect((await manager.listProjectLibraryEntries()).entries[0]?.thumbnailPath).toBeNull();
+		await expect(manager.isAllowedLocalMediaPath(thumbnail)).resolves.toBe(false);
+		const targetProject = path.join(external, "unlisted.recordly");
+		await manager.saveProjectThumbnail(
+			targetProject,
+			`data:image/png;base64,${header.toString("base64")}`,
+		);
+		const target = manager.getProjectThumbnailPath(targetProject);
+		await fs.rm(thumbnail);
+		try {
+			await fs.symlink(target, thumbnail);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "EPERM") return;
+			throw error;
+		}
+		expect((await manager.listProjectLibraryEntries()).entries[0]?.thumbnailPath).toBeNull();
+		await expect(manager.isAllowedLocalMediaPath(target)).resolves.toBe(false);
+		await expect(manager.isAllowedLocalMediaPath(thumbnail)).resolves.toBe(false);
+	});
+
+	it("distinguishes missing recordings from denied or failed access without changing the active project", async () => {
+		const { resolveProjectMediaSources } = await import("./manager");
+		const state = await import("../state");
+		state.setCurrentProjectPath("active.recordly");
+		state.setCurrentVideoPath("active.mp4");
+		const access = vi.spyOn(fs, "access");
+		try {
+			for (const code of ["ENOENT", "EACCES", "EPERM", "EIO"]) {
+				access.mockRejectedValueOnce(
+					Object.assign(new Error(`${code}: cannot access file`), { code }),
+				);
+				const result = await resolveProjectMediaSources({
+					videoPath: path.join(tempRoot, "video.mp4"),
+				});
+				expect(result.success).toBe(false);
+				if (!result.success) {
+					expect(result.message).toContain(
+						code === "ENOENT" ? "Project video file not found" : code,
+					);
+					if (code !== "ENOENT") expect(result.message).not.toContain("not found");
+				}
+			}
+			expect(state.currentProjectPath).toBe("active.recordly");
+			expect(state.currentVideoPath).toBe("active.mp4");
+		} finally {
+			access.mockRestore();
+		}
 	});
 
 	it("loads project files that start with a UTF-8 byte order mark", async () => {
@@ -260,7 +446,10 @@ describe("local media path policy", () => {
 		await expect(resolveApprovedLocalMediaPath(videoPath)).resolves.toBeNull();
 	});
 
-	it("approves editor audioRegions audioPath entries when loading a project", async () => {
+	it.each([
+		"editor",
+		"history",
+	])("approves %s audio paths when loading a project", async (location) => {
 		const downloadsPath = path.join(tempRoot, "Downloads");
 		const videoPath = path.join(tempPath, "recording.mp4");
 		const audioPath = path.join(downloadsPath, "music.ogg");
@@ -274,8 +463,14 @@ describe("local media path policy", () => {
 				version: 1,
 				videoPath,
 				editor: {
-					audioRegions: [{ id: "a1", startMs: 0, endMs: 1000, audioPath, volume: 1 }],
+					audioRegions:
+						location === "editor"
+							? [{ id: "a1", startMs: 0, endMs: 1000, audioPath, volume: 1 }]
+							: [],
 				},
+				...(location === "history"
+					? { history: { version: 1, values: [null, {}, { audioPath }] } }
+					: {}),
 			}),
 			"utf-8",
 		);
@@ -287,16 +482,12 @@ describe("local media path policy", () => {
 		expect(result.success).toBe(true);
 		await expect(resolveApprovedLocalMediaPath(audioPath)).resolves.toBe(resolvedAudioPath);
 	});
-	it("returns a library entry while a thumbnail decode is still pending", async () => {
-		let release!: (data: Buffer) => void;
-		const pending = new Promise<Buffer>((resolve) => {
-			release = resolve;
-		});
-		const generate = vi.fn(() => pending);
+	it("leaves missing previews to the composed renderer without decoding a source-only frame", async () => {
+		const generate = vi.fn();
 		vi.doMock("./firstFrameThumbnail", () => ({ createProjectFirstFrameThumbnail: generate }));
 		const manager = await import("./manager");
-		const source = path.join(tempRoot, "slow.mp4");
-		const projectPath = path.join(tempRoot, "slow.recordly");
+		const source = path.join(tempRoot, "source.mp4");
+		const projectPath = path.join(tempRoot, "padded.recordly");
 		await fs.writeFile(source, "video");
 		await fs.writeFile(
 			projectPath,
@@ -304,14 +495,9 @@ describe("local media path policy", () => {
 		);
 		const ready = vi.fn();
 		const entry = await manager.buildProjectLibraryEntry(projectPath, tempRoot, ready);
-		expect(entry?.path).toBe(projectPath);
 		expect(entry?.thumbnailPath).toBeNull();
-		const task = manager.refreshProjectThumbnail(projectPath, await fs.stat(projectPath));
+		expect(generate).not.toHaveBeenCalled();
 		expect(ready).not.toHaveBeenCalled();
-		release(Buffer.from("fixture thumbnail"));
-		await task;
-		expect(generate).toHaveBeenCalledTimes(1);
-		expect(ready).toHaveBeenCalledWith(expect.objectContaining({ path: projectPath }));
 	});
 
 	it("replaces a thumbnail symlink without overwriting its target", async () => {

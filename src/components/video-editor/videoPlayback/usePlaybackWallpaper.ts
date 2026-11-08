@@ -1,6 +1,11 @@
 import type React from "react";
 import { useEffect, useState } from "react";
-import { getAssetPath, getRenderableAssetUrl, getRenderableVideoUrl } from "@/lib/assetPath";
+import {
+	getAssetPath,
+	getRenderableAssetUrl,
+	getRenderableVideoUrl,
+	isAbsoluteLocalAssetPath,
+} from "@/lib/assetPath";
 import { clampMediaTimeToDuration } from "@/lib/mediaTiming";
 import {
 	DEFAULT_WALLPAPER_PATH,
@@ -109,7 +114,7 @@ export function usePlaybackWallpaper(input: usePlaybackWallpaperInput) {
 				if (
 					wallpaper.startsWith("http") ||
 					wallpaper.startsWith("file://") ||
-					wallpaper.startsWith("/")
+					isAbsoluteLocalAssetPath(wallpaper)
 				) {
 					const renderable = await getRenderableAssetUrl(wallpaper);
 					if (mounted) {

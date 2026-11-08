@@ -1,3 +1,5 @@
+import type { WebcamShape } from "../../video-editor/types";
+import { getWebcamClipPath } from "../../video-editor/webcamOverlay";
 import {
 	Eye,
 	EyeSlash as EyeOff,
@@ -21,6 +23,8 @@ export function WebcamPopover({
 	showFloatingWebcamPreview,
 	onToggleFloatingPreview,
 	showWebcamControls,
+	roundness,
+	shape,
 	setWebcamPreviewNode,
 	videoDevices,
 	webcamDeviceId,
@@ -35,6 +39,8 @@ export function WebcamPopover({
 	showFloatingWebcamPreview: boolean;
 	onToggleFloatingPreview: () => void;
 	showWebcamControls: boolean;
+	roundness: number;
+	shape?: WebcamShape;
 	setWebcamPreviewNode: (node: HTMLVideoElement | null) => void;
 	videoDevices: DeviceOption[];
 	webcamDeviceId?: string;
@@ -97,7 +103,12 @@ export function WebcamPopover({
 			)}
 			{showWebcamControls && (
 				<div className="flex justify-center px-3 py-2">
-					<div className="h-24 w-24 overflow-hidden rounded-2xl bg-[var(--launch-hover)] ring-1 ring-[var(--launch-border-strong)]">
+					<div
+						className="h-24 w-24 overflow-hidden bg-[var(--launch-hover)]"
+						style={{
+							clipPath: getWebcamClipPath(roundness, 96, 96, shape),
+						}}
+					>
 						<video
 							ref={setWebcamPreviewNode}
 							className="h-full w-full object-cover"

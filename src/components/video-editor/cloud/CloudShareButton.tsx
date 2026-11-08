@@ -1,15 +1,7 @@
-import {
-	checkShareCapacity,
-	notifyShareCapacityChanged,
-	RECORDING_LIMIT_MESSAGE,
-	subscribeShareCapacityChanges,
-} from "./shareCapacity";
-import { SharedRecordings } from "./SharedRecordings";
-import { saveProjectShareLink } from "./projectShareLinks";
-import { useI18n } from "@/contexts/I18nContext";
-import { Check } from "@/components/ui/icons";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { toast } from "@/components/ui/toast";
+import { Input, ProgressBar, TextArea } from "@heroui/react";
+import { ArrowClockwise, Export, LinkSimple } from "@phosphor-icons/react";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
+import { LocalizedError } from "@/components/feedback/LocalizedError";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -18,280 +10,217 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { Export, LinkSimple } from "@phosphor-icons/react";
+import { Check, Copy } from "@/components/ui/icons";
 import { Label } from "@/components/ui/label";
-
+import { useI18n, useI18n as useUiLocale } from "@/contexts/I18nContext";
+import type { Props } from "./cloudShareProps";
 import { CLOUD_SHARE_ENDPOINT as DEFAULT_CLOUD_ENDPOINT } from "./endpoint";
-
-type Props = {
-	projectPath?: string | null;
-	filePath?: string;
-	projectTitle: string;
-	prepareFile?: () => Promise<string | undefined>;
-	preparationProgress?: number;
-	onCancelPrepare?: () => void;
-	open?: boolean;
-	onOpenChange?: (open: boolean) => void;
-	hideTrigger?: boolean;
-	authToken?: string;
-	accountId?: string;
-	inline?: boolean;
-	onBusyChange?: (busy: boolean) => void;
-	onRequestSignIn?: () => void;
-};
-
-export function CloudShareButton({
-	projectPath,
-	filePath,
-	projectTitle,
-	prepareFile,
-	preparationProgress = 0,
-	onCancelPrepare,
-	open: controlledOpen,
-	onOpenChange,
-	hideTrigger = false,
-	authToken,
-	accountId,
-	inline = false,
-	onBusyChange,
-	onRequestSignIn,
-}: Props) {
+import { PublishedVideoPreview } from "./PublishedVideoPreview";
+import { SharedRecordings } from "./SharedRecordings";
+import { notifyShareCapacityChanged, RECORDING_LIMIT_MESSAGE } from "./shareCapacity";
+import { useCloudShareController } from "./useCloudShareController";
+export function CloudShareButton(props: Props) {
+	const {
+		onRegenerate,
+		filePath,
+		projectTitle,
+		prepareFile,
+		hideTrigger = false,
+		authToken,
+		inline = false,
+		onRequestSignIn,
+	} = props;
+	const { t: uiText } = useUiLocale();
 	const { t } = useI18n();
-	const [internalOpen, setInternalOpen] = useState(false);
-	const open = controlledOpen ?? internalOpen;
-	const setOpen = useCallback(
-		(nextOpen: boolean) => {
-			onOpenChange?.(nextOpen);
-			if (controlledOpen === undefined) setInternalOpen(nextOpen);
-		},
-		[controlledOpen, onOpenChange],
-	);
-	const [uploadId, setUploadId] = useState<string>();
-	const [progress, setProgress] = useState(0);
-	const [uploading, setUploading] = useState(false);
-	const [capacityAvailable, setCapacityAvailable] = useState<boolean | null>(null);
-	const [checkingCapacity, setCheckingCapacity] = useState(false);
-	useEffect(() => {
-		setCapacityAvailable(null);
-		setCheckingCapacity(false);
-		if (!authToken || !DEFAULT_CLOUD_ENDPOINT) return;
-		let active = true;
-		let generation = 0;
-		const refresh = () => {
-			const request = ++generation;
-			setCheckingCapacity(true);
-			void checkShareCapacity(DEFAULT_CLOUD_ENDPOINT, authToken)
-				.then((available) => {
-					if (active && request === generation) setCapacityAvailable(available);
-				})
-				.catch(() => {
-					if (active && request === generation) setCapacityAvailable(null);
-				})
-				.finally(() => {
-					if (active && request === generation) setCheckingCapacity(false);
-				});
-		};
-		const unsubscribe = subscribeShareCapacityChanges(refresh);
-		refresh();
-		return () => {
-			active = false;
-			unsubscribe();
-		};
-	}, [authToken]);
-	useEffect(() => {
-		onBusyChange?.(uploading);
-	}, [uploading, onBusyChange]);
-	const [phase, setPhase] = useState<"idle" | "preparing" | "uploading">("idle");
-	const [error, setError] = useState<string>();
-	const [shareUrl, setShareUrl] = useState<string>();
-	const [copied, setCopied] = useState(false);
-	const previousAccountId = useRef(accountId);
-	const accountVersion = useRef(0);
-	useLayoutEffect(() => {
-		if (previousAccountId.current === accountId) return;
-		previousAccountId.current = accountId;
-		accountVersion.current++;
-		setError(undefined);
-		setShareUrl(undefined);
-		setCopied(false);
-	}, [accountId]);
-	const [notes, setNotes] = useState("");
-	const preparedFileRef = useRef<string | undefined>(undefined);
-	const cancelRequestedRef = useRef(false);
-	const activeUploadId = useRef<string | undefined>(undefined);
-	useEffect(() => {
-		if (phase === "preparing" && Number.isFinite(preparationProgress)) {
-			setProgress((current) =>
-				Math.max(current, Math.min(70, Math.round(preparationProgress * 0.7))),
-			);
-		}
-	}, [phase, preparationProgress]);
-
-	const discardPreparedFile = useCallback(() => {
-		const preparedPath = preparedFileRef.current;
-		preparedFileRef.current = undefined;
-		if (preparedPath) void window.electronAPI.discardExportedTemp(preparedPath);
-	}, []);
-
-	useEffect(() => discardPreparedFile, [discardPreparedFile]);
-
-	useEffect(() => {
-		return window.electronAPI.onCloudShareProgress((next) => {
-			if (next.uploadId !== activeUploadId.current) return;
-			if (next.totalBytes <= 0 || !Number.isFinite(next.uploadedBytes)) return;
-			setProgress((current) =>
-				Math.max(
-					current,
-					Math.min(99, 70 + Math.round((next.uploadedBytes / next.totalBytes) * 29)),
-				),
-			);
-		});
-	}, []);
-
-	const handleOpenChange = useCallback(
-		(nextOpen: boolean) => {
-			if (!nextOpen && uploading) return;
-			setOpen(nextOpen);
-			if (nextOpen) {
-				setError(undefined);
-				setCopied(false);
-			} else {
-				discardPreparedFile();
-			}
-		},
-		[discardPreparedFile, setOpen, uploading],
-	);
-
-	const handleUpload = useCallback(async () => {
-		// A generation also catches switching away and back to the same account.
-		const uploadAccountVersion = accountVersion.current;
-		const isCurrentAccount = () => uploadAccountVersion === accountVersion.current;
-		setUploading(true);
-		setProgress(0);
-		setPhase("idle");
-		cancelRequestedRef.current = false;
-		setError(undefined);
-		setShareUrl(undefined);
-		try {
-			if (!DEFAULT_CLOUD_ENDPOINT)
-				throw new Error("Cloud sharing is not available in this build yet.");
-			if (!authToken) throw new Error(t("editor.cloud.signInRequired"));
-			const available = await checkShareCapacity(DEFAULT_CLOUD_ENDPOINT, authToken);
-			if (!isCurrentAccount()) return;
-			setCapacityAvailable(available);
-			if (!available) throw new Error(RECORDING_LIMIT_MESSAGE);
-			if (cancelRequestedRef.current) return;
-			setPhase("preparing");
-			let resolvedFilePath = filePath ?? preparedFileRef.current;
-			if (!resolvedFilePath) {
-				resolvedFilePath = await prepareFile?.();
-				if (cancelRequestedRef.current || !isCurrentAccount()) {
-					if (resolvedFilePath)
-						void window.electronAPI.discardExportedTemp(resolvedFilePath);
-					return;
-				}
-				if (!resolvedFilePath) throw new Error(t("editor.cloud.prepareFailed"));
-				preparedFileRef.current = resolvedFilePath;
-			}
-			const nextUploadId = crypto.randomUUID();
-			setUploadId(nextUploadId);
-			activeUploadId.current = nextUploadId;
-			setProgress(70);
-			setPhase("uploading");
-			const result = await window.electronAPI.cloudShareUpload({
-				filePath: resolvedFilePath,
-				endpoint: DEFAULT_CLOUD_ENDPOINT,
-				token: authToken,
-				title: projectTitle,
-				notes: notes.trim() || undefined,
-				uploadId: nextUploadId,
-			});
-			if (!isCurrentAccount()) return;
-			if (!result.success || !result.shareUrl) {
-				if (!result.canceled) setError(result.error || t("editor.cloud.uploadFailed"));
-				return;
-			}
-			setProgress(100);
-			setShareUrl(result.shareUrl);
-			notifyShareCapacityChanged();
-			if (projectPath) {
-				try {
-					saveProjectShareLink(projectPath, result.shareUrl, { accountId });
-				} catch {
-					toast.error("Share created, but its link could not be saved locally");
-				}
-			}
-			toast.success(t("editor.cloud.linkCreated"));
-		} catch (cause) {
-			if (!isCurrentAccount()) return;
-			setError(cause instanceof Error ? cause.message : String(cause));
-		} finally {
-			setUploading(false);
-			setPhase("idle");
-			setUploadId(undefined);
-			activeUploadId.current = undefined;
-		}
-	}, [projectPath, accountId, authToken, filePath, notes, prepareFile, projectTitle, t]);
-
-	const handleCancel = useCallback(async () => {
-		cancelRequestedRef.current = true;
-		if (phase === "preparing") onCancelPrepare?.();
-		if (uploadId) await window.electronAPI.cloudShareCancel(uploadId);
-	}, [onCancelPrepare, phase, uploadId]);
-
-	const copyShareUrl = useCallback(async () => {
-		if (!shareUrl) return;
-		try {
-			await navigator.clipboard.writeText(shareUrl);
-			setCopied(true);
-			toast.success(t("editor.cloud.linkCopied"));
-		} catch {
-			setCopied(false);
-			toast.error(t("editor.cloud.copyFailed"));
-		}
-	}, [shareUrl, t]);
+	const {
+		open,
+		setOpen,
+		progress,
+		uploading,
+		checkingCapacity,
+		error,
+		shareUrl,
+		needsRegenerate,
+		copied,
+		shareLinkInput,
+		title,
+		setTitle,
+		notes,
+		setNotes,
+		signInRequired,
+		capacityIdentity,
+		currentCapacityIdentity,
+		capacityError,
+		verifiedCapacity,
+		sessionRecovery,
+		handleOpenChange,
+		handleUpload,
+		handleCancel,
+		copyShareUrl,
+	} = useCloudShareController(props);
 
 	const form = (
 		<>
+			{uploading ? (
+				<div className="mb-4 space-y-2">
+					<ProgressBar aria-label={t("editor.cloud.createLink")} value={progress}>
+						<ProgressBar.Track>
+							<ProgressBar.Fill />
+						</ProgressBar.Track>
+					</ProgressBar>
+					<p className="text-xs text-muted-foreground">
+						{t("editor.exportStatus.completePercent", "{{percent}}% complete", {
+							percent: progress,
+						})}
+					</p>
+				</div>
+			) : null}
 			{shareUrl ? (
-				<Button type="button" size="lg" onClick={copyShareUrl} className="w-full">
-					{copied ? <Check className="h-4 w-4" /> : <LinkSimple className="h-4 w-4" />}
-					{copied ? t("editor.cloud.copied") : "Copy link"}
-				</Button>
+				<div className="space-y-3">
+					<PublishedVideoPreview key={shareUrl} url={shareUrl} />
+					<Label htmlFor="cloud-share-link" className="sr-only">
+						{t("editor.cloud.shareLink", "Share link")}
+					</Label>
+					<div className="share-link-field flex min-w-0 items-center gap-3 rounded-2xl border border-input bg-background p-1.5 pl-3">
+						<LinkSimple
+							aria-hidden="true"
+							className="size-5 shrink-0 text-muted-foreground"
+						/>
+						<input
+							id="cloud-share-link"
+							ref={shareLinkInput}
+							readOnly
+							value={shareUrl}
+							onFocus={(event) => event.currentTarget.select()}
+							className="min-w-0 flex-1 bg-transparent py-2 text-sm text-foreground outline-none"
+						/>
+						<Button
+							type="button"
+							size="icon"
+							aria-label={
+								needsRegenerate
+									? uiText("ui.regenerate")
+									: copied
+										? t("editor.cloud.copied")
+										: t("editor.cloud.copyLink", "Copy link")
+							}
+							disabled={uploading}
+							onClick={() => {
+								if (needsRegenerate) {
+									onRegenerate ? onRegenerate() : void handleUpload();
+								} else {
+									void copyShareUrl();
+								}
+							}}
+							className="size-10 shrink-0 rounded-xl bg-[#191a1c] text-white hover:bg-[#303136]"
+						>
+							{needsRegenerate ? (
+								<ArrowClockwise className="h-4 w-4" />
+							) : copied ? (
+								<Check className="h-4 w-4" />
+							) : (
+								<Copy className="size-5" />
+							)}
+						</Button>
+					</div>
+					{needsRegenerate && !uploading && (
+						<>
+							<p className="text-xs text-muted-foreground">
+								{uiText("ui.thisProjectHasChangedSinceThisLinkWas")}
+							</p>
+							{error && (
+								<p role="alert" className="text-sm text-destructive">
+									<LocalizedError
+										error={error}
+										summary={
+											signInRequired
+												? t("editor.cloud.signInRequired")
+												: undefined
+										}
+									/>{" "}
+									<ErrorReportButton error={error} />
+								</p>
+							)}
+						</>
+					)}
+				</div>
 			) : (
 				<div className="space-y-4">
 					{!uploading && (
-						<div className="space-y-2">
-							<Label htmlFor="cloud-share-notes">{t("editor.cloud.notes")}</Label>
-							<textarea
-								id="cloud-share-notes"
-								placeholder={t("editor.cloud.notesPlaceholder")}
-								value={notes}
-								onChange={(event) => setNotes(event.target.value.slice(0, 2000))}
-								disabled={uploading}
-								className="block h-20 w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-							/>
-							{!inline && (
-								<p className="text-right text-[11px] text-muted-foreground">
-									{notes.length}/2000
-								</p>
-							)}
-						</div>
-					)}
-					{uploading ? (
-						<div className="space-y-2">
-							<div className="h-2 overflow-hidden rounded-full bg-foreground/10">
-								<div
-									className="h-full bg-[#2563EB] transition-all"
-									style={{ width: `${progress}%` }}
+						<>
+							<div className="space-y-2">
+								<Label htmlFor="cloud-share-title">
+									{t("editor.cloud.title", "Title")}
+								</Label>
+								<Input
+									id="cloud-share-title"
+									value={title}
+									placeholder={projectTitle}
+									maxLength={200}
+									onChange={(event) => setTitle(event.target.value)}
+									className="block w-full rounded-md bg-background text-sm"
 								/>
 							</div>
-							<p className="text-xs text-muted-foreground">Uploading · {progress}%</p>
-						</div>
-					) : null}
-					{error || capacityAvailable === false ? (
+							<div className="space-y-2">
+								<Label htmlFor="cloud-share-notes">{t("editor.cloud.notes")}</Label>
+								<TextArea
+									id="cloud-share-notes"
+									placeholder={t("editor.cloud.notesPlaceholder")}
+									value={notes}
+									onChange={(event) =>
+										setNotes(event.target.value.slice(0, 2000))
+									}
+									disabled={uploading}
+									className="block h-20 w-full resize-none rounded-md bg-background text-sm"
+								/>
+								{!inline && (
+									<p className="text-right text-[11px] text-muted-foreground">
+										{notes.length}/2000
+									</p>
+								)}
+							</div>
+						</>
+					)}
+					{authToken && !checkingCapacity && verifiedCapacity === null && !error && (
+						<p className="text-xs text-muted-foreground">
+							{capacityIdentity === currentCapacityIdentity && capacityError
+								? capacityError
+								: t(
+										"editor.cloud.checkStorageFailed",
+										"Could not check cloud storage. Try again.",
+									)}{" "}
+							<button
+								type="button"
+								className="underline"
+								onClick={() => {
+									if (signInRequired && onRequestSignIn) onRequestSignIn();
+									else {
+										sessionRecovery.current.attempted = false;
+										notifyShareCapacityChanged();
+									}
+								}}
+							>
+								{signInRequired && onRequestSignIn
+									? t("editor.cloud.checkSignIn", "Check sign-in")
+									: t("common.actions.retry", "Try again")}
+							</button>
+						</p>
+					)}
+					{error || verifiedCapacity === false ? (
 						<p className="text-sm text-destructive">
-							{error || RECORDING_LIMIT_MESSAGE}
+							{error ? (
+								<LocalizedError
+									error={error}
+									summary={
+										signInRequired
+											? t("editor.cloud.signInRequired")
+											: undefined
+									}
+								/>
+							) : (
+								t("editor.cloud.recordingLimit", RECORDING_LIMIT_MESSAGE)
+							)}
+							{error && <ErrorReportButton error={error} context="cloud-share" />}
 						</p>
 					) : null}
 					<div className="flex justify-end gap-2">
@@ -310,7 +239,10 @@ export function CloudShareButton({
 								className="w-full"
 								disabled={
 									Boolean(authToken) &&
-									(checkingCapacity || capacityAvailable === false)
+									// Pending checks do not block the action; handleUpload verifies before export.
+									(verifiedCapacity === false ||
+										(capacityIdentity === currentCapacityIdentity &&
+											Boolean(capacityError)))
 								}
 								onClick={() => {
 									if (!authToken && onRequestSignIn) onRequestSignIn();
@@ -318,7 +250,9 @@ export function CloudShareButton({
 								}}
 							>
 								<Export className="h-4 w-4" />
-								{authToken ? "Share" : "Sign in to share"}
+								{authToken
+									? t("editor.cloud.share", "Share")
+									: t("editor.cloud.signInToShare", "Sign in to share")}
 							</Button>
 						)}
 					</div>
@@ -326,6 +260,7 @@ export function CloudShareButton({
 			)}
 		</>
 	);
+
 	if (inline) return <div>{form}</div>;
 
 	return (
@@ -350,9 +285,6 @@ export function CloudShareButton({
 					<DialogHeader>
 						<DialogTitle>{t("editor.cloud.heading")}</DialogTitle>
 						<DialogDescription>{t("editor.cloud.description")}</DialogDescription>
-						<p className="text-xs text-muted-foreground">
-							Free-plan links expire after 14 days.
-						</p>
 					</DialogHeader>
 
 					{!uploading && authToken && DEFAULT_CLOUD_ENDPOINT && (

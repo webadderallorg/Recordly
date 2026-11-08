@@ -50,8 +50,10 @@
 		"typecheck": "tsc --noEmit",
 		"test:ui": "playwright test",
 		"dev:ui": "vite --mode ui --host 127.0.0.1",
+		"announcement-studio": "vite --config vite.studio.config.ts",
 		"return-pages:build": "node scripts/build-return-pages.mjs",
-		"email:build": "npm run return-pages:build && node scripts/build-auth-emails.mjs"
+		"email:build": "npm run return-pages:build && node scripts/build-auth-emails.mjs",
+		"email:preview": "vite --config vite.email.config.ts"
 	},
 	"dependencies": {
 		"@phosphor-icons/react": "^2.1.10",
