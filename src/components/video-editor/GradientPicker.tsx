@@ -144,8 +144,7 @@ export function GradientPicker({
 						{draft.colors.map((color, index) => (
 							<div key={index} className="flex items-center justify-between gap-2">
 								<span className="text-sm text-muted">
-									{te("color", "Color")}
-									{index + 1}
+									{te("colorNumber", "Color {{number}}", { number: index + 1 })}
 								</span>
 								<div className="flex items-center gap-1">
 									<ColorControl

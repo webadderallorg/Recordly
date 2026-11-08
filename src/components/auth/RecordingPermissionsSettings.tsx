@@ -17,71 +17,85 @@ export function RecordingPermissionsSettings({ onReview }: { onReview?: () => vo
 	const { t } = useI18n();
 	const mounted = useRef(false);
 	const pending = useRef(false);
+	const refreshQueued = useRef(false);
 	const [snapshot, setSnapshot] = useState<PermissionSnapshot>();
 	const [busy, setBusy] = useState(false);
 	const [opening, setOpening] = useState<Permission>();
 	const [error, setError] = useState<string>();
 	const [actionError, setActionError] = useState<{ permission: Permission; message: string }>();
 	const refresh = useCallback(async () => {
-		if (pending.current) return;
+		if (!mounted.current) return;
+		if (pending.current) {
+			refreshQueued.current = true;
+			return;
+		}
 		pending.current = true;
 		setBusy(true);
 		try {
-			const mac = (await window.electronAPI.getPlatform()) === "darwin";
-			const values: PermissionSnapshot["values"] = {};
-			let failed = false;
-			const results = await Promise.allSettled([
-				mac
-					? window.electronAPI.getScreenRecordingPermissionStatus()
-					: Promise.resolve(null),
-				mac ? window.electronAPI.getAccessibilityPermissionStatus() : Promise.resolve(null),
-				typeof window.electronAPI.getMediaPermissionStatus === "function"
-					? window.electronAPI.getMediaPermissionStatus()
-					: Promise.resolve(null),
-			]);
-			const [screen, accessibility, media] = results;
-			if (mac) {
-				if (screen.status === "fulfilled" && screen.value?.success)
-					values.screen = normalize(screen.value.status);
-				else {
-					values.screen = "unknown";
-					failed = true;
+			do {
+				refreshQueued.current = false;
+				try {
+					const mac = (await window.electronAPI.getPlatform()) === "darwin";
+					const values: PermissionSnapshot["values"] = {};
+					let failed = false;
+					const results = await Promise.allSettled([
+						mac
+							? window.electronAPI.getScreenRecordingPermissionStatus()
+							: Promise.resolve(null),
+						mac
+							? window.electronAPI.getAccessibilityPermissionStatus()
+							: Promise.resolve(null),
+						typeof window.electronAPI.getMediaPermissionStatus === "function"
+							? window.electronAPI.getMediaPermissionStatus()
+							: Promise.resolve(null),
+					]);
+					const [screen, accessibility, media] = results;
+					if (mac) {
+						if (screen.status === "fulfilled" && screen.value?.success)
+							values.screen = normalize(screen.value.status);
+						else {
+							values.screen = "unknown";
+							failed = true;
+						}
+						if (accessibility.status === "fulfilled" && accessibility.value?.success)
+							values.accessibility = accessibility.value.trusted
+								? "granted"
+								: "denied";
+						else {
+							values.accessibility = "unknown";
+							failed = true;
+						}
+					}
+					if (media.status === "fulfilled" && media.value?.success) {
+						values.microphone = normalize(media.value.microphone);
+						values.camera = normalize(media.value.camera);
+					} else {
+						values.microphone = "unknown";
+						values.camera = "unknown";
+						failed = true;
+					}
+					if (!mounted.current) return;
+					setSnapshot({ mac, values });
+					setError(
+						failed
+							? t(
+									"settings.permissions.checkFailed",
+									"Some permissions could not be checked. Try again.",
+								)
+							: undefined,
+					);
+				} catch {
+					if (mounted.current) {
+						setSnapshot(undefined);
+						setError(
+							t(
+								"settings.permissions.checkFailed",
+								"Some permissions could not be checked. Try again.",
+							),
+						);
+					}
 				}
-				if (accessibility.status === "fulfilled" && accessibility.value?.success)
-					values.accessibility = accessibility.value.trusted ? "granted" : "denied";
-				else {
-					values.accessibility = "unknown";
-					failed = true;
-				}
-			}
-			if (media.status === "fulfilled" && media.value?.success) {
-				values.microphone = normalize(media.value.microphone);
-				values.camera = normalize(media.value.camera);
-			} else {
-				values.microphone = "unknown";
-				values.camera = "unknown";
-				failed = true;
-			}
-			if (!mounted.current) return;
-			setSnapshot({ mac, values });
-			setError(
-				failed
-					? t(
-							"settings.permissions.checkFailed",
-							"Some permissions could not be checked. Try again.",
-						)
-					: undefined,
-			);
-		} catch {
-			if (mounted.current) {
-				setSnapshot(undefined);
-				setError(
-					t(
-						"settings.permissions.checkFailed",
-						"Some permissions could not be checked. Try again.",
-					),
-				);
-			}
+			} while (mounted.current && refreshQueued.current);
 		} finally {
 			pending.current = false;
 			if (mounted.current) setBusy(false);

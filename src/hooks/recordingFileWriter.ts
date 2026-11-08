@@ -12,6 +12,7 @@ export class RecordingFileWriter {
 	private queue = Promise.resolve();
 	private streamId: string | undefined;
 	private pendingBytes = 0;
+	private oversizedChunkBytes = 0;
 	private failure: string | undefined;
 	private cancelled = false;
 	private path: string | undefined;
@@ -28,8 +29,12 @@ export class RecordingFileWriter {
 	}
 	write(chunk: Blob) {
 		if (this.cancelled || this.failure || !chunk.size) return;
-		// A single delayed recorder Blob drains in slices; bound additional queued data.
-		if (this.pendingBytes > 0 && this.pendingBytes + chunk.size > 32 * 1024 * 1024) {
+		const isOversizedChunk = this.pendingBytes === 0 && chunk.size > 32 * 1024 * 1024;
+		// One delayed Blob may drain in slices alongside up to 32 MiB of later data.
+		if (
+			!isOversizedChunk &&
+			this.pendingBytes - this.oversizedChunkBytes + chunk.size > 32 * 1024 * 1024
+		) {
 			this.fail(
 				new Error(
 					"Recording storage cannot keep up. The partial recording will be preserved.",
@@ -37,6 +42,7 @@ export class RecordingFileWriter {
 			);
 			return;
 		}
+		if (isOversizedChunk) this.oversizedChunkBytes = chunk.size;
 		this.pendingBytes += chunk.size;
 		this.queue = this.queue
 			.then(async () => {
@@ -68,6 +74,7 @@ export class RecordingFileWriter {
 			.catch((error) => this.fail(error))
 			.finally(() => {
 				this.pendingBytes -= chunk.size;
+				if (isOversizedChunk) this.oversizedChunkBytes = 0;
 			});
 	}
 	cancel() {
