@@ -68,7 +68,7 @@ export default function TermsOfService() {
 				Cloud recordings have no scheduled expiry while Cloud is active. A verified upgrade
 				also protects eligible recordings still stored at the time of upgrade. When Cloud
 				ends, those recordings expire after a seven-day grace period. Save a copy or renew
-				before that deadline. Upgrading cannot recover expired or deleted files. New uploads
+				before that deadline. Upgrading cannot recover deleted files. New uploads
 				after Cloud ends follow the Free limits; stored recordings continue to count toward
 				applicable limits.
 			</p>
