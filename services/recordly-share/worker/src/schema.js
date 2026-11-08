@@ -8,7 +8,8 @@
 
 import { ABUSE_SCHEMA } from "./abuseSchema.js";
 
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
+const ABUSE_REPORT_IP_CLEANUP_INDEX = `CREATE INDEX IF NOT EXISTS idx_abuse_reports_ip_cleanup ON abuse_reports(created_at) WHERE client_ip <> ''`;
 const COMPLETED_LIBRARY_INDEX = `CREATE INDEX IF NOT EXISTS idx_videos_completed_created ON videos(datetime(created_at) DESC, id DESC) WHERE upload_completed = 1`;
 const FEEDBACK_INDEXES = [
 	`CREATE INDEX IF NOT EXISTS idx_comments_account_window ON comments(video_id, author_id, created_at)`,
@@ -116,6 +117,7 @@ const SCHEMA_STATEMENTS = [
 	`CREATE INDEX IF NOT EXISTS idx_comment_sessions_expiry ON comment_sessions(expires_at)`,
 	...FEEDBACK_INDEXES,
 	...ABUSE_SCHEMA,
+	ABUSE_REPORT_IP_CLEANUP_INDEX,
 ];
 
 // Incremental migrations for databases that are already at an older version.
@@ -123,6 +125,7 @@ const SCHEMA_STATEMENTS = [
 // cannot add columns to existing tables), so any change that ALTERs an
 // existing table MUST appear here under a bumped SCHEMA_VERSION.
 const SCHEMA_MIGRATIONS = {
+	14: [ABUSE_REPORT_IP_CLEANUP_INDEX],
 	13: [COMPLETED_LIBRARY_INDEX],
 	12: [
 		`ALTER TABLE comments ADD COLUMN author_id TEXT`,

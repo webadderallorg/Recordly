@@ -1,11 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useHudBarDrag } from "./useHudBarDrag";
 import { useLaunchHudInteractionState } from "./useLaunchHudInteractionState";
+import { useWebcamPreviewPointer } from "./useWebcamPreviewPointer";
 
 const effects = vi.hoisted(() => [] as Array<() => void | (() => void)>);
 vi.mock("react", () => ({
 	useRef: <T>(current: T) => ({ current }),
 	useCallback: <T>(callback: T) => callback,
 	useEffect: (effect: () => void | (() => void)) => effects.push(effect),
+	useState: <T>(initial: T | (() => T)) => [
+		typeof initial === "function" ? (initial as () => T)() : initial,
+		vi.fn(),
+	],
+	useLayoutEffect: (effect: () => void | (() => void)) => effects.push(effect),
 }));
 
 const bar = { left: 300, top: 700, right: 900, bottom: 760 };
@@ -14,6 +21,7 @@ let cleanup: Array<void | (() => void)>;
 let regions: Array<{ dataset: Record<string, string>; getBoundingClientRect: () => typeof bar }>;
 let host: EventTarget;
 const ignoreMouse = vi.fn();
+let nativeIgnoring: boolean | undefined;
 function mount(openId: string | null = null, platform: string | null = "darwin") {
 	const refs = {
 		isHudDraggingRef: { current: false },
@@ -29,14 +37,92 @@ function move(x: number, y: number) {
 	host.dispatchEvent(Object.assign(new Event("mousemove"), { clientX: x, clientY: y }));
 	vi.runOnlyPendingTimers();
 }
+function mountDragHooks() {
+	const target = (bounds: typeof bar) => {
+		let captured = false;
+		return {
+			closest: () => null,
+			contains: () => true,
+			style: { transform: "" },
+			getBoundingClientRect: () => ({
+				...bounds,
+				width: bounds.right - bounds.left,
+				height: bounds.bottom - bounds.top,
+			}),
+			setPointerCapture: () => {
+				captured = true;
+			},
+			hasPointerCapture: () => captured,
+			releasePointerCapture: () => {
+				captured = false;
+			},
+		};
+	};
+	const barTarget = target(bar);
+	const cameraTarget = target(camera);
+	const hudBarRef = { current: barTarget as unknown as HTMLDivElement };
+	const cameraRef = { current: cameraTarget as unknown as HTMLDivElement };
+	const hud = useHudBarDrag({
+		hudBarRef,
+		hudContentRef: { current: null },
+		recordingWebcamPreviewContainerRef: cameraRef,
+	});
+	const webcam = useWebcamPreviewPointer({
+		webcamEnabled: true,
+		showRecordingWebcamPreview: true,
+		setShowFloatingWebcamPreview: vi.fn(),
+		geometry: {
+			webcamPreviewOffsetRef: { current: { x: 0, y: 0 } },
+			setWebcamPreviewOffset: vi.fn(),
+			recordingWebcamPreviewContainerRef: cameraRef,
+			getDockBounds: () => cameraTarget.getBoundingClientRect(),
+			keepDockInsideViewport: vi.fn(),
+		} as unknown as Parameters<typeof useWebcamPreviewPointer>[0]["geometry"],
+	});
+	useLaunchHudInteractionState({
+		openId: null,
+		platform: "darwin",
+		isHudDraggingRef: hud.isHudDraggingRef,
+		isWebcamPreviewDraggingRef: webcam.isWebcamPreviewDraggingRef,
+		webcamPreviewDragStartRef: webcam.webcamPreviewDragStartRef,
+	});
+	cleanup = effects.splice(0).map((effect) => effect());
+	return { hud, webcam, barTarget, cameraTarget };
+}
 beforeEach(() => {
 	vi.useFakeTimers();
-	ignoreMouse.mockClear();
+	ignoreMouse.mockReset();
+	nativeIgnoring = undefined;
+	ignoreMouse.mockImplementation((ignore: boolean) => {
+		nativeIgnoring = ignore;
+	});
 	host = new EventTarget();
-	Object.assign(host, { electronAPI: { hudOverlaySetIgnoreMouse: ignoreMouse } });
+	Object.assign(host, {
+		electronAPI: { hudOverlaySetIgnoreMouse: ignoreMouse },
+		innerWidth: 1280,
+		innerHeight: 800,
+	});
 	vi.stubGlobal("window", host);
 	regions = [{ dataset: {}, getBoundingClientRect: () => bar }];
-	vi.stubGlobal("document", { querySelectorAll: () => regions });
+	vi.stubGlobal("document", {
+		querySelectorAll: () => regions,
+		documentElement: {
+			getAttribute: () => null,
+			setAttribute: vi.fn(),
+			removeAttribute: vi.fn(),
+			style: {
+				getPropertyValue: () => "",
+				getPropertyPriority: () => "",
+				setProperty: vi.fn(),
+				removeProperty: vi.fn(),
+			},
+		},
+	});
+	vi.stubGlobal(
+		"requestAnimationFrame",
+		vi.fn(() => 1),
+	);
+	vi.stubGlobal("cancelAnimationFrame", vi.fn());
 	cleanup = [];
 });
 afterEach(() => {
@@ -114,6 +200,64 @@ describe("HUD forwarded mouse movement", () => {
 });
 
 describe("HUD mouse IPC state changes", () => {
+	it.each(
+		(["bar", "camera"] as const).flatMap((kind) =>
+			["pointerup", "pointercancel", "lostpointercapture", "blur"].map((release) => ({
+				kind,
+				release,
+			})),
+		),
+	)("restores hover after $kind $release bypasses the cache", ({ kind, release }) => {
+		const { hud, webcam, barTarget, cameraTarget } = mountDragHooks();
+		const target = kind === "bar" ? barTarget : cameraTarget;
+		move(500, 730);
+		const event = (type: string, clientX: number, clientY: number) =>
+			({
+				type,
+				clientX,
+				clientY,
+				button: 0,
+				pointerId: 1,
+				currentTarget: target,
+				target,
+				preventDefault: vi.fn(),
+			}) as unknown as Parameters<typeof hud.handleHudBarPointerDown>[0];
+		const down =
+			kind === "bar" ? hud.handleHudBarPointerDown : webcam.handleWebcamPreviewPointerDown;
+		const dragging =
+			kind === "bar" ? hud.handleHudBarPointerMove : webcam.handleWebcamPreviewPointerMove;
+		const up = kind === "bar" ? hud.handleHudBarPointerUp : webcam.handleWebcamPreviewPointerUp;
+		down(event("pointerdown", 500, 730));
+		dragging(event("pointermove", -100, -100));
+		// Leave an outside-hover timer pending, then return before it writes native state.
+		host.dispatchEvent(Object.assign(new Event("mousemove"), { clientX: -100, clientY: -100 }));
+		host.dispatchEvent(new Event(release));
+		if (release !== "blur") up(event(release, -100, -100));
+		expect(nativeIgnoring, `${kind} ${release} release`).toBe(true);
+		move(500, 730);
+		expect(nativeIgnoring, `${kind} ${release} hover`).toBe(false);
+	});
+	it("retries hover after a forced native write throws instead of caching the failed request", () => {
+		const { actions } = mount();
+		move(500, 730);
+		ignoreMouse(true);
+		ignoreMouse.mockImplementationOnce(() => {
+			throw new Error("Bridge unavailable");
+		});
+		expect(() => actions.beginInteractiveHudAction()).toThrow("Bridge unavailable");
+		move(500, 730);
+		expect(nativeIgnoring).toBe(false);
+	});
+	it("does not retain an assumed state when the native bridge is temporarily unavailable", () => {
+		const { actions } = mount();
+		move(500, 730);
+		delete (window.electronAPI as Partial<Window["electronAPI"]>).hudOverlaySetIgnoreMouse;
+		actions.beginInteractiveHudAction();
+		window.electronAPI.hudOverlaySetIgnoreMouse = ignoreMouse;
+		ignoreMouse(true);
+		move(500, 730);
+		expect(nativeIgnoring).toBe(false);
+	});
 	it("skips repeated ordinary moves but retains state transitions", () => {
 		mount();
 		move(500, 730);

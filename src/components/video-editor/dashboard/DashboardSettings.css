@@ -655,13 +655,15 @@ html[data-theme="dark"] .dashboard-settings {
 	min-height: 32px;
 	padding: 6px 10px;
 }
-/* All desktop categories fit together; only the preferences pane should scroll. */
+/* Let desktop categories scroll when the sidebar is shorter than its contents. */
 @media (min-width: 681px) {
 	.dashboard-settings-navigation {
 		overflow: clip;
 	}
 	.dashboard-settings-navigation > .dashboard-settings-tab-list {
-		flex: 0 0 auto;
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
 		padding: 0;
 	}
 	.dashboard-settings-navigation .tabs__list-container {

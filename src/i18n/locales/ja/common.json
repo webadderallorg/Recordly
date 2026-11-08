@@ -48,7 +48,7 @@
 		"descriptionPlaceholder": "すべてのフィードバックに目を通しています…",
 		"attachFiles": "ファイルを添付",
 		"removeFile": "{{name}}を削除",
-		"diagnostics": "診断ログを添付。フィードバックは support@recordly.dev に送信されます",
+		"diagnostics": "診断ログが添付されます。フィードバックは support@recordly.dev に送信されます。",
 		"sending": "送信中…",
 		"errors": {
 			"unavailable": "アカウントサービスが設定されるまで、フィードバックは利用できません。",

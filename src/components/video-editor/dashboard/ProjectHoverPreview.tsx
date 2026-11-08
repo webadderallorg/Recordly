@@ -7,6 +7,20 @@ import VideoPlayback, { type VideoPlaybackRef } from "../VideoPlayback";
 import { getEffectiveNativeAspectRatio } from "../videoPlayback/playbackTypes";
 import { useProjectHoverComposition } from "./useProjectHoverComposition";
 
+// ProjectThumbnail retains one immutable IPC snapshot per cache revision. Keep
+// composition identity without walking inline annotation images or retaining them
+// in React's key; a newly saved editor object still starts a fresh session.
+const editorSessions = new WeakMap<object, number>();
+let nextEditorSession = 0;
+function editorSession(editor: ProjectPreviewData["project"]["editor"]) {
+	let session = editorSessions.get(editor);
+	if (session === undefined) {
+		session = ++nextEditorSession;
+		editorSessions.set(editor, session);
+	}
+	return session;
+}
+
 const ignore = () => undefined;
 type Props = { data: ProjectPreviewData; onFinish: () => void };
 /** A new source or saved composition starts hidden, including cache/revision changes. */
@@ -18,7 +32,7 @@ export function ProjectHoverPreview(props: Props) {
 				props.data.webcamUrl,
 				props.data.revision,
 				props.data.project.videoPath,
-				props.data.project.editor,
+				editorSession(props.data.project.editor),
 			]),
 		[props.data],
 	);
