@@ -32,6 +32,103 @@ async function expectCollapsed(page: Page) {
 	await expect(page.locator(frameSelector)).toHaveAttribute("aria-hidden", "true");
 }
 
+async function expectSignInControlsReachable(page: Page, passwordMode = false) {
+	const body = page.locator("[data-onboarding-body]");
+	const consent = page.locator(".pricing-legal-consent");
+	// Resize can animate the dialog; inspect the settled scrollport inside the window.
+	await expect
+		.poll(() => body.evaluate((node) => node.getBoundingClientRect().bottom <= innerHeight + 1))
+		.toBe(true);
+	const initial = await body.evaluate((node) => ({
+		scrollTop: node.scrollTop,
+		scrollHeight: node.scrollHeight,
+		clientHeight: node.clientHeight,
+		overflowY: getComputedStyle(node).overflowY,
+	}));
+	const wheel = async (delta: number) => {
+		const box = (await body.boundingBox())!;
+		await page.mouse.move(box.x + box.width - 8, box.y + box.height / 2);
+		await page.mouse.wheel(0, delta);
+	};
+	const scrollToBottom = async () => {
+		await expect
+			.poll(async () => {
+				const remaining = await body.evaluate(
+					(node) => node.scrollHeight - node.clientHeight - node.scrollTop,
+				);
+				if (remaining > 1) await wheel(initial.scrollHeight);
+				return remaining;
+			})
+			.toBeLessThanOrEqual(1);
+	};
+	if (initial.scrollHeight - initial.clientHeight > 1) {
+		expect(["auto", "scroll"]).toContain(initial.overflowY);
+		// Use real wheel input in both directions, rather than setting scrollTop or
+		// letting locator actions scroll a potentially clipped parent for us.
+		await expect
+			.poll(async () => {
+				const top = await body.evaluate((node) => node.scrollTop);
+				if (top > 0) await wheel(-initial.scrollHeight);
+				return top;
+			})
+			.toBe(0);
+		await scrollToBottom();
+		await expect.poll(() => body.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+	}
+	await expect(consent).toBeInViewport({ ratio: 1 });
+	const consentBounds = (await consent.boundingBox())!;
+	const port = (await body.boundingBox())!;
+	expect(consentBounds.y).toBeGreaterThanOrEqual(port.y - 1);
+	expect(consentBounds.y + consentBounds.height).toBeLessThanOrEqual(port.y + port.height + 1);
+	for (const [name, href] of [
+		["Terms", /\/terms$/],
+		["Privacy Policy", /\/privacy$/],
+	] as const) {
+		const link = consent.getByRole("link", { name, exact: true });
+		await expect(link).toHaveAttribute("href", href);
+		await link.click({ trial: true });
+	}
+	const challenge = page.locator(frameSelector);
+	const controls = [
+		page.getByPlaceholder("you@example.com"),
+		...(passwordMode ? [page.getByLabel("Password", { exact: true })] : []),
+		challenge,
+		submit(page),
+	];
+	const controlBounds = [];
+	for (const control of controls) {
+		for (let attempt = 0; attempt < 5; attempt++) {
+			const scrollport = (await body.boundingBox())!;
+			const target = (await control.boundingBox())!;
+			const delta =
+				target.y < scrollport.y
+					? target.y - scrollport.y - 2
+					: target.y + target.height > scrollport.y + scrollport.height
+						? target.y + target.height - scrollport.y - scrollport.height + 2
+						: 0;
+			if (!delta) break;
+			const previous = await body.evaluate((node) => node.scrollTop);
+			await wheel(delta);
+			await expect.poll(() => body.evaluate((node) => node.scrollTop)).not.toBe(previous);
+		}
+		await expect(control).toBeVisible();
+		await expect(control).toBeInViewport({ ratio: 1 });
+		const scrollport = (await body.boundingBox())!;
+		const target = (await control.boundingBox())!;
+		expect(target.y).toBeGreaterThanOrEqual(scrollport.y - 1);
+		expect(target.y + target.height).toBeLessThanOrEqual(scrollport.y + scrollport.height + 1);
+		if (control === challenge) {
+			await page.frameLocator(frameSelector).locator("body").click({ trial: true });
+		} else await expect(control).toBeDisabled();
+		controlBounds.push(target);
+	}
+	// The real security check intentionally locks submission until verification.
+	await expect(submit(page)).toBeDisabled();
+	await scrollToBottom();
+	await expect(consent).toBeInViewport({ ratio: 1 });
+	return { viewport: page.viewportSize(), initial, consentBounds, controlBounds };
+}
+
 test.beforeEach(async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
 	await page.route("**/cloud/config", (route) =>
@@ -105,7 +202,9 @@ test("starts checking only on submit, ignores forged results, and sends once aut
 	await expect(page.getByRole("button", { name: /Resend in/ })).toBeDisabled();
 });
 
-test("shows interaction only when requested and keeps the form in view", async ({ page }) => {
+test("shows interaction only when requested and keeps the form in view", async ({
+	page,
+}, testInfo) => {
 	await page.setViewportSize({ width: 600, height: 600 });
 	await openEmail(page);
 	await submit(page).click();
@@ -120,16 +219,14 @@ test("shows interaction only when requested and keeps the form in view", async (
 		{ width: 450, height: 450 },
 	]) {
 		await page.setViewportSize(size);
-		await expect(submit(page)).toBeInViewport({ ratio: 1 });
-		await expect(page.locator(frameSelector)).toBeInViewport({ ratio: 1 });
-		await expect(page.locator(".pricing-legal-consent")).toBeInViewport({ ratio: 1 });
-		await expect
-			.poll(() =>
-				page
-					.locator("[data-onboarding-body]")
-					.evaluate((e) => e.scrollHeight - e.clientHeight),
-			)
-			.toBeLessThanOrEqual(1);
+		const geometry = await expectSignInControlsReachable(page);
+		await testInfo.attach(`email-scroll-${size.width}x${size.height}`, {
+			body: JSON.stringify(geometry),
+			contentType: "application/json",
+		});
+		await page.screenshot({
+			path: testInfo.outputPath(`email-consent-${size.width}x${size.height}.png`),
+		});
 	}
 	await emitFrameEvent(page, "background");
 	await expectCollapsed(page);
@@ -193,7 +290,7 @@ test("editing email after failure discards the previous pending submission", asy
 
 test("password sign-in also starts its check on submit and forwards the verified token", async ({
 	page,
-}) => {
+}, testInfo) => {
 	await page.setViewportSize({ width: 600, height: 600 });
 	await openEmail(page);
 	await page.getByRole("button", { name: "Or use password to sign in", exact: true }).click();
@@ -202,14 +299,45 @@ test("password sign-in also starts its check on submit and forwards the verified
 	await submit(page).click();
 	await expectCollapsed(page);
 	await emitFrameEvent(page, "interactive");
-	await expect(page.locator(frameSelector)).toBeInViewport({ ratio: 1 });
-	await expect(submit(page)).toBeInViewport({ ratio: 1 });
-	await expect(page.locator(".pricing-legal-consent")).toBeInViewport({ ratio: 1 });
+	const geometry = await expectSignInControlsReachable(page, true);
+	await testInfo.attach("password-scroll-600x600", {
+		body: JSON.stringify(geometry),
+		contentType: "application/json",
+	});
+	await page.screenshot({ path: testInfo.outputPath("password-consent-600x600.png") });
 	const request = page.waitForRequest((r) => new URL(r.url()).pathname === "/auth/v1/token");
 	await emitFrameEvent(page, "verified", "password-token");
 	expect((await request).postDataJSON().gotrue_meta_security.captcha_token).toBe(
 		"password-token",
 	);
+	await expect(page.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
+});
+
+test("a rejected password stays available for a protected retry without retyping", async ({ page }) => {
+	let rejectPassword = true;
+	await page.route("https://auth.recordly.test/auth/v1/token**", async (route) => {
+		if (rejectPassword) {
+			rejectPassword = false;
+			return route.fulfill({
+				status: 400,
+				json: { error: "invalid_grant", error_description: "Invalid login credentials" },
+			});
+		}
+		return route.fallback();
+	});
+	await openEmail(page);
+	await page.getByRole("button", { name: "Or use password to sign in", exact: true }).click();
+	const password = page.getByLabel("Password", { exact: true });
+	await password.fill("test-only-password");
+	await submit(page).click();
+	await emitFrameEvent(page, "verified", "rejected-password-token");
+	await expect(page.getByRole("alert")).toBeVisible();
+	await expect(password).toHaveValue("test-only-password");
+	await expect(submit(page)).toBeEnabled();
+	await submit(page).click();
+	const request = page.waitForRequest((r) => new URL(r.url()).pathname === "/auth/v1/token");
+	await emitFrameEvent(page, "verified", "retry-password-token");
+	expect((await request).postDataJSON().password).toBe("test-only-password");
 	await expect(page.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
 });
 

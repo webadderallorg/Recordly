@@ -34,14 +34,7 @@ for (const storageBytes of [
 		await page.getByRole("button", { name: "Home", exact: true }).click();
 		const dashboard = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
 		const sidebar = dashboard.getByLabel("Sidebar announcements", { exact: true });
-		// Wait for the account response before checking that a healthy account is hidden.
-		await expect(sidebar.getByText("Loading usage…")).toHaveCount(0);
-		await expect(sidebar.getByText("Cloud recordings", { exact: true })).toHaveCount(0);
-		await expect(sidebar.getByLabel("Cloud usage", { exact: true })).toHaveCount(0);
 		const navigation = dashboard.getByRole("complementary", { name: "Library navigation" });
-		await expect(navigation.getByRole("button", { name: "Upgrade", exact: true })).toHaveCount(
-			0,
-		);
 		await navigation.getByRole("button", { name: "Settings", exact: true }).click();
 		const settings = dashboard.getByRole("region", { name: "Dashboard settings", exact: true });
 		await expect(settings).toBeVisible();
@@ -52,6 +45,14 @@ for (const storageBytes of [
 		await expect(settings.getByLabel("Cloud usage", { exact: true })).toContainText(
 			"Cloud storage",
 		);
+		// A rendered value proves the Pro account response has reached React before absence checks.
+		await expect(
+			settings.getByRole("progressbar", { name: "Cloud storage used", exact: true }),
+		).toHaveAttribute("aria-valuenow", String(Math.min(storageBytes, 100_000_000_000)));
+		await expect(sidebar.getByText("Loading usage…")).toHaveCount(0);
+		await expect(sidebar.getByText("Cloud recordings", { exact: true })).toHaveCount(0);
+		await expect(sidebar.getByLabel("Cloud usage", { exact: true })).toHaveCount(0);
+		await expect(navigation.getByRole("button", { name: "Upgrade", exact: true })).toHaveCount(0);
 	});
 }
 

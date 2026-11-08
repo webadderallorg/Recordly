@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildActiveCaptionLayout, flattenCaptionWords } from "./captionLayout";
+import {
+	buildActiveCaptionLayout,
+	flattenCaptionWords,
+	prepareCaptionLayout,
+} from "./captionLayout";
 import { type CaptionCue, DEFAULT_AUTO_CAPTION_SETTINGS } from "./types";
 
 describe("flattenCaptionWords", () => {
@@ -78,6 +82,68 @@ describe("current-word caption layout", () => {
 				layout(time, [cue, sameStart, later]),
 			);
 		}
+	});
+
+	it.each([
+		"chronological",
+		"reversed",
+	] as const)("keeps the visible overlapping cue and its highlighted word together for %s saved cues", (order) => {
+		const next: CaptionCue = {
+			id: "b",
+			startMs: 800,
+			endMs: 1800,
+			text: "next phrase",
+			words: [
+				{ text: "next", startMs: 800, endMs: 1200 },
+				{ text: "phrase", startMs: 1400, endMs: 1800, leadingSpace: true },
+			],
+		};
+		const cues = order === "chronological" ? [cue, next] : [next, cue];
+		const options = {
+			cues,
+			settings: {
+				...DEFAULT_AUTO_CAPTION_SETTINGS,
+				maxRows: 1,
+				animationStyle: "none" as const,
+			},
+			maxWidthPx: 1000,
+			measureText: (text: string) => text.length * 10,
+		};
+		const sample = prepareCaptionLayout(options);
+		expect(sample(799)?.cue.id).toBe("a");
+		for (const timeMs of [800, 900, 999, 1000]) {
+			const active = sample(timeMs)!;
+			expect(active.editTarget.text).toBe("next phrase");
+			expect(active.cue.id).toBe("b");
+			const emphasized = active.visibleLines
+				.flatMap((line) => line.words)
+				.filter((word) => word.state === "active");
+			expect(emphasized.map((word) => word.cueId)).toEqual(["b"]);
+			expect(emphasized[0].index).toBe(active.activeWordIndex);
+			expect(active.activeWordProgress).toBeCloseTo((timeMs - 800) / 400);
+			expect(buildActiveCaptionLayout({ ...options, timeMs })).toEqual(active);
+		}
+		expect(sample(799)?.cue.id).toBe("a");
+		expect(sample(900)?.cue.id).toBe("b");
+		expect(sample(1800)).toBeNull();
+	});
+
+	it("keeps an overlapping cue lead-in unhighlighted until its own first word", () => {
+		const next: CaptionCue = {
+			id: "b",
+			startMs: 800,
+			endMs: 1800,
+			text: "next",
+			words: [{ text: "next", startMs: 880, endMs: 1700 }],
+		};
+		for (const timeMs of [800, 850, 879]) {
+			const active = layout(timeMs, [cue, next])!;
+			expect(active.editTarget.text).toBe("next");
+			expect(active.cue.id).toBe("b");
+			expect(active.activeWordIndex).toBe(-1);
+			expect(active.visibleLines[0].words[0].state).toBe("upcoming");
+		}
+		expect(layout(880, [cue, next])?.visibleLines[0].words[0].state).toBe("active");
 	});
 
 	it("finishes Pop in 90ms while Fade retains its 180ms entrance", () => {
