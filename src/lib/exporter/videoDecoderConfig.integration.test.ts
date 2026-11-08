@@ -19,12 +19,15 @@ vi.mock("web-demuxer", () => ({
 						width: 1876,
 						height: 954,
 						avg_frame_rate: "60/1",
-						profile: "Profile 0",
-						pix_fmt: "yuv420p",
+						profile: "unknown",
+						pix_fmt: "",
 						level: -99,
 					},
 				],
 			};
+		}
+		async seekMediaPacket() {
+			return { data: new Uint8Array([0x82, 0x49, 0x83, 0x42]) };
 		}
 		read() {
 			return new ReadableStream({
@@ -43,7 +46,7 @@ describe("VP9 decoder configuration integration", () => {
 	it.each([
 		"streaming",
 		"forward",
-	])("normalizes before configuring the %s decoder", async (path) => {
+	])("recovers missing VP9 metadata before configuring the %s decoder", async (path) => {
 		const configure = vi.fn();
 		vi.stubGlobal("window", { location: { href: "http://localhost/" } });
 		vi.stubGlobal(
