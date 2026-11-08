@@ -224,7 +224,7 @@ describe("native static layout command builders", () => {
 			outputPath: "background.png",
 			backgroundImagePath: "wallpaper.jpg",
 			maskPath: "mask.pgm",
-			shadowIntensity: 0.67,
+			shadowIntensity: 0.5,
 		});
 		const filterComplex = args[args.indexOf("-filter_complex") + 1];
 
@@ -232,9 +232,17 @@ describe("native static layout command builders", () => {
 		expect(filterComplex).toContain(
 			"scale=w=1920:h=1080:force_original_aspect_ratio=increase,crop=w=1920:h=1080",
 		);
-		expect(filterComplex).toContain("split=3");
-		expect(filterComplex).toContain("gblur=sigma=32.16:steps=2");
-		expect(filterComplex).toContain("overlay=x=119:y=35:format=auto");
+		expect(filterComplex).toContain("split=2");
+		expect(filterComplex).toContain("gblur=sigma=84:steps=2");
+		expect(filterComplex).toContain("gblur=sigma=9:steps=2");
+		// Reserve three blur sigmas plus the vertical offset, keeping the visible
+		// shadow aligned with the content while preventing its outer blur clipping.
+		// At 1920px, scale all shadow dimensions by 3 relative to the preview.
+		// 50% is the original full strength: ceil(84 * 3 + 12 * 3) = 288px per side.
+		expect(filterComplex).toContain(
+			"pad=w=2112:h=1440:x=288:y=324:color=black,gblur=sigma=84:steps=2",
+		);
+		expect(filterComplex).toContain("overlay=x=-96:y=-180:format=auto");
 		expect(args).toEqual(expect.arrayContaining(["-frames:v", "1", "background.png"]));
 	});
 

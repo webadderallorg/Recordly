@@ -1,0 +1,7 @@
+{
+	"package": "@pixi/colord",
+	"version": "2.9.6",
+	"npmGitHead": "5344fbf77b736f81cd33c21050021bc09bc9dd1d",
+	"licenseUrl": "https://raw.githubusercontent.com/omgovich/colord/5344fbf77b736f81cd33c21050021bc09bc9dd1d/LICENSE.md",
+	"sha256": "7613d4594ee8b6163926af3435dae61c9e3d5a27cd137bd76a543ba40002d8fc"
+}

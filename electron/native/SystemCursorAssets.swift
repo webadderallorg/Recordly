@@ -1,8 +1,9 @@
 import Foundation
 import AppKit
 
-// Force AppKit initialization so all system cursor images are populated
-let _ = NSApplication.shared
+// Initialize cursor images without registering this command-line exporter as
+// another foreground instance of its parent Electron app in the macOS Dock.
+NSApplication.shared.setActivationPolicy(.prohibited)
 
 struct CursorAsset: Codable {
 	let dataUrl: String

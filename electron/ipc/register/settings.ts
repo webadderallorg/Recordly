@@ -1,3 +1,4 @@
+import { recordingFocus } from "../recording/focus";
 import { createCountdownController } from "../../countdownController";
 import fs from "node:fs/promises";
 import { app, BrowserWindow, ipcMain } from "electron";
@@ -11,6 +12,7 @@ import {
 } from "../settings/recordingPreferencesStore";
 import {
 	countdownInProgress,
+	selectedSource,
 	countdownRemaining,
 	setCountdownInProgress,
 	setCountdownRemaining,
@@ -201,8 +203,17 @@ export function registerSettingsHandlers() {
 		setCountdownRemaining(remaining);
 		setCountdownInProgress(remaining !== null);
 	});
-	ipcMain.handle("start-countdown", (_, seconds: number) => countdown.start(seconds));
-	ipcMain.handle("cancel-countdown", () => countdown.cancel());
+	ipcMain.handle("start-countdown", async (_, seconds: number) => {
+		if (countdownInProgress) return countdown.start(seconds);
+		void recordingFocus.start(selectedSource);
+		const result = await countdown.start(seconds);
+		if (!result.success) recordingFocus.stop();
+		return result;
+	});
+	ipcMain.handle("cancel-countdown", () => {
+		recordingFocus.stop();
+		return countdown.cancel();
+	});
 
 	ipcMain.handle("get-active-countdown", () => {
 		return {

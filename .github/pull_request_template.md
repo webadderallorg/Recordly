@@ -35,6 +35,7 @@
 <!-- Describe how reviewers can test the changes. Include steps, commands, or environment setup. -->
 
 ## Checklist
+- [ ] I have read and agree to the [contribution terms](https://github.com/webadderallorg/Recordly/blob/main/CONTRIBUTING.md#contribution-terms) for my contributions in this pull request, including the additional commercial licensing grant to the Recordly project owner, and I am authorized to make those grants.
 - [ ] I have performed a self-review of my code.
 - [ ] I have added any necessary screenshots or videos.
 - [ ] I have linked related issue(s) and updated the changelog if applicable.

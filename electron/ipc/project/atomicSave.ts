@@ -129,11 +129,24 @@ export async function writeProjectFileAtomically(
 	projectPath: string,
 	contents: string,
 ): Promise<void> {
+	return queueProjectWrite(projectPath, () => commitProjectFile(projectPath, contents));
+}
+
+/** Read/validate/update under the same queue as autosave to preserve concurrent edits. */
+export async function updateProjectFileAtomically(
+	projectPath: string,
+	update: (contents: string) => string,
+): Promise<void> {
+	return queueProjectWrite(projectPath, async () => {
+		const contents = update(await fs.readFile(projectPath, "utf-8"));
+		await commitProjectFile(projectPath, contents);
+	});
+}
+
+async function queueProjectWrite(projectPath: string, write: () => Promise<void>) {
 	const queueKey = getQueueKey(projectPath);
 	const previousWrite = pendingWrites.get(queueKey) ?? Promise.resolve();
-	const currentWrite = previousWrite
-		.catch(() => undefined)
-		.then(() => commitProjectFile(projectPath, contents));
+	const currentWrite = previousWrite.catch(() => undefined).then(write);
 	pendingWrites.set(queueKey, currentWrite);
 
 	try {

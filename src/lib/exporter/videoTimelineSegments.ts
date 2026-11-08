@@ -13,6 +13,9 @@ export interface VideoSegment {
 	speed: number;
 	outputStartSec?: number;
 	outputEndSec?: number;
+	/** Exact frame bounds for windows cut from an existing output frame grid. */
+	outputFrameStart?: number;
+	outputFrameEnd?: number;
 }
 
 /** One forward decode pass per source-order run; timeline gaps need no decoding. */
@@ -34,17 +37,56 @@ export function buildClipDecodeRuns(clips: ClipRegion[]): VideoSegment[][] {
 }
 
 export function segmentFrameCount(segment: VideoSegment, fps: number): number {
+	if (segment.outputFrameStart !== undefined && segment.outputFrameEnd !== undefined)
+		return segment.outputFrameEnd - segment.outputFrameStart;
 	return segment.outputStartSec !== undefined && segment.outputEndSec !== undefined
 		? Math.ceil(segment.outputEndSec * fps) - Math.ceil(segment.outputStartSec * fps)
 		: Math.ceil(((segment.endSec - segment.startSec) / segment.speed) * fps);
 }
 
 export function segmentSourceTime(segment: VideoSegment, index: number, fps: number): number {
+	if (segment.outputFrameStart !== undefined)
+		return segment.startSec + (index / fps) * segment.speed;
 	const outputOffset =
 		segment.outputStartSec === undefined
 			? index / fps
 			: (Math.ceil(segment.outputStartSec * fps) + index) / fps - segment.outputStartSec;
 	return segment.startSec + outputOffset * segment.speed;
+}
+
+/** Slice without changing source timestamps or the original export's rounding at cuts. */
+export function sliceVideoSegmentsToFrameWindow(
+	segments: VideoSegment[],
+	fps: number,
+	startFrame: number,
+	frameCount: number,
+): VideoSegment[] {
+	const result: VideoSegment[] = [];
+	const windowEnd = startFrame + frameCount;
+	let nextFrame = 0;
+	for (const segment of segments) {
+		const count = segmentFrameCount(segment, fps);
+		const segmentStart =
+			segment.outputStartSec === undefined
+				? nextFrame
+				: Math.ceil(segment.outputStartSec * fps);
+		nextFrame = segmentStart + count;
+		const first = Math.max(startFrame, segmentStart);
+		const end = Math.min(windowEnd, nextFrame);
+		if (end <= first) continue;
+		const sourceStart = segmentSourceTime(segment, first - segmentStart, fps);
+		result.push({
+			startSec: sourceStart,
+			// Keep the actual cut boundary for nearest-frame resampling.
+			endSec: segment.endSec,
+			speed: segment.speed,
+			outputStartSec: first / fps,
+			outputEndSec: end / fps,
+			outputFrameStart: first,
+			outputFrameEnd: end,
+		});
+	}
+	return result;
 }
 
 export function computeVideoSegments(

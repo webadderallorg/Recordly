@@ -262,6 +262,15 @@ export async function ensureNativeWindowListBinary(): Promise<string> {
 	);
 }
 
+export async function ensurePermissionDragHelperBinary(): Promise<string> {
+	return ensureSwiftHelperBinary(
+		resolveUnpackedAppPath("electron", "native", "PermissionDragHelper.swift"),
+		path.join(app.getPath("userData"), "native-tools", "recordly-permission-drag-helper"),
+		"native permission drag helper",
+		"recordly-permission-drag-helper",
+	);
+}
+
 export async function ensureNativeCursorMonitorBinary(): Promise<string> {
 	await ensureNativeHelperMigration();
 	return ensureSwiftHelperBinary(

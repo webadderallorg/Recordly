@@ -119,4 +119,28 @@ describe("cursor telemetry pause clock", () => {
 		expect(rm).toHaveBeenCalledWith("/tmp/recording.cursor.json", { force: true });
 		expect(writeFile).not.toHaveBeenCalled();
 	});
+
+	it("preserves button identity through persistence and rejects invalid button values", async () => {
+		pushCursorSample(0.2, 0.3, 100, "right-click", "arrow", 2);
+		pushCursorSample(0.8, 0.6, 2000, "mouseup", "arrow", 2);
+		await writeCursorTelemetry("/tmp/recording.mp4", activeCursorSamples);
+		const saved = JSON.parse(writeFile.mock.calls[0][1]);
+		expect(saved.samples.map((sample: { mouseButton: number }) => sample.mouseButton)).toEqual([
+			2, 2,
+		]);
+		expect(
+			normalizeCursorTelemetrySamples([{ timeMs: 0, cx: 0, cy: 0, mouseButton: 99 }])[0]
+				.mouseButton,
+		).toBeUndefined();
+	});
+
+	it("releases held buttons at pause so mouseup during the pause cannot leave a stuck effect", () => {
+		pushCursorSample(0.1, 0.2, 100, "click", "arrow", 1);
+		pauseCursorCaptureAtBoundary(1500);
+		expect(activeCursorSamples.at(-1)).toMatchObject({
+			timeMs: 500,
+			interactionType: "mouseup",
+			mouseButton: 1,
+		});
+	});
 });

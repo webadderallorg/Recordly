@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
 	companions: vi.fn(),
 	delay: vi.fn(),
 	session: vi.fn(),
+	parakeet: vi.fn(),
+	managedModel: vi.fn(),
 }));
 vi.mock("node:child_process", () => ({
 	execFile: (...args: unknown[]) => {
@@ -37,7 +39,14 @@ vi.mock("../recording/diagnostics", () => ({
 }));
 vi.mock("../utils", () => ({ normalizeVideoSourcePath: (value: string) => value }));
 
+vi.mock("./parakeet", () => ({ transcribeParakeetAudio: mocks.parakeet }));
+vi.mock("./captionModels", () => ({ resolveInstalledCaptionModel: mocks.managedModel }));
+vi.mock("./parakeetModel", () => ({
+	getParakeetModelStatus: async () => ({ success: true, exists: true, path: "/parakeet-model" }),
+}));
+
 import { generateAutoCaptionsFromVideo } from "./generate";
+import * as captionSegmentation from "./segment";
 
 const options = { videoPath: "/video.mp4", whisperModelPath: "/model.bin" };
 const srt = "1\n00:00:00,000 --> 00:00:02,000\nHello world.\n";
@@ -56,6 +65,9 @@ const json = JSON.stringify({
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mocks.managedModel
+		.mockReset()
+		.mockResolvedValue({ id: "whisper-base", engine: "whisper", path: "/verified/base.bin" });
 	mocks.session.mockReset().mockResolvedValue(null);
 	mocks.companions.mockReset().mockResolvedValue([]);
 	mocks.delay.mockReset().mockResolvedValue(null);
@@ -118,6 +130,33 @@ describe("caption generation pipeline", () => {
 		expect(mocks.rm).toHaveBeenCalledTimes(3);
 	});
 
+	it("uses the selected managed model over stale engine paths and requests word timestamps", async () => {
+		const result = await generateAutoCaptionsFromVideo({
+			videoPath: "/video.mp4",
+			captionModelId: "whisper-base",
+			engine: "parakeet",
+			parakeetModelPath: "/stale/parakeet",
+		});
+		expect(mocks.managedModel).toHaveBeenCalledWith("whisper-base");
+		expect(mocks.parakeet).not.toHaveBeenCalled();
+		expect(whisperCalls()[0][1]).toEqual(
+			expect.arrayContaining(["-m", "/verified/base.bin", "-ojf", "-l", "auto"]),
+		);
+		expect(result.cues[0].words?.[0]).toMatchObject({ text: "Hello", startMs: 0, endMs: 900 });
+	});
+	it("does not start transcription if the selected installation is unavailable", async () => {
+		mocks.managedModel.mockRejectedValue(
+			new Error("Download the selected caption model first."),
+		);
+		await expect(
+			generateAutoCaptionsFromVideo({
+				videoPath: "/video.mp4",
+				captionModelId: "whisper-small",
+			}),
+		).rejects.toThrow("Download");
+		expect(whisperCalls()).toHaveLength(0);
+	});
+
 	it("retries SRT only for a runtime that rejects full JSON", async () => {
 		mocks.exec.mockImplementation(async (file: string, args: string[]) => {
 			if (file === "/whisper" && args.includes("-ojf"))
@@ -135,6 +174,62 @@ describe("caption generation pipeline", () => {
 			return { stderr: "" };
 		});
 		expect((await generateAutoCaptionsFromVideo(options)).cues[0].text).toBe("Hello world.");
+	});
+
+	it("still returns the transcript when both segmentation attempts fail", async () => {
+		const segment = vi
+			.spyOn(captionSegmentation, "segmentCuesIntoPhrases")
+			.mockImplementation(() => {
+				throw new Error("segmentation unavailable");
+			});
+		try {
+			expect((await generateAutoCaptionsFromVideo(options)).cues[0].text).toBe(
+				"Hello world.",
+			);
+		} finally {
+			segment.mockRestore();
+		}
+	});
+
+	it("keeps Parakeet phrase boundaries and word timings when silence detection fails", async () => {
+		mocks.managedModel.mockResolvedValue({
+			id: "parakeet-en",
+			engine: "parakeet",
+			path: "/verified/parakeet",
+		});
+		const words = [
+			{ text: "Hello", startMs: 0, endMs: 900 },
+			{ text: "world.", startMs: 1000, endMs: 1800, leadingSpace: true },
+			{ text: "Next", startMs: 2500, endMs: 3000, leadingSpace: true },
+			{ text: "phrase.", startMs: 3100, endMs: 3900, leadingSpace: true },
+		];
+		mocks.parakeet.mockResolvedValue([
+			{
+				id: "caption-1",
+				startMs: 0,
+				endMs: 3900,
+				text: "Hello world. Next phrase.",
+				words,
+			},
+		]);
+		mocks.exec.mockImplementation(async (_file: string, args: string[]) => {
+			if (args.includes("-af")) throw new Error("silence filter failed");
+			return { stderr: "" };
+		});
+		const result = await generateAutoCaptionsFromVideo({
+			videoPath: "/video.mp4",
+			captionModelId: "parakeet-en",
+		});
+		expect(result.cues.map(({ text }) => text)).toEqual(["Hello world.", "Next phrase."]);
+		expect(
+			result.cues
+				.flatMap((cue) => cue.words ?? [])
+				.map(({ text, startMs, endMs }) => ({
+					text,
+					startMs,
+					endMs,
+				})),
+		).toEqual(words.map(({ text, startMs, endMs }) => ({ text, startMs, endMs })));
 	});
 });
 
@@ -163,4 +258,42 @@ it("falls back to linked webcam audio when mic exists and other secondary source
 			([file, args]) => file === "/ffmpeg" && args.includes("/webcam.mp4"),
 		),
 	).toBe(true);
+});
+
+describe("Parakeet caption generation", () => {
+	it("defaults to installed Parakeet and preserves acoustic word timing", async () => {
+		mocks.parakeet.mockResolvedValue([
+			{
+				id: "c",
+				text: "Hello world.",
+				startMs: 100,
+				endMs: 1100,
+				words: [
+					{ text: "Hello", startMs: 100, endMs: 400 },
+					{ text: "world.", startMs: 800, endMs: 1100, leadingSpace: true },
+				],
+			},
+		]);
+		const result = await generateAutoCaptionsFromVideo({ videoPath: "/video.mp4" });
+		expect(mocks.parakeet).toHaveBeenCalledWith(
+			expect.stringMatching(/\.wav$/),
+			"/parakeet-model",
+		);
+		expect(whisperCalls()).toHaveLength(0);
+		expect(result.cues[0].words?.map((word) => [word.startMs, word.endMs])).toEqual([
+			[100, 400],
+			[800, 1100],
+		]);
+	});
+	it("explicit Parakeet overrides a stale saved Whisper model", async () => {
+		mocks.parakeet.mockResolvedValue([]);
+		const result = await generateAutoCaptionsFromVideo({
+			...options,
+			engine: "parakeet",
+			parakeetModelPath: "/new-model",
+		});
+		expect(mocks.parakeet).toHaveBeenCalledWith(expect.any(String), "/new-model");
+		expect(whisperCalls()).toHaveLength(0);
+		expect(result.cues).toEqual([]);
+	});
 });

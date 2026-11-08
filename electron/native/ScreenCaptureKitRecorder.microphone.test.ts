@@ -16,37 +16,24 @@ describe.skipIf(process.platform !== "darwin")("recorder microphone selection", 
 			new URL("./ScreenCaptureKitRecorder.swift", import.meta.url),
 			"utf8",
 		);
-		const matching = source.slice(
-			source.indexOf("private static func matchMicrophoneDeviceID"),
-			source.indexOf("private func supportsNativeMicrophoneCapture"),
-		);
+		const start = source.indexOf("func matchMicrophoneCaptureDeviceID");
+		const matching = source.slice(start, source.indexOf("\n}", start) + 2);
 		writeFileSync(
 			join(directory, "main.swift"),
 			`
 import Foundation
-enum Matcher {
 ${matching}
-}
-extension Matcher {
-    static func run(_ arguments: [String]) -> String? {
-        switch arguments[0] {
-        case "undecorated":
-            return undecoratedMicrophoneName(forLabel: arguments[1])
-        default:
-            return matchMicrophoneDeviceID(
-                label: arguments[1],
-                deviceId: arguments[2],
-                devices: [
-                    (name: "Shure MV7", uniqueID: "usb-mv7"),
-                    (name: "MacBook Pro Microphone", uniqueID: "built-in"),
-                    (name: "Foo", uniqueID: "foo"),
-                    (name: "Foo (Pro)", uniqueID: "foo-pro"),
-                ]
-            )
-        }
-    }
-}
-print(Matcher.run(Array(CommandLine.arguments.dropFirst())) ?? "<none>")
+let arguments = Array(CommandLine.arguments.dropFirst())
+let devices = [
+    (name: "Shure MV7", uniqueID: "usb-mv7"),
+    (name: "MacBook Pro Microphone", uniqueID: "built-in"),
+    (name: "Foo", uniqueID: "foo"),
+    (name: "Foo (Pro)", uniqueID: "foo-pro"),
+    (name: "Name (A)", uniqueID: "nested"),
+    (name: "Duplicate", uniqueID: "duplicate-one"),
+    (name: "Duplicate", uniqueID: "duplicate-two"),
+]
+print(matchMicrophoneCaptureDeviceID(label: arguments[0], deviceId: arguments[1], devices: devices) ?? "<none>")
 `,
 		);
 		const build = spawnSync(
@@ -73,28 +60,22 @@ print(Matcher.run(Array(CommandLine.arguments.dropFirst())) ?? "<none>")
 	};
 
 	it.each([
-		["Shure MV7 (14ed:1012)", "Shure MV7"],
-		["Mic (Built-in)", "Mic"],
-		["Name (A) (B)", "Name (A)"],
-		["(Only)", "<none>"],
-		["Plain", "<none>"],
-		["Mic (unclosed", "<none>"],
-		["", "<none>"],
-	])("strips the Chromium suffix from %j", (label, expected) => {
-		expect(run("undecorated", label)).toBe(expected);
-	});
-
-	it.each([
 		// Chromium's deviceId is a per-origin hash that never matches a uniqueID.
 		["Shure MV7 (14ed:1012)", "d4488ddaa3f0f10c", "usb-mv7"],
 		["Foo (Pro)", "", "foo-pro"],
-		["Shure MV7", "built-in", "usb-mv7"],
+		["Shure MV7", "built-in", "built-in"],
 		["Foo (USB)", "built-in", "built-in"],
 		["Foo (USB)", "", "foo"],
 		["Default - MacBook Pro Microphone (Built-in)", "default", "<none>"],
 		["Unknown Mic (Virtual)", "", "<none>"],
 		["", "", "<none>"],
+		["Name (A) (B)", "hash", "nested"],
+		["(Only)", "", "<none>"],
+		["Mic (unclosed", "", "<none>"],
+		["Duplicate", "hash", "<none>"],
+		["Duplicate (USB)", "hash", "<none>"],
+		["Duplicate (USB)", "duplicate-two", "duplicate-two"],
 	])("resolves label %j with device ID %j to %j", (label, deviceId, expected) => {
-		expect(run("match", label, deviceId)).toBe(expected);
+		expect(run(label, deviceId)).toBe(expected);
 	});
 });

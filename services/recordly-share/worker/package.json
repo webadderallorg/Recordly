@@ -1,16 +1,17 @@
 {
-  "name": "recordly-share",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "wrangler dev --config wrangler.jsonc",
-    "deploy": "wrangler deploy --config wrangler.jsonc",
-    "db:init": "wrangler d1 execute recordly-share-db --file=./schema.sql",
-    "test": "vitest run"
-  },
-  "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.9.12",
-    "vitest": "^3.2.0",
-    "wrangler": "^4.98.0"
-  }
+	"name": "recordly-share",
+	"version": "1.0.0",
+	"private": true,
+	"scripts": {
+		"dev": "wrangler dev --config wrangler.jsonc",
+		"deploy": "wrangler deploy --config wrangler.jsonc",
+		"db:init": "wrangler d1 execute recordly-share-db --file=./schema.sql",
+		"test": "vitest run",
+		"build:web": "npm --prefix web ci && npm --prefix web run build:release"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-plugin": "^1.4.7",
+		"vitest": "^4.1.12",
+		"wrangler": "^4.152.0"
+	}
 }

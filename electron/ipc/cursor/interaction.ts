@@ -217,10 +217,10 @@ export function recordCursorMouseDown(button: 1 | 2 | 3) {
 		setLastLeftClick({ timeMs, cx: point.cx, cy: point.cy });
 	}
 
-	pushCursorSample(point.cx, point.cy, timeMs, interactionType);
+	pushCursorSample(point.cx, point.cy, timeMs, interactionType, undefined, button);
 }
 
-export function recordCursorMouseUp() {
+export function recordCursorMouseUp(button?: 1 | 2 | 3) {
 	if (!isCursorCaptureActive || isCursorCapturePaused()) {
 		return;
 	}
@@ -230,7 +230,7 @@ export function recordCursorMouseUp() {
 		return;
 	}
 
-	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "mouseup");
+	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "mouseup", undefined, button);
 }
 
 export async function startInteractionCapture() {
@@ -272,8 +272,8 @@ export async function startInteractionCapture() {
 			recordCursorMouseDown(getHookMouseButton(event));
 		};
 
-		const onMouseUp = () => {
-			recordCursorMouseUp();
+		const onMouseUp = (event: HookMouseEvent) => {
+			recordCursorMouseUp(getHookMouseButton(event));
 		};
 
 		const onMouseMove = (event: HookMouseEvent) => {

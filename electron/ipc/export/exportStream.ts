@@ -111,7 +111,17 @@ export async function writeToExportStream(
 			return;
 		}
 		const buffer = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
-		await session.fileHandle.write(buffer, 0, buffer.byteLength, position);
+		let offset = 0;
+		while (offset < buffer.byteLength) {
+			const { bytesWritten } = await session.fileHandle.write(
+				buffer,
+				offset,
+				buffer.byteLength - offset,
+				position + offset,
+			);
+			if (bytesWritten <= 0) throw new Error("Export write made no progress");
+			offset += bytesWritten;
+		}
 		session.bytesWritten += buffer.byteLength;
 		const end = position + buffer.byteLength;
 		if (end > session.highestWatermark) {
