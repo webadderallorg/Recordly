@@ -38,5 +38,10 @@
 	},
 	"addSpeed": "新增速度（S）",
 	"resizeLeft": "向左調整大小",
-	"resizeRight": "向右調整大小"
+	"resizeRight": "向右調整大小",
+	"hints": {
+		"splitClip": "按 {{binding}} 分割片段",
+		"addAnnotation": "按 {{binding}} 新增註解",
+		"addAudio": "點選音樂圖示以新增音訊"
+	}
 }

@@ -241,26 +241,26 @@ function verifyFfmpeg(unpackedRoot) {
 	}
 
 	console.log(output.split(/\r?\n/, 1)[0]);
+	return notices;
 }
 
-function verifyParakeetRuntime(unpackedRoot) {
+function verifyParakeetRuntime(unpackedRoot, { platform, arch }) {
 	const modules = path.join(unpackedRoot, "node_modules");
-	const platform = process.platform === "win32" ? "win" : process.platform;
-	const packages = readdirSync(modules).filter((name) =>
-		name.startsWith(`sherpa-onnx-${platform}-`),
-	);
-	if (packages.length === 0) fail("the unpacked Parakeet native runtime is missing");
-	for (const name of packages) {
-		const directory = path.join(modules, name);
-		assertFile(path.join(directory, "sherpa-onnx.node"), `Parakeet addon (${name})`);
-		const files = readdirSync(directory);
-		for (const library of ["onnxruntime", "sherpa-onnx-c-api"]) {
-			const filename = files.find(
-				(file) => file.includes(library) && /\.(?:dll|dylib|so)(?:\.|$)/.test(file),
-			);
-			if (!filename) fail(`Parakeet library ${library} is missing from ${name}`);
-			assertFile(path.join(directory, filename), `Parakeet ${library} (${name})`);
-		}
+	const name = `sherpa-onnx-${platform === "win32" ? "win" : platform}-${arch}`;
+	const directory = path.join(modules, name);
+	if (!existsSync(directory)) fail(`the unpacked Parakeet native runtime ${name} is missing`);
+	assertFile(path.join(directory, "sherpa-onnx.node"), `Parakeet addon (${name})`);
+	const files = readdirSync(directory);
+	for (const library of ["onnxruntime", "sherpa-onnx-c-api"]) {
+		const pattern =
+			platform === "win32"
+				? new RegExp(`^${library}\\.dll$`)
+				: platform === "darwin"
+					? new RegExp(`^lib${library}(?:\\.\\d+)*\\.dylib$`)
+					: new RegExp(`^lib${library}\\.so(?:\\.\\d+)*$`);
+		const filename = files.find((file) => pattern.test(file));
+		if (!filename) fail(`Parakeet library ${library} is missing from ${name}`);
+		assertFile(path.join(directory, filename), `Parakeet ${library} (${name})`);
 	}
 }
 
@@ -306,8 +306,8 @@ console.log(
 for (const unpackedRoot of unpackedRoots) {
 	console.log(`[packaged-smoke] root: ${relativePath(unpackedRoot)}`);
 	assertPackagedAppExecutable(unpackedRoot);
-	verifyFfmpeg(unpackedRoot);
-	verifyParakeetRuntime(unpackedRoot);
+	const target = verifyFfmpeg(unpackedRoot);
+	verifyParakeetRuntime(unpackedRoot, target);
 	verifyNativeHelpers(unpackedRoot);
 }
 

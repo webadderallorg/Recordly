@@ -250,8 +250,7 @@ export function RecordlySignInFields({
 						if (passwordMode) {
 							if (!password) return;
 							await runProtected(async (captchaToken) => {
-								await onPasswordSignIn(password, captchaToken);
-								setPassword("");
+								if (await onPasswordSignIn(password, captchaToken)) setPassword("");
 							});
 						} else await requestCode();
 						return;
