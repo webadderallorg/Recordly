@@ -75,6 +75,36 @@ describe("recording chunk persistence", () => {
 			api.appendRecordingFileStream.mock.invocationCallOrder.at(-1)!,
 		);
 	});
+	it("accepts a following byte while an allowed oversized chunk is still draining", async () => {
+		const { api, writer, fail } = setup();
+		let release!: () => void;
+		api.appendRecordingFileStream.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					release = () => resolve({ success: true });
+				}),
+		);
+		writer.write(new Blob([new Uint8Array(33 * 1024 * 1024).fill(7)]));
+		await vi.waitFor(() => expect(api.appendRecordingFileStream).toHaveBeenCalledOnce());
+		writer.write(new Blob(["z"]));
+		const finished = writer.finish();
+		release();
+		await expect(finished).resolves.toEqual({ success: true, path: "/final.mp4" });
+		expect(fail).not.toHaveBeenCalled();
+		const payloads = api.appendRecordingFileStream.mock.calls.map(
+			(call) => new Uint8Array(call[1]),
+		);
+		expect(payloads.map((bytes) => bytes.byteLength)).toEqual([
+			...Array(8).fill(4 * 1024 * 1024),
+			1024 * 1024,
+			1,
+		]);
+		for (const bytes of payloads.slice(0, -1)) {
+			expect(bytes[0]).toBe(7);
+			expect(bytes.at(-1)).toBe(7);
+		}
+		expect(new TextDecoder().decode(payloads.at(-1))).toBe("z");
+	});
 	it.each([
 		16, 33,
 	])("bounds queued backlog while a %s MiB chunk is already stalled", async (sizeMiB) => {
@@ -88,9 +118,9 @@ describe("recording chunk persistence", () => {
 		);
 		writer.write(new Blob([new Uint8Array(sizeMiB * 1024 * 1024)]));
 		await vi.waitFor(() => expect(api.appendRecordingFileStream).toHaveBeenCalledOnce());
-		if (sizeMiB === 16) writer.write(new Blob([new Uint8Array(16 * 1024 * 1024)]));
+		writer.write(new Blob([new Uint8Array((sizeMiB === 16 ? 16 : 32) * 1024 * 1024)]));
 		expect(fail).not.toHaveBeenCalled();
-		writer.write(new Blob(["overflow"]));
+		writer.write(new Blob(["x"]));
 		writer.write(new Blob(["ignored after failure"]));
 		expect(fail).toHaveBeenCalledOnce();
 		const finished = writer.finish();
@@ -98,6 +128,62 @@ describe("recording chunk persistence", () => {
 		release();
 		await expect(finished).resolves.toMatchObject({ success: false, path: "/final.mp4" });
 		expect((await finished).message).toContain("Partial recording: /final.mp4");
+		expect(api.appendRecordingFileStream).toHaveBeenCalledOnce();
+		expect(api.closeRecordingFileStream).toHaveBeenCalledOnce();
+	});
+	it("does not admit a second oversized chunk while the first is pending", async () => {
+		const { api, writer, fail } = setup();
+		let release!: () => void;
+		api.appendRecordingFileStream.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					release = () => resolve({ success: true });
+				}),
+		);
+		writer.write(new Blob([new Uint8Array(33 * 1024 * 1024)]));
+		await vi.waitFor(() => expect(api.appendRecordingFileStream).toHaveBeenCalledOnce());
+		writer.write(new Blob([new Uint8Array(33 * 1024 * 1024)]));
+		const finished = writer.finish();
+		release();
+		await expect(finished).resolves.toMatchObject({ success: false, path: "/final.mp4" });
+		expect(fail).toHaveBeenCalledOnce();
+		expect(api.appendRecordingFileStream).toHaveBeenCalledOnce();
+	});
+	it("restores the normal total-pending limit after the oversized chunk settles", async () => {
+		const { api, writer, fail } = setup();
+		let release!: () => void;
+		let count = 0;
+		api.appendRecordingFileStream.mockImplementation(async () => {
+			count += 1;
+			if (count === 10)
+				await new Promise<void>((resolve) => {
+					release = resolve;
+				});
+			return { success: true };
+		});
+		writer.write(new Blob([new Uint8Array(33 * 1024 * 1024)]));
+		writer.write(new Blob([new Uint8Array(16 * 1024 * 1024)]));
+		await vi.waitFor(() => expect(api.appendRecordingFileStream).toHaveBeenCalledTimes(10));
+		writer.write(new Blob([new Uint8Array(16 * 1024 * 1024)]));
+		expect(fail).not.toHaveBeenCalled();
+		writer.write(new Blob(["x"]));
+		const finished = writer.finish();
+		release();
+		await expect(finished).resolves.toMatchObject({ success: false, path: "/final.mp4" });
+		expect(fail).toHaveBeenCalledOnce();
+		expect(api.appendRecordingFileStream).toHaveBeenCalledTimes(10);
+	});
+	it("settles an oversized chunk and its queued byte after a storage failure without losing the partial path", async () => {
+		const { api, writer, fail } = setup();
+		api.appendRecordingFileStream.mockRejectedValueOnce(new Error("Disk full"));
+		writer.write(new Blob([new Uint8Array(33 * 1024 * 1024)]));
+		writer.write(new Blob(["z"]));
+		await expect(writer.finish()).resolves.toMatchObject({
+			success: false,
+			path: "/final.mp4",
+			message: "Disk full Partial recording: /final.mp4",
+		});
+		expect(fail).toHaveBeenCalledExactlyOnceWith("Disk full");
 		expect(api.appendRecordingFileStream).toHaveBeenCalledOnce();
 		expect(api.closeRecordingFileStream).toHaveBeenCalledOnce();
 	});
@@ -112,6 +198,7 @@ describe("recording chunk persistence", () => {
 		);
 		writer.write(new Blob([new Uint8Array(33 * 1024 * 1024)]));
 		await vi.waitFor(() => expect(api.appendRecordingFileStream).toHaveBeenCalledOnce());
+		writer.write(new Blob(["queued before cancel"]));
 		writer.cancel();
 		const finished = writer.finish();
 		release();

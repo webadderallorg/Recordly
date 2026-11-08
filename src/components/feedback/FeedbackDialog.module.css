@@ -87,11 +87,10 @@
 
 .diagnostics {
 	min-width: 0;
-	overflow: hidden;
+	overflow-wrap: anywhere;
 	font-size: 11px;
 	line-height: 1.5;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	white-space: normal;
 }
 
 .submit {

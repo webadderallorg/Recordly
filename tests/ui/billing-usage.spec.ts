@@ -191,6 +191,7 @@ for (const viewport of [
 		const benefits = dialog.getByRole("region", { name: "Cloud benefits", exact: true });
 		await expect(benefits.getByRole("heading")).toHaveText([
 			"Commercial use included",
+			"SRT and VTT caption-file exports",
 			"Share without limits",
 			"Keep your links alive",
 		]);

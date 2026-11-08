@@ -323,7 +323,7 @@ it.each([
 	["foreign main frame", () => settingsEvent("https://foreign.test/?windowType=editor")],
 	["foreign document path", () => settingsEvent("http://127.0.0.1:43820/foreign.html")],
 	[
-		"trusted-looking subframe",
+		"same-URL frame with different identity",
 		() => {
 			const event = settingsEvent();
 			return { ...event, senderFrame: { ...event.senderFrame } };

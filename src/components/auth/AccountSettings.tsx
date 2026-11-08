@@ -102,7 +102,7 @@ export function AccountSettings({
 		submittedForm.current = event.currentTarget;
 		void run("email", async () => {
 			const updated = await requestAccountEmailChange(email);
-			return updated.email === email.trim()
+			return updated.email?.toLowerCase() === email.trim().toLowerCase()
 				? t("settings.account.emailUpdated", "Email address updated.")
 				: t(
 						"settings.account.confirmInboxes",

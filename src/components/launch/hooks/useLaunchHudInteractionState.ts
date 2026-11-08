@@ -36,9 +36,11 @@ export function useLaunchHudInteractionState({
 				lastIgnoringRef.current.recordingState === recordingState
 			)
 				return;
+			// A missing/throwing bridge cannot establish the last requested state.
+			lastIgnoringRef.current = null;
 			if (!window.electronAPI?.hudOverlaySetIgnoreMouse) return;
-			lastIgnoringRef.current = { ignore, recordingState };
 			window.electronAPI.hudOverlaySetIgnoreMouse(ignore);
+			lastIgnoringRef.current = { ignore, recordingState };
 		},
 		[
 			platform,
@@ -48,6 +50,19 @@ export function useLaunchHudInteractionState({
 			webcamPreviewDragStartRef,
 		],
 	);
+
+	useEffect(() => {
+		// Drag hooks can restore native passthrough directly. Observe every release
+		// in capture phase, even when pointer capture or a child stops bubbling.
+		const invalidate = () => {
+			lastIgnoringRef.current = null;
+		};
+		const releases = ["pointerup", "pointercancel", "lostpointercapture", "blur"] as const;
+		for (const type of releases) window.addEventListener(type, invalidate, true);
+		return () => {
+			for (const type of releases) window.removeEventListener(type, invalidate, true);
+		};
+	}, []);
 
 	useEffect(() => {
 		if (openId !== null) {
