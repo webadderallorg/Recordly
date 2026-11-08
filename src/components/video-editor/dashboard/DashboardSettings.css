@@ -1,0 +1,691 @@
+/* Shared app preferences: stable navigation, independently scrolling content. */
+.app-settings-dialog {
+	width: 100%;
+	max-width: min(960px, calc(100vw - 48px));
+	height: min(720px, calc(100dvh - 48px));
+	padding: 24px;
+}
+.app-settings-dialog .app-settings-body {
+	display: flex;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+}
+.dashboard-settings {
+	--settings-section-gap: 16px;
+	--settings-row-inset: 10px;
+	--settings-content-gap: 8px;
+	width: 100%;
+	max-width: 1040px;
+	padding-block: 24px;
+}
+.app-settings-dialog .dashboard-settings {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-height: 0;
+	padding: 0;
+}
+.dashboard-settings-title {
+	margin: 0 0 16px;
+	padding-right: 32px;
+	color: var(--foreground);
+	font-size: 22px;
+	font-weight: 650;
+	line-height: 1.3;
+}
+.dashboard-settings-tabs {
+	display: grid;
+	grid-template-columns: 144px minmax(0, 1fr);
+	gap: var(--settings-section-gap);
+	width: 100%;
+	align-items: stretch;
+}
+.app-settings-dialog .dashboard-settings-tabs {
+	flex: 1;
+	min-height: 0;
+}
+.dashboard-settings-tabs .tabs__list-container {
+	min-height: 0;
+	overflow-y: auto;
+	border: 0;
+	border-right: 1px solid var(--separator);
+	padding-right: 16px;
+}
+.dashboard-settings-tab-list {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 4px;
+	width: 100%;
+}
+.dashboard-settings-tab-list .tabs__tab {
+	width: 100%;
+	min-height: 36px;
+	justify-content: flex-start;
+	padding: 8px 10px;
+	border-radius: var(--radius-md);
+	font-size: 13px;
+	text-align: left;
+	white-space: normal;
+}
+.dashboard-settings-tab-list .tabs__tab[aria-selected="true"] {
+	background: color-mix(in oklab, var(--accent) 12%, transparent);
+	color: var(--accent);
+	font-weight: 600;
+}
+.dashboard-settings-tab-list .tabs__indicator {
+	display: none;
+}
+.dashboard-settings-tab-panel {
+	container: settings-content / inline-size;
+	min-width: 0;
+	margin: 0;
+	padding: 0 8px 16px 0;
+	outline-offset: -2px;
+}
+.app-settings-dialog .dashboard-settings-tab-panel {
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	scrollbar-gutter: stable;
+}
+.dashboard-settings-tab-panel,
+.dashboard-settings .settings-section-flow,
+.dashboard-settings .settings-category:not([hidden]) {
+	display: flex;
+	flex-direction: column;
+	gap: var(--settings-section-gap);
+}
+.dashboard-settings .settings-category {
+	flex-shrink: 0;
+}
+.dashboard-settings-tab-panel > *,
+.dashboard-settings .settings-section-flow > *,
+.dashboard-settings .settings-category > * {
+	margin-block: 0;
+}
+.dashboard-settings-tab-panel > .settings-category {
+	max-width: 680px;
+}
+.dashboard-settings-group h2 {
+	margin: 0;
+	color: var(--foreground);
+	font-size: 17px;
+	font-weight: 600;
+	line-height: 1.5;
+}
+.dashboard-settings-group p,
+.settings-section-note {
+	margin: 6px 0 0;
+	color: var(--muted);
+	font-size: 13px;
+	line-height: 1.6;
+}
+.settings-section-header > .button {
+	flex-shrink: 0;
+}
+.settings-section-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+}
+.dashboard-settings .settings-row {
+	padding: var(--settings-row-inset) 0;
+	border: 0;
+	border-bottom: 1px solid var(--separator);
+	border-radius: 0;
+	gap: var(--settings-row-inset);
+}
+.dashboard-settings .settings-row-copy {
+	flex: 1;
+}
+.dashboard-settings .settings-row-control {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	width: auto;
+	max-width: 48%;
+	text-align: right;
+}
+.dashboard-settings .settings-row-control > span {
+	white-space: normal;
+}
+.dashboard-settings .settings-row-stacked {
+	flex-direction: row;
+	align-items: center;
+}
+.dashboard-settings .settings-group {
+	border: 0;
+	border-radius: 0;
+	padding: 0;
+}
+.dashboard-settings .settings-group > .settings-row:last-child,
+.dashboard-settings .settings-group > :last-child .settings-row,
+.dashboard-settings .settings-language-field .settings-row {
+	border-bottom: 0;
+}
+.dashboard-settings .settings-item {
+	border-bottom: 1px solid var(--separator);
+}
+.dashboard-settings .settings-item:last-child,
+.dashboard-settings .settings-item > .settings-row {
+	border-bottom: 0;
+}
+.dashboard-settings .settings-group .settings-row {
+	padding-inline: 0;
+}
+.dashboard-settings .app-settings-stack,
+.dashboard-settings .application-preferences {
+	display: flex;
+	flex-direction: column;
+	gap: var(--settings-section-gap);
+}
+.dashboard-settings .app-settings-stack > *,
+.dashboard-settings .application-preferences > * {
+	margin-block: 0;
+}
+.dashboard-settings .settings-dependent-row {
+	padding-left: 0;
+}
+.dashboard-settings .settings-row-note,
+.dashboard-settings .settings-inline-feedback {
+	margin: 0;
+	padding: 0 0 var(--settings-row-inset);
+	font-size: 12px;
+	line-height: 1.6;
+}
+.dashboard-settings .settings-row-note {
+	color: var(--muted);
+}
+.dashboard-settings .settings-row-note.text-danger {
+	color: var(--danger);
+}
+.settings-folder-path {
+	display: block;
+	overflow-wrap: anywhere;
+	user-select: text;
+}
+.settings-actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+.settings-category[hidden] {
+	display: none;
+}
+.dashboard-settings .settings-panel {
+	overflow: visible;
+}
+.dashboard-settings .settings-panel > .custom-scrollbar {
+	overflow: visible;
+	padding: 0;
+	scrollbar-gutter: auto;
+}
+.settings-language-field,
+.application-preference-switch,
+.application-preference-switch .settings-row {
+	width: 100%;
+}
+.dashboard-settings .settings-language-field .settings-row-control {
+	width: min(230px, 45%);
+}
+.settings-language-trigger {
+	min-width: 130px;
+	border-radius: var(--radius-md);
+}
+.settings-language-popover {
+	border-radius: var(--radius-lg);
+}
+.dashboard-settings .button {
+	min-height: 36px;
+	height: auto;
+	padding-block: 8px;
+	white-space: normal;
+	line-height: 1.4;
+	border-radius: var(--radius-md);
+}
+.dashboard-settings .theme-appearance-picker {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 18px;
+}
+.dashboard-settings .application-preferences {
+	gap: 0;
+}
+.dashboard-settings .application-preferences .settings-group + .settings-group {
+	border-top: 1px solid var(--separator);
+}
+.dashboard-settings .settings-section-header h2,
+.dashboard-settings-subgroup h2 {
+	font-size: 14px;
+}
+.dashboard-settings .theme-appearance-picker--compact {
+	display: flex;
+	gap: 4px;
+}
+.theme-appearance-picker--compact .theme-appearance-option {
+	min-height: 36px;
+	width: auto;
+	padding: 8px;
+	border-radius: var(--radius-md);
+}
+.theme-appearance-picker--compact .theme-appearance-option[data-selected="true"] {
+	background: color-mix(in oklab, var(--accent) 12%, transparent);
+}
+.theme-appearance-picker--compact .theme-appearance-option[data-focus-visible="true"] {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+.settings-motion-preview {
+	display: grid;
+	place-items: center;
+	position: relative;
+	flex-shrink: 0;
+	width: 84px;
+	height: 50px;
+	overflow: hidden;
+	border-radius: 8px;
+	background: var(--surface-secondary);
+}
+.settings-motion-preview::before {
+	content: "";
+	position: absolute;
+	width: 30px;
+	height: 22px;
+	border: 1px solid var(--separator);
+	border-radius: 4px;
+}
+.settings-motion-preview span {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--accent);
+	animation: settings-motion-demo 1.6s cubic-bezier(0.2, 0.8, 0.2, 1) infinite alternate;
+}
+.settings-motion-preview-smooth span {
+	animation-duration: 3s;
+	animation-timing-function: ease-in-out;
+}
+@keyframes settings-motion-demo {
+	from {
+		transform: translateX(-22px) scale(0.7);
+	}
+	to {
+		transform: translateX(22px) scale(1.2);
+	}
+}
+.dashboard-settings .settings-motion-presets {
+	gap: var(--settings-content-gap);
+}
+.dashboard-settings .settings-motion-presets [data-slot="radio"] {
+	margin-block: 0;
+	padding: var(--settings-row-inset);
+	border-radius: var(--radius-lg);
+}
+.dashboard-settings .settings-motion-presets [data-slot="radio-content"] {
+	align-items: center;
+	gap: var(--settings-content-gap);
+}
+.dashboard-settings .settings-motion-presets [data-slot="label"] {
+	font-size: var(--text-sm);
+}
+.dashboard-settings .settings-motion-presets [data-slot="description"] {
+	font-weight: 400;
+}
+.dashboard-settings .settings-dev-tools {
+	padding: var(--settings-row-inset);
+	gap: var(--settings-row-inset);
+}
+.dashboard-settings .settings-dev-tools-header {
+	display: none;
+}
+.dashboard-settings .settings-dev-tools > div:not(.settings-dev-tools-header) {
+	padding: var(--settings-row-inset);
+}
+.dashboard-settings .settings-dev-tuning {
+	display: flex;
+	flex-direction: column;
+	gap: var(--settings-content-gap);
+}
+.dashboard-settings .settings-dev-tuning > * {
+	margin-block: 0;
+}
+.theme-appearance-option {
+	display: block;
+	width: 100%;
+	padding: 0;
+	border-radius: var(--radius-xl);
+}
+.theme-appearance-content {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	gap: 10px;
+	align-items: center;
+}
+/* Keep the miniature editor's palette independent of the active app theme. */
+.theme-appearance-label {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	font-size: var(--text-xs);
+	font-weight: 500;
+}
+.theme-appearance-check {
+	display: grid;
+	place-items: center;
+	width: 14px;
+	height: 14px;
+	border: 1px solid var(--separator);
+	border-radius: 50%;
+	color: var(--accent-foreground);
+}
+.theme-appearance-check svg {
+	width: 12px;
+	height: 12px;
+	opacity: 0;
+}
+.theme-preview {
+	position: relative;
+	width: 100%;
+	aspect-ratio: 1.6;
+	min-height: 80px;
+	overflow: hidden;
+	border: 1px solid transparent;
+	border-radius: var(--radius-xl);
+	isolation: isolate;
+	background-size: cover;
+	background-repeat: no-repeat;
+	background-origin: border-box;
+	background-position: center;
+	background-color: #e4e8f1;
+	transition:
+		border-color 150ms,
+		box-shadow 150ms;
+}
+.theme-appearance-option[data-selected="true"] .theme-preview {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 16%, transparent);
+}
+.theme-appearance-option[data-selected="true"] .theme-appearance-check {
+	border-color: var(--accent);
+	background: var(--accent);
+}
+.theme-appearance-option[data-selected="true"] .theme-appearance-check svg {
+	opacity: 1;
+}
+.theme-appearance-option[data-focus-visible="true"] .theme-preview,
+.theme-appearance-option:has([data-focus-visible="true"]) .theme-preview {
+	outline: 2px solid var(--accent);
+	outline-offset: 5px;
+}
+.theme-appearance-option:hover .theme-preview {
+	border-color: var(--accent);
+}
+.theme-preview-window {
+	position: absolute;
+	inset: 8% 6%;
+	overflow: hidden;
+	border: 0;
+	clip-path: inset(0 round 6px);
+	border-radius: 6px;
+	box-shadow: 0 6px 16px rgb(18 24 40 / 14%);
+}
+.theme-preview-scene {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+}
+/* The SVG viewport keeps inspector/canvas/timeline proportions at desktop size. */
+.theme-preview-scene > svg,
+.theme-preview-scene foreignObject > [role="status"] {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+.theme-preview-scene .skeleton {
+	animation: none;
+}
+.theme-preview-scene .skeleton::after {
+	animation: none;
+}
+.theme-preview-layer {
+	position: absolute;
+	inset: 0;
+}
+/* Both themes keep the exact same full-width geometry; only their paint is clipped. */
+.theme-preview-layer-light {
+	clip-path: inset(0 50% 0 0);
+}
+.theme-preview-layer-dark {
+	clip-path: inset(0 0 0 50%);
+}
+.theme-preview-dark {
+	background-color: #20222b;
+}
+.theme-preview-system {
+	background-color: #e9edf6;
+}
+
+@media (max-width: 680px) {
+	.app-settings-dialog {
+		max-width: calc(100vw - 24px);
+		height: calc(100dvh - 24px);
+		padding: 24px 16px;
+	}
+	.dashboard-settings-tabs {
+		display: flex;
+		flex-direction: column;
+		gap: var(--settings-section-gap);
+	}
+	.dashboard-settings-tabs .tabs__list-container {
+		flex-shrink: 0;
+		overflow-x: auto;
+		overflow-y: hidden;
+		border-right: 0;
+		border-bottom: 1px solid var(--separator);
+		padding: 0 0 6px;
+	}
+	/* Reserve real space for scroll controls instead of overlaying category labels. */
+	.dashboard-settings-tabs .tabs__list-container__scroller {
+		width: calc(100% - 64px);
+		margin-inline: 32px;
+	}
+	.dashboard-settings-tabs .tabs__list-container > .tabs__list-container__scroll-prev,
+	.dashboard-settings-tabs .tabs__list-container > .tabs__list-container__scroll-next {
+		width: 28px;
+		height: 36px;
+		top: 0;
+		transform: none;
+		translate: none;
+		border-radius: var(--radius-md);
+	}
+	.dashboard-settings-tabs .tabs__list-container > .tabs__list-container__scroll-prev {
+		inset-inline-start: 0;
+	}
+	.dashboard-settings-tabs .tabs__list-container > .tabs__list-container__scroll-next {
+		inset-inline-end: 0;
+	}
+	.dashboard-settings-tab-list {
+		flex-direction: row;
+		width: max-content;
+		gap: 4px;
+	}
+	.dashboard-settings-tab-list .tabs__tab {
+		width: auto;
+		white-space: nowrap;
+	}
+	.dashboard-settings-tab-panel {
+		flex: 1;
+	}
+}
+/* These panels can be narrow even while the dialog still uses a vertical sidebar. */
+@container settings-content (max-width: 480px) {
+	.dashboard-settings .settings-row,
+	.dashboard-settings .settings-row-stacked {
+		flex-direction: column;
+		align-items: stretch;
+		gap: var(--settings-content-gap);
+	}
+	.dashboard-settings .settings-row-control,
+	.dashboard-settings .settings-language-field .settings-row-control {
+		width: 100%;
+		max-width: none;
+		text-align: left;
+		justify-content: flex-start;
+	}
+	.dashboard-settings .settings-row-control > .button {
+		width: 100%;
+	}
+	.dashboard-settings .settings-row-control > .flex {
+		align-items: flex-start;
+	}
+	.dashboard-settings .settings-actions {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr));
+		width: 100%;
+	}
+	.dashboard-settings .settings-actions > .button {
+		width: 100%;
+	}
+	.dashboard-settings .settings-row-control:has(.settings-actions),
+	.dashboard-settings .settings-row-control > .flex {
+		width: 100%;
+	}
+	.dashboard-settings .settings-row-control > .flex > .button {
+		width: 100%;
+	}
+	/* Compact toggles stay alongside their label, including on narrow windows. */
+	.dashboard-settings .settings-row:has(.switch__control) {
+		flex-direction: row;
+		align-items: flex-start;
+	}
+	.dashboard-settings .settings-row-control:has(.switch__control) {
+		width: auto;
+		flex-shrink: 0;
+		padding-top: 2px;
+	}
+
+	.dashboard-settings .settings-dev-action {
+		flex-direction: column;
+		align-items: stretch;
+	}
+	.dashboard-settings .settings-dev-action > .button {
+		width: 100%;
+	}
+}
+@container settings-content (max-width: 360px) {
+	.settings-section-header {
+		flex-direction: column;
+		align-items: stretch;
+		gap: var(--settings-content-gap);
+	}
+	.settings-motion-preview {
+		width: 56px;
+		height: 40px;
+	}
+}
+/* Preserve the original responsive Appearance artwork proportions and spacing. */
+@media (max-width: 760px) {
+	.dashboard-settings .theme-appearance-picker {
+		gap: 12px;
+	}
+	.theme-preview {
+		aspect-ratio: 1.35;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.theme-preview {
+		transition: none;
+	}
+	.settings-motion-preview span {
+		animation: none;
+	}
+}
+
+/* Small status text needs stronger contrast than the general success/danger palette. */
+.dashboard-settings {
+	--success: #177245;
+	--danger: #b42318;
+}
+html[data-theme="dark"] .dashboard-settings {
+	--success: #6ee7a4;
+	--danger: #ff9b92;
+}
+
+/* Keep navigation compact and reserve the bottom of the sidebar for useful context. */
+.dashboard-settings-navigation {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	gap: 16px;
+	border-right: 1px solid var(--separator);
+	padding-right: 14px;
+}
+.dashboard-settings-navigation .tabs__list-container {
+	flex: 1;
+	min-height: 0;
+	border: 0;
+	padding: 0;
+	background: transparent;
+	border-radius: 0;
+}
+.dashboard-settings-navigation .dashboard-settings-tab-list {
+	gap: 2px;
+}
+.dashboard-settings-navigation .tabs__tab {
+	min-height: 32px;
+	padding: 6px 10px;
+}
+/* All desktop categories fit together; only the preferences pane should scroll. */
+@media (min-width: 681px) {
+	.dashboard-settings-navigation .tabs__list-container {
+		flex: 0 0 auto;
+		overflow: visible;
+	}
+	.dashboard-settings-navigation .tabs__list-container__scroller[data-orientation="vertical"] {
+		height: auto;
+		margin-block: 0;
+		overflow: visible;
+	}
+}
+.dashboard-settings-navigation .tabs__list-container > .tabs__list-container__scroll-prev,
+.dashboard-settings-navigation .tabs__list-container > .tabs__list-container__scroll-next {
+	width: 24px;
+	height: 20px;
+}
+.dashboard-settings-navigation .tabs__list-container > .tabs__list-container__scroll-prev {
+	top: 0;
+}
+.dashboard-settings-navigation .tabs__list-container > .tabs__list-container__scroll-next {
+	bottom: 0;
+}
+.dashboard-settings-sidebar-footer {
+	display: flex;
+	flex-direction: column;
+	flex-shrink: 0;
+	gap: 8px;
+	margin-top: auto;
+}
+
+@media (max-width: 680px) {
+	.dashboard-settings-navigation {
+		flex-shrink: 0;
+		border-right: 0;
+		padding-right: 0;
+	}
+	.dashboard-settings-sidebar-footer {
+		display: none;
+	}
+	.dashboard-settings-navigation .tabs__list-container {
+		flex: initial;
+		border-bottom: 1px solid var(--separator);
+		padding-bottom: 6px;
+	}
+}

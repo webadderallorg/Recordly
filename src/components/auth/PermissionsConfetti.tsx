@@ -1,58 +1,73 @@
+import { useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { createPortal } from "react-dom";
+import Confetti from "react-confetti";
 
-const colors = ["#0088ff", "#67d5ff", "#ffc857", "#f574b9", "#64d6a2"];
-const particles = Array.from({ length: 48 }, (_, index) => ({
-	id: index,
-	right: index % 2 === 0,
-	distance: 70 + ((index * 47) % 260),
-	rise: 120 + ((index * 31) % 240),
-	spin: (index % 2 === 0 ? 1 : -1) * (180 + ((index * 29) % 540)),
-	delay: (index % 8) * 0.025,
-}));
+const colors = ["#0088ff", "#67d5ff", "#ffd166", "#ff8fab", "#a78bfa", "#64d6a2"];
 
 export function PermissionsConfetti({ ready }: { ready: boolean }) {
 	const reduceMotion = useReducedMotion();
 	const celebrated = useRef(false);
+	const container = useRef<HTMLDivElement>(null);
 	const [active, setActive] = useState(false);
+	const [size, setSize] = useState({ width: 0, height: 0 });
 
 	useEffect(() => {
-		if (!ready || reduceMotion || celebrated.current) return;
+		if (!ready) {
+			celebrated.current = false;
+			setActive(false);
+			return;
+		}
+		if (reduceMotion || celebrated.current) return;
 		celebrated.current = true;
 		setActive(true);
 	}, [ready, reduceMotion]);
 
 	useEffect(() => {
-		if (!active) return;
-		const timeout = window.setTimeout(() => setActive(false), 2300);
-		return () => window.clearTimeout(timeout);
-	}, [active]);
+		if (!active || reduceMotion || !container.current) return;
+		const element = container.current;
+		const measure = () => setSize({ width: element.clientWidth, height: element.clientHeight });
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(element);
+		// Bound the celebration even when the window is hidden or rendering is throttled.
+		const timeout = window.setTimeout(() => setActive(false), 4500);
+		return () => {
+			observer.disconnect();
+			window.clearTimeout(timeout);
+		};
+	}, [active, reduceMotion]);
 
 	if (!active || reduceMotion) return null;
-	return (
+	return createPortal(
 		<div
+			ref={container}
 			data-permissions-confetti
 			aria-hidden="true"
-			className="pointer-events-none absolute inset-0 z-20 overflow-hidden"
+			className="pointer-events-none fixed inset-0 overflow-hidden"
+			style={{ zIndex: "calc(var(--z-index-overlay, 100000) + 1)" }}
 		>
-			{particles.map(({ id, right, distance, rise, spin, delay }) => (
-				<motion.span
-					key={id}
-					className="absolute bottom-12 h-2.5 w-1.5 rounded-[1px]"
-					style={{
-						left: right ? "90%" : "10%",
-						backgroundColor: colors[id % colors.length],
+			{size.width > 0 && size.height > 0 && (
+				<Confetti
+					width={size.width}
+					height={size.height}
+					numberOfPieces={180}
+					recycle={false}
+					colors={colors}
+					tweenDuration={1000}
+					gravity={0.25}
+					initialVelocityX={{ min: -2, max: 2 }}
+					initialVelocityY={{ min: 2, max: 5 }}
+					confettiSource={{
+						x: 0,
+						y: -24,
+						w: size.width,
+						h: 0,
 					}}
-					initial={{ opacity: 0, x: 0, y: 0, rotate: 0 }}
-					animate={{
-						opacity: [0, 1, 1, 0],
-						x: [0, distance * (right ? -1 : 1)],
-						y: [0, -rise, -rise * 0.85, 90],
-						rotate: [0, spin],
-					}}
-					transition={{ duration: 1.9, delay, ease: "easeOut" }}
+					onConfettiComplete={() => setActive(false)}
 				/>
-			))}
-		</div>
+			)}
+		</div>,
+		document.body,
 	);
 }

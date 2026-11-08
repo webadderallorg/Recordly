@@ -1,40 +1,23 @@
-import { ToggleButton } from "@heroui/react";
-import { Card } from "@heroui/react";
-import { TextArea } from "@/components/ui/input";
+import { Card, ToggleButton } from "@heroui/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { ChoiceGroup, ChoiceItem } from "@/components/ui/choice-group";
+import { ColorControl, ColorPalette } from "@/components/ui/color-picker";
 import {
-	AlignCenterHorizontal as AlignCenter,
-	AlignLeft,
-	AlignRight,
-	TextB as Bold,
 	ImageSquare as ImageIcon,
 	Info,
-	TextItalic as Italic,
 	BoundingBox as SquareDashed,
 	Trash as Trash2,
 	TextT as Type,
-	TextUnderline as Underline,
 	UploadSimple as Upload,
 } from "@/components/ui/icons";
-import { ColorControl, ColorPalette } from "@/components/ui/color-picker";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "@/components/ui/toast";
-import { Button } from "@/components/ui/button";
-
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { ChoiceGroup, ChoiceItem } from "@/components/ui/choice-group";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { toast } from "@/components/ui/toast";
 import { type CustomFont, getCustomFonts } from "@/lib/customFonts";
 import { cn } from "@/lib/utils";
 import { useScopedT } from "../../contexts/I18nContext";
-import { AddCustomFontDialog } from "./AddCustomFontDialog";
 import { getArrowComponent } from "./ArrowSvgs";
+import { AnnotationTextSettings } from "./settings/AnnotationTextSettings";
 import type { AnnotationRegion, AnnotationType, ArrowDirection, FigureData } from "./types";
 
 interface AnnotationSettingsPanelProps {
@@ -59,7 +42,7 @@ export const FONT_FAMILY_VALUES = [
 	{ value: "Trebuchet MS, sans-serif", labelKey: "fontStyles.clean" },
 ];
 
-export const FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72, 80, 96, 128];
+export { FONT_SIZES } from "./settings/AnnotationTextSettings";
 
 export function AnnotationSettingsPanel({
 	annotation,
@@ -71,6 +54,7 @@ export function AnnotationSettingsPanel({
 	onBlurColorChange,
 	onDelete,
 }: AnnotationSettingsPanelProps) {
+	const te = useScopedT("editing");
 	const t = useScopedT("editor");
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [customFonts, setCustomFonts] = useState<CustomFont[]>([]);
@@ -147,7 +131,7 @@ export function AnnotationSettingsPanel({
 					{/* Type Selector */}
 					<div className="space-y-4">
 						<ChoiceGroup
-							aria-label="Annotation type"
+							aria-label={te("annotationType", "Annotation type")}
 							value={annotation.type}
 							onValueChange={(value) => onTypeChange(value as AnnotationType)}
 							className="grid grid-cols-4 gap-2"
@@ -200,266 +184,18 @@ export function AnnotationSettingsPanel({
 
 						{/* Text Content */}
 						{annotation.type === "text" && (
-							<div className="space-y-4">
-								<div>
-									<label className="text-sm font-medium text-foreground mb-2 block">
-										{t("annotations.textContent")}
-									</label>
-									<TextArea
-										value={annotation.textContent || annotation.content}
-										onChange={(e) => onContentChange(e.target.value)}
-										placeholder={t("annotations.textPlaceholder")}
-										rows={3}
-										className="w-full px-3 py-2 text-sm resize-none"
-									/>
-								</div>
-
-								{/* Styling Controls */}
-								<div className="space-y-4">
-									{/* Font Family & Size */}
-									<div className="grid grid-cols-2 gap-2">
-										<div>
-											<label className="text-sm font-medium text-foreground mb-2 block">
-												{t("annotations.fontStyle")}
-											</label>
-											<Select
-												value={annotation.style.fontFamily}
-												onValueChange={(value) =>
-													onStyleChange({ fontFamily: value })
-												}
-											>
-												<SelectTrigger className="w-full h-9 text-xs">
-													<SelectValue
-														placeholder={t("annotations.selectStyle")}
-													/>
-												</SelectTrigger>
-												<SelectContent className="max-h-[300px]">
-													{!fontFamilies.some(
-														(font) =>
-															font.value ===
-															annotation.style.fontFamily,
-													) &&
-														!customFonts.some(
-															(font) =>
-																font.fontFamily ===
-																annotation.style.fontFamily,
-														) && (
-															<SelectItem
-																value={annotation.style.fontFamily}
-															>
-																{annotation.style.fontFamily
-																	.split(",")[0]
-																	.replace(/"/g, "")}
-															</SelectItem>
-														)}
-													{fontFamilies.map((font) => (
-														<SelectItem
-															key={font.value}
-															value={font.value}
-															style={{ fontFamily: font.value }}
-														>
-															{font.label}
-														</SelectItem>
-													))}
-													{customFonts.length > 0 && (
-														<>
-															<div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-																Custom Fonts
-															</div>
-															{customFonts.map((font) => (
-																<SelectItem
-																	key={font.id}
-																	value={font.fontFamily}
-																	style={{
-																		fontFamily: font.fontFamily,
-																	}}
-																>
-																	{font.name}
-																</SelectItem>
-															))}
-														</>
-													)}
-												</SelectContent>
-											</Select>
-										</div>
-										<div>
-											<label className="text-sm font-medium text-foreground mb-2 block">
-												{t("annotations.size")}
-											</label>
-											<Select
-												value={annotation.style.fontSize.toString()}
-												onValueChange={(value) =>
-													onStyleChange({ fontSize: parseInt(value) })
-												}
-											>
-												<SelectTrigger className="w-full h-9 text-xs">
-													<SelectValue
-														placeholder={t("annotations.size")}
-													/>
-												</SelectTrigger>
-												<SelectContent className="max-h-[200px]">
-													{FONT_SIZES.map((size) => (
-														<SelectItem
-															key={size}
-															value={size.toString()}
-														>
-															{size}px
-														</SelectItem>
-													))}
-												</SelectContent>
-											</Select>
-										</div>
-									</div>
-
-									{/* Add Custom Font Button */}
-									<div>
-										<AddCustomFontDialog
-											onFontAdded={(font) => {
-												setCustomFonts(getCustomFonts());
-												onStyleChange({ fontFamily: font.fontFamily });
-											}}
-										/>
-									</div>
-
-									{/* Formatting Toggles */}
-									<div className="flex flex-wrap items-center justify-between gap-2">
-										<ToggleGroup
-											type="multiple"
-											value={[
-												...(annotation.style.fontWeight === "bold"
-													? ["bold"]
-													: []),
-												...(annotation.style.fontStyle === "italic"
-													? ["italic"]
-													: []),
-												...(annotation.style.textDecoration === "underline"
-													? ["underline"]
-													: []),
-											]}
-											size="sm"
-											className="justify-start"
-										>
-											<ToggleGroupItem
-												value="bold"
-												aria-label={t("annotations.toggleBold")}
-												onClick={() =>
-													onStyleChange({
-														fontWeight:
-															annotation.style.fontWeight === "bold"
-																? "normal"
-																: "bold",
-													})
-												}
-												className="h-8 w-8 min-w-8 p-0"
-											>
-												<Bold className="h-4 w-4" />
-											</ToggleGroupItem>
-											<ToggleGroupItem
-												value="italic"
-												aria-label={t("annotations.toggleItalic")}
-												onClick={() =>
-													onStyleChange({
-														fontStyle:
-															annotation.style.fontStyle === "italic"
-																? "normal"
-																: "italic",
-													})
-												}
-												className="h-8 w-8 min-w-8 p-0"
-											>
-												<Italic className="h-4 w-4" />
-											</ToggleGroupItem>
-											<ToggleGroupItem
-												value="underline"
-												aria-label={t("annotations.toggleUnderline")}
-												onClick={() =>
-													onStyleChange({
-														textDecoration:
-															annotation.style.textDecoration ===
-															"underline"
-																? "none"
-																: "underline",
-													})
-												}
-												className="h-8 w-8 min-w-8 p-0"
-											>
-												<Underline className="h-4 w-4" />
-											</ToggleGroupItem>
-										</ToggleGroup>
-
-										<ToggleGroup
-											type="single"
-											value={annotation.style.textAlign}
-											size="sm"
-											className="justify-start"
-										>
-											<ToggleGroupItem
-												value="left"
-												aria-label={t("annotations.alignLeft")}
-												onClick={() => onStyleChange({ textAlign: "left" })}
-												className="h-8 w-8 min-w-8 p-0"
-											>
-												<AlignLeft className="h-4 w-4" />
-											</ToggleGroupItem>
-											<ToggleGroupItem
-												value="center"
-												aria-label={t("annotations.alignCenter")}
-												onClick={() =>
-													onStyleChange({ textAlign: "center" })
-												}
-												className="h-8 w-8 min-w-8 p-0"
-											>
-												<AlignCenter className="h-4 w-4" />
-											</ToggleGroupItem>
-											<ToggleGroupItem
-												value="right"
-												aria-label={t("annotations.alignRight")}
-												onClick={() =>
-													onStyleChange({ textAlign: "right" })
-												}
-												className="h-8 w-8 min-w-8 p-0"
-											>
-												<AlignRight className="h-4 w-4" />
-											</ToggleGroupItem>
-										</ToggleGroup>
-									</div>
-
-									{/* Colors */}
-									<div className="grid grid-cols-2 gap-4">
-										<div>
-											<label className="text-sm font-medium text-foreground mb-2 block">
-												{t("annotations.textColor")}
-											</label>
-											<ColorControl
-												value={annotation.style.color}
-												label={t("annotations.textColor")}
-												onChange={(color) => onStyleChange({ color })}
-												colors={colorPalette}
-												compact
-											/>
-										</div>
-										<div>
-											<label className="text-sm font-medium text-foreground mb-2 block">
-												{t("annotations.background")}
-											</label>
-											<ColorControl
-												value={annotation.style.backgroundColor}
-												label={t("annotations.background")}
-												onChange={(color) =>
-													onStyleChange({ backgroundColor: color })
-												}
-												colors={colorPalette}
-												compact
-												onClear={() =>
-													onStyleChange({
-														backgroundColor: "transparent",
-													})
-												}
-											/>
-										</div>
-									</div>
-								</div>
-							</div>
+							<AnnotationTextSettings
+								annotation={annotation}
+								onContentChange={onContentChange}
+								onStyleChange={onStyleChange}
+								customFonts={customFonts}
+								fontFamilies={fontFamilies}
+								colorPalette={colorPalette}
+								onFontAdded={(font) => {
+									setCustomFonts(getCustomFonts());
+									onStyleChange({ fontFamily: font.fontFamily });
+								}}
+							/>
 						)}
 
 						{/* Image Upload */}
@@ -486,7 +222,10 @@ export function AnnotationSettingsPanel({
 										<div className="rounded-lg border border-foreground/10 overflow-hidden bg-foreground/5 p-2">
 											<img
 												src={annotation.content}
-												alt="Uploaded annotation"
+												alt={te(
+													"uploadedAnnotation",
+													"Uploaded annotation",
+												)}
 												className="w-full h-auto rounded-md"
 											/>
 										</div>
@@ -535,7 +274,7 @@ export function AnnotationSettingsPanel({
 													aria-label={t(
 														"annotations.arrowDirectionOption",
 														"Arrow direction: {{direction}}",
-														{ direction: direction.replace(/-/g, " ") },
+														{ direction: te(`direction${direction}`) },
 													)}
 													className={cn(
 														"h-16 flex items-center justify-center p-2",
@@ -687,7 +426,9 @@ export function AnnotationSettingsPanel({
 					className="w-full gap-2"
 				>
 					<Trash2 className="w-4 h-4" />
-					{t("annotations.deleteAnnotation")}
+					{annotation.type === "blur"
+						? te("deleteMask", "Delete mask")
+						: t("annotations.deleteAnnotation")}
 				</Button>
 			</div>
 		</Card>

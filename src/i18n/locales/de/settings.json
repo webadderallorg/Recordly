@@ -372,6 +372,7 @@
 		"deleteRegion": "Audio löschen"
 	},
 	"updates": {
+		"loadFailed": "Der Update-Kanal konnte nicht geladen werden. Bitte versuche es erneut.",
 		"automaticDownloads": "Updates automatisch herunterladen",
 		"automaticDownloadsDescription": "Lade neue Updates im Hintergrund herunter. Du entscheidest, wann du neu startest.",
 		"downloadPreferenceFailed": "Automatische Update-Downloads konnten nicht geladen oder gespeichert werden. Versuche es erneut.",

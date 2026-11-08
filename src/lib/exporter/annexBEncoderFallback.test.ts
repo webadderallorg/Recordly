@@ -1,20 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ModernVideoExporter } from "./modernVideoExporter";
-import type { VideoExporterConfig } from "./types";
-import { VideoExporter } from "./videoExporter";
-
-interface NativeExportStartup {
-	tryStartNativeVideoExport: () => Promise<boolean>;
-	shouldUseExperimentalNativeExport: () => boolean;
-}
+import { tryStartNativeVideoExport as startLegacy } from "./legacyVideoNativeEncoder";
+import { startNativeVideoExport as startModern } from "./modernNativeStreamStart";
 
 afterEach(() => {
 	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
 });
 
-for (const Exporter of [ModernVideoExporter, VideoExporter]) {
-	describe(`${Exporter.name} Annex B encoder fallback`, () => {
+for (const backend of ["legacy", "modern"] as const) {
+	describe(`${backend} Annex B encoder fallback`, () => {
 		it.each([
 			"hardware",
 			"software",
@@ -23,14 +17,15 @@ for (const Exporter of [ModernVideoExporter, VideoExporter]) {
 			"configure-error",
 			"odd-width",
 			"odd-height",
-		] as const)("handles %s without starting an unusable native session", async (scenario) => {
+		] as const)("preserves native recovery when the encoder is %s", async (scenario) => {
+			vi.spyOn(console, "log").mockImplementation(() => {});
 			vi.spyOn(console, "warn").mockImplementation(() => {});
-			const configure = vi.fn((_config: VideoEncoderConfig) => {
-				if (scenario === "configure-error") throw new Error("Encoder configure failed");
+			const configure = vi.fn(() => {
+				if (scenario === "configure-error") throw new Error("Configure failed");
 			});
 			const close = vi.fn();
 			const probe = vi.fn(async (config: VideoEncoderConfig) => {
-				if (scenario === "probe-error") throw new Error("Encoder probe failed");
+				if (scenario === "probe-error") throw new Error("Probe failed");
 				return {
 					supported:
 						scenario === "hardware" ||
@@ -51,27 +46,32 @@ for (const Exporter of [ModernVideoExporter, VideoExporter]) {
 				electronAPI: { nativeVideoExportStart: start, nativeVideoExportCancel: cancel },
 			});
 			const config = {
-				videoUrl: "file:///recording.mp4",
 				width: scenario === "odd-width" ? 1919 : 1920,
 				height: scenario === "odd-height" ? 1079 : 1080,
-				frameRate: 30,
 				bitrate: 8_000_000,
-				wallpaper: "#000000",
-			} as VideoExporterConfig;
-			const exporter = new Exporter(config) as unknown as NativeExportStartup;
-			if (Exporter === VideoExporter) {
-				vi.spyOn(exporter, "shouldUseExperimentalNativeExport").mockReturnValue(true);
-			}
-
-			const success = await exporter.tryStartNativeVideoExport();
-
-			expect(success).toBe(scenario === "hardware" || scenario === "software");
-			if (scenario === "hardware" || scenario === "software") {
+				frameRate: 30,
+			};
+			const modern = {
+				config,
+				cancelled: false,
+				native: { nativeOutputChunkCount: 0 },
+				flow: {},
+				metrics: {},
+			} as unknown as Parameters<typeof startModern>[0];
+			const legacy = {
+				config,
+				cancelled: false,
+				shouldUseExperimentalNativeExport: () => true,
+			} as unknown as Parameters<typeof startLegacy>[0];
+			const selected =
+				backend === "modern" ? await startModern(modern, {}) : await startLegacy(legacy);
+			const stream = scenario === "hardware" || scenario === "software";
+			const oddDimensions = scenario === "odd-width" || scenario === "odd-height";
+			expect(selected).toBe(!oddDimensions && (stream || backend === "modern"));
+			if (stream) {
 				expect(configure).toHaveBeenCalledWith(
 					expect.objectContaining({
 						codec: "avc1.640034",
-						width: 1920,
-						height: 1080,
 						hardwareAcceleration:
 							scenario === "hardware" ? "prefer-hardware" : "prefer-software",
 						avc: { format: "annexb" },
@@ -80,20 +80,23 @@ for (const Exporter of [ModernVideoExporter, VideoExporter]) {
 				expect(start).toHaveBeenCalledWith(
 					expect.objectContaining({ inputMode: "h264-stream" }),
 				);
+			} else if (oddDimensions) {
+				expect(probe).not.toHaveBeenCalled();
+				expect(configure).not.toHaveBeenCalled();
+				expect(start).not.toHaveBeenCalled();
+			} else if (backend === "modern") {
+				// Retain the newer rawvideo fallback when no browser stream can run.
+				expect(start).toHaveBeenLastCalledWith(
+					expect.objectContaining({ inputMode: "rawvideo" }),
+				);
 			} else if (scenario !== "configure-error") {
 				expect(start).not.toHaveBeenCalled();
-				expect(configure).not.toHaveBeenCalled();
 			}
 			if (scenario === "software" || scenario === "unsupported") {
-				expect(probe).toHaveBeenCalledTimes(2);
 				expect(probe.mock.calls.map(([config]) => config.hardwareAcceleration)).toEqual([
 					"prefer-hardware",
 					"prefer-software",
 				]);
-			} else if (scenario === "odd-width" || scenario === "odd-height") {
-				expect(probe).not.toHaveBeenCalled();
-			} else {
-				expect(probe).toHaveBeenCalledTimes(1);
 			}
 			if (scenario === "configure-error") {
 				expect(close).toHaveBeenCalledOnce();

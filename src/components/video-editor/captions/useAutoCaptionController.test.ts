@@ -1,27 +1,52 @@
-import { beforeEach, afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useAutoCaptionController } from "./useAutoCaptionController";
-const state = vi.hoisted(() => ({ refs: [] as { current: unknown }[], index: 0 }));
+
+const state = vi.hoisted(() => ({
+	refs: [] as { current: unknown }[],
+	index: 0,
+	effects: [] as (() => unknown)[],
+}));
 vi.mock("react", () => ({
 	useCallback: (callback: unknown) => callback,
-	useEffect: () => {},
+	useState: (initial: unknown) => {
+		const index = state.index++;
+		state.refs[index] ??= { current: typeof initial === "function" ? initial() : initial };
+		return [
+			state.refs[index].current,
+			(value: unknown) => {
+				state.refs[index].current = value;
+			},
+		];
+	},
+	useEffect: (effect: () => unknown) => state.effects.push(effect),
 	useRef: (current: unknown) => {
 		const index = state.index++;
 		state.refs[index] ??= { current };
 		return state.refs[index];
 	},
 }));
+vi.mock("@/contexts/I18nContext", async () => {
+	const { translateForLocale } = await import("@/i18n/messages");
+	return {
+		useScopedT:
+			(namespace: string) =>
+			(key: string, fallback?: string, vars?: Record<string, string | number>) =>
+				translateForLocale("en", `${namespace}.${key}`, fallback, vars),
+	};
+});
 vi.mock("@/components/ui/toast", () => ({
 	toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));
 beforeEach(() => {
 	state.refs = [];
 	state.index = 0;
+	state.effects = [];
 });
 afterEach(() => vi.unstubAllGlobals());
 function setup() {
 	let complete!: (result: unknown) => void;
 	const generateAutoCaptions = vi.fn(
-		() =>
+		(_options: unknown) =>
 			new Promise((resolve) => {
 				complete = resolve;
 			}),
@@ -30,10 +55,16 @@ function setup() {
 	const params = {
 		videoSourcePath: "/recordings/a.mp4",
 		videoPath: "file:///recordings/a.mp4",
-		whisperModelPath: "/models/small.bin",
+		whisperModelPath: "/models/old-small.bin",
+		downloadedWhisperModelPath: "/models/parakeet-v3",
+		whisperModelDownloadStatus: "downloaded",
 		isGeneratingCaptions: false,
 		autoCaptionSettings: { language: "en" },
 		setIsGeneratingCaptions: vi.fn(),
+		setWhisperModelPath: vi.fn(),
+		setDownloadedWhisperModelPath: vi.fn(),
+		setWhisperModelDownloadStatus: vi.fn(),
+		setWhisperModelDownloadProgress: vi.fn(),
 		setAutoCaptions: vi.fn(),
 		setAutoCaptionSettings: vi.fn(),
 		syncActiveVideoSource: vi.fn(),
@@ -57,6 +88,13 @@ it("deduplicates requests and enables captions without resetting the active sess
 	const pending = controller.handleGenerateAutoCaptions();
 	await controller.handleGenerateAutoCaptions();
 	expect(test.generateAutoCaptions).toHaveBeenCalledTimes(1);
+	expect(test.generateAutoCaptions).toHaveBeenCalledWith({
+		videoPath: "/recordings/a.mp4",
+		captionModelId: "parakeet-v3",
+		engine: "parakeet",
+		parakeetModelPath: "/models/parakeet-v3",
+		language: "auto",
+	});
 	test.complete({ success: true, cues });
 	await pending;
 	expect(test.params.setAutoCaptions).toHaveBeenCalledWith(cues);
@@ -86,4 +124,100 @@ it("preserves existing captions on failure and permits retry", async () => {
 	await retry;
 	expect(test.generateAutoCaptions).toHaveBeenCalledTimes(2);
 	expect(test.params.setAutoCaptions).toHaveBeenCalledWith(cues);
+});
+
+it("does not generate before the selected managed model is installed", async () => {
+	const test = setup();
+	test.params.downloadedWhisperModelPath = null;
+	test.params.whisperModelDownloadStatus = "idle";
+	await test.render().handleGenerateAutoCaptions();
+	expect(test.generateAutoCaptions).not.toHaveBeenCalled();
+	expect(test.params.setIsGeneratingCaptions).toHaveBeenLastCalledWith(false);
+});
+
+it("resolves the selected managed installation instead of a stale saved path", async () => {
+	const test = setup();
+	window.electronAPI.onCaptionModelDownloadProgress = vi.fn(() => () => {});
+	window.electronAPI.getCaptionModelStatus = vi.fn(async () => ({
+		success: true,
+		exists: true,
+		path: "/installed/parakeet-v3",
+	}));
+	test.render();
+	state.effects[0]();
+	expect(test.params.setWhisperModelPath).toHaveBeenCalledWith(null);
+	await Promise.resolve();
+	expect(test.params.setWhisperModelPath).toHaveBeenLastCalledWith("/installed/parakeet-v3");
+	expect(test.params.setDownloadedWhisperModelPath).toHaveBeenLastCalledWith(
+		"/installed/parakeet-v3",
+	);
+});
+
+it("persists a multilingual model selection and routes generation to Whisper", async () => {
+	const test = setup();
+	window.electronAPI.setAppSetting = vi.fn(() => true);
+	test.render().handleCaptionModelChange("whisper-base");
+	expect(window.electronAPI.setAppSetting).toHaveBeenCalledWith(
+		"recordly.captions.model",
+		"whisper-base",
+	);
+	test.params.downloadedWhisperModelPath = "/installed/ggml-base.bin";
+	const pending = test.render().handleGenerateAutoCaptions();
+	expect(test.generateAutoCaptions).toHaveBeenCalledWith(
+		expect.objectContaining({
+			captionModelId: "whisper-base",
+			engine: "whisper",
+			whisperModelPath: "/installed/ggml-base.bin",
+			language: "auto",
+		}),
+	);
+	expect(test.generateAutoCaptions.mock.calls[0][0]).not.toHaveProperty("parakeetModelPath");
+	test.complete({ success: true, cues });
+	await pending;
+});
+
+it("ignores a stale status result after switching models", async () => {
+	const test = setup();
+	let resolveOld!: (value: unknown) => void;
+	window.electronAPI.onCaptionModelDownloadProgress = vi.fn(() => () => {});
+	window.electronAPI.getCaptionModelStatus = vi.fn((id) =>
+		id === "parakeet-v3"
+			? new Promise((resolve) => {
+					resolveOld = resolve;
+				})
+			: Promise.resolve({ success: true, exists: true, path: "/installed/ggml-small.bin" }),
+	) as typeof window.electronAPI.getCaptionModelStatus;
+	const controller = test.render();
+	const cleanup = state.effects[0]() as () => void;
+	controller.handleCaptionModelChange("whisper-small");
+	cleanup();
+	test.render();
+	state.effects.at(-1)!();
+	await Promise.resolve();
+	resolveOld({ success: true, exists: true, path: "/old/parakeet" });
+	await Promise.resolve();
+	expect(test.params.setDownloadedWhisperModelPath).toHaveBeenLastCalledWith(
+		"/installed/ggml-small.bin",
+	);
+});
+
+it("blocks generation and switching while a model deletion is pending", async () => {
+	const test = setup();
+	let finishDelete!: (result: { success: boolean }) => void;
+	window.electronAPI.deleteCaptionModel = vi.fn(
+		() =>
+			new Promise((resolve) => {
+				finishDelete = resolve;
+			}),
+	);
+	window.electronAPI.setAppSetting = vi.fn(() => true);
+	const controller = test.render();
+	const pending = controller.handleDeleteWhisperSmallModel();
+	await controller.handleGenerateAutoCaptions();
+	controller.handleCaptionModelChange("whisper-base");
+	expect(test.generateAutoCaptions).not.toHaveBeenCalled();
+	expect(window.electronAPI.setAppSetting).not.toHaveBeenCalled();
+	finishDelete({ success: true });
+	await pending;
+	expect(test.params.setDownloadedWhisperModelPath).toHaveBeenLastCalledWith(null);
 });

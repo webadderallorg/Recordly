@@ -1,12 +1,14 @@
-import { type MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
+import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	createEditorHistoryStack,
 	type EditorHistorySnapshot,
+	type EditorHistoryStack,
 	recordEditorHistorySnapshot,
 	redoEditorHistoryStack,
 	resetEditorHistoryStack,
 	undoEditorHistoryStack,
 } from "../editorHistory";
+import { persistEditorHistory } from "../editorHistoryPersistence";
 import { deriveNextId } from "../projectPersistence";
 import type { useTimelineState } from "../state/useTimelineState";
 import { cloneStructured } from "../videoEditorUtils";
@@ -35,6 +37,8 @@ export function useEditorHistory({
 		annotationRegions,
 		audioRegions,
 		autoCaptions,
+		sourceAudioTrackSettingsByClip,
+		defaultSourceAudioTrackSettings,
 		selectedZoomId,
 		selectedClipId,
 		selectedAnnotationId,
@@ -45,22 +49,24 @@ export function useEditorHistory({
 		setAnnotationRegions,
 		setAudioRegions,
 		setAutoCaptions,
+		setSourceAudioTrackSettingsByClip,
+		setDefaultSourceAudioTrackSettings,
 		setSelectedZoomId,
 		setSelectedClipId,
 		setSelectedAnnotationId,
 		setSelectedAudioId,
 	} = timeline;
 	const historyRef = useRef(createEditorHistoryStack());
+	const [historyState, setHistoryState] = useState(createEditorHistoryStack);
 	const applyingRef = useRef(false);
-	const [historyFlags, setHistoryFlags] = useState({ canUndo: false, canRedo: false });
+	const annotationTypingSessionRef = useRef<string | null>(null);
 	const syncButtons = useCallback(() => {
-		const next = {
-			canUndo: historyRef.current.past.length > 0,
-			canRedo: historyRef.current.future.length > 0,
-		};
-		setHistoryFlags((current) =>
-			current.canUndo === next.canUndo && current.canRedo === next.canRedo ? current : next,
-		);
+		const stack = historyRef.current;
+		setHistoryState({
+			past: [...stack.past],
+			current: stack.current,
+			future: [...stack.future],
+		});
 	}, []);
 	const buildSnapshot = useCallback(
 		(): EditorHistorySnapshot => ({
@@ -70,8 +76,8 @@ export function useEditorHistory({
 			annotationRegions,
 			audioRegions,
 			autoCaptions,
-			sourceAudioTrackSettingsByClip: {},
-			defaultSourceAudioTrackSettings: {},
+			sourceAudioTrackSettingsByClip,
+			defaultSourceAudioTrackSettings,
 			selectedZoomId,
 			selectedClipId,
 			selectedAnnotationId,
@@ -84,6 +90,8 @@ export function useEditorHistory({
 			annotationRegions,
 			audioRegions,
 			autoCaptions,
+			sourceAudioTrackSettingsByClip,
+			defaultSourceAudioTrackSettings,
 			selectedZoomId,
 			selectedClipId,
 			selectedAnnotationId,
@@ -100,6 +108,8 @@ export function useEditorHistory({
 			setAnnotationRegions(cloned.annotationRegions);
 			setAudioRegions(cloned.audioRegions);
 			setAutoCaptions(cloned.autoCaptions);
+			setSourceAudioTrackSettingsByClip(cloned.sourceAudioTrackSettingsByClip);
+			setDefaultSourceAudioTrackSettings(cloned.defaultSourceAudioTrackSettings);
 			setSelectedZoomId(cloned.selectedZoomId);
 			setSelectedClipId(cloned.selectedClipId);
 			setSelectedAnnotationId(cloned.selectedAnnotationId);
@@ -131,6 +141,8 @@ export function useEditorHistory({
 			setAnnotationRegions,
 			setAudioRegions,
 			setAutoCaptions,
+			setSourceAudioTrackSettingsByClip,
+			setDefaultSourceAudioTrackSettings,
 			setSelectedZoomId,
 			setSelectedClipId,
 			setSelectedAnnotationId,
@@ -159,21 +171,42 @@ export function useEditorHistory({
 	const resetHistory = useCallback(() => {
 		resetEditorHistoryStack(historyRef.current);
 		applyingRef.current = false;
+		annotationTypingSessionRef.current = null;
 		syncButtons();
 	}, [syncButtons]);
+	const restoreHistory = useCallback(
+		(stack: EditorHistoryStack) => {
+			historyRef.current = stack;
+			applyingRef.current = stack.current !== null;
+			annotationTypingSessionRef.current = null;
+			syncButtons();
+		},
+		[syncButtons],
+	);
+	const persistedHistory = useMemo(() => persistEditorHistory(historyState), [historyState]);
 
 	useEffect(() => {
+		const activeInput = document.activeElement as HTMLElement | null;
+		const typingSession = activeInput?.dataset.annotationEditSession ?? null;
 		const result = recordEditorHistorySnapshot(historyRef.current, buildSnapshot(), {
 			applyingHistory: applyingRef.current,
+			ignoreSelectionOnly: true,
+			coalesce:
+				typingSession !== null && typingSession === annotationTypingSessionRef.current,
 		});
+		if (result === "recorded") annotationTypingSessionRef.current = typingSession;
+		if (result === "applied") annotationTypingSessionRef.current = null;
 		if (result === "applied") applyingRef.current = false;
 		if (result !== "unchanged") syncButtons();
 	}, [buildSnapshot, syncButtons]);
 
 	return {
-		...historyFlags,
+		canUndo: historyState.past.length > 0,
+		canRedo: historyState.future.length > 0,
 		handleUndo,
 		handleRedo,
 		resetHistory,
+		restoreHistory,
+		persistedHistory,
 	};
 }

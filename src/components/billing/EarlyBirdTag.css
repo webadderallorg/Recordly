@@ -1,0 +1,29 @@
+.early-bird-banner {
+	position: relative;
+	z-index: 1;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	padding: 5px 12px;
+	border-radius: 5px;
+	background: var(--color-red-500, #ef4444);
+	color: white;
+	font-family: var(--app-font-sans, "DM Sans", sans-serif);
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 16px;
+	letter-spacing: 0.02em;
+	text-shadow: none;
+	max-width: 100%;
+	white-space: normal;
+	text-align: center;
+}
+.early-bird-banner--compact {
+	width: 72px;
+	padding: 3px 6px;
+	font-size: 9px;
+	line-height: 10px;
+	white-space: normal;
+	text-align: center;
+}

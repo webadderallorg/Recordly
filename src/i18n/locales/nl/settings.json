@@ -372,6 +372,7 @@
 		"deleteRegion": "Audio verwijderen"
 	},
 	"updates": {
+		"loadFailed": "Het updatekanaal kon niet worden geladen. Probeer het opnieuw.",
 		"automaticDownloads": "Updates automatisch downloaden",
 		"automaticDownloadsDescription": "Download nieuwe updates op de achtergrond. Je kiest zelf wanneer je herstart.",
 		"downloadPreferenceFailed": "Automatische updatedownloads konden niet worden geladen of opgeslagen. Probeer het opnieuw.",

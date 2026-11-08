@@ -88,18 +88,32 @@
 
 .glassBlue {
 	position: relative;
-	border-radius: 8px;
-	background: var(--accent);
-	border: 1px solid transparent;
-	transition: background 0.15s ease;
+	border-radius: 10px;
+	background-color: var(--accent);
+	background-image: linear-gradient(
+		180deg,
+		rgb(0 26 128 / 24%) 0%,
+		rgb(255 255 255 / 12%) 48%,
+		rgb(255 255 255 / 25%) 100%
+	);
+	background-origin: border-box;
+	border: 1px solid color-mix(in srgb, var(--accent) 60%, white);
+	box-shadow:
+		inset 0 1px 0 rgb(255 255 255 / 12%),
+		inset 0 -1px 2px rgb(0 26 128 / 8%),
+		inset 1px 0 3px rgb(255 255 255 / 10%),
+		inset -1px 0 3px rgb(255 255 255 / 10%);
+	transition:
+		background-color 0.15s ease,
+		border-color 0.15s ease;
 }
 
 .glassBlue:hover {
-	background: color-mix(in srgb, var(--accent) 88%, white);
+	background-color: color-mix(in srgb, var(--accent) 88%, white);
 }
 
 .glassBlue.selected {
-	border-color: color-mix(in srgb, var(--accent) 60%, white);
+	border-color: color-mix(in srgb, var(--accent) 35%, white);
 	z-index: 10;
 }
 
@@ -327,6 +341,42 @@
 	content: none;
 }
 
+/* Narrow blocks keep the speed direction without clipping the numeric label. */
+@container (max-width: 68px) {
+	.speedValue {
+		display: none;
+	}
+	.speedBadge {
+		gap: 0;
+		padding-inline: 2px;
+	}
+}
+
+/* Keep the duration readable over footage without blocking clip interactions. */
+.clipDuration {
+	position: absolute;
+	top: 4px;
+	left: 6px;
+	z-index: 20;
+	padding: 2px 6px;
+	border-radius: 4px;
+	background: rgb(0 0 0 / 70%);
+	color: white;
+	font-size: 11px;
+	font-weight: 500;
+	font-variant-numeric: tabular-nums;
+	line-height: 16px;
+	white-space: nowrap;
+	pointer-events: none;
+	visibility: hidden;
+}
+
+:global([data-variant="clip"]):hover .clipDuration,
+:global([data-variant="clip"]):focus-within .clipDuration,
+.selected .clipDuration {
+	visibility: visible;
+}
+
 /* Keep clip handles visible using the original theme-aware handle colors. */
 .zoomEndCap.clipHandle {
 	opacity: 1;
@@ -346,29 +396,26 @@
 	border-radius: 4px;
 }
 
-/* Caption selection uses the same primary blue as the editor controls. */
-.glassCaption.selected,
-:global(:root:not(.dark)) .glassCaption.selected,
-.glassCaption.embeddedCaption.selected,
-:global(:root:not(.dark)) .glassCaption.embeddedCaption.selected {
-	border-color: var(--accent);
-	box-shadow: inset 0 0 0 1.5px var(--accent);
-}
-
-/* Compact caption lane inside the filmstrip. */
+/* Caption blocks use the editor accent in both themes and inside the filmstrip. */
 .glassCaption,
 .glassCaption.embeddedCaption,
 :global(:root:not(.dark)) .glassCaption,
 :global(:root:not(.dark)) .glassCaption.embeddedCaption {
-	background: #b58b12;
-	border-color: #facc15;
+	background: var(--accent);
+	border-color: color-mix(in srgb, var(--accent) 65%, white);
 }
 .glassCaption:hover,
-.glassCaption.embeddedCaption:hover {
-	background: #c49a18;
+.glassCaption.embeddedCaption:hover,
+:global(:root:not(.dark)) .glassCaption:hover,
+:global(:root:not(.dark)) .glassCaption.embeddedCaption:hover {
+	background: color-mix(in srgb, var(--accent) 88%, white);
+	border-color: color-mix(in srgb, var(--accent) 60%, white);
 }
 .glassCaption.selected,
-:global(:root:not(.dark)) .glassCaption.selected {
-	border-color: #fde047;
-	box-shadow: inset 0 0 0 1.5px #fde047;
+:global(:root:not(.dark)) .glassCaption.selected,
+.glassCaption.embeddedCaption.selected,
+:global(:root:not(.dark)) .glassCaption.embeddedCaption.selected {
+	background: color-mix(in srgb, var(--accent) 85%, black);
+	border-color: color-mix(in srgb, var(--accent) 60%, white);
+	box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 60%, white);
 }

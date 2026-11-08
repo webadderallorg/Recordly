@@ -372,6 +372,7 @@
 		"deleteRegion": "删除音频"
 	},
 	"updates": {
+		"loadFailed": "无法加载更新渠道，请重试。",
 		"automaticDownloads": "自动下载更新",
 		"automaticDownloadsDescription": "在后台下载新更新。由你决定何时重启。",
 		"downloadPreferenceFailed": "无法加载或保存自动下载更新设置。请重试。",

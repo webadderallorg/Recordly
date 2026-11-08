@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProjectPreviewData } from "@/types/projectPreview";
+import { getAspectRatioValue } from "@/utils/aspectRatioUtils";
 import VideoPlayback, { type VideoPlaybackRef } from "../VideoPlayback";
 import { normalizeProjectEditor } from "../projectPersistence";
 import type { CursorTelemetryPoint } from "../types";
+import { getEffectiveNativeAspectRatio } from "../videoPlayback/playbackTypes";
 
 const ignore = () => undefined;
 /** One muted five-second pass through the saved timeline using the editor renderer. */
@@ -19,6 +21,21 @@ export function ProjectHoverPreview({
 	const [time, setTime] = useState(0);
 	const [playing, setPlaying] = useState(false);
 	const [duration, setDuration] = useState(0);
+	const [sourceDimensions, setSourceDimensions] = useState<{
+		width: number;
+		height: number;
+	} | null>(null);
+	const aspectRatio = getAspectRatioValue(
+		editor.aspectRatio,
+		getEffectiveNativeAspectRatio(sourceDimensions, editor.cropRegion),
+	);
+	const updateDuration = useCallback((seconds: number) => {
+		setDuration(seconds);
+		const video = playback.current?.video;
+		if (video?.videoWidth && video.videoHeight) {
+			setSourceDimensions({ width: video.videoWidth, height: video.videoHeight });
+		}
+	}, []);
 	const [telemetry, setTelemetry] = useState<CursorTelemetryPoint[]>([]);
 	const clips = useMemo(
 		() =>
@@ -82,30 +99,34 @@ export function ProjectHoverPreview({
 	return (
 		<div
 			data-project-hover-preview
-			className={`pointer-events-none absolute inset-0 overflow-hidden rounded-xl ${playing ? "opacity-100" : "opacity-0"}`}
+			className={`pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden rounded-xl ${playing ? "opacity-100" : "opacity-0"}`}
 			aria-hidden="true"
 		>
-			<VideoPlayback
-				{...editor}
-				autoPlay
-				aspectRatio="4:3"
-				ref={playback}
-				videoPath={data.videoUrl}
-				webcamVideoPath={data.webcamUrl}
-				clipRegions={clips}
-				showShadow={editor.shadowIntensity > 0}
-				currentTime={time}
-				isPlaying={playing}
-				volume={0}
-				cursorTelemetry={telemetry}
-				selectedZoomId={null}
-				onSelectZoom={ignore}
-				onZoomFocusChange={ignore}
-				onDurationChange={setDuration}
-				onTimeUpdate={updateTime}
-				onPlayStateChange={updatePlaying}
-				onError={onFinish}
-			/>
+			<div
+				className="shrink-0"
+				style={{ width: `${Math.max(100, (aspectRatio / (4 / 3)) * 100)}%` }}
+			>
+				<VideoPlayback
+					{...editor}
+					autoPlay
+					ref={playback}
+					videoPath={data.videoUrl}
+					webcamVideoPath={data.webcamUrl}
+					clipRegions={clips}
+					showShadow={editor.shadowIntensity > 0}
+					currentTime={time}
+					isPlaying={playing}
+					volume={0}
+					cursorTelemetry={telemetry}
+					selectedZoomId={null}
+					onSelectZoom={ignore}
+					onZoomFocusChange={ignore}
+					onDurationChange={updateDuration}
+					onTimeUpdate={updateTime}
+					onPlayStateChange={updatePlaying}
+					onError={onFinish}
+				/>
+			</div>
 		</div>
 	);
 }

@@ -1,5 +1,6 @@
 {
 	"updates": {
+		"loadFailed": "Could not load the update channel. Try again.",
 		"automaticDownloads": "Automatically download updates",
 		"automaticDownloadsDescription": "Download new updates in the background. You choose when to restart.",
 		"downloadPreferenceFailed": "Could not load or save automatic update downloads. Try again.",

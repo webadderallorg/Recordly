@@ -50,6 +50,7 @@ import {
 	skipAvailableUpdateVersion,
 } from "./updater";
 import {
+	closeOnboardingWindow,
 	createEditorWindow,
 	createHudOverlayWindow,
 	createSourceSelectorWindow,
@@ -74,6 +75,11 @@ function ignoreBrokenConsolePipe(stream: NodeJS.WritableStream | undefined) {
 		throw error;
 	});
 }
+
+ipcMain.handle("close-onboarding-window", () => {
+	closeOnboardingWindow();
+	return true;
+});
 
 ignoreBrokenConsolePipe(process.stdout);
 ignoreBrokenConsolePipe(process.stderr);

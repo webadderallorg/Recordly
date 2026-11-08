@@ -1,61 +1,70 @@
+import { useScopedT } from "@/contexts/I18nContext";
 import { useEffect, useRef, useState } from "react";
 import { FilmStrip } from "@/components/ui/icons";
 import type { RecordingLibraryEntry } from "@/types/recordingLibrary";
 
+import {
+	loadRecordingThumbnail,
+	peekRecordingThumbnail,
+	recordingThumbnailKey,
+} from "./recordingThumbnailCache";
+
 export function RecordingThumbnail({ entry }: { entry: RecordingLibraryEntry }) {
+	const te = useScopedT("editing");
 	const host = useRef<HTMLSpanElement>(null);
-	const [src, setSrc] = useState<string>();
-	const [failed, setFailed] = useState(false);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: changed file metadata invalidates the cached still.
+	const key = recordingThumbnailKey(entry);
+	const [loaded, setLoaded] = useState<{ key: string; url: string } | null>(null);
+	const [failedKey, setFailedKey] = useState<string | null>(null);
+	const src = loaded?.key === key ? loaded.url : peekRecordingThumbnail(key);
+	const failed = failedKey === key;
 	useEffect(() => {
+		if (src || failed) return;
 		let active = true;
-		setSrc(undefined);
-		setFailed(false);
 		const observer = new IntersectionObserver(
 			(entries) => {
 				if (!entries.some((entry) => entry.isIntersecting)) return;
 				observer.disconnect();
-				void window.electronAPI
-					.getRecordingThumbnail(entry.path)
-					.then((result) => {
-						if (!active) return;
-						if (result.success) setSrc(result.value);
-						else setFailed(true);
+				void loadRecordingThumbnail(key, entry.path)
+					.then((url) => {
+						if (active) setLoaded({ key, url });
 					})
 					.catch(() => {
-						if (active) setFailed(true);
+						if (active) setFailedKey(key);
 					});
 			},
-			{ rootMargin: "80px" },
+			{ rootMargin: "400px" },
 		);
 		if (host.current) observer.observe(host.current);
 		return () => {
 			active = false;
 			observer.disconnect();
 		};
-	}, [entry.path, entry.createdAt, entry.bytes]);
+	}, [key, entry.path, src, failed]);
 	return (
 		<span
 			ref={host}
 			className="flex h-9 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-default text-muted-foreground"
 		>
-			{src ? (
+			{src && !failed ? (
 				<img
 					src={src}
-					alt={`Preview of ${entry.name}`}
+					alt={te("previewOf", "Preview of {{name}}", { name: entry.name })}
 					className="size-full object-cover"
+					decoding="async"
 					draggable={false}
 					onError={() => {
-						setSrc(undefined);
-						setFailed(true);
+						setFailedKey(key);
 					}}
 				/>
 			) : failed ? (
-				<FilmStrip className="size-5" aria-label="Preview unavailable" />
+				<FilmStrip
+					className="size-5"
+					aria-label={te("previewUnavailable", "Preview unavailable")}
+				/>
 			) : (
 				<span
 					className="size-full animate-pulse bg-default"
-					aria-label="Loading preview image"
+					aria-label={te("loadingPreviewImage", "Loading preview image")}
 				/>
 			)}
 		</span>

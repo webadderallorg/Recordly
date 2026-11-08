@@ -1,3 +1,4 @@
+import { useScopedT } from "@/contexts/I18nContext";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { SOURCE_AUDIO_FALLBACK_TOAST_ID } from "@/components/video-editor/audio/audioTypes";
@@ -13,6 +14,7 @@ export function useSourceAudioFallback({
 	refreshKey = 0,
 	summarizeErrorMessage,
 }: UseSourceAudioFallbackParams) {
+	const te = useScopedT("editing");
 	const [sourceAudioFallbackPaths, setSourceAudioFallbackPaths] = useState<string[]>([]);
 	const [sourceAudioFallbackStartDelayMsByPath, setSourceAudioFallbackStartDelayMsByPath] =
 		useState<Record<string, number>>({});
@@ -49,8 +51,15 @@ export function useSourceAudioFallback({
 					}
 					toast.warning(
 						result.error
-							? `Could not load companion audio sources: ${summarizeErrorMessage(result.error)}`
-							: "Could not load companion audio sources. Playback and export may miss microphone audio.",
+							? te(
+									"companionAudioFailed",
+									"Could not load companion audio sources: {{error}}",
+									{ error: summarizeErrorMessage(result.error) },
+								)
+							: te(
+									"companionAudioMissing",
+									"Could not load companion audio sources. Playback and export may miss microphone audio.",
+								),
 						{ id: SOURCE_AUDIO_FALLBACK_TOAST_ID, duration: 10000 },
 					);
 					return;
@@ -66,7 +75,11 @@ export function useSourceAudioFallback({
 						setSourceAudioFallbackStartDelayMsByPath({});
 					}
 					toast.warning(
-						`Could not load companion audio sources: ${summarizeErrorMessage(String(error))}`,
+						te(
+							"companionAudioFailed",
+							"Could not load companion audio sources: {{error}}",
+							{ error: summarizeErrorMessage(String(error)) },
+						),
 						{ id: SOURCE_AUDIO_FALLBACK_TOAST_ID, duration: 10000 },
 					);
 				}
@@ -76,7 +89,7 @@ export function useSourceAudioFallback({
 		return () => {
 			cancelled = true;
 		};
-	}, [currentSourcePath, refreshKey, summarizeErrorMessage]);
+	}, [currentSourcePath, refreshKey, summarizeErrorMessage, te]);
 
 	return { sourceAudioFallbackPaths, sourceAudioFallbackStartDelayMsByPath };
 }

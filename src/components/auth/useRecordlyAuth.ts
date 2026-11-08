@@ -1,9 +1,11 @@
 import type { User } from "@supabase/supabase-js";
 import { useEffect, useRef, useState } from "react";
+import { captureAuthFailure, recordAuthEvent } from "@/lib/auth/authDiagnostics";
 import {
 	completeAuthCallback,
 	recordlyAuth,
 	recordlyAuthConfigured,
+	retryPendingSignupConsent,
 } from "@/lib/auth/recordlyAuth";
 
 export function useRecordlyAuth() {
@@ -11,6 +13,7 @@ export function useRecordlyAuth() {
 	const [accessToken, setAccessToken] = useState<string>();
 	const [loading, setLoading] = useState(recordlyAuthConfigured);
 	const [callbackError, setCallbackError] = useState<string>();
+	const [callbackVersion, setCallbackVersion] = useState(0);
 	const callbackUrl = useRef<string | undefined>(undefined);
 
 	useEffect(() => {
@@ -20,26 +23,40 @@ export function useRecordlyAuth() {
 		}
 
 		let mounted = true;
+		let authEventReceived = false;
+		recordAuthEvent("session-restore", "started");
 		void recordlyAuth.auth
 			.getSession()
 			.then(({ data, error }) => {
 				if (error) throw error;
-				if (mounted) {
+				recordAuthEvent("session-restore", data.session ? "succeeded" : "empty");
+				if (mounted && !authEventReceived) {
 					setUser(data.session?.user ?? null);
 					setAccessToken(data.session?.access_token);
 					setLoading(false);
 				}
+				if (data.session) void retryPendingSignupConsent();
 			})
 			.catch((error) => {
-				if (mounted) {
-					setCallbackError(error instanceof Error ? error.message : String(error));
+				if (mounted && !authEventReceived) {
+					setCallbackError(captureAuthFailure("session-restore", error));
 					setLoading(false);
 				}
 			});
-		const { data: listener } = recordlyAuth.auth.onAuthStateChange((_event, session) => {
+		const { data: listener } = recordlyAuth.auth.onAuthStateChange((event, session) => {
+			// SDK session methods must run after the auth event callback releases its lock.
+			if (session) queueMicrotask(() => void retryPendingSignupConsent());
 			if (mounted) {
+				if (event === "SIGNED_IN" || event === "SIGNED_OUT")
+					recordAuthEvent(
+						"session-event",
+						event === "SIGNED_IN" ? "signed-in" : "signed-out",
+					);
+				authEventReceived = true;
 				setUser(session?.user ?? null);
 				setAccessToken(session?.access_token);
+				setLoading(false);
+				if (event === "SIGNED_IN") setCallbackError(undefined);
 			}
 		});
 
@@ -49,17 +66,22 @@ export function useRecordlyAuth() {
 			try {
 				setCallbackError(undefined);
 				await completeAuthCallback(url);
+				if (mounted) setCallbackVersion((version) => version + 1);
 			} catch (error) {
-				if (mounted)
-					setCallbackError(error instanceof Error ? error.message : String(error));
+				if (mounted) setCallbackError(captureAuthFailure("callback-delivery", error));
 			} finally {
 				await window.electronAPI.ackAuthCallbackUrl(url).catch(() => undefined);
 			}
 		};
 		const unsubscribe = window.electronAPI.onAuthCallbackUrl((url) => void handleCallback(url));
-		void window.electronAPI.getPendingAuthCallbackUrl().then((url) => {
-			if (url) void handleCallback(url);
-		});
+		void window.electronAPI
+			.getPendingAuthCallbackUrl()
+			.then((url) => {
+				if (url) void handleCallback(url);
+			})
+			.catch((error) => {
+				if (mounted) setCallbackError(captureAuthFailure("callback-read", error));
+			});
 
 		return () => {
 			mounted = false;
@@ -74,5 +96,6 @@ export function useRecordlyAuth() {
 		loading,
 		configured: recordlyAuthConfigured,
 		callbackError,
+		callbackVersion,
 	};
 }

@@ -1,0 +1,249 @@
+html,
+body,
+#root {
+	min-height: 100%;
+	height: auto;
+	overflow: auto;
+}
+.studio-app {
+	min-width: 320px;
+	min-height: 100vh;
+	background: var(--background);
+	color: var(--foreground);
+	font-size: 14px;
+}
+.studio-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 18px 28px;
+	border-bottom: 1px solid var(--border);
+}
+.studio-brand,
+.studio-actions {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.studio-brand h1 {
+	font-size: 18px;
+	font-weight: 650;
+	letter-spacing: -0.5px;
+}
+.studio-brand p,
+.studio-preview-heading p,
+.studio-help,
+.studio-save,
+.studio-preview-footer {
+	color: var(--muted);
+	font-size: 12px;
+}
+.studio-layout {
+	display: grid;
+	grid-template-columns: 320px minmax(0, 1fr);
+	gap: 24px;
+	padding: 24px;
+	max-width: 1920px;
+	margin: auto;
+	align-items: start;
+}
+.studio-controls,
+.studio-workspace {
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+	min-width: 0;
+}
+.studio-controls {
+	max-height: calc(100vh - 125px);
+	overflow-y: auto;
+	padding-right: 4px;
+}
+.studio-workspace {
+	position: sticky;
+	top: 20px;
+}
+.studio-card,
+.studio-preview-card {
+	border: 1px solid var(--border);
+	border-radius: 18px;
+	background: var(--surface);
+	padding: 20px;
+	min-width: 0;
+}
+.studio-card h2,
+.studio-preview-card h2 {
+	font-size: 14px;
+	font-weight: 650;
+}
+.studio-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-top: 15px;
+	min-width: 0;
+	font-size: 12px;
+}
+.studio-field > label {
+	color: var(--muted);
+}
+.studio-field input,
+.studio-field textarea,
+.studio-field select {
+	width: 100%;
+	border: 1px solid var(--field-border, var(--border));
+	border-radius: 10px;
+	padding: 9px 10px;
+	background: var(--field-background, var(--background));
+	color: var(--foreground);
+	font: inherit;
+	outline: none;
+}
+.studio-field textarea {
+	resize: vertical;
+}
+.studio-field :is(input, textarea, select):focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 2px;
+}
+.studio-check {
+	display: flex;
+	gap: 9px;
+	align-items: center;
+	margin-top: 14px;
+	font-size: 13px;
+}
+.studio-check input {
+	accent-color: var(--accent);
+}
+.studio-help {
+	margin-top: 14px;
+	line-height: 1.6;
+}
+.studio-preview-card {
+	padding: 0;
+	overflow: hidden;
+}
+.studio-preview-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 12px;
+	padding: 18px 20px;
+}
+.studio-output .studio-preview-heading {
+	padding: 0 0 8px;
+}
+.studio-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	padding: 0 20px 18px;
+}
+.studio-toolbar .studio-field {
+	margin: 0;
+	flex: 1;
+	min-width: 85px;
+}
+.studio-toolbar .studio-field:nth-child(3) {
+	flex: 2;
+	min-width: 180px;
+}
+.studio-stage {
+	display: flex;
+	justify-content: center;
+	background: color-mix(in srgb, var(--background) 85%, var(--foreground) 3%);
+	padding: 16px 12px;
+	overflow: hidden;
+}
+.studio-frame-space {
+	position: relative;
+	flex-shrink: 0;
+	background: var(--background);
+	box-shadow: 0 10px 35px #0003;
+}
+.studio-frame-space iframe {
+	display: block;
+	border: 0;
+	position: absolute;
+	inset: 0;
+}
+.studio-preview-footer {
+	padding: 12px 20px;
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	gap: 12px;
+}
+.studio-preview-footer a,
+.studio-full-size {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+}
+.studio-output pre {
+	max-height: 320px;
+	overflow: auto;
+	background: var(--background);
+	border: 1px solid var(--border);
+	padding: 16px;
+	border-radius: 12px;
+	font:
+		12px / 1.65 ui-monospace,
+		monospace;
+	user-select: text;
+}
+.studio-errors {
+	color: var(--warning);
+	padding: 14px 20px;
+	list-style: disc;
+	font-size: 12px;
+}
+.studio-status {
+	font-size: 12px;
+	color: var(--muted);
+	margin: 8px 0;
+}
+@media (max-width: 1050px) {
+	.studio-layout {
+		grid-template-columns: 270px minmax(0, 1fr);
+		gap: 16px;
+		padding: 16px;
+	}
+	.studio-header {
+		padding: 16px;
+	}
+}
+@media (max-width: 780px) {
+	.studio-layout {
+		display: flex;
+		flex-direction: column;
+	}
+	.studio-controls {
+		max-height: none;
+		overflow: visible;
+		width: 100%;
+		order: 2;
+	}
+	.studio-workspace {
+		position: static;
+		width: 100%;
+		order: 1;
+	}
+	.studio-save {
+		display: none;
+	}
+	.studio-header {
+		gap: 8px;
+	}
+	.studio-brand h1 {
+		font-size: 16px;
+	}
+	.studio-preview-heading,
+	.studio-toolbar {
+		padding-left: 12px;
+		padding-right: 12px;
+	}
+}

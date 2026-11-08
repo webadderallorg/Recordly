@@ -1,11 +1,6 @@
-import {
-	ArrowRight,
-	Question as HelpCircle,
-	Keyboard,
-	Scissors,
-	GearSix as Settings2,
-} from "@/components/ui/icons";
+import { GithubLogo } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
+import { UpgradeButton } from "@/components/billing/UpgradeButton";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -15,13 +10,21 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+	ArrowRight,
+	Question as HelpCircle,
+	Keyboard,
+	Scissors,
+	GearSix as Settings2,
+} from "@/components/ui/icons";
+import { toast } from "@/components/ui/toast";
 import { useScopedT } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { formatBinding, SHORTCUT_ACTIONS, SHORTCUT_LABELS } from "@/lib/shortcuts";
 import { formatShortcut } from "@/utils/platformUtils";
-import { toast } from "@/components/ui/toast";
 
-export const RECORDLY_ISSUES_URL = "https://github.com/webadderallorg/Recordly/issues";
+const RECORDLY_GITHUB_URL = "https://github.com/webadderallorg/Recordly";
+export const RECORDLY_ISSUES_URL = `${RECORDLY_GITHUB_URL}/issues`;
 const RECORDLY_DISCORD_URL = "https://discord.gg/sdv2FBVNgE";
 export const APP_HEADER_ACTION_BUTTON_CLASS =
 	"h-7 px-2 text-xs text-muted-foreground hover:bg-foreground/10 hover:text-foreground transition-all gap-1.5";
@@ -52,26 +55,65 @@ export async function openExternalLink(url: string, errorMessage: string) {
 	}
 }
 
-export function DiscordLinkButton() {
+export function DiscordLinkButton({ className }: { className?: string }) {
 	const t = useScopedT("editor");
+	const tEditing = useScopedT("editing");
 
 	return (
 		<Button
 			type="button"
 			variant="ghost"
 			size="sm"
+			isIconOnly
 			onClick={() =>
 				void openExternalLink(
 					RECORDLY_DISCORD_URL,
 					t("feedback.openFailed", "Failed to open link."),
 				)
 			}
-			className={APP_HEADER_ICON_BUTTON_CLASS}
-			title={t("common.app.discord", "Join Discord")}
-			aria-label={t("common.app.discord", "Join Discord")}
+			className={className ?? APP_HEADER_ICON_BUTTON_CLASS}
+			title={tEditing("joinDiscord", "Join Discord")}
+			aria-label={tEditing("joinDiscord", "Join Discord")}
 		>
-			<DiscordIcon className="h-3.5 w-3.5" />
+			<DiscordIcon className="size-4 shrink-0" />
 		</Button>
+	);
+}
+
+export function CommunityLinks() {
+	const t = useScopedT("editor");
+	const tBilling = useScopedT("billing");
+	const buttonClassName =
+		"size-7 min-w-7 rounded-lg p-0 text-muted hover:bg-foreground/5 hover:text-foreground";
+
+	return (
+		<div className="mt-2 flex shrink-0 items-center gap-1">
+			<UpgradeButton
+				label={tBilling("upgradeShort", "Upgrade")}
+				showDiscount={false}
+				className="h-8 min-w-0 flex-1 px-1.5 text-xs"
+			/>
+			<div className="flex items-center gap-1">
+				<DiscordLinkButton className={buttonClassName} />
+				<Button
+					type="button"
+					variant="ghost"
+					size="sm"
+					isIconOnly
+					className={buttonClassName}
+					title="GitHub"
+					aria-label="GitHub"
+					onClick={() =>
+						void openExternalLink(
+							RECORDLY_GITHUB_URL,
+							t("feedback.openFailed", "Failed to open link."),
+						)
+					}
+				>
+					<GithubLogo className="size-4" aria-hidden="true" />
+				</Button>
+			</div>
+		</div>
 	);
 }
 
