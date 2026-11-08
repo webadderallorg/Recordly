@@ -38,5 +38,10 @@
 	},
 	"addSpeed": "Snelheid toevoegen (S)",
 	"resizeLeft": "Links verkleinen",
-	"resizeRight": "Rechts verkleinen"
+	"resizeRight": "Rechts verkleinen",
+	"hints": {
+		"splitClip": "Druk op {{binding}} om de clip te splitsen",
+		"addAnnotation": "Druk op {{binding}} om een annotatie toe te voegen",
+		"addAudio": "Klik op het muziekpictogram om audio toe te voegen"
+	}
 }
