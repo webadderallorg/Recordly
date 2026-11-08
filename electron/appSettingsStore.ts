@@ -1,4 +1,13 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import {
+	closeSync,
+	fsyncSync,
+	openSync,
+	readFileSync,
+	renameSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { APP_SETTINGS_FILE } from "./ipc/constants";
 import { parseJsonWithByteOrderMark } from "./ipc/utils";
 
@@ -28,7 +37,30 @@ export function readAppSettingsStore(): Record<string, unknown> {
 }
 
 export function writeAppSettingsStore(store: Record<string, unknown>) {
-	writeFileSync(APP_SETTINGS_FILE, JSON.stringify(store, null, 2), "utf-8");
+	const serialized = JSON.stringify(store, null, 2);
+	const temporary = `${APP_SETTINGS_FILE}.${randomUUID()}.tmp`;
+	const fd = openSync(temporary, "wx", 0o600);
+	let closed = false;
+	try {
+		writeFileSync(fd, serialized, "utf-8");
+		fsyncSync(fd);
+		closeSync(fd);
+		closed = true;
+		renameSync(temporary, APP_SETTINGS_FILE);
+	} finally {
+		if (!closed) {
+			try {
+				closeSync(fd);
+			} catch {
+				/* Preserve the original write failure. */
+			}
+		}
+		try {
+			unlinkSync(temporary);
+		} catch {
+			/* The rename may have consumed the temporary file. */
+		}
+	}
 }
 
 export function hasAppSetting(store: Record<string, unknown>, key: string): boolean {

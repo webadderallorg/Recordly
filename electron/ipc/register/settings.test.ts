@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
 	handlers: new Map<string, (...args: unknown[]) => unknown>(),
 	syncHandlers: new Map<string, (...args: unknown[]) => unknown>(),
 	send: vi.fn(),
+	healthySend: vi.fn(),
 	focusStart: vi.fn(),
 	focusStop: vi.fn(),
 }));
@@ -15,6 +16,10 @@ vi.mock("electron", () => ({
 			{
 				isDestroyed: () => false,
 				webContents: { isDestroyed: () => false, send: mocks.send },
+			},
+			{
+				isDestroyed: () => false,
+				webContents: { isDestroyed: () => false, send: mocks.healthySend },
 			},
 		],
 	},
@@ -156,7 +161,8 @@ describe("inline recording countdown", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		mocks.handlers.clear();
-		mocks.send.mockClear();
+		mocks.send.mockReset();
+		mocks.healthySend.mockClear();
 		registerSettingsHandlers();
 	});
 	afterEach(() => {
@@ -176,6 +182,53 @@ describe("inline recording countdown", () => {
 			["countdown-tick", 0],
 		]);
 		expect(sender.listenerCount("destroyed")).toBe(0);
+	});
+
+	it.each([
+		3, 2, 0,
+	])("finishes when a renderer rejects tick %s and still updates other windows", async (failedTick) => {
+		const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			mocks.send.mockImplementation((_channel, remaining) => {
+				if (remaining === failedTick) throw new Error("Frame was disposed");
+			});
+			const sender = Object.assign(new EventEmitter(), { isDestroyed: () => false });
+			const pending = mocks.handlers.get("start-countdown")!({ sender }, 3);
+			await vi.advanceTimersByTimeAsync(3000);
+			await expect(pending).resolves.toEqual({ success: true });
+			expect(mocks.healthySend.mock.calls).toEqual(
+				[3, 2, 1, 0].map((tick) => ["countdown-tick", tick]),
+			);
+			expect(sender.listenerCount("destroyed")).toBe(0);
+			expect(sender.listenerCount("render-process-gone")).toBe(0);
+			expect(mocks.handlers.get("get-active-countdown")!()).toEqual({
+				success: true,
+				seconds: null,
+			});
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			warning.mockRestore();
+		}
+	});
+
+	it("resolves cancellation and stops recording focus even when the final broadcast throws", async () => {
+		const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			mocks.focusStop.mockClear();
+			const sender = Object.assign(new EventEmitter(), { isDestroyed: () => false });
+			const pending = mocks.handlers.get("start-countdown")!({ sender }, 3);
+			mocks.send.mockImplementation(() => {
+				throw new Error("Frame was disposed");
+			});
+			sender.emit("render-process-gone");
+			await expect(pending).resolves.toEqual({ success: false, cancelled: true });
+			expect(mocks.focusStop).toHaveBeenCalled();
+			expect(sender.listenerCount("destroyed")).toBe(0);
+			expect(sender.listenerCount("render-process-gone")).toBe(0);
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			warning.mockRestore();
+		}
 	});
 
 	it.each([

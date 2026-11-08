@@ -115,6 +115,47 @@ describe("exportCaptionSidecars", () => {
 		}
 	});
 
+	it.each([
+		"srt",
+		"vtt",
+	] as const)("still writes the other format when an existing %s sidecar blocks one write", async (existingFormat) => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-sidecar-partial-"));
+		try {
+			const existing = path.join(dir, `clip.${existingFormat}`);
+			const available = path.join(dir, `clip.${existingFormat === "srt" ? "vtt" : "srt"}`);
+			await fs.writeFile(existing, "original captions");
+			const result = await writeCaptionSidecarsBestEffort(path.join(dir, "clip.mp4"), {
+				format: "both",
+				cues: [{ startMs: 0, endMs: 1000, text: "New captions" }],
+			});
+			expect(result.error).toEqual(expect.any(String));
+			await expect(fs.readFile(existing, "utf8")).resolves.toBe("original captions");
+			await expect(fs.readFile(available, "utf8")).resolves.toContain("New captions");
+			expect(withCaptionSidecarMessage("Video exported successfully", result)).toBe(
+				"Video exported successfully Captions could not be saved alongside the video.",
+			);
+		} finally {
+			await fs.rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("attempts both failing formats and reports the first requested failure", async () => {
+		const write = vi.spyOn(fs, "writeFile").mockImplementation(async (file) => {
+			throw new Error(
+				String(file).endsWith(".srt") ? "SRT write failed" : "VTT write failed",
+			);
+		});
+		await expect(
+			writeCaptionSidecarsBestEffort("/tmp/export.mp4", {
+				format: "both",
+				cues: [{ startMs: 0, endMs: 1000, text: "Caption" }],
+			}),
+		).resolves.toEqual({ wroteAny: false, error: "SRT write failed" });
+		expect(write).toHaveBeenCalledTimes(2);
+		for (const call of write.mock.calls)
+			expect(call[2]).toEqual({ encoding: "utf8", flag: "wx" });
+	});
+
 	it("allows only one concurrent caption writer to create a new sidecar", async () => {
 		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-sidecar-race-"));
 		try {

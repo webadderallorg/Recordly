@@ -404,6 +404,7 @@
 	align-items: stretch;
 }
 .theme-appearance-label {
+	text-align: center;
 	font-size: 13px;
 	font-weight: 500;
 	color: var(--foreground);
@@ -416,24 +417,53 @@
 	border: 1px solid var(--separator);
 	border-radius: 12px;
 	isolation: isolate;
-	background: #f2f3f5;
+	background: linear-gradient(135deg, #dce5f2, #eef1f7);
 	transition:
 		border-color 150ms,
 		box-shadow 150ms;
 }
 .theme-preview-dark {
-	background: #46474b;
+	background: linear-gradient(135deg, #3c414d, #22252d);
 }
 .theme-preview-system {
-	background: linear-gradient(90deg, #46474b 50%, #f2f3f5 50%);
+	background: linear-gradient(90deg, #343944 50%, #e6ecf5 50%);
 }
+/* Magnify the upper-left corner; the rest of the editor extends beyond the card. */
 .theme-preview-window {
 	position: absolute;
-	inset: 13% 8% 12%;
+	top: 12%;
+	left: 8%;
+	width: 150%;
+	height: 160%;
 	overflow: hidden;
-	border-radius: 6px;
+	border: 1px solid rgb(0 0 0 / 12%);
+	border-radius: 14px;
+	box-shadow: 0 4px 18px rgb(0 0 0 / 18%);
 }
-.theme-preview-scene,
+.theme-preview-chrome {
+	position: absolute;
+	z-index: 1;
+	top: 8%;
+	left: 4%;
+	display: flex;
+	justify-content: space-between;
+	width: 16%;
+	pointer-events: none;
+}
+.theme-preview-chrome i {
+	width: 20%;
+	aspect-ratio: 1;
+	border-radius: 50%;
+	background: #ff5f57;
+	box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 12%);
+}
+.theme-preview-chrome i:nth-child(2) {
+	background: #febc2e;
+}
+.theme-preview-chrome i:nth-child(3) {
+	background: #28c840;
+}
+.theme-preview-image,
 .theme-preview-layer {
 	position: absolute;
 	inset: 0;
@@ -441,30 +471,17 @@
 	height: 100%;
 	pointer-events: none;
 }
-.theme-preview-scene {
-	--preview-background: #edf0f4;
-	--preview-surface: #fff;
-	--preview-border: #b4bdca;
-	--preview-muted: #8a98ac;
-	--preview-control: #ccd5e2;
-	--preview-stage: #d6e0ed;
-	--preview-track: #9aaecb;
+.theme-preview-image {
+	display: block;
+	object-fit: cover;
+	user-select: none;
 }
-.theme-preview-scene--dark {
-	--preview-background: #22252d;
-	--preview-surface: #30343f;
-	--preview-border: #626b7d;
-	--preview-muted: #96a4ba;
-	--preview-control: #505c70;
-	--preview-stage: #414e64;
-	--preview-track: #718bb1;
-}
-/* Both System halves share identical SVG geometry and meet at the card center. */
+/* The 8% inset and 150% width place this seam at the center of the card. */
 .theme-preview-layer-light {
-	clip-path: inset(0 0 0 50%);
+	clip-path: inset(0 0 0 28%);
 }
 .theme-preview-layer-dark {
-	clip-path: inset(0 50% 0 0);
+	clip-path: inset(0 72% 0 0);
 }
 .theme-appearance-check {
 	display: grid;
@@ -472,11 +489,11 @@
 	position: absolute;
 	right: 8px;
 	bottom: 8px;
-	width: 22px;
-	height: 22px;
+	width: 20px;
+	height: 20px;
 	border-radius: 50%;
-	background: var(--foreground);
-	color: var(--overlay);
+	background: var(--accent);
+	color: var(--accent-foreground, #fff);
 	box-shadow: 0 0 0 2px var(--overlay);
 	opacity: 0;
 }
@@ -484,21 +501,9 @@
 	width: 14px;
 	height: 14px;
 }
-/* Paint selection inside the card so the scroll panel cannot clip its outer edge. */
-.theme-preview::after {
-	content: "";
-	position: absolute;
-	inset: 0;
-	z-index: 1;
-	border: 2px solid transparent;
-	border-radius: 11px;
-	pointer-events: none;
-}
 .theme-appearance-option[data-selected="true"] .theme-preview {
-	border-color: var(--foreground);
-}
-.theme-appearance-option[data-selected="true"] .theme-preview::after {
-	border-color: var(--foreground);
+	border-color: var(--accent);
+	box-shadow: 0 0 0 1px var(--accent);
 }
 .theme-appearance-option[data-selected="true"] .theme-appearance-check {
 	opacity: 1;
@@ -506,9 +511,9 @@
 .theme-appearance-option[data-focus-visible="true"] .theme-preview,
 .theme-appearance-option:has([data-focus-visible="true"]) .theme-preview {
 	outline: 2px solid var(--accent);
-	outline-offset: -5px;
+	outline-offset: 3px;
 }
-.theme-appearance-option:hover .theme-preview {
+.theme-appearance-option:not([data-selected="true"]):hover .theme-preview {
 	border-color: var(--foreground);
 }
 /* A visible scroll thumb reveals content beyond the panel without moving navigation. */

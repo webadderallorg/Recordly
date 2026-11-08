@@ -45,6 +45,7 @@
 	"forCommercialUse": "以用於商業用途",
 	"upgrade": "升級至 Cloud",
 	"upgradeShort": "升級",
+	"upgradeButtonLabel": "升級",
 	"getCloud": "取得 Recordly Cloud",
 	"legalSupport": "法律資訊和支援",
 	"privacy": "隱私",
@@ -93,7 +94,7 @@
 	"personalUse": "我將用於個人用途。",
 	"upgradeHeading": "解鎖 Recordly 的全部潛能",
 	"featureLicense": "完整商業授權",
-	"featureLinkSharing": "透過連結分享任何影片",
+	"featureLinkSharing": "透過全天候可用的連結分享任何影片",
 	"featurePlayback": "以 FHD 1080p 播放雲端影片",
 	"featureCaptionExport": "匯出 SRT 和 VTT 字幕檔案",
 	"featurePrioritySupport": "優先支援服務"

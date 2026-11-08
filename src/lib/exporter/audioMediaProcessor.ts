@@ -239,7 +239,7 @@ export class AudioMediaProcessor extends AudioTimelineProcessor {
 		const source = await resolveMediaElementSource(url);
 		try {
 			const media = document.createElement("video");
-			media.crossOrigin = "anonymous";
+			// Only metadata is read; CORS access to decoded media is unnecessary.
 			media.preload = "metadata";
 			media.src = source.src;
 

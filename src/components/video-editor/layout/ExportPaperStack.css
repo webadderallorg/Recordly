@@ -72,7 +72,7 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.export-paper,
-	.export-progress .progress-bar__fill {
+	.export-progress .export-progress-fill {
 		animation: none;
 		transition: none;
 	}

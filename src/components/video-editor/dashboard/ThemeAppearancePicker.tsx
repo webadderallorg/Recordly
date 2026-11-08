@@ -1,105 +1,43 @@
 import { Label, Radio, RadioGroup } from "@heroui/react";
+import editorDarkPreview from "@/assets/appearance/editor-dark.png";
+import editorLightPreview from "@/assets/appearance/editor-light.png";
 import { useI18n } from "@/contexts/I18nContext";
 import { type ThemePreference, useTheme } from "@/contexts/ThemeContext";
 
-/** A static editor wireframe with explicit palettes, independent of loading UI and app theme. */
-function ThemeScene({ dark = false }: { dark?: boolean }) {
+/** The same editor capture anchors each window-corner preview. */
+function ThemeSnapshot({ dark = false }: { dark?: boolean }) {
 	return (
-		<svg
-			className={`theme-preview-scene${dark ? " theme-preview-scene--dark" : ""}`}
-			viewBox="0 0 288 160"
-			preserveAspectRatio="none"
-			aria-hidden="true"
-		>
-			<rect
-				x="1"
-				y="1"
-				width="286"
-				height="158"
-				rx="9"
-				fill="var(--preview-background)"
-				stroke="var(--preview-border)"
-				strokeWidth="2"
-			/>
-			<path d="M2 23H286" stroke="var(--preview-border)" />
-			<g fill="var(--preview-muted)">
-				<circle cx="12" cy="12" r="2.5" />
-				<circle cx="21" cy="12" r="2.5" />
-				<circle cx="30" cy="12" r="2.5" />
-				<rect x="43" y="10" width="48" height="4" rx="2" />
-				<rect x="244" y="8" width="30" height="8" rx="3" />
-				<rect x="9" y="34" width="9" height="9" rx="2" />
-				<rect x="9" y="51" width="9" height="9" rx="2" />
-				<rect x="9" y="68" width="9" height="9" rx="2" />
-			</g>
-			<rect
-				x="26"
-				y="30"
-				width="69"
-				height="95"
-				rx="5"
-				fill="var(--preview-surface)"
-				stroke="var(--preview-border)"
-			/>
-			<g fill="var(--preview-control)">
-				<rect x="34" y="39" width="37" height="5" rx="2" />
-				<rect x="34" y="53" width="15" height="14" rx="3" />
-				<rect x="53" y="53" width="15" height="14" rx="3" />
-				<rect x="72" y="53" width="15" height="14" rx="3" />
-				<rect x="34" y="78" width="53" height="4" rx="2" />
-				<rect x="34" y="94" width="53" height="4" rx="2" />
-				<rect x="34" y="110" width="53" height="4" rx="2" />
-			</g>
-			<g fill="var(--preview-muted)">
-				<circle cx="52" cy="80" r="3" />
-				<circle cx="73" cy="96" r="3" />
-				<circle cx="61" cy="112" r="3" />
-			</g>
-			<rect
-				x="103"
-				y="30"
-				width="176"
-				height="95"
-				rx="5"
-				fill="var(--preview-surface)"
-				stroke="var(--preview-border)"
-			/>
-			<rect x="114" y="39" width="154" height="70" rx="4" fill="var(--preview-stage)" />
-			<rect x="128" y="48" width="126" height="52" rx="3" fill="var(--preview-surface)" />
-			<rect x="137" y="56" width="30" height="36" rx="2" fill="var(--preview-control)" />
-			<rect x="175" y="56" width="70" height="23" rx="2" fill="var(--preview-control)" />
-			<path
-				d="M175 86H223M175 92H235"
-				stroke="var(--preview-muted)"
-				strokeWidth="3"
-				strokeLinecap="round"
-			/>
-			<rect x="170" y="115" width="42" height="4" rx="2" fill="var(--preview-muted)" />
-			<path d="M8 132H280" stroke="var(--preview-border)" />
-			<g fill="var(--preview-track)">
-				<rect x="26" y="138" width="72" height="6" rx="2" />
-				<rect x="102" y="138" width="104" height="6" rx="2" />
-				<rect x="210" y="138" width="63" height="6" rx="2" />
-			</g>
-			<rect x="26" y="148" width="119" height="4" rx="2" fill="var(--preview-muted)" />
-		</svg>
+		<img
+			className="theme-preview-image"
+			src={dark ? editorDarkPreview : editorLightPreview}
+			alt=""
+			width={384}
+			height={256}
+			draggable={false}
+			decoding="async"
+		/>
 	);
 }
 
 function ThemeWindow({ theme }: { theme: ThemePreference }) {
 	return (
 		<div className="theme-preview-window">
+			<span className="theme-preview-chrome">
+				<i />
+				<i />
+				<i />
+			</span>
 			{theme === "system" ? (
 				<>
 					<div className="theme-preview-layer theme-preview-layer-light">
-						<ThemeScene />
+						<ThemeSnapshot />
 					</div>
 					<div className="theme-preview-layer theme-preview-layer-dark">
-						<ThemeScene dark />
+						<ThemeSnapshot dark />
 					</div>
 				</>
 			) : (
-				<ThemeScene dark={theme === "dark"} />
+				<ThemeSnapshot dark={theme === "dark"} />
 			)}
 		</div>
 	);

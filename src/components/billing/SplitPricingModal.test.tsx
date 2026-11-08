@@ -72,12 +72,13 @@ it("labels unavailable pricing as a retry and refreshes instead of starting bill
 	expect(state.refresh).toHaveBeenCalledOnce();
 	expect(state.startBilling).not.toHaveBeenCalled();
 });
-it("offers retry when an active plan has no usable portal", () => {
+it("refreshes an active plan when subscription management is unavailable", () => {
 	billing({ plan: "pro", currentPeriodEnd: 123 });
 	const action = button();
-	expect(action.children).toBe("Retry loading pricing");
+	expect(action.children).toBe("Refresh plan");
 	action.onPress();
 	expect(state.refresh).toHaveBeenCalledOnce();
+	expect(state.startBilling).not.toHaveBeenCalled();
 });
 it("keeps the pending-payment refresh label", () => {
 	state.billing.awaitingCheckout = true;

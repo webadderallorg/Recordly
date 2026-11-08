@@ -139,6 +139,8 @@ try {
 		text: `Comment ${i + 1}`,
 		created_at: video.created_at,
 	}));
+	let activeToken = token;
+	const commentPages = [];
 	const patches = [];
 	await page.route("**/cloud/config", (route) =>
 		route.fulfill({
@@ -170,7 +172,7 @@ try {
 		}),
 	);
 	await page.route("**/api/moderation/**", async (route) => {
-		expect(route.request().headers().authorization).toBe(`Bearer ${token}`);
+		expect(route.request().headers().authorization).toBe(`Bearer ${activeToken}`);
 		const url = new URL(route.request().url());
 		if (/\/comments\/\d+$/.test(url.pathname)) {
 			const id = Number(url.pathname.split("/").pop());
@@ -179,6 +181,7 @@ try {
 		}
 		if (url.pathname.endsWith("/comments")) {
 			const current = Number(url.searchParams.get("page") || 1);
+			commentPages.push(current);
 			return route.fulfill({
 				json: {
 					comments: comments.slice((current - 1) * 50, current * 50),
@@ -227,6 +230,52 @@ try {
 	await page
 		.getByRole("dialog", { name: "Manage sharing" })
 		.screenshot({ path: "/tmp/recordly-sharing-controls-mobile.png" });
+
+	// A refreshed session keeps this dialog mounted but reloads its first comment page.
+	await page.getByRole("button", { name: "Done", exact: true }).click();
+	await page.setViewportSize({ width: 1280, height: 900 });
+	settings = { ...settings, sharingBlocked: false };
+	comments = Array.from({ length: 151 }, (_, i) => ({
+		id: i + 1,
+		timestamp: i,
+		author_name: `Guest ${i + 1}`,
+		text: `Comment ${i + 1}`,
+		created_at: video.created_at,
+	}));
+	await openControls();
+	await page.getByRole("button", { name: "Next", exact: true }).click();
+	await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
+	await page.getByRole("button", { name: "Next", exact: true }).click();
+	await expect(page.getByText("Page 3", { exact: true })).toBeVisible();
+	await expect(page.getByText("Comment 101", { exact: true })).toBeVisible();
+	const refreshedToken = `${token.split(".")[0]}.${Buffer.from(
+		JSON.stringify({
+			sub: "fixture-owner",
+			exp: Math.floor(Date.now() / 1000) + 3600,
+			refreshed: true,
+		}),
+	).toString("base64url")}.fixture`;
+	activeToken = refreshedToken;
+	await page.evaluate((accessToken) => {
+		const session = JSON.parse(localStorage.getItem("recordly-cloud-auth"));
+		session.access_token = accessToken;
+		localStorage.setItem("recordly-cloud-auth", JSON.stringify(session));
+		const channel = new BroadcastChannel("recordly-cloud-auth");
+		channel.postMessage({ event: "TOKEN_REFRESHED", session });
+		channel.close();
+	}, refreshedToken);
+	await expect(page.getByText("Comment 1", { exact: true })).toBeVisible();
+	await expect(page.getByText("Page 1", { exact: true })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Previous", exact: true })).toBeDisabled();
+	await page.getByRole("button", { name: "Next", exact: true }).click();
+	await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
+	await expect(page.getByText("Comment 51", { exact: true })).toBeVisible();
+	await page.getByRole("button", { name: "Delete comment by Guest 51", exact: true }).click();
+	await expect(page.getByText("Comment 51", { exact: true })).toHaveCount(0);
+	await expect(page.getByText("Comment 52", { exact: true })).toBeVisible();
+	await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
+	expect(commentPages.slice(-3)).toEqual([1, 2, 2]);
+	console.log("PASS token refresh resets comments to page1 and next/delete use page2");
 	expect(pageErrors).toEqual([]);
 	console.log("PASS owner bearer controls, comment pagination/delete, and operator block");
 } finally {

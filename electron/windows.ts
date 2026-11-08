@@ -1159,7 +1159,8 @@ export function showOnboardingWindow(options?: { preview?: boolean }): BrowserWi
 	};
 	if (onboardingWindow && !onboardingWindow.isDestroyed()) {
 		closeOtherOnboardingWindows(onboardingWindow);
-		if (typeof options?.preview === "boolean") loadOnboarding(onboardingWindow);
+		if (!app.isPackaged && typeof options?.preview === "boolean")
+			loadOnboarding(onboardingWindow);
 		if (onboardingWindow.isMinimized()) onboardingWindow.restore();
 		onboardingWindow.setBounds(getOnboardingWindowBounds());
 		bringOnboardingWindowForward(onboardingWindow);

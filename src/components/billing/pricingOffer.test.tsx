@@ -3,14 +3,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseCloudBillingCatalog, type CloudBillingPrice } from "@/types/cloudBilling";
 import { getDiscountPercent, getPlusPrice, hasVerifiedCheckoutPrice } from "./pricingOffer";
 
-const state = vi.hoisted(() => ({ prices: [] as CloudBillingPrice[] }));
+const state = vi.hoisted(() => ({
+	prices: [] as CloudBillingPrice[],
+	messages: {} as Record<string, string>,
+}));
 vi.mock("./BillingProvider", () => ({
 	useBilling: () => ({ catalog: { prices: state.prices }, openPricing: vi.fn() }),
 	useOptionalBilling: () => ({ catalog: { prices: state.prices } }),
 }));
 vi.mock("@/contexts/I18nContext", () => ({
-	useScopedT: () => (_key: string, fallback: string, vars?: Record<string, number>) =>
-		fallback.replace(/\{\{(\w+)\}\}/g, (_, key) => String(vars?.[key] ?? "")),
+	useScopedT: () => (key: string, fallback: string, vars?: Record<string, number>) =>
+		(state.messages[key] ?? fallback).replace(/\{\{(\w+)\}\}/g, (_, key) =>
+			String(vars?.[key] ?? ""),
+		),
 }));
 import { EarlyBirdTag } from "./EarlyBirdTag";
 import { UpgradeButton } from "./UpgradeButton";
@@ -37,17 +42,35 @@ const parse = (prices: unknown[], plusWeeklyUploadLimit?: unknown) =>
 
 beforeEach(() => {
 	state.prices = [];
+	state.messages = {};
 });
 
 describe("catalog-driven pricing and promotions", () => {
-	it("uses the displayed Cloud label in the accessible name, including its discount", () => {
-		expect(renderToStaticMarkup(<UpgradeButton label="Get Recordly Cloud" />)).toContain(
-			'aria-label="Get Cloud"',
+	it("preserves a custom label in the visible and accessible names, including its discount", () => {
+		const markup = renderToStaticMarkup(
+			<UpgradeButton label="Get Recordly Cloud" truncateLabel />,
 		);
+		expect(markup).toContain('aria-label="Get Recordly Cloud"');
+		expect(markup).toContain('title="Get Recordly Cloud"');
+		expect(markup).toContain(">Get Recordly Cloud</span>");
 		state.prices = [price];
 		expect(renderToStaticMarkup(<UpgradeButton label="Get Recordly Cloud" />)).toContain(
-			'aria-label="Get Cloud, 40% off"',
+			'aria-label="Get Recordly Cloud, 40% off"',
 		);
+	});
+
+	it("uses a dedicated translated button label with the same truncated title and accessible name", () => {
+		state.messages = {
+			upgradeButtonLabel: "Passer à l’offre supérieure",
+			upgradeShort: "Ancien texte",
+			getCloud: "Obtenir Recordly Cloud",
+		};
+		const markup = renderToStaticMarkup(<UpgradeButton truncateLabel />);
+		expect(markup).toContain('aria-label="Passer à l’offre supérieure"');
+		expect(markup).toContain('title="Passer à l’offre supérieure"');
+		expect(markup).toContain(">Passer à l’offre supérieure</span>");
+		expect(markup).not.toContain("Ancien texte");
+		expect(markup).not.toContain("Obtenir Recordly Cloud");
 	});
 
 	it("preserves verified promotional fields across IPC and renderer parsing", () => {

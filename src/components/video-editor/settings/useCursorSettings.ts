@@ -83,13 +83,20 @@ export function useCursorSettings(
 		void Promise.all(
 			BUILTIN_CURSOR_STYLE_OPTIONS.flatMap(({ value }) => [
 				getCursorStylePreview(value).then((asset) => [value, asset] as const),
-				getCursorStylePreview(value, "pointer").then(
-					(asset) => [`${value}:pointer`, asset] as const,
-				),
+				getCursorStylePreview(value, "pointer")
+					.then((asset) => [`${value}:pointer`, asset] as const)
+					.catch(() => null),
 			]),
 		)
 			.then((entries) => {
-				if (!cancelled) setBuiltInCursorPreviewUrls(Object.fromEntries(entries));
+				if (!cancelled)
+					setBuiltInCursorPreviewUrls(
+						Object.fromEntries(
+							entries.filter(
+								(entry): entry is NonNullable<typeof entry> => entry !== null,
+							),
+						),
+					);
 			})
 			.catch((error) => console.warn("Failed to load cursor previews", error));
 		return () => {

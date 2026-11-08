@@ -7,7 +7,7 @@ Access until: {{ .EndDate }}
 
 Manage subscription: {{ .ActionURL }}
 
-Your cloud recordings expire 7 days after Cloud ends. Save a copy or renew before then. Your local files stay yours.
+For recording retention after your subscription ends, review the Terms of service at https://videos.recordly.dev/terms. Keep local copies of recordings you want to retain.
 
 If you didn't request this cancellation, contact support.
 

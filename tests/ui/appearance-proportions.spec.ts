@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { installDesktopBridge } from "./bridge";
 for (const width of [1440, 760, 420, 320]) {
-	test(`Appearance wireframe cards remain accessible at ${width}px`, async ({ page }) => {
+	test(`Appearance editor previews remain accessible at ${width}px`, async ({ page }) => {
 		await page.setViewportSize({ width, height: 900 });
 		await installDesktopBridge(page);
 		await page.goto("/?windowType=editor");
@@ -30,6 +30,21 @@ for (const width of [1440, 760, 420, 320]) {
 			).toBeLessThan(1);
 			await expect(picker.getByRole("radio", { name: theme, exact: true })).toBeChecked();
 			await expect(picker.locator(".theme-preview")).toHaveCount(3);
+			await expect
+				.poll(() =>
+					picker
+						.locator(".theme-preview-image")
+						.evaluateAll(
+							(images) =>
+								images.length === 4 &&
+								images.every(
+									(image) =>
+										(image as HTMLImageElement).complete &&
+										(image as HTMLImageElement).naturalWidth === 384,
+								),
+						),
+				)
+				.toBe(true);
 			for (const [index, label] of ["Light", "Dark", "System"].entries())
 				await expect(picker.getByRole("radio").nth(index)).toHaveAccessibleName(label);
 			await expect(

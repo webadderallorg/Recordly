@@ -121,20 +121,29 @@ export async function writeCaptionSidecars(
 
 	const parsed = path.parse(videoPath);
 	const basePath = path.join(parsed.dir, parsed.name);
+	const writes: Promise<void>[] = [];
 
 	if (payload.format === "srt" || payload.format === "both") {
-		await fs.writeFile(`${basePath}.srt`, serializeSrt(payload.cues), {
-			encoding: "utf8",
-			flag: "wx",
-		});
+		writes.push(
+			fs.writeFile(`${basePath}.srt`, serializeSrt(payload.cues), {
+				encoding: "utf8",
+				flag: "wx",
+			}),
+		);
 	}
 
 	if (payload.format === "vtt" || payload.format === "both") {
-		await fs.writeFile(`${basePath}.vtt`, serializeVtt(payload.cues), {
-			encoding: "utf8",
-			flag: "wx",
-		});
+		writes.push(
+			fs.writeFile(`${basePath}.vtt`, serializeVtt(payload.cues), {
+				encoding: "utf8",
+				flag: "wx",
+			}),
+		);
 	}
+	// One failed format must not prevent saving another requested format.
+	const results = await Promise.allSettled(writes);
+	const failure = results.find((result) => result.status === "rejected");
+	if (failure) throw failure.reason;
 }
 
 export async function writeCaptionSidecarsBestEffort(

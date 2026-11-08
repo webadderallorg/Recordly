@@ -104,7 +104,9 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 			: paymentPending
 				? t("checkPayment", "Check payment status")
 				: retryPricing
-					? t("retryPricing", "Retry loading pricing")
+					? plus
+						? t("refreshPlan", "Refresh plan")
+						: t("retryPricing", "Retry loading pricing")
 					: plus || manageSubscription
 						? t("manage", "Manage subscription")
 						: t("start", "Get started");

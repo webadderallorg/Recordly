@@ -38,5 +38,10 @@
 	},
 	"addSpeed": "Adicionar velocidade (S)",
 	"resizeLeft": "Redimensionar para a esquerda",
-	"resizeRight": "Redimensionar para a direita"
+	"resizeRight": "Redimensionar para a direita",
+	"hints": {
+		"splitClip": "Pressione {{binding}} para dividir o clipe",
+		"addAnnotation": "Pressione {{binding}} para adicionar uma anotação",
+		"addAudio": "Clique no ícone de música para adicionar áudio"
+	}
 }

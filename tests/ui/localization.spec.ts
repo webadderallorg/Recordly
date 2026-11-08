@@ -24,6 +24,19 @@ const languageNames = [
 	"简体中文",
 	"繁體中文",
 ];
+const expectedUpgradeLabels: Record<(typeof SUPPORTED_LOCALES)[number], string> = {
+	en: "Upgrade",
+	es: "Mejorar plan",
+	fr: "Changer d’offre",
+	de: "Upgrade",
+	it: "Passa al piano superiore",
+	nl: "Upgraden",
+	ko: "업그레이드",
+	ja: "アップグレード",
+	"pt-BR": "Fazer upgrade",
+	"zh-CN": "升级",
+	"zh-TW": "升級",
+};
 
 for (const [index, locale] of SUPPORTED_LOCALES.entries()) {
 	test(`language selection updates editor, settings, library and pricing in ${locale}`, async ({
@@ -129,13 +142,14 @@ for (const [index, locale] of SUPPORTED_LOCALES.entries()) {
 		await expect(
 			library.getByRole("complementary", { name: ui.libraryNavigation }),
 		).toBeVisible();
-		const cloudLabel = billing.getCloud.replace("Recordly", "").replace(/\s+/g, " ").trim();
-		const escapedCloudLabel = cloudLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		const upgrade = library.getByRole("button", {
-			name: new RegExp(`^${escapedCloudLabel}(?:, .+)?$`),
+		const upgradeLabel = expectedUpgradeLabels[locale];
+		expect(billing.upgradeButtonLabel).toBe(upgradeLabel);
+		const escapedUpgradeLabel = upgradeLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		const upgrade = library.getByRole("banner").getByRole("button", {
+			name: new RegExp(`^${escapedUpgradeLabel}(?:, .+)?$`),
 		});
 		await expect(upgrade).toBeVisible();
-		await expect(upgrade.getByText(cloudLabel, { exact: true })).toBeVisible();
+		await expect(upgrade.getByText(upgradeLabel, { exact: true })).toBeVisible();
 		await upgrade.click();
 		const pricing = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
 		await expect(pricing).toBeVisible();

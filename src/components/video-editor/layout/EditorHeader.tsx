@@ -188,7 +188,7 @@ export function EditorHeader(props: Props) {
 
 			<div className="editor-header-end flex min-w-0 items-center justify-self-end gap-3">
 				<UpgradeButton
-					label={uiText("billing.getCloud", "Get Recordly Cloud")}
+					label={uiText("billing.upgradeButtonLabel", "Upgrade")}
 					variant="secondary"
 					size="sm"
 					className="h-9 gap-1.5"

@@ -76,3 +76,22 @@ test("rejects unsafe or untrusted payment links", () => {
 		);
 	}
 });
+
+test("subscription notices defer recording retention to the Terms without inventing expiry guarantees", () => {
+	for (const id of [
+		"subscription-active",
+		"subscription-cancellation-scheduled",
+		"subscription-ended",
+	]) {
+		const item = catalog.find((candidate) => candidate.id === id);
+		assert.ok(item, id);
+		const message = renderBillingEmail(item, values);
+		for (const body of [message.html, message.text]) {
+			assert.ok(body.includes("https://videos.recordly.dev/terms"), id);
+			assert.doesNotMatch(
+				body,
+				/7 days|seven.day|lose all access|keep.*no.expiry.*after cancellation/i,
+			);
+		}
+	}
+});

@@ -28,8 +28,8 @@ export function RecordlyLegalHeader() {
 				<LegalLinks />
 			</nav>
 			<details className="legal-menu">
-				<summary aria-label="Legal and support">☰</summary>
-				<nav aria-label="Legal and support">
+				<summary aria-label="Open legal and support menu">☰</summary>
+				<nav aria-label="Legal and support menu">
 					<LegalLinks />
 				</nav>
 			</details>

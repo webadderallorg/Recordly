@@ -3,6 +3,7 @@ import type { ExportProgress, ExportResult } from "@/lib/exporter/types";
 import type { ExportBranchContext } from "./exportBranchContext";
 import { runGifExport } from "./runGifExport";
 import { runMp4Export } from "./runMp4Export";
+import { resolveExportProgressUpdate } from "../exportProgressState";
 
 const mocks = vi.hoisted(() => ({
 	modernExport: vi.fn(),
@@ -227,7 +228,14 @@ describe("MP4 recovery has one persistence boundary", () => {
 			phase: "extracting",
 		};
 		input.exportSession.setExportProgress.mockImplementation((update) => {
-			progress = typeof update === "function" ? update(progress) : update;
+			progress = resolveExportProgressUpdate(
+				progress,
+				typeof update === "function" ? update(progress) : update,
+			);
+		});
+		mocks.legacyExport.mockImplementationOnce(async () => {
+			expect(progress).toMatchObject({ percentage: 42, phase: "preparing" });
+			return { success: true, blob: new Blob(["mp4"]) };
 		});
 		await runMp4Export(value);
 		expect(progress).toMatchObject({ percentage: 42, phase: "preparing" });

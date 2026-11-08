@@ -1,13 +1,13 @@
 Your subscription to Recordly
 
-We're sorry to see you go. When your subscription ends, you lose all access to benefits of Cloud.
+Your {{ .PlanName }} subscription has ended. Review your account for current plan details.
 
 Previous plan: {{ .PlanName }}
 Ended on: {{ .EndDate }}
 
 View your account: {{ .ActionURL }}
 
-Your cloud recordings expire 7 days after the end date above. Save a copy or renew before then. Your local files stay yours.
+For recording retention after your subscription ends, review the Terms of service at https://videos.recordly.dev/terms. Keep local copies of recordings you want to retain.
 
 You can review available plans in Recordly at any time.
 

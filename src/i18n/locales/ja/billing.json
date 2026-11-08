@@ -45,6 +45,7 @@
 	"forCommercialUse": "して商用利用",
 	"upgrade": "Cloudにアップグレード",
 	"upgradeShort": "アップグレード",
+	"upgradeButtonLabel": "アップグレード",
 	"getCloud": "Recordly Cloud を入手",
 	"legalSupport": "規約とサポート",
 	"privacy": "プライバシー",
@@ -93,7 +94,7 @@
 	"personalUse": "個人用途で使用します。",
 	"upgradeHeading": "Recordlyの可能性を最大限に引き出す",
 	"featureLicense": "完全な商用利用ライセンス",
-	"featureLinkSharing": "あらゆる動画をリンクで共有",
+	"featureLinkSharing": "毎日24時間使えるリンクであらゆる動画を共有",
 	"featurePlayback": "クラウド動画をフルHD 1080pで再生",
 	"featureCaptionExport": "字幕をSRT・VTTファイルで書き出し",
 	"featurePrioritySupport": "優先サポートサービス"
