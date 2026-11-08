@@ -1,0 +1,86 @@
+import { expect, type Page, test } from "@playwright/test";
+import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+
+async function installAutoZoomBridge(page: Page) {
+	await installDesktopBridge(page, "filmstrip.mp4");
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.getCursorTelemetry = async () => ({
+			success: true,
+			samples: [
+				{ timeMs: 0, cx: 0.2, cy: 0.5, interactionType: "move" },
+				{ timeMs: 6000, cx: 0.8, cy: 0.5, interactionType: "move" },
+			],
+		});
+	});
+}
+
+test("auto zoom nudge repeats until a project edit, and stays dismissed after undo", async ({
+	page,
+}) => {
+	test.setTimeout(90000);
+	await installAutoZoomBridge(page);
+	await page.goto("/?windowType=editor");
+	const apply = page.getByRole("button", { name: "Apply auto zooms", exact: true });
+	await expect(apply).toBeVisible({ timeout: 20000 });
+	await expect(apply).toHaveCSS("animation-duration", "3s");
+	await expect(apply).toHaveCSS("animation-delay", "0s");
+	await expect(apply).toHaveCSS("animation-iteration-count", "infinite");
+	const transforms = await apply.evaluate((button) => {
+		const animation = button.getAnimations()[0];
+		animation.pause();
+		animation.currentTime = 90;
+		const shaking = getComputedStyle(button).transform;
+		animation.currentTime = 600;
+		const resting = getComputedStyle(button).transform;
+		animation.currentTime = 3090;
+		const repeated = getComputedStyle(button).transform;
+		animation.play();
+		return { shaking, resting, repeated };
+	});
+	expect(transforms.shaking).not.toBe(transforms.resting);
+	expect(transforms.repeated).toBe(transforms.shaking);
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	await expect(apply).toHaveCSS("animation-name", "none");
+	await page.emulateMedia({ reducedMotion: "no-preference" });
+	await expect(apply).toHaveCSS("animation-duration", "3s");
+
+	await page.locator('[data-timeline-row="row-zoom"]').click({ position: { x: 250, y: 20 } });
+	await page.locator('[data-variant="clip"]').click();
+	await expect(apply).toHaveCSS("animation-duration", "3s");
+	await page.getByRole("button", { name: /^Split Clip \(/ }).click();
+	await expect(page.locator('[data-variant="clip"]')).toHaveCount(2);
+	await expect(apply).toHaveCSS("animation-name", "none");
+	await page.keyboard.press("Meta+z");
+	await expect(page.locator('[data-variant="clip"]')).toHaveCount(1);
+	await expect(apply).toHaveCSS("animation-name", "none");
+	await expect(apply).toBeEnabled();
+});
+
+test("appearance edits also stop the auto zoom nudge", async ({ page }) => {
+	test.setTimeout(90000);
+	await installAutoZoomBridge(page);
+	await page.goto("/?windowType=editor");
+	const apply = page.getByRole("button", { name: "Apply auto zooms", exact: true });
+	await expect(apply).toHaveCSS("animation-duration", "3s", { timeout: 20000 });
+	const padding = page.getByRole("slider", { name: "Padding", exact: true });
+	await padding.focus();
+	await page.keyboard.press("ArrowRight");
+	await expect(apply).toHaveCSS("animation-name", "none");
+});
+
+test("auto zoom nudge keeps repeating without an edit", async ({ page }) => {
+	test.setTimeout(90000);
+	await page.clock.install();
+	await installAutoZoomBridge(page);
+	await page.goto("/?windowType=editor");
+	const apply = page.getByRole("button", { name: "Apply auto zooms", exact: true });
+	await expect(apply).toHaveCSS("animation-duration", "3s", { timeout: 20000 });
+	await page.clock.fastForward(60000);
+	await expect(apply).toHaveCSS("animation-duration", "3s");
+	await expect(apply).toHaveCSS("animation-iteration-count", "infinite");
+	await expect(apply).toBeEnabled();
+	await page.locator('[data-timeline-row="row-zoom"]').click({ position: { x: 250, y: 20 } });
+	await page.clock.fastForward(3000);
+	await expect(apply).toHaveCSS("animation-duration", "3s");
+	await expect(page.locator('[data-variant="zoom"]')).toHaveCount(0);
+});

@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { installDesktopBridge } from "./bridge";
 
 async function expectButtonsFit(container: Locator) {
@@ -61,7 +61,6 @@ test("advanced controls, webcam defaults and captions have consistent layouts", 
 	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
 	await expect(page.getByRole("switch", { name: "Mirror webcam" })).toHaveCount(0);
 	await expect(page.getByRole("switch", { name: "Webcam Reacts To Zoom" })).toHaveCount(0);
-	await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveValue("100");
 	await page.evaluate(() => {
 		window.electronAPI.openVideoFilePicker = async () => ({
 			success: true,
@@ -69,12 +68,20 @@ test("advanced controls, webcam defaults and captions have consistent layouts", 
 		});
 	});
 	await page.getByRole("button", { name: "Upload footage", exact: true }).click();
+	await expect(page.getByRole("row", { name: "Circle", exact: true })).toHaveAttribute(
+		"aria-selected",
+		"true",
+	);
+	await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveCount(0);
+	await page.getByRole("row", { name: "Squircle", exact: true }).click();
+	await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveValue("50");
 	const replace = page.getByRole("button", { name: "Replace footage", exact: true });
 	const remove = page.getByRole("button", { name: "Remove footage", exact: true });
 	await remove.scrollIntoViewIfNeeded();
 	const first = await replace.boundingBox();
 	const second = await remove.boundingBox();
-	expect(first!.y + first!.height + 4).toBeLessThanOrEqual(second!.y);
+	expect(first!.y).toBeCloseTo(second!.y, 0);
+	expect(first!.x + first!.width).toBeLessThanOrEqual(second!.x);
 	await expectButtonsFit(page.locator("aside"));
 	await page.screenshot({
 		path: "test-results/editor-webcam-footage.png",
@@ -84,25 +91,18 @@ test("advanced controls, webcam defaults and captions have consistent layouts", 
 	await expect(page.getByRole("button", { name: "Select Model", exact: true })).toHaveCount(0);
 	await expect(page.getByRole("button", { name: "Use custom", exact: true })).toHaveCount(0);
 	await expect(page.getByRole("switch", { name: "Hover to add on timeline" })).toHaveCount(0);
-	const language = await page
-		.locator("aside")
-		.getByText("Language", { exact: true })
-		.boundingBox();
-	const animation = await page
-		.locator("aside")
-		.getByText("Animation", { exact: true })
-		.boundingBox();
-	expect(animation!.y).toBeGreaterThan(language!.y);
+	await expect(page.getByRole("group", { name: "Caption style", exact: true })).toBeVisible();
+	await expect(page.getByRole("button", { name: /Animation/ })).toHaveCount(0);
 	await expectButtonsFit(page.locator("aside"));
 	await page.screenshot({
 		path: "test-results/editor-captions-basic.png",
 		animations: "disabled",
 	});
 	await page.locator("aside").getByText("Advanced", { exact: true }).click();
-	await expect(page.getByRole("button", { name: "Use custom", exact: true })).toBeVisible();
+	await expect(page.getByRole("slider", { name: "Rows", exact: true })).toBeVisible();
 });
 
-test("populated project and preset popovers fit long names and dismiss outside", async ({
+test("project dashboard fits long names and editor overlays dismiss with current controls", async ({
 	page,
 }) => {
 	test.setTimeout(60000);
@@ -124,35 +124,32 @@ test("populated project and preset popovers fit long names and dismiss outside",
 		});
 	});
 	await page.getByRole("button", { name: "Home", exact: true }).click();
-	const projects = page.getByRole("dialog", { name: "Projects", exact: true });
-	await expect(projects.getByRole("button", { name: /A very long project name/ })).toHaveCount(5);
+	const projects = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
+	await expect(
+		projects.getByRole("button", { name: /^A very long project name with many words \d$/ }),
+	).toHaveCount(5);
 	await expectButtonsFit(projects);
 	await page.screenshot({
 		path: "test-results/editor-projects-populated.png",
 		animations: "disabled",
 	});
-	await clickOutside(page);
+	// Home fills the window; clicking inside the dashboard must not dismiss it.
+	await projects.getByRole("heading", { name: "Your projects", exact: true }).click();
+	await expect(projects).toBeVisible();
+	await projects.getByRole("button", { name: "Resume Untitled Project", exact: true }).click();
 	await expect(projects).toHaveCount(0);
-	await page.getByRole("button", { name: "Open presets", exact: true }).click();
-	const presets = page.getByRole("dialog", { name: "Presets", exact: true });
-	await presets
-		.getByRole("textbox", { name: "Preset name" })
-		.fill("A very long saved preset name that must not push its delete button out");
-	await presets.getByRole("button", { name: "Save", exact: true }).click();
-	await expect(presets.getByRole("button", { name: /Delete preset/ })).toBeVisible();
-	await expectButtonsFit(presets);
-	await page.screenshot({
-		path: "test-results/editor-presets-populated.png",
-		animations: "disabled",
-	});
-	await clickOutside(page);
-	await expect(presets).toHaveCount(0);
-	await page.getByRole("button", { name: "Export", exact: true }).click();
+	// Preset creation is intentionally unavailable in the current editor header.
+	await expect(page.getByRole("button", { name: "Open presets", exact: true })).toHaveCount(0);
+	await page.getByRole("button", { name: "Publish", exact: true }).click();
+	await page.getByRole("row", { name: "Save video", exact: true }).click();
 	await expect(page.getByRole("grid", { name: "Format", exact: true })).toBeVisible();
 	await clickOutside(page);
 	await expect(page.getByRole("grid", { name: "Format", exact: true })).toHaveCount(0);
-	await page.getByRole("button", { name: "Crop Video", exact: true }).click();
-	await expect(page.getByRole("dialog", { name: "Crop Video" })).toBeVisible();
+	await page.getByRole("button", { name: "Crop", exact: true }).click();
+	const crop = page.locator("[data-inline-crop]");
+	await expect(crop).toBeVisible();
 	await page.mouse.click(20, 300);
-	await expect(page.getByRole("dialog", { name: "Crop Video" })).toHaveCount(0);
+	await expect(crop).toBeVisible();
+	await crop.getByRole("button", { name: "Cancel", exact: true }).click();
+	await expect(crop).toHaveCount(0);
 });

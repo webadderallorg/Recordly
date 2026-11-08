@@ -51,21 +51,45 @@ test("annotations can be dragged into the canvas background and survive undo", a
 		.toBeGreaterThan(overlay.x + 8);
 });
 
-test("cloud sharing is reachable from Export and the account control", async ({ page }) => {
+test("rejected cloud sessions can request reauthentication", async ({ page }) => {
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
-	await page.getByRole("button", { name: "Export", exact: true }).click();
-	await page.getByRole("button", { name: "Create share link", exact: true }).click();
-	await expect(page.getByRole("heading", { name: "Sign into Recordly" })).toBeVisible();
+	// The desktop session remains signed in; only the cloud service rejects it.
+	await page.evaluate(() => {
+		window.electronAPI.cloudBilling = async () => ({
+			success: false,
+			httpStatus: 401,
+			error: "Verified sign-in required",
+		});
+		window.electronAPI.cloudShareManage = async () => ({
+			success: false,
+			error: "Verified sign-in required",
+		});
+	});
+	await page.getByRole("button", { name: "Publish", exact: true }).click();
+	await page.getByRole("row", { name: "Create share link", exact: true }).click();
+	const publish = page.getByRole("dialog", { name: "Publish", exact: true });
+	await expect(publish.getByRole("button", { name: "Share", exact: true })).toBeDisabled();
+	await publish.getByRole("button", { name: "Check sign-in", exact: true }).click();
+	const dialog = page.getByRole("dialog", { name: "Sign in to Recordly", exact: true });
+	await expect(dialog).toBeVisible();
+	const email = dialog.getByRole("textbox", { name: /^Email\*?$/ });
+	await expect(email).toBeVisible();
+	await email.fill("test@email.com");
 	await expect(
-		page.getByText("Sign in to publish this video and manage its shared link."),
-	).toBeVisible();
+		dialog.getByRole("button", { name: "Email me a code", exact: true }),
+	).toBeEnabled();
+	await expect(dialog.locator("form")).toBeVisible();
 	await page.screenshot({ path: "test-results/cloud-sign-in.png", animations: "disabled" });
-	const dialog = page.getByRole("dialog");
-	await expect(dialog.locator(".modal__body")).toBeVisible();
 	expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
-	await page.getByRole("button", { name: "Close", exact: true }).click();
+	await dialog.getByRole("button", { name: "Close", exact: true }).click();
+	await expect(dialog).not.toBeVisible();
 	await page.getByRole("button", { name: "Recordly account", exact: true }).click();
-	await expect(page.getByRole("heading", { name: "Sign into Recordly" })).toBeVisible();
+	const account = page.getByRole("dialog", { name: "Account menu", exact: true });
+	await expect(account).toBeVisible();
+	await expect(
+		account.getByRole("button", { name: "Manage account", exact: true }),
+	).toBeVisible();
+	await expect(account.getByText("Test User", { exact: true })).toBeVisible();
 	expect(errors).toEqual([]);
 });

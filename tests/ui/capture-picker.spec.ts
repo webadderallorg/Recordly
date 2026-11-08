@@ -58,7 +58,9 @@ async function pick(page: Page) {
 	return value ? JSON.parse(value) : undefined;
 }
 
-test("hovering highlights the frontmost window and a click picks it", async ({ page }) => {
+test("clicking the highlighted frontmost window selects it immediately without options", async ({
+	page,
+}) => {
 	await openPicker(page);
 	await page.mouse.move(600, 300);
 	await expect(page.getByText("Notes — Launch checklist · 620 × 460")).toBeVisible();
@@ -76,7 +78,7 @@ test("hovering highlights the frontmost window and a click picks it", async ({ p
 test("a click on the desktop picks the whole screen", async ({ page }) => {
 	await openPicker(page);
 	await page.mouse.move(1380, 60);
-	await expect(page.getByText("Entire screen · 1440 × 1000")).toBeVisible();
+	await expect(page.getByText("Entire screen · 1,440 × 1,000")).toBeVisible();
 
 	await page.mouse.click(1380, 60);
 	expect(await pick(page)).toEqual({ kind: "screen", displayId: 1, record: false });
@@ -118,6 +120,7 @@ test("platforms without area capture keep drag selection on an existing screen",
 	page,
 }) => {
 	await openPicker(page, false);
+	await expect(page.getByRole("button", { name: "Area", exact: true })).toHaveCount(0);
 	await page.mouse.move(1300, 100);
 	await page.mouse.down();
 	await page.mouse.move(1380, 180, { steps: 8 });
@@ -160,7 +163,7 @@ for (const { selected, trigger } of [
 		if (selected) {
 			await expect(control).toContainText("Existing screen");
 		} else {
-			await expect(control).toHaveText("Pick screen");
+			await expect(control).toHaveText("Pick source");
 		}
 		await expect(page.locator("html")).not.toHaveAttribute("data-picker-calls");
 		await (trigger === "source"
@@ -303,7 +306,7 @@ test("HUD reports a failed pick and keeps cancellation silent", async ({ page })
 	).toHaveCount(0);
 });
 
-test("unselected source reads Pick screen once and Record stays disabled while picking", async ({
+test("unselected source reads Pick source once and Record stays disabled while picking", async ({
 	page,
 }) => {
 	await installDesktopBridge(page);
@@ -321,14 +324,14 @@ test("unselected source reads Pick screen once and Record stays disabled while p
 	await page.goto("/?windowType=hud-overlay");
 	const source = page.getByRole("button", { name: "Choose recording source" });
 	await expect(source).toBeEnabled();
-	await expect(source).toHaveText("Pick screen");
+	await expect(source).toHaveText("Pick source");
 	await expect(page.locator("html")).not.toHaveAttribute("data-picker-pending");
 	await source.click();
 	await expect(page.locator("html")).toHaveAttribute("data-picker-pending", "true");
 	await expect(page.getByRole("button", { name: "Record", exact: true })).toBeDisabled();
 	await page.evaluate(() => (window as unknown as { finishPicker: () => void }).finishPicker());
 	await expect(page.getByRole("button", { name: "Record", exact: true })).toBeEnabled();
-	await expect(source).toHaveText("Pick screen");
+	await expect(source).toHaveText("Pick source");
 });
 
 test("changing source cancels countdown and discards native warm-up before opening the picker", async ({
@@ -485,10 +488,124 @@ for (const destination of ["window", "screen"] as const) {
 			page.getByText(
 				destination === "window"
 					? "Notes — Launch checklist · 620 × 460"
-					: "Entire screen · 1440 × 1000",
+					: "Entire screen · 1,440 × 1,000",
 			),
 		).toBeVisible();
 		await page.mouse.click(point.x, point.y);
 		expect(await pick(page)).toMatchObject({ kind: destination, displayId: 1, record: false });
+	});
+}
+
+test("a queued selection can still be canceled with Escape", async ({ page }) => {
+	await openPicker(page);
+	await page.evaluate(() => {
+		window.electronAPI.completeCapturePick = async (value) => {
+			if (value) {
+				document.documentElement.dataset.queued = "true";
+				await new Promise<void>(() => {
+					/* Simulate a queued completion from another overlay. */
+				});
+			} else document.documentElement.dataset.pick = "null";
+		};
+	});
+	await page.mouse.click(1380, 200);
+	await expect(page.locator("html")).toHaveAttribute("data-queued", "true");
+	await page.keyboard.press("Escape");
+	await expect.poll(() => pick(page)).toBeNull();
+});
+
+test("a window expanding from another display keeps its frontmost hit-test rank", async ({
+	page,
+}) => {
+	await openPicker(page);
+	await page.addInitScript(() => {
+		window.electronAPI.getCapturePickerContext = async () => ({
+			displayBounds: { x: 0, y: 0, width: 1440, height: 1000 },
+			lastArea: null,
+			allowArea: true,
+			cursor: null,
+			windows: [
+				{
+					id: "window:101:0",
+					appName: "Notes",
+					title: "Launch checklist",
+					x: -500,
+					y: 100,
+					width: 400,
+					height: 500,
+				},
+				{
+					id: "window:102:0",
+					appName: "Safari",
+					title: "Release notes",
+					x: 0,
+					y: 100,
+					width: 700,
+					height: 500,
+				},
+			],
+		});
+		window.electronAPI.onCapturePickerWindowResized = (callback) => {
+			const listener = (event: Event) => callback((event as CustomEvent).detail);
+			window.addEventListener("test-window-resized", listener);
+			return () => window.removeEventListener("test-window-resized", listener);
+		};
+	});
+	await page.reload();
+	await expect(page.locator("html")).toHaveAttribute("data-picker-ready", "true");
+	await page.evaluate(() =>
+		window.dispatchEvent(
+			new CustomEvent("test-window-resized", {
+				detail: {
+					id: "window:101:0",
+					appName: "Notes",
+					title: "Launch checklist",
+					x: -500,
+					y: 100,
+					width: 900,
+					height: 500,
+				},
+			}),
+		),
+	);
+	await page.mouse.move(200, 300);
+	await expect(page.getByText("Notes — Launch checklist · 400 × 500")).toBeVisible();
+	await page.mouse.click(200, 300);
+	await expect
+		.poll(() => pick(page))
+		.toMatchObject({
+			kind: "window",
+			windowId: "window:101:0",
+		});
+});
+
+for (const theme of ["light", "dark"] as const) {
+	test(`window selection has no options or instruction panel in ${theme} mode`, async ({
+		page,
+	}) => {
+		await openPicker(page);
+		await page.evaluate((theme) => {
+			document.documentElement.dataset.theme = theme;
+			document.documentElement.classList.toggle("dark", theme === "dark");
+		}, theme);
+		await expect(
+			page.getByText(/Click a window|drag an area|Move or resize the area|Esc to cancel/i),
+		).toHaveCount(0);
+		await page.mouse.click(600, 300);
+		await expect
+			.poll(() => pick(page))
+			.toEqual({
+				kind: "window",
+				windowId: "window:101:0",
+				displayId: 1,
+				record: false,
+			});
+		await expect(page.getByRole("form", { name: "Window size" })).toHaveCount(0);
+		await expect(page.getByRole("button", { name: "Select window", exact: true })).toHaveCount(
+			0,
+		);
+		await expect(
+			page.getByRole("button", { name: "Adjust recording area", exact: true }),
+		).toHaveCount(0);
 	});
 }

@@ -1,14 +1,15 @@
-import { translate } from "@/i18n/runtime";
 import { createClient, type Provider, type User } from "@supabase/supabase-js";
-import { marketingEmailMetadata, type SignupConsent, signupConsentMetadata } from "./signupConsent";
+import { translate } from "@/i18n/runtime";
 import { traceAuthOperation } from "./authDiagnostics";
+import { oauthFlowIdRedirectsEnabled } from "./oauthFlowRedirects";
 import {
 	createPendingSignupConsentStore,
 	createSignupConsentRetryStore,
 } from "./pendingSignupConsent";
+import { marketingEmailMetadata, type SignupConsent, signupConsentMetadata } from "./signupConsent";
 import {
-	saveSignupConsentForAccount,
 	SignupConsentScopeChangedError,
+	saveSignupConsentForAccount,
 	validateSignupConsentAuthConfig,
 } from "./signupConsentTransport";
 
@@ -118,8 +119,14 @@ function createAuthStorage() {
 		return nativeReady;
 	};
 	return {
+		async requireSecureNative(): Promise<void> {
+			if (oauthFlowIdRedirectsEnabled && !(await nativeStorage()))
+				throw new Error(translate("support.authInsecure"));
+		},
 		async getItem(key: string): Promise<string | null> {
 			const native = await nativeStorage();
+			if (oauthFlowIdRedirectsEnabled && !native)
+				throw new Error(translate("support.authInsecure"));
 			if (native) return native.authStorageGetItem(key);
 			return memoryOnly
 				? (memory.get(key) ?? null)
@@ -127,6 +134,8 @@ function createAuthStorage() {
 		},
 		async setItem(key: string, value: string): Promise<void> {
 			const native = await nativeStorage();
+			if (oauthFlowIdRedirectsEnabled && !native)
+				throw new Error(translate("support.authInsecure"));
 			if (native) await native.authStorageSetItem(key, value);
 			else {
 				const local = memoryOnly ? undefined : browserStorage();
@@ -136,6 +145,8 @@ function createAuthStorage() {
 		},
 		async removeItem(key: string): Promise<void> {
 			const native = await nativeStorage();
+			if (oauthFlowIdRedirectsEnabled && !native)
+				throw new Error(translate("support.authInsecure"));
 			if (native) await native.authStorageRemoveItem(key);
 			else {
 				if (!memoryOnly) browserStorage()?.removeItem(key);
@@ -178,6 +189,9 @@ export const recordlyAuth = recordlyAuthConfigured
 			auth: {
 				storage: authStorage,
 				flowType: "pkce",
+				...(oauthFlowIdRedirectsEnabled
+					? { experimental: { appendPkceFlowIdToRedirects: true } }
+					: {}),
 				persistSession: true,
 				// Dev previews must not poll the account in the background.
 				autoRefreshToken: !import.meta.env.DEV,
@@ -286,6 +300,7 @@ export async function sendSignInCode(
 ): Promise<void> {
 	const metadata = signupConsentMetadata(consent);
 	const client = requireAuth();
+	await authStorage.requireSecureNative();
 	const { error } = await client.auth.signInWithOtp({
 		email,
 		// Supabase applies this metadata only when creating a user. Signing in
@@ -349,6 +364,7 @@ export async function signInWithSocial(
 ): Promise<void> {
 	const metadata = signupConsentMetadata(consent);
 	const client = requireAuth();
+	await authStorage.requireSecureNative();
 	const { data, error } = await client.auth.signInWithOAuth({
 		provider: provider as Provider,
 		options: {
@@ -374,6 +390,7 @@ export async function signInWithSocial(
 
 export async function signInWithSaml(email: string): Promise<void> {
 	const client = requireAuth();
+	await authStorage.requireSecureNative();
 	const domain = email.trim().split("@")[1];
 	if (!domain) throw new Error(translate("support.workEmailInvalid"));
 	const { data, error } = await client.auth.signInWithSSO({
@@ -387,6 +404,8 @@ export async function signInWithSaml(email: string): Promise<void> {
 async function exchangeAuthCallback(url: string): Promise<void> {
 	const params = new URL(url).searchParams;
 	const providerError = params.get("error_description") || params.get("error");
+	if (params.get("error") === "flow_unavailable")
+		throw new Error(translate("support.authNewLink"));
 	if (providerError) throw new Error(providerError);
 	const code = params.get("code");
 	if (!code) {
@@ -394,6 +413,13 @@ async function exchangeAuthCallback(url: string): Promise<void> {
 	}
 	const client = requireAuth();
 	const flowId = params.get("sb_flow_id");
+	if (
+		oauthFlowIdRedirectsEnabled &&
+		(!flowId ||
+			!/^[A-Za-z0-9_-]{8,64}$/.test(flowId) ||
+			params.getAll("sb_flow_id").length !== 1)
+	)
+		throw new Error(translate("support.authNewLink"));
 	let pendingChallenge: string | undefined;
 	let pendingConsent: ReturnType<typeof signupConsentMetadata> | undefined;
 	// Read the verifier before Supabase consumes it during the exchange.
@@ -404,6 +430,7 @@ async function exchangeAuthCallback(url: string): Promise<void> {
 				: `${authStorageKey}-code-verifier`,
 		),
 	);
+	if (oauthFlowIdRedirectsEnabled && !verifier) throw new Error(translate("support.authNewLink"));
 	if (verifier) {
 		// Supabase serializes storage values as JSON, including verifier strings.
 		const decodedVerifier: unknown = JSON.parse(verifier);

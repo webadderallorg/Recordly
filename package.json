@@ -90,6 +90,7 @@
 		"emoji-picker-react": "^4.16.1",
 		"fast-check": "^4.5.2",
 		"gif.js": "^0.2.0",
+		"json5": "2.2.3",
 		"lightningcss": "^1.32.0",
 		"mediabunny": "^1.25.1",
 		"motion": "^12.23.24",

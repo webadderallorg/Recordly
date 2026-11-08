@@ -13,6 +13,16 @@ import { machoContentHash } from "./macho-content-hash.mjs";
 import { peContentHash } from "./pe-content-hash.mjs";
 
 const upstreamRelease = "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1";
+// Exact assets from that same pinned release. The API route avoids release-page outages.
+const upstreamAssetIds = Object.freeze({
+	"ffmpeg-linux-arm64.gz": 316528458,
+	"ffmpeg-linux-x64.gz": 316528626,
+	"ffmpeg-win32-x64.gz": 316528798,
+	"ffprobe-win32-x64.gz": 316529830,
+	"linux-arm64.README": 316529906,
+	"linux-x64.README": 316529927,
+	"win32-x64.README": 316529965,
+});
 // Verified raw release digests. The upstream darwin-arm64 artifact enables nonfree.
 export const APPROVED_FFMPEG_BINARIES = Object.freeze({
 	"win32-x64": "04e1307997530f9cf2fe35cba2ca7e8875ca91da02f89d6c7243df819c94ad00",
@@ -151,9 +161,41 @@ export function verifyFfprobeDistribution(
 }
 
 async function download(url) {
-	const response = await fetch(url, { signal: AbortSignal.timeout(180000) });
-	if (!response.ok) throw new Error(`FFmpeg download failed (${response.status}): ${url}`);
-	return Buffer.from(await response.arrayBuffer());
+	const assetName = url.startsWith(`${upstreamRelease}/`)
+		? url.slice(upstreamRelease.length + 1)
+		: undefined;
+	const assetId = upstreamAssetIds[assetName];
+	if (!Number.isSafeInteger(assetId)) throw new Error("Unapproved FFmpeg asset URL.");
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		let response;
+		try {
+			response = await fetch(
+				attempt === 0
+					? url
+					: `https://api.github.com/repos/eugeneware/ffmpeg-static/releases/assets/${assetId}`,
+				{
+					signal: AbortSignal.timeout(180000),
+					credentials: "omit",
+					...(attempt === 0 ? {} : { headers: { Accept: "application/octet-stream" } }),
+				},
+			);
+			if (!response.ok) {
+				await response.body?.cancel().catch(() => {
+					// Preserve the HTTP failure if releasing its body also fails.
+				});
+				throw new Error(`FFmpeg download failed (${response.status}): ${url}`);
+			}
+			return Buffer.from(await response.arrayBuffer());
+		} catch (error) {
+			const retryable =
+				response && !response.ok
+					? response.status >= 500 && response.status <= 599
+					: error instanceof TypeError ||
+						error?.name === "TimeoutError" ||
+						error?.name === "AbortError";
+			if (attempt !== 0 || !retryable) throw error;
+		}
+	}
 }
 
 async function ensureWindowsFfprobe(root) {

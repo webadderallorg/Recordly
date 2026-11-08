@@ -1105,13 +1105,14 @@ app.on("window-all-closed", () => {
 
 app.on("activate", activateDesktopEntryPoint);
 
-app.on("second-instance", (_event, commandLine, _workingDirectory, additionalData) => {
+app.on("second-instance", async (_event, commandLine, _workingDirectory, additionalData) => {
 	if ((additionalData as { recordlyRecordingLock?: boolean })?.recordlyRecordingLock === true)
 		return;
 	const authCallback = authCallbacks.find(commandLine);
 	if (authCallback) {
-		authCallbacks.dispatch(authCallback);
-		focusOrCreateMainWindow();
+		const routed = await authCallbacks.route(authCallback);
+		if (isAppQuitting) return;
+		if (routed !== "forwarded") focusOrCreateMainWindow();
 	} else {
 		activateDesktopEntryPoint();
 	}
@@ -1129,7 +1130,14 @@ app.whenReady().then(async () => {
 		app.setAsDefaultProtocolClient(authCallbacks.protocol);
 	}
 	const startupAuthCallback = authCallbacks.find(process.argv);
-	if (startupAuthCallback) authCallbacks.dispatch(startupAuthCallback);
+	const routedStartupAuth = await authCallbacks.routeStartup(startupAuthCallback);
+	if (isAppQuitting) return;
+	if (routedStartupAuth === "forwarded") {
+		// A separate protocol launcher exits only after the exact existing owner
+		// accepted the callback into its private in-memory queue.
+		app.quit();
+		return;
+	}
 
 	if (process.platform === "win32" && !process.windowsStore) {
 		app.setAppUserModelId("dev.recordly.app");
@@ -1257,6 +1265,7 @@ app.whenReady().then(async () => {
 				restoreWindowSafely(mainWindow);
 			}
 		},
+		authCallbacks.flowStorageHooks,
 	);
 
 	if (IS_SMOKE_EXPORT || process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT) {

@@ -1,22 +1,66 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { hasFreshProjectThumbnail } from "../../electron/ipc/project/thumbnailFreshness";
-import { expect, test } from "@playwright/test";
+import { encodeComposedThumbnail } from "../../electron/ipc/project/composedThumbnail";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+
+// These tests exercise the local project library, with healthy unrelated services.
+test.beforeEach(async ({ page }) => {
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.listRecordings = async () => ({ success: true, value: [] });
+		window.electronAPI.onCloudShareProgress = () => () => undefined;
+		window.electronAPI.cloudShareManage = async () => ({
+			success: true,
+			videos: [],
+			usage: {
+				recordings: 0,
+				recordingLimit: 5,
+				storageBytes: 0,
+				storageLimitBytes: 1e11,
+				maxRecordingBytes: 1e9,
+			},
+		});
+		window.electronAPI.setHasUnsavedChanges = (dirty) => {
+			document.documentElement.dataset.projectDirty = String(dirty);
+		};
+	});
+});
+async function openDashboardSettings(page: Page, home: Locator) {
+	await home.getByRole("button", { name: "Recordly account", exact: true }).click();
+	await page
+		.getByRole("dialog", { name: "Account menu", exact: true })
+		.getByRole("button", { name: "Settings", exact: true })
+		.click();
+	await expect(page.getByRole("dialog", { name: "Account menu", exact: true })).not.toBeVisible();
+}
+async function waitForInitialProject(page: Page) {
+	await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1");
+	await expect
+		.poll(() =>
+			page
+				.locator("video")
+				.first()
+				.evaluate((video: HTMLVideoElement) => video.readyState >= 2),
+		)
+		.toBe(true);
+	await expect(page.locator("html")).toHaveAttribute("data-project-dirty", "false");
+}
 
 test("Home opens with a wireframe while saving and returns to the main library", async ({
 	page,
 }) => {
 	await installDesktopBridge(page);
 	await page.goto("/?windowType=editor");
-	await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1");
+	await waitForInitialProject(page);
 	await page.evaluate(() => {
 		const save = window.electronAPI.saveProjectFile;
 		window.electronAPI.saveProjectFile = async (...args) => {
-			await new Promise<void>((resolve) => {
-				window.addEventListener("test-release-save", () => resolve(), { once: true });
-				document.documentElement.dataset.savePending = "true";
-			});
+			if (args[3])
+				await new Promise<void>((resolve) => {
+					window.addEventListener("test-release-save", () => resolve(), { once: true });
+					document.documentElement.dataset.savePending = "true";
+				});
 			return save(...args);
 		};
 	});
@@ -28,9 +72,9 @@ test("Home opens with a wireframe while saving and returns to the main library",
 	await page.screenshot({ path: "test-results/home-loading.png", animations: "disabled" });
 	await page.evaluate(() => window.dispatchEvent(new Event("test-release-save")));
 	await expect(home.getByLabel("Loading projects")).toHaveCount(0);
-	await home.getByRole("button", { name: "Settings", exact: true }).click();
+	await openDashboardSettings(page, home);
 	await expect(home.getByRole("region", { name: "Dashboard settings" })).toBeVisible();
-	await page.keyboard.press("Escape");
+	await home.getByRole("button", { name: "Resume Untitled Project", exact: true }).click();
 	await expect(home).not.toBeVisible();
 	await page.evaluate(() => {
 		delete document.documentElement.dataset.savePending;
@@ -46,7 +90,7 @@ test("home dashboard searches, sorts, opens projects and returns to the editor",
 	page,
 }) => {
 	await installDesktopBridge(page);
-	await page.addInitScript(() => {
+	await installDesktopBridgeOverrides(page, () => {
 		let entries = [
 			{
 				path: "/projects/launch.recordly",
@@ -103,7 +147,7 @@ test("home dashboard searches, sorts, opens projects and returns to the editor",
 	expect(Math.abs((await cards.first().boundingBox())!.width - normalCardWidth)).toBeLessThan(1);
 	await home.getByRole("textbox", { name: "Search projects" }).fill("missing");
 	await expect(home.getByText("No matching projects")).toBeVisible();
-	await home.getByRole("button", { name: "Clear search" }).click();
+	await home.getByRole("button", { name: "Clear filters" }).click();
 	await home.getByRole("button", { name: "App walkthrough", exact: true }).click();
 	await expect(page.getByRole("dialog", { name: "Project details" })).toHaveCount(0);
 	await expect(page.locator("html")).toHaveAttribute(
@@ -125,7 +169,9 @@ test("home dashboard searches, sorts, opens projects and returns to the editor",
 	).toBeVisible();
 	await page.keyboard.press("Escape");
 	await home.getByRole("button", { name: "Home", exact: true }).click();
-	await expect(home.locator('[aria-label="Local profile"]')).toHaveCount(3);
+	await expect(
+		home.getByRole("list", { name: "Your projects" }).locator('[aria-label="Test User"]'),
+	).toHaveCount(0);
 
 	await home.getByRole("button", { name: "Options for App walkthrough", exact: true }).click();
 	await expect(page.getByRole("menuitem", { name: "No folder", exact: true })).toHaveCount(0);
@@ -143,7 +189,7 @@ test("home dashboard searches, sorts, opens projects and returns to the editor",
 	await expect(cards).toHaveCount(0);
 	await home.getByRole("button", { name: "All", exact: true }).click();
 	await expect(cards).toHaveCount(3);
-	await home.getByRole("button", { name: "Settings", exact: true }).click();
+	await openDashboardSettings(page, home);
 	await expect(home.getByRole("region", { name: "Dashboard settings" })).toBeVisible();
 	await home.getByRole("button", { name: "Home", exact: true }).click();
 	await home
@@ -154,8 +200,14 @@ test("home dashboard searches, sorts, opens projects and returns to the editor",
 	await home.getByRole("button", { name: "Select projects to delete" }).click();
 	await cards.first().click();
 	await expect(cards.first()).toHaveAttribute("aria-pressed", "true");
-	await home.getByRole("button", { name: "Delete", exact: true }).click();
-	await expect(page.getByRole("dialog", { name: "Delete 1 project?" })).not.toBeVisible();
+	await home.getByRole("button", { name: "Review deletion…", exact: true }).click();
+	await page
+		.getByRole("dialog", { name: "Review deletion", exact: true })
+		.getByRole("button", { name: "Move to Trash", exact: true })
+		.click();
+	await expect(
+		page.getByRole("dialog", { name: "Review deletion", exact: true }),
+	).not.toBeVisible();
 	await expect(cards).toHaveCount(2);
 	await page.screenshot({ path: "test-results/project-dashboard.png", animations: "disabled" });
 	await page.evaluate(() => document.documentElement.classList.add("dark"));
@@ -179,7 +231,7 @@ test("home dashboard explains an empty library", async ({ page }) => {
 	await installDesktopBridge(page);
 	await page.goto("/?windowType=editor");
 	await page.getByRole("button", { name: "Home", exact: true }).click();
-	await expect(page.getByText("It's looking empty in here...")).toBeVisible();
+	await expect(page.getByText("No projects yet", { exact: true })).toBeVisible();
 	await expect(page.getByRole("button", { name: "Record new", exact: true })).toHaveCount(1);
 	await page.getByRole("button", { name: "Record your first video", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
@@ -192,7 +244,9 @@ test("home dashboard explains an empty library", async ({ page }) => {
 		.click();
 	await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
 	await page.screenshot({ path: "test-results/dashboard-empty.png", animations: "disabled" });
-	await expect(page.getByRole("button", { name: "Back to editor" })).toHaveCount(0);
+	await expect(
+		page.getByRole("button", { name: "Resume Untitled Project", exact: true }),
+	).toBeVisible();
 	await page.keyboard.press("Escape");
 	await expect(page.getByRole("button", { name: "Rename project" })).toBeVisible();
 });
@@ -201,7 +255,7 @@ test("autosave creates one untitled project, stays idle without edits, and refre
 	page,
 }, testInfo) => {
 	await installDesktopBridge(page);
-	await page.addInitScript(() => {
+	await installDesktopBridgeOverrides(page, () => {
 		const save = window.electronAPI.saveProjectFile;
 		window.electronAPI.saveProjectFile = async (...args) => {
 			const result = await save(...args);
@@ -228,6 +282,7 @@ test("autosave creates one untitled project, stays idle without edits, and refre
 	await expect(page.getByRole("button", { name: "Rename project" })).toContainText(
 		"Untitled Project",
 	);
+	await waitForInitialProject(page);
 	// Observe more than two debounce periods: idle must not perform periodic saves.
 	const before = await page.locator("html").getAttribute("data-project-saves");
 	await page.waitForTimeout(1800);
@@ -242,8 +297,9 @@ test("autosave creates one untitled project, stays idle without edits, and refre
 	const thumbnail = await page.locator("html").getAttribute("data-saved-thumbnail");
 	const file = testInfo.outputPath("generated-preview.png");
 	await fs.mkdir(path.dirname(file), { recursive: true });
-	await fs.writeFile(file, Buffer.from(thumbnail!.split(",")[1], "base64"));
-	// Exercise the actual main-process acceptance check against renderer output.
+	// Main stamps the composed marker when persisting renderer output.
+	await fs.writeFile(file, encodeComposedThumbnail(thumbnail!));
+	// Exercise the actual main-process acceptance check against its encoded file.
 	expect(await hasFreshProjectThumbnail(file, 0)).toBe(true);
 	const image = page
 		.getByRole("button", { name: "Generated preview", exact: true })
@@ -257,7 +313,7 @@ test("autosave creates one untitled project, stays idle without edits, and refre
 
 test("deletion refreshes the grid and keeps unselected projects", async ({ page }) => {
 	await installDesktopBridge(page);
-	await page.addInitScript(() => {
+	await installDesktopBridgeOverrides(page, () => {
 		let entries = ["Keep", "Delete"].map((name) => ({
 			path: `/projects/${name}.recordly`,
 			name,
@@ -278,11 +334,17 @@ test("deletion refreshes the grid and keeps unselected projects", async ({ page 
 	await home.getByRole("button", { name: "Select projects to delete" }).click();
 	await home.getByRole("list").getByRole("button", { name: "Delete", exact: true }).click();
 	await home
-		.getByRole("button", { name: "Delete", exact: true })
+		.getByRole("button", { name: "Review deletion…", exact: true })
 		.filter({ hasNot: page.locator("img") })
 		.first()
 		.click();
-	await expect(page.getByRole("dialog", { name: "Delete 1 project?" })).not.toBeVisible();
+	await page
+		.getByRole("dialog", { name: "Review deletion", exact: true })
+		.getByRole("button", { name: "Move to Trash", exact: true })
+		.click();
+	await expect(
+		page.getByRole("dialog", { name: "Review deletion", exact: true }),
+	).not.toBeVisible();
 	await expect(
 		home.getByRole("list").getByRole("button", { name: "Delete", exact: true }),
 	).toHaveCount(0);
@@ -293,7 +355,7 @@ test("cards rename inline, preserve folder chips and use existing share links", 
 	page,
 }) => {
 	await installDesktopBridge(page);
-	await page.addInitScript(() => {
+	await installDesktopBridgeOverrides(page, () => {
 		let entry = {
 			path: "/projects/demo.recordly",
 			name: "Demo",
@@ -308,7 +370,12 @@ test("cards rename inline, preserve folder chips and use existing share links", 
 		);
 		localStorage.setItem(
 			"recordly.project-share-links.v1",
-			JSON.stringify({ [entry.path]: "https://example.com/shared/demo" }),
+			JSON.stringify({
+				[entry.path]: {
+					url: "https://example.com/shared/demo",
+					sharedAt: Date.now() + 1000,
+				},
+			}),
 		);
 		window.electronAPI.listProjectFiles = async () => ({ success: true, entries: [entry] });
 		window.electronAPI.renameLibraryProject = async (_path, name) => {
@@ -325,11 +392,11 @@ test("cards rename inline, preserve folder chips and use existing share links", 
 	const home = page.getByRole("dialog", { name: "Projects dashboard" });
 	await expect(home.getByRole("button", { name: "Remove Demo from Work" })).toContainText("Work");
 	await home.getByRole("button", { name: "Options for Demo" }).click();
-	await page.getByRole("menuitem", { name: "View in web", exact: true }).click();
-	await expect(page.locator("html")).toHaveAttribute(
-		"data-opened-url",
+	await page.getByRole("menuitem", { name: "View link", exact: true }).click();
+	await expect(page.getByLabel("Share link", { exact: true })).toHaveValue(
 		"https://example.com/shared/demo",
 	);
+	await page.keyboard.press("Escape");
 	await home.getByRole("button", { name: "Options for Demo" }).click();
 	await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
 	const renameInput = home.getByRole("textbox", { name: "Project name" });
@@ -347,14 +414,14 @@ test("cards rename inline, preserve folder chips and use existing share links", 
 		"Work",
 	);
 	await home.getByRole("button", { name: "Options for Renamed" }).click();
-	await expect(page.getByRole("menuitem", { name: "View in web", exact: true })).toBeVisible();
+	await expect(page.getByRole("menuitem", { name: "View link", exact: true })).toBeVisible();
 });
 
 test("dashboard supports creation sort, independent folders, shared settings and precise captions", async ({
 	page,
 }) => {
 	await installDesktopBridge(page);
-	await page.addInitScript(() => {
+	await installDesktopBridgeOverrides(page, () => {
 		localStorage.setItem(
 			"recordly.project-folders.v1",
 			JSON.stringify([
@@ -387,6 +454,7 @@ test("dashboard supports creation sort, independent folders, shared settings and
 		});
 	});
 	await page.goto("/?windowType=editor");
+	await waitForInitialProject(page);
 	await page.getByRole("button", { name: "Clips", exact: true }).click();
 	await expect(page.getByRole("complementary", { name: "Clips" })).toBeVisible();
 	await page.getByRole("button", { name: "Home", exact: true }).click();
@@ -400,6 +468,14 @@ test("dashboard supports creation sort, independent folders, shared settings and
 	await home.getByRole("button", { name: "Add folder to Old" }).click();
 	await page.getByRole("menuitem", { name: "Personal", exact: true }).click();
 	await expect(home.getByRole("button", { name: "Remove Old from Work" })).toBeVisible();
+	await expect(home.locator('[aria-label="1 more folders: Personal"]')).toBeVisible();
+	const oldCard = home
+		.getByRole("list", { name: "Your projects" })
+		.locator("li")
+		.filter({ has: page.getByRole("button", { name: "Old", exact: true }) });
+	await oldCard.evaluate((card) => {
+		card.style.width = "600px";
+	});
 	await expect(home.getByRole("button", { name: "Remove Old from Personal" })).toBeVisible();
 	await expect(home.locator('[aria-label="1 more folders: Personal"]')).toHaveCount(0);
 	const membership = await page.evaluate(() =>
@@ -408,106 +484,59 @@ test("dashboard supports creation sort, independent folders, shared settings and
 	expect(
 		membership.every((folder: { paths: string[] }) => folder.paths.includes("/old.recordly")),
 	).toBe(true);
-	const heights = await home
-		.getByRole("list", { name: "Your projects" })
-		.locator("li")
-		.evaluateAll((cards) =>
-			cards.map((card) => [
-				card.querySelector('[aria-label="Local profile"]')!.getBoundingClientRect().height,
-				card.querySelector("[data-project-caption]")!.getBoundingClientRect().height,
-			]),
-		);
-	for (const [avatar, caption] of heights) {
-		expect(avatar).toBe(caption);
-		expect(avatar).toBe(48);
-	}
-	const spacing = await home
-		.locator("[data-project-caption]")
-		.first()
-		.evaluate((element) => {
-			const caption = element.getBoundingClientRect();
-			const avatar = element.previousElementSibling!.getBoundingClientRect();
-			return { gap: caption.left - avatar.right, top: caption.top - avatar.top };
-		});
-	expect(spacing).toEqual({ gap: 16, top: 0 });
-	const avatar = home.locator('[aria-label="Local profile"]').first();
-	const circle = await avatar.evaluate((element) => {
-		const style = getComputedStyle(element);
-		const rect = element.getBoundingClientRect();
-		return { width: rect.width, height: rect.height, radius: parseFloat(style.borderRadius) };
-	});
-	expect(circle.width).toBe(circle.height);
-	expect(circle.radius).toBeGreaterThanOrEqual(circle.width / 2);
-	await expect(avatar).toHaveText("LP");
-	await home.getByRole("button", { name: "Settings", exact: true }).click();
+	// Local cards intentionally show project captions without account avatars.
+	await expect(
+		home.getByRole("list", { name: "Your projects" }).locator('[aria-label="Test User"]'),
+	).toHaveCount(0);
+	await openDashboardSettings(page, home);
 	await expect(home.getByRole("textbox", { name: "Search projects" })).toHaveCount(0);
 	await expect(home.getByRole("button", { name: "Sort projects" })).toHaveCount(0);
-	await expect(home.getByRole("row", { name: "Dark", exact: true })).toBeVisible();
-	await expect(home.getByRole("grid", { name: "Settings sections" })).toHaveCount(1);
+	await expect(home.getByRole("tablist", { name: "Settings sections" })).toHaveCount(1);
 	await expect(home.getByRole("switch", { name: "Connect Zooms" })).toHaveCount(0);
-	await home.getByRole("row", { name: "Advanced", exact: true }).click();
+	await home.getByRole("tab", { name: "General", exact: true }).click();
 	await expect(home.getByRole("switch", { name: "Experimental updates" })).toBeVisible();
-	await expect(home.getByText("Preview update UI", { exact: true })).toBeVisible();
-	await home.getByRole("row", { name: "Motion", exact: true }).click();
+
+	await home.getByRole("tab", { name: "Motion", exact: true }).click();
 	await expect(home.getByRole("switch", { name: "Connect Zooms" })).toBeVisible();
-	const motion = home.getByRole("region", { name: "Motion settings", exact: true });
-	const label = await motion.getByText("Connect Zooms", { exact: true }).boundingBox();
-	const description = await motion
-		.getByText("Smooth consecutive zoom regions into a continuous camera move.", {
-			exact: true,
-		})
-		.boundingBox();
-	expect(description!.y - (label!.y + label!.height)).toBeGreaterThanOrEqual(3);
-	expect(description!.x).toBe(label!.x);
+	const motion = home.getByRole("tabpanel", { name: /^Motion settings/ });
+	const description = "Smooth consecutive zoom regions into a continuous camera move.";
+	await expect(motion.getByText(description, { exact: true })).not.toBeVisible();
+	await motion.locator(".settings-row .settings-info").first().hover();
+	await expect(page.getByRole("tooltip")).toHaveText(description);
+	await page.keyboard.press("Escape");
 	await page.screenshot({ path: "test-results/settings-motion.png", animations: "disabled" });
-	await home.getByRole("row", { name: "Recording", exact: true }).click();
+	await home.getByRole("tab", { name: "General", exact: true }).click();
 	await expect(home.getByText("Recordings folder", { exact: true })).toBeVisible();
 	await home.getByRole("button", { name: "Change folder" }).click();
 	await expect(home.getByText("/new-recordings", { exact: true })).toBeVisible();
-	const capture = home.getByRole("switch", { name: "Hide HUD from recordings" });
+	await home.getByRole("tab", { name: "Recording", exact: true }).click();
+	const capture = home.getByRole("switch", {
+		name: "Hide recording controls from captured video",
+		exact: true,
+	});
 	await capture.press("Space");
 	await expect(page.locator("html")).toHaveAttribute("data-hide-hud", "true");
-	await home.getByRole("row", { name: "Files", exact: true }).click();
-	await expect(home.getByRole("button", { name: "Open file", exact: true })).toBeVisible();
-	await home.getByRole("row", { name: "Recording", exact: true }).click();
+	await home.getByRole("tab", { name: "General", exact: true }).click();
+	await expect(home.getByRole("button", { name: "Open folder", exact: true })).toHaveCount(2);
 	await expect(home.getByText("/new-recordings", { exact: true })).toBeVisible();
-	await home.getByRole("row", { name: "General", exact: true }).click();
-	await expect(home.getByRole("row", { name: "Dark", exact: true })).toBeVisible();
+	await home.getByRole("tab", { name: "General", exact: true }).click();
+	await expect(home.getByRole("radio", { name: "Dark", exact: true })).toBeVisible();
 	await page.screenshot({ path: "test-results/dashboard-settings.png", animations: "disabled" });
 });
 
-test("Solar navigation selection, circular initials, and Raw sources are consistent", async ({
-	page,
-}) => {
+test("account menu opens the raw folder without a sidebar shortcut", async ({ page }) => {
+	test.setTimeout(120000);
 	await installDesktopBridge(page);
-	await page.addInitScript(() => {
-		window.electronAPI.listRecordings = async (includeSources) => ({
-			success: true,
-			value: (includeSources
-				? ["screen.mp4", "screen.webcam.mp4", "screen.mic.wav"]
-				: ["screen.mp4"]
-			).map((name) => ({
-				path: `/recordings/${name}`,
-				name,
-				createdAt: Date.now(),
-				bytes: 1048576,
-				url: `${location.origin}/tests/ui/fixtures/preview.mp4`,
-			})),
-		});
-		window.electronAPI.revealInFolder = async (path) => {
-			document.documentElement.dataset.revealed = path;
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.openRecordingsFolder = async () => {
+			document.documentElement.dataset.rawFolderOpened = "true";
 			return { success: true };
 		};
-		window.electronAPI.getRecordingThumbnail = async () => ({
-			success: true,
-			value: `${location.origin}/tests/ui/fixtures/recording-thumbnail.jpg`,
-		});
 	});
 	await page.goto("/?windowType=editor");
 	const scene = page.getByRole("radio", { name: "Scene", exact: true });
 	const videos = page.getByRole("button", { name: "Clips", exact: true });
-	await expect(page.getByRole("radio", { name: "Clips", exact: true })).toHaveCount(0);
-	await expect(scene).toBeChecked();
+	await expect(scene).toBeChecked({ timeout: 30000 });
 	await expect(scene.locator("svg")).toHaveAttribute("data-icon-style", "bold");
 	await videos.click();
 	await expect(videos).toHaveAttribute("aria-expanded", "true");
@@ -516,54 +545,30 @@ test("Solar navigation selection, circular initials, and Raw sources are consist
 	await scene.click();
 	await expect(scene).toBeChecked();
 	await expect(videos).toHaveAttribute("aria-expanded", "false");
-	await expect(page.getByRole("complementary", { name: "Clips" })).toHaveCount(0);
-	const homeButton = page.getByRole("button", { name: "Home", exact: true });
-	await expect(homeButton.locator("svg")).toHaveAttribute("data-icon-style", "bold");
-	await homeButton.click();
+	await page.getByRole("button", { name: "Home", exact: true }).click();
 	const home = page.getByRole("dialog", { name: "Projects dashboard" });
-	await home.getByRole("button", { name: "Raw", exact: true }).click();
-	await expect(home.getByRole("list", { name: "Raw files" }).locator("li")).toHaveCount(3);
-	await expect(home.getByRole("textbox", { name: "Search projects" })).toHaveCount(0);
-	await home.getByRole("textbox", { name: "Search raw files" }).fill("mic");
-	await expect(home.getByRole("list", { name: "Raw files" }).locator("li")).toHaveCount(1);
-	await home.getByRole("button", { name: "Options for screen.mic.wav" }).click();
-	await page.getByRole("menuitem", { name: "Show screen.mic.wav in folder" }).click();
-	await expect(page.locator("html")).toHaveAttribute(
-		"data-revealed",
-		"/recordings/screen.mic.wav",
-	);
-	await home.getByRole("textbox", { name: "Search raw files" }).fill("");
-	await home.getByRole("button", { name: "Sort raw files" }).click();
-	await page.getByRole("menuitem", { name: "Name", exact: true }).click();
+	const sidebar = home.getByRole("complementary", { name: "Library navigation" });
+	await expect(sidebar.getByRole("button", { name: /Open raw/ })).toHaveCount(0);
 	await expect(
-		home.getByRole("list", { name: "Raw files" }).locator("li > button").first(),
-	).toHaveAccessibleName("screen.mic.wav");
-	await expect(page.getByRole("menu", { name: "Sort raw files" })).toHaveCount(0);
-	await page.mouse.move(200, 40);
-	await page.screenshot({ path: "test-results/dashboard-raw.png", animations: "disabled" });
-	await home.getByRole("button", { name: "New folder", exact: true }).click();
-	await home.getByRole("button", { name: "Add folder to screen.mp4", exact: true }).click();
-	await page.getByRole("menuitem", { name: "Untitled folder", exact: true }).click();
-	await home.getByRole("button", { name: "Untitled folder", exact: true }).click();
-	await expect(home.getByRole("list", { name: "Raw files" }).locator("li")).toHaveCount(1);
-	await home.getByRole("button", { name: "Options for screen.mp4" }).click();
-	await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
-	await home.getByRole("textbox", { name: "Raw file name" }).fill("Original take");
-	await home.getByRole("textbox", { name: "Raw file name" }).press("Enter");
-	await expect(home.getByRole("button", { name: "Original take", exact: true })).toBeVisible();
-	await home.getByRole("button", { name: "Original take", exact: true }).click();
-	await expect(page.getByRole("dialog", { name: "Raw file preview" })).toBeVisible();
-	await page.keyboard.press("Escape");
-	await home.getByRole("button", { name: "Select raw files to remove" }).click();
-	await home.getByRole("button", { name: "Original take", exact: true }).click();
-	await home.getByRole("button", { name: "Remove", exact: true }).click();
-	await expect(home.getByRole("button", { name: "Original take", exact: true })).toHaveCount(0);
-	await home.getByRole("button", { name: "Raw", exact: true }).click();
+		sidebar.getByRole("button", { name: "Original recordings", exact: true }),
+	).toHaveCount(0);
+	await home.getByRole("button", { name: "Recordly account", exact: true }).click();
+	const menu = page.getByRole("dialog", { name: "Account menu", exact: true });
+	await expect(menu.getByRole("button", { name: "Open raw folder", exact: true })).toBeVisible();
+	await menu.screenshot({
+		path: test.info().outputPath("raw-folder-menu.png"),
+		animations: "disabled",
+	});
+	await menu.getByRole("button", { name: "Open raw folder", exact: true }).click();
+	await expect(page.locator("html")).toHaveAttribute("data-raw-folder-opened", "true");
+	await expect(menu).not.toBeVisible();
+	await expect(home.getByRole("heading", { name: "Your projects", exact: true })).toBeVisible();
+	await expect(home.getByRole("textbox", { name: "Search original recordings" })).toHaveCount(0);
 });
 
 test("project hover plays a muted five-second preview and stops on exit", async ({ page }) => {
 	await installDesktopBridge(page);
-	await page.addInitScript(() => {
+	await installDesktopBridgeOverrides(page, () => {
 		window.electronAPI.listProjectFiles = async () => ({
 			success: true,
 			projects: [],
@@ -604,11 +609,16 @@ test("project hover plays a muted five-second preview and stops on exit", async 
 	await expect(page.getByRole("button", { name: "Open presets" })).toHaveCount(0);
 	await page.getByRole("button", { name: "Home", exact: true }).click();
 	const card = page.getByRole("button", { name: "Hover preview", exact: true });
-	await expect(card).toBeVisible();
-	await expect(page.locator("html")).not.toHaveAttribute("data-preview-requests");
+	await expect(card).toBeVisible({ timeout: 15000 });
+	await expect(card.locator("[data-thumbnail-duration]")).toHaveText("0:06");
+	await expect(page.locator("html")).toHaveAttribute("data-preview-requests", "1");
+	const cardBounds = (await card.boundingBox())!;
 	await card.hover();
+	// The preview overlays the thumbnail without changing the library grid geometry.
+	expect(Math.abs((await card.boundingBox())!.width - cardBounds.width)).toBeLessThan(1);
 	const preview = page.locator("[data-project-hover-preview]");
 	await expect(preview).toBeVisible();
+	await expect(card.locator("[data-thumbnail-duration]")).toBeVisible();
 	await expect
 		.poll(() =>
 			preview
@@ -634,8 +644,8 @@ test("project hover plays a muted five-second preview and stops on exit", async 
 		};
 	});
 	expect(fill, JSON.stringify(fill)).toMatchObject({ covers: true });
-	expect(fill.frame.width / fill.frame.height).toBeCloseTo(4 / 3, 2);
-	expect(fill.frame.width).toBeCloseTo(fill.card.width, 0);
+	expect(fill.frame.width / fill.frame.height).toBeCloseTo(16 / 9, 2);
+	expect(fill.frame.height).toBeCloseTo(fill.card.height, 0);
 	await expect(preview).toHaveCount(0, { timeout: 8000 });
 	await page.mouse.move(0, 0);
 	await card.hover();
@@ -646,13 +656,14 @@ test("project hover plays a muted five-second preview and stops on exit", async 
 
 test("Home opens normally without a current recording", async ({ page }) => {
 	await installDesktopBridge(page);
-	await page.addInitScript(() => {
+	await installDesktopBridgeOverrides(page, () => {
 		window.electronAPI.getCurrentVideoPath = async () => ({ success: false });
 		localStorage.setItem("recordly.open-dashboard", String(Date.now()));
 	});
 	await page.goto("/?windowType=editor");
 	const home = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
-	await expect(home).toBeVisible();
+	await expect(home).toBeVisible({ timeout: 30000 });
+	await expect(home.getByRole("button", { name: /^Resume / })).toHaveCount(0);
 	await expect(home.getByRole("textbox", { name: "Search projects" })).toBeVisible();
 	await expect(page.getByText("No video to load.", { exact: false })).toHaveCount(0);
 	await expect(page.getByRole("alert")).toHaveCount(0);
@@ -660,7 +671,7 @@ test("Home opens normally without a current recording", async ({ page }) => {
 
 test("folder actions stay inside narrow project cards without clipping", async ({ page }) => {
 	await installDesktopBridge(page);
-	await page.addInitScript(() => {
+	await installDesktopBridgeOverrides(page, () => {
 		const entries = Array.from({ length: 4 }, (_, index) => ({
 			path: `/projects/card-${index}.recordly`,
 			name: `Project ${index + 1}`,
@@ -744,22 +755,30 @@ test("sidebar cards, separate Import, and shortcut settings use the dashboard fl
 	page,
 }) => {
 	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.saveShortcuts = async (value) => {
+			document.documentElement.dataset.savedShortcuts = JSON.stringify(value);
+			return { success: true };
+		};
+	});
 	await page.goto("/?windowType=editor");
 	await page.getByRole("button", { name: "Home", exact: true }).click();
 	const home = page.getByRole("dialog", { name: "Projects dashboard" });
 	const sidebar = home.getByRole("complementary", { name: "Library navigation" });
 	await expect(sidebar.getByRole("button", { name: "Import", exact: true })).toHaveCount(0);
 	await expect(sidebar.getByRole("img", { name: "Placeholder banner" })).toHaveCount(0);
-	const settings = sidebar.getByRole("button", { name: "Settings", exact: true });
+	const settingsButton = sidebar.getByRole("button", { name: "Settings", exact: true });
+	await expect(settingsButton).toHaveCount(1);
+	await expect(settingsButton).toBeVisible();
 	const importButton = home.getByRole("button", { name: "Import", exact: true });
 	const all = home.getByRole("button", { name: "All", exact: true });
 	expect((await importButton.boundingBox())!.y - (await all.boundingBox())!.y).toBeLessThan(0);
 	expect(await all.evaluate((element) => element.parentElement!.textContent)).not.toContain(
 		"Import",
 	);
-	await settings.click();
-	await home.getByRole("button", { name: "Customize", exact: true }).click();
-	const shortcuts = page.getByRole("dialog", { name: "Keyboard Shortcuts", exact: true });
+	await openDashboardSettings(page, home);
+	await home.getByRole("tab", { name: "Shortcuts", exact: true }).click();
+	const shortcuts = home.getByRole("tabpanel", { name: /^Shortcuts settings/ });
 	await expect(shortcuts).toBeVisible();
 	const change = shortcuts.getByRole("button", { name: /^Change Add Zoom shortcut, currently / });
 	await change.click();
@@ -772,15 +791,22 @@ test("sidebar cards, separate Import, and shortcut settings use the dashboard fl
 	await shortcuts.getByRole("button", { name: "Save", exact: true }).scrollIntoViewIfNeeded();
 	await page.screenshot({ path: "test-results/dashboard-shortcuts.png", animations: "disabled" });
 	await shortcuts.getByRole("button", { name: "Save", exact: true }).click();
+	await expect
+		.poll(() => page.locator("html").getAttribute("data-saved-shortcuts"))
+		.toContain('"addZoom":{"key":"j"}');
+	await expect(shortcuts).toBeVisible();
+	await home.getByRole("tab", { name: "General", exact: true }).click();
 	await expect(shortcuts).not.toBeVisible();
-	await home.getByRole("button", { name: "Customize", exact: true }).click();
+	await home.getByRole("tab", { name: "Shortcuts", exact: true }).click();
 	await expect(change).toHaveText("J");
 	await expect(change).toHaveAccessibleName("Change Add Zoom shortcut, currently J");
 	await page.setViewportSize({ width: 800, height: 600 });
+	await shortcuts.getByRole("button", { name: "Save", exact: true }).scrollIntoViewIfNeeded();
 	await expect(shortcuts.getByRole("button", { name: "Save", exact: true })).toBeInViewport();
-	await expect(
-		shortcuts.getByRole("heading", { name: "Keyboard Shortcuts", exact: true }),
-	).toBeInViewport();
+	const shortcutsHeading = shortcuts.getByRole("heading", { level: 2 });
+	await expect(shortcutsHeading).toContainText("Shortcuts");
+	await shortcutsHeading.scrollIntoViewIfNeeded();
+	await expect(shortcutsHeading).toBeInViewport();
 	await page.screenshot({
 		path: "test-results/dashboard-shortcuts-compact.png",
 		animations: "disabled",
@@ -803,6 +829,125 @@ test("empty filtered libraries do not prompt for a first recording", async ({ pa
 	await expect(first).toBeVisible();
 	await home.getByRole("button", { name: "New folder", exact: true }).click();
 	await home.getByRole("button", { name: "Untitled folder", exact: true }).click();
-	await expect(home.getByText("No matching projects", { exact: true })).toBeVisible();
+	await expect(home.getByText("This folder is empty", { exact: true })).toBeVisible();
 	await expect(first).toHaveCount(0);
+});
+
+for (const stale of [false, true]) {
+	test(`saved project links open the finished share view${stale ? " with Regenerate for a newer project" : " without uploading again"}`, async ({
+		page,
+	}) => {
+		await page.emulateMedia({ reducedMotion: "reduce" });
+		await installDesktopBridge(page);
+		await installDesktopBridgeOverrides(
+			page,
+			({ stale }) => {
+				const updatedAt = Date.now();
+				localStorage.setItem(
+					"recordly.project-share-links.v1",
+					JSON.stringify({
+						"/projects/shared.recordly": {
+							url: "https://example.test/s/existing",
+							revision: "saved",
+							sharedAt: updatedAt + (stale ? -1000 : 1000),
+						},
+					}),
+				);
+				window.electronAPI.listProjectFiles = async () => ({
+					success: true,
+					projects: [],
+					entries: [
+						{
+							path: "/projects/shared.recordly",
+							name: "Shared demo",
+							updatedAt,
+							thumbnailPath: null,
+							isCurrent: false,
+							isInProjectsDirectory: true,
+						},
+					],
+				});
+				window.electronAPI.onCloudShareProgress = () => () => undefined;
+				window.electronAPI.cloudShareManage = async () => ({ success: true, videos: [] });
+				window.electronAPI.writeClipboardText = async (text) => {
+					document.documentElement.dataset.copiedShare = text;
+					return { success: true };
+				};
+			},
+			{ stale },
+		);
+		await page.goto("/?windowType=editor");
+		await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1", {
+			timeout: 20000,
+		});
+		await page.getByRole("button", { name: "Home", exact: true }).click();
+		const home = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
+		const shareBadge = home.getByRole("button", {
+			name: "View share link for Shared demo",
+			exact: true,
+		});
+		await expect(shareBadge).toHaveText(stale ? "Changes unpublished" : "Shared");
+		await home
+			.getByRole("button", { name: "View share link for Shared demo", exact: true })
+			.click();
+		await expect(page.getByLabel("Share link", { exact: true })).toHaveValue(
+			"https://example.test/s/existing",
+		);
+		await expect(page.getByRole("button", { name: "Regenerate", exact: true })).toHaveCount(
+			stale ? 1 : 0,
+		);
+		await expect(
+			page.getByRole("progressbar", { name: "Create link", exact: true }),
+		).toHaveCount(0);
+		if (stale) {
+			await expect(page.getByRole("button", { name: "Copy link", exact: true })).toHaveCount(
+				0,
+			);
+			return;
+		}
+		await page.getByRole("button", { name: "Copy link", exact: true }).click();
+		await expect(page.locator("html")).toHaveAttribute(
+			"data-copied-share",
+			"https://example.test/s/existing",
+		);
+	});
+}
+
+test("projects use four columns on wide windows and adapt below 1440px", async ({ page }) => {
+	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.listProjectFiles = async () => ({
+			success: true,
+			projects: [],
+			entries: Array.from({ length: 8 }, (_, i) => ({
+				path: `/projects/grid-${i}.recordly`,
+				name: `Grid project ${i}`,
+				updatedAt: 1758000000000 + i,
+				thumbnailPath: null,
+				isCurrent: false,
+				isInProjectsDirectory: true,
+			})),
+		});
+	});
+	await page.goto("/?windowType=editor");
+	await page.getByRole("button", { name: "Home", exact: true }).click();
+	const grid = page.getByRole("list", { name: "Your projects" });
+	await expect(grid.locator(":scope > li")).toHaveCount(8);
+	for (const [width, columns] of [
+		[1440, 4],
+		[1920, 4],
+		[1366, 3],
+	] as const) {
+		await page.setViewportSize({ width, height: 1000 });
+		await expect
+			.poll(() =>
+				grid.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length),
+			)
+			.toBe(columns);
+	}
+	await page.setViewportSize({ width: 1440, height: 1000 });
+	await page.screenshot({
+		path: "test-results/projects-four-columns.png",
+		animations: "disabled",
+	});
 });

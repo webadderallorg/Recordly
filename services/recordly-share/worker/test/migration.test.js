@@ -109,6 +109,73 @@ describe("schema migration paths", () => {
 		__resetSchemaCacheForTests();
 	});
 
+	it("range-seeks report IP cleanup on fresh and upgraded databases without changing reports", async () => {
+		expect((await upload()).status).toBe(200);
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT INTO abuse_reports (share_code,reason,details,client_ip,created_at) VALUES ('oldreport','spam','Keep this report','198.51.100.250',datetime('now','-2 hours'))",
+			),
+			env.DB.prepare(
+				"INSERT INTO abuse_reports (share_code,reason,details,client_ip) VALUES ('newreport','privacy','Keep this report too','198.51.100.251')",
+			),
+		]);
+		const reports = async () =>
+			(await env.DB.prepare("SELECT * FROM abuse_reports ORDER BY id").all()).results;
+		const before = await reports();
+		const query =
+			"UPDATE abuse_reports SET client_ip = '' WHERE client_ip <> '' AND created_at <= datetime('now', '-1 hour')";
+		// Distinct SQL comments avoid reusing a prepared plan after index DDL.
+		const plan = async (phase) =>
+			(await env.DB.prepare(`EXPLAIN QUERY PLAN ${query} /* ${phase} */`).all()).results
+				.map((row) => row.detail)
+				.join("\n");
+		expect(await plan("fresh")).toContain(
+			"SEARCH abuse_reports USING INDEX idx_abuse_reports_ip_cleanup (created_at<?)",
+		);
+		await env.DB.prepare("DROP INDEX idx_abuse_reports_ip_cleanup").run();
+		await env.DB.prepare("UPDATE _meta SET value = '13' WHERE key = 'schema_version'").run();
+		expect(await plan("previous-schema")).toContain("SCAN abuse_reports");
+		__resetSchemaCacheForTests();
+		expect((await upload()).status).toBe(200);
+		expect(await plan("upgraded")).toContain(
+			"SEARCH abuse_reports USING INDEX idx_abuse_reports_ip_cleanup (created_at<?)",
+		);
+		expect(await reports()).toEqual(before);
+		__resetSchemaCacheForTests();
+		expect((await upload()).status).toBe(200);
+		expect(await reports()).toEqual(before);
+	});
+
+	it("upgrades completed-library pages without sorting or changing tied-date order", async () => {
+		const first = await (await upload()).json();
+		const second = await (await upload()).json();
+		await upload();
+		await env.DB.prepare(
+			"UPDATE videos SET upload_completed = 1, created_at = '2026-11-01 12:00:00' WHERE share_code IN (?, ?)",
+		)
+			.bind(first.shareCode, second.shareCode)
+			.run();
+		const pageQuery =
+			"SELECT id, share_code FROM videos WHERE upload_completed = 1 ORDER BY datetime(created_at) DESC, id DESC LIMIT 51";
+		// Reprepare after DDL: cached EXPLAIN statements can retain an old plan.
+		const plan = async (phase) =>
+			(await env.DB.prepare(`EXPLAIN QUERY PLAN ${pageQuery} /* ${phase} */`).all()).results
+				.map((row) => row.detail)
+				.join("\n");
+		expect(await plan("fresh")).not.toContain("TEMP B-TREE");
+		await env.DB.prepare("DROP INDEX idx_videos_completed_created").run();
+		await env.DB.prepare("UPDATE _meta SET value = '12' WHERE key = 'schema_version'").run();
+		expect(await plan("previous-schema")).toContain("TEMP B-TREE");
+		__resetSchemaCacheForTests();
+		const response = await SELF.fetch(`${BASE}/api/videos?page=1`, { headers: AUTH });
+		expect(response.status).toBe(200);
+		expect((await response.json()).videos.map((video) => video.share_code)).toEqual([
+			second.shareCode,
+			first.shareCode,
+		]);
+		expect(await plan("upgraded")).not.toContain("TEMP B-TREE");
+	});
+
 	it("adds account identity without changing existing guest comments", async () => {
 		const response = await upload();
 		const { shareCode } = await response.json();
@@ -199,7 +266,7 @@ describe("schema migration paths", () => {
 		expect(
 			(await env.DB.prepare("SELECT value FROM _meta WHERE key = 'schema_version'").first())
 				.value,
-		).toBe("12");
+		).toBe("14");
 	});
 
 	it("migrates a pre-versioning database (tables exist, no _meta)", async () => {
@@ -214,7 +281,7 @@ describe("schema migration paths", () => {
 		const meta = await env.DB.prepare(
 			`SELECT value FROM _meta WHERE key = 'schema_version'`,
 		).first();
-		expect(meta.value).toBe("12");
+		expect(meta.value).toBe("14");
 		expect(await videoColumns()).toContain("never_expires");
 		expect(
 			await env.DB.prepare(

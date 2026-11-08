@@ -20,10 +20,18 @@ const CONSENT_RETRY_KEY =
 const AUTH_KEY =
 	/^sb-[a-z0-9-]{1,100}-auth-token(?:-code-verifier|-user|-flows-code-verifier|-flow-[A-Za-z0-9_-]{8,64}-code-verifier|-signup-consent-[A-Za-z0-9_-]{43}|-signup-consent-retry:[A-Za-z0-9_-]{1,128}|-completed-callback)?$/;
 type AuthEntries = Record<string, string>;
+export type AuthFlowStorageHooks = {
+	prepareSet: (
+		event: IpcMainInvokeEvent,
+		key: string,
+		persistedKeys?: readonly string[],
+	) => Promise<(() => Promise<void>) | undefined>;
+	didRemove: (event: IpcMainInvokeEvent, key: string) => Promise<void>;
+};
 let pending = Promise.resolve();
 let completedCallback: { key: string; fingerprint: string } | undefined;
 
-function encryptionAvailable(): boolean {
+export function encryptionAvailable(): boolean {
 	return (
 		safeStorage.isEncryptionAvailable() &&
 		(process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text")
@@ -96,6 +104,34 @@ function validateEntries(value: unknown): AuthEntries {
 	return result;
 }
 
+function readStoredValue(entries: AuthEntries, key: string): string | null {
+	const prefix = /^(sb-[a-z0-9-]{1,100}-auth-token)-flows-code-verifier$/.exec(key)?.[1];
+	if (!prefix) return entries[key] ?? null;
+	const present = new Set<string>();
+	for (const candidate of Object.keys(entries)) {
+		const slot =
+			/^(sb-[a-z0-9-]{1,100}-auth-token)-flow-([A-Za-z0-9_-]{8,64})-code-verifier$/.exec(
+				candidate,
+			);
+		if (slot?.[1] === prefix) present.add(slot[2]);
+	}
+	let stored: unknown;
+	try {
+		stored = JSON.parse(entries[key] ?? "null");
+	} catch {
+		// The index is bookkeeping; exact persisted verifier slots are authoritative.
+	}
+	const ids = new Set<string>(
+		Array.isArray(stored)
+			? stored.filter((id) => typeof id === "string" && present.has(id))
+			: [],
+	);
+	for (const id of present) ids.add(id);
+	// SDK starts race their index read/modify/write. Repair reads without deleting
+	// any active slot; only the SDK's normal explicit ring removals evict verifiers.
+	return ids.size || key in entries ? JSON.stringify([...ids]) : null;
+}
+
 function storagePath(): string {
 	return path.join(app.getPath("userData"), "private-auth", "session.enc");
 }
@@ -161,7 +197,12 @@ function transaction<T>(operation: () => Promise<T>): Promise<T> {
 	);
 }
 
-export function registerAuthStorageHandlers(): void {
+export function readNativeAuthStorageValue(key: string): Promise<string | null> {
+	assertKey(key);
+	return serialize(() => transaction(async () => readStoredValue((await load()).entries, key)));
+}
+
+export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): void {
 	ipcMain.handle("auth-storage:available", (event) => {
 		assertTrustedRenderer(event);
 		return encryptionAvailable();
@@ -182,7 +223,7 @@ export function registerAuthStorageHandlers(): void {
 		return serialize(async () =>
 			completedCallback?.key === key
 				? completedCallback.fingerprint
-				: transaction(async () => (await load()).entries[key] ?? null),
+				: transaction(async () => readStoredValue((await load()).entries, key)),
 		);
 	});
 	ipcMain.handle("auth-storage:set", (event, key: unknown, value: unknown) => {
@@ -190,40 +231,63 @@ export function registerAuthStorageHandlers(): void {
 		assertKey(key);
 		const validated = validateEntries({ [key]: value });
 		return serialize(async () => {
+			// This process's queue spans snapshot, registration and commit/rollback.
+			// Only queued prepareSet calls add owned routes, so no earlier own route
+			// can still be preparing its verifier when this snapshot is captured.
+			const persistedKeys =
+				flowHooks &&
+				/^sb-[a-z0-9-]{1,100}-auth-token-flow-[A-Za-z0-9_-]{8,64}-code-verifier$/.test(key)
+					? await transaction(async () => Object.keys((await load()).entries))
+					: undefined;
+			const rollback = await flowHooks?.prepareSet(event, key, persistedKeys);
 			if (COMPLETED_CALLBACK_KEY.test(key)) {
 				// Keep one non-secret completion marker available to all our windows even
 				// if optional bookkeeping cannot be persisted after a successful exchange.
 				completedCallback = { key, fingerprint: validated[key] };
 			}
-			return transaction(async () => {
-				const next = { ...(await load()).entries, ...validated };
-				if (completedCallback)
-					for (const candidate of Object.keys(next)) {
-						if (
-							candidate !== completedCallback.key &&
-							COMPLETED_CALLBACK_KEY.test(candidate)
-						)
-							delete next[candidate];
-					}
-				const consents = Object.keys(next).filter((item) => PENDING_CONSENT_KEY.test(item));
-				for (const expired of consents.slice(0, -MAX_PENDING_CONSENTS))
-					delete next[expired];
-				const retries = Object.keys(next).filter((item) => CONSENT_RETRY_KEY.test(item));
-				for (const expired of retries.slice(0, -MAX_CONSENT_RETRIES)) delete next[expired];
-				await save(next);
-			});
+			try {
+				return await transaction(async () => {
+					const next = { ...(await load()).entries, ...validated };
+					if (completedCallback)
+						for (const candidate of Object.keys(next)) {
+							if (
+								candidate !== completedCallback.key &&
+								COMPLETED_CALLBACK_KEY.test(candidate)
+							)
+								delete next[candidate];
+						}
+					const consents = Object.keys(next).filter((item) =>
+						PENDING_CONSENT_KEY.test(item),
+					);
+					for (const expired of consents.slice(0, -MAX_PENDING_CONSENTS))
+						delete next[expired];
+					const retries = Object.keys(next).filter((item) =>
+						CONSENT_RETRY_KEY.test(item),
+					);
+					for (const expired of retries.slice(0, -MAX_CONSENT_RETRIES))
+						delete next[expired];
+					await save(next);
+				});
+			} catch (error) {
+				await rollback?.().catch(() => undefined);
+				throw error;
+			}
 		});
 	});
 	ipcMain.handle("auth-storage:remove", (event, key: unknown) => {
 		assertTrustedRenderer(event);
 		assertKey(key);
-		return serialize(() =>
-			transaction(async () => {
+		return serialize(async () => {
+			await transaction(async () => {
 				const next = { ...(await load()).entries };
 				delete next[key];
 				await save(next);
 				if (completedCallback?.key === key) completedCallback = undefined;
-			}),
-		);
+			});
+			// The verifier is already removed durably. Optional route cleanup must
+			// not turn a completed server exchange into a storage failure; a stale
+			// route still cannot deliver without that exact verifier.
+			await flowHooks?.didRemove(event, key).catch(() => undefined);
+		});
 	});
 }

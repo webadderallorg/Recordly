@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { translate } from "@/i18n/runtime";
 
 const verifyOtp = vi.hoisted(() => vi.fn());
 const getUser = vi.hoisted(() => vi.fn());
@@ -10,6 +11,7 @@ const updateUser = vi.hoisted(() => vi.fn(async (_update: unknown) => ({ error: 
 const password = vi.hoisted(() => vi.fn());
 const getSession = vi.hoisted(() => vi.fn());
 const signOut = vi.hoisted(() => vi.fn(async () => ({ error: null })));
+const clientConfiguration = vi.hoisted(() => vi.fn());
 const oauth = vi.hoisted(() =>
 	vi.fn(async (_options: unknown) => ({
 		data: { url: "https://auth.example.test/oauth" },
@@ -17,19 +19,22 @@ const oauth = vi.hoisted(() =>
 	})),
 );
 vi.mock("@supabase/supabase-js", () => ({
-	createClient: () => ({
-		auth: {
-			exchangeCodeForSession: exchange,
-			signInWithOAuth: oauth,
-			signInWithOtp: emailOtp,
-			verifyOtp,
-			getUser,
-			signInWithPassword: password,
-			getSession,
-			signOut,
-			updateUser,
-		},
-	}),
+	createClient: (...args: unknown[]) => {
+		clientConfiguration(...args);
+		return {
+			auth: {
+				exchangeCodeForSession: exchange,
+				signInWithOAuth: oauth,
+				signInWithOtp: emailOtp,
+				verifyOtp,
+				getUser,
+				signInWithPassword: password,
+				getSession,
+				signOut,
+				updateUser,
+			},
+		};
+	},
 }));
 beforeEach(() => {
 	vi.resetModules();
@@ -42,6 +47,7 @@ beforeEach(() => {
 	getSession.mockReset();
 	signOut.mockClear();
 	updateUser.mockClear();
+	clientConfiguration.mockClear();
 	vi.stubEnv("VITE_SUPABASE_URL", "https://auth.example.test");
 	vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "test-key");
 	// Generic Node cases model no browser APIs. Node versions expose different
@@ -120,6 +126,70 @@ afterEach(() => {
 	vi.unstubAllEnvs();
 	vi.unstubAllGlobals();
 	vi.useRealTimers();
+});
+
+it.each([
+	undefined,
+	"false",
+	"true",
+])("enables SDK flow-id redirects only for explicit true (%s)", async (flag) => {
+	vi.stubEnv("VITE_OAUTH_FLOW_ID_REDIRECTS", flag);
+	await import("./recordlyAuth");
+	const config = clientConfiguration.mock.calls[0][2];
+	expect(config.auth.experimental).toEqual(
+		flag === "true" ? { appendPkceFlowIdToRedirects: true } : undefined,
+	);
+});
+
+it("rejects opt-in OAuth before provider initiation when the secure native store is unavailable", async () => {
+	vi.stubEnv("VITE_OAUTH_FLOW_ID_REDIRECTS", "true");
+	vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_fixture");
+	const openExternalUrl = vi.fn();
+	const available = vi.fn(async () => false);
+	const migrate = vi.fn(async () => undefined);
+	vi.stubGlobal("window", {
+		electronAPI: {
+			authStorageAvailable: available,
+			authStorageMigrate: migrate,
+			authStorageGetItem: async () => null,
+			authStorageSetItem: async () => undefined,
+			authStorageRemoveItem: async () => undefined,
+			openExternalUrl,
+		},
+	});
+	const auth = await import("./recordlyAuth");
+	expect(auth.recordlyAuthConfigured).toBe(true);
+	await expect(auth.signInWithSocial("apple", { legalAccepted: true })).rejects.toThrow(
+		translate("support.authInsecure"),
+	);
+	expect(available).toHaveBeenCalledOnce();
+	expect(migrate).not.toHaveBeenCalled();
+	expect(oauth).not.toHaveBeenCalled();
+	expect(openExternalUrl).not.toHaveBeenCalled();
+});
+
+it.each([
+	"recordly://auth/callback?code=private",
+	"recordly://auth/callback?code=private&sb_flow_id=flow_missing",
+	"recordly://auth/callback?code=private&sb_flow_id=flow_alice&sb_flow_id=flow_bob00",
+])("never borrows the legacy verifier in opt-in callbacks: %s", async (url) => {
+	vi.stubEnv("VITE_OAUTH_FLOW_ID_REDIRECTS", "true");
+	const { auth } = await pendingOAuthFixture(false);
+	await expect(auth.completeAuthCallback(url)).rejects.toThrow(translate("support.authNewLink"));
+	expect(exchange).not.toHaveBeenCalled();
+});
+
+it("uses only the explicit stored flow verifier for opt-in completion", async () => {
+	vi.stubEnv("VITE_OAUTH_FLOW_ID_REDIRECTS", "true");
+	const { auth, native } = await pendingOAuthFixture(false);
+	native.set(
+		"sb-auth-auth-token-flow-flow_alice-code-verifier",
+		JSON.stringify("exact-flow-verifier"),
+	);
+	await auth.completeAuthCallback(
+		"recordly://auth/callback?code=matching-code&sb_flow_id=flow_alice",
+	);
+	expect(exchange).toHaveBeenCalledExactlyOnceWith("matching-code", { flowId: "flow_alice" });
 });
 
 it("exchanges a callback once when live and pending delivery overlap", async () => {

@@ -1,4 +1,4 @@
--- Recordly Share — consolidated D1 schema (based on Voom, through migration 0014).
+-- Recordly Share — consolidated D1 schema (based on Voom, through migration 0018).
 -- Keep in sync with SCHEMA_STATEMENTS in src/schema.js (the runtime source of
 -- truth for fresh databases). Statements are idempotent so this file is safe
 -- to re-apply to an existing database; the numbered files in migrations/
@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS recording_uploads (share_code TEXT PRIMARY KEY REFERE
 CREATE TABLE IF NOT EXISTS recording_locks (share_code TEXT PRIMARY KEY, token TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')));
 
 CREATE INDEX IF NOT EXISTS idx_videos_owner_created ON videos(owner_id, datetime(created_at) DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_videos_completed_created ON videos(datetime(created_at) DESC, id DESC) WHERE upload_completed = 1;
 
 -- Bound per-recording/IP feedback rate-window queries.
 CREATE INDEX IF NOT EXISTS idx_comments_rate_window ON comments(video_id, client_ip, created_at);
@@ -156,3 +157,6 @@ CREATE TABLE IF NOT EXISTS upload_admissions (
 CREATE INDEX IF NOT EXISTS idx_upload_admissions_owner_window ON upload_admissions(owner_id, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_comments_account_window ON comments(video_id, author_id, created_at);
+
+-- Range-seek only reports whose raw IP has not been cleared.
+CREATE INDEX IF NOT EXISTS idx_abuse_reports_ip_cleanup ON abuse_reports(created_at) WHERE client_ip <> '';

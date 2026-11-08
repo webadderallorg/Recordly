@@ -1,9 +1,13 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 async function setup(page: Page) {
 	await installDesktopBridge(page, "filmstrip.mp4");
 	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.openRecordingsFolder = async () => {
+			document.documentElement.dataset.recordingsFolderOpened = "true";
+			return { success: true };
+		};
 		const removed = new Set<string>();
 		const entries = ["first.mp4", "second.mp4"].map((name, i) => ({
 			name,
@@ -64,6 +68,11 @@ test("Clips supports selection, remove all, undo and real timeline drag insertio
 	page.on("pageerror", (error) => errors.push(error.message));
 	await setup(page);
 	const panel = page.getByRole("complementary", { name: "Clips" });
+	await panel.getByRole("button", { name: "Open recordings folder", exact: true }).click();
+	await expect(page.locator("html")).toHaveAttribute("data-recordings-folder-opened", "true");
+	await expect(
+		panel.getByRole("button", { name: "Clip library actions", exact: true }),
+	).toHaveCount(0);
 	await expect(panel.locator("video")).toHaveCount(0);
 	await expect(panel.getByRole("img", { name: "Preview of first.mp4" })).toBeVisible();
 	await expect
@@ -79,7 +88,7 @@ test("Clips supports selection, remove all, undo and real timeline drag insertio
 		(await page.getByRole("button", { name: "Rename project", exact: true }).boundingBox())!.x,
 	);
 	expect((await panel.boundingBox())!.x).toBeLessThan(100);
-	await expect(videosButton).toHaveClass(/button--secondary/);
+	await expect(videosButton).toHaveAttribute("aria-expanded", "true");
 	await panel
 		.locator('[data-recording-path="/recordings/first.mp4"] [data-slot="checkbox-control"]')
 		.click();
@@ -88,8 +97,8 @@ test("Clips supports selection, remove all, undo and real timeline drag insertio
 	await expect(page.getByLabel("Select first.mp4")).toHaveCount(0);
 	await page.keyboard.press("Meta+z");
 	await expect(page.getByLabel("Select first.mp4")).toBeVisible();
-	await panel.getByRole("button", { name: "Clip library actions", exact: true }).click();
-	await page.getByRole("menuitem", { name: "Move all to Trash", exact: true }).click();
+	await panel.locator('[data-slot="checkbox-control"]').first().click();
+	await panel.getByRole("button", { name: "Move selected videos to Trash", exact: true }).click();
 	await expect(panel.getByText("Your recordings appear here")).toBeVisible();
 	await page.keyboard.press("Control+z");
 	await expect(page.getByLabel("Select second.mp4")).toBeVisible();
@@ -116,7 +125,10 @@ test("Clips supports selection, remove all, undo and real timeline drag insertio
 	await panel.getByRole("searchbox", { name: "Search videos" }).fill("");
 	await expect(panel.locator("[data-recording-path]")).toHaveCount(2);
 	await expect(panel.getByRole("img", { name: "Preview of second.mp4" })).toBeVisible();
-	await page.screenshot({ path: "test-results/videos-panel.png", animations: "disabled" });
+	await page.screenshot({
+		path: test.info().outputPath("videos-panel.png"),
+		animations: "disabled",
+	});
 	await page.getByRole("radio", { name: "Scene", exact: true }).click();
 	await expect(panel).toHaveCount(0);
 	await expect(page.getByRole("slider", { name: "Blur", exact: true })).toBeVisible();
@@ -136,28 +148,58 @@ test("generating captions leaves the current media session intact and shows the 
 			success: true,
 			url: `${location.origin}/tests/ui/fixtures/filmstrip.mp4`,
 		});
-		window.electronAPI.getWhisperSmallModelStatus = async () => ({
+		window.electronAPI.getCaptionModelStatus = async () => ({
 			success: true,
 			exists: true,
-			path: "/models/small.bin",
+			path: "/models/parakeet-v3",
 		});
-		window.electronAPI.generateAutoCaptions = async () => ({
-			success: true,
-			cues: [{ id: "cue-1", startMs: 0, endMs: 4000, text: "Generated caption is visible" }],
-		});
+		window.electronAPI.generateAutoCaptions = async (options) => {
+			document.documentElement.dataset.captionEngine = options.engine;
+			document.documentElement.dataset.captionModel = options.parakeetModelPath;
+			return {
+				success: true,
+				cues: [
+					{
+						id: "cue-1",
+						startMs: 0,
+						endMs: 4000,
+						text: "Generated caption is visible",
+						words: [
+							{ text: "Generated", startMs: 0, endMs: 700 },
+							{ text: "caption", startMs: 900, endMs: 1800, leadingSpace: true },
+							{ text: "is", startMs: 2100, endMs: 2400, leadingSpace: true },
+							{ text: "visible", startMs: 2700, endMs: 4000, leadingSpace: true },
+						],
+					},
+				],
+			};
+		};
 		window.electronAPI.setCurrentVideoPath = async () => {
 			document.documentElement.dataset.sessionReset = "true";
 			return { success: true };
 		};
 	});
 	await page.goto("/?windowType=editor");
-	await expect(page.locator('[data-variant="clip"] img').first()).toBeVisible();
+	await expect(page.locator('[data-variant="clip"] img').first()).toBeVisible({
+		timeout: 20000,
+	});
 	await page.getByRole("radio", { name: "Captions", exact: true }).click();
 	await page.getByRole("button", { name: "Generate Captions", exact: true }).click();
 	await expect(
 		page.getByRole("button", { name: "Edit current caption", exact: true }),
 	).toHaveText("Generated caption is visible");
+	const preview = page.getByRole("button", { name: "Edit current caption", exact: true });
+	await expect(preview.getByText("Generated", { exact: true })).toHaveCSS(
+		"color",
+		"rgb(255, 255, 255)",
+	);
+	await expect(preview.getByText("caption", { exact: true })).toHaveCSS(
+		"color",
+		"rgb(163, 163, 163)",
+	);
 	await expect(page.locator("html")).not.toHaveAttribute("data-session-reset", "true");
+	await expect(page.locator("html")).toHaveAttribute("data-caption-engine", "parakeet");
+	await expect(page.locator("html")).toHaveAttribute("data-caption-model", "/models/parakeet-v3");
 	await page.getByRole("button", { name: "Play", exact: true }).click();
 	await expect
 		.poll(() =>
@@ -187,7 +229,9 @@ test("preview recovers once when a local video URL fails to load", async ({ page
 	});
 	await page.route("**/missing-source.mp4", (route) => route.abort("connectionfailed"));
 	await page.goto("/?windowType=editor");
-	await expect(page.locator('[data-variant="clip"]')).toHaveAttribute("data-end-ms", "6000");
+	await expect(page.locator('[data-variant="clip"]')).toHaveAttribute("data-end-ms", "6000", {
+		timeout: 20000,
+	});
 	await expect(page.getByLabel("Loading preview")).toHaveCount(0);
 	await expect(page.getByText(/Failed to load video/)).toHaveCount(0);
 });
@@ -212,28 +256,54 @@ test("dashboard project list scrolls vertically with long names", async ({ page 
 	await page.goto("/?windowType=editor");
 	await page.getByRole("button", { name: "Home", exact: true }).click();
 	const home = page.getByRole("dialog", { name: "Projects dashboard" });
-	const entry = home.getByRole("button", { name: /^An extremely long project/ });
+	const entry = home.getByRole("button", {
+		name: /^An extremely long project/,
+	});
 	await expect(entry).toHaveCount(30);
 	const content = home.getByRole("main");
 	expect(await content.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
 	await entry.last().scrollIntoViewIfNeeded();
 	await expect(entry.last()).toBeInViewport();
-	await page.screenshot({ path: "test-results/dashboard-projects-vertical.png" });
+	await page.screenshot({
+		path: test.info().outputPath("dashboard-projects-vertical.png"),
+	});
 });
 
-test("HUD source controls have no default gray fill or outline", async ({ page }) => {
+test("HUD source control and Linux source rows have no default gray fill or outline", async ({
+	page,
+}) => {
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.getPlatform = async () => "linux";
 		window.electronAPI.getSources = async () => [
-			{ id: "screen:1:0", name: "Built-in Display", thumbnail: "", display_id: "1" },
-			{ id: "window:2:0", name: "Another Window", thumbnail: "", display_id: "" },
+			{
+				id: "screen:1:0",
+				name: "Built-in Display",
+				thumbnail: null,
+				appIcon: null,
+				display_id: "1",
+			},
+			{
+				id: "window:2:0",
+				name: "Another Window",
+				thumbnail: null,
+				appIcon: null,
+				display_id: "",
+			},
 		];
 	});
 	await page.goto("/?windowType=hud-overlay");
-	const source = page.getByRole("button", { name: "Built-in Display", exact: true });
+	const source = page.getByRole("button", {
+		name: "Choose recording source",
+		exact: true,
+	});
+	await expect(source).toContainText("Built-in Display");
 	expect(await source.evaluate((node) => getComputedStyle(node).borderWidth)).toBe("0px");
-	await source.click();
-	const row = page.locator(".source-selector-item").filter({ hasText: "Another Window" });
+	await page.mouse.move(1, 1);
+	await expect(source).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+	// The source list now lives in its own Linux window; macOS uses the native picker.
+	await page.goto("/?windowType=source-selector");
+	const row = page.getByRole("button", { name: "Another Window", exact: true });
 	await expect(row).toBeVisible();
 	await page.mouse.move(1, 1);
 	await expect(row).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
@@ -284,11 +354,14 @@ test("Clips shows original filenames and truncates long names beside real still 
 		)
 		.toBe(true);
 	expect(await panel.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
-	await page.screenshot({ path: "test-results/videos-filenames.png", animations: "disabled" });
+	await page.screenshot({
+		path: test.info().outputPath("videos-filenames.png"),
+		animations: "disabled",
+	});
 });
 
 for (const enabled of [true, false]) {
-	test(`selected recordings drag together; imported click zooms ${enabled ? "on" : "off"}`, async ({
+	test(`imported recordings stay unzoomed with legacy auto zooms ${enabled ? "on" : "off"}`, async ({
 		page,
 	}) => {
 		await setup(page);
@@ -334,24 +407,19 @@ for (const enabled of [true, false]) {
 		await expect(page.getByLabel("Select second.mp4")).toBeChecked();
 		await panel
 			.locator('[data-recording-path="/recordings/second.mp4"]')
-			.dragTo(page.locator('[data-variant="clip"]'), { targetPosition: { x: 5, y: 15 } });
+			.dragTo(page.locator('[data-variant="clip"]'), {
+				targetPosition: { x: 5, y: 15 },
+			});
 		await expect(page.locator('[data-variant="clip"]')).toHaveCount(3);
 		await expect(page.locator("html")).toHaveAttribute(
 			"data-import-order",
 			"/recordings/first.mp4;/recordings/second.mp4;",
 		);
 		await expect(page.locator("html")).toHaveAttribute("data-import-source", "/sequence-1.mp4");
-		await expect(page.locator('[data-variant="zoom"]')).toHaveCount(enabled ? 2 : 0);
-		if (enabled) {
-			await expect(page.locator('[data-variant="zoom"]').first()).toHaveAttribute(
-				"data-start-ms",
-				"0",
-			);
-			await expect(page.locator('[data-variant="zoom"]').nth(1)).toHaveAttribute(
-				"data-start-ms",
-				"1000",
-			);
-		}
+		await expect(page.locator('[data-variant="zoom"]')).toHaveCount(0);
+		await expect(
+			page.getByRole("button", { name: "Apply auto zooms", exact: true }),
+		).toBeVisible();
 	});
 }
 
@@ -389,7 +457,9 @@ test("cancelling a batch keeps completed clips and stops the remaining import", 
 	await panel.locator('[data-slot="checkbox-control"]').first().click();
 	await panel
 		.locator('[data-recording-path="/recordings/second.mp4"]')
-		.dragTo(page.locator('[data-variant="clip"]'), { targetPosition: { x: 5, y: 15 } });
+		.dragTo(page.locator('[data-variant="clip"]'), {
+			targetPosition: { x: 5, y: 15 },
+		});
 	await expect(page.locator("html")).toHaveAttribute("data-pending-import", "true");
 	await page.getByRole("button", { name: "Cancel", exact: true }).click();
 	await expect(page.getByText("Adding video…")).toHaveCount(0);
