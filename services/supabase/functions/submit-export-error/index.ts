@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.116.0";
 import { exportErrorHandler } from "./handler.ts";
+
 const client = createClient(
 	Deno.env.get("SUPABASE_URL")!,
 	Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -9,8 +10,8 @@ const client = createClient(
 );
 Deno.serve(
 	exportErrorHandler({
-		async reserve() {
-			const { data, error } = await client.rpc("reserve_export_error_quota");
+		async reserve(report) {
+			const { data, error } = await client.rpc("reserve_export_error_quota", { report });
 			if (error) throw error;
 			return data === true;
 		},

@@ -1,0 +1,15 @@
+Your subscription to Recordly
+
+Your {{ .PlanName }} subscription has ended. Review your account for current plan details.
+
+Previous plan: {{ .PlanName }}
+Ended on: {{ .EndDate }}
+
+View your account: {{ .ActionURL }}
+
+For recording retention after your subscription ends, review the Terms of service at https://videos.recordly.dev/terms. Keep local copies of recordings you want to retain.
+
+You can review available plans in Recordly at any time.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

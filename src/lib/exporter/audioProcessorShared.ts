@@ -106,7 +106,18 @@ export function hasNonDefaultSourceTrackSettings(
 	);
 }
 
+export function hasClipSourceAudioOverrides(
+	clips?: ClipRegion[],
+	settingsByClip?: Record<string, SourceAudioTrackSettings>,
+): boolean {
+	return (clips ?? []).some((clip) =>
+		hasNonDefaultSourceTrackSettings(settingsByClip?.[clip.id]),
+	);
+}
+
 export interface TimelineSlice {
+	/** Clip overrides are resolved against project defaults before scheduling. */
+	sourceGains?: Record<SourceTrackId | "embedded", number>;
 	outputStartMs?: number;
 	sourceStartMs: number;
 	sourceEndMs: number;
@@ -116,7 +127,12 @@ export interface TimelineSlice {
 export interface PreparedOfflineRender {
 	usesClipTimeline?: boolean;
 	mainBufferEntry: { buffer: AudioBuffer; gain: number } | null;
-	companionEntries: Array<{ buffer: AudioBuffer; startDelaySec: number; gain: number }>;
+	companionEntries: Array<{
+		buffer: AudioBuffer;
+		startDelaySec: number;
+		gain: number;
+		trackId?: SourceTrackId;
+	}>;
 	regionEntries: Array<{ buffer: AudioBuffer; region: AudioRegion }>;
 	mutedSourceOutputRangesSec: Array<{ startSec: number; endSec: number }>;
 	slices: TimelineSlice[];

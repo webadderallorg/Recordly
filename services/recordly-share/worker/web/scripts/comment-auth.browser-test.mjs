@@ -83,6 +83,9 @@ try {
 	let feedbackEnabled = true;
 	let commentsStatus = 200;
 	const posts = [];
+	const postRequests = [];
+	const memberNames = new Map();
+	const commentReads = [];
 	const video = {
 		title: "Account comment fixture",
 		duration: 60,
@@ -138,6 +141,10 @@ try {
 			});
 		if (path.endsWith("/comments")) {
 			if (ownershipGate && route.request().headers().authorization) await ownershipGate;
+			commentReads.push({
+				authorization: route.request().headers().authorization,
+				total: comments.length,
+			});
 			return route.fulfill({
 				status: commentsStatus,
 				json: {
@@ -172,18 +179,34 @@ try {
 			return route.fulfill({ json: { ok: true } });
 		}
 		if (path.endsWith("/comment")) {
+			// Authentication belongs to the request, even when another tab switches
+			// accounts before this deliberately delayed server mutation completes.
+			const requestToken = route
+				.request()
+				.headers()
+				.authorization?.replace(/^Bearer /, "");
+			expect(requestToken, "POST must carry a bearer token").toBeTruthy();
+			const requestOwner = JSON.parse(
+				Buffer.from(requestToken.split(".")[1], "base64url").toString(),
+			).sub;
+			if (requestOwner === user.id)
+				memberNames.set(requestOwner, user.user_metadata.full_name);
+			const postingAccount = {
+				id: requestOwner,
+				name: memberNames.get(requestOwner) || "Recordly member",
+			};
+			postRequests.push({ owner: requestOwner, ...route.request().postDataJSON() });
 			if (postGate) await postGate;
 			const body = route.request().postDataJSON();
 			posts.push(body);
-			expect(route.request().headers().authorization).toBe(`Bearer ${token}`);
 			expect(body).not.toHaveProperty("author_name");
 			if (postStatus !== 200)
 				return route.fulfill({ status: postStatus, json: { error: "Fixture rejection" } });
 			const item = {
 				id: comments.length + 1,
 				...body,
-				owner: user.id,
-				author_name: user.user_metadata.full_name,
+				owner: postingAccount.id,
+				author_name: postingAccount.name,
 				created_at: video.created_at,
 			};
 			comments.push(item);
@@ -473,6 +496,97 @@ try {
 		path: `${outputDir}/desktop-owned-actions.png`,
 	});
 	expect(pageErrors).toEqual([]);
+	// An accepted B post remains public after switching to C. C's first list is
+	// deliberately complete before insertion, so the successful mutation must
+	// invalidate that otherwise-stale response and clear only the submitted draft.
+	const beforeSwitchPost = comments.length;
+	let releaseSwitchedPost;
+	postGate = new Promise((resolve) => {
+		releaseSwitchedPost = resolve;
+	});
+	await composer.fill("B post completes after switching account");
+	await page.getByRole("button", { name: "Post", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Posting…", exact: true })).toBeVisible();
+	await expect
+		.poll(() =>
+			postRequests.some(
+				(item) =>
+					item.owner === "account-b" &&
+					item.text === "B post completes after switching account",
+			),
+		)
+		.toBe(true);
+	user.id = "account-c";
+	user.user_metadata.full_name = "Reviewer C";
+	token = makeToken(user.id);
+	const thirdSession = {
+		...session,
+		access_token: token,
+		expires_at: Math.floor(Date.now() / 1000) + 3600,
+	};
+	await page.evaluate((value) => {
+		localStorage.setItem("recordly-cloud-auth", JSON.stringify(value));
+		const channel = new BroadcastChannel("recordly-cloud-auth");
+		channel.postMessage({ event: "SIGNED_IN", session: value });
+		channel.close();
+	}, thirdSession);
+	await expect(page.getByText("Reviewer C", { exact: true }).last()).toBeVisible();
+	await expect
+		.poll(() =>
+			commentReads.some(
+				(read) =>
+					read.authorization === `Bearer ${token}` && read.total === beforeSwitchPost,
+			),
+		)
+		.toBe(true);
+	postGate = null;
+	releaseSwitchedPost();
+	await expect(
+		page.getByText("B post completes after switching account", { exact: true }),
+	).toBeVisible();
+	await expect(composer).toHaveValue("");
+	await expect
+		.poll(() =>
+			page.evaluate(() => sessionStorage.getItem("recordly-comment-draft:fixture123")),
+		)
+		.toBeNull();
+	await expect(page.getByRole("button", { name: "Edit your comment", exact: true })).toHaveCount(
+		0,
+	);
+	expect(
+		comments.find((item) => item.text === "B post completes after switching account")?.owner,
+	).toBe("account-b");
+	// Timestamp changes are a newer draft revision even when the text is equal.
+	let releaseRevisedPost;
+	postGate = new Promise((resolve) => {
+		releaseRevisedPost = resolve;
+	});
+	await composer.fill("Keep the newer timestamp draft");
+	await page.getByRole("button", { name: "Post", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Posting…", exact: true })).toBeVisible();
+	await page.locator("video").evaluate((video) => {
+		Object.defineProperty(video, "currentTime", { configurable: true, value: 15 });
+		video.dispatchEvent(new Event("timeupdate"));
+	});
+	await page.getByRole("button", { name: /Comment timestamp.*Use current video time/ }).click();
+	postGate = null;
+	releaseRevisedPost();
+	await expect(page.getByText("Keep the newer timestamp draft", { exact: true })).toBeVisible();
+	await expect(composer).toHaveValue("Keep the newer timestamp draft");
+	await expect
+		.poll(() =>
+			page.evaluate(
+				() =>
+					JSON.parse(
+						sessionStorage.getItem("recordly-comment-draft:fixture123") || "null",
+					)?.time,
+			),
+		)
+		.toBe(15);
+	expect(pageErrors).toEqual([]);
+	console.log(
+		"PASS successful post survives account switch after the new account list completed; submitted draft clears, newer draft revision survives",
+	);
 	console.log("PASS cross-tab account switch with concurrent ownership listing and posting");
 	console.log("PASS self-host account login/logout and failed logout handling");
 	console.log(

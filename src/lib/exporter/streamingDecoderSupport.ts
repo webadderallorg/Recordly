@@ -6,6 +6,8 @@ export interface DecodedVideoInfo {
 	streamStartTime?: number; // seconds
 	streamDuration?: number; // seconds
 	frameRate: number;
+	/** Whether the source FPS was reported by metadata or a decode fallback. */
+	frameRateSource?: "metadata" | "fallback";
 	codec: string;
 	hasAudio: boolean;
 	audioCodec?: string;
@@ -63,7 +65,11 @@ export function buildVideoDecodeFailure(error: unknown, context: VideoDecodeFail
 		details.push(`hardwareAcceleration=${context.decoderConfig.hardwareAcceleration}`);
 	}
 	if (context.sourceMetadata) {
-		details.push(`sourceFps=${context.sourceMetadata.frameRate}`);
+		details.push(
+			context.sourceMetadata.frameRateSource === "fallback"
+				? `sourceFps=unknown; decodeFallbackFps=${context.sourceMetadata.frameRate}`
+				: `sourceFps=${context.sourceMetadata.frameRate}`,
+		);
 		details.push(`sourceDurationSec=${context.sourceMetadata.duration}`);
 	}
 	if (context.chunkIndex !== undefined) {

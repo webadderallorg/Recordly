@@ -80,6 +80,8 @@ import {
 } from "../recording/mac";
 import { resolveRecordedVideoStoragePath } from "../recording/storagePath";
 import { sendNativeCaptureCommand } from "../recording/nativeCaptureCommand";
+import { finalizeKeepingPath } from "../recording/recordingFileStreams";
+import { finishWebmRecording } from "../recording/webmDuration";
 import {
 	attachWindowsCaptureLifecycle,
 	isNativeWindowsCaptureAvailable,
@@ -1859,8 +1861,19 @@ export function registerRecordingHandlers(
 				throw new Error("Invalid recording data");
 			const recordingsDir = await getRecordingsDir();
 			const videoPath = resolveRecordedVideoStoragePath(recordingsDir, fileName);
-			await fs.writeFile(videoPath, Buffer.from(videoData));
-			return await finalizeStoredVideo(videoPath);
+			await fs.writeFile(videoPath, Buffer.from(videoData), { flag: "wx", mode: 0o600 });
+			let filePath = videoPath;
+			if (/\.webm$/i.test(videoPath)) {
+				try {
+					filePath = await finishWebmRecording(getFfmpegBinaryPath(), videoPath);
+				} catch (error) {
+					console.warn("Recording post-processing failed; preserving source", error);
+				}
+			}
+			return await finalizeKeepingPath(filePath, async (savedPath) => {
+				await rememberApprovedLocalReadPath(savedPath);
+				return await finalizeStoredVideo(savedPath);
+			});
 		} catch (error) {
 			console.error("Failed to store video:", error);
 			return {

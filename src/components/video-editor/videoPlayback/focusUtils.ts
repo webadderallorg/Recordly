@@ -1,4 +1,24 @@
-import { clampFocusToDepth, ZOOM_DEPTH_SCALES, type ZoomDepth, type ZoomFocus } from "../types";
+import {
+	clampFocusToDepth,
+	ZOOM_DEPTH_SCALES,
+	type CropRegion,
+	type ZoomDepth,
+	type ZoomFocus,
+	type ZoomRegion,
+} from "../types";
+import { projectCursorPositionToViewport } from "./cursorViewport";
+
+export function getZoomFocusSpace(region: ZoomRegion): "source" | "viewport" {
+	// Older projects have no coordinate-space marker. Manual targets were picked
+	// in the viewport; automatic targets were recorded in source coordinates.
+	return region.focusSpace ?? (region.mode === "manual" ? "viewport" : "source");
+}
+
+export function projectZoomFocusToViewport(region: ZoomRegion, sourceCrop?: CropRegion): ZoomFocus {
+	if (getZoomFocusSpace(region) === "viewport") return region.focus;
+	const projected = projectCursorPositionToViewport(region.focus, sourceCrop);
+	return { cx: projected.cx, cy: projected.cy };
+}
 
 interface StageSize {
 	width: number;

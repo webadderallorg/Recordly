@@ -1,0 +1,14 @@
+Keep recording with Recordly
+
+Your saved card expires soon. Update your payment details to help keep {{ .PlanName }} rolling.
+
+Card ending in: {{ .CardLast4 }}
+Expiry: {{ .CardExpiry }}
+Next renewal: {{ .RenewalDate }}
+
+Update payment method: {{ .ActionURL }}
+
+If you've already updated your card, no further action is needed.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

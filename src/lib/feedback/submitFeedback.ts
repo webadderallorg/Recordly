@@ -1,11 +1,23 @@
+import { translate } from "@/i18n/runtime";
 import { recordlyAuth } from "@/lib/auth/recordlyAuth";
 
 export class FeedbackError extends Error {}
 
+const feedbackMessageKeys: Record<string, string> = {
+	"Feedback is unavailable until account services are configured.": "unavailable",
+	"Please sign in again to send feedback.": "signIn",
+	"Check your subject and description, then try again.": "invalid",
+	"Attach up to 5 nonempty files totaling 10 MB or less.": "attachments",
+	"You’ve reached today’s feedback limit. Please try again tomorrow.": "limit",
+	"Could not send feedback. Please try again.": "sendFailed",
+};
 export function feedbackErrorMessage(error: unknown) {
-	return error instanceof FeedbackError
-		? error.message
-		: "Could not send feedback. Please try again.";
+	const message =
+		error instanceof FeedbackError
+			? error.message
+			: "Could not send feedback. Please try again.";
+	const key = feedbackMessageKeys[message];
+	return key ? translate(`common.feedback.errors.${key}`, message) : message;
 }
 
 const submissionErrors: Record<string, string> = {
@@ -18,11 +30,26 @@ const submissionErrors: Record<string, string> = {
 export const MAX_FILES = 5;
 export const MAX_BYTES = 10 * 1024 * 1024;
 export function validateAttachments(files: File[]) {
-	if (files.length > MAX_FILES) return "Attach up to 5 files.";
-	if (files.some((file) => file.size === 0)) return "Empty files cannot be attached.";
+	if (files.length > MAX_FILES)
+		return translate("common.feedback.errors.tooManyFiles", "Attach up to 5 files.");
+	if (files.some((file) => file.size === 0))
+		return translate("common.feedback.errors.emptyFile", "Empty files cannot be attached.");
 	if (files.reduce((total, file) => total + file.size, 0) > MAX_BYTES)
-		return "Attachments must total 10 MB or less.";
+		return translate(
+			"common.feedback.errors.filesTooLarge",
+			"Attachments must total 10 MB or less.",
+		);
 	return null;
+}
+// The Edge handler limits titles by UTF-16 length, not by code-point count.
+export function normalizeFeedbackTitle(value: string) {
+	const singleLine = value.replace(/\s+/gu, " ").trim();
+	let title = "";
+	for (const character of singleLine) {
+		if (title.length + character.length > 160) break;
+		title += character;
+	}
+	return title.trimEnd();
 }
 export async function submitFeedback(input: {
 	title: string;
@@ -39,7 +66,7 @@ export async function submitFeedback(input: {
 	const validation = validateAttachments(input.files);
 	if (validation) throw new FeedbackError(validation);
 	const body = new FormData();
-	body.set("title", input.title.trim());
+	body.set("title", normalizeFeedbackTitle(input.title));
 	body.set("subject", input.subject);
 	body.set("message", input.message.trim());
 	if (input.logs !== null) body.set("logs", input.logs);

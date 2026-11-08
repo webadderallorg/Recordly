@@ -53,7 +53,10 @@ import {
 } from "@/components/video-editor/videoPlayback/motionSmoothing";
 import { getSceneEffectMetrics } from "@/components/video-editor/videoPlayback/sceneEffects";
 import { resolveSceneZoomTarget } from "@/components/video-editor/videoPlayback/sceneMotion";
-import { getWebcamMediaTargetTimeSeconds, isWebcamVisibleAtSourceTime } from "@/components/video-editor/videoPlayback/webcamSync";
+import {
+	getWebcamMediaTargetTimeSeconds,
+	isWebcamVisibleAtSourceTime,
+} from "@/components/video-editor/videoPlayback/webcamSync";
 import {
 	applyZoomTransform,
 	computeZoomTransform,
@@ -2723,7 +2726,12 @@ export class FrameRenderer {
 
 	private updateWebcamOverlay(referenceTimeSeconds = this.currentVideoTime): void {
 		const webcam = this.config.webcam;
-		if (!webcam?.enabled || !isWebcamVisibleAtSourceTime(webcam, referenceTimeSeconds) || !this.webcamRootContainer || !this.webcamMaskGraphics) {
+		if (
+			!webcam?.enabled ||
+			!isWebcamVisibleAtSourceTime(webcam, referenceTimeSeconds) ||
+			!this.webcamRootContainer ||
+			!this.webcamMaskGraphics
+		) {
 			if (this.webcamRootContainer) {
 				this.webcamRootContainer.visible = false;
 			}
@@ -3014,6 +3022,7 @@ export class FrameRenderer {
 			layout.croppedDisplayWidth,
 			layout.croppedDisplayHeight,
 			borderRadius,
+			{ width, height },
 		);
 
 		this.videoMaskGraphics.clear();
@@ -3098,6 +3107,9 @@ export class FrameRenderer {
 			connectZooms: this.config.connectZooms,
 			zoomInDurationMs: this.config.zoomInDurationMs,
 			zoomOutDurationMs: this.config.zoomOutDurationMs,
+			connectedZoomGapMs: this.config.connectedZoomGapMs,
+			connectedZoomDurationMs: this.config.connectedZoomDurationMs,
+			sourceCrop: this.config.cropRegion,
 			zoomClassicMode: this.config.zoomClassicMode,
 			cursorTelemetry: this.config.cursorTelemetry,
 			cursorFollowCamera: this.cursorFollowCamera,

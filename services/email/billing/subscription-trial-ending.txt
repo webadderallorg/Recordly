@@ -1,0 +1,13 @@
+Your trial with Recordly
+
+One little reminder: your {{ .PlanName }} trial ends soon. Here's what happens next, so there are no surprises.
+
+Trial ends: {{ .EndDate }}
+After your trial: {{ .TrialOutcome }}
+
+Review subscription: {{ .ActionURL }}
+
+You received this reminder because you started a Recordly trial.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

@@ -31,7 +31,10 @@ interface ExportSettingsMenuProps {
 	showCaptionSidecarOption?: boolean;
 	includeCaptionSidecar?: boolean;
 	onIncludeCaptionSidecarChange?: (enabled: boolean) => void;
-	mp4OutputDimensions?: Record<ExportQuality, { width: number; height: number }>;
+	mp4OutputDimensions?: Record<
+		"medium" | "good" | "high" | "source",
+		{ width: number; height: number }
+	>;
 	gifFrameRate: GifFrameRate;
 	onGifFrameRateChange?: (rate: GifFrameRate) => void;
 	gifLoop: boolean;

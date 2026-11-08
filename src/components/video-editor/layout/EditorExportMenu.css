@@ -1,0 +1,4 @@
+/* Carry React Aria's available-height bound through the dialog's contents wrapper. */
+.publish-menu > .contents {
+	max-height: inherit;
+}

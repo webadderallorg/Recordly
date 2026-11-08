@@ -6,12 +6,22 @@
 // empty, so the worker migrates its own schema at runtime on first request.
 // Authentication uses the API_SECRET set during deploy (dashboard or prompt).
 
-const SCHEMA_VERSION = 5;
+import { ABUSE_SCHEMA } from "./abuseSchema.js";
 
-// Consolidated current schema (base schema.sql + migrations 0002-0009). All
+const SCHEMA_VERSION = 12;
+const FEEDBACK_INDEXES = [
+	`CREATE INDEX IF NOT EXISTS idx_comments_account_window ON comments(video_id, author_id, created_at)`,
+	`CREATE INDEX IF NOT EXISTS idx_comments_video_window ON comments(video_id, created_at)`,
+	`CREATE INDEX IF NOT EXISTS idx_comments_rate_window ON comments(video_id, client_ip, created_at)`,
+	`CREATE INDEX IF NOT EXISTS idx_reactions_rate_window ON reactions(video_id, client_ip, created_at)`,
+];
+const CREATOR_SCHEMA = `CREATE TABLE IF NOT EXISTS creator_profiles (owner_id TEXT PRIMARY KEY, display_name TEXT)`;
+
+// Consolidated current self-hosted schema. Hosted-only migrations are excluded. All
 // statements are idempotent, so this is safe on both fresh (button-deployed)
 // and existing (token-deployed) databases.
 const SCHEMA_STATEMENTS = [
+	CREATOR_SCHEMA,
 	`CREATE TABLE IF NOT EXISTS recording_uploads (share_code TEXT PRIMARY KEY REFERENCES videos(share_code) ON DELETE CASCADE, upload_id TEXT NOT NULL)`,
 	`CREATE TABLE IF NOT EXISTS recording_locks (share_code TEXT PRIMARY KEY, token TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
 
@@ -26,6 +36,7 @@ const SCHEMA_STATEMENTS = [
     file_size INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     expires_at TEXT NOT NULL,
+    never_expires INTEGER NOT NULL DEFAULT 0 CHECK (never_expires IN (0, 1)),
     upload_completed INTEGER NOT NULL DEFAULT 0,
     view_count INTEGER NOT NULL DEFAULT 0,
     password_hash TEXT,
@@ -38,6 +49,7 @@ const SCHEMA_STATEMENTS = [
     owner_id TEXT
   )`,
 	`CREATE INDEX IF NOT EXISTS idx_videos_owner ON videos(owner_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_videos_owner_created ON videos(owner_id, datetime(created_at) DESC, id DESC)`,
 	`CREATE INDEX IF NOT EXISTS idx_videos_share_code ON videos(share_code)`,
 	`CREATE INDEX IF NOT EXISTS idx_videos_expires_at ON videos(expires_at)`,
 	`CREATE TABLE IF NOT EXISTS transcript_segments (
@@ -64,6 +76,7 @@ const SCHEMA_STATEMENTS = [
     video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
     timestamp REAL NOT NULL,
     author_name TEXT NOT NULL DEFAULT 'Anonymous',
+    author_id TEXT,
     text TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     client_ip TEXT NOT NULL DEFAULT ''
@@ -99,6 +112,8 @@ const SCHEMA_STATEMENTS = [
   )`,
 	`CREATE INDEX IF NOT EXISTS idx_comment_sessions_user ON comment_sessions(user_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_comment_sessions_expiry ON comment_sessions(expires_at)`,
+	...FEEDBACK_INDEXES,
+	...ABUSE_SCHEMA,
 ];
 
 // Incremental migrations for databases that are already at an older version.
@@ -106,6 +121,21 @@ const SCHEMA_STATEMENTS = [
 // cannot add columns to existing tables), so any change that ALTERs an
 // existing table MUST appear here under a bumped SCHEMA_VERSION.
 const SCHEMA_MIGRATIONS = {
+	12: [
+		`ALTER TABLE comments ADD COLUMN author_id TEXT`,
+		`CREATE INDEX IF NOT EXISTS idx_comments_account_window ON comments(video_id, author_id, created_at)`,
+	],
+	11: ABUSE_SCHEMA,
+	10: FEEDBACK_INDEXES.filter((sql) => !sql.includes("author_id")),
+	9: [CREATOR_SCHEMA],
+	// Reserved version numbers keep existing self-host databases compatible.
+	8: [],
+	7: [
+		`ALTER TABLE videos ADD COLUMN never_expires INTEGER NOT NULL DEFAULT 0 CHECK (never_expires IN (0, 1))`,
+	],
+	6: [
+		`CREATE INDEX IF NOT EXISTS idx_videos_owner_created ON videos(owner_id, datetime(created_at) DESC, id DESC)`,
+	],
 	5: [
 		`CREATE TABLE IF NOT EXISTS recording_uploads (share_code TEXT PRIMARY KEY REFERENCES videos(share_code) ON DELETE CASCADE, upload_id TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS recording_locks (share_code TEXT PRIMARY KEY, token TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,

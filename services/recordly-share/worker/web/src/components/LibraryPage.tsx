@@ -1,4 +1,5 @@
 import ThemeToggle from "./ThemeToggle";
+import SharingControls from "./SharingControls";
 import {
 	Button,
 	Card,
@@ -22,9 +23,10 @@ import {
 	SignOutIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
 	fetchVideos,
+	LibrarySignInRedirectError,
 	renewVideo,
 	deleteVideo,
 	parseUTC,
@@ -53,7 +55,17 @@ export function LibraryLogin() {
 	);
 }
 
-export default function LibraryPage() {
+export default function LibraryPage({
+	accessToken,
+	onSignOut,
+	accountSettings,
+	folderStorageKey = "recordly-cloud-folders",
+}: {
+	accessToken?: string;
+	onSignOut?: () => void;
+	accountSettings?: ReactNode;
+	folderStorageKey?: string;
+} = {}) {
 	const [section, setSection] = useState("shared");
 	const [query, setQuery] = useState("");
 	const [period, setPeriod] = useState("all");
@@ -62,25 +74,39 @@ export default function LibraryPage() {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
 	const [pending, setPending] = useState<string | null>(null);
+	const [managing, setManaging] = useState<LibraryVideo | null>(null);
 	const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null);
+	const tokenRef = useRef(accessToken);
+	useEffect(() => {
+		tokenRef.current = accessToken;
+	}, [accessToken]);
+	const loadGeneration = useRef(0);
 	const load = useCallback(async () => {
+		const generation = ++loadGeneration.current;
+		let redirecting = false;
 		setLoading(true);
 		setError("");
 		try {
-			setVideos(await fetchVideos());
-		} catch {
-			setError("Could not load your recordings. Please try again.");
+			const result = await fetchVideos(tokenRef.current);
+			if (generation === loadGeneration.current) setVideos(result);
+		} catch (cause) {
+			redirecting = cause instanceof LibrarySignInRedirectError;
+			if (!redirecting && generation === loadGeneration.current)
+				setError("Could not load your recordings. Please try again.");
 		} finally {
-			setLoading(false);
+			if (!redirecting && generation === loadGeneration.current) setLoading(false);
 		}
 	}, []);
 	useEffect(() => {
 		void load();
+		return () => {
+			loadGeneration.current++;
+		};
 	}, [load]);
 	async function renew(code: string) {
 		setPending(code);
 		try {
-			const expires = await renewVideo(code);
+			const expires = await renewVideo(code, accessToken);
 			if (!expires) throw new Error();
 			setVideos((current) =>
 				current.map((video) =>
@@ -88,8 +114,9 @@ export default function LibraryPage() {
 				),
 			);
 			toast.success("Share link renewed");
-		} catch {
-			toast.danger("Could not renew this link. Try again.");
+		} catch (cause) {
+			if (!(cause instanceof LibrarySignInRedirectError))
+				toast.danger("Could not renew this link. Try again.");
 		} finally {
 			setPending(null);
 		}
@@ -97,12 +124,13 @@ export default function LibraryPage() {
 	async function remove(code: string) {
 		setPending(code);
 		try {
-			if (!(await deleteVideo(code))) throw new Error();
+			if (!(await deleteVideo(code, accessToken))) throw new Error();
 			setVideos((current) => current.filter((video) => video.share_code !== code));
 			toast.success("Recording deleted");
 			return true;
-		} catch {
-			toast.danger("Could not delete this recording. Try again.");
+		} catch (cause) {
+			if (!(cause instanceof LibrarySignInRedirectError))
+				toast.danger("Could not delete this recording. Try again.");
 			return false;
 		} finally {
 			setPending(null);
@@ -117,9 +145,7 @@ export default function LibraryPage() {
 	const [deleting, setDeleting] = useState(false);
 	useEffect(() => {
 		try {
-			const saved: unknown = JSON.parse(
-				localStorage.getItem("recordly-cloud-folders") || "[]",
-			);
+			const saved: unknown = JSON.parse(localStorage.getItem(folderStorageKey) || "[]");
 			if (Array.isArray(saved))
 				setFolders(
 					saved.filter(
@@ -134,11 +160,11 @@ export default function LibraryPage() {
 		} catch {
 			/* An unavailable or invalid local cache starts with no folders. */
 		}
-	}, []);
+	}, [folderStorageKey]);
 	function saveFolders(next: LibraryFolder[]) {
 		setFolders(next);
 		try {
-			localStorage.setItem("recordly-cloud-folders", JSON.stringify(next));
+			localStorage.setItem(folderStorageKey, JSON.stringify(next));
 		} catch {
 			toast.danger("Folders could not be saved in this browser.");
 		}
@@ -181,6 +207,8 @@ export default function LibraryPage() {
 				? a.title.localeCompare(b.title)
 				: parseUTC(b.created_at).getTime() - parseUTC(a.created_at).getTime(),
 		);
+	const activeFolder = folders.find((folder) => folder.id === section);
+	const hasFilters = !!query.trim() || period !== "all";
 	const busy = pending !== null || deleting;
 	const navClass = (active: boolean) =>
 		`h-10 w-full justify-start gap-3 px-3 text-[13px] ${active ? "bg-default/50 font-medium" : "text-muted-foreground"}`;
@@ -195,6 +223,15 @@ export default function LibraryPage() {
 	return (
 		<>
 			<Notifications />
+			{managing && accessToken && (
+				<SharingControls
+					key={managing.share_code}
+					code={managing.share_code}
+					title={managing.title}
+					accessToken={accessToken}
+					onClose={() => setManaging(null)}
+				/>
+			)}
 			<div className="library-dashboard flex h-full flex-row gap-0 rounded-none bg-background p-0 text-foreground">
 				<aside
 					aria-label="Library navigation"
@@ -322,7 +359,7 @@ export default function LibraryPage() {
 							</div>
 						))}
 					</div>
-					<div className="space-y-1 pt-6">
+					<div className="library-account-actions space-y-1 pt-6">
 						<ThemeToggle sidebar />
 						<Button
 							variant="ghost"
@@ -338,7 +375,7 @@ export default function LibraryPage() {
 						<Button
 							variant="ghost"
 							className={navClass(false)}
-							onPress={() => location.assign("/library/logout")}
+							onPress={onSignOut ?? (() => location.assign("/library/logout"))}
 						>
 							<SignOutIcon className="size-[18px]" />
 							Log out
@@ -360,7 +397,7 @@ export default function LibraryPage() {
 									/>
 								</div>
 							</header>
-							<div className="flex flex-wrap items-center gap-3 px-7 pb-7 lg:px-10">
+							<div className="library-filters flex flex-wrap items-center gap-3 px-7 pb-7 lg:px-10">
 								<div className="flex gap-2" aria-label="Time filters">
 									{[
 										["all", "All"],
@@ -460,6 +497,11 @@ export default function LibraryPage() {
 						{section === "settings" ? (
 							<div className="space-y-5 py-10">
 								<h1 className="text-lg font-semibold">Library settings</h1>
+								{accountSettings && (
+									<section className="max-w-md rounded-xl border border-separator p-5">
+										{accountSettings}
+									</section>
+								)}
 								<p className="text-sm text-muted">
 									Folders are saved in this browser. Recordings and share links
 									are stored by your sharing service.
@@ -470,7 +512,18 @@ export default function LibraryPage() {
 							</div>
 						) : (
 							<>
-								{error && <Notice>{error}</Notice>}
+								{error && (
+									<div className="mb-5 space-y-3">
+										<Notice>{error}</Notice>
+										<Button
+											variant="secondary"
+											isDisabled={loading}
+											onPress={() => void load()}
+										>
+											Try again
+										</Button>
+									</div>
+								)}
 								<ul
 									aria-label="Your recordings"
 									className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] gap-x-7 gap-y-10 lg:gap-x-9"
@@ -502,7 +555,16 @@ export default function LibraryPage() {
 													}
 													busy={busy}
 													copy={() => void copy(video.share_code)}
-													renew={() => void renew(video.share_code)}
+													manage={
+														accessToken
+															? () => setManaging(video)
+															: undefined
+													}
+													renew={
+														accessToken
+															? undefined
+															: () => void renew(video.share_code)
+													}
 													remove={() =>
 														setConfirmDelete([video.share_code])
 													}
@@ -512,20 +574,35 @@ export default function LibraryPage() {
 								{!loading && !error && !visible.length && (
 									<div className="flex h-64 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
 										<CloudIcon weight="fill" className="size-8 opacity-40" />
-										<p>
-											{videos.length
-												? "No recordings match this view."
-												: "No shared recordings yet."}
+										<h1 className="text-base font-semibold text-foreground">
+											{!videos.length
+												? "No shared recordings yet"
+												: hasFilters
+													? "No recordings match your filters"
+													: "This folder is empty"}
+										</h1>
+										<p className="max-w-md text-center">
+											{!videos.length
+												? "Publish a recording from the Recordly app to see it here."
+												: hasFilters
+													? "Try a different search or clear your filters."
+													: `Add recordings to ${activeFolder?.name || "this folder"} from the Shared view using Add folder.`}
 										</p>
 										<Button
 											variant="secondary"
 											onPress={() => {
-												setQuery("");
-												setPeriod("all");
-												setSection("shared");
+												if (!videos.length) setHelp(true);
+												else if (hasFilters) {
+													setQuery("");
+													setPeriod("all");
+												} else setSection("shared");
 											}}
 										>
-											Show all recordings
+											{!videos.length
+												? "How to publish a recording"
+												: hasFilters
+													? "Clear filters"
+													: "Browse shared recordings"}
 										</Button>
 									</div>
 								)}
@@ -543,8 +620,8 @@ export default function LibraryPage() {
 							</Modal.Header>
 							<Modal.Body>
 								<p>
-									Open a project in Recordly, choose Export, then Create share
-									link. Your shared recording will appear here.
+									Open a project in Recordly, choose Publish, then Link. Create a
+									share link and your recording will appear here.
 								</p>
 							</Modal.Body>
 							<Modal.Footer>

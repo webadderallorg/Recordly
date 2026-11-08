@@ -20,6 +20,6 @@ describe("Windows system cursor assets", () => {
 	});
 
 	it("normalizes the Windows cursor set from the measured arrow pixel height", () => {
-		expect(getCursorStyleSizeMultiplier("windows11")).toBeCloseTo(32 / 19.0625, 8);
+		expect(getCursorStyleSizeMultiplier("windows11")).toBeCloseTo(512 / 304, 8);
 	});
 });

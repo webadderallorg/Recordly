@@ -9,6 +9,7 @@ import type {
 import { resolveSourceTrackRoutingPolicy } from "./sourceTrackRoutingPolicy";
 import { AudioTranscodeProcessor } from "./audioTranscodeProcessor";
 import {
+	hasClipSourceAudioOverrides,
 	hasNonDefaultSourceTrackSettings,
 	MIN_SPEED_REGION_DELTA_MS,
 	MP4_AUDIO_CODEC,
@@ -113,6 +114,7 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
 		sourceAudioTrackSettings?: SourceAudioTrackSettings,
 		clipRegions?: ClipRegion[],
+		sourceAudioTrackSettingsByClip?: Record<string, SourceAudioTrackSettings>,
 	): Promise<void> {
 		const sortedTrims = trimRegions
 			? [...trimRegions].sort((a, b) => a.startMs - b.startMs)
@@ -155,6 +157,7 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 			sortedAudioRegions.length > 0 ||
 			needsSourceAudioMixing ||
 			hasNonDefaultSourceTrackSettings(sourceAudioTrackSettings) ||
+			hasClipSourceAudioOverrides(clipRegions, sourceAudioTrackSettingsByClip) ||
 			(clipRegions ?? []).some((clip) => Boolean(clip.muted))
 		) {
 			await this.renderAndMuxOfflineAudio(
@@ -167,6 +170,7 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 				sourceAudioTrackSettings,
 				clipRegions,
 				muxer,
+				sourceAudioTrackSettingsByClip,
 			);
 			return;
 		}
@@ -200,6 +204,7 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 				sourceAudioTrackSettings,
 				clipRegions,
 				muxer,
+				sourceAudioTrackSettingsByClip,
 			);
 			return;
 		}
@@ -247,6 +252,7 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
 		sourceAudioTrackSettings?: SourceAudioTrackSettings,
 		clipRegions?: ClipRegion[],
+		sourceAudioTrackSettingsByClip?: Record<string, SourceAudioTrackSettings>,
 	): Promise<Blob> {
 		const sortedTrims = trimRegions
 			? [...trimRegions].sort((a, b) => a.startMs - b.startMs)
@@ -274,6 +280,7 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 			sourceAudioFallbackStartDelayMsByPath,
 			sourceAudioTrackSettings,
 			clipRegions,
+			sourceAudioTrackSettingsByClip,
 		);
 		return this.renderToWavBlobChunked(prepared);
 	}

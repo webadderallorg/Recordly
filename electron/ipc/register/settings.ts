@@ -2,7 +2,11 @@ import { recordingFocus } from "../recording/focus";
 import { createCountdownController } from "../../countdownController";
 import fs from "node:fs/promises";
 import { app, BrowserWindow, ipcMain } from "electron";
-import { hasAppSetting, readAppSettingsStore, writeAppSettingsStore } from "../../appSettingsStore";
+import {
+	hasAppSetting,
+	readAppSettingsStoreWithStatus,
+	writeAppSettingsStore,
+} from "../../appSettingsStore";
 import { hideCursor } from "../../cursorHider";
 import { createCountdownWindow } from "../../windows";
 import { COUNTDOWN_SETTINGS_FILE, RECORDINGS_SETTINGS_FILE, SHORTCUTS_FILE } from "../constants";
@@ -72,10 +76,17 @@ export function registerSettingsHandlers() {
 				return;
 			}
 
-			const store = readAppSettingsStore();
+			const result = readAppSettingsStoreWithStatus();
+			if (!result.success) {
+				event.returnValue = { success: false, value: null };
+				return;
+			}
+			const store = result.store;
+			const found = hasAppSetting(store, key);
 			event.returnValue = {
 				success: true,
-				value: hasAppSetting(store, key) ? store[key] : null,
+				found,
+				value: found ? store[key] : null,
 			};
 		} catch (error) {
 			console.error("Failed to read app setting:", error);
@@ -90,7 +101,12 @@ export function registerSettingsHandlers() {
 				return;
 			}
 
-			const store = readAppSettingsStore();
+			const result = readAppSettingsStoreWithStatus();
+			if (!result.success) {
+				event.returnValue = { success: false };
+				return;
+			}
+			const store = result.store;
 			store[key] = value;
 			writeAppSettingsStore(store);
 			event.returnValue = { success: true };

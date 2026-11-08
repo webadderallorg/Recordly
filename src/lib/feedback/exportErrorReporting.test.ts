@@ -62,6 +62,26 @@ it("handles GIF, legacy and save failures with no free-text fallback", () => {
 	expect(isExportErrorReport(report)).toBe(true);
 	expect(JSON.stringify(report)).not.toContain("Alice");
 });
+it.each([
+	"2.0.0-beta.1",
+	"2.0.0-rc.2+build.42",
+	"2.0.0+build.42",
+])("preserves an explicit release version accepted by the backend (%s)", (version) => {
+	const report = buildExportErrorReport(`Export failed\nRecordly version: ${version}`);
+	expect(report.appVersion).toBe(version);
+	expect(isExportErrorReport(report)).toBe(true);
+});
+it.each([
+	"2.0.0-beta.1/private",
+	"2.0.0-beta user@example.com",
+	"2.0.0-",
+	"2.0.0+",
+	`2.0.0-${"a".repeat(128)}`,
+])("rejects malformed or unbounded version fields (%s)", (appVersion) => {
+	expect(isExportErrorReport({ ...buildExportErrorReport("Export failed"), appVersion })).toBe(
+		false,
+	);
+});
 it("sends only after explicit submission without session auth, cookies, or a referrer", async () => {
 	const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true })));
 	vi.stubGlobal("fetch", fetchMock);

@@ -15,7 +15,9 @@ export function OnboardingPermissions({
 	const [screenGranted, setScreenGranted] = useState(false);
 	const [accessibilityGranted, setAccessibilityGranted] = useState(false);
 	const [busy, setBusy] = useState<string>();
-	const [error, setError] = useState<string>();
+	const [statusError, setStatusError] = useState<string>();
+	const [requestError, setRequestError] = useState<string>();
+	const error = requestError ?? statusError;
 	const refresh = useCallback(async () => {
 		const [screen, accessibility] = await Promise.all([
 			window.electronAPI.getScreenRecordingPermissionStatus(),
@@ -25,7 +27,8 @@ export function OnboardingPermissions({
 			throw new Error("Could not check permissions. Try again.");
 		setScreenGranted(screen.status === "granted");
 		setAccessibilityGranted(accessibility.trusted);
-		setError(undefined);
+		setStatusError(undefined);
+		if (screen.status === "granted" && accessibility.trusted) setRequestError(undefined);
 		return screen.status === "granted" && accessibility.trusted;
 	}, []);
 
@@ -38,7 +41,7 @@ export function OnboardingPermissions({
 				if (!disposed) setPlatform(mac ? "mac" : "other");
 			} catch (error) {
 				if (!disposed) {
-					setError(String(error));
+					setStatusError(String(error));
 					setPlatform("mac");
 				}
 			}
@@ -51,7 +54,7 @@ export function OnboardingPermissions({
 	useEffect(() => {
 		if (platform !== "mac") return;
 		const check = () => {
-			void refresh().catch((error) => setError(String(error)));
+			void refresh().catch((error) => setStatusError(String(error)));
 		};
 		const visible = () => {
 			if (document.visibilityState === "visible") check();
@@ -82,8 +85,9 @@ export function OnboardingPermissions({
 					throw new Error(result.error || "Could not open System Settings.");
 			}
 			await refresh();
+			setRequestError(undefined);
 		} catch (error) {
-			setError(error instanceof Error ? error.message : String(error));
+			setRequestError(error instanceof Error ? error.message : String(error));
 		} finally {
 			setBusy(undefined);
 		}
@@ -92,7 +96,7 @@ export function OnboardingPermissions({
 	return (
 		<div className="onboarding-permissions relative flex min-h-0 flex-col">
 			<PermissionsConfetti
-				ready={platform === "mac" && screenGranted && accessibilityGranted && !error}
+				ready={platform === "mac" && screenGranted && accessibilityGranted && !statusError}
 			/>
 			<OnboardingBody scrollable={false}>
 				{platform === "checking" ? (
@@ -175,7 +179,7 @@ export function OnboardingPermissions({
 											isDisabled={Boolean(busy)}
 											onPress={() =>
 												void refresh().catch((error) =>
-													setError(String(error)),
+													setStatusError(String(error)),
 												)
 											}
 										>

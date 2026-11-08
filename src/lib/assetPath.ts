@@ -65,6 +65,14 @@ export async function getAssetPath(relativePath: string): Promise<string> {
 			if (typeof window.electronAPI?.getAssetBasePath === "function") {
 				const base = await window.electronAPI.getAssetBasePath();
 				if (base) {
+					// Keep native export's filesystem metadata in the bridge, while
+					// HTTP renderers load bundled files through their own origin.
+					if (base.startsWith("file:") && isWebContext && window.location.origin) {
+						return new URL(
+							`__recordly_assets/${encodedRelativePath}`,
+							`${window.location.origin}/`,
+						).toString();
+					}
 					return new URL(encodedRelativePath, ensureTrailingSlash(base)).toString();
 				}
 			}
@@ -189,6 +197,13 @@ function isBundledAssetPath(asset: string): boolean {
 export async function getRenderableVideoUrl(asset: string): Promise<string> {
 	const serverPath = getLocalMediaServerPath(asset);
 	if (serverPath) return resolveLocalMediaUrl(serverPath);
+	let localFilePath: string | null = null;
+	try {
+		localFilePath = toLocalFilePath(asset);
+	} catch {
+		// Malformed persisted file URLs retain the pass-through behavior below.
+	}
+	if (localFilePath) return resolveLocalMediaUrl(localFilePath);
 	if (
 		!asset ||
 		asset.startsWith("blob:") ||
@@ -235,33 +250,28 @@ export async function getExportableVideoUrl(asset: string): Promise<string> {
 // ---------------------------------------------------------------------------
 // Wallpaper thumbnail helper — generates a tiny JPEG thumbnail via the main
 // process (nativeImage resize) and returns a data URL for fast grid rendering.
-// Concurrency is capped to avoid OOM from loading many full-res images at once.
+// The main process serializes cache misses; disk cache hits can return immediately.
 // ---------------------------------------------------------------------------
 
 const thumbnailCache = new Map<string, string>();
+const pendingThumbnails = new Map<string, Promise<string>>();
+const MAX_THUMBNAILS = 200;
 
-const THUMB_CONCURRENCY = 3;
-let thumbActive = 0;
-const thumbQueue: Array<() => void> = [];
-
-function acquireThumbSlot(): Promise<void> {
-	if (thumbActive < THUMB_CONCURRENCY) {
-		thumbActive++;
-		return Promise.resolve();
-	}
-	return new Promise<void>((resolve) => thumbQueue.push(resolve));
+export function peekWallpaperThumbnailUrl(asset: string): string | undefined {
+	return thumbnailCache.get(asset);
 }
 
-function releaseThumbSlot(): void {
-	const next = thumbQueue.shift();
-	if (next) {
-		next();
-	} else {
-		thumbActive--;
-	}
+export function getWallpaperThumbnailUrl(asset: string): Promise<string> {
+	const cached = thumbnailCache.get(asset);
+	if (cached) return Promise.resolve(cached);
+	const pending = pendingThumbnails.get(asset);
+	if (pending) return pending;
+	const task = loadWallpaperThumbnail(asset).finally(() => pendingThumbnails.delete(asset));
+	pendingThumbnails.set(asset, task);
+	return task;
 }
 
-export async function getWallpaperThumbnailUrl(asset: string): Promise<string> {
+async function loadWallpaperThumbnail(asset: string): Promise<string> {
 	if (
 		!asset ||
 		asset.startsWith("data:") ||
@@ -278,6 +288,7 @@ export async function getWallpaperThumbnailUrl(asset: string): Promise<string> {
 
 	const localFilePath =
 		(asset.startsWith("/wallpapers/") ? asset : null) ??
+		(isAbsoluteLocalAssetPath(asset) && !isBundledAssetPath(asset) ? asset : null) ??
 		toLocalFilePath(
 			asset.startsWith("/") && !asset.startsWith("//")
 				? await getAssetPath(asset.replace(/^\//, ""))
@@ -291,7 +302,6 @@ export async function getWallpaperThumbnailUrl(asset: string): Promise<string> {
 		return getRenderableAssetUrl(asset);
 	}
 
-	await acquireThumbSlot();
 	try {
 		const result = await window.electronAPI.generateWallpaperThumbnail(localFilePath);
 		if (!result.success || !result.data) {
@@ -300,11 +310,12 @@ export async function getWallpaperThumbnailUrl(asset: string): Promise<string> {
 		const bytes = result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data);
 		const dataUrl = `data:image/jpeg;base64,${toBase64(bytes)}`;
 		thumbnailCache.set(asset, dataUrl);
+		if (thumbnailCache.size > MAX_THUMBNAILS) {
+			thumbnailCache.delete(thumbnailCache.keys().next().value!);
+		}
 		return dataUrl;
 	} catch {
 		return getRenderableAssetUrl(asset);
-	} finally {
-		releaseThumbSlot();
 	}
 }
 

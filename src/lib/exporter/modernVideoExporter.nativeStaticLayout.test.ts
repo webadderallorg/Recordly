@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AudioRegion, SpeedRegion, ZoomRegion } from "@/components/video-editor/types";
+import {
+	computePaddedLayout,
+	scalePreviewBorderRadius,
+} from "@/components/video-editor/videoPlayback/layoutUtils";
 import { ModernVideoExporter } from "./modernVideoExporter";
+import { FrameRenderer } from "./modernFrameRenderer";
+import { VideoMuxer } from "./muxer";
+import { StreamingVideoDecoder } from "./streamingDecoder";
+import { roundNativeStaticLayoutContentSize } from "./nativeStaticLayoutGeometry";
 import type { DecodedVideoInfo } from "./streamingDecoder";
 
 const videoInfo: DecodedVideoInfo = {
@@ -39,6 +47,12 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 		experimentalNativeExport: true,
 		...overrides,
 	} as never) as unknown as {
+		tryExportNativeStaticLayout: (
+			videoInfo: DecodedVideoInfo,
+			audioPlan: { audioMode: "none" },
+			effectiveDuration: number,
+			totalFrames: number,
+		) => Promise<{ success: boolean } | null>;
 		buildNativeAudioPlan: (videoInfo: DecodedVideoInfo) => unknown;
 		buildNativeStaticLayoutVideoTimelineSegments: (videoInfo: DecodedVideoInfo) => Array<{
 			sourceStartMs: number;
@@ -70,6 +84,8 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 			wallpaper: string,
 		) => CanvasGradient | null;
 		getNativeStaticLayoutCursorSize: (contentWidth: number) => number;
+		effectiveDurationSec: number;
+		getNativeStaticLayoutCursorTelemetry: () => Array<{ cursorType?: string }> | undefined;
 		getNativeStaticLayoutZoomTelemetry: (
 			layout: {
 				centerOffsetX: number;
@@ -88,6 +104,457 @@ afterEach(() => {
 });
 
 describe("ModernVideoExporter native static-layout eligibility", () => {
+	it.each(
+		[
+			{
+				name: "platform auto",
+				platform: "MacIntel",
+				backendPreference: "auto",
+				staticRoute: false,
+			},
+			{
+				name: "auto software escalation",
+				platform: "Linux x86_64",
+				backendPreference: "auto",
+				staticRoute: false,
+			},
+			{
+				name: "Breeze static",
+				platform: "Linux x86_64",
+				backendPreference: "breeze",
+				staticRoute: true,
+			},
+			{
+				name: "experimental static",
+				platform: "Linux x86_64",
+				backendPreference: "webcodecs",
+				experimentalNvidiaCudaExport: true,
+				staticRoute: true,
+			},
+		].flatMap((scenario) =>
+			[undefined, false, true].map((forceSoftwareEncoding) => ({
+				...scenario,
+				forceSoftwareEncoding,
+			})),
+		),
+	)("respects forcedSoftware=$forceSoftwareEncoding for complete $name export", async ({
+		platform,
+		backendPreference,
+		experimentalNvidiaCudaExport,
+		staticRoute,
+		forceSoftwareEncoding,
+	}) => {
+		vi.stubGlobal("navigator", { platform });
+		vi.stubGlobal("window", { electronAPI: {} });
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#000000",
+			backendPreference,
+			experimentalNvidiaCudaExport,
+			forceSoftwareEncoding,
+		} as never);
+		const operations = exporter as unknown as {
+			tryStartNativeVideoExport: () => Promise<boolean>;
+			tryExportNativeStaticLayout: () => Promise<{ success: boolean; tempFilePath: string }>;
+			loadNativeStaticLayoutVideoInfo: () => Promise<typeof videoInfo>;
+			finishNativeVideoExport: () => Promise<{ success: boolean; tempFilePath: string }>;
+			initializeEncoder: () => Promise<{
+				codec: string;
+				hardwareAcceleration: "prefer-software";
+			}>;
+		};
+		try {
+			vi.spyOn(StreamingVideoDecoder.prototype, "loadMetadata").mockResolvedValue({
+				...videoInfo,
+				hasAudio: false,
+				audioCodec: undefined,
+				audioSampleRate: undefined,
+			});
+			vi.spyOn(StreamingVideoDecoder.prototype, "getEffectiveDuration").mockReturnValue(0);
+			vi.spyOn(StreamingVideoDecoder.prototype, "decodeAll").mockResolvedValue(undefined);
+			vi.spyOn(FrameRenderer.prototype, "initialize").mockResolvedValue(undefined);
+			vi.spyOn(VideoMuxer.prototype, "initialize").mockResolvedValue(undefined);
+			vi.spyOn(VideoMuxer.prototype, "finalize").mockResolvedValue({
+				mode: "buffer",
+				blob: new Blob([], { type: "video/mp4" }),
+			});
+			const start = vi.spyOn(operations, "tryStartNativeVideoExport").mockResolvedValue(true);
+			const layout = vi
+				.spyOn(operations, "tryExportNativeStaticLayout")
+				.mockResolvedValue({ success: true, tempFilePath: "/tmp/static.mp4" });
+			vi.spyOn(operations, "loadNativeStaticLayoutVideoInfo").mockResolvedValue(videoInfo);
+			vi.spyOn(operations, "finishNativeVideoExport").mockResolvedValue({
+				success: true,
+				tempFilePath: "/tmp/native.mp4",
+			});
+			const initialize = vi.spyOn(operations, "initializeEncoder").mockResolvedValue({
+				codec: "avc1.640033",
+				hardwareAcceleration: "prefer-software",
+			});
+			const result = await exporter.export();
+			expect(result.success).toBe(true);
+			if (forceSoftwareEncoding) {
+				expect(start).not.toHaveBeenCalled();
+				expect(layout).not.toHaveBeenCalled();
+				expect(initialize).toHaveBeenCalledOnce();
+			} else {
+				expect(layout).toHaveBeenCalledTimes(staticRoute ? 1 : 0);
+				expect(start).toHaveBeenCalledTimes(staticRoute ? 0 : 1);
+			}
+		} finally {
+			vi.restoreAllMocks();
+		}
+	});
+	it("does not retry native hardware when forced software encoding is unavailable", async () => {
+		vi.stubGlobal("navigator", { platform: "Linux x86_64" });
+		vi.stubGlobal("window", { electronAPI: {} });
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#000000",
+			backendPreference: "auto",
+			forceSoftwareEncoding: true,
+		} as never);
+		const operations = exporter as unknown as {
+			tryStartNativeVideoExport: () => Promise<boolean>;
+			initializeEncoder: () => Promise<never>;
+			finishNativeVideoExport: () => Promise<{ success: boolean; tempFilePath: string }>;
+		};
+		try {
+			const start = vi.spyOn(operations, "tryStartNativeVideoExport").mockResolvedValue(true);
+			vi.spyOn(operations, "initializeEncoder").mockRejectedValue(
+				new Error("Software encoder unavailable"),
+			);
+			vi.spyOn(operations, "finishNativeVideoExport").mockResolvedValue({
+				success: true,
+				tempFilePath: "/tmp/native.mp4",
+			});
+			const result = await exporter.export();
+			expect(result.success).toBe(false);
+			expect(result.error).toContain("Software encoder unavailable");
+			expect(start).not.toHaveBeenCalled();
+		} finally {
+			vi.restoreAllMocks();
+		}
+	});
+
+	it("uses only software encoder candidates for recovery without changing codec or ordinary preference", () => {
+		const preferred = { codec: "avc1.640034", hardwareAcceleration: "prefer-hardware" };
+		const config = { codec: preferred.codec, preferredEncoderPath: preferred };
+		const ordinary = new ModernVideoExporter(config as never) as unknown as {
+			getEncoderCandidates: () => (typeof preferred)[];
+		};
+		expect(ordinary.getEncoderCandidates()[0]).toEqual(preferred);
+		const recovery = new ModernVideoExporter({
+			...config,
+			forceSoftwareEncoding: true,
+		} as never) as unknown as { getEncoderCandidates: () => (typeof preferred)[] };
+		const candidates = recovery.getEncoderCandidates();
+		expect(candidates.length).toBeGreaterThan(0);
+		expect(
+			candidates.every((candidate) => candidate.hardwareAcceleration === "prefer-software"),
+		).toBe(true);
+		expect(candidates[0].codec).toBe(preferred.codec);
+	});
+
+	function sampleRenderedCamera(overrides: Record<string, unknown>, timeMs: number) {
+		const renderer = new FrameRenderer({
+			width: 1920,
+			height: 1080,
+			wallpaper: "#000000",
+			zoomRegions: [],
+			showShadow: false,
+			shadowIntensity: 0,
+			backgroundBlur: 0,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			videoWidth: 1920,
+			videoHeight: 1080,
+			...overrides,
+		} as never) as unknown as {
+			cameraContainer: unknown;
+			layoutCache: unknown;
+			updateAnimationState: (time: number) => number;
+			animationState: { scale: number; focusX: number; focusY: number };
+		};
+		renderer.cameraContainer = {};
+		renderer.layoutCache = {
+			stageSize: { width: 1920, height: 1080 },
+			maskRect: { x: 0, y: 0, width: 1920, height: 1080 },
+		};
+		renderer.updateAnimationState(timeMs);
+		return renderer.animationState;
+	}
+	it("projects auto-follow through the source crop in rendered export frames", () => {
+		const state = sampleRenderedCamera(
+			{
+				cropRegion: { x: 0.5, y: 0.2, width: 0.5, height: 0.6 },
+				zoomRegions: [
+					{
+						id: "auto",
+						startMs: 0,
+						endMs: 4000,
+						depth: 6,
+						focus: { cx: 0.6, cy: 0.4 },
+						mode: "auto",
+					},
+				],
+				cursorTelemetry: [
+					{ timeMs: 0, cx: 0.6, cy: 0.4 },
+					{ timeMs: 3000, cx: 0.6, cy: 0.4 },
+				],
+			},
+			2000,
+		);
+		expect(state.focusX).toBeCloseTo(0.2);
+		expect(state.focusY).toBeCloseTo(1 / 3);
+	});
+	it("honors configured zoom connection gaps and duration in rendered export frames", () => {
+		const sample = (connectedZoomGapMs: number, connectedZoomDurationMs = 600) =>
+			sampleRenderedCamera(
+				{
+					connectZooms: true,
+					connectedZoomGapMs,
+					connectedZoomDurationMs,
+					zoomClassicMode: true,
+					zoomInDurationMs: 100,
+					zoomOutDurationMs: 100,
+					zoomRegions: [
+						{
+							id: "first",
+							startMs: 0,
+							endMs: 1000,
+							depth: 2,
+							focus: { cx: 0.5, cy: 0.5 },
+							mode: "manual",
+						},
+						{
+							id: "second",
+							startMs: 2000,
+							endMs: 3000,
+							depth: 4,
+							focus: { cx: 0.5, cy: 0.5 },
+							mode: "manual",
+						},
+					],
+				},
+				1500,
+			).scale;
+		expect(sample(3000)).toBeGreaterThan(sample(100));
+		expect(sample(3000, 100)).toBeGreaterThan(sample(3000, 1000));
+	});
+
+	it("rejects traversal through the live native bundled-background resolver", async () => {
+		vi.stubGlobal("window", {
+			electronAPI: { getAssetBasePath: vi.fn(async () => "file:///Recordly/resources/") },
+		});
+		const exporter = new ModernVideoExporter({} as never) as unknown as {
+			resolveNativeBundledAssetPath: (path: string) => Promise<string | null>;
+		};
+		await expect(
+			exporter.resolveNativeBundledAssetPath("/wallpapers/known.jpg/../../../../private.png"),
+		).resolves.toBeNull();
+		await expect(
+			exporter.resolveNativeBundledAssetPath("/wallpapers/%2e%2e%5cprivate.png"),
+		).resolves.toBeNull();
+	});
+
+	it("exports the pixel-glove held click pose through the native exporter", () => {
+		const exporter = createExporter({
+			showCursor: true,
+			cursorStyle: "pixel-hand",
+			cursorTelemetry: [
+				{
+					timeMs: 0,
+					cx: 0.5,
+					cy: 0.5,
+					cursorType: "arrow",
+					interactionType: "click",
+					mouseButton: 1,
+				},
+				{ timeMs: 1000, cx: 0.6, cy: 0.5, interactionType: "move" },
+				{ timeMs: 2000, cx: 0.6, cy: 0.5, interactionType: "mouseup", mouseButton: 1 },
+			],
+		});
+		exporter.effectiveDurationSec = 3;
+		expect(
+			exporter
+				.getNativeStaticLayoutCursorTelemetry()
+				?.some((sample) => sample.cursorType === "closed-hand"),
+		).toBe(true);
+	});
+	it("centers a source click within the cropped native frame", () => {
+		const exporter = createExporter({
+			cropRegion: { x: 0.5, y: 0.2, width: 0.5, height: 0.6 },
+			zoomClassicMode: true,
+			zoomInDurationMs: 200,
+			zoomOutDurationMs: 300,
+			zoomRegions: [
+				{
+					id: "crop",
+					startMs: 0,
+					endMs: 4000,
+					depth: 6,
+					focus: { cx: 0.6, cy: 0.4 },
+					mode: "auto",
+				},
+			],
+		});
+		const layout = {
+			centerOffsetX: 0,
+			centerOffsetY: 0,
+			croppedDisplayWidth: 1920,
+			croppedDisplayHeight: 1080,
+		};
+		const frame = exporter.getNativeStaticLayoutZoomTelemetry(layout, 91, undefined)![75];
+		expect(frame.scale).toBe(5);
+		expect(frame.x + 0.2 * 1920 * frame.scale).toBeCloseTo(960);
+		expect(frame.y + (1 / 3) * 1080 * frame.scale).toBeCloseTo(540);
+	});
+	it("honors the configured connection gap between native zoom regions", () => {
+		const zoomRegions = [
+			{
+				id: "first",
+				startMs: 0,
+				endMs: 1000,
+				depth: 2,
+				focus: { cx: 0.5, cy: 0.5 },
+				mode: "manual",
+			},
+			{
+				id: "second",
+				startMs: 2000,
+				endMs: 3000,
+				depth: 2,
+				focus: { cx: 0.5, cy: 0.5 },
+				mode: "manual",
+			},
+		];
+		const layout = {
+			centerOffsetX: 0,
+			centerOffsetY: 0,
+			croppedDisplayWidth: 1920,
+			croppedDisplayHeight: 1080,
+		};
+		const common = {
+			zoomRegions,
+			connectZooms: true,
+			zoomClassicMode: true,
+			zoomInDurationMs: 100,
+			zoomOutDurationMs: 100,
+		};
+		const joined = createExporter({
+			...common,
+			connectedZoomGapMs: 3000,
+		}).getNativeStaticLayoutZoomTelemetry(layout, 90, undefined)!;
+		const separated = createExporter({
+			...common,
+			connectedZoomGapMs: 100,
+		}).getNativeStaticLayoutZoomTelemetry(layout, 90, undefined)!;
+		expect(joined[45].scale).toBeGreaterThan(separated[45].scale);
+	});
+	it("applies configured camera spring tuning to native zooms", () => {
+		const zoomRegions = [
+			{
+				id: "first",
+				startMs: 0,
+				endMs: 1000,
+				depth: 2,
+				focus: { cx: 0.3, cy: 0.5 },
+				mode: "manual",
+			},
+			{
+				id: "second",
+				startMs: 1200,
+				endMs: 4000,
+				depth: 4,
+				focus: { cx: 0.7, cy: 0.5 },
+				mode: "manual",
+			},
+		];
+		const layout = {
+			centerOffsetX: 0,
+			centerOffsetY: 0,
+			croppedDisplayWidth: 1920,
+			croppedDisplayHeight: 1080,
+		};
+		const common = { zoomRegions, connectZooms: true, connectedZoomGapMs: 3000 };
+		const soft = createExporter({
+			...common,
+			cameraSpringStiffnessMultiplier: 0.1,
+		}).getNativeStaticLayoutZoomTelemetry(layout, 90, undefined)!;
+		const firm = createExporter({
+			...common,
+			cameraSpringStiffnessMultiplier: 5,
+		}).getNativeStaticLayoutZoomTelemetry(layout, 90, undefined)!;
+		expect(firm[60].scale).toBeGreaterThan(soft[60].scale);
+	});
+
+	it.each([
+		{ name: "a full frame", sourceWidth: 1920, sourceHeight: 1080, padding: 0 },
+		{
+			name: "a near-full frame before even rounding",
+			sourceWidth: 1919,
+			sourceHeight: 1080,
+			padding: 0,
+		},
+		{ name: "a letterboxed video", sourceWidth: 1440, sourceHeight: 1080, padding: 0 },
+		{ name: "a padded video", sourceWidth: 1920, sourceHeight: 1080, padding: 20 },
+	])("preserves preview corner treatment for $name", async ({
+		sourceWidth,
+		sourceHeight,
+		padding,
+	}) => {
+		const exporter = createExporter({ borderRadius: 5, padding });
+		const nativeExport = vi.mocked(window.electronAPI.nativeStaticLayoutExport);
+		nativeExport.mockResolvedValue({ success: true, tempPath: "/tmp/export.mp4" });
+		const source = { ...videoInfo, width: sourceWidth, height: sourceHeight };
+		const result = await exporter.tryExportNativeStaticLayout(
+			source,
+			{ audioMode: "none" },
+			60,
+			1800,
+		);
+		expect(result?.success).toBe(true);
+		expect(nativeExport).toHaveBeenCalledTimes(1);
+		const request = nativeExport.mock.calls[0][0];
+		const layout = computePaddedLayout({
+			width: 1920,
+			height: 1080,
+			padding,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			videoWidth: sourceWidth,
+			videoHeight: sourceHeight,
+		});
+		const encodedSize = roundNativeStaticLayoutContentSize({
+			width: layout.croppedDisplayWidth,
+			height: layout.croppedDisplayHeight,
+		});
+		expect({ width: request.contentWidth, height: request.contentHeight }).toEqual(encodedSize);
+		const previewRadius = scalePreviewBorderRadius(
+			layout.croppedDisplayWidth,
+			layout.croppedDisplayHeight,
+			5,
+			{ width: 1920, height: 1080 },
+		);
+		if (padding === 0 && sourceWidth >= 1919) {
+			expect(previewRadius).toBe(0);
+			expect(request.borderRadius).toBe(0);
+			if (sourceWidth === 1919) expect(encodedSize).toEqual({ width: 1918, height: 1080 });
+		} else {
+			expect(previewRadius).toBeGreaterThan(0);
+			// The inset radius stays proportional to the even content actually encoded.
+			expect(request.borderRadius).toBeCloseTo(
+				Math.min(encodedSize.width, encodedSize.height) * 0.05,
+			);
+		}
+	});
 	it("uses configured zoom transition durations for native telemetry", () => {
 		const zoomRegions: ZoomRegion[] = [
 			{
@@ -275,9 +742,12 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 	it("preserves the cursor-to-video ratio at every native static-layout size", () => {
 		const exporter = createExporter({ cursorSize: 3, cursorStyle: "tahoe" });
 
-		expect(exporter.getNativeStaticLayoutCursorSize(1920)).toBeCloseTo(84, 6);
-		expect(exporter.getNativeStaticLayoutCursorSize(960)).toBeCloseTo(42, 6);
-		expect(exporter.getNativeStaticLayoutCursorSize(480)).toBeCloseTo(21, 6);
+		// Native sizing includes texture padding; the visible Golden Gate body
+		// occupies 859 of its 958 pixels. Compare visible height with the viewport.
+		const bodyFraction = 859 / 958;
+		expect(exporter.getNativeStaticLayoutCursorSize(1920) * bodyFraction).toBeCloseTo(84, 6);
+		expect(exporter.getNativeStaticLayoutCursorSize(960) * bodyFraction).toBeCloseTo(42, 6);
+		expect(exporter.getNativeStaticLayoutCursorSize(480) * bodyFraction).toBeCloseTo(21, 6);
 	});
 
 	it("skips native static-layout when cursor click effects are enabled", () => {

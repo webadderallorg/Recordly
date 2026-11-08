@@ -1,12 +1,12 @@
 import { Globe } from "@phosphor-icons/react";
 import { ProjectFolderChips } from "./ProjectFolderChips";
 import { RawThumbnail } from "./RawRecordings";
-import { AccountAvatar } from "@/components/ui/account-avatar";
+import { AccountAvatar, AccountProfileContext } from "@/components/ui/account-avatar";
 import { Dropdown } from "@heroui/react";
 import { Check, DotsThree, FolderSimple, Plus } from "@/components/ui/icons";
-import { useRef, useState } from "react";
+import { useContext, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { getProjectShareLink, moveProjectShareLink } from "../cloud/projectShareLinks";
+import { getProjectShare, moveProjectShareLink } from "../cloud/projectShareLinks";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import { ProjectThumbnail } from "./ProjectThumbnail";
 import type { DashboardProps } from "./types";
@@ -51,7 +51,8 @@ export function ProjectCard({
 	const [name, setName] = useState(entry.name);
 	const assignedFolders = folders.filter((folder) => folder.paths.includes(entry.path));
 	const folder = assignedFolders[0];
-	const shareUrl = getProjectShareLink(entry.path);
+	const accountId = useContext(AccountProfileContext)?.id;
+	const shareUrl = getProjectShare(entry.path, accountId)?.url;
 	const rename = () => {
 		if (renaming.current) return;
 		renaming.current = true;
@@ -256,7 +257,9 @@ export function ProjectCard({
 										id="rename"
 										onAction={() => {
 											setName(entry.name);
-											requestAnimationFrame(() => requestAnimationFrame(() => setEditing(true)));
+											requestAnimationFrame(() =>
+												requestAnimationFrame(() => setEditing(true)),
+											);
 										}}
 									>
 										Rename

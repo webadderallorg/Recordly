@@ -4,12 +4,7 @@ import type { ReactNode } from "react";
 
 export function Brand() {
 	return (
-		<Link
-			href="https://github.com/webadderallorg/Recordly"
-			target="_blank"
-			rel="noopener noreferrer"
-			className="brand"
-		>
+		<Link href="/library" className="brand">
 			<img src="/icon-64.png" alt="" width="28" height="28" />
 			<span>Recordly</span>
 		</Link>

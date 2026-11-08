@@ -1,0 +1,15 @@
+Subscription ending with Recordly
+
+We're sorry to see you go. Your {{ .PlanName }} subscription won't renew, and you can enjoy your Cloud benefits until the date below.
+
+Plan: {{ .PlanName }}
+Access until: {{ .EndDate }}
+
+Manage subscription: {{ .ActionURL }}
+
+For recording retention after your subscription ends, review the Terms of service at https://videos.recordly.dev/terms. Keep local copies of recordings you want to retain.
+
+If you didn't request this cancellation, contact support.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

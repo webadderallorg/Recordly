@@ -1,0 +1,8 @@
+/* Suppress shortcut-induced focus chrome only on the mouse-focused element.
+   Tab removes this marker before moving focus, leaving all existing styles intact.
+   Keep ordinary shadows and explicit inline selection outlines. */
+[data-pointer-focus]:is(:focus-visible, [data-focus-visible="true"]) {
+	outline: none;
+	--tw-ring-color: transparent;
+	--tw-ring-offset-color: transparent;
+}

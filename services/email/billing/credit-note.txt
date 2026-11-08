@@ -1,0 +1,16 @@
+Billing update from Recordly
+
+A small billing update: we've issued a credit note for your Recordly invoice. See how it was applied in your billing details.
+
+Credit amount: {{ .CreditAmount }}
+Invoice: {{ .InvoiceNumber }}
+Issued on: {{ .CreditDate }}
+
+View billing details: {{ .ActionURL }}
+
+A credit note can adjust an invoice or account balance. It doesn't always mean a refund was sent to your payment method.
+
+Questions about this adjustment? Contact support.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

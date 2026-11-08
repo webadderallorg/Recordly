@@ -1,0 +1,10 @@
+Verify it's you for Recordly
+
+Enter this code in Recordly to confirm this action. Don't share this with anyone.
+
+{{ .Token }}
+
+If you didn't request this code, contact support.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy
