@@ -99,7 +99,7 @@ describe.skipIf(process.platform === "win32")("listed primary project symlinks",
 				companion,
 			]);
 			// A regular recovery generation continues protecting its own references.
-			const backup = getProjectBackupPaths(linked)[0];
+			const backup = (await getProjectBackupPaths(linked))[0];
 			await fs.mkdir(path.dirname(backup), { recursive: true });
 			await fs.writeFile(
 				backup,
@@ -108,7 +108,7 @@ describe.skipIf(process.platform === "win32")("listed primary project symlinks",
 			expect((await prepareLibraryDeletion([selected], deps)).sourceOwners).toEqual({});
 			for (const primary of [selected, linked]) {
 				expect(reads).toHaveBeenCalledWith(primary, "primary");
-				for (const recovery of getProjectBackupPaths(primary)) {
+				for (const recovery of await getProjectBackupPaths(primary)) {
 					expect(reads).toHaveBeenCalledWith(recovery, "recovery");
 				}
 			}
@@ -146,7 +146,7 @@ describe.skipIf(process.platform === "win32")("listed primary project symlinks",
 			});
 			await fs.writeFile(primary, contents);
 			if (!dangling) await fs.writeFile(backupTarget, contents);
-			const backups = getProjectBackupPaths(primary);
+			const backups = await getProjectBackupPaths(primary);
 			expect(backups).toHaveLength(3);
 			const backup = backups[generation as number];
 			await fs.mkdir(path.dirname(backup), { recursive: true });

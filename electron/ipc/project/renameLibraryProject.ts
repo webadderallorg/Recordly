@@ -15,7 +15,7 @@ export async function renameLibraryProject(
 	source: string,
 	name: string,
 	allowedPaths: string[],
-	sidecars: (path: string) => ProjectSidecar[],
+	sidecars: (path: string) => ProjectSidecar[] | Promise<ProjectSidecar[]>,
 ) {
 	if (!allowedPaths.includes(source)) throw new Error("Project is not in the library");
 	const clean = name.trim();
@@ -34,8 +34,8 @@ export async function renameLibraryProject(
 	await fs.link(source, target);
 	const copied: string[] = [];
 	try {
-		const previous = sidecars(source).map(sidecarGroup);
-		const next = sidecars(target).map(sidecarGroup);
+		const previous = (await sidecars(source)).map(sidecarGroup);
+		const next = (await sidecars(target)).map(sidecarGroup);
 		for (let i = 0; i < previous.length; i++) {
 			let existing: { path: string; contents: Buffer; modifiedAt: number } | undefined;
 			for (const candidate of previous[i].paths) {
@@ -82,7 +82,7 @@ export async function renameLibraryProject(
 	}
 	// Auxiliary files can be cleaned up independently once the project has moved.
 	await Promise.all(
-		sidecars(source)
+		(await sidecars(source))
 			.flatMap((value) => sidecarGroup(value).paths)
 			.map((file) => fs.rm(file, { force: true }).catch(() => undefined)),
 	);

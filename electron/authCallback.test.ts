@@ -40,7 +40,11 @@ vi.mock("electron", () => ({
 
 it("forwards the SDK's PKCE flow id through the dev callback without forwarding unrelated parameters", async () => {
 	const { createAuthCallbackController } = await import("./authCallback");
-	const controller = createAuthCallbackController({ isDev: true, focusApp: vi.fn() });
+	const controller = createAuthCallbackController({
+		isDev: true,
+		focusApp: vi.fn(),
+		flowRoutingEnabled: false,
+	});
 	controller.startDevServer();
 	const response = { writeHead: vi.fn(), end: vi.fn() };
 	state.request!(
@@ -63,7 +67,11 @@ it("forwards the SDK's PKCE flow id through the dev callback without forwarding 
 it("restricts callback reads and acknowledgements to the trusted main frame", async () => {
 	vi.mocked(ipcMain.handle).mockClear();
 	const { createAuthCallbackController } = await import("./authCallback");
-	const controller = createAuthCallbackController({ isDev: false, focusApp: vi.fn() });
+	const controller = createAuthCallbackController({
+		isDev: false,
+		focusApp: vi.fn(),
+		flowRoutingEnabled: false,
+	});
 	const url = "recordly://auth/callback?code=private-code";
 	controller.dispatch(url);
 	const handlers = new Map(vi.mocked(ipcMain.handle).mock.calls);
@@ -86,7 +94,11 @@ it("restricts callback reads and acknowledgements to the trusted main frame", as
 
 it("shows an actionable failure page without reflecting callback secrets", async () => {
 	const { createAuthCallbackController } = await import("./authCallback");
-	const controller = createAuthCallbackController({ isDev: true, focusApp: vi.fn() });
+	const controller = createAuthCallbackController({
+		isDev: true,
+		focusApp: vi.fn(),
+		flowRoutingEnabled: false,
+	});
 	controller.startDevServer();
 	const response = { writeHead: vi.fn(), end: vi.fn() };
 	state.request!(
@@ -108,7 +120,11 @@ it("shows an actionable failure page without reflecting callback secrets", async
 it("reopens the app without replacing its pending sign-in callback", async () => {
 	const { createAuthCallbackController } = await import("./authCallback");
 	const focusApp = vi.fn();
-	const controller = createAuthCallbackController({ isDev: false, focusApp });
+	const controller = createAuthCallbackController({
+		isDev: false,
+		focusApp,
+		flowRoutingEnabled: false,
+	});
 	controller.dispatch("recordly://auth/callback?code=pending-private-code");
 	const ready = vi.spyOn(app, "isReady").mockReturnValue(true);
 	const open = vi

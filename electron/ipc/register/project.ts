@@ -299,9 +299,9 @@ export function registerProjectHandlers() {
 				source,
 				name,
 				entries.entries.map((entry) => entry.path),
-				(value) => [
-					{ paths: getProjectThumbnailPaths(value), kind: "preview" },
-					getProjectBackupPaths(value),
+				async (value) => [
+					{ paths: await getProjectThumbnailPaths(value), kind: "preview" },
+					await getProjectBackupPaths(value),
 				],
 			);
 			if (currentProjectPath && normalizePath(currentProjectPath) === normalizePath(source))
@@ -751,12 +751,12 @@ export function registerProjectHandlers() {
 							}
 						});
 					await Promise.all(
-						getProjectThumbnailPaths(activeProjectPath).map((thumbnailPath) =>
+						(await getProjectThumbnailPaths(activeProjectPath)).map((thumbnailPath) =>
 							fs.rm(thumbnailPath, { force: true }).catch(() => undefined),
 						),
 					);
 					await Promise.all(
-						getProjectBackupPaths(activeProjectPath).map((backupPath) =>
+						(await getProjectBackupPaths(activeProjectPath)).map((backupPath) =>
 							fs.rm(backupPath, { force: true }).catch(() => undefined),
 						),
 					);
