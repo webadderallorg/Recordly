@@ -125,16 +125,6 @@ function splitCaptionWords(cue: CaptionCue) {
 	}));
 }
 
-function getActiveCaptionCue(cues: CaptionCue[], timeMs: number) {
-	for (const cue of cues) {
-		if (timeMs >= cue.startMs && timeMs < cue.endMs) {
-			return cue;
-		}
-	}
-
-	return null;
-}
-
 function isWithinCaptionCoverage(sorted: CaptionCue[], timeMs: number) {
 	for (let index = 0; index < sorted.length; index += 1) {
 		const cue = sorted[index];
@@ -559,11 +549,12 @@ export function prepareCaptionLayout(
 			prepared = preparePage(pages[visiblePageIndex]);
 			preparedPages.set(visiblePageIndex, prepared);
 		}
-		const currentCue = getActiveCaptionCue(options.cues, timeMs);
+		// The visible page owns the cue through overlaps and bridged gaps.
+		const currentCue = prepared.cue;
 		// Hold emphasis through acoustic gaps; a cue lead-in cannot highlight its predecessor.
 		let activeWordIndex = -1;
 		sourceWords.forEach((word, index) => {
-			if (currentCue && word.cueId !== currentCue.id) return;
+			if (word.cueId !== currentCue.id) return;
 			if (
 				timeMs >= word.startMs &&
 				(activeWordIndex < 0 || word.startMs >= sourceWords[activeWordIndex].startMs)
@@ -597,7 +588,7 @@ export function prepareCaptionLayout(
 		);
 		return {
 			fontBaselinePx: options.fontBaselinePx,
-			cue: currentCue ?? prepared.cue,
+			cue: currentCue,
 			blockKey: prepared.blockKey,
 			visibleLines,
 			hasWordTimings: prepared.hasWordTimings,

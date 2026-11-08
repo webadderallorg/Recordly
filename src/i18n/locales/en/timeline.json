@@ -38,5 +38,10 @@
 	},
 	"addSpeed": "Add Speed (S)",
 	"resizeLeft": "Resize left",
-	"resizeRight": "Resize right"
+	"resizeRight": "Resize right",
+	"hints": {
+		"splitClip": "Press {{binding}} to split clip",
+		"addAnnotation": "Press {{binding}} to add annotation",
+		"addAudio": "Click music icon to add audio"
+	}
 }
