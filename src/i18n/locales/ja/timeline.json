@@ -38,5 +38,10 @@
 	},
 	"addSpeed": "速度変更を追加 (S)",
 	"resizeLeft": "左端を調整",
-	"resizeRight": "右端を調整"
+	"resizeRight": "右端を調整",
+	"hints": {
+		"splitClip": "{{binding}} キーでクリップを分割",
+		"addAnnotation": "{{binding}} キーで注釈を追加",
+		"addAudio": "音楽アイコンをクリックして音声を追加"
+	}
 }

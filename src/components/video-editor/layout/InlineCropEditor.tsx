@@ -60,6 +60,7 @@ export function InlineCropEditor({
 			ref={root}
 			tabIndex={-1}
 			data-inline-crop
+			role="group"
 			aria-label={t("settings.crop.title")}
 			className="absolute inset-0 z-30 flex flex-col gap-3 bg-editor-bg p-3 outline-none"
 			onKeyDown={(event) => {
