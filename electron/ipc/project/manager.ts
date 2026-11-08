@@ -284,8 +284,8 @@ export function hasProjectFileExtension(filePath: string) {
 	return [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS].includes(extension);
 }
 
-export function getProjectThumbnailPath(projectPath: string) {
-	return projectThumbnailStoragePath(getProjectStorageKey(projectPath));
+export async function getProjectThumbnailPath(projectPath: string) {
+	return projectThumbnailStoragePath(await getProjectStorageKey(projectPath));
 }
 
 function projectThumbnailStoragePath(key: string) {
@@ -297,12 +297,12 @@ export function getLegacyProjectThumbnailPath(projectPath: string) {
 	return `${projectPath}${PROJECT_THUMBNAIL_SUFFIX}`;
 }
 
-export function getProjectThumbnailPaths(projectPath: string) {
+export async function getProjectThumbnailPaths(projectPath: string) {
 	const resolved = path.resolve(projectPath);
 	const oldKey = process.platform === "win32" ? resolved.toLowerCase() : resolved;
 	return [
 		...new Set([
-			getProjectThumbnailPath(projectPath),
+			await getProjectThumbnailPath(projectPath),
 			projectThumbnailStoragePath(oldKey),
 			getLegacyProjectThumbnailPath(projectPath),
 		]),
@@ -310,7 +310,7 @@ export function getProjectThumbnailPaths(projectPath: string) {
 }
 
 async function findFreshProjectThumbnail(projectPath: string, modifiedAt: number) {
-	for (const thumbnailPath of getProjectThumbnailPaths(projectPath)) {
+	for (const thumbnailPath of await getProjectThumbnailPaths(projectPath)) {
 		const stats = await fs.lstat(thumbnailPath).catch(() => null);
 		if (stats?.isFile() && (await hasFreshProjectThumbnail(thumbnailPath, modifiedAt)))
 			return thumbnailPath;
@@ -319,7 +319,7 @@ async function findFreshProjectThumbnail(projectPath: string, modifiedAt: number
 }
 
 export async function saveProjectThumbnail(projectPath: string, thumbnailDataUrl?: string | null) {
-	const thumbnailPath = getProjectThumbnailPath(projectPath);
+	const thumbnailPath = await getProjectThumbnailPath(projectPath);
 	if (thumbnailDataUrl === undefined) {
 		const revision = await fs.stat(projectPath).catch(() => null);
 		return findFreshProjectThumbnail(projectPath, revision?.mtimeMs ?? 0);
@@ -413,7 +413,7 @@ export async function cacheProjectThumbnail(
 	const stats = await fs.stat(normalizedPath);
 	if (projectPreviewRevision(stats) !== revision) return null;
 	const png = encodeComposedThumbnail(dataUrl);
-	const target = getProjectThumbnailPath(normalizedPath);
+	const target = await getProjectThumbnailPath(normalizedPath);
 	const temporary = `${target}.${randomUUID()}.tmp`;
 	try {
 		await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
@@ -442,7 +442,7 @@ export function refreshProjectThumbnail(projectPath: string, revision: Stats) {
 	const pending = thumbnailJobs.get(projectPath);
 	if (pending) return pending;
 	const task = (async (): Promise<ProjectThumbnailReady | null> => {
-		const thumbnailPath = getProjectThumbnailPath(projectPath);
+		const thumbnailPath = await getProjectThumbnailPath(projectPath);
 		let temporary: string | undefined;
 		try {
 			if (!sameProjectRevision(revision, await fs.stat(projectPath))) return null;

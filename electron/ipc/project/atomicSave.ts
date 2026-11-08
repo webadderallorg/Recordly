@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, opendirSync, realpathSync, statSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
 const pendingWrites = new Map<string, Promise<unknown>>();
+// Reserve admission before identity I/O so aliases retain call-invocation order.
+let pendingIdentityAdmissions: Promise<unknown> = Promise.resolve();
 let recoveryDirectory: string | undefined;
 const isJsonGeneration = (contents: string) => {
 	JSON.parse(contents.replace(/^\uFEFF/, ""));
@@ -29,8 +30,8 @@ const unsupportedDirectorySyncErrors = new Set([
 	"EPERM",
 ]);
 
-export function getProjectBackupPath(projectPath: string): string {
-	return managedBackupPath(getProjectStorageKey(projectPath));
+export async function getProjectBackupPath(projectPath: string): Promise<string> {
+	return managedBackupPath(await getProjectStorageKey(projectPath));
 }
 
 function managedBackupPath(key: string): string {
@@ -45,14 +46,14 @@ export function getLegacyProjectBackupPath(projectPath: string): string {
 	return `${projectPath}.bak`;
 }
 
-export function getProjectBackupPaths(projectPath: string): string[] {
+export async function getProjectBackupPaths(projectPath: string): Promise<string[]> {
 	// Earlier versions hashed the lexical path. Keep that spelling readable while
 	// all new generations use the stable filesystem identity.
 	const resolved = path.resolve(projectPath);
 	const oldKey = process.platform === "win32" ? resolved.toLowerCase() : resolved;
 	return [
 		...new Set([
-			getProjectBackupPath(projectPath),
+			await getProjectBackupPath(projectPath),
 			managedBackupPath(oldKey),
 			getLegacyProjectBackupPath(projectPath),
 		]),
@@ -69,7 +70,7 @@ export async function readProjectFileWithRecovery<T>(
 	parse: (contents: string) => T,
 ): Promise<{ project: T; recovered: boolean; contents: string; primaryHash: string | null }> {
 	return queueProjectWrite(projectPath, async () => {
-		const key = getProjectStorageKey(projectPath);
+		const key = await getProjectStorageKey(projectPath);
 		let primary: string | null = null;
 		let primaryError: unknown;
 		try {
@@ -88,7 +89,7 @@ export async function readProjectFileWithRecovery<T>(
 			const code = (error as NodeJS.ErrnoException).code;
 			if (code && code !== "ENOENT") throw error;
 		}
-		for (const backupPath of getProjectBackupPaths(projectPath)) {
+		for (const backupPath of await getProjectBackupPaths(projectPath)) {
 			try {
 				const contents = await fs.readFile(backupPath, "utf-8");
 				const project = parse(contents);
@@ -110,7 +111,7 @@ export async function readProjectFileWithRecovery<T>(
 	});
 }
 
-export function getProjectStorageKey(projectPath: string): string {
+export async function getProjectStorageKey(projectPath: string): Promise<string> {
 	const resolvedPath = path.resolve(projectPath);
 	// Resolve parents even when the document is absent. Do not resolve a leaf
 	// symlink: an atomic replacement replaces that entry, not its target.
@@ -118,13 +119,13 @@ export function getProjectStorageKey(projectPath: string): string {
 	const suffix = [path.basename(resolvedPath)];
 	while (true) {
 		try {
-			const canonicalParent = realpathSync.native(parent);
+			const canonicalParent = await fs.realpath(parent);
 			if (process.platform === "win32") {
 				return path.join(canonicalParent, ...suffix).toLowerCase();
 			}
 			return path.join(
 				canonicalParent,
-				...(isCaseInsensitiveDirectory(canonicalParent)
+				...((await isCaseInsensitiveDirectory(canonicalParent))
 					? suffix.map((part) => part.toLowerCase())
 					: suffix),
 			);
@@ -138,18 +139,18 @@ export function getProjectStorageKey(projectPath: string): string {
 	}
 }
 
-function isCaseInsensitiveDirectory(directory: string): boolean {
-	const original = statSync(directory);
+async function isCaseInsensitiveDirectory(directory: string): Promise<boolean> {
+	const original = await fs.stat(directory);
 	const known = volumeCasePolicies.get(original.dev);
 	if (known !== undefined) return known;
 	let candidate = directory;
 	while (true) {
 		// Probe an entry inside this filesystem, not the mountpoint's spelling in
 		// its parent. A case-sensitive volume can be mounted on an insensitive one.
-		let entries: ReturnType<typeof opendirSync> | undefined;
+		let entries: Awaited<ReturnType<typeof fs.opendir>> | undefined;
 		try {
-			entries = opendirSync(candidate);
-			for (let entry = entries.readSync(); entry; entry = entries.readSync()) {
+			entries = await fs.opendir(candidate);
+			for (let entry = await entries.read(); entry; entry = await entries.read()) {
 				if (entry.isSymbolicLink()) continue;
 				const variant = entry.name.replace(/[a-z]/i, (letter) =>
 					letter === letter.toLowerCase() ? letter.toUpperCase() : letter.toLowerCase(),
@@ -158,19 +159,19 @@ function isCaseInsensitiveDirectory(directory: string): boolean {
 				const actualPath = path.join(candidate, entry.name);
 				const variantPath = path.join(candidate, variant);
 				try {
-					const alternate = lstatSync(variantPath);
-					const actual = lstatSync(actualPath);
+					const alternate = await fs.lstat(variantPath);
+					const actual = await fs.lstat(actualPath);
 					if (alternate.isSymbolicLink() || actual.isSymbolicLink()) continue;
 					const insensitive =
 						alternate.dev === actual.dev &&
 						alternate.ino === actual.ino &&
-						realpathSync.native(actualPath) === realpathSync.native(variantPath);
+						(await fs.realpath(actualPath)) === (await fs.realpath(variantPath));
 					volumeCasePolicies.set(original.dev, insensitive);
 					return insensitive;
 				} catch (error) {
 					if ((error as NodeJS.ErrnoException).code === "ENOENT") {
 						try {
-							lstatSync(actualPath);
+							await fs.lstat(actualPath);
 						} catch {
 							continue;
 						}
@@ -182,10 +183,10 @@ function isCaseInsensitiveDirectory(directory: string): boolean {
 		} catch {
 			// A readable ancestor on the same volume may still establish the policy.
 		} finally {
-			entries?.closeSync();
+			await entries?.close();
 		}
 		const next = path.dirname(candidate);
-		if (next === candidate || statSync(next).dev !== original.dev) return false;
+		if (next === candidate || (await fs.stat(next)).dev !== original.dev) return false;
 		candidate = next;
 	}
 }
@@ -266,7 +267,7 @@ async function preservePreviousGeneration(
 	};
 	if (previous === undefined || !valid(previous)) {
 		previous = undefined;
-		for (const candidate of getProjectBackupPaths(targetPath)) {
+		for (const candidate of await getProjectBackupPaths(targetPath)) {
 			try {
 				const contents = await fs.readFile(candidate, "utf-8");
 				if (valid(contents)) {
@@ -292,7 +293,7 @@ async function preservePreviousGeneration(
 async function commitProjectFile(projectPath: string, contents: string): Promise<void> {
 	const targetPath = path.resolve(projectPath);
 	const parentDir = path.dirname(targetPath);
-	const backupPath = getProjectBackupPath(targetPath);
+	const backupPath = await getProjectBackupPath(targetPath);
 	const temporaryPath = createTemporaryPath(parentDir, "project");
 	const backupDir = path.dirname(backupPath);
 	const backupTemporaryPath = createTemporaryPath(backupDir, "backup");
@@ -302,7 +303,7 @@ async function commitProjectFile(projectPath: string, contents: string): Promise
 		await writeSyncedTemporaryFile(temporaryPath, contents, existingMode);
 		await fs.mkdir(backupDir, { recursive: true, mode: 0o700 });
 		await syncParentDirectory(path.dirname(backupDir));
-		const recovered = recoveredGenerations.get(getProjectStorageKey(targetPath));
+		const recovered = recoveredGenerations.get(await getProjectStorageKey(targetPath));
 		let recoveringSameGeneration = false;
 		let validBackupPreserved = false;
 		if (recovered) {
@@ -329,11 +330,11 @@ async function commitProjectFile(projectPath: string, contents: string): Promise
 		await syncParentDirectory(backupDir);
 		await fs.rename(temporaryPath, targetPath);
 		await syncParentDirectory(parentDir);
-		recoveredGenerations.delete(getProjectStorageKey(targetPath));
+		recoveredGenerations.delete(await getProjectStorageKey(targetPath));
 		// The previous generation is durable in managed storage before retiring an old sidecar.
 		if (validBackupPreserved) {
 			await Promise.all(
-				getProjectBackupPaths(targetPath)
+				(await getProjectBackupPaths(targetPath))
 					.filter((candidate) => candidate !== backupPath)
 					.map((candidate) => fs.rm(candidate, { force: true }).catch(() => undefined)),
 			);
@@ -373,7 +374,7 @@ export async function updateProjectFileAtomically(
 		}
 		const contents = update(snapshot?.contents ?? primary!);
 		if (snapshot?.recovered) {
-			recoveredGenerations.set(getProjectStorageKey(projectPath), {
+			recoveredGenerations.set(await getProjectStorageKey(projectPath), {
 				primaryHash: snapshot.primaryHash,
 				contents: snapshot.contents,
 			});
@@ -383,10 +384,27 @@ export async function updateProjectFileAtomically(
 }
 
 async function queueProjectWrite<T>(projectPath: string, write: () => Promise<T>): Promise<T> {
-	const queueKey = getProjectStorageKey(projectPath);
-	const previousWrite = pendingWrites.get(queueKey) ?? Promise.resolve();
-	const currentWrite = previousWrite.catch(() => undefined).then(write);
-	pendingWrites.set(queueKey, currentWrite);
+	// Start identity resolution in parallel, and handle rejection immediately even
+	// when an earlier admission is still waiting for its filesystem result.
+	const identity = getProjectStorageKey(projectPath).then(
+		(key) => ({ key }),
+		(error: unknown) => ({ error }),
+	);
+	const admission = pendingIdentityAdmissions.then(async () => {
+		const resolved = await identity;
+		if ("error" in resolved) throw resolved.error;
+		const queueKey = resolved.key;
+		const previousWrite = pendingWrites.get(queueKey) ?? Promise.resolve();
+		const currentWrite = previousWrite.catch(() => undefined).then(write);
+		pendingWrites.set(queueKey, currentWrite);
+		// Wrap the write promise: admission must not wait for the actual disk write.
+		return { queueKey, currentWrite };
+	});
+	pendingIdentityAdmissions = admission.then(
+		() => undefined,
+		() => undefined,
+	);
+	const { queueKey, currentWrite } = await admission;
 
 	try {
 		return await currentWrite;

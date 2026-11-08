@@ -236,7 +236,7 @@ describe("local media path policy", () => {
 		header.writeUInt32BE(480, 20);
 		const dataUrl = `data:image/png;base64,${header.toString("base64")}`;
 		const target = await manager.cacheProjectThumbnail(projectPath, preview.revision!, dataUrl);
-		expect(target).toBe(manager.getProjectThumbnailPath(projectPath));
+		expect(target).toBe(await manager.getProjectThumbnailPath(projectPath));
 		expect((await manager.buildProjectLibraryEntry(projectPath, tempRoot))?.thumbnailPath).toBe(
 			target,
 		);
@@ -292,7 +292,7 @@ describe("local media path policy", () => {
 		await fs.mkdir(path.dirname(projectPath), { recursive: true });
 
 		const { getProjectThumbnailPath, saveProjectThumbnail } = await import("./manager");
-		const thumbnailPath = getProjectThumbnailPath(projectPath);
+		const thumbnailPath = await getProjectThumbnailPath(projectPath);
 
 		await saveProjectThumbnail(projectPath, thumbnailDataUrl);
 		const saved = await fs.readFile(thumbnailPath);
@@ -331,9 +331,9 @@ describe("local media path policy", () => {
 			legacy,
 		);
 		expect((await fs.stat(legacy)).mtimeMs).toBe(before.mtimeMs);
-		await expect(fs.access(manager.getProjectThumbnailPath(projectPath))).rejects.toMatchObject(
-			{ code: "ENOENT" },
-		);
+		await expect(
+			fs.access(await manager.getProjectThumbnailPath(projectPath)),
+		).rejects.toMatchObject({ code: "ENOENT" });
 	});
 
 	it("approves only a listed external project's current regular thumbnail for media transport", async () => {
@@ -394,7 +394,7 @@ describe("local media path policy", () => {
 			`data:image/png;base64,${header.toString("base64")}`,
 		);
 		const target = manager.getLegacyProjectThumbnailPath(targetProject);
-		await fs.copyFile(manager.getProjectThumbnailPath(targetProject), target);
+		await fs.copyFile(await manager.getProjectThumbnailPath(targetProject), target);
 		await fs.rm(thumbnail);
 		try {
 			await fs.symlink(target, thumbnail);
@@ -467,7 +467,7 @@ describe("local media path policy", () => {
 		await fs.writeFile(videoPath, "video");
 		await writeProjectFileAtomically(projectPath, contents);
 		await writeProjectFileAtomically(projectPath, contents);
-		expect(getProjectBackupPath(projectPath)).toContain(
+		expect(await getProjectBackupPath(projectPath)).toContain(
 			path.join(userDataPath, "project-recovery"),
 		);
 		await fs.writeFile(projectPath, "damaged");
@@ -569,7 +569,7 @@ describe("local media path policy", () => {
 			JSON.stringify({ version: 2, videoPath: source, editor: {} }),
 		);
 		await fs.writeFile(target, "must remain intact");
-		const thumbnail = manager.getProjectThumbnailPath(projectPath);
+		const thumbnail = await manager.getProjectThumbnailPath(projectPath);
 		await fs.mkdir(path.dirname(thumbnail), { recursive: true });
 		try {
 			await fs.symlink(target, thumbnail);
@@ -603,7 +603,9 @@ describe("local media path policy", () => {
 		await fs.appendFile(projectPath, " ");
 		release(Buffer.from("obsolete poster"));
 		expect(await task).toBeNull();
-		await expect(fs.stat(manager.getProjectThumbnailPath(projectPath))).rejects.toMatchObject({
+		await expect(
+			fs.stat(await manager.getProjectThumbnailPath(projectPath)),
+		).rejects.toMatchObject({
 			code: "ENOENT",
 		});
 	});
@@ -619,7 +621,7 @@ describe("local media path policy", () => {
 		await fs.writeFile(getLegacyProjectBackupPath(projectPath), previous);
 		await writeProjectFileAtomically(projectPath, next);
 		expect(await fs.readFile(projectPath, "utf-8")).toBe(next);
-		expect(await fs.readFile(getProjectBackupPath(projectPath), "utf-8")).toBe(previous);
+		expect(await fs.readFile(await getProjectBackupPath(projectPath), "utf-8")).toBe(previous);
 		await expect(fs.access(getLegacyProjectBackupPath(projectPath))).rejects.toMatchObject({
 			code: "ENOENT",
 		});
@@ -637,8 +639,8 @@ describe("local media path policy", () => {
 		);
 		const actualProject = path.join(actualDirectory, "demo.recordly");
 		const aliasProject = path.join(aliasDirectory, "demo.recordly");
-		expect(manager.getProjectThumbnailPath(aliasProject)).toBe(
-			manager.getProjectThumbnailPath(actualProject),
+		expect(await manager.getProjectThumbnailPath(aliasProject)).toBe(
+			await manager.getProjectThumbnailPath(actualProject),
 		);
 		const { createHash } = await import("node:crypto");
 		const oldKey = process.platform === "win32" ? actualProject.toLowerCase() : actualProject;
@@ -647,7 +649,7 @@ describe("local media path policy", () => {
 			"project-thumbnails",
 			`${createHash("sha256").update(oldKey).digest("hex")}.png`,
 		);
-		expect(manager.getProjectThumbnailPaths(actualProject)).toContain(oldCache);
+		expect(await manager.getProjectThumbnailPaths(actualProject)).toContain(oldCache);
 	});
 
 	it.skipIf(process.platform === "win32")(

@@ -66,7 +66,7 @@ it("reconnects only the source path, preserves edits/history/identity and backs 
 		...project,
 		videoPath: replacement,
 	});
-	await expect(fs.readFile(getProjectBackupPath(target), "utf-8")).resolves.toBe(original);
+	await expect(fs.readFile(await getProjectBackupPath(target), "utf-8")).resolves.toBe(original);
 });
 
 it("cancellation leaves the project and backups untouched", async () => {
@@ -76,7 +76,9 @@ it("cancellation leaves the project and backups untouched", async () => {
 	});
 	expect(probe).not.toHaveBeenCalled();
 	expect(JSON.parse(await fs.readFile(target, "utf-8"))).toEqual(project);
-	await expect(fs.access(getProjectBackupPath(target))).rejects.toMatchObject({ code: "ENOENT" });
+	await expect(fs.access(await getProjectBackupPath(target))).rejects.toMatchObject({
+		code: "ENOENT",
+	});
 });
 
 it("does not replace a source that is already accessible", async () => {
@@ -175,7 +177,7 @@ it("reconnects a recovered project with a damaged primary without losing the goo
 		...project,
 		videoPath: replacement,
 	});
-	expect(await fs.readFile(getProjectBackupPath(target), "utf-8")).toBe(original);
+	expect(await fs.readFile(await getProjectBackupPath(target), "utf-8")).toBe(original);
 });
 
 it("does not overwrite a newer primary while reconnecting recovered media", async () => {
