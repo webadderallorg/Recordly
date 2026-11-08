@@ -64,6 +64,11 @@ export async function cleanupExpired(env) {
 		"DELETE FROM comment_sessions WHERE datetime(expires_at) < datetime('now')",
 	).run();
 
+	// Match handleReport's one-hour admission window; keep reports for moderation.
+	await env.DB.prepare(
+		"UPDATE abuse_reports SET client_ip = '' WHERE client_ip <> '' AND created_at <= datetime('now', '-1 hour')",
+	).run();
+
 	const expired = await env.DB.prepare(
 		"SELECT id, share_code FROM videos WHERE never_expires = 0 AND datetime(expires_at) <= datetime('now')",
 	).all();

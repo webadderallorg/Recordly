@@ -422,3 +422,235 @@ describe("browser microphone fallback capture", () => {
 		expect(storeMicrophoneSidecar).not.toHaveBeenCalled();
 	});
 });
+
+const microphoneHooks = vi.hoisted(() => {
+	const states: unknown[] = [];
+	const cleanups: (() => void)[] = [];
+	let writes = 0;
+	return {
+		states,
+		reset() {
+			states.length = 0;
+			cleanups.length = 0;
+			writes = 0;
+		},
+		cleanup() {
+			for (const cleanup of cleanups.splice(0)) cleanup();
+		},
+		get writes() {
+			return writes;
+		},
+		useState<T>(initial: T) {
+			const index = states.length;
+			states.push(initial);
+			return [
+				initial,
+				(value: T | ((previous: T) => T)) => {
+					writes++;
+					states[index] =
+						typeof value === "function"
+							? (value as (previous: T) => T)(states[index] as T)
+							: value;
+				},
+			] as const;
+		},
+		useEffect(effect: () => (() => void) | undefined) {
+			const cleanup = effect();
+			if (cleanup) cleanups.push(cleanup);
+		},
+	};
+});
+vi.mock("react", () => ({
+	useState: microphoneHooks.useState,
+	useEffect: microphoneHooks.useEffect,
+}));
+vi.mock("@/contexts/I18nContext", () => ({
+	useI18n: () => ({
+		t: (key: string, fallback: string, values: Record<string, string> = {}) =>
+			key === "notifications.microphone"
+				? `Micrófono ${values.id}`
+				: fallback.replace(/\{\{(\w+)\}\}/g, (_match, name: string) => values[name] ?? ""),
+	}),
+}));
+
+describe("microphone device label permission", () => {
+	let useMicrophoneDevices: typeof import("./useMicrophoneDevices").useMicrophoneDevices;
+	let enumerateDevices: ReturnType<typeof vi.fn>;
+	let getUserMedia: ReturnType<typeof vi.fn>;
+	let stop: ReturnType<typeof vi.fn>;
+	let stream: MediaStream;
+	let deviceChange: (() => void) | undefined;
+	let removeEventListener: ReturnType<typeof vi.fn>;
+	const microphone = (label = "", deviceId = "microphone-1") => ({
+		kind: "audioinput",
+		deviceId,
+		groupId: "group-1",
+		label,
+	});
+	const flush = async () => {
+		for (let step = 0; step < 10; step++) await Promise.resolve();
+	};
+	const mount = (enabled = true, preferredDeviceId?: string) => {
+		useMicrophoneDevices(enabled, preferredDeviceId);
+	};
+	beforeEach(async () => {
+		vi.resetModules();
+		microphoneHooks.reset();
+		deviceChange = undefined;
+		stop = vi.fn();
+		stream = { getTracks: () => [{ stop }] } as unknown as MediaStream;
+		enumerateDevices = vi.fn().mockResolvedValue([microphone()]);
+		getUserMedia = vi.fn().mockResolvedValue(stream);
+		removeEventListener = vi.fn();
+		vi.stubGlobal("navigator", {
+			mediaDevices: {
+				enumerateDevices,
+				getUserMedia,
+				addEventListener: (_event: string, listener: () => void) => {
+					deviceChange = listener;
+				},
+				removeEventListener,
+			},
+		});
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		({ useMicrophoneDevices } = await import("./useMicrophoneDevices"));
+	});
+	afterEach(() => {
+		microphoneHooks.cleanup();
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+
+	it("requests hidden microphone labels from raw devices and releases the permission stream", async () => {
+		enumerateDevices
+			.mockResolvedValueOnce([
+				microphone(),
+				{ kind: "videoinput", deviceId: "camera", label: "Camera" },
+			])
+			.mockResolvedValueOnce([microphone("Desk microphone")]);
+		mount(true, "microphone-1");
+		await flush();
+		expect(getUserMedia).toHaveBeenCalledExactlyOnceWith({ audio: true });
+		expect(enumerateDevices).toHaveBeenCalledTimes(2);
+		expect(microphoneHooks.states[0]).toEqual(
+			[microphone("Desk microphone")].map(({ kind: _kind, ...device }) => device),
+		);
+		expect(microphoneHooks.states[1]).toBe("microphone-1");
+		expect(microphoneHooks.states[2]).toBe(false);
+		expect(stop).toHaveBeenCalledOnce();
+	});
+
+	it("retains localized display fallbacks if permission still leaves labels hidden", async () => {
+		mount();
+		await flush();
+		expect(getUserMedia).toHaveBeenCalledOnce();
+		expect(microphoneHooks.states[0]).toEqual([
+			{ deviceId: "microphone-1", groupId: "group-1", label: "Micrófono micropho" },
+		]);
+		expect(stop).toHaveBeenCalledOnce();
+	});
+
+	it.each([
+		["labeled", [microphone("Desk")]],
+		["mixed", [microphone("Desk"), microphone("", "second")]],
+		["no audio", [{ kind: "videoinput", deviceId: "camera", label: "" }]],
+	])("does not request label permission for %s inputs", async (_label, devices) => {
+		enumerateDevices.mockResolvedValue(devices);
+		mount();
+		await flush();
+		expect(getUserMedia).not.toHaveBeenCalled();
+		expect(stop).not.toHaveBeenCalled();
+		if (_label === "mixed") {
+			expect(microphoneHooks.states[0]).toContainEqual({
+				deviceId: "second",
+				groupId: "group-1",
+				label: "Micrófono second",
+			});
+		}
+	});
+
+	it("treats whitespace-only raw labels as hidden", async () => {
+		enumerateDevices.mockResolvedValue([microphone("   ")]);
+		mount();
+		await flush();
+		expect(getUserMedia).toHaveBeenCalledOnce();
+		expect(stop).toHaveBeenCalledOnce();
+	});
+
+	it("does not enumerate or request permission while disabled", async () => {
+		mount(false);
+		await flush();
+		expect(enumerateDevices).not.toHaveBeenCalled();
+		expect(getUserMedia).not.toHaveBeenCalled();
+		expect(deviceChange).toBeUndefined();
+	});
+
+	it("reports permission denial and does not prompt again on device changes", async () => {
+		getUserMedia.mockRejectedValue(new Error("Microphone permission denied"));
+		mount();
+		await flush();
+		expect(microphoneHooks.states[3]).toBe("Microphone permission denied");
+		expect(microphoneHooks.states[2]).toBe(false);
+		expect(stop).not.toHaveBeenCalled();
+		deviceChange?.();
+		await flush();
+		expect(getUserMedia).toHaveBeenCalledOnce();
+		expect(microphoneHooks.states[3]).toBeNull();
+	});
+
+	it("releases the permission stream when follow-up enumeration rejects", async () => {
+		enumerateDevices
+			.mockResolvedValueOnce([microphone()])
+			.mockRejectedValueOnce(new Error("Enumeration failed"));
+		mount();
+		await flush();
+		expect(getUserMedia).toHaveBeenCalledOnce();
+		expect(microphoneHooks.states[3]).toBe("Enumeration failed");
+		expect(microphoneHooks.states[2]).toBe(false);
+		expect(stop).toHaveBeenCalledOnce();
+	});
+
+	it("does not request permission after pending enumeration is unmounted", async () => {
+		let resolve!: (devices: ReturnType<typeof microphone>[]) => void;
+		enumerateDevices.mockReturnValueOnce(
+			new Promise((done) => {
+				resolve = done;
+			}),
+		);
+		mount();
+		microphoneHooks.cleanup();
+		const writes = microphoneHooks.writes;
+		resolve([microphone()]);
+		await flush();
+		expect(getUserMedia).not.toHaveBeenCalled();
+		expect(microphoneHooks.writes).toBe(writes);
+		expect(removeEventListener).toHaveBeenCalledWith("devicechange", deviceChange);
+	});
+
+	it("releases a late permission stream without state writes after unmount", async () => {
+		let resolve!: (stream: MediaStream) => void;
+		getUserMedia.mockReturnValueOnce(
+			new Promise((done) => {
+				resolve = done;
+			}),
+		);
+		mount();
+		await flush();
+		expect(getUserMedia).toHaveBeenCalledOnce();
+		microphoneHooks.cleanup();
+		const writes = microphoneHooks.writes;
+		resolve(stream);
+		await flush();
+		expect(stop).toHaveBeenCalledOnce();
+		expect(microphoneHooks.writes).toBe(writes);
+	});
+
+	it("requests label permission only once per session after success", async () => {
+		mount();
+		await flush();
+		deviceChange?.();
+		await flush();
+		expect(getUserMedia).toHaveBeenCalledOnce();
+		expect(stop).toHaveBeenCalledOnce();
+	});
+});
