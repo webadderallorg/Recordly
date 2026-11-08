@@ -42,6 +42,7 @@ export default function SharingControls({
 				setSettings(state);
 				setComments(result.comments);
 				setTotal(result.total);
+				setPage(1);
 			})
 			.catch((cause) => {
 				if (!cancelled)

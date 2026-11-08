@@ -213,11 +213,11 @@ export async function startBrowserRecorder(
 		setRecording(false);
 	};
 	const mainStartedAt = Date.now();
+	if (startWasCancelled()) return;
 	beginWebcamCapture();
 	resetRecordingClock(mainStartedAt);
 	webcamTimeOffsetMs.current =
 		webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
-	if (startWasCancelled()) return;
 	recorder.start(RECORDER_TIMESLICE_MS);
 	setRecording(true);
 	try {

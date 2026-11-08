@@ -31,7 +31,7 @@
 	"commercialRequirement": "Un abonnement Recordly Cloud actif est requis pour un usage commercial.",
 	"featureShare": "Partagez des vidéos en haute définition 1080p",
 	"featureStorage": "Stockage cloud et bande passante illimités",
-	"featureWeeklyUploads": "{{count}} nouveaux envois sur 7 jours glissants",
+	"featureWeeklyUploads": "Jusqu’à {{count}} nouveaux envois par période glissante de 7 jours",
 	"featureUploadFallback": "Importez des enregistrements plus volumineux",
 	"featureLinks": "Les liens restent accessibles tant que Cloud est actif",
 	"featureExisting": "Conservez vos enregistrements cloud tant que Cloud est actif",

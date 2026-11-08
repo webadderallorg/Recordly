@@ -185,6 +185,7 @@ try {
 				.request()
 				.headers()
 				.authorization?.replace(/^Bearer /, "");
+			expect(requestToken, "POST must carry a bearer token").toBeTruthy();
 			const requestOwner = JSON.parse(
 				Buffer.from(requestToken.split(".")[1], "base64url").toString(),
 			).sub;

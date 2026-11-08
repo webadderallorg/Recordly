@@ -8,7 +8,7 @@ Next renewal: {{ .RenewalDate }}
 
 Manage subscription: {{ .ActionURL }}
 
-Your cloud recordings stay available while Cloud is active. If Cloud ends, you have 7 days to save them or renew.
+For recording retention after your subscription ends, review the Terms of service at https://videos.recordly.dev/terms. Keep local copies of recordings you want to retain.
 
 You received this email because you subscribed to Recordly.
 
