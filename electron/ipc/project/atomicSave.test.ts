@@ -22,6 +22,7 @@ describe("writeProjectFileAtomically", () => {
 	});
 
 	afterEach(async () => {
+		vi.useRealTimers();
 		vi.restoreAllMocks();
 		await fs.rm(tempDir, { recursive: true, force: true });
 	});
@@ -425,5 +426,87 @@ describe("writeProjectFileAtomically", () => {
 			release.resolve();
 			await Promise.allSettled([first, second]);
 		}
+	});
+	it("releases unrelated admissions when a filesystem identity never resolves", async () => {
+		const other = path.join(tempDir, "other.recordly");
+		await writeProjectFileAtomically(projectPath, '{"revision":1}');
+		await writeProjectFileAtomically(other, '{"revision":1}');
+		const canonicalParent = await fs.realpath(tempDir);
+		const parentStats = await fs.stat(tempDir);
+		vi.useFakeTimers();
+		vi.spyOn(fs, "realpath")
+			.mockImplementationOnce(() => new Promise<string>(() => {}))
+			.mockResolvedValue(canonicalParent);
+		vi.spyOn(fs, "stat").mockResolvedValue(parentStats);
+		let firstError: unknown;
+		void writeProjectFileAtomically(projectPath, '{"revision":2}').catch((error) => {
+			firstError = error;
+		});
+		const second = writeProjectFileAtomically(other, '{"revision":9}');
+		void second.catch(() => undefined);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(firstError).toBeUndefined();
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(firstError).toBeInstanceOf(Error);
+		expect((firstError as Error).message).toContain("Project location did not respond");
+		await second;
+		expect(await fs.readFile(other, "utf-8")).toBe('{"revision":9}');
+		expect(await fs.readFile(projectPath, "utf-8")).toBe('{"revision":1}');
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it.each([
+		"resolve",
+		"reject",
+	])("never writes after a timed-out identity later %ss", async (completion) => {
+		const other = path.join(tempDir, "other.recordly");
+		await writeProjectFileAtomically(projectPath, '{"revision":1}');
+		await writeProjectFileAtomically(other, '{"revision":1}');
+		const backup = await getProjectBackupPath(projectPath);
+		const canonicalParent = await fs.realpath(tempDir);
+		const parentStats = await fs.stat(tempDir);
+		let resolveIdentity!: (value: string) => void;
+		let rejectIdentity!: (error: Error) => void;
+		const lateIdentity = new Promise<string>((resolve, reject) => {
+			resolveIdentity = resolve;
+			rejectIdentity = reject;
+		});
+		vi.useFakeTimers();
+		vi.spyOn(fs, "realpath")
+			.mockReturnValueOnce(lateIdentity)
+			.mockResolvedValue(canonicalParent);
+		vi.spyOn(fs, "stat").mockResolvedValue(parentStats);
+		let firstError: unknown;
+		void writeProjectFileAtomically(projectPath, '{"revision":2}').catch((error) => {
+			firstError = error;
+		});
+		const second = writeProjectFileAtomically(other, '{"revision":9}');
+		void second.catch(() => undefined);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(firstError).toBeInstanceOf(Error);
+		if (completion === "resolve") resolveIdentity(canonicalParent);
+		else rejectIdentity(new Error("Late filesystem failure"));
+		await vi.advanceTimersByTimeAsync(0);
+		await second;
+		// A same-key read joins after any wrongly admitted late write, so it also
+		// detects a timeout that rejected only the caller while leaving work queued.
+		const read = await readProjectFileWithRecovery(projectPath, JSON.parse);
+		expect(read.project).toEqual({ revision: 1 });
+		await expect(fs.access(backup)).rejects.toMatchObject({ code: "ENOENT" });
+		expect(await fs.readFile(other, "utf-8")).toBe('{"revision":9}');
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("clears identity deadlines after successful resolution and immediate failure", async () => {
+		vi.useFakeTimers();
+		await writeProjectFileAtomically(projectPath, '{"revision":1}');
+		expect(vi.getTimerCount()).toBe(0);
+		const denied = Object.assign(new Error("Identity access denied"), { code: "EACCES" });
+		vi.spyOn(fs, "realpath").mockRejectedValueOnce(denied);
+		await expect(writeProjectFileAtomically(projectPath, '{"revision":2}')).rejects.toBe(
+			denied,
+		);
+		expect(vi.getTimerCount()).toBe(0);
+		expect(await fs.readFile(projectPath, "utf-8")).toBe('{"revision":1}');
 	});
 });

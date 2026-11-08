@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const pendingWrites = new Map<string, Promise<unknown>>();
+const PROJECT_IDENTITY_TIMEOUT_MS = 5000;
 // Reserve admission before identity I/O so aliases retain call-invocation order.
 let pendingIdentityAdmissions: Promise<unknown> = Promise.resolve();
 let recoveryDirectory: string | undefined;
@@ -386,9 +387,32 @@ export async function updateProjectFileAtomically(
 async function queueProjectWrite<T>(projectPath: string, write: () => Promise<T>): Promise<T> {
 	// Start identity resolution in parallel, and handle rejection immediately even
 	// when an earlier admission is still waiting for its filesystem result.
-	const identity = getProjectStorageKey(projectPath).then(
-		(key) => ({ key }),
-		(error: unknown) => ({ error }),
+	let identityTimeout: ReturnType<typeof setTimeout> | undefined;
+	// Race the identity itself, not just the returned save promise: a timed-out
+	// lookup must release admission and must never enqueue a late write.
+	const identity = Promise.race([
+		getProjectStorageKey(projectPath),
+		new Promise<never>((_, reject) => {
+			identityTimeout = setTimeout(
+				() =>
+					reject(
+						new Error(
+							"Project location did not respond while resolving its filesystem identity.",
+						),
+					),
+				PROJECT_IDENTITY_TIMEOUT_MS,
+			);
+			identityTimeout.unref?.();
+		}),
+	]).then(
+		(key) => {
+			clearTimeout(identityTimeout);
+			return { key };
+		},
+		(error: unknown) => {
+			clearTimeout(identityTimeout);
+			return { error };
+		},
 	);
 	const admission = pendingIdentityAdmissions.then(async () => {
 		const resolved = await identity;
