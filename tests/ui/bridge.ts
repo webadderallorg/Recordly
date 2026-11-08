@@ -10,6 +10,8 @@ declare global {
 		__recordlyTestAuthStorage: (
 			request: NativeAuthRequest,
 		) => Promise<string | null | undefined>;
+		__recordlyTestBridgeReady?: boolean;
+		__recordlyTestBridgeOverrides?: (() => void)[];
 	}
 }
 export async function installDesktopBridge(
@@ -338,6 +340,10 @@ export async function installDesktopBridge(
 					...(window.electronAPI as Partial<Window["electronAPI"]> | undefined),
 				},
 			});
+			const overrides = window.__recordlyTestBridgeOverrides ?? [];
+			window.__recordlyTestBridgeOverrides = [];
+			window.__recordlyTestBridgeReady = true;
+			for (const applyOverride of overrides) applyOverride();
 		},
 		{ videoFixture, onboarded: auth.onboarded ?? true },
 	);
@@ -350,6 +356,10 @@ export async function installDesktopBridgeOverrides<T = undefined>(
 	arg?: T,
 ) {
 	await page.addInitScript({
-		content: `window.electronAPI ??= {}; (${setup.toString()})(${JSON.stringify(arg) ?? "undefined"});`,
+		content: `(() => {
+			const applyOverride = () => (${setup.toString()})(${JSON.stringify(arg) ?? "undefined"});
+			if (window.__recordlyTestBridgeReady) applyOverride();
+			else (window.__recordlyTestBridgeOverrides ??= []).push(applyOverride);
+		})();`,
 	});
 }
