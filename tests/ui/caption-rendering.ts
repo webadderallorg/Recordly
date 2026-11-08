@@ -127,6 +127,7 @@ async function run() {
 			} else renderCaptions(ctx, cues, styledSettings, width, height, 500);
 			const pixels = ctx.getImageData(0, 0, width, height).data;
 			let foregroundPixels = 0;
+			let highlightPixels = 0;
 			for (let i = 0; i < pixels.length; i += 4) {
 				if (
 					pixels[i + 3] > 200 &&
@@ -134,6 +135,13 @@ async function run() {
 					target.every((value, channel) => Math.abs(value - pixels[i + channel]) < 24)
 				)
 					foregroundPixels++;
+				if (
+					pixels[i + 3] > 200 &&
+					pixels[i] > 230 &&
+					pixels[i + 1] > 200 &&
+					pixels[i + 2] < 24
+				)
+					highlightPixels++;
 			}
 			const backgroundPixel = Array.from(
 				ctx.getImageData(
@@ -147,7 +155,27 @@ async function run() {
 					1,
 				).data,
 			);
-			return { foregroundPixels, backgroundAlpha: backgroundPixel[3], backgroundPixel };
+			let darkPixelsOnWhite = 0;
+			let whiteCorner: number[] = [];
+			if (preset.id === "tiktok") {
+				ctx.globalCompositeOperation = "destination-over";
+				ctx.fillStyle = "#ffffff";
+				ctx.fillRect(0, 0, width, height);
+				const onWhite = ctx.getImageData(0, 0, width, height).data;
+				for (let i = 0; i < onWhite.length; i += 4) {
+					if (onWhite[i] < 64 && onWhite[i + 1] < 64 && onWhite[i + 2] < 64)
+						darkPixelsOnWhite++;
+				}
+				whiteCorner = Array.from(ctx.getImageData(0, 0, 1, 1).data);
+			}
+			return {
+				foregroundPixels,
+				highlightPixels,
+				backgroundAlpha: backgroundPixel[3],
+				backgroundPixel,
+				darkPixelsOnWhite,
+				whiteCorner,
+			};
 		});
 		return {
 			id: preset.id,

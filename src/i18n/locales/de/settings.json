@@ -130,10 +130,10 @@
 			}
 		},
 		"cursorMotionBlur": "Cursor-Bewegungsunschärfe",
-		"cursorClickBounce": "Cursor-Klick-Rückprall",
+		"cursorClickBounce": "Beim Klicken skalieren",
 		"cursorClickBounceDuration": "Sprunggeschwindigkeit",
 		"cursorSway": "Cursor-Schwankung",
-		"cursorIdleHide": "Cursor bei Inaktivität ausblenden",
+		"cursorIdleHide": "Bei Inaktivität ausblenden",
 		"cursorIdleHideDescription": "Nach einer kurzen Verzögerung wird der Cursor bei längeren Pausen ausgeblendet. Bei Bewegung oder einem Klick erscheint er wieder.",
 		"cursorIdleFadeDelay": "Verzögerung vor dem Ausblenden",
 		"cursorIdleDuration": "Inaktivitätserkennung",
@@ -205,7 +205,10 @@
 			"bottom-left": "Unten links",
 			"bottom-center": "Unten mittig",
 			"bottom-right": "Unten rechts"
-		}
+		},
+		"webcamPreviewFrame": "Vorschaurahmen",
+		"webcamFrameStandard": "Standard",
+		"webcamFrameSoftBlur": "Weicher Rand"
 	},
 	"sections": {
 		"scene": "Szene",
@@ -221,6 +224,8 @@
 		"title": "Bearbeitungswerkzeuge"
 	},
 	"captions": {
+		"firstDownload": "Bei der ersten Nutzung werden {{size}} MB Sprachdateien heruntergeladen und dann Untertitel erstellt.",
+		"localProcessing": "Untertitel werden auf diesem Gerät erstellt. Deine Aufnahme wird nicht hochgeladen.",
 		"selectOnTimeline": "Wählen Sie einen Untertitel auf der Zeitleiste aus, um ihn zu bearbeiten.",
 		"enabled": "Anzeigen",
 		"timelineQuickAdd": "Mit der Maus darüberfahren, um zur Zeitleiste hinzuzufügen",

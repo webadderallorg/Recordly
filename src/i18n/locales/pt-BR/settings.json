@@ -130,10 +130,10 @@
 			}
 		},
 		"cursorMotionBlur": "Desfoque de movimento do cursor",
-		"cursorClickBounce": "Salto de clique do cursor",
+		"cursorClickBounce": "Redimensionar ao clicar",
 		"cursorClickBounceDuration": "Velocidade do salto",
 		"cursorSway": "Balanço do cursor",
-		"cursorIdleHide": "Ocultar cursor quando inativo",
+		"cursorIdleHide": "Ocultar quando inativo",
 		"cursorIdleHideDescription": "Após uma breve espera, o cursor desaparece gradualmente durante pausas longas. Mover ou clicar faz o cursor reaparecer.",
 		"cursorIdleFadeDelay": "Atraso da transição",
 		"cursorIdleDuration": "Detecção de inatividade",
@@ -205,7 +205,10 @@
 			"bottom-left": "Inferior esquerdo",
 			"bottom-center": "Inferior central",
 			"bottom-right": "Inferior direito"
-		}
+		},
+		"webcamPreviewFrame": "Moldura de prévia",
+		"webcamFrameStandard": "Padrão",
+		"webcamFrameSoftBlur": "Desfoque suave"
 	},
 	"sections": {
 		"scene": "Cena",
@@ -221,6 +224,8 @@
 		"title": "Ferramentas de edição"
 	},
 	"captions": {
+		"firstDownload": "No primeiro uso, são baixados {{size}} MB de arquivos de voz e, em seguida, as legendas são geradas.",
+		"localProcessing": "As legendas são geradas neste dispositivo. Sua gravação não é enviada.",
 		"selectOnTimeline": "Selecione uma legenda na linha do tempo para editá-la.",
 		"enabled": "Mostrar",
 		"timelineQuickAdd": "Passe o cursor para adicionar na linha do tempo",

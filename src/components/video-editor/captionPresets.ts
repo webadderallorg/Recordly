@@ -11,6 +11,7 @@ interface CaptionPreset {
 	id: AutoCaptionStyle;
 	label: string;
 	fontWeight: number;
+	uppercase?: boolean;
 	highlightFill: string | null;
 	highlightTextColor?: string;
 	outlineEm: number;
@@ -41,14 +42,16 @@ export const CAPTION_PRESETS: readonly CaptionPreset[] = [
 		id: "tiktok",
 		label: "TikTok",
 		fontWeight: 800,
-		highlightFill: null,
-		outlineEm: 0.12,
+		uppercase: true,
+		highlightFill: "#FFE600",
+		highlightTextColor: "#161616",
+		outlineEm: 0.14,
 		settings: {
-			textColor: "#FFE600",
+			textColor: "#FFFFFF",
 			inactiveTextColor: "#FFFFFF",
-			backgroundOpacity: 0,
-			boxRadius: 0,
-			animationStyle: "pop",
+			backgroundOpacity: 0.78,
+			boxRadius: 12,
+			animationStyle: "none",
 		},
 	},
 	{
@@ -115,6 +118,11 @@ export function getCaptionPreset(style: unknown): CaptionPreset {
 	return CAPTION_PRESETS.find((preset) => preset.id === style) ?? CAPTION_PRESETS[0];
 }
 
+/** Apply display casing before measuring and drawing, preserving editable source text. */
+export function getCaptionDisplayText(text: string, style: unknown) {
+	return getCaptionPreset(style).uppercase ? text.toUpperCase() : text;
+}
+
 export function getCaptionBackground(settings: AutoCaptionSettings) {
 	return `rgba(${getCaptionPreset(settings.style).backgroundRgb ?? "0, 0, 0"}, ${settings.backgroundOpacity})`;
 }
@@ -163,6 +171,8 @@ export function getCaptionWordOutline(
 ) {
 	const preset = getCaptionPreset(settings.style);
 	const highlight = visual.isHighlighted ? parseCaptionColor(preset.highlightFill) : null;
+	// An opaque highlight provides its own contrast; keep its dark lettering crisp.
+	if (highlight?.alpha === 1) return 0;
 	return (
 		preset.outlineEm || (settings.backgroundOpacity < 0.65 && highlight?.alpha !== 1 ? 0.1 : 0)
 	);

@@ -1,5 +1,6 @@
 import type { CaptionLineLayout } from "@/components/video-editor/captionLayout";
 import {
+	getCaptionDisplayText,
 	getCaptionPreset,
 	getCaptionWordColor,
 	getCaptionWordOutline,
@@ -33,11 +34,15 @@ export function drawCaptionLine(
 	const baseline = top + (fontSize * CAPTION_LINE_HEIGHT - ascent - descent) / 2 + ascent;
 	const spaceWidth = ctx.measureText(" ").width;
 	const textBaseline = getCaptionFontBaseline(fontSize, metrics);
-	const segments = line.words.map((word) => ({
-		word,
-		visual: getCaptionWordVisualState(hasWordTimings, word.state),
-		width: ctx.measureText(word.text).width,
-	}));
+	const segments = line.words.map((word) => {
+		const text = getCaptionDisplayText(word.text, settings.style);
+		return {
+			word,
+			text,
+			visual: getCaptionWordVisualState(hasWordTimings, word.state),
+			width: ctx.measureText(text).width,
+		};
+	});
 	const width = segments.reduce(
 		(sum, item) => sum + item.width + (item.word.leadingSpace ? spaceWidth : 0),
 		0,
@@ -53,7 +58,7 @@ export function drawCaptionLine(
 	ctx.textBaseline = "alphabetic";
 	// The independent active visual paints above its neighbours, just as in DOM.
 	positioned.sort((a, b) => Number(a.visual.isHighlighted) - Number(b.visual.isHighlighted));
-	for (const { word, visual, width: wordWidth, x } of positioned) {
+	for (const { text, visual, width: wordWidth, x } of positioned) {
 		// Emphasis changes only color and background; typography stays fixed.
 		ctx.save();
 		ctx.translate(x + wordWidth / 2, baseline);
@@ -78,9 +83,9 @@ export function drawCaptionLine(
 			ctx.strokeStyle = "#000000";
 			ctx.lineWidth = fontSize * outline;
 			ctx.lineJoin = "round";
-			ctx.strokeText(word.text, drawX, 0);
+			ctx.strokeText(text, drawX, 0);
 		}
-		ctx.fillText(word.text, drawX, 0);
+		ctx.fillText(text, drawX, 0);
 		ctx.restore();
 	}
 	ctx.restore();

@@ -97,6 +97,24 @@ export function CursorSettings(props: Props) {
 	} = props;
 	const { te, tSettings, formatNumber } = useSettingsTranslations();
 	const { lastCursorBounceStrength, cursorPreviewUrls, cursorStyleOptions } = props.cursor;
+	const renderCursorChoice = (option: (typeof cursorStyleOptions)[number]) => (
+		<ChoiceItem
+			key={option.value}
+			value={option.value}
+			title={te(`cursorStyle${option.value}`, option.label)}
+			aria-label={te(`cursorStyle${option.value}`, option.label)}
+			className={cn("group aspect-square h-auto min-w-0 p-3 text-left")}
+		>
+			<div className="flex h-full flex-col items-center justify-between gap-3">
+				<div className="flex min-h-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5">
+					<CursorStylePreview style={option.value} previewUrls={cursorPreviewUrls} />
+				</div>
+			</div>
+		</ChoiceItem>
+	);
+	const selectCursorStyle = (value: string) => {
+		if (value) onCursorStyleChange?.(value as CursorStyle);
+	};
 	return (
 		<section className="flex flex-col gap-4">
 			{advanced && (
@@ -120,105 +138,15 @@ export function CursorSettings(props: Props) {
 				</div>
 			)}
 			<div className="flex flex-col gap-3">
-				<label className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-					<span>{tSettings("effects.cursorIdleHide", "Hide cursor when idle")}</span>
-					<Switch
-						aria-label={tSettings("effects.cursorIdleHide", "Hide cursor when idle")}
-						checked={cursorIdleHide.enabled}
-						onCheckedChange={(enabled) =>
-							onCursorIdleHideChange?.({ ...cursorIdleHide, enabled })
-						}
-					/>
-				</label>
-				{advanced && cursorIdleHide.enabled && (
-					<div className="grid gap-3">
-						<p className="text-xs text-muted-foreground">
-							{tSettings(
-								"effects.cursorIdleHideDescription",
-								"After a short delay, the cursor fades during long pauses. Movement or clicks show it again.",
-							)}
-						</p>
-						<SliderControl
-							label={tSettings("effects.cursorIdleDuration", "Idle detection")}
-							value={cursorIdleHide.idleThresholdMs}
-							min={500}
-							max={10000}
-							step={100}
-							onChange={(idleThresholdMs) =>
-								onCursorIdleHideChange?.({ ...cursorIdleHide, idleThresholdMs })
-							}
-							formatValue={(v) => `${formatNumber(v / 1000, 1)} s`}
-						/>
-						<SliderControl
-							label={tSettings("effects.cursorIdleFadeDelay", "Fade delay")}
-							value={cursorIdleHide.fadeDelayMs}
-							min={0}
-							max={2000}
-							step={50}
-							onChange={(fadeDelayMs) =>
-								onCursorIdleHideChange?.({ ...cursorIdleHide, fadeDelayMs })
-							}
-							formatValue={(v) => `${formatNumber(v / 1000, 2)} s`}
-						/>
-						<SliderControl
-							label={tSettings("effects.cursorIdleFadeDuration", "Fade duration")}
-							value={cursorIdleHide.fadeDurationMs}
-							min={100}
-							max={1000}
-							step={25}
-							onChange={(fadeDurationMs) =>
-								onCursorIdleHideChange?.({ ...cursorIdleHide, fadeDurationMs })
-							}
-							formatValue={(v) => `${formatNumber(v)} ms`}
-						/>
-						<SliderControl
-							label={tSettings(
-								"effects.cursorIdleMovementTolerance",
-								"Movement tolerance",
-							)}
-							value={cursorIdleHide.movementTolerancePx}
-							min={0}
-							max={10}
-							step={0.5}
-							onChange={(movementTolerancePx) =>
-								onCursorIdleHideChange?.({ ...cursorIdleHide, movementTolerancePx })
-							}
-							formatValue={(v) => `${formatNumber(v, 1)} px`}
-						/>
-					</div>
-				)}
-			</div>
-			<div className="flex flex-col gap-3">
-				<div className="space-y-1.5">
+				<div className="space-y-3">
 					<ChoiceGroup
 						type="single"
 						value={cursorStyle}
-						onValueChange={(value) => {
-							if (value) {
-								onCursorStyleChange?.(value as CursorStyle);
-							}
-						}}
+						onValueChange={selectCursorStyle}
 						className="grid grid-cols-4 gap-2"
 						aria-label={tSettings("effects.cursorStyle", "Cursor Style")}
 					>
-						{cursorStyleOptions.map((option) => (
-							<ChoiceItem
-								key={option.value}
-								value={option.value}
-								title={te(`cursorStyle${option.value}`, option.label)}
-								aria-label={te(`cursorStyle${option.value}`, option.label)}
-								className={cn("group aspect-square h-auto min-w-0 p-3 text-left")}
-							>
-								<div className="flex h-full flex-col items-center justify-between gap-3">
-									<div className="flex min-h-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5">
-										<CursorStylePreview
-											style={option.value}
-											previewUrls={cursorPreviewUrls}
-										/>
-									</div>
-								</div>
-							</ChoiceItem>
-						))}
+						{cursorStyleOptions.map(renderCursorChoice)}
 					</ChoiceGroup>
 				</div>
 				<SliderControl
@@ -297,23 +225,35 @@ export function CursorSettings(props: Props) {
 						/>
 					</div>
 				) : null}
-				<div className="flex items-center justify-between py-2">
-					<span className="text-xs text-muted-foreground">
-						{tSettings("effects.cursorClickBounce")}
-					</span>
-					<Switch
-						aria-label={tSettings("effects.cursorClickBounce")}
-						checked={cursorClickBounce > 0}
-						onCheckedChange={(enabled) =>
-							onCursorClickBounceChange?.(
-								enabled ? lastCursorBounceStrength.current : 0,
-							)
-						}
-					/>
+				<div className="flex flex-col gap-1">
+					<div className="flex min-h-7 items-center justify-between">
+						<span className="text-xs text-muted-foreground">
+							{tSettings("effects.cursorClickBounce", "Scale on click")}
+						</span>
+						<Switch
+							aria-label={tSettings("effects.cursorClickBounce", "Scale on click")}
+							checked={cursorClickBounce > 0}
+							onCheckedChange={(enabled) =>
+								onCursorClickBounceChange?.(
+									enabled ? lastCursorBounceStrength.current : 0,
+								)
+							}
+						/>
+					</div>
+					<label className="flex min-h-7 items-center justify-between gap-3 text-xs text-muted-foreground">
+						<span>{tSettings("effects.cursorIdleHide", "Hide when idle")}</span>
+						<Switch
+							aria-label={tSettings("effects.cursorIdleHide", "Hide when idle")}
+							checked={cursorIdleHide.enabled}
+							onCheckedChange={(enabled) =>
+								onCursorIdleHideChange?.({ ...cursorIdleHide, enabled })
+							}
+						/>
+					</label>
 				</div>
 				{advanced && (
 					<SliderControl
-						label={tSettings("effects.cursorClickBounce")}
+						label={tSettings("effects.cursorClickBounce", "Scale on click")}
 						value={cursorClickBounce}
 						min={0}
 						max={5}

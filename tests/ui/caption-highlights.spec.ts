@@ -134,7 +134,7 @@ test("caption styles keep the box compact and steady while previewing each prese
 	const caption = page.getByRole("button", { name: "Edit current caption", exact: true });
 	for (const [name, weight, color, hasPill] of [
 		["Classic", "400", "rgb(255, 255, 255)", true],
-		["TikTok", "800", "rgb(255, 230, 0)", false],
+		["TikTok", "800", "rgb(22, 22, 22)", true],
 		["Karaoke", "700", "rgb(20, 32, 0)", true],
 		["Minimal", "500", "rgb(255, 255, 255)", false],
 		["Neon", "700", "rgb(101, 255, 255)", true],
@@ -187,6 +187,12 @@ test("all caption styles render their foreground and background in both export p
 		expect(style.heightInEm, style.id).toBeCloseTo(2.12, 2);
 		for (const sample of style.samples) {
 			expect(sample.foregroundPixels, style.id).toBeGreaterThan(5);
+			if (style.id === "tiktok") {
+				// The dark caption backing and yellow active word survive export.
+				expect(sample.darkPixelsOnWhite).toBeGreaterThan(20);
+				expect(sample.highlightPixels).toBeGreaterThan(10);
+				expect(sample.whiteCorner).toEqual([255, 255, 255, 255]);
+			}
 			expect(
 				Math.abs(sample.backgroundAlpha - style.backgroundOpacity * 255),
 				style.id,
@@ -198,11 +204,82 @@ test("all caption styles render their foreground and background in both export p
 	}
 });
 
+test("TikTok captions show uppercase text and active highlights on a dark backing", async ({
+	page,
+}, testInfo) => {
+	await page.goto("/tests/ui/caption-preview.html");
+	const picker = page.getByRole("group", { name: "Caption style", exact: true });
+	const option = picker.getByRole("button", { name: "TikTok", exact: true });
+	await option.click();
+	const caption = page.getByRole("button", { name: "Edit current caption", exact: true });
+	await expect(caption).toHaveCSS("font-family", /TikTok Sans/);
+	await expect(caption).toHaveCSS("background-color", "rgba(0, 0, 0, 0.78)");
+	const overlay = caption.locator("xpath=../../..");
+	for (const background of ["#ffffff", "#151515"]) {
+		await overlay.evaluate((node, color) => {
+			(node as HTMLElement).style.backgroundColor = color;
+		}, background);
+		for (const [time, activeWord] of [
+			[0, "FOLLOW"],
+			[700, "EVERY"],
+			[1499, "WORD"],
+		] as const) {
+			await seek(page, time);
+			await expect(caption).toHaveText("FOLLOW EVERY WORD");
+			const active = caption.locator('[data-caption-word-state="active"]');
+			await expect(active).toHaveText(activeWord);
+			await expect(active).toHaveCSS("color", "rgb(22, 22, 22)");
+			await expect(active.locator('[aria-hidden="true"]')).toHaveCSS(
+				"background-color",
+				"rgb(255, 230, 0)",
+			);
+			await expect(caption.locator("..")).toHaveCSS("opacity", "1");
+			const words = caption.locator("[data-caption-word-state]");
+			await expect(words).toHaveCount(3);
+			for (const word of await caption
+				.locator('[data-caption-word-state]:not([data-caption-word-state="active"])')
+				.all()) {
+				await expect(word).toHaveCSS("color", "rgb(255, 255, 255)");
+				const text = word.locator("[data-caption-word-visual] > span");
+				await expect(text).toHaveCSS("-webkit-text-stroke-color", "rgb(0, 0, 0)");
+				expect(
+					await text.evaluate((node) =>
+						parseFloat(getComputedStyle(node).webkitTextStrokeWidth),
+					),
+				).toBeGreaterThan(0);
+				await expect(text).toHaveCSS("paint-order", "stroke");
+			}
+		}
+		await overlay.screenshot({
+			path: testInfo.outputPath(`tiktok-${background.slice(1)}.png`),
+		});
+	}
+	await seek(page, 700);
+	await caption.screenshot({ path: testInfo.outputPath("tiktok-caption.png") });
+});
+
 test("six style cards fill equal columns and keep previews inset at narrow widths", async ({
 	page,
 }, testInfo) => {
 	await page.goto("/tests/ui/caption-preview.html");
 	const picker = page.getByRole("group", { name: "Caption style", exact: true });
+	// All style cards use the bundled RecordlyBlue wallpaper, including narrow layouts.
+	const wallpaperPreviews = picker.locator('button > [aria-hidden="true"]');
+	await expect(wallpaperPreviews).toHaveCount(6);
+	for (const preview of await wallpaperPreviews.all()) {
+		await expect(preview).toHaveCSS("background-image", /recordly-hero\.png/);
+	}
+	const wallpaperUrl = await wallpaperPreviews
+		.first()
+		.evaluate((node) => getComputedStyle(node).backgroundImage.slice(5, -2));
+	expect(
+		await page.evaluate(async (url) => {
+			const image = new Image();
+			image.src = url;
+			await image.decode();
+			return image.naturalWidth;
+		}, wallpaperUrl),
+	).toBeGreaterThan(0);
 	for (const width of [280, 240, 200]) {
 		await page.locator("aside").evaluate((node, width) => {
 			node.style.width = `${width}px`;
@@ -237,5 +314,6 @@ test("six style cards fill equal columns and keep previews inset at narrow width
 	await page.locator("aside").evaluate((node) => {
 		node.style.width = "280px";
 	});
+	await picker.getByRole("button", { name: "TikTok", exact: true }).click();
 	await picker.screenshot({ path: testInfo.outputPath("six-caption-styles.png") });
 });

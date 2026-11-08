@@ -130,10 +130,10 @@
 			}
 		},
 		"cursorMotionBlur": "커서 모션 블러",
-		"cursorClickBounce": "커서 클릭 바운스",
+		"cursorClickBounce": "클릭 시 크기 조절",
 		"cursorClickBounceDuration": "바운스 속도",
 		"cursorSway": "커서 흔들림",
-		"cursorIdleHide": "움직임이 없을 때 커서 숨기기",
+		"cursorIdleHide": "대기 시 숨기기",
 		"cursorIdleHideDescription": "잠시 기다린 후 긴 멈춤 구간에서 커서가 서서히 사라집니다. 움직이거나 클릭하면 다시 나타납니다.",
 		"cursorIdleFadeDelay": "페이드 지연 시간",
 		"cursorIdleDuration": "유휴 감지 시간",
@@ -205,7 +205,10 @@
 			"bottom-left": "왼쪽 아래",
 			"bottom-center": "가운데 아래",
 			"bottom-right": "오른쪽 아래"
-		}
+		},
+		"webcamPreviewFrame": "미리보기 프레임",
+		"webcamFrameStandard": "기본",
+		"webcamFrameSoftBlur": "부드러운 흐림"
 	},
 	"sections": {
 		"scene": "장면",
@@ -221,6 +224,8 @@
 		"title": "편집 도구"
 	},
 	"captions": {
+		"firstDownload": "처음 사용하면 {{size}} MB의 음성 파일을 다운로드한 후 자막을 생성합니다.",
+		"localProcessing": "자막은 이 기기에서 생성됩니다. 녹화 영상은 업로드되지 않습니다.",
 		"selectOnTimeline": "타임라인에서 자막을 선택하여 편집하세요.",
 		"enabled": "표시",
 		"timelineQuickAdd": "타임라인에 마우스를 올려 추가",

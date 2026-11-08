@@ -140,10 +140,10 @@
 			}
 		},
 		"cursorMotionBlur": "Cursor Motion Blur",
-		"cursorClickBounce": "Cursor Click Bounce",
+		"cursorClickBounce": "Scale on click",
 		"cursorClickBounceDuration": "Bounce Speed",
 		"cursorSway": "Cursor Sway",
-		"cursorIdleHide": "Hide cursor when idle",
+		"cursorIdleHide": "Hide when idle",
 		"cursorIdleHideDescription": "After a short delay, the cursor fades during long pauses. Movement or clicks show it again.",
 		"cursorIdleFadeDelay": "Fade delay",
 		"cursorIdleDuration": "Idle detection",
@@ -208,6 +208,9 @@
 		"cursorSpringMassMultiplier": "Spring mass",
 		"classicZoom": "Classic Animation",
 		"webcamShape": "Shape",
+		"webcamPreviewFrame": "Preview frame",
+		"webcamFrameStandard": "Standard",
+		"webcamFrameSoftBlur": "Soft blur",
 		"webcamCircle": "Circle",
 		"webcamRectangle": "Rectangle",
 		"webcamSquircle": "Square",
@@ -231,6 +234,8 @@
 		"title": "Editor tools"
 	},
 	"captions": {
+		"firstDownload": "First use downloads {{size}} MB of speech files, then generates captions.",
+		"localProcessing": "Captions are generated on this device. Your recording is not uploaded.",
 		"cueCount": "{{count}} captions",
 		"oneCaption": "1 caption",
 		"empty": "No captions yet",

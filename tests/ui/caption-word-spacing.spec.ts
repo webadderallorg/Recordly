@@ -16,7 +16,7 @@ test("word highlighting preserves every word's position and size", async ({ page
 		] as const) {
 			await page.getByRole("spinbutton", { name: "Time", exact: true }).fill(String(time));
 			await expect(caption.locator('[data-caption-word-state="active"]')).toHaveText(
-				activeWord,
+				style === "TikTok" ? activeWord.toUpperCase() : activeWord,
 			);
 			samples.push(
 				await caption.locator("[data-caption-word-state]").evaluateAll((words) =>
@@ -110,7 +110,8 @@ test("export highlighting preserves every word's position and size", async ({ pa
 		});
 	});
 	for (const { style, frames } of samples) {
-		for (const word of ["Follow", "every", "word"]) {
+		for (const sourceWord of ["Follow", "every", "word"]) {
+			const word = style === "tiktok" ? sourceWord.toUpperCase() : sourceWord;
 			for (const frame of frames.slice(1)) {
 				for (const axis of ["x", "y", "width", "scaleY"] as const) {
 					expect(frame[word][axis], `${style}: ${word} ${axis}`).toBeCloseTo(

@@ -10,6 +10,7 @@ import type { usePlaybackWallpaper } from "./usePlaybackWallpaper";
 import type { usePlaybackWebcamLayout } from "./usePlaybackWebcamLayout";
 import type { usePlaybackWebcamSync } from "./usePlaybackWebcamSync";
 import { isWebcamVisibleAtSourceTime } from "./webcamSync";
+import { WebcamFeatherPreview } from "./WebcamFeatherPreview";
 export type PlaybackViewInput = Pick<
 	ReturnType<typeof usePlaybackState> &
 		PlaybackProps &
@@ -214,82 +215,88 @@ export function PlaybackView(input: PlaybackViewInput) {
 						className="absolute rounded-md border border-[#2563EB]/80 bg-[#2563EB]/20 shadow-[0_0_0_1px_rgba(37,99,235,0.35)]"
 						style={{ display: "none", pointerEvents: "none" }}
 					/>
-					<canvas
-						ref={webcamBlurCanvasRef}
-						data-webcam-motion-blur
-						aria-hidden="true"
-						className="pointer-events-none absolute"
-						style={{ display: "none" }}
-					/>
-					{webcam && webcamVideoPath ? (
-						<div
-							ref={webcamBubbleRef}
-							data-webcam-overlay
-							data-webcam-ready={Boolean(
-								webcamVideoDimensions && webcamMediaSynchronized,
-							)}
-							className="absolute"
-							style={{
-								display:
-									webcam.enabled &&
-									!isGap &&
-									isWebcamVisibleAtSourceTime(webcam, currentTime)
-										? "block"
-										: "none",
-								pointerEvents: "none",
-							}}
-						>
+					<WebcamFeatherPreview
+						enabled={webcam?.previewFrame !== "standard"}
+						shape={webcam?.shape}
+						roundness={webcam?.roundness}
+					>
+						<canvas
+							ref={webcamBlurCanvasRef}
+							data-webcam-motion-blur
+							aria-hidden="true"
+							className="pointer-events-none absolute"
+							style={{ display: "none" }}
+						/>
+						{webcam && webcamVideoPath ? (
 							<div
-								ref={webcamBubbleInnerRef}
-								className="relative h-full w-full overflow-hidden"
+								ref={webcamBubbleRef}
+								data-webcam-overlay
+								data-webcam-ready={Boolean(
+									webcamVideoDimensions && webcamMediaSynchronized,
+								)}
+								className="absolute"
+								style={{
+									display:
+										webcam.enabled &&
+										!isGap &&
+										isWebcamVisibleAtSourceTime(webcam, currentTime)
+											? "block"
+											: "none",
+									pointerEvents: "none",
+								}}
 							>
 								<div
-									className="pointer-events-none absolute inset-0 overflow-hidden"
-									style={{
-										opacity:
-											webcamVideoDimensions && webcamMediaSynchronized
-												? 1
-												: 0,
-										transform: webcamMirror ? "scaleX(-1)" : undefined,
-									}}
+									ref={webcamBubbleInnerRef}
+									className="relative h-full w-full overflow-hidden"
 								>
 									<div
-										className="pointer-events-none absolute"
-										style={webcamCropPreviewContentStyle}
+										className="pointer-events-none absolute inset-0 overflow-hidden"
+										style={{
+											opacity:
+												webcamVideoDimensions && webcamMediaSynchronized
+													? 1
+													: 0,
+											transform: webcamMirror ? "scaleX(-1)" : undefined,
+										}}
 									>
-										<video
-											crossOrigin="anonymous"
-											ref={webcamVideoRef}
-											src={webcamVideoPath}
-											className="pointer-events-none absolute inset-0 block h-full w-full object-fill"
-											muted
-											playsInline
-											preload="auto"
-											aria-hidden="true"
-											onLoadedMetadata={handleWebcamMediaReady}
-											onLoadedData={handleWebcamMediaReady}
-											onCanPlay={handleWebcamMediaReady}
-											onSeeked={handleWebcamMediaReady}
-										/>
+										<div
+											className="pointer-events-none absolute"
+											style={webcamCropPreviewContentStyle}
+										>
+											<video
+												crossOrigin="anonymous"
+												ref={webcamVideoRef}
+												src={webcamVideoPath}
+												className="pointer-events-none absolute inset-0 block h-full w-full object-fill"
+												muted
+												playsInline
+												preload="auto"
+												aria-hidden="true"
+												onLoadedMetadata={handleWebcamMediaReady}
+												onLoadedData={handleWebcamMediaReady}
+												onCanPlay={handleWebcamMediaReady}
+												onSeeked={handleWebcamMediaReady}
+											/>
+										</div>
 									</div>
+									<svg
+										data-webcam-glass-rim
+										aria-hidden="true"
+										focusable="false"
+										className="pointer-events-none absolute inset-0 h-full w-full"
+										style={{
+											opacity:
+												webcamVideoDimensions && webcamMediaSynchronized
+													? 1
+													: 0,
+										}}
+									>
+										<path fill="none" stroke={GLASS_RIM_COLOR} />
+									</svg>
 								</div>
-								<svg
-									data-webcam-glass-rim
-									aria-hidden="true"
-									focusable="false"
-									className="pointer-events-none absolute inset-0 h-full w-full"
-									style={{
-										opacity:
-											webcamVideoDimensions && webcamMediaSynchronized
-												? 1
-												: 0,
-									}}
-								>
-									<path fill="none" stroke={GLASS_RIM_COLOR} />
-								</svg>
 							</div>
-						</div>
-					) : null}
+						) : null}
+					</WebcamFeatherPreview>
 					<PlaybackCaptions {...input} />
 					<div
 						className="absolute inset-0"

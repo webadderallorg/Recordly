@@ -6,6 +6,27 @@ import {
 } from "./captionLayout";
 import { type CaptionCue, DEFAULT_AUTO_CAPTION_SETTINGS } from "./types";
 
+it("wraps uppercase TikTok display text without changing the editable transcript", () => {
+	const cue = { id: "caps", startMs: 0, endMs: 1000, text: "hello wide" };
+	const layout = buildActiveCaptionLayout({
+		cues: [cue],
+		timeMs: 500,
+		settings: {
+			...DEFAULT_AUTO_CAPTION_SETTINGS,
+			style: "tiktok",
+			maxRows: 2,
+			animationStyle: "none",
+		},
+		maxWidthPx: 100,
+		measureText: (text) =>
+			[...text].reduce((sum, char) => sum + (/[A-Z]/.test(char) ? 12 : 6), 0),
+	});
+	expect(layout?.visibleLines.map((line) => line.width)).toEqual([60, 48]);
+	expect(layout?.editTarget.text).toBe("hello wide");
+	expect(layout?.editTarget.words.map((word) => word.text)).toEqual(["hello", "wide"]);
+	expect(cue.text).toBe("hello wide");
+});
+
 describe("flattenCaptionWords", () => {
 	it("forces a break at every cue boundary so each phrase shows on its own", () => {
 		const cues: CaptionCue[] = [

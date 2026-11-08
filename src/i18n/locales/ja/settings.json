@@ -140,10 +140,10 @@
 			}
 		},
 		"cursorMotionBlur": "カーソルのモーションブラー",
-		"cursorClickBounce": "クリック時のカーソルのバウンド",
+		"cursorClickBounce": "クリック時に拡大",
 		"cursorClickBounceDuration": "バウンドの速度",
 		"cursorSway": "カーソルの揺れ",
-		"cursorIdleHide": "操作していないときにカーソルを隠す",
+		"cursorIdleHide": "操作がないときに非表示",
 		"cursorIdleHideDescription": "長く操作しないと、しばらくしてカーソルがフェードアウトします。移動またはクリックすると再表示されます。",
 		"cursorIdleFadeDelay": "フェード開始までの時間",
 		"cursorIdleDuration": "停止の検出時間",
@@ -215,7 +215,10 @@
 			"bottom-left": "左下",
 			"bottom-center": "下中央",
 			"bottom-right": "右下"
-		}
+		},
+		"webcamPreviewFrame": "プレビューフレーム",
+		"webcamFrameStandard": "標準",
+		"webcamFrameSoftBlur": "ソフトぼかし"
 	},
 	"sections": {
 		"scene": "シーン",
@@ -231,6 +234,8 @@
 		"title": "編集ツール"
 	},
 	"captions": {
+		"firstDownload": "初回は音声ファイル {{size}} MB をダウンロードしてから字幕を生成します。",
+		"localProcessing": "字幕はこのデバイスで生成されます。録画はアップロードされません。",
 		"selectOnTimeline": "タイムラインで字幕を選択すると編集できます。",
 		"enabled": "表示",
 		"timelineQuickAdd": "タイムラインにカーソルを合わせて追加",

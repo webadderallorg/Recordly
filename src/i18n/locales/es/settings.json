@@ -130,10 +130,10 @@
 			}
 		},
 		"cursorMotionBlur": "Desenfoque de movimiento del cursor",
-		"cursorClickBounce": "Rebote de clic del cursor",
+		"cursorClickBounce": "Escalar al hacer clic",
 		"cursorClickBounceDuration": "Velocidad del rebote",
 		"cursorSway": "Balanceo del cursor",
-		"cursorIdleHide": "Ocultar el cursor al estar inactivo",
+		"cursorIdleHide": "Ocultar al estar inactivo",
 		"cursorIdleHideDescription": "Tras una breve espera, el cursor se desvanece durante las pausas largas. Al moverlo o hacer clic, vuelve a aparecer.",
 		"cursorIdleFadeDelay": "Espera antes del desvanecimiento",
 		"cursorIdleDuration": "Detección de inactividad",
@@ -205,7 +205,10 @@
 			"bottom-left": "Abajo a la izquierda",
 			"bottom-center": "Abajo en el centro",
 			"bottom-right": "Abajo a la derecha"
-		}
+		},
+		"webcamPreviewFrame": "Marco de vista previa",
+		"webcamFrameStandard": "Estándar",
+		"webcamFrameSoftBlur": "Desenfoque suave"
 	},
 	"sections": {
 		"scene": "Escena",
@@ -221,6 +224,8 @@
 		"title": "Herramientas de edición"
 	},
 	"captions": {
+		"firstDownload": "El primer uso descarga {{size}} MB de archivos de voz y luego genera los subtítulos.",
+		"localProcessing": "Los subtítulos se generan en este dispositivo. Tu grabación no se sube.",
 		"selectOnTimeline": "Selecciona un subtítulo en la línea de tiempo para editarlo.",
 		"enabled": "Mostrar",
 		"timelineQuickAdd": "Pasar el cursor para añadir en la línea de tiempo",

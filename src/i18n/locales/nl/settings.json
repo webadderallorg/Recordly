@@ -130,10 +130,10 @@
 			}
 		},
 		"cursorMotionBlur": "Cursor-bewegingsonscherpte",
-		"cursorClickBounce": "Cursorklikstuit",
+		"cursorClickBounce": "Vergroten bij klikken",
 		"cursorClickBounceDuration": "Stuitsnelheid",
 		"cursorSway": "Cursorbeweging",
-		"cursorIdleHide": "Cursor verbergen bij inactiviteit",
+		"cursorIdleHide": "Verbergen bij inactiviteit",
 		"cursorIdleHideDescription": "Na een korte vertraging vervaagt de cursor tijdens lange pauzes. Bewegen of klikken maakt de cursor weer zichtbaar.",
 		"cursorIdleFadeDelay": "Vertraging vóór vervagen",
 		"cursorIdleDuration": "Inactiviteitsdetectie",
@@ -205,7 +205,10 @@
 			"bottom-left": "Linksonder",
 			"bottom-center": "Middenonder",
 			"bottom-right": "Rechtsonder"
-		}
+		},
+		"webcamPreviewFrame": "Voorbeeldkader",
+		"webcamFrameStandard": "Standaard",
+		"webcamFrameSoftBlur": "Zachte vervaging"
 	},
 	"sections": {
 		"scene": "Scène",
@@ -221,6 +224,8 @@
 		"title": "Bewerkingsgereedschap"
 	},
 	"captions": {
+		"firstDownload": "Bij het eerste gebruik wordt {{size}} MB aan spraakbestanden gedownload en daarna worden ondertitels gegenereerd.",
+		"localProcessing": "Ondertitels worden op dit apparaat gegenereerd. Je opname wordt niet geüpload.",
 		"selectOnTimeline": "Selecteer een ondertitel op de tijdlijn om deze te bewerken.",
 		"enabled": "Tonen",
 		"timelineQuickAdd": "Aanwijzen om toe te voegen op tijdlijn",

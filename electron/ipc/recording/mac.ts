@@ -34,6 +34,7 @@ import {
 import { emitRecordingInterrupted } from "./events";
 import { getFinalMacCompanionAudioPath } from "./macCompanionAudio";
 import { attachNativeCaptureStdinLifecycle } from "./nativeCaptureCommand";
+import { registerFirstRecordingAutoZooms } from "./firstRecordingAutoZooms";
 
 export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStreams) {
 	return new Promise<void>((resolve, reject) => {
@@ -309,6 +310,7 @@ export async function finalizeStoredVideo(videoPath: string) {
 		});
 	}
 
+	await registerFirstRecordingAutoZooms(videoPath);
 	return {
 		success: true,
 		path: videoPath,

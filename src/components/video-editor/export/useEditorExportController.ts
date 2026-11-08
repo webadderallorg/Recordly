@@ -100,7 +100,9 @@ export function useEditorExportController(input: Input) {
 		effectiveShowCursor: input.effectiveShowCursor,
 		ensureSupportedMp4SourceDimensions: input.dimensions.ensureSupportedMp4SourceDimensions,
 		captionSidecarPayload: input.captionSidecarPayload,
-		experimentalNvidiaCudaExport: input.experimentalNvidiaCudaExport,
+		experimentalNvidiaCudaExport:
+			input.experimentalNvidiaCudaExport &&
+			(input.settings.advancedExportSettings || input.smokeConfig.enabled),
 		nvidiaCudaExportAvailable: input.nvidiaCudaExportAvailable,
 		remountPreview: input.remountPreview,
 	});

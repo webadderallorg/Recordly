@@ -149,6 +149,8 @@ export type WebcamPositionPreset =
 export interface WebcamOverlaySettings {
 	/** Missing in legacy projects, which retain the squircle mask. */
 	shape?: WebcamShape;
+	/** Editor-only frame trial; exported webcam rendering is unchanged. */
+	previewFrame?: "standard" | "soft-blur";
 	/** Source-time intervals containing webcam footage in an imported sequence. */
 	visibleRanges?: { startMs: number; endMs: number }[];
 	enabled: boolean;

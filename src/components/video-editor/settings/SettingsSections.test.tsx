@@ -1,4 +1,4 @@
-import { Dropdown, ProgressBar } from "@heroui/react";
+import { ProgressBar } from "@heroui/react";
 import {
 	Children,
 	type ComponentProps,
@@ -233,11 +233,7 @@ describe("caption generation settings controls", () => {
 		{ whisperModelPath: "/models/small.bin", isGeneratingCaptions: false, disabled: false },
 	])("guards generation for model availability and progress: %j", ({ disabled, ...state }) => {
 		const tree = captionView(state);
-		const label = state.isGeneratingCaptions
-			? "Generating..."
-			: !state.whisperModelPath
-				? "Download Model"
-				: "Regenerate Captions";
+		const label = state.isGeneratingCaptions ? "Generating..." : "Regenerate Captions";
 		expect(control(tree, Button, (props) => props.children === label).disabled).toBe(disabled);
 	});
 
@@ -249,16 +245,16 @@ describe("caption generation settings controls", () => {
 			whisperModelDownloadProgress: 42.7,
 		});
 		expect(
-			control(tree, Dropdown.Item, (props) => props.id === "clear-captions").isDisabled,
+			control(tree, Button, (props) => props["aria-label"] === "Clear Captions").disabled,
 		).toBe(true);
 		expect(control(tree, Button, (props) => props.disabled === true).disabled).toBe(true);
 		expect(control(tree, ProgressBar).value).toBe(42.7);
-		expect(
-			control(tree, Dropdown.Item, (props) => props.id === "delete-model").isDisabled,
-		).toBe(true);
+		expect(control(tree, Button, (props) => props.children === "Delete Model").disabled).toBe(
+			true,
+		);
 	});
 
-	it("routes the primary action to setup until the model is ready", () => {
+	it("routes the primary action to generation even before the model is ready", () => {
 		const onDownloadWhisperSmallModel = vi.fn();
 		const onGenerateAutoCaptions = vi.fn();
 		const tree = captionView({
@@ -267,11 +263,11 @@ describe("caption generation settings controls", () => {
 			onDownloadWhisperSmallModel,
 			onGenerateAutoCaptions,
 		});
-		control(tree, Button, (props) => props.children === "Download Model").onClick?.(
+		control(tree, Button, (props) => props.children === "Regenerate Captions").onClick?.(
 			{} as never,
 		);
-		expect(onDownloadWhisperSmallModel).toHaveBeenCalledOnce();
-		expect(onGenerateAutoCaptions).not.toHaveBeenCalled();
+		expect(onDownloadWhisperSmallModel).not.toHaveBeenCalled();
+		expect(onGenerateAutoCaptions).toHaveBeenCalledOnce();
 	});
 
 	it("changes animation without resetting visibility or transcription preferences", () => {

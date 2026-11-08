@@ -48,6 +48,18 @@ import { InlineCropEditor } from "./InlineCropEditor";
 // Temporarily hide the toolbar while retaining the annotation tools.
 const SHOW_ANNOTATION_TOOLBAR = false;
 
+function TimestampDigits({ value }: { value: string }) {
+	return Array.from(value, (character, index) => (
+		<span
+			key={value.length - index}
+			aria-hidden="true"
+			className={/[0-9]/.test(character) ? "inline-block w-[1ch] text-center" : undefined}
+		>
+			{character}
+		</span>
+	));
+}
+
 type Props = {
 	t: ReturnType<typeof useI18n>["t"];
 	videoPath: string | null;
@@ -124,9 +136,10 @@ export function EditorPreviewPanel(props: Props) {
 		setIsPlaying,
 		setError,
 	} = props;
-	// Reserve both labels from the duration so minute rollovers cannot move
-	// the transport. Use monospace digits even when the UI font lacks tabular figures.
-	const timestampWidth = `${Math.max(6, formatPlaybackTime(projection.timelineDuration).length)}ch`;
+	const currentTimestamp = formatPlaybackTime(projection.timelinePlayheadTime);
+	const durationTimestamp = formatPlaybackTime(projection.timelineDuration);
+	// Reserve label and digit space without changing the inherited UI typography.
+	const timestampWidth = `${Math.max(6, durationTimestamp.length)}ch`;
 
 	return (
 		<div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -344,10 +357,12 @@ export function EditorPreviewPanel(props: Props) {
 				<div className="editor-playback-center z-10 flex items-center justify-center">
 					<div className="pointer-events-auto flex items-center gap-1.5">
 						<span
-							className="mr-1 shrink-0 whitespace-nowrap text-right font-mono text-[10px] font-medium tabular-nums text-muted-foreground"
+							role="timer"
+							aria-label={currentTimestamp}
+							className="mr-1 shrink-0 whitespace-nowrap text-right text-[10px] font-medium tabular-nums text-muted-foreground"
 							style={{ width: timestampWidth }}
 						>
-							{formatPlaybackTime(projection.timelinePlayheadTime)}
+							<TimestampDigits value={currentTimestamp} />
 						</span>
 						<Button
 							variant="ghost"
@@ -383,10 +398,12 @@ export function EditorPreviewPanel(props: Props) {
 							<SkipForward className="h-3.5 w-3.5" weight="fill" />
 						</Button>
 						<span
-							className="ml-1 shrink-0 whitespace-nowrap font-mono text-[10px] font-medium tabular-nums text-muted-foreground/70"
+							role="timer"
+							aria-label={durationTimestamp}
+							className="ml-1 shrink-0 whitespace-nowrap text-[10px] font-medium tabular-nums text-muted-foreground/70"
 							style={{ width: timestampWidth }}
 						>
-							{formatPlaybackTime(projection.timelineDuration)}
+							<TimestampDigits value={durationTimestamp} />
 						</span>
 					</div>
 				</div>

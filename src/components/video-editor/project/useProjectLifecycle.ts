@@ -149,6 +149,7 @@ export function useProjectLifecycle(input: Input) {
 			project.setVideoSourcePath(sourcePath);
 			project.setCurrentProjectPath(path ?? null);
 			project.setVideoPath(videoUrl);
+			project.setOpenedSavedProject(true);
 
 			// Restoring a project's look must not replace defaults for future recordings.
 			current.restoringPreferencesRef.current = true;
@@ -355,6 +356,7 @@ export function useProjectLifecycle(input: Input) {
 	const resetSourceScopedEditorState = useCallback(() => {
 		const current = inputRef.current;
 		const { timeline, refs } = current;
+		current.project.setOpenedSavedProject(false);
 		timeline.setZoomRegions([]);
 		timeline.setTrimRegions([]);
 		timeline.setClipRegions([]);

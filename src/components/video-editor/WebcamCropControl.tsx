@@ -1,5 +1,7 @@
-import { useScopedT } from "@/contexts/I18nContext";
+import { Surface } from "@heroui/react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { useScopedT } from "@/contexts/I18nContext";
 import { cn } from "@/lib/utils";
 import type { CropRegion } from "./types";
 import {
@@ -41,26 +43,31 @@ const RESIZE_HANDLES: Array<{
 	handle: Exclude<CropHandle, "move">;
 	className: string;
 	cursorClassName: string;
+	cornerClassName: string;
 }> = [
 	{
 		handle: "nw",
 		className: "left-0 top-0 -translate-x-1/2 -translate-y-1/2",
 		cursorClassName: "cursor-nwse-resize",
+		cornerClassName: "left-1/2 top-1/2 rounded-tl-[3px] border-l-2 border-t-2",
 	},
 	{
 		handle: "ne",
 		className: "right-0 top-0 translate-x-1/2 -translate-y-1/2",
 		cursorClassName: "cursor-nesw-resize",
+		cornerClassName: "right-1/2 top-1/2 rounded-tr-[3px] border-r-2 border-t-2",
 	},
 	{
 		handle: "se",
 		className: "bottom-0 right-0 translate-x-1/2 translate-y-1/2",
 		cursorClassName: "cursor-nwse-resize",
+		cornerClassName: "bottom-1/2 right-1/2 rounded-br-[3px] border-b-2 border-r-2",
 	},
 	{
 		handle: "sw",
 		className: "bottom-0 left-0 -translate-x-1/2 translate-y-1/2",
 		cursorClassName: "cursor-nesw-resize",
+		cornerClassName: "bottom-1/2 left-1/2 rounded-bl-[3px] border-b-2 border-l-2",
 	},
 ];
 
@@ -279,7 +286,7 @@ export function WebcamCropControl({
 		};
 	}, []);
 
-	const getPointerPosition = (event: React.PointerEvent<HTMLDivElement>) => {
+	const getPointerPosition = (event: React.PointerEvent<HTMLElement>) => {
 		const rect = containerRef.current?.getBoundingClientRect();
 		if (!rect || rect.width <= 0 || rect.height <= 0) {
 			return null;
@@ -291,7 +298,7 @@ export function WebcamCropControl({
 		};
 	};
 
-	const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>, handle: CropHandle) => {
+	const handlePointerDown = (event: React.PointerEvent<HTMLElement>, handle: CropHandle) => {
 		const pointer = getPointerPosition(event);
 		if (!pointer) {
 			return;
@@ -377,9 +384,11 @@ export function WebcamCropControl({
 	};
 
 	return (
-		<div
+		<Surface
 			ref={containerRef}
-			className="relative w-full touch-none select-none overflow-hidden rounded-lg border border-foreground/10 bg-editor-dialog-alt"
+			variant="secondary"
+			data-webcam-crop-control
+			className="relative w-full touch-none select-none overflow-hidden rounded-lg border border-foreground/10"
 			style={{ aspectRatio: previewAspectRatio }}
 			onPointerMove={handlePointerMove}
 			onPointerUp={endDrag}
@@ -435,8 +444,8 @@ export function WebcamCropControl({
 
 			<div
 				className={cn(
-					"absolute border border-white shadow-[0_0_0_1px_rgba(37,99,235,0.9),0_8px_24px_rgba(0,0,0,0.25)] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/60 focus:ring-offset-2 focus:ring-offset-editor-dialog",
-					activeHandle === "move" ? "cursor-grabbing" : "cursor-move",
+					"group/webcam-crop absolute border border-white/80 shadow-[0_0_0_1px_rgba(0,0,0,0.15)] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-editor-dialog",
+					activeHandle === "move" ? "cursor-grabbing" : "cursor-grab",
 				)}
 				style={{
 					left: `${cropLeft}%`,
@@ -451,34 +460,45 @@ export function WebcamCropControl({
 				onBlur={() => setActiveHandle(null)}
 				onKeyDown={(event) => handleKeyboardAdjust(event, "move")}
 			>
-				<div className="pointer-events-none absolute left-1/3 top-0 h-full w-px bg-white/45" />
-				<div className="pointer-events-none absolute left-2/3 top-0 h-full w-px bg-white/45" />
-				<div className="pointer-events-none absolute left-0 top-1/3 h-px w-full bg-white/45" />
-				<div className="pointer-events-none absolute left-0 top-2/3 h-px w-full bg-white/45" />
+				<div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover/webcam-crop:opacity-100 group-focus-within/webcam-crop:opacity-100">
+					<div className="absolute left-1/3 top-0 h-full w-px bg-white/30" />
+					<div className="absolute left-2/3 top-0 h-full w-px bg-white/30" />
+					<div className="absolute left-0 top-1/3 h-px w-full bg-white/30" />
+					<div className="absolute left-0 top-2/3 h-px w-full bg-white/30" />
+				</div>
+				<span id={`${maskId}-dimensions`} className="sr-only">
+					{Math.round(crop.width * 100)}% × {Math.round(crop.height * 100)}%
+				</span>
 
 				{RESIZE_HANDLES.map((handle) => (
-					<div
+					<Button
 						key={handle.handle}
-						role="slider"
+						type="button"
+						variant="ghost"
+						size="icon"
 						tabIndex={0}
 						aria-label={te(`webcamCrop${handle.handle}`)}
-						aria-valuemin={Math.round(MIN_CROP_SIZE * 100)}
-						aria-valuemax={100}
-						aria-valuenow={Math.round(crop.width * 100)}
-						aria-valuetext={`${Math.round(crop.width * 100)}%`}
+						aria-describedby={`${maskId}-dimensions`}
 						className={cn(
-							"absolute z-10 h-3.5 w-3.5 rounded-[3px] border-2 border-white bg-[#2563EB] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/60 focus:ring-offset-2 focus:ring-offset-editor-dialog",
+							"absolute z-10 !size-7 !min-w-0 !scale-100 !rounded-none !border-0 !bg-transparent !p-0",
 							handle.className,
 							handle.cursorClassName,
-							activeHandle === handle.handle && "scale-110",
 						)}
 						onPointerDown={(event) => handlePointerDown(event, handle.handle)}
 						onFocus={() => setActiveHandle(handle.handle)}
 						onBlur={() => setActiveHandle(null)}
 						onKeyDown={(event) => handleKeyboardAdjust(event, handle.handle)}
-					/>
+					>
+						<span
+							aria-hidden="true"
+							className={cn(
+								"pointer-events-none absolute size-3.5 border-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]",
+								handle.cornerClassName,
+							)}
+						/>
+					</Button>
 				))}
 			</div>
-		</div>
+		</Surface>
 	);
 }

@@ -4,7 +4,10 @@ import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import * as state from "../../state";
 
-const mocks = vi.hoisted(() => ({ validate: vi.fn(), size: vi.fn() }));
+const mocks = vi.hoisted(() => ({ validate: vi.fn(), size: vi.fn(), registerAutoZooms: vi.fn() }));
+vi.mock("../firstRecordingAutoZooms", () => ({
+	registerFirstRecordingAutoZooms: mocks.registerAutoZooms,
+}));
 vi.mock("electron", () => ({ BrowserWindow: { getAllWindows: () => [] } }));
 vi.mock("../../cursor/telemetry", () => ({
 	persistPendingCursorTelemetry: vi.fn(),
@@ -17,10 +20,21 @@ vi.mock("../diagnostics", () => ({
 	recordNativeCaptureDiagnostics: vi.fn(),
 }));
 vi.mock("../macCompanionAudio", () => ({ getFinalMacCompanionAudioPath: (file: string) => file }));
-import { attachNativeCaptureLifecycle, recoverNativeMacCaptureOutput } from "../mac";
+import {
+	attachNativeCaptureLifecycle,
+	recoverNativeMacCaptureOutput,
+	finalizeStoredVideo,
+} from "../mac";
 import { stopMacCapture } from "./stopMacCapture";
 
 const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+it("only counts recordings after successful media validation", async () => {
+	mocks.validate.mockRejectedValueOnce(new Error("invalid video"));
+	await expect(finalizeStoredVideo("/recordings/broken.mp4")).rejects.toThrow("invalid video");
+	expect(mocks.registerAutoZooms).not.toHaveBeenCalled();
+	await finalizeStoredVideo("/recordings/valid.mp4");
+	expect(mocks.registerAutoZooms).toHaveBeenCalledExactlyOnceWith("/recordings/valid.mp4");
+});
 beforeEach(() => {
 	Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
 	vi.clearAllMocks();

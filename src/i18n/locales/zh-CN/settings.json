@@ -130,10 +130,10 @@
 			}
 		},
 		"cursorMotionBlur": "光标运动模糊",
-		"cursorClickBounce": "光标点击弹跳",
+		"cursorClickBounce": "点击时缩放",
 		"cursorClickBounceDuration": "弹跳速度",
 		"cursorSway": "光标摆动",
-		"cursorIdleHide": "闲置时隐藏光标",
+		"cursorIdleHide": "闲置时隐藏",
 		"cursorIdleHideDescription": "短暂延迟后，光标会在较长的停顿中淡出。移动或点击后，光标会重新显示。",
 		"cursorIdleFadeDelay": "淡出延迟",
 		"cursorIdleDuration": "闲置检测时间",
@@ -205,7 +205,10 @@
 			"bottom-left": "左下",
 			"bottom-center": "下中",
 			"bottom-right": "右下"
-		}
+		},
+		"webcamPreviewFrame": "预览边框",
+		"webcamFrameStandard": "标准",
+		"webcamFrameSoftBlur": "柔和模糊"
 	},
 	"sections": {
 		"scene": "场景",
@@ -221,6 +224,8 @@
 		"title": "编辑工具"
 	},
 	"captions": {
+		"firstDownload": "首次使用会下载 {{size}} MB 的语音文件，然后自动生成字幕。",
+		"localProcessing": "字幕在此设备上生成，录制内容不会上传。",
 		"selectOnTimeline": "在时间轴上选择字幕进行编辑。",
 		"enabled": "显示",
 		"timelineQuickAdd": "悬停以在时间轴上添加",

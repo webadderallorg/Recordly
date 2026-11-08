@@ -1,7 +1,9 @@
 import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
+import { getAssetPath, getRenderableAssetUrl } from "@/lib/assetPath";
 import { useScopedT } from "@/contexts/I18nContext";
 import { getCaptionFontFamily } from "../captionFonts";
-import { CAPTION_PRESETS, getCaptionPreset } from "../captionPresets";
+import { CAPTION_PRESETS, getCaptionDisplayText, getCaptionPreset } from "../captionPresets";
 import type { AutoCaptionStyle } from "../types";
 import { useCaptionFont } from "../useCaptionFont";
 
@@ -13,6 +15,21 @@ export function CaptionStylePicker({
 	onChange: (style: AutoCaptionStyle) => void;
 }) {
 	const te = useScopedT("editing");
+	const [wallpaper, setWallpaper] = useState<string>();
+	useEffect(() => {
+		let mounted = true;
+		void getAssetPath("wallpapers/recordly-hero.png")
+			.then(getRenderableAssetUrl)
+			.then((url) => {
+				if (mounted) setWallpaper(url);
+			})
+			.catch((error: unknown) =>
+				console.warn("Caption preview wallpaper unavailable", error),
+			);
+		return () => {
+			mounted = false;
+		};
+	}, []);
 	useCaptionFont({ style: "tiktok", fontFamily: "" });
 	const selected = getCaptionPreset(value).id;
 	return (
@@ -35,8 +52,11 @@ export function CaptionStylePicker({
 					>
 						<span
 							aria-hidden="true"
-							className="flex h-9 w-full shrink-0 items-center justify-center rounded-md bg-[#576379] px-2"
-							style={{ containerType: "inline-size" }}
+							className="flex h-9 w-full shrink-0 items-center justify-center rounded-md bg-[#0755d9] bg-cover bg-center px-2"
+							style={{
+								containerType: "inline-size",
+								backgroundImage: wallpaper ? `url("${wallpaper}")` : undefined,
+							}}
 						>
 							<span
 								style={{
@@ -47,7 +67,7 @@ export function CaptionStylePicker({
 									}),
 									fontWeight: preset.fontWeight,
 									lineHeight: 1.4,
-									padding: "3px 6px",
+									padding: "3px min(6px, 6cqw)",
 									borderRadius: preset.settings.boxRadius / 3,
 									background: `rgba(${preset.backgroundRgb ?? "0, 0, 0"}, ${preset.settings.backgroundOpacity})`,
 									color: preset.settings.inactiveTextColor,
@@ -57,18 +77,19 @@ export function CaptionStylePicker({
 									paintOrder: "stroke fill",
 								}}
 							>
-								Make{" "}
+								{getCaptionDisplayText("Make", preset.id)}{" "}
 								<span
 									style={{
 										color:
 											preset.highlightTextColor ?? preset.settings.textColor,
 										background: preset.highlightFill ?? undefined,
+										WebkitTextStroke: preset.highlightFill ? "0px" : undefined,
 										borderRadius: "0.22em",
 									}}
 								>
-									it
+									{getCaptionDisplayText("it", preset.id)}
 								</span>{" "}
-								pop
+								{getCaptionDisplayText("pop", preset.id)}
 							</span>
 						</span>
 						<span className="text-[11px] font-medium leading-4">{label}</span>

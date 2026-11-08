@@ -234,6 +234,7 @@ export async function installDesktopBridge(
 						success: true,
 						path: `${location.origin}/tests/ui/fixtures/${videoFixture}`,
 					}),
+					claimFirstRecordingAutoZooms: async () => false,
 					getCursorTelemetry: async () => ({ success: true, samples: [] }),
 					getVideoAudioFallbackPaths: async () => ({
 						success: true,

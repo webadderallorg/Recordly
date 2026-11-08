@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import {
 	getCaptionBackground,
+	getCaptionDisplayText,
 	getCaptionPreset,
 	getCaptionWordColor,
 	getCaptionWordOutline,
@@ -306,7 +307,10 @@ export function PlaybackCaptions(
 															paintOrder: "stroke fill",
 														}}
 													>
-														{word.text}
+														{getCaptionDisplayText(
+															word.text,
+															autoCaptionSettings.style,
+														)}
 													</span>
 												</span>
 											</span>

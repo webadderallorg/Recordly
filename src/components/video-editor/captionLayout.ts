@@ -1,4 +1,5 @@
 import type { CaptionEditTarget } from "./captionEditing";
+import { getCaptionDisplayText } from "./captionPresets";
 import type {
 	AutoCaptionAnimation,
 	AutoCaptionSettings,
@@ -483,7 +484,8 @@ export function prepareCaptionLayout(
 	const lines = buildCaptionLines({
 		words,
 		maxWidthPx: options.maxWidthPx,
-		measureText: options.measureText,
+		measureText: (text) =>
+			options.measureText(getCaptionDisplayText(text, options.settings.style)),
 	});
 	const pages = buildCaptionPages({
 		cues: options.cues,
