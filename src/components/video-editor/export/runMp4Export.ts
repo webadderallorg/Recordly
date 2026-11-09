@@ -18,7 +18,7 @@ import {
 	streamExportBlobToTempFile,
 	writeSmokeExportReport,
 } from "./exportPersistence";
-import { showExportErrorToast } from "./exportRunnerSupport";
+import { showCaptionSidecarWarning, showExportErrorToast } from "./exportRunnerSupport";
 export async function runMp4Export(context: ExportBranchContext): Promise<ExportBranchOutcome> {
 	const {
 		input,
@@ -204,7 +204,7 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 				route: attempt.route,
 				initialError: attempt.initialError,
 			});
-			setExportProgress(null);
+			setExportProgress((previous) => previous && { ...previous, phase: "preparing" });
 		},
 		discardTempFile: (tempFilePath) =>
 			discardCancelledTemp({ fileName: "export.mp4", tempFilePath }),
@@ -249,6 +249,7 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 			path?: string;
 			message?: string;
 			canceled?: boolean;
+			captionSidecarFailed?: boolean;
 		};
 		let pendingOnCancel: PendingExportSave;
 
@@ -356,6 +357,7 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 				);
 			}
 			showExportSuccessToast(saveResult.path);
+			showCaptionSidecarWarning(saveResult);
 			setExportedFilePath(saveResult.path);
 			if (smokeExportConfig.enabled) {
 				window.close();

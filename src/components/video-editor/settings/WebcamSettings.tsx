@@ -1,6 +1,8 @@
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ChoiceGroup, ChoiceItem } from "@/components/ui/choice-group";
-import { Trash as Trash2, UploadSimple as Upload, VideoCamera } from "@/components/ui/icons";
+import { FolderSimple, UploadSimple as Upload, VideoCamera } from "@/components/ui/icons";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { SliderControl } from "../SliderControl";
@@ -16,6 +18,7 @@ import {
 	DEFAULT_WEBCAM_SIZE,
 	type WebcamOverlaySettings,
 	type WebcamPositionPreset,
+	type WebcamShape,
 } from "../types";
 import { WebcamCropControl } from "../WebcamCropControl";
 import {
@@ -33,7 +36,6 @@ interface WebcamSettingsProps {
 	webcamPreviewPlaying: boolean;
 	onWebcamChange?: (webcam: WebcamOverlaySettings) => void;
 	onUploadWebcam?: () => void;
-	onClearWebcam?: () => void;
 }
 
 const WEBCAM_POSITION_PRESETS: Array<{
@@ -51,6 +53,86 @@ const WEBCAM_POSITION_PRESETS: Array<{
 	{ preset: "bottom-right", label: "Bottom right" },
 ];
 
+function WebcamShapePreview({ shape }: { shape: WebcamShape }) {
+	const clipId = useId();
+	const frame =
+		shape === "circle" ? (
+			<circle cx="32" cy="24" r="15" />
+		) : shape === "squircle" ? (
+			<rect x="17" y="9" width="30" height="30" rx="6" />
+		) : (
+			<rect x="8" y="10.5" width="48" height="27" rx="5.4" />
+		);
+	return (
+		<svg viewBox="0 0 64 48" className="h-12 w-16" aria-hidden="true">
+			<defs>
+				<clipPath id={clipId}>{frame}</clipPath>
+			</defs>
+			<g fill="currentColor" fillOpacity="0.1">
+				{frame}
+			</g>
+			<g clipPath={`url(#${clipId})`} fill="currentColor" opacity="0.55">
+				<circle cx="32" cy="20" r="5.8" />
+				<path d="M17 43v-4c0-7.8 6.7-12 15-12s15 4.2 15 12v4Z" />
+			</g>
+		</svg>
+	);
+}
+
+function WebcamSourceButton({
+	sourcePath,
+	onChangeSource,
+}: {
+	sourcePath: string;
+	onChangeSource?: () => void;
+}) {
+	const tSettings = useScopedT("settings");
+	const [sourceOpen, setSourceOpen] = useState(false);
+	const webcamFileName = sourcePath.split(/[\\/]/).pop();
+	return (
+		<Popover open={sourceOpen} onOpenChange={setSourceOpen}>
+			<PopoverTrigger asChild>
+				<Button
+					type="button"
+					variant="secondary"
+					size="icon"
+					className="size-9 shrink-0 rounded-xl"
+					aria-label={tSettings("effects.webcamSource", "Webcam source")}
+					title={tSettings("effects.webcamSource", "Webcam source")}
+				>
+					<FolderSimple weight="fill" className="size-4" aria-hidden="true" />
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent
+				align="start"
+				className="w-72 space-y-3"
+				aria-label={tSettings("effects.webcamSource", "Webcam source")}
+			>
+				<div className="space-y-1.5">
+					<p className="break-all text-xs font-medium">{webcamFileName}</p>
+					<p className="select-text break-all text-xs leading-relaxed text-muted-foreground">
+						{sourcePath}
+					</p>
+				</div>
+				<Button
+					type="button"
+					variant="secondary"
+					size="sm"
+					className="w-full gap-2"
+					disabled={!onChangeSource}
+					onPress={() => {
+						setSourceOpen(false);
+						onChangeSource?.();
+					}}
+				>
+					<Upload className="size-3.5" aria-hidden="true" />
+					{tSettings("effects.changeWebcamSource", "Change source")}
+				</Button>
+			</PopoverContent>
+		</Popover>
+	);
+}
+
 export function WebcamSettings({
 	advanced,
 	webcam,
@@ -59,7 +141,6 @@ export function WebcamSettings({
 	webcamPreviewPlaying,
 	onWebcamChange,
 	onUploadWebcam,
-	onClearWebcam,
 }: WebcamSettingsProps) {
 	const tSettings = useScopedT("settings");
 	const { t } = useI18n();
@@ -93,15 +174,6 @@ export function WebcamSettings({
 		});
 	};
 
-	const positionLabel =
-		webcamPositionPreset === "custom"
-			? tSettings("effects.webcamCustomPosition", "Custom position")
-			: tSettings(
-					`effects.webcamPositions.${webcamPositionPreset}`,
-					WEBCAM_POSITION_PRESETS.find((option) => option.preset === webcamPositionPreset)
-						?.label ?? "",
-				);
-
 	if (!webcam?.sourcePath) {
 		return (
 			<section className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border bg-default/40 px-5 py-6 text-center">
@@ -133,53 +205,25 @@ export function WebcamSettings({
 
 	return (
 		<section className="flex flex-col gap-5" data-webcam-settings>
-			<div className="rounded-xl border border-border p-3">
-				<div className="flex min-w-0 items-center gap-2.5">
-					<div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-						<VideoCamera className="size-4" aria-hidden="true" />
-					</div>
-					<div className="min-w-0 flex-1">
-						<p className="text-xs font-medium">
-							{tSettings("effects.webcamVideo", "Webcam video")}
-						</p>
-						<p
-							className="mt-0.5 truncate text-xs text-muted-foreground"
-							title={webcamFileName ?? undefined}
-						>
-							{webcamFileName}
-						</p>
-					</div>
+			{advanced && (
+				<div className="flex min-w-0 items-center gap-2.5" data-webcam-source>
+					<WebcamSourceButton
+						sourcePath={webcam.sourcePath}
+						onChangeSource={onUploadWebcam}
+					/>
+					<p
+						className="min-w-0 flex-1 truncate text-xs font-medium"
+						title={webcamFileName ?? undefined}
+					>
+						{webcamFileName}
+					</p>
 					<Switch
 						aria-label={tSettings("effects.show", "Show")}
 						checked={webcam.enabled}
 						onCheckedChange={(enabled) => updateWebcam({ enabled })}
 					/>
 				</div>
-				<div className="mt-3 flex gap-2 border-t border-border pt-2">
-					<Button
-						type="button"
-						variant="ghost"
-						size="sm"
-						onClick={onUploadWebcam}
-						disabled={!onUploadWebcam}
-						className="min-w-0 flex-1 gap-1.5 px-1 text-xs"
-					>
-						<Upload className="size-3.5 shrink-0" aria-hidden="true" />
-						{tSettings("effects.replaceWebcamFootage")}
-					</Button>
-					<Button
-						type="button"
-						variant="ghost"
-						size="sm"
-						onClick={onClearWebcam}
-						disabled={!onClearWebcam}
-						className="min-w-0 flex-1 gap-1.5 px-1 text-xs text-muted-foreground hover:text-danger"
-					>
-						<Trash2 className="size-3.5 shrink-0" aria-hidden="true" />
-						{tSettings("effects.removeWebcamFootage")}
-					</Button>
-				</div>
-			</div>
+			)}
 			<div className="flex flex-col gap-3">
 				{advanced && (
 					<>
@@ -205,50 +249,36 @@ export function WebcamSettings({
 						</div>
 					</>
 				)}
-				<div className="flex items-center gap-4 py-1">
-					<div className="shrink-0">
-						<ChoiceGroup
-							aria-label={tSettings("effects.webcamPosition", "Position")}
-							value={webcamPositionPreset}
-							onValueChange={(value) =>
-								applyWebcamPositionPreset(value as WebcamPositionPreset)
-							}
-							className="grid w-32 grid-cols-3 gap-1 rounded-xl border border-border bg-default/50 p-1.5"
-						>
-							{WEBCAM_POSITION_PRESETS.map((option) => (
-								<ChoiceItem
-									key={option.preset}
-									value={option.preset}
-									aria-label={tSettings(
-										`effects.webcamPositions.${option.preset}`,
-										option.label,
-									)}
-									textValue={tSettings(
-										`effects.webcamPositions.${option.preset}`,
-										option.label,
-									)}
-									className="!h-6 !min-h-0 !rounded-md !border-0 !p-0"
-								>
-									<span
-										aria-hidden="true"
-										className={`size-2 rounded-full ${webcamPositionPreset === option.preset ? "bg-accent" : "bg-foreground/25"}`}
-									/>
-								</ChoiceItem>
-							))}
-						</ChoiceGroup>
-					</div>
-					<div className="min-w-0">
-						<p className="text-xs font-medium">
-							{tSettings("effects.webcamPosition", "Position")}
-						</p>
-						<p className="mt-1 text-xs text-muted-foreground">{positionLabel}</p>
-						<p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-							{tSettings(
-								"effects.webcamDragHint",
-								"Or drag the webcam in the preview.",
-							)}
-						</p>
-					</div>
+				<div className="w-full py-1">
+					<ChoiceGroup
+						aria-label={tSettings("effects.webcamPosition", "Position")}
+						value={webcamPositionPreset}
+						onValueChange={(value) =>
+							applyWebcamPositionPreset(value as WebcamPositionPreset)
+						}
+						className="grid w-full grid-cols-3 gap-1 rounded-xl border border-border bg-default/50 p-1.5"
+					>
+						{WEBCAM_POSITION_PRESETS.map((option) => (
+							<ChoiceItem
+								key={option.preset}
+								value={option.preset}
+								aria-label={tSettings(
+									`effects.webcamPositions.${option.preset}`,
+									option.label,
+								)}
+								textValue={tSettings(
+									`effects.webcamPositions.${option.preset}`,
+									option.label,
+								)}
+								className="!h-6 !min-h-0 !rounded-md !border-0 !p-0"
+							>
+								<span
+									aria-hidden="true"
+									className={`size-2 rounded-full ${webcamPositionPreset === option.preset ? "bg-accent" : "bg-foreground/25"}`}
+								/>
+							</ChoiceItem>
+						))}
+					</ChoiceGroup>
 				</div>
 
 				{advanced ? (
@@ -293,41 +323,55 @@ export function WebcamSettings({
 							if (shape === "circle" || shape === "squircle" || shape === "rectangle")
 								updateWebcam({
 									shape,
-									...(shape === "rectangle"
-										? { width: 60, size: 60 }
-										: shape === "squircle"
-											? { height: webcamWidth }
-											: {}),
+									width:
+										shape === "rectangle"
+											? DEFAULT_WEBCAM_SIZE * (16 / 9)
+											: DEFAULT_WEBCAM_SIZE,
+									size:
+										shape === "rectangle"
+											? DEFAULT_WEBCAM_SIZE * (16 / 9)
+											: DEFAULT_WEBCAM_SIZE,
+									height: DEFAULT_WEBCAM_SIZE,
 								});
 						}}
 					>
-						<ChoiceItem value="circle">
-							{tSettings("effects.webcamCircle", "Circle")}
-						</ChoiceItem>
-						<ChoiceItem value="squircle">
-							{tSettings("effects.webcamSquircle", "Square")}
-						</ChoiceItem>
-						<ChoiceItem value="rectangle">
-							{tSettings("effects.webcamRectangle", "Rectangle")}
-						</ChoiceItem>
+						{(
+							[
+								["circle", "webcamCircle", "Circle"],
+								["squircle", "webcamSquircle", "Square"],
+								["rectangle", "webcamRectangle", "Rectangle"],
+							] as const
+						).map(([shape, key, label]) => (
+							<ChoiceItem
+								key={shape}
+								value={shape}
+								aria-label={tSettings(`effects.${key}`, label)}
+								title={tSettings(`effects.${key}`, label)}
+								className="!h-16 !p-0 !rounded-xl"
+							>
+								<WebcamShapePreview shape={shape} />
+							</ChoiceItem>
+						))}
 					</ChoiceGroup>
 				</div>
-				<SliderControl
-					label={tSettings("effects.webcamWidth", "Webcam Width")}
-					value={webcamWidth}
-					min={10}
-					max={100}
-					step={1}
-					onChange={(v) =>
-						updateWebcam({
-							width: v,
-							size: v,
-							...(webcam?.shape === "squircle" ? { height: v } : {}),
-						})
-					}
-					formatValue={(v) => `${Math.round(v)}%`}
-				/>
-				{(advanced || webcam?.shape === "rectangle") && webcam?.shape !== "circle" && (
+				{advanced && (
+					<SliderControl
+						label={tSettings("effects.webcamWidth", "Webcam Width")}
+						value={webcamWidth}
+						min={10}
+						max={100}
+						step={1}
+						onChange={(v) =>
+							updateWebcam({
+								width: v,
+								size: v,
+								...(webcam?.shape === "squircle" ? { height: v } : {}),
+							})
+						}
+						formatValue={(v) => `${Math.round(v)}%`}
+					/>
+				)}
+				{advanced && webcam?.shape !== "circle" && (
 					<SliderControl
 						label={tSettings("effects.webcamHeight", "Webcam Height")}
 						value={webcamHeight}
@@ -392,7 +436,7 @@ export function WebcamSettings({
 						formatValue={(v) => `${Math.round(v)}px`}
 					/>
 				)}
-				{webcam?.shape !== "circle" && (
+				{advanced && webcam?.shape !== "circle" && (
 					<SliderControl
 						label={tSettings("effects.webcamRoundness")}
 						value={webcam?.roundness ?? DEFAULT_WEBCAM_ROUNDNESS}

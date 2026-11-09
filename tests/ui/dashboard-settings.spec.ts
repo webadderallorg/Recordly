@@ -145,7 +145,7 @@ for (const failure of ["recordings", "projects", "both"] as const) {
 				.filter({ has: page.getByText(folder.title, { exact: true }) });
 			const open = row.getByRole("button", { name: "Open folder", exact: true });
 			if (failure === folder.area || failure === "both") {
-				await expect(row.getByRole("alert")).toBeVisible();
+				await expect(row.getByText(folder.error, { exact: true })).toBeVisible();
 				await expect(row.getByRole("alert")).toHaveText(folder.error);
 				await expect(open).toBeDisabled();
 			} else await expect(open).toBeEnabled();
@@ -167,10 +167,7 @@ for (const failure of ["recordings", "projects", "both"] as const) {
 			const open = row.getByRole("button", { name: "Open folder", exact: true });
 			await expect(open).toBeEnabled();
 			await expect(row.getByText(folder.error, { exact: true })).toHaveCount(0);
-			await row.locator(".settings-info").hover();
-			await expect(page.getByRole("tooltip")).toContainText(`/restored/${folder.area}`);
-			await page.mouse.move(20, 20);
-			await expect(page.getByRole("tooltip")).toHaveCount(0);
+			await expect(row.getByText(`/restored/${folder.area}`, { exact: true })).toBeVisible();
 			await open.click();
 			await expect(page.locator("html")).toHaveAttribute("data-opened-folder", folder.area);
 		}
@@ -183,6 +180,83 @@ for (const failure of ["recordings", "projects", "both"] as const) {
 		expect(page.url()).toBe(url);
 	});
 }
+
+test("folder read errors override saved paths and announce later retry failures", async ({
+	page,
+}) => {
+	await installSettingsBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		let phase = 0;
+		window.addEventListener("test-folder-phase", (event) => {
+			phase = (event as CustomEvent<number>).detail;
+		});
+		window.electronAPI.getRecordingsDirectory = async () => {
+			if (phase === 1) throw new Error("Recordings folder read failed");
+			return {
+				success: true,
+				path: phase === 0 ? "/initial/recordings" : "/restored/recordings",
+			};
+		};
+		window.electronAPI.getProjectsDirectory = async () => {
+			if (phase === 0) return { success: false };
+			if (phase === 2) throw new Error("Projects folder read failed");
+			return {
+				success: true,
+				path: phase === 1 ? "/initial/projects" : "/restored/projects",
+			};
+		};
+	});
+	await page.goto("/?windowType=editor");
+	await page.getByRole("button", { name: "Recordly account", exact: true }).click();
+	await page
+		.getByRole("dialog", { name: "Account menu", exact: true })
+		.getByRole("button", { name: "Settings", exact: true })
+		.click();
+	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+	await settings.getByRole("tab", { name: "General", exact: true }).click();
+	const panel = settings.getByRole("tabpanel", { name: /^General settings/ });
+	const recordings = panel
+		.locator(".settings-item")
+		.filter({ has: page.getByText("Recordings folder", { exact: true }) });
+	const projects = panel
+		.locator(".settings-item")
+		.filter({ has: page.getByText("Projects folder", { exact: true }) });
+	const recordingsPath = recordings.locator(".settings-folder-path");
+	const projectsPath = projects.locator(".settings-folder-path");
+	const retry = panel.getByRole("button", { name: "Try again", exact: true });
+	const setPhase = (phase: number) =>
+		page.evaluate(
+			(phase) =>
+				window.dispatchEvent(new CustomEvent("test-folder-phase", { detail: phase })),
+			phase,
+		);
+	await expect(recordingsPath).toHaveText("/initial/recordings");
+	await expect(
+		projects.getByText("Folder location is unavailable.", { exact: true }),
+	).toBeVisible();
+	await setPhase(1);
+	await retry.click();
+	await expect(projectsPath).toHaveText("/initial/projects");
+	await expect(
+		recordings.getByText("Recordings folder read failed", { exact: true }),
+	).toBeVisible();
+	await expect(recordings.getByRole("alert")).toHaveText("Recordings folder read failed");
+	await expect(recordingsPath).not.toContainText("/initial/recordings");
+	await expect(projects.getByRole("alert")).toHaveCount(0);
+	await setPhase(2);
+	await retry.click();
+	await expect(recordingsPath).toHaveText("/restored/recordings");
+	await expect(recordings.getByRole("alert")).toHaveCount(0);
+	await expect(projects.getByText("Projects folder read failed", { exact: true })).toBeVisible();
+	await expect(projects.getByRole("alert")).toHaveText("Projects folder read failed");
+	await expect(projectsPath).not.toContainText("/initial/projects");
+	await setPhase(3);
+	await retry.click();
+	await expect(recordingsPath).toHaveText("/restored/recordings");
+	await expect(projectsPath).toHaveText("/restored/projects");
+	await expect(panel.getByRole("alert")).toHaveCount(0);
+	await expect(retry).toHaveCount(0);
+});
 
 for (const failure of ["result", "error", "non-error"] as const) {
 	test(`HUD visibility read failure can retry in place (${failure})`, async ({ page }) => {

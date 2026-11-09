@@ -41,7 +41,7 @@ for (const clearSelection of [false, true]) {
 }
 
 for (const signedIn of [false, true]) {
-	test(`feedback offers support email when signed ${signedIn ? "in" : "out"}`, async ({
+	test(`feedback offers Contact without duplicate email when signed ${signedIn ? "in" : "out"}`, async ({
 		page,
 	}) => {
 		await installDesktopBridge(page, undefined, { signedIn });
@@ -62,14 +62,18 @@ for (const signedIn of [false, true]) {
 			await page.getByRole("button", { name: "Feedback", exact: true }).click();
 		}
 		const modal = page.getByRole("dialog", { name: "Send feedback", exact: true });
-		await expect(modal.getByText("Or email", { exact: false })).toBeVisible();
-		const email = modal.getByRole("link", { name: "support@recordly.dev", exact: true });
-		await expect(email).toHaveAttribute("href", "mailto:support@recordly.dev");
+		await expect(
+			modal.getByRole("link", { name: "support@recordly.dev", exact: true }),
+		).toHaveCount(0);
+		await modal.getByRole("button", { name: "Contact", exact: true }).click();
+		const contact = page.getByRole("dialog", { name: "Contact", exact: true });
+		const email = contact.getByRole("button", { name: "support@recordly.dev", exact: true });
 		await email.click();
 		await expect(page.locator("html")).toHaveAttribute(
 			"data-opened-external-url",
 			"mailto:support@recordly.dev",
 		);
+		await page.keyboard.press("Escape");
 		await expect(modal).toBeVisible();
 	});
 }
@@ -113,11 +117,27 @@ test("feedback preserves a draft on failure, supports attachments, and includes 
 	await expect(modal.getByLabel("Title", { exact: true })).toHaveCount(0);
 	await modal.getByRole("button", { name: "Send feedback", exact: true }).click();
 	await expect(modal.getByRole("alert")).toHaveText(
-		"Could not send feedback. Please try again. Report error",
+		"Could not send feedback. Please try again. Report Error",
 	);
-	await expect(
-		modal.getByRole("alert").getByRole("button", { name: "Report error", exact: true }),
-	).toBeVisible();
+	const report = modal
+		.getByRole("alert")
+		.getByRole("button", { name: "Report Error", exact: true });
+	await expect(report).toBeVisible();
+	// Keyboard focus remains visible despite the global outline reset.
+	await page.keyboard.press("Tab");
+	await report.focus();
+	await expect.poll(() => report.evaluate((node) => node.matches(":focus-visible"))).toBe(true);
+	await expect(report).not.toHaveCSS("box-shadow", "none");
+	// Pointer focus still suppresses the ring, including shortcut-induced :focus-visible.
+	await report.dispatchEvent("pointerdown", { button: 0, pointerId: 1 });
+	await expect(report).toHaveAttribute("data-pointer-focus", "");
+	await expect
+		.poll(() =>
+			report.evaluate((node) =>
+				getComputedStyle(node).getPropertyValue("--tw-ring-color").trim(),
+			),
+		)
+		.toBe("transparent");
 	await expect(modal.getByRole("button", { name: "Angry", exact: true })).toHaveAttribute(
 		"aria-pressed",
 		"true",

@@ -1,0 +1,79 @@
+.export-paper-stack {
+	position: relative;
+	height: 112px;
+	margin: 0 0 12px;
+	pointer-events: none;
+}
+
+.export-paper {
+	position: absolute;
+	top: 34px;
+	left: calc(50% - 27px);
+	width: 54px;
+	height: 66px;
+	border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--overlay));
+	border-radius: 7px;
+	background: color-mix(in srgb, var(--overlay) 94%, white);
+	box-shadow: 0 3px 7px rgb(0 0 0 / 8%);
+	transform: translateY(var(--paper-y)) rotate(var(--paper-angle));
+	animation: export-paper-stack 3.6s infinite;
+	animation-delay: var(--paper-delay);
+}
+
+.export-paper-lines {
+	position: absolute;
+	inset: 15px 11px;
+	background: repeating-linear-gradient(
+		to bottom,
+		color-mix(in srgb, var(--accent) 55%, var(--overlay)) 0 3px,
+		transparent 3px 10px
+	);
+	border-radius: 2px;
+	clip-path: polygon(0 0, 100% 0, 100% 70%, 60% 70%, 60% 100%, 0 100%);
+}
+
+.export-progress .progress-bar__track {
+	height: 10px;
+	border-radius: 10px;
+	box-shadow: inset 0 1px 2px rgb(0 0 0 / 8%);
+}
+
+/* Share the zoom block's glassBlue finish with the real HeroUI progress fill. */
+.export-progress .export-progress-fill {
+	position: absolute;
+	border-radius: inherit;
+	background-color: var(--accent);
+	transition: width 400ms linear;
+}
+
+.export-progress[aria-valuenow="0"] .export-progress-fill {
+	visibility: hidden;
+	transition: none;
+}
+
+@keyframes export-paper-stack {
+	0% {
+		opacity: 0;
+		transform: translateY(-30px) rotate(-14deg);
+	}
+	15% {
+		opacity: 1;
+	}
+	30%,
+	85% {
+		opacity: 1;
+		transform: translateY(var(--paper-y)) rotate(var(--paper-angle));
+	}
+	100% {
+		opacity: 0;
+		transform: translateY(var(--paper-y)) rotate(var(--paper-angle));
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.export-paper,
+	.export-progress .export-progress-fill {
+		animation: none;
+		transition: none;
+	}
+}

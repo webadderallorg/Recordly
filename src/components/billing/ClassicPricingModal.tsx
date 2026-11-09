@@ -7,7 +7,6 @@ import {
 	Briefcase,
 	ClosedCaptioning,
 	CloudArrowUp,
-	Heart,
 	Link,
 } from "@phosphor-icons/react";
 import { useRef } from "react";
@@ -145,11 +144,6 @@ export function ClassicPricingModal({ onSignIn }: { onSignIn: () => void }) {
 												icon: Link,
 												theme: "retention",
 											},
-											{
-												title: t("perkSupport", "Support solo development"),
-												icon: Heart,
-												theme: "support",
-											},
 										].map(({ title, icon: Icon, theme }) => (
 											<div className="slideshow-item is-list" key={title}>
 												<article className={`perk-card perk-${theme}`}>
@@ -286,15 +280,6 @@ export function ClassicPricingModal({ onSignIn }: { onSignIn: () => void }) {
 										onPress={() => void startBilling("checkout", interval)}
 									>
 										{t("returnToCheckout", "Return to checkout")}
-									</Button>
-								)}
-								{!plus && checkoutReady && portalAvailable && (
-									<Button
-										variant="ghost"
-										isDisabled={Boolean(busy) || loading}
-										onPress={() => void startBilling("portal")}
-									>
-										{t("previousSubscription", "Manage previous subscription")}
 									</Button>
 								)}
 							</div>

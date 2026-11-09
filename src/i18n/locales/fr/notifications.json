@@ -75,5 +75,6 @@
 	"locateRecording": "Localiser l’enregistrement",
 	"recordingRelinkFailed": "Impossible de rétablir le lien avec l’enregistrement",
 	"pauseRecordingTrackFailed": "L’enregistrement de l’écran a été mis en pause, mais une piste de caméra ou audio n’a pas pu être mise en pause.",
-	"resumeRecordingTrackFailed": "L’enregistrement de l’écran a repris, mais une piste de caméra ou audio n’a pas pu reprendre."
+	"resumeRecordingTrackFailed": "L’enregistrement de l’écran a repris, mais une piste de caméra ou audio n’a pas pu reprendre.",
+	"captionFilesSaveFailed": "La vidéo a été enregistrée, mais certains fichiers de sous-titres n’ont pas pu être enregistrés."
 }

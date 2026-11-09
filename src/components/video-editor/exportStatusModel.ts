@@ -42,7 +42,7 @@ export function resolveExportStatusModel({
 	const exportDisplayProgress = Math.max(
 		0,
 		Math.min(
-			exportFormat === "gif" ? 95 : 100,
+			exportFormat === "gif" ? 95 : 99,
 			Number.isFinite(rawDisplayProgress) ? rawDisplayProgress : 0,
 		),
 	);

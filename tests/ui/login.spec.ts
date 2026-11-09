@@ -118,7 +118,7 @@ test("email sign-in reports localized failures and allows retry without granting
 	);
 	await expect(login).not.toContainText("Please wait before requesting another email.");
 	await expect(login).toHaveAttribute("data-onboarding-state", "login");
-	await login.getByRole("button", { name: "Report error", exact: true }).click();
+	await login.getByRole("button", { name: "Report Error", exact: true }).click();
 	await expect(login.getByRole("button", { name: "Report sent", exact: true })).toBeVisible();
 	expect(reports).toHaveLength(1);
 	expect(reports[0].error).toContain("[auth] sign-in-code: failed");
@@ -156,7 +156,7 @@ test("a rejected Supabase callback keeps sign-in mandatory", async ({ page }) =>
 	const failure = "Sign-in failed. Check your connection and try again.";
 	await expect(login.getByRole("alert")).toContainText(failure);
 	await expect(login).not.toContainText("Sign-in link has expired");
-	await login.getByRole("button", { name: "Report error", exact: true }).click();
+	await login.getByRole("button", { name: "Report Error", exact: true }).click();
 	await expect(login.getByRole("button", { name: "Report sent", exact: true })).toBeVisible();
 	expect(reports).toHaveLength(1);
 	expect(reports[0].error).toContain("callback-delivery");
@@ -399,7 +399,7 @@ for (const fails of [false, true]) {
 				"Could not save this account change. Check your details and connection, then try again.",
 			);
 			await expect(
-				feedback.getByRole("button", { name: "Report error", exact: true }),
+				feedback.getByRole("button", { name: "Report Error", exact: true }),
 			).toBeVisible();
 			await feedback.locator("summary").click();
 			await expect(feedback.locator("details")).toHaveAttribute("open", "");

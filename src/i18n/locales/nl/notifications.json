@@ -75,5 +75,6 @@
 	"locateRecording": "Opname zoeken",
 	"recordingRelinkFailed": "De opname kon niet opnieuw worden gekoppeld",
 	"pauseRecordingTrackFailed": "De schermopname is gepauzeerd, maar een camera- of audiotrack kon niet worden gepauzeerd.",
-	"resumeRecordingTrackFailed": "De schermopname is hervat, maar een camera- of audiotrack kon niet worden hervat."
+	"resumeRecordingTrackFailed": "De schermopname is hervat, maar een camera- of audiotrack kon niet worden hervat.",
+	"captionFilesSaveFailed": "De video is opgeslagen, maar sommige ondertitelbestanden konden niet worden opgeslagen."
 }

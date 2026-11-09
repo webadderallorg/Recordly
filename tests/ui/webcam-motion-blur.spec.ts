@@ -3,7 +3,7 @@ import { installDesktopBridge } from "./bridge";
 import type { exportChecks } from "./webcam-motion-blur";
 
 type MotionWindow = Window & {
-	cameraSamples: { time: number; width: number; blurred: boolean }[];
+	cameraSamples: { time: number; width: number; blurred: boolean; density: number }[];
 	exportChecks: typeof exportChecks;
 };
 
@@ -22,16 +22,17 @@ test("preview camera blurs on shrink and grow, then clears on pause", async ({ p
 		)
 		.toBe(true);
 	await page.evaluate(() => {
-		const samples: { time: number; width: number; blurred: boolean }[] = [];
+		const samples: { time: number; width: number; blurred: boolean; density: number }[] = [];
 		Object.assign(window, { cameraSamples: samples });
 		const sample = () => {
 			const camera = document.querySelector<HTMLElement>("[data-webcam-overlay]");
-			const blur = document.querySelector<HTMLElement>("[data-webcam-motion-blur]");
+			const blur = document.querySelector<HTMLCanvasElement>("[data-webcam-motion-blur]");
 			if (camera && blur)
 				samples.push({
 					time: Number(document.querySelector("main")?.getAttribute("data-time")),
 					width: parseFloat(camera.style.width),
 					blurred: blur.style.display === "block",
+					density: blur.width / parseFloat(blur.style.width),
 				});
 			requestAnimationFrame(sample);
 		};
@@ -39,6 +40,9 @@ test("preview camera blurs on shrink and grow, then clears on pause", async ({ p
 	});
 	await page.getByRole("button", { name: "Play", exact: true }).click();
 	await expect(page.locator("[data-webcam-motion-blur]")).toBeVisible({ timeout: 5000 });
+	await expect
+		.poll(async () => Number(await page.locator("main").getAttribute("data-time")))
+		.toBeGreaterThan(1.35);
 	await page.getByRole("button", { name: "Pause", exact: true }).click();
 	await expect(page.locator("[data-webcam-motion-blur]")).toBeHidden();
 	await expect(page.locator("[data-webcam-overlay]")).toHaveCSS("visibility", "visible");
@@ -48,6 +52,8 @@ test("preview camera blurs on shrink and grow, then clears on pause", async ({ p
 		.toMatch(/^[4-6]/);
 	const motion = await page.evaluate(() => {
 		const samples = (window as MotionWindow).cameraSamples;
+		// Exclude the deliberate pause above and the first frame after resuming.
+		const steadyPlayback = samples.filter((sample) => sample.time > 2 && sample.time < 4);
 		return {
 			shrinking: samples.some(
 				(s, i) => i && s.blurred && s.width < samples[i - 1].width - 0.05,
@@ -55,9 +61,18 @@ test("preview camera blurs on shrink and grow, then clears on pause", async ({ p
 			growing: samples.some(
 				(s, i) => i && s.blurred && s.width > samples[i - 1].width + 0.05,
 			),
+			stableRenderer: steadyPlayback.length > 10 && steadyPlayback.every((s) => s.blurred),
+			highDensity: steadyPlayback.every(
+				(s) => s.density >= Math.max(2, Math.min(3, devicePixelRatio)),
+			),
 		};
 	});
-	expect(motion).toEqual({ shrinking: true, growing: true });
+	expect(motion).toEqual({
+		shrinking: true,
+		growing: true,
+		stableRenderer: true,
+		highDensity: true,
+	});
 	await page.getByRole("button", { name: "Pause", exact: true }).click();
 	await expect(page.locator("[data-webcam-motion-blur]")).toBeHidden();
 	await expect(page.locator("[data-webcam-overlay]")).toHaveCSS("visibility", "visible");

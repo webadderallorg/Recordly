@@ -4,7 +4,6 @@ import {
 	Briefcase,
 	CloudArrowUp,
 	FileText,
-	Heart,
 	Infinity as InfinityIcon,
 	Link,
 	Monitor,
@@ -51,7 +50,6 @@ export function PlusFeatureDetails({
 			: []),
 		t("featureLinks", "Shared links stay live while Cloud is active"),
 		t("featureExisting", "Keep existing cloud recordings while Cloud is active"),
-		t("featureSupport", "Support solo development"),
 		t("featureFuture", "More features to come..."),
 	];
 	const featureIcons = [
@@ -63,7 +61,6 @@ export function PlusFeatureDetails({
 		...(limits?.plusWeeklyUploadLimit ? [CloudArrowUp] : []),
 		Link,
 		ArrowClockwise,
-		Heart,
 		Sparkle,
 	];
 	return (

@@ -60,3 +60,104 @@ for (const pending of [false, true]) {
 		).toBeNull();
 	});
 }
+
+for (const failure of ["hud", "close"] as const) {
+	test(`permission recovery stays usable after ${failure} failure and retries the native handoff`, async ({
+		page,
+	}) => {
+		await page.emulateMedia({ reducedMotion: "reduce" });
+		await installDesktopBridge(page, "preview.mp4", { signedIn: true, onboarded: true });
+		await installDesktopBridgeOverrides(
+			page,
+			(failure) => {
+				const settings = new Map<string, unknown>([
+					["recordly.onboarding.v1.seen", true],
+					["recordly.onboarding.permissionsRequested", true],
+					["recordly.dev.onboardingDismissed", false],
+				]);
+				window.electronAPI.getAppSetting = (key) => settings.get(key) ?? null;
+				window.electronAPI.getAppSettingWithStatus = (key) => ({
+					success: true,
+					found: settings.has(key),
+					value: settings.get(key) ?? null,
+				});
+				window.electronAPI.setAppSetting = (key, value) => {
+					settings.set(key, value);
+					return true;
+				};
+				let hudCalls = 0;
+				let closeCalls = 0;
+				window.electronAPI.showRecordingHud = async () => {
+					document.documentElement.dataset.hudCalls = String(++hudCalls);
+					if (failure === "hud" && hudCalls === 1) throw new Error("HUD unavailable");
+				};
+				window.electronAPI.closeOnboardingWindow = async () => {
+					document.documentElement.dataset.closeCalls = String(++closeCalls);
+					if (failure === "close" && closeCalls === 1)
+						throw new Error("Close unavailable");
+					document.documentElement.dataset.onboardingClosed = "true";
+					return true;
+				};
+			},
+			failure,
+		);
+		const pageErrors: string[] = [];
+		const consoleErrors: string[] = [];
+		page.on("pageerror", (error) => pageErrors.push(error.message));
+		page.on("console", (message) => {
+			if (message.type() === "error") consoleErrors.push(message.text());
+		});
+		await page.goto("/?windowType=onboarding&onboardingPreview=0");
+		const permissions = page.getByRole("dialog", { name: "Permissions", exact: true });
+		const finish = permissions.getByRole("button", { name: "Start recording", exact: true });
+		await expect(
+			permissions.getByRole("heading", { name: "Allow Recordly to record", exact: true }),
+		).toBeVisible();
+		await expect(finish).toBeEnabled();
+		await finish.click();
+		await expect(page.locator("html")).toHaveAttribute("data-hud-calls", "1");
+		if (failure === "close")
+			await expect(page.locator("html")).toHaveAttribute("data-close-calls", "1");
+		await expect
+			.poll(() => consoleErrors)
+			.toContain("[onboarding] Could not return to the recording HUD.");
+		await expect(permissions).toBeVisible();
+		await expect(finish).toBeEnabled();
+		await expect
+			.poll(() =>
+				page.evaluate(() => ({
+					seen: window.electronAPI.getAppSetting("recordly.onboarding.v1.seen"),
+					permissionsRequested: window.electronAPI.getAppSetting(
+						"recordly.onboarding.permissionsRequested",
+					),
+					previewDismissed: window.electronAPI.getAppSetting(
+						"recordly.dev.onboardingDismissed",
+					),
+				})),
+			)
+			.toEqual({ seen: true, permissionsRequested: true, previewDismissed: false });
+		await expect(page.locator("html")).not.toHaveAttribute("data-onboarding-closed", "true");
+		if (failure === "hud")
+			await expect(page.locator("html")).not.toHaveAttribute("data-close-calls", /.+/);
+		await finish.click();
+		await expect(page.locator("html")).toHaveAttribute("data-hud-calls", "2");
+		await expect(page.locator("html")).toHaveAttribute(
+			"data-close-calls",
+			failure === "close" ? "2" : "1",
+		);
+		await expect(page.locator("html")).toHaveAttribute("data-onboarding-closed", "true");
+		await expect(permissions).toHaveCount(0);
+		expect(
+			await page.evaluate(() => ({
+				seen: window.electronAPI.getAppSetting("recordly.onboarding.v1.seen"),
+				permissionsRequested: window.electronAPI.getAppSetting(
+					"recordly.onboarding.permissionsRequested",
+				),
+				previewDismissed: window.electronAPI.getAppSetting(
+					"recordly.dev.onboardingDismissed",
+				),
+			})),
+		).toEqual({ seen: true, permissionsRequested: false, previewDismissed: false });
+		expect(pageErrors).toEqual([]);
+	});
+}

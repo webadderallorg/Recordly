@@ -675,6 +675,7 @@ interface Window {
 			path?: string;
 			canceled?: boolean;
 			message?: string;
+			captionSidecarFailed?: boolean;
 			error?: string;
 		}>;
 		discardExportedTemp: (tempPath: string) => Promise<{ success: boolean; error?: string }>;
@@ -742,6 +743,9 @@ interface Window {
 			camera: string;
 			error?: string;
 		}>;
+		requestMediaPermission: (
+			device: "microphone" | "camera",
+		) => Promise<{ success: boolean; granted?: boolean; error?: string }>;
 		openMediaPermissionPreferences: (device: "microphone" | "camera") => Promise<{
 			success: boolean;
 			error?: string;
@@ -765,7 +769,13 @@ interface Window {
 					text: string;
 				}>;
 			},
-		) => Promise<{ success: boolean; path?: string; message?: string; canceled?: boolean }>;
+		) => Promise<{
+			success: boolean;
+			path?: string;
+			message?: string;
+			captionSidecarFailed?: boolean;
+			canceled?: boolean;
+		}>;
 		writeExportedVideoToPath: (
 			videoData: ArrayBuffer,
 			outputPath: string,
@@ -781,6 +791,7 @@ interface Window {
 			success: boolean;
 			path?: string;
 			message?: string;
+			captionSidecarFailed?: boolean;
 			error?: string;
 			canceled?: boolean;
 		}>;

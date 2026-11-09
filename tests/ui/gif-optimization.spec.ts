@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
-import { compressGifBuffer } from "../../electron/ipc/export/gifOptimization";
 import { expect, test } from "@playwright/test";
+import { compressGifBuffer } from "../../electron/ipc/export/gifOptimization";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 const ffmpegPath = createRequire(import.meta.url)("ffmpeg-static") as string;

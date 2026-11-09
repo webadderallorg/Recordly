@@ -52,6 +52,20 @@ export function showExportErrorToast(message: string) {
 	});
 }
 
+export function showCaptionSidecarWarning(result: {
+	success: boolean;
+	captionSidecarFailed?: boolean;
+}) {
+	if (!result.success || !result.captionSidecarFailed) return;
+	toast.warning(
+		translate(
+			"notifications.captionFilesSaveFailed",
+			"Video saved, but some caption files could not be saved.",
+		),
+		{ duration: Infinity },
+	);
+}
+
 export function useExportSuccessToast() {
 	return useCallback((filePath: string) => {
 		toast.success(

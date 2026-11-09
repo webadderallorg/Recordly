@@ -86,12 +86,11 @@ for (const viewport of [
 		await expect(dialog.getByRole("region", { name: "Your Cloud benefits" })).toBeVisible();
 		await expect(dialog.locator(".split-upgrade-benefits li")).toHaveText([
 			"Full commercial license",
-			"Share any video with a link",
+			"Share any video with a 24/7 link",
 			"Unlimited cloud storage and bandwidth",
 			"Play cloud videos in FHD 1080p",
 			"Export caption SRT and VTT files",
 			"Priority support service",
-			"❤️Support solo development",
 		]);
 		await expect(
 			dialog.locator("[data-onboarding-artwork] .recordly-banner-light"),

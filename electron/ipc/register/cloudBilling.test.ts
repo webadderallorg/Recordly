@@ -108,6 +108,12 @@ describe("trusted Stripe links", () => {
 		"https://evil:pass@checkout.stripe.com/c/pay/session",
 		"https://checkout.stripe.com:444/c/pay/session",
 		"https://checkout.stripe.com/redirect?url=https://evil.test",
+		"https://checkout.stripe.com.evil.test/g/pay/cs_test_example",
+		"http://checkout.stripe.com/g/pay/cs_test_example",
+		"https://user@checkout.stripe.com/g/pay/cs_test_example",
+		"https://checkout.stripe.com:444/g/pay/cs_test_example",
+		"https://checkout.stripe.com/g/pay-other/cs_test_example",
+		"https://checkout.stripe.com/g/pay/cs_test_example\n",
 		"https://billing.stripe.com/p/session/example",
 		"javascript:alert(1)",
 		"https://checkout.stripe.com/c/pay/session\n",
@@ -146,10 +152,12 @@ it.each([
 	expect(fetchMock).not.toHaveBeenCalled();
 });
 
-it("opens only a validated checkout session and sends server-selected plan interval", async () => {
-	fetchMock.mockResolvedValue(
-		Response.json({ url: "https://checkout.stripe.com/c/pay/cs_test_example" }),
-	);
+it.each([
+	"c",
+	"g",
+])("opens a validated /%s/pay/ checkout session and sends server-selected plan interval", async (route) => {
+	const checkoutUrl = `https://checkout.stripe.com/${route}/pay/cs_test_example#token`;
+	fetchMock.mockResolvedValue(Response.json({ url: checkoutUrl }));
 	expect(
 		await call({
 			...input,
@@ -160,9 +168,7 @@ it("opens only a validated checkout session and sends server-selected plan inter
 		}),
 	).toEqual({ success: true });
 	expect(fetchMock.mock.calls[0][1].body).toBe('{"interval":"monthly"}');
-	expect(mocks.openExternal).toHaveBeenCalledWith(
-		"https://checkout.stripe.com/c/pay/cs_test_example",
-	);
+	expect(mocks.openExternal).toHaveBeenCalledWith(checkoutUrl);
 });
 
 it("portal requests cannot choose another customer's ID", async () => {

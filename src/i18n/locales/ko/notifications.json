@@ -75,5 +75,6 @@
 	"locateRecording": "녹화 파일 찾기",
 	"recordingRelinkFailed": "녹화 파일을 다시 연결하지 못했습니다",
 	"pauseRecordingTrackFailed": "화면 녹화는 일시 정지되었지만 카메라 또는 오디오 트랙을 일시 정지하지 못했습니다.",
-	"resumeRecordingTrackFailed": "화면 녹화는 다시 시작되었지만 카메라 또는 오디오 트랙을 다시 시작하지 못했습니다."
+	"resumeRecordingTrackFailed": "화면 녹화는 다시 시작되었지만 카메라 또는 오디오 트랙을 다시 시작하지 못했습니다.",
+	"captionFilesSaveFailed": "동영상은 저장되었지만 일부 자막 파일을 저장하지 못했습니다."
 }

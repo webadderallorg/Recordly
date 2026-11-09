@@ -49,7 +49,8 @@ test("cursor previews respond to hover and keyboard focus without changing selec
 	const order = await styles
 		.getByRole("row")
 		.evaluateAll((rows) => rows.map((row) => row.getAttribute("aria-label")));
-	expect(order.indexOf("Minimal")).toBeLessThan(order.indexOf("Windows 11"));
+	expect(order[2]).toBe("Bold Outline");
+	expect(order[5]).toBe("Minimal");
 	await page.mouse.move(1100, 50);
 	await page.keyboard.press("Tab");
 	await windows.focus();
@@ -96,6 +97,7 @@ test("rectangle camera dimensions and sharp corners survive reopening", async ({
 	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
 	const rectangle = page.getByRole("row", { name: "Rectangle", exact: true });
 	await rectangle.click();
+	await page.getByRole("switch", { name: "Advanced settings" }).press("Space");
 	const height = page.getByRole("slider", { name: "Webcam Height", exact: true });
 	await expect(height).toBeVisible();
 	await height.focus();
@@ -104,7 +106,7 @@ test("rectangle camera dimensions and sharp corners survive reopening", async ({
 	await expect(height).toHaveValue("11");
 	const mask = page.locator('div[style*="clip-path"][style*="contain: paint"]:has(video)');
 	await expect(mask).toHaveCSS("clip-path", /^inset\(/);
-	await expect(mask.locator(":scope > div")).toHaveCSS("opacity", "1");
+	await expect(mask.locator(":scope > div:has(video)")).toHaveCSS("opacity", "1");
 	await expect
 		.poll(() =>
 			mask.evaluate((el) => {
@@ -114,7 +116,7 @@ test("rectangle camera dimensions and sharp corners survive reopening", async ({
 		)
 		.toBeGreaterThan(3);
 	await expect(page.getByRole("slider", { name: "Webcam Roundness", exact: true })).toHaveValue(
-		"0",
+		"20",
 	);
 	await page.screenshot({
 		path: info.outputPath("rectangle-camera.png"),

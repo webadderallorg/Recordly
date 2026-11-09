@@ -16,6 +16,12 @@ import {
 	Tray,
 } from "electron";
 import { nativeT, setNativeLocale } from "./nativeI18n";
+import {
+	captureEditorMenuTarget,
+	createEditorCommandMenus,
+	withHiddenDockEditorMenus,
+	type ProjectMenuAction,
+} from "./editorCommandMenu";
 import { validateAppLocaleRequest } from "./localeIpc";
 import { readAppSetting, writeAppSetting } from "./appSettingsStore";
 import { refreshDesktopPresenceLocale } from "./desktopPresence";
@@ -42,7 +48,11 @@ import { recordingFocus } from "./ipc/recording/focus";
 import { clearRecordingTrashUndo } from "./ipc/recording/library";
 import { resolveDisplayMediaSource } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
-import { hardenWebContentsNavigation, shouldHardenWebContentsType } from "./navigationPolicy";
+import {
+	hardenWebContentsNavigation,
+	isInternalRendererTarget,
+	shouldHardenWebContentsType,
+} from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
 import { createSaveBeforeCloseController } from "./saveBeforeClose";
@@ -504,9 +514,23 @@ function isEditorWindow(window: BrowserWindow) {
 	return window.webContents.getURL().includes("windowType=editor");
 }
 
-function sendEditorMenuAction(
-	channel: "menu-load-project" | "menu-save-project" | "menu-save-project-as",
-) {
+function isOwnedEditorWindow(window: BrowserWindow): boolean {
+	return (
+		!window.isDestroyed() &&
+		BrowserWindow.fromId(window.id) === window &&
+		!window.webContents.isDestroyed() &&
+		isEditorWindow(window) &&
+		getTrustedCaptureDocumentBaseUrls().some((base) =>
+			isInternalRendererTarget(base, window.webContents.getURL()),
+		)
+	);
+}
+
+function sendEditorMenuAction(channel: ProjectMenuAction, capturedTarget?: BrowserWindow) {
+	if (capturedTarget) {
+		if (isOwnedEditorWindow(capturedTarget)) capturedTarget.webContents.send(channel);
+		return;
+	}
 	let targetWindow = BrowserWindow.getFocusedWindow() ?? mainWindow;
 
 	if (!targetWindow || targetWindow.isDestroyed() || !isEditorWindow(targetWindow)) {
@@ -530,6 +554,15 @@ function sendEditorMenuAction(
 function setupApplicationMenu() {
 	const isMac = process.platform === "darwin";
 	const template: Electron.MenuItemConstructorOptions[] = [];
+	const editorMenus = createEditorCommandMenus({
+		translate: nativeT,
+		onProjectAction: sendEditorMenuAction,
+	});
+	if (!isMac)
+		editorMenus[0].submenu.push(
+			{ type: "separator" },
+			{ label: nativeT("quit"), role: "quit", accelerator: "CmdOrCtrl+Q" },
+		);
 	if (isMac) {
 		template.push({
 			label: app.name,
@@ -548,48 +581,7 @@ function setupApplicationMenu() {
 	}
 
 	template.push(
-		{
-			label: nativeT("file"),
-			submenu: [
-				{
-					label: nativeT("openProjects"),
-					accelerator: "CmdOrCtrl+O",
-					click: () => sendEditorMenuAction("menu-load-project"),
-				},
-				{
-					label: nativeT("saveProject"),
-					accelerator: "CmdOrCtrl+S",
-					click: () => sendEditorMenuAction("menu-save-project"),
-				},
-				{
-					label: nativeT("saveProjectAs"),
-					accelerator: "CmdOrCtrl+Shift+S",
-					click: () => sendEditorMenuAction("menu-save-project-as"),
-				},
-				...(isMac
-					? []
-					: [
-							{ type: "separator" as const },
-							{
-								label: nativeT("quit"),
-								role: "quit" as const,
-								accelerator: "CmdOrCtrl+Q",
-							},
-						]),
-			],
-		},
-		{
-			label: nativeT("edit"),
-			submenu: [
-				{ label: nativeT("undo"), role: "undo" },
-				{ label: nativeT("redo"), role: "redo" },
-				{ type: "separator" },
-				{ label: nativeT("cut"), role: "cut" },
-				{ label: nativeT("copy"), role: "copy" },
-				{ label: nativeT("paste"), role: "paste" },
-				{ label: nativeT("selectAll"), role: "selectAll" },
-			],
-		},
+		...editorMenus,
 		{
 			label: nativeT("view"),
 			submenu: [
@@ -680,6 +672,8 @@ function createTray() {
 
 	if (process.platform === "win32" || process.platform === "darwin") {
 		tray.on("right-click", () => {
+			if (process.platform === "darwin" && app.dock && !app.dock.isVisible())
+				updateTrayMenu(desktopRecordingActive);
 			if (!tray || !trayContextMenu) {
 				return;
 			}
@@ -955,7 +949,24 @@ function updateTrayMenu(recording: boolean = false) {
 					},
 				},
 			];
-	const menu = Menu.buildFromTemplate(menuTemplate);
+	const focused = BrowserWindow.getFocusedWindow();
+	const target = captureEditorMenuTarget(
+		getOnboardingWindow()
+			? null
+			: focused && isOwnedEditorWindow(focused)
+				? focused
+				: mainWindow,
+		isOwnedEditorWindow,
+	);
+	const menu = Menu.buildFromTemplate(
+		withHiddenDockEditorMenus(menuTemplate, {
+			platform: process.platform,
+			dockVisible: app.dock?.isVisible() ?? true,
+			translate: nativeT,
+			onProjectAction: sendEditorMenuAction,
+			target,
+		}),
+	);
 	trayContextMenu = menu;
 	tray.setImage(trayIcon);
 	tray.setToolTip(trayToolTip);

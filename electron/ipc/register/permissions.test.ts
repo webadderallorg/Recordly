@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
-	app: { isPackaged: true },
+	app: { isPackaged: true, getAppPath: () => "/recordly" },
 	handlers: new Map<string, (...args: unknown[]) => unknown>(),
 	status: vi.fn(),
 	requestMedia: vi.fn(),
@@ -26,10 +26,21 @@ vi.mock("electron", () => ({
 	},
 	shell: { openExternal: mocks.open },
 }));
+vi.mock("../../rendererServer", () => ({
+	getPackagedRendererBaseUrl: () => "http://127.0.0.1:43820/",
+}));
 vi.mock("../utils", () => ({ getMacPrivacySettingsUrl: (pane: string) => `settings:${pane}` }));
 import { registerPermissionHandlers } from "./permissions";
 const platform = process.platform;
-afterEach(() => Object.defineProperty(process, "platform", { value: platform }));
+afterEach(() => {
+	Object.defineProperty(process, "platform", { value: platform });
+	vi.unstubAllEnvs();
+});
+
+function settingsEvent(url = "http://127.0.0.1:43820/?windowType=editor") {
+	const frame = { url };
+	return { sender: { mainFrame: frame }, senderFrame: frame };
+}
 beforeEach(() => {
 	vi.resetAllMocks();
 	mocks.app.isPackaged = true;
@@ -241,4 +252,100 @@ it("packaged apps cannot bypass granted-permission suppression with the dev prev
 	const sender = {};
 	await mocks.handlers.get("open-accessibility-preferences")!({ sender }, true);
 	expect(mocks.accessory).toHaveBeenCalledWith("accessibility", sender, false);
+});
+
+it.each([
+	"microphone",
+	"camera",
+])("requests first-time %s access without starting capture", async (device) => {
+	mocks.status.mockReturnValue("not-determined");
+	mocks.requestMedia.mockResolvedValue(true);
+	expect(await mocks.handlers.get("request-media-permission")!(settingsEvent(), device)).toEqual({
+		success: true,
+		granted: true,
+	});
+	expect(mocks.requestMedia).toHaveBeenCalledExactlyOnceWith(device);
+	expect(mocks.open).not.toHaveBeenCalled();
+	expect(mocks.sources).not.toHaveBeenCalled();
+});
+it("treats declining the native prompt as a permission result", async () => {
+	mocks.status.mockReturnValue("not-determined");
+	mocks.requestMedia.mockResolvedValue(false);
+	expect(
+		await mocks.handlers.get("request-media-permission")!(settingsEvent(), "camera"),
+	).toEqual({
+		success: true,
+		granted: false,
+	});
+});
+it.each([
+	"granted",
+	"denied",
+	"restricted",
+])("does not prompt again for %s access", async (status) => {
+	mocks.status.mockReturnValue(status);
+	expect(
+		await mocks.handlers.get("request-media-permission")!(settingsEvent(), "microphone"),
+	).toEqual({
+		success: true,
+		granted: status === "granted",
+	});
+	expect(mocks.requestMedia).not.toHaveBeenCalled();
+});
+it.each([null, "screen", {}, 1])("rejects an invalid native media request %j", async (device) => {
+	expect(
+		await mocks.handlers.get("request-media-permission")!(settingsEvent(), device),
+	).toMatchObject({
+		success: false,
+	});
+	expect(mocks.status).not.toHaveBeenCalled();
+	expect(mocks.requestMedia).not.toHaveBeenCalled();
+});
+it.each(["win32", "linux"])("does not request native media permissions on %s", async (platform) => {
+	Object.defineProperty(process, "platform", { value: platform });
+	expect(
+		await mocks.handlers.get("request-media-permission")!(settingsEvent(), "camera"),
+	).toMatchObject({ success: false });
+	expect(mocks.requestMedia).not.toHaveBeenCalled();
+});
+it("reports native permission request failure without claiming access", async () => {
+	mocks.status.mockReturnValue("not-determined");
+	mocks.requestMedia.mockRejectedValue(new Error("Native request unavailable"));
+	expect(
+		await mocks.handlers.get("request-media-permission")!(settingsEvent(), "camera"),
+	).toMatchObject({ success: false });
+});
+
+it.each([
+	["missing event", () => undefined],
+	["missing sender", () => ({ senderFrame: { url: "http://127.0.0.1:43820/" } })],
+	["missing frame", () => ({ sender: { mainFrame: {} } })],
+	["foreign main frame", () => settingsEvent("https://foreign.test/?windowType=editor")],
+	["foreign document path", () => settingsEvent("http://127.0.0.1:43820/foreign.html")],
+	[
+		"same-URL frame with different identity",
+		() => {
+			const event = settingsEvent();
+			return { ...event, senderFrame: { ...event.senderFrame } };
+		},
+	],
+])("rejects %s before inspecting or requesting native permissions", async (_label, makeEvent) => {
+	expect(
+		await mocks.handlers.get("request-media-permission")!(makeEvent(), "microphone"),
+	).toMatchObject({ success: false });
+	expect(mocks.status).not.toHaveBeenCalled();
+	expect(mocks.requestMedia).not.toHaveBeenCalled();
+});
+
+it("accepts the Settings caller from the development app main frame", async () => {
+	vi.stubEnv("VITE_DEV_SERVER_URL", "http://localhost:5173/");
+	mocks.status.mockReturnValue("not-determined");
+	mocks.requestMedia.mockResolvedValue(true);
+	expect(
+		await mocks.handlers.get("request-media-permission")!(
+			settingsEvent("http://localhost:5173/?windowType=editor"),
+			"microphone",
+		),
+	).toEqual({ success: true, granted: true });
+	expect(mocks.requestMedia).toHaveBeenCalledExactlyOnceWith("microphone");
 });

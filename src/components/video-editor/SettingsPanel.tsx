@@ -85,7 +85,6 @@ export function SettingsPanel(input: SettingsPanelProps) {
 		webcamPreviewPlaying,
 		onWebcamChange,
 		onUploadWebcam,
-		onClearWebcam,
 		autoCaptions,
 		autoCaptionSettings,
 		captionModelId,
@@ -258,7 +257,6 @@ export function SettingsPanel(input: SettingsPanelProps) {
 						webcamPreviewPlaying={webcamPreviewPlaying}
 						onWebcamChange={onWebcamChange}
 						onUploadWebcam={onUploadWebcam}
-						onClearWebcam={onClearWebcam}
 					/>
 				);
 			default:

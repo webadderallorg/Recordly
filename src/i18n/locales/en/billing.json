@@ -46,6 +46,8 @@
 	"earlyBird": "EARLY BIRD {{percent}}% OFF",
 	"upgrade": "Upgrade to Cloud",
 	"upgradeShort": "Upgrade",
+	"upgradeButtonLabel": "Upgrade",
+	"getCloud": "Get Recordly Cloud",
 	"legalSupport": "Legal and support",
 	"privacy": "Privacy",
 	"terms": "Terms",
@@ -92,7 +94,7 @@
 	"monthly": "Monthly",
 	"upgradeHeading": "Unlock Recordly's full power",
 	"featureLicense": "Full commercial license",
-	"featureLinkSharing": "Share any video with a link",
+	"featureLinkSharing": "Share any video with a 24/7 link",
 	"featurePlayback": "Play cloud videos in FHD 1080p",
 	"featureCaptionExport": "Export caption SRT and VTT files",
 	"featurePrioritySupport": "Priority support service"

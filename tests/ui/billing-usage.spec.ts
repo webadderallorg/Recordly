@@ -191,9 +191,9 @@ for (const viewport of [
 		const benefits = dialog.getByRole("region", { name: "Cloud benefits", exact: true });
 		await expect(benefits.getByRole("heading")).toHaveText([
 			"Commercial use included",
+			"SRT and VTT caption-file exports",
 			"Share without limits",
 			"Keep your links alive",
-			"Support solo development",
 		]);
 		await expect(dialog.getByRole("radiogroup", { name: "Billing interval" })).toHaveCount(0);
 		await expect(dialog.locator(".pricing-price")).toHaveText("$9 USD / month");
@@ -252,7 +252,7 @@ for (const viewport of [
 		);
 		await expect(
 			benefits.getByRole("heading", { name: "Support solo development" }),
-		).toHaveCount(1);
+		).toHaveCount(0);
 		expect(
 			await benefits
 				.locator("article")
@@ -938,6 +938,25 @@ test("a failed checkout preserves Free and offers retry without claiming payment
 	const dialog = page.getByRole("dialog");
 	await dialog.getByRole("button", { name: "Get started", exact: true }).click();
 	await expect(dialog.getByRole("alert")).toContainText("connect to secure billing");
+	let reports = 0;
+	await page.route("**/functions/v1/submit-export-error", async (route) => {
+		reports++;
+		expect(route.request().postDataJSON().context).toBe("billing");
+		await route.fulfill({
+			status: reports === 1 ? 503 : 200,
+			json: reports === 1 ? { success: false } : { success: true },
+		});
+	});
+	const report = dialog.getByRole("button", { name: "Report Error", exact: true });
+	await expect(report).toHaveCSS("text-decoration-line", "underline");
+	await expect(report).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+	await expect(report).toHaveCSS("border-top-width", "0px");
+	await expect(report).toHaveCSS("padding-top", "0px");
+	await report.click();
+	await expect(dialog.getByRole("button", { name: "Report sent", exact: true })).toHaveCount(0);
+	await dialog.getByRole("button", { name: "Retry report", exact: true }).click();
+	await expect(dialog.getByRole("button", { name: "Report sent", exact: true })).toBeDisabled();
+	expect(reports).toBe(2);
 	await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toBeEnabled();
 	await expect(page.getByTestId("verified-plan")).toHaveText("free");
 	await expect(dialog.getByText(/Complete checkout in your browser/)).toHaveCount(0);

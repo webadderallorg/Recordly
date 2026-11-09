@@ -52,12 +52,14 @@ for (const storageBytes of [
 		await expect(sidebar.getByText("Loading usage…")).toHaveCount(0);
 		await expect(sidebar.getByText("Cloud recordings", { exact: true })).toHaveCount(0);
 		await expect(sidebar.getByLabel("Cloud usage", { exact: true })).toHaveCount(0);
-		await expect(navigation.getByRole("button", { name: "Upgrade", exact: true })).toHaveCount(0);
+		await expect(navigation.getByRole("button", { name: "Upgrade", exact: true })).toHaveCount(
+			0,
+		);
 	});
 }
 
 for (const signedIn of [false, true]) {
-	test(`${signedIn ? "Free" : "Signed-out"} library footer rows fit and socials open from the footer`, async ({
+	test(`${signedIn ? "Free" : "Signed-out"} library footer upgrade fits and relocated socials open through Feedback`, async ({
 		page,
 	}) => {
 		await installDesktopBridge(page, "preview.mp4", { signedIn, onboarded: true });
@@ -105,7 +107,7 @@ for (const signedIn of [false, true]) {
 			const footer = navigation.locator(".community-links");
 			const upgrade = footer.getByRole("button", { name: "Upgrade", exact: true });
 			await expect(upgrade).toBeVisible();
-			await expect(footer.getByRole("button")).toHaveCount(3);
+			await expect(footer.getByRole("button")).toHaveCount(1);
 			const upgradeBounds = (await upgrade.boundingBox())!;
 			expect(settingsBounds.y + settingsBounds.height).toBeLessThanOrEqual(upgradeBounds.y);
 			const navBounds = (await navigation.boundingBox())!;
@@ -113,36 +115,11 @@ for (const signedIn of [false, true]) {
 			expect(upgradeBounds.x + upgradeBounds.width).toBeLessThanOrEqual(
 				navBounds.x + navBounds.width,
 			);
-			const socialBounds = [];
-			for (const name of ["Socials", "Contact"]) {
-				const button = footer.getByRole("button", { name, exact: true });
-				await expect(button).toBeVisible();
-				socialBounds.push((await button.boundingBox())!);
-			}
-			expect(upgradeBounds.y + upgradeBounds.height).toBeLessThanOrEqual(socialBounds[0].y);
-			expect(
-				Math.abs(
-					socialBounds[0].y +
-						socialBounds[0].height / 2 -
-						socialBounds[1].y -
-						socialBounds[1].height / 2,
-				),
-			).toBeLessThan(1);
-			expect(socialBounds[0].x).toBeGreaterThanOrEqual(navBounds.x);
-			expect(socialBounds[1].x).toBeGreaterThanOrEqual(
-				socialBounds[0].x + socialBounds[0].width,
-			);
-			expect(socialBounds[1].x + socialBounds[1].width).toBeLessThanOrEqual(
-				navBounds.x + navBounds.width,
-			);
 		}
-		await navigation
-			.locator(".community-links")
-			.getByRole("button", {
-				name: "Socials",
-				exact: true,
-			})
-			.click();
+		await navigation.getByRole("button", { name: "Feedback", exact: true }).click();
+		const feedback = page.getByRole("dialog", { name: "Send feedback", exact: true });
+		await expect(feedback).toBeVisible();
+		await feedback.getByRole("button", { name: "Socials", exact: true }).click();
 		const socials = page.getByRole("dialog", { name: "Socials", exact: true });
 		for (const { name, url } of [
 			{ name: "Join Discord", url: "https://discord.gg/sdv2FBVNgE" },
@@ -155,6 +132,9 @@ for (const signedIn of [false, true]) {
 		}
 		await page.keyboard.press("Escape");
 		await expect(socials).toHaveCount(0);
+		await expect(feedback).toBeVisible();
+		await page.keyboard.press("Escape");
+		await expect(feedback).toHaveCount(0);
 		await navigation.getByRole("button", { name: "Settings", exact: true }).click();
 		await expect(
 			dashboard.getByRole("region", { name: "Dashboard settings", exact: true }),

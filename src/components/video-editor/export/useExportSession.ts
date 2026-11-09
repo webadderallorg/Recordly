@@ -1,8 +1,8 @@
 import type { GifSizeEstimateState } from "./useGifSizeEstimate";
 import type { GifOptimizationSummary } from "@/lib/exporter/gifOptimization";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type SetStateAction, useCallback, useEffect, useRef, useState } from "react";
 import type { ExportProgress } from "@/lib/exporter";
-import { resolveSavingExportProgress } from "../exportProgressState";
+import { resolveExportProgressUpdate, resolveSavingExportProgress } from "../exportProgressState";
 import type { PendingExportSave } from "./exportPersistence";
 
 export type CancelableExporter = { cancel(): void };
@@ -16,7 +16,15 @@ export function useExportSession() {
 	const [gifOptimization, setGifOptimization] = useState<GifOptimizationSummary | null>(null);
 	const [isOptimizingGif, setIsOptimizingGif] = useState(false);
 	const [isExporting, setIsExporting] = useState(false);
-	const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
+	const [exportProgress, updateExportProgress] = useState<ExportProgress | null>(null);
+	const setExportProgress = useCallback((update: SetStateAction<ExportProgress | null>) => {
+		updateExportProgress((previous) =>
+			resolveExportProgressUpdate(
+				previous,
+				typeof update === "function" ? update(previous) : update,
+			),
+		);
+	}, []);
 	const [exportError, setExportError] = useState<string | null>(null);
 	const [showExportDropdown, setShowExportDropdown] = useState(false);
 	const [exportedFilePath, setExportedFilePath] = useState<string>();
@@ -43,7 +51,7 @@ export function useExportSession() {
 
 	const markExportAsSaving = useCallback(() => {
 		setExportProgress(resolveSavingExportProgress);
-	}, []);
+	}, [setExportProgress]);
 
 	return {
 		exportIdentityRef,

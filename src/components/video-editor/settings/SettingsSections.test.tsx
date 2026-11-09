@@ -94,7 +94,38 @@ beforeEach(() => {
 });
 
 describe("webcam settings controls", () => {
-	it("selects a 60% wide rectangle retaining Square roundness, footage and timing", () => {
+	it("keeps geometry sliders in Advanced without changing the selected shape", () => {
+		for (const shape of ["circle", "squircle", "rectangle"] as const) {
+			const webcam = {
+				...DEFAULT_EDITOR_PREFERENCES.webcam,
+				enabled: true,
+				sourcePath: "/camera.mp4",
+				shape,
+				roundness: 69,
+			};
+			const basic = webcamView({ advanced: false, webcam });
+			const labels = elements(basic)
+				.filter((element) => element.type === SliderControl)
+				.map((element) => (element.props as { label?: string }).label);
+			expect(labels).not.toContain("Webcam Width");
+			expect(labels).not.toContain("Webcam Height");
+			expect(labels).not.toContain("effects.webcamRoundness");
+			const advanced = webcamView({ advanced: true, webcam });
+			expect(
+				control(advanced, SliderControl, (props) => props.label === "Webcam Width").value,
+			).toBe(webcam.width);
+			if (shape !== "circle")
+				expect(
+					control(
+						advanced,
+						SliderControl,
+						(props) => props.label === "effects.webcamRoundness",
+					).value,
+				).toBe(69);
+		}
+	});
+
+	it("selects a 16:9 rectangle retaining Square roundness, footage and timing", () => {
 		const onWebcamChange = vi.fn();
 		const tree = webcamView({ onWebcamChange });
 		control(tree, ChoiceGroup, (props) => props["aria-label"] === "Shape").onValueChange?.(
@@ -103,10 +134,10 @@ describe("webcam settings controls", () => {
 		expect(onWebcamChange).toHaveBeenLastCalledWith(
 			expect.objectContaining({
 				shape: "rectangle",
-				roundness: 50,
+				roundness: 20,
 				sourcePath: "/recordings/camera.mp4",
-				width: 60,
-				height: 40,
+				width: expect.closeTo(53.333333, 4),
+				height: 30,
 				timeOffsetMs: 75,
 				visibleRanges: [{ startMs: 100, endMs: 2500 }],
 			}),

@@ -313,7 +313,9 @@ test("password sign-in also starts its check on submit and forwards the verified
 	await expect(page.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
 });
 
-test("a rejected password stays available for a protected retry without retyping", async ({ page }) => {
+test("a rejected password stays available for a protected retry without retyping", async ({
+	page,
+}) => {
 	let rejectPassword = true;
 	await page.route("https://auth.recordly.test/auth/v1/token**", async (route) => {
 		if (rejectPassword) {

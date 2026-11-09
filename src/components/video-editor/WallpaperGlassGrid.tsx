@@ -1,5 +1,6 @@
 import { type CSSProperties, type HTMLAttributes, useId } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
+import { GLASS_RIM_COLOR } from "./glassRim";
 import { WallpaperGlassFilter } from "./WallpaperGlassFilter";
 import "./WallpaperGrid.css";
 
@@ -15,7 +16,12 @@ export function WallpaperGlassGrid({
 			{...props}
 			className="relative grid grid-cols-5 gap-2"
 			data-wallpaper-glass-theme={theme}
-			style={{ "--wallpaper-glass-filter": `url(#${filterId})` } as CSSProperties}
+			style={
+				{
+					"--wallpaper-glass-filter": `url(#${filterId})`,
+					"--glass-rim-color": GLASS_RIM_COLOR,
+				} as CSSProperties
+			}
 		>
 			<WallpaperGlassFilter id={filterId} />
 			{children}

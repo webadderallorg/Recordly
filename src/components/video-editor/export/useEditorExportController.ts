@@ -14,7 +14,6 @@ import type { CursorTelemetryPoint, SpeedRegion, ZoomRegion } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 import { useExportDialogActions } from "./useExportDialogActions";
 import type { useExportDimensions } from "./useExportDimensions";
-import { useExportMessages } from "./useExportMessages";
 import { useExportRunner } from "./useExportRunner";
 import type { useExportSession } from "./useExportSession";
 import type { useExportSettings } from "./useExportSettings";
@@ -130,10 +129,5 @@ export function useEditorExportController(input: Input) {
 		session: input.session,
 		settings: input.settings,
 	});
-	const exportMessage = useExportMessages({
-		t: input.t,
-		active: input.session.isExporting,
-	});
-
-	return { dialogActions, status, exportMessage };
+	return { dialogActions, status };
 }

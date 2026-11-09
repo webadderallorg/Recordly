@@ -8,7 +8,9 @@ async function readCaptionRenderingResult(page: Page) {
 	const body = page.locator("body");
 	await expect
 		.poll(() =>
-			body.evaluate((node) => node.hasAttribute("data-error") || node.hasAttribute("data-result")),
+			body.evaluate(
+				(node) => node.hasAttribute("data-error") || node.hasAttribute("data-result"),
+			),
 		)
 		.toBe(true);
 	const { error, result } = await body.evaluate((node) => ({
@@ -219,7 +221,7 @@ test("six style cards fill equal columns and keep previews inset at narrow width
 				return {
 					width: card.width,
 					height: card.height,
-					expectedWidth: (grid.width - 8) / 2,
+					expectedWidth: (grid.width - 16) / 3,
 					leftInset: sample.left - preview.left,
 					rightInset: preview.right - sample.right,
 				};
@@ -227,7 +229,7 @@ test("six style cards fill equal columns and keep previews inset at narrow width
 		});
 		for (const card of geometry) {
 			expect(card.width).toBeCloseTo(card.expectedWidth, 1);
-			expect(card.height).toBe(84);
+			expect(card.height).toBe(72);
 			expect(card.leftInset).toBeGreaterThanOrEqual(6);
 			expect(card.rightInset).toBeGreaterThanOrEqual(6);
 		}

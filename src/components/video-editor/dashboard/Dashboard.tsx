@@ -63,7 +63,7 @@ export function Dashboard(props: DashboardProps) {
 								</div>
 								<div className="flex items-center gap-3">
 									<UpgradeButton
-										label={uiText("billing.upgradeShort")}
+										label={uiText("billing.upgradeButtonLabel", "Upgrade")}
 										variant="secondary"
 										size="sm"
 										className="h-9 gap-1.5"

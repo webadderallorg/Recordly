@@ -1,7 +1,8 @@
 import { getWebcamShadowFilter, getWebcamShadowPadding } from "@/lib/exporter/shadowProfile";
-import { drawSquircleOnCanvas } from "@/lib/geometry/squircle";
+import { drawWebcamGlassRim } from "./glassRim";
 import type { CropRegion, WebcamShape } from "./types";
-import { getWebcamCropSourceRect, getWebcamShapeExponent } from "./webcamOverlay";
+import { getWebcamCropSourceRect } from "./webcamOverlay";
+import { traceWebcamShapeOnCanvas } from "./webcamShapePath";
 
 export interface WebcamMotionLayout {
 	x: number;
@@ -155,8 +156,13 @@ export class WebcamMotionBlur {
 			: 1;
 		const shadowSize = Math.min(layout.width, layout.height);
 		const padding = getWebcamShadowPadding(shadowSize, shadow) + 2;
-		const x = Math.floor(Math.min(...this.samples.map((s) => s.x)) - padding);
-		const y = Math.floor(Math.min(...this.samples.map((s) => s.y)) - padding);
+		// Align the backing store to physical pixels, including Retina displays.
+		const x =
+			Math.floor((Math.min(...this.samples.map((s) => s.x)) - padding) * resolution) /
+			resolution;
+		const y =
+			Math.floor((Math.min(...this.samples.map((s) => s.y)) - padding) * resolution) /
+			resolution;
 		// Keep backing stores large enough for the whole transition rather than
 		// reallocating canvas/GPU textures on every shrinking frame.
 		const width = Math.max(
@@ -192,21 +198,31 @@ export class WebcamMotionBlur {
 		ctx.globalAlpha = 1 / this.samples.length;
 		const { sx, sy, sw, sh } = getWebcamCropSourceRect(cropRegion, sourceWidth, sourceHeight);
 		for (const sample of this.samples) {
-			ctx.save();
-			ctx.translate(sample.x - x, sample.y - y);
-			drawSquircleOnCanvas(ctx, {
+			// Reuse the output as scratch until the final shadow pass. The rim must
+			// composite over each pose before weighted accumulation, not add light to it.
+			out.clearRect(0, 0, pixelWidth, pixelHeight);
+			out.save();
+			out.scale(resolution, resolution);
+			out.imageSmoothingEnabled = true;
+			out.imageSmoothingQuality = "high";
+			out.globalCompositeOperation = "source-over";
+			out.globalAlpha = 1;
+			out.translate(sample.x - x, sample.y - y);
+			out.beginPath();
+			traceWebcamShapeOnCanvas(out, {
 				...sample,
 				x: 0,
 				y: 0,
-				exponent: getWebcamShapeExponent(options.shape),
+				shape: options.shape,
 			});
-			ctx.clip();
+			out.clip();
+			out.save();
 			if (mirror) {
-				ctx.translate(sample.width, 0);
-				ctx.scale(-1, 1);
+				out.translate(sample.width, 0);
+				out.scale(-1, 1);
 			}
 			const scale = Math.max(sample.width / sw, sample.height / sh);
-			ctx.drawImage(
+			out.drawImage(
 				source,
 				sx,
 				sy,
@@ -217,9 +233,23 @@ export class WebcamMotionBlur {
 				sw * scale,
 				sh * scale,
 			);
-			ctx.restore();
+			out.restore();
+			drawWebcamGlassRim(out, { ...sample, x: 0, y: 0, shape: options.shape });
+			out.restore();
+			ctx.drawImage(
+				this.output,
+				0,
+				0,
+				pixelWidth,
+				pixelHeight,
+				0,
+				0,
+				pixelWidth / resolution,
+				pixelHeight / resolution,
+			);
 		}
 		ctx.restore();
+
 		out.clearRect(0, 0, pixelWidth, pixelHeight);
 		out.save();
 		out.filter = getWebcamShadowFilter(shadowSize * resolution, shadow);

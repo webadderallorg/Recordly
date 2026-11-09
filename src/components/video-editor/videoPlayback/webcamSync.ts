@@ -73,6 +73,15 @@ export function shouldSeekWebcamMedia({
 }
 
 /** Missing ranges means an original recording; an empty list means no webcam frames. */
-export function isWebcamVisibleAtSourceTime(webcam: { visibleRanges?: { startMs: number; endMs: number }[] } | undefined, sourceTimeSeconds: number): boolean {
-	return !webcam?.visibleRanges || webcam.visibleRanges.some(({ startMs, endMs }) => sourceTimeSeconds * 1000 >= startMs && sourceTimeSeconds * 1000 < endMs);
+export function isWebcamVisibleAtSourceTime(
+	webcam: { visibleRanges?: { startMs: number; endMs: number }[] } | undefined,
+	sourceTimeSeconds: number,
+): boolean {
+	return (
+		!webcam?.visibleRanges ||
+		webcam.visibleRanges.some(
+			({ startMs, endMs }) =>
+				sourceTimeSeconds * 1000 >= startMs && sourceTimeSeconds * 1000 < endMs,
+		)
+	);
 }

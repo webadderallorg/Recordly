@@ -103,18 +103,16 @@ export function WebcamPopover({
 			)}
 			{showWebcamControls && (
 				<div className="flex justify-center px-3 py-2">
-					<div
-						className="h-24 w-24 overflow-hidden bg-[var(--launch-hover)]"
-						style={{
-							clipPath: getWebcamClipPath(roundness, 96, 96, shape),
-						}}
-					>
+					<div className="relative h-24 w-24">
 						<video
 							ref={setWebcamPreviewNode}
-							className="h-full w-full object-cover"
+							className="h-full w-full object-cover bg-[var(--launch-hover)]"
 							muted
 							playsInline
-							style={{ transform: "scaleX(-1)" }}
+							style={{
+								transform: "scaleX(-1)",
+								clipPath: getWebcamClipPath(roundness, 96, 96, shape),
+							}}
 						/>
 					</div>
 				</div>

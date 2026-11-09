@@ -41,7 +41,51 @@ export function MotionPresetCards({
 							aria-hidden="true"
 							className={`settings-motion-preview settings-motion-preview-${presetId}`}
 						>
-							<span />
+							<svg viewBox="0 0 84 50" fill="none">
+								<g className="settings-motion-scene">
+									<rect
+										x="9"
+										y="7"
+										width="66"
+										height="36"
+										rx="4"
+										fill="var(--surface)"
+										stroke="var(--separator)"
+									/>
+									<path d="M9 15H75M27 15V43" stroke="var(--separator)" />
+									<rect
+										x="14"
+										y="20"
+										width="8"
+										height="3"
+										rx="1.5"
+										fill="var(--muted)"
+										opacity=".4"
+									/>
+									<rect
+										x="14"
+										y="27"
+										width="8"
+										height="3"
+										rx="1.5"
+										fill="var(--muted)"
+										opacity=".4"
+									/>
+									<rect
+										x="34"
+										y="21"
+										width="32"
+										height="15"
+										rx="3"
+										fill="var(--accent)"
+										opacity=".15"
+									/>
+								</g>
+								<path
+									className="settings-motion-cursor"
+									d="M28 27V39L32 35L35 40L38 38L35 33H41L28 27Z"
+								/>
+							</svg>
 						</div>
 						<Radio.Control>
 							<Radio.Indicator />

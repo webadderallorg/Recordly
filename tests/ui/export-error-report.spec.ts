@@ -20,7 +20,7 @@ test("one click sends actual redacted logs, handles failure and retries without 
 	});
 	await page.goto("/tests/ui/export-error-report.html");
 	expect(reports).toHaveLength(0);
-	await page.getByRole("button", { name: "Report error", exact: true }).click();
+	await page.getByRole("button", { name: "Report Error", exact: true }).click();
 	await expect(page.getByRole("status")).toContainText("Could not send");
 	expect(reports).toHaveLength(1);
 	await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -47,7 +47,7 @@ test("a crashed view can still send its error logs", async ({ page }) => {
 	});
 	await page.goto("/tests/ui/export-error-report.html?crash");
 	await expect(page.getByRole("heading", { name: "Recordly ran into a problem" })).toBeVisible();
-	await page.getByRole("button", { name: "Report error", exact: true }).click();
+	await page.getByRole("button", { name: "Report Error", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Report sent", exact: true })).toBeDisabled();
 	expect(report.context).toBe("application-crash");
 	expect(report.logs).toContain("Test view crashed");
@@ -85,7 +85,7 @@ for (const engine of ["lightning", "native"]) {
 		await page.goto(`/tests/ui/export-error-report.html?menu&pending&engine=${engine}`);
 		await page.getByRole("button", { name: "Fail export", exact: true }).click();
 		const menu = page.getByRole("dialog", { name: "Publish", exact: true });
-		const report = menu.getByRole("button", { name: "Report error", exact: true });
+		const report = menu.getByRole("button", { name: "Report Error", exact: true });
 		await expect(report).toBeInViewport({ ratio: 1 });
 		const copy = menu.getByRole("button", { name: "Copy error", exact: true });
 		await expect(copy).toBeInViewport({ ratio: 1 });
@@ -127,7 +127,7 @@ for (const engine of ["lightning", "native"]) {
 		});
 		await page.goto(`/tests/ui/export-error-report.html?toast&engine=${engine}`);
 		await page.getByRole("button", { name: "Fail export", exact: true }).click();
-		const report = page.getByRole("button", { name: "Report error", exact: true });
+		const report = page.getByRole("button", { name: "Report Error", exact: true });
 		await expect(report).toBeInViewport({ ratio: 1 });
 		const copy = page.getByRole("button", { name: "Copy", exact: true });
 		await expect(copy).toBeInViewport({ ratio: 1 });
@@ -166,7 +166,7 @@ test("a multiline generic error title cannot push Report outside a short viewpor
 	await page.setViewportSize({ width: 760, height: 480 });
 	await page.goto("/tests/ui/export-error-report.html?toast&title");
 	await page.getByRole("button", { name: "Fail export", exact: true }).click();
-	await expect(page.getByRole("button", { name: "Report error", exact: true })).toBeInViewport({
+	await expect(page.getByRole("button", { name: "Report Error", exact: true })).toBeInViewport({
 		ratio: 1,
 	});
 	const title = page.locator("[data-error-title]");

@@ -54,7 +54,6 @@ type Props = {
 	handleRetrySaveExport: () => void;
 	handleStartExportFromDropdown: () => void;
 	revealExportedFile: () => void;
-	exportMessage: string | null;
 	prepareExportForShare: () => Promise<string | undefined>;
 	onRequestShareSignIn: () => void;
 	onRequestFeedbackSignIn: () => void;
@@ -94,7 +93,6 @@ export function EditorHeader(props: Props) {
 		handleRetrySaveExport,
 		handleStartExportFromDropdown,
 		revealExportedFile,
-		exportMessage,
 	} = props;
 	const {
 		isEditingProjectName,
@@ -190,7 +188,7 @@ export function EditorHeader(props: Props) {
 
 			<div className="editor-header-end flex min-w-0 items-center justify-self-end gap-3">
 				<UpgradeButton
-					label={uiText("billing.upgradeShort")}
+					label={uiText("billing.upgradeButtonLabel", "Upgrade")}
 					variant="secondary"
 					size="sm"
 					className="h-9 gap-1.5"
@@ -241,7 +239,6 @@ export function EditorHeader(props: Props) {
 					handleRetrySaveExport={handleRetrySaveExport}
 					handleStartExportFromDropdown={handleStartExportFromDropdown}
 					revealExportedFile={revealExportedFile}
-					exportMessage={exportMessage}
 					projectPath={project.currentProjectPath}
 					projectRevision={props.projectRevision}
 					projectTitle={projectDisplayName}

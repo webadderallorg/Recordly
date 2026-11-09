@@ -28,11 +28,7 @@ export function useExportStatusViewModel({ t, session, settings }: Input) {
 			: status.isExportSaving || (status.isExportFinalizing && !status.isRenderingAudio)
 				? null
 				: t("editor.exportStatus.completePercent", "{{percent}}% complete", {
-						percent: Math.round(
-							status.isRenderingAudio
-								? (progress.audioProgress ?? 0) * 100
-								: status.exportDisplayProgress,
-						),
+						percent: Math.round(status.exportDisplayProgress),
 					});
 
 	return { ...status, exportRenderSpeedLabel, exportPercentLabel };

@@ -1,4 +1,5 @@
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
+import { FeedbackLinks } from "@/components/feedback/FeedbackLinks";
 import { Button, Description, Form, TextArea, TextField } from "@heroui/react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useI18n } from "@/contexts/I18nContext";
@@ -10,8 +11,8 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
-import { toast } from "@/components/ui/toast";
-import { ChatWarning, File, X } from "@/components/ui/icons";
+import { Paperclip } from "@phosphor-icons/react";
+import { ChatWarning, X } from "@/components/ui/icons";
 import { collectFeedbackDiagnostics } from "@/lib/feedback/diagnostics";
 import {
 	getFeedbackDraft,
@@ -24,6 +25,8 @@ import {
 	submitFeedback,
 	validateAttachments,
 } from "@/lib/feedback/submitFeedback";
+
+import styles from "./FeedbackDialog.module.css";
 
 const sentiments = [
 	{ value: "loving", emoji: "🥰", label: "Loving" },
@@ -126,8 +129,8 @@ export function FeedbackDialog({
 					</DialogTrigger>
 				</span>
 			)}
-			<DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
-				<DialogHeader>
+			<DialogContent className={styles.dialog}>
+				<DialogHeader className={styles.header}>
 					<DialogTitle>
 						{sent
 							? t("common.feedback.thanks", "Thanks for your feedback")
@@ -135,7 +138,7 @@ export function FeedbackDialog({
 					</DialogTitle>
 				</DialogHeader>
 				{sent ? (
-					<Button onPress={() => setOpen(false)}>
+					<Button size="sm" className={styles.submit} onPress={() => setOpen(false)}>
 						{t("common.actions.done", "Done")}
 					</Button>
 				) : !auth.user ? (
@@ -160,7 +163,7 @@ export function FeedbackDialog({
 					</div>
 				) : (
 					<Form
-						className="flex flex-col gap-4"
+						className={styles.form}
 						onSubmit={async (event) => {
 							event.preventDefault();
 							if (sendingRef.current) return;
@@ -202,15 +205,14 @@ export function FeedbackDialog({
 						<div
 							role="group"
 							aria-label={t("common.feedback.sentiment", "How do you feel?")}
-							className="flex justify-center gap-3"
+							className={styles.sentiments}
 						>
 							{sentiments.map((item) => (
 								<Button
 									key={item.value}
 									type="button"
-									isIconOnly
 									variant={sentiment === item.value ? "secondary" : "ghost"}
-									className={`size-14 rounded-full text-3xl ${sentiment === item.value ? "ring-2 ring-accent" : ""}`}
+									className={styles.sentiment}
 									aria-label={t(`common.feedback.${item.value}`, item.label)}
 									aria-pressed={sentiment === item.value}
 									isDisabled={sending}
@@ -218,7 +220,12 @@ export function FeedbackDialog({
 										setSentiment(sentiment === item.value ? null : item.value)
 									}
 								>
-									<span aria-hidden="true">{item.emoji}</span>
+									<span className={styles.emoji} aria-hidden="true">
+										{item.emoji}
+									</span>
+									<span className={styles.sentimentLabel}>
+										{t(`common.feedback.${item.value}`, item.label)}
+									</span>
 								</Button>
 							))}
 						</div>
@@ -237,7 +244,7 @@ export function FeedbackDialog({
 							<TextArea
 								maxLength={10000}
 								rows={5}
-								className="resize-y placeholder:text-muted-foreground placeholder:opacity-100"
+								className={styles.message}
 								placeholder={t(
 									"common.feedback.descriptionPlaceholder",
 									"We read all feedback...",
@@ -267,11 +274,11 @@ export function FeedbackDialog({
 							type="button"
 							variant="secondary"
 							size="sm"
-							className="self-start"
+							className={styles.attach}
 							isDisabled={sending}
 							onPress={() => picker.current?.click()}
 						>
-							<File className="size-4" />
+							<Paperclip className="size-4" aria-hidden="true" />
 							{t("common.feedback.attachFiles", "Attach files")}
 						</Button>
 						{files.length > 0 && (
@@ -279,7 +286,7 @@ export function FeedbackDialog({
 								{files.map((file, index) => (
 									<div
 										key={`${file.name}-${index}`}
-										className="flex items-center gap-2 text-sm"
+										className={styles.attachment}
 									>
 										<span className="min-w-0 flex-1 truncate">{file.name}</span>
 										<Button
@@ -303,7 +310,7 @@ export function FeedbackDialog({
 								))}
 							</div>
 						)}
-						<Description className="text-xs">
+						<Description className={styles.diagnostics}>
 							{t(
 								"common.feedback.diagnostics",
 								"Diagnostic logs will be attached. Feedback will be sent to support@recordly.dev.",
@@ -314,46 +321,21 @@ export function FeedbackDialog({
 								{error} <ErrorReportButton error={error} />
 							</Description>
 						)}
-						<Button type="submit" isDisabled={sending} className="w-full">
+						<Button
+							type="submit"
+							size="sm"
+							isDisabled={sending}
+							className={styles.submit}
+						>
 							{sending
 								? t("common.feedback.sending", "Sending…")
 								: t("common.feedback.send", "Send feedback")}
 						</Button>
 					</Form>
 				)}
-				{!sent && (
-					<p className="text-center text-xs text-muted">
-						{t("common.feedback.orEmail", "Or email")}{" "}
-						<a
-							href="mailto:support@recordly.dev"
-							className="underline underline-offset-4"
-							onClick={(event) => {
-								if (!window.electronAPI?.openExternalUrl) return;
-								event.preventDefault();
-								void window.electronAPI
-									.openExternalUrl("mailto:support@recordly.dev")
-									.then((result) => {
-										if (!result.success) {
-											toast.error(
-												result.error ||
-													t(
-														"editor.feedback.openFailed",
-														"Failed to open link.",
-													),
-											);
-										}
-									})
-									.catch(() => {
-										toast.error(
-											t("editor.feedback.openFailed", "Failed to open link."),
-										);
-									});
-							}}
-						>
-							support@recordly.dev
-						</a>
-					</p>
-				)}
+				<div className={styles.footer}>
+					<FeedbackLinks />
+				</div>
 			</DialogContent>
 		</Dialog>
 	);

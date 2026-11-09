@@ -1,5 +1,6 @@
 import { ChoiceGroup, ChoiceItem } from "@/components/ui/choice-group";
 import { ColorControl, ColorPalette } from "@/components/ui/color-picker";
+import { Cursor } from "@/components/ui/icons";
 import { Switch } from "@/components/ui/switch";
 import { SliderControl } from "@/components/video-editor/SliderControl";
 import {
@@ -95,12 +96,7 @@ export function CursorSettings(props: Props) {
 		onCursorSwayChange,
 	} = props;
 	const { te, tSettings, formatNumber } = useSettingsTranslations();
-	const {
-		lastCursorBounceStrength,
-		cursorPreviewUrls,
-		showDevMotionControls,
-		cursorStyleOptions,
-	} = props.cursor;
+	const { lastCursorBounceStrength, cursorPreviewUrls, cursorStyleOptions } = props.cursor;
 	return (
 		<section className="flex flex-col gap-4">
 			{advanced && (
@@ -227,6 +223,8 @@ export function CursorSettings(props: Props) {
 				</div>
 				<SliderControl
 					label={tSettings("effects.cursorSize")}
+					startContent={<Cursor size={14} weight="fill" />}
+					endContent={<Cursor size={26} weight="fill" />}
 					value={cursorSize}
 					min={0.5}
 					max={10}
@@ -348,16 +346,6 @@ export function CursorSettings(props: Props) {
 						}
 					/>
 				)}
-				{advanced && showDevMotionControls ? (
-					<div className="rounded-lg border border-foreground/10 bg-foreground/[0.03] px-3 py-2">
-						<div className="text-xs text-muted-foreground">
-							{tSettings(
-								"effects.cursorDebugMovedToDev",
-								"Cursor spring tuning is available in Settings > Dev.",
-							)}
-						</div>
-					</div>
-				) : null}
 			</div>
 		</section>
 	);

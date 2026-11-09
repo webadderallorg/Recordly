@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+
 test("editor loads video, switches tools and edits export options", async ({ page }) => {
 	test.setTimeout(120000);
 	const errors: string[] = [];

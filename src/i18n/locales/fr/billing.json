@@ -45,6 +45,8 @@
 	"forCommercialUse": "pour un usage commercial",
 	"upgrade": "Passer à Cloud",
 	"upgradeShort": "Changer d’offre",
+	"upgradeButtonLabel": "Changer d’offre",
+	"getCloud": "Obtenir Recordly Cloud",
 	"legalSupport": "Informations légales et assistance",
 	"privacy": "Confidentialité",
 	"terms": "Conditions",
@@ -92,7 +94,7 @@
 	"personalUse": "Je l’utiliserai à des fins personnelles.",
 	"upgradeHeading": "Libérez tout le potentiel de Recordly",
 	"featureLicense": "Licence commerciale complète",
-	"featureLinkSharing": "Partagez toute vidéo avec un lien",
+	"featureLinkSharing": "Partagez toute vidéo avec un lien disponible 24 h/24 et 7 j/7",
 	"featurePlayback": "Lisez les vidéos du cloud en Full HD 1080p",
 	"featureCaptionExport": "Exportez les sous-titres en fichiers SRT et VTT",
 	"featurePrioritySupport": "Assistance prioritaire"

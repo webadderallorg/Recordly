@@ -21,11 +21,12 @@ test("auto zoom nudge repeats until a project edit, and stays dismissed after un
 	await installAutoZoomBridge(page);
 	await page.goto("/?windowType=editor");
 	const apply = page.getByRole("button", { name: "Apply auto zooms", exact: true });
+	const nudge = apply.locator("..");
 	await expect(apply).toBeVisible({ timeout: 20000 });
-	await expect(apply).toHaveCSS("animation-duration", "3s");
-	await expect(apply).toHaveCSS("animation-delay", "0s");
-	await expect(apply).toHaveCSS("animation-iteration-count", "infinite");
-	const transforms = await apply.evaluate((button) => {
+	await expect(nudge).toHaveCSS("animation-duration", "3s");
+	await expect(nudge).toHaveCSS("animation-delay", "0s");
+	await expect(nudge).toHaveCSS("animation-iteration-count", "infinite");
+	const transforms = await nudge.evaluate((button) => {
 		const animation = button.getAnimations()[0];
 		animation.pause();
 		animation.currentTime = 90;
@@ -40,19 +41,19 @@ test("auto zoom nudge repeats until a project edit, and stays dismissed after un
 	expect(transforms.shaking).not.toBe(transforms.resting);
 	expect(transforms.repeated).toBe(transforms.shaking);
 	await page.emulateMedia({ reducedMotion: "reduce" });
-	await expect(apply).toHaveCSS("animation-name", "none");
+	await expect(nudge).toHaveCSS("animation-name", "none");
 	await page.emulateMedia({ reducedMotion: "no-preference" });
-	await expect(apply).toHaveCSS("animation-duration", "3s");
+	await expect(nudge).toHaveCSS("animation-duration", "3s");
 
 	await page.locator('[data-timeline-row="row-zoom"]').click({ position: { x: 250, y: 20 } });
 	await page.locator('[data-variant="clip"]').click();
-	await expect(apply).toHaveCSS("animation-duration", "3s");
+	await expect(nudge).toHaveCSS("animation-duration", "3s");
 	await page.getByRole("button", { name: /^Split Clip \(/ }).click();
 	await expect(page.locator('[data-variant="clip"]')).toHaveCount(2);
-	await expect(apply).toHaveCSS("animation-name", "none");
+	await expect(nudge).toHaveCSS("animation-name", "none");
 	await page.keyboard.press("Meta+z");
 	await expect(page.locator('[data-variant="clip"]')).toHaveCount(1);
-	await expect(apply).toHaveCSS("animation-name", "none");
+	await expect(nudge).toHaveCSS("animation-name", "none");
 	await expect(apply).toBeEnabled();
 });
 
@@ -61,11 +62,12 @@ test("appearance edits also stop the auto zoom nudge", async ({ page }) => {
 	await installAutoZoomBridge(page);
 	await page.goto("/?windowType=editor");
 	const apply = page.getByRole("button", { name: "Apply auto zooms", exact: true });
-	await expect(apply).toHaveCSS("animation-duration", "3s", { timeout: 20000 });
+	const nudge = apply.locator("..");
+	await expect(nudge).toHaveCSS("animation-duration", "3s", { timeout: 20000 });
 	const padding = page.getByRole("slider", { name: "Padding", exact: true });
 	await padding.focus();
 	await page.keyboard.press("ArrowRight");
-	await expect(apply).toHaveCSS("animation-name", "none");
+	await expect(nudge).toHaveCSS("animation-name", "none");
 });
 
 test("auto zoom nudge keeps repeating without an edit", async ({ page }) => {
@@ -74,13 +76,14 @@ test("auto zoom nudge keeps repeating without an edit", async ({ page }) => {
 	await installAutoZoomBridge(page);
 	await page.goto("/?windowType=editor");
 	const apply = page.getByRole("button", { name: "Apply auto zooms", exact: true });
-	await expect(apply).toHaveCSS("animation-duration", "3s", { timeout: 20000 });
+	const nudge = apply.locator("..");
+	await expect(nudge).toHaveCSS("animation-duration", "3s", { timeout: 20000 });
 	await page.clock.fastForward(60000);
-	await expect(apply).toHaveCSS("animation-duration", "3s");
-	await expect(apply).toHaveCSS("animation-iteration-count", "infinite");
+	await expect(nudge).toHaveCSS("animation-duration", "3s");
+	await expect(nudge).toHaveCSS("animation-iteration-count", "infinite");
 	await expect(apply).toBeEnabled();
 	await page.locator('[data-timeline-row="row-zoom"]').click({ position: { x: 250, y: 20 } });
 	await page.clock.fastForward(3000);
-	await expect(apply).toHaveCSS("animation-duration", "3s");
+	await expect(nudge).toHaveCSS("animation-duration", "3s");
 	await expect(page.locator('[data-variant="zoom"]')).toHaveCount(0);
 });

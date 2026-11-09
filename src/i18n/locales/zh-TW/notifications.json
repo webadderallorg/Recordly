@@ -75,5 +75,6 @@
 	"locateRecording": "尋找錄製檔案",
 	"recordingRelinkFailed": "無法重新連結錄製檔案",
 	"pauseRecordingTrackFailed": "螢幕錄製已暫停，但無法暫停某個攝影機或音軌。",
-	"resumeRecordingTrackFailed": "螢幕錄製已繼續，但無法繼續某個攝影機或音軌。"
+	"resumeRecordingTrackFailed": "螢幕錄製已繼續，但無法繼續某個攝影機或音軌。",
+	"captionFilesSaveFailed": "影片已儲存，但部分字幕檔案未能儲存。"
 }

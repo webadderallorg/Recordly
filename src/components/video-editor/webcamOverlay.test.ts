@@ -262,6 +262,17 @@ vi.mock("react", async (importOriginal) => ({
 function previewWebcamFixture(shape?: "circle" | "rectangle" | "squircle") {
 	previewMemo.dependencies = null;
 	const bubble = { style: {} as Record<string, string> };
+	const rimAttributes = new Map<string, string>();
+	const pathAttributes = new Map<string, string>();
+	const rimPath = {
+		getAttribute: (name: string) => pathAttributes.get(name) ?? null,
+		setAttribute: vi.fn((name: string, value: string) => pathAttributes.set(name, value)),
+	};
+	const rim = {
+		getAttribute: (name: string) => rimAttributes.get(name) ?? null,
+		setAttribute: vi.fn((name: string, value: string) => rimAttributes.set(name, value)),
+		querySelector: vi.fn(() => rimPath),
+	};
 	const input = {
 		webcam: {
 			enabled: true,
@@ -273,7 +284,9 @@ function previewWebcamFixture(shape?: "circle" | "rectangle" | "squircle") {
 		webcamVideoDimensions: { width: 1920, height: 1080 },
 		webcamBubbleRef: { current: bubble },
 		webcamBlurCanvasRef: { current: null },
-		webcamBubbleInnerRef: { current: { style: { setProperty: vi.fn() } } },
+		webcamBubbleInnerRef: {
+			current: { style: { setProperty: vi.fn() }, querySelector: vi.fn(() => rim) },
+		},
 		overlayRef: { current: { clientWidth: 1920, clientHeight: 1080 } },
 		webcamVideoPath: "/camera.webm",
 		timelineTimeRef: { current: 0 },
@@ -290,7 +303,7 @@ function previewWebcamFixture(shape?: "circle" | "rectangle" | "squircle") {
 	} as unknown as Parameters<typeof usePlaybackWebcamLayout>[0];
 	// This harness evaluates geometry with mocked hooks, including dependency-aware memoization.
 	const useLayout = () => usePlaybackWebcamLayout(input);
-	return { input, bubble, layout: useLayout };
+	return { input, bubble, rim, rimPath, rimAttributes, pathAttributes, layout: useLayout };
 }
 
 it("keeps circle preview content proportional after switching from unequal rectangle dimensions", () => {
@@ -319,3 +332,38 @@ it("keeps direct preview inputs with an omitted shape square despite their sourc
 	expect(fixture.bubble.style.width).toBe("324px");
 	expect(fixture.bubble.style.height).toBe("324px");
 });
+
+for (const shape of ["circle", "squircle", "rectangle"] as const) {
+	it(`updates a stable ${shape} preview rim with the camera without changing its footprint`, () => {
+		const fixture = previewWebcamFixture(shape);
+		fixture.layout().applyWebcamBubbleLayout(1);
+		const initialPath = fixture.pathAttributes.get("d");
+		expect(initialPath).toMatch(/^M/);
+		expect(Number(fixture.pathAttributes.get("stroke-width"))).toBeCloseTo(
+			Math.min(
+				Number.parseFloat(fixture.bubble.style.width),
+				Number.parseFloat(fixture.bubble.style.height),
+			) * 0.005,
+		);
+		expect(fixture.rimAttributes.get("viewBox")).toBe(
+			`0 0 ${Number.parseFloat(fixture.bubble.style.width)} ${Number.parseFloat(fixture.bubble.style.height)}`,
+		);
+		fixture.rim.setAttribute.mockClear();
+		fixture.rimPath.setAttribute.mockClear();
+		fixture.layout().applyWebcamBubbleLayout(1);
+		expect(fixture.rim.setAttribute).not.toHaveBeenCalled();
+		expect(fixture.rimPath.setAttribute).not.toHaveBeenCalled();
+		fixture.input.webcam = { ...fixture.input.webcam!, width: 40, height: 40, roundness: 69 };
+		fixture.layout().applyWebcamBubbleLayout(1);
+		expect(fixture.pathAttributes.get("d")).not.toBe(initialPath);
+		expect(Number(fixture.pathAttributes.get("stroke-width"))).toBeCloseTo(
+			Math.min(
+				Number.parseFloat(fixture.bubble.style.width),
+				Number.parseFloat(fixture.bubble.style.height),
+			) * 0.005,
+		);
+		expect(fixture.rimAttributes.get("viewBox")).toBe(
+			`0 0 ${Number.parseFloat(fixture.bubble.style.width)} ${Number.parseFloat(fixture.bubble.style.height)}`,
+		);
+	});
+}
