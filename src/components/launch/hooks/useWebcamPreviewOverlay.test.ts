@@ -337,6 +337,29 @@ describe("floating webcam preview lifecycle and pointer ownership", () => {
 		expect(setRecordingPreferences).not.toHaveBeenCalled();
 	});
 
+	it("keeps the floating preview hidden until the saved choice loads", async () => {
+		let resolvePreferences!: (value: unknown) => void;
+		getRecordingPreferences.mockReturnValue(
+			new Promise((resolve) => {
+				resolvePreferences = resolve;
+			}),
+		);
+		expect(render().showRecordingWebcamPreview).toBe(false);
+		resolvePreferences({ success: true, floatingWebcamPreviewVisible: false });
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(render().showRecordingWebcamPreview).toBe(false);
+	});
+
+	it("shows the floating preview once loading fails", async () => {
+		getRecordingPreferences.mockRejectedValue(new Error("unreadable"));
+		render();
+		await Promise.resolve();
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(render().showRecordingWebcamPreview).toBe(true);
+	});
+
 	it("saves the floating preview choice when the user toggles it", () => {
 		const preview = render();
 		preview.setShowFloatingWebcamPreview((current) => !current);

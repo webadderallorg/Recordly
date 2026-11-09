@@ -59,23 +59,35 @@ export function useWebcamPreviewOverlay({
 	const [showFloatingWebcamPreview, setShowFloatingWebcamPreviewState] = useState(true);
 	const showFloatingWebcamPreviewRef = useRef(true);
 	const floatingPreviewEditedRef = useRef(false);
+	// Stays false until the saved choice is read, so a preview saved as hidden never flashes.
+	const [floatingPreviewChoiceLoaded, setFloatingPreviewChoiceLoaded] = useState(false);
 	// Restore the saved show/hide choice so it survives app restarts.
 	useEffect(() => {
-		if (typeof window.electronAPI?.getRecordingPreferences !== "function") return;
-		void window.electronAPI
-			.getRecordingPreferences()
-			.then((result) => {
+		if (typeof window.electronAPI?.getRecordingPreferences !== "function") {
+			setFloatingPreviewChoiceLoaded(true);
+			return;
+		}
+		void window.electronAPI.getRecordingPreferences().then(
+			(result) => {
+				setFloatingPreviewChoiceLoaded(true);
 				if (floatingPreviewEditedRef.current || !result.success) return;
 				if (typeof result.floatingWebcamPreviewVisible !== "boolean") return;
 				showFloatingWebcamPreviewRef.current = result.floatingWebcamPreviewVisible;
 				setShowFloatingWebcamPreviewState(result.floatingWebcamPreviewVisible);
-			})
-			.catch(() => {
-				/* Keep the default (shown) if saved preferences can't be read. */
-			});
+			},
+			() => {
+				// Keep the default (shown) if saved preferences can't be read.
+				setFloatingPreviewChoiceLoaded(true);
+			},
+		);
 	}, []);
+	/**
+	 * Shows or hides the floating webcam preview and saves the choice.
+	 * A toggle made before the saved choice loads wins over the saved value.
+	 */
 	const setShowFloatingWebcamPreview = useCallback((value: SetStateAction<boolean>) => {
 		floatingPreviewEditedRef.current = true;
+		setFloatingPreviewChoiceLoaded(true);
 		const current = showFloatingWebcamPreviewRef.current;
 		const next = typeof value === "function" ? value(current) : value;
 		if (next === current) return;
@@ -88,6 +100,7 @@ export function useWebcamPreviewOverlay({
 	const previewStreamRef = useRef<MediaStream | null>(null);
 	const showRecordingWebcamPreview =
 		webcamEnabled &&
+		floatingPreviewChoiceLoaded &&
 		canShowFloatingWebcamPreview(
 			showFloatingWebcamPreview,
 			hudOverlayMousePassthroughSupported,
