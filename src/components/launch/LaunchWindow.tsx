@@ -156,6 +156,51 @@ function LaunchWindowContent() {
 		docked: showRecordingWebcamPreview,
 	});
 
+	useEffect(() => {
+		const reportInteractiveBounds = () => {
+			const elements = [hudBarRef.current, recordingWebcamPreviewContainerRef.current].filter(
+				(element): element is HTMLDivElement => element !== null,
+			);
+
+			if (elements.length === 0) {
+				window.electronAPI?.hudOverlaySetInteractiveBounds?.(null);
+				return;
+			}
+
+			window.electronAPI?.hudOverlaySetInteractiveBounds?.(
+				elements.map((element) => {
+					const rect = element.getBoundingClientRect();
+					return {
+						left: window.screenX + rect.left,
+						top: window.screenY + rect.top,
+						right: window.screenX + rect.right,
+						bottom: window.screenY + rect.bottom,
+					};
+				}),
+			);
+		};
+
+		reportInteractiveBounds();
+		const resizeObserver = new ResizeObserver(reportInteractiveBounds);
+		if (hudBarRef.current) resizeObserver.observe(hudBarRef.current);
+		if (recordingWebcamPreviewContainerRef.current) {
+			resizeObserver.observe(recordingWebcamPreviewContainerRef.current);
+		}
+		window.addEventListener("mousemove", reportInteractiveBounds);
+		window.addEventListener("resize", reportInteractiveBounds);
+
+		return () => {
+			resizeObserver.disconnect();
+			window.removeEventListener("mousemove", reportInteractiveBounds);
+			window.removeEventListener("resize", reportInteractiveBounds);
+			window.electronAPI?.hudOverlaySetInteractiveBounds?.(null);
+		};
+	}, [
+		recordingHudOffset,
+		recordingWebcamPreviewContainerRef,
+		showRecordingWebcamPreview,
+	]);
+
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } =
 		useLaunchHudInteractionState({
 			openId,

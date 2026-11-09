@@ -228,6 +228,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	hudOverlaySetWebcamPreviewVisible: (visible: boolean) => {
 		ipcRenderer.send("hud-overlay-set-webcam-preview-visible", visible);
 	},
+	hudOverlaySetInteractiveBounds: (
+		bounds: Array<{ left: number; top: number; right: number; bottom: number }> | null,
+	) => {
+		ipcRenderer.send("hud-overlay-set-interactive-bounds", bounds);
+	},
 	getHudOverlayCaptureProtection: () => {
 		return ipcRenderer.invoke("get-hud-overlay-capture-protection");
 	},

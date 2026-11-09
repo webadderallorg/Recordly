@@ -55,6 +55,12 @@ let hudOverlayMouseReassertTimer: NodeJS.Timeout | null = null;
 let hudOverlayRecordingActive = false;
 let hudCaptureStarting = false;
 let hudOverlayWebcamPreviewVisible = false;
+let hudOverlayInteractiveBounds: Array<{
+	left: number;
+	top: number;
+	right: number;
+	bottom: number;
+}> | null = null;
 let countdownWindow: BrowserWindow | null = null;
 let capturePickerWindows: BrowserWindow[] = [];
 let areaRecordingBorderWindow: BrowserWindow | null = null;
@@ -487,6 +493,36 @@ ipcMain.on("hud-overlay-set-webcam-preview-visible", (_event, visible: boolean) 
 	}
 });
 
+ipcMain.on(
+	"hud-overlay-set-interactive-bounds",
+	(
+		_event,
+		bounds:
+			| Array<{ left: number; top: number; right: number; bottom: number }>
+			| null
+			| undefined,
+	) => {
+		if (
+			!bounds ||
+			bounds.some(
+				(rect) =>
+					![rect.left, rect.top, rect.right, rect.bottom].every(Number.isFinite) ||
+					rect.right < rect.left ||
+					rect.bottom < rect.top,
+			)
+		) {
+			hudOverlayInteractiveBounds = null;
+			return;
+		}
+
+		hudOverlayInteractiveBounds = bounds;
+	},
+);
+
+export function getHudOverlayInteractiveBounds() {
+	return hudOverlayInteractiveBounds;
+}
+
 let hudCaptureProtectionUpdates = Promise.resolve();
 ipcMain.handle("set-hud-overlay-capture-protection", (_event, enabled: boolean) => {
 	// Settings can be open in more than one window. Match each helper acknowledgement
@@ -730,6 +766,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 		screen.removeListener("display-metrics-changed", handleDisplayMetricsChanged);
 		if (hudOverlayWindow === win) {
 			hudOverlayWindow = null;
+			hudOverlayInteractiveBounds = null;
 			recordingPreparationActive = false;
 			hudCaptureStarting = false;
 			hudOverlayRecordingActive = false;
