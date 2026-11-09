@@ -6,8 +6,6 @@ Areas where help is especially valuable:
 - Export optimisations
 - Native screen recording for Linux
 - Wallpaper submissions (see [src/lib/wallpapers.ts](./src/lib/wallpapers.ts))
-- Windows and macOS recording reliability
-- Translations and localisations
 
 > [!NOTE]
 > Extension and custom render hook contributions are currently paused while core recording and rendering pipelines are being streamlined. See [EXTENSIONS.md](./EXTENSIONS.md) for details.
