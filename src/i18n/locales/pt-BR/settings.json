@@ -208,7 +208,8 @@
 		},
 		"webcamPreviewFrame": "Moldura de prévia",
 		"webcamFrameStandard": "Padrão",
-		"webcamFrameSoftBlur": "Desfoque suave"
+		"webcamFrameSoftBlur": "Desfoque suave",
+		"webcamPreviewOnly": "Somente prévia"
 	},
 	"sections": {
 		"scene": "Cena",

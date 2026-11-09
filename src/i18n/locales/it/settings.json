@@ -208,7 +208,8 @@
 		},
 		"webcamPreviewFrame": "Cornice di anteprima",
 		"webcamFrameStandard": "Standard",
-		"webcamFrameSoftBlur": "Sfocatura morbida"
+		"webcamFrameSoftBlur": "Sfocatura morbida",
+		"webcamPreviewOnly": "Solo anteprima"
 	},
 	"sections": {
 		"scene": "Scena",

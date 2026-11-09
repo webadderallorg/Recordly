@@ -929,9 +929,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getCurrentRecordingSession: () => {
 		return ipcRenderer.invoke("get-current-recording-session");
 	},
-	claimFirstRecordingAutoZooms: (videoPath: string) => {
-		return ipcRenderer.invoke("claim-first-recording-auto-zooms", videoPath);
-	},
 	getCurrentVideoPath: () => {
 		return ipcRenderer.invoke("get-current-video-path");
 	},

@@ -208,7 +208,8 @@
 		},
 		"webcamPreviewFrame": "Vorschaurahmen",
 		"webcamFrameStandard": "Standard",
-		"webcamFrameSoftBlur": "Weicher Rand"
+		"webcamFrameSoftBlur": "Weicher Rand",
+		"webcamPreviewOnly": "Nur Vorschau"
 	},
 	"sections": {
 		"scene": "Szene",

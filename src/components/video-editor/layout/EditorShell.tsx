@@ -44,7 +44,7 @@ import { ProjectLoadError } from "./ProjectLoadError";
 import { resolveVideoUrl } from "../projectPersistence";
 import { isMissingProjectRecording } from "../project/projectLoadError";
 import { AutoZoomNudgeContext, useAutoZoomNudge } from "../timeline/useAutoZoomNudge";
-import { useFirstRecordingAutoZooms } from "../hooks/useFirstRecordingAutoZooms";
+import { useAutoApplyZooms } from "../hooks/useAutoApplyZooms";
 
 type Props = {
 	t: ReturnType<typeof useI18n>["t"];
@@ -131,7 +131,8 @@ export function EditorShell(props: Props) {
 		// render. Wait for the new timeline before capturing its unedited baseline.
 		!project.loading && ui.isPreviewReady && ui.duration > 0 && ui.clipInitializedRef.current,
 	);
-	useFirstRecordingAutoZooms({
+	useAutoApplyZooms({
+		enabled: appearance.autoApplyFreshRecordingAutoZooms,
 		sourcePath: project.videoSourcePath,
 		ready: !project.loading && ui.isPreviewReady && ui.clipInitializedRef.current,
 		isSavedProject: project.openedSavedProject,

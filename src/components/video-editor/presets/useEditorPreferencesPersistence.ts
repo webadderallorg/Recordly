@@ -28,6 +28,7 @@ export function useEditorPreferencesPersistence({
 	const previousRef = useRef<Partial<EditorPreferences> | null>(null);
 	useEffect(() => {
 		const current = {
+			autoApplyFreshRecordingAutoZooms: appearance.autoApplyFreshRecordingAutoZooms,
 			wallpaper: desktopWallpaperPreference(appearance.wallpaper),
 			shadowIntensity: appearance.shadowIntensity,
 			backgroundBlur: appearance.backgroundBlur,
@@ -105,6 +106,7 @@ export function useEditorPreferencesPersistence({
 		appearance.zoomMotionBlur,
 		appearance.zoomMotionBlurTuning,
 		appearance.connectZooms,
+		appearance.autoApplyFreshRecordingAutoZooms,
 		appearance.zoomInDurationMs,
 		appearance.zoomInOverlapMs,
 		appearance.zoomOutDurationMs,

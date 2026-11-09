@@ -208,7 +208,8 @@
 		},
 		"webcamPreviewFrame": "Cadre d’aperçu",
 		"webcamFrameStandard": "Standard",
-		"webcamFrameSoftBlur": "Flou doux"
+		"webcamFrameSoftBlur": "Flou doux",
+		"webcamPreviewOnly": "Aperçu uniquement"
 	},
 	"sections": {
 		"scene": "Scène",

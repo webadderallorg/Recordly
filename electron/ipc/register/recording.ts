@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { dialog, ipcMain, shell } from "electron";
 import { isTrustedRenderer } from "../../trustedRenderer";
-import { claimFirstRecordingAutoZooms } from "../recording/firstRecordingAutoZooms";
 import { registerCursorHandlers } from "../recording/handlers/cursorHandlers";
 import { registerFfmpegHandlers } from "../recording/handlers/ffmpegHandlers";
 import { registerMicrophoneSidecar } from "../recording/handlers/microphoneSidecar";
@@ -23,10 +22,6 @@ export function registerRecordingHandlers(
 	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
 ) {
 	const sessionLock = new RecordingSessionLock(() => setRecordingState(false));
-	ipcMain.handle("claim-first-recording-auto-zooms", (event, videoPath: unknown) => {
-		if (!isTrustedRenderer(event) || typeof videoPath !== "string") return false;
-		return claimFirstRecordingAutoZooms(videoPath);
-	});
 
 	const recordingProcessGuard = new RecordingProcessGuard((args) =>
 		sessionLock.acquire((args[0] as Electron.IpcMainInvokeEvent).sender.id),

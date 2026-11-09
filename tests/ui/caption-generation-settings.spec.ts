@@ -2,7 +2,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
-test("caption setup leads to generation, with maintenance actions kept in a menu", async ({
+test("caption setup generates once and exposes direct clear/delete controls", async ({
 	page,
 }, testInfo) => {
 	test.setTimeout(60000);
@@ -33,6 +33,9 @@ test("caption setup leads to generation, with maintenance actions kept in a menu
 				);
 			});
 		window.electronAPI.generateAutoCaptions = async (options) => {
+			document.documentElement.dataset.captionGenerationCount = String(
+				Number(document.documentElement.dataset.captionGenerationCount ?? 0) + 1,
+			);
 			document.documentElement.dataset.captionGeneratedModel = options.captionModelId;
 			return {
 				success: true,
@@ -64,23 +67,15 @@ test("caption setup leads to generation, with maintenance actions kept in a menu
 		}),
 	);
 	await page.goto("/?windowType=editor");
-	await expect(page.locator('[data-variant="clip"]')).toHaveAttribute("data-end-ms", "6000", {
-		timeout: 20000,
-	});
 	await page.getByRole("radio", { name: "Captions", exact: true }).click();
-	await expect(page.getByRole("button", { name: "Generate Captions", exact: true })).toHaveCount(
-		0,
-	);
-	const sidebar = page.getByRole("complementary");
-	for (const label of ["Generation", "Appearance"])
-		await expect(sidebar.getByText(label, { exact: true })).toHaveCount(0);
-	await expect(sidebar.getByRole("button", { name: "Reset", exact: true })).toHaveCount(0);
+	await expect(
+		page.getByRole("button", { name: "Generate Captions", exact: true }),
+	).toBeEnabled();
+	await expect(page.getByRole("button", { name: "Clear Captions", exact: true })).toBeDisabled();
+	await expect(page.getByRole("button", { name: "Caption actions", exact: true })).toHaveCount(0);
 	await page.getByRole("button", { name: /Speech model/ }).click();
-	for (const label of ["Parakeet v3", "Whisper Base", "Whisper Small"])
-		await expect(page.getByRole("option", { name: label, exact: true })).toBeVisible();
 	await page.getByRole("option", { name: "Whisper Base", exact: true }).click();
-
-	await page.getByRole("button", { name: "Download Model", exact: true }).click();
+	await page.getByRole("button", { name: "Generate Captions", exact: true }).click();
 	await expect(
 		page.getByRole("button", { name: "Downloading... 0%", exact: true }),
 	).toBeDisabled();
@@ -96,53 +91,32 @@ test("caption setup leads to generation, with maintenance actions kept in a menu
 	).toHaveAttribute("aria-valuenow", "47");
 	await page.evaluate(() => window.dispatchEvent(new Event("complete-caption-model-download")));
 	await expect(
-		page.getByRole("button", { name: "Generate Captions", exact: true }),
-	).toBeEnabled();
-	await page.getByRole("button", { name: "Generate Captions", exact: true }).click();
-	await expect(
 		page.getByRole("button", { name: "Regenerate Captions", exact: true }),
-	).toBeVisible();
-	const show = page.getByRole("switch", { name: "Show", exact: true });
-	await expect(show).toBeChecked();
-	await expect(show).toBeChecked();
+	).toBeEnabled();
 	await expect(page.locator("html")).toHaveAttribute(
 		"data-caption-generated-model",
 		"whisper-base",
 	);
-	await expect(sidebar.getByText("1 caption", { exact: true })).toBeVisible();
-	await page.getByRole("button", { name: "Karaoke", exact: true }).click();
-	await expect(page.getByRole("button", { name: "Karaoke", exact: true })).toHaveAttribute(
-		"aria-pressed",
-		"true",
-	);
-	const presets = await sidebar
-		.getByRole("group", { name: "Caption style" })
-		.getByRole("button")
-		.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().y));
-	expect(new Set(presets).size).toBe(2);
-	expect(await sidebar.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
-	await expect(page.getByRole("button", { name: "Clear Captions", exact: true })).toHaveCount(0);
-	await expect(page.getByRole("button", { name: "Delete Model", exact: true })).toHaveCount(0);
-	await page.getByRole("complementary").screenshot({
-		path: testInfo.outputPath("captions-ui.png"),
-		animations: "disabled",
-	});
-	await page.getByRole("button", { name: "Caption actions", exact: true }).click();
-	await expect(page.getByRole("menuitem", { name: "Delete Model", exact: true })).toHaveCount(0);
-	await page.getByRole("menuitem", { name: "Clear Captions", exact: true }).click();
+	await expect(page.locator("html")).toHaveAttribute("data-caption-generation-count", "1");
+	await expect(page.getByRole("switch", { name: "Show", exact: true })).toBeChecked();
+	await page.getByRole("button", { name: "Clear Captions", exact: true }).click();
 	await expect(page.locator('[data-variant="caption"]')).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Clear Captions", exact: true })).toBeDisabled();
 	await expect(
 		page.getByRole("button", { name: "Generate Captions", exact: true }),
-	).toBeVisible();
-	await expect(page.locator("html")).not.toHaveAttribute("data-caption-model-deleted");
-	await page.getByRole("switch", { name: "Advanced settings" }).press("Space");
-	await expect(page.getByRole("slider", { name: "Rows", exact: true })).toBeVisible();
-	await page.getByRole("button", { name: "Caption actions", exact: true }).click();
-	await page.getByRole("menuitem", { name: "Delete Model", exact: true }).click();
+	).toBeEnabled();
+	await expect(page.getByRole("button", { name: "Delete Model", exact: true })).toHaveCount(0);
+	await page.getByRole("switch", { name: "Advanced settings", exact: true }).press("Space");
+	await page.getByRole("button", { name: "Delete Model", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute(
 		"data-caption-model-deleted",
 		"whisper-base",
 	);
-	await expect(page.getByRole("button", { name: "Download Model", exact: true })).toBeEnabled();
+	await expect(
+		page.getByRole("button", { name: "Generate Captions", exact: true }),
+	).toBeEnabled();
+	await page
+		.getByRole("complementary")
+		.screenshot({ path: testInfo.outputPath("captions-ui.png"), animations: "disabled" });
 	expect(errors).toEqual([]);
 });

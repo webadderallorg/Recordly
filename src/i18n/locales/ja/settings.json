@@ -218,7 +218,8 @@
 		},
 		"webcamPreviewFrame": "プレビューフレーム",
 		"webcamFrameStandard": "標準",
-		"webcamFrameSoftBlur": "ソフトぼかし"
+		"webcamFrameSoftBlur": "ソフトぼかし",
+		"webcamPreviewOnly": "プレビューのみ"
 	},
 	"sections": {
 		"scene": "シーン",
@@ -234,7 +235,7 @@
 		"title": "編集ツール"
 	},
 	"captions": {
-		"firstDownload": "初回は音声ファイル {{size}} MB をダウンロードしてから字幕を生成します。",
+		"firstDownload": "初回は音声認識モデル {{size}} MB をダウンロードしてから字幕を生成します。",
 		"localProcessing": "字幕はこのデバイスで生成されます。録画はアップロードされません。",
 		"selectOnTimeline": "タイムラインで字幕を選択すると編集できます。",
 		"enabled": "表示",

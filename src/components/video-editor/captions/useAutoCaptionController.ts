@@ -171,6 +171,36 @@ export function useAutoCaptionController({
 		toast.success(te("whisperExecutableSelected", "Whisper executable selected"));
 	}, [setWhisperExecutablePath, te]);
 
+	const downloadSelectedModel = useCallback(async () => {
+		setWhisperModelDownloadStatus("downloading");
+		setWhisperModelDownloadProgress(0);
+		try {
+			const result = await window.electronAPI.downloadCaptionModel(captionModelId);
+			if (!result.success || !result.path)
+				throw new Error(result.error ?? "Model download did not complete.");
+			if (selectedModelRef.current !== captionModelId) return null;
+			setDownloadedWhisperModelPath(result.path);
+			setWhisperModelPath(result.path);
+			setWhisperModelDownloadStatus("downloaded");
+			setWhisperModelDownloadProgress(100);
+			return result.path;
+		} catch (error) {
+			if (selectedModelRef.current === captionModelId) setWhisperModelDownloadStatus("error");
+			toast.error(te("captionModelDownloadFailed", "Failed to download caption model"), {
+				description: getErrorMessage(error),
+			});
+			return null;
+		}
+	}, [
+		captionModelId,
+		setDownloadedWhisperModelPath,
+		setWhisperModelDownloadProgress,
+		setWhisperModelDownloadStatus,
+		setWhisperModelPath,
+		te,
+	]);
+
+	// Retain the download-only controller API, sharing the same first-use flow.
 	const handleDownloadWhisperSmallModel = useCallback(async () => {
 		if (
 			modelOperationRef.current ||
@@ -180,35 +210,13 @@ export function useAutoCaptionController({
 			return;
 		modelOperationRef.current = true;
 		setModelOperationActive(true);
-		setWhisperModelDownloadStatus("downloading");
-		setWhisperModelDownloadProgress(0);
 		try {
-			const result = await window.electronAPI.downloadCaptionModel(captionModelId);
-			if (!result.success || !result.path)
-				throw new Error(result.error ?? "Model download did not complete.");
-			if (selectedModelRef.current !== captionModelId) return;
-			setDownloadedWhisperModelPath(result.path);
-			setWhisperModelPath(result.path);
-			setWhisperModelDownloadStatus("downloaded");
-			setWhisperModelDownloadProgress(100);
-		} catch (error) {
-			if (selectedModelRef.current === captionModelId) setWhisperModelDownloadStatus("error");
-			toast.error(te("captionModelDownloadFailed", "Failed to download caption model"), {
-				description: getErrorMessage(error),
-			});
+			await downloadSelectedModel();
 		} finally {
 			modelOperationRef.current = false;
 			setModelOperationActive(false);
 		}
-	}, [
-		captionModelId,
-		setDownloadedWhisperModelPath,
-		setWhisperModelDownloadProgress,
-		setWhisperModelDownloadStatus,
-		setWhisperModelPath,
-		whisperModelDownloadStatus,
-		te,
-	]);
+	}, [downloadSelectedModel, whisperModelDownloadStatus]);
 
 	const handlePickWhisperModel = useCallback(async () => {
 		const result = await window.electronAPI.openWhisperModelPicker();
@@ -286,21 +294,8 @@ export function useAutoCaptionController({
 			}
 			let managedModelPath = downloadedWhisperModelPath;
 			if (!managedModelPath || whisperModelDownloadStatus !== "downloaded") {
-				setWhisperModelDownloadStatus("downloading");
-				setWhisperModelDownloadProgress(0);
-				try {
-					const download = await window.electronAPI.downloadCaptionModel(captionModelId);
-					if (!download.success || !download.path)
-						throw new Error(download.error ?? "Model download did not complete.");
-					managedModelPath = download.path;
-					setDownloadedWhisperModelPath(managedModelPath);
-					setWhisperModelPath(managedModelPath);
-					setWhisperModelDownloadStatus("downloaded");
-					setWhisperModelDownloadProgress(100);
-				} catch (error) {
-					setWhisperModelDownloadStatus("error");
-					throw error;
-				}
+				managedModelPath = await downloadSelectedModel();
+				if (!managedModelPath) return;
 			}
 			// A first-use download can take minutes. Keep its original recording
 			// selected before syncing sources or starting transcription.
@@ -366,6 +361,7 @@ export function useAutoCaptionController({
 		}
 	}, [
 		te,
+		downloadSelectedModel,
 		captionModelId,
 		whisperExecutablePath,
 		isGeneratingCaptions,
@@ -374,10 +370,6 @@ export function useAutoCaptionController({
 		setIsGeneratingCaptions,
 		setVideoPath,
 		setVideoSourcePath,
-		setDownloadedWhisperModelPath,
-		setWhisperModelPath,
-		setWhisperModelDownloadStatus,
-		setWhisperModelDownloadProgress,
 		syncActiveVideoSource,
 		videoPath,
 		videoSourcePath,

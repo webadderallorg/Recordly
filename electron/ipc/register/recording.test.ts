@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => ({
 	handlers: new Map<string, (...args: unknown[]) => unknown>(),
 	listeners: new Map<string, (...args: unknown[]) => unknown>(),
 	trusted: vi.fn(() => true),
-	claimAutoZooms: vi.fn(async () => true),
 	acquire: vi.fn(() => true),
 	release: vi.fn(),
 	broadcast: vi.fn(),
@@ -37,9 +36,6 @@ vi.mock("electron", () => ({
 	shell: { showItemInFolder: vi.fn(), openExternal: vi.fn() },
 }));
 vi.mock("../../trustedRenderer", () => ({ isTrustedRenderer: mocks.trusted }));
-vi.mock("../recording/firstRecordingAutoZooms", () => ({
-	claimFirstRecordingAutoZooms: mocks.claimAutoZooms,
-}));
 vi.mock("../../windows", () => ({
 	beginHudCaptureProtection: vi.fn(),
 	getHudOverlayCaptureProtectionEnabled: () => false,
@@ -122,7 +118,6 @@ describe("recording IPC composition", () => {
 			[
 				"append-recording-file-stream",
 				"close-recording-file-stream",
-				"claim-first-recording-auto-zooms",
 				"discard-recording-file-stream",
 				"get-cursor-telemetry",
 				"get-last-native-capture-diagnostics",
@@ -218,18 +213,6 @@ describe("recording IPC composition", () => {
 		expect(mocks.acquire).not.toHaveBeenCalled();
 	});
 
-	it("only lets trusted renderers claim a recording's automatic zooms", async () => {
-		registerRecordingHandlers();
-		const event = { sender: sender() };
-		expect(await invoke("claim-first-recording-auto-zooms", event, "recording.mp4")).toBe(true);
-		expect(mocks.claimAutoZooms).toHaveBeenCalledExactlyOnceWith("recording.mp4");
-		mocks.claimAutoZooms.mockClear();
-		mocks.trusted.mockReturnValue(false);
-		expect(await invoke("claim-first-recording-auto-zooms", event, "recording.mp4")).toBe(
-			false,
-		);
-		expect(mocks.claimAutoZooms).not.toHaveBeenCalled();
-	});
 	it("uses live source state and preserves cursor cleanup and broadcasts", () => {
 		const changed = vi.fn();
 		registerRecordingHandlers(changed);

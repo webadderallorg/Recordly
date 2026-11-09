@@ -110,6 +110,8 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		backgroundBlur: appearance.backgroundBlur,
 		onBackgroundBlurChange: appearance.setBackgroundBlur,
 		connectZooms: appearance.connectZooms,
+		autoApplyFreshRecordingAutoZooms: appearance.autoApplyFreshRecordingAutoZooms,
+		onAutoApplyFreshRecordingAutoZoomsChange: appearance.setAutoApplyFreshRecordingAutoZooms,
 		onConnectZoomsChange: appearance.setConnectZooms,
 		zoomInDurationMs: appearance.zoomInDurationMs,
 		onZoomInDurationMsChange: appearance.setZoomInDurationMs,

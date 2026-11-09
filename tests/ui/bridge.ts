@@ -78,11 +78,22 @@ export async function installDesktopBridge(
 						await window.__recordlyTestAuthStorage({ action: "remove", key });
 					},
 					getAppSetting: (key: string) =>
-						key === "recordly.onboarding.v1.seen" ? onboarded : null,
+						key === "recordly.editor.preferences"
+							? { autoApplyFreshRecordingAutoZooms: false }
+							: key === "recordly.onboarding.v1.seen"
+								? onboarded
+								: null,
 					getAppSettingWithStatus: (key: string) => ({
 						success: true,
-						found: key === "recordly.onboarding.v1.seen",
-						value: key === "recordly.onboarding.v1.seen" ? onboarded : null,
+						found:
+							key === "recordly.editor.preferences" ||
+							key === "recordly.onboarding.v1.seen",
+						value:
+							key === "recordly.editor.preferences"
+								? { autoApplyFreshRecordingAutoZooms: false }
+								: key === "recordly.onboarding.v1.seen"
+									? onboarded
+									: null,
 					}),
 					reserveRecordingSession: async () => ({
 						success: true,
@@ -234,7 +245,6 @@ export async function installDesktopBridge(
 						success: true,
 						path: `${location.origin}/tests/ui/fixtures/${videoFixture}`,
 					}),
-					claimFirstRecordingAutoZooms: async () => false,
 					getCursorTelemetry: async () => ({ success: true, samples: [] }),
 					getVideoAudioFallbackPaths: async () => ({
 						success: true,

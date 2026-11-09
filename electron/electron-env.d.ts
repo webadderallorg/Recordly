@@ -916,7 +916,6 @@ interface Window {
 				hideOverlayCursorByDefault?: boolean;
 			};
 		}>;
-		claimFirstRecordingAutoZooms: (videoPath: string) => Promise<boolean>;
 		getCurrentVideoPath: () => Promise<{ success: boolean; path?: string }>;
 		clearCurrentVideoPath: () => Promise<{ success: boolean }>;
 		getRecordingThumbnail: (

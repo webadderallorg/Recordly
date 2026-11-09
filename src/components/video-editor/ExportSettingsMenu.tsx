@@ -337,17 +337,6 @@ export function ExportSettingsMenu({
 					</>
 				) : (
 					<>
-						{advancedExportSettings && (
-							<ExportChoices
-								label={tSettings("export.fpsTitle", "FPS")}
-								value={gifFrameRate}
-								onChange={onGifFrameRateChange}
-								options={GIF_FRAME_RATES.map((rate) => ({
-									value: rate.value,
-									label: String(rate.value),
-								}))}
-							/>
-						)}
 						<ExportChoices
 							label={tSettings("export.size", "Size")}
 							headingAction={advancedToggle}
@@ -361,6 +350,17 @@ export function ExportSettingsMenu({
 						<Description>
 							{gifOutputDimensions.width} × {gifOutputDimensions.height}px
 						</Description>
+						{advancedExportSettings && (
+							<ExportChoices
+								label={tSettings("export.fpsTitle", "FPS")}
+								value={gifFrameRate}
+								onChange={onGifFrameRateChange}
+								options={GIF_FRAME_RATES.map((rate) => ({
+									value: rate.value,
+									label: String(rate.value),
+								}))}
+							/>
+						)}
 						<Switch checked={gifLoop} onCheckedChange={onGifLoopChange}>
 							<Label>{tSettings("export.loop")}</Label>
 						</Switch>

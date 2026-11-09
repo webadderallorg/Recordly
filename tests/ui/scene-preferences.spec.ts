@@ -109,6 +109,13 @@ test("Scene controls carry to new projects; loading an older look does not repla
 	);
 
 	await page.goto("/?windowType=editor&older=1");
+	await expect(
+		page.getByRole("button", { name: "Aspect ratio: 16:9", exact: true }),
+	).toBeVisible();
+	await page.getByRole("row", { name: "Colors", exact: true }).click();
+	await expect(
+		page.getByRole("button", { name: "Background color #000000", exact: true }),
+	).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByRole("slider", { name: "Padding", exact: true })).toHaveValue("25");
 	await expect(page.getByRole("slider", { name: "Shadow", exact: true })).toHaveValue("0.7");
 	expect(await storedPreferences(page)).toMatchObject(expected);

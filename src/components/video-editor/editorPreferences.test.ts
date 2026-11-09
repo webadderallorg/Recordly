@@ -83,16 +83,19 @@ describe("editorPreferences", () => {
 		Reflect.deleteProperty(globalThis, "electronAPI");
 	});
 
-	it("drops the retired automatic zoom preference from stored settings", () => {
-		vi.stubGlobal(
-			"localStorage",
-			createStorageMock({
-				[EDITOR_PREFERENCES_STORAGE_KEY]: JSON.stringify({
-					autoApplyFreshRecordingAutoZooms: true,
+	it("defaults automatic zooms on and preserves the saved opt-out", () => {
+		expect(normalizeEditorPreferences({}).autoApplyFreshRecordingAutoZooms).toBe(true);
+		for (const enabled of [false, true]) {
+			vi.stubGlobal(
+				"localStorage",
+				createStorageMock({
+					[EDITOR_PREFERENCES_STORAGE_KEY]: JSON.stringify({
+						autoApplyFreshRecordingAutoZooms: enabled,
+					}),
 				}),
-			}),
-		);
-		expect(loadEditorPreferences()).not.toHaveProperty("autoApplyFreshRecordingAutoZooms");
+			);
+			expect(loadEditorPreferences().autoApplyFreshRecordingAutoZooms).toBe(enabled);
+		}
 	});
 
 	it("normalizes invalid values back to safe defaults", () => {

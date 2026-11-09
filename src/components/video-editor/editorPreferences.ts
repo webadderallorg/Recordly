@@ -75,6 +75,7 @@ export interface EditorPreset {
 }
 
 export interface EditorPreferences extends PersistedEditorControls, ExportPreferences {
+	autoApplyFreshRecordingAutoZooms: boolean;
 	borderRadiusUnit: "percent";
 	customAspectWidth: string;
 	customAspectHeight: string;
@@ -91,6 +92,7 @@ export const EDITOR_PRESETS_STORAGE_KEY = "recordly.editor.presets";
 const DEFAULT_EDITOR_CONTROLS = normalizeProjectEditor({});
 
 export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
+	autoApplyFreshRecordingAutoZooms: true,
 	wallpaper: DESKTOP_WALLPAPER,
 	shadowIntensity: DEFAULT_EDITOR_CONTROLS.shadowIntensity,
 	backgroundBlur: DEFAULT_EDITOR_CONTROLS.backgroundBlur,
@@ -413,6 +415,10 @@ export function normalizeEditorPreferences(
 		),
 		customGradients: normalizeCustomGradients(raw.customGradients ?? fallback.customGradients),
 		customColors: normalizeCustomColors(raw.customColors ?? fallback.customColors),
+		autoApplyFreshRecordingAutoZooms:
+			typeof raw.autoApplyFreshRecordingAutoZooms === "boolean"
+				? raw.autoApplyFreshRecordingAutoZooms
+				: fallback.autoApplyFreshRecordingAutoZooms,
 		whisperExecutablePath:
 			normalizeNullablePath(raw.whisperExecutablePath) ?? fallback.whisperExecutablePath,
 		whisperModelPath: normalizeNullablePath(raw.whisperModelPath) ?? fallback.whisperModelPath,

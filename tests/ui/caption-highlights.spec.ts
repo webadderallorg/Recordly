@@ -189,9 +189,13 @@ test("all caption styles render their foreground and background in both export p
 			expect(sample.foregroundPixels, style.id).toBeGreaterThan(5);
 			if (style.id === "tiktok") {
 				// The dark caption backing and yellow active word survive export.
-				expect(sample.darkPixelsOnWhite).toBeGreaterThan(20);
+				const alpha = sample.backgroundPixel[3] / 255;
+				const backingOnWhite = sample.backgroundPixel
+					.slice(0, 3)
+					.map((channel) => channel * alpha + 255 * (1 - alpha));
+				for (const channel of backingOnWhite)
+					expect(Math.abs(channel - 255 * (1 - style.backgroundOpacity))).toBeLessThan(2);
 				expect(sample.highlightPixels).toBeGreaterThan(10);
-				expect(sample.whiteCorner).toEqual([255, 255, 255, 255]);
 			}
 			expect(
 				Math.abs(sample.backgroundAlpha - style.backgroundOpacity * 255),

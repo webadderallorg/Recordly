@@ -71,6 +71,36 @@ test("webcam preview frame choices persist and inline crop updates immediately",
 			),
 		)
 		.toBeCloseTo(0.99, 5);
+	const selection = crop.getByLabel("Move webcam crop", { exact: true });
+	const opposite = (await selection.boundingBox())!;
+	const corner = (await handle.boundingBox())!;
+	const x = corner.x + corner.width / 2 - 3;
+	const y = corner.y + corner.height / 2 - 3;
+	await page.mouse.move(x, y);
+	await page.mouse.down();
+	await page.mouse.move(x - 20, y - 14, { steps: 6 });
+	await page.mouse.up();
+	await expect
+		.poll(() =>
+			page.evaluate(
+				() =>
+					JSON.parse(document.documentElement.dataset.webcamPreferences ?? "{}")
+						.cropRegion?.width,
+			),
+		)
+		.toBeLessThan(0.99);
+	await expect
+		.poll(() =>
+			page.evaluate(
+				() =>
+					JSON.parse(document.documentElement.dataset.webcamPreferences ?? "{}")
+						.cropRegion?.height,
+			),
+		)
+		.toBeLessThan(1);
+	const resized = (await selection.boundingBox())!;
+	expect(Math.abs(resized.x - opposite.x)).toBeLessThan(1);
+	expect(Math.abs(resized.y - opposite.y)).toBeLessThan(1);
 	for (const name of ["Cancel", "Done", "Reset"])
 		await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
 });

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { toast } from "@/components/ui/toast";
 import { useAutoCaptionController } from "./useAutoCaptionController";
 
 const state = vi.hoisted(() => ({
@@ -159,6 +160,9 @@ it("keeps existing captions after a failed first download and permits retry", as
 	expect(test.generateAutoCaptions).not.toHaveBeenCalled();
 	expect(test.params.setAutoCaptions).not.toHaveBeenCalled();
 	expect(test.params.setWhisperModelDownloadStatus).toHaveBeenLastCalledWith("error");
+	expect(toast.error).toHaveBeenLastCalledWith("Failed to download caption model", {
+		description: "Offline",
+	});
 	expect(test.params.setIsGeneratingCaptions).toHaveBeenLastCalledWith(false);
 	const retry = controller.handleGenerateAutoCaptions();
 	await vi.waitFor(() => expect(test.generateAutoCaptions).toHaveBeenCalledOnce());

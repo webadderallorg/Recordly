@@ -17,7 +17,6 @@ vi.mock("electron", () => ({ BrowserWindow: { getAllWindows: () => [] } }));
 vi.mock("../cursor/telemetry", () => ({}));
 vi.mock("../utils", () => ({}));
 vi.mock("./diagnostics", () => ({ validateRecordedVideo: vi.fn() }));
-vi.mock("./firstRecordingAutoZooms", () => ({ registerFirstRecordingAutoZooms: vi.fn() }));
 vi.mock("./macCompanionAudio", () => ({}));
 
 import {

@@ -218,7 +218,8 @@
 		"webcamCustomPosition": "Custom position",
 		"webcamHorizontal": "Horizontal",
 		"webcamVertical": "Vertical",
-		"webcamMargin": "Margin"
+		"webcamMargin": "Margin",
+		"webcamPreviewOnly": "Preview only"
 	},
 	"sections": {
 		"scene": "Scene",
