@@ -1,5 +1,3 @@
-import { recordingFocus } from "../recording/focus";
-import { createCountdownController } from "../../countdownController";
 import fs from "node:fs/promises";
 import { app, BrowserWindow, ipcMain } from "electron";
 import {
@@ -7,16 +5,18 @@ import {
 	readAppSettingsStoreWithStatus,
 	writeAppSettingsStore,
 } from "../../appSettingsStore";
+import { createCountdownController } from "../../countdownController";
 import { hideCursor } from "../../cursorHider";
 import { COUNTDOWN_SETTINGS_FILE, RECORDINGS_SETTINGS_FILE, SHORTCUTS_FILE } from "../constants";
+import { recordingFocus } from "../recording/focus";
 import {
 	createRecordingPreferencesStore,
 	type RecordingPreferencesPatch,
 } from "../settings/recordingPreferencesStore";
 import {
 	countdownInProgress,
-	selectedSource,
 	countdownRemaining,
+	selectedSource,
 	setCountdownInProgress,
 	setCountdownRemaining,
 } from "../state";
@@ -163,6 +163,8 @@ export function registerSettingsHandlers() {
 				webcamEnabled: parsed.webcamEnabled === true,
 				webcamDeviceId:
 					typeof parsed.webcamDeviceId === "string" ? parsed.webcamDeviceId : undefined,
+				// Shown by default; only an explicit "hide" is remembered as hidden.
+				floatingWebcamPreviewVisible: parsed.floatingWebcamPreviewVisible !== false,
 			};
 		} catch {
 			return {
@@ -172,6 +174,7 @@ export function registerSettingsHandlers() {
 				systemAudioEnabled: false,
 				webcamEnabled: false,
 				webcamDeviceId: undefined,
+				floatingWebcamPreviewVisible: true,
 			};
 		}
 	});
