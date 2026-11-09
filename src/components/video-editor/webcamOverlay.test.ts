@@ -238,6 +238,7 @@ it("keeps a Square camera square when its source crop has a different aspect", (
 import { usePlaybackWebcamLayout } from "./videoPlayback/usePlaybackWebcamLayout";
 
 const previewMemo = vi.hoisted(() => ({
+	ref: null as { current: unknown } | null,
 	dependencies: null as readonly unknown[] | null,
 	value: undefined as unknown,
 }));
@@ -245,6 +246,10 @@ vi.mock("react", async (importOriginal) => ({
 	...(await importOriginal<typeof import("react")>()),
 	useCallback: <T>(callback: T) => callback,
 	useEffect: () => undefined,
+	useRef: (value: unknown) => {
+		previewMemo.ref ??= { current: value };
+		return previewMemo.ref;
+	},
 	useMemo: (factory: () => unknown, dependencies: readonly unknown[]) => {
 		if (
 			!previewMemo.dependencies ||
@@ -261,6 +266,7 @@ vi.mock("react", async (importOriginal) => ({
 
 function previewWebcamFixture(shape?: "circle" | "rectangle" | "squircle") {
 	previewMemo.dependencies = null;
+	previewMemo.ref = null;
 	const bubble = { style: {} as Record<string, string> };
 	const rimAttributes = new Map<string, string>();
 	const pathAttributes = new Map<string, string>();
