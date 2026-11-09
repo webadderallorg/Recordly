@@ -148,6 +148,13 @@ export function useProjectOpenActions({
 				project.setError(null);
 				project.setProjectBrowserOpen(false);
 				toast.dismiss("project-open-error");
+				if (result.recovered)
+					toast.warning(
+						translate(
+							"editor.projectRecovered",
+							"Recovered the previous saved version",
+						),
+					);
 				await refreshProjectLibrary();
 				return true;
 			} catch (error) {
@@ -203,6 +210,13 @@ export function useProjectOpenActions({
 				}
 				project.setProjectBrowserOpen(false);
 				toast.dismiss("project-open-error");
+				if (result.recovered)
+					toast.warning(
+						translate(
+							"editor.projectRecovered",
+							"Recovered the previous saved version",
+						),
+					);
 				await refreshProjectLibrary();
 				return true;
 			} catch (error) {
@@ -244,16 +258,24 @@ export function useProjectOpenActions({
 				}
 				project.setProjectBrowserOpen(false);
 				toast.dismiss("project-open-error");
+				if (result.recovered)
+					toast.warning(
+						translate(
+							"editor.projectRecovered",
+							"Recovered the previous saved version",
+						),
+					);
 				await refreshProjectLibrary();
-				toast.success(
-					result.path
-						? translate(
-								"notifications.projectLoadedFrom",
-								"Project loaded from {{path}}",
-								{ path: result.path },
-							)
-						: translate("notifications.projectLoaded", "Project loaded"),
-				);
+				if (!result.recovered)
+					toast.success(
+						result.path
+							? translate(
+									"notifications.projectLoadedFrom",
+									"Project loaded from {{path}}",
+									{ path: result.path },
+								)
+							: translate("notifications.projectLoaded", "Project loaded"),
+					);
 				return;
 			}
 			if (!result.path) {
@@ -369,8 +391,11 @@ export function useProjectOpenActions({
 	}, [handleOpenProjectBrowser, handleSaveProject, handleSaveProjectAs]);
 
 	const handleDeleteProjects = useCallback(
-		async (paths: string[]) => {
-			const result = await window.electronAPI.trashProjectFiles(paths);
+		async (
+			paths: string[],
+			options?: { includeSources?: boolean; protectedSources?: string[] },
+		) => {
+			const result = await window.electronAPI.trashProjectFiles(paths, options);
 			if (project.currentProjectPath && result.deleted.includes(project.currentProjectPath)) {
 				project.setCurrentProjectPath(null);
 				project.setLastSavedSnapshot(null);
@@ -383,6 +408,12 @@ export function useProjectOpenActions({
 						"Could not delete some projects",
 					),
 					{ description: result.errors.join("\n") },
+				);
+			if (result.sourcesKept?.length)
+				toast.info(
+					translate("ui.cleanup.sharedSourcesKept", "Source files kept: {{count}}.", {
+						count: result.sourcesKept.length,
+					}),
 				);
 			return result.deleted;
 		},

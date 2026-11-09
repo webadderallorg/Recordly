@@ -1,10 +1,10 @@
 import { useTimelineContext } from "dnd-timeline";
 import { memo, useContext, useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import { MagicWand, MinusIcon, Plus } from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { formatBinding } from "@/lib/shortcuts";
-import { MagicWand, MinusIcon, Plus } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { getEmbeddedCaptionSpan, getRegionDisplaySpan } from "../../core/clipPresentation";
 import {
@@ -28,8 +28,8 @@ import Item from "../../Item";
 import glassStyles from "../../ItemGlass.module.css";
 import Row from "../../Row";
 import { AutoZoomNudgeContext } from "../../useAutoZoomNudge";
-import nudgeStyles from "./AutoZoomNudge.module.css";
 import { AudioItemWithWaveform } from "./AudioItemWithWaveform";
+import nudgeStyles from "./AutoZoomNudge.module.css";
 import type { TimelineCanvasRowsProps } from "./TimelineCanvasTypes";
 
 export const TimelineCanvasRows = memo(function TimelineCanvasRows({
@@ -377,7 +377,7 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			>
 				{zoomItems.length === 0 && onApplyAutoZooms && (
 					<div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-						<div className="relative">
+						<div className="inline-flex items-center gap-1 rounded-lg border border-border/50 bg-editor-surface/80 p-0.5">
 							<Button
 								variant="secondary"
 								size="sm"
@@ -399,7 +399,7 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 							<Button
 								variant="secondary"
 								size="icon"
-								className="pointer-events-auto absolute -right-1.5 -top-1.5 z-10 h-4 w-4 min-w-0 rounded-full p-0"
+								className="pointer-events-auto h-7 w-7 min-w-0 rounded-md p-0 text-muted hover:text-foreground"
 								aria-label={commonT("announcements.dismiss", "Dismiss")}
 								onMouseEnter={() => onZoomRowMouseLeave()}
 								onMouseMove={(event) => event.stopPropagation()}
@@ -409,7 +409,7 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 									onDismissAutoZooms();
 								}}
 							>
-								<MinusIcon className="size-2.5 text-red-500" />
+								<MinusIcon className="size-3.5" />
 							</Button>
 						</div>
 					</div>

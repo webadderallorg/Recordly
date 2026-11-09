@@ -28,7 +28,7 @@ test("advanced controls preserve values and remember each section's view", async
 	await expect(advanced).not.toBeChecked();
 	await page
 		.getByRole("grid", { name: "Shape", exact: true })
-		.getByRole("row", { name: "Squircle", exact: true })
+		.getByRole("row", { name: "Square", exact: true })
 		.click();
 	await expect(page.getByRole("slider", { name: "Webcam Height" })).toHaveCount(0);
 	await page.locator("aside").getByText("Advanced", { exact: true }).click();

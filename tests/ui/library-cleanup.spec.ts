@@ -1,8 +1,16 @@
 import { expect, test, type Page } from "@playwright/test";
 
 async function option(page: Page, field: string, text: string) {
-	await page.getByRole("button", { name: new RegExp(field) }).click();
-	await page.getByRole("option", { name: text, exact: true }).click();
+	const trigger = page.getByRole("button", { name: new RegExp(field) });
+	await trigger.click();
+	if (field === "Find") {
+		await page
+			.getByRole("menuitemcheckbox", { name: text, exact: true })
+			.or(page.getByRole("menuitem", { name: text, exact: true }))
+			.click();
+		if ((await trigger.getAttribute("aria-expanded")) === "true")
+			await page.keyboard.press("Escape");
+	} else await page.getByRole("option", { name: text, exact: true }).click();
 }
 const cleanup = (page: Page) => page.getByRole("dialog", { name: "Clean up library", exact: true });
 test("cleanup previews timelines, dates and duplicate keepers before selecting, then clears hidden selections", async ({
@@ -16,7 +24,7 @@ test("cleanup previews timelines, dates and duplicate keepers before selecting, 
 	const dialog = cleanup(page);
 	const matches = dialog.getByRole("list", { name: "Cleanup matches" });
 	await expect(matches.getByRole("checkbox")).toHaveCount(2);
-	await expect(dialog.getByRole("button", { name: /Find/ })).toContainText("Unedited projects");
+	await expect(dialog.getByRole("button", { name: /Find/ })).toContainText("Unedited");
 	await expect(dialog).not.toContainText("Search, folder and time filters");
 	await expect(dialog).not.toContainText("Full-length timelines");
 	await expect(matches.locator("img")).toHaveCount(2);
@@ -52,7 +60,10 @@ test("cleanup previews timelines, dates and duplicate keepers before selecting, 
 		path: testInfo.outputPath("cleanup-duplicates.png"),
 		animations: "disabled",
 	});
-	await dialog.getByRole("button", { name: "Use selection (1)", exact: true }).click();
+	await dialog.getByRole("button", { name: "Delete selection (1)", exact: true }).click();
+	const review = page.getByRole("dialog", { name: "Review deletion", exact: true });
+	await expect(review).toBeVisible();
+	await review.getByRole("button", { name: "Cancel", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Original copy", exact: true })).toHaveAttribute(
 		"aria-pressed",
 		"true",
@@ -106,7 +117,9 @@ test("unreadable saved projects prevent source cleanup suggestions", async ({ pa
 	await page.getByRole("button", { name: "Raw files", exact: true }).click();
 	await page.getByRole("button", { name: "Clean up", exact: true }).click();
 	await expect(cleanup(page)).toContainText("Some projects could not be checked");
-	await expect(cleanup(page).getByRole("button", { name: "Use selection (0)" })).toBeDisabled();
+	await expect(
+		cleanup(page).getByRole("button", { name: "Delete selection (0)" }),
+	).toBeDisabled();
 });
 
 test("custom dates and timestamp choice narrow matches; the dialog fits a narrow window", async ({
@@ -137,7 +150,7 @@ test("custom dates and timestamp choice narrow matches; the dialog fits a narrow
 	await matches.getByText("Recent take", { exact: true }).click();
 	await expect(matches.getByRole("checkbox")).toBeChecked();
 	await matches.getByText("Recent take", { exact: true }).click();
-	await expect(dialog.getByRole("button", { name: "Use selection (0)" })).toBeDisabled();
+	await expect(dialog.getByRole("button", { name: "Delete selection (0)" })).toBeDisabled();
 	const bounds = (await dialog.boundingBox())!;
 	expect(bounds.x).toBeGreaterThanOrEqual(0);
 	expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
@@ -145,4 +158,78 @@ test("custom dates and timestamp choice narrow matches; the dialog fits a narrow
 		path: testInfo.outputPath("cleanup-narrow.png"),
 		animations: "disabled",
 	});
+});
+
+test("cleanup combines toggles and exposes an editable duration defaulting to five seconds", async ({
+	page,
+}) => {
+	await page.goto("/tests/ui/library-cleanup.html");
+	await page.getByRole("button", { name: "Clean up", exact: true }).click();
+	const dialog = cleanup(page);
+	await option(page, "Find", "Never exported");
+	await expect(dialog.getByRole("button", { name: /Find/ })).toContainText(
+		"Unedited & Not exported",
+	);
+	await option(page, "Find", "Never exported");
+	await expect(dialog.getByRole("button", { name: /Find/ })).not.toContainText("Not exported");
+	await option(page, "Find", "5 seconds or less");
+	const threshold = dialog.getByRole("spinbutton", { name: "Duration (seconds)" });
+	await expect(threshold).toHaveValue("5");
+	await threshold.fill("0");
+	await expect(dialog.getByRole("button", { name: /Delete selection/ })).toBeDisabled();
+	await threshold.fill("0.5");
+	await expect(
+		dialog.getByRole("list", { name: "Cleanup matches" }).getByRole("checkbox"),
+	).toHaveCount(0);
+});
+
+test("rapid duration edits run one scan and cannot delete using old threshold results", async ({
+	page,
+}) => {
+	await page.goto("/tests/ui/library-cleanup.html");
+	await page.getByRole("button", { name: "Clean up", exact: true }).click();
+	const dialog = cleanup(page);
+	await option(page, "Find", "5 seconds or less");
+	const matches = dialog.getByRole("list", { name: "Cleanup matches" });
+	await expect(matches.getByRole("checkbox")).toHaveCount(2);
+	await page.evaluate(() => {
+		const counters = { reads: 0, probes: 0 };
+		Object.assign(window, { cleanupScanCounters: counters });
+		const read = window.electronAPI.getProjectPreview.bind(window.electronAPI);
+		const probe = window.electronAPI.probeNativeVideoMetadata.bind(window.electronAPI);
+		window.electronAPI.getProjectPreview = async (...args) => {
+			counters.reads++;
+			return read(...args);
+		};
+		window.electronAPI.probeNativeVideoMetadata = async (...args) => {
+			counters.probes++;
+			return probe(...args);
+		};
+	});
+	await page.clock.install();
+	await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
+	const counters = () =>
+		page.evaluate(
+			() =>
+				(window as unknown as { cleanupScanCounters: { reads: number; probes: number } })
+					.cleanupScanCounters,
+		);
+	const threshold = dialog.getByRole("spinbutton", { name: "Duration (seconds)" });
+	const deletion = dialog.getByRole("button", { name: /Delete selection/ });
+	for (const value of ["0.5", "10", "0.25"]) {
+		await threshold.fill(value);
+		await expect(deletion).toBeDisabled();
+		await expect(matches.getByRole("checkbox")).toHaveCount(0);
+		await page.clock.runFor(40);
+	}
+	await expect.poll(counters).toEqual({ reads: 0, probes: 0 });
+	await page.clock.runFor(250);
+	await expect.poll(counters).toEqual({ reads: 5, probes: 4 });
+	await expect(dialog.getByRole("status").filter({ hasText: /^Matches: 0$/ })).toBeVisible();
+	await expect(
+		dialog.getByText("Checking saved projects and media…", { exact: true }),
+	).toHaveCount(0);
+	await expect(matches.getByRole("checkbox")).toHaveCount(0);
+	await expect(deletion).toBeDisabled();
+	await page.clock.resume();
 });

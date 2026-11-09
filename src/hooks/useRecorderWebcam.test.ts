@@ -98,6 +98,7 @@ describe("recorder webcam sidecar", () => {
 		});
 		vi.spyOn(Date, "now").mockReturnValue(2_000);
 		vi.spyOn(console, "warn").mockImplementation(() => {});
+		vi.spyOn(console, "info").mockImplementation(() => {});
 	});
 
 	afterEach(() => {
@@ -123,7 +124,7 @@ describe("recorder webcam sidecar", () => {
 			video: {
 				width: { ideal: 1280 },
 				height: { ideal: 720 },
-				frameRate: { ideal: 30, max: 30 },
+				frameRate: { ideal: 60, max: 60 },
 			},
 			audio: false,
 		});
@@ -137,6 +138,19 @@ describe("recorder webcam sidecar", () => {
 		webcam.beginWebcamCapture();
 		expect(recorder().start).toHaveBeenCalledExactlyOnceWith(250);
 		expect(webcam.webcamStartTime.current).toBe(2_000);
+		await webcam.stopWebcamRecorder();
+	});
+
+	it("keeps cameras that negotiate a lower frame rate usable and reports the actual rate", async () => {
+		const settings = { frameRate: 30, width: 1280, height: 720 };
+		stream.getVideoTracks = () => [{ getSettings: () => settings }] as MediaStreamTrack[];
+		const webcam = createWebcam();
+		await webcam.prepareWebcamRecorder();
+		expect(FakeMediaRecorder.instances).toHaveLength(1);
+		expect(console.info).toHaveBeenCalledWith("[Recorder] Webcam capture settings", {
+			requestedFrameRate: 60,
+			...settings,
+		});
 		await webcam.stopWebcamRecorder();
 	});
 

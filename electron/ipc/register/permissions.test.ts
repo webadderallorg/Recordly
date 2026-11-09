@@ -42,6 +42,31 @@ it("does not prompt or open settings merely by registering permission handlers",
 	expect(mocks.open).not.toHaveBeenCalled();
 });
 
+it.each([
+	"mailto:support@recordly.dev",
+	"mailto:youngchen3442@gmail.com",
+])("opens the fixed contact address %s in the default mail client", async (url) => {
+	expect(await mocks.handlers.get("open-external-url")!(undefined, url)).toEqual({
+		success: true,
+	});
+	expect(mocks.open).toHaveBeenCalledExactlyOnceWith(url);
+});
+
+it.each([
+	"mailto:other@example.com",
+	"mailto:support@recordly.dev?bcc=other@example.com",
+	"mailto:support@recordly.dev.evil.test",
+	"mailto:youngchen3442@gmail.com?bcc=other@example.com",
+	"mailto:youngchen3442@gmail.com.evil.test",
+	"file:///tmp/example",
+	"custom:example",
+])("blocks unsupported external URL %s", async (url) => {
+	expect(await mocks.handlers.get("open-external-url")!(undefined, url)).toMatchObject({
+		success: false,
+	});
+	expect(mocks.open).not.toHaveBeenCalled();
+});
+
 it("reports microphone and camera status without requesting access", async () => {
 	mocks.status.mockImplementation((device: string) =>
 		device === "microphone" ? "denied" : "not-determined",

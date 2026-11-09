@@ -8,7 +8,6 @@ import {
 	writeAppSettingsStore,
 } from "../../appSettingsStore";
 import { hideCursor } from "../../cursorHider";
-import { createCountdownWindow } from "../../windows";
 import { COUNTDOWN_SETTINGS_FILE, RECORDINGS_SETTINGS_FILE, SHORTCUTS_FILE } from "../constants";
 import {
 	createRecordingPreferencesStore,
@@ -215,16 +214,34 @@ export function registerSettingsHandlers() {
 		}
 	});
 
-	const countdown = createCountdownController(createCountdownWindow, (remaining) => {
+	const countdown = createCountdownController((remaining) => {
 		setCountdownRemaining(remaining);
 		setCountdownInProgress(remaining !== null);
+		for (const win of BrowserWindow.getAllWindows()) {
+			if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
+			try {
+				win.webContents.send("countdown-tick", remaining ?? 0);
+			} catch (error) {
+				console.warn("Could not deliver countdown tick:", error);
+			}
+		}
 	});
-	ipcMain.handle("start-countdown", async (_, seconds: number) => {
+	ipcMain.handle("start-countdown", async (event, seconds: number) => {
 		if (countdownInProgress) return countdown.start(seconds);
+		const owner = event.sender;
+		if (owner.isDestroyed()) return { success: false, cancelled: true };
+		const cancel = () => countdown.cancel();
+		owner.once("destroyed", cancel);
+		owner.once("render-process-gone", cancel);
 		void recordingFocus.start(selectedSource);
-		const result = await countdown.start(seconds);
-		if (!result.success) recordingFocus.stop();
-		return result;
+		try {
+			const result = await countdown.start(seconds);
+			if (!result.success) recordingFocus.stop();
+			return result;
+		} finally {
+			owner.removeListener("destroyed", cancel);
+			owner.removeListener("render-process-gone", cancel);
+		}
 	});
 	ipcMain.handle("cancel-countdown", () => {
 		recordingFocus.stop();

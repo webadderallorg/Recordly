@@ -48,6 +48,7 @@ export type PlaybackViewInput = Pick<
 	| "webcamCropPreviewContentStyle"
 	| "webcamVideoRef"
 	| "handleWebcamMediaReady"
+	| "captionFontReady"
 	| "activeCaptionLayout"
 	| "autoCaptionSettings"
 	| "onEditAutoCaption"
@@ -133,6 +134,9 @@ export function PlaybackView(input: PlaybackViewInput) {
 	return (
 		<div
 			ref={previewFrameRef}
+			data-preview-captions-ready={
+				!input.autoCaptionSettings?.enabled || input.captionFontReady
+			}
 			className="relative overflow-hidden"
 			style={{
 				width: "100%",
@@ -144,6 +148,9 @@ export function PlaybackView(input: PlaybackViewInput) {
 			{/* Background layer */}
 			{resolvedWallpaperKind === "video" && resolvedWallpaper ? (
 				<video
+					data-preview-background
+					data-background-kind="video"
+					data-background-source={resolvedWallpaper}
 					crossOrigin="anonymous"
 					key={resolvedWallpaper}
 					ref={bgVideoRef}
@@ -164,6 +171,9 @@ export function PlaybackView(input: PlaybackViewInput) {
 				/>
 			) : (
 				<div
+					data-preview-background
+					data-background-kind={resolvedWallpaper ? resolvedWallpaperKind : "loading"}
+					data-background-source={resolvedWallpaper ?? ""}
 					className="absolute inset-0 bg-cover bg-center"
 					style={{
 						...backgroundStyle,
@@ -214,6 +224,9 @@ export function PlaybackView(input: PlaybackViewInput) {
 						<div
 							ref={webcamBubbleRef}
 							data-webcam-overlay
+							data-webcam-ready={Boolean(
+								webcamVideoDimensions && webcamMediaSynchronized,
+							)}
 							className="absolute"
 							style={{
 								display:

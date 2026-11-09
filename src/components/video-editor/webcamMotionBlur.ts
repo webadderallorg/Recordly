@@ -49,6 +49,8 @@ export function getWebcamMotionSamples(
 }
 
 interface RenderOptions {
+	/** Physical pixels per layout pixel; exports already use output-pixel coordinates. */
+	resolution?: number;
 	// Composite a single clipped frame and its shadow when there is no shutter.
 	renderStill?: boolean;
 	shape?: WebcamShape;
@@ -70,6 +72,8 @@ export class WebcamMotionBlur {
 	private lastMotionTimeMs: number | null = null;
 	private accumulation: HTMLCanvasElement | null = null;
 	private output: HTMLCanvasElement | null = null;
+	private layoutWidth = 0;
+	private layoutHeight = 0;
 
 	reset() {
 		this.previous = null;
@@ -87,9 +91,13 @@ export class WebcamMotionBlur {
 		}
 		this.accumulation = null;
 		this.output = null;
+		this.layoutWidth = 0;
+		this.layoutHeight = 0;
 	}
 
-	render(options: RenderOptions): { canvas: HTMLCanvasElement; x: number; y: number } | null {
+	render(
+		options: RenderOptions,
+	): { canvas: HTMLCanvasElement; x: number; y: number; width: number; height: number } | null {
 		const {
 			layout,
 			timeMs,
@@ -142,6 +150,9 @@ export class WebcamMotionBlur {
 			this.samples = [{ ...layout }];
 		}
 
+		const resolution = Number.isFinite(options.resolution)
+			? Math.max(1, Math.min(3, options.resolution!))
+			: 1;
 		const shadowSize = Math.min(layout.width, layout.height);
 		const padding = getWebcamShadowPadding(shadowSize, shadow) + 2;
 		const x = Math.floor(Math.min(...this.samples.map((s) => s.x)) - padding);
@@ -149,26 +160,31 @@ export class WebcamMotionBlur {
 		// Keep backing stores large enough for the whole transition rather than
 		// reallocating canvas/GPU textures on every shrinking frame.
 		const width = Math.max(
-			this.accumulation?.width ?? 0,
+			this.layoutWidth,
 			Math.ceil((Math.max(...this.samples.map((s) => s.x + s.width)) - x + padding) / 32) *
 				32,
 		);
 		const height = Math.max(
-			this.accumulation?.height ?? 0,
+			this.layoutHeight,
 			Math.ceil((Math.max(...this.samples.map((s) => s.y + s.height)) - y + padding) / 32) *
 				32,
 		);
+		const pixelWidth = Math.ceil(width * resolution);
+		const pixelHeight = Math.ceil(height * resolution);
+		this.layoutWidth = width;
+		this.layoutHeight = height;
 		this.accumulation ??= document.createElement("canvas");
 		this.output ??= document.createElement("canvas");
 		for (const canvas of [this.accumulation, this.output]) {
-			if (canvas.width !== width) canvas.width = width;
-			if (canvas.height !== height) canvas.height = height;
+			if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+			if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
 		}
 		const ctx = this.accumulation.getContext("2d");
 		const out = this.output.getContext("2d");
 		if (!ctx || !out) return null;
-		ctx.clearRect(0, 0, width, height);
+		ctx.clearRect(0, 0, pixelWidth, pixelHeight);
 		ctx.save();
+		ctx.scale(resolution, resolution);
 		ctx.imageSmoothingEnabled = true;
 		ctx.imageSmoothingQuality = "high";
 		// Add weighted premultiplied samples so overlapping interiors stay opaque.
@@ -204,11 +220,17 @@ export class WebcamMotionBlur {
 			ctx.restore();
 		}
 		ctx.restore();
-		out.clearRect(0, 0, width, height);
+		out.clearRect(0, 0, pixelWidth, pixelHeight);
 		out.save();
-		out.filter = getWebcamShadowFilter(shadowSize, shadow);
+		out.filter = getWebcamShadowFilter(shadowSize * resolution, shadow);
 		out.drawImage(this.accumulation, 0, 0);
 		out.restore();
-		return { canvas: this.output, x, y };
+		return {
+			canvas: this.output,
+			x,
+			y,
+			width: pixelWidth / resolution,
+			height: pixelHeight / resolution,
+		};
 	}
 }

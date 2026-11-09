@@ -1,18 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CURSOR_MOTION_PRESETS, getMatchingCursorMotionPresetId } from "./cursorMotionPresets";
-
+import {
+	createEditorHistoryStack,
+	type EditorHistorySnapshot,
+	recordEditorHistorySnapshot,
+	undoEditorHistoryStack,
+} from "./editorHistory";
 import {
 	getDefaultBorderRadiusPercent,
 	legacyBorderRadiusPixelsToPercent,
 	normalizeProjectEditor,
 	resolveVideoUrl,
 } from "./projectPersistence";
-import {
-	createEditorHistoryStack,
-	recordEditorHistorySnapshot,
-	undoEditorHistoryStack,
-	type EditorHistorySnapshot,
-} from "./editorHistory";
 import { ADVANCED_VERTICAL_PADDING_MAX } from "./types";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -52,7 +51,7 @@ describe("normalizeProjectEditor", () => {
 		expect(normalizeProjectEditor({ webcam: { roundness: 69 } as never }).webcam).toMatchObject(
 			{ shape: "squircle", roundness: 69 },
 		);
-		for (const shape of ["circle", "squircle"] as const) {
+		for (const shape of ["circle", "squircle", "rectangle"] as const) {
 			const editor = normalizeProjectEditor({
 				webcam: { shape, width: 50, height: 30 } as never,
 			});
@@ -164,7 +163,7 @@ describe("normalizeProjectEditor", () => {
 			} as never,
 		});
 
-		expect(editor.webcam.roundness).toBeCloseTo(3.01, 2);
+		expect(editor.webcam.roundness).toBeCloseTo(41.67, 2);
 		expect(editor.webcam.cornerRadius).toBeUndefined();
 	});
 
@@ -178,7 +177,7 @@ describe("normalizeProjectEditor", () => {
 
 		expect(editor.webcam.width).toBe(80);
 		expect(editor.webcam.height).toBe(80);
-		expect(editor.webcam.roundness).toBeCloseTo(0.19, 2);
+		expect(editor.webcam.roundness).toBeCloseTo(20.83, 2);
 	});
 });
 
@@ -335,6 +334,28 @@ it("discards inverted saved source bounds while preserving the in-point", () => 
 	expect(editor.clipRegions[0].sourceMaxMs).toBeUndefined();
 });
 
+it("keeps independently timed effects when saved clips only need array sorting", () => {
+	const editor = normalizeProjectEditor({
+		clipRegions: [
+			{ id: "later", startMs: 1000, endMs: 2000, speed: 1 },
+			{ id: "first", startMs: 0, endMs: 1000, speed: 1 },
+		],
+		annotationRegions: [
+			{ id: "after-footage", type: "text", content: "Keep", startMs: 2500, endMs: 2800 },
+		] as never,
+		zoomRegions: [{ id: "late-zoom", startMs: 2500, endMs: 2800, depth: 2 }] as never,
+	});
+	expect(editor.clipRegions.map(({ id }) => id)).toEqual(["first", "later"]);
+	expect(editor.annotationRegions).toHaveLength(1);
+	expect(editor.annotationRegions[0]).toMatchObject({
+		id: "after-footage",
+		startMs: 2500,
+		endMs: 2800,
+	});
+	expect(editor.zoomRegions[0]).toMatchObject({ id: "late-zoom", startMs: 2500, endMs: 2800 });
+	expect(normalizeProjectEditor(editor).annotationRegions).toEqual(editor.annotationRegions);
+});
+
 it("discards saved source audio overrides for absent clips before IDs can be reused", () => {
 	const kept = { mic: { volume: 0.4, normalize: true } };
 	const stale = { mic: { volume: 0, normalize: true } };
@@ -374,28 +395,6 @@ it("ignores legacy export preferences when opening and resaving a project", asyn
 		expect(createProjectData("/clip.mp4", legacyEditor).editor).not.toHaveProperty(key);
 	}
 	expect(legacyEditor.exportQuality).toBe("high");
-});
-
-it("keeps independently timed effects when saved clips only need array sorting", () => {
-	const editor = normalizeProjectEditor({
-		clipRegions: [
-			{ id: "later", startMs: 1000, endMs: 2000, speed: 1 },
-			{ id: "first", startMs: 0, endMs: 1000, speed: 1 },
-		],
-		annotationRegions: [
-			{ id: "after-footage", type: "text", content: "Keep", startMs: 2500, endMs: 2800 },
-		] as never,
-		zoomRegions: [{ id: "late-zoom", startMs: 2500, endMs: 2800, depth: 2 }] as never,
-	});
-	expect(editor.clipRegions.map(({ id }) => id)).toEqual(["first", "later"]);
-	expect(editor.annotationRegions).toHaveLength(1);
-	expect(editor.annotationRegions[0]).toMatchObject({
-		id: "after-footage",
-		startMs: 2500,
-		endMs: 2800,
-	});
-	expect(editor.zoomRegions[0]).toMatchObject({ id: "late-zoom", startMs: 2500, endMs: 2800 });
-	expect(normalizeProjectEditor(editor).annotationRegions).toEqual(editor.annotationRegions);
 });
 
 describe("legacy motion preset compatibility", () => {

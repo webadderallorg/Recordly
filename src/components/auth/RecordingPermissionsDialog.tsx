@@ -1,7 +1,8 @@
 import { Button, Modal } from "@heroui/react";
+import { useState } from "react";
 import { X } from "@phosphor-icons/react";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
-import { OnboardingLayout } from "./OnboardingLayout";
+import { OnboardingFooter, OnboardingLayout, OnboardingPrimaryAction } from "./OnboardingLayout";
 import { OnboardingPermissions } from "./OnboardingPermissions";
 
 /** Permission recovery has no account steps or onboarding side effects. */
@@ -18,6 +19,7 @@ export function RecordingPermissionsDialog({
 }) {
 	const t = useScopedT("onboarding");
 	const { t: appT } = useI18n();
+	const [ready, setReady] = useState(false);
 	return (
 		<Modal
 			isOpen={open}
@@ -44,8 +46,25 @@ export function RecordingPermissionsDialog({
 							stage="permissions"
 							canViewPermissions
 							showNavigation={false}
+							footer={
+								<OnboardingFooter>
+									<div aria-hidden="true" />
+									<OnboardingPrimaryAction
+										isDisabled={!ready}
+										onPress={() => {
+											if (ready) onFinish();
+										}}
+									>
+										{t("startRecording")}
+									</OnboardingPrimaryAction>
+								</OnboardingFooter>
+							}
 						>
-							<OnboardingPermissions onFinish={onFinish} />
+							<OnboardingPermissions
+								showFooter={false}
+								onReadyChange={setReady}
+								onFinish={onFinish}
+							/>
 						</OnboardingLayout>
 						<Button
 							isIconOnly

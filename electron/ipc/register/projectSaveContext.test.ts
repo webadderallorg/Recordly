@@ -9,6 +9,11 @@ import {
 
 const mocks = vi.hoisted(() => ({
 	getProjectsDir: vi.fn(),
+	prepareDeletion: vi.fn(),
+	protectedSources: vi.fn(),
+	removableSources: vi.fn(),
+	trashProjects: vi.fn(),
+	trashSources: vi.fn(),
 	write: vi.fn(),
 	thumbnail: vi.fn(),
 	recent: vi.fn(),
@@ -41,18 +46,33 @@ vi.mock("node:fs/promises", () => ({
 vi.mock("../project/atomicSave", () => ({
 	writeProjectFileAtomically: mocks.write,
 	getProjectBackupPath: (value: string) => `${value}.backup`,
+	getProjectBackupPaths: (value: string) => [`${value}.backup`, `${value}.bak`],
 }));
 vi.mock("../project/createUntitledProject", () => ({ createUntitledProject: mocks.create }));
 vi.mock("../project/manager", () => ({
 	getProjectsDir: mocks.getProjectsDir,
+	listProjectLibraryEntries: async () => ({ entries: [] }),
 	isTrustedProjectPath: (value: unknown) =>
 		typeof value === "string" && value.startsWith("/projects/"),
 	isPathInsideDirectory: () => true,
 	saveProjectThumbnail: mocks.thumbnail,
 	rememberRecentProject: mocks.recent,
 	getProjectThumbnailPath: (value: string) => `${value}.png`,
+	getProjectThumbnailPaths: (value: string) => [`${value}.png`],
 	loadRecentProjectPaths: async () => ["/projects/A.recordly", "/projects/B.recordly"],
 	saveRecentProjectPaths: vi.fn(),
+}));
+vi.mock("../project/libraryDeletion", () => ({
+	prepareLibraryDeletion: mocks.prepareDeletion,
+	protectedLibrarySources: mocks.protectedSources,
+	removableLibrarySources: mocks.removableSources,
+	recordingUsesSources: vi.fn(),
+}));
+vi.mock("../project/trashProjects", () => ({ trashLibraryProjects: mocks.trashProjects }));
+vi.mock("../recording/library", () => ({
+	listRecordings: vi.fn(),
+	setRecordingsRemoved: vi.fn(),
+	trashRecordingSources: mocks.trashSources,
 }));
 import { registerProjectHandlers } from "./project";
 let handlers: Map<string, Parameters<typeof ipcMain.handle>[1]>;
@@ -193,4 +213,28 @@ it("invalidates a pending save as soon as the same recording starts loading agai
 	expect(await saving).toMatchObject({ success: true });
 	expect(currentProjectPath).toBe("/projects/A.recordly");
 	expect(mocks.unlink).not.toHaveBeenCalled();
+});
+
+it("counts a newly protected source once when another media deletion fails", async () => {
+	const selected = "/projects/A.recordly";
+	const protectedSource = "/video/newly-protected.mp4",
+		failedSource = "/video/delete-failed.mp4";
+	mocks.prepareDeletion.mockResolvedValue({
+		preservedSources: ["/video/already-protected.mp4"],
+		sourceOwners: { [protectedSource]: [selected], [failedSource]: [selected] },
+	});
+	mocks.trashProjects.mockResolvedValue({ deleted: [selected], errors: [] });
+	mocks.protectedSources.mockResolvedValue(new Set([protectedSource]));
+	mocks.removableSources.mockReturnValue({ removable: [failedSource], kept: [protectedSource] });
+	mocks.trashSources.mockResolvedValue({ deleted: [], errors: ["Could not trash recording"] });
+	const result = await handlers.get("trash-project-files")!(event, [selected], {
+		includeSources: true,
+	});
+	expect(result).toMatchObject({
+		success: false,
+		deleted: [selected],
+		sourcesDeleted: [],
+		sourcesKept: ["/video/already-protected.mp4", protectedSource, failedSource],
+	});
+	expect(mocks.trashSources).toHaveBeenCalledExactlyOnceWith([failedSource]);
 });

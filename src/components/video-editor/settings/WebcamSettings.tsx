@@ -288,16 +288,27 @@ export function WebcamSettings({
 						type="single"
 						aria-label={tSettings("effects.webcamShape", "Shape")}
 						value={webcam?.shape ?? "squircle"}
-						className="grid grid-cols-2 gap-2"
+						className="grid grid-cols-3 gap-2"
 						onValueChange={(shape) => {
-							if (shape === "circle" || shape === "squircle") updateWebcam({ shape });
+							if (shape === "circle" || shape === "squircle" || shape === "rectangle")
+								updateWebcam({
+									shape,
+									...(shape === "rectangle"
+										? { width: 60, size: 60 }
+										: shape === "squircle"
+											? { height: webcamWidth }
+											: {}),
+								});
 						}}
 					>
 						<ChoiceItem value="circle">
 							{tSettings("effects.webcamCircle", "Circle")}
 						</ChoiceItem>
 						<ChoiceItem value="squircle">
-							{tSettings("effects.webcamSquircle", "Squircle")}
+							{tSettings("effects.webcamSquircle", "Square")}
+						</ChoiceItem>
+						<ChoiceItem value="rectangle">
+							{tSettings("effects.webcamRectangle", "Rectangle")}
 						</ChoiceItem>
 					</ChoiceGroup>
 				</div>
@@ -307,10 +318,16 @@ export function WebcamSettings({
 					min={10}
 					max={100}
 					step={1}
-					onChange={(v) => updateWebcam({ width: v, size: v })}
+					onChange={(v) =>
+						updateWebcam({
+							width: v,
+							size: v,
+							...(webcam?.shape === "squircle" ? { height: v } : {}),
+						})
+					}
 					formatValue={(v) => `${Math.round(v)}%`}
 				/>
-				{advanced && webcam?.shape !== "circle" && (
+				{(advanced || webcam?.shape === "rectangle") && webcam?.shape !== "circle" && (
 					<SliderControl
 						label={tSettings("effects.webcamHeight", "Webcam Height")}
 						value={webcamHeight}
@@ -355,6 +372,7 @@ export function WebcamSettings({
 													previewFrame.width,
 													previewFrame.height,
 													cropRegion,
+													webcam?.shape,
 												)
 											: webcamHeight,
 									})

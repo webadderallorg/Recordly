@@ -89,8 +89,7 @@ test("webcam and HUD stay docked across recording states and drag together withi
 	await page.mouse.up();
 	expect((await bar.boundingBox())!.x).toBeGreaterThanOrEqual(0);
 	expect((await preview.boundingBox())!.y).toBeGreaterThanOrEqual(0);
-	await page.getByRole("button", { name: /Hide/ }).click();
-	await expect(page.locator("html")).toHaveAttribute("data-hud-hidden", "true");
+	await expect(page.getByRole("button", { name: /Hide/ })).toHaveCount(0);
 	await page.setViewportSize({ width: 600, height: 700 });
 	await expect
 		.poll(async () => {

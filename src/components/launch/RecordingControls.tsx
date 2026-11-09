@@ -1,6 +1,6 @@
 import { Button, Tooltip } from "@heroui/react";
 import { useState } from "react";
-import { MinusIcon, Trash, PauseIcon, PlayIcon } from "@/components/ui/icons";
+import { Trash, PauseIcon, PlayIcon } from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
 import styles from "./LaunchWindow.module.css";
 
@@ -10,7 +10,6 @@ interface RecordingControlsProps {
 	elapsed: number;
 	onPauseResume: () => void;
 	onStopRecording: () => void;
-	onHideHud: () => void;
 	onCancelRecording: () => void | Promise<unknown>;
 	formatTime: (seconds: number) => string;
 }
@@ -21,7 +20,6 @@ export function RecordingControls({
 	elapsed,
 	onPauseResume,
 	onStopRecording,
-	onHideHud,
 	onCancelRecording,
 	formatTime,
 }: RecordingControlsProps) {
@@ -100,18 +98,6 @@ export function RecordingControls({
 					<Trash className="size-5" />
 				</Button>
 				<Tooltip.Content>{captureT("discardRecording")}</Tooltip.Content>
-			</Tooltip>
-			<Tooltip>
-				<Button
-					isIconOnly
-					variant="ghost"
-					className={styles.hudAction}
-					onPress={onHideHud}
-					aria-label={t("recording.hideHud")}
-				>
-					<MinusIcon className="size-5" />
-				</Button>
-				<Tooltip.Content>{t("recording.hideHud")}</Tooltip.Content>
 			</Tooltip>
 		</div>
 	);

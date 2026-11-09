@@ -35,6 +35,7 @@ import {
 } from "./popovers/LaunchPopoverCoordinator";
 import { MicPopover } from "./popovers/MicPopover";
 import { WebcamPopover } from "./popovers/WebcamPopover";
+import { RecordButton } from "./RecordButton";
 import { RecordingControls } from "./RecordingControls";
 
 export function LaunchWindow() {
@@ -158,6 +159,8 @@ function LaunchWindowContent() {
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } =
 		useLaunchHudInteractionState({
 			openId,
+			platform,
+			recordingState: `${recording}:${finalizing}`,
 			isHudDraggingRef,
 			isWebcamPreviewDraggingRef,
 			webcamPreviewDragStartRef,
@@ -185,6 +188,8 @@ function LaunchWindowContent() {
 		} finally {
 			pickerPending.current = false;
 			setIsPickerPending(false);
+			// The native picker temporarily overrides passthrough outside this hook.
+			beginInteractiveHudAction();
 		}
 	}, [
 		captureT,
@@ -226,7 +231,16 @@ function LaunchWindowContent() {
 		};
 	}, [syncSelectedSource, captureT]);
 
-	const openHome = () => {
+	const cancelPendingStart = useCallback(async () => {
+		try {
+			return await cancelRecordingStart();
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : String(error));
+			return false;
+		}
+	}, [cancelRecordingStart]);
+	const openHome = async () => {
+		if (!(await cancelPendingStart())) return;
 		localStorage.setItem("recordly.open-dashboard", String(Date.now()));
 		void window.electronAPI.showProjectDashboard();
 	};
@@ -250,7 +264,6 @@ function LaunchWindowContent() {
 			elapsed={elapsed}
 			onPauseResume={paused ? resumeRecording : pauseRecording}
 			onStopRecording={toggleRecording}
-			onHideHud={() => window.electronAPI?.hudOverlayHide?.()}
 			onCancelRecording={cancelRecording}
 			formatTime={formatTime}
 		/>
@@ -262,17 +275,13 @@ function LaunchWindowContent() {
 			aria-label={captureT("recordingSetup")}
 			className={styles.recordingControls}
 		>
-			<Button
-				type="button"
-				variant="destructive"
-				size="icon"
-				className={`${styles.electronNoDrag} ${styles.recordControl}`}
-				onClick={hasSelectedSource ? toggleRecording : () => void handlePickOnScreen()}
-				disabled={countdownActive || isPickerPending || !sourceReady}
-				title={t("recording.record")}
-			>
-				<div className={styles.recDot} />
-			</Button>
+			<RecordButton
+				countdownActive={countdownActive}
+				countdownDelay={countdownDelay}
+				disabled={isPickerPending || !sourceReady}
+				onRecord={hasSelectedSource ? toggleRecording : () => void handlePickOnScreen()}
+				onCancel={() => void cancelPendingStart()}
+			/>
 			<Button
 				variant="ghost"
 				size="lg"
@@ -293,7 +302,7 @@ function LaunchWindowContent() {
 			</Button>
 			<span aria-hidden="true" className={styles.sourceDivider} />
 			<MicPopover
-				disabled={recording}
+				disabled={recording || countdownActive}
 				systemAudioEnabled={systemAudioEnabled}
 				onToggleSystemAudio={() => setSystemAudioEnabled(!systemAudioEnabled)}
 				microphoneEnabled={microphoneEnabled}
@@ -311,6 +320,7 @@ function LaunchWindowContent() {
 						variant="ghost"
 						size="icon"
 						iconSize="lg"
+						disabled={countdownActive}
 						title={
 							microphoneEnabled
 								? t("recording.disableMicrophone")
@@ -332,7 +342,7 @@ function LaunchWindowContent() {
 			/>
 
 			<WebcamPopover
-				disabled={recording}
+				disabled={recording || countdownActive}
 				webcamEnabled={webcamEnabled}
 				onDisableWebcam={() => setWebcamEnabled(false)}
 				canToggleFloatingPreview={canToggleFloatingWebcamPreview(
@@ -357,6 +367,7 @@ function LaunchWindowContent() {
 						variant="ghost"
 						size="icon"
 						iconSize="lg"
+						disabled={countdownActive}
 						title={
 							webcamEnabled
 								? t("recording.disableWebcam")
@@ -385,6 +396,7 @@ function LaunchWindowContent() {
 						variant="ghost"
 						size="icon"
 						iconSize="lg"
+						disabled={countdownActive}
 						title={`${t("recording.countdownDelay")}: ${countdownDelay === 0 ? t("recording.noDelay") : `${countdownDelay}s`}`}
 						className={countdownDelay > 0 ? "text-accent" : ""}
 					>
@@ -393,12 +405,14 @@ function LaunchWindowContent() {
 				}
 			/>
 
+			<span aria-hidden="true" className={styles.sourceDivider} />
 			{homeButton}
 			<Button
 				variant="ghost"
 				size="icon"
 				iconSize="lg"
 				onClick={() => window.electronAPI?.hudOverlayHide?.()}
+				disabled={countdownActive}
 				title={t("recording.hideHud")}
 			>
 				<MinusIcon className="size-5" />
@@ -426,6 +440,7 @@ function LaunchWindowContent() {
 		>
 			<div
 				ref={hudBarRef}
+				data-hud-surface
 				onPointerDownCapture={finishHudTransition}
 				data-hud-dragging={isHudDragging}
 				className={`${styles.bar} ${styles.recordingBar} ${useNativeHudBarDrag ? styles.electronDrag : ""} launch-theme pointer-events-auto`}

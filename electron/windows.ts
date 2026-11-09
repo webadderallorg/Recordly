@@ -1146,7 +1146,9 @@ function closeOtherOnboardingWindows(win: BrowserWindow) {
 export function showOnboardingWindow(options?: { preview?: boolean }): BrowserWindow {
 	const query = {
 		windowType: "onboarding",
-		...(!app.isPackaged && options?.preview ? { onboardingPreview: "1" } : {}),
+		...(!app.isPackaged && typeof options?.preview === "boolean"
+			? { onboardingPreview: options.preview ? "1" : "0" }
+			: {}),
 	};
 	const loadOnboarding = (win: BrowserWindow) => {
 		if (VITE_DEV_SERVER_URL) {
@@ -1157,7 +1159,8 @@ export function showOnboardingWindow(options?: { preview?: boolean }): BrowserWi
 	};
 	if (onboardingWindow && !onboardingWindow.isDestroyed()) {
 		closeOtherOnboardingWindows(onboardingWindow);
-		if (options?.preview) loadOnboarding(onboardingWindow);
+		if (!app.isPackaged && typeof options?.preview === "boolean")
+			loadOnboarding(onboardingWindow);
 		if (onboardingWindow.isMinimized()) onboardingWindow.restore();
 		onboardingWindow.setBounds(getOnboardingWindowBounds());
 		bringOnboardingWindowForward(onboardingWindow);

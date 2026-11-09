@@ -1,4 +1,6 @@
 {
+	"socials": "社交媒体",
+	"projectRecovered": "已恢复上一个保存的版本",
 	"aspectRatio": {
 		"native": "原始比例",
 		"widescreen": "宽屏",

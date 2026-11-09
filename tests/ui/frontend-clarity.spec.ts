@@ -53,7 +53,7 @@ test("upgrade stays secondary and project titles open or select the recording", 
 	});
 	const upgrade = page
 		.locator(".editor-header")
-		.getByRole("button", { name: "Upgrade to Cloud, 40% off", exact: true });
+		.getByRole("button", { name: "Upgrade, 40% off", exact: true });
 	await expect(upgrade).toHaveClass(/button--secondary/);
 	await expect(upgrade).not.toHaveClass(/plus-badge/);
 	await expect(upgrade.getByText("40% off", { exact: true })).toBeVisible();

@@ -53,8 +53,6 @@ export function usePlaybackCursorSettings(input: usePlaybackCursorSettingsInput)
 			return;
 		}
 
-		let cancelled = false;
-
 		overlay.setDotRadius(DEFAULT_CURSOR_CONFIG.dotRadius * cursorSize);
 		overlay.setSmoothingFactor(cursorSmoothing);
 		overlay.setSpringTuning({
@@ -71,8 +69,43 @@ export function usePlaybackCursorSettings(input: usePlaybackCursorSettingsInput)
 		overlay.setClickBounce(cursorClickBounce);
 		overlay.setClickBounceDuration(cursorClickBounceDuration);
 		overlay.setSway(cursorSway);
-		overlay.setIdleHideSettings(cursorIdleHide);
+		overlay.setIdleHideSettings({
+			enabled: cursorIdleHide.enabled,
+			idleThresholdMs: cursorIdleHide.idleThresholdMs,
+			fadeDelayMs: cursorIdleHide.fadeDelayMs,
+			fadeDurationMs: cursorIdleHide.fadeDurationMs,
+			movementTolerancePx: cursorIdleHide.movementTolerancePx,
+		});
+		requestPausedFrameRefresh();
+	}, [
+		pixiReady,
+		requestPausedFrameRefresh,
+		cursorOverlayRef,
+		cursorSize,
+		cursorSmoothing,
+		cursorSpringStiffnessMultiplier,
+		cursorSpringDampingMultiplier,
+		cursorSpringMassMultiplier,
+		cursorMotionBlur,
+		cursorClickEffect,
+		cursorClickEffectColor,
+		cursorClickEffectScale,
+		cursorClickEffectOpacity,
+		cursorClickEffectDurationMs,
+		cursorClickBounce,
+		cursorClickBounceDuration,
+		cursorSway,
+		cursorIdleHide.enabled,
+		cursorIdleHide.idleThresholdMs,
+		cursorIdleHide.fadeDelayMs,
+		cursorIdleHide.fadeDurationMs,
+		cursorIdleHide.movementTolerancePx,
+	]);
 
+	useEffect(() => {
+		const overlay = cursorOverlayRef.current;
+		if (!pixiReady || !overlay) return;
+		let cancelled = false;
 		void (async () => {
 			try {
 				await preloadCursorAssets();
@@ -93,26 +126,6 @@ export function usePlaybackCursorSettings(input: usePlaybackCursorSettingsInput)
 		return () => {
 			cancelled = true;
 		};
-	}, [
-		pixiReady,
-		requestPausedFrameRefresh,
-		cursorStyle,
-		cursorSize,
-		cursorSmoothing,
-		cursorSpringStiffnessMultiplier,
-		cursorSpringDampingMultiplier,
-		cursorSpringMassMultiplier,
-		cursorMotionBlur,
-		cursorClickEffect,
-		cursorClickEffectColor,
-		cursorClickEffectScale,
-		cursorClickEffectOpacity,
-		cursorClickEffectDurationMs,
-		cursorClickBounce,
-		cursorClickBounceDuration,
-		cursorSway,
-		cursorIdleHide,
-		cursorOverlayRef,
-	]);
+	}, [pixiReady, requestPausedFrameRefresh, cursorStyle, cursorOverlayRef]);
 	return {};
 }

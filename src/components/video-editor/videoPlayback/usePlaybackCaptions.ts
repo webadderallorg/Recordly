@@ -1,11 +1,11 @@
-import { getCaptionPreset } from "@/components/video-editor/captionPresets";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getCaptionPreset } from "@/components/video-editor/captionPresets";
 import { normalizeCaptionEditText } from "../captionEditing";
 import { prepareCaptionLayout } from "../captionLayout";
 import {
+	getCaptionFontBaseline,
 	getCaptionScaledFontSize,
 	getCaptionTextMaxWidth,
-	getCaptionFontBaseline,
 } from "../captionStyle";
 import { useCaptionFont } from "../useCaptionFont";
 import type { PlaybackProps } from "./playbackProps";
@@ -251,6 +251,7 @@ export function usePlaybackCaptions(input: usePlaybackCaptionsInput) {
 	}, [captionEditSizeKey, captionEditInputRef]);
 
 	return {
+		captionFontReady: captionFont.ready,
 		activeCaptionLayout,
 		isCaptionEditing,
 		captionEditDraft,

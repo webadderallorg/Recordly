@@ -91,7 +91,7 @@ export function RecordlySignInDialog({
 	// A cached user or background refresh must not dismiss a requested sign-in.
 	// Only a completed interactive sign-in can finish reauthentication.
 	const reauthenticating = reason === "reauthenticate";
-	const user = reauthenticating || preview ? null : signedInUser;
+	const user = reauthenticating ? null : signedInUser;
 	const [directSignInComplete, setDirectSignInComplete] = useState(false);
 	const openedAuthenticationVersion = useRef<number | undefined>(undefined);
 	useEffect(() => {
@@ -187,8 +187,8 @@ export function RecordlySignInDialog({
 	useEffect(() => {
 		if (!open || opened.current) return;
 		opened.current = true;
-		if (onboarding && user) setShowPermissions(true);
-	}, [open, onboarding, user]);
+		if (onboarding && user && !preview) setShowPermissions(true);
+	}, [open, onboarding, user, preview]);
 
 	useEffect(() => {
 		if (open && startWithPermissions && user) setShowPermissions(true);
@@ -205,10 +205,13 @@ export function RecordlySignInDialog({
 			awaitingSignIn.current = false;
 			setMessage(undefined);
 			setReportDiagnostic(undefined);
-			if (onboarding) setShowPermissions(true);
-			else onAuthenticated();
+			if (onboarding) {
+				// Restoring a cached session must not jump an optional tour away
+				// from its account page. The real flow still advances after sign-in.
+				if (!preview) setShowPermissions(true);
+			} else onAuthenticated();
 		}
-	}, [open, user, onAuthenticated, onboarding]);
+	}, [open, user, onAuthenticated, onboarding, preview]);
 
 	const run = async (label: SignInAction, action: () => Promise<unknown>) => {
 		setBusy(label);
@@ -276,9 +279,9 @@ export function RecordlySignInDialog({
 					>
 						{onboarding ? (
 							<OnboardingHeader
-								centered={!user}
+								centered={preview || !user}
 								title={
-									user ? (
+									user && !preview ? (
 										ot("yourAccount")
 									) : (
 										<OnboardingHeroTitle text={ot("welcomeTitle")} />

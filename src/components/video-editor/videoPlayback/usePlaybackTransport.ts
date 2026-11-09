@@ -1,7 +1,8 @@
 import { Graphics, Sprite, Texture } from "pixi.js";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { destroyPixiContainer } from "@/lib/pixiApplicationLifecycle";
-import { createClipPlayback } from "./clipPlayback";
+import { createClipPlayback, findPreviewClipAtTimelineTime } from "./clipPlayback";
+import { subscribePreviewReadiness } from "./previewReadiness";
 import type { PlaybackProps } from "./playbackProps";
 import { createPlaybackAnimationState } from "./playbackTypes";
 import { PreviewFrameTexture } from "./previewFrameTexture";
@@ -78,6 +79,8 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		sourceRedactionRef,
 		updatePreviewTextureRef,
 	} = input;
+	const callbacksRef = useRef({ onTimeUpdate, onPlayStateChange, onPreviewReadyChange });
+	callbacksRef.current = { onTimeUpdate, onPlayStateChange, onPreviewReadyChange };
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: A new media path must reset the persistent video element.
 	useEffect(() => {
@@ -99,8 +102,8 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 	]);
 
 	useEffect(() => {
-		onPreviewReadyChange?.(videoReady);
-	}, [onPreviewReadyChange, videoReady]);
+		if (!videoReady || !pixiReady) callbacksRef.current.onPreviewReadyChange?.(false);
+	}, [videoReady, pixiReady]);
 
 	useEffect(() => {
 		if (!pixiReady || !videoReady) return;
@@ -129,21 +132,22 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		videoSprite.visible = false;
 		videoSpriteRef.current = videoSprite;
 		let reportedTextureError = false;
-		let lastFrameAnnotations: PlaybackProps["annotationRegions"] | null = null;
+		let lastFramePrivacyKey: string | null = null;
 		let lastFrameCrop: { x: number; y: number; width: number; height: number } | null = null;
 		const updatePreviewTexture = () => {
-			const { annotationRegions } = sourceRedactionRef.current;
+			const { annotationRegions, privacyKey } = sourceRedactionRef.current;
 			const crop = baseMaskRef.current.sourceCrop ?? { x: 0, y: 0, width: 1, height: 1 };
 			if (video.seeking) {
 				// Keep the already-uploaded, privacy-composed image while decoding.
 				// An output edit invalidates that image until its masks can be rebuilt.
 				if (
-					annotationRegions !== lastFrameAnnotations ||
-					!lastFrameCrop ||
-					crop.x !== lastFrameCrop.x ||
-					crop.y !== lastFrameCrop.y ||
-					crop.width !== lastFrameCrop.width ||
-					crop.height !== lastFrameCrop.height
+					privacyKey !== lastFramePrivacyKey ||
+					(privacyKey !== "[]" &&
+						(!lastFrameCrop ||
+							crop.x !== lastFrameCrop.x ||
+							crop.y !== lastFrameCrop.y ||
+							crop.width !== lastFrameCrop.width ||
+							crop.height !== lastFrameCrop.height))
 				)
 					videoSprite.visible = false;
 				return;
@@ -155,7 +159,7 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 					cropRegion: crop,
 					timeMs: timelineTimeRef.current * 1000,
 				});
-				lastFrameAnnotations = annotationRegions;
+				lastFramePrivacyKey = privacyKey;
 				lastFrameCrop = { ...crop };
 				videoSprite.visible = true;
 				reportedTextureError = false;
@@ -184,6 +188,32 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 			cursorContainer.addChild(cursorOverlayRef.current.container);
 		}
 
+		const stopReadiness = subscribePreviewReadiness({
+			runner: app.renderer.runners.postrender,
+			isFrameReady: () => {
+				const openingGap =
+					clipRegionsRef.current.length > 0 &&
+					!findPreviewClipAtTimelineTime(
+						timelineTimeRef.current * 1000,
+						clipRegionsRef.current,
+					);
+				const composedTime = lastRenderedContentTimeRef.current;
+				return (
+					composedTime !== null &&
+					Math.abs(composedTime - timelineTimeRef.current * 1000) < 0.001 &&
+					!shouldSnapPausedFrameRef.current &&
+					!video.seeking &&
+					video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+					app.canvas.width > 0 &&
+					app.canvas.height > 0 &&
+					baseMaskRef.current.width > 0 &&
+					baseMaskRef.current.height > 0 &&
+					(videoSprite.visible || openingGap)
+				);
+			},
+			onChange: (ready) => callbacksRef.current.onPreviewReadyChange?.(ready),
+		});
+
 		animationStateRef.current = createPlaybackAnimationState();
 
 		layoutVideoContentRef.current?.();
@@ -202,12 +232,12 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 			onTime: (time, source) => {
 				timelineTimeRef.current = time;
 				if (source !== null) currentTimeRef.current = source * 1000;
-				onTimeUpdate(time);
+				callbacksRef.current.onTimeUpdate(time);
 				requestPreviewRender();
 			},
 			onPlaying: (playing) => {
 				isPlayingRef.current = playing;
-				onPlayStateChange(playing);
+				callbacksRef.current.onPlayStateChange(playing);
 			},
 			onError: (error) =>
 				onPlaybackErrorRef.current(error instanceof Error ? error.message : String(error)),
@@ -237,6 +267,7 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		video.addEventListener("seeking", handleSeeking);
 
 		return () => {
+			stopReadiness();
 			if (updatePreviewTextureRef.current === updatePreviewTexture) {
 				updatePreviewTextureRef.current = null;
 			}
@@ -258,8 +289,6 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 	}, [
 		autoPlay,
 		requestPreviewRender,
-		onPlayStateChange,
-		onTimeUpdate,
 		pixiReady,
 		videoReady,
 		videoRef,
@@ -285,6 +314,7 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		baseMaskRef,
 		sourceRedactionRef,
 		updatePreviewTextureRef,
+		lastRenderedContentTimeRef,
 	]);
 	return {};
 }

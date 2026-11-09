@@ -70,9 +70,9 @@ for (const constraint of ["timeline", "neighbor"]) {
 		expect(Number(resized.storedEnd)).toBeLessThanOrEqual(
 			constraint === "timeline" ? 1500 : 1501,
 		);
-		// When the hidden exit has no room, the active grip stops at its limit.
-		expect(Number(resized.start)).toBeGreaterThan(990);
-		expect(Number(resized.start)).toBeLessThanOrEqual(1000);
+		// The full stored exit is visible; the left edge can use the actual free space.
+		expect(Number(resized.start)).toBeGreaterThan(475);
+		expect(Number(resized.start)).toBeLessThan(525);
 	});
 }
 

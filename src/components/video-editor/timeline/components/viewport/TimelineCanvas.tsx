@@ -60,6 +60,12 @@ export default function TimelineCanvas({
 	const autoZoomsDismissed = Boolean(
 		autoZoomDismissal && autoZoomDismissal.videoPath === videoPath,
 	);
+	const showAutoZoomPrompt = Boolean(
+		!isLoading &&
+			!autoZoomsDismissed &&
+			onApplyAutoZooms &&
+			!items.some((item) => item.rowId === ZOOM_ROW_ID),
+	);
 	const handleDismissAutoZooms = useCallback(() => {
 		setAutoZoomDismissal({ videoPath });
 	}, [videoPath]);
@@ -254,11 +260,7 @@ export default function TimelineCanvas({
 		rangeStart: range.start,
 		rangeEnd: range.end,
 		videoDurationMs,
-		zoomQuickAddEnabled:
-			isLoading ||
-			autoZoomsDismissed ||
-			!onApplyAutoZooms ||
-			items.some((item) => item.rowId === ZOOM_ROW_ID),
+		zoomQuickAddEnabled: !showAutoZoomPrompt,
 		onAddZoomAtMs,
 		canPlaceZoomAtMs,
 		onAddCaptionAtMs,
@@ -316,9 +318,7 @@ export default function TimelineCanvas({
 				style={{ minHeight: timelineRowsMinHeightPx }}
 			>
 				<TimelineCanvasRows
-					onApplyAutoZooms={
-						isLoading || autoZoomsDismissed ? undefined : onApplyAutoZooms
-					}
+					onApplyAutoZooms={showAutoZoomPrompt ? onApplyAutoZooms : undefined}
 					onDismissAutoZooms={handleDismissAutoZooms}
 					videoPath={videoPath}
 					items={items}

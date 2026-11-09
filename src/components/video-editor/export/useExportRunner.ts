@@ -1,4 +1,6 @@
 import { useCallback, useRef } from "react";
+import { recordLibraryExport, type LibraryExportIdentity } from "../dashboard/libraryExportHistory";
+import { fromFileUrl } from "../projectMediaPaths";
 import { useOptionalBilling } from "@/components/billing/BillingProvider";
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
@@ -24,7 +26,17 @@ export function useExportRunner(input: ExportRunnerInput) {
 	billingRef.current = billing;
 	const inputRef = useRef(input);
 	inputRef.current = input;
-	const showExportSuccessToast = useExportSuccessToast();
+	const notifyExportSuccess = useExportSuccessToast();
+	const showExportSuccessToast = useCallback(
+		(filePath: string, capturedIdentity?: LibraryExportIdentity) => {
+			const identity =
+				capturedIdentity ?? inputRef.current.exportSession.exportIdentityRef?.current;
+			if (identity && !recordLibraryExport(identity))
+				console.warn("Could not save library export history");
+			notifyExportSuccess(filePath);
+		},
+		[notifyExportSuccess],
+	);
 
 	const handleExport = useCallback(
 		async (
@@ -32,6 +44,12 @@ export function useExportRunner(input: ExportRunnerInput) {
 			options?: { destination?: "download" | "share" },
 		): Promise<string | undefined> => {
 			const runInput = inputRef.current;
+			const exportIdentity = {
+				...runInput.exportIdentity,
+				sourcePath:
+					runInput.exportIdentity?.sourcePath ??
+					(runInput.videoPath ? fromFileUrl(runInput.videoPath) : undefined),
+			};
 			const {
 				videoPath,
 				videoPlaybackRef,
@@ -62,6 +80,9 @@ export function useExportRunner(input: ExportRunnerInput) {
 				toast.error(translate("notifications.videoNotReady", "Video not ready"));
 				return;
 			}
+
+			if (runInput.exportSession.exportIdentityRef)
+				runInput.exportSession.exportIdentityRef.current = exportIdentity;
 
 			const exportRunId = exportRunIdRef.current + 1;
 			exportRunIdRef.current = exportRunId;
@@ -131,7 +152,11 @@ export function useExportRunner(input: ExportRunnerInput) {
 					smokeProgressSamples,
 					exportWasCancelled,
 					discardCancelledTemp,
-					showExportSuccessToast,
+					showExportSuccessToast: (filePath) => {
+						if (!recordLibraryExport(exportIdentity))
+							console.warn("Could not save library export history");
+						notifyExportSuccess(filePath);
+					},
 					setKeepExportDialogOpen: (open) => {
 						keepExportDialogOpen = open;
 					},
@@ -193,7 +218,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 				}
 			}
 		},
-		[showExportSuccessToast],
+		[notifyExportSuccess],
 	);
 
 	return { handleExport, showExportSuccessToast };

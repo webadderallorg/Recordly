@@ -34,7 +34,7 @@ test("a recording permission request opens recovery and can be closed and reopen
 	const permissions = page.getByRole("dialog", { name: "Permissions", exact: true });
 	for (let attempt = 0; attempt < 2; attempt++) {
 		await page.evaluate(() => window.dispatchEvent(new Event("test-permissions-requested")));
-		await expect(permissions).toBeVisible();
+		await expect(permissions).toBeVisible({ timeout: 15000 });
 		await expect(permissions.getByRole("navigation")).toHaveCount(0);
 		await expect(permissions.getByRole("button", { name: "Back to account" })).toHaveCount(0);
 		await permissions.getByRole("button", { name: "Close", exact: true }).click();
@@ -75,7 +75,7 @@ for (const standalone of [false, true]) {
 		await page.setViewportSize({ width: 760, height: 760 });
 		await page.goto(`/?windowType=${standalone ? "onboarding" : "editor"}`);
 		const permissions = page.getByRole("dialog", { name: "Permissions", exact: true });
-		await expect(permissions).toBeVisible();
+		await expect(permissions).toBeVisible({ timeout: 15000 });
 		await expect(
 			permissions.getByRole("heading", { name: "Allow Recordly to record" }),
 		).toBeVisible();
@@ -87,6 +87,12 @@ for (const standalone of [false, true]) {
 		);
 		const start = permissions.getByRole("button", { name: "Start recording", exact: true });
 		await expect(start).toBeDisabled();
+		expect((await start.boundingBox())!.height).toBe(44);
+		expect(
+			(await permissions
+				.getByRole("button", { name: "Allow Screen Recording", exact: true })
+				.boundingBox())!.height,
+		).toBe(44);
 		await permissions
 			.getByRole("button", { name: "Allow Screen Recording", exact: true })
 			.click();

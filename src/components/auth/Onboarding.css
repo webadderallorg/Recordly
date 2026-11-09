@@ -157,9 +157,9 @@
 	justify-content: center;
 	gap: 10px;
 	width: 100%;
-	min-height: 52px;
+	min-height: 44px;
 	height: auto;
-	padding: 12px 16px;
+	padding: 10px 16px;
 	font-size: 14px;
 	font-weight: 500;
 	line-height: 1.5;

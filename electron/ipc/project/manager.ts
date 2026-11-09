@@ -1,10 +1,15 @@
+import {
+	getProjectStorageKey,
+	readProjectFileWithRecovery,
+	setProjectRecoveryDirectory,
+} from "./atomicSave";
 import { encodeComposedThumbnail } from "./composedThumbnail";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createProjectFirstFrameThumbnail } from "./firstFrameThumbnail";
 import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
 import type { ProjectPreviewData } from "../../../src/types/projectPreview";
 import { hasFreshProjectThumbnail } from "./thumbnailFreshness";
-import { type Stats, existsSync, constants as fsConstants, realpathSync } from "node:fs";
+import { type Stats, constants as fsConstants, realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { app } from "electron";
@@ -36,6 +41,10 @@ import {
 	normalizeVideoSourcePath,
 	parseJsonWithByteOrderMark,
 } from "../utils";
+
+setProjectRecoveryDirectory(path.join(USER_DATA_PATH, "project-recovery"), (contents) =>
+	isLoadableProjectData(parseJsonWithByteOrderMark(contents)),
+);
 
 export { normalizePath, normalizeVideoSourcePath };
 
@@ -275,14 +284,45 @@ export function hasProjectFileExtension(filePath: string) {
 	return [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS].includes(extension);
 }
 
-export function getProjectThumbnailPath(projectPath: string) {
+export async function getProjectThumbnailPath(projectPath: string) {
+	return projectThumbnailStoragePath(await getProjectStorageKey(projectPath));
+}
+
+function projectThumbnailStoragePath(key: string) {
+	const digest = createHash("sha256").update(key).digest("hex");
+	return path.join(USER_DATA_PATH, "project-thumbnails", `${digest}.png`);
+}
+
+export function getLegacyProjectThumbnailPath(projectPath: string) {
 	return `${projectPath}${PROJECT_THUMBNAIL_SUFFIX}`;
 }
 
+export async function getProjectThumbnailPaths(projectPath: string) {
+	const resolved = path.resolve(projectPath);
+	const oldKey = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+	return [
+		...new Set([
+			await getProjectThumbnailPath(projectPath),
+			projectThumbnailStoragePath(oldKey),
+			getLegacyProjectThumbnailPath(projectPath),
+		]),
+	];
+}
+
+async function findFreshProjectThumbnail(projectPath: string, modifiedAt: number) {
+	for (const thumbnailPath of await getProjectThumbnailPaths(projectPath)) {
+		const stats = await fs.lstat(thumbnailPath).catch(() => null);
+		if (stats?.isFile() && (await hasFreshProjectThumbnail(thumbnailPath, modifiedAt)))
+			return thumbnailPath;
+	}
+	return null;
+}
+
 export async function saveProjectThumbnail(projectPath: string, thumbnailDataUrl?: string | null) {
-	const thumbnailPath = getProjectThumbnailPath(projectPath);
+	const thumbnailPath = await getProjectThumbnailPath(projectPath);
 	if (thumbnailDataUrl === undefined) {
-		return existsSync(thumbnailPath) ? thumbnailPath : null;
+		const revision = await fs.stat(projectPath).catch(() => null);
+		return findFreshProjectThumbnail(projectPath, revision?.mtimeMs ?? 0);
 	}
 
 	if (!thumbnailDataUrl) {
@@ -290,8 +330,16 @@ export async function saveProjectThumbnail(projectPath: string, thumbnailDataUrl
 		return null;
 	}
 
-	await fs.writeFile(thumbnailPath, encodeComposedThumbnail(thumbnailDataUrl));
-	return thumbnailPath;
+	const contents = encodeComposedThumbnail(thumbnailDataUrl);
+	await fs.mkdir(path.dirname(thumbnailPath), { recursive: true, mode: 0o700 });
+	const temporary = `${thumbnailPath}.${randomUUID()}.tmp`;
+	try {
+		await fs.writeFile(temporary, contents, { flag: "wx" });
+		await fs.rename(temporary, thumbnailPath);
+		return thumbnailPath;
+	} finally {
+		await fs.rm(temporary, { force: true }).catch(() => undefined);
+	}
 }
 
 export async function loadRecentProjectPaths() {
@@ -365,9 +413,10 @@ export async function cacheProjectThumbnail(
 	const stats = await fs.stat(normalizedPath);
 	if (projectPreviewRevision(stats) !== revision) return null;
 	const png = encodeComposedThumbnail(dataUrl);
-	const target = getProjectThumbnailPath(normalizedPath);
+	const target = await getProjectThumbnailPath(normalizedPath);
 	const temporary = `${target}.${randomUUID()}.tmp`;
 	try {
+		await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
 		await fs.writeFile(temporary, png, { flag: "wx" });
 		// A subsequent project edit must invalidate the cached frame, even if it races this write.
 		await fs.utimes(temporary, new Date(), Math.ceil(stats.mtimeMs) / 1000);
@@ -393,7 +442,7 @@ export function refreshProjectThumbnail(projectPath: string, revision: Stats) {
 	const pending = thumbnailJobs.get(projectPath);
 	if (pending) return pending;
 	const task = (async (): Promise<ProjectThumbnailReady | null> => {
-		const thumbnailPath = getProjectThumbnailPath(projectPath);
+		const thumbnailPath = await getProjectThumbnailPath(projectPath);
 		let temporary: string | undefined;
 		try {
 			if (!sameProjectRevision(revision, await fs.stat(projectPath))) return null;
@@ -405,6 +454,7 @@ export function refreshProjectThumbnail(projectPath: string, revision: Stats) {
 			if (!sameProjectRevision(revision, await fs.stat(projectPath))) return null;
 			if (!(await hasFreshProjectThumbnail(thumbnailPath, revision.mtimeMs))) {
 				temporary = `${thumbnailPath}.${randomUUID()}.tmp`;
+				await fs.mkdir(path.dirname(thumbnailPath), { recursive: true, mode: 0o700 });
 				await fs.writeFile(temporary, thumbnail, { flag: "wx" });
 				// Stamp the source revision, rather than generation time, so a later edit invalidates it.
 				await fs.utimes(temporary, new Date(), Math.ceil(revision.mtimeMs) / 1000);
@@ -440,14 +490,11 @@ export async function buildProjectLibraryEntry(
 			return null;
 		}
 
-		const thumbnailPath = getProjectThumbnailPath(normalizedPath);
-		const thumbnailStats = await fs.lstat(thumbnailPath).catch(() => null);
-		const thumbnailExists =
-			Boolean(thumbnailStats?.isFile()) &&
-			(await hasFreshProjectThumbnail(thumbnailPath, stats.mtimeMs));
+		const thumbnailPath = await findFreshProjectThumbnail(normalizedPath, stats.mtimeMs);
+		const thumbnailExists = thumbnailPath !== null;
 		// Listed projects may live outside the default recordings directory.
 		// Approve only their validated regular sidecar, never its siblings or a symlink target.
-		if (thumbnailExists) await rememberApprovedLocalReadPath(thumbnailPath);
+		if (thumbnailPath) await rememberApprovedLocalReadPath(thumbnailPath);
 		// Missing previews are composed by the renderer from the saved editor state.
 		// A source-only ffmpeg frame would discard padding, wallpaper and overlays.
 
@@ -571,14 +618,23 @@ export async function readProjectPreview(projectPath: string): Promise<ProjectPr
 export async function loadProjectFromPath(projectPath: string, isCurrent = () => true) {
 	const normalizedPath = normalizePath(projectPath);
 	let project: unknown;
+	let recovered = false;
 	try {
-		const content = await fs.readFile(normalizedPath, "utf-8");
-		project = parseJsonWithByteOrderMark(content);
+		const result = await readProjectFileWithRecovery(normalizedPath, (contents) => {
+			const parsed = parseJsonWithByteOrderMark(contents);
+			if (!isLoadableProjectData(parsed)) throw new Error("Invalid project file format");
+			return parsed;
+		});
+		project = result.project;
+		recovered = result.recovered;
 	} catch (error) {
 		return {
 			success: false,
 			canceled: false,
-			message: `Failed to read project file: ${error instanceof Error ? error.message : String(error)}`,
+			message:
+				error instanceof Error && error.message === "Invalid project file format"
+					? error.message
+					: `Failed to read project file: ${error instanceof Error ? error.message : String(error)}`,
 		};
 	}
 	if (!isLoadableProjectData(project)) {
@@ -654,6 +710,7 @@ export async function loadProjectFromPath(projectPath: string, isCurrent = () =>
 		success: true,
 		path: normalizedPath,
 		project,
+		recovered,
 	};
 }
 

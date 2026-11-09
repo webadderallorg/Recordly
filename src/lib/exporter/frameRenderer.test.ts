@@ -466,6 +466,45 @@ describe("FrameRenderer webcam export path", () => {
 		expect(renderer.webcamSeekPromise).toBeNull();
 	});
 
+	it("keeps a cropped camera without an explicit shape square in legacy export", () => {
+		const renderer = createRenderer({
+			webcam: {
+				enabled: true,
+				shape: undefined,
+				width: 30,
+				height: 30,
+				cropRegion: { x: 0, y: 0, width: 0.5, height: 1 },
+			},
+		}) as unknown as FrameRendererTestAccess & {
+			webcamMotionBlur: { render: (...args: unknown[]) => null };
+		};
+		const cached = createMockCanvas();
+		cached.width = 640;
+		cached.height = 360;
+		renderer.webcamVideoElement = new FakeVideoElement({
+			currentTime: 0,
+			readyState: 0,
+			videoWidth: 640,
+			videoHeight: 360,
+		});
+		renderer.webcamFrameCacheCanvas = cached;
+		renderer.webcamFrameCacheCtx = cached.getContext("2d");
+		renderer.currentVideoTime = 0;
+		renderer.animationState.appliedScale = 1;
+		const render = vi.spyOn(renderer.webcamMotionBlur, "render").mockReturnValue(null);
+		renderer.drawWebcamOverlay(
+			createMockContext() as unknown as CanvasRenderingContext2D,
+			1280,
+			720,
+		);
+		expect(render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				shape: "squircle",
+				layout: expect.objectContaining({ width: 216, height: 216 }),
+			}),
+		);
+	});
+
 	it("uses the cached webcam frame when the live video is out of sync", () => {
 		const renderer = createRenderer() as unknown as FrameRendererTestAccess;
 		const outputContext = createMockContext();

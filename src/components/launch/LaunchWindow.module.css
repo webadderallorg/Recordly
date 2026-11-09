@@ -52,8 +52,7 @@
 .recordingControls {
 	--source-control-width: 120px;
 	position: relative;
-	display: grid;
-	grid-template-columns: 36px var(--source-control-width) repeat(5, 36px);
+	display: flex;
 	align-items: center;
 	width: max-content;
 	height: 36px;
@@ -84,14 +83,63 @@
 }
 
 .sourceDivider {
-	position: absolute;
-	left: calc(36px + 8px + var(--source-control-width) + 4px);
-	top: 50%;
 	width: 1px;
-	height: 26px;
-	transform: translateY(-50%);
+	height: 24px;
+	margin: 0 2px;
 	background: var(--separator);
+	flex-shrink: 0;
 	pointer-events: none;
+}
+
+.recordControl {
+	position: relative;
+}
+
+.countdownValue {
+	display: grid;
+	place-items: center;
+	font-size: 20px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.countdownDigits {
+	position: relative;
+	display: block;
+	width: 24px;
+	height: 24px;
+	overflow: hidden;
+}
+
+.countdownDigit {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
+}
+
+.countdownCancel {
+	position: absolute;
+	opacity: 0;
+	transform: scale(0.75);
+	transition:
+		opacity 120ms ease,
+		transform 120ms ease;
+}
+
+.recordControl[data-countdown]:is(:hover, :focus-visible) .countdownValue {
+	opacity: 0;
+}
+
+.recordControl[data-countdown]:is(:hover, :focus-visible) .countdownCancel {
+	opacity: 1;
+	transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.countdownCancel {
+		transition: none;
+	}
 }
 
 .recordingTimer {

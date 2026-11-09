@@ -134,7 +134,7 @@ export type EditorEffectSection =
 
 export type ZoomTransitionEasing = "recordly" | "glide" | "smooth" | "snappy" | "linear";
 
-export type WebcamShape = "circle" | "squircle";
+export type WebcamShape = "circle" | "squircle" | "rectangle";
 
 export type WebcamCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 export type WebcamPositionPreset =

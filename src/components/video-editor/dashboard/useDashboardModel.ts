@@ -1,8 +1,9 @@
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { removeProjectShareLinks } from "../cloud/projectShareLinks";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
+import { deleteLibraryProjectsWithMedia } from "./deleteLibraryProjects";
 import type { DashboardProps } from "./types";
 import { useDashboardMetadata } from "./useDashboardMetadata";
 import { useProjectFolders } from "./useProjectFolders";
@@ -17,18 +18,29 @@ import {
 import { useLibrarySortMetadata } from "./useLibrarySortMetadata";
 export function useDashboardModel({
 	entries,
+	getProtectedSourcePaths,
 	onOpenChange,
 	onOpenProject,
 	onRenameProject,
 	onDeleteProjects,
+	accountId,
+	authToken,
 	open,
 	initialSection = "projects",
 }: DashboardProps) {
 	const { locale, t: uiText } = useUiLocale();
+	const protectionGetterRef = useRef(getProtectedSourcePaths);
+	protectionGetterRef.current = getProtectedSourcePaths;
+	const readProtectedSources = useCallback(() => protectionGetterRef.current?.() ?? [], []);
 	const { metadata, update } = useDashboardMetadata();
 	const [selecting, setSelecting] = useState(false);
 	const [cleanupOpen, setCleanupOpen] = useState(false);
 	const [pendingDelete, setPendingDelete] = useState<ProjectLibraryEntry[]>([]);
+	const [checkingDeletion, setCheckingDeletion] = useState(false);
+	const [deletionReview, setDeletionReview] = useState({
+		sourceCount: 0,
+		preservedSourceCount: 0,
+	});
 	const [selected, setSelected] = useState<string[]>([]);
 	const toggleSelected = (path: string) =>
 		setSelected((prev) =>
@@ -71,7 +83,7 @@ export function useDashboardModel({
 		setCleanupOpen(false);
 		setPendingDelete([]);
 	}, [open, initialSection]);
-	const raw = useRawLibrary(open && library === "raw");
+	const raw = useRawLibrary(open && library === "raw", readProtectedSources);
 	const [rawPreview, setRawPreview] = useState<ProjectLibraryEntry | null>(null);
 	const isRaw = library === "raw";
 	const setSection = (next: string) => {
@@ -160,10 +172,37 @@ export function useDashboardModel({
 				: previous,
 		);
 	}, [visible]);
-	const deleteEntries = async (paths: string[]) => {
-		if (busy) return;
-		setPendingDelete(visible.filter((entry) => paths.includes(entry.path)));
+	const reviewDeletion = async (paths: string[]) => {
+		const counts = { sourceCount: 0, preservedSourceCount: 0 };
+		for (let index = 0; index < paths.length; index += 500) {
+			const result = await window.electronAPI.reviewProjectDeletion(
+				paths.slice(index, index + 500),
+				readProtectedSources(),
+			);
+			if (!result.success)
+				throw new Error(result.error || uiText("ui.cleanup.deletionCheckFailed"));
+			counts.sourceCount += result.sourceCount ?? 0;
+			counts.preservedSourceCount += result.preservedSourceCount ?? 0;
+		}
+		return counts;
 	};
+	const deleteEntries = (paths: string[]) =>
+		run(async () => {
+			const items = visible.filter((entry) => paths.includes(entry.path));
+			if (!items.length) return;
+			setPendingDelete(items);
+			if (!isRaw) {
+				setCheckingDeletion(true);
+				try {
+					setDeletionReview(await reviewDeletion(items.map((entry) => entry.path)));
+				} catch (error) {
+					setPendingDelete([]);
+					throw error;
+				} finally {
+					setCheckingDeletion(false);
+				}
+			}
+		});
 	const confirmDelete = () =>
 		run(async () => {
 			if (!pendingDelete.length) return;
@@ -188,12 +227,31 @@ export function useDashboardModel({
 			const paths = pendingDelete.map((entry) => entry.path);
 			const deleted: string[] = [];
 			try {
-				for (let index = 0; index < paths.length; index += 500) {
-					deleted.push(
-						...(await (isRaw ? raw.remove : onDeleteProjects)(
-							paths.slice(index, index + 500),
-						)),
-					);
+				if (isRaw) {
+					for (let index = 0; index < paths.length; index += 500)
+						deleted.push(...(await raw.remove(paths.slice(index, index + 500))));
+				} else {
+					// Recheck local references before any permanent cloud mutation.
+					await reviewDeletion(paths);
+					const result = await deleteLibraryProjectsWithMedia({
+						paths,
+						allProjectPaths: entries.map((entry) => entry.path),
+						accountId,
+						token: authToken,
+						removeLocal: async (eligible, options) => {
+							const removed: string[] = [];
+							for (let index = 0; index < eligible.length; index += 500) {
+								const batch = await onDeleteProjects(
+									eligible.slice(index, index + 500),
+									{ ...options, protectedSources: readProtectedSources() },
+								);
+								removed.push(...batch);
+								deleted.push(...batch);
+							}
+							return removed;
+						},
+					});
+					if (result.errors.length) toast.error(result.errors.join("\n"));
 				}
 			} finally {
 				if (!isRaw) removeProjectShareLinks(deleted);
@@ -224,6 +282,8 @@ export function useDashboardModel({
 		cleanupOpen,
 		setCleanupOpen,
 		pendingDelete,
+		deletionReview,
+		checkingDeletion,
 		setPendingDelete,
 		confirmDelete,
 		libraryEntries,

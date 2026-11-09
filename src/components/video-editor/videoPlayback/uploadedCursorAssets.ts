@@ -51,13 +51,14 @@ export type UploadedCursorAsset = {
 		y: number;
 	};
 	preserveCanvas?: boolean;
+	hasBakedShadow?: boolean;
 };
 
 function asset(
 	url: string,
 	hotspotX: number,
 	hotspotY: number,
-	options: Pick<UploadedCursorAsset, "preserveCanvas"> = {},
+	options: Pick<UploadedCursorAsset, "preserveCanvas" | "hasBakedShadow"> = {},
 ): UploadedCursorAsset {
 	return {
 		url,
@@ -96,16 +97,17 @@ export const cursorSetAssets: Record<
 		"not-allowed": asset(macosNotAllowedUrl, 23, 0),
 	},
 	// Keep the legacy style ID so saved projects use the updated Golden Gate pack.
+	// The crosshair is clean vector art; all other states include original shadows.
 	tahoe: {
-		arrow: asset(tahoeArrowUrl, 14, 6),
-		text: asset(tahoeTextUrl, 50, 44),
-		pointer: asset(tahoePointerUrl, 37.5, 25),
-		crosshair: asset(tahoeCrosshairUrl, 50, 50),
-		"open-hand": asset(tahoeOpenHandUrl, 46.875, 50),
-		"closed-hand": asset(tahoeClosedHandUrl, 46.875, 50),
-		"resize-ew": asset(tahoeResizeEwUrl, 50, 50),
-		"resize-ns": asset(tahoeResizeNsUrl, 50, 49),
-		"not-allowed": asset(tahoeNotAllowedUrl, 23, 0),
+		arrow: asset(tahoeArrowUrl, 14, 6, { hasBakedShadow: true }),
+		text: asset(tahoeTextUrl, 50, 44, { hasBakedShadow: true }),
+		pointer: asset(tahoePointerUrl, 37.5, 25, { hasBakedShadow: true }),
+		crosshair: asset(tahoeCrosshairUrl, 50, 50, { hasBakedShadow: false }),
+		"open-hand": asset(tahoeOpenHandUrl, 46.875, 50, { hasBakedShadow: true }),
+		"closed-hand": asset(tahoeClosedHandUrl, 46.875, 50, { hasBakedShadow: true }),
+		"resize-ew": asset(tahoeResizeEwUrl, 50, 50, { hasBakedShadow: true }),
+		"resize-ns": asset(tahoeResizeNsUrl, 50, 49, { hasBakedShadow: true }),
+		"not-allowed": asset(tahoeNotAllowedUrl, 23, 0, { hasBakedShadow: true }),
 	},
 	windows11: {
 		// Hotspots are from the 32px frames embedded in the matching Windows .cur files.

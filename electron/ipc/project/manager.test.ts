@@ -236,7 +236,7 @@ describe("local media path policy", () => {
 		header.writeUInt32BE(480, 20);
 		const dataUrl = `data:image/png;base64,${header.toString("base64")}`;
 		const target = await manager.cacheProjectThumbnail(projectPath, preview.revision!, dataUrl);
-		expect(target).toBe(manager.getProjectThumbnailPath(projectPath));
+		expect(target).toBe(await manager.getProjectThumbnailPath(projectPath));
 		expect((await manager.buildProjectLibraryEntry(projectPath, tempRoot))?.thumbnailPath).toBe(
 			target,
 		);
@@ -292,7 +292,7 @@ describe("local media path policy", () => {
 		await fs.mkdir(path.dirname(projectPath), { recursive: true });
 
 		const { getProjectThumbnailPath, saveProjectThumbnail } = await import("./manager");
-		const thumbnailPath = getProjectThumbnailPath(projectPath);
+		const thumbnailPath = await getProjectThumbnailPath(projectPath);
 
 		await saveProjectThumbnail(projectPath, thumbnailDataUrl);
 		const saved = await fs.readFile(thumbnailPath);
@@ -301,6 +301,39 @@ describe("local media path policy", () => {
 		await expect(fs.readFile(thumbnailPath)).resolves.toEqual(saved);
 		const { hasFreshProjectThumbnail } = await import("./thumbnailFreshness");
 		await expect(hasFreshProjectThumbnail(thumbnailPath, 0)).resolves.toBe(true);
+	});
+
+	it("stores new previews outside an external project's folder and uses a fresh legacy preview without rewriting it", async () => {
+		const manager = await import("./manager");
+		const external = path.join(tempRoot, "ExternalProjects");
+		await fs.mkdir(external);
+		const projectPath = path.join(external, "only.recordly");
+		await fs.writeFile(
+			projectPath,
+			JSON.stringify({ version: 1, videoPath: "video.mp4", editor: {} }),
+		);
+		const header = Buffer.alloc(45);
+		Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(header);
+		header.write("IHDR", 12);
+		header.writeUInt32BE(640, 16);
+		header.writeUInt32BE(480, 20);
+		const dataUrl = `data:image/png;base64,${header.toString("base64")}`;
+		const cached = await manager.saveProjectThumbnail(projectPath, dataUrl);
+		expect(cached).toContain(path.join(userDataPath, "project-thumbnails"));
+		expect(await fs.readdir(external)).toEqual(["only.recordly"]);
+		expect((await manager.buildProjectLibraryEntry(projectPath, external))?.thumbnailPath).toBe(
+			cached,
+		);
+		const legacy = manager.getLegacyProjectThumbnailPath(projectPath);
+		await fs.rename(cached!, legacy);
+		const before = await fs.stat(legacy);
+		expect((await manager.buildProjectLibraryEntry(projectPath, external))?.thumbnailPath).toBe(
+			legacy,
+		);
+		expect((await fs.stat(legacy)).mtimeMs).toBe(before.mtimeMs);
+		await expect(
+			fs.access(await manager.getProjectThumbnailPath(projectPath)),
+		).rejects.toMatchObject({ code: "ENOENT" });
 	});
 
 	it("approves only a listed external project's current regular thumbnail for media transport", async () => {
@@ -317,11 +350,12 @@ describe("local media path policy", () => {
 		header.write("IHDR", 12);
 		header.writeUInt32BE(640, 16);
 		header.writeUInt32BE(480, 20);
-		await manager.saveProjectThumbnail(
-			projectPath,
-			`data:image/png;base64,${header.toString("base64")}`,
+		const thumbnail = manager.getLegacyProjectThumbnailPath(projectPath);
+		const { encodeComposedThumbnail } = await import("./composedThumbnail");
+		await fs.writeFile(
+			thumbnail,
+			encodeComposedThumbnail(`data:image/png;base64,${header.toString("base64")}`),
 		);
-		const thumbnail = manager.getProjectThumbnailPath(projectPath);
 		const sibling = path.join(external, "private.png");
 		await fs.writeFile(sibling, "private");
 		await expect(manager.isAllowedLocalMediaPath(thumbnail)).resolves.toBe(false);
@@ -349,7 +383,7 @@ describe("local media path policy", () => {
 		header.write("IHDR", 12);
 		header.writeUInt32BE(640, 16);
 		header.writeUInt32BE(480, 20);
-		const thumbnail = manager.getProjectThumbnailPath(projectPath);
+		const thumbnail = manager.getLegacyProjectThumbnailPath(projectPath);
 		await fs.writeFile(thumbnail, header);
 		await manager.saveRecentProjectPaths([projectPath]);
 		expect((await manager.listProjectLibraryEntries()).entries[0]?.thumbnailPath).toBeNull();
@@ -359,7 +393,8 @@ describe("local media path policy", () => {
 			targetProject,
 			`data:image/png;base64,${header.toString("base64")}`,
 		);
-		const target = manager.getProjectThumbnailPath(targetProject);
+		const target = manager.getLegacyProjectThumbnailPath(targetProject);
+		await fs.copyFile(await manager.getProjectThumbnailPath(targetProject), target);
 		await fs.rm(thumbnail);
 		try {
 			await fs.symlink(target, thumbnail);
@@ -421,6 +456,26 @@ describe("local media path policy", () => {
 		expect(result.success).toBe(true);
 		expect(result.path).toBe(projectPath);
 		expect(result.project).toMatchObject({ videoPath });
+	});
+
+	it("loads a valid managed recovery generation without changing the damaged document", async () => {
+		const { loadProjectFromPath } = await import("./manager");
+		const { getProjectBackupPath, writeProjectFileAtomically } = await import("./atomicSave");
+		const videoPath = path.join(tempPath, "recover-video.mp4");
+		const projectPath = path.join(tempPath, "recover.recordly");
+		const contents = JSON.stringify({ version: 1, videoPath, editor: { wallpaper: "red" } });
+		await fs.writeFile(videoPath, "video");
+		await writeProjectFileAtomically(projectPath, contents);
+		await writeProjectFileAtomically(projectPath, contents);
+		expect(await getProjectBackupPath(projectPath)).toContain(
+			path.join(userDataPath, "project-recovery"),
+		);
+		await fs.writeFile(projectPath, "damaged");
+		const result = await loadProjectFromPath(projectPath);
+		expect(result.success).toBe(true);
+		expect(result.recovered).toBe(true);
+		expect(result.project).toMatchObject({ editor: { wallpaper: "red" } });
+		expect(await fs.readFile(projectPath, "utf-8")).toBe("damaged");
 	});
 
 	it("rejects invalid project payloads before approving media paths", async () => {
@@ -514,7 +569,8 @@ describe("local media path policy", () => {
 			JSON.stringify({ version: 2, videoPath: source, editor: {} }),
 		);
 		await fs.writeFile(target, "must remain intact");
-		const thumbnail = manager.getProjectThumbnailPath(projectPath);
+		const thumbnail = await manager.getProjectThumbnailPath(projectPath);
+		await fs.mkdir(path.dirname(thumbnail), { recursive: true });
 		try {
 			await fs.symlink(target, thumbnail);
 		} catch (error) {
@@ -547,10 +603,55 @@ describe("local media path policy", () => {
 		await fs.appendFile(projectPath, " ");
 		release(Buffer.from("obsolete poster"));
 		expect(await task).toBeNull();
-		await expect(fs.stat(manager.getProjectThumbnailPath(projectPath))).rejects.toMatchObject({
+		await expect(
+			fs.stat(await manager.getProjectThumbnailPath(projectPath)),
+		).rejects.toMatchObject({
 			code: "ENOENT",
 		});
 	});
+
+	it("preserves a valid legacy generation when a direct save finds an invalid project object", async () => {
+		await import("./manager");
+		const { getProjectBackupPath, getLegacyProjectBackupPath, writeProjectFileAtomically } =
+			await import("./atomicSave");
+		const projectPath = path.join(tempRoot, "damaged.recordly");
+		const previous = JSON.stringify({ version: 2, videoPath: "/previous.mp4", editor: {} });
+		const next = JSON.stringify({ version: 2, videoPath: "/next.mp4", editor: {} });
+		await fs.writeFile(projectPath, "{}");
+		await fs.writeFile(getLegacyProjectBackupPath(projectPath), previous);
+		await writeProjectFileAtomically(projectPath, next);
+		expect(await fs.readFile(projectPath, "utf-8")).toBe(next);
+		expect(await fs.readFile(await getProjectBackupPath(projectPath), "utf-8")).toBe(previous);
+		await expect(fs.access(getLegacyProjectBackupPath(projectPath))).rejects.toMatchObject({
+			code: "ENOENT",
+		});
+	});
+
+	it("shares a managed thumbnail identity across parent aliases and retains old hashed caches", async () => {
+		const manager = await import("./manager");
+		const actualDirectory = path.join(tempRoot, "actual");
+		const aliasDirectory = path.join(tempRoot, "alias");
+		await fs.mkdir(actualDirectory);
+		await fs.symlink(
+			actualDirectory,
+			aliasDirectory,
+			process.platform === "win32" ? "junction" : "dir",
+		);
+		const actualProject = path.join(actualDirectory, "demo.recordly");
+		const aliasProject = path.join(aliasDirectory, "demo.recordly");
+		expect(await manager.getProjectThumbnailPath(aliasProject)).toBe(
+			await manager.getProjectThumbnailPath(actualProject),
+		);
+		const { createHash } = await import("node:crypto");
+		const oldKey = process.platform === "win32" ? actualProject.toLowerCase() : actualProject;
+		const oldCache = path.join(
+			userDataPath,
+			"project-thumbnails",
+			`${createHash("sha256").update(oldKey).digest("hex")}.png`,
+		);
+		expect(await manager.getProjectThumbnailPaths(actualProject)).toContain(oldCache);
+	});
+
 	it.skipIf(process.platform === "win32")(
 		"does not approve a replacement symlink target after validating its previous target",
 		async () => {

@@ -9,7 +9,8 @@ productionTest(
 		await installDesktopBridge(page);
 		await installDesktopBridgeOverrides(page, () => {
 			window.electronAPI.getAppSetting = (key) =>
-				key === "recordly.onboarding.permissionsRequested";
+				key === "recordly.onboarding.permissionsRequested" ||
+				key === "recordly.onboarding.v1.seen";
 			window.electronAPI.getScreenRecordingPermissionStatus = async () => ({
 				success: true,
 				status: localStorage.getItem("screen-allowed") === "true" ? "granted" : "denied",
@@ -66,7 +67,7 @@ test("permission polling stops when leaving the panel and resumes on return", as
 		};
 	});
 	await page.clock.install();
-	await page.goto("/?windowType=onboarding");
+	await page.goto("/?windowType=onboarding&onboardingPreview=1");
 	const panel = page.getByRole("dialog", { name: "Welcome to Recordly", exact: true });
 	await panel.getByRole("button", { name: "Continue", exact: true }).click();
 	await expect(

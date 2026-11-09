@@ -1,5 +1,12 @@
 {
 	"recording": {
+		"audio": "Audio",
+		"camera": "Camera",
+		"systemAudio": "Computeraudio",
+		"systemAudioDescription": "Apps, video’s en systeemgeluiden",
+		"off": "Uit",
+		"cameraPreview": "Voorbeeld",
+		"cancelCountdown": "Aftellen annuleren",
 		"home": "Start",
 		"disableSystemAudio": "Systeemaudio uitschakelen",
 		"enableSystemAudio": "Systeemaudio inschakelen",

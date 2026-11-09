@@ -102,7 +102,7 @@ export function drawCursorOnCanvas(
 	);
 
 	ctx.save();
-	if (!hasBakedCursorShadow(config.style)) {
+	if (!hasBakedCursorShadow(config.style, asset)) {
 		ctx.filter = CURSOR_SVG_DROP_SHADOW_FILTER;
 	}
 	if (config.style === "pixel-hand") {

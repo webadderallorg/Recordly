@@ -1,7 +1,8 @@
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import "./EditorExportMenu.css";
 import { Card, ProgressBar, Tag, TagGroup } from "@heroui/react";
-import { Export, HardDrive, LinkSimple } from "@phosphor-icons/react";
+import { HardDrive, LinkSimple } from "@phosphor-icons/react";
+import { RecordlyMark } from "@/components/ui/RecordlyMark";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ExportErrorReportButton } from "@/components/feedback/ExportErrorReportButton";
@@ -192,7 +193,7 @@ export function EditorExportMenu(props: Props) {
 						type="button"
 						className="inline-flex h-9 min-w-[104px] items-center justify-center gap-2 px-4.5"
 					>
-						<Export className="h-4 w-4" />
+						<RecordlyMark />
 						<span className="text-sm font-semibold tracking-tight">
 							{uiText("ui.publish")}
 						</span>

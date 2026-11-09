@@ -7,6 +7,7 @@ import type { EditorEffectSection } from "@/components/video-editor/types";
 import { cn } from "@/lib/utils";
 
 import type { ResolvedSettingsPanelProps } from "./settingsPanelDefaults";
+import { useScrollFade } from "./useScrollFade";
 import { useSettingsTranslations } from "./useSettingsTranslations";
 
 export const settingsPanelShellKeys = [
@@ -39,6 +40,7 @@ export function SettingsPanelShell(props: Props) {
 	const { tSettings } = useSettingsTranslations();
 	const { children } = props;
 	const scrollRef = useRef<HTMLDivElement>(null);
+	const scrollFade = useScrollFade(scrollRef, activeEffectSection);
 	useLayoutEffect(() => {
 		if (activeEffectSection && scrollRef.current) scrollRef.current.scrollTop = 0;
 	}, [activeEffectSection]);
@@ -47,7 +49,7 @@ export function SettingsPanelShell(props: Props) {
 			<div
 				ref={scrollRef}
 				className="flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar px-5 pb-6 pt-1 scroll-shadow scroll-shadow--vertical scroll-shadow--fade scroll-shadow--hide-scrollbar [--scroll-shadow-size:16px]"
-				data-scroll-shadow-mode="auto"
+				data-scroll-shadow-mode={scrollFade}
 			>
 				{activeEffectSection === "settings" ? (
 					children

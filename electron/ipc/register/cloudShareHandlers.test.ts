@@ -92,6 +92,60 @@ describe("cloud share IPC lifecycle", () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
+	it("reports verified HTTP failures for idempotent cleanup, but never invents status on transport failure", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify({ error: "Video not found" }), {
+						status: 404,
+						headers: { "content-type": "application/json" },
+					}),
+			),
+		);
+		expect(
+			await call("cloud-share-manage", owner, {
+				endpoint,
+				token: "token",
+				action: "delete",
+				shareCode: "abc",
+			}),
+		).toMatchObject({ success: false, httpStatus: 404, resourceMissing: true });
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				throw new Error("offline");
+			}),
+		);
+		const failed = await call("cloud-share-manage", owner, {
+			endpoint,
+			token: "token",
+			action: "delete",
+			shareCode: "abc",
+		});
+		expect(failed).toMatchObject({ success: false });
+		expect(failed).not.toHaveProperty("httpStatus");
+	});
+
+	it.each([
+		{ body: "<html>not found</html>", type: "text/html" },
+		{ body: JSON.stringify({ error: "Not found" }), type: "application/json" },
+	])("does not confuse generic404 with missing video: %o", async ({ body, type }) => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () => new Response(body, { status: 404, headers: { "content-type": type } }),
+			),
+		);
+		expect(
+			await call("cloud-share-manage", owner, {
+				endpoint,
+				token: "token",
+				action: "delete",
+				shareCode: "abc",
+			}),
+		).toMatchObject({ success: false, httpStatus: 404, resourceMissing: false });
+	});
 	it("does not let embedded frames cancel or replace credentials on an active upload", () => {
 		server();
 		const id = uploadId();

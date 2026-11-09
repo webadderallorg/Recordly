@@ -10,7 +10,7 @@ for (const theme of ["light", "dark"]) {
 		await page.setViewportSize({ width: 1000, height: 700 });
 		await page.goto("/?windowType=editor");
 		await page
-			.getByRole("button", { name: /^Upgrade to Cloud/ })
+			.getByRole("button", { name: /^Upgrade(?:,|$)/ })
 			.first()
 			.click();
 		const modal = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });

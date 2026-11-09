@@ -94,7 +94,7 @@ describe.each(SUPPORTED_LOCALES)("billing UI in %s", (locale) => {
 		);
 		expect(markup).not.toContain("{{");
 		expect(markup).toContain(active.messages.earlyBird.replace("{{percent}}", "40"));
-		expect(markup).toContain(active.messages.upgrade);
+		expect(markup).toContain(active.messages.upgradeShort);
 		expect(markup).toContain(active.messages.featureCommercial);
 		expect(markup).toContain(active.messages.featureCaptionFiles);
 		expect(markup).not.toContain(active.messages.commercialRequirement);

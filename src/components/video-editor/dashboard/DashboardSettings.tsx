@@ -306,20 +306,21 @@ export function DashboardSettings({
 									"settings.dashboard.recordingsFolder",
 									"Recordings folder",
 								)}
-								help={t(
-									"settings.appPreferences.folderScope",
-									"Changing this location affects future recordings. Existing files stay in their current folders.",
-								)}
-								descriptionInline
-								description={
-									<span className="settings-folder-path" title={recordings}>
-										{recordings ||
-											folderErrors.recordings ||
-											t(
-												"settings.appPreferences.loadingFolder",
-												"Loading folder location…",
-											)}
-									</span>
+								help={
+									<>
+										{t(
+											"settings.appPreferences.folderScope",
+											"Changing this location affects future recordings. Existing files stay in their current folders.",
+										)}
+										<span className="mt-2 block break-all font-mono">
+											{recordings ||
+												folderErrors.recordings ||
+												t(
+													"settings.appPreferences.loadingFolder",
+													"Loading folder location…",
+												)}
+										</span>
+									</>
 								}
 							>
 								<div className="settings-actions">
@@ -369,24 +370,30 @@ export function DashboardSettings({
 								</div>
 							</SettingsRow>
 							{status("recordings")}
+							{folderErrors.recordings && (
+								<p role="alert" className="settings-inline-feedback text-danger">
+									{folderErrors.recordings}
+								</p>
+							)}
 						</div>
 						<div className="settings-item">
 							<SettingsRow
 								title={t("settings.dashboard.projectsFolder", "Projects folder")}
-								help={t(
-									"settings.dashboard.autosave",
-									"Named projects save automatically.",
-								)}
-								descriptionInline
-								description={
-									<span className="settings-folder-path" title={directory}>
-										{directory ||
-											folderErrors.projects ||
-											t(
-												"settings.appPreferences.loadingFolder",
-												"Loading folder location…",
-											)}
-									</span>
+								help={
+									<>
+										{t(
+											"settings.dashboard.autosave",
+											"Named projects save automatically.",
+										)}
+										<span className="mt-2 block break-all font-mono">
+											{directory ||
+												folderErrors.projects ||
+												t(
+													"settings.appPreferences.loadingFolder",
+													"Loading folder location…",
+												)}
+										</span>
+									</>
 								}
 							>
 								<Button
@@ -401,6 +408,11 @@ export function DashboardSettings({
 								</Button>
 							</SettingsRow>
 							{status("projects")}
+							{folderErrors.projects && (
+								<p role="alert" className="settings-inline-feedback text-danger">
+									{folderErrors.projects}
+								</p>
+							)}
 						</div>
 					</div>
 					{(folderErrors.recordings || folderErrors.projects) && (

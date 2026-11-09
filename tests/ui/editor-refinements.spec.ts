@@ -73,7 +73,7 @@ test("advanced controls, webcam defaults and captions have consistent layouts", 
 		"true",
 	);
 	await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveCount(0);
-	await page.getByRole("row", { name: "Squircle", exact: true }).click();
+	await page.getByRole("row", { name: "Square", exact: true }).click();
 	await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveValue("50");
 	const replace = page.getByRole("button", { name: "Replace footage", exact: true });
 	const remove = page.getByRole("button", { name: "Remove footage", exact: true });

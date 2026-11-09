@@ -1,8 +1,8 @@
 import type { User } from "@supabase/supabase-js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
-import { RecordlySignInDialog } from "./RecordlySignInDialog";
 import { RecordingPermissionsDialog } from "./RecordingPermissionsDialog";
+import { RecordlySignInDialog } from "./RecordlySignInDialog";
 
 const SEEN_KEY = "recordly.onboarding.v1.seen";
 const DEV_DISMISSED_KEY = "recordly.dev.onboardingDismissed";
@@ -22,8 +22,13 @@ export function OnboardingController({
 	callbackError?: string;
 	standalone?: boolean;
 }) {
-	// Every development entry point uses the same freely navigable preview.
-	const preview = import.meta.env.DEV;
+	// The development tour is optional. Native permission requests and explicit
+	// real-flow tests use preview=0; neither mode changes the restored account.
+	const [preview, setPreview] = useState(
+		() =>
+			import.meta.env.DEV &&
+			new URLSearchParams(window.location.search).get("onboardingPreview") !== "0",
+	);
 	// The dedicated window can paint its account UI while session recovery runs.
 	// `ready` gates account-dependent routing, not the window's initial display.
 	const [open, setOpen] = useState(standalone);
@@ -31,44 +36,48 @@ export function OnboardingController({
 	const [returningSignIn, setReturningSignIn] = useState(false);
 	const [startWithPermissions, setStartWithPermissions] = useState(false);
 	const checked = useRef(false);
+	const handledRequest = useRef(0);
 	const finishingPermissions = useRef(false);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: preview is fixed for this renderer build; retain its explicit callback/effect lifetime.
-	const openWindow = useCallback(() => {
-		setReturningSignIn(false);
-		if (standalone) setOpen(true);
-		else
-			void window.electronAPI
-				.showOnboardingWindow({ preview })
-				.catch(() => false)
-				.then((shown) => {
-					if (!shown) {
-						setInlineFallback(true);
-						setOpen(true);
-					}
-				});
-	}, [standalone, preview]);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: preview is fixed for this renderer build; retain its explicit callback/effect lifetime.
-	useEffect(() => {
-		if (requestNonce > 0) {
-			setStartWithPermissions(!preview);
-			if (!preview) saveAppSetting("recordly.onboarding.permissionsRequested", true);
-			openWindow();
-		}
-	}, [requestNonce, openWindow, preview]);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: preview is fixed for this renderer build; retain its explicit callback/effect lifetime.
-	const close = useCallback(() => {
-		if (preview) {
+	const openWindow = useCallback(
+		(windowPreview = preview) => {
 			checked.current = true;
+			setPreview(windowPreview);
+			setReturningSignIn(false);
+			if (standalone) setOpen(true);
+			else
+				void window.electronAPI
+					.showOnboardingWindow({ preview: windowPreview })
+					.catch(() => false)
+					.then((shown) => {
+						if (!shown) {
+							setInlineFallback(true);
+							setOpen(true);
+						}
+					});
+		},
+		[standalone, preview],
+	);
+	useEffect(() => {
+		if (requestNonce > handledRequest.current) {
+			handledRequest.current = requestNonce;
+			const requestedPreview = import.meta.env.DEV;
+			setStartWithPermissions(!requestedPreview);
+			if (!requestedPreview) saveAppSetting("recordly.onboarding.permissionsRequested", true);
+			openWindow(requestedPreview);
+		}
+	}, [requestNonce, openWindow]);
+	const close = useCallback(() => {
+		checked.current = true;
+		if (preview) {
 			saveAppSetting(DEV_DISMISSED_KEY, true);
-		} else saveAppSetting("recordly.onboarding.permissionsRequested", false);
+		}
 		setStartWithPermissions(false);
 		setOpen(false);
 	}, [preview]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: preview is fixed for this renderer build; retain its explicit callback/effect lifetime.
 	useEffect(() => {
 		if (!ready) return;
-		if (preview && checked.current) return;
+		if (checked.current && (preview || standalone)) return;
 		if (!standalone) {
 			// A preview dismissal survives renderer/window recreation without marking
 			// production onboarding complete or replaying a stale permission request.
@@ -80,7 +89,8 @@ export function OnboardingController({
 			if (!preview && !user && seen && !permissionsRequested) {
 				setReturningSignIn(true);
 				setOpen(true);
-			} else if (permissionsRequested || !seen) {
+			} else if (!checked.current && (permissionsRequested || !seen)) {
+				// Session updates must not duplicate an in-flight native window request.
 				setReturningSignIn(false);
 				openWindow();
 			}
@@ -103,8 +113,9 @@ export function OnboardingController({
 	useEffect(
 		() =>
 			window.electronAPI.onRecordingPermissionsRequested?.(() => {
+				saveAppSetting("recordly.onboarding.permissionsRequested", true);
 				setStartWithPermissions(true);
-				openWindow();
+				openWindow(false);
 			}),
 		[openWindow],
 	);
@@ -150,7 +161,13 @@ export function OnboardingController({
 		finishPermissions();
 	};
 
-	if (startWithPermissions && !preview && user && (standalone || inlineFallback))
+	if (
+		startWithPermissions &&
+		!preview &&
+		user &&
+		loadAppSetting<boolean>(SEEN_KEY) === true &&
+		(standalone || inlineFallback)
+	)
 		return (
 			<RecordingPermissionsDialog
 				open={open}

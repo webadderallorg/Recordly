@@ -1,8 +1,11 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
-import { useShortcuts } from "@/contexts/ShortcutsContext";
-import { formatBinding } from "@/lib/shortcuts";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Slider } from "@/components/ui/slider";
+import type { Dispatch, RefObject, SetStateAction } from "react";
+import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
 	CaretDown,
 	Crop,
@@ -18,16 +21,13 @@ import {
 	SpeakerLow,
 	SpeakerX,
 } from "@/components/ui/icons";
-import type { Dispatch, RefObject, SetStateAction } from "react";
-import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Slider } from "@/components/ui/slider";
 import type { useI18n } from "@/contexts/I18nContext";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
+import { useShortcuts } from "@/contexts/ShortcutsContext";
+import { formatBinding } from "@/lib/shortcuts";
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import type { CaptionEditTarget } from "../captionEditing";
@@ -35,14 +35,15 @@ import type { useAnnotationRegionCommands } from "../hooks/useAnnotationRegionCo
 import type { useEditorPlaybackControls } from "../hooks/useEditorPlaybackControls";
 import type { useTimelineProjection } from "../hooks/useTimelineProjection";
 import type { useZoomRegionCommands } from "../hooks/useZoomRegionCommands";
+import { formatPlaybackTime } from "../playbackTime";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
 import type { TimelineEditorHandle } from "../timeline/TimelineEditor";
 import type { VideoPlaybackRef } from "../VideoPlayback";
-import { InlineCropEditor } from "./InlineCropEditor";
-import { EditorVideoPreview } from "./EditorVideoPreview";
-import { AspectRatioPicker } from "./AspectRatioPicker";
 import { AnnotationToolbar } from "./AnnotationToolbar";
+import { AspectRatioPicker } from "./AspectRatioPicker";
+import { EditorVideoPreview } from "./EditorVideoPreview";
+import { InlineCropEditor } from "./InlineCropEditor";
 
 // Temporarily hide the toolbar while retaining the annotation tools.
 const SHOW_ANNOTATION_TOOLBAR = false;
@@ -83,13 +84,6 @@ type Props = {
 	setIsPlaying: Dispatch<SetStateAction<boolean>>;
 	setError: (message: string | null) => void;
 };
-
-function formatTime(seconds: number) {
-	if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
-	const mins = Math.floor(seconds / 60);
-	const secs = Math.floor(seconds % 60);
-	return `${mins}:${secs.toString().padStart(2, "0")}`;
-}
 
 export function EditorPreviewPanel(props: Props) {
 	const { locale, t: uiText } = useUiLocale();
@@ -347,7 +341,7 @@ export function EditorPreviewPanel(props: Props) {
 				<div className="editor-playback-center z-10 flex items-center justify-center">
 					<div className="pointer-events-auto flex items-center gap-1.5">
 						<span className="mr-1 text-[10px] font-medium tabular-nums text-muted-foreground">
-							{formatTime(projection.timelinePlayheadTime)}
+							{formatPlaybackTime(projection.timelinePlayheadTime)}
 						</span>
 						<Button
 							variant="ghost"
@@ -383,7 +377,7 @@ export function EditorPreviewPanel(props: Props) {
 							<SkipForward className="h-3.5 w-3.5" weight="fill" />
 						</Button>
 						<span className="ml-1 text-[10px] font-medium tabular-nums text-muted-foreground/70">
-							{formatTime(projection.timelineDuration)}
+							{formatPlaybackTime(projection.timelineDuration)}
 						</span>
 					</div>
 				</div>

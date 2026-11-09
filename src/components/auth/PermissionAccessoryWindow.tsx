@@ -1,6 +1,7 @@
 import { Button, Card } from "@heroui/react";
 import { ArrowLeft, DotsSixVertical } from "@phosphor-icons/react";
 import { useState } from "react";
+import { RecordlyMark } from "@/components/ui/RecordlyMark";
 
 /** The native helper only follows Settings; Recordly renders the actual UI. */
 export default function PermissionAccessoryWindow() {
@@ -24,11 +25,7 @@ export default function PermissionAccessoryWindow() {
 					>
 						<ArrowLeft size={16} aria-hidden="true" /> Back
 					</Button>
-					<img
-						src="/app-icons/recordly-solid-blue-32.png"
-						alt="Recordly"
-						className="size-6"
-					/>
+					<RecordlyMark className="size-6 text-accent" />
 				</div>
 				<h1 className="text-base font-semibold tracking-tight">Drag to System Settings</h1>
 				<div

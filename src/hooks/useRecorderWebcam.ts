@@ -8,7 +8,7 @@ import { getVideoExtensionForMimeType, selectWebcamRecordingMimeType } from "./r
 const WEBCAM_BITRATE = 8_000_000;
 const WEBCAM_WIDTH = 1280;
 const WEBCAM_HEIGHT = 720;
-const WEBCAM_FRAME_RATE = 30;
+const WEBCAM_FRAME_RATE = 60;
 const RECORDER_TIMESLICE_MS = 250;
 const RECORDING_FILE_PREFIX = "recording-";
 const WEBCAM_SUFFIX = "-webcam";
@@ -94,6 +94,14 @@ export function useRecorderWebcam({
 							frameRate: { ideal: WEBCAM_FRAME_RATE, max: WEBCAM_FRAME_RATE },
 						},
 				audio: false,
+			});
+
+			const settings = webcamStream.current.getVideoTracks?.()[0]?.getSettings?.();
+			console.info("[Recorder] Webcam capture settings", {
+				requestedFrameRate: WEBCAM_FRAME_RATE,
+				frameRate: settings?.frameRate ?? null,
+				width: settings?.width ?? null,
+				height: settings?.height ?? null,
 			});
 
 			const mimeType = selectWebcamRecordingMimeType();

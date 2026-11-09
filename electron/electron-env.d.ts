@@ -790,6 +790,7 @@ interface Window {
 			kind?: "media" | "project";
 			path?: string;
 			project?: unknown;
+			recovered?: boolean;
 			extension?: string;
 			message?: string;
 			canceled?: boolean;
@@ -940,7 +941,10 @@ interface Window {
 			paths: string[],
 			removed: boolean,
 		) => Promise<import("../src/types/recordingLibrary").LibraryResult<null>>;
-		trashRecordingSources: (paths: string[]) => Promise<
+		trashRecordingSources: (
+			paths: string[],
+			protectedSources?: string[],
+		) => Promise<
 			import("../src/types/recordingLibrary").LibraryResult<{
 				deleted: string[];
 				errors: string[];
@@ -989,6 +993,7 @@ interface Window {
 			success: boolean;
 			path?: string;
 			project?: unknown;
+			recovered?: boolean;
 			message?: string;
 			canceled?: boolean;
 			error?: string;
@@ -998,6 +1003,7 @@ interface Window {
 			path?: string;
 			missingRecordingPath?: string | null;
 			project?: unknown;
+			recovered?: boolean;
 			message?: string;
 			canceled?: boolean;
 			error?: string;
@@ -1026,9 +1032,25 @@ interface Window {
 			path: string,
 			name: string,
 		) => Promise<{ success: boolean; path?: string; error?: string }>;
+		reviewProjectDeletion: (
+			paths: string[],
+			protectedSources?: string[],
+		) => Promise<{
+			success: boolean;
+			sourceCount?: number;
+			preservedSourceCount?: number;
+			error?: string;
+		}>;
 		trashProjectFiles: (
 			paths: string[],
-		) => Promise<{ success: boolean; deleted: string[]; errors: string[] }>;
+			options?: { includeSources?: boolean; protectedSources?: string[] },
+		) => Promise<{
+			success: boolean;
+			deleted: string[];
+			errors: string[];
+			sourcesDeleted?: string[];
+			sourcesKept?: string[];
+		}>;
 		onProjectThumbnailReady: (
 			callback: (ready: { path: string; thumbnailPath: string; updatedAt: number }) => void,
 		) => () => void;
@@ -1050,6 +1072,7 @@ interface Window {
 			success: boolean;
 			path?: string;
 			project?: unknown;
+			recovered?: boolean;
 			message?: string;
 			canceled?: boolean;
 			error?: string;
@@ -1058,6 +1081,7 @@ interface Window {
 			success: boolean;
 			path?: string;
 			project?: unknown;
+			recovered?: boolean;
 			message?: string;
 			canceled?: boolean;
 			error?: string;
@@ -1167,6 +1191,8 @@ interface Window {
 		}) => Promise<{
 			success: boolean;
 			error?: string;
+			httpStatus?: number;
+			resourceMissing?: boolean;
 			videos?: Array<{
 				code: string;
 				createdAt?: string;

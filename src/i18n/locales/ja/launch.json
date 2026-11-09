@@ -1,5 +1,12 @@
 {
 	"recording": {
+		"audio": "音声",
+		"camera": "カメラ",
+		"systemAudio": "コンピューターの音声",
+		"systemAudioDescription": "アプリ、動画、システムの音",
+		"off": "オフ",
+		"cameraPreview": "プレビュー",
+		"cancelCountdown": "カウントダウンをキャンセル",
 		"home": "ホーム",
 		"disableSystemAudio": "システム音声をオフにする",
 		"enableSystemAudio": "システム音声をオンにする",

@@ -1,9 +1,10 @@
-import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { Button } from "@heroui/react";
 import { ArrowLeft, Check } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { useScopedT } from "@/contexts/I18nContext";
+import { saveAppSetting } from "@/lib/appSettings";
 import {
 	OnboardingBody,
 	OnboardingFooter,
@@ -42,6 +43,9 @@ export function OnboardingPermissions({
 	const mounted = useRef(false);
 	const refreshing = useRef(false);
 	const canSimulate = import.meta.env.DEV && preview;
+	useEffect(() => {
+		if (!preview) saveAppSetting("recordly.onboarding.permissionsRequested", true);
+	}, [preview]);
 	// Preview resets only the displayed state; macOS remains the source of actual grants.
 	const granted = {
 		screen: screenGranted && !(canSimulate && simulatedMissing.screen),
@@ -150,11 +154,7 @@ export function OnboardingPermissions({
 			className="onboarding-permissions relative flex h-full min-h-0 flex-col"
 			aria-busy={platform === "checking"}
 		>
-			<PermissionsConfetti
-				ready={
-					platform === "mac" && granted.screen && granted.accessibility && !statusError
-				}
-			/>
+			<PermissionsConfetti ready={platform === "mac" && canFinish} />
 			<OnboardingBody>
 				<OnboardingHeader
 					centered
@@ -172,8 +172,8 @@ export function OnboardingPermissions({
 							isDisabled={platform === "checking" || Boolean(busy)}
 							onPress={() => {
 								setSimulatedMissing({ screen: true, accessibility: true });
-								setStatusError(undefined);
 								setRequestError(undefined);
+								setStatusError(undefined);
 							}}
 						>
 							{t("simulatePermissions", "Simulate permissions")}

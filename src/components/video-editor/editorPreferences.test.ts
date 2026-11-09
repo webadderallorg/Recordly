@@ -660,5 +660,9 @@ describe("camera shape preferences", () => {
 		expect(
 			normalizeEditorPreferences({ webcam: { shape: "squircle" } as never }).webcam.shape,
 		).toBe("squircle");
+		expect(
+			normalizeEditorPreferences({ webcam: { shape: "rectangle", roundness: 0 } as never })
+				.webcam,
+		).toMatchObject({ shape: "rectangle", roundness: 0 });
 	});
 });

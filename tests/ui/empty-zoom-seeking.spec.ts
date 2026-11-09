@@ -38,5 +38,56 @@ test("empty zoom row seeks and scrubs without adding zooms", async ({ page }) =>
 	await expect(page.getByText("No cursor telemetry available", { exact: true })).toBeVisible();
 	await expectPlayheadAt(firstX);
 	await expect(page.locator('[data-variant="zoom"]')).toHaveCount(0);
-	await expect(apply).toBeVisible();
+	await expect(apply).toBeVisible({ timeout: 20000 });
+});
+
+test("dismissing the inline auto-zoom prompt restores manual hover placement", async ({ page }) => {
+	await installDesktopBridge(page, "filmstrip.mp4");
+	await page.goto("/?windowType=editor");
+	const apply = page.getByRole("button", { name: "Apply auto zooms", exact: true });
+	await expect(apply).toBeVisible({ timeout: 20000 });
+	const dismiss = page.getByRole("button", { name: "Dismiss", exact: true });
+	const applyBounds = (await apply.boundingBox())!;
+	const dismissBounds = (await dismiss.boundingBox())!;
+	expect(
+		Math.abs(
+			applyBounds.y + applyBounds.height / 2 - dismissBounds.y - dismissBounds.height / 2,
+		),
+	).toBeLessThan(1);
+	const row = page.locator('[data-timeline-row="row-zoom"]');
+	const bounds = (await row.boundingBox())!;
+	const x = bounds.x + bounds.width * 0.25;
+	const y = bounds.y + bounds.height / 2;
+	await page.mouse.move(x, y);
+	await expect(row.getByTestId("timeline-add-preview")).toHaveCount(0);
+	await dismiss.click();
+	await expect(apply).toHaveCount(0);
+	await page.mouse.move(x, y);
+	await expect(row.getByTestId("timeline-add-preview")).toBeVisible();
+	await page.mouse.click(x, y);
+	const zoom = page.locator('[data-variant="zoom"]');
+	await expect(zoom).toHaveCount(1);
+	await zoom.click();
+	await page.keyboard.press("Backspace");
+	await expect(zoom).toHaveCount(0);
+	await expect(apply).toHaveCount(0);
+	await page.mouse.move(x + 20, y);
+	await expect(row.getByTestId("timeline-add-preview")).toBeVisible();
+});
+
+test("removing the last zoom shows the apply prompt unless explicitly dismissed", async ({
+	page,
+}) => {
+	await installDesktopBridge(page, "filmstrip.mp4");
+	await page.goto("/?windowType=editor");
+	const apply = page.getByRole("button", { name: "Apply auto zooms", exact: true });
+	await expect(apply).toBeVisible({ timeout: 20000 });
+	await page.getByRole("button", { name: "Add Zoom (Z)", exact: true }).click();
+	const zoom = page.locator('[data-variant="zoom"]');
+	await expect(zoom).toHaveCount(1);
+	await expect(apply).toHaveCount(0);
+	await zoom.click();
+	await page.keyboard.press("Backspace");
+	await expect(zoom).toHaveCount(0);
+	await expect(apply).toBeVisible({ timeout: 20000 });
 });

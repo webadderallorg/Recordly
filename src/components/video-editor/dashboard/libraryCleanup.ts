@@ -1,8 +1,19 @@
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import type { EditorProjectData } from "../projectPersistence";
 import { fromFileUrl } from "../projectMediaPaths";
+import { getTimelineDurationMs } from "../types";
+import { getProjectShareLink, getProjectShareLinkStrict } from "../cloud/projectShareLinks";
+import { hasLibraryExport, readLibraryExportHistory } from "./libraryExportHistory";
+import { readLibraryMediaInfo } from "./librarySort";
 
-export type CleanupRule = "all" | "untouched" | "duplicates" | "unused";
+export type CleanupRule = "all" | "untouched" | "duplicates" | "unused" | "neverExported" | "short";
+export const CLEANUP_SHORT_SECONDS = 5;
+export function toggleCleanupRule(rules: readonly CleanupRule[], rule: CleanupRule): CleanupRule[] {
+	if (rule === "all") return [];
+	return rules.includes(rule)
+		? rules.filter((item) => item !== rule)
+		: [...rules.filter((item) => item !== "all"), rule];
+}
 export type CleanupPeriod = "all" | "older7" | "older30" | "older90" | "custom";
 export type CleanupDateFilter = {
 	period: CleanupPeriod;
@@ -164,26 +175,39 @@ export function duplicateCandidates(
 }
 
 export async function scanCleanup(
-	rule: CleanupRule,
+	selection: CleanupRule | readonly CleanupRule[],
 	entries: ProjectLibraryEntry[],
 	projects: ProjectLibraryEntry[],
 	isRaw: boolean,
 	cancelled: () => boolean,
+	shortSeconds = CLEANUP_SHORT_SECONDS,
 ): Promise<CleanupScan> {
+	const rules = [
+		...new Set(
+			(typeof selection === "string" ? [selection] : selection).filter(
+				(rule) => rule !== "all",
+			),
+		),
+	];
 	const result: CleanupScan = {
 		candidates: new Set(),
 		keepers: new Map(),
 		skipped: 0,
 		incomplete: false,
 	};
-	if (rule === "all") {
-		result.candidates = new Set(
-			entries.filter((entry) => !entry.isCurrent).map((entry) => entry.path),
-		);
+	const eligible = entries.filter((entry) => !entry.isCurrent);
+	if (rules.includes("short") && (!Number.isFinite(shortSeconds) || shortSeconds <= 0))
+		return result;
+	if (!rules.length) {
+		result.candidates = new Set(eligible.map((entry) => entry.path));
 		return result;
 	}
+	const candidates = new Map(rules.map((rule) => [rule, new Set<string>()]));
 	const references = new Set<string>();
+	const exportedSources = new Set<string>();
 	const groups = new Map<string, string[]>();
+	const history = readLibraryExportHistory();
+	if (rules.includes("neverExported") && !history.available) result.skipped++;
 	let index = 0;
 	const work = async () => {
 		while (!cancelled() && index < projects.length) {
@@ -195,20 +219,48 @@ export async function scanCleanup(
 					throw new Error("Incomplete source references");
 				const project = preview.value.project;
 				if (!project?.videoPath || !project.editor) throw new Error("Invalid project");
+				const knownExport =
+					hasLibraryExport(history.records, {
+						projectId: project.projectId,
+						projectPath: entry.path,
+						sourcePath: project.videoPath,
+					}) ||
+					Boolean(
+						rules.includes("neverExported")
+							? getProjectShareLinkStrict(entry.path)
+							: getProjectShareLink(entry.path),
+					);
 				collectPaths(project, references);
 				collectPaths(preview.value.videoUrl, references);
 				collectPaths(preview.value.webcamUrl, references);
 				collectPaths(preview.value.sourcePaths, references);
-				if (rule === "duplicates" && !isRaw) {
+				if (knownExport) {
+					collectPaths(project.videoPath, exportedSources);
+					collectPaths(preview.value.sourcePaths, exportedSources);
+				}
+				if (isRaw) continue;
+				if (rules.includes("duplicates")) {
 					const key = projectDuplicateKey(project);
 					groups.set(key, [...(groups.get(key) ?? []), entry.path]);
-				} else if (rule === "untouched" && !entry.isCurrent) {
+				}
+				if (entry.isCurrent) continue;
+				if (rules.includes("neverExported") && history.available && !knownExport)
+					candidates.get("neverExported")!.add(entry.path);
+				if (rules.includes("untouched") || rules.includes("short")) {
 					const probe = await window.electronAPI.probeNativeVideoMetadata(
 						project.videoPath,
 					);
 					if (!probe.success || !probe.metadata) throw new Error("Unreadable media");
-					if (hasNoTimelineEdits(project, probe.metadata.duration * 1000))
-						result.candidates.add(entry.path);
+					if (
+						rules.includes("untouched") &&
+						hasNoTimelineEdits(project, probe.metadata.duration * 1000)
+					)
+						candidates.get("untouched")!.add(entry.path);
+					const duration = project.editor.clipRegions?.length
+						? getTimelineDurationMs(project.editor.clipRegions, 0) / 1000
+						: probe.metadata.duration;
+					if (Number.isFinite(duration) && duration > 0 && duration <= shortSeconds)
+						candidates.get("short")?.add(entry.path);
 				}
 			} catch {
 				result.skipped++;
@@ -218,7 +270,6 @@ export async function scanCleanup(
 	await Promise.all([work(), work()]);
 	if (cancelled()) return result;
 	if (isRaw) {
-		// A failed dependency read cannot establish that any source is unused.
 		result.incomplete = result.skipped > 0;
 		if (result.incomplete) return result;
 		const protectedPaths = new Set(
@@ -226,18 +277,50 @@ export async function scanCleanup(
 				.filter((entry) => sourceIsReferenced(entry.path, references))
 				.map((entry) => entry.path),
 		);
-		if (rule === "unused")
-			result.candidates = new Set(
-				entries
-					.filter((entry) => !protectedPaths.has(entry.path))
-					.map((entry) => entry.path),
+		if (rules.includes("unused"))
+			candidates.set(
+				"unused",
+				new Set(
+					eligible
+						.filter((entry) => !protectedPaths.has(entry.path))
+						.map((entry) => entry.path),
+				),
 			);
-		if (rule === "duplicates") {
+		if (rules.includes("duplicates")) {
 			const duplicates = await window.electronAPI.findDuplicateRecordingSources();
 			if (!duplicates.success) throw new Error(duplicates.error);
-			Object.assign(result, duplicateCandidates(duplicates.value, entries, protectedPaths));
+			const found = duplicateCandidates(duplicates.value, entries, protectedPaths);
+			candidates.set("duplicates", found.candidates);
+			result.keepers = found.keepers;
 		}
-	} else if (rule === "duplicates")
-		Object.assign(result, duplicateCandidates([...groups.values()], entries));
+		for (const entry of eligible) {
+			if (cancelled()) return result;
+			if (
+				rules.includes("neverExported") &&
+				history.available &&
+				!hasLibraryExport(history.records, { sourcePath: entry.path }, true) &&
+				!sourceIsReferenced(entry.path, exportedSources)
+			)
+				candidates.get("neverExported")!.add(entry.path);
+			if (rules.includes("short")) {
+				try {
+					const duration = (await readLibraryMediaInfo(entry)).duration;
+					if (duration !== undefined && duration > 0 && duration <= shortSeconds)
+						candidates.get("short")!.add(entry.path);
+				} catch {
+					result.skipped++;
+				}
+			}
+		}
+	} else if (rules.includes("duplicates")) {
+		const found = duplicateCandidates([...groups.values()], entries);
+		candidates.set("duplicates", found.candidates);
+		result.keepers = found.keepers;
+	}
+	result.candidates = new Set(
+		eligible
+			.filter((entry) => rules.every((rule) => candidates.get(rule)?.has(entry.path)))
+			.map((entry) => entry.path),
+	);
 	return result;
 }

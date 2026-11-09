@@ -1,11 +1,11 @@
 import { useEffect } from "react";
 import { flushSync } from "react-dom";
-import { createPreviewRenderLoop } from "./previewRenderLoop";
-import type { PlaybackProps } from "./playbackProps";
 import { type ZoomFocus } from "../types";
 import { computeCameraTransform } from "./cameraTransform";
 import { type CursorFollowCameraState, createCursorFollowCameraState } from "./cursorFollowCamera";
 import { getFrameMotionSample } from "./frameMotionSample";
+import type { PlaybackProps } from "./playbackProps";
+import { createPreviewRenderLoop } from "./previewRenderLoop";
 import {
 	resolvePreviewMotionMode,
 	resolveSceneZoomTarget,
@@ -24,6 +24,7 @@ export type usePlaybackTickerInput = Pick<
 	| "previewRenderLoopRef"
 	| "pixiReady"
 	| "videoReady"
+	| "composedFrameRef"
 	| "appRef"
 	| "videoSpriteRef"
 	| "videoEffectsContainerRef"
@@ -71,6 +72,7 @@ export type usePlaybackTickerInput = Pick<
 >;
 export function usePlaybackTicker(input: usePlaybackTickerInput) {
 	const {
+		composedFrameRef,
 		pixiReady,
 		videoReady,
 		appRef,
@@ -336,6 +338,13 @@ export function usePlaybackTicker(input: usePlaybackTickerInput) {
 			} else {
 				annotationFrameStore.publish(frame);
 			}
+			// A render/resize alone is not a new composition of the video and overlays.
+			composedFrameRef.current = {
+				revision: (composedFrameRef.current?.revision ?? 0) + 1,
+				width: stageSizeRef.current.width,
+				height: stageSizeRef.current.height,
+				source: videoRef.current?.currentSrc ?? "",
+			};
 		};
 
 		const loop = createPreviewRenderLoop({
@@ -355,6 +364,7 @@ export function usePlaybackTicker(input: usePlaybackTickerInput) {
 			app.ticker?.remove(ticker);
 		};
 	}, [
+		composedFrameRef,
 		pixiReady,
 		videoReady,
 		applyWebcamBubbleLayout,

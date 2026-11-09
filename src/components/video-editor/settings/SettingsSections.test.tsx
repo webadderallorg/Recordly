@@ -94,6 +94,25 @@ beforeEach(() => {
 });
 
 describe("webcam settings controls", () => {
+	it("selects a 60% wide rectangle retaining Square roundness, footage and timing", () => {
+		const onWebcamChange = vi.fn();
+		const tree = webcamView({ onWebcamChange });
+		control(tree, ChoiceGroup, (props) => props["aria-label"] === "Shape").onValueChange?.(
+			"rectangle",
+		);
+		expect(onWebcamChange).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				shape: "rectangle",
+				roundness: 50,
+				sourcePath: "/recordings/camera.mp4",
+				width: 60,
+				height: 40,
+				timeOffsetMs: 75,
+				visibleRanges: [{ startMs: 100, endMs: 2500 }],
+			}),
+		);
+	});
+
 	it("changes width and legacy size together while preserving footage and timing", () => {
 		const onWebcamChange = vi.fn();
 		const tree = webcamView({ onWebcamChange });
@@ -102,7 +121,7 @@ describe("webcam settings controls", () => {
 			expect.objectContaining({
 				width: 55,
 				size: 55,
-				height: 40,
+				height: 55,
 				sourcePath: "/recordings/camera.mp4",
 				timeOffsetMs: 75,
 				visibleRanges: [{ startMs: 100, endMs: 2500 }],
@@ -148,7 +167,7 @@ describe("webcam settings controls", () => {
 		const region: CropRegion = { x: 0, y: 0, width: 0.5, height: 1 };
 		crop.onCropChange(region, { src: null, width: 100, height: 100 });
 		expect(onWebcamChange).toHaveBeenLastCalledWith(
-			expect.objectContaining({ cropRegion: region, width: 40, height: 80 }),
+			expect.objectContaining({ cropRegion: region, width: 40, height: 40 }),
 		);
 		crop.onCropChange(region);
 		expect(onWebcamChange).toHaveBeenLastCalledWith(

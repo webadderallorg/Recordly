@@ -54,7 +54,7 @@ for (const width of [1440, 800]) {
 			await expectDraggableGap(
 				editor,
 				clips,
-				editor.getByRole("button", { name: /Upgrade to Cloud/ }),
+				editor.getByRole("button", { name: /^Upgrade(?:,|$)/ }),
 			);
 		}
 		await editor.getByRole("button", { name: "Rename project", exact: true }).click();
@@ -71,7 +71,7 @@ for (const width of [1440, 800]) {
 		await expectDraggableGap(
 			header,
 			header.getByText("Library", { exact: true }),
-			header.getByRole("button", { name: /Upgrade to Cloud/ }),
+			header.getByRole("button", { name: /^Upgrade(?:,|$)/ }),
 		);
 	});
 }

@@ -4,7 +4,11 @@ import { isSupportedLocalMediaPath } from "../../mediaTypes";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { probeNativeVideoMetadata } from "../ffmpeg/metadata";
 import { normalizeVideoSourcePath, parseJsonWithByteOrderMark } from "../utils";
-import { updateProjectFileAtomically } from "./atomicSave";
+import {
+	ProjectFileChangedError,
+	readProjectFileWithRecovery,
+	updateProjectFileAtomically,
+} from "./atomicSave";
 import { isLoadableProjectData, requireLibraryProject } from "./manager";
 
 /** Include undo history and trim bounds so reconnecting cannot truncate saved edits. */
@@ -68,9 +72,12 @@ export async function relinkProjectRecording(
 	isCurrent = () => true,
 ) {
 	const target = await requireLibraryProject(projectPath);
-	const original = await fs.readFile(target, "utf-8");
-	const project = parseJsonWithByteOrderMark(original);
-	if (!isLoadableProjectData(project)) throw new Error("Invalid project file format");
+	const snapshot = await readProjectFileWithRecovery(target, (contents) => {
+		const value = parseJsonWithByteOrderMark(contents);
+		if (!isLoadableProjectData(value)) throw new Error("Invalid project file format");
+		return value;
+	});
+	const { project, contents: original } = snapshot;
 	const missingPath = normalizeVideoSourcePath(project.videoPath);
 	if (!missingPath) throw new Error("Invalid project video path");
 	try {
@@ -106,10 +113,19 @@ export async function relinkProjectRecording(
 	);
 	if (metadata.duration * 1000 + toleranceMs < requiredRecordingDurationMs(project))
 		throw new Error("relinkRecordingTooShort");
-	await updateProjectFileAtomically(target, (contents) => {
-		if (!isCurrent()) throw new Error("relinkProjectChanged");
-		if (contents !== original) throw new Error("relinkProjectChanged");
-		return JSON.stringify({ ...project, videoPath: selected }, null, 2);
-	});
-	return { success: true, path: target };
+	try {
+		await updateProjectFileAtomically(
+			target,
+			(contents) => {
+				if (!isCurrent()) throw new Error("relinkProjectChanged");
+				if (contents !== original) throw new Error("relinkProjectChanged");
+				return JSON.stringify({ ...project, videoPath: selected }, null, 2);
+			},
+			snapshot,
+		);
+	} catch (error) {
+		if (error instanceof ProjectFileChangedError) throw new Error("relinkProjectChanged");
+		throw error;
+	}
+	return { success: true, path: target, ...(snapshot.recovered ? { recovered: true } : {}) };
 }

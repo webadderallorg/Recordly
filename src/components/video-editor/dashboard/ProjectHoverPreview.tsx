@@ -1,23 +1,69 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ProjectPreviewData } from "@/types/projectPreview";
 import { getAspectRatioValue } from "@/utils/aspectRatioUtils";
-import VideoPlayback, { type VideoPlaybackRef } from "../VideoPlayback";
 import { normalizeProjectEditor } from "../projectPersistence";
 import type { CursorTelemetryPoint } from "../types";
+import VideoPlayback, { type VideoPlaybackRef } from "../VideoPlayback";
 import { getEffectiveNativeAspectRatio } from "../videoPlayback/playbackTypes";
+import { useProjectHoverComposition } from "./useProjectHoverComposition";
+
+// ProjectThumbnail retains one immutable IPC snapshot per cache revision. Keep
+// composition identity without walking inline annotation images or retaining them
+// in React's key; a newly saved editor object still starts a fresh session.
+const editorSessions = new WeakMap<object, number>();
+let nextEditorSession = 0;
+function editorSession(editor: ProjectPreviewData["project"]["editor"]) {
+	let session = editorSessions.get(editor);
+	if (session === undefined) {
+		session = ++nextEditorSession;
+		editorSessions.set(editor, session);
+	}
+	return session;
+}
 
 const ignore = () => undefined;
+type Props = { data: ProjectPreviewData; onFinish: () => void };
+/** A new source or saved composition starts hidden, including cache/revision changes. */
+export function ProjectHoverPreview(props: Props) {
+	const key = useMemo(
+		() =>
+			JSON.stringify([
+				props.data.videoUrl,
+				props.data.webcamUrl,
+				props.data.revision,
+				props.data.project.videoPath,
+				editorSession(props.data.project.editor),
+			]),
+		[props.data],
+	);
+	return <ProjectHoverPreviewSession key={key} {...props} />;
+}
+
 /** One muted five-second pass through the saved timeline using the editor renderer. */
-export function ProjectHoverPreview({
-	data,
-	onFinish,
-}: {
-	data: ProjectPreviewData;
-	onFinish: () => void;
-}) {
+function ProjectHoverPreviewSession({ data, onFinish }: Props) {
 	const editor = useMemo(() => normalizeProjectEditor(data.project.editor), [data]);
+	const annotationImages = useMemo(
+		() =>
+			editor.annotationRegions
+				.filter(
+					(annotation) =>
+						annotation.type === "image" &&
+						annotation.startMs < 5000 &&
+						annotation.endMs > 0 &&
+						annotation.content.startsWith("data:image"),
+				)
+				.map((annotation) => annotation.content),
+		[editor],
+	);
 	const playback = useRef<VideoPlaybackRef>(null);
 	const started = useRef(false);
+	const stopping = useRef(false);
+	const [rendererReady, setRendererReady] = useState(false);
+	const host = useRef<HTMLDivElement>(null);
+	const timelineTime = useRef(0);
+	const finish = useCallback(() => {
+		if (!stopping.current) onFinish();
+	}, [onFinish]);
 	const [time, setTime] = useState(0);
 	const [playing, setPlaying] = useState(false);
 	const [duration, setDuration] = useState(0);
@@ -29,14 +75,27 @@ export function ProjectHoverPreview({
 		editor.aspectRatio,
 		getEffectiveNativeAspectRatio(sourceDimensions, editor.cropRegion),
 	);
-	const updateDuration = useCallback((seconds: number) => {
-		setDuration(seconds);
+	const updateDimensions = useCallback(() => {
 		const video = playback.current?.video;
 		if (video?.videoWidth && video.videoHeight) {
-			setSourceDimensions({ width: video.videoWidth, height: video.videoHeight });
+			setSourceDimensions((current) =>
+				current?.width === video.videoWidth && current.height === video.videoHeight
+					? current
+					: { width: video.videoWidth, height: video.videoHeight },
+			);
 		}
 	}, []);
-	const [telemetry, setTelemetry] = useState<CursorTelemetryPoint[]>([]);
+	const updateDuration = useCallback(
+		(seconds: number) => {
+			setDuration(seconds);
+			updateDimensions();
+		},
+		[updateDimensions],
+	);
+	const [telemetry, setTelemetry] = useState<{
+		loaded: boolean;
+		samples: CursorTelemetryPoint[];
+	}>({ loaded: false, samples: [] });
 	const clips = useMemo(
 		() =>
 			editor.clipRegions.length
@@ -59,47 +118,89 @@ export function ProjectHoverPreview({
 		void window.electronAPI
 			.getCursorTelemetry(data.project.videoPath)
 			.then((result) => {
-				if (active && result.success) setTelemetry(result.samples);
+				if (active)
+					setTelemetry({ loaded: true, samples: result.success ? result.samples : [] });
 			})
-			.catch(ignore);
+			.catch(() => {
+				if (active) setTelemetry({ loaded: true, samples: [] });
+			});
 		return () => {
 			active = false;
 		};
 	}, [data.project.videoPath]);
 	const updateTime = useCallback(
 		(seconds: number) => {
+			if (stopping.current) return;
+			timelineTime.current = seconds;
 			if (seconds >= 5) {
 				playback.current?.pause();
-				onFinish();
+				finish();
 			} else setTime(seconds);
 		},
-		[onFinish],
+		[finish],
 	);
 	const updatePlaying = useCallback(
 		(value: boolean) => {
+			if (stopping.current) return;
 			setPlaying(value);
 			if (value) started.current = true;
-			else if (started.current) onFinish();
+			else if (started.current) finish();
 		},
-		[onFinish],
+		[finish],
 	);
+	const updateReady = useCallback(
+		(ready: boolean) => {
+			if (stopping.current) return;
+			if (!ready && host.current) {
+				host.current.style.opacity = "0";
+				host.current.style.visibility = "hidden";
+			}
+			if (ready) updateDimensions();
+			setRendererReady(ready);
+		},
+		[updateDimensions],
+	);
+	const frameReady = useProjectHoverComposition({
+		data,
+		playback,
+		host,
+		rendererReady,
+		metadataReady: sourceDimensions !== null,
+		telemetryReady: telemetry.loaded,
+		annotationImages,
+		annotations: editor.annotationRegions,
+		aspectRatio,
+		webcam: editor.webcam,
+		timelineTime,
+		onFailure: finish,
+	});
 	useEffect(() => {
-		// A stalled decoder or unavailable GPU must leave the static thumbnail usable.
-		const timeout = window.setTimeout(onFinish, 15000);
+		if (!frameReady || started.current || stopping.current) return;
+		void playback.current?.play().catch(finish);
+	}, [frameReady, finish]);
+	useLayoutEffect(() => {
+		stopping.current = false;
+		// A stalled resource or unavailable GPU leaves the static thumbnail usable.
+		const timeout = window.setTimeout(finish, 15000);
 		const stopWhenHidden = () => {
-			if (document.hidden) onFinish();
+			if (document.hidden) finish();
 		};
 		document.addEventListener("visibilitychange", stopWhenHidden);
 		return () => {
+			// Block stale play/resource promises before a new hover session can mount.
+			stopping.current = true;
 			clearTimeout(timeout);
 			document.removeEventListener("visibilitychange", stopWhenHidden);
 			playback.current?.pause();
 		};
-	}, [onFinish]);
+	}, [finish]);
 	return (
 		<div
+			ref={host}
 			data-project-hover-preview
-			className={`pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden rounded-xl ${playing ? "opacity-100" : "opacity-0"}`}
+			data-preview-ready={frameReady}
+			className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden rounded-xl"
+			style={{ opacity: frameReady ? 1 : 0, visibility: frameReady ? "visible" : "hidden" }}
 			aria-hidden="true"
 		>
 			<div
@@ -108,7 +209,6 @@ export function ProjectHoverPreview({
 			>
 				<VideoPlayback
 					{...editor}
-					autoPlay
 					ref={playback}
 					videoPath={data.videoUrl}
 					webcamVideoPath={data.webcamUrl}
@@ -117,14 +217,15 @@ export function ProjectHoverPreview({
 					currentTime={time}
 					isPlaying={playing}
 					volume={0}
-					cursorTelemetry={telemetry}
+					cursorTelemetry={telemetry.samples}
 					selectedZoomId={null}
 					onSelectZoom={ignore}
 					onZoomFocusChange={ignore}
+					onPreviewReadyChange={updateReady}
 					onDurationChange={updateDuration}
 					onTimeUpdate={updateTime}
 					onPlayStateChange={updatePlaying}
-					onError={onFinish}
+					onError={finish}
 				/>
 			</div>
 		</div>

@@ -30,6 +30,9 @@ for (const colorScheme of ["light", "dark"] as const) {
 			// Spare height belongs to the demo, keeping the permission rows near the footer.
 			expect(banner.height).toBeGreaterThan(180);
 			const primary = (await action.boundingBox())!;
+			expect(primary.height).toBe(44);
+			for (const status of await dialog.getByRole("status", { name: /: Allowed$/ }).all())
+				expect((await status.boundingBox())!.height).toBe(44);
 			const list = (await dialog.locator(".onboarding-permission-list").boundingBox())!;
 			const actionGap = primary.y - list.y - list.height;
 			expect(actionGap).toBeGreaterThanOrEqual(8);

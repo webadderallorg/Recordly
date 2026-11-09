@@ -190,7 +190,7 @@ export function EditorHeader(props: Props) {
 
 			<div className="editor-header-end flex min-w-0 items-center justify-self-end gap-3">
 				<UpgradeButton
-					label={uiText("billing.upgrade")}
+					label={uiText("billing.upgradeShort")}
 					variant="secondary"
 					size="sm"
 					className="h-9 gap-1.5"

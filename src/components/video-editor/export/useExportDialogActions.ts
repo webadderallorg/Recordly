@@ -1,3 +1,4 @@
+import type { LibraryExportIdentity } from "../dashboard/libraryExportHistory";
 import { translate } from "@/i18n/runtime";
 import { type RefObject, useCallback } from "react";
 import { useOptionalBilling } from "@/components/billing/BillingProvider";
@@ -23,7 +24,7 @@ type UseExportDialogActionsInput = {
 		settings: ExportSettings,
 		options?: { destination?: "download" | "share" },
 	) => Promise<string | undefined>;
-	showExportSuccessToast: (filePath: string) => void;
+	showExportSuccessToast: (filePath: string, identity?: LibraryExportIdentity) => void;
 };
 
 export function useExportDialogActions({
@@ -142,6 +143,7 @@ export function useExportDialogActions({
 	const handleRetrySaveExport = useCallback(async () => {
 		const pendingSave = session.pendingExportSaveRef.current;
 		if (!pendingSave) return;
+		const exportIdentity = { ...session.exportIdentityRef?.current };
 		const captionSidecar = canExportCaptionFiles(billing)
 			? pendingSave.captionSidecar
 			: undefined;
@@ -187,7 +189,7 @@ export function useExportDialogActions({
 			session.setHasPendingExportSave(false);
 			session.setExportError(null);
 			session.setExportedFilePath(saveResult.path);
-			showExportSuccessToast(saveResult.path);
+			showExportSuccessToast(saveResult.path, exportIdentity);
 			session.setShowExportDropdown(true);
 			return;
 		}

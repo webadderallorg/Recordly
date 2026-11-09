@@ -1261,9 +1261,8 @@ app.whenReady().then(async () => {
 			if (recording) {
 				reassertHudOverlayMouseState();
 			}
-			if (!recording) {
-				restoreWindowSafely(mainWindow);
-			}
+			// Idle updates also follow cancelled starts and discarded recordings.
+			// Only the explicit editor handoff should reveal/focus the editor.
 		},
 		authCallbacks.flowStorageHooks,
 	);

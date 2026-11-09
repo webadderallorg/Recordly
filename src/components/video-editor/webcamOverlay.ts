@@ -25,12 +25,12 @@ export function getWebcamCornerRadiusPx(
 ): number {
 	if (shape === "circle") return Math.max(0, Math.min(width, height)) / 2;
 	const safeRoundness = Number.isFinite(roundnessPercent) ? clamp(roundnessPercent, 0, 100) : 0;
-	const strengthenedRoundness = (safeRoundness / 100) ** 0.25;
-	return (Math.max(0, Math.min(width, height)) / 2) * strengthenedRoundness;
+	// 100% is half the short edge for every shape. Keep each slider step equal.
+	return (Math.max(0, Math.min(width, height)) / 2) * (safeRoundness / 100);
 }
 
 export function getWebcamShapeExponent(shape?: WebcamShape): number {
-	return shape === "circle" ? 2 : WEBCAM_SQUIRCLE_EXPONENT;
+	return shape === "circle" || shape === "rectangle" ? 2 : WEBCAM_SQUIRCLE_EXPONENT;
 }
 
 export function getWebcamClipPath(
@@ -40,6 +40,8 @@ export function getWebcamClipPath(
 	shape?: WebcamShape,
 ): string {
 	if (shape === "circle") return "circle(50% at 50% 50%)";
+	if (shape === "rectangle")
+		return `inset(0 round ${getWebcamCornerRadiusPx(roundness, width, height, shape)}px)`;
 	return `path('${getSquircleSvgPath({
 		x: 0,
 		y: 0,
@@ -59,7 +61,7 @@ export function convertLegacyWebcamRadiusToRoundness(
 		WEBCAM_REFERENCE_VIEWPORT_HEIGHT *
 		(clamp(Math.min(widthPercent, heightPercent), 10, 100) / 100);
 	const normalizedRadius = clamp(Math.max(0, radiusPixels) / (referenceShortSide / 2), 0, 1);
-	return normalizedRadius ** 4 * 100;
+	return normalizedRadius * 100;
 }
 
 export function getWebcamPositionForPreset(preset: WebcamPositionPreset): { x: number; y: number } {
@@ -261,10 +263,15 @@ export function getCropMatchedWebcamHeightPercent(
 	sourceWidth: number | null | undefined,
 	sourceHeight: number | null | undefined,
 	cropRegion: Partial<CropRegion> | null | undefined,
+	shape?: WebcamShape,
 ): number {
 	const safeWidthPercent = Number.isFinite(widthPercent) ? widthPercent : 40;
 	const safeHeightPercent = Number.isFinite(heightPercent) ? heightPercent : safeWidthPercent;
-	if (Math.abs(safeWidthPercent - safeHeightPercent) > 0.001) {
+	if (
+		shape === "squircle" ||
+		shape === "circle" ||
+		Math.abs(safeWidthPercent - safeHeightPercent) > 0.001
+	) {
 		return clamp(safeHeightPercent, 10, 100);
 	}
 

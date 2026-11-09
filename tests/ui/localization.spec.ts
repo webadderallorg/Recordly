@@ -129,7 +129,7 @@ for (const [index, locale] of SUPPORTED_LOCALES.entries()) {
 		await expect(
 			library.getByRole("complementary", { name: ui.libraryNavigation }),
 		).toBeVisible();
-		const cloudLabel = billing.upgrade;
+		const cloudLabel = billing.upgradeShort;
 		const escapedCloudLabel = cloudLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 		const upgrade = library.getByRole("button", {
 			name: new RegExp(`^${escapedCloudLabel}(?:, .+)?$`),

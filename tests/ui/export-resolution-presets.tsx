@@ -34,7 +34,11 @@ Object.defineProperty(window, "VideoEncoder", {
 
 function Fixture() {
 	const billing = useOptionalBilling();
-	const [preferences] = useState(loadEditorPreferences);
+	// This fixture exercises a deliberate 60 FPS request, independent of app defaults.
+	const [preferences] = useState(() => ({
+		...loadEditorPreferences(),
+		mp4FrameRate: 60 as const,
+	}));
 	const settings = useExportSettings(preferences, [], []);
 	const session = useExportSession();
 	const {

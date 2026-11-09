@@ -1,5 +1,12 @@
 {
 	"recording": {
+		"audio": "音訊",
+		"camera": "攝影機",
+		"systemAudio": "電腦音訊",
+		"systemAudioDescription": "應用程式、影片和系統音效",
+		"off": "關閉",
+		"cameraPreview": "預覽",
+		"cancelCountdown": "取消倒數計時",
 		"home": "首頁",
 		"disableSystemAudio": "停用系統音訊",
 		"enableSystemAudio": "啟用系統音訊",

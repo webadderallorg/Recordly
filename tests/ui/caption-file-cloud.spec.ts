@@ -90,9 +90,7 @@ test("Cloud enables caption files, and losing access clears them from exports an
 }) => {
 	const toggle = await openCaptionExport(page, "pro");
 	await expect(page.getByText("for commercial use", { exact: false })).toHaveCount(0);
-	await expect(page.getByRole("button", { name: "Upgrade to Cloud", exact: true })).toHaveCount(
-		0,
-	);
+	await expect(page.getByRole("button", { name: /^Upgrade\b/ })).toHaveCount(0);
 	await expect(toggle).toBeChecked();
 	await toggle.press("Space");
 	await expect(toggle).not.toBeChecked();
@@ -110,9 +108,7 @@ test("Cloud enables caption files, and losing access clears them from exports an
 	});
 	await page.getByRole("button", { name: "Refresh caption plan", exact: true }).click();
 	await expect(page.getByTestId("caption-plan")).toHaveText("free");
-	await expect(
-		page.getByText("Upgrade to Cloud for commercial use", { exact: true }),
-	).toBeVisible();
+	await expect(page.getByText("Upgrade for commercial use", { exact: true })).toBeVisible();
 	await expect(toggle).not.toBeChecked();
 	await page.getByRole("button", { name: "Export Video", exact: true }).click();
 	await expect(page.getByTestId("export-settings-result")).toContainText(

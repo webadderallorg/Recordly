@@ -14,6 +14,7 @@ import { LoadingTransition } from "@/components/ui/loading-transition";
 import type { useI18n } from "@/contexts/I18nContext";
 import { getStartupView } from "@/lib/startupView";
 import { RECORDING_DRAG_TYPE } from "@/types/recordingLibrary";
+import { collectLibrarySourceProtection } from "../dashboard/librarySourceProtection";
 import { DashboardSettingsContext } from "../dashboard/DashboardSettings";
 import { HomeLoadingSkeleton } from "../dashboard/HomeLoadingSkeleton";
 import type { useEditorExportController } from "../export/useEditorExportController";
@@ -83,19 +84,23 @@ export function EditorShell(props: Props) {
 		"projects",
 	);
 	const auth = useRecordlyAuth();
-	const requestSignIn = (reason: SignInReason) => {
+	const resumeShareAfterSignIn = useRef(false);
+	const requestSignIn = (reason: SignInReason, resumeShare = false) => {
 		if (reason === "share" && auth.user) {
 			setShareRequestNonce((value) => value + 1);
 			return;
 		}
+		resumeShareAfterSignIn.current = reason === "share" || resumeShare;
 		setSignInReason(reason);
 		setSignInOpen(true);
 	};
 	const handleAuthenticated = useCallback(() => {
 		setSignInOpen(false);
-		if (signInReason === "share" || signInReason === "reauthenticate")
+		if (resumeShareAfterSignIn.current) {
+			resumeShareAfterSignIn.current = false;
 			setShareRequestNonce((value) => value + 1);
-	}, [signInReason]);
+		}
+	}, []);
 	const {
 		t,
 		project,
@@ -190,6 +195,13 @@ export function EditorShell(props: Props) {
 		openActions,
 		hasUnsavedChanges,
 	} = projectController;
+	const protectedSnapshotRef = useRef(lifecycle.currentProjectSnapshot);
+	protectedSnapshotRef.current = lifecycle.currentProjectSnapshot;
+	const getProtectedSourcePaths = useCallback(
+		() => collectLibrarySourceProtection(protectedSnapshotRef.current),
+		[],
+	);
+
 	const projectShareRevision = useMemo(
 		() => getProjectShareRevision(lifecycle.currentProjectSnapshot),
 		[lifecycle.currentProjectSnapshot],
@@ -244,6 +256,7 @@ export function EditorShell(props: Props) {
 					onImportFile={openActions.handleImportMediaOrProject}
 				/>
 				<EditorDialogs
+					getProtectedSourcePaths={getProtectedSourcePaths}
 					editorTitle={
 						project.videoPath && !project.error && !project.loading
 							? snapshot.projectDisplayName
@@ -275,7 +288,9 @@ export function EditorShell(props: Props) {
 					projectErrorSource={
 						project.currentProjectPath ?? project.videoSourcePath ?? undefined
 					}
-					onDashboardSignIn={() => requestSignIn("account")}
+					onDashboardSignIn={() =>
+						requestSignIn(auth.user ? "reauthenticate" : "account")
+					}
 					onDeleteProjects={openActions.handleDeleteProjects}
 					onRenameProject={openActions.handleRenameLibraryProject}
 					onShareProject={async (path) => {
@@ -320,7 +335,9 @@ export function EditorShell(props: Props) {
 								compact
 								placement="header"
 								triggerLabel={uiText("ui.recordlyAccount")}
-								onSignIn={() => requestSignIn("account")}
+								onSignIn={() =>
+									requestSignIn(auth.user ? "reauthenticate" : "account")
+								}
 								onSettings={(section = "general") => {
 									setAppSettingsCategory(section);
 									setAppSettingsOpen(true);
@@ -361,9 +378,11 @@ export function EditorShell(props: Props) {
 						handleStartExportFromDropdown={dialogActions.handleStartExportFromDropdown}
 						prepareExportForShare={dialogActions.prepareExportForShare}
 						onRequestShareSignIn={() =>
-							requestSignIn(auth.user ? "reauthenticate" : "share")
+							requestSignIn(auth.user ? "reauthenticate" : "share", true)
 						}
-						onRequestFeedbackSignIn={() => requestSignIn("account")}
+						onRequestFeedbackSignIn={() =>
+							requestSignIn(auth.user ? "reauthenticate" : "account")
+						}
 						shareRequestNonce={shareRequestNonce}
 						authToken={auth.accessToken}
 						accountId={auth.user?.id}

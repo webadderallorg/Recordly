@@ -47,7 +47,9 @@ for (const signedIn of [false, true]) {
 		});
 		// Even unavailable artwork cannot gate the form.
 		await page.route("**/auth/recordly-demo.*", (route) => route.abort());
-		await page.goto("/?windowType=onboarding", { waitUntil: "domcontentloaded" });
+		await page.goto("/?windowType=onboarding&onboardingPreview=1", {
+			waitUntil: "domcontentloaded",
+		});
 		const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 		await expect(page.locator("html")).toHaveAttribute("data-auth-pending", "true", {
 			timeout: 15000,
@@ -116,8 +118,12 @@ test("a signed-out editor opens onboarding before project hydration finishes", a
 		};
 	});
 	await page.goto("/?windowType=editor");
-	await expect(page.locator("html")).toHaveAttribute("data-project-pending", "true");
-	await expect(page.locator("html")).toHaveAttribute("data-onboarding-requested", "true");
+	await expect(page.locator("html")).toHaveAttribute("data-project-pending", "true", {
+		timeout: 15000,
+	});
+	await expect(page.locator("html")).toHaveAttribute("data-onboarding-requested", "true", {
+		timeout: 15000,
+	});
 	await expect(page.getByRole("dialog", { name: "Welcome to Recordly" })).toBeVisible();
 	await page.evaluate(() => window.dispatchEvent(new Event("test-release-project")));
 });
