@@ -1,4 +1,4 @@
-import { stripProjectUserPreferences, type EditorProjectData } from "./projectPersistence";
+import { type EditorProjectData, stripProjectUserPreferences } from "./projectPersistence";
 
 function isComparableObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
@@ -42,7 +42,7 @@ function areDeepEqual(left: unknown, right: unknown): boolean {
 	return true;
 }
 
-function omitTransientWebcamMediaFields(project: EditorProjectData | null) {
+function normalizeProjectComparison(project: EditorProjectData | null) {
 	if (!project?.editor || typeof project.editor !== "object") {
 		return project;
 	}
@@ -53,33 +53,15 @@ function omitTransientWebcamMediaFields(project: EditorProjectData | null) {
 	if (Array.isArray(editor.clipRegions) && editor.clipRegions.length > 0) {
 		delete editor.trimRegions;
 	}
-	const webcam = editor.webcam;
-	if (!isComparableObject(webcam)) {
-		return { ...project, editor };
-	}
-
-	const {
-		enabled: _enabled,
-		sourcePath: _sourcePath,
-		timeOffsetMs: _timeOffsetMs,
-		...persistentWebcamFields
-	} = webcam;
-
-	return {
-		...project,
-		editor: {
-			...editor,
-			webcam: persistentWebcamFields,
-		},
-	};
+	return { ...project, editor };
 }
 
 export function hasUnsavedProjectChanges(
 	currentProjectSnapshot: EditorProjectData | null,
 	lastSavedSnapshot: EditorProjectData | null,
 ): boolean {
-	const comparableCurrentSnapshot = omitTransientWebcamMediaFields(currentProjectSnapshot);
-	const comparableLastSavedSnapshot = omitTransientWebcamMediaFields(lastSavedSnapshot);
+	const comparableCurrentSnapshot = normalizeProjectComparison(currentProjectSnapshot);
+	const comparableLastSavedSnapshot = normalizeProjectComparison(lastSavedSnapshot);
 
 	return Boolean(
 		comparableCurrentSnapshot &&

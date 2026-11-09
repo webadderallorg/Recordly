@@ -1,5 +1,5 @@
 import type React from "react";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { getWebcamShadowFilter } from "@/lib/exporter/shadowProfile";
 import { getWebcamGlassRimPath, getWebcamGlassRimWidth } from "../glassRim";
 import {
@@ -64,6 +64,9 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 		animationStateRef,
 		isPlaying,
 	} = input;
+
+	// Retain only a completed frame from the current source while a seek decodes.
+	const renderedSourceRef = useRef<string | null>(null);
 
 	const webcamEnabled = webcam?.enabled ?? false;
 	const webcamShape = webcam?.shape ?? "squircle";
@@ -136,8 +139,6 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 		(zoomScale: number) => {
 			const bubble = webcamBubbleRef.current;
 			const blurCanvas = webcamBlurCanvasRef.current;
-			if (blurCanvas) blurCanvas.style.display = "none";
-			if (bubble) bubble.style.visibility = "visible";
 			const bubbleInner = webcamBubbleInnerRef.current;
 			const overlay = overlayRef.current;
 			if (
@@ -153,6 +154,8 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 				!isWebcamVisibleAtSourceTime(webcam, currentTimeRef.current / 1000)
 			) {
 				webcamMotionBlurRef.current.reset();
+				renderedSourceRef.current = null;
+				if (blurCanvas) blurCanvas.style.display = "none";
 				if (bubble) {
 					bubble.style.display = "none";
 				}
@@ -275,8 +278,23 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 					blurCanvas.style.top = `${blur.y}px`;
 					blurCanvas.style.display = "block";
 					bubble.style.visibility = "hidden";
+					renderedSourceRef.current = edgeFeatherPx > 0 ? webcamVideoPath : null;
+					return;
 				}
 			}
+			if (edgeFeatherPx > 0) {
+				// A decoder temporarily loses HAVE_CURRENT_DATA during seeking. Keep
+				// the last feathered frame until the ready event redraws the new one.
+				if (blurCanvas) {
+					blurCanvas.style.display =
+						renderedSourceRef.current === webcamVideoPath ? "block" : "none";
+				}
+				bubble.style.visibility = "hidden";
+				return;
+			}
+			renderedSourceRef.current = null;
+			if (blurCanvas) blurCanvas.style.display = "none";
+			bubble.style.visibility = "visible";
 		},
 		[
 			webcamCorner,

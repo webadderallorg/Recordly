@@ -52,6 +52,8 @@ function Preview() {
 			<button aria-pressed={softFrame} onClick={() => setSoftFrame(!softFrame)}>
 				Soft frame
 			</button>
+			<button onClick={() => playback.current?.seekTimeline(4.8)}>Seek end</button>
+			<button onClick={() => playback.current?.seekTimeline(0.2)}>Seek start</button>
 			<button onClick={() => void playback.current?.play()}>Play</button>
 			<button onClick={() => playback.current?.pause()}>Pause</button>
 			<VideoPlayback

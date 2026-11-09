@@ -21,7 +21,7 @@ test("webcam import, anchor placement, precise adjustment and removal stay disco
 	await expect(sidebar.getByRole("slider")).toHaveCount(0);
 	await page.getByRole("button", { name: "Upload footage", exact: true }).click();
 	await expect(sidebar.locator("[data-webcam-source]")).toHaveCount(0);
-	const camera = page.locator("[data-webcam-overlay]");
+	const camera = page.locator("[data-webcam-motion-blur]");
 	await expect(camera).toBeVisible();
 	await expect(sidebar.getByRole("switch", { name: "Glass border", exact: true })).toHaveCount(0);
 	for (const label of ["Appearance", "Shape"]) {
@@ -77,7 +77,8 @@ test("webcam import, anchor placement, precise adjustment and removal stay disco
 	await expect(camera).toBeVisible();
 	await page.getByRole("button", { name: "Remove from project", exact: true }).click();
 	await expect(sidebar.getByText("Add a webcam video", { exact: true })).toBeVisible();
-	await expect(camera).toHaveCount(0);
+	await expect(page.locator("[data-webcam-overlay]")).toHaveCount(0);
+	await expect(camera).toBeHidden();
 	await page.getByRole("button", { name: "Upload footage", exact: true }).click();
 	await expect(sidebar.getByText("preview.mp4", { exact: true })).toBeVisible();
 	await expect(camera).toBeVisible();
