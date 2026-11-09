@@ -151,7 +151,6 @@ export function CursorSettings(props: Props) {
 				</div>
 				<SliderControl
 					label={tSettings("effects.cursorSize")}
-					hideLabel
 					startContent={<Cursor size={14} weight="fill" />}
 					endContent={<Cursor size={26} weight="fill" />}
 					value={cursorSize}
