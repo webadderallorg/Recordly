@@ -10,7 +10,6 @@ import type { usePlaybackWallpaper } from "./usePlaybackWallpaper";
 import type { usePlaybackWebcamLayout } from "./usePlaybackWebcamLayout";
 import type { usePlaybackWebcamSync } from "./usePlaybackWebcamSync";
 import { isWebcamVisibleAtSourceTime } from "./webcamSync";
-import { WebcamFeatherPreview } from "./WebcamFeatherPreview";
 export type PlaybackViewInput = Pick<
 	ReturnType<typeof usePlaybackState> &
 		PlaybackProps &
@@ -215,14 +214,11 @@ export function PlaybackView(input: PlaybackViewInput) {
 						className="absolute rounded-md border border-[#2563EB]/80 bg-[#2563EB]/20 shadow-[0_0_0_1px_rgba(37,99,235,0.35)]"
 						style={{ display: "none", pointerEvents: "none" }}
 					/>
-					<WebcamFeatherPreview
-						enabled={webcam?.previewFrame !== "standard"}
-						shape={webcam?.shape}
-						roundness={webcam?.roundness}
-					>
+					<>
 						<canvas
 							ref={webcamBlurCanvasRef}
 							data-webcam-motion-blur
+							data-webcam-frame-style={webcam?.previewFrame ?? "soft-blur"}
 							aria-hidden="true"
 							className="pointer-events-none absolute"
 							style={{ display: "none" }}
@@ -296,7 +292,7 @@ export function PlaybackView(input: PlaybackViewInput) {
 								</div>
 							</div>
 						) : null}
-					</WebcamFeatherPreview>
+					</>
 					<PlaybackCaptions {...input} />
 					<div
 						className="absolute inset-0"

@@ -1,6 +1,7 @@
 import { getWebcamShadowFilter, getWebcamShadowPadding } from "@/lib/exporter/shadowProfile";
 import { drawWebcamGlassRim } from "./glassRim";
 import type { CropRegion, WebcamShape } from "./types";
+import { WebcamEdgeFeather } from "./webcamEdgeFeather";
 import { getWebcamCropSourceRect } from "./webcamOverlay";
 import { traceWebcamShapeOnCanvas } from "./webcamShapePath";
 
@@ -52,6 +53,8 @@ export function getWebcamMotionSamples(
 interface RenderOptions {
 	/** Physical pixels per layout pixel; exports already use output-pixel coordinates. */
 	resolution?: number;
+	/** Width of the soft border in layout pixels; zero keeps the standard frame. */
+	edgeFeatherPx?: number;
 	// Composite a single clipped frame and its shadow when there is no shutter.
 	renderStill?: boolean;
 	shape?: WebcamShape;
@@ -68,6 +71,7 @@ interface RenderOptions {
 }
 
 export class WebcamMotionBlur {
+	private edgeFeather = new WebcamEdgeFeather();
 	private previous: { layout: WebcamMotionLayout; timeMs: number } | null = null;
 	private samples: WebcamMotionLayout[] = [];
 	private lastMotionTimeMs: number | null = null;
@@ -84,6 +88,7 @@ export class WebcamMotionBlur {
 
 	destroy() {
 		this.reset();
+		this.edgeFeather.destroy();
 		for (const canvas of [this.accumulation, this.output]) {
 			if (canvas) {
 				canvas.width = 0;
@@ -197,6 +202,9 @@ export class WebcamMotionBlur {
 		ctx.globalCompositeOperation = "lighter";
 		ctx.globalAlpha = 1 / this.samples.length;
 		const { sx, sy, sw, sh } = getWebcamCropSourceRect(cropRegion, sourceWidth, sourceHeight);
+		const edgeFeatherPx = Number.isFinite(options.edgeFeatherPx)
+			? Math.max(0, options.edgeFeatherPx!)
+			: 0;
 		for (const sample of this.samples) {
 			// Reuse the output as scratch until the final shadow pass. The rim must
 			// composite over each pose before weighted accumulation, not add light to it.
@@ -234,8 +242,23 @@ export class WebcamMotionBlur {
 				sh * scale,
 			);
 			out.restore();
-			drawWebcamGlassRim(out, { ...sample, x: 0, y: 0, shape: options.shape });
+			if (edgeFeatherPx === 0)
+				drawWebcamGlassRim(out, { ...sample, x: 0, y: 0, shape: options.shape });
 			out.restore();
+			if (edgeFeatherPx > 0) {
+				this.edgeFeather.apply(
+					this.output,
+					{
+						x: (sample.x - x) * resolution,
+						y: (sample.y - y) * resolution,
+						width: sample.width * resolution,
+						height: sample.height * resolution,
+						radius: sample.radius * resolution,
+						shape: options.shape,
+					},
+					edgeFeatherPx * resolution,
+				);
+			}
 			ctx.drawImage(
 				this.output,
 				0,

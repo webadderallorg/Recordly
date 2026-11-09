@@ -207,10 +207,9 @@
 			"bottom-center": "Middenonder",
 			"bottom-right": "Rechtsonder"
 		},
-		"webcamPreviewFrame": "Voorbeeldkader",
+		"webcamPreviewFrame": "Frame",
 		"webcamFrameStandard": "Standaard",
-		"webcamFrameSoftBlur": "Zachte vervaging",
-		"webcamPreviewOnly": "Alleen voorbeeld"
+		"webcamFrameSoftBlur": "Zachte vervaging"
 	},
 	"sections": {
 		"scene": "Scène",

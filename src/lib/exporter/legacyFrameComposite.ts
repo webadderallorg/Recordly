@@ -4,6 +4,7 @@ import {
 	getWebcamMediaTargetTimeSeconds,
 	isWebcamVisibleAtSourceTime,
 } from "@/components/video-editor/videoPlayback/webcamSync";
+import { getWebcamEdgeFeatherPixels } from "@/components/video-editor/webcamEdgeFeather";
 import {
 	getCropMatchedWebcamHeightPercent,
 	getWebcamCornerRadiusPx,
@@ -246,6 +247,7 @@ export function drawWebcamOverlay(
 	// bubble canvas and stretching it back shifts the clipped video at the edge.
 	const overlay = context.webcamMotionBlur.render({
 		renderStill: true,
+		edgeFeatherPx: getWebcamEdgeFeatherPixels(webcam.previewFrame, width),
 		layout: { x, y, ...dimensions, radius },
 		shape: webcamShape,
 		timeMs: context.webcamMotionTimeMs,

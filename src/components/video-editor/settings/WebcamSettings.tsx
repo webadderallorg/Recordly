@@ -397,15 +397,12 @@ export function WebcamSettings({
 				<div className="space-y-2">
 					<div className="flex items-center justify-between gap-2">
 						<p className="text-xs font-medium">
-							{tSettings("effects.webcamPreviewFrame", "Preview frame")}
+							{tSettings("effects.webcamPreviewFrame", "Frame")}
 						</p>
-						<span className="text-[10px] text-muted-foreground">
-							{tSettings("effects.webcamPreviewOnly", "Preview only")}
-						</span>
 					</div>
 					<ChoiceGroup
 						type="single"
-						aria-label={tSettings("effects.webcamPreviewFrame", "Preview frame")}
+						aria-label={tSettings("effects.webcamPreviewFrame", "Frame")}
 						value={webcam.previewFrame ?? "soft-blur"}
 						className="grid grid-cols-2 gap-2"
 						onValueChange={(previewFrame) => {

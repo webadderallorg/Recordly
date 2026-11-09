@@ -207,10 +207,9 @@
 			"bottom-center": "下中",
 			"bottom-right": "右下"
 		},
-		"webcamPreviewFrame": "預覽邊框",
+		"webcamPreviewFrame": "邊框",
 		"webcamFrameStandard": "標準",
-		"webcamFrameSoftBlur": "柔和模糊",
-		"webcamPreviewOnly": "僅預覽"
+		"webcamFrameSoftBlur": "柔和模糊"
 	},
 	"sections": {
 		"scene": "場景",

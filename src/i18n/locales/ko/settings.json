@@ -207,10 +207,9 @@
 			"bottom-center": "가운데 아래",
 			"bottom-right": "오른쪽 아래"
 		},
-		"webcamPreviewFrame": "미리보기 프레임",
+		"webcamPreviewFrame": "프레임",
 		"webcamFrameStandard": "기본",
-		"webcamFrameSoftBlur": "부드러운 흐림",
-		"webcamPreviewOnly": "미리보기 전용"
+		"webcamFrameSoftBlur": "부드러운 흐림"
 	},
 	"sections": {
 		"scene": "장면",

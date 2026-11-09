@@ -217,7 +217,7 @@
 		"cursorSpringMassMultiplier": "Spring mass",
 		"classicZoom": "Classic Animation",
 		"webcamShape": "Shape",
-		"webcamPreviewFrame": "Preview frame",
+		"webcamPreviewFrame": "Frame",
 		"webcamFrameStandard": "Standard",
 		"webcamFrameSoftBlur": "Soft blur",
 		"webcamCircle": "Circle",
@@ -227,8 +227,7 @@
 		"webcamCustomPosition": "Custom position",
 		"webcamHorizontal": "Horizontal",
 		"webcamVertical": "Vertical",
-		"webcamMargin": "Margin",
-		"webcamPreviewOnly": "Preview only"
+		"webcamMargin": "Margin"
 	},
 	"sections": {
 		"scene": "Scene",

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+import { readPreviewFeather } from "./webcam-feather-probe";
 
 test("webcam preview frame choices persist and inline crop updates immediately", async ({
 	page,
@@ -28,14 +29,16 @@ test("webcam preview frame choices persist and inline crop updates immediately",
 		timeout: 20000,
 	});
 	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
-	const choices = page.getByRole("grid", { name: "Preview frame", exact: true });
+	const choices = page.getByRole("grid", { name: "Frame", exact: true });
 	const soft = choices.getByRole("row", { name: "Soft blur", exact: true });
 	const standard = choices.getByRole("row", { name: "Standard", exact: true });
-	const layer = page.locator("[data-webcam-feather-preview]");
+	const layer = page.locator("[data-webcam-motion-blur]");
+	const bubble = page.locator("[data-webcam-overlay]");
 	await expect(soft).toHaveAttribute("aria-selected", "true");
-	await expect(layer).not.toHaveCSS("mask-image", "none");
+	await expect(layer).toBeVisible();
 	await standard.click();
-	await expect(layer).toHaveCSS("mask-image", "none");
+	await expect(layer).toBeHidden();
+	await expect(bubble).toBeVisible();
 	await expect
 		.poll(() =>
 			page.evaluate(
@@ -49,8 +52,15 @@ test("webcam preview frame choices persist and inline crop updates immediately",
 	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
 	await expect(standard).toHaveAttribute("aria-selected", "true");
 	await soft.click();
-	await expect(layer).not.toHaveCSS("mask-image", "none");
-	await expect(page.locator("[data-webcam-overlay]")).toBeVisible();
+	await expect(layer).toBeVisible();
+	await expect(bubble).toHaveAttribute("data-webcam-ready", "true");
+	await expect
+		.poll(() => page.evaluate(readPreviewFeather))
+		.toEqual({
+			transparentEdge: true,
+			opaqueCenter: true,
+			gradualFade: true,
+		});
 	await choices.screenshot({
 		path: testInfo.outputPath("webcam-frame-selector.png"),
 		animations: "disabled",

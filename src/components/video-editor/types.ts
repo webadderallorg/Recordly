@@ -149,7 +149,7 @@ export type WebcamPositionPreset =
 export interface WebcamOverlaySettings {
 	/** Missing in legacy projects, which retain the squircle mask. */
 	shape?: WebcamShape;
-	/** Editor-only frame trial; exported webcam rendering is unchanged. */
+	/** Shared edge appearance in the editor and exported video. */
 	previewFrame?: "standard" | "soft-blur";
 	/** Source-time intervals containing webcam footage in an imported sequence. */
 	visibleRanges?: { startMs: number; endMs: number }[];
@@ -220,6 +220,7 @@ export const DEFAULT_WEBCAM_POSITION_Y = 1;
 export const DEFAULT_WEBCAM_TIME_OFFSET_MS = 0;
 
 export const DEFAULT_WEBCAM_OVERLAY: WebcamOverlaySettings = {
+	previewFrame: "soft-blur",
 	shape: "circle",
 	enabled: false,
 	sourcePath: null,

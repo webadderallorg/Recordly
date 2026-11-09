@@ -207,10 +207,9 @@
 			"bottom-center": "Abajo en el centro",
 			"bottom-right": "Abajo a la derecha"
 		},
-		"webcamPreviewFrame": "Marco de vista previa",
+		"webcamPreviewFrame": "Marco",
 		"webcamFrameStandard": "Estándar",
-		"webcamFrameSoftBlur": "Desenfoque suave",
-		"webcamPreviewOnly": "Solo vista previa"
+		"webcamFrameSoftBlur": "Desenfoque suave"
 	},
 	"sections": {
 		"scene": "Escena",

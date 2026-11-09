@@ -225,10 +225,9 @@
 			"bottom-center": "下中央",
 			"bottom-right": "右下"
 		},
-		"webcamPreviewFrame": "プレビューフレーム",
+		"webcamPreviewFrame": "フレーム",
 		"webcamFrameStandard": "標準",
-		"webcamFrameSoftBlur": "ソフトぼかし",
-		"webcamPreviewOnly": "プレビューのみ"
+		"webcamFrameSoftBlur": "ソフトぼかし"
 	},
 	"sections": {
 		"scene": "シーン",

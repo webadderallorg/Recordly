@@ -207,10 +207,9 @@
 			"bottom-center": "Inferior central",
 			"bottom-right": "Inferior direito"
 		},
-		"webcamPreviewFrame": "Moldura de prévia",
+		"webcamPreviewFrame": "Moldura",
 		"webcamFrameStandard": "Padrão",
-		"webcamFrameSoftBlur": "Desfoque suave",
-		"webcamPreviewOnly": "Somente prévia"
+		"webcamFrameSoftBlur": "Desfoque suave"
 	},
 	"sections": {
 		"scene": "Cena",
