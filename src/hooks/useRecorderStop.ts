@@ -33,6 +33,7 @@ export function useRecorderStop(
 		| "hideEditorOverlayCursorByDefault"
 		| "storeMicrophoneSidecar"
 		| "mediaRecorder"
+		| "screenWriter"
 		| "pendingWebcamPathPromise"
 	>,
 ) {
@@ -63,6 +64,7 @@ export function useRecorderStop(
 		hideEditorOverlayCursorByDefault,
 		storeMicrophoneSidecar,
 		mediaRecorder,
+		screenWriter,
 		pendingWebcamPathPromise,
 	} = context;
 	const stopRecording = useRef<() => void>(() => undefined);
@@ -272,6 +274,9 @@ export function useRecorderStop(
 			})();
 			return;
 		}
+
+		// Discard owns cleanup once cancellation starts, even while storage is pending.
+		if (screenWriter.current?.isCancelled) return;
 
 		const recorder = mediaRecorder.current;
 		const recorderState = recorder?.state;

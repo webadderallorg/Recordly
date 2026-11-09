@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NativeCaptureStopResult } from "./recordingNativeCleanup";
+import { RecordingFileWriter } from "./recordingFileWriter";
 import { useRecorderEditorSession } from "./useRecorderEditorSession";
 import { useRecorderStop } from "./useRecorderStop";
 
@@ -38,6 +39,7 @@ function createContext() {
 		hideEditorOverlayCursorByDefault: { current: false },
 		storeMicrophoneSidecar: vi.fn().mockResolvedValue(null),
 		mediaRecorder: { current: null as MediaRecorder | null },
+		screenWriter: { current: null as RecordingFileWriter | null },
 		pendingWebcamPathPromise: { current: null as Promise<string | null> | null },
 	};
 	const session = useRecorderEditorSession(context);
@@ -159,6 +161,40 @@ describe("recording stop editor handoff", () => {
 		expect(api.switchToEditor).not.toHaveBeenCalled();
 		expect(context.finalizeRecordingSession).not.toHaveBeenCalled();
 		expect(api.hudOverlayClose).not.toHaveBeenCalled();
+	});
+	it("ignores tray Stop while a cancelled browser recording is still being discarded", async () => {
+		let finishDiscard!: (result: { success: boolean }) => void;
+		const fileApi = {
+			openRecordingFileStream: vi
+				.fn()
+				.mockResolvedValue({ success: true, streamId: "cancelled-stream" }),
+			appendRecordingFileStream: vi.fn().mockResolvedValue({ success: true }),
+			closeRecordingFileStream: vi.fn(),
+			discardRecordingFileStream: vi.fn().mockReturnValue(
+				new Promise((resolve) => {
+					finishDiscard = resolve;
+				}),
+			),
+		};
+		const writer = new RecordingFileWriter(fileApi, "cancelled.webm", "video/webm");
+		writer.write(new Blob(["captured frame"]));
+		await vi.waitFor(() => expect(fileApi.appendRecordingFileStream).toHaveBeenCalledOnce());
+		// Cancel marks the writer before the asynchronous discard completes.
+		writer.cancel();
+		const discarding = writer.discard();
+		await vi.waitFor(() => expect(fileApi.discardRecordingFileStream).toHaveBeenCalledOnce());
+		const context = createContext();
+		context.nativeScreenRecording.current = false;
+		context.screenWriter.current = writer;
+		const recorder = { state: "recording", requestData: vi.fn(), stop: vi.fn() };
+		context.mediaRecorder.current = recorder as unknown as MediaRecorder;
+		stop(context);
+		expect(context.openLoadingEditor).not.toHaveBeenCalled();
+		expect(api.openLoadingRecordingEditor).not.toHaveBeenCalled();
+		expect(context.setFinalizing).not.toHaveBeenCalled();
+		expect(recorder.stop).not.toHaveBeenCalled();
+		finishDiscard({ success: true });
+		await discarding;
 	});
 	it("opens the loading editor immediately when browser capture is stopped", () => {
 		const context = createContext();
