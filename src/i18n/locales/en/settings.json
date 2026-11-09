@@ -149,6 +149,7 @@
 		},
 		"cursorMotionBlur": "Cursor Motion Blur",
 		"cursorClickBounce": "Scale on click",
+		"cursorClickBounceStrength": "Scale on click strength",
 		"cursorClickBounceDuration": "Bounce Speed",
 		"cursorSway": "Cursor Sway",
 		"cursorIdleHide": "Hide when idle",

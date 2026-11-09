@@ -22,6 +22,18 @@ export function applyAutomaticZooms(input: Input): boolean {
 	if (!input.ready || !input.sourcePath || !Number.isFinite(input.totalMs) || input.totalMs <= 0)
 		return false;
 	if (!input.enabled || input.isSavedProject || input.zoomRegions.length > 0) return true;
+	// Imported sequences get new media paths too. Only start on an unedited take;
+	// adding/trimming clips while telemetry loads must preserve the user's timeline.
+	const clip = input.clipRegions[0];
+	if (!clip) return false;
+	if (
+		input.clipRegions.length !== 1 ||
+		clip.startMs !== 0 ||
+		Math.abs(clip.endMs - input.totalMs) > 1 ||
+		(clip.sourceStartMs ?? 0) !== 0 ||
+		(clip.speed ?? 1) !== 1
+	)
+		return true;
 	if (input.cursorTelemetrySourcePath !== input.sourcePath || input.cursorTelemetry.length < 2)
 		return false;
 	const result = buildInteractionZoomSuggestions({

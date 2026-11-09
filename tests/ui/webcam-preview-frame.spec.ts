@@ -61,6 +61,7 @@ test("webcam preview frame choices persist and inline crop updates immediately",
 		exact: true,
 	});
 	await handle.focus();
+	await expect.poll(() => crop.evaluate((element) => element.scrollTop)).toBe(0);
 	await handle.press("ArrowLeft");
 	await expect
 		.poll(() =>

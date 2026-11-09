@@ -131,6 +131,7 @@
 		},
 		"cursorMotionBlur": "Cursor-bewegingsonscherpte",
 		"cursorClickBounce": "Vergroten bij klikken",
+		"cursorClickBounceStrength": "Sterkte van schalen bij klikken",
 		"cursorClickBounceDuration": "Stuitsnelheid",
 		"cursorSway": "Cursorbeweging",
 		"cursorIdleHide": "Verbergen bij inactiviteit",

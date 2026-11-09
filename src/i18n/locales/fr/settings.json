@@ -131,6 +131,7 @@
 		},
 		"cursorMotionBlur": "Flou de mouvement du curseur",
 		"cursorClickBounce": "Agrandir au clic",
+		"cursorClickBounceStrength": "Intensité de mise à l’échelle au clic",
 		"cursorClickBounceDuration": "Vitesse du rebond",
 		"cursorSway": "Oscillation du curseur",
 		"cursorIdleHide": "Masquer en cas d’inactivité",

@@ -131,6 +131,7 @@
 		},
 		"cursorMotionBlur": "커서 모션 블러",
 		"cursorClickBounce": "클릭 시 크기 조절",
+		"cursorClickBounceStrength": "클릭 시 크기 조절 강도",
 		"cursorClickBounceDuration": "바운스 속도",
 		"cursorSway": "커서 흔들림",
 		"cursorIdleHide": "대기 시 숨기기",

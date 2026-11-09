@@ -361,10 +361,17 @@ test("Clips shows original filenames and truncates long names beside real still 
 });
 
 for (const enabled of [true, false]) {
-	test(`imported recordings stay unzoomed with legacy auto zooms ${enabled ? "on" : "off"}`, async ({
+	test(`imported recordings stay unzoomed with automatic zooms ${enabled ? "on" : "off"}`, async ({
 		page,
 	}) => {
 		await setup(page);
+		await installDesktopBridgeOverrides(page, () => {
+			const get = window.electronAPI.getAppSetting;
+			window.electronAPI.getAppSetting = (key) =>
+				key === "recordly.editor.preferences"
+					? JSON.parse(localStorage.getItem(key) ?? "{}")
+					: get(key);
+		});
 		await page.evaluate((enabled) => {
 			const prefs = JSON.parse(localStorage.getItem("recordly.editor.preferences") || "{}");
 			localStorage.setItem(
@@ -373,7 +380,17 @@ for (const enabled of [true, false]) {
 			);
 		}, enabled);
 		await page.reload();
-		await expect(page.locator('[data-variant="clip"]')).toHaveCount(1);
+		await expect(page.locator('[data-variant="clip"]')).toHaveCount(1, { timeout: 20_000 });
+		await page.getByRole("button", { name: "Settings", exact: true }).click();
+		const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+		await settings.getByRole("tab", { name: "Motion", exact: true }).click();
+		const automatic = settings.getByRole("switch", {
+			name: "Automatically add zooms",
+			exact: true,
+		});
+		if (enabled) await expect(automatic).toBeChecked();
+		else await expect(automatic).not.toBeChecked();
+		await page.keyboard.press("Escape");
 		await page.getByRole("button", { name: "Clips", exact: true }).click();
 		await page.evaluate(() => {
 			let count = 0;

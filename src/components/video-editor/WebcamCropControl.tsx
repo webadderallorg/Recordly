@@ -388,7 +388,7 @@ export function WebcamCropControl({
 			ref={containerRef}
 			variant="secondary"
 			data-webcam-crop-control
-			className="relative w-full touch-none select-none overflow-hidden rounded-lg border border-foreground/10"
+			className="relative w-full touch-none select-none overflow-clip rounded-lg border border-foreground/10"
 			style={{ aspectRatio: previewAspectRatio }}
 			onPointerMove={handlePointerMove}
 			onPointerUp={endDrag}

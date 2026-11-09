@@ -131,6 +131,7 @@
 		},
 		"cursorMotionBlur": "光标运动模糊",
 		"cursorClickBounce": "点击时缩放",
+		"cursorClickBounceStrength": "点击缩放强度",
 		"cursorClickBounceDuration": "弹跳速度",
 		"cursorSway": "光标摆动",
 		"cursorIdleHide": "闲置时隐藏",

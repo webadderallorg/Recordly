@@ -149,6 +149,7 @@
 		},
 		"cursorMotionBlur": "カーソルのモーションブラー",
 		"cursorClickBounce": "クリック時に拡大",
+		"cursorClickBounceStrength": "クリック時の拡大率",
 		"cursorClickBounceDuration": "バウンドの速度",
 		"cursorSway": "カーソルの揺れ",
 		"cursorIdleHide": "操作がないときに非表示",

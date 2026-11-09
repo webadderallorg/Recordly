@@ -254,7 +254,10 @@ export function CursorSettings(props: Props) {
 				</div>
 				{advanced && (
 					<SliderControl
-						label={tSettings("effects.cursorClickBounce", "Scale on click")}
+						label={tSettings(
+							"effects.cursorClickBounceStrength",
+							"Scale on click strength",
+						)}
 						value={cursorClickBounce}
 						min={0}
 						max={5}

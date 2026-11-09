@@ -44,6 +44,11 @@ async function installSceneBridge(page: Page) {
 	});
 }
 
+async function openScene(page: Page, url: string) {
+	await page.goto(url);
+	await expect(page.locator('[data-variant="clip"]')).toHaveCount(1, { timeout: 20_000 });
+}
+
 async function storedPreferences(page: Page) {
 	return page.evaluate(() =>
 		JSON.parse(localStorage.getItem("recordly.editor.preferences") ?? "{}"),
@@ -61,8 +66,7 @@ test("Scene controls carry to new projects; loading an older look does not repla
 	page,
 }) => {
 	await installSceneBridge(page);
-	await page.goto("/?windowType=editor&project=first");
-	await expect(page.locator('[data-variant="clip"]')).toHaveCount(1, { timeout: 20_000 });
+	await openScene(page, "/?windowType=editor&project=first");
 	await setSlider(page, "Padding", 8);
 	const blur = await setSlider(page, "Blur", 3);
 	const shadow = await setSlider(page, "Shadow", 4);
@@ -91,7 +95,7 @@ test("Scene controls carry to new projects; loading an older look does not repla
 	await expect.poll(() => storedPreferences(page)).toMatchObject(expected);
 
 	// A second recording reads the controls actually saved by the first editor.
-	await page.goto("/?windowType=editor&project=second");
+	await openScene(page, "/?windowType=editor&project=second");
 	for (const [index, side] of ["Top", "Bottom", "Left", "Right"].entries()) {
 		await expect(page.getByRole("slider", { name: side, exact: true })).toHaveValue(
 			String(index + 1),
@@ -108,7 +112,7 @@ test("Scene controls carry to new projects; loading an older look does not repla
 		"true",
 	);
 
-	await page.goto("/?windowType=editor&older=1");
+	await openScene(page, "/?windowType=editor&older=1");
 	await expect(
 		page.getByRole("button", { name: "Aspect ratio: 16:9", exact: true }),
 	).toBeVisible();
@@ -123,7 +127,7 @@ test("Scene controls carry to new projects; loading an older look does not repla
 	await expect
 		.poll(() => storedPreferences(page))
 		.toMatchObject({ ...expected, shadowIntensity: 0.71 });
-	await page.goto("/?windowType=editor&project=third");
+	await openScene(page, "/?windowType=editor&project=third");
 	await expect(page.getByRole("slider", { name: "Top", exact: true })).toHaveValue("1");
 	await expect(page.getByRole("slider", { name: "Shadow", exact: true })).toHaveValue("0.71");
 	await expect(page.getByRole("button", { name: "Gradient 1", exact: true })).toHaveAttribute(
@@ -136,27 +140,29 @@ test("image, video, solid color and gradient selections survive creating another
 	page,
 }) => {
 	await installSceneBridge(page);
-	await page.goto("/?windowType=editor&project=initial");
-	for (const [index, tab] of ["Image", "Video", "Colors", "Colors"].entries()) {
+	await openScene(page, "/?windowType=editor&project=initial");
+	const cases = [
+		{
+			tab: "Image",
+			label: "Golden Gate Day",
+			wallpaper: "/wallpapers/golden-gate-day-no-vignette.png",
+		},
+		{ tab: "Video", label: "Wispy Sky", wallpaper: "/wallpapers/wispysky.mp4" },
+		{ tab: "Colors", label: "Background color #E2E8F0", wallpaper: "#e2e8f0" },
+		{
+			tab: "Colors",
+			label: "Gradient 2",
+			wallpaper: "linear-gradient(135deg, #e0e7ff 0%, #c4b5fd 100%)",
+		},
+	];
+	for (const [index, { tab, label, wallpaper }] of cases.entries()) {
 		await page.getByRole("row", { name: tab, exact: true }).click();
-		const tile =
-			index === 2
-				? page.getByRole("button", { name: "Background color #E2E8F0", exact: true })
-				: index === 3
-					? page.getByRole("button", { name: "Gradient 2", exact: true })
-					: page
-							.locator(
-								`[data-background-panel="${tab.toLowerCase()}"] .wallpaper-tile`,
-							)
-							.nth(index === 0 ? 1 : 0);
-		const label = await tile.getAttribute("aria-label");
-		expect(label).toBeTruthy();
+		const tile = page.getByRole("button", { name: label, exact: true });
 		await tile.click();
 		await expect(tile).toHaveAttribute("aria-pressed", "true");
-		const wallpaper = (await storedPreferences(page)).wallpaper;
-		expect(wallpaper).toBeTruthy();
-		await page.goto(`/?windowType=editor&project=background-${index}`);
-		await expect(page.getByRole("button", { name: label!, exact: true })).toHaveAttribute(
+		await expect.poll(() => storedPreferences(page)).toMatchObject({ wallpaper });
+		await openScene(page, `/?windowType=editor&project=background-${index}`);
+		await expect(page.getByRole("button", { name: label, exact: true })).toHaveAttribute(
 			"aria-pressed",
 			"true",
 		);

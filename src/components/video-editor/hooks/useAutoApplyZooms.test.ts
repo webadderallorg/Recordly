@@ -37,6 +37,7 @@ it("waits for ready media and matching cursor data before applying", () => {
 		{ ready: false },
 		{ totalMs: 0 },
 		{ cursorTelemetry: [] },
+		{ clipRegions: [] },
 		{ cursorTelemetrySourcePath: "previous.mp4" },
 	]) {
 		const params = input(patch);
@@ -52,6 +53,24 @@ it("keeps automatic zooms off when disabled and preserves reopened projects and 
 		{ zoomRegions: [{ id: "manual" } as never] },
 	]) {
 		const params = input(patch);
+		expect(applyAutomaticZooms(params)).toBe(true);
+		expect(params.onZoomSuggested).not.toHaveBeenCalled();
+	}
+});
+
+it("preserves imported sequences and clip edits made while cursor data was loading", () => {
+	const original = input().clipRegions[0];
+	for (const clipRegions of [
+		[
+			original,
+			{ ...original, id: "imported", startMs: 6000, endMs: 7000, sourceStartMs: 6000 },
+		],
+		[{ ...original, sourceStartMs: 1000 }],
+		[{ ...original, startMs: 500 }],
+		[{ ...original, endMs: 5000 }],
+		[{ ...original, speed: 2 }],
+	]) {
+		const params = input({ clipRegions });
 		expect(applyAutomaticZooms(params)).toBe(true);
 		expect(params.onZoomSuggested).not.toHaveBeenCalled();
 	}

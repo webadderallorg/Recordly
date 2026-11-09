@@ -131,6 +131,7 @@
 		},
 		"cursorMotionBlur": "Desenfoque de movimiento del cursor",
 		"cursorClickBounce": "Escalar al hacer clic",
+		"cursorClickBounceStrength": "Intensidad de escala al hacer clic",
 		"cursorClickBounceDuration": "Velocidad del rebote",
 		"cursorSway": "Balanceo del cursor",
 		"cursorIdleHide": "Ocultar al estar inactivo",

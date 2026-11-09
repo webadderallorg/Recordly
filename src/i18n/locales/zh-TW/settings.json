@@ -131,6 +131,7 @@
 		},
 		"cursorMotionBlur": "游標動態模糊",
 		"cursorClickBounce": "點擊時縮放",
+		"cursorClickBounceStrength": "點擊縮放強度",
 		"cursorClickBounceDuration": "彈跳速度",
 		"cursorSway": "游標擺動",
 		"cursorIdleHide": "閒置時隱藏",
