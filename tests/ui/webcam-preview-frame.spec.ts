@@ -72,7 +72,13 @@ test("webcam preview frame choices persist and inline crop updates immediately",
 		)
 		.toBeCloseTo(0.99, 5);
 	const selection = crop.getByLabel("Move webcam crop", { exact: true });
-	const opposite = (await selection.boundingBox())!;
+	const selectionOffset = () =>
+		selection.evaluate((element) => {
+			const bounds = element.getBoundingClientRect();
+			const parent = element.parentElement!.getBoundingClientRect();
+			return { x: bounds.x - parent.x, y: bounds.y - parent.y };
+		});
+	const opposite = await selectionOffset();
 	const corner = (await handle.boundingBox())!;
 	const x = corner.x + corner.width / 2 - 3;
 	const y = corner.y + corner.height / 2 - 3;
@@ -98,7 +104,7 @@ test("webcam preview frame choices persist and inline crop updates immediately",
 			),
 		)
 		.toBeLessThan(1);
-	const resized = (await selection.boundingBox())!;
+	const resized = await selectionOffset();
 	expect(Math.abs(resized.x - opposite.x)).toBeLessThan(1);
 	expect(Math.abs(resized.y - opposite.y)).toBeLessThan(1);
 	for (const name of ["Cancel", "Done", "Reset"])
