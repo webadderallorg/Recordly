@@ -286,6 +286,8 @@ function createRenderer(overrides: Partial<ConstructorParameters<typeof FrameRen
 		cropRegion: { x: 0, y: 0, width: 1, height: 1 },
 		webcam: {
 			...DEFAULT_WEBCAM_OVERLAY,
+			// These source/cache and rim assertions exercise the standard frame.
+			previewFrame: "standard",
 			enabled: true,
 			mirror: false,
 			shadow: 0,
