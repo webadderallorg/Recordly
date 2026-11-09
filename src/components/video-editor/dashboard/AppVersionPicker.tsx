@@ -68,7 +68,7 @@ export function AppVersionPicker({
 		};
 	}, [open, currentVersion, retry]);
 	const download = async () => {
-		if (busy || !selected) return;
+		if (busy || loading || error || !open || !selected) return;
 		setBusy(true);
 		setError(false);
 		try {
@@ -152,6 +152,7 @@ export function AppVersionPicker({
 							<Button
 								size="sm"
 								variant="ghost"
+								disabled={busy || loading}
 								onClick={() => setRetry((value) => value + 1)}
 							>
 								{t("common.actions.retry", "Try again")}

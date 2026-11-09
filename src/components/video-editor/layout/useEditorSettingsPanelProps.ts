@@ -212,7 +212,6 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onCaptionSplit: captionCommands.handleCaptionSplit,
 		onCaptionMerge: captionCommands.handleCaptionMerge,
 		onCaptionDelete: captionCommands.handleCaptionDelete,
-		onDownloadWhisperSmallModel: autoCaptionController.handleDownloadWhisperSmallModel,
 		onDeleteWhisperSmallModel: autoCaptionController.handleDeleteWhisperSmallModel,
 		nativeCaptureUnavailableSession: sessionNativeCaptureUnavailable,
 		onOpenNativeCaptureUnavailableModal: () => setNativeCaptureUnavailableModalOpen(true),

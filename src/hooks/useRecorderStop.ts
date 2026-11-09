@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
 import type { RecorderContext } from "./recorderContext";
@@ -66,7 +66,7 @@ export function useRecorderStop(
 		pendingWebcamPathPromise,
 	} = context;
 	const stopRecording = useRef<() => void>(() => undefined);
-	stopRecording.current = () => {
+	const stop = () => {
 		recordingStartGeneration.current += 1;
 		setPaused(false);
 		if (nativeScreenRecording.current && nativeWarmStartActive.current) {
@@ -297,6 +297,10 @@ export function useRecorderStop(
 			window.electronAPI?.setRecordingState(false);
 		}
 	};
+
+	useLayoutEffect(() => {
+		stopRecording.current = stop;
+	});
 
 	return { stopRecording };
 }

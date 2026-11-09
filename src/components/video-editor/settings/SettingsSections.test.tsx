@@ -255,18 +255,15 @@ describe("caption generation settings controls", () => {
 	});
 
 	it("routes the primary action to generation even before the model is ready", () => {
-		const onDownloadWhisperSmallModel = vi.fn();
 		const onGenerateAutoCaptions = vi.fn();
 		const tree = captionView({
 			whisperModelPath: null,
 			whisperModelDownloadStatus: "idle",
-			onDownloadWhisperSmallModel,
 			onGenerateAutoCaptions,
 		});
 		control(tree, Button, (props) => props.children === "Regenerate Captions").onClick?.(
 			{} as never,
 		);
-		expect(onDownloadWhisperSmallModel).not.toHaveBeenCalled();
 		expect(onGenerateAutoCaptions).toHaveBeenCalledOnce();
 	});
 

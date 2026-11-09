@@ -154,7 +154,6 @@ export interface SettingsPanelProps {
 	onPickWhisperModel?: () => void;
 	onGenerateAutoCaptions?: () => void;
 	onClearAutoCaptions?: () => void;
-	onDownloadWhisperSmallModel?: () => void;
 	onDeleteWhisperSmallModel?: () => void;
 	captionCurrentTimeMs?: number;
 	selectedCaptionId?: string | null;

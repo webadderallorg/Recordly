@@ -27,6 +27,7 @@ export interface CaptionWordLayout {
 export interface CaptionLineLayout {
 	words: CaptionWordLayout[];
 	width: number;
+	prefixWidths: number[];
 	startWordIndex: number;
 	endWordIndex: number;
 }
@@ -417,18 +418,16 @@ function buildCaptionLines(options: {
 			...word,
 			leadingSpace: index === 0 ? false : word.leadingSpace,
 		}));
-		const width = lineWords.reduce(
-			(total, word, index) =>
-				total +
-				options.measureText(
-					`${index === 0 ? "" : word.leadingSpace ? " " : ""}${word.text}`,
-				),
-			0,
-		);
+		let width = 0;
+		const prefixWidths = lineWords.map((word) => {
+			width += options.measureText(`${word.leadingSpace ? " " : ""}${word.text}`);
+			return width;
+		});
 
 		lines.push({
 			words: lineWords,
 			width,
+			prefixWidths,
 			startWordIndex: lineWords[0].index,
 			endWordIndex: lineWords[lineWords.length - 1].index,
 		});
@@ -491,22 +490,7 @@ export function prepareCaptionLayout(
 	});
 	const preset = getCaptionPreset(options.settings.style);
 	const revealWords = Boolean(preset.revealWords);
-	const revealWidths = new Map(
-		lines.map((line) => {
-			let width = 0;
-			return [
-				line.startWordIndex,
-				revealWords
-					? line.words.map((word) => {
-							width += options.measureText(
-								`${word.leadingSpace ? " " : ""}${word.text}`,
-							);
-							return width;
-						})
-					: [],
-			];
-		}),
-	);
+
 	const pages = buildCaptionPages({
 		cues: options.cues,
 		lines,
@@ -611,7 +595,7 @@ export function prepareCaptionLayout(
 							{
 								...line,
 								words: revealed,
-								width: revealWidths.get(line.startWordIndex)![revealed.length - 1],
+								width: line.prefixWidths[revealed.length - 1],
 								endWordIndex: revealed[revealed.length - 1].index,
 							},
 						]

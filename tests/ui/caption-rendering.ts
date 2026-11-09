@@ -1,10 +1,10 @@
-import { Container } from "pixi.js";
 import { ensureCaptionFontLoaded } from "@/components/video-editor/captionFonts";
-import { applyCaptionPreset, CAPTION_PRESETS } from "@/components/video-editor/captionPresets";
-import { getCaptionPadding } from "@/components/video-editor/captionStyle";
-import { DEFAULT_AUTO_CAPTION_SETTINGS } from "@/components/video-editor/types";
+import { Container } from "pixi.js";
 import { renderCaptions } from "@/lib/exporter/captionRenderer";
 import { FrameCaptions } from "@/lib/exporter/modernFrameCaptions";
+import { DEFAULT_AUTO_CAPTION_SETTINGS } from "@/components/video-editor/types";
+import { applyCaptionPreset, CAPTION_PRESETS } from "@/components/video-editor/captionPresets";
+import { getCaptionPadding } from "@/components/video-editor/captionStyle";
 import type { FrameRenderContext } from "@/lib/exporter/modernFrameRenderer";
 
 async function run() {
@@ -155,26 +155,12 @@ async function run() {
 					1,
 				).data,
 			);
-			let darkPixelsOnWhite = 0;
-			let whiteCorner: number[] = [];
-			if (preset.id === "tiktok") {
-				ctx.globalCompositeOperation = "destination-over";
-				ctx.fillStyle = "#ffffff";
-				ctx.fillRect(0, 0, width, height);
-				const onWhite = ctx.getImageData(0, 0, width, height).data;
-				for (let i = 0; i < onWhite.length; i += 4) {
-					if (onWhite[i] < 64 && onWhite[i + 1] < 64 && onWhite[i + 2] < 64)
-						darkPixelsOnWhite++;
-				}
-				whiteCorner = Array.from(ctx.getImageData(0, 0, 1, 1).data);
-			}
+
 			return {
 				foregroundPixels,
 				highlightPixels,
 				backgroundAlpha: backgroundPixel[3],
 				backgroundPixel,
-				darkPixelsOnWhite,
-				whiteCorner,
 			};
 		});
 		const revealAnimation = preset.revealWords

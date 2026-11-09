@@ -84,3 +84,40 @@ it("allows retry after HTTP or invalid response failures", async () => {
 	await expect(catalog.list()).rejects.toThrow("invalid response");
 	expect(await catalog.list()).toHaveLength(1);
 });
+
+it("shares pending lookups across dialog reopenings", async () => {
+	let resolve!: (response: Response) => void;
+	const fetcher = vi.fn(
+		() =>
+			new Promise<Response>((done) => {
+				resolve = done;
+			}),
+	);
+	const catalog = createReleaseVersionCatalog("darwin", "arm64", fetcher);
+	const first = catalog.list(),
+		second = catalog.list();
+	expect(fetcher).toHaveBeenCalledOnce();
+	resolve(new Response(JSON.stringify([release()]), { status: 200 }));
+	const [a, b] = await Promise.all([first, second]);
+	expect(a).toEqual(b);
+	expect(a[0].tag).toBe("v1.4.0");
+});
+it("clears a failed shared lookup so the next request can retry", async () => {
+	let reject!: (error: Error) => void;
+	const fetcher = vi
+		.fn()
+		.mockImplementationOnce(
+			() =>
+				new Promise<Response>((_, fail) => {
+					reject = fail;
+				}),
+		)
+		.mockResolvedValueOnce(new Response(JSON.stringify([release()]), { status: 200 }));
+	const catalog = createReleaseVersionCatalog("darwin", "arm64", fetcher);
+	const pending = Promise.allSettled([catalog.list(), catalog.list()]);
+	reject(new Error("offline"));
+	expect((await pending).map((item) => item.status)).toEqual(["rejected", "rejected"]);
+	expect(fetcher).toHaveBeenCalledOnce();
+	expect(await catalog.list()).toHaveLength(1);
+	expect(fetcher).toHaveBeenCalledTimes(2);
+});

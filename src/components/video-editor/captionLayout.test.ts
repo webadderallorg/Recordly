@@ -438,3 +438,24 @@ it("Classic is the same Reveal animation with a visual reskin", () => {
 	for (const time of [0, 100, 120, 300, 720, 850, 1150, 1300, 300, 1800])
 		expect(classic(time)).toEqual(reveal(time));
 });
+
+it("preparing Reveal does not add transcript measurements beyond line layout", () => {
+	const measurements = (style: "classic" | "reveal") => {
+		const measureText = vi.fn((text: string) => text.length * 10);
+		prepareCaptionLayout({
+			cues: [
+				{
+					id: "long",
+					startMs: 0,
+					endMs: 10000,
+					text: "One two three four five six seven eight nine ten.",
+				},
+			],
+			settings: { ...LEGACY_CAPTION_SETTINGS, style },
+			maxWidthPx: 200,
+			measureText,
+		});
+		return measureText.mock.calls;
+	};
+	expect(measurements("reveal")).toEqual(measurements("classic"));
+});

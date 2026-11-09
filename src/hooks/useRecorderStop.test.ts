@@ -3,7 +3,9 @@ import type { NativeCaptureStopResult } from "./recordingNativeCleanup";
 import { useRecorderEditorSession } from "./useRecorderEditorSession";
 import { useRecorderStop } from "./useRecorderStop";
 
+const commitLayoutEffect = vi.hoisted(() => vi.fn((effect: () => void) => effect()));
 vi.mock("react", () => ({
+	useLayoutEffect: commitLayoutEffect,
 	useRef: <T>(current: T) => ({ current }),
 	useCallback: <T>(callback: T) => callback,
 }));
@@ -171,4 +173,18 @@ describe("recording stop editor handoff", () => {
 		expect(api.finishRecordingEditor).not.toHaveBeenCalled();
 		expect(api.switchToEditor).not.toHaveBeenCalled();
 	});
+});
+
+it("publishes the Stop callback only after the render commits", () => {
+	let commit!: () => void;
+	commitLayoutEffect.mockImplementationOnce((effect) => {
+		commit = effect;
+	});
+	const context = createContext();
+	const { stopRecording } = useRecorderStop(context);
+	stopRecording.current();
+	expect(api.stopNativeScreenRecording).not.toHaveBeenCalled();
+	commit();
+	stopRecording.current();
+	expect(api.stopNativeScreenRecording).toHaveBeenCalledOnce();
 });

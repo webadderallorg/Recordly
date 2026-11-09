@@ -68,21 +68,27 @@ export function createReleaseVersionCatalog(
 ) {
 	let catalog = new Map<string, { release: ReleaseVersion; installer: string }>();
 	let loadedAt = 0;
+	let inFlight: Promise<ReleaseVersion[]> | null = null;
 	return {
 		async list() {
 			if (catalog.size && Date.now() - loadedAt < 5 * 60_000)
 				return [...catalog.values()].map((item) => item.release);
-			const response = await fetcher(RELEASES_API, {
-				headers: { Accept: "application/vnd.github+json", "User-Agent": "Recordly" },
-				signal: AbortSignal.timeout(10_000),
+			inFlight ??= (async () => {
+				const response = await fetcher(RELEASES_API, {
+					headers: { Accept: "application/vnd.github+json", "User-Agent": "Recordly" },
+					signal: AbortSignal.timeout(10_000),
+				});
+				if (!response.ok) throw new Error(`Release lookup failed (${response.status}).`);
+				const data: unknown = await response.json();
+				if (!Array.isArray(data))
+					throw new Error("The release service returned an invalid response.");
+				catalog = collectReleaseVersions(data, platform, arch);
+				loadedAt = Date.now();
+				return [...catalog.values()].map((item) => item.release);
+			})().finally(() => {
+				inFlight = null;
 			});
-			if (!response.ok) throw new Error(`Release lookup failed (${response.status}).`);
-			const data: unknown = await response.json();
-			if (!Array.isArray(data))
-				throw new Error("The release service returned an invalid response.");
-			catalog = collectReleaseVersions(data, platform, arch);
-			loadedAt = Date.now();
-			return [...catalog.values()].map((item) => item.release);
+			return inFlight;
 		},
 		installer(tag: unknown) {
 			if (typeof tag !== "string" || !TAG.test(tag)) return null;

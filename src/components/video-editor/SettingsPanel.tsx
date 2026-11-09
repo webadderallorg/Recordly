@@ -98,7 +98,6 @@ export function SettingsPanel(input: SettingsPanelProps) {
 		onPickWhisperModel,
 		onGenerateAutoCaptions,
 		onClearAutoCaptions,
-		onDownloadWhisperSmallModel,
 		onDeleteWhisperSmallModel,
 	} = props;
 	const backgroundScrollRef = useRef<HTMLDivElement>(null);
@@ -243,7 +242,6 @@ export function SettingsPanel(input: SettingsPanelProps) {
 						onPickWhisperModel={onPickWhisperModel}
 						onGenerateAutoCaptions={onGenerateAutoCaptions}
 						onClearAutoCaptions={onClearAutoCaptions}
-						onDownloadWhisperSmallModel={onDownloadWhisperSmallModel}
 						onDeleteWhisperSmallModel={onDeleteWhisperSmallModel}
 					/>
 				);
