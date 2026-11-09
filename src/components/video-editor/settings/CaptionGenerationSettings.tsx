@@ -1,4 +1,4 @@
-import { Dropdown, ProgressBar } from "@heroui/react";
+import { ProgressBar } from "@heroui/react";
 import { Button } from "@/components/ui/button";
 import { ColorControl } from "@/components/ui/color-picker";
 import { ClosedCaptioning, Trash } from "@/components/ui/icons";
@@ -37,7 +37,6 @@ interface CaptionGenerationSettingsProps {
 	onPickWhisperModel?: () => void;
 	onGenerateAutoCaptions?: () => void;
 	onClearAutoCaptions?: () => void;
-	onDownloadWhisperSmallModel?: () => void;
 	onDeleteWhisperSmallModel?: () => void;
 }
 
@@ -62,12 +61,11 @@ export function CaptionGenerationSettings({
 	onAutoCaptionSettingsChange,
 	onGenerateAutoCaptions,
 	onClearAutoCaptions,
-	onDownloadWhisperSmallModel,
 	onDeleteWhisperSmallModel,
 }: CaptionGenerationSettingsProps) {
 	const te = useScopedT("editing");
 	const tSettings = useScopedT("settings");
-	const { locale } = useI18n();
+	const { locale, t } = useI18n();
 	const formatNumber = (value: number, fractionDigits?: number) =>
 		new Intl.NumberFormat(locale, {
 			useGrouping: false,
@@ -154,61 +152,58 @@ export function CaptionGenerationSettings({
 					{!modelReady &&
 						` · ${formatNumber(Math.round(model.downloadBytes / 1_000_000))} MB`}
 				</p>
+				{!modelReady && (
+					<p className="text-[11px] leading-relaxed text-muted-foreground">
+						{tSettings(
+							"captions.firstDownload",
+							"First use downloads {{size}} MB of speech files, then generates captions.",
+							{ size: formatNumber(Math.round(model.downloadBytes / 1_000_000)) },
+						)}
+					</p>
+				)}
 				<div className="flex items-center gap-2">
 					<Button
 						type="button"
-						onClick={modelReady ? onGenerateAutoCaptions : onDownloadWhisperSmallModel}
+						onClick={onGenerateAutoCaptions}
 						disabled={isBusy}
 						className="h-9 min-w-0 flex-1 px-3 text-sm"
 					>
-						{isGeneratingCaptions ? (
-							tSettings("captions.generating", "Generating...")
-						) : isDownloading ? (
+						{isDownloading ? (
 							<>
 								{tSettings("captions.downloading", "Downloading...")}{" "}
 								{Math.round(whisperModelDownloadProgress)}%
 							</>
-						) : !modelReady ? (
-							tSettings("captions.downloadModel", "Download Model")
+						) : isGeneratingCaptions ? (
+							tSettings("captions.generating", "Generating...")
 						) : captionCueCount > 0 ? (
 							tSettings("captions.regenerateFull", "Regenerate Captions")
 						) : (
 							tSettings("captions.generateFull", "Generate Captions")
 						)}
 					</Button>
-					<Dropdown>
-						<Button
-							type="button"
-							variant="ghost"
-							size="icon"
-							className="size-9 min-w-9 shrink-0 text-muted-foreground"
-							aria-label={te("captionActions", "Caption actions")}
-						>
-							<Trash className="size-5" aria-hidden="true" />
-						</Button>
-						<Dropdown.Popover placement="bottom end">
-							<Dropdown.Menu aria-label={te("captionActions", "Caption actions")}>
-								<Dropdown.Item
-									id="clear-captions"
-									isDisabled={captionCueCount === 0 || isGeneratingCaptions}
-									onAction={onClearAutoCaptions}
-								>
-									{tSettings("captions.clearFull", "Clear Captions")}
-								</Dropdown.Item>
-								{advanced && (
-									<Dropdown.Item
-										id="delete-model"
-										isDisabled={!modelReady || isBusy}
-										onAction={onDeleteWhisperSmallModel}
-										variant="danger"
-									>
-										{tSettings("captions.deleteModel", "Delete Model")}
-									</Dropdown.Item>
-								)}
-							</Dropdown.Menu>
-						</Dropdown.Popover>
-					</Dropdown>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						className="size-9 min-w-9 shrink-0 text-muted-foreground"
+						aria-label={tSettings("captions.clearFull", "Clear Captions")}
+						disabled={captionCueCount === 0 || isGeneratingCaptions}
+						onClick={onClearAutoCaptions}
+					>
+						<Trash className="size-5" aria-hidden="true" />
+					</Button>
 				</div>
+				{advanced && (
+					<Button
+						type="button"
+						variant="ghost"
+						disabled={!modelReady || isBusy}
+						onClick={onDeleteWhisperSmallModel}
+						className="h-7 self-start px-2 text-xs text-muted-foreground"
+					>
+						{tSettings("captions.deleteModel", "Delete Model")}
+					</Button>
+				)}
 				{(isDownloading || isGeneratingCaptions) && (
 					<ProgressBar
 						aria-label={
@@ -216,7 +211,7 @@ export function CaptionGenerationSettings({
 								? tSettings("captions.downloading", "Downloading...")
 								: te("generatingCaptionProgress", "Generating captions")
 						}
-						isIndeterminate={isGeneratingCaptions}
+						isIndeterminate={!isDownloading}
 						value={isDownloading ? whisperModelDownloadProgress : undefined}
 					>
 						<ProgressBar.Track>
@@ -236,7 +231,10 @@ export function CaptionGenerationSettings({
 					}
 				/>
 				<SliderControl
-					label={tSettings("captions.fontSize", "Font size")}
+					label={t("editor.annotations.size", "Size")}
+					hideLabel
+					startContent={<span className="text-[11px] leading-none">Aa</span>}
+					endContent={<span className="text-xl leading-none">Aa</span>}
 					value={autoCaptionSettings.fontSize}
 					min={16}
 					max={72}

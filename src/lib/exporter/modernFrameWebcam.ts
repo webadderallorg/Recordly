@@ -1,6 +1,7 @@
 import { Sprite } from "pixi.js";
 import { DEFAULT_WEBCAM_ROUNDNESS } from "@/components/video-editor/types";
 import { isWebcamVisibleAtSourceTime } from "@/components/video-editor/videoPlayback/webcamSync";
+import { getWebcamEdgeFeatherPixels } from "@/components/video-editor/webcamEdgeFeather";
 import { WebcamMotionBlur } from "@/components/video-editor/webcamMotionBlur";
 import {
 	getCropMatchedWebcamHeightPercent,
@@ -279,6 +280,10 @@ export class FrameWebcam {
 		// silhouette and a GPU stencil have different edge coverage, exposing a rim.
 		const blur = this.webcamMotionBlur.render({
 			renderStill: true,
+			edgeFeatherPx: getWebcamEdgeFeatherPixels(
+				webcam.previewFrame,
+				this.context.config.width,
+			),
 			layout: { x: position.x, y: position.y, ...dimensions, radius },
 			shape: webcamShape,
 			timeMs: frameTimeMs,

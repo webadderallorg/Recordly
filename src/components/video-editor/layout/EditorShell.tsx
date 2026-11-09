@@ -44,6 +44,7 @@ import { ProjectLoadError } from "./ProjectLoadError";
 import { resolveVideoUrl } from "../projectPersistence";
 import { isMissingProjectRecording } from "../project/projectLoadError";
 import { AutoZoomNudgeContext, useAutoZoomNudge } from "../timeline/useAutoZoomNudge";
+import { useAutoApplyZooms } from "../hooks/useAutoApplyZooms";
 
 type Props = {
 	t: ReturnType<typeof useI18n>["t"];
@@ -126,8 +127,22 @@ export function EditorShell(props: Props) {
 	const shouldNudgeAutoZooms = useAutoZoomNudge(
 		projectController.snapshot.currentSourcePath,
 		projectController.snapshot.currentPersistedEditorState,
-		!project.loading && ui.isPreviewReady,
+		// A source replacement can retain the previous preview's ready flag for a
+		// render. Wait for the new timeline before capturing its unedited baseline.
+		!project.loading && ui.isPreviewReady && ui.duration > 0 && ui.clipInitializedRef.current,
 	);
+	useAutoApplyZooms({
+		enabled: appearance.autoApplyFreshRecordingAutoZooms,
+		sourcePath: project.videoSourcePath,
+		ready: !project.loading && ui.isPreviewReady && ui.clipInitializedRef.current,
+		isSavedProject: project.openedSavedProject,
+		totalMs: ui.duration * 1000,
+		clipRegions: timeline.clipRegions,
+		zoomRegions: timeline.zoomRegions,
+		cursorTelemetry: editing.cursor.normalizedCursorTelemetry,
+		cursorTelemetrySourcePath: timeline.cursorTelemetrySourcePath,
+		onZoomSuggested: editing.zoomCommands.handleZoomSuggested,
+	});
 	const openDashboard = (section: "projects" | "settings" = "projects") => {
 		setDashboardInitialSection(section);
 		void projectController.openActions.handleOpenProjectBrowser();

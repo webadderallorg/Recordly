@@ -128,7 +128,7 @@ test("compact microphone and camera selectors preserve their original choices", 
 for (const reducedMotion of [false, true]) {
 	test(`countdown replacement ${reducedMotion ? "respects reduced motion" : "slides the old number up while the next enters"}`, async ({
 		page,
-	}) => {
+	}, testInfo) => {
 		await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
 		await installDesktopBridge(page);
 		await installDesktopBridgeOverrides(page, () => {
@@ -159,6 +159,26 @@ for (const reducedMotion of [false, true]) {
 		await expect(countdown.getByRole("status")).toHaveText("3");
 		await page.mouse.move(0, 0);
 		const before = await countdown.boundingBox();
+		await page.evaluate(() => document.fonts.ready);
+		const expectCentered = async (number: number) => {
+			const digit = countdown.locator(`[data-countdown-number="${number}"]`);
+			const offsets = await digit.evaluate((node) => {
+				const button = node.closest("button")!.getBoundingClientRect();
+				const rect = node.getBoundingClientRect();
+				const range = document.createRange();
+				range.selectNodeContents(node);
+				const text = range.getBoundingClientRect();
+				return {
+					x: rect.x + rect.width / 2 - (button.x + button.width / 2),
+					y: rect.y + rect.height / 2 - (button.y + button.height / 2),
+					textY: text.y + text.height / 2 - (button.y + button.height / 2),
+				};
+			});
+			expect(Math.abs(offsets.x)).toBeLessThanOrEqual(0.5);
+			expect(Math.abs(offsets.y)).toBeLessThanOrEqual(0.5);
+			expect(Math.abs(offsets.textY)).toBeLessThanOrEqual(0.5);
+		};
+		await expectCentered(3);
 		if (!reducedMotion) {
 			const replacement = await page.evaluate(async () => {
 				window.dispatchEvent(new CustomEvent("test-countdown-tick", { detail: 2 }));
@@ -205,6 +225,23 @@ for (const reducedMotion of [false, true]) {
 		}
 		await expect(countdown.getByRole("status")).toHaveText("2");
 		await expect(countdown.locator('[data-countdown-number="3"]')).toHaveCount(0);
+		await expectCentered(2);
+		for (const number of [1, 10]) {
+			await page.evaluate(
+				(detail) =>
+					window.dispatchEvent(new CustomEvent("test-countdown-tick", { detail })),
+				number,
+			);
+			await expect(countdown.locator(`[data-countdown-number="${number}"]`)).toHaveCSS(
+				"opacity",
+				"1",
+			);
+			await expect(countdown.locator('[data-countdown-number="2"]')).toHaveCount(0);
+			await expectCentered(number);
+		}
+		await page.locator("[data-recording-state]").screenshot({
+			path: testInfo.outputPath("countdown-centered.png"),
+		});
 		expect(await countdown.boundingBox()).toEqual(before);
 	});
 }

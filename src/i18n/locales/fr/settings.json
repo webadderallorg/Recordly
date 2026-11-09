@@ -130,10 +130,11 @@
 			}
 		},
 		"cursorMotionBlur": "Flou de mouvement du curseur",
-		"cursorClickBounce": "Rebond au clic du curseur",
+		"cursorClickBounce": "Agrandir au clic",
+		"cursorClickBounceStrength": "Intensité de mise à l’échelle au clic",
 		"cursorClickBounceDuration": "Vitesse du rebond",
 		"cursorSway": "Oscillation du curseur",
-		"cursorIdleHide": "Masquer le curseur inactif",
+		"cursorIdleHide": "Masquer en cas d’inactivité",
 		"cursorIdleHideDescription": "Après un court délai, le curseur s’estompe pendant les longues pauses. Un mouvement ou un clic le fait réapparaître.",
 		"cursorIdleFadeDelay": "Délai avant le fondu",
 		"cursorIdleDuration": "Détection d’inactivité",
@@ -205,7 +206,10 @@
 			"bottom-left": "En bas à gauche",
 			"bottom-center": "En bas au centre",
 			"bottom-right": "En bas à droite"
-		}
+		},
+		"webcamPreviewFrame": "Cadre",
+		"webcamFrameStandard": "Standard",
+		"webcamFrameSoftBlur": "Flou doux"
 	},
 	"sections": {
 		"scene": "Scène",
@@ -221,6 +225,8 @@
 		"title": "Outils de montage"
 	},
 	"captions": {
+		"firstDownload": "La première utilisation télécharge {{size}} Mo de fichiers vocaux, puis génère les sous-titres.",
+		"localProcessing": "Les sous-titres sont générés sur cet appareil. Votre enregistrement n’est pas envoyé.",
 		"selectOnTimeline": "Sélectionnez un sous-titre sur la timeline pour le modifier.",
 		"enabled": "Afficher",
 		"timelineQuickAdd": "Survoler pour ajouter sur la timeline",
@@ -378,7 +384,15 @@
 		"experimentalDescription": "Vous avez activé les mises à jour expérimentales, vous pouvez donc tester la dernière mise à jour de Recordly avant sa disponibilité générale.",
 		"title": "Mises à jour",
 		"experimental": "Mises à jour expérimentales",
-		"saveFailed": "Impossible de changer le canal de mise à jour."
+		"saveFailed": "Impossible de changer le canal de mise à jour.",
+		"changeVersion": "Changer de version",
+		"versionInstallHint": "Téléchargez une version, puis ouvrez son programme d’installation pour changer de version.",
+		"loadingVersions": "Chargement des versions…",
+		"version": "Version",
+		"prereleaseVersion": "Préversion",
+		"noVersions": "Aucune version compatible n’est disponible pour cette installation.",
+		"versionFailed": "Impossible de charger ou télécharger cette version. Réessayez.",
+		"downloadInstaller": "Télécharger le programme d’installation"
 	},
 	"categories": {
 		"general": "Général",

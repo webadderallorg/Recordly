@@ -130,10 +130,11 @@
 			}
 		},
 		"cursorMotionBlur": "游標動態模糊",
-		"cursorClickBounce": "點擊彈跳",
+		"cursorClickBounce": "點擊時縮放",
+		"cursorClickBounceStrength": "點擊縮放強度",
 		"cursorClickBounceDuration": "彈跳速度",
 		"cursorSway": "游標擺動",
-		"cursorIdleHide": "閒置時隱藏游標",
+		"cursorIdleHide": "閒置時隱藏",
 		"cursorIdleHideDescription": "短暫延遲後，游標會在較長的停頓中淡出。移動或點擊後，游標會重新顯示。",
 		"cursorIdleFadeDelay": "淡出延遲",
 		"cursorIdleDuration": "閒置偵測時間",
@@ -205,7 +206,10 @@
 			"bottom-left": "左下",
 			"bottom-center": "下中",
 			"bottom-right": "右下"
-		}
+		},
+		"webcamPreviewFrame": "邊框",
+		"webcamFrameStandard": "標準",
+		"webcamFrameSoftBlur": "柔和模糊"
 	},
 	"sections": {
 		"scene": "場景",
@@ -221,6 +225,8 @@
 		"title": "編輯工具"
 	},
 	"captions": {
+		"firstDownload": "首次使用會下載 {{size}} MB 的語音檔案，然後自動產生字幕。",
+		"localProcessing": "字幕在此裝置上產生，錄製內容不會上傳。",
 		"selectOnTimeline": "在時間軸上選擇字幕進行編輯。",
 		"enabled": "顯示",
 		"timelineQuickAdd": "懸停以在時間軸上新增",
@@ -378,7 +384,15 @@
 		"experimentalDescription": "你已選擇接收實驗性更新，因此可以在 Recordly 最新更新廣泛推出之前選擇先行測試。",
 		"title": "更新",
 		"experimental": "實驗性更新",
-		"saveFailed": "無法變更更新頻道。"
+		"saveFailed": "無法變更更新頻道。",
+		"changeVersion": "變更版本",
+		"versionInstallHint": "下載發行版本，再開啟安裝程式以變更版本。",
+		"loadingVersions": "正在載入版本…",
+		"version": "版本",
+		"prereleaseVersion": "預先發行版",
+		"noVersions": "此安裝沒有可用的相容版本。",
+		"versionFailed": "無法載入或下載此版本，請重試。",
+		"downloadInstaller": "下載安裝程式"
 	},
 	"categories": {
 		"general": "一般",

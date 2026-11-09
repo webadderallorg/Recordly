@@ -1,7 +1,10 @@
 import { getCaptionFontFamily } from "@/components/video-editor/captionFonts";
-import { getCaptionBackground, getCaptionPreset } from "@/components/video-editor/captionPresets";
-import { drawCaptionLine } from "./captionText";
 import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
+import {
+	drawCaptionBoxBorder,
+	getCaptionBackground,
+	getCaptionPreset,
+} from "@/components/video-editor/captionPresets";
 import {
 	CAPTION_LINE_HEIGHT,
 	getCaptionPadding,
@@ -10,6 +13,7 @@ import {
 	getCaptionTextMaxWidth,
 } from "@/components/video-editor/captionStyle";
 import { type AutoCaptionSettings, type CaptionCue } from "@/components/video-editor/types";
+import { drawCaptionLine } from "./captionText";
 
 /** Draw the active caption using the same typography and timing as preview. */
 export function renderCaptions(
@@ -28,13 +32,13 @@ export function renderCaptions(
 
 	const fontSize = getCaptionScaledFontSize(settings.fontSize, width, settings.maxWidth);
 	ctx.font = `${getCaptionPreset(settings.style).fontWeight} ${fontSize}px ${getCaptionFontFamily(settings)}`;
-	const padding = getCaptionPadding(fontSize);
+	const padding = getCaptionPadding(fontSize, settings.style);
 
 	const activeCaptionLayout = buildActiveCaptionLayout({
 		cues,
 		timeMs,
 		settings,
-		maxWidthPx: getCaptionTextMaxWidth(width, settings.maxWidth, fontSize),
+		maxWidthPx: getCaptionTextMaxWidth(width, settings.maxWidth, fontSize, settings.style),
 		measureText: (text) => ctx.measureText(text).width,
 	});
 	if (!activeCaptionLayout) {
@@ -72,6 +76,16 @@ export function renderCaptions(
 		Math.min(boxWidth / 2, boxHeight / 2, getCaptionScaledRadius(settings.boxRadius, fontSize)),
 	);
 	ctx.fill();
+	drawCaptionBoxBorder(
+		ctx,
+		settings.style,
+		-boxWidth / 2,
+		-boxHeight / 2,
+		boxWidth,
+		boxHeight,
+		Math.min(boxWidth / 2, boxHeight / 2, getCaptionScaledRadius(settings.boxRadius, fontSize)),
+		fontSize,
+	);
 
 	activeCaptionLayout.visibleLines.forEach((line, index) => {
 		drawCaptionLine(

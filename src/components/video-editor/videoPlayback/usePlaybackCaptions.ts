@@ -82,6 +82,7 @@ export function usePlaybackCaptions(input: usePlaybackCaptionsInput) {
 			overlayWidth,
 			autoCaptionSettings.maxWidth,
 			fontSize,
+			autoCaptionSettings.style,
 		);
 		const measurementContext = getMeasurementContext();
 		if (!measurementContext) {
@@ -136,6 +137,7 @@ export function usePlaybackCaptions(input: usePlaybackCaptionsInput) {
 			overlayWidth,
 			autoCaptionSettings.maxWidth,
 			fontSize,
+			autoCaptionSettings.style,
 		);
 		const measurementContext = getMeasurementContext();
 		if (!measurementContext) {

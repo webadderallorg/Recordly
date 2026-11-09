@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import {
 	getCaptionBackground,
+	getCaptionDisplayText,
 	getCaptionPreset,
 	getCaptionWordColor,
 	getCaptionWordOutline,
@@ -64,9 +65,9 @@ export function PlaybackCaptions(
 				autoCaptionSettings.maxWidth,
 			)
 		: 0;
+	const padding = getCaptionPadding(fontSize, autoCaptionSettings?.style);
 	const boxWidth = activeCaptionLayout
-		? Math.max(...activeCaptionLayout.visibleLines.map((line) => line.width), 0) +
-			getCaptionPadding(fontSize).x * 2
+		? Math.max(...activeCaptionLayout.visibleLines.map((line) => line.width), 0) + padding.x * 2
 		: 0;
 	return !isGap && activeCaptionLayout && autoCaptionSettings ? (
 		<div
@@ -117,6 +118,9 @@ export function PlaybackCaptions(
 					style={{
 						width: captionEditSession ? undefined : `${boxWidth}px`,
 						backgroundColor: getCaptionBackground(autoCaptionSettings),
+						boxShadow: preset.borderEm
+							? `inset 0 0 0 ${preset.borderEm}em rgba(0, 0, 0, 0.12)`
+							: undefined,
 						fontFamily: captionFontFamily,
 						fontSize: `${getCaptionScaledFontSize(
 							autoCaptionSettings.fontSize,
@@ -126,23 +130,7 @@ export function PlaybackCaptions(
 						lineHeight: CAPTION_LINE_HEIGHT,
 						textAlign: "center",
 						fontWeight: preset.fontWeight,
-						padding: `${
-							getCaptionPadding(
-								getCaptionScaledFontSize(
-									autoCaptionSettings.fontSize,
-									overlayRef.current?.clientWidth || 960,
-									autoCaptionSettings.maxWidth,
-								),
-							).y
-						}px ${
-							getCaptionPadding(
-								getCaptionScaledFontSize(
-									autoCaptionSettings.fontSize,
-									overlayRef.current?.clientWidth || 960,
-									autoCaptionSettings.maxWidth,
-								),
-							).x
-						}px`,
+						padding: `${padding.y}px ${padding.x}px`,
 						borderRadius: `${getCaptionScaledRadius(
 							autoCaptionSettings.boxRadius,
 							getCaptionScaledFontSize(
@@ -202,11 +190,8 @@ export function PlaybackCaptions(
 									getCaptionTextMaxWidth(
 										overlayRef.current?.clientWidth || 960,
 										autoCaptionSettings.maxWidth,
-										getCaptionScaledFontSize(
-											autoCaptionSettings.fontSize,
-											overlayRef.current?.clientWidth || 960,
-											autoCaptionSettings.maxWidth,
-										),
+										fontSize,
+										autoCaptionSettings.style,
 									)
 								}px`,
 								minHeight: `${
@@ -278,6 +263,11 @@ export function PlaybackCaptions(
 													style={{
 														display: "inline-block",
 														position: "relative",
+														opacity: word.revealProgress,
+														filter:
+															word.revealProgress === undefined
+																? undefined
+																: `blur(${(1 - word.revealProgress) * fontSize * 0.18}px)`,
 													}}
 												>
 													{visualState.isHighlighted &&
@@ -306,7 +296,10 @@ export function PlaybackCaptions(
 															paintOrder: "stroke fill",
 														}}
 													>
-														{word.text}
+														{getCaptionDisplayText(
+															word.text,
+															autoCaptionSettings.style,
+														)}
 													</span>
 												</span>
 											</span>

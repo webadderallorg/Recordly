@@ -41,6 +41,8 @@ export const appSettingsKeys = [
 	"advanced",
 	"connectZooms",
 	"onConnectZoomsChange",
+	"autoApplyFreshRecordingAutoZooms",
+	"onAutoApplyFreshRecordingAutoZoomsChange",
 ] as const;
 type Props = Pick<ResolvedSettingsPanelProps, (typeof appSettingsKeys)[number]> &
 	Pick<ResolvedSettingsPanelProps, (typeof developerMotionSettingsKeys)[number]> & {
@@ -54,6 +56,8 @@ export function AppSettings(props: Props) {
 		advanced,
 		connectZooms,
 		onConnectZoomsChange,
+		autoApplyFreshRecordingAutoZooms,
+		onAutoApplyFreshRecordingAutoZoomsChange,
 	} = props;
 	const { tSettings, t } = useSettingsTranslations();
 	const {
@@ -192,6 +196,22 @@ export function AppSettings(props: Props) {
 			<SettingsCategory category="motion">
 				<section className="flex flex-col gap-6">
 					<div className="settings-group">
+						<SettingsRow
+							title={tSettings("appPreferences.autoZoom", "Automatically add zooms")}
+							description={tSettings(
+								"appPreferences.autoZoomDescription",
+								"Add zooms on new recordings. Turning this off won't remove existing zooms.",
+							)}
+						>
+							<Switch
+								aria-label={tSettings(
+									"appPreferences.autoZoom",
+									"Automatically add zooms",
+								)}
+								checked={autoApplyFreshRecordingAutoZooms}
+								onCheckedChange={onAutoApplyFreshRecordingAutoZoomsChange}
+							/>
+						</SettingsRow>
 						<SettingsRow
 							title={tSettings("effects.connectZooms", "Connect neighboring zooms")}
 							description={tSettings(

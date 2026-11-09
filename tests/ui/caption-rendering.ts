@@ -12,7 +12,7 @@ async function run() {
 	const width = 960,
 		height = 540;
 	const settings = {
-		...DEFAULT_AUTO_CAPTION_SETTINGS,
+		...applyCaptionPreset(DEFAULT_AUTO_CAPTION_SETTINGS, "classic"),
 		enabled: true,
 		animationStyle: "none",
 	};
@@ -127,6 +127,7 @@ async function run() {
 			} else renderCaptions(ctx, cues, styledSettings, width, height, 500);
 			const pixels = ctx.getImageData(0, 0, width, height).data;
 			let foregroundPixels = 0;
+			let highlightPixels = 0;
 			for (let i = 0; i < pixels.length; i += 4) {
 				if (
 					pixels[i + 3] > 200 &&
@@ -134,25 +135,63 @@ async function run() {
 					target.every((value, channel) => Math.abs(value - pixels[i + channel]) < 24)
 				)
 					foregroundPixels++;
+				if (
+					pixels[i + 3] > 200 &&
+					pixels[i] > 230 &&
+					pixels[i + 1] > 200 &&
+					pixels[i + 2] < 24
+				)
+					highlightPixels++;
 			}
 			const backgroundPixel = Array.from(
 				ctx.getImageData(
 					Math.floor(
 						state.centerX -
 							state.boxWidth / 2 +
-							getCaptionPadding(state.fontSize).x / 4,
+							getCaptionPadding(state.fontSize, styledSettings.style).x / 4,
 					),
 					Math.floor(state.centerY),
 					1,
 					1,
 				).data,
 			);
-			return { foregroundPixels, backgroundAlpha: backgroundPixel[3], backgroundPixel };
+
+			return {
+				foregroundPixels,
+				highlightPixels,
+				backgroundAlpha: backgroundPixel[3],
+				backgroundPixel,
+			};
 		});
+		const revealAnimation = preset.revealWords
+			? [false, true].map((modern) => {
+					const hashes = [420, 540, 420].map((time) => {
+						const canvas = document.createElement("canvas");
+						canvas.width = width;
+						canvas.height = height;
+						const ctx = canvas.getContext("2d")!;
+						if (modern) {
+							styledFrame.updateCaptionLayer(time);
+							styledFrame.drawCaptionOverlay(ctx);
+						} else renderCaptions(ctx, cues, styledSettings, width, height, time);
+						return ctx
+							.getImageData(0, 0, width, height)
+							.data.reduce(
+								(sum, channel, index) => sum + (index % 4 === 3 ? 0 : channel),
+								0,
+							);
+					});
+					return {
+						animates: hashes[0] !== hashes[1],
+						seeksBack: hashes[0] === hashes[2],
+					};
+				})
+			: [];
 		return {
 			id: preset.id,
+			revealAnimation,
 			samples,
-			widths: [0, 150, 500, 800, 999].map(
+			widths: (preset.revealWords ? [250, 550, 900, 999] : [0, 150, 500, 800, 999]).map(
 				(time) => styledFrame.buildCaptionRenderState(time)!.boxWidth,
 			),
 			heightInEm: state.boxHeight / state.fontSize,

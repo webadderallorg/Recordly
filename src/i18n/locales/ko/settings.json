@@ -130,10 +130,11 @@
 			}
 		},
 		"cursorMotionBlur": "커서 모션 블러",
-		"cursorClickBounce": "커서 클릭 바운스",
+		"cursorClickBounce": "클릭 시 크기 조절",
+		"cursorClickBounceStrength": "클릭 시 크기 조절 강도",
 		"cursorClickBounceDuration": "바운스 속도",
 		"cursorSway": "커서 흔들림",
-		"cursorIdleHide": "움직임이 없을 때 커서 숨기기",
+		"cursorIdleHide": "대기 시 숨기기",
 		"cursorIdleHideDescription": "잠시 기다린 후 긴 멈춤 구간에서 커서가 서서히 사라집니다. 움직이거나 클릭하면 다시 나타납니다.",
 		"cursorIdleFadeDelay": "페이드 지연 시간",
 		"cursorIdleDuration": "유휴 감지 시간",
@@ -205,7 +206,10 @@
 			"bottom-left": "왼쪽 아래",
 			"bottom-center": "가운데 아래",
 			"bottom-right": "오른쪽 아래"
-		}
+		},
+		"webcamPreviewFrame": "프레임",
+		"webcamFrameStandard": "기본",
+		"webcamFrameSoftBlur": "부드러운 흐림"
 	},
 	"sections": {
 		"scene": "장면",
@@ -221,6 +225,8 @@
 		"title": "편집 도구"
 	},
 	"captions": {
+		"firstDownload": "처음 사용하면 {{size}} MB의 음성 파일을 다운로드한 후 자막을 생성합니다.",
+		"localProcessing": "자막은 이 기기에서 생성됩니다. 녹화 영상은 업로드되지 않습니다.",
 		"selectOnTimeline": "타임라인에서 자막을 선택하여 편집하세요.",
 		"enabled": "표시",
 		"timelineQuickAdd": "타임라인에 마우스를 올려 추가",
@@ -378,7 +384,15 @@
 		"experimentalDescription": "실험적 업데이트를 선택했으므로 Recordly의 최신 업데이트가 널리 제공되기 전에 먼저 테스트해 볼 수 있습니다.",
 		"title": "업데이트",
 		"experimental": "실험적 업데이트",
-		"saveFailed": "업데이트 채널을 변경하지 못했습니다."
+		"saveFailed": "업데이트 채널을 변경하지 못했습니다.",
+		"changeVersion": "버전 변경",
+		"versionInstallHint": "릴리스를 다운로드한 후 설치 프로그램을 열어 버전을 변경하세요.",
+		"loadingVersions": "버전 불러오는 중…",
+		"version": "버전",
+		"prereleaseVersion": "미리 보기 버전",
+		"noVersions": "이 설치에 호환되는 버전이 없습니다.",
+		"versionFailed": "이 버전을 불러오거나 다운로드하지 못했습니다. 다시 시도하세요.",
+		"downloadInstaller": "설치 프로그램 다운로드"
 	},
 	"categories": {
 		"general": "일반",

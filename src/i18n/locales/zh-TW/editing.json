@@ -170,5 +170,7 @@
 	"selectedClips": "已選取 {{count}} 個片段",
 	"mergeSelectedClips": "合併所選片段",
 	"mergeClipsUnavailable": "合併需要連續的素材，且速度與音訊設定必須一致。",
-	"mergeClips": "合併片段"
+	"mergeClips": "合併片段",
+	"captionStyleClassic": "經典",
+	"captionStyleReveal": "逐詞顯現"
 }

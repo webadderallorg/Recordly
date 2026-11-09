@@ -121,6 +121,12 @@ export function ExportSettingsMenu({
 		});
 	};
 
+	const advancedToggle = (
+		<Switch checked={advancedExportSettings} onCheckedChange={toggleAdvanced} size="sm">
+			<Label>{tSettings("export.advanced", "Advanced")}</Label>
+		</Switch>
+	);
+
 	return (
 		<Card className={className}>
 			{!hideHeading && (
@@ -162,15 +168,7 @@ export function ExportSettingsMenu({
 					<>
 						<ExportChoices
 							label={tSettings("export.resolutionTitle", "Resolution")}
-							headingAction={
-								<Switch
-									checked={advancedExportSettings}
-									onCheckedChange={toggleAdvanced}
-									size="sm"
-								>
-									<Label>{tSettings("export.advanced", "Advanced")}</Label>
-								</Switch>
-							}
+							headingAction={advancedToggle}
 							columns={2}
 							value={exportQuality}
 							onChange={onExportQualityChange}
@@ -284,22 +282,29 @@ export function ExportSettingsMenu({
 								/>
 							</>
 						)}
-						<ExportChoices
-							label={tSettings("export.fpsTitle", "FPS")}
-							value={mp4FrameRate}
-							onChange={onMp4FrameRateChange}
-							options={MP4_FRAME_RATES.map((value) => ({
-								value,
-								label: String(value),
-							}))}
-						/>
-						{!isLegacyModel && nvidiaCudaExportAvailable && (
-							<Switch
-								checked={experimentalNvidiaCudaExport}
-								onCheckedChange={onExperimentalNvidiaCudaExportChange}
-							>
-								<Label>{tSettings("export.nvidiaCuda.title", "NVIDIA CUDA")}</Label>
-							</Switch>
+						{advancedExportSettings && (
+							<>
+								<ExportChoices
+									label={tSettings("export.fpsTitle", "FPS")}
+									value={mp4FrameRate}
+									onChange={onMp4FrameRateChange}
+									options={MP4_FRAME_RATES.map((value) => ({
+										value,
+										label: String(value),
+									}))}
+								/>
+								{!isLegacyModel && nvidiaCudaExportAvailable && (
+									<Switch
+										disabled={!nvidiaCudaExportAvailable}
+										checked={experimentalNvidiaCudaExport}
+										onCheckedChange={onExperimentalNvidiaCudaExportChange}
+									>
+										<Label>
+											{tSettings("export.nvidiaCuda.title", "NVIDIA CUDA")}
+										</Label>
+									</Switch>
+								)}
+							</>
 						)}
 						{showCaptionSidecarOption && (
 							<div>
@@ -333,16 +338,8 @@ export function ExportSettingsMenu({
 				) : (
 					<>
 						<ExportChoices
-							label={tSettings("export.fpsTitle", "FPS")}
-							value={gifFrameRate}
-							onChange={onGifFrameRateChange}
-							options={GIF_FRAME_RATES.map((rate) => ({
-								value: rate.value,
-								label: String(rate.value),
-							}))}
-						/>
-						<ExportChoices
 							label={tSettings("export.size", "Size")}
+							headingAction={advancedToggle}
 							value={gifSizePreset}
 							onChange={onGifSizePresetChange}
 							options={Object.entries(GIF_SIZE_PRESETS).map(([key, preset]) => ({
@@ -353,6 +350,17 @@ export function ExportSettingsMenu({
 						<Description>
 							{gifOutputDimensions.width} × {gifOutputDimensions.height}px
 						</Description>
+						{advancedExportSettings && (
+							<ExportChoices
+								label={tSettings("export.fpsTitle", "FPS")}
+								value={gifFrameRate}
+								onChange={onGifFrameRateChange}
+								options={GIF_FRAME_RATES.map((rate) => ({
+									value: rate.value,
+									label: String(rate.value),
+								}))}
+							/>
+						)}
 						<Switch checked={gifLoop} onCheckedChange={onGifLoopChange}>
 							<Label>{tSettings("export.loop")}</Label>
 						</Switch>

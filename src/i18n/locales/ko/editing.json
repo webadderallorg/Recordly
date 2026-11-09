@@ -170,5 +170,7 @@
 	"selectedClips": "클립 {{count}}개 선택됨",
 	"mergeSelectedClips": "선택한 클립 병합",
 	"mergeClipsUnavailable": "병합하려면 속도 및 오디오 설정이 같은 연속된 영상이어야 합니다.",
-	"mergeClips": "클립 병합"
+	"mergeClips": "클립 병합",
+	"captionStyleClassic": "클래식",
+	"captionStyleReveal": "리빌"
 }

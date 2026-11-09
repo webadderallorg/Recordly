@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { toast } from "@/components/ui/toast";
 import { useAutoCaptionController } from "./useAutoCaptionController";
 
 const state = vi.hoisted(() => ({
@@ -126,12 +127,75 @@ it("preserves existing captions on failure and permits retry", async () => {
 	expect(test.params.setAutoCaptions).toHaveBeenCalledWith(cues);
 });
 
-it("does not generate before the selected managed model is installed", async () => {
+it("downloads speech files and generates captions from one request", async () => {
 	const test = setup();
 	test.params.downloadedWhisperModelPath = null;
 	test.params.whisperModelDownloadStatus = "idle";
-	await test.render().handleGenerateAutoCaptions();
+	window.electronAPI.downloadCaptionModel = vi.fn(async () => ({
+		success: true,
+		path: "/installed/parakeet-v3",
+	}));
+	const pending = test.render().handleGenerateAutoCaptions();
+	await vi.waitFor(() => expect(test.generateAutoCaptions).toHaveBeenCalledOnce());
+	expect(window.electronAPI.downloadCaptionModel).toHaveBeenCalledWith("parakeet-v3");
+	expect(test.generateAutoCaptions).toHaveBeenCalledWith(
+		expect.objectContaining({ parakeetModelPath: "/installed/parakeet-v3" }),
+	);
+	expect(test.params.setWhisperModelDownloadStatus).toHaveBeenLastCalledWith("downloaded");
+	test.complete({ success: true, cues });
+	await pending;
+	expect(test.params.setAutoCaptions).toHaveBeenCalledWith(cues);
+});
+
+it("keeps existing captions after a failed first download and permits retry", async () => {
+	const test = setup();
+	test.params.downloadedWhisperModelPath = null;
+	test.params.whisperModelDownloadStatus = "idle";
+	window.electronAPI.downloadCaptionModel = vi
+		.fn()
+		.mockResolvedValueOnce({ success: false, error: "Offline" })
+		.mockResolvedValueOnce({ success: true, path: "/installed/parakeet-v3" });
+	const controller = test.render();
+	await controller.handleGenerateAutoCaptions();
 	expect(test.generateAutoCaptions).not.toHaveBeenCalled();
+	expect(test.params.setAutoCaptions).not.toHaveBeenCalled();
+	expect(test.params.setWhisperModelDownloadStatus).toHaveBeenLastCalledWith("error");
+	expect(toast.error).toHaveBeenLastCalledWith("Failed to download caption model", {
+		description: "Offline",
+	});
+	expect(test.params.setIsGeneratingCaptions).toHaveBeenLastCalledWith(false);
+	const retry = controller.handleGenerateAutoCaptions();
+	await vi.waitFor(() => expect(test.generateAutoCaptions).toHaveBeenCalledOnce());
+	test.complete({ success: true, cues });
+	await retry;
+	expect(test.params.setAutoCaptions).toHaveBeenCalledWith(cues);
+});
+
+it("deduplicates first-use downloads and does not transcribe a recording that changed meanwhile", async () => {
+	const test = setup();
+	test.params.downloadedWhisperModelPath = null;
+	test.params.whisperModelDownloadStatus = "idle";
+	let finishDownload!: (value: { success: boolean; path: string }) => void;
+	window.electronAPI.downloadCaptionModel = vi.fn(
+		() =>
+			new Promise((resolve) => {
+				finishDownload = resolve;
+			}),
+	);
+	window.electronAPI.setAppSetting = vi.fn(() => true);
+	const controller = test.render();
+	const pending = controller.handleGenerateAutoCaptions();
+	await controller.handleGenerateAutoCaptions();
+	controller.handleCaptionModelChange("whisper-base");
+	expect(window.electronAPI.downloadCaptionModel).toHaveBeenCalledOnce();
+	expect(window.electronAPI.setAppSetting).not.toHaveBeenCalled();
+	test.params.videoSourcePath = "/recordings/b.mp4";
+	test.render();
+	finishDownload({ success: true, path: "/installed/parakeet-v3" });
+	await pending;
+	expect(test.generateAutoCaptions).not.toHaveBeenCalled();
+	expect(test.params.syncActiveVideoSource).not.toHaveBeenCalled();
+	expect(test.params.setAutoCaptions).not.toHaveBeenCalled();
 	expect(test.params.setIsGeneratingCaptions).toHaveBeenLastCalledWith(false);
 });
 

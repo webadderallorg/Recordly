@@ -1,8 +1,11 @@
-import { getCaptionFontFamily } from "@/components/video-editor/captionFonts";
-import { getCaptionBackground, getCaptionPreset } from "@/components/video-editor/captionPresets";
-import { drawCaptionLine } from "./captionText";
 import { Sprite, Texture } from "pixi.js";
+import { getCaptionFontFamily } from "@/components/video-editor/captionFonts";
 import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
+import {
+	drawCaptionBoxBorder,
+	getCaptionBackground,
+	getCaptionPreset,
+} from "@/components/video-editor/captionPresets";
 import {
 	CAPTION_LINE_HEIGHT,
 	getCaptionPadding,
@@ -10,6 +13,7 @@ import {
 	getCaptionScaledRadius,
 	getCaptionTextMaxWidth,
 } from "@/components/video-editor/captionStyle";
+import { drawCaptionLine } from "./captionText";
 import type { FrameRenderContext } from "./modernFrameRenderer";
 import type { CaptionRenderState, MutableVideoTextureSource } from "./modernFrameTypes";
 import { configureHighQuality2DContext } from "./modernFrameUtils";
@@ -90,6 +94,7 @@ export class FrameCaptions {
 				this.context.config.width,
 				settings.maxWidth,
 				fontSize,
+				settings.style,
 			),
 			measureText: (text) => measureCtx.measureText(text).width,
 		});
@@ -97,7 +102,7 @@ export class FrameCaptions {
 			return null;
 		}
 
-		const padding = getCaptionPadding(fontSize);
+		const padding = getCaptionPadding(fontSize, settings.style);
 		const lineHeight = fontSize * CAPTION_LINE_HEIGHT;
 		const textBlockHeight = layout.visibleLines.length * lineHeight;
 		const boxHeight = textBlockHeight + padding.y * 2;
@@ -116,7 +121,7 @@ export class FrameCaptions {
 			boxHeight / 2;
 
 		return {
-			key: `${layout.blockKey}:${layout.visiblePageIndex}:${layout.activeWordIndex}`,
+			key: `${layout.blockKey}:${layout.visiblePageIndex}:${layout.activeWordIndex}:${layout.visibleLines.flatMap((line) => line.words.map((word) => word.revealProgress?.toFixed(4) ?? "")).join(",")}`,
 			layout,
 			fontFamily,
 			fontSize,
@@ -194,8 +199,22 @@ export class FrameCaptions {
 			),
 		);
 		ctx.fill();
+		drawCaptionBoxBorder(
+			ctx,
+			settings.style,
+			0,
+			0,
+			state.boxWidth,
+			state.boxHeight,
+			Math.min(
+				state.boxWidth / 2,
+				state.boxHeight / 2,
+				getCaptionScaledRadius(settings.boxRadius, state.fontSize),
+			),
+			state.fontSize,
+		);
 
-		const padding = getCaptionPadding(state.fontSize);
+		const padding = getCaptionPadding(state.fontSize, settings.style);
 		state.layout.visibleLines.forEach((line, index) => {
 			drawCaptionLine(
 				ctx,

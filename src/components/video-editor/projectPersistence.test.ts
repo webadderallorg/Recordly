@@ -40,6 +40,16 @@ describe("resolveVideoUrl", () => {
 });
 
 describe("normalizeProjectEditor", () => {
+	it("preserves the webcam preview frame when reopening a project", () => {
+		for (const previewFrame of ["standard", "soft-blur"] as const) {
+			const editor = normalizeProjectEditor({ webcam: { previewFrame } as never });
+			expect(
+				normalizeProjectEditor(JSON.parse(JSON.stringify(editor))).webcam.previewFrame,
+			).toBe(previewFrame);
+		}
+		expect(normalizeProjectEditor({}).webcam.previewFrame).toBe("soft-blur");
+	});
+
 	it("defaults the shadow to 50% while preserving saved intensity", () => {
 		expect(normalizeProjectEditor({}).shadowIntensity).toBe(0.5);
 		expect(normalizeProjectEditor({ shadowIntensity: 0 }).shadowIntensity).toBe(0);

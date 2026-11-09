@@ -72,18 +72,23 @@ function render(advanced: boolean, enabled = true) {
 describe("cursor idle controls", () => {
 	it("shows the enabled toggle in basic mode without advanced timing controls", () => {
 		const markup = render(false);
-		expect(markup).toContain('aria-label="Hide cursor when idle"');
-		expect(markup).toMatch(/aria-label="Hide cursor when idle"[^>]*checked=""/);
+		expect(markup).toContain('aria-label="Hide when idle"');
+		expect(markup).toMatch(/aria-label="Hide when idle"[^>]*checked=""/);
 		expect(markup).not.toContain('aria-label="Idle detection"');
 	});
-	it("shows timing and jitter tolerance only when advanced mode and the feature are enabled", () => {
-		const markup = render(true);
-		expect(markup).toContain("Idle detection");
-		expect(markup).toContain("Fade duration");
-		expect(markup).toContain("Movement tolerance");
-		expect(markup).toContain("After a short delay");
-		expect(markup).toContain("Fade delay");
-		expect(render(true, false)).not.toContain("Movement tolerance");
+	it("keeps one idle switch in advanced mode without algorithm tuning", () => {
+		for (const enabled of [true, false]) {
+			const markup = render(true, enabled);
+			expect(markup).toContain('aria-label="Hide when idle"');
+			for (const label of [
+				"Idle detection",
+				"Fade duration",
+				"Fade delay",
+				"Movement tolerance",
+			])
+				expect(markup).not.toContain(label);
+		}
+		expect(render(true)).not.toContain("After a short delay");
 	});
 });
 

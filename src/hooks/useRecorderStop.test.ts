@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NativeCaptureStopResult } from "./recordingNativeCleanup";
+import { RecordingFileWriter } from "./recordingFileWriter";
 import { useRecorderEditorSession } from "./useRecorderEditorSession";
 import { useRecorderStop } from "./useRecorderStop";
 
+const commitLayoutEffect = vi.hoisted(() => vi.fn((effect: () => void) => effect()));
 vi.mock("react", () => ({
+	useLayoutEffect: commitLayoutEffect,
 	useRef: <T>(current: T) => ({ current }),
 	useCallback: <T>(callback: T) => callback,
 }));
@@ -36,6 +39,7 @@ function createContext() {
 		hideEditorOverlayCursorByDefault: { current: false },
 		storeMicrophoneSidecar: vi.fn().mockResolvedValue(null),
 		mediaRecorder: { current: null as MediaRecorder | null },
+		screenWriter: { current: null as RecordingFileWriter | null },
 		pendingWebcamPathPromise: { current: null as Promise<string | null> | null },
 	};
 	const session = useRecorderEditorSession(context);
@@ -71,7 +75,7 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 describe("recording stop editor handoff", () => {
-	it("keeps the Finishing HUD until successful capture, then opens the valid session once", async () => {
+	it("opens the loading editor before native stop settles and publishes the valid session once", async () => {
 		let resolve!: (result: NativeCaptureStopResult) => void;
 		api.stopNativeScreenRecording.mockReturnValue(
 			new Promise((done) => {
@@ -83,8 +87,8 @@ describe("recording stop editor handoff", () => {
 		stop(context);
 		expect(context.setFinalizing).toHaveBeenCalledWith(true);
 		expect(api.stopNativeScreenRecording).toHaveBeenCalledOnce();
-		expect(context.openLoadingEditor).not.toHaveBeenCalled();
-		expect(api.openLoadingRecordingEditor).not.toHaveBeenCalled();
+		expect(context.openLoadingEditor).toHaveBeenCalledOnce();
+		expect(api.openLoadingRecordingEditor).toHaveBeenCalledOnce();
 		expect(api.finishRecordingEditor).not.toHaveBeenCalled();
 		expect(api.switchToEditor).not.toHaveBeenCalled();
 		expect(context.finalizeRecordingSession).not.toHaveBeenCalled();
@@ -111,7 +115,7 @@ describe("recording stop editor handoff", () => {
 		"failed",
 		"empty",
 		"rejected",
-	])("keeps the HUD available and never opens Home/editor for %s finalization", async (failure) => {
+	])("surfaces %s finalization in the loading editor without publishing invalid media", async (failure) => {
 		if (failure === "rejected")
 			api.stopNativeScreenRecording.mockRejectedValue(new Error("Capture connection lost"));
 		else
@@ -123,9 +127,9 @@ describe("recording stop editor handoff", () => {
 		await vi.waitFor(() =>
 			expect(context.notifyRecordingFinalizationFailure).toHaveBeenCalledOnce(),
 		);
-		expect(context.openLoadingEditor).not.toHaveBeenCalled();
-		expect(api.openLoadingRecordingEditor).not.toHaveBeenCalled();
-		expect(api.finishRecordingEditor).not.toHaveBeenCalled();
+		expect(context.openLoadingEditor).toHaveBeenCalledOnce();
+		expect(api.openLoadingRecordingEditor).toHaveBeenCalledOnce();
+		expect(api.finishRecordingEditor).toHaveBeenCalledExactlyOnceWith("Could not finish");
 		expect(api.switchToEditor).not.toHaveBeenCalled();
 		expect(context.finalizeRecordingSession).not.toHaveBeenCalled();
 		expect(api.hudOverlayClose).not.toHaveBeenCalled();
@@ -158,7 +162,41 @@ describe("recording stop editor handoff", () => {
 		expect(context.finalizeRecordingSession).not.toHaveBeenCalled();
 		expect(api.hudOverlayClose).not.toHaveBeenCalled();
 	});
-	it("stops browser capture in the HUD and leaves the handoff to successful file persistence", () => {
+	it("ignores tray Stop while a cancelled browser recording is still being discarded", async () => {
+		let finishDiscard!: (result: { success: boolean }) => void;
+		const fileApi = {
+			openRecordingFileStream: vi
+				.fn()
+				.mockResolvedValue({ success: true, streamId: "cancelled-stream" }),
+			appendRecordingFileStream: vi.fn().mockResolvedValue({ success: true }),
+			closeRecordingFileStream: vi.fn(),
+			discardRecordingFileStream: vi.fn().mockReturnValue(
+				new Promise((resolve) => {
+					finishDiscard = resolve;
+				}),
+			),
+		};
+		const writer = new RecordingFileWriter(fileApi, "cancelled.webm", "video/webm");
+		writer.write(new Blob(["captured frame"]));
+		await vi.waitFor(() => expect(fileApi.appendRecordingFileStream).toHaveBeenCalledOnce());
+		// Cancel marks the writer before the asynchronous discard completes.
+		writer.cancel();
+		const discarding = writer.discard();
+		await vi.waitFor(() => expect(fileApi.discardRecordingFileStream).toHaveBeenCalledOnce());
+		const context = createContext();
+		context.nativeScreenRecording.current = false;
+		context.screenWriter.current = writer;
+		const recorder = { state: "recording", requestData: vi.fn(), stop: vi.fn() };
+		context.mediaRecorder.current = recorder as unknown as MediaRecorder;
+		stop(context);
+		expect(context.openLoadingEditor).not.toHaveBeenCalled();
+		expect(api.openLoadingRecordingEditor).not.toHaveBeenCalled();
+		expect(context.setFinalizing).not.toHaveBeenCalled();
+		expect(recorder.stop).not.toHaveBeenCalled();
+		finishDiscard({ success: true });
+		await discarding;
+	});
+	it("opens the loading editor immediately when browser capture is stopped", () => {
 		const context = createContext();
 		context.nativeScreenRecording.current = false;
 		const recorder = { state: "recording", requestData: vi.fn(), stop: vi.fn() };
@@ -166,9 +204,23 @@ describe("recording stop editor handoff", () => {
 		stop(context);
 		expect(recorder.stop).toHaveBeenCalledOnce();
 		expect(context.setFinalizing).toHaveBeenCalledWith(true);
-		expect(context.openLoadingEditor).not.toHaveBeenCalled();
-		expect(api.openLoadingRecordingEditor).not.toHaveBeenCalled();
+		expect(context.openLoadingEditor).toHaveBeenCalledOnce();
+		expect(api.openLoadingRecordingEditor).toHaveBeenCalledOnce();
 		expect(api.finishRecordingEditor).not.toHaveBeenCalled();
 		expect(api.switchToEditor).not.toHaveBeenCalled();
 	});
+});
+
+it("publishes the Stop callback only after the render commits", () => {
+	let commit!: () => void;
+	commitLayoutEffect.mockImplementationOnce((effect) => {
+		commit = effect;
+	});
+	const context = createContext();
+	const { stopRecording } = useRecorderStop(context);
+	stopRecording.current();
+	expect(api.stopNativeScreenRecording).not.toHaveBeenCalled();
+	commit();
+	stopRecording.current();
+	expect(api.stopNativeScreenRecording).toHaveBeenCalledOnce();
 });

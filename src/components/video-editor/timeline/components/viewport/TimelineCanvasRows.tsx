@@ -384,7 +384,7 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 							)}
 						>
 							<Button
-								variant="secondary"
+								variant="default"
 								size="sm"
 								className="pointer-events-auto h-7 gap-1.5 ps-3 pe-8 text-xs"
 								onMouseEnter={() => onZoomRowMouseLeave()}
@@ -401,7 +401,7 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 							<Button
 								variant="ghost"
 								size="icon"
-								className="pointer-events-auto absolute end-0 top-0 h-7 w-7 min-w-0 bg-transparent p-0 text-muted hover:text-foreground"
+								className="pointer-events-auto absolute end-0 top-0 h-7 w-7 min-w-0 bg-transparent p-0 text-primary-foreground hover:text-primary-foreground"
 								aria-label={commonT("announcements.dismiss", "Dismiss")}
 								onMouseEnter={() => onZoomRowMouseLeave()}
 								onMouseMove={(event) => event.stopPropagation()}

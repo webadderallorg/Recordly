@@ -2,7 +2,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
-test("caption setup leads to generation, with maintenance actions kept in a menu", async ({
+test("caption model is available in standard settings and the bin clears captions directly", async ({
 	page,
 }, testInfo) => {
 	test.setTimeout(60000);
@@ -33,6 +33,9 @@ test("caption setup leads to generation, with maintenance actions kept in a menu
 				);
 			});
 		window.electronAPI.generateAutoCaptions = async (options) => {
+			document.documentElement.dataset.captionGenerationCount = String(
+				Number(document.documentElement.dataset.captionGenerationCount ?? 0) + 1,
+			);
 			document.documentElement.dataset.captionGeneratedModel = options.captionModelId;
 			return {
 				success: true,
@@ -68,9 +71,24 @@ test("caption setup leads to generation, with maintenance actions kept in a menu
 		timeout: 20000,
 	});
 	await page.getByRole("radio", { name: "Captions", exact: true }).click();
-	await expect(page.getByRole("button", { name: "Generate Captions", exact: true })).toHaveCount(
-		0,
+	await expect(page.getByRole("button", { name: "Reveal", exact: true })).toHaveAttribute(
+		"aria-pressed",
+		"true",
 	);
+	await expect(
+		page.getByRole("group", { name: "Caption style", exact: true }).getByRole("button"),
+	).toHaveCount(2);
+	await expect(page.getByRole("switch", { name: "Advanced settings" })).not.toBeChecked();
+	await expect(
+		page.getByRole("button", { name: "Generate Captions", exact: true }),
+	).toBeEnabled();
+	await expect(page.getByRole("button", { name: "Clear Captions", exact: true })).toBeDisabled();
+	await expect(
+		page.getByText("Captions are generated on this device. Your recording is not uploaded.", {
+			exact: true,
+		}),
+	).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Caption actions", exact: true })).toHaveCount(0);
 	const sidebar = page.getByRole("complementary");
 	for (const label of ["Generation", "Appearance"])
 		await expect(sidebar.getByText(label, { exact: true })).toHaveCount(0);
@@ -80,7 +98,7 @@ test("caption setup leads to generation, with maintenance actions kept in a menu
 		await expect(page.getByRole("option", { name: label, exact: true })).toBeVisible();
 	await page.getByRole("option", { name: "Whisper Base", exact: true }).click();
 
-	await page.getByRole("button", { name: "Download Model", exact: true }).click();
+	await page.getByRole("button", { name: "Generate Captions", exact: true }).click();
 	await expect(
 		page.getByRole("button", { name: "Downloading... 0%", exact: true }),
 	).toBeDisabled();
@@ -95,23 +113,20 @@ test("caption setup leads to generation, with maintenance actions kept in a menu
 		page.getByRole("progressbar", { name: "Downloading...", exact: true }),
 	).toHaveAttribute("aria-valuenow", "47");
 	await page.evaluate(() => window.dispatchEvent(new Event("complete-caption-model-download")));
-	await expect(
-		page.getByRole("button", { name: "Generate Captions", exact: true }),
-	).toBeEnabled();
-	await page.getByRole("button", { name: "Generate Captions", exact: true }).click();
+
 	await expect(
 		page.getByRole("button", { name: "Regenerate Captions", exact: true }),
 	).toBeVisible();
 	const show = page.getByRole("switch", { name: "Show", exact: true });
 	await expect(show).toBeChecked();
-	await expect(show).toBeChecked();
+	await expect(page.locator("html")).toHaveAttribute("data-caption-generation-count", "1");
 	await expect(page.locator("html")).toHaveAttribute(
 		"data-caption-generated-model",
 		"whisper-base",
 	);
 	await expect(sidebar.getByText("1 caption", { exact: true })).toBeVisible();
-	await page.getByRole("button", { name: "Karaoke", exact: true }).click();
-	await expect(page.getByRole("button", { name: "Karaoke", exact: true })).toHaveAttribute(
+	await page.getByRole("button", { name: "Classic", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Classic", exact: true })).toHaveAttribute(
 		"aria-pressed",
 		"true",
 	);
@@ -119,17 +134,17 @@ test("caption setup leads to generation, with maintenance actions kept in a menu
 		.getByRole("group", { name: "Caption style" })
 		.getByRole("button")
 		.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().y));
-	expect(new Set(presets).size).toBe(2);
+	expect(new Set(presets).size).toBe(1);
 	expect(await sidebar.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
-	await expect(page.getByRole("button", { name: "Clear Captions", exact: true })).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Clear Captions", exact: true })).toBeEnabled();
 	await expect(page.getByRole("button", { name: "Delete Model", exact: true })).toHaveCount(0);
 	await page.getByRole("complementary").screenshot({
 		path: testInfo.outputPath("captions-ui.png"),
 		animations: "disabled",
 	});
-	await page.getByRole("button", { name: "Caption actions", exact: true }).click();
-	await expect(page.getByRole("menuitem", { name: "Delete Model", exact: true })).toHaveCount(0);
-	await page.getByRole("menuitem", { name: "Clear Captions", exact: true }).click();
+	await page.getByRole("button", { name: "Clear Captions", exact: true }).click();
+	await expect(page.getByRole("menu")).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Clear Captions", exact: true })).toBeDisabled();
 	await expect(page.locator('[data-variant="caption"]')).toHaveCount(0);
 	await expect(
 		page.getByRole("button", { name: "Generate Captions", exact: true }),
@@ -137,12 +152,21 @@ test("caption setup leads to generation, with maintenance actions kept in a menu
 	await expect(page.locator("html")).not.toHaveAttribute("data-caption-model-deleted");
 	await page.getByRole("switch", { name: "Advanced settings" }).press("Space");
 	await expect(page.getByRole("slider", { name: "Rows", exact: true })).toBeVisible();
-	await page.getByRole("button", { name: "Caption actions", exact: true }).click();
-	await page.getByRole("menuitem", { name: "Delete Model", exact: true }).click();
+	await expect(page.getByRole("button", { name: /Speech model/ })).toBeVisible();
+	await page.getByRole("button", { name: "Delete Model", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute(
 		"data-caption-model-deleted",
 		"whisper-base",
 	);
-	await expect(page.getByRole("button", { name: "Download Model", exact: true })).toBeEnabled();
+	await expect(
+		page.getByRole("button", { name: "Generate Captions", exact: true }),
+	).toBeEnabled();
+	await page.getByRole("radio", { name: "Cursor", exact: true }).click();
+	await expect(page.getByText("Cursor Size", { exact: true })).toHaveClass(/sr-only/);
+	const cursorSize = page.getByRole("slider", { name: "Cursor Size", exact: true });
+	await cursorSize.focus();
+	const previousCursorSize = Number(await cursorSize.inputValue());
+	await cursorSize.press("ArrowRight");
+	await expect(cursorSize).toHaveValue(String(Number((previousCursorSize + 0.05).toFixed(2))));
 	expect(errors).toEqual([]);
 });

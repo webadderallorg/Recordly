@@ -1041,6 +1041,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getCurrentUpdateToastPayload: () => {
 		return ipcRenderer.invoke("get-current-update-toast-payload");
 	},
+	listReleaseVersions: () => ipcRenderer.invoke("list-release-versions"),
+	downloadReleaseVersion: (tag: string) => ipcRenderer.invoke("download-release-version", tag),
 	getUpdateStatusSummary: () => {
 		return ipcRenderer.invoke("get-update-status-summary");
 	},

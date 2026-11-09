@@ -130,10 +130,11 @@
 			}
 		},
 		"cursorMotionBlur": "Motion blur del cursore",
-		"cursorClickBounce": "Rimbalzo al clic del cursore",
+		"cursorClickBounce": "Scala al clic",
+		"cursorClickBounceStrength": "Intensità della scala al clic",
 		"cursorClickBounceDuration": "Velocità rimbalzo",
 		"cursorSway": "Oscillazione cursore",
-		"cursorIdleHide": "Nascondi il cursore inattivo",
+		"cursorIdleHide": "Nascondi quando inattivo",
 		"cursorIdleHideDescription": "Dopo un breve ritardo, il cursore sfuma durante le pause lunghe. Un movimento o un clic lo rende di nuovo visibile.",
 		"cursorIdleFadeDelay": "Ritardo della dissolvenza",
 		"cursorIdleDuration": "Rilevamento inattività",
@@ -205,7 +206,10 @@
 			"bottom-left": "In basso a sinistra",
 			"bottom-center": "In basso al centro",
 			"bottom-right": "In basso a destra"
-		}
+		},
+		"webcamPreviewFrame": "Cornice",
+		"webcamFrameStandard": "Standard",
+		"webcamFrameSoftBlur": "Sfocatura morbida"
 	},
 	"sections": {
 		"scene": "Scena",
@@ -221,6 +225,8 @@
 		"title": "Strumenti di modifica"
 	},
 	"captions": {
+		"firstDownload": "Al primo utilizzo vengono scaricati {{size}} MB di file vocali, poi vengono generati i sottotitoli.",
+		"localProcessing": "I sottotitoli vengono generati su questo dispositivo. La registrazione non viene caricata.",
 		"selectOnTimeline": "Seleziona un sottotitolo sulla timeline per modificarlo.",
 		"enabled": "Mostra",
 		"timelineQuickAdd": "Passa il mouse per aggiungere sulla timeline",
@@ -378,7 +384,15 @@
 		"experimentalDescription": "Hai attivato gli aggiornamenti sperimentali, quindi puoi scegliere di provare l'ultimo aggiornamento di Recordly prima che sia disponibile per tutti.",
 		"title": "Aggiornamenti",
 		"experimental": "Aggiornamenti sperimentali",
-		"saveFailed": "Impossibile cambiare il canale di aggiornamento."
+		"saveFailed": "Impossibile cambiare il canale di aggiornamento.",
+		"changeVersion": "Cambia versione",
+		"versionInstallHint": "Scarica una versione e apri il programma di installazione per cambiare versione.",
+		"loadingVersions": "Caricamento versioni…",
+		"version": "Versione",
+		"prereleaseVersion": "Versione preliminare",
+		"noVersions": "Non sono disponibili versioni compatibili per questa installazione.",
+		"versionFailed": "Impossibile caricare o scaricare questa versione. Riprova.",
+		"downloadInstaller": "Scarica programma di installazione"
 	},
 	"categories": {
 		"general": "Generali",

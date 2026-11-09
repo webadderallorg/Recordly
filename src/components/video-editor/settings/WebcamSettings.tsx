@@ -4,10 +4,9 @@ import { ChoiceGroup, ChoiceItem } from "@/components/ui/choice-group";
 import { FolderSimple, UploadSimple as Upload, VideoCamera } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import { useI18n, useScopedT } from "@/contexts/I18nContext";
+import { useScopedT } from "@/contexts/I18nContext";
 import { SliderControl } from "../SliderControl";
 import {
-	DEFAULT_CROP_REGION,
 	DEFAULT_WEBCAM_MARGIN,
 	DEFAULT_WEBCAM_POSITION_PRESET,
 	DEFAULT_WEBCAM_POSITION_X,
@@ -53,7 +52,7 @@ const WEBCAM_POSITION_PRESETS: Array<{
 	{ preset: "bottom-right", label: "Bottom right" },
 ];
 
-function WebcamShapePreview({ shape }: { shape: WebcamShape }) {
+function WebcamShapePreview({ shape, soft = false }: { shape: WebcamShape; soft?: boolean }) {
 	const clipId = useId();
 	const frame =
 		shape === "circle" ? (
@@ -67,13 +66,27 @@ function WebcamShapePreview({ shape }: { shape: WebcamShape }) {
 		<svg viewBox="0 0 64 48" className="h-12 w-16" aria-hidden="true">
 			<defs>
 				<clipPath id={clipId}>{frame}</clipPath>
+				{soft && (
+					<>
+						<filter id={`${clipId}-blur`}>
+							<feGaussianBlur stdDeviation="1.4" />
+						</filter>
+						<mask id={`${clipId}-fade`} style={{ maskType: "alpha" }}>
+							<g fill="white" filter={`url(#${clipId}-blur)`}>
+								<g transform="translate(3.2 2.4) scale(.9)">{frame}</g>
+							</g>
+						</mask>
+					</>
+				)}
 			</defs>
-			<g fill="currentColor" fillOpacity="0.1">
-				{frame}
-			</g>
-			<g clipPath={`url(#${clipId})`} fill="currentColor" opacity="0.55">
-				<circle cx="32" cy="20" r="5.8" />
-				<path d="M17 43v-4c0-7.8 6.7-12 15-12s15 4.2 15 12v4Z" />
+			<g mask={soft ? `url(#${clipId}-fade)` : undefined}>
+				<g fill="currentColor" fillOpacity="0.1">
+					{frame}
+				</g>
+				<g clipPath={`url(#${clipId})`} fill="currentColor" opacity="0.55">
+					<circle cx="32" cy="20" r="5.8" />
+					<path d="M17 43v-4c0-7.8 6.7-12 15-12s15 4.2 15 12v4Z" />
+				</g>
 			</g>
 		</svg>
 	);
@@ -143,7 +156,6 @@ export function WebcamSettings({
 	onUploadWebcam,
 }: WebcamSettingsProps) {
 	const tSettings = useScopedT("settings");
-	const { t } = useI18n();
 	const webcamFileName = webcam?.sourcePath?.split(/[\\/]/).pop() ?? null;
 	const webcamPositionPreset = webcam?.positionPreset ?? DEFAULT_WEBCAM_POSITION_PRESET;
 	const webcamPositionX = webcam?.positionX ?? DEFAULT_WEBCAM_POSITION_X;
@@ -382,49 +394,66 @@ export function WebcamSettings({
 						formatValue={(v) => `${Math.round(v)}%`}
 					/>
 				)}
-				{advanced && (
-					<div className="py-2">
-						<div className="mb-2 flex items-center justify-between gap-2">
-							<div className="text-xs text-muted-foreground">
-								{tSettings("effects.webcamCrop", "Crop")}
-							</div>
-							<Button
-								className="text-xs text-muted"
-								size="sm"
-								variant="ghost"
-								type="button"
-								onClick={() => updateWebcam({ cropRegion: DEFAULT_CROP_REGION })}
-							>
-								{t("common.actions.reset", "Reset")}
-							</Button>
-						</div>
-						<div className="mx-auto w-full max-w-56">
-							<WebcamCropControl
-								cropRegion={webcamCrop}
-								mirrored={webcam?.mirror ?? true}
-								previewSrc={webcamPreviewSrc}
-								previewCurrentTime={webcamPreviewCurrentTime}
-								previewPlaying={webcamPreviewPlaying}
-								previewTimeOffsetMs={webcam?.timeOffsetMs}
-								onCropChange={(cropRegion, previewFrame) =>
-									updateWebcam({
-										cropRegion,
-										height: previewFrame
-											? getCropMatchedWebcamHeightPercent(
-													webcamWidth,
-													webcamHeight,
-													previewFrame.width,
-													previewFrame.height,
-													cropRegion,
-													webcam?.shape,
-												)
-											: webcamHeight,
-									})
-								}
-							/>
-						</div>
+				<div className="space-y-2">
+					<div className="flex items-center justify-between gap-2">
+						<p className="text-xs font-medium">
+							{tSettings("effects.webcamPreviewFrame", "Frame")}
+						</p>
 					</div>
-				)}
+					<ChoiceGroup
+						type="single"
+						aria-label={tSettings("effects.webcamPreviewFrame", "Frame")}
+						value={webcam.previewFrame ?? "soft-blur"}
+						className="grid grid-cols-2 gap-2"
+						onValueChange={(previewFrame) => {
+							if (previewFrame === "standard" || previewFrame === "soft-blur")
+								updateWebcam({ previewFrame });
+						}}
+					>
+						{(
+							[
+								["standard", "webcamFrameStandard", "Standard"],
+								["soft-blur", "webcamFrameSoftBlur", "Soft blur"],
+							] as const
+						).map(([value, key, label]) => (
+							<ChoiceItem
+								key={value}
+								value={value}
+								aria-label={tSettings(`effects.${key}`, label)}
+								className="!h-auto flex-col gap-1 !rounded-xl !px-2 !py-2 text-xs"
+							>
+								<WebcamShapePreview
+									shape={webcam.shape ?? "squircle"}
+									soft={value === "soft-blur"}
+								/>
+								<span>{tSettings(`effects.${key}`, label)}</span>
+							</ChoiceItem>
+						))}
+					</ChoiceGroup>
+				</div>
+				<WebcamCropControl
+					cropRegion={webcamCrop}
+					mirrored={webcam?.mirror ?? true}
+					previewSrc={webcamPreviewSrc}
+					previewCurrentTime={webcamPreviewCurrentTime}
+					previewPlaying={webcamPreviewPlaying}
+					previewTimeOffsetMs={webcam?.timeOffsetMs}
+					onCropChange={(cropRegion, previewFrame) =>
+						updateWebcam({
+							cropRegion,
+							height: previewFrame
+								? getCropMatchedWebcamHeightPercent(
+										webcamWidth,
+										webcamHeight,
+										previewFrame.width,
+										previewFrame.height,
+										cropRegion,
+										webcam?.shape,
+									)
+								: webcamHeight,
+						})
+					}
+				/>
 				{advanced && (
 					<SliderControl
 						label={tSettings("effects.webcamMargin", "Margin")}

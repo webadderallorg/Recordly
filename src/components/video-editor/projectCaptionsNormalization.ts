@@ -1,5 +1,5 @@
-import type { ProjectEditorState } from "./projectPersistenceTypes";
 import { getCaptionPreset } from "./captionPresets";
+import type { ProjectEditorState } from "./projectPersistenceTypes";
 import { clamp, isFiniteNumber, normalizeAutoCaptionAnimation } from "./projectPersistenceUtils";
 import {
 	type AutoCaptionSettings,
@@ -71,54 +71,61 @@ export function normalizeProjectCaptions(editor: Partial<ProjectEditorState>) {
 			? (editor.autoCaptionSettings as Partial<AutoCaptionSettings>)
 			: {};
 
+	// Missing settings on a new recording use Reveal. A saved pre-style caption
+	// configuration keeps its former Classic appearance.
+	const style =
+		rawAutoCaptionSettings.style === undefined && editor.autoCaptionSettings
+			? "classic"
+			: getCaptionPreset(rawAutoCaptionSettings.style).id;
+	const defaults = { ...DEFAULT_AUTO_CAPTION_SETTINGS, ...getCaptionPreset(style).settings };
 	const normalizedAutoCaptionSettings: AutoCaptionSettings = {
-		style: getCaptionPreset(rawAutoCaptionSettings.style).id,
+		style,
 		enabled:
 			typeof rawAutoCaptionSettings.enabled === "boolean"
 				? rawAutoCaptionSettings.enabled
-				: DEFAULT_AUTO_CAPTION_SETTINGS.enabled,
+				: defaults.enabled,
 		timelineQuickAdd:
 			typeof rawAutoCaptionSettings.timelineQuickAdd === "boolean"
 				? rawAutoCaptionSettings.timelineQuickAdd
-				: DEFAULT_AUTO_CAPTION_SETTINGS.timelineQuickAdd,
+				: defaults.timelineQuickAdd,
 		language:
 			typeof rawAutoCaptionSettings.language === "string" &&
 			rawAutoCaptionSettings.language.trim()
 				? rawAutoCaptionSettings.language.trim()
-				: DEFAULT_AUTO_CAPTION_SETTINGS.language,
+				: defaults.language,
 		fontFamily: getDefaultCaptionFontFamily(),
 		fontSize: isFiniteNumber(rawAutoCaptionSettings.fontSize)
 			? clamp(rawAutoCaptionSettings.fontSize, 16, 72)
-			: DEFAULT_AUTO_CAPTION_SETTINGS.fontSize,
+			: defaults.fontSize,
 		bottomOffset: isFiniteNumber(rawAutoCaptionSettings.bottomOffset)
 			? clamp(rawAutoCaptionSettings.bottomOffset, 0, 30)
-			: DEFAULT_AUTO_CAPTION_SETTINGS.bottomOffset,
+			: defaults.bottomOffset,
 		maxWidth: isFiniteNumber(rawAutoCaptionSettings.maxWidth)
 			? clamp(rawAutoCaptionSettings.maxWidth, 40, 95)
-			: DEFAULT_AUTO_CAPTION_SETTINGS.maxWidth,
+			: defaults.maxWidth,
 		maxRows: isFiniteNumber(rawAutoCaptionSettings.maxRows)
 			? clamp(Math.round(rawAutoCaptionSettings.maxRows), 1, 4)
-			: DEFAULT_AUTO_CAPTION_SETTINGS.maxRows,
+			: defaults.maxRows,
 		animationStyle: normalizeAutoCaptionAnimation(
 			rawAutoCaptionSettings.animationStyle,
-			DEFAULT_AUTO_CAPTION_SETTINGS.animationStyle,
+			defaults.animationStyle,
 		),
 		boxRadius: isFiniteNumber(rawAutoCaptionSettings.boxRadius)
 			? clamp(rawAutoCaptionSettings.boxRadius, 0, 40)
-			: DEFAULT_AUTO_CAPTION_SETTINGS.boxRadius,
+			: defaults.boxRadius,
 		textColor:
 			typeof rawAutoCaptionSettings.textColor === "string" &&
 			rawAutoCaptionSettings.textColor.trim()
 				? rawAutoCaptionSettings.textColor
-				: DEFAULT_AUTO_CAPTION_SETTINGS.textColor,
+				: defaults.textColor,
 		inactiveTextColor:
 			typeof rawAutoCaptionSettings.inactiveTextColor === "string" &&
 			rawAutoCaptionSettings.inactiveTextColor.trim()
 				? rawAutoCaptionSettings.inactiveTextColor
-				: DEFAULT_AUTO_CAPTION_SETTINGS.inactiveTextColor,
+				: defaults.inactiveTextColor,
 		backgroundOpacity: isFiniteNumber(rawAutoCaptionSettings.backgroundOpacity)
 			? clamp(rawAutoCaptionSettings.backgroundOpacity, 0, 1)
-			: DEFAULT_AUTO_CAPTION_SETTINGS.backgroundOpacity,
+			: defaults.backgroundOpacity,
 	};
 	return { normalizedAutoCaptions, normalizedAutoCaptionSettings };
 }

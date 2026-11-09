@@ -100,7 +100,7 @@ describe("browser recording editor boundary", () => {
 		expect(context.setRecording).not.toHaveBeenCalled();
 		expect(window.electronAPI.setRecordingState).not.toHaveBeenCalled();
 	});
-	it("retains the Finishing HUD until file persistence succeeds", async () => {
+	it("opens the loading editor while file persistence is still pending", async () => {
 		let resolve!: (result: { success: boolean; path: string }) => void;
 		writer.finish.mockReturnValue(
 			new Promise((done) => {
@@ -110,7 +110,7 @@ describe("browser recording editor boundary", () => {
 		const context = await start();
 		const stopped = context.mediaRecorder.current.onstop!();
 		await vi.waitFor(() => expect(writer.finish).toHaveBeenCalledOnce());
-		expect(context.openLoadingEditor).not.toHaveBeenCalled();
+		expect(context.openLoadingEditor).toHaveBeenCalledOnce();
 		expect(context.setFinalizing).toHaveBeenCalledWith(true);
 		resolve({ success: true, path: "/recordings/completed.webm" });
 		await stopped;
@@ -125,7 +125,7 @@ describe("browser recording editor boundary", () => {
 		"failed",
 		"empty",
 		"rejected",
-	])("never opens an editor and unlocks the HUD after %s persistence", async (failure) => {
+	])("reports %s persistence to the loading editor without publishing invalid media", async (failure) => {
 		if (failure === "rejected") writer.finish.mockRejectedValue(new Error("Disk unavailable"));
 		else
 			writer.finish.mockResolvedValue(
@@ -134,7 +134,7 @@ describe("browser recording editor boundary", () => {
 		const context = await start();
 		await context.mediaRecorder.current.onstop!();
 		expect(context.notifyRecordingFinalizationFailure).toHaveBeenCalledOnce();
-		expect(context.openLoadingEditor).not.toHaveBeenCalled();
+		expect(context.openLoadingEditor).toHaveBeenCalledOnce();
 		expect(context.finalizeRecordingSession).not.toHaveBeenCalled();
 		expect(context.setFinalizing).toHaveBeenLastCalledWith(false);
 		expect(context.browserFinalizing.current).toBe(false);

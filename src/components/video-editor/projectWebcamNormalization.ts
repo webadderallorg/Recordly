@@ -27,6 +27,7 @@ export function normalizeProjectWebcam(editor: Partial<ProjectEditorState>): Web
 		? (webcam as Partial<{ zoomScaleEffect: number }>).zoomScaleEffect
 		: null;
 	return {
+		previewFrame: webcam.previewFrame === "standard" ? "standard" : "soft-blur",
 		shape:
 			webcam.shape === "circle" || webcam.shape === "squircle" || webcam.shape === "rectangle"
 				? webcam.shape

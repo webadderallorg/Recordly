@@ -8,6 +8,7 @@ import {
 	DEFAULT_WEBCAM_SHADOW,
 	DEFAULT_WEBCAM_SIZE,
 } from "../types";
+import { getWebcamEdgeFeatherPixels } from "../webcamEdgeFeather";
 import {
 	getCropMatchedWebcamHeightPercent,
 	getWebcamClipPath,
@@ -228,6 +229,10 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 					if (path.getAttribute("d") !== contour) path.setAttribute("d", contour);
 				}
 			}
+			const edgeFeatherPx = getWebcamEdgeFeatherPixels(
+				webcam?.previewFrame,
+				overlay.clientWidth,
+			);
 			const video = webcamVideoRef.current;
 			if (!video || video.readyState < 2 || !webcamMediaSynchronized) {
 				webcamMotionBlurRef.current.reset();
@@ -237,7 +242,10 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 					? webcamMotionBlurRef.current.render({
 							// Keep one renderer throughout playback, including tiny zoom steps
 							// and frames at rest, so edges/shadows never switch mid-animation.
-							renderStill: isPlayingRef.current && !isSeekingRef.current,
+							renderStill:
+								edgeFeatherPx > 0 ||
+								(isPlayingRef.current && !isSeekingRef.current),
+							edgeFeatherPx,
 							layout: { x, y, ...scaledDimensions, radius: scaledRadius },
 							// Supersample small cameras even on standard-density displays.
 							resolution: Math.max(2, window.devicePixelRatio || 1),

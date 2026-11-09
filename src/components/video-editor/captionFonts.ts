@@ -1,4 +1,5 @@
 import tikTokSansUrl from "@/assets/fonts/tiktok-sans/TikTokSans-Variable.ttf?url";
+import { getCaptionPreset } from "./captionPresets";
 import { type AutoCaptionSettings, getDefaultCaptionFontFamily } from "./types";
 
 type CaptionFontSettings = Pick<AutoCaptionSettings, "style" | "fontFamily">;
@@ -13,7 +14,7 @@ export function getCaptionFontFamily(
 	// still owns its typeface, so those projects also receive the real bundled font.
 	return settings?.style === "tiktok"
 		? `"${TIKTOK_CAPTION_FONT_NAME}", ${fallback}`
-		: settings?.fontFamily || fallback;
+		: getCaptionPreset(settings?.style).fontFamily || settings?.fontFamily || fallback;
 }
 
 let tikTokFontReady: Promise<void> | undefined;

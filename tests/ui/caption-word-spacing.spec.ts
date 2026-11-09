@@ -2,11 +2,10 @@ import { expect, test } from "@playwright/test";
 
 test("word highlighting preserves every word's position and size", async ({ page }, testInfo) => {
 	test.setTimeout(120000);
-	await page.goto("/tests/ui/caption-preview.html");
+	await page.goto("/tests/ui/caption-preview.html?style=classic");
 	const caption = page.getByRole("button", { name: "Edit current caption", exact: true });
-	const picker = page.getByRole("group", { name: "Caption style", exact: true });
 	for (const style of ["Classic", "TikTok", "Karaoke", "Minimal", "Neon", "Paper"]) {
-		await picker.getByRole("button", { name: style, exact: true }).click();
+		await page.goto(`/tests/ui/caption-preview.html?style=${style.toLowerCase()}`);
 		await page.evaluate(() => document.fonts.ready);
 		const samples = [];
 		for (const [time, activeWord] of [
@@ -16,7 +15,7 @@ test("word highlighting preserves every word's position and size", async ({ page
 		] as const) {
 			await page.getByRole("spinbutton", { name: "Time", exact: true }).fill(String(time));
 			await expect(caption.locator('[data-caption-word-state="active"]')).toHaveText(
-				activeWord,
+				style === "TikTok" ? activeWord.toUpperCase() : activeWord,
 			);
 			samples.push(
 				await caption.locator("[data-caption-word-state]").evaluateAll((words) =>
@@ -46,12 +45,12 @@ test("word highlighting preserves every word's position and size", async ({ page
 			}
 		}
 	}
-	await picker.getByRole("button", { name: "Classic", exact: true }).click();
+	await page.goto("/tests/ui/caption-preview.html?style=classic");
 	await page.screenshot({ path: testInfo.outputPath("independent-caption-highlight.png") });
 });
 
 test("export highlighting preserves every word's position and size", async ({ page }) => {
-	await page.goto("/tests/ui/caption-preview.html");
+	await page.goto("/tests/ui/caption-preview.html?style=classic");
 	await page.evaluate(() => document.fonts.ready);
 	const samples = await page.evaluate(async () => {
 		const rendererPath = "/src/lib/exporter/captionText.ts";
@@ -110,7 +109,23 @@ test("export highlighting preserves every word's position and size", async ({ pa
 		});
 	});
 	for (const { style, frames } of samples) {
-		for (const word of ["Follow", "every", "word"]) {
+		if (style === "reveal" || style === "serif") {
+			expect(frames.map((frame) => Object.keys(frame).length)).toEqual([1, 2, 3]);
+			for (const [word, last] of Object.entries(frames[2])) {
+				for (const frame of frames) {
+					if (!frame[word]) continue;
+					for (const axis of ["y", "width", "scaleY"] as const)
+						expect(frame[word][axis], `${style}: ${word} ${axis}`).toBeCloseTo(
+							last[axis],
+							5,
+						);
+				}
+			}
+			expect(frames[2].Follow.x).toBeLessThan(frames[0].Follow.x);
+			continue;
+		}
+		for (const sourceWord of ["Follow", "every", "word"]) {
+			const word = style === "tiktok" ? sourceWord.toUpperCase() : sourceWord;
 			for (const frame of frames.slice(1)) {
 				for (const axis of ["x", "y", "width", "scaleY"] as const) {
 					expect(frame[word][axis], `${style}: ${word} ${axis}`).toBeCloseTo(

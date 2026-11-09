@@ -125,6 +125,8 @@ export async function startBrowserRecorder(
 		browserFinalizing.current = true;
 		setFinalizing(true);
 		setRecording(false);
+		// Also covers a browser recorder that stops itself before its final write.
+		if (!writer.isCancelled) openLoadingEditor();
 		await window.electronAPI
 			.setRecordingState(false)
 			.catch((error) => console.warn("Could not reset recording state", error));
@@ -154,7 +156,6 @@ export async function startBrowserRecorder(
 
 			if (videoResult.path) {
 				const finalVideoPath = videoResult.path;
-				openLoadingEditor();
 				// 1. Launch editor immediately (Optimistic UI)
 				await finalizeRecordingSession(finalVideoPath, null);
 

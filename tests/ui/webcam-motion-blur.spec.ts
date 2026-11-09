@@ -41,7 +41,9 @@ test("preview camera blurs on shrink and grow, then clears on pause", async ({ p
 	await page.getByRole("button", { name: "Play", exact: true }).click();
 	await expect(page.locator("[data-webcam-motion-blur]")).toBeVisible({ timeout: 5000 });
 	await expect
-		.poll(async () => Number(await page.locator("main").getAttribute("data-time")))
+		.poll(async () => Number(await page.locator("main").getAttribute("data-time")), {
+			intervals: [25],
+		})
 		.toBeGreaterThan(1.35);
 	await page.getByRole("button", { name: "Pause", exact: true }).click();
 	await expect(page.locator("[data-webcam-motion-blur]")).toBeHidden();

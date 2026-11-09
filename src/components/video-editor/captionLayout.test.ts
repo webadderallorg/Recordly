@@ -1,10 +1,33 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	buildActiveCaptionLayout,
 	flattenCaptionWords,
 	prepareCaptionLayout,
 } from "./captionLayout";
-import { type CaptionCue, DEFAULT_AUTO_CAPTION_SETTINGS } from "./types";
+import { type CaptionCue, DEFAULT_AUTO_CAPTION_SETTINGS as DEFAULT_SETTINGS } from "./types";
+
+const LEGACY_CAPTION_SETTINGS = { ...DEFAULT_SETTINGS, style: "classic" as const };
+
+it("wraps uppercase TikTok display text without changing the editable transcript", () => {
+	const cue = { id: "caps", startMs: 0, endMs: 1000, text: "hello wide" };
+	const layout = buildActiveCaptionLayout({
+		cues: [cue],
+		timeMs: 500,
+		settings: {
+			...LEGACY_CAPTION_SETTINGS,
+			style: "tiktok",
+			maxRows: 2,
+			animationStyle: "none",
+		},
+		maxWidthPx: 100,
+		measureText: (text) =>
+			[...text].reduce((sum, char) => sum + (/[A-Z]/.test(char) ? 12 : 6), 0),
+	});
+	expect(layout?.visibleLines.map((line) => line.width)).toEqual([60, 48]);
+	expect(layout?.editTarget.text).toBe("hello wide");
+	expect(layout?.editTarget.words.map((word) => word.text)).toEqual(["hello", "wide"]);
+	expect(cue.text).toBe("hello wide");
+});
 
 describe("flattenCaptionWords", () => {
 	it("forces a break at every cue boundary so each phrase shows on its own", () => {
@@ -59,7 +82,7 @@ describe("current-word caption layout", () => {
 		buildActiveCaptionLayout({
 			cues,
 			timeMs,
-			settings: { ...DEFAULT_AUTO_CAPTION_SETTINGS, maxRows, animationStyle: "none" },
+			settings: { ...LEGACY_CAPTION_SETTINGS, maxRows, animationStyle: "none" },
 			maxWidthPx: 1000,
 			measureText: (text) => text.length * 10,
 		});
@@ -102,7 +125,7 @@ describe("current-word caption layout", () => {
 		const options = {
 			cues,
 			settings: {
-				...DEFAULT_AUTO_CAPTION_SETTINGS,
+				...LEGACY_CAPTION_SETTINGS,
 				maxRows: 1,
 				animationStyle: "none" as const,
 			},
@@ -151,7 +174,7 @@ describe("current-word caption layout", () => {
 			buildActiveCaptionLayout({
 				cues: [cue],
 				timeMs,
-				settings: { ...DEFAULT_AUTO_CAPTION_SETTINGS, animationStyle },
+				settings: { ...LEGACY_CAPTION_SETTINGS, animationStyle },
 				maxWidthPx: 1000,
 				measureText: (text) => text.length * 10,
 			});
@@ -266,7 +289,7 @@ describe("current-word caption layout", () => {
 			buildActiveCaptionLayout({
 				cues: [padded],
 				timeMs,
-				settings: { ...DEFAULT_AUTO_CAPTION_SETTINGS, animationStyle: "fade" },
+				settings: { ...LEGACY_CAPTION_SETTINGS, animationStyle: "fade" },
 				maxWidthPx: 1000,
 				measureText: (text) => text.length * 10,
 			});
@@ -283,7 +306,7 @@ describe("current-word caption layout", () => {
 			const active = buildActiveCaptionLayout({
 				cues: [cue],
 				timeMs,
-				settings: { ...DEFAULT_AUTO_CAPTION_SETTINGS, animationStyle: "fade" },
+				settings: { ...LEGACY_CAPTION_SETTINGS, animationStyle: "fade" },
 				maxWidthPx: 1000,
 				measureText: (text) => text.length * 10,
 			});
@@ -314,7 +337,7 @@ describe("current-word caption layout", () => {
 			buildActiveCaptionLayout({
 				cues: [wrapped],
 				timeMs,
-				settings: { ...DEFAULT_AUTO_CAPTION_SETTINGS, maxRows: 2, animationStyle: "none" },
+				settings: { ...LEGACY_CAPTION_SETTINGS, maxRows: 2, animationStyle: "none" },
 				maxWidthPx: 60,
 				measureText: (text) => text.length * 10,
 			});
@@ -322,4 +345,117 @@ describe("current-word caption layout", () => {
 		expect(at(600)?.visibleLines.map((line) => line.words[0].text)).toEqual(["three", "four"]);
 		expect(at(600)?.visibleLines[0].words[0].state).toBe("active");
 	});
+});
+
+describe("Reveal caption layout", () => {
+	const settings = {
+		...LEGACY_CAPTION_SETTINGS,
+		style: "reveal" as const,
+		animationStyle: "none" as const,
+	};
+	const cue = {
+		id: "reference",
+		startMs: 0,
+		endMs: 1600,
+		text: "Fix the failing tests.",
+		words: [
+			{ text: "Fix", startMs: 100, endMs: 300 },
+			{ text: "the", startMs: 350, endMs: 450, leadingSpace: true },
+			{ text: "failing", startMs: 500, endMs: 800, leadingSpace: true },
+			{ text: "tests.", startMs: 900, endMs: 1400, leadingSpace: true },
+		],
+	};
+	it("reveals spoken words, grows the box, and seeks backward without remeasuring or truncating the editable phrase", () => {
+		const measureText = vi.fn((text: string) => text.length * 10);
+		const sample = prepareCaptionLayout({
+			cues: [cue],
+			settings,
+			maxWidthPx: 1000,
+			measureText,
+		});
+		measureText.mockClear();
+		expect(sample(50)).toBeNull();
+		let previousWidth = 0;
+		for (const [time, text] of [
+			[250, "Fix"],
+			[490, "Fix the"],
+			[850, "Fix the failing"],
+			[1100, "Fix the failing tests."],
+		] as const) {
+			const layout = sample(time)!;
+			expect(layout.visibleLines[0].words.map((word) => word.text).join(" ")).toBe(text);
+			expect(layout.visibleLines[0].width).toBe(text.length * 10);
+			expect(layout.visibleLines[0].width).toBeGreaterThan(previousWidth);
+			previousWidth = layout.visibleLines[0].width;
+			expect(layout.editTarget.text).toBe(cue.text);
+		}
+		const entering = sample(520)!;
+		expect(entering.visibleLines[0].words[2].revealProgress).toBeGreaterThan(0);
+		expect(entering.visibleLines[0].words[2].revealProgress).toBeLessThan(1);
+		expect(sample(640)!.visibleLines[0].words[2].revealProgress).toBe(1);
+		expect(sample(250)!.visibleLines[0].words.map((word) => word.text)).toEqual(["Fix"]);
+		expect(sample(1600)).toBeNull();
+		expect(measureText).not.toHaveBeenCalled();
+	});
+	it("uses estimated timing when importing captions without word timestamps", () => {
+		const sample = prepareCaptionLayout({
+			cues: [{ id: "import", startMs: 0, endMs: 1000, text: "Hello there" }],
+			settings,
+			maxWidthPx: 1000,
+			measureText: (text) => text.length * 10,
+		});
+		expect(sample(250)!.visibleLines[0].words.map((word) => word.text)).toEqual(["Hello"]);
+		expect(sample(750)!.visibleLines[0].words.map((word) => word.text)).toEqual([
+			"Hello",
+			"there",
+		]);
+	});
+});
+
+it("Classic is the same Reveal animation with a visual reskin", () => {
+	const cues = [
+		{
+			id: "classic",
+			startMs: 0,
+			endMs: 1800,
+			text: "Look at this.",
+			words: [
+				{ text: "Look", startMs: 100, endMs: 500 },
+				{ text: "at", startMs: 700, endMs: 900, leadingSpace: true },
+				{ text: "this.", startMs: 1100, endMs: 1600, leadingSpace: true },
+			],
+		},
+	];
+	const sample = (style: "reveal" | "serif") =>
+		prepareCaptionLayout({
+			cues,
+			settings: { ...LEGACY_CAPTION_SETTINGS, style, animationStyle: "none" },
+			maxWidthPx: 1000,
+			measureText: (text) => text.length * 10,
+		});
+	const reveal = sample("reveal"),
+		classic = sample("serif");
+	for (const time of [0, 100, 120, 300, 720, 850, 1150, 1300, 300, 1800])
+		expect(classic(time)).toEqual(reveal(time));
+});
+
+it("preparing Reveal does not add transcript measurements beyond line layout", () => {
+	const measurements = (style: "classic" | "reveal") => {
+		const measureText = vi.fn((text: string) => text.length * 10);
+		prepareCaptionLayout({
+			cues: [
+				{
+					id: "long",
+					startMs: 0,
+					endMs: 10000,
+					text: "One two three four five six seven eight nine ten.",
+				},
+			],
+			settings: { ...LEGACY_CAPTION_SETTINGS, style },
+			maxWidthPx: 200,
+			measureText,
+		});
+		return measureText.mock.calls;
+	};
+	expect(measurements("reveal")).toEqual(measurements("classic"));
 });
