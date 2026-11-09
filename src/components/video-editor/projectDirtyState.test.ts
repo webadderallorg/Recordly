@@ -65,7 +65,7 @@ describe("hasUnsavedProjectChanges", () => {
 		expect(hasUnsavedProjectChanges(current, createProjectData())).toBe(true);
 	});
 
-	it("ignores transient webcam media attachment changes", () => {
+	it("detects webcam media attachment changes", () => {
 		const saved = createProjectData({
 			editor: {
 				...createProjectData().editor,
@@ -89,7 +89,19 @@ describe("hasUnsavedProjectChanges", () => {
 			},
 		});
 
-		expect(hasUnsavedProjectChanges(current, saved)).toBe(false);
+		expect(hasUnsavedProjectChanges(current, saved)).toBe(true);
+	});
+
+	it.each([
+		{ name: "replacement footage", change: { sourcePath: "/replacement.mp4" } },
+		{ name: "removed footage", change: { enabled: false, sourcePath: null } },
+		{ name: "visibility", change: { enabled: false } },
+		{ name: "synchronization offset", change: { timeOffsetMs: 125 } },
+	])("saves webcam $name changes independently", ({ change }) => {
+		const webcam = { enabled: true, sourcePath: "/webcam.mp4", timeOffsetMs: 0, size: 28 };
+		const saved = createProjectData({ editor: { ...createProjectData().editor, webcam } });
+		const current = { ...saved, editor: { ...saved.editor, webcam: { ...webcam, ...change } } };
+		expect(hasUnsavedProjectChanges(current, saved)).toBe(true);
 	});
 
 	it("detects persistent webcam presentation changes", () => {

@@ -49,6 +49,44 @@ describe("local media path policy", () => {
 		}
 	});
 
+	it("restores uploaded webcam media and its edge style from disk after a restart", async () => {
+		const manager = await import("./manager");
+		const { writeProjectFileAtomically } = await import("./atomicSave");
+		const sourcePath = path.join(tempRoot, "recording.mp4");
+		const webcamPath = path.join(tempRoot, "uploaded-webcam.mp4");
+		await fs.copyFile(
+			new URL("../../../tests/ui/fixtures/filmstrip.mp4", import.meta.url),
+			sourcePath,
+		);
+		await fs.copyFile(
+			new URL("../../../tests/ui/fixtures/preview.mp4", import.meta.url),
+			webcamPath,
+		);
+		const projectPath = path.join(await manager.getProjectsDir(), "Camera.recordly");
+		const project = {
+			version: 2,
+			videoPath: sourcePath,
+			editor: {
+				webcam: {
+					enabled: true,
+					sourcePath: webcamPath,
+					previewFrame: "soft-blur",
+					timeOffsetMs: 0,
+				},
+			},
+		};
+		await writeProjectFileAtomically(projectPath, JSON.stringify(project));
+		// Drop process-local project/session/media approvals before reopening the file.
+		vi.resetModules();
+		const restartedManager = await import("./manager");
+		const state = await import("../state");
+		expect(state.currentRecordingSession).toBeNull();
+		const loaded = await restartedManager.loadProjectFromPath(projectPath);
+		expect(loaded).toMatchObject({ success: true, project });
+		expect(state.currentRecordingSession?.webcamPath).toBe(webcamPath);
+		await expect(restartedManager.isAllowedLocalMediaPath(webcamPath)).resolves.toBe(true);
+	});
+
 	it("reads library previews without switching the active project and rejects unknown projects", async () => {
 		vi.doMock("../../mediaServer", () => ({
 			getMediaServerBaseUrl: () => "http://127.0.0.1:1234",

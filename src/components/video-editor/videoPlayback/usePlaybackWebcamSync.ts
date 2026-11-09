@@ -179,8 +179,10 @@ export function usePlaybackWebcamSync(input: usePlaybackWebcamSyncInput) {
 				});
 			}
 			syncWebcamMedia();
+			// Paused preview ticks can finish before the independent camera decoder.
+			applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
 		},
-		[syncWebcamMedia, setWebcamVideoDimensions],
+		[syncWebcamMedia, setWebcamVideoDimensions, applyWebcamBubbleLayout, animationStateRef],
 	);
 
 	useEffect(() => {
