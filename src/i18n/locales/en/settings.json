@@ -7,7 +7,15 @@
 		"title": "Updates",
 		"experimental": "Experimental updates",
 		"experimentalDescription": "You've opted into experimental updates so you have the choice to test the latest update of Recordly before it's widely available.",
-		"saveFailed": "Failed to change the update channel."
+		"saveFailed": "Failed to change the update channel.",
+		"changeVersion": "Change version",
+		"versionInstallHint": "Download a release, then open its installer to change versions.",
+		"loadingVersions": "Loading versions…",
+		"version": "Version",
+		"prereleaseVersion": "Pre-release",
+		"noVersions": "No compatible versions are available for this installation.",
+		"versionFailed": "Could not load or download this version. Try again.",
+		"downloadInstaller": "Download installer"
 	},
 	"zoom": {
 		"level": "Zoom Level",

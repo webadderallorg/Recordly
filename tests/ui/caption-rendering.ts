@@ -1,10 +1,10 @@
-import { ensureCaptionFontLoaded } from "@/components/video-editor/captionFonts";
 import { Container } from "pixi.js";
-import { renderCaptions } from "@/lib/exporter/captionRenderer";
-import { FrameCaptions } from "@/lib/exporter/modernFrameCaptions";
-import { DEFAULT_AUTO_CAPTION_SETTINGS } from "@/components/video-editor/types";
+import { ensureCaptionFontLoaded } from "@/components/video-editor/captionFonts";
 import { applyCaptionPreset, CAPTION_PRESETS } from "@/components/video-editor/captionPresets";
 import { getCaptionPadding } from "@/components/video-editor/captionStyle";
+import { DEFAULT_AUTO_CAPTION_SETTINGS } from "@/components/video-editor/types";
+import { renderCaptions } from "@/lib/exporter/captionRenderer";
+import { FrameCaptions } from "@/lib/exporter/modernFrameCaptions";
 import type { FrameRenderContext } from "@/lib/exporter/modernFrameRenderer";
 
 async function run() {
@@ -12,7 +12,7 @@ async function run() {
 	const width = 960,
 		height = 540;
 	const settings = {
-		...DEFAULT_AUTO_CAPTION_SETTINGS,
+		...applyCaptionPreset(DEFAULT_AUTO_CAPTION_SETTINGS, "classic"),
 		enabled: true,
 		animationStyle: "none",
 	};
@@ -148,7 +148,7 @@ async function run() {
 					Math.floor(
 						state.centerX -
 							state.boxWidth / 2 +
-							getCaptionPadding(state.fontSize).x / 4,
+							getCaptionPadding(state.fontSize, styledSettings.style).x / 4,
 					),
 					Math.floor(state.centerY),
 					1,
@@ -177,10 +177,35 @@ async function run() {
 				whiteCorner,
 			};
 		});
+		const revealAnimation = preset.revealWords
+			? [false, true].map((modern) => {
+					const hashes = [420, 540, 420].map((time) => {
+						const canvas = document.createElement("canvas");
+						canvas.width = width;
+						canvas.height = height;
+						const ctx = canvas.getContext("2d")!;
+						if (modern) {
+							styledFrame.updateCaptionLayer(time);
+							styledFrame.drawCaptionOverlay(ctx);
+						} else renderCaptions(ctx, cues, styledSettings, width, height, time);
+						return ctx
+							.getImageData(0, 0, width, height)
+							.data.reduce(
+								(sum, channel, index) => sum + (index % 4 === 3 ? 0 : channel),
+								0,
+							);
+					});
+					return {
+						animates: hashes[0] !== hashes[1],
+						seeksBack: hashes[0] === hashes[2],
+					};
+				})
+			: [];
 		return {
 			id: preset.id,
+			revealAnimation,
 			samples,
-			widths: [0, 150, 500, 800, 999].map(
+			widths: (preset.revealWords ? [250, 550, 900, 999] : [0, 150, 500, 800, 999]).map(
 				(time) => styledFrame.buildCaptionRenderState(time)!.boxWidth,
 			),
 			heightInEm: state.boxHeight / state.fontSize,

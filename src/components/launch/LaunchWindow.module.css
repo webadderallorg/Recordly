@@ -99,6 +99,7 @@
 	display: grid;
 	place-items: center;
 	font-size: 20px;
+	line-height: 1;
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
 }

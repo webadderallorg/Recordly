@@ -384,7 +384,15 @@
 		"experimentalDescription": "Has activado las actualizaciones experimentales, así que puedes probar la actualización más reciente de Recordly antes de que esté disponible para todos.",
 		"title": "Actualizaciones",
 		"experimental": "Actualizaciones experimentales",
-		"saveFailed": "No se pudo cambiar el canal de actualización."
+		"saveFailed": "No se pudo cambiar el canal de actualización.",
+		"changeVersion": "Cambiar versión",
+		"versionInstallHint": "Descarga una versión y abre el instalador para cambiar de versión.",
+		"loadingVersions": "Cargando versiones…",
+		"version": "Versión",
+		"prereleaseVersion": "Versión preliminar",
+		"noVersions": "No hay versiones compatibles disponibles para esta instalación.",
+		"versionFailed": "No se pudo cargar o descargar esta versión. Inténtalo de nuevo.",
+		"downloadInstaller": "Descargar instalador"
 	},
 	"categories": {
 		"general": "General",

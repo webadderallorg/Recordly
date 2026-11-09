@@ -71,7 +71,7 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 describe("recording stop editor handoff", () => {
-	it("keeps the Finishing HUD until successful capture, then opens the valid session once", async () => {
+	it("opens the loading editor before native stop settles and publishes the valid session once", async () => {
 		let resolve!: (result: NativeCaptureStopResult) => void;
 		api.stopNativeScreenRecording.mockReturnValue(
 			new Promise((done) => {
@@ -83,8 +83,8 @@ describe("recording stop editor handoff", () => {
 		stop(context);
 		expect(context.setFinalizing).toHaveBeenCalledWith(true);
 		expect(api.stopNativeScreenRecording).toHaveBeenCalledOnce();
-		expect(context.openLoadingEditor).not.toHaveBeenCalled();
-		expect(api.openLoadingRecordingEditor).not.toHaveBeenCalled();
+		expect(context.openLoadingEditor).toHaveBeenCalledOnce();
+		expect(api.openLoadingRecordingEditor).toHaveBeenCalledOnce();
 		expect(api.finishRecordingEditor).not.toHaveBeenCalled();
 		expect(api.switchToEditor).not.toHaveBeenCalled();
 		expect(context.finalizeRecordingSession).not.toHaveBeenCalled();
@@ -111,7 +111,7 @@ describe("recording stop editor handoff", () => {
 		"failed",
 		"empty",
 		"rejected",
-	])("keeps the HUD available and never opens Home/editor for %s finalization", async (failure) => {
+	])("surfaces %s finalization in the loading editor without publishing invalid media", async (failure) => {
 		if (failure === "rejected")
 			api.stopNativeScreenRecording.mockRejectedValue(new Error("Capture connection lost"));
 		else
@@ -123,9 +123,9 @@ describe("recording stop editor handoff", () => {
 		await vi.waitFor(() =>
 			expect(context.notifyRecordingFinalizationFailure).toHaveBeenCalledOnce(),
 		);
-		expect(context.openLoadingEditor).not.toHaveBeenCalled();
-		expect(api.openLoadingRecordingEditor).not.toHaveBeenCalled();
-		expect(api.finishRecordingEditor).not.toHaveBeenCalled();
+		expect(context.openLoadingEditor).toHaveBeenCalledOnce();
+		expect(api.openLoadingRecordingEditor).toHaveBeenCalledOnce();
+		expect(api.finishRecordingEditor).toHaveBeenCalledExactlyOnceWith("Could not finish");
 		expect(api.switchToEditor).not.toHaveBeenCalled();
 		expect(context.finalizeRecordingSession).not.toHaveBeenCalled();
 		expect(api.hudOverlayClose).not.toHaveBeenCalled();
@@ -158,7 +158,7 @@ describe("recording stop editor handoff", () => {
 		expect(context.finalizeRecordingSession).not.toHaveBeenCalled();
 		expect(api.hudOverlayClose).not.toHaveBeenCalled();
 	});
-	it("stops browser capture in the HUD and leaves the handoff to successful file persistence", () => {
+	it("opens the loading editor immediately when browser capture is stopped", () => {
 		const context = createContext();
 		context.nativeScreenRecording.current = false;
 		const recorder = { state: "recording", requestData: vi.fn(), stop: vi.fn() };
@@ -166,8 +166,8 @@ describe("recording stop editor handoff", () => {
 		stop(context);
 		expect(recorder.stop).toHaveBeenCalledOnce();
 		expect(context.setFinalizing).toHaveBeenCalledWith(true);
-		expect(context.openLoadingEditor).not.toHaveBeenCalled();
-		expect(api.openLoadingRecordingEditor).not.toHaveBeenCalled();
+		expect(context.openLoadingEditor).toHaveBeenCalledOnce();
+		expect(api.openLoadingRecordingEditor).toHaveBeenCalledOnce();
 		expect(api.finishRecordingEditor).not.toHaveBeenCalled();
 		expect(api.switchToEditor).not.toHaveBeenCalled();
 	});

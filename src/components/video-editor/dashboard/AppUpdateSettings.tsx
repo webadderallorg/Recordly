@@ -14,6 +14,7 @@ import { useI18n } from "@/contexts/I18nContext";
 import { SettingsInfo } from "../SettingsInfo";
 import { SettingsRow } from "../SettingsRow";
 import styles from "./AppUpdateSettings.module.css";
+import { AppVersionPicker } from "./AppVersionPicker";
 
 type Summary = Awaited<ReturnType<Window["electronAPI"]["getUpdateStatusSummary"]>>;
 
@@ -269,6 +270,10 @@ export function AppUpdateSettings() {
 						</p>
 					</div>
 					<div className={styles.actions}>
+						<AppVersionPicker
+							currentVersion={version || summary?.currentVersion || ""}
+							disabled={busy || checking || downloading}
+						/>
 						<Button
 							size="sm"
 							variant={ready || available ? "default" : "secondary"}

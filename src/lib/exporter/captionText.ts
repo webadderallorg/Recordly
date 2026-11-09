@@ -7,8 +7,8 @@ import {
 } from "@/components/video-editor/captionPresets";
 import {
 	CAPTION_LINE_HEIGHT,
-	getCaptionFontBaseline,
 	CAPTION_WORD_HIGHLIGHT,
+	getCaptionFontBaseline,
 	getCaptionWordVisualState,
 } from "@/components/video-editor/captionStyle";
 import type { AutoCaptionSettings } from "@/components/video-editor/types";
@@ -58,9 +58,13 @@ export function drawCaptionLine(
 	ctx.textBaseline = "alphabetic";
 	// The independent active visual paints above its neighbours, just as in DOM.
 	positioned.sort((a, b) => Number(a.visual.isHighlighted) - Number(b.visual.isHighlighted));
-	for (const { text, visual, width: wordWidth, x } of positioned) {
+	for (const { text, word, visual, width: wordWidth, x } of positioned) {
 		// Emphasis changes only color and background; typography stays fixed.
 		ctx.save();
+		if (word.revealProgress !== undefined) {
+			ctx.globalAlpha *= word.revealProgress;
+			ctx.filter = `blur(${(1 - word.revealProgress) * fontSize * 0.18}px)`;
+		}
 		ctx.translate(x + wordWidth / 2, baseline);
 		const drawX = -wordWidth / 2;
 		if (visual.isHighlighted && preset.highlightFill) {

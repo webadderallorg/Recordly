@@ -170,5 +170,7 @@
 	"selectedClips": "{{count}} clipes selecionados",
 	"mergeSelectedClips": "Mesclar clipes selecionados",
 	"mergeClipsUnavailable": "A mesclagem exige gravações contínuas com a mesma velocidade e as mesmas configurações de áudio.",
-	"mergeClips": "Mesclar clipes"
+	"mergeClips": "Mesclar clipes",
+	"captionStyleClassic": "Clássico",
+	"captionStyleReveal": "Revelar"
 }

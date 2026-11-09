@@ -1,5 +1,5 @@
 import type { CaptionEditTarget } from "./captionEditing";
-import { getCaptionDisplayText } from "./captionPresets";
+import { getCaptionDisplayText, getCaptionPreset } from "./captionPresets";
 import type {
 	AutoCaptionAnimation,
 	AutoCaptionSettings,
@@ -20,6 +20,8 @@ export interface CaptionWordLayout {
 	endMs: number;
 	hasRealTiming: boolean;
 	state: CaptionWordState;
+	/** Eased per-word reveal sampled from media time, shared by preview and export. */
+	revealProgress?: number;
 }
 
 export interface CaptionLineLayout {
@@ -487,6 +489,24 @@ export function prepareCaptionLayout(
 		measureText: (text) =>
 			options.measureText(getCaptionDisplayText(text, options.settings.style)),
 	});
+	const preset = getCaptionPreset(options.settings.style);
+	const revealWords = Boolean(preset.revealWords);
+	const revealWidths = new Map(
+		lines.map((line) => {
+			let width = 0;
+			return [
+				line.startWordIndex,
+				revealWords
+					? line.words.map((word) => {
+							width += options.measureText(
+								`${word.leadingSpace ? " " : ""}${word.text}`,
+							);
+							return width;
+						})
+					: [],
+			];
+		}),
+	);
 	const pages = buildCaptionPages({
 		cues: options.cues,
 		lines,
@@ -564,7 +584,7 @@ export function prepareCaptionLayout(
 				activeWordIndex = index;
 		});
 		const activeWord = words[activeWordIndex];
-		const visibleLines = prepared.page.lines.map((line) => ({
+		let visibleLines = prepared.page.lines.map((line) => ({
 			...line,
 			words: line.words.map(
 				(word): CaptionWordLayout => ({
@@ -578,6 +598,27 @@ export function prepareCaptionLayout(
 				}),
 			),
 		}));
+		if (revealWords) {
+			visibleLines = visibleLines.flatMap((line) => {
+				const revealed = line.words
+					.filter((word) => timeMs >= word.startMs)
+					.map((word) => ({
+						...word,
+						revealProgress: 1 - (1 - clamp01((timeMs - word.startMs) / 140)) ** 3,
+					}));
+				return revealed.length
+					? [
+							{
+								...line,
+								words: revealed,
+								width: revealWidths.get(line.startWordIndex)![revealed.length - 1],
+								endWordIndex: revealed[revealed.length - 1].index,
+							},
+						]
+					: [];
+			});
+			if (!visibleLines.length) return null;
+		}
 		const enterProgress = clamp01((timeMs - prepared.page.startMs) / enterDurationMs);
 		const exitProgress =
 			prepared.willDisappear && prepared.exitDurationMs > 0

@@ -54,6 +54,7 @@ import {
 	shouldHardenWebContentsType,
 } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
+import { createReleaseVersionCatalog } from "./releaseVersions";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
 import { createSaveBeforeCloseController } from "./saveBeforeClose";
 import {
@@ -828,6 +829,27 @@ ipcMain.handle("skip-update-version", () => {
 
 ipcMain.handle("get-current-update-toast-payload", () => {
 	return getCurrentUpdateToastPayload();
+});
+
+const releaseVersionCatalog = createReleaseVersionCatalog(process.platform, process.arch);
+ipcMain.handle("list-release-versions", async () => {
+	if (process.windowsStore || process.mas) return { success: true, versions: [] };
+	try {
+		return { success: true, versions: await releaseVersionCatalog.list() };
+	} catch {
+		return { success: false, versions: [] };
+	}
+});
+ipcMain.handle("download-release-version", async (_event, tag: unknown) => {
+	if (process.windowsStore || process.mas) return { success: false };
+	const installer = releaseVersionCatalog.installer(tag);
+	if (!installer) return { success: false };
+	try {
+		await shell.openExternal(installer);
+		return { success: true };
+	} catch {
+		return { success: false };
+	}
 });
 
 ipcMain.handle("get-update-status-summary", () => {

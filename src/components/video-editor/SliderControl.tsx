@@ -52,6 +52,7 @@ function SliderValueTooltip({
 interface SliderControlProps {
 	label: string;
 	ariaLabel?: string;
+	hideLabel?: boolean;
 	startContent?: ReactNode;
 	endContent?: ReactNode;
 	value: number;
@@ -64,6 +65,7 @@ interface SliderControlProps {
 export const SliderControl = memo(function SliderControl({
 	label,
 	ariaLabel,
+	hideLabel = false,
 	startContent,
 	endContent,
 	value,
@@ -119,9 +121,9 @@ export const SliderControl = memo(function SliderControl({
 				if (snapped !== value) onChange(snapped);
 			}}
 			onChangeEnd={endPointerDrag}
-			className="my-1 w-full gap-y-2"
+			className={hideLabel ? "my-1 w-full gap-y-0" : "my-1 w-full gap-y-2"}
 		>
-			<Label className="text-xs">{label}</Label>
+			<Label className={hideLabel ? "sr-only" : "text-xs"}>{label}</Label>
 			<div className="flex min-w-0 items-center gap-2 [grid-area:track]">
 				{startContent && (
 					<span

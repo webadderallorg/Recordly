@@ -1118,6 +1118,11 @@ interface Window {
 		dismissUpdateToast: () => Promise<{ success: boolean }>;
 		skipUpdateVersion: () => Promise<{ success: boolean; message?: string }>;
 		getCurrentUpdateToastPayload: () => Promise<UpdateToastState | null>;
+		listReleaseVersions: () => Promise<{
+			success: boolean;
+			versions: { tag: string; version: string; prerelease: boolean; publishedAt: string }[];
+		}>;
+		downloadReleaseVersion: (tag: string) => Promise<{ success: boolean }>;
 		getUpdateStatusSummary: () => Promise<UpdateStatusSummary>;
 		getExperimentalUpdatesEnabled: () => Promise<boolean>;
 		getAutomaticUpdateDownloadsEnabled: () => Promise<boolean>;

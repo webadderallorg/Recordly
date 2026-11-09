@@ -65,7 +65,8 @@ export function useRecorderStop(
 		mediaRecorder,
 		pendingWebcamPathPromise,
 	} = context;
-	const stopRecording = useRef(() => {
+	const stopRecording = useRef<() => void>(() => undefined);
+	stopRecording.current = () => {
 		recordingStartGeneration.current += 1;
 		setPaused(false);
 		if (nativeScreenRecording.current && nativeWarmStartActive.current) {
@@ -111,7 +112,8 @@ export function useRecorderStop(
 				} catch (error) {
 					stopped = Promise.resolve({ success: false, error: getErrorMessage(error) });
 				}
-				// Keep the Finishing HUD until capture returns a usable recording.
+				// Show the editor skeleton while capture flushes its final frames to disk.
+				openLoadingEditor();
 				const micFallbackBlobPromise = stopMicFallbackRecorder();
 				const webcamPathPromise = stopWebcamRecorder();
 				const result = await stopped;
@@ -170,7 +172,6 @@ export function useRecorderStop(
 				}
 
 				const finalPath = result.path;
-				openLoadingEditor();
 
 				// 1. Finalize the session and switch to editor immediately (Optimistic UI)
 				// We pass null for webcamPath initially to avoid blocking on webcam disk writes/muxing.
@@ -290,11 +291,12 @@ export function useRecorderStop(
 				console.warn("Failed to flush recorder before stopping:", error);
 			}
 			recorder.stop();
+			openLoadingEditor();
 			setRecording(false);
 			setFinalizing(true);
 			window.electronAPI?.setRecordingState(false);
 		}
-	});
+	};
 
 	return { stopRecording };
 }

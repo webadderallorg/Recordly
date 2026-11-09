@@ -17,7 +17,7 @@ export function CountdownDelayIcon({
 			/>
 			<text
 				x="12"
-				y="14.5"
+				y="14"
 				fill="currentColor"
 				fontSize="9"
 				fontWeight="600"

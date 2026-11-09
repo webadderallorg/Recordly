@@ -66,7 +66,7 @@ export function CaptionGenerationSettings({
 }: CaptionGenerationSettingsProps) {
 	const te = useScopedT("editing");
 	const tSettings = useScopedT("settings");
-	const { locale } = useI18n();
+	const { locale, t } = useI18n();
 	const formatNumber = (value: number, fractionDigits?: number) =>
 		new Intl.NumberFormat(locale, {
 			useGrouping: false,
@@ -232,7 +232,10 @@ export function CaptionGenerationSettings({
 					}
 				/>
 				<SliderControl
-					label={tSettings("captions.fontSize", "Font size")}
+					label={t("editor.annotations.size", "Size")}
+					hideLabel
+					startContent={<span className="text-[11px] leading-none">Aa</span>}
+					endContent={<span className="text-xl leading-none">Aa</span>}
 					value={autoCaptionSettings.fontSize}
 					min={16}
 					max={72}

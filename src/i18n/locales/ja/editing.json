@@ -170,5 +170,7 @@
 	"selectedClips": "{{count}}個のクリップを選択中",
 	"mergeSelectedClips": "選択したクリップを結合",
 	"mergeClipsUnavailable": "結合するには、速度とオーディオ設定が同じ連続した映像が必要です。",
-	"mergeClips": "クリップを結合"
+	"mergeClips": "クリップを結合",
+	"captionStyleClassic": "クラシック",
+	"captionStyleReveal": "リビール"
 }

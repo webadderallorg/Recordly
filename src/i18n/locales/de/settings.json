@@ -384,7 +384,15 @@
 		"experimentalDescription": "Sie haben experimentelle Updates aktiviert und können daher das neueste Update von Recordly testen, bevor es allgemein verfügbar ist.",
 		"title": "Updates",
 		"experimental": "Experimentelle Updates",
-		"saveFailed": "Update-Kanal konnte nicht geändert werden."
+		"saveFailed": "Update-Kanal konnte nicht geändert werden.",
+		"changeVersion": "Version wechseln",
+		"versionInstallHint": "Lade eine Version herunter und öffne das Installationsprogramm, um die Version zu wechseln.",
+		"loadingVersions": "Versionen werden geladen…",
+		"version": "Version",
+		"prereleaseVersion": "Vorabversion",
+		"noVersions": "Für diese Installation sind keine kompatiblen Versionen verfügbar.",
+		"versionFailed": "Diese Version konnte nicht geladen oder heruntergeladen werden. Versuche es erneut.",
+		"downloadInstaller": "Installationsprogramm herunterladen"
 	},
 	"categories": {
 		"general": "Allgemein",

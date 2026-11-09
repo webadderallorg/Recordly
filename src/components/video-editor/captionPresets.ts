@@ -1,4 +1,3 @@
-import type { AutoCaptionSettings, AutoCaptionStyle } from "./types";
 import {
 	type CaptionRgb,
 	compositeCaptionColor,
@@ -6,12 +5,16 @@ import {
 	readableCaptionColor,
 } from "./captionContrast";
 import { CAPTION_FONT_WEIGHT, CAPTION_WORD_HIGHLIGHT } from "./captionStyle";
+import type { AutoCaptionSettings, AutoCaptionStyle } from "./types";
 
 interface CaptionPreset {
 	id: AutoCaptionStyle;
 	label: string;
 	fontWeight: number;
 	uppercase?: boolean;
+	revealWords?: boolean;
+	fontFamily?: string;
+	borderEm?: number;
 	highlightFill: string | null;
 	highlightTextColor?: string;
 	outlineEm: number;
@@ -36,6 +39,40 @@ export const CAPTION_PRESETS: readonly CaptionPreset[] = [
 			backgroundOpacity: 0.7,
 			boxRadius: 40,
 			animationStyle: "fade",
+		},
+	},
+	{
+		id: "reveal",
+		label: "Reveal",
+		fontWeight: 400,
+		revealWords: true,
+		highlightFill: null,
+		outlineEm: 0,
+		settings: {
+			textColor: "#FFFFFF",
+			inactiveTextColor: "#FFFFFF",
+			backgroundOpacity: 1,
+			boxRadius: 8,
+			animationStyle: "none",
+		},
+	},
+	{
+		// A distinct ID preserves the former Classic rendering in saved projects.
+		id: "serif",
+		label: "Classic",
+		fontWeight: 400,
+		revealWords: true,
+		fontFamily: '"Times New Roman", Times, serif',
+		borderEm: 0.1,
+		highlightFill: null,
+		outlineEm: 0,
+		backgroundRgb: "255, 255, 255",
+		settings: {
+			textColor: "#181818",
+			inactiveTextColor: "#181818",
+			backgroundOpacity: 1,
+			boxRadius: 8,
+			animationStyle: "none",
 		},
 	},
 	{
@@ -115,8 +152,14 @@ export const CAPTION_PRESETS: readonly CaptionPreset[] = [
 ];
 
 export function getCaptionPreset(style: unknown): CaptionPreset {
-	return CAPTION_PRESETS.find((preset) => preset.id === style) ?? CAPTION_PRESETS[0];
+	return (
+		CAPTION_PRESETS.find((preset) => preset.id === style) ??
+		CAPTION_PRESETS.find((preset) => preset.id === "reveal")!
+	);
 }
+
+/** Only these styles are offered for new captions; saved legacy styles still render. */
+export const CAPTION_STYLE_OPTIONS = [getCaptionPreset("reveal"), getCaptionPreset("serif")];
 
 /** Apply display casing before measuring and drawing, preserving editable source text. */
 export function getCaptionDisplayText(text: string, style: unknown) {
@@ -176,4 +219,31 @@ export function getCaptionWordOutline(
 	return (
 		preset.outlineEm || (settings.backgroundOpacity < 0.65 && highlight?.alpha !== 1 ? 0.1 : 0)
 	);
+}
+
+export function drawCaptionBoxBorder(
+	ctx: CanvasRenderingContext2D,
+	style: unknown,
+	x: number,
+	y: number,
+	width: number,
+	height: number,
+	radius: number,
+	fontSize: number,
+) {
+	const border = (getCaptionPreset(style).borderEm ?? 0) * fontSize;
+	if (!border) return;
+	ctx.save();
+	ctx.strokeStyle = "rgba(0, 0, 0, 0.12)";
+	ctx.lineWidth = border;
+	ctx.beginPath();
+	ctx.roundRect(
+		x + border / 2,
+		y + border / 2,
+		Math.max(0, width - border),
+		Math.max(0, height - border),
+		Math.max(0, radius - border / 2),
+	);
+	ctx.stroke();
+	ctx.restore();
 }

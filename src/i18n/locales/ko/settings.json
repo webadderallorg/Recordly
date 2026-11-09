@@ -384,7 +384,15 @@
 		"experimentalDescription": "실험적 업데이트를 선택했으므로 Recordly의 최신 업데이트가 널리 제공되기 전에 먼저 테스트해 볼 수 있습니다.",
 		"title": "업데이트",
 		"experimental": "실험적 업데이트",
-		"saveFailed": "업데이트 채널을 변경하지 못했습니다."
+		"saveFailed": "업데이트 채널을 변경하지 못했습니다.",
+		"changeVersion": "버전 변경",
+		"versionInstallHint": "릴리스를 다운로드한 후 설치 프로그램을 열어 버전을 변경하세요.",
+		"loadingVersions": "버전 불러오는 중…",
+		"version": "버전",
+		"prereleaseVersion": "미리 보기 버전",
+		"noVersions": "이 설치에 호환되는 버전이 없습니다.",
+		"versionFailed": "이 버전을 불러오거나 다운로드하지 못했습니다. 다시 시도하세요.",
+		"downloadInstaller": "설치 프로그램 다운로드"
 	},
 	"categories": {
 		"general": "일반",

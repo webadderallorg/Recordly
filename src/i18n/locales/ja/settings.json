@@ -7,7 +7,15 @@
 		"title": "アップデート",
 		"experimental": "試験版アップデート",
 		"experimentalDescription": "試験版アップデートが有効です。Recordlyの最新アップデートを一般公開前にお試しいただけます。",
-		"saveFailed": "アップデートチャンネルを変更できませんでした。"
+		"saveFailed": "アップデートチャンネルを変更できませんでした。",
+		"changeVersion": "バージョンを変更",
+		"versionInstallHint": "リリースをダウンロードし、インストーラーを開いてバージョンを変更します。",
+		"loadingVersions": "バージョンを読み込み中…",
+		"version": "バージョン",
+		"prereleaseVersion": "プレリリース",
+		"noVersions": "このインストールに対応するバージョンはありません。",
+		"versionFailed": "このバージョンを読み込みまたはダウンロードできませんでした。再試行してください。",
+		"downloadInstaller": "インストーラーをダウンロード"
 	},
 	"zoom": {
 		"level": "ズーム倍率",

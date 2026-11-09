@@ -384,7 +384,15 @@
 		"experimentalDescription": "Você ativou as atualizações experimentais, então pode escolher testar a atualização mais recente do Recordly antes que ela fique amplamente disponível.",
 		"title": "Atualizações",
 		"experimental": "Atualizações experimentais",
-		"saveFailed": "Falha ao alterar o canal de atualização."
+		"saveFailed": "Falha ao alterar o canal de atualização.",
+		"changeVersion": "Alterar versão",
+		"versionInstallHint": "Baixe uma versão e abra o instalador para alterar a versão.",
+		"loadingVersions": "Carregando versões…",
+		"version": "Versão",
+		"prereleaseVersion": "Pré-lançamento",
+		"noVersions": "Não há versões compatíveis disponíveis para esta instalação.",
+		"versionFailed": "Não foi possível carregar ou baixar esta versão. Tente novamente.",
+		"downloadInstaller": "Baixar instalador"
 	},
 	"categories": {
 		"general": "Geral",

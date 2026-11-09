@@ -16,6 +16,16 @@ describe("bundled caption fonts", () => {
 		);
 	});
 
+	it("uses the reference serif face for Classic without changing legacy Classic", async () => {
+		const { getCaptionFontFamily } = await import("./captionFonts");
+		expect(getCaptionFontFamily({ style: "serif", fontFamily: "Helvetica" })).toBe(
+			'"Times New Roman", Times, serif',
+		);
+		expect(getCaptionFontFamily({ style: "classic", fontFamily: "Helvetica" })).toBe(
+			"Helvetica",
+		);
+	});
+
 	it("waits for decoding before registering the font and shares one load", async () => {
 		let complete!: () => void;
 		const ready = new Promise<void>((resolve) => {

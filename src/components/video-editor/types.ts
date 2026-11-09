@@ -601,10 +601,18 @@ export interface CaptionCueWord {
 }
 
 export type AutoCaptionAnimation = "none" | "fade" | "rise" | "pop";
-export type AutoCaptionStyle = "classic" | "tiktok" | "karaoke" | "minimal" | "neon" | "paper";
+export type AutoCaptionStyle =
+	| "classic"
+	| "tiktok"
+	| "karaoke"
+	| "minimal"
+	| "neon"
+	| "paper"
+	| "reveal"
+	| "serif";
 
 export interface AutoCaptionSettings {
-	/** Older projects without a style use Classic. */
+	/** Legacy style IDs remain supported when reopening older projects. */
 	style?: AutoCaptionStyle;
 	enabled: boolean;
 	/** Show the hover ghost on the timeline caption track for click-to-add. */
@@ -623,7 +631,7 @@ export interface AutoCaptionSettings {
 }
 
 export const DEFAULT_AUTO_CAPTION_SETTINGS: AutoCaptionSettings = {
-	style: "classic",
+	style: "reveal",
 	enabled: false,
 	timelineQuickAdd: true,
 	language: "auto",
@@ -632,11 +640,11 @@ export const DEFAULT_AUTO_CAPTION_SETTINGS: AutoCaptionSettings = {
 	bottomOffset: 3,
 	maxWidth: 62,
 	maxRows: 1,
-	animationStyle: "fade",
-	boxRadius: 40,
+	animationStyle: "none",
+	boxRadius: 8,
 	textColor: "#FFFFFF",
-	inactiveTextColor: "#E5E7EB",
-	backgroundOpacity: 0.7,
+	inactiveTextColor: "#FFFFFF",
+	backgroundOpacity: 1,
 };
 
 export type PlaybackSpeed = 0.25 | 0.5 | 0.75 | 1.25 | 1.5 | 1.75 | 2;

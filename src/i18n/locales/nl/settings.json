@@ -384,7 +384,15 @@
 		"experimentalDescription": "Je hebt experimentele updates ingeschakeld, dus je kunt de nieuwste update van Recordly testen voordat die breed beschikbaar is.",
 		"title": "Updates",
 		"experimental": "Experimentele updates",
-		"saveFailed": "Kan het updatekanaal niet wijzigen."
+		"saveFailed": "Kan het updatekanaal niet wijzigen.",
+		"changeVersion": "Versie wijzigen",
+		"versionInstallHint": "Download een versie en open het installatieprogramma om van versie te wisselen.",
+		"loadingVersions": "Versies laden…",
+		"version": "Versie",
+		"prereleaseVersion": "Voorlopige versie",
+		"noVersions": "Er zijn geen compatibele versies beschikbaar voor deze installatie.",
+		"versionFailed": "Deze versie kon niet worden geladen of gedownload. Probeer het opnieuw.",
+		"downloadInstaller": "Installatieprogramma downloaden"
 	},
 	"categories": {
 		"general": "Algemeen",

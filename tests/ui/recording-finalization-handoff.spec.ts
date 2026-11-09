@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge } from "./bridge";
 
-test("Stop keeps the Finishing HUD until a recording is ready, then opens the editor", async ({
+test("Stop opens the loading editor while native capture is still finishing", async ({
 	page,
 	context,
 }) => {
@@ -74,14 +74,16 @@ test("Stop keeps the Finishing HUD until a recording is ready, then opens the ed
 	await controls.getByRole("button", { name: "Stop", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-native-stop-pending", "true");
 	await expect(page.locator('[data-recording-state="finalizing"]')).toBeVisible();
-	expect(opened).toBe(false);
-	await page.evaluate(() => window.dispatchEvent(new Event("release-native-stop")));
 	await expect.poll(() => opened).toBe(true);
 	await expect(editor.getByRole("status", { name: "Loading editor", exact: true })).toBeVisible();
 	await expect(editor.locator(".loading-recordly-mark")).toBeVisible();
 	await editor.screenshot({
 		path: test.info().outputPath("loading-editor.png"),
 	});
+	await expect(page.locator("html")).toHaveAttribute("data-native-stop-pending", "true");
+	await expect(editor.getByRole("navigation", { name: "Editor tools" })).toHaveCount(0);
+	await page.evaluate(() => window.dispatchEvent(new Event("release-native-stop")));
+	await expect(page.locator("html")).toHaveAttribute("data-native-stop-pending", "false");
 	releaseEditor();
 	await expect(editor.getByRole("navigation", { name: "Editor tools" })).toBeVisible({
 		timeout: 30000,

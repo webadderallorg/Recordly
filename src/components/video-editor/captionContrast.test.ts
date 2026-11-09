@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+	type CaptionRgb,
 	captionContrastRatio,
 	compositeCaptionColor,
 	parseCaptionColor,
-	type CaptionRgb,
 } from "./captionContrast";
 import {
 	applyCaptionPreset,
@@ -57,7 +57,10 @@ describe("caption contrast", () => {
 	});
 
 	it("repairs low contrast colors in existing projects and protects transparent backgrounds", () => {
-		const classic = { ...DEFAULT_AUTO_CAPTION_SETTINGS, inactiveTextColor: "#A3A3A3" };
+		const classic = {
+			...applyCaptionPreset(DEFAULT_AUTO_CAPTION_SETTINGS, "classic"),
+			inactiveTextColor: "#A3A3A3",
+		};
 		expect(getCaptionWordColor(classic, { isHighlighted: false, isInactive: true })).toBe(
 			"#FFFFFF",
 		);

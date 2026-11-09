@@ -384,7 +384,15 @@
 		"experimentalDescription": "Hai attivato gli aggiornamenti sperimentali, quindi puoi scegliere di provare l'ultimo aggiornamento di Recordly prima che sia disponibile per tutti.",
 		"title": "Aggiornamenti",
 		"experimental": "Aggiornamenti sperimentali",
-		"saveFailed": "Impossibile cambiare il canale di aggiornamento."
+		"saveFailed": "Impossibile cambiare il canale di aggiornamento.",
+		"changeVersion": "Cambia versione",
+		"versionInstallHint": "Scarica una versione e apri il programma di installazione per cambiare versione.",
+		"loadingVersions": "Caricamento versioni…",
+		"version": "Versione",
+		"prereleaseVersion": "Versione preliminare",
+		"noVersions": "Non sono disponibili versioni compatibili per questa installazione.",
+		"versionFailed": "Impossibile caricare o scaricare questa versione. Riprova.",
+		"downloadInstaller": "Scarica programma di installazione"
 	},
 	"categories": {
 		"general": "Generali",
