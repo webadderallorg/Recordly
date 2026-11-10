@@ -503,9 +503,11 @@ ipcMain.on(
 			| undefined,
 	) => {
 		if (
-			!bounds ||
+			!Array.isArray(bounds) ||
 			bounds.some(
 				(rect) =>
+					!rect ||
+					typeof rect !== "object" ||
 					![rect.left, rect.top, rect.right, rect.bottom].every(Number.isFinite) ||
 					rect.right < rect.left ||
 					rect.bottom < rect.top,

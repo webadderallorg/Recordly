@@ -199,6 +199,7 @@ function LaunchWindowContent() {
 		recordingHudOffset,
 		recordingWebcamPreviewContainerRef,
 		showRecordingWebcamPreview,
+		webcamPreview.webcamPreviewOffset,
 	]);
 
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } =

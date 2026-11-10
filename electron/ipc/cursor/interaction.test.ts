@@ -11,6 +11,11 @@ vi.mock("electron", () => ({
 	},
 }));
 
+vi.mock("../../windows", () => ({
+	getHudOverlayInteractiveBounds: vi.fn(() => null),
+	getHudOverlayWindow: vi.fn(() => null),
+}));
+
 import {
 	repairBundledUiohookBinaryForCurrentArch,
 	shouldStartGlobalInteractionHook,
