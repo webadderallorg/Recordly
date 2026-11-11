@@ -34,14 +34,11 @@ export function shouldLoopWebcamSource(
 	timeOffsetMs = 0,
 ): boolean {
 	if (!videoPath || !webcamPath || timeOffsetMs !== 0) return false;
-	const stem = (path: string) =>
-		path
-			.split(/[\\/]/)
-			.pop()
-			?.replace(/\.[^.]+$/, "");
+	const stem = (path: string) => path.replace(/\\/g, "/").replace(/\.[^./]+$/, "");
+	const filename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 	const videoStem = stem(videoPath);
 	const webcamStem = stem(webcamPath);
-	return webcamStem !== videoStem && webcamStem !== `${videoStem}-webcam`;
+	return webcamStem !== videoStem && filename(webcamStem) !== `${filename(videoStem)}-webcam`;
 }
 
 export function isWebcamMediaSynchronized({

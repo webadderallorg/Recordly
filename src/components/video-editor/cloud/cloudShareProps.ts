@@ -4,6 +4,7 @@ export type Props = {
 	linkIsStale?: boolean;
 	onRegenerate?: () => void;
 	projectPath?: string | null;
+	projectSourcePath?: string | null;
 	filePath?: string;
 	projectTitle: string;
 	prepareFile?: () => Promise<string | undefined>;

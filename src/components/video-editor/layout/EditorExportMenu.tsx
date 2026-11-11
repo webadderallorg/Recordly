@@ -338,9 +338,9 @@ export function EditorExportMenu(props: Props) {
 			</Popover>
 			{(hasStartedShare || (destination === "link" && publishMenuOpen)) && (
 				<CloudShareButton
-					key={props.projectPath ?? props.projectSourcePath ?? undefined}
 					inline
 					projectPath={props.projectPath}
+					projectSourcePath={props.projectSourcePath}
 					projectRevision={props.projectRevision}
 					projectTitle={props.projectTitle}
 					prepareFile={props.prepareExportForShare}

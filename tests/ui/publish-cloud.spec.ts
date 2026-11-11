@@ -503,3 +503,73 @@ test("failed regeneration cannot restore a share deleted while the upload was pe
 	await page.getByRole("button", { name: "Publish", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Share", exact: true })).toBeEnabled();
 });
+
+for (const duringUpload of [true, false]) {
+	test(`a first project save preserves sharing ${duringUpload ? "during upload" : "after publication"}`, async ({
+		page,
+	}) => {
+		await page.goto("/tests/ui/publish.html?switch&controlled");
+		const publish = page.getByRole("button", { name: "Publish", exact: true });
+		await publish.click();
+		await page.getByRole("button", { name: "Share", exact: true }).click();
+		const card = page.getByRole("region", { name: "Create link", exact: true });
+		const progress = card.getByRole("progressbar", { name: "Create link", exact: true });
+		await expect(progress).toHaveAttribute("aria-valuenow", "85");
+		const finish = () =>
+			page
+				.getByRole("button", { name: "Fixture finish upload" })
+				.evaluate((button: HTMLButtonElement) => button.click());
+		const save = () =>
+			page
+				.getByRole("button", { name: "Fixture first project save" })
+				.evaluate((button: HTMLButtonElement) => button.click());
+		if (duringUpload) {
+			await save();
+			await expect(publish).toBeDisabled();
+			await expect(progress).toHaveAttribute("aria-valuenow", "85");
+			await expect(page.locator("html")).not.toHaveAttribute("data-canceled-upload");
+			await finish();
+		} else {
+			await finish();
+			await expect(
+				card.getByRole("button", { name: "Copy link", exact: true }),
+			).toBeVisible();
+			await save();
+		}
+		await expect(card.getByRole("button", { name: "Copy link", exact: true })).toBeVisible();
+		await expect
+			.poll(() =>
+				page.evaluate(
+					() =>
+						JSON.parse(localStorage.getItem("recordly.project-share-links.v1") ?? "{}")[
+							"/fixture.recordly"
+						]?.url,
+				),
+			)
+			.toBe("https://example.test/s/preview");
+	});
+}
+
+test("switching saved projects cancels sharing even when they use the same recording", async ({
+	page,
+}) => {
+	await page.goto("/tests/ui/publish.html?switch&controlled&saved");
+	const publish = page.getByRole("button", { name: "Publish", exact: true });
+	await publish.click();
+	await page.getByRole("button", { name: "Share", exact: true }).click();
+	await expect(page.getByRole("progressbar", { name: "Create link" })).toHaveAttribute(
+		"aria-valuenow",
+		"85",
+	);
+	await page
+		.getByRole("button", { name: "Fixture switch project" })
+		.evaluate((button: HTMLButtonElement) => button.click());
+	await expect(page.locator("html")).toHaveAttribute("data-canceled-expected-upload", "true");
+	await page
+		.getByRole("button", { name: "Fixture finish upload" })
+		.evaluate((button: HTMLButtonElement) => button.click());
+	await expect(publish).toBeEnabled();
+	await publish.click();
+	await expect(page.getByRole("button", { name: "Share", exact: true })).toBeVisible();
+	await expect(page.getByRole("textbox", { name: "Share link" })).toHaveCount(0);
+});
