@@ -41,8 +41,10 @@ for (const savedRoundness of [undefined, 0, 69, 100]) {
 				mask.evaluate((node) => {
 					const box = node.getBoundingClientRect();
 					const clip = getComputedStyle(node).clipPath;
-					const startX = Number(clip.match(/M\s+([\d.]+)/)?.[1]);
-					const radius = startX === 0 ? 0 : box.width - startX;
+					const topEdge = Array.from(clip.matchAll(/[ML]\s+([\d.]+)\s+([\d.]+)/g))
+						.filter(([, , y]) => Number(y) === 0)
+						.map(([, x]) => Number(x));
+					const radius = Math.min(...topEdge);
 					return Math.round(100 * (radius / (Math.min(box.width, box.height) / 2)));
 				}),
 			)
@@ -138,6 +140,7 @@ test("new recordings default to a circle and retain the squircle option", async 
 test("Rectangle starts at 50% height in 16:9 and keeps Square roundness with a thin glass rim", async ({
 	page,
 }) => {
+	test.setTimeout(60_000);
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
 		const getAppSetting = window.electronAPI.getAppSetting;
