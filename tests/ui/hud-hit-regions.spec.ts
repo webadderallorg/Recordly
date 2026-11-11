@@ -51,7 +51,7 @@ for (const webcam of [false, true]) {
 		await expect(page.locator("html")).toHaveAttribute("data-ignore-mouse", "true");
 		await page.mouse.move(20, y);
 		await expect(page.locator("html")).toHaveAttribute("data-ignore-mouse", "true");
-		const microphone = page.getByRole("button", { name: "Enable microphone", exact: true });
+		const microphone = page.getByRole("button", { name: "Audio settings", exact: true });
 		await microphone.click();
 		// The marker is on the complete popover, including blank panel padding.
 		const popup = page
@@ -63,8 +63,8 @@ for (const webcam of [false, true]) {
 		await page.mouse.move(popupBounds.x + 3, popupBounds.y + 3);
 		await expect(page.locator("html")).toHaveAttribute("data-ignore-mouse", "false");
 		await expect(
-			page.getByRole("button", { name: "Enable system audio", exact: true }),
-		).toBeVisible();
+			page.getByRole("button", { name: "Computer audio", exact: true }),
+		).toHaveAttribute("aria-pressed", "false");
 		await page.keyboard.press("Escape");
 		await expect(popup).toHaveCount(0);
 		await page.mouse.move(bounds.x + bounds.width + 30, y);

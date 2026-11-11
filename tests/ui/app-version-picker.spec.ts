@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 async function openVersionPicker(page: Page) {

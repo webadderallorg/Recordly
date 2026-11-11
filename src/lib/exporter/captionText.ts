@@ -1,3 +1,4 @@
+import { drawSquircleOnCanvas, SQUIRCLE_RADIUS_SCALE } from "@/lib/geometry/squircle";
 import type { CaptionLineLayout } from "@/components/video-editor/captionLayout";
 import {
 	getCaptionDisplayText,
@@ -7,8 +8,8 @@ import {
 } from "@/components/video-editor/captionPresets";
 import {
 	CAPTION_LINE_HEIGHT,
-	CAPTION_WORD_HIGHLIGHT,
 	getCaptionFontBaseline,
+	CAPTION_WORD_HIGHLIGHT,
 	getCaptionWordVisualState,
 } from "@/components/video-editor/captionStyle";
 import type { AutoCaptionSettings } from "@/components/video-editor/types";
@@ -70,14 +71,13 @@ export function drawCaptionLine(
 		if (visual.isHighlighted && preset.highlightFill) {
 			const padX = fontSize * CAPTION_WORD_HIGHLIGHT.paddingXEm;
 			const padY = fontSize * CAPTION_WORD_HIGHLIGHT.paddingYEm;
-			ctx.beginPath();
-			ctx.roundRect(
-				drawX - padX,
-				-textBaseline - padY,
-				wordWidth + padX * 2,
-				fontSize + padY * 2,
-				fontSize * CAPTION_WORD_HIGHLIGHT.radiusEm,
-			);
+			drawSquircleOnCanvas(ctx, {
+				x: drawX - padX,
+				y: -textBaseline - padY,
+				width: wordWidth + padX * 2,
+				height: fontSize + padY * 2,
+				radius: fontSize * CAPTION_WORD_HIGHLIGHT.radiusEm * SQUIRCLE_RADIUS_SCALE,
+			});
 			ctx.fillStyle = preset.highlightFill;
 			ctx.fill();
 		}

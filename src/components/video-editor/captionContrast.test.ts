@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-	type CaptionRgb,
 	captionContrastRatio,
 	compositeCaptionColor,
 	parseCaptionColor,
+	type CaptionRgb,
 } from "./captionContrast";
 import {
 	applyCaptionPreset,

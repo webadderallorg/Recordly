@@ -27,6 +27,7 @@ export function useExportSession() {
 	}, []);
 	const [exportError, setExportError] = useState<string | null>(null);
 	const [showExportDropdown, setShowExportDropdown] = useState(false);
+	const [suggestedFileName, setSuggestedFileName] = useState<string>();
 	const [exportedFilePath, setExportedFilePath] = useState<string>();
 	const [hasPendingExportSave, setHasPendingExportSave] = useState(false);
 	const exporterRef = useRef<CancelableExporter | null>(null);
@@ -34,11 +35,11 @@ export function useExportSession() {
 	const cancelledExportRunIdRef = useRef<number | null>(null);
 	const pendingExportSaveRef = useRef<PendingExportSave | null>(null);
 	useEffect(() => {
-		window.electronAPI.setExportInProgress?.(
+		window.electronAPI?.setExportInProgress?.(
 			isExporting || isOptimizingGif || hasPendingExportSave,
 		);
 	}, [isExporting, isOptimizingGif, hasPendingExportSave]);
-	useEffect(() => () => window.electronAPI.setExportInProgress?.(false), []);
+	useEffect(() => () => window.electronAPI?.setExportInProgress?.(false), []);
 
 	const clearPendingExportSave = useCallback(() => {
 		const pendingSave = pendingExportSaveRef.current;
@@ -71,6 +72,8 @@ export function useExportSession() {
 		setExportError,
 		showExportDropdown,
 		setShowExportDropdown,
+		suggestedFileName,
+		setSuggestedFileName,
 		exportedFilePath,
 		setExportedFilePath,
 		hasPendingExportSave,

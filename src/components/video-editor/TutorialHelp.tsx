@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { UpgradeButton } from "@/components/billing/UpgradeButton";
 import {
 	DiscordIcon,
 	openExternalLink,
@@ -59,20 +58,6 @@ export function DiscordLinkButton({ className }: { className?: string }) {
 		>
 			<DiscordIcon className="size-4 shrink-0" />
 		</Button>
-	);
-}
-
-export function CommunityLinks() {
-	const tBilling = useScopedT("billing");
-	return (
-		<div className="community-links mt-2 shrink-0">
-			<UpgradeButton
-				label={tBilling("upgradeShort", "Upgrade")}
-				showDiscount={false}
-				truncateLabel
-				className="h-8 w-full min-w-0 px-1.5 text-xs"
-			/>
-		</div>
 	);
 }
 

@@ -291,6 +291,9 @@ describe("native static layout command builders", () => {
 		const pixels = roundedMask.subarray(header.length);
 		expect(pixels[0]).toBeLessThan(255);
 		expect(pixels[4 * 8 + 4]).toBe(255);
+		expect([...pixels.subarray(0, 8)]).toEqual([...pixels.subarray(56, 64)]);
+		expect([...pixels.subarray(0, 8)]).toEqual([...pixels.subarray(0, 8)].reverse());
+		expect(pixels[1 * 8 + 1]).toBe(255);
 	});
 
 	it("splits long exports into bounded chunks", () => {

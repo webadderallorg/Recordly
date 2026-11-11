@@ -27,6 +27,7 @@
 	width: 90%;
 	aspect-ratio: 1;
 	border-radius: 50%;
+	corner-shape: round;
 	background: radial-gradient(
 		circle,
 		color-mix(in srgb, var(--accent) 8%, transparent) 0%,

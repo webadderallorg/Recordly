@@ -154,6 +154,7 @@
 		"webcamCrop": "Ritaglio webcam",
 		"webcamReactToZoom": "La webcam reagisce allo zoom",
 		"webcamMirror": "Specchia webcam",
+		"showWebcam": "Mostra webcam",
 		"webcamRoundness": "Arrotondamento webcam",
 		"webcamShadow": "Ombra webcam",
 		"shadow": "Ombra",
@@ -226,6 +227,7 @@
 	},
 	"captions": {
 		"firstDownload": "Al primo utilizzo vengono scaricati {{size}} MB di file vocali, poi vengono generati i sottotitoli.",
+		"downloadAndGenerate": "Scarica {{size}} MB e genera sottotitoli",
 		"localProcessing": "I sottotitoli vengono generati su questo dispositivo. La registrazione non viene caricata.",
 		"selectOnTimeline": "Seleziona un sottotitolo sulla timeline per modificarlo.",
 		"enabled": "Mostra",
@@ -324,6 +326,7 @@
 		"fpsTitle": "FPS",
 		"loop": "Ripeti",
 		"outputDimensions": "Uscita: {{dimensions}}px",
+		"upToResolution": "Fino a {{height}}p",
 		"sizePresetOriginalShort": "Orig.",
 		"sizePresetMediumShort": "Med.",
 		"sizePresetLargeShort": "Gr",
@@ -377,14 +380,6 @@
 		"deleteRegion": "Elimina audio"
 	},
 	"updates": {
-		"loadFailed": "Impossibile caricare il canale degli aggiornamenti. Riprova.",
-		"automaticDownloads": "Scarica automaticamente gli aggiornamenti",
-		"automaticDownloadsDescription": "Scarica i nuovi aggiornamenti in background. Scegli tu quando riavviare.",
-		"downloadPreferenceFailed": "Impossibile caricare o salvare i download automatici degli aggiornamenti. Riprova.",
-		"experimentalDescription": "Hai attivato gli aggiornamenti sperimentali, quindi puoi scegliere di provare l'ultimo aggiornamento di Recordly prima che sia disponibile per tutti.",
-		"title": "Aggiornamenti",
-		"experimental": "Aggiornamenti sperimentali",
-		"saveFailed": "Impossibile cambiare il canale di aggiornamento.",
 		"changeVersion": "Cambia versione",
 		"versionInstallHint": "Scarica una versione e apri il programma di installazione per cambiare versione.",
 		"loadingVersions": "Caricamento versioni…",
@@ -392,7 +387,15 @@
 		"prereleaseVersion": "Versione preliminare",
 		"noVersions": "Non sono disponibili versioni compatibili per questa installazione.",
 		"versionFailed": "Impossibile caricare o scaricare questa versione. Riprova.",
-		"downloadInstaller": "Scarica programma di installazione"
+		"downloadInstaller": "Scarica programma di installazione",
+		"loadFailed": "Impossibile caricare il canale degli aggiornamenti. Riprova.",
+		"automaticDownloads": "Scarica automaticamente gli aggiornamenti",
+		"automaticDownloadsDescription": "Scarica i nuovi aggiornamenti in background. Scegli tu quando riavviare.",
+		"downloadPreferenceFailed": "Impossibile caricare o salvare i download automatici degli aggiornamenti. Riprova.",
+		"experimentalDescription": "Hai attivato gli aggiornamenti sperimentali, quindi puoi scegliere di provare l'ultimo aggiornamento di Recordly prima che sia disponibile per tutti.",
+		"title": "Aggiornamenti",
+		"experimental": "Aggiornamenti sperimentali",
+		"saveFailed": "Impossibile cambiare il canale di aggiornamento."
 	},
 	"categories": {
 		"general": "Generali",

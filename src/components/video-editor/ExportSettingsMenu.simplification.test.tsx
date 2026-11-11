@@ -7,10 +7,7 @@ vi.mock("@/contexts/I18nContext", () => ({
 }));
 vi.mock("@/components/billing/BillingProvider", () => ({ useOptionalBilling: () => null }));
 
-it.each([
-	"mp4",
-	"gif",
-] as const)("keeps %s frame-rate and hardware choices under Advanced", (format) => {
+it.each(["mp4", "gif"] as const)("shows %s frame rate in the main export settings", (format) => {
 	const render = (advanced: boolean) =>
 		renderToStaticMarkup(
 			<ExportSettingsMenu
@@ -21,15 +18,17 @@ it.each([
 				gifFrameRate={15}
 				gifLoop
 				gifSizePreset="medium"
-				gifOutputDimensions={{ width: 960, height: 540 }}
 				advancedExportSettings={advanced}
 				nvidiaCudaExportAvailable
 			/>,
 		);
 	const basic = render(false);
-	expect(basic).toContain("Advanced");
-	expect(basic).not.toContain("FPS");
+	expect(basic).toContain("FPS");
 	expect(basic).not.toContain("NVIDIA CUDA");
-	expect(render(true)).toContain("FPS");
-	if (format === "mp4") expect(render(true)).toContain("NVIDIA CUDA");
+	if (format === "mp4") {
+		expect(basic).toContain("Advanced");
+		expect(render(true)).toContain("NVIDIA CUDA");
+	} else {
+		expect(basic).not.toContain("Advanced");
+	}
 });

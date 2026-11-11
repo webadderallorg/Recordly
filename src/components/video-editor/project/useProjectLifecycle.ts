@@ -26,6 +26,7 @@ import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
 import { DEFAULT_WEBCAM_TIME_OFFSET_MS } from "../types";
+import { shouldLoopWebcamSource } from "../videoPlayback/webcamSync";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 import { cloneStructured } from "../videoEditorUtils";
 import type { EditorHistoryStack } from "../editorHistory";
@@ -193,7 +194,18 @@ export function useProjectLifecycle(input: Input) {
 			appearance.setBorderRadius(editor.borderRadius);
 			appearance.setPadding(editor.padding);
 			appearance.setCropRegion(editor.cropRegion);
-			appearance.setWebcam(editor.webcam);
+			const webcam = {
+				...editor.webcam,
+				loop:
+					editor.webcam.loop ??
+					(!editor.webcam.visibleRanges &&
+						shouldLoopWebcamSource(
+							sourcePath,
+							editor.webcam.sourcePath ? fromFileUrl(editor.webcam.sourcePath) : null,
+							editor.webcam.timeOffsetMs,
+						)),
+			};
+			appearance.setWebcam(webcam);
 			timeline.setZoomRegions(editor.zoomRegions);
 			timeline.setTrimRegions(editor.trimRegions);
 			timeline.setClipRegions(editor.clipRegions);
@@ -234,13 +246,14 @@ export function useProjectLifecycle(input: Input) {
 			refs.nextAnnotationZIndexRef.current =
 				editor.annotationRegions.reduce((max, region) => Math.max(max, region.zIndex), 0) +
 				1;
-			const restoredHistory = restoreEditorHistory(loadedProject.history, editor);
+			const appliedEditor = { ...editor, webcam };
+			const restoredHistory = restoreEditorHistory(loadedProject.history, appliedEditor);
 			current.restoreHistory(restoredHistory);
 			project.setLastSavedSnapshot(
 				cloneStructured(
 					createProjectData(
 						sourcePath,
-						current.buildPersistedEditorState(editor),
+						current.buildPersistedEditorState(appliedEditor),
 						loadedProject.projectId ?? null,
 						persistEditorHistory(restoredHistory),
 					),
@@ -391,6 +404,7 @@ export function useProjectLifecycle(input: Input) {
 			...previous,
 			enabled: true,
 			sourcePath: result.path ?? null,
+			loop: true,
 			visibleRanges: undefined,
 			timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 		}));
@@ -402,6 +416,7 @@ export function useProjectLifecycle(input: Input) {
 			...previous,
 			enabled: false,
 			sourcePath: null,
+			loop: false,
 			visibleRanges: undefined,
 			timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 		}));

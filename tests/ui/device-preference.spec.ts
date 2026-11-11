@@ -45,7 +45,7 @@ for (const webcamEnabled of [true, false]) {
 		await page.goto("/?windowType=hud-overlay");
 		await page
 			.getByRole("button", {
-				name: webcamEnabled ? "Disable webcam overlay" : "Enable webcam overlay",
+				name: "Camera settings",
 				exact: true,
 			})
 			.click();

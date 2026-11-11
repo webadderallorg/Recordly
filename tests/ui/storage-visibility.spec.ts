@@ -59,7 +59,7 @@ for (const storageBytes of [
 }
 
 for (const signedIn of [false, true]) {
-	test(`${signedIn ? "Free" : "Signed-out"} library footer upgrade fits and relocated socials open through Feedback`, async ({
+	test(`${signedIn ? "Free" : "Signed-out"} library header upgrade fits and relocated socials open through Feedback`, async ({
 		page,
 	}) => {
 		await installDesktopBridge(page, "preview.mp4", { signedIn, onboarded: true });
@@ -103,18 +103,12 @@ for (const signedIn of [false, true]) {
 				exact: true,
 			});
 			await expect(settingsButton).toHaveText("Settings");
-			const settingsBounds = (await settingsButton.boundingBox())!;
-			const footer = navigation.locator(".community-links");
-			const upgrade = footer.getByRole("button", { name: "Upgrade", exact: true });
-			await expect(upgrade).toBeVisible();
-			await expect(footer.getByRole("button")).toHaveCount(1);
-			const upgradeBounds = (await upgrade.boundingBox())!;
-			expect(settingsBounds.y + settingsBounds.height).toBeLessThanOrEqual(upgradeBounds.y);
-			const navBounds = (await navigation.boundingBox())!;
-			expect(upgradeBounds.x).toBeGreaterThanOrEqual(navBounds.x);
-			expect(upgradeBounds.x + upgradeBounds.width).toBeLessThanOrEqual(
-				navBounds.x + navBounds.width,
-			);
+			const upgrade = dashboard.getByRole("button", { name: "Upgrade", exact: true });
+			await expect(upgrade).toHaveCount(1);
+			await expect(upgrade).toBeInViewport({ ratio: 1 });
+			await expect(
+				navigation.getByRole("button", { name: "Upgrade", exact: true }),
+			).toHaveCount(0);
 		}
 		await navigation.getByRole("button", { name: "Feedback", exact: true }).click();
 		const feedback = page.getByRole("dialog", { name: "Send feedback", exact: true });

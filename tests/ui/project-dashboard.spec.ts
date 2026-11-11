@@ -9,6 +9,11 @@ import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 test.beforeEach(async ({ page }) => {
 	await installDesktopBridgeOverrides(page, () => {
 		window.electronAPI.listRecordings = async () => ({ success: true, value: [] });
+		window.electronAPI.reviewProjectDeletion = async () => ({
+			success: true,
+			sourceCount: 0,
+			preservedSourceCount: 0,
+		});
 		window.electronAPI.onCloudShareProgress = () => () => undefined;
 		window.electronAPI.cloudShareManage = async () => ({
 			success: true,
@@ -47,7 +52,7 @@ async function waitForInitialProject(page: Page) {
 	await expect(page.locator("html")).toHaveAttribute("data-project-dirty", "false");
 }
 
-test("Home opens with a wireframe while saving and returns to the main library", async ({
+test("Home retains the loaded library while saving and returns to the main library", async ({
 	page,
 }) => {
 	await installDesktopBridge(page);
@@ -67,7 +72,8 @@ test("Home opens with a wireframe while saving and returns to the main library",
 	await page.getByRole("button", { name: "Home", exact: true }).click();
 	const home = page.getByRole("dialog", { name: "Projects dashboard" });
 	await expect(home).toBeVisible();
-	await expect(home.getByLabel("Loading projects")).toBeVisible();
+	await expect(home.getByLabel("Loading projects")).toHaveCount(0);
+	await expect(home.getByRole("heading", { name: "No projects yet", exact: true })).toBeVisible();
 	await expect(page.locator("html")).toHaveAttribute("data-save-pending", "true");
 	await page.screenshot({ path: "test-results/home-loading.png", animations: "disabled" });
 	await page.evaluate(() => window.dispatchEvent(new Event("test-release-save")));
@@ -139,7 +145,7 @@ test("home dashboard searches, sorts, opens projects and returns to the editor",
 	await expect(cards).toHaveCount(3);
 	await expect(cards.first()).toHaveAccessibleName("App walkthrough");
 	await home.getByRole("button", { name: "Sort projects" }).click();
-	await page.getByRole("menuitem", { name: "Name", exact: true }).click();
+	await page.getByRole("menuitemradio", { name: "Name", exact: true }).click();
 	await expect(cards.nth(1)).toHaveAccessibleName("Getting started");
 	const normalCardWidth = (await cards.first().boundingBox())!.width;
 	await home.getByRole("textbox", { name: "Search projects" }).fill("launch");
@@ -197,7 +203,7 @@ test("home dashboard searches, sorts, opens projects and returns to the editor",
 		.getByRole("button", { name: "Record new", exact: true })
 		.click();
 	await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
-	await home.getByRole("button", { name: "Select projects to delete" }).click();
+	await home.getByRole("button", { name: "Select projects" }).click();
 	await cards.first().click();
 	await expect(cards.first()).toHaveAttribute("aria-pressed", "true");
 	await home.getByRole("button", { name: "Review deletion…", exact: true }).click();
@@ -331,7 +337,7 @@ test("deletion refreshes the grid and keeps unselected projects", async ({ page 
 	await page.goto("/?windowType=editor");
 	await page.getByRole("button", { name: "Home", exact: true }).click();
 	const home = page.getByRole("dialog", { name: "Projects dashboard" });
-	await home.getByRole("button", { name: "Select projects to delete" }).click();
+	await home.getByRole("button", { name: "Select projects" }).click();
 	await home.getByRole("list").getByRole("button", { name: "Delete", exact: true }).click();
 	await home
 		.getByRole("button", { name: "Review deletion…", exact: true })
@@ -461,7 +467,7 @@ test("dashboard supports creation sort, independent folders, shared settings and
 	const home = page.getByRole("dialog", { name: "Projects dashboard" });
 	await expect(home.getByLabel("Announcements", { exact: true })).toHaveCount(0);
 	await home.getByRole("button", { name: "Sort projects" }).click();
-	await page.getByRole("menuitem", { name: "Last created", exact: true }).click();
+	await page.getByRole("menuitemradio", { name: "Last created", exact: true }).click();
 	await expect(
 		home.getByRole("list", { name: "Your projects" }).locator("li > button").first(),
 	).toHaveAccessibleName("Newer");
@@ -501,7 +507,7 @@ test("dashboard supports creation sort, independent folders, shared settings and
 	const motion = home.getByRole("tabpanel", { name: /^Motion settings/ });
 	const description = "Smooth consecutive zoom regions into a continuous camera move.";
 	await expect(motion.getByText(description, { exact: true })).not.toBeVisible();
-	await motion.locator(".settings-row .settings-info").first().hover();
+	await motion.getByRole("button", { name: "Connect Zooms", exact: true }).hover();
 	await expect(page.getByRole("tooltip")).toHaveText(description);
 	await page.keyboard.press("Escape");
 	await page.screenshot({ path: "test-results/settings-motion.png", animations: "disabled" });

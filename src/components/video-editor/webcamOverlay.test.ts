@@ -74,7 +74,7 @@ describe("normalizeWebcamCropRegion", () => {
 });
 
 describe("getWebcamOverlayDimensionsPx", () => {
-	it("resolves independent width and height percentages", () => {
+	it("keeps independent width and height at their base size when zoom reaction is off", () => {
 		expect(
 			getWebcamOverlayDimensionsPx({
 				containerWidth: 1000,
@@ -82,7 +82,7 @@ describe("getWebcamOverlayDimensionsPx", () => {
 				widthPercent: 50,
 				heightPercent: 25,
 				margin: 0,
-				zoomScale: 1,
+				zoomScale: 2,
 				reactToZoom: false,
 			}),
 		).toEqual({
@@ -101,11 +101,16 @@ describe("getWebcamOverlayDimensionsPx", () => {
 				zoomScale,
 				reactToZoom: true,
 			});
-		for (const zoom of [1, 1.25, 1.5, 2, 3]) {
+		for (const [zoom, retainedScale] of [
+			[1, 1],
+			[1.25, 0.86],
+			[2, 0.65],
+			[3, 0.53333333],
+		]) {
 			const preview = dimensions(1, zoom);
 			const exported = dimensions(6, zoom);
-			expect(preview.width).toBeCloseTo(80 / zoom);
-			expect(preview.height).toBeCloseTo(48 / zoom);
+			expect(preview.width).toBeCloseTo(80 * retainedScale);
+			expect(preview.height).toBeCloseTo(48 * retainedScale);
 			expect(exported.width).toBeCloseTo(preview.width * 6);
 			expect(exported.height).toBeCloseTo(preview.height * 6);
 			expect(preview.width / preview.height).toBeCloseTo(5 / 3);
@@ -197,8 +202,10 @@ describe("circle geometry", () => {
 			reactToZoom: true,
 			shape: "circle",
 		});
-		expect(dimensions).toEqual({ width: 216, height: 216 });
-		expect(getWebcamCornerRadiusPx(0, dimensions.width, dimensions.height, "circle")).toBe(108);
+		expect(dimensions).toEqual({ width: 280.8, height: 280.8 });
+		expect(getWebcamCornerRadiusPx(0, dimensions.width, dimensions.height, "circle")).toBe(
+			140.4,
+		);
 	});
 });
 
@@ -214,7 +221,7 @@ describe("rectangle camera geometry", () => {
 			reactToZoom: true,
 			shape: "rectangle",
 		});
-		expect(dimensions).toEqual({ width: 216, height: 135 });
+		expect(dimensions).toEqual({ width: 280.8, height: 175.5 });
 		expect(getWebcamCornerRadiusPx(0, dimensions.width, dimensions.height, "rectangle")).toBe(
 			0,
 		);

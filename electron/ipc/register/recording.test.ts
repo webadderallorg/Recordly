@@ -36,6 +36,7 @@ vi.mock("electron", () => ({
 	shell: { showItemInFolder: vi.fn(), openExternal: vi.fn() },
 }));
 vi.mock("../../trustedRenderer", () => ({ isTrustedRenderer: mocks.trusted }));
+
 vi.mock("../../windows", () => ({
 	beginHudCaptureProtection: vi.fn(),
 	getHudOverlayCaptureProtectionEnabled: () => false,

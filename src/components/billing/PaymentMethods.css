@@ -16,6 +16,7 @@
 	aspect-ratio: 16 / 10;
 	overflow: hidden;
 	border-radius: 100px;
+	corner-shape: round;
 	background: #fff;
 }
 

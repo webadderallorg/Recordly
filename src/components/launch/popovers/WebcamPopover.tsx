@@ -66,6 +66,7 @@ export function WebcamPopover({
 			}}
 			trigger={trigger}
 			align="center"
+			label={t("recording.cameraSettings", "Camera settings")}
 		>
 			<div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--launch-label)]">
 				{t("recording.webcam")}

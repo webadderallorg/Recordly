@@ -15,12 +15,12 @@ vi.mock("@/contexts/I18nContext", () => ({
 import { SplitPricingModal } from "./SplitPricingModal";
 
 const price = { interval: "monthly", currency: "usd", unitAmount: 900 };
-function primary(node: ReactNode): { children: string; onPress: () => void } | undefined {
+type PrimaryAction = { children: string; isDisabled: boolean; onPress: () => void };
+function primary(node: ReactNode): PrimaryAction | undefined {
 	if (Array.isArray(node)) return node.map(primary).find(Boolean);
 	if (!isValidElement<{ children?: ReactNode; className?: string; onPress?: () => void }>(node))
 		return undefined;
-	if (node.props.className === "split-upgrade-cta")
-		return node.props as { children: string; onPress: () => void };
+	if (node.props.className === "split-upgrade-cta") return node.props as PrimaryAction;
 	return primary(node.props.children);
 }
 beforeEach(() => {
@@ -95,6 +95,17 @@ it("keeps verified checkout on Get started", () => {
 	action.onPress();
 	expect(state.startBilling).toHaveBeenCalledWith("checkout", "monthly");
 	expect(state.refresh).not.toHaveBeenCalled();
+});
+it.each([
+	"loading",
+	"catalogLoading",
+])("shows loading instead of Get started during %s", (pending) => {
+	billing({ checkoutAvailable: true, checkoutIntervals: ["monthly"], prices: [price] });
+	state.billing.catalog = { prices: [price] };
+	state.billing[pending] = true;
+	expect(button()).toMatchObject({ children: "Loading pricing…", isDisabled: true });
+	state.billing[pending] = false;
+	expect(button()).toMatchObject({ children: "Get started", isDisabled: false });
 });
 it("keeps available subscription management on the portal action", () => {
 	billing({ plan: "pro", portalAvailable: true });

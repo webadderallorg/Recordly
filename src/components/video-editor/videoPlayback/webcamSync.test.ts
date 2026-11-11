@@ -5,6 +5,7 @@ import {
 	isWebcamMediaSynchronized,
 	isWebcamVisibleAtSourceTime,
 	shouldSeekWebcamMedia,
+	shouldLoopWebcamSource,
 } from "./webcamSync";
 
 describe("getWebcamPreviewTargetTimeSeconds", () => {
@@ -50,6 +51,13 @@ describe("getWebcamPreviewTargetTimeSeconds", () => {
 });
 
 describe("getWebcamMediaTargetTimeSeconds", () => {
+	it("wraps an uploaded clip after its end and keeps the source offset", () => {
+		const webcam = { webcamDuration: 4, timeOffsetMs: 250, loop: true };
+		expect(getWebcamMediaTargetTimeSeconds({ ...webcam, currentTime: 0.1 })).toBe(0);
+		expect(getWebcamMediaTargetTimeSeconds({ ...webcam, currentTime: 4.25 })).toBe(0);
+		expect(getWebcamMediaTargetTimeSeconds({ ...webcam, currentTime: 9.25 })).toBe(1);
+	});
+
 	it("clamps positive offsets at zero when the main timeline is earlier than the webcam start", () => {
 		expect(
 			getWebcamMediaTargetTimeSeconds({
@@ -59,6 +67,18 @@ describe("getWebcamMediaTargetTimeSeconds", () => {
 			}),
 		).toBe(0);
 	});
+});
+
+it("repeats older uploads while preserving timing for paired webcam recordings", () => {
+	expect(shouldLoopWebcamSource("/clips/demo.mp4", "/downloads/camera.mp4")).toBe(true);
+	expect(shouldLoopWebcamSource("/clips/demo.mp4", "/downloads/demo.mp4")).toBe(true);
+	expect(shouldLoopWebcamSource("/clips/demo.mp4", "/clips/demo.webm")).toBe(false);
+	expect(shouldLoopWebcamSource("/clips/demo.mp4", "/clips/demo-webcam.webm")).toBe(false);
+	expect(shouldLoopWebcamSource("/clips/demo.mp4", "/relocated/demo-webcam.webm")).toBe(false);
+	expect(shouldLoopWebcamSource("C:\\clips\\demo.mp4", "D:\\relocated\\demo-webcam.webm")).toBe(
+		false,
+	);
+	expect(shouldLoopWebcamSource("/clips/demo.mp4", "/camera.mp4", 150)).toBe(false);
 });
 
 describe("shouldSeekWebcamMedia", () => {

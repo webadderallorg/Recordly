@@ -153,6 +153,8 @@ export interface WebcamOverlaySettings {
 	previewFrame?: "standard" | "soft-blur";
 	/** Source-time intervals containing webcam footage in an imported sequence. */
 	visibleRanges?: { startMs: number; endMs: number }[];
+	/** Repeat independently uploaded webcam footage. */
+	loop?: boolean;
 	enabled: boolean;
 	sourcePath: string | null;
 	timeOffsetMs: number;
@@ -208,7 +210,7 @@ export const DEFAULT_CONNECTED_ZOOM_DURATION_MS = 1000;
 export const DEFAULT_ZOOM_IN_EASING: ZoomTransitionEasing = "recordly";
 export const DEFAULT_ZOOM_OUT_EASING: ZoomTransitionEasing = "recordly";
 export const DEFAULT_CONNECTED_ZOOM_EASING: ZoomTransitionEasing = "glide";
-export const DEFAULT_WEBCAM_SIZE = 30;
+export const DEFAULT_WEBCAM_SIZE = 50;
 export const DEFAULT_WEBCAM_REACT_TO_ZOOM = true;
 export const DEFAULT_WEBCAM_ROUNDNESS = 20;
 export const DEFAULT_SHADOW_INTENSITY = 0.5;

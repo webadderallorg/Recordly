@@ -6,6 +6,7 @@ import {
 	MicrophoneSlashIcon,
 	MinusIcon,
 	MonitorIcon,
+	SpeakerHighIcon,
 	VideoCameraIcon,
 	VideoCameraSlashIcon,
 } from "@/components/ui/icons";
@@ -321,12 +322,8 @@ function LaunchWindowContent() {
 						size="icon"
 						iconSize="lg"
 						disabled={countdownActive}
-						title={
-							microphoneEnabled
-								? t("recording.disableMicrophone")
-								: t("recording.enableMicrophone")
-						}
-						className={microphoneEnabled ? "text-accent" : ""}
+						aria-label={t("recording.audioSettings", "Audio settings")}
+						className={microphoneEnabled || systemAudioEnabled ? "text-accent" : ""}
 					>
 						{microphoneEnabled ? (
 							<MicrophoneIcon
@@ -334,6 +331,8 @@ function LaunchWindowContent() {
 								className="size-5"
 								size={18}
 							/>
+						) : systemAudioEnabled ? (
+							<SpeakerHighIcon className="size-5" />
 						) : (
 							<MicrophoneSlashIcon className="size-5" />
 						)}
@@ -368,11 +367,7 @@ function LaunchWindowContent() {
 						size="icon"
 						iconSize="lg"
 						disabled={countdownActive}
-						title={
-							webcamEnabled
-								? t("recording.disableWebcam")
-								: t("recording.enableWebcam")
-						}
+						aria-label={t("recording.cameraSettings", "Camera settings")}
 						className={webcamEnabled ? "text-accent" : ""}
 					>
 						{webcamEnabled ? (

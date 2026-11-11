@@ -305,6 +305,9 @@ export default function Item({
 		() => `${formatPlayheadTime(visibleSpan.start)} – ${formatPlayheadTime(visibleSpan.end)}`,
 		[visibleSpan.start, visibleSpan.end],
 	);
+	const zoomTitle = tSettings("sections.zoom", "Zoom");
+	const zoomModeLabel = zoomMode === "manual" ? te("manual", "Manual") : te("auto", "Auto");
+	const zoomSummary = `${zoomTitle} · ${zoomLabel} ${zoomModeLabel} · ${timeLabel}`;
 	const durationLabel = new Intl.NumberFormat(locale, {
 		style: "unit",
 		unit: "second",
@@ -405,7 +408,9 @@ export default function Item({
 			aria-label={
 				isClip
 					? `${te("clips")}${clipSpeedLabel ? ` ${clipSpeedLabel}` : ""} · ${timeLabel} · ${durationLabel}`
-					: undefined
+					: isZoom
+						? zoomSummary
+						: undefined
 			}
 			onPointerDownCapture={handleSelect}
 			onDoubleClick={(event) => {
@@ -439,6 +444,7 @@ export default function Item({
 						minHeight: embedded ? 18 : 22,
 						minWidth: MIN_ITEM_PX,
 						containerType: "size",
+						containerName: isZoom ? "timeline-zoom" : undefined,
 					}}
 					onClick={(event) => {
 						event.stopPropagation();
@@ -501,7 +507,11 @@ export default function Item({
 					{/* Playback-speed badges remain visible independently of duration. */}
 					{(!isClip || clipSpeedLabel) && (
 						<div
-							title={`${isZoom ? `${zoomLabel} ${zoomMode === "manual" ? te("manual", "Manual") : te("auto", "Auto")}` : typeof children === "string" ? children : te("clip", "Clip")} · ${timeLabel}`}
+							title={
+								isZoom
+									? zoomSummary
+									: `${typeof children === "string" ? children : te("clip", "Clip")} · ${timeLabel}`
+							}
 							className={cn(
 								"relative z-10 flex max-w-full items-center justify-center gap-1 px-1 text-[11px] font-medium text-black/70 dark:text-white/90 select-none overflow-hidden",
 								(isClip || isSpeed) && glassStyles.speedBadge,
@@ -524,27 +534,22 @@ export default function Item({
 									</span>
 								</>
 							) : isZoom ? (
-								<span className="zoom-description flex min-w-0 flex-col items-center justify-center gap-1 leading-none">
-									<span className="zoom-title text-xs font-medium text-white/25">
-										{tSettings("sections.zoom", "Zoom")}
+								<span className="zoom-description flex min-w-0 items-center justify-center gap-1 leading-none">
+									<span className="zoom-title max-w-full truncate text-xs font-medium text-white/25">
+										{zoomTitle}
 									</span>
-									<span className="zoom-details flex items-center justify-center gap-1 text-sm font-normal leading-none">
-										<ZoomIn
-											aria-hidden="true"
-											className="zoom-icon size-3.5 shrink-0"
-										/>
-										<span className="zoom-value whitespace-nowrap">
+									<span className="zoom-details flex min-w-0 max-w-full items-center gap-1 text-sm font-normal leading-none">
+										<ZoomIn aria-hidden="true" className="zoom-icon shrink-0" />
+										<span className="zoom-value shrink-0 whitespace-nowrap">
 											{zoomLabel}
 										</span>
-										<span className="zoom-mode inline-flex items-center gap-1 whitespace-nowrap">
+										<span className="zoom-mode min-w-0 items-center gap-1">
 											<Mouse
 												aria-hidden="true"
 												weight="fill"
 												className="size-3.5 shrink-0"
 											/>
-											{zoomMode === "manual"
-												? te("manual", "Manual")
-												: te("auto", "Auto")}
+											<span className="truncate">{zoomModeLabel}</span>
 										</span>
 									</span>
 								</span>

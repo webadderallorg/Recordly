@@ -1,4 +1,3 @@
-import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
 import type { ExportSettings } from "@/lib/exporter/types";
 import { buildExportRenderOptions } from "./buildExportRenderOptions";
@@ -17,8 +16,7 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 		options,
 		discardCancelledTemp,
 		smokeExportStartedAt,
-		showExportSuccessToast,
-		setKeepExportDialogOpen,
+		recordSuccessfulExport,
 	} = context;
 	const settings = context.settings as ExportSettings & {
 		gifConfig: NonNullable<ExportSettings["gifConfig"]>;
@@ -103,7 +101,6 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 			exportBlob = blob;
 			exportSession.setGifOptimization(summary);
 			diagnostics.record("gif-optimization", summary);
-			setKeepExportDialogOpen(true);
 		}
 		const fileName = getExportFileName(input.projectName, "gif");
 		setExportProgress((previous) => ({
@@ -146,13 +143,6 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 					"Save dialog canceled. Click Save Again to save without re-rendering.",
 				),
 			);
-			toast.info(
-				translate(
-					"notifications.saveAgain",
-					"Save canceled. You can save again without re-exporting.",
-				),
-			);
-			setKeepExportDialogOpen(true);
 		} else if (saveResult.success && saveResult.path) {
 			diagnostics.record("saved");
 			if (smokeExportStartedAt !== null) {
@@ -160,7 +150,7 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 					`[smoke-export] Completed in ${Math.round(performance.now() - smokeExportStartedAt)}ms (${saveResult.path})`,
 				);
 			}
-			showExportSuccessToast(saveResult.path);
+			recordSuccessfulExport();
 			setExportedFilePath(saveResult.path);
 			if (smokeExportConfig.enabled) {
 				window.close();
@@ -176,15 +166,10 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 				translate("notifications.saveGifFailed", "Failed to save GIF") +
 					(saveResult.message ? `: ${saveResult.message}` : ""),
 			);
-			toast.error(
-				translate("notifications.saveGifFailed", "Failed to save GIF") +
-					(saveResult.message ? `: ${saveResult.message}` : ""),
-			);
 			if (pendingSave.tempFilePath || pendingSave.arrayBuffer) {
 				pendingExportSaveRef.current = pendingSave;
 				setHasPendingExportSave(true);
 			}
-			setKeepExportDialogOpen(true);
 			if (smokeExportConfig.enabled) {
 				window.close();
 				return { exit: true };
@@ -195,11 +180,6 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 			translate("notifications.gifExportFailed", "GIF export failed") +
 				(result.error ? `: ${result.error}` : ""),
 		);
-		toast.error(
-			translate("notifications.gifExportFailed", "GIF export failed") +
-				(result.error ? `: ${result.error}` : ""),
-		);
-		setKeepExportDialogOpen(options?.destination !== "share");
 		if (smokeExportConfig.enabled) {
 			window.close();
 			return { exit: true };

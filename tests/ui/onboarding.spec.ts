@@ -41,6 +41,30 @@ test("dedicated onboarding route fills its own window", async ({ page }) => {
 	await expect(page.locator("html")).toHaveAttribute("data-onboarding-closed", "true");
 });
 
+test("Replay logo reveal stays in Dev settings and can be used again", async ({ page }) => {
+	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		let replays = 0;
+		window.electronAPI.replayOnboardingIntro = async () => {
+			document.documentElement.dataset.introReplays = String(++replays);
+			return true;
+		};
+	});
+	await page.goto("/?windowType=editor");
+	await openDevSettings(page);
+	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+	const replay = settings.getByRole("button", { name: "Replay logo reveal" });
+	await replay.click();
+	await expect(page.locator("html")).toHaveAttribute("data-intro-replays", "1");
+	await replay.click();
+	await expect(page.locator("html")).toHaveAttribute("data-intro-replays", "2");
+	await expect(settings.getByRole("tab", { name: "Dev", exact: true })).toHaveAttribute(
+		"aria-selected",
+		"true",
+	);
+	await expect(page.getByRole("dialog", { name: "Welcome to Recordly" })).toHaveCount(0);
+});
+
 test("Show onboarding opens directly after onboarding was completed", async ({ page }) => {
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {

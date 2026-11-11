@@ -13,7 +13,7 @@ for (const savedRoundness of [undefined, 0, 69, 100]) {
 					const getAppSetting = window.electronAPI.getAppSetting;
 					window.electronAPI.getAppSetting = (key) =>
 						key === "recordly.editor.preferences"
-							? { webcam: { shape: "squircle", roundness } }
+							? { webcam: { shape: "squircle", roundness, previewFrame: "standard" } }
 							: getAppSetting(key);
 				}
 				window.electronAPI.getCurrentRecordingSession = async () => ({
@@ -39,10 +39,12 @@ for (const savedRoundness of [undefined, 0, 69, 100]) {
 		await expect
 			.poll(async () =>
 				mask.evaluate((node) => {
-					const radius = Number(
-						getComputedStyle(node).clipPath.match(/M\s+([\d.]+)/)?.[1],
-					);
 					const box = node.getBoundingClientRect();
+					const clip = getComputedStyle(node).clipPath;
+					const topEdge = Array.from(clip.matchAll(/[ML]\s+([\d.]+)\s+([\d.]+)/g))
+						.filter(([, , y]) => Number(y) === 0)
+						.map(([, x]) => Number(x));
+					const radius = Math.min(...topEdge);
 					return Math.round(100 * (radius / (Math.min(box.width, box.height) / 2)));
 				}),
 			)
@@ -61,7 +63,10 @@ for (const savedRoundness of [undefined, 0, 69, 100]) {
 					clipPath: getComputedStyle(node).clipPath,
 					// Inside a squircle, outside a circle: catches accidentally switching shapes.
 					squircleShoulderVisible: document
-						.elementsFromPoint(box.left + box.width * 0.13, box.top + box.height * 0.13)
+						.elementsFromPoint(
+							box.left + box.width * 0.144,
+							box.top + box.height * 0.144,
+						)
 						.includes(node),
 					cornerVisible: document.elementsFromPoint(x, y).includes(node),
 					centerVisible: document
@@ -106,7 +111,7 @@ test("new recordings default to a circle and retain the squircle option", async 
 	await expect(page.locator("[data-webcam-glass-rim] path")).toHaveAttribute("d", /^M/);
 	await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveCount(0);
 	const width = page.getByRole("slider", { name: "Webcam Width" });
-	await expect(width).toHaveValue("30");
+	await expect(width).toHaveValue("50");
 	await width.focus();
 	await width.press("ArrowRight");
 	await expect
@@ -122,21 +127,27 @@ test("new recordings default to a circle and retain the squircle option", async 
 		animations: "disabled",
 	});
 	await page.getByRole("row", { name: "Square", exact: true }).click();
-	await expect(width).toHaveValue("30");
-	await expect(page.getByRole("slider", { name: "Webcam Height" })).toHaveValue("30");
+	await expect(width).toHaveValue("50");
+	await expect(page.getByRole("slider", { name: "Webcam Height" })).toHaveValue("50");
 	await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveValue("20");
 	await expect(mask).toHaveCSS("clip-path", /^path\(/);
 	await circle.click();
-	await expect(width).toHaveValue("30");
+	await expect(width).toHaveValue("50");
 	await expect(mask).toHaveCSS("clip-path", "circle(50% at 50% 50%)");
 	await expect(page.locator("[data-webcam-glass-rim] path")).toHaveAttribute("d", /^M/);
 });
 
-test("Rectangle starts at 30% height in 16:9 and keeps Square roundness with a thin glass rim", async ({
+test("Rectangle starts at 50% height in 16:9 and keeps Square roundness with a thin glass rim", async ({
 	page,
 }) => {
+	test.setTimeout(60_000);
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
+		const getAppSetting = window.electronAPI.getAppSetting;
+		window.electronAPI.getAppSetting = (key) =>
+			key === "recordly.editor.preferences"
+				? { webcam: { previewFrame: "standard" } }
+				: getAppSetting(key);
 		window.electronAPI.getCurrentRecordingSession = async () => ({
 			success: true,
 			session: {
@@ -159,8 +170,8 @@ test("Rectangle starts at 30% height in 16:9 and keeps Square roundness with a t
 	for (let step = 0; step < 25; step++) await roundness.press("ArrowRight");
 	await expect(roundness).toHaveValue("25");
 	await page.getByRole("row", { name: "Rectangle", exact: true }).click();
-	await expect(page.getByRole("slider", { name: "Webcam Width" })).toHaveValue("53");
-	await expect(page.getByRole("slider", { name: "Webcam Height" })).toHaveValue("30");
+	await expect(page.getByRole("slider", { name: "Webcam Width" })).toHaveValue("89");
+	await expect(page.getByRole("slider", { name: "Webcam Height" })).toHaveValue("50");
 	await expect
 		.poll(() =>
 			page.locator("[data-webcam-overlay]").evaluate((element) => {
@@ -206,7 +217,7 @@ test("Rectangle starts at 30% height in 16:9 and keeps Square roundness with a t
 	});
 	await page.getByRole("switch", { name: "Advanced settings" }).press("Space");
 	await page.getByRole("row", { name: "Square", exact: true }).click();
-	await expect(page.getByRole("slider", { name: "Webcam Width" })).toHaveValue("30");
+	await expect(page.getByRole("slider", { name: "Webcam Width" })).toHaveValue("50");
 	await expect(roundness).toHaveValue("25");
 	await expect(rim.locator("path")).not.toHaveAttribute("d", rectanglePath!);
 	expect(

@@ -66,7 +66,7 @@ test("editor loads video, switches tools and edits export options", async ({ pag
 	await expect(settings).toHaveCount(0);
 	await page.getByRole("radio", { name: "Scene", exact: true }).click();
 	await page.getByRole("button", { name: "Publish", exact: true }).click();
-	await page.getByRole("row", { name: "Save video", exact: true }).click();
+	await page.getByRole("row", { name: "Save to device", exact: true }).click();
 	await expect(page.getByRole("grid", { name: "Format", exact: true })).toBeVisible();
 	await page.getByRole("row", { name: "GIF", exact: true }).click();
 	await expect(page.getByRole("switch", { name: "Loop", exact: false })).toBeVisible();

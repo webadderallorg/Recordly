@@ -94,6 +94,7 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 	const portalAvailable = Boolean(status?.billing.portalAvailable);
 	const manageSubscription = portalAvailable && (plus || !checkoutReady);
 	const pricingLoading = loading || (!manageSubscription && catalogLoading);
+	const checkingPricing = Boolean(user && !needsSignIn && pricingLoading);
 	const paymentPending = !plus && awaitingCheckout && !manageSubscription;
 	const retryPricing = !(manageSubscription || checkoutReady) || paymentPending;
 	const showSubscriptionPricing = !plus && !manageSubscription;
@@ -101,16 +102,18 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 	const actionLabel =
 		!user || needsSignIn
 			? t("signIn", "Sign in to continue")
-			: paymentPending
-				? t("checkPayment", "Check payment status")
-				: retryPricing
-					? plus
-						? t("refreshPlan", "Refresh plan")
-						: t("retryPricing", "Retry loading pricing")
-					: plus || manageSubscription
-						? t("manage", "Manage subscription")
-						: t("start", "Get started");
-	const pending = Boolean(busy) || (Boolean(user) && pricingLoading);
+			: checkingPricing && !busy
+				? t("loadingPricing", "Loading pricing…")
+				: paymentPending
+					? t("checkPayment", "Check payment status")
+					: retryPricing
+						? plus
+							? t("refreshPlan", "Refresh plan")
+							: t("retryPricing", "Retry loading pricing")
+						: plus || manageSubscription
+							? t("manage", "Manage subscription")
+							: t("start", "Get started");
+	const pending = Boolean(busy) || checkingPricing;
 	const benefits = [
 		t("featureLicense", "Full commercial license"),
 		t("featureLinkSharing", "Share any video with a 24/7 link"),

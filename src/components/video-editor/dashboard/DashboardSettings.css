@@ -454,6 +454,7 @@
 	width: 20%;
 	aspect-ratio: 1;
 	border-radius: 50%;
+	corner-shape: round;
 	background: #ff5f57;
 	box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 12%);
 }
@@ -492,6 +493,7 @@
 	width: 20px;
 	height: 20px;
 	border-radius: 50%;
+	corner-shape: round;
 	background: var(--accent);
 	color: var(--accent-foreground, #fff);
 	box-shadow: 0 0 0 2px var(--overlay);

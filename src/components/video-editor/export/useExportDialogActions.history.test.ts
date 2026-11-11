@@ -22,7 +22,7 @@ function setup(finalize: () => Promise<unknown>, fileName = "fake.mp4") {
 	const saved = vi.fn();
 	const actions = useExportDialogActions({
 		session,
-		showExportSuccessToast: saved,
+		recordSuccessfulExport: saved,
 	} as unknown as Parameters<typeof useExportDialogActions>[0]);
 	return { session, saved, actions, original };
 }
@@ -62,7 +62,7 @@ it("Save Again keeps the original export identity while its save dialog is pendi
 	session.exportIdentityRef.current = { projectId: "other", sourcePath: "/r/other.mp4" };
 	resolve({ success: true, path: "/saved/export.mp4" });
 	await pending;
-	expect(saved).toHaveBeenCalledWith("/saved/export.mp4", original);
+	expect(saved).toHaveBeenCalledWith(original);
 });
 
 it.each([
@@ -103,7 +103,7 @@ it.each(
 		Object.assign(window.electronAPI, { saveExportedVideo: vi.fn(async () => saveResult) });
 	}
 	await actions.handleRetrySaveExport();
-	expect(saved).toHaveBeenCalledWith(saveResult.path, original);
+	expect(saved).toHaveBeenCalledWith(original);
 	expect(session.setExportedFilePath).toHaveBeenCalledWith(saveResult.path);
 	expect(session.pendingExportSaveRef.current).toBeNull();
 	expect(session.setHasPendingExportSave).toHaveBeenCalledWith(false);

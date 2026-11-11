@@ -39,6 +39,8 @@ export type usePlaybackLayoutInput = Pick<
 	| "zoomRegionsRef"
 	| "applyWebcamBubbleLayout"
 	| "animationStateRef"
+	| "annotationFrameStore"
+	| "motionBlurStateRef"
 	| "cropRegion"
 	| "borderRadius"
 	| "padding"
@@ -76,6 +78,8 @@ export function usePlaybackLayout(input: usePlaybackLayoutInput) {
 		zoomRegionsRef,
 		applyWebcamBubbleLayout,
 		animationStateRef,
+		annotationFrameStore,
+		motionBlurStateRef,
 		cropRegion,
 		borderRadius,
 		padding,
@@ -181,6 +185,7 @@ export function usePlaybackLayout(input: usePlaybackLayoutInput) {
 			};
 		}
 
+		const { width: previousWidth, height: previousHeight } = app.screen;
 		const result = layoutVideoContentUtil({
 			container,
 			app,
@@ -195,6 +200,29 @@ export function usePlaybackLayout(input: usePlaybackLayoutInput) {
 		});
 
 		if (result) {
+			const { width, height } = result.stageSize;
+			if (
+				previousWidth > 0 &&
+				previousHeight > 0 &&
+				(width !== previousWidth || height !== previousHeight)
+			) {
+				// The paused camera stores translation in viewport pixels. Keep its
+				// framing when layout changes before another media frame is composed.
+				const widthRatio = width / previousWidth;
+				const heightRatio = height / previousHeight;
+				const x = cameraContainer.x * widthRatio;
+				const y = cameraContainer.y * heightRatio;
+				cameraContainer.position.set(x, y);
+				animationStateRef.current.x = x;
+				animationStateRef.current.y = y;
+				motionBlurStateRef.current.prevCamX *= widthRatio;
+				motionBlurStateRef.current.prevCamY *= heightRatio;
+				const frame = annotationFrameStore.getSnapshot();
+				annotationFrameStore.publish({
+					timeMs: frame.timeMs,
+					transform: { scale: cameraContainer.scale.x, x, y },
+				});
+			}
 			stageSizeRef.current = result.stageSize;
 			setPreviewViewportWidth((current) =>
 				Math.abs(current - result.stageSize.width) < 0.5 ? current : result.stageSize.width,
@@ -269,6 +297,8 @@ export function usePlaybackLayout(input: usePlaybackLayoutInput) {
 		selectedZoomIdRef,
 		zoomRegionsRef,
 		animationStateRef,
+		annotationFrameStore,
+		motionBlurStateRef,
 	]);
 
 	useEffect(() => {

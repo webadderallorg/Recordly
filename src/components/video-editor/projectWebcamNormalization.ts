@@ -48,6 +48,7 @@ export function normalizeProjectWebcam(editor: Partial<ProjectEditorState>): Web
 		enabled:
 			typeof webcam.enabled === "boolean" ? webcam.enabled : DEFAULT_WEBCAM_OVERLAY.enabled,
 		sourcePath: webcamSourcePath,
+		loop: typeof webcam.loop === "boolean" ? webcam.loop : undefined,
 		mirror: typeof webcam.mirror === "boolean" ? webcam.mirror : DEFAULT_WEBCAM_OVERLAY.mirror,
 		cropRegion: normalizeWebcamCropRegion(webcam.cropRegion),
 		positionPreset:

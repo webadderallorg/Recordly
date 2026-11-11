@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { getSquircleCssRadius } from "@/lib/geometry/squircle";
 import {
 	getCaptionBackground,
 	getCaptionDisplayText,
@@ -131,14 +132,16 @@ export function PlaybackCaptions(
 						textAlign: "center",
 						fontWeight: preset.fontWeight,
 						padding: `${padding.y}px ${padding.x}px`,
-						borderRadius: `${getCaptionScaledRadius(
-							autoCaptionSettings.boxRadius,
-							getCaptionScaledFontSize(
-								autoCaptionSettings.fontSize,
-								overlayRef.current?.clientWidth || 960,
-								autoCaptionSettings.maxWidth,
+						borderRadius: getSquircleCssRadius(
+							getCaptionScaledRadius(
+								autoCaptionSettings.boxRadius,
+								getCaptionScaledFontSize(
+									autoCaptionSettings.fontSize,
+									overlayRef.current?.clientWidth || 960,
+									autoCaptionSettings.maxWidth,
+								),
 							),
-						)}px`,
+						),
 						boxSizing: "border-box",
 						clipPath: "none",
 						cursor: onEditAutoCaption && !isCaptionEditing ? "text" : undefined,
@@ -278,7 +281,10 @@ export function PlaybackCaptions(
 																	position: "absolute",
 																	pointerEvents: "none",
 																	inset: `-${CAPTION_WORD_HIGHLIGHT.paddingYEm}em -${CAPTION_WORD_HIGHLIGHT.paddingXEm}em`,
-																	borderRadius: `${CAPTION_WORD_HIGHLIGHT.radiusEm}em`,
+																	borderRadius:
+																		getSquircleCssRadius(
+																			`${CAPTION_WORD_HIGHLIGHT.radiusEm}em`,
+																		),
 																	background:
 																		preset.highlightFill,
 																}}

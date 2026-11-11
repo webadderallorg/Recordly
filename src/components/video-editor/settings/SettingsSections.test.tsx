@@ -17,6 +17,7 @@ import { SliderControl } from "../SliderControl";
 import {
 	type CropRegion,
 	DEFAULT_AUTO_CAPTION_SETTINGS,
+	DEFAULT_WEBCAM_SIZE,
 	type WebcamOverlaySettings,
 } from "../types";
 import { WebcamCropControl } from "../WebcamCropControl";
@@ -136,8 +137,8 @@ describe("webcam settings controls", () => {
 				shape: "rectangle",
 				roundness: 20,
 				sourcePath: "/recordings/camera.mp4",
-				width: expect.closeTo(53.333333, 4),
-				height: 30,
+				width: expect.closeTo((DEFAULT_WEBCAM_SIZE * 16) / 9, 4),
+				height: DEFAULT_WEBCAM_SIZE,
 				timeOffsetMs: 75,
 				visibleRanges: [{ startMs: 100, endMs: 2500 }],
 			}),
@@ -228,12 +229,30 @@ describe("caption generation settings controls", () => {
 	});
 
 	it.each([
-		{ whisperModelPath: null, isGeneratingCaptions: false, disabled: false },
-		{ whisperModelPath: "/models/small.bin", isGeneratingCaptions: true, disabled: true },
-		{ whisperModelPath: "/models/small.bin", isGeneratingCaptions: false, disabled: false },
-	])("guards generation for model availability and progress: %j", ({ disabled, ...state }) => {
+		{
+			whisperModelPath: null,
+			isGeneratingCaptions: false,
+			disabled: false,
+			label: "Download {{size}} MB & generate captions",
+		},
+		{
+			whisperModelPath: "/models/small.bin",
+			isGeneratingCaptions: true,
+			disabled: true,
+			label: "Generating...",
+		},
+		{
+			whisperModelPath: "/models/small.bin",
+			isGeneratingCaptions: false,
+			disabled: false,
+			label: "Regenerate Captions",
+		},
+	])("guards generation for model availability and progress: %j", ({
+		disabled,
+		label,
+		...state
+	}) => {
 		const tree = captionView(state);
-		const label = state.isGeneratingCaptions ? "Generating..." : "Regenerate Captions";
 		expect(control(tree, Button, (props) => props.children === label).disabled).toBe(disabled);
 	});
 
@@ -261,9 +280,11 @@ describe("caption generation settings controls", () => {
 			whisperModelDownloadStatus: "idle",
 			onGenerateAutoCaptions,
 		});
-		control(tree, Button, (props) => props.children === "Regenerate Captions").onClick?.(
-			{} as never,
-		);
+		control(
+			tree,
+			Button,
+			(props) => props.children === "Download {{size}} MB & generate captions",
+		).onClick?.({} as never);
 		expect(onGenerateAutoCaptions).toHaveBeenCalledOnce();
 	});
 

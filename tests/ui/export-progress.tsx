@@ -88,6 +88,14 @@ function Fixture() {
 	]);
 	return (
 		<main className="p-8 flex justify-end">
+			<button
+				type="button"
+				onClick={() => {
+					document.documentElement.dataset.editorAction = "true";
+				}}
+			>
+				Editor action
+			</button>
 			<EditorExportMenu
 				t={t}
 				exportSettings={exportSettings}
@@ -109,9 +117,14 @@ function Fixture() {
 				experimentalNvidiaCudaExport={false}
 				setExperimentalNvidiaCudaExport={() => undefined}
 				handleOpenExportDropdown={() => exportSession.setShowExportDropdown(true)}
-				handleExportDropdownClose={() => exportSession.setShowExportDropdown(false)}
+				handleExportDropdownClose={() => {
+					exportSession.setShowExportDropdown(false);
+					exportSession.setExportedFilePath(undefined);
+				}}
 				handleCancelExport={() => {
 					document.documentElement.dataset.cancelled = "true";
+					exportSession.setIsExporting(false);
+					exportSession.setShowExportDropdown(false);
 					cancelPreparation?.();
 				}}
 				handleRetrySaveExport={() => undefined}

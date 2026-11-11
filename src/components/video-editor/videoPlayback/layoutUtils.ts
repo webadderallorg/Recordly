@@ -1,5 +1,5 @@
 import { Application, Graphics, Sprite } from "pixi.js";
-import { drawSquircleOnGraphics } from "@/lib/geometry/squircle";
+import { drawSquircleOnGraphics, getClampedCornerRadius } from "@/lib/geometry/squircle";
 import { ADVANCED_VERTICAL_PADDING_MAX, type CropRegion, type Padding } from "../types";
 
 export const PADDING_SCALE_FACTOR = 0.2;
@@ -29,7 +29,11 @@ export function scalePreviewBorderRadius(
 		if (width >= frameSize.width - tolerance && height >= frameSize.height - tolerance)
 			return 0;
 	}
-	return (Math.min(width, height) * Math.min(50, Math.max(0, borderRadiusPercent))) / 100;
+	return getClampedCornerRadius(
+		width,
+		height,
+		(Math.min(width, height) * borderRadiusPercent) / 100,
+	);
 }
 
 export function isZeroPadding(padding: Padding | number): boolean {

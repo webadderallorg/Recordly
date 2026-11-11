@@ -1,14 +1,15 @@
 import { Skeleton } from "@heroui/react";
-import type { ProjectPreviewData } from "@/types/projectPreview";
-import { PROJECT_THUMBNAIL_RENDER_VERSION } from "@/lib/projectThumbnail";
-import { ProjectHoverPreview } from "./ProjectHoverPreview";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ImageSquare } from "@/components/ui/icons";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { PROJECT_THUMBNAIL_RENDER_VERSION } from "@/lib/projectThumbnail";
+import type { ProjectPreviewData } from "@/types/projectPreview";
 import { normalizeProjectEditor } from "../projectPersistence";
 import { getTimelineDurationMs } from "../types";
-import { generateProjectThumbnail } from "./generateProjectThumbnail";
-import { getOrCreateProjectThumbnail, peekProjectThumbnail } from "./projectThumbnailCache";
 import { DurationBadge } from "./DurationBadge";
+import { generateProjectThumbnail } from "./generateProjectThumbnail";
+import { ProjectHoverPreview } from "./ProjectHoverPreview";
+import { getCachedProjectPreview } from "./projectPreviewCache";
+import { getOrCreateProjectThumbnail, peekProjectThumbnail } from "./projectThumbnailCache";
 import { useProjectThumbnailUrl } from "./useProjectThumbnailUrl";
 export function ProjectThumbnail({
 	path,
@@ -140,8 +141,7 @@ export function ProjectThumbnail({
 	useEffect(() => {
 		if (!visible || !projectPath || metadata) return;
 		let active = true;
-		void window.electronAPI
-			.getProjectPreview(projectPath)
+		void getCachedProjectPreview(projectPath, revision)
 			.then((result) => {
 				if (active) {
 					if (result.success) setMetadataState({ key: cacheKey, value: result.value });
@@ -154,7 +154,7 @@ export function ProjectThumbnail({
 		return () => {
 			active = false;
 		};
-	}, [visible, projectPath, metadata, cacheKey]);
+	}, [visible, projectPath, metadata, cacheKey, revision]);
 
 	return (
 		<div

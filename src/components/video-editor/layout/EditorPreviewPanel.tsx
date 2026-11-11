@@ -376,7 +376,7 @@ export function EditorPreviewPanel(props: Props) {
 						<Button
 							variant="ghost"
 							size="icon"
-							className={`h-9 w-9  ${isPlaying ? "bg-foreground/10 text-foreground hover:bg-foreground/20" : "bg-neutral-800 text-white hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-white/90"} `}
+							className={`h-9 w-9 rounded-full ${isPlaying ? "bg-foreground/10 text-foreground hover:bg-foreground/20" : "bg-neutral-800 text-white hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-white/90"}`}
 							onClick={playback.togglePlayPause}
 							title={
 								isPlaying ? t("editor.playback.pause") : t("editor.playback.play")

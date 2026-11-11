@@ -77,9 +77,15 @@ test("Home can retry a failed shared-video load", async ({ page }) => {
 		.getByRole("status")
 		.filter({ hasText: "Could not load shared videos." });
 	await expect(failure).toContainText("Could not load shared videos.");
-	await expect(failure.getByText("Cloud is temporarily unavailable")).not.toBeVisible();
-	await failure.getByRole("button", { name: "Technical details", exact: true }).click();
-	await expect(failure.getByText("Cloud is temporarily unavailable")).toBeVisible();
+	await expect(featured.getByRole("list")).toHaveCount(0);
+	await expect(featured.getByRole("button", { name: "Report Error", exact: true })).toHaveCount(
+		0,
+	);
+	const details = featured.getByText("Cloud is temporarily unavailable");
+	await expect(details).not.toBeVisible();
+	await featured.getByText("Technical details", { exact: true }).click();
+	await expect(details).toBeVisible();
+	await expect(featured.getByRole("button", { name: "Report Error", exact: true })).toBeVisible();
 	await page.evaluate(() => {
 		document.documentElement.dataset.shareRecovered = "true";
 	});

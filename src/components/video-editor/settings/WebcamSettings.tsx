@@ -1,3 +1,4 @@
+import { Label } from "@heroui/react";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ChoiceGroup, ChoiceItem } from "@/components/ui/choice-group";
@@ -217,6 +218,13 @@ export function WebcamSettings({
 
 	return (
 		<section className="flex flex-col gap-5" data-webcam-settings>
+			<Switch
+				className="w-full justify-between"
+				checked={webcam.enabled}
+				onCheckedChange={(enabled) => updateWebcam({ enabled })}
+			>
+				<Label>{tSettings("effects.showWebcam", "Show webcam")}</Label>
+			</Switch>
 			{advanced && (
 				<div className="flex min-w-0 items-center gap-2.5" data-webcam-source>
 					<WebcamSourceButton
@@ -229,11 +237,6 @@ export function WebcamSettings({
 					>
 						{webcamFileName}
 					</p>
-					<Switch
-						aria-label={tSettings("effects.show", "Show")}
-						checked={webcam.enabled}
-						onCheckedChange={(enabled) => updateWebcam({ enabled })}
-					/>
 				</div>
 			)}
 			<div className="flex flex-col gap-3">
@@ -332,19 +335,22 @@ export function WebcamSettings({
 						value={webcam?.shape ?? "squircle"}
 						className="grid grid-cols-3 gap-2"
 						onValueChange={(shape) => {
-							if (shape === "circle" || shape === "squircle" || shape === "rectangle")
+							if (
+								shape === "circle" ||
+								shape === "squircle" ||
+								shape === "rectangle"
+							) {
+								const width =
+									shape === "rectangle"
+										? DEFAULT_WEBCAM_SIZE * (16 / 9)
+										: DEFAULT_WEBCAM_SIZE;
 								updateWebcam({
 									shape,
-									width:
-										shape === "rectangle"
-											? DEFAULT_WEBCAM_SIZE * (16 / 9)
-											: DEFAULT_WEBCAM_SIZE,
-									size:
-										shape === "rectangle"
-											? DEFAULT_WEBCAM_SIZE * (16 / 9)
-											: DEFAULT_WEBCAM_SIZE,
+									width,
+									size: width,
 									height: DEFAULT_WEBCAM_SIZE,
 								});
+							}
 						}}
 					>
 						{(

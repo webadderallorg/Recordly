@@ -28,6 +28,7 @@
 	min-width: 30px;
 	border: 0;
 	border-radius: 50%;
+	corner-shape: round;
 	background: var(--surface);
 	color: var(--foreground);
 	box-shadow: 0 2px 12px #0002;
@@ -97,6 +98,7 @@
 	height: 17px;
 	margin-top: 1px;
 	border-radius: 50%;
+	corner-shape: round;
 	background: var(--accent);
 	color: var(--accent-foreground);
 }

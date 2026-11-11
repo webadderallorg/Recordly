@@ -1,3 +1,4 @@
+import { createReleaseVersionCatalog } from "./releaseVersions";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -54,7 +55,6 @@ import {
 	shouldHardenWebContentsType,
 } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
-import { createReleaseVersionCatalog } from "./releaseVersions";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
 import { createSaveBeforeCloseController } from "./saveBeforeClose";
 import {
@@ -82,11 +82,13 @@ import {
 	createEditorWindow,
 	createHudOverlayWindow,
 	createSourceSelectorWindow,
+	focusOnboardingWindow,
 	getHudOverlayWindow,
 	getOnboardingWindow,
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
 	isHudOverlayMousePassthroughSupported,
+	replayOnboardingIntro,
 	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
 	setHudOverlayRecordingActive,
 	showOnboardingWindow,
@@ -109,6 +111,10 @@ function ignoreBrokenConsolePipe(stream: NodeJS.WritableStream | undefined) {
 ipcMain.handle("show-onboarding-window", (_event, options?: { preview?: boolean }) => {
 	showOnboardingWindow({ preview: !app.isPackaged && options?.preview === true });
 	return true;
+});
+ipcMain.handle("replay-onboarding-intro", (event) => {
+	const owner = BrowserWindow.fromWebContents(event.sender);
+	return owner ? replayOnboardingIntro(owner) : false;
 });
 ipcMain.handle("close-onboarding-window", () => {
 	closeOnboardingWindow();
@@ -444,7 +450,7 @@ function createWindow() {
 function focusOrCreateMainWindow() {
 	const onboarding = getOnboardingWindow();
 	if (onboarding) {
-		restoreWindowSafely(onboarding);
+		focusOnboardingWindow();
 		return;
 	}
 	if (!app.isReady()) {

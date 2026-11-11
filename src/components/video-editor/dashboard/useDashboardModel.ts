@@ -1,23 +1,25 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { removeProjectShareLinks } from "../cloud/projectShareLinks";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
-import { deleteLibraryProjectsWithMedia } from "./deleteLibraryProjects";
-import type { DashboardProps } from "./types";
-import { useDashboardMetadata } from "./useDashboardMetadata";
-import { useProjectFolders } from "./useProjectFolders";
-import { useRawLibrary } from "./useRawLibrary";
 import type { SettingsSection } from "../SettingsSections";
+import { deleteLibraryProjectsWithMedia } from "./deleteLibraryProjects";
 import {
 	compareLibraryEntries,
 	defaultLibrarySortDirection,
 	type LibrarySort,
 	type LibrarySortDirection,
 } from "./librarySort";
+import type { DashboardProps } from "./types";
+import { useDashboardMetadata } from "./useDashboardMetadata";
 import { useLibrarySortMetadata } from "./useLibrarySortMetadata";
+import { useProjectFolders } from "./useProjectFolders";
+import { useRawLibrary } from "./useRawLibrary";
 export function useDashboardModel({
 	entries,
+	loading = false,
+	libraryError,
 	getProtectedSourcePaths,
 	onOpenChange,
 	onOpenProject,
@@ -29,6 +31,10 @@ export function useDashboardModel({
 	initialSection = "projects",
 }: DashboardProps) {
 	const { locale, t: uiText } = useUiLocale();
+	const [libraryResolved, setLibraryResolved] = useState(!loading && !libraryError);
+	useEffect(() => {
+		if (!loading && !libraryError) setLibraryResolved(true);
+	}, [loading, libraryError]);
 	const protectionGetterRef = useRef(getProtectedSourcePaths);
 	protectionGetterRef.current = getProtectedSourcePaths;
 	const readProtectedSources = useCallback(() => protectionGetterRef.current?.() ?? [], []);
@@ -47,6 +53,16 @@ export function useDashboardModel({
 			prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path],
 		);
 	const { folders, save } = useProjectFolders();
+	const addToFolder = (path: string, id: string) => {
+		if (busy || !entries.some((entry) => entry.path === path)) return;
+		const target = folders.find((folder) => folder.id === id);
+		if (!target || target.paths.includes(path)) return;
+		save(
+			folders.map((folder) =>
+				folder.id === id ? { ...folder, paths: [...folder.paths, path] } : folder,
+			),
+		);
+	};
 	const assignFolder = (path: string, id: string) =>
 		save(
 			folders.map((f) => ({
@@ -279,6 +295,7 @@ export function useDashboardModel({
 		`h-10 w-full justify-start gap-3 px-3 text-[13px] ${active ? "bg-default/50 font-medium" : "text-muted-foreground"}`;
 
 	return {
+		initialLibraryLoading: loading && !libraryResolved && !entries.length,
 		cleanupOpen,
 		setCleanupOpen,
 		pendingDelete,
@@ -308,6 +325,7 @@ export function useDashboardModel({
 		deleteEntries,
 		toggleSelected,
 		assignFolder,
+		addToFolder,
 		query,
 		hasActiveFilters: hasContentFilters || Boolean(activeFolder),
 		hasContentFilters,

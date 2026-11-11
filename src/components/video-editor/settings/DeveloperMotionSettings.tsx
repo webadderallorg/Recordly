@@ -1,3 +1,5 @@
+import { useReducedMotion } from "motion/react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SettingsRow } from "@/components/video-editor/SettingsRow";
 import { SliderControl } from "@/components/video-editor/SliderControl";
@@ -45,6 +47,11 @@ export function DeveloperMotionSettings(props: Props) {
 	} = props;
 	const { te, tSettings, formatNumber } = useSettingsTranslations();
 	const showDevMotionControls = import.meta.env.DEV;
+	const replayIntro = showDevMotionControls
+		? window.electronAPI?.replayOnboardingIntro
+		: undefined;
+	const reduceMotion = useReducedMotion();
+	const [replayFailed, setReplayFailed] = useState(false);
 	return (
 		<>
 			{import.meta.env.DEV && onShowOnboarding && (
@@ -60,6 +67,44 @@ export function DeveloperMotionSettings(props: Props) {
 							{te("showOnboarding", "Show onboarding")}
 						</Button>
 					</SettingsRow>
+				</div>
+			)}
+			{replayIntro && (
+				<div className="settings-group">
+					<SettingsRow
+						title={te("logoReveal", "Logo reveal")}
+						description={
+							reduceMotion
+								? te(
+										"logoRevealReducedMotion",
+										"The reveal is off while Reduce Motion is enabled.",
+									)
+								: te(
+										"logoRevealDescription",
+										"Watch the onboarding animation on its own.",
+									)
+						}
+					>
+						<Button
+							variant="secondary"
+							size="sm"
+							disabled={Boolean(reduceMotion)}
+							onPress={() => {
+								setReplayFailed(false);
+								void replayIntro().then(
+									(started) => setReplayFailed(!started),
+									() => setReplayFailed(true),
+								);
+							}}
+						>
+							{te("replayLogoReveal", "Replay logo reveal")}
+						</Button>
+					</SettingsRow>
+					{replayFailed && (
+						<p role="status" className="text-sm text-danger">
+							{te("logoRevealUnavailable", "Could not replay the logo reveal.")}
+						</p>
+					)}
 				</div>
 			)}
 			{advanced && showDevMotionControls ? (

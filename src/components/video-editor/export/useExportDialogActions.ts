@@ -25,7 +25,7 @@ type UseExportDialogActionsInput = {
 		settings: ExportSettings,
 		options?: { destination?: "download" | "share" },
 	) => Promise<string | undefined>;
-	showExportSuccessToast: (filePath: string, identity?: LibraryExportIdentity) => void;
+	recordSuccessfulExport: (identity?: LibraryExportIdentity) => void;
 };
 
 export function useExportDialogActions({
@@ -35,7 +35,7 @@ export function useExportDialogActions({
 	settings,
 	session,
 	handleExport,
-	showExportSuccessToast,
+	recordSuccessfulExport,
 }: UseExportDialogActionsInput) {
 	const billing = useOptionalBilling();
 	const handleOpenExportDropdown = useCallback(() => {
@@ -110,7 +110,7 @@ export function useExportDialogActions({
 		if (!resolvedSettings) return;
 		session.setExportError(null);
 		session.setExportedFilePath(undefined);
-		session.setShowExportDropdown(true);
+		session.setShowExportDropdown(false);
 		void handleExport(resolvedSettings, { destination: "download" });
 	}, [resolveCurrentSettings, session, handleExport]);
 
@@ -118,7 +118,6 @@ export function useExportDialogActions({
 		const resolvedSettings = resolveCurrentSettings("mp4");
 		if (!resolvedSettings) return undefined;
 		session.setExportError(null);
-		session.setShowExportDropdown(true);
 		return handleExport(resolveShareExportSettings(resolvedSettings), { destination: "share" });
 	}, [resolveCurrentSettings, session, handleExport]);
 
@@ -143,6 +142,7 @@ export function useExportDialogActions({
 		session.setShowExportDropdown(false);
 		session.setExportProgress(null);
 		session.setExportError(null);
+		session.setExportedFilePath(undefined);
 	}, [session]);
 
 	const handleRetrySaveExport = useCallback(async () => {
@@ -194,9 +194,8 @@ export function useExportDialogActions({
 			session.setHasPendingExportSave(false);
 			session.setExportError(null);
 			session.setExportedFilePath(saveResult.path);
-			showExportSuccessToast(saveResult.path, exportIdentity);
+			recordSuccessfulExport(exportIdentity);
 			showCaptionSidecarWarning(saveResult);
-			session.setShowExportDropdown(true);
 			return;
 		}
 
@@ -208,7 +207,7 @@ export function useExportDialogActions({
 		recordExportDiagnostic("save-failed", { error: errorMessage });
 		session.setExportError(errorMessage);
 		toast.error(errorMessage);
-	}, [session, showExportSuccessToast, billing]);
+	}, [session, recordSuccessfulExport, billing]);
 
 	const revealExportedFile = useCallback(async () => {
 		if (!session.exportedFilePath) return;

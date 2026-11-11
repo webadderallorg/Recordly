@@ -1,20 +1,20 @@
+import { useCaptionFont } from "@/components/video-editor/useCaptionFont";
 import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
 import { applyCaptionPreset, getCaptionPreset } from "@/components/video-editor/captionPresets";
+import { CaptionGenerationSettings } from "@/components/video-editor/settings/CaptionGenerationSettings";
+import { I18nProvider } from "@/contexts/I18nContext";
 import {
 	getCaptionFontBaseline,
 	getCaptionScaledFontSize,
 	getCaptionTextMaxWidth,
 } from "@/components/video-editor/captionStyle";
-import { CaptionGenerationSettings } from "@/components/video-editor/settings/CaptionGenerationSettings";
 import {
 	type AutoCaptionSettings,
 	DEFAULT_AUTO_CAPTION_SETTINGS,
 } from "@/components/video-editor/types";
-import { useCaptionFont } from "@/components/video-editor/useCaptionFont";
 import { PlaybackCaptions } from "@/components/video-editor/videoPlayback/PlaybackCaptions";
-import { I18nProvider } from "@/contexts/I18nContext";
 import "@/index.css";
 
 function Preview() {

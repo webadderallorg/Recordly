@@ -26,7 +26,6 @@ function context() {
 		exporterRef: { current: null },
 		pendingExportSaveRef: { current: null },
 	};
-	const keepOpen = vi.fn();
 	const discard = vi.fn();
 	const value = {
 		input: {
@@ -45,9 +44,8 @@ function context() {
 		diagnostics: { record: vi.fn(), result: vi.fn() },
 		exportWasCancelled: () => false,
 		discardCancelledTemp: discard,
-		setKeepExportDialogOpen: keepOpen,
 	};
-	return { value: value as unknown as ExportBranchContext, session, keepOpen, discard };
+	return { value: value as unknown as ExportBranchContext, session, discard };
 }
 
 beforeEach(() => {
@@ -60,7 +58,7 @@ describe("GIF failure recovery", () => {
 		{ fileName: "Walkthrough.gif", tempFilePath: "/tmp/finished.gif" },
 		{ fileName: "Walkthrough.gif", arrayBuffer: new ArrayBuffer(3) },
 	])("retains a finished GIF after a failed save: %o", async (pendingSave) => {
-		const { value, session, keepOpen } = context();
+		const { value, session } = context();
 		mocks.saveBlob.mockResolvedValue({
 			saveResult: { success: false, message: "Disk full" },
 			pendingSave,
@@ -69,24 +67,22 @@ describe("GIF failure recovery", () => {
 		expect(session.pendingExportSaveRef.current).toBe(pendingSave);
 		expect(session.setHasPendingExportSave).toHaveBeenCalledWith(true);
 		expect(session.setExportError).toHaveBeenCalledWith("Failed to save GIF: Disk full");
-		expect(keepOpen).toHaveBeenCalledWith(true);
 		expect(mocks.exportGif).toHaveBeenCalledOnce();
 	});
 
 	it("keeps render failures visible without offering a nonexistent saved render", async () => {
-		const { value, session, keepOpen } = context();
+		const { value, session } = context();
 		mocks.exportGif.mockResolvedValue({ success: false, error: "Decoder unavailable" });
 		await runGifExport(value);
 		expect(session.setExportError).toHaveBeenCalledWith(
 			"GIF export failed: Decoder unavailable",
 		);
-		expect(keepOpen).toHaveBeenCalledWith(true);
 		expect(session.setHasPendingExportSave).not.toHaveBeenCalled();
 		expect(mocks.saveBlob).not.toHaveBeenCalled();
 	});
 
 	it("discards a finished GIF if the export is canceled while saving", async () => {
-		const { value, session, keepOpen, discard } = context();
+		const { value, session, discard } = context();
 		const pendingSave = { fileName: "Walkthrough.gif", tempFilePath: "/tmp/finished.gif" };
 		let canceled = false;
 		value.exportWasCancelled = () => canceled;
@@ -97,6 +93,5 @@ describe("GIF failure recovery", () => {
 		await expect(runGifExport(value)).resolves.toEqual({ exit: true });
 		expect(discard).toHaveBeenCalledWith(pendingSave);
 		expect(session.setHasPendingExportSave).not.toHaveBeenCalled();
-		expect(keepOpen).not.toHaveBeenCalled();
 	});
 });

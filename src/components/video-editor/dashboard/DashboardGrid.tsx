@@ -1,29 +1,27 @@
 import { useRef } from "react";
-import { useScrollFade } from "../settings/useScrollFade";
-import { LocalizedError } from "@/components/feedback/LocalizedError";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
-import { errorSourceName, projectLoadError } from "../project/projectLoadError";
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
-import { LoadingTransition } from "@/components/ui/loading-transition";
-import { LibrarySkeleton } from "./LibrarySkeleton";
-import { SharedRecordings } from "../cloud/SharedRecordings";
-import { CLOUD_SHARE_ENDPOINT } from "../cloud/endpoint";
-import { RecordNewButton } from "./RecordNewButton";
-import { RawPreview } from "./RawRecordings";
-import { Cloud, ImageSquare } from "@/components/ui/icons";
-
+import { LocalizedError } from "@/components/feedback/LocalizedError";
 import { Button } from "@/components/ui/button";
-
+import { Cloud, ImageSquare } from "@/components/ui/icons";
+import { LoadingTransition } from "@/components/ui/loading-transition";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
+import { CLOUD_SHARE_ENDPOINT } from "../cloud/endpoint";
+import { SharedRecordings } from "../cloud/SharedRecordings";
+import { errorSourceName, projectLoadError } from "../project/projectLoadError";
+import { useScrollFade } from "../settings/useScrollFade";
 import { DashboardSettings } from "./DashboardSettings";
-
+import { LibrarySkeleton } from "./LibrarySkeleton";
 import { ProjectCard } from "./ProjectCard";
+import { RawPreview } from "./RawRecordings";
 import { RecentSharedVideos } from "./RecentSharedVideos";
+import { RecordNewButton } from "./RecordNewButton";
 import type { DashboardProps } from "./types";
 
 import type { DashboardModel } from "./useDashboardModel";
 
 export function DashboardGrid({
 	onImportFile,
+	initialLibraryLoading,
 	loading,
 	libraryError,
 	onRetryLibraryLoad,
@@ -64,6 +62,7 @@ export function DashboardGrid({
 }: Pick<
 	DashboardProps & DashboardModel,
 	| "loading"
+	| "initialLibraryLoading"
 	| "libraryError"
 	| "onRetryLibraryLoad"
 	| "onImportFile"
@@ -186,6 +185,7 @@ export function DashboardGrid({
 							key={authToken}
 							token={authToken}
 							endpoint={CLOUD_SHARE_ENDPOINT}
+							accountId={accountId}
 							onViewAll={() => setSection("shared")}
 						/>
 					)}
@@ -226,7 +226,9 @@ export function DashboardGrid({
 					)
 				) : (
 					<LoadingTransition
-						loading={Boolean(isRaw ? rawLoading : loading)}
+						loading={Boolean(
+							isRaw ? rawLoading && !visible.length : initialLibraryLoading,
+						)}
 						fallback={<LibrarySkeleton />}
 					>
 						{visible.length ? (

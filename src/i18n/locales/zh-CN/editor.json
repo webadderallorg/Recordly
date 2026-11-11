@@ -20,6 +20,7 @@
 		"standard": "标准"
 	},
 	"cloud": {
+		"uploadingVideo": "正在上传视频…",
 		"signInRequired": "创建共享链接前，请先登录 Recordly。",
 		"prepareFailed": "无法准备当前剪辑以供分享。",
 		"uploadFailed": "云端上传失败。",
@@ -228,6 +229,8 @@
 		"confirm": "好的"
 	},
 	"exportStatus": {
+		"finishingVideo": "正在完成视频处理…",
+		"savingVideo": "正在保存视频…",
 		"exporting": "正在导出",
 		"renderingFile": "正在渲染你的文件。",
 		"preparing": "正在准备导出...",
