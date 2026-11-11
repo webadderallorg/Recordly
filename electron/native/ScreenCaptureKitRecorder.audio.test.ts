@@ -111,11 +111,11 @@ extension ScreenCaptureRecorder {
     func simulateEmptyAudioCallbacks() {
         let invalid = sample(0)
         check(CMSampleBufferInvalidate(invalid) == noErr, "invalidate callback buffer")
-        self.deliverAudioSampleBuffer(invalid, of: .audio)
+        self.deliverAudioSampleBuffer(invalid, of: .audio, from: nil)
         var empty: CMSampleBuffer?
         let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2)!
         check(CMSampleBufferCreate(allocator: kCFAllocatorDefault, dataBuffer: nil, dataReady: true, makeDataReadyCallback: nil, refcon: nil, formatDescription: format.formatDescription, sampleCount: 0, sampleTimingEntryCount: 0, sampleTimingArray: nil, sampleSizeEntryCount: 0, sampleSizeArray: nil, sampleBufferOut: &empty) == noErr, "empty callback buffer")
-        self.deliverAudioSampleBuffer(empty!, of: .audio)
+        self.deliverAudioSampleBuffer(empty!, of: .audio, from: nil)
     }
 }
 func run(_ mode: String) async {

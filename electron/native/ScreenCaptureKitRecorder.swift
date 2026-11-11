@@ -338,6 +338,14 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var microphoneOnlyWriter: AVAssetWriter?
 	private var microphoneOnlyInput: AVAssetWriterInput?
 	private var stream: SCStream?
+	private var captureFilter: SCContentFilter?
+	private var captureConfiguration: SCStreamConfiguration?
+	private var captureFPS = targetCaptureFPS
+	// All recovery state is owned by the sample queue. Keep the writers and
+	// firstSampleTime across stream replacements so every track keeps its clock.
+	private var recoveryTask: Task<Void, Never>?
+	private var streamFailure: Error?
+	private var streamHasVideo = false
 	private var firstSampleTime: CMTime = .zero
 	private var firstSystemAudioSampleTime: CMTime?
 	private var firstMicrophoneSampleTime: CMTime?
@@ -405,7 +413,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 		writesSystemAudioToSeparateTrack = capturesSystemAudio
 		writesMicrophoneToSeparateTrack = capturesSystemAudio && capturesMicrophone
-		let requestedFPS = max(targetCaptureFPS, config.fps ?? targetCaptureFPS)
+		let requestedFPS = (1...240).contains(config.fps ?? 0) ? config.fps! : targetCaptureFPS
+		captureFPS = requestedFPS
 		streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(requestedFPS))
 		streamConfig.queueDepth = 6
 		streamConfig.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
@@ -652,22 +661,10 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			microphoneWriter.startSession(atSourceTime: .zero)
 		}
 
-		let stream = SCStream(filter: filter, configuration: streamConfig, delegate: self)
+		captureFilter = filter
+		captureConfiguration = streamConfig
+		let stream = try makeCaptureStream()
 		self.stream = stream
-		try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
-		if capturesSystemAudio {
-			try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioDeliveryQueue)
-		}
-		if capturesMicrophone {
-			guard let microphoneOutputType = SCStreamOutputType(rawValue: microphoneOutputTypeRawValue) else {
-				throw NSError(
-					domain: "RecordlyCapture",
-					code: 17,
-					userInfo: [NSLocalizedDescriptionKey: "Microphone stream output type is unavailable"]
-				)
-			}
-			try stream.addStreamOutput(self, type: microphoneOutputType, sampleHandlerQueue: audioDeliveryQueue)
-		}
 		try await stream.startCapture()
 
 		guard assetWriter.startWriting() else {
@@ -725,13 +722,14 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
 	func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
 		if outputType != .screen {
-			deliverAudioSampleBuffer(sampleBuffer, of: outputType)
+			deliverAudioSampleBuffer(sampleBuffer, of: outputType, from: stream)
 		} else {
+			guard isRecording, stream === self.stream else { return }
 			handleSampleBuffer(sampleBuffer, of: outputType)
 		}
 	}
 
-	private func deliverAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
+	private func deliverAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType, from sourceStream: SCStream?) {
 		// ScreenCaptureKit may send invalid or empty callbacks during a transition.
 		// Discard these before reserving media time; they are not an overload.
 		guard sampleBuffer.isValid, sampleBuffer.numSamples > 0 else { return }
@@ -741,18 +739,30 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		let reservation = audioDeliveryBudget.reserve(bytes: bytes, duration: duration)
 		guard reservation.accepted else {
 			if reservation.reportFailure {
-				queue.async { self.interruptCapture(NSError(domain: "RecordlyCapture", code: 18, userInfo: [NSLocalizedDescriptionKey: "Audio delivery exceeded its safe recording limit"])) }
+				queue.async {
+					guard self.isRecording, sourceStream === self.stream else { return }
+					self.interruptCapture(NSError(domain: "RecordlyCapture", code: 18, userInfo: [NSLocalizedDescriptionKey: "Audio delivery exceeded its safe recording limit"]))
+				}
 			}
 			return
 		}
 		queue.async {
 			defer { self.audioDeliveryBudget.release(bytes: bytes, duration: duration) }
+			guard self.isRecording, sourceStream === self.stream else { return }
 			self.handleSampleBuffer(sampleBuffer, of: outputType)
 		}
 	}
 
 	private func handleSampleBuffer(_ sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
-		guard sessionStarted, sampleBuffer.isValid, isRecording else { return }
+		guard isRecording, sessionStarted, sampleBuffer.isValid else { return }
+		if let failedWriter = [assetWriter, systemAudioWriter, microphoneOnlyWriter]
+			.compactMap({ $0 }).first(where: { $0.status == .failed }) {
+			interruptCapture(failedWriter.error ?? unfinalizedWriterError(status: failedWriter.status))
+			return
+		}
+		if outputType == .screen, isCompleteVideoFrame(sampleBuffer), isPaused {
+			streamHasVideo = true
+		}
 
 		if outputType == .screen {
 			guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
@@ -786,6 +796,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				}
 			}
 			if appended {
+					streamHasVideo = true
 					lastVideoPresentationTime = presentationTime
 					lastVideoDuration = sampleBuffer.duration
 					frameCount += 1
@@ -872,8 +883,118 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	}
 
 	func stream(_ stream: SCStream, didStopWithError error: Error) {
-		queue.async { self.interruptCapture(error) }
+		queue.async {
+			guard self.isRecording, !self.isFinalizing, self.captureFailure == nil,
+				stream === self.stream else { return }
+			let nativeError = error as NSError
+			if nativeError.domain == SCStreamErrorDomain,
+				nativeError.code == SCStreamError.Code.userStopped.rawValue || nativeError.code == SCStreamError.Code.userDeclined.rawValue {
+				// A stop or permission withdrawal in macOS is not a transient fault.
+				self.interruptCapture(error)
+				return
+			}
+			self.streamFailure = error
+			self.logCaptureEvent("STREAM_INTERRUPTED", error.localizedDescription)
+			guard self.recoveryTask == nil else { return }
+			self.recoveryTask = Task { await self.recoverStream() }
+		}
 	}
+
+	private func onCaptureQueue<T>(_ operation: @escaping () -> T) async -> T {
+		await withCheckedContinuation { continuation in
+			queue.async { continuation.resume(returning: operation()) }
+		}
+	}
+
+	private func logCaptureEvent(_ marker: String, _ detail: String) {
+		let line = detail.replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ")
+		fputs("\(marker): \(line)\n", stderr)
+		fflush(stderr)
+	}
+
+	private func isCompleteVideoFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
+		guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
+			let rawStatus = attachments.first?[SCStreamFrameInfo.status] as? Int else { return false }
+		return SCFrameStatus(rawValue: rawStatus) == .complete
+	}
+
+	private func makeCaptureStream() throws -> SCStream {
+		guard let captureFilter, let captureConfiguration else {
+			throw NSError(domain: "RecordlyCapture", code: 18, userInfo: [NSLocalizedDescriptionKey: "Capture configuration is unavailable"])
+		}
+		let replacement = SCStream(filter: captureFilter, configuration: captureConfiguration, delegate: self)
+		try replacement.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+		if capturesSystemAudio {
+			try replacement.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioDeliveryQueue)
+		}
+		if capturesMicrophone {
+			guard let microphoneType = SCStreamOutputType(rawValue: microphoneOutputTypeRawValue) else {
+				throw NSError(domain: "RecordlyCapture", code: 17, userInfo: [NSLocalizedDescriptionKey: "Microphone stream output type is unavailable"])
+			}
+			try replacement.addStreamOutput(self, type: microphoneType, sampleHandlerQueue: audioDeliveryQueue)
+		}
+		return replacement
+	}
+
+	private func recoverStream() async {
+		// Retry each interruption, not just the first few in a long recording.
+		// A new stream must actually deliver video before recovery is successful.
+		var lastError: Error = await onCaptureQueue {
+			self.streamFailure ?? NSError(domain: "RecordlyCapture", code: 19, userInfo: [NSLocalizedDescriptionKey: "Screen capture stopped"])
+		}
+		for attempt in 1...3 {
+			var candidate: SCStream?
+			do {
+				try Task.checkCancellation()
+				if attempt > 1 { try await Task.sleep(nanoseconds: UInt64(attempt - 1) * 500_000_000) }
+				let creation: Result<SCStream, Error> = await onCaptureQueue {
+					guard self.isRecording, !self.isFinalizing, self.captureFailure == nil else { return .failure(CancellationError()) }
+					self.logCaptureEvent("STREAM_RECOVERING", "attempt \(attempt)")
+					return Result {
+						let replacement = try self.makeCaptureStream()
+						self.stream = replacement
+						self.streamHasVideo = false
+						self.streamFailure = nil
+						return replacement
+					}
+				}
+				let replacement = try creation.get()
+				candidate = replacement
+				try await replacement.startCapture()
+				for _ in 0..<50 {
+					try Task.checkCancellation()
+					let status: Result<Bool, Error> = await onCaptureQueue {
+						guard self.isRecording, !self.isFinalizing, self.captureFailure == nil else { return .failure(CancellationError()) }
+						if let error = self.streamFailure { return .failure(error) }
+						guard self.stream === replacement, self.streamHasVideo else { return .success(false) }
+						self.recoveryTask = nil
+						self.logCaptureEvent("STREAM_RECOVERED", "continuing the same recording")
+						return .success(true)
+					}
+					if try status.get() { return }
+					try await Task.sleep(nanoseconds: 100_000_000)
+				}
+				throw NSError(domain: "RecordlyCapture", code: 20, userInfo: [NSLocalizedDescriptionKey: "Replacement screen stream did not deliver video"])
+			} catch is CancellationError {
+				// Finalization waits for this task, then stops the current candidate.
+				return
+			} catch {
+				lastError = error
+				if Task.isCancelled { return }
+				// Ignore late callbacks from a failed candidate while stopping it.
+				await onCaptureQueue { if self.stream === candidate { self.stream = nil } }
+				if let candidate { try? await candidate.stopCapture() }
+			}
+		}
+		await onCaptureQueue {
+			self.recoveryTask = nil
+			if self.isRecording, !self.isFinalizing {
+				self.logCaptureEvent("STREAM_RECOVERY_FAILED", lastError.localizedDescription)
+				self.interruptCapture(lastError)
+			}
+		}
+	}
+
 
 	private func interruptCapture(_ error: Error) {
 		guard isRecording, captureFailure == nil else { return }
@@ -918,15 +1039,20 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
 				self.isFinalizing = true
 				self.interactiveStopParticipated = interactive
-				self.stopTimelineTime = self.timelineTimeOfStop()
+				self.stopTimelineTime = self.recoveryTask == nil && self.captureFailure == nil ? self.timelineTimeOfStop() : nil
 				self.stillFrameTimer?.cancel()
 				self.stillFrameTimer = nil
 				self.isRecording = false
+				let pendingRecovery = self.recoveryTask
+				self.recoveryTask = nil
+				pendingRecovery?.cancel()
+				self.windowValidationTask?.cancel()
 				self.windowValidationTask = nil
 				self.trackedWindowId = nil
 				self.finalizationWaiters.append(continuation)
 
 				Task {
+					await pendingRecovery?.value
 					let outputResult: Result<String, Error>
 					do {
 						outputResult = .success(try await self.finishCapture())
@@ -1035,6 +1161,10 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			.first ?? captureFailure ?? audioFailure
 		let path = outputURL?.path ?? ""
 		captureFailure = nil
+		captureFilter = nil
+		captureConfiguration = nil
+		streamFailure = nil
+		streamHasVideo = false
 		stopTimelineTime = nil
 		assetWriter = nil
 		videoInput = nil
@@ -1175,7 +1305,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	/// repeat is stamped slightly in the past, so a real frame still on its way stays
 	/// newer than it. Runs on the recorder queue.
 	private func appendStillFrameIfIdle() {
-		guard isRecording, frameCount > 0, !isPaused, !pendingResumeAdjustment,
+		guard isRecording, recoveryTask == nil, captureFailure == nil, frameCount > 0, !isPaused, !pendingResumeAdjustment,
 			  let lastSampleBuffer,
 			  let videoInput,
 			  assetWriter?.status == .writing,
@@ -1221,7 +1351,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			return lastVideoDuration
 		}
 
-		return CMTime(value: 1, timescale: CMTimeScale(targetCaptureFPS))
+		return CMTime(value: 1, timescale: CMTimeScale(captureFPS))
 	}
 
 	private func latestInlineAudioEndTime() -> CMTime {
@@ -1317,7 +1447,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		validation?.cancel()
 		await validation?.value
 		defer { if isRecording { startWindowValidationIfNeeded() } }
-		guard isRecording, let stream, let displayId = windowCropDisplayId ?? captureDisplayId else {
+		guard isRecording, let displayId = windowCropDisplayId ?? captureDisplayId else {
 			throw NSError(domain: "RecordlyCapture", code: 19, userInfo: [NSLocalizedDescriptionKey: "No active capture display"])
 		}
 		let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
@@ -1328,8 +1458,15 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		let filter = SCContentFilter(display: display, excludingApplications: content.applications.filter {
 			exclusions.contains($0.processID)
 		}, exceptingWindows: [])
-		try await stream.updateContentFilter(filter)
-		excludedProcessIds = exclusions
+		// Publish the desired filter before awaiting the OS update. A stream
+		// replaced in the meantime must inherit the current HUD exclusions.
+		let activeStream = await onCaptureQueue { () -> SCStream? in
+			guard self.isRecording, !self.isFinalizing else { return nil }
+			self.captureFilter = filter
+			self.excludedProcessIds = exclusions
+			return self.stream
+		}
+		if let activeStream { try await activeStream.updateContentFilter(filter) }
 	}
 
 	private func startWindowValidationIfNeeded() {
@@ -1386,7 +1523,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 					height: captureRect.height / display.frame.height
 				)
 
-				if self.windowCropDisplayId != display.displayID, let activeStream = self.stream {
+				if self.windowCropDisplayId != display.displayID {
 					let excludedApplications = availableContent.applications.filter {
 						self.excludedProcessIds.contains($0.processID)
 					}
@@ -1396,7 +1533,12 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 						exceptingWindows: []
 					)
 					do {
-						try await activeStream.updateContentFilter(filter)
+						let activeStream = await self.onCaptureQueue { () -> SCStream? in
+							guard self.isRecording, !self.isFinalizing else { return nil }
+							self.captureFilter = filter
+							return self.stream
+						}
+						if let activeStream { try await activeStream.updateContentFilter(filter) }
 					} catch {
 						continue
 					}
