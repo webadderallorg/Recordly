@@ -40,6 +40,7 @@ for (const full of [false, true]) {
 test("publish preserves local destination and sharing continues in the background", async ({
 	page,
 }) => {
+	test.setTimeout(60_000);
 	await page.goto("/tests/ui/publish.html?switch");
 	await page.getByRole("button", { name: "Publish", exact: true }).click();
 	await page.getByRole("row", { name: "Save to device", exact: true }).click();
@@ -68,10 +69,24 @@ test("publish preserves local destination and sharing continues in the backgroun
 		.getByRole("button", { name: "Fixture refresh token", exact: true })
 		.evaluate((button: HTMLButtonElement) => button.click());
 	await expect(page.getByRole("button", { name: "Copy link", exact: true })).toBeVisible();
+	await expect(page.getByRole("region", { name: "Create link" })).toHaveCount(0, {
+		timeout: 15_000,
+	});
+	await page.getByRole("button", { name: "Publish", exact: true }).click();
+	await expect(page.getByRole("textbox", { name: "Share link" })).toHaveValue(
+		"https://example.test/s/preview",
+	);
+	await page.getByRole("row", { name: "Save to device", exact: true }).click();
+	await page.getByRole("row", { name: "Create share link", exact: true }).click();
+	await expect(page.getByRole("textbox", { name: "Share link" })).toHaveValue(
+		"https://example.test/s/preview",
+	);
+	await page.keyboard.press("Escape");
 	await page
 		.getByRole("button", { name: "Fixture switch account", exact: true })
 		.evaluate((button: HTMLButtonElement) => button.click());
-	await expect(page.getByRole("button", { name: "Copy link", exact: true })).toHaveCount(0);
+	await page.getByRole("button", { name: "Publish", exact: true }).click();
+	await expect(page.getByRole("textbox", { name: "Share link" })).toHaveCount(0);
 });
 
 test("a full cloud quota prevents starting preparation", async ({ page }) => {

@@ -21,6 +21,7 @@ import { PublishLinkIcon, PublishSaveIcon } from "./PublishDestinationIcons";
 type Props = {
 	projectRevision?: string;
 	projectPath?: string | null;
+	projectSourcePath?: string | null;
 	t: ReturnType<typeof useI18n>["t"];
 	videoPlaybackRef?: RefObject<VideoPlaybackRef | null>;
 	exportSettings: ReturnType<typeof useExportSettings>;
@@ -52,6 +53,7 @@ export function EditorExportMenu(props: Props) {
 	const { publishDestination: destination, setPublishDestination: setDestination } =
 		props.exportSettings;
 	const [shareBusy, setShareBusy] = useState(false);
+	const [hasStartedShare, setHasStartedShare] = useState(false);
 	const [shareActivity, setShareActivity] = useState(false);
 	const [shareContainer, setShareContainer] = useState<HTMLDivElement | null>(null);
 	const [thumbnail, setThumbnail] = useState<string>();
@@ -90,6 +92,7 @@ export function EditorExportMenu(props: Props) {
 		(busy: boolean) => {
 			setShareBusy(busy);
 			if (busy) {
+				setHasStartedShare(true);
 				captureThumbnail();
 				setShareActivity(true);
 				setShowExportDropdown(false);
@@ -333,8 +336,9 @@ export function EditorExportMenu(props: Props) {
 					</motion.div>
 				</PopoverContent>
 			</Popover>
-			{destination === "link" && (publishMenuOpen || shareActivity || shareBusy) && (
+			{(hasStartedShare || (destination === "link" && publishMenuOpen)) && (
 				<CloudShareButton
+					key={props.projectPath ?? props.projectSourcePath ?? undefined}
 					inline
 					projectPath={props.projectPath}
 					projectRevision={props.projectRevision}
@@ -350,8 +354,9 @@ export function EditorExportMenu(props: Props) {
 						props.onRequestShareSignIn();
 					}}
 					floatingActivity={{
-						formContainer: publishMenuOpen ? shareContainer : null,
-						visible: shareActivity,
+						formContainer:
+							publishMenuOpen && destination === "link" ? shareContainer : null,
+						visible: destination === "link" && shareActivity,
 						thumbnail,
 						onDismiss: dismissShareActivity,
 						onRetry: () => {

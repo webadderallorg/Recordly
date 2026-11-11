@@ -34,7 +34,11 @@ export function shouldLoopWebcamSource(
 	timeOffsetMs = 0,
 ): boolean {
 	if (!videoPath || !webcamPath || timeOffsetMs !== 0) return false;
-	const stem = (path: string) => path.replace(/\\/g, "/").replace(/\.[^./]+$/, "");
+	const stem = (path: string) =>
+		path
+			.split(/[\\/]/)
+			.pop()
+			?.replace(/\.[^.]+$/, "");
 	const videoStem = stem(videoPath);
 	const webcamStem = stem(webcamPath);
 	return webcamStem !== videoStem && webcamStem !== `${videoStem}-webcam`;

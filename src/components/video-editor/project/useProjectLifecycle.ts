@@ -194,7 +194,7 @@ export function useProjectLifecycle(input: Input) {
 			appearance.setBorderRadius(editor.borderRadius);
 			appearance.setPadding(editor.padding);
 			appearance.setCropRegion(editor.cropRegion);
-			appearance.setWebcam({
+			const webcam = {
 				...editor.webcam,
 				loop:
 					editor.webcam.loop ??
@@ -204,7 +204,8 @@ export function useProjectLifecycle(input: Input) {
 							editor.webcam.sourcePath ? fromFileUrl(editor.webcam.sourcePath) : null,
 							editor.webcam.timeOffsetMs,
 						)),
-			});
+			};
+			appearance.setWebcam(webcam);
 			timeline.setZoomRegions(editor.zoomRegions);
 			timeline.setTrimRegions(editor.trimRegions);
 			timeline.setClipRegions(editor.clipRegions);
@@ -245,13 +246,14 @@ export function useProjectLifecycle(input: Input) {
 			refs.nextAnnotationZIndexRef.current =
 				editor.annotationRegions.reduce((max, region) => Math.max(max, region.zIndex), 0) +
 				1;
-			const restoredHistory = restoreEditorHistory(loadedProject.history, editor);
+			const appliedEditor = { ...editor, webcam };
+			const restoredHistory = restoreEditorHistory(loadedProject.history, appliedEditor);
 			current.restoreHistory(restoredHistory);
 			project.setLastSavedSnapshot(
 				cloneStructured(
 					createProjectData(
 						sourcePath,
-						current.buildPersistedEditorState(editor),
+						current.buildPersistedEditorState(appliedEditor),
 						loadedProject.projectId ?? null,
 						persistEditorHistory(restoredHistory),
 					),

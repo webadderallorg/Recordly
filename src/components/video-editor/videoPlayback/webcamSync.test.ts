@@ -72,6 +72,10 @@ describe("getWebcamMediaTargetTimeSeconds", () => {
 it("repeats older uploads while preserving timing for paired webcam recordings", () => {
 	expect(shouldLoopWebcamSource("/clips/demo.mp4", "/downloads/camera.mp4")).toBe(true);
 	expect(shouldLoopWebcamSource("/clips/demo.mp4", "/clips/demo-webcam.webm")).toBe(false);
+	expect(shouldLoopWebcamSource("/clips/demo.mp4", "/relocated/demo-webcam.webm")).toBe(false);
+	expect(shouldLoopWebcamSource("C:\\clips\\demo.mp4", "D:\\relocated\\demo-webcam.webm")).toBe(
+		false,
+	);
 	expect(shouldLoopWebcamSource("/clips/demo.mp4", "/camera.mp4", 150)).toBe(false);
 });
 

@@ -278,6 +278,7 @@ export function EditorHeader(props: Props) {
 					handleStartExportFromDropdown={handleStartExportFromDropdown}
 					revealExportedFile={revealExportedFile}
 					projectPath={project.currentProjectPath}
+					projectSourcePath={project.videoSourcePath}
 					projectRevision={props.projectRevision}
 					projectTitle={projectDisplayName}
 					prepareExportForShare={props.prepareExportForShare}

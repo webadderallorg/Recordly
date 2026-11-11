@@ -27,7 +27,7 @@ export function readRecentSharedVideos(
 	fresh = false,
 ): Promise<SharedVideo[]> {
 	const existing = snapshots.get(key);
-	if (existing?.pending) return existing.pending;
+	if (existing?.pending && !fresh) return existing.pending;
 	if (!fresh && existing?.videos && existing.expiresAt > Date.now())
 		return Promise.resolve(existing.videos);
 	const snapshot: Snapshot = { videos: existing?.videos, expiresAt: existing?.expiresAt ?? 0 };

@@ -93,3 +93,25 @@ it("keeps a known nonempty display snapshot during an expired background reload"
 	await pending;
 	expect(cache.peekRecentSharedVideos("account")).toEqual([]);
 });
+
+it("uses the newer result when a forced refresh overtakes an in-flight list", async () => {
+	const old = { code: "old", title: "Old", url: "https://share.test/s/old", ready: true };
+	let release!: (result: { success: boolean; videos: (typeof old)[] }) => void;
+	list.mockImplementationOnce(
+		() =>
+			new Promise((resolve) => {
+				release = resolve;
+			}),
+	).mockResolvedValueOnce({ success: true, videos: [] });
+	const read = (fresh = false) =>
+		cache.readRecentSharedVideos("account", "https://share.test", "token", fresh);
+	const earlier = read();
+	await Promise.resolve();
+	const refreshed = read(true);
+	expect(read()).toBe(refreshed);
+	await expect(refreshed).resolves.toEqual([]);
+	release({ success: true, videos: [old] });
+	await earlier;
+	expect(cache.peekRecentSharedVideos("account")).toEqual([]);
+	expect(list).toHaveBeenCalledTimes(2);
+});
