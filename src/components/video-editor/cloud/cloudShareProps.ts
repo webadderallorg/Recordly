@@ -5,6 +5,7 @@ export type Props = {
 	onRegenerate?: () => void;
 	projectPath?: string | null;
 	projectSourcePath?: string | null;
+	openedSavedProject?: boolean;
 	filePath?: string;
 	projectTitle: string;
 	prepareFile?: () => Promise<string | undefined>;

@@ -25,6 +25,7 @@ export function useCloudShareController(props: Props) {
 		linkIsStale,
 		projectPath,
 		projectSourcePath,
+		openedSavedProject,
 		filePath,
 		projectTitle,
 		prepareFile,
@@ -143,7 +144,8 @@ export function useCloudShareController(props: Props) {
 			return;
 		currentProject.current = { accountId, path, source };
 		savedForFirstTime.current = Boolean(
-			path &&
+			!openedSavedProject &&
+				path &&
 				!previous.path &&
 				source &&
 				previous.source === source &&
@@ -165,7 +167,7 @@ export function useCloudShareController(props: Props) {
 		setPublishedUrl(undefined);
 		setSavedShare(undefined);
 		setCopied(false);
-	}, [projectPath, projectSourcePath, accountId, phase, onCancelPrepare]);
+	}, [projectPath, projectSourcePath, openedSavedProject, accountId, phase, onCancelPrepare]);
 
 	useLayoutEffect(() => {
 		const firstSave = savedForFirstTime.current;

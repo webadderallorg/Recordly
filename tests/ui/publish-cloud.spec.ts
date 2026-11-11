@@ -550,26 +550,28 @@ for (const duringUpload of [true, false]) {
 	});
 }
 
-test("switching saved projects cancels sharing even when they use the same recording", async ({
-	page,
-}) => {
-	await page.goto("/tests/ui/publish.html?switch&controlled&saved");
-	const publish = page.getByRole("button", { name: "Publish", exact: true });
-	await publish.click();
-	await page.getByRole("button", { name: "Share", exact: true }).click();
-	await expect(page.getByRole("progressbar", { name: "Create link" })).toHaveAttribute(
-		"aria-valuenow",
-		"85",
-	);
-	await page
-		.getByRole("button", { name: "Fixture switch project" })
-		.evaluate((button: HTMLButtonElement) => button.click());
-	await expect(page.locator("html")).toHaveAttribute("data-canceled-expected-upload", "true");
-	await page
-		.getByRole("button", { name: "Fixture finish upload" })
-		.evaluate((button: HTMLButtonElement) => button.click());
-	await expect(publish).toBeEnabled();
-	await publish.click();
-	await expect(page.getByRole("button", { name: "Share", exact: true })).toBeVisible();
-	await expect(page.getByRole("textbox", { name: "Share link" })).toHaveCount(0);
-});
+for (const saved of [true, false]) {
+	test(`opening a saved project cancels sharing from a ${saved ? "saved" : "new"} project using the same recording`, async ({
+		page,
+	}) => {
+		await page.goto(`/tests/ui/publish.html?switch&controlled${saved ? "&saved" : ""}`);
+		const publish = page.getByRole("button", { name: "Publish", exact: true });
+		await publish.click();
+		await page.getByRole("button", { name: "Share", exact: true }).click();
+		await expect(page.getByRole("progressbar", { name: "Create link" })).toHaveAttribute(
+			"aria-valuenow",
+			"85",
+		);
+		await page
+			.getByRole("button", { name: "Fixture switch project" })
+			.evaluate((button: HTMLButtonElement) => button.click());
+		await expect(page.locator("html")).toHaveAttribute("data-canceled-expected-upload", "true");
+		await page
+			.getByRole("button", { name: "Fixture finish upload" })
+			.evaluate((button: HTMLButtonElement) => button.click());
+		await expect(publish).toBeEnabled();
+		await publish.click();
+		await expect(page.getByRole("button", { name: "Share", exact: true })).toBeVisible();
+		await expect(page.getByRole("textbox", { name: "Share link" })).toHaveCount(0);
+	});
+}

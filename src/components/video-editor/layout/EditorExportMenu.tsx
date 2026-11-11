@@ -22,6 +22,7 @@ type Props = {
 	projectRevision?: string;
 	projectPath?: string | null;
 	projectSourcePath?: string | null;
+	openedSavedProject?: boolean;
 	t: ReturnType<typeof useI18n>["t"];
 	videoPlaybackRef?: RefObject<VideoPlaybackRef | null>;
 	exportSettings: ReturnType<typeof useExportSettings>;
@@ -341,6 +342,7 @@ export function EditorExportMenu(props: Props) {
 					inline
 					projectPath={props.projectPath}
 					projectSourcePath={props.projectSourcePath}
+					openedSavedProject={props.openedSavedProject}
 					projectRevision={props.projectRevision}
 					projectTitle={props.projectTitle}
 					prepareFile={props.prepareExportForShare}

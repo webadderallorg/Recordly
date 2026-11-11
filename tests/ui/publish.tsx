@@ -76,6 +76,7 @@ window.electronAPI = {
 function Preview() {
 	const [mounted, setMounted] = useState(true);
 	const [open, setOpen] = useState(false);
+	const [openedSavedProject, setOpenedSavedProject] = useState(false);
 	const [projectPath, setProjectPath] = useState(() =>
 		new URLSearchParams(location.search).has("saved") ? "/fixture.recordly" : undefined,
 	);
@@ -89,6 +90,7 @@ function Preview() {
 	const props = {
 		projectPath,
 		projectSourcePath: "/fixture.mp4",
+		openedSavedProject,
 		projectRevision: new URLSearchParams(location.search).has("edited")
 			? "revision-2"
 			: "revision-1",
@@ -165,7 +167,13 @@ function Preview() {
 					<button type="button" onClick={() => setProjectPath("/fixture.recordly")}>
 						Fixture first project save
 					</button>
-					<button type="button" onClick={() => setProjectPath("/different.recordly")}>
+					<button
+						type="button"
+						onClick={() => {
+							setOpenedSavedProject(true);
+							setProjectPath("/different.recordly");
+						}}
+					>
 						Fixture switch project
 					</button>
 					<button type="button" onClick={() => setMounted(false)}>
