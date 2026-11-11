@@ -149,24 +149,13 @@ export function CaptionGenerationSettings({
 					{tSettings(`captions.modelLanguages.${model.id}`, model.languageDescription)}
 					{" · "}
 					{tSettings("captions.wordTiming", "Word timing")}
-					{!modelReady &&
-						` · ${formatNumber(Math.round(model.downloadBytes / 1_000_000))} MB`}
 				</p>
-				{!modelReady && (
-					<p className="text-[11px] leading-relaxed text-muted-foreground">
-						{tSettings(
-							"captions.firstDownload",
-							"First use downloads {{size}} MB of speech files, then generates captions.",
-							{ size: formatNumber(Math.round(model.downloadBytes / 1_000_000)) },
-						)}
-					</p>
-				)}
 				<div className="flex items-center gap-2">
 					<Button
 						type="button"
 						onClick={onGenerateAutoCaptions}
 						disabled={isBusy}
-						className="h-9 min-w-0 flex-1 px-3 text-sm"
+						className="h-auto min-h-9 min-w-0 flex-1 whitespace-normal px-3 py-2 text-sm"
 					>
 						{isDownloading ? (
 							<>
@@ -175,6 +164,12 @@ export function CaptionGenerationSettings({
 							</>
 						) : isGeneratingCaptions ? (
 							tSettings("captions.generating", "Generating...")
+						) : !modelReady ? (
+							tSettings(
+								"captions.downloadAndGenerate",
+								"Download {{size}} MB & generate captions",
+								{ size: formatNumber(Math.round(model.downloadBytes / 1_000_000)) },
+							)
 						) : captionCueCount > 0 ? (
 							tSettings("captions.regenerateFull", "Regenerate Captions")
 						) : (

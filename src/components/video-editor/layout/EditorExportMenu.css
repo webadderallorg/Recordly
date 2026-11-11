@@ -1,4 +1,22 @@
 /* Carry React Aria's available-height bound through the dialog's contents wrapper. */
+.publish-menu {
+	border-radius: inherit;
+}
+
 .publish-menu > .contents {
 	max-height: inherit;
+}
+
+.publish-menu-scroll:has(.export-settings-footer) {
+	scroll-padding-bottom: 100px;
+}
+
+.publish-menu .export-settings-footer {
+	position: sticky;
+	bottom: 0;
+	z-index: 1;
+	margin-inline: -20px;
+	padding: 12px 20px 16px;
+	border-top: 1px solid var(--separator);
+	background: var(--surface);
 }

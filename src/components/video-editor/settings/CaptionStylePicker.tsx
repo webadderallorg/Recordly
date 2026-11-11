@@ -1,13 +1,14 @@
+import { getSquircleCssRadius } from "@/lib/geometry/squircle";
 import { useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useScopedT } from "@/contexts/I18nContext";
 import { getAssetPath, getRenderableAssetUrl } from "@/lib/assetPath";
+import { useScopedT } from "@/contexts/I18nContext";
 import { getCaptionFontFamily } from "../captionFonts";
 import { prepareCaptionLayout } from "../captionLayout";
 import { CAPTION_STYLE_OPTIONS, getCaptionBackground, getCaptionPreset } from "../captionPresets";
 import { getCaptionPadding, getCaptionScaledRadius } from "../captionStyle";
-import { type AutoCaptionStyle, DEFAULT_AUTO_CAPTION_SETTINGS } from "../types";
+import { DEFAULT_AUTO_CAPTION_SETTINGS, type AutoCaptionStyle } from "../types";
 import styles from "./CaptionStylePicker.module.css";
 
 const SAMPLE = [
@@ -96,7 +97,9 @@ function CaptionStylePreview({
 						padding: `${padding.y}px ${padding.x}px`,
 						background: getCaptionBackground(settings),
 						color: settings.textColor,
-						borderRadius: getCaptionScaledRadius(settings.boxRadius, fontSize),
+						borderRadius: getSquircleCssRadius(
+							getCaptionScaledRadius(settings.boxRadius, fontSize),
+						),
 						boxShadow: preset.borderEm
 							? `inset 0 0 0 ${preset.borderEm}em rgba(0, 0, 0, 0.12)`
 							: undefined,

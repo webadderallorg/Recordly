@@ -62,6 +62,7 @@
 	flex: 0 0 30px;
 	height: 30px;
 	border-radius: 50%;
+	corner-shape: round;
 	overflow: hidden;
 	background: color-mix(in srgb, var(--accent) 9%, var(--surface));
 	color: var(--post-muted);

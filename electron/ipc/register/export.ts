@@ -254,7 +254,31 @@ function isTempPathSafe(tempPath: string): boolean {
 	return candidate.startsWith(withSep);
 }
 
+function getExportSaveDialogDefaultPath(fileName: string, sidecarExtensions: readonly string[]) {
+	const requestedPath = path.join(app.getPath("downloads"), fileName);
+	return getAvailableExportPath(requestedPath, sidecarExtensions).catch(() => requestedPath);
+}
+
 export function registerExportHandlers() {
+	ipcMain.handle(
+		"suggest-export-file-name",
+		async (_event, fileName: unknown, sidecarFormat: unknown) => {
+			if (
+				typeof fileName !== "string" ||
+				/[<>:"/\\|?*\p{Cc}]/u.test(fileName) ||
+				!/\.(mp4|gif)$/i.test(fileName)
+			) {
+				return null;
+			}
+			const sidecarExtensions = getCaptionSidecarExtensions(
+				sidecarFormat === "srt" || sidecarFormat === "vtt" || sidecarFormat === "both"
+					? { format: sidecarFormat }
+					: null,
+			);
+			return path.basename(await getExportSaveDialogDefaultPath(fileName, sidecarExtensions));
+		},
+	);
+
 	ipcMain.handle(
 		"native-video-export-start",
 		async (
@@ -881,10 +905,10 @@ export function registerExportHandlers() {
 				const parentWindow = BrowserWindow.fromWebContents(event.sender);
 				const saveDialogOptions: SaveDialogOptions = {
 					title: isGif ? nativeT("saveGif") : nativeT("saveVideo"),
-					defaultPath: await getAvailableExportPath(
-						path.join(app.getPath("downloads"), fileName),
+					defaultPath: await getExportSaveDialogDefaultPath(
+						fileName,
 						getCaptionSidecarExtensions(sidecarPayload),
-					).catch(() => path.join(app.getPath("downloads"), fileName)),
+					),
 					filters,
 					properties: ["createDirectory", "showOverwriteConfirmation"],
 				};
@@ -1050,10 +1074,10 @@ export function registerExportHandlers() {
 				const parentWindow = BrowserWindow.fromWebContents(event.sender);
 				const saveDialogOptions: SaveDialogOptions = {
 					title: isGif ? nativeT("saveGif") : nativeT("saveVideo"),
-					defaultPath: await getAvailableExportPath(
-						path.join(app.getPath("downloads"), fileName),
+					defaultPath: await getExportSaveDialogDefaultPath(
+						fileName,
 						getCaptionSidecarExtensions(sidecarPayload),
-					).catch(() => path.join(app.getPath("downloads"), fileName)),
+					),
 					filters,
 					properties: ["createDirectory", "showOverwriteConfirmation"],
 				};

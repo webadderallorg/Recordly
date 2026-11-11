@@ -1,5 +1,13 @@
 import { Separator } from "@heroui/react";
-import type { FormEvent, ReactNode, RefObject } from "react";
+import {
+	type FormEvent,
+	type ReactNode,
+	type RefObject,
+	useId,
+	useLayoutEffect,
+	useRef,
+} from "react";
+import { useFocusRing } from "react-aria";
 import { UpgradeButton } from "@/components/billing/UpgradeButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { Button } from "@/components/ui/button";
@@ -12,6 +20,7 @@ import type { useExportSettings } from "../export/useExportSettings";
 import type { useExportStatusViewModel } from "../export/useExportStatusViewModel";
 import type { useVideoEditorPresets } from "../presets/useVideoEditorPresets";
 import type { useProjectState } from "../state/useProjectState";
+import type { VideoPlaybackRef } from "../VideoPlayback";
 import { AppFrameHeader } from "./AppFrameHeader";
 import { AppUpdateButton } from "./AppUpdateButton";
 import { EditorExportMenu } from "./EditorExportMenu";
@@ -31,6 +40,7 @@ type Props = {
 	projectBrowserTriggerRef: RefObject<HTMLButtonElement | null>;
 	projectNameInputRef: RefObject<HTMLInputElement | null>;
 	projectDisplayName: string;
+	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
 	hasUnsavedChanges: boolean;
 	canUndo: boolean;
 	canRedo: boolean;
@@ -101,25 +111,36 @@ export function EditorHeader(props: Props) {
 		setProjectNameDraft,
 		isSavingProjectName,
 	} = project;
+	const { isFocusVisible, focusProps } = useFocusRing({ isTextInput: true });
+	const projectTitleId = useId();
+	const renameButtonRef = useRef<HTMLButtonElement>(null);
+	const restoreRenameFocus = useRef(false);
+	useLayoutEffect(() => {
+		if (!isEditingProjectName && restoreRenameFocus.current) {
+			restoreRenameFocus.current = false;
+			renameButtonRef.current?.focus();
+		}
+	}, [isEditingProjectName]);
 
 	return (
 		<AppFrameHeader className="editor-header">
 			<div
 				className={`editor-header-start flex min-w-0 items-center gap-1 ${headerLeftControlsPaddingClass}`}
 			>
-				<Button
-					ref={projectBrowserTriggerRef}
-					type="button"
-					variant="ghost"
-					size="sm"
-					onClick={handleOpenProjectBrowser}
-					className="h-9 shrink-0 gap-2 px-3"
-					title={uiText("ui.home")}
-					aria-label={uiText("ui.home")}
-				>
-					<House weight="fill" className="h-4 w-4" />
-					<span>{uiText("ui.home")}</span>
-				</Button>
+				<span className="contents" title={uiText("ui.home")}>
+					<Button
+						ref={projectBrowserTriggerRef}
+						type="button"
+						variant="ghost"
+						size="sm"
+						onClick={handleOpenProjectBrowser}
+						className="editor-header-icon-button h-9 shrink-0 gap-2 px-3"
+						aria-label={uiText("ui.home")}
+					>
+						<House weight="fill" className="h-4 w-4" />
+						<span className="editor-header-button-label">{uiText("ui.home")}</span>
+					</Button>
+				</span>
 				<span
 					aria-hidden="true"
 					className="mx-2 shrink-0 text-xl font-light text-muted-foreground/60"
@@ -127,18 +148,23 @@ export function EditorHeader(props: Props) {
 					/
 				</span>
 
-				<div className="editor-header-title flex min-w-0 items-center">
+				<div
+					className="editor-header-title flex min-w-0 items-center"
+					title={isEditingProjectName ? undefined : projectDisplayName}
+				>
 					{isEditingProjectName ? (
 						<form
 							onSubmit={(event) => void handleProjectNameSubmit(event)}
 							className="flex w-full min-w-0 items-center gap-1.5 px-2"
 						>
 							<input
+								{...focusProps}
 								ref={projectNameInputRef}
 								type="text"
 								value={projectNameDraft}
 								onChange={(event) => setProjectNameDraft(event.target.value)}
-								onBlur={() => {
+								onBlur={(event) => {
+									focusProps.onBlur?.(event);
 									if (
 										!isSavingProjectName &&
 										projectNameDraft.trim() !== projectDisplayName
@@ -149,41 +175,52 @@ export function EditorHeader(props: Props) {
 								onKeyDown={(event) => {
 									if (event.key === "Escape") {
 										event.preventDefault();
+										restoreRenameFocus.current = true;
 										closeProjectNameEditor();
 									}
 								}}
 								disabled={isSavingProjectName}
 								className="inline-project-name h-9 min-w-0 max-w-full text-sm font-semibold tracking-tight text-foreground/90 disabled:cursor-wait"
+								data-focus-visible={isFocusVisible || undefined}
 								aria-label={t("editor.project.renameInput", "Project name")}
 							/>
 						</form>
 					) : (
 						<Button
+							ref={renameButtonRef}
 							variant="ghost"
 							type="button"
 							onClick={() => setIsEditingProjectName(true)}
 							className="inline-flex h-9 min-w-0 max-w-full cursor-text items-center gap-1.5 rounded-lg px-2 hover:bg-transparent"
-							title={t("editor.project.renameTitle", "Rename project")}
 							aria-label={t("editor.project.renameTitle", "Rename project")}
+							aria-describedby={projectTitleId}
 						>
-							<span className="truncate text-sm font-semibold tracking-tight text-foreground/90">
+							<span
+								id={projectTitleId}
+								className="truncate text-sm font-semibold tracking-tight text-foreground/90"
+							>
 								{projectDisplayName}
 							</span>
 						</Button>
 					)}
 				</div>
 				<Separator orientation="vertical" className="mx-3 h-5 shrink-0 self-center" />
-				<Button
-					variant="ghost"
-					size="sm"
-					className={`h-8 shrink-0 gap-2 rounded-lg border px-3 text-xs font-medium transition-colors ${props.clipsOpen ? "border-foreground/20 bg-foreground/10 text-foreground" : "border-border bg-transparent text-muted hover:bg-foreground/5 hover:text-foreground"}`}
-					aria-label={uiText("ui.clips")}
-					aria-expanded={props.clipsOpen}
-					onClick={props.onToggleClips}
-				>
-					<FilmStrip weight={props.clipsOpen ? "fill" : "regular"} className="size-4" />
-					{uiText("ui.clips")}
-				</Button>
+				<span className="contents" title={uiText("ui.clips")}>
+					<Button
+						variant="ghost"
+						size="sm"
+						className={`editor-header-icon-button h-8 shrink-0 gap-2 rounded-lg border px-3 text-xs font-medium transition-colors ${props.clipsOpen ? "border-foreground/20 bg-foreground/10 text-foreground" : "border-border bg-transparent text-muted hover:bg-foreground/5 hover:text-foreground"}`}
+						aria-label={uiText("ui.clips")}
+						aria-expanded={props.clipsOpen}
+						onClick={props.onToggleClips}
+					>
+						<FilmStrip
+							weight={props.clipsOpen ? "fill" : "regular"}
+							className="size-4"
+						/>
+						<span className="editor-header-button-label">{uiText("ui.clips")}</span>
+					</Button>
+				</span>
 			</div>
 
 			<div className="editor-header-end flex min-w-0 items-center justify-self-end gap-3">
@@ -225,6 +262,7 @@ export function EditorHeader(props: Props) {
 				/>
 				<EditorExportMenu
 					t={t}
+					videoPlaybackRef={props.videoPlaybackRef}
 					exportSettings={exportSettings}
 					exportSession={exportSession}
 					exportDimensions={exportDimensions}

@@ -1,3 +1,4 @@
+import { AppVersionPicker } from "./AppVersionPicker";
 import { ProgressBar } from "@heroui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
@@ -14,7 +15,6 @@ import { useI18n } from "@/contexts/I18nContext";
 import { SettingsInfo } from "../SettingsInfo";
 import { SettingsRow } from "../SettingsRow";
 import styles from "./AppUpdateSettings.module.css";
-import { AppVersionPicker } from "./AppVersionPicker";
 
 type Summary = Awaited<ReturnType<Window["electronAPI"]["getUpdateStatusSummary"]>>;
 

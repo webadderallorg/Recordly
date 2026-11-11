@@ -69,14 +69,15 @@ test("cleanup previews timelines, dates and duplicate keepers before selecting, 
 		"true",
 	);
 	await page.getByRole("textbox", { name: "Search", exact: true }).fill("Recent");
-	await expect(page.getByRole("button", { name: "Review deletion…" })).toBeDisabled();
+	await expect(page.getByRole("button", { name: "Review deletion…" })).toHaveCount(0);
 });
 
 test("deletion requires review and cancel preserves files; partial deletion retains failed selection", async ({
 	page,
 }) => {
 	await page.goto("/tests/ui/library-cleanup.html?partial");
-	await page.getByRole("button", { name: "Select projects to delete" }).click();
+	await page.getByRole("button", { name: "Select projects" }).click();
+	await expect(page.getByRole("button", { name: "Review deletion…" })).toHaveCount(0);
 	await page.getByRole("button", { name: "Original copy", exact: true }).click();
 	await page.getByRole("button", { name: "Newest copy", exact: true }).click();
 	await page.getByRole("button", { name: "Review deletion…" }).click();

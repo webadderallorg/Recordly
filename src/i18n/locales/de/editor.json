@@ -20,6 +20,7 @@
 		"standard": "Standard"
 	},
 	"cloud": {
+		"uploadingVideo": "Video wird hochgeladen …",
 		"signInRequired": "Melde dich bei Recordly an, bevor du einen Freigabelink erstellst.",
 		"prepareFailed": "Der aktuelle Schnitt konnte nicht zum Teilen vorbereitet werden.",
 		"uploadFailed": "Cloud-Upload fehlgeschlagen.",
@@ -228,6 +229,8 @@
 		"confirm": "Okay"
 	},
 	"exportStatus": {
+		"finishingVideo": "Video wird fertiggestellt …",
+		"savingVideo": "Video wird gespeichert …",
 		"exporting": "Exportieren",
 		"renderingFile": "Datei wird gerendert.",
 		"preparing": "Export wird vorbereitet...",

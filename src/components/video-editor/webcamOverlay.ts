@@ -1,5 +1,11 @@
 import { getSquircleSvgPath } from "@/lib/geometry/squircle";
-import type { CropRegion, WebcamCorner, WebcamPositionPreset, WebcamShape } from "./types";
+import {
+	type CropRegion,
+	DEFAULT_WEBCAM_SIZE,
+	type WebcamCorner,
+	type WebcamPositionPreset,
+	type WebcamShape,
+} from "./types";
 
 // Strongly rounded shoulders, with enough flatness to remain a squircle.
 export const WEBCAM_SQUIRCLE_EXPONENT = 2.4;
@@ -108,7 +114,8 @@ export function resolveWebcamCorner(
 
 export function getWebcamOverlayScale(zoomScale: number, reactToZoom: boolean): number {
 	const safeZoomScale = Number.isFinite(zoomScale) && zoomScale > 0 ? zoomScale : 1;
-	return reactToZoom ? 1 / safeZoomScale : 1;
+	const shrink = 1 - 1 / safeZoomScale;
+	return reactToZoom ? 1 - shrink * 0.7 : 1;
 }
 
 export function getWebcamOverlaySizePx({
@@ -265,7 +272,7 @@ export function getCropMatchedWebcamHeightPercent(
 	cropRegion: Partial<CropRegion> | null | undefined,
 	shape?: WebcamShape,
 ): number {
-	const safeWidthPercent = Number.isFinite(widthPercent) ? widthPercent : 40;
+	const safeWidthPercent = Number.isFinite(widthPercent) ? widthPercent : DEFAULT_WEBCAM_SIZE;
 	const safeHeightPercent = Number.isFinite(heightPercent) ? heightPercent : safeWidthPercent;
 	if (
 		shape === "squircle" ||

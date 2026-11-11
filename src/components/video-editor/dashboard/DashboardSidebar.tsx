@@ -3,7 +3,6 @@ import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { Button } from "@/components/ui/button";
 import { ChatWarning, Cloud, GearSix, House, Plus } from "@/components/ui/icons";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
-import { CommunityLinks } from "../TutorialHelp";
 import { FolderRow } from "./FolderRow";
 import { RecordNewButton } from "./RecordNewButton";
 import { SidebarCards } from "./SidebarCards";
@@ -18,6 +17,7 @@ export function DashboardSidebar({
 	run,
 	folders,
 	save,
+	addToFolder,
 	section,
 	setSection,
 	openSettings,
@@ -31,6 +31,7 @@ export function DashboardSidebar({
 	| "run"
 	| "folders"
 	| "save"
+	| "addToFolder"
 	| "section"
 	| "setSection"
 	| "openSettings"
@@ -108,6 +109,7 @@ export function DashboardSidebar({
 							key={folder.id}
 							folder={folder}
 							active={section === folder.id}
+							onDropProject={(path) => addToFolder(path, folder.id)}
 							onSelect={() => setSection(folder.id)}
 							onChange={(next) =>
 								save(folders.map((item) => (item.id === next.id ? next : item)))
@@ -142,7 +144,6 @@ export function DashboardSidebar({
 						<GearSix weight="fill" className="size-[18px]" aria-hidden="true" />
 						{uiText("ui.settings")}
 					</Button>
-					<CommunityLinks />
 				</div>
 			</aside>
 			<FeedbackDialog

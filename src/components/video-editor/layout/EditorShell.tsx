@@ -369,6 +369,7 @@ export function EditorShell(props: Props) {
 						projectBrowserTriggerRef={ui.projectBrowserTriggerRef}
 						projectNameInputRef={ui.projectNameInputRef}
 						projectDisplayName={snapshot.projectDisplayName}
+						videoPlaybackRef={ui.videoPlaybackRef}
 						hasUnsavedChanges={hasUnsavedChanges}
 						canUndo={history.canUndo}
 						canRedo={history.canRedo}

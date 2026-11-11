@@ -329,7 +329,6 @@ function VideoEditorContent() {
 		captionSidecarPayload,
 		experimentalNvidiaCudaExport,
 		nvidiaCudaExportAvailable,
-		remountPreview,
 	});
 	const previewAspectRatioValue = getAspectRatioValue(
 		aspectRatio,

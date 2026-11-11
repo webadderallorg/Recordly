@@ -1,0 +1,103 @@
+.editor-export-card {
+	position: fixed;
+	z-index: 70;
+	inset-inline-end: 20px;
+	inset-block-end: 20px;
+	display: grid;
+	grid-template-columns: 52px minmax(0, 1fr);
+	align-items: start;
+	gap: 14px;
+	width: min(380px, calc(100% - 40px));
+	padding: 16px;
+	border: 1px solid var(--separator);
+	border-radius: 20px;
+	background: var(--surface);
+	color: var(--foreground);
+	box-shadow: 0 8px 28px rgb(0 0 0 / 16%);
+	overflow: visible;
+}
+
+.editor-export-card-file {
+	position: relative;
+}
+
+.editor-export-card-tile {
+	display: grid;
+	height: 52px;
+	place-content: center;
+	justify-items: center;
+	gap: 2px;
+	border: 1px solid var(--separator);
+	border-radius: 12px;
+	overflow: hidden;
+	background: var(--default);
+	color: var(--muted);
+	font-size: 9px;
+	font-weight: 700;
+}
+
+.editor-export-card-tile:has(.editor-export-card-thumbnail) {
+	display: block;
+}
+
+.editor-export-card-thumbnail {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.editor-export-card .editor-export-card-close {
+	position: absolute;
+	inset-block-start: -7px;
+	inset-inline-end: -7px;
+	width: 24px;
+	height: 24px;
+	min-width: 24px;
+	padding: 0;
+	border: 1px solid var(--separator);
+	border-radius: 50%;
+	corner-shape: round;
+	background: var(--surface);
+	color: var(--foreground);
+	box-shadow: 0 2px 5px rgb(0 0 0 / 13%);
+	transition: opacity 140ms ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.editor-export-card:not(:hover):not(:focus-within) .editor-export-card-close {
+		opacity: 0;
+		pointer-events: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.editor-export-card .editor-export-card-close {
+		transition: none;
+	}
+}
+
+.editor-export-card-body {
+	display: flex;
+	min-width: 0;
+	flex-direction: column;
+	gap: 5px;
+}
+
+.editor-export-card .export-progress-indicator {
+	gap: 6px;
+}
+
+.editor-export-card .export-progress-phase {
+	min-height: 18px;
+	text-align: start;
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 18px;
+	letter-spacing: normal;
+	color: var(--muted);
+}
+
+.editor-export-card .progress-bar__track {
+	height: 6px;
+}

@@ -16,7 +16,7 @@ export function getStaticLayoutChunkOutputPath(directory: string, index: number)
 export function shouldUsePrecompositedStaticLayout(options: NativeStaticLayoutExportOptions) {
 	return Boolean(
 		options.backgroundImagePath ||
-			(options.borderRadius ?? 0) > 0.5 ||
+			(options.borderRadius ?? 0) > 0 ||
 			(options.shadowIntensity ?? 0) > 0,
 	);
 }

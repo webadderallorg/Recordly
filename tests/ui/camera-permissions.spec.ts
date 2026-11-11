@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { getWebcamClipPath } from "../../src/components/video-editor/webcamOverlay";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 test("editor mode never opens the camera and releases an active recorder preview", async ({
@@ -40,7 +41,7 @@ test("editor mode never opens the camera and releases an active recorder preview
 		});
 	});
 	await page.goto("/?windowType=hud-overlay");
-	await expect(page.getByRole("button", { name: "Disable webcam" })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Camera settings" })).toBeVisible();
 	expect(await page.locator("html").getAttribute("data-camera-requests")).toBeNull();
 	await page.evaluate(() => window.dispatchEvent(new Event("test-leave-editor")));
 	await expect(page.locator("html")).toHaveAttribute("data-camera-requests", "1");
@@ -108,9 +109,11 @@ test("camera options preview preserves saved squircle rounding", async ({ page }
 	});
 	await page.goto("/?windowType=hud-overlay");
 	expect(await page.locator("html").getAttribute("data-shape-camera-requests")).toBeNull();
-	await page.getByRole("button", { name: "Disable webcam overlay", exact: true }).click();
+	await page.getByRole("button", { name: "Camera settings", exact: true }).click();
 	await expect(page.locator("[data-floating-webcam-preview]")).toHaveCount(0);
-	const camera = page.getByRole("dialog", { name: "Options", exact: true }).locator("video");
+	const camera = page
+		.getByRole("dialog", { name: "Camera settings", exact: true })
+		.locator("video");
 	await expect(camera).toBeVisible();
 	await expect(page.locator("html")).toHaveAttribute("data-shape-camera-requests", "1");
 	await expect
@@ -121,17 +124,17 @@ test("camera options preview preserves saved squircle rounding", async ({ page }
 			),
 		)
 		.toBe(true);
+	const savedClipPath = getWebcamClipPath(69, 96, 96, "squircle");
 	await expect
 		.poll(() =>
-			camera.evaluate((node) => {
-				const mask = node.parentElement!;
-				const radius = Number(getComputedStyle(mask).clipPath.match(/M\s+([\d.]+)/)?.[1]);
-				const box = mask.getBoundingClientRect();
-				return Math.round(100 * (radius / (Math.min(box.width, box.height) / 2)) ** 4);
-			}),
+			camera.evaluate((node, clipPath) => {
+				const reference = document.createElement("div");
+				reference.style.clipPath = clipPath;
+				return getComputedStyle(node).clipPath === reference.style.clipPath;
+			}, savedClipPath),
 		)
-		.toBe(69);
+		.toBe(true);
 	await page.keyboard.press("Escape");
-	await expect(page.getByRole("dialog", { name: "Options", exact: true })).toHaveCount(0);
+	await expect(page.getByRole("dialog", { name: "Camera settings", exact: true })).toHaveCount(0);
 	await expect(page.locator("html")).toHaveAttribute("data-shape-camera-stopped", "true");
 });

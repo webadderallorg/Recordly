@@ -20,6 +20,7 @@
 		"standard": "표준"
 	},
 	"cloud": {
+		"uploadingVideo": "동영상 업로드 중…",
 		"signInRequired": "공유 링크를 만들기 전에 Recordly에 로그인하세요.",
 		"prepareFailed": "현재 편집본을 공유할 준비를 하지 못했습니다.",
 		"uploadFailed": "클라우드 업로드에 실패했습니다.",
@@ -228,6 +229,8 @@
 		"confirm": "확인"
 	},
 	"exportStatus": {
+		"finishingVideo": "동영상 마무리 중…",
+		"savingVideo": "동영상 저장 중…",
 		"exporting": "내보내는 중",
 		"renderingFile": "파일을 렌더링하고 있습니다.",
 		"preparing": "내보내기를 준비하는 중...",

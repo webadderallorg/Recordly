@@ -75,8 +75,8 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 		.fill("A very long project title that should truncate and never cover the toolbar");
 	// Validate the editing state as well as the display state.
 	for (const width of [1440, 1280, 800]) {
-		await page.setViewportSize({ width, height: 800 });
-		for (const trafficLightsVisible of [true, false]) {
+		await page.setViewportSize({ width, height: width === 800 ? 600 : 800 });
+		for (const trafficLightsVisible of [false, true]) {
 			await page.evaluate(
 				(visible) =>
 					window.dispatchEvent(
@@ -120,6 +120,11 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 			expect(center!.x).toBeGreaterThan(left!.x);
 			expect(left!.x + left!.width).toBeLessThanOrEqual(right!.x);
 			expect(center!.x + center!.width).toBeLessThanOrEqual(right!.x);
+			expect(center!.width).toBeGreaterThanOrEqual(120);
+			const clips = await page
+				.getByRole("button", { name: "Clips", exact: true })
+				.boundingBox();
+			expect(clips!.x + clips!.width).toBeLessThanOrEqual(right!.x);
 			const buttons = await page.locator(".editor-playback button").evaluateAll((nodes) =>
 				nodes
 					.filter((n) => n.getBoundingClientRect().width > 0)
@@ -147,7 +152,17 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 		});
 	}
 	await page.keyboard.press("Escape");
-	await expect(page.getByRole("button", { name: "Rename project" })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Rename project" })).toBeFocused();
+	const update = page.getByRole("button", { name: "Update available", exact: true });
+	await expect(update.locator("..")).toHaveAttribute("title", "Update available");
+	await page.locator(".editor-header").screenshot({
+		path: test.info().outputPath("compact-editor-header.png"),
+		animations: "disabled",
+	});
+	await update.press("Enter");
+	await expect(page.getByRole("dialog", { name: "App update", exact: true })).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(update).toBeFocused();
 });
 
 test("header name edits directly without a selection box and saves on blur", async ({ page }) => {
@@ -183,10 +198,14 @@ test("header name edits directly without a selection box and saves on blur", asy
 	await input.fill("Launch demo");
 	await input.press("Tab");
 	await expect(page.getByRole("button", { name: "Rename project" })).toContainText("Launch demo");
-	await page.getByRole("button", { name: "Rename project" }).click();
+	await expect(title).toHaveAccessibleDescription("Launch demo");
+	await title.press("Enter");
+	await expect(input).toBeFocused();
+	await expect(input).toHaveCSS("outline-style", "solid");
 	await input.fill("Discard this");
 	await input.press("Escape");
-	await expect(page.getByRole("button", { name: "Rename project" })).toContainText("Launch demo");
+	await expect(title).toContainText("Launch demo");
+	await expect(title).toBeFocused();
 });
 
 test("new zoom blocks default to 1.8x", async ({ page }) => {

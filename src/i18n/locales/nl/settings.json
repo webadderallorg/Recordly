@@ -154,6 +154,7 @@
 		"webcamCrop": "Webcam bijsnijden",
 		"webcamReactToZoom": "Webcam reageert op zoom",
 		"webcamMirror": "Webcam spiegelen",
+		"showWebcam": "Webcam tonen",
 		"webcamRoundness": "Webcam-afronding",
 		"webcamShadow": "Webcamschaduw",
 		"shadow": "Schaduw",
@@ -226,6 +227,7 @@
 	},
 	"captions": {
 		"firstDownload": "Bij het eerste gebruik wordt {{size}} MB aan spraakbestanden gedownload en daarna worden ondertitels gegenereerd.",
+		"downloadAndGenerate": "{{size}} MB downloaden en ondertitels genereren",
 		"localProcessing": "Ondertitels worden op dit apparaat gegenereerd. Je opname wordt niet geüpload.",
 		"selectOnTimeline": "Selecteer een ondertitel op de tijdlijn om deze te bewerken.",
 		"enabled": "Tonen",
@@ -324,6 +326,7 @@
 		"fpsTitle": "FPS",
 		"loop": "Herhalen",
 		"outputDimensions": "Uitvoer: {{dimensions}}px",
+		"upToResolution": "Tot {{height}}p",
 		"sizePresetOriginalShort": "Orig.",
 		"sizePresetMediumShort": "Gem",
 		"sizePresetLargeShort": "Grt",
@@ -377,14 +380,6 @@
 		"deleteRegion": "Audio verwijderen"
 	},
 	"updates": {
-		"loadFailed": "Het updatekanaal kon niet worden geladen. Probeer het opnieuw.",
-		"automaticDownloads": "Updates automatisch downloaden",
-		"automaticDownloadsDescription": "Download nieuwe updates op de achtergrond. Je kiest zelf wanneer je herstart.",
-		"downloadPreferenceFailed": "Automatische updatedownloads konden niet worden geladen of opgeslagen. Probeer het opnieuw.",
-		"experimentalDescription": "Je hebt experimentele updates ingeschakeld, dus je kunt de nieuwste update van Recordly testen voordat die breed beschikbaar is.",
-		"title": "Updates",
-		"experimental": "Experimentele updates",
-		"saveFailed": "Kan het updatekanaal niet wijzigen.",
 		"changeVersion": "Versie wijzigen",
 		"versionInstallHint": "Download een versie en open het installatieprogramma om van versie te wisselen.",
 		"loadingVersions": "Versies laden…",
@@ -392,7 +387,15 @@
 		"prereleaseVersion": "Voorlopige versie",
 		"noVersions": "Er zijn geen compatibele versies beschikbaar voor deze installatie.",
 		"versionFailed": "Deze versie kon niet worden geladen of gedownload. Probeer het opnieuw.",
-		"downloadInstaller": "Installatieprogramma downloaden"
+		"downloadInstaller": "Installatieprogramma downloaden",
+		"loadFailed": "Het updatekanaal kon niet worden geladen. Probeer het opnieuw.",
+		"automaticDownloads": "Updates automatisch downloaden",
+		"automaticDownloadsDescription": "Download nieuwe updates op de achtergrond. Je kiest zelf wanneer je herstart.",
+		"downloadPreferenceFailed": "Automatische updatedownloads konden niet worden geladen of opgeslagen. Probeer het opnieuw.",
+		"experimentalDescription": "Je hebt experimentele updates ingeschakeld, dus je kunt de nieuwste update van Recordly testen voordat die breed beschikbaar is.",
+		"title": "Updates",
+		"experimental": "Experimentele updates",
+		"saveFailed": "Kan het updatekanaal niet wijzigen."
 	},
 	"categories": {
 		"general": "Algemeen",

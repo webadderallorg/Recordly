@@ -25,6 +25,7 @@ const UpdateToastWindow = lazy(() =>
 const EditorWindow = lazy(() => import("./components/video-editor/EditorWindow"));
 const CapturePicker = lazy(() => import("./components/capture-picker/CapturePicker"));
 const OnboardingWindow = lazy(() => import("./components/auth/OnboardingWindow"));
+const OnboardingIntroWindow = lazy(() => import("./components/auth/OnboardingIntroWindow"));
 const PermissionAccessoryWindow = lazy(() => import("./components/auth/PermissionAccessoryWindow"));
 
 export default function App() {
@@ -104,6 +105,9 @@ export default function App() {
 			break;
 		case "onboarding":
 			content = <OnboardingWindow />;
+			break;
+		case "onboarding-intro":
+			content = <OnboardingIntroWindow />;
 			break;
 		case "permission-accessory":
 			content = <PermissionAccessoryWindow />;

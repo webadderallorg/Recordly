@@ -28,6 +28,7 @@ import {
 	nativeCaptureProcess,
 } from "./ipc/state";
 import type { CaptureArea } from "./ipc/types";
+import { startOnboardingIntro } from "./onboardingIntro";
 import { outsideRecordingRects } from "./recordingFocus";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 
@@ -61,6 +62,8 @@ let areaRecordingBorderWindow: BrowserWindow | null = null;
 let recordingFocusWindows: BrowserWindow[] = [];
 let updateToastWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
+let onboardingIntroWindow: BrowserWindow | null = null;
+let onboardingIntroReplayWindow: BrowserWindow | null = null;
 let hudWasVisibleBeforeUpdateToast = false;
 
 const HUD_OVERLAY_SETTINGS_FILE = path.join(USER_DATA_PATH, "hud-overlay-settings.json");
@@ -1133,14 +1136,57 @@ function bringOnboardingWindowForward(win: BrowserWindow): void {
 	win.focus();
 }
 
+export function focusOnboardingWindow(): void {
+	const win = getOnboardingWindow();
+	if (!win) return;
+	if (win.isMinimized()) win.restore();
+	if (onboardingIntroWindow && !onboardingIntroWindow.isDestroyed() && !win.isVisible()) return;
+	bringOnboardingWindowForward(win);
+}
+
 export function getOnboardingWindow(): BrowserWindow | null {
 	return onboardingWindow && !onboardingWindow.isDestroyed() ? onboardingWindow : null;
 }
 
 function closeOtherOnboardingWindows(win: BrowserWindow) {
 	for (const other of BrowserWindow.getAllWindows()) {
-		if (other !== win && !other.isDestroyed()) other.close();
+		if (other !== win && other !== onboardingIntroWindow && !other.isDestroyed()) other.close();
 	}
+}
+
+export function replayOnboardingIntro(owner: BrowserWindow): boolean {
+	if (
+		app.isPackaged ||
+		!VITE_DEV_SERVER_URL ||
+		(process.platform !== "darwin" && process.platform !== "win32") ||
+		getOnboardingWindow()
+	) {
+		return false;
+	}
+	if (onboardingIntroReplayWindow && !onboardingIntroReplayWindow.isDestroyed()) return true;
+
+	const bounds = getScreen().getDisplayMatching(owner.getBounds()).bounds;
+	const replay = startOnboardingIntro(
+		bounds,
+		path.join(electronWindowsDir, "preload.js"),
+		(backdrop) => {
+			void backdrop
+				.loadURL(`${VITE_DEV_SERVER_URL}?windowType=onboarding-intro`)
+				.catch(() => {
+					if (!backdrop.isDestroyed()) backdrop.destroy();
+				});
+		},
+	);
+	onboardingIntroReplayWindow = replay;
+	const closeReplay = () => {
+		if (!replay.isDestroyed()) replay.destroy();
+	};
+	owner.once("closed", closeReplay);
+	replay.once("closed", () => {
+		owner.removeListener("closed", closeReplay);
+		if (onboardingIntroReplayWindow === replay) onboardingIntroReplayWindow = null;
+	});
+	return true;
 }
 
 export function showOnboardingWindow(options?: { preview?: boolean }): BrowserWindow {
@@ -1150,20 +1196,20 @@ export function showOnboardingWindow(options?: { preview?: boolean }): BrowserWi
 			? { onboardingPreview: options.preview ? "1" : "0" }
 			: {}),
 	};
-	const loadOnboarding = (win: BrowserWindow) => {
+	const load = (win: BrowserWindow, query: Record<string, string>) => {
 		if (VITE_DEV_SERVER_URL) {
-			void win.loadURL(`${VITE_DEV_SERVER_URL}?${new URLSearchParams(query)}`);
+			void win
+				.loadURL(`${VITE_DEV_SERVER_URL}?${new URLSearchParams(query)}`)
+				.catch((error) => console.error("[onboarding] Could not load window", error));
 		} else {
 			loadPackagedRendererWindow(win, query);
 		}
 	};
 	if (onboardingWindow && !onboardingWindow.isDestroyed()) {
 		closeOtherOnboardingWindows(onboardingWindow);
-		if (!app.isPackaged && typeof options?.preview === "boolean")
-			loadOnboarding(onboardingWindow);
-		if (onboardingWindow.isMinimized()) onboardingWindow.restore();
+		if (!app.isPackaged && typeof options?.preview === "boolean") load(onboardingWindow, query);
 		onboardingWindow.setBounds(getOnboardingWindowBounds());
-		bringOnboardingWindowForward(onboardingWindow);
+		focusOnboardingWindow();
 		return onboardingWindow;
 	}
 
@@ -1195,13 +1241,31 @@ export function showOnboardingWindow(options?: { preview?: boolean }): BrowserWi
 	win.once("closed", () => {
 		if (onboardingWindow === win) onboardingWindow = null;
 	});
-	win.once("ready-to-show", () => {
-		win.setBounds(bounds);
-		bringOnboardingWindowForward(win);
-	});
 	// Keep onboarding alive before closing other windows to avoid window-all-closed.
 	closeOtherOnboardingWindows(win);
-	loadOnboarding(win);
+	const show = () => {
+		win.setBounds(bounds);
+		bringOnboardingWindowForward(win);
+	};
+	const previewIntro =
+		!app.isPackaged &&
+		options?.preview &&
+		(process.platform === "darwin" || process.platform === "win32");
+	if (previewIntro) {
+		const intro = startOnboardingIntro(
+			getScreen().getPrimaryDisplay().bounds,
+			path.join(electronWindowsDir, "preload.js"),
+			(backdrop) => load(backdrop, { windowType: "onboarding-intro" }),
+			{ popup: win, show },
+		);
+		onboardingIntroWindow = intro;
+		intro.once("closed", () => {
+			if (onboardingIntroWindow === intro) onboardingIntroWindow = null;
+		});
+	} else {
+		win.once("ready-to-show", show);
+	}
+	load(win, query);
 	return win;
 }
 

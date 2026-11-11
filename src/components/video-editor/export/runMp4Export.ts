@@ -34,8 +34,7 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 		smokeExportStartedAt,
 		discardCancelledTemp,
 		smokeProgressSamples,
-		showExportSuccessToast,
-		setKeepExportDialogOpen,
+		recordSuccessfulExport,
 	} = context;
 	const {
 		videoPath,
@@ -332,7 +331,6 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 					"Save canceled. You can save again without re-exporting.",
 				),
 			);
-			setKeepExportDialogOpen(true);
 		} else if (saveResult.success && saveResult.path) {
 			diagnostics.record("saved");
 			if (smokeExportConfig.enabled) {
@@ -356,7 +354,7 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 					`[smoke-export] Completed in ${Math.round(performance.now() - smokeExportStartedAt)}ms (${saveResult.path})`,
 				);
 			}
-			showExportSuccessToast(saveResult.path);
+			recordSuccessfulExport();
 			showCaptionSidecarWarning(saveResult);
 			setExportedFilePath(saveResult.path);
 			if (smokeExportConfig.enabled) {
@@ -391,10 +389,6 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 				saveResult.message ||
 					translate("notifications.saveVideoFailed", "Failed to save video"),
 			);
-			showExportErrorToast(
-				saveResult.message ||
-					translate("notifications.saveVideoFailed", "Failed to save video"),
-			);
 			// Keep the pending-save entry so the user can retry without
 			// re-rendering. The temp file is still on disk (the main
 			// process only moves/deletes it on success) and the
@@ -402,7 +396,6 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 			if (pendingOnCancel.tempFilePath || pendingOnCancel.arrayBuffer) {
 				pendingExportSaveRef.current = pendingOnCancel;
 				setHasPendingExportSave(true);
-				setKeepExportDialogOpen(true);
 			}
 			if (smokeExportConfig.enabled) {
 				window.close();
@@ -432,11 +425,12 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 			translate("notifications.exportFailed", "Export failed") +
 				(result.error ? `: ${result.error}` : ""),
 		);
-		showExportErrorToast(
-			translate("notifications.exportFailed", "Export failed") +
-				(result.error ? `: ${result.error}` : ""),
-		);
-		setKeepExportDialogOpen(options?.destination !== "share");
+		if (sharing) {
+			showExportErrorToast(
+				translate("notifications.exportFailed", "Export failed") +
+					(result.error ? `: ${result.error}` : ""),
+			);
+		}
 		if (smokeExportConfig.enabled) {
 			window.close();
 			return { exit: true };

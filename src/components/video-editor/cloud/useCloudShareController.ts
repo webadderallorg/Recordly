@@ -35,6 +35,7 @@ export function useCloudShareController(props: Props) {
 		accountId,
 		inline = false,
 		onBusyChange,
+		suppressSuccessToast,
 	} = props;
 
 	const { t } = useI18n();
@@ -66,6 +67,7 @@ export function useCloudShareController(props: Props) {
 	const [error, setError] = useState<string>();
 
 	const [shareUrl, setShareUrl] = useState<string>();
+	const [publishedUrl, setPublishedUrl] = useState<string>();
 
 	const [savedShare, setSavedShare] = useState<ProjectShareLink>();
 
@@ -118,6 +120,7 @@ export function useCloudShareController(props: Props) {
 			}
 			setError(undefined);
 			setShareUrl(undefined);
+			setPublishedUrl(undefined);
 			setSavedShare(undefined);
 			setCopied(false);
 		}
@@ -234,6 +237,7 @@ export function useCloudShareController(props: Props) {
 		cancelRequestedRef.current = false;
 		setError(undefined);
 		setShareUrl(undefined);
+		setPublishedUrl(undefined);
 		try {
 			if (!DEFAULT_CLOUD_ENDPOINT)
 				throw new Error(
@@ -299,6 +303,7 @@ export function useCloudShareController(props: Props) {
 			}
 			setProgress(100);
 			setShareUrl(result.shareUrl);
+			setPublishedUrl(result.shareUrl);
 			completed = true;
 			setSavedShare({
 				url: result.shareUrl,
@@ -322,9 +327,9 @@ export function useCloudShareController(props: Props) {
 					);
 				}
 			}
-			toast.success(t("editor.cloud.linkCreated"));
+			if (!suppressSuccessToast) toast.success(t("editor.cloud.linkCreated"));
 		} catch (cause) {
-			if (!isCurrentAccount()) return;
+			if (!isCurrentAccount() || cancelRequestedRef.current) return;
 			setError(cause instanceof Error ? cause.message : String(cause));
 		} finally {
 			if (
@@ -357,6 +362,7 @@ export function useCloudShareController(props: Props) {
 		projectTitle,
 		title,
 		t,
+		suppressSuccessToast,
 		currentCapacityIdentity,
 		recoverSession,
 		latestAuthToken,
@@ -387,10 +393,12 @@ export function useCloudShareController(props: Props) {
 		open,
 		setOpen,
 		progress,
+		phase,
 		uploading,
 		checkingCapacity,
 		error,
 		shareUrl,
+		publishedUrl,
 		needsRegenerate,
 		copied,
 		shareLinkInput,

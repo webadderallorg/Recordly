@@ -50,8 +50,8 @@ export function MicPopover({
 			}}
 			trigger={trigger}
 			align="start"
+			label={t("recording.audioSettings", "Audio settings")}
 		>
-			<div className={styles.ddLabel}>{t("recording.microphone")}</div>
 			<DropdownItem
 				icon={
 					systemAudioEnabled ? <SpeakerHighIcon size={16} /> : <SpeakerXIcon size={16} />
@@ -59,10 +59,9 @@ export function MicPopover({
 				selected={systemAudioEnabled}
 				onClick={onToggleSystemAudio}
 			>
-				{systemAudioEnabled
-					? t("recording.disableSystemAudio")
-					: t("recording.enableSystemAudio")}
+				{t("recording.systemAudio")}
 			</DropdownItem>
+			<div className={styles.ddLabel}>{t("recording.microphone")}</div>
 			{microphoneEnabled && (
 				<DropdownItem
 					icon={<MicrophoneSlashIcon size={16} />}

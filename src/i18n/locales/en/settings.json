@@ -1,13 +1,5 @@
 {
 	"updates": {
-		"loadFailed": "Could not load the update channel. Try again.",
-		"automaticDownloads": "Automatically download updates",
-		"automaticDownloadsDescription": "Download new updates in the background. You choose when to restart.",
-		"downloadPreferenceFailed": "Could not load or save automatic update downloads. Try again.",
-		"title": "Updates",
-		"experimental": "Experimental updates",
-		"experimentalDescription": "You've opted into experimental updates so you have the choice to test the latest update of Recordly before it's widely available.",
-		"saveFailed": "Failed to change the update channel.",
 		"changeVersion": "Change version",
 		"versionInstallHint": "Download a release, then open its installer to change versions.",
 		"loadingVersions": "Loading versions…",
@@ -15,7 +7,15 @@
 		"prereleaseVersion": "Pre-release",
 		"noVersions": "No compatible versions are available for this installation.",
 		"versionFailed": "Could not load or download this version. Try again.",
-		"downloadInstaller": "Download installer"
+		"downloadInstaller": "Download installer",
+		"loadFailed": "Could not load the update channel. Try again.",
+		"automaticDownloads": "Automatically download updates",
+		"automaticDownloadsDescription": "Download new updates in the background. You choose when to restart.",
+		"downloadPreferenceFailed": "Could not load or save automatic update downloads. Try again.",
+		"title": "Updates",
+		"experimental": "Experimental updates",
+		"experimentalDescription": "You've opted into experimental updates so you have the choice to test the latest update of Recordly before it's widely available.",
+		"saveFailed": "Failed to change the update channel."
 	},
 	"zoom": {
 		"level": "Zoom Level",
@@ -51,6 +51,7 @@
 	"effects": {
 		"title": "Video Effects",
 		"show": "Show",
+		"showWebcam": "Show webcam",
 		"showCursor": "Show Cursor",
 		"loopCursor": "Loop cursor",
 		"cursorStyle": "Cursor Style",
@@ -244,6 +245,7 @@
 	},
 	"captions": {
 		"firstDownload": "First use downloads {{size}} MB of speech files, then generates captions.",
+		"downloadAndGenerate": "Download {{size}} MB & generate captions",
 		"localProcessing": "Captions are generated on this device. Your recording is not uploaded.",
 		"cueCount": "{{count}} captions",
 		"oneCaption": "1 caption",
@@ -342,6 +344,7 @@
 		"fpsTitle": "FPS",
 		"loop": "Loop",
 		"outputDimensions": "Output: {{dimensions}}px",
+		"upToResolution": "Up to {{height}}p",
 		"sizePresetOriginalShort": "Orig",
 		"sizePresetMediumShort": "Med",
 		"sizePresetLargeShort": "Lar",

@@ -3,7 +3,6 @@ import { Card, Modal } from "@heroui/react";
 import { RecordlyAccountMenu } from "@/components/auth/RecordlyAccountMenu";
 import { UpgradeButton } from "@/components/billing/UpgradeButton";
 import { Button } from "@/components/ui/button";
-import { House } from "@/components/ui/icons";
 import { AppFrameHeader } from "../layout/AppFrameHeader";
 import { AppUpdateButton } from "../layout/AppUpdateButton";
 import { DashboardAnnouncements } from "./DashboardAnnouncements";
@@ -37,28 +36,13 @@ export function Dashboard(props: DashboardProps) {
 								<div
 									className={`flex min-w-0 items-center gap-2 ${props.headerLeftControlsPaddingClass ?? ""}`}
 								>
-									<Button
-										variant="ghost"
-										size="sm"
-										className="h-9 gap-2 px-3"
-										onClick={() => model.setSection("projects")}
-										aria-label={uiText("ui.libraryHome")}
-									>
-										<House weight="fill" className="size-4" />
-										{uiText("ui.home")}
-									</Button>
-									<span
-										aria-hidden="true"
-										className="mx-2 text-xl font-light text-muted-foreground/60"
-									>
-										/
-									</span>
 									<span className="truncate text-sm font-semibold">
-										{model.section === "settings"
-											? uiText("ui.settings")
-											: model.section === "shared"
-												? uiText("ui.sharedLinks")
-												: uiText("ui.library")}
+										{model.activeFolder?.name ??
+											(model.section === "settings"
+												? uiText("ui.settings")
+												: model.section === "shared"
+													? uiText("ui.sharedLinks")
+													: uiText("ui.library"))}
 									</span>
 								</div>
 								<div className="flex items-center gap-3">

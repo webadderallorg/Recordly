@@ -112,8 +112,7 @@ function context(destination: "download" | "share" = "download") {
 		smokeExportStartedAt: null,
 		discardCancelledTemp: vi.fn(async () => {}),
 		smokeProgressSamples: [],
-		showExportSuccessToast: vi.fn(),
-		setKeepExportDialogOpen: vi.fn(),
+		recordSuccessfulExport: vi.fn(),
 	};
 	return {
 		value: value as unknown as ExportBranchContext,
@@ -382,7 +381,7 @@ describe("caption-file partial success feedback", () => {
 			}
 			try {
 				await expect(runMp4Export(value)).resolves.toEqual({ exit: false });
-				expect(value.showExportSuccessToast).toHaveBeenCalledWith(saveResult.path);
+				expect(value.recordSuccessfulExport).toHaveBeenCalledOnce();
 				expect(input.exportSession.setExportedFilePath).toHaveBeenCalledWith(
 					saveResult.path,
 				);

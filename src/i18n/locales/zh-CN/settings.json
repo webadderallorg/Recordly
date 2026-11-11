@@ -154,6 +154,7 @@
 		"webcamCrop": "摄像头裁剪",
 		"webcamReactToZoom": "摄像头随缩放变化",
 		"webcamMirror": "镜像摄像头",
+		"showWebcam": "显示摄像头",
 		"webcamRoundness": "摄像头圆角",
 		"webcamShadow": "摄像头阴影",
 		"shadow": "阴影",
@@ -226,6 +227,7 @@
 	},
 	"captions": {
 		"firstDownload": "首次使用会下载 {{size}} MB 的语音文件，然后自动生成字幕。",
+		"downloadAndGenerate": "下载 {{size}} MB 并生成字幕",
 		"localProcessing": "字幕在此设备上生成，录制内容不会上传。",
 		"selectOnTimeline": "在时间轴上选择字幕进行编辑。",
 		"enabled": "显示",
@@ -324,6 +326,7 @@
 		"fpsTitle": "帧率",
 		"loop": "循环",
 		"outputDimensions": "输出：{{dimensions}}px",
+		"upToResolution": "最高 {{height}}p",
 		"sizePresetOriginalShort": "原",
 		"sizePresetMediumShort": "中",
 		"sizePresetLargeShort": "大",
@@ -377,14 +380,6 @@
 		"deleteRegion": "删除音频"
 	},
 	"updates": {
-		"loadFailed": "无法加载更新渠道，请重试。",
-		"automaticDownloads": "自动下载更新",
-		"automaticDownloadsDescription": "在后台下载新更新。由你决定何时重启。",
-		"downloadPreferenceFailed": "无法加载或保存自动下载更新设置。请重试。",
-		"experimentalDescription": "你已选择接收实验性更新，因此可以在 Recordly 最新更新广泛发布之前选择先行测试。",
-		"title": "更新",
-		"experimental": "实验性更新",
-		"saveFailed": "无法更改更新频道。",
 		"changeVersion": "更改版本",
 		"versionInstallHint": "下载发行版本，然后打开安装程序以更改版本。",
 		"loadingVersions": "正在加载版本…",
@@ -392,7 +387,15 @@
 		"prereleaseVersion": "预发布版",
 		"noVersions": "此安装没有可用的兼容版本。",
 		"versionFailed": "无法加载或下载此版本，请重试。",
-		"downloadInstaller": "下载安装程序"
+		"downloadInstaller": "下载安装程序",
+		"loadFailed": "无法加载更新渠道，请重试。",
+		"automaticDownloads": "自动下载更新",
+		"automaticDownloadsDescription": "在后台下载新更新。由你决定何时重启。",
+		"downloadPreferenceFailed": "无法加载或保存自动下载更新设置。请重试。",
+		"experimentalDescription": "你已选择接收实验性更新，因此可以在 Recordly 最新更新广泛发布之前选择先行测试。",
+		"title": "更新",
+		"experimental": "实验性更新",
+		"saveFailed": "无法更改更新频道。"
 	},
 	"categories": {
 		"general": "通用",

@@ -20,6 +20,7 @@
 	width: 36px;
 	height: 36px;
 	border-radius: 50%;
+	corner-shape: round;
 	background: color-mix(in srgb, var(--surface) 60%, transparent);
 	backdrop-filter: blur(4px) saturate(150%);
 }
@@ -170,6 +171,7 @@
 .pricing-modal .slideshow-component .nav-buttons.inline-mode > * {
 	background: color-mix(in srgb, var(--foreground) 12%, transparent);
 	border-radius: 50%;
+	corner-shape: round;
 }
 .pricing-modal .plans-info {
 	flex-direction: column;
@@ -185,6 +187,7 @@
 .pricing-modal .plans-tabs-switch {
 	background: color-mix(in srgb, var(--foreground) 6%, transparent);
 	border-radius: 50px;
+	corner-shape: round;
 	gap: 2px;
 	width: 100%;
 	max-width: 378px;
@@ -196,6 +199,7 @@
 .pricing-modal .pricing-interval-option {
 	flex: 1 1 0%;
 	border-radius: 50px;
+	corner-shape: round;
 	justify-content: center;
 	padding: 10px 12px;
 	cursor: pointer;
@@ -248,6 +252,7 @@
 .pricing-price-banner {
 	padding: 3px 8px;
 	border-radius: 999px;
+	corner-shape: round;
 	background: color-mix(in srgb, var(--danger) 12%, transparent);
 	color: var(--danger);
 	font-size: 11px;
@@ -273,6 +278,7 @@
 	margin-top: 8px;
 	min-height: 44px;
 	border-radius: 999px;
+	corner-shape: round;
 }
 .pricing-feedback {
 	padding: 12px 14px;

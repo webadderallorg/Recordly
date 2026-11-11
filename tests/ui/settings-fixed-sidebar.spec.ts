@@ -291,7 +291,9 @@ for (const { width, height, theme, signedIn } of [
 	});
 }
 
-test("Japanese sidebar keeps Upgrade and feedback contains Socials", async ({ page }) => {
+test("Japanese library keeps a single Upgrade action and feedback contains Socials", async ({
+	page,
+}) => {
 	test.setTimeout(60000);
 	await page.setViewportSize({ width: 1000, height: 600 });
 	await page.emulateMedia({ reducedMotion: "reduce" });
@@ -300,37 +302,11 @@ test("Japanese sidebar keeps Upgrade and feedback contains Socials", async ({ pa
 	await page.goto("/?windowType=editor");
 	await page.getByRole("button", { name: "ホーム", exact: true }).click();
 	const home = page.getByRole("dialog", { name: "プロジェクト一覧", exact: true });
-	const footer = home.locator(".community-links");
-	const upgrade = footer.getByRole("button", { name: "アップグレード", exact: true });
-	await expect(upgrade).toBeVisible();
-	const label = upgrade.locator(".truncate");
-	await expect(label).toHaveText("アップグレード");
-	await expect(label).toHaveCSS("text-overflow", "ellipsis");
-	await expect(label).toHaveCSS("overflow-x", "hidden");
-	// Upgrade has its own row so even the Japanese label fits at the narrow sidebar width.
-	expect(await label.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
-		true,
-	);
-	await expect(upgrade.locator("[title]")).toHaveAttribute("title", "アップグレード");
-	const bounds = (await footer.boundingBox())!;
-	const boxes = [];
-	for (const button of await footer.getByRole("button").all()) {
-		await expect(button).toBeInViewport({ ratio: 1 });
-		const box = (await button.boundingBox())!;
-		expect(box.x).toBeGreaterThanOrEqual(bounds.x);
-		expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
-		expect(box.height).toBeGreaterThanOrEqual(32);
-		for (const previous of boxes) {
-			expect(
-				box.x >= previous.x + previous.width ||
-					box.x + box.width <= previous.x ||
-					box.y >= previous.y + previous.height ||
-					box.y + box.height <= previous.y,
-			).toBe(true);
-		}
-		boxes.push(box);
-	}
-	await expect(footer.getByRole("button")).toHaveCount(1);
+	const header = home.locator(".app-frame-header");
+	const upgrade = home.getByRole("button", { name: "アップグレード", exact: true });
+	await expect(upgrade).toHaveCount(1);
+	await expect(upgrade).toBeInViewport({ ratio: 1 });
+	await expect(header.getByRole("button", { name: "アップグレード", exact: true })).toBeVisible();
 	await home.getByRole("button", { name: "フィードバック", exact: true }).click();
 	const feedback = page.getByRole("dialog", { name: "フィードバックを送信", exact: true });
 	const socials = feedback.getByRole("button", { name: "SNS", exact: true });

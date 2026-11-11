@@ -17,4 +17,5 @@ export type Props = {
 	inline?: boolean;
 	onBusyChange?: (busy: boolean) => void;
 	onRequestSignIn?: () => void;
+	suppressSuccessToast?: boolean;
 };

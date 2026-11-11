@@ -23,6 +23,12 @@ test("webcam import, anchor placement, precise adjustment and removal stay disco
 	await expect(sidebar.locator("[data-webcam-source]")).toHaveCount(0);
 	const camera = page.locator("[data-webcam-motion-blur]");
 	await expect(camera).toBeVisible();
+	const show = page.getByRole("switch", { name: "Show webcam", exact: true });
+	await expect(show).toBeChecked();
+	await show.press("Space");
+	await expect(camera).toBeHidden();
+	await show.press("Space");
+	await expect(camera).toBeVisible();
 	await expect(sidebar.getByRole("switch", { name: "Glass border", exact: true })).toHaveCount(0);
 	for (const label of ["Appearance", "Shape"]) {
 		await expect(sidebar.getByText(label, { exact: true })).toHaveCount(0);
@@ -70,7 +76,7 @@ test("webcam import, anchor placement, precise adjustment and removal stay disco
 	await expect(sidebar.getByText("Custom position", { exact: true })).toHaveCount(0);
 	await page.getByRole("row", { name: "Center", exact: true }).click();
 	await expect(horizontal).toHaveValue("50");
-	const show = page.getByRole("switch", { name: "Show", exact: true });
+	await expect(show).toHaveCount(1);
 	await show.press("Space");
 	await expect(camera).toBeHidden();
 	await show.press("Space");

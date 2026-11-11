@@ -154,6 +154,7 @@
 		"webcamCrop": "Corte da webcam",
 		"webcamReactToZoom": "Webcam reage ao zoom",
 		"webcamMirror": "Espelhar webcam",
+		"showWebcam": "Mostrar webcam",
 		"webcamRoundness": "Arredondamento da webcam",
 		"webcamShadow": "Sombra da webcam",
 		"shadow": "Sombra",
@@ -226,6 +227,7 @@
 	},
 	"captions": {
 		"firstDownload": "No primeiro uso, são baixados {{size}} MB de arquivos de voz e, em seguida, as legendas são geradas.",
+		"downloadAndGenerate": "Baixar {{size}} MB e gerar legendas",
 		"localProcessing": "As legendas são geradas neste dispositivo. Sua gravação não é enviada.",
 		"selectOnTimeline": "Selecione uma legenda na linha do tempo para editá-la.",
 		"enabled": "Mostrar",
@@ -324,6 +326,7 @@
 		"fpsTitle": "FPS",
 		"loop": "Repetir",
 		"outputDimensions": "Saída: {{dimensions}}px",
+		"upToResolution": "Até {{height}}p",
 		"sizePresetOriginalShort": "Orig.",
 		"sizePresetMediumShort": "Méd.",
 		"sizePresetLargeShort": "Gra",
@@ -377,14 +380,6 @@
 		"deleteRegion": "Excluir áudio"
 	},
 	"updates": {
-		"loadFailed": "Não foi possível carregar o canal de atualizações. Tente novamente.",
-		"automaticDownloads": "Baixar atualizações automaticamente",
-		"automaticDownloadsDescription": "Baixe novas atualizações em segundo plano. Você escolhe quando reiniciar.",
-		"downloadPreferenceFailed": "Não foi possível carregar ou salvar os downloads automáticos de atualizações. Tente novamente.",
-		"experimentalDescription": "Você ativou as atualizações experimentais, então pode escolher testar a atualização mais recente do Recordly antes que ela fique amplamente disponível.",
-		"title": "Atualizações",
-		"experimental": "Atualizações experimentais",
-		"saveFailed": "Falha ao alterar o canal de atualização.",
 		"changeVersion": "Alterar versão",
 		"versionInstallHint": "Baixe uma versão e abra o instalador para alterar a versão.",
 		"loadingVersions": "Carregando versões…",
@@ -392,7 +387,15 @@
 		"prereleaseVersion": "Pré-lançamento",
 		"noVersions": "Não há versões compatíveis disponíveis para esta instalação.",
 		"versionFailed": "Não foi possível carregar ou baixar esta versão. Tente novamente.",
-		"downloadInstaller": "Baixar instalador"
+		"downloadInstaller": "Baixar instalador",
+		"loadFailed": "Não foi possível carregar o canal de atualizações. Tente novamente.",
+		"automaticDownloads": "Baixar atualizações automaticamente",
+		"automaticDownloadsDescription": "Baixe novas atualizações em segundo plano. Você escolhe quando reiniciar.",
+		"downloadPreferenceFailed": "Não foi possível carregar ou salvar os downloads automáticos de atualizações. Tente novamente.",
+		"experimentalDescription": "Você ativou as atualizações experimentais, então pode escolher testar a atualização mais recente do Recordly antes que ela fique amplamente disponível.",
+		"title": "Atualizações",
+		"experimental": "Atualizações experimentais",
+		"saveFailed": "Falha ao alterar o canal de atualização."
 	},
 	"categories": {
 		"general": "Geral",

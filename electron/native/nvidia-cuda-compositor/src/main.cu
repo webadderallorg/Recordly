@@ -1056,12 +1056,22 @@ __device__ bool isInsideRoundedRect(
     int top,
     int width,
     int height,
-    int radius) {
+    int radius,
+    bool squircle = false) {
     if (x < left || y < top || x >= left + width || y >= top + height) {
         return false;
     }
     if (radius <= 0) {
         return true;
+    }
+    if (squircle) {
+        const float r = fminf(static_cast<float>(radius), 0.5f * min(width, height));
+        const float dx = fmaxf(0.0f, r - (min(x - left, left + width - 1 - x) + 0.5f));
+        const float dy = fmaxf(0.0f, r - (min(y - top, top + height - 1 - y) + 0.5f));
+        const float dx2 = dx * dx;
+        const float dy2 = dy * dy;
+        const float r2 = r * r;
+        return dx2 * dx2 + dy2 * dy2 <= r2 * r2;
     }
 
     const int right = left + width - 1;
@@ -1176,7 +1186,7 @@ __global__ void overlayContentTransformNv12Kernel(
     const float layoutYf = (static_cast<float>(y) - zoomY) * invZoomScale;
     const int layoutX = __float2int_rd(layoutXf);
     const int layoutY = __float2int_rd(layoutYf);
-    if (!isInsideRoundedRect(layoutX, layoutY, contentX, contentY, contentWidth, contentHeight, radius)) {
+    if (!isInsideRoundedRect(layoutX, layoutY, contentX, contentY, contentWidth, contentHeight, radius, true)) {
         return;
     }
 
@@ -1202,7 +1212,8 @@ __global__ void overlayContentTransformNv12Kernel(
                 contentY,
                 contentWidth,
                 contentHeight,
-                radius)) {
+                radius,
+                true)) {
             const float uvLocalContentX =
                 fminf(static_cast<float>(contentWidth - 1), fmaxf(0.0f, uvLayoutXf - contentX));
             const float uvLocalContentY =
@@ -1249,12 +1260,12 @@ __global__ void restoreRoundedContentCornersNv12Kernel(
         return;
     }
 
-    if (!isInsideRoundedRect(x, y, contentX, contentY, contentWidth, contentHeight, radius)) {
+    if (!isInsideRoundedRect(x, y, contentX, contentY, contentWidth, contentHeight, radius, true)) {
         dst[y * dstPitch + x] = background ? background[y * dstWidth + x] : backgroundY;
     }
 
     if ((x % 2) == 0 && (y % 2) == 0 &&
-        !isInsideRoundedRect(x + 1, y + 1, contentX, contentY, contentWidth, contentHeight, radius)) {
+        !isInsideRoundedRect(x + 1, y + 1, contentX, contentY, contentWidth, contentHeight, radius, true)) {
         unsigned char* dstUv = dst + dstChromaOffset + (y / 2) * dstPitch + x;
         if (background) {
             const unsigned char* bgUv = background + dstWidth * dstHeight + (y / 2) * dstWidth + x;
@@ -1551,7 +1562,8 @@ __global__ void compositeStaticNv12Kernel(
     const int cropY = max(0, min(sourceCropY, srcHeight - 1));
     const int cropWidth = max(1, min(sourceCropWidth > 0 ? sourceCropWidth : srcWidth, srcWidth - cropX));
     const int cropHeight = max(1, min(sourceCropHeight > 0 ? sourceCropHeight : srcHeight, srcHeight - cropY));
-    const bool inside = isInsideRoundedRect(layoutX, layoutY, contentX, contentY, contentWidth, contentHeight, radius);
+    const bool inside = isInsideRoundedRect(
+        layoutX, layoutY, contentX, contentY, contentWidth, contentHeight, radius, true);
     unsigned char outY = background ? background[y * dstWidth + x] : backgroundY;
     if (inside) {
         const float localX = fminf(static_cast<float>(contentWidth - 1), fmaxf(0.0f, layoutXf - contentX));
@@ -1569,7 +1581,8 @@ __global__ void compositeStaticNv12Kernel(
                 contentY + shadowOffsetY,
                 contentWidth,
                 contentHeight,
-                radius + 8);
+                radius + 8,
+                true);
         if (shadowInside) {
             const int darkenPct = min(75, max(0, shadowIntensityPct / 2));
             outY = static_cast<unsigned char>((static_cast<int>(outY) * (100 - darkenPct)) / 100);
@@ -1655,7 +1668,8 @@ __global__ void compositeStaticNv12Kernel(
             contentY,
             contentWidth,
             contentHeight,
-            radius);
+            radius,
+            true);
         if (uvInside) {
             const float localX = fminf(static_cast<float>(contentWidth - 1), fmaxf(0.0f, uvLayoutXf - contentX));
             const float localY = fminf(static_cast<float>(contentHeight - 1), fmaxf(0.0f, uvLayoutYf - contentY));

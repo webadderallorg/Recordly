@@ -61,6 +61,12 @@ const rawEntries = [
 ];
 Object.assign(window, {
 	electronAPI: {
+		// This isolated harness supplies the native auth-store contract without a session.
+		authStorageAvailable: async () => true,
+		authStorageMigrate: async () => undefined,
+		authStorageGetItem: async () => null,
+		authStorageSetItem: async () => undefined,
+		authStorageRemoveItem: async () => undefined,
 		getProjectPreview: async (path: string) => {
 			const id = Number(path.match(/(\d+)\.recordly$/)?.[1]);
 			if (id === 3) return { success: false, error: "Offline project" };

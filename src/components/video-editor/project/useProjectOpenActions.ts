@@ -307,6 +307,7 @@ export function useProjectOpenActions({
 				visibleRanges: undefined,
 				enabled: false,
 				sourcePath: null,
+				loop: false,
 				timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 			}));
 			applySessionPresentation(null);

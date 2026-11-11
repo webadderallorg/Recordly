@@ -50,6 +50,25 @@ afterEach(async () => {
 });
 
 describe("export save dialog names", () => {
+	it("suggests the next available filename without opening a save dialog", async () => {
+		const downloads = await makeTempDir();
+		vi.spyOn(app, "getPath").mockReturnValue(downloads);
+		await fs.writeFile(path.join(downloads, "clip.mp4"), "existing video");
+		await fs.writeFile(path.join(downloads, "clip 1.mp4"), "existing video");
+		await fs.writeFile(path.join(downloads, "clip 2.srt"), "existing captions");
+		vi.mocked(dialog.showSaveDialog).mockClear();
+		vi.mocked(ipcMain.handle).mockClear();
+		registerExportHandlers();
+		const handler = vi
+			.mocked(ipcMain.handle)
+			.mock.calls.find(([name]) => name === "suggest-export-file-name")![1];
+		const event = { sender: {} } as Electron.IpcMainInvokeEvent;
+		await expect(handler(event, "clip.mp4")).resolves.toBe("clip 2.mp4");
+		await expect(handler(event, "clip.mp4", "both")).resolves.toBe("clip 3.mp4");
+		await expect(handler(event, "../clip.mp4")).resolves.toBeNull();
+		expect(dialog.showSaveDialog).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		"save-exported-video",
 		"finalize-exported-video",

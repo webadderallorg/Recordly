@@ -1,5 +1,6 @@
 import type { useI18n } from "@/contexts/I18nContext";
 import { resolveExportStatusModel } from "../exportStatusModel";
+import { EXPORT_LOADING_MESSAGES, type ExportLoadingMessage } from "./exportLoadingMessages";
 import type { useExportSession } from "./useExportSession";
 import type { useExportSettings } from "./useExportSettings";
 
@@ -21,15 +22,26 @@ export function useExportStatusViewModel({ t, session, settings }: Input) {
 				fps: status.renderSpeedFps,
 			})
 		: null;
-	const progress = session.exportProgress;
-	const exportPercentLabel =
-		status.isExportPreparing || !progress
-			? t("editor.exportStatus.preparing", "Preparing export...")
-			: status.isExportSaving || (status.isExportFinalizing && !status.isRenderingAudio)
-				? null
-				: t("editor.exportStatus.completePercent", "{{percent}}% complete", {
-						percent: Math.round(status.exportDisplayProgress),
-					});
-
-	return { ...status, exportRenderSpeedLabel, exportPercentLabel };
+	let exportPhaseLabel = t("editor.exportStatus.exporting", "Exporting");
+	let exportHeadlines: readonly ExportLoadingMessage[] | undefined;
+	if (session.isOptimizingGif) {
+		exportPhaseLabel = t("editor.exportStatus.optimizingGif", "Optimizing GIF…");
+	} else if (status.isExportSaving) {
+		exportPhaseLabel =
+			settings.exportFormat === "gif"
+				? t("editor.exportStatus.savingGif", "Saving GIF…")
+				: t("editor.exportStatus.savingVideo", "Saving video…");
+	} else if (status.isExportFinalizing) {
+		exportPhaseLabel = status.isGifFinalizing
+			? t("editor.exportStatus.encodingGif", "Finishing GIF…")
+			: t("editor.exportStatus.finishingVideo", "Finishing video…");
+	} else {
+		exportHeadlines = EXPORT_LOADING_MESSAGES;
+	}
+	return {
+		...status,
+		exportRenderSpeedLabel,
+		exportPhaseLabel,
+		exportHeadlines,
+	};
 }

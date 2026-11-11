@@ -17,6 +17,45 @@ async function openPreview(page: import("@playwright/test").Page) {
 		.toBe(true);
 }
 
+test("resizing a paused zoom keeps the recording visible", async ({ page }) => {
+	await openPreview(page);
+	await page.evaluate(() => window.performancePreview.api!.seekTimeline(2));
+	await expect
+		.poll(() =>
+			page.evaluate(
+				() => window.performancePreview.api!.videoContainer!.parent!.parent!.scale.x,
+			),
+		)
+		.toBeGreaterThan(1);
+
+	const pixelAlpha = () =>
+		page.evaluate(() => {
+			const app = window.performancePreview.api!.app!;
+			const canvas = app.canvas as HTMLCanvasElement;
+			const gl = canvas.getContext("webgl2")!;
+			const pixel = new Uint8Array(4);
+			app.render();
+			gl.readPixels(
+				canvas.width / 2,
+				canvas.height / 2,
+				1,
+				1,
+				gl.RGBA,
+				gl.UNSIGNED_BYTE,
+				pixel,
+			);
+			return pixel[3];
+		});
+	expect(await pixelAlpha()).toBe(255);
+	await page.evaluate(() => {
+		document.querySelector("main")!.style.width = "220px";
+	});
+	await expect
+		.poll(() => page.evaluate(() => window.performancePreview.api!.app!.screen.width))
+		.toBe(220);
+	expect(await pixelAlpha()).toBe(255);
+});
+
 for (const dpr of [1, 2])
 	test.describe(`DPR ${dpr}`, () => {
 		test.use({ deviceScaleFactor: dpr });

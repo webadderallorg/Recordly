@@ -113,17 +113,17 @@ test("custom exports above QHD are available without a Cloud subscription", asyn
 	await expect(page.getByTestId("export-result")).toHaveText("3840 × 2160");
 });
 
-test("encoding choices stay under Advanced and keep their selected mode for download and sharing", async ({
-	page,
-}) => {
+test("download and sharing honor the visible FPS and active encoding mode", async ({ page }) => {
 	await page.goto("/tests/ui/export-resolution-presets.html");
 	await expect(page.getByRole("grid", { name: "Resolution", exact: true })).toBeVisible();
 	await expect(page.getByRole("row", { name: "Balanced", exact: true })).toHaveCount(0);
 	await expect(page.getByRole("grid", { name: "Encoding", exact: true })).toHaveCount(0);
+	const fps = page.getByRole("grid", { name: "FPS", exact: true });
+	await fps.getByRole("row", { name: "30", exact: true }).click();
 	await page.getByRole("button", { name: "Export Video", exact: true }).click();
-	await expect(page.getByTestId("export-settings-result")).toContainText(
-		'"encodingMode":"balanced"',
-	);
+	const request = page.getByTestId("export-settings-result");
+	await expect(request).toContainText('"encodingMode":"balanced"');
+	await expect(request).toContainText('"mp4FrameRate":30');
 	await page.getByText("Advanced", { exact: true }).click();
 	const encoding = page.getByRole("grid", { name: "Encoding", exact: true });
 	await expect(encoding.getByRole("row", { name: "Balanced", exact: true })).toHaveAttribute(
@@ -134,18 +134,16 @@ test("encoding choices stay under Advanced and keep their selected mode for down
 	await page.getByText("Advanced", { exact: true }).click();
 	await expect(encoding).toHaveCount(0);
 	await expect(page.getByRole("grid", { name: "Resolution", exact: true })).toBeVisible();
-	await page.getByRole("button", { name: "Export Video", exact: true }).click();
-	await expect(page.getByTestId("export-settings-result")).toContainText(
-		'"encodingMode":"quality"',
-	);
-	await expect(page.getByTestId("export-settings-result")).toContainText(
-		'"destination":"download"',
-	);
 	await page.getByRole("button", { name: "Prepare shared video", exact: true }).click();
-	await expect(page.getByTestId("export-settings-result")).toContainText(
-		'"encodingMode":"quality"',
-	);
-	await expect(page.getByTestId("export-settings-result")).toContainText('"destination":"share"');
+	await expect(request).toContainText('"destination":"share"');
+	await expect(request).toContainText('"encodingMode":"balanced"');
+	await expect(request).toContainText('"mp4FrameRate":30');
+	await page.getByText("Advanced", { exact: true }).click();
+	await page.getByRole("button", { name: "Export Video", exact: true }).click();
+	await expect(request).toContainText('"destination":"download"');
+	await expect(request).toContainText('"encodingMode":"quality"');
+	await expect(request).toContainText('"mp4FrameRate":30');
+	await page.getByText("Advanced", { exact: true }).click();
 	await page.reload();
 	await expect(page.getByRole("grid", { name: "Encoding", exact: true })).toHaveCount(0);
 	await page.getByText("Advanced", { exact: true }).click();
