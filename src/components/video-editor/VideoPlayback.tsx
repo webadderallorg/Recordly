@@ -1869,13 +1869,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					error instanceof Error
 						? error.message
 						: "Failed to initialize preview renderer";
-				console.error("Failed to initialize preview renderer:", error);
-				setPixiRendererError(errorMessage);
-				onError(
-					error instanceof Error
-						? error.message
-						: "Failed to initialize preview renderer",
+				console.warn(
+					"Pixi preview renderer initialization failed; falling back to native video element:",
+					error,
 				);
+				setPixiRendererError(errorMessage);
+				// Do not invoke onError() here as VideoPlayback gracefully falls back to the native video element.
 			});
 
 			return () => {

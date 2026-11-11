@@ -44,6 +44,16 @@ export function getGpuSwitches(
 	platform: NodeJS.Platform,
 	env: NodeJS.ProcessEnv = process.env,
 ): GpuSwitches {
+	if (env.RECORDLY_USE_ANGLE) {
+		const disable = env.RECORDLY_DISABLE_FEATURES
+			? env.RECORDLY_DISABLE_FEATURES.split(",").map((s) => s.trim()).filter(Boolean)
+			: undefined;
+		return {
+			useAngle: env.RECORDLY_USE_ANGLE === "none" ? undefined : env.RECORDLY_USE_ANGLE,
+			disableFeatures: disable,
+		};
+	}
+
 	if (platform === "darwin") {
 		return {
 			useAngle: "metal",
@@ -52,6 +62,20 @@ export function getGpuSwitches(
 	}
 
 	if (platform === "win32") {
+		// On Windows ARM64 (Snapdragon X / Qualcomm Adreno), native D3D11/Vulkan drivers can hit access
+		// violations (0xC0000005 / exit_code=-1073741819) when Chromium attempts GPU rasterization or WebGPU.
+		// Microsoft's WARP (DirectX software rasterizer) provides flawless, crash-free WebGL2 preview rendering.
+		if (
+			process.arch === "arm64" ||
+			env.TARGET_ARCH === "arm64" ||
+			env.PROCESSOR_ARCHITECTURE === "ARM64" ||
+			env.PROCESSOR_ARCHITEW6432 === "ARM64"
+		) {
+			return {
+				useAngle: "warp",
+				disableFeatures: ["WebGPU"],
+			};
+		}
 		return { useAngle: "d3d11" };
 	}
 

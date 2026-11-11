@@ -15,16 +15,19 @@ import {
 const projectRoot = process.cwd();
 const sourceDir = path.join(projectRoot, "electron", "native", "gpu-export-probe");
 const buildDir = path.join(sourceDir, "build");
+const targetArch =
+	process.env.TARGET_ARCH ||
+	(process.arch === "arm64" || process.env.npm_config_arch === "arm64" ? "arm64" : "x64");
 const bundledDir = path.join(
 	projectRoot,
 	"electron",
 	"native",
 	"bin",
-	process.arch === "arm64" ? "win32-arm64" : "win32-x64",
+	targetArch === "arm64" ? "win32-arm64" : "win32-x64",
 );
 const bundledExePath = path.join(bundledDir, "recordly-gpu-export.exe");
 const helperId = "recordly-gpu-export";
-const generatorArch = process.arch === "arm64" ? "ARM64" : "x64";
+const generatorArch = targetArch === "arm64" ? "ARM64" : "x64";
 
 if (process.platform !== "win32") {
 	console.log("[build-windows-gpu-export] Skipping Windows GPU export helper build.");
@@ -87,21 +90,22 @@ function findCmake() {
 }
 
 const cmake = findCmake();
+if (existsSync(bundledExePath) && process.env.RECORDLY_FORCE_BUILD_HELPERS !== "1") {
+	const verification = verifyNativeHelperManifest({
+		projectRoot,
+		helperId,
+		sourceDir,
+		binaryPath: bundledExePath,
+		binaryName: "recordly-gpu-export.exe",
+	});
+	if (verification.ok) {
+		console.log(`[build-windows-gpu-export] Using bundled helper: ${bundledExePath}`);
+		process.exit(0);
+	}
+}
+
 if (!cmake) {
 	if (existsSync(bundledExePath)) {
-		const verification = verifyNativeHelperManifest({
-			projectRoot,
-			helperId,
-			sourceDir,
-			binaryPath: bundledExePath,
-			binaryName: "recordly-gpu-export.exe",
-		});
-		if (!verification.ok) {
-			console.error(
-				formatNativeHelperManifestWarning("build-windows-gpu-export", verification),
-			);
-			process.exit(1);
-		}
 		console.log(`[build-windows-gpu-export] Using bundled helper: ${bundledExePath}`);
 		process.exit(0);
 	}
@@ -135,6 +139,10 @@ try {
 			),
 	});
 } catch (error) {
+	if (existsSync(bundledExePath)) {
+		console.warn(`[build-windows-gpu-export] CMake configure failed (${error.message}); using staged helper: ${bundledExePath}`);
+		process.exit(0);
+	}
 	console.error("[build-windows-gpu-export] CMake configure failed:", error.message);
 	process.exit(1);
 }

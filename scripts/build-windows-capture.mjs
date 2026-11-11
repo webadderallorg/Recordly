@@ -15,16 +15,19 @@ import {
 const projectRoot = process.cwd();
 const sourceDir = path.join(projectRoot, "electron", "native", "wgc-capture");
 const buildDir = path.join(sourceDir, "build");
+const targetArch =
+	process.env.TARGET_ARCH ||
+	(process.arch === "arm64" || process.env.npm_config_arch === "arm64" ? "arm64" : "x64");
 const bundledDir = path.join(
 	projectRoot,
 	"electron",
 	"native",
 	"bin",
-	process.arch === "arm64" ? "win32-arm64" : "win32-x64",
+	targetArch === "arm64" ? "win32-arm64" : "win32-x64",
 );
 const bundledExePath = path.join(bundledDir, "wgc-capture.exe");
 const helperId = "wgc-capture";
-const generatorArch = process.arch === "arm64" ? "ARM64" : "x64";
+const generatorArch = targetArch === "arm64" ? "ARM64" : "x64";
 
 if (process.platform !== "win32") {
 	console.log(
@@ -90,19 +93,23 @@ function findCmake() {
 	return null;
 }
 
+if (existsSync(bundledExePath) && process.env.RECORDLY_FORCE_BUILD_HELPERS !== "1") {
+	const verification = verifyNativeHelperManifest({
+		projectRoot,
+		helperId,
+		sourceDir,
+		binaryPath: bundledExePath,
+		binaryName: "wgc-capture.exe",
+	});
+	if (verification.ok) {
+		console.log(`[build-windows-capture] Using bundled helper: ${bundledExePath}`);
+		process.exit(0);
+	}
+}
+
 const cmake = findCmake();
 if (!cmake) {
 	if (existsSync(bundledExePath)) {
-		const verification = verifyNativeHelperManifest({
-			projectRoot,
-			helperId,
-			sourceDir,
-			binaryPath: bundledExePath,
-			binaryName: "wgc-capture.exe",
-		});
-		if (!verification.ok) {
-			console.warn(formatNativeHelperManifestWarning("build-windows-capture", verification));
-		}
 		console.log(`[build-windows-capture] Using bundled helper: ${bundledExePath}`);
 		process.exit(0);
 	}
@@ -138,6 +145,10 @@ try {
 			),
 	});
 } catch (error) {
+	if (existsSync(bundledExePath)) {
+		console.warn(`[build-windows-capture] CMake configure failed (${error.message}); using staged helper: ${bundledExePath}`);
+		process.exit(0);
+	}
 	console.error("[build-windows-capture] CMake configure failed:", error.message);
 	process.exit(1);
 }

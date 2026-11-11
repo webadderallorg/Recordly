@@ -33,6 +33,8 @@
 		"build:cursor-monitor": "node scripts/build-cursor-monitor.mjs",
 		"build:mac": "npm run build:platform-native-helpers && tsc && vite build --config vite.config.ts && npm run normalize:electron-main-cjs && npm run smoke:electron-main-cjs && electron-builder --mac",
 		"build:win": "npm run build:platform-native-helpers && tsc && vite build --config vite.config.ts && npm run normalize:electron-main-cjs && npm run smoke:electron-main-cjs && electron-builder --win",
+		"build:win-arm64": "npm run setup:arm64 && npm run build:platform-native-helpers && tsc && vite build --config vite.config.ts && npm run normalize:electron-main-cjs && npm run smoke:electron-main-cjs && electron-builder --win --arm64",
+		"setup:arm64": "node scripts/setup-arm64-media-tools.mjs",
 		"build:linux": "npm run build:platform-native-helpers && tsc && vite build --config vite.config.ts && npm run normalize:electron-main-cjs && npm run smoke:electron-main-cjs && electron-builder --linux",
 		"i18n:check": "node scripts/i18n-check.mjs",
 		"benchmark:export-queues": "node scripts/benchmark-export-queues.mjs",
@@ -51,7 +53,7 @@
 		"electron-updater": "^6.8.3",
 		"ffmpeg-static": "^5.3.0",
 		"ffprobe-static": "^3.1.0",
-		"uiohook-napi": "^1.5.4"
+		"uiohook-napi": "^1.5.5"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.3.13",

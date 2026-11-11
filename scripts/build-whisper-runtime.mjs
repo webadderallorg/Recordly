@@ -20,7 +20,7 @@ const windowsX64ArchivePath = path.join(cacheRoot, `${whisperVersion}-windows-x6
 const windowsX64ArchiveSha256 = "74f973345cb52ef5ba3ec9e7e7af8e48cc8c71722d1528603b80588a11f82e3e";
 
 function getHostArch() {
-	return process.arch === "arm64" ? "arm64" : "x64";
+	return process.env.TARGET_ARCH || (process.arch === "arm64" || process.env.npm_config_arch === "arm64" ? "arm64" : "x64");
 }
 
 function getNativeArchTag(platform, arch) {

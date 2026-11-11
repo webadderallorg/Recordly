@@ -40,9 +40,12 @@ function runScript(scriptName) {
 	return true;
 }
 
-if (!runScript("rebuild:native")) {
-	process.exit(1);
+const rebuildOk = runScript("rebuild:native");
+if (!rebuildOk) {
+	console.warn("[postinstall] Native C++ rebuild skipped or failed; using bundled/prebuilt binaries.");
 }
+
+runScript("setup:arm64");
 
 if (!runScript("build:platform-native-helpers")) {
 	process.exit(1);

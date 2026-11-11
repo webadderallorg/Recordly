@@ -15,15 +15,19 @@ import {
 const projectRoot = process.cwd();
 const sourceDir = path.join(projectRoot, "electron", "native", "cursor-monitor");
 const buildDir = path.join(sourceDir, "build");
+const targetArch =
+	process.env.TARGET_ARCH ||
+	(process.arch === "arm64" || process.env.npm_config_arch === "arm64" ? "arm64" : "x64");
 const bundledDir = path.join(
 	projectRoot,
 	"electron",
 	"native",
 	"bin",
-	process.arch === "arm64" ? "win32-arm64" : "win32-x64",
+	targetArch === "arm64" ? "win32-arm64" : "win32-x64",
 );
 const bundledExePath = path.join(bundledDir, "cursor-monitor.exe");
 const helperId = "cursor-monitor";
+const generatorArch = targetArch === "arm64" ? "ARM64" : "x64";
 
 if (process.platform !== "win32") {
 	console.log("[build-cursor-monitor] Skipping: host platform is not Windows.");
@@ -87,19 +91,23 @@ function findCmake() {
 	return null;
 }
 
+if (existsSync(bundledExePath) && process.env.RECORDLY_FORCE_BUILD_HELPERS !== "1") {
+	const verification = verifyNativeHelperManifest({
+		projectRoot,
+		helperId,
+		sourceDir,
+		binaryPath: bundledExePath,
+		binaryName: "cursor-monitor.exe",
+	});
+	if (verification.ok) {
+		console.log(`[build-cursor-monitor] Using bundled helper: ${bundledExePath}`);
+		process.exit(0);
+	}
+}
+
 const cmake = findCmake();
 if (!cmake) {
 	if (existsSync(bundledExePath)) {
-		const verification = verifyNativeHelperManifest({
-			projectRoot,
-			helperId,
-			sourceDir,
-			binaryPath: bundledExePath,
-			binaryName: "cursor-monitor.exe",
-		});
-		if (!verification.ok) {
-			console.warn(formatNativeHelperManifestWarning("build-cursor-monitor", verification));
-		}
 		console.log(`[build-cursor-monitor] Using bundled helper: ${bundledExePath}`);
 		process.exit(0);
 	}
@@ -125,13 +133,17 @@ try {
 		prefix: "build-cursor-monitor",
 		clearCache: clearCmakeCache,
 		configure: (generator, toolset) =>
-			execSync(`${cmake} .. -G "${generator}" -A x64${toolset ? ` -T ${toolset}` : ""}`, {
+			execSync(`${cmake} .. -G "${generator}" -A ${generatorArch}${toolset ? ` -T ${toolset}` : ""}`, {
 				cwd: buildDir,
 				stdio: "inherit",
 				timeout: 120000,
 			}),
 	});
 } catch (error) {
+	if (existsSync(bundledExePath)) {
+		console.warn(`[build-cursor-monitor] CMake configure failed (${error.message}); using staged helper: ${bundledExePath}`);
+		process.exit(0);
+	}
 	console.error("[build-cursor-monitor] CMake configure failed:", error.message);
 	process.exit(1);
 }

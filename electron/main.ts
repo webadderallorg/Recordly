@@ -74,9 +74,22 @@ function ignoreBrokenConsolePipe(stream: NodeJS.WritableStream | undefined) {
 ignoreBrokenConsolePipe(process.stdout);
 ignoreBrokenConsolePipe(process.stderr);
 
+const isWindowsArm64 =
+	process.platform === "win32" &&
+	(process.arch === "arm64" ||
+		process.env.TARGET_ARCH === "arm64" ||
+		process.env.PROCESSOR_ARCHITECTURE === "ARM64" ||
+		process.env.PROCESSOR_ARCHITEW6432 === "ARM64");
+
 app.commandLine.appendSwitch("ignore-gpu-blocklist");
-app.commandLine.appendSwitch("enable-unsafe-webgpu");
-app.commandLine.appendSwitch("enable-gpu-rasterization");
+if (!isWindowsArm64) {
+	app.commandLine.appendSwitch("enable-unsafe-webgpu");
+	app.commandLine.appendSwitch("enable-gpu-rasterization");
+}
+
+app.on("child-process-gone", (_event, details) => {
+	console.error("[child-process-gone]", details);
+});
 
 app.on("web-contents-created", (_event, contents) => {
 	if (!shouldHardenWebContentsType(contents.getType())) {

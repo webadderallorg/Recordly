@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "platform": "win32",
+  "arch": "arm64",
+  "helpers": {
+    "wgc-capture": {
+      "binaryName": "wgc-capture.exe",
+      "binarySha256": "a5a9c0c417144a834af3206b60bae32d0c21d55deb8a3f5446831621cfdfa7b3",
+      "sourceDir": "electron/native/wgc-capture",
+      "sourceFingerprint": "c65b6eb2230be7db9b49aac48eba52a9eac469028ebb242e10c16c51c86b3220",
+      "updatedAt": "2026-11-09T16:12:53.614Z"
+    },
+    "cursor-monitor": {
+      "binaryName": "cursor-monitor.exe",
+      "binarySha256": "f1d8f30e8d7bee19ecea91c9a90a95ea4824138b8336b18030fa0602a641d70d",
+      "sourceDir": "electron/native/cursor-monitor",
+      "sourceFingerprint": "45bb72e4039e061a354af87317d7c42ec3d2118369b3f4379046ff497b701e72",
+      "updatedAt": "2026-11-09T16:12:53.619Z"
+    },
+    "recordly-gpu-export": {
+      "binaryName": "recordly-gpu-export.exe",
+      "binarySha256": "49a2ac588206305d0129e6263ce4be49780c50a9dc4efc7df63aad09178a919f",
+      "sourceDir": "electron/native/gpu-export-probe",
+      "sourceFingerprint": "37a5842eba63cdeccfddd02cc278a98207248fb0aa6b56153fb85ed152c908c1",
+      "updatedAt": "2026-11-09T16:12:53.623Z"
+    }
+  }
+}

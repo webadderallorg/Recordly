@@ -5,10 +5,25 @@
     <link rel="icon" type="image/png" href="/app-icons/recordly-32.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Recordly</title>
+    <script>
+      (function() {
+        if (typeof HTMLCanvasElement !== "undefined") {
+          var originalGetContext = HTMLCanvasElement.prototype.getContext;
+          HTMLCanvasElement.prototype.getContext = function(type) {
+            var ctx = originalGetContext.apply(this, arguments);
+            if (!ctx && type === "webgl") {
+              var args = Array.prototype.slice.call(arguments);
+              args[0] = "webgl2";
+              ctx = originalGetContext.apply(this, args);
+            }
+            return ctx;
+          };
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

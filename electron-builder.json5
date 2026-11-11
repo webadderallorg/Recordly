@@ -11,8 +11,8 @@
     "electron/native/bin/**"
   ],
   "productName": "Recordly",
-  "npmRebuild": true,
-  "buildDependenciesFromSource": true,
+  "npmRebuild": false,
+  "buildDependenciesFromSource": false,
   "compression": "normal",
   "directories": {
     "output": "release"
@@ -119,6 +119,7 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "Recordly"
+    "shortcutName": "Recordly",
+    "include": "build/installer.nsh"
   }
 }

@@ -141,20 +141,24 @@ function getNativeArchTag(platform = process.platform, arch = process.arch) {
 	return `${platform}-${arch}`;
 }
 
-function getRequiredArchTags() {
+function getRequiredArchTags(unpackedRoot) {
 	const configured = process.env.PACKAGED_SMOKE_ARCH_TAGS?.trim();
-	if (!configured) {
-		return [getNativeArchTag()];
+	if (configured) {
+		return [
+			...new Set(
+				configured
+					.split(",")
+					.map((entry) => entry.trim())
+					.filter(Boolean),
+			),
+		];
 	}
 
-	return [
-		...new Set(
-			configured
-				.split(",")
-				.map((entry) => entry.trim())
-				.filter(Boolean),
-		),
-	];
+	if (unpackedRoot && unpackedRoot.toLowerCase().includes("arm64")) {
+		return [process.platform === "win32" ? "win32-arm64" : `${process.platform}-arm64`];
+	}
+
+	return [getNativeArchTag()];
 }
 
 function getExpectedNativeHelperFiles(archTag) {
@@ -239,7 +243,7 @@ function verifyNativeHelpers(unpackedRoot) {
 		fail(`native helper bin directory is missing at ${relativePath(nativeBinRoot)}`);
 	}
 
-	for (const archTag of getRequiredArchTags()) {
+	for (const archTag of getRequiredArchTags(unpackedRoot)) {
 		const archDir = path.join(nativeBinRoot, archTag);
 		if (!existsSync(archDir)) {
 			fail(`native helper arch directory is missing at ${relativePath(archDir)}`);
