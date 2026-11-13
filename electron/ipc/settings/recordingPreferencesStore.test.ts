@@ -34,6 +34,7 @@ describe("recording preferences store", () => {
 			store.update({ microphoneDeviceId: "preferred-mic" }),
 			store.update({ webcamEnabled: true }),
 			store.update({ webcamDeviceId: "preferred-camera" }),
+			store.update({ floatingWebcamPreviewVisible: false }),
 		]);
 
 		await expect(store.read()).resolves.toEqual({
@@ -41,6 +42,7 @@ describe("recording preferences store", () => {
 			microphoneDeviceId: "preferred-mic",
 			webcamEnabled: true,
 			webcamDeviceId: "preferred-camera",
+			floatingWebcamPreviewVisible: false,
 		});
 	});
 });

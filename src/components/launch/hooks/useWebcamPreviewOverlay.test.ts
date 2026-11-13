@@ -63,6 +63,8 @@ describe("floating webcam preview lifecycle and pointer ownership", () => {
 	let getEditorMode: ReturnType<typeof vi.fn>;
 	let getUserMedia: ReturnType<typeof vi.fn>;
 	let ignoreMouse: ReturnType<typeof vi.fn>;
+	let getRecordingPreferences: ReturnType<typeof vi.fn>;
+	let setRecordingPreferences: ReturnType<typeof vi.fn>;
 	let trackStop: ReturnType<typeof vi.fn>;
 	let stream: MediaStream;
 	let windowEvents: Map<string, () => void>;
@@ -117,6 +119,10 @@ describe("floating webcam preview lifecycle and pointer ownership", () => {
 		getEditorMode = vi.fn().mockResolvedValue(false);
 		getUserMedia = vi.fn().mockResolvedValue(stream);
 		ignoreMouse = vi.fn();
+		getRecordingPreferences = vi
+			.fn()
+			.mockResolvedValue({ success: true, floatingWebcamPreviewVisible: true });
+		setRecordingPreferences = vi.fn().mockResolvedValue({ success: true });
 		windowEvents = new Map();
 		frame = null;
 		captured = new Set();
@@ -152,6 +158,8 @@ describe("floating webcam preview lifecycle and pointer ownership", () => {
 					return vi.fn();
 				},
 				hudOverlaySetIgnoreMouse: ignoreMouse,
+				getRecordingPreferences: () => getRecordingPreferences(),
+				setRecordingPreferences: (prefs: unknown) => setRecordingPreferences(prefs),
 			},
 		});
 		vi.stubGlobal("document", {
@@ -316,5 +324,74 @@ describe("floating webcam preview lifecycle and pointer ownership", () => {
 		expect(captured.size).toBe(0);
 		expect(ignoreMouse).toHaveBeenLastCalledWith(true);
 		expect(attributes.get("data-webcam-preview-cursor")).toBe("crosshair");
+	});
+	it("restores a saved hidden floating preview after a restart", async () => {
+		getRecordingPreferences.mockResolvedValue({
+			success: true,
+			floatingWebcamPreviewVisible: false,
+		});
+		expect(render().showFloatingWebcamPreview).toBe(true);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(render().showFloatingWebcamPreview).toBe(false);
+		expect(setRecordingPreferences).not.toHaveBeenCalled();
+	});
+
+	it("keeps the floating preview hidden until the saved choice loads", async () => {
+		let resolvePreferences!: (value: unknown) => void;
+		getRecordingPreferences.mockReturnValue(
+			new Promise((resolve) => {
+				resolvePreferences = resolve;
+			}),
+		);
+		expect(render().showRecordingWebcamPreview).toBe(false);
+		resolvePreferences({ success: true, floatingWebcamPreviewVisible: false });
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(render().showRecordingWebcamPreview).toBe(false);
+	});
+
+	it("shows the floating preview once loading fails", async () => {
+		getRecordingPreferences.mockRejectedValue(new Error("unreadable"));
+		render();
+		await Promise.resolve();
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(render().showRecordingWebcamPreview).toBe(true);
+	});
+
+	it("saves the floating preview choice when the user toggles it", () => {
+		const preview = render();
+		preview.setShowFloatingWebcamPreview((current) => !current);
+		expect(render().showFloatingWebcamPreview).toBe(false);
+		expect(setRecordingPreferences).toHaveBeenLastCalledWith({
+			floatingWebcamPreviewVisible: false,
+		});
+		preview.setShowFloatingWebcamPreview(true);
+		expect(render().showFloatingWebcamPreview).toBe(true);
+		expect(setRecordingPreferences).toHaveBeenLastCalledWith({
+			floatingWebcamPreviewVisible: true,
+		});
+	});
+
+	it("keeps a toggle made before saved preferences finish loading", async () => {
+		let resolvePreferences!: (value: unknown) => void;
+		getRecordingPreferences.mockReturnValue(
+			new Promise((resolve) => {
+				resolvePreferences = resolve;
+			}),
+		);
+		const preview = render();
+		preview.setShowFloatingWebcamPreview(false);
+		resolvePreferences({ success: true, floatingWebcamPreviewVisible: true });
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(render().showFloatingWebcamPreview).toBe(false);
+	});
+
+	it("keeps the floating preview hidden when the webcam is turned off and on", () => {
+		render().setShowFloatingWebcamPreview(false);
+		render({ webcamEnabled: false });
+		expect(render({ webcamEnabled: true }).showFloatingWebcamPreview).toBe(false);
 	});
 });

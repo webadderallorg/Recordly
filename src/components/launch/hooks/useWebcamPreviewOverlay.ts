@@ -1,4 +1,11 @@
-import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import {
+	type RefObject,
+	type SetStateAction,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { loadEditorPreferences } from "../../video-editor/editorPreferences";
 import { canShowFloatingWebcamPreview } from "../floatingWebcamPreview";
 import { useWebcamPreviewGeometry } from "./useWebcamPreviewGeometry";
@@ -49,12 +56,51 @@ export function useWebcamPreviewOverlay({
 	useEffect(() => {
 		setWebcamPreviewSettings(loadEditorPreferences().webcam);
 	}, [editorMode, webcamEnabled]);
-	const [showFloatingWebcamPreview, setShowFloatingWebcamPreview] = useState(true);
+	const [showFloatingWebcamPreview, setShowFloatingWebcamPreviewState] = useState(true);
+	const showFloatingWebcamPreviewRef = useRef(true);
+	const floatingPreviewEditedRef = useRef(false);
+	// Stays false until the saved choice is read, so a preview saved as hidden never flashes.
+	const [floatingPreviewChoiceLoaded, setFloatingPreviewChoiceLoaded] = useState(false);
+	// Restore the saved show/hide choice so it survives app restarts.
+	useEffect(() => {
+		if (typeof window.electronAPI?.getRecordingPreferences !== "function") {
+			setFloatingPreviewChoiceLoaded(true);
+			return;
+		}
+		void window.electronAPI.getRecordingPreferences().then(
+			(result) => {
+				setFloatingPreviewChoiceLoaded(true);
+				if (floatingPreviewEditedRef.current || !result.success) return;
+				if (typeof result.floatingWebcamPreviewVisible !== "boolean") return;
+				showFloatingWebcamPreviewRef.current = result.floatingWebcamPreviewVisible;
+				setShowFloatingWebcamPreviewState(result.floatingWebcamPreviewVisible);
+			},
+			() => {
+				// Keep the default (shown) if saved preferences can't be read.
+				setFloatingPreviewChoiceLoaded(true);
+			},
+		);
+	}, []);
+	/**
+	 * Shows or hides the floating webcam preview and saves the choice.
+	 * A toggle made before the saved choice loads wins over the saved value.
+	 */
+	const setShowFloatingWebcamPreview = useCallback((value: SetStateAction<boolean>) => {
+		floatingPreviewEditedRef.current = true;
+		setFloatingPreviewChoiceLoaded(true);
+		const current = showFloatingWebcamPreviewRef.current;
+		const next = typeof value === "function" ? value(current) : value;
+		if (next === current) return;
+		showFloatingWebcamPreviewRef.current = next;
+		setShowFloatingWebcamPreviewState(next);
+		void window.electronAPI?.setRecordingPreferences?.({ floatingWebcamPreviewVisible: next });
+	}, []);
 	const webcamPreviewRef = useRef<HTMLVideoElement | null>(null);
 	const recordingWebcamPreviewRef = useRef<HTMLVideoElement | null>(null);
 	const previewStreamRef = useRef<MediaStream | null>(null);
 	const showRecordingWebcamPreview =
 		webcamEnabled &&
+		floatingPreviewChoiceLoaded &&
 		canShowFloatingWebcamPreview(
 			showFloatingWebcamPreview,
 			hudOverlayMousePassthroughSupported,
@@ -67,7 +113,6 @@ export function useWebcamPreviewOverlay({
 	const pointer = useWebcamPreviewPointer({
 		webcamEnabled,
 		showRecordingWebcamPreview,
-		setShowFloatingWebcamPreview,
 		geometry,
 	});
 
