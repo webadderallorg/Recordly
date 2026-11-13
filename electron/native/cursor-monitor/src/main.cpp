@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <thread>
 #include <atomic>
@@ -41,6 +42,19 @@ int main(int argc, char* argv[]) {
     if (argc > 1) {
         SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         const std::string command = argv[1];
+        if (command == "--desktop-wallpaper" && argc == 2) {
+            wchar_t wallpaper[32768]{};
+            if (!SystemParametersInfoW(SPI_GETDESKWALLPAPER, 32768, wallpaper, 0)) return 1;
+            const int length = lstrlenW(wallpaper);
+            const int bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wallpaper,
+                length, nullptr, 0, nullptr, nullptr);
+            if (bytes <= 0) return 1;
+            std::string utf8(bytes, '\0');
+            if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wallpaper,
+                length, utf8.data(), bytes, nullptr, nullptr)) return 1;
+            std::cout << std::quoted(utf8) << '\n';
+            return 0;
+        }
         if (command == "--window-bounds" && argc == 3) {
             try {
                 size_t consumed = 0;

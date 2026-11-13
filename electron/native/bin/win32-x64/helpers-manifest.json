@@ -12,10 +12,10 @@
 		},
 		"cursor-monitor": {
 			"binaryName": "cursor-monitor.exe",
-			"binarySha256": "3dfddc57ce100629554ec25532c182827ed8d1a86ce5397016d7d90e99acc5cd",
+			"binarySha256": "3358be20cb7a05dac21b9d843ead2dac4923a22a2d79aac702b0ab5a33ab4e58",
 			"sourceDir": "electron/native/cursor-monitor",
-			"sourceFingerprint": "8c60892e6fdfb5d12a8a9896a43a5005de433ee5ba86d924561afe46831a362d",
-			"updatedAt": "2026-11-13T03:28:01.112Z"
+			"sourceFingerprint": "72647340840b23fc431e847b0fa845bed9e1e975230cb667ed8dfa0b56e48e23",
+			"updatedAt": "2026-11-13T04:28:15.986Z"
 		},
 		"recordly-gpu-export": {
 			"binaryName": "recordly-gpu-export.exe",
