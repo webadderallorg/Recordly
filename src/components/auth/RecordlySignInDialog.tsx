@@ -18,7 +18,7 @@ import {
 	signInWithSocial,
 	signOutRecordly,
 } from "@/lib/auth/recordlyAuth";
-import { RecordlySignInFields } from "./RecordlySignInFields";
+import { RecordlySignInFields, SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS } from "./RecordlySignInFields";
 import { FirstBootMusic } from "./FirstBootMusic";
 import {
 	OnboardingBody,
@@ -130,15 +130,12 @@ export function RecordlySignInDialog({
 	const [reportDiagnostic, setReportDiagnostic] = useState<string>();
 	const [linkSent, setLinkSent] = useState(false);
 	const [providers, setProviders] = useState<RecordlyOAuthProvider[]>([]);
-	const [loadingProviders, setLoadingProviders] = useState(false);
 	const [providersKnown, setProvidersKnown] = useState(false);
 
 	useEffect(() => {
 		if (!open || !configured || user) return;
-		let disposed = false;
 		const controller = new AbortController();
-		const timeout = window.setTimeout(() => controller.abort(), 10000);
-		setLoadingProviders(true);
+		const timeout = window.setTimeout(() => controller.abort(), SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS);
 		setProvidersKnown(false);
 		setProviders([]);
 		void getEnabledSignInProviders(controller.signal)
@@ -149,15 +146,13 @@ export function RecordlySignInDialog({
 				}
 			})
 			.catch((error) => {
-				// Email remains available to retry when provider discovery cannot reach Auth.
+				// Allow sign-in attempts when provider availability could not be checked.
 				if (!controller.signal.aborted) captureAuthFailure("provider-discovery", error);
 			})
 			.finally(() => {
 				window.clearTimeout(timeout);
-				if (!disposed) setLoadingProviders(false);
 			});
 		return () => {
-			disposed = true;
 			window.clearTimeout(timeout);
 			controller.abort();
 		};
@@ -344,14 +339,12 @@ export function RecordlySignInDialog({
 									void run(provider, () => signInWithSocial(provider, consent))
 								}
 								providers={providers}
-								loadingProviders={loadingProviders}
 								providersKnown={providersKnown}
 								configured={configured}
 								busy={busy}
 								compact={onboarding}
 								assetBase={import.meta.env.BASE_URL}
 								labels={{
-									loadingProviders: ot("loadingProviders"),
 									checkInbox: ot("checkInbox"),
 									code: ot("code"),
 									verifyCode: ot("verifyCode"),
