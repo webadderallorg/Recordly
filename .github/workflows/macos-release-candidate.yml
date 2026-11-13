@@ -86,7 +86,7 @@ jobs:
             runner: macos-15-intel
           - arch: arm64
             arch_tag: darwin-arm64
-            runner: macos-14
+            runner: macos-15
     env:
       CI: true
     steps:
