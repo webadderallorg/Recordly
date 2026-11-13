@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, expect, it, onTestFinished, vi } from "vitest";
 
 const electron = vi.hoisted(() => ({
 	app: { isPackaged: false, isReady: () => true, focus: vi.fn() },
@@ -164,8 +164,15 @@ it.each([
 	expect(other.close).toHaveBeenCalledOnce();
 });
 
-it("loads the reveal before showing real packaged first-run onboarding", async () => {
-	if (process.platform !== "darwin" && process.platform !== "win32") return;
+it.each([
+	"darwin",
+	"win32",
+] as const)("loads the reveal before packaged onboarding on %s", async (platform) => {
+	const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+	Object.defineProperty(process, "platform", { ...originalPlatform, value: platform });
+	onTestFinished(() => {
+		Object.defineProperty(process, "platform", originalPlatform);
+	});
 	electron.app.isPackaged = true;
 	vi.stubEnv("VITE_DEV_SERVER_URL", undefined);
 	const { focusOnboardingWindow, showOnboardingWindow } = await import("./windows");
