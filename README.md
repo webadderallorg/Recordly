@@ -205,7 +205,7 @@ sudo apt install build-essential cmake libx11-dev libxtst-dev libxrandr-dev libx
 ### Steps
 
 ```bash
-git clone https://github.com/webadderallorg/Recordly.git recordly
+git clone https://github.com/webadderallorg/Recordly.git
 cd recordly
 npm install
 npm run dev
