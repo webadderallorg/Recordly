@@ -1,10 +1,11 @@
-import { systemPreferences } from "electron";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { systemPreferences } from "electron";
 import { getNativeMacWindowsFrontToBack } from "./cursor/bounds";
+import { getDesktopSources } from "./register/sources";
 import type { CapturePickerWindow, SelectedSource } from "./types";
 import { getScreen, parseWindowId } from "./utils";
-import { getDesktopSources } from "./register/sources";
+import { readWindowsWindowGeometry } from "./windowsWindowGeometry";
 
 const exec = promisify(execFile);
 
@@ -19,18 +20,20 @@ public static class RecordlyPickerWindows {
  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT rect);
+ [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint processId);
  [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
  [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attribute, out RECT rect, int size);
- public class Entry { public long id; public int x, y, width, height; }
+ public class Entry { public long id; public uint ownerPid; public int x, y, width, height; }
  public static Entry[] List() {
   SetThreadDpiAwarenessContext(new IntPtr(-4));
   var list = new List<Entry>(); var seen = new HashSet<long>();
   for (var h = GetTopWindow(IntPtr.Zero); h != IntPtr.Zero && seen.Add(h.ToInt64()); h = GetWindow(h, 2)) {
    if (!IsWindowVisible(h) || IsIconic(h)) continue;
+   uint ownerPid; GetWindowThreadProcessId(h, out ownerPid);
    RECT rect;
    if (DwmGetWindowAttribute(h, 9, out rect, Marshal.SizeOf(typeof(RECT))) != 0 && !GetWindowRect(h, out rect)) continue;
    if (rect.Right <= rect.Left || rect.Bottom <= rect.Top) continue;
-   list.Add(new Entry { id = h.ToInt64(), x = rect.Left, y = rect.Top, width = rect.Right - rect.Left, height = rect.Bottom - rect.Top });
+   list.Add(new Entry { id = h.ToInt64(), ownerPid = ownerPid, x = rect.Left, y = rect.Top, width = rect.Right - rect.Left, height = rect.Bottom - rect.Top });
   }
   return list.ToArray();
  }
@@ -76,17 +79,26 @@ export async function listCapturePickerWindows(): Promise<CapturePickerWindow[]>
 			typeof source.id === "string" && source.id.startsWith("window:"),
 	);
 	const byId = new Map(capturable.map((source) => [parseWindowId(source.id), source]));
-	const { stdout } = await exec(
-		"powershell.exe",
-		["-NoProfile", "-NonInteractive", "-Command", WINDOWS_SCRIPT],
-		{ timeout: 10000, maxBuffer: 4 * 1024 * 1024 },
-	);
-	const entries: unknown = JSON.parse(stdout);
+	let entries: unknown;
+	try {
+		entries = await readWindowsWindowGeometry(["--list-windows"]);
+	} catch {
+		// Keep selection working with older packaged helper binaries.
+		const { stdout } = await exec(
+			"powershell.exe",
+			["-NoProfile", "-NonInteractive", "-Command", WINDOWS_SCRIPT],
+			{ timeout: 15000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
+		);
+		entries = JSON.parse(stdout);
+	}
 	if (!Array.isArray(entries)) throw new Error("Unable to read window positions.");
 	return entries.flatMap((entry) => {
 		const source = byId.get(entry.id);
 		if (
 			!source ||
+			// The transparent fullscreen HUD sits above other apps. Never let it
+			// (or another Recordly window) mask the windows underneath in hit tests.
+			entry.ownerPid === process.pid ||
 			![entry.x, entry.y, entry.width, entry.height].every(Number.isFinite) ||
 			entry.width <= 0 ||
 			entry.height <= 0
