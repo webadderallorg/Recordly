@@ -1,6 +1,7 @@
 import { BrowserWindow, type Rectangle } from "electron";
 
 const INTRO_TIMEOUT_MS = 6000;
+const INTRO_PLAYBACK_TIMEOUT_MS = 10000;
 const POPUP_FADE_MS = 280;
 const BACKDROP_FADE_MS = 360;
 
@@ -89,24 +90,27 @@ export function startOnboardingIntro(
 		finish(false);
 	});
 	backdrop.webContents.once("render-process-gone", () => finish(false));
+	const onTimeout = () => {
+		if (!startedHandoff) {
+			closeBackdrop();
+			finish(false);
+		}
+	};
 	backdrop.webContents.ipc.on("onboarding-intro", (event, stage: unknown) => {
 		if (introFinished || backdrop.isDestroyed()) return;
 		if (event.senderFrame !== backdrop.webContents.mainFrame) return;
 		if (stage === "ready" && !backdrop.isVisible()) {
+			clearTimeout(deadline);
+			deadline = setTimeout(onTimeout, INTRO_PLAYBACK_TIMEOUT_MS);
 			backdrop.showInactive();
 			backdrop.moveTop();
+			backdrop.webContents.send("onboarding-intro-shown");
 		} else if (stage === "finished" || stage === "skipped") {
 			finish(stage === "finished");
 		}
 	});
 
-	deadline = setTimeout(() => {
-		// An unavailable intro or a slow popup should never leave a desktop overlay behind.
-		if (!startedHandoff) {
-			closeBackdrop();
-			finish(false);
-		}
-	}, INTRO_TIMEOUT_MS);
+	deadline = setTimeout(onTimeout, INTRO_TIMEOUT_MS);
 	load(backdrop);
 	return backdrop;
 }

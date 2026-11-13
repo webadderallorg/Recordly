@@ -563,6 +563,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	closeOnboardingWindow: () => ipcRenderer.invoke("close-onboarding-window"),
 	reportOnboardingIntro: (stage: "ready" | "finished" | "skipped") =>
 		ipcRenderer.send("onboarding-intro", stage),
+	onOnboardingIntroShown: (callback: () => void) => {
+		const listener = () => callback();
+		ipcRenderer.on("onboarding-intro-shown", listener);
+		return () => ipcRenderer.removeListener("onboarding-intro-shown", listener);
+	},
 	createProjectFile: (data: unknown, thumbnail?: string | null) =>
 		ipcRenderer.invoke("create-project-file", data, thumbnail),
 	renameLibraryProject: (path: string, name: string) =>

@@ -1044,6 +1044,7 @@ interface Window {
 		replayOnboardingIntro?: () => Promise<boolean>;
 		closeOnboardingWindow: () => Promise<boolean>;
 		reportOnboardingIntro: (stage: "ready" | "finished" | "skipped") => void;
+		onOnboardingIntroShown: (callback: () => void) => () => void;
 		createProjectFile: (
 			data: unknown,
 			thumbnail?: string | null,

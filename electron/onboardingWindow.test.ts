@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, expect, it, onTestFinished, vi } from "vitest";
 
 const electron = vi.hoisted(() => ({
 	app: { isPackaged: false, isReady: () => true, focus: vi.fn() },
@@ -18,7 +18,14 @@ class FakeWindow extends EventEmitter {
 		return windows;
 	}
 	destroyed = false;
-	loadURL = vi.fn(async () => undefined);
+	url = "";
+	webContents = Object.assign(new EventEmitter(), {
+		isDestroyed: () => this.destroyed,
+		getURL: () => this.url,
+	});
+	loadURL = vi.fn(async (url: string) => {
+		this.url = url;
+	});
 	setBounds = vi.fn();
 	getBounds = () => ({ x: 1600, y: 10, width: 500, height: 500 });
 	show = vi.fn();
@@ -155,4 +162,29 @@ it.each([
 	expect(onboarding.show).toHaveBeenCalled();
 	expect(onboarding.focus).toHaveBeenCalled();
 	expect(other.close).toHaveBeenCalledOnce();
+});
+
+it.each([
+	"darwin",
+	"win32",
+] as const)("loads the reveal before packaged onboarding on %s", async (platform) => {
+	const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+	Object.defineProperty(process, "platform", { ...originalPlatform, value: platform });
+	onTestFinished(() => {
+		Object.defineProperty(process, "platform", originalPlatform);
+	});
+	electron.app.isPackaged = true;
+	vi.stubEnv("VITE_DEV_SERVER_URL", undefined);
+	const { focusOnboardingWindow, showOnboardingWindow } = await import("./windows");
+	const onboarding = showOnboardingWindow({ intro: true }) as unknown as FakeWindow;
+	const intro = windows.at(-1)!;
+	expect(intro).not.toBe(onboarding);
+	expect(intro.loadURL).toHaveBeenCalledWith(
+		"http://localhost:9999/?windowType=onboarding-intro",
+	);
+	expect(onboarding.loadURL).toHaveBeenCalledWith("http://localhost:9999/?windowType=onboarding");
+	focusOnboardingWindow();
+	expect(onboarding.show).not.toHaveBeenCalled();
+	intro.webContents.emit("did-finish-load");
+	onboarding.webContents.emit("did-finish-load");
 });

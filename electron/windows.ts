@@ -1253,7 +1253,10 @@ export function replayOnboardingIntro(owner: BrowserWindow): boolean {
 	return true;
 }
 
-export function showOnboardingWindow(options?: { preview?: boolean }): BrowserWindow {
+export function showOnboardingWindow(options?: {
+	preview?: boolean;
+	intro?: boolean;
+}): BrowserWindow {
 	const query = {
 		windowType: "onboarding",
 		...(!app.isPackaged && typeof options?.preview === "boolean"
@@ -1311,11 +1314,10 @@ export function showOnboardingWindow(options?: { preview?: boolean }): BrowserWi
 		win.setBounds(bounds);
 		bringOnboardingWindowForward(win);
 	};
-	const previewIntro =
-		!app.isPackaged &&
-		options?.preview &&
-		(process.platform === "darwin" || process.platform === "win32");
-	if (previewIntro) {
+	const playIntro =
+		(process.platform === "darwin" || process.platform === "win32") &&
+		(options?.intro || (!app.isPackaged && options?.preview));
+	if (playIntro) {
 		const intro = startOnboardingIntro(
 			getScreen().getPrimaryDisplay().bounds,
 			path.join(electronWindowsDir, "preload.js"),
