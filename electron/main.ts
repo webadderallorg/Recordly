@@ -727,13 +727,12 @@ function getTrayIcon(filename: string) {
 }
 
 function syncDockIcon() {
-	if (process.platform !== "darwin" || !app.dock) {
+	// The packaged app uses the native icon from its macOS bundle.
+	if (process.platform !== "darwin" || app.isPackaged || !app.dock) {
 		return;
 	}
 
-	const dockIcon = getAppImage(
-		IS_DEV ? "app-icons/recordly-solid-blue-512.png" : getPlatformAppIconFilename(512),
-	);
+	const dockIcon = getAppImage("app-icons/recordly-solid-blue-512.png");
 	if (!dockIcon.isEmpty()) {
 		app.dock.setIcon(dockIcon);
 	}

@@ -137,12 +137,13 @@ function storagePath(): string {
 }
 
 async function load(): Promise<{ entries: AuthEntries; persisted: boolean }> {
-	if (!encryptionAvailable()) throw new Error("Secure authentication storage is unavailable.");
 	try {
 		const filePath = storagePath();
 		const stat = await fs.stat(filePath);
 		if (stat.size > MAX_STORE_LENGTH * 8)
 			throw new Error("Authentication storage is too large.");
+		if (!encryptionAvailable())
+			throw new Error("Secure authentication storage is unavailable.");
 		const payload = JSON.parse(safeStorage.decryptString(await fs.readFile(filePath)));
 		if (payload.version !== 1) throw new Error("Unsupported authentication storage version.");
 		return { entries: validateEntries(payload.entries), persisted: true };
@@ -159,6 +160,7 @@ async function load(): Promise<{ entries: AuthEntries; persisted: boolean }> {
 
 async function save(next: AuthEntries): Promise<void> {
 	const validated = validateEntries(next);
+	if (!encryptionAvailable()) throw new Error("Secure authentication storage is unavailable.");
 	const encrypted = safeStorage.encryptString(JSON.stringify({ version: 1, entries: validated }));
 	const filePath = storagePath();
 	const directory = path.dirname(filePath);
@@ -203,13 +205,24 @@ export function readNativeAuthStorageValue(key: string): Promise<string | null> 
 }
 
 export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): void {
-	ipcMain.handle("auth-storage:available", (event) => {
+	ipcMain.handle("auth-storage:available", async (event) => {
 		assertTrustedRenderer(event);
+		if (process.platform === "darwin") {
+			try {
+				await fs.stat(storagePath());
+			} catch (error) {
+				// Checking safeStorage can prompt for Keychain access. Defer it until
+				// we have credentials to read or save.
+				if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+				throw error;
+			}
+		}
 		return encryptionAvailable();
 	});
 	ipcMain.handle("auth-storage:migrate", (event, snapshot: unknown) => {
 		assertTrustedRenderer(event);
 		const validated = validateEntries(snapshot);
+		if (Object.keys(validated).length === 0) return;
 		return serialize(() =>
 			transaction(async () => {
 				const current = await load();
@@ -279,9 +292,11 @@ export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): v
 		assertKey(key);
 		return serialize(async () => {
 			await transaction(async () => {
-				const next = { ...(await load()).entries };
-				delete next[key];
-				await save(next);
+				const { entries } = await load();
+				if (key in entries) {
+					delete entries[key];
+					await save(entries);
+				}
 				if (completedCallback?.key === key) completedCallback = undefined;
 			});
 			// The verifier is already removed durably. Optional route cleanup must

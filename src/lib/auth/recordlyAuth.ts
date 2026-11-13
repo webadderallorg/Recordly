@@ -111,7 +111,7 @@ function createAuthStorage() {
 				removeLegacyCopies(local, owned);
 				return null;
 			}
-			// Main migrates once, including an empty marker. Remove old copies so
+			// Main migrates existing credentials once. Remove old copies so
 			// logging out cannot restore a stale browser session.
 			removeLegacyCopies(local, owned);
 			return bridge;

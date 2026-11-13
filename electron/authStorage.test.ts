@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { safeStorage } from "electron";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
 	directory: "",
@@ -40,6 +40,30 @@ beforeEach(async () => {
 });
 afterEach(async () => {
 	await fs.rm(native.directory, { recursive: true, force: true });
+});
+
+it("does not check Keychain on macOS until there are credentials to store", async () => {
+	const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+	Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+	const checkEncryption = vi.spyOn(safeStorage, "isEncryptionAvailable");
+	onTestFinished(() => {
+		checkEncryption.mockRestore();
+		Object.defineProperty(process, "platform", platform);
+	});
+	const key = "sb-recordlytest-auth-token";
+	expect(await invoke("available")).toBe(true);
+	await invoke("migrate", {});
+	expect(await invoke("get", key)).toBeNull();
+	await invoke("remove", key);
+	expect(checkEncryption).not.toHaveBeenCalled();
+	checkEncryption.mockReturnValue(false);
+	await expect(invoke("set", key, "session")).rejects.toThrow("Secure authentication storage");
+	await expect(
+		fs.stat(path.join(native.directory, "private-auth", "session.enc")),
+	).rejects.toMatchObject({ code: "ENOENT" });
+	checkEncryption.mockReturnValue(true);
+	await invoke("set", key, "session");
+	expect(await invoke("get", key)).toBe("session");
 });
 
 it("freshly reads another process's generation before reading, writing or migrating", async () => {

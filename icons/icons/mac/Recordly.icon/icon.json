@@ -1,0 +1,27 @@
+{
+  "fill": {
+    "solid": "srgb:0.01569,0.52157,0.96863,1.00000"
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "RecordlyMark.svg",
+          "name": "Recordly mark"
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.22
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.12
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": ["macOS"]
+  }
+}
