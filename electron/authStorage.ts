@@ -158,9 +158,13 @@ async function load(): Promise<{ entries: AuthEntries; persisted: boolean }> {
 	}
 }
 
+class AuthEncryptionUnavailableError extends Error {}
+
 async function save(next: AuthEntries): Promise<void> {
 	const validated = validateEntries(next);
-	if (!encryptionAvailable()) throw new Error("Secure authentication storage is unavailable.");
+	if (!encryptionAvailable()) {
+		throw new AuthEncryptionUnavailableError("Secure authentication storage is unavailable.");
+	}
 	const encrypted = safeStorage.encryptString(JSON.stringify({ version: 1, entries: validated }));
 	const filePath = storagePath();
 	const directory = path.dirname(filePath);
@@ -259,8 +263,9 @@ export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): v
 				completedCallback = { key, fingerprint: validated[key] };
 			}
 			try {
-				return await transaction(async () => {
-					const next = { ...(await load()).entries, ...validated };
+				const result = await transaction(async () => {
+					const current = await load();
+					const next = { ...current.entries, ...validated };
 					if (completedCallback)
 						for (const candidate of Object.keys(next)) {
 							if (
@@ -279,8 +284,22 @@ export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): v
 					);
 					for (const expired of retries.slice(0, -MAX_CONSENT_RETRIES))
 						delete next[expired];
-					await save(next);
+					try {
+						await save(next);
+					} catch (error) {
+						// Let the renderer use temporary sign-in only if there is no store to unlock.
+						if (
+							process.platform === "darwin" &&
+							!current.persisted &&
+							error instanceof AuthEncryptionUnavailableError
+						) {
+							return false as const;
+						}
+						throw error;
+					}
 				});
+				if (result === false) await rollback?.().catch(() => undefined);
+				return result;
 			} catch (error) {
 				await rollback?.().catch(() => undefined);
 				throw error;

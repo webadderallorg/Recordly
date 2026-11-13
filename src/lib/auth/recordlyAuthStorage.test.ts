@@ -20,7 +20,9 @@ function bridge() {
 		authStorageAvailable: vi.fn(async () => true),
 		authStorageMigrate: vi.fn(async (_snapshot: Record<string, string>) => undefined),
 		authStorageGetItem: vi.fn(async (_key: string): Promise<string | null> => null),
-		authStorageSetItem: vi.fn(async (_key: string, _value: string) => undefined),
+		authStorageSetItem: vi.fn(
+			async (_key: string, _value: string): Promise<void | false> => undefined,
+		),
 		authStorageRemoveItem: vi.fn(async (_key: string) => undefined),
 	};
 }
@@ -122,6 +124,34 @@ it("keeps normal browser-preview persistence when no desktop bridge exists", asy
 	expect(values.get(project)).toBe("new-browser-session");
 	await auth.removeItem(project);
 	expect(values.has(project)).toBe(false);
+});
+
+it("keeps temporary sign-in in memory when the first native write cannot be encrypted", async () => {
+	vi.stubEnv("VITE_OAUTH_FLOW_ID_REDIRECTS", "false");
+	const native = bridge();
+	native.authStorageSetItem.mockResolvedValue(false);
+	const auth = await storage(native);
+
+	expect(await auth.getItem(project)).toBeNull();
+	await auth.setItem(project, "temporary-session");
+	await auth.setItem(`${project}-code-verifier`, "temporary-verifier");
+	expect(await auth.getItem(project)).toBe("temporary-session");
+	expect(native.authStorageSetItem).toHaveBeenCalledTimes(1);
+	expect(values.size).toBe(0);
+	await auth.removeItem(project);
+	expect(await auth.getItem(project)).toBeNull();
+	expect(native.authStorageRemoveItem).not.toHaveBeenCalled();
+});
+
+it("requires encrypted storage when the first write fails in explicit flow routing mode", async () => {
+	vi.stubEnv("VITE_OAUTH_FLOW_ID_REDIRECTS", "true");
+	const native = bridge();
+	native.authStorageSetItem.mockResolvedValue(false);
+	const auth = await storage(native);
+
+	await expect(auth.setItem(project, "must-not-save")).rejects.toThrow();
+	await expect(auth.getItem(project)).rejects.toThrow();
+	expect(values.size).toBe(0);
 });
 
 it("never falls back to browser or memory credentials when explicit flow routing requires secure native storage", async () => {
