@@ -442,10 +442,8 @@ export function RecordlySignInDialog({
 							<div
 								aria-hidden="true"
 								data-onboarding-window-drag
-								className="onboarding-window-drag absolute left-0 right-12 top-0 z-30 flex h-8 justify-center pt-2"
-							>
-								<span className="h-1 w-10 rounded-full bg-foreground/20" />
-							</div>
+								className="onboarding-window-drag absolute left-0 right-12 top-0 z-30 h-8"
+							/>
 						)}
 						{onboarding ? (
 							<OnboardingLayout
