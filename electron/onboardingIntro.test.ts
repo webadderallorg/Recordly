@@ -6,6 +6,7 @@ class TestWindow extends EventEmitter {
 	webContents = Object.assign(new EventEmitter(), {
 		ipc: new EventEmitter(),
 		mainFrame: {},
+		send: vi.fn(),
 	});
 	private destroyed = false;
 	private visible = false;
@@ -79,4 +80,20 @@ it.each(["skip", "timeout"])("shows a ready popup after intro %s", (mode) => {
 	expect(show).toHaveBeenCalledOnce();
 	expect(backdrop.isDestroyed()).toBe(true);
 	expect(popup.setOpacity).not.toHaveBeenCalled();
+});
+
+it("allows a late renderer to play past the original startup deadline", () => {
+	const { popup, show, backdrop, stage } = start();
+	popup.emit("ready-to-show");
+	vi.advanceTimersByTime(5900);
+	stage("ready");
+	expect(backdrop.isVisible()).toBe(true);
+	expect(backdrop.webContents.send).toHaveBeenCalledExactlyOnceWith("onboarding-intro-shown");
+	vi.advanceTimersByTime(4500);
+	expect(backdrop.isDestroyed()).toBe(false);
+	expect(show).not.toHaveBeenCalled();
+	stage("finished");
+	expect(show).toHaveBeenCalledOnce();
+	vi.advanceTimersByTime(660);
+	expect(backdrop.isDestroyed()).toBe(true);
 });

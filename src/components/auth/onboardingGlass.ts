@@ -283,8 +283,9 @@ export function playOnboardingGlass(
 			name: name as keyof ReturnType<typeof frameAt>,
 			location: uniform(name),
 		}));
-		const start = performance.now();
+		let start: number | undefined;
 		const tick = (now: number) => {
+			start ??= now;
 			const time = Math.min(REVEAL_DURATION_SECONDS, (now - start) / 1000);
 			const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
 			const size = Math.max(1, Math.round(canvas.clientWidth * ratio));
