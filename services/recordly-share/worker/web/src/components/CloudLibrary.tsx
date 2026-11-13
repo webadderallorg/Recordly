@@ -201,7 +201,7 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 	}
 
 	async function signInWithProvider(provider: SignInProvider) {
-		if (!client || pending || !providers.includes(provider)) return;
+		if (!client || pending || (providersKnown && !providers.includes(provider))) return;
 		setPending(true);
 		setAction(provider);
 		setError("");
