@@ -140,6 +140,12 @@
         .loading-playback { grid-template-columns: auto minmax(0, 1fr) auto; }
         .loading-playback-center { justify-self: center; }
       }
+      @container (max-width: 520px) {
+        .loading-playback { gap: 8px; padding-inline: 8px; }
+        .loading-playback-tools { width: 112px; }
+        .loading-playback-center { width: 168px; }
+        .loading-playback-volume { width: 28px; height: 28px; }
+      }
       .boot-home-section-title { width: 32px; height: 28px; margin-bottom: 16px; }
     </style>
   </head>

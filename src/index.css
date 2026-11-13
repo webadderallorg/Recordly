@@ -209,6 +209,23 @@
 		grid-template-columns: auto minmax(0, 1fr) auto;
 	}
 }
+@container editor-preview (max-width: 520px) {
+	.editor-playback {
+		gap: 4px;
+		padding-inline: 8px;
+	}
+	.editor-playback button {
+		width: 28px;
+		min-width: 28px;
+		height: 28px;
+	}
+	.editor-playback-tools {
+		gap: 4px;
+	}
+	.editor-playback-center > div {
+		gap: 2px;
+	}
+}
 @container (max-width: 520px) {
 	.editor-playback-volume .slider {
 		display: none;

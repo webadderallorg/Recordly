@@ -141,6 +141,16 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 						a.right <= b.x || b.right <= a.x || a.bottom <= b.y || b.bottom <= a.y,
 					).toBe(true);
 				}
+			const playbackBounds = (await page.locator(".editor-playback").boundingBox())!;
+			for (const button of buttons) {
+				expect(button.x).toBeGreaterThanOrEqual(playbackBounds.x);
+				expect(button.right).toBeLessThanOrEqual(playbackBounds.x + playbackBounds.width);
+				expect(
+					Math.abs(
+						(button.y + button.bottom) / 2 - (buttons[0].y + buttons[0].bottom) / 2,
+					),
+				).toBeLessThan(1);
+			}
 			await expect(
 				page.getByRole("button", { name: "Publish", exact: true }),
 			).toBeInViewport();
