@@ -130,15 +130,12 @@ export function RecordlySignInDialog({
 	const [reportDiagnostic, setReportDiagnostic] = useState<string>();
 	const [linkSent, setLinkSent] = useState(false);
 	const [providers, setProviders] = useState<RecordlyOAuthProvider[]>([]);
-	const [loadingProviders, setLoadingProviders] = useState(configured);
 	const [providersKnown, setProvidersKnown] = useState(false);
 
 	useEffect(() => {
 		if (!open || !configured || user) return;
-		let disposed = false;
 		const controller = new AbortController();
 		const timeout = window.setTimeout(() => controller.abort(), SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS);
-		setLoadingProviders(true);
 		setProvidersKnown(false);
 		setProviders([]);
 		void getEnabledSignInProviders(controller.signal)
@@ -154,10 +151,8 @@ export function RecordlySignInDialog({
 			})
 			.finally(() => {
 				window.clearTimeout(timeout);
-				if (!disposed) setLoadingProviders(false);
 			});
 		return () => {
-			disposed = true;
 			window.clearTimeout(timeout);
 			controller.abort();
 		};
@@ -344,14 +339,12 @@ export function RecordlySignInDialog({
 									void run(provider, () => signInWithSocial(provider, consent))
 								}
 								providers={providers}
-								loadingProviders={loadingProviders}
 								providersKnown={providersKnown}
 								configured={configured}
 								busy={busy}
 								compact={onboarding}
 								assetBase={import.meta.env.BASE_URL}
 								labels={{
-									loadingProviders: ot("loadingProviders"),
 									checkInbox: ot("checkInbox"),
 									code: ot("code"),
 									verifyCode: ot("verifyCode"),

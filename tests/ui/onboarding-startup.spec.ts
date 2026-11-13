@@ -42,7 +42,7 @@ for (const signedIn of [false, true]) {
 		await page.route("**/auth/v1/settings", async (route) => {
 			await providersReady;
 			await route.fulfill({
-				json: { external: { google: true, azure: true, apple: true } },
+				json: { external: { google: true, azure: true, apple: false } },
 			});
 		});
 		// Even unavailable artwork cannot gate the form.
@@ -70,7 +70,7 @@ for (const signedIn of [false, true]) {
 			).toBeVisible();
 			await expect(
 				tour.getByRole("button", { name: `Continue with ${provider}` }),
-			).toBeDisabled();
+			).toBeEnabled();
 		}
 		const before = await email.boundingBox();
 		if (!signedIn)
@@ -78,7 +78,7 @@ for (const signedIn of [false, true]) {
 				path: test.info().outputPath("pending-session.png"),
 			});
 		releaseProviders();
-		await expect(tour.getByRole("button", { name: "Continue with Google" })).toBeEnabled();
+		await expect(tour.getByRole("button", { name: "Continue with Apple" })).toBeDisabled();
 		await expect(email).toHaveValue("person@example.com");
 		expect(await email.boundingBox()).toEqual(before);
 		await expect(email).toHaveValue("person@example.com");

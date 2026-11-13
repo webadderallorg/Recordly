@@ -87,7 +87,7 @@ test("sign-in keeps all providers visible and marks unavailable providers disabl
 	});
 });
 
-test("production onboarding allows OAuth when provider discovery times out after five seconds", async ({
+test("production onboarding allows OAuth before provider discovery finishes", async ({
 	page,
 }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
@@ -108,12 +108,7 @@ test("production onboarding allows OAuth when provider discovery times out after
 	const login = page.getByRole("dialog", { name: "Welcome to Recordly" });
 	const google = login.getByRole("button", { name: "Continue with Google" });
 
-	await expect(google).toBeDisabled();
-	await expect(google).toBeEnabled({ timeout: 7_000 });
-	for (const provider of ["Google", "Microsoft", "Apple"]) {
-		await expect(login.getByRole("button", { name: `Continue with ${provider}` })).toBeEnabled();
-	}
-	await google.click();
+	await google.click({ timeout: 3_500 });
 	await expect(page.locator("html")).toHaveAttribute("data-auth-provider", "google");
 	await expect(login.getByRole("button", { name: "Permissions", exact: true })).toBeDisabled();
 });

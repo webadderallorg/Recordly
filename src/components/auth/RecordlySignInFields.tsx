@@ -27,7 +27,6 @@ export function RecordlySignInFields({
 	onPasswordSignIn,
 	onProvider,
 	providers,
-	loadingProviders,
 	providersKnown,
 	configured,
 	busy,
@@ -43,7 +42,6 @@ export function RecordlySignInFields({
 	onPasswordSignIn: (password: string, captchaToken?: string) => Promise<boolean>;
 	onProvider: (provider: SignInProvider) => void;
 	providers: SignInProvider[];
-	loadingProviders: boolean;
 	providersKnown: boolean;
 	configured: boolean;
 	busy?: string;
@@ -51,7 +49,6 @@ export function RecordlySignInFields({
 	assetBase?: string;
 	authProtectionConfigUrl?: string;
 	labels: {
-		loadingProviders: string;
 		continueWith: (provider: string) => string;
 		providerDisabled: (provider: string) => string;
 		continueEmail: string;
@@ -167,12 +164,7 @@ export function RecordlySignInFields({
 			className="space-y-4 @container"
 		>
 			{!sentTo && !passwordMode && challengeVersion === 0 && (
-				<div
-					className="flex gap-2"
-					role="group"
-					aria-label={loadingProviders ? labels.loadingProviders : undefined}
-					aria-busy={loadingProviders}
-				>
+				<div className="flex gap-2" role="group">
 					{(
 						[
 							{ provider: "google", label: "Google", image: "google-logo.png" },
@@ -192,7 +184,6 @@ export function RecordlySignInFields({
 							isDisabled={
 								disabled ||
 								!configured ||
-								loadingProviders ||
 								(providersKnown && !providers.includes(provider))
 							}
 							aria-describedby={

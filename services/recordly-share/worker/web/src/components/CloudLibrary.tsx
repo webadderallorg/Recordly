@@ -46,7 +46,6 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 	const [action, setAction] = useState<string>();
 	const [providers, setProviders] = useState<SignInProvider[]>([]);
 	const [providersKnown, setProvidersKnown] = useState(false);
-	const [loadingProviders, setLoadingProviders] = useState(true);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: The parent loads config before mounting; keep one Supabase client for this mount.
 	useEffect(() => {
 		let active = true;
@@ -102,9 +101,6 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 					})
 					.catch(() => {
 						/* Leave provider availability unknown so users can still try signing in. */
-					})
-					.finally(() => {
-						if (active) setLoadingProviders(false);
 					});
 				// Keep the client available even if a stale callback needs a fresh link.
 				setClient(auth);
@@ -395,7 +391,6 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 										onProvider={(provider) => void signInWithProvider(provider)}
 										providers={providers}
 										providersKnown={providersKnown}
-										loadingProviders={loadingProviders}
 										configured={Boolean(client)}
 										busy={action}
 										labels={{
