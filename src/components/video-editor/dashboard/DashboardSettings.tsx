@@ -8,6 +8,7 @@ import { supportsHudCaptureProtection } from "@/lib/hudCaptureProtection";
 import { SettingsRow } from "../SettingsRow";
 import { SettingsInfo } from "../SettingsInfo";
 import { SettingsCategory, SettingsSections, type SettingsSection } from "../SettingsSections";
+import { StorageLocationsSettings } from "../settings/StorageLocationsSettings";
 import { ThemeAppearancePicker } from "./ThemeAppearancePicker";
 import { AppUpdateSettings } from "./AppUpdateSettings";
 import { SettingsSidebarFooter } from "./SettingsSidebarFooter";
@@ -21,14 +22,11 @@ export function DashboardSettings({
 }) {
 	const { t } = useI18n();
 	const settingsContent = useContext(DashboardSettingsContext);
-	const [directory, setDirectory] = useState("");
-	const [recordings, setRecordings] = useState("");
 	const [hideHud, setHideHud] = useState<boolean>();
 	const [captureSupported, setCaptureSupported] = useState(false);
 	const [busy, setBusy] = useState<string>();
 	const [feedback, setFeedback] = useState<{ area: string; error?: string; message?: string }>();
 	const [reload, setReload] = useState(0);
-	const [folderErrors, setFolderErrors] = useState<Record<string, string>>({});
 	const run = async (area: string, action: () => Promise<void>) => {
 		if (busy) return;
 		setBusy(area);
@@ -41,41 +39,9 @@ export function DashboardSettings({
 			setBusy(undefined);
 		}
 	};
-	// biome-ignore lint/correctness/useExhaustiveDependencies: reload explicitly retries location reads after a failure.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reload explicitly retries the HUD probe after a failure.
 	useEffect(() => {
 		let active = true;
-		const loadFolder = async (
-			area: string,
-			get: () => Promise<{ success: boolean; path?: string }>,
-			set: (path: string) => void,
-		) => {
-			try {
-				const result = await get();
-				if (!result.success || !result.path)
-					throw Error(
-						t(
-							"settings.appPreferences.folderUnavailable",
-							"Folder location is unavailable.",
-						),
-					);
-				if (active) {
-					set(result.path);
-					setFolderErrors((errors) => ({ ...errors, [area]: "" }));
-				}
-			} catch (error) {
-				if (active)
-					setFolderErrors((errors) => ({
-						...errors,
-						[area]: error instanceof Error ? error.message : String(error),
-					}));
-			}
-		};
-		void loadFolder(
-			"recordings",
-			() => window.electronAPI.getRecordingsDirectory(),
-			setRecordings,
-		);
-		void loadFolder("projects", () => window.electronAPI.getProjectsDirectory(), setDirectory);
 		void (async () => {
 			try {
 				const [protection, platform] = await Promise.all([
@@ -114,15 +80,6 @@ export function DashboardSettings({
 				{feedback.error && <ErrorReportButton error={feedback.error} context="settings" />}
 			</p>
 		) : null;
-	const openFolder = async (kind: "recordings" | "projects") => {
-		const result = await (kind === "recordings"
-			? window.electronAPI.openRecordingsFolder()
-			: window.electronAPI.openProjectsDirectory());
-		if (result && !result.success)
-			throw Error(
-				t("settings.appPreferences.openFolderFailed", "Could not open this folder."),
-			);
-	};
 	return (
 		<section
 			aria-label={t("settings.dashboard.label", "Dashboard settings")}
@@ -147,6 +104,7 @@ export function DashboardSettings({
 				}
 				categories={[
 					"general",
+					"storage",
 					"recording",
 					"motion",
 					"shortcuts",
@@ -300,143 +258,17 @@ export function DashboardSettings({
 						</Button>
 					)}
 				</SettingsCategory>
-				<SettingsCategory category="general">
+				<SettingsCategory category="storage">
 					<header className="dashboard-settings-group dashboard-settings-subgroup">
-						<h2>{t("settings.appPreferences.storage", "Storage")}</h2>
+						<h2>{t("settings.storage.title", "Storage locations")}</h2>
 						<p>
 							{t(
-								"settings.appPreferences.folderScope",
-								"Changing this location affects future recordings. Existing files stay in their current folders.",
+								"settings.storage.description",
+								"Choose where Recordly saves each kind of file. New files use the folder you pick; existing files stay where they are.",
 							)}
 						</p>
 					</header>
-					<div className="settings-group">
-						<div className="settings-item">
-							<SettingsRow
-								title={t(
-									"settings.dashboard.recordingsFolder",
-									"Recordings folder",
-								)}
-								descriptionInline
-								description={
-									<span className="settings-folder-path">
-										{folderErrors.recordings ? (
-											<span role="alert">{folderErrors.recordings}</span>
-										) : (
-											recordings ||
-											t(
-												"settings.appPreferences.loadingFolder",
-												"Loading folder location…",
-											)
-										)}
-									</span>
-								}
-								help={
-									<>
-										{t(
-											"settings.appPreferences.folderScope",
-											"Changing this location affects future recordings. Existing files stay in their current folders.",
-										)}
-									</>
-								}
-							>
-								<div className="settings-actions">
-									<Button
-										variant="secondary"
-										size="sm"
-										disabled={!recordings || Boolean(busy)}
-										onClick={() =>
-											void run("recordings", () => openFolder("recordings"))
-										}
-									>
-										{t("settings.appPreferences.openFolder", "Open folder")}
-									</Button>
-									<Button
-										variant="secondary"
-										size="sm"
-										disabled={Boolean(busy)}
-										onClick={() =>
-											void run("recordings", async () => {
-												const result =
-													await window.electronAPI.chooseRecordingsDirectory();
-												if (result.canceled) return;
-												if (!result.success || !result.path)
-													throw Error(
-														t(
-															"settings.dashboard.changeFolderFailed",
-															"Could not change recordings folder",
-														),
-													);
-												setRecordings(result.path);
-												setFolderErrors((errors) => ({
-													...errors,
-													recordings: "",
-												}));
-												setFeedback({
-													area: "recordings",
-													message: t(
-														"settings.appPreferences.folderSaved",
-														"New recordings will use this folder. Existing recordings have not been moved.",
-													),
-												});
-											})
-										}
-									>
-										{t("settings.dashboard.changeFolder", "Change folder")}
-									</Button>
-								</div>
-							</SettingsRow>
-							{status("recordings")}
-						</div>
-						<div className="settings-item">
-							<SettingsRow
-								title={t("settings.dashboard.projectsFolder", "Projects folder")}
-								descriptionInline
-								description={
-									<span className="settings-folder-path">
-										{folderErrors.projects ? (
-											<span role="alert">{folderErrors.projects}</span>
-										) : (
-											directory ||
-											t(
-												"settings.appPreferences.loadingFolder",
-												"Loading folder location…",
-											)
-										)}
-									</span>
-								}
-								help={
-									<>
-										{t(
-											"settings.dashboard.autosave",
-											"Named projects save automatically.",
-										)}
-									</>
-								}
-							>
-								<Button
-									variant="secondary"
-									size="sm"
-									disabled={!directory || Boolean(busy)}
-									onClick={() =>
-										void run("projects", () => openFolder("projects"))
-									}
-								>
-									{t("settings.appPreferences.openFolder", "Open folder")}
-								</Button>
-							</SettingsRow>
-							{status("projects")}
-						</div>
-					</div>
-					{(folderErrors.recordings || folderErrors.projects) && (
-						<Button
-							size="sm"
-							variant="secondary"
-							onClick={() => setReload((value) => value + 1)}
-						>
-							{t("settings.application.retry", "Try again")}
-						</Button>
-					)}
+					<StorageLocationsSettings />
 				</SettingsCategory>
 				<SettingsCategory category="general">
 					<AppUpdateSettings />

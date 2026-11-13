@@ -598,5 +598,28 @@
 	},
 	"annotation": {
 		"delete": "Supprimer l’annotation"
+	},
+	"storage": {
+		"title": "Emplacements de stockage",
+		"description": "Choisissez où Recordly enregistre chaque type de fichier. Les nouveaux fichiers utilisent le dossier choisi ; les fichiers existants restent en place.",
+		"recordings": "Enregistrements",
+		"recordingsDescription": "Captures d'écran avec le son du système, les pistes micro et les données du curseur.",
+		"projects": "Projets et brouillons",
+		"projectsDescription": "Projets enregistrés, leurs aperçus et les sauvegardes automatiques. Se trouve dans le dossier des enregistrements.",
+		"exports": "Vidéos exportées",
+		"exportsDescription": "Dossier ouvert par la boîte d'enregistrement lors d'un export MP4 ou GIF.",
+		"temp": "Fichiers temporaires",
+		"tempDescription": "Données temporaires pendant l'enregistrement et l'export. Choisissez un disque plus grand si votre disque système est petit.",
+		"captionModels": "Modèles de sous-titres",
+		"captionModelsDescription": "Modèles de reconnaissance vocale téléchargés pour les sous-titres automatiques.",
+		"cache": "Cache",
+		"cacheDescription": "Données régénérées comme les miniatures de fond d'écran et les aperçus. Vous pouvez les déplacer ou les vider.",
+		"change": "Modifier…",
+		"open": "Ouvrir",
+		"reset": "Réinitialiser",
+		"resetAll": "Rétablir tous les emplacements par défaut",
+		"usingDefault": "Emplacement par défaut actuellement.",
+		"loading": "Chargement de l'emplacement…",
+		"loadFailed": "Impossible de lire les emplacements de stockage."
 	}
 }

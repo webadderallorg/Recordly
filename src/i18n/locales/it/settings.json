@@ -598,5 +598,28 @@
 	},
 	"annotation": {
 		"delete": "Elimina annotazione"
+	},
+	"storage": {
+		"title": "Percorsi di archiviazione",
+		"description": "Scegli dove Recordly salva ogni tipo di file. I nuovi file usano la cartella scelta; quelli esistenti restano dove sono.",
+		"recordings": "Registrazioni",
+		"recordingsDescription": "Registrazioni dello schermo con audio di sistema, tracce microfono e dati del cursore.",
+		"projects": "Progetti e bozze",
+		"projectsDescription": "Progetti salvati, anteprime e salvataggi automatici. Si trova nella cartella delle registrazioni.",
+		"exports": "Video esportati",
+		"exportsDescription": "Cartella aperta dalla finestra di salvataggio quando esporti MP4 o GIF.",
+		"temp": "File temporanei",
+		"tempDescription": "Dati temporanei durante registrazione ed esportazione. Scegli un disco più grande se quello di sistema è piccolo.",
+		"captionModels": "Modelli per i sottotitoli",
+		"captionModelsDescription": "Modelli di riconoscimento vocale scaricati per i sottotitoli automatici.",
+		"cache": "Cache",
+		"cacheDescription": "Dati rigenerabili come miniature degli sfondi e anteprime dei progetti. Puoi spostarli o svuotarli.",
+		"change": "Cambia…",
+		"open": "Apri",
+		"reset": "Ripristina",
+		"resetAll": "Ripristina tutti i percorsi predefiniti",
+		"usingDefault": "Attualmente è il percorso predefinito.",
+		"loading": "Caricamento del percorso…",
+		"loadFailed": "Impossibile leggere i percorsi di archiviazione."
 	}
 }

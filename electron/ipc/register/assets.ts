@@ -4,11 +4,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, ipcMain } from "electron";
-import { USER_DATA_PATH } from "../../appPaths";
 import { getAssetRootPath, isAllowedLocalReadPath } from "../project/manager";
 import { isTrustedRenderer } from "../../trustedRenderer";
 import { normalizePath } from "../utils";
 import { registerDesktopWallpaperHandler } from "./desktopWallpaper";
+import { getCacheDir } from "../../storageLocations";
 
 export function registerAssetHandlers() {
 	registerDesktopWallpaperHandler();
@@ -30,7 +30,7 @@ export function registerAssetHandlers() {
 	// Returns the cached thumbnail as raw JPEG bytes for fast grid rendering.
 	// Serialized to prevent concurrent nativeImage operations from eating memory.
 	const THUMB_SIZE = 96;
-	const thumbCacheDir = path.join(USER_DATA_PATH, "wallpaper-thumbs");
+	const thumbCacheDir = getCacheDir("wallpaper-thumbs");
 	let thumbGenerationQueue: Promise<void> = Promise.resolve();
 
 	ipcMain.handle("generate-wallpaper-thumbnail", async (event, filePath: unknown) => {

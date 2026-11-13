@@ -18,6 +18,7 @@
 	"saveFailedTitle": "プロジェクトを保存できませんでした",
 	"saveFailedMessage": "保存に失敗したか、応答がありません。未保存の変更を破棄して閉じますか？",
 	"welcome": "Recordlyへようこそ",
+	"chooseFolder": "フォルダを選択",
 	"chooseRecordings": "録画フォルダを選択",
 	"saveRecordlyProject": "Recordlyプロジェクトを保存",
 	"recordlyProject": "Recordlyプロジェクト",

@@ -598,5 +598,28 @@
 	},
 	"annotation": {
 		"delete": "주석 삭제"
+	},
+	"storage": {
+		"title": "저장 위치",
+		"description": "Recordly가 파일 종류별로 저장할 위치를 선택하세요. 새 파일은 선택한 폴더를 사용하며 기존 파일은 그대로 남습니다.",
+		"recordings": "녹화",
+		"recordingsDescription": "시스템 오디오, 마이크 트랙, 커서 데이터가 포함된 화면 녹화입니다.",
+		"projects": "프로젝트 및 초안",
+		"projectsDescription": "저장된 프로젝트, 미리보기, 자동 저장 파일입니다. 녹화 폴더 안에 있습니다.",
+		"exports": "내보낸 동영상",
+		"exportsDescription": "MP4 또는 GIF를 내보낼 때 저장 창이 열리는 폴더입니다.",
+		"temp": "임시 파일",
+		"tempDescription": "녹화와 내보내기 중 사용하는 임시 데이터입니다. 시스템 드라이브가 작으면 더 큰 드라이브를 지정하세요.",
+		"captionModels": "자막 모델",
+		"captionModelsDescription": "자동 자막에 사용하는 음성 인식 모델입니다.",
+		"cache": "캐시",
+		"cacheDescription": "배경 미리보기와 프로젝트 미리보기처럼 다시 생성되는 데이터입니다. 이동하거나 비워도 됩니다.",
+		"change": "변경…",
+		"open": "열기",
+		"reset": "초기화",
+		"resetAll": "모든 기본 위치 복원",
+		"usingDefault": "현재 기본 위치입니다.",
+		"loading": "폴더 위치를 불러오는 중…",
+		"loadFailed": "저장 위치를 읽을 수 없습니다."
 	}
 }

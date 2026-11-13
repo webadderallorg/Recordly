@@ -1,4 +1,14 @@
 /// <reference types="vite-plugin-electron/electron-env" />
+import type {
+	StorageFolderId,
+	StorageFolderMutationResponse,
+	StorageFoldersResponse,
+} from "../src/types/storageFolders";
+import type {
+	StorageFolderId,
+	StorageFolderMutationResponse,
+	StorageFoldersResponse,
+} from "./ipc/types";
 
 declare namespace NodeJS {
 	interface ProcessEnv {
@@ -1275,6 +1285,14 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		getStorageFolders: () => Promise<StorageFoldersResponse>;
+		chooseStorageFolder: (id: StorageFolderId) => Promise<StorageFolderMutationResponse>;
+		openStorageFolder: (id: StorageFolderId) => Promise<{
+			success: boolean;
+			error?: string;
+		}>;
+		resetStorageFolder: (id: StorageFolderId) => Promise<StorageFoldersResponse>;
+		resetAllStorageFolders: () => Promise<StorageFoldersResponse>;
 		getShortcuts: () => Promise<Record<string, unknown> | null>;
 		saveShortcuts: (shortcuts: unknown) => Promise<{ success: boolean; error?: string }>;
 		getEditorStartupView: () => "home" | "editor";

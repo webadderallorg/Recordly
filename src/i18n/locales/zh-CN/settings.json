@@ -598,5 +598,28 @@
 	},
 	"annotation": {
 		"delete": "删除注释"
+	},
+	"storage": {
+		"title": "存储位置",
+		"description": "选择 Recordly 各类文件的保存位置。新文件使用你选择的文件夹，已有文件保持原地不动。",
+		"recordings": "录制视频",
+		"recordingsDescription": "屏幕录制，含系统声音、麦克风音轨与光标数据。",
+		"projects": "项目与草稿",
+		"projectsDescription": "保存的项目、预览图与自动保存，位于录制文件夹内。",
+		"exports": "导出视频",
+		"exportsDescription": "导出 MP4 或 GIF 时保存对话框默认打开的文件夹。",
+		"temp": "临时文件",
+		"tempDescription": "录制与导出过程中的中间数据。系统盘空间不足时可指向更大的磁盘。",
+		"captionModels": "字幕模型",
+		"captionModelsDescription": "自动字幕使用的语音识别模型。",
+		"cache": "缓存",
+		"cacheDescription": "可重新生成的数据，如壁纸缩略图与项目预览。可迁移或清理。",
+		"change": "更改…",
+		"open": "打开",
+		"reset": "重置",
+		"resetAll": "全部恢复默认位置",
+		"usingDefault": "当前为默认位置。",
+		"loading": "正在读取文件夹位置…",
+		"loadFailed": "无法读取存储位置。"
 	}
 }

@@ -18,6 +18,7 @@
 	"saveFailedTitle": "无法保存项目",
 	"saveFailedMessage": "保存失败或未响应。要放弃未保存的更改并关闭吗？",
 	"welcome": "欢迎使用 Recordly",
+	"chooseFolder": "选择文件夹",
 	"chooseRecordings": "选择录制文件夹",
 	"saveRecordlyProject": "保存 Recordly 项目",
 	"recordlyProject": "Recordly 项目",

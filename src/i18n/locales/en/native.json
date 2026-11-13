@@ -18,6 +18,7 @@
 	"saveFailedTitle": "Project could not be saved",
 	"saveFailedMessage": "Saving failed or did not respond. Discard unsaved changes and close?",
 	"welcome": "Welcome to Recordly",
+	"chooseFolder": "Choose folder",
 	"chooseRecordings": "Choose recordings folder",
 	"saveRecordlyProject": "Save Recordly Project",
 	"recordlyProject": "Recordly Project",

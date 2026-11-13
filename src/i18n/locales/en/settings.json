@@ -598,5 +598,28 @@
 	},
 	"annotation": {
 		"delete": "Delete Annotation"
+	},
+	"storage": {
+		"title": "Storage locations",
+		"description": "Choose where Recordly saves each kind of file. New files use the folder you pick; existing files stay where they are.",
+		"recordings": "Recordings",
+		"recordingsDescription": "Screen captures with their system audio, microphone tracks and cursor data.",
+		"projects": "Projects and drafts",
+		"projectsDescription": "Saved projects, their previews and autosaves. Lives inside the recordings folder.",
+		"exports": "Exported videos",
+		"exportsDescription": "Folder the save dialog opens in when you export an MP4 or GIF.",
+		"temp": "Temporary files",
+		"tempDescription": "Scratch data while recording and exporting. Point this at a larger drive if your system drive is small.",
+		"captionModels": "Caption models",
+		"captionModelsDescription": "Downloaded speech-to-text models used for automatic captions.",
+		"cache": "Cache",
+		"cacheDescription": "Regenerated data such as wallpaper thumbnails and project previews. Safe to relocate or clear.",
+		"change": "Change…",
+		"open": "Open",
+		"reset": "Reset",
+		"resetAll": "Restore all default locations",
+		"usingDefault": "Currently the default location.",
+		"loading": "Loading folder location…",
+		"loadFailed": "Could not read storage locations."
 	}
 }
