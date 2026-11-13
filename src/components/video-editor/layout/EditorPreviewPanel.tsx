@@ -283,10 +283,18 @@ export function EditorPreviewPanel(props: Props) {
 				<div className="editor-playback-tools z-10 flex min-w-0 items-center gap-2">
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
-							<Button variant="ghost" size="sm" className="h-9 gap-2 px-3">
+							<Button
+								variant="ghost"
+								size="sm"
+								className="editor-playback-add-layer h-9 gap-2 px-3"
+								aria-label={t("editor.toolbar.addLayer")}
+								title={t("editor.toolbar.addLayer")}
+							>
 								<Plus className="h-3.5 w-3.5" />
-								<span className="font-medium">{t("editor.toolbar.addLayer")}</span>
-								<CaretDown className="h-3 w-3" />
+								<span className="editor-playback-add-label font-medium">
+									{t("editor.toolbar.addLayer")}
+								</span>
+								<CaretDown className="editor-playback-add-caret h-3 w-3" />
 							</Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="start">

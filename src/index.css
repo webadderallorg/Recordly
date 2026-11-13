@@ -206,7 +206,16 @@
 }
 @container editor-preview (max-width: 760px) {
 	.editor-playback {
-		grid-template-columns: auto minmax(0, 1fr) auto;
+		grid-template-columns: auto minmax(max-content, 1fr) auto;
+	}
+	.editor-playback-add-layer {
+		width: 36px;
+		min-width: 36px;
+		padding-inline: 0;
+	}
+	.editor-playback-add-label,
+	.editor-playback-add-caret {
+		display: none;
 	}
 }
 @container editor-preview (max-width: 520px) {
