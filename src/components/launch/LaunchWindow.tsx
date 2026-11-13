@@ -166,6 +166,7 @@ function LaunchWindowContent() {
 					top: window.screenY + rect.top,
 					right: window.screenX + rect.right,
 					bottom: window.screenY + rect.bottom,
+					shape: rect.shape,
 				})),
 			);
 		};
@@ -189,12 +190,7 @@ function LaunchWindowContent() {
 			window.removeEventListener("resize", reportInteractiveBounds);
 			window.electronAPI?.hudOverlaySetInteractiveBounds?.(null);
 		};
-	}, [
-		recordingHudOffset,
-		recordingWebcamPreviewContainerRef,
-		showRecordingWebcamPreview,
-		webcamPreview.webcamPreviewOffset,
-	]);
+	}, [recordingWebcamPreviewContainerRef]);
 
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } =
 		useLaunchHudInteractionState({

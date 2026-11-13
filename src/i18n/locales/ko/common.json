@@ -18,7 +18,10 @@
 		"delete": "삭제",
 		"done": "완료",
 		"retry": "다시 시도",
-		"apply": "적용"
+		"apply": "적용",
+		"minimize": "최소화",
+		"maximize": "최대화",
+		"restoreWindow": "창 복원"
 	},
 	"errors": {
 		"invalidFileType": "잘못된 파일 형식입니다",
@@ -83,5 +86,6 @@
 		"downloadingButton": "다운로드 중 · {{progress}}"
 	},
 	"width": "너비",
-	"height": "높이"
+	"height": "높이",
+	"windowControls": "창 제어"
 }

@@ -46,6 +46,10 @@ int main(int argc, char* argv[]) {
             wchar_t wallpaper[32768]{};
             if (!SystemParametersInfoW(SPI_GETDESKWALLPAPER, 32768, wallpaper, 0)) return 1;
             const int length = lstrlenW(wallpaper);
+            if (length == 0) {
+                std::cout << "\"\"\n";
+                return 0;
+            }
             const int bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wallpaper,
                 length, nullptr, 0, nullptr, nullptr);
             if (bytes <= 0) return 1;

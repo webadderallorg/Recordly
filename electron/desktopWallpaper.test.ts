@@ -28,6 +28,14 @@ afterEach(async () => {
 });
 
 describe("desktop wallpaper source", () => {
+	it("rejects a native no-wallpaper result without trying the slow fallback", async () => {
+		nativeWallpaper.mockResolvedValue("");
+		const run = vi.fn();
+		await expect(resolveDesktopWallpaperSource("win32", run)).rejects.toThrow(
+			"No desktop wallpaper",
+		);
+		expect(run).not.toHaveBeenCalled();
+	});
 	it("uses the native Windows lookup without launching PowerShell", async () => {
 		const wallpaper = "C:\\Users\\Name\\背景.jpg";
 		nativeWallpaper.mockResolvedValue(wallpaper);

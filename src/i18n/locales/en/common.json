@@ -18,7 +18,10 @@
 		"delete": "Delete",
 		"done": "Done",
 		"retry": "Try again",
-		"apply": "Apply"
+		"apply": "Apply",
+		"minimize": "Minimize",
+		"maximize": "Maximize",
+		"restoreWindow": "Restore window"
 	},
 	"errors": {
 		"invalidFileType": "Invalid file type",
@@ -83,5 +86,6 @@
 		"downloadingButton": "Downloading · {{progress}}"
 	},
 	"width": "Width",
-	"height": "Height"
+	"height": "Height",
+	"windowControls": "Window controls"
 }

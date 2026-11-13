@@ -254,7 +254,13 @@ interface Window {
 		hudOverlayRendererReady: () => void;
 		hudOverlaySetWebcamPreviewVisible: (visible: boolean) => void;
 		hudOverlaySetInteractiveBounds: (
-			bounds: Array<{ left: number; top: number; right: number; bottom: number }> | null,
+			bounds: Array<{
+				left: number;
+				top: number;
+				right: number;
+				bottom: number;
+				shape?: "ellipse";
+			}> | null,
 		) => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
 		getHudOverlayMousePassthroughSupported: () => Promise<{

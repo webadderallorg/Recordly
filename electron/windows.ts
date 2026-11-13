@@ -62,6 +62,7 @@ let hudOverlayInteractiveBounds: Array<{
 	top: number;
 	right: number;
 	bottom: number;
+	shape?: "ellipse";
 }> | null = null;
 let countdownWindow: BrowserWindow | null = null;
 let capturePickerWindows: BrowserWindow[] = [];
@@ -502,7 +503,7 @@ ipcMain.on(
 	(
 		_event,
 		bounds:
-			| Array<{ left: number; top: number; right: number; bottom: number }>
+			| Array<{ left: number; top: number; right: number; bottom: number; shape?: "ellipse" }>
 			| null
 			| undefined,
 	) => {
@@ -760,7 +761,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 						win.setIgnoreMouseEvents(false);
 					},
 				})
-			: () => {};
+			: () => undefined;
 	const handleDisplayRemoved = () => {
 		hudUserPosition = null;
 	};
