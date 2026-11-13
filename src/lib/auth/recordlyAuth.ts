@@ -111,7 +111,7 @@ function createAuthStorage() {
 				removeLegacyCopies(local, owned);
 				return null;
 			}
-			// Main migrates once, including an empty marker. Remove old copies so
+			// Main migrates existing credentials once. Remove old copies so
 			// logging out cannot restore a stale browser session.
 			removeLegacyCopies(local, owned);
 			return bridge;
@@ -134,14 +134,14 @@ function createAuthStorage() {
 		},
 		async setItem(key: string, value: string): Promise<void> {
 			const native = await nativeStorage();
-			if (oauthFlowIdRedirectsEnabled && !native)
-				throw new Error(translate("support.authInsecure"));
-			if (native) await native.authStorageSetItem(key, value);
-			else {
-				const local = memoryOnly ? undefined : browserStorage();
-				if (local) local.setItem(key, value);
-				else memory.set(key, value);
+			if (native) {
+				if ((await native.authStorageSetItem(key, value)) !== false) return;
+				nativeReady = Promise.resolve(null);
 			}
+			if (oauthFlowIdRedirectsEnabled) throw new Error(translate("support.authInsecure"));
+			const local = memoryOnly ? undefined : browserStorage();
+			if (local) local.setItem(key, value);
+			else memory.set(key, value);
 		},
 		async removeItem(key: string): Promise<void> {
 			const native = await nativeStorage();

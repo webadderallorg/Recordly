@@ -242,7 +242,7 @@ interface Window {
 		authStorageAvailable: () => Promise<boolean>;
 		authStorageMigrate: (items: Record<string, string>) => Promise<void>;
 		authStorageGetItem: (key: string) => Promise<string | null>;
-		authStorageSetItem: (key: string, value: string) => Promise<void>;
+		authStorageSetItem: (key: string, value: string) => Promise<void | false>;
 		authStorageRemoveItem: (key: string) => Promise<void>;
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
 		hudOverlaySetSourceSelectionActive: (active: boolean) => void;

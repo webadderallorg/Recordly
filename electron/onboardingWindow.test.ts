@@ -2,7 +2,13 @@ import { EventEmitter } from "node:events";
 import { beforeEach, expect, it, onTestFinished, vi } from "vitest";
 
 const electron = vi.hoisted(() => ({
-	app: { isPackaged: false, isReady: () => true, focus: vi.fn() },
+	app: {
+		isPackaged: false,
+		isReady: () => true,
+		focus: vi.fn(),
+		on: vi.fn(),
+		removeListener: vi.fn(),
+	},
 	ipcMain: { on: vi.fn(), handle: vi.fn() },
 	screen: {
 		getPrimaryDisplay: () => {
@@ -18,6 +24,8 @@ class FakeWindow extends EventEmitter {
 		return windows;
 	}
 	destroyed = false;
+	visible = false;
+	preventClose = false;
 	url = "";
 	webContents = Object.assign(new EventEmitter(), {
 		isDestroyed: () => this.destroyed,
@@ -28,14 +36,21 @@ class FakeWindow extends EventEmitter {
 	});
 	setBounds = vi.fn();
 	getBounds = () => ({ x: 1600, y: 10, width: 500, height: 500 });
-	show = vi.fn();
+	show = vi.fn(() => {
+		this.visible = true;
+		this.emit("show");
+	});
+	hide = vi.fn(() => {
+		this.visible = false;
+	});
 	focus = vi.fn();
 	moveTop = vi.fn();
 	setMenu = vi.fn();
 	isMinimized = () => false;
-	isVisible = () => this.show.mock.calls.length > 0;
+	isVisible = () => this.visible;
 	isDestroyed = () => this.destroyed;
 	close = vi.fn(() => {
+		if (this.preventClose) return;
 		this.destroyed = true;
 		this.emit("closed");
 	});
@@ -64,9 +79,47 @@ vi.mock("./rendererServer", () => ({ getPackagedRendererBaseUrl: () => "http://l
 
 beforeEach(() => {
 	vi.resetModules();
+	vi.clearAllMocks();
 	windows.length = 0;
 	electron.app.isPackaged = false;
 	vi.stubEnv("VITE_DEV_SERVER_URL", "http://localhost:5173");
+});
+
+it("preserves existing work without closing its window and suppresses attempts to show it", async () => {
+	const { showOnboardingWindow, closeOnboardingWindow } = await import("./windows");
+	const editor = new FakeWindow();
+	editor.preventClose = true;
+	editor.show();
+	showOnboardingWindow();
+	expect(editor.close).not.toHaveBeenCalled();
+	expect(editor.isDestroyed()).toBe(false);
+	expect(editor.isVisible()).toBe(false);
+	editor.show();
+	expect(editor.isVisible()).toBe(false);
+	closeOnboardingWindow();
+	expect(editor.isVisible()).toBe(true);
+	editor.show();
+	expect(editor.isVisible()).toBe(true);
+});
+
+it("suppresses late-created windows until onboarding closes", async () => {
+	const { showOnboardingWindow, closeOnboardingWindow } = await import("./windows");
+	showOnboardingWindow();
+	const lateWindow = new FakeWindow();
+	const [, onCreated] = electron.app.on.mock.calls.find(
+		([event]) => event === "browser-window-created",
+	)!;
+	onCreated({}, lateWindow);
+	lateWindow.show();
+	expect(lateWindow.isVisible()).toBe(false);
+	lateWindow.visible = true;
+	lateWindow.emit("restore");
+	expect(lateWindow.isVisible()).toBe(false);
+	closeOnboardingWindow();
+	expect(electron.app.removeListener).toHaveBeenCalledWith("browser-window-created", onCreated);
+	expect(lateWindow.isVisible()).toBe(true);
+	lateWindow.show();
+	expect(lateWindow.isVisible()).toBe(true);
 });
 
 it("replays only the reveal, keeps existing windows open, and lets it play again", async () => {
@@ -100,13 +153,16 @@ it("replays only the reveal, keeps existing windows open, and lets it play again
 	expect(windows.at(-1)?.isDestroyed()).toBe(true);
 });
 
-it("closes every other app window and loads the dev preview", async () => {
+it("hides every other app window and loads the dev preview", async () => {
 	const { focusOnboardingWindow, showOnboardingWindow } = await import("./windows");
 	const editor = new FakeWindow();
 	const hud = new FakeWindow();
 	const selector = new FakeWindow();
 	const onboarding = showOnboardingWindow({ preview: true }) as unknown as FakeWindow;
-	for (const other of [editor, hud, selector]) expect(other.close).toHaveBeenCalledOnce();
+	for (const other of [editor, hud, selector]) {
+		expect(other.hide).toHaveBeenCalled();
+		expect(other.close).not.toHaveBeenCalled();
+	}
 	expect(onboarding.isDestroyed()).toBe(false);
 	expect(onboarding.loadURL).toHaveBeenCalledWith(
 		"http://localhost:5173?windowType=onboarding&onboardingPreview=1",
@@ -120,12 +176,12 @@ it("closes every other app window and loads the dev preview", async () => {
 	}
 });
 
-it("restarts an existing onboarding preview and closes newly opened windows", async () => {
+it("restarts an existing onboarding preview and hides newly opened windows", async () => {
 	const { showOnboardingWindow } = await import("./windows");
 	const onboarding = showOnboardingWindow() as unknown as FakeWindow;
 	const other = new FakeWindow();
 	expect(showOnboardingWindow({ preview: true })).toBe(onboarding);
-	expect(other.close).toHaveBeenCalledOnce();
+	expect(other.hide).toHaveBeenCalled();
 	expect(onboarding.loadURL).toHaveBeenLastCalledWith(
 		"http://localhost:5173?windowType=onboarding&onboardingPreview=1",
 	);
@@ -161,7 +217,7 @@ it.each([
 	expect(onboarding.loadURL).toHaveBeenCalledTimes(1);
 	expect(onboarding.show).toHaveBeenCalled();
 	expect(onboarding.focus).toHaveBeenCalled();
-	expect(other.close).toHaveBeenCalledOnce();
+	expect(other.hide).toHaveBeenCalled();
 });
 
 it.each([

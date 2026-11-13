@@ -86,7 +86,7 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "icon": "icons/icons/mac/icon.icns",
+    "icon": "icons/icons/mac/Recordly.icon",
     "artifactName": "${productName}-${arch}.${ext}",
     "extendInfo": {
       // The main app restores its Dock icon through desktopPresence. Declaring

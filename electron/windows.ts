@@ -1212,10 +1212,46 @@ export function getOnboardingWindow(): BrowserWindow | null {
 	return onboardingWindow && !onboardingWindow.isDestroyed() ? onboardingWindow : null;
 }
 
-function closeOtherOnboardingWindows(win: BrowserWindow) {
+function hideOtherOnboardingWindows(win: BrowserWindow) {
 	for (const other of BrowserWindow.getAllWindows()) {
-		if (other !== win && other !== onboardingIntroWindow && !other.isDestroyed()) other.close();
+		if (other !== win && other !== onboardingIntroWindow && !other.isDestroyed()) {
+			other.hide();
+		}
 	}
+}
+
+/** Keep existing windows, delayed loads and tray restores behind onboarding. */
+function enforceOnboardingWindowExclusivity(win: BrowserWindow): void {
+	const listeners = new Map<BrowserWindow, () => void>();
+	const deferredWindows = new Set<BrowserWindow>();
+	const watch = (other: BrowserWindow) => {
+		if (other === win || other.isDestroyed() || listeners.has(other)) return;
+		const hide = () => {
+			if (!win.isDestroyed() && other !== onboardingIntroWindow && !other.isDestroyed()) {
+				if (other.isVisible()) deferredWindows.add(other);
+				other.hide();
+			}
+		};
+		listeners.set(other, hide);
+		other.on("show", hide);
+		other.on("restore", hide);
+		hide();
+	};
+	const onCreated = (_event: Electron.Event, other: BrowserWindow) => watch(other);
+	app.on("browser-window-created", onCreated);
+	for (const other of BrowserWindow.getAllWindows()) watch(other);
+	win.once("closed", () => {
+		app.removeListener("browser-window-created", onCreated);
+		for (const [other, hide] of listeners) {
+			other.removeListener("show", hide);
+			other.removeListener("restore", hide);
+		}
+		// Permissions completion prepares the HUD before closing onboarding. Show
+		// that destination only after onboarding is gone, preserving existing work.
+		for (const other of deferredWindows) {
+			if (!other.isDestroyed()) other.show();
+		}
+	});
 }
 
 export function replayOnboardingIntro(owner: BrowserWindow): boolean {
@@ -1273,7 +1309,7 @@ export function showOnboardingWindow(options?: {
 		}
 	};
 	if (onboardingWindow && !onboardingWindow.isDestroyed()) {
-		closeOtherOnboardingWindows(onboardingWindow);
+		hideOtherOnboardingWindows(onboardingWindow);
 		if (!app.isPackaged && typeof options?.preview === "boolean") load(onboardingWindow, query);
 		onboardingWindow.setBounds(getOnboardingWindowBounds());
 		focusOnboardingWindow();
@@ -1305,11 +1341,11 @@ export function showOnboardingWindow(options?: {
 	registerDesktopPresenceWindow(win);
 	if (process.platform !== "darwin") win.setMenu(null);
 	onboardingWindow = win;
+	enforceOnboardingWindowExclusivity(win);
 	win.once("closed", () => {
 		if (onboardingWindow === win) onboardingWindow = null;
 	});
-	// Keep onboarding alive before closing other windows to avoid window-all-closed.
-	closeOtherOnboardingWindows(win);
+	hideOtherOnboardingWindows(win);
 	const show = () => {
 		win.setBounds(bounds);
 		bringOnboardingWindowForward(win);
