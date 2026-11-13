@@ -18,7 +18,10 @@
 		"delete": "Elimina",
 		"done": "Fatto",
 		"retry": "Riprova",
-		"apply": "Applica"
+		"apply": "Applica",
+		"minimize": "Riduci a icona",
+		"maximize": "Ingrandisci",
+		"restoreWindow": "Ripristina finestra"
 	},
 	"errors": {
 		"invalidFileType": "Tipo di file non valido",
@@ -83,5 +86,6 @@
 		"downloadingButton": "Download · {{progress}}"
 	},
 	"width": "Larghezza",
-	"height": "Altezza"
+	"height": "Altezza",
+	"windowControls": "Controlli finestra"
 }

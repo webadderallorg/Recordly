@@ -229,7 +229,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.send("hud-overlay-set-webcam-preview-visible", visible);
 	},
 	hudOverlaySetInteractiveBounds: (
-		bounds: Array<{ left: number; top: number; right: number; bottom: number }> | null,
+		bounds: Array<{
+			left: number;
+			top: number;
+			right: number;
+			bottom: number;
+			shape?: "ellipse";
+		}> | null,
 	) => {
 		ipcRenderer.send("hud-overlay-set-interactive-bounds", bounds);
 	},
@@ -1147,10 +1153,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		return () => ipcRenderer.removeListener("menu-save-project-as", listener);
 	},
 	getWindowChrome: () => ipcRenderer.invoke("get-window-chrome"),
-	onWindowChromeChanged: (callback: (chrome: { trafficLightsVisible: boolean }) => void) => {
+	windowControl: (action: "minimize" | "maximize" | "close") =>
+		ipcRenderer.invoke("window-control", action),
+	onWindowChromeChanged: (
+		callback: (chrome: {
+			trafficLightsVisible: boolean;
+			customControls?: boolean;
+			maximized?: boolean;
+		}) => void,
+	) => {
 		const listener = (
 			_event: Electron.IpcRendererEvent,
-			chrome: { trafficLightsVisible: boolean },
+			chrome: {
+				trafficLightsVisible: boolean;
+				customControls?: boolean;
+				maximized?: boolean;
+			},
 		) => callback(chrome);
 		ipcRenderer.on("window-chrome-changed", listener);
 		return () => ipcRenderer.removeListener("window-chrome-changed", listener);

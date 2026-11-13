@@ -66,6 +66,13 @@ vi.mock("@/contexts/I18nContext", () => ({
 }));
 vi.mock("@/lib/appSettings", () => ({ saveAppSetting: vi.fn() }));
 vi.mock("@heroui/react", () => ({ Button: "button" }));
+vi.mock("@phosphor-icons/react", () => ({
+	ArrowLeft: "arrow-left",
+	Check: "check",
+	CheckCircle: "check-circle",
+	WarningCircle: "warning-circle",
+}));
+vi.mock("@/components/video-editor/SettingsRow", () => ({ SettingsRow: "settings-row" }));
 vi.mock("motion/react", () => ({ useReducedMotion: () => true, motion: { div: "div" } }));
 vi.mock("@/components/feedback/ErrorReportButton", () => ({ ErrorReportButton: "report" }));
 vi.mock("./PermissionsConfetti", () => ({ PermissionsConfetti: "confetti" }));
@@ -85,9 +92,9 @@ function nodes(node: ReactNode): ReactElement<Record<string, unknown>>[] {
 const flush = async () => {
 	for (let i = 0; i < 8; i++) await Promise.resolve();
 };
-function render() {
+function render(onFinish = vi.fn()) {
 	state.index = 0;
-	const result = OnboardingPermissions({ onFinish: vi.fn() });
+	const result = OnboardingPermissions({ onFinish });
 	for (const effect of state.effects.splice(0)) effect();
 	return nodes(result);
 }
@@ -123,6 +130,23 @@ afterEach(() => {
 	for (const slot of state.slots) slot.cleanup?.();
 	vi.unstubAllGlobals();
 	vi.useRealTimers();
+});
+it.each([
+	"win32",
+	"linux",
+])("skips macOS permission setup on %s without requesting access", async (platform) => {
+	vi.mocked(window.electronAPI.getPlatform).mockResolvedValue(platform);
+	const onFinish = vi.fn();
+	const checking = render(onFinish);
+	expect(checking.some((node) => node.type === "header")).toBe(false);
+	await flush();
+	expect(render(onFinish)).toEqual([]);
+	expect(onFinish).toHaveBeenCalledOnce();
+	render(onFinish);
+	expect(onFinish).toHaveBeenCalledOnce();
+	expect(window.electronAPI.getScreenRecordingPermissionStatus).not.toHaveBeenCalled();
+	expect(window.electronAPI.getAccessibilityPermissionStatus).not.toHaveBeenCalled();
+	expect(window.electronAPI.openScreenRecordingPreferences).not.toHaveBeenCalled();
 });
 it("keeps a failed permission request visible through successful status polls and clears it on retry", async () => {
 	render();

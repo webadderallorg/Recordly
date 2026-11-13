@@ -8,10 +8,12 @@ const mocks = vi.hoisted(() => ({
 	healthySend: vi.fn(),
 	focusStart: vi.fn(),
 	focusStop: vi.fn(),
+	fromContents: vi.fn(),
 }));
 vi.mock("electron", () => ({
 	app: {},
 	BrowserWindow: {
+		fromWebContents: mocks.fromContents,
 		getAllWindows: () => [
 			{
 				isDestroyed: () => false,
@@ -56,6 +58,36 @@ import {
 	readAppSettingsStoreWithStatus,
 	writeAppSettingsStore,
 } from "../../appSettingsStore";
+
+describe("custom window controls", () => {
+	const platform = process.platform;
+	afterEach(() => Object.defineProperty(process, "platform", { value: platform }));
+	it.each(["win32", "linux", "darwin"])("reports appropriate controls for %s", (platform) => {
+		Object.defineProperty(process, "platform", { value: platform });
+		mocks.fromContents.mockReturnValue({
+			isMaximized: () => true,
+			isFullScreen: () => false,
+			isSimpleFullScreen: () => false,
+		});
+		registerSettingsHandlers();
+		expect(mocks.handlers.get("get-window-chrome")!({ sender: {} })).toEqual({
+			customControls: platform !== "darwin",
+			maximized: true,
+			trafficLightsVisible: platform === "darwin",
+		});
+	});
+	it("applies controls to the sender's window rather than a global window", () => {
+		const sender = {};
+		const close = vi.fn();
+		mocks.fromContents.mockReturnValue({ isDestroyed: () => false, close });
+		registerSettingsHandlers();
+		expect(mocks.handlers.get("window-control")!({ sender }, "close")).toEqual({
+			success: true,
+		});
+		expect(mocks.fromContents).toHaveBeenCalledWith(sender);
+		expect(close).toHaveBeenCalledOnce();
+	});
+});
 
 describe("app setting read status", () => {
 	beforeEach(() => {
@@ -163,6 +195,7 @@ describe("inline recording countdown", () => {
 		mocks.handlers.clear();
 		mocks.send.mockReset();
 		mocks.healthySend.mockClear();
+		mocks.focusStart.mockClear();
 		registerSettingsHandlers();
 	});
 	afterEach(() => {
@@ -175,6 +208,7 @@ describe("inline recording countdown", () => {
 		const pending = mocks.handlers.get("start-countdown")!({ sender }, 3);
 		await vi.advanceTimersByTimeAsync(3000);
 		await expect(pending).resolves.toEqual({ success: true });
+		expect(mocks.focusStart).not.toHaveBeenCalled();
 		expect(mocks.send.mock.calls).toEqual([
 			["countdown-tick", 3],
 			["countdown-tick", 2],

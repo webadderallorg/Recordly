@@ -20,6 +20,7 @@ import { CountdownDelayIcon } from "./CountdownDelayIcon";
 import { HudInteractionContext } from "./contexts/HudInteractionContext";
 import { FloatingWebcamPreviewView } from "./FloatingWebcamPreviewView";
 import { canToggleFloatingWebcamPreview } from "./floatingWebcamPreview";
+import { getHudInteractiveBounds } from "./hudMousePassthrough";
 import { useHudBarDrag } from "./hooks/useHudBarDrag";
 import { useHudStateTransition } from "./hooks/useHudStateTransition";
 import { useLaunchHudInteractionState } from "./hooks/useLaunchHudInteractionState";
@@ -159,29 +160,21 @@ function LaunchWindowContent() {
 
 	useEffect(() => {
 		const reportInteractiveBounds = () => {
-			const elements = [hudBarRef.current, recordingWebcamPreviewContainerRef.current].filter(
-				(element): element is HTMLDivElement => element !== null,
-			);
-
-			if (elements.length === 0) {
-				window.electronAPI?.hudOverlaySetInteractiveBounds?.(null);
-				return;
-			}
-
 			window.electronAPI?.hudOverlaySetInteractiveBounds?.(
-				elements.map((element) => {
-					const rect = element.getBoundingClientRect();
-					return {
-						left: window.screenX + rect.left,
-						top: window.screenY + rect.top,
-						right: window.screenX + rect.right,
-						bottom: window.screenY + rect.bottom,
-					};
-				}),
+				getHudInteractiveBounds(document).map((rect) => ({
+					left: window.screenX + rect.left,
+					top: window.screenY + rect.top,
+					right: window.screenX + rect.right,
+					bottom: window.screenY + rect.bottom,
+					shape: rect.shape,
+				})),
 			);
 		};
 
 		reportInteractiveBounds();
+		// Keep native recovery current even when Windows stops forwarding mouse
+		// events. Include popovers and toasts, not just the main bar and webcam.
+		const boundsTimer = window.setInterval(reportInteractiveBounds, 100);
 		const resizeObserver = new ResizeObserver(reportInteractiveBounds);
 		if (hudBarRef.current) resizeObserver.observe(hudBarRef.current);
 		if (recordingWebcamPreviewContainerRef.current) {
@@ -191,17 +184,13 @@ function LaunchWindowContent() {
 		window.addEventListener("resize", reportInteractiveBounds);
 
 		return () => {
+			window.clearInterval(boundsTimer);
 			resizeObserver.disconnect();
 			window.removeEventListener("mousemove", reportInteractiveBounds);
 			window.removeEventListener("resize", reportInteractiveBounds);
 			window.electronAPI?.hudOverlaySetInteractiveBounds?.(null);
 		};
-	}, [
-		recordingHudOffset,
-		recordingWebcamPreviewContainerRef,
-		showRecordingWebcamPreview,
-		webcamPreview.webcamPreviewOffset,
-	]);
+	}, [recordingWebcamPreviewContainerRef]);
 
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } =
 		useLaunchHudInteractionState({

@@ -42,6 +42,7 @@ export function OnboardingPermissions({
 	const error = requestError ?? statusError;
 	const mounted = useRef(false);
 	const refreshing = useRef(false);
+	const finishedWithoutPermissions = useRef(false);
 	const canSimulate = import.meta.env.DEV && preview;
 	useEffect(() => {
 		if (!preview) saveAppSetting("recordly.onboarding.permissionsRequested", true);
@@ -148,20 +149,26 @@ export function OnboardingPermissions({
 			setBusy(undefined);
 		}
 	};
+	useEffect(() => {
+		if (platform !== "other" || finishedWithoutPermissions.current) return;
+		finishedWithoutPermissions.current = true;
+		onFinish();
+	}, [platform, onFinish]);
+
+	// Windows and Linux choose a capture source when recording starts. They do
+	// not have the macOS screen-recording and Accessibility permission setup.
+	if (platform === "other") return null;
+	if (platform === "checking") return <div role="status">{t("checking")}</div>;
 
 	return (
 		<div
 			className="onboarding-permissions relative flex h-full min-h-0 flex-col"
-			aria-busy={platform === "checking"}
+			aria-busy={Boolean(busy)}
 		>
-			<PermissionsConfetti ready={platform === "mac" && canFinish} />
+			<PermissionsConfetti ready={canFinish} />
 			<OnboardingBody>
-				<OnboardingHeader
-					centered
-					title={<OnboardingTitle text={t("allowTitle")} />}
-					description={platform === "other" ? t("otherDescription") : undefined}
-				/>
-				{canSimulate && platform !== "other" && (
+				<OnboardingHeader centered title={<OnboardingTitle text={t("allowTitle")} />} />
+				{canSimulate && (
 					<div
 						className="flex flex-wrap items-center gap-2 text-xs text-muted"
 						data-permission-preview-controls
@@ -169,7 +176,7 @@ export function OnboardingPermissions({
 						<Button
 							variant="secondary"
 							size="sm"
-							isDisabled={platform === "checking" || Boolean(busy)}
+							isDisabled={Boolean(busy)}
 							onPress={() => {
 								setSimulatedMissing({ screen: true, accessibility: true });
 								setRequestError(undefined);
@@ -180,82 +187,74 @@ export function OnboardingPermissions({
 						</Button>
 					</div>
 				)}
-				{platform !== "other" && (
-					<>
-						<div className="onboarding-permission-list">
-							{[
-								{
-									key: "screen" as const,
-									name: t("screen"),
-									description: t("screenDescription"),
-									granted: granted.screen,
-								},
-								{
-									key: "accessibility" as const,
-									name: t("accessibility"),
-									description: t("accessibilityDescription"),
-									granted: granted.accessibility,
-								},
-							].map(({ key, name, description, granted }, index) => (
-								<motion.div
-									key={key}
-									initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-									animate={{ opacity: 1, y: 0 }}
-									transition={{
-										duration: reduceMotion ? 0 : 0.3,
-										delay: reduceMotion ? 0 : 0.1 + index * 0.07,
-										ease: [0.22, 1, 0.36, 1],
-									}}
-									className="onboarding-permission-row"
-								>
-									<div className="min-w-0">
-										<h3 className="text-base font-semibold">{name}</h3>
-										<p className="mt-1.5 text-sm leading-relaxed text-muted">
-											{description}
-										</p>
-									</div>
-									<div className="onboarding-permission-action">
-										{granted ? (
-											<span
-												role="status"
-												aria-live="polite"
-												aria-label={`${name}: ${t("allowed")}`}
-												className="onboarding-permission-granted text-success"
-											>
-												<Check size={22} aria-hidden="true" />
-												{t("allowed")}
-											</span>
-										) : (
-											<Button
-												variant="secondary"
-												className="onboarding-permission-button w-full rounded-xl text-accent"
-												isDisabled={
-													platform === "checking" || Boolean(busy)
-												}
-												onPress={() => void allow(key)}
-												aria-label={t("allowPermission", undefined, {
+				<div className="onboarding-permission-list">
+					{[
+						{
+							key: "screen" as const,
+							name: t("screen"),
+							description: t("screenDescription"),
+							granted: granted.screen,
+						},
+						{
+							key: "accessibility" as const,
+							name: t("accessibility"),
+							description: t("accessibilityDescription"),
+							granted: granted.accessibility,
+						},
+					].map(({ key, name, description, granted }, index) => (
+						<motion.div
+							key={key}
+							initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{
+								duration: reduceMotion ? 0 : 0.3,
+								delay: reduceMotion ? 0 : 0.1 + index * 0.07,
+								ease: [0.22, 1, 0.36, 1],
+							}}
+							className="onboarding-permission-row"
+						>
+							<div className="min-w-0">
+								<h3 className="text-base font-semibold">{name}</h3>
+								<p className="mt-1.5 text-sm leading-relaxed text-muted">
+									{description}
+								</p>
+							</div>
+							<div className="onboarding-permission-action">
+								{granted ? (
+									<span
+										role="status"
+										aria-live="polite"
+										aria-label={`${name}: ${t("allowed")}`}
+										className="onboarding-permission-granted text-success"
+									>
+										<Check size={22} aria-hidden="true" />
+										{t("allowed")}
+									</span>
+								) : (
+									<Button
+										variant="secondary"
+										className="onboarding-permission-button w-full rounded-xl text-accent"
+										isDisabled={Boolean(busy)}
+										onPress={() => void allow(key)}
+										aria-label={t("allowPermission", undefined, {
+											permission: name,
+										})}
+									>
+										{busy === key
+											? t("opening")
+											: t("allowPermission", undefined, {
 													permission: name,
 												})}
-											>
-												{platform === "checking"
-													? t("checking")
-													: busy === key
-														? t("opening")
-														: t("allowPermission", undefined, {
-																permission: name,
-															})}
-											</Button>
-										)}
-									</div>
-								</motion.div>
-							))}
-						</div>
-						{error && (
-							<p role="alert" className="text-sm text-danger">
-								{error} <ErrorReportButton error={error} />
-							</p>
-						)}
-					</>
+									</Button>
+								)}
+							</div>
+						</motion.div>
+					))}
+				</div>
+				{error && (
+					<p role="alert" className="text-sm text-danger">
+						{error} <ErrorReportButton error={error} />
+					</p>
 				)}
 			</OnboardingBody>
 			{showFooter && (

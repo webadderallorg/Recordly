@@ -5,6 +5,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const decode = vi.hoisted(() => vi.fn());
+const nativeWallpaper = vi.hoisted(() => vi.fn());
+vi.mock("./ipc/windowsWindowGeometry", () => ({ readWindowsWindowGeometry: nativeWallpaper }));
 vi.mock("electron", () => ({ nativeImage: { createFromPath: decode } }));
 vi.mock("./ipc/ffmpeg/binary", () => ({ getFfmpegBinaryPath: () => "/recordly/ffmpeg" }));
 import {
@@ -15,6 +17,7 @@ import {
 
 let directory: string;
 beforeEach(async () => {
+	nativeWallpaper.mockReset().mockRejectedValue(new Error("older helper"));
 	directory = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-desktop-wallpaper-"));
 	decode
 		.mockReset()
@@ -25,6 +28,22 @@ afterEach(async () => {
 });
 
 describe("desktop wallpaper source", () => {
+	it("rejects a native no-wallpaper result without trying the slow fallback", async () => {
+		nativeWallpaper.mockResolvedValue("");
+		const run = vi.fn();
+		await expect(resolveDesktopWallpaperSource("win32", run)).rejects.toThrow(
+			"No desktop wallpaper",
+		);
+		expect(run).not.toHaveBeenCalled();
+	});
+	it("uses the native Windows lookup without launching PowerShell", async () => {
+		const wallpaper = "C:\\Users\\Name\\背景.jpg";
+		nativeWallpaper.mockResolvedValue(wallpaper);
+		const run = vi.fn();
+		expect(await resolveDesktopWallpaperSource("win32", run)).toBe(wallpaper);
+		expect(nativeWallpaper).toHaveBeenCalledWith(["--desktop-wallpaper"]);
+		expect(run).not.toHaveBeenCalled();
+	});
 	it("reads macOS wallpaper through AppKit without System Events automation", async () => {
 		const run = vi.fn(async () => JSON.stringify({ source: "/Users/test/My wallpaper.heic" }));
 		expect(await resolveDesktopWallpaperSource("darwin", run)).toBe(

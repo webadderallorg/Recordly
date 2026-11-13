@@ -254,7 +254,13 @@ interface Window {
 		hudOverlayRendererReady: () => void;
 		hudOverlaySetWebcamPreviewVisible: (visible: boolean) => void;
 		hudOverlaySetInteractiveBounds: (
-			bounds: Array<{ left: number; top: number; right: number; bottom: number }> | null,
+			bounds: Array<{
+				left: number;
+				top: number;
+				right: number;
+				bottom: number;
+				shape?: "ellipse";
+			}> | null,
 		) => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
 		getHudOverlayMousePassthroughSupported: () => Promise<{
@@ -1173,9 +1179,18 @@ interface Window {
 		onMenuLoadProject: (callback: () => void) => () => void;
 		onMenuSaveProject: (callback: () => void) => () => void;
 		onMenuSaveProjectAs: (callback: () => void) => () => void;
-		getWindowChrome: () => Promise<{ trafficLightsVisible: boolean }>;
+		getWindowChrome: () => Promise<{
+			trafficLightsVisible: boolean;
+			customControls?: boolean;
+			maximized?: boolean;
+		}>;
+		windowControl: (action: "minimize" | "maximize" | "close") => Promise<{ success: boolean }>;
 		onWindowChromeChanged: (
-			callback: (chrome: { trafficLightsVisible: boolean }) => void,
+			callback: (chrome: {
+				trafficLightsVisible: boolean;
+				customControls?: boolean;
+				maximized?: boolean;
+			}) => void,
 		) => () => void;
 		getPlatform: () => Promise<string>;
 		isWindowFullscreen: () => Promise<boolean>;
