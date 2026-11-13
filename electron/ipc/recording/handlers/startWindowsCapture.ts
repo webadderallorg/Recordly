@@ -1,6 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import path from "node:path";
-import { app } from "electron";
+
 import { getMonitorHandles } from "../../monitorResolver";
 import { getWindowsCaptureExePath } from "../../paths/binaries";
 import {
@@ -37,6 +37,7 @@ import {
 } from "../windowsFallbacks";
 
 import type { RecordingHandlerContext } from "./handlerContext";
+import { getTempStorageDir } from "../../../storageLocations";
 
 export async function startWindowsCapture(
 	context: Pick<
@@ -77,7 +78,7 @@ export async function startWindowsCapture(
 		const recordingsDir = await getRecordingsDir();
 		const timestamp = Date.now();
 		const outputPath = path.join(recordingsDir, `recording-${timestamp}.mp4`);
-		tempVideoPath = path.join(app.getPath("temp"), `recordly-native-${timestamp}.mp4`);
+		tempVideoPath = path.join(getTempStorageDir(), `recordly-native-${timestamp}.mp4`);
 
 		let captureOutput = "";
 		let systemAudioPath: string | null = null;
@@ -133,7 +134,7 @@ export async function startWindowsCapture(
 		if (options?.capturesSystemAudio) {
 			systemAudioPath = path.join(recordingsDir, `recording-${timestamp}.system.wav`);
 			tempSystemAudioPath = path.join(
-				app.getPath("temp"),
+				getTempStorageDir(),
 				`recordly-native-${timestamp}.system.wav`,
 			);
 			config.captureSystemAudio = true;
@@ -145,7 +146,7 @@ export async function startWindowsCapture(
 
 		if (options?.capturesMicrophone && !browserMicFallbackRequested) {
 			microphonePath = path.join(recordingsDir, `recording-${timestamp}.mic.wav`);
-			tempMicPath = path.join(app.getPath("temp"), `recordly-native-${timestamp}.mic.wav`);
+			tempMicPath = path.join(getTempStorageDir(), `recordly-native-${timestamp}.mic.wav`);
 			config.captureMic = true;
 			config.micOutputPath = tempMicPath;
 			if (options.microphoneDeviceId) {

@@ -18,6 +18,7 @@
 	"saveFailedTitle": "No se pudo guardar el proyecto",
 	"saveFailedMessage": "El guardado falló o no respondió. ¿Descartar los cambios sin guardar y cerrar?",
 	"welcome": "Te damos la bienvenida a Recordly",
+	"chooseFolder": "Elegir carpeta",
 	"chooseRecordings": "Elegir carpeta de grabaciones",
 	"saveRecordlyProject": "Guardar proyecto de Recordly",
 	"recordlyProject": "Proyecto de Recordly",

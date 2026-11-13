@@ -18,6 +18,7 @@
 	"saveFailedTitle": "Impossibile salvare il progetto",
 	"saveFailedMessage": "Il salvataggio non è riuscito o non risponde. Scartare le modifiche non salvate e chiudere?",
 	"welcome": "Ti diamo il benvenuto in Recordly",
+	"chooseFolder": "Scegli cartella",
 	"chooseRecordings": "Scegli la cartella delle registrazioni",
 	"saveRecordlyProject": "Salva progetto Recordly",
 	"recordlyProject": "Progetto Recordly",

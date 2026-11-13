@@ -3,7 +3,7 @@ import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { app } from "electron";
+
 import type { CaptionModelId } from "../../../src/shared/captionModels";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { getBundledWhisperExecutableCandidates } from "../paths/binaries";
@@ -22,6 +22,7 @@ import { getParakeetModelStatus } from "./parakeetModel";
 import { shouldRetryWhisperWithoutJson } from "./parser";
 import { isMissingWindowsWhisperRuntimeDependency } from "./runtimeErrors";
 import { segmentCuesIntoPhrases } from "./segment";
+import { getTempStorageDir } from "../../storageLocations";
 import {
 	parseSilenceIntervals,
 	SILENCE_DETECT_MIN_S,
@@ -285,7 +286,7 @@ async function generateCaptionsForSource(
 	}
 
 	const tempBase = path.join(
-		app.getPath("temp"),
+		getTempStorageDir(),
 		`recordly-captions-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 	);
 	const wavPath = `${tempBase}.wav`;

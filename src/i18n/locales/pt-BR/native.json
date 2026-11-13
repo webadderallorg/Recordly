@@ -18,6 +18,7 @@
 	"saveFailedTitle": "Não foi possível salvar o projeto",
 	"saveFailedMessage": "O salvamento falhou ou não respondeu. Descartar as alterações não salvas e fechar?",
 	"welcome": "Boas-vindas ao Recordly",
+	"chooseFolder": "Escolher pasta",
 	"chooseRecordings": "Escolher pasta de gravações",
 	"saveRecordlyProject": "Salvar projeto do Recordly",
 	"recordlyProject": "Projeto do Recordly",

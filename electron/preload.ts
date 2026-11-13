@@ -1252,6 +1252,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	chooseRecordingsDirectory: () => {
 		return ipcRenderer.invoke("choose-recordings-directory");
 	},
+	getStorageFolders: () => {
+		return ipcRenderer.invoke("storage-locations:get");
+	},
+	chooseStorageFolder: (id: string) => {
+		return ipcRenderer.invoke("storage-locations:choose", id);
+	},
+	openStorageFolder: (id: string) => {
+		return ipcRenderer.invoke("storage-locations:open", id);
+	},
+	resetStorageFolder: (id: string) => {
+		return ipcRenderer.invoke("storage-locations:reset", id);
+	},
+	resetAllStorageFolders: () => {
+		return ipcRenderer.invoke("storage-locations:reset-all");
+	},
 	getShortcuts: () => {
 		return ipcRenderer.invoke("get-shortcuts");
 	},

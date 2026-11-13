@@ -21,6 +21,7 @@ export type SettingsSection =
 	| "permissions"
 	| "motion"
 	| "recording"
+	| "storage"
 	| "files"
 	| "updates"
 	| "developer";
@@ -53,6 +54,7 @@ export function SettingsSections({
 		permissions: t("settings.categories.permissions", "Permissions"),
 		motion: t("settings.categories.motion", "Motion"),
 		recording: t("settings.categories.recording", "Recording"),
+		storage: t("settings.storage.title", "Storage locations"),
 		files: t("settings.appPreferences.storage", "Storage"),
 		updates: t("settings.updates.title", "Updates"),
 		developer: t("settings.effects.devSection", "Dev"),

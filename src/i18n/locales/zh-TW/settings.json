@@ -598,5 +598,28 @@
 	},
 	"annotation": {
 		"delete": "刪除註釋"
+	},
+	"storage": {
+		"title": "儲存位置",
+		"description": "選擇 Recordly 各類檔案的儲存位置。新檔案使用你選擇的資料夾，既有檔案維持在原地。",
+		"recordings": "錄製影片",
+		"recordingsDescription": "螢幕錄製，包含系統聲音、麥克風音軌與游標資料。",
+		"projects": "專案與草稿",
+		"projectsDescription": "已儲存的專案、預覽圖與自動儲存，位於錄製資料夾內。",
+		"exports": "匯出影片",
+		"exportsDescription": "匯出 MP4 或 GIF 時儲存對話框預設開啟的資料夾。",
+		"temp": "暫存檔案",
+		"tempDescription": "錄製與匯出過程中的暫存資料。系統碟空間不足時可指向更大的磁碟。",
+		"captionModels": "字幕模型",
+		"captionModelsDescription": "自動字幕使用的語音辨識模型。",
+		"cache": "快取",
+		"cacheDescription": "可重新產生的資料，如桌布縮圖與專案預覽。可搬移或清理。",
+		"change": "變更…",
+		"open": "開啟",
+		"reset": "重設",
+		"resetAll": "全部恢復預設位置",
+		"usingDefault": "目前為預設位置。",
+		"loading": "正在讀取資料夾位置…",
+		"loadFailed": "無法讀取儲存位置。"
 	}
 }

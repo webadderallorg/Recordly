@@ -598,5 +598,28 @@
 	},
 	"annotation": {
 		"delete": "Annotatie verwijderen"
+	},
+	"storage": {
+		"title": "Opslaglocaties",
+		"description": "Kies waar Recordly elk soort bestand opslaat. Nieuwe bestanden gebruiken de gekozen map; bestaande bestanden blijven staan.",
+		"recordings": "Opnames",
+		"recordingsDescription": "Schermopnames met systeemgeluid, microfoonsporen en cursorwaarden.",
+		"projects": "Projecten en concepten",
+		"projectsDescription": "Opgeslagen projecten, hun voorbeelden en automatische opslag. Staat in de opnamemap.",
+		"exports": "Geëxporteerde video’s",
+		"exportsDescription": "Map die het opslaanvenster opent bij het exporteren van MP4 of GIF.",
+		"temp": "Tijdelijke bestanden",
+		"tempDescription": "Tijdelijke data tijdens opnemen en exporteren. Kies een grotere schijf als je systeemschijf klein is.",
+		"captionModels": "Ondertitelmodellen",
+		"captionModelsDescription": "Gedownloade spraak-naar-tekstmodellen voor automatische ondertitels.",
+		"cache": "Cache",
+		"cacheDescription": "Opnieuw te maken data zoals achtergrondminiaturen en projectvoorbeelden. Veilig te verplaatsen of te wissen.",
+		"change": "Wijzigen…",
+		"open": "Openen",
+		"reset": "Herstellen",
+		"resetAll": "Alle standaardlocaties herstellen",
+		"usingDefault": "Dit is momenteel de standaardlocatie.",
+		"loading": "Maplocatie laden…",
+		"loadFailed": "Opslaglocaties konden niet worden gelezen."
 	}
 }

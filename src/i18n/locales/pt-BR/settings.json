@@ -598,5 +598,28 @@
 	},
 	"annotation": {
 		"delete": "Excluir anotação"
+	},
+	"storage": {
+		"title": "Locais de armazenamento",
+		"description": "Escolha onde o Recordly salva cada tipo de arquivo. Arquivos novos usam a pasta escolhida; os existentes ficam onde estão.",
+		"recordings": "Gravações",
+		"recordingsDescription": "Gravações de tela com áudio do sistema, faixas de microfone e dados do cursor.",
+		"projects": "Projetos e rascunhos",
+		"projectsDescription": "Projetos salvos, suas prévias e salvamentos automáticos. Fica dentro da pasta de gravações.",
+		"exports": "Vídeos exportados",
+		"exportsDescription": "Pasta que a janela de salvar abre ao exportar um MP4 ou GIF.",
+		"temp": "Arquivos temporários",
+		"tempDescription": "Dados temporários durante a gravação e a exportação. Use um disco maior se o disco do sistema for pequeno.",
+		"captionModels": "Modelos de legenda",
+		"captionModelsDescription": "Modelos de fala para texto baixados para legendas automáticas.",
+		"cache": "Cache",
+		"cacheDescription": "Dados regeneráveis como miniaturas de papel de parede e prévias de projetos. Pode mover ou limpar.",
+		"change": "Alterar…",
+		"open": "Abrir",
+		"reset": "Redefinir",
+		"resetAll": "Restaurar todos os locais padrão",
+		"usingDefault": "Atualmente é o local padrão.",
+		"loading": "Carregando o local da pasta…",
+		"loadFailed": "Não foi possível ler os locais de armazenamento."
 	}
 }

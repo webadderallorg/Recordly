@@ -14,6 +14,7 @@ import { SUPPORTED_LOCALES } from "@/i18n/config";
 import { DeveloperMotionSettings, developerMotionSettingsKeys } from "./DeveloperMotionSettings";
 import { MotionPresetCards } from "./MotionPresetCards";
 import { ShortcutsSettingsSection } from "./ShortcutsSettingsSection";
+import { StorageLocationsSettings } from "./StorageLocationsSettings";
 import { SectionLabel } from "./SettingsSectionLabel";
 import type { ResolvedSettingsPanelProps } from "./settingsPanelDefaults";
 import { pickSettingsProps } from "./settingsPanelDefaults";
@@ -77,6 +78,7 @@ export function AppSettings(props: Props) {
 				advanced
 					? [
 							"general",
+							"storage",
 							"shortcuts",
 							"account",
 							"permissions",
@@ -84,7 +86,7 @@ export function AppSettings(props: Props) {
 							"updates",
 							...(showDevMotionControls ? ["developer" as const] : []),
 						]
-					: ["general", "shortcuts", "account", "permissions", "motion"]
+					: ["general", "storage", "shortcuts", "account", "permissions", "motion"]
 			}
 		>
 			<SettingsCategory category="account">
@@ -244,6 +246,18 @@ export function AppSettings(props: Props) {
 						onApply={applyMotionPreset}
 						tSettings={tSettings}
 					/>
+				</section>
+			</SettingsCategory>
+			<SettingsCategory category="storage">
+				<section className="flex flex-col gap-4">
+					<SectionLabel>{tSettings("storage.title", "Storage locations")}</SectionLabel>
+					<p className="text-xs leading-relaxed text-muted">
+						{tSettings(
+							"storage.description",
+							"Choose where Recordly saves each kind of file. New files use the folder you pick; existing files stay where they are.",
+						)}
+					</p>
+					<StorageLocationsSettings />
 				</section>
 			</SettingsCategory>
 			<SettingsCategory category="shortcuts">

@@ -5,7 +5,8 @@ import { get as httpsGet } from "node:https";
 import path from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { app, type WebContents } from "electron";
+import { type WebContents } from "electron";
+import { getCaptionModelsDir } from "../../storageLocations";
 
 export const PARAKEET_MODEL_REVISION = "2bda32ec70b097a55adaa07d9a7173915b43cc78";
 export const PARAKEET_MODEL_FILES = [
@@ -42,7 +43,7 @@ type Progress = {
 };
 
 function modelDirectory() {
-	return path.join(app.getPath("userData"), "captions", "parakeet-tdt-0.6b-v3-int8");
+	return path.join(getCaptionModelsDir(), "parakeet-tdt-0.6b-v3-int8");
 }
 
 export function sendParakeetModelDownloadProgress(webContents: WebContents, payload: Progress) {
