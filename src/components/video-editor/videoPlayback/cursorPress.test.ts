@@ -18,9 +18,12 @@ describe("held cursor presses", () => {
 		});
 		expect(getCursorPressState(samples, 5000, 350)).toMatchObject({
 			pressed: false,
+			bounceProgress: 0.5,
 			releaseAgeMs: 0,
 			sample: samples[2],
 		});
+		expect(getCursorPressState(samples, 5087.5, 350).bounceProgress).toBe(0.25);
+		expect(getCursorPressState(samples, 5175, 350).bounceProgress).toBe(0);
 		expect(getCursorPressState(samples, 5500, 350).bounceProgress).toBe(0);
 		// Seeking backwards must reconstruct the held state.
 		expect(getCursorPressState(samples, 2000, 350).pressed).toBe(true);
@@ -59,6 +62,13 @@ describe("held cursor presses", () => {
 		expect(getCursorPressState(samples, 3000, 350).pressed).toBe(false);
 	});
 
+	it.each([0, 20, 180, 350])("plays the full bounce for a %d ms click", (holdMs) => {
+		const samples = [point(0, "click", 1), point(holdMs, "mouseup", 1)];
+		for (const time of [0, 87.5, 175, 262.5, 350]) {
+			expect(getCursorPressState(samples, time, 350).bounceProgress).toBe(1 - time / 350);
+		}
+	});
+
 	it("handles quick and double clicks without losing the release or sticking", () => {
 		const samples = [
 			point(0, "click", 1),
@@ -66,7 +76,12 @@ describe("held cursor presses", () => {
 			point(100, "double-click", 1),
 			point(150, "mouseup", 1),
 		];
-		expect(getCursorPressState(samples, 20, 350).bounceProgress).toBeCloseTo(20 / 350);
+		expect(getCursorPressState(samples, 20, 350)).toMatchObject({
+			pressed: false,
+			releaseAgeMs: 0,
+			sample: samples[1],
+		});
+		expect(getCursorPressState(samples, 275, 350).bounceProgress).toBe(0.5);
 		expect(getCursorPressState(samples, 120, 350).pressed).toBe(true);
 		expect(getCursorPressState(samples, 1000, 350)).toMatchObject({
 			pressed: false,

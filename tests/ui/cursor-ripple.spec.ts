@@ -1,8 +1,22 @@
 import { expect, test } from "@playwright/test";
-import { installDesktopBridge } from "./bridge";
+import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 test("all click effects select grey for the recording and previews", async ({ page }, testInfo) => {
 	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		const preferencesKey = "recordly.editor.preferences";
+		const getAppSetting = window.electronAPI.getAppSetting;
+		const setAppSetting = window.electronAPI.setAppSetting;
+		window.electronAPI.getAppSetting = (key) => {
+			const saved = key === preferencesKey ? sessionStorage.getItem(key) : null;
+			return saved === null ? getAppSetting(key) : JSON.parse(saved);
+		};
+		window.electronAPI.setAppSetting = (key, value) => {
+			if (key !== preferencesKey) return setAppSetting(key, value);
+			sessionStorage.setItem(key, JSON.stringify(value));
+			return true;
+		};
+	});
 	await page.goto("/?windowType=editor");
 	await page.getByRole("radio", { name: "Cursor", exact: true }).click();
 	const choices = page.getByRole("grid", { name: "Click Effects", exact: true });
@@ -48,7 +62,10 @@ test("all click effects select grey for the recording and previews", async ({ pa
 	await page.reload();
 	await page.getByRole("radio", { name: "Cursor", exact: true }).click();
 	await expect(burst).toHaveAttribute("aria-selected", "true");
-	await choices.screenshot({ path: testInfo.outputPath("click-effects.png") });
+	await choices.screenshot({
+		path: testInfo.outputPath("click-effects.png"),
+		animations: "disabled",
+	});
 	await burst.click();
 	await expect(burst).toHaveAttribute("aria-selected", "false");
 });
