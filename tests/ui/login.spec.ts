@@ -87,6 +87,37 @@ test("sign-in keeps all providers visible and marks unavailable providers disabl
 	});
 });
 
+test("production onboarding allows OAuth when provider discovery times out after five seconds", async ({
+	page,
+}) => {
+	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
+	await page.addInitScript(() => {
+		window.electronAPI.openExternalUrl = async (url) => {
+			document.documentElement.dataset.authProvider =
+				new URL(url).searchParams.get("provider") ?? "";
+			return { success: true };
+		};
+	});
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	await page.route("https://auth.recordly.test/auth/v1/settings", () => {
+		// Leave the request pending until the app's timeout aborts it.
+	});
+	const discovery = page.waitForRequest("https://auth.recordly.test/auth/v1/settings");
+	await page.goto("/?windowType=onboarding");
+	await discovery;
+	const login = page.getByRole("dialog", { name: "Welcome to Recordly" });
+	const google = login.getByRole("button", { name: "Continue with Google" });
+
+	await expect(google).toBeDisabled();
+	await expect(google).toBeEnabled({ timeout: 7_000 });
+	for (const provider of ["Google", "Microsoft", "Apple"]) {
+		await expect(login.getByRole("button", { name: `Continue with ${provider}` })).toBeEnabled();
+	}
+	await google.click();
+	await expect(page.locator("html")).toHaveAttribute("data-auth-provider", "google");
+	await expect(login.getByRole("button", { name: "Permissions", exact: true })).toBeDisabled();
+});
+
 test("email sign-in reports localized failures and allows retry without granting access", async ({
 	page,
 }) => {

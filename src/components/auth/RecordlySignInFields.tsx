@@ -16,6 +16,8 @@ import { RecordlyBotChallenge } from "./RecordlyBotChallenge";
 
 export type SignInProvider = "google" | "azure" | "apple";
 
+export const SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS = 5_000;
+
 /** The same primary sign-in controls for desktop and the hosted cloud library. */
 export function RecordlySignInFields({
 	email,
@@ -191,8 +193,7 @@ export function RecordlySignInFields({
 								disabled ||
 								!configured ||
 								loadingProviders ||
-								!providersKnown ||
-								!providers.includes(provider)
+								(providersKnown && !providers.includes(provider))
 							}
 							aria-describedby={
 								providersKnown && !providers.includes(provider)

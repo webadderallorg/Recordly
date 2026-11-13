@@ -5,6 +5,7 @@ import LibraryPage from "./LibraryPage";
 import { CenteredCard } from "./ShareUI";
 import {
 	RecordlySignInFields,
+	SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS,
 	type SignInProvider,
 } from "../../../../../../src/components/auth/RecordlySignInFields";
 import { RecordlyPasswordForm } from "../../../../../../src/components/auth/RecordlyPasswordForm";
@@ -82,10 +83,10 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 					unsubscribe();
 					return;
 				}
-				// Discover only enabled providers; email stays usable if discovery fails.
+				// Disable only providers that Auth confirms are unavailable.
 				void fetch(`${config.url}/auth/v1/settings`, {
 					headers: { apikey: config.publishableKey },
-					signal: AbortSignal.timeout(10000),
+					signal: AbortSignal.timeout(SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS),
 				})
 					.then(async (response) => {
 						if (!response.ok) throw new Error("Provider discovery unavailable");
@@ -100,7 +101,7 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 						}
 					})
 					.catch(() => {
-						/* Email remains available when providers cannot be discovered. */
+						/* Leave provider availability unknown so users can still try signing in. */
 					})
 					.finally(() => {
 						if (active) setLoadingProviders(false);

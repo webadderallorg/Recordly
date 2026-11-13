@@ -89,15 +89,14 @@ for (const signedIn of [false, true]) {
 	});
 }
 
-test("provider discovery failure leaves the real email form usable", async ({ page }) => {
+test("provider discovery failure leaves social and email sign-in usable", async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
 	await page.route("**/auth/v1/settings", (route) => route.abort());
 	await page.goto("/?windowType=onboarding");
 	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 	await tour.getByPlaceholder("you@example.com").fill("person@example.com");
 	await expect(tour.getByRole("button", { name: "Email me a code", exact: true })).toBeEnabled();
-	await expect(tour.getByRole("button", { name: "Continue with Google" })).toBeVisible();
-	await expect(tour.getByRole("button", { name: "Continue with Google" })).toBeDisabled();
+	await expect(tour.getByRole("button", { name: "Continue with Google" })).toBeEnabled();
 	await tour.getByRole("button", { name: "Close onboarding window" }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-onboarding-closed", "true");
 });
