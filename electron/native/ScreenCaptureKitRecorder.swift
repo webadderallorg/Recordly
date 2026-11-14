@@ -332,6 +332,11 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var excludedProcessIds = Set<Int32>()
 	private var captureDisplayId: CGDirectDisplayID?
 	private var lastCroppedPixelBuffer: CVPixelBuffer?
+	private var recentCroppedPixelBuffer: CVPixelBuffer?
+	private var recentCroppedFrameTime: CMTime = .invalid
+	private var settledCroppedPixelBuffer: CVPixelBuffer?
+	private var isTrackedWindowHidden = false
+	private var trackedWindowShownTime: CMTime = .invalid
 	private let imageContext = CIContext(options: [.cacheIntermediates: false])
 	private var systemAudioWriter: AVAssetWriter?
 	private var systemAudioInput: AVAssetWriterInput?
@@ -835,6 +840,32 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			  let pool = adaptor.pixelBufferPool,
 			  let source = CMSampleBufferGetImageBuffer(sampleBuffer) else { return false }
 
+		// While the window is minimized or on another Space, the display shows other
+		// content, so hold an earlier frame of the window instead of cropping it. This
+		// is checked per frame because the 0.5s window poll would let that content in.
+		// The hold lasts a second past its return to cover the restore animation.
+		if let trackedWindowId {
+			if !Self.isWindowOnScreen(trackedWindowId) {
+				// The newest kept frame may be from the hide animation, so don't let it
+				// become the held frame if the window hides again soon after returning.
+				if !isTrackedWindowHidden { recentCroppedPixelBuffer = settledCroppedPixelBuffer }
+				isTrackedWindowHidden = true
+				trackedWindowShownTime = .invalid
+			} else if isTrackedWindowHidden {
+				if !trackedWindowShownTime.isValid { trackedWindowShownTime = presentationTime }
+				if CMTimeGetSeconds(CMTimeSubtract(presentationTime, trackedWindowShownTime)) >= 1 {
+					isTrackedWindowHidden = false
+				}
+			}
+			if isTrackedWindowHidden {
+				guard let frozen = settledCroppedPixelBuffer ?? lastCroppedPixelBuffer,
+					  adaptor.append(frozen, withPresentationTime: presentationTime) else { return false }
+				// finishCapture repeats lastCroppedPixelBuffer as the tail frame.
+				lastCroppedPixelBuffer = frozen
+				return true
+			}
+		}
+
 		var destination: CVPixelBuffer?
 		guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &destination) == kCVReturnSuccess,
 			  let destination else { return false }
@@ -867,7 +898,16 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		)
 
 		let appended = adaptor.append(destination, withPresentationTime: presentationTime)
-		if appended { lastCroppedPixelBuffer = destination }
+		if appended {
+			lastCroppedPixelBuffer = destination
+			// macOS reports the window off screen only after the minimize or Space
+			// animation ends, so keep a frame from at least a second before that.
+			if !recentCroppedFrameTime.isValid || CMTimeGetSeconds(CMTimeSubtract(presentationTime, recentCroppedFrameTime)) >= 1 {
+				settledCroppedPixelBuffer = recentCroppedPixelBuffer
+				recentCroppedPixelBuffer = destination
+				recentCroppedFrameTime = presentationTime
+			}
+		}
 		return appended
 	}
 
@@ -1043,6 +1083,11 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		windowCropDisplayId = nil
 		excludedProcessIds.removeAll()
 		lastCroppedPixelBuffer = nil
+		recentCroppedPixelBuffer = nil
+		recentCroppedFrameTime = .invalid
+		settledCroppedPixelBuffer = nil
+		isTrackedWindowHidden = false
+		trackedWindowShownTime = .invalid
 		systemAudioWriter = nil
 		systemAudioInput = nil
 		microphoneOnlyWriter = nil
@@ -1349,11 +1394,13 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
 				let availableContent: SCShareableContent
 				do {
-					availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+					availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
 				} catch {
 					continue
 				}
 
+				// Only a closed window ends the recording. A minimized window or one on
+				// another Space is still listed, just not on screen.
 				guard let window = availableContent.windows.first(where: { $0.windowID == trackedWindowId }) else {
 					print("WINDOW_UNAVAILABLE")
 					fflush(stdout)
@@ -1373,6 +1420,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 					}
 					return
 				}
+
+				// An off-screen window keeps its last frame, so leave the crop as it is.
+				guard window.isOnScreen else { continue }
 
 				guard let display = Self.captureDisplay(for: window.frame, from: availableContent.displays) else {
 					continue
@@ -1413,6 +1463,11 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				}
 			}
 		}
+	}
+
+	private static func isWindowOnScreen(_ windowId: UInt32) -> Bool {
+		let info = CGWindowListCopyWindowInfo([.optionIncludingWindow], windowId) as? [[String: Any]]
+		return info?.first?[kCGWindowIsOnscreen as String] as? Bool ?? false
 	}
 
 	private static func captureDisplay(for frame: CGRect, from displays: [SCDisplay]) -> SCDisplay? {
