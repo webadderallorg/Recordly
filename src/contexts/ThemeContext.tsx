@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useLayoutEffect, useState } from "react";
 import { loadAppSetting, saveAppSetting } from "../lib/appSettings";
 
 export type ThemePreference = "light" | "dark" | "system";
@@ -82,8 +82,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 		setPreference(resolved === "dark" ? "light" : "dark");
 	}, [resolved, setPreference]);
 
+	useLayoutEffect(() => {
+		applyThemeToDOM(resolved);
+	}, [resolved]);
+
 	// Listen for system theme changes when preference is "system"
-	useEffect(() => {
+	useLayoutEffect(() => {
 		if (preference !== "system") return;
 		const mq = globalThis.matchMedia?.("(prefers-color-scheme: dark)");
 		if (!mq) return;
@@ -93,12 +97,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 			applyThemeToDOM(r);
 		};
 		mq.addEventListener("change", handler);
+		handler();
 		return () => mq.removeEventListener("change", handler);
 	}, [preference]);
-
-	useEffect(() => {
-		applyThemeToDOM(resolved);
-	}, [resolved]);
 
 	return (
 		<ThemeContext.Provider value={{ preference, theme: resolved, setPreference, toggleTheme }}>
