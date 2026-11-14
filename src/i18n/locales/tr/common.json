@@ -1,0 +1,91 @@
+{
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Recordly Düzenleyici",
+		"subtitle": "Ekran kaydı ve düzenleme",
+		"language": "Dil",
+		"manageRecordings": "Kayıtlar klasörünü aç"
+	},
+	"actions": {
+		"cancel": "İptal",
+		"close": "Kapat",
+		"export": "Dışa Aktar",
+		"load": "Yükle",
+		"redo": "Yinele",
+		"reset": "Sıfırla",
+		"save": "Kaydet",
+		"undo": "Geri Al",
+		"delete": "Sil",
+		"done": "Bitti",
+		"retry": "Tekrar dene",
+		"apply": "Uygula",
+		"minimize": "Küçült",
+		"maximize": "Ekranı Kapla",
+		"restoreWindow": "Pencereyi Geri Yükle"
+	},
+	"errors": {
+		"invalidFileType": "Geçersiz dosya türü",
+		"failedToUploadImage": "Görsel yüklenemedi",
+		"fileReadError": "Dosya okunurken bir hata oluştu."
+	},
+	"clipboard": {
+		"copy": "Kopyala",
+		"errorCopied": "Hata kopyalandı",
+		"errorCopyFailed": "Hata kopyalanamadı"
+	},
+	"feedback": {
+		"trigger": "Geri Bildirim",
+		"send": "Geri bildirim gönder",
+		"thanks": "Geri bildiriminiz için teşekkürler",
+		"signInRequired": "Geri bildirim göndermek için giriş yapın.",
+		"openHome": "Giriş yapmak için Ana Sayfayı açın.",
+		"orEmail": "Veya e-posta gönderin",
+		"missingMessage": "Göndermeden önce lütfen biraz daha bilgi verin.",
+		"sentiment": "Nasıl hissediyorsunuz?",
+		"loving": "Harika",
+		"neutral": "Normal",
+		"angry": "Kızgın",
+		"subject": "Konu",
+		"subjectPlaceholder": "Aklınızda ne var?",
+		"description": "Açıklama",
+		"descriptionPlaceholder": "Tüm geri bildirimleri okuyoruz...",
+		"attachFiles": "Dosya ekle",
+		"removeFile": "{{name}} dosyasını kaldır",
+		"diagnostics": "Tanılama günlükleri eklenecektir. Geri bildirim support@recordly.dev adresine gönderilecek.",
+		"sending": "Gönderiliyor…",
+		"errors": {
+			"unavailable": "Hesap hizmetleri yapılandırılana kadar geri bildirim kullanılamaz.",
+			"signIn": "Geri bildirim göndermek için lütfen tekrar giriş yapın.",
+			"invalid": "Geri bildiriminizi kontrol edin ve tekrar deneyin.",
+			"attachments": "Toplam boyutu 10 MB veya daha az olan en fazla 5 boş olmayan dosya ekleyin.",
+			"limit": "Bugünkü geri bildirim sınırınıza ulaştınız. Lütfen yarın tekrar deneyin.",
+			"tooManyFiles": "En fazla 5 dosya ekleyin.",
+			"emptyFile": "Boş dosyalar eklenemez.",
+			"filesTooLarge": "Ekler toplamda 10 MB veya daha az olmalıdır.",
+			"sendFailed": "Geri bildirim gönderilemedi. Lütfen tekrar deneyin."
+		}
+	},
+	"announcements": {
+		"openFailed": "Bağlantı açılamadı.",
+		"dismiss": "Kapat",
+		"carousel": "Duyurular",
+		"previous": "Önceki duyuru",
+		"show": "Duyuruyu göster",
+		"next": "Sonraki duyuru"
+	},
+	"updates": {
+		"download": "Güncellemeyi indir",
+		"actionFailed": "Güncellenemedi. Tekrar deneyin.",
+		"notification": "Uygulama güncellemesi",
+		"backgroundProgress": "Recordly {{version}} arka planda indiriliyor · {{progress}}",
+		"ready": "Recordly {{version}} yüklenmeye hazır.",
+		"failed": "Güncelleme tamamlanamadı. Tekrar deneyebilirsiniz.",
+		"available": "Recordly {{version}} kullanıma hazır.",
+		"saveFirst": "Çalışmanızı kaydedin, ardından hazır olduğunuzda yeniden başlatın.",
+		"later": "Daha Sonra",
+		"downloadingButton": "İndiriliyor · {{progress}}"
+	},
+	"width": "Genişlik",
+	"height": "Yükseklik",
+	"windowControls": "Pencere kontrolleri"
+}
