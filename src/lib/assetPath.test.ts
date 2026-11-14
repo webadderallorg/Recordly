@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readdirSync } from "node:fs";
 import {
 	getAssetPath,
 	getWallpaperThumbnailUrl,
@@ -44,6 +45,24 @@ describe("getAssetPath", () => {
 describe("getRenderableAssetUrl", () => {
 	beforeEach(() => {
 		vi.unstubAllGlobals();
+	});
+
+	it("renders the default wallpaper for removed legacy project backgrounds", async () => {
+		const files = readdirSync(new URL("../../public/wallpapers", import.meta.url));
+		vi.stubGlobal("window", {
+			location: { protocol: "http:" },
+			electronAPI: {
+				listAssetDirectory: vi.fn(async () => ({ success: true, files })),
+				getAssetBasePath: vi.fn(async () => null),
+			},
+		});
+
+		await expect(getRenderableAssetUrl("/wallpapers/wallpaper9.jpg")).resolves.toBe(
+			"/wallpapers/tahoe-light.jpg",
+		);
+		await expect(getRenderableAssetUrl("/wallpapers/cityscape.jpg")).resolves.toBe(
+			"/wallpapers/cityscape.jpg",
+		);
 	});
 
 	it("keeps absolute POSIX image paths on the local-file path", async () => {
