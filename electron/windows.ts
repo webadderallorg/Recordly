@@ -606,7 +606,9 @@ export function createHudOverlayWindow(): BrowserWindow {
 		frame: false,
 		transparent: true,
 		backgroundColor: "#00000000",
-		resizable: false,
+		// Let Linux compositors (e.g. Hyprland) resize the recording panel.
+		// A fixed-size window overrides compositor resize rules.
+		resizable: process.platform === "linux",
 		alwaysOnTop: true,
 		// The HUD is Recordly's persistent top-level window, so it owns the
 		// Windows taskbar entry while auxiliary overlays stay hidden there.
