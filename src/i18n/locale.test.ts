@@ -33,6 +33,7 @@ describe("locale negotiation", () => {
 		["ja_JP", "ja"],
 		["en-AU", "en"],
 		["de-DE-u-co-phonebk", "de"],
+		["tr-TR", "tr"],
 	])("maps %s to %s", (input, expected) => expect(normalizeLocale(input)).toBe(expected));
 	it("rejects malformed and unsupported tags", () => {
 		for (const input of ["!invalid", "ru", "", null, undefined])
