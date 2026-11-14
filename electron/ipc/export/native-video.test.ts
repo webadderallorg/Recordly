@@ -838,6 +838,15 @@ describe("buildExperimentalWindowsGpuStaticLayoutArgs", () => {
 		expect(args).toEqual(expect.arrayContaining(["--background-blur", "36"]));
 	});
 
+	it("prefers the high-performance adapter so DXVA decode is not used", () => {
+		const args = buildExperimentalWindowsGpuStaticLayoutArgs(
+			createNvidiaCudaSkipOptions(),
+			"output.mp4",
+		);
+
+		expect(args).toContain("--prefer-high-performance-adapter");
+	});
+
 	it("passes source crop coordinates to the D3D11 compositor", () => {
 		const args = buildExperimentalWindowsGpuStaticLayoutArgs(
 			createNvidiaCudaSkipOptions({
