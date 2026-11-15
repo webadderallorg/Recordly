@@ -33,19 +33,6 @@ module.exports = function storeConfiguration(_context, environment = process.env
 			"RECORDLY_STORE_VERSION must be major.minor.patch (major 1–65535, others 0–65535). Store revision is always 0.",
 		);
 	}
-	// electron-builder 26 inserts these strings verbatim into its XML template.
-	const xml = (value) =>
-		value.replace(
-			/[&<>"']/g,
-			(char) =>
-				({
-					"&": "&amp;",
-					"<": "&lt;",
-					">": "&gt;",
-					'"': "&quot;",
-					"'": "&apos;",
-				})[char],
-		);
 	// Builder's `extends` concatenates target arrays and would also build NSIS.
 	// Copy the base explicitly so this build contains only the Store target.
 	const base = JSON5.parse(readFileSync(path.join(__dirname, "electron-builder.json5"), "utf8"));
@@ -66,8 +53,9 @@ module.exports = function storeConfiguration(_context, environment = process.env
 		},
 		appx: {
 			identityName,
-			publisher: xml(publisher),
-			publisherDisplayName: xml(publisherDisplayName),
+			// Electron Builder escapes publisher values when writing the manifest.
+			publisher,
+			publisherDisplayName,
 			applicationId: "Recordly",
 			displayName: "Recordly",
 			backgroundColor: "transparent",

@@ -14,7 +14,7 @@ const AppxTarget = require("app-builder-lib/out/targets/AppxTarget").default;
 const root = fileURLToPath(new URL("../", import.meta.url));
 const identity = {
 	RECORDLY_STORE_IDENTITY_NAME: "12345.TestRecordly",
-	RECORDLY_STORE_PUBLISHER: "CN=00000000-0000-0000-0000-000000000000",
+	RECORDLY_STORE_PUBLISHER: "CN=Test & Publisher",
 	RECORDLY_STORE_PUBLISHER_DISPLAY_NAME: "Test & Publisher",
 	RECORDLY_STORE_VERSION: "2.0.1",
 };
@@ -65,6 +65,7 @@ describe("Microsoft Store packaging", () => {
 			await target.writeManifest(file, Arch.x64, config.appx.publisher, assets);
 			const manifest = await readFile(file, "utf8");
 			expect(manifest).toContain('Name="12345.TestRecordly"');
+			expect(manifest).toContain('Publisher="CN=Test &amp; Publisher"');
 			expect(manifest).toContain('Version="2.0.1.0"');
 			expect(manifest).toContain('MinVersion="10.0.19041.0"');
 			expect(manifest).toContain(
