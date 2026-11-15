@@ -11,9 +11,10 @@ import {
 	DEFAULT_WEBCAM_SHADOW,
 	DEFAULT_WEBCAM_SIZE,
 	DEFAULT_WEBCAM_TIME_OFFSET_MS,
+	WEBCAM_ROUNDNESS_VERSION,
 	type WebcamOverlaySettings,
 } from "./types";
-import { convertLegacyWebcamRadiusToRoundness, normalizeWebcamCropRegion } from "./webcamOverlay";
+import { normalizeWebcamCropRegion } from "./webcamOverlay";
 
 export function normalizeProjectWebcam(editor: Partial<ProjectEditorState>): WebcamOverlaySettings {
 	const webcam: Partial<WebcamOverlaySettings> =
@@ -98,33 +99,15 @@ export function normalizeProjectWebcam(editor: Partial<ProjectEditorState>): Web
 				: legacyZoomScaleEffect != null
 					? legacyZoomScaleEffect > 0
 					: DEFAULT_WEBCAM_REACT_TO_ZOOM,
-		roundness: isFiniteNumber(webcam.roundness)
-			? normalizeWebcamRoundness(webcam.roundness, Boolean(shape))
-			: isFiniteNumber(webcam.cornerRadius)
-				? convertLegacyWebcamRadiusToRoundness(
-						webcam.cornerRadius,
-						isFiniteNumber(webcam.width)
-							? webcam.width
-							: isFiniteNumber(webcam.size)
-								? webcam.size
-								: DEFAULT_WEBCAM_SIZE,
-						isFiniteNumber(webcam.height)
-							? webcam.height
-							: isFiniteNumber(webcam.size)
-								? webcam.size
-								: DEFAULT_WEBCAM_SIZE,
-					)
+		roundness:
+			webcam.roundnessVersion === WEBCAM_ROUNDNESS_VERSION && isFiniteNumber(webcam.roundness)
+				? clamp(webcam.roundness, 0, 100)
 				: DEFAULT_WEBCAM_ROUNDNESS,
+		roundnessVersion: WEBCAM_ROUNDNESS_VERSION,
 		shadow: isFiniteNumber(webcam.shadow) ? clamp(webcam.shadow, 0, 1) : DEFAULT_WEBCAM_SHADOW,
 		timeOffsetMs: isFiniteNumber(webcam.timeOffsetMs)
 			? Math.round(webcam.timeOffsetMs)
 			: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 		margin: isFiniteNumber(webcam.margin) ? clamp(webcam.margin, 0, 96) : DEFAULT_WEBCAM_MARGIN,
 	};
-}
-
-function normalizeWebcamRoundness(value: number, hasShape: boolean): number {
-	const percent = clamp(value, 0, 100);
-	// Recordly 1.x saved no shape and used a square-root roundness curve.
-	return hasShape ? percent : Math.sqrt(percent / 100) * 100;
 }

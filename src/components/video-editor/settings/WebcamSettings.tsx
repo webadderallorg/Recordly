@@ -346,6 +346,7 @@ export function WebcamSettings({
 										: DEFAULT_WEBCAM_SIZE;
 								updateWebcam({
 									shape,
+									roundness: DEFAULT_WEBCAM_ROUNDNESS,
 									width,
 									size: width,
 									height: DEFAULT_WEBCAM_SIZE,

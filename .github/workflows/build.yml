@@ -81,16 +81,16 @@ jobs:
         include:
           - arch: x64
             arch_tag: darwin-x64
-            runner: macos-15-intel
+            runner: macos-26-intel
           - arch: arm64
             arch_tag: darwin-arm64
-            runner: macos-15
+            runner: macos-26
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Select Xcode for Icon Composer
-        run: sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+      - name: Show Xcode version
+        run: xcodebuild -version
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

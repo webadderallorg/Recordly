@@ -125,7 +125,7 @@ test("camera options preview preserves saved squircle rounding", async ({ page }
 		const getAppSetting = window.electronAPI.getAppSetting;
 		window.electronAPI.getAppSetting = (key) =>
 			key === "recordly.editor.preferences"
-				? { webcam: { shape: "squircle", roundness: 69 } }
+				? { webcam: { shape: "squircle", roundness: 69, roundnessVersion: 1 } }
 				: getAppSetting(key);
 		window.electronAPI.getRecordingPreferences = async () => ({
 			success: true,

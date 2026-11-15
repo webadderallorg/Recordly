@@ -11,7 +11,6 @@ import {
 export const WEBCAM_SQUIRCLE_EXPONENT = 2.4;
 
 export const WEBCAM_REFERENCE_VIEWPORT_WIDTH = 1920;
-const WEBCAM_REFERENCE_VIEWPORT_HEIGHT = 1080;
 
 function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
@@ -56,18 +55,6 @@ export function getWebcamClipPath(
 		radius: getWebcamCornerRadiusPx(roundness, width, height),
 		exponent: WEBCAM_SQUIRCLE_EXPONENT,
 	})}')`;
-}
-
-export function convertLegacyWebcamRadiusToRoundness(
-	radiusPixels: number,
-	widthPercent: number,
-	heightPercent: number,
-): number {
-	const referenceShortSide =
-		WEBCAM_REFERENCE_VIEWPORT_HEIGHT *
-		(clamp(Math.min(widthPercent, heightPercent), 10, 100) / 100);
-	const normalizedRadius = clamp(Math.max(0, radiusPixels) / (referenceShortSide / 2), 0, 1);
-	return normalizedRadius * 100;
 }
 
 export function getWebcamPositionForPreset(preset: WebcamPositionPreset): { x: number; y: number } {
