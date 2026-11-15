@@ -20,6 +20,7 @@ export function useRecorderSubscriptions(
 		| "discardActiveNativeCapture"
 		| "pendingNativeCleanupPath"
 		| "mediaRecorder"
+		| "webcamRecorder"
 	>,
 ) {
 	const {
@@ -39,6 +40,7 @@ export function useRecorderSubscriptions(
 		discardActiveNativeCapture,
 		pendingNativeCleanupPath,
 		mediaRecorder,
+		webcamRecorder,
 	} = context;
 	useEffect(() => {
 		let cleanup: (() => void) | undefined;
@@ -168,6 +170,12 @@ export function useRecorderSubscriptions(
 				recorder.stop();
 			}
 
+			const webcam = webcamRecorder.current;
+			const webcamState = webcam?.state;
+			if (webcam && (webcamState === "recording" || webcamState === "paused")) {
+				webcam.stop();
+			}
+
 			cleanupCapturedMedia();
 		};
 	}, [
@@ -187,5 +195,6 @@ export function useRecorderSubscriptions(
 		nativeStopRequestInFlight,
 		pendingNativeCleanupPath,
 		mediaRecorder,
+		webcamRecorder,
 	]);
 }

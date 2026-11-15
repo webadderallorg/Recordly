@@ -73,3 +73,37 @@ it.each([
 	expect(stopWebcam).toHaveBeenCalledOnce();
 	expect(window.electronAPI.openSourceSelector).not.toHaveBeenCalled();
 });
+
+it("stops active screen and webcam recorders and cleans up on unmount", () => {
+	vi.stubGlobal("window", {
+		electronAPI: {},
+	});
+	const cleanup = vi.fn();
+	const mediaRecorderStop = vi.fn();
+	const webcamRecorderStop = vi.fn();
+	const context = {
+		stopRecording: { current: vi.fn() },
+		setRecording: vi.fn(),
+		recordingStartGeneration: { current: 1 },
+		nativeScreenRecording: { current: false },
+		nativeWindowsRecording: { current: false },
+		nativeWarmStartActive: { current: false },
+		cleanupCapturedMedia: cleanup,
+		recoverNativeRecordingSession: vi.fn(),
+		hasPromptedForReselect: { current: false },
+		nativeStopRequestInFlight: { current: false },
+		discardActiveNativeCapture: vi.fn(),
+		pendingNativeCleanupPath: { current: null },
+		mediaRecorder: { current: { state: "recording", stop: mediaRecorderStop } },
+		webcamRecorder: { current: { state: "recording", stop: webcamRecorderStop } },
+		stopMicFallbackRecorder: vi.fn(),
+		stopWebcamRecorder: vi.fn(),
+		microphoneFallback: { startDelayMs: 0 },
+	};
+	useRecorderSubscriptions(context as unknown as Parameters<typeof useRecorderSubscriptions>[0]);
+	const unmount = effects.splice(0).map((effect) => effect())[0];
+	unmount?.();
+	expect(mediaRecorderStop).toHaveBeenCalledOnce();
+	expect(webcamRecorderStop).toHaveBeenCalledOnce();
+	expect(cleanup).toHaveBeenCalledOnce();
+});

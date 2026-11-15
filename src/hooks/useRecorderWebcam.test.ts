@@ -335,4 +335,15 @@ describe("recorder webcam sidecar", () => {
 		webcam.beginWebcamCapture();
 		await expect(webcam.stopWebcamRecorder()).resolves.toBe("/recording-1000-webcam.webm");
 	});
+
+	it("clears webcamStartTime and settles without hanging if recorder.start throws synchronously", async () => {
+		const webcam = createWebcam();
+		await webcam.prepareWebcamRecorder();
+		recorder().start = vi.fn(() => {
+			throw new Error("start failed");
+		});
+		expect(() => webcam.beginWebcamCapture()).toThrow("start failed");
+		expect(webcam.webcamStartTime.current).toBeNull();
+		await expect(webcam.stopWebcamRecorder()).resolves.toBeNull();
+	});
 });
