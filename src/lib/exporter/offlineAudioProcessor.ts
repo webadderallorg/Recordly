@@ -42,6 +42,11 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		muxer: VideoMuxer,
 		sourceAudioTrackSettingsByClip?: Record<string, SourceAudioTrackSettings>,
 	): Promise<void> {
+		if (muxer?.hasCommittedAudio) {
+			throw new Error(
+				"[AudioProcessor] Cannot render offline audio after audio chunks have already been committed to muxer",
+			);
+		}
 		const prepared = await this.prepareOfflineRender(
 			videoUrl,
 			trimRegions,
@@ -272,6 +277,8 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		});
 		encoder.configure(encodeConfig);
 
+		let totalFramesEncoded = 0;
+
 		try {
 			await this.renderChunked(
 				prepared,
@@ -279,15 +286,27 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 				async (rendered, outputOffsetSec) => {
 					if (encodeError) throw encodeError;
 					if (muxError) throw muxError;
-					await this.feedBufferToEncoder(encoder, rendered, outputOffsetSec);
+					const frames = await this.feedBufferToEncoder(
+						encoder,
+						rendered,
+						outputOffsetSec,
+					);
+					totalFramesEncoded += frames;
 				},
 			);
 
 			if (encodeError) throw encodeError;
 			if (muxError) throw muxError;
 
-			if (encoder.state === "configured") {
-				await encoder.flush();
+			if (totalFramesEncoded > 0 && encoder.state === "configured") {
+				try {
+					await encoder.flush();
+				} catch (flushError) {
+					console.warn(
+						"[OfflineAudioProcessor] Non-fatal audio encoder flush warning:",
+						flushError,
+					);
+				}
 			}
 
 			await pendingMuxing;
@@ -450,10 +469,11 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		encoder: AudioEncoder,
 		buffer: AudioBuffer,
 		timestampOffsetSec: number,
-	): Promise<void> {
+	): Promise<number> {
 		const sampleRate = buffer.sampleRate;
 		const numChannels = buffer.numberOfChannels;
 		const totalFrames = buffer.length;
+		let encodedFrames = 0;
 
 		for (
 			let offset = 0;
@@ -479,11 +499,14 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 
 			encoder.encode(audioData);
 			audioData.close();
+			encodedFrames += frameCount;
 
 			while (encoder.encodeQueueSize >= ENCODE_BACKPRESSURE_LIMIT && !this.cancelled) {
 				await new Promise((r) => setTimeout(r, 1));
 			}
 		}
+
+		return encodedFrames;
 	}
 
 	// Decode audio from a URL using streaming WebCodecs decode with bulk fallback.
