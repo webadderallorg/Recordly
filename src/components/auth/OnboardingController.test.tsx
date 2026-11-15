@@ -187,7 +187,7 @@ describe("onboarding account and permission restart", () => {
 		state.settings.set(seenKey, true);
 		window.location.search = "?windowType=onboarding&onboardingPreview=0";
 		state.settings.set(pendingKey, true);
-		render();
+		expect(render({ ready: false, user: null })).toBeNull();
 		const recovery = render();
 		expect(recovery?.type).toBe(RecordingPermissionsDialog);
 		recovery?.props.onFinish();

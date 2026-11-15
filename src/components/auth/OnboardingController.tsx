@@ -29,12 +29,15 @@ export function OnboardingController({
 			import.meta.env.DEV &&
 			new URLSearchParams(window.location.search).get("onboardingPreview") !== "0",
 	);
-	// The dedicated window can paint its account UI while session recovery runs.
-	// `ready` gates account-dependent routing, not the window's initial display.
 	const [open, setOpen] = useState(standalone);
 	const [inlineFallback, setInlineFallback] = useState(false);
 	const [returningSignIn, setReturningSignIn] = useState(false);
-	const [startWithPermissions, setStartWithPermissions] = useState(false);
+	const [startWithPermissions, setStartWithPermissions] = useState(
+		() =>
+			standalone &&
+			!preview &&
+			loadAppSetting<boolean>("recordly.onboarding.permissionsRequested") === true,
+	);
 	const checked = useRef(false);
 	const handledRequest = useRef(0);
 	const finishingPermissions = useRef(false);
@@ -160,6 +163,9 @@ export function OnboardingController({
 		if (!preview) saveAppSetting(SEEN_KEY, true);
 		finishPermissions();
 	};
+
+	// Wait for session restoration before choosing a page on a permission restart.
+	if (standalone && startWithPermissions && !preview && !ready) return null;
 
 	if (
 		startWithPermissions &&

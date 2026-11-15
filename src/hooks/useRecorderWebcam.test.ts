@@ -59,6 +59,7 @@ describe("recorder webcam sidecar", () => {
 	const recorder = () => FakeMediaRecorder.instances[FakeMediaRecorder.instances.length - 1];
 	const createWebcam = (overrides: Partial<Parameters<typeof useRecorderWebcam>[0]> = {}) =>
 		useRecorderWebcam({
+			isMacOS: false,
 			webcamEnabled: true,
 			webcamDeviceId: undefined,
 			recordingSessionTimestamp: { current: 1_000 },
@@ -104,6 +105,17 @@ describe("recorder webcam sidecar", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
+	});
+
+	it("does not open the camera on macOS when its permission has not been granted", async () => {
+		window.electronAPI.getMediaPermissionStatus = vi.fn().mockResolvedValue({
+			success: true,
+			camera: "not-determined",
+		});
+		const webcam = createWebcam({ isMacOS: true });
+		await webcam.prepareWebcamRecorder();
+		expect(getUserMedia).not.toHaveBeenCalled();
+		expect(FakeMediaRecorder.instances).toHaveLength(0);
 	});
 
 	it("does not acquire or start a disabled webcam", async () => {

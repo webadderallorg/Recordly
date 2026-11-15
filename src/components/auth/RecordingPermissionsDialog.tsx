@@ -44,6 +44,7 @@ export function RecordingPermissionsDialog({
 							stage="permissions"
 							canViewPermissions
 							showNavigation={false}
+							carousel
 							footer={
 								<OnboardingFooter>
 									<div aria-hidden="true" />
