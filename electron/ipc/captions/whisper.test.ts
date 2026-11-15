@@ -22,3 +22,8 @@ it("keeps downloading if the window closes between the check and the IPC send", 
 	const sender = { send, isDestroyed: () => false } as unknown as Electron.WebContents;
 	expect(() => sendWhisperModelDownloadProgress(sender, progress)).not.toThrow();
 });
+
+it("no-ops safely when webContents is null or undefined", () => {
+	expect(() => sendWhisperModelDownloadProgress(null, progress)).not.toThrow();
+	expect(() => sendWhisperModelDownloadProgress(undefined, progress)).not.toThrow();
+});
