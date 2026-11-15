@@ -18,22 +18,28 @@ export function useCameraPermission(
 			if (checking) return;
 			checking = true;
 			try {
-				const result = await window.electronAPI.getMediaPermissionStatus();
-				if (!active) return;
-				if (!result.success) throw new Error("Camera permission status unavailable");
-				if (allowPrompt && result.camera === "not-determined") {
-					setStatus("checking");
-					pendingRequest.current ??= window.electronAPI
-						.requestMediaPermission("camera")
-						.finally(() => {
-							pendingRequest.current = null;
-						});
-					const request = await pendingRequest.current;
-					if (!request.success) throw new Error("Camera permission request failed");
-					if (active) setStatus(request.granted ? "granted" : "denied");
-				} else {
-					setStatus(result.camera);
+				let request = pendingRequest.current;
+				if (!request) {
+					const result = await window.electronAPI.getMediaPermissionStatus();
+					if (!active) return;
+					if (!result.success) throw new Error("Camera permission status unavailable");
+					if (allowPrompt && result.camera === "not-determined") {
+						pendingRequest.current ??= window.electronAPI
+							.requestMediaPermission("camera")
+							.finally(() => {
+								pendingRequest.current = null;
+							});
+					}
+					request = pendingRequest.current;
+					if (!request) {
+						setStatus(result.camera);
+						return;
+					}
 				}
+				setStatus("checking");
+				const result = await request;
+				if (!result.success) throw new Error("Camera permission request failed");
+				if (active) setStatus(result.granted ? "granted" : "denied");
 			} catch {
 				if (active) setStatus("unknown");
 			} finally {

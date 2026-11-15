@@ -46,10 +46,13 @@ test("opening Camera settings requests access once instead of prompting from the
 	const settings = page.getByRole("button", { name: "Camera settings", exact: true });
 	await settings.click();
 	await expect(html).toHaveAttribute("data-camera-permission-requests", "1");
-	await page.keyboard.press("Escape");
-	await settings.click();
 	const dialog = page.getByRole("dialog", { name: "Camera settings", exact: true });
+	await page.keyboard.press("Escape");
+	await expect(dialog).not.toBeVisible();
+	await settings.click();
 	await expect(dialog).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(dialog).not.toBeVisible();
 	await page.evaluate(() => window.dispatchEvent(new Event("test-grant-camera")));
 	await expect(html).toHaveAttribute("data-camera-opened", "true");
 	await expect(html).toHaveAttribute("data-camera-permission-requests", "1");

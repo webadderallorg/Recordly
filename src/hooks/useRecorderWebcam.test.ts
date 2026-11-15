@@ -129,8 +129,17 @@ describe("recorder webcam sidecar", () => {
 		expect(toast.warning).not.toHaveBeenCalled();
 	});
 
-	it("prepares the default camera and waits for the main capture before starting", async () => {
-		const webcam = createWebcam();
+	it.each([
+		false,
+		true,
+	])("prepares the default camera and waits for main capture (macOS: %s)", async (isMacOS) => {
+		if (isMacOS) {
+			window.electronAPI.getMediaPermissionStatus = vi.fn().mockResolvedValue({
+				success: true,
+				camera: "granted",
+			});
+		}
+		const webcam = createWebcam({ isMacOS });
 		await webcam.prepareWebcamRecorder();
 		expect(getUserMedia).toHaveBeenCalledWith({
 			video: {
