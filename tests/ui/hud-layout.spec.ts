@@ -128,6 +128,11 @@ test("New recording mode starts the webcam with an editor still open and release
 	await installDesktopBridge(page);
 	await page.addInitScript(() => {
 		window.electronAPI.getEditorMode = async () => true;
+		window.electronAPI.getMediaPermissionStatus = async () => ({
+			success: true,
+			microphone: "granted",
+			camera: "granted",
+		});
 		window.electronAPI.onEditorModeChanged = (callback) => {
 			const listener = (event: Event) => callback((event as CustomEvent<boolean>).detail);
 			window.addEventListener("test-editor-mode", listener);
@@ -180,6 +185,11 @@ test("New recording mode starts the webcam with an editor still open and release
 test("floating webcam preview ignores a legacy saved resize preference", async ({ page }) => {
 	await installDesktopBridge(page);
 	await page.addInitScript(() => {
+		window.electronAPI.getMediaPermissionStatus = async () => ({
+			success: true,
+			microphone: "granted",
+			camera: "granted",
+		});
 		localStorage.setItem(
 			"recordly.webcam-preview-size",
 			JSON.stringify({ width: 480, height: 320 }),

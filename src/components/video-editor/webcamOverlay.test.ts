@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { getSquirclePathPoints } from "@/lib/geometry/squircle";
 import {
-	convertLegacyWebcamRadiusToRoundness,
 	getCropMatchedWebcamHeightPercent,
 	getWebcamClipPath,
 	getWebcamCornerRadiusPx,
@@ -43,10 +42,6 @@ describe("webcam roundness", () => {
 		expect(getWebcamCornerRadiusPx(25, 640, 360)).toBeCloseTo(45, 1);
 		expect(getWebcamCornerRadiusPx(50, 640, 360)).toBeCloseTo(90, 1);
 		expect(getWebcamCornerRadiusPx(100, 640, 360)).toBe(180);
-	});
-
-	it("converts legacy reference pixels without changing the approximate shape", () => {
-		expect(convertLegacyWebcamRadiusToRoundness(90, 40, 40)).toBeCloseTo(41.67, 2);
 	});
 });
 

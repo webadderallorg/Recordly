@@ -575,24 +575,25 @@ for (const platform of ["win32", "linux"]) {
 	});
 }
 
-test("HUD routes missing permissions to onboarding without opening System Settings on launch", async ({
-	page,
-}) => {
-	await installDesktopBridge(page);
-	await page.addInitScript(() => {
-		window.electronAPI.getScreenRecordingPermissionStatus = async () => ({
-			success: true,
-			status: "denied",
+productionTest(
+	"HUD routes missing permissions to onboarding without opening System Settings on launch",
+	async ({ page }) => {
+		await installDesktopBridge(page);
+		await page.addInitScript(() => {
+			window.electronAPI.getScreenRecordingPermissionStatus = async () => ({
+				success: true,
+				status: "denied",
+			});
+			window.electronAPI.openScreenRecordingPreferences = async () => {
+				document.documentElement.dataset.settingsOpened = "true";
+				return { success: true };
+			};
 		});
-		window.electronAPI.openScreenRecordingPreferences = async () => {
-			document.documentElement.dataset.settingsOpened = "true";
-			return { success: true };
-		};
-	});
-	await page.goto("/?windowType=hud-overlay");
-	await expect(page.locator("html")).toHaveAttribute("data-permissions-opened", "true");
-	await expect(page.locator("html")).not.toHaveAttribute("data-settings-opened");
-});
+		await page.goto("/?windowType=hud-overlay");
+		await expect(page.locator("html")).toHaveAttribute("data-permissions-opened", "true");
+		await expect(page.locator("html")).not.toHaveAttribute("data-settings-opened");
+	},
+);
 
 productionTest(
 	"a permission request opens its page even after onboarding was already completed",
@@ -622,14 +623,18 @@ productionTest(
 );
 
 for (const platform of ["darwin", "win32", "linux"]) {
-	test(`${platform} HUD requires a Supabase session before recording`, async ({ page }) => {
-		await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
-		await page.addInitScript((platform) => {
-			window.electronAPI.getPlatform = async () => platform;
-		}, platform);
-		await page.goto("/?windowType=hud-overlay");
-		await expect(page.locator("html")).toHaveAttribute("data-permissions-opened", "true");
-	});
+	productionTest(
+		`${platform} HUD routes a missing session to sign-in without requesting permissions`,
+		async ({ page }) => {
+			await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
+			await page.addInitScript((platform) => {
+				window.electronAPI.getPlatform = async () => platform;
+			}, platform);
+			await page.goto("/?windowType=hud-overlay");
+			await expect(page.locator("html")).toHaveAttribute("data-dashboard-opened", "true");
+			await expect(page.locator("html")).not.toHaveAttribute("data-permissions-opened");
+		},
+	);
 }
 
 for (const signedIn of [true, false]) {

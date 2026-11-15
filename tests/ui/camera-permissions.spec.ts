@@ -2,11 +2,72 @@ import { expect, test } from "@playwright/test";
 import { getWebcamClipPath } from "../../src/components/video-editor/webcamOverlay";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
+test("opening Camera settings requests access once instead of prompting from the HUD", async ({
+	page,
+}) => {
+	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		let granted = false;
+		window.electronAPI.getRecordingPreferences = async () => ({
+			success: true,
+			webcamEnabled: true,
+			microphoneEnabled: false,
+			systemAudioEnabled: false,
+		});
+		window.electronAPI.getEditorMode = async () => false;
+		window.electronAPI.getMediaPermissionStatus = async () => {
+			document.documentElement.dataset.cameraChecked = "true";
+			return {
+				success: true,
+				microphone: "granted",
+				camera: granted ? "granted" : "not-determined",
+			};
+		};
+		window.electronAPI.requestMediaPermission = async (device) => {
+			document.documentElement.dataset.cameraPermissionRequests = String(
+				Number(document.documentElement.dataset.cameraPermissionRequests ?? 0) + 1,
+			);
+			await new Promise<void>((resolve) => {
+				window.addEventListener("test-grant-camera", () => resolve(), { once: true });
+			});
+			granted = device === "camera";
+			return { success: true, granted };
+		};
+		navigator.mediaDevices.getUserMedia = async () => {
+			document.documentElement.dataset.cameraOpened = "true";
+			return document.createElement("canvas").captureStream();
+		};
+	});
+	await page.goto("/?windowType=hud-overlay");
+	const html = page.locator("html");
+	await expect(html).toHaveAttribute("data-camera-checked", "true");
+	await expect(html).not.toHaveAttribute("data-camera-opened");
+	await expect(html).not.toHaveAttribute("data-camera-permission-requests");
+	const settings = page.getByRole("button", { name: "Camera settings", exact: true });
+	await settings.click();
+	await expect(html).toHaveAttribute("data-camera-permission-requests", "1");
+	const dialog = page.getByRole("dialog", { name: "Camera settings", exact: true });
+	await page.keyboard.press("Escape");
+	await expect(dialog).not.toBeVisible();
+	await settings.click();
+	await expect(dialog).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(dialog).not.toBeVisible();
+	await page.evaluate(() => window.dispatchEvent(new Event("test-grant-camera")));
+	await expect(html).toHaveAttribute("data-camera-opened", "true");
+	await expect(html).toHaveAttribute("data-camera-permission-requests", "1");
+});
+
 test("editor mode never opens the camera and releases an active recorder preview", async ({
 	page,
 }) => {
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.getMediaPermissionStatus = async () => ({
+			success: true,
+			microphone: "granted",
+			camera: "granted",
+		});
 		let visible: ((value: boolean) => void) | undefined;
 		window.electronAPI.getRecordingPreferences = async () => ({
 			success: true,
@@ -59,10 +120,15 @@ test("editor mode never opens the camera and releases an active recorder preview
 test("camera options preview preserves saved squircle rounding", async ({ page }) => {
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.getMediaPermissionStatus = async () => ({
+			success: true,
+			microphone: "granted",
+			camera: "granted",
+		});
 		const getAppSetting = window.electronAPI.getAppSetting;
 		window.electronAPI.getAppSetting = (key) =>
 			key === "recordly.editor.preferences"
-				? { webcam: { shape: "squircle", roundness: 69 } }
+				? { webcam: { shape: "squircle", roundness: 69, roundnessVersion: 1 } }
 				: getAppSetting(key);
 		window.electronAPI.getRecordingPreferences = async () => ({
 			success: true,

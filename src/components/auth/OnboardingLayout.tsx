@@ -14,6 +14,7 @@ export function OnboardingLayout({
 	onStageChange,
 	canViewPermissions,
 	showNavigation = true,
+	carousel = Boolean(onStageChange),
 	footer,
 	children,
 }: {
@@ -21,6 +22,7 @@ export function OnboardingLayout({
 	onStageChange?: (stage: OnboardingStage) => void;
 	canViewPermissions: boolean;
 	showNavigation?: boolean;
+	carousel?: boolean;
 	footer?: ReactNode;
 	children: ReactNode;
 }) {
@@ -34,7 +36,7 @@ export function OnboardingLayout({
 	return (
 		<div
 			data-onboarding-stage={stage}
-			data-onboarding-carousel={onStageChange ? "true" : undefined}
+			data-onboarding-carousel={carousel ? "true" : undefined}
 			className="onboarding-layout flex h-full min-h-0 flex-col"
 		>
 			<div className="onboarding-ambience" aria-hidden="true">
@@ -44,7 +46,7 @@ export function OnboardingLayout({
 			</div>
 			<motion.div
 				data-onboarding-artwork
-				layout={reduceMotion || onStageChange ? false : "size"}
+				layout={reduceMotion || carousel ? false : "size"}
 				layoutDependency={stage}
 				transition={transition}
 				className="onboarding-artwork relative m-2 overflow-hidden rounded-t-2xl"
@@ -52,7 +54,7 @@ export function OnboardingLayout({
 				<RecordlyDemoVideo className="absolute inset-0" />
 			</motion.div>
 			<motion.div
-				layout={reduceMotion || onStageChange ? false : "position"}
+				layout={reduceMotion || carousel ? false : "position"}
 				layoutDependency={stage}
 				transition={transition}
 				className={`onboarding-stage-content grid min-h-0 ${stage === "account" ? "shrink-0" : "shrink overflow-hidden"}`}

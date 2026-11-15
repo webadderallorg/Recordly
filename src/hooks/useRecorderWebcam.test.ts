@@ -59,6 +59,7 @@ describe("recorder webcam sidecar", () => {
 	const recorder = () => FakeMediaRecorder.instances[FakeMediaRecorder.instances.length - 1];
 	const createWebcam = (overrides: Partial<Parameters<typeof useRecorderWebcam>[0]> = {}) =>
 		useRecorderWebcam({
+			isMacOS: false,
 			webcamEnabled: true,
 			webcamDeviceId: undefined,
 			recordingSessionTimestamp: { current: 1_000 },
@@ -106,6 +107,17 @@ describe("recorder webcam sidecar", () => {
 		vi.unstubAllGlobals();
 	});
 
+	it("does not open the camera on macOS when its permission has not been granted", async () => {
+		window.electronAPI.getMediaPermissionStatus = vi.fn().mockResolvedValue({
+			success: true,
+			camera: "not-determined",
+		});
+		const webcam = createWebcam({ isMacOS: true });
+		await webcam.prepareWebcamRecorder();
+		expect(getUserMedia).not.toHaveBeenCalled();
+		expect(FakeMediaRecorder.instances).toHaveLength(0);
+	});
+
 	it("does not acquire or start a disabled webcam", async () => {
 		const webcam = createWebcam({ webcamEnabled: false });
 		await webcam.prepareWebcamRecorder();
@@ -117,8 +129,17 @@ describe("recorder webcam sidecar", () => {
 		expect(toast.warning).not.toHaveBeenCalled();
 	});
 
-	it("prepares the default camera and waits for the main capture before starting", async () => {
-		const webcam = createWebcam();
+	it.each([
+		false,
+		true,
+	])("prepares the default camera and waits for main capture (macOS: %s)", async (isMacOS) => {
+		if (isMacOS) {
+			window.electronAPI.getMediaPermissionStatus = vi.fn().mockResolvedValue({
+				success: true,
+				camera: "granted",
+			});
+		}
+		const webcam = createWebcam({ isMacOS });
 		await webcam.prepareWebcamRecorder();
 		expect(getUserMedia).toHaveBeenCalledWith({
 			video: {

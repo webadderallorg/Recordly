@@ -169,8 +169,8 @@ export interface WebcamOverlaySettings {
 	height: number;
 	reactToZoom: boolean;
 	roundness: number;
-	/** Legacy pixel value retained only while loading older projects. */
-	cornerRadius?: number;
+	/** Older saves use the shape preset's roundness on load. */
+	roundnessVersion?: typeof WEBCAM_ROUNDNESS_VERSION;
 	shadow: number;
 	margin: number;
 }
@@ -213,6 +213,7 @@ export const DEFAULT_CONNECTED_ZOOM_EASING: ZoomTransitionEasing = "glide";
 export const DEFAULT_WEBCAM_SIZE = 50;
 export const DEFAULT_WEBCAM_REACT_TO_ZOOM = true;
 export const DEFAULT_WEBCAM_ROUNDNESS = 20;
+export const WEBCAM_ROUNDNESS_VERSION = 1;
 export const DEFAULT_SHADOW_INTENSITY = 0.5;
 export const DEFAULT_WEBCAM_SHADOW = 0.2;
 export const DEFAULT_WEBCAM_MARGIN = 24;
@@ -238,6 +239,7 @@ export const DEFAULT_WEBCAM_OVERLAY: WebcamOverlaySettings = {
 	height: DEFAULT_WEBCAM_SIZE,
 	reactToZoom: DEFAULT_WEBCAM_REACT_TO_ZOOM,
 	roundness: DEFAULT_WEBCAM_ROUNDNESS,
+	roundnessVersion: WEBCAM_ROUNDNESS_VERSION,
 	shadow: DEFAULT_WEBCAM_SHADOW,
 	margin: DEFAULT_WEBCAM_MARGIN,
 };

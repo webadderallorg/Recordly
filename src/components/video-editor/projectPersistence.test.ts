@@ -56,17 +56,24 @@ describe("normalizeProjectEditor", () => {
 		expect(normalizeProjectEditor({ shadowIntensity: 0.8 }).shadowIntensity).toBe(0.8);
 	});
 
-	it("defaults new cameras to circle while preserving legacy project masks", () => {
+	it("defaults new cameras to circle and resets legacy project radius to its shape default", () => {
 		expect(normalizeProjectEditor({}).webcam.shape).toBe("circle");
-		expect(normalizeProjectEditor({ webcam: { roundness: 69 } as never }).webcam).toMatchObject(
-			{ shape: "squircle", roundness: 69 },
-		);
+		const legacy = normalizeProjectEditor({ webcam: { roundness: 100 } as never });
+		expect(legacy.webcam).toMatchObject({
+			shape: "squircle",
+			roundness: 20,
+			roundnessVersion: 1,
+		});
+		expect(normalizeProjectEditor(legacy).webcam.roundness).toBe(20);
 		for (const shape of ["circle", "squircle", "rectangle"] as const) {
 			const editor = normalizeProjectEditor({
-				webcam: { shape, width: 50, height: 30 } as never,
+				webcam: { shape, width: 50, height: 30, roundness: 100 } as never,
 			});
-			expect(normalizeProjectEditor(JSON.parse(JSON.stringify(editor))).webcam.shape).toBe(
-				shape,
+			expect(normalizeProjectEditor(JSON.parse(JSON.stringify(editor))).webcam).toMatchObject(
+				{
+					shape,
+					roundness: 20,
+				},
 			);
 		}
 	});
@@ -111,7 +118,7 @@ describe("normalizeProjectEditor", () => {
 		}
 	});
 	it("defaults to 8% on macOS and square corners elsewhere", () => {
-		expect(getDefaultBorderRadiusPercent("MacIntel")).toBe(8);
+		expect(getDefaultBorderRadiusPercent("MacIntel")).toBe(4);
 		expect(getDefaultBorderRadiusPercent("Win32")).toBe(0);
 		expect(getDefaultBorderRadiusPercent("Linux x86_64")).toBe(0);
 	});
@@ -164,20 +171,7 @@ describe("normalizeProjectEditor", () => {
 		});
 	});
 
-	it("migrates legacy webcam radius pixels to percentage roundness", () => {
-		const editor = normalizeProjectEditor({
-			webcam: {
-				cornerRadius: 90,
-				width: 40,
-				height: 40,
-			} as never,
-		});
-
-		expect(editor.webcam.roundness).toBeCloseTo(41.67, 2);
-		expect(editor.webcam.cornerRadius).toBeUndefined();
-	});
-
-	it("uses the legacy webcam size when migrating radius pixels", () => {
+	it("keeps legacy webcam dimensions while dropping a pixel radius", () => {
 		const editor = normalizeProjectEditor({
 			webcam: {
 				cornerRadius: 90,
@@ -187,7 +181,8 @@ describe("normalizeProjectEditor", () => {
 
 		expect(editor.webcam.width).toBe(80);
 		expect(editor.webcam.height).toBe(80);
-		expect(editor.webcam.roundness).toBeCloseTo(20.83, 2);
+		expect(editor.webcam.roundness).toBe(20);
+		expect(editor.webcam).not.toHaveProperty("cornerRadius");
 	});
 });
 

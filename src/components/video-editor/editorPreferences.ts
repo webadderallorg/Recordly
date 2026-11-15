@@ -332,10 +332,7 @@ function normalizeEditorControls(
 		cursorIdleHide: sanitizedRaw.cursorIdleHide ?? fallback.cursorIdleHide,
 		borderRadius: sanitizedRaw.borderRadius ?? fallback.borderRadius,
 		padding: sanitizedRaw.padding ?? fallback.padding,
-		webcam: {
-			...(sanitizedRaw.webcam ?? fallback.webcam),
-			shape: sanitizedRaw.webcam?.shape ?? fallback.webcam.shape,
-		},
+		webcam: sanitizedRaw.webcam ?? fallback.webcam,
 		aspectRatio: sanitizedRaw.aspectRatio ?? fallback.aspectRatio,
 	};
 
@@ -379,7 +376,13 @@ function normalizeEditorControls(
 		cursorIdleHide: normalized.cursorIdleHide,
 		borderRadius: normalized.borderRadius,
 		padding: normalized.padding,
-		webcam: normalized.webcam,
+		webcam: {
+			...normalized.webcam,
+			shape:
+				sanitizedRaw.webcam?.shape == null
+					? fallback.webcam.shape
+					: normalized.webcam.shape,
+		},
 		aspectRatio: normalized.aspectRatio,
 	};
 }
