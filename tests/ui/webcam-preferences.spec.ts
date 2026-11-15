@@ -8,7 +8,7 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 	await installDesktopBridgeOverrides(page, () => {
 		const key = "recordly.editor.preferences";
 		if (!localStorage.getItem(key)) {
-			localStorage.setItem(key, JSON.stringify({ webcam: { shadow: 0.2 } }));
+			localStorage.setItem(key, JSON.stringify({ webcam: { shadow: 0.2, roundness: 25 } }));
 		}
 		const originalGet = window.electronAPI.getAppSetting;
 		const originalSet = window.electronAPI.setAppSetting;
@@ -29,7 +29,13 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 							version: 2,
 							videoPath,
 							editor: {
-								webcam: { enabled: true, sourcePath: videoPath, shadow: 0.67 },
+								webcam: {
+									enabled: true,
+									sourcePath: videoPath,
+									shadow: 0.67,
+									width: 30,
+									roundness: 36,
+								},
 								clipRegions: [{ id: "clip-1", startMs: 0, endMs: 2000 }],
 							},
 						},
@@ -48,7 +54,9 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
 	await page.getByRole("switch", { name: "Advanced settings" }).press("Space");
 	const shadow = page.getByRole("slider", { name: "Webcam Shadow" });
+	const roundness = page.getByRole("slider", { name: "Webcam Roundness" });
 	await expect(shadow).toHaveValue("0.67");
+	await expect(roundness).toHaveValue("60");
 	expect(await storedShadow()).toBe(0.2);
 
 	// Editing another webcam control must not promote the old project's shadow.
@@ -61,6 +69,11 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 		)
 		.toBe(31);
 	expect(await storedShadow()).toBe(0.2);
+	expect(
+		await page.evaluate(
+			() => JSON.parse(localStorage.getItem("recordly.editor.preferences")!).webcam.roundness,
+		),
+	).toBe(50);
 
 	await page.getByRole("radio", { name: "Scene", exact: true }).click();
 	await page.getByRole("slider", { name: "Shadow", exact: true }).press("ArrowRight");

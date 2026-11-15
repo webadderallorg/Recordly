@@ -1,6 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
+import { hasRequiredRecordingPermissions } from "@/lib/recordingPermissions";
 import { RecordingPermissionsDialog } from "./RecordingPermissionsDialog";
 import { RecordlySignInDialog } from "./RecordlySignInDialog";
 
@@ -87,8 +88,25 @@ export function OnboardingController({
 			if (preview && loadAppSetting<boolean>(DEV_DISMISSED_KEY)) return;
 			const permissionsRequested =
 				!preview && loadAppSetting<boolean>("recordly.onboarding.permissionsRequested");
-			if (permissionsRequested) setStartWithPermissions(true);
 			const seen = loadAppSetting<boolean>(SEEN_KEY);
+			if (user && seen && permissionsRequested && !checked.current) {
+				let cancelled = false;
+				void hasRequiredRecordingPermissions()
+					.catch(() => false)
+					.then((granted) => {
+						if (cancelled || checked.current) return;
+						if (granted) {
+							saveAppSetting("recordly.onboarding.permissionsRequested", false);
+							return;
+						}
+						setStartWithPermissions(true);
+						openWindow();
+					});
+				return () => {
+					cancelled = true;
+				};
+			}
+			if (permissionsRequested) setStartWithPermissions(true);
 			if (!preview && !user && seen && !permissionsRequested) {
 				setReturningSignIn(true);
 				setOpen(true);

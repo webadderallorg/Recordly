@@ -17,6 +17,35 @@ test("a pending permission request still requires an expired session to sign in"
 	await expect(page.getByRole("button", { name: "Start recording", exact: true })).toHaveCount(0);
 });
 
+test("startup clears a pending permission request when both macOS grants already exist", async ({
+	page,
+}) => {
+	await installDesktopBridge(page, "preview.mp4", { signedIn: true, onboarded: true });
+	await installDesktopBridgeOverrides(page, () => {
+		const key = "recordly.onboarding.permissionsRequested";
+		const { getAppSetting, setAppSetting } = window.electronAPI;
+		window.electronAPI.getAppSetting = (name) =>
+			name === key ? localStorage.getItem(key) !== "false" : getAppSetting(name);
+		window.electronAPI.setAppSetting = (name, value) => {
+			if (name === key) localStorage.setItem(key, String(value));
+			return setAppSetting(name, value);
+		};
+		window.electronAPI.showOnboardingWindow = async () => {
+			document.documentElement.dataset.permissionWindowOpened = "true";
+			return false;
+		};
+	});
+	await page.goto("/?windowType=editor");
+	await expect
+		.poll(() =>
+			page.evaluate(() => localStorage.getItem("recordly.onboarding.permissionsRequested")),
+		)
+		.toBe("false");
+	await expect(page.locator("html")).not.toHaveAttribute("data-permission-window-opened");
+	await expect(page.getByRole("dialog", { name: "Permissions", exact: true })).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Home", exact: true })).toBeVisible();
+});
+
 test("a recording permission request opens recovery and can be closed and reopened", async ({
 	page,
 }) => {

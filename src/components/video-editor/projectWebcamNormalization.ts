@@ -20,6 +20,10 @@ export function normalizeProjectWebcam(editor: Partial<ProjectEditorState>): Web
 		editor.webcam && typeof editor.webcam === "object" ? editor.webcam : {};
 
 	const webcamSourcePath = typeof webcam.sourcePath === "string" ? webcam.sourcePath : null;
+	const shape =
+		webcam.shape === "circle" || webcam.shape === "squircle" || webcam.shape === "rectangle"
+			? webcam.shape
+			: undefined;
 
 	const legacyZoomScaleEffect = isFiniteNumber(
 		(webcam as Partial<{ zoomScaleEffect: number }>).zoomScaleEffect,
@@ -28,12 +32,7 @@ export function normalizeProjectWebcam(editor: Partial<ProjectEditorState>): Web
 		: null;
 	return {
 		previewFrame: webcam.previewFrame === "standard" ? "standard" : "soft-blur",
-		shape:
-			webcam.shape === "circle" || webcam.shape === "squircle" || webcam.shape === "rectangle"
-				? webcam.shape
-				: editor.webcam
-					? "squircle"
-					: DEFAULT_WEBCAM_OVERLAY.shape,
+		shape: shape ?? (editor.webcam ? "squircle" : DEFAULT_WEBCAM_OVERLAY.shape),
 		visibleRanges: Array.isArray(webcam.visibleRanges)
 			? webcam.visibleRanges
 					.filter(
@@ -100,7 +99,7 @@ export function normalizeProjectWebcam(editor: Partial<ProjectEditorState>): Web
 					? legacyZoomScaleEffect > 0
 					: DEFAULT_WEBCAM_REACT_TO_ZOOM,
 		roundness: isFiniteNumber(webcam.roundness)
-			? clamp(webcam.roundness, 0, 100)
+			? normalizeWebcamRoundness(webcam.roundness, Boolean(shape))
 			: isFiniteNumber(webcam.cornerRadius)
 				? convertLegacyWebcamRadiusToRoundness(
 						webcam.cornerRadius,
@@ -122,4 +121,10 @@ export function normalizeProjectWebcam(editor: Partial<ProjectEditorState>): Web
 			: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 		margin: isFiniteNumber(webcam.margin) ? clamp(webcam.margin, 0, 96) : DEFAULT_WEBCAM_MARGIN,
 	};
+}
+
+function normalizeWebcamRoundness(value: number, hasShape: boolean): number {
+	const percent = clamp(value, 0, 100);
+	// Recordly 1.x saved no shape and used a square-root roundness curve.
+	return hasShape ? percent : Math.sqrt(percent / 100) * 100;
 }

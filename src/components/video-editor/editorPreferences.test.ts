@@ -28,7 +28,7 @@ describe("border radius preferences", () => {
 			vi.stubGlobal("navigator", { platform: "Win32" });
 			expect(normalizeEditorPreferences({ borderRadius: 0 }).borderRadius).toBe(0);
 			vi.stubGlobal("navigator", { platform: "MacIntel" });
-			expect(normalizeEditorPreferences({ borderRadius: 0 }).borderRadius).toBe(8);
+			expect(normalizeEditorPreferences({ borderRadius: 0 }).borderRadius).toBe(4);
 		} finally {
 			vi.unstubAllGlobals();
 		}
@@ -659,9 +659,14 @@ describe("user preferences stay independent from projects and presets", () => {
 describe("camera shape preferences", () => {
 	it("adopts circle for new recordings and retains explicit shape choices", () => {
 		expect(normalizeEditorPreferences({}).webcam.shape).toBe("circle");
-		expect(
-			normalizeEditorPreferences({ webcam: { size: 60, roundness: 69 } as never }).webcam,
-		).toMatchObject({ shape: "circle", width: 60, height: 60, roundness: 69 });
+		const legacy = normalizeEditorPreferences({ webcam: { size: 60, roundness: 25 } as never });
+		expect(legacy.webcam).toMatchObject({
+			shape: "circle",
+			width: 60,
+			height: 60,
+			roundness: 50,
+		});
+		expect(normalizeEditorPreferences(legacy).webcam.roundness).toBe(50);
 		expect(
 			normalizeEditorPreferences({ webcam: { shape: "squircle" } as never }).webcam.shape,
 		).toBe("squircle");

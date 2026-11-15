@@ -58,9 +58,9 @@ describe("normalizeProjectEditor", () => {
 
 	it("defaults new cameras to circle while preserving legacy project masks", () => {
 		expect(normalizeProjectEditor({}).webcam.shape).toBe("circle");
-		expect(normalizeProjectEditor({ webcam: { roundness: 69 } as never }).webcam).toMatchObject(
-			{ shape: "squircle", roundness: 69 },
-		);
+		const legacy = normalizeProjectEditor({ webcam: { roundness: 25 } as never });
+		expect(legacy.webcam).toMatchObject({ shape: "squircle", roundness: 50 });
+		expect(normalizeProjectEditor(legacy).webcam.roundness).toBe(50);
 		for (const shape of ["circle", "squircle", "rectangle"] as const) {
 			const editor = normalizeProjectEditor({
 				webcam: { shape, width: 50, height: 30 } as never,
@@ -111,7 +111,7 @@ describe("normalizeProjectEditor", () => {
 		}
 	});
 	it("defaults to 8% on macOS and square corners elsewhere", () => {
-		expect(getDefaultBorderRadiusPercent("MacIntel")).toBe(8);
+		expect(getDefaultBorderRadiusPercent("MacIntel")).toBe(4);
 		expect(getDefaultBorderRadiusPercent("Win32")).toBe(0);
 		expect(getDefaultBorderRadiusPercent("Linux x86_64")).toBe(0);
 	});
