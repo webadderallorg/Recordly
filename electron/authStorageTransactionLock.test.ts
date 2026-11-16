@@ -61,8 +61,10 @@ beforeEach(async () => {
 		["./savedSignInEncryption.ts", "savedSignInEncryption.mjs"],
 		["./savedSignInKeychain.ts", "savedSignInKeychain.mjs"],
 	]) {
-		const source = (await fs.readFile(new URL(sourcePath, import.meta.url), "utf8"))
-			.replace('from "./savedSignInKeychain"', 'from "./savedSignInKeychain.mjs"');
+		const source = (await fs.readFile(new URL(sourcePath, import.meta.url), "utf8")).replace(
+			'from "./savedSignInKeychain"',
+			'from "./savedSignInKeychain.mjs"',
+		);
 		await fs.writeFile(
 			path.join(root, target),
 			ts.transpileModule(source, {

@@ -8,6 +8,7 @@ import { useRecordlyAuth } from "./useRecordlyAuth";
 
 function ReturningOnboarding({ auth }: { auth: ReturnType<typeof useRecordlyAuth> }) {
 	const signedIn = Boolean(auth.user);
+	const { callbackActivity, isCallbackPending } = auth;
 	const [needsPermissions, setNeedsPermissions] = useState(false);
 	const view = auth.loading
 		? null
@@ -19,10 +20,14 @@ function ReturningOnboarding({ auth }: { auth: ReturnType<typeof useRecordlyAuth
 	const continuing = useRef(false);
 	const close = () => void window.electronAPI.closeOnboardingWindow();
 	const continueToHud = useCallback(async () => {
-		if (!signedIn || continuing.current) return;
+		if (!signedIn || continuing.current || isCallbackPending()) return;
 		continuing.current = true;
 		if (loadAppSetting<boolean>("recordly.onboarding.permissionsRequested") === true)
 			saveAppSetting("recordly.onboarding.permissionsRequested", false);
+		if (isCallbackPending()) {
+			continuing.current = false;
+			return;
+		}
 		try {
 			if (!(await window.electronAPI.resolveStartupOnboarding("continue")))
 				throw new Error("Recording controls could not open.");
@@ -31,12 +36,12 @@ function ReturningOnboarding({ auth }: { auth: ReturnType<typeof useRecordlyAuth
 			continuing.current = false;
 			setNeedsPermissions(true);
 		}
-	}, [signedIn]);
+	}, [signedIn, isCallbackPending]);
 
 	useEffect(() => {
 		// A cold launch can carry an OAuth callback. Keep its renderer alive
 		// until the exchange and callback acknowledgement are both finished.
-		if (auth.loading || auth.callbackPending || !signedIn) return;
+		if (auth.loading || callbackActivity.pending || !signedIn) return;
 		if (loadAppSetting<boolean>("recordly.onboarding.v1.seen") !== true)
 			saveAppSetting("recordly.onboarding.v1.seen", true);
 		let cancelled = false;
@@ -50,7 +55,7 @@ function ReturningOnboarding({ auth }: { auth: ReturnType<typeof useRecordlyAuth
 		return () => {
 			cancelled = true;
 		};
-	}, [auth.loading, auth.callbackPending, signedIn, continueToHud]);
+	}, [auth.loading, callbackActivity, signedIn, continueToHud]);
 
 	useEffect(() => {
 		if (view) void window.electronAPI.resolveStartupOnboarding("show");
@@ -58,7 +63,13 @@ function ReturningOnboarding({ auth }: { auth: ReturnType<typeof useRecordlyAuth
 
 	if (view === "permissions") {
 		return (
-			<RecordingPermissionsDialog open standalone onFinish={continueToHud} onClose={close} />
+			<RecordingPermissionsDialog
+				open
+				standalone
+				finishDisabled={callbackActivity.pending}
+				onFinish={continueToHud}
+				onClose={close}
+			/>
 		);
 	}
 	if (view === "sign-in") {

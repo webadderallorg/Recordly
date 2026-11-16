@@ -6,11 +6,7 @@ import { app, type IpcMainInvokeEvent, ipcMain, safeStorage } from "electron";
 import { SAVED_SIGN_IN_LOCKED } from "../src/lib/auth/savedSignIn";
 import { withAuthStorageTransaction } from "./authStorageTransactionLock";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
-import {
-	isSavedSignInCiphertext,
-	openSavedSignIn,
-	sealSavedSignIn,
-} from "./savedSignInEncryption";
+import { isSavedSignInCiphertext, openSavedSignIn, sealSavedSignIn } from "./savedSignInEncryption";
 
 const MAX_VALUE_LENGTH = 256 * 1024;
 const MAX_STORE_LENGTH = 1024 * 1024;
@@ -162,9 +158,7 @@ async function load(): Promise<{
 		const named = isSavedSignInCiphertext(encrypted);
 		if (!named && !encryptionAvailable())
 			throw new Error("Secure authentication storage is unavailable.");
-		const plaintext = named
-			? openSavedSignIn(encrypted)
-			: safeStorage.decryptString(encrypted);
+		const plaintext = named ? openSavedSignIn(encrypted) : safeStorage.decryptString(encrypted);
 		const payload = JSON.parse(plaintext);
 		if (payload.version !== 1) throw new Error("Unsupported authentication storage version.");
 		const entries = validateEntries(payload.entries);
@@ -212,7 +206,9 @@ async function save(next: AuthEntries, encoding: AuthEncoding): Promise<void> {
 		}
 	} else {
 		if (!encryptionAvailable())
-			throw new AuthEncryptionUnavailableError("Secure authentication storage is unavailable.");
+			throw new AuthEncryptionUnavailableError(
+				"Secure authentication storage is unavailable.",
+			);
 		encrypted = safeStorage.encryptString(plaintext);
 	}
 	await writeEncryptedStore(encrypted);

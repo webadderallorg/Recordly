@@ -140,7 +140,10 @@ export function RecordlySignInDialog({
 	useEffect(() => {
 		if (!open || !configured || user || onUnlockSavedSignIn) return;
 		const controller = new AbortController();
-		const timeout = window.setTimeout(() => controller.abort(), SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS);
+		const timeout = window.setTimeout(
+			() => controller.abort(),
+			SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS,
+		);
 		setProvidersKnown(false);
 		setProviders([]);
 		void getEnabledSignInProviders(controller.signal)
@@ -303,7 +306,9 @@ export function RecordlySignInDialog({
 								<Alert.Indicator />
 								<Alert.Content>
 									<Alert.Title>{ot("unlockSavedSignIn")}</Alert.Title>
-									<Alert.Description>{ot("unlockSavedSignInHelp")}</Alert.Description>
+									<Alert.Description>
+										{ot("unlockSavedSignInHelp")}
+									</Alert.Description>
 								</Alert.Content>
 							</Alert>
 							<Button className="w-full" onPress={onUnlockSavedSignIn}>

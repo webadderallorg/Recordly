@@ -129,3 +129,64 @@ productionTest(
 		await expect(page.getByRole("dialog", { name: "Welcome to Recordly" })).toHaveCount(0);
 	},
 );
+
+for (const duringPermissionCheck of [true, false]) {
+	productionTest(
+		duringPermissionCheck
+			? "startup waits when permissions resolve as an OAuth callback arrives"
+			: "Start recording waits for an OAuth callback while permissions are visible",
+		async ({ page }) => {
+			await mockStartup(page, true);
+			await installDesktopBridgeOverrides(
+				page,
+				(duringPermissionCheck) => {
+					let dispatchDuringCheck = duringPermissionCheck;
+					let access = duringPermissionCheck;
+					const startCallback = () => {
+						window.dispatchEvent(
+							new CustomEvent("recordly-test-auth-callback", {
+								detail: "recordly://auth/callback?code=ui-auth-code",
+							}),
+						);
+					};
+					const release = new Promise<void>((resolve) =>
+						window.addEventListener("release-callback-ack", () => resolve(), {
+							once: true,
+						}),
+					);
+					window.addEventListener("test-allow-access", () => {
+						access = true;
+						window.dispatchEvent(new Event("focus"));
+					});
+					window.addEventListener("test-start-oauth", startCallback);
+					window.electronAPI.getAccessibilityPermissionStatus = async () => {
+						if (dispatchDuringCheck) {
+							dispatchDuringCheck = false;
+							startCallback();
+						}
+						return { success: true, trusted: access };
+					};
+					window.electronAPI.ackAuthCallbackUrl = async () => {
+						document.documentElement.dataset.callbackAck = "pending";
+						await release;
+					};
+				},
+				duringPermissionCheck,
+			);
+			await page.goto(returningOnboarding);
+			const root = page.locator("html");
+			const start = page.getByRole("button", { name: "Start recording" });
+			if (!duringPermissionCheck) {
+				await expect(start).toBeDisabled();
+				await page.evaluate(() => window.dispatchEvent(new Event("test-allow-access")));
+				await expect(start).toBeEnabled();
+				await page.evaluate(() => window.dispatchEvent(new Event("test-start-oauth")));
+			}
+			await expect(root).toHaveAttribute("data-callback-ack", "pending");
+			await expect(root).not.toHaveAttribute("data-startup-action", "continue");
+			if (!duringPermissionCheck) await expect(start).toBeDisabled();
+			await page.evaluate(() => window.dispatchEvent(new Event("release-callback-ack")));
+			await expect(root).toHaveAttribute("data-startup-action", "continue");
+		},
+	);
+}

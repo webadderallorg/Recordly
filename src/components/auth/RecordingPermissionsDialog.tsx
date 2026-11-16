@@ -10,16 +10,19 @@ export function RecordingPermissionsDialog({
 	open,
 	onClose,
 	onFinish,
+	finishDisabled = false,
 	standalone,
 }: {
 	open: boolean;
 	onClose: () => void;
 	onFinish: () => void;
+	finishDisabled?: boolean;
 	standalone: boolean;
 }) {
 	const t = useScopedT("onboarding");
 	const { t: appT } = useI18n();
 	const [ready, setReady] = useState(false);
+	const canFinish = ready && !finishDisabled;
 	return (
 		<Modal
 			isOpen={open}
@@ -49,9 +52,9 @@ export function RecordingPermissionsDialog({
 								<OnboardingFooter>
 									<div aria-hidden="true" />
 									<OnboardingPrimaryAction
-										isDisabled={!ready}
+										isDisabled={!canFinish}
 										onPress={() => {
-											if (ready) onFinish();
+											if (canFinish) onFinish();
 										}}
 									>
 										{t("startRecording")}
