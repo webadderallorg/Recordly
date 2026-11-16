@@ -7,10 +7,20 @@ import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
 	directory: "",
+	isPackaged: false,
 	handlers: new Map<string, (...args: unknown[]) => unknown>(),
+	key: null as Buffer | null,
+	readKey: vi.fn(),
+	addKey: vi.fn(),
 }));
 vi.mock("electron", () => ({
-	app: { getPath: () => native.directory, getAppPath: () => native.directory },
+	app: {
+		getPath: () => native.directory,
+		getAppPath: () => native.directory,
+		get isPackaged() {
+			return native.isPackaged;
+		},
+	},
 	ipcMain: {
 		handle: (name: string, handler: (...args: unknown[]) => unknown) =>
 			native.handlers.set(name, handler),
@@ -25,6 +35,9 @@ vi.mock("electron", () => ({
 vi.mock("./rendererServer", () => ({
 	getPackagedRendererBaseUrl: () => "http://127.0.0.1:49152/",
 }));
+vi.mock("./savedSignInKeychain", () => ({
+	savedSignInKeychain: () => ({ readKey: native.readKey, addKey: native.addKey }),
+}));
 
 const mainFrame = { url: "http://127.0.0.1:49152/?windowType=onboarding" };
 const event = { senderFrame: mainFrame, sender: { mainFrame } };
@@ -32,12 +45,30 @@ const invoke = (name: string, ...args: unknown[]) =>
 	native.handlers.get(`auth-storage:${name}`)!(event, ...args);
 
 beforeEach(async () => {
-	vi.resetModules();
 	native.handlers.clear();
+	native.isPackaged = false;
+	native.key = null;
+	native.readKey.mockReset().mockImplementation(() => native.key && Buffer.from(native.key));
+	native.addKey.mockReset().mockImplementation((key: Buffer) => {
+		if (native.key) return false;
+		native.key = Buffer.from(key);
+		return true;
+	});
 	native.directory = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-auth-storage-"));
+	await restartAuthStorage();
+});
+async function restartAuthStorage() {
+	vi.resetModules();
 	const { registerAuthStorageHandlers } = await import("./authStorage");
 	registerAuthStorageHandlers();
-});
+}
+
+function usePackagedMac() {
+	const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+	Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+	native.isPackaged = true;
+	onTestFinished(() => Object.defineProperty(process, "platform", platform));
+}
 afterEach(async () => {
 	await fs.rm(native.directory, { recursive: true, force: true });
 });
@@ -64,6 +95,105 @@ it("does not check Keychain on macOS until there are credentials to store", asyn
 	checkEncryption.mockReturnValue(true);
 	await invoke("set", key, "session");
 	expect(await invoke("get", key)).toBe("session");
+});
+
+it("reports denied Keychain access without replacing the saved sign-in", async () => {
+	const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+	Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+	const checkEncryption = vi.spyOn(safeStorage, "isEncryptionAvailable");
+	onTestFinished(() => {
+		checkEncryption.mockRestore();
+		Object.defineProperty(process, "platform", platform);
+	});
+
+	const key = "sb-recordlytest-auth-token";
+	await invoke("set", key, "saved session");
+	const file = path.join(native.directory, "private-auth", "session.enc");
+	const snapshot = await fs.readFile(file);
+	checkEncryption.mockClear().mockReturnValue(false);
+	expect(await invoke("available")).toBe(true);
+	expect(checkEncryption).not.toHaveBeenCalled();
+	await expect(invoke("get", key)).rejects.toThrow("Could not unlock saved authentication");
+	await expect(invoke("set", key, "another session")).rejects.toThrow("Could not unlock");
+	expect(await fs.readFile(file)).toEqual(snapshot);
+
+	checkEncryption.mockReturnValue(true);
+	expect(await invoke("get", key)).toBe("saved session");
+});
+
+it("migrates the full store and signs out without restoring legacy data on restart", async () => {
+	const key = "sb-recordlytest-auth-token";
+	const verifier = `${key}-code-verifier`;
+	await invoke("set", key, "saved account token");
+	await invoke("set", verifier, "pending code verifier");
+	usePackagedMac();
+	expect(await invoke("get", key)).toBe("saved account token");
+	expect(await invoke("get", verifier)).toBe("pending code verifier");
+	const file = path.join(native.directory, "private-auth", "session.enc");
+	const migrated = await fs.readFile(file);
+	expect(migrated.includes(Buffer.from("saved account token"))).toBe(false);
+	expect(native.addKey).toHaveBeenCalledOnce();
+
+	const legacy = vi.spyOn(safeStorage, "isEncryptionAvailable").mockReturnValue(false);
+	onTestFinished(() => legacy.mockRestore());
+	await restartAuthStorage();
+	expect(await invoke("get", key)).toBe("saved account token");
+	expect(await invoke("get", verifier)).toBe("pending code verifier");
+	await invoke("remove", key);
+	await restartAuthStorage();
+	expect(await invoke("get", key)).toBeNull();
+	expect(legacy).not.toHaveBeenCalled();
+});
+
+it("keeps the old generation usable if verification through the new key fails", async () => {
+	const key = "sb-recordlytest-auth-token";
+	await invoke("set", key, "original session");
+	const file = path.join(native.directory, "private-auth", "session.enc");
+	const original = await fs.readFile(file);
+	usePackagedMac();
+	native.readKey
+		.mockReturnValueOnce(null)
+		.mockImplementationOnce(() => Buffer.from(native.key!))
+		.mockReturnValueOnce(Buffer.alloc(32, 37));
+	expect(await invoke("get", key)).toBe("original session");
+	expect(await fs.readFile(file)).toEqual(original);
+	await invoke("set", key, "refreshed session");
+	expect(JSON.parse(await fs.readFile(file, "utf8")).entries[key]).toBe("refreshed session");
+	await restartAuthStorage();
+	expect(await invoke("get", key)).toBe("refreshed session");
+	expect((await fs.readFile(file)).includes(Buffer.from("refreshed session"))).toBe(false);
+});
+
+it("never creates a new item to overwrite an existing store that Keychain cannot unlock", async () => {
+	usePackagedMac();
+	const key = "sb-recordlytest-auth-token";
+	expect(await invoke("get", key)).toBeNull();
+	expect(native.readKey).not.toHaveBeenCalled();
+	expect(native.addKey).not.toHaveBeenCalled();
+	await invoke("set", key, "saved session");
+	const file = path.join(native.directory, "private-auth", "session.enc");
+	const original = await fs.readFile(file);
+	native.key = null;
+	native.addKey.mockClear();
+	await restartAuthStorage();
+	await expect(invoke("get", key)).rejects.toThrow("Could not unlock");
+	await expect(invoke("set", key, "another session")).rejects.toThrow("Could not unlock");
+	expect(native.addKey).not.toHaveBeenCalled();
+	expect(await fs.readFile(file)).toEqual(original);
+});
+
+it("does not start a migration until the existing Keychain item unlocks", async () => {
+	const key = "sb-recordlytest-auth-token";
+	await invoke("set", key, "old session");
+	usePackagedMac();
+	const legacy = vi.spyOn(safeStorage, "isEncryptionAvailable").mockReturnValue(false);
+	onTestFinished(() => legacy.mockRestore());
+	await expect(invoke("get", key)).rejects.toThrow("Could not unlock");
+	expect(native.readKey).not.toHaveBeenCalled();
+	expect(native.addKey).not.toHaveBeenCalled();
+	legacy.mockReturnValue(true);
+	expect(await invoke("get", key)).toBe("old session");
+	expect(native.addKey).toHaveBeenCalledOnce();
 });
 
 it("freshly reads another process's generation before reading, writing or migrating", async () => {

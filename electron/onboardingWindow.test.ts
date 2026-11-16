@@ -195,6 +195,21 @@ it("does not enable preview in packaged apps", async () => {
 	expect(onboarding.loadURL).toHaveBeenCalledWith("http://localhost:5173?windowType=onboarding");
 });
 
+it("keeps a returning launch hidden until the startup gate has a page to show", async () => {
+	electron.app.isPackaged = true;
+	const { focusOnboardingWindow, revealStartupOnboardingWindow, showOnboardingWindow } =
+		await import("./windows");
+	const onboarding = showOnboardingWindow({ returning: true }) as unknown as FakeWindow;
+	expect(windows).toEqual([onboarding]);
+	expect(onboarding.url).toContain("windowType=onboarding&returning=1");
+	onboarding.emit("ready-to-show");
+	focusOnboardingWindow();
+	expect(onboarding.show).not.toHaveBeenCalled();
+	revealStartupOnboardingWindow();
+	expect(onboarding.show).toHaveBeenCalledOnce();
+	expect(onboarding.focus).toHaveBeenCalledOnce();
+});
+
 it("keeps explicit real authentication distinct from the optional development tour", async () => {
 	const { showOnboardingWindow } = await import("./windows");
 	const onboarding = showOnboardingWindow({ preview: true }) as unknown as FakeWindow;

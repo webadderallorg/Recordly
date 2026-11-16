@@ -2,6 +2,7 @@ import { createClient, type Provider, type User } from "@supabase/supabase-js";
 import { translate } from "@/i18n/runtime";
 import { traceAuthOperation } from "./authDiagnostics";
 import { oauthFlowIdRedirectsEnabled } from "./oauthFlowRedirects";
+import { isSavedSignInLocked } from "./savedSignIn";
 import {
 	createPendingSignupConsentStore,
 	createSignupConsentRetryStore,
@@ -107,9 +108,9 @@ function createAuthStorage() {
 			}
 			try {
 				await bridge.authStorageMigrate(snapshot);
-			} catch {
+			} catch (error) {
 				removeLegacyCopies(local, owned);
-				return null;
+				return isSavedSignInLocked(error) ? bridge : null;
 			}
 			// Main migrates existing credentials once. Remove old copies so
 			// logging out cannot restore a stale browser session.

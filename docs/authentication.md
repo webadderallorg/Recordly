@@ -4,6 +4,12 @@ Packaged Recordly requires a non-anonymous Supabase Auth session before onboardi
 
 Full onboarding plays the welcome music on every opening in both development and packaged builds, including the inline fallback. Previous playback and completion flags do not silence it. The mute control applies to the current opening; blocked autoplay retries on interaction, and closing onboarding or starting a recording stops the music. Dedicated permission recovery stays separate from the full welcome experience: it shares the full-window artwork and outer footer, with 44px permission actions and recording button, but has no account steps, page navigation, or welcome music.
 
+## macOS saved sign-in
+
+Packaged macOS builds use a Keychain item called **Recordly Saved Sign-In**. An upgrade can still ask to unlock the previous **Recordly Safe Storage** item once. Recordly keeps the existing encrypted session until it has verified that the new item can unlock its replacement. If the migration fails after unlocking the old session, the app continues using the old store and retries on a later launch.
+
+Recordly leaves Electron’s original Keychain item in place. Older builds cannot read the new session format; reinstalling an updated build restores access to a migrated session. Development profiles continue to use Electron’s original storage.
+
 ## Optional routing between desktop instances
 
 `VITE_OAUTH_FLOW_ID_REDIRECTS` defaults to `false`. Leave it disabled until Supabase's redirect allow list has been verified to preserve `sb_flow_id` on **every** desktop callback, including `recordly://auth/callback?sb_flow_id=...` and the development loopback URL. An accepted callback without query parameters does not prove the queried callback is allowed. Changing this build setting requires rebuilding both Electron and the renderer. Custom and self-hosted configurations keep the existing callback behavior while it is disabled.

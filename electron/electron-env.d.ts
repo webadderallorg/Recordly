@@ -1043,6 +1043,7 @@ interface Window {
 		showOnboardingWindow: (options?: { preview?: boolean }) => Promise<boolean>;
 		replayOnboardingIntro?: () => Promise<boolean>;
 		closeOnboardingWindow: () => Promise<boolean>;
+		resolveStartupOnboarding: (action: "show" | "continue" | "restart") => Promise<boolean>;
 		reportOnboardingIntro: (stage: "ready" | "finished" | "skipped") => void;
 		onOnboardingIntroShown: (callback: () => void) => () => void;
 		createProjectFile: (

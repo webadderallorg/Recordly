@@ -561,6 +561,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		? { replayOnboardingIntro: () => ipcRenderer.invoke("replay-onboarding-intro") }
 		: {}),
 	closeOnboardingWindow: () => ipcRenderer.invoke("close-onboarding-window"),
+	resolveStartupOnboarding: (action: "show" | "continue" | "restart") =>
+		ipcRenderer.invoke("resolve-startup-onboarding", action),
 	reportOnboardingIntro: (stage: "ready" | "finished" | "skipped") =>
 		ipcRenderer.send("onboarding-intro", stage),
 	onOnboardingIntroShown: (callback: () => void) => {
