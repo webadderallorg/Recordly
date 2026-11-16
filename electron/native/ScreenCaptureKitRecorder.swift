@@ -740,7 +740,10 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		guard reservation.accepted else {
 			if reservation.reportFailure {
 				queue.async {
-					guard self.isRecording, sourceStream === self.stream else { return }
+					// This budget belongs to the whole recording and stays failed after
+					// overload. A replacement stream cannot resume audio, so never hide
+					// the terminal failure just because its original stream is obsolete.
+					guard self.isRecording else { return }
 					self.interruptCapture(NSError(domain: "RecordlyCapture", code: 18, userInfo: [NSLocalizedDescriptionKey: "Audio delivery exceeded its safe recording limit"]))
 				}
 			}
