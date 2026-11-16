@@ -1,14 +1,29 @@
-import { describe, expect, it, vi } from "vitest";
+import { chmodSync, mkdtempSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
 	app: { isPackaged: false },
 }));
 
-import { pickFfmpegBinaryPath } from "./binary";
+import { isExecutableFile, pickFfmpegBinaryPath } from "./binary";
 
 const BUNDLED = "/app/resources/ffmpeg";
 const SYSTEM = "/usr/bin/ffmpeg";
 const OVERRIDE = "/opt/ffmpeg/build/ffmpeg";
+
+const tempPaths: string[] = [];
+
+afterEach(() => {
+	for (const p of tempPaths.splice(0)) {
+		try {
+			unlinkSync(p);
+		} catch {
+			// ignore cleanup errors
+		}
+	}
+});
 
 describe("pickFfmpegBinaryPath", () => {
 	it("prefers the system binary on Linux", () => {
@@ -88,5 +103,36 @@ describe("pickFfmpegBinaryPath", () => {
 				platform: "linux",
 			}),
 		).toBeNull();
+	});
+});
+
+describe("isExecutableFile", () => {
+	it("rejects directories even when they are searchable", () => {
+		expect(isExecutableFile(tmpdir())).toBe(false);
+	});
+
+	it("rejects missing paths", () => {
+		expect(isExecutableFile(join(tmpdir(), "recordly-no-such-ffmpeg"))).toBe(false);
+	});
+
+	it("accepts a regular executable file", () => {
+		const dir = mkdtempSync(join(tmpdir(), "recordly-ffmpeg-"));
+		const file = join(dir, "ffmpeg-stub");
+		writeFileSync(file, "#!/bin/sh\n");
+		chmodSync(file, 0o755);
+		tempPaths.push(file);
+		expect(isExecutableFile(file)).toBe(true);
+	});
+
+	it("rejects a non-executable regular file on POSIX", () => {
+		if (process.platform === "win32") {
+			return;
+		}
+		const dir = mkdtempSync(join(tmpdir(), "recordly-ffmpeg-"));
+		const file = join(dir, "ffmpeg-noexec");
+		writeFileSync(file, "#!/bin/sh\n");
+		chmodSync(file, 0o644);
+		tempPaths.push(file);
+		expect(isExecutableFile(file)).toBe(false);
 	});
 });

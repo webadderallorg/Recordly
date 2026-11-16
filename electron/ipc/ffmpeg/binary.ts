@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { accessSync, constants, existsSync } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
 import { createRequire } from "node:module";
+import { resolve } from "node:path";
 import { app } from "electron";
 
 const nodeRequire = createRequire(import.meta.url);
@@ -47,11 +48,14 @@ export function loadFfprobeStatic(): string | null {
 	return null;
 }
 
-function isExecutableFile(filePath: string): boolean {
-	if (!existsSync(filePath)) {
-		return false;
-	}
+/** True only for a regular file (or symlink to one) with execute permission. */
+export function isExecutableFile(filePath: string): boolean {
 	try {
+		const st = statSync(filePath);
+		// Directories can be X_OK on POSIX; never treat them as FFmpeg.
+		if (!st.isFile()) {
+			return false;
+		}
 		accessSync(filePath, constants.X_OK);
 		return true;
 	} catch {
@@ -72,7 +76,7 @@ export function resolveSystemFfmpegBinaryPath(): string | null {
 			.map((line: string) => line.trim())
 			.find((line: string) => line.length > 0);
 
-		if (candidate) {
+		if (candidate && isExecutableFile(candidate)) {
 			return candidate;
 		}
 	}
@@ -107,7 +111,7 @@ export function resolveSystemFfprobeBinaryPath(): string | null {
 			.map((line: string) => line.trim())
 			.find((line: string) => line.length > 0);
 
-		if (candidate) {
+		if (candidate && isExecutableFile(candidate)) {
 			return candidate;
 		}
 	}
@@ -119,7 +123,7 @@ export function resolveSystemFfprobeBinaryPath(): string | null {
 			"/usr/bin/ffprobe",
 		];
 		for (const p of commonPaths) {
-			if (existsSync(p)) {
+			if (isExecutableFile(p)) {
 				return p;
 			}
 		}
@@ -171,7 +175,9 @@ function resolveBundledFfmpegBinaryPath(): string | null {
 	const bundledPath = app.isPackaged
 		? ffmpegStatic.replace(/\.asar([/\\])/, ".asar.unpacked$1")
 		: ffmpegStatic;
-	return existsSync(bundledPath) ? bundledPath : null;
+	// existsSync alone is not enough: a non-executable package would fail later
+	// with EACCES and skip system fallback on non-Linux.
+	return isExecutableFile(bundledPath) ? bundledPath : null;
 }
 
 function resolveFfmpegPathOverride(): string | null {
@@ -179,10 +185,15 @@ function resolveFfmpegPathOverride(): string | null {
 	if (!override) {
 		return null;
 	}
-	if (isExecutableFile(override)) {
-		return override;
+	// Validate the absolute path we will actually spawn (relative overrides
+	// otherwise resolve against cwd here but PATH in the child).
+	const absolute = resolve(override);
+	if (isExecutableFile(absolute)) {
+		return absolute;
 	}
-	console.warn(`${FFMPEG_PATH_OVERRIDE_ENV} is set but not an executable file: ${override}`);
+	console.warn(
+		`${FFMPEG_PATH_OVERRIDE_ENV} is set but not an executable file: ${override}`,
+	);
 	return null;
 }
 
@@ -212,7 +223,7 @@ export function getFfprobeBinaryPath(): string {
 			? ffprobeStatic.replace(/\.asar([/\\])/, ".asar.unpacked$1")
 			: ffprobeStatic;
 
-		if (existsSync(bundledPath)) {
+		if (isExecutableFile(bundledPath)) {
 			return bundledPath;
 		}
 	}
