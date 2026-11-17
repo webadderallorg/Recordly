@@ -188,6 +188,7 @@ function getExpectedNativeHelperFiles(archTag) {
 
 	if (archTag.startsWith("darwin-")) {
 		return [
+			{ name: "recordly-saved-sign-in.node", label: "Saved sign-in Keychain addon" },
 			{
 				name: "recordly-permission-drag-helper",
 				label: "Permission drag helper",

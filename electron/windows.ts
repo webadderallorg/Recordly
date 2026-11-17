@@ -70,6 +70,7 @@ let areaRecordingBorderWindow: BrowserWindow | null = null;
 let recordingFocusWindows: BrowserWindow[] = [];
 let updateToastWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
+let startupOnboarding: { window: BrowserWindow; waiting: boolean } | undefined;
 let onboardingIntroWindow: BrowserWindow | null = null;
 let onboardingIntroReplayWindow: BrowserWindow | null = null;
 let hudWasVisibleBeforeUpdateToast = false;
@@ -1203,9 +1204,21 @@ function bringOnboardingWindowForward(win: BrowserWindow): void {
 export function focusOnboardingWindow(): void {
 	const win = getOnboardingWindow();
 	if (!win) return;
+	if (startupOnboarding?.window === win && startupOnboarding.waiting) return;
 	if (win.isMinimized()) win.restore();
 	if (onboardingIntroWindow && !onboardingIntroWindow.isDestroyed() && !win.isVisible()) return;
 	bringOnboardingWindowForward(win);
+}
+
+export function getStartupOnboardingWindow(): BrowserWindow | null {
+	return startupOnboarding?.window ?? null;
+}
+
+export function revealStartupOnboardingWindow(): void {
+	if (startupOnboarding?.waiting) {
+		startupOnboarding.waiting = false;
+		focusOnboardingWindow();
+	}
 }
 
 export function getOnboardingWindow(): BrowserWindow | null {
@@ -1292,9 +1305,11 @@ export function replayOnboardingIntro(owner: BrowserWindow): boolean {
 export function showOnboardingWindow(options?: {
 	preview?: boolean;
 	intro?: boolean;
+	returning?: boolean;
 }): BrowserWindow {
 	const query = {
 		windowType: "onboarding",
+		...(options?.returning ? { returning: "1" } : {}),
 		...(!app.isPackaged && typeof options?.preview === "boolean"
 			? { onboardingPreview: options.preview ? "1" : "0" }
 			: {}),
@@ -1341,9 +1356,11 @@ export function showOnboardingWindow(options?: {
 	registerDesktopPresenceWindow(win);
 	if (process.platform !== "darwin") win.setMenu(null);
 	onboardingWindow = win;
+	if (options?.returning) startupOnboarding = { window: win, waiting: true };
 	enforceOnboardingWindowExclusivity(win);
 	win.once("closed", () => {
 		if (onboardingWindow === win) onboardingWindow = null;
+		if (startupOnboarding?.window === win) startupOnboarding = undefined;
 	});
 	hideOtherOnboardingWindows(win);
 	const show = () => {
@@ -1364,7 +1381,7 @@ export function showOnboardingWindow(options?: {
 		intro.once("closed", () => {
 			if (onboardingIntroWindow === intro) onboardingIntroWindow = null;
 		});
-	} else {
+	} else if (!options?.returning) {
 		win.once("ready-to-show", show);
 	}
 	load(win, query);
