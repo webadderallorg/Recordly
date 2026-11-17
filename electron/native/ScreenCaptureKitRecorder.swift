@@ -413,7 +413,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 		writesSystemAudioToSeparateTrack = capturesSystemAudio
 		writesMicrophoneToSeparateTrack = capturesSystemAudio && capturesMicrophone
-		let requestedFPS = (1...240).contains(config.fps ?? 0) ? config.fps! : targetCaptureFPS
+		let configuredFPS = config.fps ?? targetCaptureFPS
+		let requestedFPS = (1...240).contains(configuredFPS) ? configuredFPS : targetCaptureFPS
 		captureFPS = requestedFPS
 		streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(requestedFPS))
 		streamConfig.queueDepth = 6

@@ -88,8 +88,8 @@ ${methods}
     func snapshot() async -> (Int, Int, Bool, Bool) {
         await onCaptureQueue { (self.created.count, self.failures, self.isRecording, self.recoveryTask != nil) }
     }
-    func waitUntil(_ condition: @escaping (Int, Int, Bool, Bool) -> Bool) async {
-        for _ in 0..<200 {
+    func waitUntil(attempts: Int = 200, _ condition: @escaping (Int, Int, Bool, Bool) -> Bool) async {
+        for _ in 0..<attempts {
             let s = await snapshot()
             if condition(s.0, s.1, s.2, s.3) { return }
             try! await Task.sleep(nanoseconds: 20_000_000)
@@ -129,6 +129,14 @@ Task {
     exhausted.stream(broken, didStopWithError: failure)
     await exhausted.waitUntil { count, failures, active, recovering in count == 4 && failures == 1 && !active && !recovering }
     print("retry exhaustion passed")
+
+    // Starting successfully is insufficient: a replacement must deliver video.
+    let silent = Harness()
+    let silentInitial = await silent.begin(["silent", "healthy"])
+    silent.stream(silentInitial, didStopWithError: failure)
+    await silent.waitUntil(attempts: 400) { count, failures, active, recovering in count == 3 && failures == 0 && active && !recovering }
+    check(silent.created[1].stopped, "silent replacement was not stopped before retry")
+    print("silent replacement retried")
 
     let stopped = Harness()
     let userStream = await stopped.begin([])
@@ -170,6 +178,7 @@ dispatchMain()
 			for (const marker of [
 				"retries and stale callbacks passed",
 				"retry exhaustion passed",
+				"silent replacement retried",
 				"user stop passed",
 				"cancellation passed",
 			]) {
