@@ -3,13 +3,34 @@ import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { type IpcMain, ipcMain, type WebContents } from "electron";
+import { app, type IpcMain, ipcMain, type WebContents } from "electron";
 import { readExportRangeArgs } from "../../src/components/video-editor/export/exportRange";
 import { getFfmpegBinaryPath } from "../ipc/ffmpeg/binary";
 import { parseFfmpegFrameRate, parseNativeVideoMetadataProbeOutput } from "../ipc/ffmpeg/metadata";
 import { getRecordingsDir } from "../ipc/utils";
 import { verifyExportedFrames } from "./exportVerify";
 import type { RunFfmpeg } from "./remoteEditor";
+
+const REDIRECTED_FOLDERS = [
+	"desktop",
+	"documents",
+	"downloads",
+	"pictures",
+	"videos",
+	"music",
+] as const;
+
+export function realFolderFor(folder: string) {
+	const name = path.basename(folder).toLowerCase();
+	const known = REDIRECTED_FOLDERS.find((entry) => entry === name);
+	if (!known) return null;
+	try {
+		const real = app.getPath(known);
+		return real && path.resolve(real) !== path.resolve(folder) ? real : null;
+	} catch {
+		return null;
+	}
+}
 
 const EDITOR_READY_TIMEOUT_MS = 45_000;
 const EXPORT_WAIT_CAP_MS = 5 * 60_000;
@@ -481,7 +502,14 @@ async function resolveTarget(args: RemoteExportArgs, recordingsDir: () => Promis
 	}
 	const folder = path.dirname(outputPath);
 	if (!(await fileExists(folder))?.isDirectory()) {
-		throw new Error(`The folder does not exist: ${folder}`);
+		const moved = realFolderFor(folder);
+		throw new Error(
+			moved
+				? `The folder does not exist: ${folder}. This machine keeps ${path.basename(folder)} ` +
+						`at ${moved} instead, which OneDrive and similar tools do. Export there, or pass a ` +
+						"folder that exists."
+				: `The folder does not exist: ${folder}`,
+		);
 	}
 	await fs.access(folder, constants.W_OK).catch(() => {
 		throw new Error(`Recordly cannot write to the folder: ${folder}`);

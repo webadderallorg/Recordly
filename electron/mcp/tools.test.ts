@@ -1173,6 +1173,31 @@ describe("buildRecordlyMcpServer", () => {
 		expect(verify.description).toContain("not proof the video is right");
 	});
 
+	it("honours dryRun on a single action instead of acting anyway", async () => {
+		const { call, agent } = setup();
+		const target = { text: "Submit", role: "button" };
+		await call("tools/call", { name: "click", arguments: { target, dryRun: true } });
+		expect(agent.perform).toHaveBeenNthCalledWith(1, [{ action: "click", target }], {
+			dryRun: true,
+		});
+		await call("tools/call", {
+			name: "scroll",
+			arguments: { x: 1, y: 1, deltaY: 90, dryRun: true },
+		});
+		expect(agent.perform).toHaveBeenNthCalledWith(
+			2,
+			[{ action: "scroll", x: 1, y: 1, deltaY: 90 }],
+			{ dryRun: true },
+		);
+		await call("tools/call", { name: "click", arguments: { target } });
+		expect(agent.perform).toHaveBeenNthCalledWith(3, [{ action: "click", target }], undefined);
+		const { result: listed } = await call("tools/list");
+		for (const name of ["click", "drag", "move_pointer", "scroll", "type_text", "press_key"]) {
+			const tool = listed.tools.find((entry: { name: string }) => entry.name === name);
+			expect(Object.keys(tool.inputSchema.properties)).toContain("dryRun");
+		}
+	});
+
 	it("offers cancel_action for a sequence that outlived its call", async () => {
 		const { call, agent } = setup("idle", { platform: "darwin" });
 		const { result } = await call("tools/call", { name: "cancel_action", arguments: {} });

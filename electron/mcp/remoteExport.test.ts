@@ -6,7 +6,7 @@ import type { IpcMain } from "electron";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
-	app: { getPath: () => os.tmpdir(), isPackaged: false },
+	app: { getPath: vi.fn(() => os.tmpdir()), isPackaged: false },
 	ipcMain: { on: vi.fn() },
 }));
 
@@ -18,6 +18,7 @@ const {
 	createRemoteExport,
 	escapeChapterTitle,
 	isSameFile,
+	realFolderFor,
 	rebaseChapters,
 } = await import("./remoteExport");
 type LoadScenes = import("./remoteExport").LoadScenes;
@@ -1113,5 +1114,23 @@ describe("chapters", () => {
 				aspect: 16 as unknown as string,
 			}),
 		).rejects.toThrow(/aspect must look like 16:9/);
+	});
+});
+
+describe("realFolderFor", () => {
+	it("names the folder the machine really uses when one was redirected", () => {
+		const real = os.tmpdir();
+		expect(realFolderFor(path.join("C:\\Users\\User", "Desktop"))).toBe(real);
+		expect(realFolderFor(path.join("C:\\Users\\User", "desktop"))).toBe(real);
+		expect(realFolderFor(path.join("C:\\Users\\User", "Downloads"))).toBe(real);
+	});
+
+	it("says nothing when the folder is already the real one, or is not a known folder", async () => {
+		const { app } = await import("electron");
+		const onDisk = path.join(os.tmpdir(), "Desktop");
+		vi.mocked(app.getPath).mockReturnValueOnce(onDisk);
+		expect(realFolderFor(onDisk)).toBeNull();
+		expect(realFolderFor(path.join("C:\\Users\\User", "Projects"))).toBeNull();
+		expect(realFolderFor(path.join("C:\\Users\\User", "Desktop", "takes"))).toBeNull();
 	});
 });
