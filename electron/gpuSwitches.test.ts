@@ -51,10 +51,12 @@ describe("shouldForceLinuxEgl", () => {
 });
 
 describe("getGpuSwitches", () => {
-	it("keeps macOS audio in-process while preserving Metal and the capture workaround", () => {
+	it("keeps macOS capture in-process while preserving Metal and the system audio workaround", () => {
 		expect(getGpuSwitches("darwin", {})).toEqual({
 			useAngle: "metal",
+			enableFeatures: ["RunVideoCaptureServiceInBrowserProcess"],
 			disableFeatures: ["MacCatapLoopbackAudioForScreenShare", "AudioServiceOutOfProcess"],
+			extraSwitches: ["disable-video-capture-use-gpu-memory-buffer"],
 		});
 	});
 

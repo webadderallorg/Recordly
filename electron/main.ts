@@ -161,16 +161,27 @@ app.on("web-contents-created", (_event, contents) => {
 });
 
 function configureGpuAccelerationSwitches() {
-	const { useAngle, useGl, disableFeatures } = getGpuSwitches(process.platform, process.env);
+	const { useAngle, useGl, enableFeatures, disableFeatures, extraSwitches } = getGpuSwitches(
+		process.platform,
+		process.env,
+	);
 	if (useAngle) {
 		app.commandLine.appendSwitch("use-angle", useAngle);
 	}
 	if (useGl) {
 		app.commandLine.appendSwitch("use-gl", useGl);
 	}
+	if (enableFeatures?.length) {
+		const existing = app.commandLine.getSwitchValue("enable-features");
+		app.commandLine.appendSwitch(
+			"enable-features",
+			[existing, ...enableFeatures].filter(Boolean).join(","),
+		);
+	}
 	if (disableFeatures && disableFeatures.length > 0) {
 		app.commandLine.appendSwitch("disable-features", disableFeatures.join(","));
 	}
+	for (const name of extraSwitches ?? []) app.commandLine.appendSwitch(name);
 }
 
 async function logSmokeExportGpuDiagnostics() {

@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
-const state = vi.hoisted(() => ({ dockVisible: true, hideWhileRecording: null as boolean | null }));
+const state = vi.hoisted(() => ({
+	dockVisible: true,
+	showInDock: null as boolean | null,
+	hideWhileRecording: null as boolean | null,
+}));
 
 vi.mock("electron", () => ({
 	app: {
@@ -23,7 +27,7 @@ vi.mock("electron", () => ({
 }));
 vi.mock("./appSettingsStore", () => ({
 	readAppSetting: vi.fn((key: string) =>
-		key === "recordly.application.hideWhileRecording" ? state.hideWhileRecording : null,
+		key === "recordly.application.showInDock" ? state.showInDock : state.hideWhileRecording,
 	),
 	writeAppSetting: vi.fn(),
 }));
@@ -45,6 +49,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	vi.useFakeTimers();
 	state.dockVisible = true;
+	state.showInDock = null;
 	state.hideWhileRecording = null;
 });
 
@@ -87,6 +92,15 @@ describe("recording icon stop action", () => {
 describe("recording Dock presence", () => {
 	beforeEach(() => {
 		Object.defineProperty(process, "platform", { value: "darwin" });
+	});
+
+	it("hides a normal launch when the Dock preference is disabled", async () => {
+		state.showInDock = false;
+		const { app } = await import("electron");
+		const p = await setup();
+		expect(app.dock.hide).toHaveBeenCalledOnce();
+		expect(app.dock.show).not.toHaveBeenCalled();
+		expect(p.desktopPresenceNeedsTray()).toBe(true);
 	});
 
 	it("hides from the Dock by default while keeping a tray entry, then restores on finish", async () => {
