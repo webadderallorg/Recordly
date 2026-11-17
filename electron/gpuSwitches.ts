@@ -1,9 +1,7 @@
 export interface GpuSwitches {
 	useAngle?: string;
 	useGl?: string;
-	enableFeatures?: string[];
 	disableFeatures?: string[];
-	extraSwitches?: string[];
 }
 
 // Let Chromium select its supported ANGLE/GL implementation by default. Forcing
@@ -20,11 +18,10 @@ export function getGpuSwitches(
 	if (platform === "darwin") {
 		return {
 			useAngle: "metal",
-			// macOS can register Chromium's media workers as separate Dock apps.
-			// In-process video capture requires shared-memory camera frames.
-			enableFeatures: ["RunVideoCaptureServiceInBrowserProcess"],
+			// Electron 43's separate audio service registers as a foreground app on
+			// macOS, adding a Dock icon whenever audio starts. Keep audio in-process
+			// until the upstream helper activation policy is fixed.
 			disableFeatures: ["MacCatapLoopbackAudioForScreenShare", "AudioServiceOutOfProcess"],
-			extraSwitches: ["disable-video-capture-use-gpu-memory-buffer"],
 		};
 	}
 
