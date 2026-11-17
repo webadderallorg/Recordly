@@ -317,9 +317,31 @@ const normalizeAppName = (name: string) =>
 		.trim()
 		.toLowerCase();
 
-const isKnownBrowser = (bundleId: string | null) =>
-	bundleId !== null &&
-	KNOWN_BROWSERS.some((known) => bundleId === known || bundleId.startsWith(`${known}.`));
+const BROWSER_APP_WORDS = new Set([
+	"arc",
+	"brave",
+	"chrome",
+	"chromium",
+	"edge",
+	"firefox",
+	"msedge",
+	"opera",
+	"safari",
+	"vivaldi",
+]);
+export const isKnownBrowser = (window: { bundleId: string | null; appName: string }) => {
+	const { bundleId, appName } = window;
+	if (
+		bundleId !== null &&
+		KNOWN_BROWSERS.some((known) => bundleId === known || bundleId.startsWith(`${known}.`))
+	) {
+		return true;
+	}
+	return appName
+		.toLowerCase()
+		.split(/[^a-z]+/)
+		.some((word) => BROWSER_APP_WORDS.has(word));
+};
 
 const MODIFIERS = new Map(Object.entries(AGENT_MODIFIER_ALIASES));
 const KEY_NAMES = new Set<string>(AGENT_KEY_NAMES);
@@ -1994,7 +2016,7 @@ export function createAgentControl(
 			!platform.isOwnWindow(window) &&
 			(window.windowId === driven ||
 				(Boolean(normalizeAppName(browser)) && platform.sameApp(browser, window.appName)) ||
-				isKnownBrowser(window.bundleId));
+				isKnownBrowser(window));
 		await deps.openExternal(url);
 		let candidate: number | null = null;
 		for (let waited = 0; waited < OPEN_URL_WAIT_MS; waited += POLL_MS) {

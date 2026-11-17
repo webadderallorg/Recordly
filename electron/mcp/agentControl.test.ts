@@ -25,6 +25,7 @@ import {
 	type AgentStep,
 	CANCELLED_MESSAGE,
 	createAgentControl,
+	isKnownBrowser,
 	TAKEOVER_MESSAGE,
 } from "./agentControl";
 import { createAgentPlatform, X11_REQUIRED } from "./agentPlatform";
@@ -3536,5 +3537,36 @@ describe("set_window_bounds on a window that will not move", () => {
 		await expect(agent.setWindowBounds({ ...BOUNDS, y: -9000 })).rejects.toThrow(
 			/not on any display/,
 		);
+	});
+});
+
+describe("isKnownBrowser", () => {
+	const window = (appName: string, bundleId: string | null = null) => ({ appName, bundleId });
+
+	it("knows a browser by its macOS bundle id", () => {
+		expect(isKnownBrowser(window("Google Chrome", "com.google.Chrome"))).toBe(true);
+		expect(isKnownBrowser(window("Safari", "com.apple.Safari"))).toBe(true);
+	});
+
+	it("knows one by name, which is all Windows and Linux report", () => {
+		for (const name of [
+			"Google Chrome",
+			"chrome.exe",
+			"msedge.exe",
+			"Mozilla Firefox",
+			"Brave",
+		]) {
+			expect(isKnownBrowser(window(name))).toBe(true);
+		}
+	});
+
+	it("does not mistake an app whose name merely contains a browser's letters", () => {
+		for (const name of ["Operations", "Edgewater Accounts", "Bravery", "Chromecast Manager"]) {
+			expect(isKnownBrowser(window(name))).toBe(false);
+		}
+	});
+
+	it("does treat a whole word as a browser, which is the limit of matching by name", () => {
+		expect(isKnownBrowser(window("Safari Lodge Books"))).toBe(true);
 	});
 });
