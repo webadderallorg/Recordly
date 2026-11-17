@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--duration", type=float, default=370)
 parser.add_argument("--out", type=Path, required=True)
 args = parser.parse_args()
+args.out = args.out.resolve()
 args.out.mkdir(parents=True, exist_ok=True)
 root = Path(__file__).resolve().parent.parent
 
