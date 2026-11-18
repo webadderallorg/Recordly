@@ -70,7 +70,7 @@ export function OnboardingSoundtrack() {
 		window.addEventListener("click", retry, true);
 		window.addEventListener("keydown", retry, true);
 		window.addEventListener("pagehide", finish);
-		// A native reveal waits for the soundtrack to be playable, with a fallback deadline.
+		// Starting playback requires both the native cue and a playable soundtrack.
 		queueMicrotask(() => {
 			if (disposed) return;
 			if (

@@ -65,12 +65,13 @@ function start(withSoundtrack = true) {
 it("starts the soundtrack at logo reveal and keeps the same playback through handoff", () => {
 	const { backdrop, popup, show, stage, soundtrackReady } = start(false);
 	popup.emit("ready-to-show");
-	stage("ready");
 	soundtrackReady({});
 	expect(backdrop.isVisible()).toBe(false);
 	expect(popup.webContents.send).not.toHaveBeenCalled();
 
 	soundtrackReady();
+	expect(popup.webContents.send).not.toHaveBeenCalled();
+	stage("ready");
 	expect(backdrop.isVisible()).toBe(true);
 	expect(popup.webContents.send).toHaveBeenCalledExactlyOnceWith("onboarding-soundtrack-start");
 	expect(popup.webContents.send).toHaveBeenCalledBefore(backdrop.webContents.send);
@@ -81,36 +82,39 @@ it("starts the soundtrack at logo reveal and keeps the same playback through han
 	expect(popup.webContents.send).toHaveBeenCalledTimes(1);
 });
 
-it("waits for the replacement popup document when a ready popup reloads", () => {
+it("shows the logo during a popup reload and starts audio from the replacement document", () => {
 	const { backdrop, popup, stage, soundtrackReady } = start();
 	popup.emit("ready-to-show");
 	const oldFrame = popup.webContents.mainFrame;
 	popup.webContents.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false });
 	stage("ready");
 	soundtrackReady(oldFrame);
-	expect(backdrop.isVisible()).toBe(false);
+	expect(backdrop.isVisible()).toBe(true);
 	expect(popup.webContents.send).not.toHaveBeenCalled();
 
 	popup.webContents.mainFrame = {};
 	popup.webContents.emit("did-navigate");
 	soundtrackReady(oldFrame);
-	expect(backdrop.isVisible()).toBe(false);
+	expect(popup.webContents.send).not.toHaveBeenCalled();
 	soundtrackReady();
-	expect(backdrop.isVisible()).toBe(true);
 	expect(popup.webContents.send).toHaveBeenCalledExactlyOnceWith("onboarding-soundtrack-start");
 });
 
-it.each(["during reveal", "after handoff"])("shows the logo if audio is ready %s", (when) => {
+it.each([
+	"during reveal",
+	"after handoff",
+])("starts late audio as soon as it is ready %s", (when) => {
 	const { backdrop, popup, show, stage, soundtrackReady } = start(false);
 	popup.emit("ready-to-show");
-	vi.advanceTimersByTime(5900);
 	stage("ready");
-	vi.advanceTimersByTime(499);
-	expect(backdrop.isVisible()).toBe(false);
-	vi.advanceTimersByTime(1);
 	expect(backdrop.isVisible()).toBe(true);
-	if (when === "during reveal") soundtrackReady();
 	expect(popup.webContents.send).not.toHaveBeenCalled();
+	if (when === "during reveal") {
+		soundtrackReady();
+		expect(popup.webContents.send).toHaveBeenCalledExactlyOnceWith(
+			"onboarding-soundtrack-start",
+		);
+	}
 	stage("finished");
 	expect(show).toHaveBeenCalledOnce();
 	if (when === "after handoff") {

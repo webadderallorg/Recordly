@@ -2,7 +2,6 @@ import { BrowserWindow, type Rectangle } from "electron";
 
 const INTRO_TIMEOUT_MS = 6000;
 const INTRO_PLAYBACK_TIMEOUT_MS = 10000;
-const SOUNDTRACK_GRACE_MS = 500;
 const POPUP_FADE_MS = 280;
 const BACKDROP_FADE_MS = 360;
 
@@ -35,19 +34,17 @@ export function startOnboardingIntro(
 	backdrop.setBounds(bounds);
 
 	let popupReady = false;
-	let logoReady = false;
-	let soundtrackReady = !handoff;
-	let soundtrackStarted = false;
+	let soundtrackReady = false;
+	let soundtrackCanStart = false;
 	let popupNavigating = false;
 	let introFinished = false;
 	let startedHandoff = false;
 	let deadline: NodeJS.Timeout;
-	let soundtrackDeadline: NodeJS.Timeout | undefined;
 	let fadeTimer: NodeJS.Timeout | undefined;
 	let fadingPopup: BrowserWindow | undefined;
-	const startSoundtrack = () => {
-		if (soundtrackStarted || !handoff || handoff.popup.isDestroyed()) return;
-		soundtrackStarted = true;
+	const allowSoundtrack = () => {
+		if (soundtrackCanStart || !handoff || handoff.popup.isDestroyed()) return;
+		soundtrackCanStart = true;
 		if (soundtrackReady) handoff.popup.webContents.send("onboarding-soundtrack-start");
 	};
 	const closeBackdrop = () => {
@@ -74,7 +71,7 @@ export function startOnboardingIntro(
 		const { popup, show } = handoff;
 		if (startedHandoff || !popupReady || !introFinished || popup.isDestroyed()) return;
 		startedHandoff = true;
-		startSoundtrack();
+		allowSoundtrack();
 		if (!backdrop.isDestroyed() && backdrop.isVisible()) {
 			fadingPopup = popup;
 			popup.setOpacity(0);
@@ -90,7 +87,6 @@ export function startOnboardingIntro(
 	const finish = (animate: boolean) => {
 		if (introFinished) return;
 		introFinished = true;
-		clearTimeout(soundtrackDeadline);
 		if (!animate) closeBackdrop();
 		else if (!handoff) {
 			if (backdrop.isVisible()) fade();
@@ -123,23 +119,6 @@ export function startOnboardingIntro(
 			finish(false);
 		}
 	};
-	const showLogo = (allowSilent = false) => {
-		if (!logoReady || introFinished || backdrop.isVisible()) return;
-		if (!soundtrackReady && !allowSilent) {
-			if (!soundtrackDeadline) {
-				clearTimeout(deadline);
-				soundtrackDeadline = setTimeout(() => showLogo(true), SOUNDTRACK_GRACE_MS);
-			}
-			return;
-		}
-		clearTimeout(soundtrackDeadline);
-		clearTimeout(deadline);
-		deadline = setTimeout(onTimeout, INTRO_PLAYBACK_TIMEOUT_MS);
-		backdrop.showInactive();
-		backdrop.moveTop();
-		if (soundtrackReady) startSoundtrack();
-		backdrop.webContents.send("onboarding-intro-shown");
-	};
 	// The popup owns the audio so destroying the logo cannot interrupt the soundtrack.
 	handoff?.popup.webContents.on("did-start-navigation", ({ isMainFrame, isSameDocument }) => {
 		if (!isMainFrame || isSameDocument) return;
@@ -154,15 +133,18 @@ export function startOnboardingIntro(
 		if (popupNavigating || !event.senderFrame || event.senderFrame !== webContents.mainFrame)
 			return;
 		soundtrackReady = true;
-		if (soundtrackStarted) webContents.send("onboarding-soundtrack-start");
-		else showLogo();
+		if (soundtrackCanStart) webContents.send("onboarding-soundtrack-start");
 	});
 	backdrop.webContents.ipc.on("onboarding-intro", (event, stage: unknown) => {
 		if (introFinished || backdrop.isDestroyed()) return;
 		if (event.senderFrame !== backdrop.webContents.mainFrame) return;
-		if (stage === "ready") {
-			logoReady = true;
-			showLogo();
+		if (stage === "ready" && !backdrop.isVisible()) {
+			clearTimeout(deadline);
+			deadline = setTimeout(onTimeout, INTRO_PLAYBACK_TIMEOUT_MS);
+			backdrop.showInactive();
+			backdrop.moveTop();
+			allowSoundtrack();
+			backdrop.webContents.send("onboarding-intro-shown");
 		} else if (stage === "finished" || stage === "skipped") {
 			finish(stage === "finished");
 		}
