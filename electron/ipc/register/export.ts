@@ -6,7 +6,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Readable, Writable } from "node:stream";
 import type { SaveDialogOptions } from "electron";
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { BrowserWindow, dialog, ipcMain } from "electron";
 import {
 	getAvailableExportPath,
 	getSelectedExportPath,
@@ -53,6 +53,7 @@ import {
 } from "../nativeVideoExport";
 import { isAllowedLocalReadPath, resolveApprovedLocalMediaPath } from "../project/manager";
 import { approveUserPath } from "../utils";
+import { getExportsDir, getTempStorageDir } from "../../storageLocations";
 import {
 	type CaptionSidecarPayload,
 	getCaptionSidecarExtensions,
@@ -245,7 +246,7 @@ async function sanitizeNativeStaticLayoutExportOptions(
 }
 
 function isTempPathSafe(tempPath: string): boolean {
-	const tempRoot = path.resolve(app.getPath("temp"));
+	const tempRoot = path.resolve(getTempStorageDir());
 	const candidate = path.resolve(tempPath);
 	if (candidate === tempRoot) {
 		return false;
@@ -255,7 +256,7 @@ function isTempPathSafe(tempPath: string): boolean {
 }
 
 function getExportSaveDialogDefaultPath(fileName: string, sidecarExtensions: readonly string[]) {
-	const requestedPath = path.join(app.getPath("downloads"), fileName);
+	const requestedPath = path.join(getExportsDir(), fileName);
 	return getAvailableExportPath(requestedPath, sidecarExtensions).catch(() => requestedPath);
 }
 
@@ -301,7 +302,7 @@ export function registerExportHandlers() {
 				const ffmpegPath = getFfmpegBinaryPath();
 				const inputMode = options.inputMode ?? "rawvideo";
 				const sessionId = `recordly-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-				const outputPath = path.join(app.getPath("temp"), `${sessionId}.mp4`);
+				const outputPath = path.join(getTempStorageDir(), `${sessionId}.mp4`);
 				observeShareExportSource(event.sender.id, outputPath);
 
 				let encoderName: string;

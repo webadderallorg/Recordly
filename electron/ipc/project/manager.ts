@@ -35,6 +35,8 @@ import {
 } from "../state";
 import type { ProjectLibraryEntry, RecordingSessionData } from "../types";
 import { canonicalMediaSources } from "./canonicalMediaSources";
+import { getConfiguredStorageLocations, getTempStorageDir } from "../../storageLocations";
+import { getCacheDir } from "../../storageLocations";
 import {
 	getRecordingsDir,
 	normalizePath,
@@ -66,11 +68,14 @@ export function isPathInsideDirectory(candidatePath: string, directoryPath: stri
 }
 
 export function isAllowedLocalReadPath(candidatePath: string) {
+	// User-chosen storage folders must stay readable: exports land there, and the
+	// editor reopens them from the media server after a restart.
 	const allowedPrefixes = [
 		RECORDINGS_DIR,
 		USER_DATA_PATH,
 		getAssetRootPath(),
-		app.getPath("temp"),
+		getTempStorageDir(),
+		...getConfiguredStorageLocations(),
 	];
 	const normalizedCandidatePath = normalizePath(candidatePath);
 
@@ -290,7 +295,7 @@ export async function getProjectThumbnailPath(projectPath: string) {
 
 function projectThumbnailStoragePath(key: string) {
 	const digest = createHash("sha256").update(key).digest("hex");
-	return path.join(USER_DATA_PATH, "project-thumbnails", `${digest}.png`);
+	return path.join(getCacheDir("project-thumbnails"), `${digest}.png`);
 }
 
 export function getLegacyProjectThumbnailPath(projectPath: string) {

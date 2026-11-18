@@ -2,12 +2,18 @@ import { createWriteStream } from "node:fs";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import { get as httpsGet } from "node:https";
+import path from "node:path";
 import type Electron from "electron";
-import {
-	WHISPER_MODEL_DIR,
-	WHISPER_MODEL_DOWNLOAD_URL,
-	WHISPER_SMALL_MODEL_PATH,
-} from "../constants";
+import { getCaptionModelsDir } from "../../storageLocations";
+import { WHISPER_MODEL_DOWNLOAD_URL } from "../constants";
+
+/**
+ * Resolved on every call so a folder change applies without a restart. The small
+ * model keeps its own subfolder because Whisper installs are interchangeable.
+ */
+function whisperSmallModelPath() {
+	return path.join(getCaptionModelsDir(), "whisper", "ggml-small.bin");
+}
 
 export function sendWhisperModelDownloadProgress(
 	webContents: Electron.WebContents,
@@ -22,12 +28,13 @@ export function sendWhisperModelDownloadProgress(
 }
 
 export async function getWhisperSmallModelStatus() {
+	const modelPath = whisperSmallModelPath();
 	try {
-		await fs.access(WHISPER_SMALL_MODEL_PATH, fsConstants.R_OK);
+		await fs.access(modelPath, fsConstants.R_OK);
 		return {
 			success: true,
 			exists: true,
-			path: WHISPER_SMALL_MODEL_PATH,
+			path: modelPath,
 		};
 	} catch {
 		return {
@@ -113,8 +120,9 @@ export function downloadFileWithProgress(
 export async function downloadWhisperSmallModel(
 	webContents: Electron.WebContents,
 ): Promise<string> {
-	await fs.mkdir(WHISPER_MODEL_DIR, { recursive: true });
-	const tempPath = `${WHISPER_SMALL_MODEL_PATH}.download`;
+	const modelPath = whisperSmallModelPath();
+	await fs.mkdir(path.dirname(modelPath), { recursive: true });
+	const tempPath = `${modelPath}.download`;
 
 	sendWhisperModelDownloadProgress(webContents, {
 		status: "downloading",
@@ -131,13 +139,13 @@ export async function downloadWhisperSmallModel(
 				path: null,
 			});
 		});
-		await fs.rename(tempPath, WHISPER_SMALL_MODEL_PATH);
+		await fs.rename(tempPath, modelPath);
 		sendWhisperModelDownloadProgress(webContents, {
 			status: "downloaded",
 			progress: 100,
-			path: WHISPER_SMALL_MODEL_PATH,
+			path: modelPath,
 		});
-		return WHISPER_SMALL_MODEL_PATH;
+		return modelPath;
 	} catch (error) {
 		await fs.rm(tempPath, { force: true }).catch(() => undefined);
 		sendWhisperModelDownloadProgress(webContents, {
@@ -151,5 +159,5 @@ export async function downloadWhisperSmallModel(
 }
 
 export async function deleteWhisperSmallModel(): Promise<void> {
-	await fs.rm(WHISPER_SMALL_MODEL_PATH, { force: true });
+	await fs.rm(whisperSmallModelPath(), { force: true });
 }

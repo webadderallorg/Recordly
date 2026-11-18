@@ -598,5 +598,28 @@
 	},
 	"annotation": {
 		"delete": "Eliminar anotación"
+	},
+	"storage": {
+		"title": "Ubicaciones de almacenamiento",
+		"description": "Elige dónde guarda Recordly cada tipo de archivo. Los archivos nuevos usan la carpeta que elijas; los existentes se quedan donde están.",
+		"recordings": "Grabaciones",
+		"recordingsDescription": "Grabaciones de pantalla con audio del sistema, pistas de micrófono y datos del cursor.",
+		"projects": "Proyectos y borradores",
+		"projectsDescription": "Proyectos guardados, sus vistas previas y guardados automáticos. Vive dentro de la carpeta de grabaciones.",
+		"exports": "Vídeos exportados",
+		"exportsDescription": "Carpeta que se abre al guardar cuando exportas un MP4 o un GIF.",
+		"temp": "Archivos temporales",
+		"tempDescription": "Datos temporales durante la grabación y la exportación. Úsalo en un disco más grande si el sistema está lleno.",
+		"captionModels": "Modelos de subtítulos",
+		"captionModelsDescription": "Modelos de voz a texto descargados para los subtítulos automáticos.",
+		"cache": "Caché",
+		"cacheDescription": "Datos que se regeneran, como miniaturas de fondos y vistas previas. Puedes moverlo o vaciarlo.",
+		"change": "Cambiar…",
+		"open": "Abrir",
+		"reset": "Restablecer",
+		"resetAll": "Restaurar todas las ubicaciones predeterminadas",
+		"usingDefault": "Actualmente es la ubicación predeterminada.",
+		"loading": "Cargando la ubicación de la carpeta…",
+		"loadFailed": "No se pudieron leer las ubicaciones de almacenamiento."
 	}
 }

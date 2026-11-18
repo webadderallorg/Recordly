@@ -18,6 +18,7 @@
 	"saveFailedTitle": "Projekt konnte nicht gespeichert werden",
 	"saveFailedMessage": "Das Speichern ist fehlgeschlagen oder reagiert nicht. Ungespeicherte Änderungen verwerfen und schließen?",
 	"welcome": "Willkommen bei Recordly",
+	"chooseFolder": "Ordner auswählen",
 	"chooseRecordings": "Aufnahmeordner auswählen",
 	"saveRecordlyProject": "Recordly-Projekt speichern",
 	"recordlyProject": "Recordly-Projekt",

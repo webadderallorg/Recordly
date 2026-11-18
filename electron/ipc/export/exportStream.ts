@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { app } from "electron";
+import { getTempStorageDir } from "../../storageLocations";
 
 type ExportStreamSession = {
 	streamId: string;
@@ -60,7 +60,7 @@ export async function openExportStream(options?: { extension?: string }): Promis
 	// Per-session 0700 directory defeats TOCTOU/symlink races on shared
 	// tempdirs (e.g. /tmp on Linux): only the current user can enter the dir,
 	// so an adversary cannot pre-plant a symlink at the file path.
-	const sessionDir = await fsp.mkdtemp(path.join(app.getPath("temp"), SESSION_DIR_PREFIX));
+	const sessionDir = await fsp.mkdtemp(path.join(getTempStorageDir(), SESSION_DIR_PREFIX));
 	try {
 		await fsp.chmod(sessionDir, 0o700);
 	} catch {

@@ -598,5 +598,28 @@
 	},
 	"annotation": {
 		"delete": "注釈を削除"
+	},
+	"storage": {
+		"title": "保存場所",
+		"description": "Recordly がファイルの種類ごとに保存する場所を選択します。新しいファイルは選んだフォルダーに保存され、既存のファイルはそのまま残ります。",
+		"recordings": "録画",
+		"recordingsDescription": "システム音声、マイク音声、カーソルデータを含む画面録画です。",
+		"projects": "プロジェクトと下書き",
+		"projectsDescription": "保存したプロジェクト、プレビュー、自動保存です。録画フォルダー内にあります。",
+		"exports": "書き出した動画",
+		"exportsDescription": "MP4 や GIF を書き出すときに保存ダイアログが開くフォルダーです。",
+		"temp": "一時ファイル",
+		"tempDescription": "録画と書き出し中の一時データです。システムドライブが小さい場合は大きいドライブを指定してください。",
+		"captionModels": "字幕モデル",
+		"captionModelsDescription": "自動字幕に使用する音声認識モデルです。",
+		"cache": "キャッシュ",
+		"cacheDescription": "壁紙のサムネイルやプロジェクトのプレビューなど再生成できるデータです。移動や削除が可能です。",
+		"change": "変更…",
+		"open": "開く",
+		"reset": "リセット",
+		"resetAll": "すべて既定の場所に戻す",
+		"usingDefault": "現在は既定の場所です。",
+		"loading": "フォルダーの場所を読み込み中…",
+		"loadFailed": "保存場所を読み取れませんでした。"
 	}
 }

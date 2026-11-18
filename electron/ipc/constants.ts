@@ -16,8 +16,8 @@ export const ALLOW_RECORDLY_WINDOW_CAPTURE = Boolean(process.env["VITE_DEV_SERVE
 export const RECORDING_SESSION_MANIFEST_SUFFIX = ".recordly-session.json";
 export const WHISPER_MODEL_DOWNLOAD_URL =
 	"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin";
+/** Legacy fallback used only when the configured caption folder is unavailable. */
 export const WHISPER_MODEL_DIR = path.join(USER_DATA_PATH, "whisper");
-export const WHISPER_SMALL_MODEL_PATH = path.join(WHISPER_MODEL_DIR, "ggml-small.bin");
 export const COMPANION_AUDIO_LAYOUTS = [
 	{ platform: "mac" as const, systemSuffix: ".system.m4a", micSuffix: ".mic.m4a" },
 	{ platform: "win" as const, systemSuffix: ".system.wav", micSuffix: ".mic.wav" },

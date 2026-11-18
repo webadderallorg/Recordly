@@ -18,6 +18,7 @@
 	"saveFailedTitle": "프로젝트를 저장할 수 없습니다",
 	"saveFailedMessage": "저장에 실패했거나 응답이 없습니다. 저장하지 않은 변경 사항을 버리고 닫을까요?",
 	"welcome": "Recordly에 오신 것을 환영합니다",
+	"chooseFolder": "폴더 선택",
 	"chooseRecordings": "녹화 폴더 선택",
 	"saveRecordlyProject": "Recordly 프로젝트 저장",
 	"recordlyProject": "Recordly 프로젝트",

@@ -18,6 +18,7 @@
 	"saveFailedTitle": "Le projet n’a pas pu être enregistré",
 	"saveFailedMessage": "L’enregistrement a échoué ou ne répond pas. Ignorer les modifications non enregistrées et fermer ?",
 	"welcome": "Bienvenue dans Recordly",
+	"chooseFolder": "Choisir un dossier",
 	"chooseRecordings": "Choisir le dossier des enregistrements",
 	"saveRecordlyProject": "Enregistrer un projet Recordly",
 	"recordlyProject": "Projet Recordly",

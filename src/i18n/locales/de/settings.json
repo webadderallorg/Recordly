@@ -598,5 +598,28 @@
 	},
 	"annotation": {
 		"delete": "Anmerkung löschen"
+	},
+	"storage": {
+		"title": "Speicherorte",
+		"description": "Lege fest, wo Recordly welche Dateien ablegt. Neue Dateien nutzen den gewählten Ordner; vorhandene bleiben, wo sie sind.",
+		"recordings": "Aufnahmen",
+		"recordingsDescription": "Bildschirmaufnahmen mit Systemton, Mikrofonspuren und Cursordaten.",
+		"projects": "Projekte und Entwürfe",
+		"projectsDescription": "Gespeicherte Projekte, ihre Vorschauen und automatische Sicherungen. Liegt im Aufnahmeordner.",
+		"exports": "Exportierte Videos",
+		"exportsDescription": "Ordner, den der Speichern-Dialog beim Export von MP4 oder GIF öffnet.",
+		"temp": "Temporäre Dateien",
+		"tempDescription": "Zwischendaten beim Aufnehmen und Exportieren. Wähle ein größeres Laufwerk, wenn die Systemplatte knapp ist.",
+		"captionModels": "Untertitelmodelle",
+		"captionModelsDescription": "Heruntergeladene Spracherkennungsmodelle für automatische Untertitel.",
+		"cache": "Cache",
+		"cacheDescription": "Neu erzeugbare Daten wie Hintergrundminiaturen und Projektvorschauen. Kann verschoben oder geleert werden.",
+		"change": "Ändern…",
+		"open": "Öffnen",
+		"reset": "Zurücksetzen",
+		"resetAll": "Alle Standardorte wiederherstellen",
+		"usingDefault": "Derzeit der Standardort.",
+		"loading": "Ordnerpfad wird geladen…",
+		"loadFailed": "Speicherorte konnten nicht gelesen werden."
 	}
 }

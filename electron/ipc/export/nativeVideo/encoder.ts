@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
-import { app } from "electron";
+
 import {
 	buildNativeVideoExportArgs,
 	getNativeVideoInputByteSize,
@@ -11,6 +11,7 @@ import {
 import { cachedNativeVideoEncoder, setCachedNativeVideoEncoder } from "../../state";
 import { execFileAsync } from "./constants";
 import { removeTemporaryExportFile } from "./stream";
+import { getTempStorageDir } from "../../../storageLocations";
 
 export async function getAvailableNativeVideoEncoders(ffmpegPath: string) {
 	const { stdout } = await execFileAsync(ffmpegPath, ["-hide_banner", "-encoders"], {
@@ -27,7 +28,7 @@ export async function probeNativeVideoEncoder(
 	encodingMode: NativeExportEncodingMode,
 ) {
 	const outputPath = path.join(
-		app.getPath("temp"),
+		getTempStorageDir(),
 		`recordly-export-probe-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`,
 	);
 	const args = buildNativeVideoExportArgs(

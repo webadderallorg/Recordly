@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { app } from "electron";
+
 import { getFfmpegBinaryPath } from "../../ffmpeg/binary";
 import { replaceShareExportSource } from "../../growingShareUpload";
 import {
@@ -13,6 +13,7 @@ import {
 import { formatFfmpegSeconds, getNowMs } from "./constants";
 import { runFfmpegAudioMux } from "./process";
 import { removeTemporaryExportFile } from "./stream";
+import { getTempStorageDir } from "../../../storageLocations";
 import {
 	type NativeStaticLayoutExportSession,
 	type NativeVideoAudioMuxArgsOptions,
@@ -140,7 +141,7 @@ export async function muxNativeVideoExportAudio(
 
 		const extension = getEditedAudioExtension(options.editedAudioMimeType);
 		audioInputPath = path.join(
-			app.getPath("temp"),
+			getTempStorageDir(),
 			`recordly-export-audio-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${extension}`,
 		);
 		const tempAudioWriteStartedAt = getNowMs();
@@ -209,7 +210,7 @@ export async function muxExportedVideoAudioBuffer(
 	options: NativeVideoExportFinishOptions,
 ) {
 	const tempVideoPath = path.join(
-		app.getPath("temp"),
+		getTempStorageDir(),
 		`recordly-export-video-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`,
 	);
 	const metrics: NativeVideoAudioMuxMetrics = {};

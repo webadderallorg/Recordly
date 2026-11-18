@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { app } from "electron";
+
 import { getFfprobeBinaryPath } from "../../ffmpeg/binary";
 import {
 	buildNativeStaticLayoutChunks,
@@ -20,6 +20,7 @@ import { prepareNativeStaticLayoutSourceInput } from "./sourceProxy";
 import { renderNativeStaticFfmpeg } from "./staticFfmpeg";
 import { removeTemporaryExportFile } from "./stream";
 import { prepareNativeStaticLayoutTimelineMap } from "./timeline";
+import { getTempStorageDir } from "../../../storageLocations";
 import {
 	type NativeStaticLayoutExportMetrics,
 	type NativeStaticLayoutExportOptions,
@@ -75,9 +76,9 @@ export async function exportNativeStaticLayoutVideo(
 		terminating: false,
 		currentProcess: null,
 	};
-	const chunkDirectory = path.join(app.getPath("temp"), sessionId);
+	const chunkDirectory = path.join(getTempStorageDir(), sessionId);
 	const concatListPath = path.join(chunkDirectory, "chunks.txt");
-	const videoOnlyPath = path.join(app.getPath("temp"), `${sessionId}.mp4`);
+	const videoOnlyPath = path.join(getTempStorageDir(), `${sessionId}.mp4`);
 	onOutputFile?.(videoOnlyPath);
 	const ffprobePath = getFfprobeBinaryPath();
 	let outputPathToKeep: string | null = null;

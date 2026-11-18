@@ -18,6 +18,7 @@
 	"saveFailedTitle": "無法儲存專案",
 	"saveFailedMessage": "儲存失敗或沒有回應。要捨棄未儲存的變更並關閉嗎？",
 	"welcome": "歡迎使用 Recordly",
+	"chooseFolder": "選擇資料夾",
 	"chooseRecordings": "選擇錄製資料夾",
 	"saveRecordlyProject": "儲存 Recordly 專案",
 	"recordlyProject": "Recordly 專案",
