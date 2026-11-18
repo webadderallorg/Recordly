@@ -38,6 +38,7 @@ export function startOnboardingIntro(
 	let logoReady = false;
 	let soundtrackReady = !handoff;
 	let soundtrackStarted = false;
+	let popupNavigating = false;
 	let introFinished = false;
 	let startedHandoff = false;
 	let deadline: NodeJS.Timeout;
@@ -140,9 +141,18 @@ export function startOnboardingIntro(
 		backdrop.webContents.send("onboarding-intro-shown");
 	};
 	// The popup owns the audio so destroying the logo cannot interrupt the soundtrack.
+	handoff?.popup.webContents.on("did-start-navigation", ({ isMainFrame, isSameDocument }) => {
+		if (!isMainFrame || isSameDocument) return;
+		popupNavigating = true;
+		soundtrackReady = false;
+	});
+	handoff?.popup.webContents.on("did-navigate", () => {
+		popupNavigating = false;
+	});
 	handoff?.popup.webContents.ipc.on("onboarding-soundtrack-ready", (event) => {
 		const { webContents } = handoff.popup;
-		if (!event.senderFrame || event.senderFrame !== webContents.mainFrame) return;
+		if (popupNavigating || !event.senderFrame || event.senderFrame !== webContents.mainFrame)
+			return;
 		soundtrackReady = true;
 		if (soundtrackStarted) webContents.send("onboarding-soundtrack-start");
 		else showLogo();
