@@ -18,26 +18,10 @@
 	--intro-logo-size: calc(var(--intro-canvas-size) * 0.3);
 	--intro-slide-ease: cubic-bezier(0.22, 1, 0.36, 1);
 	position: relative;
-	display: grid;
-	grid-template-columns: var(--intro-logo-size) auto;
-	align-items: center;
-	column-gap: clamp(12px, 2.5vmin, 26px);
 	transition: opacity 180ms ease-out;
 }
 
-.onboarding-intro-logo-track {
-	grid-area: 1 / 1 / 2 / -1;
-	/* Let the text emerge from behind the icon as the two slide apart. */
-	z-index: 1;
-	transition: transform 440ms var(--intro-slide-ease);
-}
-
-.onboarding-intro-brand[data-presentation="mark"] .onboarding-intro-logo-track {
-	/* The full lockup sets the offset, while only the icon moves left. */
-	transform: translateX(calc((100% - var(--intro-logo-size)) / 2));
-}
-
-.onboarding-intro-brand[data-presentation="releasing"] {
+.onboarding-intro-brand[data-releasing="true"] {
 	opacity: 0;
 }
 
@@ -47,37 +31,6 @@
 	place-items: center;
 	width: var(--intro-logo-size);
 	aspect-ratio: 1;
-}
-
-.onboarding-intro-wordmark {
-	--wordmark-delay: 80ms;
-	grid-area: 1 / 2;
-	color: white;
-	font-family: var(--app-font-sans);
-	font-size: clamp(26px, 7.6vmin, 86px);
-	font-weight: 500;
-	line-height: 1;
-	letter-spacing: -0.04em;
-	white-space: nowrap;
-	transform: translateX(-0.48em);
-	transition-property: transform;
-	transition-timing-function: ease-in-out;
-	transition-delay: var(--wordmark-delay);
-}
-
-.onboarding-intro-wordmark span {
-	display: block;
-	opacity: 0;
-	filter: url(#onboarding-intro-motion-blur);
-	transition: opacity 340ms var(--intro-slide-ease) var(--wordmark-delay);
-}
-
-.onboarding-intro-brand:not([data-presentation="mark"]) .onboarding-intro-wordmark {
-	transform: translateX(0);
-}
-
-.onboarding-intro-brand:not([data-presentation="mark"]) .onboarding-intro-wordmark span {
-	opacity: 1;
 }
 
 .onboarding-intro-logo canvas {
@@ -98,10 +51,6 @@
 	width: 100%;
 	height: auto;
 	animation: onboarding-intro-mark 550ms var(--intro-slide-ease) both;
-}
-
-.onboarding-intro-brand:not([data-presentation="mark"]) .onboarding-intro-fallback {
-	animation: none;
 }
 
 @keyframes onboarding-intro-dim {

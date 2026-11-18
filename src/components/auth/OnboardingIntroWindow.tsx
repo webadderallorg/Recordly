@@ -4,45 +4,37 @@ import desktopIconUrl from "../../../icons/icons/png/512x512.png";
 import { loadOnboardingLogo, playOnboardingGlass } from "./onboardingGlass";
 import "./OnboardingIntroWindow.css";
 
-const WORDMARK = "Recordly";
-const WORDMARK_DISPLAY_MS = 1580;
 const macIconUrl = `${import.meta.env.BASE_URL}app-icons/recordlymac-512.png`;
 
 export default function OnboardingIntroWindow() {
 	const canvas = useRef<HTMLCanvasElement>(null);
 	const [iconUrl, setIconUrl] = useState(desktopIconUrl);
 	const [mode, setMode] = useState<"loading" | "glass" | "fallback">("loading");
-	const [presentation, setPresentation] = useState<"mark" | "wordmark" | "releasing">("mark");
+	const [releasing, setReleasing] = useState(false);
 
 	useEffect(() => {
 		const report = window.electronAPI?.reportOnboardingIntro;
 		let disposed = false;
 		let usingFallback = false;
-		let wordmarkStarted = false;
+		let finishing = false;
 		let stopGlass: (() => void) | undefined;
-		let next: ReturnType<typeof setTimeout>;
+		let fallbackHold: ReturnType<typeof setTimeout>;
+		let releaseTimer: ReturnType<typeof setTimeout>;
 		let preparationDeadline: ReturnType<typeof setTimeout>;
 		let unsubscribe: (() => void) | undefined;
 		const finish = () => {
-			setPresentation("releasing");
-			next = setTimeout(() => report?.("finished"), 180);
-		};
-		const showWordmark = () => {
-			if (disposed || wordmarkStarted) return;
-			wordmarkStarted = true;
-			setPresentation("wordmark");
-			next = setTimeout(finish, WORDMARK_DISPLAY_MS);
+			if (disposed || finishing) return;
+			finishing = true;
+			setReleasing(true);
+			releaseTimer = setTimeout(() => report?.("finished"), 180);
 		};
 		const fallback = () => {
-			if (disposed || usingFallback) return;
+			if (disposed || usingFallback || finishing) return;
 			usingFallback = true;
 			clearTimeout(preparationDeadline);
 			stopGlass?.();
 			setMode("fallback");
-			if (!wordmarkStarted) {
-				clearTimeout(next);
-				next = setTimeout(showWordmark, 720);
-			}
+			fallbackHold = setTimeout(finish, 720);
 		};
 
 		const play = () => {
@@ -55,7 +47,7 @@ export default function OnboardingIntroWindow() {
 				})
 				.then((logo) => {
 					if (disposed || usingFallback || !canvas.current) return;
-					stopGlass = playOnboardingGlass(canvas.current, logo, showWordmark, fallback);
+					stopGlass = playOnboardingGlass(canvas.current, logo, finish, fallback);
 					clearTimeout(preparationDeadline);
 					setMode("glass");
 				})
@@ -80,7 +72,8 @@ export default function OnboardingIntroWindow() {
 			disposed = true;
 			unsubscribe?.();
 			clearTimeout(preparationDeadline);
-			clearTimeout(next);
+			clearTimeout(fallbackHold);
+			clearTimeout(releaseTimer);
 			stopGlass?.();
 		};
 	}, []);
@@ -88,17 +81,12 @@ export default function OnboardingIntroWindow() {
 	return (
 		<div className="onboarding-intro" aria-hidden="true">
 			<div className="onboarding-intro-backdrop" />
-			<div className="onboarding-intro-brand" data-presentation={presentation}>
-				<div className="onboarding-intro-logo-track">
-					<div className="onboarding-intro-logo" data-mode={mode}>
-						<canvas ref={canvas} />
-						{mode === "fallback" && (
-							<img alt="" className="onboarding-intro-fallback" src={iconUrl} />
-						)}
-					</div>
-				</div>
-				<div className="onboarding-intro-wordmark">
-					<span>{WORDMARK}</span>
+			<div className="onboarding-intro-brand" data-releasing={releasing}>
+				<div className="onboarding-intro-logo" data-mode={mode}>
+					<canvas ref={canvas} />
+					{mode === "fallback" && (
+						<img alt="" className="onboarding-intro-fallback" src={iconUrl} />
+					)}
 				</div>
 			</div>
 		</div>

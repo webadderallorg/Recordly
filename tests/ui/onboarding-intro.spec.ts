@@ -43,12 +43,11 @@ for (const mode of ["glass", "fallback", "reduced motion"] as const) {
 		}
 
 		await expect(html).toHaveAttribute("data-intro-stages", "ready");
-		const brand = page.locator(".onboarding-intro-brand");
+		const intro = page.locator(".onboarding-intro");
+		const brand = intro.locator(".onboarding-intro-brand");
 		const logo = page.locator(".onboarding-intro-logo");
-		const wordmark = brand.getByText("Recordly", { exact: true });
 		await expect(logo).toHaveAttribute("data-mode", mode);
-		await expect(brand).toHaveAttribute("data-presentation", "mark");
-		await expect(wordmark).toHaveCSS("opacity", "0");
+		await expect(intro).toHaveText("");
 		const logoCenter = () =>
 			logo.evaluate((el) => {
 				const bounds = el.getBoundingClientRect();
@@ -59,12 +58,9 @@ for (const mode of ["glass", "fallback", "reduced motion"] as const) {
 		await expect(html).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 		await expect(page.locator("body")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 		await expect(page.locator(".onboarding-intro-backdrop")).toHaveCSS("position", "absolute");
-		await expect(brand).toHaveAttribute("data-presentation", "wordmark");
-		await expect(wordmark).toHaveCSS("opacity", "1");
-		expect(await logoCenter()).toBeLessThan(screenCenter - 50);
-		const logoBounds = (await logo.boundingBox())!;
-		const wordmarkBounds = (await wordmark.boundingBox())!;
-		expect(wordmarkBounds.x).toBeGreaterThan(logoBounds.x + logoBounds.width);
+		await expect(brand).toHaveAttribute("data-releasing", "true");
+		await expect(intro).toHaveText("");
+		expect(await logoCenter()).toBeCloseTo(screenCenter, 0);
 		if (mode === "glass") {
 			const showsDesktopIcon = await logo
 				.locator("canvas")
@@ -96,7 +92,6 @@ for (const mode of ["glass", "fallback", "reduced motion"] as const) {
 				});
 			expect(showsDesktopIcon).toBe(true);
 		}
-		await expect(brand).toHaveAttribute("data-presentation", "releasing");
 		await expect(html).toHaveAttribute("data-intro-stages", "ready,finished");
 		await expect(brand).toHaveCSS("opacity", "0");
 	});
