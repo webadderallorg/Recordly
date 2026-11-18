@@ -217,7 +217,9 @@ it("keeps explicit real authentication distinct from the optional development to
 	const onboarding = showOnboardingWindow({ preview: true }) as unknown as FakeWindow;
 	expect(showOnboardingWindow({ preview: false })).toBe(onboarding);
 	expect(onboarding.loadURL).toHaveBeenLastCalledWith(
-		"http://localhost:5173?windowType=onboarding&onboardingPreview=0",
+		process.platform === "darwin" || process.platform === "win32"
+			? "http://localhost:5173?windowType=onboarding&onboardingPreview=0&welcomeSoundtrack=intro"
+			: "http://localhost:5173?windowType=onboarding&onboardingPreview=0",
 	);
 });
 

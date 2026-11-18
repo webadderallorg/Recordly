@@ -113,7 +113,6 @@ export function OnboardingSoundtrack() {
 						size="sm"
 						variant="ghost"
 						aria-label={label}
-						aria-pressed={audible}
 						className="text-foreground/65"
 						onPress={() => toggleRef.current?.()}
 					>

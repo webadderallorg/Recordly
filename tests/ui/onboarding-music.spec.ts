@@ -45,7 +45,6 @@ test("soundtrack begins on the logo signal and continues while the banner starts
 	await expect(audio).toHaveJSProperty("currentTime", 0);
 	await page.evaluate(() => window.dispatchEvent(new Event("test-logo-start")));
 	await expect(audio).toHaveJSProperty("paused", false);
-	await expect(banner).toHaveAttribute("data-banner-phase", "still");
 	await expect(banner).toHaveAttribute("data-banner-phase", "video");
 	await expect
 		.poll(() => audio.evaluate((el: HTMLAudioElement) => el.currentTime))

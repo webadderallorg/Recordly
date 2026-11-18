@@ -81,15 +81,23 @@ it("starts the soundtrack at logo reveal and keeps the same playback through han
 	expect(popup.webContents.send).toHaveBeenCalledTimes(1);
 });
 
-it("shows the popup if audio never becomes ready and starts playback if it finishes loading", () => {
+it.each(["during reveal", "after handoff"])("shows the logo if audio is ready %s", (when) => {
 	const { backdrop, popup, show, stage, soundtrackReady } = start(false);
 	popup.emit("ready-to-show");
+	vi.advanceTimersByTime(5900);
 	stage("ready");
-	vi.advanceTimersByTime(6000);
-	expect(backdrop.isDestroyed()).toBe(true);
-	expect(show).toHaveBeenCalledOnce();
+	vi.advanceTimersByTime(499);
+	expect(backdrop.isVisible()).toBe(false);
+	vi.advanceTimersByTime(1);
+	expect(backdrop.isVisible()).toBe(true);
+	if (when === "during reveal") soundtrackReady();
 	expect(popup.webContents.send).not.toHaveBeenCalled();
-	soundtrackReady();
+	stage("finished");
+	expect(show).toHaveBeenCalledOnce();
+	if (when === "after handoff") {
+		expect(popup.webContents.send).not.toHaveBeenCalled();
+		soundtrackReady();
+	}
 	expect(popup.webContents.send).toHaveBeenCalledExactlyOnceWith("onboarding-soundtrack-start");
 });
 

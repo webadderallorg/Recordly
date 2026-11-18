@@ -2,6 +2,7 @@ import { BrowserWindow, type Rectangle } from "electron";
 
 const INTRO_TIMEOUT_MS = 6000;
 const INTRO_PLAYBACK_TIMEOUT_MS = 10000;
+const SOUNDTRACK_GRACE_MS = 500;
 const POPUP_FADE_MS = 280;
 const BACKDROP_FADE_MS = 360;
 
@@ -40,6 +41,7 @@ export function startOnboardingIntro(
 	let introFinished = false;
 	let startedHandoff = false;
 	let deadline: NodeJS.Timeout;
+	let soundtrackDeadline: NodeJS.Timeout | undefined;
 	let fadeTimer: NodeJS.Timeout | undefined;
 	let fadingPopup: BrowserWindow | undefined;
 	const startSoundtrack = () => {
@@ -87,6 +89,7 @@ export function startOnboardingIntro(
 	const finish = (animate: boolean) => {
 		if (introFinished) return;
 		introFinished = true;
+		clearTimeout(soundtrackDeadline);
 		if (!animate) closeBackdrop();
 		else if (!handoff) {
 			if (backdrop.isVisible()) fade();
@@ -119,13 +122,21 @@ export function startOnboardingIntro(
 			finish(false);
 		}
 	};
-	const showLogo = () => {
-		if (!logoReady || !soundtrackReady || introFinished || backdrop.isVisible()) return;
+	const showLogo = (allowSilent = false) => {
+		if (!logoReady || introFinished || backdrop.isVisible()) return;
+		if (!soundtrackReady && !allowSilent) {
+			if (!soundtrackDeadline) {
+				clearTimeout(deadline);
+				soundtrackDeadline = setTimeout(() => showLogo(true), SOUNDTRACK_GRACE_MS);
+			}
+			return;
+		}
+		clearTimeout(soundtrackDeadline);
 		clearTimeout(deadline);
 		deadline = setTimeout(onTimeout, INTRO_PLAYBACK_TIMEOUT_MS);
 		backdrop.showInactive();
 		backdrop.moveTop();
-		startSoundtrack();
+		if (soundtrackReady) startSoundtrack();
 		backdrop.webContents.send("onboarding-intro-shown");
 	};
 	// The popup owns the audio so destroying the logo cannot interrupt the soundtrack.
