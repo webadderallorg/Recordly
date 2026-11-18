@@ -165,7 +165,9 @@ it("hides every other app window and loads the dev preview", async () => {
 	}
 	expect(onboarding.isDestroyed()).toBe(false);
 	expect(onboarding.loadURL).toHaveBeenCalledWith(
-		"http://localhost:5173?windowType=onboarding&onboardingPreview=1",
+		process.platform === "darwin" || process.platform === "win32"
+			? "http://localhost:5173?windowType=onboarding&onboardingPreview=1&welcomeSoundtrack=intro"
+			: "http://localhost:5173?windowType=onboarding&onboardingPreview=1",
 	);
 	if (process.platform === "darwin" || process.platform === "win32") {
 		expect(windows.at(-1)?.loadURL).toHaveBeenCalledWith(
@@ -253,7 +255,9 @@ it.each([
 	expect(intro.loadURL).toHaveBeenCalledWith(
 		"http://localhost:9999/?windowType=onboarding-intro",
 	);
-	expect(onboarding.loadURL).toHaveBeenCalledWith("http://localhost:9999/?windowType=onboarding");
+	expect(onboarding.loadURL).toHaveBeenCalledWith(
+		"http://localhost:9999/?windowType=onboarding&welcomeSoundtrack=intro",
+	);
 	focusOnboardingWindow();
 	expect(onboarding.show).not.toHaveBeenCalled();
 	intro.webContents.emit("did-finish-load");

@@ -34,11 +34,19 @@ export function startOnboardingIntro(
 	backdrop.setBounds(bounds);
 
 	let popupReady = false;
+	let logoReady = false;
+	let soundtrackReady = !handoff;
+	let soundtrackStarted = false;
 	let introFinished = false;
 	let startedHandoff = false;
 	let deadline: NodeJS.Timeout;
 	let fadeTimer: NodeJS.Timeout | undefined;
 	let fadingPopup: BrowserWindow | undefined;
+	const startSoundtrack = () => {
+		if (soundtrackStarted || !handoff || handoff.popup.isDestroyed()) return;
+		soundtrackStarted = true;
+		if (soundtrackReady) handoff.popup.webContents.send("onboarding-soundtrack-start");
+	};
 	const closeBackdrop = () => {
 		clearInterval(fadeTimer);
 		if (!backdrop.isDestroyed()) backdrop.destroy();
@@ -63,6 +71,7 @@ export function startOnboardingIntro(
 		const { popup, show } = handoff;
 		if (startedHandoff || !popupReady || !introFinished || popup.isDestroyed()) return;
 		startedHandoff = true;
+		startSoundtrack();
 		if (!backdrop.isDestroyed() && backdrop.isVisible()) {
 			fadingPopup = popup;
 			popup.setOpacity(0);
@@ -110,15 +119,29 @@ export function startOnboardingIntro(
 			finish(false);
 		}
 	};
+	const showLogo = () => {
+		if (!logoReady || !soundtrackReady || introFinished || backdrop.isVisible()) return;
+		clearTimeout(deadline);
+		deadline = setTimeout(onTimeout, INTRO_PLAYBACK_TIMEOUT_MS);
+		backdrop.showInactive();
+		backdrop.moveTop();
+		startSoundtrack();
+		backdrop.webContents.send("onboarding-intro-shown");
+	};
+	// The popup owns the audio so destroying the logo cannot interrupt the soundtrack.
+	handoff?.popup.webContents.ipc.on("onboarding-soundtrack-ready", (event) => {
+		const { webContents } = handoff.popup;
+		if (!event.senderFrame || event.senderFrame !== webContents.mainFrame) return;
+		soundtrackReady = true;
+		if (soundtrackStarted) webContents.send("onboarding-soundtrack-start");
+		else showLogo();
+	});
 	backdrop.webContents.ipc.on("onboarding-intro", (event, stage: unknown) => {
 		if (introFinished || backdrop.isDestroyed()) return;
 		if (event.senderFrame !== backdrop.webContents.mainFrame) return;
-		if (stage === "ready" && !backdrop.isVisible()) {
-			clearTimeout(deadline);
-			deadline = setTimeout(onTimeout, INTRO_PLAYBACK_TIMEOUT_MS);
-			backdrop.showInactive();
-			backdrop.moveTop();
-			backdrop.webContents.send("onboarding-intro-shown");
+		if (stage === "ready") {
+			logoReady = true;
+			showLogo();
 		} else if (stage === "finished" || stage === "skipped") {
 			finish(stage === "finished");
 		}

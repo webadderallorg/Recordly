@@ -1046,6 +1046,7 @@ interface Window {
 		resolveStartupOnboarding: (action: "show" | "continue" | "restart") => Promise<boolean>;
 		reportOnboardingIntro: (stage: "ready" | "finished" | "skipped") => void;
 		onOnboardingIntroShown: (callback: () => void) => () => void;
+		onOnboardingSoundtrackStart: (callback: () => void) => () => void;
 		createProjectFile: (
 			data: unknown,
 			thumbnail?: string | null,

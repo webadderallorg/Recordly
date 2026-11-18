@@ -41,7 +41,7 @@ beforeEach(() =>
 );
 afterEach(() => vi.useRealTimers());
 
-function start() {
+function start(withSoundtrack = true) {
 	const popup = new TestWindow();
 	const show = vi.fn();
 	const backdrop = startOnboardingIntro(
@@ -56,8 +56,42 @@ function start() {
 			{ senderFrame: backdrop.webContents.mainFrame },
 			name,
 		);
-	return { popup, show, backdrop, stage };
+	const soundtrackReady = (senderFrame = popup.webContents.mainFrame) =>
+		popup.webContents.ipc.emit("onboarding-soundtrack-ready", { senderFrame });
+	if (withSoundtrack) soundtrackReady();
+	return { popup, show, backdrop, stage, soundtrackReady };
 }
+
+it("starts the soundtrack at logo reveal and keeps the same playback through handoff", () => {
+	const { backdrop, popup, show, stage, soundtrackReady } = start(false);
+	popup.emit("ready-to-show");
+	stage("ready");
+	soundtrackReady({});
+	expect(backdrop.isVisible()).toBe(false);
+	expect(popup.webContents.send).not.toHaveBeenCalled();
+
+	soundtrackReady();
+	expect(backdrop.isVisible()).toBe(true);
+	expect(popup.webContents.send).toHaveBeenCalledExactlyOnceWith("onboarding-soundtrack-start");
+	expect(popup.webContents.send).toHaveBeenCalledBefore(backdrop.webContents.send);
+	expect(show).not.toHaveBeenCalled();
+
+	stage("finished");
+	expect(show).toHaveBeenCalledOnce();
+	expect(popup.webContents.send).toHaveBeenCalledTimes(1);
+});
+
+it("shows the popup if audio never becomes ready and starts playback if it finishes loading", () => {
+	const { backdrop, popup, show, stage, soundtrackReady } = start(false);
+	popup.emit("ready-to-show");
+	stage("ready");
+	vi.advanceTimersByTime(6000);
+	expect(backdrop.isDestroyed()).toBe(true);
+	expect(show).toHaveBeenCalledOnce();
+	expect(popup.webContents.send).not.toHaveBeenCalled();
+	soundtrackReady();
+	expect(popup.webContents.send).toHaveBeenCalledExactlyOnceWith("onboarding-soundtrack-start");
+});
 
 it("waits for both the intro and popup, then fades the backdrop out", () => {
 	const { popup, show, backdrop, stage } = start();

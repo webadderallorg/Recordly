@@ -19,7 +19,6 @@ import {
 	signOutRecordly,
 } from "@/lib/auth/recordlyAuth";
 import { RecordlySignInFields, SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS } from "./RecordlySignInFields";
-import { FirstBootMusic } from "./FirstBootMusic";
 import {
 	OnboardingBody,
 	OnboardingFooter,
@@ -29,6 +28,7 @@ import {
 	OnboardingPrimaryAction,
 } from "./OnboardingLayout";
 import { OnboardingPermissions } from "./OnboardingPermissions";
+import { OnboardingSoundtrack } from "./OnboardingSoundtrack";
 
 const MotionDialog = motion.create(Modal.Dialog);
 
@@ -578,7 +578,7 @@ export function RecordlySignInDialog({
 								/>
 							)
 						)}
-						{tour && open && <FirstBootMusic />}
+						{tour && open && <OnboardingSoundtrack />}
 					</MotionDialog>
 				</Modal.Container>
 			</Modal.Backdrop>

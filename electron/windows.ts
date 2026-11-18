@@ -1384,7 +1384,7 @@ export function showOnboardingWindow(options?: {
 	} else if (!options?.returning) {
 		win.once("ready-to-show", show);
 	}
-	load(win, query);
+	load(win, playIntro ? { ...query, welcomeSoundtrack: "intro" } : query);
 	return win;
 }
 
