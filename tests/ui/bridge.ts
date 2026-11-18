@@ -78,7 +78,7 @@ export async function installDesktopBridge(
 						await window.__recordlyTestAuthStorage({ action: "remove", key });
 					},
 					getAppSetting: (key: string) =>
-						key === "recordly.editor.preferences"
+						key === "recordly.editor.preferences.v2"
 							? { autoApplyFreshRecordingAutoZooms: false }
 							: key === "recordly.onboarding.v1.seen"
 								? onboarded
@@ -86,10 +86,10 @@ export async function installDesktopBridge(
 					getAppSettingWithStatus: (key: string) => ({
 						success: true,
 						found:
-							key === "recordly.editor.preferences" ||
+							key === "recordly.editor.preferences.v2" ||
 							key === "recordly.onboarding.v1.seen",
 						value:
-							key === "recordly.editor.preferences"
+							key === "recordly.editor.preferences.v2"
 								? { autoApplyFreshRecordingAutoZooms: false }
 								: key === "recordly.onboarding.v1.seen"
 									? onboarded

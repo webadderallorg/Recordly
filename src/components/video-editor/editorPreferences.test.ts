@@ -83,6 +83,47 @@ describe("editorPreferences", () => {
 		Reflect.deleteProperty(globalThis, "electronAPI");
 	});
 
+	it("starts from 2.0 defaults while retaining the v1.4 resource library", () => {
+		const legacyKey = "recordly.editor.preferences";
+		const legacy = {
+			wallpaper: "/wallpapers/tahoe-light.jpg",
+			shadowIntensity: 0.67,
+			exportQuality: "source",
+			customWallpapers: ["/fixtures/background.jpg"],
+			whisperModelPath: "/fixtures/whisper.bin",
+		};
+		const settings = stubElectronSettings({ [legacyKey]: legacy });
+
+		expect(loadEditorPreferences()).toMatchObject({
+			wallpaper: DEFAULT_EDITOR_PREFERENCES.wallpaper,
+			shadowIntensity: DEFAULT_EDITOR_PREFERENCES.shadowIntensity,
+			exportQuality: "medium",
+			advancedExportSettings: false,
+			customWallpapers: legacy.customWallpapers,
+			whisperModelPath: legacy.whisperModelPath,
+		});
+
+		saveEditorPreferences({ shadowIntensity: 0.8 });
+		expect(loadEditorPreferences().shadowIntensity).toBe(0.8);
+		expect(settings.get(legacyKey)).toEqual(legacy);
+	});
+
+	it("applies the same upgrade rule to browser-stored v1.4 preferences", () => {
+		vi.stubGlobal(
+			"localStorage",
+			createStorageMock({
+				"recordly.editor.preferences": JSON.stringify({
+					shadowIntensity: 0.67,
+					customWallpapers: ["/fixtures/background.jpg"],
+				}),
+			}),
+		);
+		expect(loadEditorPreferences()).toMatchObject({
+			shadowIntensity: DEFAULT_EDITOR_PREFERENCES.shadowIntensity,
+			customWallpapers: ["/fixtures/background.jpg"],
+		});
+	});
+
 	it("defaults automatic zooms on and preserves the saved opt-out", () => {
 		expect(normalizeEditorPreferences({}).autoApplyFreshRecordingAutoZooms).toBe(true);
 		for (const enabled of [false, true]) {

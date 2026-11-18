@@ -6,7 +6,7 @@ test("editor controls keep saved values without redundant section headers", asyn
 	await installDesktopBridgeOverrides(page, () => {
 		const originalGet = window.electronAPI.getAppSetting;
 		window.electronAPI.getAppSetting = (key) =>
-			key === "recordly.editor.preferences"
+			key === "recordly.editor.preferences.v2"
 				? {
 						padding: { top: 30, bottom: 30, left: 30, right: 30, linked: true },
 						showCursor: false,
