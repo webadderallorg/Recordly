@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { testAppPath, testAppDocument } from "../../testing/rendererFixture";
 
 const mocks = vi.hoisted(() => ({ handle: vi.fn(), writeText: vi.fn() }));
 vi.mock("electron", () => ({
-	app: { getAppPath: () => "/recordly" },
+	app: { getAppPath: () => testAppPath },
 	clipboard: { writeText: mocks.writeText },
 	ipcMain: { handle: mocks.handle },
 }));
@@ -19,7 +20,7 @@ let write: (
 	success: boolean;
 };
 beforeEach(() => {
-	vi.stubEnv("APP_ROOT", "/recordly");
+	vi.stubEnv("APP_ROOT", testAppPath);
 	vi.stubEnv("VITE_DEV_SERVER_URL", "http://localhost:5173/");
 	registerClipboardHandlers();
 	write = mocks.handle.mock.calls.at(-1)![1];
@@ -33,7 +34,7 @@ describe("desktop clipboard writes", () => {
 	it.each([
 		"http://localhost:5173/?windowType=editor",
 		"http://127.0.0.1:43820/?windowType=editor",
-		"file:///recordly/dist/index.html?windowType=editor",
+		`${testAppDocument}?windowType=editor`,
 	])("accepts the trusted app document %s", (url) => {
 		const frame = { url };
 		expect(

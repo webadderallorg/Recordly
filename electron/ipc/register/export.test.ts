@@ -137,7 +137,7 @@ describe("export save dialog names", () => {
 			expect(dialog.showSaveDialog).toHaveBeenCalledTimes(1);
 			expect(result).toMatchObject({
 				success: false,
-				error: expect.stringContaining("ENOTDIR"),
+				error: expect.stringContaining(process.platform === "win32" ? "ENOENT" : "ENOTDIR"),
 			});
 			await expect(fs.readFile(blocked, "utf8")).resolves.toBe("not a directory");
 			await expect(fs.readFile(tempPath, "utf8")).resolves.toBe("new video");

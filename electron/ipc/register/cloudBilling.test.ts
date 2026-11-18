@@ -1,9 +1,10 @@
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { testAppPath, testAppDocument } from "../../testing/rendererFixture";
 
 const mocks = vi.hoisted(() => ({ handle: vi.fn(), openExternal: vi.fn() }));
 vi.mock("electron", () => ({
-	app: { getAppPath: () => "/recordly" },
+	app: { getAppPath: () => testAppPath },
 	ipcMain: { handle: mocks.handle },
 	shell: { openExternal: mocks.openExternal },
 }));
@@ -44,7 +45,7 @@ beforeEach(() => {
 	sender = Object.assign(new EventEmitter(), {
 		id: 42,
 		isDestroyed: () => false,
-		mainFrame: { url: "file:///recordly/dist/index.html?windowType=editor" },
+		mainFrame: { url: `${testAppDocument}?windowType=editor` },
 	});
 	fetchMock = vi.fn().mockResolvedValue(Response.json(free));
 	vi.stubGlobal("fetch", fetchMock);

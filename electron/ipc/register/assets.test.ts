@@ -4,6 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { ipcMain } from "electron";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { testAppPath, testAppDocument } from "../../testing/rendererFixture";
 const state = vi.hoisted(() => ({
 	allowed: new Set<string>(),
 	assetRoot: "",
@@ -11,7 +12,7 @@ const state = vi.hoisted(() => ({
 	decode: vi.fn(),
 }));
 vi.mock("electron", () => ({
-	app: { getAppPath: () => "/recordly", isPackaged: true },
+	app: { getAppPath: () => testAppPath, isPackaged: true },
 	ipcMain: { handle: vi.fn() },
 	nativeImage: { createFromPath: state.decode },
 }));
@@ -30,7 +31,7 @@ vi.mock("../project/manager", () => ({
 vi.mock("../utils", () => ({ normalizePath: (value: string) => path.resolve(value) }));
 import { registerAssetHandlers } from "./assets";
 let directory: string;
-const frame = { url: "file:///recordly/dist/index.html?windowType=editor" };
+const frame = { url: `${testAppDocument}?windowType=editor` };
 const trusted = { sender: { mainFrame: frame }, senderFrame: frame } as Electron.IpcMainInvokeEvent;
 let handlers: Map<string, Parameters<typeof ipcMain.handle>[1]>;
 beforeEach(async () => {

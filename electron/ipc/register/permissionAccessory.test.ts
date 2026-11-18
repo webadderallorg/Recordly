@@ -32,6 +32,10 @@ const mocks = await vi.hoisted(async () => {
 	};
 });
 vi.mock("node:child_process", () => ({ spawn: mocks.spawn }));
+vi.mock("node:path", async (importOriginal) => {
+	const { posix } = await importOriginal<typeof import("node:path")>();
+	return { default: posix };
+});
 vi.mock("../paths/binaries", () => ({ ensurePermissionDragHelperBinary: mocks.binary }));
 vi.mock("../../rendererServer", () => ({
 	getPackagedRendererBaseUrl: () => "http://127.0.0.1:5173/",

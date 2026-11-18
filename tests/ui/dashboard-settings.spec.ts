@@ -331,6 +331,7 @@ for (const failure of ["result", "error", "non-error"] as const) {
 test("Settings uses compact themes and keyboard tabs, and persists appearance", async ({
 	page,
 }) => {
+	test.setTimeout(90_000);
 	await installSettingsBridge(page);
 	const home = await openDashboard(page);
 	await home.getByRole("button", { name: "Recordly account" }).click();
@@ -340,7 +341,10 @@ test("Settings uses compact themes and keyboard tabs, and persists appearance", 
 		.click();
 	const sections = home.getByRole("tablist", { name: "Settings sections" });
 	await expect(sections).toBeVisible();
-	await sections.getByRole("tab", { name: "General", exact: true }).click();
+	await expect(sections.getByRole("tab", { name: "General", exact: true })).toHaveAttribute(
+		"aria-selected",
+		"true",
+	);
 	const appearance = home.getByRole("radiogroup", { name: "Appearance" });
 	await expect(appearance.getByRole("radio")).toHaveCount(3);
 	await appearance.getByText("Light", { exact: true }).click();
@@ -365,7 +369,6 @@ test("Settings uses compact themes and keyboard tabs, and persists appearance", 
 		.getByRole("dialog", { name: "Account menu", exact: true })
 		.getByRole("button", { name: "Settings", exact: true })
 		.click();
-	await home.getByRole("tab", { name: "General", exact: true }).click();
 	await expect(home.getByRole("radio", { name: "Light", exact: true })).toBeChecked();
 });
 

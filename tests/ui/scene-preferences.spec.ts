@@ -3,50 +3,55 @@ import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 test.setTimeout(90_000);
 
-async function installSceneBridge(page: Page) {
+async function installSceneBridge(page: Page, initialPreferences: Record<string, unknown> = {}) {
 	await installDesktopBridge(page, "filmstrip.mp4");
-	await installDesktopBridgeOverrides(page, () => {
-		const key = "recordly.editor.preferences.v2";
-		window.electronAPI.getAppSetting = (name) =>
-			name === "recordly.onboarding.v1.seen"
-				? true
-				: JSON.parse(localStorage.getItem(name) ?? "null");
-		window.electronAPI.setAppSetting = (name, value) => {
-			localStorage.setItem(name, JSON.stringify(value));
-			return true;
-		};
-		window.electronAPI.getCurrentVideoPath = async () => ({
-			success: true,
-			path: `${location.origin}/tests/ui/fixtures/filmstrip.mp4?project=${new URLSearchParams(location.search).get("project") ?? "first"}`,
-		});
-		window.electronAPI.loadCurrentProjectFile = async () => {
-			if (!new URLSearchParams(location.search).has("older")) return { success: false };
-			return {
-				success: true,
-				path: "/projects/older.recordly",
-				project: {
-					version: 2,
-					videoPath: `${location.origin}/tests/ui/fixtures/filmstrip.mp4?project=older`,
-					editor: {
-						wallpaper: "#000000",
-						padding: { top: 25, bottom: 25, left: 25, right: 25, linked: true },
-						shadowIntensity: 0.7,
-						backgroundBlur: 4,
-						borderRadius: 12,
-						aspectRatio: "16:9",
-						clipRegions: [{ id: "clip-1", startMs: 0, endMs: 6000 }],
-					},
-				},
+	await installDesktopBridgeOverrides(
+		page,
+		(preferences) => {
+			const key = "recordly.editor.preferences.v2";
+			window.electronAPI.getAppSetting = (name) =>
+				name === "recordly.onboarding.v1.seen"
+					? true
+					: JSON.parse(localStorage.getItem(name) ?? "null");
+			window.electronAPI.setAppSetting = (name, value) => {
+				localStorage.setItem(name, JSON.stringify(value));
+				return true;
 			};
-		};
-		// Start without a preference, as a first-time user would.
-		if (!localStorage.getItem(key)) localStorage.setItem(key, "{}");
-	});
+			window.electronAPI.getCurrentVideoPath = async () => ({
+				success: true,
+				path: `${location.origin}/tests/ui/fixtures/filmstrip.mp4?project=${new URLSearchParams(location.search).get("project") ?? "first"}`,
+			});
+			window.electronAPI.loadCurrentProjectFile = async () => {
+				if (!new URLSearchParams(location.search).has("older")) return { success: false };
+				return {
+					success: true,
+					path: "/projects/older.recordly",
+					project: {
+						version: 2,
+						videoPath: `${location.origin}/tests/ui/fixtures/filmstrip.mp4?project=older`,
+						editor: {
+							wallpaper: "#000000",
+							padding: { top: 25, bottom: 25, left: 25, right: 25, linked: true },
+							shadowIntensity: 0.7,
+							backgroundBlur: 4,
+							borderRadius: 12,
+							aspectRatio: "16:9",
+							clipRegions: [{ id: "clip-1", startMs: 0, endMs: 6000 }],
+						},
+					},
+				};
+			};
+			if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(preferences));
+		},
+		initialPreferences,
+	);
 }
 
 async function openScene(page: Page, url: string) {
 	await page.goto(url);
-	await expect(page.locator('[data-variant="clip"]')).toHaveCount(1, { timeout: 20_000 });
+	await expect(page.getByRole("slider", { name: "Shadow", exact: true })).toBeVisible({
+		timeout: 20_000,
+	});
 }
 
 async function storedPreferences(page: Page) {
@@ -58,13 +63,18 @@ async function storedPreferences(page: Page) {
 async function setSlider(page: Page, name: string, steps: number) {
 	const slider = page.getByRole("slider", { name, exact: true });
 	await slider.press("Home");
-	for (let index = 0; index < steps; index++) await slider.press("ArrowRight");
+	for (let index = 0; index < steps; index++) await page.keyboard.press("ArrowRight");
 	return slider.inputValue();
 }
 
-test("Scene controls carry to new projects; loading an older look does not replace defaults", async ({
-	page,
-}) => {
+async function showColors(page: Page) {
+	const colors = page.getByRole("row", { name: "Colors", exact: true });
+	if ((await colors.getAttribute("aria-selected")) !== "true") await colors.click();
+}
+
+test("Scene controls carry to a new project", async ({ page }) => {
+	// Save each control through the UI before booting a second editor.
+	test.setTimeout(150_000);
 	await installSceneBridge(page);
 	await openScene(page, "/?windowType=editor&project=first");
 	await setSlider(page, "Padding", 8);
@@ -82,7 +92,7 @@ test("Scene controls carry to new projects; loading an older look does not repla
 		.getByRole("radio", { name: "1:1", exact: true })
 		.press("Space");
 	await page.keyboard.press("Escape");
-	await page.getByRole("row", { name: "Colors", exact: true }).click();
+	await showColors(page);
 	await page.getByRole("button", { name: "Gradient 1", exact: true }).click();
 	const expected = {
 		padding: { top: 1, bottom: 2, left: 3, right: 4, linked: false },
@@ -111,12 +121,25 @@ test("Scene controls carry to new projects; loading an older look does not repla
 		"aria-pressed",
 		"true",
 	);
+});
+
+test("Loading an older project preserves new-project scene defaults", async ({ page }) => {
+	const expected = {
+		padding: { top: 1, bottom: 2, left: 3, right: 4, linked: false },
+		backgroundBlur: 3,
+		shadowIntensity: 0.22,
+		borderRadius: 5,
+		borderRadiusUnit: "percent",
+		aspectRatio: "1:1",
+		wallpaper: "linear-gradient(135deg, #dbeafe 0%, #a5b4fc 100%)",
+	};
+	await installSceneBridge(page, expected);
 
 	await openScene(page, "/?windowType=editor&older=1");
 	await expect(
 		page.getByRole("button", { name: "Aspect ratio: 16:9", exact: true }),
 	).toBeVisible();
-	await page.getByRole("row", { name: "Colors", exact: true }).click();
+	await showColors(page);
 	await expect(
 		page.getByRole("button", { name: "Background color #000000", exact: true }),
 	).toHaveAttribute("aria-pressed", "true");
@@ -127,9 +150,10 @@ test("Scene controls carry to new projects; loading an older look does not repla
 	await expect
 		.poll(() => storedPreferences(page))
 		.toMatchObject({ ...expected, shadowIntensity: 0.71 });
-	await openScene(page, "/?windowType=editor&project=third");
+	await openScene(page, "/?windowType=editor&project=new");
 	await expect(page.getByRole("slider", { name: "Top", exact: true })).toHaveValue("1");
 	await expect(page.getByRole("slider", { name: "Shadow", exact: true })).toHaveValue("0.71");
+	await expect(page.getByRole("slider", { name: "Radius", exact: true })).toHaveValue("5");
 	await expect(page.getByRole("button", { name: "Gradient 1", exact: true })).toHaveAttribute(
 		"aria-pressed",
 		"true",
