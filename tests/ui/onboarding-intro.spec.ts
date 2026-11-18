@@ -4,7 +4,7 @@ test.use({
 	launchOptions: { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] },
 });
 
-test("Windows and Linux logos use a flat plate like macOS", async ({ page }) => {
+test("Windows and Linux OS icons use a flat plate like macOS", async ({ page }) => {
 	await page.goto("/?windowType=onboarding-intro");
 	for (const url of [
 		"/icons/icons/png/512x512.png",
@@ -73,6 +73,9 @@ for (const mode of ["glass", "fallback", "reduced motion"] as const) {
 		const logo = page.locator(".onboarding-intro-logo");
 		await expect(logo).toHaveAttribute("data-mode", mode);
 		await expect(intro).toHaveText("");
+		if (mode === "fallback") {
+			await expect(logo.locator("img")).toHaveAttribute("src", /recordlymac-512\.png$/);
+		}
 		const logoCenter = () =>
 			logo.evaluate((el) => {
 				const bounds = el.getBoundingClientRect();

@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { isMac } from "@/utils/platformUtils";
-import desktopIconUrl from "../../../icons/icons/png/512x512.png";
 import { loadOnboardingLogo, playOnboardingGlass } from "./onboardingGlass";
 import "./OnboardingIntroWindow.css";
 
-const macIconUrl = `${import.meta.env.BASE_URL}app-icons/recordlymac-512.png`;
+const iconUrl = `${import.meta.env.BASE_URL}app-icons/recordlymac-512.png`;
 const LOGO_HOLD_MS = 400;
 
 export default function OnboardingIntroWindow() {
 	const canvas = useRef<HTMLCanvasElement>(null);
-	const [iconUrl, setIconUrl] = useState(desktopIconUrl);
 	const [mode, setMode] = useState<"loading" | "glass" | "fallback">("loading");
 	const [releasing, setReleasing] = useState(false);
 
@@ -41,12 +38,7 @@ export default function OnboardingIntroWindow() {
 
 		const play = () => {
 			preparationDeadline = setTimeout(fallback, 3000);
-			void isMac()
-				.then((mac) => {
-					const url = mac ? macIconUrl : desktopIconUrl;
-					if (!disposed) setIconUrl(url);
-					return loadOnboardingLogo(url);
-				})
+			void loadOnboardingLogo(iconUrl)
 				.then((logo) => {
 					if (disposed || usingFallback || !canvas.current) return;
 					stopGlass = playOnboardingGlass(
