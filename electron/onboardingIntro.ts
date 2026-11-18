@@ -3,7 +3,7 @@ import { BrowserWindow, type Rectangle } from "electron";
 const INTRO_TIMEOUT_MS = 6000;
 const INTRO_PLAYBACK_TIMEOUT_MS = 10000;
 const POPUP_FADE_MS = 280;
-const BACKDROP_FADE_MS = 360;
+const BACKDROP_FADE_MS = 2000;
 
 export function startOnboardingIntro(
 	bounds: Rectangle,
@@ -63,6 +63,7 @@ export function startOnboardingIntro(
 		if (!backdrop.isDestroyed()) backdrop.destroy();
 	};
 	const fade = (popup?: BrowserWindow) => {
+		clearTimeout(deadline);
 		const start = performance.now();
 		const popupFade = popup ? POPUP_FADE_MS : 0;
 		fadeTimer = setInterval(() => {

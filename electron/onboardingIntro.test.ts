@@ -131,7 +131,7 @@ it.each([
 	stage("finished");
 	expect(show).toHaveBeenCalledOnce();
 	if (when === "after the backdrop closes") {
-		vi.advanceTimersByTime(2100);
+		vi.advanceTimersByTime(2300);
 		expect(backdrop.isDestroyed()).toBe(true);
 		expect(popup.webContents.send).not.toHaveBeenCalled();
 		soundtrackReady();
@@ -147,8 +147,34 @@ it("waits for both the intro and popup, then fades the backdrop out", () => {
 	popup.emit("ready-to-show");
 	expect(show).toHaveBeenCalledOnce();
 	expect(popup.setOpacity).toHaveBeenCalledWith(0);
-	vi.advanceTimersByTime(660);
+	vi.advanceTimersByTime(1280);
 	expect(popup.setOpacity).toHaveBeenLastCalledWith(1);
+	expect(backdrop.setOpacity).toHaveBeenLastCalledWith(0.25);
+	expect(backdrop.isDestroyed()).toBe(false);
+	vi.advanceTimersByTime(999);
+	expect(backdrop.isDestroyed()).toBe(false);
+	vi.advanceTimersByTime(16);
+	expect(backdrop.isDestroyed()).toBe(true);
+});
+
+it("lets a standalone logo replay finish its two-second fade past the playback deadline", () => {
+	const backdrop = startOnboardingIntro(
+		{ x: 0, y: 0, width: 1440, height: 900 },
+		"/test/preload.js",
+		vi.fn(),
+	) as unknown as TestWindow;
+	const stage = (name: string) =>
+		backdrop.webContents.ipc.emit(
+			"onboarding-intro",
+			{ senderFrame: backdrop.webContents.mainFrame },
+			name,
+		);
+	stage("ready");
+	vi.advanceTimersByTime(9000);
+	stage("finished");
+	vi.advanceTimersByTime(1000);
+	expect(backdrop.isDestroyed()).toBe(false);
+	vi.advanceTimersByTime(1000);
 	expect(backdrop.isDestroyed()).toBe(true);
 });
 
@@ -175,7 +201,7 @@ it("allows a late renderer to play past the original startup deadline", () => {
 	expect(show).not.toHaveBeenCalled();
 	stage("finished");
 	expect(show).toHaveBeenCalledOnce();
-	vi.advanceTimersByTime(660);
+	vi.advanceTimersByTime(2300);
 	expect(backdrop.isDestroyed()).toBe(true);
 });
 
@@ -194,7 +220,7 @@ it("covers the menu bar throughout the macOS fade and restores normal stacking",
 	stage("finished");
 	expect(popup.setAlwaysOnTop).toHaveBeenCalledExactlyOnceWith(true, "screen-saver", 1);
 	expect(popup.setAlwaysOnTop).toHaveBeenCalledBefore(show);
-	vi.advanceTimersByTime(400);
+	vi.advanceTimersByTime(2279);
 	expect(backdrop.isDestroyed()).toBe(false);
 	expect(backdrop.setBounds).toHaveBeenCalledExactlyOnceWith({
 		x: 0,
@@ -204,7 +230,7 @@ it("covers the menu bar throughout the macOS fade and restores normal stacking",
 	});
 	expect(backdrop.setAlwaysOnTop).not.toHaveBeenCalledWith(false);
 	expect(popup.setAlwaysOnTop).not.toHaveBeenCalledWith(false);
-	vi.advanceTimersByTime(260);
+	vi.advanceTimersByTime(16);
 	expect(backdrop.isDestroyed()).toBe(true);
 	expect(popup.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
 	expect(popup.setOpacity).toHaveBeenLastCalledWith(1);
@@ -236,7 +262,7 @@ it("leaves Windows stacking unchanged", () => {
 	popup.emit("ready-to-show");
 	stage("ready");
 	stage("finished");
-	vi.advanceTimersByTime(660);
+	vi.advanceTimersByTime(2300);
 	expect(backdrop.isDestroyed()).toBe(true);
 	expect(backdrop.setAlwaysOnTop).not.toHaveBeenCalled();
 	expect(popup.setAlwaysOnTop).not.toHaveBeenCalled();
