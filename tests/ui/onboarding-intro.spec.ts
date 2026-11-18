@@ -4,6 +4,31 @@ test.use({
 	launchOptions: { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] },
 });
 
+test("Windows and Linux logos use a flat plate like macOS", async ({ page }) => {
+	await page.goto("/?windowType=onboarding-intro");
+	for (const url of [
+		"/icons/icons/png/512x512.png",
+		"/icons/icons/png/16x16.png",
+		"/app-icons/recordly-512.png",
+		"/app-icons/recordly-16.png",
+	]) {
+		const plate = await page.evaluate(async (url) => {
+			const image = new Image();
+			image.src = url;
+			await image.decode();
+			const canvas = new OffscreenCanvas(image.width, image.height);
+			const context = canvas.getContext("2d")!;
+			context.drawImage(image, 0, 0);
+			const sample = (y: number) => [
+				...context.getImageData(image.width / 2, Math.floor(image.height * y), 1, 1).data,
+			];
+			return { top: sample(0.08), bottom: sample(0.92) };
+		}, url);
+		expect(plate.top, url).toEqual(plate.bottom);
+		expect(plate.top[2], url).toBeGreaterThan(plate.top[0] + 200);
+	}
+});
+
 for (const mode of ["glass", "fallback", "reduced motion"] as const) {
 	test(`onboarding intro hands off in ${mode} mode`, async ({ page }) => {
 		if (mode === "reduced motion") await page.emulateMedia({ reducedMotion: "reduce" });
