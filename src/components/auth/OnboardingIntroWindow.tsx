@@ -5,6 +5,7 @@ import { loadOnboardingLogo, playOnboardingGlass } from "./onboardingGlass";
 import "./OnboardingIntroWindow.css";
 
 const macIconUrl = `${import.meta.env.BASE_URL}app-icons/recordlymac-512.png`;
+const LOGO_HOLD_MS = 400;
 
 export default function OnboardingIntroWindow() {
 	const canvas = useRef<HTMLCanvasElement>(null);
@@ -18,7 +19,7 @@ export default function OnboardingIntroWindow() {
 		let usingFallback = false;
 		let finishing = false;
 		let stopGlass: (() => void) | undefined;
-		let fallbackHold: ReturnType<typeof setTimeout>;
+		let holdTimer: ReturnType<typeof setTimeout>;
 		let releaseTimer: ReturnType<typeof setTimeout>;
 		let preparationDeadline: ReturnType<typeof setTimeout>;
 		let unsubscribe: (() => void) | undefined;
@@ -32,9 +33,10 @@ export default function OnboardingIntroWindow() {
 			if (disposed || usingFallback || finishing) return;
 			usingFallback = true;
 			clearTimeout(preparationDeadline);
+			clearTimeout(holdTimer);
 			stopGlass?.();
 			setMode("fallback");
-			fallbackHold = setTimeout(finish, 720);
+			holdTimer = setTimeout(finish, 720 + LOGO_HOLD_MS);
 		};
 
 		const play = () => {
@@ -47,7 +49,14 @@ export default function OnboardingIntroWindow() {
 				})
 				.then((logo) => {
 					if (disposed || usingFallback || !canvas.current) return;
-					stopGlass = playOnboardingGlass(canvas.current, logo, finish, fallback);
+					stopGlass = playOnboardingGlass(
+						canvas.current,
+						logo,
+						() => {
+							holdTimer = setTimeout(finish, LOGO_HOLD_MS);
+						},
+						fallback,
+					);
 					clearTimeout(preparationDeadline);
 					setMode("glass");
 				})
@@ -72,7 +81,7 @@ export default function OnboardingIntroWindow() {
 			disposed = true;
 			unsubscribe?.();
 			clearTimeout(preparationDeadline);
-			clearTimeout(fallbackHold);
+			clearTimeout(holdTimer);
 			clearTimeout(releaseTimer);
 			stopGlass?.();
 		};
