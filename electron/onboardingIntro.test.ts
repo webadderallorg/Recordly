@@ -100,9 +100,22 @@ it("shows the logo during a popup reload and starts audio from the replacement d
 	expect(popup.webContents.send).toHaveBeenCalledExactlyOnceWith("onboarding-soundtrack-start");
 });
 
+it("delivers the pending audio cue when the popup reload is canceled", () => {
+	const { backdrop, popup, stage } = start();
+	popup.emit("ready-to-show");
+	popup.webContents.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false });
+	stage("ready");
+	expect(backdrop.isVisible()).toBe(true);
+	expect(popup.webContents.send).not.toHaveBeenCalled();
+
+	popup.webContents.emit("did-stop-loading");
+	popup.webContents.emit("did-stop-loading");
+	expect(popup.webContents.send).toHaveBeenCalledExactlyOnceWith("onboarding-soundtrack-start");
+});
+
 it.each([
 	"during reveal",
-	"after handoff",
+	"after the backdrop closes",
 ])("starts late audio as soon as it is ready %s", (when) => {
 	const { backdrop, popup, show, stage, soundtrackReady } = start(false);
 	popup.emit("ready-to-show");
@@ -117,7 +130,9 @@ it.each([
 	}
 	stage("finished");
 	expect(show).toHaveBeenCalledOnce();
-	if (when === "after handoff") {
+	if (when === "after the backdrop closes") {
+		vi.advanceTimersByTime(2100);
+		expect(backdrop.isDestroyed()).toBe(true);
 		expect(popup.webContents.send).not.toHaveBeenCalled();
 		soundtrackReady();
 	}

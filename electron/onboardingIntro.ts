@@ -34,7 +34,7 @@ export function startOnboardingIntro(
 	backdrop.setBounds(bounds);
 
 	let popupReady = false;
-	let soundtrackReady = false;
+	let soundtrackPending = false;
 	let soundtrackCanStart = false;
 	let popupNavigating = false;
 	let introFinished = false;
@@ -42,10 +42,21 @@ export function startOnboardingIntro(
 	let deadline: NodeJS.Timeout;
 	let fadeTimer: NodeJS.Timeout | undefined;
 	let fadingPopup: BrowserWindow | undefined;
+	const sendSoundtrackCue = () => {
+		if (
+			!soundtrackCanStart ||
+			!soundtrackPending ||
+			popupNavigating ||
+			!handoff ||
+			handoff.popup.isDestroyed()
+		)
+			return;
+		soundtrackPending = false;
+		handoff.popup.webContents.send("onboarding-soundtrack-start");
+	};
 	const allowSoundtrack = () => {
-		if (soundtrackCanStart || !handoff || handoff.popup.isDestroyed()) return;
 		soundtrackCanStart = true;
-		if (soundtrackReady) handoff.popup.webContents.send("onboarding-soundtrack-start");
+		sendSoundtrackCue();
 	};
 	const closeBackdrop = () => {
 		clearInterval(fadeTimer);
@@ -123,17 +134,22 @@ export function startOnboardingIntro(
 	handoff?.popup.webContents.on("did-start-navigation", ({ isMainFrame, isSameDocument }) => {
 		if (!isMainFrame || isSameDocument) return;
 		popupNavigating = true;
-		soundtrackReady = false;
 	});
 	handoff?.popup.webContents.on("did-navigate", () => {
 		popupNavigating = false;
+		soundtrackPending = false;
+	});
+	handoff?.popup.webContents.on("did-stop-loading", () => {
+		if (!popupNavigating) return;
+		// A canceled navigation keeps the current document and its pending cue.
+		popupNavigating = false;
+		sendSoundtrackCue();
 	});
 	handoff?.popup.webContents.ipc.on("onboarding-soundtrack-ready", (event) => {
 		const { webContents } = handoff.popup;
-		if (popupNavigating || !event.senderFrame || event.senderFrame !== webContents.mainFrame)
-			return;
-		soundtrackReady = true;
-		if (soundtrackCanStart) webContents.send("onboarding-soundtrack-start");
+		if (!event.senderFrame || event.senderFrame !== webContents.mainFrame) return;
+		soundtrackPending = true;
+		sendSoundtrackCue();
 	});
 	backdrop.webContents.ipc.on("onboarding-intro", (event, stage: unknown) => {
 		if (introFinished || backdrop.isDestroyed()) return;
