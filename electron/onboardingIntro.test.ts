@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { BrowserWindow } from "electron";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 
 class TestWindow extends EventEmitter {
 	webContents = Object.assign(new EventEmitter(), {
@@ -12,6 +12,7 @@ class TestWindow extends EventEmitter {
 	private visible = false;
 	setIgnoreMouseEvents = vi.fn();
 	setBounds = vi.fn();
+	setAlwaysOnTop = vi.fn();
 	setOpacity = vi.fn();
 	moveTop = vi.fn();
 	showInactive() {
@@ -96,4 +97,67 @@ it("allows a late renderer to play past the original startup deadline", () => {
 	expect(show).toHaveBeenCalledOnce();
 	vi.advanceTimersByTime(660);
 	expect(backdrop.isDestroyed()).toBe(true);
+});
+
+function setPlatform(value: NodeJS.Platform) {
+	const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+	Object.defineProperty(process, "platform", { ...platform, value });
+	onTestFinished(() => Object.defineProperty(process, "platform", platform));
+}
+
+it("covers the menu bar throughout the macOS fade and restores normal stacking", () => {
+	setPlatform("darwin");
+	const { popup, backdrop, show, stage } = start();
+	popup.emit("ready-to-show");
+	stage("ready");
+	expect(backdrop.setAlwaysOnTop).toHaveBeenCalledExactlyOnceWith(true, "screen-saver");
+	stage("finished");
+	expect(popup.setAlwaysOnTop).toHaveBeenCalledExactlyOnceWith(true, "screen-saver", 1);
+	expect(popup.setAlwaysOnTop).toHaveBeenCalledBefore(show);
+	vi.advanceTimersByTime(400);
+	expect(backdrop.isDestroyed()).toBe(false);
+	expect(backdrop.setBounds).toHaveBeenCalledExactlyOnceWith({
+		x: 0,
+		y: 0,
+		width: 1440,
+		height: 900,
+	});
+	expect(backdrop.setAlwaysOnTop).not.toHaveBeenCalledWith(false);
+	expect(popup.setAlwaysOnTop).not.toHaveBeenCalledWith(false);
+	vi.advanceTimersByTime(260);
+	expect(backdrop.isDestroyed()).toBe(true);
+	expect(popup.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
+	expect(popup.setOpacity).toHaveBeenLastCalledWith(1);
+});
+
+it.each([
+	"backdrop-close",
+	"popup-crash",
+])("restores popup stacking and opacity on %s during the fade", (failure) => {
+	setPlatform("darwin");
+	const { popup, backdrop, stage } = start();
+	popup.emit("ready-to-show");
+	stage("ready");
+	stage("finished");
+	vi.advanceTimersByTime(80);
+	if (failure === "backdrop-close") backdrop.destroy();
+	else popup.webContents.emit("render-process-gone");
+	expect(backdrop.isDestroyed()).toBe(true);
+	expect(popup.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
+	expect(popup.setOpacity).toHaveBeenLastCalledWith(1);
+	popup.setOpacity.mockClear();
+	vi.advanceTimersByTime(1000);
+	expect(popup.setOpacity).not.toHaveBeenCalled();
+});
+
+it("leaves Windows stacking unchanged", () => {
+	setPlatform("win32");
+	const { popup, backdrop, stage } = start();
+	popup.emit("ready-to-show");
+	stage("ready");
+	stage("finished");
+	vi.advanceTimersByTime(660);
+	expect(backdrop.isDestroyed()).toBe(true);
+	expect(backdrop.setAlwaysOnTop).not.toHaveBeenCalled();
+	expect(popup.setAlwaysOnTop).not.toHaveBeenCalled();
 });

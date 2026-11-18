@@ -11,6 +11,7 @@ export function startOnboardingIntro(
 	load: (window: BrowserWindow) => void,
 	handoff?: { popup: BrowserWindow; show: () => void },
 ): BrowserWindow {
+	const onMac = process.platform === "darwin";
 	const backdrop = new BrowserWindow({
 		...bounds,
 		frame: false,
@@ -22,11 +23,13 @@ export function startOnboardingIntro(
 		hasShadow: false,
 		enableLargerThanScreen: true,
 		show: false,
-		...(process.platform === "darwin"
+		...(onMac
 			? { vibrancy: "fullscreen-ui", visualEffectState: "active", type: "panel" }
 			: { backgroundMaterial: "acrylic" }),
 		webPreferences: { preload, backgroundThrottling: false },
 	});
+	// Cover the menu bar without changing system-wide visibility preferences.
+	if (onMac) backdrop.setAlwaysOnTop(true, "screen-saver");
 	backdrop.setIgnoreMouseEvents(true);
 	backdrop.setBounds(bounds);
 
@@ -35,6 +38,7 @@ export function startOnboardingIntro(
 	let startedHandoff = false;
 	let deadline: NodeJS.Timeout;
 	let fadeTimer: NodeJS.Timeout | undefined;
+	let fadingPopup: BrowserWindow | undefined;
 	const closeBackdrop = () => {
 		clearInterval(fadeTimer);
 		if (!backdrop.isDestroyed()) backdrop.destroy();
@@ -60,9 +64,13 @@ export function startOnboardingIntro(
 		if (startedHandoff || !popupReady || !introFinished || popup.isDestroyed()) return;
 		startedHandoff = true;
 		if (!backdrop.isDestroyed() && backdrop.isVisible()) {
+			fadingPopup = popup;
 			popup.setOpacity(0);
+			if (onMac) {
+				popup.setAlwaysOnTop(true, "screen-saver", 1);
+			}
 			show();
-			fade(popup);
+			if (!backdrop.isDestroyed()) fade(popup);
 		} else {
 			show();
 		}
@@ -87,6 +95,12 @@ export function startOnboardingIntro(
 	backdrop.once("closed", () => {
 		clearTimeout(deadline);
 		clearInterval(fadeTimer);
+		if (fadingPopup && !fadingPopup.isDestroyed()) {
+			fadingPopup.setOpacity(1);
+			// Restore normal stacking only after the full-display blur is gone.
+			if (onMac) fadingPopup.setAlwaysOnTop(false);
+		}
+		fadingPopup = undefined;
 		finish(false);
 	});
 	backdrop.webContents.once("render-process-gone", () => finish(false));
