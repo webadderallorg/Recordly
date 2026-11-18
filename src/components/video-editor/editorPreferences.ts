@@ -433,12 +433,17 @@ export function normalizeEditorPreferences(
 	};
 }
 
-function readStoredEditorPreferences(key: string): unknown {
+function isEditorPreferenceRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function readStoredEditorPreferences(key: string): Record<string, unknown> | null {
 	const persisted = loadAppSetting<unknown>(key);
-	if (persisted !== null) return persisted;
+	if (isEditorPreferenceRecord(persisted)) return persisted;
 	try {
 		const stored = globalThis.localStorage?.getItem(key);
-		return stored ? JSON.parse(stored) : null;
+		const parsed: unknown = stored ? JSON.parse(stored) : null;
+		return isEditorPreferenceRecord(parsed) ? parsed : null;
 	} catch {
 		return null;
 	}
@@ -449,7 +454,7 @@ export function loadEditorPreferences(): EditorPreferences {
 	if (current !== null) return normalizeEditorPreferences(current);
 
 	const previous = readStoredEditorPreferences(LEGACY_EDITOR_PREFERENCES_STORAGE_KEY);
-	if (!previous || typeof previous !== "object") return DEFAULT_EDITOR_PREFERENCES;
+	if (!previous) return DEFAULT_EDITOR_PREFERENCES;
 
 	// Older versions wrote their defaults alongside user values. Start with the
 	// new controls and retain the user's resource library and caption tools.
