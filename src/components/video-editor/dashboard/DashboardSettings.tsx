@@ -158,7 +158,7 @@ export function DashboardSettings({
 					<header className="dashboard-settings-group">
 						<h2>{t("settings.categories.general", "General")}</h2>
 					</header>
-					<div className="settings-appearance">
+					<div className="settings-appearance settings-group">
 						<SettingsRow
 							title={t("settings.appPreferences.appearance", "Appearance")}
 							stacked
@@ -249,6 +249,7 @@ export function DashboardSettings({
 					{captureSupported && (
 						<div className="settings-group">
 							<SettingsRow
+								descriptionInline
 								title={t(
 									"settings.appPreferences.hideControls",
 									"Hide recording controls from captured video",

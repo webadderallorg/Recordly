@@ -1,13 +1,5 @@
 .updates {
-	--settings-section-gap: 0px;
-}
-
-.header {
-	padding-bottom: 12px;
-}
-
-.updates .header h2 {
-	font-size: 14px;
+	--settings-section-gap: 12px;
 }
 
 .updates .preferences + .preferences {
