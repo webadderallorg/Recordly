@@ -97,8 +97,11 @@ export function CloudShareButton(props: Props & { floatingActivity?: FloatingAct
 					? t("editor.cloud.uploadingVideo", "Uploading video…")
 					: t("editor.cloud.preparing", "Preparing the current edit…")
 			}
+			// Headlines describe rendering, so show them only while a new export is prepared.
 			headlines={
-				floatingActivity && phase !== "uploading" ? EXPORT_LOADING_MESSAGES : undefined
+				floatingActivity && phase === "preparing" && !filePath
+					? EXPORT_LOADING_MESSAGES
+					: undefined
 			}
 			value={progress}
 		/>
@@ -349,7 +352,7 @@ export function CloudShareButton(props: Props & { floatingActivity?: FloatingAct
 										className="mt-0.5"
 										aria-hidden
 									/>
-									<span className="min-w-0 font-medium">
+									<span className="max-h-24 min-w-0 overflow-y-auto font-medium [overflow-wrap:anywhere]">
 										<LocalizedError error={error} />
 									</span>
 								</p>

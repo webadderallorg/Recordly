@@ -146,7 +146,7 @@
 	transition: color 140ms ease-out;
 }
 
-.editor-export-card [data-error-report] > button:hover {
+.editor-export-card [data-error-report] > button:not([aria-disabled="true"]):hover {
 	color: var(--foreground);
 	opacity: 1;
 }

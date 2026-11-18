@@ -30,13 +30,8 @@ export const EXPORT_LOADING_MESSAGES: readonly ExportLoadingMessage[] = [
 	"Encoding video frames...",
 	"Bringing everything together...",
 	"Preparing your file...",
-	"Making steady progress...",
-	"Putting the finishing touches on...",
 	"Still working on it...",
-	"Almost there, nothing is stuck.",
-	"This won't take much longer.",
 	"Thanks for your patience.",
-	"Your video will be ready shortly.",
 ];
 
 export function shuffleExportLoadingMessages(messages: readonly ExportLoadingMessage[]) {
