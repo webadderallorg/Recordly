@@ -1325,7 +1325,10 @@ export function showOnboardingWindow(options?: {
 	};
 	if (onboardingWindow && !onboardingWindow.isDestroyed()) {
 		hideOtherOnboardingWindows(onboardingWindow);
-		if (!app.isPackaged && typeof options?.preview === "boolean") load(onboardingWindow, query);
+		if (!app.isPackaged && typeof options?.preview === "boolean") {
+			const intro = onboardingIntroWindow && !onboardingIntroWindow.isDestroyed();
+			load(onboardingWindow, intro ? { ...query, welcomeSoundtrack: "intro" } : query);
+		}
 		onboardingWindow.setBounds(getOnboardingWindowBounds());
 		focusOnboardingWindow();
 		return onboardingWindow;
@@ -1384,7 +1387,7 @@ export function showOnboardingWindow(options?: {
 	} else if (!options?.returning) {
 		win.once("ready-to-show", show);
 	}
-	load(win, query);
+	load(win, playIntro ? { ...query, welcomeSoundtrack: "intro" } : query);
 	return win;
 }
 

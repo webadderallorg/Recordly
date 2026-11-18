@@ -197,7 +197,7 @@ test("large custom galleries stay bounded without creating an oversized empty vi
 	await installDesktopBridgeOverrides(page, () => {
 		const getAppSetting = window.electronAPI.getAppSetting;
 		window.electronAPI.getAppSetting = (key) =>
-			key === "recordly.editor.preferences"
+			key === "recordly.editor.preferences.v2"
 				? {
 						...(getAppSetting(key) as object),
 						customWallpapers: Array.from(
@@ -303,7 +303,7 @@ test("custom swatch removals update reserved gallery rows without changing selec
 	await installDesktopBridge(page);
 	await page.addInitScript(() => {
 		localStorage.setItem(
-			"recordly.editor.preferences",
+			"recordly.editor.preferences.v2",
 			JSON.stringify({
 				wallpaper: "#123456",
 				customColors: ["#010100", "#010101", "#010102", "#010103"],

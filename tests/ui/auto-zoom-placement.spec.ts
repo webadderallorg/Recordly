@@ -45,7 +45,7 @@ for (const scenario of [
 		await page.addInitScript((samples) => {
 			const getAppSetting = window.electronAPI.getAppSetting;
 			window.electronAPI.getAppSetting = (key) =>
-				key === "recordly.editor.preferences"
+				key === "recordly.editor.preferences.v2"
 					? { autoApplyFreshRecordingAutoZooms: false }
 					: getAppSetting(key);
 			window.electronAPI.getCurrentRecordingSession = async () => ({

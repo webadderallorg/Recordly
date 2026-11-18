@@ -245,7 +245,7 @@ export function AppUpdateSettings() {
 
 	return (
 		<div ref={root} className={`${styles.updates} app-settings-stack`}>
-			<header className={`${styles.header} dashboard-settings-group`}>
+			<header className="dashboard-settings-group">
 				<h2 className="flex items-center gap-1.5">
 					{t("settings.updates.title", "Updates")}
 					<SettingsInfo label={t("settings.updates.title", "Updates")}>
@@ -257,251 +257,260 @@ export function AppUpdateSettings() {
 				</h2>
 			</header>
 
-			<section className={styles.status} aria-label={t("updates.notification", "App update")}>
-				<div className={styles.versionRow}>
-					<div className={styles.rowLabel}>
-						<h3>
-							{t("settings.appPreferences.installedVersion", "Installed version")}
-						</h3>
-						<p>
-							{version ||
-								summary?.currentVersion ||
-								t("settings.appPreferences.loadingVersion", "Loading version…")}
-						</p>
-					</div>
-					<div className={styles.actions}>
-						<AppVersionPicker
-							currentVersion={version || summary?.currentVersion || ""}
-							disabled={busy || checking || downloading}
-						/>
-						<Button
-							size="sm"
-							variant={ready || available ? "default" : "secondary"}
-							disabled={busy || checking || downloading || !summary}
-							onClick={() => void run(ready || available ? update : check)}
-						>
-							{downloading
-								? t(
-										"settings.appPreferences.updateDownloading",
-										"Downloading an update…",
-									)
-								: checking
+			<div className="settings-group">
+				<section
+					className={styles.status}
+					aria-label={t("updates.notification", "App update")}
+				>
+					<div className={styles.versionRow}>
+						<div className={styles.rowLabel}>
+							<h3>
+								{t("settings.appPreferences.installedVersion", "Installed version")}
+							</h3>
+							<p>
+								{version ||
+									summary?.currentVersion ||
+									t("settings.appPreferences.loadingVersion", "Loading version…")}
+							</p>
+						</div>
+						<div className={styles.actions}>
+							<AppVersionPicker
+								currentVersion={version || summary?.currentVersion || ""}
+								disabled={busy || checking || downloading}
+							/>
+							<Button
+								size="sm"
+								variant={ready || available ? "default" : "secondary"}
+								disabled={busy || checking || downloading || !summary}
+								onClick={() => void run(ready || available ? update : check)}
+							>
+								{downloading
 									? t(
-											"settings.appPreferences.updateChecking",
-											"Checking for updates…",
+											"settings.appPreferences.updateDownloading",
+											"Downloading an update…",
 										)
-									: ready
+									: checking
 										? t(
-												"launch.updateToast.restartToUpdate",
-												"Restart to update",
+												"settings.appPreferences.updateChecking",
+												"Checking for updates…",
 											)
-										: available
-											? t("updates.download", "Download update")
-											: t(
-													"settings.appPreferences.checkUpdates",
-													"Check for updates",
-												)}
-						</Button>
-						<Button
-							size="sm"
-							variant="ghost"
-							disabled={busy}
-							onClick={() =>
-								void run(async () => {
-									const result = await window.electronAPI.openExternalUrl(
-										"https://github.com/webadderallorg/Recordly/releases",
-									);
-									if (!result.success)
-										throw Error(
-											t(
-												"settings.appPreferences.openReleaseFailed",
-												"Could not open release notes.",
-											),
+										: ready
+											? t(
+													"launch.updateToast.restartToUpdate",
+													"Restart to update",
+												)
+											: available
+												? t("updates.download", "Download update")
+												: t(
+														"settings.appPreferences.checkUpdates",
+														"Check for updates",
+													)}
+							</Button>
+							<Button
+								size="sm"
+								variant="ghost"
+								disabled={busy}
+								onClick={() =>
+									void run(async () => {
+										const result = await window.electronAPI.openExternalUrl(
+											"https://github.com/webadderallorg/Recordly/releases",
 										);
-								})
-							}
-						>
-							{t("settings.appPreferences.releaseNotes", "Release notes")}
-						</Button>
+										if (!result.success)
+											throw Error(
+												t(
+													"settings.appPreferences.openReleaseFailed",
+													"Could not open release notes.",
+												),
+											);
+									})
+								}
+							>
+								{t("settings.appPreferences.releaseNotes", "Release notes")}
+							</Button>
+						</div>
 					</div>
-				</div>
-				{((summary && summary.status !== "idle") || error) && (
-					<div className={styles.statusContent}>
-						{summary && summary.status !== "idle" && (
-							<div className={styles.statusHeading} role="status">
-								<div
-									className={`${styles.icon} ${ready || summary?.status === "up-to-date" ? styles.success : summary?.status === "error" ? styles.danger : ""}`}
-								>
-									<StatusIcon
-										size={18}
-										aria-hidden="true"
-										className={
-											checking || downloading ? styles.spin : undefined
-										}
-									/>
+					{((summary && summary.status !== "idle") || error) && (
+						<div className={styles.statusContent}>
+							{summary && summary.status !== "idle" && (
+								<div className={styles.statusHeading} role="status">
+									<div
+										className={`${styles.icon} ${ready || summary?.status === "up-to-date" ? styles.success : summary?.status === "error" ? styles.danger : ""}`}
+									>
+										<StatusIcon
+											size={18}
+											aria-hidden="true"
+											className={
+												checking || downloading ? styles.spin : undefined
+											}
+										/>
+									</div>
+									<div className={styles.copy}>
+										<h3>{statusTitle}</h3>
+									</div>
 								</div>
-								<div className={styles.copy}>
-									<h3>{statusTitle}</h3>
+							)}
+							{summary &&
+								["available", "downloading", "ready", "error"].includes(
+									summary.status,
+								) && (
+									<p className={styles.detail}>
+										{summary
+											? statuses[summary.status]
+											: t(
+													"settings.appPreferences.updateLoading",
+													"Loading update status…",
+												)}
+									</p>
+								)}
+							{downloading && (
+								<div className={styles.progress}>
+									<ProgressBar
+										aria-label={t("capture.downloadingUpdate")}
+										value={progress}
+										isIndeterminate={progress === undefined}
+									>
+										<ProgressBar.Track>
+											<ProgressBar.Fill />
+										</ProgressBar.Track>
+									</ProgressBar>
+									{progress !== undefined && (
+										<span>
+											{new Intl.NumberFormat(locale, {
+												style: "percent",
+												maximumFractionDigits: 0,
+											}).format(progress / 100)}
+										</span>
+									)}
 								</div>
-							</div>
-						)}
-						{summary &&
-							["available", "downloading", "ready", "error"].includes(
-								summary.status,
-							) && (
-								<p className={styles.detail}>
-									{summary
-										? statuses[summary.status]
-										: t(
-												"settings.appPreferences.updateLoading",
-												"Loading update status…",
-											)}
+							)}
+
+							{error && (
+								<p role="alert" className={styles.error}>
+									{friendlyError ? (
+										error
+									) : (
+										<>
+											<LocalizedError
+												error={error}
+												summary={
+													summary?.status === "error"
+														? statuses.error
+														: undefined
+												}
+											/>{" "}
+											<ErrorReportButton error={error} />
+										</>
+									)}
 								</p>
 							)}
-						{downloading && (
-							<div className={styles.progress}>
-								<ProgressBar
-									aria-label={t("capture.downloadingUpdate")}
-									value={progress}
-									isIndeterminate={progress === undefined}
-								>
-									<ProgressBar.Track>
-										<ProgressBar.Fill />
-									</ProgressBar.Track>
-								</ProgressBar>
-								{progress !== undefined && (
-									<span>
-										{new Intl.NumberFormat(locale, {
-											style: "percent",
-											maximumFractionDigits: 0,
-										}).format(progress / 100)}
-									</span>
-								)}
-							</div>
-						)}
-
-						{error && (
-							<p role="alert" className={styles.error}>
-								{friendlyError ? (
-									error
-								) : (
-									<>
-										<LocalizedError
-											error={error}
-											summary={
-												summary?.status === "error"
-													? statuses.error
-													: undefined
-											}
-										/>{" "}
-										<ErrorReportButton error={error} />
-									</>
-								)}
-							</p>
-						)}
-					</div>
-				)}
-			</section>
-			<div className={`${styles.preferences} settings-group`}>
-				<SettingsRow
-					title={t(
-						"settings.updates.automaticDownloads",
-						"Automatically download updates",
+						</div>
 					)}
-					description={t(
-						"settings.updates.automaticDownloadsDescription",
-						"Download new updates in the background. You choose when to restart.",
-					)}
-				>
-					<Switch
-						aria-label={t(
+				</section>
+				<div className={styles.preferences}>
+					<SettingsRow
+						descriptionInline
+						title={t(
 							"settings.updates.automaticDownloads",
 							"Automatically download updates",
 						)}
-						checked={automaticDownloads ?? false}
-						disabled={automaticDownloads === undefined || busy}
-						onCheckedChange={(enabled) =>
-							void run(async () => {
-								downloadPreferenceRevision.current++;
-								const result =
-									await window.electronAPI.setAutomaticUpdateDownloadsEnabled(
-										enabled,
-									);
-								if (!result.success)
-									throw Error("Automatic update preference was not saved");
-								if (mounted.current) setAutomaticDownloads(result.enabled);
-							}, "downloads")
-						}
-					/>
-				</SettingsRow>
-				{downloadPreferenceError && (
-					<div className="settings-row-note">
-						<p role="alert" className="text-danger">
-							{downloadPreferenceError}
-						</p>
-						{automaticDownloads === undefined && (
-							<Button
-								size="sm"
-								variant="secondary"
-								disabled={busy}
-								onClick={() => void loadDownloadPreference()}
-							>
-								{t("settings.application.retry", "Try again")}
-							</Button>
+						description={t(
+							"settings.updates.automaticDownloadsDescription",
+							"Download new updates in the background. You choose when to restart.",
 						)}
-					</div>
-				)}
-			</div>
-			<div className={`${styles.preferences} settings-group`}>
-				<SettingsRow
-					title={t("settings.updates.experimental", "Experimental updates")}
-					description={t(
-						"settings.appPreferences.experimentalDescription",
-						"Receive preview builds before general release. They may be unstable. Turn this off to return to stable releases; the next compatible stable update will be offered.",
+					>
+						<Switch
+							aria-label={t(
+								"settings.updates.automaticDownloads",
+								"Automatically download updates",
+							)}
+							checked={automaticDownloads ?? false}
+							disabled={automaticDownloads === undefined || busy}
+							onCheckedChange={(enabled) =>
+								void run(async () => {
+									downloadPreferenceRevision.current++;
+									const result =
+										await window.electronAPI.setAutomaticUpdateDownloadsEnabled(
+											enabled,
+										);
+									if (!result.success)
+										throw Error("Automatic update preference was not saved");
+									if (mounted.current) setAutomaticDownloads(result.enabled);
+								}, "downloads")
+							}
+						/>
+					</SettingsRow>
+					{downloadPreferenceError && (
+						<div className="settings-row-note">
+							<p role="alert" className="text-danger">
+								{downloadPreferenceError}
+							</p>
+							{automaticDownloads === undefined && (
+								<Button
+									size="sm"
+									variant="secondary"
+									disabled={busy}
+									onClick={() => void loadDownloadPreference()}
+								>
+									{t("settings.application.retry", "Try again")}
+								</Button>
+							)}
+						</div>
 					)}
-				>
-					<Switch
-						aria-label={t("settings.updates.experimental", "Experimental updates")}
-						checked={experimental ?? false}
-						disabled={experimental === undefined || busy}
-						onCheckedChange={(enabled) =>
-							void run(async () => {
-								const result =
-									await window.electronAPI.setExperimentalUpdatesEnabled(enabled);
-								if (!result.success)
-									throw Error(
-										t(
-											"settings.updates.saveFailed",
-											"Failed to change the update channel.",
-										),
-									);
-								if (mounted.current) setExperimental(result.enabled);
-							}, "channel")
-						}
-					/>
-				</SettingsRow>
-				{channelError && (
-					<div className="settings-row-note">
-						<p role="alert" className="text-danger">
-							{channelError.message}{" "}
-							<ErrorReportButton
-								error={[channelError.message, channelError.cause]
-									.filter(Boolean)
-									.join("\n")}
-							/>
-						</p>
-						{experimental === undefined && (
-							<Button
-								size="sm"
-								variant="secondary"
-								disabled={busy}
-								onClick={() => void loadChannel()}
-							>
-								{t("settings.application.retry", "Try again")}
-							</Button>
+				</div>
+				<div className={styles.preferences}>
+					<SettingsRow
+						descriptionInline
+						title={t("settings.updates.experimental", "Experimental updates")}
+						description={t(
+							"settings.appPreferences.experimentalDescription",
+							"Receive preview builds before general release. They may be unstable. Turn this off to return to stable releases; the next compatible stable update will be offered.",
 						)}
-					</div>
-				)}
+					>
+						<Switch
+							aria-label={t("settings.updates.experimental", "Experimental updates")}
+							checked={experimental ?? false}
+							disabled={experimental === undefined || busy}
+							onCheckedChange={(enabled) =>
+								void run(async () => {
+									const result =
+										await window.electronAPI.setExperimentalUpdatesEnabled(
+											enabled,
+										);
+									if (!result.success)
+										throw Error(
+											t(
+												"settings.updates.saveFailed",
+												"Failed to change the update channel.",
+											),
+										);
+									if (mounted.current) setExperimental(result.enabled);
+								}, "channel")
+							}
+						/>
+					</SettingsRow>
+					{channelError && (
+						<div className="settings-row-note">
+							<p role="alert" className="text-danger">
+								{channelError.message}{" "}
+								<ErrorReportButton
+									error={[channelError.message, channelError.cause]
+										.filter(Boolean)
+										.join("\n")}
+								/>
+							</p>
+							{experimental === undefined && (
+								<Button
+									size="sm"
+									variant="secondary"
+									disabled={busy}
+									onClick={() => void loadChannel()}
+								>
+									{t("settings.application.retry", "Try again")}
+								</Button>
+							)}
+						</div>
+					)}
+				</div>
 			</div>
 		</div>
 	);

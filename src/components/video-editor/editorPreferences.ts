@@ -89,7 +89,8 @@ export interface EditorPreferences extends PersistedEditorControls, ExportPrefer
 	whisperModelPath: string | null;
 }
 
-export const EDITOR_PREFERENCES_STORAGE_KEY = "recordly.editor.preferences";
+const LEGACY_EDITOR_PREFERENCES_STORAGE_KEY = "recordly.editor.preferences";
+export const EDITOR_PREFERENCES_STORAGE_KEY = "recordly.editor.preferences.v2";
 export const EDITOR_PRESETS_STORAGE_KEY = "recordly.editor.presets";
 
 const DEFAULT_EDITOR_CONTROLS = normalizeProjectEditor({});
@@ -432,22 +433,46 @@ export function normalizeEditorPreferences(
 	};
 }
 
-export function loadEditorPreferences(): EditorPreferences {
-	const persisted = loadAppSetting<unknown>(EDITOR_PREFERENCES_STORAGE_KEY);
-	if (persisted !== null) {
-		return normalizeEditorPreferences(persisted);
-	}
+function isEditorPreferenceRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
+function readStoredEditorPreferences(key: string): Record<string, unknown> | null {
+	const persisted = loadAppSetting<unknown>(key);
+	if (isEditorPreferenceRecord(persisted)) return persisted;
 	try {
-		const stored = globalThis.localStorage?.getItem(EDITOR_PREFERENCES_STORAGE_KEY);
-		if (!stored) {
-			return DEFAULT_EDITOR_PREFERENCES;
-		}
-
-		return normalizeEditorPreferences(JSON.parse(stored));
+		const stored = globalThis.localStorage?.getItem(key);
+		const parsed: unknown = stored ? JSON.parse(stored) : null;
+		return isEditorPreferenceRecord(parsed) ? parsed : null;
 	} catch {
-		return DEFAULT_EDITOR_PREFERENCES;
+		return null;
 	}
+}
+
+export function loadEditorPreferences(): EditorPreferences {
+	const current = readStoredEditorPreferences(EDITOR_PREFERENCES_STORAGE_KEY);
+	if (current !== null) return normalizeEditorPreferences(current);
+
+	const previous = readStoredEditorPreferences(LEGACY_EDITOR_PREFERENCES_STORAGE_KEY);
+	if (!previous) return DEFAULT_EDITOR_PREFERENCES;
+
+	// Older versions wrote their defaults alongside user values. Start with the
+	// new controls and retain the user's resource library and caption tools.
+	const {
+		customWallpapers,
+		customGradients,
+		customColors,
+		whisperExecutablePath,
+		whisperModelPath,
+	} = normalizeEditorPreferences(previous);
+	return {
+		...DEFAULT_EDITOR_PREFERENCES,
+		customWallpapers,
+		customGradients,
+		customColors,
+		whisperExecutablePath,
+		whisperModelPath,
+	};
 }
 
 export type EditorPreferencesPatch = Omit<Partial<EditorPreferences>, "webcam"> & {

@@ -570,6 +570,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("onboarding-intro-shown", listener);
 		return () => ipcRenderer.removeListener("onboarding-intro-shown", listener);
 	},
+	onOnboardingSoundtrackStart: (callback: () => void) => {
+		const listener = () => callback();
+		ipcRenderer.on("onboarding-soundtrack-start", listener);
+		ipcRenderer.send("onboarding-soundtrack-ready");
+		return () => ipcRenderer.removeListener("onboarding-soundtrack-start", listener);
+	},
 	createProjectFile: (data: unknown, thumbnail?: string | null) =>
 		ipcRenderer.invoke("create-project-file", data, thumbnail),
 	renameLibraryProject: (path: string, name: string) =>

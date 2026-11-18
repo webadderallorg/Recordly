@@ -48,6 +48,22 @@ export async function installDesktopBridge(
 			};
 			const success = async () => ({ success: true });
 			const subscribe = () => () => undefined;
+			const getAppSetting = (key: string) => {
+				if (key === "recordly.onboarding.v1.seen") return onboarded ?? null;
+				if (key !== "recordly.editor.preferences.v2") return null;
+
+				const defaultPreferences = { autoApplyFreshRecordingAutoZooms: false };
+				try {
+					const stored = localStorage.getItem(key);
+					const preferences: unknown = stored ? JSON.parse(stored) : null;
+					if (preferences && typeof preferences === "object" && !Array.isArray(preferences)) {
+						return { ...defaultPreferences, ...preferences };
+					}
+				} catch {
+					// Unreadable fixture settings fall back to the test defaults.
+				}
+				return defaultPreferences;
+			};
 			const source = {
 				id: "screen:1:0",
 				name: "Built-in Display",
@@ -77,24 +93,11 @@ export async function installDesktopBridge(
 					authStorageRemoveItem: async (key: string) => {
 						await window.__recordlyTestAuthStorage({ action: "remove", key });
 					},
-					getAppSetting: (key: string) =>
-						key === "recordly.editor.preferences"
-							? { autoApplyFreshRecordingAutoZooms: false }
-							: key === "recordly.onboarding.v1.seen"
-								? onboarded
-								: null,
-					getAppSettingWithStatus: (key: string) => ({
-						success: true,
-						found:
-							key === "recordly.editor.preferences" ||
-							key === "recordly.onboarding.v1.seen",
-						value:
-							key === "recordly.editor.preferences"
-								? { autoApplyFreshRecordingAutoZooms: false }
-								: key === "recordly.onboarding.v1.seen"
-									? onboarded
-									: null,
-					}),
+					getAppSetting,
+					getAppSettingWithStatus: (key: string) => {
+						const value = getAppSetting(key);
+						return { success: true, found: value !== null, value };
+					},
 					reserveRecordingSession: async () => ({
 						success: true,
 						message: "",

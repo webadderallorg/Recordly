@@ -83,6 +83,80 @@ describe("editorPreferences", () => {
 		Reflect.deleteProperty(globalThis, "electronAPI");
 	});
 
+	it("starts from 2.0 defaults while retaining the v1.4 resource library", () => {
+		const legacyKey = "recordly.editor.preferences";
+		const legacy = {
+			wallpaper: "/wallpapers/tahoe-light.jpg",
+			shadowIntensity: 0.67,
+			exportQuality: "source",
+			customWallpapers: ["/fixtures/background.jpg"],
+			whisperModelPath: "/fixtures/whisper.bin",
+		};
+		const settings = stubElectronSettings({ [legacyKey]: legacy });
+
+		expect(loadEditorPreferences()).toMatchObject({
+			wallpaper: DEFAULT_EDITOR_PREFERENCES.wallpaper,
+			shadowIntensity: DEFAULT_EDITOR_PREFERENCES.shadowIntensity,
+			exportQuality: "medium",
+			advancedExportSettings: false,
+			customWallpapers: legacy.customWallpapers,
+			whisperModelPath: legacy.whisperModelPath,
+		});
+
+		saveEditorPreferences({ shadowIntensity: 0.8 });
+		const saved = {
+			shadowIntensity: 0.8,
+			customWallpapers: legacy.customWallpapers,
+			whisperModelPath: legacy.whisperModelPath,
+		};
+		expect(settings.get(EDITOR_PREFERENCES_STORAGE_KEY)).toMatchObject(saved);
+		expect(loadEditorPreferences()).toMatchObject(saved);
+		expect(settings.get(legacyKey)).toEqual(legacy);
+	});
+
+	it("applies the same upgrade rule to browser-stored v1.4 preferences", () => {
+		vi.stubGlobal(
+			"localStorage",
+			createStorageMock({
+				"recordly.editor.preferences": JSON.stringify({
+					shadowIntensity: 0.67,
+					customWallpapers: ["/fixtures/background.jpg"],
+				}),
+			}),
+		);
+		expect(loadEditorPreferences()).toMatchObject({
+			shadowIntensity: DEFAULT_EDITOR_PREFERENCES.shadowIntensity,
+			customWallpapers: ["/fixtures/background.jpg"],
+		});
+	});
+
+	it("uses valid browser preferences when the native v2 record is invalid", () => {
+		stubElectronSettings({ [EDITOR_PREFERENCES_STORAGE_KEY]: false });
+		vi.stubGlobal(
+			"localStorage",
+			createStorageMock({
+				[EDITOR_PREFERENCES_STORAGE_KEY]: JSON.stringify({ shadowIntensity: 0.8 }),
+			}),
+		);
+		expect(loadEditorPreferences().shadowIntensity).toBe(0.8);
+	});
+
+	it("recovers legacy resources when neither store has a valid v2 record", () => {
+		const legacy = { customWallpapers: ["/fixtures/background.jpg"] };
+		const settings = stubElectronSettings({
+			"recordly.editor.preferences": legacy,
+			[EDITOR_PREFERENCES_STORAGE_KEY]: [],
+		});
+		vi.stubGlobal(
+			"localStorage",
+			createStorageMock({ [EDITOR_PREFERENCES_STORAGE_KEY]: "false" }),
+		);
+		expect(loadEditorPreferences().customWallpapers).toEqual(legacy.customWallpapers);
+
+		settings.set(EDITOR_PREFERENCES_STORAGE_KEY, { customWallpapers: [] });
+		expect(loadEditorPreferences().customWallpapers).toEqual([]);
+	});
+
 	it("defaults automatic zooms on and preserves the saved opt-out", () => {
 		expect(normalizeEditorPreferences({}).autoApplyFreshRecordingAutoZooms).toBe(true);
 		for (const enabled of [false, true]) {

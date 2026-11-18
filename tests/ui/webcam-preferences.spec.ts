@@ -6,7 +6,7 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 }) => {
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
-		const key = "recordly.editor.preferences";
+		const key = "recordly.editor.preferences.v2";
 		if (!localStorage.getItem(key)) {
 			localStorage.setItem(key, JSON.stringify({ webcam: { shadow: 0.2, roundness: 100 } }));
 		}
@@ -48,7 +48,7 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 	});
 	const storedShadow = () =>
 		page.evaluate(
-			() => JSON.parse(localStorage.getItem("recordly.editor.preferences")!).webcam.shadow,
+			() => JSON.parse(localStorage.getItem("recordly.editor.preferences.v2")!).webcam.shadow,
 		);
 	await page.goto("/?windowType=editor&older=1");
 	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
@@ -64,14 +64,14 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 	await expect
 		.poll(() =>
 			page.evaluate(
-				() => JSON.parse(localStorage.getItem("recordly.editor.preferences")!).webcam.width,
+				() => JSON.parse(localStorage.getItem("recordly.editor.preferences.v2")!).webcam.width,
 			),
 		)
 		.toBe(31);
 	expect(await storedShadow()).toBe(0.2);
 	expect(
 		await page.evaluate(
-			() => JSON.parse(localStorage.getItem("recordly.editor.preferences")!).webcam.roundness,
+			() => JSON.parse(localStorage.getItem("recordly.editor.preferences.v2")!).webcam.roundness,
 		),
 	).toBe(20);
 
@@ -81,7 +81,7 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 		.poll(() =>
 			page.evaluate(
 				() =>
-					JSON.parse(localStorage.getItem("recordly.editor.preferences")!)
+					JSON.parse(localStorage.getItem("recordly.editor.preferences.v2")!)
 						.shadowIntensity,
 			),
 		)

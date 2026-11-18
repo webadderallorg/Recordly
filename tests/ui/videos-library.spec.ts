@@ -368,14 +368,14 @@ for (const enabled of [true, false]) {
 		await installDesktopBridgeOverrides(page, () => {
 			const get = window.electronAPI.getAppSetting;
 			window.electronAPI.getAppSetting = (key) =>
-				key === "recordly.editor.preferences"
+				key === "recordly.editor.preferences.v2"
 					? JSON.parse(localStorage.getItem(key) ?? "{}")
 					: get(key);
 		});
 		await page.evaluate((enabled) => {
-			const prefs = JSON.parse(localStorage.getItem("recordly.editor.preferences") || "{}");
+			const prefs = JSON.parse(localStorage.getItem("recordly.editor.preferences.v2") || "{}");
 			localStorage.setItem(
-				"recordly.editor.preferences",
+				"recordly.editor.preferences.v2",
 				JSON.stringify({ ...prefs, autoApplyFreshRecordingAutoZooms: enabled }),
 			);
 		}, enabled);

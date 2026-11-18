@@ -6,7 +6,7 @@ test.setTimeout(90_000);
 async function installSceneBridge(page: Page) {
 	await installDesktopBridge(page, "filmstrip.mp4");
 	await installDesktopBridgeOverrides(page, () => {
-		const key = "recordly.editor.preferences";
+		const key = "recordly.editor.preferences.v2";
 		window.electronAPI.getAppSetting = (name) =>
 			name === "recordly.onboarding.v1.seen"
 				? true
@@ -51,7 +51,7 @@ async function openScene(page: Page, url: string) {
 
 async function storedPreferences(page: Page) {
 	return page.evaluate(() =>
-		JSON.parse(localStorage.getItem("recordly.editor.preferences") ?? "{}"),
+		JSON.parse(localStorage.getItem("recordly.editor.preferences.v2") ?? "{}"),
 	);
 }
 

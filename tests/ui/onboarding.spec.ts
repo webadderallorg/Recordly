@@ -651,14 +651,6 @@ for (const signedIn of [true, false]) {
 				localStorage.setItem(`test-write:${key}`, JSON.stringify(value));
 				return true;
 			};
-			HTMLMediaElement.prototype.play = async function () {
-				if (this instanceof HTMLAudioElement)
-					document.documentElement.dataset.welcomeMusic = this.src;
-			};
-			HTMLMediaElement.prototype.pause = function () {
-				if (this instanceof HTMLAudioElement)
-					document.documentElement.dataset.welcomeMusicStopped = "true";
-			};
 		});
 		await page.goto("/?windowType=onboarding&onboardingPreview=1");
 		const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
@@ -667,12 +659,17 @@ for (const signedIn of [true, false]) {
 		await expect(tour.getByPlaceholder("you@example.com")).toHaveCount(signedIn ? 0 : 1);
 		if (signedIn) await expect(tour.getByText("test@email.com", { exact: true })).toBeVisible();
 		await expect(tour.getByText("Your account", { exact: true })).toHaveCount(0);
-		await expect(page.locator("html")).toHaveAttribute(
-			"data-welcome-music",
-			/audio\/first-boot.m4a$/,
-		);
-		const music = tour.getByRole("button", { name: "Mute welcome music" });
-		await expect(music).toHaveAttribute("aria-pressed", "true");
+		const music = tour.getByRole("button", { name: "Mute welcome music", exact: true });
+		const pausedMusic = tour.getByRole("button", { name: "Unmute welcome music", exact: true });
+		const audio = tour.locator("audio");
+		const expectPlaying = async () => {
+			await expect(music.or(pausedMusic)).toBeVisible();
+			if (await pausedMusic.isVisible()) await pausedMusic.click();
+			await expect(music).toBeVisible();
+			await expect(audio).toHaveJSProperty("paused", false);
+			await expect(audio).toHaveJSProperty("muted", false);
+		};
+		await expectPlaying();
 		const soundBounds = await music.boundingBox();
 		expect(soundBounds).not.toBeNull();
 		expect(soundBounds!.x).toBeLessThan(64);
@@ -682,12 +679,11 @@ for (const signedIn of [true, false]) {
 			animations: "disabled",
 		});
 		await music.click();
-		const pausedMusic = tour.getByRole("button", { name: "Unmute welcome music" });
 		await expect(pausedMusic).toBeVisible();
-		await expect(pausedMusic).toHaveAttribute("aria-pressed", "false");
-		await expect(page.locator("html")).toHaveAttribute("data-welcome-music-stopped", "true");
+		await expect(audio).toHaveJSProperty("muted", true);
+		await expect(audio).toHaveJSProperty("paused", false);
 		await pausedMusic.click();
-		await expect(music).toHaveAttribute("aria-pressed", "true");
+		await expect(audio).toHaveJSProperty("muted", false);
 		await tour.getByRole("button", { name: "Continue", exact: true }).click();
 		await expect(tour).toHaveAttribute("data-onboarding-state", "permissions");
 		await tour.getByRole("button", { name: "Back to account" }).click();
@@ -699,7 +695,7 @@ for (const signedIn of [true, false]) {
 		await tour.getByRole("button", { name: "Start recording", exact: true }).click();
 		await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
 		await expect(page.locator("html")).toHaveAttribute("data-onboarding-closed", "true");
-		await expect(page.locator("html")).toHaveAttribute("data-welcome-music-stopped", "true");
+		await expect(tour.locator("[data-welcome-music]")).toHaveCount(0);
 		expect(
 			await page.evaluate(() =>
 				localStorage.getItem("test-write:recordly.onboarding.v1.seen"),
@@ -712,7 +708,7 @@ for (const signedIn of [true, false]) {
 		).toBeNull();
 		await page.reload();
 		await expect(tour.getByRole("heading", { name: "Welcome to Recordly" })).toBeVisible();
-		await expect(tour.getByRole("button", { name: "Mute welcome music" })).toBeVisible();
+		await expectPlaying();
 	});
 }
 

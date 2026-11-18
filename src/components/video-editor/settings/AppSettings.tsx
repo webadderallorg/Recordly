@@ -134,6 +134,7 @@ export function AppSettings(props: Props) {
 				>
 					<SettingsRow
 						title={t("common.app.language", "Language")}
+						descriptionInline
 						description={t(
 							"settings.appPreferences.languageDescription",
 							"Choose the language used throughout Recordly.",
@@ -198,6 +199,7 @@ export function AppSettings(props: Props) {
 					<div className="settings-group">
 						<SettingsRow
 							title={tSettings("appPreferences.autoZoom", "Automatically add zooms")}
+							descriptionInline
 							description={tSettings(
 								"appPreferences.autoZoomDescription",
 								"Add zooms on new recordings. Turning this off won't remove existing zooms.",
@@ -214,6 +216,7 @@ export function AppSettings(props: Props) {
 						</SettingsRow>
 						<SettingsRow
 							title={tSettings("effects.connectZooms", "Connect neighboring zooms")}
+							descriptionInline
 							description={tSettings(
 								"effects.connectZoomsDescription",
 								"Smooth consecutive zoom regions into a continuous camera move.",
