@@ -1,3 +1,4 @@
+import { CheckCircle, WarningCircle } from "@phosphor-icons/react";
 import { ExportErrorReportButton } from "@/components/feedback/ExportErrorReportButton";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -8,7 +9,6 @@ import { ExportProgressIndicator } from "../export/ExportProgressIndicator";
 import { getExportFileName } from "../export/exportFileName";
 import type { useExportSession } from "../export/useExportSession";
 import type { useExportStatusViewModel } from "../export/useExportStatusViewModel";
-import { GifOptimizationResult } from "../GifOptimizationResult";
 import { ExportActivityCard } from "./ExportActivityCard";
 
 type Props = {
@@ -36,8 +36,7 @@ export function EditorExportCard({
 	onRetrySave,
 	onRevealFile,
 }: Props) {
-	const { isExporting, exportError, exportedFilePath, hasPendingExportSave, gifOptimization } =
-		session;
+	const { isExporting, exportError, exportedFilePath, hasPendingExportSave } = session;
 	const { exportDisplayProgress, exportPhaseLabel, exportHeadlines } = status;
 	const label = t("editor.exportStatus.exporting", "Exporting");
 	const closeLabel = isExporting
@@ -69,10 +68,20 @@ export function EditorExportCard({
 				/>
 			) : exportError ? (
 				<>
-					<p role="status" className="text-xs font-medium text-danger">
+					<p role="status" className="editor-export-card-status" data-tone="danger">
+						<WarningCircle size={14} weight="fill" aria-hidden />
 						{t("editor.exportStatus.issue", "Export issue")}
 					</p>
-					<div className="flex flex-wrap items-center gap-2">
+					<p
+						className="editor-export-card-details"
+						role="region"
+						aria-label={t("ui.technicalDetails", "Technical details")}
+						tabIndex={0}
+						data-export-error-details
+					>
+						{exportError}
+					</p>
+					<div className="editor-export-card-actions">
 						{hasPendingExportSave && (
 							<Button type="button" size="sm" onClick={onRetrySave}>
 								{t("editor.actions.saveAgain", "Save Again")}
@@ -106,31 +115,18 @@ export function EditorExportCard({
 							format={format}
 						/>
 					</div>
-					<p
-						className="max-h-32 select-text overflow-y-auto whitespace-pre-wrap break-words text-xs text-muted-foreground"
-						role="region"
-						aria-label={t("ui.technicalDetails", "Technical details")}
-						tabIndex={0}
-						data-export-error-details
-					>
-						{exportError}
-					</p>
 				</>
 			) : (
 				<>
-					<p role="status" className="text-xs text-muted-foreground">
+					<p role="status" className="editor-export-card-status" data-tone="success">
+						<CheckCircle size={14} weight="fill" aria-hidden />
 						{t("editor.exportStatus.complete", "Export complete")}
 					</p>
-					{gifOptimization && <GifOptimizationResult summary={gifOptimization} />}
-					<Button
-						type="button"
-						variant="link"
-						size="sm"
-						className="self-start p-0"
-						onClick={onRevealFile}
-					>
-						{t("editor.actions.showInFolder", "Show In Folder")}
-					</Button>
+					<div className="editor-export-card-actions">
+						<Button type="button" variant="outline" size="sm" onClick={onRevealFile}>
+							{t("editor.actions.showInFolder", "Show In Folder")}
+						</Button>
+					</div>
 				</>
 			)}
 		</ExportActivityCard>
