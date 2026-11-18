@@ -277,6 +277,20 @@
 	text-overflow: ellipsis;
 }
 
+/* Report sits on the same row as a compact button, so it shares that row's height. */
+[data-error-actions] > [data-error-report] {
+	display: flex;
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--muted);
+}
+[data-error-actions] > [data-error-report] > button {
+	display: inline-flex;
+	align-items: center;
+	height: 28px;
+	text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+}
+
 @media (forced-colors: active) {
 	:is(.input, .textarea):focus,
 	.input-group:has(.input-group__input:focus),
