@@ -519,11 +519,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							videoDurationMs={totalMs}
 							currentTimeMs={currentTimeMs}
 							onSeek={onSeek}
-							onApplyAutoZooms={
-								onZoomSuggested && autoZoomTelemetry.length >= 2
-									? handleSuggestZooms
-									: undefined
-							}
+							onApplyAutoZooms={onZoomSuggested ? handleSuggestZooms : undefined}
 							onAddZoomAtMs={addZoomAtMs}
 							canPlaceZoomAtMs={canPlaceZoomAtMs}
 							onAddCaptionAtMs={addCaptionAtMs}

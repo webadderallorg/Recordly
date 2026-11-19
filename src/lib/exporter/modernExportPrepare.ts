@@ -289,6 +289,7 @@ export async function prepareExportAttempt(
 		timelineEffects: session.config.clipRegions !== undefined,
 		width: session.config.width,
 		height: session.config.height,
+		forceWebgl: control.retryWithWebgl,
 		preferredRenderBackend: control.retryWithWebgl
 			? "webgl"
 			: (session.config.preferredRenderBackend ?? getDefaultLightningRenderBackend()),

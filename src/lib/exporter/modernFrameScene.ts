@@ -248,8 +248,11 @@ export class FrameScene {
 		const preferredRenderBackend = this.context.config.preferredRenderBackend;
 		// WebGPU is opt-in: some Chromium runtimes expose navigator.gpu but fail
 		// inside Pixi's bind-group path during rendering.
-		const backendOrder: ExportRenderBackend[] =
-			preferredRenderBackend === "webgpu" ? ["webgpu", "webgl"] : ["webgl", "webgpu"];
+		const backendOrder: ExportRenderBackend[] = this.context.config.forceWebgl
+			? ["webgl"]
+			: preferredRenderBackend === "webgpu"
+				? ["webgpu", "webgl"]
+				: ["webgl", "webgpu"];
 		const failures: PixiRendererAttempt[] = [];
 
 		for (const backend of backendOrder) {

@@ -1,12 +1,12 @@
 export function canShowFloatingWebcamPreview(
 	requested: boolean,
-	hudOverlayMousePassthroughSupported: boolean | null,
+	_hudOverlayMousePassthroughSupported: boolean | null,
 ): boolean {
-	return requested && hudOverlayMousePassthroughSupported === true;
+	return requested;
 }
 
 export function canToggleFloatingWebcamPreview(
-	hudOverlayMousePassthroughSupported: boolean | null,
+	_hudOverlayMousePassthroughSupported: boolean | null,
 ): boolean {
-	return hudOverlayMousePassthroughSupported !== false;
+	return true;
 }

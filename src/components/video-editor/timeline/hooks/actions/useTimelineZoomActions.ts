@@ -113,7 +113,7 @@ export function useTimelineZoomActions({
 		if (cursorTelemetry.length < 2) {
 			timelineNotifications.info(
 				"No cursor telemetry available",
-				"Record a screencast first to generate cursor-based suggestions.",
+				"This recording has no cursor movement data. Cursor-based zoom suggestions need cursor data captured during recording.",
 			);
 			return;
 		}

@@ -165,13 +165,22 @@ function LaunchWindowContent() {
 
 	useEffect(() => {
 		const reportInteractiveBounds = () => {
+			const bounds = getHudInteractiveBounds(document);
 			window.electronAPI?.hudOverlaySetInteractiveBounds?.(
-				getHudInteractiveBounds(document).map((rect) => ({
+				bounds.map((rect) => ({
 					left: window.screenX + rect.left,
 					top: window.screenY + rect.top,
 					right: window.screenX + rect.right,
 					bottom: window.screenY + rect.bottom,
 					shape: rect.shape,
+				})),
+			);
+			window.electronAPI?.hudOverlaySetInputShape?.(
+				bounds.map(({ left, top, right, bottom }) => ({
+					x: Math.max(0, Math.round(left)),
+					y: Math.max(0, Math.round(top)),
+					width: Math.max(1, Math.round(right - left)),
+					height: Math.max(1, Math.round(bottom - top)),
 				})),
 			);
 		};
