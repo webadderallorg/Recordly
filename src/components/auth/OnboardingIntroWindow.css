@@ -72,9 +72,3 @@
 		transform: scale(1);
 	}
 }
-
-@media (prefers-reduced-motion: reduce) {
-	.onboarding-intro {
-		display: none;
-	}
-}

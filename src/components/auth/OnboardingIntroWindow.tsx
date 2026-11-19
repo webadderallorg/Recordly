@@ -60,10 +60,6 @@ export default function OnboardingIntroWindow() {
 		// Let the effect settle without waiting for a frame in a hidden window.
 		queueMicrotask(() => {
 			if (disposed) return;
-			if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-				report?.("skipped");
-				return;
-			}
 			unsubscribe = window.electronAPI?.onOnboardingIntroShown?.(play);
 			report?.("ready");
 			if (!unsubscribe) play();
