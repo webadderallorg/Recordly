@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -131,7 +132,7 @@ function launch(mode: "increments" | "hold" | "store", index = 0): ChildProcess 
 				}, {timeoutMs: 5000, pollMs: 3});
 			}
 			process.disconnect();
-		} catch(error) { console.error(error.message); process.exitCode = 1; process.disconnect(); }
+		} catch(error) { console.error(error.stack ?? error.message); process.exitCode = 1; process.disconnect(); }
 	`,
 		],
 		{ stdio: ["ignore", "pipe", "pipe", "ipc"] },
@@ -142,14 +143,23 @@ function launch(mode: "increments" | "hold" | "store", index = 0): ChildProcess 
 
 function message(child: ChildProcess, expected: string): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const onExit = () => reject(new Error(`Child exited before ${expected}`));
-		child.once("exit", onExit);
+		let stderr = "";
+		const onStderr = (chunk: Buffer) => {
+			stderr += chunk.toString();
+		};
+		const onClose = (code: number | null) => {
+			child.off("message", onMessage);
+			reject(new Error(stderr.trim() || `Child exited with code ${code} before ${expected}`));
+		};
 		const onMessage = (value: unknown) => {
 			if (value !== expected) return;
-			child.off("exit", onExit);
+			child.off("close", onClose);
+			child.stderr?.off("data", onStderr);
 			child.off("message", onMessage);
 			resolve();
 		};
+		child.stderr?.on("data", onStderr);
+		child.once("close", onClose);
 		child.on("message", onMessage);
 	});
 }
@@ -346,4 +356,65 @@ it("publishes only complete private metadata and removes its own ticket on opera
 		}),
 	).rejects.toThrow("Original operation failure");
 	expect(await fs.readdir(directory)).toEqual([]);
+});
+
+it.runIf(path.sep === "\\")("recovers from temporary Windows sharing violations", async () => {
+	const open = fs.open.bind(fs);
+	const rename = fs.rename.bind(fs);
+	let blockedRead = false;
+	let blockedRename = false;
+	vi.spyOn(fs, "open").mockImplementation(async (file, ...options) => {
+		if (!blockedRead && String(file).endsWith(".ticket")) {
+			blockedRead = true;
+			throw Object.assign(new Error("Reader temporarily blocked"), { code: "EPERM" });
+		}
+		return open(file, ...options);
+	});
+	vi.spyOn(fs, "rename").mockImplementation(async (source, destination) => {
+		if (!blockedRename && path.basename(String(source)).startsWith(".publish-")) {
+			blockedRename = true;
+			throw Object.assign(new Error("Replacement temporarily blocked"), { code: "EPERM" });
+		}
+		return rename(source, destination);
+	});
+	const operation = vi.fn(async () => "acquired");
+	await expect(withAuthStorageTransaction(directory, operation)).resolves.toBe("acquired");
+	expect(blockedRead && blockedRename).toBe(true);
+	expect(operation).toHaveBeenCalledOnce();
+	expect(await fs.readdir(directory)).toEqual([]);
+});
+
+it.runIf(path.sep === "\\")(
+	"does not retry a Windows ticket rename after its deadline",
+	async () => {
+		const rename = fs.rename.bind(fs);
+		const sharingViolation = Object.assign(new Error("Replacement temporarily blocked"), {
+			code: "EPERM",
+		});
+		let numberedAttempts = 0;
+		vi.spyOn(fs, "rename").mockImplementation(async (source, destination) => {
+			if (path.basename(String(source)).startsWith(".publish-") && ++numberedAttempts === 1) {
+				throw sharingViolation;
+			}
+			return rename(source, destination);
+		});
+		vi.spyOn(performance, "now")
+			.mockReturnValueOnce(100)
+			.mockReturnValueOnce(105)
+			.mockReturnValue(110);
+
+		const operation = vi.fn(async () => "acquired");
+		await expect(
+			withAuthStorageTransaction(directory, operation, { timeoutMs: 10, pollMs: 5 }),
+		).rejects.toMatchObject({ name: "AuthStorageBusyError", cause: sharingViolation });
+		expect(numberedAttempts).toBe(1);
+		expect(operation).not.toHaveBeenCalled();
+		expect(await fs.readdir(directory)).toEqual([]);
+	},
+);
+
+it("allows an uncontended acquisition with a zero timeout", async () => {
+	await expect(
+		withAuthStorageTransaction(directory, async () => "acquired", { timeoutMs: 0 }),
+	).resolves.toBe("acquired");
 });

@@ -242,17 +242,15 @@ it("keeps overlapping module instances and reads from replacing an in-flight wri
 		release = resolve;
 	});
 	const originalRename = fs.rename.bind(fs);
-	const rename = vi
-		.spyOn(fs, "rename")
-		.mockImplementationOnce(async (oldPath, newPath) => {
-			// The lock's choosing -> numbered publication is itself a rename.
-			return originalRename(oldPath, newPath);
-		})
-		.mockImplementationOnce(async (oldPath, newPath) => {
+	let paused = false;
+	const rename = vi.spyOn(fs, "rename").mockImplementation(async (oldPath, newPath) => {
+		if (!paused && newPath === path.join(native.directory, "private-auth", "session.enc")) {
+			paused = true;
 			reached();
 			await blocked;
-			return originalRename(oldPath, newPath);
-		});
+		}
+		return originalRename(oldPath, newPath);
+	});
 	try {
 		const writing = first("set", `${key}-user`, "first-user");
 		await held;

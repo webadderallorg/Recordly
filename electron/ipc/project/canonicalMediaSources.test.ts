@@ -1,12 +1,12 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 vi.mock("../utils", () => ({
 	normalizeVideoSourcePath: (value: string) =>
-		value.startsWith("file://") ? decodeURIComponent(new URL(value).pathname) : value,
+		value.startsWith("file://") ? fileURLToPath(value) : value,
 }));
 import { canonicalMediaSources } from "./canonicalMediaSources";
 let root: string;
