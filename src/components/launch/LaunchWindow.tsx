@@ -4,11 +4,11 @@ import {
 	House,
 	MicrophoneIcon,
 	MicrophoneSlashIcon,
-	MinusIcon,
 	MonitorIcon,
 	SpeakerHighIcon,
 	VideoCameraIcon,
 	VideoCameraSlashIcon,
+	XIcon,
 } from "@/components/ui/icons";
 import { toast } from "@/components/ui/toast";
 import { useScopedT } from "../../contexts/I18nContext";
@@ -23,6 +23,7 @@ import { canToggleFloatingWebcamPreview } from "./floatingWebcamPreview";
 import { getHudInteractiveBounds } from "./hudMousePassthrough";
 import { useCameraPermission } from "./hooks/useCameraPermission";
 import { useHudBarDrag } from "./hooks/useHudBarDrag";
+import { useHudHideAnimation } from "./hooks/useHudHideAnimation";
 import { useHudStateTransition } from "./hooks/useHudStateTransition";
 import { useLaunchHudInteractionState } from "./hooks/useLaunchHudInteractionState";
 import { useLaunchWindowActions } from "./hooks/useLaunchWindowActions";
@@ -83,6 +84,7 @@ function LaunchWindowContent() {
 	const { elapsed, formatTime } = useRecordingTimer(recording, paused);
 	const hudContentRef = useRef<HTMLDivElement>(null);
 	const hudBarRef = useRef<HTMLDivElement>(null);
+	const hideHud = useHudHideAnimation(hudBarRef);
 
 	const { selectedSource, hasSelectedSource, syncSelectedSource } = useLaunchWindowActions();
 
@@ -446,11 +448,12 @@ function LaunchWindowContent() {
 				variant="ghost"
 				size="icon"
 				iconSize="lg"
-				onClick={() => window.electronAPI?.hudOverlayHide?.()}
+				onClick={hideHud}
 				disabled={countdownActive}
 				title={t("recording.hideHud")}
+				aria-label={t("recording.hideHud")}
 			>
-				<MinusIcon className="size-5" />
+				<XIcon className="size-5" />
 			</Button>
 		</div>
 	);
