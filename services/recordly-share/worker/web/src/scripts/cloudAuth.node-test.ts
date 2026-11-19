@@ -1,13 +1,13 @@
-import { takeCommentReturn } from "./commentAuth.ts";
 import assert from "node:assert/strict";
-import { test, type TestContext } from "node:test";
+import { type TestContext, test } from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
 	beginCloudOAuth,
+	CloudSignupConsentRetryError,
 	cloudSignupMetadata,
 	completeCloudCallback,
-	CloudSignupConsentRetryError,
 } from "./cloudAuth.ts";
+import { takeCommentReturn } from "./commentAuth.ts";
 
 const authConfig = {
 	url: "https://fixture.supabase.test",

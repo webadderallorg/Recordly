@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ZoomRegion } from "../types";
 import type { SourceAudioTrackSettings } from "../audio/audioTypes";
 import { useSourceAudioTrackSettings } from "../audio/useSourceAudioTrackSettings";
 import { useTimelineState } from "../state/useTimelineState";
+import type { ZoomRegion } from "../types";
 import { useClipRegionCommands } from "./useClipRegionCommands";
 import { useEditorHistory } from "./useEditorHistory";
 

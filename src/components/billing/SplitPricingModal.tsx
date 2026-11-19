@@ -1,11 +1,11 @@
 import { Button, Label, Modal, Radio, RadioGroup } from "@heroui/react";
 import { Check } from "@phosphor-icons/react";
-import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import {
 	OnboardingHeader,
 	OnboardingHeroTitle,
 	OnboardingLayout,
 } from "@/components/auth/OnboardingLayout";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import type { CloudBillingPrice } from "@/types/cloudBilling";
 import { useBilling } from "./BillingProvider";

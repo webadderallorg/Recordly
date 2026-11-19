@@ -10,6 +10,7 @@ vi.mock("electron", () => ({
 vi.mock("../../rendererServer", () => ({
 	getPackagedRendererBaseUrl: () => "http://127.0.0.1:43820/",
 }));
+
 import { registerClipboardHandlers } from "./clipboard";
 
 type Frame = { url: string };

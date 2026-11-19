@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { usePlaybackWallpaper } from "../components/video-editor/videoPlayback/usePlaybackWallpaper";
 import {
 	DESKTOP_WALLPAPER,
 	desktopWallpaperPreference,
 	getDesktopWallpaperPath,
 } from "./desktopWallpaper";
 import { getAvailableWallpapers } from "./wallpapers";
-import { usePlaybackWallpaper } from "../components/video-editor/videoPlayback/usePlaybackWallpaper";
 
 const playback = vi.hoisted(() => ({ values: [] as unknown[], cursor: 0 }));
 vi.mock("react", () => ({

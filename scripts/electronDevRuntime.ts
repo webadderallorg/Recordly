@@ -16,13 +16,9 @@ export function prepareElectronDevRuntime(projectRoot: string): void {
 		},
 	);
 	if (current.status !== 0 || current.stdout.trim() !== "true") return;
-	const result = spawnSync(
-		"/usr/bin/plutil",
-		["-remove", "LSUIElement", infoPlist],
-		{
-			encoding: "utf8",
-		},
-	);
+	const result = spawnSync("/usr/bin/plutil", ["-remove", "LSUIElement", infoPlist], {
+		encoding: "utf8",
+	});
 	if (result.status !== 0) {
 		throw new Error(
 			`Could not configure macOS Electron launch identity: ${result.stderr || result.error}`,

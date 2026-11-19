@@ -64,14 +64,18 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 	await expect
 		.poll(() =>
 			page.evaluate(
-				() => JSON.parse(localStorage.getItem("recordly.editor.preferences.v2")!).webcam.width,
+				() =>
+					JSON.parse(localStorage.getItem("recordly.editor.preferences.v2")!).webcam
+						.width,
 			),
 		)
 		.toBe(31);
 	expect(await storedShadow()).toBe(0.2);
 	expect(
 		await page.evaluate(
-			() => JSON.parse(localStorage.getItem("recordly.editor.preferences.v2")!).webcam.roundness,
+			() =>
+				JSON.parse(localStorage.getItem("recordly.editor.preferences.v2")!).webcam
+					.roundness,
 		),
 	).toBe(20);
 

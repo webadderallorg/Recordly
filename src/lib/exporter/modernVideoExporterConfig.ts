@@ -1,4 +1,3 @@
-import type { CursorIdleHideSettings } from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -18,6 +17,7 @@ import type {
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
+import type { CursorIdleHideSettings } from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
 import type { SupportedMp4EncoderPath } from "./mp4Support";
 import type { ExportConfig, ExportProgress } from "./types";
 

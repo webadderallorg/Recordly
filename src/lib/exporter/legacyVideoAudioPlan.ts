@@ -1,5 +1,5 @@
-import { hasClipSourceAudioOverrides } from "./audioProcessorShared";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
+import { hasClipSourceAudioOverrides } from "./audioProcessorShared";
 import { requiresClipTimelineRendering } from "./clipTimeline";
 import { buildEditedTrackSourceSegments, classifyEditedTrackStrategy } from "./editedTrackStrategy";
 import type { LegacyVideoExporterContext } from "./legacyVideoExporterContext";

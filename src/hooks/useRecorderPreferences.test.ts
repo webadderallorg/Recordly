@@ -49,6 +49,7 @@ const hooks = vi.hoisted(() => {
 });
 vi.mock("react", async (original) => ({ ...(await original<typeof import("react")>()), ...hooks }));
 vi.mock("@/lib/auth/recordlyAuth", () => ({ hasRecordlySession: async () => true }));
+
 import { useRecorderPreferences } from "./useRecorderPreferences";
 
 let preferences!: (value: unknown) => void;

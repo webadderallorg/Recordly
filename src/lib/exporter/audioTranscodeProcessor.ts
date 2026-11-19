@@ -1,5 +1,4 @@
 import type { WebDemuxer } from "web-demuxer";
-import { OfflineAudioProcessor } from "./offlineAudioProcessor";
 import {
 	AUDIO_BITRATE,
 	DECODE_BACKPRESSURE_LIMIT,
@@ -8,6 +7,7 @@ import {
 	type TrimLikeRegion,
 } from "./audioProcessorShared";
 import type { VideoMuxer } from "./muxer";
+import { OfflineAudioProcessor } from "./offlineAudioProcessor";
 
 export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 	protected async processTrimOnlyAudio(

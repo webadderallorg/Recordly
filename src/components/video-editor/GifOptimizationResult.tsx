@@ -1,6 +1,6 @@
-import { formatGifBytes } from "@/lib/exporter/gifSizeFormat";
-import type { GifOptimizationSummary } from "@/lib/exporter/gifOptimization";
 import { useScopedT } from "@/contexts/I18nContext";
+import type { GifOptimizationSummary } from "@/lib/exporter/gifOptimization";
+import { formatGifBytes } from "@/lib/exporter/gifSizeFormat";
 
 export function GifOptimizationResult({ summary }: { summary: GifOptimizationSummary }) {
 	const t = useScopedT("settings");

@@ -1,31 +1,31 @@
-import ThemeToggle from "./ThemeToggle";
 import { Avatar, Button, Input, Label, Link, Skeleton, TextField, toast } from "@heroui/react";
 import {
-	ChatCircleIcon,
-	LockKeyIcon,
 	ArrowClockwiseIcon,
+	ChatCircleIcon,
 	HouseIcon,
+	LockKeyIcon,
 	UserCircleIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-	fetchShareData,
+	type Comment,
 	fetchReactions,
-	postReaction,
-	verifyPassword,
-	isShareData,
-	isPasswordRequired,
-	isExpired,
+	fetchShareData,
 	formatDate,
 	formatTimestamp,
-	type ShareData,
-	type Comment,
+	isExpired,
+	isPasswordRequired,
+	isShareData,
+	postReaction,
 	type Reaction,
+	type ShareData,
+	verifyPassword,
 } from "../scripts/api";
-import SharePlayer from "./SharePlayer";
-import ShareFeedback from "./ShareFeedback";
 import ShareDetails from "./ShareDetails";
-import { CenteredCard, Notice, CopyButton, Notifications } from "./ShareUI";
+import ShareFeedback from "./ShareFeedback";
+import SharePlayer from "./SharePlayer";
+import { CenteredCard, CopyButton, Notice, Notifications } from "./ShareUI";
+import ThemeToggle from "./ThemeToggle";
 
 const reactions = [
 	{ emoji: "👍", label: "Like" },

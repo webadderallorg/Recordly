@@ -1,7 +1,7 @@
-import { getSquircleCssRadius } from "@/lib/geometry/squircle";
-import { useScopedT } from "@/contexts/I18nContext";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { Rnd } from "react-rnd";
+import { useScopedT } from "@/contexts/I18nContext";
+import { getSquircleCssRadius } from "@/lib/geometry/squircle";
 import { cn } from "@/lib/utils";
 import { getArrowComponent } from "./ArrowSvgs";
 import { type AnnotationRegion, BASE_PREVIEW_WIDTH, BLUR_ANNOTATION_STRENGTH } from "./types";

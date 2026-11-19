@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { dragCrop, fitCropRatio, type CropHandle } from "./cropGeometry";
+import { describe, expect, it } from "vitest";
+import { type CropHandle, dragCrop, fitCropRatio } from "./cropGeometry";
 
 const full = { x: 0, y: 0, width: 1, height: 1 };
 const handles: CropHandle[] = ["n", "s", "e", "w", "nw", "ne", "sw", "se", "move"];

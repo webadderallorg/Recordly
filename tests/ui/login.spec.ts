@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
-import { productionTest as test } from "./production";
 import { completeSupabaseSignIn } from "./auth";
 import { installDesktopBridge } from "./bridge";
+import { productionTest as test } from "./production";
 
 async function captureSignInReports(page: Page) {
 	const reports: { error: string; logs: string }[] = [];
@@ -87,9 +87,7 @@ test("sign-in keeps all providers visible and marks unavailable providers disabl
 	});
 });
 
-test("production onboarding allows OAuth before provider discovery finishes", async ({
-	page,
-}) => {
+test("production onboarding allows OAuth before provider discovery finishes", async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
 	await page.addInitScript(() => {
 		window.electronAPI.openExternalUrl = async (url) => {

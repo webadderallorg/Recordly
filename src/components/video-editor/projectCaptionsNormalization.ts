@@ -1,5 +1,5 @@
-import type { ProjectEditorState } from "./projectPersistenceTypes";
 import { getCaptionPreset } from "./captionPresets";
+import type { ProjectEditorState } from "./projectPersistenceTypes";
 import { clamp, isFiniteNumber, normalizeAutoCaptionAnimation } from "./projectPersistenceUtils";
 import {
 	type AutoCaptionSettings,

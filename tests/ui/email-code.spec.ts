@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
-import { productionTest as test } from "./production";
 import { installDesktopBridge } from "./bridge";
+import { productionTest as test } from "./production";
 
 test("email code verification recovers from expiry without changing the target address", async ({
 	page,

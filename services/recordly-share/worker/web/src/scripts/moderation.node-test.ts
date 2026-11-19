@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import {
-	reportRecording,
-	fetchModeration,
-	updateModeration,
-	fetchModerationComments,
 	deleteModerationComment,
+	fetchModeration,
+	fetchModerationComments,
+	reportRecording,
+	updateModeration,
 } from "./api.ts";
+
 const originalFetch = globalThis.fetch;
 afterEach(() => {
 	globalThis.fetch = originalFetch;

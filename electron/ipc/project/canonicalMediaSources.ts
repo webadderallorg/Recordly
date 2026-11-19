@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
-import { canonicalSourceReference } from "./canonicalSourceReference";
 import { normalizeVideoSourcePath } from "../utils";
+import { canonicalSourceReference } from "./canonicalSourceReference";
 
 /** Resolve saved media references, including paths through a custom folder alias. */
 export async function canonicalMediaSources(

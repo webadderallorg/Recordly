@@ -1,4 +1,3 @@
-import { normalizeCursorIdleHideSettings } from "./videoPlayback/cursorIdleVisibility";
 import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
 import { rippleRegionAnchors, rippleRegions } from "./clipSequence";
@@ -30,6 +29,7 @@ import {
 	DEFAULT_ZOOM_SMOOTHNESS,
 	normalizeCursorClickEffectStyle,
 } from "./types";
+import { normalizeCursorIdleHideSettings } from "./videoPlayback/cursorIdleVisibility";
 
 export { fromFileUrl, resolveVideoUrl, toFileUrl } from "./projectMediaPaths";
 export { type EditorProjectData, type ProjectEditorState } from "./projectPersistenceTypes";

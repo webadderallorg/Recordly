@@ -1,6 +1,6 @@
 import { Button, Tooltip } from "@heroui/react";
 import { useState } from "react";
-import { Trash, PauseIcon, PlayIcon } from "@/components/ui/icons";
+import { PauseIcon, PlayIcon, Trash } from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
 import styles from "./LaunchWindow.module.css";
 

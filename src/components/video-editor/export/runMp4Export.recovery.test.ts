@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExportProgress, ExportResult } from "@/lib/exporter/types";
+import { resolveExportProgressUpdate } from "../exportProgressState";
 import type { ExportBranchContext } from "./exportBranchContext";
 import { runGifExport } from "./runGifExport";
 import { runMp4Export } from "./runMp4Export";
-import { resolveExportProgressUpdate } from "../exportProgressState";
 
 const mocks = vi.hoisted(() => ({
 	modernExport: vi.fn(),
@@ -61,6 +61,7 @@ vi.mock("./exportRunnerSupport", async (importOriginal) => ({
 	...(await importOriginal<typeof import("./exportRunnerSupport")>()),
 	showExportErrorToast: vi.fn(),
 }));
+
 import { toast } from "@/components/ui/toast";
 
 function context(destination: "download" | "share" = "download") {

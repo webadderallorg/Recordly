@@ -1,5 +1,6 @@
-import { ToggleButtonGroup, ToggleButton } from "@heroui/react";
+import { ToggleButton, ToggleButtonGroup } from "@heroui/react";
 import { type ComponentProps } from "react";
+
 type Props = Omit<ComponentProps<typeof ToggleButtonGroup>, "onSelectionChange" | "size"> & {
 	value?: string | string[];
 	defaultValue?: string | string[];

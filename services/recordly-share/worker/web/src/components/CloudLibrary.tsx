@@ -1,28 +1,27 @@
 import { Alert, Button, Modal, Spinner, toast } from "@heroui/react";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
-import LibraryPage from "./LibraryPage";
-import { CenteredCard } from "./ShareUI";
+import { RecordlyPasswordForm } from "../../../../../../src/components/auth/RecordlyPasswordForm";
 import {
 	RecordlySignInFields,
 	SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS,
 	type SignInProvider,
 } from "../../../../../../src/components/auth/RecordlySignInFields";
-import { RecordlyPasswordForm } from "../../../../../../src/components/auth/RecordlyPasswordForm";
-import settingsCopy from "../../../../../../src/i18n/locales/en/settings.json";
 import { RecordlyDemoVideo } from "../../../../../../src/components/ui/RecordlyDemoVideo";
 import copy from "../../../../../../src/i18n/locales/en/onboarding.json";
+import settingsCopy from "../../../../../../src/i18n/locales/en/settings.json";
+import { type CommentAccountState, commentAccessTokenForAccount } from "../scripts/api";
 import {
 	beginCloudOAuth,
+	CloudSignupConsentRetryError,
 	cloudSignupMetadata,
 	completeCloudCallback,
-	CloudSignupConsentRetryError,
 } from "../scripts/cloudAuth";
-import ThemeToggle from "./ThemeToggle";
-import { commentAccessTokenForAccount, type CommentAccountState } from "../scripts/api";
 import { commentProfileName, takeCommentReturn } from "../scripts/commentAuth";
-
 import CommentProfileName from "./CommentProfileName";
+import LibraryPage from "./LibraryPage";
+import { CenteredCard } from "./ShareUI";
+import ThemeToggle from "./ThemeToggle";
 
 interface Props {
 	authConfig?: { url: string; publishableKey: string };

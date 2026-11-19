@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll } from "vitest";
 import { env, SELF } from "cloudflare:test";
+import { beforeAll, describe, expect, it } from "vitest";
 import { expectedSessionToken } from "../src/index.js";
 
 const AUTH = { Authorization: "Bearer test-secret" };

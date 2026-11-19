@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
 const mocks = vi.hoisted(() => ({
 	app: { isPackaged: true, getAppPath: () => "/recordly" },
 	handlers: new Map<string, (...args: unknown[]) => unknown>(),
@@ -30,7 +31,9 @@ vi.mock("../../rendererServer", () => ({
 	getPackagedRendererBaseUrl: () => "http://127.0.0.1:43820/",
 }));
 vi.mock("../utils", () => ({ getMacPrivacySettingsUrl: (pane: string) => `settings:${pane}` }));
+
 import { registerPermissionHandlers } from "./permissions";
+
 const platform = process.platform;
 afterEach(() => {
 	Object.defineProperty(process, "platform", { value: platform });

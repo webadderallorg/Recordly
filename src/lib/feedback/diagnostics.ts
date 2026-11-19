@@ -1,6 +1,7 @@
 import packageInfo from "../../../package.json";
 import { redactDiagnostic } from "./diagnosticRedaction";
 import { getExportDiagnosticLogs } from "./exportDiagnostics";
+
 export { redactDiagnostic } from "./diagnosticRedaction";
 
 const entries: string[] = [];

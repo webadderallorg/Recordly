@@ -1,6 +1,6 @@
-import { LocalizedError } from "@/components/feedback/LocalizedError";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { LocalizedError } from "@/components/feedback/LocalizedError";
 import { I18nProvider } from "@/contexts/I18nContext";
 import { SUPPORTED_LOCALES } from "@/i18n/config";
 import { DashboardToolbar } from "./DashboardToolbar";

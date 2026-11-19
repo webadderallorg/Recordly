@@ -1,4 +1,3 @@
-import { isValidCustomExportResolution } from "./exportDimensions";
 import type {
 	ExportBackendPreference,
 	ExportEncodingMode,
@@ -10,6 +9,7 @@ import type {
 	GifSizePreset,
 } from "@/lib/exporter";
 import { isValidMp4FrameRate } from "@/lib/exporter/types";
+import { isValidCustomExportResolution } from "./exportDimensions";
 
 export interface ExportPreferences {
 	advancedExportSettings: boolean;

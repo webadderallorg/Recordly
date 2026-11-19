@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
-import { isComposedThumbnail } from "./composedThumbnail";
 import {
-	PROJECT_THUMBNAIL_WIDTH,
 	PROJECT_THUMBNAIL_HEIGHT,
+	PROJECT_THUMBNAIL_WIDTH,
 } from "../../../src/lib/projectThumbnail";
+import { isComposedThumbnail } from "./composedThumbnail";
 
 // Older releases wrote 320px previews. Hide those and previews predating edits;
 // the editor replaces them with a current-size render when returning home.

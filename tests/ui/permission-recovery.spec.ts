@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
-import { productionTest as test } from "./production";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+import { productionTest as test } from "./production";
 
 test("a pending permission request still requires an expired session to sign in", async ({
 	page,

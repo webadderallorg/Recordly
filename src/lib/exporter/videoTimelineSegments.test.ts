@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { requiresClipTimelineRendering } from "./clipTimeline";
 import {
 	buildClipDecodeRuns,
+	computeVideoSegments,
 	segmentFrameCount,
 	segmentSourceTime,
 	sliceVideoSegmentsToFrameWindow,
-	computeVideoSegments,
 	splitVideoSegmentsBySpeed,
 } from "./videoTimelineSegments";
-import { requiresClipTimelineRendering } from "./clipTimeline";
 
 describe("explicit clip export timeline", () => {
 	it("preserves gaps and source in-points without starting another decode pass", () => {

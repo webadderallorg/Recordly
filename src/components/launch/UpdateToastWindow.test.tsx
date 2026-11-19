@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/contexts/I18nContext";
 import { SUPPORTED_LOCALES } from "@/i18n/config";
-import { UpdateToastWindow, type UpdateToastPayload } from "./UpdateToastWindow";
+import { type UpdateToastPayload, UpdateToastWindow } from "./UpdateToastWindow";
 
 const catalogs = import.meta.glob<{ default: Record<string, string> }>(
 	"../../i18n/locales/*/capture.json",

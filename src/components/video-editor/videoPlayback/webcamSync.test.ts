@@ -4,8 +4,8 @@ import {
 	getWebcamPreviewTargetTimeSeconds,
 	isWebcamMediaSynchronized,
 	isWebcamVisibleAtSourceTime,
-	shouldSeekWebcamMedia,
 	shouldLoopWebcamSource,
+	shouldSeekWebcamMedia,
 } from "./webcamSync";
 
 describe("getWebcamPreviewTargetTimeSeconds", () => {

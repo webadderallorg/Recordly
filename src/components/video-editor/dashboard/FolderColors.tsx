@@ -1,4 +1,3 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import {
 	ColorArea,
 	ColorField,
@@ -8,8 +7,9 @@ import {
 	Input,
 	Popover,
 } from "@heroui/react";
-import { FolderSimple, Plus, X } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
+import { FolderSimple, Plus, X } from "@/components/ui/icons";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { FOLDER_COLORS } from "./useProjectFolders";
 
 export function FolderColors({

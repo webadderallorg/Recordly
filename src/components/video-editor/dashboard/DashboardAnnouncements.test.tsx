@@ -1,9 +1,11 @@
-import { I18nProvider } from "@/contexts/I18nContext";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup as renderMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { I18nProvider } from "@/contexts/I18nContext";
+
 const renderToStaticMarkup = (children: ReactNode) =>
 	renderMarkup(<I18nProvider>{children}</I18nProvider>);
+
 import { DashboardAnnouncements } from "./DashboardAnnouncements";
 
 const banner = { src: "/banner.svg", alt: "Product news", href: "https://example.com/news" };

@@ -1,4 +1,3 @@
-import type { CursorIdleHideSettings } from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
 import { Container, Sprite, Texture } from "pixi.js";
 import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
 import type {
@@ -16,6 +15,7 @@ import type {
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
+import type { CursorIdleHideSettings } from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
 import type { ExportRenderBackend } from "./types";
 
 export interface FrameRenderConfig {

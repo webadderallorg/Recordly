@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 import { promisify } from "node:util";
 import { nativeImage } from "electron";
 import { getFfmpegBinaryPath } from "./ipc/ffmpeg/binary";

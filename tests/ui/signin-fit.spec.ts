@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import { productionTest as test } from "./production";
 import { installDesktopBridge } from "./bridge";
+import { productionTest as test } from "./production";
 
 async function expectFormFits(dialog: Locator) {
 	await expect

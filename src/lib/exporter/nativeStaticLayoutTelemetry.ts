@@ -4,8 +4,8 @@ import type {
 	CursorTelemetryPoint,
 } from "@/components/video-editor/types";
 import { getCursorPressState } from "@/components/video-editor/videoPlayback/cursorPress";
-import { resolvePixelGlovePose } from "@/components/video-editor/videoPlayback/pixelGloveMotion";
 import { projectCursorPositionToViewport } from "@/components/video-editor/videoPlayback/cursorViewport";
+import { resolvePixelGlovePose } from "@/components/video-editor/videoPlayback/pixelGloveMotion";
 
 export type NativeStaticLayoutCursorTelemetrySample = {
 	timeMs: number;

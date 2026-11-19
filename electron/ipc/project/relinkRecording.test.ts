@@ -15,6 +15,7 @@ vi.mock("../utils", () => ({
 	normalizeVideoSourcePath: (value: string) => value,
 	parseJsonWithByteOrderMark: (value: string) => JSON.parse(value.replace(/^\uFEFF/, "")),
 }));
+
 import { relinkProjectRecording, requiredRecordingDurationMs } from "./relinkRecording";
 
 let directory: string;

@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import { RecordingOwnerRecovery } from "./ownerRecovery";
 import { WindowsRecordingFinalizer } from "./windowsFinalizer";
+
 const drain = async () => {
 	for (let i = 0; i < 30; i++) await Promise.resolve();
 };

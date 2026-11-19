@@ -2,10 +2,10 @@ import { Graphics, Sprite, Texture } from "pixi.js";
 import { useEffect, useRef } from "react";
 import { destroyPixiContainer } from "@/lib/pixiApplicationLifecycle";
 import { createClipPlayback, findPreviewClipAtTimelineTime } from "./clipPlayback";
-import { subscribePreviewReadiness } from "./previewReadiness";
 import type { PlaybackProps } from "./playbackProps";
 import { createPlaybackAnimationState } from "./playbackTypes";
 import { PreviewFrameTexture } from "./previewFrameTexture";
+import { subscribePreviewReadiness } from "./previewReadiness";
 import type { usePlaybackState } from "./usePlaybackState";
 export type usePlaybackTransportInput = Pick<
 	ReturnType<typeof usePlaybackState> & PlaybackProps,

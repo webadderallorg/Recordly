@@ -1,4 +1,3 @@
-import type { CursorIdleHideSettings } from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
 import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 import type { MotionBlurFilter } from "pixi-filters/motion-blur";
 import type { ZoomBlurFilter } from "pixi-filters/zoom-blur";
@@ -19,13 +18,14 @@ import type {
 } from "@/components/video-editor/types";
 import { DEFAULT_FOCUS } from "@/components/video-editor/videoPlayback/constants";
 import { type CursorFollowCameraState } from "@/components/video-editor/videoPlayback/cursorFollowCamera";
+import type { CursorIdleHideSettings } from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
 import { PixiCursorOverlay } from "@/components/video-editor/videoPlayback/cursorRenderer";
 import { type SpringState } from "@/components/video-editor/videoPlayback/motionSmoothing";
 import { type MotionBlurState } from "@/components/video-editor/videoPlayback/zoomTransform";
 import { WebcamMotionBlur } from "@/components/video-editor/webcamMotionBlur";
 import { ForwardFrameSource } from "./forwardFrameSource";
-import type { WebcamFrameSource } from "./webcamFrameSource";
 import type { SourceRedactionCanvas } from "./sourceRedaction";
+import type { WebcamFrameSource } from "./webcamFrameSource";
 
 export interface FrameRenderConfig {
 	/** Sparse samples seek optional media directly instead of scanning their prefix. */

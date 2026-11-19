@@ -1,4 +1,3 @@
-import { createReleaseVersionCatalog } from "./releaseVersions";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -16,27 +15,24 @@ import {
 	systemPreferences,
 	Tray,
 } from "electron";
-import { nativeT, setNativeLocale } from "./nativeI18n";
-import {
-	captureEditorMenuTarget,
-	createEditorCommandMenus,
-	withHiddenDockEditorMenus,
-	type ProjectMenuAction,
-} from "./editorCommandMenu";
-import { validateAppLocaleRequest } from "./localeIpc";
-import { readAppSetting, writeAppSetting } from "./appSettingsStore";
-import { refreshDesktopPresenceLocale } from "./desktopPresence";
-import { initializeInstanceSession, RECORDINGS_DIR } from "./appPaths";
 import { activateFromDesktopIcon } from "./appActivation";
-import { getUpdatePresentation } from "./updatePresentation";
+import { initializeInstanceSession, RECORDINGS_DIR } from "./appPaths";
+import { readAppSetting, writeAppSetting } from "./appSettingsStore";
 import { createAuthCallbackController } from "./authCallback";
 import { showCursor } from "./cursorHider";
 import {
 	desktopPresenceNeedsTray,
 	initializeDesktopPresence,
+	refreshDesktopPresenceLocale,
 	setDesktopPresenceRecording,
 	stopRecordingFromDesktopIcon,
 } from "./desktopPresence";
+import {
+	captureEditorMenuTarget,
+	createEditorCommandMenus,
+	type ProjectMenuAction,
+	withHiddenDockEditorMenus,
+} from "./editorCommandMenu";
 import { getGpuSwitches } from "./gpuSwitches";
 import {
 	cleanupAllExportStreams,
@@ -48,31 +44,35 @@ import {
 import { recordingFocus } from "./ipc/recording/focus";
 import { clearRecordingTrashUndo } from "./ipc/recording/library";
 import { resolveDisplayMediaSource } from "./ipc/register/sourceMapping";
+import { validateAppLocaleRequest } from "./localeIpc";
 import { ensureMediaServer } from "./mediaServer";
+import { nativeT, setNativeLocale } from "./nativeI18n";
 import {
 	hardenWebContentsNavigation,
 	isInternalRendererTarget,
 	shouldHardenWebContentsType,
 } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
-import { isTrustedRenderer } from "./trustedRenderer";
+import { createReleaseVersionCatalog } from "./releaseVersions";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
 import { createSaveBeforeCloseController } from "./saveBeforeClose";
+import { isTrustedRenderer } from "./trustedRenderer";
+import { getUpdatePresentation } from "./updatePresentation";
 import {
 	checkForAppUpdates,
 	deferUpdateReminder,
 	dismissUpdateToast,
 	downloadAvailableUpdate,
-	getCurrentUpdateToastPayload,
 	getAutomaticUpdateDownloadsEnabled,
+	getCurrentUpdateToastPayload,
 	getExperimentalUpdatesEnabled,
 	getUpdaterLogPath,
 	getUpdateStatusSummary,
 	installDownloadedUpdateNow,
 	previewNativeUpdateDialog,
 	previewUpdateToast,
-	setExperimentalUpdatesEnabled,
 	setAutomaticUpdateDownloadsEnabled,
+	setExperimentalUpdatesEnabled,
 	setupAutoUpdates,
 	showUpdateNotificationOnOpen,
 	skipAvailableUpdateVersion,
@@ -90,8 +90,8 @@ import {
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
 	isHudOverlayMousePassthroughSupported,
-	replayOnboardingIntro,
 	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
+	replayOnboardingIntro,
 	revealStartupOnboardingWindow,
 	setHudOverlayRecordingActive,
 	showOnboardingWindow,

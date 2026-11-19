@@ -1,9 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { signupConsentMetadata } from "./signupConsent";
 import {
 	createPendingSignupConsentStore,
 	createSignupConsentRetryStore,
 } from "./pendingSignupConsent";
+import { signupConsentMetadata } from "./signupConsent";
 
 const prefix = "sb-test-auth-token";
 const challenge = "a".repeat(43);

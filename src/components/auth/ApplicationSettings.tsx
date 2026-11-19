@@ -1,6 +1,6 @@
-import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { Button, Switch } from "@heroui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { SettingsRow } from "@/components/video-editor/SettingsRow";
 import { useI18n } from "@/contexts/I18nContext";
 

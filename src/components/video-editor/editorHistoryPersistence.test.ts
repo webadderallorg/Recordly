@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
 	createEditorHistoryStack,
 	recordEditorHistorySnapshot,
-	undoEditorHistoryStack,
 	redoEditorHistoryStack,
+	undoEditorHistoryStack,
 } from "./editorHistory";
 import {
 	createProjectHistorySnapshot,
 	persistEditorHistory,
 	restoreEditorHistory,
 } from "./editorHistoryPersistence";
-import { createProjectData, normalizeProjectEditor } from "./projectPersistence";
 import { hasUnsavedProjectChanges } from "./projectDirtyState";
+import { createProjectData, normalizeProjectEditor } from "./projectPersistence";
 
 const editor = (text: string) =>
 	normalizeProjectEditor({

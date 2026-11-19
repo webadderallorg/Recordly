@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
-import { DEFAULT_ANNOTATION_STYLE, type AnnotationRegion } from "@/components/video-editor/types";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { type AnnotationRegion, DEFAULT_ANNOTATION_STYLE } from "@/components/video-editor/types";
 import { getAnnotationTextLayout, renderText } from "./annotationDrawing";
 import { renderAnnotationToCanvas } from "./annotationRenderer";
 

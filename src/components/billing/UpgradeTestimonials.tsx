@@ -1,5 +1,5 @@
-import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { ChatCircle, Heart, SealCheck } from "@phosphor-icons/react";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { featuredUpgradeTestimonials as upgradeTestimonials } from "./upgradeTestimonialData";
 import "./UpgradeTestimonials.css";
 

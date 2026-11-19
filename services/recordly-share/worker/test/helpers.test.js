@@ -1,12 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-	generateShareCode,
 	escapeHTML,
-	parseCookies,
-	timingSafeEqual,
-	sha256Hex,
-	generateSalt,
 	formatVTTTime,
+	generateSalt,
+	generateShareCode,
+	parseCookies,
+	sha256Hex,
+	timingSafeEqual,
 } from "../src/index.js";
 
 const SHARE_CODE_CHARS = "0123456789abcdef";

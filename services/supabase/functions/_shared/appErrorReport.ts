@@ -1,4 +1,4 @@
-import { isExportErrorReport, type ExportErrorReport } from "./exportErrorReport.ts";
+import { type ExportErrorReport, isExportErrorReport } from "./exportErrorReport.ts";
 
 export interface AppErrorReport {
 	schemaVersion: 2;

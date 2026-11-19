@@ -1,12 +1,14 @@
 import { beforeEach, expect, it, vi } from "vitest";
+
 vi.mock("electron", () => ({ BrowserWindow: { getAllWindows: () => [] } }));
 vi.mock("../paths/binaries", () => ({
 	ensureNativeCursorMonitorBinary: vi.fn(),
 	getCursorMonitorExePath: vi.fn(),
 }));
 vi.mock("./interaction", () => ({ recordCursorMouseDown: vi.fn(), recordCursorMouseUp: vi.fn() }));
-import { recordCursorMouseDown, recordCursorMouseUp } from "./interaction";
+
 import { setNativeCursorMonitorOutputBuffer } from "../state";
+import { recordCursorMouseDown, recordCursorMouseUp } from "./interaction";
 import { handleCursorMonitorStdout } from "./monitor";
 
 beforeEach(() => {

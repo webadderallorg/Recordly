@@ -1,7 +1,7 @@
-import { defineConfig } from "astro/config";
+import { fileURLToPath } from "node:url";
 import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
-import { fileURLToPath } from "node:url";
+import { defineConfig } from "astro/config";
 
 export default defineConfig({
 	output: "static",

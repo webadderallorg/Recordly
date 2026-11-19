@@ -1,6 +1,6 @@
 import { Button, Modal } from "@heroui/react";
-import { useState } from "react";
 import { X } from "@phosphor-icons/react";
+import { useState } from "react";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { OnboardingFooter, OnboardingLayout, OnboardingPrimaryAction } from "./OnboardingLayout";
 import { OnboardingPermissions } from "./OnboardingPermissions";

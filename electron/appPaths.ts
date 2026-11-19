@@ -1,5 +1,5 @@
-import path from "node:path";
 import { mkdirSync } from "node:fs";
+import path from "node:path";
 import { app } from "electron";
 import { reserveInstanceSession } from "./instanceSession";
 

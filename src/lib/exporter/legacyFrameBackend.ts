@@ -1,5 +1,5 @@
-import { ensureCaptionFontLoaded } from "@/components/video-editor/captionFonts";
 import { Application, Container, Graphics, Rectangle } from "pixi.js";
+import { ensureCaptionFontLoaded } from "@/components/video-editor/captionFonts";
 import {
 	DEFAULT_CURSOR_CONFIG,
 	PixiCursorOverlay,

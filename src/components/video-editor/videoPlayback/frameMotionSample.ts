@@ -1,11 +1,11 @@
 import {
-	findClipAtTimelineTime,
-	mapTimelineTimeToSourceTime,
 	type ClipRegion,
 	type CursorTelemetryPoint,
+	findClipAtTimelineTime,
+	mapTimelineTimeToSourceTime,
 } from "../types";
 import { interpolateCursorPosition } from "./cursorPosition";
-import { projectCursorPositionToViewport, type CursorViewportRect } from "./cursorViewport";
+import { type CursorViewportRect, projectCursorPositionToViewport } from "./cursorViewport";
 import { computeDirectionalMotionBlur } from "./zoomTransform";
 
 /** Sample one media-frame interval, never the distance between playhead seeks. */

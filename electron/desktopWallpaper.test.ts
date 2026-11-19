@@ -9,6 +9,7 @@ const nativeWallpaper = vi.hoisted(() => vi.fn());
 vi.mock("./ipc/windowsWindowGeometry", () => ({ readWindowsWindowGeometry: nativeWallpaper }));
 vi.mock("electron", () => ({ nativeImage: { createFromPath: decode } }));
 vi.mock("./ipc/ffmpeg/binary", () => ({ getFfmpegBinaryPath: () => "/recordly/ffmpeg" }));
+
 import {
 	importDesktopWallpaperImage,
 	resolveDesktopWallpaperSource,

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { getHudOverlayInteractiveBounds, getHudOverlayWindow } from "../../windows";
 import {
 	hasLoggedInteractionHookFailure,
 	interactionCaptureCleanup,
@@ -11,14 +12,13 @@ import {
 	setLastLeftClick,
 	setLinuxCursorScreenPoint,
 } from "../state";
-import { getScreen } from "../utils";
-import { getHudOverlayInteractiveBounds, getHudOverlayWindow } from "../../windows";
 import type {
 	CursorInteractionType,
 	HookMouseEvent,
 	UiohookLike,
 	UiohookModuleNamespace,
 } from "../types";
+import { getScreen } from "../utils";
 import {
 	getCursorCaptureElapsedMs,
 	getHookCursorScreenPoint,

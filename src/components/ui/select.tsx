@@ -1,6 +1,6 @@
-import { useI18n } from "@/contexts/I18nContext";
-import { Select as HeroSelect, ListBox, Label, Separator } from "@heroui/react";
+import { Select as HeroSelect, Label, ListBox, Separator } from "@heroui/react";
 import { type ComponentProps, type ReactNode } from "react";
+import { useI18n } from "@/contexts/I18nContext";
 import { cn } from "@/lib/utils";
 export function Select({
 	value,

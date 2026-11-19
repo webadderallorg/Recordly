@@ -1,6 +1,7 @@
 /// <reference lib="es2022.intl" />
-import { drawSquircleOnCanvas, SQUIRCLE_RADIUS_SCALE } from "@/lib/geometry/squircle";
+
 import { type AnnotationRegion, type ArrowDirection } from "@/components/video-editor/types";
+import { drawSquircleOnCanvas, SQUIRCLE_RADIUS_SCALE } from "@/lib/geometry/squircle";
 
 const ARROW_PATHS: Record<ArrowDirection, string[]> = {
 	up: ["M 50 20 L 50 80", "M 50 20 L 35 35", "M 50 20 L 65 35"],

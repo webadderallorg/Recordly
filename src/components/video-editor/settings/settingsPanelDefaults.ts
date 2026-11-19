@@ -1,4 +1,3 @@
-import { DEFAULT_CURSOR_IDLE_HIDE } from "../videoPlayback/cursorIdleVisibility";
 import { getDefaultBorderRadiusPercent } from "@/components/video-editor/projectPersistence";
 import {
 	DEFAULT_AUTO_CAPTION_SETTINGS,
@@ -16,6 +15,7 @@ import {
 	DEFAULT_ZOOM_IN_DURATION_MS,
 	DEFAULT_ZOOM_OUT_DURATION_MS,
 } from "@/components/video-editor/types";
+import { DEFAULT_CURSOR_IDLE_HIDE } from "../videoPlayback/cursorIdleVisibility";
 
 import type { SettingsPanelProps } from "./settingsPanelProps";
 

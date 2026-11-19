@@ -1,14 +1,14 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { Card, Modal } from "@heroui/react";
 import { RecordlyAccountMenu } from "@/components/auth/RecordlyAccountMenu";
 import { UpgradeButton } from "@/components/billing/UpgradeButton";
 import { Button } from "@/components/ui/button";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { AppFrameHeader } from "../layout/AppFrameHeader";
 import { AppUpdateButton } from "../layout/AppUpdateButton";
 import { DashboardAnnouncements } from "./DashboardAnnouncements";
-import { DashboardLibraryActions } from "./DashboardLibraryActions";
 import { DashboardFilters } from "./DashboardFilters";
 import { DashboardGrid } from "./DashboardGrid";
+import { DashboardLibraryActions } from "./DashboardLibraryActions";
 import { DashboardSidebar } from "./DashboardSidebar";
 import { DashboardToolbar } from "./DashboardToolbar";
 import type { DashboardProps } from "./types";

@@ -1,8 +1,8 @@
+import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import {
 	hasClipSourceAudioOverrides,
 	hasNonDefaultSourceTrackSettings,
 } from "./audioProcessorShared";
-import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import { requiresClipTimelineRendering } from "./clipTimeline";
 import { buildEditedTrackSourceSegments, classifyEditedTrackStrategy } from "./editedTrackStrategy";
 import { getLocalFilePath } from "./localMediaSource";

@@ -391,7 +391,8 @@
 
 /* Preserve the demo height during a slide. With only one page, the demo can
  * take the space left over by the controls. */
-.onboarding-layout[data-onboarding-carousel]:has(> .onboarding-navigation) .onboarding-stage-content {
+.onboarding-layout[data-onboarding-carousel]:has(> .onboarding-navigation)
+.onboarding-stage-content {
 	flex: 0 1 min(65%, 380px);
 }
 
@@ -417,7 +418,8 @@
 }
 
 @media (max-width: 520px) {
-	.onboarding-layout[data-onboarding-carousel]:has(> .onboarding-navigation) .onboarding-stage-content {
+	.onboarding-layout[data-onboarding-carousel]:has(> .onboarding-navigation)
+		.onboarding-stage-content {
 		flex-basis: min(70%, 420px);
 	}
 

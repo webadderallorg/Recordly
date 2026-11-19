@@ -8,7 +8,9 @@ vi.mock("../utils", () => ({
 	normalizeVideoSourcePath: (value: string) =>
 		value.startsWith("file://") ? fileURLToPath(value) : value,
 }));
+
 import { canonicalMediaSources } from "./canonicalMediaSources";
+
 let root: string;
 beforeEach(async () => {
 	root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "recordly-source-alias-")));

@@ -146,6 +146,7 @@ vi.mock("@/lib/wallpaperUpload", async (original) => ({
 	prepareWallpaperImage: wallpaperHooks.prepare,
 }));
 vi.mock("@/components/ui/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
 import { useBackgroundSettings } from "@/components/video-editor/settings/useBackgroundSettings";
 
 describe("uploaded wallpaper list", () => {

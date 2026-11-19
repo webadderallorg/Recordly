@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import {
-	saveSignupConsentForAccount,
 	SignupConsentScopeChangedError,
+	saveSignupConsentForAccount,
 	validateSignupConsentAuthConfig,
 } from "./signupConsentTransport";
 

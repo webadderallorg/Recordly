@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { completeSupabaseSignIn } from "./auth";
-import { productionTest } from "./production";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+import { productionTest } from "./production";
 
 async function openDevSettings(page: Page) {
 	await page.getByRole("button", { name: "Recordly account", exact: true }).click();

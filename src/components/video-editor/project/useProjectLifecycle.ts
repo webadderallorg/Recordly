@@ -10,6 +10,8 @@ import {
 } from "react";
 import { toast } from "@/components/ui/toast";
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
+import type { EditorHistoryStack } from "../editorHistory";
+import { persistEditorHistory, restoreEditorHistory } from "../editorHistoryPersistence";
 import type { UnsavedChangesDecision } from "../layout/EditorDialogs";
 import {
 	createProjectData,
@@ -26,11 +28,9 @@ import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
 import { DEFAULT_WEBCAM_TIME_OFFSET_MS } from "../types";
-import { shouldLoopWebcamSource } from "../videoPlayback/webcamSync";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 import { cloneStructured } from "../videoEditorUtils";
-import type { EditorHistoryStack } from "../editorHistory";
-import { persistEditorHistory, restoreEditorHistory } from "../editorHistoryPersistence";
+import { shouldLoopWebcamSource } from "../videoPlayback/webcamSync";
 import { migrateLegacyTrimOnlyProject } from "./legacyTrimMigration";
 
 type Input = {

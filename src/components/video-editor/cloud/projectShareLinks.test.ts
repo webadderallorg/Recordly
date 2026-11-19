@@ -6,8 +6,8 @@ import {
 	moveProjectShareLink,
 	removeProjectShareLinks,
 	removeProjectShareLinksByUrl,
-	subscribeDeletedProjectShareLinks,
 	saveProjectShareLink,
+	subscribeDeletedProjectShareLinks,
 } from "./projectShareLinks";
 
 afterEach(() => vi.unstubAllGlobals());

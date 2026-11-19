@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
-import { ensureSchema } from "../src/schema.js";
 import { sha256Hex } from "../src/crypto.js";
+import { ensureSchema } from "../src/schema.js";
 export async function localCommentHeaders(displayName = "Signed-in Reviewer") {
 	await ensureSchema(env);
 	const token = crypto.randomUUID();

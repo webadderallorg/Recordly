@@ -5,9 +5,9 @@ import {
 } from "@/components/video-editor/cloud/shareResolution";
 import {
 	type ClipRegion,
+	getTimelineDurationMs,
 	type SpeedRegion,
 	type TrimRegion,
-	getTimelineDurationMs,
 } from "@/components/video-editor/types";
 import { AUDIO_BITRATE } from "./audioProcessorShared";
 import { getMp4ExportBitrate } from "./exportBitrate";

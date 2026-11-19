@@ -1,12 +1,12 @@
 import arrowUrl from "@/assets/cursors/pixel-glove/arrow.png";
-import textUrl from "@/assets/cursors/pixel-glove/text.png";
-import pointerUrl from "@/assets/cursors/pixel-glove/pointer.png";
-import crosshairUrl from "@/assets/cursors/pixel-glove/crosshair.png";
-import openHandUrl from "@/assets/cursors/pixel-glove/open-hand.png";
 import closedHandUrl from "@/assets/cursors/pixel-glove/closed-hand.png";
+import crosshairUrl from "@/assets/cursors/pixel-glove/crosshair.png";
+import notAllowedUrl from "@/assets/cursors/pixel-glove/not-allowed.png";
+import openHandUrl from "@/assets/cursors/pixel-glove/open-hand.png";
+import pointerUrl from "@/assets/cursors/pixel-glove/pointer.png";
 import resizeEwUrl from "@/assets/cursors/pixel-glove/resize-ew.png";
 import resizeNsUrl from "@/assets/cursors/pixel-glove/resize-ns.png";
-import notAllowedUrl from "@/assets/cursors/pixel-glove/not-allowed.png";
+import textUrl from "@/assets/cursors/pixel-glove/text.png";
 import type { CursorTelemetryPoint } from "../types";
 import type { UploadedCursorAsset } from "./uploadedCursorAssets";
 

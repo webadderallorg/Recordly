@@ -75,7 +75,9 @@ vi.mock("../recording/library", () => ({
 	setRecordingsRemoved: vi.fn(),
 	trashRecordingSources: mocks.trashSources,
 }));
+
 import { registerProjectHandlers } from "./project";
+
 const projectAPath = path.resolve("/projects/A.recordly");
 const projectBPath = path.resolve("/projects/B.recordly");
 const projectsDirectory = path.resolve("/projects");

@@ -10,7 +10,7 @@ import type {
 	GifSizePreset,
 } from "@/lib/exporter";
 import { projectCaptionCues } from "../captionTimeline";
-import { saveEditorPreferences, type EditorPreferences } from "../editorPreferences";
+import { type EditorPreferences, saveEditorPreferences } from "../editorPreferences";
 import { DEFAULT_MP4_EXPORT_FRAME_RATE } from "../exportPreferences";
 import type { CaptionCue, ClipRegion } from "../types";
 

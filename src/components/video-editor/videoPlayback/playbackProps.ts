@@ -1,4 +1,3 @@
-import { DEFAULT_CURSOR_IDLE_HIDE } from "./cursorIdleVisibility";
 import {
 	DEFAULT_CONNECTED_ZOOM_DURATION_MS,
 	DEFAULT_CONNECTED_ZOOM_EASING,
@@ -24,6 +23,7 @@ import {
 	DEFAULT_ZOOM_OUT_DURATION_MS,
 	DEFAULT_ZOOM_OUT_EASING,
 } from "../types";
+import { DEFAULT_CURSOR_IDLE_HIDE } from "./cursorIdleVisibility";
 import type { VideoPlaybackProps } from "./playbackTypes";
 export function resolveVideoPlaybackProps({
 	videoPath,

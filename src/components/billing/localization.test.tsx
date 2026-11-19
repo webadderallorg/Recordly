@@ -35,6 +35,7 @@ vi.mock("./BillingProvider", () => ({
 vi.mock("@/components/video-editor/cloud/endpoint", () => ({
 	CLOUD_SHARE_ENDPOINT: "https://recordly.test",
 }));
+
 import { EarlyBirdTag } from "./EarlyBirdTag";
 import { LegalLinks } from "./LegalLinks";
 import { PlusFeatureDetails } from "./PlusFeatureDetails";

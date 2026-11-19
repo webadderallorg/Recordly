@@ -1,6 +1,7 @@
 /* biome-ignore-all lint/correctness/useExhaustiveDependencies: setters returned by the editor's domain-state hooks are stable React dispatchers. */
-import { BillingProvider } from "@/components/billing/BillingProvider";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { BillingProvider } from "@/components/billing/BillingProvider";
 import { useI18n } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { getAspectRatioValue } from "@/utils/aspectRatioUtils";

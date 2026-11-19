@@ -1,5 +1,5 @@
-import { useScopedT } from "@/contexts/I18nContext";
 import { Meter } from "@heroui/react";
+import { useScopedT } from "@/contexts/I18nContext";
 export function AudioLevelMeter({ level, className }: { level: number; className?: string }) {
 	const t = useScopedT("capture");
 	return (

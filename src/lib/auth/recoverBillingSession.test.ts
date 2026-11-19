@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
+
 const auth = vi.hoisted(() => ({ getSession: vi.fn(), refreshSession: vi.fn() }));
 vi.mock("./recordlyAuth", () => ({ recordlyAuth: { auth } }));
 beforeEach(() => {

@@ -1,8 +1,8 @@
+import { Card, Label } from "@heroui/react";
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Card, Label } from "@heroui/react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ColorControl } from "@/components/ui/color-picker";
 import {
 	Dialog,
 	DialogContent,
@@ -11,25 +11,25 @@ import {
 	DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-	Select,
-	SelectTrigger,
-	SelectValue,
-	SelectContent,
-	SelectItem,
-} from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
 	DropdownMenu,
-	DropdownMenuTrigger,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Toaster, toast } from "@/components/ui/toast";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { SliderControl } from "@/components/video-editor/SliderControl";
-import { ColorControl } from "@/components/ui/color-picker";
-import { Toaster, toast } from "@/components/ui/toast";
 import { I18nProvider } from "@/contexts/I18nContext";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 import "@/index.css";
