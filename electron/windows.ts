@@ -674,6 +674,11 @@ export function createHudOverlayWindow(): BrowserWindow {
 			applyHudOverlayCaptureProtectionToWindow(win, hudOverlayHiddenFromCapture);
 		}
 	});
+	win.on("restore", () => {
+		if (!win.isDestroyed()) {
+			win.webContents.send("hud-overlay-restored");
+		}
+	});
 
 	if (isHudOverlayMousePassthroughSupported()) {
 		if (hudOverlayRecordingActive) {

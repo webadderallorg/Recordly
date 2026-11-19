@@ -215,6 +215,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	hudOverlayClose: () => {
 		ipcRenderer.send("hud-overlay-close");
 	},
+	onHudOverlayRestored: (callback: () => void) => {
+		const listener = () => callback();
+		ipcRenderer.on("hud-overlay-restored", listener);
+		return () => ipcRenderer.removeListener("hud-overlay-restored", listener);
+	},
 	getEditorMode: () => ipcRenderer.invoke("get-editor-mode"),
 	onEditorModeChanged: (callback: (inEditor: boolean) => void) => {
 		const listener = (_event: Electron.IpcRendererEvent, inEditor: boolean) =>
