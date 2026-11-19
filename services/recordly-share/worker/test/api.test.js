@@ -1,603 +1,1067 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest';
-import { env, SELF } from 'cloudflare:test';
-import worker, { sha256Hex } from '../src/index.js';
+import { describe, it, expect, beforeAll, vi } from "vitest";
+import { env, SELF } from "cloudflare:test";
+import worker, { sha256Hex } from "../src/index.js";
+import { withRecordingLock } from "../src/recordingLock.js";
+import { cleanupExpired } from "../src/library.js";
 
-const AUTH = { Authorization: 'Bearer test-secret' };
-const BASE = 'https://share.test';
+import { localCommentHeaders } from "./commentFixtures.js";
+let commentAuth;
+beforeAll(async () => {
+	commentAuth = await localCommentHeaders();
+});
+
+const AUTH = { Authorization: "Bearer test-secret" };
+const BASE = "https://share.test";
 
 async function createShare(extra = {}) {
-  const res = await SELF.fetch(`${BASE}/api/upload`, {
-    method: 'POST',
-    headers: { ...AUTH, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: 'Test Recording', duration: 12.5, width: 1920, height: 1080, fileSize: 1000, ...extra }),
-  });
-  expect(res.status).toBe(200);
-  return res.json();
+	const res = await SELF.fetch(`${BASE}/api/upload`, {
+		method: "POST",
+		headers: { ...AUTH, "Content-Type": "application/json" },
+		body: JSON.stringify({
+			title: "Test Recording",
+			duration: 12.5,
+			width: 1920,
+			height: 1080,
+			fileSize: 1000,
+			...extra,
+		}),
+	});
+	expect(res.status).toBe(200);
+	return res.json();
 }
 
 async function completeUpload(shareCode, bytes = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7])) {
-  const put = await SELF.fetch(`${BASE}/api/upload-data/${shareCode}`, {
-    method: 'PUT',
-    headers: { ...AUTH, 'Content-Type': 'video/mp4' },
-    body: bytes,
-  });
-  expect(put.status).toBe(200);
-  const meta = await SELF.fetch(`${BASE}/api/metadata/${shareCode}`, {
-    method: 'POST',
-    headers: { ...AUTH, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ segments: [{ startTime: 0, endTime: 1, text: 'hello world' }] }),
-  });
-  expect(meta.status).toBe(200);
+	const put = await SELF.fetch(`${BASE}/api/upload-data/${shareCode}`, {
+		method: "PUT",
+		headers: { ...AUTH, "Content-Type": "video/mp4" },
+		body: bytes,
+	});
+	expect(put.status).toBe(200);
+	const meta = await SELF.fetch(`${BASE}/api/metadata/${shareCode}`, {
+		method: "POST",
+		headers: { ...AUTH, "Content-Type": "application/json" },
+		body: JSON.stringify({ segments: [{ startTime: 0, endTime: 1, text: "hello world" }] }),
+	});
+	expect(meta.status).toBe(200);
 }
 
-describe('auth', () => {
-  it('rejects /api/* without a token', async () => {
-    const res = await SELF.fetch(`${BASE}/api/health`);
-    expect(res.status).toBe(401);
-  });
+describe("auth", () => {
+	it("rejects /api/* without a token", async () => {
+		const res = await SELF.fetch(`${BASE}/api/health`);
+		expect(res.status).toBe(401);
+	});
 
-  it('rejects a wrong token', async () => {
-    const res = await SELF.fetch(`${BASE}/api/health`, { headers: { Authorization: 'Bearer wrong' } });
-    expect(res.status).toBe(401);
-  });
+	it("rejects a wrong token", async () => {
+		const res = await SELF.fetch(`${BASE}/api/health`, {
+			headers: { Authorization: "Bearer wrong" },
+		});
+		expect(res.status).toBe(401);
+	});
 
-  it('rejects a Bearer header with no token', async () => {
-    const res = await SELF.fetch(`${BASE}/api/health`, { headers: { Authorization: 'Bearer' } });
-    expect(res.status).toBe(401);
-  });
+	it("rejects a Bearer header with no token", async () => {
+		const res = await SELF.fetch(`${BASE}/api/health`, {
+			headers: { Authorization: "Bearer" },
+		});
+		expect(res.status).toBe(401);
+	});
 
-  it('accepts the correct token', async () => {
-    const res = await SELF.fetch(`${BASE}/api/health`, { headers: AUTH });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, app: 'recordly' });
-  });
+	it("accepts the correct token", async () => {
+		const res = await SELF.fetch(`${BASE}/api/health`, { headers: AUTH });
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ ok: true, app: "recordly" });
+	});
 });
 
-describe('comment accounts', () => {
-  it('allows comments without signing in and uses the supplied display name', async () => {
-    const { shareCode } = await createShare();
-    await completeUpload(shareCode);
+describe("comment accounts", () => {
+	it("requires an account and derives the name from its session", async () => {
+		const { shareCode } = await createShare();
+		await completeUpload(shareCode);
+		const body = JSON.stringify({
+			timestamp: 2,
+			author_name: "Spoofed Creator",
+			text: "Account feedback",
+		});
+		const anonymous = await SELF.fetch(`${BASE}/s/${shareCode}/comment`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body,
+		});
+		expect(anonymous.status).toBe(401);
+		const signed = await SELF.fetch(`${BASE}/s/${shareCode}/comment`, {
+			method: "POST",
+			headers: { ...commentAuth, "Content-Type": "application/json" },
+			body,
+		});
+		expect(signed.status).toBe(200);
+		expect((await signed.json()).author_name).toBe("Signed-in Reviewer");
+		const comments = await SELF.fetch(`${BASE}/s/${shareCode}/comments`);
+		const data = await comments.json();
+		expect(data.comments).toEqual([
+			expect.objectContaining({
+				author_name: "Signed-in Reviewer",
+				text: "Account feedback",
+			}),
+		]);
+		expect(data.comments[0]).not.toHaveProperty("author_id");
+		const saved = await env.DB.prepare("SELECT author_id FROM comments WHERE id = ?")
+			.bind(data.comments[0].id)
+			.first();
+		expect(saved.author_id).toBeTruthy();
+	});
 
-    const anonymous = await SELF.fetch(`${BASE}/s/${shareCode}/comment`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        timestamp: 2,
-        author_name: 'Link Reviewer',
-        text: 'No account required',
-      }),
-    });
-    expect(anonymous.status).toBe(200);
+	it("supports signing back in and invalidates a logged-out session", async () => {
+		const register = await SELF.fetch(`${BASE}/auth/register`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113.80" },
+			body: JSON.stringify({
+				displayName: "Signed-in Reviewer",
+				email: "reviewer@example.com",
+				password: "correct-horse-battery-staple",
+			}),
+		});
+		expect(register.status).toBe(200);
 
-    const comments = await SELF.fetch(`${BASE}/s/${shareCode}/comments`);
-    const data = await comments.json();
-    expect(data.comments).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        author_name: 'Link Reviewer',
-        text: 'No account required',
-      }),
-    ]));
-  });
+		const login = await SELF.fetch(`${BASE}/auth/login`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113.81" },
+			body: JSON.stringify({
+				email: "reviewer@example.com",
+				password: "correct-horse-battery-staple",
+			}),
+		});
+		expect(login.status).toBe(200);
+		const cookie = login.headers.get("Set-Cookie").split(";")[0];
 
-  it('supports signing back in and invalidates a logged-out session', async () => {
-    const register = await SELF.fetch(`${BASE}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.80' },
-      body: JSON.stringify({
-        displayName: 'Signed-in Reviewer',
-        email: 'reviewer@example.com',
-        password: 'correct-horse-battery-staple',
-      }),
-    });
-    expect(register.status).toBe(200);
+		const logout = await SELF.fetch(`${BASE}/auth/logout`, {
+			method: "POST",
+			headers: { Cookie: cookie },
+		});
+		expect(logout.status).toBe(200);
 
-    const login = await SELF.fetch(`${BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.81' },
-      body: JSON.stringify({
-        email: 'reviewer@example.com',
-        password: 'correct-horse-battery-staple',
-      }),
-    });
-    expect(login.status).toBe(200);
-    const cookie = login.headers.get('Set-Cookie').split(';')[0];
-
-    const logout = await SELF.fetch(`${BASE}/auth/logout`, {
-      method: 'POST',
-      headers: { Cookie: cookie },
-    });
-    expect(logout.status).toBe(200);
-
-    const session = await SELF.fetch(`${BASE}/auth/session`, { headers: { Cookie: cookie } });
-    expect(await session.json()).toEqual({ user: null });
-  });
+		const session = await SELF.fetch(`${BASE}/auth/session`, { headers: { Cookie: cookie } });
+		expect(await session.json()).toEqual({ user: null });
+		const { shareCode } = await createShare();
+		await completeUpload(shareCode);
+		const rejected = await SELF.fetch(`${BASE}/s/${shareCode}/comment`, {
+			method: "POST",
+			headers: { Cookie: cookie, "Content-Type": "application/json" },
+			body: JSON.stringify({ timestamp: 0, text: "After logout" }),
+		});
+		expect(rejected.status).toBe(401);
+	});
 });
 
-describe('upload validation', () => {
-  it('requires a title', async () => {
-    const res = await SELF.fetch(`${BASE}/api/upload`, {
-      method: 'POST',
-      headers: { ...AUTH, 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-    expect(res.status).toBe(400);
-  });
+describe("upload validation", () => {
+	it("requires a title", async () => {
+		const res = await SELF.fetch(`${BASE}/api/upload`, {
+			method: "POST",
+			headers: { ...AUTH, "Content-Type": "application/json" },
+			body: JSON.stringify({}),
+		});
+		expect(res.status).toBe(400);
+	});
 
-  it('rejects javascript: CTA URLs', async () => {
-    const res = await SELF.fetch(`${BASE}/api/upload`, {
-      method: 'POST',
-      headers: { ...AUTH, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'x', cta_url: 'javascript:alert(1)' }),
-    });
-    expect(res.status).toBe(400);
-  });
+	it("rejects javascript: CTA URLs", async () => {
+		const res = await SELF.fetch(`${BASE}/api/upload`, {
+			method: "POST",
+			headers: { ...AUTH, "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "x", cta_url: "javascript:alert(1)" }),
+		});
+		expect(res.status).toBe(400);
+	});
 
-  it('accepts https CTA URLs and returns a well-formed share code', async () => {
-    const data = await createShare({ cta_url: 'https://example.com', cta_text: 'Visit' });
-    expect(data.shareCode).toMatch(/^[0-9a-f]{64}$/);
-    expect(data.shareURL).toContain(`/s/${data.shareCode}`);
-  });
+	it("accepts https CTA URLs and returns a well-formed share code", async () => {
+		const data = await createShare({ cta_url: "https://example.com", cta_text: "Visit" });
+		expect(data.shareCode).toMatch(/^[0-9a-f]{64}$/);
+		expect(data.shareURL).toContain(`/s/${data.shareCode}`);
+	});
 
-  it('uploads and completes a video through the multipart API', async () => {
-    const { shareCode } = await createShare({ fileSize: 6 });
-    const start = await SELF.fetch(`${BASE}/api/upload-multipart/${shareCode}`, {
-      method: 'POST',
-      headers: AUTH,
-    });
-    expect(start.status).toBe(200);
-    const { uploadId } = await start.json();
+	it("uploads and completes a video through the multipart API", async () => {
+		const { shareCode } = await createShare({ fileSize: 6 });
+		const start = await SELF.fetch(`${BASE}/api/upload-multipart/${shareCode}`, {
+			method: "POST",
+			headers: AUTH,
+		});
+		expect(start.status).toBe(200);
+		const { uploadId } = await start.json();
 
-    const part = await SELF.fetch(
-      `${BASE}/api/upload-part/${shareCode}/${encodeURIComponent(uploadId)}/1`,
-      {
-        method: 'PUT',
-        headers: { ...AUTH, 'Content-Type': 'video/mp4' },
-        body: new Uint8Array([10, 20, 30, 40, 50, 60]),
-      },
-    );
-    expect(part.status).toBe(200);
-    const uploadedPart = await part.json();
+		const part = await SELF.fetch(
+			`${BASE}/api/upload-part/${shareCode}/${encodeURIComponent(uploadId)}/1`,
+			{
+				method: "PUT",
+				headers: { ...AUTH, "Content-Type": "video/mp4" },
+				body: new Uint8Array([10, 20, 30, 40, 50, 60]),
+			},
+		);
+		expect(part.status).toBe(200);
+		const uploadedPart = await part.json();
 
-    const complete = await SELF.fetch(
-      `${BASE}/api/upload-complete/${shareCode}/${encodeURIComponent(uploadId)}`,
-      {
-        method: 'POST',
-        headers: { ...AUTH, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ parts: [uploadedPart] }),
-      },
-    );
-    expect(complete.status).toBe(200);
+		const complete = await SELF.fetch(
+			`${BASE}/api/upload-complete/${shareCode}/${encodeURIComponent(uploadId)}`,
+			{
+				method: "POST",
+				headers: { ...AUTH, "Content-Type": "application/json" },
+				body: JSON.stringify({ parts: [uploadedPart] }),
+			},
+		);
+		expect(complete.status).toBe(200);
 
-    const meta = await SELF.fetch(`${BASE}/api/metadata/${shareCode}`, {
-      method: 'POST',
-      headers: { ...AUTH, 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-    expect(meta.status).toBe(200);
+		const meta = await SELF.fetch(`${BASE}/api/metadata/${shareCode}`, {
+			method: "POST",
+			headers: { ...AUTH, "Content-Type": "application/json" },
+			body: JSON.stringify({}),
+		});
+		expect(meta.status).toBe(200);
 
-    const video = await SELF.fetch(`${BASE}/v/${shareCode}`);
-    expect(video.status).toBe(200);
-    expect(Array.from(new Uint8Array(await video.arrayBuffer()))).toEqual([10, 20, 30, 40, 50, 60]);
-  });
+		const video = await SELF.fetch(`${BASE}/v/${shareCode}`);
+		expect(video.status).toBe(200);
+		expect(Array.from(new Uint8Array(await video.arrayBuffer()))).toEqual([
+			10, 20, 30, 40, 50, 60,
+		]);
+	});
 });
 
-describe('share data + view counts', () => {
-  it('serves data for a completed upload and increments views', async () => {
-    const { shareCode } = await createShare();
-    await completeUpload(shareCode);
+describe("share data + view counts", () => {
+	it("serves data for a completed upload and increments views", async () => {
+		const { shareCode } = await createShare();
+		await completeUpload(shareCode);
 
-    const res1 = await SELF.fetch(`${BASE}/s/${shareCode}/data`);
-    expect(res1.status).toBe(200);
-    const d1 = await res1.json();
-    expect(d1.video.title).toBe('Test Recording');
-    expect(d1.video.view_count).toBe(1);
-    expect(d1.segments).toHaveLength(1);
+		const res1 = await SELF.fetch(`${BASE}/s/${shareCode}/data`);
+		expect(res1.status).toBe(200);
+		const d1 = await res1.json();
+		expect(d1.video.title).toBe("Test Recording");
+		expect(d1.video.view_count).toBe(1);
+		expect(d1.segments).toHaveLength(1);
 
-    const res2 = await SELF.fetch(`${BASE}/s/${shareCode}/data`);
-    const d2 = await res2.json();
-    expect(d2.video.view_count).toBe(2);
-  });
+		const res2 = await SELF.fetch(`${BASE}/s/${shareCode}/data`);
+		const d2 = await res2.json();
+		expect(d2.video.view_count).toBe(2);
+	});
 
-  it('404s for incomplete uploads', async () => {
-    const { shareCode } = await createShare();
-    const res = await SELF.fetch(`${BASE}/s/${shareCode}/data`);
-    expect(res.status).toBe(404);
-  });
+	it("404s for incomplete uploads", async () => {
+		const { shareCode } = await createShare();
+		const res = await SELF.fetch(`${BASE}/s/${shareCode}/data`);
+		expect(res.status).toBe(404);
+	});
 });
 
-describe('video streaming + ranges', () => {
-  let shareCode;
-  const bytes = new Uint8Array(100).map((_, i) => i);
+describe("video streaming + ranges", () => {
+	let shareCode;
+	const bytes = new Uint8Array(100).map((_, i) => i);
 
-  beforeAll(async () => {
-    ({ shareCode } = await createShare());
-    await completeUpload(shareCode, bytes);
-  });
+	beforeAll(async () => {
+		({ shareCode } = await createShare());
+		await completeUpload(shareCode, bytes);
+	});
 
-  it('serves the full object without a Range header', async () => {
-    const res = await SELF.fetch(`${BASE}/v/${shareCode}`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get('Content-Length')).toBe('100');
-    expect(res.headers.get('Accept-Ranges')).toBe('bytes');
-  });
+	it("serves the full object without a Range header", async () => {
+		const res = await SELF.fetch(`${BASE}/v/${shareCode}`);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("Content-Length")).toBe("100");
+		expect(res.headers.get("Accept-Ranges")).toBe("bytes");
+	});
 
-  it('serves a bounded range with the full size in Content-Range', async () => {
-    const res = await SELF.fetch(`${BASE}/v/${shareCode}`, { headers: { Range: 'bytes=10-19' } });
-    expect(res.status).toBe(206);
-    expect(res.headers.get('Content-Range')).toBe('bytes 10-19/100');
-    expect(res.headers.get('Content-Length')).toBe('10');
-    const body = new Uint8Array(await res.arrayBuffer());
-    expect(Array.from(body)).toEqual([10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
-  });
+	it("serves a bounded range with the full size in Content-Range", async () => {
+		const res = await SELF.fetch(`${BASE}/v/${shareCode}`, {
+			headers: { Range: "bytes=10-19" },
+		});
+		expect(res.status).toBe(206);
+		expect(res.headers.get("Content-Range")).toBe("bytes 10-19/100");
+		expect(res.headers.get("Content-Length")).toBe("10");
+		const body = new Uint8Array(await res.arrayBuffer());
+		expect(Array.from(body)).toEqual([10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+	});
 
-  it('serves an open-ended range', async () => {
-    const res = await SELF.fetch(`${BASE}/v/${shareCode}`, { headers: { Range: 'bytes=90-' } });
-    expect(res.status).toBe(206);
-    expect(res.headers.get('Content-Range')).toBe('bytes 90-99/100');
-    expect(res.headers.get('Content-Length')).toBe('10');
-  });
+	it("serves an open-ended range", async () => {
+		const res = await SELF.fetch(`${BASE}/v/${shareCode}`, { headers: { Range: "bytes=90-" } });
+		expect(res.status).toBe(206);
+		expect(res.headers.get("Content-Range")).toBe("bytes 90-99/100");
+		expect(res.headers.get("Content-Length")).toBe("10");
+	});
 
-  it('serves a suffix range (bytes=-N)', async () => {
-    const res = await SELF.fetch(`${BASE}/v/${shareCode}`, { headers: { Range: 'bytes=-5' } });
-    expect(res.status).toBe(206);
-    expect(res.headers.get('Content-Range')).toBe('bytes 95-99/100');
-    const body = new Uint8Array(await res.arrayBuffer());
-    expect(Array.from(body)).toEqual([95, 96, 97, 98, 99]);
-  });
+	it("serves a suffix range (bytes=-N)", async () => {
+		const res = await SELF.fetch(`${BASE}/v/${shareCode}`, { headers: { Range: "bytes=-5" } });
+		expect(res.status).toBe(206);
+		expect(res.headers.get("Content-Range")).toBe("bytes 95-99/100");
+		const body = new Uint8Array(await res.arrayBuffer());
+		expect(Array.from(body)).toEqual([95, 96, 97, 98, 99]);
+	});
 
-  it('returns 416 for an unsatisfiable range', async () => {
-    const res = await SELF.fetch(`${BASE}/v/${shareCode}`, { headers: { Range: 'bytes=5000-' } });
-    expect(res.status).toBe(416);
-  });
+	it("returns 416 for an unsatisfiable range", async () => {
+		const res = await SELF.fetch(`${BASE}/v/${shareCode}`, {
+			headers: { Range: "bytes=5000-" },
+		});
+		expect(res.status).toBe(416);
+	});
 });
 
-describe('password protection', () => {
-  const password = 'hunter2';
-  let clientHash;
+describe("password protection", () => {
+	const password = "hunter2";
+	let clientHash;
 
-  beforeAll(async () => {
-    clientHash = await sha256Hex(password); // what the desktop app sends at share time
-  });
+	beforeAll(async () => {
+		clientHash = await sha256Hex(password); // what the desktop app sends at share time
+	});
 
-  async function protectedShare() {
-    const share = await createShare({ password_hash: clientHash });
-    await completeUpload(share.shareCode);
-    return share.shareCode;
-  }
+	async function protectedShare() {
+		const share = await createShare({ password_hash: clientHash });
+		await completeUpload(share.shareCode);
+		return share.shareCode;
+	}
 
-  it('gates /data behind the password', async () => {
-    const shareCode = await protectedShare();
-    const res = await SELF.fetch(`${BASE}/s/${shareCode}/data`);
-    expect(res.status).toBe(401);
-    expect((await res.json()).password_protected).toBe(true);
-  });
+	it("gates /data behind the password", async () => {
+		const shareCode = await protectedShare();
+		const res = await SELF.fetch(`${BASE}/s/${shareCode}/data`);
+		expect(res.status).toBe(401);
+		expect((await res.json()).password_protected).toBe(true);
+	});
 
-  it('gates reactions, comments, and the thumbnail behind the password', async () => {
-    const shareCode = await protectedShare();
+	it("distinguishes an expired recording unlock from an account sign-in failure when posting", async () => {
+		const shareCode = await protectedShare();
+		const response = await SELF.fetch(`${BASE}/s/${shareCode}/comment`, {
+			method: "POST",
+			headers: { ...commentAuth, "Content-Type": "application/json" },
+			body: JSON.stringify({ timestamp: 1, text: "Keep this draft" }),
+		});
+		expect(response.status).toBe(401);
+		expect(await response.json()).toEqual({ error: "Password required" });
+	});
 
-    expect((await SELF.fetch(`${BASE}/s/${shareCode}/reactions`)).status).toBe(401);
-    expect((await SELF.fetch(`${BASE}/s/${shareCode}/comments`)).status).toBe(401);
-    expect((await SELF.fetch(`${BASE}/thumb/${shareCode}`)).status).toBe(404);
+	it("gates reactions, comments, and the thumbnail behind the password", async () => {
+		const shareCode = await protectedShare();
 
-    // …and unlocks them all with the auth cookie.
-    const good = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    });
-    expect(good.status).toBe(200);
-    const cookie = good.headers.get('Set-Cookie').split(';')[0];
+		expect((await SELF.fetch(`${BASE}/s/${shareCode}/reactions`)).status).toBe(401);
+		expect((await SELF.fetch(`${BASE}/s/${shareCode}/comments`)).status).toBe(401);
+		expect((await SELF.fetch(`${BASE}/thumb/${shareCode}`)).status).toBe(404);
 
-    expect((await SELF.fetch(`${BASE}/s/${shareCode}/reactions`, { headers: { Cookie: cookie } })).status).toBe(200);
-    expect((await SELF.fetch(`${BASE}/s/${shareCode}/comments`, { headers: { Cookie: cookie } })).status).toBe(200);
-  });
+		// …and unlocks them all with the auth cookie.
+		const good = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ password }),
+		});
+		expect(good.status).toBe(200);
+		const cookie = good.headers.get("Set-Cookie").split(";")[0];
 
-  it('rejects password attempts on expired videos', async () => {
-    const shareCode = await protectedShare();
-    await env.DB.prepare(
-      "UPDATE videos SET expires_at = datetime('now', '-1 day') WHERE share_code = ?"
-    ).bind(shareCode).run();
+		expect(
+			(await SELF.fetch(`${BASE}/s/${shareCode}/reactions`, { headers: { Cookie: cookie } }))
+				.status,
+		).toBe(200);
+		expect(
+			(await SELF.fetch(`${BASE}/s/${shareCode}/comments`, { headers: { Cookie: cookie } }))
+				.status,
+		).toBe(200);
+	});
 
-    const res = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    });
-    expect(res.status).toBe(404);
-  });
+	it("rejects password attempts on expired videos", async () => {
+		const shareCode = await protectedShare();
+		await env.DB.prepare(
+			"UPDATE videos SET expires_at = datetime('now', '-1 day') WHERE share_code = ?",
+		)
+			.bind(shareCode)
+			.run();
 
-  it('rejects a wrong password, accepts the right one, sets an HttpOnly cookie', async () => {
-    const shareCode = await protectedShare();
+		const res = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ password }),
+		});
+		expect(res.status).toBe(404);
+	});
 
-    const bad = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: 'wrong' }),
-    });
-    expect(bad.status).toBe(403);
+	it("rejects a wrong password, accepts the right one, sets an HttpOnly cookie", async () => {
+		const shareCode = await protectedShare();
 
-    const good = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    });
-    expect(good.status).toBe(200);
-    const cookie = good.headers.get('Set-Cookie');
-    expect(cookie).toContain(`voom_auth_${shareCode}=`);
-    expect(cookie).toContain('HttpOnly');
-    expect(cookie).toContain('Secure');
+		const bad = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ password: "wrong" }),
+		});
+		expect(bad.status).toBe(403);
 
-    const authed = await SELF.fetch(`${BASE}/s/${shareCode}/data`, {
-      headers: { Cookie: cookie.split(';')[0] },
-    });
-    expect(authed.status).toBe(200);
-  });
+		const good = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ password }),
+		});
+		expect(good.status).toBe(200);
+		const cookie = good.headers.get("Set-Cookie");
+		expect(cookie).toContain(`voom_auth_${shareCode}=`);
+		expect(cookie).toContain("HttpOnly");
+		expect(cookie).toContain("Secure");
 
-  it('stores passwords salted — never the bare client hash', async () => {
-    const shareCode = await protectedShare();
-    const row = await env.DB.prepare('SELECT password_hash, password_salt FROM videos WHERE share_code = ?')
-      .bind(shareCode).first();
-    expect(row.password_salt).toMatch(/^[0-9a-f]{32}$/);
-    expect(row.password_hash).toMatch(/^pbkdf2-sha256:210000:[0-9a-f]{64}$/);
-  });
+		const authed = await SELF.fetch(`${BASE}/s/${shareCode}/data`, {
+			headers: { Cookie: cookie.split(";")[0] },
+		});
+		expect(authed.status).toBe(200);
+	});
 
-  it('lazily upgrades legacy unsalted rows on successful verify', async () => {
-    const shareCode = await protectedShare();
-    // Regress the row to the legacy (pre-salt) format.
-    await env.DB.prepare('UPDATE videos SET password_hash = ?, password_salt = NULL WHERE share_code = ?')
-      .bind(clientHash, shareCode).run();
+	it("stores passwords salted — never the bare client hash", async () => {
+		const shareCode = await protectedShare();
+		const row = await env.DB.prepare(
+			"SELECT password_hash, password_salt FROM videos WHERE share_code = ?",
+		)
+			.bind(shareCode)
+			.first();
+		expect(row.password_salt).toMatch(/^[0-9a-f]{32}$/);
+		expect(row.password_hash).toMatch(/^pbkdf2-sha256:210000:[0-9a-f]{64}$/);
+	});
 
-    const res = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    });
-    expect(res.status).toBe(200);
+	it("lazily upgrades legacy unsalted rows on successful verify", async () => {
+		const shareCode = await protectedShare();
+		// Regress the row to the legacy (pre-salt) format.
+		await env.DB.prepare(
+			"UPDATE videos SET password_hash = ?, password_salt = NULL WHERE share_code = ?",
+		)
+			.bind(clientHash, shareCode)
+			.run();
 
-    const row = await env.DB.prepare('SELECT password_hash, password_salt FROM videos WHERE share_code = ?')
-      .bind(shareCode).first();
-    expect(row.password_salt).toMatch(/^[0-9a-f]{32}$/);
-    expect(row.password_hash).toMatch(/^pbkdf2-sha256:210000:[0-9a-f]{64}$/); // re-stored salted
-  });
+		const res = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ password }),
+		});
+		expect(res.status).toBe(200);
 
-  it('rate-limits brute-force attempts (429 after 10 failures)', async () => {
-    const shareCode = await protectedShare();
-    for (let i = 0; i < 10; i++) {
-      const res = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.7' },
-        body: JSON.stringify({ password: `wrong-${i}` }),
-      });
-      expect(res.status).toBe(403);
-    }
-    const blocked = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.7' },
-      body: JSON.stringify({ password }),
-    });
-    expect(blocked.status).toBe(429);
-  });
+		const row = await env.DB.prepare(
+			"SELECT password_hash, password_salt FROM videos WHERE share_code = ?",
+		)
+			.bind(shareCode)
+			.first();
+		expect(row.password_salt).toMatch(/^[0-9a-f]{32}$/);
+		expect(row.password_hash).toMatch(/^pbkdf2-sha256:210000:[0-9a-f]{64}$/); // re-stored salted
+	});
 
-  it('hides title and thumbnail from the OG page and image', async () => {
-    const shareCode = await protectedShare();
-    const og = await SELF.fetch(`${BASE}/s/${shareCode}`, { headers: { 'User-Agent': 'Twitterbot/1.0' } });
-    expect(og.status).toBe(200);
-    const html = await og.text();
-    expect(html).toContain('Protected video');
-    expect(html).not.toContain('Test Recording');
+	it("rate-limits brute-force attempts (429 after 10 failures)", async () => {
+		const shareCode = await protectedShare();
+		for (let i = 0; i < 10; i++) {
+			const res = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113.7" },
+				body: JSON.stringify({ password: `wrong-${i}` }),
+			});
+			expect(res.status).toBe(403);
+		}
+		const blocked = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113.7" },
+			body: JSON.stringify({ password }),
+		});
+		expect(blocked.status).toBe(429);
+	});
 
-    const img = await SELF.fetch(`${BASE}/og/${shareCode}`);
-    expect(img.status).toBe(200);
-    expect(img.headers.get('Content-Type')).toContain('svg');
-    const svg = await img.text();
-    expect(svg).toContain('Protected video');
-    expect(svg).not.toContain('Test Recording');
-  });
+	it("hides title and thumbnail from the OG page and image", async () => {
+		const shareCode = await protectedShare();
+		const ordinary = await SELF.fetch(`${BASE}/s/${shareCode}`, {
+			headers: { "User-Agent": "Mozilla/5.0" },
+		});
+		const ordinaryHtml = await ordinary.text();
+		expect(ordinaryHtml).toContain("Protected video");
+		expect(ordinaryHtml).not.toContain("Test Recording");
+		expect(ordinaryHtml).not.toContain('property="og:video"');
+		expect(ordinaryHtml).not.toContain('property="og:image"');
+		const og = await SELF.fetch(`${BASE}/s/${shareCode}`, {
+			headers: { "User-Agent": "Twitterbot/1.0" },
+		});
+		expect(og.status).toBe(200);
+		const html = await og.text();
+		expect(html).toContain("Protected video");
+		expect(html).not.toContain("Test Recording");
+
+		const img = await SELF.fetch(`${BASE}/og/${shareCode}`);
+		expect(img.status).toBe(200);
+		expect(img.headers.get("Content-Type")).toContain("svg");
+		const svg = await img.text();
+		expect(svg).toContain("Protected video");
+		expect(svg).not.toContain("Test Recording");
+	});
 });
 
-describe('OG page (public video)', () => {
-  it('escapes the title in meta tags', async () => {
-    const { shareCode } = await createShare({ title: '<script>alert("x")</script>' });
-    await completeUpload(shareCode);
-    const res = await SELF.fetch(`${BASE}/s/${shareCode}`, { headers: { 'User-Agent': 'Slackbot 1.0' } });
-    const html = await res.text();
-    expect(html).not.toContain('<script>alert');
-    expect(html).toContain('&lt;script&gt;');
-  });
+describe("OG page (public video)", () => {
+	it.each([
+		"missing",
+		"expired",
+		"disabled",
+	])("keeps the human viewer available for an unavailable %s recording without exposing metadata", async (state) => {
+		let shareCode = "a".repeat(64);
+		if (state !== "missing") {
+			({ shareCode } = await createShare({ title: "Private unavailable title" }));
+			await completeUpload(shareCode);
+			if (state === "expired") {
+				await env.DB.prepare(
+					"UPDATE videos SET expires_at = datetime('now', '-1 day'), summary = 'Private summary' WHERE share_code = ?",
+				)
+					.bind(shareCode)
+					.run();
+			} else {
+				await env.DB.prepare(
+					"INSERT INTO recording_controls (share_code, sharing_disabled) VALUES (?, 1)",
+				)
+					.bind(shareCode)
+					.run();
+			}
+		}
+		const human = await SELF.fetch(`${BASE}/s/${shareCode}`, {
+			headers: { "User-Agent": "Mozilla/5.0" },
+		});
+		expect(human.status).toBe(404);
+		expect(human.headers.get("Content-Type")).toContain("text/html");
+		expect(human.headers.get("Cache-Control")).toBe("private, no-store");
+		expect(human.headers.get("Vary")).toContain("User-Agent");
+		expect(human.headers.has("ETag")).toBe(false);
+		expect(human.headers.has("Last-Modified")).toBe(false);
+		const html = await human.text();
+		expect(html).toContain("astro-island");
+		expect(html).not.toContain("Private unavailable title");
+		expect(html).not.toContain("Private summary");
+		expect(html).not.toContain('property="og:video"');
+		const data = await SELF.fetch(`${BASE}/s/${shareCode}/data`);
+		expect(data.status).toBe(404);
+		expect(await data.json()).toEqual({ expired: true });
+		const bot = await SELF.fetch(`${BASE}/s/${shareCode}`, {
+			headers: { "User-Agent": "Twitterbot/1.0" },
+		});
+		expect(bot.status).toBe(404);
+		expect(await bot.text()).toBe("Not found");
+		expect((await SELF.fetch(`${BASE}/v/${shareCode}`)).status).toBe(404);
+	});
+
+	it("does not return a failed asset response as an unavailable recording shell", async () => {
+		const response = await worker.fetch(
+			new Request(`${BASE}/s/${"b".repeat(64)}`, {
+				headers: { "User-Agent": "Mozilla/5.0" },
+			}),
+			{
+				...env,
+				ASSETS: {
+					fetch: async () => new Response("Asset failure details", { status: 503 }),
+				},
+			},
+		);
+		expect(response.status).toBe(404);
+		expect(await response.text()).toBe("Not found");
+	});
+
+	it.each([
+		"Slackbot 1.0",
+		"Twitterbot/1.0",
+		"Mozilla/5.0 AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+	])("exposes playable video and thumbnail metadata to %s", async (userAgent) => {
+		const { shareCode } = await createShare();
+		await completeUpload(shareCode);
+		const response = await SELF.fetch(`${BASE}/s/${shareCode}`, {
+			headers: { "User-Agent": userAgent },
+		});
+		expect(response.status).toBe(200);
+		const html = await response.text();
+		expect(html).toContain(`<meta property="og:video" content="${BASE}/v/${shareCode}">`);
+		expect(html).toContain('<meta property="og:video:type" content="video/mp4">');
+		expect(html).toContain(`<meta property="og:image" content="${BASE}/og/${shareCode}">`);
+		expect(html).toContain(`<meta name="twitter:player" content="${BASE}/embed/${shareCode}">`);
+		if (userAgent.startsWith("Mozilla")) {
+			expect(html).toContain("astro-island");
+			expect(html.match(/<title>/g)).toHaveLength(1);
+		}
+		const media = await SELF.fetch(`${BASE}/v/${shareCode}`);
+		expect(media.status).toBe(200);
+		expect(media.headers.get("Content-Type")).toBe("video/mp4");
+	});
+
+	it("escapes the title in meta tags", async () => {
+		const { shareCode } = await createShare({ title: '<script>alert("x")</script>' });
+		await completeUpload(shareCode);
+		const res = await SELF.fetch(`${BASE}/s/${shareCode}`, {
+			headers: { "User-Agent": "Slackbot 1.0" },
+		});
+		const html = await res.text();
+		expect(html).not.toContain("<script>alert");
+		expect(html).toContain("&lt;script&gt;");
+	});
 });
 
-describe('delete', () => {
-  it('removes the video row, children, and R2 objects', async () => {
-    const { shareCode } = await createShare();
-    await completeUpload(shareCode);
+describe("delete", () => {
+	it("removes the video row, children, and R2 objects", async () => {
+		const { shareCode } = await createShare();
+		await completeUpload(shareCode);
 
-    const del = await SELF.fetch(`${BASE}/api/delete/${shareCode}`, { method: 'DELETE', headers: AUTH });
-    expect(del.status).toBe(200);
+		const del = await SELF.fetch(`${BASE}/api/delete/${shareCode}`, {
+			method: "DELETE",
+			headers: AUTH,
+		});
+		expect(del.status).toBe(200);
 
-    expect((await SELF.fetch(`${BASE}/s/${shareCode}/data`)).status).toBe(404);
-    expect((await SELF.fetch(`${BASE}/v/${shareCode}`)).status).toBe(404);
-    const segs = await env.DB.prepare(
-      'SELECT COUNT(*) AS cnt FROM transcript_segments ts WHERE NOT EXISTS (SELECT 1 FROM videos v WHERE v.id = ts.video_id)'
-    ).first();
-    expect(segs.cnt).toBe(0); // no orphaned children
-    expect(await env.VIDEOS_BUCKET.get(`videos/${shareCode}.mp4`)).toBeNull();
-  });
+		expect((await SELF.fetch(`${BASE}/s/${shareCode}/data`)).status).toBe(404);
+		expect((await SELF.fetch(`${BASE}/v/${shareCode}`)).status).toBe(404);
+		const segs = await env.DB.prepare(
+			"SELECT COUNT(*) AS cnt FROM transcript_segments ts WHERE NOT EXISTS (SELECT 1 FROM videos v WHERE v.id = ts.video_id)",
+		).first();
+		expect(segs.cnt).toBe(0); // no orphaned children
+		expect(await env.VIDEOS_BUCKET.get(`videos/${shareCode}.mp4`)).toBeNull();
+	});
 });
 
-describe('check-views', () => {
-  it('caps the shareCodes array', async () => {
-    const res = await SELF.fetch(`${BASE}/api/check-views`, {
-      method: 'POST',
-      headers: { ...AUTH, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ shareCodes: Array.from({ length: 91 }, (_, i) => `code${i}`) }),
-    });
-    expect(res.status).toBe(400);
-  });
+describe("check-views", () => {
+	it("caps the shareCodes array", async () => {
+		const res = await SELF.fetch(`${BASE}/api/check-views`, {
+			method: "POST",
+			headers: { ...AUTH, "Content-Type": "application/json" },
+			body: JSON.stringify({ shareCodes: Array.from({ length: 91 }, (_, i) => `code${i}`) }),
+		});
+		expect(res.status).toBe(400);
+	});
 });
 
-describe('error middleware', () => {
-  it('returns JSON 500 instead of an opaque error on handler crashes', async () => {
-    // Malformed JSON body → request.json() throws inside handleUpload.
-    const res = await SELF.fetch(`${BASE}/api/upload`, {
-      method: 'POST',
-      headers: { ...AUTH, 'Content-Type': 'application/json' },
-      body: '{not json',
-    });
-    expect(res.status).toBe(500);
-    expect(res.headers.get('Content-Type')).toContain('application/json');
-    expect((await res.json()).error).toBe('Internal error');
-  });
+describe("error middleware", () => {
+	it("returns JSON 400 for malformed upload JSON", async () => {
+		const res = await SELF.fetch(`${BASE}/api/upload`, {
+			method: "POST",
+			headers: { ...AUTH, "Content-Type": "application/json" },
+			body: "{not json",
+		});
+		expect(res.status).toBe(400);
+		expect(res.headers.get("Content-Type")).toContain("application/json");
+		expect((await res.json()).error).toBe("Invalid JSON body");
+	});
 });
 
+describe("review security fixes", () => {
+	it("allows only the configured Supabase owner and performs one auth lookup", async () => {
+		const config = {
+			...env,
+			ALLOW_API_SECRET_UPLOADS: "false",
+			SUPABASE_URL: "https://auth.example.test",
+			SUPABASE_PUBLISHABLE_KEY: "public-test",
+			OWNER_USER_ID: "owner",
+		};
+		const request = () =>
+			new Request(`${BASE}/api/health`, { headers: { Authorization: "Bearer user-token" } });
+		const lookup = vi.spyOn(globalThis, "fetch");
+		try {
+			lookup.mockResolvedValue(new Response(JSON.stringify({ id: "other-user" })));
+			expect((await worker.fetch(request(), config, {})).status).toBe(401);
+			lookup.mockClear().mockResolvedValue(new Response(JSON.stringify({ id: "owner" })));
+			expect((await worker.fetch(request(), config, {})).status).toBe(200);
+			expect(lookup).toHaveBeenCalledTimes(1);
+			lookup.mockClear();
+			expect(
+				(await worker.fetch(request(), { ...config, OWNER_USER_ID: "" }, {})).status,
+			).toBe(401);
+			expect(lookup).not.toHaveBeenCalled();
+		} finally {
+			lookup.mockRestore();
+		}
+	});
 
-describe('review security fixes', () => {
-  it('allows only the configured Supabase owner and performs one auth lookup', async () => {
-    const config = { ...env, ALLOW_API_SECRET_UPLOADS: 'false', SUPABASE_URL: 'https://auth.example.test', SUPABASE_PUBLISHABLE_KEY: 'public-test', OWNER_USER_ID: 'owner' };
-    const request = () => new Request(`${BASE}/api/health`, { headers: { Authorization: 'Bearer user-token' } });
-    const lookup = vi.spyOn(globalThis, 'fetch');
-    try {
-      lookup.mockResolvedValue(new Response(JSON.stringify({ id: 'other-user' })));
-      expect((await worker.fetch(request(), config, {})).status).toBe(401);
-      lookup.mockClear().mockResolvedValue(new Response(JSON.stringify({ id: 'owner' })));
-      expect((await worker.fetch(request(), config, {})).status).toBe(200);
-      expect(lookup).toHaveBeenCalledTimes(1);
-      lookup.mockClear();
-      expect((await worker.fetch(request(), { ...config, OWNER_USER_ID: '' }, {})).status).toBe(401);
-      expect(lookup).not.toHaveBeenCalled();
-    } finally { lookup.mockRestore(); }
-  });
+	it("never caches protected video, transcripts, or thumbnails", async () => {
+		const password = "cache-test";
+		const { shareCode } = await createShare({ password_hash: await sha256Hex(password) });
+		await completeUpload(shareCode);
+		await env.VIDEOS_BUCKET.put(
+			`thumbnails/${shareCode}.jpg`,
+			new Uint8Array([0xff, 0xd8, 0xff, 0xd9]),
+		);
+		const unlocked = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ password }),
+		});
+		const Cookie = unlocked.headers.get("Set-Cookie").split(";")[0];
+		for (const [url, extra] of [
+			[`/v/${shareCode}`, {}],
+			[`/v/${shareCode}`, { Range: "bytes=0-3" }],
+			[`/vtt/${shareCode}`, {}],
+			[`/thumb/${shareCode}`, {}],
+		]) {
+			const response = await SELF.fetch(`${BASE}${url}`, { headers: { Cookie, ...extra } });
+			expect([200, 206]).toContain(response.status);
+			expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+			await response.arrayBuffer();
+		}
+	});
 
-  it('never caches protected video, transcripts, or thumbnails', async () => {
-    const password = 'cache-test';
-    const { shareCode } = await createShare({ password_hash: await sha256Hex(password) });
-    await completeUpload(shareCode);
-    await env.VIDEOS_BUCKET.put(`thumbnails/${shareCode}.jpg`, new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
-    const unlocked = await SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
-    const Cookie = unlocked.headers.get('Set-Cookie').split(';')[0];
-    for (const [url, extra] of [[`/v/${shareCode}`, {}], [`/v/${shareCode}`, { Range: 'bytes=0-3' }], [`/vtt/${shareCode}`, {}], [`/thumb/${shareCode}`, {}]]) {
-      const response = await SELF.fetch(`${BASE}${url}`, { headers: { Cookie, ...extra } });
-      expect([200, 206]).toContain(response.status);
-      expect(response.headers.get('Cache-Control')).toBe('private, no-store');
-      await response.arrayBuffer();
-    }
-  });
-
-  it('coerces untrusted dimensions at upload and when rendering older rows', async () => {
-    const payload = '\"><script>alert(1)</script>';
-    const { shareCode } = await createShare({ width: payload, height: payload, duration: 'invalid', fileSize: -1 });
-    const row = await env.DB.prepare('SELECT width, height, duration, file_size FROM videos WHERE share_code = ?').bind(shareCode).first();
-    expect(row).toMatchObject({ width: 0, height: 0, duration: 0, file_size: 0 });
-    await completeUpload(shareCode);
-    await env.DB.prepare('UPDATE videos SET width = ?, height = ? WHERE share_code = ?').bind(payload, payload, shareCode).run();
-    const response = await SELF.fetch(`${BASE}/s/${shareCode}`, { headers: { 'User-Agent': 'Twitterbot/1.0' } });
-    expect(await response.text()).not.toContain('<script>alert(1)</script>');
-  });
+	it("coerces untrusted dimensions at upload and when rendering older rows", async () => {
+		const payload = '\"><script>alert(1)</script>';
+		const { shareCode, reservationBytes } = await createShare({
+			width: payload,
+			height: payload,
+			duration: "invalid",
+			fileSize: -1,
+		});
+		expect(reservationBytes).toBe(0);
+		const row = await env.DB.prepare(
+			"SELECT width, height, duration, file_size FROM videos WHERE share_code = ?",
+		)
+			.bind(shareCode)
+			.first();
+		expect(row).toMatchObject({
+			width: 0,
+			height: 0,
+			duration: 0,
+			file_size: reservationBytes,
+		});
+		await completeUpload(shareCode);
+		await env.DB.prepare("UPDATE videos SET width = ?, height = ? WHERE share_code = ?")
+			.bind(payload, payload, shareCode)
+			.run();
+		const response = await SELF.fetch(`${BASE}/s/${shareCode}`, {
+			headers: { "User-Agent": "Twitterbot/1.0" },
+		});
+		expect(await response.text()).not.toContain("<script>alert(1)</script>");
+	});
 });
 
-
-it('normalizes invalid comment pagination and clamps zero limits', async () => {
-  const { shareCode } = await createShare();
-  await completeUpload(shareCode);
-  for (const query of ['page=invalid&limit=invalid', 'page=-5&limit=0', 'page=1&limit=-1']) {
-    const response = await SELF.fetch(`${BASE}/s/${shareCode}/comments?${query}`);
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body.comments).toEqual([]);
-  }
+it("normalizes invalid comment pagination and clamps zero limits", async () => {
+	const { shareCode } = await createShare();
+	await completeUpload(shareCode);
+	for (const query of ["page=invalid&limit=invalid", "page=-5&limit=0", "page=1&limit=-1"]) {
+		const response = await SELF.fetch(`${BASE}/s/${shareCode}/comments?${query}`);
+		expect(response.status).toBe(200);
+		const body = await response.json();
+		expect(body.comments).toEqual([]);
+	}
 });
 
-it('fails password verification gracefully when its signing secret is absent', async () => {
-  const { shareCode } = await createShare({ password_hash: await sha256Hex('secret') });
-  await completeUpload(shareCode);
-  const response = await worker.fetch(new Request(`${BASE}/s/${shareCode}/verify-password`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: 'secret' }),
-  }), { ...env, API_SECRET: '' }, {});
-  expect(response.status).toBe(503);
-  expect(await response.json()).toMatchObject({ error: 'Password protection is not configured' });
+it("fails password verification gracefully when its signing secret is absent", async () => {
+	const { shareCode } = await createShare({ password_hash: await sha256Hex("secret") });
+	await completeUpload(shareCode);
+	const response = await worker.fetch(
+		new Request(`${BASE}/s/${shareCode}/verify-password`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ password: "secret" }),
+		}),
+		{ ...env, API_SECRET: "" },
+		{},
+	);
+	expect(response.status).toBe(503);
+	expect(await response.json()).toMatchObject({ error: "Password protection is not configured" });
 });
 
-it('returns stable comment IDs and orders equal timestamps by ID', async () => {
-  const { shareCode } = await createShare();
-  await completeUpload(shareCode);
-  const ids = [];
-  for (const text of ['first', 'second']) {
-    const response = await SELF.fetch(`${BASE}/s/${shareCode}/comment`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ timestamp: 1, author_name: 'Viewer', text }),
-    });
-    expect(response.status).toBe(200);
-    ids.push((await response.json()).id);
-  }
-  const response = await SELF.fetch(`${BASE}/s/${shareCode}/comments`);
-  expect((await response.json()).comments.map((comment) => comment.id)).toEqual(ids);
-  expect(ids[1]).toBeGreaterThan(ids[0]);
+it("returns stable comment IDs and orders equal timestamps by ID", async () => {
+	const { shareCode } = await createShare();
+	await completeUpload(shareCode);
+	const ids = [];
+	for (const text of ["first", "second"]) {
+		const response = await SELF.fetch(`${BASE}/s/${shareCode}/comment`, {
+			method: "POST",
+			headers: { ...commentAuth, "Content-Type": "application/json" },
+			body: JSON.stringify({ timestamp: 1, author_name: "Viewer", text }),
+		});
+		expect(response.status).toBe(200);
+		ids.push((await response.json()).id);
+	}
+	const response = await SELF.fetch(`${BASE}/s/${shareCode}/comments`);
+	expect((await response.json()).comments.map((comment) => comment.id)).toEqual(ids);
+	expect(ids[1]).toBeGreaterThan(ids[0]);
 });
 
-it('rejects creating protected shares without a signing secret', async () => {
-  const lookup = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ id: 'owner' })));
-  try {
-    const response = await worker.fetch(new Request(`${BASE}/api/upload`, {
-      method: 'POST', headers: { Authorization: 'Bearer owner-token', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'Protected', password_hash: 'hash' }),
-    }), { ...env, API_SECRET: '', ALLOW_API_SECRET_UPLOADS: 'false', SUPABASE_URL: 'https://auth.example.test', SUPABASE_PUBLISHABLE_KEY: 'key', OWNER_USER_ID: 'owner' }, {});
-    expect(response.status).toBe(503);
-    await response.arrayBuffer();
-  } finally { lookup.mockRestore(); }
+it("rejects creating protected shares without a signing secret", async () => {
+	const lookup = vi
+		.spyOn(globalThis, "fetch")
+		.mockResolvedValue(new Response(JSON.stringify({ id: "owner" })));
+	try {
+		const response = await worker.fetch(
+			new Request(`${BASE}/api/upload`, {
+				method: "POST",
+				headers: {
+					Authorization: "Bearer owner-token",
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ title: "Protected", password_hash: "hash" }),
+			}),
+			{
+				...env,
+				API_SECRET: "",
+				ALLOW_API_SECRET_UPLOADS: "false",
+				SUPABASE_URL: "https://auth.example.test",
+				SUPABASE_PUBLISHABLE_KEY: "key",
+				OWNER_USER_ID: "owner",
+			},
+			{},
+		);
+		expect(response.status).toBe(503);
+		await response.arrayBuffer();
+	} finally {
+		lookup.mockRestore();
+	}
 });
 
-it('rejects dashboard cookies without configured secrets instead of crashing', async () => {
-  const config = { ...env, API_SECRET: undefined, DASHBOARD_PASSWORD: undefined };
-  const response = await worker.fetch(new Request(`${BASE}/api/videos`, {
-    headers: { Cookie: 'voom_session=untrusted' },
-  }), config, {});
-  expect(response.status).toBe(401);
-  await response.arrayBuffer();
+it("rejects dashboard cookies without configured secrets instead of crashing", async () => {
+	const config = { ...env, API_SECRET: undefined, DASHBOARD_PASSWORD: undefined };
+	const response = await worker.fetch(
+		new Request(`${BASE}/api/videos`, {
+			headers: { Cookie: "voom_session=untrusted" },
+		}),
+		config,
+		{},
+	);
+	expect(response.status).toBe(401);
+	await response.arrayBuffer();
 });
-it('clamps a bounded video range to the actual object size', async () => {
-  const { shareCode } = await createShare();
-  await completeUpload(shareCode);
-  const response = await SELF.fetch(`${BASE}/v/${shareCode}`, { headers: { Range: 'bytes=6-200' } });
-  expect(response.status).toBe(206);
-  expect(response.headers.get('Content-Range')).toBe('bytes 6-7/8');
-  expect(response.headers.get('Content-Length')).toBe('2');
-  expect(Array.from(new Uint8Array(await response.arrayBuffer()))).toEqual([6, 7]);
-});
-
-it('counts successful registrations without allowing login to reset their quota', async () => {
-  const headers = { 'Content-Type': 'application/json', 'CF-Connecting-IP': '192.0.2.201' };
-  for (let i = 0; i < 10; i++) {
-    const response = await SELF.fetch(`${BASE}/auth/register`, {
-      method: 'POST', headers,
-      body: JSON.stringify({ email: `quota-${i}@example.com`, displayName: 'Quota Test', password: 'test-password' }),
-    });
-    expect(response.status).toBe(200);
-  }
-  const login = await SELF.fetch(`${BASE}/auth/login`, {
-    method: 'POST', headers,
-    body: JSON.stringify({ email: 'quota-0@example.com', password: 'test-password' }),
-  });
-  expect(login.status).toBe(200);
-  const blocked = await SELF.fetch(`${BASE}/auth/register`, {
-    method: 'POST', headers,
-    body: JSON.stringify({ email: 'quota-extra@example.com', displayName: 'Quota Test', password: 'test-password' }),
-  });
-  expect(blocked.status).toBe(429);
+it("clamps a bounded video range to the actual object size", async () => {
+	const { shareCode } = await createShare();
+	await completeUpload(shareCode);
+	const response = await SELF.fetch(`${BASE}/v/${shareCode}`, {
+		headers: { Range: "bytes=6-200" },
+	});
+	expect(response.status).toBe(206);
+	expect(response.headers.get("Content-Range")).toBe("bytes 6-7/8");
+	expect(response.headers.get("Content-Length")).toBe("2");
+	expect(Array.from(new Uint8Array(await response.arrayBuffer()))).toEqual([6, 7]);
 });
 
-it('upgrades salted legacy recording passwords only after correct verification', async () => {
-  const password = 'legacy-recording-password';
-  const { shareCode } = await createShare();
-  await completeUpload(shareCode);
-  const salt = 'legacy-salt';
-  const hash = await sha256Hex(salt + await sha256Hex(password));
-  await env.DB.prepare('UPDATE videos SET password_hash = ?, password_salt = ? WHERE share_code = ?').bind(hash, salt, shareCode).run();
-  const verify = (value) => SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: value }),
-  });
-  expect((await verify('wrong')).status).toBe(403);
-  expect((await env.DB.prepare('SELECT password_hash FROM videos WHERE share_code = ?').bind(shareCode).first()).password_hash).toBe(hash);
-  expect((await verify(password)).status).toBe(200);
-  const row = await env.DB.prepare('SELECT password_hash FROM videos WHERE share_code = ?').bind(shareCode).first();
-  expect(row.password_hash).toMatch(/^pbkdf2-sha256:210000:[0-9a-f]{64}$/);
-  expect((await verify(password)).status).toBe(200);
+it("counts successful registrations without allowing login to reset their quota", async () => {
+	const headers = { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.201" };
+	for (let i = 0; i < 10; i++) {
+		const response = await SELF.fetch(`${BASE}/auth/register`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({
+				email: `quota-${i}@example.com`,
+				displayName: "Quota Test",
+				password: "test-password",
+			}),
+		});
+		expect(response.status).toBe(200);
+	}
+	const login = await SELF.fetch(`${BASE}/auth/login`, {
+		method: "POST",
+		headers,
+		body: JSON.stringify({ email: "quota-0@example.com", password: "test-password" }),
+	});
+	expect(login.status).toBe(200);
+	const blocked = await SELF.fetch(`${BASE}/auth/register`, {
+		method: "POST",
+		headers,
+		body: JSON.stringify({
+			email: "quota-extra@example.com",
+			displayName: "Quota Test",
+			password: "test-password",
+		}),
+	});
+	expect(blocked.status).toBe(429);
+});
+
+it("upgrades salted legacy recording passwords only after correct verification", async () => {
+	const password = "legacy-recording-password";
+	const { shareCode } = await createShare();
+	await completeUpload(shareCode);
+	const salt = "legacy-salt";
+	const hash = await sha256Hex(salt + (await sha256Hex(password)));
+	await env.DB.prepare(
+		"UPDATE videos SET password_hash = ?, password_salt = ? WHERE share_code = ?",
+	)
+		.bind(hash, salt, shareCode)
+		.run();
+	const verify = (value) =>
+		SELF.fetch(`${BASE}/s/${shareCode}/verify-password`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ password: value }),
+		});
+	expect((await verify("wrong")).status).toBe(403);
+	expect(
+		(
+			await env.DB.prepare("SELECT password_hash FROM videos WHERE share_code = ?")
+				.bind(shareCode)
+				.first()
+		).password_hash,
+	).toBe(hash);
+	expect((await verify(password)).status).toBe(200);
+	const row = await env.DB.prepare("SELECT password_hash FROM videos WHERE share_code = ?")
+		.bind(shareCode)
+		.first();
+	expect(row.password_hash).toMatch(/^pbkdf2-sha256:210000:[0-9a-f]{64}$/);
+	expect((await verify(password)).status).toBe(200);
+});
+
+it("keeps an old live lock exclusive and recovers an orphan only by its exact observed token", async () => {
+	const code = crypto.randomUUID();
+	let entered;
+	let release;
+	const started = new Promise((resolve) => {
+		entered = resolve;
+	});
+	const finish = new Promise((resolve) => {
+		release = resolve;
+	});
+	const running = withRecordingLock(env, code, async () => {
+		entered();
+		await finish;
+		return new Response("first action completed");
+	});
+	await started;
+	try {
+		await env.DB.prepare(
+			"UPDATE recording_locks SET created_at = '2000-01-01' WHERE share_code = ?",
+		)
+			.bind(code)
+			.run();
+		const contender = vi.fn(async () => new Response("must not run"));
+		expect((await withRecordingLock(env, code, contender)).status).toBe(409);
+		expect(contender).not.toHaveBeenCalled();
+		expect(
+			(
+				await env.DB.prepare(
+					"DELETE FROM recording_locks WHERE share_code = ? AND token = ? RETURNING token",
+				)
+					.bind(code, "different-token")
+					.all()
+			).results,
+		).toEqual([]);
+		expect((await withRecordingLock(env, code, contender)).status).toBe(409);
+	} finally {
+		release();
+		await running;
+	}
+	// No invocation owns this simulated orphan: maintenance is quiescent by construction.
+	const orphanToken = crypto.randomUUID();
+	await env.DB.prepare(
+		"INSERT INTO recording_locks (share_code, token, created_at) VALUES (?, ?, '2000-01-01')",
+	)
+		.bind(code, orphanToken)
+		.run();
+	const contender = vi.fn(async () => new Response("recovered action"));
+	expect((await withRecordingLock(env, code, contender)).status).toBe(409);
+	expect(contender).not.toHaveBeenCalled();
+	const removed = await env.DB.prepare(
+		"DELETE FROM recording_locks WHERE share_code = ? AND token = ? RETURNING share_code, token, created_at",
+	)
+		.bind(code, orphanToken)
+		.all();
+	expect(removed.results).toEqual([
+		{ share_code: code, token: orphanToken, created_at: "2000-01-01" },
+	]);
+	expect(await (await withRecordingLock(env, code, contender)).text()).toBe("recovered action");
+	expect(contender).toHaveBeenCalledOnce();
+	expect(
+		await env.DB.prepare("SELECT token FROM recording_locks WHERE share_code = ?")
+			.bind(code)
+			.first(),
+	).toBeNull();
+});
+
+describe("report IP cleanup", () => {
+	it("clears expired reporter IPs while preserving reports and moderation history", async () => {
+		const { shareCode } = await createShare();
+		await completeUpload(shareCode);
+		const target = crypto.randomUUID();
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT INTO abuse_reports (share_code,reason,details,client_ip,created_at) VALUES (?,'spam','old report','198.51.100.240',datetime('now','-2 hours'))",
+			).bind(shareCode),
+			env.DB.prepare(
+				"INSERT INTO abuse_reports (share_code,reason,details,client_ip,created_at) VALUES (?,'privacy','boundary report','198.51.100.241',datetime('now','-1 hour'))",
+			).bind(shareCode),
+			env.DB.prepare(
+				"INSERT INTO abuse_reports (share_code,reason,details,client_ip,created_at) VALUES (?,'other','active report','198.51.100.242',datetime('now','-59 minutes'))",
+			).bind(shareCode),
+			env.DB.prepare(
+				"INSERT INTO abuse_reports (share_code,reason,details,client_ip,created_at) VALUES (?,'spam','already cleared','',datetime('now','-3 hours'))",
+			).bind(shareCode),
+			env.DB.prepare(
+				"INSERT INTO moderation_actions (action,target,reason) VALUES ('suspend-account',?,'Keep the audit record')",
+			).bind(target),
+		]);
+		const reports = await env.DB.prepare(
+			"SELECT id,share_code,reason,details,created_at FROM abuse_reports WHERE share_code = ? ORDER BY id",
+		)
+			.bind(shareCode)
+			.all();
+		const audit = await env.DB.prepare("SELECT * FROM moderation_actions WHERE target = ?")
+			.bind(target)
+			.all();
+		await env.DB.prepare(
+			"UPDATE videos SET expires_at = datetime('now','-1 day') WHERE share_code = ?",
+		)
+			.bind(shareCode)
+			.run();
+		await cleanupExpired(env);
+		expect(
+			await env.DB.prepare("SELECT id FROM videos WHERE share_code = ?")
+				.bind(shareCode)
+				.first(),
+		).toBeNull();
+		expect(
+			(
+				await env.DB.prepare(
+					"SELECT id,share_code,reason,details,created_at FROM abuse_reports WHERE share_code = ? ORDER BY id",
+				)
+					.bind(shareCode)
+					.all()
+			).results,
+		).toEqual(reports.results);
+		const addresses = await env.DB.prepare(
+			"SELECT details,client_ip FROM abuse_reports WHERE share_code = ? ORDER BY id",
+		)
+			.bind(shareCode)
+			.all();
+		expect(addresses.results).toEqual([
+			{ details: "old report", client_ip: "" },
+			{ details: "boundary report", client_ip: "" },
+			{ details: "active report", client_ip: "198.51.100.242" },
+			{ details: "already cleared", client_ip: "" },
+		]);
+		expect(
+			(
+				await env.DB.prepare("SELECT * FROM moderation_actions WHERE target = ?")
+					.bind(target)
+					.all()
+			).results,
+		).toEqual(audit.results);
+		expect(
+			(
+				await env.DB.prepare(
+					"SELECT suspended FROM account_restrictions WHERE owner_id = ?",
+				)
+					.bind(target)
+					.first()
+			).suspended,
+		).toBe(1);
+		await cleanupExpired(env);
+		expect(
+			(
+				await env.DB.prepare(
+					"SELECT details,client_ip FROM abuse_reports WHERE share_code = ? ORDER BY id",
+				)
+					.bind(shareCode)
+					.all()
+			).results,
+		).toEqual(addresses.results);
+	});
+
+	it("retains active per-IP and per-recording report admission caps after cleanup", async () => {
+		const { shareCode: first } = await createShare();
+		const { shareCode: second } = await createShare();
+		await completeUpload(first);
+		await completeUpload(second);
+		const ip = "198.51.100.244";
+		await env.DB.batch([
+			...Array.from({ length: 3 }, () =>
+				env.DB.prepare(
+					"INSERT INTO abuse_reports (share_code,reason,details,client_ip,created_at) VALUES (?,'spam','old',?,datetime('now','-2 hours'))",
+				).bind(first, ip),
+			),
+			...Array.from({ length: 3 }, () =>
+				env.DB.prepare(
+					"INSERT INTO abuse_reports (share_code,reason,details,client_ip) VALUES (?,'spam','active',?)",
+				).bind(first, ip),
+			),
+			...Array.from({ length: 20 }, (_, i) =>
+				env.DB.prepare(
+					"INSERT INTO abuse_reports (share_code,reason,details,client_ip) VALUES (?,'spam','active recording report',?)",
+				).bind(second, `203.0.113.${i + 1}`),
+			),
+		]);
+		await cleanupExpired(env);
+		const report = (code, clientIp) =>
+			SELF.fetch(`${BASE}/s/${code}/report`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json", "CF-Connecting-IP": clientIp },
+				body: JSON.stringify({ reason: "spam", details: "New report" }),
+			});
+		expect((await report(first, ip)).status).toBe(429);
+		expect((await report(second, "198.51.100.245")).status).toBe(429);
+		expect((await report(first, "198.51.100.245")).status).toBe(200);
+	});
 });

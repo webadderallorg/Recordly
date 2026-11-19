@@ -1,3 +1,4 @@
+import { parseNativeCaptureInterruption } from "./interruption";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs/promises";
 import { BrowserWindow } from "electron";
@@ -7,6 +8,7 @@ import {
 } from "../cursor/telemetry";
 import {
 	lastNativeCaptureDiagnostics,
+	nativeCaptureProcess,
 	nativeCaptureMicrophonePath,
 	nativeCaptureOutputBuffer,
 	nativeCaptureStopRequested,
@@ -31,6 +33,7 @@ import {
 } from "./diagnostics";
 import { emitRecordingInterrupted } from "./events";
 import { getFinalMacCompanionAudioPath } from "./macCompanionAudio";
+import { attachNativeCaptureStdinLifecycle } from "./nativeCaptureCommand";
 
 export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStreams) {
 	return new Promise<void>((resolve, reject) => {
@@ -76,53 +79,42 @@ export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStream
 	});
 }
 
-export function waitForNativeCaptureCommand(
-	process: ChildProcessWithoutNullStreams,
-	marker: "Recording paused" | "Recording resumed",
-) {
-	return new Promise<void>((resolve, reject) => {
-		const timer = setTimeout(() => {
-			cleanup();
-			reject(new Error(`Timed out waiting for ScreenCaptureKit helper: ${marker}`));
-		}, 5000);
+export { waitForNativeCaptureCommand } from "./nativeCaptureCommand";
 
-		let stdoutBuffer = "";
-		const onStdout = (chunk: Buffer) => {
-			stdoutBuffer += chunk.toString();
-			if (stdoutBuffer.includes(marker)) {
-				cleanup();
-				resolve();
-			}
-		};
-		const onError = (error: Error) => {
-			cleanup();
-			reject(error);
-		};
-		const onExit = (code: number | null) => {
-			cleanup();
-			reject(
-				new Error(
-					`Native capture helper exited before ${marker.toLowerCase()} (code ${code ?? "unknown"})`,
-				),
-			);
-		};
-		const cleanup = () => {
-			clearTimeout(timer);
-			process.stdout.off("data", onStdout);
-			process.off("error", onError);
-			process.off("exit", onExit);
-		};
-
-		process.stdout.on("data", onStdout);
-		process.once("error", onError);
-		process.once("exit", onExit);
-	});
+export class NativeCaptureStopTimeoutError extends Error {
+	constructor(readonly captureStillRunning: boolean) {
+		super(
+			captureStillRunning
+				? "ScreenCaptureKit recorder did not exit after stop and termination requests. The capture is still reserved until the helper closes."
+				: "Timed out waiting for ScreenCaptureKit recorder to stop. The helper was terminated; any saved output requires validation.",
+		);
+		this.name = "NativeCaptureStopTimeoutError";
+	}
 }
 
-export function waitForNativeCaptureStop(process: ChildProcessWithoutNullStreams) {
+export function waitForNativeCaptureStop(
+	process: ChildProcessWithoutNullStreams,
+	options: { timeoutMs?: number; terminateGraceMs?: number; killGraceMs?: number } = {},
+) {
+	const stdinState = attachNativeCaptureStdinLifecycle(process);
 	return new Promise<string>((resolve, reject) => {
+		if (stdinState.error) {
+			reject(stdinState.error);
+			return;
+		}
+		let timedOut = false;
+		let timer: ReturnType<typeof setTimeout>;
 		const onClose = (code: number | null) => {
 			cleanup();
+			if (timedOut) {
+				reject(new NativeCaptureStopTimeoutError(false));
+				return;
+			}
+			const interruption = parseNativeCaptureInterruption(nativeCaptureOutputBuffer);
+			if (interruption) {
+				reject(new Error(interruption));
+				return;
+			}
 			const match = nativeCaptureOutputBuffer.match(/Recording stopped\. Output path: (.+)/);
 			if (match?.[1]) {
 				resolve(match[1].trim());
@@ -139,19 +131,40 @@ export function waitForNativeCaptureStop(process: ChildProcessWithoutNullStreams
 				),
 			);
 		};
-
 		const onError = (error: Error) => {
+			// A failed signal can emit error without closing the helper. Keep the
+			// escalation and close-confirmation deadline alive in that case.
+			if (timedOut) return;
 			cleanup();
 			reject(error);
 		};
-
 		const cleanup = () => {
+			clearTimeout(timer);
 			process.off("close", onClose);
+			process.stdin.off("error", onError);
 			process.off("error", onError);
 		};
-
+		const signal = (value: NodeJS.Signals) => {
+			try {
+				process.kill(value);
+			} catch {
+				/* Still wait for close confirmation. */
+			}
+		};
 		process.once("close", onClose);
-		process.once("error", onError);
+		process.stdin.on("error", onError);
+		process.on("error", onError);
+		timer = setTimeout(() => {
+			timedOut = true;
+			timer = setTimeout(() => {
+				timer = setTimeout(() => {
+					cleanup();
+					reject(new NativeCaptureStopTimeoutError(true));
+				}, options.killGraceMs ?? 5_000);
+				signal("SIGKILL");
+			}, options.terminateGraceMs ?? 5_000);
+			signal("SIGTERM");
+		}, options.timeoutMs ?? 45_000);
 	});
 }
 
@@ -190,6 +203,7 @@ export async function muxNativeMacRecordingWithAudio(
 }
 
 export function attachNativeCaptureLifecycle(process: ChildProcessWithoutNullStreams) {
+	attachNativeCaptureStdinLifecycle(process);
 	process.once("close", () => {
 		const wasActive = nativeScreenRecordingActive;
 		setNativeCaptureProcess(null);
@@ -221,7 +235,8 @@ export function attachNativeCaptureLifecycle(process: ChildProcessWithoutNullStr
 		const message =
 			reason === "window-unavailable"
 				? "The selected window is no longer capturable. Please reselect a window."
-				: "Recording stopped unexpectedly.";
+				: parseNativeCaptureInterruption(nativeCaptureOutputBuffer) ||
+					"Recording stopped unexpectedly.";
 
 		emitRecordingInterrupted(reason, message);
 	});
@@ -305,6 +320,8 @@ export async function finalizeStoredVideo(videoPath: string) {
 }
 
 export async function recoverNativeMacCaptureOutput() {
+	// Never publish or validate an MP4 whose writer may still be running.
+	if (nativeScreenRecordingActive || nativeCaptureProcess) return null;
 	const macDiagnostics =
 		lastNativeCaptureDiagnostics?.backend === "mac-screencapturekit"
 			? lastNativeCaptureDiagnostics

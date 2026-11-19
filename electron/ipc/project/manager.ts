@@ -1,9 +1,15 @@
-import { randomUUID } from "node:crypto";
+import {
+	getProjectStorageKey,
+	readProjectFileWithRecovery,
+	setProjectRecoveryDirectory,
+} from "./atomicSave";
+import { encodeComposedThumbnail } from "./composedThumbnail";
+import { createHash, randomUUID } from "node:crypto";
 import { createProjectFirstFrameThumbnail } from "./firstFrameThumbnail";
 import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
 import type { ProjectPreviewData } from "../../../src/types/projectPreview";
 import { hasFreshProjectThumbnail } from "./thumbnailFreshness";
-import { type Stats, existsSync, constants as fsConstants, realpathSync } from "node:fs";
+import { type Stats, constants as fsConstants, realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { app } from "electron";
@@ -28,12 +34,17 @@ import {
 	setRecordingsDirLoaded,
 } from "../state";
 import type { ProjectLibraryEntry, RecordingSessionData } from "../types";
+import { canonicalMediaSources } from "./canonicalMediaSources";
 import {
 	getRecordingsDir,
 	normalizePath,
 	normalizeVideoSourcePath,
 	parseJsonWithByteOrderMark,
 } from "../utils";
+
+setProjectRecoveryDirectory(path.join(USER_DATA_PATH, "project-recovery"), (contents) =>
+	isLoadableProjectData(parseJsonWithByteOrderMark(contents)),
+);
 
 export { normalizePath, normalizeVideoSourcePath };
 
@@ -158,12 +169,16 @@ export async function resolveApprovedLocalMediaPath(candidatePath: string): Prom
 		return null;
 	}
 
-	await rememberApprovedLocalReadPath(candidatePath);
+	// Register only the literal and the target checked above. Resolving the alias
+	// again could approve a replacement symlink target that was never validated.
+	approvedLocalReadPaths.add(normalizePath(candidatePath));
+	approvedLocalReadPaths.add(normalizePath(realPath));
 	return realPath;
 }
 
 export async function replaceApprovedSessionLocalReadPaths(
 	filePaths: Array<string | null | undefined>,
+	isCurrent = () => true,
 ) {
 	const nextApprovedPaths = new Set<string>();
 	const approvedPathLists = await Promise.all(
@@ -176,10 +191,12 @@ export async function replaceApprovedSessionLocalReadPaths(
 		}
 	}
 
+	if (!isCurrent()) return false;
 	approvedLocalReadPaths.clear();
 	for (const approvedPath of nextApprovedPaths) {
 		approvedLocalReadPaths.add(approvedPath);
 	}
+	return true;
 }
 
 export async function resolveProjectMediaSources(
@@ -204,10 +221,13 @@ export async function resolveProjectMediaSources(
 
 	try {
 		await fs.access(normalizedVideoPath, fsConstants.F_OK);
-	} catch {
+	} catch (error) {
 		return {
 			success: false,
-			message: `Project video file not found: ${normalizedVideoPath}`,
+			message:
+				(error as NodeJS.ErrnoException).code === "ENOENT"
+					? `Project video file not found: ${normalizedVideoPath}`
+					: `Could not access project recording: ${error instanceof Error ? error.message : String(error)}`,
 		};
 	}
 
@@ -264,14 +284,45 @@ export function hasProjectFileExtension(filePath: string) {
 	return [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS].includes(extension);
 }
 
-export function getProjectThumbnailPath(projectPath: string) {
+export async function getProjectThumbnailPath(projectPath: string) {
+	return projectThumbnailStoragePath(await getProjectStorageKey(projectPath));
+}
+
+function projectThumbnailStoragePath(key: string) {
+	const digest = createHash("sha256").update(key).digest("hex");
+	return path.join(USER_DATA_PATH, "project-thumbnails", `${digest}.png`);
+}
+
+export function getLegacyProjectThumbnailPath(projectPath: string) {
 	return `${projectPath}${PROJECT_THUMBNAIL_SUFFIX}`;
 }
 
+export async function getProjectThumbnailPaths(projectPath: string) {
+	const resolved = path.resolve(projectPath);
+	const oldKey = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+	return [
+		...new Set([
+			await getProjectThumbnailPath(projectPath),
+			projectThumbnailStoragePath(oldKey),
+			getLegacyProjectThumbnailPath(projectPath),
+		]),
+	];
+}
+
+async function findFreshProjectThumbnail(projectPath: string, modifiedAt: number) {
+	for (const thumbnailPath of await getProjectThumbnailPaths(projectPath)) {
+		const stats = await fs.lstat(thumbnailPath).catch(() => null);
+		if (stats?.isFile() && (await hasFreshProjectThumbnail(thumbnailPath, modifiedAt)))
+			return thumbnailPath;
+	}
+	return null;
+}
+
 export async function saveProjectThumbnail(projectPath: string, thumbnailDataUrl?: string | null) {
-	const thumbnailPath = getProjectThumbnailPath(projectPath);
+	const thumbnailPath = await getProjectThumbnailPath(projectPath);
 	if (thumbnailDataUrl === undefined) {
-		return existsSync(thumbnailPath) ? thumbnailPath : null;
+		const revision = await fs.stat(projectPath).catch(() => null);
+		return findFreshProjectThumbnail(projectPath, revision?.mtimeMs ?? 0);
 	}
 
 	if (!thumbnailDataUrl) {
@@ -279,13 +330,16 @@ export async function saveProjectThumbnail(projectPath: string, thumbnailDataUrl
 		return null;
 	}
 
-	const match = thumbnailDataUrl.match(/^data:image\/png;base64,(.+)$/);
-	if (!match) {
-		throw new Error("Project thumbnail must be a PNG data URL.");
+	const contents = encodeComposedThumbnail(thumbnailDataUrl);
+	await fs.mkdir(path.dirname(thumbnailPath), { recursive: true, mode: 0o700 });
+	const temporary = `${thumbnailPath}.${randomUUID()}.tmp`;
+	try {
+		await fs.writeFile(temporary, contents, { flag: "wx" });
+		await fs.rename(temporary, thumbnailPath);
+		return thumbnailPath;
+	} finally {
+		await fs.rm(temporary, { force: true }).catch(() => undefined);
 	}
-
-	await fs.writeFile(thumbnailPath, Buffer.from(match[1], "base64"));
-	return thumbnailPath;
 }
 
 export async function loadRecentProjectPaths() {
@@ -327,6 +381,53 @@ export async function rememberRecentProject(projectPath: string) {
 export type ProjectThumbnailReady = { path: string; thumbnailPath: string; updatedAt: number };
 const thumbnailJobs = new Map<string, Promise<ProjectThumbnailReady | null>>();
 
+export async function requireLibraryProject(projectPath: string) {
+	if (typeof projectPath !== "string") throw new Error("Invalid project path");
+	const normalized = normalizePath(projectPath);
+	if (!hasProjectFileExtension(normalized)) throw new Error("Project is not in the library");
+	const projectsDir = normalizePath(await getProjectsDir());
+	if (path.dirname(normalized) === projectsDir && (await fs.lstat(normalized)).isFile())
+		return normalized;
+	const recent = await loadRecentProjectPaths();
+	if (
+		!recent.some((entry) => normalizePath(entry) === normalized) ||
+		!(await fs.stat(normalized)).isFile()
+	)
+		throw new Error("Project is not in the library");
+	return normalized;
+}
+
+function projectPreviewRevision(stats: Stats) {
+	return JSON.stringify([stats.mtimeMs, stats.ctimeMs, stats.size, stats.ino, stats.dev]);
+}
+
+/** Persist generated previews without changing the project or overwriting a newer edit. */
+export async function cacheProjectThumbnail(
+	projectPath: string,
+	revision: string,
+	dataUrl: string,
+) {
+	if (typeof projectPath !== "string" || typeof revision !== "string")
+		throw new Error("Invalid project revision");
+	const normalizedPath = await requireLibraryProject(projectPath);
+	const stats = await fs.stat(normalizedPath);
+	if (projectPreviewRevision(stats) !== revision) return null;
+	const png = encodeComposedThumbnail(dataUrl);
+	const target = await getProjectThumbnailPath(normalizedPath);
+	const temporary = `${target}.${randomUUID()}.tmp`;
+	try {
+		await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+		await fs.writeFile(temporary, png, { flag: "wx" });
+		// A subsequent project edit must invalidate the cached frame, even if it races this write.
+		await fs.utimes(temporary, new Date(), Math.ceil(stats.mtimeMs) / 1000);
+		if (!sameProjectRevision(stats, await fs.stat(normalizedPath))) return null;
+		await fs.rename(temporary, target);
+		return target;
+	} finally {
+		await fs.rm(temporary, { force: true }).catch(() => undefined);
+	}
+}
+
 function sameProjectRevision(left: Stats, right: Stats) {
 	return (
 		left.mtimeMs === right.mtimeMs &&
@@ -341,7 +442,7 @@ export function refreshProjectThumbnail(projectPath: string, revision: Stats) {
 	const pending = thumbnailJobs.get(projectPath);
 	if (pending) return pending;
 	const task = (async (): Promise<ProjectThumbnailReady | null> => {
-		const thumbnailPath = getProjectThumbnailPath(projectPath);
+		const thumbnailPath = await getProjectThumbnailPath(projectPath);
 		let temporary: string | undefined;
 		try {
 			if (!sameProjectRevision(revision, await fs.stat(projectPath))) return null;
@@ -353,6 +454,7 @@ export function refreshProjectThumbnail(projectPath: string, revision: Stats) {
 			if (!sameProjectRevision(revision, await fs.stat(projectPath))) return null;
 			if (!(await hasFreshProjectThumbnail(thumbnailPath, revision.mtimeMs))) {
 				temporary = `${thumbnailPath}.${randomUUID()}.tmp`;
+				await fs.mkdir(path.dirname(thumbnailPath), { recursive: true, mode: 0o700 });
 				await fs.writeFile(temporary, thumbnail, { flag: "wx" });
 				// Stamp the source revision, rather than generation time, so a later edit invalidates it.
 				await fs.utimes(temporary, new Date(), Math.ceil(revision.mtimeMs) / 1000);
@@ -375,7 +477,7 @@ export function refreshProjectThumbnail(projectPath: string, revision: Stats) {
 export async function buildProjectLibraryEntry(
 	projectPath: string,
 	projectsDir: string,
-	onThumbnailReady?: (ready: ProjectThumbnailReady) => void,
+	_onThumbnailReady?: (ready: ProjectThumbnailReady) => void,
 ): Promise<ProjectLibraryEntry | null> {
 	try {
 		const normalizedPath = normalizePath(projectPath);
@@ -388,15 +490,13 @@ export async function buildProjectLibraryEntry(
 			return null;
 		}
 
-		const thumbnailPath = getProjectThumbnailPath(normalizedPath);
-		const thumbnailExists = await hasFreshProjectThumbnail(thumbnailPath, stats.mtimeMs);
-		if (!thumbnailExists) {
-			void refreshProjectThumbnail(normalizedPath, stats)
-				.then((ready) => {
-					if (ready) onThumbnailReady?.(ready);
-				})
-				.catch(() => undefined);
-		}
+		const thumbnailPath = await findFreshProjectThumbnail(normalizedPath, stats.mtimeMs);
+		const thumbnailExists = thumbnailPath !== null;
+		// Listed projects may live outside the default recordings directory.
+		// Approve only their validated regular sidecar, never its siblings or a symlink target.
+		if (thumbnailPath) await rememberApprovedLocalReadPath(thumbnailPath);
+		// Missing previews are composed by the renderer from the saved editor state.
+		// A source-only ffmpeg frame would discard padding, wallpaper and overlays.
 
 		return {
 			path: normalizedPath,
@@ -464,7 +564,12 @@ export async function listProjectLibraryEntries(
 	};
 }
 
-function isLoadableProjectData(projectData: unknown) {
+export function isLoadableProjectData(projectData: unknown): projectData is {
+	version: number;
+	videoPath: string;
+	editor: Record<string, unknown>;
+	[key: string]: unknown;
+} {
 	if (!projectData || typeof projectData !== "object" || Array.isArray(projectData)) {
 		return false;
 	}
@@ -489,12 +594,11 @@ function isLoadableProjectData(projectData: unknown) {
 
 /** Read a listed project's preview without changing the active project or recording session. */
 export async function readProjectPreview(projectPath: string): Promise<ProjectPreviewData> {
-	if (typeof projectPath !== "string") throw new Error("Invalid project path");
-	const normalizedPath = normalizePath(projectPath);
-	const { entries } = await listProjectLibraryEntries();
-	if (!entries.some((entry) => entry.path === normalizedPath))
-		throw new Error("Project is not in the library");
+	const normalizedPath = await requireLibraryProject(projectPath);
+	const revision = await fs.stat(normalizedPath);
 	const project = parseJsonWithByteOrderMark(await fs.readFile(normalizedPath, "utf-8"));
+	if (!sameProjectRevision(revision, await fs.stat(normalizedPath)))
+		throw new Error("Project changed while loading its preview");
 	if (!isLoadableProjectData(project)) throw new Error("Invalid project file format");
 	const media = await resolveProjectMediaSources(project);
 	if (!media.success) throw new Error(media.message);
@@ -503,23 +607,34 @@ export async function readProjectPreview(projectPath: string): Promise<ProjectPr
 	await rememberApprovedLocalReadPath(media.videoPath);
 	if (media.webcamPath) await rememberApprovedLocalReadPath(media.webcamPath);
 	return {
+		revision: projectPreviewRevision(revision),
 		project: project as ProjectPreviewData["project"],
 		videoUrl: buildMediaUrl(baseUrl, media.videoPath),
 		webcamUrl: media.webcamPath ? buildMediaUrl(baseUrl, media.webcamPath) : null,
+		...(await canonicalMediaSources(project)),
 	};
 }
 
-export async function loadProjectFromPath(projectPath: string) {
+export async function loadProjectFromPath(projectPath: string, isCurrent = () => true) {
 	const normalizedPath = normalizePath(projectPath);
 	let project: unknown;
+	let recovered = false;
 	try {
-		const content = await fs.readFile(normalizedPath, "utf-8");
-		project = parseJsonWithByteOrderMark(content);
+		const result = await readProjectFileWithRecovery(normalizedPath, (contents) => {
+			const parsed = parseJsonWithByteOrderMark(contents);
+			if (!isLoadableProjectData(parsed)) throw new Error("Invalid project file format");
+			return parsed;
+		});
+		project = result.project;
+		recovered = result.recovered;
 	} catch (error) {
 		return {
 			success: false,
 			canceled: false,
-			message: `Failed to read project file: ${error instanceof Error ? error.message : String(error)}`,
+			message:
+				error instanceof Error && error.message === "Invalid project file format"
+					? error.message
+					: `Failed to read project file: ${error instanceof Error ? error.message : String(error)}`,
 		};
 	}
 	if (!isLoadableProjectData(project)) {
@@ -532,9 +647,15 @@ export async function loadProjectFromPath(projectPath: string) {
 	const mediaSources = await resolveProjectMediaSources(project);
 
 	if (!mediaSources.success) {
+		const missingRecordingPath = /Project video file not found/i.test(mediaSources.message)
+			? normalizeVideoSourcePath((project as { videoPath: string }).videoPath)
+			: undefined;
+		if (missingRecordingPath) await rememberRecentProject(normalizedPath);
 		return {
 			success: false,
 			canceled: false,
+			path: normalizedPath,
+			missingRecordingPath,
 			message: mediaSources.message,
 		};
 	}
@@ -560,8 +681,22 @@ export async function loadProjectFromPath(projectPath: string) {
 			}
 		}
 	}
-	await replaceApprovedSessionLocalReadPaths(approvedProjectPaths);
+	// Deleted audio can still be restored by undo after the project is reopened.
+	const history = projectObj.history as { version?: unknown; values?: unknown } | undefined;
+	if (history?.version === 1 && Array.isArray(history.values)) {
+		for (const value of history.values) {
+			if (value && typeof value === "object" && typeof value.audioPath === "string") {
+				approvedProjectPaths.push(value.audioPath);
+			}
+		}
+	}
+	if (!isCurrent()) return { success: false, canceled: true };
 	await rememberRecentProject(normalizedPath);
+	if (
+		(await replaceApprovedSessionLocalReadPaths(approvedProjectPaths, isCurrent)) === false ||
+		!isCurrent()
+	)
+		return { success: false, canceled: true };
 
 	setCurrentProjectPath(normalizedPath);
 	setCurrentVideoPath(mediaSources.videoPath);
@@ -575,6 +710,7 @@ export async function loadProjectFromPath(projectPath: string) {
 		success: true,
 		path: normalizedPath,
 		project,
+		recovered,
 	};
 }
 

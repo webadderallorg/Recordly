@@ -1,0 +1,65 @@
+name: Microsoft Store package
+
+on:
+  workflow_dispatch:
+    inputs:
+      store_version:
+        description: Store version (major.minor.patch; increase for each submission)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build unsigned Store AppX (x64)
+    runs-on: windows-latest
+    env:
+      RECORDLY_STORE_IDENTITY_NAME: ${{ vars.RECORDLY_STORE_IDENTITY_NAME }}
+      RECORDLY_STORE_PUBLISHER: ${{ vars.RECORDLY_STORE_PUBLISHER }}
+      RECORDLY_STORE_PUBLISHER_DISPLAY_NAME: ${{ vars.RECORDLY_STORE_PUBLISHER_DISPLAY_NAME }}
+      RECORDLY_STORE_VERSION: ${{ inputs.store_version }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      VITE_CLOUD_SHARE_ENDPOINT: ${{ vars.VITE_CLOUD_SHARE_ENDPOINT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Validate reserved Store identity
+        run: node -e "require('./electron-builder.store.cjs')()"
+      - name: Install bundled FFmpeg binary
+        run: node scripts/install-ffmpeg-static.mjs
+      - name: Remove stale uiohook build output
+        shell: pwsh
+        run: |
+          if (Test-Path node_modules/uiohook-napi/build) {
+            Remove-Item node_modules/uiohook-napi/build -Recurse -Force
+          }
+      - name: Install app dependencies
+        run: npx electron-builder install-app-deps
+      - name: Validate production cloud configuration
+        run: npm run release:check-cloud
+      - name: Test Store integration
+        run: npm test -- electron/windowsStorePackage.test.mjs electron/updater.test.ts electron/appPaths.test.ts
+      - name: Build Store package
+        run: npm run build:win:store
+      - name: Smoke test packaged binaries
+        run: npm run smoke:packaged-binaries
+      - name: Upload package for manual certification testing and submission
+        uses: actions/upload-artifact@v4
+        with:
+          name: recordly-microsoft-store-x64
+          path: release/store/*.appx
+          if-no-files-found: error
+
+# This workflow only builds an artifact. It never submits or publishes to Store.

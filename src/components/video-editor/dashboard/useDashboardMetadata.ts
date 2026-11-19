@@ -1,3 +1,4 @@
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { useState } from "react";
 import { toast } from "@/components/ui/toast";
 
@@ -18,13 +19,14 @@ function load(): Metadata {
 	}
 }
 export function useDashboardMetadata() {
+	const { t: uiText } = useUiLocale();
 	const [metadata, setMetadata] = useState(load);
 	const update = (next: Metadata) => {
 		try {
 			localStorage.setItem(KEY, JSON.stringify(next));
 			setMetadata(next);
 		} catch {
-			toast.error("Could not save library preferences");
+			toast.error(uiText("ui.couldNotSaveLibraryPreferences"));
 		}
 	};
 	return { metadata, update };

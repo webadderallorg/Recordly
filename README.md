@@ -192,7 +192,7 @@ PKGBUILD, desktop entry, release sync, and optional **local-from-source** packag
 
 ### Prerequisites
 
-**macOS:** Xcode Command Line Tools (`xcode-select --install`).
+**macOS:** Install Xcode Command Line Tools (`xcode-select --install`) for development. To package the app, select a full Xcode 26 or later installation with `xcode-select` so Electron Builder can compile the icon with `actool`. Xcode 26 requires macOS 15.6 or later.
 
 **Linux (Ubuntu/Debian):**
 
@@ -392,7 +392,12 @@ Pull requests are welcome.
 
 # License
 
-Recordly is licensed under the **AGPL 3.0**.
+Recordly is licensed under the **[GNU AGPLv3](LICENSE.md)**.
+
+Copyright (C) 2026 webadderall
+
+Third-party copyright and license notices are provided in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 

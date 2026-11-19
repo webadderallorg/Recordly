@@ -9,7 +9,7 @@ type OfflineRenderTestHarness = AudioProcessor & {
 	prepareOfflineRender(
 		videoUrl: string,
 		trimRegions: never[],
-		speedRegions: never[],
+		speedRegions: import("@/components/video-editor/types").SpeedRegion[],
 		audioRegions: never[],
 		sourceAudioFallbackPaths: string[],
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
@@ -53,16 +53,136 @@ function fakeAudioBuffer(channels: Float32Array[]): AudioBuffer {
 }
 
 describe("AudioProcessor offline render preparation", () => {
+	it("prepares edited sidecar audio when remote video metadata does not allow CORS", async () => {
+		// A metadata-only video can load cross-origin without a CORS opt-in; the
+		// same response is rejected when the request explicitly asks for CORS.
+		class MetadataVideo extends EventTarget {
+			crossOrigin = "";
+			preload = "";
+			duration = 12;
+			private source = "";
+			load = vi.fn();
+			set src(value: string) {
+				this.source = value;
+				if (value)
+					queueMicrotask(() =>
+						this.dispatchEvent(
+							new Event(
+								this.crossOrigin === "anonymous" ? "error" : "loadedmetadata",
+							),
+						),
+					);
+			}
+			get src() {
+				return this.source;
+			}
+		}
+		const videos: MetadataVideo[] = [];
+		vi.stubGlobal("document", {
+			createElement: (tag: string) => {
+				expect(tag).toBe("video");
+				const video = new MetadataVideo();
+				videos.push(video);
+				return video;
+			},
+		});
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const sidecar = { duration: 12, numberOfChannels: 2 } as AudioBuffer;
+		const decode = vi.spyOn(processor, "decodeAudioFromUrl").mockResolvedValue(sidecar);
+		try {
+			const prepared = await processor.prepareOfflineRender(
+				"https://media.example.test/no-cors/recording.mp4",
+				[],
+				[{ id: "speed", startMs: 0, endMs: 1000, speed: 2 }],
+				[],
+				["/tmp/recording.system.wav"],
+			);
+			expect(prepared.mainBufferEntry).toBeNull();
+			expect(prepared.companionEntries[0].buffer).toBe(sidecar);
+			expect(prepared).toMatchObject({ outputDurationMs: 11500 });
+			expect(decode).toHaveBeenCalledExactlyOnceWith("/tmp/recording.system.wav");
+			expect(videos).toHaveLength(2);
+			for (const video of videos) {
+				expect(video.preload).toBe("metadata");
+				expect(video.src).toBe("");
+				expect(video.load).toHaveBeenCalledOnce();
+			}
+		} finally {
+			decode.mockRestore();
+			vi.unstubAllGlobals();
+		}
+	});
+
 	it("routes a muted full-track clip through offline audio rendering", async () => {
 		const processor = new AudioProcessor();
-		const render = vi.spyOn(processor as unknown as OfflineRenderTestHarness,
-			"renderAndMuxOfflineAudio").mockResolvedValue();
-		const clips = [{ id: "clip", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1, muted: true }];
+		const render = vi
+			.spyOn(processor as unknown as OfflineRenderTestHarness, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+		const clips = [
+			{ id: "clip", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1, muted: true },
+		];
 		const muxer = {} as never;
-		await processor.process(null, muxer, "recording.mp4", [], [], undefined,
-			[], [], undefined, undefined, clips);
-		expect(render).toHaveBeenCalledWith("recording.mp4", [], [], [], [],
-			undefined, undefined, clips, muxer);
+		await processor.process(
+			null,
+			muxer,
+			"recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			[],
+			undefined,
+			undefined,
+			clips,
+		);
+		expect(render).toHaveBeenCalledWith(
+			"recording.mp4",
+			[],
+			[],
+			[],
+			[],
+			undefined,
+			undefined,
+			clips,
+			muxer,
+			undefined,
+		);
+	});
+
+	it("routes full-track clip volume overrides through offline rendering and passes all overrides", async () => {
+		const processor = new AudioProcessor();
+		const render = vi
+			.spyOn(processor as unknown as OfflineRenderTestHarness, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+		const clips = [{ id: "clip", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1 }];
+		const overrides = { clip: { mixed: { volume: 0.2, normalize: true } } };
+		const muxer = {} as never;
+		await processor.process(
+			null,
+			muxer,
+			"recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			[],
+			undefined,
+			{},
+			clips,
+			overrides,
+		);
+		expect(render).toHaveBeenCalledWith(
+			"recording.mp4",
+			[],
+			[],
+			[],
+			[],
+			undefined,
+			{},
+			clips,
+			muxer,
+			overrides,
+		);
 	});
 
 	it("rejects a cancelled chunked render instead of returning a partial WAV", async () => {

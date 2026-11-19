@@ -16,11 +16,14 @@ export async function acquireBrowserScreenCapture({
 	usePortal: boolean;
 	onAudioFallback: () => void;
 }): Promise<MediaStream> {
+	let stream: MediaStream;
 	try {
-		return await request(audio);
+		stream = await request(audio);
 	} catch (error) {
 		if (!audio || (usePortal && isCapturePermissionDismissed(error))) throw error;
 		onAudioFallback();
 		return request(false);
 	}
+	if (audio && stream.getAudioTracks().length === 0) onAudioFallback();
+	return stream;
 }

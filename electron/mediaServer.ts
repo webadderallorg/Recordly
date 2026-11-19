@@ -1,9 +1,32 @@
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { getPackagedRendererBaseUrl } from "./rendererServer";
 import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { approvedLocalReadPaths } from "./ipc/state";
 import { getMediaContentType } from "./mediaTypes";
+
+const mediaCapabilitySecret = randomBytes(32);
+
+function mediaCapability(filePath: string): string {
+	return createHmac("sha256", mediaCapabilitySecret).update(filePath).digest("hex");
+}
+
+function isTrustedMediaOrigin(origin: string): boolean {
+	// loadFile is the renderer-server startup fallback. Opaque origins still
+	// require the per-file capability below; Origin:null alone grants no access.
+	if (origin === "null") return true;
+	const allowedUrls = [getPackagedRendererBaseUrl(), process.env.VITE_DEV_SERVER_URL];
+	return allowedUrls.some((value) => {
+		if (!value) return false;
+		try {
+			return new URL(value).origin === origin;
+		} catch {
+			return false;
+		}
+	});
+}
 
 let mediaServerBaseUrl: string | null = null;
 let mediaServerStartPromise: Promise<string> | null = null;
@@ -75,10 +98,36 @@ async function handleMediaRequest(
 			return;
 		}
 
+		if (!["GET", "HEAD", "OPTIONS"].includes(request.method ?? "")) {
+			response.writeHead(405, { Allow: "GET, HEAD, OPTIONS" });
+			response.end();
+			return;
+		}
+
+		const origin = request.headers.origin;
+		if (origin && !isTrustedMediaOrigin(origin)) {
+			response.writeHead(403);
+			response.end("Forbidden");
+			return;
+		}
+
 		const rawPath = url.searchParams.get("path");
 		if (!rawPath) {
 			response.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
 			response.end("Missing path parameter");
+			return;
+		}
+
+		// A per-file capability prevents websites and other local clients from
+		// guessing an approved recording path and reading it through loopback.
+		const capability = url.searchParams.get("token") ?? "";
+		const expected = mediaCapability(rawPath);
+		if (
+			!/^[a-f0-9]{64}$/.test(capability) ||
+			!timingSafeEqual(Buffer.from(capability), Buffer.from(expected))
+		) {
+			response.writeHead(403);
+			response.end("Forbidden");
 			return;
 		}
 
@@ -102,8 +151,9 @@ async function handleMediaRequest(
 		const rangeHeader = request.headers.range;
 
 		const corsHeaders = {
-			"Access-Control-Allow-Origin": "*",
-			"Access-Control-Allow-Credentials": "false",
+			...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
+			Vary: "Origin",
+			"X-Content-Type-Options": "nosniff",
 			"Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
 		};
 
@@ -196,6 +246,12 @@ export function getMediaServerBaseUrl(): string | null {
 	return mediaServerBaseUrl;
 }
 
+export function createMediaServer() {
+	return createServer((request, response) => {
+		void handleMediaRequest(request, response);
+	});
+}
+
 export async function ensureMediaServer(): Promise<string> {
 	if (mediaServerBaseUrl) {
 		return mediaServerBaseUrl;
@@ -206,9 +262,7 @@ export async function ensureMediaServer(): Promise<string> {
 	}
 
 	mediaServerStartPromise = new Promise((resolve, reject) => {
-		const server = createServer((request, response) => {
-			void handleMediaRequest(request, response);
-		});
+		const server = createMediaServer();
 
 		server.once("error", (error) => {
 			reject(error);
@@ -228,10 +282,14 @@ export async function ensureMediaServer(): Promise<string> {
 		});
 	});
 
-	return mediaServerStartPromise;
+	try {
+		return await mediaServerStartPromise;
+	} finally {
+		mediaServerStartPromise = null;
+	}
 }
 
 export function buildMediaUrl(baseUrl: string, filePath: string): string {
 	const resolved = path.resolve(filePath);
-	return `${baseUrl}/video?path=${encodeURIComponent(resolved)}`;
+	return `${baseUrl}/video?path=${encodeURIComponent(resolved)}&token=${mediaCapability(resolved)}`;
 }

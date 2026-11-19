@@ -136,6 +136,7 @@ export function useTimelineProjection({
 	}, [clipRegions, speedRegions]);
 
 	return {
+		sourceDuration: duration,
 		mapTimelineTimeToSourceTime: toSourceTime,
 		mapSourceTimeToTimelineTime: toTimelineTime,
 		effectiveZoomRegions,

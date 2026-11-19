@@ -39,6 +39,17 @@ export function createClipPlayback({
 	let request: number | null = null;
 	let lastTick = 0;
 	let activeClip: ClipRegion | null = null;
+	let activePlaybackKey: string | null = null;
+	const playbackKey = (clip: ClipRegion | null) =>
+		clip
+			? JSON.stringify([
+					clip.id,
+					clip.startMs,
+					clip.endMs,
+					getClipSourceStartMs(clip),
+					clip.speed,
+				])
+			: null;
 	let playRequest = 0;
 	const duration = () => getTimelineDurationMs(getClips(), 0);
 	const readSourceTime = () => {
@@ -82,6 +93,8 @@ export function createClipPlayback({
 			if (next) timeMs = next.startMs;
 		}
 		const clip = findPreviewClipAtTimelineTime(timeMs, clips);
+		const nextPlaybackKey = playbackKey(clip);
+		const mappingChanged = nextPlaybackKey !== activePlaybackKey;
 		const sourceMs = clip
 			? getClipSourceStartMs(clip) + (timeMs - clip.startMs) * clip.speed
 			: null;
@@ -94,7 +107,7 @@ export function createClipPlayback({
 				onError(error);
 				return;
 			}
-			if (seek || clip !== activeClip) {
+			if (seek || mappingChanged) {
 				// Clip out-points are exclusive. At the final timeline endpoint,
 				// request a frame inside the clip, not EOF or the following footage.
 				const atEnd = timeMs >= clip.endMs - 1e-7;
@@ -121,13 +134,13 @@ export function createClipPlayback({
 					video.currentTime = target;
 				}
 			}
-			if (playing && (startSource || seek || clip !== activeClip) && !video.seeking)
-				playSource();
+			if (playing && (startSource || seek || mappingChanged) && !video.seeking) playSource();
 		} else {
 			playRequest++;
 			video.pause();
 		}
-		activeClip = clip;
+		activeClip = clip ? { ...clip } : null;
+		activePlaybackKey = nextPlaybackKey;
 		onTime(timeMs / 1000, sourceMs === null ? null : sourceMs / 1000);
 	};
 	const tick = (now: number) => {
@@ -174,7 +187,17 @@ export function createClipPlayback({
 			sync(true);
 		},
 		refresh: () => {
+			// Muting/showing source audio changes clip metadata, not its media mapping.
+			// Retain the decoder frame and motion pose; while playing include media
+			// progress since the previous RAF instead of seeking backward to it.
+			if (playing) readSourceTime();
 			timeMs = Math.min(timeMs, duration());
+			const nextClip = findPreviewClipAtTimelineTime(timeMs, getClips());
+			if (playbackKey(nextClip) === activePlaybackKey) {
+				activeClip = nextClip ? { ...nextClip } : null;
+				if (playing) sync();
+				return;
+			}
 			sync(true);
 		},
 		dispose: pause,

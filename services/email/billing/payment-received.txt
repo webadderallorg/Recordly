@@ -1,0 +1,14 @@
+Thanks for supporting Recordly
+
+Payment received. Thanks for being part of Recordly! Your receipt for {{ .PlanName }} is ready below.
+
+Amount paid: {{ .Amount }}
+Payment date: {{ .PaymentDate }}
+Invoice: {{ .InvoiceNumber }}
+
+View receipt: {{ .ActionURL }}
+
+Keep your receipt for your records.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export function useRecordingTimer(recording: boolean, paused: boolean) {
 	const [recordingStart, setRecordingStart] = useState<number | null>(null);
@@ -50,5 +50,11 @@ export function useRecordingTimer(recording: boolean, paused: boolean) {
 		[],
 	);
 
-	return { elapsed, formatTime };
+	const resetTimer = useCallback(() => {
+		setRecordingStart(Date.now());
+		setElapsed(0);
+		setPausedAt(null);
+		setPausedTotal(0);
+	}, []);
+	return { elapsed, formatTime, resetTimer };
 }

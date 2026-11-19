@@ -1,20 +1,19 @@
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { Skeleton } from "@heroui/react";
 export function LibrarySkeleton() {
+	const { t: uiText } = useUiLocale();
 	return (
 		<div
-			aria-label="Loading projects"
+			aria-label={uiText("ui.loadingProjects")}
 			aria-busy="true"
-			className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] gap-x-7 gap-y-10 lg:gap-x-9"
+			className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] min-[1440px]:grid-cols-4 gap-x-7 gap-y-10 pt-2 lg:gap-x-9"
 		>
-			{[0, 1, 2].map((key) => (
-				<div key={key} className="space-y-4">
+			{[0, 1, 2, 3].map((key) => (
+				<div key={key}>
 					<Skeleton className="aspect-[4/3] w-full rounded-xl" />
-					<div className="flex items-center gap-3">
-						<Skeleton className="size-12 rounded-full" />
-						<div className="flex-1 space-y-2">
-							<Skeleton className="h-4 w-3/4 rounded" />
-							<Skeleton className="h-3 w-1/3 rounded" />
-						</div>
+					<div className="pt-3">
+						<Skeleton className="h-5 w-3/4 rounded" />
+						<Skeleton className="mt-1.5 h-6 w-1/2 rounded-full" />
 					</div>
 				</div>
 			))}

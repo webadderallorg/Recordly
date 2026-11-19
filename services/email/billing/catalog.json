@@ -1,0 +1,239 @@
+[
+	{
+		"id": "subscription-active",
+		"file": "subscription-active.html",
+		"label": "Subscription activated",
+		"category": "Subscriptions",
+		"subject": "Your {{ .PlanName }} subscription is active",
+		"heading": "You're all set with",
+		"message": "Your {{ .PlanName }} is ready. Let's make something worth sharing!",
+		"detail": "For recording retention after your subscription ends, review the Terms of service at https://videos.recordly.dev/terms. Keep local copies of recordings you want to retain.",
+		"facts": [
+			["Plan", "{{ .PlanName }}"],
+			["Price", "{{ .Amount }} / {{ .Interval }}"],
+			["Next renewal", "{{ .RenewalDate }}"]
+		],
+		"action": "Manage subscription",
+		"actionUrl": "{{ .ActionURL }}",
+		"footer": "You received this email because you subscribed to Recordly.",
+		"preheader": "You're in! Your Cloud benefits are ready to use."
+	},
+	{
+		"id": "subscription-plan-changed",
+		"file": "subscription-plan-changed.html",
+		"label": "Plan changed",
+		"category": "Subscriptions",
+		"subject": "Your Recordly plan has changed",
+		"heading": "Plan updated for",
+		"message": "New plan, same creative you. You've moved from {{ .PreviousPlan }} to {{ .PlanName }}. Your billing page has any charges or credits.",
+		"facts": [
+			["New plan", "{{ .PlanName }}"],
+			["Effective date", "{{ .EffectiveDate }}"],
+			["New price", "{{ .Amount }} / {{ .Interval }}"]
+		],
+		"action": "View billing details",
+		"actionUrl": "{{ .ActionURL }}",
+		"footer": "If you didn't make this change, contact support.",
+		"preheader": "Your new plan and billing details, all in one place."
+	},
+	{
+		"id": "subscription-renewal-upcoming",
+		"file": "subscription-renewal-upcoming.html",
+		"label": "Upcoming renewal",
+		"category": "Subscriptions",
+		"subject": "Your Recordly subscription renews on {{ .RenewalDate }}",
+		"heading": "Your next renewal with",
+		"message": "A little heads-up: your {{ .PlanName }} subscription will renew automatically. You can update your payment method or cancel before renewal in your billing settings.",
+		"facts": [
+			["Renewal date", "{{ .RenewalDate }}"],
+			["Expected total", "{{ .Amount }}"],
+			["Billing period", "{{ .Interval }}"]
+		],
+		"action": "Manage subscription",
+		"actionUrl": "{{ .ActionURL }}",
+		"footer": "You received this reminder about your Recordly subscription.",
+		"preheader": "A quick reminder before your next renewal."
+	},
+	{
+		"id": "subscription-cancellation-scheduled",
+		"file": "subscription-cancellation-scheduled.html",
+		"label": "Cancellation scheduled",
+		"category": "Subscriptions",
+		"subject": "Your Recordly subscription will end on {{ .EndDate }}",
+		"heading": "Subscription ending with",
+		"message": "We're sorry to see you go. Your {{ .PlanName }} subscription won't renew, and you can enjoy your Cloud benefits until the date below.",
+		"facts": [["Plan", "{{ .PlanName }}"], ["Access until", "{{ .EndDate }}"]],
+		"detail": "For recording retention after your subscription ends, review the Terms of service at https://videos.recordly.dev/terms. Keep local copies of recordings you want to retain.",
+		"action": "Manage subscription",
+		"actionUrl": "{{ .ActionURL }}",
+		"footer": "If you didn't request this cancellation, contact support.",
+		"preheader": "Your cancellation is scheduled. Here's when your benefits end."
+	},
+	{
+		"id": "subscription-cancellation-reversed",
+		"file": "subscription-cancellation-reversed.html",
+		"label": "Cancellation reversed",
+		"category": "Subscriptions",
+		"subject": "Your Recordly subscription will continue",
+		"heading": "Staying with",
+		"message": "Glad you're sticking around! Your cancellation has been removed. Your {{ .PlanName }} subscription will continue and renew automatically.",
+		"facts": [
+			["Plan", "{{ .PlanName }}"],
+			["Next renewal", "{{ .RenewalDate }}"],
+			["Expected total", "{{ .Amount }}"]
+		],
+		"action": "Manage subscription",
+		"actionUrl": "{{ .ActionURL }}",
+		"footer": "If you didn't make this change, contact support.",
+		"preheader": "Your subscription will keep going. Welcome back!"
+	},
+	{
+		"id": "subscription-ended",
+		"file": "subscription-ended.html",
+		"label": "Subscription ended",
+		"category": "Subscriptions",
+		"subject": "Your Recordly subscription has ended",
+		"heading": "Your subscription to",
+		"message": "Your {{ .PlanName }} subscription has ended. Review your account for current plan details.",
+		"facts": [["Previous plan", "{{ .PlanName }}"], ["Ended on", "{{ .EndDate }}"]],
+		"detail": "For recording retention after your subscription ends, review the Terms of service at https://videos.recordly.dev/terms. Keep local copies of recordings you want to retain.",
+		"action": "View your account",
+		"actionUrl": "{{ .ActionURL }}",
+		"footer": "You can review available plans in Recordly at any time.",
+		"preheader": "Thanks for creating with us. Here's what's next."
+	},
+	{
+		"id": "subscription-trial-ending",
+		"file": "subscription-trial-ending.html",
+		"label": "Trial ending (if offered)",
+		"category": "Subscriptions",
+		"subject": "Your Recordly trial ends on {{ .EndDate }}",
+		"heading": "Your trial with",
+		"message": "One little reminder: your {{ .PlanName }} trial ends soon. Here's what happens next, so there are no surprises.",
+		"facts": [["Trial ends", "{{ .EndDate }}"], ["After your trial", "{{ .TrialOutcome }}"]],
+		"action": "Review subscription",
+		"actionUrl": "{{ .ActionURL }}",
+		"footer": "You received this reminder because you started a Recordly trial.",
+		"preheader": "Your trial is nearly up. Take a peek at what happens next."
+	},
+	{
+		"id": "billing-payment-received",
+		"file": "payment-received.html",
+		"label": "Payment received / renewal paid",
+		"category": "Billing",
+		"subject": "Payment received for Recordly",
+		"heading": "Thanks for supporting",
+		"message": "Payment received. Thanks for being part of Recordly! Your receipt for {{ .PlanName }} is ready below.",
+		"facts": [
+			["Amount paid", "{{ .Amount }}"],
+			["Payment date", "{{ .PaymentDate }}"],
+			["Invoice", "{{ .InvoiceNumber }}"]
+		],
+		"action": "View receipt",
+		"actionUrl": "{{ .ActionURL }}",
+		"footer": "Keep your receipt for your records.",
+		"preheader": "All paid. Your receipt is ready whenever you need it."
+	},
+	{
+		"id": "billing-payment-failed",
+		"file": "payment-failed.html",
+		"label": "Payment failed",
+		"category": "Billing",
+		"subject": "Please update your payment method for Recordly",
+		"heading": "Payment issue with",
+		"message": "Your latest payment for {{ .PlanName }} didn't go through. Let's get it sorted: review your billing details and payment method below.",
+		"facts": [["Amount due", "{{ .Amount }}"], ["Invoice", "{{ .InvoiceNumber }}"]],
+		"action": "Update payment method",
+		"actionUrl": "{{ .ActionURL }}",
+		"detail": "Your billing page shows the current payment status and any next steps. Never send card details by email.",
+		"footer": "Need help with a payment? Contact support.",
+		"preheader": "A payment needs a little attention. Here's where to sort it out."
+	},
+	{
+		"id": "billing-payment-confirmation",
+		"file": "payment-confirmation.html",
+		"label": "Payment needs confirmation",
+		"category": "Billing",
+		"subject": "Confirm your payment for Recordly",
+		"heading": "Confirm your payment to",
+		"message": "One last step: your bank needs you to confirm your payment for {{ .PlanName }}. Finish up on the secure payment page below.",
+		"facts": [["Amount", "{{ .Amount }}"], ["Invoice", "{{ .InvoiceNumber }}"]],
+		"action": "Confirm payment",
+		"actionUrl": "{{ .ActionURL }}",
+		"footer": "Never share your bank verification code or card details by email.",
+		"preheader": "Your bank needs a quick confirmation to finish this payment."
+	},
+	{
+		"id": "billing-card-expiring",
+		"file": "card-expiring.html",
+		"label": "Card expiring",
+		"category": "Billing",
+		"subject": "Your payment card for Recordly expires soon",
+		"heading": "Keep recording with",
+		"message": "Your saved card expires soon. Update your payment details to help keep {{ .PlanName }} rolling.",
+		"facts": [
+			["Card ending in", "{{ .CardLast4 }}"],
+			["Expiry", "{{ .CardExpiry }}"],
+			["Next renewal", "{{ .RenewalDate }}"]
+		],
+		"action": "Update payment method",
+		"actionUrl": "{{ .ActionURL }}",
+		"footer": "If you've already updated your card, no further action is needed.",
+		"preheader": "A small card update now can help avoid a payment hiccup later."
+	},
+	{
+		"id": "billing-refund",
+		"file": "refund.html",
+		"label": "Refund issued",
+		"category": "Billing",
+		"subject": "Your Recordly refund has been issued",
+		"heading": "Refund from",
+		"message": "Your refund has been issued to your original payment method. Your bank or payment provider handles when it appears in your account.",
+		"facts": [
+			["Refund amount", "{{ .RefundAmount }}"],
+			["Issued on", "{{ .RefundDate }}"],
+			["Original invoice", "{{ .InvoiceNumber }}"]
+		],
+		"action": "View refund details",
+		"actionUrl": "{{ .ActionURL }}",
+		"footer": "Questions about your refund or subscription? Contact support.",
+		"preheader": "Your refund is on its way back to your payment method."
+	},
+	{
+		"id": "billing-invoice",
+		"file": "invoice.html",
+		"label": "Invoice available / payment reminder",
+		"category": "Billing",
+		"subject": "Your Recordly invoice {{ .InvoiceNumber }}",
+		"heading": "Your invoice from",
+		"message": "A little billing admin: your invoice for {{ .PlanName }} is ready. Open it to review the details and pay any balance due.",
+		"facts": [
+			["Invoice", "{{ .InvoiceNumber }}"],
+			["Amount due", "{{ .Amount }}"],
+			["Due date", "{{ .DueDate }}"]
+		],
+		"action": "View invoice",
+		"actionUrl": "{{ .ActionURL }}",
+		"footer": "Your invoice page shows the latest payment status.",
+		"preheader": "Your invoice is ready. Everything you need is inside."
+	},
+	{
+		"id": "billing-credit-note",
+		"file": "credit-note.html",
+		"label": "Credit note issued",
+		"category": "Billing",
+		"subject": "A credit note was issued for your Recordly invoice",
+		"heading": "Billing update from",
+		"message": "A small billing update: we've issued a credit note for your Recordly invoice. See how it was applied in your billing details.",
+		"facts": [
+			["Credit amount", "{{ .CreditAmount }}"],
+			["Invoice", "{{ .InvoiceNumber }}"],
+			["Issued on", "{{ .CreditDate }}"]
+		],
+		"action": "View billing details",
+		"actionUrl": "{{ .ActionURL }}",
+		"detail": "A credit note can adjust an invoice or account balance. It doesn't always mean a refund was sent to your payment method.",
+		"footer": "Questions about this adjustment? Contact support.",
+		"preheader": "There's a credit note for your invoice. Here's the detail."
+	}
+]

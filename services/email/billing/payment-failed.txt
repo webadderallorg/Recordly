@@ -1,0 +1,15 @@
+Payment issue with Recordly
+
+Your latest payment for {{ .PlanName }} didn't go through. Let's get it sorted: review your billing details and payment method below.
+
+Amount due: {{ .Amount }}
+Invoice: {{ .InvoiceNumber }}
+
+Update payment method: {{ .ActionURL }}
+
+Your billing page shows the current payment status and any next steps. Never send card details by email.
+
+Need help with a payment? Contact support.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

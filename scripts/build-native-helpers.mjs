@@ -6,6 +6,7 @@ import path from "node:path";
 const projectRoot = process.cwd();
 const nativeRoot = path.join(projectRoot, "electron", "native");
 const moduleCacheRoot = path.join(os.tmpdir(), "recordly-swift-module-cache");
+const nodeHeaders = path.resolve(path.dirname(process.execPath), "..", "include", "node");
 
 if (process.platform !== "darwin") {
 	console.log("[build-native-helpers] Skipping: host platform is not macOS.");
@@ -26,6 +27,10 @@ function getTargetConfigs() {
 }
 
 const helpers = [
+	{
+		source: "PermissionDragHelper.swift",
+		output: "recordly-permission-drag-helper",
+	},
 	{
 		source: "ScreenCaptureKitRecorder.swift",
 		output: "recordly-screencapturekit-helper",
@@ -53,6 +58,41 @@ if (swiftcCheck.status !== 0) {
 for (const target of getTargetConfigs()) {
 	const outputDir = path.join(nativeRoot, "bin", target.archTag);
 	await mkdir(outputDir, { recursive: true });
+
+	const addonPath = path.join(outputDir, "recordly-saved-sign-in.node");
+	const addon = spawnSync(
+		"xcrun",
+		[
+			"clang",
+			"-std=c11",
+			"-O2",
+			"-Wall",
+			"-Wextra",
+			"-Werror",
+			"-target",
+			target.swiftTarget,
+			"-I",
+			nodeHeaders,
+			"-bundle",
+			"-undefined",
+			"dynamic_lookup",
+			"-framework",
+			"CoreFoundation",
+			"-framework",
+			"Security",
+			path.join(nativeRoot, "SavedSignInKeychain.c"),
+			"-o",
+			addonPath,
+		],
+		{ encoding: "utf8", timeout: 120000 },
+	);
+	if (addon.status !== 0) {
+		const details = [addon.error?.message, addon.stderr, addon.stdout]
+			.filter(Boolean)
+			.join("\n");
+		throw new Error(`Could not build the saved sign-in addon (${target.archTag}): ${details}`);
+	}
+	console.log(`[build-native-helpers] Built saved sign-in Keychain addon (${target.archTag})`);
 
 	for (const helper of helpers) {
 		const sourcePath = path.join(nativeRoot, helper.source);

@@ -1,3 +1,4 @@
+import { useI18n } from "@/contexts/I18nContext";
 import { useEffect, useState } from "react";
 
 export interface MicrophoneDevice {
@@ -9,6 +10,7 @@ export interface MicrophoneDevice {
 let hasRequestedMicrophoneLabels = false;
 
 export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?: string) {
+	const { t } = useI18n();
 	const [devices, setDevices] = useState<MicrophoneDevice[]>([]);
 	const [selectedDeviceId, setSelectedDeviceId] = useState<string>("default");
 	const [isLoading, setIsLoading] = useState(false);
@@ -29,18 +31,22 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 				setError(null);
 
 				let allDevices = await navigator.mediaDevices.enumerateDevices();
-				let audioInputs = allDevices
-					.filter((device) => device.kind === "audioinput")
-					.map((device) => ({
-						deviceId: device.deviceId,
-						label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
-						groupId: device.groupId,
-					}));
+				const rawAudioInputs = allDevices.filter((device) => device.kind === "audioinput");
+				let audioInputs = rawAudioInputs.map((device) => ({
+					deviceId: device.deviceId,
+					label:
+						device.label ||
+						t("notifications.microphone", "Microphone {{id}}", {
+							id: device.deviceId.slice(0, 8),
+						}),
+					groupId: device.groupId,
+				}));
 
 				const needsLabelPermission =
-					audioInputs.length > 0 && audioInputs.every((device) => !device.label.trim());
+					rawAudioInputs.length > 0 &&
+					rawAudioInputs.every((device) => !device.label.trim());
 
-				if (needsLabelPermission && !hasRequestedMicrophoneLabels) {
+				if (mounted && needsLabelPermission && !hasRequestedMicrophoneLabels) {
 					hasRequestedMicrophoneLabels = true;
 					permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 					allDevices = await navigator.mediaDevices.enumerateDevices();
@@ -48,7 +54,11 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 						.filter((device) => device.kind === "audioinput")
 						.map((device) => ({
 							deviceId: device.deviceId,
-							label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
+							label:
+								device.label ||
+								t("notifications.microphone", "Microphone {{id}}", {
+									id: device.deviceId.slice(0, 8),
+								}),
 							groupId: device.groupId,
 						}));
 				}
@@ -85,7 +95,10 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 					const message =
 						error instanceof Error
 							? error.message
-							: "Failed to enumerate audio devices";
+							: t(
+									"notifications.microphoneDevicesFailed",
+									"Failed to enumerate audio devices",
+								);
 					setError(message);
 					setIsLoading(false);
 					console.error("Error loading microphone devices:", error);
@@ -107,7 +120,7 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 			mounted = false;
 			navigator.mediaDevices.removeEventListener("devicechange", handleDeviceChange);
 		};
-	}, [enabled, preferredDeviceId]);
+	}, [enabled, preferredDeviceId, t]);
 
 	return {
 		devices,

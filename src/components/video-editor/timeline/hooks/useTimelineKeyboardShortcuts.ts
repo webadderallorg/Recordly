@@ -125,7 +125,10 @@ export function useTimelineKeyboardShortcuts({
 
 			if (matchesShortcut(e, keyShortcuts.addKeyframe, isMac)) addKeyframe();
 			if (matchesShortcut(e, keyShortcuts.addZoom, isMac)) handleAddZoom();
-			if (matchesShortcut(e, keyShortcuts.splitClip, isMac)) handleSplitClip();
+			if (matchesShortcut(e, keyShortcuts.splitClip, isMac)) {
+				e.preventDefault();
+				if (!e.repeat) handleSplitClip();
+			}
 			if (matchesShortcut(e, keyShortcuts.addAnnotation, isMac)) {
 				handleAddAnnotation();
 			}

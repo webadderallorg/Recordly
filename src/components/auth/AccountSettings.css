@@ -1,0 +1,315 @@
+.account-settings {
+	display: flex;
+	flex-direction: column;
+	gap: var(--settings-section-gap, 24px);
+	width: 100%;
+	min-width: 0;
+}
+
+.account-settings-identity {
+	padding-block: 2px 4px;
+}
+
+.account-settings-section {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--settings-content-gap, 12px);
+	width: 100%;
+	min-width: 0;
+	padding-top: var(--settings-row-inset, 16px);
+	border-top: 1px solid var(--separator);
+}
+
+.account-settings-section > * {
+	margin-block: 0;
+}
+
+.account-settings-section h3 {
+	margin: 0;
+	color: var(--foreground);
+	font-size: var(--text-sm);
+	font-weight: 600;
+	line-height: 1.5;
+}
+
+.account-settings-form > .textfield,
+.account-settings-form > p {
+	width: 100%;
+	max-width: 420px;
+}
+
+.account-settings .account-settings-feedback {
+	font-size: var(--text-xs);
+	line-height: 1.6;
+}
+
+.account-settings .account-settings-feedback.text-success {
+	color: var(--success);
+}
+
+.account-settings .account-settings-feedback.text-danger {
+	color: var(--danger);
+}
+
+.account-settings .account-settings-pending {
+	max-width: 420px;
+	padding: 10px 12px;
+	border: 1px solid var(--separator);
+	border-radius: var(--radius-md);
+	background: var(--surface-secondary);
+	color: var(--foreground);
+}
+
+.account-settings-cloud {
+	container-type: inline-size;
+	align-items: stretch;
+	gap: var(--settings-section-gap, 24px);
+}
+
+.account-settings-cloud .cloud-usage-card {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 8px 16px;
+	padding: 16px;
+}
+
+.account-settings-cloud .cloud-usage-card .card__header,
+.account-settings-cloud .cloud-usage-card .card__content {
+	grid-column: 1;
+	min-width: 0;
+}
+
+.account-settings-cloud .cloud-usage-card .card__content {
+	gap: 8px;
+}
+
+.account-settings-cloud .card__title {
+	font-size: var(--text-sm);
+	line-height: 1.5;
+}
+
+.account-settings-cloud .cloud-usage-card .card__content p {
+	font-size: var(--text-xs);
+	line-height: 1.6;
+}
+
+.account-settings-cloud .cloud-usage-card .card__footer {
+	grid-column: 2;
+	grid-row: 1 / span 2;
+	align-self: center;
+	width: min(240px, 100%);
+}
+
+@media (max-width: 520px) {
+	.account-settings-cloud .cloud-usage-card {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.account-settings-cloud .cloud-usage-card .card__footer {
+		grid-column: 1;
+		grid-row: auto;
+		width: 100%;
+	}
+}
+
+@container (max-width: 560px) {
+	.account-settings-cloud .cloud-usage-card {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.account-settings-cloud .cloud-usage-card .card__footer {
+		grid-column: 1;
+		grid-row: auto;
+		width: 100%;
+	}
+}
+
+.account-modal {
+	--settings-section-gap: 24px;
+	--settings-row-inset: 16px;
+	--settings-content-gap: 12px;
+	width: 100%;
+	max-width: 560px;
+	height: min(560px, calc(100dvh - 48px));
+	padding: 24px;
+}
+
+.account-modal .modal__header {
+	gap: 8px;
+	padding-right: 32px;
+}
+
+.account-modal .modal__heading {
+	font-size: 22px;
+	font-weight: 650;
+	line-height: 1.3;
+}
+
+.account-modal .modal__header > p {
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.account-modal .account-modal-body {
+	display: flex;
+	margin: var(--settings-section-gap) 0 0;
+	padding: 0;
+	overflow: hidden;
+}
+
+.account-settings--modal {
+	flex: 1;
+	min-height: 0;
+	gap: var(--settings-section-gap);
+	color: var(--foreground);
+}
+
+.account-settings--modal .account-settings-identity {
+	flex-shrink: 0;
+	padding: var(--settings-row-inset);
+	border: 1px solid var(--separator);
+	border-radius: var(--radius-lg);
+	background: var(--surface-secondary);
+}
+
+.account-settings-tabs {
+	flex: 1;
+	min-height: 0;
+	gap: var(--settings-section-gap);
+}
+
+.account-settings-tabs > .tabs__list-container {
+	flex-shrink: 0;
+	border: 0;
+	border-bottom: 1px solid var(--separator);
+	border-radius: 0;
+	padding-bottom: 6px;
+	background: transparent;
+}
+
+.account-settings-tabs .tabs__list {
+	gap: 4px;
+}
+
+.account-settings-tabs .tabs__tab {
+	min-height: 40px;
+	height: auto;
+	padding: 10px 12px;
+	border-radius: var(--radius-md);
+	font-size: 13px;
+	white-space: normal;
+}
+
+.account-settings-tabs .tabs__indicator {
+	display: none;
+}
+
+.account-settings-tabs .tabs__tab[aria-selected="true"] {
+	background: color-mix(in oklab, var(--accent) 12%, transparent);
+	color: var(--accent);
+	font-weight: 600;
+}
+
+.account-settings-tabs > .account-settings-tab-panel {
+	flex: 1;
+	min-height: 0;
+	margin: 0;
+	padding: 2px 4px 4px;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	scrollbar-gutter: stable;
+}
+
+.account-settings-tab-content:not([hidden]) {
+	display: flex;
+	flex-direction: column;
+	gap: var(--settings-section-gap);
+}
+
+.account-settings-tab-content > .account-settings-section:first-child {
+	padding-top: 0;
+	border-top: 0;
+}
+
+.account-settings--modal .account-settings-form {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: end;
+	gap: var(--settings-content-gap);
+}
+
+.account-settings--modal .account-settings-form > h3 {
+	display: none;
+}
+
+.account-settings--modal .account-settings-form > .textfield {
+	grid-column: 1;
+	max-width: none;
+}
+
+.account-settings--modal .account-settings-form > button {
+	grid-column: 2;
+	grid-row: 1;
+	min-height: 36px;
+}
+
+.account-settings--modal .account-settings-form > p,
+.account-settings--modal .account-settings-feedback {
+	grid-column: 1 / -1;
+}
+
+.account-settings--modal .account-settings-password > form {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--settings-content-gap);
+	width: 100%;
+}
+
+.account-settings--modal .account-settings-password > form > :not(.textfield) {
+	grid-column: 1 / -1;
+}
+
+.account-settings--modal .account-settings-password > form > * {
+	margin-block: 0;
+}
+
+.account-settings--modal .account-settings-password button {
+	justify-self: start;
+}
+
+.account-settings--modal .textfield,
+.account-settings--modal .input {
+	min-width: 0;
+	width: 100%;
+}
+
+.account-settings--modal .button {
+	min-height: 36px;
+	height: auto;
+	padding-block: 8px;
+	border-radius: var(--radius-md);
+	white-space: normal;
+	line-height: 1.4;
+}
+
+@media (max-width: 440px) {
+	.account-modal {
+		padding: 20px;
+	}
+
+	.account-settings-tabs .tabs__tab {
+		padding-inline: 8px;
+		font-size: 12px;
+	}
+
+	.account-settings--modal .account-settings-form,
+	.account-settings--modal .account-settings-password > form {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.account-settings--modal .account-settings-form > button {
+		grid-column: 1;
+		grid-row: auto;
+		justify-self: start;
+	}
+}

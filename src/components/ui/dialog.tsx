@@ -21,7 +21,7 @@ export function DialogContent({
 }) {
 	const { t } = useI18n();
 	return (
-		<Modal.Backdrop isDismissable>
+		<Modal.Backdrop variant="blur" isDismissable>
 			<Modal.Container size="lg" placement="center">
 				<Modal.Dialog {...props} className={cn("w-full gap-4", className)}>
 					<Modal.CloseTrigger aria-label={t("common.actions.close", "Close")} />

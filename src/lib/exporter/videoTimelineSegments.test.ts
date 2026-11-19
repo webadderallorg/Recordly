@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildClipDecodeRuns, segmentFrameCount, segmentSourceTime } from "./videoTimelineSegments";
+import {
+	buildClipDecodeRuns,
+	segmentFrameCount,
+	segmentSourceTime,
+	sliceVideoSegmentsToFrameWindow,
+	computeVideoSegments,
+	splitVideoSegmentsBySpeed,
+} from "./videoTimelineSegments";
 import { requiresClipTimelineRendering } from "./clipTimeline";
 
 describe("explicit clip export timeline", () => {
@@ -53,5 +60,43 @@ describe("explicit clip export timeline", () => {
 		expect(
 			requiresClipTimelineRendering([{ id: "gap", startMs: 1000, endMs: 2000, speed: 1 }]),
 		).toBe(true);
+	});
+});
+
+describe("sample frame windows", () => {
+	it("retains source timestamps across removed ranges and speed changes", () => {
+		const segments = splitVideoSegmentsBySpeed(
+			computeVideoSegments(60, [{ id: "cut", startMs: 10000, endMs: 20000 }]),
+			[{ id: "fast", startMs: 20000, endMs: 40000, speed: 2 }],
+		);
+		const samples = sliceVideoSegmentsToFrameWindow(segments, 30, 285, 60);
+		expect(samples.map((s) => segmentFrameCount(s, 30))).toEqual([15, 45]);
+		expect(samples.map((s) => s.outputFrameStart)).toEqual([285, 300]);
+		expect(segmentSourceTime(samples[0], 0, 30)).toBeCloseTo(9.5);
+		expect(segmentSourceTime(samples[1], 0, 30)).toBeCloseTo(20);
+		expect(segmentSourceTime(samples[1], 44, 30)).toBeCloseTo(20 + (44 * 2) / 30);
+	});
+
+	it.each([30, 59.94])("preserves fractional clip cuts at %s fps", (fps) => {
+		const segments = buildClipDecodeRuns([
+			{ id: "a", startMs: 0, endMs: 1370, sourceStartMs: 30000, speed: 3 },
+			{ id: "b", startMs: 1370, endMs: 4000, sourceStartMs: 5000, speed: 0.5 },
+		]).flat();
+		const start = Math.floor(1.2 * fps);
+		const count = Math.floor(1.5 * fps);
+		const samples = sliceVideoSegmentsToFrameWindow(segments, fps, start, count);
+		expect(samples.reduce((n, s) => n + segmentFrameCount(s, fps), 0)).toBe(count);
+		for (const sample of samples) {
+			const original = segments.find(
+				(s) =>
+					sample.outputStartSec! >= s.outputStartSec! &&
+					sample.outputStartSec! < s.outputEndSec!,
+			)!;
+			const offset = sample.outputFrameStart! - Math.ceil(original.outputStartSec! * fps);
+			for (let i = 0; i < segmentFrameCount(sample, fps); i++)
+				expect(segmentSourceTime(sample, i, fps)).toBeCloseTo(
+					segmentSourceTime(original, offset + i, fps),
+				);
+		}
 	});
 });

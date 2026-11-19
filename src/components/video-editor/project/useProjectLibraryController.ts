@@ -1,6 +1,9 @@
 /* biome-ignore-all lint/correctness/useExhaustiveDependencies: grouped editor domain objects contain the thumbnail renderer dependencies. */
 import { type RefObject, useCallback, useEffect, useRef } from "react";
-import { PROJECT_THUMBNAIL_WIDTH, PROJECT_THUMBNAIL_HEIGHT } from "@/lib/projectThumbnail";
+import {
+	captureProjectThumbnailCanvas,
+	getProjectThumbnailRenderSize,
+} from "@/lib/projectThumbnailCanvas";
 import { FrameRenderer } from "@/lib/exporter/frameRenderer";
 import { toFileUrl } from "../projectPersistence";
 import type { useAppearanceState } from "../state/useAppearanceState";
@@ -26,7 +29,7 @@ export function useProjectLibraryController({
 	videoPlaybackRef,
 	effectiveShowCursor,
 }: Input) {
-	const { setProjectLibraryEntries, setProjectLibraryLoading } = project;
+	const { setProjectLibraryEntries, setProjectLibraryLoading, setProjectLibraryError } = project;
 	const {
 		backgroundBlur,
 		borderRadius,
@@ -54,6 +57,7 @@ export function useProjectLibraryController({
 		zoomSmoothness,
 		cursorStyle,
 		cursorSway,
+		cursorIdleHide,
 		padding,
 		resolvedWebcamVideoUrl,
 		shadowIntensity,
@@ -100,8 +104,14 @@ export function useProjectLibraryController({
 			for (const key of thumbnailUpdates.current.keys()) {
 				if (!paths.has(key)) thumbnailUpdates.current.delete(key);
 			}
+			setProjectLibraryError(null);
 		} catch (projectLibraryError) {
 			console.warn("Unable to refresh project library:", projectLibraryError);
+			setProjectLibraryError(
+				projectLibraryError instanceof Error
+					? projectLibraryError.message
+					: String(projectLibraryError),
+			);
 		} finally {
 			setProjectLibraryLoading(false);
 		}
@@ -126,11 +136,9 @@ export function useProjectLibraryController({
 		const previewHandle = videoPlaybackRef.current;
 		const previewVideo = previewHandle?.video ?? null;
 
-		const targetWidth = PROJECT_THUMBNAIL_WIDTH;
-		const targetHeight = PROJECT_THUMBNAIL_HEIGHT;
-
 		const previewWidth = previewHandle?.containerRef.current?.clientWidth || 1920;
 		const previewHeight = previewHandle?.containerRef.current?.clientHeight || 1080;
+		const renderSize = getProjectThumbnailRenderSize(previewWidth / previewHeight);
 		const frameTimestampUs = 0;
 
 		if (previewVideo && previewVideo.videoWidth > 0 && previewVideo.videoHeight > 0) {
@@ -171,8 +179,7 @@ export function useProjectLibraryController({
 				}
 				frameRenderer = new FrameRenderer({
 					timelineEffects: true,
-					width: targetWidth,
-					height: targetHeight,
+					...renderSize,
 					wallpaper,
 					zoomRegions,
 					showShadow: shadowIntensity > 0,
@@ -246,6 +253,7 @@ export function useProjectLibraryController({
 					cursorClickBounce,
 					cursorClickBounceDuration,
 					cursorSway,
+					cursorIdleHide,
 				});
 				await frameRenderer.initialize();
 				await frameRenderer.renderFrame(
@@ -255,7 +263,11 @@ export function useProjectLibraryController({
 					undefined,
 					frameTimestampUs,
 				);
-				return frameRenderer.getCanvas().toDataURL("image/png");
+				return captureProjectThumbnailCanvas(
+					frameRenderer.getCanvas(),
+					renderSize.width,
+					renderSize.height,
+				);
 			} catch (thumbnailRenderError) {
 				console.warn(
 					"Unable to render thumbnail from composed frame:",
@@ -300,6 +312,7 @@ export function useProjectLibraryController({
 		zoomSmoothness,
 		cursorStyle,
 		cursorSway,
+		cursorIdleHide,
 		cursorTelemetry,
 		clipRegions,
 		padding,

@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { isComposedThumbnail } from "./composedThumbnail";
 import {
 	PROJECT_THUMBNAIL_WIDTH,
 	PROJECT_THUMBNAIL_HEIGHT,
@@ -18,7 +19,8 @@ export async function hasFreshProjectThumbnail(thumbnailPath: string, projectMod
 			bytesRead === 24 &&
 			header.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) &&
 			header.readUInt32BE(16) >= PROJECT_THUMBNAIL_WIDTH &&
-			header.readUInt32BE(20) >= PROJECT_THUMBNAIL_HEIGHT
+			header.readUInt32BE(20) >= PROJECT_THUMBNAIL_HEIGHT &&
+			(await isComposedThumbnail(thumbnailPath))
 		);
 	} catch {
 		return false;

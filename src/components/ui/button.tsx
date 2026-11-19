@@ -54,7 +54,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 		"aria-label": props["aria-label"] ?? title,
 		isDisabled: disabled ?? isDisabled,
 		size: size === "default" || size === "icon" ? ("md" as const) : size,
-		isIconOnly: size === "icon",
+		isIconOnly: props.isIconOnly ?? size === "icon",
 		className: cn(
 			{
 				"[&_svg:not([class*=size-])]:size-4": iconSize === "default",

@@ -9,10 +9,17 @@ const user = {
 	app_metadata: { provider: "email", providers: ["email"] },
 	user_metadata: { full_name: "Test User" },
 	created_at: "2026-09-23T00:00:00.000Z",
+	email_confirmed_at: "2026-09-23T00:00:00.000Z",
 	is_anonymous: false,
 };
 
 export async function installSupabaseAuth(page: Page, { signedIn = true } = {}) {
+	await page.route("**/cloud/config", (route) =>
+		route.fulfill({
+			headers: { "Access-Control-Allow-Origin": "*" },
+			json: { authCaptcha: { enabled: false } },
+		}),
+	);
 	const account: User = structuredClone(user);
 	const expiresAt = Math.floor(Date.now() / 1000) + 3600;
 	const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -28,8 +35,9 @@ export async function installSupabaseAuth(page: Page, { signedIn = true } = {}) 
 		const path = new URL(route.request().url()).pathname;
 		if (path === "/auth/v1/settings")
 			return route.fulfill({
-				json: { external: { google: true, azure: true, github: true, email: true } },
+				json: { external: { google: true, azure: true, apple: true, email: true } },
 			});
+		if (path === "/auth/v1/verify") return route.fulfill({ json: session });
 		if (path === "/auth/v1/token") return route.fulfill({ json: session });
 		if (path === "/auth/v1/user") {
 			if (route.request().method() === "PUT") {

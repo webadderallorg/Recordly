@@ -1,12 +1,21 @@
 {
 	"recording": {
-		"home": "Home",
+		"audio": "Audio",
+		"camera": "Videocamera",
+		"systemAudio": "Audio del computer",
+		"systemAudioDescription": "App, video e suoni di sistema",
+		"off": "Disattivato",
+		"cameraPreview": "Anteprima",
+		"cancelCountdown": "Annulla conto alla rovescia",
+		"home": "Pagina iniziale",
 		"disableSystemAudio": "Disabilita audio di sistema",
 		"enableSystemAudio": "Abilita audio di sistema",
 		"disableMicrophone": "Disabilita microfono",
+		"audioSettings": "Impostazioni audio",
 		"enableMicrophone": "Abilita microfono",
 		"micToggleDisabledTip": "Il microfono non può essere attivato/disattivato durante la registrazione",
 		"disableWebcam": "Disabilita overlay webcam",
+		"cameraSettings": "Impostazioni fotocamera",
 		"enableWebcam": "Abilita overlay webcam",
 		"countdownDelay": "Ritardo conto alla rovescia",
 		"noDelay": "Nessun ritardo",
@@ -41,7 +50,7 @@
 		"rec": "REC",
 		"resume": "Riprendi",
 		"pause": "Pausa",
-		"stop": "Stop",
+		"stop": "Ferma",
 		"cancel": "Annulla",
 		"more": "Altro",
 		"update": {
@@ -90,6 +99,7 @@
 		"previewBadge": "Anteprima",
 		"notNow": "Non ora",
 		"updateNow": "Aggiorna ora",
+		"updateAndRestart": "Aggiorna e riavvia",
 		"restartToUpdate": "Riavvia per aggiornare",
 		"tryAgain": "Riprova"
 	}

@@ -1,0 +1,14 @@
+Cursors:
+ Alexey varfolomeev <varlesh@gmail.com> - volantes-cursors
+ Kylie <https://github.com/covkie> - whiskers template conversion & optimizations
+
+Colors:
+ elkrien <https://github.com/elkrien> - coloring cursors with Catppuccin palette
+
+Build script:
+ Sergei Eremenko <https://github.com/SmartFinn>
+ Keefer Rourke <keefer.rourke@gmail.com>
+ Moded by Efus10n & jnzhng from https://github.com/keeferrourke/capitaine-cursors
+ Goudham Suresh <https://github.com/sgoudham> - script performance improvements
+ Jeffrey Geer <https://github.com/trowgundam> - hyprcursor support
+ Breeze script authors @ <https://invent.kde.org/plasma/breeze/-/blob/master/cursors/src/> build.sh #05b7c781f8bc7c167364a0278ab7d6861a8124c0 & generate_cursors #79402e44ca482dfff1bd348c0b3a895a5d485f33

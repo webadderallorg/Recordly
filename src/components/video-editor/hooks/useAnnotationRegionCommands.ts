@@ -1,3 +1,4 @@
+import { useScopedT } from "@/contexts/I18nContext";
 import type { Span } from "dnd-timeline";
 import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback } from "react";
 import {
@@ -28,26 +29,35 @@ export function useAnnotationRegionCommands({
 	nextAnnotationIdRef,
 	nextAnnotationZIndexRef,
 }: UseAnnotationRegionCommandsParams) {
+	const te = useScopedT("editing");
 	const handleAnnotationAdded = useCallback(
-		(span: Span, trackIndex = 0) => {
+		(
+			span: Span,
+			trackIndex = 0,
+			type: AnnotationRegion["type"] = "text",
+			placement?: Pick<AnnotationRegion, "position" | "size">,
+		) => {
 			const id = `annotation-${nextAnnotationIdRef.current++}`;
 			const newRegion: AnnotationRegion = {
 				id,
 				startMs: Math.round(span.start),
 				endMs: Math.round(span.end),
-				type: "text",
-				content: "Enter text...",
-				position: { ...DEFAULT_ANNOTATION_POSITION },
-				size: { ...DEFAULT_ANNOTATION_SIZE },
+				type,
+				content: type === "text" ? te("enterText", "Enter text...") : "",
+				position: { ...(placement?.position ?? DEFAULT_ANNOTATION_POSITION) },
+				size: { ...(placement?.size ?? DEFAULT_ANNOTATION_SIZE) },
 				style: { ...DEFAULT_ANNOTATION_STYLE },
 				zIndex: nextAnnotationZIndexRef.current++,
 				trackIndex,
+				...(type === "figure" ? { figureData: { ...DEFAULT_FIGURE_DATA } } : {}),
+				...(type === "blur" ? { blurIntensity: 20 } : {}),
 			};
 			setAnnotationRegions((current) => [...current, newRegion]);
 			onSelectAnnotation(id);
 			setSelectedZoomId(null);
 		},
 		[
+			te,
 			onSelectAnnotation,
 			nextAnnotationIdRef,
 			nextAnnotationZIndexRef,
@@ -109,7 +119,8 @@ export function useAnnotationRegionCommands({
 				current.map((region) => {
 					if (region.id !== id) return region;
 					const updated = { ...region, type };
-					if (type === "text") updated.content = region.textContent || "Enter text...";
+					if (type === "text")
+						updated.content = region.textContent || te("enterText", "Enter text...");
 					else if (type === "image") updated.content = region.imageContent || "";
 					else if (type === "figure") {
 						updated.content = "";
@@ -122,7 +133,7 @@ export function useAnnotationRegionCommands({
 				}),
 			);
 		},
-		[setAnnotationRegions],
+		[setAnnotationRegions, te],
 	);
 
 	const updateRegion = useCallback(
@@ -137,9 +148,35 @@ export function useAnnotationRegionCommands({
 	const handleAnnotationStyleChange = useCallback(
 		(id: string, style: Partial<AnnotationRegion["style"]>) => {
 			setAnnotationRegions((current) =>
-				current.map((region) =>
-					region.id === id ? { ...region, style: { ...region.style, ...style } } : region,
-				),
+				current.map((region) => {
+					if (region.id !== id) return region;
+					const fontScale =
+						region.type === "text" &&
+						style.fontSize !== undefined &&
+						Number.isFinite(style.fontSize) &&
+						style.fontSize > 0 &&
+						region.style.fontSize > 0
+							? style.fontSize / region.style.fontSize
+							: 1;
+					return {
+						...region,
+						style: { ...region.style, ...style },
+						...(fontScale !== 1
+							? {
+									size: {
+										width: region.size.width * fontScale,
+										height: region.size.height * fontScale,
+									},
+									position: {
+										x:
+											region.position.x +
+											(region.size.width * (1 - fontScale)) / 2,
+										y: region.position.y,
+									},
+								}
+							: {}),
+					};
+				}),
 			);
 		},
 		[setAnnotationRegions],

@@ -1,16 +1,17 @@
+import { useScopedT, useI18n } from "@/contexts/I18nContext";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import type { PointerEvent as ReactPointerEvent } from "react";
 import {
-	frontmostAt,
-	MIN_AREA_SIZE,
-	normalizeAreaRect,
-	moveAreaRect,
-	resizeAreaRect,
-	rectContains,
 	AREA_HANDLES,
 	type AreaHandle,
 	type AreaRect,
+	frontmostAt,
+	MIN_AREA_SIZE,
+	moveAreaRect,
+	normalizeAreaRect,
+	rectContains,
+	resizeAreaRect,
 } from "./areaGeometry";
 
 type Target =
@@ -24,9 +25,12 @@ function screenRect() {
 
 /** Chooses a source only. Recording remains controlled by the existing HUD. */
 export function CapturePicker() {
+	const t = useScopedT("capture");
+	const { locale } = useI18n();
 	const displayId = Number(new URLSearchParams(window.location.search).get("displayId"));
 	const [target, setTarget] = useState<Target | null>(null);
 	const [allowArea, setAllowArea] = useState(false);
+	const windowOrder = useRef<string[]>([]);
 	const windows = useRef<{ window: CapturePickerWindow; rect: AreaRect }[]>([]);
 	const origin = useRef({ x: window.screenX, y: window.screenY });
 	const current = useRef<Target | null>(null);
@@ -39,18 +43,23 @@ export function CapturePicker() {
 	} | null>(null);
 	const editingArea = useRef(false);
 	const completed = useRef(false);
-	const targetAt = useCallback((x: number, y: number): Target => {
+	const targetAt = useCallback((x: number, y: number): Target | null => {
 		const hit = frontmostAt(windows.current, x, y);
 		return hit
 			? { kind: "window", window: hit.window, rect: hit.rect }
 			: { kind: "screen", rect: screenRect() };
 	}, []);
-	const update = (next: Target) => {
+	const update = useCallback((next: Target | null) => {
 		const previous = current.current;
 		if (
-			previous?.kind === next.kind &&
+			previous &&
+			next &&
+			previous.kind === next.kind &&
 			(previous.kind !== "window" ||
-				(next.kind === "window" && previous.window.id === next.window.id)) &&
+				(next.kind === "window" &&
+					previous.window.id === next.window.id &&
+					previous.window.width === next.window.width &&
+					previous.window.height === next.window.height)) &&
 			previous.rect.x === next.rect.x &&
 			previous.rect.y === next.rect.y &&
 			previous.rect.width === next.rect.width &&
@@ -59,10 +68,10 @@ export function CapturePicker() {
 			return;
 		current.current = next;
 		setTarget(next);
-	};
+	}, []);
 	const finish = useCallback(
 		(pick: Target | null) => {
-			if (completed.current) return;
+			if (completed.current && pick) return;
 			if (
 				pick?.kind === "area" &&
 				(pick.rect.width < MIN_AREA_SIZE || pick.rect.height < MIN_AREA_SIZE)
@@ -96,6 +105,7 @@ export function CapturePicker() {
 				if (disposed) return;
 				if (context.displayBounds) origin.current = context.displayBounds;
 				setAllowArea(context.allowArea === true);
+				windowOrder.current = context.windows.map((entry) => entry.id);
 				windows.current = context.windows
 					.map((entry) => ({
 						window: entry,
@@ -132,14 +142,42 @@ export function CapturePicker() {
 		};
 	}, [displayId, targetAt, finish]);
 	useEffect(() => {
+		return window.electronAPI.onCapturePickerWindowResized?.((resized) => {
+			const rect = normalizeAreaRect(
+				{ ...resized, x: resized.x - origin.current.x, y: resized.y - origin.current.y },
+				screenRect(),
+			);
+			windows.current = windows.current.filter((entry) => entry.window.id !== resized.id);
+			if (rect.width > 0 && rect.height > 0) {
+				const rank = windowOrder.current.indexOf(resized.id);
+				const before = windows.current.findIndex(
+					(entry) => windowOrder.current.indexOf(entry.window.id) > rank,
+				);
+				windows.current.splice(before < 0 ? windows.current.length : before, 0, {
+					window: resized,
+					rect,
+				});
+			}
+			if (current.current?.kind === "window" && current.current.window.id === resized.id)
+				update({ kind: "window", window: resized, rect });
+		});
+	}, [update]);
+
+	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
 				event.preventDefault();
 				finish(null);
 			}
-			if (event.key === "Enter") {
+			if (
+				event.key === "Enter" &&
+				!(event.target as HTMLElement).closest(
+					"input,button,select,textarea,[role=combobox]",
+				)
+			) {
 				event.preventDefault();
-				if (current.current) finish(current.current);
+				if (current.current?.kind === "area" && editingArea.current)
+					finish(current.current);
 			}
 		};
 		window.addEventListener("keydown", onKey);
@@ -177,12 +215,17 @@ export function CapturePicker() {
 			});
 		} else if (!start && !editingArea.current) update(targetAt(event.clientX, event.clientY));
 	};
+	const resetSelection = () => {
+		press.current = null;
+		editingArea.current = false;
+		update(null);
+	};
 	const label =
 		target?.kind === "window"
 			? [target.window.appName, target.window.title].filter(Boolean).join(" — ")
 			: target?.kind === "screen"
-				? "Entire screen"
-				: "Area";
+				? t("entireScreen")
+				: t("area");
 	return (
 		<div
 			className="fixed inset-0 select-none overflow-hidden"
@@ -217,7 +260,9 @@ export function CapturePicker() {
 				if (editingArea.current) {
 					editingArea.current = false;
 				}
-				finish(targetAt(event.clientX, event.clientY));
+				const next = targetAt(event.clientX, event.clientY);
+				update(next);
+				finish(next);
 			}}
 			onPointerCancel={() => {
 				press.current = null;
@@ -275,13 +320,14 @@ export function CapturePicker() {
 						className="pointer-events-none absolute whitespace-nowrap rounded-md bg-blue-600 px-2 py-1 text-xs text-white"
 						style={{ top: target.rect.y >= 30 ? -28 : 6, left: 6 }}
 					>
-						{label} · {Math.round(target.rect.width)} × {Math.round(target.rect.height)}
+						{label} · {Math.round(target.rect.width).toLocaleString(locale)} ×{" "}
+						{Math.round(target.rect.height).toLocaleString(locale)}
 					</div>
 				</div>
 			)}
 			{target?.kind === "area" && (
 				<div
-					className="absolute bottom-12 left-1/2 -translate-x-1/2"
+					className="absolute bottom-12 left-1/2 flex -translate-x-1/2 gap-2"
 					onPointerDown={(event) => event.stopPropagation()}
 					onPointerUp={(event) => event.stopPropagation()}
 					onKeyDown={(event) => {
@@ -289,30 +335,25 @@ export function CapturePicker() {
 					}}
 				>
 					<Button
+						size="sm"
+						disabled={
+							target.rect.width < MIN_AREA_SIZE || target.rect.height < MIN_AREA_SIZE
+						}
+						onClick={() => finish(current.current)}
+					>
+						{t("selectArea")}
+					</Button>
+					<Button
 						variant="secondary"
 						size="sm"
 						onClick={() => {
-							press.current = null;
-							editingArea.current = false;
-							current.current = null;
-							setTarget(null);
+							resetSelection();
 						}}
 					>
-						Choose another source
+						{t("chooseAnotherSource")}
 					</Button>
 				</div>
 			)}
-			<div className="pointer-events-none absolute inset-x-0 bottom-24 flex justify-center">
-				<div className="rounded-full bg-black/80 px-4 py-2 text-sm text-white">
-					{target?.kind === "area" && editingArea.current
-						? target.rect.width < MIN_AREA_SIZE || target.rect.height < MIN_AREA_SIZE
-							? "Area is too small · Drag to enlarge · Esc to cancel"
-							: "Move or resize the area · Enter to select · Esc to cancel"
-						: allowArea
-							? "Click a window or the desktop, or drag an area · Esc to cancel"
-							: "Click a window or the desktop · Esc to cancel"}
-				</div>
-			</div>
 		</div>
 	);
 }

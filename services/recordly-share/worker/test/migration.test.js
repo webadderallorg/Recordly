@@ -4,9 +4,10 @@
 // ALTER never ran, and every INSERT touching password_salt threw a 500.
 // These tests rebuild the database into each historical shape and verify
 // uploads work afterward.
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+
 import { env, SELF } from "cloudflare:test";
-import { __resetSchemaCacheForTests } from "../src/index.js";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import worker, { __resetSchemaCacheForTests } from "../src/index.js";
 
 const AUTH = { Authorization: "Bearer test-secret" };
 const BASE = "https://share.test";
@@ -108,6 +109,166 @@ describe("schema migration paths", () => {
 		__resetSchemaCacheForTests();
 	});
 
+	it("range-seeks report IP cleanup on fresh and upgraded databases without changing reports", async () => {
+		expect((await upload()).status).toBe(200);
+		await env.DB.batch([
+			env.DB.prepare(
+				"INSERT INTO abuse_reports (share_code,reason,details,client_ip,created_at) VALUES ('oldreport','spam','Keep this report','198.51.100.250',datetime('now','-2 hours'))",
+			),
+			env.DB.prepare(
+				"INSERT INTO abuse_reports (share_code,reason,details,client_ip) VALUES ('newreport','privacy','Keep this report too','198.51.100.251')",
+			),
+		]);
+		const reports = async () =>
+			(await env.DB.prepare("SELECT * FROM abuse_reports ORDER BY id").all()).results;
+		const before = await reports();
+		const query =
+			"UPDATE abuse_reports SET client_ip = '' WHERE client_ip <> '' AND created_at <= datetime('now', '-1 hour')";
+		// Distinct SQL comments avoid reusing a prepared plan after index DDL.
+		const plan = async (phase) =>
+			(await env.DB.prepare(`EXPLAIN QUERY PLAN ${query} /* ${phase} */`).all()).results
+				.map((row) => row.detail)
+				.join("\n");
+		expect(await plan("fresh")).toContain(
+			"SEARCH abuse_reports USING INDEX idx_abuse_reports_ip_cleanup (created_at<?)",
+		);
+		await env.DB.prepare("DROP INDEX idx_abuse_reports_ip_cleanup").run();
+		await env.DB.prepare("UPDATE _meta SET value = '13' WHERE key = 'schema_version'").run();
+		expect(await plan("previous-schema")).toContain("SCAN abuse_reports");
+		__resetSchemaCacheForTests();
+		expect((await upload()).status).toBe(200);
+		expect(await plan("upgraded")).toContain(
+			"SEARCH abuse_reports USING INDEX idx_abuse_reports_ip_cleanup (created_at<?)",
+		);
+		expect(await reports()).toEqual(before);
+		__resetSchemaCacheForTests();
+		expect((await upload()).status).toBe(200);
+		expect(await reports()).toEqual(before);
+	});
+
+	it("upgrades completed-library pages without sorting or changing tied-date order", async () => {
+		const first = await (await upload()).json();
+		const second = await (await upload()).json();
+		await upload();
+		await env.DB.prepare(
+			"UPDATE videos SET upload_completed = 1, created_at = '2026-11-01 12:00:00' WHERE share_code IN (?, ?)",
+		)
+			.bind(first.shareCode, second.shareCode)
+			.run();
+		const pageQuery =
+			"SELECT id, share_code FROM videos WHERE upload_completed = 1 ORDER BY datetime(created_at) DESC, id DESC LIMIT 51";
+		// Reprepare after DDL: cached EXPLAIN statements can retain an old plan.
+		const plan = async (phase) =>
+			(await env.DB.prepare(`EXPLAIN QUERY PLAN ${pageQuery} /* ${phase} */`).all()).results
+				.map((row) => row.detail)
+				.join("\n");
+		expect(await plan("fresh")).not.toContain("TEMP B-TREE");
+		await env.DB.prepare("DROP INDEX idx_videos_completed_created").run();
+		await env.DB.prepare("UPDATE _meta SET value = '12' WHERE key = 'schema_version'").run();
+		expect(await plan("previous-schema")).toContain("TEMP B-TREE");
+		__resetSchemaCacheForTests();
+		const response = await SELF.fetch(`${BASE}/api/videos?page=1`, { headers: AUTH });
+		expect(response.status).toBe(200);
+		expect((await response.json()).videos.map((video) => video.share_code)).toEqual([
+			second.shareCode,
+			first.shareCode,
+		]);
+		expect(await plan("upgraded")).not.toContain("TEMP B-TREE");
+	});
+
+	it("adds account identity without changing existing guest comments", async () => {
+		const response = await upload();
+		const { shareCode } = await response.json();
+		await env.DB.prepare("DROP INDEX idx_comments_account_window").run();
+		await env.DB.prepare("ALTER TABLE comments DROP COLUMN author_id").run();
+		await env.DB.prepare(
+			"INSERT INTO comments(video_id,timestamp,author_name,text) SELECT id,2,'Old guest','Existing feedback' FROM videos WHERE share_code=?",
+		)
+			.bind(shareCode)
+			.run();
+		await env.DB.prepare("UPDATE _meta SET value=? WHERE key='schema_version'")
+			.bind("11")
+			.run();
+		__resetSchemaCacheForTests();
+		expect((await upload()).status).toBe(200);
+		expect(
+			await env.DB.prepare(
+				"SELECT author_name,text,author_id FROM comments WHERE video_id=(SELECT id FROM videos WHERE share_code=?)",
+			)
+				.bind(shareCode)
+				.first(),
+		).toEqual({ author_name: "Old guest", text: "Existing feedback", author_id: null });
+		const index = await env.DB.prepare("PRAGMA index_info(idx_comments_account_window)").all();
+		expect(index.results.map((column) => column.name)).toEqual([
+			"video_id",
+			"author_id",
+			"created_at",
+		]);
+	});
+
+	it("adds feedback rate indexes when upgrading version nine", async () => {
+		expect((await upload()).status).toBe(200);
+		await env.DB.prepare("DROP INDEX idx_comments_rate_window").run();
+		await env.DB.prepare("DROP INDEX idx_comments_video_window").run();
+		await env.DB.prepare("DROP INDEX idx_reactions_rate_window").run();
+		await env.DB.prepare("UPDATE _meta SET value = '9' WHERE key = 'schema_version'").run();
+		__resetSchemaCacheForTests();
+		expect((await upload()).status).toBe(200);
+		const aggregate = await env.DB.prepare(
+			"PRAGMA index_info(idx_comments_video_window)",
+		).all();
+		expect(aggregate.results.map((column) => column.name)).toEqual(["video_id", "created_at"]);
+		for (const table of ["comments", "reactions"]) {
+			const { results } = await env.DB.prepare(
+				`PRAGMA index_info(idx_${table}_rate_window)`,
+			).all();
+			expect(results.map((column) => column.name)).toEqual([
+				"video_id",
+				"client_ip",
+				"created_at",
+			]);
+		}
+	});
+
+	it("adds moderation and admission history when upgrading version ten without changing media", async () => {
+		const response = await upload();
+		const { shareCode } = await response.json();
+		for (const table of [
+			"recording_controls",
+			"account_restrictions",
+			"abuse_reports",
+			"moderation_actions",
+			"upload_admissions",
+		])
+			await env.DB.prepare(`DROP TABLE ${table}`).run();
+		await env.DB.prepare("UPDATE _meta SET value = '10' WHERE key = 'schema_version'").run();
+		__resetSchemaCacheForTests();
+		expect((await upload()).status).toBe(200);
+		for (const table of [
+			"recording_controls",
+			"account_restrictions",
+			"abuse_reports",
+			"moderation_actions",
+			"upload_admissions",
+		])
+			expect(
+				await env.DB.prepare(
+					"SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+				)
+					.bind(table)
+					.first(),
+			).not.toBeNull();
+		expect(
+			await env.DB.prepare("SELECT share_code FROM videos WHERE share_code = ?")
+				.bind(shareCode)
+				.first(),
+		).toEqual({ share_code: shareCode });
+		expect(
+			(await env.DB.prepare("SELECT value FROM _meta WHERE key = 'schema_version'").first())
+				.value,
+		).toBe("14");
+	});
+
 	it("migrates a pre-versioning database (tables exist, no _meta)", async () => {
 		await createV1Schema();
 
@@ -120,8 +281,30 @@ describe("schema migration paths", () => {
 		const meta = await env.DB.prepare(
 			`SELECT value FROM _meta WHERE key = 'schema_version'`,
 		).first();
-		expect(meta.value).toBe("5");
+		expect(meta.value).toBe("14");
+		expect(await videoColumns()).toContain("never_expires");
+		expect(
+			await env.DB.prepare(
+				"SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'billing_accounts'",
+			).first(),
+		).toBeNull();
 		expect(await videoColumns()).toContain("owner_id");
+	});
+
+	it("adds creator profiles to an existing v8 database without changing recordings", async () => {
+		const ticket = await (await upload()).json();
+		await env.DB.prepare("DROP TABLE creator_profiles").run();
+		await env.DB.prepare("UPDATE _meta SET value = '8' WHERE key = 'schema_version'").run();
+		__resetSchemaCacheForTests();
+		expect((await upload()).status).toBe(200);
+		expect(
+			await env.DB.prepare("SELECT display_name FROM creator_profiles").all(),
+		).toMatchObject({ results: [] });
+		expect(
+			await env.DB.prepare("SELECT title FROM videos WHERE share_code = ?")
+				.bind(ticket.shareCode)
+				.first(),
+		).toEqual({ title: "Migration Test" });
 	});
 
 	it("repairs a database mis-stamped as current without the v2 columns", async () => {

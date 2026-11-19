@@ -1,9 +1,12 @@
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
+import { useScopedT } from "@/contexts/I18nContext";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import styles from "./LaunchWindow.module.css";
 
 function OverlaySourceSelector() {
+	const t = useScopedT("capture");
 	const started = useRef(false);
 	useEffect(() => {
 		if (started.current) return;
@@ -15,14 +18,15 @@ function OverlaySourceSelector() {
 				window.close();
 			})
 			.catch(() => {
-				toast.error("Unable to open the source picker.");
+				toast.error(t("pickerError"));
 				window.close();
 			});
-	}, []);
+	}, [t]);
 	return null;
 }
 
 function LinuxSourceList() {
+	const t = useScopedT("capture");
 	const [sources, setSources] = useState<ProcessedDesktopSource[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [selecting, setSelecting] = useState(false);
@@ -39,11 +43,11 @@ function LinuxSourceList() {
 				}),
 			);
 		} catch {
-			setError("Could not load recording sources. Try refreshing the list.");
+			setError(t("sourcesLoadError"));
 		} finally {
 			setLoading(false);
 		}
-	}, []);
+	}, [t]);
 	useEffect(() => {
 		void refresh();
 	}, [refresh]);
@@ -66,10 +70,9 @@ function LinuxSourceList() {
 		setError(undefined);
 		try {
 			const selected = await window.electronAPI.selectSource(source);
-			if (selected?.id !== source.id)
-				throw new Error("Source selection is unavailable during recording.");
-		} catch (error) {
-			setError(error instanceof Error ? error.message : "Could not select that source.");
+			if (selected?.id !== source.id) throw new Error(t("selectionUnavailable"));
+		} catch {
+			setError(t("selectionError"));
 		} finally {
 			setSelecting(false);
 		}
@@ -78,13 +81,11 @@ function LinuxSourceList() {
 		<div className="flex h-screen flex-col overflow-hidden rounded-2xl border border-separator bg-surface text-foreground">
 			<header className="flex shrink-0 items-center justify-between border-b border-separator p-4">
 				<div className={styles.electronDrag}>
-					<h1 className="text-lg font-semibold">Choose recording source</h1>
-					<p className="mt-1 text-xs text-muted">
-						Choose a screen or window. Recording starts from the recording controls.
-					</p>
+					<h1 className="text-lg font-semibold">{t("chooseSource")}</h1>
+					<p className="mt-1 text-xs text-muted">{t("sourceInstructions")}</p>
 				</div>
 				<Button variant="ghost" onClick={() => window.close()}>
-					Cancel
+					{t("cancel")}
 				</Button>
 			</header>
 			<div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -93,17 +94,15 @@ function LinuxSourceList() {
 						role="alert"
 						className="mb-3 rounded-lg bg-danger/10 p-3 text-sm text-danger"
 					>
-						{error}
+						{error} <ErrorReportButton error={error} />
 					</p>
 				)}
 				{loading ? (
 					<p role="status" className="py-6 text-center text-sm text-muted">
-						Loading sources…
+						{t("loadingSources")}
 					</p>
 				) : sources.length === 0 ? (
-					<p className="py-6 text-center text-sm text-muted">
-						No recording sources found.
-					</p>
+					<p className="py-6 text-center text-sm text-muted">{t("noSources")}</p>
 				) : (
 					["screen", "window"].map((kind) => {
 						const entries = sources.filter((source) =>
@@ -113,7 +112,7 @@ function LinuxSourceList() {
 							entries.length > 0 && (
 								<section key={kind} className="mb-3">
 									<h2 className="px-2 py-2 text-xs font-semibold text-muted">
-										{kind === "screen" ? "Screens" : "Windows"}
+										{kind === "screen" ? t("screens") : t("windows")}
 									</h2>
 									<div className="space-y-1">
 										{entries.map((source) => (
@@ -149,7 +148,7 @@ function LinuxSourceList() {
 					disabled={loading || selecting}
 					onClick={() => void refresh()}
 				>
-					Refresh
+					{t("refresh")}
 				</Button>
 			</footer>
 		</div>

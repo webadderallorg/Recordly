@@ -45,7 +45,9 @@ export function useLaunchWindowSystemState(preparePermissions: () => Promise<unk
 	}, []);
 
 	useEffect(() => {
-		void preparePermissions();
+		// Dev onboarding can be skipped to preview the HUD without signing in or
+		// granting permissions. Recording start still runs preparePermissions.
+		if (!import.meta.env.DEV) void preparePermissions();
 	}, [preparePermissions]);
 
 	return { hudOverlayMousePassthroughSupported, platform };

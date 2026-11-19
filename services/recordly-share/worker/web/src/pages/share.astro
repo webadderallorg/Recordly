@@ -1,8 +1,10 @@
 ---
-import Base from '../layouts/Base.astro';
-import SharePage from '../components/SharePage';
+import Base from "../layouts/Base.astro";
+import SharePage from "../components/SharePage";
 ---
 <Base title="Recordly">
   <SharePage client:load />
   <noscript>Please enable JavaScript to watch this recording and leave feedback.</noscript>
+  <footer class="share-legal"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/billing">Billing &amp; refunds</a><a href="/contact">Contact</a></footer>
 </Base>
+<style>.share-legal {display:flex; flex-wrap:wrap; justify-content:center; gap:20px; padding:24px; color:var(--muted); font-size:12px;} .share-legal a {color:inherit; text-underline-offset:3px;}</style>

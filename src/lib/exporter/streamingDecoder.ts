@@ -1,10 +1,10 @@
 import { WebDemuxer } from "web-demuxer";
 import {
 	type ClipRegion,
+	findClipAtTimelineTime,
+	getTimelineDurationMs,
 	type SpeedRegion,
 	type TrimRegion,
-	getTimelineDurationMs,
-	findClipAtTimelineTime,
 } from "@/components/video-editor/types";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import { createFallbackDemuxerSource, resolveMediaResourceUrl } from "./localMediaSource";
@@ -12,6 +12,7 @@ import { decodeVideoStream } from "./streamingDecodePipeline";
 import {
 	buildClipDecodeRuns,
 	computeVideoSegments,
+	sliceVideoSegmentsToFrameWindow,
 	splitVideoSegmentsBySpeed,
 } from "./videoTimelineSegments";
 
@@ -19,13 +20,14 @@ const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
 
 import type { DecodedVideoInfo } from "./streamingDecoderSupport";
+
 export {
 	buildVideoDecodeFailure,
+	type DecodedVideoInfo,
 	getDecodedFrameStartupOffsetUs,
 	getDecodedFrameTimelineOffsetUs,
 	getVideoDecodeFailureCode,
 	preserveFirstVideoDecodeFailure,
-	type DecodedVideoInfo,
 	type VideoDecodeFailureContext,
 } from "./streamingDecoderSupport";
 
@@ -52,6 +54,7 @@ export class StreamingVideoDecoder {
 	private demuxer: WebDemuxer | null = null;
 	private decoder: VideoDecoder | null = null;
 	private cancelled = false;
+	private cancellationHandlers = new Set<() => void>();
 	private metadata: DecodedVideoInfo | null = null;
 	private pendingFrames: VideoFrame[] = [];
 	private readonly maxDecodeQueue: number;
@@ -140,12 +143,16 @@ export class StreamingVideoDecoder {
 				: mediaStartTime;
 
 		let frameRate = 60;
+		let frameRateSource: DecodedVideoInfo["frameRateSource"] = "fallback";
 		if (videoStream?.avg_frame_rate) {
 			const parts = videoStream.avg_frame_rate.split("/");
 			if (parts.length === 2) {
 				const num = parseInt(parts[0], 10);
 				const den = parseInt(parts[1], 10);
-				if (den > 0 && num > 0) frameRate = num / den;
+				if (den > 0 && num > 0) {
+					frameRate = num / den;
+					frameRateSource = "metadata";
+				}
 			}
 		}
 
@@ -160,6 +167,7 @@ export class StreamingVideoDecoder {
 					? videoStream.duration
 					: undefined,
 			frameRate,
+			frameRateSource,
 			codec: videoStream?.codec_string || "unknown",
 			hasAudio: !!audioStream,
 			audioCodec: audioStream?.codec_string,
@@ -190,6 +198,12 @@ export class StreamingVideoDecoder {
 			pendingFrames: this.pendingFrames,
 			maxDecodeQueue: this.maxDecodeQueue,
 			maxPendingFrames: this.maxPendingFrames,
+			onCancel(handler: () => void) {
+				owner.cancellationHandlers.add(handler);
+				return () => {
+					owner.cancellationHandlers.delete(handler);
+				};
+			},
 			get cancelled() {
 				return owner.cancelled;
 			},
@@ -237,6 +251,113 @@ export class StreamingVideoDecoder {
 		);
 	}
 
+	/** Decode only a consecutive window of export frames, seeking from nearby keyframes.
+	 * Callbacks retain absolute export/source/cursor timestamps, including gap frames.
+	 */
+	async decodeSampleWindow(
+		targetFrameRate: number,
+		trimRegions: TrimRegion[] | undefined,
+		speedRegions: SpeedRegion[] | undefined,
+		onFrame: OnFrameCallback,
+		clipRegions: ClipRegion[] | undefined,
+		startFrame: number,
+		frameCount: number,
+	): Promise<void> {
+		if (!this.demuxer || !this.metadata) {
+			throw new Error("Must call loadMetadata() before decodeSampleWindow()");
+		}
+		if (
+			!Number.isFinite(targetFrameRate) ||
+			targetFrameRate <= 0 ||
+			!Number.isInteger(startFrame) ||
+			startFrame < 0 ||
+			!Number.isInteger(frameCount) ||
+			frameCount < 0
+		) {
+			throw new Error("Invalid video sample frame window");
+		}
+		const sourceSegments = clipRegions
+			? buildClipDecodeRuns(clipRegions).flat()
+			: splitVideoSegmentsBySpeed(
+					computeVideoSegments(
+						getEffectiveVideoStreamDurationSeconds(this.metadata),
+						trimRegions,
+					),
+					speedRegions,
+				);
+		const segments = sliceVideoSegmentsToFrameWindow(
+			sourceSegments,
+			targetFrameRate,
+			startFrame,
+			frameCount,
+		);
+		const totalFrames = Math.ceil(
+			this.getEffectiveDuration(trimRegions, speedRegions, clipRegions) * targetFrameRate,
+		);
+		const endFrame = Math.min(totalFrames, startFrame + frameCount);
+		const owner = this;
+		const context = {
+			demuxer: this.demuxer,
+			metadata: this.metadata,
+			pendingFrames: this.pendingFrames,
+			maxDecodeQueue: this.maxDecodeQueue,
+			maxPendingFrames: this.maxPendingFrames,
+			onCancel(handler: () => void) {
+				owner.cancellationHandlers.add(handler);
+				return () => {
+					owner.cancellationHandlers.delete(handler);
+				};
+			},
+			get cancelled() {
+				return owner.cancelled;
+			},
+			get decoder() {
+				return owner.decoder;
+			},
+			set decoder(value) {
+				owner.decoder = value;
+			},
+		};
+		let nextFrame = startFrame;
+		const emitGapsUntil = async (end: number) => {
+			while (!this.cancelled && nextFrame < end) {
+				if (
+					!clipRegions ||
+					findClipAtTimelineTime((nextFrame * 1000) / targetFrameRate, clipRegions)
+				) {
+					throw new Error(`Missing decoded sample frame at output frame ${nextFrame}`);
+				}
+				await onFrame(null, (nextFrame * 1_000_000) / targetFrameRate, 0, 0);
+				nextFrame++;
+			}
+		};
+		// Separate reads avoid decoding long discarded source ranges between cuts
+		// and support reordered/duplicated footage without scanning the prefix.
+		for (const segment of segments) {
+			if (this.cancelled) break;
+			await emitGapsUntil(segment.outputFrameStart!);
+			await decodeVideoStream(
+				context,
+				targetFrameRate,
+				undefined,
+				undefined,
+				async (frame, timestamp, source, cursor) => {
+					if (this.cancelled) return;
+					await onFrame(frame, timestamp, source, cursor);
+					nextFrame++;
+				},
+				[segment],
+				{
+					// One source-frame pre-roll preserves nearest-frame resampling
+					// when the requested first sample lies just after a keyframe.
+					startSec: Math.max(0, segment.startSec - 1 / this.metadata!.frameRate),
+					endSec: segment.endSec,
+				},
+			);
+		}
+		await emitGapsUntil(endFrame);
+	}
+
 	getEffectiveDuration(
 		trimRegions?: TrimRegion[],
 		speedRegions?: SpeedRegion[],
@@ -258,6 +379,7 @@ export class StreamingVideoDecoder {
 
 	cancel(): void {
 		this.cancelled = true;
+		for (const handler of this.cancellationHandlers) handler();
 	}
 
 	getDemuxer() {
@@ -265,7 +387,7 @@ export class StreamingVideoDecoder {
 	}
 
 	destroy(): void {
-		this.cancelled = true;
+		this.cancel();
 
 		if (this.decoder) {
 			try {

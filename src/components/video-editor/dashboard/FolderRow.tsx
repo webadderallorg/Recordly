@@ -1,8 +1,10 @@
 import { Dropdown, Input } from "@heroui/react";
-import { DotsThree } from "@/components/ui/icons";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { DotsThree } from "@/components/ui/icons";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { FolderColors } from "./FolderColors";
+import { isProjectDrag, PROJECT_DRAG_TYPE } from "./projectDrag";
 import type { ProjectFolder } from "./useProjectFolders";
 
 export function FolderRow({
@@ -13,6 +15,7 @@ export function FolderRow({
 	onRemove,
 	colors,
 	onColors,
+	onDropProject,
 }: {
 	folder: ProjectFolder;
 	active: boolean;
@@ -21,8 +24,11 @@ export function FolderRow({
 	onRemove: () => void;
 	colors: string[];
 	onColors: (colors: string[]) => void;
+	onDropProject: (path: string) => void;
 }) {
+	const { t: uiText } = useUiLocale();
 	const [editing, setEditing] = useState(false);
+	const [dragOver, setDragOver] = useState(false);
 	const [draft, setDraft] = useState(folder.name);
 	const finish = () => {
 		if (draft.trim()) onChange({ ...folder, name: draft.trim() });
@@ -34,7 +40,26 @@ export function FolderRow({
 	};
 	return (
 		<div
-			className={`folder-row group flex h-10 items-center gap-1 rounded-lg px-1 ${active ? "bg-default/70" : "hover:bg-default/40"}`}
+			data-project-drop-target={folder.id}
+			data-drag-over={dragOver || undefined}
+			onDragOver={(event) => {
+				if (!isProjectDrag(event.dataTransfer)) return;
+				event.preventDefault();
+				event.dataTransfer.dropEffect = "move";
+				setDragOver(true);
+			}}
+			onDragLeave={(event) => {
+				if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+					setDragOver(false);
+			}}
+			onDrop={(event) => {
+				setDragOver(false);
+				if (!isProjectDrag(event.dataTransfer)) return;
+				event.preventDefault();
+				event.stopPropagation();
+				onDropProject(event.dataTransfer.getData(PROJECT_DRAG_TYPE));
+			}}
+			className={`folder-row group flex h-10 items-center gap-1 rounded-lg px-1 ${dragOver ? "bg-accent/15 ring-2 ring-accent" : active ? "bg-default/70" : "hover:bg-default/40"}`}
 		>
 			<FolderColors
 				value={folder.color}
@@ -54,7 +79,7 @@ export function FolderRow({
 					<Input
 						autoFocus
 						onFocus={(event) => event.currentTarget.select()}
-						aria-label="Folder name"
+						aria-label={uiText("ui.folderName")}
 						className="h-8 w-full min-w-0 border-0 bg-transparent px-0 text-[13px] shadow-none"
 						value={draft}
 						maxLength={80}
@@ -83,18 +108,18 @@ export function FolderRow({
 				<Button
 					variant="ghost"
 					size="icon"
-					aria-label={`Options for ${folder.name}`}
+					aria-label={uiText("ui.optionsFor", undefined, { name: folder.name })}
 					className="size-6 min-w-6 text-muted-foreground opacity-0 group-hover:opacity-100 focus:opacity-100"
 				>
 					<DotsThree className="size-4" />
 				</Button>
 				<Dropdown.Popover>
-					<Dropdown.Menu aria-label="Folder options">
+					<Dropdown.Menu aria-label={uiText("ui.folderOptions")}>
 						<Dropdown.Item id="rename" onAction={edit}>
-							Rename
+							{uiText("ui.rename")}
 						</Dropdown.Item>
 						<Dropdown.Item id="remove" onAction={onRemove}>
-							Remove folder
+							{uiText("ui.removeFolder")}
 						</Dropdown.Item>
 					</Dropdown.Menu>
 				</Dropdown.Popover>

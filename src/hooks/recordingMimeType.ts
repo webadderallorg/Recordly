@@ -7,14 +7,10 @@ const RECORDING_MIME_TYPE_PREFERENCES = [
 ] as const;
 
 const WEBCAM_RECORDING_MIME_TYPE_PREFERENCES = [
-	"video/mp4;codecs=avc1.42E01E",
-	"video/mp4;codecs=avc1",
-	"video/mp4;codecs=h264",
-	"video/mp4",
 	"video/webm;codecs=h264",
+	"video/webm;codecs=vp8",
 	"video/webm;codecs=vp9",
 	"video/webm",
-	"video/webm;codecs=vp8",
 ] as const;
 
 type MimeTypeSelectorOptions = {
@@ -45,7 +41,11 @@ export function selectRecordingMimeType(options: MimeTypeSelectorOptions = {}): 
 export function selectWebcamRecordingMimeType(
 	options: MimeTypeSelectorOptions = {},
 ): string | undefined {
-	return selectMimeTypeFromPreferences(WEBCAM_RECORDING_MIME_TYPE_PREFERENCES, options);
+	// Chromium's MP4 MediaRecorder muxer aborts the renderer at 4 GiB.
+	// H.264 WebM is recordable despite canPlayType returning empty; main remuxes it.
+	const supported =
+		options.isTypeSupported ?? ((type: string) => MediaRecorder.isTypeSupported(type));
+	return WEBCAM_RECORDING_MIME_TYPE_PREFERENCES.find((type) => supported(type));
 }
 
 export function isWebmMimeType(mimeType: string | undefined | null): boolean {

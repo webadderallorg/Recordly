@@ -10,7 +10,7 @@ import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { rememberApprovedLocalReadPath, resolveApprovedLocalMediaPath } from "../project/manager";
 import { getRecordingsDir, getTelemetryPathForVideo } from "../utils";
-import { getUsableCompanionAudioCandidates } from "./diagnostics";
+import { getCompanionAudioStartDelayMs, getUsableCompanionAudioCandidates } from "./diagnostics";
 import { normalizeCursorTelemetrySamples, writeCursorTelemetry } from "../cursor/telemetry";
 import { listRecordings } from "./library";
 import type {
@@ -65,15 +65,7 @@ async function normalize(
 		if (source) {
 			args.push("-i", source);
 			label = `${input++}:a:0`;
-			try {
-				delay = Math.max(
-					0,
-					Number(JSON.parse(await fs.readFile(`${source}.json`, "utf8")).startDelayMs) ||
-						0,
-				);
-			} catch {
-				/* Optional capture timing. */
-			}
+			delay = (await getCompanionAudioStartDelayMs(source)) ?? 0;
 		} else if (kind === "system" && meta.audio) {
 			label = "0:a:0";
 		} else {

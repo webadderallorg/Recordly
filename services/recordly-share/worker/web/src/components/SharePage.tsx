@@ -1,6 +1,12 @@
 import ThemeToggle from "./ThemeToggle";
-import { Avatar, Button, Input, Label, Skeleton, TextField, toast } from "@heroui/react";
-import { ChatCircleIcon, LockKeyIcon, ArrowClockwiseIcon } from "@phosphor-icons/react";
+import { Avatar, Button, Input, Label, Link, Skeleton, TextField, toast } from "@heroui/react";
+import {
+	ChatCircleIcon,
+	LockKeyIcon,
+	ArrowClockwiseIcon,
+	HouseIcon,
+	UserCircleIcon,
+} from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	fetchShareData,
@@ -18,6 +24,7 @@ import {
 } from "../scripts/api";
 import SharePlayer from "./SharePlayer";
 import ShareFeedback from "./ShareFeedback";
+import ShareDetails from "./ShareDetails";
 import { CenteredCard, Notice, CopyButton, Notifications } from "./ShareUI";
 
 const reactions = [
@@ -43,11 +50,25 @@ function Recording({ data }: { data: ShareData }) {
 	const [reacting, setReacting] = useState<string | null>(null);
 	const [selectedTab, setSelectedTab] = useState("comments");
 	const [mobileView, setMobileView] = useState("watch");
+	const openFeedback = () => {
+		setSelectedTab("comments");
+		setMobileView("feedback");
+		requestAnimationFrame(() => {
+			if (data.video.feedback_enabled === false) {
+				document
+					.querySelector('aside[aria-label="Recording feedback"]')
+					?.scrollIntoView({ block: "nearest" });
+			} else {
+				composerRef.current?.focus();
+			}
+		});
+	};
 	const seek = useCallback((value: number) => {
 		const video = videoRef.current;
 		if (video && Number.isFinite(video.duration)) {
 			video.currentTime = Math.max(0, Math.min(video.duration, value));
 			setTime(video.currentTime);
+			setMobileView("watch");
 		}
 	}, []);
 
@@ -66,7 +87,7 @@ function Recording({ data }: { data: ShareData }) {
 	}, [data.shareCode]);
 
 	async function react(emoji: string) {
-		if (reacting) return;
+		if (reacting || data.video.feedback_enabled === false) return;
 		setReacting(emoji);
 		const timestamp = videoRef.current?.currentTime || 0;
 		try {
@@ -86,6 +107,26 @@ function Recording({ data }: { data: ShareData }) {
 	const { video } = data;
 	return (
 		<div className="recording-app" data-mobile-view={mobileView}>
+			<header className="viewer-header">
+				<nav className="viewer-breadcrumb" aria-label="Breadcrumb">
+					<Link href="/library" className="viewer-home">
+						<HouseIcon size={16} weight="fill" /> Home
+					</Link>
+					<span aria-hidden="true" className="viewer-slash">
+						/
+					</span>
+					<h1 className="viewer-project-title" title={video.title}>
+						{video.title}
+					</h1>
+				</nav>
+				<div className="viewer-heading-actions">
+					<ThemeToggle />
+					<CopyButton time={time} />
+					<Button size="sm" variant="ghost" onPress={openFeedback}>
+						Feedback…
+					</Button>
+				</div>
+			</header>
 			{mobileView === "feedback" && (
 				<div className="mobile-feedback-back">
 					<Button size="sm" variant="secondary" onPress={() => setMobileView("watch")}>
@@ -95,40 +136,6 @@ function Recording({ data }: { data: ShareData }) {
 			)}
 			<div className="share-workspace">
 				<main className="recording-column">
-					<div className="recording-heading viewer-heading">
-						<div className="viewer-identity">
-							<Avatar
-								aria-label={data.creator?.name || "Recording creator"}
-								className="!size-[48px] shrink-0 !rounded-full bg-accent/15 text-accent"
-							>
-								<Avatar.Fallback className="!rounded-full bg-accent/15 text-xs font-medium text-accent">
-									{data.creator?.name
-										.split(/\s+/)
-										.filter(Boolean)
-										.slice(0, 2)
-										.map((part) => part[0])
-										.join("")
-										.toUpperCase() || "?"}
-								</Avatar.Fallback>
-							</Avatar>
-							<div className="viewer-caption">
-								<h1 className="recording-title" title={video.title}>
-									{video.title}
-								</h1>
-								<div className="recording-meta">
-									<span>{formatDate(video.created_at)}</span>
-									<span>
-										{video.view_count.toLocaleString()}{" "}
-										{video.view_count === 1 ? "view" : "views"}
-									</span>
-								</div>
-							</div>
-						</div>
-						<div className="viewer-heading-actions">
-							<ThemeToggle />
-							<CopyButton time={time} />
-						</div>
-					</div>
 					<SharePlayer
 						data={data}
 						videoRef={videoRef}
@@ -140,38 +147,74 @@ function Recording({ data }: { data: ShareData }) {
 						onDuration={setDuration}
 						seek={seek}
 					/>
-					<div className="reaction-rail">
-						<div className="reaction-buttons" aria-label="Reactions">
-							{reactions.map(({ emoji, label }) => (
-								<Button
-									key={emoji}
+					<section className="viewer-data" aria-label="Recording information">
+						<div className="viewer-data-heading">
+							<div className="viewer-identity">
+								<Avatar
+									aria-label={data.creator?.name || "Recordly creator"}
 									size="sm"
-									variant="ghost"
-									aria-label={`${label}${counts[emoji] ? `, ${counts[emoji]} ${counts[emoji] === 1 ? "reaction" : "reactions"}` : ""}`}
-									isDisabled={reacting !== null}
-									onPress={() => void react(emoji)}
 								>
-									<span aria-hidden="true">{emoji}</span>
-									{counts[emoji] > 0 && <span>{counts[emoji]}</span>}
+									<Avatar.Fallback>
+										{data.creator?.name &&
+										data.creator.name !== "Recordly creator" ? (
+											data.creator.name
+												.split(/\s+/)
+												.filter(Boolean)
+												.slice(0, 2)
+												.map((part) => part[0])
+												.join("")
+												.toUpperCase()
+										) : (
+											<UserCircleIcon size={24} />
+										)}
+									</Avatar.Fallback>
+								</Avatar>
+								<div>
+									<p className="creator-name">
+										{data.creator?.name || "Recordly creator"}
+									</p>
+									<p className="recording-meta">
+										<span>{formatDate(video.created_at)}</span>
+										<span>
+											{video.view_count.toLocaleString()}{" "}
+											{video.view_count === 1 ? "view" : "views"}
+										</span>
+										<span>{formatTimestamp(duration)}</span>
+									</p>
+								</div>
+							</div>
+							<div className="reaction-rail">
+								<div className="reaction-buttons" aria-label="Reactions">
+									{reactions.map(({ emoji, label }) => (
+										<Button
+											key={emoji}
+											size="sm"
+											variant="ghost"
+											aria-label={`${label}${counts[emoji] ? `, ${counts[emoji]} ${counts[emoji] === 1 ? "reaction" : "reactions"}` : ""}`}
+											isDisabled={
+												reacting !== null ||
+												video.feedback_enabled === false
+											}
+											onPress={() => void react(emoji)}
+										>
+											<span aria-hidden="true">{emoji}</span>
+											{counts[emoji] > 0 && <span>{counts[emoji]}</span>}
+										</Button>
+									))}
+								</div>
+								<Button
+									className="mobile-comment-button"
+									size="sm"
+									variant="primary"
+									onPress={openFeedback}
+								>
+									<ChatCircleIcon size={17} />
+									{video.feedback_enabled === false ? "Comments" : "Comment"}
 								</Button>
-							))}
+							</div>
 						</div>
-						<Button
-							className="mobile-comment-button"
-							size="sm"
-							variant="primary"
-							onPress={() => {
-								setSelectedTab("comments");
-								setMobileView("feedback");
-								requestAnimationFrame(() =>
-									composerRef.current?.focus({ preventScroll: true }),
-								);
-							}}
-						>
-							<ChatCircleIcon size={17} />
-							Comment
-						</Button>
-					</div>
+						<ShareDetails data={data} time={time} seek={seek} />
+					</section>
 				</main>
 				<aside aria-label="Recording feedback">
 					<ShareFeedback

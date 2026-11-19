@@ -1,3 +1,4 @@
+import { useScopedT } from "@/contexts/I18nContext";
 import { Dropdown, Label, Separator, Kbd } from "@heroui/react";
 import { type ComponentProps, type ReactNode } from "react";
 export function DropdownMenu({
@@ -19,13 +20,14 @@ export function DropdownMenuContent({
 	align?: "start" | "end" | "center";
 	sideOffset?: number;
 }) {
+	const t = useScopedT("capture");
 	return (
 		<Dropdown.Popover
 			{...props}
 			placement={align === "center" ? "bottom" : `bottom ${align}`}
 			offset={sideOffset}
 		>
-			<Dropdown.Menu aria-label="Actions">{children}</Dropdown.Menu>
+			<Dropdown.Menu aria-label={t("actions")}>{children}</Dropdown.Menu>
 		</Dropdown.Popover>
 	);
 }
@@ -41,13 +43,14 @@ export function DropdownMenuItem({
 	onSelect?: (event: Event) => void;
 	disabled?: boolean;
 }) {
+	const t = useScopedT("capture");
 	return (
 		<Dropdown.Item
 			{...props}
 			isDisabled={disabled}
 			textValue={
 				props.textValue ??
-				(typeof children === "string" ? children : String(props.id ?? "Action"))
+				(typeof children === "string" ? children : String(props.id ?? t("action")))
 			}
 			onAction={() => {
 				onSelect?.(new Event("select"));

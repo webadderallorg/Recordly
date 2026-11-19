@@ -1,7 +1,27 @@
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { Card, Popover } from "@heroui/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { toFileUrl } from "./projectPersistence";
+import { useProjectThumbnailUrl } from "./dashboard/useProjectThumbnailUrl";
+
+function ProjectBrowserThumbnail({ entry }: { entry: ProjectLibraryEntry }) {
+	const te = useScopedT("editing");
+	const source = useProjectThumbnailUrl(entry.thumbnailPath, entry.updatedAt);
+	const [failedUrl, setFailedUrl] = useState<string | null>(null);
+	return source.url && failedUrl !== source.url ? (
+		<img
+			src={source.url}
+			alt=""
+			draggable={false}
+			className="h-full w-full object-cover"
+			onError={() => setFailedUrl(source.url)}
+		/>
+	) : (
+		<span className="flex h-full items-center justify-center text-[10px] text-muted">
+			{te("noPreview", "No preview")}
+		</span>
+	);
+}
 
 export type ProjectLibraryEntry = {
 	rawSource?: import("@/types/recordingLibrary").RecordingLibraryEntry;
@@ -35,6 +55,8 @@ export default function ProjectBrowserDialog({
 	onPanelHeightChange,
 	renderMode = "floating",
 }: ProjectBrowserDialogProps) {
+	const te = useScopedT("editing");
+	const { locale } = useI18n();
 	const panelRef = useRef<HTMLDivElement>(null);
 	useEffect(() => {
 		if (!open) {
@@ -59,10 +81,10 @@ export default function ProjectBrowserDialog({
 			className={`${renderMode === "inline" ? "w-full" : "w-[340px]"} min-w-0 max-w-[calc(100vw-24px)] rounded-none bg-transparent p-3 shadow-none`}
 		>
 			<Card.Header className="flex-row items-center justify-between gap-3">
-				<Card.Title>Projects</Card.Title>
+				<Card.Title>{te("projects", "Projects")}</Card.Title>
 				{onImportFile && (
 					<Button size="sm" variant="secondary" onClick={onImportFile}>
-						Import
+						{te("import", "Import")}
 					</Button>
 				)}
 			</Card.Header>
@@ -83,32 +105,23 @@ export default function ProjectBrowserDialog({
 								className="h-auto w-full min-w-0 justify-start gap-3 rounded-lg p-2"
 							>
 								<div className="relative aspect-video w-18 shrink-0 overflow-hidden rounded-md bg-default">
-									{entry.thumbnailPath ? (
-										<img
-											src={toFileUrl(entry.thumbnailPath)}
-											alt=""
-											draggable={false}
-											className="h-full w-full object-cover"
-										/>
-									) : (
-										<span className="flex h-full items-center justify-center text-[10px] text-muted">
-											No preview
-										</span>
-									)}
+									<ProjectBrowserThumbnail entry={entry} />
 								</div>
 								<span className="flex min-w-0 flex-1 flex-col gap-1 text-left">
 									<span className="truncate text-[13px]">{entry.name}</span>
 									<span className="text-[11px] text-muted">
 										{entry.isCurrent
-											? "Current project"
-											: new Date(entry.updatedAt).toLocaleDateString()}
+											? te("currentProject", "Current project")
+											: new Date(entry.updatedAt).toLocaleDateString(locale)}
 									</span>
 								</span>
 							</Button>
 						))}
 					</div>
 				) : (
-					<p className="py-8 text-center text-sm text-muted">No saved projects yet</p>
+					<p className="py-8 text-center text-sm text-muted">
+						{te("noSavedProjectsYet", "No saved projects yet")}
+					</p>
 				)}
 			</Card.Content>
 		</Card>
@@ -121,7 +134,7 @@ export default function ProjectBrowserDialog({
 				triggerRef={anchorRef}
 				placement={preferredDirection === "up" ? "top end" : "bottom start"}
 			>
-				<Popover.Dialog aria-label="Projects" className="p-0">
+				<Popover.Dialog aria-label={te("projects", "Projects")} className="p-0">
 					{content}
 				</Popover.Dialog>
 			</Popover.Content>

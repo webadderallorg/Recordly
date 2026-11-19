@@ -1,0 +1,494 @@
+import { expect, test, type Page } from "@playwright/test";
+
+async function seek(page: Page, timeMs: number) {
+	await page.getByRole("spinbutton", { name: "Time", exact: true }).fill(String(timeMs));
+}
+
+async function readCaptionRenderingResult(page: Page) {
+	const body = page.locator("body");
+	await expect
+		.poll(() =>
+			body.evaluate(
+				(node) => node.hasAttribute("data-error") || node.hasAttribute("data-result"),
+			),
+		)
+		.toBe(true);
+	const { error, result } = await body.evaluate((node) => ({
+		error: node.getAttribute("data-error"),
+		result: node.getAttribute("data-result"),
+	}));
+	if (error !== null) throw new Error(`Caption rendering fixture failed: ${error}`);
+	if (result === null) throw new Error("Caption rendering fixture completed without a result");
+	return JSON.parse(result);
+}
+
+test("fixed-size word highlights follow speech without reviving captions after a pause", async ({
+	page,
+}, testInfo) => {
+	test.setTimeout(120000);
+	const errors: string[] = [];
+	page.on("pageerror", (error) => errors.push(error.message));
+	await page.goto("/tests/ui/caption-preview.html?style=classic");
+	const caption = page.getByRole("button", { name: "Edit current caption", exact: true });
+	const highlight = caption.locator("[data-caption-word-highlight]");
+	await seek(page, 700);
+	await expect(caption).toHaveText("Follow every word");
+	await expect(highlight).toHaveCount(1);
+	await expect(caption.locator('[data-caption-word-state="active"]')).toHaveText("every");
+	await expect(highlight).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+	await expect(caption).toHaveCSS("background-color", "rgba(0, 0, 0, 0.7)");
+	const initialBox = await caption.boundingBox();
+	const typography = await caption.evaluate((node) => {
+		const active = node.querySelector<HTMLElement>("[data-caption-word-highlight]")!;
+		const inactive = node.querySelector<HTMLElement>('[data-caption-word-state="spoken"]')!;
+		const highlightBox = active.querySelector<HTMLElement>('[aria-hidden="true"]')!;
+		const a = getComputedStyle(active),
+			b = getComputedStyle(inactive);
+		const visual = active.querySelector<HTMLElement>("[data-caption-word-visual]")!;
+		const canvas = document.createElement("canvas"),
+			ctx = canvas.getContext("2d")!;
+		ctx.font = `${b.fontWeight} ${b.fontSize} ${b.fontFamily}`;
+		const expectedSpace = ctx.measureText(" ").width;
+		const gap = active.getBoundingClientRect().left - inactive.getBoundingClientRect().right;
+		return {
+			visualScale: new DOMMatrix(getComputedStyle(visual).transform).a,
+			activeTransform: a.transform,
+			verticalAlign: a.verticalAlign,
+			radius: parseFloat(getComputedStyle(highlightBox).borderRadius),
+			highlightHeight: highlightBox.getBoundingClientRect().height,
+			gap,
+			expectedSpace,
+		};
+	});
+	expect(typography.visualScale).toBe(1);
+	expect(typography.activeTransform).toBe("none");
+	expect(typography.verticalAlign).toBe("baseline");
+	expect(typography.radius).toBeLessThan(typography.highlightHeight / 4);
+	expect(typography.gap).toBeCloseTo(typography.expectedSpace, 0);
+	await page.screenshot({ path: testInfo.outputPath("word-highlight-preview.png") });
+	await seek(page, 1200);
+	await expect(caption.locator('[data-caption-word-state="active"]')).toHaveText("word");
+	for (const [time, word] of [
+		[400, "Follow"],
+		[499, "Follow"],
+		[500, "every"],
+		[900, "every"],
+		[999, "every"],
+		[1000, "word"],
+		[1499, "word"],
+	] as const) {
+		await seek(page, time);
+		await expect(caption.locator('[data-caption-word-state="active"]')).toHaveText(word);
+		await expect(highlight).toHaveCount(1);
+		const box = await caption.boundingBox();
+		expect(box!.width).toBeCloseTo(initialBox!.width, 2);
+		expect(box!.x).toBeCloseTo(initialBox!.x, 2);
+	}
+
+	await seek(page, 2500);
+	await expect(caption).toHaveCount(0);
+	await seek(page, 3100);
+	await expect(caption).toHaveText("Clean caption transitions");
+	await expect(highlight).toHaveCount(0);
+	await seek(page, 3500);
+	await expect(caption.locator('[data-caption-word-state="active"]')).toHaveText("Clean");
+	await expect(highlight).toHaveCount(1);
+	await seek(page, 3750);
+	await expect(highlight).toHaveCount(1);
+	await expect(caption.locator('[data-caption-word-state="active"]')).toHaveText("Clean");
+	await seek(page, 3800);
+	await expect(caption.locator('[data-caption-word-state="active"]')).toHaveText("caption");
+	await expect(caption).toHaveText("Clean caption transitions");
+	expect(errors).toEqual([]);
+});
+
+test("legacy and modern export highlight the active word and round the black background", async ({
+	page,
+}) => {
+	await page.goto("/tests/ui/caption-rendering.html");
+	const result = await readCaptionRenderingResult(page);
+	for (const sample of result.samples) {
+		expect(sample.heldMatchesActive).toBe(true);
+		expect(sample.activePixelsDiffer).toBe(true);
+		expect(sample.cornerAlpha).toBe(0);
+		expect(sample.pause[3]).toBeGreaterThanOrEqual(178);
+		expect(sample.pause[3]).toBeLessThanOrEqual(179);
+		expect(
+			sample.backgroundBounds.every(
+				(bounds: number[]) =>
+					JSON.stringify(bounds) === JSON.stringify(sample.backgroundBounds[0]),
+			),
+		).toBe(true);
+		expect(sample.silence[3]).toBe(0);
+	}
+	expect(result.nextText).toBe("Next phrase");
+	expect(result.nextActiveWord).toBe(-1);
+});
+
+test("caption styles keep the box compact and steady while previewing each preset", async ({
+	page,
+}, testInfo) => {
+	await page.goto("/tests/ui/caption-preview.html");
+	const picker = page.getByRole("group", { name: "Caption style", exact: true });
+	await expect(picker.getByRole("button")).toHaveCount(2);
+	const caption = page.getByRole("button", { name: "Edit current caption", exact: true });
+	for (const [name, weight, color, hasPill] of [
+		["Classic", "400", "rgb(255, 255, 255)", true],
+		["TikTok", "800", "rgb(22, 22, 22)", true],
+		["Karaoke", "700", "rgb(20, 32, 0)", true],
+		["Minimal", "500", "rgb(255, 255, 255)", false],
+		["Neon", "700", "rgb(101, 255, 255)", true],
+		["Paper", "600", "rgb(31, 41, 55)", true],
+	] as const) {
+		await page.goto(`/tests/ui/caption-preview.html?style=${name.toLowerCase()}`);
+		await seek(page, 700);
+		await expect(caption).toHaveCSS("font-weight", weight);
+		if (name === "TikTok") {
+			await expect(caption).toHaveCSS("font-family", /TikTok Sans/);
+			expect(
+				await page.evaluate(() =>
+					Array.from(document.fonts).some(
+						(face) =>
+							face.family.replaceAll('"', "") === "TikTok Sans" &&
+							face.status === "loaded",
+					),
+				),
+			).toBe(true);
+		}
+		const active = caption.locator('[data-caption-word-state="active"]');
+		await expect(active).toHaveCSS("color", color);
+		await expect(active.locator('[aria-hidden="true"]')).toHaveCount(hasPill ? 1 : 0);
+		const size = await caption.evaluate((node) => parseFloat(getComputedStyle(node).fontSize));
+		const box = await caption.boundingBox();
+		expect(box!.height / size).toBeCloseTo(2.12, 1);
+		for (const time of [400, 700, 1200]) {
+			await seek(page, time);
+			const next = await caption.boundingBox();
+			expect(next!.width).toBeCloseTo(box!.width, 2);
+			expect(next!.height).toBeCloseTo(box!.height, 2);
+		}
+		await seek(page, 700);
+		await page.screenshot({ path: testInfo.outputPath(`caption-${name.toLowerCase()}.png`) });
+	}
+	await page.goto("/tests/ui/caption-preview.html?style=classic");
+	await expect(caption).toHaveCSS("background-color", "rgba(0, 0, 0, 0.7)");
+});
+
+test("all caption styles render their foreground and background in both export paths", async ({
+	page,
+}) => {
+	await page.goto("/tests/ui/caption-rendering.html");
+	const result = await readCaptionRenderingResult(page);
+	expect(result.styles).toHaveLength(8);
+	for (const style of result.styles) {
+		expect(new Set(style.widths).size, style.id).toBe(
+			style.id === "reveal" || style.id === "serif" ? 3 : 1,
+		);
+		expect(style.heightInEm, style.id).toBeCloseTo(
+			style.id === "reveal" || style.id === "serif" ? 1.84 : 2.12,
+			2,
+		);
+		if (style.id === "reveal" || style.id === "serif") {
+			for (const sample of style.revealAnimation) {
+				expect(sample.animates).toBe(true);
+				expect(sample.seeksBack).toBe(true);
+			}
+		}
+		for (const sample of style.samples) {
+			expect(sample.foregroundPixels, style.id).toBeGreaterThan(5);
+			if (style.id === "tiktok") {
+				// The dark caption backing and yellow active word survive export.
+				expect(sample.darkPixelsOnWhite).toBeGreaterThan(20);
+				expect(sample.highlightPixels).toBeGreaterThan(10);
+				expect(sample.whiteCorner).toEqual([255, 255, 255, 255]);
+			}
+			expect(
+				Math.abs(sample.backgroundAlpha - style.backgroundOpacity * 255),
+				style.id,
+			).toBeLessThanOrEqual(1);
+			if (style.id === "paper") {
+				expect(sample.backgroundPixel.slice(0, 3)).toEqual([255, 251, 235]);
+			}
+		}
+	}
+});
+
+test("TikTok captions show uppercase text and active highlights on a dark backing", async ({
+	page,
+}, testInfo) => {
+	await page.goto("/tests/ui/caption-preview.html?style=tiktok");
+	const caption = page.getByRole("button", { name: "Edit current caption", exact: true });
+	await expect(caption).toHaveCSS("font-family", /TikTok Sans/);
+	await expect(caption).toHaveCSS("background-color", "rgba(0, 0, 0, 0.78)");
+	const overlay = caption.locator("xpath=../../..");
+	for (const background of ["#ffffff", "#151515"]) {
+		await overlay.evaluate((node, color) => {
+			(node as HTMLElement).style.backgroundColor = color;
+		}, background);
+		for (const [time, activeWord] of [
+			[0, "FOLLOW"],
+			[700, "EVERY"],
+			[1499, "WORD"],
+		] as const) {
+			await seek(page, time);
+			await expect(caption).toHaveText("FOLLOW EVERY WORD");
+			const active = caption.locator('[data-caption-word-state="active"]');
+			await expect(active).toHaveText(activeWord);
+			await expect(active).toHaveCSS("color", "rgb(22, 22, 22)");
+			await expect(active.locator('[aria-hidden="true"]')).toHaveCSS(
+				"background-color",
+				"rgb(255, 230, 0)",
+			);
+			await expect(caption.locator("..")).toHaveCSS("opacity", "1");
+			const words = caption.locator("[data-caption-word-state]");
+			await expect(words).toHaveCount(3);
+			for (const word of await caption
+				.locator('[data-caption-word-state]:not([data-caption-word-state="active"])')
+				.all()) {
+				await expect(word).toHaveCSS("color", "rgb(255, 255, 255)");
+				const text = word.locator("[data-caption-word-visual] > span");
+				await expect(text).toHaveCSS("-webkit-text-stroke-color", "rgb(0, 0, 0)");
+				expect(
+					await text.evaluate((node) =>
+						parseFloat(getComputedStyle(node).webkitTextStrokeWidth),
+					),
+				).toBeGreaterThan(0);
+				await expect(text).toHaveCSS("paint-order", "stroke");
+			}
+		}
+		await overlay.screenshot({
+			path: testInfo.outputPath(`tiktok-${background.slice(1)}.png`),
+		});
+	}
+	await seek(page, 700);
+	await caption.screenshot({ path: testInfo.outputPath("tiktok-caption.png") });
+});
+
+test("two caption style cards stay balanced and inset at narrow widths", async ({
+	page,
+}, testInfo) => {
+	await page.goto("/tests/ui/caption-preview.html");
+	const picker = page.getByRole("group", { name: "Caption style", exact: true });
+	await expect(page.getByText("Caption style", { exact: true })).toHaveCount(0);
+	await expect(page.getByText("Hover to preview", { exact: true })).toHaveCount(0);
+	await expect(page.getByText("Font Size", { exact: true })).toHaveCount(0);
+	await expect(page.getByText("Size", { exact: true })).toHaveClass(/sr-only/);
+	const size = page.getByRole("slider", { name: "Size", exact: true });
+	const markers = page.getByText("Aa", { exact: true });
+	await expect(markers).toHaveCount(2);
+	const small = (await markers.first().boundingBox())!;
+	const large = (await markers.last().boundingBox())!;
+	const thumb = (await size.boundingBox())!;
+	expect(small.height).toBeLessThan(large.height);
+	expect(small.x + small.width).toBeLessThan(thumb.x);
+	expect(large.x).toBeGreaterThan(thumb.x + thumb.width);
+	await size.focus();
+	const previousSize = Number(await size.inputValue());
+	await size.press("ArrowRight");
+	await expect(size).toHaveValue(String(previousSize + 1));
+
+	await expect(picker.getByRole("button")).toHaveCount(2);
+	await expect(picker.getByText("Reveal", { exact: true })).toHaveCount(0);
+	await expect(picker.getByText("Classic", { exact: true })).toHaveCount(0);
+	await expect(picker.locator("svg")).toHaveCount(0);
+	for (const preview of await picker.locator("[data-caption-style-preview]").all()) {
+		await expect(preview).toHaveCSS("background-image", /macos-hello-black\.jpg/);
+		const url = await preview.evaluate((node) =>
+			getComputedStyle(node).backgroundImage.slice(5, -2),
+		);
+		expect(
+			await page.evaluate(async (url) => {
+				const image = new Image();
+				image.src = url;
+				await image.decode();
+				return image.naturalWidth;
+			}, url),
+		).toBeGreaterThan(0);
+	}
+
+	for (const width of [280, 240, 200]) {
+		await page.locator("aside").evaluate((node, width) => {
+			node.style.width = `${width}px`;
+			node.style.flexShrink = "0";
+		}, width);
+		const geometry = await picker.evaluate((group) => {
+			const grid = group.getBoundingClientRect();
+			return Array.from(group.querySelectorAll("button")).map((button) => {
+				const card = button.getBoundingClientRect();
+				const stage = button
+					.querySelector("[data-caption-style-preview]")!
+					.getBoundingClientRect();
+				return {
+					width: card.width,
+					height: card.height,
+					expectedWidth: (grid.width - 10) / 2,
+					leftInset: stage.left - card.left,
+					rightInset: card.right - stage.right,
+				};
+			});
+		});
+		for (const card of geometry) {
+			expect(card.width).toBeCloseTo(card.expectedWidth, 1);
+			expect(card.height).toBeGreaterThan(90);
+			expect(card.height).toBeLessThanOrEqual(100);
+			expect(card.leftInset).toBeGreaterThanOrEqual(5);
+			expect(card.rightInset).toBeGreaterThanOrEqual(5);
+		}
+	}
+	await page.locator("aside").evaluate((node) => {
+		node.style.width = "280px";
+	});
+	await picker.screenshot({ path: testInfo.outputPath("caption-styles.png") });
+});
+
+test("Reveal matches the reference: white words blur in on a growing black box", async ({
+	page,
+}, testInfo) => {
+	await page.goto("/tests/ui/caption-preview.html");
+	await page.getByRole("button", { name: "Reveal", exact: true }).click();
+	const caption = page.getByRole("button", { name: "Edit current caption", exact: true });
+	await seek(page, 200);
+	await expect(caption).toHaveText("Follow");
+	await expect(caption).toHaveCSS("background-color", "rgb(0, 0, 0)");
+	await expect(caption).toHaveCSS("font-weight", "400");
+	const first = (await caption.boundingBox())!;
+	await seek(page, 520);
+	await expect(caption).toHaveText("Follow every");
+	const entering = caption.locator(
+		'[data-caption-word-state="active"] [data-caption-word-visual]',
+	);
+	const blur = await entering.evaluate((node) => ({
+		opacity: +getComputedStyle(node).opacity,
+		filter: getComputedStyle(node).filter,
+	}));
+	expect(blur.opacity).toBeGreaterThan(0);
+	expect(blur.opacity).toBeLessThan(1);
+	expect(blur.filter).not.toBe("blur(0px)");
+	await seek(page, 700);
+	await expect(entering).toHaveCSS("filter", "blur(0px)");
+	await expect(entering).toHaveCSS("opacity", "1");
+	await expect(caption.locator('[data-caption-word-state="upcoming"]')).toHaveCount(0);
+	await expect(caption.locator('[aria-hidden="true"]')).toHaveCount(0);
+	const second = (await caption.boundingBox())!;
+	expect(second.width).toBeGreaterThan(first.width);
+	expect(second.x + second.width / 2).toBeCloseTo(first.x + first.width / 2, 1);
+	await seek(page, 1200);
+	await expect(caption).toHaveText("Follow every word");
+	const complete = (await caption.boundingBox())!;
+	expect(complete.width).toBeGreaterThan(second.width);
+	await page.screenshot({ path: testInfo.outputPath("caption-reveal.png") });
+	await seek(page, 200);
+	await expect(caption).toHaveText("Follow");
+	await seek(page, 3100);
+	await expect(caption).toHaveCount(0);
+	await seek(page, 3500);
+	await expect(caption).toHaveText("Clean");
+});
+
+test("new captions default to Reveal and offer only Classic as the alternative", async ({
+	page,
+}, testInfo) => {
+	await page.goto("/tests/ui/caption-preview.html");
+	const picker = page.getByRole("group", { name: "Caption style", exact: true });
+	await expect(picker.getByRole("button")).toHaveCount(2);
+	await expect(picker.getByRole("button", { name: "Reveal", exact: true })).toHaveAttribute(
+		"aria-pressed",
+		"true",
+	);
+	const caption = page.getByRole("button", { name: "Edit current caption", exact: true });
+	await expect(caption).toHaveText("Follow every");
+	await expect(caption).toHaveCSS("background-color", "rgb(0, 0, 0)");
+	await picker.getByRole("button", { name: "Classic", exact: true }).click();
+	await expect(picker.getByRole("button", { name: "Classic", exact: true })).toHaveAttribute(
+		"aria-pressed",
+		"true",
+	);
+	await expect(caption).toHaveCSS("background-color", "rgb(255, 255, 255)");
+	await expect(caption).toHaveCSS("font-family", /Times New Roman/);
+	await expect(caption).toHaveCSS("font-weight", "400");
+	for (const [time, text] of [
+		[200, "Follow"],
+		[700, "Follow every"],
+		[1200, "Follow every word"],
+		[200, "Follow"],
+	] as const) {
+		await seek(page, time);
+		await expect(caption).toHaveText(text);
+		await expect(caption.locator("[data-caption-word-state]")).toHaveCount(
+			text.split(" ").length,
+		);
+		await expect(caption.locator("[data-caption-word-state]").first()).toHaveCSS(
+			"color",
+			"rgb(24, 24, 24)",
+		);
+		await expect(caption.locator("[data-caption-word-visual]").last()).toHaveCSS(
+			"opacity",
+			"1",
+		);
+	}
+	await seek(page, 520);
+	const entering = caption.locator("[data-caption-word-visual]").last();
+	expect(await entering.evaluate((node) => +getComputedStyle(node).opacity)).toBeLessThan(1);
+	await seek(page, 700);
+	await expect(entering).toHaveCSS("filter", "blur(0px)");
+	await expect(caption).toHaveCSS("box-shadow", /inset/);
+	await caption.screenshot({ path: testInfo.outputPath("classic-caption.png") });
+	await picker.screenshot({ path: testInfo.outputPath("two-caption-styles.png") });
+	await seek(page, 3100);
+	await expect(caption).toHaveCount(0);
+});
+
+test("hover and keyboard previews animate without committing a caption style", async ({
+	page,
+}, testInfo) => {
+	await page.goto("/tests/ui/caption-preview.html");
+	await page.clock.install();
+	const picker = page.getByRole("group", { name: "Caption style", exact: true });
+	const reveal = picker.getByRole("button", { name: "Reveal", exact: true });
+	const classic = picker.getByRole("button", { name: "Classic", exact: true });
+	const preview = classic.locator("[data-caption-style-preview]");
+	const main = page.getByRole("button", { name: "Edit current caption", exact: true });
+	await expect(reveal).toHaveAttribute("aria-pressed", "true");
+	await classic.hover();
+	await expect(preview).toHaveAttribute("data-preview-playing", "true");
+	await page.clock.runFor(250);
+	await expect(preview.locator("[data-caption-preview-word]")).toHaveText(["Make"]);
+	await page.clock.runFor(400);
+	await expect(preview.locator("[data-caption-preview-word]")).toHaveText(["Make", "it"]);
+	await page.clock.runFor(500);
+	await expect(preview.locator("[data-caption-preview-word]")).toHaveText([
+		"Make",
+		"it",
+		"clear",
+	]);
+	await expect(reveal).toHaveAttribute("aria-pressed", "true");
+	await expect(classic).toHaveAttribute("aria-pressed", "false");
+	await expect(main).toHaveCSS("background-color", "rgb(0, 0, 0)");
+	await picker.screenshot({ path: testInfo.outputPath("caption-hover-preview.png") });
+	await page.mouse.move(0, 0);
+	await expect(preview).not.toHaveAttribute("data-preview-playing");
+	await reveal.focus();
+	await page.keyboard.press("Tab");
+	await expect(preview).toHaveAttribute("data-preview-playing", "true");
+	await expect(classic).toHaveAttribute("aria-pressed", "false");
+	await classic.press("Enter");
+	await expect(classic).toHaveAttribute("aria-pressed", "true");
+	await expect(main).toHaveCSS("background-color", "rgb(255, 255, 255)");
+});
+
+test("caption hover previews respect reduced motion", async ({ page }) => {
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	await page.goto("/tests/ui/caption-preview.html");
+	const classic = page
+		.getByRole("group", { name: "Caption style", exact: true })
+		.getByRole("button", { name: "Classic", exact: true });
+	await classic.hover();
+	const preview = classic.locator("[data-caption-style-preview]");
+	await expect(preview).not.toHaveAttribute("data-preview-playing");
+	await expect(preview.locator("[data-caption-preview-word]")).toHaveText([
+		"Make",
+		"it",
+		"clear",
+	]);
+	await expect(classic).toHaveAttribute("aria-pressed", "false");
+});

@@ -1,3 +1,5 @@
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
+import { LocalizedError } from "@/components/feedback/LocalizedError";
 import { Card, Chip, ProgressBar } from "@heroui/react";
 import {
 	ArrowClockwiseIcon,
@@ -5,9 +7,9 @@ import {
 	DownloadSimpleIcon,
 	WarningCircleIcon,
 } from "@/components/ui/icons";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useI18n } from "@/contexts/I18nContext";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import styles from "./UpdateToastWindow.module.css";
 
 export type UpdateToastPayload = {
@@ -24,15 +26,17 @@ export type UpdateToastPayload = {
 	primaryAction?: "install-and-restart" | "retry-check";
 };
 
-function formatBytes(value: number | undefined) {
+function formatBytes(value: number | undefined, locale: string) {
 	if (value === undefined || !Number.isFinite(value) || value <= 0) {
 		return null;
 	}
 
 	const megabytes = value / (1024 * 1024);
-	return megabytes >= 1024
-		? `${(megabytes / 1024).toFixed(1)} GB`
-		: `${megabytes.toFixed(megabytes >= 100 ? 0 : 1)} MB`;
+	return new Intl.NumberFormat(locale, {
+		style: "unit",
+		unit: megabytes >= 1024 ? "gigabyte" : "megabyte",
+		maximumFractionDigits: megabytes >= 1024 || megabytes < 100 ? 1 : 0,
+	}).format(megabytes >= 1024 ? megabytes / 1024 : megabytes);
 }
 
 type Translate = ReturnType<typeof useI18n>["t"];
@@ -57,7 +61,8 @@ function getTitle(payload: UpdateToastPayload, t: Translate) {
 	}
 }
 
-function getDetail(payload: UpdateToastPayload, t: Translate) {
+function getDetail(payload: UpdateToastPayload, t: Translate, captureT: Translate) {
+	if (payload.isPreview) return captureT("updatePreviewDetail");
 	if (payload.phase === "available" && payload.isExperimental) {
 		return t(
 			"launch.updateToast.experimentalDescription",
@@ -65,7 +70,24 @@ function getDetail(payload: UpdateToastPayload, t: Translate) {
 		);
 	}
 
-	return payload.detail;
+	switch (payload.phase) {
+		case "available":
+			return captureT("updateAvailableDetail");
+		case "downloading":
+			return captureT(
+				(payload.progressPercent ?? 0) >= 100
+					? "updateFinishingDetail"
+					: "updateDownloadingDetail",
+			);
+		case "ready":
+			return captureT("updateReadyDetail");
+		case "error":
+			return captureT(
+				payload.primaryAction === "retry-check"
+					? "updateCheckErrorDetail"
+					: "updateErrorDetail",
+			);
+	}
 }
 
 function getPrimaryLabel(payload: UpdateToastPayload, t: Translate) {
@@ -74,7 +96,9 @@ function getPrimaryLabel(payload: UpdateToastPayload, t: Translate) {
 	}
 	return payload.phase === "ready"
 		? t("launch.updateToast.restartToUpdate", "Restart to update")
-		: t("launch.updateToast.updateNow", "Update now");
+		: payload.phase === "error"
+			? t("launch.updateToast.tryAgain", "Try again")
+			: t("updates.download", "Download update");
 }
 
 function PhaseIcon({ payload }: { payload: UpdateToastPayload }) {
@@ -97,24 +121,44 @@ export function UpdateToastWindow({
 } = {}) {
 	const [livePayload, setPayload] = useState<UpdateToastPayload | null>(null);
 	const payload = suppliedPayload ?? livePayload;
-	const { t } = useI18n();
+	const { t, locale } = useI18n();
+	const captureT = useScopedT("capture");
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const [friendlyError, setFriendlyError] = useState(false);
+	const [dismissing, setDismissing] = useState(false);
+	const dismissPending = useRef(false);
+	const pending = useRef(false);
 
 	useEffect(() => {
 		if (suppliedPayload) return;
 		let mounted = true;
+		let revision = 0;
 		const refresh = () => {
-			void window.electronAPI.getCurrentUpdateToastPayload().then((nextPayload) => {
-				if (mounted) setPayload(nextPayload);
-			});
+			const requestedRevision = revision;
+			void window.electronAPI
+				.getCurrentUpdateToastPayload()
+				.then((nextPayload) => {
+					if (mounted && revision === requestedRevision) setPayload(nextPayload);
+				})
+				.catch(() => {
+					/* Keep the last known notification if the bridge is unavailable. */
+				});
 		};
 
+		const dispose = window.electronAPI.onUpdateToastStateChanged((nextPayload) => {
+			revision++;
+			if (mounted) {
+				setPayload(nextPayload);
+				setError(null);
+			}
+		});
 		refresh();
-		const pollTimer = setInterval(refresh, 750);
-		const dispose = window.electronAPI.onUpdateToastStateChanged(setPayload);
+		window.addEventListener("focus", refresh);
 
 		return () => {
 			mounted = false;
-			clearInterval(pollTimer);
+			window.removeEventListener("focus", refresh);
 			dispose();
 		};
 	}, [suppliedPayload]);
@@ -124,12 +168,14 @@ export function UpdateToastWindow({
 	}
 
 	const progress = Math.max(0, Math.min(100, Math.round(payload.progressPercent ?? 0)));
-	const transferred = formatBytes(payload.transferredBytes);
-	const total = formatBytes(payload.totalBytes);
-	const speed = formatBytes(payload.bytesPerSecond);
+	const transferred = formatBytes(payload.transferredBytes, locale);
+	const total = formatBytes(payload.totalBytes, locale);
+	const speed = formatBytes(payload.bytesPerSecond, locale);
 	const progressDetail = [
-		transferred && total ? `${transferred} of ${total}` : transferred,
-		speed ? `${speed}/s` : null,
+		transferred && total
+			? captureT("transferred", undefined, { transferred, total })
+			: transferred,
+		speed ? captureT("speed", undefined, { speed }) : null,
 	]
 		.filter(Boolean)
 		.join(" · ");
@@ -138,29 +184,53 @@ export function UpdateToastWindow({
 		if (payload.phase === "downloading") return;
 
 		if (payload.primaryAction === "retry-check") {
-			await window.electronAPI.checkForAppUpdates();
-			return;
+			return window.electronAPI.checkForAppUpdates();
 		}
 		if (payload.phase === "ready") {
-			await window.electronAPI.installDownloadedUpdate();
-			return;
+			return window.electronAPI.installDownloadedUpdate();
 		}
-		await window.electronAPI.downloadAvailableUpdate(true);
+		return window.electronAPI.downloadAvailableUpdate(false);
 	};
 
 	const handleNotNow = async () => {
-		if (payload.isPreview) {
-			await window.electronAPI.dismissUpdateToast();
-			return;
+		return window.electronAPI.dismissUpdateToast();
+	};
+	const run = async (
+		action: () => Promise<{ success: boolean; message?: string; code?: string } | undefined>,
+		dismiss = false,
+	) => {
+		const lock = dismiss ? dismissPending : pending;
+		if (lock.current) return;
+		lock.current = true;
+		const setPending = dismiss ? setDismissing : setBusy;
+		setPending(true);
+		setError(null);
+		setFriendlyError(false);
+		try {
+			const result = await action();
+			if (result && !result.success) {
+				setFriendlyError(result.code === "restart-blocked");
+				throw Error(
+					result.message || t("updates.actionFailed", "Could not update. Try again."),
+				);
+			}
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : String(cause));
+		} finally {
+			lock.current = false;
+			setPending(false);
 		}
-		await window.electronAPI.deferDownloadedUpdate(payload.delayMs);
 	};
 
 	return (
 		<div className={`${styles.window} launch-theme`}>
-			<Card className="w-full flex-row gap-3" aria-live="polite" aria-label="Recordly update">
+			<Card
+				className={`${styles.card} w-full flex-row gap-3`}
+				aria-live="polite"
+				aria-label={captureT("updateLabel")}
+			>
 				<div
-					className={`${styles.icon} ${payload.phase === "error" ? styles.iconError : ""}`}
+					className={`${styles.icon} ${payload.phase === "error" ? styles.iconError : payload.phase === "ready" ? styles.iconReady : ""}`}
 				>
 					<PhaseIcon payload={payload} />
 				</div>
@@ -180,35 +250,61 @@ export function UpdateToastWindow({
 							</Chip>
 						) : null}
 					</div>
-					<p>{getDetail(payload, t)}</p>
+					<p>{getDetail(payload, t, captureT)}</p>
 
 					{payload.phase === "downloading" ? (
 						<div className={styles.progressBlock}>
-							<ProgressBar aria-label="Downloading update" value={progress}>
+							<ProgressBar
+								aria-label={captureT("downloadingUpdate")}
+								value={progress}
+							>
 								<ProgressBar.Track>
 									<ProgressBar.Fill />
 								</ProgressBar.Track>
 							</ProgressBar>
 							<div className={styles.progressMeta}>
-								<strong>{progress}%</strong>
+								<strong>
+									{new Intl.NumberFormat(locale, { style: "percent" }).format(
+										progress / 100,
+									)}
+								</strong>
 								{progressDetail ? <span>{progressDetail}</span> : null}
 							</div>
 						</div>
-					) : (
-						<div className={styles.actions}>
+					) : null}
+					{error && (
+						<p className={styles.error} role="alert">
+							{friendlyError ? error : <LocalizedError error={error} />}
+						</p>
+					)}
+					<div className={styles.actions}>
+						{payload.phase === "error" && (
+							<ErrorReportButton
+								error={`${getTitle(payload, t)}: ${payload.detail}`}
+								context="update"
+								compact
+							/>
+						)}
+						<Button
+							type="button"
+							variant="secondary"
+							size="sm"
+							disabled={dismissing}
+							onClick={() => void run(handleNotNow, true)}
+						>
+							{t("launch.updateToast.notNow", "Not now")}
+						</Button>
+						{payload.phase !== "downloading" && (
 							<Button
 								type="button"
-								variant="secondary"
 								size="sm"
-								onClick={handleNotNow}
+								disabled={busy}
+								onClick={() => void run(handlePrimaryAction)}
 							>
-								{t("launch.updateToast.notNow", "Not now")}
-							</Button>
-							<Button type="button" size="sm" onClick={handlePrimaryAction}>
 								{getPrimaryLabel(payload, t)}
 							</Button>
-						</div>
-					)}
+						)}
+					</div>
 				</div>
 			</Card>
 		</div>

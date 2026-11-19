@@ -55,14 +55,14 @@ describe("selectRecordingMimeType", () => {
 		expect(mimeType).toBeUndefined();
 	});
 
-	it("prefers MP4/H.264 for webcam captures when supported", () => {
+	it("avoids MP4 for webcam captures even when supported", () => {
 		const mimeType = selectWebcamRecordingMimeType({
 			isTypeSupported: (type) =>
 				["video/mp4;codecs=avc1.42E01E", "video/webm;codecs=vp9"].includes(type),
 			canPlayType: () => "probably",
 		});
 
-		expect(mimeType).toBe("video/mp4;codecs=avc1.42E01E");
+		expect(mimeType).toBe("video/webm;codecs=vp9");
 	});
 
 	it("falls back to WebM webcam capture when MP4 is unavailable", () => {
@@ -85,4 +85,21 @@ describe("selectRecordingMimeType", () => {
 		expect(isWebmMimeType("video/mp4;codecs=avc1")).toBe(false);
 		expect(isWebmMimeType(undefined)).toBe(false);
 	});
+});
+
+it("uses recordable H264 WebM even when Chromium reports playback unsupported", () => {
+	expect(
+		selectWebcamRecordingMimeType({
+			isTypeSupported: () => true,
+			canPlayType: (type) => (type.includes("mp4") ? "probably" : ""),
+		}),
+	).toBe("video/webm;codecs=h264");
+});
+it("refuses MP4-only webcam runtimes", () => {
+	expect(
+		selectWebcamRecordingMimeType({
+			isTypeSupported: (type) => type.startsWith("video/mp4"),
+			canPlayType: () => "probably",
+		}),
+	).toBeUndefined();
 });

@@ -1,0 +1,17 @@
+---
+import TermsOfService, { termsTitle, termsDescription } from "../legal/TermsOfService.jsx";
+import "../legal/recordly-terms.css";
+import { legalReady } from "../legal/config";
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{termsTitle} · Recordly</title>
+    <meta name="description" content={termsDescription} />
+    <meta name="robots" content={legalReady ? 'index, follow' : 'noindex, nofollow'} />
+    <link rel="canonical" href="https://videos.recordly.dev/terms" />
+  </head>
+  <body><TermsOfService /></body>
+</html>

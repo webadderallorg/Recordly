@@ -9,11 +9,16 @@ describe("getHudOverlayTaskbarOptions", () => {
 		});
 	});
 
-	it.each([
-		"darwin",
-		"linux",
-	] as const)("keeps the HUD non-focusable and out of the taskbar on %s", (platform) => {
-		expect(getHudOverlayTaskbarOptions(platform)).toEqual({
+	it("uses a non-activating macOS panel so HUD clicks do not raise Home", () => {
+		expect(getHudOverlayTaskbarOptions("darwin")).toEqual({
+			skipTaskbar: true,
+			focusable: true,
+			type: "panel",
+		});
+	});
+
+	it("keeps the Linux HUD non-focusable and out of the taskbar", () => {
+		expect(getHudOverlayTaskbarOptions("linux")).toEqual({
 			skipTaskbar: true,
 			focusable: false,
 		});

@@ -1,12 +1,15 @@
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { Modal } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 import { MusicNotes } from "@/components/ui/icons";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import type { RecordingLibraryEntry } from "@/types/recordingLibrary";
+import { DurationBadge } from "./DurationBadge";
 const isAudio = (name: string) => /\.(wav|m4a|mp3|ogg|flac)$/i.test(name);
 export function RawThumbnail({ entry, active }: { entry: RecordingLibraryEntry; active: boolean }) {
 	const video = useRef<HTMLVideoElement>(null);
 	const [poster, setPoster] = useState<string>();
+	const [duration, setDuration] = useState<number>();
 	useEffect(() => {
 		let active = true;
 		if (!isAudio(entry.name))
@@ -54,12 +57,15 @@ export function RawThumbnail({ entry, active }: { entry: RecordingLibraryEntry; 
 					muted
 					playsInline
 					preload="metadata"
+					onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+					onDurationChange={(event) => setDuration(event.currentTarget.duration)}
 					className="h-full w-full object-cover"
 					onTimeUpdate={(event) => {
 						if (event.currentTarget.currentTime >= 5) event.currentTarget.pause();
 					}}
 				/>
 			)}
+			<DurationBadge seconds={duration} />
 		</div>
 	);
 }
@@ -70,6 +76,7 @@ export function RawPreview({
 	entry: ProjectLibraryEntry | null;
 	onClose: () => void;
 }) {
+	const { t: uiText } = useUiLocale();
 	return (
 		<Modal
 			isOpen={!!entry}
@@ -77,9 +84,9 @@ export function RawPreview({
 				if (!open) onClose();
 			}}
 		>
-			<Modal.Backdrop>
+			<Modal.Backdrop variant="blur">
 				<Modal.Container size="lg">
-					<Modal.Dialog aria-label="Raw file preview">
+					<Modal.Dialog aria-label={uiText("ui.rawFilePreview")}>
 						<Modal.CloseTrigger />
 						<Modal.Header>
 							<Modal.Heading>{entry?.name}</Modal.Heading>

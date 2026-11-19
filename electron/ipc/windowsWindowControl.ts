@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import type { SelectedSource, WindowBounds } from "./types";
 import { getScreen, parseWindowId } from "./utils";
 import { convertPhysicalBoundsToDip } from "./windowsCaptureSelection";
+import { readWindowsWindowGeometry } from "./windowsWindowGeometry";
 
 const execFileAsync = promisify(execFile);
 
@@ -27,14 +28,49 @@ export async function bringWindowsWindowForward(windowId: number): Promise<void>
 	});
 }
 
-export async function resolveWindowsWindowBounds(
-	source: SelectedSource,
-): Promise<WindowBounds | null> {
+const pendingBoundsQueries = new Map<string, Promise<WindowBounds | null>>();
+
+export function resolveWindowsWindowBounds(source: SelectedSource): Promise<WindowBounds | null> {
+	const key = source.id || source.windowTitle || source.name;
+	const pending = pendingBoundsQueries.get(key);
+	if (pending) return pending;
+	// Add-Type can take longer than the 250ms polling interval. Share the
+	// in-flight lookup between the preview and cursor telemetry rather than
+	// launching overlapping PowerShell processes until they start timing out.
+	const query = queryWindowsWindowBounds(source).finally(() => pendingBoundsQueries.delete(key));
+	pendingBoundsQueries.set(key, query);
+	return query;
+}
+
+async function queryWindowsWindowBounds(source: SelectedSource): Promise<WindowBounds | null> {
 	const windowId = parseWindowId(source.id);
 	const windowTitle =
 		typeof source.windowTitle === "string" ? source.windowTitle.trim() : source.name.trim();
 
 	if (!windowId && !windowTitle) return null;
+	if (windowId) {
+		try {
+			const bounds = (await readWindowsWindowGeometry([
+				"--window-bounds",
+				String(windowId),
+			])) as WindowBounds | null;
+			if (!bounds) return null;
+			if (
+				![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) ||
+				bounds.width <= 0 ||
+				bounds.height <= 0
+			)
+				return null;
+			const electronScreen = getScreen();
+			return typeof electronScreen.screenToDipPoint === "function"
+				? convertPhysicalBoundsToDip(bounds, (point) =>
+						electronScreen.screenToDipPoint(point),
+					)
+				: bounds;
+		} catch {
+			// Older helper bundles do not have geometry commands; retain their fallback.
+		}
+	}
 
 	const script = [
 		"$windowId = $env:RECORDLY_WINDOW_ID",
@@ -77,9 +113,10 @@ export async function resolveWindowsWindowBounds(
 	try {
 		const { stdout } = await execFileAsync(
 			"powershell.exe",
-			["-NoProfile", "-Command", script],
+			["-NoProfile", "-NonInteractive", "-Command", script],
 			{
-				timeout: 5000,
+				timeout: 15000,
+				windowsHide: true,
 				env: {
 					...process.env,
 					RECORDLY_WINDOW_ID: String(windowId ?? ""),

@@ -1,10 +1,14 @@
 #include <windows.h>
+#include <dwmapi.h>
+#include <cstdint>
 #include <cstdio>
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <thread>
 #include <atomic>
 #include <unordered_map>
+#include <unordered_set>
 
 static std::atomic<bool> g_running{true};
 
@@ -19,8 +23,77 @@ static void stdinListener() {
     g_running.store(false);
 }
 
-int main() {
+static bool windowBounds(HWND window, RECT& rect) {
+    if (!IsWindowVisible(window) || IsIconic(window)) return false;
+    if (DwmGetWindowAttribute(window, DWMWA_EXTENDED_FRAME_BOUNDS, &rect, sizeof(rect)) != S_OK &&
+        !GetWindowRect(window, &rect)) return false;
+    return rect.right > rect.left && rect.bottom > rect.top;
+}
+
+static void printBounds(const RECT& rect) {
+    std::cout << "\"x\":" << rect.left << ",\"y\":" << rect.top
+              << ",\"width\":" << rect.right - rect.left
+              << ",\"height\":" << rect.bottom - rect.top;
+}
+
+int main(int argc, char* argv[]) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
+
+    if (argc > 1) {
+        SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        const std::string command = argv[1];
+        if (command == "--desktop-wallpaper" && argc == 2) {
+            wchar_t wallpaper[32768]{};
+            if (!SystemParametersInfoW(SPI_GETDESKWALLPAPER, 32768, wallpaper, 0)) return 1;
+            const int length = lstrlenW(wallpaper);
+            if (length == 0) {
+                std::cout << "\"\"\n";
+                return 0;
+            }
+            const int bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wallpaper,
+                length, nullptr, 0, nullptr, nullptr);
+            if (bytes <= 0) return 1;
+            std::string utf8(bytes, '\0');
+            if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wallpaper,
+                length, utf8.data(), bytes, nullptr, nullptr)) return 1;
+            std::cout << std::quoted(utf8) << '\n';
+            return 0;
+        }
+        if (command == "--window-bounds" && argc == 3) {
+            try {
+                size_t consumed = 0;
+                const auto handle = std::stoull(argv[2], &consumed);
+                if (consumed != std::string(argv[2]).size() || handle == 0) return 1;
+                RECT rect{};
+                if (!windowBounds(reinterpret_cast<HWND>(static_cast<uintptr_t>(handle)), rect)) {
+                    std::cout << "null\n";
+                } else {
+                    std::cout << '{'; printBounds(rect); std::cout << "}\n";
+                }
+                return 0;
+            } catch (...) { return 1; }
+        }
+        if (command == "--list-windows" && argc == 2) {
+            std::unordered_set<HWND> seen;
+            bool first = true;
+            std::cout << '[';
+            for (HWND window = GetTopWindow(nullptr); window && seen.insert(window).second;
+                 window = GetWindow(window, GW_HWNDNEXT)) {
+                RECT rect{};
+                if (!windowBounds(window, rect)) continue;
+                DWORD ownerPid = 0;
+                GetWindowThreadProcessId(window, &ownerPid);
+                if (!first) std::cout << ',';
+                first = false;
+                std::cout << "{\"id\":" << reinterpret_cast<uintptr_t>(window)
+                          << ",\"ownerPid\":" << ownerPid << ',';
+                printBounds(rect); std::cout << '}';
+            }
+            std::cout << "]\n";
+            return 0;
+        }
+        return 1;
+    }
 
     std::unordered_map<HCURSOR, std::string> cursorMap;
     cursorMap[LoadCursor(NULL, IDC_ARROW)]    = "arrow";
