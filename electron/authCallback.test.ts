@@ -1,6 +1,6 @@
 import { app, ipcMain } from "electron";
 import { expect, it, vi } from "vitest";
-import { testAppPath, testAppDocument } from "./testing/rendererFixture";
+import { testAppDocument, testAppPath } from "./testing/rendererFixture";
 
 const state = vi.hoisted(() => ({
 	request: undefined as ((request: unknown, response: unknown) => void) | undefined,

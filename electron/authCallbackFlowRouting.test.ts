@@ -1,6 +1,6 @@
 import { app, ipcMain } from "electron";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { testAppPath, testAppDocument } from "./testing/rendererFixture";
+import { testAppDocument, testAppPath } from "./testing/rendererFixture";
 
 type Owner = {
 	id: number;
