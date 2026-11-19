@@ -18,6 +18,7 @@ function source(codec = "vp09", metadata: Record<string, unknown> = {}) {
 		streams: [
 			{ codec_type_string: "audio", codec_string: "opus" },
 			{
+				index: 1,
 				codec_type_string: "video",
 				profile: "Profile 0",
 				pix_fmt: "yuv420p",
@@ -45,6 +46,7 @@ function source(codec = "vp09", metadata: Record<string, unknown> = {}) {
 		readMediaPacket,
 		getDecoderConfig: vi.fn().mockResolvedValue(config),
 		getMediaInfo,
+		getMediaStream: vi.fn().mockResolvedValue({ index: 1 }),
 	} as unknown as WebDemuxer;
 	const setPackets = (next: Packet[]) => {
 		packets = next;
@@ -125,6 +127,41 @@ describe("getVideoDecoderConfig", () => {
 			`vp09.0${profile}.41.${String(bitDepth).padStart(2, "0")}`,
 		);
 		expect(cancel).toHaveBeenCalledOnce();
+	});
+
+	it("returns when the demuxer never settles stream cancellation", async () => {
+		vi.useFakeTimers();
+		try {
+			const { demuxer, setPackets, cancel } = source("vp09", {
+				pix_fmt: "",
+				profile: "unknown",
+			});
+			cancel.mockReturnValue(new Promise(() => {}));
+			setPackets([{ keyframe: 1, data: keyframeBytes(0, 8) }]);
+			const result = getVideoDecoderConfig(demuxer);
+			await vi.advanceTimersByTimeAsync(1000);
+			expect((await result).codec).toBe("vp09.00.41.08");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("reads metadata from the video track the decoder selects", async () => {
+		const { demuxer, getMediaInfo } = source();
+		getMediaInfo.mockResolvedValue({
+			duration: 10,
+			start_time: 0,
+			streams: [
+				{ index: 0, codec_type_string: "video", profile: "Profile 0", pix_fmt: "yuv420p" },
+				{
+					index: 1,
+					codec_type_string: "video",
+					profile: "Profile 2",
+					pix_fmt: "yuv420p10le",
+				},
+			],
+		});
+		expect((await getVideoDecoderConfig(demuxer)).codec).toMatch(/^vp09\.02\.\d\d\.10$/);
 	});
 
 	it("skips leading delta packets until the first keyframe", async () => {

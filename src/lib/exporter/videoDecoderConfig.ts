@@ -53,13 +53,22 @@ function readVp9KeyframeFormat(data: Uint8Array): { profile: number; bitDepth: n
 	return { profile, bitDepth };
 }
 
+const CANCEL_TIMEOUT_MS = 1000;
+
 /** Repair ambiguous VP9 identifiers emitted by web-demuxer for some WebM files. */
 export async function getVideoDecoderConfig(demuxer: WebDemuxer): Promise<VideoDecoderConfig> {
 	const config = await demuxer.getDecoderConfig("video");
 	if (config.codec !== "vp09" && config.codec !== "vp9") return config;
 
-	const { streams, duration, start_time: mediaStartTime } = await demuxer.getMediaInfo();
-	const stream = streams.find((candidate) => candidate.codec_type_string === "video");
+	const [{ streams, duration, start_time: mediaStartTime }, selected] = await Promise.all([
+		demuxer.getMediaInfo(),
+		demuxer.getMediaStream("video"),
+	]);
+	// Use the track the decoder config and packet reads select, not just the first video track.
+	const stream = streams.find(
+		(candidate) =>
+			candidate.codec_type_string === "video" && candidate.index === selected.index,
+	);
 	// Do not assume profile 0 / 8-bit: imported VP9 can also be 10/12-bit or 4:4:4.
 	const pixelFormat = /^(yuvj?(420|422|444)p|gbrp)(?:(10|12)(?:le|be))?$/.exec(
 		stream?.pix_fmt ?? "",
@@ -108,8 +117,13 @@ export async function getVideoDecoderConfig(demuxer: WebDemuxer): Promise<VideoD
 		} finally {
 			// Await cancellation before either caller starts its own positioned read.
 			// Otherwise the probe and export could compete for the demuxer worker.
+			// web-demuxer 4.0.0 never settles cancel() if the worker reported a read
+			// error, so bound the wait instead of stalling the export.
 			try {
-				await reader.cancel();
+				await Promise.race([
+					reader.cancel().catch(() => undefined),
+					new Promise((resolve) => setTimeout(resolve, CANCEL_TIMEOUT_MS)),
+				]);
 			} finally {
 				reader.releaseLock();
 			}
