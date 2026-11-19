@@ -1,9 +1,9 @@
-import { SharedRecordings } from "@/components/video-editor/cloud/SharedRecordings";
 import { createRoot } from "react-dom/client";
-import { I18nProvider } from "@/contexts/I18nContext";
+import { SharedRecordings } from "@/components/video-editor/cloud/SharedRecordings";
 import { DashboardFilters } from "@/components/video-editor/dashboard/DashboardFilters";
 import { useDashboardModel } from "@/components/video-editor/dashboard/useDashboardModel";
 import type { ProjectLibraryEntry } from "@/components/video-editor/ProjectBrowserDialog";
+import { I18nProvider } from "@/contexts/I18nContext";
 import "@/index.css";
 
 const names = ["Short voice", "Long silent", "Medium audio", "Unavailable"];

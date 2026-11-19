@@ -1,4 +1,3 @@
-import { nativeT, nativeNumber } from "./nativeI18n";
 import fs from "node:fs";
 import path from "node:path";
 import type { MessageBoxOptions, MessageBoxReturnValue } from "electron";
@@ -6,6 +5,7 @@ import { app, BrowserWindow, dialog, shell } from "electron";
 import { autoUpdater } from "electron-updater";
 import { USER_DATA_PATH } from "./appPaths";
 import { readAppSetting, writeAppSetting } from "./appSettingsStore";
+import { nativeNumber, nativeT } from "./nativeI18n";
 import { getUpdateChannelConfiguration } from "./updateChannel";
 
 const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;

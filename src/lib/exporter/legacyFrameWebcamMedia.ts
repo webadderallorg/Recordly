@@ -1,8 +1,8 @@
 import { getWebcamMediaTargetTimeSeconds } from "@/components/video-editor/videoPlayback/webcamSync";
-import { WebcamFrameSource } from "./webcamFrameSource";
 import type { LegacyFrameRendererContext } from "./legacyFrameRendererContext";
 import { resolveMediaElementSource } from "./localMediaSource";
 import { WEBCAM_MEDIA_ELEMENT_READY_TIMEOUT_MS } from "./modernFrameUtils";
+import { WebcamFrameSource } from "./webcamFrameSource";
 
 export async function setupWebcamSource(
 	context: Pick<

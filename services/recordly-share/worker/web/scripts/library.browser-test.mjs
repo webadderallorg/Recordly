@@ -1,10 +1,11 @@
 // Local fixtures only; no account or cloud mutations.
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, expect as baseExpect } from "@playwright/test";
+import { expect as baseExpect, chromium } from "@playwright/test";
+
 const expect = baseExpect.configure({ timeout: 15_000 });
 const root = fileURLToPath(new URL("../", import.meta.url));
 const port = Number(process.env.LIBRARY_TEST_PORT || 5198);

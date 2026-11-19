@@ -1,10 +1,10 @@
-import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { Alert, Button, Description, Modal } from "@heroui/react";
 import { ArrowLeft, X } from "@phosphor-icons/react";
 import type { User } from "@supabase/supabase-js";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { LegalLinks } from "@/components/billing/LegalLinks";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { SignOut } from "@/components/ui/icons";
 import { RecordlyDemoVideo } from "@/components/ui/RecordlyDemoVideo";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
@@ -13,22 +13,22 @@ import {
 	getEnabledSignInProviders,
 	type RecordlyOAuthProvider,
 	sendSignInCode,
-	verifySignInCode,
 	signInWithEmail,
 	signInWithSocial,
 	signOutRecordly,
+	verifySignInCode,
 } from "@/lib/auth/recordlyAuth";
-import { RecordlySignInFields, SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS } from "./RecordlySignInFields";
 import {
 	OnboardingBody,
 	OnboardingFooter,
 	OnboardingHeader,
-	OnboardingLayout,
 	OnboardingHeroTitle,
+	OnboardingLayout,
 	OnboardingPrimaryAction,
 } from "./OnboardingLayout";
 import { OnboardingPermissions } from "./OnboardingPermissions";
 import { OnboardingSoundtrack } from "./OnboardingSoundtrack";
+import { RecordlySignInFields, SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS } from "./RecordlySignInFields";
 
 const MotionDialog = motion.create(Modal.Dialog);
 

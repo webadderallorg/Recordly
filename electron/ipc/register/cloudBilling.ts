@@ -1,10 +1,10 @@
 import { ipcMain, shell } from "electron";
-import { isTrustedRenderer } from "../../trustedRenderer";
 import {
 	type CloudBillingResult,
 	parseCloudBillingCatalog,
 	parseCloudBillingStatus,
 } from "../../../src/types/cloudBilling";
+import { isTrustedRenderer } from "../../trustedRenderer";
 import { normalizeCloudEndpoint } from "../cloudShareContract";
 
 const MAX_RESPONSE_BYTES = 32 * 1024;

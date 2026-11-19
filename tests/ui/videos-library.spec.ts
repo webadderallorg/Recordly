@@ -373,7 +373,9 @@ for (const enabled of [true, false]) {
 					: get(key);
 		});
 		await page.evaluate((enabled) => {
-			const prefs = JSON.parse(localStorage.getItem("recordly.editor.preferences.v2") || "{}");
+			const prefs = JSON.parse(
+				localStorage.getItem("recordly.editor.preferences.v2") || "{}",
+			);
 			localStorage.setItem(
 				"recordly.editor.preferences.v2",
 				JSON.stringify({ ...prefs, autoApplyFreshRecordingAutoZooms: enabled }),

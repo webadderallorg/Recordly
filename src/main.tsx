@@ -1,11 +1,11 @@
-import { AppErrorBoundary } from "./components/feedback/AppErrorBoundary";
-import { installFeedbackDiagnostics } from "./lib/feedback/diagnostics";
-import { installPointerFocusGuard } from "./lib/pointerFocus";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.tsx";
+import { AppErrorBoundary } from "./components/feedback/AppErrorBoundary";
 import { I18nProvider } from "./contexts/I18nContext.tsx";
 import { ThemeProvider } from "./contexts/ThemeContext.tsx";
+import { installFeedbackDiagnostics } from "./lib/feedback/diagnostics";
+import { installPointerFocusGuard } from "./lib/pointerFocus";
 import "./index.css";
 
 installFeedbackDiagnostics();

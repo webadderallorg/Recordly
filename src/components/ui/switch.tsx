@@ -1,5 +1,6 @@
 import { Switch as HeroSwitch } from "@heroui/react";
 import { type ComponentProps } from "react";
+
 type SwitchProps = Omit<
 	Omit<ComponentProps<typeof HeroSwitch>, "children"> & { children?: import("react").ReactNode },
 	"onChange"

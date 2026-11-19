@@ -1,5 +1,3 @@
-import { nativeT } from "../../nativeI18n";
-import { observeShareExportSource, progressiveShareFfmpegArgs } from "../growingShareUpload";
 import type { ChildProcessByStdio } from "node:child_process";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
@@ -7,6 +5,7 @@ import path from "node:path";
 import type { Readable, Writable } from "node:stream";
 import type { SaveDialogOptions } from "electron";
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { nativeT } from "../../nativeI18n";
 import {
 	getAvailableExportPath,
 	getSelectedExportPath,
@@ -44,6 +43,7 @@ import {
 	settleNativeVideoExportWriteFrameRequest,
 } from "../export/native-video";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
+import { observeShareExportSource, progressiveShareFfmpegArgs } from "../growingShareUpload";
 import {
 	buildNativeH264StreamExportArgs,
 	buildNativeVideoExportArgs,

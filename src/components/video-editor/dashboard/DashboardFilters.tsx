@@ -1,14 +1,12 @@
-import { useId } from "react";
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
-import type { DashboardProps } from "./types";
 import { Dropdown } from "@heroui/react";
-import { ArrowUp, ArrowDown, Broom, CheckSquare } from "@phosphor-icons/react";
-import { CaretDown, Trash } from "@/components/ui/icons";
-
+import { ArrowDown, ArrowUp, Broom, CheckSquare } from "@phosphor-icons/react";
+import { useId } from "react";
 import { Button } from "@/components/ui/button";
-
-import type { DashboardModel } from "./useDashboardModel";
+import { CaretDown, Trash } from "@/components/ui/icons";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import type { LibrarySort } from "./librarySort";
+import type { DashboardProps } from "./types";
+import type { DashboardModel } from "./useDashboardModel";
 
 export function DashboardFilters({
 	isRaw,

@@ -1,8 +1,8 @@
+import { Point } from "pixi.js";
 import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Point } from "pixi.js";
-import VideoPlayback, { type VideoPlaybackRef } from "@/components/video-editor/VideoPlayback";
 import type { ZoomRegion } from "@/components/video-editor/types";
+import VideoPlayback, { type VideoPlaybackRef } from "@/components/video-editor/VideoPlayback";
 import { I18nProvider } from "@/contexts/I18nContext";
 import "@/index.css";
 

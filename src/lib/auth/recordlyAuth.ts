@@ -2,11 +2,11 @@ import { createClient, type Provider, type User } from "@supabase/supabase-js";
 import { translate } from "@/i18n/runtime";
 import { traceAuthOperation } from "./authDiagnostics";
 import { oauthFlowIdRedirectsEnabled } from "./oauthFlowRedirects";
-import { isSavedSignInLocked } from "./savedSignIn";
 import {
 	createPendingSignupConsentStore,
 	createSignupConsentRetryStore,
 } from "./pendingSignupConsent";
+import { isSavedSignInLocked } from "./savedSignIn";
 import { marketingEmailMetadata, type SignupConsent, signupConsentMetadata } from "./signupConsent";
 import {
 	SignupConsentScopeChangedError,

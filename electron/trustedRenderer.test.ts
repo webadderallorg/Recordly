@@ -1,8 +1,11 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { testAppPath, testAppDocument } from "./testing/rendererFixture";
+import { testAppDocument, testAppPath } from "./testing/rendererFixture";
+
 vi.mock("electron", () => ({ app: { getAppPath: () => testAppPath } }));
 vi.mock("./rendererServer", () => ({ getPackagedRendererBaseUrl: () => "http://127.0.0.1:43820" }));
+
 import { isTrustedRenderer } from "./trustedRenderer";
+
 afterEach(() => vi.unstubAllEnvs());
 
 it.each([

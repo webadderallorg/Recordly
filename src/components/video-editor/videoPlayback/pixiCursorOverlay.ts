@@ -1,15 +1,11 @@
 import { Container, Sprite } from "pixi.js";
 import {
-	getCursorIdleOpacity,
-	normalizeCursorIdleHideSettings,
-	type CursorIdleHideSettings,
-} from "./cursorIdleVisibility";
-import {
 	type CursorClickEffectStyle,
 	type CursorStyle,
 	type CursorTelemetryPoint,
 	normalizeCursorClickEffectColor,
 } from "../types";
+import { prepareCinematicCursorTelemetry } from "./cinematicCursorTelemetry";
 import {
 	getCursorPackStyleAsset,
 	getCursorStyleAsset,
@@ -17,11 +13,15 @@ import {
 } from "./cursorAssetRegistry";
 import { drawClickEffectGraphics } from "./cursorClickEffects";
 import {
+	type CursorIdleHideSettings,
+	getCursorIdleOpacity,
+	normalizeCursorIdleHideSettings,
+} from "./cursorIdleVisibility";
+import {
 	applyCursorVisualStyle,
 	type CursorOverlayVisuals,
 	createCursorOverlayVisuals,
 } from "./cursorOverlayVisuals";
-import { prepareCinematicCursorTelemetry } from "./cinematicCursorTelemetry";
 import { interpolateCursorPosition } from "./cursorPosition";
 import {
 	CURSOR_DIRECTIONAL_BLUR_STRENGTH,

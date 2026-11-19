@@ -1,7 +1,7 @@
-import { translate, useI18n } from "@/contexts/I18nContext";
 import { Avatar } from "@heroui/react";
-import { createContext, useContext } from "react";
 import type { User } from "@supabase/supabase-js";
+import { createContext, useContext } from "react";
+import { translate, useI18n } from "@/contexts/I18nContext";
 
 export const AccountProfileContext = createContext<User | null>(null);
 export function getAccountProfile(user: User | null, fallback?: string) {

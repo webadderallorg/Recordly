@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { feedbackHandler } from "../../../services/supabase/functions/submit-feedback/handler";
+
 const backend = {
 	authenticate: vi.fn(),
 	reserve: vi.fn(),

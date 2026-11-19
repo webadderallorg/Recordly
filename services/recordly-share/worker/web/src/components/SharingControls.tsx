@@ -1,12 +1,12 @@
 import { Button, Modal, Spinner } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 import {
+	type Comment,
 	deleteModerationComment,
 	fetchModeration,
 	fetchModerationComments,
-	updateModeration,
-	type Comment,
 	type ModerationSettings,
+	updateModeration,
 } from "../scripts/api";
 import { Notice } from "./ShareUI";
 

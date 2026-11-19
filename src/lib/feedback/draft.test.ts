@@ -5,6 +5,7 @@ vi.mock("@/lib/appSettings", () => ({
 	loadAppSetting: storage.load,
 	saveAppSetting: storage.save,
 }));
+
 import { getFeedbackDraft, updateFeedbackDraft } from "./draft";
 
 it("keeps a previous subject and message when loading an older draft", () => {

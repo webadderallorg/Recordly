@@ -7,8 +7,8 @@ import {
 } from "@/components/video-editor/editorPreferences";
 import { useWallpaperPreviews } from "@/components/video-editor/useWallpaperPreviews";
 import { peekWallpaperThumbnailUrl } from "@/lib/assetPath";
-import { cn } from "@/lib/utils";
 import { DESKTOP_WALLPAPER } from "@/lib/desktopWallpaper";
+import { cn } from "@/lib/utils";
 import {
 	BUILT_IN_WALLPAPERS,
 	DEFAULT_WALLPAPER_PATH,

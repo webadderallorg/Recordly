@@ -56,7 +56,11 @@ export async function installDesktopBridge(
 				try {
 					const stored = localStorage.getItem(key);
 					const preferences: unknown = stored ? JSON.parse(stored) : null;
-					if (preferences && typeof preferences === "object" && !Array.isArray(preferences)) {
+					if (
+						preferences &&
+						typeof preferences === "object" &&
+						!Array.isArray(preferences)
+					) {
 						return { ...defaultPreferences, ...preferences };
 					}
 				} catch {

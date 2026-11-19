@@ -1,9 +1,9 @@
-import type { ProjectPreviewData } from "@/types/projectPreview";
 import { FrameRenderer } from "@/lib/exporter/frameRenderer";
 import {
 	captureProjectThumbnailCanvas,
 	getProjectThumbnailRenderSize,
 } from "@/lib/projectThumbnailCanvas";
+import type { ProjectPreviewData } from "@/types/projectPreview";
 import { getAspectRatioValue } from "@/utils/aspectRatioUtils";
 import { normalizeProjectEditor } from "../projectPersistence";
 import { type CursorTelemetryPoint, findClipAtTimelineTime, getClipSourceStartMs } from "../types";

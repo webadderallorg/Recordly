@@ -1,9 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CursorStylePreview } from "./CursorAppearancePreviews";
 import { CursorSettings } from "./CursorSettings";
 import { resolveSettingsPanelProps } from "./settingsPanelDefaults";
 
-import { CursorStylePreview } from "./CursorAppearancePreviews";
 const previews = vi.hoisted(() => ({
 	urls: null as Record<string, { url: string; offsetX: number; offsetY: number }> | null,
 	get: vi.fn(),

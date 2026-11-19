@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { NativeCaptureStopResult } from "./recordingNativeCleanup";
 import { RecordingFileWriter } from "./recordingFileWriter";
+import type { NativeCaptureStopResult } from "./recordingNativeCleanup";
 import { useRecorderEditorSession } from "./useRecorderEditorSession";
 import { useRecorderStop } from "./useRecorderStop";
 

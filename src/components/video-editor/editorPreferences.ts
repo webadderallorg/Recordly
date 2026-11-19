@@ -1,7 +1,7 @@
-import { normalizeCustomGradients } from "./customGradients";
 import { DESKTOP_WALLPAPER } from "@/lib/desktopWallpaper";
-import { normalizeExportPreferences, type ExportPreferences } from "./exportPreferences";
 import { loadAppSetting, saveAppSetting } from "../../lib/appSettings";
+import { normalizeCustomGradients } from "./customGradients";
+import { type ExportPreferences, normalizeExportPreferences } from "./exportPreferences";
 import {
 	getDefaultBorderRadiusPercent,
 	legacyBorderRadiusPixelsToPercent,

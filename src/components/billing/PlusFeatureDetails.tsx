@@ -1,4 +1,3 @@
-import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import {
 	ArrowClockwise,
 	Briefcase,
@@ -10,6 +9,7 @@ import {
 	Sparkle,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { useBilling } from "./BillingProvider";
 import { PlusBadge } from "./PlusBadge";
 

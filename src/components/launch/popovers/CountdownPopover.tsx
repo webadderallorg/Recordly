@@ -1,9 +1,9 @@
-import { CountdownDelayIcon } from "../CountdownDelayIcon";
 import type { ReactElement } from "react";
-import { useScopedT, useI18n } from "@/contexts/I18nContext";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
+import { CountdownDelayIcon } from "../CountdownDelayIcon";
 import styles from "../LaunchWindow.module.css";
-import { DropdownItem, HudPopover } from "./PopoverScaffold";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
+import { DropdownItem, HudPopover } from "./PopoverScaffold";
 
 const POPOVER_ID = "countdown";
 const COUNTDOWN_OPTIONS = [0, 3, 5, 10];

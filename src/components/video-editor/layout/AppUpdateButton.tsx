@@ -1,11 +1,11 @@
-import { LocalizedError } from "@/components/feedback/LocalizedError";
 import { ProgressBar } from "@heroui/react";
-import { CheckCircleIcon, DownloadSimpleIcon, WarningCircleIcon } from "@/components/ui/icons";
 import { useEffect, useRef, useState } from "react";
+import { LocalizedError } from "@/components/feedback/LocalizedError";
 import { Button } from "@/components/ui/button";
+import { CheckCircleIcon, DownloadSimpleIcon, WarningCircleIcon } from "@/components/ui/icons";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useI18n } from "@/contexts/I18nContext";
 import styles from "./AppUpdateButton.module.css";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 type Payload = Awaited<ReturnType<Window["electronAPI"]["getCurrentUpdateToastPayload"]>>;
 

@@ -1,8 +1,8 @@
-import { isWebcamCropRegionDefault } from "@/components/video-editor/webcamOverlay";
 import {
 	getCursorIdleIntervals,
 	normalizeCursorIdleHideSettings,
 } from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
+import { isWebcamCropRegionDefault } from "@/components/video-editor/webcamOverlay";
 import { isVideoWallpaperSource } from "@/lib/wallpapers";
 import { requiresClipTimelineRendering } from "./clipTimeline";
 import { getNowMs } from "./modernExportConstants";

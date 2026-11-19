@@ -1,12 +1,12 @@
 import { Button, Label, Modal, TextArea, TextField, toast } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 import {
+	type Comment,
+	type CommentAccountState,
 	CommentSignInError,
 	deleteOwnComment,
 	formatTimestamp,
 	updateOwnComment,
-	type Comment,
-	type CommentAccountState,
 } from "../scripts/api";
 import { Notice } from "./ShareUI";
 

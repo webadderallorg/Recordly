@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { createRequire } from "node:module";
 import { expect, it, vi } from "vitest";
+
 vi.mock("electron", () => ({ app: { getPath: () => os.tmpdir() } }));
+
 import { transcribeParakeetAudio } from "./parakeet";
 
 // Opt-in real-model smoke. Normal unit runs require neither network nor model downloads.

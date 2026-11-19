@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { checkShareCapacity } from "./shareCapacity";
 import { invalidateCloudBillingReads } from "./cloudBillingReads";
+import { checkShareCapacity } from "./shareCapacity";
+
 afterEach(() => {
 	invalidateCloudBillingReads();
 	vi.unstubAllGlobals();

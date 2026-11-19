@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	getTimelineContentMinHeightPx,
 	getTimelineRowsMinHeightPx,
-	TIMELINE_CLIP_ROW_HEIGHT_PX,
 	TIMELINE_AXIS_HEIGHT_PX,
+	TIMELINE_CLIP_ROW_HEIGHT_PX,
 	TIMELINE_ROW_MIN_HEIGHT_PX,
 } from "./timelineLayout";
 

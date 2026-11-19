@@ -11,12 +11,12 @@ import {
 import { Layout } from "@phosphor-icons/react";
 import { useState } from "react";
 import { FaYoutube } from "react-icons/fa6";
+import instagram from "@/assets/aspect-ratio/instagram.png";
+import twitter from "@/assets/aspect-ratio/twitter.png";
 import { Button } from "@/components/ui/button";
 import { CaretDown } from "@/components/ui/icons";
 import { useI18n } from "@/contexts/I18nContext";
 import { type AspectRatio, getAspectRatioValue } from "@/utils/aspectRatioUtils";
-import instagram from "@/assets/aspect-ratio/instagram.png";
-import twitter from "@/assets/aspect-ratio/twitter.png";
 import "./AspectRatioPicker.css";
 
 // Standard frame ratios and common platform sizes, using HeroUI radio controls.

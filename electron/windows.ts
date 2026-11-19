@@ -1,5 +1,3 @@
-import { nativeT } from "./nativeI18n";
-import { recordingEditorLoading } from "./recordingEditorLoading";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -29,7 +27,9 @@ import {
 	nativeCaptureProcess,
 } from "./ipc/state";
 import type { CaptureArea } from "./ipc/types";
+import { nativeT } from "./nativeI18n";
 import { startOnboardingIntro } from "./onboardingIntro";
+import { recordingEditorLoading } from "./recordingEditorLoading";
 import { outsideRecordingRects } from "./recordingFocus";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 

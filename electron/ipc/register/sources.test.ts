@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import type { BrowserWindow } from "electron";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SelectedSource } from "../types";
+
 const mocks = vi.hoisted(() => ({
 	handlers: new Map<string, (...args: unknown[]) => unknown>(),
 	sources: vi.fn(),
@@ -54,7 +55,9 @@ vi.mock("../utils", () => ({
 		getPrimaryDisplay: () => ({ id: 1 }),
 	}),
 }));
+
 import { getDesktopSources, registerSourceHandlers } from "./sources";
+
 const platform = process.platform;
 beforeEach(() => {
 	vi.clearAllMocks();

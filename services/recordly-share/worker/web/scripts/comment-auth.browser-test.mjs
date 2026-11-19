@@ -1,8 +1,9 @@
 // Local shared-checkout viewer with fixture auth APIs; no cloud writes or real sign-in.
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { mkdir } from "node:fs/promises";
-import { chromium, expect as baseExpect } from "@playwright/test";
+import { fileURLToPath } from "node:url";
+import { expect as baseExpect, chromium } from "@playwright/test";
+
 const expect = baseExpect.configure({ timeout: 15_000 });
 const webRoot = fileURLToPath(new URL("../", import.meta.url));
 const port = 5197;

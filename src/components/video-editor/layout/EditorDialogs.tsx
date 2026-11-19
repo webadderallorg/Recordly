@@ -1,4 +1,3 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { Card } from "@heroui/react";
 import type { Dispatch, FormEvent, RefObject, SetStateAction } from "react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +10,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { Dashboard } from "../dashboard/Dashboard";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 

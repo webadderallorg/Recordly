@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { collectLibrarySourceProtection } from "./librarySourceProtection";
+
 it("includes unsaved clips/audio/webcam/background media and history without modifying the snapshot", () => {
 	const snapshot = {
 		videoPath: "/r/main.mp4",

@@ -1,5 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { installDesktopBridge } from "./bridge";
+
 for (const width of [1440, 760, 420, 320]) {
 	test(`Appearance editor previews remain accessible at ${width}px`, async ({ page }) => {
 		await page.setViewportSize({ width, height: 900 });

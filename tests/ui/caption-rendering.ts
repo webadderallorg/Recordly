@@ -1,10 +1,10 @@
-import { ensureCaptionFontLoaded } from "@/components/video-editor/captionFonts";
 import { Container } from "pixi.js";
-import { renderCaptions } from "@/lib/exporter/captionRenderer";
-import { FrameCaptions } from "@/lib/exporter/modernFrameCaptions";
-import { DEFAULT_AUTO_CAPTION_SETTINGS } from "@/components/video-editor/types";
+import { ensureCaptionFontLoaded } from "@/components/video-editor/captionFonts";
 import { applyCaptionPreset, CAPTION_PRESETS } from "@/components/video-editor/captionPresets";
 import { getCaptionPadding } from "@/components/video-editor/captionStyle";
+import { DEFAULT_AUTO_CAPTION_SETTINGS } from "@/components/video-editor/types";
+import { renderCaptions } from "@/lib/exporter/captionRenderer";
+import { FrameCaptions } from "@/lib/exporter/modernFrameCaptions";
 import type { FrameRenderContext } from "@/lib/exporter/modernFrameRenderer";
 
 async function run() {

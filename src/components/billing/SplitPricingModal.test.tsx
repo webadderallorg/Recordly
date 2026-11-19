@@ -12,6 +12,7 @@ vi.mock("@/contexts/I18nContext", () => ({
 	useI18n: () => ({ locale: "en", t: (_key: string, fallback: string) => fallback }),
 	useScopedT: () => (_key: string, fallback: string) => fallback,
 }));
+
 import { SplitPricingModal } from "./SplitPricingModal";
 
 const price = { interval: "monthly", currency: "usd", unitAmount: 900 };

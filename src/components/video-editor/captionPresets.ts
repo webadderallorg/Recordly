@@ -1,5 +1,4 @@
 import { drawSquircleOnCanvas } from "@/lib/geometry/squircle";
-import type { AutoCaptionSettings, AutoCaptionStyle } from "./types";
 import {
 	type CaptionRgb,
 	compositeCaptionColor,
@@ -7,6 +6,7 @@ import {
 	readableCaptionColor,
 } from "./captionContrast";
 import { CAPTION_FONT_WEIGHT, CAPTION_WORD_HIGHLIGHT } from "./captionStyle";
+import type { AutoCaptionSettings, AutoCaptionStyle } from "./types";
 
 interface CaptionPreset {
 	id: AutoCaptionStyle;

@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { testAppPath, testAppDocument } from "../../testing/rendererFixture";
+import { testAppDocument, testAppPath } from "../../testing/rendererFixture";
 
 const mocks = vi.hoisted(() => ({ handle: vi.fn(), openExternal: vi.fn() }));
 vi.mock("electron", () => ({

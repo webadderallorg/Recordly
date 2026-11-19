@@ -1,9 +1,9 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { Button, Card, Link } from "@heroui/react";
 import { useState } from "react";
 import { ArrowLeft, ArrowRight } from "@/components/ui/icons";
 import { toast } from "@/components/ui/toast";
-import { dashboardAnnouncements, type AnnouncementConfig } from "./announcementConfig";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
+import { type AnnouncementConfig, dashboardAnnouncements } from "./announcementConfig";
 
 export function DashboardAnnouncements({
 	config = dashboardAnnouncements,

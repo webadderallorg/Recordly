@@ -1,6 +1,6 @@
-import { useScopedT } from "@/contexts/I18nContext";
 import { Card } from "@heroui/react";
 import { PuzzlePiece } from "@/components/ui/icons";
+import { useScopedT } from "@/contexts/I18nContext";
 
 export default function ExtensionManager() {
 	const te = useScopedT("editing");

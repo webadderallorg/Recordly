@@ -1,9 +1,8 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
-import { MagnifyingGlass, UploadSimple, ArrowClockwise } from "@/components/ui/icons";
 import { type CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
-
+import { ArrowClockwise, MagnifyingGlass, UploadSimple } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 
 import type { DashboardProps } from "./types";
 

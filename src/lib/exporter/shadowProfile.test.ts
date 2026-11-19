@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+	getShadowFilterPadding,
+	getVideoShadowFilter,
+	getVideoShadowStrength,
 	getWebcamShadowFilter,
 	getWebcamShadowPadding,
-	getShadowFilterPadding,
 	getWebcamShadowStrength,
-	getVideoShadowStrength,
-	getVideoShadowFilter,
 	WEBCAM_SHADOW_LAYER_PROFILES,
 } from "./shadowProfile";
 

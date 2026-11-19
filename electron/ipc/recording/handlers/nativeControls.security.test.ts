@@ -38,8 +38,8 @@ vi.mock("../windows", () => ({
 	recoverNativeWindowsCaptureOutput: vi.fn(),
 }));
 
-import { registerNativeControls } from "./nativeControls";
 import { isNativeWindowsCaptureAvailable } from "../windows";
+import { registerNativeControls } from "./nativeControls";
 
 const frame = { url: "http://127.0.0.1:43820/?windowType=editor" };
 const trusted = { sender: { mainFrame: frame }, senderFrame: frame } as Electron.IpcMainInvokeEvent;

@@ -1,4 +1,3 @@
-import { translate } from "@/i18n/runtime";
 import {
 	type Dispatch,
 	type RefObject,
@@ -8,14 +7,15 @@ import {
 	useLayoutEffect,
 	useRef,
 } from "react";
-import type { useProjectSaveActions } from "./useProjectSaveActions";
 import { toast } from "@/components/ui/toast";
+import { translate } from "@/i18n/runtime";
 import { fromFileUrl, resolveVideoUrl } from "../projectPersistence";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";
 import { DEFAULT_WEBCAM_TIME_OFFSET_MS } from "../types";
-import { errorSourceName, isMissingProjectRecording, projectLoadError } from "./projectLoadError";
 import type { VideoPlaybackRef } from "../VideoPlayback";
+import { errorSourceName, isMissingProjectRecording, projectLoadError } from "./projectLoadError";
+import type { useProjectSaveActions } from "./useProjectSaveActions";
 
 type Set<T> = Dispatch<SetStateAction<T>>;
 

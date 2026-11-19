@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { parseCloudBillingCatalog, type CloudBillingPrice } from "@/types/cloudBilling";
+import { type CloudBillingPrice, parseCloudBillingCatalog } from "@/types/cloudBilling";
 import { getDiscountPercent, getPlusPrice, hasVerifiedCheckoutPrice } from "./pricingOffer";
 
 const state = vi.hoisted(() => ({
@@ -17,6 +17,7 @@ vi.mock("@/contexts/I18nContext", () => ({
 			String(vars?.[key] ?? ""),
 		),
 }));
+
 import { EarlyBirdTag } from "./EarlyBirdTag";
 import { UpgradeButton } from "./UpgradeButton";
 

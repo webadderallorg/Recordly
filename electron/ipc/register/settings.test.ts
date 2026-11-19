@@ -52,12 +52,12 @@ vi.mock("../settings/recordingPreferencesStore", () => ({
 }));
 vi.mock("../utils", () => ({ parseJsonWithByteOrderMark: JSON.parse }));
 
-import { registerSettingsHandlers } from "./settings";
 import {
 	hasAppSetting,
 	readAppSettingsStoreWithStatus,
 	writeAppSettingsStore,
 } from "../../appSettingsStore";
+import { registerSettingsHandlers } from "./settings";
 
 describe("custom window controls", () => {
 	const platform = process.platform;

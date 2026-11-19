@@ -1,17 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
+import { describe, expect, it, vi } from "vitest";
 import { getProjectBackupPaths } from "./atomicSave";
 import { canonicalMediaSources } from "./canonicalMediaSources";
 import {
-	prepareLibraryDeletion,
-	removableLibrarySources,
-	protectedLibrarySources,
 	type LibraryDeletionDependencies,
+	prepareLibraryDeletion,
+	protectedLibrarySources,
+	removableLibrarySources,
 } from "./libraryDeletion";
 
 vi.mock("../utils", () => ({ normalizeVideoSourcePath: (value: string) => value }));

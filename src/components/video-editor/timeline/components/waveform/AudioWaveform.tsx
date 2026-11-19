@@ -1,6 +1,6 @@
-import { useTheme } from "@/contexts/ThemeContext";
 import { useTimelineContext } from "dnd-timeline";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useTheme } from "@/contexts/ThemeContext";
 import type { AudioPeaksData } from "../../core/timelineTypes";
 
 interface AudioWaveformProps {

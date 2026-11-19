@@ -1,8 +1,9 @@
-import { EventEmitter } from "node:events";
 import { ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
-import { RecordingSessionLock } from "./sessionLock";
 import { RecordingProcessGuard } from "./processGuard";
+import { RecordingSessionLock } from "./sessionLock";
+
 const owner = (id = 1) => Object.assign(new EventEmitter(), { id });
 function setup() {
 	const lost = vi.fn();

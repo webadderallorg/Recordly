@@ -13,8 +13,8 @@ import { SUPPORTED_LOCALES } from "@/i18n/config";
 
 import { DeveloperMotionSettings, developerMotionSettingsKeys } from "./DeveloperMotionSettings";
 import { MotionPresetCards } from "./MotionPresetCards";
-import { ShortcutsSettingsSection } from "./ShortcutsSettingsSection";
 import { SectionLabel } from "./SettingsSectionLabel";
+import { ShortcutsSettingsSection } from "./ShortcutsSettingsSection";
 import type { ResolvedSettingsPanelProps } from "./settingsPanelDefaults";
 import { pickSettingsProps } from "./settingsPanelDefaults";
 import type { useAppSettings } from "./useAppSettings";

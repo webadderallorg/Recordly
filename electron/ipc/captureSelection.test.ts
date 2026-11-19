@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 const mocks = vi.hoisted(() => ({
 	read: vi.fn(),
 	write: vi.fn(),
@@ -22,7 +23,9 @@ vi.mock("./state", () => ({
 	},
 }));
 vi.mock("./utils", () => ({ getScreen: () => ({ getAllDisplays: () => mocks.displays }) }));
+
 import { getSessionCaptureSource, validateCaptureSource } from "./captureSelection";
+
 const platform = process.platform;
 const source = { id: "window:101:0", name: "Document", windowTitle: "Document", appName: "Notes" };
 beforeEach(() => {

@@ -1,8 +1,8 @@
 import { Kbd } from "@heroui/react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
-import { Gear as Settings2, Question as HelpCircle } from "@/components/ui/icons";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Question as HelpCircle, Gear as Settings2 } from "@/components/ui/icons";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useScopedT } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { formatBinding, SHORTCUT_ACTIONS, SHORTCUT_LABELS } from "@/lib/shortcuts";

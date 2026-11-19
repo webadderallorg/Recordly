@@ -71,7 +71,9 @@ app.whenReady().then(async () => {
 			expect(observed.media.video).toBe(1);
 			expect(observed.media.width).toBeGreaterThan(0);
 			expect(
-				observed.helpers.some((helper: { name: string }) => helper.name === "Video Capture"),
+				observed.helpers.some(
+					(helper: { name: string }) => helper.name === "Video Capture",
+				),
 			).toBe(true);
 			// The standard video capture worker can register a Dock icon on macOS 27.
 			expect(

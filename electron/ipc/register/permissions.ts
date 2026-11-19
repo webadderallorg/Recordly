@@ -1,6 +1,6 @@
 import { app, desktopCapturer, ipcMain, shell, systemPreferences } from "electron";
-import { getMacPrivacySettingsUrl } from "../utils";
 import { isTrustedRenderer } from "../../trustedRenderer";
+import { getMacPrivacySettingsUrl } from "../utils";
 import {
 	dismissPermissionAccessory,
 	showPermissionAccessory,

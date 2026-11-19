@@ -1,18 +1,17 @@
-import { recordingEditorLoading } from "../../recordingEditorLoading";
-import { recordingFocus } from "../recording/focus";
-import { createSourceListPicker } from "../../sourceListPicker";
-import { writeAppSetting } from "../../appSettingsStore";
-import { getSessionCaptureSource, validateCaptureSource } from "../captureSelection";
-import { createRecordingEditorNavigation } from "../../recordingEditorNavigation";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { app, BrowserWindow, desktopCapturer, ipcMain, systemPreferences } from "electron";
+import { writeAppSetting } from "../../appSettingsStore";
+import { recordingEditorLoading } from "../../recordingEditorLoading";
+import { createRecordingEditorNavigation } from "../../recordingEditorNavigation";
+import { createSourceListPicker } from "../../sourceListPicker";
 import {
-	setHudRecordingPreparationActive,
 	createHudOverlayWindow,
 	getHudOverlayWindow,
 	reassertHudOverlayMousePassthrough,
+	setHudRecordingPreparationActive,
 } from "../../windows";
+import { getSessionCaptureSource, validateCaptureSource } from "../captureSelection";
 import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
 import {
 	getNativeMacWindowSources,
@@ -21,14 +20,15 @@ import {
 	stopWindowBoundsCapture,
 } from "../cursor/bounds";
 import { getDisplayBoundsForSource, getDisplayWorkAreaForSource } from "../recording/ffmpeg";
+import { recordingFocus } from "../recording/focus";
+import { getSourceArea } from "../sourceArea";
 import {
 	isCursorCaptureActive,
 	selectedSource,
-	setSelectedSource,
 	setCurrentProjectPath,
+	setSelectedSource,
 } from "../state";
 import type { SelectedSource, WindowBounds } from "../types";
-import { getSourceArea } from "../sourceArea";
 import { getScreen, parseWindowId } from "../utils";
 import { bringWindowsWindowForward, resolveWindowsWindowBounds } from "../windowsWindowControl";
 import {

@@ -1,5 +1,5 @@
-import { useScopedT } from "@/contexts/I18nContext";
 import { CLOUD_SHARE_ENDPOINT } from "@/components/video-editor/cloud/endpoint";
+import { useScopedT } from "@/contexts/I18nContext";
 
 export function LegalLinks({ consent = false }: { consent?: boolean }) {
 	const t = useScopedT("billing");

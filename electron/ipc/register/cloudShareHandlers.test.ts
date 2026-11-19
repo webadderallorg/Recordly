@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { ipcMain } from "electron";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { testAppPath, testAppDocument } from "../../testing/rendererFixture";
+import { testAppDocument, testAppPath } from "../../testing/rendererFixture";
 
 vi.mock("electron", () => ({
 	app: { getAppPath: () => testAppPath },

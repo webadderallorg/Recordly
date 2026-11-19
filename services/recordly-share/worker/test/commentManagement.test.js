@@ -1,9 +1,10 @@
-import { beforeAll, expect, it } from "vitest";
 import { env } from "cloudflare:test";
+import { beforeAll, expect, it } from "vitest";
+import { sha256Hex } from "../src/crypto.js";
 import worker from "../src/index.js";
 import { ensureSchema } from "../src/schema.js";
-import { sha256Hex } from "../src/crypto.js";
 import { localCommentHeaders } from "./commentFixtures.js";
+
 const config = { ...env };
 beforeAll(() => ensureSchema(env));
 const account = () => localCommentHeaders("Same Name");

@@ -1,7 +1,7 @@
-import { useScopedT, useI18n } from "@/contexts/I18nContext";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import {
 	AREA_HANDLES,
 	type AreaHandle,

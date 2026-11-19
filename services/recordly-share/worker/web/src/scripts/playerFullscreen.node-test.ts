@@ -1,6 +1,6 @@
-import test from "node:test";
 import assert from "node:assert/strict";
-import { togglePlayerFullscreen, type FullscreenVideo } from "./playerFullscreen.ts";
+import test from "node:test";
+import { type FullscreenVideo, togglePlayerFullscreen } from "./playerFullscreen.ts";
 
 function fixture(doc = {}, shell = {}, video = {}) {
 	return [

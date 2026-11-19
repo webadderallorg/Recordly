@@ -1,6 +1,7 @@
 import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { trashLibraryProjects } from "./trashProjects";
+
 const projectAPath = path.resolve("/private/tmp/a.recordly");
 const projectBPath = path.resolve("/private/tmp/b.recordly");
 

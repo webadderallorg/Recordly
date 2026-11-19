@@ -1,6 +1,6 @@
 import { type MutableRefObject, useEffect, useRef } from "react";
-import type { AspectRatio } from "@/utils/aspectRatioUtils";
 import { desktopWallpaperPreference } from "@/lib/desktopWallpaper";
+import type { AspectRatio } from "@/utils/aspectRatioUtils";
 import {
 	type EditorPreferences,
 	type EditorPreferencesPatch,

@@ -1,7 +1,7 @@
-import { useScopedT } from "@/contexts/I18nContext";
 import { Button } from "@heroui/react";
-import { getDiscountPercent, getPlusPrice } from "./pricingOffer";
+import { useScopedT } from "@/contexts/I18nContext";
 import { useBilling } from "./BillingProvider";
+import { getDiscountPercent, getPlusPrice } from "./pricingOffer";
 
 export function UpgradeButton({
 	className,

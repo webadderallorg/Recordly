@@ -1,5 +1,4 @@
-import type { WebcamShape } from "../../video-editor/types";
-import { getWebcamClipPath } from "../../video-editor/webcamOverlay";
+import type { ReactElement } from "react";
 import {
 	Eye,
 	EyeSlash as EyeOff,
@@ -7,10 +6,11 @@ import {
 	VideoCameraSlash as VideoOff,
 } from "@/components/ui/icons";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
-import { DropdownItem, HudPopover } from "./PopoverScaffold";
+import type { WebcamShape } from "../../video-editor/types";
+import { getWebcamClipPath } from "../../video-editor/webcamOverlay";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import type { DeviceOption } from "./launchPopoverTypes";
-import type { ReactElement } from "react";
+import { DropdownItem, HudPopover } from "./PopoverScaffold";
 
 const POPOVER_ID = "webcam";
 

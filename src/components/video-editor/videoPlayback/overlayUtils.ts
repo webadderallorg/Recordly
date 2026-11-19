@@ -1,4 +1,4 @@
-import { ZOOM_DEPTH_SCALES, type CropRegion, type ZoomFocus, type ZoomRegion } from "../types";
+import { type CropRegion, ZOOM_DEPTH_SCALES, type ZoomFocus, type ZoomRegion } from "../types";
 import { clampFocusToStage, projectZoomFocusToViewport } from "./focusUtils";
 
 interface OverlayUpdateParams {

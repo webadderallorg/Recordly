@@ -1,11 +1,11 @@
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import "./EditorExportMenu.css";
 import { Tag, TagGroup } from "@heroui/react";
-import { RecordlyMark } from "@/components/ui/RecordlyMark";
 import { motion, useReducedMotion } from "motion/react";
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { RecordlyMark } from "@/components/ui/RecordlyMark";
 import type { useI18n } from "@/contexts/I18nContext";
 import { captureProjectThumbnailCanvas } from "@/lib/projectThumbnailCanvas";
 import { CloudShareButton } from "../cloud/CloudShareButton";

@@ -4,7 +4,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { ipcMain } from "electron";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { testAppPath, testAppDocument } from "../../testing/rendererFixture";
+import { testAppDocument, testAppPath } from "../../testing/rendererFixture";
+
 const state = vi.hoisted(() => ({
 	allowed: new Set<string>(),
 	assetRoot: "",
@@ -29,7 +30,9 @@ vi.mock("../project/manager", () => ({
 	isAllowedLocalReadPath: (candidate: string) => state.allowed.has(candidate),
 }));
 vi.mock("../utils", () => ({ normalizePath: (value: string) => path.resolve(value) }));
+
 import { registerAssetHandlers } from "./assets";
+
 let directory: string;
 const frame = { url: `${testAppDocument}?windowType=editor` };
 const trusted = { sender: { mainFrame: frame }, senderFrame: frame } as Electron.IpcMainInvokeEvent;

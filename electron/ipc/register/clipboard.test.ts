@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { testAppPath, testAppDocument } from "../../testing/rendererFixture";
+import { testAppDocument, testAppPath } from "../../testing/rendererFixture";
 
 const mocks = vi.hoisted(() => ({ handle: vi.fn(), writeText: vi.fn() }));
 vi.mock("electron", () => ({
@@ -10,6 +10,7 @@ vi.mock("electron", () => ({
 vi.mock("../../rendererServer", () => ({
 	getPackagedRendererBaseUrl: () => "http://127.0.0.1:43820/",
 }));
+
 import { registerClipboardHandlers } from "./clipboard";
 
 type Frame = { url: string };

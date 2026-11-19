@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { productionTest } from "./production";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+import { productionTest } from "./production";
 
 for (const width of [390, 760]) {
 	test(`dev permission preview opens real settings without simulating grants (${width}px)`, async ({

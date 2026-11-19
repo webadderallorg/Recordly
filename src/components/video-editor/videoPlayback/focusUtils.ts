@@ -1,7 +1,7 @@
 import {
+	type CropRegion,
 	clampFocusToDepth,
 	ZOOM_DEPTH_SCALES,
-	type CropRegion,
 	type ZoomDepth,
 	type ZoomFocus,
 	type ZoomRegion,
