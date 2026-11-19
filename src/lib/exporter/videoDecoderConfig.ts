@@ -91,14 +91,20 @@ export async function getVideoDecoderConfig(demuxer: WebDemuxer): Promise<VideoD
 			) + 0.5;
 		const reader = demuxer.readMediaPacket("video", 0, readEnd).getReader();
 		try {
-			const { value: packet, done } = await reader.read();
-			if (done || !packet) {
-				throw new DOMException(
-					"Cannot determine VP9 format: no video packets found.",
-					"NotSupportedError",
-				);
+			// Some streams open with delta packets; only a keyframe carries the
+			// profile and bit-depth header.
+			let keyframe: Uint8Array | undefined;
+			while (!keyframe) {
+				const { value: packet, done } = await reader.read();
+				if (done || !packet) {
+					throw new DOMException(
+						"Cannot determine VP9 format: no video keyframe found.",
+						"NotSupportedError",
+					);
+				}
+				if (packet.keyframe !== 0) keyframe = packet.data;
 			}
-			({ profile, bitDepth } = readVp9KeyframeFormat(packet.data));
+			({ profile, bitDepth } = readVp9KeyframeFormat(keyframe));
 		} finally {
 			// Await cancellation before either caller starts its own positioned read.
 			// Otherwise the probe and export could compete for the demuxer worker.

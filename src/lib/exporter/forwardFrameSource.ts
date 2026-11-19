@@ -96,7 +96,12 @@ export class ForwardFrameSource {
 			codec: videoStream?.codec_string || "unknown",
 		};
 
-		await this.startDecoder();
+		try {
+			await this.startDecoder();
+		} catch (error) {
+			await this.destroy();
+			throw error;
+		}
 		return this.metadata;
 	}
 
