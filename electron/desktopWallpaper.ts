@@ -6,6 +6,7 @@ import os from "node:os";
 import { promisify } from "node:util";
 import { nativeImage } from "electron";
 import { getFfmpegBinaryPath } from "./ipc/ffmpeg/binary";
+import { readWindowsWindowGeometry } from "./ipc/windowsWindowGeometry";
 
 const execFileAsync = promisify(execFile);
 type CommandRunner = (command: string, args: string[]) => Promise<string>;
@@ -121,19 +122,26 @@ export async function resolveDesktopWallpaperSource(
 			await run("/usr/bin/osascript", ["-l", "JavaScript", "-e", MAC_WALLPAPER_SCRIPT]),
 		);
 	} else if (platform === "win32") {
-		const powershell = path.win32.join(
-			process.env.SystemRoot || "C:\\Windows",
-			"System32",
-			"WindowsPowerShell",
-			"v1.0",
-			"powershell.exe",
-		);
-		result = await run(powershell, [
-			"-NoProfile",
-			"-NonInteractive",
-			"-Command",
-			WINDOWS_WALLPAPER_SCRIPT,
-		]);
+		try {
+			const nativePath = await readWindowsWindowGeometry(["--desktop-wallpaper"]);
+			if (typeof nativePath !== "string") throw new Error("Invalid native wallpaper path");
+			result = nativePath;
+		} catch {
+			// Older helper bundles retain the PowerShell fallback.
+			const powershell = path.win32.join(
+				process.env.SystemRoot || "C:\\Windows",
+				"System32",
+				"WindowsPowerShell",
+				"v1.0",
+				"powershell.exe",
+			);
+			result = await run(powershell, [
+				"-NoProfile",
+				"-NonInteractive",
+				"-Command",
+				WINDOWS_WALLPAPER_SCRIPT,
+			]);
+		}
 	} else {
 		throw new Error("Desktop wallpaper is unavailable on this platform");
 	}

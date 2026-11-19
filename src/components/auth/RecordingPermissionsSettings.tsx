@@ -144,6 +144,30 @@ export function RecordingPermissionsSettings({ onReview }: { onReview?: () => vo
 		}
 	};
 
+	const requestMedia = async (permission: "microphone" | "camera") => {
+		if (opening) return;
+		setOpening(permission);
+		setActionError(undefined);
+		try {
+			const result = await window.electronAPI.requestMediaPermission(permission);
+			if (!result.success) throw new Error();
+		} catch {
+			if (mounted.current)
+				setActionError({
+					permission,
+					message: t(
+						"settings.permissions.requestFailed",
+						"Could not request access. Try again or enable access in System Settings.",
+					),
+				});
+		} finally {
+			if (mounted.current) {
+				await refresh();
+				if (mounted.current) setOpening(undefined);
+			}
+		}
+	};
+
 	const permissionRows = [
 		{
 			id: "screen" as const,
@@ -241,7 +265,12 @@ export function RecordingPermissionsSettings({ onReview }: { onReview?: () => vo
 							(id === "screen" || id === "accessibility" || status === "denied");
 						return (
 							<div key={id} className="settings-item">
-								<SettingsRow title={title} description={description}>
+								<SettingsRow
+									title={title}
+									description={description}
+									descriptionInline={status === "not-determined"}
+									help={description}
+								>
 									<div className="flex flex-col items-end gap-2">
 										<span
 											role="status"
@@ -255,6 +284,26 @@ export function RecordingPermissionsSettings({ onReview }: { onReview?: () => vo
 											) : null}
 											{statusLabel(id, status)}
 										</span>
+										{snapshot?.mac &&
+											status === "not-determined" &&
+											(id === "microphone" || id === "camera") && (
+												<Button
+													variant="secondary"
+													size="sm"
+													disabled={!!opening || busy}
+													onClick={() => void requestMedia(id)}
+												>
+													{id === "microphone"
+														? t(
+																"settings.permissions.allowMicrophone",
+																"Allow microphone",
+															)
+														: t(
+																"settings.permissions.allowCamera",
+																"Allow camera",
+															)}
+												</Button>
+											)}
 										{canOpen && (
 											<Button
 												variant="secondary"
@@ -297,7 +346,7 @@ export function RecordingPermissionsSettings({ onReview }: { onReview?: () => vo
 				</p>
 			)}
 			{onReview && (
-				<Button variant="ghost" size="sm" onClick={onReview}>
+				<Button variant="secondary" size="sm" className="self-start" onClick={onReview}>
 					{t("settings.permissions.reviewSetup", "Review permission setup")}
 				</Button>
 			)}

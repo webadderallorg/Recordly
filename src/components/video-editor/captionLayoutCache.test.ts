@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { prepareCaptionLayout } from "./captionLayout";
-import { type CaptionCue, DEFAULT_AUTO_CAPTION_SETTINGS } from "./types";
+import { type CaptionCue, DEFAULT_AUTO_CAPTION_SETTINGS as DEFAULT_SETTINGS } from "./types";
+
+const LEGACY_CAPTION_SETTINGS = { ...DEFAULT_SETTINGS, style: "classic" as const };
 
 const cues: CaptionCue[] = [
 	{
@@ -18,7 +20,7 @@ const cues: CaptionCue[] = [
 
 const options = {
 	cues,
-	settings: { ...DEFAULT_AUTO_CAPTION_SETTINGS, animationStyle: "fade" as const },
+	settings: { ...LEGACY_CAPTION_SETTINGS, animationStyle: "fade" as const },
 	maxWidthPx: 1000,
 	measureText: (text: string) => text.length * 10,
 };

@@ -171,6 +171,36 @@ export function useAutoCaptionController({
 		toast.success(te("whisperExecutableSelected", "Whisper executable selected"));
 	}, [setWhisperExecutablePath, te]);
 
+	const downloadSelectedModel = useCallback(async () => {
+		setWhisperModelDownloadStatus("downloading");
+		setWhisperModelDownloadProgress(0);
+		try {
+			const result = await window.electronAPI.downloadCaptionModel(captionModelId);
+			if (!result.success || !result.path)
+				throw new Error(result.error ?? "Model download did not complete.");
+			if (selectedModelRef.current !== captionModelId) return null;
+			setDownloadedWhisperModelPath(result.path);
+			setWhisperModelPath(result.path);
+			setWhisperModelDownloadStatus("downloaded");
+			setWhisperModelDownloadProgress(100);
+			return result.path;
+		} catch (error) {
+			if (selectedModelRef.current === captionModelId) setWhisperModelDownloadStatus("error");
+			toast.error(te("captionModelDownloadFailed", "Failed to download caption model"), {
+				description: getErrorMessage(error),
+			});
+			return null;
+		}
+	}, [
+		captionModelId,
+		setDownloadedWhisperModelPath,
+		setWhisperModelDownloadProgress,
+		setWhisperModelDownloadStatus,
+		setWhisperModelPath,
+		te,
+	]);
+
+	// Retain the download-only controller API, sharing the same first-use flow.
 	const handleDownloadWhisperSmallModel = useCallback(async () => {
 		if (
 			modelOperationRef.current ||
@@ -180,35 +210,13 @@ export function useAutoCaptionController({
 			return;
 		modelOperationRef.current = true;
 		setModelOperationActive(true);
-		setWhisperModelDownloadStatus("downloading");
-		setWhisperModelDownloadProgress(0);
 		try {
-			const result = await window.electronAPI.downloadCaptionModel(captionModelId);
-			if (!result.success || !result.path)
-				throw new Error(result.error ?? "Model download did not complete.");
-			if (selectedModelRef.current !== captionModelId) return;
-			setDownloadedWhisperModelPath(result.path);
-			setWhisperModelPath(result.path);
-			setWhisperModelDownloadStatus("downloaded");
-			setWhisperModelDownloadProgress(100);
-		} catch (error) {
-			if (selectedModelRef.current === captionModelId) setWhisperModelDownloadStatus("error");
-			toast.error(te("captionModelDownloadFailed", "Failed to download caption model"), {
-				description: getErrorMessage(error),
-			});
+			await downloadSelectedModel();
 		} finally {
 			modelOperationRef.current = false;
 			setModelOperationActive(false);
 		}
-	}, [
-		captionModelId,
-		setDownloadedWhisperModelPath,
-		setWhisperModelDownloadProgress,
-		setWhisperModelDownloadStatus,
-		setWhisperModelPath,
-		whisperModelDownloadStatus,
-		te,
-	]);
+	}, [downloadSelectedModel, whisperModelDownloadStatus]);
 
 	const handlePickWhisperModel = useCallback(async () => {
 		const result = await window.electronAPI.openWhisperModelPicker();
@@ -265,12 +273,7 @@ export function useAutoCaptionController({
 		captionGenerationInFlightRef.current = true;
 		setIsGeneratingCaptions(true);
 		try {
-			if (!downloadedWhisperModelPath || whisperModelDownloadStatus !== "downloaded") {
-				toast.error(
-					te("downloadCaptionModelFirst", "Download the selected caption model first"),
-				);
-				return;
-			}
+			const sourceAtStart = resolveAutoCaptionSourcePath(activeSourceRef.current);
 			let sourcePath = resolveAutoCaptionSourcePath({ videoSourcePath, videoPath });
 			if (!sourcePath) {
 				const sessionResult = await window.electronAPI.getCurrentRecordingSession?.();
@@ -289,6 +292,22 @@ export function useAutoCaptionController({
 				toast.error(te("noSourceVideo", "No source video is loaded"));
 				return;
 			}
+			let managedModelPath = downloadedWhisperModelPath;
+			if (!managedModelPath || whisperModelDownloadStatus !== "downloaded") {
+				managedModelPath = await downloadSelectedModel();
+				if (!managedModelPath) return;
+			}
+			// A first-use download can take minutes. Keep its original recording
+			// selected before syncing sources or starting transcription.
+			if (resolveAutoCaptionSourcePath(activeSourceRef.current) !== sourceAtStart) {
+				toast.info(
+					te(
+						"captionSourceChanged",
+						"Recording changed; generated captions were not applied.",
+					),
+				);
+				return;
+			}
 			// Refreshing an unchanged session revokes active companion-audio URLs.
 			if (sourcePath !== videoSourcePath) {
 				await syncActiveVideoSource(sourcePath, webcamSourcePath);
@@ -300,9 +319,9 @@ export function useAutoCaptionController({
 				captionModelId,
 				engine: getCaptionModel(captionModelId).engine,
 				...(getCaptionModel(captionModelId).engine === "parakeet"
-					? { parakeetModelPath: downloadedWhisperModelPath }
+					? { parakeetModelPath: managedModelPath }
 					: {
-							whisperModelPath: downloadedWhisperModelPath,
+							whisperModelPath: managedModelPath,
 							whisperExecutablePath: whisperExecutablePath ?? undefined,
 						}),
 				language: "auto",
@@ -342,6 +361,7 @@ export function useAutoCaptionController({
 		}
 	}, [
 		te,
+		downloadSelectedModel,
 		captionModelId,
 		whisperExecutablePath,
 		isGeneratingCaptions,

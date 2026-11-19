@@ -28,7 +28,7 @@ function loadNames(): Record<string, string> {
 		return {};
 	}
 }
-export function useRawLibrary(enabled: boolean) {
+export function useRawLibrary(enabled: boolean, getProtectedSourcePaths?: () => string[]) {
 	const { t } = useI18n();
 	const [entries, setEntries] = useState<ProjectLibraryEntry[]>([]);
 	const [error, setError] = useState<string | null>(null);
@@ -71,7 +71,10 @@ export function useRawLibrary(enabled: boolean) {
 		return path;
 	};
 	const remove = async (paths: string[]) => {
-		const result = await window.electronAPI.trashRecordingSources(paths);
+		const result = await window.electronAPI.trashRecordingSources(
+			paths,
+			getProtectedSourcePaths?.(),
+		);
 		if (!result.success) throw new Error(result.error);
 		const { deleted, errors } = result.value;
 		setEntries((previous) => previous.filter((entry) => !deleted.includes(entry.path)));

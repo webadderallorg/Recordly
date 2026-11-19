@@ -75,5 +75,6 @@
 	"locateRecording": "Trova registrazione",
 	"recordingRelinkFailed": "Impossibile ricollegare la registrazione",
 	"pauseRecordingTrackFailed": "La registrazione dello schermo è stata messa in pausa, ma non è stato possibile mettere in pausa una traccia della videocamera o audio.",
-	"resumeRecordingTrackFailed": "La registrazione dello schermo è ripresa, ma non è stato possibile riprendere una traccia della videocamera o audio."
+	"resumeRecordingTrackFailed": "La registrazione dello schermo è ripresa, ma non è stato possibile riprendere una traccia della videocamera o audio.",
+	"captionFilesSaveFailed": "Il video è stato salvato, ma non è stato possibile salvare alcuni file dei sottotitoli."
 }

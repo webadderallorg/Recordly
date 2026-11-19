@@ -27,6 +27,7 @@
 	width: 90%;
 	aspect-ratio: 1;
 	border-radius: 50%;
+	corner-shape: round;
 	background: radial-gradient(
 		circle,
 		color-mix(in srgb, var(--accent) 8%, transparent) 0%,
@@ -157,9 +158,9 @@
 	justify-content: center;
 	gap: 10px;
 	width: 100%;
-	min-height: 52px;
+	min-height: 44px;
 	height: auto;
-	padding: 12px 16px;
+	padding: 10px 16px;
 	font-size: 14px;
 	font-weight: 500;
 	line-height: 1.5;
@@ -383,11 +384,15 @@
 	}
 }
 
-/* Carousel pages share a frame so shorter permission content cannot resize the
- * demo or move the title during a slide. Each page scrolls inside that frame. */
 .onboarding-layout[data-onboarding-carousel] .onboarding-stage-content {
-	flex: 0 1 min(65%, 380px);
+	grid-template-rows: minmax(0, 1fr);
 	min-height: 0;
+}
+
+/* Preserve the demo height during a slide. With only one page, the demo can
+ * take the space left over by the controls. */
+.onboarding-layout[data-onboarding-carousel]:has(> .onboarding-navigation) .onboarding-stage-content {
+	flex: 0 1 min(65%, 380px);
 }
 
 .onboarding-layout[data-onboarding-carousel] .onboarding-stage-content > * {
@@ -412,7 +417,7 @@
 }
 
 @media (max-width: 520px) {
-	.onboarding-layout[data-onboarding-carousel] .onboarding-stage-content {
+	.onboarding-layout[data-onboarding-carousel]:has(> .onboarding-navigation) .onboarding-stage-content {
 		flex-basis: min(70%, 420px);
 	}
 

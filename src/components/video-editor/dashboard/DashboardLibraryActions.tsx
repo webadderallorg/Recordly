@@ -27,6 +27,7 @@ export function DashboardLibraryActions({
 						model.setSelected(paths);
 						model.setSelecting(true);
 						model.setCleanupOpen(false);
+						void model.deleteEntries(paths);
 					}}
 				/>
 			)}
@@ -61,10 +62,26 @@ export function DashboardLibraryActions({
 									{isRaw
 										? t("ui.confirmDeleteSourceFiles")
 										: t(
-												"ui.cleanup.projectDeleteHelp",
-												"Project files and their previews move to Trash. Source recordings and cloud shares are kept. Restore files from Trash to undo.",
+												"ui.cleanup.deleteMediaHelp",
+												"Selected projects and unused managed source recordings move to Trash. Associated cloud videos are deleted permanently unless another saved project uses the same link.",
 											)}
 								</p>
+								{!isRaw && (
+									<>
+										<p className="text-sm text-muted-foreground">
+											{t("ui.cleanup.sharedMediaHelp")}
+										</p>
+										<p className="text-sm text-muted-foreground">
+											{model.checkingDeletion
+												? t("ui.cleanup.checkingDeletion")
+												: t("ui.cleanup.reviewSources", undefined, {
+														count: model.deletionReview.sourceCount,
+														kept: model.deletionReview
+															.preservedSourceCount,
+													})}
+										</p>
+									</>
+								)}
 								<ul
 									className="custom-scrollbar max-h-52 space-y-2 overflow-y-auto rounded-xl bg-default/40 p-3 text-sm"
 									aria-label={t("ui.cleanup.deleteList", "Items to delete")}

@@ -45,6 +45,8 @@
 	"forCommercialUse": "voor commercieel gebruik",
 	"upgrade": "Upgraden naar Cloud",
 	"upgradeShort": "Upgraden",
+	"upgradeButtonLabel": "Upgraden",
+	"getCloud": "Neem Recordly Cloud",
 	"legalSupport": "Juridische informatie en ondersteuning",
 	"privacy": "Privacy",
 	"terms": "Voorwaarden",
@@ -92,7 +94,7 @@
 	"personalUse": "Ik zal dit voor persoonlijke doeleinden gebruiken.",
 	"upgradeHeading": "Ontgrendel de volledige kracht van Recordly",
 	"featureLicense": "Volledige commerciële licentie",
-	"featureLinkSharing": "Deel elke video met een link",
+	"featureLinkSharing": "Deel elke video met een link die 24/7 beschikbaar is",
 	"featurePlayback": "Speel cloudvideo’s af in FHD 1080p",
 	"featureCaptionExport": "Exporteer ondertitels als SRT- en VTT-bestanden",
 	"featurePrioritySupport": "Ondersteuning met voorrang"

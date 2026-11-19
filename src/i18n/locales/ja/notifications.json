@@ -75,5 +75,6 @@
 	"locateRecording": "録画を探す",
 	"recordingRelinkFailed": "録画を再接続できませんでした",
 	"pauseRecordingTrackFailed": "画面の録画は一時停止しましたが、カメラまたはオーディオのトラックを一時停止できませんでした。",
-	"resumeRecordingTrackFailed": "画面の録画は再開しましたが、カメラまたはオーディオのトラックを再開できませんでした。"
+	"resumeRecordingTrackFailed": "画面の録画は再開しましたが、カメラまたはオーディオのトラックを再開できませんでした。",
+	"captionFilesSaveFailed": "動画は保存されましたが、一部の字幕ファイルを保存できませんでした。"
 }

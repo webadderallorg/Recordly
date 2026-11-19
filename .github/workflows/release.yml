@@ -115,7 +115,7 @@ jobs:
     name: Build macOS x64
     needs: prepare-release
     if: needs.prepare-release.outputs.release_scope == 'all'
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -126,6 +126,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare-release.outputs.source_sha }}
+
+      - name: Show Xcode version
+        run: xcodebuild -version
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -189,6 +192,8 @@ jobs:
         run: |
           npx tsc
           npx vite build
+          npm run normalize:electron-main-cjs
+          npm run smoke:electron-main-cjs
           npx electron-builder --mac dir dmg zip --x64 --publish never \
             -c.mac.forceCodeSigning=true \
             -c.mac.notarize=true
@@ -232,7 +237,7 @@ jobs:
     name: Build macOS arm64
     needs: prepare-release
     if: needs.prepare-release.outputs.release_scope == 'all'
-    runs-on: macos-14
+    runs-on: macos-26
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -243,6 +248,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare-release.outputs.source_sha }}
+
+      - name: Show Xcode version
+        run: xcodebuild -version
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -306,6 +314,8 @@ jobs:
         run: |
           npx tsc
           npx vite build
+          npm run normalize:electron-main-cjs
+          npm run smoke:electron-main-cjs
           npx electron-builder --mac dir dmg zip --arm64 --publish never \
             -c.mac.forceCodeSigning=true \
             -c.mac.notarize=true
@@ -485,8 +495,15 @@ jobs:
         shell: pwsh
         run: |
           npm run build:platform-native-helpers
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx tsc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx vite build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run normalize:electron-main-cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run smoke:electron-main-cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx electron-builder --win dir nsis --x64 --publish never
 
       - name: Smoke test packaged Windows x64 paths
@@ -564,6 +581,8 @@ jobs:
           npm run build:platform-native-helpers
           npx tsc
           npx vite build
+          npm run normalize:electron-main-cjs
+          npm run smoke:electron-main-cjs
           npx electron-builder --linux dir AppImage --x64 --publish never
 
       - name: Smoke test packaged Linux x64 paths

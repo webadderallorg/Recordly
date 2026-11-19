@@ -28,6 +28,7 @@ const defaults = {
 	shadowIntensity: () => DEFAULT_SHADOW_INTENSITY,
 	backgroundBlur: () => 0,
 	connectZooms: () => true,
+	autoApplyFreshRecordingAutoZooms: () => true,
 	zoomInDurationMs: () => DEFAULT_ZOOM_IN_DURATION_MS,
 	zoomOutDurationMs: () => DEFAULT_ZOOM_OUT_DURATION_MS,
 	showCursor: () => false,

@@ -28,6 +28,15 @@ export function shouldPreferNativeAutoBackend(_platform: LightningRuntimePlatfor
 	return _platform === "darwin" || _platform === "win32";
 }
 
+export function resolveLightningBackendPreference(
+	platform: LightningRuntimePlatform,
+	preference: ExportBackendPreference,
+): ExportBackendPreference {
+	// The static-layout route requires a Windows compositor or NVIDIA FFmpeg.
+	// On macOS the automatic route already selects Breeze streaming.
+	return platform === "darwin" && preference === "breeze" ? "auto" : preference;
+}
+
 export type LightningExportRoute = "native-static-layout" | "breeze-stream" | "webcodecs";
 
 export interface LightningExportRouteDecision {
@@ -79,7 +88,11 @@ export function planLightningExportRoutes(options: {
 		});
 	};
 
-	if (options.backendPreference === "webcodecs") {
+	const backendPreference = resolveLightningBackendPreference(
+		options.platform,
+		options.backendPreference,
+	);
+	if (backendPreference === "webcodecs") {
 		decisions.push({
 			route: "webcodecs",
 			status: "selected",
@@ -89,8 +102,8 @@ export function planLightningExportRoutes(options: {
 	}
 
 	const preferStaticFirst =
-		options.backendPreference === "breeze" ||
-		shouldPreferNativeStaticLayoutBeforeBreeze(options.platform, options.backendPreference);
+		backendPreference === "breeze" ||
+		shouldPreferNativeStaticLayoutBeforeBreeze(options.platform, backendPreference);
 
 	if (preferStaticFirst) {
 		addNativeStaticLayoutDecision(canUseNativeStaticLayout ? "selected" : "rejected");
@@ -98,7 +111,7 @@ export function planLightningExportRoutes(options: {
 			route: "breeze-stream",
 			status: canUseNativeStaticLayout ? "fallback" : "selected",
 			reasons: [
-				options.backendPreference === "breeze"
+				backendPreference === "breeze"
 					? "user-selected-breeze"
 					: "native-static-layout-not-auto-default",
 			],
@@ -114,7 +127,7 @@ export function planLightningExportRoutes(options: {
 		};
 	}
 
-	if (options.backendPreference === "auto" && shouldPreferNativeAutoBackend(options.platform)) {
+	if (backendPreference === "auto" && shouldPreferNativeAutoBackend(options.platform)) {
 		decisions.push({
 			route: "native-static-layout",
 			status: "rejected",

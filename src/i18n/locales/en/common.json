@@ -18,7 +18,10 @@
 		"delete": "Delete",
 		"done": "Done",
 		"retry": "Try again",
-		"apply": "Apply"
+		"apply": "Apply",
+		"minimize": "Minimize",
+		"maximize": "Maximize",
+		"restoreWindow": "Restore window"
 	},
 	"errors": {
 		"invalidFileType": "Invalid file type",
@@ -36,6 +39,7 @@
 		"thanks": "Thanks for your feedback",
 		"signInRequired": "Sign in to send feedback.",
 		"openHome": "Open Home to sign in.",
+		"orEmail": "Or email",
 		"missingMessage": "Tell us more before sending.",
 		"sentiment": "How do you feel?",
 		"loving": "Loving",
@@ -47,7 +51,7 @@
 		"descriptionPlaceholder": "We read all feedback...",
 		"attachFiles": "Attach files",
 		"removeFile": "Remove {{name}}",
-		"diagnostics": "Relevant diagnostic logs will be attached.",
+		"diagnostics": "Diagnostic logs will be attached. Feedback will be sent to support@recordly.dev.",
 		"sending": "Sending…",
 		"errors": {
 			"unavailable": "Feedback is unavailable until account services are configured.",
@@ -82,5 +86,6 @@
 		"downloadingButton": "Downloading · {{progress}}"
 	},
 	"width": "Width",
-	"height": "Height"
+	"height": "Height",
+	"windowControls": "Window controls"
 }

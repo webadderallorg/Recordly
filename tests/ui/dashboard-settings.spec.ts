@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+import { productionTest } from "./production";
 
 async function installSettingsBridge(page: Page) {
 	await installDesktopBridge(page);
@@ -82,6 +83,180 @@ for (const fails of [false, true]) {
 		}
 	});
 }
+
+for (const failure of ["recordings", "projects", "both"] as const) {
+	test(`folder read errors explain retry and recover in place (${failure})`, async ({ page }) => {
+		await installSettingsBridge(page);
+		await installDesktopBridgeOverrides(
+			page,
+			(failure) => {
+				let failing = true;
+				let recordingsReads = 0;
+				let projectsReads = 0;
+				window.addEventListener("test-allow-folder-reads", () => {
+					failing = false;
+				});
+				window.electronAPI.getRecordingsDirectory = async () => {
+					document.documentElement.dataset.recordingsReads = String(++recordingsReads);
+					if (failing && failure !== "projects")
+						throw new Error("Recordings folder unavailable");
+					return { success: true, path: "/restored/recordings" };
+				};
+				window.electronAPI.getProjectsDirectory = async () => {
+					document.documentElement.dataset.projectsReads = String(++projectsReads);
+					if (failing && failure !== "recordings") return { success: false };
+					return { success: true, path: "/restored/projects" };
+				};
+				window.electronAPI.openRecordingsFolder = async () => {
+					document.documentElement.dataset.openedFolder = "recordings";
+					return { success: true };
+				};
+				window.electronAPI.openProjectsDirectory = async () => {
+					document.documentElement.dataset.openedFolder = "projects";
+					return { success: true };
+				};
+			},
+			failure,
+		);
+		await page.goto("/?windowType=editor");
+		await page.getByRole("button", { name: "Recordly account", exact: true }).click();
+		await page
+			.getByRole("dialog", { name: "Account menu", exact: true })
+			.getByRole("button", { name: "Settings", exact: true })
+			.click();
+		const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+		await settings.getByRole("tab", { name: "General", exact: true }).click();
+		const panel = settings.getByRole("tabpanel", { name: /^General settings/ });
+		const folders = [
+			{
+				area: "recordings",
+				title: "Recordings folder",
+				error: "Recordings folder unavailable",
+			},
+			{
+				area: "projects",
+				title: "Projects folder",
+				error: "Folder location is unavailable.",
+			},
+		] as const;
+		for (const folder of folders) {
+			const row = panel
+				.locator(".settings-item")
+				.filter({ has: page.getByText(folder.title, { exact: true }) });
+			const open = row.getByRole("button", { name: "Open folder", exact: true });
+			if (failure === folder.area || failure === "both") {
+				await expect(row.getByText(folder.error, { exact: true })).toBeVisible();
+				await expect(row.getByRole("alert")).toHaveText(folder.error);
+				await expect(open).toBeDisabled();
+			} else await expect(open).toBeEnabled();
+		}
+		const retry = panel.getByRole("button", { name: "Try again", exact: true });
+		await expect(retry).toBeVisible();
+		const counts = await page.locator("html").evaluate((node) => ({
+			recordings: Number(node.dataset.recordingsReads),
+			projects: Number(node.dataset.projectsReads),
+		}));
+		const url = page.url();
+		await page.evaluate(() => window.dispatchEvent(new Event("test-allow-folder-reads")));
+		await retry.click();
+		await expect(retry).toHaveCount(0);
+		for (const folder of folders) {
+			const row = panel
+				.locator(".settings-item")
+				.filter({ has: page.getByText(folder.title, { exact: true }) });
+			const open = row.getByRole("button", { name: "Open folder", exact: true });
+			await expect(open).toBeEnabled();
+			await expect(row.getByText(folder.error, { exact: true })).toHaveCount(0);
+			await expect(row.getByText(`/restored/${folder.area}`, { exact: true })).toBeVisible();
+			await open.click();
+			await expect(page.locator("html")).toHaveAttribute("data-opened-folder", folder.area);
+		}
+		const updated = await page.locator("html").evaluate((node) => ({
+			recordings: Number(node.dataset.recordingsReads),
+			projects: Number(node.dataset.projectsReads),
+		}));
+		expect(updated.recordings).toBeGreaterThan(counts.recordings);
+		expect(updated.projects).toBeGreaterThan(counts.projects);
+		expect(page.url()).toBe(url);
+	});
+}
+
+test("folder read errors override saved paths and announce later retry failures", async ({
+	page,
+}) => {
+	await installSettingsBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		let phase = 0;
+		window.addEventListener("test-folder-phase", (event) => {
+			phase = (event as CustomEvent<number>).detail;
+		});
+		window.electronAPI.getRecordingsDirectory = async () => {
+			if (phase === 1) throw new Error("Recordings folder read failed");
+			return {
+				success: true,
+				path: phase === 0 ? "/initial/recordings" : "/restored/recordings",
+			};
+		};
+		window.electronAPI.getProjectsDirectory = async () => {
+			if (phase === 0) return { success: false };
+			if (phase === 2) throw new Error("Projects folder read failed");
+			return {
+				success: true,
+				path: phase === 1 ? "/initial/projects" : "/restored/projects",
+			};
+		};
+	});
+	await page.goto("/?windowType=editor");
+	await page.getByRole("button", { name: "Recordly account", exact: true }).click();
+	await page
+		.getByRole("dialog", { name: "Account menu", exact: true })
+		.getByRole("button", { name: "Settings", exact: true })
+		.click();
+	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+	await settings.getByRole("tab", { name: "General", exact: true }).click();
+	const panel = settings.getByRole("tabpanel", { name: /^General settings/ });
+	const recordings = panel
+		.locator(".settings-item")
+		.filter({ has: page.getByText("Recordings folder", { exact: true }) });
+	const projects = panel
+		.locator(".settings-item")
+		.filter({ has: page.getByText("Projects folder", { exact: true }) });
+	const recordingsPath = recordings.locator(".settings-folder-path");
+	const projectsPath = projects.locator(".settings-folder-path");
+	const retry = panel.getByRole("button", { name: "Try again", exact: true });
+	const setPhase = (phase: number) =>
+		page.evaluate(
+			(phase) =>
+				window.dispatchEvent(new CustomEvent("test-folder-phase", { detail: phase })),
+			phase,
+		);
+	await expect(recordingsPath).toHaveText("/initial/recordings");
+	await expect(
+		projects.getByText("Folder location is unavailable.", { exact: true }),
+	).toBeVisible();
+	await setPhase(1);
+	await retry.click();
+	await expect(projectsPath).toHaveText("/initial/projects");
+	await expect(
+		recordings.getByText("Recordings folder read failed", { exact: true }),
+	).toBeVisible();
+	await expect(recordings.getByRole("alert")).toHaveText("Recordings folder read failed");
+	await expect(recordingsPath).not.toContainText("/initial/recordings");
+	await expect(projects.getByRole("alert")).toHaveCount(0);
+	await setPhase(2);
+	await retry.click();
+	await expect(recordingsPath).toHaveText("/restored/recordings");
+	await expect(recordings.getByRole("alert")).toHaveCount(0);
+	await expect(projects.getByText("Projects folder read failed", { exact: true })).toBeVisible();
+	await expect(projects.getByRole("alert")).toHaveText("Projects folder read failed");
+	await expect(projectsPath).not.toContainText("/initial/projects");
+	await setPhase(3);
+	await retry.click();
+	await expect(recordingsPath).toHaveText("/restored/recordings");
+	await expect(projectsPath).toHaveText("/restored/projects");
+	await expect(panel.getByRole("alert")).toHaveCount(0);
+	await expect(retry).toHaveCount(0);
+});
 
 for (const failure of ["result", "error", "non-error"] as const) {
 	test(`HUD visibility read failure can retry in place (${failure})`, async ({ page }) => {
@@ -233,7 +408,7 @@ test("library header account panel edits profile and opens Settings", async ({ p
 	await expect(home.getByRole("tablist", { name: "Settings sections" })).toBeVisible();
 });
 
-test("account logout clears the session", async ({ page }) => {
+productionTest("account logout clears the session", async ({ page }) => {
 	await installSettingsBridge(page);
 	const home = await openDashboard(page);
 	await home.getByRole("button", { name: "Recordly account" }).click();
@@ -324,7 +499,7 @@ test("account popup contains feedback and settings, and editor controls follow t
 	await installSettingsBridge(page);
 	await page.goto("/?windowType=editor");
 	const header = page.locator("header.editor-header");
-	const upgrade = header.getByRole("button", { name: "Upgrade to Cloud", exact: true });
+	const upgrade = header.getByRole("button", { name: "Upgrade", exact: true });
 	await expect(upgrade).toBeVisible();
 	const headerFeedback = header.getByRole("button", { name: "Feedback", exact: true });
 	await expect(headerFeedback).toBeVisible();

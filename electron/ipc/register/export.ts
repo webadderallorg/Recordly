@@ -8,6 +8,11 @@ import type { Readable, Writable } from "node:stream";
 import type { SaveDialogOptions } from "electron";
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import {
+	getAvailableExportPath,
+	getSelectedExportPath,
+	saveExportToAvailablePath,
+} from "../export/availableExportPath";
+import {
 	closeExportStream,
 	isOwnedExportPath,
 	openExportStream,
@@ -50,6 +55,7 @@ import { isAllowedLocalReadPath, resolveApprovedLocalMediaPath } from "../projec
 import { approveUserPath } from "../utils";
 import {
 	type CaptionSidecarPayload,
+	getCaptionSidecarExtensions,
 	parseCaptionSidecarPayload,
 	withCaptionSidecarMessage,
 	writeCaptionSidecarsBestEffort,
@@ -248,7 +254,31 @@ function isTempPathSafe(tempPath: string): boolean {
 	return candidate.startsWith(withSep);
 }
 
+function getExportSaveDialogDefaultPath(fileName: string, sidecarExtensions: readonly string[]) {
+	const requestedPath = path.join(app.getPath("downloads"), fileName);
+	return getAvailableExportPath(requestedPath, sidecarExtensions).catch(() => requestedPath);
+}
+
 export function registerExportHandlers() {
+	ipcMain.handle(
+		"suggest-export-file-name",
+		async (_event, fileName: unknown, sidecarFormat: unknown) => {
+			if (
+				typeof fileName !== "string" ||
+				/[<>:"/\\|?*\p{Cc}]/u.test(fileName) ||
+				!/\.(mp4|gif)$/i.test(fileName)
+			) {
+				return null;
+			}
+			const sidecarExtensions = getCaptionSidecarExtensions(
+				sidecarFormat === "srt" || sidecarFormat === "vtt" || sidecarFormat === "both"
+					? { format: sidecarFormat }
+					: null,
+			);
+			return path.basename(await getExportSaveDialogDefaultPath(fileName, sidecarExtensions));
+		},
+	);
+
 	ipcMain.handle(
 		"native-video-export-start",
 		async (
@@ -875,7 +905,10 @@ export function registerExportHandlers() {
 				const parentWindow = BrowserWindow.fromWebContents(event.sender);
 				const saveDialogOptions: SaveDialogOptions = {
 					title: isGif ? nativeT("saveGif") : nativeT("saveVideo"),
-					defaultPath: path.join(app.getPath("downloads"), fileName),
+					defaultPath: await getExportSaveDialogDefaultPath(
+						fileName,
+						getCaptionSidecarExtensions(sidecarPayload),
+					),
 					filters,
 					properties: ["createDirectory", "showOverwriteConfirmation"],
 				};
@@ -892,20 +925,29 @@ export function registerExportHandlers() {
 					};
 				}
 
-				await fs.writeFile(result.filePath, Buffer.from(videoData));
+				const destinationPath = await saveExportToAvailablePath(
+					getSelectedExportPath(
+						result.filePath,
+						saveDialogOptions.defaultPath!,
+						fileName,
+					),
+					(destination) => fs.writeFile(destination, Buffer.from(videoData)),
+					getCaptionSidecarExtensions(sidecarPayload),
+				);
 				const captionSidecarResult = await writeCaptionSidecarsBestEffort(
-					result.filePath,
+					destinationPath,
 					sidecarPayload,
 				);
-				approveUserPath(result.filePath);
+				approveUserPath(destinationPath);
 
 				return {
 					success: true,
-					path: result.filePath,
+					path: destinationPath,
 					message: withCaptionSidecarMessage(
 						"Video exported successfully",
 						captionSidecarResult,
 					),
+					captionSidecarFailed: Boolean(captionSidecarResult.error),
 				};
 			} catch (error) {
 				console.error("Failed to save exported video:", error);
@@ -954,6 +996,7 @@ export function registerExportHandlers() {
 						"Video exported successfully",
 						captionSidecarResult,
 					),
+					captionSidecarFailed: Boolean(captionSidecarResult.error),
 					canceled: false,
 				};
 			} catch (error) {
@@ -1020,6 +1063,7 @@ export function registerExportHandlers() {
 							"Video exported successfully",
 							captionSidecarResult,
 						),
+						captionSidecarFailed: Boolean(captionSidecarResult.error),
 					};
 				}
 
@@ -1030,7 +1074,10 @@ export function registerExportHandlers() {
 				const parentWindow = BrowserWindow.fromWebContents(event.sender);
 				const saveDialogOptions: SaveDialogOptions = {
 					title: isGif ? nativeT("saveGif") : nativeT("saveVideo"),
-					defaultPath: path.join(app.getPath("downloads"), fileName),
+					defaultPath: await getExportSaveDialogDefaultPath(
+						fileName,
+						getCaptionSidecarExtensions(sidecarPayload),
+					),
 					filters,
 					properties: ["createDirectory", "showOverwriteConfirmation"],
 				};
@@ -1049,22 +1096,31 @@ export function registerExportHandlers() {
 					};
 				}
 
-				await moveExportedTempFile(tempPath, result.filePath);
+				const destinationPath = await saveExportToAvailablePath(
+					getSelectedExportPath(
+						result.filePath,
+						saveDialogOptions.defaultPath!,
+						fileName,
+					),
+					(destination) => moveExportedTempFile(tempPath, destination),
+					getCaptionSidecarExtensions(sidecarPayload),
+				);
 				releaseOwnedExportPath(tempPath);
 				const captionSidecarResult = await writeCaptionSidecarsBestEffort(
-					result.filePath,
+					destinationPath,
 					sidecarPayload,
 				);
-				approveUserPath(result.filePath);
+				approveUserPath(destinationPath);
 
 				return {
 					success: true,
-					path: result.filePath,
+					path: destinationPath,
 					canceled: false,
 					message: withCaptionSidecarMessage(
 						"Video exported successfully",
 						captionSidecarResult,
 					),
+					captionSidecarFailed: Boolean(captionSidecarResult.error),
 				};
 			} catch (error) {
 				console.error("Failed to finalize exported video:", error);

@@ -1,5 +1,5 @@
 import { Card } from "@heroui/react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
 	Accordion,
 	AccordionContent,
@@ -38,6 +38,7 @@ import { appSettingsKeys, useAppSettings } from "./settings/useAppSettings";
 import { backgroundSettingsKeys, useBackgroundSettings } from "./settings/useBackgroundSettings";
 import { cursorSettingsKeys, useCursorSettings } from "./settings/useCursorSettings";
 import { frameSettingsKeys, useFrameSettings } from "./settings/useFrameSettings";
+import { useScrollFade } from "./settings/useScrollFade";
 import { useSettingsTranslations } from "./settings/useSettingsTranslations";
 import { ZoomSettings, zoomSettingsKeys } from "./settings/ZoomSettings";
 import { getPreviewPlaybackRateRange } from "./videoPlayback/playbackRate";
@@ -84,7 +85,6 @@ export function SettingsPanel(input: SettingsPanelProps) {
 		webcamPreviewPlaying,
 		onWebcamChange,
 		onUploadWebcam,
-		onClearWebcam,
 		autoCaptions,
 		autoCaptionSettings,
 		captionModelId,
@@ -98,9 +98,10 @@ export function SettingsPanel(input: SettingsPanelProps) {
 		onPickWhisperModel,
 		onGenerateAutoCaptions,
 		onClearAutoCaptions,
-		onDownloadWhisperSmallModel,
 		onDeleteWhisperSmallModel,
 	} = props;
+	const backgroundScrollRef = useRef<HTMLDivElement>(null);
+	const backgroundScrollFade = useScrollFade(backgroundScrollRef, isBackgroundPanel);
 	const backgroundSettingsContent = (
 		<BackgroundSettings
 			{...pickSettingsProps(props, backgroundSettingsKeysForView)}
@@ -157,7 +158,9 @@ export function SettingsPanel(input: SettingsPanelProps) {
 		return (
 			<Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden rounded-none bg-transparent p-0 shadow-none">
 				<div
-					className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-5 pb-6 pt-1"
+					className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-5 pb-6 pt-1 scroll-shadow scroll-shadow--vertical scroll-shadow--fade scroll-shadow--hide-scrollbar [--scroll-shadow-size:16px]"
+					ref={backgroundScrollRef}
+					data-scroll-shadow-mode={backgroundScrollFade}
 					style={{ scrollbarGutter: "stable" }}
 				>
 					<div className="mb-4 flex items-center gap-2">
@@ -239,7 +242,6 @@ export function SettingsPanel(input: SettingsPanelProps) {
 						onPickWhisperModel={onPickWhisperModel}
 						onGenerateAutoCaptions={onGenerateAutoCaptions}
 						onClearAutoCaptions={onClearAutoCaptions}
-						onDownloadWhisperSmallModel={onDownloadWhisperSmallModel}
 						onDeleteWhisperSmallModel={onDeleteWhisperSmallModel}
 					/>
 				);
@@ -253,7 +255,6 @@ export function SettingsPanel(input: SettingsPanelProps) {
 						webcamPreviewPlaying={webcamPreviewPlaying}
 						onWebcamChange={onWebcamChange}
 						onUploadWebcam={onUploadWebcam}
-						onClearWebcam={onClearWebcam}
 					/>
 				);
 			default:

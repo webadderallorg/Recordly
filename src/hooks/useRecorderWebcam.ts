@@ -8,12 +8,13 @@ import { getVideoExtensionForMimeType, selectWebcamRecordingMimeType } from "./r
 const WEBCAM_BITRATE = 8_000_000;
 const WEBCAM_WIDTH = 1280;
 const WEBCAM_HEIGHT = 720;
-const WEBCAM_FRAME_RATE = 30;
+const WEBCAM_FRAME_RATE = 60;
 const RECORDER_TIMESLICE_MS = 250;
 const RECORDING_FILE_PREFIX = "recording-";
 const WEBCAM_SUFFIX = "-webcam";
 
 type RecorderWebcamOptions = {
+	isMacOS: boolean;
 	webcamEnabled: boolean;
 	webcamDeviceId: string | undefined;
 	recordingSessionTimestamp: MutableRefObject<number | null>;
@@ -22,6 +23,7 @@ type RecorderWebcamOptions = {
 
 /** Owns the webcam sidecar lifecycle while the main recorder controls capture timing. */
 export function useRecorderWebcam({
+	isMacOS,
 	webcamEnabled,
 	webcamDeviceId,
 	recordingSessionTimestamp,
@@ -80,6 +82,11 @@ export function useRecorderWebcam({
 		}
 
 		try {
+			if (isMacOS) {
+				const permission = await window.electronAPI.getMediaPermissionStatus();
+				if (!permission.success || permission.camera !== "granted")
+					throw new Error("Camera access must be granted in Camera settings.");
+			}
 			webcamStream.current = await navigator.mediaDevices.getUserMedia({
 				video: webcamDeviceId
 					? {
@@ -94,6 +101,14 @@ export function useRecorderWebcam({
 							frameRate: { ideal: WEBCAM_FRAME_RATE, max: WEBCAM_FRAME_RATE },
 						},
 				audio: false,
+			});
+
+			const settings = webcamStream.current.getVideoTracks?.()[0]?.getSettings?.();
+			console.info("[Recorder] Webcam capture settings", {
+				requestedFrameRate: WEBCAM_FRAME_RATE,
+				frameRate: settings?.frameRate ?? null,
+				width: settings?.width ?? null,
+				height: settings?.height ?? null,
 			});
 
 			const mimeType = selectWebcamRecordingMimeType();
@@ -180,7 +195,7 @@ export function useRecorderWebcam({
 				),
 			});
 		}
-	}, [getRecordingDurationMs, recordingSessionTimestamp, webcamDeviceId, webcamEnabled]);
+	}, [getRecordingDurationMs, isMacOS, recordingSessionTimestamp, webcamDeviceId, webcamEnabled]);
 
 	/** Start the prepared webcam MediaRecorder after the main recording begins. */
 	const beginWebcamCapture = useCallback(() => {

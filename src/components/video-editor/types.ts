@@ -134,7 +134,7 @@ export type EditorEffectSection =
 
 export type ZoomTransitionEasing = "recordly" | "glide" | "smooth" | "snappy" | "linear";
 
-export type WebcamShape = "circle" | "squircle";
+export type WebcamShape = "circle" | "squircle" | "rectangle";
 
 export type WebcamCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 export type WebcamPositionPreset =
@@ -149,8 +149,12 @@ export type WebcamPositionPreset =
 export interface WebcamOverlaySettings {
 	/** Missing in legacy projects, which retain the squircle mask. */
 	shape?: WebcamShape;
+	/** Shared edge appearance in the editor and exported video. */
+	previewFrame?: "standard" | "soft-blur";
 	/** Source-time intervals containing webcam footage in an imported sequence. */
 	visibleRanges?: { startMs: number; endMs: number }[];
+	/** Repeat independently uploaded webcam footage. */
+	loop?: boolean;
 	enabled: boolean;
 	sourcePath: string | null;
 	timeOffsetMs: number;
@@ -165,8 +169,8 @@ export interface WebcamOverlaySettings {
 	height: number;
 	reactToZoom: boolean;
 	roundness: number;
-	/** Legacy pixel value retained only while loading older projects. */
-	cornerRadius?: number;
+	/** Older saves use the shape preset's roundness on load. */
+	roundnessVersion?: typeof WEBCAM_ROUNDNESS_VERSION;
 	shadow: number;
 	margin: number;
 }
@@ -206,9 +210,10 @@ export const DEFAULT_CONNECTED_ZOOM_DURATION_MS = 1000;
 export const DEFAULT_ZOOM_IN_EASING: ZoomTransitionEasing = "recordly";
 export const DEFAULT_ZOOM_OUT_EASING: ZoomTransitionEasing = "recordly";
 export const DEFAULT_CONNECTED_ZOOM_EASING: ZoomTransitionEasing = "glide";
-export const DEFAULT_WEBCAM_SIZE = 40;
+export const DEFAULT_WEBCAM_SIZE = 50;
 export const DEFAULT_WEBCAM_REACT_TO_ZOOM = true;
-export const DEFAULT_WEBCAM_ROUNDNESS = 50;
+export const DEFAULT_WEBCAM_ROUNDNESS = 20;
+export const WEBCAM_ROUNDNESS_VERSION = 1;
 export const DEFAULT_SHADOW_INTENSITY = 0.5;
 export const DEFAULT_WEBCAM_SHADOW = 0.2;
 export const DEFAULT_WEBCAM_MARGIN = 24;
@@ -218,6 +223,7 @@ export const DEFAULT_WEBCAM_POSITION_Y = 1;
 export const DEFAULT_WEBCAM_TIME_OFFSET_MS = 0;
 
 export const DEFAULT_WEBCAM_OVERLAY: WebcamOverlaySettings = {
+	previewFrame: "soft-blur",
 	shape: "circle",
 	enabled: false,
 	sourcePath: null,
@@ -233,6 +239,7 @@ export const DEFAULT_WEBCAM_OVERLAY: WebcamOverlaySettings = {
 	height: DEFAULT_WEBCAM_SIZE,
 	reactToZoom: DEFAULT_WEBCAM_REACT_TO_ZOOM,
 	roundness: DEFAULT_WEBCAM_ROUNDNESS,
+	roundnessVersion: WEBCAM_ROUNDNESS_VERSION,
 	shadow: DEFAULT_WEBCAM_SHADOW,
 	margin: DEFAULT_WEBCAM_MARGIN,
 };
@@ -599,10 +606,18 @@ export interface CaptionCueWord {
 }
 
 export type AutoCaptionAnimation = "none" | "fade" | "rise" | "pop";
-export type AutoCaptionStyle = "classic" | "tiktok" | "karaoke" | "minimal" | "neon" | "paper";
+export type AutoCaptionStyle =
+	| "classic"
+	| "tiktok"
+	| "karaoke"
+	| "minimal"
+	| "neon"
+	| "paper"
+	| "reveal"
+	| "serif";
 
 export interface AutoCaptionSettings {
-	/** Older projects without a style use Classic. */
+	/** Legacy style IDs remain supported when reopening older projects. */
 	style?: AutoCaptionStyle;
 	enabled: boolean;
 	/** Show the hover ghost on the timeline caption track for click-to-add. */
@@ -621,7 +636,7 @@ export interface AutoCaptionSettings {
 }
 
 export const DEFAULT_AUTO_CAPTION_SETTINGS: AutoCaptionSettings = {
-	style: "classic",
+	style: "reveal",
 	enabled: false,
 	timelineQuickAdd: true,
 	language: "auto",
@@ -630,11 +645,11 @@ export const DEFAULT_AUTO_CAPTION_SETTINGS: AutoCaptionSettings = {
 	bottomOffset: 3,
 	maxWidth: 62,
 	maxRows: 1,
-	animationStyle: "fade",
-	boxRadius: 40,
+	animationStyle: "none",
+	boxRadius: 8,
 	textColor: "#FFFFFF",
-	inactiveTextColor: "#E5E7EB",
-	backgroundOpacity: 0.7,
+	inactiveTextColor: "#FFFFFF",
+	backgroundOpacity: 1,
 };
 
 export type PlaybackSpeed = 0.25 | 0.5 | 0.75 | 1.25 | 1.5 | 1.75 | 2;

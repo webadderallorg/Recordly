@@ -22,7 +22,16 @@ const point = (
 const typeAt = (samples: CursorTelemetryPoint[], timeMs: number) =>
 	getCursorVisualState(samples, timeMs, 350, 350).cursorType;
 
-describe("cinematic cursor telemetry", () => {
+describe.each([
+	CURSOR_MOTION_PRESETS.focused,
+	cinematic,
+])("$label cursor hover filtering", (preset) => {
+	const prepare = (samples: CursorTelemetryPoint[]) =>
+		prepareCinematicCursorTelemetry(samples, preset.cursorSmoothing, {
+			stiffnessMultiplier: preset.cursorSpringStiffnessMultiplier,
+			dampingMultiplier: preset.cursorSpringDampingMultiplier,
+			massMultiplier: preset.cursorSpringMassMultiplier,
+		});
 	it.each([
 		["arrow", "pointer"],
 		["pointer", "arrow"],
@@ -37,6 +46,11 @@ describe("cinematic cursor telemetry", () => {
 		for (const time of [0, 1000, 1150, 1299, 1600, 1100])
 			expect(typeAt(result, time)).toBe(baseline);
 		expect(samples[1].cursorType).toBe(transient);
+	});
+	it("suppresses a hover just below the 500ms threshold", () => {
+		const result = prepare([point(0), point(1000, "pointer"), point(1499), point(3000)]);
+		expect(typeAt(result, 1000)).toBe("arrow");
+		expect(typeAt(result, 1498)).toBe("arrow");
 	});
 	it.each([500, 800])("keeps a %ims hover at its original start, without delay", (duration) => {
 		const result = prepare([
@@ -74,6 +88,9 @@ describe("cinematic cursor telemetry", () => {
 		expect(getCursorVisualState(result, 1150, 350, 350).isPressed).toBe(false);
 		expect(result[1]).toMatchObject({ ...down, cursorType: "arrow" });
 	});
+});
+
+describe("cinematic cursor telemetry", () => {
 	it("straightens small wobble without retiming the recording or moving click targets", () => {
 		const samples = [
 			point(0, "arrow", 0.2),
@@ -129,7 +146,7 @@ describe("cinematic cursor telemetry", () => {
 		]);
 		expect(interpolateCursorPosition(smallPause, 75)).toEqual({ cx: 0.204, cy: 0.5 });
 	});
-	it("leaves Focused and custom settings unchanged, and caches per recording", () => {
+	it("leaves custom settings unchanged, and caches per recording", () => {
 		const samples = [point(0), point(1000, "pointer"), point(1300), point(2400)];
 		expect(prepareCinematicCursorTelemetry(samples, cinematic.cursorSmoothing, {})).toBe(
 			samples,
@@ -140,4 +157,29 @@ describe("cinematic cursor telemetry", () => {
 		expect(prepare(samples)).toHaveLength(5);
 		expect(prepare([])).toEqual([]);
 	});
+});
+
+it("keeps Focused paths intact and caches separately from Cinematic when switching presets", () => {
+	const samples = [
+		point(0, "arrow", 0.2),
+		point(50, "pointer", 0.3, 0.505),
+		point(100, "arrow", 0.4, 0.495),
+		point(200, "arrow", 0.6),
+	];
+	const focused = CURSOR_MOTION_PRESETS.focused;
+	const focus = () =>
+		prepareCinematicCursorTelemetry(samples, focused.cursorSmoothing, {
+			stiffnessMultiplier: focused.cursorSpringStiffnessMultiplier,
+			dampingMultiplier: focused.cursorSpringDampingMultiplier,
+			massMultiplier: focused.cursorSpringMassMultiplier,
+		});
+	const result = focus();
+	expect(result[1]).toEqual({ ...samples[1], cursorType: "arrow" });
+	expect(result.map(({ cx, cy, timeMs }) => ({ cx, cy, timeMs }))).toEqual(
+		samples.map(({ cx, cy, timeMs }) => ({ cx, cy, timeMs })),
+	);
+	expect(prepare(samples)[1].cy).toBe(0.5);
+	expect(focus()).toBe(result);
+	samples.push(point(300));
+	expect(focus()).toHaveLength(5);
 });

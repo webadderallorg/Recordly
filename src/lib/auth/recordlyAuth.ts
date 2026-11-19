@@ -2,6 +2,7 @@ import { createClient, type Provider, type User } from "@supabase/supabase-js";
 import { translate } from "@/i18n/runtime";
 import { traceAuthOperation } from "./authDiagnostics";
 import { oauthFlowIdRedirectsEnabled } from "./oauthFlowRedirects";
+import { isSavedSignInLocked } from "./savedSignIn";
 import {
 	createPendingSignupConsentStore,
 	createSignupConsentRetryStore,
@@ -107,11 +108,11 @@ function createAuthStorage() {
 			}
 			try {
 				await bridge.authStorageMigrate(snapshot);
-			} catch {
+			} catch (error) {
 				removeLegacyCopies(local, owned);
-				return null;
+				return isSavedSignInLocked(error) ? bridge : null;
 			}
-			// Main migrates once, including an empty marker. Remove old copies so
+			// Main migrates existing credentials once. Remove old copies so
 			// logging out cannot restore a stale browser session.
 			removeLegacyCopies(local, owned);
 			return bridge;
@@ -134,14 +135,14 @@ function createAuthStorage() {
 		},
 		async setItem(key: string, value: string): Promise<void> {
 			const native = await nativeStorage();
-			if (oauthFlowIdRedirectsEnabled && !native)
-				throw new Error(translate("support.authInsecure"));
-			if (native) await native.authStorageSetItem(key, value);
-			else {
-				const local = memoryOnly ? undefined : browserStorage();
-				if (local) local.setItem(key, value);
-				else memory.set(key, value);
+			if (native) {
+				if ((await native.authStorageSetItem(key, value)) !== false) return;
+				nativeReady = Promise.resolve(null);
 			}
+			if (oauthFlowIdRedirectsEnabled) throw new Error(translate("support.authInsecure"));
+			const local = memoryOnly ? undefined : browserStorage();
+			if (local) local.setItem(key, value);
+			else memory.set(key, value);
 		},
 		async removeItem(key: string): Promise<void> {
 			const native = await nativeStorage();

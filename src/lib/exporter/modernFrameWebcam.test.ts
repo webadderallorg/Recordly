@@ -13,7 +13,7 @@ const {
 	cancelForwardFrameSourceMock: vi.fn(),
 	destroyForwardFrameSourceMock: vi.fn(async () => undefined),
 	getForwardFrameAtTimeMock: vi.fn(async () => null),
-	initializeForwardFrameSourceMock: vi.fn(async () => undefined),
+	initializeForwardFrameSourceMock: vi.fn(async () => ({ duration: 2 })),
 	pixiApplicationInstancesMock: [] as Array<{
 		destroy: ReturnType<typeof vi.fn>;
 		init: ReturnType<typeof vi.fn>;
@@ -137,7 +137,7 @@ import { createMockCanvas, createRenderer } from "./modernFrameRenderer.testSupp
 describe("ModernFrameRenderer webcam export fallback", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		initializeForwardFrameSourceMock.mockResolvedValue(undefined);
+		initializeForwardFrameSourceMock.mockResolvedValue({ duration: 2 });
 		getForwardFrameAtTimeMock.mockResolvedValue(null);
 		resolveMediaElementSourceMock.mockResolvedValue({
 			src: "blob:webcam",
@@ -186,6 +186,18 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 				}),
 			},
 		});
+	});
+
+	it("restarts the webcam decoder at the loop boundary", async () => {
+		const renderer = createRenderer();
+		renderer.config.webcam = { ...DEFAULT_WEBCAM_OVERLAY, enabled: true, loop: true };
+		renderer.config.webcamUrl = "file:///tmp/webcam.webm";
+		await renderer.webcamMedia.setupWebcamSource();
+		await renderer.webcamMedia.syncWebcamFrame(1.75);
+		await renderer.webcamMedia.syncWebcamFrame(2.25);
+		expect(initializeForwardFrameSourceMock).toHaveBeenCalledTimes(2);
+		expect(getForwardFrameAtTimeMock).toHaveBeenNthCalledWith(1, 1.75);
+		expect(getForwardFrameAtTimeMock).toHaveBeenNthCalledWith(2, 0.25);
 	});
 
 	it("falls back to media-element webcam sync when packet streaming fails after initialize", async () => {
@@ -445,6 +457,50 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 				VideoFrame: previousVideoFrame,
 			});
 		}
+	});
+	it("keeps a cropped camera without an explicit shape square in modern export", () => {
+		const renderer = createRenderer();
+		renderer.config.webcam = {
+			...DEFAULT_WEBCAM_OVERLAY,
+			enabled: true,
+			shape: undefined,
+			width: 30,
+			height: 30,
+			cropRegion: { x: 0, y: 0, width: 0.5, height: 1 },
+		};
+		renderer.currentVideoTime = 0;
+		renderer.webcamMedia.lastSyncedWebcamTime = 0;
+		renderer.webcamMedia.webcamVideoElement = {
+			currentTime: 0,
+			readyState: 2,
+			seeking: false,
+			videoWidth: 1920,
+			videoHeight: 1080,
+			duration: Number.NaN,
+		};
+		renderer.scene.webcamRootContainer = {
+			visible: false,
+			addChild: vi.fn(),
+			position: { set: vi.fn() },
+		};
+		renderer.scene.webcamContainer = { addChildAt: vi.fn() };
+		renderer.scene.webcamMaskGraphics = {
+			clear: vi.fn(),
+			moveTo: vi.fn(),
+			lineTo: vi.fn(),
+			closePath: vi.fn(),
+			fill: vi.fn(),
+		};
+		renderer.webcamShadowLayers = [];
+		renderer.motion.animationState = { appliedScale: 1 };
+		const render = vi.spyOn(renderer.webcam.webcamMotionBlur, "render").mockReturnValue(null);
+		renderer.webcam.updateWebcamOverlay();
+		expect(render).toHaveBeenCalledWith(
+			expect.objectContaining({
+				shape: "squircle",
+				layout: expect.objectContaining({ width: 324, height: 324 }),
+			}),
+		);
 	});
 	it("keeps a resizing blur canvas texture dynamic across export frames", () => {
 		const renderer = createRenderer();

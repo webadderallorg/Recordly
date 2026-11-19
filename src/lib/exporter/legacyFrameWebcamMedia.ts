@@ -1,6 +1,5 @@
 import { getWebcamMediaTargetTimeSeconds } from "@/components/video-editor/videoPlayback/webcamSync";
-import { clampMediaTimeToDuration } from "@/lib/mediaTiming";
-import { ForwardFrameSource } from "./forwardFrameSource";
+import { WebcamFrameSource } from "./webcamFrameSource";
 import type { LegacyFrameRendererContext } from "./legacyFrameRendererContext";
 import { resolveMediaElementSource } from "./localMediaSource";
 import { WEBCAM_MEDIA_ELEMENT_READY_TIMEOUT_MS } from "./modernFrameUtils";
@@ -45,9 +44,9 @@ export async function setupWebcamSource(
 	context.cleanupWebcamSource = null;
 
 	if (!preferMediaElementSampling) {
+		const frameSource = new WebcamFrameSource(webcamUrl, context.config.webcam.loop === true);
 		try {
-			const frameSource = new ForwardFrameSource();
-			await frameSource.initialize(webcamUrl);
+			await frameSource.initialize();
 			context.webcamForwardFrameSource = frameSource;
 			context.webcamVideoElement = null;
 			context.webcamSeekPromise = null;
@@ -56,6 +55,7 @@ export async function setupWebcamSource(
 			context.lastSyncedWebcamTime = null;
 			return;
 		} catch (error) {
+			await frameSource.destroy();
 			console.warn(
 				"[FrameRenderer] Decoder-backed webcam source unavailable during export; falling back to media element sync:",
 				error,
@@ -148,17 +148,17 @@ export async function syncWebcamFrame(
 	>,
 	targetTime: number,
 ): Promise<void> {
-	const webcamTargetTime = getWebcamMediaTargetTimeSeconds({
-		currentTime: targetTime,
-		webcamDuration: Number.isFinite(context.webcamVideoElement?.duration)
-			? context.webcamVideoElement?.duration
-			: null,
-		timeOffsetMs: context.config.webcam?.timeOffsetMs,
-	});
+	const loop = context.config.webcam?.loop;
+	const timeOffsetMs = context.config.webcam?.timeOffsetMs;
 
 	if (context.webcamForwardFrameSource) {
 		const frameSource = context.webcamForwardFrameSource;
-		const clampedTime = clampMediaTimeToDuration(webcamTargetTime, null);
+		const clampedTime = getWebcamMediaTargetTimeSeconds({
+			currentTime: targetTime,
+			webcamDuration: loop ? frameSource.duration : undefined,
+			timeOffsetMs,
+			loop,
+		});
 		try {
 			const decodedFrame = await frameSource.getFrameAtTime(clampedTime);
 			context.closeWebcamDecodedFrame();
@@ -196,10 +196,12 @@ export async function syncWebcamFrame(
 		return;
 	}
 
-	const clampedTime = clampMediaTimeToDuration(
-		webcamTargetTime,
-		Number.isFinite(webcamVideo.duration) ? webcamVideo.duration : null,
-	);
+	const clampedTime = getWebcamMediaTargetTimeSeconds({
+		currentTime: targetTime,
+		webcamDuration: webcamVideo.duration,
+		timeOffsetMs,
+		loop,
+	});
 
 	if (Math.abs(webcamVideo.currentTime - clampedTime) <= 0.008) {
 		context.lastSyncedWebcamTime = clampedTime;

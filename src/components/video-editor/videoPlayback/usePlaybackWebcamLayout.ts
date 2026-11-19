@@ -1,12 +1,14 @@
 import type React from "react";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { getWebcamShadowFilter } from "@/lib/exporter/shadowProfile";
+import { getWebcamGlassRimPath, getWebcamGlassRimWidth } from "../glassRim";
 import {
 	DEFAULT_WEBCAM_REACT_TO_ZOOM,
 	DEFAULT_WEBCAM_ROUNDNESS,
 	DEFAULT_WEBCAM_SHADOW,
 	DEFAULT_WEBCAM_SIZE,
 } from "../types";
+import { getWebcamEdgeFeatherPixels } from "../webcamEdgeFeather";
 import {
 	getCropMatchedWebcamHeightPercent,
 	getWebcamClipPath,
@@ -38,6 +40,7 @@ export type usePlaybackWebcamLayoutInput = Pick<
 	| "isPlayingRef"
 	| "isSeekingRef"
 	| "zoomMotionBlurRef"
+	| "animationStateRef"
 	| "isPlaying"
 >;
 export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
@@ -58,10 +61,15 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 		isPlayingRef,
 		isSeekingRef,
 		zoomMotionBlurRef,
+		animationStateRef,
 		isPlaying,
 	} = input;
 
+	// Retain only a completed frame from the current source while a seek decodes.
+	const renderedSourceRef = useRef<string | null>(null);
+
 	const webcamEnabled = webcam?.enabled ?? false;
+	const webcamShape = webcam?.shape ?? "squircle";
 
 	const webcamMargin = webcam?.margin ?? 24;
 
@@ -94,6 +102,7 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 		webcamVideoDimensions?.width,
 		webcamVideoDimensions?.height,
 		webcamCropRegion,
+		webcamShape,
 	);
 
 	const webcamCropPreviewContentStyle = useMemo<React.CSSProperties>(() => {
@@ -106,7 +115,10 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 			webcamVideoDimensions.width,
 			webcamVideoDimensions.height,
 		);
-		const targetAspect = Math.max(0.01, webcamWidth) / Math.max(0.01, webcamHeight);
+		const targetAspect =
+			webcamShape === "circle"
+				? 1
+				: Math.max(0.01, webcamWidth) / Math.max(0.01, webcamHeight);
 		const coverScale = Math.max(targetAspect / sw, 1 / sh);
 		const drawWidth = webcamVideoDimensions.width * coverScale;
 		const drawHeight = webcamVideoDimensions.height * coverScale;
@@ -121,14 +133,12 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 			maxWidth: "none",
 			willChange: "left, top, width, height",
 		};
-	}, [webcamCropRegion, webcamHeight, webcamVideoDimensions, webcamWidth]);
+	}, [webcamCropRegion, webcamHeight, webcamVideoDimensions, webcamWidth, webcamShape]);
 
 	const applyWebcamBubbleLayout = useCallback(
 		(zoomScale: number) => {
 			const bubble = webcamBubbleRef.current;
 			const blurCanvas = webcamBlurCanvasRef.current;
-			if (blurCanvas) blurCanvas.style.display = "none";
-			if (bubble) bubble.style.visibility = "visible";
 			const bubbleInner = webcamBubbleInnerRef.current;
 			const overlay = overlayRef.current;
 			if (
@@ -144,6 +154,8 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 				!isWebcamVisibleAtSourceTime(webcam, currentTimeRef.current / 1000)
 			) {
 				webcamMotionBlurRef.current.reset();
+				renderedSourceRef.current = null;
+				if (blurCanvas) blurCanvas.style.display = "none";
 				if (bubble) {
 					bubble.style.display = "none";
 				}
@@ -152,7 +164,7 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 			const scaledMargin = scaleWebcamOverlayPixels(webcamMargin, overlay.clientWidth);
 
 			const scaledDimensions = getWebcamOverlayDimensionsPx({
-				shape: webcam?.shape,
+				shape: webcamShape,
 				containerWidth: overlay.clientWidth,
 				containerHeight: overlay.clientHeight,
 				widthPercent: webcamWidth,
@@ -165,7 +177,7 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 				webcamRoundness,
 				scaledDimensions.width,
 				scaledDimensions.height,
-				webcam?.shape,
+				webcamShape,
 			);
 			const { x, y } = getWebcamOverlayPosition({
 				containerWidth: overlay.clientWidth,
@@ -189,7 +201,7 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 				webcamRoundness,
 				scaledDimensions.width,
 				scaledDimensions.height,
-				webcam?.shape,
+				webcamShape,
 			);
 			const shadowSize = Math.min(scaledDimensions.width, scaledDimensions.height);
 			bubble.style.filter = getWebcamShadowFilter(shadowSize, webcamShadow);
@@ -201,6 +213,29 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 			bubbleInner.style.contain = "paint";
 			bubbleInner.style.clipPath = webcamClipPath;
 			bubbleInner.style.setProperty("-webkit-clip-path", webcamClipPath);
+			const rim = bubbleInner.querySelector<SVGSVGElement>("[data-webcam-glass-rim]");
+			if (rim) {
+				const viewBox = `0 0 ${scaledDimensions.width} ${scaledDimensions.height}`;
+				if (rim.getAttribute("viewBox") !== viewBox) rim.setAttribute("viewBox", viewBox);
+				const path = rim.querySelector("path");
+				const contour = getWebcamGlassRimPath({
+					...scaledDimensions,
+					radius: scaledRadius,
+					shape: webcamShape,
+				});
+				if (path) {
+					const strokeWidth = String(
+						getWebcamGlassRimWidth(scaledDimensions.width, scaledDimensions.height) * 2,
+					);
+					if (path.getAttribute("stroke-width") !== strokeWidth)
+						path.setAttribute("stroke-width", strokeWidth);
+					if (path.getAttribute("d") !== contour) path.setAttribute("d", contour);
+				}
+			}
+			const edgeFeatherPx = getWebcamEdgeFeatherPixels(
+				webcam?.previewFrame,
+				overlay.clientWidth,
+			);
 			const video = webcamVideoRef.current;
 			if (!video || video.readyState < 2 || !webcamMediaSynchronized) {
 				webcamMotionBlurRef.current.reset();
@@ -208,8 +243,16 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 			const blur =
 				video && video.readyState >= 2 && webcamMediaSynchronized
 					? webcamMotionBlurRef.current.render({
+							// Keep one renderer throughout playback, including tiny zoom steps
+							// and frames at rest, so edges/shadows never switch mid-animation.
+							renderStill:
+								edgeFeatherPx > 0 ||
+								(isPlayingRef.current && !isSeekingRef.current),
+							edgeFeatherPx,
 							layout: { x, y, ...scaledDimensions, radius: scaledRadius },
-							shape: webcam?.shape,
+							// Supersample small cameras even on standard-density displays.
+							resolution: Math.max(2, window.devicePixelRatio || 1),
+							shape: webcamShape,
 							timeMs: timelineTimeRef.current * 1000,
 							playing: isPlayingRef.current && !isSeekingRef.current,
 							amount: zoomMotionBlurRef.current,
@@ -229,17 +272,35 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 				if (context) {
 					context.clearRect(0, 0, blurCanvas.width, blurCanvas.height);
 					context.drawImage(blur.canvas, 0, 0);
+					blurCanvas.style.width = `${blur.width}px`;
+					blurCanvas.style.height = `${blur.height}px`;
 					blurCanvas.style.left = `${blur.x}px`;
 					blurCanvas.style.top = `${blur.y}px`;
 					blurCanvas.style.display = "block";
 					bubble.style.visibility = "hidden";
+					renderedSourceRef.current = edgeFeatherPx > 0 ? webcamVideoPath : null;
+					return;
 				}
 			}
+			if (edgeFeatherPx > 0) {
+				// A decoder temporarily loses HAVE_CURRENT_DATA during seeking. Keep
+				// the last feathered frame until the ready event redraws the new one.
+				if (blurCanvas) {
+					blurCanvas.style.display =
+						renderedSourceRef.current === webcamVideoPath ? "block" : "none";
+				}
+				bubble.style.visibility = "hidden";
+				return;
+			}
+			renderedSourceRef.current = null;
+			if (blurCanvas) blurCanvas.style.display = "none";
+			bubble.style.visibility = "visible";
 		},
 		[
 			webcamCorner,
 			webcamRoundness,
 			webcam,
+			webcamShape,
 			webcamEnabled,
 			webcamMargin,
 			webcamPositionPreset,
@@ -273,10 +334,10 @@ export function usePlaybackWebcamLayout(input: usePlaybackWebcamLayoutInput) {
 	useEffect(() => {
 		if (!isPlaying) {
 			webcamMotionBlurRef.current.reset();
-			if (webcamBlurCanvasRef.current) webcamBlurCanvasRef.current.style.display = "none";
-			if (webcamBubbleRef.current) webcamBubbleRef.current.style.visibility = "visible";
+			// Keep the native video at the exact pose where playback stopped.
+			applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
 		}
-	}, [isPlaying, webcamMotionBlurRef, webcamBlurCanvasRef, webcamBubbleRef]);
+	}, [isPlaying, webcamMotionBlurRef, applyWebcamBubbleLayout, animationStateRef]);
 	return {
 		webcamEnabled,
 		webcamMargin,

@@ -170,5 +170,7 @@
 	"selectedClips": "已选择 {{count}} 个片段",
 	"mergeSelectedClips": "合并所选片段",
 	"mergeClipsUnavailable": "合并需要连续的素材，并且速度和音频设置必须一致。",
-	"mergeClips": "合并片段"
+	"mergeClips": "合并片段",
+	"captionStyleClassic": "经典",
+	"captionStyleReveal": "逐词显现"
 }

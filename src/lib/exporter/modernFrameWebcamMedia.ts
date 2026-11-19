@@ -1,6 +1,6 @@
 import { getWebcamMediaTargetTimeSeconds } from "@/components/video-editor/videoPlayback/webcamSync";
 import { clampMediaTimeToDuration } from "@/lib/mediaTiming";
-import { ForwardFrameSource } from "./forwardFrameSource";
+import { WebcamFrameSource } from "./webcamFrameSource";
 import { resolveMediaElementSource } from "./localMediaSource";
 import type { FrameRenderContext } from "./modernFrameRenderer";
 import { WEBCAM_MEDIA_ELEMENT_READY_TIMEOUT_MS } from "./modernFrameUtils";
@@ -11,7 +11,7 @@ export class FrameWebcamMedia {
 		private readonly context: Pick<FrameRenderContext, "config" | "webcamFrames" | "webcam">,
 	) {}
 
-	webcamForwardFrameSource: ForwardFrameSource | null = null;
+	webcamForwardFrameSource: WebcamFrameSource | null = null;
 
 	webcamDecodedFrame: VideoFrame | null = null;
 
@@ -132,15 +132,19 @@ export class FrameWebcamMedia {
 
 		if (!this.context.config.webcam?.enabled || !webcamUrl) return;
 
+		const frameSource = new WebcamFrameSource(
+			webcamUrl,
+			this.context.config.webcam.loop === true,
+		);
 		try {
-			const frameSource = new ForwardFrameSource();
-			await frameSource.initialize(webcamUrl);
+			await frameSource.initialize();
 			this.webcamForwardFrameSource = frameSource;
 			this.webcamVideoElement = null;
 			this.webcamSeekPromise = null;
 			this.lastSyncedWebcamTime = null;
 			return;
 		} catch (error) {
+			await frameSource.destroy();
 			console.warn(
 				"[FrameRenderer] Decoder-backed webcam source unavailable during export; falling back to media element sync:",
 				error,
@@ -152,12 +156,14 @@ export class FrameWebcamMedia {
 	}
 
 	getExpectedWebcamTargetTimeSeconds(targetTime: number): number {
+		const loop = this.context.config.webcam?.loop;
 		return getWebcamMediaTargetTimeSeconds({
 			currentTime: targetTime,
-			webcamDuration: Number.isFinite(this.webcamVideoElement?.duration)
-				? this.webcamVideoElement?.duration
-				: null,
+			webcamDuration:
+				this.webcamVideoElement?.duration ??
+				(loop ? this.webcamForwardFrameSource?.duration : undefined),
 			timeOffsetMs: this.context.config.webcam?.timeOffsetMs,
+			loop,
 		});
 	}
 
@@ -197,10 +203,7 @@ export class FrameWebcamMedia {
 			return;
 		}
 
-		const clampedTime = clampMediaTimeToDuration(
-			webcamTargetTime,
-			Number.isFinite(webcamVideo.duration) ? webcamVideo.duration : null,
-		);
+		const clampedTime = this.getExpectedWebcamTargetTimeSeconds(targetTime);
 
 		if (Math.abs(webcamVideo.currentTime - clampedTime) <= 0.008) {
 			this.lastSyncedWebcamTime = clampedTime;

@@ -1,7 +1,7 @@
 import { type ComponentProps, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { loadEditorPreferences } from "@/components/video-editor/editorPreferences";
-import { useExportMessages } from "@/components/video-editor/export/useExportMessages";
+import type { ExportProgress } from "@/lib/exporter";
 import { useExportSession } from "@/components/video-editor/export/useExportSession";
 import { useExportSettings } from "@/components/video-editor/export/useExportSettings";
 import { useExportStatusViewModel } from "@/components/video-editor/export/useExportStatusViewModel";
@@ -43,7 +43,12 @@ function Fixture() {
 		session: exportSession,
 		settings: exportSettings,
 	});
-	const exportMessage = useExportMessages({ t, active: exportSession.isExporting });
+	useEffect(() => {
+		const receiveProgress = (event: Event) =>
+			exportSession.setExportProgress((event as CustomEvent<ExportProgress | null>).detail);
+		window.addEventListener("export-fixture-progress", receiveProgress);
+		return () => window.removeEventListener("export-fixture-progress", receiveProgress);
+	}, [exportSession.setExportProgress]);
 	useEffect(() => {
 		exportSettings.setPublishDestination(query.has("link") ? "link" : "local");
 		exportSettings.setExportPipelineModel(query.has("legacy") ? "legacy" : "modern");
@@ -83,6 +88,14 @@ function Fixture() {
 	]);
 	return (
 		<main className="p-8 flex justify-end">
+			<button
+				type="button"
+				onClick={() => {
+					document.documentElement.dataset.editorAction = "true";
+				}}
+			>
+				Editor action
+			</button>
 			<EditorExportMenu
 				t={t}
 				exportSettings={exportSettings}
@@ -104,15 +117,19 @@ function Fixture() {
 				experimentalNvidiaCudaExport={false}
 				setExperimentalNvidiaCudaExport={() => undefined}
 				handleOpenExportDropdown={() => exportSession.setShowExportDropdown(true)}
-				handleExportDropdownClose={() => exportSession.setShowExportDropdown(false)}
+				handleExportDropdownClose={() => {
+					exportSession.setShowExportDropdown(false);
+					exportSession.setExportedFilePath(undefined);
+				}}
 				handleCancelExport={() => {
 					document.documentElement.dataset.cancelled = "true";
+					exportSession.setIsExporting(false);
+					exportSession.setShowExportDropdown(false);
 					cancelPreparation?.();
 				}}
 				handleRetrySaveExport={() => undefined}
 				handleStartExportFromDropdown={() => undefined}
 				revealExportedFile={() => undefined}
-				exportMessage={exportMessage}
 				projectTitle="Fixture"
 				authToken={query.has("signed-out") ? undefined : "fixture"}
 				accountId={query.has("signed-out") ? undefined : "fixture-account"}

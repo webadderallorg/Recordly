@@ -1,14 +1,18 @@
 import type { CaptureArea, SelectedSource } from "./ipc/types";
 
 /** Non-overlapping strips which never cover a pixel inside the recording. */
-export function outsideRecordingRects(displays: CaptureArea[], target: CaptureArea): CaptureArea[] {
+export function outsideRecordingRects(
+	displays: CaptureArea[],
+	target: CaptureArea,
+	exclusions: CaptureArea[] = [],
+): CaptureArea[] {
 	if (
 		![target.x, target.y, target.width, target.height].every(Number.isFinite) ||
 		target.width <= 0 ||
 		target.height <= 0
 	)
 		return [];
-	return displays.flatMap((display) => {
+	const rectangles = displays.flatMap((display) => {
 		// Round the hole outward: fractional display points must never dim a captured edge.
 		const left = Math.max(display.x, Math.floor(target.x));
 		const top = Math.max(display.y, Math.floor(target.y));
@@ -27,6 +31,11 @@ export function outsideRecordingRects(displays: CaptureArea[], target: CaptureAr
 			{ x: right, y: top, width: display.x + display.width - right, height: bottom - top },
 		].filter((rect) => rect.width > 0 && rect.height > 0);
 	});
+	return exclusions.reduce(
+		(remaining, exclusion) =>
+			remaining.flatMap((rect) => outsideRecordingRects([rect], exclusion)),
+		rectangles,
+	);
 }
 
 export function createRecordingFocusController(deps: {
@@ -81,9 +90,9 @@ export function createRecordingFocusController(deps: {
 		},
 		stop,
 		sourceChanged(next: SelectedSource | null) {
-			if (source) {
-				void this.start(next);
-			}
+			// A selection alone must not dim the desktop. Only update an already
+			// active recording surround; recording state starts and stops it.
+			if (source) void this.start(next);
 		},
 	};
 }

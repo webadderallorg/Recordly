@@ -54,6 +54,8 @@ export interface SettingsPanelProps {
 	backgroundBlur?: number;
 	onBackgroundBlurChange?: (amount: number) => void;
 	connectZooms?: boolean;
+	autoApplyFreshRecordingAutoZooms?: boolean;
+	onAutoApplyFreshRecordingAutoZoomsChange?: (enabled: boolean) => void;
 	onConnectZoomsChange?: (enabled: boolean) => void;
 	zoomInDurationMs?: number;
 	onZoomInDurationMsChange?: (duration: number) => void;
@@ -152,7 +154,6 @@ export interface SettingsPanelProps {
 	onPickWhisperModel?: () => void;
 	onGenerateAutoCaptions?: () => void;
 	onClearAutoCaptions?: () => void;
-	onDownloadWhisperSmallModel?: () => void;
 	onDeleteWhisperSmallModel?: () => void;
 	captionCurrentTimeMs?: number;
 	selectedCaptionId?: string | null;

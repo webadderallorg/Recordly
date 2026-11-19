@@ -1,12 +1,23 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
+const state = vi.hoisted(() => ({
+	dockVisible: true,
+	showInDock: null as boolean | null,
+	hideWhileRecording: null as boolean | null,
+}));
 
 vi.mock("electron", () => ({
 	app: {
 		once: vi.fn(),
 		dock: {
-			isVisible: vi.fn(() => true),
-			show: vi.fn(async () => undefined),
-			hide: vi.fn(),
+			isVisible: vi.fn(() => state.dockVisible),
+			show: vi.fn(async () => {
+				state.dockVisible = true;
+			}),
+			hide: vi.fn(() => {
+				state.dockVisible = false;
+			}),
 			setMenu: vi.fn(),
 		},
 	},
@@ -15,7 +26,9 @@ vi.mock("electron", () => ({
 	Menu: { buildFromTemplate: vi.fn((template) => template) },
 }));
 vi.mock("./appSettingsStore", () => ({
-	readAppSetting: vi.fn(() => null),
+	readAppSetting: vi.fn((key: string) =>
+		key === "recordly.application.showInDock" ? state.showInDock : state.hideWhileRecording,
+	),
 	writeAppSetting: vi.fn(),
 }));
 
@@ -34,6 +47,16 @@ async function setup() {
 beforeEach(() => {
 	vi.resetModules();
 	vi.clearAllMocks();
+	vi.useFakeTimers();
+	state.dockVisible = true;
+	state.showInDock = null;
+	state.hideWhileRecording = null;
+});
+
+afterEach(() => {
+	vi.clearAllTimers();
+	vi.useRealTimers();
+	Object.defineProperty(process, "platform", platformDescriptor);
 });
 
 describe("recording icon stop action", () => {
@@ -64,4 +87,49 @@ describe("recording icon stop action", () => {
 		expect(p.stopRecordingFromDesktopIcon()).toBe(true);
 		expect(p.stopRecording).toHaveBeenCalledTimes(2);
 	});
+});
+
+describe("recording Dock presence", () => {
+	beforeEach(() => {
+		Object.defineProperty(process, "platform", { value: "darwin" });
+	});
+
+	it("hides a normal launch when the Dock preference is disabled", async () => {
+		state.showInDock = false;
+		const { app } = await import("electron");
+		const p = await setup();
+		expect(app.dock.hide).toHaveBeenCalledOnce();
+		expect(app.dock.show).not.toHaveBeenCalled();
+		expect(p.desktopPresenceNeedsTray()).toBe(true);
+	});
+
+	it("hides from the Dock by default while keeping a tray entry, then restores on finish", async () => {
+		const p = await setup();
+		p.setDesktopPresenceRecording(true);
+		expect(state.dockVisible).toBe(false);
+		expect(p.desktopPresenceNeedsTray()).toBe(true);
+		p.setDesktopPresenceRecording(false);
+		await vi.advanceTimersByTimeAsync(1100);
+		expect(state.dockVisible).toBe(true);
+	});
+
+	it("honors an explicit preference to keep the Dock icon while recording", async () => {
+		state.hideWhileRecording = false;
+		const p = await setup();
+		p.setDesktopPresenceRecording(true);
+		expect(state.dockVisible).toBe(true);
+		expect(p.desktopPresenceNeedsTray()).toBe(true);
+	});
+});
+
+it.each(["linux", "win32"])("does not use the macOS Dock on %s", async (platform) => {
+	Object.defineProperty(process, "platform", { value: platform });
+	const { app } = await import("electron");
+	const p = await setup();
+	p.setDesktopPresenceRecording(true);
+	expect(p.desktopPresenceNeedsTray()).toBe(true);
+	p.setDesktopPresenceRecording(false);
+	expect(app.dock.hide).not.toHaveBeenCalled();
+	expect(app.dock.show).not.toHaveBeenCalled();
+	expect(app.dock.setMenu).not.toHaveBeenCalled();
 });

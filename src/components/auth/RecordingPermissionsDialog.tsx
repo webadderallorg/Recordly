@@ -1,7 +1,8 @@
 import { Button, Modal } from "@heroui/react";
+import { useState } from "react";
 import { X } from "@phosphor-icons/react";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
-import { OnboardingLayout } from "./OnboardingLayout";
+import { OnboardingFooter, OnboardingLayout, OnboardingPrimaryAction } from "./OnboardingLayout";
 import { OnboardingPermissions } from "./OnboardingPermissions";
 
 /** Permission recovery has no account steps or onboarding side effects. */
@@ -9,15 +10,19 @@ export function RecordingPermissionsDialog({
 	open,
 	onClose,
 	onFinish,
+	finishDisabled = false,
 	standalone,
 }: {
 	open: boolean;
 	onClose: () => void;
 	onFinish: () => void;
+	finishDisabled?: boolean;
 	standalone: boolean;
 }) {
 	const t = useScopedT("onboarding");
 	const { t: appT } = useI18n();
+	const [ready, setReady] = useState(false);
+	const canFinish = ready && !finishDisabled;
 	return (
 		<Modal
 			isOpen={open}
@@ -35,17 +40,33 @@ export function RecordingPermissionsDialog({
 						{standalone && (
 							<div
 								aria-hidden="true"
-								className="onboarding-window-drag absolute left-0 right-12 top-0 z-30 flex h-8 justify-center pt-2"
-							>
-								<span className="h-1 w-10 rounded-full bg-foreground/20" />
-							</div>
+								className="onboarding-window-drag absolute left-0 right-12 top-0 z-30 h-8"
+							/>
 						)}
 						<OnboardingLayout
 							stage="permissions"
 							canViewPermissions
 							showNavigation={false}
+							carousel
+							footer={
+								<OnboardingFooter>
+									<div aria-hidden="true" />
+									<OnboardingPrimaryAction
+										isDisabled={!canFinish}
+										onPress={() => {
+											if (canFinish) onFinish();
+										}}
+									>
+										{t("startRecording")}
+									</OnboardingPrimaryAction>
+								</OnboardingFooter>
+							}
 						>
-							<OnboardingPermissions onFinish={onFinish} />
+							<OnboardingPermissions
+								showFooter={false}
+								onReadyChange={setReady}
+								onFinish={onFinish}
+							/>
 						</OnboardingLayout>
 						<Button
 							isIconOnly

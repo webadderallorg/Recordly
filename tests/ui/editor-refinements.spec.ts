@@ -1,5 +1,5 @@
-import { expect, type Locator, type Page, test } from "@playwright/test";
-import { installDesktopBridge } from "./bridge";
+import { expect, type Locator, test } from "@playwright/test";
+import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 async function expectButtonsFit(container: Locator) {
 	const issues = await container.evaluate((root) => {
@@ -18,10 +18,6 @@ async function expectButtonsFit(container: Locator) {
 	});
 	expect(issues).toEqual([]);
 }
-async function clickOutside(page: Page) {
-	await page.mouse.click(1000, 300);
-}
-
 test("clip filmstrip decodes different source frames and zoom blocks use the available height", async ({
 	page,
 }) => {
@@ -73,15 +69,15 @@ test("advanced controls, webcam defaults and captions have consistent layouts", 
 		"true",
 	);
 	await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveCount(0);
-	await page.getByRole("row", { name: "Squircle", exact: true }).click();
-	await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveValue("50");
-	const replace = page.getByRole("button", { name: "Replace footage", exact: true });
-	const remove = page.getByRole("button", { name: "Remove footage", exact: true });
+	await page.getByRole("row", { name: "Square", exact: true }).click();
+	await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Replace footage", exact: true })).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Webcam source", exact: true })).toHaveCount(0);
+	await page.getByRole("switch", { name: "Advanced settings", exact: true }).press("Space");
+	await expect(page.getByRole("button", { name: "Webcam source", exact: true })).toBeVisible();
+	const remove = page.getByRole("button", { name: "Remove from project", exact: true });
 	await remove.scrollIntoViewIfNeeded();
-	const first = await replace.boundingBox();
-	const second = await remove.boundingBox();
-	expect(first!.y).toBeCloseTo(second!.y, 0);
-	expect(first!.x + first!.width).toBeLessThanOrEqual(second!.x);
+	await expect(remove).toBeVisible();
 	await expectButtonsFit(page.locator("aside"));
 	await page.screenshot({
 		path: "test-results/editor-webcam-footage.png",
@@ -107,9 +103,7 @@ test("project dashboard fits long names and editor overlays dismiss with current
 }) => {
 	test.setTimeout(60000);
 	await installDesktopBridge(page);
-	await page.goto("/?windowType=editor");
-	await expect(page.getByRole("button", { name: "Home", exact: true })).toBeVisible();
-	await page.evaluate(() => {
+	await installDesktopBridgeOverrides(page, () => {
 		window.electronAPI.listProjectFiles = async () => ({
 			success: true,
 			projects: [],
@@ -123,6 +117,7 @@ test("project dashboard fits long names and editor overlays dismiss with current
 			})),
 		});
 	});
+	await page.goto("/?windowType=editor");
 	await page.getByRole("button", { name: "Home", exact: true }).click();
 	const projects = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
 	await expect(
@@ -141,9 +136,9 @@ test("project dashboard fits long names and editor overlays dismiss with current
 	// Preset creation is intentionally unavailable in the current editor header.
 	await expect(page.getByRole("button", { name: "Open presets", exact: true })).toHaveCount(0);
 	await page.getByRole("button", { name: "Publish", exact: true }).click();
-	await page.getByRole("row", { name: "Save video", exact: true }).click();
+	await page.getByRole("row", { name: "Save to device", exact: true }).click();
 	await expect(page.getByRole("grid", { name: "Format", exact: true })).toBeVisible();
-	await clickOutside(page);
+	await page.mouse.click(20, 300);
 	await expect(page.getByRole("grid", { name: "Format", exact: true })).toHaveCount(0);
 	await page.getByRole("button", { name: "Crop", exact: true }).click();
 	const crop = page.locator("[data-inline-crop]");

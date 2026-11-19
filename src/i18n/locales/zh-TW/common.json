@@ -18,7 +18,10 @@
 		"delete": "刪除",
 		"done": "完成",
 		"retry": "重試",
-		"apply": "套用"
+		"apply": "套用",
+		"minimize": "最小化",
+		"maximize": "最大化",
+		"restoreWindow": "還原視窗"
 	},
 	"errors": {
 		"invalidFileType": "無效的檔案類型",
@@ -36,13 +39,14 @@
 		"thanks": "感謝你的意見回饋",
 		"signInRequired": "登入以傳送意見回饋。",
 		"openHome": "開啟首頁以登入。",
+		"orEmail": "或寄送郵件至",
 		"subject": "主旨",
 		"subjectPlaceholder": "你有什麼想法？",
 		"description": "說明",
 		"descriptionPlaceholder": "我們會閱讀所有意見回饋...",
 		"attachFiles": "附加檔案",
 		"removeFile": "移除 {{name}}",
-		"diagnostics": "將附上相關診斷記錄。",
+		"diagnostics": "將附上診斷記錄。意見回饋將傳送至 support@recordly.dev。",
 		"sending": "正在傳送…",
 		"errors": {
 			"unavailable": "設定帳號服務後才能使用意見回饋功能。",
@@ -82,5 +86,6 @@
 		"downloadingButton": "正在下載 · {{progress}}"
 	},
 	"width": "寬度",
-	"height": "高度"
+	"height": "高度",
+	"windowControls": "視窗控制項"
 }

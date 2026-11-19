@@ -1,5 +1,5 @@
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
-import { Plus } from "@/components/ui/icons";
+import { RecordlyMark } from "@/components/ui/RecordlyMark";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -22,7 +22,7 @@ export function RecordNewButton({
 			onClick={() => void run(() => window.electronAPI.showRecordingHud())}
 			className={cn("h-10 shrink-0 gap-2 text-[13px]", className)}
 		>
-			<Plus className="size-4" />
+			<RecordlyMark />
 			{first ? uiText("ui.recordYourFirstVideo") : uiText("ui.recordNew")}
 		</Button>
 	);

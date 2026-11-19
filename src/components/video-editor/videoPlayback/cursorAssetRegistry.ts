@@ -159,7 +159,10 @@ export async function preloadCursorAssets() {
 									: await createRasterizedCursorAsset(
 											sourceAsset.url,
 											sourceAsset.fallbackAnchor,
-											{ preserveCanvas: sourceAsset.preserveCanvas },
+											{
+												preserveCanvas: sourceAsset.preserveCanvas,
+												hasBakedShadow: sourceAsset.hasBakedShadow,
+											},
 										);
 
 							return [key, asset] as const;

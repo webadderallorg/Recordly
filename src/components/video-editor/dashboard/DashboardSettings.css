@@ -1,4 +1,14 @@
-/* Shared app preferences: stable navigation, independently scrolling content. */
+/* Bound both Home and modal settings; the tab panel owns all vertical scrolling. */
+.dashboard-settings-page,
+.app-settings-dialog {
+	background: color-mix(in oklab, var(--overlay) 96%, var(--foreground));
+}
+html[data-theme="dark"] :is(.dashboard-settings-page, .app-settings-dialog) {
+	background: color-mix(in oklab, var(--overlay) 55%, var(--background));
+}
+.dashboard-settings-page {
+	overscroll-behavior: none;
+}
 .app-settings-dialog {
 	width: 100%;
 	max-width: min(960px, calc(100vw - 48px));
@@ -7,14 +17,24 @@
 }
 .app-settings-dialog .app-settings-body {
 	display: flex;
+	flex: 1;
+	min-height: 0;
 	margin: 0;
 	padding: 0;
 	overflow: hidden;
+	overscroll-behavior: none;
 }
 .dashboard-settings {
-	--settings-section-gap: 16px;
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-height: 0;
+	overflow: hidden;
+	--settings-section-gap: 20px;
 	--settings-row-inset: 10px;
 	--settings-content-gap: 8px;
+	--settings-card-inset: 16px;
+	--settings-card-border: color-mix(in oklab, var(--foreground) 13%, transparent);
 	width: 100%;
 	max-width: 1040px;
 	padding-block: 24px;
@@ -27,23 +47,23 @@
 	padding: 0;
 }
 .dashboard-settings-title {
-	margin: 0 0 16px;
+	flex-shrink: 0;
+	margin: 0 0 22px;
 	padding-right: 32px;
 	color: var(--foreground);
-	font-size: 22px;
-	font-weight: 650;
-	line-height: 1.3;
+	font-size: 26px;
+	font-weight: 600;
+	line-height: 1.2;
 }
 .dashboard-settings-tabs {
 	display: grid;
+	flex: 1;
+	min-height: 0;
+	grid-template-rows: minmax(0, 1fr);
 	grid-template-columns: 144px minmax(0, 1fr);
 	gap: var(--settings-section-gap);
 	width: 100%;
 	align-items: stretch;
-}
-.app-settings-dialog .dashboard-settings-tabs {
-	flex: 1;
-	min-height: 0;
 }
 .dashboard-settings-tabs .tabs__list-container {
 	min-height: 0;
@@ -84,7 +104,7 @@
 	padding: 0 8px 16px 0;
 	outline-offset: -2px;
 }
-.app-settings-dialog .dashboard-settings-tab-panel {
+.dashboard-settings-tab-panel {
 	min-height: 0;
 	overflow-y: auto;
 	overscroll-behavior: contain;
@@ -97,6 +117,12 @@
 	flex-direction: column;
 	gap: var(--settings-section-gap);
 }
+.dashboard-settings [data-settings-section="general"] {
+	gap: 28px;
+}
+.dashboard-settings [data-settings-section="general"] .settings-category {
+	gap: 12px;
+}
 .dashboard-settings .settings-category {
 	flex-shrink: 0;
 }
@@ -106,12 +132,16 @@
 	margin-block: 0;
 }
 .dashboard-settings-tab-panel > .settings-category {
-	max-width: 680px;
+	width: 100%;
+	max-width: 760px;
+}
+.dashboard-settings-group {
+	padding-inline: var(--settings-card-inset);
 }
 .dashboard-settings-group h2 {
 	margin: 0;
 	color: var(--foreground);
-	font-size: 17px;
+	font-size: 16px;
 	font-weight: 600;
 	line-height: 1.5;
 }
@@ -141,6 +171,10 @@
 .dashboard-settings .settings-row-copy {
 	flex: 1;
 }
+.dashboard-settings .settings-row-copy > [data-slot="description"] {
+	color: var(--muted);
+	line-height: 1.5;
+}
 .dashboard-settings .settings-row-control {
 	display: flex;
 	align-items: center;
@@ -157,9 +191,11 @@
 	align-items: center;
 }
 .dashboard-settings .settings-group {
-	border: 0;
-	border-radius: 0;
-	padding: 0;
+	min-width: 0;
+	padding-inline: var(--settings-card-inset);
+	border-radius: 12px;
+	background: var(--overlay);
+	box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
 }
 .dashboard-settings .settings-group > .settings-row:last-child,
 .dashboard-settings .settings-group > :last-child .settings-row,
@@ -174,7 +210,8 @@
 	border-bottom: 0;
 }
 .dashboard-settings .settings-group .settings-row {
-	padding-inline: 0;
+	min-height: 62px;
+	padding-block: 14px;
 }
 .dashboard-settings .app-settings-stack,
 .dashboard-settings .application-preferences {
@@ -230,11 +267,17 @@
 	width: 100%;
 }
 .dashboard-settings .settings-language-field .settings-row-control {
-	width: min(230px, 45%);
+	width: auto;
+	max-width: 45%;
 }
 .settings-language-trigger {
 	min-width: 130px;
 	border-radius: var(--radius-md);
+}
+.dashboard-settings .settings-language-trigger {
+	border: 1px solid var(--settings-card-border);
+	background: var(--overlay);
+	box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
 }
 .settings-language-popover {
 	border-radius: var(--radius-lg);
@@ -247,37 +290,37 @@
 	line-height: 1.4;
 	border-radius: var(--radius-md);
 }
-.dashboard-settings .theme-appearance-picker {
-	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 18px;
-}
 .dashboard-settings .application-preferences {
 	gap: 0;
 }
-.dashboard-settings .application-preferences .settings-group + .settings-group {
-	border-top: 1px solid var(--separator);
+.dashboard-settings .application-preferences > header {
+	margin-block: 0 12px;
 }
 .dashboard-settings .settings-section-header h2,
 .dashboard-settings-subgroup h2 {
-	font-size: 14px;
+	margin: 0;
+	font-size: 16px;
+	font-weight: 600;
 }
-.dashboard-settings .theme-appearance-picker--compact {
-	display: flex;
-	gap: 4px;
+.settings-appearance {
+	width: 100%;
+	min-width: 0;
 }
-.theme-appearance-picker--compact .theme-appearance-option {
-	min-height: 36px;
-	width: auto;
-	padding: 8px;
-	border-radius: var(--radius-md);
+.dashboard-settings .settings-appearance .settings-row {
+	flex-direction: row;
+	align-items: center;
+	gap: 16px;
 }
-.theme-appearance-picker--compact .theme-appearance-option[data-selected="true"] {
-	background: color-mix(in oklab, var(--accent) 12%, transparent);
+.dashboard-settings .settings-appearance .settings-row-control {
+	width: min(100%, 306px);
+	max-width: 66%;
 }
-.theme-appearance-picker--compact .theme-appearance-option[data-focus-visible="true"] {
-	outline: 2px solid var(--accent);
-	outline-offset: 2px;
+.dashboard-settings .theme-appearance-picker {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+	width: 100%;
+	max-width: none;
 }
 .settings-motion-preview {
 	display: grid;
@@ -290,31 +333,46 @@
 	border-radius: 8px;
 	background: var(--surface-secondary);
 }
-.settings-motion-preview::before {
-	content: "";
-	position: absolute;
-	width: 30px;
-	height: 22px;
-	border: 1px solid var(--separator);
-	border-radius: 4px;
+.settings-motion-preview svg {
+	width: 100%;
+	height: 100%;
 }
-.settings-motion-preview span {
-	width: 10px;
-	height: 10px;
-	border-radius: 50%;
-	background: var(--accent);
-	animation: settings-motion-demo 1.6s cubic-bezier(0.2, 0.8, 0.2, 1) infinite alternate;
+.settings-motion-scene {
+	transform-box: fill-box;
+	transform-origin: 70% 50%;
+	animation: settings-motion-zoom 2.8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
 }
-.settings-motion-preview-smooth span {
-	animation-duration: 3s;
+.settings-motion-cursor {
+	fill: var(--accent);
+	stroke: var(--surface);
+	stroke-width: 1;
+	animation: settings-motion-cursor 2.8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+.settings-motion-preview-smooth .settings-motion-scene,
+.settings-motion-preview-smooth .settings-motion-cursor {
+	animation-duration: 4.8s;
 	animation-timing-function: ease-in-out;
 }
-@keyframes settings-motion-demo {
-	from {
-		transform: translateX(-22px) scale(0.7);
+@keyframes settings-motion-zoom {
+	0%,
+	15%,
+	100% {
+		transform: scale(1);
 	}
-	to {
-		transform: translateX(22px) scale(1.2);
+	45%,
+	75% {
+		transform: scale(1.35);
+	}
+}
+@keyframes settings-motion-cursor {
+	0%,
+	15%,
+	100% {
+		transform: translate(0, 0);
+	}
+	45%,
+	75% {
+		transform: translate(28px, -8px);
 	}
 }
 .dashboard-settings .settings-motion-presets {
@@ -324,6 +382,10 @@
 	margin-block: 0;
 	padding: var(--settings-row-inset);
 	border-radius: var(--radius-lg);
+}
+.dashboard-settings .settings-motion-presets [data-slot="radio"][data-selected="true"] {
+	border-color: var(--accent);
+	background: color-mix(in oklab, var(--accent) 6%, var(--overlay));
 }
 .dashboard-settings .settings-motion-presets [data-slot="radio-content"] {
 	align-items: center;
@@ -355,121 +417,162 @@
 }
 .theme-appearance-option {
 	display: block;
+	min-width: 0;
 	width: 100%;
 	padding: 0;
-	border-radius: var(--radius-xl);
+	border-radius: var(--radius-lg);
 }
 .theme-appearance-content {
 	display: flex;
 	flex-direction: column;
 	width: 100%;
-	gap: 10px;
-	align-items: center;
+	gap: 8px;
+	align-items: stretch;
 }
-/* Keep the miniature editor's palette independent of the active app theme. */
 .theme-appearance-label {
-	display: flex;
-	align-items: center;
-	gap: 7px;
-	font-size: var(--text-xs);
+	text-align: center;
+	font-size: 13px;
 	font-weight: 500;
-}
-.theme-appearance-check {
-	display: grid;
-	place-items: center;
-	width: 14px;
-	height: 14px;
-	border: 1px solid var(--separator);
-	border-radius: 50%;
-	color: var(--accent-foreground);
-}
-.theme-appearance-check svg {
-	width: 12px;
-	height: 12px;
-	opacity: 0;
+	color: var(--foreground);
 }
 .theme-preview {
 	position: relative;
 	width: 100%;
 	aspect-ratio: 1.6;
-	min-height: 80px;
 	overflow: hidden;
-	border: 1px solid transparent;
-	border-radius: var(--radius-xl);
+	border: 1px solid var(--separator);
+	border-radius: 12px;
 	isolation: isolate;
-	background-size: cover;
-	background-repeat: no-repeat;
-	background-origin: border-box;
-	background-position: center;
-	background-color: #e4e8f1;
+	background: linear-gradient(135deg, #dce5f2, #eef1f7);
 	transition:
 		border-color 150ms,
 		box-shadow 150ms;
 }
-.theme-appearance-option[data-selected="true"] .theme-preview {
-	border-color: var(--accent);
-	box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 16%, transparent);
+.theme-preview-dark {
+	background: linear-gradient(135deg, #3c414d, #22252d);
 }
-.theme-appearance-option[data-selected="true"] .theme-appearance-check {
-	border-color: var(--accent);
-	background: var(--accent);
+.theme-preview-system {
+	background: linear-gradient(90deg, #343944 50%, #e6ecf5 50%);
 }
-.theme-appearance-option[data-selected="true"] .theme-appearance-check svg {
-	opacity: 1;
-}
-.theme-appearance-option[data-focus-visible="true"] .theme-preview,
-.theme-appearance-option:has([data-focus-visible="true"]) .theme-preview {
-	outline: 2px solid var(--accent);
-	outline-offset: 5px;
-}
-.theme-appearance-option:hover .theme-preview {
-	border-color: var(--accent);
-}
+/* Magnify the upper-left corner; the rest of the editor extends beyond the card. */
 .theme-preview-window {
 	position: absolute;
-	inset: 8% 6%;
+	top: 12%;
+	left: 8%;
+	width: 150%;
+	height: 160%;
 	overflow: hidden;
-	border: 0;
-	clip-path: inset(0 round 6px);
-	border-radius: 6px;
-	box-shadow: 0 6px 16px rgb(18 24 40 / 14%);
+	border: 1px solid rgb(0 0 0 / 12%);
+	border-radius: 14px;
+	box-shadow: 0 4px 18px rgb(0 0 0 / 18%);
 }
-.theme-preview-scene {
+.theme-preview-chrome {
+	position: absolute;
+	z-index: 1;
+	top: 8%;
+	left: 4%;
+	display: flex;
+	justify-content: space-between;
+	width: 16%;
+	pointer-events: none;
+}
+.theme-preview-chrome i {
+	width: 20%;
+	aspect-ratio: 1;
+	border-radius: 50%;
+	corner-shape: round;
+	background: #ff5f57;
+	box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 12%);
+}
+.theme-preview-chrome i:nth-child(2) {
+	background: #febc2e;
+}
+.theme-preview-chrome i:nth-child(3) {
+	background: #28c840;
+}
+.theme-preview-image,
+.theme-preview-layer {
 	position: absolute;
 	inset: 0;
 	width: 100%;
 	height: 100%;
 	pointer-events: none;
 }
-/* The SVG viewport keeps inspector/canvas/timeline proportions at desktop size. */
-.theme-preview-scene > svg,
-.theme-preview-scene foreignObject > [role="status"] {
+.theme-preview-image {
 	display: block;
-	width: 100%;
-	height: 100%;
+	object-fit: cover;
+	user-select: none;
 }
-.theme-preview-scene .skeleton {
-	animation: none;
-}
-.theme-preview-scene .skeleton::after {
-	animation: none;
-}
-.theme-preview-layer {
-	position: absolute;
-	inset: 0;
-}
-/* Both themes keep the exact same full-width geometry; only their paint is clipped. */
+/* The 8% inset and 150% width place this seam at the center of the card. */
 .theme-preview-layer-light {
-	clip-path: inset(0 50% 0 0);
+	clip-path: inset(0 0 0 28%);
 }
 .theme-preview-layer-dark {
-	clip-path: inset(0 0 0 50%);
+	clip-path: inset(0 72% 0 0);
 }
-.theme-preview-dark {
-	background-color: #20222b;
+.theme-appearance-check {
+	display: grid;
+	place-items: center;
+	position: absolute;
+	right: 8px;
+	bottom: 8px;
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	corner-shape: round;
+	background: var(--accent);
+	color: var(--accent-foreground, #fff);
+	box-shadow: 0 0 0 2px var(--overlay);
+	opacity: 0;
 }
-.theme-preview-system {
-	background-color: #e9edf6;
+.theme-appearance-check svg {
+	width: 14px;
+	height: 14px;
+}
+.theme-appearance-option[data-selected="true"] .theme-preview {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 1px var(--accent);
+}
+.theme-appearance-option[data-selected="true"] .theme-appearance-check {
+	opacity: 1;
+}
+.theme-appearance-option[data-focus-visible="true"] .theme-preview,
+.theme-appearance-option:has([data-focus-visible="true"]) .theme-preview {
+	outline: 2px solid var(--accent);
+	outline-offset: 3px;
+}
+.theme-appearance-option:not([data-selected="true"]):hover .theme-preview {
+	border-color: var(--foreground);
+}
+/* A visible scroll thumb reveals content beyond the panel without moving navigation. */
+.dashboard-settings-tab-panel {
+	scrollbar-width: thin !important;
+	scrollbar-color: color-mix(in oklab, var(--foreground) 24%, transparent) transparent;
+	scrollbar-gutter: stable !important;
+}
+.dashboard-settings-tab-panel::-webkit-scrollbar {
+	display: block !important;
+	width: 6px !important;
+}
+.dashboard-settings-tab-panel::-webkit-scrollbar-thumb {
+	border-radius: 8px;
+	background: color-mix(in oklab, var(--foreground) 24%, transparent);
+}
+.dashboard-settings-tab-panel[data-settings-section="shortcuts"] {
+	mask-image: none;
+	-webkit-mask-image: none;
+}
+.settings-shortcuts-editor > .overflow-y-auto {
+	overflow: visible;
+}
+.settings-shortcuts-actions {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	margin-block: 12px;
+	padding-block: 8px;
+	border-bottom: 1px solid var(--separator);
+	background: var(--overlay);
 }
 
 @media (max-width: 680px) {
@@ -526,13 +629,21 @@
 }
 /* These panels can be narrow even while the dialog still uses a vertical sidebar. */
 @container settings-content (max-width: 480px) {
+	.dashboard-settings .settings-group {
+		--settings-card-inset: 12px;
+	}
+	.dashboard-settings-group {
+		padding-inline: 12px;
+	}
 	.dashboard-settings .settings-row,
-	.dashboard-settings .settings-row-stacked {
+	.dashboard-settings .settings-row-stacked,
+	.dashboard-settings .settings-appearance .settings-row {
 		flex-direction: column;
 		align-items: stretch;
 		gap: var(--settings-content-gap);
 	}
 	.dashboard-settings .settings-row-control,
+	.dashboard-settings .settings-appearance .settings-row-control,
 	.dashboard-settings .settings-language-field .settings-row-control {
 		width: 100%;
 		max-width: none;
@@ -590,13 +701,16 @@
 		height: 40px;
 	}
 }
-/* Preserve the original responsive Appearance artwork proportions and spacing. */
+/* Keep the three appearance choices side by side in narrow windows. */
 @media (max-width: 760px) {
 	.dashboard-settings .theme-appearance-picker {
 		gap: 12px;
 	}
-	.theme-preview {
-		aspect-ratio: 1.35;
+	.theme-appearance-check {
+		width: 18px;
+		height: 18px;
+		right: 5px;
+		bottom: 5px;
 	}
 }
 
@@ -604,7 +718,8 @@
 	.theme-preview {
 		transition: none;
 	}
-	.settings-motion-preview span {
+	.settings-motion-scene,
+	.settings-motion-cursor {
 		animation: none;
 	}
 }
@@ -627,6 +742,7 @@ html[data-theme="dark"] .dashboard-settings {
 	gap: 16px;
 	border-right: 1px solid var(--separator);
 	padding-right: 14px;
+	min-width: 0;
 }
 .dashboard-settings-navigation .tabs__list-container {
 	flex: 1;
@@ -643,8 +759,17 @@ html[data-theme="dark"] .dashboard-settings {
 	min-height: 32px;
 	padding: 6px 10px;
 }
-/* All desktop categories fit together; only the preferences pane should scroll. */
+/* Let desktop categories scroll when the sidebar is shorter than its contents. */
 @media (min-width: 681px) {
+	.dashboard-settings-navigation {
+		overflow: clip;
+	}
+	.dashboard-settings-navigation > .dashboard-settings-tab-list {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		padding: 0;
+	}
 	.dashboard-settings-navigation .tabs__list-container {
 		flex: 0 0 auto;
 		overflow: visible;
@@ -653,6 +778,27 @@ html[data-theme="dark"] .dashboard-settings {
 		height: auto;
 		margin-block: 0;
 		overflow: visible;
+	}
+}
+
+@media (min-width: 681px) and (max-height: 560px) {
+	.modal__container:has(> .app-settings-dialog) {
+		padding: 12px;
+	}
+	.app-settings-dialog {
+		height: calc(100dvh - 24px);
+		padding: 16px;
+	}
+	.dashboard-settings-title {
+		margin-bottom: 12px;
+	}
+	.dashboard-settings-navigation {
+		gap: 8px;
+	}
+	.dashboard-settings-navigation .tabs__tab {
+		height: auto;
+		min-height: 28px;
+		padding-block: 4px;
 	}
 }
 .dashboard-settings-navigation .tabs__list-container > .tabs__list-container__scroll-prev,

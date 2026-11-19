@@ -1,5 +1,5 @@
 import type { CaptionWordState } from "./captionLayout";
-import { DEFAULT_AUTO_CAPTION_SETTINGS } from "./types";
+import { type AutoCaptionStyle, DEFAULT_AUTO_CAPTION_SETTINGS } from "./types";
 
 export const CAPTION_FONT_WEIGHT = 400;
 export const CAPTION_LINE_HEIGHT = 1.4;
@@ -29,10 +29,10 @@ export function getCaptionScaledFontSize(
 	);
 }
 
-export function getCaptionPadding(fontSize: number) {
+export function getCaptionPadding(fontSize: number, style?: AutoCaptionStyle) {
 	return {
-		x: fontSize * 1.1,
-		y: fontSize * 0.36,
+		x: fontSize * (style === "reveal" || style === "serif" ? 0.55 : 1.1),
+		y: fontSize * (style === "reveal" || style === "serif" ? 0.22 : 0.36),
 	};
 }
 
@@ -45,8 +45,9 @@ export function getCaptionTextMaxWidth(
 	containerWidth: number,
 	maxWidthPercent: number,
 	fontSize: number,
+	style?: AutoCaptionStyle,
 ) {
-	const padding = getCaptionPadding(fontSize);
+	const padding = getCaptionPadding(fontSize, style);
 	return Math.max(
 		fontSize * 4,
 		getCaptionTargetWidth(containerWidth, maxWidthPercent) - padding.x * 2,

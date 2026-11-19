@@ -86,7 +86,7 @@
 		"clsx": "^2.1.1",
 		"dnd-timeline": "^2.2.0",
 		"electron": "^43.8.3",
-		"electron-builder": "^26.15.3",
+		"electron-builder": "^26.16.1",
 		"emoji-picker-react": "^4.16.1",
 		"fast-check": "^4.5.2",
 		"gif.js": "^0.2.0",

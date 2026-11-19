@@ -1,4 +1,6 @@
 {
+	"socials": "Social",
+	"projectRecovered": "È stata recuperata la versione salvata precedente",
 	"aspectRatio": {
 		"native": "Originale",
 		"widescreen": "Panoramico",
@@ -18,6 +20,7 @@
 		"standard": "Standard"
 	},
 	"cloud": {
+		"uploadingVideo": "Caricamento del video…",
 		"signInRequired": "Accedi a Recordly prima di creare un link condiviso.",
 		"prepareFailed": "Impossibile preparare il montaggio attuale per la condivisione.",
 		"uploadFailed": "Caricamento sul cloud non riuscito.",
@@ -226,6 +229,8 @@
 		"confirm": "Ok"
 	},
 	"exportStatus": {
+		"finishingVideo": "Finalizzazione del video…",
+		"savingVideo": "Salvataggio del video…",
 		"exporting": "Esportazione in corso",
 		"renderingFile": "Rendering del file in corso.",
 		"preparing": "Preparazione esportazione...",

@@ -11,6 +11,8 @@ import {
 	setLastLeftClick,
 	setLinuxCursorScreenPoint,
 } from "../state";
+import { getScreen } from "../utils";
+import { getHudOverlayInteractiveBounds, getHudOverlayWindow } from "../../windows";
 import type {
 	CursorInteractionType,
 	HookMouseEvent,
@@ -190,6 +192,22 @@ export function shouldStartGlobalInteractionHook(platform: NodeJS.Platform = pro
 export function recordCursorMouseDown(button: 1 | 2 | 3) {
 	if (!isCursorCaptureActive || isCursorCapturePaused()) {
 		return;
+	}
+
+	const hudBounds = getHudOverlayInteractiveBounds();
+	const hud = getHudOverlayWindow();
+	if (hud?.isVisible() && !hud.isMinimized() && hudBounds) {
+		const cursor = getScreen().getCursorScreenPoint();
+		const isInsideHudInteractiveElement = hudBounds.some(
+			(bounds) =>
+				cursor.x >= bounds.left &&
+				cursor.x <= bounds.right &&
+				cursor.y >= bounds.top &&
+				cursor.y <= bounds.bottom,
+		);
+		if (isInsideHudInteractiveElement) {
+			return;
+		}
 	}
 
 	const point = getNormalizedCursorPoint();

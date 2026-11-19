@@ -167,6 +167,23 @@ describe("connected zoom duration", () => {
 		expect(end.region?.id).toBe(later.id);
 	});
 
+	it.each([
+		undefined,
+		5000,
+		Number.POSITIVE_INFINITY,
+		Number.NaN,
+	])("never connects zooms more than 1.5 seconds apart (setting %s)", (connectedZoomGapMs) => {
+		const atLimit = { ...next, startMs: region.endMs + 1500, endMs: 9000 };
+		const tooFar = { ...atLimit, startMs: atLimit.startMs + 1 };
+		const settings = { ...options, connectedZoomGapMs };
+		expect(
+			findDominantRegion([region, atLimit], region.endMs + 100, settings).transition,
+		).not.toBeNull();
+		expect(
+			findDominantRegion([region, tooFar], region.endMs + 100, settings).transition,
+		).toBeNull();
+	});
+
 	it("keeps connected timing independent of isolated zoom-in/out durations", () => {
 		for (const timeMs of [4000, 4100, 4250, 4499, 4500]) {
 			const fast = findDominantRegion([region, next], timeMs, options);

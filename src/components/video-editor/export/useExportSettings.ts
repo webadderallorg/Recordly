@@ -105,7 +105,7 @@ export function useExportSettings(
 		setAdvancedExportSettings,
 		customExportResolution,
 		setCustomExportResolution,
-		exportEncodingMode,
+		exportEncodingMode: advancedExportSettings ? exportEncodingMode : ("balanced" as const),
 		setExportEncodingMode,
 		exportBackendPreference,
 		setExportBackendPreference,

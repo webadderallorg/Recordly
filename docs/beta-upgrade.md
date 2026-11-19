@@ -16,6 +16,11 @@ Copy the whole settings folder while Recordly is closed. Keep that backup outsid
 
 ## Open a v1.4 project in the beta
 
+New projects start with the 2.0 editor and export defaults. The beta retains
+your saved presets, custom backgrounds, and caption tool paths. Existing
+projects keep their saved edits and use 2.0 defaults for fields they do not
+specify.
+
 1. Open the existing project and check its clip timing, audio, webcam, captions, and effects.
 2. Before making edits, choose **File → Save Project As…** (⌘⇧S on macOS; Ctrl+Shift+S on Windows/Linux) and save the beta copy under a new name, separate from the original v1.4 project. Keep the original unchanged.
 3. Edit and export the beta copy. Check the exported video before relying on it for important work.

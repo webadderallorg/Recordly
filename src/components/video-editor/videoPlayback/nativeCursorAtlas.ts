@@ -38,9 +38,12 @@ export type CursorStylePreviewAsset = {
 };
 
 /** Use the exact rendered artwork and center its visible body in the picker. */
-export async function getCursorStylePreview(style: CursorStyle): Promise<CursorStylePreviewAsset> {
+export async function getCursorStylePreview(
+	style: CursorStyle,
+	kind: CursorAssetKey = "arrow",
+): Promise<CursorStylePreviewAsset> {
 	await preloadCursorAssets();
-	const { image } = getNativeCursorAtlasAsset(style, "arrow");
+	const { image } = getNativeCursorAtlasAsset(style, kind);
 	const canvas = document.createElement("canvas");
 	canvas.width = image.naturalWidth;
 	canvas.height = image.naturalHeight;

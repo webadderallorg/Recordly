@@ -1,8 +1,8 @@
 import type React from "react";
 import { useImperativeHandle } from "react";
+import { annotationPlacement } from "../annotationPlacement";
 import { type ZoomFocus } from "../types";
 import { clamp01 } from "./mathUtils";
-import { annotationPlacement } from "../annotationPlacement";
 import type { PlaybackProps } from "./playbackProps";
 import { type VideoPlaybackRef } from "./playbackTypes";
 import type { usePlaybackCaptions } from "./usePlaybackCaptions";
@@ -17,6 +17,7 @@ export type usePlaybackControlsInput = Pick<
 	| "containerRef"
 	| "cancelCaptionEdit"
 	| "videoRef"
+	| "composedFrameRef"
 	| "appRef"
 	| "videoSpriteRef"
 	| "videoContainerRef"
@@ -37,6 +38,7 @@ export type usePlaybackControlsInput = Pick<
 export function usePlaybackControls(input: usePlaybackControlsInput) {
 	const {
 		ref,
+		composedFrameRef,
 		containerRef,
 		cancelCaptionEdit,
 		clipPlaybackRef,
@@ -60,6 +62,9 @@ export function usePlaybackControls(input: usePlaybackControlsInput) {
 	} = input;
 
 	useImperativeHandle(ref, () => ({
+		get composedFrame() {
+			return composedFrameRef.current;
+		},
 		get isPlaying() {
 			return clipPlaybackRef.current?.isPlaying ?? false;
 		},

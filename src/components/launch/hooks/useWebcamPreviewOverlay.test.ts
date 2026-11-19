@@ -124,16 +124,16 @@ describe("floating webcam preview lifecycle and pointer ownership", () => {
 		attributes = new Map([["data-webcam-preview-cursor", "crosshair"]]);
 		camera = {
 			style: {},
-			dataset: {},
+			dataset: { floatingWebcamPreview: "" },
 			contains: () => true,
-			getBoundingClientRect: () => ({
-				left: 100,
-				top: 100,
-				right: 330,
-				bottom: 330,
-				width: 230,
-				height: 230,
-			}),
+			getBoundingClientRect: () => {
+				const match = camera.style.transform?.match(
+					/translate\((-?[\d.]+)px, (-?[\d.]+)px\)/,
+				);
+				const left = 100 + Number(match?.[1] ?? 0);
+				const top = 100 + Number(match?.[2] ?? 0);
+				return { left, top, right: left + 230, bottom: top + 230, width: 230, height: 230 };
+			},
 			setPointerCapture: (id: number) => captured.add(id),
 			hasPointerCapture: (id: number) => captured.has(id),
 			releasePointerCapture: (id: number) => captured.delete(id),
@@ -155,6 +155,8 @@ describe("floating webcam preview lifecycle and pointer ownership", () => {
 			},
 		});
 		vi.stubGlobal("document", {
+			// The visible camera and bar are distinct hit surfaces, not a merged dock.
+			querySelectorAll: () => [camera, options.hudBarRef.current].filter(Boolean),
 			documentElement: {
 				getAttribute: (name: string) => attributes.get(name) ?? null,
 				setAttribute: (name: string, value: string) => attributes.set(name, value),
@@ -218,6 +220,11 @@ describe("floating webcam preview lifecycle and pointer ownership", () => {
 		const floatingVideo = video();
 		preview.setWebcamPreviewNode(popoverVideo as unknown as HTMLVideoElement);
 		preview.setRecordingWebcamPreviewNode(floatingVideo as unknown as HTMLVideoElement);
+		expect(getUserMedia).toHaveBeenCalledWith(
+			expect.objectContaining({
+				video: expect.objectContaining({ frameRate: { ideal: 60, max: 60 } }),
+			}),
+		);
 		expect(popoverVideo.srcObject).toBe(stream);
 		expect(floatingVideo.srcObject).toBe(stream);
 		expect(preview.setWebcamPreviewNode).toBe(initial.setWebcamPreviewNode);
@@ -278,6 +285,7 @@ describe("floating webcam preview lifecycle and pointer ownership", () => {
 		expect(frame).toBeNull();
 		expect(camera.style.transform).toBe("translate(70px, 90px)");
 		expect(captured.size).toBe(0);
+		expect(ignoreMouse).toHaveBeenLastCalledWith(false);
 		expect(styles.get("--webcam-preview-cursor")).toBe("crosshair");
 		const updated = render();
 		expect(updated.webcamPreviewOffset).toEqual({ x: 70, y: 90 });
@@ -294,6 +302,8 @@ describe("floating webcam preview lifecycle and pointer ownership", () => {
 		preview.handleWebcamPreviewPointerUp(pointer(0, 0, "pointercancel"));
 		expect(camera.style.transform).toBe("translate(50px, 60px)");
 		expect(preview.isWebcamPreviewDraggingRef.current).toBe(false);
+		// The synthetic (0,0) must not make the still-hovered camera click-through.
+		expect(ignoreMouse).toHaveBeenLastCalledWith(false);
 	});
 
 	it("releases pointer capture and restores the cursor and passthrough on blur", () => {

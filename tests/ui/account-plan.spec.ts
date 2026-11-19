@@ -103,7 +103,7 @@ test("Free accounts can view their plan and upgrade options without starting che
 	await expect(
 		account.getByLabel("Cloud usage", { exact: true }).getByText("2 of 5 used"),
 	).toBeVisible();
-	await card.getByRole("button", { name: "Upgrade to Cloud", exact: true }).click();
+	await card.getByRole("button", { name: "Upgrade", exact: true }).click();
 	const pricing = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
 	await expect(pricing).toBeVisible();
 	await expect(page.locator("html")).not.toHaveAttribute("data-billing-action");
@@ -127,7 +127,7 @@ for (const mode of ["paid", "ending"] as const) {
 		await expect(
 			card.getByText(mode === "ending" ? /^It ends on / : /^Current billing period ends on /),
 		).toBeVisible();
-		await expect(card.getByRole("button", { name: "Upgrade to Cloud" })).toHaveCount(0);
+		await expect(card.getByRole("button", { name: /^Upgrade\b/ })).toHaveCount(0);
 		await card.getByRole("button", { name: "Manage subscription", exact: true }).click();
 		await expect(page.locator("html")).toHaveAttribute("data-billing-action", "portal");
 		await expect(
@@ -165,9 +165,7 @@ for (const mode of ["unavailable", "loading"] as const) {
 			),
 		).toBeVisible();
 		await expect(card.getByText("Free", { exact: true })).toHaveCount(0);
-		await expect(
-			card.getByRole("button", { name: "Upgrade to Cloud", exact: true }),
-		).toHaveCount(0);
+		await expect(card.getByRole("button", { name: /^Upgrade\b/ })).toHaveCount(0);
 		await page.evaluate(() => {
 			document.documentElement.dataset.planReady = "true";
 			document.dispatchEvent(new Event("release-plan"));
@@ -183,9 +181,7 @@ test("a subscription needing attention opens its existing portal", async ({ page
 	await expect(card.getByText(/Your subscription needs attention/)).toBeVisible();
 	await card.getByRole("button", { name: "Manage subscription", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-billing-action", "portal");
-	await expect(card.getByRole("button", { name: "Upgrade to Cloud", exact: true })).toHaveCount(
-		0,
-	);
+	await expect(card.getByRole("button", { name: /^Upgrade\b/ })).toHaveCount(0);
 });
 
 test("portal errors keep management available for retry without exposing provider diagnostics", async ({

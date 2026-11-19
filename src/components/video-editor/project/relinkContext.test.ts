@@ -33,15 +33,18 @@ vi.mock("react", async (original) => ({
 	useLayoutEffect: scheduleEffect,
 }));
 vi.mock("@/components/ui/toast", () => ({
-	toast: { warning: vi.fn(), error: vi.fn(), dismiss: vi.fn(), success: vi.fn() },
+	toast: { warning: vi.fn(), error: vi.fn(), dismiss: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
-vi.mock("@/i18n/runtime", () => ({ translate: (_key: string, fallback: string) => fallback }));
+vi.mock("@/i18n/runtime", () => ({
+	translate: vi.fn((_key: string, fallback: string) => fallback),
+}));
 vi.mock("../projectPersistence", async () => ({
 	fromFileUrl: (await import("../projectMediaPaths")).fromFileUrl,
 	resolveVideoUrl: vi.fn(),
 }));
 
 import { toast } from "@/components/ui/toast";
+import { translate } from "@/i18n/runtime";
 import { useProjectOpenActions } from "./useProjectOpenActions";
 
 const target = "/projects/reconnect.recordly";
@@ -298,4 +301,48 @@ it.each([
 	retry?.();
 	await vi.waitFor(() => expect(applyNext).toHaveBeenCalled());
 	expect(saveNext).toHaveBeenCalledOnce();
+});
+
+it.each([
+	{
+		name: "plan retention",
+		errors: [],
+		sourcesKept: ["/media/planned.mp4", "/media/also-planned.mp4"],
+		deleted: [target],
+	},
+	{
+		name: "deletion failure",
+		errors: ["Could not trash project.recordly: EACCES"],
+		sourcesKept: ["/media/unshared.mp4"],
+		deleted: [],
+	},
+	{ name: "no retained files", errors: [], sourcesKept: [], deleted: [target] },
+])("reports retained sources neutrally for $name", async ({ errors, sourcesKept, deleted }) => {
+	const trashProjectFiles = vi
+		.fn()
+		.mockResolvedValue({ success: errors.length === 0, deleted, errors, sourcesKept });
+	bridge({ trashProjectFiles });
+	const refreshProjectLibrary = vi.fn().mockResolvedValue(undefined);
+	const actions = render(initialProject(), undefined, { refreshProjectLibrary });
+	const options = { includeSources: true, protectedSources: errors.length ? [] : sourcesKept };
+	await expect(actions.handleDeleteProjects([target], options)).resolves.toEqual(deleted);
+	expect(trashProjectFiles).toHaveBeenCalledWith([target], options);
+	expect(refreshProjectLibrary).toHaveBeenCalledOnce();
+	if (errors.length) {
+		expect(toast.error).toHaveBeenCalledWith("Could not delete some projects", {
+			description: errors.join("\n"),
+		});
+	} else {
+		expect(toast.error).not.toHaveBeenCalled();
+	}
+	if (sourcesKept.length) {
+		expect(translate).toHaveBeenCalledWith(
+			"ui.cleanup.sharedSourcesKept",
+			"Source files kept: {{count}}.",
+			{ count: sourcesKept.length },
+		);
+		expect(toast.info).toHaveBeenCalledWith("Source files kept: {{count}}.");
+	} else {
+		expect(toast.info).not.toHaveBeenCalled();
+	}
 });

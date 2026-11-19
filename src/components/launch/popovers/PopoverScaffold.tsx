@@ -92,18 +92,29 @@ export function HudPopover({
 	trigger,
 	children,
 	align = "center",
+	label,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	trigger: ReactElement;
 	children: ReactNode;
 	align?: "start" | "center" | "end";
+	label?: string;
 }) {
 	const { onMouseEnter } = useHudInteraction();
 	return (
 		<Popover open={open} onOpenChange={onOpenChange} modal={true}>
-			<PopoverTrigger asChild>{trigger}</PopoverTrigger>
+			<PopoverTrigger asChild>
+				{label ? (
+					<span className="contents" title={label}>
+						{trigger}
+					</span>
+				) : (
+					trigger
+				)}
+			</PopoverTrigger>
 			<PopoverContent
+				aria-label={label}
 				className={`launch-theme ${styles.menuCard} ${styles.electronNoDrag}`}
 				data-hud-interactive
 				unstyled

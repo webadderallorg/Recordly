@@ -18,7 +18,10 @@
 		"delete": "Eliminar",
 		"done": "Hecho",
 		"retry": "Intentar de nuevo",
-		"apply": "Aplicar"
+		"apply": "Aplicar",
+		"minimize": "Minimizar",
+		"maximize": "Maximizar",
+		"restoreWindow": "Restaurar ventana"
 	},
 	"errors": {
 		"invalidFileType": "Tipo de archivo inválido",
@@ -36,13 +39,14 @@
 		"thanks": "Gracias por tus comentarios",
 		"signInRequired": "Inicia sesión para enviar comentarios.",
 		"openHome": "Abre Inicio para iniciar sesión.",
+		"orEmail": "O escribe a",
 		"subject": "Asunto",
 		"subjectPlaceholder": "¿Qué tienes en mente?",
 		"description": "Descripción",
 		"descriptionPlaceholder": "Leemos todos los comentarios...",
 		"attachFiles": "Adjuntar archivos",
 		"removeFile": "Eliminar {{name}}",
-		"diagnostics": "Se adjuntarán los registros de diagnóstico pertinentes.",
+		"diagnostics": "Se adjuntarán los registros de diagnóstico. Los comentarios se enviarán a support@recordly.dev.",
 		"sending": "Enviando…",
 		"errors": {
 			"unavailable": "Los comentarios no están disponibles hasta que se configuren los servicios de cuenta.",
@@ -82,5 +86,6 @@
 		"downloadingButton": "Descargando · {{progress}}"
 	},
 	"width": "Ancho",
-	"height": "Alto"
+	"height": "Alto",
+	"windowControls": "Controles de ventana"
 }

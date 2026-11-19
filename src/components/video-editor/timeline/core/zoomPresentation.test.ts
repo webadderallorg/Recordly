@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CURSOR_MOTION_PRESETS } from "../../cursorMotionPresets";
 import type { ZoomRegion } from "../../types";
-import {
-	computeRegionStrength,
-	findDominantRegion,
-	getConnectedZoomEndMs,
-} from "../../videoPlayback/zoomRegionUtils";
+import { findDominantRegion, getConnectedZoomEndMs } from "../../videoPlayback/zoomRegionUtils";
 import { resolveResizeEnd } from "../dnd/engine";
 import { ZOOM_ROW_ID } from "./constants";
 import {
@@ -16,30 +12,25 @@ import {
 } from "./zoomPresentation";
 
 describe("zoom block presentation", () => {
-	it.each([
-		"focused",
-		"smooth",
-	] as const)("shows %s visible completion while preserving the full exit", (id) => {
-		const options = CURSOR_MOTION_PRESETS[id];
-		const timing = getZoomPresentationTiming(options);
-		const region: ZoomRegion = {
-			id: "zoom",
-			startMs: 1000,
-			endMs: 4000,
-			depth: 2,
-			focus: { cx: 0.5, cy: 0.5 },
-		};
-		const original = { ...region };
-		const visible = getZoomDisplaySpan({ start: region.startMs, end: region.endMs }, timing);
-		expect(visible.start).toBe(region.startMs);
-		expect(region.endMs - visible.end).toBeGreaterThan(250);
-		// The colored block ends with 1% of the original exit left. No curve samples are cut.
-		expect(computeRegionStrength(region, visible.end, options)).toBeCloseTo(0.01, 9);
-		const tail = computeRegionStrength(region, (visible.end + region.endMs) / 2, options);
-		expect(tail).toBeGreaterThan(0);
-		expect(tail).toBeLessThan(0.01);
-		expect(computeRegionStrength(region, region.endMs, options)).toBe(0);
-		expect(region).toEqual(original);
+	it.each(["focused", "smooth"] as const)("keeps %s blocks at their authored edges", (id) => {
+		const timing = getZoomPresentationTiming(CURSOR_MOTION_PRESETS[id]);
+		const span = { start: 1000, end: 4000 };
+		expect(getZoomDisplaySpan(span, timing)).toEqual(span);
+		expect(getZoomMotionSpan(span, timing)).toEqual(span);
+	});
+
+	it("does not shorten a block when switching to cinematic motion", () => {
+		const span = { start: 1418, end: 4152 };
+		const regular = getZoomDisplaySpan(
+			span,
+			getZoomPresentationTiming(CURSOR_MOTION_PRESETS.focused),
+		);
+		const cinematic = getZoomDisplaySpan(
+			span,
+			getZoomPresentationTiming(CURSOR_MOTION_PRESETS.smooth),
+		);
+		expect(cinematic).toEqual(regular);
+		expect(cinematic.end).toBe(4152);
 	});
 
 	it.each([
@@ -79,7 +70,7 @@ describe("zoom block presentation", () => {
 		const span = { start: last.startMs, end: last.endMs };
 		const display = getZoomDisplaySpan(span, timing);
 		expect(display.end).toBeGreaterThan(span.start);
-		expect(display.end).toBeLessThan(span.end);
+		expect(display.end).toBe(span.end);
 		expect(getZoomMotionSpan(display, timing).end).toBeCloseTo(span.end, 5);
 		const shorter = { ...display, end: display.start + 10 };
 		const resized = getZoomMotionSpan(shorter, timing);
@@ -144,7 +135,7 @@ describe("constrained zoom resizing", () => {
 				neighbor && span.end > following.start && span.start < following.end,
 		});
 		expect(resolved).not.toBeNull();
-		expect(resized.start).toBeGreaterThan(950);
+		expect(resized.start).toBe(500);
 		expect(resized.end).toBeLessThanOrEqual(end);
 		expect(resolved!.start).toBeCloseTo(resized.start, 8);
 		expect(getZoomDisplaySpan(resolved!, timing).end).toBeCloseTo(originalDisplay.end, 6);

@@ -33,6 +33,9 @@ import {
 } from "../types";
 
 export function useAppearanceState(preferences: EditorPreferences) {
+	const [autoApplyFreshRecordingAutoZooms, setAutoApplyFreshRecordingAutoZooms] = useState(
+		preferences.autoApplyFreshRecordingAutoZooms,
+	);
 	const [wallpaper, setWallpaperState] = useState(
 		preferences.wallpaper === DESKTOP_WALLPAPER
 			? DEFAULT_WALLPAPER_PATH
@@ -154,6 +157,8 @@ export function useAppearanceState(preferences: EditorPreferences) {
 		zoomMotionBlurTuning,
 		setZoomMotionBlurTuning,
 		connectZooms,
+		autoApplyFreshRecordingAutoZooms,
+		setAutoApplyFreshRecordingAutoZooms,
 		setConnectZooms,
 		zoomInDurationMs,
 		setZoomInDurationMs,

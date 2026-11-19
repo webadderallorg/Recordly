@@ -59,6 +59,7 @@ describe("recorder webcam sidecar", () => {
 	const recorder = () => FakeMediaRecorder.instances[FakeMediaRecorder.instances.length - 1];
 	const createWebcam = (overrides: Partial<Parameters<typeof useRecorderWebcam>[0]> = {}) =>
 		useRecorderWebcam({
+			isMacOS: false,
 			webcamEnabled: true,
 			webcamDeviceId: undefined,
 			recordingSessionTimestamp: { current: 1_000 },
@@ -98,11 +99,23 @@ describe("recorder webcam sidecar", () => {
 		});
 		vi.spyOn(Date, "now").mockReturnValue(2_000);
 		vi.spyOn(console, "warn").mockImplementation(() => {});
+		vi.spyOn(console, "info").mockImplementation(() => {});
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
+	});
+
+	it("does not open the camera on macOS when its permission has not been granted", async () => {
+		window.electronAPI.getMediaPermissionStatus = vi.fn().mockResolvedValue({
+			success: true,
+			camera: "not-determined",
+		});
+		const webcam = createWebcam({ isMacOS: true });
+		await webcam.prepareWebcamRecorder();
+		expect(getUserMedia).not.toHaveBeenCalled();
+		expect(FakeMediaRecorder.instances).toHaveLength(0);
 	});
 
 	it("does not acquire or start a disabled webcam", async () => {
@@ -116,14 +129,23 @@ describe("recorder webcam sidecar", () => {
 		expect(toast.warning).not.toHaveBeenCalled();
 	});
 
-	it("prepares the default camera and waits for the main capture before starting", async () => {
-		const webcam = createWebcam();
+	it.each([
+		false,
+		true,
+	])("prepares the default camera and waits for main capture (macOS: %s)", async (isMacOS) => {
+		if (isMacOS) {
+			window.electronAPI.getMediaPermissionStatus = vi.fn().mockResolvedValue({
+				success: true,
+				camera: "granted",
+			});
+		}
+		const webcam = createWebcam({ isMacOS });
 		await webcam.prepareWebcamRecorder();
 		expect(getUserMedia).toHaveBeenCalledWith({
 			video: {
 				width: { ideal: 1280 },
 				height: { ideal: 720 },
-				frameRate: { ideal: 30, max: 30 },
+				frameRate: { ideal: 60, max: 60 },
 			},
 			audio: false,
 		});
@@ -137,6 +159,19 @@ describe("recorder webcam sidecar", () => {
 		webcam.beginWebcamCapture();
 		expect(recorder().start).toHaveBeenCalledExactlyOnceWith(250);
 		expect(webcam.webcamStartTime.current).toBe(2_000);
+		await webcam.stopWebcamRecorder();
+	});
+
+	it("keeps cameras that negotiate a lower frame rate usable and reports the actual rate", async () => {
+		const settings = { frameRate: 30, width: 1280, height: 720 };
+		stream.getVideoTracks = () => [{ getSettings: () => settings }] as MediaStreamTrack[];
+		const webcam = createWebcam();
+		await webcam.prepareWebcamRecorder();
+		expect(FakeMediaRecorder.instances).toHaveLength(1);
+		expect(console.info).toHaveBeenCalledWith("[Recorder] Webcam capture settings", {
+			requestedFrameRate: 60,
+			...settings,
+		});
 		await webcam.stopWebcamRecorder();
 	});
 

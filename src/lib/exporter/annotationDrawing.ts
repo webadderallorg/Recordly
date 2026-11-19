@@ -1,4 +1,5 @@
 /// <reference lib="es2022.intl" />
+import { drawSquircleOnCanvas, SQUIRCLE_RADIUS_SCALE } from "@/lib/geometry/squircle";
 import { type AnnotationRegion, type ArrowDirection } from "@/components/video-editor/types";
 
 const ARROW_PATHS: Record<ArrowDirection, string[]> = {
@@ -207,8 +208,13 @@ export function renderText(
 			}
 
 			ctx.fillStyle = style.backgroundColor;
-			ctx.beginPath();
-			ctx.roundRect(bgX, bgY, bgWidth, bgHeight, borderRadius);
+			drawSquircleOnCanvas(ctx, {
+				x: bgX,
+				y: bgY,
+				width: bgWidth,
+				height: bgHeight,
+				radius: borderRadius * SQUIRCLE_RADIUS_SCALE,
+			});
 			ctx.fill();
 		}
 

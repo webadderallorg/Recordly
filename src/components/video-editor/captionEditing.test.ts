@@ -6,7 +6,9 @@ import {
 	updateCaptionCuesForEditedTarget,
 } from "./captionEditing";
 import { buildActiveCaptionLayout } from "./captionLayout";
-import { type CaptionCue, DEFAULT_AUTO_CAPTION_SETTINGS } from "./types";
+import { type CaptionCue, DEFAULT_AUTO_CAPTION_SETTINGS as DEFAULT_SETTINGS } from "./types";
+
+const LEGACY_CAPTION_SETTINGS = { ...DEFAULT_SETTINGS, style: "classic" as const };
 
 const visibleTarget: CaptionEditTarget = {
 	id: "visible-page",
@@ -65,7 +67,7 @@ describe("captionEditing", () => {
 		const layout = buildActiveCaptionLayout({
 			cues: updated,
 			timeMs: 1_500,
-			settings: DEFAULT_AUTO_CAPTION_SETTINGS,
+			settings: LEGACY_CAPTION_SETTINGS,
 			maxWidthPx: 500,
 			measureText: (text) => text.length * 10,
 		});
@@ -123,7 +125,7 @@ describe("captionEditing", () => {
 		const layout = buildActiveCaptionLayout({
 			cues: [cue],
 			timeMs: 100,
-			settings: DEFAULT_AUTO_CAPTION_SETTINGS,
+			settings: LEGACY_CAPTION_SETTINGS,
 			maxWidthPx: 500,
 			measureText: (text) => text.length * 10,
 		});
@@ -173,7 +175,7 @@ describe("captionEditing", () => {
 		const layout = buildActiveCaptionLayout({
 			cues: updated,
 			timeMs: 550,
-			settings: DEFAULT_AUTO_CAPTION_SETTINGS,
+			settings: LEGACY_CAPTION_SETTINGS,
 			maxWidthPx: 500,
 			measureText: (text) => text.length * 10,
 		});
@@ -200,7 +202,7 @@ describe("captionEditing", () => {
 		const layout = buildActiveCaptionLayout({
 			cues,
 			timeMs: 1_500,
-			settings: DEFAULT_AUTO_CAPTION_SETTINGS,
+			settings: LEGACY_CAPTION_SETTINGS,
 			maxWidthPx: 500,
 			measureText: (text) => text.length * 10,
 		});

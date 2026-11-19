@@ -2,15 +2,17 @@ import { Application, Container, Graphics, Sprite } from "pixi.js";
 import type { MotionBlurFilter } from "pixi-filters/motion-blur";
 import type { ZoomBlurFilter } from "pixi-filters/zoom-blur";
 import { useRef, useState } from "react";
-import { createAnnotationFrameStore } from "./annotationFrameStore";
 import { type ZoomRegion } from "../types";
+import { createAnnotationFrameStore } from "./annotationFrameStore";
 import {
 	type AnnotationRecordingRect,
+	type ComposedPreviewFrame,
 	createPlaybackAnimationState,
 	type PlaybackAnimationState,
 } from "./playbackTypes";
 export function usePreviewSceneState() {
 	const previewFrameRef = useRef<HTMLDivElement | null>(null);
+	const composedFrameRef = useRef<ComposedPreviewFrame | null>(null);
 
 	const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -90,6 +92,7 @@ export function usePreviewSceneState() {
 	const layoutVideoContentRef = useRef<(() => void) | null>(null);
 	return {
 		previewFrameRef,
+		composedFrameRef,
 		containerRef,
 		appRef,
 		videoSpriteRef,

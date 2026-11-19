@@ -170,5 +170,7 @@
 	"selectedClips": "{{count}} clips sélectionnés",
 	"mergeSelectedClips": "Fusionner les clips sélectionnés",
 	"mergeClipsUnavailable": "La fusion nécessite des séquences continues avec une vitesse et des réglages audio identiques.",
-	"mergeClips": "Fusionner les clips"
+	"mergeClips": "Fusionner les clips",
+	"captionStyleClassic": "Classique",
+	"captionStyleReveal": "Révélation"
 }

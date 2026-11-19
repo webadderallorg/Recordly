@@ -170,5 +170,7 @@
 	"selectedClips": "{{count}} Clips ausgewählt",
 	"mergeSelectedClips": "Ausgewählte Clips zusammenführen",
 	"mergeClipsUnavailable": "Zum Zusammenführen muss das Material zusammenhängend sein und dieselbe Geschwindigkeit und dieselben Audioeinstellungen haben.",
-	"mergeClips": "Clips zusammenführen"
+	"mergeClips": "Clips zusammenführen",
+	"captionStyleClassic": "Klassisch",
+	"captionStyleReveal": "Einblenden"
 }

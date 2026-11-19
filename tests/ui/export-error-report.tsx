@@ -94,7 +94,6 @@ function FailedExportMenu() {
 				handleRetrySaveExport={() => undefined}
 				handleStartExportFromDropdown={() => undefined}
 				revealExportedFile={() => undefined}
-				exportMessage={null}
 				projectTitle="Failed export fixture"
 				prepareExportForShare={async () => undefined}
 				onRequestShareSignIn={() => undefined}

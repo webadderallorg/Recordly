@@ -1,5 +1,14 @@
 {
 	"recording": {
+		"audio": "Audio",
+		"audioSettings": "Audio settings",
+		"camera": "Camera",
+		"cameraSettings": "Camera settings",
+		"systemAudio": "Computer audio",
+		"systemAudioDescription": "Apps, videos and system sounds",
+		"off": "Off",
+		"cameraPreview": "Preview",
+		"cancelCountdown": "Cancel countdown",
 		"home": "Home",
 		"disableSystemAudio": "Disable system audio",
 		"enableSystemAudio": "Enable system audio",

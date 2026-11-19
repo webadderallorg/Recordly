@@ -25,6 +25,19 @@ describe("resolveExportStatusModel", () => {
 		expect(status.isLightningExportInProgress).toBe(true);
 		expect(status.shouldSuspendPreviewRendering).toBe(true);
 		expect(status.renderSpeedFps).toBeNull();
+		expect(status.exportDisplayProgress).toBe(0);
+	});
+
+	it.each([
+		99.9, 100, 104,
+	])("reserves MP4 completion until saving succeeds (%s)", (percentage) => {
+		const status = resolveExportStatusModel({
+			isExporting: true,
+			exportProgress: progress({ percentage }),
+			exportFormat: "mp4",
+			exportPipelineModel: "modern",
+		});
+		expect(status.exportDisplayProgress).toBe(99);
 	});
 
 	it("keeps GIF encoding indeterminate even when every frame is rendered", () => {

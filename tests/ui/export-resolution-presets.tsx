@@ -34,7 +34,11 @@ Object.defineProperty(window, "VideoEncoder", {
 
 function Fixture() {
 	const billing = useOptionalBilling();
-	const [preferences] = useState(loadEditorPreferences);
+	// This fixture exercises a deliberate 60 FPS request, independent of app defaults.
+	const [preferences] = useState(() => ({
+		...loadEditorPreferences(),
+		mp4FrameRate: 60 as const,
+	}));
 	const settings = useExportSettings(preferences, [], []);
 	const session = useExportSession();
 	const {
@@ -60,7 +64,7 @@ function Fixture() {
 		isPreviewReady: true,
 		aspectRatio: "native",
 		cropRegion,
-		mp4FrameRate: 60,
+		mp4FrameRate: settings.mp4FrameRate,
 		gifSizePreset: "original",
 	});
 	const { handleStartExportFromDropdown, prepareExportForShare, handleRetrySaveExport } =
@@ -70,7 +74,7 @@ function Fixture() {
 			hasCaptionsForSidecar: params.has("captions"),
 			settings,
 			session,
-			showExportSuccessToast: () => undefined,
+			recordSuccessfulExport: () => undefined,
 			handleExport: async (request, options) => {
 				setExportRequest({ ...request, destination: options?.destination });
 				try {
@@ -103,12 +107,12 @@ function Fixture() {
 				onExportQualityChange={setQuality}
 				exportEncodingMode={exportEncodingMode}
 				onExportEncodingModeChange={setExportEncodingMode}
-				mp4FrameRate={60}
+				mp4FrameRate={settings.mp4FrameRate}
+				onMp4FrameRateChange={settings.setMp4FrameRate}
 				mp4OutputDimensions={dimensions.mp4OutputDimensions}
 				gifFrameRate={15}
 				gifLoop
 				gifSizePreset="original"
-				gifOutputDimensions={dimensions.gifOutputDimensions}
 				onExport={handleStartExportFromDropdown}
 			/>
 			<output data-testid="export-result">{result}</output>

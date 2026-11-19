@@ -48,7 +48,7 @@ test("preview failures use a dismissible popup without replacing the editor", as
 			body: '{"success":true}',
 		});
 	});
-	await popup.getByRole("button", { name: "Report error", exact: true }).click();
+	await popup.getByRole("button", { name: "Report Error", exact: true }).click();
 	await expect(popup.getByRole("button", { name: "Report sent", exact: true })).toBeDisabled();
 	expect(reports).toHaveLength(1);
 	expect(reports[0]).toMatchObject({ schemaVersion: 2, context: "project-load" });

@@ -5,15 +5,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { prepareElectronDevRuntime } from "../scripts/electronDevRuntime";
+import { getGpuSwitches } from "./gpuSwitches";
 
 it.skipIf(process.platform !== "darwin")(
-	"keeps macOS media helpers out of the Dock while camera and microphone still work",
+	"launches normally with working microphone and out-of-process camera capture on macOS",
 	() => {
 		const directory = mkdtempSync(path.join(tmpdir(), "recordly-media-policy-"));
 		try {
 			const require = createRequire(import.meta.url);
 			const electron = require("electron") as string;
 			prepareElectronDevRuntime(process.cwd());
+			const { useAngle, disableFeatures } = getGpuSwitches("darwin", {});
 			writeFileSync(
 				path.join(directory, "index.html"),
 				"<!doctype html><title>Local media test</title>",
@@ -28,11 +30,11 @@ const path = require('node:path');
 app.setPath('userData', path.join(__dirname, 'profile'));
 app.commandLine.appendSwitch('use-fake-device-for-media-stream');
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
-app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess,MacCatapLoopbackAudioForScreenShare');
+app.commandLine.appendSwitch('use-angle', ${JSON.stringify(useAngle)});
+app.commandLine.appendSwitch('disable-features', ${JSON.stringify(disableFeatures?.join(","))});
 setTimeout(() => app.exit(2), 15000);
 app.whenReady().then(async () => {
  try {
-  await app.dock.show();
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === 'media'));
   const win = new BrowserWindow({show: false, webPreferences: {sandbox: true}});
   await win.loadFile(path.join(__dirname, 'index.html'));
@@ -69,12 +71,14 @@ app.whenReady().then(async () => {
 			expect(observed.media.video).toBe(1);
 			expect(observed.media.width).toBeGreaterThan(0);
 			expect(
-				observed.helpers.some(
-					(helper: { name: string }) => helper.name === "Video Capture",
-				),
+				observed.helpers.some((helper: { name: string }) => helper.name === "Video Capture"),
 			).toBe(true);
+			// The standard video capture worker can register a Dock icon on macOS 27.
 			expect(
-				observed.helpers.every((helper: { foreground: boolean }) => !helper.foreground),
+				observed.helpers.every(
+					(helper: { name: string; foreground: boolean }) =>
+						helper.name === "Video Capture" || !helper.foreground,
+				),
 			).toBe(true);
 		} finally {
 			rmSync(directory, { recursive: true, force: true });

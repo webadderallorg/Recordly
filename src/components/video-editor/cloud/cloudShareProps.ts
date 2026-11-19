@@ -4,6 +4,8 @@ export type Props = {
 	linkIsStale?: boolean;
 	onRegenerate?: () => void;
 	projectPath?: string | null;
+	projectSourcePath?: string | null;
+	openedSavedProject?: boolean;
 	filePath?: string;
 	projectTitle: string;
 	prepareFile?: () => Promise<string | undefined>;
@@ -17,4 +19,5 @@ export type Props = {
 	inline?: boolean;
 	onBusyChange?: (busy: boolean) => void;
 	onRequestSignIn?: () => void;
+	suppressSuccessToast?: boolean;
 };

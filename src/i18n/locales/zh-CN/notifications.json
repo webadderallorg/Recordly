@@ -75,5 +75,6 @@
 	"locateRecording": "查找录制文件",
 	"recordingRelinkFailed": "无法重新关联录制文件",
 	"pauseRecordingTrackFailed": "屏幕录制已暂停，但无法暂停某个摄像头或音轨。",
-	"resumeRecordingTrackFailed": "屏幕录制已继续，但无法继续某个摄像头或音轨。"
+	"resumeRecordingTrackFailed": "屏幕录制已继续，但无法继续某个摄像头或音轨。",
+	"captionFilesSaveFailed": "视频已保存，但部分字幕文件未能保存。"
 }

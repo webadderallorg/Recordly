@@ -39,7 +39,8 @@ test("Home stays opaque throughout its loading transition over the editor", asyn
 	});
 	await page.getByRole("button", { name: "Home", exact: true }).click();
 	const home = page.getByRole("dialog", { name: "Projects dashboard" });
-	await expect(home.getByLabel("Loading projects")).toBeVisible();
+	await expect(home).toBeVisible();
+	await expect(home.getByLabel("Loading projects")).toHaveCount(0);
 	const samples = await page.evaluate(async () => {
 		const start = performance.now();
 		const state = window as unknown as {

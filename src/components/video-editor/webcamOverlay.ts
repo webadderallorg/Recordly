@@ -1,11 +1,16 @@
 import { getSquircleSvgPath } from "@/lib/geometry/squircle";
-import type { CropRegion, WebcamCorner, WebcamPositionPreset, WebcamShape } from "./types";
+import {
+	type CropRegion,
+	DEFAULT_WEBCAM_SIZE,
+	type WebcamCorner,
+	type WebcamPositionPreset,
+	type WebcamShape,
+} from "./types";
 
 // Strongly rounded shoulders, with enough flatness to remain a squircle.
 export const WEBCAM_SQUIRCLE_EXPONENT = 2.4;
 
 export const WEBCAM_REFERENCE_VIEWPORT_WIDTH = 1920;
-const WEBCAM_REFERENCE_VIEWPORT_HEIGHT = 1080;
 
 function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
@@ -25,12 +30,12 @@ export function getWebcamCornerRadiusPx(
 ): number {
 	if (shape === "circle") return Math.max(0, Math.min(width, height)) / 2;
 	const safeRoundness = Number.isFinite(roundnessPercent) ? clamp(roundnessPercent, 0, 100) : 0;
-	const strengthenedRoundness = (safeRoundness / 100) ** 0.25;
-	return (Math.max(0, Math.min(width, height)) / 2) * strengthenedRoundness;
+	// 100% is half the short edge for every shape. Keep each slider step equal.
+	return (Math.max(0, Math.min(width, height)) / 2) * (safeRoundness / 100);
 }
 
 export function getWebcamShapeExponent(shape?: WebcamShape): number {
-	return shape === "circle" ? 2 : WEBCAM_SQUIRCLE_EXPONENT;
+	return shape === "circle" || shape === "rectangle" ? 2 : WEBCAM_SQUIRCLE_EXPONENT;
 }
 
 export function getWebcamClipPath(
@@ -40,6 +45,8 @@ export function getWebcamClipPath(
 	shape?: WebcamShape,
 ): string {
 	if (shape === "circle") return "circle(50% at 50% 50%)";
+	if (shape === "rectangle")
+		return `inset(0 round ${getWebcamCornerRadiusPx(roundness, width, height, shape)}px)`;
 	return `path('${getSquircleSvgPath({
 		x: 0,
 		y: 0,
@@ -48,18 +55,6 @@ export function getWebcamClipPath(
 		radius: getWebcamCornerRadiusPx(roundness, width, height),
 		exponent: WEBCAM_SQUIRCLE_EXPONENT,
 	})}')`;
-}
-
-export function convertLegacyWebcamRadiusToRoundness(
-	radiusPixels: number,
-	widthPercent: number,
-	heightPercent: number,
-): number {
-	const referenceShortSide =
-		WEBCAM_REFERENCE_VIEWPORT_HEIGHT *
-		(clamp(Math.min(widthPercent, heightPercent), 10, 100) / 100);
-	const normalizedRadius = clamp(Math.max(0, radiusPixels) / (referenceShortSide / 2), 0, 1);
-	return normalizedRadius ** 4 * 100;
 }
 
 export function getWebcamPositionForPreset(preset: WebcamPositionPreset): { x: number; y: number } {
@@ -106,7 +101,8 @@ export function resolveWebcamCorner(
 
 export function getWebcamOverlayScale(zoomScale: number, reactToZoom: boolean): number {
 	const safeZoomScale = Number.isFinite(zoomScale) && zoomScale > 0 ? zoomScale : 1;
-	return reactToZoom ? 1 / safeZoomScale : 1;
+	const shrink = 1 - 1 / safeZoomScale;
+	return reactToZoom ? 1 - shrink * 0.7 : 1;
 }
 
 export function getWebcamOverlaySizePx({
@@ -261,10 +257,15 @@ export function getCropMatchedWebcamHeightPercent(
 	sourceWidth: number | null | undefined,
 	sourceHeight: number | null | undefined,
 	cropRegion: Partial<CropRegion> | null | undefined,
+	shape?: WebcamShape,
 ): number {
-	const safeWidthPercent = Number.isFinite(widthPercent) ? widthPercent : 40;
+	const safeWidthPercent = Number.isFinite(widthPercent) ? widthPercent : DEFAULT_WEBCAM_SIZE;
 	const safeHeightPercent = Number.isFinite(heightPercent) ? heightPercent : safeWidthPercent;
-	if (Math.abs(safeWidthPercent - safeHeightPercent) > 0.001) {
+	if (
+		shape === "squircle" ||
+		shape === "circle" ||
+		Math.abs(safeWidthPercent - safeHeightPercent) > 0.001
+	) {
 		return clamp(safeHeightPercent, 10, 100);
 	}
 

@@ -18,6 +18,7 @@ export function ColorBackgroundPicker({
 	value,
 	presets,
 	onChange,
+	onCustomChange,
 	tileClassName,
 	children,
 	onCreateGradient,
@@ -28,6 +29,7 @@ export function ColorBackgroundPicker({
 	presets: readonly string[];
 	onChange: (color: string) => void;
 	tileClassName: (selected: boolean) => string;
+	onCustomChange?: () => void;
 }) {
 	const te = useScopedT("editing");
 	const [custom, setCustom] = useState(() => loadEditorPreferences().customColors);
@@ -98,6 +100,7 @@ export function ColorBackgroundPicker({
 										].slice(0, 50);
 										setCustom(next);
 										saveEditorPreferences({ customColors: next });
+										onCustomChange?.();
 										onChange(draft);
 										setOpen(false);
 									}}
@@ -150,6 +153,7 @@ export function ColorBackgroundPicker({
 									);
 									setCustom(next);
 									saveEditorPreferences({ customColors: next });
+									onCustomChange?.();
 									if (value.toLowerCase() === color) onChange(presets[0]);
 								}}
 							>

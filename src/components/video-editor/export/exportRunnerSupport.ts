@@ -1,5 +1,4 @@
 import type { RefObject } from "react";
-import { useCallback } from "react";
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
 import type { ExportQuality, SupportedMp4Dimensions } from "@/lib/exporter";
@@ -17,6 +16,7 @@ import type { useExportSession } from "./useExportSession";
 import type { useExportSettings } from "./useExportSettings";
 
 export type ExportRunnerInput = {
+	exportIdentity?: import("../dashboard/libraryExportHistory").LibraryExportIdentity;
 	projectName: string;
 	videoPath: string | null;
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
@@ -40,7 +40,6 @@ export type ExportRunnerInput = {
 	captionSidecarPayload?: PendingExportSave["captionSidecar"];
 	experimentalNvidiaCudaExport: boolean;
 	nvidiaCudaExportAvailable: boolean;
-	remountPreview: () => void;
 };
 
 export function showExportErrorToast(message: string) {
@@ -51,39 +50,16 @@ export function showExportErrorToast(message: string) {
 	});
 }
 
-export function useExportSuccessToast() {
-	return useCallback((filePath: string) => {
-		toast.success(
-			translate("notifications.exportedTo", "Exported successfully to {{path}}", {
-				path: filePath,
-			}),
-			{
-				action: {
-					label: translate("notifications.showInFolder", "Show in Folder"),
-					onClick: async () => {
-						try {
-							const result = await window.electronAPI.revealInFolder(filePath);
-							if (!result.success) {
-								toast.error(
-									translate(
-										"notifications.revealFailed",
-										"Failed to reveal item in folder.",
-									),
-									{ description: result.error || result.message },
-								);
-							}
-						} catch (error) {
-							toast.error(
-								translate(
-									"notifications.revealError",
-									"Failed to reveal item in folder: {{error}}",
-									{ error: String(error) },
-								),
-							);
-						}
-					},
-				},
-			},
-		);
-	}, []);
+export function showCaptionSidecarWarning(result: {
+	success: boolean;
+	captionSidecarFailed?: boolean;
+}) {
+	if (!result.success || !result.captionSidecarFailed) return;
+	toast.warning(
+		translate(
+			"notifications.captionFilesSaveFailed",
+			"Video saved, but some caption files could not be saved.",
+		),
+		{ duration: Infinity },
+	);
 }

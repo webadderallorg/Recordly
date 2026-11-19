@@ -3,6 +3,7 @@ import { ArrowRight } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "motion/react";
 import { type ReactNode, useLayoutEffect, useState } from "react";
 import { RecordlyDemoVideo } from "@/components/ui/RecordlyDemoVideo";
+import { RecordlyMark } from "@/components/ui/RecordlyMark";
 import { useScopedT } from "@/contexts/I18nContext";
 import "./Onboarding.css";
 
@@ -13,6 +14,7 @@ export function OnboardingLayout({
 	onStageChange,
 	canViewPermissions,
 	showNavigation = true,
+	carousel = Boolean(onStageChange),
 	footer,
 	children,
 }: {
@@ -20,6 +22,7 @@ export function OnboardingLayout({
 	onStageChange?: (stage: OnboardingStage) => void;
 	canViewPermissions: boolean;
 	showNavigation?: boolean;
+	carousel?: boolean;
 	footer?: ReactNode;
 	children: ReactNode;
 }) {
@@ -33,7 +36,7 @@ export function OnboardingLayout({
 	return (
 		<div
 			data-onboarding-stage={stage}
-			data-onboarding-carousel={onStageChange ? "true" : undefined}
+			data-onboarding-carousel={carousel ? "true" : undefined}
 			className="onboarding-layout flex h-full min-h-0 flex-col"
 		>
 			<div className="onboarding-ambience" aria-hidden="true">
@@ -43,7 +46,7 @@ export function OnboardingLayout({
 			</div>
 			<motion.div
 				data-onboarding-artwork
-				layout={reduceMotion || onStageChange ? false : "size"}
+				layout={reduceMotion || carousel ? false : "size"}
 				layoutDependency={stage}
 				transition={transition}
 				className="onboarding-artwork relative m-2 overflow-hidden rounded-t-2xl"
@@ -51,19 +54,17 @@ export function OnboardingLayout({
 				<RecordlyDemoVideo className="absolute inset-0" />
 			</motion.div>
 			<motion.div
-				layout={reduceMotion || onStageChange ? false : "position"}
+				layout={reduceMotion || carousel ? false : "position"}
 				layoutDependency={stage}
 				transition={transition}
 				className={`onboarding-stage-content grid min-h-0 ${stage === "account" ? "shrink-0" : "shrink overflow-hidden"}`}
 			>
 				{children}
 			</motion.div>
-			{onStageChange ? (
+			{(onStageChange || footer) && (
 				<div className="onboarding-carousel-footer flex shrink-0 flex-col justify-end">
 					{footer}
 				</div>
-			) : (
-				footer
 			)}
 			{showNavigation && (
 				<nav
@@ -140,16 +141,7 @@ export function OnboardingHeader({
 }
 
 function OnboardingTitleLogo() {
-	return (
-		<span
-			aria-hidden="true"
-			className="onboarding-title-logo"
-			style={{
-				maskImage: `url(${import.meta.env.BASE_URL}app-icons/recordly-mark.svg)`,
-				WebkitMaskImage: `url(${import.meta.env.BASE_URL}app-icons/recordly-mark.svg)`,
-			}}
-		/>
-	);
+	return <RecordlyMark className="onboarding-title-logo" />;
 }
 
 export function OnboardingTitleBrand() {
@@ -239,6 +231,7 @@ export function OnboardingPrimaryAction({
 		>
 			<Button
 				data-onboarding-primary-action
+				className="h-11 rounded-xl"
 				variant="primary"
 				isDisabled={isDisabled}
 				onPress={onPress}

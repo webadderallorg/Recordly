@@ -1,157 +1,116 @@
 import { expect } from "@playwright/test";
-import { productionTest as test } from "./production";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+import { productionTest as test } from "./production";
+
+test.use({ launchOptions: { args: ["--autoplay-policy=no-user-gesture-required"] } });
 
 for (const standalone of [false, true]) {
-	test(`actual onboarding plays music despite previous playback (${standalone ? "window" : "inline fallback"})`, async ({
+	test(`onboarding plays the soundtrack from the MP4 (${standalone ? "window" : "inline fallback"})`, async ({
 		page,
 	}) => {
 		await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: standalone });
-		await installDesktopBridgeOverrides(page, () => {
-			const getSetting = window.electronAPI.getAppSetting;
-			localStorage.setItem("recordly.first-boot-music.v1.played", "true");
-			window.electronAPI.getAppSetting = (key) =>
-				key === "recordly.first-boot-music.v1.played" ? true : getSetting(key);
-			HTMLMediaElement.prototype.play = async function () {
-				if (this instanceof HTMLAudioElement) {
-					document.documentElement.dataset.welcomeMusic = this.src;
-					document.documentElement.dataset.musicAttempts = String(
-						Number(document.documentElement.dataset.musicAttempts || 0) + 1,
-					);
-				}
-			};
-		});
 		await page.goto(`/?windowType=${standalone ? "onboarding" : "editor"}`);
 		const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
-		await expect(tour.getByRole("button", { name: "Mute welcome music" })).toBeVisible({
-			timeout: 30000,
+		await expect(
+			tour.getByRole("button", { name: "Mute welcome music", exact: true }),
+		).toBeVisible({
+			timeout: 20000,
 		});
-		await expect(page.locator("html")).toHaveAttribute(
-			"data-welcome-music",
-			/audio\/first-boot.m4a$/,
-		);
-		await expect(page.locator("html")).toHaveAttribute("data-music-attempts", "1");
-		await expect(tour.locator("[data-recordly-demo]")).toBeVisible();
+		const audio = tour.locator("audio");
+		await expect(audio).toHaveAttribute("src", /auth\/recordly-demo\.mp4/);
+		await expect
+			.poll(() => audio.evaluate((el) => Reflect.get(el, "webkitAudioDecodedByteCount")))
+			.toBeGreaterThan(0);
+		await expect(tour.locator("[data-recordly-demo] video")).toHaveJSProperty("muted", true);
 	});
 }
 
-test("actual onboarding restarts music when reopened in the same window", async ({ page }) => {
+test("soundtrack begins on the logo signal and continues while the banner starts", async ({
+	page,
+}) => {
+	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.onOnboardingSoundtrackStart = (callback) => {
+			document.documentElement.dataset.soundtrackReady = "true";
+			window.addEventListener("test-logo-start", callback);
+			return () => window.removeEventListener("test-logo-start", callback);
+		};
+	});
+	await page.goto("/?windowType=onboarding&welcomeSoundtrack=intro");
+	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
+	const banner = tour.locator("[data-recordly-demo]");
+	const audio = tour.locator("audio");
+	await expect(page.locator("html")).toHaveAttribute("data-soundtrack-ready", "true");
+	await expect(audio).toHaveJSProperty("paused", true);
+	await expect(audio).toHaveJSProperty("currentTime", 0);
+	await page.evaluate(() => window.dispatchEvent(new Event("test-logo-start")));
+	await expect(audio).toHaveJSProperty("paused", false);
+	await expect(banner).toHaveAttribute("data-banner-phase", "video");
+	await expect
+		.poll(() => audio.evaluate((el: HTMLAudioElement) => el.currentTime))
+		.toBeGreaterThan(1);
+	await expect(banner.locator("video")).toHaveJSProperty("muted", true);
+});
+
+test("blocked autoplay retries on interaction and the sound control does not pause playback", async ({
+	page,
+}) => {
+	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
+	await installDesktopBridgeOverrides(page, () => {
+		const play = HTMLMediaElement.prototype.play;
+		let blocked = false;
+		HTMLMediaElement.prototype.play = async function () {
+			if (!blocked && this instanceof HTMLAudioElement) {
+				blocked = true;
+				throw new DOMException("Interaction required", "NotAllowedError");
+			}
+			return play.call(this);
+		};
+	});
+	await page.goto("/?windowType=onboarding");
+	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
+	const audio = tour.locator("audio");
+	const unmute = tour.getByRole("button", { name: "Unmute welcome music", exact: true });
+	const mute = tour.getByRole("button", { name: "Mute welcome music", exact: true });
+	const email = tour.getByPlaceholder("you@example.com");
+	await expect(unmute).toBeVisible();
+	await expect(audio).toHaveJSProperty("paused", true);
+	await email.click();
+	await expect(mute).toBeVisible();
+	await mute.click();
+	await email.click();
+	await expect(audio).toHaveJSProperty("muted", true);
+	await expect(audio).toHaveJSProperty("paused", false);
+	await unmute.click();
+	await expect(audio).toHaveJSProperty("muted", false);
+});
+
+test("recording stops the soundtrack and a new onboarding opening restarts it", async ({
+	page,
+}) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: true });
 	await installDesktopBridgeOverrides(page, () => {
 		window.electronAPI.onRecordingPermissionsRequested = (callback) => {
 			window.addEventListener("test-open-onboarding", callback);
 			return () => window.removeEventListener("test-open-onboarding", callback);
 		};
-		HTMLMediaElement.prototype.play = async function () {
-			if (this instanceof HTMLAudioElement) {
-				document.documentElement.dataset.musicStartTime = String(this.currentTime);
-				this.currentTime = 12;
-				document.documentElement.dataset.musicAttempts = String(
-					Number(document.documentElement.dataset.musicAttempts || 0) + 1,
-				);
-			}
+		window.electronAPI.onRecordingStateChanged = (callback) => {
+			const recordingStarted = () => callback({ recording: true, sourceName: "Test source" });
+			window.addEventListener("test-recording-started", recordingStarted);
+			return () => window.removeEventListener("test-recording-started", recordingStarted);
 		};
 	});
 	await page.goto("/?windowType=onboarding");
 	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
-	await expect(tour.getByRole("button", { name: "Mute welcome music" })).toBeVisible();
+	const audio = tour.locator("audio");
+	const mute = tour.getByRole("button", { name: "Mute welcome music", exact: true });
+	await expect(mute).toBeVisible();
+	await page.evaluate(() => window.dispatchEvent(new Event("test-recording-started")));
+	await expect(audio).toHaveJSProperty("paused", true);
+	await expect(tour.locator("[data-welcome-music]")).toHaveCount(0);
 	await tour.getByRole("button", { name: "Close onboarding window" }).click();
 	await expect(tour).not.toBeVisible();
 	await page.evaluate(() => window.dispatchEvent(new Event("test-open-onboarding")));
-	await expect(tour.getByRole("button", { name: "Mute welcome music" })).toBeVisible();
-	await expect(page.locator("html")).toHaveAttribute("data-music-attempts", "2");
-	await expect(page.locator("html")).toHaveAttribute("data-music-start-time", "0");
-});
-
-test("blocked welcome music retries on interaction and replays on the next onboarding", async ({
-	page,
-}) => {
-	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
-	await installDesktopBridgeOverrides(page, () => {
-		let attempts = 0;
-		HTMLMediaElement.prototype.play = async function () {
-			if (!(this instanceof HTMLAudioElement)) return;
-			attempts += 1;
-			document.documentElement.dataset.musicAttempts = String(attempts);
-			if (attempts === 1) throw new DOMException("Interaction required", "NotAllowedError");
-		};
-	});
-	await page.goto("/?windowType=onboarding");
-	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
-	await expect(tour.getByRole("button", { name: "Unmute welcome music" })).toBeEnabled();
-	await tour.getByPlaceholder("you@example.com").click();
-	await expect(tour.getByRole("button", { name: "Mute welcome music" })).toHaveAttribute(
-		"aria-pressed",
-		"true",
-	);
-	await expect(page.locator("html")).toHaveAttribute("data-music-attempts", "2");
-	await tour.getByRole("button", { name: "Mute welcome music" }).click();
-	await tour.getByPlaceholder("you@example.com").click();
-	await expect(tour.getByRole("button", { name: "Unmute welcome music" })).toBeVisible();
-	await expect(page.locator("html")).toHaveAttribute("data-music-attempts", "2");
-	await page.reload();
-	await expect(tour).toBeVisible();
-	await expect(tour.getByRole("button", { name: "Unmute welcome music" })).toBeVisible();
-	await tour.getByPlaceholder("you@example.com").click();
-	await expect(tour.getByRole("button", { name: "Mute welcome music" })).toBeVisible();
-	await expect(page.locator("html")).toHaveAttribute("data-music-attempts", "2");
-});
-
-test("a failed welcome audio load shows no dead toggle or persisted playback flag", async ({
-	page,
-}) => {
-	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
-	await installDesktopBridgeOverrides(page, () => {
-		window.electronAPI.setAppSetting = (key, value) => {
-			localStorage.setItem(`test-write:${key}`, JSON.stringify(value));
-			return true;
-		};
-		HTMLMediaElement.prototype.play = async function () {
-			if (this instanceof HTMLAudioElement)
-				throw new DOMException("Missing audio", "NotSupportedError");
-		};
-	});
-	await page.goto("/?windowType=onboarding");
-	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
-	await expect(tour).toBeVisible();
-	await expect(tour.locator("[data-welcome-music]")).toHaveCount(0);
-	expect(
-		await page.evaluate(() =>
-			localStorage.getItem("test-write:recordly.first-boot-music.v1.played"),
-		),
-	).toBeNull();
-});
-
-test("closing during pending welcome playback does not persist a playback flag", async ({
-	page,
-}) => {
-	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
-	await installDesktopBridgeOverrides(page, () => {
-		window.electronAPI.setAppSetting = (key, value) => {
-			localStorage.setItem(`test-write:${key}`, JSON.stringify(value));
-			return true;
-		};
-		HTMLMediaElement.prototype.play = async function () {
-			if (!(this instanceof HTMLAudioElement)) return;
-			document.documentElement.dataset.musicPending = "true";
-			await new Promise<void>((resolve) => {
-				window.addEventListener("test-release-music", () => resolve(), { once: true });
-			});
-		};
-	});
-	await page.goto("/?windowType=onboarding");
-	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
-	await expect(page.locator("html")).toHaveAttribute("data-music-pending", "true");
-	await expect(tour.locator("[data-welcome-music]")).toHaveCount(0);
-	await tour.getByRole("button", { name: "Close onboarding window" }).click();
-	await expect(page.locator("html")).toHaveAttribute("data-onboarding-closed", "true");
-	await page.evaluate(async () => {
-		window.dispatchEvent(new Event("test-release-music"));
-		await new Promise(requestAnimationFrame);
-	});
-	expect(
-		await page.evaluate(() =>
-			localStorage.getItem("test-write:recordly.first-boot-music.v1.played"),
-		),
-	).toBeNull();
+	await expect(mute).toBeVisible();
+	await expect(audio).toHaveJSProperty("paused", false);
 });

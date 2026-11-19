@@ -170,5 +170,7 @@
 	"selectedClips": "{{count}} clips selected",
 	"mergeSelectedClips": "Merge selected clips",
 	"mergeClipsUnavailable": "Merge requires continuous footage with matching speed and audio settings.",
-	"mergeClips": "Merge clips"
+	"mergeClips": "Merge clips",
+	"captionStyleClassic": "Classic",
+	"captionStyleReveal": "Reveal"
 }

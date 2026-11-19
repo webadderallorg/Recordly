@@ -7,7 +7,7 @@ test("Publish grows with its contents and only scrolls at the window boundary", 
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.goto("/tests/ui/publish.html");
 	await page.getByRole("button", { name: "Publish", exact: true }).click();
-	await page.getByRole("row", { name: "Save video", exact: true }).click();
+	await page.getByRole("row", { name: "Save to device", exact: true }).click();
 	const panel = page.getByRole("dialog", { name: "Publish", exact: true });
 	const exportButton = panel.getByRole("button", { name: "Export Video", exact: true });
 	const bounds = () =>
@@ -37,7 +37,7 @@ test("Publish grows with its contents and only scrolls at the window boundary", 
 		animations: "disabled",
 	});
 	await page.setViewportSize({ width: 1280, height: 706 });
-	const destination = panel.getByRole("row", { name: "Save video", exact: true });
+	const destination = panel.getByRole("row", { name: "Save to device", exact: true });
 	await expect.poll(async () => (await destination.boundingBox())?.height).toBe(96);
 	await expect(panel.locator(".card__content")).toHaveCSS("gap", "16px");
 	await page.screenshot({
@@ -47,6 +47,11 @@ test("Publish grows with its contents and only scrolls at the window boundary", 
 	await page.setViewportSize({ width: 1280, height: 500 });
 	await expect.poll(async () => (await bounds()).bottom).toBeLessThanOrEqual(488);
 	await expect.poll(async () => (await bounds()).top).toBeGreaterThanOrEqual(12);
-	await exportButton.scrollIntoViewIfNeeded();
+	await expect.poll(async () => (await bounds()).scrolling).toBe(true);
 	await expect(exportButton).toBeInViewport({ ratio: 1 });
+	await expect(panel.getByText(/^Output: \d+ × \d+px$/)).toHaveCount(0);
+	await panel.screenshot({
+		path: test.info().outputPath("publish-compact.png"),
+		animations: "disabled",
+	});
 });

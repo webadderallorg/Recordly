@@ -1,27 +1,27 @@
-import { LocalizedError } from "@/components/feedback/LocalizedError";
+import { useRef } from "react";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
-import { errorSourceName, projectLoadError } from "../project/projectLoadError";
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
-import { LoadingTransition } from "@/components/ui/loading-transition";
-import { LibrarySkeleton } from "./LibrarySkeleton";
-import { SharedRecordings } from "../cloud/SharedRecordings";
-import { CLOUD_SHARE_ENDPOINT } from "../cloud/endpoint";
-import { RecordNewButton } from "./RecordNewButton";
-import { RawPreview } from "./RawRecordings";
-import { Cloud, ImageSquare } from "@/components/ui/icons";
-
+import { LocalizedError } from "@/components/feedback/LocalizedError";
 import { Button } from "@/components/ui/button";
-
+import { Cloud, ImageSquare } from "@/components/ui/icons";
+import { LoadingTransition } from "@/components/ui/loading-transition";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
+import { CLOUD_SHARE_ENDPOINT } from "../cloud/endpoint";
+import { SharedRecordings } from "../cloud/SharedRecordings";
+import { errorSourceName, projectLoadError } from "../project/projectLoadError";
+import { useScrollFade } from "../settings/useScrollFade";
 import { DashboardSettings } from "./DashboardSettings";
-
+import { LibrarySkeleton } from "./LibrarySkeleton";
 import { ProjectCard } from "./ProjectCard";
+import { RawPreview } from "./RawRecordings";
 import { RecentSharedVideos } from "./RecentSharedVideos";
+import { RecordNewButton } from "./RecordNewButton";
 import type { DashboardProps } from "./types";
 
 import type { DashboardModel } from "./useDashboardModel";
 
 export function DashboardGrid({
 	onImportFile,
+	initialLibraryLoading,
 	loading,
 	libraryError,
 	onRetryLibraryLoad,
@@ -62,6 +62,7 @@ export function DashboardGrid({
 }: Pick<
 	DashboardProps & DashboardModel,
 	| "loading"
+	| "initialLibraryLoading"
 	| "libraryError"
 	| "onRetryLibraryLoad"
 	| "onImportFile"
@@ -101,9 +102,19 @@ export function DashboardGrid({
 	| "run"
 >) {
 	const { t: uiText } = useUiLocale();
+	const scrollRef = useRef<HTMLElement>(null);
+	const scrollFade = useScrollFade(scrollRef, section);
 	return (
 		<>
-			<main className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-7 pb-10 lg:px-10">
+			<main
+				ref={scrollRef}
+				data-scroll-shadow-mode={section === "settings" ? undefined : scrollFade}
+				className={
+					section === "settings"
+						? "dashboard-settings-page flex min-h-0 flex-1 flex-col overflow-hidden px-7 lg:px-10"
+						: "custom-scrollbar scroll-shadow scroll-shadow--vertical scroll-shadow--fade [--scroll-shadow-size:24px] min-h-0 flex-1 overflow-y-auto px-7 pb-10 lg:px-10"
+				}
+			>
 				{error && (
 					<div className="mb-4 rounded-xl border border-danger/20 bg-danger/5 p-4 text-sm">
 						<p role="alert" className="text-danger">
@@ -174,6 +185,7 @@ export function DashboardGrid({
 							key={authToken}
 							token={authToken}
 							endpoint={CLOUD_SHARE_ENDPOINT}
+							accountId={accountId}
 							onViewAll={() => setSection("shared")}
 						/>
 					)}
@@ -214,7 +226,9 @@ export function DashboardGrid({
 					)
 				) : (
 					<LoadingTransition
-						loading={Boolean(isRaw ? rawLoading : loading)}
+						loading={Boolean(
+							isRaw ? rawLoading && !visible.length : initialLibraryLoading,
+						)}
 						fallback={<LibrarySkeleton />}
 					>
 						{visible.length ? (

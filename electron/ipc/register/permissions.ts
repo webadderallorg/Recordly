@@ -1,5 +1,6 @@
 import { app, desktopCapturer, ipcMain, shell, systemPreferences } from "electron";
 import { getMacPrivacySettingsUrl } from "../utils";
+import { isTrustedRenderer } from "../../trustedRenderer";
 import {
 	dismissPermissionAccessory,
 	showPermissionAccessory,
@@ -28,9 +29,14 @@ export function registerPermissionHandlers() {
 	);
 	ipcMain.handle("open-external-url", async (_, url: string) => {
 		try {
-			// Security: only allow http/https URLs to prevent file:// or custom protocol abuse
+			// Only the two displayed contact addresses may launch a mail client; other protocols stay blocked.
 			const parsed = new URL(url);
-			if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+			if (
+				parsed.protocol !== "https:" &&
+				parsed.protocol !== "http:" &&
+				url !== "mailto:support@recordly.dev" &&
+				url !== "mailto:youngchen3442@gmail.com"
+			) {
 				return { success: false, error: `Blocked non-HTTP URL: ${parsed.protocol}` };
 			}
 			await shell.openExternal(url);
@@ -100,6 +106,29 @@ export function registerPermissionHandlers() {
 				camera: "unknown",
 				error: String(error),
 			};
+		}
+	});
+
+	ipcMain.handle("request-media-permission", async (event, device: unknown) => {
+		if (!event?.sender || !isTrustedRenderer(event))
+			return { success: false, error: "Untrusted media permission caller" };
+		if (device !== "microphone" && device !== "camera")
+			return { success: false, error: "Invalid media permission device" };
+		if (process.platform !== "darwin")
+			return {
+				success: false,
+				error: "Native media permission requests are unsupported on this platform",
+			};
+		try {
+			const status = systemPreferences.getMediaAccessStatus(device);
+			// Only a user's first-time Allow action should present a native prompt.
+			const granted =
+				status === "not-determined"
+					? await systemPreferences.askForMediaAccess(device)
+					: status === "granted";
+			return { success: true, granted };
+		} catch (error) {
+			return { success: false, error: String(error) };
 		}
 	});
 

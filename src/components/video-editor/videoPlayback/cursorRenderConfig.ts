@@ -37,6 +37,8 @@ export type CursorPackStyle = Exclude<CursorStyle, StatefulCursorStyle | SingleC
 export type CursorPackVariant = "default" | "pointer";
 
 export type LoadedCursorAsset = {
+	/** Original artwork already contains its own shadow, specific to this cursor state. */
+	hasBakedShadow?: boolean;
 	texture: Texture;
 	image: HTMLImageElement;
 	aspectRatio: number;
@@ -210,7 +212,11 @@ export function isSingleCursorStyle(style: CursorStyle): style is SingleCursorSt
 	return style === "dot" || style === "figma";
 }
 
-export function hasBakedCursorShadow(style: CursorStyle): boolean {
+export function hasBakedCursorShadow(
+	style: CursorStyle,
+	asset?: Pick<LoadedCursorAsset, "hasBakedShadow">,
+): boolean {
+	if (asset?.hasBakedShadow !== undefined) return asset.hasBakedShadow;
 	return (
 		isSingleCursorStyle(style) ||
 		style === "bee" ||

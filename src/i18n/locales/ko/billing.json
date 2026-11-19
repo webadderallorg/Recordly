@@ -45,6 +45,8 @@
 	"forCommercialUse": "하여 상업적으로 이용",
 	"upgrade": "Cloud로 업그레이드",
 	"upgradeShort": "업그레이드",
+	"upgradeButtonLabel": "업그레이드",
+	"getCloud": "Recordly Cloud 이용하기",
 	"legalSupport": "법적 정보 및 지원",
 	"privacy": "개인정보 보호",
 	"terms": "약관",
@@ -92,7 +94,7 @@
 	"personalUse": "개인 용도로 사용하겠습니다.",
 	"upgradeHeading": "Recordly의 모든 기능을 활용하세요",
 	"featureLicense": "완전한 상업용 라이선스",
-	"featureLinkSharing": "모든 동영상을 링크로 공유",
+	"featureLinkSharing": "매일 24시간 이용 가능한 링크로 모든 동영상 공유",
 	"featurePlayback": "클라우드 동영상을 FHD 1080p로 재생",
 	"featureCaptionExport": "자막을 SRT 및 VTT 파일로 내보내기",
 	"featurePrioritySupport": "우선 지원 서비스"

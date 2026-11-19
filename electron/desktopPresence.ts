@@ -21,7 +21,7 @@ function showInDock() {
 }
 
 function hideWhileRecording() {
-	return readAppSetting(HIDE_RECORDING_KEY) === true;
+	return readAppSetting(HIDE_RECORDING_KEY) !== false;
 }
 
 function visible() {

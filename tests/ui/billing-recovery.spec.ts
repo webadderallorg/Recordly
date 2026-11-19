@@ -213,13 +213,14 @@ for (const mode of ["past_due", "unpaid", "held"] as const) {
 	});
 }
 
-test("canceled customers can resubscribe and manage their previous billing separately", async ({
+test("canceled customers can resubscribe without duplicate billing management", async ({
 	page,
 }) => {
 	const dialog = await prepare(page, "canceled");
 	await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toBeEnabled();
-	await dialog.getByRole("button", { name: "Manage previous subscription", exact: true }).click();
-	await expect(page.locator("html")).toHaveAttribute("data-billing-action", "portal");
+	await expect(
+		dialog.getByRole("button", { name: "Manage previous subscription", exact: true }),
+	).toHaveCount(0);
 	await dialog.getByRole("button", { name: "Get started", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-billing-action", "checkout");
 });

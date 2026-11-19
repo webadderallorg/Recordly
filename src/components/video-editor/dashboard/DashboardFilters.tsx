@@ -2,7 +2,7 @@ import { useId } from "react";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import type { DashboardProps } from "./types";
 import { Dropdown } from "@heroui/react";
-import { ArrowUp, ArrowDown, Broom } from "@phosphor-icons/react";
+import { ArrowUp, ArrowDown, Broom, CheckSquare } from "@phosphor-icons/react";
 import { CaretDown, Trash } from "@/components/ui/icons";
 
 import { Button } from "@/components/ui/button";
@@ -120,8 +120,8 @@ export function DashboardFilters({
 							className="h-7 gap-2 px-3 text-xs"
 							aria-label={
 								isRaw
-									? uiText("ui.selectRawFilesToDelete")
-									: uiText("ui.selectProjectsToDelete")
+									? uiText("ui.selectRecordings", "Select recordings")
+									: uiText("ui.selectProjects", "Select projects")
 							}
 							aria-pressed={selecting}
 							onClick={() => {
@@ -129,7 +129,7 @@ export function DashboardFilters({
 								setSelected([]);
 							}}
 						>
-							<Trash weight="fill" className="size-3.5" />
+							<CheckSquare className="size-3.5" aria-hidden="true" />
 							{uiText("ui.cleanup.select", "Select")}
 						</Button>
 					)}
@@ -242,14 +242,17 @@ export function DashboardFilters({
 							number: new Intl.NumberFormat(locale).format(selected.length),
 						})}
 					</span>
-					<Button
-						variant="destructive"
-						size="sm"
-						disabled={!selected.length || busy}
-						onClick={() => void deleteEntries(selected)}
-					>
-						{uiText("ui.cleanup.reviewDelete", "Review deletion…")}
-					</Button>
+					{selected.length > 0 && (
+						<Button
+							variant="destructive"
+							size="sm"
+							disabled={busy}
+							onClick={() => void deleteEntries(selected)}
+						>
+							<Trash className="size-3.5" aria-hidden="true" />
+							{uiText("ui.cleanup.reviewDelete", "Review deletion…")}
+						</Button>
+					)}
 					<Button
 						variant="ghost"
 						size="sm"

@@ -6,9 +6,9 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 }) => {
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
-		const key = "recordly.editor.preferences";
+		const key = "recordly.editor.preferences.v2";
 		if (!localStorage.getItem(key)) {
-			localStorage.setItem(key, JSON.stringify({ webcam: { shadow: 0.2 } }));
+			localStorage.setItem(key, JSON.stringify({ webcam: { shadow: 0.2, roundness: 100 } }));
 		}
 		const originalGet = window.electronAPI.getAppSetting;
 		const originalSet = window.electronAPI.setAppSetting;
@@ -29,7 +29,13 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 							version: 2,
 							videoPath,
 							editor: {
-								webcam: { enabled: true, sourcePath: videoPath, shadow: 0.67 },
+								webcam: {
+									enabled: true,
+									sourcePath: videoPath,
+									shadow: 0.67,
+									width: 30,
+									roundness: 100,
+								},
 								clipRegions: [{ id: "clip-1", startMs: 0, endMs: 2000 }],
 							},
 						},
@@ -42,13 +48,15 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 	});
 	const storedShadow = () =>
 		page.evaluate(
-			() => JSON.parse(localStorage.getItem("recordly.editor.preferences")!).webcam.shadow,
+			() => JSON.parse(localStorage.getItem("recordly.editor.preferences.v2")!).webcam.shadow,
 		);
 	await page.goto("/?windowType=editor&older=1");
 	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
 	await page.getByRole("switch", { name: "Advanced settings" }).press("Space");
 	const shadow = page.getByRole("slider", { name: "Webcam Shadow" });
+	const roundness = page.getByRole("slider", { name: "Webcam Roundness" });
 	await expect(shadow).toHaveValue("0.67");
+	await expect(roundness).toHaveValue("20");
 	expect(await storedShadow()).toBe(0.2);
 
 	// Editing another webcam control must not promote the old project's shadow.
@@ -56,11 +64,16 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 	await expect
 		.poll(() =>
 			page.evaluate(
-				() => JSON.parse(localStorage.getItem("recordly.editor.preferences")!).webcam.width,
+				() => JSON.parse(localStorage.getItem("recordly.editor.preferences.v2")!).webcam.width,
 			),
 		)
-		.toBe(41);
+		.toBe(31);
 	expect(await storedShadow()).toBe(0.2);
+	expect(
+		await page.evaluate(
+			() => JSON.parse(localStorage.getItem("recordly.editor.preferences.v2")!).webcam.roundness,
+		),
+	).toBe(20);
 
 	await page.getByRole("radio", { name: "Scene", exact: true }).click();
 	await page.getByRole("slider", { name: "Shadow", exact: true }).press("ArrowRight");
@@ -68,28 +81,28 @@ test("opening an older project preserves webcam defaults while subsequent edits 
 		.poll(() =>
 			page.evaluate(
 				() =>
-					JSON.parse(localStorage.getItem("recordly.editor.preferences")!)
+					JSON.parse(localStorage.getItem("recordly.editor.preferences.v2")!)
 						.shadowIntensity,
 			),
 		)
-		.toBe(0.68);
+		.toBe(0.51);
 	expect(await storedShadow()).toBe(0.2);
 	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
 
 	await shadow.press("Home");
 	await expect.poll(storedShadow).toBe(0);
-	for (let i = 0; i < 20; i++) await shadow.press("ArrowRight");
-	await expect(shadow).toHaveValue("0.2");
-	await expect.poll(storedShadow).toBe(0.2);
+	await shadow.press("ArrowRight");
+	await expect(shadow).toHaveValue("0.01");
+	await expect.poll(storedShadow).toBe(0.01);
 
 	// Reopening the original restores its own look without changing new recordings.
 	await page.reload();
 	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
 	await page.getByRole("switch", { name: "Advanced settings" }).press("Space");
 	await expect(shadow).toHaveValue("0.67");
-	expect(await storedShadow()).toBe(0.2);
+	expect(await storedShadow()).toBe(0.01);
 	await page.goto("/?windowType=editor");
 	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
 	await page.getByRole("switch", { name: "Advanced settings" }).press("Space");
-	await expect(shadow).toHaveValue("0.2");
+	await expect(shadow).toHaveValue("0.01");
 });

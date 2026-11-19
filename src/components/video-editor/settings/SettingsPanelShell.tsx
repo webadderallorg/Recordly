@@ -7,9 +7,12 @@ import type { EditorEffectSection } from "@/components/video-editor/types";
 import { cn } from "@/lib/utils";
 
 import type { ResolvedSettingsPanelProps } from "./settingsPanelDefaults";
+import { useScrollFade } from "./useScrollFade";
 import { useSettingsTranslations } from "./useSettingsTranslations";
 
 export const settingsPanelShellKeys = [
+	"webcam",
+	"onClearWebcam",
 	"activeEffectSection",
 	"selectedZoomId",
 	"onZoomDelete",
@@ -26,6 +29,8 @@ type Props = Pick<ResolvedSettingsPanelProps, (typeof settingsPanelShellKeys)[nu
 };
 export function SettingsPanelShell(props: Props) {
 	const {
+		webcam,
+		onClearWebcam,
 		activeEffectSection,
 		selectedZoomId,
 		onZoomDelete,
@@ -39,6 +44,7 @@ export function SettingsPanelShell(props: Props) {
 	const { tSettings } = useSettingsTranslations();
 	const { children } = props;
 	const scrollRef = useRef<HTMLDivElement>(null);
+	const scrollFade = useScrollFade(scrollRef, activeEffectSection);
 	useLayoutEffect(() => {
 		if (activeEffectSection && scrollRef.current) scrollRef.current.scrollTop = 0;
 	}, [activeEffectSection]);
@@ -47,7 +53,7 @@ export function SettingsPanelShell(props: Props) {
 			<div
 				ref={scrollRef}
 				className="flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar px-5 pb-6 pt-1 scroll-shadow scroll-shadow--vertical scroll-shadow--fade scroll-shadow--hide-scrollbar [--scroll-shadow-size:16px]"
-				data-scroll-shadow-mode="auto"
+				data-scroll-shadow-mode={scrollFade}
 			>
 				{activeEffectSection === "settings" ? (
 					children
@@ -70,6 +76,7 @@ export function SettingsPanelShell(props: Props) {
 				className={cn(
 					"shrink-0 px-5 py-4",
 					(() => {
+						if (activeEffectSection === "webcam" && webcam?.sourcePath) return false;
 						if (activeEffectSection === "clip" && selectedClipId) return false;
 						if (activeEffectSection === "zoom" && selectedZoomId) return false;
 						if (activeEffectSection === "audio" && selectedAudioId) return false;
@@ -78,6 +85,21 @@ export function SettingsPanelShell(props: Props) {
 					})() && "hidden",
 				)}
 			>
+				{activeEffectSection === "webcam" && webcam?.sourcePath && (
+					<div className="flex gap-2">
+						<Button
+							type="button"
+							variant="destructive-soft"
+							size="sm"
+							onClick={onClearWebcam}
+							disabled={!onClearWebcam}
+							className="h-9 min-w-0 flex-1 gap-1.5 px-2 text-xs"
+						>
+							<Trash2 className="size-3.5 shrink-0" aria-hidden="true" />
+							{tSettings("effects.removeWebcamFootage")}
+						</Button>
+					</div>
+				)}
 				{activeEffectSection === "clip" && selectedClipId && (
 					<Button
 						onClick={() => {

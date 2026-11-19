@@ -1,5 +1,5 @@
 import { Application, Container } from "pixi.js";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { createVideoBlurFilters } from "@/lib/exporter/videoBlurFilters";
 import { destroyPixiApplication } from "@/lib/pixiApplicationLifecycle";
 import { DEFAULT_CURSOR_CONFIG, PixiCursorOverlay, preloadCursorAssets } from "./cursorRenderer";
@@ -69,6 +69,8 @@ export function usePlaybackRenderer(input: usePlaybackRendererInput) {
 		onError,
 		videoSpriteRef,
 	} = input;
+	const onErrorRef = useRef(onError);
+	onErrorRef.current = onError;
 
 	useEffect(() => {
 		const container = containerRef.current;
@@ -89,6 +91,9 @@ export function usePlaybackRenderer(input: usePlaybackRendererInput) {
 				);
 			}
 
+			// Hover previews may leave while shared cursor assets are still loading.
+			// Do not allocate a GPU context for an already detached preview.
+			if (!mounted) return;
 			app = await initializePixiRenderer(container);
 
 			app.ticker.maxFPS = 60;
@@ -165,7 +170,7 @@ export function usePlaybackRenderer(input: usePlaybackRendererInput) {
 		})().catch((error) => {
 			if (!mounted) return;
 			console.error("Failed to initialize preview renderer:", error);
-			onError(toRendererErrorMessage(error));
+			onErrorRef.current(toRendererErrorMessage(error));
 		});
 
 		return () => {
@@ -191,7 +196,6 @@ export function usePlaybackRenderer(input: usePlaybackRendererInput) {
 			videoSpriteRef.current = null;
 		};
 	}, [
-		onError,
 		syncPreviewMotionBlurQuality,
 		containerRef,
 		appRef,

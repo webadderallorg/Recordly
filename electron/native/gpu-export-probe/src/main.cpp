@@ -1526,9 +1526,13 @@ struct PSIn {
     float2 uv : TEXCOORD0;
 };
 
-float roundedBoxDistance(float2 p, float2 halfSize, float cornerRadius) {
-    float2 q = abs(p) - halfSize + cornerRadius;
-    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - cornerRadius;
+float boxCornerDistance(float2 p, float2 halfSize, float cornerRadius, bool squircle) {
+    float radius = clamp(cornerRadius, 0.0, min(halfSize.x, halfSize.y));
+    float2 q = abs(p) - halfSize + radius;
+    float2 outside = max(q, 0.0);
+    float2 squared = outside * outside;
+    float cornerDistance = squircle ? sqrt(sqrt(dot(squared, squared))) : length(outside);
+    return cornerDistance + min(max(q.x, q.y), 0.0) - radius;
 }
 
 float cross2(float2 a, float2 b) {
@@ -1645,7 +1649,7 @@ float4 main(PSIn input) : SV_Target {
     float2 rectMax = float2(contentRight, contentBottom);
     float2 halfSize = max((rectMax - rectMin) * 0.5, float2(1.0, 1.0));
     float2 center = (rectMin + rectMax) * 0.5;
-    float distanceToRect = roundedBoxDistance(contentPixel - center, halfSize, radius);
+    float distanceToRect = boxCornerDistance(contentPixel - center, halfSize, radius, true);
 
     float contentAlpha = 1.0 - smoothstep(-0.75, 0.75, distanceToRect);
     float outsideAlpha = smoothstep(-0.75, 0.75, distanceToRect);
@@ -1673,7 +1677,7 @@ float4 main(PSIn input) : SV_Target {
             float2 webcamHalfSize = max((webcamMax - webcamMin) * 0.5, float2(1.0, 1.0));
             float2 webcamCenter = (webcamMin + webcamMax) * 0.5;
             float webcamDistance =
-                roundedBoxDistance(pixel - webcamCenter, webcamHalfSize, webcamRadius);
+                boxCornerDistance(pixel - webcamCenter, webcamHalfSize, webcamRadius, false);
             float webcamAlpha = 1.0 - smoothstep(-0.75, 0.75, webcamDistance);
             float webcamOutsideAlpha = smoothstep(-0.75, 0.75, webcamDistance);
             float webcamShadowAlpha =

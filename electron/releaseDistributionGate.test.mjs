@@ -119,6 +119,7 @@ function smokeFixture(platform = "darwin") {
 			const helperNames =
 				platform === "darwin"
 					? [
+							"recordly-saved-sign-in.node",
 							"recordly-permission-drag-helper",
 							"recordly-screencapturekit-helper",
 							"recordly-window-list",

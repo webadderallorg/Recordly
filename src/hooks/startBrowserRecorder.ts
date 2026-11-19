@@ -125,7 +125,7 @@ export async function startBrowserRecorder(
 		browserFinalizing.current = true;
 		setFinalizing(true);
 		setRecording(false);
-		// Encoder/write failures can stop MediaRecorder without the Stop button.
+		// Also covers a browser recorder that stops itself before its final write.
 		if (!writer.isCancelled) openLoadingEditor();
 		await window.electronAPI
 			.setRecordingState(false)

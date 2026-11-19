@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRecordingFocusController, outsideRecordingRects } from "./recordingFocus";
+
 const display = { x: 0, y: 0, width: 1600, height: 1000 };
 const area = { x: 200, y: 100, width: 900, height: 650 };
 const source = { id: "area:1", name: "Area", area };
@@ -7,6 +8,28 @@ const intersects = (a: typeof area, b: typeof area) =>
 	a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
 describe("outside recording geometry", () => {
+	it("leaves the HUD, webcam and menus undimmed without covering the capture", () => {
+		const controls = [
+			{ x: 600, y: 900, width: 400, height: 60 },
+			{ x: 100, y: 750, width: 200, height: 200 },
+			{ x: 600, y: 680, width: 300, height: 180 },
+		];
+		const strips = outsideRecordingRects([display], area, controls);
+		for (const rect of strips) {
+			expect(intersects(rect, area)).toBe(false);
+			for (const control of controls) expect(intersects(rect, control)).toBe(false);
+		}
+		for (let x = 0; x < display.width; x += 20) {
+			for (let y = 0; y < display.height; y += 20) {
+				const contains = (rect: typeof area) =>
+					x >= rect.x &&
+					x < rect.x + rect.width &&
+					y >= rect.y &&
+					y < rect.y + rect.height;
+				expect(strips.some(contains)).toBe(![area, ...controls].some(contains));
+			}
+		}
+	});
 	it("covers precisely the exterior without touching recorded pixels or overlapping strips", () => {
 		const strips = outsideRecordingRects([display], area);
 		expect(strips).toHaveLength(4);
@@ -99,9 +122,12 @@ it("removes masks if the window disappears or bounds detection fails", async () 
 	expect(deps.hide).toHaveBeenCalledTimes(2);
 	controller.stop();
 });
-it("source notifications do not start a mask outside an active countdown or recording", () => {
+it("does not dim the desktop when selecting a source before recording", async () => {
 	const { deps, controller } = fixture();
 	controller.sourceChanged(source);
+	await vi.advanceTimersByTimeAsync(0);
 	expect(deps.resolve).not.toHaveBeenCalled();
+	expect(deps.show).not.toHaveBeenCalled();
+	controller.sourceChanged(null);
 	expect(vi.getTimerCount()).toBe(0);
 });

@@ -60,3 +60,11 @@ it("smoke exports never save appearance overrides into user preferences", () => 
 	render({ webcam: { ...DEFAULT_EDITOR_PREFERENCES.webcam, shadow: 0.67 } }, false);
 	expect(saveEditorPreferences).not.toHaveBeenCalled();
 });
+
+it("persists the automatic zoom opt-out without overwriting the current project look", () => {
+	render();
+	render({ autoApplyFreshRecordingAutoZooms: false });
+	expect(saveEditorPreferences).toHaveBeenCalledExactlyOnceWith({
+		autoApplyFreshRecordingAutoZooms: false,
+	});
+});

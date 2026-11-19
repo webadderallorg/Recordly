@@ -26,12 +26,14 @@ const zooms: ZoomRegion[] = [
 ];
 const webcam = {
 	...DEFAULT_WEBCAM_OVERLAY,
+	previewFrame: "standard" as const,
 	enabled: true,
 	width: 50,
 	height: 50,
 	shadow: 0,
 	reactToZoom: true,
 };
+const softWebcam = { ...webcam, previewFrame: "soft-blur" as const };
 const noop = () => undefined;
 const fail = (error: string) => {
 	throw new Error(error);
@@ -43,16 +45,22 @@ function Preview() {
 	const [ready, setReady] = useState(false);
 	const [playing, setPlaying] = useState(false);
 	const [portrait, setPortrait] = useState(false);
+	const [softFrame, setSoftFrame] = useState(false);
 	return (
 		<main style={{ width: portrait ? 160 : 640 }} data-ready={ready} data-time={time}>
 			<button onClick={() => setPortrait(true)}>Portrait</button>
+			<button aria-pressed={softFrame} onClick={() => setSoftFrame(!softFrame)}>
+				Soft frame
+			</button>
+			<button onClick={() => playback.current?.seekTimeline(4.8)}>Seek end</button>
+			<button onClick={() => playback.current?.seekTimeline(0.2)}>Seek start</button>
 			<button onClick={() => void playback.current?.play()}>Play</button>
 			<button onClick={() => playback.current?.pause()}>Pause</button>
 			<VideoPlayback
 				ref={playback}
 				videoPath="/tests/ui/fixtures/filmstrip.mp4"
 				webcamVideoPath="/tests/ui/fixtures/filmstrip.mp4"
-				webcam={webcam}
+				webcam={softFrame ? softWebcam : webcam}
 				clipRegions={clips}
 				currentTime={time}
 				onTimeUpdate={setTime}
@@ -192,7 +200,7 @@ export async function exportChecks(shadow = 0, nearStill = false) {
 		}
 		const stillContext = still.canvas.getContext("2d")!;
 		results.push({
-			circleShoulder: Array.from(stillContext.getImageData(475, 195, 1, 1).data),
+			circleShoulder: Array.from(stillContext.getImageData(470, 190, 1, 1).data),
 			circleCenter: Array.from(stillContext.getImageData(542, 262, 1, 1).data),
 			name,
 			maxShadowDifference,

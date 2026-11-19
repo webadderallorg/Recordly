@@ -170,5 +170,7 @@
 	"selectedClips": "{{count}} clip selezionate",
 	"mergeSelectedClips": "Unisci le clip selezionate",
 	"mergeClipsUnavailable": "L’unione richiede riprese continue con la stessa velocità e le stesse impostazioni audio.",
-	"mergeClips": "Unisci clip"
+	"mergeClips": "Unisci clip",
+	"captionStyleClassic": "Classico",
+	"captionStyleReveal": "Rivela"
 }

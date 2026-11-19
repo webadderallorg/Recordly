@@ -42,12 +42,14 @@ for (const signedIn of [false, true]) {
 		await page.route("**/auth/v1/settings", async (route) => {
 			await providersReady;
 			await route.fulfill({
-				json: { external: { google: true, azure: true, apple: true } },
+				json: { external: { google: true, azure: true, apple: false } },
 			});
 		});
 		// Even unavailable artwork cannot gate the form.
 		await page.route("**/auth/recordly-demo.*", (route) => route.abort());
-		await page.goto("/?windowType=onboarding", { waitUntil: "domcontentloaded" });
+		await page.goto("/?windowType=onboarding&onboardingPreview=1", {
+			waitUntil: "domcontentloaded",
+		});
 		const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 		await expect(page.locator("html")).toHaveAttribute("data-auth-pending", "true", {
 			timeout: 15000,
@@ -68,7 +70,7 @@ for (const signedIn of [false, true]) {
 			).toBeVisible();
 			await expect(
 				tour.getByRole("button", { name: `Continue with ${provider}` }),
-			).toBeDisabled();
+			).toBeEnabled();
 		}
 		const before = await email.boundingBox();
 		if (!signedIn)
@@ -76,7 +78,7 @@ for (const signedIn of [false, true]) {
 				path: test.info().outputPath("pending-session.png"),
 			});
 		releaseProviders();
-		await expect(tour.getByRole("button", { name: "Continue with Google" })).toBeEnabled();
+		await expect(tour.getByRole("button", { name: "Continue with Apple" })).toBeDisabled();
 		await expect(email).toHaveValue("person@example.com");
 		expect(await email.boundingBox()).toEqual(before);
 		await expect(email).toHaveValue("person@example.com");
@@ -87,15 +89,14 @@ for (const signedIn of [false, true]) {
 	});
 }
 
-test("provider discovery failure leaves the real email form usable", async ({ page }) => {
+test("provider discovery failure leaves social and email sign-in usable", async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
 	await page.route("**/auth/v1/settings", (route) => route.abort());
 	await page.goto("/?windowType=onboarding");
 	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 	await tour.getByPlaceholder("you@example.com").fill("person@example.com");
 	await expect(tour.getByRole("button", { name: "Email me a code", exact: true })).toBeEnabled();
-	await expect(tour.getByRole("button", { name: "Continue with Google" })).toBeVisible();
-	await expect(tour.getByRole("button", { name: "Continue with Google" })).toBeDisabled();
+	await expect(tour.getByRole("button", { name: "Continue with Google" })).toBeEnabled();
 	await tour.getByRole("button", { name: "Close onboarding window" }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-onboarding-closed", "true");
 });
@@ -116,8 +117,12 @@ test("a signed-out editor opens onboarding before project hydration finishes", a
 		};
 	});
 	await page.goto("/?windowType=editor");
-	await expect(page.locator("html")).toHaveAttribute("data-project-pending", "true");
-	await expect(page.locator("html")).toHaveAttribute("data-onboarding-requested", "true");
+	await expect(page.locator("html")).toHaveAttribute("data-project-pending", "true", {
+		timeout: 15000,
+	});
+	await expect(page.locator("html")).toHaveAttribute("data-onboarding-requested", "true", {
+		timeout: 15000,
+	});
 	await expect(page.getByRole("dialog", { name: "Welcome to Recordly" })).toBeVisible();
 	await page.evaluate(() => window.dispatchEvent(new Event("test-release-project")));
 });

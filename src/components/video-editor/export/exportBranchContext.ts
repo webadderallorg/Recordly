@@ -19,7 +19,6 @@ export interface ExportBranchContext {
 	smokeProgressSamples: ReturnType<typeof createSmokeExportProgressSampler>["samples"];
 	exportWasCancelled: () => boolean;
 	discardCancelledTemp: (pending: PendingExportSave) => Promise<void>;
-	showExportSuccessToast: (path: string) => void;
-	setKeepExportDialogOpen: (open: boolean) => void;
+	recordSuccessfulExport: () => void;
 }
 export type ExportBranchOutcome = { exit: false } | { exit: true; path?: string };

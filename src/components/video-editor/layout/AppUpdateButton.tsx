@@ -56,6 +56,16 @@ export function AppUpdateButton() {
 		: payload.phase === "error"
 			? WarningCircleIcon
 			: DownloadSimpleIcon;
+	const label = ready
+		? t("launch.updateToast.restartToUpdate", "Restart to update")
+		: downloading
+			? t("updates.downloadingButton", "Downloading · {{progress}}", {
+					progress: new Intl.NumberFormat(locale, {
+						style: "percent",
+						maximumFractionDigits: 0,
+					}).format(progress / 100),
+				})
+			: t("launch.updateToast.availableTitle", "Update available");
 	const run = async (
 		action: () => Promise<{ success: boolean; message?: string; code?: string }>,
 		dismiss = false,
@@ -85,23 +95,17 @@ export function AppUpdateButton() {
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger>
-				<Button
-					variant="destructive"
-					size="sm"
-					className={`app-update-button ${styles.trigger}`}
-				>
-					<StatusIcon className="size-4" aria-hidden="true" />
-					{ready
-						? t("launch.updateToast.restartToUpdate", "Restart to update")
-						: downloading
-							? t("updates.downloadingButton", "Downloading · {{progress}}", {
-									progress: new Intl.NumberFormat(locale, {
-										style: "percent",
-										maximumFractionDigits: 0,
-									}).format(progress / 100),
-								})
-							: t("launch.updateToast.availableTitle", "Update available")}
-				</Button>
+				<span className="contents" title={label}>
+					<Button
+						variant="destructive"
+						size="sm"
+						className={`app-update-button editor-header-icon-button ${styles.trigger}`}
+						aria-label={label}
+					>
+						<StatusIcon className="size-4" aria-hidden="true" />
+						<span className="editor-header-button-label">{label}</span>
+					</Button>
+				</span>
 			</PopoverTrigger>
 			<PopoverContent
 				align="end"

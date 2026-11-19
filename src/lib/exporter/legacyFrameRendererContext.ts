@@ -24,6 +24,7 @@ import { type SpringState } from "@/components/video-editor/videoPlayback/motion
 import { type MotionBlurState } from "@/components/video-editor/videoPlayback/zoomTransform";
 import { WebcamMotionBlur } from "@/components/video-editor/webcamMotionBlur";
 import { ForwardFrameSource } from "./forwardFrameSource";
+import type { WebcamFrameSource } from "./webcamFrameSource";
 import type { SourceRedactionCanvas } from "./sourceRedaction";
 
 export interface FrameRenderConfig {
@@ -213,7 +214,7 @@ export interface LegacyFrameRendererContext {
 	cursorFollowCamera: CursorFollowCameraState;
 	lastContentTimeMs: number | null;
 	cursorOverlay: PixiCursorOverlay | null;
-	webcamForwardFrameSource: ForwardFrameSource | null;
+	webcamForwardFrameSource: WebcamFrameSource | null;
 	webcamDecodedFrame: VideoFrame | null;
 	webcamVideoElement: HTMLVideoElement | null;
 	webcamSeekPromise: Promise<void> | null;

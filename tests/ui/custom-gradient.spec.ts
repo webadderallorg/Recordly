@@ -40,7 +40,7 @@ test("gradient gallery starts with a HeroUI creator and saves custom gradients",
 		.poll(() =>
 			page.evaluate(
 				() =>
-					JSON.parse(localStorage.getItem("recordly.editor.preferences") ?? "{}")
+					JSON.parse(localStorage.getItem("recordly.editor.preferences.v2") ?? "{}")
 						.customGradients?.[0],
 			),
 		)

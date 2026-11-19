@@ -1,5 +1,5 @@
 import type { CursorTelemetryPoint } from "@/components/video-editor/types";
-import { DEFAULT_WEBCAM_ROUNDNESS } from "@/components/video-editor/types";
+import { DEFAULT_WEBCAM_ROUNDNESS, DEFAULT_WEBCAM_SIZE } from "@/components/video-editor/types";
 import { computeCameraTransform } from "@/components/video-editor/videoPlayback/cameraTransform";
 import { createCursorFollowCameraState } from "@/components/video-editor/videoPlayback/cursorFollowCamera";
 import { getCursorViewportScale } from "@/components/video-editor/videoPlayback/cursorScale";
@@ -51,7 +51,7 @@ export function getNativeStaticLayoutWebcamOverlay(
 	const rawSize = getWebcamOverlaySizePx({
 		containerWidth: config.width,
 		containerHeight: config.height,
-		sizePercent: webcam.width ?? webcam.size ?? 40,
+		sizePercent: webcam.width ?? webcam.size ?? DEFAULT_WEBCAM_SIZE,
 		margin,
 		zoomScale: 1,
 		reactToZoom: webcam.reactToZoom ?? true,

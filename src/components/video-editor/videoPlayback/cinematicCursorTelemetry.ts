@@ -1,4 +1,4 @@
-import { isCinematicCursorMotion } from "../cursorMotionPresets";
+import { isCinematicCursorMotion, isFocusedCursorMotion } from "../cursorMotionPresets";
 import type { CursorTelemetryPoint } from "../types";
 import { isCursorPress } from "./cursorPress";
 import type { CursorSpringTuning } from "./motionSmoothing";
@@ -12,6 +12,10 @@ const cache = new WeakMap<
 	CursorTelemetryPoint[],
 	{ length: number; samples: CursorTelemetryPoint[] }
 >();
+const focusedCache = new WeakMap<
+	CursorTelemetryPoint[],
+	{ length: number; samples: CursorTelemetryPoint[] }
+>();
 
 /** Analyze the recording once. Media timestamps and interaction positions stay intact,
  * so preview, seeking and export remove short accents without delaying long hovers.
@@ -21,8 +25,11 @@ export function prepareCinematicCursorTelemetry(
 	smoothing: number,
 	tuning: CursorSpringTuning,
 ): CursorTelemetryPoint[] {
-	if (samples.length < 2 || !isCinematicCursorMotion(smoothing, tuning)) return samples;
-	const cached = cache.get(samples);
+	const cinematic = isCinematicCursorMotion(smoothing, tuning);
+	if (samples.length < 2 || (!cinematic && !isFocusedCursorMotion(smoothing, tuning)))
+		return samples;
+	const presetCache = cinematic ? cache : focusedCache;
+	const cached = presetCache.get(samples);
 	if (cached?.length === samples.length) return cached.samples;
 	const result = samples.map((sample) => ({ ...sample }));
 	const runs: Array<{ index: number; type: CursorType }> = [{ index: 0, type: "arrow" }];
@@ -41,6 +48,12 @@ export function prepareCinematicCursorTelemetry(
 		if (r === 0 || endMs - samples[run.index].timeMs >= CINEMATIC_HOVER_MIN_MS)
 			acceptedType = run.type;
 		for (let i = run.index; i < endIndex; i++) result[i].cursorType = acceptedType;
+	}
+
+	// Focused shares hover filtering while retaining its original cursor path.
+	if (!cinematic) {
+		presetCache.set(samples, { length: samples.length, samples: result });
+		return result;
 	}
 
 	// Fit short, time-linear segments within 10 reference pixels of the recording.
@@ -91,6 +104,6 @@ export function prepareCinematicCursorTelemetry(
 			anchor = i;
 		}
 	}
-	cache.set(samples, { length: samples.length, samples: result });
+	presetCache.set(samples, { length: samples.length, samples: result });
 	return result;
 }

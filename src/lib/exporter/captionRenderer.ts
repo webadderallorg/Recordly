@@ -1,5 +1,10 @@
+import { drawSquircleOnCanvas, SQUIRCLE_RADIUS_SCALE } from "@/lib/geometry/squircle";
 import { getCaptionFontFamily } from "@/components/video-editor/captionFonts";
-import { getCaptionBackground, getCaptionPreset } from "@/components/video-editor/captionPresets";
+import {
+	drawCaptionBoxBorder,
+	getCaptionBackground,
+	getCaptionPreset,
+} from "@/components/video-editor/captionPresets";
 import { drawCaptionLine } from "./captionText";
 import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
 import {
@@ -28,13 +33,13 @@ export function renderCaptions(
 
 	const fontSize = getCaptionScaledFontSize(settings.fontSize, width, settings.maxWidth);
 	ctx.font = `${getCaptionPreset(settings.style).fontWeight} ${fontSize}px ${getCaptionFontFamily(settings)}`;
-	const padding = getCaptionPadding(fontSize);
+	const padding = getCaptionPadding(fontSize, settings.style);
 
 	const activeCaptionLayout = buildActiveCaptionLayout({
 		cues,
 		timeMs,
 		settings,
-		maxWidthPx: getCaptionTextMaxWidth(width, settings.maxWidth, fontSize),
+		maxWidthPx: getCaptionTextMaxWidth(width, settings.maxWidth, fontSize, settings.style),
 		measureText: (text) => ctx.measureText(text).width,
 	});
 	if (!activeCaptionLayout) {
@@ -63,15 +68,25 @@ export function renderCaptions(
 	ctx.globalAlpha = activeCaptionLayout.opacity;
 
 	ctx.fillStyle = getCaptionBackground(settings);
-	ctx.beginPath();
-	ctx.roundRect(
+	const radius = getCaptionScaledRadius(settings.boxRadius, fontSize) * SQUIRCLE_RADIUS_SCALE;
+	drawSquircleOnCanvas(ctx, {
+		x: -boxWidth / 2,
+		y: -boxHeight / 2,
+		width: boxWidth,
+		height: boxHeight,
+		radius,
+	});
+	ctx.fill();
+	drawCaptionBoxBorder(
+		ctx,
+		settings.style,
 		-boxWidth / 2,
 		-boxHeight / 2,
 		boxWidth,
 		boxHeight,
-		Math.min(boxWidth / 2, boxHeight / 2, getCaptionScaledRadius(settings.boxRadius, fontSize)),
+		radius,
+		fontSize,
 	);
-	ctx.fill();
 
 	activeCaptionLayout.visibleLines.forEach((line, index) => {
 		drawCaptionLine(

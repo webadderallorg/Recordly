@@ -75,5 +75,6 @@
 	"locateRecording": "Localizar gravação",
 	"recordingRelinkFailed": "Não foi possível reconectar a gravação",
 	"pauseRecordingTrackFailed": "A gravação da tela foi pausada, mas não foi possível pausar uma faixa de câmera ou áudio.",
-	"resumeRecordingTrackFailed": "A gravação da tela foi retomada, mas não foi possível retomar uma faixa de câmera ou áudio."
+	"resumeRecordingTrackFailed": "A gravação da tela foi retomada, mas não foi possível retomar uma faixa de câmera ou áudio.",
+	"captionFilesSaveFailed": "O vídeo foi salvo, mas não foi possível salvar alguns arquivos de legendas."
 }

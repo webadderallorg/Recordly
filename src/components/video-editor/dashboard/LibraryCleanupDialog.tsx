@@ -1,4 +1,4 @@
-import { Checkbox, Label, Modal } from "@heroui/react";
+import { Checkbox, Dropdown, Label, Modal } from "@heroui/react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import {
 	type CleanupRule,
 	type CleanupScan,
 } from "./libraryCleanup";
+import { CaretDown } from "@phosphor-icons/react";
 import { ProjectThumbnail } from "./ProjectThumbnail";
 import { RawThumbnail } from "./RawRecordings";
 
@@ -37,32 +38,51 @@ export function LibraryCleanupDialog({
 	onSelect: (paths: string[]) => void;
 }) {
 	const { t, locale } = useI18n();
-	const [rule, setRule] = useState<CleanupRule>(isRaw ? "unused" : "untouched");
+	const [shortDuration, setShortDuration] = useState("5");
+	const shortSeconds = Number(shortDuration);
+	const [rules, setRules] = useState<CleanupRule[]>([isRaw ? "unused" : "untouched"]);
+	const invalidDuration =
+		rules.includes("short") && (!Number.isFinite(shortSeconds) || shortSeconds <= 0);
 	const [dates, setDates] = useState<CleanupDateFilter>({
 		period: "older30",
 		basis: isRaw ? "created" : "edited",
 		from: "",
 		to: "",
 	});
-	const [scan, setScan] = useState<CleanupScan | null>(null);
+	const scanRequest = useMemo(
+		() => ({ rules, shortSeconds, entries, projects, isRaw }),
+		[rules, shortSeconds, entries, projects, isRaw],
+	);
+	const [scanResult, setScanResult] = useState<{
+		request: typeof scanRequest;
+		result: CleanupScan;
+	} | null>(null);
+	// Controls invalidate old matches immediately, before the debounced effect runs.
+	const scan = scanResult?.request === scanRequest ? scanResult.result : null;
 	const [error, setError] = useState(false);
 	const [excluded, setExcluded] = useState<string[]>([]);
 	useEffect(() => {
 		let cancelled = false;
-		setScan(null);
+		const { rules, entries, projects, isRaw, shortSeconds } = scanRequest;
+		setScanResult(null);
 		setError(false);
 		setExcluded([]);
-		void scanCleanup(rule, entries, projects, isRaw, () => cancelled)
-			.then((result) => {
-				if (!cancelled) setScan(result);
-			})
-			.catch(() => {
-				if (!cancelled) setError(true);
-			});
+		const startScan = () => {
+			void scanCleanup(rules, entries, projects, isRaw, () => cancelled, shortSeconds)
+				.then((result) => {
+					if (!cancelled) setScanResult({ request: scanRequest, result });
+				})
+				.catch(() => {
+					if (!cancelled) setError(true);
+				});
+		};
+		const timer = rules.includes("short") ? setTimeout(startScan, 250) : null;
+		if (timer === null) startScan();
 		return () => {
 			cancelled = true;
+			if (timer !== null) clearTimeout(timer);
 		};
-	}, [rule, entries, projects, isRaw]);
+	}, [scanRequest]);
 	const invalidDates =
 		dates.period === "custom" && Boolean(dates.from && dates.to && dates.from > dates.to);
 	const matches = useMemo(
@@ -77,6 +97,45 @@ export function LibraryCleanupDialog({
 	);
 	const selected = matches.filter((entry) => !excluded.includes(entry.path));
 	const names = new Map(entries.map((entry) => [entry.path, entry.name]));
+	const ruleOptions: Array<{ id: CleanupRule; label: string; summary: string }> = [
+		{
+			id: isRaw ? "unused" : "untouched",
+			label: isRaw
+				? t("ui.cleanup.unused", "Not in saved projects")
+				: t("ui.cleanup.untouched", "Unedited projects"),
+			summary: isRaw
+				? t("ui.cleanup.unused", "Not in saved projects")
+				: t("ui.cleanup.ruleUnedited", "Unedited"),
+		},
+		{
+			id: "duplicates",
+			label: t("ui.cleanup.duplicates", "Duplicates of original"),
+			summary: t("ui.cleanup.ruleDuplicate", "Duplicate"),
+		},
+		{
+			id: "neverExported",
+			label: t("ui.cleanup.neverExported", "Never exported"),
+			summary: t("ui.cleanup.ruleNotExported", "Not exported"),
+		},
+		{
+			id: "short",
+			label: t("ui.cleanup.short", "{{seconds}} seconds or less", {
+				seconds: new Intl.NumberFormat(locale).format(
+					Number.isFinite(shortSeconds) ? shortSeconds : 5,
+				),
+			}),
+			summary: t("ui.cleanup.short", "{{seconds}} seconds or less", {
+				seconds: new Intl.NumberFormat(locale).format(
+					Number.isFinite(shortSeconds) ? shortSeconds : 5,
+				),
+			}),
+		},
+	];
+	const ruleSummary =
+		rules
+			.map((rule) => ruleOptions.find((option) => option.id === rule)?.summary)
+			.filter(Boolean)
+			.join(" & ") || t("ui.cleanup.all", "All items");
 
 	return (
 		<Modal
@@ -96,29 +155,56 @@ export function LibraryCleanupDialog({
 						</Modal.Header>
 						<Modal.Body className="space-y-4">
 							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-								<Select
-									aria-label={t("ui.cleanup.find", "Find")}
-									value={rule}
-									onValueChange={(value) => setRule(value as CleanupRule)}
-								>
+								<div className="space-y-1">
 									<Label>{t("ui.cleanup.find", "Find")}</Label>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="all">
-											{t("ui.cleanup.all", "All items")}
-										</SelectItem>
-										<SelectItem value={isRaw ? "unused" : "untouched"}>
-											{isRaw
-												? t("ui.cleanup.unused", "Not in saved projects")
-												: t("ui.cleanup.untouched", "Unedited projects")}
-										</SelectItem>
-										<SelectItem value="duplicates">
-											{t("ui.cleanup.duplicates", "Duplicates of original")}
-										</SelectItem>
-									</SelectContent>
-								</Select>
+									<Dropdown>
+										<Button
+											variant="secondary"
+											className="w-full justify-between"
+											aria-label={`${t("ui.cleanup.find", "Find")}: ${ruleSummary}`}
+										>
+											<span className="truncate">{ruleSummary}</span>
+											<CaretDown className="size-4 shrink-0" />
+										</Button>
+										<Dropdown.Popover>
+											<Dropdown.Menu
+												aria-label={t("ui.cleanup.find", "Find")}
+												selectionMode="multiple"
+												selectedKeys={rules}
+												onSelectionChange={(keys) => {
+													if (keys === "all") return;
+													setRules(
+														keys.has("all")
+															? []
+															: ruleOptions
+																	.filter((option) =>
+																		keys.has(option.id),
+																	)
+																	.map((option) => option.id),
+													);
+												}}
+											>
+												<Dropdown.Item
+													id="all"
+													textValue={t("ui.cleanup.all", "All items")}
+												>
+													{t("ui.cleanup.all", "All items")}
+												</Dropdown.Item>
+												{ruleOptions.map((option) => (
+													<Dropdown.Item
+														key={option.id}
+														id={option.id}
+														textValue={option.label}
+														shouldCloseOnSelect={false}
+													>
+														<Dropdown.ItemIndicator />
+														{option.label}
+													</Dropdown.Item>
+												))}
+											</Dropdown.Menu>
+										</Dropdown.Popover>
+									</Dropdown>
+								</div>
 								<Select
 									aria-label={t("ui.cleanup.age", "Age")}
 									value={dates.period}
@@ -152,6 +238,35 @@ export function LibraryCleanupDialog({
 									</SelectContent>
 								</Select>
 							</div>
+							{rules.includes("short") && (
+								<label className="block space-y-1 text-sm">
+									{t("ui.cleanup.durationSeconds", "Duration (seconds)")}
+									<Input
+										type="number"
+										min="0"
+										step="any"
+										value={shortDuration}
+										onChange={(event) => setShortDuration(event.target.value)}
+										aria-invalid={invalidDuration}
+									/>
+									{invalidDuration && (
+										<span role="alert" className="text-danger">
+											{t(
+												"ui.cleanup.invalidDuration",
+												"Enter a duration greater than zero.",
+											)}
+										</span>
+									)}
+								</label>
+							)}
+							{rules.includes("neverExported") && (
+								<p className="text-xs text-muted-foreground">
+									{t(
+										"ui.cleanup.exportHistoryHelp",
+										"No export recorded for older projects. Review your selection before deleting.",
+									)}
+								</p>
+							)}
 							{!isRaw && (
 								<Select
 									aria-label={t("ui.cleanup.dateBasis", "Date based on")}
@@ -366,10 +481,16 @@ export function LibraryCleanupDialog({
 								{t("ui.cancel")}
 							</Button>
 							<Button
-								disabled={!scan || error || invalidDates || !selected.length}
+								disabled={
+									!scan ||
+									error ||
+									invalidDates ||
+									invalidDuration ||
+									!selected.length
+								}
 								onClick={() => onSelect(selected.map((entry) => entry.path))}
 							>
-								{t("ui.cleanup.useSelection", "Use selection ({{count}})", {
+								{t("ui.cleanup.deleteSelection", "Delete selection ({{count}})", {
 									count: new Intl.NumberFormat(locale).format(selected.length),
 								})}
 							</Button>

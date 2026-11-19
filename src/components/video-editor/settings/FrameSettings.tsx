@@ -116,6 +116,12 @@ export function FrameSettings(props: Props) {
 				/>
 				<SliderControl
 					label={tSettings("effects.radius", "Radius")}
+					startContent={
+						<span className="block size-4 border-t-[1.5px] border-l-[1.5px] border-current" />
+					}
+					endContent={
+						<span className="block size-4 rounded-tl-xl border-t-[1.5px] border-l-[1.5px] border-current" />
+					}
 					value={borderRadius}
 					min={0}
 					max={50}

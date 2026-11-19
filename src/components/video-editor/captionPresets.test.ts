@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyCaptionPreset, CAPTION_PRESETS, getCaptionWordColor } from "./captionPresets";
+import {
+	applyCaptionPreset,
+	CAPTION_PRESETS,
+	CAPTION_STYLE_OPTIONS,
+	getCaptionWordColor,
+} from "./captionPresets";
 import { normalizeProjectCaptions } from "./projectCaptionsNormalization";
 import { DEFAULT_AUTO_CAPTION_SETTINGS } from "./types";
 
@@ -23,13 +28,15 @@ describe("caption styles", () => {
 		}
 	});
 
-	it("uses Classic for old projects and unknown styles without losing their settings", () => {
+	it("preserves pre-style projects and uses Reveal for unknown styles without losing customizations", () => {
 		for (const style of [undefined, "unknown"]) {
 			const settings = { ...DEFAULT_AUTO_CAPTION_SETTINGS, style, backgroundOpacity: 0.3 };
 			const result = normalizeProjectCaptions(
 				JSON.parse(JSON.stringify({ autoCaptionSettings: settings })),
 			);
-			expect(result.normalizedAutoCaptionSettings.style).toBe("classic");
+			expect(result.normalizedAutoCaptionSettings.style).toBe(
+				style === undefined ? "classic" : "reveal",
+			);
 			expect(result.normalizedAutoCaptionSettings.backgroundOpacity).toBe(0.3);
 		}
 	});
@@ -69,4 +76,17 @@ describe("caption styles", () => {
 			"#142000",
 		);
 	});
+});
+
+it("offers only Reveal and Classic, with Reveal as the complete new-recording default", () => {
+	expect(CAPTION_STYLE_OPTIONS.map((preset) => [preset.id, preset.label])).toEqual([
+		["reveal", "Reveal"],
+		["serif", "Classic"],
+	]);
+	expect(DEFAULT_AUTO_CAPTION_SETTINGS).toEqual(
+		applyCaptionPreset(DEFAULT_AUTO_CAPTION_SETTINGS, "reveal"),
+	);
+	expect(normalizeProjectCaptions({}).normalizedAutoCaptionSettings).toEqual(
+		DEFAULT_AUTO_CAPTION_SETTINGS,
+	);
 });

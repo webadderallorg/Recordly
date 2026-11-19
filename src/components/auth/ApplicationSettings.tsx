@@ -86,7 +86,7 @@ export function ApplicationSettings() {
 			onChange={onChange}
 			className="application-preference-switch"
 		>
-			<SettingsRow title={label} description={description}>
+			<SettingsRow title={label} description={description} descriptionInline>
 				<Switch.Content>
 					<Switch.Control>
 						<Switch.Thumb />
@@ -104,6 +104,9 @@ export function ApplicationSettings() {
 			)}
 			{preferences && (
 				<>
+					<header className="dashboard-settings-group dashboard-settings-subgroup">
+						<h2>{t("settings.application.behavior", "App behavior")}</h2>
+					</header>
 					<div className="settings-group">
 						{toggle(
 							showLabel,
@@ -147,10 +150,8 @@ export function ApplicationSettings() {
 								(hideWhileRecording) => void run({ hideWhileRecording }),
 							)}
 						</div>
-					</div>
-					{preferences.launchAtLoginSupported && (
-						<div className="settings-group">
-							{toggle(
+						{preferences.launchAtLoginSupported &&
+							toggle(
 								t("settings.application.launch", "Launch at login"),
 								t(
 									"settings.application.launchDescription",
@@ -160,8 +161,7 @@ export function ApplicationSettings() {
 								false,
 								(launchAtLogin) => void run({ launchAtLogin }),
 							)}
-						</div>
-					)}
+					</div>
 				</>
 			)}
 			{error && (

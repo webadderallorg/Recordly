@@ -1,6 +1,32 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
+test("wireframe playback controls fit on one row at supported window widths", async ({ page }) => {
+	await page.route("**/src/main.tsx*", (route) => route.abort());
+	await page.goto("/?windowType=editor");
+	for (const width of [800, 1060, 1440]) {
+		await page.setViewportSize({ width, height: 670 });
+		const bar = page.locator(".boot-editor .loading-playback");
+		const bounds = (await bar.boundingBox())!;
+		const boxes = await bar.locator("i").evaluateAll((items) =>
+			items.map((item) => {
+				const { x, y, width, height } = item.getBoundingClientRect();
+				return { x, y, width, height };
+			}),
+		);
+		for (const [index, box] of boxes.entries()) {
+			expect(box.width).toBeGreaterThan(0);
+			expect(
+				Math.abs(box.y + box.height / 2 - boxes[0].y - boxes[0].height / 2),
+			).toBeLessThan(1);
+			expect(box.x).toBeGreaterThanOrEqual(bounds.x);
+			expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+			if (index > 0)
+				expect(box.x).toBeGreaterThanOrEqual(boxes[index - 1].x + boxes[index - 1].width);
+		}
+	}
+});
+
 test("editor paints a wireframe before JavaScript loads", async ({ page }) => {
 	await page.route("**/src/main.tsx*", (route) => route.abort());
 	await page.goto("/?windowType=editor");

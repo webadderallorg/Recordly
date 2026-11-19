@@ -1,18 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CURSOR_MOTION_PRESETS, getMatchingCursorMotionPresetId } from "./cursorMotionPresets";
-
+import {
+	createEditorHistoryStack,
+	type EditorHistorySnapshot,
+	recordEditorHistorySnapshot,
+	undoEditorHistoryStack,
+} from "./editorHistory";
 import {
 	getDefaultBorderRadiusPercent,
 	legacyBorderRadiusPixelsToPercent,
 	normalizeProjectEditor,
 	resolveVideoUrl,
 } from "./projectPersistence";
-import {
-	createEditorHistoryStack,
-	recordEditorHistorySnapshot,
-	undoEditorHistoryStack,
-	type EditorHistorySnapshot,
-} from "./editorHistory";
 import { ADVANCED_VERTICAL_PADDING_MAX } from "./types";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -41,23 +40,40 @@ describe("resolveVideoUrl", () => {
 });
 
 describe("normalizeProjectEditor", () => {
+	it("preserves the webcam preview frame when reopening a project", () => {
+		for (const previewFrame of ["standard", "soft-blur"] as const) {
+			const editor = normalizeProjectEditor({ webcam: { previewFrame } as never });
+			expect(
+				normalizeProjectEditor(JSON.parse(JSON.stringify(editor))).webcam.previewFrame,
+			).toBe(previewFrame);
+		}
+		expect(normalizeProjectEditor({}).webcam.previewFrame).toBe("soft-blur");
+	});
+
 	it("defaults the shadow to 50% while preserving saved intensity", () => {
 		expect(normalizeProjectEditor({}).shadowIntensity).toBe(0.5);
 		expect(normalizeProjectEditor({ shadowIntensity: 0 }).shadowIntensity).toBe(0);
 		expect(normalizeProjectEditor({ shadowIntensity: 0.8 }).shadowIntensity).toBe(0.8);
 	});
 
-	it("defaults new cameras to circle while preserving legacy project masks", () => {
+	it("defaults new cameras to circle and resets legacy project radius to its shape default", () => {
 		expect(normalizeProjectEditor({}).webcam.shape).toBe("circle");
-		expect(normalizeProjectEditor({ webcam: { roundness: 69 } as never }).webcam).toMatchObject(
-			{ shape: "squircle", roundness: 69 },
-		);
-		for (const shape of ["circle", "squircle"] as const) {
+		const legacy = normalizeProjectEditor({ webcam: { roundness: 100 } as never });
+		expect(legacy.webcam).toMatchObject({
+			shape: "squircle",
+			roundness: 20,
+			roundnessVersion: 1,
+		});
+		expect(normalizeProjectEditor(legacy).webcam.roundness).toBe(20);
+		for (const shape of ["circle", "squircle", "rectangle"] as const) {
 			const editor = normalizeProjectEditor({
-				webcam: { shape, width: 50, height: 30 } as never,
+				webcam: { shape, width: 50, height: 30, roundness: 100 } as never,
 			});
-			expect(normalizeProjectEditor(JSON.parse(JSON.stringify(editor))).webcam.shape).toBe(
-				shape,
+			expect(normalizeProjectEditor(JSON.parse(JSON.stringify(editor))).webcam).toMatchObject(
+				{
+					shape,
+					roundness: 20,
+				},
 			);
 		}
 	});
@@ -102,7 +118,7 @@ describe("normalizeProjectEditor", () => {
 		}
 	});
 	it("defaults to 8% on macOS and square corners elsewhere", () => {
-		expect(getDefaultBorderRadiusPercent("MacIntel")).toBe(8);
+		expect(getDefaultBorderRadiusPercent("MacIntel")).toBe(4);
 		expect(getDefaultBorderRadiusPercent("Win32")).toBe(0);
 		expect(getDefaultBorderRadiusPercent("Linux x86_64")).toBe(0);
 	});
@@ -155,20 +171,7 @@ describe("normalizeProjectEditor", () => {
 		});
 	});
 
-	it("migrates legacy webcam radius pixels to percentage roundness", () => {
-		const editor = normalizeProjectEditor({
-			webcam: {
-				cornerRadius: 90,
-				width: 40,
-				height: 40,
-			} as never,
-		});
-
-		expect(editor.webcam.roundness).toBeCloseTo(3.01, 2);
-		expect(editor.webcam.cornerRadius).toBeUndefined();
-	});
-
-	it("uses the legacy webcam size when migrating radius pixels", () => {
+	it("keeps legacy webcam dimensions while dropping a pixel radius", () => {
 		const editor = normalizeProjectEditor({
 			webcam: {
 				cornerRadius: 90,
@@ -178,7 +181,8 @@ describe("normalizeProjectEditor", () => {
 
 		expect(editor.webcam.width).toBe(80);
 		expect(editor.webcam.height).toBe(80);
-		expect(editor.webcam.roundness).toBeCloseTo(0.19, 2);
+		expect(editor.webcam.roundness).toBe(20);
+		expect(editor.webcam).not.toHaveProperty("cornerRadius");
 	});
 });
 
@@ -335,6 +339,28 @@ it("discards inverted saved source bounds while preserving the in-point", () => 
 	expect(editor.clipRegions[0].sourceMaxMs).toBeUndefined();
 });
 
+it("keeps independently timed effects when saved clips only need array sorting", () => {
+	const editor = normalizeProjectEditor({
+		clipRegions: [
+			{ id: "later", startMs: 1000, endMs: 2000, speed: 1 },
+			{ id: "first", startMs: 0, endMs: 1000, speed: 1 },
+		],
+		annotationRegions: [
+			{ id: "after-footage", type: "text", content: "Keep", startMs: 2500, endMs: 2800 },
+		] as never,
+		zoomRegions: [{ id: "late-zoom", startMs: 2500, endMs: 2800, depth: 2 }] as never,
+	});
+	expect(editor.clipRegions.map(({ id }) => id)).toEqual(["first", "later"]);
+	expect(editor.annotationRegions).toHaveLength(1);
+	expect(editor.annotationRegions[0]).toMatchObject({
+		id: "after-footage",
+		startMs: 2500,
+		endMs: 2800,
+	});
+	expect(editor.zoomRegions[0]).toMatchObject({ id: "late-zoom", startMs: 2500, endMs: 2800 });
+	expect(normalizeProjectEditor(editor).annotationRegions).toEqual(editor.annotationRegions);
+});
+
 it("discards saved source audio overrides for absent clips before IDs can be reused", () => {
 	const kept = { mic: { volume: 0.4, normalize: true } };
 	const stale = { mic: { volume: 0, normalize: true } };
@@ -374,28 +400,6 @@ it("ignores legacy export preferences when opening and resaving a project", asyn
 		expect(createProjectData("/clip.mp4", legacyEditor).editor).not.toHaveProperty(key);
 	}
 	expect(legacyEditor.exportQuality).toBe("high");
-});
-
-it("keeps independently timed effects when saved clips only need array sorting", () => {
-	const editor = normalizeProjectEditor({
-		clipRegions: [
-			{ id: "later", startMs: 1000, endMs: 2000, speed: 1 },
-			{ id: "first", startMs: 0, endMs: 1000, speed: 1 },
-		],
-		annotationRegions: [
-			{ id: "after-footage", type: "text", content: "Keep", startMs: 2500, endMs: 2800 },
-		] as never,
-		zoomRegions: [{ id: "late-zoom", startMs: 2500, endMs: 2800, depth: 2 }] as never,
-	});
-	expect(editor.clipRegions.map(({ id }) => id)).toEqual(["first", "later"]);
-	expect(editor.annotationRegions).toHaveLength(1);
-	expect(editor.annotationRegions[0]).toMatchObject({
-		id: "after-footage",
-		startMs: 2500,
-		endMs: 2800,
-	});
-	expect(editor.zoomRegions[0]).toMatchObject({ id: "late-zoom", startMs: 2500, endMs: 2800 });
-	expect(normalizeProjectEditor(editor).annotationRegions).toEqual(editor.annotationRegions);
 });
 
 describe("legacy motion preset compatibility", () => {

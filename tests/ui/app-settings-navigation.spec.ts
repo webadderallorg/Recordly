@@ -10,7 +10,7 @@ async function openSettings(page: Page, entry = "Settings") {
 	return page.getByRole("dialog", { name: "Settings", exact: true });
 }
 
-test("Appearance shortcut opens compact General settings and preserves the theme", async ({
+test("Appearance shortcut opens General settings with wireframe previews and preserves the theme", async ({
 	page,
 }) => {
 	await installDesktopBridge(page);
@@ -114,7 +114,7 @@ test("Updates shows version, checks status and preserves channel on failure", as
 	await toggle.focus();
 	await toggle.press("Space");
 	await expect(settings.getByRole("alert")).toContainText("Failed to change the update channel.");
-	await expect(settings.getByRole("button", { name: "Report error", exact: true })).toBeVisible();
+	await expect(settings.getByRole("button", { name: "Report Error", exact: true })).toBeVisible();
 	await expect(toggle).not.toBeChecked();
 	await settings.screenshot({ path: "test-results/app-updates.png", animations: "disabled" });
 });
@@ -308,4 +308,50 @@ test("filled bottom-left settings button opens General without leaving the edito
 	await expect(
 		page.getByRole("dialog", { name: "Projects dashboard", exact: true }),
 	).not.toBeVisible();
+});
+
+test("device permission actions request native access on click and handle denial", async ({
+	page,
+}) => {
+	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.getMediaPermissionStatus = async () => ({
+			success: true,
+			microphone: document.documentElement.dataset.microphoneGranted
+				? "granted"
+				: "not-determined",
+			camera: document.documentElement.dataset.cameraDenied ? "denied" : "not-determined",
+		});
+		window.electronAPI.requestMediaPermission = async (device) => {
+			document.documentElement.dataset.requestedMedia = device;
+			if (device === "camera") {
+				document.documentElement.dataset.cameraDenied = "true";
+				return { success: true, granted: false };
+			}
+			document.documentElement.dataset.microphoneGranted = "true";
+			return { success: true, granted: true };
+		};
+	});
+	await page.goto("/?windowType=editor");
+	const settings = await openSettings(page);
+	await settings.getByRole("tab", { name: "Recording", exact: true }).click();
+	await expect(page.locator("html")).not.toHaveAttribute("data-requested-media");
+	await settings.getByRole("button", { name: "Allow microphone", exact: true }).click();
+	await expect(page.locator("html")).toHaveAttribute("data-requested-media", "microphone");
+	await expect(
+		settings.getByRole("button", { name: "Allow microphone", exact: true }),
+	).toHaveCount(0);
+	await settings.getByRole("button", { name: "Allow camera", exact: true }).click();
+	await expect(
+		settings.getByRole("button", { name: "Open System Settings: Camera", exact: true }),
+	).toBeVisible();
+	await expect(settings.getByRole("alert")).toHaveCount(0);
+	await page.setViewportSize({ width: 420, height: 800 });
+	await expect
+		.poll(() =>
+			settings
+				.getByRole("tabpanel")
+				.evaluate((element) => element.scrollWidth - element.clientWidth),
+		)
+		.toBeLessThanOrEqual(0);
 });

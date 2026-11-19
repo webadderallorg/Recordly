@@ -11,15 +11,20 @@ import {
 	DEFAULT_WEBCAM_SHADOW,
 	DEFAULT_WEBCAM_SIZE,
 	DEFAULT_WEBCAM_TIME_OFFSET_MS,
+	WEBCAM_ROUNDNESS_VERSION,
 	type WebcamOverlaySettings,
 } from "./types";
-import { convertLegacyWebcamRadiusToRoundness, normalizeWebcamCropRegion } from "./webcamOverlay";
+import { normalizeWebcamCropRegion } from "./webcamOverlay";
 
 export function normalizeProjectWebcam(editor: Partial<ProjectEditorState>): WebcamOverlaySettings {
 	const webcam: Partial<WebcamOverlaySettings> =
 		editor.webcam && typeof editor.webcam === "object" ? editor.webcam : {};
 
 	const webcamSourcePath = typeof webcam.sourcePath === "string" ? webcam.sourcePath : null;
+	const shape =
+		webcam.shape === "circle" || webcam.shape === "squircle" || webcam.shape === "rectangle"
+			? webcam.shape
+			: undefined;
 
 	const legacyZoomScaleEffect = isFiniteNumber(
 		(webcam as Partial<{ zoomScaleEffect: number }>).zoomScaleEffect,
@@ -27,12 +32,8 @@ export function normalizeProjectWebcam(editor: Partial<ProjectEditorState>): Web
 		? (webcam as Partial<{ zoomScaleEffect: number }>).zoomScaleEffect
 		: null;
 	return {
-		shape:
-			webcam.shape === "circle" || webcam.shape === "squircle"
-				? webcam.shape
-				: editor.webcam
-					? "squircle"
-					: DEFAULT_WEBCAM_OVERLAY.shape,
+		previewFrame: webcam.previewFrame === "standard" ? "standard" : "soft-blur",
+		shape: shape ?? (editor.webcam ? "squircle" : DEFAULT_WEBCAM_OVERLAY.shape),
 		visibleRanges: Array.isArray(webcam.visibleRanges)
 			? webcam.visibleRanges
 					.filter(
@@ -47,6 +48,7 @@ export function normalizeProjectWebcam(editor: Partial<ProjectEditorState>): Web
 		enabled:
 			typeof webcam.enabled === "boolean" ? webcam.enabled : DEFAULT_WEBCAM_OVERLAY.enabled,
 		sourcePath: webcamSourcePath,
+		loop: typeof webcam.loop === "boolean" ? webcam.loop : undefined,
 		mirror: typeof webcam.mirror === "boolean" ? webcam.mirror : DEFAULT_WEBCAM_OVERLAY.mirror,
 		cropRegion: normalizeWebcamCropRegion(webcam.cropRegion),
 		positionPreset:
@@ -97,23 +99,11 @@ export function normalizeProjectWebcam(editor: Partial<ProjectEditorState>): Web
 				: legacyZoomScaleEffect != null
 					? legacyZoomScaleEffect > 0
 					: DEFAULT_WEBCAM_REACT_TO_ZOOM,
-		roundness: isFiniteNumber(webcam.roundness)
-			? clamp(webcam.roundness, 0, 100)
-			: isFiniteNumber(webcam.cornerRadius)
-				? convertLegacyWebcamRadiusToRoundness(
-						webcam.cornerRadius,
-						isFiniteNumber(webcam.width)
-							? webcam.width
-							: isFiniteNumber(webcam.size)
-								? webcam.size
-								: DEFAULT_WEBCAM_SIZE,
-						isFiniteNumber(webcam.height)
-							? webcam.height
-							: isFiniteNumber(webcam.size)
-								? webcam.size
-								: DEFAULT_WEBCAM_SIZE,
-					)
+		roundness:
+			webcam.roundnessVersion === WEBCAM_ROUNDNESS_VERSION && isFiniteNumber(webcam.roundness)
+				? clamp(webcam.roundness, 0, 100)
 				: DEFAULT_WEBCAM_ROUNDNESS,
+		roundnessVersion: WEBCAM_ROUNDNESS_VERSION,
 		shadow: isFiniteNumber(webcam.shadow) ? clamp(webcam.shadow, 0, 1) : DEFAULT_WEBCAM_SHADOW,
 		timeOffsetMs: isFiniteNumber(webcam.timeOffsetMs)
 			? Math.round(webcam.timeOffsetMs)

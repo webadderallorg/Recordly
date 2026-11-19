@@ -153,8 +153,37 @@ export function ShortcutsConfigDialog({
 		else closeConfig();
 	}, [closeConfig, inline, shortcuts]);
 
+	const actions = (
+		<div
+			className={`flex shrink-0 flex-wrap items-center justify-between gap-3 ${inline ? "settings-shortcuts-actions" : "mt-4"}`}
+		>
+			<Button
+				title={t("shortcutsConfig.resetToDefaults")}
+				variant="ghost"
+				size="sm"
+				className="gap-1.5 max-w-[200px]"
+				onClick={handleReset}
+			>
+				<RotateCcw className="w-3 h-3" />
+				<span className="truncate">{t("shortcutsConfig.resetToDefaults")}</span>
+			</Button>
+			<div className="flex gap-2">
+				<Button variant="ghost" size="sm" onClick={handleClose}>
+					{t("shortcutsConfig.cancel")}
+				</Button>
+				<Button size="sm" onClick={handleSave}>
+					{t("shortcutsConfig.save")}
+				</Button>
+			</div>
+		</div>
+	);
+
 	const editor = (
-		<div className="flex min-h-0 min-w-0 flex-col">
+		<div
+			className={`flex min-h-0 min-w-0 flex-col${inline ? " settings-shortcuts-editor" : ""}`}
+		>
+			<Description className="mt-2 text-xs">{t("shortcutsConfig.instructions")}</Description>
+			{inline && actions}
 			<div className="min-h-0 space-y-6 overflow-y-auto">
 				<div className="space-y-0.5">
 					<p className="mb-3 text-[13px] font-medium text-foreground">
@@ -258,32 +287,9 @@ export function ShortcutsConfigDialog({
 						</div>
 					))}
 				</div>
-
-				<Description className="mt-2 text-xs">
-					{t("shortcutsConfig.instructions")}
-				</Description>
 			</div>
 
-			<div className="mt-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
-				<Button
-					title={t("shortcutsConfig.resetToDefaults")}
-					variant="ghost"
-					size="sm"
-					className="gap-1.5 max-w-[200px]"
-					onClick={handleReset}
-				>
-					<RotateCcw className="w-3 h-3" />
-					<span className="truncate">{t("shortcutsConfig.resetToDefaults")}</span>
-				</Button>
-				<div className="flex gap-2">
-					<Button variant="ghost" size="sm" onClick={handleClose}>
-						{t("shortcutsConfig.cancel")}
-					</Button>
-					<Button size="sm" onClick={handleSave}>
-						{t("shortcutsConfig.save")}
-					</Button>
-				</div>
-			</div>
+			{!inline && actions}
 		</div>
 	);
 	if (inline) return editor;

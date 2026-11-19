@@ -2,7 +2,7 @@ import { useCaptionFont } from "@/components/video-editor/useCaptionFont";
 import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
-import { getCaptionPreset } from "@/components/video-editor/captionPresets";
+import { applyCaptionPreset, getCaptionPreset } from "@/components/video-editor/captionPresets";
 import { CaptionGenerationSettings } from "@/components/video-editor/settings/CaptionGenerationSettings";
 import { I18nProvider } from "@/contexts/I18nContext";
 import {
@@ -22,7 +22,12 @@ function Preview() {
 	const overlayRef = useRef<HTMLDivElement>(null);
 	const captionBoxRef = useRef<HTMLDivElement>(null);
 	const [settings, setSettings] = useState<AutoCaptionSettings>({
-		...DEFAULT_AUTO_CAPTION_SETTINGS,
+		...(new URLSearchParams(location.search).has("style")
+			? applyCaptionPreset(
+					DEFAULT_AUTO_CAPTION_SETTINGS,
+					getCaptionPreset(new URLSearchParams(location.search).get("style")).id,
+				)
+			: DEFAULT_AUTO_CAPTION_SETTINGS),
 		enabled: true,
 		animationStyle: "none" as const,
 	});
@@ -61,7 +66,12 @@ function Preview() {
 				cues,
 				timeMs: time,
 				settings,
-				maxWidthPx: getCaptionTextMaxWidth(960, settings.maxWidth, fontSize),
+				maxWidthPx: getCaptionTextMaxWidth(
+					960,
+					settings.maxWidth,
+					fontSize,
+					settings.style,
+				),
 				measureText: (text) => ctx.measureText(text).width,
 			});
 	const input = {

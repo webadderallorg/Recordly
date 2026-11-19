@@ -1,4 +1,5 @@
 import { recordingFocus } from "../recording/focus";
+import { applyWindowControl } from "../../windowControls";
 import { createCountdownController } from "../../countdownController";
 import fs from "node:fs/promises";
 import { app, BrowserWindow, ipcMain } from "electron";
@@ -8,7 +9,6 @@ import {
 	writeAppSettingsStore,
 } from "../../appSettingsStore";
 import { hideCursor } from "../../cursorHider";
-import { createCountdownWindow } from "../../windows";
 import { COUNTDOWN_SETTINGS_FILE, RECORDINGS_SETTINGS_FILE, SHORTCUTS_FILE } from "../constants";
 import {
 	createRecordingPreferencesStore,
@@ -16,7 +16,6 @@ import {
 } from "../settings/recordingPreferencesStore";
 import {
 	countdownInProgress,
-	selectedSource,
 	countdownRemaining,
 	setCountdownInProgress,
 	setCountdownRemaining,
@@ -57,6 +56,8 @@ export function registerSettingsHandlers() {
 	ipcMain.handle("get-window-chrome", (event) => {
 		const win = BrowserWindow.fromWebContents(event.sender);
 		return {
+			customControls: process.platform === "win32" || process.platform === "linux",
+			maximized: win?.isMaximized() ?? false,
 			trafficLightsVisible:
 				process.platform === "darwin" &&
 				!!win &&
@@ -64,6 +65,9 @@ export function registerSettingsHandlers() {
 				!win.isSimpleFullScreen(),
 		};
 	});
+	ipcMain.handle("window-control", (event, action: unknown) => ({
+		success: applyWindowControl(BrowserWindow.fromWebContents(event.sender), action),
+	}));
 
 	ipcMain.handle("get-platform", () => {
 		return process.platform;
@@ -215,16 +219,33 @@ export function registerSettingsHandlers() {
 		}
 	});
 
-	const countdown = createCountdownController(createCountdownWindow, (remaining) => {
+	const countdown = createCountdownController((remaining) => {
 		setCountdownRemaining(remaining);
 		setCountdownInProgress(remaining !== null);
+		for (const win of BrowserWindow.getAllWindows()) {
+			if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
+			try {
+				win.webContents.send("countdown-tick", remaining ?? 0);
+			} catch (error) {
+				console.warn("Could not deliver countdown tick:", error);
+			}
+		}
 	});
-	ipcMain.handle("start-countdown", async (_, seconds: number) => {
+	ipcMain.handle("start-countdown", async (event, seconds: number) => {
 		if (countdownInProgress) return countdown.start(seconds);
-		void recordingFocus.start(selectedSource);
-		const result = await countdown.start(seconds);
-		if (!result.success) recordingFocus.stop();
-		return result;
+		const owner = event.sender;
+		if (owner.isDestroyed()) return { success: false, cancelled: true };
+		const cancel = () => countdown.cancel();
+		owner.once("destroyed", cancel);
+		owner.once("render-process-gone", cancel);
+		try {
+			const result = await countdown.start(seconds);
+			if (!result.success) recordingFocus.stop();
+			return result;
+		} finally {
+			owner.removeListener("destroyed", cancel);
+			owner.removeListener("render-process-gone", cancel);
+		}
 	});
 	ipcMain.handle("cancel-countdown", () => {
 		recordingFocus.stop();

@@ -113,14 +113,25 @@ export function getMatchingCursorMotionPresetId(
 }
 
 /** Presets are persisted as motion values, rather than a separate preset ID. */
-export function isCinematicCursorMotion(smoothing: number, tuning?: CursorSpringTuning) {
-	const preset = CURSOR_MOTION_PRESETS.smooth;
+function matchesCursorMotion(
+	preset: CursorMotionPreset,
+	smoothing: number,
+	tuning?: CursorSpringTuning,
+) {
 	return (
 		smoothing === preset.cursorSmoothing &&
 		tuning?.stiffnessMultiplier === preset.cursorSpringStiffnessMultiplier &&
 		tuning?.dampingMultiplier === preset.cursorSpringDampingMultiplier &&
 		tuning?.massMultiplier === preset.cursorSpringMassMultiplier
 	);
+}
+
+export function isCinematicCursorMotion(smoothing: number, tuning?: CursorSpringTuning) {
+	return matchesCursorMotion(CURSOR_MOTION_PRESETS.smooth, smoothing, tuning);
+}
+
+export function isFocusedCursorMotion(smoothing: number, tuning?: CursorSpringTuning) {
+	return matchesCursorMotion(CURSOR_MOTION_PRESETS.focused, smoothing, tuning);
 }
 
 export function isCinematicZoomMotion(values: {

@@ -1,3 +1,4 @@
+import type { LibraryExportIdentity } from "../dashboard/libraryExportHistory";
 import { translate } from "@/i18n/runtime";
 import { type RefObject, useCallback } from "react";
 import { useOptionalBilling } from "@/components/billing/BillingProvider";
@@ -9,6 +10,7 @@ import { resolveExportStartSettings, resolveShareExportSettings } from "../expor
 import type { VideoPlaybackRef } from "../VideoPlayback";
 import type { useExportSession } from "./useExportSession";
 import type { useExportSettings } from "./useExportSettings";
+import { showCaptionSidecarWarning } from "./exportRunnerSupport";
 
 type ExportSession = ReturnType<typeof useExportSession>;
 type ExportSettingsState = ReturnType<typeof useExportSettings>;
@@ -23,7 +25,7 @@ type UseExportDialogActionsInput = {
 		settings: ExportSettings,
 		options?: { destination?: "download" | "share" },
 	) => Promise<string | undefined>;
-	showExportSuccessToast: (filePath: string) => void;
+	recordSuccessfulExport: (identity?: LibraryExportIdentity) => void;
 };
 
 export function useExportDialogActions({
@@ -33,12 +35,16 @@ export function useExportDialogActions({
 	settings,
 	session,
 	handleExport,
-	showExportSuccessToast,
+	recordSuccessfulExport,
 }: UseExportDialogActionsInput) {
 	const billing = useOptionalBilling();
 	const handleOpenExportDropdown = useCallback(() => {
 		if (!videoPath) {
 			toast.error(translate("notifications.noVideo", "No video loaded"));
+			return;
+		}
+		if (session.isExporting) {
+			session.setShowExportDropdown(true);
 			return;
 		}
 
@@ -104,7 +110,7 @@ export function useExportDialogActions({
 		if (!resolvedSettings) return;
 		session.setExportError(null);
 		session.setExportedFilePath(undefined);
-		session.setShowExportDropdown(true);
+		session.setShowExportDropdown(false);
 		void handleExport(resolvedSettings, { destination: "download" });
 	}, [resolveCurrentSettings, session, handleExport]);
 
@@ -112,7 +118,6 @@ export function useExportDialogActions({
 		const resolvedSettings = resolveCurrentSettings("mp4");
 		if (!resolvedSettings) return undefined;
 		session.setExportError(null);
-		session.setShowExportDropdown(true);
 		return handleExport(resolveShareExportSettings(resolvedSettings), { destination: "share" });
 	}, [resolveCurrentSettings, session, handleExport]);
 
@@ -137,11 +142,13 @@ export function useExportDialogActions({
 		session.setShowExportDropdown(false);
 		session.setExportProgress(null);
 		session.setExportError(null);
+		session.setExportedFilePath(undefined);
 	}, [session]);
 
 	const handleRetrySaveExport = useCallback(async () => {
 		const pendingSave = session.pendingExportSaveRef.current;
 		if (!pendingSave) return;
+		const exportIdentity = { ...session.exportIdentityRef?.current };
 		const captionSidecar = canExportCaptionFiles(billing)
 			? pendingSave.captionSidecar
 			: undefined;
@@ -187,8 +194,8 @@ export function useExportDialogActions({
 			session.setHasPendingExportSave(false);
 			session.setExportError(null);
 			session.setExportedFilePath(saveResult.path);
-			showExportSuccessToast(saveResult.path);
-			session.setShowExportDropdown(true);
+			recordSuccessfulExport(exportIdentity);
+			showCaptionSidecarWarning(saveResult);
 			return;
 		}
 
@@ -200,7 +207,7 @@ export function useExportDialogActions({
 		recordExportDiagnostic("save-failed", { error: errorMessage });
 		session.setExportError(errorMessage);
 		toast.error(errorMessage);
-	}, [session, showExportSuccessToast, billing]);
+	}, [session, recordSuccessfulExport, billing]);
 
 	const revealExportedFile = useCallback(async () => {
 		if (!session.exportedFilePath) return;

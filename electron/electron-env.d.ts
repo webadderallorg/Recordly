@@ -242,7 +242,7 @@ interface Window {
 		authStorageAvailable: () => Promise<boolean>;
 		authStorageMigrate: (items: Record<string, string>) => Promise<void>;
 		authStorageGetItem: (key: string) => Promise<string | null>;
-		authStorageSetItem: (key: string, value: string) => Promise<void>;
+		authStorageSetItem: (key: string, value: string) => Promise<void | false>;
 		authStorageRemoveItem: (key: string) => Promise<void>;
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
 		hudOverlaySetSourceSelectionActive: (active: boolean) => void;
@@ -253,6 +253,15 @@ interface Window {
 		onEditorModeChanged: (callback: (inEditor: boolean) => void) => () => void;
 		hudOverlayRendererReady: () => void;
 		hudOverlaySetWebcamPreviewVisible: (visible: boolean) => void;
+		hudOverlaySetInteractiveBounds: (
+			bounds: Array<{
+				left: number;
+				top: number;
+				right: number;
+				bottom: number;
+				shape?: "ellipse";
+			}> | null,
+		) => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;
@@ -675,6 +684,7 @@ interface Window {
 			path?: string;
 			canceled?: boolean;
 			message?: string;
+			captionSidecarFailed?: boolean;
 			error?: string;
 		}>;
 		discardExportedTemp: (tempPath: string) => Promise<{ success: boolean; error?: string }>;
@@ -742,6 +752,9 @@ interface Window {
 			camera: string;
 			error?: string;
 		}>;
+		requestMediaPermission: (
+			device: "microphone" | "camera",
+		) => Promise<{ success: boolean; granted?: boolean; error?: string }>;
 		openMediaPermissionPreferences: (device: "microphone" | "camera") => Promise<{
 			success: boolean;
 			error?: string;
@@ -754,6 +767,10 @@ interface Window {
 		openAccessibilityPreferences: (
 			preview?: boolean,
 		) => Promise<{ success: boolean; error?: string }>;
+		suggestExportFileName?: (
+			fileName: string,
+			sidecarFormat?: "srt" | "vtt" | "both",
+		) => Promise<string | null>;
 		saveExportedVideo: (
 			videoData: ArrayBuffer,
 			fileName: string,
@@ -765,7 +782,13 @@ interface Window {
 					text: string;
 				}>;
 			},
-		) => Promise<{ success: boolean; path?: string; message?: string; canceled?: boolean }>;
+		) => Promise<{
+			success: boolean;
+			path?: string;
+			message?: string;
+			captionSidecarFailed?: boolean;
+			canceled?: boolean;
+		}>;
 		writeExportedVideoToPath: (
 			videoData: ArrayBuffer,
 			outputPath: string,
@@ -781,6 +804,7 @@ interface Window {
 			success: boolean;
 			path?: string;
 			message?: string;
+			captionSidecarFailed?: boolean;
 			error?: string;
 			canceled?: boolean;
 		}>;
@@ -790,6 +814,7 @@ interface Window {
 			kind?: "media" | "project";
 			path?: string;
 			project?: unknown;
+			recovered?: boolean;
 			extension?: string;
 			message?: string;
 			canceled?: boolean;
@@ -940,7 +965,10 @@ interface Window {
 			paths: string[],
 			removed: boolean,
 		) => Promise<import("../src/types/recordingLibrary").LibraryResult<null>>;
-		trashRecordingSources: (paths: string[]) => Promise<
+		trashRecordingSources: (
+			paths: string[],
+			protectedSources?: string[],
+		) => Promise<
 			import("../src/types/recordingLibrary").LibraryResult<{
 				deleted: string[];
 				errors: string[];
@@ -989,6 +1017,7 @@ interface Window {
 			success: boolean;
 			path?: string;
 			project?: unknown;
+			recovered?: boolean;
 			message?: string;
 			canceled?: boolean;
 			error?: string;
@@ -998,6 +1027,7 @@ interface Window {
 			path?: string;
 			missingRecordingPath?: string | null;
 			project?: unknown;
+			recovered?: boolean;
 			message?: string;
 			canceled?: boolean;
 			error?: string;
@@ -1011,7 +1041,12 @@ interface Window {
 		onRecordingPermissionsRequested: (callback: () => void) => () => void;
 		showRecordingHud: () => Promise<void>;
 		showOnboardingWindow: (options?: { preview?: boolean }) => Promise<boolean>;
+		replayOnboardingIntro?: () => Promise<boolean>;
 		closeOnboardingWindow: () => Promise<boolean>;
+		resolveStartupOnboarding: (action: "show" | "continue" | "restart") => Promise<boolean>;
+		reportOnboardingIntro: (stage: "ready" | "finished" | "skipped") => void;
+		onOnboardingIntroShown: (callback: () => void) => () => void;
+		onOnboardingSoundtrackStart: (callback: () => void) => () => void;
 		createProjectFile: (
 			data: unknown,
 			thumbnail?: string | null,
@@ -1026,9 +1061,25 @@ interface Window {
 			path: string,
 			name: string,
 		) => Promise<{ success: boolean; path?: string; error?: string }>;
+		reviewProjectDeletion: (
+			paths: string[],
+			protectedSources?: string[],
+		) => Promise<{
+			success: boolean;
+			sourceCount?: number;
+			preservedSourceCount?: number;
+			error?: string;
+		}>;
 		trashProjectFiles: (
 			paths: string[],
-		) => Promise<{ success: boolean; deleted: string[]; errors: string[] }>;
+			options?: { includeSources?: boolean; protectedSources?: string[] },
+		) => Promise<{
+			success: boolean;
+			deleted: string[];
+			errors: string[];
+			sourcesDeleted?: string[];
+			sourcesKept?: string[];
+		}>;
 		onProjectThumbnailReady: (
 			callback: (ready: { path: string; thumbnailPath: string; updatedAt: number }) => void,
 		) => () => void;
@@ -1050,6 +1101,7 @@ interface Window {
 			success: boolean;
 			path?: string;
 			project?: unknown;
+			recovered?: boolean;
 			message?: string;
 			canceled?: boolean;
 			error?: string;
@@ -1058,6 +1110,7 @@ interface Window {
 			success: boolean;
 			path?: string;
 			project?: unknown;
+			recovered?: boolean;
 			message?: string;
 			canceled?: boolean;
 			error?: string;
@@ -1083,6 +1136,11 @@ interface Window {
 		dismissUpdateToast: () => Promise<{ success: boolean }>;
 		skipUpdateVersion: () => Promise<{ success: boolean; message?: string }>;
 		getCurrentUpdateToastPayload: () => Promise<UpdateToastState | null>;
+		listReleaseVersions: () => Promise<{
+			success: boolean;
+			versions: { tag: string; version: string; prerelease: boolean; publishedAt: string }[];
+		}>;
+		downloadReleaseVersion: (tag: string) => Promise<{ success: boolean }>;
 		getUpdateStatusSummary: () => Promise<UpdateStatusSummary>;
 		getExperimentalUpdatesEnabled: () => Promise<boolean>;
 		getAutomaticUpdateDownloadsEnabled: () => Promise<boolean>;
@@ -1124,9 +1182,18 @@ interface Window {
 		onMenuLoadProject: (callback: () => void) => () => void;
 		onMenuSaveProject: (callback: () => void) => () => void;
 		onMenuSaveProjectAs: (callback: () => void) => () => void;
-		getWindowChrome: () => Promise<{ trafficLightsVisible: boolean }>;
+		getWindowChrome: () => Promise<{
+			trafficLightsVisible: boolean;
+			customControls?: boolean;
+			maximized?: boolean;
+		}>;
+		windowControl: (action: "minimize" | "maximize" | "close") => Promise<{ success: boolean }>;
 		onWindowChromeChanged: (
-			callback: (chrome: { trafficLightsVisible: boolean }) => void,
+			callback: (chrome: {
+				trafficLightsVisible: boolean;
+				customControls?: boolean;
+				maximized?: boolean;
+			}) => void,
 		) => () => void;
 		getPlatform: () => Promise<string>;
 		isWindowFullscreen: () => Promise<boolean>;
@@ -1167,6 +1234,8 @@ interface Window {
 		}) => Promise<{
 			success: boolean;
 			error?: string;
+			httpStatus?: number;
+			resourceMissing?: boolean;
 			videos?: Array<{
 				code: string;
 				createdAt?: string;

@@ -170,5 +170,7 @@
 	"selectedClips": "{{count}} clips geselecteerd",
 	"mergeSelectedClips": "Geselecteerde clips samenvoegen",
 	"mergeClipsUnavailable": "Samenvoegen vereist aaneengesloten beeldmateriaal met dezelfde snelheid en audio-instellingen.",
-	"mergeClips": "Clips samenvoegen"
+	"mergeClips": "Clips samenvoegen",
+	"captionStyleClassic": "Klassiek",
+	"captionStyleReveal": "Onthullen"
 }

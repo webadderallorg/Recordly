@@ -18,7 +18,10 @@
 		"delete": "Verwijderen",
 		"done": "Klaar",
 		"retry": "Opnieuw proberen",
-		"apply": "Toepassen"
+		"apply": "Toepassen",
+		"minimize": "Minimaliseren",
+		"maximize": "Maximaliseren",
+		"restoreWindow": "Venster herstellen"
 	},
 	"errors": {
 		"invalidFileType": "Ongeldig bestandstype",
@@ -36,13 +39,14 @@
 		"thanks": "Bedankt voor je feedback",
 		"signInRequired": "Meld je aan om feedback te verzenden.",
 		"openHome": "Open Start om je aan te melden.",
+		"orEmail": "Of mail naar",
 		"subject": "Onderwerp",
 		"subjectPlaceholder": "Wat wil je ons vertellen?",
 		"description": "Beschrijving",
 		"descriptionPlaceholder": "We lezen alle feedback...",
 		"attachFiles": "Bestanden bijvoegen",
 		"removeFile": "{{name}} verwijderen",
-		"diagnostics": "Relevante diagnostische logboeken worden bijgevoegd.",
+		"diagnostics": "Diagnostische logboeken zullen worden bijgevoegd. Feedback zal naar support@recordly.dev worden verzonden.",
 		"sending": "Verzenden…",
 		"errors": {
 			"unavailable": "Feedback is pas beschikbaar nadat de accountdiensten zijn ingesteld.",
@@ -82,5 +86,6 @@
 		"downloadingButton": "Downloaden · {{progress}}"
 	},
 	"width": "Breedte",
-	"height": "Hoogte"
+	"height": "Hoogte",
+	"windowControls": "Vensterbediening"
 }

@@ -170,5 +170,7 @@
 	"selectedClips": "{{count}} clips seleccionados",
 	"mergeSelectedClips": "Combinar clips seleccionados",
 	"mergeClipsUnavailable": "Para combinar, el material debe ser continuo y tener la misma velocidad y los mismos ajustes de audio.",
-	"mergeClips": "Combinar clips"
+	"mergeClips": "Combinar clips",
+	"captionStyleClassic": "Clásico",
+	"captionStyleReveal": "Revelar"
 }

@@ -30,6 +30,8 @@ beforeEach(async () => {
 	const storeSource = (await fs.readFile(new URL("./authStorage.ts", import.meta.url), "utf8"))
 		.replace('from "electron"', 'from "./electron-stub.mjs"')
 		.replace('from "./rendererServer"', 'from "./renderer-stub.mjs"')
+		.replace('from "../src/lib/auth/savedSignIn"', 'from "./savedSignIn.mjs"')
+		.replace('from "./savedSignInEncryption"', 'from "./savedSignInEncryption.mjs"')
 		.replace('from "./authStorageTransactionLock"', 'from "./lock.mjs"');
 	storeModulePath = path.join(root, "store.mjs");
 	await fs.writeFile(
@@ -54,6 +56,22 @@ beforeEach(async () => {
 		path.join(root, "renderer-stub.mjs"),
 		"export const getPackagedRendererBaseUrl = () => 'http://127.0.0.1:49152/';",
 	);
+	for (const [sourcePath, target] of [
+		["../src/lib/auth/savedSignIn.ts", "savedSignIn.mjs"],
+		["./savedSignInEncryption.ts", "savedSignInEncryption.mjs"],
+		["./savedSignInKeychain.ts", "savedSignInKeychain.mjs"],
+	]) {
+		const source = (await fs.readFile(new URL(sourcePath, import.meta.url), "utf8")).replace(
+			'from "./savedSignInKeychain"',
+			'from "./savedSignInKeychain.mjs"',
+		);
+		await fs.writeFile(
+			path.join(root, target),
+			ts.transpileModule(source, {
+				compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 },
+			}).outputText,
+		);
+	}
 });
 
 afterEach(async () => {

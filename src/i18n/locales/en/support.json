@@ -3,7 +3,7 @@
 	"reportSending": "Sending logs…",
 	"reportSent": "Report sent",
 	"reportRetry": "Retry report",
-	"reportError": "Report error",
+	"reportError": "Report Error",
 	"reportFailed": "Could not send the report. Please try again.",
 	"reportSuccess": "Error and diagnostic logs sent.",
 	"diagnostics": "Technical details",

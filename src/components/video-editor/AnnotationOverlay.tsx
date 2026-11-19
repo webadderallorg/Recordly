@@ -1,3 +1,4 @@
+import { getSquircleCssRadius } from "@/lib/geometry/squircle";
 import { useScopedT } from "@/contexts/I18nContext";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { Rnd } from "react-rnd";
@@ -121,7 +122,7 @@ export function AnnotationOverlay({
 		boxDecorationBreak: "clone",
 		WebkitBoxDecorationBreak: "clone",
 		padding: "0.1em 0.2em",
-		borderRadius: `${4 * sizeScale}px`,
+		borderRadius: getSquircleCssRadius(4 * sizeScale),
 		lineHeight: "1.4",
 	};
 
@@ -367,6 +368,12 @@ export function AnnotationOverlay({
 				bottomRight: (
 					<span data-annotation-resize="bottom-right" className="block size-full" />
 				),
+			}}
+			resizeHandleClasses={{
+				topLeft: "rounded-full",
+				topRight: "rounded-full",
+				bottomLeft: "rounded-full",
+				bottomRight: "rounded-full",
 			}}
 			resizeHandleStyles={{
 				topLeft: {

@@ -158,9 +158,14 @@ export function DashboardSettings({
 					<header className="dashboard-settings-group">
 						<h2>{t("settings.categories.general", "General")}</h2>
 					</header>
-					<SettingsRow title={t("settings.appPreferences.appearance", "Appearance")}>
-						<ThemeAppearancePicker compact />
-					</SettingsRow>
+					<div className="settings-appearance settings-group">
+						<SettingsRow
+							title={t("settings.appPreferences.appearance", "Appearance")}
+							stacked
+						>
+							<ThemeAppearancePicker />
+						</SettingsRow>
+					</div>
 				</SettingsCategory>
 				<SettingsCategory category="shortcuts">
 					<header className="dashboard-settings-group">
@@ -212,18 +217,18 @@ export function DashboardSettings({
 								)}
 							</SettingsInfo>
 						</h2>
+						<p>
+							{t(
+								"settings.appPreferences.motionScope",
+								"Changes affect this project and are remembered for new projects. Saved projects keep their own settings.",
+							)}
+						</p>
 					</header>
 				</SettingsCategory>
 				<SettingsCategory category="developer">
 					<header className="dashboard-settings-group">
 						<h2 className="flex items-center gap-1.5">
 							{t("settings.effects.devSection", "Dev")}
-							<SettingsInfo label={t("settings.effects.devSection", "Dev")}>
-								{t(
-									"settings.effects.devSectionHint",
-									"Temporary testing controls for native capture and motion tuning.",
-								)}
-							</SettingsInfo>
 						</h2>
 					</header>
 				</SettingsCategory>
@@ -244,6 +249,7 @@ export function DashboardSettings({
 					{captureSupported && (
 						<div className="settings-group">
 							<SettingsRow
+								descriptionInline
 								title={t(
 									"settings.appPreferences.hideControls",
 									"Hide recording controls from captured video",
@@ -298,6 +304,12 @@ export function DashboardSettings({
 				<SettingsCategory category="general">
 					<header className="dashboard-settings-group dashboard-settings-subgroup">
 						<h2>{t("settings.appPreferences.storage", "Storage")}</h2>
+						<p>
+							{t(
+								"settings.appPreferences.folderScope",
+								"Changing this location affects future recordings. Existing files stay in their current folders.",
+							)}
+						</p>
 					</header>
 					<div className="settings-group">
 						<div className="settings-item">
@@ -306,20 +318,27 @@ export function DashboardSettings({
 									"settings.dashboard.recordingsFolder",
 									"Recordings folder",
 								)}
-								help={t(
-									"settings.appPreferences.folderScope",
-									"Changing this location affects future recordings. Existing files stay in their current folders.",
-								)}
 								descriptionInline
 								description={
-									<span className="settings-folder-path" title={recordings}>
-										{recordings ||
-											folderErrors.recordings ||
+									<span className="settings-folder-path">
+										{folderErrors.recordings ? (
+											<span role="alert">{folderErrors.recordings}</span>
+										) : (
+											recordings ||
 											t(
 												"settings.appPreferences.loadingFolder",
 												"Loading folder location…",
-											)}
+											)
+										)}
 									</span>
+								}
+								help={
+									<>
+										{t(
+											"settings.appPreferences.folderScope",
+											"Changing this location affects future recordings. Existing files stay in their current folders.",
+										)}
+									</>
 								}
 							>
 								<div className="settings-actions">
@@ -373,20 +392,27 @@ export function DashboardSettings({
 						<div className="settings-item">
 							<SettingsRow
 								title={t("settings.dashboard.projectsFolder", "Projects folder")}
-								help={t(
-									"settings.dashboard.autosave",
-									"Named projects save automatically.",
-								)}
 								descriptionInline
 								description={
-									<span className="settings-folder-path" title={directory}>
-										{directory ||
-											folderErrors.projects ||
+									<span className="settings-folder-path">
+										{folderErrors.projects ? (
+											<span role="alert">{folderErrors.projects}</span>
+										) : (
+											directory ||
 											t(
 												"settings.appPreferences.loadingFolder",
 												"Loading folder location…",
-											)}
+											)
+										)}
 									</span>
+								}
+								help={
+									<>
+										{t(
+											"settings.dashboard.autosave",
+											"Named projects save automatically.",
+										)}
+									</>
 								}
 							>
 								<Button

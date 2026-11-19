@@ -80,6 +80,7 @@
 	transform: translateX(-50%);
 	border: 1.5px solid var(--background, #fff);
 	border-radius: 999px;
+	corner-shape: round;
 	font-size: 8px;
 	pointer-events: none;
 }

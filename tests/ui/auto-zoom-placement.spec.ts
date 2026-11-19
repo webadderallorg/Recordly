@@ -45,8 +45,8 @@ for (const scenario of [
 		await page.addInitScript((samples) => {
 			const getAppSetting = window.electronAPI.getAppSetting;
 			window.electronAPI.getAppSetting = (key) =>
-				key === "recordly.editor.preferences"
-					? { autoApplyFreshRecordingAutoZooms: true }
+				key === "recordly.editor.preferences.v2"
+					? { autoApplyFreshRecordingAutoZooms: false }
 					: getAppSetting(key);
 			window.electronAPI.getCurrentRecordingSession = async () => ({
 				success: true,
@@ -71,7 +71,7 @@ for (const scenario of [
 			suggest.locator('xpath=ancestor::*[@data-timeline-row="row-zoom"]'),
 		).toHaveCount(1);
 		await expect(page.locator('[data-variant="clip"]')).toHaveCount(1);
-		// Fresh recordings must stay unzoomed, even with the retired preference enabled.
+		// With automatic zooms disabled, recordings stay unzoomed until requested.
 		await page.waitForTimeout(900);
 		await expect(page.locator('[data-variant="zoom"]')).toHaveCount(0);
 		const zoomLane = page.locator('[data-timeline-row="row-zoom"]');

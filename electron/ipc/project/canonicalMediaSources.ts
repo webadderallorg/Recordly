@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
+import { canonicalSourceReference } from "./canonicalSourceReference";
 import { normalizeVideoSourcePath } from "../utils";
 
 /** Resolve saved media references, including paths through a custom folder alias. */
 export async function canonicalMediaSources(
 	project: unknown,
+	options: { preserveMissing?: boolean } = {},
 ): Promise<{ sourcePaths: string[]; sourcePathsComplete: boolean }> {
 	const sources = new Set<string>();
 	const collect = (value: unknown) => {
@@ -23,7 +25,11 @@ export async function canonicalMediaSources(
 	let sourcePathsComplete = true;
 	for (const source of sources) {
 		try {
-			resolved.add(await fs.realpath(source));
+			resolved.add(
+				options.preserveMissing
+					? await canonicalSourceReference(source)
+					: await fs.realpath(source),
+			);
 		} catch (error) {
 			// Missing references cannot point at a present library file. Other
 			// failures leave dependency analysis incomplete, so fail closed.

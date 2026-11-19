@@ -6,7 +6,8 @@ test("editor sections open at the top after scrolling another section", async ({
 	await installDesktopBridge(page);
 	await page.goto("/?windowType=editor");
 	const scroller = page.locator(".settings-panel > .custom-scrollbar").filter({ visible: true });
-	await scroller.hover();
+	// The center hits the wallpaper gallery, which intentionally contains its own wheel scrolling.
+	await scroller.hover({ position: { x: 8, y: 80 } });
 	await page.mouse.wheel(0, 450);
 	await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(50);
 	await page.getByRole("radio", { name: "Cursor", exact: true }).click();
@@ -15,7 +16,8 @@ test("editor sections open at the top after scrolling another section", async ({
 	await page.getByRole("radio", { name: "Scene", exact: true }).click();
 	await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(0);
 	await expect(page.getByRole("button", { name: "Add wallpaper", exact: true })).toBeInViewport();
-	await scroller.hover();
+	// The center hits the wallpaper gallery, which intentionally contains its own wheel scrolling.
+	await scroller.hover({ position: { x: 8, y: 80 } });
 	await page.mouse.wheel(0, 10000);
 	await expect(page.getByText("Remove background", { exact: true })).toBeInViewport();
 	await page.screenshot({ path: test.info().outputPath("editor-scrolled.png") });

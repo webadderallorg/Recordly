@@ -23,6 +23,7 @@ export type usePlaybackWebcamSyncInput = Pick<
 	| "animationStateRef"
 	| "webcamVideoRef"
 	| "webcamEnabled"
+	| "webcam"
 	| "webcamVideoPath"
 	| "currentTimeRef"
 	| "webcamTimeOffsetMs"
@@ -47,6 +48,7 @@ export function usePlaybackWebcamSync(input: usePlaybackWebcamSyncInput) {
 		animationStateRef,
 		webcamVideoRef,
 		webcamEnabled,
+		webcam,
 		webcamVideoPath,
 		currentTimeRef,
 		webcamTimeOffsetMs,
@@ -80,6 +82,7 @@ export function usePlaybackWebcamSync(input: usePlaybackWebcamSyncInput) {
 			currentTime: currentTimeRef.current / 1000,
 			webcamDuration,
 			timeOffsetMs: webcamTimeOffsetMs,
+			loop: webcam?.loop,
 		});
 		const mediaTargetTime =
 			targetTime <= 0 && webcamDuration !== null && webcamDuration > 0
@@ -160,6 +163,7 @@ export function usePlaybackWebcamSync(input: usePlaybackWebcamSyncInput) {
 		clipRegions,
 		isPlaying,
 		webcamEnabled,
+		webcam?.loop,
 		webcamTimeOffsetMs,
 		webcamVideoPath,
 		webcamVideoRef,
@@ -179,8 +183,10 @@ export function usePlaybackWebcamSync(input: usePlaybackWebcamSyncInput) {
 				});
 			}
 			syncWebcamMedia();
+			// Paused preview ticks can finish before the independent camera decoder.
+			applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
 		},
-		[syncWebcamMedia, setWebcamVideoDimensions],
+		[syncWebcamMedia, setWebcamVideoDimensions, applyWebcamBubbleLayout, animationStateRef],
 	);
 
 	useEffect(() => {

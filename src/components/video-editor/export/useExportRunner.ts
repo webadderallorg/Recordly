@@ -1,17 +1,17 @@
 import { useCallback, useRef } from "react";
+import { recordLibraryExport, type LibraryExportIdentity } from "../dashboard/libraryExportHistory";
+import { fromFileUrl } from "../projectMediaPaths";
 import { useOptionalBilling } from "@/components/billing/BillingProvider";
+import { canExportCaptionFiles } from "@/components/billing/captionFileAccess";
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
 import type { ExportSettings } from "@/lib/exporter/types";
 import { createExportDiagnostics } from "@/lib/feedback/exportDiagnostics";
 import { createSmokeExportProgressSampler } from "../smokeExportProgress";
 import type { ExportBranchContext } from "./exportBranchContext";
+import { getExportFileName } from "./exportFileName";
 import { type PendingExportSave, writeSmokeExportReport } from "./exportPersistence";
-import {
-	type ExportRunnerInput,
-	showExportErrorToast,
-	useExportSuccessToast,
-} from "./exportRunnerSupport";
+import { type ExportRunnerInput, showExportErrorToast } from "./exportRunnerSupport";
 import { stopGifSizeEstimates } from "./gifEstimateCache";
 import { runGifExport } from "./runGifExport";
 import { runMp4Export } from "./runMp4Export";
@@ -24,7 +24,12 @@ export function useExportRunner(input: ExportRunnerInput) {
 	billingRef.current = billing;
 	const inputRef = useRef(input);
 	inputRef.current = input;
-	const showExportSuccessToast = useExportSuccessToast();
+	const recordSuccessfulExport = useCallback((capturedIdentity?: LibraryExportIdentity) => {
+		const identity =
+			capturedIdentity ?? inputRef.current.exportSession.exportIdentityRef?.current;
+		if (identity && !recordLibraryExport(identity))
+			console.warn("Could not save library export history");
+	}, []);
 
 	const handleExport = useCallback(
 		async (
@@ -32,6 +37,12 @@ export function useExportRunner(input: ExportRunnerInput) {
 			options?: { destination?: "download" | "share" },
 		): Promise<string | undefined> => {
 			const runInput = inputRef.current;
+			const exportIdentity = {
+				...runInput.exportIdentity,
+				sourcePath:
+					runInput.exportIdentity?.sourcePath ??
+					(runInput.videoPath ? fromFileUrl(runInput.videoPath) : undefined),
+			};
 			const {
 				videoPath,
 				videoPlaybackRef,
@@ -39,14 +50,12 @@ export function useExportRunner(input: ExportRunnerInput) {
 				appearance,
 				exportSession,
 				smokeExportConfig,
-				remountPreview,
 			} = runInput;
 			const { shadowIntensity } = appearance;
 			const {
 				setIsExporting,
 				setExportProgress,
 				setExportError,
-				setShowExportDropdown,
 				exporterRef,
 				clearPendingExportSave,
 				exportRunIdRef,
@@ -62,6 +71,9 @@ export function useExportRunner(input: ExportRunnerInput) {
 				toast.error(translate("notifications.videoNotReady", "Video not ready"));
 				return;
 			}
+
+			if (runInput.exportSession.exportIdentityRef)
+				runInput.exportSession.exportIdentityRef.current = exportIdentity;
 
 			const exportRunId = exportRunIdRef.current + 1;
 			exportRunIdRef.current = exportRunId;
@@ -86,9 +98,26 @@ export function useExportRunner(input: ExportRunnerInput) {
 			exportSession.setIsOptimizingGif(false);
 			setExportError(null);
 			clearPendingExportSave();
+			if (options?.destination !== "share") {
+				const fileName = getExportFileName(runInput.projectName, settings.format);
+				exportSession.setSuggestedFileName(fileName);
+				const sidecarFormat =
+					settings.format === "mp4" &&
+					settings.includeCaptionSidecar &&
+					canExportCaptionFiles(billingRef.current)
+						? runInput.captionSidecarPayload?.format
+						: undefined;
+				void window.electronAPI
+					.suggestExportFileName?.(fileName, sidecarFormat)
+					.then((suggested) => {
+						if (suggested && !exportWasCancelled()) {
+							exportSession.setSuggestedFileName(suggested);
+						}
+					})
+					.catch(() => undefined);
+			}
 			const smokeExportStartedAt = smokeExportConfig.enabled ? performance.now() : null;
 
-			let keepExportDialogOpen = false;
 			const wasPlaying = isPlaying;
 			const restoreTime = video.currentTime;
 
@@ -131,10 +160,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 					smokeProgressSamples,
 					exportWasCancelled,
 					discardCancelledTemp,
-					showExportSuccessToast,
-					setKeepExportDialogOpen: (open) => {
-						keepExportDialogOpen = open;
-					},
+					recordSuccessfulExport: () => recordSuccessfulExport(exportIdentity),
 				};
 				const outcome =
 					settings.format === "gif" && settings.gifConfig
@@ -144,7 +170,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 
 				if (wasPlaying) {
 					await videoPlaybackRef.current?.play().catch(() => undefined);
-				} else {
+				} else if (video.currentTime !== restoreTime) {
 					video.currentTime = restoreTime;
 				}
 			} catch (error) {
@@ -172,29 +198,26 @@ export function useExportRunner(input: ExportRunnerInput) {
 					});
 				}
 				setExportError(errorMessage);
-				showExportErrorToast(`Export failed: ${errorMessage}`);
-				keepExportDialogOpen = options?.destination !== "share";
+				if (options?.destination === "share")
+					showExportErrorToast(`Export failed: ${errorMessage}`);
 				if (smokeExportConfig.enabled) {
 					window.close();
 				}
 			} finally {
 				if (exportWasExplicitlyCancelled()) diagnostics.record("canceled");
 				if (exportWasExplicitlyCancelled() && exportRunIdRef.current === exportRunId + 1) {
-					video.currentTime = restoreTime;
+					if (video.currentTime !== restoreTime) video.currentTime = restoreTime;
 					if (wasPlaying) {
 						await videoPlaybackRef.current?.play().catch(() => undefined);
 					}
 				} else if (!exportWasCancelled()) {
 					setIsExporting(false);
 					exporterRef.current = null;
-					if (options?.destination !== "share")
-						setShowExportDropdown(keepExportDialogOpen);
-					remountPreview();
 				}
 			}
 		},
-		[showExportSuccessToast],
+		[recordSuccessfulExport],
 	);
 
-	return { handleExport, showExportSuccessToast };
+	return { handleExport, recordSuccessfulExport };
 }

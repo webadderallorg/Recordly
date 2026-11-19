@@ -18,7 +18,10 @@
 		"delete": "Elimina",
 		"done": "Fatto",
 		"retry": "Riprova",
-		"apply": "Applica"
+		"apply": "Applica",
+		"minimize": "Riduci a icona",
+		"maximize": "Ingrandisci",
+		"restoreWindow": "Ripristina finestra"
 	},
 	"errors": {
 		"invalidFileType": "Tipo di file non valido",
@@ -36,13 +39,14 @@
 		"thanks": "Grazie per i tuoi commenti",
 		"signInRequired": "Accedi per inviare commenti.",
 		"openHome": "Apri Home per accedere.",
+		"orEmail": "Oppure scrivi a",
 		"subject": "Oggetto",
 		"subjectPlaceholder": "Cosa vorresti dirci?",
 		"description": "Descrizione",
 		"descriptionPlaceholder": "Leggiamo tutti i commenti...",
 		"attachFiles": "Allega file",
 		"removeFile": "Rimuovi {{name}}",
-		"diagnostics": "Verranno allegati i registri diagnostici pertinenti.",
+		"diagnostics": "I registri diagnostici verranno allegati. Il feedback verrà inviato a support@recordly.dev.",
 		"sending": "Invio…",
 		"errors": {
 			"unavailable": "I commenti saranno disponibili dopo la configurazione dei servizi dell’account.",
@@ -82,5 +86,6 @@
 		"downloadingButton": "Download · {{progress}}"
 	},
 	"width": "Larghezza",
-	"height": "Altezza"
+	"height": "Altezza",
+	"windowControls": "Controlli finestra"
 }
