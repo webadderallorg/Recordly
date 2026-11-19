@@ -42,7 +42,7 @@ for (const mode of ["glass", "fallback", "reduced motion"] as const) {
 					},
 				},
 			});
-			if (mode !== "reduced motion") {
+			{
 				const getContext = HTMLCanvasElement.prototype.getContext;
 				HTMLCanvasElement.prototype.getContext = function (
 					this: HTMLCanvasElement,
@@ -61,17 +61,13 @@ for (const mode of ["glass", "fallback", "reduced motion"] as const) {
 		await page.goto("/?windowType=onboarding-intro");
 
 		const html = page.locator("html");
-		if (mode === "reduced motion") {
-			await expect(html).toHaveAttribute("data-intro-stages", "skipped");
-			await expect(page.locator(".onboarding-intro")).toBeHidden();
-			return;
-		}
-
+		// The intro is part of the brand, so it plays even with reduced motion on.
+		const expectedMode = mode === "fallback" ? "fallback" : "glass";
 		await expect(html).toHaveAttribute("data-intro-stages", "ready");
 		const intro = page.locator(".onboarding-intro");
 		const brand = intro.locator(".onboarding-intro-brand");
 		const logo = page.locator(".onboarding-intro-logo");
-		await expect(logo).toHaveAttribute("data-mode", mode);
+		await expect(logo).toHaveAttribute("data-mode", expectedMode);
 		await expect(intro).toHaveText("");
 		if (mode === "fallback") {
 			await expect(logo.locator("img")).toHaveAttribute("src", /recordlymac-512\.png$/);
@@ -89,7 +85,7 @@ for (const mode of ["glass", "fallback", "reduced motion"] as const) {
 		await expect(brand).toHaveAttribute("data-releasing", "true");
 		await expect(intro).toHaveText("");
 		expect(await logoCenter()).toBeCloseTo(screenCenter, 0);
-		if (mode === "glass") {
+		if (expectedMode === "glass") {
 			const showsDesktopIcon = await logo
 				.locator("canvas")
 				.evaluate((canvas: HTMLCanvasElement) => {
