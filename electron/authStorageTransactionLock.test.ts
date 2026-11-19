@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -381,4 +382,39 @@ it.runIf(path.sep === "\\")("recovers from temporary Windows sharing violations"
 	expect(blockedRead && blockedRename).toBe(true);
 	expect(operation).toHaveBeenCalledOnce();
 	expect(await fs.readdir(directory)).toEqual([]);
+});
+
+it.runIf(path.sep === "\\")(
+	"does not retry a Windows ticket rename after its deadline",
+	async () => {
+		const rename = fs.rename.bind(fs);
+		const sharingViolation = Object.assign(new Error("Replacement temporarily blocked"), {
+			code: "EPERM",
+		});
+		let numberedAttempts = 0;
+		vi.spyOn(fs, "rename").mockImplementation(async (source, destination) => {
+			if (path.basename(String(source)).startsWith(".publish-") && ++numberedAttempts === 1) {
+				throw sharingViolation;
+			}
+			return rename(source, destination);
+		});
+		vi.spyOn(performance, "now")
+			.mockReturnValueOnce(100)
+			.mockReturnValueOnce(105)
+			.mockReturnValue(110);
+
+		const operation = vi.fn(async () => "acquired");
+		await expect(
+			withAuthStorageTransaction(directory, operation, { timeoutMs: 10, pollMs: 5 }),
+		).rejects.toMatchObject({ name: "AuthStorageBusyError", cause: sharingViolation });
+		expect(numberedAttempts).toBe(1);
+		expect(operation).not.toHaveBeenCalled();
+		expect(await fs.readdir(directory)).toEqual([]);
+	},
+);
+
+it("allows an uncontended acquisition with a zero timeout", async () => {
+	await expect(
+		withAuthStorageTransaction(directory, async () => "acquired", { timeoutMs: 0 }),
+	).resolves.toBe("acquired");
 });

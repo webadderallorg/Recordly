@@ -37,6 +37,7 @@ async function retryTicketIO<T>(operation: () => Promise<T>, deadline: number, p
 			const remaining = deadline - performance.now();
 			if (remaining <= 0) throw new AuthStorageBusyError(error);
 			await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, remaining)));
+			if (performance.now() >= deadline) throw new AuthStorageBusyError(error);
 		}
 	}
 }
