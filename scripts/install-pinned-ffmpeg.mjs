@@ -22,7 +22,13 @@ async function install(work) {
 		arch,
 		work,
 	});
-	const noticeFiles = ["COPYING.GPLv3", "FFmpeg-LICENSE.md", "x264-COPYING", "libvpx-LICENSE"];
+	const noticeFiles = [
+		"COPYING.GPLv3",
+		"FFmpeg-LICENSE.md",
+		"x264-COPYING",
+		"libvpx-LICENSE",
+		"zlib-LICENSE",
+	];
 	const license = (
 		await Promise.all(noticeFiles.map((name) => fs.readFile(path.join(evidence, name), "utf8")))
 	).join("\n\n");

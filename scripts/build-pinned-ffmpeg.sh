@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Run in a private working directory containing the three verified source trees.
+# Run in a private working directory containing the verified source trees.
 set -euo pipefail
 target=$1
 jobs=$2
 prefix="$PWD/prefix"
+ffmpeg_ldflags="-L$prefix/lib"
 export PKG_CONFIG_PATH="$prefix/lib/pkgconfig"
 export PKG_CONFIG_LIBDIR="$PKG_CONFIG_PATH"
 
@@ -13,7 +14,8 @@ case "$target" in
     x264_target=(--host=x86_64-w64-mingw32)
     vpx_target=x86_64-win64-gcc
     executable_suffix=.exe
-    ffmpeg_target=(--target-os=mingw32 --enable-w32threads --enable-mediafoundation --enable-d3d11va --enable-dxva2 --extra-ldflags=-static)
+    ffmpeg_target=(--target-os=mingw32 --enable-w32threads --enable-mediafoundation --enable-d3d11va --enable-dxva2)
+    ffmpeg_ldflags+=" -static"
     ;;
   linux-x64)
     x264_target=(--host=x86_64-linux-gnu --enable-pic)
@@ -47,10 +49,23 @@ set -x
   make install
 )
 (
+  cd zlib
+  if [[ "$target" == win32-x64 ]]; then
+    make -j "$jobs" -f win32/Makefile.gcc libz.a
+    cp libz.a "$prefix/lib/"
+    cp zlib.h zconf.h "$prefix/include/"
+  else
+    ./configure --static --prefix="$prefix"
+    make -j "$jobs"
+    make install
+  fi
+)
+(
   cd ffmpeg
   ./configure --prefix="$prefix" --arch=x86_64 "${ffmpeg_target[@]}" \
     --pkg-config-flags=--static --disable-autodetect --disable-nonfree --enable-gpl \
-    --enable-version3 --enable-static --disable-shared --enable-libx264 --enable-libvpx \
+    --enable-version3 --enable-static --disable-shared --enable-libx264 --enable-libvpx --enable-zlib \
+    --extra-cflags="-I$prefix/include" --extra-ldflags="$ffmpeg_ldflags" \
     --disable-ffplay --disable-doc --disable-debug
   make -j "$jobs" "ffmpeg$executable_suffix" "ffprobe$executable_suffix"
 )
