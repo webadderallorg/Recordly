@@ -9,6 +9,7 @@ import {
 	MAC_BUILD_ID,
 	MAC_SOURCE_ARCHIVES,
 } from "./build-redistributable-ffmpeg.mjs";
+import { PINNED_BUILD_ID, supportsPinnedBuild } from "./build-pinned-ffmpeg.mjs";
 import { machoContentHash } from "./macho-content-hash.mjs";
 import { peContentHash } from "./pe-content-hash.mjs";
 
@@ -81,7 +82,9 @@ export function verifyFfmpegDistribution(
 			bytes,
 			manifest,
 			platform,
-			platform === "win32" ? windowsFfmpegContentSha256 : undefined,
+			platform === "win32" && manifest.buildId !== PINNED_BUILD_ID
+				? windowsFfmpegContentSha256
+				: undefined,
 		)
 	) {
 		throw new Error("FFmpeg distribution provenance does not match the binary or target.");
@@ -106,7 +109,10 @@ export function verifyFfmpegDistribution(
 				);
 			}
 		}
-	} else if (APPROVED_FFMPEG_BINARIES[`${platform}-${arch}`] !== manifest.sha256) {
+	} else if (
+		!(supportsPinnedBuild(platform, arch) && manifest.buildId === PINNED_BUILD_ID) &&
+		APPROVED_FFMPEG_BINARIES[`${platform}-${arch}`] !== manifest.sha256
+	) {
 		throw new Error(`Unapproved FFmpeg distribution for ${platform}/${arch}.`);
 	}
 	for (const suffix of [".LICENSE", ".README"]) {
@@ -130,14 +136,20 @@ export function verifyFfprobeDistribution(
 	{ platform = process.platform, arch = process.arch, metadataPath = binaryPath } = {},
 ) {
 	const manifest = JSON.parse(readFileSync(`${metadataPath}.distribution.json`, "utf8"));
+	const pinned = supportsPinnedBuild(platform, arch) && manifest.buildId === PINNED_BUILD_ID;
+	const legacy =
+		platform === "win32" && arch === "x64" && manifest.sha256 === windowsFfprobeSha256;
 	if (
-		platform !== "win32" ||
-		arch !== "x64" ||
+		(!pinned && !legacy) ||
 		manifest.schemaVersion !== 1 ||
 		manifest.platform !== platform ||
 		manifest.arch !== arch ||
-		manifest.sha256 !== windowsFfprobeSha256 ||
-		!matchesBinary(readFileSync(binaryPath), manifest, platform, windowsFfprobeContentSha256)
+		!matchesBinary(
+			readFileSync(binaryPath),
+			manifest,
+			platform,
+			pinned ? undefined : windowsFfprobeContentSha256,
+		)
 	) {
 		throw new Error(
 			"FFprobe distribution provenance does not match the approved Windows binary.",
@@ -201,10 +213,9 @@ async function download(url) {
 async function ensureWindowsFfprobe(root) {
 	const binaryPath = path.join(root, "node_modules/ffprobe-static/bin/win32/x64/ffprobe.exe");
 	try {
-		const manifest = {
-			...verifyFfprobeDistribution(binaryPath, { platform: "win32", arch: "x64" }),
-			contentSha256: windowsFfprobeContentSha256,
-		};
+		const verified = verifyFfprobeDistribution(binaryPath, { platform: "win32", arch: "x64" });
+		if (verified.buildId === PINNED_BUILD_ID) return verified;
+		const manifest = { ...verified, contentSha256: windowsFfprobeContentSha256 };
 		await writeFile(
 			`${binaryPath}.distribution.json`,
 			`${JSON.stringify(manifest, null, 2)}\n`,

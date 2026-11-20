@@ -25,8 +25,24 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Install bundled FFmpeg binary
-        run: node scripts/install-ffmpeg-static.mjs
+      - name: Set up Windows FFmpeg compiler
+        uses: msys2/setup-msys2@v2
+        id: ffmpeg-msys2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make
+            diffutils
+            perl
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-pkgconf
+
+      - name: Build FFmpeg and FFprobe from pinned source
+        env:
+          RECORDLY_MSYS2_ROOT: ${{ steps.ffmpeg-msys2.outputs.msys2-location }}
+        run: npm run build:ffmpeg-source
 
       - name: Verify bundled FFmpeg binary
         run: |
@@ -53,6 +69,10 @@ jobs:
       - name: Smoke test packaged Windows paths
         run: npm run smoke:packaged-binaries
 
+
+      - name: Archive corresponding FFmpeg source
+        run: tar -a -cf release/Recordly-windows-x64-ffmpeg-source.zip -C node_modules/ffmpeg-static/ffmpeg.exe.sources .
+
       - name: Generate Windows artifact checksums
         run: npm run checksums:release -- SHA256SUMS-windows.txt
 
@@ -69,6 +89,7 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/latest*.yml
+            release/*-ffmpeg-source.zip
             release/SHA256SUMS*.txt
           if-no-files-found: error
           retention-days: 30
@@ -164,8 +185,13 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Install bundled FFmpeg binary
-        run: node scripts/install-ffmpeg-static.mjs
+      - name: Install Linux FFmpeg build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential binutils diffutils nasm perl pkg-config
+
+      - name: Build FFmpeg and FFprobe from pinned source
+        run: npm run build:ffmpeg-source
 
       - name: Verify bundled FFmpeg binary
         run: |
@@ -194,6 +220,11 @@ jobs:
       - name: Smoke test packaged Linux paths
         run: npm run smoke:packaged-binaries
 
+
+      - name: Archive corresponding FFmpeg source
+        working-directory: node_modules/ffmpeg-static/ffmpeg.sources
+        run: zip -qr ../../../release/Recordly-linux-x64-ffmpeg-source.zip .
+
       - name: Generate Linux artifact checksums
         run: npm run checksums:release -- SHA256SUMS-linux.txt
 
@@ -210,6 +241,7 @@ jobs:
             release/**/*.AppImage
             release/**/*.blockmap
             release/latest-linux.yml
+            release/*-ffmpeg-source.zip
             release/SHA256SUMS*.txt
           if-no-files-found: error
           retention-days: 30

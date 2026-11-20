@@ -37,8 +37,24 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Validate reserved Store identity
         run: node -e "require('./electron-builder.store.cjs')()"
-      - name: Install bundled FFmpeg binary
-        run: node scripts/install-ffmpeg-static.mjs
+      - name: Set up Windows FFmpeg compiler
+        uses: msys2/setup-msys2@v2
+        id: ffmpeg-msys2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make
+            diffutils
+            perl
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-pkgconf
+
+      - name: Build FFmpeg and FFprobe from pinned source
+        env:
+          RECORDLY_MSYS2_ROOT: ${{ steps.ffmpeg-msys2.outputs.msys2-location }}
+        run: npm run build:ffmpeg-source
       - name: Remove stale uiohook build output
         shell: pwsh
         run: |
@@ -55,11 +71,15 @@ jobs:
         run: npm run build:win:store
       - name: Smoke test packaged binaries
         run: npm run smoke:packaged-binaries
+      - name: Archive corresponding FFmpeg source
+        run: tar -a -cf release/store/Recordly-windows-x64-ffmpeg-source.zip -C node_modules/ffmpeg-static/ffmpeg.exe.sources .
       - name: Upload package for manual certification testing and submission
         uses: actions/upload-artifact@v4
         with:
           name: recordly-microsoft-store-x64
-          path: release/store/*.appx
+          path: |
+            release/store/*.appx
+            release/store/*-ffmpeg-source.zip
           if-no-files-found: error
 
 # This workflow only builds an artifact. It never submits or publishes to Store.

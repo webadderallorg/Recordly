@@ -1,7 +1,9 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PINNED_BUILD_ID } from "../scripts/build-pinned-ffmpeg.mjs";
 import { assertFfmpegSourceClearance } from "../scripts/ffmpeg-source-clearance.mjs";
 import { updateNativeHelperManifest } from "../scripts/native-helper-manifest.mjs";
 import beforePack from "../scripts/prepare-distribution-notices.mjs";
@@ -98,6 +100,46 @@ describe("FFmpeg packaging source clearance", () => {
 		).rejects.toThrow(`source clearance is incomplete for ${platform}/x64`);
 		expect(fetch).not.toHaveBeenCalled();
 		expect(await contents(root)).toEqual(before);
+	});
+
+	it("rejects source metadata that matches FFmpeg but describes a different FFprobe build", async () => {
+		const root = await directory();
+		const sources = path.join(root, "sources");
+		await mkdir(sources);
+		const ffmpeg = path.join(root, "ffmpeg");
+		const ffprobe = path.join(root, "ffprobe");
+		const target = { platform: "linux", arch: "x64" };
+		const hashes = {};
+		for (const binary of [ffmpeg, ffprobe]) {
+			const name = path.basename(binary);
+			const body = "#!/bin/sh\nprintf 'GNU General Public License\\n'\n# " + name + "\n";
+			const sha256 = createHash("sha256").update(body).digest("hex");
+			hashes[name] = sha256;
+			await writeFile(binary, body);
+			await chmod(binary, 0o755);
+			await writeFile(binary + ".LICENSE", "license fixture");
+			await writeFile(binary + ".README", "source fixture");
+			await writeFile(
+				binary + ".distribution.json",
+				JSON.stringify({
+					schemaVersion: 1,
+					...target,
+					buildId: PINNED_BUILD_ID,
+					sha256,
+				}),
+			);
+		}
+		await writeFile(
+			path.join(sources, "build.json"),
+			JSON.stringify({
+				...target,
+				buildId: PINNED_BUILD_ID,
+				binaryHashes: { ffmpeg: hashes.ffmpeg, ffprobe: hashes.ffmpeg },
+			}),
+		);
+		expect(() => assertFfmpegSourceClearance({ ...target, ffmpeg, ffprobe, sources })).toThrow(
+			"The source bundle does not describe both executables.",
+		);
 	});
 
 	it("rejects a pre-existing non-Mac package before notice contents can imply clearance", async () => {

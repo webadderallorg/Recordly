@@ -35,6 +35,7 @@
     "!**/*.onnx",
     "!**/recordly-model.json",
     "!node_modules/ffmpeg-static/ffmpeg.sources/**",
+    "!node_modules/ffmpeg-static/ffmpeg.exe.sources/**",
     "!node_modules/ffmpeg-static/ffmpeg.ffprobe",
     "!electron/native/bin/**/whisper-bench*",
     "!electron/native/bin/**/whisper-quantize*",

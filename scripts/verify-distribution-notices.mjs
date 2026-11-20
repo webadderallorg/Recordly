@@ -1,12 +1,32 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { verifyFfmpegDistribution, verifyFfprobeDistribution } from "./ffmpeg-distribution.mjs";
+import { verifyFfmpegDistribution } from "./ffmpeg-distribution.mjs";
 import { assertFfmpegSourceClearance } from "./ffmpeg-source-clearance.mjs";
 
 export function verifyPackagedDistributionNotices(resourcesDir, binaryPath) {
 	const directory = path.join(resourcesDir, "licenses");
 	const manifest = JSON.parse(readFileSync(path.join(directory, "manifest.json"), "utf8"));
-	assertFfmpegSourceClearance({ platform: manifest.platform, arch: manifest.arch });
+	const { platform, arch } = manifest;
+	const metadata = path.join(directory, "ffmpeg", "ffmpeg");
+	const sources = path.join(directory, "ffmpeg", "sources");
+	const ffprobe =
+		platform === "win32"
+			? path.join(
+					path.dirname(binaryPath),
+					"../ffprobe-static/bin/win32",
+					arch,
+					"ffprobe.exe",
+				)
+			: path.join(path.dirname(binaryPath), "ffprobe-recordly");
+	assertFfmpegSourceClearance({
+		platform,
+		arch,
+		ffmpeg: binaryPath,
+		ffprobe,
+		metadata,
+		probeMetadata: path.join(directory, "ffprobe", "ffprobe"),
+		sources,
+	});
 	for (const file of [
 		"LICENSE.md",
 		"THIRD_PARTY_NOTICES.md",
@@ -31,21 +51,12 @@ export function verifyPackagedDistributionNotices(resourcesDir, binaryPath) {
 			readFileSync(path.join(directory, pkg.noticeDirectory, file));
 		}
 	}
-	verifyFfmpegDistribution(binaryPath, {
-		platform: manifest.platform,
-		arch: manifest.arch,
-		metadataPath: path.join(directory, "ffmpeg", "ffmpeg"),
-		sourcesPath: path.join(directory, "ffmpeg", "sources"),
-	});
-	if (manifest.platform === "win32") {
-		verifyFfprobeDistribution(
-			path.join(path.dirname(binaryPath), "../ffprobe-static/bin/win32/x64/ffprobe.exe"),
-			{
-				platform: manifest.platform,
-				arch: manifest.arch,
-				metadataPath: path.join(directory, "ffprobe", "ffprobe"),
-			},
-		);
-	}
+	if (platform === "darwin")
+		verifyFfmpegDistribution(binaryPath, {
+			platform,
+			arch,
+			metadataPath: metadata,
+			sourcesPath: sources,
+		});
 	return manifest;
 }

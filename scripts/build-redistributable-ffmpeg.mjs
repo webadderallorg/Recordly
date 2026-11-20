@@ -58,7 +58,7 @@ async function run(command, args, { cwd, env = process.env, log, timeout = 1_200
 	}
 }
 
-async function sourceArchive(source, cache) {
+export async function sourceArchive(source, cache) {
 	const target = path.join(cache, `${source.sha256}-${source.name}`);
 	try {
 		if (sha256(await fs.readFile(target)) === source.sha256) return target;
