@@ -49,20 +49,28 @@ project link is insufficient. Include any later modifications and build inputs
 in the corresponding-source artifact as well. Do not treat a green binary smoke
 test as proof that the source artifact was published.
 
-## Windows and Linux packaging is blocked
+## Windows and Linux x64 installers
 
-Windows and Linux installers are currently blocked by
-`scripts/ffmpeg-source-clearance.mjs`, both before packaging and when validating an
-existing package. Developer installs remain available, but the approved upstream
-binary checksums do not establish source clearance.
+Run `npm run build:ffmpeg-source` after installing Node dependencies and before
+packaging on the target operating system. This builds FFmpeg and FFprobe from
+the same FFmpeg 8.1.2, x264 and libvpx sources used for the macOS build.
+Assembly support is required. On Linux, install Bash, GCC and G++ (provided by
+`build-essential` on Ubuntu), make, binutils, NASM, diffutils, Perl and pkg-config.
+Windows requires MSYS2 with UCRT64 GCC, NASM, pkgconf and MSYS make, diffutils
+and Perl. Set `RECORDLY_MSYS2_ROOT` if it is not installed at `C:/msys64`.
+The temporary build tree is removed after the build. The build log is kept in
+`.tmp/ffmpeg-source-logs/`.
 
-Before enabling distribution for either platform, collect and verify the matching
-FFmpeg sources, sources for every statically linked dependency, notices, and build
-materials for the exact executable. Publish that complete corresponding-source
-bundle alongside the installer. A verified binary hash, upstream README, generic
-project link, or a newer source version does not replace that bundle. The packaging
-gate must continue to reject the target until its source bundle is reviewed and
-configured.
+The Windows build enables Media Foundation and Windows video acceleration APIs.
+Standalone FFmpeg builds no longer auto-detect additional codec libraries.
+Recordly's independent native capture and GPU export helpers are built separately.
+
+The installer and packaged smoke check both require the pinned archive hashes,
+build recipe, configuration, licenses and one build record matching both
+executables. The evidence is included in the package and the release workflow
+uploads it separately as a source ZIP. Developer downloads remain available for
+routine development and are rejected by packaging. Linux ARM64 packaging
+remains disabled until there is a validated source build for that target.
 
 For every platform, verify the actual compiled license and configuration of the
 release artifact. In particular, the official `b6.1.1` macOS arm64 binary contains

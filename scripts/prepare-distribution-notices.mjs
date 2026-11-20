@@ -258,13 +258,16 @@ export async function prepareDistributionNotices({
 		await walk(ffmpegSources, (file) =>
 			copy(file, path.join(outputDir, "ffmpeg/sources", path.relative(ffmpegSources, file))),
 		);
-	if (platform === "win32") {
-		const ffprobe = path.join(
-			projectDir,
-			"node_modules/ffprobe-static/bin/win32",
-			arch,
-			"ffprobe.exe",
-		);
+	if (platform === "win32" || platform === "linux") {
+		const ffprobe =
+			platform === "win32"
+				? path.join(
+						projectDir,
+						"node_modules/ffprobe-static/bin/win32",
+						arch,
+						"ffprobe.exe",
+					)
+				: path.join(path.dirname(ffmpeg), "ffprobe-recordly");
 		for (const extension of [".distribution.json", ".LICENSE", ".README"]) {
 			await copy(
 				`${ffprobe}${extension}`,
@@ -337,24 +340,28 @@ export default async function beforePack(context) {
 			arch,
 		});
 	}
-	assertFfmpegSourceClearance({ platform, arch });
-	const { ensureRedistributableFfmpeg, verifyFfmpegDistribution, verifyFfprobeDistribution } =
-		await import("./ffmpeg-distribution.mjs");
 	const binary = path.join(
 		projectDir,
 		"node_modules/ffmpeg-static",
 		platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
 	);
-	await ensureRedistributableFfmpeg({ root: projectDir, platform, arch });
-	verifyFfmpegDistribution(binary, { platform, arch });
-	if (platform === "win32") {
-		const ffprobe = path.join(
-			projectDir,
-			"node_modules/ffprobe-static/bin/win32",
-			arch,
-			"ffprobe.exe",
+	const ffprobe =
+		platform === "win32"
+			? path.join(projectDir, "node_modules/ffprobe-static/bin/win32", arch, "ffprobe.exe")
+			: path.join(path.dirname(binary), "ffprobe-recordly");
+	assertFfmpegSourceClearance({
+		platform,
+		arch,
+		ffmpeg: binary,
+		ffprobe,
+		sources: `${binary}.sources`,
+	});
+	if (platform === "darwin") {
+		const { ensureRedistributableFfmpeg, verifyFfmpegDistribution } = await import(
+			"./ffmpeg-distribution.mjs"
 		);
-		verifyFfprobeDistribution(ffprobe, { platform, arch });
+		await ensureRedistributableFfmpeg({ root: projectDir, platform, arch });
+		verifyFfmpegDistribution(binary, { platform, arch });
 	}
 	const { outputDir, manifest } = await prepareDistributionNotices({
 		projectDir,

@@ -18,6 +18,7 @@
 		"dev": "vite --config vite.config.ts",
 		"postinstall": "node scripts/postinstall.mjs",
 		"install:ffmpeg": "node scripts/install-ffmpeg-static.mjs",
+		"build:ffmpeg-source": "node scripts/install-pinned-ffmpeg.mjs",
 		"env:pull": "node scripts/pull-dev-env.mjs",
 		"build": "npm run build:platform-native-helpers && tsc && vite build --config vite.config.ts && npm run normalize:electron-main-cjs && npm run smoke:electron-main-cjs && electron-builder",
 		"lint": "biome lint .",
@@ -57,8 +58,6 @@
 		"email:preview": "vite --config vite.email.config.ts"
 	},
 	"dependencies": {
-		"@phosphor-icons/react": "^2.1.10",
-		"@solar-icons/react": "^2.3.0",
 		"@supabase/supabase-js": "^2.116.0",
 		"capturekit": "^1.0.13",
 		"electron-updater": "^6.8.9",
@@ -76,7 +75,9 @@
 		"@fix-webm-duration/fix": "^1.0.1",
 		"@heroui/react": "^3.2.6",
 		"@heroui/styles": "^3.2.6",
+		"@phosphor-icons/react": "^2.1.10",
 		"@playwright/test": "^1.63.0",
+		"@solar-icons/react": "^2.3.0",
 		"@tailwindcss/postcss": "^4.3.3",
 		"@types/gif.js": "^0.2.5",
 		"@types/node": "^25.0.3",
