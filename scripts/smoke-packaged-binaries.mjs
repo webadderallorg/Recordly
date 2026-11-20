@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { verifyFfmpegGifOptimization } from "./smoke-ffmpeg-gif.mjs";
 import { verifyPackagedDistributionNotices } from "./verify-distribution-notices.mjs";
 
 const projectRoot = process.cwd();
@@ -221,7 +222,7 @@ function getExpectedNativeHelperFiles(archTag) {
 	return [];
 }
 
-function verifyFfmpeg(unpackedRoot) {
+async function verifyFfmpeg(unpackedRoot) {
 	const binaryName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
 	const ffmpegPath = path.join(unpackedRoot, "node_modules", "ffmpeg-static", binaryName);
 
@@ -242,6 +243,8 @@ function verifyFfmpeg(unpackedRoot) {
 	}
 
 	console.log(output.split(/\r?\n/, 1)[0]);
+	await verifyFfmpegGifOptimization(ffmpegPath);
+	console.log("[packaged-smoke] Packaged FFmpeg optimized a test GIF.");
 	return notices;
 }
 
@@ -307,7 +310,7 @@ console.log(
 for (const unpackedRoot of unpackedRoots) {
 	console.log(`[packaged-smoke] root: ${relativePath(unpackedRoot)}`);
 	assertPackagedAppExecutable(unpackedRoot);
-	const target = verifyFfmpeg(unpackedRoot);
+	const target = await verifyFfmpeg(unpackedRoot);
 	verifyParakeetRuntime(unpackedRoot, target);
 	verifyNativeHelpers(unpackedRoot);
 }

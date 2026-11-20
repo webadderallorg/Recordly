@@ -5,10 +5,17 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { sourceArchive, MAC_SOURCE_ARCHIVES as sources } from "./build-redistributable-ffmpeg.mjs";
+import { MAC_SOURCE_ARCHIVES, sourceArchive } from "./build-redistributable-ffmpeg.mjs";
 
-export const PINNED_BUILD_ID = "recordly-ffmpeg-8.1.2-x264-libvpx-v1";
-export const PINNED_SOURCE_ARCHIVES = sources;
+export const PINNED_BUILD_ID = "recordly-ffmpeg-8.1.2-x264-libvpx-zlib-v2";
+export const PINNED_SOURCE_ARCHIVES = Object.freeze([
+	...MAC_SOURCE_ARCHIVES,
+	{
+		name: "zlib-1.4.tar.gz",
+		url: "https://zlib.net/fossils/zlib-1.4.tar.gz",
+		sha256: "02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584",
+	},
+]);
 export const PINNED_BUILD_FILES = [
 	"build-pinned-ffmpeg.sh",
 	"build-pinned-ffmpeg.mjs",
@@ -19,6 +26,7 @@ export const PINNED_BUILD_FILES = [
 	"FFmpeg-LICENSE.md",
 	"x264-COPYING",
 	"libvpx-LICENSE",
+	"zlib-LICENSE",
 	"ffmpeg-license.txt",
 	"ffprobe-license.txt",
 ];
@@ -155,9 +163,9 @@ export async function buildPinnedFfmpeg({ root, platform, arch, work }) {
 	const log = path.join(logDirectory, `${path.basename(work)}.log`);
 	const evidence = path.join(work, "evidence");
 	await fs.mkdir(evidence);
-	for (const [index, source] of sources.entries()) {
+	for (const [index, source] of PINNED_SOURCE_ARCHIVES.entries()) {
 		const archive = await sourceArchive(source, cache);
-		const directory = path.join(work, ["ffmpeg", "x264", "libvpx"][index]);
+		const directory = path.join(work, ["ffmpeg", "x264", "libvpx", "zlib"][index]);
 		await fs.mkdir(directory);
 		await run("tar", ["-xf", archive, "--strip-components=1", "-C", directory], {});
 		await fs.copyFile(archive, path.join(evidence, source.name));
@@ -190,6 +198,7 @@ export async function buildPinnedFfmpeg({ root, platform, arch, work }) {
 		["ffmpeg/LICENSE.md", "FFmpeg-LICENSE.md"],
 		["x264/COPYING", "x264-COPYING"],
 		["libvpx/LICENSE", "libvpx-LICENSE"],
+		["zlib/LICENSE", "zlib-LICENSE"],
 	]) {
 		await fs.copyFile(path.join(work, from), path.join(evidence, to));
 	}
@@ -197,7 +206,7 @@ export async function buildPinnedFfmpeg({ root, platform, arch, work }) {
 		buildId: PINNED_BUILD_ID,
 		platform,
 		arch,
-		sources,
+		sources: PINNED_SOURCE_ARCHIVES,
 		args,
 		binaryHashes,
 		dependencies,
