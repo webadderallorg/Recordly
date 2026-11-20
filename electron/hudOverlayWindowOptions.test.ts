@@ -9,11 +9,12 @@ describe("getHudOverlayTaskbarOptions", () => {
 		});
 	});
 
-	it("uses a non-activating macOS panel so HUD clicks do not raise Home", () => {
+	it("uses an auxiliary macOS panel so the HUD can join full-screen Spaces", () => {
 		expect(getHudOverlayTaskbarOptions("darwin")).toEqual({
 			skipTaskbar: true,
 			focusable: true,
 			type: "panel",
+			fullscreenable: false,
 		});
 	});
 

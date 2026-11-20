@@ -2,6 +2,7 @@ export interface HudOverlayTaskbarOptions {
 	skipTaskbar: boolean;
 	focusable: boolean;
 	type?: "panel";
+	fullscreenable?: boolean;
 }
 
 export function getHudOverlayTaskbarOptions(platform: NodeJS.Platform): HudOverlayTaskbarOptions {
@@ -14,6 +15,7 @@ export function getHudOverlayTaskbarOptions(platform: NodeJS.Platform): HudOverl
 		// non-activating panel so HUD controls leave the foreground app alone.
 		// Keep the panel focusable: disabling key focus routes clicks through
 		// macOS app activation and focuses the normal Home window instead.
-		...(platform === "darwin" ? { type: "panel" as const } : {}),
+		// The HUD is an auxiliary overlay in full-screen Spaces.
+		...(platform === "darwin" ? { type: "panel" as const, fullscreenable: false } : {}),
 	};
 }
