@@ -417,6 +417,19 @@
 	scrollbar-gutter: stable;
 }
 
+.onboarding-layout:is([data-onboarding-stage="permissions"], [data-onboarding-stage="upgrade"])
+	.onboarding-body {
+	scrollbar-gutter: stable both-edges;
+}
+
+.onboarding-layout[data-onboarding-stage="upgrade"] .onboarding-body-content {
+	max-width: 760px;
+}
+
+.onboarding-layout[data-onboarding-stage="upgrade"] .split-upgrade-copy {
+	padding: 0;
+}
+
 .onboarding-carousel-footer {
 	/* Production keeps this slot before sign-in makes the actions available. */
 	min-height: 64px;
@@ -429,7 +442,7 @@
 	}
 
 	[data-onboarding-preview-actions] {
-		/* Back and Skip can wrap as the primary action widens. Reserve both rows. */
+		/* Keep the same footer height when Upgrade moves Skip to the right. */
 		min-height: 92px;
 		align-content: flex-end;
 	}

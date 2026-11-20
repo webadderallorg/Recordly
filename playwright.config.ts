@@ -17,6 +17,9 @@ function rendererServer(serverPort: number, production: boolean) {
 			RECORDLY_VITE_CACHE_DIR: `node_modules/.vite-ui-${serverPort}`,
 			VITE_SUPABASE_URL: "https://auth.recordly.test",
 			VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_ui_test",
+			...(production
+				? { VITE_CLOUD_SHARE_ENDPOINT: "https://billing.recordly.test/api/upload" }
+				: {}),
 		},
 		command: `npx vite --host 127.0.0.1 --port ${serverPort} --strictPort`,
 		url: `http://127.0.0.1:${serverPort}`,

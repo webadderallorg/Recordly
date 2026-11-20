@@ -13,12 +13,21 @@ using the pulled endpoint publish to the production Recordly Cloud service.
 
 To publish to a local Worker, set
 `VITE_CLOUD_SHARE_ENDPOINT=http://localhost:8787/api/upload` in `.env`.
-`npm run env:pull` preserves that configured endpoint.
+`npm run env:pull` preserves that configured endpoint. Before starting Vite, unset
+`VITE_CLOUD_SHARE_ENDPOINT` in your shell and remove any conflicting value from
+`.env.local` or a mode-specific file such as `.env.development.local`. Those
+settings take precedence over `.env`.
 
 Production releases use the same Recordly Cloud endpoint. The service must be
 deployed and verified before release. Publishing requires the user's Recordly
 access token. No share API secret is exposed in the app. Hosted deployment and
 subscription operations are maintained with the separate private service.
+
+Under **Account settings → Plan & billing**, **Manage subscription** opens Stripe when the
+billing portal is available. If a Cloud account has no portal, as can happen with
+complimentary access, the same button explains that no portal is available and links
+to Recordly support by email. Plan details update automatically when Recordly regains
+focus.
 
 ## Publishing protocol
 

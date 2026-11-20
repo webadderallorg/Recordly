@@ -29,6 +29,7 @@ import {
 import type { CaptureArea } from "./ipc/types";
 import { nativeT } from "./nativeI18n";
 import { startOnboardingIntro } from "./onboardingIntro";
+import { permissionAccessoryWindowOwners } from "./permissionAccessoryWindowOwner";
 import { recordingEditorLoading } from "./recordingEditorLoading";
 import { outsideRecordingRects } from "./recordingFocus";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
@@ -1238,11 +1239,18 @@ export function getOnboardingWindow(): BrowserWindow | null {
 	return onboardingWindow && !onboardingWindow.isDestroyed() ? onboardingWindow : null;
 }
 
+function shouldHideDuringOnboarding(win: BrowserWindow, other: BrowserWindow): boolean {
+	return (
+		other !== win &&
+		other !== onboardingIntroWindow &&
+		!other.isDestroyed() &&
+		permissionAccessoryWindowOwners.get(other) !== win
+	);
+}
+
 function hideOtherOnboardingWindows(win: BrowserWindow) {
 	for (const other of BrowserWindow.getAllWindows()) {
-		if (other !== win && other !== onboardingIntroWindow && !other.isDestroyed()) {
-			other.hide();
-		}
+		if (shouldHideDuringOnboarding(win, other)) other.hide();
 	}
 }
 
@@ -1253,7 +1261,7 @@ function enforceOnboardingWindowExclusivity(win: BrowserWindow): void {
 	const watch = (other: BrowserWindow) => {
 		if (other === win || other.isDestroyed() || listeners.has(other)) return;
 		const hide = () => {
-			if (!win.isDestroyed() && other !== onboardingIntroWindow && !other.isDestroyed()) {
+			if (!win.isDestroyed() && shouldHideDuringOnboarding(win, other)) {
 				if (other.isVisible()) deferredWindows.add(other);
 				other.hide();
 			}
@@ -1319,10 +1327,13 @@ export function showOnboardingWindow(options?: {
 	preview?: boolean;
 	intro?: boolean;
 	returning?: boolean;
+	permissionsOnly?: boolean;
 }): BrowserWindow {
+	const permissionsOnly = options?.permissionsOnly === true;
 	const query = {
 		windowType: "onboarding",
 		...(options?.returning ? { returning: "1" } : {}),
+		...(permissionsOnly ? { permissionsOnly: "1" } : {}),
 		...(!app.isPackaged && typeof options?.preview === "boolean"
 			? { onboardingPreview: options.preview ? "1" : "0" }
 			: {}),
@@ -1384,6 +1395,7 @@ export function showOnboardingWindow(options?: {
 		bringOnboardingWindowForward(win);
 	};
 	const playIntro =
+		!permissionsOnly &&
 		(process.platform === "darwin" || process.platform === "win32") &&
 		(options?.intro || (!app.isPackaged && options?.preview));
 	if (playIntro) {

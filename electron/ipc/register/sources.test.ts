@@ -10,24 +10,26 @@ const mocks = vi.hoisted(() => ({
 	recording: false,
 	selected: null as SelectedSource | null,
 	exec: vi.fn(),
-	windows: vi.fn(),
-	writeAppSetting: vi.fn(),
 	setHudRecordingPreparationActive: vi.fn(),
+	showOnboardingWindow: vi.fn(),
 }));
 vi.mock("electron", () => ({
 	ipcMain: {
 		handle: (name: string, handler: (...args: unknown[]) => unknown) =>
 			mocks.handlers.set(name, handler),
 	},
-	app: { getName: () => "Recordly", focus: vi.fn() },
-	BrowserWindow: { getAllWindows: mocks.windows },
+	app: {
+		getName: () => "Recordly",
+		focus: vi.fn(),
+	},
+	BrowserWindow: { getAllWindows: () => [] },
 	desktopCapturer: { getSources: mocks.sources },
 }));
 vi.mock("node:child_process", () => ({ execFile: mocks.exec }));
 vi.mock("node:util", () => ({ promisify: () => mocks.exec }));
-vi.mock("../../appSettingsStore", () => ({ writeAppSetting: mocks.writeAppSetting }));
 vi.mock("../../windows", () => ({
 	setHudRecordingPreparationActive: mocks.setHudRecordingPreparationActive,
+	showOnboardingWindow: mocks.showOnboardingWindow,
 }));
 vi.mock("../constants", () => ({ ALLOW_RECORDLY_WINDOW_CAPTURE: false }));
 vi.mock("../cursor/bounds", () => ({ stopWindowBoundsCapture: vi.fn() }));
@@ -64,7 +66,6 @@ beforeEach(() => {
 	mocks.handlers.clear();
 	mocks.recording = false;
 	mocks.selected = null;
-	mocks.windows.mockReturnValue([]);
 	mocks.validate.mockImplementation(async (source) => source);
 	mocks.exec.mockRejectedValue(new Error("wmctrl is not installed"));
 	Object.defineProperty(process, "platform", { value: "linux" });
@@ -102,37 +103,22 @@ function pickerFixture() {
 			mocks.handlers.get("select-source")!({ sender: win.webContents }, source),
 	};
 }
-for (const operatingSystem of ["darwin", "win32", "linux"]) {
-	it(`opens recording onboarding from the HUD on ${operatingSystem}`, () => {
-		Object.defineProperty(process, "platform", { value: operatingSystem });
-		const picker = pickerFixture();
-		const send = vi.fn();
-		const destroyedSend = vi.fn();
-		mocks.windows.mockReturnValue([
-			{ isDestroyed: () => false, webContents: { send } },
-			{ isDestroyed: () => true, webContents: { send: destroyedSend } },
-		]);
-		mocks.handlers.get("show-recording-permissions")!();
-		expect(picker.createEditor).toHaveBeenCalledOnce();
-		expect(mocks.writeAppSetting).toHaveBeenCalledWith(
-			"recordly.onboarding.permissionsRequested",
-			true,
-		);
-		expect(mocks.setHudRecordingPreparationActive).toHaveBeenCalledWith(false);
-		expect(send).toHaveBeenCalledWith("recording-permissions-requested");
-		expect(destroyedSend).not.toHaveBeenCalled();
-	});
-	it(`keeps recording onboarding closed during active capture on ${operatingSystem}`, () => {
-		Object.defineProperty(process, "platform", { value: operatingSystem });
-		const picker = pickerFixture();
-		mocks.recording = true;
-		mocks.handlers.get("show-recording-permissions")!();
-		expect(picker.createEditor).not.toHaveBeenCalled();
-		expect(mocks.writeAppSetting).not.toHaveBeenCalled();
-		expect(mocks.setHudRecordingPreparationActive).not.toHaveBeenCalled();
-		expect(mocks.windows).not.toHaveBeenCalled();
-	});
-}
+it("opens only Permissions when recording needs macOS permissions", () => {
+	Object.defineProperty(process, "platform", { value: "darwin" });
+	const { createEditor } = pickerFixture();
+	mocks.handlers.get("show-recording-permissions")!();
+	expect(mocks.showOnboardingWindow).toHaveBeenCalledExactlyOnceWith({ permissionsOnly: true });
+	expect(createEditor).not.toHaveBeenCalled();
+	expect(mocks.setHudRecordingPreparationActive).toHaveBeenCalledExactlyOnceWith(false);
+});
+it("leaves the recording controls alone during active capture", () => {
+	const { createEditor } = pickerFixture();
+	mocks.recording = true;
+	mocks.handlers.get("show-recording-permissions")!();
+	expect(createEditor).not.toHaveBeenCalled();
+	expect(mocks.showOnboardingWindow).not.toHaveBeenCalled();
+	expect(mocks.setHudRecordingPreparationActive).not.toHaveBeenCalled();
+});
 it("never enumerates or previews Wayland sources before recording", async () => {
 	vi.stubEnv("XDG_SESSION_TYPE", "wayland");
 	expect(await getDesktopSources({ types: ["screen", "window"] })).toEqual([

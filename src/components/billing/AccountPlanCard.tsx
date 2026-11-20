@@ -1,13 +1,19 @@
 import { Button, Card } from "@heroui/react";
+import { useId, useState } from "react";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
+import { openExternalLink } from "@/components/feedback/FeedbackLinks";
 import { useI18n } from "@/contexts/I18nContext";
 import { useBilling } from "./BillingProvider";
 import { PlusBadge } from "./PlusBadge";
 import { UpgradeButton } from "./UpgradeButton";
 
+const supportUrl = "mailto:support@recordly.dev";
+
 /** Account controls use the same verified plan and portal flow as the Cloud screen. */
 export function AccountPlanCard() {
 	const { t, locale } = useI18n();
+	const portalHelpId = useId();
+	const [showPortalHelp, setShowPortalHelp] = useState(false);
 	const {
 		status,
 		loading,
@@ -24,6 +30,14 @@ export function AccountPlanCard() {
 	const pending = awaitingCheckout && !plus;
 	const periodEnd = billing?.currentPeriodEnd;
 	const disabled = loading || Boolean(busy);
+	const portalAvailable = billing?.portalAvailable === true;
+	const showManage = plus || portalAvailable;
+	const canUpgrade = !needsSignIn && billing?.checkoutAvailable && !plus && !pending;
+	const canRetry = !needsSignIn && !billing && !loading;
+	const [portalHelpBefore, portalHelpAfter] = t(
+		"billing.noAccountPortal",
+		"No billing portal is available for this account. If you’re being charged, {{support}}.",
+	).split("{{support}}");
 	return (
 		<Card
 			className="account-plan-card w-full gap-3 rounded-lg border border-separator p-4 shadow-none"
@@ -52,7 +66,7 @@ export function AccountPlanCard() {
 								? t("billing.signIn", "Sign in to continue")
 								: t(
 										"billing.planUnavailable",
-										"We couldn’t load your plan. Refresh to try again.",
+										"We couldn’t load your plan. Please try again.",
 									)}
 				</p>
 				{plus && periodEnd && (
@@ -78,14 +92,6 @@ export function AccountPlanCard() {
 						)}
 					</p>
 				)}
-				{plus && periodEnd && !billing?.portalAvailable && (
-					<p>
-						{t(
-							"billing.portalUnavailable",
-							"Subscription management is not available yet. Try refreshing your plan.",
-						)}
-					</p>
-				)}
 				{pending && (
 					<p role="status">
 						{t(
@@ -98,43 +104,73 @@ export function AccountPlanCard() {
 					<p role="alert" className="text-danger">
 						{t(
 							"billing.connectionError",
-							"We couldn’t connect to secure billing. Try again or refresh your plan, or contact support if the problem continues.",
+							"We couldn’t connect to secure billing. Try again, or contact support if the problem continues.",
 						)}{" "}
 						<ErrorReportButton error={error} context="billing" />
 					</p>
 				)}
 			</Card.Content>
-			<Card.Footer className="flex-wrap justify-start gap-2">
-				{needsSignIn ? (
-					<Button size="sm" variant="secondary" onPress={openPricing}>
-						{t("billing.signIn", "Sign in to continue")}
-					</Button>
-				) : billing?.portalAvailable ? (
-					<Button
-						size="sm"
-						variant="secondary"
-						isDisabled={disabled}
-						isPending={busy === "portal"}
-						onPress={() => void startBilling("portal")}
-					>
-						{t("billing.manage", "Manage subscription")}
-					</Button>
-				) : null}
-				{!needsSignIn && billing?.checkoutAvailable && !plus && !pending && (
-					<UpgradeButton />
-				)}
-				<Button
-					size="sm"
-					variant="ghost"
-					isDisabled={disabled}
-					isPending={loading}
-					onPress={() => void refresh()}
-				>
-					{pending
-						? t("billing.checkPayment", "Check payment status")
-						: t("billing.refreshPlan", "Refresh plan")}
-				</Button>
-			</Card.Footer>
+			{(needsSignIn || showManage || canUpgrade || pending || canRetry) && (
+				<Card.Footer className="flex-wrap justify-start gap-2">
+					{needsSignIn ? (
+						<Button size="sm" variant="secondary" onPress={openPricing}>
+							{t("billing.signIn", "Sign in to continue")}
+						</Button>
+					) : showManage ? (
+						<Button
+							size="sm"
+							variant="secondary"
+							isDisabled={disabled}
+							isPending={busy === "portal"}
+							aria-controls={portalAvailable ? undefined : portalHelpId}
+							aria-expanded={portalAvailable ? undefined : showPortalHelp}
+							onPress={() => {
+								if (portalAvailable) void startBilling("portal");
+								else setShowPortalHelp((show) => !show);
+							}}
+						>
+							{t("billing.manage", "Manage subscription")}
+						</Button>
+					) : null}
+					{canUpgrade && <UpgradeButton />}
+					{!needsSignIn && showManage && !portalAvailable && (
+						<p
+							id={portalHelpId}
+							hidden={!showPortalHelp}
+							className="w-full text-xs leading-relaxed text-muted"
+						>
+							{portalHelpBefore}
+							<a
+								href={supportUrl}
+								className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-current"
+								onClick={(event) => {
+									event.preventDefault();
+									void openExternalLink(
+										supportUrl,
+										t("editor.feedback.openFailed", "Failed to open link."),
+									);
+								}}
+							>
+								{t("billing.contactSupport", "contact support")}
+							</a>
+							{portalHelpAfter}
+						</p>
+					)}
+					{(pending || canRetry) && (
+						<Button
+							size="sm"
+							variant="ghost"
+							isDisabled={disabled}
+							isPending={loading}
+							onPress={() => void refresh()}
+						>
+							{pending
+								? t("billing.checkPayment", "Check payment status")
+								: t("ui.retry", "Retry")}
+						</Button>
+					)}
+				</Card.Footer>
+			)}
 		</Card>
 	);
 }

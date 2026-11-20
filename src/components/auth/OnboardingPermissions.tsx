@@ -18,12 +18,14 @@ export function OnboardingPermissions({
 	onBack,
 	onFinish,
 	preview = false,
+	persistRequest = true,
 	showFooter = true,
 	onReadyChange,
 }: {
 	onBack?: () => void;
-	onFinish: () => void;
+	onFinish?: () => void;
 	preview?: boolean;
+	persistRequest?: boolean;
 	showFooter?: boolean;
 	onReadyChange?: (ready: boolean) => void;
 }) {
@@ -44,8 +46,9 @@ export function OnboardingPermissions({
 	const refreshing = useRef(false);
 	const canSimulate = import.meta.env.DEV && preview;
 	useEffect(() => {
-		if (!preview) saveAppSetting("recordly.onboarding.permissionsRequested", true);
-	}, [preview]);
+		if (!preview && persistRequest)
+			saveAppSetting("recordly.onboarding.permissionsRequested", true);
+	}, [preview, persistRequest]);
 	// Preview resets only the displayed state; macOS remains the source of actual grants.
 	const granted = {
 		screen: screenGranted && !(canSimulate && simulatedMissing.screen),
@@ -150,7 +153,7 @@ export function OnboardingPermissions({
 	};
 	if (platform === "checking") return <div role="status">{t("checking")}</div>;
 
-	const footer = showFooter && (
+	const footer = showFooter && onFinish && (
 		<OnboardingFooter>
 			{onBack ? (
 				<Button variant="ghost" aria-label={t("backToAccount")} onPress={onBack}>

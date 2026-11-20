@@ -30,12 +30,16 @@ import { type CachedCloudUsage, readUsageCache, writeUsageCache } from "./usageC
 type Status = ReturnType<typeof parseCloudBillingStatus>;
 type Catalog = ReturnType<typeof parseCloudBillingCatalog>;
 type AccountOwner = { userId: string | undefined };
+const PUBLIC_BILLING_ENDPOINT = "https://videos.recordly.dev/api/upload";
+const usePublicPreviewCatalog =
+	import.meta.env.DEV && !import.meta.env.VITE_CLOUD_SHARE_ENDPOINT?.trim();
 
 type LegacyUsage = { recordings: number; storageBytes: number };
 
 interface BillingContextValue {
 	status: Status | null;
 	catalog: Catalog | null;
+	previewCatalog: Catalog | null;
 	catalogLoading: boolean;
 	fallbackUsage: LegacyUsage | null;
 	usagePreview: CachedCloudUsage | null;
@@ -104,6 +108,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 	const [status, setStatus] = useState<Status | null>(null);
 	const [statusOwner, setStatusOwner] = useState<AccountOwner | null>(null);
 	const [catalog, setCatalog] = useState<Catalog | null>(null);
+	const [previewCatalog, setPreviewCatalog] = useState<Catalog | null>(null);
 	const [catalogLoading, setCatalogLoading] = useState(false);
 	const [fallbackUsage, setFallbackUsage] = useState<LegacyUsage | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -217,6 +222,11 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 				catalogRequest.current = pending;
 				setCatalogLoading(true);
 				pending.promise = (async () => {
+					const currentCatalog = () =>
+						mounted.current &&
+						currentAuthKey.current === key &&
+						currentAccountKey.current === accountKey &&
+						catalogRequest.current === pending;
 					try {
 						const result = parseCloudBillingCatalog(
 							await readCloudBilling(
@@ -226,25 +236,26 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 								fresh,
 							),
 						);
-						if (
-							!mounted.current ||
-							currentAuthKey.current !== key ||
-							currentAccountKey.current !== accountKey ||
-							catalogRequest.current !== pending
-						)
-							return;
+						if (!currentCatalog()) return;
 						setCatalog(result);
+						setPreviewCatalog(null);
 						setCatalogError(null);
 					} catch (failure) {
-						if (
-							!mounted.current ||
-							currentAuthKey.current !== key ||
-							currentAccountKey.current !== accountKey ||
-							catalogRequest.current !== pending
-						)
-							return;
+						if (!currentCatalog()) return;
 						setCatalog(null);
 						setCatalogError(errorMessage(failure));
+						if (usePublicPreviewCatalog) {
+							// A dev build without a local billing worker can display the public
+							// offer, but must never use it to authorize checkout.
+							try {
+								const preview = parseCloudBillingCatalog(
+									await readCloudBilling(PUBLIC_BILLING_ENDPOINT, "catalog"),
+								);
+								if (currentCatalog()) setPreviewCatalog(preview);
+							} catch {
+								if (currentCatalog()) setPreviewCatalog(null);
+							}
+						}
 					} finally {
 						if (catalogRequest.current === pending) {
 							catalogRequest.current = null;
@@ -517,6 +528,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 			value={{
 				status: verifiedStatus,
 				catalog,
+				previewCatalog,
 				catalogLoading,
 				fallbackUsage: verifiedFallbackUsage,
 				usagePreview,

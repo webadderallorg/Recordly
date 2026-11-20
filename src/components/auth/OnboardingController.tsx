@@ -14,8 +14,8 @@ export function OnboardingController({
 	user,
 	configured,
 	callbackError,
+	authenticationVersion,
 	standalone = false,
-	inlineRecordingStart = false,
 	authCallbackPending = false,
 }: {
 	requestNonce: number;
@@ -23,8 +23,8 @@ export function OnboardingController({
 	user: User | null;
 	configured: boolean;
 	callbackError?: string;
+	authenticationVersion?: number;
 	standalone?: boolean;
-	inlineRecordingStart?: boolean;
 	authCallbackPending?: boolean;
 }) {
 	// The development tour is optional. Native permission requests and explicit
@@ -135,16 +135,6 @@ export function OnboardingController({
 		if (!loadAppSetting<boolean>(SEEN_KEY)) setOpen(true);
 	}, [ready, user, standalone, openWindow, preview]);
 
-	useEffect(
-		() =>
-			window.electronAPI.onRecordingPermissionsRequested?.(() => {
-				saveAppSetting("recordly.onboarding.permissionsRequested", true);
-				setStartWithPermissions(true);
-				openWindow(false);
-			}),
-		[openWindow],
-	);
-
 	const finishPermissions = () => {
 		if ((!preview && (!user || authCallbackPending)) || finishingPermissions.current) return;
 		finishingPermissions.current = true;
@@ -185,14 +175,11 @@ export function OnboardingController({
 		if (!preview) saveAppSetting(SEEN_KEY, true);
 		finishPermissions();
 	};
-	const showRecordingStart = inlineRecordingStart && !preview;
-
 	// Wait for session restoration before choosing a page on a permission restart.
 	if (standalone && startWithPermissions && !preview && !ready) return null;
 
 	if (
 		startWithPermissions &&
-		!showRecordingStart &&
 		!preview &&
 		user &&
 		loadAppSetting<boolean>(SEEN_KEY) === true &&
@@ -230,9 +217,6 @@ export function OnboardingController({
 	return standalone || inlineFallback ? (
 		<RecordlySignInDialog
 			onboarding
-			recordingStart={
-				showRecordingStart ? { disabled: authCallbackPending, onPress: finish } : undefined
-			}
 			finishDisabled={!preview && authCallbackPending}
 			preview={preview}
 			startWithPermissions={startWithPermissions}
@@ -247,6 +231,7 @@ export function OnboardingController({
 			user={user}
 			configured={configured}
 			callbackError={callbackError}
+			authenticationVersion={authenticationVersion}
 			onAuthenticated={finish}
 			onWindowClose={
 				standalone

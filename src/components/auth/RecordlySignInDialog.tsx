@@ -2,8 +2,10 @@ import { Alert, Button, Description, Modal } from "@heroui/react";
 import { ArrowLeft, X } from "@phosphor-icons/react";
 import type { User } from "@supabase/supabase-js";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { BillingProvider } from "@/components/billing/BillingProvider";
 import { LegalLinks } from "@/components/billing/LegalLinks";
+import { SplitPricingContent } from "@/components/billing/SplitPricingModal";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { SignOut } from "@/components/ui/icons";
 import { RecordlyDemoVideo } from "@/components/ui/RecordlyDemoVideo";
@@ -26,12 +28,14 @@ import {
 	OnboardingHeroTitle,
 	OnboardingLayout,
 	OnboardingPrimaryAction,
+	type OnboardingStage,
 } from "./OnboardingLayout";
 import { OnboardingPermissions } from "./OnboardingPermissions";
 import { OnboardingSoundtrack } from "./OnboardingSoundtrack";
 import { RecordlySignInFields, SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS } from "./RecordlySignInFields";
 
 const MotionDialog = motion.create(Modal.Dialog);
+const pageIndex: Record<OnboardingStage, number> = { account: 0, permissions: 1, upgrade: 2 };
 
 export type SignInReason = "account" | "share" | "reauthenticate";
 
@@ -97,9 +101,10 @@ export function RecordlySignInDialog({
 }: Props) {
 	const { t } = useI18n();
 	const ot = useScopedT("onboarding");
+	const [upgradeSignIn, setUpgradeSignIn] = useState<{ authenticationVersion: number }>();
 	// A cached user or background refresh must not dismiss a requested sign-in.
 	// Only a completed interactive sign-in can finish reauthentication.
-	const reauthenticating = reason === "reauthenticate";
+	const reauthenticating = reason === "reauthenticate" || Boolean(upgradeSignIn);
 	const user = reauthenticating ? null : signedInUser;
 	const showRecordingStart = Boolean(user && recordingStart);
 	const [directSignInComplete, setDirectSignInComplete] = useState(false);
@@ -111,28 +116,39 @@ export function RecordlySignInDialog({
 		}
 		openedAuthenticationVersion.current ??= authenticationVersion;
 		if (
-			reauthenticating &&
+			reason === "reauthenticate" &&
 			signedInUser &&
 			(authenticationVersion > openedAuthenticationVersion.current || directSignInComplete)
 		)
 			onAuthenticated();
-	}, [
-		open,
-		reauthenticating,
-		signedInUser,
-		authenticationVersion,
-		directSignInComplete,
-		onAuthenticated,
-	]);
+	}, [open, reason, signedInUser, authenticationVersion, directSignInComplete, onAuthenticated]);
 	const awaitingSignIn = useRef(false);
 	const wide = onboarding || variant === "wide";
 	const tour = onboarding && !signInOnly && !recordingStart;
-	const [showPermissions, setShowPermissions] = useState(false);
+	const [{ page, direction }, setPage] = useState<{ page: OnboardingStage; direction: number }>({
+		page: "account",
+		direction: 1,
+	});
+	const goTo = useCallback((next: OnboardingStage) => {
+		setPage((current) =>
+			current.page === next
+				? current
+				: { page: next, direction: pageIndex[next] > pageIndex[current.page] ? 1 : -1 },
+		);
+	}, []);
+	const navigateTo = (next: OnboardingStage) => {
+		if (next !== "account") setUpgradeSignIn(undefined);
+		goTo(next);
+	};
 	const [permissionsReady, setPermissionsReady] = useState(false);
 	const requiresSignIn = ((onboarding && !preview) || requireSignIn) && !user;
 	const opened = useRef(false);
 	const canViewPermissions = tour && (Boolean(user) || preview);
-	const permissions = canViewPermissions && showPermissions;
+	const stage = canViewPermissions ? page : "account";
+	const permissions = stage === "permissions";
+	const upgrade = stage === "upgrade";
+	const canViewUpgrade = canViewPermissions && permissionsReady;
+	const backPage = upgrade ? "permissions" : "account";
 	const [email, setEmail] = useState("");
 	const consent = { legalAccepted: true };
 
@@ -183,28 +199,31 @@ export function RecordlySignInDialog({
 	useEffect(() => {
 		if (!open) {
 			opened.current = false;
-			setShowPermissions(false);
+			goTo("account");
+			setPermissionsReady(false);
 			awaitingSignIn.current = false;
+			setUpgradeSignIn(undefined);
 			setDirectSignInComplete(false);
 			setBusy(undefined);
 			setMessage(undefined);
 			setReportDiagnostic(undefined);
 			setLinkSent(false);
 		}
-	}, [open]);
+	}, [open, goTo]);
 
 	useEffect(() => {
 		if (!open || opened.current) return;
 		opened.current = true;
-		if (tour && user && !preview) setShowPermissions(true);
-	}, [open, tour, user, preview]);
+		if (tour && user && !preview) goTo("permissions");
+	}, [open, tour, user, preview, goTo]);
+
+	const hasSignedInUser = Boolean(signedInUser);
+	useEffect(() => {
+		if (open && tour && startWithPermissions && hasSignedInUser) goTo("permissions");
+	}, [open, tour, startWithPermissions, hasSignedInUser, goTo]);
 
 	useEffect(() => {
-		if (open && tour && startWithPermissions && user) setShowPermissions(true);
-	}, [open, tour, startWithPermissions, user]);
-
-	useEffect(() => {
-		if (!open || recordingStart) return;
+		if (!open || recordingStart || reauthenticating) return;
 		if (user && !tour) {
 			onAuthenticated();
 			return;
@@ -215,12 +234,26 @@ export function RecordlySignInDialog({
 			setMessage(undefined);
 			setReportDiagnostic(undefined);
 			if (tour) {
-				// Restoring a cached session must not jump an optional tour away
-				// from its account page. The real flow still advances after sign-in.
-				if (!preview) setShowPermissions(true);
+				if (!preview) goTo("permissions");
 			} else onAuthenticated();
 		}
-	}, [open, user, onAuthenticated, tour, preview, recordingStart]);
+	}, [open, user, onAuthenticated, tour, preview, goTo, recordingStart, reauthenticating]);
+
+	useEffect(() => {
+		if (
+			!open ||
+			!upgradeSignIn ||
+			!signedInUser ||
+			(!directSignInComplete && authenticationVersion <= upgradeSignIn.authenticationVersion)
+		)
+			return;
+		awaitingSignIn.current = false;
+		setDirectSignInComplete(false);
+		setUpgradeSignIn(undefined);
+		setMessage(undefined);
+		setReportDiagnostic(undefined);
+		goTo("upgrade");
+	}, [open, upgradeSignIn, signedInUser, directSignInComplete, authenticationVersion, goTo]);
 
 	const run = async (label: SignInAction, action: () => Promise<unknown>) => {
 		setBusy(label);
@@ -444,7 +477,7 @@ export function RecordlySignInDialog({
 							</Alert.Content>
 						</Alert>
 					) : null}
-					{!configured && !user && (
+					{!configured && !user && (!(onboarding && preview) || upgradeSignIn) && (
 						<Description role="status">{t("editor.cloud.unavailable")}</Description>
 					)}
 				</div>
@@ -477,9 +510,9 @@ export function RecordlySignInDialog({
 							onboarding
 								? showRecordingStart
 									? "ready"
-									: permissions
-										? "permissions"
-										: "login"
+									: stage === "account"
+										? "login"
+										: stage
 								: undefined
 						}
 						className={
@@ -497,8 +530,9 @@ export function RecordlySignInDialog({
 						)}
 						{onboarding ? (
 							<OnboardingLayout
-								stage={permissions ? "permissions" : "account"}
+								stage={stage}
 								canViewPermissions={canViewPermissions}
+								canViewUpgrade={tour ? canViewUpgrade : undefined}
 								showNavigation={!signInOnly && !recordingStart}
 								footer={
 									canViewPermissions && (
@@ -514,12 +548,21 @@ export function RecordlySignInDialog({
 												<Button
 													variant="ghost"
 													className={
-														permissions ? undefined : "invisible"
+														stage === "account"
+															? "invisible"
+															: undefined
 													}
-													aria-hidden={!permissions || undefined}
-													isDisabled={!permissions}
-													aria-label={ot("backToAccount")}
-													onPress={() => setShowPermissions(false)}
+													aria-hidden={stage === "account" || undefined}
+													isDisabled={stage === "account"}
+													aria-label={
+														backPage === "permissions"
+															? ot(
+																	"backToPermissions",
+																	"Back to permissions",
+																)
+															: ot("backToAccount")
+													}
+													onPress={() => navigateTo(backPage)}
 												>
 													<ArrowLeft size={16} /> {ot("back")}
 												</Button>
@@ -532,54 +575,72 @@ export function RecordlySignInDialog({
 													</Button>
 												)}
 											</div>
-											<OnboardingPrimaryAction
-												isDisabled={
-													permissions
-														? !permissionsReady || finishDisabled
-														: disabled
-												}
-												onPress={() => {
-													if (permissions) {
-														if (permissionsReady && !finishDisabled)
-															onAuthenticated();
-													} else setShowPermissions(true);
-												}}
-											>
-												{ot(permissions ? "startRecording" : "continue")}
-											</OnboardingPrimaryAction>
+											{upgrade ? (
+												<Button
+													variant="ghost"
+													isDisabled={finishDisabled}
+													onPress={onAuthenticated}
+												>
+													{ot(
+														"skipAndStartRecording",
+														"Skip and start recording",
+													)}
+												</Button>
+											) : (
+												<OnboardingPrimaryAction
+													isDisabled={
+														permissions ? !permissionsReady : disabled
+													}
+													onPress={() => {
+														if (permissions && permissionsReady)
+															navigateTo("upgrade");
+														else if (!permissions)
+															navigateTo("permissions");
+													}}
+												>
+													{ot("next", "Next")}
+												</OnboardingPrimaryAction>
+											)}
 										</OnboardingFooter>
 									)
 								}
-								onStageChange={(stage) =>
-									setShowPermissions(
-										stage === "permissions" && canViewPermissions,
-									)
-								}
+								onStageChange={navigateTo}
 							>
 								<AnimatePresence
 									initial={false}
-									mode="sync"
-									custom={permissions ? 1 : -1}
+									mode="popLayout"
+									custom={direction}
 								>
 									<motion.div
-										key={permissions ? "permissions" : "account"}
-										custom={permissions ? 1 : -1}
+										key={stage}
+										custom={direction}
 										variants={carouselMotion}
 										initial="enter"
 										animate="center"
 										exit="exit"
 										transition={transition}
-										className={`col-start-1 row-start-1 flex min-h-0 flex-col ${permissions ? "h-full" : ""}`}
+										className={`col-start-1 row-start-1 flex min-h-0 flex-col ${stage !== "account" ? "h-full" : ""}`}
 									>
-										{permissions ? (
+										{upgrade ? (
+											<OnboardingBody>
+												<BillingProvider>
+													<SplitPricingContent
+														animateHeader={false}
+														onSignIn={() => {
+															setDirectSignInComplete(false);
+															setUpgradeSignIn({
+																authenticationVersion,
+															});
+															goTo("account");
+														}}
+													/>
+												</BillingProvider>
+											</OnboardingBody>
+										) : permissions ? (
 											<OnboardingPermissions
 												showFooter={false}
 												onReadyChange={setPermissionsReady}
 												preview={preview}
-												onBack={() => setShowPermissions(false)}
-												onFinish={() => {
-													if (canViewPermissions) onAuthenticated();
-												}}
 											/>
 										) : (
 											signInContent

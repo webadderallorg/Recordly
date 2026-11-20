@@ -16,7 +16,7 @@ async function captureSignInReports(page: Page) {
 }
 
 for (const returning of [false, true]) {
-	test(`Windows ${returning ? "returning" : "first-run"} sign-in waits for Start recording`, async ({
+	test(`Windows ${returning ? "returning sign-in waits for Start recording" : "first-run sign-in opens the optional upgrade"}`, async ({
 		page,
 	}) => {
 		test.slow();
@@ -54,8 +54,24 @@ for (const returning of [false, true]) {
 		await expect(login.getByText(/^Enter code sent to /)).toBeVisible();
 		await completeSupabaseSignIn(page);
 
-		const start = page.getByRole("button", { name: "Start recording", exact: true });
 		const documentRoot = page.locator("html");
+		if (!returning) {
+			await expect(login).toHaveAttribute("data-onboarding-state", "permissions");
+			await expect(login.getByText("You’re signed in and ready to continue.")).toBeVisible();
+			await expect(documentRoot).not.toHaveAttribute("data-hud-opened");
+			await login.getByRole("button", { name: "Next", exact: true }).click();
+			await expect(login).toHaveAttribute("data-onboarding-state", "upgrade");
+			await expect(artwork).toHaveAttribute("data-layout-check", "same");
+			await expect(documentRoot).not.toHaveAttribute("data-hud-opened");
+			await login
+				.getByRole("button", { name: "Skip and start recording", exact: true })
+				.click();
+			await expect(documentRoot).toHaveAttribute("data-hud-opened", "true");
+			await expect(documentRoot).not.toHaveAttribute("data-dashboard-opened");
+			return;
+		}
+
+		const start = page.getByRole("button", { name: "Start recording", exact: true });
 		await expect(start).toBeEnabled();
 		await expect(page.getByText("You’re signed in and ready to continue.")).toBeVisible();
 		await expect(login).toHaveAttribute("data-onboarding-state", "ready");

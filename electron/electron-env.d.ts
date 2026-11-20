@@ -1039,7 +1039,6 @@ interface Window {
 			error?: string;
 		}>;
 		showRecordingPermissions: () => Promise<void>;
-		onRecordingPermissionsRequested: (callback: () => void) => () => void;
 		showRecordingHud: () => Promise<void>;
 		showOnboardingWindow: (options?: { preview?: boolean }) => Promise<boolean>;
 		replayOnboardingIntro?: () => Promise<boolean>;

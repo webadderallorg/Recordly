@@ -113,29 +113,48 @@ function ReturningOnboarding({
 	return null;
 }
 
-export default function OnboardingWindow() {
+function AccountOnboarding() {
 	const auth = useRecordlyAuth();
+	const returning = new URLSearchParams(window.location.search).get("returning") === "1";
 	const [platform, setPlatform] = useState<string>();
 	useEffect(() => {
-		void window.electronAPI.getPlatform().then(setPlatform, () => setPlatform("darwin"));
-	}, []);
+		if (returning)
+			void window.electronAPI.getPlatform().then(setPlatform, () => setPlatform("darwin"));
+	}, [returning]);
 	const inlineRecordingStart = platform === "win32" || platform === "linux";
-	const returning = new URLSearchParams(window.location.search).get("returning") === "1";
+	if (returning && !platform) return null;
+	return returning ? (
+		<ReturningOnboarding auth={auth} inlineRecordingStart={inlineRecordingStart} />
+	) : (
+		<OnboardingController
+			requestNonce={0}
+			ready={!auth.loading}
+			user={auth.user}
+			configured={auth.configured}
+			callbackError={auth.callbackError}
+			authenticationVersion={auth.callbackVersion}
+			authCallbackPending={auth.callbackActivity.pending}
+			standalone
+		/>
+	);
+}
+
+export default function OnboardingWindow() {
+	const permissionsOnly =
+		new URLSearchParams(window.location.search).get("permissionsOnly") === "1";
+	const close = () => void window.electronAPI.closeOnboardingWindow();
 	return (
 		<div className="relative h-screen w-screen overflow-hidden bg-editor-bg text-foreground">
-			{!platform ? null : returning ? (
-				<ReturningOnboarding auth={auth} inlineRecordingStart={inlineRecordingStart} />
-			) : (
-				<OnboardingController
-					requestNonce={0}
-					ready={!auth.loading}
-					user={auth.user}
-					configured={auth.configured}
-					callbackError={auth.callbackError}
-					inlineRecordingStart={inlineRecordingStart}
-					authCallbackPending={auth.callbackActivity.pending}
+			{permissionsOnly ? (
+				<RecordingPermissionsDialog
+					open
 					standalone
+					persistRequest={false}
+					onClose={close}
+					onFinish={close}
 				/>
+			) : (
+				<AccountOnboarding />
 			)}
 		</div>
 	);

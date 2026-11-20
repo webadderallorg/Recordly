@@ -99,7 +99,6 @@ beforeEach(() => {
 		location: { search: "?windowType=onboarding" },
 		electronAPI: {
 			showOnboardingWindow: vi.fn(async () => false),
-			onRecordingPermissionsRequested: vi.fn(() => () => undefined),
 			showRecordingHud: hud,
 			closeOnboardingWindow: closeWindow,
 		},
@@ -124,7 +123,8 @@ describe("Windows startup after sign-in", () => {
 		});
 		state.index = 0;
 		const child = OnboardingWindow().props.children;
-		const result = child.type(child.props);
+		const returning = child.type(child.props);
+		const result = returning?.type(returning.props);
 		for (const effect of state.effects.splice(0)) effect();
 		return result;
 	}
@@ -419,32 +419,4 @@ it("opens production permission recovery only once for each new request nonce", 
 	]);
 	expect(state.settings.get(seenKey)).toBe(true);
 	expect(state.writes.some(([key]) => key === seenKey)).toBe(false);
-});
-
-it("opens real permission recovery from a native event even after the dev tour was dismissed", async () => {
-	window.location.search = "?windowType=editor";
-	state.settings.set(seenKey, true);
-	state.settings.set("recordly.dev.onboardingDismissed", true);
-	render({ standalone: false });
-	expect(window.electronAPI.showOnboardingWindow).not.toHaveBeenCalled();
-	const requestPermissions = vi
-		.mocked(window.electronAPI.onRecordingPermissionsRequested)
-		.mock.calls.at(-1)?.[0];
-	expect(requestPermissions).toBeTypeOf("function");
-	requestPermissions!();
-	expect(state.settings.get(pendingKey)).toBe(true);
-	expect(window.electronAPI.showOnboardingWindow).toHaveBeenCalledExactlyOnceWith({
-		preview: false,
-	});
-	await vi.waitFor(() => {
-		const recovery = render({ standalone: false });
-		expect(recovery?.type).toBe(RecordingPermissionsDialog);
-		expect(recovery?.props.open).toBe(true);
-	});
-	expect(window.electronAPI.showOnboardingWindow).toHaveBeenCalledOnce();
-	expect(state.settings.get(seenKey)).toBe(true);
-	expect(state.settings.get("recordly.dev.onboardingDismissed")).toBe(true);
-	expect(
-		state.writes.some(([key]) => key === seenKey || key === "recordly.dev.onboardingDismissed"),
-	).toBe(false);
 });
