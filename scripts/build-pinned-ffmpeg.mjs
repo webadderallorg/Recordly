@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAC_SOURCE_ARCHIVES as sources, sourceArchive } from "./build-redistributable-ffmpeg.mjs";
+import { sourceArchive, MAC_SOURCE_ARCHIVES as sources } from "./build-redistributable-ffmpeg.mjs";
 
 export const PINNED_BUILD_ID = "recordly-ffmpeg-8.1.2-x264-libvpx-v1";
 export const PINNED_SOURCE_ARCHIVES = sources;
@@ -114,8 +114,32 @@ async function inspectBinary(binary, tools, platform) {
 	return { license, libraries };
 }
 
+export async function withPinnedFfmpegWorkspace(use) {
+	const parent = await fs.realpath(os.tmpdir());
+	const prefix = "recordly-ffmpeg-";
+	const work = await fs.mkdtemp(path.join(parent, prefix));
+	const removeWorkspace = async () => {
+		const target = await fs.realpath(work);
+		if (path.dirname(target) !== parent || !path.basename(target).startsWith(prefix)) {
+			throw new Error("Refusing to clean up an unexpected FFmpeg build directory.");
+		}
+		await fs.rm(target, { recursive: true, force: true, maxRetries: 3 });
+	};
+	let result;
+	try {
+		result = await use(work);
+	} catch (error) {
+		await removeWorkspace().catch((cleanupError) => {
+			console.warn(`[ffmpeg-source] Could not clean up ${work}: ${cleanupError.message}`);
+		});
+		throw error;
+	}
+	await removeWorkspace();
+	return result;
+}
+
 /** Build and inspect both binaries before handing either to the packaging workflow. */
-export async function buildPinnedFfmpeg({ root, platform, arch }) {
+export async function buildPinnedFfmpeg({ root, platform, arch, work }) {
 	if (
 		!supportsPinnedBuild(platform, arch) ||
 		platform !== process.platform ||
@@ -126,7 +150,9 @@ export async function buildPinnedFfmpeg({ root, platform, arch }) {
 	const tools = nativeTools(platform);
 	const cache = path.join(root, ".tmp", "ffmpeg-source-cache");
 	await fs.mkdir(cache, { recursive: true });
-	const work = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-ffmpeg-"));
+	const logDirectory = path.join(root, ".tmp", "ffmpeg-source-logs");
+	await fs.mkdir(logDirectory, { recursive: true });
+	const log = path.join(logDirectory, `${path.basename(work)}.log`);
 	const evidence = path.join(work, "evidence");
 	await fs.mkdir(evidence);
 	for (const [index, source] of sources.entries()) {
@@ -143,8 +169,8 @@ export async function buildPinnedFfmpeg({ root, platform, arch }) {
 	const target = `${platform}-${arch}`;
 	const jobs = String(Math.max(1, Math.min(8, os.availableParallelism())));
 	const args = ["evidence/build-pinned-ffmpeg.sh", target, jobs];
-	console.log(`[ffmpeg-source] Building ${target}. Log: ${path.join(work, "build.log")}`);
-	await run(tools.bash, args, { cwd: work, env }, path.join(work, "build.log"));
+	console.log(`[ffmpeg-source] Building ${target}. Log: ${log}`);
+	await run(tools.bash, args, { cwd: work, env }, log);
 
 	const binaries = {};
 	const binaryHashes = {};

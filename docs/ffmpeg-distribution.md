@@ -54,9 +54,12 @@ test as proof that the source artifact was published.
 Run `npm run build:ffmpeg-source` after installing Node dependencies and before
 packaging on the target operating system. This builds FFmpeg and FFprobe from
 the same FFmpeg 8.1.2, x264 and libvpx sources used for the macOS build.
-Assembly support is required. Linux requires Bash, GCC, make, binutils, NASM
-diffutils, Perl and pkg-config. Windows requires MSYS2 with UCRT64 GCC, NASM, pkgconf and MSYS
-make, diffutils and Perl. Set `RECORDLY_MSYS2_ROOT` if it is not installed at `C:/msys64`.
+Assembly support is required. On Linux, install Bash, GCC and G++ (provided by
+`build-essential` on Ubuntu), make, binutils, NASM, diffutils, Perl and pkg-config.
+Windows requires MSYS2 with UCRT64 GCC, NASM, pkgconf and MSYS make, diffutils
+and Perl. Set `RECORDLY_MSYS2_ROOT` if it is not installed at `C:/msys64`.
+The temporary build tree is removed after the build. The build log is kept in
+`.tmp/ffmpeg-source-logs/`.
 
 The Windows build enables Media Foundation and Windows video acceleration APIs.
 Standalone FFmpeg builds no longer auto-detect additional codec libraries.

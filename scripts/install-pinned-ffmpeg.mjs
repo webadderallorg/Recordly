@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { buildPinnedFfmpeg } from "./build-pinned-ffmpeg.mjs";
+import { buildPinnedFfmpeg, withPinnedFfmpegWorkspace } from "./build-pinned-ffmpeg.mjs";
 import { assertFfmpegSourceClearance } from "./ffmpeg-source-clearance.mjs";
 import { peContentHash } from "./pe-content-hash.mjs";
 
@@ -15,8 +15,13 @@ const ffprobe =
 		: path.join(path.dirname(ffmpeg), "ffprobe-recordly");
 const locations = { ffmpeg, ffprobe };
 const sources = `${ffmpeg}.sources`;
-try {
-	const { evidence, binaries, provenance } = await buildPinnedFfmpeg({ root, platform, arch });
+async function install(work) {
+	const { evidence, binaries, provenance } = await buildPinnedFfmpeg({
+		root,
+		platform,
+		arch,
+		work,
+	});
 	const noticeFiles = ["COPYING.GPLv3", "FFmpeg-LICENSE.md", "x264-COPYING", "libvpx-LICENSE"];
 	const license = (
 		await Promise.all(noticeFiles.map((name) => fs.readFile(path.join(evidence, name), "utf8")))
@@ -43,6 +48,10 @@ try {
 	console.log(
 		`[ffmpeg-source] Verified both binaries and their corresponding source at ${sources}`,
 	);
+}
+
+try {
+	await withPinnedFfmpegWorkspace(install);
 } catch (error) {
 	console.error(`[ffmpeg-source] ${error.message}`);
 	process.exitCode = 1;

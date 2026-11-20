@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PINNED_BUILD_ID } from "../scripts/build-pinned-ffmpeg.mjs";
+import { PINNED_BUILD_ID, withPinnedFfmpegWorkspace } from "../scripts/build-pinned-ffmpeg.mjs";
 import { assertFfmpegSourceClearance } from "../scripts/ffmpeg-source-clearance.mjs";
 import { updateNativeHelperManifest } from "../scripts/native-helper-manifest.mjs";
 import beforePack from "../scripts/prepare-distribution-notices.mjs";
@@ -152,5 +152,23 @@ describe("FFmpeg packaging source clearance", () => {
 		expect(() => verifyPackagedDistributionNotices(resources, "/missing/ffmpeg.exe")).toThrow(
 			"source clearance is incomplete for win32/x64",
 		);
+	});
+});
+
+describe("pinned FFmpeg build workspace", () => {
+	it.each([
+		false,
+		true,
+	])("removes build files when the installer callback fails=%s", async (fail) => {
+		let owned;
+		const build = withPinnedFfmpegWorkspace(async (work) => {
+			owned = work;
+			await writeFile(path.join(work, "object-file"), "fixture");
+			if (fail) throw new Error("installation failed");
+			return "installed";
+		});
+		if (fail) await expect(build).rejects.toThrow("installation failed");
+		else await expect(build).resolves.toBe("installed");
+		await expect(readdir(owned)).rejects.toMatchObject({ code: "ENOENT" });
 	});
 });
