@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Fills .env with public sign-in and Cloud settings stored as GitHub repository
 // variables. Existing values are never overwritten.
+// See docs/cloud-sharing.md for choosing a local Cloud endpoint.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
