@@ -10,6 +10,8 @@ http://localhost:8787/api/upload
 
 The endpoint is intentionally not user-configurable. Packaged builds require an
 explicit `VITE_CLOUD_SHARE_ENDPOINT`; without it, cloud sharing is unavailable.
+`npm run env:pull` fills in the public sign-in and Cloud settings for local builds
+when you have access to the repository's GitHub variables.
 Production releases target `https://videos.recordly.dev/api/upload`. The production
 service must be deployed and verified before release. Publishing requires the
 user's Recordly access token. No share API secret is exposed in the app. Hosted deployment and subscription
