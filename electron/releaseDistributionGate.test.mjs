@@ -153,15 +153,16 @@ function smokeFixture(platform = "darwin") {
 					);
 			}
 		},
-		run() {
+		async run(verifyFfmpegGifOptimization = async () => undefined) {
 			const messages = [];
-			runInNewContext(smokeProgram, {
+			await runInNewContext(`(async () => {\n${smokeProgram}\n})()`, {
 				exports: {},
 				require(name) {
 					if (name === "node:fs") return fs;
 					if (name === "node:path") return path;
 					if (name === "node:child_process")
 						return { execFileSync: () => "ffmpeg version fixture\n" };
+					if (name === "./smoke-ffmpeg-gif.mjs") return { verifyFfmpegGifOptimization };
 					if (name === "./verify-distribution-notices.mjs")
 						return {
 							verifyPackagedDistributionNotices: (resources) =>
@@ -188,7 +189,7 @@ function smokeFixture(platform = "darwin") {
 }
 
 describe("packaged caption runtime validation", () => {
-	it("checks each macOS artifact's target package when both architectures share an output directory", () => {
+	it("checks each macOS artifact's target package and FFmpeg when both architectures share an output directory", async () => {
 		const fixture = smokeFixture();
 		for (const arch of ["arm64", "x64"])
 			fixture.addArtifact(
@@ -196,10 +197,15 @@ describe("packaged caption runtime validation", () => {
 				[`sherpa-onnx-darwin-${arch}`],
 				["libonnxruntime.dylib", "libsherpa-onnx-c-api.dylib"],
 			);
-		expect(fixture.run().at(-1)).toContain("packaged binary path smoke passed");
+		const checked = [];
+		const messages = await fixture.run(async (ffmpegPath) => {
+			checked.push(path.relative(fixture.directory, ffmpegPath).split(path.sep)[0]);
+		});
+		expect(checked.sort()).toEqual(["artifact-arm64", "artifact-x64"]);
+		expect(messages.at(-1)).toContain("packaged binary path smoke passed");
 	});
 
-	it("rejects a macOS x64 artifact containing only the build host's arm64 caption package", () => {
+	it("rejects a macOS x64 artifact containing only the build host's arm64 caption package", async () => {
 		const fixture = smokeFixture();
 		fixture.addArtifact(
 			"arm64",
@@ -211,7 +217,21 @@ describe("packaged caption runtime validation", () => {
 			["sherpa-onnx-darwin-arm64"],
 			["libonnxruntime.dylib", "libsherpa-onnx-c-api.dylib"],
 		);
-		expect(() => fixture.run()).toThrow(/Parakeet.*missing/);
+		await expect(fixture.run()).rejects.toThrow(/Parakeet.*missing/);
+	});
+
+	it("rejects a package when its FFmpeg cannot optimize a GIF", async () => {
+		const fixture = smokeFixture("linux");
+		fixture.addArtifact(
+			"arm64",
+			["sherpa-onnx-linux-arm64"],
+			["libonnxruntime.so.1.23.2", "libsherpa-onnx-c-api.so"],
+		);
+		await expect(
+			fixture.run(async () => {
+				throw new Error("GIF optimization failed");
+			}),
+		).rejects.toThrow("GIF optimization failed");
 	});
 
 	for (const [platform, packageName, core, api, provider] of [
@@ -237,15 +257,15 @@ describe("packaged caption runtime validation", () => {
 			"libonnxruntime_providers_shared.so",
 		],
 	]) {
-		it(`rejects a ${platform} provider library when the core ONNX Runtime library is missing`, () => {
+		it(`rejects a ${platform} provider library when the core ONNX Runtime library is missing`, async () => {
 			const fixture = smokeFixture(platform);
 			fixture.addArtifact("arm64", [packageName], [provider, api]);
-			expect(() => fixture.run()).toThrow(/Parakeet library onnxruntime is missing/);
+			await expect(fixture.run()).rejects.toThrow(/Parakeet library onnxruntime is missing/);
 		});
-		it(`accepts the ${platform} core library with a provider library beside it`, () => {
+		it(`accepts the ${platform} core library with a provider library beside it`, async () => {
 			const fixture = smokeFixture(platform);
 			fixture.addArtifact("arm64", [packageName], [provider, core, api]);
-			expect(fixture.run().at(-1)).toContain("packaged binary path smoke passed");
+			expect((await fixture.run()).at(-1)).toContain("packaged binary path smoke passed");
 		});
 	}
 });
