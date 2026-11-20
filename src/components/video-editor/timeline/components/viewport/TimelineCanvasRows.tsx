@@ -24,6 +24,7 @@ import {
 import { useTimelinePresentation } from "../../core/TimelinePresentation";
 import type { TimelineRenderItem } from "../../core/timelineTypes";
 import { getZoomDisplaySpan } from "../../core/zoomPresentation";
+import { useZoomMarquee } from "../../hooks/useZoomMarquee";
 import Item from "../../Item";
 import glassStyles from "../../ItemGlass.module.css";
 import Row from "../../Row";
@@ -35,7 +36,10 @@ import type { TimelineCanvasRowsProps } from "./TimelineCanvasTypes";
 export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	videoPath,
 	items,
-	selectAllBlocksActive,
+	selectedZoomIds,
+	onSelectZooms,
+	onFocusTimeline,
+	canStartZoomMarquee,
 	selectedZoomId,
 	selectedClipId,
 	selectedClipIds,
@@ -73,6 +77,12 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	onCaptionRowMouseDown,
 	onCaptionRowClick,
 }: TimelineCanvasRowsProps) {
+	const { marquee, pointerHandlers, onRowClick } = useZoomMarquee({
+		enabled: canStartZoomMarquee,
+		onSelectZooms,
+		onFocusTimeline,
+		onClick: onZoomRowClick,
+	});
 	const t = useScopedT("timeline");
 	const { shortcuts, isMac } = useShortcuts();
 	const hintClip = t("hints.splitClip", "Press {{binding}} to split clip", {
@@ -373,8 +383,15 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				onMouseMove={onZoomRowMouseMove}
 				onMouseLeave={onZoomRowMouseLeave}
 				onMouseDown={onZoomRowMouseDown}
-				onClick={onZoomRowClick}
+				onClick={onRowClick}
+				pointerHandlers={pointerHandlers}
 			>
+				{marquee && (
+					<div
+						className="pointer-events-none absolute inset-y-0 z-30 rounded border border-primary bg-primary/15"
+						style={{ left: marquee.left, width: marquee.width }}
+					/>
+				)}
 				{zoomItems.length === 0 && onApplyAutoZooms && (
 					<div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
 						<div
@@ -416,7 +433,7 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 						</div>
 					</div>
 				)}
-				{canShowGhostZoom && ghostStartMs !== null && (
+				{!marquee && canShowGhostZoom && ghostStartMs !== null && (
 					<div
 						data-testid="timeline-add-preview"
 						className="absolute inset-0 z-[3] pointer-events-none"
@@ -456,7 +473,10 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 							key={item.id}
 							rowId={item.rowId}
 							span={item.span}
-							isSelected={selectAllBlocksActive || item.id === selectedZoomId}
+							isSelected={
+								marquee?.ids.has(item.id) ??
+								(selectedZoomIds.has(item.id) || item.id === selectedZoomId)
+							}
 							onSelectId={onSelectZoom}
 							zoomDepth={item.zoomDepth}
 							zoomMode={item.zoomMode}

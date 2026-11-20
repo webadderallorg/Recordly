@@ -119,7 +119,7 @@ function ZoomBounds() {
 							),
 						)
 					}
-					onZoomDelete={(id) => commit(regions.filter((r) => r.id !== id))}
+					onZoomDeleteMany={(ids) => commit(regions.filter((r) => !ids.includes(r.id)))}
 				/>
 			</div>
 		</main>

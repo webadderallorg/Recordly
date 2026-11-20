@@ -16,7 +16,7 @@ interface UseTimelineKeyboardShortcutsParams {
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
 	selectedCaptionId?: string | null;
-	selectAllBlocksActive: boolean;
+	hasZoomGroupSelection: boolean;
 	addKeyframe: () => void;
 	handleAddZoom: () => void;
 	handleSplitClip: () => void;
@@ -43,7 +43,7 @@ export function useTimelineKeyboardShortcuts({
 	selectedAnnotationId,
 	selectedAudioId,
 	selectedCaptionId,
-	selectAllBlocksActive,
+	hasZoomGroupSelection,
 	addKeyframe,
 	handleAddZoom,
 	handleSplitClip,
@@ -83,7 +83,7 @@ export function useTimelineKeyboardShortcuts({
 				matchesShortcut(e, keyShortcuts.deleteSelected, isMac)
 			) {
 				const target = resolveDeleteSelectionTarget({
-					selectAllBlocksActive,
+					hasZoomGroupSelection,
 					selectedKeyframeId,
 					selectedZoomId,
 					selectedClipId,
@@ -160,7 +160,7 @@ export function useTimelineKeyboardShortcuts({
 		isMac,
 		isTimelineFocusedRef,
 		keyShortcuts,
-		selectAllBlocksActive,
+		hasZoomGroupSelection,
 		selectedAnnotationId,
 		selectedAudioId,
 		selectedCaptionId,

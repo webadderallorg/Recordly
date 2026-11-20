@@ -162,12 +162,18 @@ export function useZoomRegionCommands({
 		},
 		[selectedZoomId, setZoomRegions],
 	);
-	const handleZoomDelete = useCallback(
-		(id: string) => {
-			setZoomRegions((current) => current.filter((region) => region.id !== id));
-			if (selectedZoomId === id) setSelectedZoomId(null);
+	const handleZoomDeleteMany = useCallback(
+		(ids: readonly string[]) => {
+			const deleted = new Set(ids);
+			if (!deleted.size) return;
+			setZoomRegions((current) => current.filter((region) => !deleted.has(region.id)));
+			if (selectedZoomId && deleted.has(selectedZoomId)) setSelectedZoomId(null);
 		},
 		[selectedZoomId, setSelectedZoomId, setZoomRegions],
+	);
+	const handleZoomDelete = useCallback(
+		(id: string) => handleZoomDeleteMany([id]),
+		[handleZoomDeleteMany],
 	);
 
 	return {
@@ -179,5 +185,6 @@ export function useZoomRegionCommands({
 		handleZoomDepthChange,
 		handleZoomModeChange,
 		handleZoomDelete,
+		handleZoomDeleteMany,
 	};
 }

@@ -32,7 +32,7 @@ function setup(overrides: Partial<Params> = {}) {
 		selectedKeyframeId: null,
 		selectedZoomId: null,
 		selectedClipId: null,
-		selectAllBlocksActive: false,
+		hasZoomGroupSelection: false,
 		addKeyframe: vi.fn(),
 		handleAddZoom: vi.fn(),
 		handleSplitClip: vi.fn(),
@@ -123,7 +123,7 @@ it("does not consume deletion without a selection", () => {
 	expect(setup().press().preventDefault).not.toHaveBeenCalled();
 });
 it("select-all zooms takes priority over an individual clip selection", () => {
-	const { press, params } = setup({ selectAllBlocksActive: true, selectedClipId: "clip" });
+	const { press, params } = setup({ hasZoomGroupSelection: true, selectedClipId: "clip" });
 	press();
 	expect(params.deleteSelectedZoom).toHaveBeenCalledOnce();
 	expect(params.deleteSelectedClip).not.toHaveBeenCalled();
