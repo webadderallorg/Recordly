@@ -1,7 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { app, BrowserWindow, desktopCapturer, ipcMain, systemPreferences } from "electron";
-import { writeAppSetting } from "../../appSettingsStore";
 import { recordingEditorLoading } from "../../recordingEditorLoading";
 import { createRecordingEditorNavigation } from "../../recordingEditorNavigation";
 import { createSourceListPicker } from "../../sourceListPicker";
@@ -10,6 +9,7 @@ import {
 	getHudOverlayWindow,
 	reassertHudOverlayMousePassthrough,
 	setHudRecordingPreparationActive,
+	showOnboardingWindow,
 } from "../../windows";
 import { getSessionCaptureSource, validateCaptureSource } from "../captureSelection";
 import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
@@ -670,12 +670,8 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 	});
 	ipcMain.handle("show-recording-permissions", () => {
 		if (isCursorCaptureActive) return;
-		writeAppSetting("recordly.onboarding.permissionsRequested", true);
 		setHudRecordingPreparationActive(false);
-		recordingNavigation.open(false);
-		for (const window of BrowserWindow.getAllWindows()) {
-			if (!window.isDestroyed()) window.webContents.send("recording-permissions-requested");
-		}
+		showOnboardingWindow({ permissionsOnly: true });
 	});
 	ipcMain.handle("show-project-dashboard", () => {
 		recordingEditorLoading.clearError();

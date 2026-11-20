@@ -6,16 +6,26 @@ import { RecordingPermissionsDialog } from "./RecordingPermissionsDialog";
 import { RecordlySignInDialog } from "./RecordlySignInDialog";
 import { useRecordlyAuth } from "./useRecordlyAuth";
 
-function ReturningOnboarding({ auth }: { auth: ReturnType<typeof useRecordlyAuth> }) {
+function ReturningOnboarding({
+	auth,
+	inlineRecordingStart,
+}: {
+	auth: ReturnType<typeof useRecordlyAuth>;
+	inlineRecordingStart: boolean;
+}) {
 	const signedIn = Boolean(auth.user);
-	const { callbackActivity, isCallbackPending } = auth;
+	const { callbackActivity, callbackVersion, isCallbackPending } = auth;
+	const [showedSignIn, setShowedSignIn] = useState(false);
 	const [needsPermissions, setNeedsPermissions] = useState(false);
+	const needsStartConfirmation = inlineRecordingStart && (showedSignIn || callbackVersion > 0);
 	const view = auth.loading
 		? null
 		: !signedIn
 			? "sign-in"
-			: needsPermissions
-				? "permissions"
+			: needsStartConfirmation || needsPermissions
+				? inlineRecordingStart
+					? "ready"
+					: "permissions"
 				: null;
 	const continuing = useRef(false);
 	const close = () => void window.electronAPI.closeOnboardingWindow();
@@ -44,6 +54,8 @@ function ReturningOnboarding({ auth }: { auth: ReturnType<typeof useRecordlyAuth
 		if (auth.loading || callbackActivity.pending || !signedIn) return;
 		if (loadAppSetting<boolean>("recordly.onboarding.v1.seen") !== true)
 			saveAppSetting("recordly.onboarding.v1.seen", true);
+		// On Windows and Linux, a fresh sign-in stops at Start recording.
+		if (needsStartConfirmation) return;
 		let cancelled = false;
 		void hasRequiredRecordingPermissions()
 			.catch(() => false)
@@ -55,9 +67,10 @@ function ReturningOnboarding({ auth }: { auth: ReturnType<typeof useRecordlyAuth
 		return () => {
 			cancelled = true;
 		};
-	}, [auth.loading, callbackActivity, signedIn, continueToHud]);
+	}, [auth.loading, callbackActivity, signedIn, continueToHud, needsStartConfirmation]);
 
 	useEffect(() => {
+		if (view === "sign-in") setShowedSignIn(true);
 		if (view) void window.electronAPI.resolveStartupOnboarding("show");
 	}, [view]);
 
@@ -72,17 +85,22 @@ function ReturningOnboarding({ auth }: { auth: ReturnType<typeof useRecordlyAuth
 			/>
 		);
 	}
-	if (view === "sign-in") {
+	if (view === "sign-in" || view === "ready") {
 		return (
 			<RecordlySignInDialog
 				onboarding
 				signInOnly
 				open
-				user={null}
+				user={view === "ready" ? auth.user : null}
 				configured={auth.configured}
 				callbackError={auth.callbackError}
 				onOpenChange={() => undefined}
 				onAuthenticated={() => undefined}
+				recordingStart={
+					inlineRecordingStart
+						? { disabled: callbackActivity.pending, onPress: continueToHud }
+						: undefined
+				}
 				onWindowClose={close}
 				onUnlockSavedSignIn={
 					auth.savedSignInLocked
@@ -95,22 +113,48 @@ function ReturningOnboarding({ auth }: { auth: ReturnType<typeof useRecordlyAuth
 	return null;
 }
 
-export default function OnboardingWindow() {
+function AccountOnboarding() {
 	const auth = useRecordlyAuth();
 	const returning = new URLSearchParams(window.location.search).get("returning") === "1";
+	const [platform, setPlatform] = useState<string>();
+	useEffect(() => {
+		if (returning)
+			void window.electronAPI.getPlatform().then(setPlatform, () => setPlatform("darwin"));
+	}, [returning]);
+	const inlineRecordingStart = platform === "win32" || platform === "linux";
+	if (returning && !platform) return null;
+	return returning ? (
+		<ReturningOnboarding auth={auth} inlineRecordingStart={inlineRecordingStart} />
+	) : (
+		<OnboardingController
+			requestNonce={0}
+			ready={!auth.loading}
+			user={auth.user}
+			configured={auth.configured}
+			callbackError={auth.callbackError}
+			authenticationVersion={auth.callbackVersion}
+			authCallbackPending={auth.callbackActivity.pending}
+			standalone
+		/>
+	);
+}
+
+export default function OnboardingWindow() {
+	const permissionsOnly =
+		new URLSearchParams(window.location.search).get("permissionsOnly") === "1";
+	const close = () => void window.electronAPI.closeOnboardingWindow();
 	return (
 		<div className="relative h-screen w-screen overflow-hidden bg-editor-bg text-foreground">
-			{returning ? (
-				<ReturningOnboarding auth={auth} />
-			) : (
-				<OnboardingController
-					requestNonce={0}
-					ready={!auth.loading}
-					user={auth.user}
-					configured={auth.configured}
-					callbackError={auth.callbackError}
+			{permissionsOnly ? (
+				<RecordingPermissionsDialog
+					open
 					standalone
+					persistRequest={false}
+					onClose={close}
+					onFinish={close}
 				/>
+			) : (
+				<AccountOnboarding />
 			)}
 		</div>
 	);

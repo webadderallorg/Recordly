@@ -134,15 +134,19 @@ afterEach(() => {
 it.each([
 	"win32",
 	"linux",
-])("skips macOS permission setup on %s without requesting access", async (platform) => {
+])("waits for Start recording on %s without requesting permissions", async (platform) => {
 	vi.mocked(window.electronAPI.getPlatform).mockResolvedValue(platform);
 	const onFinish = vi.fn();
 	const checking = render(onFinish);
 	expect(checking.some((node) => node.type === "header")).toBe(false);
 	await flush();
-	expect(render(onFinish)).toEqual([]);
-	expect(onFinish).toHaveBeenCalledOnce();
-	render(onFinish);
+	const ready = render(onFinish);
+	expect(ready.find((node) => node.type === "header")?.props.description).toBe("signedIn");
+	const start = ready.find((node) => node.type === "primary");
+	expect(start?.props.children).toBe("startRecording");
+	expect(start?.props.isDisabled).toBe(false);
+	expect(onFinish).not.toHaveBeenCalled();
+	start?.props.onPress();
 	expect(onFinish).toHaveBeenCalledOnce();
 	expect(window.electronAPI.getScreenRecordingPermissionStatus).not.toHaveBeenCalled();
 	expect(window.electronAPI.getAccessibilityPermissionStatus).not.toHaveBeenCalled();

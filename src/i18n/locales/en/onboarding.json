@@ -1,6 +1,10 @@
 {
 	"simulatePermissions": "Simulate permissions",
 	"skipOnboarding": "Skip onboarding",
+	"upgrade": "Upgrade",
+	"next": "Next",
+	"skipAndStartRecording": "Skip and start recording",
+	"backToPermissions": "Back to permissions",
 	"botChecking": "A quick security check…",
 	"botFailed": "The security check couldn’t load. Try again.",
 	"botRetry": "Try again",

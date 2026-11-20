@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// Fills .env with the public Supabase client settings stored as GitHub repository
-// variables, so local dev builds can sign in. Existing values are never overwritten.
+// Fills .env with public sign-in and Cloud settings stored as GitHub repository
+// variables. Existing values are never overwritten.
+// See docs/cloud-sharing.md for choosing a local Cloud endpoint.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-const KEYS = ["VITE_SUPABASE_URL", "VITE_SUPABASE_PUBLISHABLE_KEY"];
+const KEYS = ["VITE_SUPABASE_URL", "VITE_SUPABASE_PUBLISHABLE_KEY", "VITE_CLOUD_SHARE_ENDPOINT"];
 const envPath = path.resolve(process.cwd(), ".env");
 const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
 
@@ -17,7 +18,7 @@ function hasValue(key) {
 
 const missing = KEYS.filter((key) => !hasValue(key));
 if (missing.length === 0) {
-	console.log(".env already has Supabase settings.");
+	console.log(".env already has sign-in and Cloud settings.");
 	process.exit(0);
 }
 

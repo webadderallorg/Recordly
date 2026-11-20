@@ -102,6 +102,7 @@ const electronMainDir = path.dirname(fileURLToPath(import.meta.url));
 const IS_SMOKE_EXPORT = process.env.RECORDLY_SMOKE_EXPORT === "1";
 let startupWindowsReady = false;
 let firstRunIntroStarted = false;
+let devOnboardingShown = false;
 initializeInstanceSession();
 
 function ignoreBrokenConsolePipe(stream: NodeJS.WritableStream | undefined) {
@@ -452,17 +453,26 @@ function createWindow() {
 		return;
 	}
 
+	if (getOnboardingWindow()) {
+		focusOnboardingWindow();
+		return;
+	}
+
 	if (app.isPackaged) {
-		if (getOnboardingWindow()) {
-			focusOnboardingWindow();
-			return;
-		}
 		const returning =
 			firstRunIntroStarted ||
 			readAppSetting("recordly.onboarding.v1.seen") === true ||
 			readAppSetting("recordly.onboarding.introStarted") === true ||
 			readAppSetting("recordly.onboarding.permissionsRequested") === true;
 		showOnboardingWindow({ intro: !returning && claimFirstRunIntro(), returning });
+		return;
+	}
+
+	if (IS_DEV && !devOnboardingShown) {
+		devOnboardingShown = true;
+		showOnboardingWindow({ preview: true }).once("closed", () => {
+			if (!isAppQuitting) createRecordingControls();
+		});
 		return;
 	}
 

@@ -11,12 +11,14 @@ export function RecordingPermissionsDialog({
 	onClose,
 	onFinish,
 	finishDisabled = false,
+	persistRequest = true,
 	standalone,
 }: {
 	open: boolean;
 	onClose: () => void;
 	onFinish: () => void;
 	finishDisabled?: boolean;
+	persistRequest?: boolean;
 	standalone: boolean;
 }) {
 	const t = useScopedT("onboarding");
@@ -64,6 +66,7 @@ export function RecordingPermissionsDialog({
 						>
 							<OnboardingPermissions
 								showFooter={false}
+								persistRequest={persistRequest}
 								onReadyChange={setReady}
 								onFinish={onFinish}
 							/>

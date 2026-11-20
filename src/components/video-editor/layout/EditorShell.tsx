@@ -256,6 +256,8 @@ export function EditorShell(props: Props) {
 			user={auth.user}
 			configured={auth.configured}
 			callbackError={auth.callbackError}
+			authenticationVersion={auth.callbackVersion}
+			authCallbackPending={auth.callbackActivity.pending}
 		/>
 	);
 	const editorDialogs = (
