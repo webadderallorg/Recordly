@@ -1,8 +1,10 @@
 import type { User } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OnboardingController } from "./OnboardingController";
+import OnboardingWindow from "./OnboardingWindow";
 import { RecordingPermissionsDialog } from "./RecordingPermissionsDialog";
 import { RecordlySignInDialog } from "./RecordlySignInDialog";
+import { useRecordlyAuth } from "./useRecordlyAuth";
 
 const state = vi.hoisted(() => ({
 	slots: [] as { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void }[],
@@ -64,6 +66,7 @@ vi.mock("@/lib/appSettings", () => ({
 }));
 vi.mock("./RecordlySignInDialog", () => ({ RecordlySignInDialog: () => null }));
 vi.mock("./RecordingPermissionsDialog", () => ({ RecordingPermissionsDialog: () => null }));
+vi.mock("./useRecordlyAuth", () => ({ useRecordlyAuth: vi.fn() }));
 
 const pendingKey = "recordly.onboarding.permissionsRequested";
 const seenKey = "recordly.onboarding.v1.seen";
@@ -100,6 +103,70 @@ beforeEach(() => {
 			showRecordingHud: hud,
 			closeOnboardingWindow: closeWindow,
 		},
+	});
+});
+
+describe("Windows startup after sign-in", () => {
+	const startup = vi.fn(async (_action: string) => true);
+	const isCallbackPending = vi.fn(() => false);
+	function renderReturning(auth: Partial<ReturnType<typeof useRecordlyAuth>> = {}) {
+		vi.mocked(useRecordlyAuth).mockReturnValue({
+			user: null,
+			loading: false,
+			configured: true,
+			savedSignInLocked: false,
+			accessToken: undefined,
+			callbackError: undefined,
+			callbackVersion: 0,
+			callbackActivity: { pending: false },
+			isCallbackPending,
+			...auth,
+		});
+		state.index = 0;
+		const child = OnboardingWindow().props.children;
+		const result = child.type(child.props);
+		for (const effect of state.effects.splice(0)) effect();
+		return result;
+	}
+
+	beforeEach(() => {
+		window.location.search = "?windowType=onboarding&returning=1";
+		window.electronAPI.getPlatform = vi.fn(async () => "win32");
+		state.slots[0] = { value: "win32" };
+		window.electronAPI.resolveStartupOnboarding = startup;
+		isCallbackPending.mockReturnValue(false);
+	});
+
+	it("waits for Start recording after sign-in and opens the HUD without opening the dashboard", async () => {
+		expect(renderReturning()?.type).toBe(RecordlySignInDialog);
+		isCallbackPending.mockReturnValue(true);
+		const waiting = renderReturning({ user, callbackActivity: { pending: true } });
+		expect(waiting?.type).toBe(RecordlySignInDialog);
+		expect(waiting?.props.recordingStart.disabled).toBe(true);
+		await waiting?.props.recordingStart.onPress();
+		expect(startup).not.toHaveBeenCalledWith("continue");
+
+		isCallbackPending.mockReturnValue(false);
+		const ready = renderReturning({ user });
+		expect(ready?.type).toBe(RecordlySignInDialog);
+		expect(ready?.props.recordingStart.disabled).toBe(false);
+		expect(startup).not.toHaveBeenCalledWith("continue");
+		await ready?.props.recordingStart.onPress();
+		expect(startup.mock.calls.filter(([action]) => action !== "show")).toEqual([["continue"]]);
+		expect(hud).not.toHaveBeenCalled();
+		expect(closeWindow).not.toHaveBeenCalled();
+	});
+
+	it("shows Start recording after a cold-start sign-in callback", () => {
+		const ready = renderReturning({ user, callbackVersion: 1 });
+		expect(ready?.type).toBe(RecordlySignInDialog);
+		expect(ready?.props.recordingStart.disabled).toBe(false);
+		expect(startup).not.toHaveBeenCalledWith("continue");
+	});
+
+	it("opens the HUD automatically when restoring a saved session", async () => {
+		expect(renderReturning({ user })).toBeNull();
+		await vi.waitFor(() => expect(startup).toHaveBeenCalledExactlyOnceWith("continue"));
 	});
 });
 

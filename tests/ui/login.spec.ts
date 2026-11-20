@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { completeSupabaseSignIn } from "./auth";
-import { installDesktopBridge } from "./bridge";
+import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 import { productionTest as test } from "./production";
 
 async function captureSignInReports(page: Page) {
@@ -13,6 +13,67 @@ async function captureSignInReports(page: Page) {
 		},
 	);
 	return reports;
+}
+
+for (const returning of [false, true]) {
+	test(`Windows ${returning ? "returning" : "first-run"} sign-in waits for Start recording`, async ({
+		page,
+	}) => {
+		test.slow();
+		await page.emulateMedia({ reducedMotion: "reduce" });
+		await page.setViewportSize({ width: 760, height: 760 });
+		await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: returning });
+		await installDesktopBridgeOverrides(page, () => {
+			window.electronAPI.getPlatform = async () => "win32";
+			window.electronAPI.resolveStartupOnboarding = async (action) => {
+				if (action === "continue") document.documentElement.dataset.hudOpened = "true";
+				return true;
+			};
+			window.electronAPI.showProjectDashboard = async () => {
+				document.documentElement.dataset.dashboardOpened = "true";
+			};
+		});
+		await page.goto(`/?windowType=onboarding${returning ? "&returning=1" : ""}`, {
+			waitUntil: "commit",
+		});
+		const login = page.getByRole("dialog", { name: "Welcome to Recordly" });
+		const email = login.getByRole("textbox", { name: /^Email\*?$/ });
+		const artwork = login.locator("[data-onboarding-artwork]");
+		await expect(email).toBeVisible({ timeout: 45_000 });
+		await expect
+			.poll(() =>
+				email.evaluate((field: HTMLInputElement) =>
+					Math.abs(field.getBoundingClientRect().width - field.offsetWidth),
+				),
+			)
+			.toBeLessThan(2);
+		const emailBounds = (await email.boundingBox())!;
+		await artwork.evaluate((element) => element.setAttribute("data-layout-check", "same"));
+		await email.fill("test@email.com");
+		await login.getByRole("button", { name: "Email me a code" }).click();
+		await expect(login.getByText(/^Enter code sent to /)).toBeVisible();
+		await completeSupabaseSignIn(page);
+
+		const start = page.getByRole("button", { name: "Start recording", exact: true });
+		const documentRoot = page.locator("html");
+		await expect(start).toBeEnabled();
+		await expect(page.getByText("You’re signed in and ready to continue.")).toBeVisible();
+		await expect(login).toHaveAttribute("data-onboarding-state", "ready");
+		await expect(artwork).toHaveAttribute("data-layout-check", "same");
+		await expect(email).toHaveCount(0);
+		await expect(start.locator("span[aria-hidden=true]")).toHaveCSS(
+			"background-color",
+			"rgb(255, 255, 255)",
+		);
+		const startBounds = (await start.boundingBox())!;
+		expect(Math.abs(startBounds.x - emailBounds.x)).toBeLessThan(2);
+		expect(Math.abs(startBounds.width - emailBounds.width)).toBeLessThan(2);
+		expect(Math.abs(startBounds.y - emailBounds.y)).toBeLessThan(35);
+		await expect(documentRoot).not.toHaveAttribute("data-hud-opened");
+		await start.click();
+		await expect(documentRoot).toHaveAttribute("data-hud-opened", "true");
+		await expect(documentRoot).not.toHaveAttribute("data-dashboard-opened");
+	});
 }
 
 test("sign-in keeps all providers visible and marks unavailable providers disabled", async ({

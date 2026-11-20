@@ -7,6 +7,7 @@ import { LegalLinks } from "@/components/billing/LegalLinks";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { SignOut } from "@/components/ui/icons";
 import { RecordlyDemoVideo } from "@/components/ui/RecordlyDemoVideo";
+import { RecordlyMark } from "@/components/ui/RecordlyMark";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { captureAuthFailure, recordAuthEvent, type SignInAction } from "@/lib/auth/authDiagnostics";
 import {
@@ -48,6 +49,8 @@ type Props = {
 	configured: boolean;
 	callbackError?: string;
 	onAuthenticated: () => void;
+	recordingStart?: { disabled: boolean; onPress: () => void };
+	finishDisabled?: boolean;
 	onWindowClose?: () => void;
 	onUnlockSavedSignIn?: () => void;
 	requireSignIn?: boolean;
@@ -86,6 +89,8 @@ export function RecordlySignInDialog({
 	configured,
 	callbackError,
 	onAuthenticated,
+	recordingStart,
+	finishDisabled = false,
 	onWindowClose,
 	onUnlockSavedSignIn,
 	requireSignIn = false,
@@ -96,6 +101,7 @@ export function RecordlySignInDialog({
 	// Only a completed interactive sign-in can finish reauthentication.
 	const reauthenticating = reason === "reauthenticate";
 	const user = reauthenticating ? null : signedInUser;
+	const showRecordingStart = Boolean(user && recordingStart);
 	const [directSignInComplete, setDirectSignInComplete] = useState(false);
 	const openedAuthenticationVersion = useRef<number | undefined>(undefined);
 	useEffect(() => {
@@ -120,7 +126,7 @@ export function RecordlySignInDialog({
 	]);
 	const awaitingSignIn = useRef(false);
 	const wide = onboarding || variant === "wide";
-	const tour = onboarding && !signInOnly;
+	const tour = onboarding && !signInOnly && !recordingStart;
 	const [showPermissions, setShowPermissions] = useState(false);
 	const [permissionsReady, setPermissionsReady] = useState(false);
 	const requiresSignIn = ((onboarding && !preview) || requireSignIn) && !user;
@@ -198,7 +204,7 @@ export function RecordlySignInDialog({
 	}, [open, tour, startWithPermissions, user]);
 
 	useEffect(() => {
-		if (!open) return;
+		if (!open || recordingStart) return;
 		if (user && !tour) {
 			onAuthenticated();
 			return;
@@ -214,7 +220,7 @@ export function RecordlySignInDialog({
 				if (!preview) setShowPermissions(true);
 			} else onAuthenticated();
 		}
-	}, [open, user, onAuthenticated, tour, preview]);
+	}, [open, user, onAuthenticated, tour, preview, recordingStart]);
 
 	const run = async (label: SignInAction, action: () => Promise<unknown>) => {
 		setBusy(label);
@@ -282,15 +288,19 @@ export function RecordlySignInDialog({
 					>
 						{onboarding ? (
 							<OnboardingHeader
-								centered={preview || !user}
+								centered={preview || !user || showRecordingStart}
 								title={
-									user && !preview ? (
+									user && !preview && !showRecordingStart ? (
 										ot("yourAccount")
 									) : (
 										<OnboardingHeroTitle text={ot("welcomeTitle")} />
 									)
 								}
-								description={user ? user.email || ot("signedIn") : undefined}
+								description={
+									user && !showRecordingStart
+										? user.email || ot("signedIn")
+										: undefined
+								}
 							/>
 						) : (
 							<Modal.Header className="recordly-signin-header items-center gap-2 p-0 text-center">
@@ -300,7 +310,25 @@ export function RecordlySignInDialog({
 							</Modal.Header>
 						)}
 					</motion.div>
-					{onUnlockSavedSignIn ? (
+					{showRecordingStart && recordingStart ? (
+						<div data-signin-fields className="recordly-signin-start">
+							<p
+								role="status"
+								className="grid place-items-center text-center text-sm text-muted"
+							>
+								{ot("signedIn")}
+							</p>
+							<Button
+								variant="primary"
+								className="col-start-1 row-start-3 h-11 w-full gap-2 rounded-xl"
+								isDisabled={recordingStart.disabled}
+								onPress={recordingStart.onPress}
+							>
+								<RecordlyMark className="text-white" />
+								{ot("startRecording")}
+							</Button>
+						</div>
+					) : onUnlockSavedSignIn ? (
 						<div className="flex flex-col gap-3">
 							<Alert status="warning" role="alert">
 								<Alert.Indicator />
@@ -399,7 +427,7 @@ export function RecordlySignInDialog({
 							/>
 						</>
 					)}
-					{message ? (
+					{message && !showRecordingStart ? (
 						<Alert
 							role={linkSent ? "status" : "alert"}
 							status={linkSent ? "success" : "danger"}
@@ -446,7 +474,13 @@ export function RecordlySignInDialog({
 						transition={transition}
 						aria-label={onboarding ? ot("welcomeLabel") : ot("signInLabel")}
 						data-onboarding-state={
-							onboarding ? (permissions ? "permissions" : "login") : undefined
+							onboarding
+								? showRecordingStart
+									? "ready"
+									: permissions
+										? "permissions"
+										: "login"
+								: undefined
 						}
 						className={
 							onboarding
@@ -465,7 +499,7 @@ export function RecordlySignInDialog({
 							<OnboardingLayout
 								stage={permissions ? "permissions" : "account"}
 								canViewPermissions={canViewPermissions}
-								showNavigation={!signInOnly}
+								showNavigation={!signInOnly && !recordingStart}
 								footer={
 									canViewPermissions && (
 										<OnboardingFooter>
@@ -500,11 +534,14 @@ export function RecordlySignInDialog({
 											</div>
 											<OnboardingPrimaryAction
 												isDisabled={
-													permissions ? !permissionsReady : disabled
+													permissions
+														? !permissionsReady || finishDisabled
+														: disabled
 												}
 												onPress={() => {
 													if (permissions) {
-														if (permissionsReady) onAuthenticated();
+														if (permissionsReady && !finishDisabled)
+															onAuthenticated();
 													} else setShowPermissions(true);
 												}}
 											>
@@ -578,7 +615,7 @@ export function RecordlySignInDialog({
 								/>
 							)
 						)}
-						{tour && open && <OnboardingSoundtrack />}
+						{onboarding && !signInOnly && open && <OnboardingSoundtrack />}
 					</MotionDialog>
 				</Modal.Container>
 			</Modal.Backdrop>

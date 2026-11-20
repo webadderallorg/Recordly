@@ -569,10 +569,10 @@ export interface Padding {
 }
 
 export const DEFAULT_PADDING: Padding = {
-	top: 0,
-	bottom: 0,
-	left: 0,
-	right: 0,
+	top: 25,
+	bottom: 25,
+	left: 25,
+	right: 25,
 	linked: true,
 };
 export type {

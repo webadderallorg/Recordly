@@ -229,6 +229,11 @@
 	gap: var(--signin-field-spacing);
 }
 
+.recordly-signin-content .recordly-signin-start[data-signin-fields] {
+	display: grid;
+	grid-template-rows: minmax(44px, auto) 1rem auto;
+}
+
 .recordly-signin-content [data-signin-form] {
 	gap: var(--signin-field-spacing);
 }

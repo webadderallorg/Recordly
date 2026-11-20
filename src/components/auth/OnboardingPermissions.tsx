@@ -42,7 +42,6 @@ export function OnboardingPermissions({
 	const error = requestError ?? statusError;
 	const mounted = useRef(false);
 	const refreshing = useRef(false);
-	const finishedWithoutPermissions = useRef(false);
 	const canSimulate = import.meta.env.DEV && preview;
 	useEffect(() => {
 		if (!preview) saveAppSetting("recordly.onboarding.permissionsRequested", true);
@@ -149,16 +148,38 @@ export function OnboardingPermissions({
 			setBusy(undefined);
 		}
 	};
-	useEffect(() => {
-		if (platform !== "other" || finishedWithoutPermissions.current) return;
-		finishedWithoutPermissions.current = true;
-		onFinish();
-	}, [platform, onFinish]);
-
-	// Windows and Linux choose a capture source when recording starts. They do
-	// not have the macOS screen-recording and Accessibility permission setup.
-	if (platform === "other") return null;
 	if (platform === "checking") return <div role="status">{t("checking")}</div>;
+
+	const footer = showFooter && (
+		<OnboardingFooter>
+			{onBack ? (
+				<Button variant="ghost" aria-label={t("backToAccount")} onPress={onBack}>
+					<ArrowLeft size={16} />
+					{t("back")}
+				</Button>
+			) : (
+				<div />
+			)}
+			<OnboardingPrimaryAction isDisabled={!canFinish} onPress={onFinish}>
+				{t("startRecording")}
+			</OnboardingPrimaryAction>
+		</OnboardingFooter>
+	);
+
+	// Windows and Linux choose a capture source after opening the recording HUD.
+	if (platform === "other")
+		return (
+			<>
+				<OnboardingBody scrollable={false}>
+					<OnboardingHeader
+						centered
+						title={<OnboardingTitle text={t("welcomeTitle")} />}
+						description={t(preview ? "otherDescription" : "signedIn")}
+					/>
+				</OnboardingBody>
+				{footer}
+			</>
+		);
 
 	return (
 		<div
@@ -257,21 +278,7 @@ export function OnboardingPermissions({
 					</p>
 				)}
 			</OnboardingBody>
-			{showFooter && (
-				<OnboardingFooter>
-					{onBack ? (
-						<Button variant="ghost" aria-label={t("backToAccount")} onPress={onBack}>
-							<ArrowLeft size={16} />
-							{t("back")}
-						</Button>
-					) : (
-						<div />
-					)}
-					<OnboardingPrimaryAction isDisabled={!canFinish} onPress={onFinish}>
-						{t("startRecording")}
-					</OnboardingPrimaryAction>
-				</OnboardingFooter>
-			)}
+			{footer}
 		</div>
 	);
 }
