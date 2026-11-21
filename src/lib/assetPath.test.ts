@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readdirSync } from "node:fs";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	getAssetPath,
 	getExportableVideoUrl,
