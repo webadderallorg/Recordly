@@ -1,4 +1,3 @@
-import { isLibrarySequenceSource } from "./sequenceSource";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import { promisify } from "node:util";
@@ -7,6 +6,7 @@ import { getFfmpegBinaryPath, getFfprobeBinaryPath } from "../ffmpeg/binary";
 import { lastNativeCaptureDiagnostics, setLastNativeCaptureDiagnostics } from "../state";
 import type { CompanionAudioCandidate, NativeCaptureDiagnostics } from "../types";
 import { parseJsonWithByteOrderMark } from "../utils";
+import { isLibrarySequenceSource } from "./sequenceSource";
 
 const execFileAsync = promisify(execFile);
 export const MIN_VALID_RECORDED_VIDEO_BYTES = 1024;
@@ -623,7 +623,18 @@ export async function validateRecordedVideo(videoPath: string) {
 		);
 		stderr = result.stderr;
 	} catch (error) {
-		const execError = error as NodeJS.ErrnoException & { stderr?: string };
+		const execError = error as NodeJS.ErrnoException & {
+			signal?: NodeJS.Signals | null;
+			stderr?: string;
+		};
+		if (execError.syscall?.startsWith("spawn")) {
+			throw new Error(`FFmpeg could not start (${execError.code ?? execError.message}).`);
+		}
+		if (execError.signal) {
+			throw new Error(
+				`FFmpeg was stopped by ${execError.signal} while checking the recording.`,
+			);
+		}
 		const output = execError.stderr?.trim();
 		throw new Error(output || `Recorded output could not be decoded: ${videoPath}`);
 	}

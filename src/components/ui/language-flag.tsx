@@ -10,6 +10,7 @@ const countries: Record<AppLocale, string> = {
 	ko: "KR",
 	ja: "JP",
 	"pt-BR": "BR",
+	vi: "VN",
 	"zh-CN": "CN",
 	"zh-TW": "TW",
 	tr: "TR",
@@ -102,6 +103,12 @@ export function LanguageFlag({ locale }: { locale: AppLocale }) {
 						<circle cx="13" cy="10" r=".3" />
 						<circle cx="14" cy="7" r=".3" />
 					</g>
+				</>
+			)}
+			{locale === "vi" && (
+				<>
+					<path fill="#da251d" d="M0 0h24v16H0z" />
+					<polygon fill="#ffff00" points={star(12, 8, 4.8)} />
 				</>
 			)}
 			{locale === "zh-CN" && (

@@ -1,5 +1,5 @@
-import { getLocalMediaServerPath } from "../localMediaUrl";
 import { fromFileUrl, toFileUrl } from "@/components/video-editor/projectPersistence";
+import { getLocalMediaServerPath } from "../localMediaUrl";
 
 const NOOP = () => undefined;
 const REMOTE_MEDIA_URL_PATTERN = /^(https?:|blob:|data:)/i;

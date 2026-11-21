@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 async function seek(page: Page, timeMs: number) {
 	await page.getByRole("spinbutton", { name: "Time", exact: true }).fill(String(timeMs));

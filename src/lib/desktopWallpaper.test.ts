@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { usePlaybackWallpaper } from "../components/video-editor/videoPlayback/usePlaybackWallpaper";
 import {
 	DESKTOP_WALLPAPER,
 	desktopWallpaperPreference,
 	getDesktopWallpaperPath,
 } from "./desktopWallpaper";
 import { getAvailableWallpapers } from "./wallpapers";
-import { usePlaybackWallpaper } from "../components/video-editor/videoPlayback/usePlaybackWallpaper";
 
 const playback = vi.hoisted(() => ({ values: [] as unknown[], cursor: 0 }));
 vi.mock("react", () => ({
@@ -129,7 +129,16 @@ describe("desktop wallpaper", () => {
 		expect(
 			desktopWallpaperPreference(`C:\\Recordly\\desktop-wallpapers\\${"c".repeat(64)}.png`),
 		).toBe(DESKTOP_WALLPAPER);
-		for (const path of ["/wallpapers/tahoe-light.jpg", "#112233", "/pictures/custom.png"])
+		expect(desktopWallpaperPreference(`/data/desktop-wallpapers/${"d".repeat(64)}.jpg`)).toBe(
+			DESKTOP_WALLPAPER,
+		);
+		for (const path of [
+			"/wallpapers/tahoe-light.jpg",
+			"#112233",
+			"/pictures/custom.png",
+			`/pictures/${"e".repeat(64)}.jpg`,
+			`/data/desktop-wallpapers/${"f".repeat(64)}.gif`,
+		])
 			expect(desktopWallpaperPreference(path)).toBe(path);
 	});
 

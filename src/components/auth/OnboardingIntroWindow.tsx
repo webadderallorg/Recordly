@@ -1,61 +1,54 @@
 import { useEffect, useRef, useState } from "react";
-import { isMac } from "@/utils/platformUtils";
-import desktopIconUrl from "../../../icons/icons/png/512x512.png";
 import { loadOnboardingLogo, playOnboardingGlass } from "./onboardingGlass";
 import "./OnboardingIntroWindow.css";
 
-const WORDMARK = "Recordly";
-const WORDMARK_DISPLAY_MS = 1580;
-const macIconUrl = `${import.meta.env.BASE_URL}app-icons/recordlymac-512.png`;
+const iconUrl = `${import.meta.env.BASE_URL}app-icons/recordlymac-512.png`;
+const LOGO_HOLD_MS = 400;
 
 export default function OnboardingIntroWindow() {
 	const canvas = useRef<HTMLCanvasElement>(null);
-	const [iconUrl, setIconUrl] = useState(desktopIconUrl);
 	const [mode, setMode] = useState<"loading" | "glass" | "fallback">("loading");
-	const [presentation, setPresentation] = useState<"mark" | "wordmark" | "releasing">("mark");
+	const [releasing, setReleasing] = useState(false);
 
 	useEffect(() => {
 		const report = window.electronAPI?.reportOnboardingIntro;
 		let disposed = false;
 		let usingFallback = false;
-		let wordmarkStarted = false;
+		let finishing = false;
 		let stopGlass: (() => void) | undefined;
-		let next: ReturnType<typeof setTimeout>;
+		let holdTimer: ReturnType<typeof setTimeout>;
+		let releaseTimer: ReturnType<typeof setTimeout>;
 		let preparationDeadline: ReturnType<typeof setTimeout>;
 		let unsubscribe: (() => void) | undefined;
 		const finish = () => {
-			setPresentation("releasing");
-			next = setTimeout(() => report?.("finished"), 180);
-		};
-		const showWordmark = () => {
-			if (disposed || wordmarkStarted) return;
-			wordmarkStarted = true;
-			setPresentation("wordmark");
-			next = setTimeout(finish, WORDMARK_DISPLAY_MS);
+			if (disposed || finishing) return;
+			finishing = true;
+			setReleasing(true);
+			releaseTimer = setTimeout(() => report?.("finished"), 180);
 		};
 		const fallback = () => {
-			if (disposed || usingFallback) return;
+			if (disposed || usingFallback || finishing) return;
 			usingFallback = true;
 			clearTimeout(preparationDeadline);
+			clearTimeout(holdTimer);
 			stopGlass?.();
 			setMode("fallback");
-			if (!wordmarkStarted) {
-				clearTimeout(next);
-				next = setTimeout(showWordmark, 720);
-			}
+			holdTimer = setTimeout(finish, 720 + LOGO_HOLD_MS);
 		};
 
 		const play = () => {
 			preparationDeadline = setTimeout(fallback, 3000);
-			void isMac()
-				.then((mac) => {
-					const url = mac ? macIconUrl : desktopIconUrl;
-					if (!disposed) setIconUrl(url);
-					return loadOnboardingLogo(url);
-				})
+			void loadOnboardingLogo(iconUrl)
 				.then((logo) => {
 					if (disposed || usingFallback || !canvas.current) return;
-					stopGlass = playOnboardingGlass(canvas.current, logo, showWordmark, fallback);
+					stopGlass = playOnboardingGlass(
+						canvas.current,
+						logo,
+						() => {
+							holdTimer = setTimeout(finish, LOGO_HOLD_MS);
+						},
+						fallback,
+					);
 					clearTimeout(preparationDeadline);
 					setMode("glass");
 				})
@@ -67,10 +60,6 @@ export default function OnboardingIntroWindow() {
 		// Let the effect settle without waiting for a frame in a hidden window.
 		queueMicrotask(() => {
 			if (disposed) return;
-			if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-				report?.("skipped");
-				return;
-			}
 			unsubscribe = window.electronAPI?.onOnboardingIntroShown?.(play);
 			report?.("ready");
 			if (!unsubscribe) play();
@@ -80,7 +69,8 @@ export default function OnboardingIntroWindow() {
 			disposed = true;
 			unsubscribe?.();
 			clearTimeout(preparationDeadline);
-			clearTimeout(next);
+			clearTimeout(holdTimer);
+			clearTimeout(releaseTimer);
 			stopGlass?.();
 		};
 	}, []);
@@ -88,17 +78,12 @@ export default function OnboardingIntroWindow() {
 	return (
 		<div className="onboarding-intro" aria-hidden="true">
 			<div className="onboarding-intro-backdrop" />
-			<div className="onboarding-intro-brand" data-presentation={presentation}>
-				<div className="onboarding-intro-logo-track">
-					<div className="onboarding-intro-logo" data-mode={mode}>
-						<canvas ref={canvas} />
-						{mode === "fallback" && (
-							<img alt="" className="onboarding-intro-fallback" src={iconUrl} />
-						)}
-					</div>
-				</div>
-				<div className="onboarding-intro-wordmark">
-					<span>{WORDMARK}</span>
+			<div className="onboarding-intro-brand" data-releasing={releasing}>
+				<div className="onboarding-intro-logo" data-mode={mode}>
+					<canvas ref={canvas} />
+					{mode === "fallback" && (
+						<img alt="" className="onboarding-intro-fallback" src={iconUrl} />
+					)}
 				</div>
 			</div>
 		</div>

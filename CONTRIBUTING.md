@@ -5,8 +5,9 @@ Thank you for considering contributing to this project! By contributing, you hel
 Areas where help is especially valuable:
 - Export optimisations
 - Native screen recording for Linux
-- Wallpaper submissions
-- Extensions (device frames, click effects, render hooks — see [EXTENSIONS.md](./EXTENSIONS.md))
+- Built-in [wallpapers](./src/lib/wallpapers.ts) and [cursor assets](./src/assets/cursors/)
+
+See [extension support](./EXTENSIONS.md) for the current status of the extension API and marketplace.
 
 ## How to Contribute
 

@@ -15,6 +15,23 @@ export const EXPORT_LOADING_MESSAGES: readonly ExportLoadingMessage[] = [
 	"Resistance is Futile",
 	"Grrr. Bark. Bark. Grrr",
 	"Don't Panic",
+	"Rendering your frames...",
+	"Applying your edits...",
+	"Compositing the scene...",
+	"Stitching it all together...",
+	"Polishing every pixel...",
+	"Hang tight, your export is on its way.",
+	"Longer recordings take a little longer.",
+	"Higher quality takes a few more seconds.",
+	"Good things take a moment.",
+	"Processing your video...",
+	"Working through your timeline...",
+	"Building your video frame by frame...",
+	"Encoding video frames...",
+	"Bringing everything together...",
+	"Preparing your file...",
+	"Still working on it...",
+	"Thanks for your patience.",
 ];
 
 export function shuffleExportLoadingMessages(messages: readonly ExportLoadingMessage[]) {

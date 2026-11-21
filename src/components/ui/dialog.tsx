@@ -1,4 +1,4 @@
-import { Modal, Description } from "@heroui/react";
+import { Description, Modal } from "@heroui/react";
 import { type ComponentProps, type ReactNode } from "react";
 import { useI18n } from "@/contexts/I18nContext";
 import { cn } from "@/lib/utils";

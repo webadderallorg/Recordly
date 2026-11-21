@@ -1,7 +1,125 @@
 import { expect, type Page, test } from "@playwright/test";
 import { completeSupabaseSignIn } from "./auth";
-import { productionTest } from "./production";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+import { productionTest } from "./production";
+
+for (const signedIn of [false, true]) {
+	const modeTest = signedIn ? productionTest : test;
+	modeTest(
+		`onboarding returns to Upgrade after ${signedIn ? "billing reauthentication" : "sign-in"}`,
+		async ({ page }) => {
+			await installDesktopBridge(page, "preview.mp4", { signedIn, onboarded: false });
+			await installDesktopBridgeOverrides(
+				page,
+				(rejectSession) => {
+					const prices = [{ interval: "monthly", currency: "usd", unitAmount: 900 }];
+					window.electronAPI.cloudBilling = async ({ action, token }) => {
+						const root = document.documentElement;
+						if (action === "catalog") {
+							if (token) root.dataset.catalogAuthenticated = "true";
+							root.dataset.catalogReads = String(
+								Number(root.dataset.catalogReads ?? 0) + 1,
+							);
+							return {
+								success: true,
+								prices,
+								limits: {
+									freeRecordingLimit: 5,
+									freeMaxRecordingBytes: 1e9,
+									plusMaxRecordingBytes: 1e10,
+									plusWeeklyUploadLimit: 200,
+									storageLimitBytes: 1e11,
+								},
+							};
+						}
+						if (action !== "status") {
+							root.dataset.billingAction = action;
+							return { success: true };
+						}
+						if (rejectSession && !root.dataset.billingCheckStarted) {
+							await new Promise<void>((resolve) =>
+								window.addEventListener(
+									"test-release-billing-status",
+									() => resolve(),
+									{
+										once: true,
+									},
+								),
+							);
+						}
+						if (rejectSession && !root.dataset.billingReauthenticated)
+							return { success: false, httpStatus: 401 };
+						return {
+							success: true,
+							billing: {
+								plan: "free",
+								subscriptionStatus: null,
+								currentPeriodEnd: null,
+								cancelAtPeriodEnd: false,
+								checkoutAvailable: true,
+								checkoutIntervals: ["monthly"],
+								portalAvailable: false,
+								prices,
+							},
+							usage: {
+								recordings: 0,
+								recordingLimit: 5,
+								maxRecordingBytes: 1e9,
+								storageBytes: 0,
+								storageLimitBytes: 1e11,
+							},
+						};
+					};
+				},
+				signedIn,
+			);
+			await page.goto("/?windowType=onboarding");
+			const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
+			const next = tour.getByRole("button", { name: "Next", exact: true });
+			const root = page.locator("html");
+			if (!signedIn) {
+				await expect(tour).toHaveAttribute("data-onboarding-state", "login");
+				await expect(root).toHaveAttribute("data-catalog-reads", "1");
+			}
+			if (!signedIn) await next.click();
+			await expect(tour).toHaveAttribute("data-onboarding-state", "permissions");
+			await expect(root).toHaveAttribute("data-catalog-reads", "1");
+			await next.click();
+			const start = tour.getByRole("button", { name: "Get started", exact: true });
+			await expect(tour.getByRole("radio", { name: /Monthly.*\$9/ })).toBeVisible();
+			await expect(root).not.toHaveAttribute("data-catalog-authenticated");
+			if (signedIn) {
+				await expect(
+					tour.getByRole("button", { name: "Loading your plan…" }),
+				).toBeDisabled();
+				await expect(tour.getByText("Loading pricing…", { exact: true })).toHaveCount(0);
+				await page.evaluate(() => {
+					document.documentElement.dataset.billingCheckStarted = "true";
+					window.dispatchEvent(new Event("test-release-billing-status"));
+				});
+			}
+			await (signedIn
+				? tour.getByRole("button", { name: "Sign in to continue" })
+				: start
+			).click();
+			await expect(tour).toHaveAttribute("data-onboarding-state", "login");
+			await tour.getByPlaceholder("you@example.com").fill("test@email.com");
+			await tour.getByRole("button", { name: "Email me a code" }).click();
+			await expect(tour.getByText(/Enter code sent to/)).toBeVisible();
+			await expect(tour).toHaveAttribute("data-onboarding-state", "login");
+			await page.evaluate(() => {
+				document.documentElement.dataset.billingReauthenticated = "true";
+			});
+			await completeSupabaseSignIn(page);
+			await expect(tour).toHaveAttribute("data-onboarding-state", "upgrade");
+			await expect(start).toBeEnabled();
+			await expect(root).toHaveAttribute("data-catalog-reads", "1");
+			await expect(root).not.toHaveAttribute("data-billing-action");
+			await start.click();
+			await expect(page.locator("html")).toHaveAttribute("data-billing-action", "checkout");
+		},
+	);
+}
 
 async function openDevSettings(page: Page) {
 	await page.getByRole("button", { name: "Recordly account", exact: true }).click();
@@ -83,14 +201,16 @@ test("Show onboarding opens directly after onboarding was completed", async ({ p
 	).toBeVisible();
 	await page
 		.getByRole("dialog", { name: "Welcome to Recordly" })
-		.getByRole("button", { name: "Continue", exact: true })
+		.getByRole("button", { name: "Next", exact: true })
 		.click();
 	await expect(page.locator("[data-startup-intro]")).toHaveCount(0);
 	await expect(page.locator("html")).toHaveAttribute("data-preview-requested", "true");
 	await expect(page.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
 });
 
-test("settings opens permissions and both pages keep the same layout", async ({ page }) => {
+test("settings opens permissions and all onboarding pages keep the same layout", async ({
+	page,
+}) => {
 	await page.emulateMedia({ reducedMotion: "reduce" });
 	await installDesktopBridge(page);
 	await page.goto("/?windowType=editor");
@@ -104,7 +224,7 @@ test("settings opens permissions and both pages keep the same layout", async ({ 
 	).toBeVisible();
 	await page
 		.getByRole("dialog", { name: "Welcome to Recordly" })
-		.getByRole("button", { name: "Continue", exact: true })
+		.getByRole("button", { name: "Next", exact: true })
 		.click();
 	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 	await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
@@ -121,7 +241,7 @@ test("settings opens permissions and both pages keep the same layout", async ({ 
 		"aria-current",
 		"page",
 	);
-	await expect(pages.getByRole("button")).toHaveCount(2);
+	await expect(pages.getByRole("button")).toHaveCount(3);
 	await expect(tour.getByRole("listitem")).toHaveCount(0);
 	await expect(pages).toBeInViewport();
 	await expect(page.locator(".modal__container")).not.toHaveAttribute("data-entering", "true");
@@ -137,16 +257,15 @@ test("settings opens permissions and both pages keep the same layout", async ({ 
 		)
 		.toBeGreaterThan(0);
 	const startBounds = (await tour
-		.getByRole("button", { name: "Start recording", exact: true })
+		.getByRole("button", { name: "Next", exact: true })
 		.boundingBox())!;
-	await expect(tour.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
 	await pages.getByRole("button", { name: "Account", exact: true }).click();
 	await expect(tour).toHaveAttribute("data-onboarding-state", "login");
 	await expect(pages.getByRole("button", { name: "Account", exact: true })).toHaveAttribute(
 		"aria-current",
 		"page",
 	);
-	await expect(tour.getByPlaceholder("you@example.com")).toBeVisible();
+	await expect(tour.getByText("test@email.com", { exact: true })).toBeVisible();
 	const loginHeading = (await tour.getByRole("heading", { level: 2 }).boundingBox())!;
 	await expect(tour.locator("[data-onboarding-brand]")).toHaveCount(0);
 	const accountBannerBounds = (await banner.boundingBox())!;
@@ -180,11 +299,20 @@ test("settings opens permissions and both pages keep the same layout", async ({ 
 	const navigationBounds = (await pages.boundingBox())!;
 	expect(navigationBounds.y).toBeGreaterThan(startBounds.y + startBounds.height);
 	await expect
-		.poll(() =>
-			tour.getByRole("button", { name: "Start recording", exact: true }).boundingBox(),
-		)
+		.poll(() => tour.getByRole("button", { name: "Next", exact: true }).boundingBox())
 		.toEqual(startBounds);
-	await tour.getByRole("button", { name: "Start recording", exact: true }).click();
+	await tour.getByRole("button", { name: "Next", exact: true }).click();
+	await expect(
+		tour.getByRole("heading", { name: /^Unlock Recordly\s*'s full power$/ }),
+	).toBeVisible();
+	const skip = tour.getByRole("button", { name: "Skip and start recording", exact: true });
+	await expect(skip).toHaveClass(/button--ghost/);
+	await expect(tour.getByRole("button", { name: "Back to permissions" })).toHaveClass(
+		/button--ghost/,
+	);
+	expect(await banner.boundingBox()).toEqual(bannerBounds);
+	expect(await pages.boundingBox()).toEqual(navigationBounds);
+	await skip.click();
 	await expect(tour).not.toBeVisible();
 	await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
 	await openDevSettings(page);
@@ -194,7 +322,7 @@ test("settings opens permissions and both pages keep the same layout", async ({ 
 	).toBeVisible();
 	await page
 		.getByRole("dialog", { name: "Welcome to Recordly" })
-		.getByRole("button", { name: "Continue", exact: true })
+		.getByRole("button", { name: "Next", exact: true })
 		.click();
 	await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
 });
@@ -216,7 +344,8 @@ productionTest(
 		await expect(tour).toBeVisible({ timeout: 15000 });
 		await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
 		await expect(page.locator("[data-permissions-confetti]")).toBeVisible();
-		await tour.getByRole("button", { name: "Start recording", exact: true }).click();
+		await tour.getByRole("button", { name: "Next", exact: true }).click();
+		await tour.getByRole("button", { name: "Skip and start recording", exact: true }).click();
 		await expect
 			.poll(() => page.evaluate(() => localStorage.getItem("recordly.onboarding.v1.seen")))
 			.toBe("true");
@@ -243,12 +372,10 @@ test("onboarding fits a compact window with reduced motion", async ({ page }) =>
 	).toBeVisible();
 	await page
 		.getByRole("dialog", { name: "Welcome to Recordly" })
-		.getByRole("button", { name: "Continue", exact: true })
+		.getByRole("button", { name: "Next", exact: true })
 		.click();
 	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
-	await expect(
-		tour.getByRole("button", { name: "Start recording", exact: true }),
-	).toBeInViewport();
+	await expect(tour.getByRole("button", { name: "Next", exact: true })).toBeInViewport();
 	await expect(tour.locator("[data-onboarding-artwork] [data-recordly-demo]")).toBeInViewport();
 	for (const size of [
 		{ width: 450, height: 450 },
@@ -266,9 +393,7 @@ test("onboarding fits a compact window with reduced motion", async ({ page }) =>
 					.evaluate((element) => element.scrollHeight - element.clientHeight),
 			)
 			.toBeLessThanOrEqual(1);
-		await expect(
-			tour.getByRole("button", { name: "Start recording", exact: true }),
-		).toBeInViewport();
+		await expect(tour.getByRole("button", { name: "Next", exact: true })).toBeInViewport();
 		await expect(tour.getByRole("navigation", { name: "Onboarding pages" })).toBeInViewport();
 	}
 	await page.screenshot({ path: "test-results/onboarding-compact.png" });
@@ -289,15 +414,13 @@ test("short dark windows keep the banner and navigation visible while the accoun
 	).toBeVisible();
 	await page
 		.getByRole("dialog", { name: "Welcome to Recordly" })
-		.getByRole("button", { name: "Continue", exact: true })
+		.getByRole("button", { name: "Next", exact: true })
 		.click();
 	await page.setViewportSize({ width: 390, height: 600 });
 	await page.evaluate(() => document.documentElement.classList.add("dark"));
 	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 	await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
-	await expect(
-		tour.getByRole("button", { name: "Start recording", exact: true }),
-	).toBeInViewport();
+	await expect(tour.getByRole("button", { name: "Next", exact: true })).toBeInViewport();
 	const body = tour.locator("[data-onboarding-body]");
 	await expect(body).toHaveCSS("overflow-y", "auto");
 	await expect
@@ -317,12 +440,12 @@ test("short dark windows keep the banner and navigation visible while the accoun
 	await page.screenshot({ path: "test-results/onboarding-narrow-permissions.png" });
 	await tour.getByRole("button", { name: "Back to account" }).click();
 	const bounds = await tour.boundingBox();
-	await expect(tour.getByRole("button", { name: "Continue", exact: true })).toBeInViewport();
+	await expect(tour.getByRole("button", { name: "Next", exact: true })).toBeInViewport();
 	await expect(tour.locator("[data-onboarding-artwork] [data-recordly-demo]")).toBeInViewport();
 	expect(await tour.boundingBox()).toEqual(bounds);
 	await expect(tour).toHaveJSProperty("scrollWidth", bounds!.width);
 	await page.screenshot({ path: "test-results/onboarding-narrow-account.png" });
-	await tour.getByRole("button", { name: "Continue", exact: true }).click();
+	await tour.getByRole("button", { name: "Next", exact: true }).click();
 	await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
 });
 
@@ -345,8 +468,8 @@ productionTest(
 					fontWeight: heading.fontWeight,
 					lineHeight: heading.lineHeight,
 					letterSpacing: heading.letterSpacing,
-					logoWidth: logo.getBoundingClientRect().width,
-					logoHeight: logo.getBoundingClientRect().height,
+					logoWidth: getComputedStyle(logo).width,
+					logoHeight: getComputedStyle(logo).height,
 					headerGap: getComputedStyle(header).gap,
 				};
 			});
@@ -371,12 +494,8 @@ productionTest(
 		await body.evaluate((element) => {
 			element.scrollTop = element.scrollHeight;
 		});
-		await expect(
-			tour.getByText("Microphone and camera access are requested when you use them.", {
-				exact: false,
-			}),
-		).toBeInViewport();
-		await expect(tour.getByRole("button", { name: "Start recording" })).toBeInViewport();
+		await expect(tour.getByRole("status", { name: "Accessibility: Allowed" })).toBeInViewport();
+		await expect(tour.getByRole("button", { name: "Next", exact: true })).toBeInViewport();
 		await expect(tour.getByRole("navigation", { name: "Onboarding pages" })).toBeInViewport();
 		const bodyBounds = (await body.boundingBox())!;
 		const footerBounds = (await tour.locator(".onboarding-footer").boundingBox())!;
@@ -441,10 +560,9 @@ productionTest(
 				.getByRole("navigation", { name: "Onboarding pages" })
 				.getByRole("button", { name: "Permissions", exact: true }),
 		).toBeEnabled();
-		await expect(
-			tour.getByRole("button", { name: "Start recording", exact: true }),
-		).toBeEnabled();
-		await tour.getByRole("button", { name: "Start recording", exact: true }).click();
+		await expect(tour.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
+		await tour.getByRole("button", { name: "Next", exact: true }).click();
+		await tour.getByRole("button", { name: "Skip and start recording", exact: true }).click();
 		await expect(tour).not.toBeVisible();
 		await page.reload();
 		await expect(page.getByRole("button", { name: "Home", exact: true })).toBeVisible({
@@ -454,7 +572,9 @@ productionTest(
 	},
 );
 
-test("missing macOS permissions gate Start recording until access is allowed", async ({ page }) => {
+test("missing macOS permissions gate the upgrade step until access is allowed", async ({
+	page,
+}) => {
 	await installDesktopBridge(page);
 	await page.addInitScript(() => {
 		let screen = false;
@@ -481,20 +601,19 @@ test("missing macOS permissions gate Start recording until access is allowed", a
 			},
 		});
 	});
-	await page.goto("/?windowType=editor");
-	await openDevSettings(page);
-	await page.getByRole("button", { name: "Show onboarding" }).click();
+	await page.goto("/?windowType=onboarding&onboardingPreview=1");
 	await expect(
 		page.getByRole("heading", { name: "Welcome to Recordly", exact: true }),
-	).toBeVisible();
+	).toBeVisible({ timeout: 15000 });
 	await page
 		.getByRole("dialog", { name: "Welcome to Recordly" })
-		.getByRole("button", { name: "Continue", exact: true })
+		.getByRole("button", { name: "Next", exact: true })
 		.click();
 	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
-	const start = tour.getByRole("button", { name: "Start recording", exact: true });
+	const start = tour.getByRole("button", { name: "Next", exact: true });
 	await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
 	await expect(start).toBeDisabled();
+	await expect(tour.getByRole("button", { name: "Upgrade", exact: true })).toBeDisabled();
 	await page.setViewportSize({ width: 390, height: 600 });
 	await expect
 		.poll(() =>
@@ -517,7 +636,8 @@ test("missing macOS permissions gate Start recording until access is allowed", a
 	await page.evaluate(() => window.dispatchEvent(new Event("focus")));
 	await expect(page.locator("[data-permissions-confetti]")).toHaveCount(0);
 	await tour.getByRole("button", { name: "Back to account" }).click();
-	await tour.getByRole("button", { name: "Continue", exact: true }).click();
+	await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toHaveCount(0);
+	await tour.getByRole("button", { name: "Next", exact: true }).click();
 	await expect(page.locator("[data-permissions-confetti]")).toBeVisible();
 	await expect
 		.poll(() =>
@@ -531,7 +651,15 @@ test("missing macOS permissions gate Start recording until access is allowed", a
 		path: "test-results/onboarding-permissions.png",
 		animations: "disabled",
 	});
+	const banner = tour.locator("[data-onboarding-artwork]");
+	const footer = tour.locator(".onboarding-carousel-footer");
+	const permissionLayout = await Promise.all([banner.boundingBox(), footer.boundingBox()]);
 	await start.click();
+	await expect(tour).toHaveAttribute("data-onboarding-state", "upgrade");
+	expect(await Promise.all([banner.boundingBox(), footer.boundingBox()])).toEqual(
+		permissionLayout,
+	);
+	await tour.getByRole("button", { name: "Skip and start recording", exact: true }).click();
 	await expect(tour).not.toBeVisible();
 	await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
 });
@@ -552,47 +680,49 @@ for (const platform of ["win32", "linux"]) {
 			},
 			platform,
 		);
-		await page.goto("/?windowType=editor");
-		await openDevSettings(page);
-		await page.getByRole("button", { name: "Show onboarding" }).click();
+		await page.goto("/?windowType=onboarding&onboardingPreview=1");
 		await expect(
 			page.getByRole("heading", { name: "Welcome to Recordly", exact: true }),
-		).toBeVisible();
+		).toBeVisible({ timeout: 15000 });
 		await page
 			.getByRole("dialog", { name: "Welcome to Recordly" })
-			.getByRole("button", { name: "Continue", exact: true })
+			.getByRole("button", { name: "Next", exact: true })
 			.click();
 		const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
-		await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
+		await expect(tour).toHaveAttribute("data-onboarding-state", "permissions");
 		await expect(
-			tour.getByRole("button", { name: "Start recording", exact: true }),
-		).toBeEnabled();
+			tour.getByText(/^Your screen is captured only when you start a recording\./),
+		).toBeVisible();
 		await expect(tour.getByText("Screen Recording", { exact: true })).toHaveCount(0);
 		await expect(tour.getByText("macOS System Settings", { exact: false })).toHaveCount(0);
-		await tour.getByRole("button", { name: "Start recording", exact: true }).click();
+		await expect(page.locator("html")).not.toHaveAttribute("data-hud-opened");
+		await tour.getByRole("button", { name: "Next", exact: true }).click();
+		await expect(tour).toHaveAttribute("data-onboarding-state", "upgrade");
+		await tour.getByRole("button", { name: "Skip and start recording", exact: true }).click();
 		await expect(tour).not.toBeVisible();
 		await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
 	});
 }
 
-test("HUD routes missing permissions to onboarding without opening System Settings on launch", async ({
-	page,
-}) => {
-	await installDesktopBridge(page);
-	await page.addInitScript(() => {
-		window.electronAPI.getScreenRecordingPermissionStatus = async () => ({
-			success: true,
-			status: "denied",
+productionTest(
+	"HUD routes missing permissions to onboarding without opening System Settings on launch",
+	async ({ page }) => {
+		await installDesktopBridge(page);
+		await page.addInitScript(() => {
+			window.electronAPI.getScreenRecordingPermissionStatus = async () => ({
+				success: true,
+				status: "denied",
+			});
+			window.electronAPI.openScreenRecordingPreferences = async () => {
+				document.documentElement.dataset.settingsOpened = "true";
+				return { success: true };
+			};
 		});
-		window.electronAPI.openScreenRecordingPreferences = async () => {
-			document.documentElement.dataset.settingsOpened = "true";
-			return { success: true };
-		};
-	});
-	await page.goto("/?windowType=hud-overlay");
-	await expect(page.locator("html")).toHaveAttribute("data-permissions-opened", "true");
-	await expect(page.locator("html")).not.toHaveAttribute("data-settings-opened");
-});
+		await page.goto("/?windowType=hud-overlay");
+		await expect(page.locator("html")).toHaveAttribute("data-permissions-opened", "true");
+		await expect(page.locator("html")).not.toHaveAttribute("data-settings-opened");
+	},
+);
 
 productionTest(
 	"a permission request opens its page even after onboarding was already completed",
@@ -622,14 +752,18 @@ productionTest(
 );
 
 for (const platform of ["darwin", "win32", "linux"]) {
-	test(`${platform} HUD requires a Supabase session before recording`, async ({ page }) => {
-		await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
-		await page.addInitScript((platform) => {
-			window.electronAPI.getPlatform = async () => platform;
-		}, platform);
-		await page.goto("/?windowType=hud-overlay");
-		await expect(page.locator("html")).toHaveAttribute("data-permissions-opened", "true");
-	});
+	productionTest(
+		`${platform} HUD routes a missing session to sign-in without requesting permissions`,
+		async ({ page }) => {
+			await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
+			await page.addInitScript((platform) => {
+				window.electronAPI.getPlatform = async () => platform;
+			}, platform);
+			await page.goto("/?windowType=hud-overlay");
+			await expect(page.locator("html")).toHaveAttribute("data-dashboard-opened", "true");
+			await expect(page.locator("html")).not.toHaveAttribute("data-permissions-opened");
+		},
+	);
 }
 
 for (const signedIn of [true, false]) {
@@ -646,14 +780,6 @@ for (const signedIn of [true, false]) {
 				localStorage.setItem(`test-write:${key}`, JSON.stringify(value));
 				return true;
 			};
-			HTMLMediaElement.prototype.play = async function () {
-				if (this instanceof HTMLAudioElement)
-					document.documentElement.dataset.welcomeMusic = this.src;
-			};
-			HTMLMediaElement.prototype.pause = function () {
-				if (this instanceof HTMLAudioElement)
-					document.documentElement.dataset.welcomeMusicStopped = "true";
-			};
 		});
 		await page.goto("/?windowType=onboarding&onboardingPreview=1");
 		const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
@@ -662,12 +788,17 @@ for (const signedIn of [true, false]) {
 		await expect(tour.getByPlaceholder("you@example.com")).toHaveCount(signedIn ? 0 : 1);
 		if (signedIn) await expect(tour.getByText("test@email.com", { exact: true })).toBeVisible();
 		await expect(tour.getByText("Your account", { exact: true })).toHaveCount(0);
-		await expect(page.locator("html")).toHaveAttribute(
-			"data-welcome-music",
-			/audio\/first-boot.m4a$/,
-		);
-		const music = tour.getByRole("button", { name: "Mute welcome music" });
-		await expect(music).toHaveAttribute("aria-pressed", "true");
+		const music = tour.getByRole("button", { name: "Mute welcome music", exact: true });
+		const pausedMusic = tour.getByRole("button", { name: "Unmute welcome music", exact: true });
+		const audio = tour.locator("audio");
+		const expectPlaying = async () => {
+			await expect(music.or(pausedMusic)).toBeVisible();
+			if (await pausedMusic.isVisible()) await pausedMusic.click();
+			await expect(music).toBeVisible();
+			await expect(audio).toHaveJSProperty("paused", false);
+			await expect(audio).toHaveJSProperty("muted", false);
+		};
+		await expectPlaying();
 		const soundBounds = await music.boundingBox();
 		expect(soundBounds).not.toBeNull();
 		expect(soundBounds!.x).toBeLessThan(64);
@@ -677,13 +808,12 @@ for (const signedIn of [true, false]) {
 			animations: "disabled",
 		});
 		await music.click();
-		const pausedMusic = tour.getByRole("button", { name: "Unmute welcome music" });
 		await expect(pausedMusic).toBeVisible();
-		await expect(pausedMusic).toHaveAttribute("aria-pressed", "false");
-		await expect(page.locator("html")).toHaveAttribute("data-welcome-music-stopped", "true");
+		await expect(audio).toHaveJSProperty("muted", true);
+		await expect(audio).toHaveJSProperty("paused", false);
 		await pausedMusic.click();
-		await expect(music).toHaveAttribute("aria-pressed", "true");
-		await tour.getByRole("button", { name: "Continue", exact: true }).click();
+		await expect(audio).toHaveJSProperty("muted", false);
+		await tour.getByRole("button", { name: "Next", exact: true }).click();
 		await expect(tour).toHaveAttribute("data-onboarding-state", "permissions");
 		await tour.getByRole("button", { name: "Back to account" }).click();
 		await tour
@@ -691,10 +821,11 @@ for (const signedIn of [true, false]) {
 			.getByRole("button", { name: "Permissions", exact: true })
 			.click();
 		await expect(tour).toHaveAttribute("data-onboarding-state", "permissions");
-		await tour.getByRole("button", { name: "Start recording", exact: true }).click();
+		await tour.getByRole("button", { name: "Next", exact: true }).click();
+		await tour.getByRole("button", { name: "Skip and start recording", exact: true }).click();
 		await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
 		await expect(page.locator("html")).toHaveAttribute("data-onboarding-closed", "true");
-		await expect(page.locator("html")).toHaveAttribute("data-welcome-music-stopped", "true");
+		await expect(tour.locator("[data-welcome-music]")).toHaveCount(0);
 		expect(
 			await page.evaluate(() =>
 				localStorage.getItem("test-write:recordly.onboarding.v1.seen"),
@@ -707,7 +838,7 @@ for (const signedIn of [true, false]) {
 		).toBeNull();
 		await page.reload();
 		await expect(tour.getByRole("heading", { name: "Welcome to Recordly" })).toBeVisible();
-		await expect(tour.getByRole("button", { name: "Mute welcome music" })).toBeVisible();
+		await expectPlaying();
 	});
 }
 
@@ -734,7 +865,7 @@ test("Review permission setup uses onboarding preview in development", async ({ 
 	const tour = page.getByRole("dialog", { name: "Welcome to Recordly", exact: true });
 	await expect(tour.getByPlaceholder("you@example.com")).toHaveCount(0);
 	await expect(tour.getByText("test@email.com", { exact: true })).toBeVisible();
-	await tour.getByRole("button", { name: "Continue", exact: true }).click();
+	await tour.getByRole("button", { name: "Next", exact: true }).click();
 	await expect(tour.getByRole("navigation")).toBeVisible();
 	await expect(tour.getByRole("button", { name: "Back to account" })).toBeVisible();
 	await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();

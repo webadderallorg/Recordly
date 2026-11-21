@@ -9,7 +9,7 @@ async function setup(page: Page) {
 		const get = window.electronAPI.getAppSetting;
 		const set = window.electronAPI.setAppSetting;
 		window.electronAPI.getAppSetting = (key) => {
-			if (key !== "recordly.editor.preferences") return get(key);
+			if (key !== "recordly.editor.preferences.v2") return get(key);
 			const saved = localStorage.getItem(key);
 			return saved
 				? JSON.parse(saved)
@@ -18,7 +18,7 @@ async function setup(page: Page) {
 					: {};
 		};
 		window.electronAPI.setAppSetting = (key, value) => {
-			if (key === "recordly.editor.preferences")
+			if (key === "recordly.editor.preferences.v2")
 				document.documentElement.dataset.autoZoomPreference = JSON.stringify(
 					(value as { autoApplyFreshRecordingAutoZooms?: boolean })
 						.autoApplyFreshRecordingAutoZooms,

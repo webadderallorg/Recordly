@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 async function option(page: Page, field: string, text: string) {
 	const trigger = page.getByRole("button", { name: new RegExp(field) });

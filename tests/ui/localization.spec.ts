@@ -21,8 +21,10 @@ const languageNames = [
 	"한국어",
 	"日本語",
 	"Português (Brasil)",
+	"Tiếng Việt",
 	"简体中文",
 	"繁體中文",
+	"Türkçe",
 ];
 const expectedUpgradeLabels: Record<(typeof SUPPORTED_LOCALES)[number], string> = {
 	en: "Upgrade",
@@ -34,8 +36,10 @@ const expectedUpgradeLabels: Record<(typeof SUPPORTED_LOCALES)[number], string> 
 	ko: "업그레이드",
 	ja: "アップグレード",
 	"pt-BR": "Fazer upgrade",
+	vi: "Nâng cấp",
 	"zh-CN": "升级",
 	"zh-TW": "升級",
+	tr: "Yükselt",
 };
 
 for (const [index, locale] of SUPPORTED_LOCALES.entries()) {
@@ -105,14 +109,11 @@ for (const [index, locale] of SUPPORTED_LOCALES.entries()) {
 		).toBe(common.actions.cancel);
 		expect(await page.evaluate(() => localStorage.getItem("recordly.locale"))).toBe(locale);
 		await expect(page.getByText(common.app.language, { exact: true }).first()).toBeVisible();
-		await page
-			.locator(".settings-language-field")
-			.getByRole("button", { name: common.app.language, exact: true })
-			.hover();
-		await expect(page.getByRole("tooltip")).toHaveText(
-			settings.appPreferences.languageDescription,
-		);
-		await page.mouse.move(0, 0);
+		await expect(
+			page
+				.locator(".settings-language-field")
+				.getByText(settings.appPreferences.languageDescription, { exact: true }),
+		).toBeVisible();
 		await expect(
 			page.getByRole("tab", { name: settings.categories.general, exact: true }),
 		).toBeVisible();

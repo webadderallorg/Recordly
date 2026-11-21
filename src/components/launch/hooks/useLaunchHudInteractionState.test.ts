@@ -21,6 +21,7 @@ let cleanup: Array<void | (() => void)>;
 let regions: Array<{ dataset: Record<string, string>; getBoundingClientRect: () => typeof bar }>;
 let host: EventTarget;
 const ignoreMouse = vi.fn();
+const setPopoverOpen = vi.fn();
 let nativeIgnoring: boolean | undefined;
 function mount(openId: string | null = null, platform: string | null = "darwin") {
 	const refs = {
@@ -92,13 +93,17 @@ function mountDragHooks() {
 beforeEach(() => {
 	vi.useFakeTimers();
 	ignoreMouse.mockReset();
+	setPopoverOpen.mockClear();
 	nativeIgnoring = undefined;
 	ignoreMouse.mockImplementation((ignore: boolean) => {
 		nativeIgnoring = ignore;
 	});
 	host = new EventTarget();
 	Object.assign(host, {
-		electronAPI: { hudOverlaySetIgnoreMouse: ignoreMouse },
+		electronAPI: {
+			hudOverlaySetIgnoreMouse: ignoreMouse,
+			hudOverlaySetPopoverOpen: setPopoverOpen,
+		},
 		innerWidth: 1280,
 		innerHeight: 800,
 	});
@@ -131,6 +136,21 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 describe("HUD forwarded mouse movement", () => {
+	it("reports Linux popover state independently of HUD hover", () => {
+		mount(null, "linux");
+		move(500, 730);
+		move(100, 730);
+		expect(setPopoverOpen.mock.calls).toEqual([[false]]);
+		cleanup.forEach((fn) => fn?.());
+
+		mount("microphone", "linux");
+		expect(setPopoverOpen).toHaveBeenLastCalledWith(true);
+		cleanup.forEach((fn) => fn?.());
+
+		mount(null, "linux");
+		expect(setPopoverOpen).toHaveBeenLastCalledWith(false);
+	});
+
 	it("cancels a pending close timer when a popover reopens", () => {
 		mount();
 		cleanup.forEach((fn) => fn?.());

@@ -7,6 +7,11 @@ test("webcam and HUD stay docked across recording states and drag together withi
 	await installDesktopBridge(page);
 	await page.addInitScript(() => {
 		window.electronAPI.getEditorMode = async () => false;
+		window.electronAPI.getMediaPermissionStatus = async () => ({
+			success: true,
+			microphone: "granted",
+			camera: "granted",
+		});
 		window.electronAPI.getRecordingPreferences = async () => ({
 			success: true,
 			microphoneEnabled: false,

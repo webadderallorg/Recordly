@@ -1,7 +1,8 @@
 import { Popover as HeroPopover } from "@heroui/react";
-import { createContext, useContext, useState, type ComponentProps, type ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import { type ComponentProps, createContext, type ReactNode, useContext, useState } from "react";
 import { useUNSAFE_PortalContext } from "react-aria";
+import { cn } from "@/lib/utils";
+
 const ModalContext = createContext(true);
 const CloseContext = createContext<(() => void) | undefined>(undefined);
 export function Popover({

@@ -1,5 +1,5 @@
-import type { AudioRegion } from "@/components/video-editor/types";
 import { SOURCE_AUDIO_NORMALIZE_GAIN } from "@/components/video-editor/audio/audioTypes";
+import type { AudioRegion } from "@/components/video-editor/types";
 import { getSourceTrackIdFromPath, type SourceTrackId } from "./audioProcessorShared";
 import { resolveSourceAudioFallbackPaths } from "./sourceAudioFallback";
 

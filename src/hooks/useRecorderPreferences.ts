@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { hasRecordlySession } from "@/lib/auth/recordlyAuth";
+import { hasRequiredRecordingPermissions } from "@/lib/recordingPermissions";
 import {
 	type BrowserMicrophoneProfile,
 	DEFAULT_BROWSER_MICROPHONE_PROFILE,
@@ -40,21 +41,10 @@ export function useRecorderPreferences() {
 
 	const preparePermissions = useCallback(async () => {
 		if (!import.meta.env.DEV && !(await hasRecordlySession().catch(() => false))) {
-			await window.electronAPI.showRecordingPermissions();
+			await window.electronAPI.showProjectDashboard();
 			return false;
 		}
-		if ((await window.electronAPI.getPlatform()) !== "darwin") return true;
-		const [screen, accessibility] = await Promise.all([
-			window.electronAPI.getScreenRecordingPermissionStatus(),
-			window.electronAPI.getAccessibilityPermissionStatus(),
-		]);
-		if (
-			screen.success &&
-			screen.status === "granted" &&
-			accessibility.success &&
-			accessibility.trusted
-		)
-			return true;
+		if (await hasRequiredRecordingPermissions()) return true;
 		await window.electronAPI.showRecordingPermissions();
 		return false;
 	}, []);

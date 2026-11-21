@@ -139,6 +139,12 @@ test("visual webcam shapes and source details support cancelling and changing fo
 		await option.click();
 		await expect(option).toHaveAttribute("aria-selected", "true");
 	}
+	const roundness = sidebar.getByRole("slider", { name: "Webcam Roundness" });
+	await roundness.press("End");
+	await expect(roundness).toHaveValue("100");
+	await shapes.getByRole("row", { name: "Square", exact: true }).click();
+	await expect(roundness).toHaveValue("20");
+	await shapes.getByRole("row", { name: "Rectangle", exact: true }).click();
 	await sidebar.screenshot({ path: info.outputPath("webcam-visual-controls.png") });
 	const file = source.getByRole("button", { name: "Webcam source", exact: true });
 	await file.focus();

@@ -1,7 +1,7 @@
-import { useRecordlyAuth } from "@/components/auth/useRecordlyAuth";
 import { createRoot } from "react-dom/client";
-import { CloudShareButton } from "@/components/video-editor/cloud/CloudShareButton";
+import { useRecordlyAuth } from "@/components/auth/useRecordlyAuth";
 import { Toaster } from "@/components/ui/toast";
+import { CloudShareButton } from "@/components/video-editor/cloud/CloudShareButton";
 import { I18nProvider } from "@/contexts/I18nContext";
 import "@/index.css";
 

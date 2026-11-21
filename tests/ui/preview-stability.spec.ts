@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
-import type {} from "./preview-performance";
 import { installDesktopBridge } from "./bridge";
+import type {} from "./preview-performance";
 
 test.use({ deviceScaleFactor: 2 });
 

@@ -1,5 +1,6 @@
 import { app, ipcMain } from "electron";
 import { expect, it, vi } from "vitest";
+import { testAppDocument, testAppPath } from "./testing/rendererFixture";
 
 const state = vi.hoisted(() => ({
 	request: undefined as ((request: unknown, response: unknown) => void) | undefined,
@@ -20,8 +21,8 @@ vi.mock("electron", () => ({
 	app: {
 		on: vi.fn(),
 		isReady: () => false,
-		getAppPath: () => "/recordly",
-		getPath: () => "/recordly",
+		getAppPath: () => testAppPath,
+		getPath: () => testAppPath,
 	},
 	ipcMain: { handle: vi.fn() },
 	BrowserWindow: {
@@ -32,7 +33,7 @@ vi.mock("electron", () => ({
 			},
 			{
 				isDestroyed: () => false,
-				webContents: { send: state.send, getURL: () => "file:///recordly/dist/index.html" },
+				webContents: { send: state.send, getURL: () => testAppDocument },
 			},
 		],
 	},
@@ -75,7 +76,7 @@ it("restricts callback reads and acknowledgements to the trusted main frame", as
 	const url = "recordly://auth/callback?code=private-code";
 	controller.dispatch(url);
 	const handlers = new Map(vi.mocked(ipcMain.handle).mock.calls);
-	const frame = { url: "file:///recordly/dist/index.html?windowType=onboarding" };
+	const frame = { url: `${testAppDocument}?windowType=onboarding` };
 	const sender = { mainFrame: frame };
 	const trusted = { sender, senderFrame: frame } as unknown as Electron.IpcMainInvokeEvent;
 	for (const foreign of [false, true]) {
@@ -137,7 +138,7 @@ it("reopens the app without replacing its pending sign-in callback", async () =>
 	expect(focusApp).toHaveBeenCalledOnce();
 	expect(state.send).not.toHaveBeenCalled();
 	const read = new Map(vi.mocked(ipcMain.handle).mock.calls).get("auth:get-pending-callback")!;
-	const frame = { url: "file:///recordly/dist/index.html" };
+	const frame = { url: testAppDocument };
 	expect(
 		read({
 			sender: { mainFrame: frame },

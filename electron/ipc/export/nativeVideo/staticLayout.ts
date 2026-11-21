@@ -71,9 +71,14 @@ export async function exportNativeStaticLayoutVideo(
 		throw new Error("Native static layout export produced no chunks");
 	}
 
+	let signalCleanupComplete!: () => void;
+	const cleanupComplete = new Promise<void>((resolve) => {
+		signalCleanupComplete = resolve;
+	});
 	const session: NativeStaticLayoutExportSession = {
 		terminating: false,
 		currentProcess: null,
+		cleanupComplete,
 	};
 	const chunkDirectory = path.join(app.getPath("temp"), sessionId);
 	const concatListPath = path.join(chunkDirectory, "chunks.txt");
@@ -196,52 +201,66 @@ export async function exportNativeStaticLayoutVideo(
 		if (!videoOutputValidated) {
 			await validateRenderedVideoOutput();
 		}
+		if (session.terminating) throw new Error("Native static layout export was cancelled");
 		if (didMuxAudioInline) {
 			outputPathToKeep = videoOnlyPath;
-			return {
-				outputPath: videoOnlyPath,
-				metrics,
-			};
+		} else {
+			const audioMuxProgressStart = 97.25;
+			const audioMuxProgressEnd = 99;
+			const progressTotalFrames = Math.max(
+				1,
+				Math.ceil(options.durationSec * options.frameRate),
+			);
+			const finalized = await muxNativeVideoExportAudio(
+				videoOnlyPath,
+				options.audioOptions ?? {},
+				(progress) => {
+					const ratio = Math.max(0, Math.min(1, progress.ratio));
+					const percentage =
+						audioMuxProgressStart +
+						(audioMuxProgressEnd - audioMuxProgressStart) * ratio;
+					const progressPayload: NativeStaticLayoutExportProgress = {
+						sessionId,
+						stage: "finalizing",
+						currentFrame: progressTotalFrames,
+						totalFrames: progressTotalFrames,
+						percentage,
+					};
+					const backend = metrics.chunks[0]?.backend;
+					if (backend) {
+						progressPayload.backend = backend;
+					}
+					onProgress?.(progressPayload);
+				},
+				session,
+			);
+			if (session.terminating) {
+				await removeTemporaryExportFile(finalized.outputPath, true);
+				throw new Error("Native static layout export was cancelled");
+			}
+			Object.assign(metrics, finalized.metrics);
+			outputPathToKeep = finalized.outputPath;
 		}
-		const audioMuxProgressStart = 97.25;
-		const audioMuxProgressEnd = 99;
-		const progressTotalFrames = Math.max(1, Math.ceil(options.durationSec * options.frameRate));
-		const finalized = await muxNativeVideoExportAudio(
-			videoOnlyPath,
-			options.audioOptions ?? {},
-			(progress) => {
-				const ratio = Math.max(0, Math.min(1, progress.ratio));
-				const percentage =
-					audioMuxProgressStart + (audioMuxProgressEnd - audioMuxProgressStart) * ratio;
-				const progressPayload: NativeStaticLayoutExportProgress = {
-					sessionId,
-					stage: "finalizing",
-					currentFrame: progressTotalFrames,
-					totalFrames: progressTotalFrames,
-					percentage,
-				};
-				const backend = metrics.chunks[0]?.backend;
-				if (backend) {
-					progressPayload.backend = backend;
-				}
-				onProgress?.(progressPayload);
-			},
-			session,
-		);
-		Object.assign(metrics, finalized.metrics);
-		outputPathToKeep = finalized.outputPath;
-		return {
-			outputPath: finalized.outputPath,
-			metrics,
-		};
 	} catch (error) {
 		await removeTemporaryExportFile(videoOnlyPath);
 		throw error;
 	} finally {
-		nativeStaticLayoutExportSessions.delete(sessionId);
-		await fs.rm(chunkDirectory, { force: true, recursive: true }).catch(() => undefined);
-		if (outputPathToKeep !== videoOnlyPath) {
-			await removeTemporaryExportFile(videoOnlyPath);
+		try {
+			await fs
+				.rm(chunkDirectory, { force: true, recursive: true, maxRetries: 3 })
+				.catch(() => undefined);
+			if (outputPathToKeep !== videoOnlyPath) {
+				await removeTemporaryExportFile(videoOnlyPath, session.terminating);
+			}
+			if (session.terminating && outputPathToKeep) {
+				await removeTemporaryExportFile(outputPathToKeep, true);
+				outputPathToKeep = null;
+			}
+		} finally {
+			nativeStaticLayoutExportSessions.delete(sessionId);
+			signalCleanupComplete();
 		}
 	}
+	if (!outputPathToKeep) throw new Error("Native static layout export was cancelled");
+	return { outputPath: outputPathToKeep, metrics };
 }

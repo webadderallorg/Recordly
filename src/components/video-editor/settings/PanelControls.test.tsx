@@ -76,17 +76,21 @@ function renderWithHooks(render: () => ReactNode): ReactNode {
 
 describe("crop controls", () => {
 	it.each([
-		["Top", 25, { x: 0.1, y: 0.25, width: 0.8, height: 0.55 }],
-		["Bottom", 40, { x: 0.1, y: 0.2, width: 0.8, height: 0.4 }],
-		["Left", 25, { x: 0.25, y: 0.2, width: 0.65, height: 0.6 }],
-		["Right", 40, { x: 0.1, y: 0.2, width: 0.5, height: 0.6 }],
-	] as const)("preserves the opposite edge when changing %s", (label, value, expected) => {
+		["Top", 20.2, 25.1, { x: 0.101, y: 0.251, width: 0.803, height: 0.555 }],
+		["Bottom", 19.4, 40.2, { x: 0.101, y: 0.202, width: 0.803, height: 0.396 }],
+		["Left", 10.1, 25.3, { x: 0.253, y: 0.202, width: 0.651, height: 0.604 }],
+		["Right", 9.6, 40.4, { x: 0.101, y: 0.202, width: 0.495, height: 0.604 }],
+	] as const)("adjusts %s in tenths of a percent and preserves the opposite edge", (label, initial, value, expected) => {
 		const onCropChange = vi.fn();
 		const tree = CropSettings({
-			cropRegion: { x: 0.1, y: 0.2, width: 0.8, height: 0.6 },
+			cropRegion: { x: 0.101, y: 0.202, width: 0.803, height: 0.604 },
 			onCropChange,
 		});
-		control(tree, SliderControl, (p) => p.label === label).onChange(value);
+		const slider = control(tree, SliderControl, (p) => p.label === label);
+		expect(slider.step).toBe(0.1);
+		expect(slider.value).toBe(initial);
+		expect(slider.formatValue(initial)).toBe(`${initial}%`);
+		slider.onChange(value);
 		const actual = onCropChange.mock.calls[0][0];
 		for (const key of ["x", "y", "width", "height"] as const)
 			expect(actual[key]).toBeCloseTo(expected[key]);

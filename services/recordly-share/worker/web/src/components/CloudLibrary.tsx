@@ -1,27 +1,27 @@
 import { Alert, Button, Modal, Spinner, toast } from "@heroui/react";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
-import LibraryPage from "./LibraryPage";
-import { CenteredCard } from "./ShareUI";
+import { RecordlyPasswordForm } from "../../../../../../src/components/auth/RecordlyPasswordForm";
 import {
 	RecordlySignInFields,
+	SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS,
 	type SignInProvider,
 } from "../../../../../../src/components/auth/RecordlySignInFields";
-import { RecordlyPasswordForm } from "../../../../../../src/components/auth/RecordlyPasswordForm";
-import settingsCopy from "../../../../../../src/i18n/locales/en/settings.json";
 import { RecordlyDemoVideo } from "../../../../../../src/components/ui/RecordlyDemoVideo";
 import copy from "../../../../../../src/i18n/locales/en/onboarding.json";
+import settingsCopy from "../../../../../../src/i18n/locales/en/settings.json";
+import { type CommentAccountState, commentAccessTokenForAccount } from "../scripts/api";
 import {
 	beginCloudOAuth,
+	CloudSignupConsentRetryError,
 	cloudSignupMetadata,
 	completeCloudCallback,
-	CloudSignupConsentRetryError,
 } from "../scripts/cloudAuth";
-import ThemeToggle from "./ThemeToggle";
-import { commentAccessTokenForAccount, type CommentAccountState } from "../scripts/api";
 import { commentProfileName, takeCommentReturn } from "../scripts/commentAuth";
-
 import CommentProfileName from "./CommentProfileName";
+import LibraryPage from "./LibraryPage";
+import { CenteredCard } from "./ShareUI";
+import ThemeToggle from "./ThemeToggle";
 
 interface Props {
 	authConfig?: { url: string; publishableKey: string };
@@ -45,7 +45,6 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 	const [action, setAction] = useState<string>();
 	const [providers, setProviders] = useState<SignInProvider[]>([]);
 	const [providersKnown, setProvidersKnown] = useState(false);
-	const [loadingProviders, setLoadingProviders] = useState(true);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: The parent loads config before mounting; keep one Supabase client for this mount.
 	useEffect(() => {
 		let active = true;
@@ -82,10 +81,10 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 					unsubscribe();
 					return;
 				}
-				// Discover only enabled providers; email stays usable if discovery fails.
+				// Disable only providers that Auth confirms are unavailable.
 				void fetch(`${config.url}/auth/v1/settings`, {
 					headers: { apikey: config.publishableKey },
-					signal: AbortSignal.timeout(10000),
+					signal: AbortSignal.timeout(SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS),
 				})
 					.then(async (response) => {
 						if (!response.ok) throw new Error("Provider discovery unavailable");
@@ -100,10 +99,7 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 						}
 					})
 					.catch(() => {
-						/* Email remains available when providers cannot be discovered. */
-					})
-					.finally(() => {
-						if (active) setLoadingProviders(false);
+						/* Leave provider availability unknown so users can still try signing in. */
 					});
 				// Keep the client available even if a stale callback needs a fresh link.
 				setClient(auth);
@@ -200,7 +196,7 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 	}
 
 	async function signInWithProvider(provider: SignInProvider) {
-		if (!client || pending || !providers.includes(provider)) return;
+		if (!client || pending || (providersKnown && !providers.includes(provider))) return;
 		setPending(true);
 		setAction(provider);
 		setError("");
@@ -394,7 +390,6 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 										onProvider={(provider) => void signInWithProvider(provider)}
 										providers={providers}
 										providersKnown={providersKnown}
-										loadingProviders={loadingProviders}
 										configured={Boolean(client)}
 										busy={action}
 										labels={{

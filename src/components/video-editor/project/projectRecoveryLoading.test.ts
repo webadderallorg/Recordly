@@ -20,6 +20,7 @@ vi.mock("../projectPersistence", () => ({
 	fromFileUrl: (value: string) => value,
 	resolveVideoUrl: vi.fn(),
 }));
+
 import { toast } from "@/components/ui/toast";
 import { useInitialEditorSource } from "./useInitialEditorSource";
 import { useProjectOpenActions } from "./useProjectOpenActions";

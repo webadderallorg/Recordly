@@ -1,12 +1,12 @@
 import { type ComponentProps, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { loadEditorPreferences } from "@/components/video-editor/editorPreferences";
-import type { ExportProgress } from "@/lib/exporter";
 import { useExportSession } from "@/components/video-editor/export/useExportSession";
 import { useExportSettings } from "@/components/video-editor/export/useExportSettings";
 import { useExportStatusViewModel } from "@/components/video-editor/export/useExportStatusViewModel";
 import { EditorExportMenu } from "@/components/video-editor/layout/EditorExportMenu";
 import { I18nProvider, useI18n } from "@/contexts/I18nContext";
+import type { ExportProgress } from "@/lib/exporter";
 import "@/index.css";
 
 window.electronAPI = {

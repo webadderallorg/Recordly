@@ -1,7 +1,7 @@
-import { ensureCaptionFontLoaded } from "@/components/video-editor/captionFonts";
 import { Application, Container, Graphics, Rectangle, RendererType, Sprite } from "pixi.js";
 import type { MotionBlurFilter } from "pixi-filters/motion-blur";
 import type { ZoomBlurFilter } from "pixi-filters/zoom-blur";
+import { ensureCaptionFontLoaded } from "@/components/video-editor/captionFonts";
 import {
 	DEFAULT_CURSOR_CONFIG,
 	PixiCursorOverlay,
@@ -209,12 +209,9 @@ export class FrameScene {
 		await this.context.background.setupBackground();
 		await this.context.webcamMedia.setupWebcamSource();
 
-		this.context.annotations.annotationScaleFactor =
-			this.context.annotations.calculateAnnotationScaleFactor();
 		this.context.annotations.annotationAssets = await preloadAnnotationAssets(
 			this.context.config.annotationRegions ?? [],
 		);
-		await this.context.annotations.setupAnnotationLayer();
 		this.context.captions.setupCaptionResources();
 
 		if (this.shouldUseZoomMotionBlur()) {

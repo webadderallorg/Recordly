@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import { crc32 } from "node:zlib";
 import {
-	PROJECT_THUMBNAIL_WIDTH,
 	PROJECT_THUMBNAIL_HEIGHT,
 	PROJECT_THUMBNAIL_RENDER_VERSION,
+	PROJECT_THUMBNAIL_WIDTH,
 } from "../../../src/lib/projectThumbnail";
 
 const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);

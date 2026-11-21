@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { hasFreshProjectThumbnail } from "../../electron/ipc/project/thumbnailFreshness";
 import { encodeComposedThumbnail } from "../../electron/ipc/project/composedThumbnail";
+import { hasFreshProjectThumbnail } from "../../electron/ipc/project/thumbnailFreshness";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 // These tests exercise the local project library, with healthy unrelated services.

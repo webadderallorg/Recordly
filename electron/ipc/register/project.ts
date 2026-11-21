@@ -1,21 +1,3 @@
-import { nativeT } from "../../nativeI18n";
-import { relinkProjectRecording } from "../project/relinkRecording";
-import { persistRecentMetadata } from "../project/recentMetadata";
-import { renameLibraryProject } from "../project/renameLibraryProject";
-import { createUntitledProject } from "../project/createUntitledProject";
-import { trashLibraryProjects } from "../project/trashProjects";
-import {
-	prepareLibraryDeletion,
-	protectedLibrarySources,
-	recordingUsesSources,
-	removableLibrarySources,
-} from "../project/libraryDeletion";
-import { canonicalMediaSources } from "../project/canonicalMediaSources";
-import { getRecordingThumbnail } from "../recording/thumbnail";
-import { discardRecordingFiles } from "../recording/discardFiles";
-import { findDuplicateRecordingSources } from "../recording/duplicateSources";
-import { listRecordings, setRecordingsRemoved, trashRecordingSources } from "../recording/library";
-import { importRecording, discardRecordingImport } from "../recording/importRecording";
 import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
@@ -23,22 +5,31 @@ import path from "node:path";
 import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { RECORDINGS_DIR } from "../../appPaths";
 import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
+import { nativeT } from "../../nativeI18n";
 import { isTrustedRenderer } from "../../trustedRenderer";
 import { LEGACY_PROJECT_FILE_EXTENSIONS, PROJECT_FILE_EXTENSION } from "../constants";
 import { getProjectBackupPaths, writeProjectFileAtomically } from "../project/atomicSave";
+import { canonicalMediaSources } from "../project/canonicalMediaSources";
+import { createUntitledProject } from "../project/createUntitledProject";
+import {
+	prepareLibraryDeletion,
+	protectedLibrarySources,
+	recordingUsesSources,
+	removableLibrarySources,
+} from "../project/libraryDeletion";
 import {
 	cacheProjectThumbnail,
 	getProjectsDir,
 	getProjectThumbnailPath,
 	getProjectThumbnailPaths,
+	isLoadableProjectData,
 	isPathInsideDirectory,
 	isTrustedProjectPath,
 	listProjectLibraryEntries,
-	isLoadableProjectData,
 	loadProjectFromPath,
-	readProjectPreview,
 	loadRecentProjectPaths,
 	persistRecordingsDirectorySetting,
+	readProjectPreview,
 	rememberApprovedLocalReadPath,
 	rememberRecentProject,
 	replaceApprovedSessionLocalReadPaths,
@@ -46,27 +37,36 @@ import {
 	saveProjectThumbnail,
 	saveRecentProjectPaths,
 } from "../project/manager";
+import { persistRecentMetadata } from "../project/recentMetadata";
+import { relinkProjectRecording } from "../project/relinkRecording";
+import { renameLibraryProject } from "../project/renameLibraryProject";
 import { persistRecordingSessionManifest, resolveRecordingSession } from "../project/session";
+import { trashLibraryProjects } from "../project/trashProjects";
+import { discardRecordingFiles } from "../recording/discardFiles";
+import { findDuplicateRecordingSources } from "../recording/duplicateSources";
+import { discardRecordingImport, importRecording } from "../recording/importRecording";
+import { listRecordings, setRecordingsRemoved, trashRecordingSources } from "../recording/library";
+import { getRecordingThumbnail } from "../recording/thumbnail";
 import {
-	currentProjectPath,
 	currentProjectContextVersion,
+	currentProjectPath,
 	currentRecordingSession,
 	currentVideoPath,
-	nativeScreenRecordingActive,
-	windowsNativeCaptureActive,
 	ffmpegScreenRecordingActive,
+	nativeScreenRecordingActive,
 	setCurrentProjectPath,
 	setCurrentRecordingSession,
 	setCurrentVideoPath,
-	windowsPendingVideoPath,
 	setWindowsPendingVideoPath,
+	windowsNativeCaptureActive,
+	windowsPendingVideoPath,
 } from "../state";
 import {
 	approveUserPath,
 	getRecordingsDir,
 	isAutoRecordingPath,
-	normalizeVideoSourcePath,
 	normalizePath,
+	normalizeVideoSourcePath,
 	parseJsonWithByteOrderMark,
 } from "../utils";
 

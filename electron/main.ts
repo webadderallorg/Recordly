@@ -1,4 +1,3 @@
-import { createReleaseVersionCatalog } from "./releaseVersions";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -16,27 +15,24 @@ import {
 	systemPreferences,
 	Tray,
 } from "electron";
-import { nativeT, setNativeLocale } from "./nativeI18n";
-import {
-	captureEditorMenuTarget,
-	createEditorCommandMenus,
-	withHiddenDockEditorMenus,
-	type ProjectMenuAction,
-} from "./editorCommandMenu";
-import { validateAppLocaleRequest } from "./localeIpc";
-import { readAppSetting, writeAppSetting } from "./appSettingsStore";
-import { refreshDesktopPresenceLocale } from "./desktopPresence";
-import { initializeInstanceSession, RECORDINGS_DIR } from "./appPaths";
 import { activateFromDesktopIcon } from "./appActivation";
-import { getUpdatePresentation } from "./updatePresentation";
+import { initializeInstanceSession, RECORDINGS_DIR } from "./appPaths";
+import { readAppSetting, writeAppSetting } from "./appSettingsStore";
 import { createAuthCallbackController } from "./authCallback";
 import { showCursor } from "./cursorHider";
 import {
 	desktopPresenceNeedsTray,
 	initializeDesktopPresence,
+	refreshDesktopPresenceLocale,
 	setDesktopPresenceRecording,
 	stopRecordingFromDesktopIcon,
 } from "./desktopPresence";
+import {
+	captureEditorMenuTarget,
+	createEditorCommandMenus,
+	type ProjectMenuAction,
+	withHiddenDockEditorMenus,
+} from "./editorCommandMenu";
 import { getGpuSwitches } from "./gpuSwitches";
 import {
 	cleanupAllExportStreams,
@@ -48,30 +44,35 @@ import {
 import { recordingFocus } from "./ipc/recording/focus";
 import { clearRecordingTrashUndo } from "./ipc/recording/library";
 import { resolveDisplayMediaSource } from "./ipc/register/sourceMapping";
+import { validateAppLocaleRequest } from "./localeIpc";
 import { ensureMediaServer } from "./mediaServer";
+import { nativeT, setNativeLocale } from "./nativeI18n";
 import {
 	hardenWebContentsNavigation,
 	isInternalRendererTarget,
 	shouldHardenWebContentsType,
 } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
+import { createReleaseVersionCatalog } from "./releaseVersions";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
 import { createSaveBeforeCloseController } from "./saveBeforeClose";
+import { isTrustedRenderer } from "./trustedRenderer";
+import { getUpdatePresentation } from "./updatePresentation";
 import {
 	checkForAppUpdates,
 	deferUpdateReminder,
 	dismissUpdateToast,
 	downloadAvailableUpdate,
-	getCurrentUpdateToastPayload,
 	getAutomaticUpdateDownloadsEnabled,
+	getCurrentUpdateToastPayload,
 	getExperimentalUpdatesEnabled,
 	getUpdaterLogPath,
 	getUpdateStatusSummary,
 	installDownloadedUpdateNow,
 	previewNativeUpdateDialog,
 	previewUpdateToast,
-	setExperimentalUpdatesEnabled,
 	setAutomaticUpdateDownloadsEnabled,
+	setExperimentalUpdatesEnabled,
 	setupAutoUpdates,
 	showUpdateNotificationOnOpen,
 	skipAvailableUpdateVersion,
@@ -85,11 +86,13 @@ import {
 	focusOnboardingWindow,
 	getHudOverlayWindow,
 	getOnboardingWindow,
+	getStartupOnboardingWindow,
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
 	isHudOverlayMousePassthroughSupported,
-	replayOnboardingIntro,
 	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
+	replayOnboardingIntro,
+	revealStartupOnboardingWindow,
 	setHudOverlayRecordingActive,
 	showOnboardingWindow,
 	showUpdateToastWindow,
@@ -99,6 +102,7 @@ const electronMainDir = path.dirname(fileURLToPath(import.meta.url));
 const IS_SMOKE_EXPORT = process.env.RECORDLY_SMOKE_EXPORT === "1";
 let startupWindowsReady = false;
 let firstRunIntroStarted = false;
+let devOnboardingShown = false;
 initializeInstanceSession();
 
 function ignoreBrokenConsolePipe(stream: NodeJS.WritableStream | undefined) {
@@ -121,6 +125,26 @@ ipcMain.handle("replay-onboarding-intro", (event) => {
 ipcMain.handle("close-onboarding-window", () => {
 	closeOnboardingWindow();
 	return true;
+});
+ipcMain.handle("resolve-startup-onboarding", (event, action: unknown) => {
+	if (!isTrustedRenderer(event)) return false;
+	if (action === "restart" && app.isPackaged) {
+		if (getOnboardingWindow()?.webContents !== event.sender) return false;
+		app.relaunch({ args: [] });
+		app.quit();
+		return true;
+	}
+	if (getStartupOnboardingWindow()?.webContents !== event.sender) return false;
+	if (action === "show") {
+		revealStartupOnboardingWindow();
+		return true;
+	}
+	if (action === "continue") {
+		createRecordingControls();
+		closeOnboardingWindow();
+		return true;
+	}
+	return false;
 });
 
 ignoreBrokenConsolePipe(process.stdout);
@@ -430,21 +454,49 @@ function createWindow() {
 		return;
 	}
 
-	if (app.isPackaged && readAppSetting("recordly.onboarding.v1.seen") !== true) {
-		showOnboardingWindow({ intro: claimFirstRunIntro() });
+	if (getOnboardingWindow()) {
+		focusOnboardingWindow();
 		return;
 	}
 
+	if (app.isPackaged) {
+		// Relaunching from System Settings must not skip the rest of the first-run tour.
+		const returning = readAppSetting("recordly.onboarding.v1.seen") === true;
+		showOnboardingWindow({ intro: !returning && claimFirstRunIntro(), returning });
+		return;
+	}
+
+	if (IS_DEV && !devOnboardingShown) {
+		devOnboardingShown = true;
+		showOnboardingWindow({ preview: true }).once("closed", () => {
+			if (!isAppQuitting) createRecordingControls();
+		});
+		return;
+	}
+
+	createRecordingControls();
+}
+
+function createRecordingControls() {
+	const existingHud = getHudOverlayWindow();
+	if (existingHud) {
+		mainWindow = existingHud;
+		restoreWindowSafely(existingHud);
+		return;
+	}
 	isCreatingMainWindow = true;
-	const createdHudWindow = createHudOverlayWindow();
-	mainWindow = createdHudWindow;
-	createdHudWindow.once("closed", () => {
-		recordingFocus.stop();
-		if (mainWindow === createdHudWindow) {
-			mainWindow = null;
-		}
-	});
-	isCreatingMainWindow = false;
+	try {
+		const createdHudWindow = createHudOverlayWindow();
+		mainWindow = createdHudWindow;
+		createdHudWindow.once("closed", () => {
+			recordingFocus.stop();
+			if (mainWindow === createdHudWindow) {
+				mainWindow = null;
+			}
+		});
+	} finally {
+		isCreatingMainWindow = false;
+	}
 }
 
 function claimFirstRunIntro() {
@@ -452,13 +504,12 @@ function claimFirstRunIntro() {
 	firstRunIntroStarted = true;
 	const introStartedKey = "recordly.onboarding.introStarted";
 	if (readAppSetting(introStartedKey) === true) return false;
-	const resumingPermissions = readAppSetting("recordly.onboarding.permissionsRequested") === true;
 	try {
 		writeAppSetting(introStartedKey, true);
 	} catch (error) {
 		console.warn("[onboarding] Could not save reveal progress", error);
 	}
-	return !resumingPermissions;
+	return true;
 }
 
 function focusOrCreateMainWindow() {
@@ -1144,8 +1195,29 @@ app.on("before-quit", () => {
 	);
 	killWindowsCaptureProcess();
 	showCursor();
-	cleanupNativeVideoExportSessions();
 	void cleanupAllExportStreams();
+});
+
+let nativeExportQuitState: "idle" | "waiting" | "ready" = "idle";
+app.on("will-quit", (event) => {
+	if (nativeExportQuitState === "ready") return;
+	if (nativeExportQuitState === "waiting") {
+		event.preventDefault();
+		return;
+	}
+	const cleanup = cleanupNativeVideoExportSessions();
+	if (!cleanup) return;
+	event.preventDefault();
+	nativeExportQuitState = "waiting";
+	let timeout: NodeJS.Timeout | undefined;
+	const deadline = new Promise<void>((resolve) => {
+		timeout = setTimeout(resolve, 3000);
+	});
+	void Promise.race([cleanup, deadline]).finally(() => {
+		clearTimeout(timeout);
+		nativeExportQuitState = "ready";
+		app.quit();
+	});
 });
 
 app.on("window-all-closed", () => {
@@ -1300,7 +1372,10 @@ app.whenReady().then(async () => {
 	]);
 
 	registerIpcHandlers(
-		createEditorWindowWrapper,
+		() => {
+			if (getOnboardingWindow()) focusOnboardingWindow();
+			else createEditorWindowWrapper();
+		},
 		createSourceSelectorWindowWrapper,
 		() => mainWindow,
 		() => sourceSelectorWindow,

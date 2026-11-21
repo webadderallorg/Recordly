@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "@/components/ui/toast";
-import { useRecorderWebcam } from "./useRecorderWebcam";
 import { useRecorderControls } from "./useRecorderControls";
+import { useRecorderMediaCleanup } from "./useRecorderMediaCleanup";
+import { useRecorderSubscriptions } from "./useRecorderSubscriptions";
+import { useRecorderWebcam } from "./useRecorderWebcam";
 
+const effects = vi.hoisted(() => [] as Array<() => void | (() => void)>);
 vi.mock("react", () => ({
 	useCallback: <T>(callback: T) => callback,
+	useEffect: (effect: () => void | (() => void)) => effects.push(effect),
 	useRef: <T>(current: T) => ({ current }),
 }));
 vi.mock("@/components/ui/toast", () => ({
@@ -59,6 +63,7 @@ describe("recorder webcam sidecar", () => {
 	const recorder = () => FakeMediaRecorder.instances[FakeMediaRecorder.instances.length - 1];
 	const createWebcam = (overrides: Partial<Parameters<typeof useRecorderWebcam>[0]> = {}) =>
 		useRecorderWebcam({
+			isMacOS: false,
 			webcamEnabled: true,
 			webcamDeviceId: undefined,
 			recordingSessionTimestamp: { current: 1_000 },
@@ -102,8 +107,20 @@ describe("recorder webcam sidecar", () => {
 	});
 
 	afterEach(() => {
+		effects.length = 0;
 		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
+	});
+
+	it("does not open the camera on macOS when its permission has not been granted", async () => {
+		window.electronAPI.getMediaPermissionStatus = vi.fn().mockResolvedValue({
+			success: true,
+			camera: "not-determined",
+		});
+		const webcam = createWebcam({ isMacOS: true });
+		await webcam.prepareWebcamRecorder();
+		expect(getUserMedia).not.toHaveBeenCalled();
+		expect(FakeMediaRecorder.instances).toHaveLength(0);
 	});
 
 	it("does not acquire or start a disabled webcam", async () => {
@@ -117,8 +134,17 @@ describe("recorder webcam sidecar", () => {
 		expect(toast.warning).not.toHaveBeenCalled();
 	});
 
-	it("prepares the default camera and waits for the main capture before starting", async () => {
-		const webcam = createWebcam();
+	it.each([
+		false,
+		true,
+	])("prepares the default camera and waits for main capture (macOS: %s)", async (isMacOS) => {
+		if (isMacOS) {
+			window.electronAPI.getMediaPermissionStatus = vi.fn().mockResolvedValue({
+				success: true,
+				camera: "granted",
+			});
+		}
+		const webcam = createWebcam({ isMacOS });
 		await webcam.prepareWebcamRecorder();
 		expect(getUserMedia).toHaveBeenCalledWith({
 			video: {
@@ -210,6 +236,74 @@ describe("recorder webcam sidecar", () => {
 		await expect(pending).resolves.toBeNull();
 		expect(recorder().stop).not.toHaveBeenCalled();
 		expect(closeRecordingFileStream).not.toHaveBeenCalled();
+		expect(webcam.webcamRecorder.current).toBeNull();
+	});
+
+	it("continues without a sidecar when the prepared webcam fails to start", async () => {
+		const webcam = createWebcam();
+		await webcam.prepareWebcamRecorder();
+		const pending = webcam.pendingWebcamPathPromise.current;
+		recorder().start.mockImplementationOnce(() => {
+			throw new DOMException("Camera disconnected", "NotSupportedError");
+		});
+
+		expect(() => webcam.beginWebcamCapture()).not.toThrow();
+		await expect(pending).resolves.toBeNull();
+		await expect(webcam.stopWebcamRecorder()).resolves.toBeNull();
+		expect(webcam.webcamStartTime.current).toBeNull();
+		expect(webcam.webcamRecorder.current).toBeNull();
+		expect(webcam.webcamWriter.current).toBeNull();
+		expect(track.stop).toHaveBeenCalledOnce();
+		expect(toast.warning).toHaveBeenCalledWith("Webcam unavailable", expect.anything());
+		expect(openRecordingFileStream).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"recording",
+		"paused",
+	] as const)("flushes a %s webcam's final chunk after the controls unmount", async (state) => {
+		const webcam = createWebcam();
+		await webcam.prepareWebcamRecorder();
+		webcam.beginWebcamCapture();
+		recorder().state = state;
+		const pending = webcam.pendingWebcamPathPromise.current;
+		const screenStop = vi.fn();
+		const media = useRecorderMediaCleanup({
+			stream: { current: null },
+			screenStream: { current: null },
+			microphoneStream: { current: null },
+			webcamStream: webcam.webcamStream,
+			mixingContext: { current: null },
+			cleanupMicFallbackRecorder: vi.fn(),
+		});
+		useRecorderSubscriptions({
+			...media,
+			stopRecording: { current: vi.fn() },
+			stopMicFallbackRecorder: vi.fn(),
+			stopWebcamRecorder: webcam.stopWebcamRecorder,
+			microphoneFallback: { startDelayMs: 0 },
+			setRecording: vi.fn(),
+			recordingStartGeneration: { current: 1 },
+			nativeScreenRecording: { current: false },
+			nativeWindowsRecording: { current: false },
+			nativeWarmStartActive: { current: false },
+			recoverNativeRecordingSession: vi.fn(),
+			hasPromptedForReselect: { current: false },
+			nativeStopRequestInFlight: { current: false },
+			discardActiveNativeCapture: vi.fn(),
+			pendingNativeCleanupPath: { current: null },
+			mediaRecorder: { current: { state, stop: screenStop } as unknown as MediaRecorder },
+		} as Parameters<typeof useRecorderSubscriptions>[0]);
+		const dispose = effects.shift()?.();
+		dispose?.();
+
+		expect(screenStop).toHaveBeenCalledOnce();
+		expect(recorder().stop).toHaveBeenCalledOnce();
+		expect(track.stop).toHaveBeenCalledOnce();
+		await expect(pending).resolves.toBe("/recording-1000-webcam.webm");
+		const data = appendRecordingFileStream.mock.calls[0][1] as ArrayBuffer;
+		expect(new TextDecoder().decode(data)).toBe("tail");
+		expect(closeRecordingFileStream).toHaveBeenCalledOnce();
 		expect(webcam.webcamRecorder.current).toBeNull();
 	});
 

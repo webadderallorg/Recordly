@@ -1,6 +1,6 @@
+import { type PointerEvent, useEffect, useId, useRef } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
-import { useEffect, useId, useRef, type PointerEvent } from "react";
-import { dragCrop, type CropHandle } from "./cropGeometry";
+import { type CropHandle, dragCrop } from "./cropGeometry";
 import type { CropRegion } from "./types";
 
 interface CropControlProps {

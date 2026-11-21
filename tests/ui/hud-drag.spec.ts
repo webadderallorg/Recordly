@@ -1,33 +1,41 @@
 import { expect, test } from "@playwright/test";
-import { installDesktopBridge } from "./bridge";
+import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 for (const webcam of [false, true]) {
 	test(`dragging the ${webcam ? "docked" : "standalone"} pill moves smoothly without stealing button clicks`, async ({
 		page,
 	}) => {
 		await installDesktopBridge(page);
-		await page.addInitScript((webcam) => {
-			window.electronAPI.getRecordingPreferences = async () => ({
-				success: true,
-				webcamEnabled: webcam,
-				microphoneEnabled: false,
-				systemAudioEnabled: false,
-			});
-			window.electronAPI.onRecordingStateChanged = (callback) => {
-				const listener = () =>
-					callback({ recording: true, sourceName: "Built-in Display" });
-				window.addEventListener("test-recording", listener);
-				return () => window.removeEventListener("test-recording", listener);
-			};
-			window.electronAPI.hudOverlayHide = async () => {
-				document.documentElement.dataset.hudHidden = "true";
-				return { success: true };
-			};
-		}, webcam);
+		await installDesktopBridgeOverrides(
+			page,
+			(webcam) => {
+				window.electronAPI.getMediaPermissionStatus = async () => ({
+					success: true,
+					microphone: "granted",
+					camera: "granted",
+				});
+				window.electronAPI.getRecordingPreferences = async () => ({
+					success: true,
+					webcamEnabled: webcam,
+					microphoneEnabled: false,
+					systemAudioEnabled: false,
+				});
+				window.electronAPI.onRecordingStateChanged = (callback) => {
+					const listener = () =>
+						callback({ recording: true, sourceName: "Built-in Display" });
+					window.addEventListener("test-recording", listener);
+					return () => window.removeEventListener("test-recording", listener);
+				};
+				window.electronAPI.hudOverlaySetIgnoreMouse = (ignore) => {
+					document.documentElement.dataset.ignoreMouse = String(ignore);
+				};
+			},
+			webcam,
+		);
 		await page.goto("/?windowType=hud-overlay");
-		await expect(
-			page.getByRole("group", { name: "Recording setup", exact: true }),
-		).toBeVisible();
+		await expect(page.getByRole("group", { name: "Recording setup", exact: true })).toBeVisible(
+			{ timeout: 20000 },
+		);
 		if (webcam) await expect(page.locator("[data-floating-webcam-preview]")).toBeVisible();
 		await page.evaluate(() => window.dispatchEvent(new Event("test-recording")));
 		const controls = page.getByRole("group", { name: "Recording controls", exact: true });
@@ -61,13 +69,23 @@ for (const webcam of [false, true]) {
 		const moved = (await bar.boundingBox())!;
 		expect(moved.x).toBeCloseTo(before.x + 100);
 		expect(moved.y).toBeCloseTo(before.y - 80);
+		await page.mouse.move(start.x, start.y);
+		await expect(page.locator("html")).toHaveAttribute("data-ignore-mouse", "true");
+		await page.mouse.move(start.x + 100, start.y - 80);
+		await expect(page.locator("html")).toHaveAttribute("data-ignore-mouse", "false");
 		if (cameraBefore) {
 			const camera = (await page.locator("[data-floating-webcam-preview]").boundingBox())!;
 			expect(camera.x).toBeCloseTo(cameraBefore.x + 100);
 			expect(camera.y).toBeCloseTo(cameraBefore.y - 80);
 		}
-		await page.getByRole("button", { name: /Hide/ }).click();
-		await expect(page.locator("html")).toHaveAttribute("data-hud-hidden", "true");
+		const pause = controls.getByRole("button", { name: "Pause", exact: true });
+		await pause.evaluate((button) => {
+			button.addEventListener("click", () => {
+				button.setAttribute("data-click-received", "true");
+			});
+		});
+		await pause.click();
+		await expect(pause).toHaveAttribute("data-click-received", "true");
 		expect(await bar.boundingBox()).toEqual(moved);
 		const updatedTimer = (await page.getByRole("timer").boundingBox())!;
 		await page.mouse.move(updatedTimer.x + 10, updatedTimer.y + 5);

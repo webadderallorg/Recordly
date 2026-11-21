@@ -5,10 +5,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const decode = vi.hoisted(() => vi.fn());
+const toPNG = vi.hoisted(() => vi.fn(() => Buffer.from("png bytes")));
 const nativeWallpaper = vi.hoisted(() => vi.fn());
 vi.mock("./ipc/windowsWindowGeometry", () => ({ readWindowsWindowGeometry: nativeWallpaper }));
 vi.mock("electron", () => ({ nativeImage: { createFromPath: decode } }));
 vi.mock("./ipc/ffmpeg/binary", () => ({ getFfmpegBinaryPath: () => "/recordly/ffmpeg" }));
+
 import {
 	importDesktopWallpaperImage,
 	resolveDesktopWallpaperSource,
@@ -19,9 +21,8 @@ let directory: string;
 beforeEach(async () => {
 	nativeWallpaper.mockReset().mockRejectedValue(new Error("older helper"));
 	directory = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-desktop-wallpaper-"));
-	decode
-		.mockReset()
-		.mockReturnValue({ isEmpty: () => false, toPNG: () => Buffer.from("png bytes") });
+	toPNG.mockClear();
+	decode.mockReset().mockReturnValue({ isEmpty: () => false, toPNG });
 });
 afterEach(async () => {
 	await fs.rm(directory, { recursive: true, force: true });
@@ -123,61 +124,112 @@ describe("modern macOS wallpaper providers", () => {
 	});
 });
 
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x01, 0x02]);
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01]);
+const writeOutput = (bytes: Buffer) =>
+	vi.fn(async (_command: string, args: string[]) => {
+		await fs.writeFile(args.at(-1)!, bytes);
+		return "";
+	});
+const leftovers = async (folder: string) =>
+	(await fs.readdir(folder)).filter((file) => file.startsWith(".") && file !== ".");
+
 describe("desktop wallpaper import", () => {
-	it("extracts a still from an active aerial video instead of attempting to decode video as an image", async () => {
+	it("extracts an aerial still as JPEG without a PNG re-encode or the short lookup timeout", async () => {
 		const source = path.join(directory, "current-aerial.mov");
 		await fs.writeFile(source, "video");
-		const run = vi.fn(async (_command: string, args: string[]) => {
-			await fs.writeFile(args.at(-1)!, "extracted frame");
-			return "";
-		});
+		const run = writeOutput(JPEG);
 		const result = await importDesktopWallpaperImage(source, directory, "darwin", run);
-		expect(run).toHaveBeenCalledWith(
-			"/recordly/ffmpeg",
-			expect.arrayContaining(["-i", source, "-frames:v", "1"]),
-		);
-		expect(decode.mock.calls[0][0]).not.toBe(source);
-		expect(await fs.readFile(result, "utf8")).toBe("png bytes");
-		expect(
-			(await fs.readdir(path.dirname(result))).some((file) => file.startsWith(".aerial-")),
-		).toBe(false);
+		const [command, args, timeout] = run.mock.calls[0] as unknown as [string, string[], number];
+		expect(command).toBe("/recordly/ffmpeg");
+		expect(args).toEqual(expect.arrayContaining(["-i", source, "-frames:v", "1", "-q:v", "2"]));
+		expect(args).not.toContain("png");
+		expect(timeout).toBeGreaterThan(5000);
+		expect(decode.mock.calls.map(([file]) => file)).not.toContain(source);
+		expect(toPNG).not.toHaveBeenCalled();
+		expect(result).toMatch(/[a-f0-9]{64}\.jpg$/);
+		expect(await fs.readFile(result)).toEqual(JPEG);
+		expect(await leftovers(path.dirname(result))).toEqual([]);
 	});
-	it("stores immutable app-managed PNGs and reuses identical snapshots", async () => {
+	it("reuses the snapshot for an unchanged source without decoding again", async () => {
+		const source = path.join(directory, "current-aerial.mov");
+		await fs.writeFile(source, "video");
+		const run = writeOutput(JPEG);
+		const first = await importDesktopWallpaperImage(source, directory, "darwin", run);
+		const { mtimeMs } = await fs.stat(first);
+		decode.mockClear();
+		expect(await importDesktopWallpaperImage(source, directory, "darwin", run)).toBe(first);
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(decode).not.toHaveBeenCalled();
+		expect((await fs.stat(first)).mtimeMs).toBe(mtimeMs);
+	});
+	it("re-imports when the source changes and keeps earlier snapshots immutable", async () => {
 		const source = path.join(directory, "wallpaper.jpg");
-		await fs.writeFile(source, "source");
+		await fs.writeFile(source, JPEG);
 		const userData = path.join(directory, "userData");
-		const first = await importDesktopWallpaperImage(source, userData);
-		const second = await importDesktopWallpaperImage(source, userData);
-		expect(second).toBe(first);
+		const first = await importDesktopWallpaperImage(source, userData, "win32");
 		expect(path.dirname(first)).toBe(path.join(userData, "desktop-wallpapers"));
-		expect(await fs.readFile(first, "utf8")).toBe("png bytes");
-		decode.mockReturnValue({ isEmpty: () => false, toPNG: () => Buffer.from("changed png") });
-		const changed = await importDesktopWallpaperImage(source, userData);
-		expect(changed).not.toBe(first);
-		expect(await fs.readFile(first, "utf8")).toBe("png bytes");
+		const changed = Buffer.concat([JPEG, Buffer.from("changed")]);
+		await fs.writeFile(source, changed);
+		await fs.utimes(source, new Date(), new Date(Date.now() + 60_000));
+		const second = await importDesktopWallpaperImage(source, userData, "win32");
+		expect(second).not.toBe(first);
+		expect(await fs.readFile(first)).toEqual(JPEG);
+		expect(await fs.readFile(second)).toEqual(changed);
 	});
-	it("handles extensionless Windows image paths", async () => {
-		const source = path.join(directory, "TranscodedWallpaper");
-		await fs.writeFile(source, "image");
-		expect(await importDesktopWallpaperImage(source, directory, "win32")).toMatch(/\.png$/);
+	it("recovers from a corrupt cache index or a deleted cached snapshot", async () => {
+		const source = path.join(directory, "wallpaper.png");
+		await fs.writeFile(source, PNG);
+		const first = await importDesktopWallpaperImage(source, directory, "win32");
+		await fs.rm(first);
+		expect(await importDesktopWallpaperImage(source, directory, "win32")).toBe(first);
+		expect(await fs.readFile(first)).toEqual(PNG);
+		await fs.writeFile(path.join(path.dirname(first), "index.json"), "{not json");
+		expect(await importDesktopWallpaperImage(source, directory, "win32")).toBe(first);
 	});
-	it("converts HEIC with macOS sips when Electron cannot decode it and removes intermediates", async () => {
+	it("keeps decodable JPEG and PNG bytes unchanged, including extensionless Windows paths", async () => {
+		for (const [bytes, extension] of [
+			[JPEG, "jpg"],
+			[PNG, "png"],
+		] as const) {
+			const source = path.join(directory, `TranscodedWallpaper-${extension}`);
+			await fs.writeFile(source, bytes);
+			const imported = await importDesktopWallpaperImage(source, directory, "win32");
+			expect(imported.endsWith(`.${extension}`)).toBe(true);
+			expect(await fs.readFile(imported)).toEqual(bytes);
+		}
+		expect(toPNG).not.toHaveBeenCalled();
+	});
+	it("re-encodes other decodable formats as PNG", async () => {
+		const source = path.join(directory, "wallpaper.bmp");
+		await fs.writeFile(source, "BM bitmap");
+		const imported = await importDesktopWallpaperImage(source, directory, "win32");
+		expect(imported).toMatch(/\.png$/);
+		expect(await fs.readFile(imported, "utf8")).toBe("png bytes");
+	});
+	it("converts HEIC to JPEG with macOS sips and removes intermediates", async () => {
 		const source = path.join(directory, "wallpaper.heic");
 		await fs.writeFile(source, "heic");
-		decode.mockReturnValueOnce({ isEmpty: () => true });
-		const run = vi.fn(async (_command: string, args: string[]) => {
-			await fs.writeFile(args.at(-1)!, "converted");
-			return "";
-		});
+		const run = writeOutput(JPEG);
 		const imported = await importDesktopWallpaperImage(source, directory, "darwin", run);
 		expect(run).toHaveBeenCalledWith(
 			"/usr/bin/sips",
-			expect.arrayContaining([source, "--out"]),
+			expect.arrayContaining(["format", "jpeg", source, "--out"]),
+			expect.any(Number),
 		);
+		expect(toPNG).not.toHaveBeenCalled();
+		expect(imported).toMatch(/\.jpg$/);
+		expect(await fs.readFile(imported)).toEqual(JPEG);
+		expect(await leftovers(path.dirname(imported))).toEqual([]);
+	});
+	it("falls back to Electron's decoder when sips cannot convert", async () => {
+		const source = path.join(directory, "wallpaper.heic");
+		await fs.writeFile(source, "heic");
+		const run = vi.fn(async () => {
+			throw new Error("sips failed");
+		});
+		const imported = await importDesktopWallpaperImage(source, directory, "darwin", run);
 		expect(await fs.readFile(imported, "utf8")).toBe("png bytes");
-		expect(
-			(await fs.readdir(path.dirname(imported))).some((file) => file.startsWith(".convert-")),
-		).toBe(false);
 	});
 	it("rejects missing, empty, directory and undecodable sources", async () => {
 		await expect(
@@ -191,11 +243,18 @@ describe("desktop wallpaper import", () => {
 		await expect(importDesktopWallpaperImage(directory, directory)).rejects.toThrow(
 			"supported image",
 		);
-		const invalid = path.join(directory, "invalid.jpg");
-		await fs.writeFile(invalid, "invalid");
 		decode.mockReturnValue({ isEmpty: () => true });
-		await expect(importDesktopWallpaperImage(invalid, directory, "win32")).rejects.toThrow(
-			"decoded",
-		);
+		for (const contents of [Buffer.from("invalid"), JPEG]) {
+			const invalid = path.join(directory, "invalid.jpg");
+			await fs.writeFile(invalid, contents);
+			await expect(importDesktopWallpaperImage(invalid, directory, "win32")).rejects.toThrow(
+				"decoded",
+			);
+		}
+		const aerial = path.join(directory, "broken.mov");
+		await fs.writeFile(aerial, "video");
+		await expect(
+			importDesktopWallpaperImage(aerial, directory, "darwin", writeOutput(JPEG)),
+		).rejects.toThrow("decoded");
 	});
 });

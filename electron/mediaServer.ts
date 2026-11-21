@@ -1,11 +1,11 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { getPackagedRendererBaseUrl } from "./rendererServer";
 import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { approvedLocalReadPaths } from "./ipc/state";
 import { getMediaContentType } from "./mediaTypes";
+import { getPackagedRendererBaseUrl } from "./rendererServer";
 
 const mediaCapabilitySecret = randomBytes(32);
 

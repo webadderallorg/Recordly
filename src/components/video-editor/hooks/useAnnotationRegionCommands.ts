@@ -1,6 +1,6 @@
-import { useScopedT } from "@/contexts/I18nContext";
 import type { Span } from "dnd-timeline";
 import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback } from "react";
+import { useScopedT } from "@/contexts/I18nContext";
 import {
 	type AnnotationRegion,
 	DEFAULT_ANNOTATION_POSITION,

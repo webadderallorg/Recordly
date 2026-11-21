@@ -506,4 +506,34 @@ describe("getCompanionAudioFallbackPaths", () => {
 			"Recorded output is too small to contain playable video",
 		);
 	});
+
+	it.each([
+		[
+			Object.assign(new Error("spawn ffmpeg EACCES"), {
+				syscall: "spawn ffmpeg",
+				code: "EACCES",
+			}),
+			"FFmpeg could not start (EACCES)",
+		],
+		[
+			Object.assign(new Error("terminated"), { signal: "SIGSEGV" }),
+			"FFmpeg was stopped by SIGSEGV",
+		],
+		[
+			Object.assign(new Error("exit 1"), {
+				code: 1,
+				stderr: "Invalid data found when processing input",
+			}),
+			"Invalid data found when processing input",
+		],
+	])("distinguishes FFmpeg process failures from decode failures (%s)", async (failure, message) => {
+		const videoPath = path.join(tempRoot, "recording.webm");
+		await fs.writeFile(videoPath, Buffer.alloc(2048));
+		execFileMock.mockImplementation(
+			(_file: string, _args: string[], _opts: unknown, callback: ExecFileCallback) =>
+				callback(failure),
+		);
+		const { validateRecordedVideo } = await import("./diagnostics");
+		await expect(validateRecordedVideo(videoPath)).rejects.toThrow(message);
+	});
 });

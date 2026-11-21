@@ -1,7 +1,6 @@
 import { Texture } from "pixi.js";
 import boldOutlineArrowUrl from "@/assets/cursors/bold-outline/arrow.svg";
 import boldOutlinePointerUrl from "@/assets/cursors/bold-outline/pointer.svg";
-import { DEFAULT_CURSOR_IDLE_HIDE, type CursorIdleHideSettings } from "./cursorIdleVisibility";
 import {
 	type CursorClickEffectStyle,
 	type CursorStyle,
@@ -14,6 +13,7 @@ import {
 	DEFAULT_CURSOR_CLICK_EFFECT_SCALE,
 	DEFAULT_CURSOR_STYLE,
 } from "../types";
+import { type CursorIdleHideSettings, DEFAULT_CURSOR_IDLE_HIDE } from "./cursorIdleVisibility";
 import { type CursorSpringTuning, getCursorSpringConfig } from "./motionSmoothing";
 
 export type CursorAssetKey = NonNullable<CursorTelemetryPoint["cursorType"]>;

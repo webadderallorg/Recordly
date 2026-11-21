@@ -4,12 +4,12 @@ import {
 	CommentRateLimitError,
 	CommentSignInError,
 	commentAccessTokenForAccount,
-	postComment,
+	deleteOwnComment,
 	fetchComments,
 	fetchCommentsForViewer,
+	postComment,
 	signOutFromComments,
 	updateOwnComment,
-	deleteOwnComment,
 } from "./api.ts";
 import {
 	commentDisplayName,

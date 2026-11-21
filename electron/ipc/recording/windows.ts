@@ -7,26 +7,26 @@ import {
 	selectedSource,
 	setNativeScreenRecordingActive,
 	setWindowsCapturePaused,
-	setWindowsCaptureTargetPath,
-	setWindowsCaptureTempPath,
-	windowsCaptureTempPath,
-	setWindowsPendingVideoPath,
-	windowsSystemAudioPath,
-	windowsMicAudioPath,
-	windowsCaptureProcess,
 	setWindowsCaptureProcess,
 	setWindowsCaptureStopRequested,
+	setWindowsCaptureTargetPath,
+	setWindowsCaptureTempPath,
 	setWindowsNativeCaptureActive,
+	setWindowsPendingVideoPath,
 	windowsCaptureOutputBuffer,
+	windowsCaptureProcess,
 	windowsCaptureStopRequested,
 	windowsCaptureTargetPath,
+	windowsCaptureTempPath,
+	windowsMicAudioPath,
 	windowsNativeCaptureActive,
+	windowsSystemAudioPath,
 } from "../state";
 import { AudioSyncAdjustment } from "../types";
 import { moveFileWithOverwrite } from "../utils";
+import { validateRecordedVideo } from "./diagnostics";
 import { emitRecordingInterrupted } from "./events";
 import { parseNativeCaptureInterruption } from "./interruption";
-import { validateRecordedVideo } from "./diagnostics";
 import { attachNativeCaptureStdinLifecycle } from "./nativeCaptureCommand";
 
 const WINDOWS_CAPTURE_STOP_TIMEOUT_MS = 45_000;

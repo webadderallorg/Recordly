@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	calculateMp4ExportDimensions,
 	calculateMp4SourceDimensions,
-	shouldDebounceMp4SupportProbe,
-	isValidCustomExportResolution,
 	fitCustomExportResolution,
+	isValidCustomExportResolution,
+	shouldDebounceMp4SupportProbe,
 } from "./exportDimensions";
 
 describe("calculateMp4SourceDimensions", () => {
@@ -314,8 +314,10 @@ vi.mock("@/lib/exporter", () => ({
 	calculateOutputDimensions: (width: number, height: number) => ({ width, height }),
 	probeSupportedMp4Dimensions: probes.probe,
 }));
-import { useExportDimensions } from "./export/useExportDimensions";
+
 import { startNativeVideoExport } from "@/lib/exporter/modernNativeStreamStart";
+import { useExportDimensions } from "./export/useExportDimensions";
+
 const encoderPath = { codec: "avc1.640034", hardwareAcceleration: "prefer-hardware" };
 function sourceInput() {
 	return {

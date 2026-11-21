@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { buildErrorReport, reportError } from "./errorReporting";
 import { isSupportErrorReport } from "../../../services/supabase/functions/_shared/appErrorReport";
+import { buildErrorReport, reportError } from "./errorReporting";
+
 vi.mock("./diagnostics", async (original) => ({
 	...(await original<typeof import("./diagnostics")>()),
 	collectFeedbackDiagnostics: async () =>

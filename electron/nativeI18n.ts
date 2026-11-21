@@ -10,6 +10,7 @@ import ko from "../src/i18n/locales/ko/native.json";
 import nl from "../src/i18n/locales/nl/native.json";
 import ptBR from "../src/i18n/locales/pt-BR/native.json";
 import tr from "../src/i18n/locales/tr/native.json";
+import vi from "../src/i18n/locales/vi/native.json";
 import zhCN from "../src/i18n/locales/zh-CN/native.json";
 import zhTW from "../src/i18n/locales/zh-TW/native.json";
 
@@ -23,6 +24,7 @@ const catalogs: Record<AppLocale, typeof en> = {
 	ko,
 	ja,
 	"pt-BR": ptBR,
+	vi,
 	"zh-CN": zhCN,
 	"zh-TW": zhTW,
 	tr,

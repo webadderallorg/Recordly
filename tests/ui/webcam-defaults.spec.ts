@@ -12,7 +12,7 @@ for (const savedRoundness of [undefined, 0, 69, 100]) {
 				{
 					const getAppSetting = window.electronAPI.getAppSetting;
 					window.electronAPI.getAppSetting = (key) =>
-						key === "recordly.editor.preferences"
+						key === "recordly.editor.preferences.v2"
 							? { webcam: { shape: "squircle", roundness, previewFrame: "standard" } }
 							: getAppSetting(key);
 				}
@@ -145,7 +145,7 @@ test("Rectangle starts at 50% height in 16:9 and keeps Square roundness with a t
 	await installDesktopBridgeOverrides(page, () => {
 		const getAppSetting = window.electronAPI.getAppSetting;
 		window.electronAPI.getAppSetting = (key) =>
-			key === "recordly.editor.preferences"
+			key === "recordly.editor.preferences.v2"
 				? { webcam: { previewFrame: "standard" } }
 				: getAppSetting(key);
 		window.electronAPI.getCurrentRecordingSession = async () => ({

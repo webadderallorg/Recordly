@@ -3,8 +3,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, type IpcMainInvokeEvent, ipcMain, safeStorage } from "electron";
+import { SAVED_SIGN_IN_LOCKED } from "../src/lib/auth/savedSignIn";
 import { withAuthStorageTransaction } from "./authStorageTransactionLock";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
+import { isSavedSignInCiphertext, openSavedSignIn, sealSavedSignIn } from "./savedSignInEncryption";
 
 const MAX_VALUE_LENGTH = 256 * 1024;
 const MAX_STORE_LENGTH = 1024 * 1024;
@@ -20,6 +22,7 @@ const CONSENT_RETRY_KEY =
 const AUTH_KEY =
 	/^sb-[a-z0-9-]{1,100}-auth-token(?:-code-verifier|-user|-flows-code-verifier|-flow-[A-Za-z0-9_-]{8,64}-code-verifier|-signup-consent-[A-Za-z0-9_-]{43}|-signup-consent-retry:[A-Za-z0-9_-]{1,128}|-completed-callback)?$/;
 type AuthEntries = Record<string, string>;
+type AuthEncoding = "safe-storage" | "saved-sign-in";
 export type AuthFlowStorageHooks = {
 	prepareSet: (
 		event: IpcMainInvokeEvent,
@@ -30,6 +33,7 @@ export type AuthFlowStorageHooks = {
 };
 let pending = Promise.resolve();
 let completedCallback: { key: string; fingerprint: string } | undefined;
+let migrationAttempted = false;
 
 export function encryptionAvailable(): boolean {
 	return (
@@ -136,36 +140,81 @@ function storagePath(): string {
 	return path.join(app.getPath("userData"), "private-auth", "session.enc");
 }
 
-async function load(): Promise<{ entries: AuthEntries; persisted: boolean }> {
+function prefersNamedKeychain(): boolean {
+	return process.platform === "darwin" && app.isPackaged;
+}
+
+async function load(): Promise<{
+	entries: AuthEntries;
+	persisted: boolean;
+	encoding: AuthEncoding;
+}> {
 	try {
 		const filePath = storagePath();
 		const stat = await fs.stat(filePath);
 		if (stat.size > MAX_STORE_LENGTH * 8)
 			throw new Error("Authentication storage is too large.");
-		if (!encryptionAvailable())
+		const encrypted = await fs.readFile(filePath);
+		const named = isSavedSignInCiphertext(encrypted);
+		if (!named && !encryptionAvailable())
 			throw new Error("Secure authentication storage is unavailable.");
-		const payload = JSON.parse(safeStorage.decryptString(await fs.readFile(filePath)));
+		const plaintext = named ? openSavedSignIn(encrypted) : safeStorage.decryptString(encrypted);
+		const payload = JSON.parse(plaintext);
 		if (payload.version !== 1) throw new Error("Unsupported authentication storage version.");
-		return { entries: validateEntries(payload.entries), persisted: true };
+		const entries = validateEntries(payload.entries);
+		let encoding: AuthEncoding = named ? "saved-sign-in" : "safe-storage";
+		if (!named && prefersNamedKeychain() && !migrationAttempted) {
+			migrationAttempted = true;
+			try {
+				const migrated = sealSavedSignIn(plaintext);
+				if (openSavedSignIn(migrated, true) !== plaintext)
+					throw new Error("Saved sign-in verification failed.");
+				// All callers hold the cross-process transaction lock. The old
+				// file remains readable until the verified replacement is durable.
+				await writeEncryptedStore(migrated);
+				encoding = "saved-sign-in";
+			} catch {
+				// Keep this launch's session usable, including refresh and sign-out.
+				// A later launch can retry with the original key and current file.
+			}
+		}
+		return { entries, persisted: true, encoding };
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
 			// Keep an unreadable store intact; never replace it with an empty session.
-			throw new Error(
-				"Could not unlock saved authentication. Restart Recordly and try again.",
-			);
+			throw new Error(SAVED_SIGN_IN_LOCKED);
 		}
-		return { entries: Object.create(null) as AuthEntries, persisted: false };
+		return {
+			entries: Object.create(null) as AuthEntries,
+			persisted: false,
+			encoding: prefersNamedKeychain() ? "saved-sign-in" : "safe-storage",
+		};
 	}
 }
 
 class AuthEncryptionUnavailableError extends Error {}
 
-async function save(next: AuthEntries): Promise<void> {
+async function save(next: AuthEntries, encoding: AuthEncoding): Promise<void> {
 	const validated = validateEntries(next);
-	if (!encryptionAvailable()) {
-		throw new AuthEncryptionUnavailableError("Secure authentication storage is unavailable.");
+	const plaintext = JSON.stringify({ version: 1, entries: validated });
+	let encrypted: Buffer;
+	if (encoding === "saved-sign-in") {
+		try {
+			encrypted = sealSavedSignIn(plaintext);
+		} catch {
+			throw new AuthEncryptionUnavailableError("Saved sign-in Keychain item is unavailable.");
+		}
+	} else {
+		if (!encryptionAvailable())
+			throw new AuthEncryptionUnavailableError(
+				"Secure authentication storage is unavailable.",
+			);
+		encrypted = safeStorage.encryptString(plaintext);
 	}
-	const encrypted = safeStorage.encryptString(JSON.stringify({ version: 1, entries: validated }));
+	await writeEncryptedStore(encrypted);
+}
+
+async function writeEncryptedStore(encrypted: Buffer): Promise<void> {
 	const filePath = storagePath();
 	const directory = path.dirname(filePath);
 	await fs.mkdir(directory, { recursive: true, mode: 0o700 });
@@ -209,19 +258,11 @@ export function readNativeAuthStorageValue(key: string): Promise<string | null> 
 }
 
 export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): void {
-	ipcMain.handle("auth-storage:available", async (event) => {
+	ipcMain.handle("auth-storage:available", (event) => {
 		assertTrustedRenderer(event);
-		if (process.platform === "darwin") {
-			try {
-				await fs.stat(storagePath());
-			} catch (error) {
-				// Checking safeStorage can prompt for Keychain access. Defer it until
-				// we have credentials to read or save.
-				if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
-				throw error;
-			}
-		}
-		return encryptionAvailable();
+		// On macOS, let the read or write request Keychain access. If access is
+		// denied for an existing store, report it instead of falling back to memory.
+		return process.platform === "darwin" || encryptionAvailable();
 	});
 	ipcMain.handle("auth-storage:migrate", (event, snapshot: unknown) => {
 		assertTrustedRenderer(event);
@@ -230,7 +271,7 @@ export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): v
 		return serialize(() =>
 			transaction(async () => {
 				const current = await load();
-				if (!current.persisted) await save(validated);
+				if (!current.persisted) await save(validated, current.encoding);
 			}),
 		);
 	});
@@ -285,7 +326,7 @@ export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): v
 					for (const expired of retries.slice(0, -MAX_CONSENT_RETRIES))
 						delete next[expired];
 					try {
-						await save(next);
+						await save(next, current.encoding);
 					} catch (error) {
 						// Let the renderer use temporary sign-in only if there is no store to unlock.
 						if (
@@ -311,10 +352,10 @@ export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): v
 		assertKey(key);
 		return serialize(async () => {
 			await transaction(async () => {
-				const { entries } = await load();
+				const { entries, encoding } = await load();
 				if (key in entries) {
 					delete entries[key];
-					await save(entries);
+					await save(entries, encoding);
 				}
 				if (completedCallback?.key === key) completedCallback = undefined;
 			});

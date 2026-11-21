@@ -1,6 +1,6 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 /** Publish a complete new project without overwriting a concurrent or existing save. */
 export async function createUntitledProject(directory: string, contents: string) {
 	await fs.mkdir(directory, { recursive: true });

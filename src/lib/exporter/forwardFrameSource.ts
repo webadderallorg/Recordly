@@ -2,6 +2,7 @@ import { WebDemuxer } from "web-demuxer";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import { createFallbackDemuxerSource, resolveMediaResourceUrl } from "./localMediaSource";
 import { getDecodedFrameTimelineOffsetUs } from "./streamingDecoder";
+import { getVideoDecoderConfig } from "./videoDecoderConfig";
 
 const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
@@ -95,7 +96,12 @@ export class ForwardFrameSource {
 			codec: videoStream?.codec_string || "unknown",
 		};
 
-		await this.startDecoder();
+		try {
+			await this.startDecoder();
+		} catch (error) {
+			await this.destroy();
+			throw error;
+		}
 		return this.metadata;
 	}
 
@@ -104,7 +110,7 @@ export class ForwardFrameSource {
 			throw new Error("Must call initialize() before starting decoder");
 		}
 
-		const decoderConfig = await this.demuxer.getDecoderConfig("video");
+		const decoderConfig = await getVideoDecoderConfig(this.demuxer);
 		const codec = this.metadata.codec.toLowerCase();
 		const shouldPreferSoftwareDecode = codec.includes("av01") || codec.includes("av1");
 

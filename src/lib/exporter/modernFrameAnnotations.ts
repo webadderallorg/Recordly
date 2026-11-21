@@ -1,4 +1,5 @@
 import { Sprite, Texture } from "pixi.js";
+import { BASE_PREVIEW_WIDTH } from "@/components/video-editor/types";
 import {
 	type AnnotationRenderAssets,
 	renderAnnotations,
@@ -41,13 +42,9 @@ export class FrameAnnotations {
 	outputCanvasOverride: HTMLCanvasElement | null = null;
 
 	calculateAnnotationScaleFactor(): number {
-		const previewWidth = this.context.config.previewWidth || 1920;
-		const previewHeight = this.context.config.previewHeight || 1080;
-		return (
-			(this.context.config.width / previewWidth +
-				this.context.config.height / previewHeight) /
-			2
-		);
+		const recordingWidth =
+			this.context.geometry.layoutCache?.maskRect.width ?? this.context.config.width;
+		return recordingWidth / BASE_PREVIEW_WIDTH;
 	}
 
 	hasActiveBlurAnnotations(timeMs: number): boolean {

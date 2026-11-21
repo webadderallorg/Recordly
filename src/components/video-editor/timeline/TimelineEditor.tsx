@@ -1,7 +1,6 @@
 import type { Span } from "dnd-timeline";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { TimelineLoadingSkeleton } from "../layout/TimelineLoadingSkeleton";
 import type {
 	SourceAudioTrackMeta,
 	SourceAudioTrackSettings,
@@ -9,6 +8,7 @@ import type {
 import { useScopedT } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { selectClipRange } from "../clipMerge";
+import { TimelineLoadingSkeleton } from "../layout/TimelineLoadingSkeleton";
 import type {
 	AnnotationRegion,
 	AudioRegion,

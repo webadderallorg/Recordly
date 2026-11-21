@@ -123,6 +123,7 @@ beforeEach(() => {
 			})),
 			getAccessibilityPermissionStatus: vi.fn(async () => ({ success: true, trusted: true })),
 			openScreenRecordingPreferences: vi.fn(async () => ({ success: false })),
+			openAccessibilityPreferences: vi.fn(async () => ({ success: true })),
 		},
 	});
 });
@@ -134,15 +135,19 @@ afterEach(() => {
 it.each([
 	"win32",
 	"linux",
-])("skips macOS permission setup on %s without requesting access", async (platform) => {
+])("waits for Start recording on %s without requesting permissions", async (platform) => {
 	vi.mocked(window.electronAPI.getPlatform).mockResolvedValue(platform);
 	const onFinish = vi.fn();
 	const checking = render(onFinish);
 	expect(checking.some((node) => node.type === "header")).toBe(false);
 	await flush();
-	expect(render(onFinish)).toEqual([]);
-	expect(onFinish).toHaveBeenCalledOnce();
-	render(onFinish);
+	const ready = render(onFinish);
+	expect(ready.find((node) => node.type === "header")?.props.description).toBe("signedIn");
+	const start = ready.find((node) => node.type === "primary");
+	expect(start?.props.children).toBe("startRecording");
+	expect(start?.props.isDisabled).toBe(false);
+	expect(onFinish).not.toHaveBeenCalled();
+	start?.props.onPress();
 	expect(onFinish).toHaveBeenCalledOnce();
 	expect(window.electronAPI.getScreenRecordingPermissionStatus).not.toHaveBeenCalled();
 	expect(window.electronAPI.getAccessibilityPermissionStatus).not.toHaveBeenCalled();
@@ -164,6 +169,34 @@ it("keeps a failed permission request visible through successful status polls an
 	allow().props.onPress();
 	await flush();
 	expect(alert()).toBeUndefined();
+});
+it("opens Accessibility Settings directly and leaves finish locked until the grant is observed", async () => {
+	vi.mocked(window.electronAPI.getScreenRecordingPermissionStatus).mockResolvedValue({
+		success: true,
+		status: "granted",
+	});
+	vi.mocked(window.electronAPI.getAccessibilityPermissionStatus).mockResolvedValue({
+		success: true,
+		trusted: false,
+		prompted: false,
+	});
+	render();
+	await flush();
+	const accessibility = render().find(
+		(node) => node.props?.["aria-label"] === "allowPermission:accessibility",
+	);
+	await accessibility?.props.onPress();
+	expect(window.electronAPI.openAccessibilityPreferences).toHaveBeenCalledOnce();
+	expect(render().some((node) => node.props?.children === "permissionDragFallback")).toBe(true);
+	expect(render().find((node) => node.type === "primary")?.props.isDisabled).toBe(true);
+	vi.mocked(window.electronAPI.getAccessibilityPermissionStatus).mockResolvedValue({
+		success: true,
+		trusted: true,
+		prompted: false,
+	});
+	await vi.advanceTimersByTimeAsync(3000);
+	expect(render().some((node) => node.props?.children === "permissionDragFallback")).toBe(false);
+	expect(render().find((node) => node.type === "primary")?.props.isDisabled).toBe(false);
 });
 it("clears a stale failed-request report after status checks verify all permissions recovered", async () => {
 	render();

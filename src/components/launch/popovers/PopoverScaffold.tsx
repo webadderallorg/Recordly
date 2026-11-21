@@ -1,14 +1,15 @@
 import { ToggleButton } from "@heroui/react";
+import { cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
+import { AudioLevelMeter } from "@/components/ui/audio-level-meter";
 import { Button } from "@/components/ui/button";
 import { MicrophoneIcon, MicrophoneSlashIcon } from "@/components/ui/icons";
-import { cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAudioLevelMeter } from "@/hooks/useAudioLevelMeter";
-import { AudioLevelMeter } from "@/components/ui/audio-level-meter";
+import { HudTooltip } from "../HudTooltip";
 import styles from "../LaunchWindow.module.css";
 import "../launchTheme.css";
-import type { DeviceOption } from "./launchPopoverTypes";
 import { useHudInteraction } from "../contexts/HudInteractionContext";
+import type { DeviceOption } from "./launchPopoverTypes";
 
 export function DropdownItem({
 	onClick,
@@ -93,6 +94,7 @@ export function HudPopover({
 	children,
 	align = "center",
 	label,
+	tooltip,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -100,15 +102,16 @@ export function HudPopover({
 	children: ReactNode;
 	align?: "start" | "center" | "end";
 	label?: string;
+	tooltip?: string;
 }) {
 	const { onMouseEnter } = useHudInteraction();
 	return (
 		<Popover open={open} onOpenChange={onOpenChange} modal={true}>
 			<PopoverTrigger asChild>
-				{label ? (
-					<span className="contents" title={label}>
+				{tooltip ? (
+					<HudTooltip label={tooltip} suppressed={open}>
 						{trigger}
-					</span>
+					</HudTooltip>
 				) : (
 					trigger
 				)}

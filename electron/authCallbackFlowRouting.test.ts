@@ -1,5 +1,6 @@
 import { app, ipcMain } from "electron";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { testAppDocument, testAppPath } from "./testing/rendererFixture";
 
 type Owner = {
 	id: number;
@@ -34,7 +35,7 @@ vi.mock("electron", () => ({
 		whenReady: async () => undefined,
 		quit: vi.fn(),
 		getPath: () => "/recordly/user",
-		getAppPath: () => "/recordly",
+		getAppPath: () => testAppPath,
 	},
 	ipcMain: { handle: vi.fn() },
 	safeStorage: { encryptString: vi.fn(), decryptString: vi.fn() },
@@ -90,10 +91,10 @@ vi.mock("./authFlowRelay", () => ({
 function owner(id: number): Owner {
 	const result: Owner = {
 		id,
-		url: "file:///recordly/dist/index.html",
+		url: testAppDocument,
 		destroyed: false,
 		send: vi.fn(),
-		mainFrame: { url: "file:///recordly/dist/index.html" },
+		mainFrame: { url: testAppDocument },
 		getURL: () => result.url,
 		isDestroyed: () => result.destroyed,
 		once: vi.fn(),
@@ -296,7 +297,7 @@ it("keeps callbacks private across owner reload until its trusted document is re
 	expect(read(event(alice))).toBeNull();
 	expect(read(event(bob))).toBeNull();
 	ack(event(bob), url);
-	alice.url = "file:///recordly/dist/index.html?windowType=onboarding";
+	alice.url = `${testAppDocument}?windowType=onboarding`;
 	alice.mainFrame = { url: alice.url };
 	expect(read(event(alice))).toBe(url);
 	const childFrame = {

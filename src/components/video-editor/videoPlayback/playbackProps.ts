@@ -1,4 +1,3 @@
-import { DEFAULT_CURSOR_IDLE_HIDE } from "./cursorIdleVisibility";
 import {
 	DEFAULT_CONNECTED_ZOOM_DURATION_MS,
 	DEFAULT_CONNECTED_ZOOM_EASING,
@@ -24,6 +23,7 @@ import {
 	DEFAULT_ZOOM_OUT_DURATION_MS,
 	DEFAULT_ZOOM_OUT_EASING,
 } from "../types";
+import { DEFAULT_CURSOR_IDLE_HIDE } from "./cursorIdleVisibility";
 import type { VideoPlaybackProps } from "./playbackTypes";
 export function resolveVideoPlaybackProps({
 	videoPath,
@@ -95,6 +95,7 @@ export function resolveVideoPlaybackProps({
 	cursorSway = DEFAULT_CURSOR_SWAY,
 	cursorIdleHide = DEFAULT_CURSOR_IDLE_HIDE,
 	volume = 1,
+	previewResolutionScale = 1,
 	suspendRendering = false,
 }: VideoPlaybackProps) {
 	return {
@@ -167,6 +168,7 @@ export function resolveVideoPlaybackProps({
 		cursorSway,
 		cursorIdleHide,
 		volume,
+		previewResolutionScale,
 		suspendRendering,
 	};
 }

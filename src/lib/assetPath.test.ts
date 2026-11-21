@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	getAssetPath,
-	getWallpaperThumbnailUrl,
 	getExportableVideoUrl,
 	getRenderableAssetUrl,
 	getRenderableVideoUrl,
+	getWallpaperThumbnailUrl,
 } from "./assetPath";
 
 describe("getAssetPath", () => {

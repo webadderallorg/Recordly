@@ -18,6 +18,7 @@ vi.mock("../diagnostics", () => ({
 	recordNativeCaptureDiagnostics: vi.fn(),
 }));
 vi.mock("../macCompanionAudio", () => ({ getFinalMacCompanionAudioPath: (file: string) => file }));
+
 import { attachNativeCaptureLifecycle, recoverNativeMacCaptureOutput } from "../mac";
 import { stopMacCapture } from "./stopMacCapture";
 

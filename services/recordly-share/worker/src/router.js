@@ -37,8 +37,8 @@ import {
 	handleVideoStream,
 	handleVTT,
 } from "./media.js";
-import { ensureSchema } from "./schema.js";
 import { handleReport } from "./moderation.js";
+import { ensureSchema } from "./schema.js";
 import {
 	decodeUploadId,
 	handleMetadata,

@@ -110,6 +110,10 @@
 		--destructive: var(--danger);
 		--input: var(--field-border);
 	}
+	:root:lang(vi) {
+		/* Bundled DM Sans lacks Vietnamese tone marks. */
+		--app-font-sans: system-ui, "Segoe UI", sans-serif;
+	}
 	html,
 	body,
 	#root {
@@ -204,6 +208,18 @@
 .editor-playback {
 	container-type: inline-size;
 }
+.editor-playback-resolution {
+	align-items: center;
+	height: 28px;
+	min-height: 28px;
+	padding-block: 0;
+	padding-inline: 7px 22px;
+}
+.editor-playback-resolution .select__indicator {
+	inset-inline-end: 6px;
+	width: 12px;
+	height: 12px;
+}
 @container editor-preview (max-width: 760px) {
 	.editor-playback {
 		grid-template-columns: auto minmax(max-content, 1fr) auto;
@@ -223,13 +239,19 @@
 		gap: 4px;
 		padding-inline: 8px;
 	}
-	.editor-playback button {
+	.editor-playback button:not(.editor-playback-resolution) {
 		width: 28px;
 		min-width: 28px;
 		height: 28px;
 	}
 	.editor-playback-tools {
-		gap: 4px;
+		gap: 2px;
+	}
+	.editor-playback-volume {
+		gap: 0;
+	}
+	.editor-playback-resolution {
+		max-width: 56px;
 	}
 	.editor-playback-center > div {
 		gap: 2px;
@@ -275,6 +297,20 @@
 }
 .share-link-field > input:not(:focus) {
 	text-overflow: ellipsis;
+}
+
+/* Report sits on the same row as a compact button, so it shares that row's height. */
+[data-error-actions] > [data-error-report] {
+	display: flex;
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--muted);
+}
+[data-error-actions] > [data-error-report] > button {
+	display: inline-flex;
+	align-items: center;
+	height: 28px;
+	text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
 }
 
 @media (forced-colors: active) {

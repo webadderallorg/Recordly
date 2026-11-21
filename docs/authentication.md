@@ -2,7 +2,17 @@
 
 Packaged Recordly requires a non-anonymous Supabase Auth session before onboarding can advance to permissions or recording can start. In development, automatic first-run onboarding and settings previews are optional: Continue, Skip, and page navigation work without signing in, while real operating-system permissions are still required to start recording. Preview displays a restored account without replacing or hiding its session. Closing or skipping the development tour persists its dismissal so a newly recorded video can open its editor without replaying onboarding. Preview does not mark onboarding complete or create a signed-in session. Native permission recovery and the explicit `onboardingPreview=0` route use the real account-required flow, including permission progress after a restart. The sign-in dialog uses email magic links and whichever of Google, Microsoft, or Apple OAuth are enabled in the configured project; there is no guest or local demo login. Sessions persist across app restarts. The desktop application uses PKCE and returns from the system browser through a loopback callback in development and `recordly://auth/callback` in production. The dialog reads `/auth/v1/settings` and keeps all three OAuth buttons visible and disables providers that are not enabled. SAML is intentionally hidden until configured.
 
+First-run onboarding flows through **Account → Permissions → optional Upgrade**. Recordly starts loading public pricing when onboarding opens, independently of sign-in. If the price is ready before account verification finishes, Upgrade shows it while checkout waits for the account's verified plan and price. Only macOS requests system permissions at this step. **Skip and start recording** opens the recording controls without starting capture. Returning users signing in on Windows and Linux still get the **Start recording** confirmation without repeating the upgrade offer.
+
+Going back to **Account** shows the sign-in form again. **Next** keeps the current session; completing another sign-in replaces it.
+
 Full onboarding plays the welcome music on every opening in both development and packaged builds, including the inline fallback. Previous playback and completion flags do not silence it. The mute control applies to the current opening; blocked autoplay retries on interaction, and closing onboarding or starting a recording stops the music. Dedicated permission recovery stays separate from the full welcome experience: it shares the full-window artwork and outer footer, with 44px permission actions and recording button, but has no account steps, page navigation, or welcome music.
+
+## macOS saved sign-in
+
+Packaged macOS builds use a Keychain item called **Recordly Saved Sign-In**. An upgrade can still ask to unlock the previous **Recordly Safe Storage** item once. Recordly keeps the existing encrypted session until it has verified that the new item can unlock its replacement. If the migration fails after unlocking the old session, the app continues using the old store and retries on a later launch.
+
+Recordly leaves Electron’s original Keychain item in place. Older builds cannot read the new session format; reinstalling an updated build restores access to a migrated session. Development profiles continue to use Electron’s original storage.
 
 ## Optional routing between desktop instances
 
@@ -18,7 +28,7 @@ The encrypted native store uses fresh per-key file transactions across processes
 
 **Settings → Account** is available in both the editor and Projects dashboard. Display-name changes update Supabase user metadata and refresh the account avatar everywhere. Email changes use Supabase's email confirmation flow and the same desktop PKCE callback as sign-in; the existing email stays active until confirmation completes. Pending email changes are shown after reopening Settings. Connected sign-in methods reflect the user's actual account identities. Sign out clears the local session and revokes refresh sessions on all devices; local projects remain on disk. Packaged builds bring back mandatory sign-in, while development onboarding stays in preview.
 
-**Settings → Permissions** shows live macOS Screen Recording and Accessibility statuses, refreshes when the app regains focus, and links to the onboarding permission setup. Microphone and camera permission requests remain tied to enabling those devices for recording. On other platforms, capture selection remains part of starting a recording.
+**Settings → Permissions** shows live macOS Screen Recording and Accessibility statuses, refreshes when the app regains focus, and links to the onboarding permission setup. **Allow** for Screen Recording or Accessibility opens the matching System Settings pane and the **Drag to System Settings** panel without asking macOS to show a separate prompt first. Drag Recordly into the permission list and enable it there. Microphone and camera permission requests remain tied to enabling those devices for recording. On other platforms, capture selection remains part of starting a recording.
 
 ## 1. Create the project
 
@@ -71,16 +81,18 @@ The auth helper supports extracting a work email domain for SAML; this option is
 
 ## 5. Verify locally
 
-Restart `npm run dev` after creating `.env.local`. Automatic first-run onboarding, **Settings → Dev → Show onboarding**, and **Review permission setup** all use the same preview flow. No query parameter or separate preview switch is required. Verify Continue, Back, and page navigation with and without a saved account; the restored account stays visible, and Start recording still waits for required system permissions. Native permission requests explicitly select the real flow (`onboardingPreview=0` in development); this route must resume the saved session and pending permission progress without a Skip action. Account sign-in and cloud access continue to use real Supabase sessions.
+Restart `npm run dev` after creating `.env.local`. Dev launches open onboarding with an explicit **Skip onboarding** button. **Settings → Dev → Show onboarding** and **Review permission setup** also use the dev preview. If you skip onboarding and then click **Record** without the required macOS permissions, the HUD opens only the system permissions screen, without opening Home or requiring a cloud account. The grants are real; the permission screen doesn't change production onboarding progress. Account sign-in and cloud access still require real Supabase sessions.
 
 In a packaged build, verify:
 
 1. Without a session, onboarding requires sign-in before advancing to Permissions.
 2. Request an email code. Sending the email alone must not grant access. Verifying the code or opening the magic link establishes a persistent session and advances to Permissions.
 3. OAuth opens the system browser and returns to Recordly through the callback.
-4. On Permissions, Start recording opens the recording controls after required system permissions are granted.
-5. Restart the app to verify session restoration. Sign out from the account dialog and verify mandatory sign-in returns.
-6. Review permission setup opens Permissions directly for signed-in users. The recording HUD also checks for a Supabase session before preparing a recording.
+4. On Permissions, grant the required system permissions and select **Next**. If the drag panel doesn't appear, click **+** in the System Settings list and select the Recordly app before turning it on. On Upgrade, **Skip and start recording** opens the recording controls without a subscription. **Get started** opens verified monthly checkout in the browser. After paying, return to Recordly and wait for confirmation. If billing needs you to sign in or sign in again, you'll return to Upgrade afterward; checkout won't open automatically.
+5. Restart from System Settings during first-run Permissions. The app should restore the session and resume the three-step tour with **Next → Upgrade**, without replaying the intro. Once onboarding is complete, restart again to verify the HUD opens without replaying the tour. Sign out from the account dialog and verify mandatory sign-in returns.
+
+On a Mac with a desktop session, run `npm run smoke:packaged-onboarding -- /Applications/Recordly.app/Contents/MacOS/Recordly` to check the packaged app's startup routing. It launches in a temporary, signed-out profile, restarts with permission setup pending, and checks that the carousel remains until onboarding is marked complete. It does not change macOS permissions or replace the manual signed-in grant and restart test.
+6. With a valid session, clicking **Record** with missing macOS grants opens Permissions directly instead of Home. Closing Permissions returns you to the recording controls. The recording HUD still requires a Supabase session in a packaged build.
 
 Automated UI tests use isolated Supabase endpoints and mocked Auth HTTP responses. Preview tests use the development renderer; authentication and permission-recovery tests use a separate renderer with `NODE_ENV=production`, so development preview cannot mask production sign-in gates.
 

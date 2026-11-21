@@ -1,9 +1,10 @@
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { testAppDocument, testAppPath } from "../../testing/rendererFixture";
 
 const mocks = vi.hoisted(() => ({ handle: vi.fn(), openExternal: vi.fn() }));
 vi.mock("electron", () => ({
-	app: { getAppPath: () => "/recordly" },
+	app: { getAppPath: () => testAppPath },
 	ipcMain: { handle: mocks.handle },
 	shell: { openExternal: mocks.openExternal },
 }));
@@ -44,7 +45,7 @@ beforeEach(() => {
 	sender = Object.assign(new EventEmitter(), {
 		id: 42,
 		isDestroyed: () => false,
-		mainFrame: { url: "file:///recordly/dist/index.html?windowType=editor" },
+		mainFrame: { url: `${testAppDocument}?windowType=editor` },
 	});
 	fetchMock = vi.fn().mockResolvedValue(Response.json(free));
 	vi.stubGlobal("fetch", fetchMock);
@@ -72,6 +73,39 @@ it("loads public verified pricing without sending an account token or opening a 
 	);
 	expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty("authorization");
 	expect(mocks.openExternal).not.toHaveBeenCalled();
+});
+
+it("cancels account requests without interrupting the public price load", async () => {
+	const signals = new Map<string, AbortSignal>();
+	let finish!: (response: Response) => void;
+	const catalogResponse = new Promise<Response>((resolve) => {
+		finish = resolve;
+	});
+	fetchMock.mockImplementation((url: URL, { signal }: { signal: AbortSignal }) => {
+		signals.set(url.pathname, signal);
+		return catalogResponse.then((response) => response.clone());
+	});
+	const catalog = call({ endpoint, action: "catalog" });
+	const status = call();
+	const cancel = mocks.handle.mock.calls.find(
+		([channel]) => channel === "cloud-billing-cancel",
+	)![1];
+	expect(cancel({ sender, senderFrame: sender.mainFrame })).toEqual({ success: true });
+	expect(signals.get("/api/billing")?.aborted).toBe(true);
+	expect(signals.get("/api/billing/catalog")?.aborted).toBe(false);
+	finish(
+		Response.json({
+			prices: [],
+			limits: {
+				freeRecordingLimit: 5,
+				freeMaxRecordingBytes: 1_000_000_000,
+				plusMaxRecordingBytes: 10_000_000_000,
+				storageLimitBytes: 100_000_000_000,
+			},
+		}),
+	);
+	await expect(catalog).resolves.toMatchObject({ success: true });
+	await expect(status).resolves.toMatchObject({ success: false });
 });
 
 describe("trusted Stripe links", () => {

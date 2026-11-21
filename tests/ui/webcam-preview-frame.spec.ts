@@ -17,7 +17,7 @@ test("webcam preview frame choices persist and inline crop updates immediately",
 		});
 		const set = window.electronAPI.setAppSetting;
 		window.electronAPI.setAppSetting = (key, value) => {
-			if (key === "recordly.editor.preferences")
+			if (key === "recordly.editor.preferences.v2")
 				document.documentElement.dataset.webcamPreferences = JSON.stringify(
 					(value as { webcam: unknown }).webcam,
 				);

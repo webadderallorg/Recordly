@@ -1,5 +1,3 @@
-import { ChatWarning } from "@/components/ui/icons";
-import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { Modal } from "@heroui/react";
 import { FolderOpen, GearSix, Palette, SignOut, UserCircle } from "@phosphor-icons/react";
 import type { User } from "@supabase/supabase-js";
@@ -7,6 +5,7 @@ import { useContext, useEffect, useState } from "react";
 import { AccountSettings } from "@/components/auth/AccountSettings";
 import { useBilling } from "@/components/billing/BillingProvider";
 import { PlusBadge } from "@/components/billing/PlusBadge";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import {
 	AccountAvatar,
@@ -14,9 +13,10 @@ import {
 	getAccountProfile,
 } from "@/components/ui/account-avatar";
 import { Button } from "@/components/ui/button";
+import { ChatWarning } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useI18n } from "@/contexts/I18nContext";
 import type { SettingsSection } from "@/components/video-editor/SettingsSections";
+import { useI18n } from "@/contexts/I18nContext";
 import { signOutRecordly } from "@/lib/auth/recordlyAuth";
 
 export function RecordlyAccountMenu({

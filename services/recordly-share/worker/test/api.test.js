@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeAll, vi } from "vitest";
 import { env, SELF } from "cloudflare:test";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import worker, { sha256Hex } from "../src/index.js";
-import { withRecordingLock } from "../src/recordingLock.js";
 import { cleanupExpired } from "../src/library.js";
+import { withRecordingLock } from "../src/recordingLock.js";
 
 import { localCommentHeaders } from "./commentFixtures.js";
+
 let commentAuth;
 beforeAll(async () => {
 	commentAuth = await localCommentHeaders();

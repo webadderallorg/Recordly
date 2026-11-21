@@ -1,5 +1,5 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { Skeleton } from "@heroui/react";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 export function LibrarySkeleton() {
 	const { t: uiText } = useUiLocale();
 	return (

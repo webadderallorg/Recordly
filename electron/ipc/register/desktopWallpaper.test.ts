@@ -5,6 +5,7 @@ vi.mock("electron", () => ({ ipcMain: { handle: mocks.handle } }));
 vi.mock("../../appPaths", () => ({ USER_DATA_PATH: "/recordly-data" }));
 vi.mock("../../desktopWallpaper", () => ({ getDesktopWallpaperSnapshot: mocks.snapshot }));
 vi.mock("../../trustedRenderer", () => ({ isTrustedRenderer: mocks.trusted }));
+
 import { registerDesktopWallpaperHandler } from "./desktopWallpaper";
 
 beforeEach(() => {

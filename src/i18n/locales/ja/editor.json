@@ -84,6 +84,8 @@
 		"videos": "動画"
 	},
 	"playback": {
+		"resolution": "再生解像度",
+		"fullResolution": "フル",
 		"play": "再生",
 		"pause": "一時停止",
 		"skipBack": "後ろにスキップ",

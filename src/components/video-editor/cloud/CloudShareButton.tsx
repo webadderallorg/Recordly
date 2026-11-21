@@ -1,5 +1,11 @@
 import { Input, TextArea } from "@heroui/react";
-import { ArrowClockwise, Export, LinkSimple } from "@phosphor-icons/react";
+import {
+	ArrowClockwise,
+	CheckCircle,
+	Export,
+	LinkSimple,
+	WarningCircle,
+} from "@phosphor-icons/react";
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
@@ -24,6 +30,7 @@ import { PublishedVideoPreview } from "./PublishedVideoPreview";
 import { SharedRecordings } from "./SharedRecordings";
 import { notifyShareCapacityChanged, RECORDING_LIMIT_MESSAGE } from "./shareCapacity";
 import { useCloudShareController } from "./useCloudShareController";
+
 type FloatingActivity = {
 	formContainer: HTMLElement | null;
 	visible: boolean;
@@ -90,8 +97,11 @@ export function CloudShareButton(props: Props & { floatingActivity?: FloatingAct
 					? t("editor.cloud.uploadingVideo", "Uploading video…")
 					: t("editor.cloud.preparing", "Preparing the current edit…")
 			}
+			// Headlines describe rendering, so show them only while a new export is prepared.
 			headlines={
-				floatingActivity && phase !== "uploading" ? EXPORT_LOADING_MESSAGES : undefined
+				floatingActivity && phase === "preparing" && !filePath
+					? EXPORT_LOADING_MESSAGES
+					: undefined
 			}
 			value={progress}
 		/>
@@ -308,32 +318,48 @@ export function CloudShareButton(props: Props & { floatingActivity?: FloatingAct
 							uploadIndicator
 						) : published ? (
 							<>
-								<p role="status" className="text-xs text-muted-foreground">
+								<p
+									role="status"
+									className="editor-export-card-status"
+									data-tone="success"
+								>
+									<CheckCircle size={14} weight="fill" aria-hidden />
 									{t("editor.cloud.linkCreated")}
 								</p>
-								<Button
-									type="button"
-									variant="link"
-									size="sm"
-									className="self-start p-0"
-									onClick={() => void copyShareUrl()}
-								>
-									{copied
-										? t("editor.cloud.copied")
-										: t("editor.cloud.copyLink", "Copy link")}
-								</Button>
+								<div className="editor-export-card-actions">
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onClick={() => void copyShareUrl()}
+									>
+										{copied
+											? t("editor.cloud.copied")
+											: t("editor.cloud.copyLink", "Copy link")}
+									</Button>
+								</div>
 							</>
 						) : error ? (
 							<>
-								<p role="alert" className="text-xs text-danger">
-									<LocalizedError error={error} />
+								<p
+									role="alert"
+									className="editor-export-card-status items-start"
+									data-tone="danger"
+								>
+									<WarningCircle
+										size={14}
+										weight="fill"
+										className="mt-0.5"
+										aria-hidden
+									/>
+									<span className="max-h-24 min-w-0 overflow-y-auto font-medium [overflow-wrap:anywhere]">
+										<LocalizedError error={error} />
+									</span>
 								</p>
-								<div className="flex flex-wrap items-center gap-2">
+								<div className="editor-export-card-actions">
 									<Button
 										type="button"
-										variant="link"
 										size="sm"
-										className="p-0"
 										onClick={floatingActivity.onRetry}
 									>
 										{t("common.actions.retry", "Try again")}

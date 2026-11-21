@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ root: "" }));
 vi.mock("../utils", () => ({ getRecordingsDir: async () => state.root }));
+
 import { findDuplicateRecordingSources } from "./duplicateSources";
 
 beforeEach(async () => {

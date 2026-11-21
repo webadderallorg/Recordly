@@ -1,4 +1,3 @@
-import { drawSquircleOnCanvas, SQUIRCLE_RADIUS_SCALE } from "@/lib/geometry/squircle";
 import type { CaptionLineLayout } from "@/components/video-editor/captionLayout";
 import {
 	getCaptionDisplayText,
@@ -8,11 +7,12 @@ import {
 } from "@/components/video-editor/captionPresets";
 import {
 	CAPTION_LINE_HEIGHT,
-	getCaptionFontBaseline,
 	CAPTION_WORD_HIGHLIGHT,
+	getCaptionFontBaseline,
 	getCaptionWordVisualState,
 } from "@/components/video-editor/captionStyle";
 import type { AutoCaptionSettings } from "@/components/video-editor/types";
+import { drawSquircleOnCanvas, SQUIRCLE_RADIUS_SCALE } from "@/lib/geometry/squircle";
 
 /** Natural word spacing and one alphabetic baseline, shared by both exporters. */
 export function drawCaptionLine(

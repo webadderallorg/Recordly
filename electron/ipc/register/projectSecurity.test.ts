@@ -1,5 +1,6 @@
 import { ipcMain } from "electron";
 import { beforeEach, expect, it, vi } from "vitest";
+
 const mocks = vi.hoisted(() => ({
 	resolve: vi.fn(),
 	buildUrl: vi.fn(),
@@ -26,7 +27,9 @@ vi.mock("../project/manager", () => ({
 	replaceApprovedSessionLocalReadPaths: mocks.replace,
 }));
 vi.mock("../project/session", () => ({ resolveRecordingSession: async () => null }));
+
 import { registerProjectHandlers } from "./project";
+
 let handlers: Map<string, Parameters<typeof ipcMain.handle>[1]>;
 const frame = { url: "http://127.0.0.1:43820/?windowType=editor" };
 const trusted = { sender: { mainFrame: frame }, senderFrame: frame } as Electron.IpcMainInvokeEvent;

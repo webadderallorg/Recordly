@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
-import { productionTest as test } from "./production";
 import { completeSupabaseSignIn } from "./auth";
-import { installDesktopBridge } from "./bridge";
+import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+import { productionTest as test } from "./production";
 
 async function captureSignInReports(page: Page) {
 	const reports: { error: string; logs: string }[] = [];
@@ -13,6 +13,83 @@ async function captureSignInReports(page: Page) {
 		},
 	);
 	return reports;
+}
+
+for (const returning of [false, true]) {
+	test(`Windows ${returning ? "returning sign-in waits for Start recording" : "first-run sign-in opens the optional upgrade"}`, async ({
+		page,
+	}) => {
+		test.slow();
+		await page.emulateMedia({ reducedMotion: "reduce" });
+		await page.setViewportSize({ width: 760, height: 760 });
+		await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: returning });
+		await installDesktopBridgeOverrides(page, () => {
+			window.electronAPI.getPlatform = async () => "win32";
+			window.electronAPI.resolveStartupOnboarding = async (action) => {
+				if (action === "continue") document.documentElement.dataset.hudOpened = "true";
+				return true;
+			};
+			window.electronAPI.showProjectDashboard = async () => {
+				document.documentElement.dataset.dashboardOpened = "true";
+			};
+		});
+		await page.goto(`/?windowType=onboarding${returning ? "&returning=1" : ""}`, {
+			waitUntil: "commit",
+		});
+		const login = page.getByRole("dialog", { name: "Welcome to Recordly" });
+		const email = login.getByRole("textbox", { name: /^Email\*?$/ });
+		const artwork = login.locator("[data-onboarding-artwork]");
+		await expect(email).toBeVisible({ timeout: 45_000 });
+		await expect
+			.poll(() =>
+				email.evaluate((field: HTMLInputElement) =>
+					Math.abs(field.getBoundingClientRect().width - field.offsetWidth),
+				),
+			)
+			.toBeLessThan(2);
+		const emailBounds = (await email.boundingBox())!;
+		await artwork.evaluate((element) => element.setAttribute("data-layout-check", "same"));
+		await email.fill("test@email.com");
+		await login.getByRole("button", { name: "Email me a code" }).click();
+		await expect(login.getByText(/^Enter code sent to /)).toBeVisible();
+		await completeSupabaseSignIn(page);
+
+		const documentRoot = page.locator("html");
+		if (!returning) {
+			await expect(login).toHaveAttribute("data-onboarding-state", "permissions");
+			await expect(login.getByText("You’re signed in and ready to continue.")).toBeVisible();
+			await expect(documentRoot).not.toHaveAttribute("data-hud-opened");
+			await login.getByRole("button", { name: "Next", exact: true }).click();
+			await expect(login).toHaveAttribute("data-onboarding-state", "upgrade");
+			await expect(artwork).toHaveAttribute("data-layout-check", "same");
+			await expect(documentRoot).not.toHaveAttribute("data-hud-opened");
+			await login
+				.getByRole("button", { name: "Skip and start recording", exact: true })
+				.click();
+			await expect(documentRoot).toHaveAttribute("data-hud-opened", "true");
+			await expect(documentRoot).not.toHaveAttribute("data-dashboard-opened");
+			return;
+		}
+
+		const start = page.getByRole("button", { name: "Start recording", exact: true });
+		await expect(start).toBeEnabled();
+		await expect(page.getByText("You’re signed in and ready to continue.")).toBeVisible();
+		await expect(login).toHaveAttribute("data-onboarding-state", "ready");
+		await expect(artwork).toHaveAttribute("data-layout-check", "same");
+		await expect(email).toHaveCount(0);
+		await expect(start.locator("span[aria-hidden=true]")).toHaveCSS(
+			"background-color",
+			"rgb(255, 255, 255)",
+		);
+		const startBounds = (await start.boundingBox())!;
+		expect(Math.abs(startBounds.x - emailBounds.x)).toBeLessThan(2);
+		expect(Math.abs(startBounds.width - emailBounds.width)).toBeLessThan(2);
+		expect(Math.abs(startBounds.y - emailBounds.y)).toBeLessThan(35);
+		await expect(documentRoot).not.toHaveAttribute("data-hud-opened");
+		await start.click();
+		await expect(documentRoot).toHaveAttribute("data-hud-opened", "true");
+		await expect(documentRoot).not.toHaveAttribute("data-dashboard-opened");
+	});
 }
 
 test("sign-in keeps all providers visible and marks unavailable providers disabled", async ({
@@ -85,6 +162,30 @@ test("sign-in keeps all providers visible and marks unavailable providers disabl
 		path: "test-results/onboarding-enabled-providers.png",
 		animations: "disabled",
 	});
+});
+
+test("production onboarding allows OAuth before provider discovery finishes", async ({ page }) => {
+	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
+	await page.addInitScript(() => {
+		window.electronAPI.openExternalUrl = async (url) => {
+			document.documentElement.dataset.authProvider =
+				new URL(url).searchParams.get("provider") ?? "";
+			return { success: true };
+		};
+	});
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	await page.route("https://auth.recordly.test/auth/v1/settings", () => {
+		// Leave the request pending until the app's timeout aborts it.
+	});
+	const discovery = page.waitForRequest("https://auth.recordly.test/auth/v1/settings");
+	await page.goto("/?windowType=onboarding");
+	await discovery;
+	const login = page.getByRole("dialog", { name: "Welcome to Recordly" });
+	const google = login.getByRole("button", { name: "Continue with Google" });
+
+	await google.click({ timeout: 3_500 });
+	await expect(page.locator("html")).toHaveAttribute("data-auth-provider", "google");
+	await expect(login.getByRole("button", { name: "Permissions", exact: true })).toBeDisabled();
 });
 
 test("email sign-in reports localized failures and allows retry without granting access", async ({

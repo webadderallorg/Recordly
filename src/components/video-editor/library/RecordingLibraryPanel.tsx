@@ -1,19 +1,19 @@
-import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
-import { useI18n, useScopedT } from "@/contexts/I18nContext";
-import { RecordingThumbnail } from "./RecordingThumbnail";
-import { useEffect, useRef, useState } from "react";
 import { Checkbox, SearchField } from "@heroui/react";
-import {
-	FilmStrip,
-	Plus,
-	X,
-	Trash,
-	ArrowCounterClockwise,
-	FolderOpen,
-} from "@/components/ui/icons";
+import { useEffect, useRef, useState } from "react";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { Button } from "@/components/ui/button";
-import { RECORDING_DRAG_TYPE } from "@/types/recordingLibrary";
+import {
+	ArrowCounterClockwise,
+	FilmStrip,
+	FolderOpen,
+	Plus,
+	Trash,
+	X,
+} from "@/components/ui/icons";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { cn } from "@/lib/utils";
+import { RECORDING_DRAG_TYPE } from "@/types/recordingLibrary";
+import { RecordingThumbnail } from "./RecordingThumbnail";
 import type { useRecordingLibrary } from "./useRecordingLibrary";
 
 export function RecordingLibraryPanel({

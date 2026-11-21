@@ -1,11 +1,11 @@
-import fs from "node:fs/promises";
 import { constants } from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { shell } from "electron";
+import type { RecordingLibraryEntry } from "../../../src/types/recordingLibrary";
 import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
 import { rememberApprovedLocalReadPath } from "../project/manager";
 import { getRecordingsDir } from "../utils";
-import type { RecordingLibraryEntry } from "../../../src/types/recordingLibrary";
 
 let mutation = Promise.resolve();
 const undoBatches = new Map<string, { bundle: string; files: string[] }>();

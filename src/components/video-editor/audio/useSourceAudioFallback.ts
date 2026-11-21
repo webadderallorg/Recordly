@@ -1,7 +1,7 @@
-import { useScopedT } from "@/contexts/I18nContext";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { SOURCE_AUDIO_FALLBACK_TOAST_ID } from "@/components/video-editor/audio/audioTypes";
+import { useScopedT } from "@/contexts/I18nContext";
 
 interface UseSourceAudioFallbackParams {
 	currentSourcePath: string | null;

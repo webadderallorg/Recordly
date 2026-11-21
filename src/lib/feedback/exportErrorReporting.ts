@@ -1,5 +1,5 @@
-import type { SupportErrorReport } from "../../../services/supabase/functions/_shared/appErrorReport";
 import packageInfo from "../../../package.json";
+import type { SupportErrorReport } from "../../../services/supabase/functions/_shared/appErrorReport";
 import type {
 	CloudPlan,
 	ExportErrorReport,

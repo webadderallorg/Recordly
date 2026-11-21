@@ -1,12 +1,12 @@
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import type { RecordingWebcamSource } from "../../../src/types/recordingLibrary";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { probeNativeVideoMetadata } from "../ffmpeg/metadata";
-import { resolveRecordingSession, persistRecordingSessionManifest } from "../project/session";
 import { rememberApprovedLocalReadPath, resolveApprovedLocalMediaPath } from "../project/manager";
-import type { RecordingWebcamSource } from "../../../src/types/recordingLibrary";
+import { persistRecordingSessionManifest, resolveRecordingSession } from "../project/session";
 
 const run = promisify(execFile);
 type Range = { startMs: number; endMs: number };

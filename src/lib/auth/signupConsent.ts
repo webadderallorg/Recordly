@@ -1,13 +1,14 @@
 import { translate } from "@/i18n/runtime";
 import {
-	SIGNUP_CONSENT_VERSION,
 	LEGAL_CONSENT_LABEL,
 	MARKETING_CONSENT_LABEL,
+	SIGNUP_CONSENT_VERSION,
 } from "./signupConsentCopy";
+
 export {
-	SIGNUP_CONSENT_VERSION,
 	LEGAL_CONSENT_LABEL,
 	MARKETING_CONSENT_LABEL,
+	SIGNUP_CONSENT_VERSION,
 } from "./signupConsentCopy";
 
 export type SignupConsent = { legalAccepted: boolean };

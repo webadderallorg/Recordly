@@ -1,6 +1,6 @@
-import { useScopedT } from "@/contexts/I18nContext";
 import { useEffect, useRef, useState } from "react";
 import { FilmStrip } from "@/components/ui/icons";
+import { useScopedT } from "@/contexts/I18nContext";
 import type { RecordingLibraryEntry } from "@/types/recordingLibrary";
 
 import {

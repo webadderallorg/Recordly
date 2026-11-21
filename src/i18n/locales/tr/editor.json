@@ -84,6 +84,8 @@
 		"videos": "Videolar"
 	},
 	"playback": {
+		"resolution": "Oynatma çözünürlüğü",
+		"fullResolution": "Tam",
 		"play": "Oynat",
 		"pause": "Duraklat",
 		"skipBack": "Geri Atla",

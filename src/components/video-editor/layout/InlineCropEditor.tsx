@@ -1,9 +1,8 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useI18n } from "@/contexts/I18nContext";
+import { useI18n, useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { CropControl } from "../CropControl";
 import { fitCropRatio } from "../cropGeometry";
 import type { CropRegion } from "../types";

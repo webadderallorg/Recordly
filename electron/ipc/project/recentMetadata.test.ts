@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { persistRecentMetadata } from "./recentMetadata";
+
 it("reports a metadata warning without rejecting an already committed operation", async () => {
 	const log = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 	const result = await persistRecentMetadata(async () => {

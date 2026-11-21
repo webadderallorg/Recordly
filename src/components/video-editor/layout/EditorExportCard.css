@@ -84,6 +84,73 @@
 	gap: 5px;
 }
 
+.editor-export-card-status {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 18px;
+}
+
+.editor-export-card-status[data-tone="danger"] {
+	color: var(--danger);
+}
+
+.editor-export-card-status[data-tone="success"] > svg {
+	color: var(--success);
+}
+
+.editor-export-card-status > svg {
+	flex: none;
+}
+
+.editor-export-card-details {
+	max-height: 96px;
+	margin-block-start: -3px;
+	overflow-y: auto;
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+	font-size: 12px;
+	line-height: 17px;
+	color: var(--muted);
+	user-select: text;
+	scrollbar-width: thin;
+}
+
+.editor-export-card-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 8px;
+	margin-block-start: 7px;
+}
+
+.editor-export-card-actions > .button {
+	height: 28px;
+	min-height: 28px;
+	padding-inline: 10px;
+	font-size: 12px;
+}
+
+.editor-export-card [data-error-report] {
+	margin-inline-start: 2px;
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 18px;
+	color: var(--muted);
+}
+
+.editor-export-card [data-error-report] > button {
+	text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+	transition: color 140ms ease-out;
+}
+
+.editor-export-card [data-error-report] > button:not([aria-disabled="true"]):hover {
+	color: var(--foreground);
+	opacity: 1;
+}
+
 .editor-export-card .export-progress-indicator {
 	gap: 6px;
 }

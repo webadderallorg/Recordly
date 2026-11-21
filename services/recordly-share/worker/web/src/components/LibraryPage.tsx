@@ -1,5 +1,3 @@
-import ThemeToggle from "./ThemeToggle";
-import SharingControls from "./SharingControls";
 import {
 	Button,
 	Card,
@@ -23,17 +21,19 @@ import {
 	SignOutIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
+	deleteVideo,
 	fetchVideos,
 	LibrarySignInRedirectError,
-	renewVideo,
-	deleteVideo,
-	parseUTC,
 	type LibraryVideo,
+	parseUTC,
+	renewVideo,
 } from "../scripts/library";
-import { CenteredCard, Notice, Notifications } from "./ShareUI";
 import { LibraryCard, type LibraryFolder } from "./library/LibraryCard";
+import { CenteredCard, Notice, Notifications } from "./ShareUI";
+import SharingControls from "./SharingControls";
+import ThemeToggle from "./ThemeToggle";
 
 export function LibraryLogin() {
 	const [error, setError] = useState(false);

@@ -1,10 +1,10 @@
 import { Card } from "@heroui/react";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { RecordlyMark } from "./components/ui/RecordlyMark";
 import { HomeLoadingSkeleton } from "./components/video-editor/dashboard/HomeLoadingSkeleton";
 import { EditorLoadingSkeleton } from "./components/video-editor/layout/EditorLoadingSkeleton";
 import { useI18n } from "./contexts/I18nContext";
 import { getStartupView } from "./lib/startupView";
-import { RecordlyMark } from "./components/ui/RecordlyMark";
 
 const HudWindow = lazy(() => import("./components/launch/HudWindow"));
 const SourceSelector = lazy(() =>

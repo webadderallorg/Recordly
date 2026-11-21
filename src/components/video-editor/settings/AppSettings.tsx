@@ -30,6 +30,7 @@ const APP_LANGUAGE_LABELS: Record<AppLocale, string> = {
 	ko: "한국어",
 	ja: "日本語",
 	"pt-BR": "Português (Brasil)",
+	vi: "Tiếng Việt",
 	"zh-CN": "简体中文",
 	"zh-TW": "繁體中文",
 	tr: "Türkçe",
@@ -135,6 +136,7 @@ export function AppSettings(props: Props) {
 				>
 					<SettingsRow
 						title={t("common.app.language", "Language")}
+						descriptionInline
 						description={t(
 							"settings.appPreferences.languageDescription",
 							"Choose the language used throughout Recordly.",
@@ -199,6 +201,7 @@ export function AppSettings(props: Props) {
 					<div className="settings-group">
 						<SettingsRow
 							title={tSettings("appPreferences.autoZoom", "Automatically add zooms")}
+							descriptionInline
 							description={tSettings(
 								"appPreferences.autoZoomDescription",
 								"Add zooms on new recordings. Turning this off won't remove existing zooms.",
@@ -215,6 +218,7 @@ export function AppSettings(props: Props) {
 						</SettingsRow>
 						<SettingsRow
 							title={tSettings("effects.connectZooms", "Connect neighboring zooms")}
+							descriptionInline
 							description={tSettings(
 								"effects.connectZoomsDescription",
 								"Smooth consecutive zoom regions into a continuous camera move.",

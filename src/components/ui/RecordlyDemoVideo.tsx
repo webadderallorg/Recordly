@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ONBOARDING_DEMO_URL } from "@/assets/onboarding/media";
 import "./RecordlyDemoVideo.css";
 
 const STILL_DURATION_MS = 2500;
@@ -87,13 +88,7 @@ export function RecordlyDemoVideo({ className = "" }: { className?: string }) {
 						alt=""
 					/>
 				</span>
-				<video
-					ref={videoRef}
-					src={`${import.meta.env.BASE_URL}auth/recordly-demo.mp4?v=20261105-png-video-loop`}
-					muted
-					playsInline
-					preload="auto"
-				/>
+				<video ref={videoRef} src={ONBOARDING_DEMO_URL} muted playsInline preload="auto" />
 			</span>
 		</span>
 	);

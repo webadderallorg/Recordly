@@ -1,13 +1,10 @@
 import type { WebDemuxer } from "web-demuxer";
-import { requiresClipTimelineRendering } from "./clipTimeline";
 import type {
 	AudioRegion,
 	ClipRegion,
 	SourceAudioTrackSettings,
 	SpeedRegion,
 } from "@/components/video-editor/types";
-import { resolveSourceTrackRoutingPolicy } from "./sourceTrackRoutingPolicy";
-import { AudioTranscodeProcessor } from "./audioTranscodeProcessor";
 import {
 	hasClipSourceAudioOverrides,
 	hasNonDefaultSourceTrackSettings,
@@ -15,7 +12,10 @@ import {
 	MP4_AUDIO_CODEC,
 	type TrimLikeRegion,
 } from "./audioProcessorShared";
+import { AudioTranscodeProcessor } from "./audioTranscodeProcessor";
+import { requiresClipTimelineRendering } from "./clipTimeline";
 import type { VideoMuxer } from "./muxer";
+import { resolveSourceTrackRoutingPolicy } from "./sourceTrackRoutingPolicy";
 
 export {
 	getSourceTrackIdFromPath,
@@ -180,7 +180,9 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 			const sidecarDemuxer = await this.loadAudioFileDemuxer(routingPolicy.playbackPaths[0]);
 			if (sidecarDemuxer) {
 				try {
-					await this.processTrimOnlyAudio(sidecarDemuxer, muxer, sortedTrims);
+					if (await this.processTrimOnlyAudio(sidecarDemuxer, muxer, sortedTrims)) {
+						return;
+					}
 				} finally {
 					try {
 						sidecarDemuxer.destroy();
@@ -188,11 +190,9 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 						/* cleanup */
 					}
 				}
-				return;
 			}
-			// Fallback to offline rendering if demuxer creation failed
 			console.warn(
-				"[AudioProcessor] Fast sidecar demux failed, falling back to offline rendering",
+				"[AudioProcessor] Could not read a supported sidecar audio track; trying offline rendering",
 			);
 			await this.renderAndMuxOfflineAudio(
 				videoUrl,

@@ -1,6 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
+import { hasRequiredRecordingPermissions } from "@/lib/recordingPermissions";
 import { RecordingPermissionsDialog } from "./RecordingPermissionsDialog";
 import { RecordlySignInDialog } from "./RecordlySignInDialog";
 
@@ -13,14 +14,20 @@ export function OnboardingController({
 	user,
 	configured,
 	callbackError,
+	authenticationVersion,
 	standalone = false,
+	authCallbackPending = false,
+	onUnlockSavedSignIn,
 }: {
 	requestNonce: number;
 	ready: boolean;
 	user: User | null;
 	configured: boolean;
 	callbackError?: string;
+	authenticationVersion?: number;
 	standalone?: boolean;
+	authCallbackPending?: boolean;
+	onUnlockSavedSignIn?: () => void;
 }) {
 	// The development tour is optional. Native permission requests and explicit
 	// real-flow tests use preview=0; neither mode changes the restored account.
@@ -29,12 +36,15 @@ export function OnboardingController({
 			import.meta.env.DEV &&
 			new URLSearchParams(window.location.search).get("onboardingPreview") !== "0",
 	);
-	// The dedicated window can paint its account UI while session recovery runs.
-	// `ready` gates account-dependent routing, not the window's initial display.
 	const [open, setOpen] = useState(standalone);
 	const [inlineFallback, setInlineFallback] = useState(false);
 	const [returningSignIn, setReturningSignIn] = useState(false);
-	const [startWithPermissions, setStartWithPermissions] = useState(false);
+	const [startWithPermissions, setStartWithPermissions] = useState(
+		() =>
+			standalone &&
+			!preview &&
+			loadAppSetting<boolean>("recordly.onboarding.permissionsRequested") === true,
+	);
 	const checked = useRef(false);
 	const handledRequest = useRef(0);
 	const finishingPermissions = useRef(false);
@@ -84,8 +94,25 @@ export function OnboardingController({
 			if (preview && loadAppSetting<boolean>(DEV_DISMISSED_KEY)) return;
 			const permissionsRequested =
 				!preview && loadAppSetting<boolean>("recordly.onboarding.permissionsRequested");
-			if (permissionsRequested) setStartWithPermissions(true);
 			const seen = loadAppSetting<boolean>(SEEN_KEY);
+			if (user && seen && permissionsRequested && !checked.current) {
+				let cancelled = false;
+				void hasRequiredRecordingPermissions()
+					.catch(() => false)
+					.then((granted) => {
+						if (cancelled || checked.current) return;
+						if (granted) {
+							saveAppSetting("recordly.onboarding.permissionsRequested", false);
+							return;
+						}
+						setStartWithPermissions(true);
+						openWindow();
+					});
+				return () => {
+					cancelled = true;
+				};
+			}
+			if (permissionsRequested) setStartWithPermissions(true);
 			if (!preview && !user && seen && !permissionsRequested) {
 				setReturningSignIn(true);
 				setOpen(true);
@@ -110,18 +137,8 @@ export function OnboardingController({
 		if (!loadAppSetting<boolean>(SEEN_KEY)) setOpen(true);
 	}, [ready, user, standalone, openWindow, preview]);
 
-	useEffect(
-		() =>
-			window.electronAPI.onRecordingPermissionsRequested?.(() => {
-				saveAppSetting("recordly.onboarding.permissionsRequested", true);
-				setStartWithPermissions(true);
-				openWindow(false);
-			}),
-		[openWindow],
-	);
-
 	const finishPermissions = () => {
-		if ((!preview && !user) || finishingPermissions.current) return;
+		if ((!preview && (!user || authCallbackPending)) || finishingPermissions.current) return;
 		finishingPermissions.current = true;
 		let restorePermissionsRequest = false;
 		let previousPreviewDismissal: boolean | null = null;
@@ -156,10 +173,12 @@ export function OnboardingController({
 			});
 	};
 	const finish = () => {
-		if (!preview && !user) return;
+		if (!preview && (!user || authCallbackPending)) return;
 		if (!preview) saveAppSetting(SEEN_KEY, true);
 		finishPermissions();
 	};
+	// Wait for session restoration before choosing a page on a permission restart.
+	if (standalone && startWithPermissions && !preview && !ready) return null;
 
 	if (
 		startWithPermissions &&
@@ -172,6 +191,7 @@ export function OnboardingController({
 			<RecordingPermissionsDialog
 				open={open}
 				standalone={standalone}
+				finishDisabled={authCallbackPending}
 				onFinish={finishPermissions}
 				onClose={() => {
 					close();
@@ -199,6 +219,7 @@ export function OnboardingController({
 	return standalone || inlineFallback ? (
 		<RecordlySignInDialog
 			onboarding
+			finishDisabled={!preview && authCallbackPending}
 			preview={preview}
 			startWithPermissions={startWithPermissions}
 			variant="wide"
@@ -212,6 +233,8 @@ export function OnboardingController({
 			user={user}
 			configured={configured}
 			callbackError={callbackError}
+			onUnlockSavedSignIn={onUnlockSavedSignIn}
+			authenticationVersion={authenticationVersion}
 			onAuthenticated={finish}
 			onWindowClose={
 				standalone
