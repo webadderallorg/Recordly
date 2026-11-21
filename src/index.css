@@ -208,6 +208,18 @@
 .editor-playback {
 	container-type: inline-size;
 }
+.editor-playback-resolution {
+	align-items: center;
+	height: 28px;
+	min-height: 28px;
+	padding-block: 0;
+	padding-inline: 7px 22px;
+}
+.editor-playback-resolution .select__indicator {
+	inset-inline-end: 6px;
+	width: 12px;
+	height: 12px;
+}
 @container editor-preview (max-width: 760px) {
 	.editor-playback {
 		grid-template-columns: auto minmax(max-content, 1fr) auto;
@@ -227,13 +239,19 @@
 		gap: 4px;
 		padding-inline: 8px;
 	}
-	.editor-playback button {
+	.editor-playback button:not(.editor-playback-resolution) {
 		width: 28px;
 		min-width: 28px;
 		height: 28px;
 	}
 	.editor-playback-tools {
-		gap: 4px;
+		gap: 2px;
+	}
+	.editor-playback-volume {
+		gap: 0;
+	}
+	.editor-playback-resolution {
+		max-width: 56px;
 	}
 	.editor-playback-center > div {
 		gap: 2px;

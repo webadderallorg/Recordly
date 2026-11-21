@@ -117,6 +117,7 @@ export interface VideoPlaybackProps {
 	cursorSway?: number;
 	cursorIdleHide?: CursorIdleHideSettings;
 	volume?: number;
+	previewResolutionScale?: number;
 	suspendRendering?: boolean;
 }
 

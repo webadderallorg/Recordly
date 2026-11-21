@@ -84,6 +84,8 @@
 		"videos": "Video"
 	},
 	"playback": {
+		"resolution": "Độ phân giải phát lại",
+		"fullResolution": "Đầy đủ",
 		"play": "Phát",
 		"pause": "Tạm dừng",
 		"skipBack": "Lùi lại",

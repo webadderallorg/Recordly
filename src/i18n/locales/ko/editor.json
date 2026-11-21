@@ -84,6 +84,8 @@
 		"videos": "동영상"
 	},
 	"playback": {
+		"resolution": "재생 해상도",
+		"fullResolution": "전체",
 		"play": "재생",
 		"pause": "일시 정지",
 		"skipBack": "뒤로 건너뛰기",

@@ -84,6 +84,8 @@
 		"videos": "影片"
 	},
 	"playback": {
+		"resolution": "播放解析度",
+		"fullResolution": "完整",
 		"play": "播放",
 		"pause": "暫停",
 		"skipBack": "後退",

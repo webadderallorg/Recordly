@@ -1,5 +1,5 @@
 import { Rectangle } from "pixi.js";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { enablePitchPreservingPlayback } from "@/lib/mediaTiming";
 import { type ZoomDepth, type ZoomFocus, type ZoomRegion } from "../types";
 import { clampFocusToStage as clampFocusToStageUtil } from "./focusUtils";
@@ -45,6 +45,7 @@ export type usePlaybackLayoutInput = Pick<
 	| "borderRadius"
 	| "padding"
 	| "volume"
+	| "previewResolutionScale"
 	| "layoutVideoContentRef"
 	| "selectedZoomId"
 	| "zoomRegions"
@@ -84,10 +85,17 @@ export function usePlaybackLayout(input: usePlaybackLayoutInput) {
 		borderRadius,
 		padding,
 		volume,
+		previewResolutionScale,
 		layoutVideoContentRef,
 		selectedZoomId,
 		zoomRegions,
 	} = input;
+
+	// Pixi rounds buffer pixels at fractional resolution. Keep the previous
+	// layout size in CSS pixels for camera translation during a viewport resize.
+	const laidOutStageSizeRef = useRef({ width: 0, height: 0 });
+
+	const previewResolutionScaleRef = useRef(previewResolutionScale);
 
 	const clampFocusToStage = useCallback(
 		(focus: ZoomFocus, depth: ZoomDepth) => {
@@ -134,10 +142,7 @@ export function usePlaybackLayout(input: usePlaybackLayoutInput) {
 			return;
 		}
 
-		const filterResolution = Math.max(
-			1,
-			app.renderer.resolution || window.devicePixelRatio || 1,
-		);
+		const filterResolution = app.renderer.resolution;
 		const stageWidth = Math.max(1, stageSizeRef.current.width || app.screen.width);
 		const stageHeight = Math.max(1, stageSizeRef.current.height || app.screen.height);
 
@@ -185,7 +190,7 @@ export function usePlaybackLayout(input: usePlaybackLayoutInput) {
 			};
 		}
 
-		const { width: previousWidth, height: previousHeight } = app.screen;
+		const { width: previousWidth, height: previousHeight } = laidOutStageSizeRef.current;
 		const result = layoutVideoContentUtil({
 			container,
 			app,
@@ -197,6 +202,7 @@ export function usePlaybackLayout(input: usePlaybackLayoutInput) {
 			borderRadius,
 			padding,
 			frameInsets: null,
+			resolution: (window.devicePixelRatio || 1) * previewResolutionScaleRef.current,
 		});
 
 		if (result) {
@@ -223,6 +229,7 @@ export function usePlaybackLayout(input: usePlaybackLayoutInput) {
 					transform: { scale: cameraContainer.scale.x, x, y },
 				});
 			}
+			laidOutStageSizeRef.current = result.stageSize;
 			stageSizeRef.current = result.stageSize;
 			setPreviewViewportWidth((current) =>
 				Math.abs(current - result.stageSize.width) < 0.5 ? current : result.stageSize.width,
@@ -300,6 +307,12 @@ export function usePlaybackLayout(input: usePlaybackLayoutInput) {
 		annotationFrameStore,
 		motionBlurStateRef,
 	]);
+
+	useLayoutEffect(() => {
+		if (previewResolutionScaleRef.current === previewResolutionScale) return;
+		previewResolutionScaleRef.current = previewResolutionScale;
+		layoutVideoContent();
+	}, [layoutVideoContent, previewResolutionScale]);
 
 	useEffect(() => {
 		const video = videoRef.current;
