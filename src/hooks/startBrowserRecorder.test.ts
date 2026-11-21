@@ -7,9 +7,11 @@ const writer = vi.hoisted(() => ({
 	discard: vi.fn(),
 	finish: vi.fn(),
 }));
+const createWriter = vi.hoisted(() => vi.fn());
 vi.mock("./recordingFileWriter", () => ({
 	RecordingFileWriter: class {
-		constructor() {
+		constructor(...args: unknown[]) {
+			createWriter(...args);
 			return writer;
 		}
 	},
@@ -53,7 +55,7 @@ function preparePortal(context: ReturnType<typeof createContext>, startWasCancel
 }
 function createContext() {
 	return {
-		selectMimeType: () => "video/webm",
+		getMimeTypes: () => ["video/webm"],
 		stream: { current: { getAudioTracks: () => [] } },
 		recordingSessionTimestamp: { current: 1 },
 		screenWriter: { current: null },
@@ -75,8 +77,7 @@ function createContext() {
 		webcamStartTime: { current: null },
 	};
 }
-async function start() {
-	const context = createContext();
+async function start(context = createContext()) {
 	await startBrowserRecorder(context as unknown as Parameters<typeof startBrowserRecorder>[0], {
 		videoTrack: {
 			getSettings: () => ({ width: 1920, height: 1080, frameRate: 60 }),
@@ -106,6 +107,78 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 describe("browser recording editor boundary", () => {
+	it.each([
+		"construct",
+		"start",
+	])("tries another codec when the first recorder fails at %s", async (stage) => {
+		const preferred = "video/webm;codecs=h264";
+		const fallback = "video/webm;codecs=vp8";
+		const attempts: string[] = [];
+		vi.stubGlobal(
+			"MediaRecorder",
+			class extends TestMediaRecorder {
+				constructor(_stream: MediaStream, options: MediaRecorderOptions) {
+					super();
+					this.mimeType = options.mimeType ?? "";
+					attempts.push(this.mimeType);
+					if (this.mimeType === preferred && stage === "construct") {
+						throw new DOMException("Encoder unavailable", "NotSupportedError");
+					}
+				}
+				override start() {
+					if (this.mimeType === preferred && stage === "start") {
+						throw new DOMException(
+							"Encoder initialization failed",
+							"InvalidStateError",
+						);
+					}
+					super.start();
+				}
+			},
+		);
+		const context = createContext();
+		context.getMimeTypes = () => [preferred, fallback];
+		await start(context);
+
+		expect(attempts).toEqual([preferred, fallback]);
+		expect(context.mediaRecorder.current.mimeType).toBe(fallback);
+		expect(context.mediaRecorder.current.state).toBe("recording");
+		expect(createWriter).toHaveBeenCalledExactlyOnceWith(
+			window.electronAPI,
+			expect.stringMatching(/\.webm$/),
+			fallback,
+			expect.any(Function),
+		);
+		expect(context.beginWebcamCapture).toHaveBeenCalledOnce();
+		expect(context.resetRecordingClock).toHaveBeenCalledOnce();
+		expect(window.electronAPI.setRecordingState).toHaveBeenCalledExactlyOnceWith(true);
+	});
+
+	it("reports a recording permission error without retrying or starting a companion", async () => {
+		const denied = new DOMException("Capture access denied", "SecurityError");
+		const attempt = vi.fn(() => {
+			throw denied;
+		});
+		vi.stubGlobal(
+			"MediaRecorder",
+			class extends TestMediaRecorder {
+				override start() {
+					attempt();
+				}
+			},
+		);
+		const context = createContext();
+		context.getMimeTypes = () => ["video/webm;codecs=h264", "video/webm;codecs=vp8"];
+
+		await expect(start(context)).rejects.toBe(denied);
+		expect(attempt).toHaveBeenCalledOnce();
+		expect(context.mediaRecorder.current).toBeNull();
+		expect(createWriter).not.toHaveBeenCalled();
+		expect(context.beginWebcamCapture).not.toHaveBeenCalled();
+		expect(context.resetRecordingClock).not.toHaveBeenCalled();
+		expect(window.electronAPI.setRecordingState).not.toHaveBeenCalled();
+	});
+
 	it("starts the clock and recording only after the portal video has a frame", async () => {
 		const context = createContext();
 		const { pending, video, runPortalCountdown } = preparePortal(context);
