@@ -79,6 +79,7 @@ import {
 } from "./updater";
 import {
 	beginHudCaptureProtection,
+	cancelHiddenHudRestoreOnActivation,
 	closeOnboardingWindow,
 	createEditorWindow,
 	createHudOverlayWindow,
@@ -89,12 +90,12 @@ import {
 	getStartupOnboardingWindow,
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
-	isHudOverlayHiddenByUser,
 	isHudOverlayMousePassthroughSupported,
 	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
 	replayOnboardingIntro,
 	revealStartupOnboardingWindow,
 	setHudOverlayRecordingActive,
+	shouldRestoreHiddenHudOnActivation,
 	showOnboardingWindow,
 	showUpdateToastWindow,
 } from "./windows";
@@ -717,7 +718,7 @@ function activateDesktopEntryPoint() {
 			return updateToast?.isVisible() ? updateToast : null;
 		},
 		getHudWindow: getHudOverlayWindow,
-		restoreHiddenHud: isHudOverlayHiddenByUser(),
+		restoreHiddenHud: shouldRestoreHiddenHudOnActivation(),
 		showHud: () => {
 			showHudOverlayFromTray();
 		},
@@ -1071,6 +1072,7 @@ function updateTrayMenu(recording: boolean = false) {
 }
 
 function createEditorWindowWrapper() {
+	cancelHiddenHudRestoreOnActivation();
 	const existingEditorWindow = getExistingEditorWindow();
 	if (existingEditorWindow) {
 		mainWindow = existingEditorWindow;
