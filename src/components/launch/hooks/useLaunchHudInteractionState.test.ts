@@ -22,6 +22,7 @@ let regions: Array<{ dataset: Record<string, string>; getBoundingClientRect: () 
 let host: EventTarget;
 const ignoreMouse = vi.fn();
 const setPopoverOpen = vi.fn();
+const moveWindow = vi.fn();
 let nativeIgnoring: boolean | undefined;
 function mount(openId: string | null = null, platform: string | null = "darwin") {
 	const refs = {
@@ -38,7 +39,7 @@ function move(x: number, y: number) {
 	host.dispatchEvent(Object.assign(new Event("mousemove"), { clientX: x, clientY: y }));
 	vi.runOnlyPendingTimers();
 }
-function mountDragHooks() {
+function mountDragHooks(dragX11Window = false) {
 	const target = (bounds: typeof bar) => {
 		let captured = false;
 		return {
@@ -67,6 +68,7 @@ function mountDragHooks() {
 		hudBarRef,
 		hudContentRef: { current: null },
 		recordingWebcamPreviewContainerRef: cameraRef,
+		dragX11Window,
 	});
 	const webcam = useWebcamPreviewPointer({
 		webcamEnabled: true,
@@ -94,6 +96,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	ignoreMouse.mockReset();
 	setPopoverOpen.mockClear();
+	moveWindow.mockClear();
 	nativeIgnoring = undefined;
 	ignoreMouse.mockImplementation((ignore: boolean) => {
 		nativeIgnoring = ignore;
@@ -103,6 +106,7 @@ beforeEach(() => {
 		electronAPI: {
 			hudOverlaySetIgnoreMouse: ignoreMouse,
 			hudOverlaySetPopoverOpen: setPopoverOpen,
+			hudOverlayDrag: moveWindow,
 		},
 		innerWidth: 1280,
 		innerHeight: 800,
@@ -220,6 +224,30 @@ describe("HUD forwarded mouse movement", () => {
 });
 
 describe("HUD mouse IPC state changes", () => {
+	it("moves the X11 window with absolute pointer coordinates and ends capture on blur", () => {
+		const { hud, barTarget } = mountDragHooks(true);
+		const event = (screenX: number, screenY: number) =>
+			({
+				button: 0,
+				pointerId: 1,
+				clientX: 500,
+				clientY: 730,
+				screenX,
+				screenY,
+				currentTarget: barTarget,
+				target: barTarget,
+				preventDefault: vi.fn(),
+			}) as unknown as Parameters<typeof hud.handleHudBarPointerDown>[0];
+		hud.handleHudBarPointerDown(event(710, 650));
+		hud.handleHudBarPointerMove(event(710, 647));
+		hud.handleHudBarPointerMove(event(612, 492));
+		host.dispatchEvent(new Event("blur"));
+		expect(moveWindow.mock.calls.map(([phase]) => phase)).toEqual(["start", "move", "end"]);
+		expect(moveWindow).toHaveBeenCalledWith("move", 612, 492);
+		expect(barTarget.hasPointerCapture()).toBe(false);
+		expect(hud.isHudDraggingRef.current).toBe(false);
+	});
+
 	it.each(
 		(["bar", "camera"] as const).flatMap((kind) =>
 			["pointerup", "pointercancel", "lostpointercapture", "blur"].map((release) => ({

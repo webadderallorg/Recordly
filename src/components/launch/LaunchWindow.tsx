@@ -89,7 +89,7 @@ function LaunchWindowContent() {
 
 	const { selectedSource, hasSelectedSource, syncSelectedSource } = useLaunchWindowActions();
 
-	const { hudOverlayMousePassthroughSupported, platform } =
+	const { hudOverlayMousePassthroughSupported, platform, dragX11Window } =
 		useLaunchWindowSystemState(preparePermissions);
 	const webcamPopoverOpen = openId === "webcam";
 	const cameraPermission = useCameraPermission(platform, webcamPopoverOpen, webcamEnabled);
@@ -162,6 +162,7 @@ function LaunchWindowContent() {
 		hudBarRef,
 		recordingWebcamPreviewContainerRef,
 		docked: showRecordingWebcamPreview,
+		dragX11Window,
 	});
 
 	useEffect(() => {
@@ -472,7 +473,7 @@ function LaunchWindowContent() {
 	);
 
 	const useNativeHudBarDrag =
-		platform === "linux" || hudOverlayMousePassthroughSupported === false;
+		!dragX11Window && (platform === "linux" || hudOverlayMousePassthroughSupported === false);
 	const finishHudTransition = useHudStateTransition(
 		hudBarRef,
 		finalizing && !restarting ? "finalizing" : recording || restarting ? "recording" : "idle",

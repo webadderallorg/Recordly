@@ -17,6 +17,7 @@ export function getHudOverlayWindowBounds(
 	workArea: HudOverlayWorkArea,
 	mousePassthroughSupported: boolean,
 	fallbackExpanded = false,
+	draggedBounds?: HudOverlayWorkArea,
 ): HudOverlayWorkArea {
 	if (mousePassthroughSupported) {
 		return { ...workArea };
@@ -29,6 +30,19 @@ export function getHudOverlayWindowBounds(
 			? NON_PASSTHROUGH_HUD_EXPANDED_HEIGHT_DIP
 			: NON_PASSTHROUGH_HUD_COMPACT_HEIGHT_DIP,
 	);
+
+	if (draggedBounds) {
+		return {
+			width,
+			height,
+			x: clamp(draggedBounds.x, workArea.x, workArea.x + workArea.width - width),
+			y: clamp(
+				draggedBounds.y + draggedBounds.height - height,
+				workArea.y,
+				workArea.y + workArea.height - height,
+			),
+		};
+	}
 
 	return {
 		x: Math.round(workArea.x + (workArea.width - width) / 2),
@@ -55,13 +69,5 @@ export function resizeHudOverlayFallbackBounds(
 	currentBounds: HudOverlayWorkArea,
 	fallbackExpanded: boolean,
 ): HudOverlayWorkArea {
-	const nextBounds = getHudOverlayWindowBounds(workArea, false, fallbackExpanded);
-	const maxX = workArea.x + workArea.width - nextBounds.width;
-	const maxY = workArea.y + workArea.height - nextBounds.height;
-
-	return {
-		...nextBounds,
-		x: clamp(currentBounds.x, workArea.x, maxX),
-		y: clamp(currentBounds.y + currentBounds.height - nextBounds.height, workArea.y, maxY),
-	};
+	return getHudOverlayWindowBounds(workArea, false, fallbackExpanded, currentBounds);
 }

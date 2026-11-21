@@ -55,6 +55,17 @@ describe("getHudOverlayWindowBounds", () => {
 		});
 	});
 
+	it("restores the dragged bottom edge after expanding against the top of a display", () => {
+		const dragged = { x: 310, y: 95, width: 860, height: 160 };
+		expect(getHudOverlayWindowBounds(workArea, false, true, dragged)).toEqual({
+			x: 310,
+			y: 40,
+			width: 860,
+			height: 540,
+		});
+		expect(getHudOverlayWindowBounds(workArea, false, false, dragged)).toEqual(dragged);
+	});
+
 	it("fits the expanded fallback inside small displays", () => {
 		expect(
 			getHudOverlayWindowBounds(
