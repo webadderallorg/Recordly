@@ -7,20 +7,32 @@ import { useSettingsTranslations } from "./useSettingsTranslations";
 
 export const cropSettingsKeys = ["cropRegion", "onCropChange"] as const;
 type Props = Pick<ResolvedSettingsPanelProps, (typeof cropSettingsKeys)[number]>;
+const CROP_STEP_PERCENT = 0.1;
+
+function insetPercent(inset: number) {
+	return Number((Math.max(0, inset) * 100).toFixed(1));
+}
+
 export function CropSettings(props: Props) {
 	const { cropRegion, onCropChange } = props;
-	const { tSettings, t } = useSettingsTranslations();
+	const { tSettings, t, locale } = useSettingsTranslations();
 	const crop = cropRegion ?? {
 		x: 0,
 		y: 0,
 		width: 1,
 		height: 1,
 	};
-	const cropTop = Math.round(crop.y * 100);
-	const cropLeft = Math.round(crop.x * 100);
-	const cropBottom = Math.round((1 - crop.y - crop.height) * 100);
-	const cropRight = Math.round((1 - crop.x - crop.width) * 100);
+	const cropTop = insetPercent(crop.y);
+	const cropLeft = insetPercent(crop.x);
+	const cropBottom = insetPercent(1 - crop.y - crop.height);
+	const cropRight = insetPercent(1 - crop.x - crop.width);
 	const isCropped = cropTop > 0 || cropLeft > 0 || cropBottom > 0 || cropRight > 0;
+	const percentFormatter = new Intl.NumberFormat(locale, {
+		style: "percent",
+		minimumFractionDigits: 1,
+		maximumFractionDigits: 1,
+	});
+	const formatPercent = (value: number) => percentFormatter.format(value / 100);
 
 	const setCropInset = (side: "top" | "bottom" | "left" | "right", pct: number) => {
 		if (!onCropChange) return;
@@ -76,36 +88,36 @@ export function CropSettings(props: Props) {
 					value={cropTop}
 					min={0}
 					max={50}
-					step={1}
+					step={CROP_STEP_PERCENT}
 					onChange={(v) => setCropInset("top", v)}
-					formatValue={(v) => `${Math.round(v)}%`}
+					formatValue={formatPercent}
 				/>
 				<SliderControl
 					label={tSettings("crop.bottom", "Bottom")}
 					value={cropBottom}
 					min={0}
 					max={50}
-					step={1}
+					step={CROP_STEP_PERCENT}
 					onChange={(v) => setCropInset("bottom", v)}
-					formatValue={(v) => `${Math.round(v)}%`}
+					formatValue={formatPercent}
 				/>
 				<SliderControl
 					label={tSettings("crop.left", "Left")}
 					value={cropLeft}
 					min={0}
 					max={50}
-					step={1}
+					step={CROP_STEP_PERCENT}
 					onChange={(v) => setCropInset("left", v)}
-					formatValue={(v) => `${Math.round(v)}%`}
+					formatValue={formatPercent}
 				/>
 				<SliderControl
 					label={tSettings("crop.right", "Right")}
 					value={cropRight}
 					min={0}
 					max={50}
-					step={1}
+					step={CROP_STEP_PERCENT}
 					onChange={(v) => setCropInset("right", v)}
-					formatValue={(v) => `${Math.round(v)}%`}
+					formatValue={formatPercent}
 				/>
 			</div>
 		</section>
