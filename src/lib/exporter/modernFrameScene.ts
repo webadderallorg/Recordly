@@ -209,12 +209,9 @@ export class FrameScene {
 		await this.context.background.setupBackground();
 		await this.context.webcamMedia.setupWebcamSource();
 
-		this.context.annotations.annotationScaleFactor =
-			this.context.annotations.calculateAnnotationScaleFactor();
 		this.context.annotations.annotationAssets = await preloadAnnotationAssets(
 			this.context.config.annotationRegions ?? [],
 		);
-		await this.context.annotations.setupAnnotationLayer();
 		this.context.captions.setupCaptionResources();
 
 		if (this.shouldUseZoomMotionBlur()) {

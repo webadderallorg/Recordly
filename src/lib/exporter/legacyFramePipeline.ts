@@ -1,5 +1,5 @@
 import { Sprite, Texture } from "pixi.js";
-import { BASE_PREVIEW_HEIGHT, BASE_PREVIEW_WIDTH } from "@/components/video-editor/types";
+import { BASE_PREVIEW_WIDTH } from "@/components/video-editor/types";
 import { applyZoomTransform } from "@/components/video-editor/videoPlayback/zoomTransform";
 import { renderAnnotations } from "./annotationRenderer";
 import { renderCaptions } from "./captionRenderer";
@@ -174,11 +174,8 @@ export async function renderFrame(
 		context.config.annotationRegions.length > 0 &&
 		context.compositeCtx
 	) {
-		// Calculate scale factor based on export vs preview dimensions
-		const scaleX = context.config.width / (context.config.previewWidth || BASE_PREVIEW_WIDTH);
-		const scaleY =
-			context.config.height / (context.config.previewHeight || BASE_PREVIEW_HEIGHT);
-		const scaleFactor = (scaleX + scaleY) / 2;
+		const recordingRect = context.layoutCache?.maskRect;
+		const scaleFactor = (recordingRect?.width ?? context.config.width) / BASE_PREVIEW_WIDTH;
 
 		await renderAnnotations(
 			context.compositeCtx,
@@ -193,7 +190,7 @@ export async function renderFrame(
 				x: context.animationState.x,
 				y: context.animationState.y,
 			},
-			context.layoutCache?.maskRect,
+			recordingRect,
 		);
 	}
 
