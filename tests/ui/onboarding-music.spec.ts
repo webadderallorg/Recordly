@@ -17,7 +17,7 @@ for (const standalone of [false, true]) {
 			timeout: 20000,
 		});
 		const audio = tour.locator("audio");
-		await expect(audio).toHaveAttribute("src", /audio\/first-boot\.m4a/);
+		await expect(audio).toHaveAttribute("src", /auth\/recordly-soundtrack\.mp4/);
 		const banner = tour.locator("[data-recordly-demo] video");
 		// The soundtrack outlasts the looping banner instead of being cut to its length.
 		await expect
