@@ -171,6 +171,24 @@ https://github.com/webadderallorg/Recordly/releases
 
 ---
 
+## AppImage trên Linux
+
+Nếu mở AppImage từ trình quản lý tệp mà ứng dụng không hiện lên, hãy chạy từ terminal để xem lỗi.
+Trước khi chạy các lệnh sau, hãy mở terminal tại thư mục chứa tệp AppImage đã tải xuống.
+
+```bash
+chmod +x ./Recordly-linux-x64.AppImage
+./Recordly-linux-x64.AppImage
+```
+
+Nếu thông báo lỗi có `libfuse.so.2`, hãy cài gói tương thích FUSE 2 dành cho bản phân phối của bạn. [Hướng dẫn FUSE của AppImage](https://docs.appimage.org/user-guide/troubleshooting/fuse.html) có tên gói theo từng bản phân phối, chẳng hạn `libfuse2` hoặc `libfuse2t64`.
+
+Bạn cũng có thể giải nén và chạy AppImage mà không cần FUSE.
+
+```bash
+./Recordly-linux-x64.AppImage --appimage-extract-and-run
+```
+
 ## Arch Linux / Manjaro (yay)
 
 Cài đặt từ AUR ([recordly-bin](https://aur.archlinux.org/packages/recordly-bin)):
