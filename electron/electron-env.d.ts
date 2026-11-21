@@ -263,6 +263,7 @@ interface Window {
 				bottom: number;
 				shape?: "ellipse";
 			}> | null,
+			recordingShape?: import("./hudOverlayBounds").HudOverlayRegion[],
 		) => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
 		getHudOverlayMousePassthroughSupported: () => Promise<{

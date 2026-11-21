@@ -120,6 +120,7 @@ it("keeps the hovered HUD interactive across the work area when recording starts
 		getHudOverlayDisplay: () => ({ workArea }),
 		getHudOverlayWindowBounds,
 		x11HudDraggedBounds: undefined,
+		x11HudRecordingShapeKey: "",
 		positionUpdateToastWindow: vi.fn(),
 		shouldExpandHudOverlayFallback,
 		setHudOverlayFallbackExpanded: vi.fn(),
