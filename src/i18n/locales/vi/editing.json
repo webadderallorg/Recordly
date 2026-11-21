@@ -70,7 +70,7 @@
 	"removeCustomColor": "Xóa màu tùy chỉnh {{color}}",
 	"customGradientNumber": "Màu chuyển sắc tùy chỉnh {{number}}",
 	"gradientNumber": "Màu chuyển sắc {{number}}",
-	"removeGradient": "Bỏ tệp {{name}}",
+	"removeGradient": "Xóa {{name}}",
 	"colorNumber": "Màu {{number}}",
 	"removeColorNumber": "Xóa màu {{number}}",
 	"projectChangedWhileImporting": "Dự án đã thay đổi trong lúc nhập. Hãy thêm lại các bản ghi.",
