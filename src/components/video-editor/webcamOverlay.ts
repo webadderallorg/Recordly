@@ -1,11 +1,16 @@
 import { getSquircleSvgPath } from "@/lib/geometry/squircle";
-import type { CropRegion, WebcamCorner, WebcamPositionPreset, WebcamShape } from "./types";
+import {
+	type CropRegion,
+	DEFAULT_WEBCAM_SIZE,
+	type WebcamCorner,
+	type WebcamPositionPreset,
+	type WebcamShape,
+} from "./types";
 
 // Strongly rounded shoulders, with enough flatness to remain a squircle.
 export const WEBCAM_SQUIRCLE_EXPONENT = 2.4;
 
 export const WEBCAM_REFERENCE_VIEWPORT_WIDTH = 1920;
-const WEBCAM_REFERENCE_VIEWPORT_HEIGHT = 1080;
 
 function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
@@ -52,18 +57,6 @@ export function getWebcamClipPath(
 	})}')`;
 }
 
-export function convertLegacyWebcamRadiusToRoundness(
-	radiusPixels: number,
-	widthPercent: number,
-	heightPercent: number,
-): number {
-	const referenceShortSide =
-		WEBCAM_REFERENCE_VIEWPORT_HEIGHT *
-		(clamp(Math.min(widthPercent, heightPercent), 10, 100) / 100);
-	const normalizedRadius = clamp(Math.max(0, radiusPixels) / (referenceShortSide / 2), 0, 1);
-	return normalizedRadius * 100;
-}
-
 export function getWebcamPositionForPreset(preset: WebcamPositionPreset): { x: number; y: number } {
 	switch (preset) {
 		case "top-left":
@@ -108,7 +101,8 @@ export function resolveWebcamCorner(
 
 export function getWebcamOverlayScale(zoomScale: number, reactToZoom: boolean): number {
 	const safeZoomScale = Number.isFinite(zoomScale) && zoomScale > 0 ? zoomScale : 1;
-	return reactToZoom ? 1 / safeZoomScale : 1;
+	const shrink = 1 - 1 / safeZoomScale;
+	return reactToZoom ? 1 - shrink * 0.7 : 1;
 }
 
 export function getWebcamOverlaySizePx({
@@ -265,7 +259,7 @@ export function getCropMatchedWebcamHeightPercent(
 	cropRegion: Partial<CropRegion> | null | undefined,
 	shape?: WebcamShape,
 ): number {
-	const safeWidthPercent = Number.isFinite(widthPercent) ? widthPercent : 40;
+	const safeWidthPercent = Number.isFinite(widthPercent) ? widthPercent : DEFAULT_WEBCAM_SIZE;
 	const safeHeightPercent = Number.isFinite(heightPercent) ? heightPercent : safeWidthPercent;
 	if (
 		shape === "squircle" ||

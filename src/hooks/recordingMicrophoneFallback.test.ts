@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "@/components/ui/toast";
 import {
-	createRecordingMicrophoneFallback,
 	type BrowserMicrophoneProfile,
+	createRecordingMicrophoneFallback,
 } from "./recordingMicrophoneFallback";
 
 vi.mock("@/components/ui/toast", () => ({ toast: { error: vi.fn() } }));

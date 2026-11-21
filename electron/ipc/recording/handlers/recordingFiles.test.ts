@@ -19,6 +19,7 @@ vi.mock("../../utils", () => ({ getRecordingsDir: async () => mocks.directory })
 vi.mock("../diagnostics", () => ({ validateRecordedVideo: vi.fn() }));
 vi.mock("../mac", () => ({ finalizeStoredVideo: mocks.finalize }));
 vi.mock("../webmDuration", () => ({ finishWebmRecording: mocks.finish }));
+
 import { registerRecordingFiles } from "./recordingFiles";
 
 let invoke: Parameters<typeof ipcMain.handle>[1];

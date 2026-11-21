@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { RecordingControls } from "@/components/launch/RecordingControls";
-import { LaunchPopoverCoordinatorProvider } from "@/components/launch/popovers/LaunchPopoverCoordinator";
 import { HudInteractionContext } from "@/components/launch/contexts/HudInteractionContext";
+import styles from "@/components/launch/LaunchWindow.module.css";
+import { LaunchPopoverCoordinatorProvider } from "@/components/launch/popovers/LaunchPopoverCoordinator";
+import { RecordingControls } from "@/components/launch/RecordingControls";
 import { I18nProvider } from "@/contexts/I18nContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
-import styles from "@/components/launch/LaunchWindow.module.css";
 import "@/components/launch/launchTheme.css";
 import "@/index.css";
 

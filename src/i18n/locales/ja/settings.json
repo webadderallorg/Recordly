@@ -1,13 +1,5 @@
 {
 	"updates": {
-		"loadFailed": "アップデートチャンネルを読み込めませんでした。もう一度お試しください。",
-		"automaticDownloads": "アップデートを自動ダウンロード",
-		"automaticDownloadsDescription": "新しいアップデートをバックグラウンドでダウンロードします。再起動のタイミングは選べます。",
-		"downloadPreferenceFailed": "アップデートの自動ダウンロード設定を読み込み、または保存できませんでした。もう一度お試しください。",
-		"title": "アップデート",
-		"experimental": "試験版アップデート",
-		"experimentalDescription": "試験版アップデートが有効です。Recordlyの最新アップデートを一般公開前にお試しいただけます。",
-		"saveFailed": "アップデートチャンネルを変更できませんでした。",
 		"changeVersion": "バージョンを変更",
 		"versionInstallHint": "リリースをダウンロードし、インストーラーを開いてバージョンを変更します。",
 		"loadingVersions": "バージョンを読み込み中…",
@@ -15,7 +7,15 @@
 		"prereleaseVersion": "プレリリース",
 		"noVersions": "このインストールに対応するバージョンはありません。",
 		"versionFailed": "このバージョンを読み込みまたはダウンロードできませんでした。再試行してください。",
-		"downloadInstaller": "インストーラーをダウンロード"
+		"downloadInstaller": "インストーラーをダウンロード",
+		"loadFailed": "アップデートチャンネルを読み込めませんでした。もう一度お試しください。",
+		"automaticDownloads": "アップデートを自動ダウンロード",
+		"automaticDownloadsDescription": "新しいアップデートをバックグラウンドでダウンロードします。再起動のタイミングは選べます。",
+		"downloadPreferenceFailed": "アップデートの自動ダウンロード設定を読み込み、または保存できませんでした。もう一度お試しください。",
+		"title": "アップデート",
+		"experimental": "試験版アップデート",
+		"experimentalDescription": "試験版アップデートが有効です。Recordlyの最新アップデートを一般公開前にお試しいただけます。",
+		"saveFailed": "アップデートチャンネルを変更できませんでした。"
 	},
 	"zoom": {
 		"level": "ズーム倍率",
@@ -172,6 +172,7 @@
 		"webcamCrop": "ウェブカメラの切り抜き",
 		"webcamReactToZoom": "ウェブカメラをズームに連動",
 		"webcamMirror": "ウェブカメラを左右反転",
+		"showWebcam": "ウェブカメラを表示",
 		"webcamRoundness": "ウェブカメラの角丸",
 		"webcamShadow": "ウェブカメラの影",
 		"shadow": "影",
@@ -244,6 +245,7 @@
 	},
 	"captions": {
 		"firstDownload": "初回は音声認識モデル {{size}} MB をダウンロードしてから字幕を生成します。",
+		"downloadAndGenerate": "{{size}} MB をダウンロードして字幕を生成",
 		"localProcessing": "字幕はこのデバイスで生成されます。録画はアップロードされません。",
 		"selectOnTimeline": "タイムラインで字幕を選択すると編集できます。",
 		"enabled": "表示",
@@ -342,6 +344,7 @@
 		"fpsTitle": "FPS",
 		"loop": "ループ",
 		"outputDimensions": "出力: {{dimensions}}px",
+		"upToResolution": "最大 {{height}}p",
 		"sizePresetOriginalShort": "元",
 		"sizePresetMediumShort": "中",
 		"sizePresetLargeShort": "大",

@@ -1,7 +1,7 @@
 import { useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import Confetti from "react-confetti";
+import { createPortal } from "react-dom";
 
 const colors = ["#0088ff", "#67d5ff", "#ffd166", "#ff8fab", "#a78bfa", "#64d6a2"];
 

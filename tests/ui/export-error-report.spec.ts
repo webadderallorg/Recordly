@@ -84,7 +84,7 @@ for (const engine of ["lightning", "native"]) {
 		});
 		await page.goto(`/tests/ui/export-error-report.html?menu&pending&engine=${engine}`);
 		await page.getByRole("button", { name: "Fail export", exact: true }).click();
-		const menu = page.getByRole("dialog", { name: "Publish", exact: true });
+		const menu = page.getByRole("region", { name: "Export", exact: true });
 		const report = menu.getByRole("button", { name: "Report Error", exact: true });
 		await expect(report).toBeInViewport({ ratio: 1 });
 		const copy = menu.getByRole("button", { name: "Copy error", exact: true });

@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import path from "node:path";
 import { app } from "electron";
 
 const nodeRequire = createRequire(import.meta.url);
@@ -139,6 +140,18 @@ export function getFfmpegBinaryPath(): string {
 }
 
 export function getFfprobeBinaryPath(): string {
+	if (process.platform === "linux") {
+		const bundled = path.join(
+			app.getAppPath(),
+			"node_modules",
+			"ffmpeg-static",
+			"ffprobe-recordly",
+		);
+		const executable = app.isPackaged
+			? bundled.replace(/\.asar([/\\])/, ".asar.unpacked$1")
+			: bundled;
+		if (existsSync(executable)) return executable;
+	}
 	const ffprobeStatic = loadFfprobeStatic();
 	if (ffprobeStatic && typeof ffprobeStatic === "string") {
 		const bundledPath = app.isPackaged

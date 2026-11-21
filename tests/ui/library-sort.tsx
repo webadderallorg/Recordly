@@ -1,9 +1,9 @@
-import { SharedRecordings } from "@/components/video-editor/cloud/SharedRecordings";
 import { createRoot } from "react-dom/client";
-import { I18nProvider } from "@/contexts/I18nContext";
+import { SharedRecordings } from "@/components/video-editor/cloud/SharedRecordings";
 import { DashboardFilters } from "@/components/video-editor/dashboard/DashboardFilters";
 import { useDashboardModel } from "@/components/video-editor/dashboard/useDashboardModel";
 import type { ProjectLibraryEntry } from "@/components/video-editor/ProjectBrowserDialog";
+import { I18nProvider } from "@/contexts/I18nContext";
 import "@/index.css";
 
 const names = ["Short voice", "Long silent", "Medium audio", "Unavailable"];
@@ -61,6 +61,12 @@ const rawEntries = [
 ];
 Object.assign(window, {
 	electronAPI: {
+		// This isolated harness supplies the native auth-store contract without a session.
+		authStorageAvailable: async () => true,
+		authStorageMigrate: async () => undefined,
+		authStorageGetItem: async () => null,
+		authStorageSetItem: async () => undefined,
+		authStorageRemoveItem: async () => undefined,
 		getProjectPreview: async (path: string) => {
 			const id = Number(path.match(/(\d+)\.recordly$/)?.[1]);
 			if (id === 3) return { success: false, error: "Offline project" };

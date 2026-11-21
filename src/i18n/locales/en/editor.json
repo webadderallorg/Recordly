@@ -39,6 +39,7 @@
 		"notesPlaceholder": "Add context, instructions, or a short summary for viewers…",
 		"description": "Publish the current edit to a Recordly viewing and feedback page. No download is required.",
 		"uploading": "Uploading · {{progress}}%",
+		"uploadingVideo": "Uploading video…",
 		"googleUnavailable": "Google sign-in isn't enabled yet. Use email for now, or ask your Recordly administrator to connect Google.",
 		"xUnavailable": "X sign-in isn't enabled yet. Use email for now, or ask your Recordly administrator to connect X.",
 		"providerUnavailable": "This sign-in method isn't enabled for Recordly yet. Use email for now.",
@@ -239,6 +240,8 @@
 		"optimizingGif": "Optimizing GIF…",
 		"savingGif": "Saving GIF…",
 		"encodingGif": "Finishing GIF…",
+		"finishingVideo": "Finishing video…",
+		"savingVideo": "Saving video…",
 		"errorCopied": "Error copied",
 		"errorCopyFailed": "Couldn't copy. Select the error text and copy it manually.",
 		"copyError": "Copy error"

@@ -1,6 +1,6 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { useState } from "react";
 import { toast } from "@/components/ui/toast";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 
 type Metadata = { colors: string[] };
 const KEY = "recordly.dashboard-metadata.v1";

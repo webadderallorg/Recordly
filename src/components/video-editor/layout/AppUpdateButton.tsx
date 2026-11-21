@@ -1,11 +1,11 @@
-import { LocalizedError } from "@/components/feedback/LocalizedError";
 import { ProgressBar } from "@heroui/react";
-import { CheckCircleIcon, DownloadSimpleIcon, WarningCircleIcon } from "@/components/ui/icons";
 import { useEffect, useRef, useState } from "react";
+import { LocalizedError } from "@/components/feedback/LocalizedError";
 import { Button } from "@/components/ui/button";
+import { CheckCircleIcon, DownloadSimpleIcon, WarningCircleIcon } from "@/components/ui/icons";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useI18n } from "@/contexts/I18nContext";
 import styles from "./AppUpdateButton.module.css";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 type Payload = Awaited<ReturnType<Window["electronAPI"]["getCurrentUpdateToastPayload"]>>;
 
@@ -56,6 +56,16 @@ export function AppUpdateButton() {
 		: payload.phase === "error"
 			? WarningCircleIcon
 			: DownloadSimpleIcon;
+	const label = ready
+		? t("launch.updateToast.restartToUpdate", "Restart to update")
+		: downloading
+			? t("updates.downloadingButton", "Downloading · {{progress}}", {
+					progress: new Intl.NumberFormat(locale, {
+						style: "percent",
+						maximumFractionDigits: 0,
+					}).format(progress / 100),
+				})
+			: t("launch.updateToast.availableTitle", "Update available");
 	const run = async (
 		action: () => Promise<{ success: boolean; message?: string; code?: string }>,
 		dismiss = false,
@@ -85,23 +95,17 @@ export function AppUpdateButton() {
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger>
-				<Button
-					variant="destructive"
-					size="sm"
-					className={`app-update-button ${styles.trigger}`}
-				>
-					<StatusIcon className="size-4" aria-hidden="true" />
-					{ready
-						? t("launch.updateToast.restartToUpdate", "Restart to update")
-						: downloading
-							? t("updates.downloadingButton", "Downloading · {{progress}}", {
-									progress: new Intl.NumberFormat(locale, {
-										style: "percent",
-										maximumFractionDigits: 0,
-									}).format(progress / 100),
-								})
-							: t("launch.updateToast.availableTitle", "Update available")}
-				</Button>
+				<span className="contents" title={label}>
+					<Button
+						variant="destructive"
+						size="sm"
+						className={`app-update-button editor-header-icon-button ${styles.trigger}`}
+						aria-label={label}
+					>
+						<StatusIcon className="size-4" aria-hidden="true" />
+						<span className="editor-header-button-label">{label}</span>
+					</Button>
+				</span>
 			</PopoverTrigger>
 			<PopoverContent
 				align="end"

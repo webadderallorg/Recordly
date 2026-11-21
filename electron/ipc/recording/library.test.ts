@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { createRequire } from "node:module";
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -46,16 +46,18 @@ vi.mock("../ffmpeg/binary", async () => {
 		getFfprobeBinaryPath: () => require("ffprobe-static").path,
 	};
 });
+
+import { shell } from "electron";
+import { getCompanionAudioFallbackInfo } from "./diagnostics";
+import { discardRecordingImport, importRecording } from "./importRecording";
 import {
+	clearRecordingTrashUndo,
 	listRecordings,
 	setRecordingsRemoved,
-	clearRecordingTrashUndo,
 	trashRecordingSources,
 } from "./library";
-import { shell } from "electron";
-import { importRecording, discardRecordingImport } from "./importRecording";
 import { getRecordingThumbnail } from "./thumbnail";
-import { getCompanionAudioFallbackInfo } from "./diagnostics";
+
 const require = createRequire(import.meta.url);
 const ffmpeg = require("ffmpeg-static") as string;
 const run = promisify(execFile);

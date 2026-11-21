@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef } from "react";
 import { mapTimelineTimeToSourceTime } from "../types";
 import { createClipPlayback, findPreviewClipAtTimelineTime } from "./clipPlayback";
 import type { PlaybackProps } from "./playbackProps";
-import { PreviewVideoSource } from "./previewVideoSource";
 import type { createPreviewRenderLoop } from "./previewRenderLoop";
+import { PreviewVideoSource } from "./previewVideoSource";
 import { usePreviewVideoReady } from "./usePreviewVideoReady";
 export function usePreviewMediaState(
 	input: Pick<

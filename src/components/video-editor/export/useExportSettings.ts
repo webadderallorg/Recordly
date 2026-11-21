@@ -10,7 +10,7 @@ import type {
 	GifSizePreset,
 } from "@/lib/exporter";
 import { projectCaptionCues } from "../captionTimeline";
-import { saveEditorPreferences, type EditorPreferences } from "../editorPreferences";
+import { type EditorPreferences, saveEditorPreferences } from "../editorPreferences";
 import { DEFAULT_MP4_EXPORT_FRAME_RATE } from "../exportPreferences";
 import type { CaptionCue, ClipRegion } from "../types";
 
@@ -111,11 +111,11 @@ export function useExportSettings(
 		setExportBackendPreference,
 		exportPipelineModel,
 		setExportPipelineModel,
-		mp4FrameRate: advancedExportSettings ? mp4FrameRate : DEFAULT_MP4_EXPORT_FRAME_RATE,
+		mp4FrameRate,
 		setMp4FrameRate,
 		exportFormat,
 		setExportFormat,
-		gifFrameRate: advancedExportSettings ? gifFrameRate : (15 as const),
+		gifFrameRate,
 		setGifFrameRate,
 		gifLoop,
 		setGifLoop,

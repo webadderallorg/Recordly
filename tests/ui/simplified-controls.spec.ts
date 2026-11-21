@@ -78,10 +78,14 @@ test("Generate captions downloads once and continues without a second click", as
 	});
 	await page.goto("/?windowType=editor");
 	await page.getByRole("radio", { name: "Captions", exact: true }).click();
-	await expect(page.getByText(/First use downloads 670 MB/)).toBeVisible();
+	const download = page.getByRole("button", {
+		name: "Download 670 MB & generate captions",
+		exact: true,
+	});
+	await expect(download).toBeVisible();
 	await expect(page.getByRole("button", { name: "Download Model", exact: true })).toHaveCount(0);
 	await page.screenshot({ path: testInfo.outputPath("captions.png"), animations: "disabled" });
-	await page.getByRole("button", { name: "Generate Captions", exact: true }).click();
+	await download.click();
 	await expect(page.locator("html")).toHaveAttribute("data-speech-downloads", "1");
 	await expect(page.getByRole("button", { name: /Downloading/ })).toBeDisabled();
 	await page.evaluate(() => window.dispatchEvent(new Event("recordly-test-download")));
@@ -89,14 +93,15 @@ test("Generate captions downloads once and continues without a second click", as
 	await expect(
 		page.getByRole("button", { name: "Regenerate Captions", exact: true }),
 	).toBeEnabled();
-	await expect(page.getByText(/First use downloads/)).toHaveCount(0);
+	await expect(download).toHaveCount(0);
 	await page.getByRole("switch", { name: "Advanced settings", exact: true }).press("Space");
 	await expect(page.getByRole("button", { name: /Parakeet v3 Speech model/ })).toBeVisible();
 });
 
-test("export uses defaults and reveals FPS and CUDA only under Advanced", async ({
+test("export shows FPS alongside resolution and keeps CUDA under Advanced", async ({
 	page,
 }, testInfo) => {
+	test.setTimeout(60000);
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
 		window.electronAPI.getNativeExportCapabilities = async () =>
@@ -107,32 +112,36 @@ test("export uses defaults and reveals FPS and CUDA only under Advanced", async 
 	});
 	await page.goto("/?windowType=editor");
 	await page.getByRole("button", { name: "Publish", exact: true }).click();
-	await page.getByRole("row", { name: "Save video", exact: true }).click();
-	await expect(page.getByRole("grid", { name: "FPS", exact: true })).toHaveCount(0);
+	await page.getByRole("row", { name: "Save to device", exact: true }).click();
+	const fps = page.getByRole("grid", { name: "FPS", exact: true });
+	await expect(fps).toBeVisible();
 	await expect(page.getByRole("switch", { name: "NVIDIA CUDA", exact: true })).toHaveCount(0);
 	await page.screenshot({ path: testInfo.outputPath("export.png"), animations: "disabled" });
 	const more = page.getByRole("switch", { name: "Advanced", exact: true });
-	await more.press("Space");
-	const fps = page.getByRole("grid", { name: "FPS", exact: true });
-	await expect(fps).toBeVisible();
 	await expect(fps.getByRole("row", { name: "30", exact: true })).toHaveAttribute(
 		"aria-selected",
 		"true",
 	);
 	await fps.getByRole("row", { name: "60", exact: true }).click();
+	await more.press("Space");
 	await expect(page.getByRole("switch", { name: "NVIDIA CUDA", exact: true })).toBeVisible();
 	await more.press("Space");
-	await expect(fps).toHaveCount(0);
-	await more.press("Space");
+	await expect(page.getByRole("switch", { name: "NVIDIA CUDA", exact: true })).toHaveCount(0);
 	await expect(fps.getByRole("row", { name: "60", exact: true })).toHaveAttribute(
 		"aria-selected",
 		"true",
 	);
-	await more.press("Space");
 	await page.getByRole("row", { name: "GIF", exact: true }).click();
-	await expect(fps).toHaveCount(0);
-	await more.press("Space");
+	await expect(page.getByRole("row", { name: "Up to 720p", exact: true })).toBeVisible();
+	await expect(page.getByRole("row", { name: "Up to 1080p", exact: true })).toBeVisible();
+	await expect(page.getByText(/^Output: \d+ × \d+px$/)).toHaveCount(0);
+	await expect(more).toHaveCount(0);
 	await expect(fps.getByRole("row", { name: "15", exact: true })).toHaveAttribute(
+		"aria-selected",
+		"true",
+	);
+	await fps.getByRole("row", { name: "30", exact: true }).click();
+	await expect(fps.getByRole("row", { name: "30", exact: true })).toHaveAttribute(
 		"aria-selected",
 		"true",
 	);

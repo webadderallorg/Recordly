@@ -1,7 +1,9 @@
 {
 	"recording": {
 		"audio": "Audio",
+		"audioSettings": "Audio settings",
 		"camera": "Camera",
+		"cameraSettings": "Camera settings",
 		"systemAudio": "Computer audio",
 		"systemAudioDescription": "Apps, videos and system sounds",
 		"off": "Off",

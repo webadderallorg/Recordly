@@ -1,7 +1,7 @@
 /* biome-ignore-all lint/correctness/useExhaustiveDependencies: mutable timeline bootstrap refs intentionally do not trigger effects. */
 import { type MutableRefObject, useCallback, useEffect, useMemo } from "react";
-import { closeClipGaps, rippleRegionAnchors, rippleRegions } from "../clipSequence";
 import { projectCaptionCues } from "../captionTimeline";
+import { closeClipGaps, rippleRegionAnchors, rippleRegions } from "../clipSequence";
 import { deriveNextId } from "../projectPersistence";
 import type { useTimelineState } from "../state/useTimelineState";
 import {

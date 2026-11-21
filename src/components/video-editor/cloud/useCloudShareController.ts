@@ -24,6 +24,8 @@ export function useCloudShareController(props: Props) {
 		existingShareUrl,
 		linkIsStale,
 		projectPath,
+		projectSourcePath,
+		openedSavedProject,
 		filePath,
 		projectTitle,
 		prepareFile,
@@ -35,6 +37,7 @@ export function useCloudShareController(props: Props) {
 		accountId,
 		inline = false,
 		onBusyChange,
+		suppressSuccessToast,
 	} = props;
 
 	const { t } = useI18n();
@@ -66,12 +69,33 @@ export function useCloudShareController(props: Props) {
 	const [error, setError] = useState<string>();
 
 	const [shareUrl, setShareUrl] = useState<string>();
+	const [publishedUrl, setPublishedUrl] = useState<string>();
 
 	const [savedShare, setSavedShare] = useState<ProjectShareLink>();
+	const sessionLink = useRef<ProjectShareLink | undefined>(undefined);
+	const storeLink = useCallback(
+		(path: string, link: ProjectShareLink) => {
+			try {
+				saveProjectShareLink(path, link.url, {
+					revision: link.revision,
+					accountId: link.accountId,
+				});
+			} catch {
+				toast.error(
+					t(
+						"editor.cloud.saveLinkFailed",
+						"Share created, but its link could not be saved locally",
+					),
+				);
+			}
+		},
+		[t],
+	);
 
 	useLayoutEffect(
 		() =>
 			subscribeDeletedProjectShareLinks((url) => {
+				if (sessionLink.current?.url === url) sessionLink.current = undefined;
 				setShareUrl((current) => (current === url ? undefined : current));
 				setSavedShare((current) => (current?.url === url ? undefined : current));
 			}),
@@ -100,38 +124,67 @@ export function useCloudShareController(props: Props) {
 		preparationLifecycle.current = { phase, onCancelPrepare };
 	}, [phase, onCancelPrepare]);
 
-	const previousIdentity = useRef(`${accountId ?? ""}:${projectPath ?? ""}`);
-
+	const currentProject = useRef({
+		accountId,
+		path: projectPath ?? null,
+		source: projectSourcePath,
+	});
+	const savedForFirstTime = useRef(false);
 	const accountVersion = useRef(0);
 
 	useLayoutEffect(() => {
-		const identity = `${accountId ?? ""}:${projectPath ?? ""}`;
-		if (previousIdentity.current !== identity) {
-			previousIdentity.current = identity;
-			accountVersion.current++;
-			if (uploadLock.current) {
-				// Cancel the actual publication, not just its eventual UI result.
-				cancelRequestedRef.current = true;
-				if (phase === "preparing") onCancelPrepare?.();
-				const id = activeUploadId.current;
-				if (id) void window.electronAPI.cloudShareCancel(id).catch(() => undefined);
-			}
-			setError(undefined);
-			setShareUrl(undefined);
-			setSavedShare(undefined);
-			setCopied(false);
+		const previous = currentProject.current;
+		const path = projectPath ?? null;
+		const source = projectSourcePath;
+		if (
+			previous.accountId === accountId &&
+			previous.path === path &&
+			previous.source === source
+		)
+			return;
+		currentProject.current = { accountId, path, source };
+		savedForFirstTime.current = Boolean(
+			!openedSavedProject &&
+				path &&
+				!previous.path &&
+				source &&
+				previous.source === source &&
+				previous.accountId === accountId,
+		);
+		if (savedForFirstTime.current) return;
+
+		accountVersion.current++;
+		if (uploadLock.current) {
+			// Cancel the actual publication, not just its eventual UI result.
+			cancelRequestedRef.current = true;
+			if (phase === "preparing") onCancelPrepare?.();
+			const id = activeUploadId.current;
+			if (id) void window.electronAPI.cloudShareCancel(id).catch(() => undefined);
 		}
-	}, [projectPath, accountId, phase, onCancelPrepare]);
+		sessionLink.current = undefined;
+		setError(undefined);
+		setShareUrl(undefined);
+		setPublishedUrl(undefined);
+		setSavedShare(undefined);
+		setCopied(false);
+	}, [projectPath, projectSourcePath, openedSavedProject, accountId, phase, onCancelPrepare]);
 
 	useLayoutEffect(() => {
-		if (uploadLock.current || (!inline && !open)) return;
-		const saved = projectPath ? getProjectShare(projectPath, accountId) : undefined;
-		setSavedShare(saved);
-		const candidate = existingShareUrl ?? saved?.url;
+		const firstSave = savedForFirstTime.current;
+		savedForFirstTime.current = false;
+		if (firstSave && projectPath && sessionLink.current) {
+			storeLink(projectPath, sessionLink.current);
+		}
+		if (uploading || uploadLock.current || (!inline && !open)) return;
+		const share =
+			sessionLink.current ??
+			(projectPath ? getProjectShare(projectPath, accountId) : undefined);
+		setSavedShare(share);
+		const candidate = existingShareUrl ?? share?.url;
 		const url = candidate && !isDeletedProjectShareLink(candidate) ? candidate : undefined;
 		setShareUrl(url);
 		if (url) setProgress(100);
-	}, [projectPath, accountId, existingShareUrl, open, inline]);
+	}, [projectPath, accountId, existingShareUrl, open, inline, uploading, storeLink]);
 
 	const [title, setTitle] = useState(projectTitle);
 
@@ -234,6 +287,7 @@ export function useCloudShareController(props: Props) {
 		cancelRequestedRef.current = false;
 		setError(undefined);
 		setShareUrl(undefined);
+		setPublishedUrl(undefined);
 		try {
 			if (!DEFAULT_CLOUD_ENDPOINT)
 				throw new Error(
@@ -299,32 +353,22 @@ export function useCloudShareController(props: Props) {
 			}
 			setProgress(100);
 			setShareUrl(result.shareUrl);
+			setPublishedUrl(result.shareUrl);
 			completed = true;
-			setSavedShare({
+			const link = {
 				url: result.shareUrl,
 				sharedAt: Date.now(),
 				revision: projectRevision,
 				accountId,
-			});
+			};
+			setSavedShare(link);
+			sessionLink.current = link;
+			const path = currentProject.current.path;
+			if (path) storeLink(path, link);
 			notifyShareCapacityChanged();
-			if (projectPath) {
-				try {
-					saveProjectShareLink(projectPath, result.shareUrl, {
-						revision: projectRevision,
-						accountId,
-					});
-				} catch {
-					toast.error(
-						t(
-							"editor.cloud.saveLinkFailed",
-							"Share created, but its link could not be saved locally",
-						),
-					);
-				}
-			}
-			toast.success(t("editor.cloud.linkCreated"));
+			if (!suppressSuccessToast) toast.success(t("editor.cloud.linkCreated"));
 		} catch (cause) {
-			if (!isCurrentAccount()) return;
+			if (!isCurrentAccount() || cancelRequestedRef.current) return;
 			setError(cause instanceof Error ? cause.message : String(cause));
 		} finally {
 			if (
@@ -346,7 +390,7 @@ export function useCloudShareController(props: Props) {
 			activeUploadAccountVersion.current = undefined;
 		}
 	}, [
-		projectPath,
+		storeLink,
 		projectRevision,
 		accountId,
 		shareUrl,
@@ -357,6 +401,7 @@ export function useCloudShareController(props: Props) {
 		projectTitle,
 		title,
 		t,
+		suppressSuccessToast,
 		currentCapacityIdentity,
 		recoverSession,
 		latestAuthToken,
@@ -387,10 +432,12 @@ export function useCloudShareController(props: Props) {
 		open,
 		setOpen,
 		progress,
+		phase,
 		uploading,
 		checkingCapacity,
 		error,
 		shareUrl,
+		publishedUrl,
 		needsRegenerate,
 		copied,
 		shareLinkInput,

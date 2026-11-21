@@ -265,6 +265,7 @@ export function PlaybackView(input: PlaybackViewInput) {
 												src={webcamVideoPath}
 												className="pointer-events-none absolute inset-0 block h-full w-full object-fill"
 												muted
+												loop={webcam?.loop}
 												playsInline
 												preload="auto"
 												aria-hidden="true"

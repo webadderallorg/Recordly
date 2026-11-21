@@ -1,15 +1,15 @@
-import { saveCommentReturn } from "./commentAuth.ts";
 import type { Provider, SupabaseClient } from "@supabase/supabase-js";
 import {
 	LEGAL_CONSENT_LABEL,
 	SIGNUP_CONSENT_VERSION,
 } from "../../../../../../src/lib/auth/signupConsentCopy.ts";
 import {
-	saveSignupConsentForAccount,
-	SignupConsentScopeChangedError,
-	validateSignupConsentAuthConfig,
 	type SignupConsentAuthConfig,
+	SignupConsentScopeChangedError,
+	saveSignupConsentForAccount,
+	validateSignupConsentAuthConfig,
 } from "../../../../../../src/lib/auth/signupConsentTransport.ts";
+import { saveCommentReturn } from "./commentAuth.ts";
 
 const consentKey = (challenge: string) => `recordly-cloud-consent:${challenge}`;
 export function cloudSignupMetadata() {

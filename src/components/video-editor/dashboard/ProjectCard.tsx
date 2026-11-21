@@ -1,9 +1,9 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { Dropdown } from "@heroui/react";
 import { Globe } from "@phosphor-icons/react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Check, DotsThree, FolderSimple, Plus } from "@/components/ui/icons";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { CloudShareButton } from "../cloud/CloudShareButton";
 import {
 	getProjectShare,
@@ -12,8 +12,9 @@ import {
 } from "../cloud/projectShareLinks";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import { ProjectFolderChips } from "./ProjectFolderChips";
-import { ProjectThumbnail } from "./ProjectThumbnail";
 import { ProjectPreviewGlass } from "./ProjectPreviewGlass";
+import { ProjectThumbnail } from "./ProjectThumbnail";
+import { PROJECT_DRAG_TYPE } from "./projectDrag";
 import { RawThumbnail } from "./RawRecordings";
 import type { DashboardProps } from "./types";
 import type { DashboardModel } from "./useDashboardModel";
@@ -54,6 +55,8 @@ export function ProjectCard({
 }: Props) {
 	const { locale, t: uiText } = useUiLocale();
 	const [hovering, setHovering] = useState(false);
+	const [dragging, setDragging] = useState(false);
+	const suppressClickUntil = useRef(0);
 	const [editing, setEditing] = useState(false);
 	const renaming = useRef(false);
 	const [name, setName] = useState(entry.name);
@@ -97,37 +100,60 @@ export function ProjectCard({
 				onPointerLeave={() => setHovering(false)}
 				onFocus={() => setHovering(true)}
 				onBlur={() => setHovering(false)}
-				onClick={() => (selecting ? toggleSelected(entry.path) : openEntry(entry))}
+				onClick={() => {
+					if (Date.now() < suppressClickUntil.current) return;
+					selecting ? toggleSelected(entry.path) : openEntry(entry);
+				}}
 				aria-pressed={selecting ? selected.includes(entry.path) : undefined}
-				className={`project-preview-glass relative block h-auto w-full min-w-0 rounded-xl p-0 transition-shadow duration-200 ease-out motion-reduce:transition-none ${hovering ? "ring-2 ring-accent/40 shadow-sm" : ""}`}
+				className={`project-preview-glass relative block h-auto w-full min-w-0 rounded-xl p-0 transition-shadow duration-200 ease-out motion-reduce:transition-none ${dragging ? "opacity-50" : ""} ${hovering ? "ring-2 ring-accent/40 shadow-sm" : ""}`}
 			>
-				{entry.rawSource ? (
-					<RawThumbnail
-						entry={entry.rawSource}
-						active={hovering && !selecting && !busy}
-					/>
-				) : (
-					<ProjectThumbnail
-						key={`${entry.thumbnailPath}-${entry.updatedAt}`}
-						revision={entry.updatedAt}
-						path={entry.thumbnailPath}
-						videoSource={
-							webUrl && webReady
-								? new URL(`/v/${entry.path}`, webUrl).href
-								: undefined
+				<div
+					className="w-full rounded-[inherit]"
+					draggable={!webUrl && !entry.rawSource && !busy && !selecting && !editing}
+					onDragStart={(event) => {
+						if (webUrl || entry.rawSource || busy || selecting || editing) {
+							event.preventDefault();
+							return;
 						}
-						projectPath={webUrl ? undefined : entry.path}
-						previewActive={!webUrl && hovering && !selecting && !busy}
-					/>
-				)}
-				<ProjectPreviewGlass />
-				{selecting && (
-					<span
-						className={`absolute right-2 top-2 z-10 flex size-5 items-center justify-center rounded-md ${selected.includes(entry.path) ? "bg-accent text-white" : "bg-background/90"}`}
-					>
-						{selected.includes(entry.path) && <Check className="size-3.5" />}
-					</span>
-				)}
+						event.dataTransfer.setData(PROJECT_DRAG_TYPE, entry.path);
+						event.dataTransfer.effectAllowed = "move";
+						setHovering(false);
+						setDragging(true);
+						suppressClickUntil.current = Number.POSITIVE_INFINITY;
+					}}
+					onDragEnd={() => {
+						setDragging(false);
+						suppressClickUntil.current = Date.now() + 250;
+					}}
+				>
+					{entry.rawSource ? (
+						<RawThumbnail
+							entry={entry.rawSource}
+							active={hovering && !dragging && !selecting && !busy}
+						/>
+					) : (
+						<ProjectThumbnail
+							key={`${entry.thumbnailPath}-${entry.updatedAt}`}
+							revision={entry.updatedAt}
+							path={entry.thumbnailPath}
+							videoSource={
+								webUrl && webReady
+									? new URL(`/v/${entry.path}`, webUrl).href
+									: undefined
+							}
+							projectPath={webUrl ? undefined : entry.path}
+							previewActive={!webUrl && hovering && !dragging && !selecting && !busy}
+						/>
+					)}
+					<ProjectPreviewGlass />
+					{selecting && (
+						<span
+							className={`absolute right-2 top-2 z-10 flex size-5 items-center justify-center rounded-md ${selected.includes(entry.path) ? "bg-accent text-white" : "bg-background/90"}`}
+						>
+							{selected.includes(entry.path) && <Check className="size-3.5" />}
+						</span>
+					)}
+				</div>
 			</Button>
 			<div className="relative flex items-start justify-between gap-3 pt-3">
 				<div data-project-caption className="min-w-0 flex-1">

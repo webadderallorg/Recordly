@@ -66,6 +66,13 @@ vi.mock("@/contexts/I18nContext", () => ({
 }));
 vi.mock("@/lib/appSettings", () => ({ saveAppSetting: vi.fn() }));
 vi.mock("@heroui/react", () => ({ Button: "button" }));
+vi.mock("@phosphor-icons/react", () => ({
+	ArrowLeft: "arrow-left",
+	Check: "check",
+	CheckCircle: "check-circle",
+	WarningCircle: "warning-circle",
+}));
+vi.mock("@/components/video-editor/SettingsRow", () => ({ SettingsRow: "settings-row" }));
 vi.mock("motion/react", () => ({ useReducedMotion: () => true, motion: { div: "div" } }));
 vi.mock("@/components/feedback/ErrorReportButton", () => ({ ErrorReportButton: "report" }));
 vi.mock("./PermissionsConfetti", () => ({ PermissionsConfetti: "confetti" }));
@@ -85,9 +92,9 @@ function nodes(node: ReactNode): ReactElement<Record<string, unknown>>[] {
 const flush = async () => {
 	for (let i = 0; i < 8; i++) await Promise.resolve();
 };
-function render() {
+function render(onFinish = vi.fn()) {
 	state.index = 0;
-	const result = OnboardingPermissions({ onFinish: vi.fn() });
+	const result = OnboardingPermissions({ onFinish });
 	for (const effect of state.effects.splice(0)) effect();
 	return nodes(result);
 }
@@ -116,6 +123,7 @@ beforeEach(() => {
 			})),
 			getAccessibilityPermissionStatus: vi.fn(async () => ({ success: true, trusted: true })),
 			openScreenRecordingPreferences: vi.fn(async () => ({ success: false })),
+			openAccessibilityPreferences: vi.fn(async () => ({ success: true })),
 		},
 	});
 });
@@ -123,6 +131,27 @@ afterEach(() => {
 	for (const slot of state.slots) slot.cleanup?.();
 	vi.unstubAllGlobals();
 	vi.useRealTimers();
+});
+it.each([
+	"win32",
+	"linux",
+])("waits for Start recording on %s without requesting permissions", async (platform) => {
+	vi.mocked(window.electronAPI.getPlatform).mockResolvedValue(platform);
+	const onFinish = vi.fn();
+	const checking = render(onFinish);
+	expect(checking.some((node) => node.type === "header")).toBe(false);
+	await flush();
+	const ready = render(onFinish);
+	expect(ready.find((node) => node.type === "header")?.props.description).toBe("signedIn");
+	const start = ready.find((node) => node.type === "primary");
+	expect(start?.props.children).toBe("startRecording");
+	expect(start?.props.isDisabled).toBe(false);
+	expect(onFinish).not.toHaveBeenCalled();
+	start?.props.onPress();
+	expect(onFinish).toHaveBeenCalledOnce();
+	expect(window.electronAPI.getScreenRecordingPermissionStatus).not.toHaveBeenCalled();
+	expect(window.electronAPI.getAccessibilityPermissionStatus).not.toHaveBeenCalled();
+	expect(window.electronAPI.openScreenRecordingPreferences).not.toHaveBeenCalled();
 });
 it("keeps a failed permission request visible through successful status polls and clears it on retry", async () => {
 	render();
@@ -140,6 +169,34 @@ it("keeps a failed permission request visible through successful status polls an
 	allow().props.onPress();
 	await flush();
 	expect(alert()).toBeUndefined();
+});
+it("opens Accessibility Settings directly and leaves finish locked until the grant is observed", async () => {
+	vi.mocked(window.electronAPI.getScreenRecordingPermissionStatus).mockResolvedValue({
+		success: true,
+		status: "granted",
+	});
+	vi.mocked(window.electronAPI.getAccessibilityPermissionStatus).mockResolvedValue({
+		success: true,
+		trusted: false,
+		prompted: false,
+	});
+	render();
+	await flush();
+	const accessibility = render().find(
+		(node) => node.props?.["aria-label"] === "allowPermission:accessibility",
+	);
+	await accessibility?.props.onPress();
+	expect(window.electronAPI.openAccessibilityPreferences).toHaveBeenCalledOnce();
+	expect(render().some((node) => node.props?.children === "permissionDragFallback")).toBe(true);
+	expect(render().find((node) => node.type === "primary")?.props.isDisabled).toBe(true);
+	vi.mocked(window.electronAPI.getAccessibilityPermissionStatus).mockResolvedValue({
+		success: true,
+		trusted: true,
+		prompted: false,
+	});
+	await vi.advanceTimersByTimeAsync(3000);
+	expect(render().some((node) => node.props?.children === "permissionDragFallback")).toBe(false);
+	expect(render().find((node) => node.type === "primary")?.props.isDisabled).toBe(false);
 });
 it("clears a stale failed-request report after status checks verify all permissions recovered", async () => {
 	render();

@@ -153,6 +153,8 @@ export interface WebcamOverlaySettings {
 	previewFrame?: "standard" | "soft-blur";
 	/** Source-time intervals containing webcam footage in an imported sequence. */
 	visibleRanges?: { startMs: number; endMs: number }[];
+	/** Repeat independently uploaded webcam footage. */
+	loop?: boolean;
 	enabled: boolean;
 	sourcePath: string | null;
 	timeOffsetMs: number;
@@ -167,8 +169,8 @@ export interface WebcamOverlaySettings {
 	height: number;
 	reactToZoom: boolean;
 	roundness: number;
-	/** Legacy pixel value retained only while loading older projects. */
-	cornerRadius?: number;
+	/** Older saves use the shape preset's roundness on load. */
+	roundnessVersion?: typeof WEBCAM_ROUNDNESS_VERSION;
 	shadow: number;
 	margin: number;
 }
@@ -208,9 +210,10 @@ export const DEFAULT_CONNECTED_ZOOM_DURATION_MS = 1000;
 export const DEFAULT_ZOOM_IN_EASING: ZoomTransitionEasing = "recordly";
 export const DEFAULT_ZOOM_OUT_EASING: ZoomTransitionEasing = "recordly";
 export const DEFAULT_CONNECTED_ZOOM_EASING: ZoomTransitionEasing = "glide";
-export const DEFAULT_WEBCAM_SIZE = 30;
+export const DEFAULT_WEBCAM_SIZE = 50;
 export const DEFAULT_WEBCAM_REACT_TO_ZOOM = true;
 export const DEFAULT_WEBCAM_ROUNDNESS = 20;
+export const WEBCAM_ROUNDNESS_VERSION = 1;
 export const DEFAULT_SHADOW_INTENSITY = 0.5;
 export const DEFAULT_WEBCAM_SHADOW = 0.2;
 export const DEFAULT_WEBCAM_MARGIN = 24;
@@ -236,6 +239,7 @@ export const DEFAULT_WEBCAM_OVERLAY: WebcamOverlaySettings = {
 	height: DEFAULT_WEBCAM_SIZE,
 	reactToZoom: DEFAULT_WEBCAM_REACT_TO_ZOOM,
 	roundness: DEFAULT_WEBCAM_ROUNDNESS,
+	roundnessVersion: WEBCAM_ROUNDNESS_VERSION,
 	shadow: DEFAULT_WEBCAM_SHADOW,
 	margin: DEFAULT_WEBCAM_MARGIN,
 };
@@ -565,10 +569,10 @@ export interface Padding {
 }
 
 export const DEFAULT_PADDING: Padding = {
-	top: 0,
-	bottom: 0,
-	left: 0,
-	right: 0,
+	top: 25,
+	bottom: 25,
+	left: 25,
+	right: 25,
 	linked: true,
 };
 export type {

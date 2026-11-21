@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import {
+	type LibraryMediaInfo,
+	type LibrarySort,
 	libraryMediaKey,
 	needsLibraryMediaInfo,
 	readLibraryMediaInfo,
-	type LibraryMediaInfo,
-	type LibrarySort,
 } from "./librarySort";
 
 export function useLibrarySortMetadata(

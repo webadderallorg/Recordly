@@ -1,6 +1,6 @@
 import { Button, Modal } from "@heroui/react";
-import { useState } from "react";
 import { X } from "@phosphor-icons/react";
+import { useState } from "react";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { OnboardingFooter, OnboardingLayout, OnboardingPrimaryAction } from "./OnboardingLayout";
 import { OnboardingPermissions } from "./OnboardingPermissions";
@@ -10,16 +10,21 @@ export function RecordingPermissionsDialog({
 	open,
 	onClose,
 	onFinish,
+	finishDisabled = false,
+	persistRequest = true,
 	standalone,
 }: {
 	open: boolean;
 	onClose: () => void;
 	onFinish: () => void;
+	finishDisabled?: boolean;
+	persistRequest?: boolean;
 	standalone: boolean;
 }) {
 	const t = useScopedT("onboarding");
 	const { t: appT } = useI18n();
 	const [ready, setReady] = useState(false);
+	const canFinish = ready && !finishDisabled;
 	return (
 		<Modal
 			isOpen={open}
@@ -37,22 +42,21 @@ export function RecordingPermissionsDialog({
 						{standalone && (
 							<div
 								aria-hidden="true"
-								className="onboarding-window-drag absolute left-0 right-12 top-0 z-30 flex h-8 justify-center pt-2"
-							>
-								<span className="h-1 w-10 rounded-full bg-foreground/20" />
-							</div>
+								className="onboarding-window-drag absolute left-0 right-12 top-0 z-30 h-8"
+							/>
 						)}
 						<OnboardingLayout
 							stage="permissions"
 							canViewPermissions
 							showNavigation={false}
+							carousel
 							footer={
 								<OnboardingFooter>
 									<div aria-hidden="true" />
 									<OnboardingPrimaryAction
-										isDisabled={!ready}
+										isDisabled={!canFinish}
 										onPress={() => {
-											if (ready) onFinish();
+											if (canFinish) onFinish();
 										}}
 									>
 										{t("startRecording")}
@@ -62,6 +66,7 @@ export function RecordingPermissionsDialog({
 						>
 							<OnboardingPermissions
 								showFooter={false}
+								persistRequest={persistRequest}
 								onReadyChange={setReady}
 								onFinish={onFinish}
 							/>

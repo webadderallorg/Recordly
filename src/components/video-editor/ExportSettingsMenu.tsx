@@ -52,7 +52,6 @@ interface ExportSettingsMenuProps {
 	onGifLoopChange?: (loop: boolean) => void;
 	gifSizePreset: GifSizePreset;
 	onGifSizePresetChange?: (preset: GifSizePreset) => void;
-	gifOutputDimensions: { width: number; height: number };
 	onExport?: () => void;
 	className?: string;
 	hideHeading?: boolean;
@@ -89,7 +88,6 @@ export function ExportSettingsMenu({
 	onGifLoopChange,
 	gifSizePreset,
 	onGifSizePresetChange,
-	gifOutputDimensions,
 	onExport,
 	className,
 	hideHeading = false,
@@ -190,6 +188,15 @@ export function ExportSettingsMenu({
 								};
 							})}
 						/>
+						<ExportChoices
+							label={tSettings("export.fpsTitle", "FPS")}
+							value={mp4FrameRate}
+							onChange={onMp4FrameRateChange}
+							options={MP4_FRAME_RATES.map((value) => ({
+								value,
+								label: String(value),
+							}))}
+						/>
 						{advancedExportSettings && (
 							<>
 								<ExportChoices<ExportQuality>
@@ -280,19 +287,6 @@ export function ExportSettingsMenu({
 										}),
 									)}
 								/>
-							</>
-						)}
-						{advancedExportSettings && (
-							<>
-								<ExportChoices
-									label={tSettings("export.fpsTitle", "FPS")}
-									value={mp4FrameRate}
-									onChange={onMp4FrameRateChange}
-									options={MP4_FRAME_RATES.map((value) => ({
-										value,
-										label: String(value),
-									}))}
-								/>
 								{!isLegacyModel && nvidiaCudaExportAvailable && (
 									<Switch
 										disabled={!nvidiaCudaExportAvailable}
@@ -339,28 +333,26 @@ export function ExportSettingsMenu({
 					<>
 						<ExportChoices
 							label={tSettings("export.size", "Size")}
-							headingAction={advancedToggle}
 							value={gifSizePreset}
 							onChange={onGifSizePresetChange}
 							options={Object.entries(GIF_SIZE_PRESETS).map(([key, preset]) => ({
 								value: key as GifSizePreset,
-								label: preset.label,
+								label: Number.isFinite(preset.maxHeight)
+									? tSettings("export.upToResolution", "Up to {{height}}p", {
+											height: preset.maxHeight,
+										})
+									: tSettings("export.quality.original", "Original"),
 							}))}
 						/>
-						<Description>
-							{gifOutputDimensions.width} × {gifOutputDimensions.height}px
-						</Description>
-						{advancedExportSettings && (
-							<ExportChoices
-								label={tSettings("export.fpsTitle", "FPS")}
-								value={gifFrameRate}
-								onChange={onGifFrameRateChange}
-								options={GIF_FRAME_RATES.map((rate) => ({
-									value: rate.value,
-									label: String(rate.value),
-								}))}
-							/>
-						)}
+						<ExportChoices
+							label={tSettings("export.fpsTitle", "FPS")}
+							value={gifFrameRate}
+							onChange={onGifFrameRateChange}
+							options={GIF_FRAME_RATES.map((rate) => ({
+								value: rate.value,
+								label: String(rate.value),
+							}))}
+						/>
 						<Switch checked={gifLoop} onCheckedChange={onGifLoopChange}>
 							<Label>{tSettings("export.loop")}</Label>
 						</Switch>
@@ -400,7 +392,7 @@ export function ExportSettingsMenu({
 				)}
 			</Card.Content>
 			{!hideAction && (
-				<Card.Footer>
+				<Card.Footer className="export-settings-footer">
 					<Button
 						size="lg"
 						disabled={invalidCustom}

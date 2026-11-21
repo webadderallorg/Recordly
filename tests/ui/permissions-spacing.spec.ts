@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
-import { productionTest as test } from "./production";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+import { productionTest as test } from "./production";
 
 for (const colorScheme of ["light", "dark"] as const) {
 	for (const side of [600, 760]) {

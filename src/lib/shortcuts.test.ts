@@ -96,7 +96,9 @@ vi.mock("react", async (original) => ({
 	...providerHooks,
 }));
 vi.mock("@/utils/platformUtils", () => ({ isMac: async () => false }));
+
 import { ShortcutsProvider } from "../contexts/ShortcutsContext";
+
 function provider() {
 	return providerHooks.render(() => ShortcutsProvider({ children: null })).props.value;
 }

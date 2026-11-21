@@ -8,6 +8,7 @@ import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
 import { DEFAULT_WEBCAM_TIME_OFFSET_MS } from "../types";
+import { shouldLoopWebcamSource } from "../videoPlayback/webcamSync";
 
 type SessionPresentation = {
 	hideOverlayCursorByDefault?: boolean;
@@ -105,6 +106,7 @@ export function useInitialEditorSource({
 						visibleRanges: undefined,
 						enabled: Boolean(webcamPath),
 						sourcePath: webcamPath,
+						loop: Boolean(webcamPath),
 						timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 					}));
 					project.setError(null);
@@ -140,6 +142,7 @@ export function useInitialEditorSource({
 						visibleRanges: undefined,
 						enabled: Boolean(webcamPath),
 						sourcePath: webcamPath,
+						loop: Boolean(webcamPath),
 						timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 						shadow: smokeConfig.webcamShadow ?? previous.shadow,
 						size: smokeConfig.webcamSize ?? previous.size,
@@ -191,6 +194,11 @@ export function useInitialEditorSource({
 						visibleRanges: undefined,
 						enabled: Boolean(sessionResult.session?.webcamPath),
 						sourcePath: sessionResult.session?.webcamPath ?? null,
+						loop: shouldLoopWebcamSource(
+							sourcePath,
+							sessionResult.session?.webcamPath ?? null,
+							sessionResult.session?.timeOffsetMs,
+						),
 						timeOffsetMs:
 							sessionResult.session?.timeOffsetMs ?? DEFAULT_WEBCAM_TIME_OFFSET_MS,
 					}));
@@ -215,6 +223,7 @@ export function useInitialEditorSource({
 					visibleRanges: undefined,
 					enabled: false,
 					sourcePath: null,
+					loop: false,
 					timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 				}));
 			} catch (error) {
@@ -243,6 +252,14 @@ export function useInitialEditorSource({
 				visibleRanges: undefined,
 				enabled: Boolean(webcamPath),
 				sourcePath: webcamPath,
+				loop:
+					webcamPath === previous.sourcePath && previous.loop !== undefined
+						? previous.loop
+						: shouldLoopWebcamSource(
+								sessionSourcePath,
+								webcamPath,
+								session.timeOffsetMs,
+							),
 				timeOffsetMs: webcamPath
 					? (session.timeOffsetMs ?? previous.timeOffsetMs)
 					: DEFAULT_WEBCAM_TIME_OFFSET_MS,

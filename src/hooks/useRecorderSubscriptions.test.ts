@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { useRecorderSubscriptions } from "./useRecorderSubscriptions";
+
 const effects = vi.hoisted(() => [] as Array<() => void | (() => void)>);
 vi.mock("react", () => ({
 	useEffect: (effect: () => void | (() => void)) => effects.push(effect),

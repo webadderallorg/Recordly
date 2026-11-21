@@ -1,6 +1,7 @@
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import { normalizeProjectEditor } from "../projectPersistence";
 import { getTimelineDurationMs } from "../types";
+import { getCachedProjectPreview } from "./projectPreviewCache";
 
 export type LibrarySort = "recent" | "created" | "name" | "duration" | "audio";
 export type LibrarySortDirection = "asc" | "desc";
@@ -72,7 +73,7 @@ export async function readLibraryMediaInfo(
 	let source = entry.rawSource?.path;
 	let editor: ReturnType<typeof normalizeProjectEditor> | undefined;
 	if (!source) {
-		const preview = await api.getProjectPreview(entry.path);
+		const preview = await getCachedProjectPreview(entry.path, entry.updatedAt);
 		if (!preview.success) return {};
 		source = preview.value.project.videoPath;
 		editor = normalizeProjectEditor(preview.value.project.editor);

@@ -1,7 +1,7 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { Card, Skeleton } from "@heroui/react";
-import { LibrarySkeleton } from "./LibrarySkeleton";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { LoadingFrameHeader } from "../layout/LoadingFrameHeader";
+import { LibrarySkeleton } from "./LibrarySkeleton";
 
 /** Match the Home sidebar, search row and project cards while startup loads. */
 export function HomeLoadingSkeleton() {

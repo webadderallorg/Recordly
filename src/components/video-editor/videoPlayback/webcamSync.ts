@@ -4,23 +4,42 @@ const HAVE_CURRENT_DATA_READY_STATE = 2;
 
 /**
  * Maps the editor timeline time to the corresponding webcam media timestamp,
- * accounting for any recorded webcam start offset and media duration clamps.
+ * accounting for the webcam start offset and whether the footage repeats.
  */
 export function getWebcamMediaTargetTimeSeconds({
 	currentTime,
 	webcamDuration,
 	timeOffsetMs,
+	loop,
 }: {
 	currentTime: number;
 	webcamDuration?: number | null;
 	timeOffsetMs?: number | null;
+	loop?: boolean;
 }): number {
 	const safeOffsetMs = Number.isFinite(timeOffsetMs) ? (timeOffsetMs ?? 0) : 0;
 	const shiftedTime = currentTime - safeOffsetMs / 1000;
+	if (loop && webcamDuration != null && Number.isFinite(webcamDuration) && webcamDuration > 0) {
+		return Math.max(0, shiftedTime) % webcamDuration;
+	}
 	return clampMediaTimeToDuration(shiftedTime, webcamDuration);
 }
 
 export const getWebcamPreviewTargetTimeSeconds = getWebcamMediaTargetTimeSeconds;
+
+/** Older projects only identify recorded webcam footage by its paired filename. */
+export function shouldLoopWebcamSource(
+	videoPath: string | null,
+	webcamPath: string | null,
+	timeOffsetMs = 0,
+): boolean {
+	if (!videoPath || !webcamPath || timeOffsetMs !== 0) return false;
+	const stem = (path: string) => path.replace(/\\/g, "/").replace(/\.[^./]+$/, "");
+	const filename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+	const videoStem = stem(videoPath);
+	const webcamStem = stem(webcamPath);
+	return webcamStem !== videoStem && filename(webcamStem) !== `${filename(videoStem)}-webcam`;
+}
 
 export function isWebcamMediaSynchronized({
 	currentTime,

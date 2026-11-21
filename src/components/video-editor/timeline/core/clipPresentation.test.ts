@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-	getRegionDisplaySpan,
-	snapRegionSpan,
 	getClipDisplaySpan,
 	getEmbeddedCaptionSpan,
 	getPlayheadDisplayTime,
+	getRegionDisplaySpan,
 	getTimeAtClipSeam,
+	snapRegionSpan,
 } from "./clipPresentation";
 
 describe("clip presentation", () => {

@@ -82,3 +82,48 @@ it("restores the latest requested HUD mouse state when source selection ends", (
 	select(false);
 	expect(mouse).toHaveBeenLastCalledWith(false);
 });
+
+it("keeps the hovered HUD interactive when recording starts", () => {
+	const source = readFileSync(new URL("./windows.ts", import.meta.url), "utf8");
+	const passthrough = source.slice(
+		source.indexOf("function setHudOverlayMousePassthrough("),
+		source.indexOf('ipcMain.on("hud-overlay-set-ignore-mouse"'),
+	);
+	const recordingActive = source.slice(
+		source.indexOf("export function setHudOverlayRecordingActive("),
+		source.indexOf("export function createUpdateToastWindow("),
+	);
+	const mouse = vi.fn();
+	const context: Record<string, unknown> = {
+		hudOverlayIgnoringMouse: true,
+		hudOverlaySourceSelectionActive: false,
+		hudOverlayRecordingActive: false,
+		hudOverlayFallbackExpanded: false,
+		hudCaptureStarting: true,
+		hudOverlayMouseReassertTimer: null,
+		hudOverlayWindow: { isDestroyed: () => false, setIgnoreMouseEvents: mouse },
+		isHudOverlayMousePassthroughSupported: () => true,
+		applyHudOverlayBounds: vi.fn(),
+		setHudOverlayFallbackExpanded: vi.fn(),
+		notifyEditorMode: vi.fn(),
+		reassertHudOverlayCaptureProtection: vi.fn(),
+	};
+	runInNewContext(
+		`${ts.transpileModule(`${passthrough}\n${recordingActive.replace("export ", "")}`, {}).outputText}
+		this.setHudOverlayMousePassthrough = setHudOverlayMousePassthrough;
+		this.setHudOverlayRecordingActive = setHudOverlayRecordingActive;`,
+		context,
+	);
+	const setPassthrough = context.setHudOverlayMousePassthrough as (ignore: boolean) => void;
+	const setRecording = context.setHudOverlayRecordingActive as (recording: boolean) => void;
+
+	// The pointer rests on the record button, so the renderer has made the HUD interactive.
+	setPassthrough(false);
+	setRecording(true);
+	expect(mouse).toHaveBeenLastCalledWith(false);
+
+	// A pointer away from the HUD still leaves the recorded app clickable.
+	setPassthrough(true);
+	setRecording(false);
+	expect(mouse).toHaveBeenLastCalledWith(true, { forward: true });
+});

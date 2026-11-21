@@ -154,6 +154,7 @@
 		"webcamCrop": "Recorte de cámara",
 		"webcamReactToZoom": "La cámara reacciona al zoom",
 		"webcamMirror": "Reflejar cámara",
+		"showWebcam": "Mostrar cámara web",
 		"webcamRoundness": "Redondez de cámara",
 		"webcamShadow": "Sombra de cámara",
 		"shadow": "Sombra",
@@ -226,6 +227,7 @@
 	},
 	"captions": {
 		"firstDownload": "El primer uso descarga {{size}} MB de archivos de voz y luego genera los subtítulos.",
+		"downloadAndGenerate": "Descargar {{size}} MB y generar subtítulos",
 		"localProcessing": "Los subtítulos se generan en este dispositivo. Tu grabación no se sube.",
 		"selectOnTimeline": "Selecciona un subtítulo en la línea de tiempo para editarlo.",
 		"enabled": "Mostrar",
@@ -324,6 +326,7 @@
 		"fpsTitle": "FPS",
 		"loop": "Bucle",
 		"outputDimensions": "Salida: {{dimensions}}px",
+		"upToResolution": "Hasta {{height}}p",
 		"sizePresetOriginalShort": "Orig.",
 		"sizePresetMediumShort": "Med.",
 		"sizePresetLargeShort": "Gra",
@@ -377,14 +380,6 @@
 		"deleteRegion": "Eliminar audio"
 	},
 	"updates": {
-		"loadFailed": "No se pudo cargar el canal de actualizaciones. Inténtalo de nuevo.",
-		"automaticDownloads": "Descargar actualizaciones automáticamente",
-		"automaticDownloadsDescription": "Descarga las nuevas actualizaciones en segundo plano. Tú decides cuándo reiniciar.",
-		"downloadPreferenceFailed": "No se pudo cargar o guardar la descarga automática de actualizaciones. Inténtalo de nuevo.",
-		"experimentalDescription": "Has activado las actualizaciones experimentales, así que puedes probar la actualización más reciente de Recordly antes de que esté disponible para todos.",
-		"title": "Actualizaciones",
-		"experimental": "Actualizaciones experimentales",
-		"saveFailed": "No se pudo cambiar el canal de actualización.",
 		"changeVersion": "Cambiar versión",
 		"versionInstallHint": "Descarga una versión y abre el instalador para cambiar de versión.",
 		"loadingVersions": "Cargando versiones…",
@@ -392,7 +387,15 @@
 		"prereleaseVersion": "Versión preliminar",
 		"noVersions": "No hay versiones compatibles disponibles para esta instalación.",
 		"versionFailed": "No se pudo cargar o descargar esta versión. Inténtalo de nuevo.",
-		"downloadInstaller": "Descargar instalador"
+		"downloadInstaller": "Descargar instalador",
+		"loadFailed": "No se pudo cargar el canal de actualizaciones. Inténtalo de nuevo.",
+		"automaticDownloads": "Descargar actualizaciones automáticamente",
+		"automaticDownloadsDescription": "Descarga las nuevas actualizaciones en segundo plano. Tú decides cuándo reiniciar.",
+		"downloadPreferenceFailed": "No se pudo cargar o guardar la descarga automática de actualizaciones. Inténtalo de nuevo.",
+		"experimentalDescription": "Has activado las actualizaciones experimentales, así que puedes probar la actualización más reciente de Recordly antes de que esté disponible para todos.",
+		"title": "Actualizaciones",
+		"experimental": "Actualizaciones experimentales",
+		"saveFailed": "No se pudo cambiar el canal de actualización."
 	},
 	"categories": {
 		"general": "General",

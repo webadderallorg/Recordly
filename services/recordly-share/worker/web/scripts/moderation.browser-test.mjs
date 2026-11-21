@@ -2,7 +2,8 @@
 // Run from any directory: node services/recordly-share/worker/web/scripts/moderation.browser-test.mjs
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { chromium, expect as baseExpect } from "@playwright/test";
+import { expect as baseExpect, chromium } from "@playwright/test";
+
 const expect = baseExpect.configure({ timeout: 15_000 });
 const webRoot = fileURLToPath(new URL("../", import.meta.url));
 const port = Number(process.env.MODERATION_TEST_PORT || 5196);

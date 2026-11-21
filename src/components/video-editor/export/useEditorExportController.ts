@@ -1,12 +1,12 @@
-import { useOptionalBilling } from "@/components/billing/BillingProvider";
-import { getShareResolution } from "../cloud/shareResolution";
 import { type RefObject, useEffect } from "react";
+import { useOptionalBilling } from "@/components/billing/BillingProvider";
+import type { useI18n } from "@/contexts/I18nContext";
 import {
 	estimateMp4FileBytes,
 	getEditedExportDurationSeconds,
 } from "@/lib/exporter/exportSizeEstimate";
-import type { useI18n } from "@/contexts/I18nContext";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
+import { getShareResolution } from "../cloud/shareResolution";
 import type { getSmokeExportConfig } from "../smokeExportConfig";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
@@ -48,7 +48,6 @@ type Input = {
 	captionSidecarPayload?: Parameters<typeof useExportRunner>[0]["captionSidecarPayload"];
 	experimentalNvidiaCudaExport: boolean;
 	nvidiaCudaExportAvailable: boolean;
-	remountPreview: () => void;
 };
 
 export function useEditorExportController(input: Input) {
@@ -104,7 +103,6 @@ export function useEditorExportController(input: Input) {
 			input.experimentalNvidiaCudaExport &&
 			(input.settings.advancedExportSettings || input.smokeConfig.enabled),
 		nvidiaCudaExportAvailable: input.nvidiaCudaExportAvailable,
-		remountPreview: input.remountPreview,
 	});
 	const dialogActions = useExportDialogActions({
 		videoPath: input.videoPath,
@@ -113,7 +111,7 @@ export function useEditorExportController(input: Input) {
 		settings: input.settings,
 		session: input.session,
 		handleExport: runner.handleExport,
-		showExportSuccessToast: runner.showExportSuccessToast,
+		recordSuccessfulExport: runner.recordSuccessfulExport,
 	});
 	useSmokeExportAutomation({
 		config: input.smokeConfig,

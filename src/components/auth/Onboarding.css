@@ -27,6 +27,7 @@
 	width: 90%;
 	aspect-ratio: 1;
 	border-radius: 50%;
+	corner-shape: round;
 	background: radial-gradient(
 		circle,
 		color-mix(in srgb, var(--accent) 8%, transparent) 0%,
@@ -105,6 +106,11 @@
 	display: block;
 	font-size: clamp(26px, 5.4vw, 32px);
 	line-height: 1.2;
+}
+
+.onboarding-layout[data-onboarding-carousel] .recordly-signin-hero {
+	font-size: inherit;
+	line-height: inherit;
 }
 
 .onboarding-footer {
@@ -226,6 +232,11 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--signin-field-spacing);
+}
+
+.recordly-signin-content .recordly-signin-start[data-signin-fields] {
+	display: grid;
+	grid-template-rows: minmax(44px, auto) 1rem auto;
 }
 
 .recordly-signin-content [data-signin-form] {
@@ -383,11 +394,16 @@
 	}
 }
 
-/* Carousel pages share a frame so shorter permission content cannot resize the
- * demo or move the title during a slide. Each page scrolls inside that frame. */
 .onboarding-layout[data-onboarding-carousel] .onboarding-stage-content {
-	flex: 0 1 min(65%, 380px);
+	grid-template-rows: minmax(0, 1fr);
 	min-height: 0;
+}
+
+/* Preserve the demo height during a slide. With only one page, the demo can
+ * take the space left over by the controls. */
+.onboarding-layout[data-onboarding-carousel]:has(> .onboarding-navigation)
+.onboarding-stage-content {
+	flex: 0 1 min(65%, 380px);
 }
 
 .onboarding-layout[data-onboarding-carousel] .onboarding-stage-content > * {
@@ -406,18 +422,32 @@
 	scrollbar-gutter: stable;
 }
 
+.onboarding-layout:is([data-onboarding-stage="permissions"], [data-onboarding-stage="upgrade"])
+	.onboarding-body {
+	scrollbar-gutter: stable both-edges;
+}
+
+.onboarding-layout[data-onboarding-stage="upgrade"] .onboarding-body-content {
+	max-width: 760px;
+}
+
+.onboarding-layout[data-onboarding-stage="upgrade"] .split-upgrade-copy {
+	padding: 0;
+}
+
 .onboarding-carousel-footer {
 	/* Production keeps this slot before sign-in makes the actions available. */
 	min-height: 64px;
 }
 
 @media (max-width: 520px) {
-	.onboarding-layout[data-onboarding-carousel] .onboarding-stage-content {
+	.onboarding-layout[data-onboarding-carousel]:has(> .onboarding-navigation)
+		.onboarding-stage-content {
 		flex-basis: min(70%, 420px);
 	}
 
 	[data-onboarding-preview-actions] {
-		/* Back and Skip can wrap as the primary action widens. Reserve both rows. */
+		/* Keep the same footer height when Upgrade moves Skip to the right. */
 		min-height: 92px;
 		align-content: flex-end;
 	}

@@ -1,6 +1,6 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
-import { RecordlyMark } from "@/components/ui/RecordlyMark";
 import { Button } from "@/components/ui/button";
+import { RecordlyMark } from "@/components/ui/RecordlyMark";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { cn } from "@/lib/utils";
 
 export function RecordNewButton({

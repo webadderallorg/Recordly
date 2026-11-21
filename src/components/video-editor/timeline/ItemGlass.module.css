@@ -197,7 +197,8 @@
 	align-items: center;
 	justify-content: center;
 	transform: translateY(-50%);
-	border-radius: 2px;
+	border-radius: 9999px;
+	corner-shape: round;
 	background: rgba(255, 255, 255, 0.88);
 	transition:
 		opacity 0.15s ease,
@@ -333,6 +334,15 @@
 .zoomEndCap.right {
 	right: 6px;
 	cursor: col-resize;
+}
+
+@container timeline-zoom (width < 34px) {
+	.zoomEndCap.left {
+		left: 2px;
+	}
+	.zoomEndCap.right {
+		right: 2px;
+	}
 }
 
 /* Grip lines removed */

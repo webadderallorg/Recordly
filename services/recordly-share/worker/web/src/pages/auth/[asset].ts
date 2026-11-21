@@ -1,6 +1,7 @@
-import type { APIRoute } from "astro";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { APIRoute } from "astro";
+
 declare const __RECORDLY_PUBLIC_DIR__: string;
 
 // Serve the desktop's original assets, so the web sign-in cannot drift.

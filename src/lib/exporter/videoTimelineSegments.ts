@@ -1,10 +1,10 @@
 import {
 	type ClipRegion,
-	type SpeedRegion,
-	type TrimRegion,
-	getClipSourceStartMs,
 	getClipSourceEndMs,
+	getClipSourceStartMs,
+	type SpeedRegion,
 	sortClipRegions,
+	type TrimRegion,
 } from "@/components/video-editor/types";
 
 export interface VideoSegment {

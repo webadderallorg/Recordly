@@ -20,6 +20,7 @@
 		"standard": "標準"
 	},
 	"cloud": {
+		"uploadingVideo": "動画をアップロード中…",
 		"signInRequired": "共有リンクを作成するには、Recordly にログインしてください。",
 		"prepareFailed": "現在の編集内容を共有する準備ができませんでした。",
 		"uploadFailed": "クラウドへのアップロードに失敗しました。",
@@ -228,6 +229,8 @@
 		"confirm": "OK"
 	},
 	"exportStatus": {
+		"finishingVideo": "動画を仕上げています…",
+		"savingVideo": "動画を保存中…",
 		"exporting": "書き出し中",
 		"renderingFile": "ファイルをレンダリングしています。",
 		"preparing": "書き出しを準備中…",

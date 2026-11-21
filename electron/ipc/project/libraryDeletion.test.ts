@@ -1,17 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
+import { describe, expect, it, vi } from "vitest";
 import { getProjectBackupPaths } from "./atomicSave";
 import { canonicalMediaSources } from "./canonicalMediaSources";
 import {
-	prepareLibraryDeletion,
-	removableLibrarySources,
-	protectedLibrarySources,
 	type LibraryDeletionDependencies,
+	prepareLibraryDeletion,
+	protectedLibrarySources,
+	removableLibrarySources,
 } from "./libraryDeletion";
 
 vi.mock("../utils", () => ({ normalizeVideoSourcePath: (value: string) => value }));
@@ -186,19 +186,28 @@ describe.skipIf(process.platform === "win32")("listed primary project symlinks",
 	});
 });
 
+const capture = path.resolve("/r/a.mp4");
+const microphone = path.resolve("/r/a.mic.wav");
+const otherBackup = path.resolve("/p/b.bak");
+const otherProject = path.resolve("/p/b");
+const selectedBackup = path.resolve("/p/a.bak");
+const selectedProject = path.resolve("/p/a");
+const sharedCapture = path.resolve("/r/shared.mp4");
+const unrelatedCapture = path.resolve("/r/unrelated.mp4");
+
 function fixture(overrides: Partial<LibraryDeletionDependencies> = {}) {
 	const data: Record<string, string[]> = {
-		"/p/a": ["/r/a.mp4", "/external/import.mp4"],
-		"/p/b": ["/r/shared.mp4"],
-		"/p/a.bak": ["/r/shared.mp4"],
+		[selectedProject]: [capture, path.resolve("/external/import.mp4")],
+		[otherProject]: [sharedCapture],
+		[selectedBackup]: [sharedCapture],
 	};
 	return {
-		list: async () => ({ entries: [{ path: "/p/a" }, { path: "/p/b" }] }),
+		list: async () => ({ entries: [{ path: selectedProject }, { path: otherProject }] }),
 		backupPaths: (p: string) => [p + ".bak"],
 		readSources: async (p: string) =>
 			data[p] ? { sourcePaths: data[p], sourcePathsComplete: true } : null,
 		recordings: async () =>
-			["/r/a.mp4", "/r/a.mic.wav", "/r/shared.mp4", "/r/unrelated.mp4"].map((path) => ({
+			[capture, microphone, sharedCapture, unrelatedCapture].map((path) => ({
 				path,
 			})),
 		...overrides,
@@ -206,35 +215,35 @@ function fixture(overrides: Partial<LibraryDeletionDependencies> = {}) {
 }
 describe("library deletion source planning", () => {
 	it("includes only selected managed captures and companions, preserving unselected references", async () => {
-		const plan = await prepareLibraryDeletion(["/p/a"], fixture());
-		expect(Object.keys(plan.sourceOwners)).toEqual(["/r/a.mp4", "/r/a.mic.wav"]);
-		expect(plan.preservedSources).toEqual(["/r/shared.mp4"]);
+		const plan = await prepareLibraryDeletion([selectedProject], fixture());
+		expect(Object.keys(plan.sourceOwners)).toEqual([capture, microphone]);
+		expect(plan.preservedSources).toEqual([sharedCapture]);
 	});
 	it("protects sources referenced only by an unselected recovery copy", async () => {
 		const deps = fixture({
 			readSources: async (p) => ({
-				sourcePaths: p === "/p/b.bak" ? ["/r/a.mp4"] : p === "/p/a" ? ["/r/a.mp4"] : [],
+				sourcePaths: p === otherBackup ? [capture] : p === selectedProject ? [capture] : [],
 				sourcePathsComplete: true,
 			}),
 		});
-		expect(Object.keys((await prepareLibraryDeletion(["/p/a"], deps)).sourceOwners)).toEqual(
-			[],
-		);
+		expect(
+			Object.keys((await prepareLibraryDeletion([selectedProject], deps)).sourceOwners),
+		).toEqual([]);
 	});
 	it("fails closed for unavailable primary or incomplete recovery references and rejects unknown paths", async () => {
-		await expect(prepareLibraryDeletion(["/evil"], fixture())).rejects.toThrow(
+		await expect(prepareLibraryDeletion([path.resolve("/evil")], fixture())).rejects.toThrow(
 			"not in the library",
 		);
 		await expect(
-			prepareLibraryDeletion(["/p/a"], fixture({ readSources: async () => null })),
+			prepareLibraryDeletion([selectedProject], fixture({ readSources: async () => null })),
 		).rejects.toThrow("could not be checked");
 		await expect(
 			prepareLibraryDeletion(
-				["/p/a"],
+				[selectedProject],
 				fixture({
 					readSources: async (p) => ({
 						sourcePaths: [],
-						sourcePathsComplete: p !== "/p/b.bak",
+						sourcePathsComplete: p !== otherBackup,
 					}),
 				}),
 			),
@@ -253,14 +262,14 @@ describe("library deletion source planning", () => {
 				activeSources: () => [alias],
 				recordings: async () => [{ path: source }],
 				readSources: async (p) => ({
-					sourcePaths: p === "/p/a" ? [source] : [],
+					sourcePaths: p === selectedProject ? [source] : [],
 					sourcePathsComplete: true,
 				}),
 			});
 			expect((await protectedLibrarySources(deps)).has(source)).toBe(true);
-			expect((await prepareLibraryDeletion(["/p/a"], deps)).preservedSources).toEqual([
-				source,
-			]);
+			expect(
+				(await prepareLibraryDeletion([selectedProject], deps)).preservedSources,
+			).toEqual([source]);
 		} finally {
 			await fs.rm(dir, { recursive: true, force: true });
 		}

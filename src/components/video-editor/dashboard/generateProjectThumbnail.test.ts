@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
 const renderer = vi.hoisted(() => ({
 	construct: vi.fn(),
 	initialize: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("@/lib/exporter/frameRenderer", () => ({
 		getCanvas = renderer.getCanvas;
 	},
 }));
+
 import { generateProjectThumbnail } from "./generateProjectThumbnail";
 import { getOrCreateProjectThumbnail } from "./projectThumbnailCache";
 

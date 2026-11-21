@@ -14,32 +14,21 @@ interface SquirclePoint {
 	y: number;
 }
 
-const SQUIRCLE_EXPONENT = 4.5;
-const SQUIRCLE_SEGMENTS_PER_CORNER = 10;
+// CSS corner-shape: squircle is a quarter superellipse with exponent 4.
+const SQUIRCLE_EXPONENT = 4;
 
-function clamp(value: number, min: number, max: number) {
-	return Math.min(max, Math.max(min, value));
+// Match the cutout of the old arc at the corner's diagonal.
+export const SQUIRCLE_RADIUS_SCALE = 1.84;
+
+export function getSquircleCssRadius(radius: number | string): string {
+	const length = typeof radius === "number" ? `${radius}px` : radius;
+	return `calc(${length} * var(--recordly-corner-radius-scale, 1))`;
 }
 
-function getClampedRadius(width: number, height: number, radius: number) {
-	return clamp(radius, 0, Math.min(width, height) / 2);
-}
-
-function getSuperellipsePoint(
-	centerX: number,
-	centerY: number,
-	radius: number,
-	angle: number,
-	power: number,
-) {
-	const cos = Math.cos(angle);
-	const sin = Math.sin(angle);
-	const exponent = 2 / power;
-
-	return {
-		x: centerX + Math.sign(cos) * radius * Math.pow(Math.abs(cos), exponent),
-		y: centerY + Math.sign(sin) * radius * Math.pow(Math.abs(sin), exponent),
-	};
+export function getClampedCornerRadius(width: number, height: number, radius: number) {
+	const limit = Math.min(width, height) / 2;
+	if (!Number.isFinite(limit) || !Number.isFinite(radius)) return 0;
+	return Math.max(0, Math.min(radius, limit));
 }
 
 export function getSquirclePathPoints({
@@ -50,65 +39,46 @@ export function getSquirclePathPoints({
 	radius,
 	exponent = SQUIRCLE_EXPONENT,
 }: SquircleRect): SquirclePoint[] {
-	if (width <= 0 || height <= 0) {
-		return [];
-	}
+	if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return [];
 
-	const clampedRadius = getClampedRadius(width, height, radius);
-	if (clampedRadius <= 0.5) {
+	const r = getClampedCornerRadius(width, height, radius);
+	const right = x + width;
+	const bottom = y + height;
+	if (r === 0) {
 		return [
 			{ x, y },
-			{ x: x + width, y },
-			{ x: x + width, y: y + height },
-			{ x, y: y + height },
+			{ x: right, y },
+			{ x: right, y: bottom },
+			{ x, y: bottom },
 		];
 	}
 
-	const points: SquirclePoint[] = [{ x: x + clampedRadius, y }];
-	const corners = [
-		{
-			centerX: x + width - clampedRadius,
-			centerY: y + clampedRadius,
-			start: -Math.PI / 2,
-			end: 0,
-		},
-		{
-			centerX: x + width - clampedRadius,
-			centerY: y + height - clampedRadius,
-			start: 0,
-			end: Math.PI / 2,
-		},
-		{
-			centerX: x + clampedRadius,
-			centerY: y + height - clampedRadius,
-			start: Math.PI / 2,
-			end: Math.PI,
-		},
-		{
-			centerX: x + clampedRadius,
-			centerY: y + clampedRadius,
-			start: Math.PI,
-			end: (Math.PI * 3) / 2,
-		},
-	];
+	// More segments on large corners keep their edges smooth at export resolution.
+	const segments = Math.min(96, Math.max(8, 2 * Math.ceil(Math.sqrt(r))));
+	const topRight: SquirclePoint[] = [];
+	const bottomRight: SquirclePoint[] = [];
+	const bottomLeft: SquirclePoint[] = [];
+	const topLeft: SquirclePoint[] = [];
+	for (let index = 0; index <= segments; index += 1) {
+		const angle = (Math.PI / 2) * (index / segments);
+		const u = index === 0 ? 0 : Math.sin(angle);
+		const v = index === segments ? 0 : Math.cos(angle);
+		const scale = r / (u ** exponent + v ** exponent) ** (1 / exponent);
+		const dx = u * scale;
+		const dy = v * scale;
 
-	for (const corner of corners) {
-		for (let index = 1; index <= SQUIRCLE_SEGMENTS_PER_CORNER; index += 1) {
-			const t = index / SQUIRCLE_SEGMENTS_PER_CORNER;
-			const angle = corner.start + (corner.end - corner.start) * t;
-			points.push(
-				getSuperellipsePoint(
-					corner.centerX,
-					corner.centerY,
-					clampedRadius,
-					angle,
-					exponent,
-				),
-			);
-		}
+		// Include both tangencies so the path between corners stays straight.
+		topRight.push({ x: right - r + dx, y: y + (r - dy) });
+		bottomRight.push({ x: right - (r - dy), y: bottom - r + dx });
+		bottomLeft.push({ x: x + r - dx, y: bottom - (r - dy) });
+		topLeft.push({ x: x + (r - dy), y: y + r - dx });
 	}
 
-	return points;
+	const points = [...topRight, ...bottomRight, ...bottomLeft, ...topLeft];
+	return points.filter((point, index) => {
+		const previous = points[(index + points.length - 1) % points.length];
+		return point.x !== previous.x || point.y !== previous.y;
+	});
 }
 
 export function getSquircleSvgPath(rect: SquircleRect) {
@@ -125,11 +95,11 @@ export function getSquircleSvgPath(rect: SquircleRect) {
 
 export function drawSquircleOnCanvas(ctx: CanvasRenderingContext2D, rect: SquircleRect) {
 	const points = getSquirclePathPoints(rect);
+	ctx.beginPath();
 	if (points.length === 0) {
 		return;
 	}
 
-	ctx.beginPath();
 	ctx.moveTo(points[0].x, points[0].y);
 	for (let index = 1; index < points.length; index += 1) {
 		ctx.lineTo(points[index].x, points[index].y);

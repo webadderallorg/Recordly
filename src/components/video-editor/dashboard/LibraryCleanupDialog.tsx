@@ -1,4 +1,5 @@
 import { Checkbox, Dropdown, Label, Modal } from "@heroui/react";
+import { CaretDown } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,13 +13,12 @@ import {
 import { useI18n } from "@/contexts/I18nContext";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import {
-	matchesCleanupDate,
-	scanCleanup,
 	type CleanupDateFilter,
 	type CleanupRule,
 	type CleanupScan,
+	matchesCleanupDate,
+	scanCleanup,
 } from "./libraryCleanup";
-import { CaretDown } from "@phosphor-icons/react";
 import { ProjectThumbnail } from "./ProjectThumbnail";
 import { RawThumbnail } from "./RawRecordings";
 

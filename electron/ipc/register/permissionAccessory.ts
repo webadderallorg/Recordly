@@ -1,6 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import path from "node:path";
 import { app, BrowserWindow, nativeImage, systemPreferences, type WebContents } from "electron";
+import { permissionAccessoryWindowOwners } from "../../permissionAccessoryWindowOwner";
 import { getPackagedRendererBaseUrl } from "../../rendererServer";
 import { ensurePermissionDragHelperBinary } from "../paths/binaries";
 
@@ -95,6 +96,7 @@ export async function showPermissionAccessory(
 			nodeIntegration: false,
 		},
 	});
+	permissionAccessoryWindowOwners.set(accessory, owner);
 	const url = new URL(rendererURL);
 	url.search = new URLSearchParams({ windowType: "permission-accessory", permission }).toString();
 	accessory.webContents.setWindowOpenHandler(() => ({ action: "deny" }));

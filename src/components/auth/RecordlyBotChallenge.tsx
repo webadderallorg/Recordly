@@ -1,10 +1,10 @@
 import { Button } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 import {
+	type AuthProtectionState,
 	challengeEnabled,
 	challengeToken,
 	cloudAuthConfigUrl,
-	type AuthProtectionState,
 } from "../../lib/auth/cloudAuthProtection";
 
 export function RecordlyBotChallenge({

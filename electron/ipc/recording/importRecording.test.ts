@@ -57,6 +57,7 @@ vi.mock("../cursor/telemetry", () => ({
 	writeCursorTelemetry: vi.fn(),
 }));
 vi.mock("./library", () => ({ listRecordings: async () => [{ path: mocks.recording }] }));
+
 import { importRecording } from "./importRecording";
 
 beforeEach(async () => {

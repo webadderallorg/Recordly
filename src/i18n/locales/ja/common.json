@@ -18,7 +18,10 @@
 		"delete": "削除",
 		"done": "完了",
 		"retry": "再試行",
-		"apply": "適用"
+		"apply": "適用",
+		"minimize": "最小化",
+		"maximize": "最大化",
+		"restoreWindow": "ウィンドウを元に戻す"
 	},
 	"errors": {
 		"invalidFileType": "対応していないファイル形式です",
@@ -83,5 +86,6 @@
 		"downloadingButton": "ダウンロード中 · {{progress}}"
 	},
 	"width": "幅",
-	"height": "高さ"
+	"height": "高さ",
+	"windowControls": "ウィンドウ操作"
 }

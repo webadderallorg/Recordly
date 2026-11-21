@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { getHudOverlayInteractiveBounds, getHudOverlayWindow } from "../../windows";
 import {
 	hasLoggedInteractionHookFailure,
 	interactionCaptureCleanup,
@@ -17,6 +18,7 @@ import type {
 	UiohookLike,
 	UiohookModuleNamespace,
 } from "../types";
+import { getScreen } from "../utils";
 import {
 	getCursorCaptureElapsedMs,
 	getHookCursorScreenPoint,
@@ -190,6 +192,22 @@ export function shouldStartGlobalInteractionHook(platform: NodeJS.Platform = pro
 export function recordCursorMouseDown(button: 1 | 2 | 3) {
 	if (!isCursorCaptureActive || isCursorCapturePaused()) {
 		return;
+	}
+
+	const hudBounds = getHudOverlayInteractiveBounds();
+	const hud = getHudOverlayWindow();
+	if (hud?.isVisible() && !hud.isMinimized() && hudBounds) {
+		const cursor = getScreen().getCursorScreenPoint();
+		const isInsideHudInteractiveElement = hudBounds.some(
+			(bounds) =>
+				cursor.x >= bounds.left &&
+				cursor.x <= bounds.right &&
+				cursor.y >= bounds.top &&
+				cursor.y <= bounds.bottom,
+		);
+		if (isInsideHudInteractiveElement) {
+			return;
+		}
 	}
 
 	const point = getNormalizedCursorPoint();

@@ -1,4 +1,3 @@
-import { useScopedT } from "@/contexts/I18nContext";
 import {
 	ColorArea,
 	ColorField,
@@ -10,6 +9,7 @@ import {
 	Label,
 	Popover,
 } from "@heroui/react";
+import { useScopedT } from "@/contexts/I18nContext";
 import { Button } from "./button";
 
 type PaletteProps = {

@@ -1,3 +1,4 @@
+import { drawSquircleOnCanvas } from "@/lib/geometry/squircle";
 import {
 	type CaptionRgb,
 	compositeCaptionColor,
@@ -236,14 +237,13 @@ export function drawCaptionBoxBorder(
 	ctx.save();
 	ctx.strokeStyle = "rgba(0, 0, 0, 0.12)";
 	ctx.lineWidth = border;
-	ctx.beginPath();
-	ctx.roundRect(
-		x + border / 2,
-		y + border / 2,
-		Math.max(0, width - border),
-		Math.max(0, height - border),
-		Math.max(0, radius - border / 2),
-	);
+	drawSquircleOnCanvas(ctx, {
+		x: x + border / 2,
+		y: y + border / 2,
+		width: width - border,
+		height: height - border,
+		radius: radius - border / 2,
+	});
 	ctx.stroke();
 	ctx.restore();
 }

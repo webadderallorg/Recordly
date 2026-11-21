@@ -18,7 +18,7 @@ export type CaptionSidecarWriteResult = {
 };
 
 export function getCaptionSidecarExtensions(
-	payload: CaptionSidecarPayload | null,
+	payload: Pick<CaptionSidecarPayload, "format"> | null,
 ): readonly ("srt" | "vtt")[] {
 	if (!payload) return [];
 	return payload.format === "both" ? ["srt", "vtt"] : [payload.format];

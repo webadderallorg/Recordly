@@ -215,6 +215,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	hudOverlayClose: () => {
 		ipcRenderer.send("hud-overlay-close");
 	},
+	onHudOverlayRestored: (callback: () => void) => {
+		const listener = () => callback();
+		ipcRenderer.on("hud-overlay-restored", listener);
+		return () => ipcRenderer.removeListener("hud-overlay-restored", listener);
+	},
 	getEditorMode: () => ipcRenderer.invoke("get-editor-mode"),
 	onEditorModeChanged: (callback: (inEditor: boolean) => void) => {
 		const listener = (_event: Electron.IpcRendererEvent, inEditor: boolean) =>
@@ -227,6 +232,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	hudOverlaySetWebcamPreviewVisible: (visible: boolean) => {
 		ipcRenderer.send("hud-overlay-set-webcam-preview-visible", visible);
+	},
+	hudOverlaySetInteractiveBounds: (
+		bounds: Array<{
+			left: number;
+			top: number;
+			right: number;
+			bottom: number;
+			shape?: "ellipse";
+		}> | null,
+	) => {
+		ipcRenderer.send("hud-overlay-set-interactive-bounds", bounds);
 	},
 	getHudOverlayCaptureProtection: () => {
 		return ipcRenderer.invoke("get-hud-overlay-capture-protection");
@@ -538,15 +554,28 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		return await ipcRenderer.invoke("get-sources", opts);
 	},
 	showRecordingPermissions: () => ipcRenderer.invoke("show-recording-permissions"),
-	onRecordingPermissionsRequested: (callback: () => void) => {
-		const listener = () => callback();
-		ipcRenderer.on("recording-permissions-requested", listener);
-		return () => ipcRenderer.removeListener("recording-permissions-requested", listener);
-	},
 	showRecordingHud: () => ipcRenderer.invoke("show-recording-hud"),
 	showOnboardingWindow: (options?: { preview?: boolean }) =>
 		ipcRenderer.invoke("show-onboarding-window", options),
+	...(process.platform === "darwin" || process.platform === "win32"
+		? { replayOnboardingIntro: () => ipcRenderer.invoke("replay-onboarding-intro") }
+		: {}),
 	closeOnboardingWindow: () => ipcRenderer.invoke("close-onboarding-window"),
+	resolveStartupOnboarding: (action: "show" | "continue" | "restart") =>
+		ipcRenderer.invoke("resolve-startup-onboarding", action),
+	reportOnboardingIntro: (stage: "ready" | "finished" | "skipped") =>
+		ipcRenderer.send("onboarding-intro", stage),
+	onOnboardingIntroShown: (callback: () => void) => {
+		const listener = () => callback();
+		ipcRenderer.on("onboarding-intro-shown", listener);
+		return () => ipcRenderer.removeListener("onboarding-intro-shown", listener);
+	},
+	onOnboardingSoundtrackStart: (callback: () => void) => {
+		const listener = () => callback();
+		ipcRenderer.on("onboarding-soundtrack-start", listener);
+		ipcRenderer.send("onboarding-soundtrack-ready");
+		return () => ipcRenderer.removeListener("onboarding-soundtrack-start", listener);
+	},
 	createProjectFile: (data: unknown, thumbnail?: string | null) =>
 		ipcRenderer.invoke("create-project-file", data, thumbnail),
 	renameLibraryProject: (path: string, name: string) =>
@@ -744,9 +773,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getAccessibilityPermissionStatus: () => {
 		return ipcRenderer.invoke("get-accessibility-permission-status");
 	},
-	requestAccessibilityPermission: () => {
-		return ipcRenderer.invoke("request-accessibility-permission");
-	},
 	getScreenRecordingPermissionStatus: () => {
 		return ipcRenderer.invoke("get-screen-recording-permission-status");
 	},
@@ -766,6 +792,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	openAccessibilityPreferences: (preview?: boolean) => {
 		return ipcRenderer.invoke("open-accessibility-preferences", preview);
 	},
+	suggestExportFileName: (fileName: string, sidecarFormat?: "srt" | "vtt" | "both") =>
+		ipcRenderer.invoke("suggest-export-file-name", fileName, sidecarFormat),
 	saveExportedVideo: (
 		videoData: ArrayBuffer,
 		fileName: string,
@@ -1135,10 +1163,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		return () => ipcRenderer.removeListener("menu-save-project-as", listener);
 	},
 	getWindowChrome: () => ipcRenderer.invoke("get-window-chrome"),
-	onWindowChromeChanged: (callback: (chrome: { trafficLightsVisible: boolean }) => void) => {
+	windowControl: (action: "minimize" | "maximize" | "close") =>
+		ipcRenderer.invoke("window-control", action),
+	onWindowChromeChanged: (
+		callback: (chrome: {
+			trafficLightsVisible: boolean;
+			customControls?: boolean;
+			maximized?: boolean;
+		}) => void,
+	) => {
 		const listener = (
 			_event: Electron.IpcRendererEvent,
-			chrome: { trafficLightsVisible: boolean },
+			chrome: {
+				trafficLightsVisible: boolean;
+				customControls?: boolean;
+				maximized?: boolean;
+			},
 		) => callback(chrome);
 		ipcRenderer.on("window-chrome-changed", listener);
 		return () => ipcRenderer.removeListener("window-chrome-changed", listener);

@@ -11,10 +11,10 @@ import {
 import {
 	DEFAULT_SHORTCUTS,
 	mergeWithDefaults,
-	serializeShortcuts,
 	SHORTCUTS_VERSION,
 	type ShortcutsConfig,
 	type StoredShortcutsConfig,
+	serializeShortcuts,
 } from "@/lib/shortcuts";
 import { isMac as getIsMac } from "@/utils/platformUtils";
 

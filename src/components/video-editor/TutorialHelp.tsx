@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { UpgradeButton } from "@/components/billing/UpgradeButton";
 import {
 	DiscordIcon,
 	openExternalLink,
@@ -26,7 +25,7 @@ import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { formatBinding, SHORTCUT_ACTIONS, SHORTCUT_LABELS } from "@/lib/shortcuts";
 import { formatShortcut } from "@/utils/platformUtils";
 
-export { RECORDLY_ISSUES_URL, openExternalLink } from "@/components/feedback/FeedbackLinks";
+export { openExternalLink, RECORDLY_ISSUES_URL } from "@/components/feedback/FeedbackLinks";
 export const APP_HEADER_ACTION_BUTTON_CLASS =
 	"h-7 px-2 text-xs text-muted-foreground hover:bg-foreground/10 hover:text-foreground transition-all gap-1.5";
 export const APP_HEADER_ICON_BUTTON_CLASS =
@@ -59,20 +58,6 @@ export function DiscordLinkButton({ className }: { className?: string }) {
 		>
 			<DiscordIcon className="size-4 shrink-0" />
 		</Button>
-	);
-}
-
-export function CommunityLinks() {
-	const tBilling = useScopedT("billing");
-	return (
-		<div className="community-links mt-2 shrink-0">
-			<UpgradeButton
-				label={tBilling("upgradeShort", "Upgrade")}
-				showDiscount={false}
-				truncateLabel
-				className="h-8 w-full min-w-0 px-1.5 text-xs"
-			/>
-		</div>
 	);
 }
 

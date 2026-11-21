@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import { calculateOutputDimensions, GIF_SIZE_PRESETS } from "@/lib/exporter";
 import type { GifSizeEstimate } from "@/lib/exporter/gifExporter";
+import { buildExportRenderOptions } from "./buildExportRenderOptions";
+import type { ExportRunnerInput } from "./exportRunnerSupport";
 import {
 	cacheGifSizeEstimate,
 	createGifEstimateKeyMemo,
@@ -8,8 +10,6 @@ import {
 	gifEstimateTelemetryKey,
 	runGifSizeEstimate,
 } from "./gifEstimateCache";
-import { buildExportRenderOptions } from "./buildExportRenderOptions";
-import type { ExportRunnerInput } from "./exportRunnerSupport";
 
 const ignoreEstimateProgress = () => undefined;
 

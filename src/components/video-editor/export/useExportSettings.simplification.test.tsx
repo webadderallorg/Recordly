@@ -3,10 +3,7 @@ import { expect, it } from "vitest";
 import { DEFAULT_EDITOR_PREFERENCES } from "../editorPreferences";
 import { useExportSettings } from "./useExportSettings";
 
-it.each([
-	false,
-	true,
-])("uses recommended settings unless More options is enabled (%s)", (advanced) => {
+it.each([false, true])("honors frame rate regardless of Advanced (%s)", (advanced) => {
 	const preferences = {
 		...DEFAULT_EDITOR_PREFERENCES,
 		advancedExportSettings: advanced,
@@ -21,8 +18,8 @@ it.each([
 	}
 	renderToStaticMarkup(<Capture />);
 	expect(settings).toMatchObject({
-		mp4FrameRate: advanced ? 60 : 30,
-		gifFrameRate: advanced ? 30 : 15,
+		mp4FrameRate: 60,
+		gifFrameRate: 30,
 		exportEncodingMode: advanced ? "quality" : "balanced",
 	});
 	// Turning the disclosure off must not erase a user's saved overrides.

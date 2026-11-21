@@ -20,6 +20,7 @@
 		"standard": "Standard"
 	},
 	"cloud": {
+		"uploadingVideo": "Téléversement de la vidéo…",
 		"signInRequired": "Connectez-vous à Recordly avant de créer un lien de partage.",
 		"prepareFailed": "Impossible de préparer le montage actuel pour le partage.",
 		"uploadFailed": "Échec de l’envoi dans le cloud.",
@@ -228,6 +229,8 @@
 		"confirm": "D'accord"
 	},
 	"exportStatus": {
+		"finishingVideo": "Finalisation de la vidéo…",
+		"savingVideo": "Enregistrement de la vidéo…",
 		"exporting": "Exportation",
 		"renderingFile": "Rendu de votre fichier.",
 		"preparing": "Préparation de l’export...",

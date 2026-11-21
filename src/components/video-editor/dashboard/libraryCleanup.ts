@@ -1,8 +1,8 @@
-import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
-import type { EditorProjectData } from "../projectPersistence";
-import { fromFileUrl } from "../projectMediaPaths";
-import { getTimelineDurationMs } from "../types";
 import { getProjectShareLink, getProjectShareLinkStrict } from "../cloud/projectShareLinks";
+import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
+import { fromFileUrl } from "../projectMediaPaths";
+import type { EditorProjectData } from "../projectPersistence";
+import { getTimelineDurationMs } from "../types";
 import { hasLibraryExport, readLibraryExportHistory } from "./libraryExportHistory";
 import { readLibraryMediaInfo } from "./librarySort";
 

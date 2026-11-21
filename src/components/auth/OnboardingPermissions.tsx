@@ -18,12 +18,14 @@ export function OnboardingPermissions({
 	onBack,
 	onFinish,
 	preview = false,
+	persistRequest = true,
 	showFooter = true,
 	onReadyChange,
 }: {
 	onBack?: () => void;
-	onFinish: () => void;
+	onFinish?: () => void;
 	preview?: boolean;
+	persistRequest?: boolean;
 	showFooter?: boolean;
 	onReadyChange?: (ready: boolean) => void;
 }) {
@@ -37,6 +39,7 @@ export function OnboardingPermissions({
 		accessibility: false,
 	});
 	const [busy, setBusy] = useState<string>();
+	const [settingsOpenedFor, setSettingsOpenedFor] = useState<"screen" | "accessibility">();
 	const [statusError, setStatusError] = useState<string>();
 	const [requestError, setRequestError] = useState<string>();
 	const error = requestError ?? statusError;
@@ -44,8 +47,9 @@ export function OnboardingPermissions({
 	const refreshing = useRef(false);
 	const canSimulate = import.meta.env.DEV && preview;
 	useEffect(() => {
-		if (!preview) saveAppSetting("recordly.onboarding.permissionsRequested", true);
-	}, [preview]);
+		if (!preview && persistRequest)
+			saveAppSetting("recordly.onboarding.permissionsRequested", true);
+	}, [preview, persistRequest]);
 	// Preview resets only the displayed state; macOS remains the source of actual grants.
 	const granted = {
 		screen: screenGranted && !(canSimulate && simulatedMissing.screen),
@@ -123,22 +127,11 @@ export function OnboardingPermissions({
 		const testSetup = canSimulate && simulatedMissing[permission];
 		setBusy(permission);
 		try {
-			if (testSetup) {
-				const opened = await (permission === "screen"
-					? window.electronAPI.openScreenRecordingPreferences(true)
-					: window.electronAPI.openAccessibilityPreferences(true));
-				if (!opened.success) throw new Error(t("openSettingsFailed"));
-			} else if (permission === "accessibility") {
-				const result = await window.electronAPI.requestAccessibilityPermission();
-				if (!result.success) throw new Error(t("accessibilityFailed"));
-				if (!result.trusted) {
-					const opened = await window.electronAPI.openAccessibilityPreferences();
-					if (!opened.success) throw new Error(t("openSettingsFailed"));
-				}
-			} else {
-				const result = await window.electronAPI.openScreenRecordingPreferences();
-				if (!result.success) throw new Error(t("openSettingsFailed"));
-			}
+			const opened = await (permission === "screen"
+				? window.electronAPI.openScreenRecordingPreferences(testSetup || undefined)
+				: window.electronAPI.openAccessibilityPreferences(testSetup || undefined));
+			if (!opened.success) throw new Error(t("openSettingsFailed"));
+			setSettingsOpenedFor(permission);
 			await refresh();
 			setRequestError(undefined);
 			if (testSetup) setSimulatedMissing((current) => ({ ...current, [permission]: false }));
@@ -148,20 +141,48 @@ export function OnboardingPermissions({
 			setBusy(undefined);
 		}
 	};
+	if (platform === "checking") return <div role="status">{t("checking")}</div>;
+
+	const footer = showFooter && onFinish && (
+		<OnboardingFooter>
+			{onBack ? (
+				<Button variant="ghost" aria-label={t("backToAccount")} onPress={onBack}>
+					<ArrowLeft size={16} />
+					{t("back")}
+				</Button>
+			) : (
+				<div />
+			)}
+			<OnboardingPrimaryAction isDisabled={!canFinish} onPress={onFinish}>
+				{t("startRecording")}
+			</OnboardingPrimaryAction>
+		</OnboardingFooter>
+	);
+
+	// Windows and Linux choose a capture source after opening the recording HUD.
+	if (platform === "other")
+		return (
+			<>
+				<OnboardingBody scrollable={false}>
+					<OnboardingHeader
+						centered
+						title={<OnboardingTitle text={t("welcomeTitle")} />}
+						description={t(preview ? "otherDescription" : "signedIn")}
+					/>
+				</OnboardingBody>
+				{footer}
+			</>
+		);
 
 	return (
 		<div
 			className="onboarding-permissions relative flex h-full min-h-0 flex-col"
-			aria-busy={platform === "checking"}
+			aria-busy={Boolean(busy)}
 		>
-			<PermissionsConfetti ready={platform === "mac" && canFinish} />
+			<PermissionsConfetti ready={canFinish} />
 			<OnboardingBody>
-				<OnboardingHeader
-					centered
-					title={<OnboardingTitle text={t("allowTitle")} />}
-					description={platform === "other" ? t("otherDescription") : undefined}
-				/>
-				{canSimulate && platform !== "other" && (
+				<OnboardingHeader centered title={<OnboardingTitle text={t("allowTitle")} />} />
+				{canSimulate && (
 					<div
 						className="flex flex-wrap items-center gap-2 text-xs text-muted"
 						data-permission-preview-controls
@@ -169,7 +190,7 @@ export function OnboardingPermissions({
 						<Button
 							variant="secondary"
 							size="sm"
-							isDisabled={platform === "checking" || Boolean(busy)}
+							isDisabled={Boolean(busy)}
 							onPress={() => {
 								setSimulatedMissing({ screen: true, accessibility: true });
 								setRequestError(undefined);
@@ -180,99 +201,85 @@ export function OnboardingPermissions({
 						</Button>
 					</div>
 				)}
-				{platform !== "other" && (
-					<>
-						<div className="onboarding-permission-list">
-							{[
-								{
-									key: "screen" as const,
-									name: t("screen"),
-									description: t("screenDescription"),
-									granted: granted.screen,
-								},
-								{
-									key: "accessibility" as const,
-									name: t("accessibility"),
-									description: t("accessibilityDescription"),
-									granted: granted.accessibility,
-								},
-							].map(({ key, name, description, granted }, index) => (
-								<motion.div
-									key={key}
-									initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-									animate={{ opacity: 1, y: 0 }}
-									transition={{
-										duration: reduceMotion ? 0 : 0.3,
-										delay: reduceMotion ? 0 : 0.1 + index * 0.07,
-										ease: [0.22, 1, 0.36, 1],
-									}}
-									className="onboarding-permission-row"
-								>
-									<div className="min-w-0">
-										<h3 className="text-base font-semibold">{name}</h3>
-										<p className="mt-1.5 text-sm leading-relaxed text-muted">
-											{description}
-										</p>
-									</div>
-									<div className="onboarding-permission-action">
-										{granted ? (
-											<span
-												role="status"
-												aria-live="polite"
-												aria-label={`${name}: ${t("allowed")}`}
-												className="onboarding-permission-granted text-success"
-											>
-												<Check size={22} aria-hidden="true" />
-												{t("allowed")}
-											</span>
-										) : (
-											<Button
-												variant="secondary"
-												className="onboarding-permission-button w-full rounded-xl text-accent"
-												isDisabled={
-													platform === "checking" || Boolean(busy)
-												}
-												onPress={() => void allow(key)}
-												aria-label={t("allowPermission", undefined, {
+				<div className="onboarding-permission-list">
+					{[
+						{
+							key: "screen" as const,
+							name: t("screen"),
+							description: t("screenDescription"),
+							granted: granted.screen,
+						},
+						{
+							key: "accessibility" as const,
+							name: t("accessibility"),
+							description: t("accessibilityDescription"),
+							granted: granted.accessibility,
+						},
+					].map(({ key, name, description, granted }, index) => (
+						<motion.div
+							key={key}
+							initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{
+								duration: reduceMotion ? 0 : 0.3,
+								delay: reduceMotion ? 0 : 0.1 + index * 0.07,
+								ease: [0.22, 1, 0.36, 1],
+							}}
+							className="onboarding-permission-row"
+						>
+							<div className="min-w-0">
+								<h3 className="text-base font-semibold">{name}</h3>
+								<p className="mt-1.5 text-sm leading-relaxed text-muted">
+									{description}
+								</p>
+							</div>
+							<div className="onboarding-permission-action">
+								{granted ? (
+									<span
+										role="status"
+										aria-live="polite"
+										aria-label={`${name}: ${t("allowed")}`}
+										className="onboarding-permission-granted text-success"
+									>
+										<Check size={22} aria-hidden="true" />
+										{t("allowed")}
+									</span>
+								) : (
+									<Button
+										variant="secondary"
+										className="onboarding-permission-button w-full rounded-xl text-accent"
+										isDisabled={Boolean(busy)}
+										onPress={() => void allow(key)}
+										aria-label={t("allowPermission", undefined, {
+											permission: name,
+										})}
+									>
+										{busy === key
+											? t("opening")
+											: t("allowPermission", undefined, {
 													permission: name,
 												})}
-											>
-												{platform === "checking"
-													? t("checking")
-													: busy === key
-														? t("opening")
-														: t("allowPermission", undefined, {
-																permission: name,
-															})}
-											</Button>
-										)}
-									</div>
-								</motion.div>
-							))}
-						</div>
-						{error && (
-							<p role="alert" className="text-sm text-danger">
-								{error} <ErrorReportButton error={error} />
-							</p>
+									</Button>
+								)}
+							</div>
+						</motion.div>
+					))}
+				</div>
+				{settingsOpenedFor && !granted[settingsOpenedFor] && (
+					<p role="status" className="text-sm text-muted">
+						{t(
+							"permissionDragFallback",
+							"If the drag panel doesn't appear, click + in the System Settings list, select Recordly, then turn it on.",
 						)}
-					</>
+					</p>
+				)}
+				{error && (
+					<p role="alert" className="text-sm text-danger">
+						{error} <ErrorReportButton error={error} />
+					</p>
 				)}
 			</OnboardingBody>
-			{showFooter && (
-				<OnboardingFooter>
-					{onBack ? (
-						<Button variant="ghost" aria-label={t("backToAccount")} onPress={onBack}>
-							<ArrowLeft size={16} />
-							{t("back")}
-						</Button>
-					) : (
-						<div />
-					)}
-					<OnboardingPrimaryAction isDisabled={!canFinish} onPress={onFinish}>
-						{t("startRecording")}
-					</OnboardingPrimaryAction>
-				</OnboardingFooter>
-			)}
+			{footer}
 		</div>
 	);
 }

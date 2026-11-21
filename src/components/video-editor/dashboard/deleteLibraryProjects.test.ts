@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
 const state = vi.hoisted(() => ({
 	links: new Map<string, { url: string; accountId: string }>(),
 	manage: vi.fn(),
@@ -14,7 +15,9 @@ vi.mock("../cloud/projectShareLinks", () => ({
 		for (const [p, s] of state.links) if (s.url === url) state.links.delete(p);
 	},
 }));
+
 import { deleteLibraryProjectsWithMedia } from "./deleteLibraryProjects";
+
 beforeEach(() => {
 	state.links.clear();
 	state.manage.mockReset();

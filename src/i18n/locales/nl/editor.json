@@ -20,6 +20,7 @@
 		"standard": "Standaard"
 	},
 	"cloud": {
+		"uploadingVideo": "Video uploaden…",
 		"signInRequired": "Meld je aan bij Recordly voordat je een deellink maakt.",
 		"prepareFailed": "De huidige montage kon niet worden voorbereid om te delen.",
 		"uploadFailed": "Uploaden naar de cloud mislukt.",
@@ -228,6 +229,8 @@
 		"confirm": "Oké"
 	},
 	"exportStatus": {
+		"finishingVideo": "Video afronden…",
+		"savingVideo": "Video opslaan…",
 		"exporting": "Exporteren",
 		"renderingFile": "Je bestand wordt gerenderd.",
 		"preparing": "Export voorbereiden...",

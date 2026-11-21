@@ -11,7 +11,9 @@ import { type AppLocale, type I18nNamespace } from "@/i18n/config";
 import { getInitialLocale, getSystemLocale, LOCALE_STORAGE_KEY, matchLocale } from "@/i18n/locale";
 import { translateForLocale } from "@/i18n/messages";
 import { setActiveLocale } from "@/i18n/runtime";
+
 export { translate } from "@/i18n/runtime";
+
 import { I18nProvider as AriaI18nProvider } from "react-aria";
 
 interface I18nContextValue {

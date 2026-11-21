@@ -1,5 +1,5 @@
 import { LEGAL_VERSION, legalDetails, legalReady } from "./config";
-import { RecordlyLegalHeader, RecordlyLegalFooter } from "./RecordlyLegalNavigation";
+import { RecordlyLegalFooter, RecordlyLegalHeader } from "./RecordlyLegalNavigation";
 
 export function RecordlyLegalDocument({ title, description, children }) {
 	return (

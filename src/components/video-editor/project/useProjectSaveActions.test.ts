@@ -21,10 +21,11 @@ vi.mock("@/components/ui/toast", () => ({
 }));
 vi.mock("../dashboard/useProjectFolders", () => ({ moveProjectFolderReferences: vi.fn() }));
 vi.mock("../cloud/projectShareLinks", () => ({ moveProjectShareLink: vi.fn() }));
-import { useProjectSaveActions } from "./useProjectSaveActions";
+
 import { toast } from "@/components/ui/toast";
-import { persistEditorHistory, createProjectHistorySnapshot } from "../editorHistoryPersistence";
 import { createEditorHistoryStack, recordEditorHistorySnapshot } from "../editorHistory";
+import { createProjectHistorySnapshot, persistEditorHistory } from "../editorHistoryPersistence";
+import { useProjectSaveActions } from "./useProjectSaveActions";
 
 type Input = Parameters<typeof useProjectSaveActions>[0];
 const source = "/recordings/shared.mp4";

@@ -13,6 +13,7 @@ import {
 	getCaptionTextMaxWidth,
 } from "@/components/video-editor/captionStyle";
 import { type AutoCaptionSettings, type CaptionCue } from "@/components/video-editor/types";
+import { drawSquircleOnCanvas, SQUIRCLE_RADIUS_SCALE } from "@/lib/geometry/squircle";
 import { drawCaptionLine } from "./captionText";
 
 /** Draw the active caption using the same typography and timing as preview. */
@@ -67,14 +68,14 @@ export function renderCaptions(
 	ctx.globalAlpha = activeCaptionLayout.opacity;
 
 	ctx.fillStyle = getCaptionBackground(settings);
-	ctx.beginPath();
-	ctx.roundRect(
-		-boxWidth / 2,
-		-boxHeight / 2,
-		boxWidth,
-		boxHeight,
-		Math.min(boxWidth / 2, boxHeight / 2, getCaptionScaledRadius(settings.boxRadius, fontSize)),
-	);
+	const radius = getCaptionScaledRadius(settings.boxRadius, fontSize) * SQUIRCLE_RADIUS_SCALE;
+	drawSquircleOnCanvas(ctx, {
+		x: -boxWidth / 2,
+		y: -boxHeight / 2,
+		width: boxWidth,
+		height: boxHeight,
+		radius,
+	});
 	ctx.fill();
 	drawCaptionBoxBorder(
 		ctx,
@@ -83,7 +84,7 @@ export function renderCaptions(
 		-boxHeight / 2,
 		boxWidth,
 		boxHeight,
-		Math.min(boxWidth / 2, boxHeight / 2, getCaptionScaledRadius(settings.boxRadius, fontSize)),
+		radius,
 		fontSize,
 	);
 

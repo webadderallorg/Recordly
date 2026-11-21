@@ -26,7 +26,7 @@ export function getDesktopWallpaperPath(): Promise<string | null> {
 
 /** Preferences follow the desktop; saved projects retain their concrete snapshot path. */
 export function desktopWallpaperPreference(wallpaper: string): string {
-	return /(?:^|[\\/])desktop-wallpapers[\\/][a-f0-9]{64}\.png$/i.test(wallpaper)
+	return /(?:^|[\\/])desktop-wallpapers[\\/][a-f0-9]{64}\.(?:png|jpg)$/i.test(wallpaper)
 		? DESKTOP_WALLPAPER
 		: wallpaper;
 }

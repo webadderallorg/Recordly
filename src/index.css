@@ -64,6 +64,40 @@
 }
 
 @layer base {
+	@supports (corner-shape: squircle) {
+		/* A squircle needs 1.84× the arc radius to match its 45-degree cutout. */
+		* {
+			--recordly-corner-radius-scale: 1.84;
+			corner-shape: squircle;
+		}
+
+		*::before,
+		*::after {
+			corner-shape: inherit;
+		}
+
+		:where(
+				.rounded-full,
+				.\!rounded-full,
+				.rounded-full\!,
+				.radio__control,
+				.radio__indicator,
+				.slider__track,
+				.slider__fill,
+				.slider__thumb,
+				.switch__control,
+				.switch__thumb,
+				.badge:not([class*="rounded-"]),
+				.chip:not([class*="rounded-"]),
+				.close-button:not([class*="rounded-"]),
+				.tabs__list-container__scroll-prev,
+				.tabs__list-container__scroll-next
+			) {
+			--recordly-corner-radius-scale: 1;
+			corner-shape: round;
+		}
+	}
+
 	:root {
 		--app-font-sans:
 			"DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -75,6 +109,10 @@
 		--muted-foreground: var(--muted);
 		--destructive: var(--danger);
 		--input: var(--field-border);
+	}
+	:root:lang(vi) {
+		/* Bundled DM Sans lacks Vietnamese tone marks. */
+		--app-font-sans: system-ui, "Segoe UI", sans-serif;
 	}
 	html,
 	body,
@@ -88,6 +126,10 @@
 		color: var(--foreground);
 		font-family: var(--app-font-sans);
 		user-select: none;
+	}
+	html[data-window-type="onboarding-intro"],
+	html[data-window-type="onboarding-intro"] body {
+		background: transparent;
 	}
 	html.hud-overlay-window,
 	body.hud-overlay-window,
@@ -137,27 +179,64 @@
 }
 
 /* Responsive geometry belongs to the editor, leaving HeroUI control styles intact. */
+.editor-header {
+	container: editor-header / inline-size;
+}
 .editor-header-start,
 .editor-header-end {
 	white-space: nowrap;
 }
+@container editor-header (max-width: 860px) {
+	.editor-header-end {
+		gap: 8px;
+	}
+	.editor-header-start > [role="separator"] {
+		margin-inline: 8px;
+	}
+	.editor-header .editor-header-icon-button {
+		width: 36px;
+		min-width: 36px;
+		padding-inline: 0;
+	}
+	.editor-header-button-label {
+		display: none;
+	}
+}
+.editor-preview-panel {
+	container: editor-preview / inline-size;
+}
 .editor-playback {
 	container-type: inline-size;
 }
-@container (max-width: 760px) {
+@container editor-preview (max-width: 760px) {
+	.editor-playback {
+		grid-template-columns: auto minmax(max-content, 1fr) auto;
+	}
+	.editor-playback-add-layer {
+		width: 36px;
+		min-width: 36px;
+		padding-inline: 0;
+	}
+	.editor-playback-add-label,
+	.editor-playback-add-caret {
+		display: none;
+	}
+}
+@container editor-preview (max-width: 520px) {
+	.editor-playback {
+		gap: 4px;
+		padding-inline: 8px;
+	}
+	.editor-playback button {
+		width: 28px;
+		min-width: 28px;
+		height: 28px;
+	}
 	.editor-playback-tools {
-		grid-row: 2;
-		grid-column: 1 / -1;
-		justify-content: center;
-		padding-bottom: 8px;
+		gap: 4px;
 	}
-	.editor-playback-center {
-		grid-row: 1;
-		grid-column: 2;
-	}
-	.editor-playback-volume {
-		grid-row: 1;
-		grid-column: 3;
+	.editor-playback-center > div {
+		gap: 2px;
 	}
 }
 @container (max-width: 520px) {
@@ -202,6 +281,20 @@
 	text-overflow: ellipsis;
 }
 
+/* Report sits on the same row as a compact button, so it shares that row's height. */
+[data-error-actions] > [data-error-report] {
+	display: flex;
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--muted);
+}
+[data-error-actions] > [data-error-report] > button {
+	display: inline-flex;
+	align-items: center;
+	height: 28px;
+	text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+}
+
 @media (forced-colors: active) {
 	:is(.input, .textarea):focus,
 	.input-group:has(.input-group__input:focus),
@@ -216,20 +309,38 @@
 	color: var(--accent-foreground);
 }
 
-@container (max-width: 110px) {
-	.zoom-icon,
-	.zoom-mode,
-	.zoom-title {
-		display: none;
-	}
-	.zoom-details {
-		font-size: 11px;
+.zoom-title,
+.zoom-value,
+.zoom-mode {
+	display: none;
+}
+.zoom-icon {
+	inline-size: clamp(0px, calc(100cqi - 12px), 14px);
+	block-size: auto;
+}
+
+/* Reveal more metadata as space opens up, with an inline layout for short rows. */
+@container timeline-zoom (height >= 34px) {
+	.zoom-description {
+		flex-direction: column;
 	}
 }
-@container (max-height: 39px) {
+@container timeline-zoom ((width >= 38px) and (height >= 34px)) or (width >= 62px) {
 	.zoom-title {
-		display: none;
+		display: block;
 	}
+}
+@container timeline-zoom ((width >= 56px) and (height >= 34px)) or (width >= 102px) {
+	.zoom-value {
+		display: block;
+	}
+}
+@container timeline-zoom ((width >= 116px) and (height >= 34px)) or (width >= 160px) {
+	.zoom-mode {
+		display: inline-flex;
+	}
+}
+@container timeline-zoom (width <= 110px) or (height <= 39px) {
 	.zoom-details {
 		font-size: 11px;
 	}
@@ -272,8 +383,10 @@
 	box-shadow: none;
 }
 /* Explicit editor keyboard targets retain focus treatment above unlayered resets. */
-.inline-project-name:focus-visible,
-[class~="focus-visible:outline-2"][class~="focus-visible:outline-accent"]:focus-visible,
+.inline-project-name[data-focus-visible],
+[class~="focus-visible:outline-2"][class~="focus-visible:outline-accent"]:focus-visible:not(
+		[data-pointer-focus]
+	),
 [class~="focus-visible:outline-2"][class~="focus-visible:outline-accent"]:has(
 		> textarea:focus-visible
 	) {

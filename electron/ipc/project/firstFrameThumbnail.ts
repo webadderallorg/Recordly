@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import {
-	PROJECT_THUMBNAIL_WIDTH,
 	PROJECT_THUMBNAIL_HEIGHT,
+	PROJECT_THUMBNAIL_WIDTH,
 } from "../../../src/lib/projectThumbnail";
+import { getFfmpegBinaryPath } from "../ffmpeg/binary";
+
 const run = promisify(execFile);
 let queue = Promise.resolve();
 

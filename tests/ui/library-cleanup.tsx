@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { I18nProvider } from "@/contexts/I18nContext";
 import { Button } from "@/components/ui/button";
 import { DashboardFilters } from "@/components/video-editor/dashboard/DashboardFilters";
 import { DashboardLibraryActions } from "@/components/video-editor/dashboard/DashboardLibraryActions";
 import { useDashboardModel } from "@/components/video-editor/dashboard/useDashboardModel";
 import type { ProjectLibraryEntry } from "@/components/video-editor/ProjectBrowserDialog";
+import { I18nProvider } from "@/contexts/I18nContext";
 import "@/index.css";
 
 const thumbnail = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120"><rect width="160" height="120" fill="#007aff"/><rect x="20" y="20" width="120" height="80" rx="8" fill="#ffffff"/></svg>')}`;

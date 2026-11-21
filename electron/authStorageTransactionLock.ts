@@ -14,11 +14,31 @@ type Ticket = {
 
 const MAX_RECORD_BYTES = 512;
 const TICKET_NAME = /^([1-9][0-9]{0,9})-([0-9a-f]{32})\.ticket$/;
+const windows = path.sep === "\\";
 
 export class AuthStorageBusyError extends Error {
-	constructor() {
+	readonly cause?: unknown;
+
+	constructor(cause?: unknown) {
 		super("Saved authentication is busy. Try again shortly.");
 		this.name = "AuthStorageBusyError";
+		this.cause = cause;
+	}
+}
+
+async function retryTicketIO<T>(operation: () => Promise<T>, deadline: number, pollMs: number) {
+	for (;;) {
+		try {
+			return await operation();
+		} catch (error) {
+			const { code } = error as NodeJS.ErrnoException;
+			if (!windows || (code !== "EPERM" && code !== "EACCES" && code !== "EBUSY"))
+				throw error;
+			const remaining = deadline - performance.now();
+			if (remaining <= 0) throw new AuthStorageBusyError(error);
+			await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, remaining)));
+			if (performance.now() >= deadline) throw new AuthStorageBusyError(error);
+		}
 	}
 }
 
@@ -40,20 +60,16 @@ function validTicket(value: unknown, name: string): value is Ticket {
 	);
 }
 
-async function readTicket(filePath: string): Promise<Ticket | null> {
-	let file: Awaited<ReturnType<typeof fs.open>> | undefined;
+async function readTicket(filePath: string): Promise<Ticket> {
+	const file = await fs.open(filePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
 	try {
-		file = await fs.open(filePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
 		const stat = await file.stat();
 		if (!stat.isFile() || stat.size > MAX_RECORD_BYTES) throw new AuthStorageBusyError();
 		const value: unknown = JSON.parse(await file.readFile("utf8"));
 		if (!validTicket(value, path.basename(filePath))) throw new AuthStorageBusyError();
 		return value;
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-		throw new AuthStorageBusyError();
 	} finally {
-		await file?.close();
+		await file.close();
 	}
 }
 
@@ -67,12 +83,17 @@ function provenDead(pid: number): boolean {
 	}
 }
 
-async function liveTickets(directory: string): Promise<Ticket[]> {
+async function liveTickets(directory: string, deadline: number, pollMs: number): Promise<Ticket[]> {
 	const tickets: Ticket[] = [];
 	for (const name of await fs.readdir(directory)) {
 		if (!TICKET_NAME.test(name)) continue;
 		const filePath = path.join(directory, name);
-		const ticket = await readTicket(filePath);
+		const ticket = await retryTicketIO(() => readTicket(filePath), deadline, pollMs).catch(
+			(error: NodeJS.ErrnoException) => {
+				if (error.code === "ENOENT") return null;
+				throw new AuthStorageBusyError(error);
+			},
+		);
 		if (!ticket) continue;
 		if (provenDead(ticket.pid)) {
 			// This name contains the dead operation's random nonce and is never reused.
@@ -84,23 +105,43 @@ async function liveTickets(directory: string): Promise<Ticket[]> {
 	return tickets;
 }
 
-async function publish(directory: string, ticket: Ticket, initial: boolean): Promise<void> {
+async function publish(
+	directory: string,
+	ticket: Ticket,
+	initial: boolean,
+	deadline: number,
+	pollMs: number,
+): Promise<void> {
 	const destination = path.join(directory, `${ticket.pid}-${ticket.nonce}.ticket`);
 	const temporary = path.join(
 		directory,
-		`.publish-${ticket.pid}-${randomBytes(16).toString("hex")}`,
+		initial && windows
+			? `.choose-${ticket.pid}-${ticket.nonce}`
+			: `.publish-${ticket.pid}-${randomBytes(16).toString("hex")}`,
 	);
+	const file = await fs.open(temporary, "wx", 0o600);
 	try {
-		const file = await fs.open(temporary, "wx", 0o600);
 		try {
 			await file.writeFile(JSON.stringify(ticket), "utf8");
 		} finally {
 			await file.close();
 		}
 		// Readers see either the whole choosing record or the whole numbered record.
-		// The exclusive link also prevents replacing another operation's initial claim.
-		if (initial) await fs.link(temporary, destination);
-		else await fs.rename(temporary, destination);
+		if (initial && !windows) {
+			await fs.link(temporary, destination);
+			return;
+		}
+		if (initial) {
+			// The exclusive staging name reserves this PID and nonce while we verify
+			// the destination and publish it. NTFS can deny replacing a hard link.
+			const existing = await fs.lstat(destination).catch((error: NodeJS.ErrnoException) => {
+				if (error.code !== "ENOENT") throw error;
+				return undefined;
+			});
+			if (existing) throw new AuthStorageBusyError();
+		}
+		// Windows readers and renames can temporarily block each other.
+		await retryTicketIO(() => fs.rename(temporary, destination), deadline, pollMs);
 	} finally {
 		await fs.unlink(temporary).catch(() => undefined);
 	}
@@ -134,16 +175,16 @@ export async function withAuthStorageTransaction<T>(
 	const ownPath = path.join(directory, `${own.pid}-${own.nonce}.ticket`);
 	let published = false;
 	try {
-		await publish(directory, own, true);
+		await publish(directory, own, true, deadline, pollMs);
 		published = true;
-		const contenders = await liveTickets(directory);
+		const contenders = await liveTickets(directory, deadline, pollMs);
 		const maximum = Math.max(0, ...contenders.map((ticket) => ticket.number));
 		if (maximum >= Number.MAX_SAFE_INTEGER) throw new AuthStorageBusyError();
 		own.number = maximum + 1;
 		own.phase = "ticket";
-		await publish(directory, own, false);
+		await publish(directory, own, false, deadline, pollMs);
 		for (;;) {
-			const tickets = await liveTickets(directory);
+			const tickets = await liveTickets(directory, deadline, pollMs);
 			const blocked = tickets.some(
 				(ticket) =>
 					ticket.nonce !== own.nonce &&

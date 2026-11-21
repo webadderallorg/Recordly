@@ -3,7 +3,7 @@ import type { PersistedDevMotionBlurSettings } from "./projectPersistenceTypes";
 import { type AutoCaptionAnimation, type ZoomTransitionEasing } from "./types";
 export const PROJECT_VERSION = 2;
 
-export const MACOS_DEFAULT_BORDER_RADIUS_PERCENT = 8;
+export const MACOS_DEFAULT_BORDER_RADIUS_PERCENT = 4;
 
 export const LEGACY_BORDER_RADIUS_REFERENCE_PX = 1080;
 

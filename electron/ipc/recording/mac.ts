@@ -1,4 +1,3 @@
-import { parseNativeCaptureInterruption } from "./interruption";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs/promises";
 import { BrowserWindow } from "electron";
@@ -8,9 +7,9 @@ import {
 } from "../cursor/telemetry";
 import {
 	lastNativeCaptureDiagnostics,
-	nativeCaptureProcess,
 	nativeCaptureMicrophonePath,
 	nativeCaptureOutputBuffer,
+	nativeCaptureProcess,
 	nativeCaptureStopRequested,
 	nativeCaptureSystemAudioPath,
 	nativeCaptureTargetPath,
@@ -32,6 +31,7 @@ import {
 	validateRecordedVideo,
 } from "./diagnostics";
 import { emitRecordingInterrupted } from "./events";
+import { parseNativeCaptureInterruption } from "./interruption";
 import { getFinalMacCompanionAudioPath } from "./macCompanionAudio";
 import { attachNativeCaptureStdinLifecycle } from "./nativeCaptureCommand";
 

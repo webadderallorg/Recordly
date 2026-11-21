@@ -1,10 +1,11 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { Modal } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 import { MusicNotes } from "@/components/ui/icons";
-import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import type { RecordingLibraryEntry } from "@/types/recordingLibrary";
+import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import { DurationBadge } from "./DurationBadge";
+
 const isAudio = (name: string) => /\.(wav|m4a|mp3|ogg|flac)$/i.test(name);
 export function RawThumbnail({ entry, active }: { entry: RecordingLibraryEntry; active: boolean }) {
 	const video = useRef<HTMLVideoElement>(null);

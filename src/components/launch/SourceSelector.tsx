@@ -1,8 +1,8 @@
-import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
-import { useScopedT } from "@/contexts/I18nContext";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
+import { useScopedT } from "@/contexts/I18nContext";
 import styles from "./LaunchWindow.module.css";
 
 function OverlaySourceSelector() {

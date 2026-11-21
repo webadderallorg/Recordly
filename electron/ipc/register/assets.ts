@@ -5,8 +5,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, ipcMain } from "electron";
 import { USER_DATA_PATH } from "../../appPaths";
-import { getAssetRootPath, isAllowedLocalReadPath } from "../project/manager";
 import { isTrustedRenderer } from "../../trustedRenderer";
+import { getAssetRootPath, isAllowedLocalReadPath } from "../project/manager";
 import { normalizePath } from "../utils";
 import { registerDesktopWallpaperHandler } from "./desktopWallpaper";
 

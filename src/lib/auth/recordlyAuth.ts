@@ -6,6 +6,7 @@ import {
 	createPendingSignupConsentStore,
 	createSignupConsentRetryStore,
 } from "./pendingSignupConsent";
+import { isSavedSignInLocked } from "./savedSignIn";
 import { marketingEmailMetadata, type SignupConsent, signupConsentMetadata } from "./signupConsent";
 import {
 	SignupConsentScopeChangedError,
@@ -107,11 +108,11 @@ function createAuthStorage() {
 			}
 			try {
 				await bridge.authStorageMigrate(snapshot);
-			} catch {
+			} catch (error) {
 				removeLegacyCopies(local, owned);
-				return null;
+				return isSavedSignInLocked(error) ? bridge : null;
 			}
-			// Main migrates once, including an empty marker. Remove old copies so
+			// Main migrates existing credentials once. Remove old copies so
 			// logging out cannot restore a stale browser session.
 			removeLegacyCopies(local, owned);
 			return bridge;
@@ -134,14 +135,14 @@ function createAuthStorage() {
 		},
 		async setItem(key: string, value: string): Promise<void> {
 			const native = await nativeStorage();
-			if (oauthFlowIdRedirectsEnabled && !native)
-				throw new Error(translate("support.authInsecure"));
-			if (native) await native.authStorageSetItem(key, value);
-			else {
-				const local = memoryOnly ? undefined : browserStorage();
-				if (local) local.setItem(key, value);
-				else memory.set(key, value);
+			if (native) {
+				if ((await native.authStorageSetItem(key, value)) !== false) return;
+				nativeReady = Promise.resolve(null);
 			}
+			if (oauthFlowIdRedirectsEnabled) throw new Error(translate("support.authInsecure"));
+			const local = memoryOnly ? undefined : browserStorage();
+			if (local) local.setItem(key, value);
+			else memory.set(key, value);
 		},
 		async removeItem(key: string): Promise<void> {
 			const native = await nativeStorage();
@@ -361,6 +362,7 @@ async function openAuthUrl(url: string | null) {
 export async function signInWithSocial(
 	provider: RecordlyOAuthProvider,
 	consent: SignupConsent,
+	{ selectAccount = false }: { selectAccount?: boolean } = {},
 ): Promise<void> {
 	const metadata = signupConsentMetadata(consent);
 	const client = requireAuth();
@@ -371,6 +373,9 @@ export async function signInWithSocial(
 			redirectTo: callbackUrl,
 			skipBrowserRedirect: true,
 			scopes: provider === "azure" ? "email" : undefined,
+			...(selectAccount && (provider === "google" || provider === "azure")
+				? { queryParams: { prompt: "select_account" } }
+				: {}),
 		},
 	});
 	if (error) throw error;

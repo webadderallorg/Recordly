@@ -1,4 +1,3 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import {
 	Button,
 	Card,
@@ -12,6 +11,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { useMemo, useRef, useState } from "react";
 import { Camera, ClosedCaptioning, Cursor, FrameCorners, Gear } from "@/components/ui/icons";
 import type { useI18n } from "@/contexts/I18nContext";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import ExtensionManager from "../ExtensionManager";
 import { SettingsPanel } from "../SettingsPanel";
 import type { EditorEffectSection } from "../types";

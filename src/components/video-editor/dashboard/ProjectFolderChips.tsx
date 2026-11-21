@@ -1,7 +1,7 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FolderSimple } from "@/components/ui/icons";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 
 type Folder = { id: string; name: string; color: string };
 export function ProjectFolderChips({

@@ -15,27 +15,24 @@ import {
 	systemPreferences,
 	Tray,
 } from "electron";
-import { nativeT, setNativeLocale } from "./nativeI18n";
-import {
-	captureEditorMenuTarget,
-	createEditorCommandMenus,
-	withHiddenDockEditorMenus,
-	type ProjectMenuAction,
-} from "./editorCommandMenu";
-import { validateAppLocaleRequest } from "./localeIpc";
-import { readAppSetting, writeAppSetting } from "./appSettingsStore";
-import { refreshDesktopPresenceLocale } from "./desktopPresence";
-import { initializeInstanceSession, RECORDINGS_DIR } from "./appPaths";
 import { activateFromDesktopIcon } from "./appActivation";
-import { getUpdatePresentation } from "./updatePresentation";
+import { initializeInstanceSession, RECORDINGS_DIR } from "./appPaths";
+import { readAppSetting, writeAppSetting } from "./appSettingsStore";
 import { createAuthCallbackController } from "./authCallback";
 import { showCursor } from "./cursorHider";
 import {
 	desktopPresenceNeedsTray,
 	initializeDesktopPresence,
+	refreshDesktopPresenceLocale,
 	setDesktopPresenceRecording,
 	stopRecordingFromDesktopIcon,
 } from "./desktopPresence";
+import {
+	captureEditorMenuTarget,
+	createEditorCommandMenus,
+	type ProjectMenuAction,
+	withHiddenDockEditorMenus,
+} from "./editorCommandMenu";
 import { getGpuSwitches } from "./gpuSwitches";
 import {
 	cleanupAllExportStreams,
@@ -47,7 +44,9 @@ import {
 import { recordingFocus } from "./ipc/recording/focus";
 import { clearRecordingTrashUndo } from "./ipc/recording/library";
 import { resolveDisplayMediaSource } from "./ipc/register/sourceMapping";
+import { validateAppLocaleRequest } from "./localeIpc";
 import { ensureMediaServer } from "./mediaServer";
+import { nativeT, setNativeLocale } from "./nativeI18n";
 import {
 	hardenWebContentsNavigation,
 	isInternalRendererTarget,
@@ -57,21 +56,23 @@ import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permiss
 import { createReleaseVersionCatalog } from "./releaseVersions";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
 import { createSaveBeforeCloseController } from "./saveBeforeClose";
+import { isTrustedRenderer } from "./trustedRenderer";
+import { getUpdatePresentation } from "./updatePresentation";
 import {
 	checkForAppUpdates,
 	deferUpdateReminder,
 	dismissUpdateToast,
 	downloadAvailableUpdate,
-	getCurrentUpdateToastPayload,
 	getAutomaticUpdateDownloadsEnabled,
+	getCurrentUpdateToastPayload,
 	getExperimentalUpdatesEnabled,
 	getUpdaterLogPath,
 	getUpdateStatusSummary,
 	installDownloadedUpdateNow,
 	previewNativeUpdateDialog,
 	previewUpdateToast,
-	setExperimentalUpdatesEnabled,
 	setAutomaticUpdateDownloadsEnabled,
+	setExperimentalUpdatesEnabled,
 	setupAutoUpdates,
 	showUpdateNotificationOnOpen,
 	skipAvailableUpdateVersion,
@@ -82,12 +83,16 @@ import {
 	createEditorWindow,
 	createHudOverlayWindow,
 	createSourceSelectorWindow,
+	focusOnboardingWindow,
 	getHudOverlayWindow,
 	getOnboardingWindow,
+	getStartupOnboardingWindow,
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
 	isHudOverlayMousePassthroughSupported,
 	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
+	replayOnboardingIntro,
+	revealStartupOnboardingWindow,
 	setHudOverlayRecordingActive,
 	showOnboardingWindow,
 	showUpdateToastWindow,
@@ -95,6 +100,9 @@ import {
 
 const electronMainDir = path.dirname(fileURLToPath(import.meta.url));
 const IS_SMOKE_EXPORT = process.env.RECORDLY_SMOKE_EXPORT === "1";
+let startupWindowsReady = false;
+let firstRunIntroStarted = false;
+let devOnboardingShown = false;
 initializeInstanceSession();
 
 function ignoreBrokenConsolePipe(stream: NodeJS.WritableStream | undefined) {
@@ -110,9 +118,33 @@ ipcMain.handle("show-onboarding-window", (_event, options?: { preview?: boolean 
 	showOnboardingWindow({ preview: !app.isPackaged && options?.preview === true });
 	return true;
 });
+ipcMain.handle("replay-onboarding-intro", (event) => {
+	const owner = BrowserWindow.fromWebContents(event.sender);
+	return owner ? replayOnboardingIntro(owner) : false;
+});
 ipcMain.handle("close-onboarding-window", () => {
 	closeOnboardingWindow();
 	return true;
+});
+ipcMain.handle("resolve-startup-onboarding", (event, action: unknown) => {
+	if (!isTrustedRenderer(event)) return false;
+	if (action === "restart" && app.isPackaged) {
+		if (getOnboardingWindow()?.webContents !== event.sender) return false;
+		app.relaunch({ args: [] });
+		app.quit();
+		return true;
+	}
+	if (getStartupOnboardingWindow()?.webContents !== event.sender) return false;
+	if (action === "show") {
+		revealStartupOnboardingWindow();
+		return true;
+	}
+	if (action === "continue") {
+		createRecordingControls();
+		closeOnboardingWindow();
+		return true;
+	}
+	return false;
 });
 
 ignoreBrokenConsolePipe(process.stdout);
@@ -404,14 +436,7 @@ function canRestartForUpdate() {
 }
 
 function createWindow() {
-	if (!app.isReady()) {
-		void app.whenReady().then(() => {
-			if (!mainWindow || mainWindow.isDestroyed()) {
-				createWindow();
-			}
-		});
-		return;
-	}
+	if (!startupWindowsReady) return;
 
 	if (isCreatingMainWindow) {
 		return;
@@ -429,31 +454,71 @@ function createWindow() {
 		return;
 	}
 
-	isCreatingMainWindow = true;
-	const createdHudWindow = createHudOverlayWindow();
-	mainWindow = createdHudWindow;
-	createdHudWindow.once("closed", () => {
-		recordingFocus.stop();
-		if (mainWindow === createdHudWindow) {
-			mainWindow = null;
-		}
-	});
-	isCreatingMainWindow = false;
-}
-
-function focusOrCreateMainWindow() {
-	const onboarding = getOnboardingWindow();
-	if (onboarding) {
-		restoreWindowSafely(onboarding);
+	if (getOnboardingWindow()) {
+		focusOnboardingWindow();
 		return;
 	}
-	if (!app.isReady()) {
-		void app.whenReady().then(() => {
-			focusOrCreateMainWindow();
+
+	if (app.isPackaged) {
+		// Relaunching from System Settings must not skip the rest of the first-run tour.
+		const returning = readAppSetting("recordly.onboarding.v1.seen") === true;
+		showOnboardingWindow({ intro: !returning && claimFirstRunIntro(), returning });
+		return;
+	}
+
+	if (IS_DEV && !devOnboardingShown) {
+		devOnboardingShown = true;
+		showOnboardingWindow({ preview: true }).once("closed", () => {
+			if (!isAppQuitting) createRecordingControls();
 		});
 		return;
 	}
 
+	createRecordingControls();
+}
+
+function createRecordingControls() {
+	const existingHud = getHudOverlayWindow();
+	if (existingHud) {
+		mainWindow = existingHud;
+		restoreWindowSafely(existingHud);
+		return;
+	}
+	isCreatingMainWindow = true;
+	try {
+		const createdHudWindow = createHudOverlayWindow();
+		mainWindow = createdHudWindow;
+		createdHudWindow.once("closed", () => {
+			recordingFocus.stop();
+			if (mainWindow === createdHudWindow) {
+				mainWindow = null;
+			}
+		});
+	} finally {
+		isCreatingMainWindow = false;
+	}
+}
+
+function claimFirstRunIntro() {
+	if (firstRunIntroStarted) return false;
+	firstRunIntroStarted = true;
+	const introStartedKey = "recordly.onboarding.introStarted";
+	if (readAppSetting(introStartedKey) === true) return false;
+	try {
+		writeAppSetting(introStartedKey, true);
+	} catch (error) {
+		console.warn("[onboarding] Could not save reveal progress", error);
+	}
+	return true;
+}
+
+function focusOrCreateMainWindow() {
+	if (!startupWindowsReady) return;
+	const onboarding = getOnboardingWindow();
+	if (onboarding) {
+		focusOnboardingWindow();
+		return;
+	}
 	const updateToast = getUpdateToastWindow();
 	if (updateToast?.isVisible()) {
 		updateToast.show();
@@ -528,6 +593,11 @@ function isOwnedEditorWindow(window: BrowserWindow): boolean {
 }
 
 function sendEditorMenuAction(channel: ProjectMenuAction, capturedTarget?: BrowserWindow) {
+	if (!startupWindowsReady) return;
+	if (getOnboardingWindow()) {
+		focusOnboardingWindow();
+		return;
+	}
 	if (capturedTarget) {
 		if (isOwnedEditorWindow(capturedTarget)) capturedTarget.webContents.send(channel);
 		return;
@@ -708,13 +778,12 @@ function getTrayIcon(filename: string) {
 }
 
 function syncDockIcon() {
-	if (process.platform !== "darwin" || !app.dock) {
+	// The packaged app uses the native icon from its macOS bundle.
+	if (process.platform !== "darwin" || app.isPackaged || !app.dock) {
 		return;
 	}
 
-	const dockIcon = getAppImage(
-		IS_DEV ? "app-icons/recordly-solid-blue-512.png" : getPlatformAppIconFilename(512),
-	);
+	const dockIcon = getAppImage("app-icons/recordly-solid-blue-512.png");
 	if (!dockIcon.isEmpty()) {
 		app.dock.setIcon(dockIcon);
 	}
@@ -1282,7 +1351,10 @@ app.whenReady().then(async () => {
 	]);
 
 	registerIpcHandlers(
-		createEditorWindowWrapper,
+		() => {
+			if (getOnboardingWindow()) focusOnboardingWindow();
+			else createEditorWindowWrapper();
+		},
 		createSourceSelectorWindowWrapper,
 		() => mainWindow,
 		() => sourceSelectorWindow,
@@ -1299,6 +1371,7 @@ app.whenReady().then(async () => {
 		},
 		authCallbacks.flowStorageHooks,
 	);
+	startupWindowsReady = true;
 
 	if (IS_SMOKE_EXPORT || process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT) {
 		await logSmokeExportGpuDiagnostics();

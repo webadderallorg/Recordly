@@ -13,6 +13,7 @@ import {
 	getCaptionScaledRadius,
 	getCaptionTextMaxWidth,
 } from "@/components/video-editor/captionStyle";
+import { drawSquircleOnCanvas, SQUIRCLE_RADIUS_SCALE } from "@/lib/geometry/squircle";
 import { drawCaptionLine } from "./captionText";
 import type { FrameRenderContext } from "./modernFrameRenderer";
 import type { CaptionRenderState, MutableVideoTextureSource } from "./modernFrameTypes";
@@ -186,18 +187,15 @@ export class FrameCaptions {
 		ctx.clearRect(0, 0, this.captionCanvas.width, this.captionCanvas.height);
 		ctx.font = `${getCaptionPreset(settings.style).fontWeight} ${state.fontSize}px ${state.fontFamily}`;
 		ctx.fillStyle = getCaptionBackground(settings);
-		ctx.beginPath();
-		ctx.roundRect(
-			0,
-			0,
-			state.boxWidth,
-			state.boxHeight,
-			Math.min(
-				state.boxWidth / 2,
-				state.boxHeight / 2,
-				getCaptionScaledRadius(settings.boxRadius, state.fontSize),
-			),
-		);
+		const radius =
+			getCaptionScaledRadius(settings.boxRadius, state.fontSize) * SQUIRCLE_RADIUS_SCALE;
+		drawSquircleOnCanvas(ctx, {
+			x: 0,
+			y: 0,
+			width: state.boxWidth,
+			height: state.boxHeight,
+			radius,
+		});
 		ctx.fill();
 		drawCaptionBoxBorder(
 			ctx,
@@ -206,11 +204,7 @@ export class FrameCaptions {
 			0,
 			state.boxWidth,
 			state.boxHeight,
-			Math.min(
-				state.boxWidth / 2,
-				state.boxHeight / 2,
-				getCaptionScaledRadius(settings.boxRadius, state.fontSize),
-			),
+			radius,
 			state.fontSize,
 		);
 

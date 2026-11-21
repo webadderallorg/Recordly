@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildNativeAudioPlan } from "./nativeExportAudioPlan";
 import { buildNativeAudioPlan as buildLegacyNativeAudioPlan } from "./legacyVideoAudioPlan";
-import type { VideoExporterConfig } from "./modernVideoExporterConfig";
 import type { LegacyVideoExporterContext } from "./legacyVideoExporterContext";
+import type { VideoExporterConfig } from "./modernVideoExporterConfig";
+import { buildNativeAudioPlan } from "./nativeExportAudioPlan";
 import type { DecodedVideoInfo } from "./streamingDecoder";
 
 const info = {

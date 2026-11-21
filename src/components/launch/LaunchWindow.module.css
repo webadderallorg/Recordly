@@ -71,6 +71,7 @@
 
 .recordingControls .recordControl {
 	border-radius: 50%;
+	corner-shape: round;
 }
 
 .recordingControls .sourceControl {
@@ -186,6 +187,7 @@
 .recordingBar {
 	border-color: var(--separator);
 	border-radius: 999px;
+	corner-shape: round;
 	padding: 8px 14px;
 	box-shadow: 0 2px 8px rgb(0 0 0 / 0.1);
 }
@@ -249,6 +251,7 @@
 	width: 14px;
 	height: 14px;
 	border-radius: 50%;
+	corner-shape: round;
 	background: #fff;
 	transition: all 0.2s ease;
 }

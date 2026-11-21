@@ -1,4 +1,4 @@
-Language: EN | [简中](README.zh-CN.md)
+Language: EN | [Tiếng Việt](README.vi.md) | [简中](README.zh-CN.md)
 
 <p align="center">
   <img width="220" alt="Recordly Logo" src="https://github.com/user-attachments/assets/414b8838-6731-45d4-a815-6e3c0aa1fe52" />
@@ -192,7 +192,7 @@ PKGBUILD, desktop entry, release sync, and optional **local-from-source** packag
 
 ### Prerequisites
 
-**macOS:** Xcode Command Line Tools (`xcode-select --install`).
+**macOS:** Install Xcode Command Line Tools (`xcode-select --install`) for development. To package the app, select a full Xcode 26 or later installation with `xcode-select` so Electron Builder can compile the icon with `actool`. Xcode 26 requires macOS 15.6 or later.
 
 **Linux (Ubuntu/Debian):**
 

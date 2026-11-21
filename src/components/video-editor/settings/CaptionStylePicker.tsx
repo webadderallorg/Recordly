@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useScopedT } from "@/contexts/I18nContext";
 import { getAssetPath, getRenderableAssetUrl } from "@/lib/assetPath";
+import { getSquircleCssRadius } from "@/lib/geometry/squircle";
 import { getCaptionFontFamily } from "../captionFonts";
 import { prepareCaptionLayout } from "../captionLayout";
 import { CAPTION_STYLE_OPTIONS, getCaptionBackground, getCaptionPreset } from "../captionPresets";
@@ -96,7 +97,9 @@ function CaptionStylePreview({
 						padding: `${padding.y}px ${padding.x}px`,
 						background: getCaptionBackground(settings),
 						color: settings.textColor,
-						borderRadius: getCaptionScaledRadius(settings.boxRadius, fontSize),
+						borderRadius: getSquircleCssRadius(
+							getCaptionScaledRadius(settings.boxRadius, fontSize),
+						),
 						boxShadow: preset.borderEm
 							? `inset 0 0 0 ${preset.borderEm}em rgba(0, 0, 0, 0.12)`
 							: undefined,

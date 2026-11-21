@@ -5,11 +5,14 @@ test("progress starts empty, moves smoothly forwards through stages, and resets 
 	page,
 }) => {
 	await page.goto("/tests/ui/export-progress.html?modern&preparing");
-	const dialog = page.getByRole("dialog", { name: "Publish", exact: true });
-	await expect(dialog).not.toHaveAttribute("data-entering");
+	const dialog = page.getByRole("region", { name: "Export", exact: true });
+	await expect(page.getByRole("dialog", { name: "Publish", exact: true })).toHaveCount(0);
 	const bar = dialog.getByRole("progressbar", { name: "Exporting" });
 	const fill = dialog.locator(".export-progress-fill");
 	await expect(bar).toHaveAttribute("aria-valuenow", "0");
+	const headline = dialog.locator(".export-progress-headline");
+	await expect(headline).toBeVisible();
+	await expect(dialog.getByText("Preparing export...", { exact: true })).toHaveCount(0);
 	await expect(fill).toHaveCSS("animation-name", "none");
 	await expect(fill).toHaveCSS("visibility", "hidden");
 	const push = (update: Partial<ExportProgress> | null) =>
@@ -55,6 +58,7 @@ test("progress starts empty, moves smoothly forwards through stages, and resets 
 	});
 	expect(widths[1]).toBeGreaterThan(initialWidth);
 	expect(widths[2]).toBeGreaterThan(widths[1]);
+	await expect(headline).toBeVisible();
 	await push({ percentage: 7 });
 	await expect(bar).toHaveAttribute("aria-valuenow", "42");
 	expect(
@@ -64,9 +68,11 @@ test("progress starts empty, moves smoothly forwards through stages, and resets 
 	await expect(bar).toHaveAttribute("aria-valuenow", "99");
 	await push({ phase: "finalizing", percentage: 0, audioProgress: 0 });
 	await expect(bar).toHaveAttribute("aria-valuenow", "99");
-	await expect(dialog.getByText("99% complete", { exact: true })).toBeVisible();
+	await expect(dialog.getByText("Finishing video…", { exact: true })).toBeVisible();
+	await expect(bar.getByText("99%", { exact: true })).toBeVisible();
 	await push({ phase: "saving", percentage: 100 });
 	await expect(bar).toHaveAttribute("aria-valuenow", "99");
+	await expect(dialog.getByText("Saving video…", { exact: true })).toBeVisible();
 	await expect(dialog).not.toContainText("100%");
 	await push(null);
 	await expect(bar).toHaveAttribute("aria-valuenow", "0");
@@ -79,35 +85,68 @@ for (const mode of ["modern", "legacy", "gif"]) {
 	test(`${mode} export shows progress without tips or implementation details`, async ({
 		page,
 	}) => {
-		await page.clock.install();
 		await page.goto(`/tests/ui/export-progress.html?${mode}`);
-		const dialog = page.getByRole("dialog", { name: "Publish", exact: true });
+		const dialog = page.getByRole("region", { name: "Export", exact: true });
 		await expect(dialog.getByRole("progressbar", { name: "Exporting" })).toHaveAttribute(
 			"aria-valuenow",
 			"42",
 		);
-		await expect(dialog.getByText("42% complete", { exact: true })).toBeVisible();
-		await expect(dialog.locator(".export-paper-stack")).toBeVisible();
+		const percent = dialog.getByText("42%", { exact: true });
+		await expect(percent).toBeVisible();
+		const trackBox = (await dialog.locator(".progress-bar__track").boundingBox())!;
+		const percentBox = (await percent.boundingBox())!;
+		expect(percentBox.x).toBeGreaterThanOrEqual(trackBox.x + trackBox.width);
+		expect(percentBox.y + percentBox.height / 2).toBeCloseTo(
+			trackBox.y + trackBox.height / 2,
+			0,
+		);
+		const headline = dialog.locator(".export-progress-headline");
+		await expect(headline).toBeVisible();
 		await expect(dialog).not.toContainText("Tip:");
 		await expect(dialog.getByRole("grid", { name: "Publish destination" })).toHaveCount(0);
 		await expect(dialog).not.toContainText(
 			/Breeze|Path:|WebGPU|Native skipped|Render speed|Processing audio|Lightning export|Promotional announcement|Extra announcement content/,
 		);
-		await page.clock.fastForward(6100);
-		await expect(dialog).not.toContainText("Tip:");
-		await expect(dialog).not.toContainText(
-			/Promotional announcement|Extra announcement content/,
-		);
-		if (mode === "modern") await page.screenshot({ path: "test-results/export-progress.png" });
-		await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+		if (mode === "modern") {
+			const firstLine = await headline.textContent();
+			await expect
+				.poll(
+					async () =>
+						(await headline.allTextContents()).some(
+							(line) => line && line !== firstLine,
+						),
+					{ timeout: 12500 },
+				)
+				.toBe(true);
+			await expect(percent).toBeVisible();
+			await expect(dialog).not.toContainText(
+				/Tip:|Promotional announcement|Extra announcement content/,
+			);
+		}
+		await page.getByRole("button", { name: "Editor action", exact: true }).click();
+		await expect(page.locator("html")).toHaveAttribute("data-editor-action", "true");
+		const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+		await expect(cancel).toHaveCSS("opacity", "0");
+		if (mode === "modern") {
+			await dialog.hover();
+			await expect(cancel).toHaveCSS("opacity", "1");
+			await dialog.screenshot({ path: "test-results/export-progress.png" });
+			await cancel.click();
+		} else {
+			await page.keyboard.press("Tab");
+			await expect(cancel).toBeFocused();
+			await expect(cancel).toHaveCSS("opacity", "1");
+			await page.keyboard.press("Enter");
+		}
 		await expect(page.locator("html")).toHaveAttribute("data-cancelled", "true");
+		await expect(dialog).toHaveCount(0);
 	});
 }
 
 for (const phase of ["preparing", "finalizing", "saving", "audio"]) {
 	test(`${phase} export remains free of technical details`, async ({ page }) => {
 		await page.goto(`/tests/ui/export-progress.html?modern&${phase}`);
-		const dialog = page.getByRole("dialog", { name: "Publish", exact: true });
+		const dialog = page.getByRole("region", { name: "Export", exact: true });
 		await expect(dialog.getByRole("progressbar", { name: "Exporting" })).toBeVisible();
 		await expect(dialog).not.toContainText("Tip:");
 		await expect(dialog).not.toContainText(
@@ -123,8 +162,8 @@ for (const [phase, label] of [
 ]) {
 	test(`GIF ${phase} shows activity without claiming completion`, async ({ page }) => {
 		await page.goto(`/tests/ui/export-progress.html?gif&${phase}&complete-frames`);
-		const dialog = page.getByRole("dialog", { name: "Publish", exact: true });
-		await expect(dialog.getByText(label, { exact: true })).toBeVisible();
+		const dialog = page.getByRole("region", { name: "Export", exact: true });
+		await expect(dialog.getByRole("status")).toContainText(label);
 		await expect(dialog.getByRole("progressbar", { name: "Exporting" })).toHaveAttribute(
 			"aria-valuenow",
 			"95",
@@ -138,47 +177,47 @@ test("GIF frame progress cannot round up to completion before the file is saved"
 	page,
 }) => {
 	await page.goto("/tests/ui/export-progress.html?gif&complete-frames");
-	const dialog = page.getByRole("dialog", { name: "Publish", exact: true });
+	const dialog = page.getByRole("region", { name: "Export", exact: true });
 	await expect(dialog.getByRole("progressbar", { name: "Exporting" })).toHaveAttribute(
 		"aria-valuenow",
 		"95",
 	);
-	await expect(dialog.getByText("95% complete", { exact: true })).toBeVisible();
+	await expect(dialog.getByText("95%", { exact: true })).toBeVisible();
 	await expect(dialog).not.toContainText("100%");
 });
 
 test("GIF completion is shown after the file has been saved", async ({ page }) => {
+	await page.clock.install();
 	await page.goto("/tests/ui/export-progress.html?gif&saved");
-	const dialog = page.getByRole("dialog", { name: "Publish", exact: true });
+	const dialog = page.getByRole("region", { name: "Export", exact: true });
 	await expect(dialog.getByText("Export complete", { exact: true })).toBeVisible();
-	await expect(
-		dialog.getByText("Your file was saved successfully.", { exact: true }),
-	).toBeVisible();
+	await expect(dialog.getByRole("button", { name: "Show In Folder", exact: true })).toBeVisible();
 	await expect(dialog.getByText("export.gif", { exact: true })).toBeVisible();
 	await expect(dialog.getByRole("progressbar")).toHaveCount(0);
-	await expect(dialog.locator(".export-paper-stack")).toHaveCount(0);
+	await page.clock.fastForward(10100);
+	await expect(dialog).toHaveCount(0);
 });
 
 test("link preparation shows overall share progress and remains cancellable", async ({ page }) => {
 	await page.goto("/tests/ui/export-progress.html?link");
-	const dialog = page.getByRole("dialog", { name: "Publish", exact: true });
-	await dialog.getByRole("button", { name: "Share", exact: true }).click();
+	const publish = page.getByRole("dialog", { name: "Publish", exact: true });
+	await publish.getByRole("button", { name: "Share", exact: true }).click();
+	await expect(publish).toHaveCount(0);
+	const dialog = page.getByRole("region", { name: "Create link", exact: true });
 	// Rendering occupies 70% of the complete share flow; 42% rendered means 29% overall.
 	await expect(
 		dialog.getByRole("progressbar", { name: "Create link", exact: true }),
 	).toHaveAttribute("aria-valuenow", "29");
-	await expect(dialog.getByText("29% complete", { exact: true })).toBeVisible();
-	await expect(
-		dialog.getByRole("row", { name: "Create share link", exact: true }),
-	).toHaveAttribute("aria-disabled", "true");
-	await expect(dialog.getByRole("row", { name: "Save video", exact: true })).toHaveAttribute(
-		"aria-disabled",
-		"true",
-	);
+	await expect(dialog.getByText("29%", { exact: true })).toBeVisible();
+	await page.getByRole("button", { name: "Editor action", exact: true }).click();
+	await expect(page.locator("html")).toHaveAttribute("data-editor-action", "true");
 	await expect(dialog).not.toContainText(
 		/Breeze|Path:|WebGPU|Native skipped|Render speed|Processing audio/,
 	);
-	await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+	await dialog.hover();
+	const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+	await expect(cancel).toHaveCSS("opacity", "1");
+	await cancel.click();
 	await expect(page.locator("html")).toHaveAttribute("data-cancelled", "true");
 	await expect(dialog.getByRole("progressbar")).toHaveCount(0);
 });

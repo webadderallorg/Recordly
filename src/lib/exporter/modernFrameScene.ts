@@ -1,7 +1,7 @@
-import { ensureCaptionFontLoaded } from "@/components/video-editor/captionFonts";
 import { Application, Container, Graphics, Rectangle, RendererType, Sprite } from "pixi.js";
 import type { MotionBlurFilter } from "pixi-filters/motion-blur";
 import type { ZoomBlurFilter } from "pixi-filters/zoom-blur";
+import { ensureCaptionFontLoaded } from "@/components/video-editor/captionFonts";
 import {
 	DEFAULT_CURSOR_CONFIG,
 	PixiCursorOverlay,

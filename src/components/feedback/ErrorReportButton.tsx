@@ -1,5 +1,5 @@
-import { useScopedT } from "@/contexts/I18nContext";
 import { useRef, useState } from "react";
+import { useScopedT } from "@/contexts/I18nContext";
 import { reportError } from "@/lib/feedback/errorReporting";
 
 export function ErrorReportButton({

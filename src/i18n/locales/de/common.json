@@ -18,7 +18,10 @@
 		"delete": "Löschen",
 		"done": "Fertig",
 		"retry": "Erneut versuchen",
-		"apply": "Anwenden"
+		"apply": "Anwenden",
+		"minimize": "Minimieren",
+		"maximize": "Maximieren",
+		"restoreWindow": "Fenster wiederherstellen"
 	},
 	"errors": {
 		"invalidFileType": "Ungültiger Dateityp",
@@ -83,5 +86,6 @@
 		"downloadingButton": "Wird heruntergeladen · {{progress}}"
 	},
 	"width": "Breite",
-	"height": "Höhe"
+	"height": "Höhe",
+	"windowControls": "Fenstersteuerung"
 }

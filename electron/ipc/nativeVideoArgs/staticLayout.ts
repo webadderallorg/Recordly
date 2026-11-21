@@ -124,7 +124,7 @@ export function buildNativePrecompositedStaticLayoutArgs(
 	}
 
 	const durationSec = formatFfmpegSeconds(Math.max(0.001, config.durationSec ?? 1) * 1000);
-	const useMask = Boolean(config.maskPath && (config.borderRadius ?? 0) > 0.5);
+	const useMask = Boolean(config.maskPath && (config.borderRadius ?? 0) > 0);
 	const args = ["-y", "-hide_banner", "-loglevel", "error"];
 	pushFfmpegTimeSliceArgs(args, config.startSec, config.durationSec);
 	args.push(

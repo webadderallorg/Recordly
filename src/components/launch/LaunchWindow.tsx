@@ -4,10 +4,11 @@ import {
 	House,
 	MicrophoneIcon,
 	MicrophoneSlashIcon,
-	MinusIcon,
 	MonitorIcon,
+	SpeakerHighIcon,
 	VideoCameraIcon,
 	VideoCameraSlashIcon,
+	XIcon,
 } from "@/components/ui/icons";
 import { toast } from "@/components/ui/toast";
 import { useScopedT } from "../../contexts/I18nContext";
@@ -19,13 +20,16 @@ import { CountdownDelayIcon } from "./CountdownDelayIcon";
 import { HudInteractionContext } from "./contexts/HudInteractionContext";
 import { FloatingWebcamPreviewView } from "./FloatingWebcamPreviewView";
 import { canToggleFloatingWebcamPreview } from "./floatingWebcamPreview";
+import { useCameraPermission } from "./hooks/useCameraPermission";
 import { useHudBarDrag } from "./hooks/useHudBarDrag";
+import { useHudHideAnimation } from "./hooks/useHudHideAnimation";
 import { useHudStateTransition } from "./hooks/useHudStateTransition";
 import { useLaunchHudInteractionState } from "./hooks/useLaunchHudInteractionState";
 import { useLaunchWindowActions } from "./hooks/useLaunchWindowActions";
 import { useLaunchWindowSystemState } from "./hooks/useLaunchWindowSystemState";
 import { useRecordingTimer } from "./hooks/useRecordingTimer";
 import { useWebcamPreviewOverlay } from "./hooks/useWebcamPreviewOverlay";
+import { getHudInteractiveBounds } from "./hudMousePassthrough";
 import styles from "./LaunchWindow.module.css";
 import { MarqueeText } from "./MarqueeText";
 import { CountdownPopover } from "./popovers/CountdownPopover";
@@ -80,10 +84,16 @@ function LaunchWindowContent() {
 	const { elapsed, formatTime } = useRecordingTimer(recording, paused);
 	const hudContentRef = useRef<HTMLDivElement>(null);
 	const hudBarRef = useRef<HTMLDivElement>(null);
+	const hideHud = useHudHideAnimation(hudBarRef);
 
 	const { selectedSource, hasSelectedSource, syncSelectedSource } = useLaunchWindowActions();
 
-	const showWebcamControls = webcamEnabled && !recording;
+	const { hudOverlayMousePassthroughSupported, platform } =
+		useLaunchWindowSystemState(preparePermissions);
+	const webcamPopoverOpen = openId === "webcam";
+	const cameraPermission = useCameraPermission(platform, webcamPopoverOpen, webcamEnabled);
+	const cameraAllowed = cameraPermission === "granted";
+	const showWebcamControls = cameraAllowed && webcamEnabled && !recording;
 	const { devices, selectedDeviceId, setSelectedDeviceId } = useMicrophoneDevices(
 		microphoneEnabled || openId === "mic",
 		microphoneDeviceId,
@@ -92,10 +102,7 @@ function LaunchWindowContent() {
 		devices: videoDevices,
 		selectedDeviceId: selectedVideoDeviceId,
 		setSelectedDeviceId: setSelectedVideoDeviceId,
-	} = useVideoDevices(webcamEnabled || openId === "webcam", webcamDeviceId);
-
-	const { hudOverlayMousePassthroughSupported, platform } =
-		useLaunchWindowSystemState(preparePermissions);
+	} = useVideoDevices(cameraAllowed && (webcamEnabled || webcamPopoverOpen), webcamDeviceId);
 
 	useEffect(() => {
 		if (!selectedDeviceId) {
@@ -112,10 +119,10 @@ function LaunchWindowContent() {
 	}, [selectedVideoDeviceId, setWebcamDeviceId]);
 
 	const webcamPreview = useWebcamPreviewOverlay({
-		webcamEnabled,
+		webcamEnabled: cameraAllowed && webcamEnabled,
 		webcamDeviceId,
 		showWebcamControls,
-		webcamPopoverOpen: openId === "webcam",
+		webcamPopoverOpen,
 		hudOverlayMousePassthroughSupported,
 		hudBarRef,
 	});
@@ -155,6 +162,40 @@ function LaunchWindowContent() {
 		recordingWebcamPreviewContainerRef,
 		docked: showRecordingWebcamPreview,
 	});
+
+	useEffect(() => {
+		const reportInteractiveBounds = () => {
+			window.electronAPI?.hudOverlaySetInteractiveBounds?.(
+				getHudInteractiveBounds(document).map((rect) => ({
+					left: window.screenX + rect.left,
+					top: window.screenY + rect.top,
+					right: window.screenX + rect.right,
+					bottom: window.screenY + rect.bottom,
+					shape: rect.shape,
+				})),
+			);
+		};
+
+		reportInteractiveBounds();
+		// Keep native recovery current even when Windows stops forwarding mouse
+		// events. Include popovers and toasts, not just the main bar and webcam.
+		const boundsTimer = window.setInterval(reportInteractiveBounds, 100);
+		const resizeObserver = new ResizeObserver(reportInteractiveBounds);
+		if (hudBarRef.current) resizeObserver.observe(hudBarRef.current);
+		if (recordingWebcamPreviewContainerRef.current) {
+			resizeObserver.observe(recordingWebcamPreviewContainerRef.current);
+		}
+		window.addEventListener("mousemove", reportInteractiveBounds);
+		window.addEventListener("resize", reportInteractiveBounds);
+
+		return () => {
+			window.clearInterval(boundsTimer);
+			resizeObserver.disconnect();
+			window.removeEventListener("mousemove", reportInteractiveBounds);
+			window.removeEventListener("resize", reportInteractiveBounds);
+			window.electronAPI?.hudOverlaySetInteractiveBounds?.(null);
+		};
+	}, [recordingWebcamPreviewContainerRef]);
 
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } =
 		useLaunchHudInteractionState({
@@ -321,12 +362,8 @@ function LaunchWindowContent() {
 						size="icon"
 						iconSize="lg"
 						disabled={countdownActive}
-						title={
-							microphoneEnabled
-								? t("recording.disableMicrophone")
-								: t("recording.enableMicrophone")
-						}
-						className={microphoneEnabled ? "text-accent" : ""}
+						aria-label={t("recording.audioSettings", "Audio settings")}
+						className={microphoneEnabled || systemAudioEnabled ? "text-accent" : ""}
 					>
 						{microphoneEnabled ? (
 							<MicrophoneIcon
@@ -334,6 +371,8 @@ function LaunchWindowContent() {
 								className="size-5"
 								size={18}
 							/>
+						) : systemAudioEnabled ? (
+							<SpeakerHighIcon className="size-5" />
 						) : (
 							<MicrophoneSlashIcon className="size-5" />
 						)}
@@ -343,11 +382,13 @@ function LaunchWindowContent() {
 
 			<WebcamPopover
 				disabled={recording || countdownActive}
+				cameraPermission={cameraPermission}
 				webcamEnabled={webcamEnabled}
 				onDisableWebcam={() => setWebcamEnabled(false)}
-				canToggleFloatingPreview={canToggleFloatingWebcamPreview(
-					hudOverlayMousePassthroughSupported,
-				)}
+				canToggleFloatingPreview={
+					cameraAllowed &&
+					canToggleFloatingWebcamPreview(hudOverlayMousePassthroughSupported)
+				}
 				showFloatingWebcamPreview={showFloatingWebcamPreview}
 				onToggleFloatingPreview={() => setShowFloatingWebcamPreview((current) => !current)}
 				showWebcamControls={showWebcamControls && !showRecordingWebcamPreview}
@@ -368,11 +409,7 @@ function LaunchWindowContent() {
 						size="icon"
 						iconSize="lg"
 						disabled={countdownActive}
-						title={
-							webcamEnabled
-								? t("recording.disableWebcam")
-								: t("recording.enableWebcam")
-						}
+						aria-label={t("recording.cameraSettings", "Camera settings")}
 						className={webcamEnabled ? "text-accent" : ""}
 					>
 						{webcamEnabled ? (
@@ -411,11 +448,12 @@ function LaunchWindowContent() {
 				variant="ghost"
 				size="icon"
 				iconSize="lg"
-				onClick={() => window.electronAPI?.hudOverlayHide?.()}
+				onClick={hideHud}
 				disabled={countdownActive}
 				title={t("recording.hideHud")}
+				aria-label={t("recording.hideHud")}
 			>
-				<MinusIcon className="size-5" />
+				<XIcon className="size-5" />
 			</Button>
 		</div>
 	);

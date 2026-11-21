@@ -1,0 +1,7 @@
+scripts:
+  - name: Setup
+    command: npm ci && npm run -s env:pull
+    triggers:
+      - session.create
+  - name: Run
+    command: npm run dev

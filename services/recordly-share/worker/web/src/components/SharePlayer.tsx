@@ -12,31 +12,31 @@ import {
 	toast,
 } from "@heroui/react";
 import {
-	ArrowsOutIcon,
-	ArrowsInIcon,
 	ArrowCounterClockwiseIcon,
+	ArrowsInIcon,
+	ArrowsOutIcon,
+	ChatCircleIcon,
 	ClosedCaptioningIcon,
+	FastForwardIcon,
 	PauseIcon,
 	PictureInPictureIcon,
 	PlayIcon,
+	RewindIcon,
 	SpeakerHighIcon,
 	SpeakerSlashIcon,
-	FastForwardIcon,
-	RewindIcon,
-	ChatCircleIcon,
 } from "@phosphor-icons/react";
 import {
+	type CSSProperties,
+	type RefObject,
 	useCallback,
 	useEffect,
 	useRef,
 	useState,
-	type RefObject,
-	type CSSProperties,
 } from "react";
 import type { Comment, Reaction, ShareData } from "../scripts/api";
 import { formatTimestamp } from "../scripts/api";
+import { type FullscreenVideo, togglePlayerFullscreen } from "../scripts/playerFullscreen";
 import { clusterTimeline, type TimelineItem } from "../scripts/shareModel";
-import { togglePlayerFullscreen, type FullscreenVideo } from "../scripts/playerFullscreen";
 
 interface Props {
 	data: ShareData;

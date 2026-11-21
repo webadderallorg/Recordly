@@ -1,4 +1,4 @@
-import { DEFAULT_WEBCAM_ROUNDNESS } from "@/components/video-editor/types";
+import { DEFAULT_WEBCAM_ROUNDNESS, DEFAULT_WEBCAM_SIZE } from "@/components/video-editor/types";
 import { getSceneEffectMetrics } from "@/components/video-editor/videoPlayback/sceneEffects";
 import {
 	getWebcamMediaTargetTimeSeconds,
@@ -92,6 +92,7 @@ export function drawWebcamOverlay(
 		LegacyFrameRendererContext,
 		| "config"
 		| "webcamDecodedFrame"
+		| "webcamForwardFrameSource"
 		| "webcamVideoElement"
 		| "currentVideoTime"
 		| "webcamMotionBlur"
@@ -138,8 +139,11 @@ export function drawWebcamOverlay(
 
 	const expectedWebcamTargetTime = getWebcamMediaTargetTimeSeconds({
 		currentTime: context.currentVideoTime,
-		webcamDuration: Number.isFinite(webcamVideo?.duration) ? webcamVideo?.duration : null,
+		webcamDuration:
+			webcamVideo?.duration ??
+			(webcam.loop ? context.webcamForwardFrameSource?.duration : undefined),
 		timeOffsetMs: webcam.timeOffsetMs,
+		loop: webcam.loop,
 	});
 
 	const canRefreshCache =
@@ -207,10 +211,10 @@ export function drawWebcamOverlay(
 				? webcamFrameSource.videoHeight
 				: webcamFrameSource.height) || sourceWidth;
 	const margin = scaleWebcamOverlayPixels(webcam.margin ?? 24, width);
-	const widthPercent = webcam.width ?? webcam.size ?? 50;
+	const widthPercent = webcam.width ?? webcam.size ?? DEFAULT_WEBCAM_SIZE;
 	const heightPercent = getCropMatchedWebcamHeightPercent(
 		widthPercent,
-		webcam.height ?? webcam.size ?? 50,
+		webcam.height ?? webcam.size ?? DEFAULT_WEBCAM_SIZE,
 		sourceWidth,
 		sourceHeight,
 		webcam.cropRegion,

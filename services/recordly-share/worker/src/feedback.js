@@ -3,8 +3,8 @@ import { AVAILABLE_RECORDING_SQL } from "./video.js";
 // Adapted from Voom (MIT), Copyright (c) 2026 Aritro Paul.
 // See ../../LICENSE and ../../../../THIRD_PARTY_NOTICES.md for attribution.
 
-import { verifyPasswordAuth } from "./auth.js";
 import { commentViewer } from "./accounts.js";
+import { verifyPasswordAuth } from "./auth.js";
 import { errorResponse, jsonResponse, parseCookies } from "./http.js";
 import { limitedJson } from "./requestBody.js";
 

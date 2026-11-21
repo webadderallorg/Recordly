@@ -119,17 +119,17 @@ export function getCursorPressState(
 	const hasReleaseTracking = Boolean(press.up || press.down.mouseButton);
 	const pressed = hasReleaseTracking && (!press.up || timeMs < press.up.timeMs);
 	const releaseAgeMs = press.up && !pressed ? timeMs - press.up.timeMs : null;
-	const half = Math.max(1, bounceMs / 2);
-	const pressProgress = Math.min(0.5, ageMs / (half * 2));
-	const bounceProgress = hasReleaseTracking
-		? pressed
-			? pressProgress
-			: Math.max(
-					0,
-					Math.min(0.5, (press.up!.timeMs - press.down.timeMs) / (half * 2)) *
-						(1 - releaseAgeMs! / half),
-				)
-		: Math.max(0, 1 - ageMs / Math.max(1, bounceMs));
+	const duration = Math.max(1, bounceMs);
+	const extendsBounce = press.up
+		? press.up.timeMs - press.down.timeMs > duration
+		: hasReleaseTracking;
+	// Short clicks use the same pulse. Only a hold past its full duration
+	// keeps the cursor compressed until the recorded release.
+	const bounceProgress = extendsBounce
+		? releaseAgeMs === null
+			? Math.min(0.5, ageMs / duration)
+			: Math.max(0, 0.5 - releaseAgeMs / duration)
+		: Math.max(0, 1 - ageMs / duration);
 	return {
 		sample: press.up && !pressed ? press.up : press.down,
 		downSample: press.down,

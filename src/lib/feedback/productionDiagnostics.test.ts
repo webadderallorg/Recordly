@@ -1,6 +1,6 @@
-import { expect, it, vi } from "vitest";
+import { type MinifyOptions, minify } from "terser";
 import { loadConfigFromFile } from "vite";
-import { minify, type MinifyOptions } from "terser";
+import { expect, it, vi } from "vitest";
 
 it("keeps warnings and errors in the packaged renderer so support reports contain logs", async () => {
 	const config = await loadConfigFromFile({ command: "build", mode: "ui" });

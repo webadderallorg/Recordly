@@ -1,5 +1,6 @@
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import { type AspectRatio } from "@/utils/aspectRatioUtils";
+import type { PersistedEditorHistory } from "./editorHistoryPersistence";
 import {
 	type AnnotationRegion,
 	type AudioRegion,
@@ -18,7 +19,6 @@ import {
 	type ZoomTransitionEasing,
 } from "./types";
 import type { CursorIdleHideSettings } from "./videoPlayback/cursorIdleVisibility";
-import type { PersistedEditorHistory } from "./editorHistoryPersistence";
 export interface ProjectEditorState {
 	cursorIdleHide: CursorIdleHideSettings;
 	wallpaper: string;

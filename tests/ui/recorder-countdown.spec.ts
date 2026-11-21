@@ -105,16 +105,17 @@ test("compact microphone and camera selectors preserve their original choices", 
 			] as MediaDeviceInfo[];
 	});
 	await page.goto("/?windowType=hud-overlay");
-	const microphone = page.getByRole("button", { name: "Enable microphone", exact: true });
+	const microphone = page.getByRole("button", { name: "Audio settings", exact: true });
 	await expect(microphone).toHaveText("");
 	await microphone.click();
 	await expect(page.getByText("Microphone", { exact: true })).toBeVisible();
-	await expect(
-		page.getByRole("button", { name: "Disable system audio", exact: true }),
-	).toBeVisible();
+	await expect(page.getByRole("button", { name: "Computer audio", exact: true })).toHaveAttribute(
+		"aria-pressed",
+		"true",
+	);
 	await expect(page.getByText("Select a microphone to enable", { exact: true })).toBeVisible();
 	await page.keyboard.press("Escape");
-	const camera = page.getByRole("button", { name: "Enable webcam overlay", exact: true });
+	const camera = page.getByRole("button", { name: "Camera settings", exact: true });
 	await expect(camera).toHaveText("");
 	await camera.click();
 	await expect(page.getByText("Webcam", { exact: true })).toBeVisible();

@@ -1,7 +1,7 @@
-import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { Card, Popover } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { useProjectThumbnailUrl } from "./dashboard/useProjectThumbnailUrl";
 
 function ProjectBrowserThumbnail({ entry }: { entry: ProjectLibraryEntry }) {

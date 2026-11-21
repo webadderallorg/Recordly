@@ -35,6 +35,7 @@
     "!**/*.onnx",
     "!**/recordly-model.json",
     "!node_modules/ffmpeg-static/ffmpeg.sources/**",
+    "!node_modules/ffmpeg-static/ffmpeg.exe.sources/**",
     "!node_modules/ffmpeg-static/ffmpeg.ffprobe",
     "!electron/native/bin/**/whisper-bench*",
     "!electron/native/bin/**/whisper-quantize*",
@@ -86,12 +87,9 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "icon": "icons/icons/mac/icon.icns",
+    "icon": "icons/icons/mac/Recordly.icon",
     "artifactName": "${productName}-${arch}.${ext}",
     "extendInfo": {
-      // The main app restores its Dock icon through desktopPresence. Declaring
-      // an accessory launch identity keeps Chromium media helpers out of the Dock.
-      "LSUIElement": true,
       "NSAudioCaptureUsageDescription": "Recordly needs audio capture permission to record system audio.",
       "NSCameraUsageDescription": "Recordly needs camera access to record webcam video.",
       "NSMicrophoneUsageDescription": "Recordly needs microphone access to record voice audio.",

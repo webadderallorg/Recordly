@@ -13,6 +13,20 @@ const user = {
 	is_anonymous: false,
 };
 
+export function testAuthSession(identity: Partial<Pick<User, "id" | "email">> = {}) {
+	const account: User = { ...structuredClone(user), ...identity };
+	const expiresAt = Math.floor(Date.now() / 1000) + 3600;
+	const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+	return {
+		access_token: `${encode({ alg: "HS256", typ: "JWT" })}.${encode({ sub: account.id, exp: expiresAt, role: "authenticated" })}.ui-test-signature`,
+		refresh_token: "ui-test-refresh-token",
+		token_type: "bearer",
+		expires_in: 3600,
+		expires_at: expiresAt,
+		user: account,
+	};
+}
+
 export async function installSupabaseAuth(page: Page, { signedIn = true } = {}) {
 	await page.route("**/cloud/config", (route) =>
 		route.fulfill({
@@ -20,17 +34,8 @@ export async function installSupabaseAuth(page: Page, { signedIn = true } = {}) 
 			json: { authCaptcha: { enabled: false } },
 		}),
 	);
-	const account: User = structuredClone(user);
-	const expiresAt = Math.floor(Date.now() / 1000) + 3600;
-	const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
-	const session = {
-		access_token: `${encode({ alg: "HS256", typ: "JWT" })}.${encode({ sub: user.id, exp: expiresAt, role: "authenticated" })}.ui-test-signature`,
-		refresh_token: "ui-test-refresh-token",
-		token_type: "bearer",
-		expires_in: 3600,
-		expires_at: expiresAt,
-		user: account,
-	};
+	const session = testAuthSession();
+	const account = session.user;
 	await page.route("https://auth.recordly.test/**", async (route) => {
 		const path = new URL(route.request().url()).pathname;
 		if (path === "/auth/v1/settings")

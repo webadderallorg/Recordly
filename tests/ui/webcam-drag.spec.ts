@@ -5,6 +5,11 @@ test.beforeEach(async ({ page }) => {
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
 		window.electronAPI.getEditorMode = async () => true;
+		window.electronAPI.getMediaPermissionStatus = async () => ({
+			success: true,
+			microphone: "granted",
+			camera: "granted",
+		});
 		window.electronAPI.getRecordingPreferences = async () => ({
 			success: true,
 			microphoneEnabled: false,

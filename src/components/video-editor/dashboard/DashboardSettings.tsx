@@ -1,16 +1,16 @@
-import { LocalizedError } from "@/components/feedback/LocalizedError";
-import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
+import { LocalizedError } from "@/components/feedback/LocalizedError";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useI18n } from "@/contexts/I18nContext";
 import { supportsHudCaptureProtection } from "@/lib/hudCaptureProtection";
-import { SettingsRow } from "../SettingsRow";
 import { SettingsInfo } from "../SettingsInfo";
-import { SettingsCategory, SettingsSections, type SettingsSection } from "../SettingsSections";
-import { ThemeAppearancePicker } from "./ThemeAppearancePicker";
+import { SettingsRow } from "../SettingsRow";
+import { SettingsCategory, type SettingsSection, SettingsSections } from "../SettingsSections";
 import { AppUpdateSettings } from "./AppUpdateSettings";
 import { SettingsSidebarFooter } from "./SettingsSidebarFooter";
+import { ThemeAppearancePicker } from "./ThemeAppearancePicker";
 import "./DashboardSettings.css";
 export const DashboardSettingsContext = createContext<ReactNode>(null);
 export function DashboardSettings({
@@ -158,7 +158,7 @@ export function DashboardSettings({
 					<header className="dashboard-settings-group">
 						<h2>{t("settings.categories.general", "General")}</h2>
 					</header>
-					<div className="settings-appearance">
+					<div className="settings-appearance settings-group">
 						<SettingsRow
 							title={t("settings.appPreferences.appearance", "Appearance")}
 							stacked
@@ -249,6 +249,7 @@ export function DashboardSettings({
 					{captureSupported && (
 						<div className="settings-group">
 							<SettingsRow
+								descriptionInline
 								title={t(
 									"settings.appPreferences.hideControls",
 									"Hide recording controls from captured video",

@@ -92,7 +92,7 @@ test("upgrade stays secondary and project titles open or select the recording", 
 	await expect(
 		home.getByRole("list", { name: "Your projects" }).getByLabel("Test User"),
 	).toHaveCount(0);
-	await home.getByRole("button", { name: "Select projects to delete", exact: true }).click();
+	await home.getByRole("button", { name: "Select projects", exact: true }).click();
 	const selectTitle = home.getByRole("button", { name: `Select ${title}`, exact: true });
 	await selectTitle.click();
 	await expect(selectTitle).toHaveAttribute("aria-pressed", "true");

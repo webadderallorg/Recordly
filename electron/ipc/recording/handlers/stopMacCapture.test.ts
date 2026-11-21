@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import * as state from "../../state";
 
 const mocks = vi.hoisted(() => ({ validate: vi.fn(), size: vi.fn() }));
+
 vi.mock("electron", () => ({ BrowserWindow: { getAllWindows: () => [] } }));
 vi.mock("../../cursor/telemetry", () => ({
 	persistPendingCursorTelemetry: vi.fn(),
@@ -17,10 +18,12 @@ vi.mock("../diagnostics", () => ({
 	recordNativeCaptureDiagnostics: vi.fn(),
 }));
 vi.mock("../macCompanionAudio", () => ({ getFinalMacCompanionAudioPath: (file: string) => file }));
+
 import { attachNativeCaptureLifecycle, recoverNativeMacCaptureOutput } from "../mac";
 import { stopMacCapture } from "./stopMacCapture";
 
 const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+
 beforeEach(() => {
 	Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
 	vi.clearAllMocks();

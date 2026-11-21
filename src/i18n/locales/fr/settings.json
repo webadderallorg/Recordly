@@ -154,6 +154,7 @@
 		"webcamCrop": "Recadrage de la webcam",
 		"webcamReactToZoom": "La webcam réagit au zoom",
 		"webcamMirror": "Miroir webcam",
+		"showWebcam": "Afficher la webcam",
 		"webcamRoundness": "Arrondi de la webcam",
 		"webcamShadow": "Ombre de la webcam",
 		"shadow": "Ombre",
@@ -226,6 +227,7 @@
 	},
 	"captions": {
 		"firstDownload": "La première utilisation télécharge {{size}} Mo de fichiers vocaux, puis génère les sous-titres.",
+		"downloadAndGenerate": "Télécharger {{size}} Mo et générer les sous-titres",
 		"localProcessing": "Les sous-titres sont générés sur cet appareil. Votre enregistrement n’est pas envoyé.",
 		"selectOnTimeline": "Sélectionnez un sous-titre sur la timeline pour le modifier.",
 		"enabled": "Afficher",
@@ -324,6 +326,7 @@
 		"fpsTitle": "IPS",
 		"loop": "Boucle",
 		"outputDimensions": "Sortie : {{dimensions}} px",
+		"upToResolution": "Jusqu’à {{height}}p",
 		"sizePresetOriginalShort": "Orig.",
 		"sizePresetMediumShort": "Moy",
 		"sizePresetLargeShort": "Grd",
@@ -377,14 +380,6 @@
 		"deleteRegion": "Supprimer la zone audio"
 	},
 	"updates": {
-		"loadFailed": "Impossible de charger le canal de mise à jour. Réessayez.",
-		"automaticDownloads": "Télécharger automatiquement les mises à jour",
-		"automaticDownloadsDescription": "Téléchargez les nouvelles mises à jour en arrière-plan. Vous choisissez quand redémarrer.",
-		"downloadPreferenceFailed": "Impossible de charger ou d’enregistrer le téléchargement automatique des mises à jour. Réessayez.",
-		"experimentalDescription": "Vous avez activé les mises à jour expérimentales, vous pouvez donc tester la dernière mise à jour de Recordly avant sa disponibilité générale.",
-		"title": "Mises à jour",
-		"experimental": "Mises à jour expérimentales",
-		"saveFailed": "Impossible de changer le canal de mise à jour.",
 		"changeVersion": "Changer de version",
 		"versionInstallHint": "Téléchargez une version, puis ouvrez son programme d’installation pour changer de version.",
 		"loadingVersions": "Chargement des versions…",
@@ -392,7 +387,15 @@
 		"prereleaseVersion": "Préversion",
 		"noVersions": "Aucune version compatible n’est disponible pour cette installation.",
 		"versionFailed": "Impossible de charger ou télécharger cette version. Réessayez.",
-		"downloadInstaller": "Télécharger le programme d’installation"
+		"downloadInstaller": "Télécharger le programme d’installation",
+		"loadFailed": "Impossible de charger le canal de mise à jour. Réessayez.",
+		"automaticDownloads": "Télécharger automatiquement les mises à jour",
+		"automaticDownloadsDescription": "Téléchargez les nouvelles mises à jour en arrière-plan. Vous choisissez quand redémarrer.",
+		"downloadPreferenceFailed": "Impossible de charger ou d’enregistrer le téléchargement automatique des mises à jour. Réessayez.",
+		"experimentalDescription": "Vous avez activé les mises à jour expérimentales, vous pouvez donc tester la dernière mise à jour de Recordly avant sa disponibilité générale.",
+		"title": "Mises à jour",
+		"experimental": "Mises à jour expérimentales",
+		"saveFailed": "Impossible de changer le canal de mise à jour."
 	},
 	"categories": {
 		"general": "Général",

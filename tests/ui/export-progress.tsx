@@ -1,12 +1,12 @@
 import { type ComponentProps, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { loadEditorPreferences } from "@/components/video-editor/editorPreferences";
-import type { ExportProgress } from "@/lib/exporter";
 import { useExportSession } from "@/components/video-editor/export/useExportSession";
 import { useExportSettings } from "@/components/video-editor/export/useExportSettings";
 import { useExportStatusViewModel } from "@/components/video-editor/export/useExportStatusViewModel";
 import { EditorExportMenu } from "@/components/video-editor/layout/EditorExportMenu";
 import { I18nProvider, useI18n } from "@/contexts/I18nContext";
+import type { ExportProgress } from "@/lib/exporter";
 import "@/index.css";
 
 window.electronAPI = {
@@ -88,6 +88,14 @@ function Fixture() {
 	]);
 	return (
 		<main className="p-8 flex justify-end">
+			<button
+				type="button"
+				onClick={() => {
+					document.documentElement.dataset.editorAction = "true";
+				}}
+			>
+				Editor action
+			</button>
 			<EditorExportMenu
 				t={t}
 				exportSettings={exportSettings}
@@ -109,9 +117,14 @@ function Fixture() {
 				experimentalNvidiaCudaExport={false}
 				setExperimentalNvidiaCudaExport={() => undefined}
 				handleOpenExportDropdown={() => exportSession.setShowExportDropdown(true)}
-				handleExportDropdownClose={() => exportSession.setShowExportDropdown(false)}
+				handleExportDropdownClose={() => {
+					exportSession.setShowExportDropdown(false);
+					exportSession.setExportedFilePath(undefined);
+				}}
 				handleCancelExport={() => {
 					document.documentElement.dataset.cancelled = "true";
+					exportSession.setIsExporting(false);
+					exportSession.setShowExportDropdown(false);
 					cancelPreparation?.();
 				}}
 				handleRetrySaveExport={() => undefined}

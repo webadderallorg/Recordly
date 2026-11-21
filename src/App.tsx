@@ -1,10 +1,10 @@
 import { Card } from "@heroui/react";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { RecordlyMark } from "./components/ui/RecordlyMark";
 import { HomeLoadingSkeleton } from "./components/video-editor/dashboard/HomeLoadingSkeleton";
 import { EditorLoadingSkeleton } from "./components/video-editor/layout/EditorLoadingSkeleton";
 import { useI18n } from "./contexts/I18nContext";
 import { getStartupView } from "./lib/startupView";
-import { RecordlyMark } from "./components/ui/RecordlyMark";
 
 const HudWindow = lazy(() => import("./components/launch/HudWindow"));
 const SourceSelector = lazy(() =>
@@ -25,6 +25,7 @@ const UpdateToastWindow = lazy(() =>
 const EditorWindow = lazy(() => import("./components/video-editor/EditorWindow"));
 const CapturePicker = lazy(() => import("./components/capture-picker/CapturePicker"));
 const OnboardingWindow = lazy(() => import("./components/auth/OnboardingWindow"));
+const OnboardingIntroWindow = lazy(() => import("./components/auth/OnboardingIntroWindow"));
 const PermissionAccessoryWindow = lazy(() => import("./components/auth/PermissionAccessoryWindow"));
 
 export default function App() {
@@ -104,6 +105,9 @@ export default function App() {
 			break;
 		case "onboarding":
 			content = <OnboardingWindow />;
+			break;
+		case "onboarding-intro":
+			content = <OnboardingIntroWindow />;
 			break;
 		case "permission-accessory":
 			content = <PermissionAccessoryWindow />;

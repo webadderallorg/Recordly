@@ -1,19 +1,11 @@
-import {
-	getProjectStorageKey,
-	readProjectFileWithRecovery,
-	setProjectRecoveryDirectory,
-} from "./atomicSave";
-import { encodeComposedThumbnail } from "./composedThumbnail";
 import { createHash, randomUUID } from "node:crypto";
-import { createProjectFirstFrameThumbnail } from "./firstFrameThumbnail";
-import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
-import type { ProjectPreviewData } from "../../../src/types/projectPreview";
-import { hasFreshProjectThumbnail } from "./thumbnailFreshness";
-import { type Stats, constants as fsConstants, realpathSync } from "node:fs";
+import { constants as fsConstants, realpathSync, type Stats } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { app } from "electron";
+import type { ProjectPreviewData } from "../../../src/types/projectPreview";
 import { RECORDINGS_DIR, USER_DATA_PATH } from "../../appPaths";
+import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
 import { isSupportedLocalMediaPath } from "../../mediaTypes";
 import {
 	LEGACY_PROJECT_FILE_EXTENSIONS,
@@ -34,13 +26,21 @@ import {
 	setRecordingsDirLoaded,
 } from "../state";
 import type { ProjectLibraryEntry, RecordingSessionData } from "../types";
-import { canonicalMediaSources } from "./canonicalMediaSources";
 import {
 	getRecordingsDir,
 	normalizePath,
 	normalizeVideoSourcePath,
 	parseJsonWithByteOrderMark,
 } from "../utils";
+import {
+	getProjectStorageKey,
+	readProjectFileWithRecovery,
+	setProjectRecoveryDirectory,
+} from "./atomicSave";
+import { canonicalMediaSources } from "./canonicalMediaSources";
+import { encodeComposedThumbnail } from "./composedThumbnail";
+import { createProjectFirstFrameThumbnail } from "./firstFrameThumbnail";
+import { hasFreshProjectThumbnail } from "./thumbnailFreshness";
 
 setProjectRecoveryDirectory(path.join(USER_DATA_PATH, "project-recovery"), (contents) =>
 	isLoadableProjectData(parseJsonWithByteOrderMark(contents)),

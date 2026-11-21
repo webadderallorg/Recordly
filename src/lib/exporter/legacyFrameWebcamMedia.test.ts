@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { syncWebcamFrame } from "./legacyFrameWebcamMedia";
+
 const mocks = vi.hoisted(() => ({ resolve: vi.fn(), initialize: vi.fn() }));
 vi.mock("./localMediaSource", () => ({ resolveMediaElementSource: mocks.resolve }));
 vi.mock("./forwardFrameSource", () => ({

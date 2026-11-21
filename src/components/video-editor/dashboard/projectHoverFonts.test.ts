@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_ANNOTATION_STYLE, type AnnotationRegion } from "../types";
+import { type AnnotationRegion, DEFAULT_ANNOTATION_STYLE } from "../types";
 import { preloadProjectHoverFonts } from "./projectHoverFonts";
 
 const text = (overrides: Partial<AnnotationRegion> = {}): AnnotationRegion => ({

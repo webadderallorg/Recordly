@@ -154,6 +154,7 @@
 		"webcamCrop": "Webcam zuschneiden",
 		"webcamReactToZoom": "Webcam reagiert auf Zoom",
 		"webcamMirror": "Webcam spiegeln",
+		"showWebcam": "Webcam anzeigen",
 		"webcamRoundness": "Webcam-Rundung",
 		"webcamShadow": "Webcam-Schatten",
 		"shadow": "Schatten",
@@ -226,6 +227,7 @@
 	},
 	"captions": {
 		"firstDownload": "Bei der ersten Nutzung werden {{size}} MB Sprachdateien heruntergeladen und dann Untertitel erstellt.",
+		"downloadAndGenerate": "{{size}} MB herunterladen und Untertitel erstellen",
 		"localProcessing": "Untertitel werden auf diesem Gerät erstellt. Deine Aufnahme wird nicht hochgeladen.",
 		"selectOnTimeline": "Wählen Sie einen Untertitel auf der Zeitleiste aus, um ihn zu bearbeiten.",
 		"enabled": "Anzeigen",
@@ -324,6 +326,7 @@
 		"fpsTitle": "FPS",
 		"loop": "Wiederholen",
 		"outputDimensions": "Ausgabe: {{dimensions}}px",
+		"upToResolution": "Bis zu {{height}}p",
 		"sizePresetOriginalShort": "Orig.",
 		"sizePresetMediumShort": "Mittel",
 		"sizePresetLargeShort": "Groß",
@@ -377,14 +380,6 @@
 		"deleteRegion": "Audio löschen"
 	},
 	"updates": {
-		"loadFailed": "Der Update-Kanal konnte nicht geladen werden. Bitte versuche es erneut.",
-		"automaticDownloads": "Updates automatisch herunterladen",
-		"automaticDownloadsDescription": "Lade neue Updates im Hintergrund herunter. Du entscheidest, wann du neu startest.",
-		"downloadPreferenceFailed": "Automatische Update-Downloads konnten nicht geladen oder gespeichert werden. Versuche es erneut.",
-		"experimentalDescription": "Sie haben experimentelle Updates aktiviert und können daher das neueste Update von Recordly testen, bevor es allgemein verfügbar ist.",
-		"title": "Updates",
-		"experimental": "Experimentelle Updates",
-		"saveFailed": "Update-Kanal konnte nicht geändert werden.",
 		"changeVersion": "Version wechseln",
 		"versionInstallHint": "Lade eine Version herunter und öffne das Installationsprogramm, um die Version zu wechseln.",
 		"loadingVersions": "Versionen werden geladen…",
@@ -392,7 +387,15 @@
 		"prereleaseVersion": "Vorabversion",
 		"noVersions": "Für diese Installation sind keine kompatiblen Versionen verfügbar.",
 		"versionFailed": "Diese Version konnte nicht geladen oder heruntergeladen werden. Versuche es erneut.",
-		"downloadInstaller": "Installationsprogramm herunterladen"
+		"downloadInstaller": "Installationsprogramm herunterladen",
+		"loadFailed": "Der Update-Kanal konnte nicht geladen werden. Bitte versuche es erneut.",
+		"automaticDownloads": "Updates automatisch herunterladen",
+		"automaticDownloadsDescription": "Lade neue Updates im Hintergrund herunter. Du entscheidest, wann du neu startest.",
+		"downloadPreferenceFailed": "Automatische Update-Downloads konnten nicht geladen oder gespeichert werden. Versuche es erneut.",
+		"experimentalDescription": "Sie haben experimentelle Updates aktiviert und können daher das neueste Update von Recordly testen, bevor es allgemein verfügbar ist.",
+		"title": "Updates",
+		"experimental": "Experimentelle Updates",
+		"saveFailed": "Update-Kanal konnte nicht geändert werden."
 	},
 	"categories": {
 		"general": "Allgemein",

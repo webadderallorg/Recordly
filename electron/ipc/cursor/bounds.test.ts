@@ -1,4 +1,5 @@
 import { expect, it, vi } from "vitest";
+
 const exec = vi.hoisted(() => vi.fn());
 vi.mock("node:child_process", () => ({ execFile: exec }));
 vi.mock("node:util", () => ({ promisify: () => exec }));
@@ -9,6 +10,7 @@ vi.mock("../utils", () => ({
 		id.startsWith("window:") ? Number(id.split(":")[1]) || null : null,
 }));
 vi.mock("../windowsWindowControl", () => ({ resolveWindowsWindowBounds: vi.fn() }));
+
 import { resolveLinuxWindowBounds } from "./bounds";
 
 it("does not track a different same-title X11 window after the selected window disappears", async () => {

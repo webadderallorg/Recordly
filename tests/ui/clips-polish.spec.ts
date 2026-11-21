@@ -11,21 +11,37 @@ test.beforeEach(async ({ page }) => {
 	await expect(page.getByLabel("Loading preview")).toHaveCount(0, { timeout: 20000 });
 });
 
-test("narrow zooms retain the multiplier without a zoom icon", async ({ page }) => {
+test("zoom clips keep their icon and reveal labels as space allows", async ({ page }) => {
 	await page.getByRole("button", { name: "Add Zoom (Z)", exact: true }).click();
-	const zoom = page.locator('[data-variant="zoom"] .timeline-block');
-	await zoom.evaluate((node: HTMLElement) => {
-		node.style.width = "28px";
-	});
-	await expect(zoom.locator(".zoom-value")).toBeVisible();
-	await expect(zoom.locator(".zoom-mode")).toBeHidden();
-	await expect(zoom.locator(".zoom-icon")).toBeHidden();
-	expect(await zoom.locator(".zoom-value").innerText()).toMatch(/\d.*×/);
-	await zoom.evaluate((node: HTMLElement) => {
-		node.style.width = "180px";
-	});
-	await expect(zoom.locator(".zoom-icon")).toBeVisible();
-	await expect(zoom.locator(".zoom-mode")).toBeVisible();
+	const item = page.locator('[data-variant="zoom"]');
+	const zoom = item.locator(".timeline-block");
+	const icon = zoom.locator(".zoom-icon");
+	const heading = zoom.getByText("Zoom", { exact: true });
+	const value = zoom.locator(".zoom-value");
+	const mode = zoom.locator(".zoom-mode");
+
+	for (const [width, height, hasHeading, hasValue, hasMode] of [
+		[28, 44, false, false, false],
+		[44, 44, true, false, false],
+		[70, 44, true, true, false],
+		[180, 44, true, true, true],
+		[70, 24, true, false, false],
+		[110, 24, true, true, false],
+		[180, 24, true, true, true],
+	] as const) {
+		await zoom.evaluate(
+			(node, size) => {
+				node.style.width = `${size.width}px`;
+				node.style.height = `${size.height}px`;
+			},
+			{ width, height },
+		);
+		await expect(icon).toBeVisible();
+		await expect(heading).toBeVisible({ visible: hasHeading });
+		await expect(value).toBeVisible({ visible: hasValue });
+		await expect(mode).toBeVisible({ visible: hasMode });
+	}
+	await expect(item).toHaveAccessibleName(/Zoom.*\d.*×/);
 });
 
 test("annotations can be dragged into the canvas background and survive undo", async ({ page }) => {

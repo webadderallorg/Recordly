@@ -1,5 +1,5 @@
 import { Sprite } from "pixi.js";
-import { DEFAULT_WEBCAM_ROUNDNESS } from "@/components/video-editor/types";
+import { DEFAULT_WEBCAM_ROUNDNESS, DEFAULT_WEBCAM_SIZE } from "@/components/video-editor/types";
 import { isWebcamVisibleAtSourceTime } from "@/components/video-editor/videoPlayback/webcamSync";
 import { getWebcamEdgeFeatherPixels } from "@/components/video-editor/webcamEdgeFeather";
 import { WebcamMotionBlur } from "@/components/video-editor/webcamMotionBlur";
@@ -217,7 +217,7 @@ export class FrameWebcam {
 		}
 
 		const margin = scaleWebcamOverlayPixels(webcam.margin ?? 24, this.context.config.width);
-		const widthPercent = webcam.width ?? webcam.size ?? 50;
+		const widthPercent = webcam.width ?? webcam.size ?? DEFAULT_WEBCAM_SIZE;
 		const aspectSourceWidth =
 			liveSourceDimensions.width > 0
 				? liveSourceDimensions.width
@@ -228,7 +228,7 @@ export class FrameWebcam {
 				: renderableWebcamSource.height;
 		const heightPercent = getCropMatchedWebcamHeightPercent(
 			widthPercent,
-			webcam.height ?? webcam.size ?? 50,
+			webcam.height ?? webcam.size ?? DEFAULT_WEBCAM_SIZE,
 			aspectSourceWidth,
 			aspectSourceHeight,
 			webcam.cropRegion,

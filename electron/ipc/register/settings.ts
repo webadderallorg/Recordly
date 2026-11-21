@@ -7,6 +7,7 @@ import {
 } from "../../appSettingsStore";
 import { createCountdownController } from "../../countdownController";
 import { hideCursor } from "../../cursorHider";
+import { applyWindowControl } from "../../windowControls";
 import { COUNTDOWN_SETTINGS_FILE, RECORDINGS_SETTINGS_FILE, SHORTCUTS_FILE } from "../constants";
 import { recordingFocus } from "../recording/focus";
 import {
@@ -56,6 +57,8 @@ export function registerSettingsHandlers() {
 	ipcMain.handle("get-window-chrome", (event) => {
 		const win = BrowserWindow.fromWebContents(event.sender);
 		return {
+			customControls: process.platform === "win32" || process.platform === "linux",
+			maximized: win?.isMaximized() ?? false,
 			trafficLightsVisible:
 				process.platform === "darwin" &&
 				!!win &&
@@ -63,6 +66,9 @@ export function registerSettingsHandlers() {
 				!win.isSimpleFullScreen(),
 		};
 	});
+	ipcMain.handle("window-control", (event, action: unknown) => ({
+		success: applyWindowControl(BrowserWindow.fromWebContents(event.sender), action),
+	}));
 
 	ipcMain.handle("get-platform", () => {
 		return process.platform;
@@ -236,7 +242,6 @@ export function registerSettingsHandlers() {
 		const cancel = () => countdown.cancel();
 		owner.once("destroyed", cancel);
 		owner.once("render-process-gone", cancel);
-		void recordingFocus.start(selectedSource);
 		try {
 			const result = await countdown.start(seconds);
 			if (!result.success) recordingFocus.stop();
