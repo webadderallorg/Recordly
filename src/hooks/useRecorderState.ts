@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { AUDIO_BITRATE_VOICE, RECORDER_TIMESLICE_MS } from "./recorderCaptureOptions";
 import { RecordingFileWriter } from "./recordingFileWriter";
 import { createRecordingMicrophoneFallback } from "./recordingMicrophoneFallback";
-import { selectRecordingMimeType } from "./recordingMimeType";
+import { getRecordingMimeTypes } from "./recordingMimeType";
 import type { useRecorderPreferences } from "./useRecorderPreferences";
 
 type RecorderPreferences = ReturnType<typeof useRecorderPreferences>;
@@ -90,10 +90,6 @@ export function useRecorderState(
 
 	const hideEditorOverlayCursorByDefault = useRef(false);
 
-	const selectMimeType = useCallback(() => {
-		return selectRecordingMimeType();
-	}, []);
-
 	return {
 		recording,
 		recordingActive,
@@ -134,6 +130,6 @@ export function useRecorderState(
 		cleanupMicFallbackRecorder,
 		storeMicrophoneSidecar,
 		hideEditorOverlayCursorByDefault,
-		selectMimeType,
+		getMimeTypes: getRecordingMimeTypes,
 	};
 }
