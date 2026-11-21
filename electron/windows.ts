@@ -20,6 +20,7 @@ import {
 import { getHudOverlayTaskbarOptions } from "./hudOverlayWindowOptions";
 import { startHudPointerRecovery } from "./hudPointerRecovery";
 import { sendNativeHudCaptureExclusions } from "./ipc/recording/nativeCaptureCommand";
+import { isLikelyLinuxWaylandSession } from "./ipc/register/sourceMapping";
 import {
 	currentProjectPath,
 	currentRecordingSession,
@@ -399,6 +400,24 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 
 ipcMain.on("hud-overlay-set-ignore-mouse", (_event, ignore: boolean) => {
 	setHudOverlayMousePassthrough(Boolean(ignore));
+});
+
+ipcMain.on("hud-overlay-set-popover-open", (event, open: boolean) => {
+	if (
+		process.platform !== "linux" ||
+		!process.env.DISPLAY?.trim() ||
+		isLikelyLinuxWaylandSession(process.env) ||
+		hudOverlayRecordingActive ||
+		hudOverlaySourceSelectionActive ||
+		!hudOverlayWindow ||
+		hudOverlayWindow.isDestroyed() ||
+		event.sender !== hudOverlayWindow.webContents ||
+		typeof open !== "boolean" ||
+		open === hudOverlayFallbackExpanded
+	) {
+		return;
+	}
+	setHudOverlayFallbackExpanded(open);
 });
 
 ipcMain.on("hud-overlay-set-source-selection-active", (_event, active: boolean) => {
