@@ -50,7 +50,7 @@ const WINDOW_ICON_PATH = path.join(
 );
 
 let hudOverlayWindow: BrowserWindow | null = null;
-let hiddenWaylandHud: { window: BrowserWindow; restoreOnActivation: boolean } | null = null;
+let hiddenLinuxHud: { window: BrowserWindow; restoreOnActivation: boolean } | null = null;
 let hudOverlayHiddenFromCapture = true;
 let hudOverlayCaptureProtectionLoaded = false;
 let hudOverlayFallbackExpanded = false;
@@ -495,16 +495,10 @@ ipcMain.on("hud-overlay-hide", () => {
 	if (!window) return;
 
 	if (process.platform === "linux") {
-		const ozonePlatform = app.commandLine.getSwitchValue("ozone-platform");
-		if (
-			ozonePlatform === "wayland" ||
-			(ozonePlatform !== "x11" && isLikelyLinuxWaylandSession(process.env))
-		) {
-			// Some Wayland compositors keep the surface mapped after minimize().
-			hiddenWaylandHud = { window, restoreOnActivation: true };
-			window.hide();
-			return;
-		}
+		// Wayland compositors and X11's non-focusable HUD can stay mapped after minimize().
+		hiddenLinuxHud = { window, restoreOnActivation: true };
+		window.hide();
+		return;
 	}
 	window.minimize();
 });
@@ -710,8 +704,8 @@ export function createHudOverlayWindow(): BrowserWindow {
 	win.on("show", () => {
 		if (!win.isDestroyed()) {
 			applyHudOverlayCaptureProtectionToWindow(win, hudOverlayHiddenFromCapture);
-			if (hiddenWaylandHud?.window === win) {
-				hiddenWaylandHud = null;
+			if (hiddenLinuxHud?.window === win) {
+				hiddenLinuxHud = null;
 				win.webContents.send("hud-overlay-restored");
 			}
 			if (process.platform === "win32" && recordingFocusWindows.length > 0)
@@ -843,7 +837,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 		screen.removeListener("display-metrics-changed", handleDisplayMetricsChanged);
 		if (hudOverlayWindow === win) {
 			hudOverlayWindow = null;
-			hiddenWaylandHud = null;
+			hiddenLinuxHud = null;
 			hudOverlayInteractiveBounds = null;
 			recordingPreparationActive = false;
 			hudCaptureStarting = false;
@@ -866,14 +860,14 @@ export function getHudOverlayWindow(): BrowserWindow | null {
 
 export function shouldRestoreHiddenHudOnActivation(): boolean {
 	return (
-		hiddenWaylandHud?.restoreOnActivation === true &&
-		hiddenWaylandHud.window === getHudOverlayWindow()
+		hiddenLinuxHud?.restoreOnActivation === true &&
+		hiddenLinuxHud.window === getHudOverlayWindow()
 	);
 }
 
 export function cancelHiddenHudRestoreOnActivation(): void {
-	if (hiddenWaylandHud) {
-		hiddenWaylandHud.restoreOnActivation = false;
+	if (hiddenLinuxHud) {
+		hiddenLinuxHud.restoreOnActivation = false;
 	}
 }
 
