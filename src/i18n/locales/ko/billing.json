@@ -24,7 +24,6 @@
 	"checkout": "브라우저에서 결제를 완료한 다음 돌아오세요. 결제가 확인되면 요금제가 업데이트됩니다.",
 	"active": "Cloud 요금제를 사용 중입니다.",
 	"ends": "{{date}}에 종료됩니다.",
-	"noExpiry": "Cloud 이용 중에는 클라우드 녹화가 만료되지 않습니다. Cloud가 종료되면 7일 후 만료됩니다.",
 	"portal": "보안 결제 포털에서 결제 정보를 관리하거나 구독을 취소하세요.",
 	"featureCommercial": "상업적 사용",
 	"featureCaptionFiles": "SRT 및 VTT 자막 파일 내보내기",

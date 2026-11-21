@@ -24,7 +24,6 @@
 	"checkout": "请在浏览器中完成付款，然后返回此处。确认付款后，套餐将自动更新。",
 	"active": "您的 Cloud 套餐已生效。",
 	"ends": "将于 {{date}} 结束。",
-	"noExpiry": "Cloud 有效期间，云端录制不会过期。Cloud 结束 7 天后，录制将过期。",
 	"portal": "在安全支付门户中管理付款信息或取消订阅。",
 	"featureCommercial": "商业使用",
 	"featureCaptionFiles": "导出 SRT 和 VTT 字幕文件",

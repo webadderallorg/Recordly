@@ -63,6 +63,25 @@ test("soundtrack begins on the logo signal and continues while the banner starts
 	await expect(banner.locator("video")).toHaveJSProperty("muted", true);
 });
 
+test("soundtrack loops after the full track ends", async ({ page }) => {
+	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
+	await page.goto("/?windowType=onboarding");
+	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
+	const audio = tour.locator("audio");
+	await expect(
+		tour.getByRole("button", { name: "Mute welcome music", exact: true }),
+	).toBeVisible();
+	await expect(audio).toHaveJSProperty("loop", true);
+	await audio.evaluate((el: HTMLAudioElement) => {
+		el.currentTime = el.duration - 1;
+	});
+	await expect
+		.poll(() => audio.evaluate((el: HTMLAudioElement) => el.currentTime), { timeout: 5000 })
+		.toBeLessThan(1);
+	await expect(audio).toHaveJSProperty("paused", false);
+	await expect(tour.locator("[data-welcome-music]")).toBeVisible();
+});
+
 test("blocked autoplay retries on interaction and the sound control does not pause playback", async ({
 	page,
 }) => {

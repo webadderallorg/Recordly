@@ -24,7 +24,6 @@
 	"checkout": "Hoàn tất thanh toán trong trình duyệt rồi quay lại đây. Gói sẽ được cập nhật sau khi khoản thanh toán được xác nhận.",
 	"active": "Gói Cloud của bạn đang hoạt động.",
 	"ends": "Gói sẽ hết hạn vào {{date}}.",
-	"noExpiry": "Bản ghi trên đám mây không hết hạn khi gói Cloud còn hiệu lực. Bản ghi sẽ hết hạn sau 7 ngày kể từ khi gói kết thúc.",
 	"portal": "Vào cổng thanh toán bảo mật để quản lý thông tin thanh toán hoặc hủy gói.",
 	"featureCommercial": "Sử dụng cho mục đích thương mại",
 	"featureCaptionFiles": "Xuất tệp phụ đề SRT và VTT",

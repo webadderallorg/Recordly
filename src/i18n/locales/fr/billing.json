@@ -24,7 +24,6 @@
 	"checkout": "Terminez le paiement dans votre navigateur, puis revenez ici. Votre offre sera mise à jour après confirmation du paiement.",
 	"active": "Votre offre Cloud est active.",
 	"ends": "Elle se termine le {{date}}.",
-	"noExpiry": "Les enregistrements cloud n’expirent pas tant que Cloud est actif. Ils expirent 7 jours après la fin de Cloud.",
 	"portal": "Gérez vos informations de paiement ou résiliez dans le portail de paiement sécurisé.",
 	"featureCommercial": "Usage commercial",
 	"featureCaptionFiles": "Export des sous-titres en fichiers SRT et VTT",

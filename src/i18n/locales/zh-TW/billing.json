@@ -24,7 +24,6 @@
 	"checkout": "請在瀏覽器中完成付款，然後返回此處。確認付款後，方案將自動更新。",
 	"active": "您的 Cloud 方案已生效。",
 	"ends": "將於 {{date}} 結束。",
-	"noExpiry": "Cloud 有效期間，雲端錄製不會過期。Cloud 結束 7 天後，錄製將過期。",
 	"portal": "在安全付款入口網站中管理付款資訊或取消訂閱。",
 	"featureCommercial": "商業使用",
 	"featureCaptionFiles": "匯出 SRT 和 VTT 字幕檔案",

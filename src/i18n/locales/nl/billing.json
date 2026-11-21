@@ -24,7 +24,6 @@
 	"checkout": "Voltooi de betaling in je browser en keer hier terug. Je abonnement wordt bijgewerkt zodra de betaling is bevestigd.",
 	"active": "Je Cloud-abonnement is actief.",
 	"ends": "Het eindigt op {{date}}.",
-	"noExpiry": "Cloudopnamen verlopen niet zolang Cloud actief is. Ze verlopen 7 dagen nadat Cloud eindigt.",
 	"portal": "Beheer je betaalgegevens of zeg op via het beveiligde betaalportaal.",
 	"featureCommercial": "Commercieel gebruik",
 	"featureCaptionFiles": "Ondertitels exporteren als SRT- en VTT-bestanden",

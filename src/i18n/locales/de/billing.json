@@ -24,7 +24,6 @@
 	"checkout": "Schließe die Zahlung im Browser ab und kehre hierher zurück. Dein Tarif wird nach der Zahlungsbestätigung aktualisiert.",
 	"active": "Dein Cloud-Tarif ist aktiv.",
 	"ends": "Er endet am {{date}}.",
-	"noExpiry": "Cloud-Aufnahmen laufen nicht ab, solange Cloud aktiv ist. Sie laufen 7 Tage nach dem Ende von Cloud ab.",
 	"portal": "Verwalte deine Zahlungsdaten oder kündige im sicheren Zahlungsportal.",
 	"featureCommercial": "Kommerzielle Nutzung",
 	"featureCaptionFiles": "Untertitel als SRT- und VTT-Dateien exportieren",
