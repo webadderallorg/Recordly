@@ -105,8 +105,7 @@ export function useTimelineSelection({
 	const deleteSelectedClip = useCallback(() => {
 		if (!selectedClipId || !onClipDelete) return;
 		onClipDelete(selectedClipId);
-		onSelectClip?.(null);
-	}, [selectedClipId, onClipDelete, onSelectClip]);
+	}, [selectedClipId, onClipDelete]);
 
 	const deleteSelectedAnnotation = useCallback(() => {
 		if (!selectedAnnotationId || !onAnnotationDelete) return;

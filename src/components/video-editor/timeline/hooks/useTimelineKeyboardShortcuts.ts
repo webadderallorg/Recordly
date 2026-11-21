@@ -99,7 +99,7 @@ export function useTimelineKeyboardShortcuts({
 				} else if (target === "zoom") {
 					deleteSelectedZoom();
 				} else if (target === "clip") {
-					deleteSelectedClip();
+					if (!e.repeat) deleteSelectedClip();
 				} else if (target === "annotation") {
 					deleteSelectedAnnotation();
 				} else if (target === "audio") {

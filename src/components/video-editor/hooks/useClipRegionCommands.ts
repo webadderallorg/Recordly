@@ -233,6 +233,8 @@ export function useClipRegionCommands({
 
 	const handleClipDelete = useCallback(
 		(id: string) => {
+			const index = clipRegions.findIndex((clip) => clip.id === id);
+			if (index < 0) return;
 			applySequence(clipRegions.filter((clip) => clip.id !== id));
 			setSourceAudioTrackSettingsByClip((current) => {
 				if (!(id in current)) return current;
@@ -240,14 +242,17 @@ export function useClipRegionCommands({
 				delete next[id];
 				return next;
 			});
-			if (selectedClipId === id) setSelectedClipId(null);
+			if (selectedClipId === id) {
+				const neighbor = clipRegions[index + 1] ?? clipRegions[index - 1];
+				handleSelectClip(neighbor?.id ?? null);
+			}
 		},
 		[
 			clipRegions,
 			selectedClipId,
 			applySequence,
+			handleSelectClip,
 			setSourceAudioTrackSettingsByClip,
-			setSelectedClipId,
 		],
 	);
 
