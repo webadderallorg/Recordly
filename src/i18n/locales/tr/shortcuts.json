@@ -1,0 +1,16 @@
+{
+	"actions": {
+		"addZoom": "Yakınlaştırma Ekle",
+		"addTrim": "Kırpma Ekle",
+		"addSpeed": "Hızlandırma Ekle",
+		"addAnnotation": "Açıklama Ekle",
+		"addKeyframe": "Anahtar Kare Ekle",
+		"deleteSelected": "Seçilenleri Sil",
+		"playPause": "Oynat / Duraklat",
+		"cycleForward": "Açıklamalar Arasında İleri Geç",
+		"cycleBackward": "Açıklamalar Arasında Geri Geç",
+		"deleteSelectedAlt": "Seçilenleri Sil (alternatif)",
+		"panTimeline": "Zaman Çizelgesini Kaydır",
+		"zoomTimeline": "Zaman Çizelgesini Yakınlaştır"
+	}
+}

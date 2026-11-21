@@ -24,6 +24,7 @@ const languageNames = [
 	"Tiếng Việt",
 	"简体中文",
 	"繁體中文",
+	"Türkçe",
 ];
 const expectedUpgradeLabels: Record<(typeof SUPPORTED_LOCALES)[number], string> = {
 	en: "Upgrade",
@@ -38,6 +39,7 @@ const expectedUpgradeLabels: Record<(typeof SUPPORTED_LOCALES)[number], string> 
 	vi: "Nâng cấp",
 	"zh-CN": "升级",
 	"zh-TW": "升級",
+	tr: "Yükselt",
 };
 
 for (const [index, locale] of SUPPORTED_LOCALES.entries()) {
