@@ -48,7 +48,7 @@ vi.mock("../constants", () => ({
 	SHORTCUTS_FILE: "/unused/shortcuts.json",
 }));
 vi.mock("../settings/recordingPreferencesStore", () => ({
-	createRecordingPreferencesStore: () => ({ read: vi.fn(), update: vi.fn() }),
+	recordingPreferencesStore: { read: vi.fn(), update: vi.fn() },
 }));
 vi.mock("../utils", () => ({ parseJsonWithByteOrderMark: JSON.parse }));
 

@@ -5,8 +5,10 @@ import type { AudioPeaksData } from "../../core/timelineTypes";
 
 interface AudioWaveformProps {
 	peaks: AudioPeaksData;
-	segmentStartMs?: number;
-	segmentEndMs?: number;
+	segmentStartMs: number;
+	segmentEndMs: number;
+	timelineStartMs: number;
+	timelineEndMs: number;
 	gain?: number;
 	normalize?: boolean;
 	className?: string;
@@ -21,6 +23,8 @@ function AudioWaveformComponent({
 	peaks,
 	segmentStartMs,
 	segmentEndMs,
+	timelineStartMs,
+	timelineEndMs,
 	gain = 1,
 	normalize = false,
 	className,
@@ -78,28 +82,41 @@ function AudioWaveformComponent({
 			const { peaks: peakData, durationMs } = peaks;
 			if (durationMs <= 0 || peakData.length === 0) return;
 
-			// Use raw values for smooth zooming/panning (no snapping)
-			const visibleStartMs = segmentStartMs ?? range.start;
-			const visibleEndMs = segmentEndMs ?? range.end;
-			const visibleDurationMs = visibleEndMs - visibleStartMs;
-
-			if (visibleDurationMs <= 0) return;
+			// The timeline clips the canvas to the intersection of the item and the viewport.
+			const visibleStart = Math.max(timelineStartMs, range.start);
+			const visibleEnd = Math.min(timelineEndMs, range.end);
+			const sourceDurationMs = segmentEndMs - segmentStartMs;
+			if (visibleEnd <= visibleStart || sourceDurationMs <= 0) return;
+			const sourcePerTimelineMs = sourceDurationMs / (timelineEndMs - timelineStartMs);
+			const visibleSourceStart =
+				segmentStartMs + (visibleStart - timelineStartMs) * sourcePerTimelineMs;
+			const sourceMsPerPixel = ((visibleEnd - visibleStart) * sourcePerTimelineMs) / width;
+			const peaksPerMs = peakData.length / durationMs;
+			const samplePixelRange = sourceMsPerPixel * peaksPerMs > 1;
 
 			const midY = height / 2;
 			ctx.beginPath();
 
 			for (let px = 0; px < width; px++) {
-				const t = visibleStartMs + (px / width) * visibleDurationMs;
+				const t = visibleSourceStart + px * sourceMsPerPixel;
+				if (t >= durationMs || t + sourceMsPerPixel <= 0) continue;
 
-				// If the timeline time is beyond the actual audio duration, we draw nothing (flat line)
-				if (t < 0 || t > durationMs) continue;
-
-				const exactIndex = (t / durationMs) * (peakData.length - 1);
-				const leftIndex = Math.floor(exactIndex);
-				const rightIndex = Math.min(peakData.length - 1, leftIndex + 1);
-				const mix = exactIndex - leftIndex;
-
-				let amplitude = peakData[leftIndex] * (1 - mix) + peakData[rightIndex] * mix;
+				let amplitude = 0;
+				if (samplePixelRange) {
+					// Keep short peaks visible when several buckets share a pixel.
+					const first = Math.max(0, Math.floor(t * peaksPerMs));
+					const end = Math.min(
+						peakData.length,
+						Math.ceil((t + sourceMsPerPixel) * peaksPerMs),
+					);
+					for (let i = first; i < end; i++) amplitude = Math.max(amplitude, peakData[i]);
+				} else {
+					const exactIndex = (Math.max(0, t) / durationMs) * (peakData.length - 1);
+					const left = Math.floor(exactIndex);
+					const right = Math.min(peakData.length - 1, left + 1);
+					const mix = exactIndex - left;
+					amplitude = peakData[left] * (1 - mix) + peakData[right] * mix;
+				}
 
 				if (normalize) amplitude = Math.sqrt(Math.max(0, amplitude));
 				amplitude = Math.max(0, Math.min(1, amplitude * gain));
@@ -125,6 +142,8 @@ function AudioWaveformComponent({
 		resizeKey,
 		segmentStartMs,
 		segmentEndMs,
+		timelineStartMs,
+		timelineEndMs,
 		theme,
 	]);
 

@@ -81,3 +81,48 @@ it("preserves a completed microphone WAV after an unsuccessful save", async () =
 	await expect(fs.readFile(sidecarPath, "utf8")).resolves.toBe("previous recording");
 	await expect(fs.readdir(directory)).resolves.toEqual([path.basename(sidecarPath)]);
 });
+
+it("publishes a complete waveform file after a cross-device rename failure", async () => {
+	await fs.writeFile(sidecarPath, "old microphone track");
+	encode.mockImplementation(async (_binary, args) => {
+		await fs.writeFile(args.at(-1)!, "new microphone track");
+	});
+	vi.spyOn(fs, "rename").mockRejectedValueOnce(
+		Object.assign(new Error("redirected"), { code: "EXDEV" }),
+	);
+	const copyFile = fs.copyFile.bind(fs);
+	const copy = vi.spyOn(fs, "copyFile").mockImplementationOnce(async (source, destination) => {
+		expect(destination).not.toBe(sidecarPath);
+		await copyFile(source, destination);
+		await expect(fs.readFile(sidecarPath, "utf8")).resolves.toBe("old microphone track");
+	});
+
+	await expect(invoke(event, new ArrayBuffer(4), videoPath)).resolves.toMatchObject({
+		success: true,
+		path: sidecarPath,
+	});
+	expect(copy).toHaveBeenCalledOnce();
+	await expect(fs.readFile(sidecarPath, "utf8")).resolves.toBe("new microphone track");
+	await expect(fs.readdir(directory)).resolves.toEqual([path.basename(sidecarPath)]);
+});
+
+it("retains the previous complete WAV and cleans up after an interrupted cross-device copy", async () => {
+	vi.spyOn(console, "error").mockImplementation(() => {});
+	await fs.writeFile(sidecarPath, "old microphone track");
+	encode.mockImplementation(async (_binary, args) => {
+		await fs.writeFile(args.at(-1)!, "new microphone track");
+	});
+	vi.spyOn(fs, "rename").mockRejectedValueOnce(
+		Object.assign(new Error("redirected"), { code: "EXDEV" }),
+	);
+	const copy = vi.spyOn(fs, "copyFile").mockImplementationOnce(async (_source, destination) => {
+		await fs.writeFile(destination, "partial");
+		throw new Error("copy interrupted");
+	});
+	await expect(invoke(event, new ArrayBuffer(4), videoPath)).resolves.toMatchObject({
+		success: false,
+	});
+	expect(copy).toHaveBeenCalledOnce();
+	await expect(fs.readFile(sidecarPath, "utf8")).resolves.toBe("old microphone track");
+	await expect(fs.readdir(directory)).resolves.toEqual([path.basename(sidecarPath)]);
+});

@@ -14,8 +14,8 @@ import {
 	PROJECT_THUMBNAIL_SUFFIX,
 	PROJECTS_DIRECTORY_NAME,
 	RECENT_PROJECTS_FILE,
-	RECORDINGS_SETTINGS_FILE,
 } from "../constants";
+import { recordingPreferencesStore } from "../settings/recordingPreferencesStore";
 import {
 	approvedLocalReadPaths,
 	currentProjectPath,
@@ -218,13 +218,10 @@ export async function getProjectsDir() {
 }
 
 export async function persistRecordingsDirectorySetting(nextDir: string) {
-	setCustomRecordingsDir(path.resolve(nextDir));
+	const recordingsDir = path.resolve(nextDir);
+	await recordingPreferencesStore.update({ recordingsDir });
+	setCustomRecordingsDir(recordingsDir);
 	setRecordingsDirLoaded(true);
-	await fs.writeFile(
-		RECORDINGS_SETTINGS_FILE,
-		JSON.stringify({ recordingsDir: path.resolve(nextDir) }, null, 2),
-		"utf-8",
-	);
 }
 
 export function hasProjectFileExtension(filePath: string) {
