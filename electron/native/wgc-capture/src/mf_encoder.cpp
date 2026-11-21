@@ -184,16 +184,20 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
     return true;
 }
 
-bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
+bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int contentWidth, int contentHeight,
+                           int64_t timestampHns) {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    if (!initialized_ || !sinkWriter_) return false;
+    if (!initialized_ || !sinkWriter_ || contentWidth <= 0 || contentHeight <= 0) return false;
 
     D3D11_TEXTURE2D_DESC sourceDesc = {};
     texture->GetDesc(&sourceDesc);
 
+    const UINT validWidth = (std::min)(sourceDesc.Width, static_cast<UINT>(contentWidth));
+    const UINT validHeight = (std::min)(sourceDesc.Height, static_cast<UINT>(contentHeight));
     if (sourceDesc.Width == static_cast<UINT>(width_) &&
-        sourceDesc.Height == static_cast<UINT>(height_)) {
+        sourceDesc.Height == static_cast<UINT>(height_) &&
+        validWidth == sourceDesc.Width && validHeight == sourceDesc.Height) {
         context_->CopyResource(stagingTexture_.Get(), texture);
     } else {
         if (!resizeCompositeTexture_ || !resizeCompositeView_) return false;
@@ -205,8 +209,8 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
         sourceBox.left = 0;
         sourceBox.top = 0;
         sourceBox.front = 0;
-        sourceBox.right = (std::min)(sourceDesc.Width, static_cast<UINT>(width_));
-        sourceBox.bottom = (std::min)(sourceDesc.Height, static_cast<UINT>(height_));
+        sourceBox.right = (std::min)(validWidth, static_cast<UINT>(width_));
+        sourceBox.bottom = (std::min)(validHeight, static_cast<UINT>(height_));
         sourceBox.back = 1;
 
         if (sourceBox.right == 0 || sourceBox.bottom == 0) return false;
@@ -297,13 +301,12 @@ bool MFEncoder::extendLastFrameToLocked(int64_t timestampHns, bool includePartia
     if (frameDurationHns <= 0) return false;
     // Avoid an extra sample for normal sub-frame timestamp jitter. At Stop,
     // cover even a fractional final frame so the recording reaches its endpoint.
-    const auto padding = planFramePadding(
-        lastSampleEndTimeHns_, timestampHns, includePartialFrame ? 1 : frameDurationHns);
+    const auto padding = includePartialFrame
+        ? planFinalFramePadding(lastSampleEndTimeHns_, timestampHns, frameDurationHns)
+        : planFramePadding(lastSampleEndTimeHns_, timestampHns, frameDurationHns);
     if (padding.durationHns == 0) return true;
 
-    // Encoding a duplicate at every nominal frame interval creates unbounded
-    // work after a static scene or a slow encoder. One sample holds the same
-    // image through the entire gap, including a fractional final frame at Stop.
+    // One duplicate per gap keeps the work bounded after a static scene.
     return writeNv12SampleLocked(
         lastFrameBuffer_, padding.timestampHns, padding.durationHns);
 }

@@ -129,6 +129,8 @@ describe("native Windows window capture", () => {
 
 	it("recreates the frame pool for the captured window size", () => {
 		expect(windowsCaptureSource).toContain("recreateFramePoolIfNeeded(contentSize)");
-		expect(windowsCaptureSource).toContain("frameCallback_(texture.Get(), frameTimeHns)");
+		expect(windowsCaptureSource).toContain(
+			"frameCallback_(texture.Get(), contentSize.Width, contentSize.Height, frameTimeHns)",
+		);
 	});
 });

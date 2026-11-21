@@ -367,7 +367,13 @@ int wmain(int argc, wchar_t* argv[]) {
     std::atomic<int64_t> firstVideoTimestampHns{-1};
     std::atomic<bool> recordingStartedAnnounced{false};
     std::atomic<bool> captureSetupComplete{false};
-    session.setFrameCallback([&](ID3D11Texture2D* texture, int64_t timestampHns) {
+    const auto announceRecordingStarted = [&] {
+        if (captureSetupComplete && frameCount > 0 && !recordingStartedAnnounced.exchange(true)) {
+            std::cout << "Recording started" << std::endl;
+        }
+    };
+    session.setFrameCallback([&](ID3D11Texture2D* texture, int contentWidth, int contentHeight,
+                                 int64_t timestampHns) {
         g_lastFrameTimestampHns = timestampHns;
         int64_t expectedFirstVideoTimestampHns = -1;
         firstVideoTimestampHns.compare_exchange_strong(expectedFirstVideoTimestampHns, timestampHns);
@@ -377,12 +383,9 @@ int wmain(int argc, wchar_t* argv[]) {
 
         const int64_t adjustedTimestampHns = adjustedVideoTimestampHns(timestampHns);
 
-        if (encoder.writeFrame(texture, adjustedTimestampHns)) {
-            const int64_t writtenFrames = frameCount.fetch_add(1) + 1;
-            if (captureSetupComplete && writtenFrames >= 1 && !recordingStartedAnnounced.exchange(true)) {
-                std::cout << "Recording started" << std::endl;
-                std::cout.flush();
-            }
+        if (encoder.writeFrame(texture, contentWidth, contentHeight, adjustedTimestampHns)) {
+            frameCount.fetch_add(1);
+            announceRecordingStarted();
         }
     });
 
@@ -431,6 +434,7 @@ int wmain(int argc, wchar_t* argv[]) {
         }
     }
     captureSetupComplete = true;
+    announceRecordingStarted();
 
     // Wait for stop signal while pausing/resuming audio tracks in lockstep.
     while (!g_stopRequested && !session.hasFatalError()) {

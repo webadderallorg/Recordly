@@ -18,7 +18,8 @@ using Microsoft::WRL::ComPtr;
 
 class WgcSession {
 public:
-    using FrameCallback = std::function<void(ID3D11Texture2D*, int64_t timestampHns)>;
+    using FrameCallback = std::function<void(ID3D11Texture2D*, int contentWidth, int contentHeight,
+                                             int64_t timestampHns)>;
 
     WgcSession();
     ~WgcSession();
@@ -44,6 +45,7 @@ private:
     winrt::Windows::Graphics::Capture::GraphicsCaptureItem captureItem_{nullptr};
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool framePool_{nullptr};
     winrt::Windows::Graphics::Capture::GraphicsCaptureSession session_{nullptr};
+    winrt::Windows::Graphics::Capture::GraphicsCaptureItem::Closed_revoker itemClosedRevoker_;
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::FrameArrived_revoker frameArrivedRevoker_;
 
     FrameCallback frameCallback_;
@@ -62,7 +64,7 @@ private:
     winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice createWinRTDevice();
     winrt::Windows::Graphics::Capture::GraphicsCaptureItem createCaptureItemForMonitor(HMONITOR monitor);
     bool initializeWithItem(int fps);
-    bool recreateFramePoolIfNeeded(
+    void recreateFramePoolIfNeeded(
         winrt::Windows::Graphics::SizeInt32 const& contentSize);
     void onFrameArrived(
         winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& sender,

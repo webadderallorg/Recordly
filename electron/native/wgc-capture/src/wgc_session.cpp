@@ -100,14 +100,14 @@ bool WgcSession::initializeWithItem(int fps) {
     auto size = captureItem_.Size();
     captureWidth_ = size.Width;
     captureHeight_ = size.Height;
-    framePoolWidth_ = size.Width;
-    framePoolHeight_ = size.Height;
+    framePoolWidth_ = normalizeFramePoolExtent(size.Width);
+    framePoolHeight_ = normalizeFramePoolExtent(size.Height);
 
     framePool_ = winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
         winrtDevice_,
         winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
         2,
-        size);
+        {framePoolWidth_, framePoolHeight_});
 
     session_ = framePool_.CreateCaptureSession(captureItem_);
 
@@ -122,14 +122,14 @@ bool WgcSession::initializeWithItem(int fps) {
     return true;
 }
 
-bool WgcSession::recreateFramePoolIfNeeded(
+void WgcSession::recreateFramePoolIfNeeded(
     winrt::Windows::Graphics::SizeInt32 const& contentSize) {
-    if (!framePool_) return false;
+    if (!capturing_ || !framePool_) return;
 
     const int normalizedWidth = normalizeFramePoolExtent(contentSize.Width);
     const int normalizedHeight = normalizeFramePoolExtent(contentSize.Height);
     if (normalizedWidth == framePoolWidth_ && normalizedHeight == framePoolHeight_) {
-        return false;
+        return;
     }
 
     winrt::Windows::Graphics::SizeInt32 normalizedSize{
@@ -154,7 +154,6 @@ bool WgcSession::recreateFramePoolIfNeeded(
                   << std::hex << e.code() << std::dec << std::endl;
     }
 
-    return true;
 }
 
 bool WgcSession::initialize(HMONITOR monitor, int fps) {
@@ -211,6 +210,11 @@ bool WgcSession::startCapture() {
     fatalError_ = false;
     lastFrameTimeHns_ = 0;
 
+    if (windowHandle_) {
+        itemClosedRevoker_ = captureItem_.Closed(
+            winrt::auto_revoke,
+            [this](auto const&, auto const&) { fatalError_ = true; });
+    }
     frameArrivedRevoker_ = framePool_.FrameArrived(
         winrt::auto_revoke,
         [this](auto const& sender, auto const& args) {
@@ -224,6 +228,7 @@ bool WgcSession::startCapture() {
 void WgcSession::stopCapture() {
     capturing_ = false;
 
+    itemClosedRevoker_.revoke();
     frameArrivedRevoker_.revoke();
 
     if (session_) {
@@ -244,11 +249,7 @@ void WgcSession::onFrameArrived(
 
     auto frame = sender.TryGetNextFrame();
     if (!frame) return;
-    auto contentSize = frame.ContentSize();
-    if (recreateFramePoolIfNeeded(contentSize)) {
-        frame.Close();
-        return;
-    }
+    const auto contentSize = frame.ContentSize();
 
     auto timestamp = frame.SystemRelativeTime();
     int64_t frameTimeHns = std::chrono::duration_cast<std::chrono::duration<int64_t, std::ratio<1, 10000000>>>(timestamp).count();
@@ -256,26 +257,19 @@ void WgcSession::onFrameArrived(
     // Frame rate limiting: skip frames that arrive too soon
     if (lastFrameTimeHns_ > 0 && (frameTimeHns - lastFrameTimeHns_) < (frameIntervalHns_ * 7 / 10)) {
         frame.Close();
+        recreateFramePoolIfNeeded(contentSize);
         return;
     }
     lastFrameTimeHns_ = frameTimeHns;
 
-    auto surface = frame.Surface();
-
-    // Get the underlying D3D texture from the WinRT surface via COM interop
-    winrt::com_ptr<IDirect3DDxgiInterfaceAccess> access;
-    try {
-        access = surface.as<IDirect3DDxgiInterfaceAccess>();
-    } catch (...) {
-        frame.Close();
-        return;
-    }
-    ComPtr<ID3D11Texture2D> texture;
-    HRESULT hr = access->GetInterface(IID_PPV_ARGS(&texture));
-
-    if (SUCCEEDED(hr) && texture && frameCallback_) {
-        frameCallback_(texture.Get(), frameTimeHns);
+    if (auto access = frame.Surface().try_as<IDirect3DDxgiInterfaceAccess>()) {
+        ComPtr<ID3D11Texture2D> texture;
+        const HRESULT result = access->GetInterface(IID_PPV_ARGS(&texture));
+        if (SUCCEEDED(result) && texture && frameCallback_) {
+            frameCallback_(texture.Get(), contentSize.Width, contentSize.Height, frameTimeHns);
+        }
     }
 
     frame.Close();
+    recreateFramePoolIfNeeded(contentSize);
 }
