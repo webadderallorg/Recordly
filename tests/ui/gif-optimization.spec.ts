@@ -57,6 +57,7 @@ test("free users can tick optimization without an upgrade prompt", async ({ page
 	await expect(page.getByText("Upgrade requested")).toHaveCount(0);
 });
 test("users can toggle optimization and see real FFmpeg savings", async ({ page }) => {
+	await installDesktopBridge(page);
 	await page.goto("/tests/ui/gif-optimization.html");
 	const checkbox = page.getByRole("checkbox", { name: "Optimize size" });
 	await page.locator('[data-slot="checkbox-content"]').click();
