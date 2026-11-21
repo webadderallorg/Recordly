@@ -70,7 +70,7 @@ export function useAudioPreviewSync({
 
 	const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 	const audioElementRevokersRef = useRef<Map<string, () => void>>(new Map());
-	const audioElementResourcesRef = useRef<Map<string, string>>(new Map());
+	const audioElementResourcesRef = useRef<Map<string, { path: string }>>(new Map());
 	const sourceAudioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 	const sourceAudioMediaNodesRef = useRef<Map<string, MediaElementAudioSourceNode>>(new Map());
 	const sourceAudioGainNodesRef = useRef<Map<string, GainNode>>(new Map());
@@ -121,7 +121,6 @@ export function useAudioPreviewSync({
 	}, [ensureSourceAudioRunning]);
 
 	useEffect(() => {
-		let cancelled = false;
 		const existing = audioElementsRef.current;
 		const currentIds = new Set(resolvedUserTracks.map((track) => track.id));
 
@@ -144,21 +143,21 @@ export function useAudioPreviewSync({
 				existing.set(track.id, audio);
 			}
 
-			if (audioElementResourcesRef.current.get(track.id) !== track.sourceRef.path) {
+			if (audioElementResourcesRef.current.get(track.id)?.path !== track.sourceRef.path) {
+				const request = { path: track.sourceRef.path };
 				audio.pause();
 				audio.src = "";
 				audioElementRevokersRef.current.get(track.id)?.();
 				audioElementRevokersRef.current.delete(track.id);
-				audioElementResourcesRef.current.set(track.id, track.sourceRef.path);
+				audioElementResourcesRef.current.set(track.id, request);
 
 				void (async () => {
-					const resolved = await resolveMediaElementSource(track.sourceRef.path);
+					const resolved = await resolveMediaElementSource(request.path);
 					const latestAudio = existing.get(track.id);
 
 					if (
-						cancelled ||
 						latestAudio !== audio ||
-						audioElementResourcesRef.current.get(track.id) !== track.sourceRef.path
+						audioElementResourcesRef.current.get(track.id) !== request
 					) {
 						resolved.revoke();
 						return;
@@ -171,10 +170,6 @@ export function useAudioPreviewSync({
 
 			audio.volume = Math.max(0, Math.min(1, track.gain * previewVolume));
 		}
-
-		return () => {
-			cancelled = true;
-		};
 	}, [previewVolume, resolvedUserTracks]);
 
 	useEffect(() => {

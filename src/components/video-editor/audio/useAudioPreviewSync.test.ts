@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { resolveMediaElementSource } from "@/lib/exporter/localMediaSource";
 import { useAudioPreviewSync } from "./useAudioPreviewSync";
 
 const harness = vi.hoisted(() => ({
@@ -19,7 +20,7 @@ vi.mock("react", () => ({
 	useState: () => [0, harness.loaded],
 }));
 vi.mock("@/lib/exporter/localMediaSource", () => ({
-	resolveMediaElementSource: async () => ({ src: "file:///audio.wav", revoke: vi.fn() }),
+	resolveMediaElementSource: vi.fn(async () => ({ src: "file:///audio.wav", revoke: vi.fn() })),
 }));
 vi.mock("../videoPlayback/playbackRate", () => ({
 	supportsPreviewPlaybackRate: (rate: number) => rate <= 16,
@@ -111,6 +112,78 @@ it("does not repeatedly seek healthy fast playback after delayed renders", async
 	render(0.93, 8);
 	harness.effects.at(-1)?.();
 	expect(seeks).toEqual([8]);
+});
+
+describe("imported preview audio loading", () => {
+	function setup() {
+		const audio = { src: "", volume: 1, pause: vi.fn() };
+		vi.stubGlobal("Audio", function () {
+			return audio;
+		});
+		const render = (audioPath: string, previewVolume = 1) => {
+			harness.index = 0;
+			harness.effects = [];
+			useAudioPreviewSync({
+				audioRegions: [{ id: "imported", startMs: 0, endMs: 10000, audioPath, volume: 1 }],
+				previewVolume,
+				isPlaying: false,
+				currentTime: 0,
+				timelineTime: 0,
+				duration: 10,
+				sourcePlaybackRate: 1,
+				previewSourceAudioFallbackPaths: [],
+				sourceAudioFallbackStartDelayMsByPath: {},
+				sourceAudioResourceVersion: 0,
+				isCurrentClipMuted: false,
+				getSourceTrackPreviewGain: () => 1,
+				onSourceFallbackLoadError: vi.fn(),
+			});
+			return harness.effects[0]();
+		};
+		return { audio, render };
+	}
+
+	it("keeps the in-flight load when only the volume changes", async () => {
+		const { audio, render } = setup();
+		const pending =
+			Promise.withResolvers<Awaited<ReturnType<typeof resolveMediaElementSource>>>();
+		const loaded = { src: "file:///imported.wav", revoke: vi.fn() };
+		vi.mocked(resolveMediaElementSource).mockReturnValueOnce(pending.promise);
+		const cleanup = render("/imported.wav");
+		cleanup?.();
+		render("/imported.wav", 0.5);
+		pending.resolve(loaded);
+		await pending.promise;
+		expect(audio.src).toBe(loaded.src);
+		expect(audio.volume).toBe(0.5);
+		expect(loaded.revoke).not.toHaveBeenCalled();
+	});
+
+	it("discards obsolete loads even when the same path is selected again", async () => {
+		const { audio, render } = setup();
+		const first =
+			Promise.withResolvers<Awaited<ReturnType<typeof resolveMediaElementSource>>>();
+		const second =
+			Promise.withResolvers<Awaited<ReturnType<typeof resolveMediaElementSource>>>();
+		const latest = { src: "file:///latest.wav", revoke: vi.fn() };
+		const obsolete = { src: "file:///obsolete.wav", revoke: vi.fn() };
+		vi.mocked(resolveMediaElementSource)
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise)
+			.mockResolvedValueOnce(latest);
+		const cleanupFirst = render("/imported.wav");
+		cleanupFirst?.();
+		const cleanupSecond = render("/other.wav");
+		cleanupSecond?.();
+		render("/imported.wav");
+		await Promise.resolve();
+		expect(audio.src).toBe(latest.src);
+		first.resolve(obsolete);
+		second.resolve(obsolete);
+		await first.promise;
+		expect(audio.src).toBe(latest.src);
+		expect(obsolete.revoke).toHaveBeenCalledTimes(2);
+	});
 });
 
 describe("source preview playback ownership", () => {
