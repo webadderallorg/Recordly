@@ -623,7 +623,18 @@ export async function validateRecordedVideo(videoPath: string) {
 		);
 		stderr = result.stderr;
 	} catch (error) {
-		const execError = error as NodeJS.ErrnoException & { stderr?: string };
+		const execError = error as NodeJS.ErrnoException & {
+			signal?: NodeJS.Signals | null;
+			stderr?: string;
+		};
+		if (execError.syscall?.startsWith("spawn")) {
+			throw new Error(`FFmpeg could not start (${execError.code ?? execError.message}).`);
+		}
+		if (execError.signal) {
+			throw new Error(
+				`FFmpeg was stopped by ${execError.signal} while checking the recording.`,
+			);
+		}
 		const output = execError.stderr?.trim();
 		throw new Error(output || `Recorded output could not be decoded: ${videoPath}`);
 	}
