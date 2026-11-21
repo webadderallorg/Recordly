@@ -6,9 +6,9 @@ import { Check, DotsThree, FolderSimple, Plus } from "@/components/ui/icons";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { CloudShareButton } from "../cloud/CloudShareButton";
 import {
-	getProjectShare,
 	isProjectShareStale,
 	moveProjectShareLink,
+	type ProjectShareLink,
 } from "../cloud/projectShareLinks";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import { ProjectFolderChips } from "./ProjectFolderChips";
@@ -22,7 +22,6 @@ import type { DashboardModel } from "./useDashboardModel";
 type Props = Pick<
 	DashboardProps & DashboardModel,
 	| "accountLabel"
-	| "accountId"
 	| "busy"
 	| "selecting"
 	| "selected"
@@ -34,9 +33,15 @@ type Props = Pick<
 	| "folders"
 	| "save"
 	| "assignFolder"
-> & { entry: ProjectLibraryEntry; webUrl?: string; webReady?: boolean; onDelete?: () => void };
+> & {
+	entry: ProjectLibraryEntry;
+	share?: ProjectShareLink;
+	webUrl?: string;
+	webReady?: boolean;
+	onDelete?: () => void;
+};
 export function ProjectCard({
-	accountId,
+	share,
 	webUrl,
 	webReady = true,
 	onDelete,
@@ -62,7 +67,6 @@ export function ProjectCard({
 	const [name, setName] = useState(entry.name);
 	const assignedFolders = folders.filter((folder) => folder.paths.includes(entry.path));
 	const folder = assignedFolders[0];
-	const share = webUrl ? undefined : getProjectShare(entry.path, accountId);
 	const shareUrl = share?.url;
 	const staleShare = isProjectShareStale(share, undefined, entry.updatedAt);
 	const [showShareLink, setShowShareLink] = useState(false);
@@ -105,7 +109,7 @@ export function ProjectCard({
 					selecting ? toggleSelected(entry.path) : openEntry(entry);
 				}}
 				aria-pressed={selecting ? selected.includes(entry.path) : undefined}
-				className={`project-preview-glass relative block h-auto w-full min-w-0 rounded-xl p-0 transition-shadow duration-200 ease-out motion-reduce:transition-none ${dragging ? "opacity-50" : ""} ${hovering ? "ring-2 ring-accent/40 shadow-sm" : ""}`}
+				className={`project-preview-glass relative block h-auto w-full min-w-0 rounded-xl p-0 transition-none ${dragging ? "opacity-50" : ""} ${hovering ? "ring-2 ring-accent/40 shadow-sm" : ""}`}
 			>
 				<div
 					className="w-full rounded-[inherit]"

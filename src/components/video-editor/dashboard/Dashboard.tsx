@@ -32,7 +32,7 @@ export function Dashboard(props: DashboardProps) {
 							aria-label={uiText("ui.projectsDashboard")}
 							className="dashboard-surface dashboard-shell flex h-full flex-col gap-0 rounded-none bg-background p-0 text-foreground"
 						>
-							<AppFrameHeader className="loading-content-enter">
+							<AppFrameHeader>
 								<div
 									className={`flex min-w-0 items-center gap-2 ${props.headerLeftControlsPaddingClass ?? ""}`}
 								>
@@ -82,7 +82,7 @@ export function Dashboard(props: DashboardProps) {
 									<AppUpdateButton />
 								</div>
 							</AppFrameHeader>
-							<div className="loading-content-enter flex min-h-0 flex-1">
+							<div className="flex min-h-0 flex-1">
 								<DashboardSidebar {...view} />
 								<Card className="app-frame-surface my-3 mr-3 flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden rounded-3xl bg-surface p-0 shadow-sm">
 									{model.section !== "settings" && model.section !== "shared" && (

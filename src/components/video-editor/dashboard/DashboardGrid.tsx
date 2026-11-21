@@ -1,11 +1,14 @@
-import { useRef } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { LocalizedError } from "@/components/feedback/LocalizedError";
 import { Button } from "@/components/ui/button";
 import { Cloud, ImageSquare } from "@/components/ui/icons";
-import { LoadingTransition } from "@/components/ui/loading-transition";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { CLOUD_SHARE_ENDPOINT } from "../cloud/endpoint";
+import {
+	getProjectShareLookup,
+	subscribeDeletedProjectShareLinks,
+} from "../cloud/projectShareLinks";
 import { SharedRecordings } from "../cloud/SharedRecordings";
 import { errorSourceName, projectLoadError } from "../project/projectLoadError";
 import { useScrollFade } from "../settings/useScrollFade";
@@ -104,6 +107,17 @@ export function DashboardGrid({
 	const { t: uiText } = useUiLocale();
 	const scrollRef = useRef<HTMLElement>(null);
 	const scrollFade = useScrollFade(scrollRef, section);
+	const [, refreshShares] = useReducer((revision: number) => revision + 1, 0);
+	useEffect(() => subscribeDeletedProjectShareLinks(refreshShares), []);
+	const showLibrarySkeleton = isRaw ? rawLoading && !visible.length : initialLibraryLoading;
+	const getShare =
+		!isRaw &&
+		section !== "settings" &&
+		section !== "shared" &&
+		!showLibrarySkeleton &&
+		visible.length
+			? getProjectShareLookup(accountId)
+			: undefined;
 	return (
 		<>
 			<main
@@ -224,103 +238,90 @@ export function DashboardGrid({
 							)}
 						</div>
 					)
-				) : (
-					<LoadingTransition
-						loading={Boolean(
-							isRaw ? rawLoading && !visible.length : initialLibraryLoading,
-						)}
-						fallback={<LibrarySkeleton />}
+				) : showLibrarySkeleton ? (
+					<LibrarySkeleton />
+				) : visible.length ? (
+					<ul
+						aria-label={isRaw ? uiText("ui.rawFiles") : uiText("ui.yourProjects")}
+						className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] min-[1440px]:grid-cols-4 gap-x-7 gap-y-10 pt-2 lg:gap-x-9"
 					>
-						{visible.length ? (
-							<ul
-								aria-label={
-									isRaw ? uiText("ui.rawFiles") : uiText("ui.yourProjects")
-								}
-								className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] min-[1440px]:grid-cols-4 gap-x-7 gap-y-10 pt-2 lg:gap-x-9"
-							>
-								{visible.map((entry) => (
-									<ProjectCard
-										key={entry.path}
-										onDelete={() => void deleteEntries([entry.path])}
-										{...{
-											accountLabel,
-											accountId,
-											entry,
-											busy,
-											selecting,
-											selected,
-											toggleSelected,
-											openEntry,
-											run,
-											onShareProject,
-											onRenameProject,
-											folders,
-											save,
-											assignFolder,
-										}}
-									/>
-								))}
-							</ul>
-						) : (isRaw ? rawError : error || libraryError) ? null : (
-							<div className="flex min-h-64 flex-col items-center justify-center gap-3 py-8 text-center text-sm text-muted-foreground">
-								<ImageSquare
-									aria-hidden="true"
-									weight="fill"
-									className="size-8 opacity-30"
-								/>
-								<h2 className="text-base font-medium text-foreground">
-									{hasContentFilters
-										? isRaw
-											? uiText("ui.noMatchingRawFiles")
-											: uiText("ui.noMatchingProjects")
-										: activeFolder
-											? uiText("ui.thisFolderIsEmpty")
-											: isRaw
-												? uiText("ui.noRawRecordingsYet")
-												: uiText("ui.noProjectsYet")}
-								</h2>
-								<p className="max-w-md">
-									{hasContentFilters
-										? uiText("ui.tryADifferentSearchOrClearFiltersTo")
-										: activeFolder
-											? uiText("ui.addFilesToFolder", undefined, {
-													name: activeFolder.name,
-												})
-											: isRaw
-												? uiText(
-														"ui.startARecordingToKeepTheOriginalScreen",
-													)
-												: uiText(
-														"ui.recordYourFirstVideoOrImportAnExisting",
-													)}
-								</p>
-								{hasContentFilters ? (
-									<Button variant="secondary" onClick={clearFilters}>
-										{uiText("ui.clearFilters")}
+						{visible.map((entry) => (
+							<ProjectCard
+								key={entry.path}
+								share={getShare?.(entry.path)}
+								onDelete={() => void deleteEntries([entry.path])}
+								{...{
+									accountLabel,
+									entry,
+									busy,
+									selecting,
+									selected,
+									toggleSelected,
+									openEntry,
+									run,
+									onShareProject,
+									onRenameProject,
+									folders,
+									save,
+									assignFolder,
+								}}
+							/>
+						))}
+					</ul>
+				) : (isRaw ? rawError : error || libraryError) ? null : (
+					<div className="flex min-h-64 flex-col items-center justify-center gap-3 py-8 text-center text-sm text-muted-foreground">
+						<ImageSquare
+							aria-hidden="true"
+							weight="fill"
+							className="size-8 opacity-30"
+						/>
+						<h2 className="text-base font-medium text-foreground">
+							{hasContentFilters
+								? isRaw
+									? uiText("ui.noMatchingRawFiles")
+									: uiText("ui.noMatchingProjects")
+								: activeFolder
+									? uiText("ui.thisFolderIsEmpty")
+									: isRaw
+										? uiText("ui.noRawRecordingsYet")
+										: uiText("ui.noProjectsYet")}
+						</h2>
+						<p className="max-w-md">
+							{hasContentFilters
+								? uiText("ui.tryADifferentSearchOrClearFiltersTo")
+								: activeFolder
+									? uiText("ui.addFilesToFolder", undefined, {
+											name: activeFolder.name,
+										})
+									: isRaw
+										? uiText("ui.startARecordingToKeepTheOriginalScreen")
+										: uiText("ui.recordYourFirstVideoOrImportAnExisting")}
+						</p>
+						{hasContentFilters ? (
+							<Button variant="secondary" onClick={clearFilters}>
+								{uiText("ui.clearFilters")}
+							</Button>
+						) : activeFolder ? (
+							<Button variant="secondary" onClick={clearFilters}>
+								{isRaw
+									? uiText("ui.viewAllRawFiles")
+									: uiText("ui.viewAllProjects")}
+							</Button>
+						) : (
+							<div className="mt-2 flex flex-wrap justify-center gap-2">
+								<RecordNewButton busy={busy} run={run} first={!isRaw} />
+								{!isRaw && (
+									<Button
+										variant="secondary"
+										disabled={busy}
+										onClick={() => void run(onImportFile)}
+									>
+										{uiText("ui.importVideo")}
 									</Button>
-								) : activeFolder ? (
-									<Button variant="secondary" onClick={clearFilters}>
-										{isRaw
-											? uiText("ui.viewAllRawFiles")
-											: uiText("ui.viewAllProjects")}
-									</Button>
-								) : (
-									<div className="mt-2 flex flex-wrap justify-center gap-2">
-										<RecordNewButton busy={busy} run={run} first={!isRaw} />
-										{!isRaw && (
-											<Button
-												variant="secondary"
-												disabled={busy}
-												onClick={() => void run(onImportFile)}
-											>
-												{uiText("ui.importVideo")}
-											</Button>
-										)}
-									</div>
 								)}
 							</div>
 						)}
-					</LoadingTransition>
+					</div>
 				)}
 				<RawPreview entry={rawPreview} onClose={() => setRawPreview(null)} />
 			</main>

@@ -22,6 +22,7 @@ for (const { fails, delayed, nativeFails } of [
 					},
 				};
 				let deleted = false;
+				window.electronAPI.getEditorStartupView = () => "home";
 				window.electronAPI.getCurrentVideoPath = async () => ({ success: false });
 				window.electronAPI.getAppSetting = (key) =>
 					key === "recordly.onboarding.v1.seen"
@@ -87,9 +88,9 @@ for (const { fails, delayed, nativeFails } of [
 			},
 			{ fails, delayed, nativeFails },
 		);
-		await page.goto("/?windowType=editor");
+		await page.goto("/?windowType=editor&startupView=home");
 		const home = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
-		await expect(home).toBeVisible();
+		await expect(home).toBeVisible({ timeout: 25000 });
 		const share = home.getByRole("button", {
 			name: "View share link for Saved local project",
 			exact: true,

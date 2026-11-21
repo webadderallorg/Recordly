@@ -10,10 +10,10 @@ export function LibrarySkeleton() {
 		>
 			{[0, 1, 2, 3].map((key) => (
 				<div key={key}>
-					<Skeleton className="aspect-[4/3] w-full rounded-xl" />
+					<Skeleton animationType="none" className="aspect-[4/3] w-full rounded-xl" />
 					<div className="pt-3">
-						<Skeleton className="h-5 w-3/4 rounded" />
-						<Skeleton className="mt-1.5 h-6 w-1/2 rounded-full" />
+						<Skeleton animationType="none" className="h-5 w-3/4 rounded" />
+						<Skeleton animationType="none" className="mt-1.5 h-6 w-1/2 rounded-full" />
 					</div>
 				</div>
 			))}
