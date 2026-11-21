@@ -3,13 +3,12 @@ import path from "node:path";
 import { getMediaContentType } from "../../mediaTypes";
 import { normalizeVideoSourcePath } from "../utils";
 
-async function findNearbyProjectVideo(
-	sourcePath: string,
-	error: unknown,
-	projectPath?: string,
-): Promise<string | null> {
+function isMissingPath(error: unknown) {
 	const code = (error as NodeJS.ErrnoException).code;
-	if (!projectPath || (code !== "ENOENT" && code !== "ENOTDIR")) return null;
+	return code === "ENOENT" || code === "ENOTDIR";
+}
+
+async function findNearbyProjectVideo(sourcePath: string, projectPath: string) {
 	const sourcePathStyle = path.isAbsolute(sourcePath) ? path : path.win32;
 	if (!sourcePathStyle.isAbsolute(sourcePath)) return null;
 	const filename = sourcePathStyle.basename(sourcePath);
@@ -18,17 +17,54 @@ async function findNearbyProjectVideo(
 		const directory = await fs.realpath(path.dirname(projectPath));
 		const candidate = path.join(directory, filename);
 		return (await fs.lstat(candidate)).isFile() ? candidate : null;
-	} catch {
+	} catch (error) {
+		if (!isMissingPath(error)) throw error;
 		return null;
 	}
 }
 
-function getProjectWebcam(project: unknown) {
+async function resolveProjectMediaPath(sourcePath: string, projectPath?: string) {
+	try {
+		await fs.access(sourcePath);
+		return sourcePath;
+	} catch (error) {
+		if (projectPath && isMissingPath(error)) {
+			const nearby = await findNearbyProjectVideo(sourcePath, projectPath);
+			if (nearby) return nearby;
+		}
+		throw error;
+	}
+}
+
+function getProjectWebcam(project: object) {
 	const webcam = (project as { editor?: { webcam?: { sourcePath: string } } }).editor?.webcam;
 	return typeof webcam?.sourcePath === "string" ? webcam : null;
 }
 
 type ProjectMediaSources = { success: true; videoPath: string; webcamPath: string | null };
+
+export async function collectRelinkedProjectMedia(project: unknown, projectPath: string) {
+	const sources: string[] = [];
+	let complete = true;
+	if (project && typeof project === "object") {
+		const savedPaths = [
+			(project as { videoPath?: unknown }).videoPath,
+			getProjectWebcam(project)?.sourcePath,
+		];
+		for (const savedPath of savedPaths) {
+			if (typeof savedPath !== "string") continue;
+			const sourcePath = normalizeVideoSourcePath(savedPath);
+			if (!sourcePath) continue;
+			try {
+				const resolved = await resolveProjectMediaPath(sourcePath, projectPath);
+				if (resolved !== sourcePath) sources.push(resolved);
+			} catch (error) {
+				if (!isMissingPath(error)) complete = false;
+			}
+		}
+	}
+	return { sources, complete };
+}
 
 export async function resolveProjectMediaSources(
 	project: unknown,
@@ -48,29 +84,25 @@ export async function resolveProjectMediaSources(
 		return { success: false, message: "Project file is missing a valid video path" };
 	}
 
-	let videoPath = normalizedVideoPath;
+	let videoPath: string;
 	try {
-		await fs.access(videoPath);
+		videoPath = await resolveProjectMediaPath(normalizedVideoPath, projectPath);
 	} catch (error) {
-		const nearby = await findNearbyProjectVideo(videoPath, error, projectPath);
-		if (!nearby) {
-			return {
-				success: false,
-				message:
-					(error as NodeJS.ErrnoException).code === "ENOENT"
-						? `Project video file not found: ${normalizedVideoPath}`
-						: `Could not access project recording: ${error instanceof Error ? error.message : String(error)}`,
-			};
-		}
-		videoPath = nearby;
+		return {
+			success: false,
+			message:
+				(error as NodeJS.ErrnoException).code === "ENOENT"
+					? `Project video file not found: ${normalizedVideoPath}`
+					: `Could not access project recording: ${error instanceof Error ? error.message : String(error)}`,
+		};
 	}
 
 	let webcamPath = normalizeVideoSourcePath(getProjectWebcam(project)?.sourcePath);
 	if (webcamPath) {
 		try {
-			await fs.access(webcamPath);
-		} catch (error) {
-			webcamPath = await findNearbyProjectVideo(webcamPath, error, projectPath);
+			webcamPath = await resolveProjectMediaPath(webcamPath, projectPath);
+		} catch {
+			webcamPath = null;
 		}
 	}
 	return { success: true, videoPath, webcamPath };

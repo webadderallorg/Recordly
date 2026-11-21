@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { normalizeVideoSourcePath } from "../utils";
 import { canonicalSourceReference } from "./canonicalSourceReference";
-import { resolveProjectMediaSources } from "./projectMedia";
+import { collectRelinkedProjectMedia } from "./projectMedia";
 
 /** Resolve saved media references, including paths through a custom folder alias. */
 export async function canonicalMediaSources(
@@ -22,15 +22,13 @@ export async function canonicalMediaSources(
 		else if (value && typeof value === "object") Object.values(value).forEach(collect);
 	};
 	collect(project);
+	let sourcePathsComplete = true;
 	if (options.projectPath) {
-		const media = await resolveProjectMediaSources(project, options.projectPath);
-		if (media.success) {
-			collect(media.videoPath);
-			collect(media.webcamPath);
-		}
+		const nearby = await collectRelinkedProjectMedia(project, options.projectPath);
+		nearby.sources.forEach(collect);
+		sourcePathsComplete = nearby.complete;
 	}
 	const resolved = new Set<string>();
-	let sourcePathsComplete = true;
 	for (const source of sources) {
 		try {
 			resolved.add(

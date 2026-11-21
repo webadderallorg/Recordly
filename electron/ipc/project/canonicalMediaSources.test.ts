@@ -54,6 +54,31 @@ it("marks dependencies incomplete on access failure without failing ordinary pre
 	});
 });
 
+it("protects a nearby webcam even if the primary recording is still missing", async () => {
+	const camera = path.join(root, "camera.mp4");
+	await fs.writeFile(camera, "video");
+	const project = {
+		videoPath: path.join(root, "old", "missing.mp4"),
+		editor: { webcam: { sourcePath: path.join(root, "old", "camera.mp4") } },
+	};
+	expect(
+		await canonicalMediaSources(project, { projectPath: path.join(root, "work.recordly") }),
+	).toEqual({ sourcePaths: [camera], sourcePathsComplete: true });
+});
+
+it("marks dependencies incomplete when a nearby file cannot be inspected", async () => {
+	const candidate = path.join(root, "video.mp4");
+	await fs.writeFile(candidate, "video");
+	vi.spyOn(fs, "lstat").mockRejectedValue(Object.assign(new Error("Denied"), { code: "EACCES" }));
+	const videoPath = path.join(root, "old", "video.mp4");
+	expect(
+		await canonicalMediaSources(
+			{ videoPath },
+			{ preserveMissing: true, projectPath: path.join(root, "work.recordly") },
+		),
+	).toEqual({ sourcePaths: [videoPath], sourcePathsComplete: false });
+});
+
 it("opt-in deletion references retain missing main capture families through canonical parents", async () => {
 	const actual = path.join(root, "actual"),
 		alias = path.join(root, "alias");
