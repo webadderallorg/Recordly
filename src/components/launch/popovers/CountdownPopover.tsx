@@ -21,6 +21,18 @@ export function CountdownPopover({
 	const { locale } = useI18n();
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
 	const open = isOpen(POPOVER_ID);
+	const formatDelay = (delay: number) =>
+		delay === 0
+			? t("recording.noDelay")
+			: new Intl.NumberFormat(locale, {
+					style: "unit",
+					unit: "second",
+					unitDisplay: "short",
+				}).format(delay);
+	const tooltip = t("recording.settingValue", "{{setting}}: {{value}}", {
+		setting: t("recording.countdownDelay"),
+		value: formatDelay(countdownDelay),
+	});
 
 	return (
 		<HudPopover
@@ -34,6 +46,8 @@ export function CountdownPopover({
 			}}
 			trigger={trigger}
 			align="center"
+			label={t("recording.countdownDelay")}
+			tooltip={tooltip}
 		>
 			<div className={styles.ddLabel}>{t("recording.countdownDelay")}</div>
 			{COUNTDOWN_OPTIONS.map((delay) => (
@@ -46,13 +60,7 @@ export function CountdownPopover({
 						requestClose(POPOVER_ID);
 					}}
 				>
-					{delay === 0
-						? t("recording.noDelay")
-						: new Intl.NumberFormat(locale, {
-								style: "unit",
-								unit: "second",
-								unitDisplay: "short",
-							}).format(delay)}
+					{formatDelay(delay)}
 				</DropdownItem>
 			))}
 		</HudPopover>

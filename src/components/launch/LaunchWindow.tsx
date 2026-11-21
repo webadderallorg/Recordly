@@ -20,6 +20,7 @@ import { CountdownDelayIcon } from "./CountdownDelayIcon";
 import { HudInteractionContext } from "./contexts/HudInteractionContext";
 import { FloatingWebcamPreviewView } from "./FloatingWebcamPreviewView";
 import { canToggleFloatingWebcamPreview } from "./floatingWebcamPreview";
+import { HudTooltip } from "./HudTooltip";
 import { useCameraPermission } from "./hooks/useCameraPermission";
 import { useHudBarDrag } from "./hooks/useHudBarDrag";
 import { useHudHideAnimation } from "./hooks/useHudHideAnimation";
@@ -286,16 +287,17 @@ function LaunchWindowContent() {
 		void window.electronAPI.showProjectDashboard();
 	};
 	const homeButton = (
-		<Button
-			variant="ghost"
-			size="icon"
-			iconSize="lg"
-			aria-label={t("recording.home")}
-			title={t("recording.home")}
-			onClick={openHome}
-		>
-			<House weight="fill" className="size-5" />
-		</Button>
+		<HudTooltip label={t("recording.home")}>
+			<Button
+				variant="ghost"
+				size="icon"
+				iconSize="lg"
+				aria-label={t("recording.home")}
+				onClick={openHome}
+			>
+				<House weight="fill" className="size-5" />
+			</Button>
+		</HudTooltip>
 	);
 
 	const recordingControls = (
@@ -323,24 +325,34 @@ function LaunchWindowContent() {
 				onRecord={hasSelectedSource ? toggleRecording : () => void handlePickOnScreen()}
 				onCancel={() => void cancelPendingStart()}
 			/>
-			<Button
-				variant="ghost"
-				size="lg"
-				className={`${styles.electronNoDrag} ${styles.sourceControl} group gap-2`}
-				title={selectedSource}
-				aria-label={captureT("chooseSource")}
-				disabled={isPickerPending || !sourceReady || recording || finalizing}
-				onClick={() => void handlePickOnScreen()}
+			<HudTooltip
+				label={
+					hasSelectedSource
+						? t("recording.settingValue", "{{setting}}: {{value}}", {
+								setting: captureT("chooseSource"),
+								value: selectedSource,
+							})
+						: captureT("chooseSource")
+				}
 			>
-				<MonitorIcon size={18} className="size-5 shrink-0" />
-				<div className="min-w-0 overflow-hidden">
-					{hasSelectedSource ? (
-						<MarqueeText text={selectedSource} />
-					) : (
-						<span>{captureT("pickSource")}</span>
-					)}
-				</div>
-			</Button>
+				<Button
+					variant="ghost"
+					size="lg"
+					className={`${styles.electronNoDrag} ${styles.sourceControl} group gap-2`}
+					aria-label={captureT("chooseSource")}
+					disabled={isPickerPending || !sourceReady || recording || finalizing}
+					onClick={() => void handlePickOnScreen()}
+				>
+					<MonitorIcon size={18} className="size-5 shrink-0" />
+					<div className="min-w-0 overflow-hidden">
+						{hasSelectedSource ? (
+							<MarqueeText text={selectedSource} />
+						) : (
+							<span>{captureT("pickSource")}</span>
+						)}
+					</div>
+				</Button>
+			</HudTooltip>
 			<span aria-hidden="true" className={styles.sourceDivider} />
 			<MicPopover
 				disabled={recording || countdownActive}
@@ -434,7 +446,7 @@ function LaunchWindowContent() {
 						size="icon"
 						iconSize="lg"
 						disabled={countdownActive}
-						title={`${t("recording.countdownDelay")}: ${countdownDelay === 0 ? t("recording.noDelay") : `${countdownDelay}s`}`}
+						aria-label={t("recording.countdownDelay")}
 						className={countdownDelay > 0 ? "text-accent" : ""}
 					>
 						<CountdownDelayIcon seconds={countdownDelay} className="size-5" />
@@ -444,17 +456,18 @@ function LaunchWindowContent() {
 
 			<span aria-hidden="true" className={styles.sourceDivider} />
 			{homeButton}
-			<Button
-				variant="ghost"
-				size="icon"
-				iconSize="lg"
-				onClick={hideHud}
-				disabled={countdownActive}
-				title={t("recording.hideHud")}
-				aria-label={t("recording.hideHud")}
-			>
-				<XIcon className="size-5" />
-			</Button>
+			<HudTooltip label={t("recording.hideHud")}>
+				<Button
+					variant="ghost"
+					size="icon"
+					iconSize="lg"
+					onClick={hideHud}
+					disabled={countdownActive}
+					aria-label={t("recording.hideHud")}
+				>
+					<XIcon className="size-5" />
+				</Button>
+			</HudTooltip>
 		</div>
 	);
 

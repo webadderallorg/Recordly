@@ -54,6 +54,10 @@ export function WebcamPopover({
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
 	const open = isOpen(POPOVER_ID);
 	const cameraAllowed = cameraPermission === "granted";
+	const tooltip = t("recording.settingValue", "{{setting}}: {{value}}", {
+		setting: t("recording.cameraSettings", "Camera settings"),
+		value: webcamEnabled ? t("recording.on", "On") : t("recording.off"),
+	});
 
 	return (
 		<HudPopover
@@ -71,6 +75,7 @@ export function WebcamPopover({
 			trigger={trigger}
 			align="center"
 			label={t("recording.cameraSettings", "Camera settings")}
+			tooltip={tooltip}
 		>
 			<div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--launch-label)]">
 				{t("recording.webcam")}
