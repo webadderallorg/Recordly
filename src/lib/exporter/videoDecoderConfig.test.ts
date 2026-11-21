@@ -88,6 +88,47 @@ describe("getVideoDecoderConfig", () => {
 	});
 
 	it.each([
+		"h264",
+		"avc1",
+		"avc1.2420015",
+	])("reconstructs %s from the AVC configuration record", async (codec) => {
+		const { config, demuxer, readMediaPacket } = source(codec);
+		const bytes = Uint8Array.from([
+			0, 1, 0x64, 0x08, 0x28, 0xff, 0xe1, 0, 4, 0x67, 0x64, 0x08, 0x28, 0,
+		]);
+		config.description = bytes.subarray(1);
+
+		expect(await getVideoDecoderConfig(demuxer)).toEqual({
+			...config,
+			codec: "avc1.640828",
+		});
+		expect(readMediaPacket).not.toHaveBeenCalled();
+	});
+
+	it("uses the sequence parameter set in an Annex B keyframe when there is no description", async () => {
+		const { config, demuxer, setPackets, cancel } = source("avc1.2420015");
+		setPackets([
+			{ keyframe: 0, data: Uint8Array.from([0, 0, 1, 0x41, 0xff]) },
+			{
+				keyframe: 1,
+				data: Uint8Array.from([
+					0, 0, 0, 1, 0x09, 0xf0, 0, 0, 1, 0x67, 0x42, 0xc0, 0x15, 0x89, 0, 0, 1, 0x68,
+					0xce,
+				]),
+			},
+		]);
+
+		expect(await getVideoDecoderConfig(demuxer)).toEqual({ ...config, codec: "avc1.42c015" });
+		expect(cancel).toHaveBeenCalledOnce();
+	});
+
+	it("keeps the original config if an Annex B keyframe has no usable SPS", async () => {
+		const { config, demuxer, setPackets } = source("h264");
+		setPackets([{ keyframe: 1, data: Uint8Array.from([0, 0, 1, 0x65, 0x64, 0x00, 0x28]) }]);
+		expect(await getVideoDecoderConfig(demuxer)).toBe(config);
+	});
+
+	it.each([
 		["Profile 1", "yuv444p", "01.41.08"],
 		["Profile 2", "yuv420p10le", "02.41.10"],
 		["Profile 2", "yuv420p12be", "02.41.12"],
