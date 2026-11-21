@@ -16,6 +16,7 @@ export const settingsPanelShellKeys = [
 	"activeEffectSection",
 	"selectedZoomId",
 	"onZoomDelete",
+	"onClearZooms",
 	"selectedClipId",
 	"onClipDelete",
 	"selectedAudioId",
@@ -34,6 +35,7 @@ export function SettingsPanelShell(props: Props) {
 		activeEffectSection,
 		selectedZoomId,
 		onZoomDelete,
+		onClearZooms,
 		selectedClipId,
 		onClipDelete,
 		selectedAudioId,
@@ -114,17 +116,28 @@ export function SettingsPanelShell(props: Props) {
 					</Button>
 				)}
 				{activeEffectSection === "zoom" && selectedZoomId && (
-					<Button
-						onClick={() => {
-							if (selectedZoomId && onZoomDelete) onZoomDelete(selectedZoomId);
-						}}
-						variant="destructive-soft"
-						size="sm"
-						className="h-9 w-full gap-2 text-xs"
-					>
-						<Trash2 className="h-3 w-3" />
-						{tSettings("zoom.deleteZoom", "Delete Zoom")}
-					</Button>
+					<div className="flex flex-col gap-2">
+						<Button
+							onClick={() => onZoomDelete?.(selectedZoomId)}
+							variant="destructive-soft"
+							size="sm"
+							className="h-9 w-full gap-2 text-xs"
+						>
+							<Trash2 className="h-3 w-3" />
+							{tSettings("zoom.deleteZoom", "Delete Zoom")}
+						</Button>
+						{onClearZooms && (
+							<Button
+								onClick={onClearZooms}
+								variant="destructive-soft"
+								size="sm"
+								className="h-9 w-full gap-2 text-xs"
+							>
+								<Trash2 className="h-3 w-3" aria-hidden="true" />
+								{tSettings("zoom.clearAllZooms")}
+							</Button>
+						)}
+					</div>
 				)}
 				{activeEffectSection === "audio" && selectedAudioId && (
 					<Button

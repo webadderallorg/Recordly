@@ -3,6 +3,7 @@
 		"level": "Zoomstufe",
 		"selectRegion": "Zoombereich zum Anpassen auswählen",
 		"deleteZoom": "Zoom löschen",
+		"clearAllZooms": "Alle Zooms löschen",
 		"modeAuto": "Automatisch",
 		"modeManual": "Manuell",
 		"modeManualDescription": "Legen Sie einen festen Fokuspunkt für diesen Zoom fest",

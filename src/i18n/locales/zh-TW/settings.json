@@ -3,6 +3,7 @@
 		"level": "縮放倍率",
 		"selectRegion": "選取要調整的縮放區域",
 		"deleteZoom": "刪除縮放",
+		"clearAllZooms": "刪除所有縮放",
 		"modeAuto": "自動",
 		"modeManual": "手動",
 		"modeManualDescription": "為此縮放設定固定的對焦點",

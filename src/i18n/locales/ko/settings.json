@@ -3,6 +3,7 @@
 		"level": "확대 레벨",
 		"selectRegion": "조정할 확대 구간을 선택하세요",
 		"deleteZoom": "확대 삭제",
+		"clearAllZooms": "모든 확대 효과 삭제",
 		"modeAuto": "자동",
 		"modeManual": "수동",
 		"modeManualDescription": "이 확대에 고정 초점을 설정합니다",

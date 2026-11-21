@@ -21,6 +21,7 @@
 		"level": "Yakınlaştırma Seviyesi",
 		"selectRegion": "Ayarlamak için bir yakınlaştırma bölgesi seçin",
 		"deleteZoom": "Yakınlaştırmayı Sil",
+		"clearAllZooms": "Tüm yakınlaştırmaları sil",
 		"modeAuto": "Otomatik",
 		"modeManual": "Manuel",
 		"modeManualDescription": "Bu yakınlaştırma için sabit bir odak noktası belirleyin",

@@ -20,6 +20,7 @@ import {
 	SpeakerHigh,
 	SpeakerLow,
 	SpeakerX,
+	Trash,
 } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -34,7 +35,7 @@ import { Slider } from "@/components/ui/slider";
 import type { useI18n } from "@/contexts/I18nContext";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
-import { formatBinding } from "@/lib/shortcuts";
+import { bindingsEqual, CLEAR_ALL_ZOOMS_SHORTCUT, formatBinding } from "@/lib/shortcuts";
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import type { CaptionEditTarget } from "../captionEditing";
@@ -144,6 +145,12 @@ export function EditorPreviewPanel(props: Props) {
 		setIsPlaying,
 		setError,
 	} = props;
+	const clearZoomsLabel = t("settings.zoom.clearAllZooms");
+	const clearZoomsTitle = Object.values(shortcuts).some((binding) =>
+		bindingsEqual(binding, CLEAR_ALL_ZOOMS_SHORTCUT),
+	)
+		? clearZoomsLabel
+		: `${clearZoomsLabel} (${formatBinding(CLEAR_ALL_ZOOMS_SHORTCUT, isMac)})`;
 	const playbackResolutionLabel = t("editor.playback.resolution");
 	const currentTimestamp = formatPlaybackTime(projection.timelinePlayheadTime);
 	const durationTimestamp = formatPlaybackTime(projection.timelineDuration);
@@ -369,6 +376,17 @@ export function EditorPreviewPanel(props: Props) {
 						title={t("timeline.zoom.suggestZooms")}
 					>
 						<MagicWand className="h-4 w-4" />
+					</Button>
+					<Button
+						onClick={() => timelineRef.current?.clearAllZooms()}
+						disabled={timeline.zoomRegions.length === 0}
+						variant="ghost"
+						size="icon"
+						className="h-9 w-9"
+						aria-label={clearZoomsLabel}
+						title={clearZoomsTitle}
+					>
+						<Trash className="h-4 w-4" aria-hidden="true" />
 					</Button>
 				</div>
 
