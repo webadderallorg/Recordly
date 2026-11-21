@@ -34,6 +34,14 @@ export function MicPopover({
 	const t = useScopedT("launch");
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
 	const open = isOpen(POPOVER_ID);
+	const activeSources = [
+		microphoneEnabled ? t("recording.microphone") : null,
+		systemAudioEnabled ? t("recording.systemAudio") : null,
+	].filter((source): source is string => source !== null);
+	const tooltip = t("recording.settingValue", "{{setting}}: {{value}}", {
+		setting: t("recording.audioSettings", "Audio settings"),
+		value: activeSources.length > 0 ? activeSources.join(", ") : t("recording.off"),
+	});
 
 	return (
 		<HudPopover
@@ -51,6 +59,7 @@ export function MicPopover({
 			trigger={trigger}
 			align="start"
 			label={t("recording.audioSettings", "Audio settings")}
+			tooltip={tooltip}
 		>
 			<DropdownItem
 				icon={
