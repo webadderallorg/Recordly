@@ -1,6 +1,6 @@
 import { Button } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
-import { ONBOARDING_DEMO_URL } from "@/assets/onboarding/media";
+import { ONBOARDING_SOUNDTRACK_URL } from "@/assets/onboarding/media";
 import { SpeakerHigh, SpeakerX } from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
 
@@ -101,7 +101,7 @@ export function OnboardingSoundtrack() {
 	const SoundIcon = audible ? SpeakerHigh : SpeakerX;
 	return (
 		<>
-			<audio ref={audioRef} src={ONBOARDING_DEMO_URL} preload="auto" />
+			<audio ref={audioRef} src={ONBOARDING_SOUNDTRACK_URL} preload="auto" />
 			{sound && (
 				<div
 					data-welcome-music
