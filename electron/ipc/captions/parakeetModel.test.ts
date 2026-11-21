@@ -6,19 +6,30 @@ import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ userData: "", requests: 0 }));
-vi.mock("electron", () => ({ app: { getPath: () => state.userData } }));
-vi.mock("node:https", () => ({
-	get: (_url: string, _options: unknown, callback: (response: unknown) => void) => {
-		state.requests += 1;
-		const request = new EventEmitter();
-		queueMicrotask(() => {
-			const response = Object.assign(Readable.from([Buffer.from("truncated model")]), {
-				statusCode: 200,
-				headers: {},
+
+vi.mock("electron", () => ({
+	app: { getPath: () => state.userData },
+	session: { fromPartition: () => ({ setProxy: vi.fn() }) },
+	net: {
+		request: () => {
+			state.requests += 1;
+			const request = Object.assign(new EventEmitter(), {
+				abort: vi.fn(),
+				end() {
+					queueMicrotask(() => {
+						const response = Object.assign(
+							Readable.from([Buffer.from("truncated model")]),
+							{
+								statusCode: 200,
+								headers: {},
+							},
+						);
+						request.emit("response", response);
+					});
+				},
 			});
-			callback(response);
-		});
-		return request;
+			return request;
+		},
 	},
 }));
 
@@ -53,10 +64,12 @@ async function createInstalledModel() {
 }
 
 beforeEach(async () => {
+	vi.stubEnv("https_proxy", "http://test-proxy.invalid");
 	state.userData = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-parakeet-model-test-"));
 	state.requests = 0;
 });
 afterEach(async () => {
+	vi.unstubAllEnvs();
 	await fs.rm(state.userData, { recursive: true, force: true });
 });
 
