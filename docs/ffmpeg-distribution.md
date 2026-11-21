@@ -66,6 +66,16 @@ The Windows build enables Media Foundation and Windows video acceleration APIs.
 Standalone FFmpeg builds no longer auto-detect additional codec libraries.
 Recordly's independent native capture and GPU export helpers are built separately.
 
+On Linux, Recordly prefers a system FFmpeg with the H.264 software encoder, AAC,
+image encoders, and GIF filters needed by the app. This makes hardware encoders
+from distro builds available while preserving the software export fallback.
+Recordly uses the bundled FFmpeg when those capabilities are missing. On Windows
+and macOS the bundled binary remains the first automatic choice.
+
+Set `RECORDLY_FFMPEG_PATH` before launching Recordly to choose a specific FFmpeg
+executable. If the path cannot be run, Recordly logs a warning and uses its normal
+selection order. FFprobe is resolved separately.
+
 The installer and packaged smoke check both require the pinned archive hashes,
 build recipe, configuration, licenses and one build record matching both
 executables. The smoke check also runs the GIF optimizer with the packaged
