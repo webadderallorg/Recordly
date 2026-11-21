@@ -119,6 +119,7 @@ export function HudPopover({
 			<PopoverContent
 				aria-label={label}
 				className={`launch-theme ${styles.menuCard} ${styles.electronNoDrag}`}
+				style={{ display: "flex", flexDirection: "column" }}
 				data-hud-interactive
 				unstyled
 				side="top"
