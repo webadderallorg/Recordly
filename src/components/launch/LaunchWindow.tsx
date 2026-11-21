@@ -165,16 +165,27 @@ function LaunchWindowContent() {
 		dragX11Window,
 	});
 
+	const useRecordingShape = dragX11Window && (recording || restarting || finalizing);
 	useEffect(() => {
 		const reportInteractiveBounds = () => {
+			const interactiveBounds = getHudInteractiveBounds(document);
+			const recordingShape = useRecordingShape
+				? interactiveBounds.concat(
+						Array.from(document.querySelectorAll('[role="tooltip"]'), (element) => {
+							const { left, top, right, bottom } = element.getBoundingClientRect();
+							return { left, top, right, bottom };
+						}),
+					)
+				: undefined;
 			window.electronAPI?.hudOverlaySetInteractiveBounds?.(
-				getHudInteractiveBounds(document).map((rect) => ({
+				interactiveBounds.map((rect) => ({
 					left: window.screenX + rect.left,
 					top: window.screenY + rect.top,
 					right: window.screenX + rect.right,
 					bottom: window.screenY + rect.bottom,
 					shape: rect.shape,
 				})),
+				recordingShape,
 			);
 		};
 
@@ -197,7 +208,7 @@ function LaunchWindowContent() {
 			window.removeEventListener("resize", reportInteractiveBounds);
 			window.electronAPI?.hudOverlaySetInteractiveBounds?.(null);
 		};
-	}, [recordingWebcamPreviewContainerRef]);
+	}, [useRecordingShape, recordingWebcamPreviewContainerRef]);
 
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } =
 		useLaunchHudInteractionState({

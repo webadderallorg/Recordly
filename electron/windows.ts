@@ -14,6 +14,8 @@ import { resolveEditorStartupView } from "./editorStartupView";
 import { isHudInEditorMode } from "./hudEditorMode";
 import {
 	getHudOverlayWindowBounds,
+	getX11HudRecordingShape,
+	type HudOverlayRegion,
 	type HudOverlayWorkArea,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
@@ -51,6 +53,7 @@ const WINDOW_ICON_PATH = path.join(
 
 let hudOverlayWindow: BrowserWindow | null = null;
 let x11HudDraggedBounds: HudOverlayWorkArea | undefined;
+let x11HudRecordingShapeKey = "";
 let hiddenLinuxHud: { window: BrowserWindow; restoreOnActivation: boolean } | null = null;
 let hudOverlayHiddenFromCapture = true;
 let hudOverlayCaptureProtectionLoaded = false;
@@ -413,6 +416,17 @@ function useX11HudWindowDrag() {
 	);
 }
 
+function applyX11HudRecordingShape(win: BrowserWindow, regions?: HudOverlayRegion[]) {
+	const shape =
+		hudOverlayRecordingActive && Array.isArray(regions)
+			? getX11HudRecordingShape(regions, win.getContentBounds())
+			: [];
+	const key = shape.length ? JSON.stringify(shape) : "";
+	if (key === x11HudRecordingShapeKey) return;
+	win.setShape(shape);
+	x11HudRecordingShapeKey = key;
+}
+
 ipcMain.on("hud-overlay-set-popover-open", (event, open: boolean) => {
 	if (
 		!useX11HudWindowDrag() ||
@@ -541,12 +555,18 @@ ipcMain.on("hud-overlay-set-webcam-preview-visible", (_event, visible: boolean) 
 ipcMain.on(
 	"hud-overlay-set-interactive-bounds",
 	(
-		_event,
+		event,
 		bounds:
 			| Array<{ left: number; top: number; right: number; bottom: number; shape?: "ellipse" }>
 			| null
 			| undefined,
+		recordingShape?: HudOverlayRegion[],
 	) => {
+		const win = getHudOverlayWindow();
+		const x11 = useX11HudWindowDrag();
+		if (x11 && win?.webContents === event.sender) {
+			applyX11HudRecordingShape(win, recordingShape);
+		}
 		if (
 			!Array.isArray(bounds) ||
 			bounds.some(
@@ -849,6 +869,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 		screen.removeListener("display-metrics-changed", handleDisplayMetricsChanged);
 		if (hudOverlayWindow === win) {
 			hudOverlayWindow = null;
+			x11HudRecordingShapeKey = "";
 			hiddenLinuxHud = null;
 			hudOverlayInteractiveBounds = null;
 			recordingPreparationActive = false;
@@ -920,6 +941,10 @@ export function reassertHudOverlayMousePassthrough(): void {
 export function setHudOverlayRecordingActive(recording: boolean): void {
 	hudCaptureStarting = false;
 	hudOverlayRecordingActive = Boolean(recording);
+	if (!recording && x11HudRecordingShapeKey) {
+		const win = getHudOverlayWindow();
+		if (win) applyX11HudRecordingShape(win);
+	}
 	notifyEditorMode();
 	hudOverlayFallbackExpanded = false;
 	applyHudOverlayBounds();

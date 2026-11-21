@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { CaptionModelDownloadProgress, CaptionModelId } from "../src/shared/captionModels";
 import type { CloudBillingInput } from "../src/types/cloudBilling";
+import type { HudOverlayRegion } from "./hudOverlayBounds";
 import type { RecordingSessionData } from "./ipc/types";
 
 type NativeVideoExportWriteResult = { success: boolean; error?: string };
@@ -244,8 +245,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			bottom: number;
 			shape?: "ellipse";
 		}> | null,
+		recordingShape?: HudOverlayRegion[],
 	) => {
-		ipcRenderer.send("hud-overlay-set-interactive-bounds", bounds);
+		ipcRenderer.send("hud-overlay-set-interactive-bounds", bounds, recordingShape);
 	},
 	getHudOverlayCaptureProtection: () => {
 		return ipcRenderer.invoke("get-hud-overlay-capture-protection");
