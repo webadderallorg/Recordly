@@ -4,6 +4,7 @@
 	"upgrade": "Upgrade",
 	"next": "Next",
 	"skipAndStartRecording": "Skip and start recording",
+	"permissionDragFallback": "If the drag panel doesn't appear, click + in the System Settings list, select Recordly, then turn it on.",
 	"backToPermissions": "Back to permissions",
 	"botChecking": "A quick security check…",
 	"botFailed": "The security check couldn’t load. Try again.",

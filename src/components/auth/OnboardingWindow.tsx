@@ -52,8 +52,6 @@ function ReturningOnboarding({
 		// A cold launch can carry an OAuth callback. Keep its renderer alive
 		// until the exchange and callback acknowledgement are both finished.
 		if (auth.loading || callbackActivity.pending || !signedIn) return;
-		if (loadAppSetting<boolean>("recordly.onboarding.v1.seen") !== true)
-			saveAppSetting("recordly.onboarding.v1.seen", true);
 		// On Windows and Linux, a fresh sign-in stops at Start recording.
 		if (needsStartConfirmation) return;
 		let cancelled = false;
@@ -134,6 +132,11 @@ function AccountOnboarding() {
 			callbackError={auth.callbackError}
 			authenticationVersion={auth.callbackVersion}
 			authCallbackPending={auth.callbackActivity.pending}
+			onUnlockSavedSignIn={
+				!import.meta.env.DEV && auth.savedSignInLocked
+					? () => void window.electronAPI.resolveStartupOnboarding("restart")
+					: undefined
+			}
 			standalone
 		/>
 	);

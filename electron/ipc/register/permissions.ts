@@ -1,4 +1,4 @@
-import { app, desktopCapturer, ipcMain, shell, systemPreferences } from "electron";
+import { app, ipcMain, shell, systemPreferences } from "electron";
 import { isTrustedRenderer } from "../../trustedRenderer";
 import { getMacPrivacySettingsUrl } from "../utils";
 import {
@@ -56,18 +56,6 @@ export function registerPermissionHandlers() {
 			success: true,
 			trusted: systemPreferences.isTrustedAccessibilityClient(false),
 			prompted: false,
-		};
-	});
-
-	ipcMain.handle("request-accessibility-permission", () => {
-		if (process.platform !== "darwin") {
-			return { success: true, trusted: true, prompted: false };
-		}
-
-		return {
-			success: true,
-			trusted: systemPreferences.isTrustedAccessibilityClient(true),
-			prompted: true,
 		};
 	});
 
@@ -158,23 +146,13 @@ export function registerPermissionHandlers() {
 		}
 
 		try {
-			// First-time access must register Recordly in macOS before its settings row can be enabled.
-			const testSetup = preview === true && !app.isPackaged;
-			if (
-				!testSetup &&
-				systemPreferences.getMediaAccessStatus("screen") === "not-determined"
-			) {
-				try {
-					await desktopCapturer.getSources({
-						types: ["screen"],
-						thumbnailSize: { width: 0, height: 0 },
-					});
-				} catch {
-					// A denied prompt still needs the settings page so access can be enabled later.
-				}
-			}
+			// Enumerating screens can trigger a system prompt before the drag panel appears.
 			await shell.openExternal(getMacPrivacySettingsUrl("screen"));
-			await presentDragAccessory("screen", event?.sender, testSetup);
+			await presentDragAccessory(
+				"screen",
+				event?.sender,
+				preview === true && !app.isPackaged,
+			);
 			return { success: true };
 		} catch (error) {
 			console.error("Failed to open Screen Recording preferences:", error);

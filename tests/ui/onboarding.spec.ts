@@ -437,8 +437,8 @@ productionTest(
 					fontWeight: heading.fontWeight,
 					lineHeight: heading.lineHeight,
 					letterSpacing: heading.letterSpacing,
-					logoWidth: logo.getBoundingClientRect().width,
-					logoHeight: logo.getBoundingClientRect().height,
+					logoWidth: getComputedStyle(logo).width,
+					logoHeight: getComputedStyle(logo).height,
 					headerGap: getComputedStyle(header).gap,
 				};
 			});
@@ -463,11 +463,7 @@ productionTest(
 		await body.evaluate((element) => {
 			element.scrollTop = element.scrollHeight;
 		});
-		await expect(
-			tour.getByText("Microphone and camera access are requested when you use them.", {
-				exact: false,
-			}),
-		).toBeInViewport();
+		await expect(tour.getByRole("status", { name: "Accessibility: Allowed" })).toBeInViewport();
 		await expect(tour.getByRole("button", { name: "Next", exact: true })).toBeInViewport();
 		await expect(tour.getByRole("navigation", { name: "Onboarding pages" })).toBeInViewport();
 		const bodyBounds = (await body.boundingBox())!;

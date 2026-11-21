@@ -127,8 +127,14 @@ ipcMain.handle("close-onboarding-window", () => {
 	return true;
 });
 ipcMain.handle("resolve-startup-onboarding", (event, action: unknown) => {
-	if (getStartupOnboardingWindow()?.webContents !== event.sender || !isTrustedRenderer(event))
-		return false;
+	if (!isTrustedRenderer(event)) return false;
+	if (action === "restart" && app.isPackaged) {
+		if (getOnboardingWindow()?.webContents !== event.sender) return false;
+		app.relaunch({ args: [] });
+		app.quit();
+		return true;
+	}
+	if (getStartupOnboardingWindow()?.webContents !== event.sender) return false;
 	if (action === "show") {
 		revealStartupOnboardingWindow();
 		return true;
@@ -136,11 +142,6 @@ ipcMain.handle("resolve-startup-onboarding", (event, action: unknown) => {
 	if (action === "continue") {
 		createRecordingControls();
 		closeOnboardingWindow();
-		return true;
-	}
-	if (action === "restart" && app.isPackaged) {
-		app.relaunch({ args: [] });
-		app.quit();
 		return true;
 	}
 	return false;
@@ -459,11 +460,8 @@ function createWindow() {
 	}
 
 	if (app.isPackaged) {
-		const returning =
-			firstRunIntroStarted ||
-			readAppSetting("recordly.onboarding.v1.seen") === true ||
-			readAppSetting("recordly.onboarding.introStarted") === true ||
-			readAppSetting("recordly.onboarding.permissionsRequested") === true;
+		// Relaunching from System Settings must not skip the rest of the first-run tour.
+		const returning = readAppSetting("recordly.onboarding.v1.seen") === true;
 		showOnboardingWindow({ intro: !returning && claimFirstRunIntro(), returning });
 		return;
 	}

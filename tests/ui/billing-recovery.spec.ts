@@ -168,7 +168,7 @@ test("unverified checkout can refresh without exposing diagnostics or opening bi
 	page,
 }) => {
 	const dialog = await prepare(page, "unavailable");
-	const refresh = dialog.getByRole("button", { name: "Get started", exact: true });
+	const refresh = dialog.getByRole("button", { name: "Retry loading pricing", exact: true });
 	await expect(refresh).toBeEnabled();
 	await expect(dialog.getByText(/We couldn’t load your billing options/)).toHaveCount(0);
 	await refresh.click();
@@ -252,21 +252,21 @@ test("portal failures keep subscription management available with safe retry fee
 for (const mode of ["catalog_failure", "price_mismatch"] as const) {
 	test(`${mode} blocks checkout until verified pricing recovers`, async ({ page }) => {
 		const dialog = await prepare(page, mode);
-		const retry = dialog.getByRole("button", { name: "Get started", exact: true });
+		const retry = dialog.getByRole("button", { name: "Retry loading pricing", exact: true });
 		await expect(retry).toBeEnabled();
 		await retry.click();
 		await expect(page.locator("html")).not.toHaveAttribute("data-billing-action");
 		await expect(dialog.getByText("catalog provider diagnostic", { exact: true })).toHaveCount(
 			0,
 		);
-		await expect(page.locator("html")).not.toHaveAttribute("data-billing-action");
 		await page.evaluate(() => {
 			document.documentElement.dataset.recovered = "true";
 		});
 		await retry.click();
 		await expect(dialog.locator(".pricing-price")).toContainText("$9");
-		await expect(retry).toBeEnabled();
-		await retry.click();
+		const checkout = dialog.getByRole("button", { name: "Get started", exact: true });
+		await expect(checkout).toBeEnabled();
+		await checkout.click();
 		await expect(page.locator("html")).toHaveAttribute("data-billing-action", "checkout");
 	});
 }
@@ -276,7 +276,10 @@ test("a slow catalog shows disabled loading instead of an unavailable or checkou
 }) => {
 	const dialog = await prepare(page, "slow_catalog");
 	await expect(page.getByTestId("usage-loading")).toHaveText("false");
-	await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toBeDisabled();
+	await expect(
+		dialog.getByRole("button", { name: "Loading pricing…", exact: true }),
+	).toBeDisabled();
+	await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toHaveCount(0);
 	await expect(dialog.getByText(/We couldn’t load your billing options/)).toHaveCount(0);
 	await page.evaluate(() => {
 		document.documentElement.dataset.recovered = "true";
@@ -304,14 +307,17 @@ test("an existing paid customer cannot start a second subscription when the port
 	page,
 }) => {
 	const dialog = await prepare(page, "paid_no_portal");
+	const refresh = dialog.getByRole("button", { name: "Refresh plan", exact: true });
+	await expect(refresh).toBeEnabled();
 	await expect(
 		dialog.getByRole("button", { name: "Manage subscription", exact: true }),
-	).toBeEnabled();
+	).toHaveCount(0);
 	await expect(dialog.getByText(/Your Cloud plan is active/)).toBeVisible();
 	await expect(dialog.locator(".pricing-price-offer")).toHaveCount(0);
 	await expect(dialog.locator(".pricing-heading-offer")).toHaveCount(0);
 	await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toHaveCount(0);
-	await dialog.getByRole("button", { name: "Manage subscription", exact: true }).click();
+	await refresh.click();
+	await expect(refresh).toBeEnabled();
 	await expect(page.locator("html")).not.toHaveAttribute("data-billing-action");
 });
 

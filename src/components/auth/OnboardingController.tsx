@@ -17,6 +17,7 @@ export function OnboardingController({
 	authenticationVersion,
 	standalone = false,
 	authCallbackPending = false,
+	onUnlockSavedSignIn,
 }: {
 	requestNonce: number;
 	ready: boolean;
@@ -26,6 +27,7 @@ export function OnboardingController({
 	authenticationVersion?: number;
 	standalone?: boolean;
 	authCallbackPending?: boolean;
+	onUnlockSavedSignIn?: () => void;
 }) {
 	// The development tour is optional. Native permission requests and explicit
 	// real-flow tests use preview=0; neither mode changes the restored account.
@@ -231,6 +233,7 @@ export function OnboardingController({
 			user={user}
 			configured={configured}
 			callbackError={callbackError}
+			onUnlockSavedSignIn={onUnlockSavedSignIn}
 			authenticationVersion={authenticationVersion}
 			onAuthenticated={finish}
 			onWindowClose={
