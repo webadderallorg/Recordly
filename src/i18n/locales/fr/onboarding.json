@@ -10,6 +10,7 @@
 	"upgrade": "Passer à Cloud",
 	"next": "Suivant",
 	"skipAndStartRecording": "Passer et commencer l’enregistrement",
+	"permissionDragFallback": "Si le panneau de glisser-déposer ne s’affiche pas, cliquez sur + dans la liste des Réglages Système, sélectionnez Recordly, puis autorisez l’accès.",
 	"backToPermissions": "Revenir aux autorisations",
 	"pages": "Pages de bienvenue",
 	"providerUnavailable": "La connexion avec {{provider}} n’est pas encore disponible.",

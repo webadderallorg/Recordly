@@ -51,22 +51,19 @@ test("a recording permission request opens recovery and can be closed and reopen
 }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: true, onboarded: true });
 	await installDesktopBridgeOverrides(page, () => {
-		window.electronAPI.onRecordingPermissionsRequested = (callback) => {
-			window.addEventListener("test-permissions-requested", callback);
-			return () => window.removeEventListener("test-permissions-requested", callback);
+		window.electronAPI.closeOnboardingWindow = async () => {
+			window.location.assign("/?windowType=hud-overlay");
+			return true;
 		};
-	});
-	await page.goto("/?windowType=editor");
-	await expect(page.getByRole("button", { name: "Home", exact: true })).toBeVisible({
-		timeout: 15000,
 	});
 	const permissions = page.getByRole("dialog", { name: "Permissions", exact: true });
 	for (let attempt = 0; attempt < 2; attempt++) {
-		await page.evaluate(() => window.dispatchEvent(new Event("test-permissions-requested")));
+		await page.goto("/?windowType=onboarding&permissionsOnly=1");
 		await expect(permissions).toBeVisible({ timeout: 15000 });
 		await expect(permissions.getByRole("navigation")).toHaveCount(0);
 		await expect(permissions.getByRole("button", { name: "Back to account" })).toHaveCount(0);
 		await permissions.getByRole("button", { name: "Close", exact: true }).click();
+		await expect(page).toHaveURL(/windowType=hud-overlay$/);
 		await expect(permissions).not.toBeVisible();
 		await expect(page.getByRole("dialog", { name: "Welcome to Recordly" })).not.toBeVisible();
 	}
@@ -105,10 +102,6 @@ for (const standalone of [false, true]) {
 			window.electronAPI.getAccessibilityPermissionStatus = async () => ({
 				success: true,
 				trusted: accessibilityAllowed,
-			});
-			window.electronAPI.requestAccessibilityPermission = async () => ({
-				success: true,
-				trusted: false,
 			});
 			window.electronAPI.openAccessibilityPreferences = async () => {
 				accessibilityAllowed = true;

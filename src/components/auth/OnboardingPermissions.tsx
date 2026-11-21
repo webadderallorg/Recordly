@@ -39,6 +39,7 @@ export function OnboardingPermissions({
 		accessibility: false,
 	});
 	const [busy, setBusy] = useState<string>();
+	const [settingsOpenedFor, setSettingsOpenedFor] = useState<"screen" | "accessibility">();
 	const [statusError, setStatusError] = useState<string>();
 	const [requestError, setRequestError] = useState<string>();
 	const error = requestError ?? statusError;
@@ -126,22 +127,11 @@ export function OnboardingPermissions({
 		const testSetup = canSimulate && simulatedMissing[permission];
 		setBusy(permission);
 		try {
-			if (testSetup) {
-				const opened = await (permission === "screen"
-					? window.electronAPI.openScreenRecordingPreferences(true)
-					: window.electronAPI.openAccessibilityPreferences(true));
-				if (!opened.success) throw new Error(t("openSettingsFailed"));
-			} else if (permission === "accessibility") {
-				const result = await window.electronAPI.requestAccessibilityPermission();
-				if (!result.success) throw new Error(t("accessibilityFailed"));
-				if (!result.trusted) {
-					const opened = await window.electronAPI.openAccessibilityPreferences();
-					if (!opened.success) throw new Error(t("openSettingsFailed"));
-				}
-			} else {
-				const result = await window.electronAPI.openScreenRecordingPreferences();
-				if (!result.success) throw new Error(t("openSettingsFailed"));
-			}
+			const opened = await (permission === "screen"
+				? window.electronAPI.openScreenRecordingPreferences(testSetup || undefined)
+				: window.electronAPI.openAccessibilityPreferences(testSetup || undefined));
+			if (!opened.success) throw new Error(t("openSettingsFailed"));
+			setSettingsOpenedFor(permission);
 			await refresh();
 			setRequestError(undefined);
 			if (testSetup) setSimulatedMissing((current) => ({ ...current, [permission]: false }));
@@ -275,6 +265,14 @@ export function OnboardingPermissions({
 						</motion.div>
 					))}
 				</div>
+				{settingsOpenedFor && !granted[settingsOpenedFor] && (
+					<p role="status" className="text-sm text-muted">
+						{t(
+							"permissionDragFallback",
+							"If the drag panel doesn't appear, click + in the System Settings list, select Recordly, then turn it on.",
+						)}
+					</p>
+				)}
 				{error && (
 					<p role="alert" className="text-sm text-danger">
 						{error} <ErrorReportButton error={error} />

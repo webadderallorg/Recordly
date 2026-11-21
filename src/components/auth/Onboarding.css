@@ -108,6 +108,11 @@
 	line-height: 1.2;
 }
 
+.onboarding-layout[data-onboarding-carousel] .recordly-signin-hero {
+	font-size: inherit;
+	line-height: inherit;
+}
+
 .onboarding-footer {
 	padding: 12px clamp(20px, 5vw, 40px) 8px;
 }

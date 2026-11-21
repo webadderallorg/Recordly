@@ -736,12 +736,6 @@ interface Window {
 			prompted: boolean;
 			error?: string;
 		}>;
-		requestAccessibilityPermission: () => Promise<{
-			success: boolean;
-			trusted: boolean;
-			prompted: boolean;
-			error?: string;
-		}>;
 		getScreenRecordingPermissionStatus: () => Promise<{
 			success: boolean;
 			status: string;

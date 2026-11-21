@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
 	app: { isPackaged: true, getAppPath: () => "/recordly" },
 	handlers: new Map<string, (...args: unknown[]) => unknown>(),
 	status: vi.fn(),
+	accessibility: vi.fn(),
 	requestMedia: vi.fn(),
 	sources: vi.fn(),
 	open: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("electron", () => ({
 	desktopCapturer: { getSources: mocks.sources },
 	systemPreferences: {
 		getMediaAccessStatus: mocks.status,
+		isTrustedAccessibilityClient: mocks.accessibility,
 		askForMediaAccess: mocks.requestMedia,
 	},
 	shell: { openExternal: mocks.open },
@@ -176,35 +178,6 @@ it("reports a failure to open media settings", async () => {
 	});
 	log.mockRestore();
 });
-it("registers first-time Screen Recording access before opening its settings", async () => {
-	mocks.status.mockReturnValue("not-determined");
-	mocks.sources.mockResolvedValue([]);
-	expect(await mocks.handlers.get("open-screen-recording-preferences")!()).toEqual({
-		success: true,
-	});
-	expect(mocks.sources).toHaveBeenCalledWith({
-		types: ["screen"],
-		thumbnailSize: { width: 0, height: 0 },
-	});
-	expect(mocks.sources.mock.invocationCallOrder[0]).toBeLessThan(
-		mocks.open.mock.invocationCallOrder[0],
-	);
-	expect(mocks.open).toHaveBeenCalledWith("settings:screen");
-});
-it("opens settings even when the first-time capture request is rejected", async () => {
-	mocks.status.mockReturnValue("not-determined");
-	mocks.sources.mockRejectedValue(new Error("Denied"));
-	expect(await mocks.handlers.get("open-screen-recording-preferences")!()).toEqual({
-		success: true,
-	});
-	expect(mocks.open).toHaveBeenCalledWith("settings:screen");
-});
-it("does not enumerate screens for an already determined permission", async () => {
-	mocks.status.mockReturnValue("denied");
-	await mocks.handlers.get("open-screen-recording-preferences")!();
-	expect(mocks.sources).not.toHaveBeenCalled();
-	expect(mocks.open).toHaveBeenCalledWith("settings:screen");
-});
 it("leaves native macOS permission controls unused on other platforms", async () => {
 	Object.defineProperty(process, "platform", { value: "win32" });
 	expect(await mocks.handlers.get("open-screen-recording-preferences")!()).toEqual({
@@ -215,13 +188,21 @@ it("leaves native macOS permission controls unused on other platforms", async ()
 	expect(mocks.accessory).not.toHaveBeenCalled();
 });
 
-it("presents the native accessory after opening Settings with the originating sender", async () => {
+it.each([
+	["screen", "open-screen-recording-preferences"],
+	["accessibility", "open-accessibility-preferences"],
+])("opens %s Settings and shows the drag accessory without requesting first-time access", async (permission, channel) => {
+	mocks.status.mockReturnValue("not-determined");
+	mocks.accessibility.mockReturnValue(false);
 	const sender = {};
-	await mocks.handlers.get("open-accessibility-preferences")!({ sender });
-	expect(mocks.accessory).toHaveBeenCalledWith("accessibility", sender, false);
+	expect(await mocks.handlers.get(channel)!({ sender })).toEqual({ success: true });
+	expect(mocks.open).toHaveBeenCalledExactlyOnceWith(`settings:${permission}`);
+	expect(mocks.accessory).toHaveBeenCalledExactlyOnceWith(permission, sender, false);
 	expect(mocks.open.mock.invocationCallOrder[0]).toBeLessThan(
 		mocks.accessory.mock.invocationCallOrder[0],
 	);
+	expect(mocks.sources).not.toHaveBeenCalled();
+	expect(mocks.accessibility).not.toHaveBeenCalledWith(true);
 });
 
 it("keeps ordinary System Settings usable if its accessory cannot start", async () => {
