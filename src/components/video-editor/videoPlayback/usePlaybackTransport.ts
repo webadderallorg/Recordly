@@ -13,6 +13,8 @@ export type usePlaybackTransportInput = Pick<
 	| "videoRef"
 	| "lastRenderedContentTimeRef"
 	| "shouldSnapPausedFrameRef"
+	| "shouldRegenerateFrameRef"
+	| "suspendRenderingRef"
 	| "lockedVideoDimensionsRef"
 	| "videoPath"
 	| "onPreviewReadyChange"
@@ -49,6 +51,8 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		videoRef,
 		lastRenderedContentTimeRef,
 		shouldSnapPausedFrameRef,
+		shouldRegenerateFrameRef,
+		suspendRenderingRef,
 		lockedVideoDimensionsRef,
 		videoPath,
 		onPreviewReadyChange,
@@ -127,7 +131,7 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		if (video.videoWidth === 0 || video.videoHeight === 0) return;
 
 		const source = previewVideoSourceRef.current.getSource();
-		const frameTexture = new PreviewFrameTexture(source);
+		let frameTexture = new PreviewFrameTexture(source);
 		const videoSprite = new Sprite(Texture.EMPTY);
 		videoSprite.visible = false;
 		videoSpriteRef.current = videoSprite;
@@ -153,6 +157,15 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 				return;
 			}
 			try {
+				if (shouldRegenerateFrameRef.current && !suspendRenderingRef.current) {
+					// Discard the upload and any cached privacy surface, not the video element.
+					videoSprite.visible = false;
+					videoSprite.texture = Texture.EMPTY;
+					frameTexture.dispose();
+					source.unload();
+					frameTexture = new PreviewFrameTexture(source);
+					shouldRegenerateFrameRef.current = false;
+				}
 				videoSprite.texture = frameTexture.update(video, {
 					annotations: annotationRegions,
 					// Match the crop already applied to the sprite, including during edits.
@@ -311,6 +324,8 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		clipPlaybackRef,
 		isSeekingRef,
 		shouldSnapPausedFrameRef,
+		shouldRegenerateFrameRef,
+		suspendRenderingRef,
 		baseMaskRef,
 		sourceRedactionRef,
 		updatePreviewTextureRef,

@@ -141,6 +141,7 @@ export interface VideoPlaybackRef {
 	pause: () => void;
 	getAnnotationPlacement?: () => Pick<AnnotationRegion, "position" | "size"> | null;
 	refreshFrame: () => Promise<void>;
+	regenerateFrame: () => void;
 	cancelCaptionEdit: () => void;
 }
 

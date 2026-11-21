@@ -130,6 +130,7 @@ function Preview() {
 		} finally {
 			frame?.close();
 			renderer.destroy();
+			playback.current?.regenerateFrame();
 			setSuspended(false);
 		}
 	};

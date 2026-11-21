@@ -43,14 +43,8 @@ export function useExportRunner(input: ExportRunnerInput) {
 					runInput.exportIdentity?.sourcePath ??
 					(runInput.videoPath ? fromFileUrl(runInput.videoPath) : undefined),
 			};
-			const {
-				videoPath,
-				videoPlaybackRef,
-				isPlaying,
-				appearance,
-				exportSession,
-				smokeExportConfig,
-			} = runInput;
+			const { videoPath, videoPlaybackRef, appearance, exportSession, smokeExportConfig } =
+				runInput;
 			const { shadowIntensity } = appearance;
 			const {
 				setIsExporting,
@@ -66,7 +60,8 @@ export function useExportRunner(input: ExportRunnerInput) {
 				return;
 			}
 
-			const video = videoPlaybackRef.current?.video;
+			const playback = videoPlaybackRef.current;
+			const video = playback?.video;
 			if (!video) {
 				toast.error(translate("notifications.videoNotReady", "Video not ready"));
 				return;
@@ -118,12 +113,11 @@ export function useExportRunner(input: ExportRunnerInput) {
 			}
 			const smokeExportStartedAt = smokeExportConfig.enabled ? performance.now() : null;
 
-			const wasPlaying = isPlaying;
-			const restoreTime = video.currentTime;
+			const wasPlaying = playback.isPlaying;
 
 			try {
 				if (wasPlaying) {
-					videoPlaybackRef.current?.pause();
+					playback.pause();
 				}
 
 				// Drain preview estimates before real exports claim decoder/GPU/encoder resources.
@@ -166,13 +160,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 					settings.format === "gif" && settings.gifConfig
 						? await runGifExport(branchContext)
 						: await runMp4Export(branchContext);
-				if (outcome.exit) return outcome.path;
-
-				if (wasPlaying) {
-					await videoPlaybackRef.current?.play().catch(() => undefined);
-				} else if (video.currentTime !== restoreTime) {
-					video.currentTime = restoreTime;
-				}
+				return outcome.exit ? outcome.path : undefined;
 			} catch (error) {
 				if (exportWasCancelled()) return;
 				exportSession.setIsOptimizingGif(false);
@@ -204,15 +192,27 @@ export function useExportRunner(input: ExportRunnerInput) {
 					window.close();
 				}
 			} finally {
-				if (exportWasExplicitlyCancelled()) diagnostics.record("canceled");
-				if (exportWasExplicitlyCancelled() && exportRunIdRef.current === exportRunId + 1) {
-					if (video.currentTime !== restoreTime) video.currentTime = restoreTime;
-					if (wasPlaying) {
-						await videoPlaybackRef.current?.play().catch(() => undefined);
-					}
-				} else if (!exportWasCancelled()) {
+				const wasCancelled = exportWasExplicitlyCancelled();
+				if (wasCancelled) diagnostics.record("canceled");
+				const stillCurrent = !exportWasCancelled();
+				if (stillCurrent) {
 					setIsExporting(false);
 					exporterRef.current = null;
+				}
+				// A superseded run must not touch the new run's preview or another recording.
+				const currentPreview = videoPlaybackRef.current;
+				if (
+					(stillCurrent ||
+						(wasCancelled && exportRunIdRef.current === exportRunId + 1)) &&
+					inputRef.current.videoPath === videoPath &&
+					currentPreview?.video === video
+				) {
+					currentPreview.regenerateFrame();
+					if (wasPlaying) {
+						void currentPreview.play().catch((error) => {
+							console.warn("Could not resume preview playback after export:", error);
+						});
+					}
 				}
 			}
 		},
