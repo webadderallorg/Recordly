@@ -98,13 +98,13 @@ it("keeps verified checkout on Get started", () => {
 	expect(state.refresh).not.toHaveBeenCalled();
 });
 it.each([
-	"loading",
-	"catalogLoading",
-])("shows loading instead of Get started during %s", (pending) => {
+	["loading", "Loading your plan…"],
+	["catalogLoading", "Loading pricing…"],
+])("blocks checkout during %s even when the price is already visible", (pending, label) => {
 	billing({ checkoutAvailable: true, checkoutIntervals: ["monthly"], prices: [price] });
 	state.billing.catalog = { prices: [price] };
 	state.billing[pending] = true;
-	expect(button()).toMatchObject({ children: "Loading pricing…", isDisabled: true });
+	expect(button()).toMatchObject({ children: label, isDisabled: true });
 	state.billing[pending] = false;
 	expect(button()).toMatchObject({ children: "Get started", isDisabled: false });
 });

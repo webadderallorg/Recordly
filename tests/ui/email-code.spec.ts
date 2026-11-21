@@ -1,4 +1,5 @@
 import { expect } from "@playwright/test";
+import { testAuthSession } from "./auth";
 import { installDesktopBridge } from "./bridge";
 import { productionTest as test } from "./production";
 
@@ -74,4 +75,59 @@ test("password sign-in remains optional alongside email codes", async ({ page })
 	await dialog.getByRole("button", { name: "Sign in with password", exact: true }).click();
 	expect(new URL((await request).url()).searchParams.get("grant_type")).toBe("password");
 	await expect(dialog).toHaveAttribute("data-onboarding-state", "permissions");
+});
+
+test("back to Account offers another sign-in without replacing the current session until it succeeds", async ({
+	page,
+}) => {
+	await installDesktopBridge(page, "preview.mp4", { signedIn: true, onboarded: false });
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	const replacement = testAuthSession({
+		id: "00000000-0000-4000-8000-000000000002",
+		email: "another@example.test",
+	});
+	await page.route("https://auth.recordly.test/auth/v1/verify", (route) => {
+		if (route.request().postDataJSON().token === "000000")
+			return route.fulfill({
+				status: 403,
+				json: { message: "Token is invalid", error_code: "otp_expired" },
+			});
+		return route.fulfill({ json: replacement });
+	});
+	const activeAccount = () =>
+		page.evaluate(async () => {
+			const session = await window.__recordlyTestAuthStorage({
+				action: "get",
+				key: "sb-auth-auth-token",
+			});
+			return session ? JSON.parse(session).user.id : null;
+		});
+
+	await page.goto("/?windowType=onboarding");
+	const dialog = page.getByRole("dialog", { name: "Welcome to Recordly" });
+	await expect(dialog).toHaveAttribute("data-onboarding-state", "permissions");
+	await dialog.getByRole("button", { name: "Back to account" }).click();
+	const email = dialog.getByLabel("Email", { exact: true });
+	await expect(email).toBeVisible();
+	await expect(dialog.getByRole("heading", { name: "Your account" })).toHaveCount(0);
+	const original = testAuthSession().user.id;
+	expect(await activeAccount()).toBe(original);
+	await dialog.getByRole("button", { name: "Next", exact: true }).click();
+	await expect(dialog).toHaveAttribute("data-onboarding-state", "permissions");
+	expect(await activeAccount()).toBe(original);
+
+	await dialog.getByRole("navigation").getByRole("button", { name: "Account" }).click();
+	await email.fill(replacement.user.email!);
+	await dialog.getByRole("button", { name: "Email me a code", exact: true }).click();
+	const code = dialog.getByLabel(`Enter code sent to ${replacement.user.email}`, { exact: true });
+	const verify = dialog.getByRole("button", { name: "Verify and continue", exact: true });
+	await code.fill("000000");
+	await verify.click();
+	await expect(dialog.getByRole("alert")).toContainText("That code is invalid or has expired.");
+	expect(await activeAccount()).toBe(original);
+	await code.fill("123456");
+	expect(await activeAccount()).toBe(original);
+	await verify.click();
+	await expect(dialog).toHaveAttribute("data-onboarding-state", "permissions");
+	await expect.poll(activeAccount).toBe(replacement.user.id);
 });

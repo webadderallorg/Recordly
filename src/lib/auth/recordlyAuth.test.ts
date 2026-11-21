@@ -244,6 +244,17 @@ it("requests Microsoft's email scope and opens its OAuth URL externally", async 
 	expect(openExternalUrl).toHaveBeenCalledExactlyOnceWith(
 		"https://auth.example.test/oauth?code_challenge=test-challenge",
 	);
+	oauth.mockResolvedValueOnce({
+		data: { url: "https://auth.example.test/oauth?code_challenge=account-switch-challenge" },
+		error: null,
+	});
+	await signInWithSocial("google", { legalAccepted: true }, { selectAccount: true });
+	expect(oauth).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			provider: "google",
+			options: expect.objectContaining({ queryParams: { prompt: "select_account" } }),
+		}),
+	);
 });
 
 it("forwards the one-use security token to Supabase for email code and password requests", async () => {
