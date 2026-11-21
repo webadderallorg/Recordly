@@ -39,16 +39,17 @@ function preparePortal(context: ReturnType<typeof createContext>, startWasCancel
 	});
 	vi.stubGlobal("document", { createElement: () => video });
 	vi.stubGlobal("MediaStream", class {});
+	const runPortalCountdown = vi.fn<() => Promise<boolean>>().mockResolvedValue(true);
 	const pending = startBrowserRecorder(
 		context as unknown as Parameters<typeof startBrowserRecorder>[0],
 		{
 			videoTrack: track as unknown as MediaStreamTrack,
 			systemAudioIncluded: false,
-			waitForPortalFrame: true,
+			runPortalCountdown,
 			startWasCancelled,
 		},
 	);
-	return { pending, video, track };
+	return { pending, video, track, runPortalCountdown };
 }
 function createContext() {
 	return {
@@ -107,18 +108,50 @@ afterEach(() => {
 describe("browser recording editor boundary", () => {
 	it("starts the clock and recording only after the portal video has a frame", async () => {
 		const context = createContext();
-		const { pending, video } = preparePortal(context);
+		const { pending, video, runPortalCountdown } = preparePortal(context);
+		let finishCountdown!: (keepGoing: boolean) => void;
+		runPortalCountdown.mockReturnValue(
+			new Promise((resolve) => {
+				finishCountdown = resolve;
+			}),
+		);
 		expect(context.mediaRecorder.current).toBeNull();
 		expect(context.beginWebcamCapture).not.toHaveBeenCalled();
 		expect(context.resetRecordingClock).not.toHaveBeenCalled();
 		expect(window.electronAPI.setRecordingState).not.toHaveBeenCalled();
-		vi.spyOn(Date, "now").mockReturnValue(1500);
+		expect(runPortalCountdown).not.toHaveBeenCalled();
 		video.dispatchEvent(new Event("loadeddata"));
+		await vi.waitFor(() => expect(runPortalCountdown).toHaveBeenCalledOnce());
+		expect(context.mediaRecorder.current).toBeNull();
+		expect(context.resetRecordingClock).not.toHaveBeenCalled();
+		vi.spyOn(Date, "now").mockReturnValue(1500);
+		finishCountdown(true);
 		await pending;
 		expect(context.mediaRecorder.current.state).toBe("recording");
 		expect(context.resetRecordingClock).toHaveBeenCalledExactlyOnceWith(1500);
 		expect(window.electronAPI.setRecordingState).toHaveBeenCalledExactlyOnceWith(true);
 		expect(video.srcObject).toBeNull();
+	});
+	it("does not start when the portal countdown is cancelled", async () => {
+		const context = createContext();
+		const { pending, video, runPortalCountdown } = preparePortal(context);
+		runPortalCountdown.mockResolvedValue(false);
+		video.dispatchEvent(new Event("loadeddata"));
+		await pending;
+		expect(context.mediaRecorder.current).toBeNull();
+		expect(context.resetRecordingClock).not.toHaveBeenCalled();
+	});
+	it("does not start when the portal track ends during the countdown", async () => {
+		const context = createContext();
+		const { pending, video, track, runPortalCountdown } = preparePortal(context);
+		runPortalCountdown.mockImplementation(async () => {
+			track.readyState = "ended";
+			return true;
+		});
+		video.dispatchEvent(new Event("loadeddata"));
+		await expect(pending).rejects.toThrow(/No video frames/);
+		expect(context.mediaRecorder.current).toBeNull();
+		expect(window.electronAPI.setRecordingState).not.toHaveBeenCalled();
 	});
 	it("does not start after cancellation even if a portal frame arrives", async () => {
 		const context = createContext();
