@@ -25,6 +25,7 @@ window.electronAPI = {
 function Preview() {
 	const [action, setAction] = useState("");
 	const [countdownDelay, setCountdownDelay] = useState(0);
+	const [countdownActive, setCountdownActive] = useState(false);
 	return (
 		<main className="relative flex h-screen flex-col items-center justify-end bg-background pb-20">
 			<button
@@ -42,11 +43,17 @@ function Preview() {
 			>
 				<div role="group" aria-label="Recording setup" className={styles.recordingControls}>
 					<RecordButton
-						countdownActive={false}
+						countdownActive={countdownActive}
 						countdownDelay={countdownDelay}
 						disabled={false}
-						onRecord={() => setAction("record")}
-						onCancel={() => setAction("cancel")}
+						onRecord={() => {
+							setAction("record");
+							setCountdownActive(countdownDelay > 0);
+						}}
+						onCancel={() => {
+							setAction("cancel");
+							setCountdownActive(false);
+						}}
 					/>
 					<MicPopover
 						systemAudioEnabled={false}

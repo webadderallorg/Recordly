@@ -46,6 +46,23 @@ test("tooltips open on keyboard focus and close on Escape", async ({ page }) => 
 	await expect(page.getByRole("tooltip")).toHaveCount(0);
 });
 
+test("one Escape cancels a countdown while its tooltip is open", async ({ page }) => {
+	const controls = await open(page);
+	await controls.getByRole("button", { name: "Countdown delay", exact: true }).click();
+	await page.getByRole("dialog").getByText("3 sec", { exact: true }).click();
+	await controls.getByRole("button", { name: "Start recording", exact: true }).click();
+	await hover(page, controls.getByRole("button", { name: "Cancel countdown", exact: true }));
+	await expect(
+		page.getByRole("tooltip", { name: "Cancel countdown", exact: true }),
+	).toBeVisible();
+
+	await page.keyboard.press("Escape");
+	await expect(page.getByLabel("Last action")).toHaveText("cancel", { timeout: 1500 });
+	await expect(
+		controls.getByRole("button", { name: "Start recording", exact: true }),
+	).toBeVisible();
+});
+
 test("popover triggers hide their tooltip while open and show the new state after", async ({
 	page,
 }) => {

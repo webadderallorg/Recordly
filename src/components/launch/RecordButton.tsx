@@ -32,8 +32,9 @@ export function RecordButton({
 				onCancel();
 			}
 		};
-		window.addEventListener("keydown", cancel);
-		return () => window.removeEventListener("keydown", cancel);
+		// React Aria stops Escape in document capture while a tooltip is open.
+		window.addEventListener("keydown", cancel, true);
+		return () => window.removeEventListener("keydown", cancel, true);
 	}, [countdownActive, onCancel]);
 	const label = countdownActive
 		? t("recording.cancelCountdown", "Cancel countdown")
