@@ -33,6 +33,7 @@
 	"windowsStartFailed": "Não foi possível iniciar a captura nativa do Windows. A captura pelo navegador será usada.",
 	"microphoneDenied": "Permissão do microfone negada. A gravação continuará sem áudio do microfone.",
 	"systemAudioUnavailable": "O áudio do sistema não está disponível para esta fonte. A gravação continuará sem ele.",
+	"waylandScreenCastMissing": "Para gravar a tela no Wayland, é necessário um portal ScreenCast. Instale o portal de compartilhamento de tela do seu ambiente de trabalho ou mude para uma sessão X11 e tente novamente.",
 	"startRecordingFailed": "Não foi possível iniciar a gravação",
 	"saveRecordingFailed": "Não foi possível salvar a gravação.",
 	"noFrames": "Nenhum quadro de vídeo foi capturado. Grave novamente.",

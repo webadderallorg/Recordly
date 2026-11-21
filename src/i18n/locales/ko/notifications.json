@@ -33,6 +33,7 @@
 	"windowsStartFailed": "Windows 기본 캡처를 시작하지 못했습니다. 브라우저 캡처로 전환합니다.",
 	"microphoneDenied": "마이크 권한이 거부되었습니다. 마이크 오디오 없이 녹화를 계속합니다.",
 	"systemAudioUnavailable": "이 소스에서는 시스템 오디오를 사용할 수 없습니다. 시스템 오디오 없이 녹화를 계속합니다.",
+	"waylandScreenCastMissing": "Wayland에서 화면을 녹화하려면 ScreenCast 포털이 필요합니다. 데스크톱 환경에 맞는 화면 공유 포털을 설치하거나 X11 세션으로 전환한 뒤 다시 시도하세요.",
 	"startRecordingFailed": "녹화를 시작하지 못했습니다",
 	"saveRecordingFailed": "녹화 파일을 저장하지 못했습니다.",
 	"noFrames": "동영상 프레임이 캡처되지 않았습니다. 다시 녹화하세요.",

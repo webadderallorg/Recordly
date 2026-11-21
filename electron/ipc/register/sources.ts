@@ -31,6 +31,7 @@ import {
 } from "../state";
 import type { SelectedSource, WindowBounds } from "../types";
 import { getScreen, parseWindowId } from "../utils";
+import { isWaylandScreenCastMissing } from "../waylandScreenCast";
 import { bringWindowsWindowForward, resolveWindowsWindowBounds } from "../windowsWindowControl";
 import {
 	getScreenSourceIdForDisplay,
@@ -641,6 +642,15 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 
 	ipcMain.handle("get-selected-source", () => {
 		return getSessionCaptureSource();
+	});
+	ipcMain.handle("is-wayland-screencast-missing", (event) => {
+		return (
+			process.platform === "linux" &&
+			isLikelyLinuxWaylandSession(process.env) &&
+			getHudOverlayWindow()?.webContents === event.sender &&
+			event.senderFrame === event.sender.mainFrame &&
+			isWaylandScreenCastMissing()
+		);
 	});
 
 	ipcMain.handle("open-source-selector", async () => {
