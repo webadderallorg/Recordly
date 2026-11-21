@@ -10,6 +10,7 @@
 	"upgrade": "アップグレード",
 	"next": "次へ",
 	"skipAndStartRecording": "スキップして録画を開始",
+	"permissionDragFallback": "ドラッグ用のパネルが表示されない場合は、「システム設定」の一覧で「+」をクリックし、Recordly を選択してアクセスを許可してください。",
 	"backToPermissions": "権限の設定に戻る",
 	"pages": "初期設定のページ",
 	"providerUnavailable": "{{provider}}でのログインはまだ利用できません。",

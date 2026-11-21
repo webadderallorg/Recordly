@@ -10,6 +10,7 @@
 	"upgrade": "Upgraden",
 	"next": "Volgende",
 	"skipAndStartRecording": "Overslaan en opname starten",
+	"permissionDragFallback": "Verschijnt het venster om de app te slepen niet? Klik dan op + in de lijst in Systeeminstellingen, selecteer Recordly en schakel de toegang in.",
 	"backToPermissions": "Terug naar machtigingen",
 	"pages": "Introductiepagina’s",
 	"providerUnavailable": "Aanmelden met {{provider}} is nog niet beschikbaar.",

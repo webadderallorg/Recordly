@@ -10,6 +10,7 @@
 	"upgrade": "Upgrade",
 	"next": "Weiter",
 	"skipAndStartRecording": "Überspringen und Aufnahme starten",
+	"permissionDragFallback": "Wenn das Fenster zum Ziehen nicht erscheint, klicke in der Liste in den Systemeinstellungen auf +, wähle Recordly aus und aktiviere den Zugriff.",
 	"backToPermissions": "Zurück zu den Berechtigungen",
 	"pages": "Einführungsseiten",
 	"providerUnavailable": "Die Anmeldung mit {{provider}} ist noch nicht verfügbar.",

@@ -10,6 +10,7 @@
 	"upgrade": "升级",
 	"next": "下一步",
 	"skipAndStartRecording": "跳过并开始录制",
+	"permissionDragFallback": "如果没有出现拖放面板，请在“系统设置”的列表中点击“+”，选择 Recordly，然后开启权限。",
 	"backToPermissions": "返回权限设置",
 	"pages": "入门引导页面",
 	"providerUnavailable": "{{provider}} 登录暂不可用。",

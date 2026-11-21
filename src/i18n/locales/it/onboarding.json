@@ -10,6 +10,7 @@
 	"upgrade": "Passa a Cloud",
 	"next": "Avanti",
 	"skipAndStartRecording": "Salta e avvia la registrazione",
+	"permissionDragFallback": "Se il pannello per trascinare l’app non compare, fai clic su + nell’elenco delle Impostazioni di Sistema, seleziona Recordly e abilita l’accesso.",
 	"backToPermissions": "Torna alle autorizzazioni",
 	"pages": "Pagine introduttive",
 	"providerUnavailable": "L’accesso con {{provider}} non è ancora disponibile.",

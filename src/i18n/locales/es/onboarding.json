@@ -10,6 +10,7 @@
 	"upgrade": "Mejorar plan",
 	"next": "Siguiente",
 	"skipAndStartRecording": "Omitir y empezar a grabar",
+	"permissionDragFallback": "Si no aparece el panel para arrastrar la app, haz clic en + en la lista de Ajustes del Sistema, selecciona Recordly y activa el permiso.",
 	"backToPermissions": "Volver a los permisos",
 	"pages": "Páginas de bienvenida",
 	"providerUnavailable": "El inicio de sesión con {{provider}} aún no está disponible.",
