@@ -5,6 +5,7 @@ const {
 	destroyForwardFrameSourceMock,
 	getForwardFrameAtTimeMock,
 	initializeForwardFrameSourceMock,
+	isWebGLSupportedMock,
 	pixiApplicationInstancesMock,
 	pixiInitializationErrorsMock,
 	resolveMediaElementSourceMock,
@@ -13,6 +14,7 @@ const {
 	destroyForwardFrameSourceMock: vi.fn(async () => undefined),
 	getForwardFrameAtTimeMock: vi.fn(async () => null),
 	initializeForwardFrameSourceMock: vi.fn(async () => undefined),
+	isWebGLSupportedMock: vi.fn(() => true),
 	pixiApplicationInstancesMock: [] as Array<{
 		destroy: ReturnType<typeof vi.fn>;
 		init: ReturnType<typeof vi.fn>;
@@ -27,6 +29,7 @@ const {
 }));
 
 vi.mock("pixi.js", () => ({
+	isWebGLSupported: isWebGLSupportedMock,
 	RendererType: { WEBGL: 1, WEBGPU: 2 },
 	Application: class {
 		destroy = vi.fn(() => {
@@ -220,6 +223,44 @@ describe("ModernFrameRenderer Pixi lifecycle", () => {
 			Object.assign(pixiApplicationInstancesMock[0].renderer, { type: 1 });
 			await expect(pending).resolves.toMatchObject({ backend: "webgl" });
 		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("stops a WebGL-only retry when WebGL initialization fails", async () => {
+		pixiApplicationInstancesMock.length = 0;
+		pixiInitializationErrorsMock.length = 0;
+		pixiInitializationErrorsMock.push(new Error("WebGL initialization failed"), undefined);
+		vi.stubGlobal("navigator", { gpu: {} });
+
+		try {
+			const renderer = createRenderer();
+			Object.assign(renderer.config, { preferredRenderBackend: "webgl", forceWebgl: true });
+			await expect(
+				renderer.scene.createPixiApplication({} as HTMLCanvasElement),
+			).rejects.toThrow("WebGL initialization failed");
+			expect(pixiApplicationInstancesMock).toHaveLength(1);
+		} finally {
+			pixiInitializationErrorsMock.length = 0;
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("does not ask Pixi to auto-detect WebGPU when WebGL is unavailable on retry", async () => {
+		pixiApplicationInstancesMock.length = 0;
+		isWebGLSupportedMock.mockReturnValueOnce(false);
+		vi.stubGlobal("navigator", { gpu: {} });
+
+		try {
+			const renderer = createRenderer();
+			Object.assign(renderer.config, { preferredRenderBackend: "webgl", forceWebgl: true });
+			await expect(
+				renderer.scene.createPixiApplication({} as HTMLCanvasElement),
+			).rejects.toThrow("WebGL runtime is unavailable");
+			expect(pixiApplicationInstancesMock).toHaveLength(0);
+		} finally {
+			isWebGLSupportedMock.mockReset();
+			isWebGLSupportedMock.mockReturnValue(true);
 			vi.unstubAllGlobals();
 		}
 	});

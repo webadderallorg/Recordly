@@ -23,6 +23,7 @@ export interface FrameRenderConfig {
 	width: number;
 	height: number;
 	preferredRenderBackend?: ExportRenderBackend;
+	forceWebgl?: boolean;
 	wallpaper: string;
 	zoomRegions: ZoomRegion[];
 	showShadow: boolean;

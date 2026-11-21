@@ -358,7 +358,12 @@ it("restarts a WebGPU runtime rendering failure once using fresh WebGL resources
 	expect(mocks.initialize).toHaveBeenCalledTimes(2);
 	expect(mocks.construct).toHaveBeenNthCalledWith(
 		2,
-		expect.objectContaining({ preferredRenderBackend: "webgl", width: 2, height: 2 }),
+		expect.objectContaining({
+			preferredRenderBackend: "webgl",
+			forceWebgl: true,
+			width: 2,
+			height: 2,
+		}),
 	);
 });
 it("cancels a renderer waiting on an unresponsive native IPC frame write", async () => {
