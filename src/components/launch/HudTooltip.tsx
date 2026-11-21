@@ -14,7 +14,11 @@ export function HudTooltip({ label, children, suppressed = false }: HudTooltipPr
 	return (
 		<Tooltip isOpen={open && !suppressed && label.length > 0} onOpenChange={setOpen}>
 			{children}
-			<Tooltip.Content placement="top" offset={8} className="launch-theme">
+			<Tooltip.Content
+				placement="top"
+				offset={8}
+				className="launch-theme pointer-events-none"
+			>
 				{label}
 			</Tooltip.Content>
 		</Tooltip>
