@@ -110,6 +110,10 @@
 		--destructive: var(--danger);
 		--input: var(--field-border);
 	}
+	:root:lang(vi) {
+		/* Bundled DM Sans lacks Vietnamese tone marks. */
+		--app-font-sans: system-ui, "Segoe UI", sans-serif;
+	}
 	html,
 	body,
 	#root {
