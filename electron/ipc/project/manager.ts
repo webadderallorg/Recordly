@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants as fsConstants, realpathSync, type Stats } from "node:fs";
+import { realpathSync, type Stats } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { app } from "electron";
@@ -40,6 +40,7 @@ import {
 import { canonicalMediaSources } from "./canonicalMediaSources";
 import { encodeComposedThumbnail } from "./composedThumbnail";
 import { createProjectFirstFrameThumbnail } from "./firstFrameThumbnail";
+import { applyRelinkedProjectMedia, resolveProjectMediaSources } from "./projectMedia";
 import { hasFreshProjectThumbnail } from "./thumbnailFreshness";
 
 setProjectRecoveryDirectory(path.join(USER_DATA_PATH, "project-recovery"), (contents) =>
@@ -47,6 +48,7 @@ setProjectRecoveryDirectory(path.join(USER_DATA_PATH, "project-recovery"), (cont
 );
 
 export { normalizePath, normalizeVideoSourcePath };
+export { resolveProjectMediaSources } from "./projectMedia";
 
 export function getAssetRootPath() {
 	if (app.isPackaged) {
@@ -119,13 +121,17 @@ export async function isAllowedLocalMediaPath(candidatePath: string) {
 	return isAllowedLocalReadPath(normalizedCandidatePath);
 }
 
-async function collectApprovedLocalReadPaths(filePath?: string | null): Promise<string[]> {
+async function collectApprovedLocalReadPaths(
+	filePath?: string | null,
+	resolveAliases = true,
+): Promise<string[]> {
 	const normalizedPath = normalizeVideoSourcePath(filePath);
 	if (!normalizedPath) {
 		return [];
 	}
 
 	const approvedPaths = [normalizePath(normalizedPath)];
+	if (!resolveAliases) return approvedPaths;
 
 	try {
 		const realPath = await fs.realpath(approvedPaths[0]);
@@ -140,13 +146,16 @@ async function collectApprovedLocalReadPaths(filePath?: string | null): Promise<
 	return approvedPaths;
 }
 
-export async function rememberApprovedLocalReadPath(filePath?: string | null) {
+export async function rememberApprovedLocalReadPath(
+	filePath?: string | null,
+	resolveAliases = true,
+) {
 	const normalizedPath = normalizeVideoSourcePath(filePath);
 	if (!normalizedPath) {
 		return;
 	}
 
-	const approvedPaths = await collectApprovedLocalReadPaths(normalizedPath);
+	const approvedPaths = await collectApprovedLocalReadPaths(normalizedPath, resolveAliases);
 	for (const approvedPath of approvedPaths) {
 		approvedLocalReadPaths.add(approvedPath);
 	}
@@ -179,10 +188,13 @@ export async function resolveApprovedLocalMediaPath(candidatePath: string): Prom
 export async function replaceApprovedSessionLocalReadPaths(
 	filePaths: Array<string | null | undefined>,
 	isCurrent = () => true,
+	exactPaths: ReadonlySet<string> = new Set(),
 ) {
 	const nextApprovedPaths = new Set<string>();
 	const approvedPathLists = await Promise.all(
-		filePaths.map((filePath) => collectApprovedLocalReadPaths(filePath)),
+		filePaths.map((filePath) =>
+			collectApprovedLocalReadPaths(filePath, !filePath || !exactPaths.has(filePath)),
+		),
 	);
 
 	for (const approvedPathList of approvedPathLists) {
@@ -197,70 +209,6 @@ export async function replaceApprovedSessionLocalReadPaths(
 		approvedLocalReadPaths.add(approvedPath);
 	}
 	return true;
-}
-
-export async function resolveProjectMediaSources(
-	project: unknown,
-): Promise<
-	| { success: true; videoPath: string; webcamPath: string | null }
-	| { success: false; message: string }
-> {
-	if (!project || typeof project !== "object") {
-		return { success: false, message: "Invalid project file format" };
-	}
-
-	const rawVideoPath = (project as { videoPath?: unknown }).videoPath;
-	if (typeof rawVideoPath !== "string") {
-		return { success: false, message: "Project file is missing a video path" };
-	}
-
-	const normalizedVideoPath = normalizeVideoSourcePath(rawVideoPath);
-	if (!normalizedVideoPath) {
-		return { success: false, message: "Project file is missing a valid video path" };
-	}
-
-	try {
-		await fs.access(normalizedVideoPath, fsConstants.F_OK);
-	} catch (error) {
-		return {
-			success: false,
-			message:
-				(error as NodeJS.ErrnoException).code === "ENOENT"
-					? `Project video file not found: ${normalizedVideoPath}`
-					: `Could not access project recording: ${error instanceof Error ? error.message : String(error)}`,
-		};
-	}
-
-	const rawWebcamPath =
-		typeof (project as { editor?: { webcam?: { sourcePath?: unknown } } }).editor?.webcam
-			?.sourcePath === "string"
-			? ((project as { editor?: { webcam?: { sourcePath?: string } } }).editor?.webcam
-					?.sourcePath ?? null)
-			: null;
-	const normalizedWebcamPath = normalizeVideoSourcePath(rawWebcamPath);
-
-	if (!normalizedWebcamPath) {
-		return {
-			success: true,
-			videoPath: normalizedVideoPath,
-			webcamPath: null,
-		};
-	}
-
-	try {
-		await fs.access(normalizedWebcamPath, fsConstants.F_OK);
-		return {
-			success: true,
-			videoPath: normalizedVideoPath,
-			webcamPath: normalizedWebcamPath,
-		};
-	} catch {
-		return {
-			success: true,
-			videoPath: normalizedVideoPath,
-			webcamPath: null,
-		};
-	}
 }
 
 export async function getProjectsDir() {
@@ -448,7 +396,7 @@ export function refreshProjectThumbnail(projectPath: string, revision: Stats) {
 			if (!sameProjectRevision(revision, await fs.stat(projectPath))) return null;
 			const project = parseJsonWithByteOrderMark(await fs.readFile(projectPath, "utf-8"));
 			if (!isLoadableProjectData(project)) return null;
-			const media = await resolveProjectMediaSources(project);
+			const media = await resolveProjectMediaSources(project, projectPath);
 			if (!media.success) return null;
 			const thumbnail = await createProjectFirstFrameThumbnail(media.videoPath);
 			if (!sameProjectRevision(revision, await fs.stat(projectPath))) return null;
@@ -600,12 +548,14 @@ export async function readProjectPreview(projectPath: string): Promise<ProjectPr
 	if (!sameProjectRevision(revision, await fs.stat(normalizedPath)))
 		throw new Error("Project changed while loading its preview");
 	if (!isLoadableProjectData(project)) throw new Error("Invalid project file format");
-	const media = await resolveProjectMediaSources(project);
+	const media = await resolveProjectMediaSources(project, normalizedPath);
 	if (!media.success) throw new Error(media.message);
 	const baseUrl = getMediaServerBaseUrl();
 	if (!baseUrl) throw new Error("Media server is not ready");
-	await rememberApprovedLocalReadPath(media.videoPath);
-	if (media.webcamPath) await rememberApprovedLocalReadPath(media.webcamPath);
+	const relinked = applyRelinkedProjectMedia(project, media);
+	await rememberApprovedLocalReadPath(media.videoPath, !relinked.has(media.videoPath));
+	if (media.webcamPath)
+		await rememberApprovedLocalReadPath(media.webcamPath, !relinked.has(media.webcamPath));
 	return {
 		revision: projectPreviewRevision(revision),
 		project: project as ProjectPreviewData["project"],
@@ -644,7 +594,7 @@ export async function loadProjectFromPath(projectPath: string, isCurrent = () =>
 			message: "Invalid project file format",
 		};
 	}
-	const mediaSources = await resolveProjectMediaSources(project);
+	const mediaSources = await resolveProjectMediaSources(project, normalizedPath);
 
 	if (!mediaSources.success) {
 		const missingRecordingPath = /Project video file not found/i.test(mediaSources.message)
@@ -659,6 +609,7 @@ export async function loadProjectFromPath(projectPath: string, isCurrent = () =>
 			message: mediaSources.message,
 		};
 	}
+	const relinked = applyRelinkedProjectMedia(project, mediaSources);
 	const projectObj = project as Record<string, unknown>;
 	const editorObj = projectObj?.editor as Record<string, unknown> | undefined;
 	const audioTracks = editorObj?.audioTracks as { sourcePath?: unknown }[] | undefined;
@@ -693,7 +644,8 @@ export async function loadProjectFromPath(projectPath: string, isCurrent = () =>
 	if (!isCurrent()) return { success: false, canceled: true };
 	await rememberRecentProject(normalizedPath);
 	if (
-		(await replaceApprovedSessionLocalReadPaths(approvedProjectPaths, isCurrent)) === false ||
+		(await replaceApprovedSessionLocalReadPaths(approvedProjectPaths, isCurrent, relinked)) ===
+			false ||
 		!isCurrent()
 	)
 		return { success: false, canceled: true };
