@@ -17,7 +17,6 @@ import {
 import {
 	countdownInProgress,
 	countdownRemaining,
-	selectedSource,
 	setCountdownInProgress,
 	setCountdownRemaining,
 } from "../state";
