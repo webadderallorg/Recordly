@@ -98,6 +98,30 @@ describe("ScreenCaptureKitRecorder window capture", () => {
 		expect(recorderSource).toContain("try await activeStream.updateContentFilter(filter)");
 		expect(recorderSource).toContain("self.windowCropRect = cropRect");
 	});
+
+	it("stops only when the window closes, not when it is minimized or on another Space", () => {
+		const validation = recorderSource.slice(
+			recorderSource.indexOf("private func startWindowValidationIfNeeded"),
+		);
+		expect(validation).toContain(
+			"SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)",
+		);
+		expect(validation).not.toContain("onScreenWindowsOnly: true");
+		expect(validation).toContain("guard window.isOnScreen else { continue }");
+	});
+
+	it("holds an earlier window frame while the window is off screen", () => {
+		expect(recorderSource).toContain("if !Self.isWindowOnScreen(trackedWindowId) {");
+		expect(recorderSource).toContain("[.optionIncludingWindow], windowId");
+		expect(recorderSource).toContain(
+			"guard let frozen = settledCroppedPixelBuffer ?? lastCroppedPixelBuffer",
+		);
+		expect(recorderSource).toContain("settledCroppedPixelBuffer = recentCroppedPixelBuffer");
+		expect(recorderSource).toContain("lastCroppedPixelBuffer = frozen");
+		expect(recorderSource).toContain(
+			"if !isTrackedWindowHidden { recentCroppedPixelBuffer = settledCroppedPixelBuffer }",
+		);
+	});
 });
 
 describe("ScreenCaptureKitRecorder first frame timing", () => {
