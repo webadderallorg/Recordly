@@ -27,9 +27,15 @@ export function serializeShortcuts(config: ShortcutsConfig) {
 
 export interface FixedShortcut {
 	label: string;
-	display: string;
+	display?: string;
 	bindings: ShortcutBinding[];
 }
+
+export const CLEAR_ALL_ZOOMS_SHORTCUT: ShortcutBinding = {
+	key: "backspace",
+	ctrl: true,
+	shift: true,
+};
 
 export const FIXED_SHORTCUTS: FixedShortcut[] = [
 	{ label: "Cycle Annotations Forward", display: "Tab", bindings: [{ key: "tab" }] },
@@ -43,6 +49,7 @@ export const FIXED_SHORTCUTS: FixedShortcut[] = [
 		display: "Del / ⌫",
 		bindings: [{ key: "delete" }, { key: "backspace" }],
 	},
+	{ label: "Clear All Zooms", bindings: [CLEAR_ALL_ZOOMS_SHORTCUT] },
 	{ label: "Pan Timeline", display: "Shift + Scroll", bindings: [] },
 	{ label: "Zoom Timeline", display: "Ctrl + Scroll", bindings: [] },
 ];

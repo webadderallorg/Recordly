@@ -21,6 +21,7 @@
 		"level": "Mức thu phóng",
 		"selectRegion": "Chọn vùng thu phóng để điều chỉnh",
 		"deleteZoom": "Xóa vùng thu phóng",
+		"clearAllZooms": "Xóa tất cả vùng thu phóng",
 		"modeAuto": "Tự động",
 		"modeManual": "Thủ công",
 		"modeManualDescription": "Đặt điểm lấy nét cố định cho vùng thu phóng này",

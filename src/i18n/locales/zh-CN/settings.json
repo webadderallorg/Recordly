@@ -3,6 +3,7 @@
 		"level": "缩放级别",
 		"selectRegion": "选择缩放区域以调整",
 		"deleteZoom": "删除缩放",
+		"clearAllZooms": "删除所有缩放",
 		"modeAuto": "自动",
 		"modeManual": "手动",
 		"modeManualDescription": "为此缩放设置固定焦点",

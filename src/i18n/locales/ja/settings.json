@@ -21,6 +21,7 @@
 		"level": "ズーム倍率",
 		"selectRegion": "調整するズーム区間を選択してください",
 		"deleteZoom": "ズームを削除",
+		"clearAllZooms": "すべてのズームを削除",
 		"modeAuto": "自動",
 		"modeManual": "手動",
 		"modeManualDescription": "このズームの中心位置を固定します",

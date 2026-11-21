@@ -484,6 +484,7 @@ export function EditorShell(props: Props) {
 								}}
 								settingsPanelProps={{
 									...settingsPanelProps,
+									onClearZooms: () => ui.timelineRef.current?.clearAllZooms(),
 									accountUser: auth.user,
 									onShowOnboarding: showOnboarding,
 								}}

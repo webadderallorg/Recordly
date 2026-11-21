@@ -44,6 +44,7 @@ export interface TimelineEditorProps {
 	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
 	onZoomSpanChange: (id: string, span: Span) => void;
 	onZoomDelete: (id: string) => void;
+	onClearZooms?: () => void;
 	selectedZoomId: string | null;
 	onSelectZoom: (id: string | null) => void;
 	trimRegions?: TrimRegion[];
@@ -97,6 +98,7 @@ export interface TimelineEditorProps {
 export interface TimelineEditorHandle {
 	addZoom: () => void;
 	suggestZooms: () => void;
+	clearAllZooms: () => void;
 	splitClip: () => void;
 	addAnnotation: (
 		trackIndex?: number,
@@ -122,6 +124,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onZoomSuggested,
 			onZoomSpanChange,
 			onZoomDelete,
+			onClearZooms,
 			selectedZoomId,
 			onSelectZoom,
 			trimRegions = [],
@@ -339,6 +342,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onZoomSuggested,
 			onZoomSpanChange,
 			onZoomDelete,
+			onClearZooms,
 			selectedZoomId,
 			onSelectZoom,
 			trimRegions,

@@ -3,6 +3,7 @@
 		"level": "Zoomniveau",
 		"selectRegion": "Selecteer een zoomgebied om aan te passen",
 		"deleteZoom": "Zoom verwijderen",
+		"clearAllZooms": "Alle zoomeffecten verwijderen",
 		"modeAuto": "Auto",
 		"modeManual": "Handmatig",
 		"modeManualDescription": "Stel een vast focuspunt in voor deze zoom",

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_SHORTCUTS } from "@/lib/shortcuts";
+import { CLEAR_ALL_ZOOMS_SHORTCUT, DEFAULT_SHORTCUTS } from "@/lib/shortcuts";
 import { useTimelineKeyboardShortcuts } from "./useTimelineKeyboardShortcuts";
 
 vi.mock("react", () => ({ useEffect: (effect: () => void) => effect() }));
@@ -39,6 +39,7 @@ function setup(overrides: Partial<Params> = {}) {
 		handleAddAnnotation: vi.fn(),
 		deleteSelectedKeyframe: vi.fn(),
 		deleteSelectedZoom: vi.fn(),
+		clearAllZooms: vi.fn(),
 		deleteSelectedClip: vi.fn(),
 		deleteSelectedAnnotation: vi.fn(),
 		deleteSelectedAudio: vi.fn(),
@@ -134,6 +135,34 @@ it("keeps creation and select-all shortcuts scoped to the timeline", () => {
 	press({ key: "a", metaKey: true });
 	expect(params.handleAddZoom).not.toHaveBeenCalled();
 	expect(params.activateSelectAllZooms).not.toHaveBeenCalled();
+});
+
+describe.each([true, false])("clear all zooms shortcut, macOS=%s", (isMac) => {
+	const chord = { ...(isMac ? { metaKey: true } : { ctrlKey: true }), shiftKey: true };
+
+	it("clears zooms with timeline focus and ignores key repeats and editing", () => {
+		const { press, params } = setup({ isMac, isTimelineFocusedRef: { current: true } });
+		press({ ...chord, repeat: true });
+		press({ ...chord, target: new Input() });
+		expect(params.clearAllZooms).not.toHaveBeenCalled();
+		expect(press(chord).preventDefault).toHaveBeenCalledOnce();
+		expect(params.clearAllZooms).toHaveBeenCalledOnce();
+	});
+
+	it("does not clear zooms outside the timeline or override a saved mapping", () => {
+		const unfocused = setup({ isMac });
+		expect(unfocused.press(chord).preventDefault).not.toHaveBeenCalled();
+		expect(unfocused.params.clearAllZooms).not.toHaveBeenCalled();
+
+		const remapped = setup({
+			isMac,
+			isTimelineFocusedRef: { current: true },
+			keyShortcuts: { ...DEFAULT_SHORTCUTS, splitClip: CLEAR_ALL_ZOOMS_SHORTCUT },
+		});
+		remapped.press(chord);
+		expect(remapped.params.handleSplitClip).toHaveBeenCalledOnce();
+		expect(remapped.params.clearAllZooms).not.toHaveBeenCalled();
+	});
 });
 
 describe.each([true, false])("split shortcut, macOS=%s", (isMac) => {
