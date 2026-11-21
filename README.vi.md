@@ -174,6 +174,7 @@ https://github.com/webadderallorg/Recordly/releases
 ## AppImage trên Linux
 
 Nếu mở AppImage từ trình quản lý tệp mà ứng dụng không hiện lên, hãy chạy từ terminal để xem lỗi.
+Trước khi chạy các lệnh sau, hãy mở terminal tại thư mục chứa tệp AppImage đã tải xuống.
 
 ```bash
 chmod +x ./Recordly-linux-x64.AppImage

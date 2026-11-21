@@ -173,6 +173,7 @@ https://github.com/webadderallorg/Recordly/releases
 ## Linux AppImage
 
 If the AppImage appears to do nothing when opened from a file manager, run it from a terminal to see the error.
+Open the terminal in the folder containing the downloaded AppImage before running these commands.
 
 ```bash
 chmod +x ./Recordly-linux-x64.AppImage

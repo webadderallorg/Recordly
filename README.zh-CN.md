@@ -169,6 +169,7 @@ https://github.com/webadderallorg/Recordly/releases
 ## Linux AppImage
 
 如果从文件管理器打开 AppImage 后没有反应，请在终端中运行以查看错误信息。
+请先在下载的 AppImage 文件所在目录打开终端，再运行以下命令。
 
 ```bash
 chmod +x ./Recordly-linux-x64.AppImage
