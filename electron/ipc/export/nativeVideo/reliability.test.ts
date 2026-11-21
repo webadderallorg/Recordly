@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
 	normalize: vi.fn(),
 	source: vi.fn(),
 	gpu: vi.fn(),
+	buildExportArgs: vi.fn(),
+	cachedEncoder: null as typeof import("../../state").cachedNativeVideoEncoder,
 }));
 vi.mock("electron", () => ({ app: { getPath: () => path.resolve("/recordly-temp") } }));
 vi.mock("node:child_process", () => ({ spawn: mocks.spawn }));
@@ -20,14 +22,18 @@ vi.mock("node:fs/promises", () => ({
 vi.mock("../../ffmpeg/binary", () => ({ getFfprobeBinaryPath: () => "ffprobe" }));
 vi.mock("../../nativeVideoExport", () => ({
 	buildNativeStaticLayoutChunks: () => [{ index: 0, startSec: 0, durationSec: 1 }],
-	buildNativeVideoExportArgs: () => ["probe"],
-	getNativeVideoInputByteSize: () => 64 * 64 * 4,
+	buildNativeVideoExportArgs: mocks.buildExportArgs,
+	getNativeVideoInputByteSize: (width: number, height: number) => width * height * 4,
 	getPreferredNativeVideoEncoders: () => ["h264_nvenc"],
 	parseAvailableFfmpegEncoders: () => new Set(["h264_nvenc", "libx264"]),
 }));
 vi.mock("../../state", () => ({
-	cachedNativeVideoEncoder: null,
-	setCachedNativeVideoEncoder: vi.fn(),
+	get cachedNativeVideoEncoder() {
+		return mocks.cachedEncoder;
+	},
+	setCachedNativeVideoEncoder: (encoder: typeof mocks.cachedEncoder) => {
+		mocks.cachedEncoder = encoder;
+	},
 }));
 vi.mock("./constants", () => ({
 	execFileAsync: async () => ({ stdout: "synthetic encoder list" }),
@@ -99,6 +105,8 @@ beforeEach(() => {
 	mocks.normalize.mockImplementation(async (value) => value);
 	mocks.source.mockRejectedValue(new Error("source preparation reached"));
 	mocks.gpu.mockRejectedValue(new Error("GPU unavailable"));
+	mocks.buildExportArgs.mockReturnValue(["probe"]);
+	mocks.cachedEncoder = null;
 	nativeStaticLayoutExportSessions.clear();
 	vi.spyOn(console, "warn").mockImplementation(() => undefined);
 });
@@ -194,6 +202,51 @@ function child() {
 }
 
 describe("encoder probe failures", () => {
+	it.each([
+		{ width: 1920, height: 1080, probeWidth: 256, probeHeight: 256 },
+		{ width: 128, height: 180, probeWidth: 128, probeHeight: 180 },
+	])("probes within the $width × $height output dimensions", async (dimensions) => {
+		const process = child();
+		mocks.spawn.mockImplementationOnce(() => {
+			queueMicrotask(() => process.emit("close", 0));
+			return process;
+		});
+		await expect(
+			resolveNativeVideoEncoder("ffmpeg", { ...dimensions, encodingMode: "balanced" }),
+		).resolves.toBe("h264_nvenc");
+		expect(mocks.buildExportArgs).toHaveBeenCalledExactlyOnceWith(
+			"h264_nvenc",
+			expect.objectContaining({
+				width: dimensions.probeWidth,
+				height: dimensions.probeHeight,
+			}),
+			expect.any(String),
+		);
+		const [frame] = process.stdin.end.mock.calls[0];
+		expect(frame.byteLength).toBe(dimensions.probeWidth * dimensions.probeHeight * 4);
+	});
+
+	it("rechecks encoders when a smaller output changes the probe size", async () => {
+		for (const code of [0, 1, 0]) {
+			mocks.spawn.mockImplementationOnce(() => {
+				const process = child();
+				queueMicrotask(() => process.emit("close", code));
+				return process;
+			});
+		}
+
+		await expect(
+			resolveNativeVideoEncoder("ffmpeg", { ...options, width: 1920, height: 1080 }),
+		).resolves.toBe("h264_nvenc");
+		await expect(
+			resolveNativeVideoEncoder("ffmpeg", { ...options, width: 1280, height: 720 }),
+		).resolves.toBe("h264_nvenc");
+		expect(mocks.spawn).toHaveBeenCalledTimes(1);
+
+		await expect(resolveNativeVideoEncoder("ffmpeg", options)).resolves.toBe("libx264");
+		expect(mocks.spawn).toHaveBeenCalledTimes(3);
+	});
+
 	it("continues to a usable encoder after an asynchronous stdin failure", async () => {
 		const failed = child();
 		const successful = child();
@@ -206,7 +259,7 @@ describe("encoder probe failures", () => {
 				queueMicrotask(() => successful.emit("close", 0));
 				return successful;
 			});
-		await expect(resolveNativeVideoEncoder("ffmpeg", "balanced")).resolves.toBe("libx264");
+		await expect(resolveNativeVideoEncoder("ffmpeg", options)).resolves.toBe("libx264");
 		expect(mocks.spawn).toHaveBeenCalledTimes(2);
 		expect(vi.getTimerCount()).toBe(0);
 	});
@@ -217,7 +270,7 @@ describe("encoder probe failures", () => {
 	])("settles false on %s errors and handles teardown errors", async (stream) => {
 		const process = child();
 		mocks.spawn.mockReturnValueOnce(process);
-		const result = probeNativeVideoEncoder("ffmpeg", "libx264", "balanced");
+		const result = probeNativeVideoEncoder("ffmpeg", "libx264", options);
 		const emitter = stream === "process" ? process : process.stdin;
 		expect(() => emitter.emit("error", new Error("synthetic EPIPE"))).not.toThrow();
 		await expect(result).resolves.toBe(false);
@@ -243,7 +296,7 @@ describe("encoder probe failures", () => {
 			});
 			mocks.spawn.mockReturnValueOnce(process);
 		}
-		await expect(probeNativeVideoEncoder("ffmpeg", "libx264", "balanced")).resolves.toBe(false);
+		await expect(probeNativeVideoEncoder("ffmpeg", "libx264", options)).resolves.toBe(false);
 		expect(mocks.remove).toHaveBeenCalled();
 		expect(vi.getTimerCount()).toBe(0);
 	});
@@ -251,12 +304,12 @@ describe("encoder probe failures", () => {
 	it("keeps successful close behavior and bounds a hung probe", async () => {
 		const success = child();
 		mocks.spawn.mockReturnValueOnce(success);
-		const result = probeNativeVideoEncoder("ffmpeg", "libx264", "balanced");
+		const result = probeNativeVideoEncoder("ffmpeg", "libx264", options);
 		success.emit("close", 0);
 		await expect(result).resolves.toBe(true);
 		const hung = child();
 		mocks.spawn.mockReturnValueOnce(hung);
-		const timeout = probeNativeVideoEncoder("ffmpeg", "libx264", "balanced");
+		const timeout = probeNativeVideoEncoder("ffmpeg", "libx264", options);
 		await vi.advanceTimersByTimeAsync(15_000);
 		await expect(timeout).resolves.toBe(false);
 		expect(hung.kill).toHaveBeenCalledWith("SIGKILL");

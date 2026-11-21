@@ -102,6 +102,8 @@ export let cachedNativeVideoEncoder: {
 	ffmpegPath: string;
 	encodingMode: string;
 	encoderName: string;
+	width: number;
+	height: number;
 } | null = null;
 
 // ── Native helper migration ───────────────────────────────────────────────────
@@ -295,9 +297,7 @@ export function setCachedNativeMacWindowSourcesAtMs(v: number) {
 	cachedNativeMacWindowSourcesAtMs = v;
 }
 
-export function setCachedNativeVideoEncoder(
-	v: { ffmpegPath: string; encodingMode: string; encoderName: string } | null,
-) {
+export function setCachedNativeVideoEncoder(v: typeof cachedNativeVideoEncoder) {
 	cachedNativeVideoEncoder = v;
 }
 
