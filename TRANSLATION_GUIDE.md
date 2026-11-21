@@ -12,12 +12,14 @@ namespace.
 
 ## Add a Language
 
-1. Add the locale code to `SUPPORTED_LOCALES` in [`src/i18n/config.ts`](src/i18n/config.ts).
+1. Add a canonical BCP 47 locale code, such as `pt-PT`, to `SUPPORTED_LOCALES`
+   in [`src/i18n/config.ts`](src/i18n/config.ts).
    Create a directory with the same code under `src/i18n/locales/` and translate
    each namespace file from the English catalog.
 2. Add the language's display name to `APP_LANGUAGE_LABELS` in
    [`AppSettings.tsx`](src/components/video-editor/settings/AppSettings.tsx)
-   and its flag mapping in [`language-flag.tsx`](src/components/ui/language-flag.tsx).
+   and its country mapping and flag artwork in
+   [`language-flag.tsx`](src/components/ui/language-flag.tsx).
 3. Import the new `native.json` and register it in `catalogs` in
    [`electron/nativeI18n.ts`](electron/nativeI18n.ts) for native dialogs.
    The renderer loads catalogs automatically through
@@ -50,9 +52,10 @@ npm run typecheck
 
 `i18n:check` validates namespace files for locales in `SUPPORTED_LOCALES`.
 It checks key parity with English, nonempty strings, matching interpolation
-placeholders, and keys used by the app. A directory alone can pass unnoticed
-until its code is registered. TypeScript checks that the language label, flag,
-and native catalog cover each registered locale.
+placeholders, and literal keys in recognized translation calls under `src`.
+Check dynamic and native dialog text in the running app. A directory alone can
+pass unnoticed until its code is registered. TypeScript checks that the
+language label, flag's country mapping, and native catalog cover each locale.
 
 ## Update Existing Translations
 
