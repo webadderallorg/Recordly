@@ -1,11 +1,4 @@
-import {
-	type Dispatch,
-	type PointerEvent,
-	type SetStateAction,
-	useCallback,
-	useEffect,
-	useRef,
-} from "react";
+import { type PointerEvent, useCallback, useEffect, useRef } from "react";
 import { getHudInteractiveBounds, isPointerOverHudSurface } from "../hudMousePassthrough";
 import {
 	DEFAULT_WEBCAM_PREVIEW_OFFSET,
@@ -18,12 +11,10 @@ const WEBCAM_PREVIEW_DRAG_THRESHOLD = 6;
 export function useWebcamPreviewPointer({
 	webcamEnabled,
 	showRecordingWebcamPreview,
-	setShowFloatingWebcamPreview,
 	geometry,
 }: {
 	webcamEnabled: boolean;
 	showRecordingWebcamPreview: boolean;
-	setShowFloatingWebcamPreview: Dispatch<SetStateAction<boolean>>;
 	geometry: ReturnType<typeof useWebcamPreviewGeometry>;
 }) {
 	const {
@@ -104,7 +95,6 @@ export function useWebcamPreviewPointer({
 			lastPreviewPointerRef.current = null;
 			isWebcamPreviewDraggingRef.current = false;
 			restorePreviewCursor();
-			setShowFloatingWebcamPreview(true);
 		}
 	}, [
 		webcamEnabled,
@@ -112,7 +102,6 @@ export function useWebcamPreviewPointer({
 		webcamPreviewOffsetRef,
 		setWebcamPreviewOffset,
 		recordingWebcamPreviewContainerRef,
-		setShowFloatingWebcamPreview,
 	]);
 
 	const handleWebcamPreviewPointerDown = useCallback(
