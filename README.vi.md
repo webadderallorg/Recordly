@@ -63,12 +63,6 @@ Dùng các công cụ kéo thả trên dòng thời gian để chỉnh vùng thu
   <img width="450" alt="Trình chỉnh sửa dòng thời gian" src="https://github.com/user-attachments/assets/3692bd8f-7b8d-4a93-b696-d17c828487ea" />
 </p>
 
-## Tiện ích mở rộng và chợ tiện ích
-
-Recordly có hệ thống tiện ích mở rộng do cộng đồng phát triển. Mọi người đều có thể tạo và phát hành tiện ích để bổ sung chức năng như âm thanh khi nhấp chuột, khung thiết bị, giao diện trình duyệt, hình nền, hook kết xuất và bảng cài đặt.
-
-Khám phá và cài đặt tiện ích cộng đồng tại [Chợ tiện ích Recordly](https://marketplace.recordly.dev/extensions).
-
 ---
 
 ## Tất cả tính năng
