@@ -84,9 +84,26 @@ describe("shouldStartGlobalInteractionHook", () => {
 		expect(shouldStartGlobalInteractionHook("darwin")).toBe(false);
 	});
 
-	it("keeps global interaction capture enabled on Windows and Linux", () => {
-		expect(shouldStartGlobalInteractionHook("win32")).toBe(true);
-		expect(shouldStartGlobalInteractionHook("linux")).toBe(true);
+	it("keeps global interaction capture enabled on Windows and on an X11 display", () => {
+		expect(shouldStartGlobalInteractionHook("win32", {})).toBe(true);
+		expect(shouldStartGlobalInteractionHook("linux", { DISPLAY: ":0" })).toBe(true);
+		expect(
+			shouldStartGlobalInteractionHook("linux", {
+				XDG_SESSION_TYPE: "x11",
+				DISPLAY: ":0",
+				WAYLAND_DISPLAY: "wayland-0",
+			}),
+		).toBe(true);
+	});
+
+	it.each([
+		{ XDG_SESSION_TYPE: "wayland" },
+		{ XDG_SESSION_TYPE: "wayland", DISPLAY: ":0" },
+		{ WAYLAND_DISPLAY: "wayland-0", DISPLAY: ":0" },
+		{ XDG_SESSION_TYPE: "x11" },
+		{},
+	])("skips the global X11 hook without an X11 session and display: %j", (env) => {
+		expect(shouldStartGlobalInteractionHook("linux", env)).toBe(false);
 	});
 });
 

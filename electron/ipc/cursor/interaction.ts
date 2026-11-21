@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { getHudOverlayInteractiveBounds, getHudOverlayWindow } from "../../windows";
+import { isLikelyLinuxWaylandSession } from "../register/sourceMapping";
 import {
 	hasLoggedInteractionHookFailure,
 	interactionCaptureCleanup,
@@ -179,7 +180,14 @@ function loadUiohookModule() {
 	}
 }
 
-export function shouldStartGlobalInteractionHook(platform: NodeJS.Platform = process.platform) {
+export function shouldStartGlobalInteractionHook(
+	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+) {
+	if (platform === "linux") {
+		return !isLikelyLinuxWaylandSession(env) && Boolean(env.DISPLAY?.trim());
+	}
+
 	// On macOS, uiohook can block forever while its native event tap starts
 	// (notably when Accessibility permission is unavailable or stale). Because
 	// start() executes synchronously, that freezes Electron's main thread and
@@ -261,7 +269,11 @@ export async function startInteractionCapture() {
 	}
 
 	if (!shouldStartGlobalInteractionHook()) {
-		console.warn("[CursorTelemetry] Skipping the blocking global interaction hook on macOS.");
+		console.warn(
+			process.platform === "linux"
+				? "[CursorTelemetry] Skipping the global interaction hook without an X11 session and display."
+				: "[CursorTelemetry] Skipping the blocking global interaction hook on macOS.",
+		);
 		return;
 	}
 
