@@ -10,6 +10,7 @@ import type { usePlaybackState } from "./usePlaybackState";
 export type usePlaybackTransportInput = Pick<
 	ReturnType<typeof usePlaybackState> & PlaybackProps,
 	| "requestPreviewRender"
+	| "regenerateFrame"
 	| "videoRef"
 	| "lastRenderedContentTimeRef"
 	| "shouldSnapPausedFrameRef"
@@ -48,6 +49,7 @@ export type usePlaybackTransportInput = Pick<
 export function usePlaybackTransport(input: usePlaybackTransportInput) {
 	const {
 		requestPreviewRender,
+		regenerateFrame,
 		videoRef,
 		lastRenderedContentTimeRef,
 		shouldSnapPausedFrameRef,
@@ -138,10 +140,19 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		let reportedTextureError = false;
 		let lastFramePrivacyKey: string | null = null;
 		let lastFrameCrop: { x: number; y: number; width: number; height: number } | null = null;
+		const rebuildTexture = () => {
+			// Drop the upload and cached privacy surface without resetting the decoder.
+			videoSprite.visible = false;
+			videoSprite.texture = Texture.EMPTY;
+			frameTexture.dispose();
+			source.unload();
+			frameTexture = new PreviewFrameTexture(source);
+			shouldRegenerateFrameRef.current = false;
+		};
 		const updatePreviewTexture = () => {
 			const { annotationRegions, privacyKey } = sourceRedactionRef.current;
 			const crop = baseMaskRef.current.sourceCrop ?? { x: 0, y: 0, width: 1, height: 1 };
-			if (video.seeking) {
+			if (video.seeking || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
 				// Keep the already-uploaded, privacy-composed image while decoding.
 				// An output edit invalidates that image until its masks can be rebuilt.
 				if (
@@ -156,33 +167,51 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 					videoSprite.visible = false;
 				return;
 			}
-			try {
-				if (shouldRegenerateFrameRef.current && !suspendRenderingRef.current) {
-					// Discard the upload and any cached privacy surface, not the video element.
-					videoSprite.visible = false;
-					videoSprite.texture = Texture.EMPTY;
-					frameTexture.dispose();
-					source.unload();
-					frameTexture = new PreviewFrameTexture(source);
-					shouldRegenerateFrameRef.current = false;
-				}
-				videoSprite.texture = frameTexture.update(video, {
+			const uploadFrame = () => {
+				const texture = frameTexture.update(video, {
 					annotations: annotationRegions,
 					// Match the crop already applied to the sprite, including during edits.
 					cropRegion: crop,
 					timeMs: timelineTimeRef.current * 1000,
 				});
+				if (
+					texture.destroyed ||
+					texture.source.destroyed ||
+					texture.width !== video.videoWidth ||
+					texture.height !== video.videoHeight
+				) {
+					throw new Error("Preview frame texture does not match the decoded recording");
+				}
+				videoSprite.texture = texture;
 				lastFramePrivacyKey = privacyKey;
 				lastFrameCrop = { ...crop };
 				videoSprite.visible = true;
 				reportedTextureError = false;
+			};
+
+			const regenerate = shouldRegenerateFrameRef.current && !suspendRenderingRef.current;
+			try {
+				if (regenerate) rebuildTexture();
+				uploadFrame();
 			} catch (error) {
 				// A failed privacy pass must never reveal the unredacted source.
 				videoSprite.visible = false;
+				let failure = error;
+				if (!regenerate && !reportedTextureError && !suspendRenderingRef.current) {
+					console.warn("Preview frame invalid; rebuilding its texture:", error);
+					try {
+						rebuildTexture();
+						uploadFrame();
+						console.info("Recovered the recording preview frame.");
+						return;
+					} catch (retryError) {
+						failure = retryError;
+					}
+				}
 				if (!reportedTextureError) {
 					reportedTextureError = true;
 					onPlaybackErrorRef.current(
-						error instanceof Error ? error.message : String(error),
+						failure instanceof Error ? failure.message : String(failure),
 					);
 				}
 			}
@@ -276,6 +305,12 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 			isSeekingRef.current = true;
 			if (!preserveCameraAcrossCut) shouldSnapPausedFrameRef.current = true;
 		};
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === "visible") regenerateFrame();
+		};
+		const canvas = app.canvas;
+		document.addEventListener("visibilitychange", handleVisibilityChange);
+		canvas.addEventListener("webglcontextrestored", regenerateFrame);
 		video.addEventListener("seeked", handleSeeked);
 		video.addEventListener("seeking", handleSeeking);
 
@@ -284,6 +319,8 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 			if (updatePreviewTextureRef.current === updatePreviewTexture) {
 				updatePreviewTextureRef.current = null;
 			}
+			document.removeEventListener("visibilitychange", handleVisibilityChange);
+			canvas.removeEventListener("webglcontextrestored", regenerateFrame);
 			video.removeEventListener("seeked", handleSeeked);
 			video.removeEventListener("seeking", handleSeeking);
 			transport.dispose();
@@ -302,6 +339,7 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 	}, [
 		autoPlay,
 		requestPreviewRender,
+		regenerateFrame,
 		pixiReady,
 		videoReady,
 		videoRef,

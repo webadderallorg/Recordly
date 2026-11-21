@@ -4,6 +4,61 @@ import type {} from "./preview-performance";
 
 test.use({ deviceScaleFactor: 2 });
 
+test("a shrunken recording texture and a return to the editor restore the paused frame", async ({
+	page,
+}) => {
+	test.setTimeout(90000);
+	await installDesktopBridge(page, "filmstrip.mp4");
+	await page.goto("/tests/ui/preview-performance.html");
+	await expect
+		.poll(
+			() =>
+				page.evaluate(() => Boolean(window.performancePreview?.api?.videoSprite?.visible)),
+			{ timeout: 30000 },
+		)
+		.toBe(true);
+
+	for (const action of ["damaged texture", "return to editor"] as const) {
+		const frameBefore = await page.evaluateHandle((action) => {
+			const api = window.performancePreview.api!;
+			const video = api.video!;
+			const texture = api.videoSprite!.texture;
+			const frame = {
+				video,
+				texture,
+				time: video.currentTime,
+				revision: api.composedFrame!.revision,
+			};
+			if (action === "damaged texture") {
+				texture.frame.width = texture.frame.height = 1;
+				api.seekTimeline(frame.time);
+			} else {
+				document.dispatchEvent(new Event("visibilitychange"));
+			}
+			return frame;
+		}, action);
+		await expect
+			.poll(() =>
+				frameBefore.evaluate(({ video, texture, time, revision }) => {
+					const api = window.performancePreview.api!;
+					const sprite = api.videoSprite!;
+					return (
+						texture.destroyed &&
+						sprite.visible &&
+						sprite.texture.width === video.videoWidth &&
+						sprite.texture.height === video.videoHeight &&
+						api.composedFrame!.revision > revision &&
+						api.video === video &&
+						video.paused &&
+						video.currentTime === time
+					);
+				}),
+			)
+			.toBe(true);
+		await frameBefore.dispose();
+	}
+});
+
 test("mute, parent rerenders and repeated export/remount cycles keep a valid drawn preview", async ({
 	page,
 }) => {
