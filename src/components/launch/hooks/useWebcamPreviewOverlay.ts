@@ -6,6 +6,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { acquireWebcamCapture, type WebcamCapture } from "../../../hooks/webcamCapture";
 import { loadEditorPreferences } from "../../video-editor/editorPreferences";
 import { canShowFloatingWebcamPreview } from "../floatingWebcamPreview";
 import { useWebcamPreviewGeometry } from "./useWebcamPreviewGeometry";
@@ -149,6 +150,7 @@ export function useWebcamPreviewOverlay({
 
 	useEffect(() => {
 		let mounted = true;
+		let capture: WebcamCapture | undefined;
 
 		const startPreview = async () => {
 			if (!shouldStreamWebcamPreview) {
@@ -156,28 +158,14 @@ export function useWebcamPreviewOverlay({
 			}
 
 			try {
-				const previewStream = await navigator.mediaDevices.getUserMedia({
-					video: webcamDeviceId
-						? {
-								deviceId: { exact: webcamDeviceId },
-								width: { ideal: 320 },
-								height: { ideal: 320 },
-								frameRate: { ideal: 60, max: 60 },
-							}
-						: {
-								width: { ideal: 320 },
-								height: { ideal: 320 },
-								frameRate: { ideal: 60, max: 60 },
-							},
-					audio: false,
-				});
+				capture = await acquireWebcamCapture(webcamDeviceId);
 
 				if (!mounted) {
-					previewStream.getTracks().forEach((track) => track.stop());
+					capture.release();
 					return;
 				}
 
-				previewStreamRef.current = previewStream;
+				previewStreamRef.current = capture.stream;
 				attachPreviewStreamToNode(webcamPreviewRef.current);
 				attachPreviewStreamToNode(recordingWebcamPreviewRef.current);
 			} catch (error) {
@@ -199,7 +187,7 @@ export function useWebcamPreviewOverlay({
 					videoElement.pause();
 					videoElement.srcObject = null;
 				});
-			previewStream?.getTracks().forEach((track) => track.stop());
+			capture?.release();
 			if (previewStreamRef.current === previewStream) {
 				previewStreamRef.current = null;
 			}
@@ -207,6 +195,7 @@ export function useWebcamPreviewOverlay({
 	}, [attachPreviewStreamToNode, shouldStreamWebcamPreview, webcamDeviceId]);
 
 	return {
+		editorMode,
 		webcamPreviewRoundness,
 		webcamPreviewShape,
 		showFloatingWebcamPreview,
