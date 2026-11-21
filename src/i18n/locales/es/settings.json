@@ -512,7 +512,7 @@
 		"recordingDescription": "Estas preferencias se aplican a las nuevas grabaciones.",
 		"motionScope": "Los cambios afectan a este proyecto y se recuerdan para los nuevos proyectos. Los proyectos guardados conservan sus propios ajustes.",
 		"hideControls": "Ocultar los controles de grabación en el vídeo capturado",
-		"hideControlsDescription": "Los controles siguen visibles en el escritorio, pero se excluyen del vídeo durante la grabación. Cuando no estás grabando, pueden aparecer en otras capturas de pantalla.",
+		"hideControlsDescription": "Durante la grabación, los controles siguen visibles en tu escritorio y se ocultan en el vídeo. También pueden dejar de verse al compartir la pantalla o usar aplicaciones de escritorio remoto.",
 		"storage": "Almacenamiento",
 		"storageDescription": "Encuentra tus grabaciones y proyectos guardados en este equipo.",
 		"loadingFolder": "Cargando la ubicación de la carpeta…",

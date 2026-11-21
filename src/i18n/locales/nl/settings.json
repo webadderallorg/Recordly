@@ -512,7 +512,7 @@
 		"recordingDescription": "Deze voorkeuren gelden voor nieuwe opnamen.",
 		"motionScope": "Wijzigingen gelden voor dit project en worden onthouden voor nieuwe projecten. Opgeslagen projecten behouden hun eigen instellingen.",
 		"hideControls": "Opnamebediening verbergen in de opgenomen video",
-		"hideControlsDescription": "De bediening blijft zichtbaar op je bureaublad, maar wordt tijdens het opnemen niet in de video getoond. Wanneer je niet opneemt, kan deze in andere schermopnamen verschijnen.",
+		"hideControlsDescription": "Tijdens de opname blijft de bediening zichtbaar op je bureaublad en wordt deze verborgen in de video. De bediening kan ook wegvallen bij schermdelen of in apps voor extern bureaublad.",
 		"storage": "Opslag",
 		"storageDescription": "Vind je opnamen en opgeslagen projecten op deze computer.",
 		"loadingFolder": "Maplocatie laden…",
