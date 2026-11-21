@@ -56,6 +56,46 @@ function productionDependencies(projects: string[], recordings: string[]) {
 	) as LibraryDeletionDependencies;
 }
 
+it("protects moved sources referenced by another project's recovery copy", async () => {
+	const root = await fs.realpath(
+		await fs.mkdtemp(path.join(os.tmpdir(), "recordly-moved-sources-")),
+	);
+	try {
+		const moved = path.join(root, "Moved");
+		await fs.mkdir(moved);
+		const source = path.join(moved, "shared.mp4");
+		const mic = path.join(moved, "shared.mic.wav");
+		const selected = path.join(root, "selected.recordly");
+		const other = path.join(moved, "other.recordly");
+		const backup = (await getProjectBackupPaths(other))[0];
+		await fs.mkdir(path.dirname(backup), { recursive: true });
+		await Promise.all([
+			fs.writeFile(source, "video"),
+			fs.writeFile(mic, "mic"),
+			fs.writeFile(selected, JSON.stringify({ version: 1, videoPath: source, editor: {} })),
+			fs.writeFile(
+				other,
+				JSON.stringify({ version: 1, videoPath: path.join(root, "other.mp4"), editor: {} }),
+			),
+			fs.writeFile(
+				backup,
+				JSON.stringify({
+					version: 1,
+					videoPath: path.join(root, "Old folder", "shared.mp4"),
+					editor: {},
+				}),
+			),
+		]);
+
+		const deps = productionDependencies([selected, other], [source, mic]);
+		const plan = await prepareLibraryDeletion([selected], deps);
+		expect(plan.sourceOwners).toEqual({});
+		expect(plan.preservedSources).toEqual([source, mic]);
+	} finally {
+		await fs.rm(root, { recursive: true, force: true });
+	}
+});
+
 describe.skipIf(process.platform === "win32")("listed primary project symlinks", () => {
 	it("keeps canonical media protected while allowing deletion reviews beside a linked recent project", async () => {
 		const root = await fs.realpath(
@@ -107,9 +147,9 @@ describe.skipIf(process.platform === "win32")("listed primary project symlinks",
 			);
 			expect((await prepareLibraryDeletion([selected], deps)).sourceOwners).toEqual({});
 			for (const primary of [selected, linked]) {
-				expect(reads).toHaveBeenCalledWith(primary, "primary");
+				expect(reads).toHaveBeenCalledWith(primary, "primary", primary);
 				for (const recovery of await getProjectBackupPaths(primary)) {
-					expect(reads).toHaveBeenCalledWith(recovery, "recovery");
+					expect(reads).toHaveBeenCalledWith(recovery, "recovery", primary);
 				}
 			}
 			expect((await fs.lstat(linked)).isSymbolicLink()).toBe(true);
