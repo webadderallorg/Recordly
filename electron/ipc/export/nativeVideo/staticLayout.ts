@@ -71,9 +71,14 @@ export async function exportNativeStaticLayoutVideo(
 		throw new Error("Native static layout export produced no chunks");
 	}
 
+	let signalCleanupComplete!: () => void;
+	const cleanupComplete = new Promise<void>((resolve) => {
+		signalCleanupComplete = resolve;
+	});
 	const session: NativeStaticLayoutExportSession = {
 		terminating: false,
 		currentProcess: null,
+		cleanupComplete,
 	};
 	const chunkDirectory = path.join(app.getPath("temp"), sessionId);
 	const concatListPath = path.join(chunkDirectory, "chunks.txt");
@@ -196,6 +201,7 @@ export async function exportNativeStaticLayoutVideo(
 		if (!videoOutputValidated) {
 			await validateRenderedVideoOutput();
 		}
+		if (session.terminating) throw new Error("Native static layout export was cancelled");
 		if (didMuxAudioInline) {
 			outputPathToKeep = videoOnlyPath;
 			return {
@@ -228,6 +234,10 @@ export async function exportNativeStaticLayoutVideo(
 			},
 			session,
 		);
+		if (session.terminating) {
+			await removeTemporaryExportFile(finalized.outputPath, true);
+			throw new Error("Native static layout export was cancelled");
+		}
 		Object.assign(metrics, finalized.metrics);
 		outputPathToKeep = finalized.outputPath;
 		return {
@@ -238,10 +248,16 @@ export async function exportNativeStaticLayoutVideo(
 		await removeTemporaryExportFile(videoOnlyPath);
 		throw error;
 	} finally {
-		nativeStaticLayoutExportSessions.delete(sessionId);
-		await fs.rm(chunkDirectory, { force: true, recursive: true }).catch(() => undefined);
-		if (outputPathToKeep !== videoOnlyPath) {
-			await removeTemporaryExportFile(videoOnlyPath);
+		try {
+			await fs
+				.rm(chunkDirectory, { force: true, recursive: true, maxRetries: 3 })
+				.catch(() => undefined);
+			if (outputPathToKeep !== videoOnlyPath) {
+				await removeTemporaryExportFile(videoOnlyPath, session.terminating);
+			}
+		} finally {
+			nativeStaticLayoutExportSessions.delete(sessionId);
+			signalCleanupComplete();
 		}
 	}
 }

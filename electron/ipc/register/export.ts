@@ -330,6 +330,7 @@ export function registerExportHandlers() {
 
 				const session: NativeVideoExportSession = {
 					ffmpegProcess,
+					currentProcess: null,
 					outputPath,
 					inputByteSize,
 					inputMode,
@@ -698,11 +699,21 @@ export function registerExportHandlers() {
 					session.ffmpegProcess.stdin.end();
 				}
 				await session.completionPromise;
+				if (session.terminating)
+					throw new Error("Native video export session was cancelled");
 
-				const finalized = await muxNativeVideoExportAudio(
+				const finalization = muxNativeVideoExportAudio(
 					session.outputPath,
 					options ?? {},
+					undefined,
+					session,
 				);
+				session.finalization = finalization;
+				const finalized = await finalization;
+				if (session.terminating) {
+					await removeTemporaryExportFile(finalized.outputPath, true);
+					throw new Error("Native video export session was cancelled");
+				}
 				nativeVideoExportSessions.delete(sessionId);
 				// Register the finalized path so only app-produced paths can flow back
 				// through finalize-exported-video / discard-exported-temp.
@@ -727,8 +738,6 @@ export function registerExportHandlers() {
 				flushNativeVideoExportPendingWriteRequests(sessionId, session, String(error));
 				nativeVideoExportSessions.delete(sessionId);
 				await removeTemporaryExportFile(session.outputPath);
-				const finalizedSuffix = session.outputPath.replace(/\.mp4$/, "-final.mp4");
-				await removeTemporaryExportFile(finalizedSuffix);
 				return {
 					success: false,
 					error: String(error),

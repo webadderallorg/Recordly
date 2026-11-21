@@ -145,7 +145,11 @@ describe("native static-layout paths", () => {
 			sessionId ? /^recordly-session_01\.v2$/ : /^recordly-static-layout-/,
 		);
 		expect(output).toHaveBeenCalledWith(`${directory}.mp4`);
-		expect(mocks.rm).toHaveBeenCalledWith(directory, { force: true, recursive: true });
+		expect(mocks.rm).toHaveBeenCalledWith(directory, {
+			force: true,
+			recursive: true,
+			maxRetries: 3,
+		});
 		expect(nativeStaticLayoutExportSessions.size).toBe(0);
 	});
 
