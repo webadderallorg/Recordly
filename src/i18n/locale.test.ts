@@ -27,6 +27,8 @@ describe("locale negotiation", () => {
 		["zh-cn", "zh-CN"],
 		["zh_Hant_HK", "zh-TW"],
 		["pt-PT", "pt-BR"],
+		["vi-VN", "vi"],
+		["vi_VN", "vi"],
 		["es-MX", "es"],
 		["ko-KR", "ko"],
 		["ja-JP", "ja"],

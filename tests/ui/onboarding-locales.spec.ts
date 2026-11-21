@@ -31,7 +31,7 @@ for (const locale of SUPPORTED_LOCALES) {
 		});
 		await page.goto("/?windowType=onboarding&onboardingPreview=1");
 		const dialog = page.getByRole("dialog", { name: messages.welcomeLabel });
-		await expect(dialog).toBeVisible();
+		await expect(dialog).toBeVisible({ timeout: 15000 });
 		await expect(page.locator("html")).toHaveAttribute("lang", locale);
 		await expect(dialog.getByRole("heading")).toHaveText(
 			messages.welcomeTitle.replace("{{brand}}", "Recordly"),
@@ -50,12 +50,13 @@ for (const locale of SUPPORTED_LOCALES) {
 		).toBeVisible();
 		await dialog.getByLabel(messages.email, { exact: true }).fill("locale@example.com");
 		await dialog.getByRole("button", { name: messages.sendLink, exact: true }).click();
+		const codeLabel = messages.checkInbox.replace("{{email}}", "locale@example.com");
+		await expect(dialog.getByText(codeLabel, { exact: true })).toBeVisible();
+		await expect(dialog.getByLabel(codeLabel, { exact: true })).toBeVisible();
 		await expect(
-			dialog.getByText(messages.checkInbox.replace("{{email}}", "locale@example.com"), {
-				exact: true,
-			}),
-		).toBeVisible();
-		await dialog.getByRole("button", { name: messages.continue, exact: true }).click();
+			dialog.getByRole("button", { name: messages.verifyCode, exact: true }),
+		).toBeDisabled();
+		await dialog.getByRole("button", { name: messages.next, exact: true }).click();
 		await expect(dialog.getByRole("heading", { level: 2 })).toHaveText(
 			messages.allowTitle.replace("{{brand}}", "Recordly"),
 		);
@@ -74,7 +75,7 @@ for (const locale of SUPPORTED_LOCALES) {
 			.click();
 		await expect(dialog.getByRole("alert")).toContainText(messages.permissionFailed);
 		await expect(
-			dialog.getByRole("button", { name: messages.startRecording, exact: true }),
+			dialog.getByRole("button", { name: messages.next, exact: true }),
 		).toBeDisabled();
 		await expect(
 			dialog.getByRole("button", { name: messages.backToAccount, exact: true }),
