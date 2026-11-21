@@ -54,6 +54,8 @@ export function useVideoDevices(
 							) {
 								throw error;
 							}
+							// A newer enumeration in this effect can still be waiting for this probe.
+							if (!mounted || !canRequestLabels) return undefined;
 							return (await acquireWebcamCapture()).release;
 						}
 					},

@@ -608,6 +608,28 @@ describe("microphone device label permission", () => {
 		]);
 	});
 
+	it("lists a microphone plugged in while an empty permission request was pending", async () => {
+		const permission = Promise.withResolvers<MediaStream>();
+		getUserMedia.mockReturnValueOnce(permission.promise);
+		enumerateDevices.mockResolvedValue([]);
+		mount();
+		await flush();
+		const connected = microphone();
+		enumerateDevices.mockResolvedValue([connected]);
+		deviceChange?.();
+		await flush();
+		permission.reject(new DOMException("No microphone when requested", "NotFoundError"));
+		await flush();
+		expect(getUserMedia).toHaveBeenCalledOnce();
+		expect(microphoneHooks.states[0]).toEqual([
+			{
+				deviceId: connected.deviceId,
+				groupId: connected.groupId,
+				label: "Micrófono micropho",
+			},
+		]);
+	});
+
 	it("treats whitespace-only raw labels as hidden", async () => {
 		enumerateDevices.mockResolvedValue([microphone("   ")]);
 		mount();

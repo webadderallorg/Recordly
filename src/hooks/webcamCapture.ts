@@ -17,8 +17,21 @@ export async function acquireWebcamCapture(deviceId?: string): Promise<WebcamCap
 	if (!capture && deviceId) {
 		capture = [...activeWebcams.values()].find(
 			(candidate) =>
-				candidate.stream?.getVideoTracks()[0]?.getSettings().deviceId === deviceId,
+				candidate.stream?.active &&
+				candidate.stream.getVideoTracks()[0]?.getSettings().deviceId === deviceId,
 		);
+		const defaultCapture = activeWebcams.get(undefined);
+		if (!capture && defaultCapture && !defaultCapture.stream) {
+			const pendingDefault = await retainWebcam(defaultCapture).catch(() => undefined);
+			if (
+				pendingDefault?.stream.active &&
+				pendingDefault.stream.getVideoTracks()[0]?.getSettings().deviceId === deviceId
+			) {
+				return pendingDefault;
+			}
+			pendingDefault?.release();
+			return acquireWebcamCapture(deviceId);
+		}
 	}
 	if (!capture || capture.stream?.active === false) {
 		capture = {
@@ -35,7 +48,10 @@ export async function acquireWebcamCapture(deviceId?: string): Promise<WebcamCap
 		};
 		activeWebcams.set(deviceId, capture);
 	}
-	const shared = capture;
+	return retainWebcam(capture);
+}
+
+async function retainWebcam(shared: ActiveWebcam): Promise<WebcamCapture> {
 	shared.users++;
 	let released = false;
 	const release = () => {
