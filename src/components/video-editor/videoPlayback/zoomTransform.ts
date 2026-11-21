@@ -15,6 +15,7 @@ import { MotionBlurFilter } from "pixi-filters/motion-blur";
 import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
 
 import { DEFAULT_ZOOM_MOTION_BLUR_TUNING, type ZoomMotionBlurTuning } from "../types";
+import { clamp01 } from "./mathUtils";
 
 export interface MotionBlurState {
 	lastFrameTimeMs: number;
@@ -107,6 +108,20 @@ function resolveMotionBlurTuning(motionBlurTuning?: ZoomMotionBlurTuning): ZoomM
 	};
 }
 
+function boundZoomTranslation(
+	translation: number,
+	stageExtent: number,
+	videoStart: number,
+	videoExtent: number,
+	scale: number,
+) {
+	const start = -videoStart * scale;
+	const end = stageExtent - (videoStart + videoExtent) * scale;
+	if (end <= start) return Math.min(start, Math.max(end, translation));
+	// Spread unavoidable margins in the same proportions as the unzoomed layout.
+	return start + (end - start) * clamp01(videoStart / (stageExtent - videoExtent));
+}
+
 export function computeZoomTransform({
 	stageSize,
 	baseMask,
@@ -132,11 +147,14 @@ export function computeZoomTransform({
 	const scale = 1 + (zoomScale - 1) * progress;
 	const finalX = stageCenterX - focusStagePxX * zoomScale;
 	const finalY = stageCenterY - focusStagePxY * zoomScale;
+	const x = finalX * progress;
+	const y = finalY * progress;
+	if (scale <= 1) return { scale, x, y };
 
 	return {
 		scale,
-		x: finalX * progress,
-		y: finalY * progress,
+		x: boundZoomTranslation(x, stageSize.width, baseMask.x, baseMask.width, scale),
+		y: boundZoomTranslation(y, stageSize.height, baseMask.y, baseMask.height, scale),
 	};
 }
 
