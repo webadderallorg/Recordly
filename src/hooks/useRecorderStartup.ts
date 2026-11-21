@@ -132,6 +132,7 @@ export function useRecorderStartup(context: RecorderContext) {
 				videoTrack,
 				systemAudioIncluded,
 				startWasCancelled,
+				waitForPortalFrame: usingLinuxPortal,
 			});
 		} catch (error) {
 			if (

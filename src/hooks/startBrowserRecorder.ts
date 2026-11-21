@@ -1,5 +1,6 @@
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
+import { waitForBrowserCaptureFrame } from "./browserScreenCapture";
 import {
 	AUDIO_BITRATE_SYSTEM,
 	AUDIO_BITRATE_VOICE,
@@ -44,10 +45,12 @@ export async function startBrowserRecorder(
 		videoTrack,
 		systemAudioIncluded,
 		startWasCancelled,
+		waitForPortalFrame = false,
 	}: {
 		videoTrack: MediaStreamTrack;
 		systemAudioIncluded: boolean;
 		startWasCancelled: () => boolean;
+		waitForPortalFrame?: boolean;
 	},
 ) {
 	const {
@@ -72,6 +75,19 @@ export async function startBrowserRecorder(
 		resetRecordingClock,
 		webcamStartTime,
 	} = context;
+	if (startWasCancelled()) return;
+	if (waitForPortalFrame) {
+		const frameAvailable = await waitForBrowserCaptureFrame(videoTrack);
+		if (startWasCancelled()) return;
+		if (!frameAvailable || videoTrack.readyState === "ended") {
+			throw new Error(
+				translate(
+					"notifications.noFrames",
+					"No video frames were captured. Please record again.",
+				),
+			);
+		}
+	}
 
 	let {
 		width = DEFAULT_WIDTH,
@@ -213,7 +229,6 @@ export async function startBrowserRecorder(
 		setRecording(false);
 	};
 	const mainStartedAt = Date.now();
-	if (startWasCancelled()) return;
 	beginWebcamCapture();
 	resetRecordingClock(mainStartedAt);
 	webcamTimeOffsetMs.current =

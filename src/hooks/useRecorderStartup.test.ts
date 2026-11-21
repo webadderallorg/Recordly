@@ -175,6 +175,19 @@ describe("recording startup coordination", () => {
 		expect(api.finishRecordingStartup).toHaveBeenCalledOnce();
 		expect(api.releaseRecordingStartup).toHaveBeenCalledWith("owner");
 	});
+
+	it("waits for a video frame only for a Wayland portal recording", async () => {
+		const context = createContext();
+		vi.mocked(acquireRecorderBrowserStream).mockImplementation(async (_context, options) => {
+			options.onPortalCapture(true);
+			return { videoTrack: {} as MediaStreamTrack, systemAudioIncluded: false };
+		});
+		await start(context);
+		expect(startBrowserRecorder).toHaveBeenCalledWith(
+			context,
+			expect.objectContaining({ waitForPortalFrame: true }),
+		);
+	});
 	it.each([
 		false,
 		true,
