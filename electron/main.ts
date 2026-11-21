@@ -79,6 +79,7 @@ import {
 } from "./updater";
 import {
 	beginHudCaptureProtection,
+	cancelHiddenHudRestoreOnActivation,
 	closeOnboardingWindow,
 	createEditorWindow,
 	createHudOverlayWindow,
@@ -94,6 +95,7 @@ import {
 	replayOnboardingIntro,
 	revealStartupOnboardingWindow,
 	setHudOverlayRecordingActive,
+	shouldRestoreHiddenHudOnActivation,
 	showOnboardingWindow,
 	showUpdateToastWindow,
 } from "./windows";
@@ -716,6 +718,7 @@ function activateDesktopEntryPoint() {
 			return updateToast?.isVisible() ? updateToast : null;
 		},
 		getHudWindow: getHudOverlayWindow,
+		restoreHiddenHud: shouldRestoreHiddenHudOnActivation(),
 		showHud: () => {
 			showHudOverlayFromTray();
 		},
@@ -1069,6 +1072,7 @@ function updateTrayMenu(recording: boolean = false) {
 }
 
 function createEditorWindowWrapper() {
+	cancelHiddenHudRestoreOnActivation();
 	const existingEditorWindow = getExistingEditorWindow();
 	if (existingEditorWindow) {
 		mainWindow = existingEditorWindow;

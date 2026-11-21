@@ -5,6 +5,7 @@ import { recordingEditorLoading } from "../../recordingEditorLoading";
 import { createRecordingEditorNavigation } from "../../recordingEditorNavigation";
 import { createSourceListPicker } from "../../sourceListPicker";
 import {
+	cancelHiddenHudRestoreOnActivation,
 	createHudOverlayWindow,
 	getHudOverlayWindow,
 	reassertHudOverlayMousePassthrough,
@@ -416,6 +417,10 @@ export function registerSourceHandlers({
 	getSourceSelectorWindow: () => BrowserWindow | null;
 }) {
 	const recordingNavigation = createRecordingEditorNavigation(createEditorWindow);
+	function openRecordingEditor(reload = true) {
+		cancelHiddenHudRestoreOnActivation();
+		recordingNavigation.open(reload);
+	}
 	const sourceListPicker = createSourceListPicker(
 		() => getSourceSelectorWindow() ?? createSourceSelectorWindow(),
 	);
@@ -676,7 +681,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 	ipcMain.handle("show-project-dashboard", () => {
 		recordingEditorLoading.clearError();
 		setHudRecordingPreparationActive(false);
-		recordingNavigation.open(false);
+		openRecordingEditor(false);
 	});
 	ipcMain.handle("open-loading-recording-editor", (event) => {
 		const sender = event.sender;
@@ -695,7 +700,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 		setHudRecordingPreparationActive(false);
 		getHudOverlayWindow()?.hide();
 		try {
-			recordingNavigation.open();
+			openRecordingEditor();
 			return { success: true };
 		} catch (error) {
 			recordingEditorLoading.finish(owner, "Could not open the editor.");
@@ -716,7 +721,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 		if (sourceSelectorWin && !sourceSelectorWin.isDestroyed()) {
 			sourceSelectorWin.close();
 		}
-		recordingNavigation.open();
+		openRecordingEditor();
 	});
 	return { pickSourceList: () => sourceListPicker.open() };
 }
