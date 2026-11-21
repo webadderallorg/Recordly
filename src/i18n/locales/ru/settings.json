@@ -247,7 +247,8 @@
 		"ratioWidth": "Ширина",
 		"ratioHeight": "Высота",
 		"ratioHint": "Выберите шаблон или введите своё соотношение (от 1:20 до 20:1).",
-		"freeform": "Произвольно"
+		"freeform": "Произвольно",
+		"pixelFields": "Пиксели"
 	},
 	"background": {
 		"title": "Фон",

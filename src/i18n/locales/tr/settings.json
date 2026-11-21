@@ -311,7 +311,8 @@
 		"ratioWidth": "Genişlik",
 		"ratioHeight": "Yükseklik",
 		"ratioHint": "Bir hazır ayar seçin veya kendi oranınızı girin (1:20 ile 20:1 arası).",
-		"freeform": "Serbest"
+		"freeform": "Serbest",
+		"pixelFields": "Piksel"
 	},
 	"background": {
 		"title": "Arka Plan",

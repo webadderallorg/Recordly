@@ -311,7 +311,8 @@
 		"ratioWidth": "幅",
 		"ratioHeight": "高さ",
 		"ratioHint": "プリセットを選ぶか、比率を入力してください（1:20〜20:1）。",
-		"freeform": "自由"
+		"freeform": "自由",
+		"pixelFields": "ピクセル"
 	},
 	"background": {
 		"title": "背景",

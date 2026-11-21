@@ -293,7 +293,8 @@
 		"ratioWidth": "Anchura",
 		"ratioHeight": "Altura",
 		"ratioHint": "Elige un preajuste o introduce tu propia proporción (de 1:20 a 20:1).",
-		"freeform": "Libre"
+		"freeform": "Libre",
+		"pixelFields": "Píxeles"
 	},
 	"background": {
 		"title": "Fondo",
