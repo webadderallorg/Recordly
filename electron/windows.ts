@@ -271,11 +271,13 @@ function getHudOverlayDisplay() {
 
 function getHudOverlayBounds() {
 	const { workArea } = getHudOverlayDisplay();
-	const fallbackExpanded = shouldExpandHudOverlayFallback({
-		fallbackExpanded: hudOverlayFallbackExpanded,
-		recordingActive: hudOverlayRecordingActive,
-		webcamPreviewVisible: hudOverlayWebcamPreviewVisible,
-	});
+	const fallbackExpanded =
+		process.platform === "linux" ||
+		shouldExpandHudOverlayFallback({
+			fallbackExpanded: hudOverlayFallbackExpanded,
+			recordingActive: hudOverlayRecordingActive,
+			webcamPreviewVisible: hudOverlayWebcamPreviewVisible,
+		});
 	return getHudOverlayWindowBounds(
 		workArea,
 		isHudOverlayMousePassthroughSupported(),
@@ -341,6 +343,9 @@ function setHudOverlayFallbackExpanded(expanded: boolean) {
 	}
 
 	hudOverlayFallbackExpanded = expanded;
+	// Linux keeps one full-height window from creation. Wayland may reject later
+	// size changes, so only the input shape changes as HUD content opens/closes.
+	if (process.platform === "linux") return;
 	if (
 		!hudOverlayWindow ||
 		hudOverlayWindow.isDestroyed() ||
@@ -551,6 +556,49 @@ ipcMain.on(
 	},
 );
 
+ipcMain.on(
+	"hud-overlay-set-input-shape",
+	(_event, bounds: Array<{ x: number; y: number; width: number; height: number }> | null) => {
+		if (process.platform !== "linux" || !hudOverlayWindow || hudOverlayWindow.isDestroyed()) {
+			return;
+		}
+		if (
+			!Array.isArray(bounds) ||
+			bounds.length > 128 ||
+			bounds.some(
+				(rect) =>
+					!rect ||
+					![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) ||
+					rect.x < 0 ||
+					rect.y < 0 ||
+					rect.width <= 0 ||
+					rect.height <= 0,
+			)
+		) {
+			return;
+		}
+		try {
+			const { width, height } = hudOverlayWindow.getBounds();
+			const clippedBounds = bounds
+				.map((rect) => {
+					const x = Math.max(0, Math.min(width, Math.round(rect.x)));
+					const y = Math.max(0, Math.min(height, Math.round(rect.y)));
+					const right = Math.max(x, Math.min(width, Math.round(rect.x + rect.width)));
+					const bottom = Math.max(y, Math.min(height, Math.round(rect.y + rect.height)));
+					return { x, y, width: right - x, height: bottom - y };
+				})
+				.filter((rect) => rect.width > 0 && rect.height > 0);
+			// Electron treats an empty shape as a reset to a fully rectangular window.
+			// Keep only a harmless pixel interactive until the renderer reports surfaces.
+			hudOverlayWindow.setShape(
+				clippedBounds.length > 0 ? clippedBounds : [{ x: 0, y: 0, width: 1, height: 1 }],
+			);
+		} catch (error) {
+			console.warn("Could not update the Linux HUD input shape:", error);
+		}
+	},
+);
+
 export function getHudOverlayInteractiveBounds() {
 	return hudOverlayInteractiveBounds;
 }
@@ -646,6 +694,22 @@ export function createHudOverlayWindow(): BrowserWindow {
 			backgroundThrottling: false,
 		},
 	});
+	if (process.platform === "linux") {
+		// Limit the initially interactive area to the HUD row until the renderer
+		// reports exact bounds for menus, notifications, and the webcam preview.
+		try {
+			win.setShape([
+				{
+					x: Math.max(0, Math.round((initialBounds.width - 620) / 2)),
+					y: Math.max(0, initialBounds.height - 112),
+					width: Math.min(620, initialBounds.width),
+					height: Math.min(112, initialBounds.height),
+				},
+			]);
+		} catch (error) {
+			console.warn("Could not set the initial Linux HUD input shape:", error);
+		}
+	}
 	// Keep the recording controls and webcam above normal and full-screen apps.
 	registerDesktopPresenceWindow(win, process.platform === "win32", true);
 	// Transparent regions remain click-through via setIgnoreMouseEvents().

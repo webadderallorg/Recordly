@@ -247,6 +247,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	) => {
 		ipcRenderer.send("hud-overlay-set-interactive-bounds", bounds);
 	},
+	hudOverlaySetInputShape: (
+		bounds: Array<{ x: number; y: number; width: number; height: number }>,
+	) => {
+		ipcRenderer.send("hud-overlay-set-input-shape", bounds);
+	},
 	getHudOverlayCaptureProtection: () => {
 		return ipcRenderer.invoke("get-hud-overlay-capture-protection");
 	},

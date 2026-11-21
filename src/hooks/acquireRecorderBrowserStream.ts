@@ -235,6 +235,7 @@ export async function acquireRecorderBrowserStream(
 			frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE },
 			width: { ideal: TARGET_WIDTH, max: TARGET_WIDTH },
 			height: { ideal: TARGET_HEIGHT, max: TARGET_HEIGHT },
+			cursor: { exact: browserCursorPolicy.streamCursor },
 		} as MediaTrackConstraints);
 	} catch (error) {
 		console.warn(

@@ -264,6 +264,9 @@ interface Window {
 				shape?: "ellipse";
 			}> | null,
 		) => void;
+		hudOverlaySetInputShape: (
+			bounds: Array<{ x: number; y: number; width: number; height: number }>,
+		) => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;

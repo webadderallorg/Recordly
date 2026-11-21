@@ -6,11 +6,11 @@ import {
 } from "./floatingWebcamPreview";
 
 describe("canShowFloatingWebcamPreview", () => {
-	it("shows the floating preview only when it was requested and passthrough is supported", () => {
+	it("shows the requested floating preview on Linux fallback layouts too", () => {
 		expect(canShowFloatingWebcamPreview(true, true)).toBe(true);
 		expect(canShowFloatingWebcamPreview(false, true)).toBe(false);
-		expect(canShowFloatingWebcamPreview(true, false)).toBe(false);
-		expect(canShowFloatingWebcamPreview(true, null)).toBe(false);
+		expect(canShowFloatingWebcamPreview(true, false)).toBe(true);
+		expect(canShowFloatingWebcamPreview(true, null)).toBe(true);
 	});
 });
 
@@ -20,7 +20,7 @@ describe("canToggleFloatingWebcamPreview", () => {
 		expect(canToggleFloatingWebcamPreview(true)).toBe(true);
 	});
 
-	it("hides the toggle when the platform cannot support the floating preview", () => {
-		expect(canToggleFloatingWebcamPreview(false)).toBe(false);
+	it("keeps the toggle available on fallback layouts", () => {
+		expect(canToggleFloatingWebcamPreview(false)).toBe(true);
 	});
 });
