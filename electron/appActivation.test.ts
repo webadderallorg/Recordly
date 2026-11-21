@@ -16,6 +16,7 @@ function setup(hud = windowState(), priority: ReturnType<typeof windowState> | n
 		stopRecording: vi.fn(() => false),
 		getPriorityWindow: () => priority,
 		getHudWindow: () => hud,
+		restoreHiddenHud: false,
 		showHud: vi.fn(),
 		showMain: vi.fn(),
 	};
@@ -30,10 +31,17 @@ describe("desktop icon activation", () => {
 	});
 
 	it("preserves recording stop clicks without opening any window", () => {
-		const options = setup();
+		const options = { ...setup(windowState({ visible: false })), restoreHiddenHud: true };
 		options.stopRecording.mockReturnValue(true);
 		activateFromDesktopIcon(options);
 		expect(options.showHud).not.toHaveBeenCalled();
+		expect(options.showMain).not.toHaveBeenCalled();
+	});
+
+	it("restores a HUD explicitly hidden by the user without raising Home", () => {
+		const options = { ...setup(windowState({ visible: false })), restoreHiddenHud: true };
+		activateFromDesktopIcon(options);
+		expect(options.showHud).toHaveBeenCalledOnce();
 		expect(options.showMain).not.toHaveBeenCalled();
 	});
 
@@ -47,7 +55,10 @@ describe("desktop icon activation", () => {
 	}
 
 	it("preserves onboarding and update dialog priority", () => {
-		const options = setup(windowState(), windowState());
+		const options = {
+			...setup(windowState({ visible: false }), windowState()),
+			restoreHiddenHud: true,
+		};
 		activateFromDesktopIcon(options);
 		expect(options.showMain).toHaveBeenCalledOnce();
 		expect(options.showHud).not.toHaveBeenCalled();

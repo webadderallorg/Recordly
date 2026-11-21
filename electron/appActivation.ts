@@ -9,6 +9,7 @@ export function activateFromDesktopIcon(options: {
 	stopRecording: () => boolean;
 	getPriorityWindow: () => ActivationWindow | null;
 	getHudWindow: () => ActivationWindow | null;
+	restoreHiddenHud: boolean;
 	showHud: () => void;
 	showMain: () => void;
 }): void {
@@ -19,7 +20,11 @@ export function activateFromDesktopIcon(options: {
 		return;
 	}
 	const hud = options.getHudWindow();
-	if (hud && !hud.isDestroyed() && hud.isVisible() && !hud.isMinimized()) {
+	if (
+		hud &&
+		!hud.isDestroyed() &&
+		(options.restoreHiddenHud || (hud.isVisible() && !hud.isMinimized()))
+	) {
 		options.showHud();
 		return;
 	}

@@ -50,6 +50,7 @@ const WINDOW_ICON_PATH = path.join(
 );
 
 let hudOverlayWindow: BrowserWindow | null = null;
+let hiddenWaylandHud: BrowserWindow | null = null;
 let hudOverlayHiddenFromCapture = true;
 let hudOverlayCaptureProtectionLoaded = false;
 let hudOverlayFallbackExpanded = false;
@@ -490,9 +491,22 @@ ipcMain.on("hud-overlay-drag", (_event, phase: string, screenX: number, screenY:
 });
 
 ipcMain.on("hud-overlay-hide", () => {
-	if (hudOverlayWindow && !hudOverlayWindow.isDestroyed()) {
-		hudOverlayWindow.minimize();
+	const window = getHudOverlayWindow();
+	if (!window) return;
+
+	if (process.platform === "linux") {
+		const ozonePlatform = app.commandLine.getSwitchValue("ozone-platform");
+		if (
+			ozonePlatform === "wayland" ||
+			(ozonePlatform !== "x11" && isLikelyLinuxWaylandSession(process.env))
+		) {
+			// Some Wayland compositors keep the surface mapped after minimize().
+			hiddenWaylandHud = window;
+			window.hide();
+			return;
+		}
 	}
+	window.minimize();
 });
 
 ipcMain.handle("get-hud-overlay-capture-protection", () => {
@@ -696,6 +710,10 @@ export function createHudOverlayWindow(): BrowserWindow {
 	win.on("show", () => {
 		if (!win.isDestroyed()) {
 			applyHudOverlayCaptureProtectionToWindow(win, hudOverlayHiddenFromCapture);
+			if (hiddenWaylandHud === win) {
+				hiddenWaylandHud = null;
+				win.webContents.send("hud-overlay-restored");
+			}
 			if (process.platform === "win32" && recordingFocusWindows.length > 0)
 				raiseHudAboveRecordingFocus();
 		}
@@ -825,6 +843,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 		screen.removeListener("display-metrics-changed", handleDisplayMetricsChanged);
 		if (hudOverlayWindow === win) {
 			hudOverlayWindow = null;
+			hiddenWaylandHud = null;
 			hudOverlayInteractiveBounds = null;
 			recordingPreparationActive = false;
 			hudCaptureStarting = false;
@@ -843,6 +862,10 @@ export function createHudOverlayWindow(): BrowserWindow {
 
 export function getHudOverlayWindow(): BrowserWindow | null {
 	return hudOverlayWindow && !hudOverlayWindow.isDestroyed() ? hudOverlayWindow : null;
+}
+
+export function isHudOverlayHiddenByUser(): boolean {
+	return hiddenWaylandHud !== null && hiddenWaylandHud === getHudOverlayWindow();
 }
 
 /**

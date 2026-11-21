@@ -89,6 +89,7 @@ import {
 	getStartupOnboardingWindow,
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
+	isHudOverlayHiddenByUser,
 	isHudOverlayMousePassthroughSupported,
 	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
 	replayOnboardingIntro,
@@ -716,6 +717,7 @@ function activateDesktopEntryPoint() {
 			return updateToast?.isVisible() ? updateToast : null;
 		},
 		getHudWindow: getHudOverlayWindow,
+		restoreHiddenHud: isHudOverlayHiddenByUser(),
 		showHud: () => {
 			showHudOverlayFromTray();
 		},
