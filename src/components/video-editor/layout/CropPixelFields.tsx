@@ -38,7 +38,7 @@ function CropPixelInput({
 					setDraft(null);
 				}}
 				onKeyDown={(event) => {
-					if (event.key === "Enter") {
+					if (event.key === "Enter" && !event.nativeEvent.isComposing) {
 						event.preventDefault();
 						event.currentTarget.blur();
 					}

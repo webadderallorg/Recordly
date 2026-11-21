@@ -34,6 +34,9 @@ test("edits the inline crop in source pixels and keeps those values after Done",
 		}));
 	const cropWidth = Math.floor(source.width / 2);
 	const cropHeight = Math.floor(source.height / 2);
+	await left.fill("31");
+	await left.dispatchEvent("keydown", { key: "Enter", isComposing: true });
+	await expect(left).toBeFocused();
 	for (const [field, value] of [
 		[left, 31],
 		[top, 27],
