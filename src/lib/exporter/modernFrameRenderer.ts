@@ -144,6 +144,9 @@ export class FrameRenderer implements FrameRenderContext {
 
 		if (!this.geometry.layoutCache) {
 			this.geometry.updateLayout();
+			this.annotations.annotationScaleFactor =
+				this.annotations.calculateAnnotationScaleFactor();
+			await this.annotations.setupAnnotationLayer();
 		}
 		const layoutCache = this.geometry.layoutCache;
 		if (!layoutCache) {

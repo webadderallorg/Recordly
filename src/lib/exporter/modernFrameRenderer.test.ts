@@ -133,6 +133,25 @@ vi.mock("./annotationRenderer", () => ({
 
 import { createMockCanvas, createRenderer } from "./modernFrameRenderer.testSupport";
 
+it("sizes export annotations against the padded recording rather than the full canvas", () => {
+	const renderer = createRenderer();
+	renderer.geometry.layoutCache = {
+		stageSize: { width: 1920, height: 1080 },
+		videoSize: { width: 1920, height: 1080 },
+		baseScale: 0.5,
+		baseOffset: { x: 480, y: 270 },
+		maskRect: {
+			x: 480,
+			y: 270,
+			width: 960,
+			height: 540,
+			sourceCrop: { x: 0, y: 0, width: 1, height: 1 },
+		},
+	};
+
+	expect(renderer.annotations.calculateAnnotationScaleFactor()).toBe(0.5);
+});
+
 it("bypasses blur annotation compositing during gaps and clears stale composite frames", async () => {
 	const renderer = createRenderer();
 	const camera = { visible: true };
