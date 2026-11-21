@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { app } from "electron";
-import { reserveInstanceSession } from "./instanceSession";
+import { reserveInstanceSession, shareSafeStorageKey } from "./instanceSession";
 
 if (process.env["VITE_DEV_SERVER_URL"]) {
 	const devUserDataPath = path.join(app.getPath("appData"), "Recordly-dev");
@@ -16,8 +16,16 @@ let instanceSession: ReturnType<typeof reserveInstanceSession> | undefined;
 // slots for additional processes. Projects and account storage remain shared.
 export function initializeInstanceSession() {
 	if (instanceSession) return;
-	const reservation = reserveInstanceSession(app.getPath("userData"), app.getPath("sessionData"));
+	const primarySessionPath = app.getPath("sessionData");
+	const reservation = reserveInstanceSession(app.getPath("userData"), primarySessionPath);
 	try {
+		if (process.platform === "win32") {
+			try {
+				shareSafeStorageKey(primarySessionPath, reservation.sessionPath);
+			} catch (error) {
+				console.warn("[instance-session] Could not share the secure storage key", error);
+			}
+		}
 		app.setPath("sessionData", reservation.sessionPath);
 	} catch (error) {
 		reservation.release();

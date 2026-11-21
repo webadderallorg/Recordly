@@ -65,6 +65,36 @@ it("forwards the SDK's PKCE flow id through the dev callback without forwarding 
 	controller.close();
 });
 
+it("serves the loopback return page in packaged Windows/Linux builds only when enabled", async () => {
+	const { createAuthCallbackController } = await import("./authCallback");
+	state.request = undefined;
+	const off = createAuthCallbackController({
+		isDev: false,
+		focusApp: vi.fn(),
+		flowRoutingEnabled: false,
+	});
+	off.startDevServer();
+	expect(state.request).toBeUndefined();
+	off.close();
+
+	state.send.mockClear();
+	const on = createAuthCallbackController({
+		isDev: false,
+		focusApp: vi.fn(),
+		flowRoutingEnabled: false,
+		loopbackReturn: true,
+	});
+	on.startDevServer();
+	const response = { writeHead: vi.fn(), end: vi.fn() };
+	state.request!(
+		{ method: "GET", headers: { host: "127.0.0.1:43821" }, url: "/auth/callback?code=c1" },
+		response,
+	);
+	expect(response.writeHead).toHaveBeenCalledWith(200, expect.any(Object));
+	expect(String(response.end.mock.calls[0][0])).toContain('href="recordly://app/open"');
+	on.close();
+});
+
 it("restricts callback reads and acknowledgements to the trusted main frame", async () => {
 	vi.mocked(ipcMain.handle).mockClear();
 	const { createAuthCallbackController } = await import("./authCallback");

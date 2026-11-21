@@ -19,6 +19,44 @@ function hasLiveOwner(ownerPath: string): boolean {
 	}
 }
 
+/**
+ * On Windows, Electron's safeStorage key lives in each Chromium profile's
+ * "Local State" (`os_crypt.encrypted_key`, itself DPAPI-protected for the
+ * current Windows user). Additional instances use separate profiles, so without
+ * this they generate their own key and cannot decrypt the shared auth store or
+ * sign-in routing records written by the primary instance. Copy the primary
+ * profile's key into an additional profile before Chromium starts. macOS and
+ * Linux keep one app-wide key in the system keychain, so they need nothing.
+ */
+export function shareSafeStorageKey(primarySessionPath: string, sessionPath: string): boolean {
+	if (path.resolve(primarySessionPath) === path.resolve(sessionPath)) return false;
+	let primaryKey: unknown;
+	try {
+		primaryKey = JSON.parse(readFileSync(path.join(primarySessionPath, "Local State"), "utf8"))
+			?.os_crypt?.encrypted_key;
+	} catch {
+		return false;
+	}
+	if (typeof primaryKey !== "string" || !primaryKey) return false;
+	const localStatePath = path.join(sessionPath, "Local State");
+	let state: Record<string, unknown> = {};
+	try {
+		const parsed: unknown = JSON.parse(readFileSync(localStatePath, "utf8"));
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+			state = parsed as Record<string, unknown>;
+	} catch {
+		// Missing or unreadable: Chromium recreates the remaining fields.
+	}
+	const osCrypt =
+		state.os_crypt && typeof state.os_crypt === "object"
+			? (state.os_crypt as Record<string, unknown>)
+			: {};
+	if (osCrypt.encrypted_key === primaryKey) return false;
+	state.os_crypt = { ...osCrypt, encrypted_key: primaryKey };
+	writeFileSync(localStatePath, JSON.stringify(state), { mode: 0o600 });
+	return true;
+}
+
 /** Reserve durable Chromium storage without opening another process's profile. */
 export function reserveInstanceSession(userDataPath: string, primarySessionPath: string) {
 	const sessionsPath = path.join(userDataPath, "instance-sessions");

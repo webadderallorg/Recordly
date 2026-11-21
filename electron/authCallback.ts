@@ -28,6 +28,8 @@ type AuthCallbackOptions = {
 	isDev: boolean;
 	focusApp: () => void;
 	flowRoutingEnabled?: boolean;
+	/** Serve the 127.0.0.1 return page in packaged builds too (Windows/Linux). */
+	loopbackReturn?: boolean;
 };
 
 function callbackHeaders(contentType: string) {
@@ -45,6 +47,7 @@ export function createAuthCallbackController({
 	isDev,
 	focusApp,
 	flowRoutingEnabled = oauthFlowIdRedirectsEnabled,
+	loopbackReturn = false,
 }: AuthCallbackOptions) {
 	const protocol = isDev ? "recordly-dev" : "recordly";
 	let pendingUrl: string | null = null;
@@ -94,6 +97,9 @@ export function createAuthCallbackController({
 				prepareSet: async (event, key, persistedKeys) => {
 					const flowId = flowKey(key);
 					if (!flowId) return;
+					// Another instance may have held the return port at startup and
+					// since quit; claim it now that this instance starts a sign-in.
+					startDevServer();
 					if (persistedKeys) {
 						const present = new Set(persistedKeys);
 						for (const [id, flow] of flowOwners) {
@@ -243,8 +249,11 @@ export function createAuthCallbackController({
 		return startupRouting;
 	}
 
+	// Development, and Windows/Linux builds, return from the browser through this
+	// loopback page instead of a recordly:// link: no browser "Open app?" prompt
+	// is involved, so the return cannot be lost when that hand-off fails.
 	function startDevServer() {
-		if (!isDev || server) return;
+		if (!(isDev || loopbackReturn) || server || closed) return;
 		server = createServer((request, response) => {
 			if (
 				request.method !== "GET" ||
