@@ -20,6 +20,7 @@ import {
 	writeToExportStream,
 } from "../export/exportStream";
 import {
+	cancelNativeVideoExportSession,
 	enqueueNativeVideoExportFrameWrite,
 	enqueueNativeVideoExportFrameWrites,
 	exportNativeStaticLayoutVideo,
@@ -711,7 +712,6 @@ export function registerExportHandlers() {
 				session.finalization = finalization;
 				const finalized = await finalization;
 				if (session.terminating) {
-					await removeTemporaryExportFile(finalized.outputPath, true);
 					throw new Error("Native video export session was cancelled");
 				}
 				nativeVideoExportSessions.delete(sessionId);
@@ -736,8 +736,10 @@ export function registerExportHandlers() {
 				};
 			} catch (error) {
 				flushNativeVideoExportPendingWriteRequests(sessionId, session, String(error));
-				nativeVideoExportSessions.delete(sessionId);
-				await removeTemporaryExportFile(session.outputPath);
+				if (!session.terminating) {
+					await removeTemporaryExportFile(session.outputPath);
+					if (!session.terminating) nativeVideoExportSessions.delete(sessionId);
+				}
 				return {
 					success: false,
 					error: String(error),
@@ -857,33 +859,13 @@ export function registerExportHandlers() {
 			return { success: true };
 		}
 
-		session.terminating = true;
-		nativeVideoExportSessions.delete(sessionId);
 		flushNativeVideoExportPendingWriteRequests(
 			sessionId,
 			session,
 			"Native video export session was cancelled",
 		);
 
-		try {
-			if (
-				!session.ffmpegProcess.stdin.destroyed &&
-				!session.ffmpegProcess.stdin.writableEnded
-			) {
-				session.ffmpegProcess.stdin.destroy();
-			}
-		} catch {
-			// Stream may already be closed.
-		}
-
-		try {
-			session.ffmpegProcess.kill("SIGKILL");
-		} catch {
-			// Process may already be closed.
-		}
-
-		await session.completionPromise.catch(() => undefined);
-		await removeTemporaryExportFile(session.outputPath);
+		await cancelNativeVideoExportSession(sessionId, session);
 		return { success: true };
 	});
 

@@ -1198,23 +1198,24 @@ app.on("before-quit", () => {
 	void cleanupAllExportStreams();
 });
 
-let waitingForNativeExportCleanup = false;
+let nativeExportQuitState: "idle" | "waiting" | "ready" = "idle";
 app.on("will-quit", (event) => {
-	if (waitingForNativeExportCleanup) {
+	if (nativeExportQuitState === "ready") return;
+	if (nativeExportQuitState === "waiting") {
 		event.preventDefault();
 		return;
 	}
 	const cleanup = cleanupNativeVideoExportSessions();
 	if (!cleanup) return;
 	event.preventDefault();
-	waitingForNativeExportCleanup = true;
+	nativeExportQuitState = "waiting";
 	let timeout: NodeJS.Timeout | undefined;
 	const deadline = new Promise<void>((resolve) => {
 		timeout = setTimeout(resolve, 3000);
 	});
 	void Promise.race([cleanup, deadline]).finally(() => {
 		clearTimeout(timeout);
-		waitingForNativeExportCleanup = false;
+		nativeExportQuitState = "ready";
 		app.quit();
 	});
 });
