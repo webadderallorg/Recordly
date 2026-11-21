@@ -4,6 +4,8 @@ import { ONBOARDING_SOUNDTRACK_URL } from "@/assets/onboarding/media";
 import { SpeakerHigh, SpeakerX } from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
 
+const FADE_IN_MS = 2000;
+
 export function OnboardingSoundtrack() {
 	const t = useScopedT("onboarding");
 	const audioRef = useRef<HTMLAudioElement>(null);
@@ -18,8 +20,19 @@ export function OnboardingSoundtrack() {
 		let disposed = false;
 		let playback: "idle" | "starting" | "blocked" | "playing" | "finished" = "idle";
 		let unsubscribe: (() => void) | undefined;
+		let fadeTimer: ReturnType<typeof setInterval> | undefined;
+		// Only the first start fades in; looping wraps within the same playback.
+		audio.volume = 0;
+		const fadeIn = () => {
+			const start = performance.now();
+			fadeTimer = setInterval(() => {
+				audio.volume = Math.min(1, (performance.now() - start) / FADE_IN_MS);
+				if (audio.volume === 1) clearInterval(fadeTimer);
+			}, 16);
+		};
 		const finish = () => {
 			playback = "finished";
+			clearInterval(fadeTimer);
 			audio.pause();
 			setSound(null);
 		};
@@ -30,6 +43,7 @@ export function OnboardingSoundtrack() {
 				await audio.play();
 				if (disposed || playback !== "starting") return;
 				playback = "playing";
+				fadeIn();
 				setSound("audible");
 			} catch (error) {
 				if (disposed || playback !== "starting") return;
@@ -82,6 +96,7 @@ export function OnboardingSoundtrack() {
 		});
 		return () => {
 			disposed = true;
+			clearInterval(fadeTimer);
 			audio.pause();
 			audio.removeEventListener("canplay", ready);
 			audio.removeEventListener("error", onError);

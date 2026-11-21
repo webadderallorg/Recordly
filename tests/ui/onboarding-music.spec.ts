@@ -72,6 +72,7 @@ test("soundtrack loops after the full track ends", async ({ page }) => {
 		tour.getByRole("button", { name: "Mute welcome music", exact: true }),
 	).toBeVisible();
 	await expect(audio).toHaveJSProperty("loop", true);
+	await expect(audio).toHaveJSProperty("volume", 1, { timeout: 4000 });
 	await audio.evaluate((el: HTMLAudioElement) => {
 		el.currentTime = el.duration - 1;
 	});
@@ -79,7 +80,17 @@ test("soundtrack loops after the full track ends", async ({ page }) => {
 		.poll(() => audio.evaluate((el: HTMLAudioElement) => el.currentTime), { timeout: 5000 })
 		.toBeLessThan(1);
 	await expect(audio).toHaveJSProperty("paused", false);
+	await expect(audio).toHaveJSProperty("volume", 1);
 	await expect(tour.locator("[data-welcome-music]")).toBeVisible();
+});
+
+test("soundtrack fades in over two seconds from silence", async ({ page }) => {
+	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
+	await page.goto("/?windowType=onboarding");
+	const audio = page.getByRole("dialog", { name: "Welcome to Recordly" }).locator("audio");
+	await expect(audio).toHaveJSProperty("paused", false);
+	expect(await audio.evaluate((el: HTMLAudioElement) => el.volume)).toBeLessThan(0.6);
+	await expect(audio).toHaveJSProperty("volume", 1, { timeout: 4000 });
 });
 
 test("blocked autoplay retries on interaction and the sound control does not pause playback", async ({
