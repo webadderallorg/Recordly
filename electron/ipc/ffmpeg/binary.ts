@@ -5,6 +5,7 @@ import path from "node:path";
 import { app } from "electron";
 
 const nodeRequire = createRequire(import.meta.url);
+const bundledBinaryProblems = new Map<string, string | null>();
 
 export function loadFfmpegStatic(): string | null {
 	try {
@@ -117,58 +118,74 @@ export function resolveSystemFfprobeBinaryPath(): string | null {
 	return null;
 }
 
-export function getFfmpegBinaryPath(): string {
-	const ffmpegStatic = loadFfmpegStatic();
-	if (ffmpegStatic && typeof ffmpegStatic === "string") {
-		const bundledPath = app.isPackaged
-			? ffmpegStatic.replace(/\.asar([/\\])/, ".asar.unpacked$1")
-			: ffmpegStatic;
+function probeBundledBinary(binaryPath: string): string | null {
+	const cached = bundledBinaryProblems.get(binaryPath);
+	if (cached !== undefined) return cached;
 
-		if (existsSync(bundledPath)) {
-			return bundledPath;
-		}
+	const result = spawnSync(binaryPath, ["-version"], {
+		stdio: "ignore",
+		timeout: 5000,
+		killSignal: "SIGKILL",
+		windowsHide: true,
+	});
+	let problem: string | null = null;
+	if (result.error) {
+		problem = (result.error as NodeJS.ErrnoException).code ?? result.error.message;
+	} else if (result.signal) {
+		problem = `terminated by ${result.signal}`;
+	} else if (result.status !== 0) {
+		problem = `exit status ${result.status}`;
+	}
+	if (problem !== null) {
+		console.warn(`[FFmpeg] Skipping unusable bundled binary ${binaryPath} (${problem}).`);
+	}
+	bundledBinaryProblems.set(binaryPath, problem);
+	return problem;
+}
+
+function resolveBinaryPath(
+	tool: "FFmpeg" | "FFprobe",
+	bundledPaths: (string | null)[],
+	resolveSystem: () => string | null,
+): string {
+	let bundledFailure: string | undefined;
+	for (const candidate of bundledPaths) {
+		if (!candidate) continue;
+		const bundledPath = app.isPackaged
+			? candidate.replace(/\.asar([/\\])/, ".asar.unpacked$1")
+			: candidate;
+		if (!existsSync(bundledPath)) continue;
+		const problem = probeBundledBinary(bundledPath);
+		if (problem === null) return bundledPath;
+		bundledFailure ??= problem;
 	}
 
-	const systemFfmpeg = resolveSystemFfmpegBinaryPath();
-	if (systemFfmpeg) {
-		return systemFfmpeg;
+	const systemBinary = resolveSystem();
+	if (systemBinary) return systemBinary;
+	const command = tool.toLowerCase();
+	if (bundledFailure !== undefined) {
+		throw new Error(
+			`Bundled ${tool} could not run (${bundledFailure}), and no system ${tool} was found. Make ${command} available on PATH.`,
+		);
 	}
 
 	throw new Error(
-		"FFmpeg binary is unavailable. Install ffmpeg-static for this platform or make ffmpeg available on PATH.",
+		`${tool} binary is unavailable. Install ${command}-static for this platform or make ${command} available on PATH.`,
 	);
 }
 
+export function getFfmpegBinaryPath(): string {
+	return resolveBinaryPath("FFmpeg", [loadFfmpegStatic()], resolveSystemFfmpegBinaryPath);
+}
+
 export function getFfprobeBinaryPath(): string {
-	if (process.platform === "linux") {
-		const bundled = path.join(
-			app.getAppPath(),
-			"node_modules",
-			"ffmpeg-static",
-			"ffprobe-recordly",
-		);
-		const executable = app.isPackaged
-			? bundled.replace(/\.asar([/\\])/, ".asar.unpacked$1")
-			: bundled;
-		if (existsSync(executable)) return executable;
-	}
-	const ffprobeStatic = loadFfprobeStatic();
-	if (ffprobeStatic && typeof ffprobeStatic === "string") {
-		const bundledPath = app.isPackaged
-			? ffprobeStatic.replace(/\.asar([/\\])/, ".asar.unpacked$1")
-			: ffprobeStatic;
-
-		if (existsSync(bundledPath)) {
-			return bundledPath;
-		}
-	}
-
-	const systemFfprobe = resolveSystemFfprobeBinaryPath();
-	if (systemFfprobe) {
-		return systemFfprobe;
-	}
-
-	throw new Error(
-		"FFprobe binary is unavailable. Install ffprobe-static for this platform or make ffprobe available on PATH.",
+	const sourceBuilt =
+		process.platform === "linux"
+			? path.join(app.getAppPath(), "node_modules", "ffmpeg-static", "ffprobe-recordly")
+			: null;
+	return resolveBinaryPath(
+		"FFprobe",
+		[sourceBuilt, loadFfprobeStatic()],
+		resolveSystemFfprobeBinaryPath,
 	);
 }
