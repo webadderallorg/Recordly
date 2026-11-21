@@ -499,3 +499,48 @@ it.each(
 		expect.objectContaining({ preferredRenderBackend: expected, width: 2, height: 2 }),
 	);
 });
+
+it("successfully exports clip regions through all frames to completion with progress reaching 100%", async () => {
+	const progressEvents: Array<{ phase: string; currentFrame: number; totalFrames: number }> = [];
+	mocks.decode.mockImplementationOnce(async (_fps, _trim, _speed, onFrame, clips) => {
+		expect(clips).toBeDefined();
+		expect(clips).toHaveLength(2);
+		for (let i = 0; i < 30; i++) {
+			await onFrame(
+				{ timestamp: i * 33333, close: vi.fn() } as unknown as VideoFrame,
+				i * 33333,
+				i * 33.33,
+				i * 33.33,
+			);
+		}
+	});
+
+	const exporter = new ModernVideoExporter({
+		...config,
+		clipRegions: [
+			{ id: "clip-1", startMs: 0, endMs: 500, sourceStartMs: 0, speed: 1 },
+			{ id: "clip-2", startMs: 500, endMs: 1000, sourceStartMs: 1500, speed: 1 },
+		],
+		onProgress: (p) => {
+			progressEvents.push({
+				phase: p.phase,
+				currentFrame: p.currentFrame,
+				totalFrames: p.totalFrames,
+			});
+		},
+	} as never);
+
+	vi.spyOn(exporterInternals(exporter).operations, "initializeEncoder").mockResolvedValue({
+		codec: "avc1.640034",
+		hardwareAcceleration: "prefer-hardware",
+	});
+	vi.spyOn(exporterInternals(exporter).operations, "encodeRenderedFrame").mockResolvedValue();
+
+	const result = await exporter.export();
+
+	expect(result.success).toBe(true);
+	expect(progressEvents.length).toBeGreaterThan(0);
+	const maxFrame = Math.max(...progressEvents.map((e) => e.currentFrame));
+	expect(maxFrame).toBe(30);
+	expect(progressEvents.some((e) => e.phase === "finalizing")).toBe(true);
+});
