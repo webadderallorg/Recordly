@@ -96,12 +96,17 @@ it("reports the bundled failure if there is no system fallback", async () => {
 	expect(() => getFfmpegBinaryPath()).toThrow(/Bundled FFmpeg.*ETIMEDOUT.*no system FFmpeg/);
 });
 
-it("prefers a compatible system FFmpeg on Linux and checks capabilities once", async () => {
+it.each([
+	"...",
+	"..",
+])("prefers a compatible system FFmpeg on Linux with %s filter flags", async (filterFlags) => {
 	installed.add(bundledFfmpeg);
 	installed.add(systemFfmpeg);
 	mocks.spawnSync.mockImplementation((_file, args: string[]) => {
 		if (args.includes("-encoders")) return { status: 0, stdout: linuxEncoderList };
-		if (args.includes("-filters")) return { status: 0, stdout: linuxFilterList };
+		if (args.includes("-filters")) {
+			return { status: 0, stdout: linuxFilterList.replaceAll("...", filterFlags) };
+		}
 		return { status: 0, stdout: `${systemFfmpeg}\n` };
 	});
 	const { getFfmpegBinaryPath } = await import("./binary");

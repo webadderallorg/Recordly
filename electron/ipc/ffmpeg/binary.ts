@@ -218,7 +218,7 @@ function supportsRecordlyExports(binaryPath: string): boolean {
 		const filterList = spawnSync(binaryPath, ["-hide_banner", "-filters"], options);
 		const filters = new Set(
 			Array.from(
-				(filterList.stdout ?? "").matchAll(/^\s*[TSC.]{3}\s+(\w+)\s+/gm),
+				(filterList.stdout ?? "").matchAll(/^\s*[T.][S.][C.]?\s+(\w+)\s+/gm),
 				(m) => m[1],
 			),
 		);
