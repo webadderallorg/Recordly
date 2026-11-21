@@ -56,9 +56,8 @@ for (const empty of [false, true]) {
 			page,
 			(empty) => {
 				window.electronAPI.cloudShareManage = async () => ({ success: true, videos: [] });
-				window.electronAPI.listProjectFiles = async () => ({
-					success: true,
-					projects: [],
+				const listProjectFiles = async () => ({
+					success: true as const,
 					entries: empty
 						? []
 						: [
@@ -72,6 +71,11 @@ for (const empty of [false, true]) {
 								},
 							],
 				});
+				window.electronAPI.listProjectFiles = async () => {
+					if (document.documentElement.dataset.trackHomeRefresh)
+						document.documentElement.dataset.homeRefreshed = "true";
+					return listProjectFiles();
+				};
 				const save = window.electronAPI.saveProjectFile;
 				window.electronAPI.saveProjectFile = async (...args) => {
 					if (document.documentElement.dataset.delayHomeSave && args[3]) {
@@ -91,6 +95,9 @@ for (const empty of [false, true]) {
 		await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1", {
 			timeout: 15000,
 		});
+		await page.evaluate(() => {
+			document.documentElement.dataset.trackHomeRefresh = "true";
+		});
 		await page.getByRole("button", { name: "Home", exact: true }).click();
 		const home = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
 		await expect(
@@ -98,6 +105,7 @@ for (const empty of [false, true]) {
 				? home.getByRole("heading", { name: "No projects yet", exact: true })
 				: home.getByRole("button", { name: "Stable demo", exact: true }),
 		).toBeVisible();
+		await expect(page.locator("html")).toHaveAttribute("data-home-refreshed", "true");
 		await home.getByRole("button", { name: "Resume Untitled Project", exact: true }).click();
 		await page.evaluate(() => {
 			document.documentElement.dataset.delayHomeSave = "true";
