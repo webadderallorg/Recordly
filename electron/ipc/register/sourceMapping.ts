@@ -45,12 +45,15 @@ export async function resolveDisplayMediaSource({
 	selectedSourceId: string | null | undefined;
 	getSources: () => Promise<Array<{ id: string; name: string }>>;
 }): Promise<{ id: string; name: string } | null> {
-	if (platform === "linux" && isLikelyLinuxWaylandSession(env)) {
-		// Chromium opens the portal once when it resolves this source. Enumerating first opens it twice.
-		return { id: "screen:0:0", name: "Entire screen" };
+	const usePortal = platform === "linux" && isLikelyLinuxWaylandSession(env);
+	if (!usePortal && (!selectedSourceId || selectedSourceId === LINUX_PORTAL_SCREEN_SOURCE_ID)) {
+		return null;
 	}
-	if (!selectedSourceId || selectedSourceId === LINUX_PORTAL_SCREEN_SOURCE_ID) return null;
-	const source = (await getSources()).find((source) => source.id === selectedSourceId);
+	const sources = await getSources();
+	// Chromium marks sources chosen through a native picker session with :s.
+	const source = usePortal
+		? sources.find((source) => source.id.endsWith(":s"))
+		: sources.find((source) => source.id === selectedSourceId);
 	// A vanished source must never silently become a different window or the whole screen.
 	return source ? { id: source.id, name: source.name } : null;
 }
