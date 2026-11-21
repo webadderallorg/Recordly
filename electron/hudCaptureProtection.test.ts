@@ -8,6 +8,7 @@ import {
 	shouldProtectHudCapture,
 	supportsHudCaptureProtection,
 } from "../src/lib/hudCaptureProtection";
+import { getHudOverlayWindowBounds, shouldExpandHudOverlayFallback } from "./hudOverlayBounds";
 import { isLikelyLinuxWaylandSession } from "./ipc/register/sourceMapping";
 
 describe("HUD capture protection lifecycle", () => {
@@ -84,8 +85,12 @@ it("restores the latest requested HUD mouse state when source selection ends", (
 	expect(mouse).toHaveBeenLastCalledWith(false);
 });
 
-it("keeps the hovered HUD interactive when recording starts", () => {
+it("keeps the hovered HUD interactive across the work area when recording starts", () => {
 	const source = readFileSync(new URL("./windows.ts", import.meta.url), "utf8");
+	const bounds = source.slice(
+		source.indexOf("function getHudOverlayBounds("),
+		source.indexOf("function getUpdateToastBounds("),
+	);
 	const passthrough = source.slice(
 		source.indexOf("function setHudOverlayMousePassthrough("),
 		source.indexOf('ipcMain.on("hud-overlay-set-ignore-mouse"'),
@@ -95,22 +100,33 @@ it("keeps the hovered HUD interactive when recording starts", () => {
 		source.indexOf("export function createUpdateToastWindow("),
 	);
 	const mouse = vi.fn();
+	const setBounds = vi.fn();
+	const workArea = { x: 1920, y: 24, width: 1536, height: 816 };
 	const context: Record<string, unknown> = {
 		hudOverlayIgnoringMouse: true,
 		hudOverlaySourceSelectionActive: false,
 		hudOverlayRecordingActive: false,
 		hudOverlayFallbackExpanded: false,
+		hudOverlayWebcamPreviewVisible: false,
 		hudCaptureStarting: true,
 		hudOverlayMouseReassertTimer: null,
-		hudOverlayWindow: { isDestroyed: () => false, setIgnoreMouseEvents: mouse },
+		hudOverlayWindow: {
+			isDestroyed: () => false,
+			isVisible: () => false,
+			setBounds,
+			setIgnoreMouseEvents: mouse,
+		},
 		isHudOverlayMousePassthroughSupported: () => true,
-		applyHudOverlayBounds: vi.fn(),
+		getHudOverlayDisplay: () => ({ workArea }),
+		getHudOverlayWindowBounds,
+		positionUpdateToastWindow: vi.fn(),
+		shouldExpandHudOverlayFallback,
 		setHudOverlayFallbackExpanded: vi.fn(),
 		notifyEditorMode: vi.fn(),
 		reassertHudOverlayCaptureProtection: vi.fn(),
 	};
 	runInNewContext(
-		`${ts.transpileModule(`${passthrough}\n${recordingActive.replace("export ", "")}`, {}).outputText}
+		`${ts.transpileModule(`${bounds}\n${passthrough}\n${recordingActive.replace("export ", "")}`, {}).outputText}
 		this.setHudOverlayMousePassthrough = setHudOverlayMousePassthrough;
 		this.setHudOverlayRecordingActive = setHudOverlayRecordingActive;`,
 		context,
@@ -121,6 +137,7 @@ it("keeps the hovered HUD interactive when recording starts", () => {
 	// The pointer rests on the record button, so the renderer has made the HUD interactive.
 	setPassthrough(false);
 	setRecording(true);
+	expect(setBounds).toHaveBeenLastCalledWith(workArea, false);
 	expect(mouse).toHaveBeenLastCalledWith(false);
 
 	// A pointer away from the HUD still leaves the recorded app clickable.
