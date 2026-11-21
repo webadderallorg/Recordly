@@ -170,6 +170,23 @@ https://github.com/webadderallorg/Recordly/releases
 
 ---
 
+## Linux AppImage
+
+If the AppImage appears to do nothing when opened from a file manager, run it from a terminal to see the error.
+
+```bash
+chmod +x ./Recordly-linux-x64.AppImage
+./Recordly-linux-x64.AppImage
+```
+
+If you see `libfuse.so.2` in the error, install the FUSE 2 compatibility package for your distribution. See the [AppImage FUSE guide](https://docs.appimage.org/user-guide/troubleshooting/fuse.html) for package names such as `libfuse2` and `libfuse2t64`.
+
+You can also extract and launch the AppImage without FUSE.
+
+```bash
+./Recordly-linux-x64.AppImage --appimage-extract-and-run
+```
+
 ## Arch Linux / Manjaro (yay)
 
 Install from the AUR ([recordly-bin](https://aur.archlinux.org/packages/recordly-bin)):

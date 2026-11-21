@@ -166,6 +166,23 @@ https://github.com/webadderallorg/Recordly/releases
 
 ---
 
+## Linux AppImage
+
+如果从文件管理器打开 AppImage 后没有反应，请在终端中运行以查看错误信息。
+
+```bash
+chmod +x ./Recordly-linux-x64.AppImage
+./Recordly-linux-x64.AppImage
+```
+
+如果错误中出现 `libfuse.so.2`，请安装适用于当前发行版的 FUSE 2 兼容包。可参阅 [AppImage 的 FUSE 指南](https://docs.appimage.org/user-guide/troubleshooting/fuse.html)，查找 `libfuse2`、`libfuse2t64` 等软件包。
+
+也可以解包并直接运行 AppImage，无需 FUSE。
+
+```bash
+./Recordly-linux-x64.AppImage --appimage-extract-and-run
+```
+
 ## Arch Linux / Manjaro（yay）
 
 可通过 AUR 安装（[recordly-bin](https://aur.archlinux.org/packages/recordly-bin)）：
