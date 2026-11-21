@@ -621,6 +621,102 @@ describe("StreamingVideoDecoder decode failures", () => {
 		expect(onFrame).not.toHaveBeenCalled();
 	});
 
+	it("feeds buffered video when the decoder signals capacity before emitting a frame", async () => {
+		mockDemuxerRead.mockImplementation(
+			() =>
+				new ReadableStream({
+					start(controller) {
+						for (let i = 0; i < 4; i++) controller.enqueue({ timestamp: i * 33_333 });
+						controller.close();
+					},
+				}),
+		);
+		const submitted = vi.fn();
+		const flushed = vi.fn();
+		class BufferedDecoder {
+			state = "configured";
+			decodeQueueSize = 0;
+			ondequeue: ((event: Event) => void) | null = null;
+			configure() {}
+			decode() {
+				submitted();
+				this.decodeQueueSize++;
+				setTimeout(() => {
+					this.decodeQueueSize--;
+					this.ondequeue?.(new Event("dequeue"));
+				}, 0);
+			}
+			async flush() {
+				flushed();
+			}
+			close() {
+				this.state = "closed";
+			}
+		}
+		vi.stubGlobal("VideoDecoder", BufferedDecoder);
+		const decoder = new StreamingVideoDecoder({ maxDecodeQueue: 1 });
+		await decoder.loadMetadata("/tmp/buffered.mp4");
+		const completion = decoder.decodeAll(30, undefined, undefined, vi.fn());
+		try {
+			await vi.waitFor(() => expect(flushed).toHaveBeenCalledOnce(), { timeout: 250 });
+			expect(submitted).toHaveBeenCalledTimes(4);
+		} finally {
+			decoder.cancel();
+			await completion;
+		}
+	});
+
+	it("reports and cleans up a decoder that never emits a frame or reports an error", async () => {
+		const readerCancelled = vi.fn();
+		mockDemuxerRead.mockImplementation(
+			() =>
+				new ReadableStream({
+					start(controller) {
+						for (let i = 0; i < 4; i++) controller.enqueue({ timestamp: i * 33_333 });
+					},
+					cancel: readerCancelled,
+				}),
+		);
+		const closed = vi.fn();
+		class StalledDecoder {
+			state = "configured";
+			decodeQueueSize = 0;
+			configure() {}
+			decode() {
+				this.decodeQueueSize++;
+			}
+			close() {
+				this.state = "closed";
+				closed();
+			}
+		}
+		vi.stubGlobal("VideoDecoder", StalledDecoder);
+		vi.useFakeTimers();
+		const decoder = new StreamingVideoDecoder({ maxDecodeQueue: 1 });
+		const onFrame = vi.fn();
+		await decoder.loadMetadata("/tmp/stalled.mp4");
+		let failure: unknown;
+		const completion = decoder.decodeAll(30, undefined, undefined, onFrame).catch((error) => {
+			failure = error;
+		});
+		try {
+			await vi.advanceTimersByTimeAsync(29_999);
+			expect(failure).toBeUndefined();
+			await vi.advanceTimersByTimeAsync(1);
+			expect(failure).toMatchObject({
+				message: expect.stringContaining("Timed out waiting for a decoded video frame"),
+				cause: expect.objectContaining({ name: "TimeoutError" }),
+			});
+			expect(readerCancelled).toHaveBeenCalledOnce();
+			expect(closed).toHaveBeenCalledOnce();
+			expect(onFrame).not.toHaveBeenCalled();
+		} finally {
+			decoder.cancel();
+			await completion;
+			vi.useRealTimers();
+		}
+	});
+
 	it("retains a frame during an async consumer and closes late output after cancellation", async () => {
 		mockDemuxerRead.mockImplementation(
 			() =>
