@@ -57,7 +57,10 @@ it("uses the Electron default session when there is no proxy override", async ()
 
 it("applies environment proxy rules and answers only the configured proxy's challenge", async () => {
 	vi.stubEnv("HTTPS_PROXY", "http://recordly:local%40test@proxy.test:8899");
-	vi.stubEnv("NO_PROXY", "localhost,.example.test");
+	vi.stubEnv(
+		"NO_PROXY",
+		"example.test, .corp.test:443, 192.168.1.5, 10.0.0.0/8, ::1, *.other.test",
+	);
 	const downloadSession = { setProxy: mocks.setProxy };
 	mocks.fromPartition.mockReturnValue(downloadSession);
 	const request = stubRequest();
@@ -67,7 +70,8 @@ it("applies environment proxy rules and answers only the configured proxy's chal
 	expect(mocks.setProxy).toHaveBeenCalledWith({
 		mode: "fixed_servers",
 		proxyRules: "http://proxy.test:8899",
-		proxyBypassRules: "localhost,.example.test",
+		proxyBypassRules:
+			"example.test,.example.test,corp.test:443,.corp.test:443,192.168.1.5,10.0.0.0/8,[::1],*.other.test",
 	});
 	expect(mocks.request).toHaveBeenCalledWith({
 		url,

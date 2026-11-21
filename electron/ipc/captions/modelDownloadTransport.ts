@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import type { Readable } from "node:stream";
 import { type IncomingMessage, net, type Session, session } from "electron";
 
@@ -21,6 +22,22 @@ type CaptionProxy = {
 type DownloadResponse = IncomingMessage & Readable;
 
 let configuredProxy: Promise<CaptionProxy> | undefined;
+
+function chromiumBypassRules(noProxy?: string): string | undefined {
+	return noProxy
+		?.split(",")
+		.flatMap((entry) => {
+			const rule = entry.trim();
+			if (!rule) return [];
+			if (isIP(rule) === 6) return `[${rule}]`;
+			const domain = /^\.?([a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.?)(:\d+)?$/i.exec(rule);
+			if (!domain || isIP(domain[1])) return rule;
+			const [, hostname, port = ""] = domain;
+			// Chromium uses separate rules for the domain itself and its subdomains.
+			return [`${hostname}${port}`, `.${hostname}${port}`];
+		})
+		.join(",");
+}
 
 function proxyForCaptionDownloads(): Promise<CaptionProxy> | undefined {
 	const env = process.env;
@@ -57,7 +74,7 @@ async function configureProxy(address: string, bypassRules?: string): Promise<Ca
 	await downloadSession.setProxy({
 		mode: "fixed_servers",
 		proxyRules: `${proxy.protocol}//${proxy.host}`,
-		proxyBypassRules: bypassRules,
+		proxyBypassRules: chromiumBypassRules(bypassRules),
 	});
 	return {
 		session: downloadSession,

@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import { sendWhisperModelDownloadProgress } from "./whisper";
 
 vi.mock("../constants", () => ({}));
+vi.mock("./modelDownloadTransport", () => ({ receiveCaptionDownload: vi.fn() }));
 
 const progress = { status: "downloading", progress: 42 } as const;
 
