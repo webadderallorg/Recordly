@@ -168,6 +168,9 @@ export function useRecorderSubscriptions(
 				recorder.stop();
 			}
 
+			void stopWebcamRecorder().catch((error) => {
+				console.warn("Could not finalize the webcam during cleanup:", error);
+			});
 			cleanupCapturedMedia();
 		};
 	}, [
