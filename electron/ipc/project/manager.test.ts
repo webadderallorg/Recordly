@@ -50,6 +50,36 @@ describe("local media path policy", () => {
 		}
 	});
 
+	it("keeps audio and camera selections when the recordings directory changes", async () => {
+		const { RECORDINGS_SETTINGS_FILE } = await import("../constants");
+		const { recordingPreferencesStore } = await import("../settings/recordingPreferencesStore");
+		const { persistRecordingsDirectorySetting } = await import("./manager");
+		const selections = {
+			microphoneEnabled: true,
+			microphoneDeviceId: "selected-mic",
+			systemAudioEnabled: true,
+			webcamEnabled: true,
+			webcamDeviceId: "selected-camera",
+			floatingWebcamPreviewVisible: false,
+		};
+		await fs.writeFile(RECORDINGS_SETTINGS_FILE, JSON.stringify(selections));
+		const target = path.join(tempRoot, "New recordings");
+		await Promise.all([
+			persistRecordingsDirectorySetting(target),
+			recordingPreferencesStore.update({ microphoneDeviceId: "new-microphone" }),
+		]);
+
+		const actual = JSON.parse(await fs.readFile(RECORDINGS_SETTINGS_FILE, "utf8"));
+		expect(actual).toEqual({
+			...selections,
+			microphoneDeviceId: "new-microphone",
+			recordingsDir: target,
+		});
+		vi.resetModules();
+		const { getRecordingsDir } = await import("../utils");
+		await expect(getRecordingsDir()).resolves.toBe(target);
+	});
+
 	it("restores uploaded webcam media and its edge style from disk after a restart", async () => {
 		const manager = await import("./manager");
 		const { writeProjectFileAtomically } = await import("./atomicSave");
