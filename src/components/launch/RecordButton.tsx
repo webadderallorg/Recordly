@@ -49,7 +49,7 @@ export function RecordButton({
 				data-countdown={countdownActive || undefined}
 				onClick={countdownActive ? onCancel : onRecord}
 				disabled={disabled && !countdownActive}
-				aria-label={label}
+				aria-label={countdownActive ? label : t("recording.record")}
 			>
 				{countdownActive ? (
 					<>

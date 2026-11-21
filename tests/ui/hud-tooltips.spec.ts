@@ -18,7 +18,7 @@ test("every idle HUD control shows a tooltip on hover", async ({ page }) => {
 	const controls = await open(page);
 	await expect(controls.locator("[title]")).toHaveCount(0);
 	for (const [name, label] of [
-		["Start recording", "Start recording"],
+		["Record", "Start recording"],
 		["Audio settings", "Audio settings: Microphone"],
 		["Camera settings", "Camera settings: Off"],
 		["Countdown delay", "Countdown delay: No delay"],
@@ -50,7 +50,7 @@ test("one Escape cancels a countdown while its tooltip is open", async ({ page }
 	const controls = await open(page);
 	await controls.getByRole("button", { name: "Countdown delay", exact: true }).click();
 	await page.getByRole("dialog").getByText("3 sec", { exact: true }).click();
-	await controls.getByRole("button", { name: "Start recording", exact: true }).click();
+	await controls.getByRole("button", { name: "Record", exact: true }).click();
 	await hover(page, controls.getByRole("button", { name: "Cancel countdown", exact: true }));
 	await expect(
 		page.getByRole("tooltip", { name: "Cancel countdown", exact: true }),
@@ -58,9 +58,7 @@ test("one Escape cancels a countdown while its tooltip is open", async ({ page }
 
 	await page.keyboard.press("Escape");
 	await expect(page.getByLabel("Last action")).toHaveText("cancel", { timeout: 1500 });
-	await expect(
-		controls.getByRole("button", { name: "Start recording", exact: true }),
-	).toBeVisible();
+	await expect(controls.getByRole("button", { name: "Record", exact: true })).toBeVisible();
 });
 
 test("popover triggers hide their tooltip while open and show the new state after", async ({
