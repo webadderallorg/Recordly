@@ -4,13 +4,19 @@ import {
 	DEFAULT_EDITOR_PREFERENCES,
 	EDITOR_PREFERENCES_STORAGE_KEY,
 	EDITOR_PRESETS_STORAGE_KEY,
+	getPaddingPreference,
 	loadEditorPreferences,
 	loadEditorPresets,
 	normalizeEditorPreferences,
 	saveEditorPreferences,
 	saveEditorPresets,
 } from "./editorPreferences";
-import { DEFAULT_AUTO_CAPTION_SETTINGS, DEFAULT_CROP_REGION } from "./types";
+import {
+	DEFAULT_AUTO_CAPTION_SETTINGS,
+	DEFAULT_CROP_REGION,
+	DEFAULT_PADDING,
+	DEFAULT_WINDOW_PADDING,
+} from "./types";
 
 describe("border radius preferences", () => {
 	it("migrates legacy pixels once and marks the stored unit", () => {
@@ -443,7 +449,8 @@ describe("editorPreferences", () => {
 			cursorClickBounceDuration: 350,
 			cursorSway: 1.5,
 			borderRadius: 18,
-			padding: { top: 30, right: 30, bottom: 30, left: 30, linked: true },
+			screenPadding: { top: 30, right: 30, bottom: 30, left: 30, linked: true },
+			windowPadding: { top: 40, right: 10, bottom: 10, left: 10, linked: false },
 			aspectRatio: "4:5",
 			exportEncodingMode: "quality",
 			exportBackendPreference: DEFAULT_EDITOR_PREFERENCES.exportBackendPreference,
@@ -476,7 +483,8 @@ describe("editorPreferences", () => {
 			cursorClickBounceDuration: DEFAULT_EDITOR_PREFERENCES.cursorClickBounceDuration,
 			cursorSway: 1.5,
 			borderRadius: 18,
-			padding: { top: 30, right: 30, bottom: 30, left: 30, linked: true },
+			screenPadding: { top: 30, right: 30, bottom: 30, left: 30, linked: true },
+			windowPadding: { top: 40, right: 10, bottom: 10, left: 10, linked: false },
 			aspectRatio: "4:5",
 			exportEncodingMode: "quality",
 			exportFormat: "gif",
@@ -487,6 +495,22 @@ describe("editorPreferences", () => {
 			customAspectHeight: "5",
 			customWallpapers: ["data:image/jpeg;base64,abc"],
 		});
+	});
+
+	it("defaults padding per capture kind and ignores the legacy shared padding", () => {
+		vi.stubGlobal(
+			"localStorage",
+			createStorageMock({
+				[EDITOR_PREFERENCES_STORAGE_KEY]: JSON.stringify({ padding: 25 }),
+			}),
+		);
+
+		const prefs = loadEditorPreferences();
+		expect(getPaddingPreference(prefs, "screen")).toEqual(DEFAULT_PADDING);
+		expect(getPaddingPreference(prefs, null)).toEqual(DEFAULT_PADDING);
+		expect(getPaddingPreference(prefs, "window")).toEqual(DEFAULT_WINDOW_PADDING);
+		expect(DEFAULT_PADDING.top).toBe(0);
+		expect(DEFAULT_WINDOW_PADDING.top).toBe(25);
 	});
 
 	it("saves custom Whisper paths", () => {

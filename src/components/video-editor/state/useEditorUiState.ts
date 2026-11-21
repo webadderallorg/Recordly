@@ -4,11 +4,12 @@ import { type AnnouncementEditorSection, isAnnouncementEditorSection } from "@/l
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
 import type { loadEditorPreferences } from "../editorPreferences";
 import type { TimelineEditorHandle } from "../timeline/TimelineEditor";
-import type { CropRegion, EditorEffectSection } from "../types";
+import type { CaptureSourceKind, CropRegion, EditorEffectSection } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 
 type SessionPresentation = {
 	hideOverlayCursorByDefault?: boolean;
+	captureSourceKind?: CaptureSourceKind;
 	nativeCaptureUnavailable?: boolean;
 };
 
@@ -27,6 +28,8 @@ export function useEditorUiState(
 		null,
 	);
 	const [sessionNativeCaptureUnavailable, setSessionNativeCaptureUnavailable] = useState(false);
+	const [sessionCaptureSourceKind, setSessionCaptureSourceKind] =
+		useState<CaptureSourceKind | null>(null);
 	const [nativeCaptureUnavailableModalOpen, setNativeCaptureUnavailableModalOpen] =
 		useState(false);
 	const [whisperExecutablePath, setWhisperExecutablePath] = useState<string | null>(
@@ -85,6 +88,7 @@ export function useEditorUiState(
 	const applySessionPresentation = useCallback(
 		(session: SessionPresentation | null | undefined) => {
 			setSessionShowCursorOverride(session?.hideOverlayCursorByDefault ? false : null);
+			setSessionCaptureSourceKind(session?.captureSourceKind ?? null);
 			setSessionNativeCaptureUnavailable(Boolean(session?.nativeCaptureUnavailable));
 			setNativeCaptureUnavailableModalOpen(Boolean(session?.nativeCaptureUnavailable));
 		},
@@ -118,6 +122,7 @@ export function useEditorUiState(
 		sessionShowCursorOverride,
 		setSessionShowCursorOverride,
 		sessionNativeCaptureUnavailable,
+		sessionCaptureSourceKind,
 		nativeCaptureUnavailableModalOpen,
 		setNativeCaptureUnavailableModalOpen,
 		whisperExecutablePath,

@@ -5,10 +5,17 @@ import { type ExportPreferences, normalizeExportPreferences } from "./exportPref
 import {
 	getDefaultBorderRadiusPercent,
 	legacyBorderRadiusPixelsToPercent,
+	normalizePadding,
 	normalizeProjectEditor,
 	type ProjectEditorState,
 	stripPersistedDevMotionBlurSettings,
 } from "./projectPersistence";
+import {
+	type CaptureSourceKind,
+	DEFAULT_PADDING,
+	DEFAULT_WINDOW_PADDING,
+	type Padding,
+} from "./types";
 
 type PersistedEditorControls = Pick<
 	ProjectEditorState,
@@ -77,7 +84,13 @@ export interface EditorPreset {
 	snapshot: EditorPresetSnapshot;
 }
 
-export interface EditorPreferences extends PersistedEditorControls, ExportPreferences {
+export interface EditorPreferences
+	extends Omit<PersistedEditorControls, "padding">,
+		ExportPreferences {
+	/** Last padding used for display and area recordings. */
+	screenPadding: Padding;
+	/** Last padding used for window recordings. */
+	windowPadding: Padding;
 	autoApplyFreshRecordingAutoZooms: boolean;
 	borderRadiusUnit: "percent";
 	customAspectWidth: string;
@@ -134,7 +147,8 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	cursorIdleHide: DEFAULT_EDITOR_CONTROLS.cursorIdleHide,
 	borderRadius: DEFAULT_EDITOR_CONTROLS.borderRadius,
 	borderRadiusUnit: "percent",
-	padding: DEFAULT_EDITOR_CONTROLS.padding,
+	screenPadding: { ...DEFAULT_PADDING },
+	windowPadding: { ...DEFAULT_WINDOW_PADDING },
 	webcam: DEFAULT_EDITOR_CONTROLS.webcam,
 	aspectRatio: DEFAULT_EDITOR_CONTROLS.aspectRatio,
 	...normalizeExportPreferences({}),
@@ -198,8 +212,8 @@ function normalizeEditorPresetSnapshot(candidate: unknown): EditorPresetSnapshot
 		cropRegion: raw.cropRegion,
 	}).cropRegion;
 	const normalizedControls = normalizeEditorControls(
-		normalizedPreferences,
-		normalizedPreferences,
+		{ ...normalizedPreferences, padding: raw.padding },
+		{ ...normalizedPreferences, padding: DEFAULT_PADDING },
 	);
 	const {
 		sourcePath: _sourcePath,
@@ -275,8 +289,8 @@ export function serializeEditorPresetSnapshot(snapshot: EditorPresetSnapshot): s
 }
 
 function normalizeEditorControls(
-	raw: Partial<EditorPreferences>,
-	fallback: EditorPreferences,
+	raw: PartialEditorControls,
+	fallback: PersistedEditorControls,
 ): PersistedEditorControls {
 	const sanitizedRaw = stripPersistedDevMotionBlurSettings(raw);
 	const candidate: PartialEditorControls = {
@@ -405,8 +419,17 @@ export function normalizeEditorPreferences(
 							: legacyBorderRadiusPixelsToPercent(raw.borderRadius),
 				};
 
+	// Padding is remembered per capture kind. The old shared `padding` value is
+	// ignored because it mostly holds a former 25% default, not a user choice.
+	const { padding: _sharedPadding, ...normalizedControls } = normalizeEditorControls(controls, {
+		...fallback,
+		padding: fallback.screenPadding,
+	});
+
 	return {
-		...normalizeEditorControls(controls, fallback),
+		...normalizedControls,
+		screenPadding: normalizePadding(raw.screenPadding, fallback.screenPadding),
+		windowPadding: normalizePadding(raw.windowPadding, fallback.windowPadding),
 		...normalizeExportPreferences({ ...fallback, ...raw }),
 		borderRadiusUnit: "percent",
 		customAspectWidth: normalizePositiveIntegerString(
@@ -473,6 +496,13 @@ export function loadEditorPreferences(): EditorPreferences {
 		whisperExecutablePath,
 		whisperModelPath,
 	};
+}
+
+export function getPaddingPreference(
+	preferences: Pick<EditorPreferences, "screenPadding" | "windowPadding">,
+	kind: CaptureSourceKind | null,
+): Padding {
+	return { ...(kind === "window" ? preferences.windowPadding : preferences.screenPadding) };
 }
 
 export type EditorPreferencesPatch = Omit<Partial<EditorPreferences>, "webcam"> & {

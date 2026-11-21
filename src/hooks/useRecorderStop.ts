@@ -31,6 +31,7 @@ export function useRecorderStop(
 		| "finalizeRecordingSession"
 		| "webcamTimeOffsetMs"
 		| "hideEditorOverlayCursorByDefault"
+		| "captureSourceKind"
 		| "storeMicrophoneSidecar"
 		| "mediaRecorder"
 		| "screenWriter"
@@ -62,6 +63,7 @@ export function useRecorderStop(
 		finalizeRecordingSession,
 		webcamTimeOffsetMs,
 		hideEditorOverlayCursorByDefault,
+		captureSourceKind,
 		storeMicrophoneSidecar,
 		mediaRecorder,
 		screenWriter,
@@ -200,6 +202,7 @@ export function useRecorderStop(
 										timeOffsetMs: webcamTimeOffsetMs.current,
 										hideOverlayCursorByDefault:
 											hideEditorOverlayCursorByDefault.current,
+										captureSourceKind: captureSourceKind.current,
 									});
 								} catch (sessionError) {
 									console.error(
@@ -253,6 +256,7 @@ export function useRecorderStop(
 							webcamPath,
 							timeOffsetMs: webcamTimeOffsetMs.current,
 							hideOverlayCursorByDefault: hideEditorOverlayCursorByDefault.current,
+							captureSourceKind: captureSourceKind.current,
 						});
 
 						console.log(

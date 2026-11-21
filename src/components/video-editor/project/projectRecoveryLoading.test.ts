@@ -16,7 +16,8 @@ vi.mock("@/components/ui/toast", () => ({
 	toast: { warning: vi.fn(), error: vi.fn(), dismiss: vi.fn(), success: vi.fn() },
 }));
 vi.mock("@/i18n/runtime", () => ({ translate: (_key: string, fallback: string) => fallback }));
-vi.mock("../projectPersistence", () => ({
+vi.mock("../projectPersistence", async (original) => ({
+	...(await original<typeof import("../projectPersistence")>()),
 	fromFileUrl: (value: string) => value,
 	resolveVideoUrl: vi.fn(),
 }));

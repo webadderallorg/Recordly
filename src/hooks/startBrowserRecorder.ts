@@ -76,6 +76,7 @@ export async function startBrowserRecorder(
 		| "resolvedWebcamPath"
 		| "webcamTimeOffsetMs"
 		| "hideEditorOverlayCursorByDefault"
+		| "captureSourceKind"
 		| "beginWebcamCapture"
 		| "resetRecordingClock"
 		| "webcamStartTime"
@@ -110,6 +111,7 @@ export async function startBrowserRecorder(
 		resolvedWebcamPath,
 		webcamTimeOffsetMs,
 		hideEditorOverlayCursorByDefault,
+		captureSourceKind,
 		beginWebcamCapture,
 		resetRecordingClock,
 		webcamStartTime,
@@ -232,6 +234,7 @@ export async function startBrowserRecorder(
 								timeOffsetMs: webcamTimeOffsetMs.current,
 								hideOverlayCursorByDefault:
 									hideEditorOverlayCursorByDefault.current,
+								captureSourceKind: captureSourceKind.current,
 							});
 						}
 					} finally {

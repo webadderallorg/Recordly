@@ -2,16 +2,18 @@
 import { useEffect, useRef } from "react";
 import { toast } from "@/components/ui/toast";
 import { translate as t } from "@/i18n/runtime";
+import { getPaddingPreference, loadEditorPreferences } from "../editorPreferences";
 import { fromFileUrl, resolveVideoUrl } from "../projectPersistence";
 import type { getDevOpenRecordingConfig, getSmokeExportConfig } from "../smokeExportConfig";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
-import { DEFAULT_WEBCAM_TIME_OFFSET_MS } from "../types";
+import { type CaptureSourceKind, DEFAULT_WEBCAM_TIME_OFFSET_MS } from "../types";
 import { shouldLoopWebcamSource } from "../videoPlayback/webcamSync";
 
 type SessionPresentation = {
 	hideOverlayCursorByDefault?: boolean;
+	captureSourceKind?: CaptureSourceKind;
 	nativeCaptureUnavailable?: boolean;
 };
 
@@ -189,6 +191,12 @@ export function useInitialEditorSource({
 					project.setLastSavedSnapshot(null);
 					resetSourceScopedEditorState();
 					applySessionPresentation(sessionResult.session);
+					appearance.setPadding(
+						getPaddingPreference(
+							loadEditorPreferences(),
+							sessionResult.session.captureSourceKind ?? null,
+						),
+					);
 					appearance.setWebcam((previous) => ({
 						...previous,
 						visibleRanges: undefined,

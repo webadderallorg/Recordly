@@ -4,7 +4,7 @@ import {
 	loadEditorPreferences,
 } from "@/components/video-editor/editorPreferences";
 import type { Padding } from "@/components/video-editor/types";
-import { DEFAULT_PADDING } from "@/components/video-editor/types";
+import { DEFAULT_WINDOW_PADDING } from "@/components/video-editor/types";
 import { isZeroPadding } from "@/components/video-editor/videoPlayback/layoutUtils";
 import { type AspectRatio } from "@/utils/aspectRatioUtils";
 
@@ -16,6 +16,7 @@ export const frameSettingsKeys = [
 	"onBorderRadiusChange",
 	"padding",
 	"onPaddingChange",
+	"defaultPadding",
 	"aspectRatio",
 	"onAspectRatioChange",
 ] as const;
@@ -29,6 +30,7 @@ export function useFrameSettings(
 		onBorderRadiusChange,
 		padding,
 		onPaddingChange,
+		defaultPadding,
 		aspectRatio,
 		onAspectRatioChange,
 	} = props;
@@ -57,7 +59,8 @@ export function useFrameSettings(
 
 		// Fallback if the project loaded in a "background removed" state already
 		onAspectRatioChange?.(initialEditorPreferences.aspectRatio);
-		onPaddingChange?.({ ...DEFAULT_PADDING });
+		// Zero padding would leave the background removed.
+		onPaddingChange?.({ ...DEFAULT_WINDOW_PADDING });
 	};
 
 	const togglePaddingLink = () => {
@@ -104,7 +107,7 @@ export function useFrameSettings(
 		onShadowChange?.(DEFAULT_EDITOR_PREFERENCES.shadowIntensity);
 		onBorderRadiusChange?.(DEFAULT_EDITOR_PREFERENCES.borderRadius);
 		onAspectRatioChange?.(DEFAULT_EDITOR_PREFERENCES.aspectRatio);
-		onPaddingChange?.({ ...DEFAULT_EDITOR_PREFERENCES.padding });
+		onPaddingChange?.({ ...defaultPadding });
 		removeBackgroundStateRef.current = null;
 	};
 

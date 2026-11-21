@@ -28,6 +28,7 @@ import {
 	DEFAULT_ZOOM_OUT_EASING,
 	DEFAULT_ZOOM_SMOOTHNESS,
 	normalizeCursorClickEffectStyle,
+	type Padding,
 } from "./types";
 import { normalizeCursorIdleHideSettings } from "./videoPlayback/cursorIdleVisibility";
 
@@ -60,6 +61,30 @@ export function validateProjectData(candidate: unknown): candidate is EditorProj
 	if (!project.editor || typeof project.editor !== "object") return false;
 	return true;
 }
+export function normalizePadding(value: unknown, fallback: Padding = DEFAULT_PADDING): Padding {
+	if (value && typeof value === "object") {
+		const p = value as Partial<Padding>;
+		const linked = typeof p.linked === "boolean" ? p.linked : true;
+		const verticalMax = linked ? 100 : ADVANCED_VERTICAL_PADDING_MAX;
+		const top = isFiniteNumber(p.top) ? clamp(p.top, 0, verticalMax) : fallback.top;
+		if (linked) {
+			return { top, bottom: top, left: top, right: top, linked: true };
+		}
+		return {
+			top,
+			bottom: isFiniteNumber(p.bottom) ? clamp(p.bottom, 0, verticalMax) : fallback.bottom,
+			left: isFiniteNumber(p.left) ? clamp(p.left, 0, 100) : fallback.left,
+			right: isFiniteNumber(p.right) ? clamp(p.right, 0, 100) : fallback.right,
+			linked: false,
+		};
+	}
+	if (typeof value === "number" && isFiniteNumber(value)) {
+		const val = clamp(value, 0, 100);
+		return { top: val, bottom: val, left: val, right: val, linked: true };
+	}
+	return { ...fallback };
+}
+
 export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): ProjectEditorState {
 	const validAspectRatios = new Set<AspectRatio>(ASPECT_RATIOS);
 	const {
@@ -160,33 +185,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		borderRadius: isFiniteNumber(editor.borderRadius)
 			? clamp(editor.borderRadius, 0, 50)
 			: getDefaultBorderRadiusPercent(),
-		padding: (() => {
-			const p = editor.padding;
-			if (p && typeof p === "object") {
-				const linked = typeof p.linked === "boolean" ? p.linked : true;
-				const verticalMax = linked ? 100 : ADVANCED_VERTICAL_PADDING_MAX;
-				const top = isFiniteNumber(p.top)
-					? clamp(p.top, 0, verticalMax)
-					: DEFAULT_PADDING.top;
-				if (linked) {
-					return { top, bottom: top, left: top, right: top, linked: true };
-				}
-				return {
-					top,
-					bottom: isFiniteNumber(p.bottom)
-						? clamp(p.bottom, 0, verticalMax)
-						: DEFAULT_PADDING.bottom,
-					left: isFiniteNumber(p.left) ? clamp(p.left, 0, 100) : DEFAULT_PADDING.left,
-					right: isFiniteNumber(p.right) ? clamp(p.right, 0, 100) : DEFAULT_PADDING.right,
-					linked: false,
-				};
-			}
-			if (typeof p === "number" && isFiniteNumber(p)) {
-				const val = clamp(p, 0, 100);
-				return { top: val, bottom: val, left: val, right: val, linked: true };
-			}
-			return { ...DEFAULT_PADDING };
-		})(),
+		padding: normalizePadding(editor.padding),
 		cropRegion: {
 			x: cropX,
 			y: cropY,
