@@ -511,7 +511,7 @@
 		"recordingDescription": "Các tùy chọn này áp dụng cho bản ghi mới.",
 		"motionScope": "Thay đổi áp dụng cho dự án này và được dùng cho dự án mới. Dự án đã lưu giữ cài đặt riêng.",
 		"hideControls": "Ẩn thanh điều khiển khỏi video ghi lại",
-		"hideControlsDescription": "Thanh điều khiển vẫn hiện trên màn hình nhưng không xuất hiện trong video khi đang ghi. Khi không ghi, thanh vẫn có thể xuất hiện trong bản ghi của ứng dụng khác.",
+		"hideControlsDescription": "Khi đang ghi, thanh điều khiển vẫn hiện trên màn hình của bạn và được ẩn khỏi video. Thanh cũng có thể biến mất khỏi các ứng dụng chia sẻ màn hình và điều khiển từ xa.",
 		"storage": "Lưu trữ",
 		"storageDescription": "Tìm bản ghi và dự án đã lưu trên máy này.",
 		"loadingFolder": "Đang tải vị trí thư mục…",

@@ -512,7 +512,7 @@
 		"recordingDescription": "Queste preferenze si applicano alle nuove registrazioni.",
 		"motionScope": "Le modifiche si applicano a questo progetto e vengono ricordate per i nuovi progetti. I progetti salvati mantengono le proprie impostazioni.",
 		"hideControls": "Nascondi i controlli di registrazione nel video acquisito",
-		"hideControlsDescription": "I controlli restano visibili sul desktop, ma sono esclusi dal video durante la registrazione. Quando non registri, possono comparire in altre acquisizioni dello schermo.",
+		"hideControlsDescription": "Durante la registrazione, i controlli restano visibili sul desktop e vengono nascosti nel video. Potrebbero sparire anche durante la condivisione dello schermo o nelle app di desktop remoto.",
 		"storage": "Archiviazione",
 		"storageDescription": "Trova le registrazioni e i progetti salvati su questo computer.",
 		"loadingFolder": "Caricamento del percorso della cartella…",

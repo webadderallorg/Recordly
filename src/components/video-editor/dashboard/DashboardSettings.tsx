@@ -256,7 +256,7 @@ export function DashboardSettings({
 								)}
 								description={t(
 									"settings.appPreferences.hideControlsDescription",
-									"Controls stay visible on your desktop but are excluded from the video while recording. When idle, they may appear in other screen captures.",
+									"While recording, the controls stay visible on your desktop and are hidden from the video. They may also disappear from screen sharing and remote desktop apps.",
 								)}
 							>
 								<Switch

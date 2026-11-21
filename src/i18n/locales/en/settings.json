@@ -511,7 +511,7 @@
 		"recordingDescription": "These preferences apply to new recordings.",
 		"motionScope": "Changes affect this project and are remembered for new projects. Saved projects keep their own settings.",
 		"hideControls": "Hide recording controls from captured video",
-		"hideControlsDescription": "Controls stay visible on your desktop but are excluded from the video while recording. When idle, they may appear in other screen captures.",
+		"hideControlsDescription": "While recording, the controls stay visible on your desktop and are hidden from the video. They may also disappear from screen sharing and remote desktop apps.",
 		"storage": "Storage",
 		"storageDescription": "Find your recordings and saved projects on this computer.",
 		"loadingFolder": "Loading folder location…",
