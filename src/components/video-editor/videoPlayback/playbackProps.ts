@@ -95,6 +95,7 @@ export function resolveVideoPlaybackProps({
 	cursorSway = DEFAULT_CURSOR_SWAY,
 	cursorIdleHide = DEFAULT_CURSOR_IDLE_HIDE,
 	volume = 1,
+	previewResolutionScale = 1,
 	suspendRendering = false,
 }: VideoPlaybackProps) {
 	return {
@@ -167,6 +168,7 @@ export function resolveVideoPlaybackProps({
 		cursorSway,
 		cursorIdleHide,
 		volume,
+		previewResolutionScale,
 		suspendRendering,
 	};
 }

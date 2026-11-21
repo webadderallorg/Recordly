@@ -84,6 +84,8 @@
 		"videos": "Videos"
 	},
 	"playback": {
+		"resolution": "Playback resolution",
+		"fullResolution": "Full",
 		"play": "Play",
 		"pause": "Pause",
 		"skipBack": "Skip Back",

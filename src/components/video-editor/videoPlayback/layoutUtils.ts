@@ -165,6 +165,7 @@ export function computePaddedLayout(params: {
 interface LayoutParams {
 	container: HTMLDivElement;
 	app: Application;
+	resolution?: number;
 	videoSprite: Sprite;
 	maskGraphics: Graphics;
 	videoElement: HTMLVideoElement;
@@ -195,6 +196,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 	const {
 		container,
 		app,
+		resolution,
 		videoSprite,
 		maskGraphics,
 		videoElement,
@@ -219,7 +221,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 		return null;
 	}
 
-	app.renderer.resize(width, height);
+	app.renderer.resize(width, height, resolution);
 	app.canvas.style.width = "100%";
 	app.canvas.style.height = "100%";
 
