@@ -42,6 +42,7 @@ export {
 	parseWindowsGpuExportProgressLine,
 } from "./nativeVideo/progress";
 export {
+	cancelNativeVideoExportSession,
 	cleanupNativeVideoExportSessions,
 	nativeStaticLayoutExportSessions,
 	nativeVideoExportSessions,

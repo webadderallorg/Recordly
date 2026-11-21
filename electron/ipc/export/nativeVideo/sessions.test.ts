@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import {
+	cancelNativeVideoExportSession,
 	cleanupNativeVideoExportSessions,
 	nativeStaticLayoutExportSessions,
 	nativeVideoExportSessions,
@@ -44,6 +45,9 @@ it("does not reap owned files until the encoder and mux settle, and waits for st
 	nativeVideoExportSessions.set("stream", streaming);
 	nativeStaticLayoutExportSessions.set("static", staticLayout);
 
+	const cancelled = cancelNativeVideoExportSession("stream", streaming);
+	expect(nativeVideoExportSessions.get("stream")).toBe(streaming);
+	expect(cancelNativeVideoExportSession("stream", streaming)).toBe(cancelled);
 	const finished = vi.fn();
 	const cleanup = cleanupNativeVideoExportSessions()?.then(finished);
 	expect(streaming.terminating).toBe(true);
@@ -57,6 +61,7 @@ it("does not reap owned files until the encoder and mux settle, and waits for st
 	encoderClosed();
 	await Promise.resolve();
 	expect(removeTemporaryExportFile).not.toHaveBeenCalled();
+	expect(nativeVideoExportSessions.get("stream")).toBe(streaming);
 	muxClosed({ outputPath: "owned-muxed.mp4" });
 	await vi.waitFor(() =>
 		expect(vi.mocked(removeTemporaryExportFile).mock.calls).toEqual([
@@ -64,6 +69,8 @@ it("does not reap owned files until the encoder and mux settle, and waits for st
 			["owned-muxed.mp4", true],
 		]),
 	);
+	await cancelled;
+	expect(nativeVideoExportSessions.has("stream")).toBe(false);
 	expect(finished).not.toHaveBeenCalled();
 	staticCleaned();
 	await cleanup;
