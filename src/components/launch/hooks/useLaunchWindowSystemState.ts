@@ -5,6 +5,7 @@ export function useLaunchWindowSystemState(preparePermissions: () => Promise<unk
 		boolean | null
 	>(null);
 	const [platform, setPlatform] = useState<string | null>(null);
+	const [dragX11Window, setDragX11Window] = useState(false);
 
 	useEffect(() => {
 		window.electronAPI?.hudOverlayRendererReady?.();
@@ -33,6 +34,7 @@ export function useLaunchWindowSystemState(preparePermissions: () => Promise<unk
 				const result = await window.electronAPI.getHudOverlayMousePassthroughSupported();
 				if (!cancelled && result.success) {
 					setHudOverlayMousePassthroughSupported(result.supported);
+					setDragX11Window(result.dragX11Window === true);
 				}
 			} catch (error) {
 				console.error("Failed to load HUD overlay mouse passthrough support:", error);
@@ -50,5 +52,5 @@ export function useLaunchWindowSystemState(preparePermissions: () => Promise<unk
 		if (!import.meta.env.DEV) void preparePermissions();
 	}, [preparePermissions]);
 
-	return { hudOverlayMousePassthroughSupported, platform };
+	return { hudOverlayMousePassthroughSupported, platform, dragX11Window };
 }

@@ -268,6 +268,7 @@ interface Window {
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;
 			supported: boolean;
+			dragX11Window?: boolean;
 		}>;
 		setHudOverlayCaptureProtection: (
 			enabled: boolean,

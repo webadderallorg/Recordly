@@ -9,7 +9,7 @@ import {
 	supportsHudCaptureProtection,
 } from "../src/lib/hudCaptureProtection";
 import { getHudOverlayWindowBounds, shouldExpandHudOverlayFallback } from "./hudOverlayBounds";
-import { isLikelyLinuxWaylandSession } from "./ipc/register/sourceMapping";
+import { supportsX11HudWindowDrag } from "./hudOverlayWindowOptions";
 
 describe("HUD capture protection lifecycle", () => {
 	it("uses window protection on Windows and macOS only", () => {
@@ -119,6 +119,7 @@ it("keeps the hovered HUD interactive across the work area when recording starts
 		isHudOverlayMousePassthroughSupported: () => true,
 		getHudOverlayDisplay: () => ({ workArea }),
 		getHudOverlayWindowBounds,
+		x11HudDraggedBounds: undefined,
 		positionUpdateToastWindow: vi.fn(),
 		shouldExpandHudOverlayFallback,
 		setHudOverlayFallbackExpanded: vi.fn(),
@@ -166,7 +167,8 @@ it.each([
 	const changes: boolean[] = [];
 	const context = {
 		process: { platform: "linux", env },
-		isLikelyLinuxWaylandSession,
+		app: { commandLine: { getSwitchValue: () => "" } },
+		supportsX11HudWindowDrag,
 		hudOverlayIgnoringMouse: true,
 		hudOverlaySourceSelectionActive: false,
 		hudOverlayRecordingActive: false,

@@ -14,13 +14,13 @@ import { resolveEditorStartupView } from "./editorStartupView";
 import { isHudInEditorMode } from "./hudEditorMode";
 import {
 	getHudOverlayWindowBounds,
+	type HudOverlayWorkArea,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
-import { getHudOverlayTaskbarOptions } from "./hudOverlayWindowOptions";
+import { getHudOverlayTaskbarOptions, supportsX11HudWindowDrag } from "./hudOverlayWindowOptions";
 import { startHudPointerRecovery } from "./hudPointerRecovery";
 import { sendNativeHudCaptureExclusions } from "./ipc/recording/nativeCaptureCommand";
-import { isLikelyLinuxWaylandSession } from "./ipc/register/sourceMapping";
 import {
 	currentProjectPath,
 	currentRecordingSession,
@@ -50,6 +50,7 @@ const WINDOW_ICON_PATH = path.join(
 );
 
 let hudOverlayWindow: BrowserWindow | null = null;
+let x11HudDraggedBounds: HudOverlayWorkArea | undefined;
 let hiddenLinuxHud: { window: BrowserWindow; restoreOnActivation: boolean } | null = null;
 let hudOverlayHiddenFromCapture = true;
 let hudOverlayCaptureProtectionLoaded = false;
@@ -281,6 +282,7 @@ function getHudOverlayBounds() {
 		workArea,
 		isHudOverlayMousePassthroughSupported(),
 		fallbackExpanded,
+		x11HudDraggedBounds,
 	);
 }
 
@@ -353,7 +355,7 @@ function setHudOverlayFallbackExpanded(expanded: boolean) {
 	const { workArea } = getHudOverlayDisplay();
 	const nextBounds = resizeHudOverlayFallbackBounds(
 		workArea,
-		hudOverlayWindow.getBounds(),
+		x11HudDraggedBounds ?? hudOverlayWindow.getBounds(),
 		expanded,
 	);
 	hudOverlayWindow.setBounds(nextBounds, false);
@@ -403,11 +405,17 @@ ipcMain.on("hud-overlay-set-ignore-mouse", (_event, ignore: boolean) => {
 	setHudOverlayMousePassthrough(Boolean(ignore));
 });
 
+function useX11HudWindowDrag() {
+	return supportsX11HudWindowDrag(
+		process.platform,
+		process.env,
+		app.commandLine.getSwitchValue("ozone-platform"),
+	);
+}
+
 ipcMain.on("hud-overlay-set-popover-open", (event, open: boolean) => {
 	if (
-		process.platform !== "linux" ||
-		!process.env.DISPLAY?.trim() ||
-		isLikelyLinuxWaylandSession(process.env) ||
+		!useX11HudWindowDrag() ||
 		hudOverlayRecordingActive ||
 		hudOverlaySourceSelectionActive ||
 		!hudOverlayWindow ||
@@ -437,27 +445,20 @@ ipcMain.on("hud-overlay-set-source-selection-active", (_event, active: boolean) 
 let hudUserPosition: { x: number; y: number } | null = null;
 let hudDragOffset: { x: number; y: number } | null = null;
 let hudDragLastCursor: { x: number; y: number } | null = null;
-let hudDragFixedSize: { width: number; height: number } | null = null;
+let hudDragStartBounds: HudOverlayWorkArea | null = null;
 
-ipcMain.on("hud-overlay-drag", (_event, phase: string, screenX: number, screenY: number) => {
-	if (!hudOverlayWindow || hudOverlayWindow.isDestroyed()) return;
-
-	// On Linux the compositor (especially Wayland) refuses programmatic window
-	// placement, so BrowserWindow.setBounds() with x/y is silently ignored and
-	// the HUD appears "stuck".  The renderer marks the drag handle as
-	// -webkit-app-region: drag on Linux, letting the OS move the window for us.
-	// The resulting position is captured by the win.on("moved", ...) listener
-	// below so `hudUserPosition` stays in sync.
-	if (process.platform === "linux") {
-		return;
-	}
+ipcMain.on("hud-overlay-drag", (event, phase: string, screenX: number, screenY: number) => {
+	const win = getHudOverlayWindow();
+	const x11 = useX11HudWindowDrag();
+	if (!win || event.sender !== win.webContents || (process.platform === "linux" && !x11)) return;
+	if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return;
 
 	if (phase === "start") {
-		const bounds = hudOverlayWindow.getBounds();
+		const bounds = win.getBounds();
 		hudDragOffset = { x: screenX - bounds.x, y: screenY - bounds.y };
 		hudDragLastCursor = { x: screenX, y: screenY };
-		hudDragFixedSize = { width: bounds.width, height: bounds.height };
-	} else if (phase === "move" && hudDragOffset) {
+		hudDragStartBounds = bounds;
+	} else if (phase === "move" && hudDragOffset && hudDragStartBounds) {
 		if (
 			hudDragLastCursor &&
 			hudDragLastCursor.x === screenX &&
@@ -469,24 +470,29 @@ ipcMain.on("hud-overlay-drag", (_event, phase: string, screenX: number, screenY:
 		hudDragLastCursor = { x: screenX, y: screenY };
 		const targetX = Math.round(screenX - hudDragOffset.x);
 		const targetY = Math.round(screenY - hudDragOffset.y);
-		const fixedWidth = hudDragFixedSize?.width ?? hudOverlayWindow.getBounds().width;
-		const fixedHeight = hudDragFixedSize?.height ?? hudOverlayWindow.getBounds().height;
-		hudOverlayWindow.setBounds(
+		win.setBounds(
 			{
 				x: targetX,
 				y: targetY,
-				width: fixedWidth,
-				height: fixedHeight,
+				width: hudDragStartBounds.width,
+				height: hudDragStartBounds.height,
 			},
 			false,
 		);
-	} else if (phase === "end") {
-		const finalBounds = hudOverlayWindow.getBounds();
+	} else if (phase === "end" && hudDragStartBounds) {
+		const finalBounds = win.getBounds();
 		hudUserPosition = { x: finalBounds.x, y: finalBounds.y };
+		if (
+			x11 &&
+			(finalBounds.x !== hudDragStartBounds.x || finalBounds.y !== hudDragStartBounds.y)
+		) {
+			x11HudDraggedBounds = finalBounds;
+			applyHudOverlayBounds();
+		}
 
 		hudDragOffset = null;
 		hudDragLastCursor = null;
-		hudDragFixedSize = null;
+		hudDragStartBounds = null;
 	}
 });
 
@@ -516,6 +522,7 @@ ipcMain.handle("get-hud-overlay-mouse-passthrough-supported", () => {
 	return {
 		success: true,
 		supported: isHudOverlayMousePassthroughSupported(),
+		dragX11Window: useX11HudWindowDrag(),
 	};
 });
 
@@ -628,6 +635,10 @@ export function createHudOverlayWindow(): BrowserWindow {
 	loadHudOverlayCaptureProtectionSetting();
 	hudOverlayFallbackExpanded = false;
 	hudOverlayWebcamPreviewVisible = false;
+	x11HudDraggedBounds = undefined;
+	hudDragOffset = null;
+	hudDragLastCursor = null;
+	hudDragStartBounds = null;
 	const initialBounds = getHudOverlayBounds();
 	let hasShownHudWindow = false;
 
@@ -778,8 +789,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 
 	hudOverlayWindow = win;
 
-	// On Linux the HUD is dragged by the OS via -webkit-app-region (Wayland
-	// forbids client-side positioning). Mirror moved bounds into drag state.
+	// Keep the last HUD position in sync with Linux window moves.
 	if (process.platform === "linux") {
 		win.on("moved", () => {
 			if (win.isDestroyed()) return;
@@ -810,6 +820,8 @@ export function createHudOverlayWindow(): BrowserWindow {
 			: () => undefined;
 	const handleDisplayRemoved = () => {
 		hudUserPosition = null;
+		x11HudDraggedBounds = undefined;
+		if (useX11HudWindowDrag()) applyHudOverlayBounds();
 	};
 	const handleDisplayMetricsChanged = () => {
 		if (hudUserPosition) {
