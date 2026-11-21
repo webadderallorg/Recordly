@@ -5,12 +5,15 @@ import {
 	buildNativeVideoExportArgs,
 	getNativeVideoInputByteSize,
 	getPreferredNativeVideoEncoders,
-	type NativeExportEncodingMode,
+	type NativeVideoExportStartOptions,
 	parseAvailableFfmpegEncoders,
 } from "../../nativeVideoExport";
 import { cachedNativeVideoEncoder, setCachedNativeVideoEncoder } from "../../state";
 import { execFileAsync } from "./constants";
 import { removeTemporaryExportFile } from "./stream";
+
+const MAX_ENCODER_PROBE_DIMENSION = 256;
+type EncoderProbeOptions = Pick<NativeVideoExportStartOptions, "width" | "height" | "encodingMode">;
 
 export async function getAvailableNativeVideoEncoders(ffmpegPath: string) {
 	const { stdout } = await execFileAsync(ffmpegPath, ["-hide_banner", "-encoders"], {
@@ -24,7 +27,7 @@ export async function getAvailableNativeVideoEncoders(ffmpegPath: string) {
 export async function probeNativeVideoEncoder(
 	ffmpegPath: string,
 	encoderName: string,
-	encodingMode: NativeExportEncodingMode,
+	{ width, height, encodingMode }: EncoderProbeOptions,
 ) {
 	const outputPath = path.join(
 		app.getPath("temp"),
@@ -33,8 +36,8 @@ export async function probeNativeVideoEncoder(
 	const args = buildNativeVideoExportArgs(
 		encoderName,
 		{
-			width: 64,
-			height: 64,
+			width,
+			height,
 			frameRate: 1,
 			bitrate: 1_500_000,
 			encodingMode,
@@ -93,20 +96,23 @@ export async function probeNativeVideoEncoder(
 
 		try {
 			if (!process.stdin) fail();
-			else process.stdin.end(Buffer.alloc(getNativeVideoInputByteSize(64, 64), 0));
+			else process.stdin.end(Buffer.alloc(getNativeVideoInputByteSize(width, height)));
 		} catch {
 			fail();
 		}
 	});
 }
 
-export async function resolveNativeVideoEncoder(
-	ffmpegPath: string,
-	encodingMode: NativeExportEncodingMode,
-) {
+export async function resolveNativeVideoEncoder(ffmpegPath: string, options: EncoderProbeOptions) {
+	// A 64px probe can fail on hardware that supports the actual export dimensions.
+	const width = Math.min(options.width, MAX_ENCODER_PROBE_DIMENSION);
+	const height = Math.min(options.height, MAX_ENCODER_PROBE_DIMENSION);
+	const { encodingMode } = options;
 	if (
 		cachedNativeVideoEncoder?.ffmpegPath === ffmpegPath &&
-		cachedNativeVideoEncoder?.encodingMode === encodingMode
+		cachedNativeVideoEncoder.encodingMode === encodingMode &&
+		cachedNativeVideoEncoder.width === width &&
+		cachedNativeVideoEncoder.height === height
 	) {
 		return cachedNativeVideoEncoder.encoderName;
 	}
@@ -121,8 +127,10 @@ export async function resolveNativeVideoEncoder(
 			continue;
 		}
 
-		if (await probeNativeVideoEncoder(ffmpegPath, encoderName, encodingMode)) {
-			setCachedNativeVideoEncoder({ ffmpegPath, encodingMode, encoderName });
+		if (
+			await probeNativeVideoEncoder(ffmpegPath, encoderName, { width, height, encodingMode })
+		) {
+			setCachedNativeVideoEncoder({ ffmpegPath, encodingMode, encoderName, width, height });
 			return encoderName;
 		}
 	}

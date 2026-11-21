@@ -295,8 +295,13 @@ export function registerExportHandlers() {
 			},
 		) => {
 			try {
-				if (options.width % 2 !== 0 || options.height % 2 !== 0) {
-					throw new Error("Native export requires even output dimensions");
+				if (
+					options.width <= 0 ||
+					options.height <= 0 ||
+					options.width % 2 !== 0 ||
+					options.height % 2 !== 0
+				) {
+					throw new Error("Native export requires positive, even output dimensions");
 				}
 
 				const ffmpegPath = getFfmpegBinaryPath();
@@ -316,7 +321,7 @@ export function registerExportHandlers() {
 						outputPath,
 					});
 				} else {
-					encoderName = await resolveNativeVideoEncoder(ffmpegPath, options.encodingMode);
+					encoderName = await resolveNativeVideoEncoder(ffmpegPath, options);
 					ffmpegArgs = buildNativeVideoExportArgs(encoderName, options, outputPath);
 				}
 
