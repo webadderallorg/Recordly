@@ -19,6 +19,14 @@ export function useLaunchHudInteractionState({
 	const isMouseOverHudRef = useRef(false);
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 	const lastIgnoringRef = useRef<{ ignore: boolean; recordingState?: string } | null>(null);
+	const popoverOpen = openId !== null;
+
+	useEffect(() => {
+		if (platform === "linux") {
+			window.electronAPI?.hudOverlaySetPopoverOpen?.(popoverOpen);
+		}
+	}, [platform, popoverOpen]);
+
 	const setIgnoring = useCallback(
 		(ignore: boolean, force = false) => {
 			const dragging =

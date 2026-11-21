@@ -245,6 +245,7 @@ interface Window {
 		authStorageSetItem: (key: string, value: string) => Promise<void | false>;
 		authStorageRemoveItem: (key: string) => Promise<void>;
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
+		hudOverlaySetPopoverOpen: (open: boolean) => void;
 		hudOverlaySetSourceSelectionActive: (active: boolean) => void;
 		hudOverlayDrag: (phase: "start" | "move" | "end", screenX: number, screenY: number) => void;
 		hudOverlayHide: () => void;
