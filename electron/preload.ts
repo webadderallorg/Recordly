@@ -203,6 +203,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	hudOverlaySetIgnoreMouse: (ignore: boolean) => {
 		ipcRenderer.send("hud-overlay-set-ignore-mouse", ignore);
 	},
+	hudOverlaySetPopoverOpen: (open: boolean) => {
+		ipcRenderer.send("hud-overlay-set-popover-open", open);
+	},
 	hudOverlaySetSourceSelectionActive: (active: boolean) => {
 		ipcRenderer.send("hud-overlay-set-source-selection-active", active);
 	},
@@ -1325,6 +1328,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		systemAudioEnabled?: boolean;
 		webcamEnabled?: boolean;
 		webcamDeviceId?: string;
+		floatingWebcamPreviewVisible?: boolean;
 	}) => ipcRenderer.invoke("set-recording-preferences", prefs),
 	getCountdownDelay: () => ipcRenderer.invoke("get-countdown-delay"),
 	setCountdownDelay: (delay: number) => ipcRenderer.invoke("set-countdown-delay", delay),

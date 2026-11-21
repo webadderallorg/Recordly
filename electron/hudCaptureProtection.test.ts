@@ -8,6 +8,7 @@ import {
 	shouldProtectHudCapture,
 	supportsHudCaptureProtection,
 } from "../src/lib/hudCaptureProtection";
+import { isLikelyLinuxWaylandSession } from "./ipc/register/sourceMapping";
 
 describe("HUD capture protection lifecycle", () => {
 	it("uses window protection on Windows and macOS only", () => {
@@ -126,4 +127,63 @@ it("keeps the hovered HUD interactive when recording starts", () => {
 	setPassthrough(true);
 	setRecording(false);
 	expect(mouse).toHaveBeenLastCalledWith(true, { forward: true });
+});
+
+it.each([
+	{ session: "X11", env: { DISPLAY: ":0", XDG_SESSION_TYPE: "x11" }, resize: [true, false] },
+	{
+		session: "Wayland with XWayland",
+		env: { DISPLAY: ":0", XDG_SESSION_TYPE: "wayland", WAYLAND_DISPLAY: "wayland-0" },
+		resize: [],
+	},
+	{ session: "no display", env: {}, resize: [] },
+])("resizes only for an open HUD menu on $session", ({ env, resize }) => {
+	const source = readFileSync(new URL("./windows.ts", import.meta.url), "utf8");
+	const setters = source.slice(
+		source.indexOf("function setHudOverlayMousePassthrough("),
+		source.indexOf("// Keep compatibility with existing drag IPC/state."),
+	);
+	const sender = {};
+	type Handler = (event: { sender: object }, value: boolean) => void;
+	const handlers = new Map<string, Handler>();
+	const changes: boolean[] = [];
+	const context = {
+		process: { platform: "linux", env },
+		isLikelyLinuxWaylandSession,
+		hudOverlayIgnoringMouse: true,
+		hudOverlaySourceSelectionActive: false,
+		hudOverlayRecordingActive: false,
+		hudOverlayFallbackExpanded: false,
+		hudOverlayMouseReassertTimer: null,
+		hudOverlayWindow: {
+			webContents: sender,
+			isDestroyed: () => false,
+			setIgnoreMouseEvents: vi.fn(),
+		},
+		isHudOverlayMousePassthroughSupported: () => false,
+		setHudOverlayFallbackExpanded(expanded: boolean) {
+			context.hudOverlayFallbackExpanded = expanded;
+			changes.push(expanded);
+		},
+		ipcMain: { on: (channel: string, handler: Handler) => handlers.set(channel, handler) },
+	};
+	runInNewContext(ts.transpileModule(setters, {}).outputText, context);
+	handlers.get("hud-overlay-set-ignore-mouse")!({ sender }, false);
+	expect(changes).toEqual([]);
+
+	const menu = handlers.get("hud-overlay-set-popover-open")!;
+	menu({ sender: {} }, true);
+	context.hudOverlayRecordingActive = true;
+	menu({ sender }, true);
+	context.hudOverlayRecordingActive = false;
+	context.hudOverlaySourceSelectionActive = true;
+	menu({ sender }, true);
+	context.hudOverlaySourceSelectionActive = false;
+	expect(changes).toEqual([]);
+
+	menu({ sender }, true);
+	menu({ sender }, true);
+	handlers.get("hud-overlay-set-ignore-mouse")!({ sender }, true);
+	menu({ sender }, false);
+	expect(changes).toEqual(resize);
 });

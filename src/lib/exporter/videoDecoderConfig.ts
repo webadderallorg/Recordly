@@ -1,4 +1,4 @@
-import type { WebDemuxer } from "web-demuxer";
+import type { WebAVStream, WebDemuxer, WebMediaInfo } from "web-demuxer";
 
 // Level, maximum picture size, sample rate, bitrate (kbps), and dimension.
 // https://www.webmproject.org/vp9/levels/
@@ -55,17 +55,89 @@ function readVp9KeyframeFormat(data: Uint8Array): { profile: number; bitDepth: n
 
 const CANCEL_TIMEOUT_MS = 1000;
 
-/** Repair ambiguous VP9 identifiers emitted by web-demuxer for some WebM files. */
+function getVideoProbeEnd(media: WebMediaInfo, stream: WebAVStream): number {
+	const mediaStart = media.start_time || 0;
+	return (
+		Math.max(
+			media.duration + mediaStart,
+			(stream.duration || media.duration) + (stream.start_time || mediaStart),
+		) + 0.5
+	);
+}
+
+async function readFirstVideoKeyframe(demuxer: WebDemuxer, readEnd: number) {
+	const reader = demuxer.readMediaPacket("video", 0, readEnd).getReader();
+	try {
+		while (true) {
+			const { value: packet, done } = await reader.read();
+			if (done || !packet) return undefined;
+			if (packet.keyframe !== 0) return packet.data;
+		}
+	} finally {
+		// Cancel before the decoder starts reading packets on the same worker.
+		// web-demuxer 4.0.0 can leave cancel() pending after a read error.
+		try {
+			await Promise.race([
+				reader.cancel().catch(() => undefined),
+				new Promise((resolve) => setTimeout(resolve, CANCEL_TIMEOUT_MS)),
+			]);
+		} finally {
+			reader.releaseLock();
+		}
+	}
+}
+
+function getAnnexBAvcParameters(keyframe: Uint8Array): Uint8Array | undefined {
+	for (let i = 2; i + 4 < keyframe.length; i++) {
+		const isStartCode = keyframe[i - 2] === 0 && keyframe[i - 1] === 0 && keyframe[i] === 1;
+		const isSequenceParameterSet = (keyframe[i + 1] & 0x9f) === 7;
+		if (isStartCode && isSequenceParameterSet) return keyframe.subarray(i + 2, i + 5);
+	}
+}
+
+async function repairAvcConfig(
+	demuxer: WebDemuxer,
+	config: VideoDecoderConfig,
+): Promise<VideoDecoderConfig> {
+	let parameters: Uint8Array | undefined;
+	const description = config.description;
+	if (description) {
+		const bytes = ArrayBuffer.isView(description)
+			? new Uint8Array(description.buffer, description.byteOffset, description.byteLength)
+			: new Uint8Array(description);
+		// The AVCDecoderConfigurationRecord stores profile, compatibility and level after its version.
+		if (bytes.length >= 7 && bytes[0] === 1) parameters = bytes.subarray(1, 4);
+	} else {
+		const [media, stream] = await Promise.all([
+			demuxer.getMediaInfo(),
+			demuxer.getMediaStream("video"),
+		]);
+		const keyframe = await readFirstVideoKeyframe(demuxer, getVideoProbeEnd(media, stream));
+		if (keyframe) parameters = getAnnexBAvcParameters(keyframe);
+	}
+
+	if (!parameters || parameters[0] === 0 || parameters[2] === 0) return config;
+	const prefix = config.codec.toLowerCase().startsWith("avc3") ? "avc3" : "avc1";
+	const suffix = Array.from(parameters, (byte) => byte.toString(16).padStart(2, "0")).join("");
+	return { ...config, codec: `${prefix}.${suffix}` };
+}
+
 export async function getVideoDecoderConfig(demuxer: WebDemuxer): Promise<VideoDecoderConfig> {
 	const config = await demuxer.getDecoderConfig("video");
+	if (
+		/^(?:h264|avc[13](?:\..*)?)$/i.test(config.codec) &&
+		!/^avc[13]\.[\da-f]{6}$/i.test(config.codec)
+	) {
+		return repairAvcConfig(demuxer, config);
+	}
 	if (config.codec !== "vp09" && config.codec !== "vp9") return config;
 
-	const [{ streams, duration, start_time: mediaStartTime }, selected] = await Promise.all([
+	const [media, selected] = await Promise.all([
 		demuxer.getMediaInfo(),
 		demuxer.getMediaStream("video"),
 	]);
 	// Use the track the decoder config and packet reads select, not just the first video track.
-	const stream = streams.find(
+	const stream = media.streams.find(
 		(candidate) =>
 			candidate.codec_type_string === "video" && candidate.index === selected.index,
 	);
@@ -90,44 +162,14 @@ export async function getVideoDecoderConfig(demuxer: WebDemuxer): Promise<VideoD
 			);
 		}
 	} else {
-		// A recording can begin with seconds of audio before its first video packet.
-		// seekMediaPacket("video", 0) fails in that case. Read forward instead, with
-		// an explicit end so the demuxer does not stop before the first video frame.
-		const readEnd =
-			Math.max(
-				duration + (mediaStartTime || 0),
-				(stream.duration || duration) + (stream.start_time || mediaStartTime || 0),
-			) + 0.5;
-		const reader = demuxer.readMediaPacket("video", 0, readEnd).getReader();
-		try {
-			// Some streams open with delta packets; only a keyframe carries the
-			// profile and bit-depth header.
-			let keyframe: Uint8Array | undefined;
-			while (!keyframe) {
-				const { value: packet, done } = await reader.read();
-				if (done || !packet) {
-					throw new DOMException(
-						"Cannot determine VP9 format: no video keyframe found.",
-						"NotSupportedError",
-					);
-				}
-				if (packet.keyframe !== 0) keyframe = packet.data;
-			}
-			({ profile, bitDepth } = readVp9KeyframeFormat(keyframe));
-		} finally {
-			// Await cancellation before either caller starts its own positioned read.
-			// Otherwise the probe and export could compete for the demuxer worker.
-			// web-demuxer 4.0.0 never settles cancel() if the worker reported a read
-			// error, so bound the wait instead of stalling the export.
-			try {
-				await Promise.race([
-					reader.cancel().catch(() => undefined),
-					new Promise((resolve) => setTimeout(resolve, CANCEL_TIMEOUT_MS)),
-				]);
-			} finally {
-				reader.releaseLock();
-			}
+		const keyframe = await readFirstVideoKeyframe(demuxer, getVideoProbeEnd(media, stream));
+		if (!keyframe) {
+			throw new DOMException(
+				"Cannot determine VP9 format: no video keyframe found.",
+				"NotSupportedError",
+			);
 		}
+		({ profile, bitDepth } = readVp9KeyframeFormat(keyframe));
 	}
 
 	// WebM commonly has no declared level (FFmpeg reports -99). Estimate the

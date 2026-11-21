@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
 	spawn: vi.fn(),
 	mkdir: vi.fn(),
 	rm: vi.fn(),
+	stat: vi.fn(),
 	remove: vi.fn(),
 	normalize: vi.fn(),
 	source: vi.fn(),
@@ -14,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("electron", () => ({ app: { getPath: () => path.resolve("/recordly-temp") } }));
 vi.mock("node:child_process", () => ({ spawn: mocks.spawn }));
 vi.mock("node:fs/promises", () => ({
-	default: { mkdir: mocks.mkdir, rm: mocks.rm, stat: vi.fn() },
+	default: { mkdir: mocks.mkdir, rm: mocks.rm, stat: mocks.stat },
 }));
 vi.mock("../../ffmpeg/binary", () => ({ getFfprobeBinaryPath: () => "ffprobe" }));
 vi.mock("../../nativeVideoExport", () => ({
@@ -66,6 +67,7 @@ vi.mock("./telemetry", () => ({
 	prepareNvidiaCudaCursorTelemetry: async () => null,
 }));
 
+import { muxNativeVideoExportAudio } from "./audio";
 import { probeNativeVideoEncoder, resolveNativeVideoEncoder } from "./encoder";
 import { tryNativeStaticGpuExport } from "./gpuAttempt";
 import { nativeStaticLayoutExportSessions } from "./sessions";
@@ -145,7 +147,11 @@ describe("native static-layout paths", () => {
 			sessionId ? /^recordly-session_01\.v2$/ : /^recordly-static-layout-/,
 		);
 		expect(output).toHaveBeenCalledWith(`${directory}.mp4`);
-		expect(mocks.rm).toHaveBeenCalledWith(directory, { force: true, recursive: true });
+		expect(mocks.rm).toHaveBeenCalledWith(directory, {
+			force: true,
+			recursive: true,
+			maxRetries: 3,
+		});
 		expect(nativeStaticLayoutExportSessions.size).toBe(0);
 	});
 
@@ -157,6 +163,25 @@ describe("native static-layout paths", () => {
 			}),
 		).rejects.toThrow("cursor telemetry requires the Windows GPU compositor");
 		expect(mocks.mkdir).not.toHaveBeenCalled();
+	});
+
+	it("removes a retained mux output if cancelled while removing chunks", async () => {
+		const sessionId = "static-late-cancel";
+		const outputPath = path.resolve("/recordly-temp", `${sessionId}-final.mp4`);
+		mocks.stat.mockResolvedValue({ size: 100 });
+		mocks.source.mockResolvedValue({ inputPath: options.inputPath, elapsedMs: 0 });
+		vi.mocked(muxNativeVideoExportAudio).mockResolvedValue({ outputPath, metrics: {} });
+		mocks.rm.mockImplementationOnce(async () => {
+			const session = nativeStaticLayoutExportSessions.get(sessionId);
+			expect(session).toBeDefined();
+			session!.terminating = true;
+		});
+
+		await expect(
+			exportNativeStaticLayoutVideo("ffmpeg", { ...options, sessionId }),
+		).rejects.toThrow("Native static layout export was cancelled");
+		expect(mocks.remove).toHaveBeenCalledWith(outputPath, true);
+		expect(nativeStaticLayoutExportSessions.has(sessionId)).toBe(false);
 	});
 });
 

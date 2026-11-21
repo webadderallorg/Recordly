@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +9,7 @@ const mocks = vi.hoisted(() => ({
 	directory: "",
 	finish: vi.fn(),
 	finalize: vi.fn(),
+	validate: vi.fn(),
 	approve: vi.fn(),
 	trusted: vi.fn(),
 }));
@@ -16,7 +18,7 @@ vi.mock("../../../trustedRenderer", () => ({ isTrustedRenderer: mocks.trusted })
 vi.mock("../../ffmpeg/binary", () => ({ getFfmpegBinaryPath: () => "/ffmpeg" }));
 vi.mock("../../project/manager", () => ({ rememberApprovedLocalReadPath: mocks.approve }));
 vi.mock("../../utils", () => ({ getRecordingsDir: async () => mocks.directory }));
-vi.mock("../diagnostics", () => ({ validateRecordedVideo: vi.fn() }));
+vi.mock("../diagnostics", () => ({ validateRecordedVideo: mocks.validate }));
 vi.mock("../mac", () => ({ finalizeStoredVideo: mocks.finalize }));
 vi.mock("../webmDuration", () => ({ finishWebmRecording: mocks.finish }));
 
@@ -26,8 +28,11 @@ let invoke: Parameters<typeof ipcMain.handle>[1];
 beforeEach(async () => {
 	vi.clearAllMocks();
 	mocks.trusted.mockReturnValue(true);
-	mocks.directory = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-store-finalize-"));
+	mocks.directory = await fs.realpath(
+		await fs.mkdtemp(path.join(os.tmpdir(), "recordly-store-finalize-")),
+	);
 	mocks.finish.mockReset().mockImplementation(async (_ffmpeg, source) => source);
+	mocks.validate.mockReset().mockResolvedValue({ fileSizeBytes: 21, durationSeconds: 1 });
 	mocks.finalize
 		.mockReset()
 		.mockImplementation(async (source) => ({ success: true, path: source }));
@@ -42,6 +47,47 @@ afterEach(async () => {
 });
 const data = () => new TextEncoder().encode("captured webcam bytes").buffer;
 const event = {} as Electron.IpcMainInvokeEvent;
+
+it.each([
+	"whole file",
+	"stream",
+])("leaves screen finalization for the screen recording when saving the webcam first (%s)", async (transport) => {
+	const ipc = new Map(vi.mocked(ipcMain.handle).mock.calls);
+	const frame = {};
+	const sender = Object.assign(new EventEmitter(), {
+		id: 7,
+		mainFrame: frame,
+		isDestroyed: () => false,
+	});
+	const streamEvent = { sender, senderFrame: frame } as unknown as Electron.IpcMainInvokeEvent;
+	const save = async (fileName: string) => {
+		if (transport === "whole file") return invoke(event, data(), fileName);
+		const opened = await ipc.get("open-recording-file-stream")!(
+			streamEvent,
+			fileName,
+			"video/webm",
+		);
+		expect(opened).toMatchObject({ success: true });
+		await expect(
+			ipc.get("append-recording-file-stream")!(streamEvent, opened.streamId, data()),
+		).resolves.toMatchObject({ success: true });
+		return ipc.get("close-recording-file-stream")!(streamEvent, opened.streamId);
+	};
+
+	const webcamPath = path.join(mocks.directory, "recording-1-webcam.webm");
+	const screenPath = path.join(mocks.directory, "recording-1.webm");
+	await expect(save("recording-1-webcam.webm")).resolves.toMatchObject({
+		success: true,
+		path: webcamPath,
+	});
+	await expect(save("recording-1.webm")).resolves.toMatchObject({
+		success: true,
+		path: screenPath,
+	});
+	expect(mocks.validate).toHaveBeenCalledExactlyOnceWith(webcamPath);
+	expect(mocks.finalize).toHaveBeenCalledExactlyOnceWith(screenPath);
+	expect(mocks.approve.mock.calls).toEqual([[webcamPath], [screenPath]]);
+});
 it("rejects an untrusted whole-file store before creating or approving a recording", async () => {
 	mocks.trusted.mockReturnValue(false);
 	await expect(invoke(event, data(), "recording-1-webcam.webm")).resolves.toMatchObject({
@@ -88,7 +134,7 @@ it("publishes the remuxed webcam path and approves it for the editor", async () 
 		path: mp4,
 	});
 	expect(mocks.finish).toHaveBeenCalledWith("/ffmpeg", source);
-	expect(mocks.finalize).toHaveBeenCalledWith(mp4);
+	expect(mocks.validate).toHaveBeenCalledExactlyOnceWith(mp4);
 	expect(mocks.approve).toHaveBeenCalledWith(mp4);
 });
 it("preserves and publishes the original when remuxing throws", async () => {
@@ -99,7 +145,7 @@ it("preserves and publishes the original when remuxing throws", async () => {
 		path: source,
 	});
 	expect(await fs.readFile(source, "utf8")).toBe("captured webcam bytes");
-	expect(mocks.finalize).toHaveBeenCalledWith(source);
+	expect(mocks.validate).toHaveBeenCalledExactlyOnceWith(source);
 });
 it("leaves an existing MP4 container unchanged", async () => {
 	const source = path.join(mocks.directory, "recording-1-webcam.mp4");
@@ -108,13 +154,13 @@ it("leaves an existing MP4 container unchanged", async () => {
 		path: source,
 	});
 	expect(mocks.finish).not.toHaveBeenCalled();
-	expect(mocks.finalize).toHaveBeenCalledWith(source);
+	expect(mocks.validate).toHaveBeenCalledExactlyOnceWith(source);
 	expect(await fs.readFile(source, "utf8")).toBe("captured webcam bytes");
 });
 it("reports the saved path when post-remux finalization fails", async () => {
 	const mp4 = path.join(mocks.directory, "recording-1-webcam.mp4");
 	mocks.finish.mockResolvedValueOnce(mp4);
-	mocks.finalize.mockRejectedValueOnce(new Error("editor metadata unavailable"));
+	mocks.validate.mockRejectedValueOnce(new Error("webcam validation unavailable"));
 	await expect(invoke(event, data(), "recording-1-webcam.webm")).resolves.toMatchObject({
 		success: false,
 		path: mp4,

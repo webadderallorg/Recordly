@@ -1,4 +1,4 @@
-Language: EN | [简中](README.zh-CN.md)
+Language: EN | [Tiếng Việt](README.vi.md) | [简中](README.zh-CN.md)
 
 <p align="center">
   <img width="220" alt="Recordly Logo" src="https://github.com/user-attachments/assets/414b8838-6731-45d4-a815-6e3c0aa1fe52" />
@@ -62,12 +62,6 @@ Use drag-and-drop timeline tools for zooms, trims, speed regions, annotations, e
 <p>
   <img width="450" alt="timeline editor" src="https://github.com/user-attachments/assets/3692bd8f-7b8d-4a93-b696-d17c828487ea" />
 </p>
-
-## Extensions & Marketplace
-
-Recordly has a community-driven extension system. Anyone can build and publish extensions that add new capabilities to Recordly — cursor click sounds, device frames, browser mockups, wallpapers, render hooks, settings panels, and more.
-
-Browse and install community extensions from the [Recordly Marketplace](https://marketplace.recordly.dev/extensions).
 
 ---
 
@@ -175,6 +169,24 @@ Prebuilt releases are available at:
 https://github.com/webadderallorg/Recordly/releases
 
 ---
+
+## Linux AppImage
+
+If the AppImage appears to do nothing when opened from a file manager, run it from a terminal to see the error.
+Open the terminal in the folder containing the downloaded AppImage before running these commands.
+
+```bash
+chmod +x ./Recordly-linux-x64.AppImage
+./Recordly-linux-x64.AppImage
+```
+
+If you see `libfuse.so.2` in the error, install the FUSE 2 compatibility package for your distribution. See the [AppImage FUSE guide](https://docs.appimage.org/user-guide/troubleshooting/fuse.html) for package names such as `libfuse2` and `libfuse2t64`.
+
+You can also extract and launch the AppImage without FUSE.
+
+```bash
+./Recordly-linux-x64.AppImage --appimage-extract-and-run
+```
 
 ## Arch Linux / Manjaro (yay)
 

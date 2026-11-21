@@ -177,6 +177,7 @@ export async function muxNativeVideoExportAudio(
 		const output = await fs.open(outputPath, "wx", 0o600);
 		ownsOutput = true;
 		await output.close();
+		if (session?.terminating) throw new Error("Native video export was cancelled");
 		replaceShareExportSource(videoPath, outputPath);
 		const ffmpegExecStartedAt = getNowMs();
 		await runFfmpegAudioMux(ffmpegPath, args, 15 * 60 * 1000, options, onProgress, session);
@@ -195,7 +196,7 @@ export async function muxNativeVideoExportAudio(
 	} catch (error) {
 		// The caller only learns this derived path after a successful mux. Remove
 		// a partial result here so failed buffer exports cannot leave it behind.
-		if (ownsOutput) await removeTemporaryExportFile(outputPath);
+		if (ownsOutput) await removeTemporaryExportFile(outputPath, session?.terminating);
 		throw error;
 	} finally {
 		await Promise.allSettled(

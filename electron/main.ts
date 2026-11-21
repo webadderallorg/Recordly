@@ -1195,8 +1195,29 @@ app.on("before-quit", () => {
 	);
 	killWindowsCaptureProcess();
 	showCursor();
-	cleanupNativeVideoExportSessions();
 	void cleanupAllExportStreams();
+});
+
+let nativeExportQuitState: "idle" | "waiting" | "ready" = "idle";
+app.on("will-quit", (event) => {
+	if (nativeExportQuitState === "ready") return;
+	if (nativeExportQuitState === "waiting") {
+		event.preventDefault();
+		return;
+	}
+	const cleanup = cleanupNativeVideoExportSessions();
+	if (!cleanup) return;
+	event.preventDefault();
+	nativeExportQuitState = "waiting";
+	let timeout: NodeJS.Timeout | undefined;
+	const deadline = new Promise<void>((resolve) => {
+		timeout = setTimeout(resolve, 3000);
+	});
+	void Promise.race([cleanup, deadline]).finally(() => {
+		clearTimeout(timeout);
+		nativeExportQuitState = "ready";
+		app.quit();
+	});
 });
 
 app.on("window-all-closed", () => {
