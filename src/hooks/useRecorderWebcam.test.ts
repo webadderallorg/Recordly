@@ -4,6 +4,7 @@ import { useRecorderControls } from "./useRecorderControls";
 import { useRecorderMediaCleanup } from "./useRecorderMediaCleanup";
 import { useRecorderSubscriptions } from "./useRecorderSubscriptions";
 import { useRecorderWebcam } from "./useRecorderWebcam";
+import { acquireWebcamCapture } from "./webcamCapture";
 
 const effects = vi.hoisted(() => [] as Array<() => void | (() => void)>);
 vi.mock("react", () => ({
@@ -134,6 +135,57 @@ describe("recorder webcam sidecar", () => {
 		expect(toast.warning).not.toHaveBeenCalled();
 	});
 
+	it("releases a late camera after cancellation without starting a recorder", async () => {
+		let resolveCamera!: (stream: MediaStream) => void;
+		getUserMedia.mockReturnValueOnce(
+			new Promise<MediaStream>((resolve) => {
+				resolveCamera = resolve;
+			}),
+		);
+		const webcam = createWebcam();
+		const preparation = webcam.prepareWebcamRecorder();
+		webcam.releaseWebcamCapture();
+		resolveCamera(stream);
+		await preparation;
+		expect(track.stop).toHaveBeenCalledOnce();
+		expect(webcam.webcamRecorder.current).toBeNull();
+	});
+
+	it.each([
+		false,
+		true,
+	])("records with the open or opening preview (opening: %s) without reopening the camera", async (opening) => {
+		let resolveCamera!: (stream: MediaStream) => void;
+		const camera = new Promise<MediaStream>((resolve) => {
+			resolveCamera = resolve;
+		});
+		getUserMedia
+			.mockReturnValueOnce(camera)
+			.mockRejectedValue(new DOMException("Camera already open", "NotReadableError"));
+		const previewPending = acquireWebcamCapture("camera-1");
+		const webcam = createWebcam({ webcamDeviceId: "camera-1" });
+		if (!opening) {
+			resolveCamera(stream);
+			await previewPending;
+		}
+		const preparation = webcam.prepareWebcamRecorder();
+		if (opening) resolveCamera(stream);
+		const preview = await previewPending;
+		try {
+			await preparation;
+			webcam.beginWebcamCapture();
+			expect(recorder().stream).toBe(preview.stream);
+			expect(recorder().state).toBe("recording");
+			expect(getUserMedia).toHaveBeenCalledOnce();
+			await expect(webcam.stopWebcamRecorder()).resolves.toBe("/recording-1000-webcam.webm");
+			expect(track.stop).not.toHaveBeenCalled();
+		} finally {
+			webcam.releaseWebcamCapture();
+			preview.release();
+		}
+		expect(track.stop).toHaveBeenCalledOnce();
+	});
+
 	it.each([
 		false,
 		true,
@@ -208,7 +260,6 @@ describe("recorder webcam sidecar", () => {
 		expect(track.stop).toHaveBeenCalledOnce();
 		expect(webcam.webcamRecorder.current).toBeNull();
 		expect(webcam.webcamWriter.current).toBeNull();
-		expect(webcam.webcamStream.current).toBeNull();
 		expect(webcam.webcamStartTime.current).toBeNull();
 		expect(webcam.pendingWebcamPathPromise.current).toBeNull();
 		await expect(webcam.stopWebcamRecorder()).resolves.toBe("/recording-1000-webcam.webm");
@@ -237,6 +288,7 @@ describe("recorder webcam sidecar", () => {
 		expect(recorder().stop).not.toHaveBeenCalled();
 		expect(closeRecordingFileStream).not.toHaveBeenCalled();
 		expect(webcam.webcamRecorder.current).toBeNull();
+		expect(track.stop).toHaveBeenCalledOnce();
 	});
 
 	it("continues without a sidecar when the prepared webcam fails to start", async () => {
@@ -272,7 +324,7 @@ describe("recorder webcam sidecar", () => {
 			stream: { current: null },
 			screenStream: { current: null },
 			microphoneStream: { current: null },
-			webcamStream: webcam.webcamStream,
+			releaseWebcamCapture: webcam.releaseWebcamCapture,
 			mixingContext: { current: null },
 			cleanupMicFallbackRecorder: vi.fn(),
 		});
@@ -318,7 +370,6 @@ describe("recorder webcam sidecar", () => {
 		await expect(webcam.prepareWebcamRecorder()).resolves.toBeUndefined();
 		await expect(webcam.stopWebcamRecorder()).resolves.toBeNull();
 		expect(track.stop).toHaveBeenCalledOnce();
-		expect(webcam.webcamStream.current).toBeNull();
 		expect(webcam.webcamRecorder.current).toBeNull();
 		expect(toast.error).not.toHaveBeenCalled();
 		expect(toast.warning).toHaveBeenCalledWith("Webcam unavailable", {

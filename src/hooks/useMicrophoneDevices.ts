@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "@/contexts/I18nContext";
+import { createInputDeviceLister } from "./inputDeviceLabels";
 
 export interface MicrophoneDevice {
 	deviceId: string;
@@ -7,7 +8,7 @@ export interface MicrophoneDevice {
 	groupId: string;
 }
 
-let hasRequestedMicrophoneLabels = false;
+const listMicrophones = createInputDeviceLister("audioinput");
 
 export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?: string) {
 	const { t } = useI18n();
@@ -22,48 +23,31 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 		}
 
 		let mounted = true;
+		let activeLoadId = 0;
 
 		const loadDevices = async () => {
-			let permissionStream: MediaStream | null = null;
+			const loadId = ++activeLoadId;
+			const isCurrent = () => mounted && loadId === activeLoadId;
 
 			try {
 				setIsLoading(true);
 				setError(null);
 
-				let allDevices = await navigator.mediaDevices.enumerateDevices();
-				const rawAudioInputs = allDevices.filter((device) => device.kind === "audioinput");
-				let audioInputs = rawAudioInputs.map((device) => ({
-					deviceId: device.deviceId,
-					label:
-						device.label ||
-						t("notifications.microphone", "Microphone {{id}}", {
-							id: device.deviceId.slice(0, 8),
-						}),
-					groupId: device.groupId,
-				}));
+				const rawAudioInputs = await listMicrophones(isCurrent, async () => {
+					const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+					return () => stream.getTracks().forEach((track) => track.stop());
+				});
 
-				const needsLabelPermission =
-					rawAudioInputs.length > 0 &&
-					rawAudioInputs.every((device) => !device.label.trim());
-
-				if (mounted && needsLabelPermission && !hasRequestedMicrophoneLabels) {
-					hasRequestedMicrophoneLabels = true;
-					permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-					allDevices = await navigator.mediaDevices.enumerateDevices();
-					audioInputs = allDevices
-						.filter((device) => device.kind === "audioinput")
-						.map((device) => ({
-							deviceId: device.deviceId,
-							label:
-								device.label ||
-								t("notifications.microphone", "Microphone {{id}}", {
-									id: device.deviceId.slice(0, 8),
-								}),
-							groupId: device.groupId,
-						}));
-				}
-
-				if (mounted) {
+				if (isCurrent()) {
+					const audioInputs = rawAudioInputs.map((device) => ({
+						deviceId: device.deviceId,
+						label:
+							device.label ||
+							t("notifications.microphone", "Microphone {{id}}", {
+								id: device.deviceId.slice(0, 8),
+							}),
+						groupId: device.groupId,
+					}));
 					setDevices(audioInputs);
 					setSelectedDeviceId((currentDeviceId) => {
 						const normalizedPreferredDeviceId = preferredDeviceId ?? "default";
@@ -91,7 +75,7 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 					setIsLoading(false);
 				}
 			} catch (error) {
-				if (mounted) {
+				if (isCurrent()) {
 					const message =
 						error instanceof Error
 							? error.message
@@ -103,8 +87,6 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 					setIsLoading(false);
 					console.error("Error loading microphone devices:", error);
 				}
-			} finally {
-				permissionStream?.getTracks().forEach((track) => track.stop());
 			}
 		};
 

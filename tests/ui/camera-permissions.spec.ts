@@ -58,6 +58,73 @@ test("opening Camera settings requests access once instead of prompting from the
 	await expect(html).toHaveAttribute("data-camera-permission-requests", "1");
 });
 
+test("closing Camera settings cancels a pending fallback and reopening retries", async ({
+	page,
+}) => {
+	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.getRecordingPreferences = async () => ({
+			success: true,
+			webcamEnabled: false,
+			webcamDeviceId: "unplugged-camera",
+			microphoneEnabled: false,
+			systemAudioEnabled: false,
+		});
+		window.electronAPI.getEditorMode = async () => false;
+		window.electronAPI.getMediaPermissionStatus = async () => ({
+			success: true,
+			microphone: "granted",
+			camera: "granted",
+		});
+		let fallbackOpened = false;
+		const requests: string[] = [];
+		navigator.mediaDevices.enumerateDevices = async () =>
+			fallbackOpened
+				? ([
+						{
+							kind: "videoinput",
+							deviceId: "available-camera",
+							label: "Replacement camera",
+							groupId: "",
+						},
+					] as MediaDeviceInfo[])
+				: [];
+		navigator.mediaDevices.getUserMedia = async ({ video } = {}) => {
+			const exact = video && typeof video === "object" && video.deviceId;
+			requests.push(exact ? "preferred" : "default");
+			document.documentElement.dataset.cameraRequests = requests.join(" ");
+			if (exact) {
+				await new Promise<void>((resolve) => {
+					window.addEventListener("test-camera-missing", () => resolve(), { once: true });
+				});
+				throw new DOMException("Saved camera is disconnected", "OverconstrainedError");
+			}
+			fallbackOpened = true;
+			return document.createElement("canvas").captureStream();
+		};
+	});
+	await page.goto("/?windowType=hud-overlay");
+	const html = page.locator("html");
+	const settings = page.getByRole("button", { name: "Camera settings", exact: true });
+	const dialog = page.getByRole("dialog", { name: "Camera settings", exact: true });
+	await settings.click();
+	await expect(html).toHaveAttribute("data-camera-requests", "preferred");
+	await page.keyboard.press("Escape");
+	await expect(dialog).not.toBeVisible();
+	await settings.click();
+	await expect(dialog).toBeVisible();
+	await page.evaluate(() => window.dispatchEvent(new Event("test-camera-missing")));
+	await expect(html).toHaveAttribute("data-camera-requests", "preferred preferred");
+	await page.evaluate(() => {
+		navigator.mediaDevices.dispatchEvent(new Event("devicechange"));
+		window.dispatchEvent(new Event("test-camera-missing"));
+	});
+	await expect(html).toHaveAttribute("data-camera-requests", "preferred preferred default");
+	await expect(
+		page.getByRole("button", { name: "Replacement camera", exact: true }),
+	).toBeVisible();
+});
+
 test("editor mode never opens the camera and releases an active recorder preview", async ({
 	page,
 }) => {

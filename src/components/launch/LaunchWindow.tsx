@@ -99,12 +99,6 @@ function LaunchWindowContent() {
 		microphoneEnabled || openId === "mic",
 		microphoneDeviceId,
 	);
-	const {
-		devices: videoDevices,
-		selectedDeviceId: selectedVideoDeviceId,
-		setSelectedDeviceId: setSelectedVideoDeviceId,
-	} = useVideoDevices(cameraAllowed && (webcamEnabled || webcamPopoverOpen), webcamDeviceId);
-
 	useEffect(() => {
 		if (!selectedDeviceId) {
 			return;
@@ -112,12 +106,6 @@ function LaunchWindowContent() {
 
 		setMicrophoneDeviceId(selectedDeviceId === "default" ? undefined : selectedDeviceId);
 	}, [selectedDeviceId, setMicrophoneDeviceId]);
-
-	useEffect(() => {
-		if (selectedVideoDeviceId && selectedVideoDeviceId !== "default") {
-			setWebcamDeviceId(selectedVideoDeviceId);
-		}
-	}, [selectedVideoDeviceId, setWebcamDeviceId]);
 
 	const webcamPreview = useWebcamPreviewOverlay({
 		webcamEnabled: cameraAllowed && webcamEnabled,
@@ -127,6 +115,21 @@ function LaunchWindowContent() {
 		hudOverlayMousePassthroughSupported,
 		hudBarRef,
 	});
+	const {
+		devices: videoDevices,
+		selectedDeviceId: selectedVideoDeviceId,
+		setSelectedDeviceId: setSelectedVideoDeviceId,
+	} = useVideoDevices(
+		cameraAllowed && (webcamEnabled || webcamPopoverOpen),
+		webcamDeviceId,
+		webcamPopoverOpen && !webcamPreview.editorMode,
+	);
+	useEffect(() => {
+		if (selectedVideoDeviceId && selectedVideoDeviceId !== "default") {
+			setWebcamDeviceId(selectedVideoDeviceId);
+		}
+	}, [selectedVideoDeviceId, setWebcamDeviceId]);
+
 	const {
 		webcamPreviewRoundness,
 		webcamPreviewShape,
