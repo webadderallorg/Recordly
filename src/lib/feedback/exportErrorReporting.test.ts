@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { buildExportErrorReport, submitExportErrorReport } from "./exportErrorReporting";
-import { buildVideoDecodeRecoveryFailure } from "../exporter/streamingDecoderSupport";
 import { isExportErrorReport } from "../../../services/supabase/functions/_shared/exportErrorReport";
+import { buildVideoDecodeRecoveryFailure } from "../exporter/streamingDecoderSupport";
+import { buildExportErrorReport, submitExportErrorReport } from "./exportErrorReporting";
 
 beforeEach(() => {
 	vi.stubEnv("VITE_SUPABASE_URL", "https://support.example.test");

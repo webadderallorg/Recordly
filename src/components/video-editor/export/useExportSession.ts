@@ -1,9 +1,9 @@
-import type { GifSizeEstimateState } from "./useGifSizeEstimate";
-import type { GifOptimizationSummary } from "@/lib/exporter/gifOptimization";
 import { type SetStateAction, useCallback, useEffect, useRef, useState } from "react";
 import type { ExportProgress } from "@/lib/exporter";
+import type { GifOptimizationSummary } from "@/lib/exporter/gifOptimization";
 import { resolveExportProgressUpdate, resolveSavingExportProgress } from "../exportProgressState";
 import type { PendingExportSave } from "./exportPersistence";
+import type { GifSizeEstimateState } from "./useGifSizeEstimate";
 
 export type CancelableExporter = { cancel(): void };
 

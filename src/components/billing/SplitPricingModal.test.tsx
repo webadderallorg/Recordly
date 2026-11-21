@@ -12,7 +12,8 @@ vi.mock("@/contexts/I18nContext", () => ({
 	useI18n: () => ({ locale: "en", t: (_key: string, fallback: string) => fallback }),
 	useScopedT: () => (_key: string, fallback: string) => fallback,
 }));
-import { SplitPricingModal } from "./SplitPricingModal";
+
+import { SplitPricingContent } from "./SplitPricingModal";
 
 const price = { interval: "monthly", currency: "usd", unitAmount: 900 };
 type PrimaryAction = { children: string; isDisabled: boolean; onPress: () => void };
@@ -61,7 +62,7 @@ function billing(fields: Record<string, unknown>) {
 	};
 }
 function button(onSignIn = vi.fn()) {
-	const result = primary(SplitPricingModal({ onSignIn }));
+	const result = primary(SplitPricingContent({ onSignIn }));
 	expect(result).toBeDefined();
 	return result!;
 }
@@ -97,13 +98,13 @@ it("keeps verified checkout on Get started", () => {
 	expect(state.refresh).not.toHaveBeenCalled();
 });
 it.each([
-	"loading",
-	"catalogLoading",
-])("shows loading instead of Get started during %s", (pending) => {
+	["loading", "Loading your plan…"],
+	["catalogLoading", "Loading pricing…"],
+])("blocks checkout during %s even when the price is already visible", (pending, label) => {
 	billing({ checkoutAvailable: true, checkoutIntervals: ["monthly"], prices: [price] });
 	state.billing.catalog = { prices: [price] };
 	state.billing[pending] = true;
-	expect(button()).toMatchObject({ children: "Loading pricing…", isDisabled: true });
+	expect(button()).toMatchObject({ children: label, isDisabled: true });
 	state.billing[pending] = false;
 	expect(button()).toMatchObject({ children: "Get started", isDisabled: false });
 });
@@ -118,8 +119,17 @@ it("keeps sign-in ahead of retry for signed-out users", () => {
 	state.billing.user = null;
 	const signIn = vi.fn(),
 		action = button(signIn);
-	expect(action.children).toBe("Sign in to continue");
+	expect(action.children).toBe("Get started");
 	action.onPress();
 	expect(signIn).toHaveBeenCalledOnce();
 	expect(state.refresh).not.toHaveBeenCalled();
+	expect(state.startBilling).not.toHaveBeenCalled();
+});
+it("does not start checkout with a display-only public preview price", () => {
+	billing({ checkoutAvailable: true, checkoutIntervals: ["monthly"], prices: [price] });
+	state.billing.previewCatalog = { prices: [price] };
+	const action = button();
+	expect(action.children).toBe("Retry loading pricing");
+	action.onPress();
+	expect(state.startBilling).not.toHaveBeenCalled();
 });

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "@/components/ui/toast";
-import { useRecorderWebcam } from "./useRecorderWebcam";
 import { useRecorderControls } from "./useRecorderControls";
+import { useRecorderWebcam } from "./useRecorderWebcam";
 
 vi.mock("react", () => ({
 	useCallback: <T>(callback: T) => callback,

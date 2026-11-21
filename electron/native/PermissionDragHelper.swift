@@ -45,23 +45,38 @@ final class SettingsFollower {
         guard front == settings.processIdentifier || front == parentPID else { publish(["visible": false]); return }
         // Window geometry only: no screenshots, accessibility elements or TCC DBs.
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-        guard let info = windows.first(where: {
+        let info = windows.first(where: {
             ($0[kCGWindowOwnerPID as String] as? Int32) == settings.processIdentifier &&
             ($0[kCGWindowLayer as String] as? Int) == 0 &&
             (($0[kCGWindowBounds as String] as? [String: CGFloat])?["Width"] ?? 0) > 300
-        }), let bounds = info[kCGWindowBounds as String] as? [String: Any],
-            let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary), let primary = NSScreen.screens.first else {
+        })
+        let rect = (info?[kCGWindowBounds as String] as? [String: Any])
+            .flatMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) }
+        guard let primary = NSScreen.screens.first else {
+            publish(["visible": false])
+            return
+        }
+        let width: CGFloat = 368
+        let height: CGFloat = 264
+        let x: CGFloat
+        let y: CGFloat
+        if let rect {
+            let cocoaRect = NSRect(x: rect.minX, y: primary.frame.maxY - rect.maxY, width: rect.width, height: rect.height)
+            let screen = NSScreen.screens.max { $0.frame.intersection(cocoaRect).area < $1.frame.intersection(cocoaRect).area } ?? primary
+            let visible = screen.visibleFrame
+            x = min(max(cocoaRect.maxX - width, visible.minX), visible.maxX - width)
+            y = min(max(visible.minY + 8, cocoaRect.minY - height - 8), visible.maxY - height)
+        } else if front == settings.processIdentifier {
+            // Settings can be foreground without exposing a usable window frame.
+            let pointer = NSEvent.mouseLocation
+            let visible = (NSScreen.screens.first { $0.frame.contains(pointer) } ?? primary).visibleFrame
+            x = visible.maxX - width - 8
+            y = visible.minY + 8
+        } else {
             publish(["visible": false])
             return
         }
         sawSettings = true
-        let cocoaRect = NSRect(x: rect.minX, y: primary.frame.maxY - rect.maxY, width: rect.width, height: rect.height)
-        let screen = NSScreen.screens.max { $0.frame.intersection(cocoaRect).area < $1.frame.intersection(cocoaRect).area } ?? primary
-        let visible = screen.visibleFrame
-        let width: CGFloat = 368
-        let height: CGFloat = 264
-        let x = min(max(cocoaRect.maxX - width, visible.minX), visible.maxX - width)
-        let y = max(visible.minY + 8, cocoaRect.minY - height - 8)
         publish(["visible": true, "x": Int(x.rounded()), "y": Int((primary.frame.maxY - y - height).rounded()),
                  "width": Int(width), "height": Int(height)])
     }

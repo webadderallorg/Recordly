@@ -1,9 +1,9 @@
+import { Button, Description, Form, TextArea, TextField } from "@heroui/react";
+import { Paperclip } from "@phosphor-icons/react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useRecordlyAuth } from "@/components/auth/useRecordlyAuth";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { FeedbackLinks } from "@/components/feedback/FeedbackLinks";
-import { Button, Description, Form, TextArea, TextField } from "@heroui/react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { useI18n } from "@/contexts/I18nContext";
-import { useRecordlyAuth } from "@/components/auth/useRecordlyAuth";
 import {
 	Dialog,
 	DialogContent,
@@ -11,12 +11,12 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
-import { Paperclip } from "@phosphor-icons/react";
 import { ChatWarning, X } from "@/components/ui/icons";
+import { useI18n } from "@/contexts/I18nContext";
 import { collectFeedbackDiagnostics } from "@/lib/feedback/diagnostics";
 import {
-	getFeedbackDraft,
 	type FeedbackSentiment,
+	getFeedbackDraft,
 	subscribeFeedbackDraft,
 	updateFeedbackDraft,
 } from "@/lib/feedback/draft";

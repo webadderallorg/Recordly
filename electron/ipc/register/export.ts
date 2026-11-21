@@ -1,5 +1,3 @@
-import { nativeT } from "../../nativeI18n";
-import { observeShareExportSource, progressiveShareFfmpegArgs } from "../growingShareUpload";
 import type { ChildProcessByStdio } from "node:child_process";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
@@ -7,6 +5,7 @@ import path from "node:path";
 import type { Readable, Writable } from "node:stream";
 import type { SaveDialogOptions } from "electron";
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { nativeT } from "../../nativeI18n";
 import {
 	getAvailableExportPath,
 	getSelectedExportPath,
@@ -21,6 +20,7 @@ import {
 	writeToExportStream,
 } from "../export/exportStream";
 import {
+	cancelNativeVideoExportSession,
 	enqueueNativeVideoExportFrameWrite,
 	enqueueNativeVideoExportFrameWrites,
 	exportNativeStaticLayoutVideo,
@@ -44,6 +44,7 @@ import {
 	settleNativeVideoExportWriteFrameRequest,
 } from "../export/native-video";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
+import { observeShareExportSource, progressiveShareFfmpegArgs } from "../growingShareUpload";
 import {
 	buildNativeH264StreamExportArgs,
 	buildNativeVideoExportArgs,
@@ -330,6 +331,7 @@ export function registerExportHandlers() {
 
 				const session: NativeVideoExportSession = {
 					ffmpegProcess,
+					currentProcess: null,
 					outputPath,
 					inputByteSize,
 					inputMode,
@@ -698,11 +700,20 @@ export function registerExportHandlers() {
 					session.ffmpegProcess.stdin.end();
 				}
 				await session.completionPromise;
+				if (session.terminating)
+					throw new Error("Native video export session was cancelled");
 
-				const finalized = await muxNativeVideoExportAudio(
+				const finalization = muxNativeVideoExportAudio(
 					session.outputPath,
 					options ?? {},
+					undefined,
+					session,
 				);
+				session.finalization = finalization;
+				const finalized = await finalization;
+				if (session.terminating) {
+					throw new Error("Native video export session was cancelled");
+				}
 				nativeVideoExportSessions.delete(sessionId);
 				// Register the finalized path so only app-produced paths can flow back
 				// through finalize-exported-video / discard-exported-temp.
@@ -725,10 +736,10 @@ export function registerExportHandlers() {
 				};
 			} catch (error) {
 				flushNativeVideoExportPendingWriteRequests(sessionId, session, String(error));
-				nativeVideoExportSessions.delete(sessionId);
-				await removeTemporaryExportFile(session.outputPath);
-				const finalizedSuffix = session.outputPath.replace(/\.mp4$/, "-final.mp4");
-				await removeTemporaryExportFile(finalizedSuffix);
+				if (!session.terminating) {
+					await removeTemporaryExportFile(session.outputPath);
+					if (!session.terminating) nativeVideoExportSessions.delete(sessionId);
+				}
 				return {
 					success: false,
 					error: String(error),
@@ -848,33 +859,13 @@ export function registerExportHandlers() {
 			return { success: true };
 		}
 
-		session.terminating = true;
-		nativeVideoExportSessions.delete(sessionId);
 		flushNativeVideoExportPendingWriteRequests(
 			sessionId,
 			session,
 			"Native video export session was cancelled",
 		);
 
-		try {
-			if (
-				!session.ffmpegProcess.stdin.destroyed &&
-				!session.ffmpegProcess.stdin.writableEnded
-			) {
-				session.ffmpegProcess.stdin.destroy();
-			}
-		} catch {
-			// Stream may already be closed.
-		}
-
-		try {
-			session.ffmpegProcess.kill("SIGKILL");
-		} catch {
-			// Process may already be closed.
-		}
-
-		await session.completionPromise.catch(() => undefined);
-		await removeTemporaryExportFile(session.outputPath);
+		await cancelNativeVideoExportSession(sessionId, session);
 		return { success: true };
 	});
 

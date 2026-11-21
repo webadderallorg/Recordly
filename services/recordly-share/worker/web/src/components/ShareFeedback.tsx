@@ -12,29 +12,29 @@ import {
 } from "@heroui/react";
 import { ChatCircleIcon, ClockIcon, PaperPlaneTiltIcon } from "@phosphor-icons/react";
 import {
+	type Dispatch,
+	type RefObject,
+	type SetStateAction,
 	useEffect,
 	useLayoutEffect,
 	useRef,
 	useState,
-	type Dispatch,
-	type SetStateAction,
-	type RefObject,
 } from "react";
 import {
-	fetchCommentsForViewer,
-	CommentSignInError,
+	type Comment,
 	type CommentAccountState,
+	CommentSignInError,
+	fetchCommentsForViewer,
 	formatDate,
 	formatTimestamp,
 	postComment,
-	type Comment,
 	type ShareData,
 } from "../scripts/api";
 import { timestampParts } from "../scripts/shareModel";
-import { Notice } from "./ShareUI";
-import PagedPanel from "./PagedPanel";
 import CommentAccount from "./CommentAccount";
 import OwnCommentActions from "./OwnCommentActions";
+import PagedPanel from "./PagedPanel";
+import { Notice } from "./ShareUI";
 
 interface Props {
 	data: ShareData;

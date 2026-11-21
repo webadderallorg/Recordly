@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+
 vi.mock("react", () => ({ useCallback: <T>(value: T) => value }));
 vi.mock("@/components/billing/BillingProvider", () => ({ useOptionalBilling: () => null }));
 vi.mock("@/components/billing/captionFileAccess", () => ({ canExportCaptionFiles: () => false }));
@@ -6,8 +7,10 @@ vi.mock("@/components/ui/toast", () => ({
 	toast: { info: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
 vi.mock("@/lib/feedback/exportDiagnostics", () => ({ recordExportDiagnostic: vi.fn() }));
-import { useExportDialogActions } from "./useExportDialogActions";
+
 import { toast } from "@/components/ui/toast";
+import { useExportDialogActions } from "./useExportDialogActions";
+
 function setup(finalize: () => Promise<unknown>, fileName = "fake.mp4") {
 	const original = { projectId: "original", sourcePath: "/r/original.mp4" };
 	const session = {

@@ -1,10 +1,29 @@
 import { spawnSync } from "node:child_process";
-import { accessSync, constants, statSync } from "node:fs";
+import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
+import path from "node:path";
 import { app } from "electron";
+import { parseAvailableFfmpegEncoders } from "../nativeVideoArgs/encoding";
 
 const nodeRequire = createRequire(import.meta.url);
+const binaryProblems = new Map<string, string | null>();
+const systemFfmpegCapabilities = new Map<string, boolean>();
+const FFMPEG_PATH_OVERRIDE_ENV = "RECORDLY_FFMPEG_PATH";
+const BINARY_PROBE_OPTIONS = {
+	timeout: 5000,
+	killSignal: "SIGKILL",
+	windowsHide: true,
+} as const;
+
+function isExecutableFile(filePath: string): boolean {
+	try {
+		if (!statSync(filePath).isFile()) return false;
+		accessSync(filePath, constants.X_OK);
+		return true;
+	} catch {
+		return false;
+	}
+}
 
 export function loadFfmpegStatic(): string | null {
 	try {
@@ -46,21 +65,6 @@ export function loadFfprobeStatic(): string | null {
 	}
 
 	return null;
-}
-
-/** True only for a regular file (or symlink to one) with execute permission. */
-export function isExecutableFile(filePath: string): boolean {
-	try {
-		const st = statSync(filePath);
-		// Directories can be X_OK on POSIX; never treat them as FFmpeg.
-		if (!st.isFile()) {
-			return false;
-		}
-		accessSync(filePath, constants.X_OK);
-		return true;
-	} catch {
-		return false;
-	}
 }
 
 export function resolveSystemFfmpegBinaryPath(): string | null {
@@ -132,108 +136,124 @@ export function resolveSystemFfprobeBinaryPath(): string | null {
 	return null;
 }
 
-const FFMPEG_PATH_OVERRIDE_ENV = "RECORDLY_FFMPEG_PATH";
+function probeBinary(binaryPath: string, source: string): string | null {
+	const cached = binaryProblems.get(binaryPath);
+	if (cached !== undefined) return cached;
 
-export type FfmpegBinarySource = "override" | "system" | "bundled";
-
-/**
- * Chooses between an explicit RECORDLY_FFMPEG_PATH override, a system
- * FFmpeg, and the packaged ffmpeg-static binary. Pure function so the
- * precedence stays unit-testable.
- *
- * Linux distro packages ship the hardware encoders (VAAPI, NVENC, CUDA)
- * that the portable ffmpeg-static build leaves out, so a system FFmpeg
- * wins on Linux when one is present. Windows and macOS keep the bundled
- * binary first for a predictable toolchain.
- */
-export function pickFfmpegBinaryPath(inputs: {
-	override: string | null;
-	bundled: string | null;
-	system: string | null;
-	platform: NodeJS.Platform;
-}): { path: string; source: FfmpegBinarySource } | null {
-	if (inputs.override) {
-		return { path: inputs.override, source: "override" };
+	const result = spawnSync(binaryPath, ["-version"], {
+		stdio: "ignore",
+		...BINARY_PROBE_OPTIONS,
+	});
+	let problem: string | null = null;
+	if (result.error) {
+		problem = (result.error as NodeJS.ErrnoException).code ?? result.error.message;
+	} else if (result.signal) {
+		problem = `terminated by ${result.signal}`;
+	} else if (result.status !== 0) {
+		problem = `exit status ${result.status}`;
 	}
-	if (inputs.platform === "linux" && inputs.system) {
-		return { path: inputs.system, source: "system" };
+	if (problem !== null) {
+		console.warn(`[FFmpeg] Skipping unusable ${source} binary ${binaryPath} (${problem}).`);
 	}
-	if (inputs.bundled) {
-		return { path: inputs.bundled, source: "bundled" };
-	}
-	if (inputs.system) {
-		return { path: inputs.system, source: "system" };
-	}
-	return null;
+	binaryProblems.set(binaryPath, problem);
+	return problem;
 }
 
-function resolveBundledFfmpegBinaryPath(): string | null {
-	const ffmpegStatic = loadFfmpegStatic();
-	if (!ffmpegStatic || typeof ffmpegStatic !== "string") {
-		return null;
+function resolveBinaryPath(
+	tool: "FFmpeg" | "FFprobe",
+	bundledPaths: (string | null)[],
+	resolveSystem: () => string | null,
+): string {
+	let bundledFailure: string | undefined;
+	for (const candidate of bundledPaths) {
+		if (!candidate) continue;
+		const bundledPath = app.isPackaged
+			? candidate.replace(/\.asar([/\\])/, ".asar.unpacked$1")
+			: candidate;
+		if (!existsSync(bundledPath)) continue;
+		const problem = probeBinary(bundledPath, "bundled");
+		if (problem === null) return bundledPath;
+		bundledFailure ??= problem;
 	}
-	const bundledPath = app.isPackaged
-		? ffmpegStatic.replace(/\.asar([/\\])/, ".asar.unpacked$1")
-		: ffmpegStatic;
-	// existsSync alone is not enough: a non-executable package would fail later
-	// with EACCES and skip system fallback on non-Linux.
-	return isExecutableFile(bundledPath) ? bundledPath : null;
+
+	const systemBinary = resolveSystem();
+	if (systemBinary) return systemBinary;
+	const command = tool.toLowerCase();
+	if (bundledFailure !== undefined) {
+		throw new Error(
+			`Bundled ${tool} could not run (${bundledFailure}), and no system ${tool} was found. Make ${command} available on PATH.`,
+		);
+	}
+
+	throw new Error(
+		`${tool} binary is unavailable. Install ${command}-static for this platform or make ${command} available on PATH.`,
+	);
 }
 
 function resolveFfmpegPathOverride(): string | null {
 	const override = process.env[FFMPEG_PATH_OVERRIDE_ENV]?.trim();
-	if (!override) {
+	if (!override) return null;
+	const absolute = path.resolve(override);
+	if (!isExecutableFile(absolute)) {
+		console.warn(`[FFmpeg] ${FFMPEG_PATH_OVERRIDE_ENV} is not an executable file: ${absolute}`);
 		return null;
 	}
-	// Validate the absolute path we will actually spawn (relative overrides
-	// otherwise resolve against cwd here but PATH in the child).
-	const absolute = resolve(override);
-	if (isExecutableFile(absolute)) {
-		return absolute;
+	return probeBinary(absolute, FFMPEG_PATH_OVERRIDE_ENV) === null ? absolute : null;
+}
+
+function supportsRecordlyExports(binaryPath: string): boolean {
+	const cached = systemFfmpegCapabilities.get(binaryPath);
+	if (cached !== undefined) return cached;
+
+	const options = { ...BINARY_PROBE_OPTIONS, encoding: "utf8" } as const;
+	const encoderList = spawnSync(binaryPath, ["-hide_banner", "-encoders"], options);
+	const encoders = parseAvailableFfmpegEncoders(encoderList.stdout ?? "");
+	let supported = false;
+
+	// Automatic preference must keep software H.264 fallback, audio muxing, and GIF export working.
+	if (
+		encoderList.status === 0 &&
+		["libx264", "aac", "gif", "png", "mjpeg"].every((name) => encoders.has(name))
+	) {
+		const filterList = spawnSync(binaryPath, ["-hide_banner", "-filters"], options);
+		const filters = new Set(
+			Array.from(
+				(filterList.stdout ?? "").matchAll(/^\s*[TSC.]{3}\s+(\w+)\s+/gm),
+				(m) => m[1],
+			),
+		);
+		supported =
+			filterList.status === 0 &&
+			["scale", "palettegen", "paletteuse"].every((name) => filters.has(name));
 	}
-	console.warn(
-		`${FFMPEG_PATH_OVERRIDE_ENV} is set but not an executable file: ${override}`,
-	);
-	return null;
+	systemFfmpegCapabilities.set(binaryPath, supported);
+	if (supported) binaryProblems.set(binaryPath, null);
+	return supported;
 }
 
 export function getFfmpegBinaryPath(): string {
-	const bundled = resolveBundledFfmpegBinaryPath();
-	const choice = pickFfmpegBinaryPath({
-		override: resolveFfmpegPathOverride(),
-		bundled,
-		// Only probe PATH when the answer can change: on Linux (system-first)
-		// or when the bundled binary is missing.
-		system: process.platform === "linux" || !bundled ? resolveSystemFfmpegBinaryPath() : null,
-		platform: process.platform,
-	});
-	if (choice) {
-		return choice.path;
+	const override = resolveFfmpegPathOverride();
+	if (override) return override;
+
+	if (process.platform === "linux") {
+		const system = resolveSystemFfmpegBinaryPath();
+		if (system && supportsRecordlyExports(system)) return system;
+		return resolveBinaryPath("FFmpeg", [loadFfmpegStatic()], () =>
+			system && probeBinary(system, "system FFmpeg") === null ? system : null,
+		);
 	}
 
-	throw new Error(
-		"FFmpeg binary is unavailable. Install ffmpeg-static for this platform or make ffmpeg available on PATH.",
-	);
+	return resolveBinaryPath("FFmpeg", [loadFfmpegStatic()], resolveSystemFfmpegBinaryPath);
 }
 
 export function getFfprobeBinaryPath(): string {
-	const ffprobeStatic = loadFfprobeStatic();
-	if (ffprobeStatic && typeof ffprobeStatic === "string") {
-		const bundledPath = app.isPackaged
-			? ffprobeStatic.replace(/\.asar([/\\])/, ".asar.unpacked$1")
-			: ffprobeStatic;
-
-		if (isExecutableFile(bundledPath)) {
-			return bundledPath;
-		}
-	}
-
-	const systemFfprobe = resolveSystemFfprobeBinaryPath();
-	if (systemFfprobe) {
-		return systemFfprobe;
-	}
-
-	throw new Error(
-		"FFprobe binary is unavailable. Install ffprobe-static for this platform or make ffprobe available on PATH.",
+	const sourceBuilt =
+		process.platform === "linux"
+			? path.join(app.getAppPath(), "node_modules", "ffmpeg-static", "ffprobe-recordly")
+			: null;
+	return resolveBinaryPath(
+		"FFprobe",
+		[sourceBuilt, loadFfprobeStatic()],
+		resolveSystemFfprobeBinaryPath,
 	);
 }

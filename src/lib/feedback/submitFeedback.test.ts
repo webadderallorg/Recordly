@@ -1,9 +1,12 @@
 import { beforeEach, expect, it, vi } from "vitest";
+
 const api = vi.hoisted(() => ({ getUser: vi.fn(), invoke: vi.fn() }));
 vi.mock("@/lib/auth/recordlyAuth", () => ({
 	recordlyAuth: { auth: { getUser: api.getUser }, functions: { invoke: api.invoke } },
 }));
+
 import { feedbackErrorMessage, submitFeedback } from "./submitFeedback";
+
 const input = {
 	title: " Bug ",
 	subject: "bug",

@@ -1,15 +1,19 @@
 import { afterEach, expect, it, vi } from "vitest";
-vi.mock("electron", () => ({ app: { getAppPath: () => "/recordly" } }));
+import { testAppDocument, testAppPath } from "./testing/rendererFixture";
+
+vi.mock("electron", () => ({ app: { getAppPath: () => testAppPath } }));
 vi.mock("./rendererServer", () => ({ getPackagedRendererBaseUrl: () => "http://127.0.0.1:43820" }));
+
 import { isTrustedRenderer } from "./trustedRenderer";
+
 afterEach(() => vi.unstubAllEnvs());
 
 it.each([
-	"file:///recordly/dist/index.html?windowType=editor#section",
+	`${testAppDocument}?windowType=editor#section`,
 	"http://127.0.0.1:43820/?windowType=onboarding",
 	"http://localhost:5173/?windowType=hud-overlay",
 ])("accepts the app main document %s", (url) => {
-	vi.stubEnv("APP_ROOT", "/recordly");
+	vi.stubEnv("APP_ROOT", testAppPath);
 	vi.stubEnv("VITE_DEV_SERVER_URL", "http://localhost:5173/");
 	const frame = { url };
 	expect(

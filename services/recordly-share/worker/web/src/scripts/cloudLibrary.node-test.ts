@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fetchVideos, deleteVideo, renewVideo, LibrarySignInRedirectError } from "./library.ts";
+import { deleteVideo, fetchVideos, LibrarySignInRedirectError, renewVideo } from "./library.ts";
 
 test("cloud library follows account-scoped cursor pages and hides unfinished uploads", async (t) => {
 	const requests: { path: string; options?: RequestInit }[] = [];

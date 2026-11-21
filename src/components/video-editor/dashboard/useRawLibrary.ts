@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { useI18n } from "@/contexts/I18nContext";
 import { toast } from "@/components/ui/toast";
+import { useI18n } from "@/contexts/I18nContext";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 
 const HIDDEN_KEY = "recordly.raw-hidden.v1";

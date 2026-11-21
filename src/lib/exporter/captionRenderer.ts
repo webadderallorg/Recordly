@@ -1,12 +1,10 @@
-import { drawSquircleOnCanvas, SQUIRCLE_RADIUS_SCALE } from "@/lib/geometry/squircle";
 import { getCaptionFontFamily } from "@/components/video-editor/captionFonts";
+import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
 import {
 	drawCaptionBoxBorder,
 	getCaptionBackground,
 	getCaptionPreset,
 } from "@/components/video-editor/captionPresets";
-import { drawCaptionLine } from "./captionText";
-import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
 import {
 	CAPTION_LINE_HEIGHT,
 	getCaptionPadding,
@@ -15,6 +13,8 @@ import {
 	getCaptionTextMaxWidth,
 } from "@/components/video-editor/captionStyle";
 import { type AutoCaptionSettings, type CaptionCue } from "@/components/video-editor/types";
+import { drawSquircleOnCanvas, SQUIRCLE_RADIUS_SCALE } from "@/lib/geometry/squircle";
+import { drawCaptionLine } from "./captionText";
 
 /** Draw the active caption using the same typography and timing as preview. */
 export function renderCaptions(

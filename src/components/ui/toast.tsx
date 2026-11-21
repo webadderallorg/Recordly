@@ -72,10 +72,15 @@ function notify(title: ReactNode, options: Options = {}, variant: Variant = "def
 		variant,
 		description: reportable ? (
 			<div className="flex flex-col items-start gap-2">
-				<div className="flex items-center gap-2" data-error-actions>
+				<div className="flex items-center gap-2.5" data-error-actions>
 					<ErrorReportButton error={errorText} context="notification" compact />
 					{actionProps && (
-						<Button {...actionProps} size="sm" className="h-8 shrink-0 text-xs" />
+						<Button
+							{...actionProps}
+							variant={action ? "default" : "outline"}
+							size="sm"
+							className="h-7 min-h-7 shrink-0 px-2.5 text-xs"
+						/>
 					)}
 				</div>
 				{options.description && (

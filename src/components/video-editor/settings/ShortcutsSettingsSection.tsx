@@ -1,5 +1,5 @@
-import { ShortcutsConfigDialog } from "../ShortcutsConfigDialog";
 import { useSettingsCategoryActive } from "../SettingsSections";
+import { ShortcutsConfigDialog } from "../ShortcutsConfigDialog";
 
 export function ShortcutsSettingsSection() {
 	const active = useSettingsCategoryActive("shortcuts");

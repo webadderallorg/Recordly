@@ -1,10 +1,11 @@
-import { beforeAll, expect, it } from "vitest";
 import { env } from "cloudflare:test";
-import worker from "../src/index.js";
-import { ensureSchema } from "../src/schema.js";
-import { cleanupExpired } from "../src/library.js";
+import { beforeAll, expect, it } from "vitest";
 import { sha256Hex } from "../src/crypto.js";
+import worker from "../src/index.js";
+import { cleanupExpired } from "../src/library.js";
+import { ensureSchema } from "../src/schema.js";
 import { localCommentHeaders } from "./commentFixtures.js";
+
 const sessions = new Map();
 const config = { ...env };
 beforeAll(() => ensureSchema(env));

@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
-import { get as httpsGet } from "node:https";
 import path from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -11,6 +10,7 @@ import {
 	type CaptionModelId,
 	isCaptionModelId,
 } from "../../../src/shared/captionModels";
+import { receiveCaptionDownload } from "./modelDownloadTransport";
 import {
 	deleteParakeetModel,
 	downloadParakeetModel,
@@ -68,64 +68,28 @@ export async function downloadVerifiedCaptionFile(
 	destination: string,
 	file: VerifiedFile,
 	onBytes: (bytes: number) => void,
-	redirects = 0,
 ): Promise<void> {
-	if (new URL(url).protocol !== "https:")
-		throw new Error("Caption model downloads require HTTPS.");
-	await new Promise<void>((resolve, reject) => {
-		const request = httpsGet(url, { timeout: 30_000 }, (response) => {
-			const status = response.statusCode ?? 0;
-			if (status >= 300 && status < 400 && response.headers.location) {
-				response.resume();
-				if (redirects >= 8) {
-					reject(new Error("Too many redirects downloading caption model."));
+	await receiveCaptionDownload(url, 8, async (response) => {
+		if (response.statusCode !== 200) {
+			throw new Error(`Caption model download failed (HTTP ${response.statusCode}).`);
+		}
+		let received = 0;
+		const hash = createHash("sha256");
+		const verify = new Transform({
+			transform(chunk: Buffer, _encoding, callback) {
+				received += chunk.length;
+				if (received > file.size) {
+					callback(new Error("Caption model file is larger than expected."));
 					return;
 				}
-				try {
-					void downloadVerifiedCaptionFile(
-						new URL(response.headers.location, url).href,
-						destination,
-						file,
-						onBytes,
-						redirects + 1,
-					).then(resolve, reject);
-				} catch (error) {
-					reject(error);
-				}
-				return;
-			}
-			if (status !== 200) {
-				response.resume();
-				reject(new Error(`Caption model download failed (HTTP ${status}).`));
-				return;
-			}
-			let received = 0;
-			const hash = createHash("sha256");
-			const verify = new Transform({
-				transform(chunk: Buffer, _encoding, callback) {
-					received += chunk.length;
-					if (received > file.size) {
-						callback(new Error("Caption model file is larger than expected."));
-						return;
-					}
-					hash.update(chunk);
-					onBytes(received);
-					callback(null, chunk);
-				},
-			});
-			void pipeline(response, verify, createWriteStream(destination, { flags: "wx" }))
-				.then(() => {
-					if (received !== file.size || hash.digest("hex") !== file.sha256)
-						throw new Error(
-							"Caption model failed its integrity check. Please try again.",
-						);
-				})
-				.then(resolve, reject);
+				hash.update(chunk);
+				onBytes(received);
+				callback(null, chunk);
+			},
 		});
-		request.on("error", reject);
-		request.on("timeout", () =>
-			request.destroy(new Error("Caption model download timed out.")),
-		);
+		await pipeline(response, verify, createWriteStream(destination, { flags: "wx" }));
+		if (received !== file.size || hash.digest("hex") !== file.sha256)
+			throw new Error("Caption model failed its integrity check. Please try again.");
 	});
 }
 

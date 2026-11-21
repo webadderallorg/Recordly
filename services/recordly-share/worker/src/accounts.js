@@ -1,9 +1,9 @@
 // Adapted from Voom (MIT), Copyright (c) 2026 Aritro Paul.
 // See ../../LICENSE and ../../../../THIRD_PARTY_NOTICES.md for attribution.
 
-import { errorResponse, parseCookies } from "./http.js";
-import { generateSalt, sha256Hex, timingSafeEqual } from "./crypto.js";
 import { checkLoginRateLimit, clearLoginRateLimit } from "./auth.js";
+import { generateSalt, sha256Hex, timingSafeEqual } from "./crypto.js";
+import { errorResponse, parseCookies } from "./http.js";
 
 const COMMENT_SESSION_COOKIE = "recordly_comment_session";
 

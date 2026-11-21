@@ -30,12 +30,16 @@ import { type CachedCloudUsage, readUsageCache, writeUsageCache } from "./usageC
 type Status = ReturnType<typeof parseCloudBillingStatus>;
 type Catalog = ReturnType<typeof parseCloudBillingCatalog>;
 type AccountOwner = { userId: string | undefined };
+const PUBLIC_BILLING_ENDPOINT = "https://videos.recordly.dev/api/upload";
+const usePublicPreviewCatalog =
+	import.meta.env.DEV && !import.meta.env.VITE_CLOUD_SHARE_ENDPOINT?.trim();
 
 type LegacyUsage = { recordings: number; storageBytes: number };
 
 interface BillingContextValue {
 	status: Status | null;
 	catalog: Catalog | null;
+	previewCatalog: Catalog | null;
 	catalogLoading: boolean;
 	fallbackUsage: LegacyUsage | null;
 	usagePreview: CachedCloudUsage | null;
@@ -44,6 +48,7 @@ interface BillingContextValue {
 	needsSignIn: boolean;
 	user: User | null;
 	refresh: () => Promise<void>;
+	refreshAfterSignIn: () => void;
 	openPricing: () => void;
 	pricingOpen: boolean;
 	setPricingOpen: (open: boolean) => void;
@@ -101,9 +106,20 @@ async function readLegacyUsage(token: string): Promise<LegacyUsage> {
 /** The server owns entitlement; checkout return and local storage never grant Cloud. */
 export function BillingProvider({ children }: { children: ReactNode }) {
 	const auth = useRecordlyAuth();
+	return <BillingSessionProvider auth={auth}>{children}</BillingSessionProvider>;
+}
+
+export function BillingSessionProvider({
+	auth,
+	children,
+}: {
+	auth: Pick<ReturnType<typeof useRecordlyAuth>, "user" | "accessToken" | "loading">;
+	children: ReactNode;
+}) {
 	const [status, setStatus] = useState<Status | null>(null);
 	const [statusOwner, setStatusOwner] = useState<AccountOwner | null>(null);
 	const [catalog, setCatalog] = useState<Catalog | null>(null);
+	const [previewCatalog, setPreviewCatalog] = useState<Catalog | null>(null);
 	const [catalogLoading, setCatalogLoading] = useState(false);
 	const [fallbackUsage, setFallbackUsage] = useState<LegacyUsage | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -122,11 +138,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 		owner: AccountOwner;
 		promise: Promise<void>;
 	} | null>(null);
-	const catalogRequest = useRef<{
-		key: string;
-		owner: AccountOwner;
-		promise: Promise<void>;
-	} | null>(null);
+	const catalogRequest = useRef<symbol | null>(null);
 	const mounted = useRef(true);
 	const userId = auth.user?.id;
 	// Token rotation refreshes requests, but does not change who owns a verified
@@ -168,9 +180,55 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 		};
 	}, []);
 
+	const refreshPublicCatalog = useCallback((fresh: boolean) => {
+		if (
+			!mounted.current ||
+			catalogRequest.current ||
+			!CLOUD_SHARE_ENDPOINT ||
+			typeof window.electronAPI.cloudBilling !== "function"
+		)
+			return;
+		const pending = Symbol();
+		catalogRequest.current = pending;
+		const isCurrent = () => catalogRequest.current === pending;
+		setCatalogLoading(true);
+		void (async () => {
+			try {
+				const result = parseCloudBillingCatalog(
+					await readCloudBilling(CLOUD_SHARE_ENDPOINT, "catalog", undefined, fresh),
+				);
+				if (!isCurrent()) return;
+				setCatalog(result);
+				setPreviewCatalog(null);
+				setCatalogError(null);
+			} catch (failure) {
+				if (!isCurrent()) return;
+				setCatalog(null);
+				setCatalogError(errorMessage(failure));
+				if (usePublicPreviewCatalog) {
+					// Development can display the public offer but not use it to authorize checkout.
+					try {
+						const preview = parseCloudBillingCatalog(
+							await readCloudBilling(PUBLIC_BILLING_ENDPOINT, "catalog"),
+						);
+						if (isCurrent()) setPreviewCatalog(preview);
+					} catch {
+						if (isCurrent()) setPreviewCatalog(null);
+					}
+				}
+			} finally {
+				if (isCurrent()) {
+					catalogRequest.current = null;
+					setCatalogLoading(false);
+				}
+			}
+		})();
+	}, []);
+
 	const refresh = useCallback(
-		(fresh = false): Promise<void> => {
-			if (auth.loading) return Promise.resolve();
+		(fresh = false, includeCatalog = true): Promise<void> => {
+			if (includeCatalog) refreshPublicCatalog(fresh);
+			if (!mounted.current || auth.loading) return Promise.resolve();
 			const key = authKey;
 			if (currentAuthKey.current !== key || currentAccountKey.current !== accountKey)
 				return Promise.resolve();
@@ -207,52 +265,6 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 			setLoading(true);
 			const billingAvailable =
 				CLOUD_SHARE_ENDPOINT && typeof window.electronAPI.cloudBilling === "function";
-			// Pricing is independent of usage: a slow public catalog must not keep a
-			// completed account read behind a loading indicator.
-			if (
-				billingAvailable &&
-				(catalogRequest.current?.key !== key || catalogRequest.current.owner !== accountKey)
-			) {
-				const pending = { key, owner: accountKey, promise: Promise.resolve() };
-				catalogRequest.current = pending;
-				setCatalogLoading(true);
-				pending.promise = (async () => {
-					try {
-						const result = parseCloudBillingCatalog(
-							await readCloudBilling(
-								CLOUD_SHARE_ENDPOINT,
-								"catalog",
-								undefined,
-								fresh,
-							),
-						);
-						if (
-							!mounted.current ||
-							currentAuthKey.current !== key ||
-							currentAccountKey.current !== accountKey ||
-							catalogRequest.current !== pending
-						)
-							return;
-						setCatalog(result);
-						setCatalogError(null);
-					} catch (failure) {
-						if (
-							!mounted.current ||
-							currentAuthKey.current !== key ||
-							currentAccountKey.current !== accountKey ||
-							catalogRequest.current !== pending
-						)
-							return;
-						setCatalog(null);
-						setCatalogError(errorMessage(failure));
-					} finally {
-						if (catalogRequest.current === pending) {
-							catalogRequest.current = null;
-							if (mounted.current) setCatalogLoading(false);
-						}
-					}
-				})();
-			}
 			const pending = { key, owner: accountKey, promise: Promise.resolve() };
 			usageRequest.current = pending;
 			pending.promise = (async () => {
@@ -372,14 +384,14 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 			})();
 			return pending.promise;
 		},
-		[auth.loading, userId, auth.accessToken, authKey, accountKey],
+		[auth.loading, userId, auth.accessToken, authKey, accountKey, refreshPublicCatalog],
 	);
 
 	useEffect(() => {
 		if (previousUserId.current === auth.user?.id) return;
 		previousUserId.current = auth.user?.id;
 		sessionRecoveryAttempted.current = false;
-		invalidateCloudBillingReads();
+		invalidateCloudBillingReads("status");
 		setStatus(null);
 		setStatusOwner(null);
 		setFallbackUsage(null);
@@ -392,6 +404,12 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 	}, [auth.user?.id]);
 	useEffect(() => {
 		void refresh();
+	}, [refresh]);
+
+	const refreshAfterSignIn = useCallback(() => {
+		// Reauthentication can keep the same token. Do not reuse a pending
+		// status read from before it completed or reload the public price.
+		void (usageRequest.current?.promise ?? Promise.resolve()).then(() => refresh(true, false));
 	}, [refresh]);
 
 	useEffect(() => {
@@ -517,6 +535,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 			value={{
 				status: verifiedStatus,
 				catalog,
+				previewCatalog,
 				catalogLoading,
 				fallbackUsage: verifiedFallbackUsage,
 				usagePreview,
@@ -525,6 +544,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 				needsSignIn: statusOwner === accountKey && needsSignIn,
 				user: auth.user,
 				refresh: () => refresh(true),
+				refreshAfterSignIn,
 				openPricing: () => {
 					setPricingOpen(true);
 					void refresh(true);

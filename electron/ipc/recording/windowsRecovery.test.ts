@@ -1,21 +1,21 @@
 import { EventEmitter } from "node:events";
-import { PassThrough } from "node:stream";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	setNativeScreenRecordingActive,
 	nativeScreenRecordingActive,
-	windowsCaptureTargetPath,
-	setWindowsPendingVideoPath,
+	setNativeScreenRecordingActive,
 	setWindowsCaptureOutputBuffer,
 	setWindowsCaptureProcess,
 	setWindowsCaptureStopRequested,
 	setWindowsCaptureTargetPath,
 	setWindowsMicAudioPath,
 	setWindowsNativeCaptureActive,
+	setWindowsPendingVideoPath,
 	setWindowsSystemAudioPath,
+	windowsCaptureTargetPath,
 	windowsPendingVideoPath,
 } from "../state";
 
@@ -25,9 +25,10 @@ vi.mock("electron", () => ({
 	BrowserWindow: { getAllWindows: () => [{ isDestroyed: () => false, webContents: { send } }] },
 }));
 vi.mock("./diagnostics", () => ({ validateRecordedVideo: validate }));
+
+import { RecordingOwnerRecovery } from "./ownerRecovery";
 import { attachWindowsCaptureLifecycle, recoverNativeWindowsCaptureOutput } from "./windows";
 import { WindowsRecordingFinalizer } from "./windowsFinalizer";
-import { RecordingOwnerRecovery } from "./ownerRecovery";
 
 describe("Windows interrupted recording recovery", () => {
 	let directory: string;

@@ -1,7 +1,5 @@
 import type { BrowserWindow, MenuItemConstructorOptions } from "electron";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { nativeT, setNativeLocale } from "./nativeI18n";
-import { isInternalRendererTarget } from "./navigationPolicy";
 import en from "../src/i18n/locales/en/native.json";
 import itNative from "../src/i18n/locales/it/native.json";
 import {
@@ -9,6 +7,8 @@ import {
 	createEditorCommandMenus,
 	withHiddenDockEditorMenus,
 } from "./editorCommandMenu";
+import { nativeT, setNativeLocale } from "./nativeI18n";
+import { isInternalRendererTarget } from "./navigationPolicy";
 
 const translate = nativeT;
 afterEach(() => {

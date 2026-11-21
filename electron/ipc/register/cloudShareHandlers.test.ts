@@ -4,9 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import { ipcMain } from "electron";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { testAppDocument, testAppPath } from "../../testing/rendererFixture";
 
 vi.mock("electron", () => ({
-	app: { getAppPath: () => "/recordly" },
+	app: { getAppPath: () => testAppPath },
 	ipcMain: { handle: vi.fn() },
 }));
 vi.mock("../export/exportStream", () => ({ isOwnedExportPath: vi.fn(() => true) }));
@@ -23,7 +24,7 @@ import { registerCloudShareHandlers } from "./cloudShare";
 const endpoint = "http://localhost:8787/api/upload";
 const json = (value: unknown) => new Response(JSON.stringify(value));
 class Sender extends EventEmitter {
-	mainFrame = { url: "file:///recordly/dist/index.html?windowType=editor" };
+	mainFrame = { url: `${testAppDocument}?windowType=editor` };
 	send = vi.fn();
 	isDestroyed = () => false;
 	constructor(public id: number) {

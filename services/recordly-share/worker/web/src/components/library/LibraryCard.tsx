@@ -7,7 +7,7 @@ import {
 	PlusIcon,
 } from "@phosphor-icons/react";
 import { useState } from "react";
-import { formatDuration, parseUTC, type LibraryVideo } from "../../scripts/library";
+import { formatDuration, type LibraryVideo, parseUTC } from "../../scripts/library";
 
 export type LibraryFolder = { id: string; name: string; codes: string[] };
 export function LibraryCard({

@@ -13,7 +13,7 @@ import {
 	RecordingFileCloseError,
 	RecordingFileStreams,
 } from "../recordingFileStreams";
-import { resolveRecordedVideoStoragePath } from "../storagePath";
+import { isWebcamCompanionRecordingPath, resolveRecordedVideoStoragePath } from "../storagePath";
 import { finishWebmRecording } from "../webmDuration";
 
 // Whole-file fallback uses Electron's structured-clone transport; long recordings stream instead.
@@ -31,6 +31,17 @@ export function registerRecordingFiles() {
 			console.warn("Recording post-processing failed; preserving source", error);
 		}
 		return finishedPath;
+	}
+
+	async function finalizeRecordingFile(filePath: string) {
+		return finalizeKeepingPath(filePath, async (savedPath) => {
+			await rememberApprovedLocalReadPath(savedPath);
+			if (isWebcamCompanionRecordingPath(savedPath)) {
+				await validateRecordedVideo(savedPath);
+				return { success: true, path: savedPath };
+			}
+			return finalizeStoredVideo(savedPath);
+		});
 	}
 
 	function trust(event: Electron.IpcMainInvokeEvent) {
@@ -130,11 +141,7 @@ export function registerRecordingFiles() {
 				await fs.rm(closed.path, { force: true });
 				return { success: false, message: "No video frames were captured." };
 			}
-			const filePath = await finishStream(closed.path);
-			return await finalizeKeepingPath(filePath, async (savedPath) => {
-				await rememberApprovedLocalReadPath(savedPath);
-				return await finalizeStoredVideo(savedPath);
-			});
+			return await finalizeRecordingFile(await finishStream(closed.path));
 		} catch (error) {
 			return {
 				success: false,
@@ -167,11 +174,7 @@ export function registerRecordingFiles() {
 			const recordingsDir = await getRecordingsDir();
 			const videoPath = resolveRecordedVideoStoragePath(recordingsDir, fileName);
 			await fs.writeFile(videoPath, Buffer.from(videoData), { flag: "wx", mode: 0o600 });
-			const filePath = await finishStream(videoPath);
-			return await finalizeKeepingPath(filePath, async (savedPath) => {
-				await rememberApprovedLocalReadPath(savedPath);
-				return await finalizeStoredVideo(savedPath);
-			});
+			return await finalizeRecordingFile(await finishStream(videoPath));
 		} catch (error) {
 			console.error("Failed to store video:", error);
 			return {

@@ -1,138 +1,201 @@
-import { chmodSync, mkdtempSync, unlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import path from "node:path";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
+const mocks = vi.hoisted(() => ({
+	accessSync: vi.fn(),
+	spawnSync: vi.fn(),
+	existsSync: vi.fn(),
+	statSync: vi.fn(),
+	require: vi.fn(),
+}));
+vi.mock("node:child_process", () => ({ spawnSync: mocks.spawnSync }));
+vi.mock("node:fs", () => ({
+	accessSync: mocks.accessSync,
+	constants: { X_OK: 1 },
+	existsSync: mocks.existsSync,
+	statSync: mocks.statSync,
+}));
+vi.mock("node:module", () => ({ createRequire: () => mocks.require }));
 vi.mock("electron", () => ({
-	app: { isPackaged: false },
+	app: { isPackaged: true, getAppPath: () => "/installed/app.asar" },
 }));
 
-import { isExecutableFile, pickFfmpegBinaryPath } from "./binary";
+const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+const bundledFfmpeg = "/installed/app.asar.unpacked/node_modules/ffmpeg-static/ffmpeg";
+const bundledFfprobe = "/installed/app.asar.unpacked/node_modules/ffprobe-static/ffprobe";
+const systemFfmpeg = "/usr/bin/ffmpeg";
+const linuxEncoderList = ["libx264", "aac", "gif", "png", "mjpeg", "h264_nvenc"]
+	.map((encoder) => ` V..... ${encoder}`)
+	.join("\n");
+const linuxFilterList = ["scale", "palettegen", "paletteuse"]
+	.map((filter) => ` ... ${filter} V->V`)
+	.join("\n");
+const installed = new Set<string>();
 
-const BUNDLED = "/app/resources/ffmpeg";
-const SYSTEM = "/usr/bin/ffmpeg";
-const OVERRIDE = "/opt/ffmpeg/build/ffmpeg";
-
-const tempPaths: string[] = [];
+beforeEach(() => {
+	vi.resetModules();
+	vi.stubEnv("RECORDLY_FFMPEG_PATH", undefined);
+	Object.defineProperty(process, "platform", { value: "linux" });
+	installed.clear();
+	mocks.existsSync.mockImplementation((filePath: string) => installed.has(filePath));
+	mocks.statSync.mockReset().mockImplementation((filePath: string) => ({
+		isFile: () => installed.has(filePath),
+	}));
+	mocks.accessSync.mockReset();
+	mocks.require.mockImplementation((pkg: string) => {
+		if (pkg === "ffmpeg-static") return bundledFfmpeg.replace(".asar.unpacked", ".asar");
+		return { path: bundledFfprobe.replace(".asar.unpacked", ".asar") };
+	});
+	mocks.spawnSync.mockReset().mockReturnValue({ status: 0 });
+	vi.spyOn(console, "warn").mockImplementation(() => undefined);
+});
 
 afterEach(() => {
-	for (const p of tempPaths.splice(0)) {
-		try {
-			unlinkSync(p);
-		} catch {
-			// ignore cleanup errors
-		}
-	}
+	Object.defineProperty(process, "platform", platform);
+	vi.unstubAllEnvs();
+	vi.restoreAllMocks();
 });
 
-describe("pickFfmpegBinaryPath", () => {
-	it("prefers the system binary on Linux", () => {
-		expect(
-			pickFfmpegBinaryPath({
-				override: null,
-				bundled: BUNDLED,
-				system: SYSTEM,
-				platform: "linux",
-			}),
-		).toEqual({ path: SYSTEM, source: "system" });
-	});
-
-	it("uses the bundled binary on Linux when no system binary exists", () => {
-		expect(
-			pickFfmpegBinaryPath({
-				override: null,
-				bundled: BUNDLED,
-				system: null,
-				platform: "linux",
-			}),
-		).toEqual({ path: BUNDLED, source: "bundled" });
-	});
-
-	it("keeps the bundled binary first on macOS", () => {
-		expect(
-			pickFfmpegBinaryPath({
-				override: null,
-				bundled: BUNDLED,
-				system: SYSTEM,
-				platform: "darwin",
-			}),
-		).toEqual({ path: BUNDLED, source: "bundled" });
-	});
-
-	it("keeps the bundled binary first on Windows", () => {
-		expect(
-			pickFfmpegBinaryPath({
-				override: null,
-				bundled: BUNDLED,
-				system: "C:\\ffmpeg\\bin\\ffmpeg.exe",
-				platform: "win32",
-			}),
-		).toEqual({ path: BUNDLED, source: "bundled" });
-	});
-
-	it("falls back to the system binary on macOS (and other platforms) when bundled is missing", () => {
-		expect(
-			pickFfmpegBinaryPath({
-				override: null,
-				bundled: null,
-				system: SYSTEM,
-				platform: "darwin",
-			}),
-		).toEqual({ path: SYSTEM, source: "system" });
-	});
-
-	it("lets RECORDLY_FFMPEG_PATH win on every platform", () => {
-		for (const platform of ["linux", "darwin", "win32"] as const) {
-			expect(
-				pickFfmpegBinaryPath({
-					override: OVERRIDE,
-					bundled: BUNDLED,
-					system: SYSTEM,
-					platform,
-				}),
-			).toEqual({ path: OVERRIDE, source: "override" });
-		}
-	});
-
-	it("returns null when no candidate exists", () => {
-		expect(
-			pickFfmpegBinaryPath({
-				override: null,
-				bundled: null,
-				system: null,
-				platform: "linux",
-			}),
-		).toBeNull();
-	});
+it.each(["win32", "darwin"])("probes bundled FFmpeg once and uses it first on %s", async (os) => {
+	Object.defineProperty(process, "platform", { value: os });
+	installed.add(bundledFfmpeg);
+	const { getFfmpegBinaryPath } = await import("./binary");
+	expect(getFfmpegBinaryPath()).toBe(bundledFfmpeg);
+	expect(getFfmpegBinaryPath()).toBe(bundledFfmpeg);
+	expect(mocks.spawnSync).toHaveBeenCalledExactlyOnceWith(
+		bundledFfmpeg,
+		["-version"],
+		expect.objectContaining({ timeout: expect.any(Number), killSignal: "SIGKILL" }),
+	);
 });
 
-describe("isExecutableFile", () => {
-	it("rejects directories even when they are searchable", () => {
-		expect(isExecutableFile(tmpdir())).toBe(false);
-	});
+it("tries system FFmpeg when the existing bundled executable cannot start", async () => {
+	Object.defineProperty(process, "platform", { value: "darwin" });
+	installed.add(bundledFfmpeg);
+	installed.add(systemFfmpeg);
+	mocks.spawnSync
+		.mockReturnValueOnce({
+			error: Object.assign(new Error("permission denied"), { code: "EACCES" }),
+		})
+		.mockReturnValue({ status: 0, stdout: "/usr/bin/ffmpeg\n" });
+	const { getFfmpegBinaryPath } = await import("./binary");
+	expect(getFfmpegBinaryPath()).toBe("/usr/bin/ffmpeg");
+	expect(getFfmpegBinaryPath()).toBe("/usr/bin/ffmpeg");
+	expect(mocks.spawnSync.mock.calls.filter(([file]) => file === bundledFfmpeg)).toHaveLength(1);
+});
 
-	it("rejects missing paths", () => {
-		expect(isExecutableFile(join(tmpdir(), "recordly-no-such-ffmpeg"))).toBe(false);
-	});
+it("reports the bundled failure if there is no system fallback", async () => {
+	Object.defineProperty(process, "platform", { value: "darwin" });
+	installed.add(bundledFfmpeg);
+	mocks.spawnSync
+		.mockReturnValueOnce({
+			error: Object.assign(new Error("timed out"), { code: "ETIMEDOUT" }),
+		})
+		.mockReturnValue({ status: 1 });
+	const { getFfmpegBinaryPath } = await import("./binary");
+	expect(() => getFfmpegBinaryPath()).toThrow(/Bundled FFmpeg.*ETIMEDOUT.*no system FFmpeg/);
+});
 
-	it("accepts a regular executable file", () => {
-		const dir = mkdtempSync(join(tmpdir(), "recordly-ffmpeg-"));
-		const file = join(dir, "ffmpeg-stub");
-		writeFileSync(file, "#!/bin/sh\n");
-		chmodSync(file, 0o755);
-		tempPaths.push(file);
-		expect(isExecutableFile(file)).toBe(true);
+it("prefers a compatible system FFmpeg on Linux and checks capabilities once", async () => {
+	installed.add(bundledFfmpeg);
+	installed.add(systemFfmpeg);
+	mocks.spawnSync.mockImplementation((_file, args: string[]) => {
+		if (args.includes("-encoders")) return { status: 0, stdout: linuxEncoderList };
+		if (args.includes("-filters")) return { status: 0, stdout: linuxFilterList };
+		return { status: 0, stdout: `${systemFfmpeg}\n` };
 	});
+	const { getFfmpegBinaryPath } = await import("./binary");
+	expect(getFfmpegBinaryPath()).toBe(systemFfmpeg);
+	expect(getFfmpegBinaryPath()).toBe(systemFfmpeg);
+	expect(mocks.spawnSync.mock.calls.filter(([file]) => file === systemFfmpeg)).toHaveLength(2);
+	expect(mocks.spawnSync.mock.calls.some(([file]) => file === bundledFfmpeg)).toBe(false);
+});
 
-	it("rejects a non-executable regular file on POSIX", () => {
-		if (process.platform === "win32") {
-			return;
-		}
-		const dir = mkdtempSync(join(tmpdir(), "recordly-ffmpeg-"));
-		const file = join(dir, "ffmpeg-noexec");
-		writeFileSync(file, "#!/bin/sh\n");
-		chmodSync(file, 0o644);
-		tempPaths.push(file);
-		expect(isExecutableFile(file)).toBe(false);
-	});
+it.each([
+	["H.264 software fallback", linuxEncoderList.replace("libx264", "mpeg4"), linuxFilterList],
+	["GIF palette support", linuxEncoderList, linuxFilterList.replace("paletteuse", "pad")],
+])("keeps the Linux bundle if system FFmpeg lacks %s", async (_feature, encoders, filters) => {
+	installed.add(bundledFfmpeg);
+	installed.add(systemFfmpeg);
+	mocks.spawnSync
+		.mockReturnValueOnce({ status: 0, stdout: `${systemFfmpeg}\n` })
+		.mockReturnValueOnce({ status: 0, stdout: encoders })
+		.mockReturnValue({ status: 0, stdout: filters });
+	const { getFfmpegBinaryPath } = await import("./binary");
+	expect(getFfmpegBinaryPath()).toBe(bundledFfmpeg);
+});
+
+it("uses a working system binary as the fallback when no Linux bundle is installed", async () => {
+	installed.add(systemFfmpeg);
+	mocks.spawnSync
+		.mockReturnValueOnce({ status: 0, stdout: `${systemFfmpeg}\n` })
+		.mockReturnValueOnce({ status: 0, stdout: "" })
+		.mockReturnValue({ status: 0 });
+	const { getFfmpegBinaryPath } = await import("./binary");
+	expect(getFfmpegBinaryPath()).toBe(systemFfmpeg);
+});
+
+it("reports a bundled failure when system FFmpeg also cannot run", async () => {
+	installed.add(bundledFfmpeg);
+	installed.add(systemFfmpeg);
+	mocks.spawnSync
+		.mockReturnValueOnce({ status: 0, stdout: `${systemFfmpeg}\n` })
+		.mockReturnValue({ status: 127 });
+	const { getFfmpegBinaryPath } = await import("./binary");
+	expect(() => getFfmpegBinaryPath()).toThrow(/Bundled FFmpeg.*127.*no system FFmpeg/);
+});
+
+it.each([
+	"win32",
+	"darwin",
+	"linux",
+])("uses a working explicit override first on %s", async (os) => {
+	Object.defineProperty(process, "platform", { value: os });
+	installed.add(bundledFfmpeg);
+	const override = path.resolve("custom-ffmpeg");
+	installed.add(override);
+	vi.stubEnv("RECORDLY_FFMPEG_PATH", " custom-ffmpeg ");
+	const { getFfmpegBinaryPath } = await import("./binary");
+	expect(getFfmpegBinaryPath()).toBe(override);
+	expect(mocks.spawnSync).toHaveBeenCalledExactlyOnceWith(
+		override,
+		["-version"],
+		expect.anything(),
+	);
+});
+
+it("continues with the bundle when an override points to a directory", async () => {
+	Object.defineProperty(process, "platform", { value: "darwin" });
+	installed.add(bundledFfmpeg);
+	vi.stubEnv("RECORDLY_FFMPEG_PATH", process.cwd());
+	const { getFfmpegBinaryPath } = await import("./binary");
+	expect(getFfmpegBinaryPath()).toBe(bundledFfmpeg);
+	expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("RECORDLY_FFMPEG_PATH"));
+});
+
+it("continues with the bundle when an executable override cannot run", async () => {
+	Object.defineProperty(process, "platform", { value: "darwin" });
+	installed.add(bundledFfmpeg);
+	const override = path.resolve("broken-ffmpeg");
+	installed.add(override);
+	vi.stubEnv("RECORDLY_FFMPEG_PATH", override);
+	mocks.spawnSync.mockReturnValueOnce({ status: 127 });
+	const { getFfmpegBinaryPath } = await import("./binary");
+	expect(getFfmpegBinaryPath()).toBe(bundledFfmpeg);
+	expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("RECORDLY_FFMPEG_PATH"));
+});
+
+it("falls through a broken source-built Linux FFprobe to the bundled alternative", async () => {
+	const sourceBuilt = path.join(
+		"/installed/app.asar.unpacked",
+		"node_modules",
+		"ffmpeg-static",
+		"ffprobe-recordly",
+	);
+	installed.add(sourceBuilt);
+	installed.add(bundledFfprobe);
+	mocks.spawnSync.mockReturnValueOnce({ status: null, signal: "SIGSEGV" });
+	const { getFfprobeBinaryPath } = await import("./binary");
+	expect(getFfprobeBinaryPath()).toBe(bundledFfprobe);
+	expect(mocks.spawnSync.mock.calls.map(([file]) => file)).toEqual([sourceBuilt, bundledFfprobe]);
 });

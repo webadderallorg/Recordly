@@ -1,5 +1,5 @@
-import { EventEmitter } from "node:events";
 import { execFileSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -27,9 +27,10 @@ vi.mock("./windows", async (original) => {
 			actual.waitForWindowsCaptureStop(proc, 10),
 	};
 });
+
 import { stopWindowsCapture } from "./handlers/stopWindowsCapture";
-import { attachWindowsCaptureLifecycle, recoverNativeWindowsCaptureOutput } from "./windows";
 import { RecordingProcessGuard } from "./processGuard";
+import { attachWindowsCaptureLifecycle, recoverNativeWindowsCaptureOutput } from "./windows";
 
 class CaptureProcess extends EventEmitter {
 	stdin = new PassThrough();

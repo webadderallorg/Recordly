@@ -1,5 +1,3 @@
-import { nativeT } from "./nativeI18n";
-import { recordingEditorLoading } from "./recordingEditorLoading";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -22,6 +20,7 @@ import {
 import { getHudOverlayTaskbarOptions } from "./hudOverlayWindowOptions";
 import { startHudPointerRecovery } from "./hudPointerRecovery";
 import { sendNativeHudCaptureExclusions } from "./ipc/recording/nativeCaptureCommand";
+import { isLikelyLinuxWaylandSession } from "./ipc/register/sourceMapping";
 import {
 	currentProjectPath,
 	currentRecordingSession,
@@ -29,7 +28,10 @@ import {
 	nativeCaptureProcess,
 } from "./ipc/state";
 import type { CaptureArea } from "./ipc/types";
+import { nativeT } from "./nativeI18n";
 import { startOnboardingIntro } from "./onboardingIntro";
+import { permissionAccessoryWindowOwners } from "./permissionAccessoryWindowOwner";
+import { recordingEditorLoading } from "./recordingEditorLoading";
 import { outsideRecordingRects } from "./recordingFocus";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 
@@ -67,9 +69,14 @@ let hudOverlayInteractiveBounds: Array<{
 let countdownWindow: BrowserWindow | null = null;
 let capturePickerWindows: BrowserWindow[] = [];
 let areaRecordingBorderWindow: BrowserWindow | null = null;
-let recordingFocusWindows: BrowserWindow[] = [];
+let recordingFocusWindows: {
+	window: BrowserWindow;
+	bounds: CaptureArea;
+	shapeKey: string | undefined;
+}[] = [];
 let updateToastWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
+let startupOnboarding: { window: BrowserWindow; waiting: boolean } | undefined;
 let onboardingIntroWindow: BrowserWindow | null = null;
 let onboardingIntroReplayWindow: BrowserWindow | null = null;
 let hudWasVisibleBeforeUpdateToast = false;
@@ -395,6 +402,24 @@ ipcMain.on("hud-overlay-set-ignore-mouse", (_event, ignore: boolean) => {
 	setHudOverlayMousePassthrough(Boolean(ignore));
 });
 
+ipcMain.on("hud-overlay-set-popover-open", (event, open: boolean) => {
+	if (
+		process.platform !== "linux" ||
+		!process.env.DISPLAY?.trim() ||
+		isLikelyLinuxWaylandSession(process.env) ||
+		hudOverlayRecordingActive ||
+		hudOverlaySourceSelectionActive ||
+		!hudOverlayWindow ||
+		hudOverlayWindow.isDestroyed() ||
+		event.sender !== hudOverlayWindow.webContents ||
+		typeof open !== "boolean" ||
+		open === hudOverlayFallbackExpanded
+	) {
+		return;
+	}
+	setHudOverlayFallbackExpanded(open);
+});
+
 ipcMain.on("hud-overlay-set-source-selection-active", (_event, active: boolean) => {
 	hudOverlaySourceSelectionActive = Boolean(active);
 	if (hudOverlaySourceSelectionActive) {
@@ -671,6 +696,15 @@ export function createHudOverlayWindow(): BrowserWindow {
 	win.on("show", () => {
 		if (!win.isDestroyed()) {
 			applyHudOverlayCaptureProtectionToWindow(win, hudOverlayHiddenFromCapture);
+			if (process.platform === "win32" && recordingFocusWindows.length > 0)
+				raiseHudAboveRecordingFocus();
+		}
+	});
+	win.on("restore", () => {
+		if (!win.isDestroyed()) {
+			win.webContents.send("hud-overlay-restored");
+			if (process.platform === "win32" && recordingFocusWindows.length > 0)
+				raiseHudAboveRecordingFocus();
 		}
 	});
 
@@ -852,10 +886,10 @@ export function setHudOverlayRecordingActive(recording: boolean): void {
 	hudOverlayFallbackExpanded = false;
 	applyHudOverlayBounds();
 	reassertHudOverlayCaptureProtection();
-	// Start in passthrough mode. Forwarded pointer movement lets the renderer
-	// make the visible HUD controls interactive when the pointer reaches them,
-	// while transparent parts never block the recorded application.
-	setHudOverlayMousePassthrough(true);
+	// Keep whatever hover state the renderer last reported. Forcing passthrough
+	// here made the HUD click-through right after the user pressed record, so the
+	// stop button swallowed clicks until the pointer moved again.
+	setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 }
 
 export function createUpdateToastWindow(): BrowserWindow {
@@ -1203,20 +1237,39 @@ function bringOnboardingWindowForward(win: BrowserWindow): void {
 export function focusOnboardingWindow(): void {
 	const win = getOnboardingWindow();
 	if (!win) return;
+	if (startupOnboarding?.window === win && startupOnboarding.waiting) return;
 	if (win.isMinimized()) win.restore();
 	if (onboardingIntroWindow && !onboardingIntroWindow.isDestroyed() && !win.isVisible()) return;
 	bringOnboardingWindowForward(win);
+}
+
+export function getStartupOnboardingWindow(): BrowserWindow | null {
+	return startupOnboarding?.window ?? null;
+}
+
+export function revealStartupOnboardingWindow(): void {
+	if (startupOnboarding?.waiting) {
+		startupOnboarding.waiting = false;
+		focusOnboardingWindow();
+	}
 }
 
 export function getOnboardingWindow(): BrowserWindow | null {
 	return onboardingWindow && !onboardingWindow.isDestroyed() ? onboardingWindow : null;
 }
 
+function shouldHideDuringOnboarding(win: BrowserWindow, other: BrowserWindow): boolean {
+	return (
+		other !== win &&
+		other !== onboardingIntroWindow &&
+		!other.isDestroyed() &&
+		permissionAccessoryWindowOwners.get(other) !== win
+	);
+}
+
 function hideOtherOnboardingWindows(win: BrowserWindow) {
 	for (const other of BrowserWindow.getAllWindows()) {
-		if (other !== win && other !== onboardingIntroWindow && !other.isDestroyed()) {
-			other.hide();
-		}
+		if (shouldHideDuringOnboarding(win, other)) other.hide();
 	}
 }
 
@@ -1227,7 +1280,7 @@ function enforceOnboardingWindowExclusivity(win: BrowserWindow): void {
 	const watch = (other: BrowserWindow) => {
 		if (other === win || other.isDestroyed() || listeners.has(other)) return;
 		const hide = () => {
-			if (!win.isDestroyed() && other !== onboardingIntroWindow && !other.isDestroyed()) {
+			if (!win.isDestroyed() && shouldHideDuringOnboarding(win, other)) {
 				if (other.isVisible()) deferredWindows.add(other);
 				other.hide();
 			}
@@ -1292,9 +1345,14 @@ export function replayOnboardingIntro(owner: BrowserWindow): boolean {
 export function showOnboardingWindow(options?: {
 	preview?: boolean;
 	intro?: boolean;
+	returning?: boolean;
+	permissionsOnly?: boolean;
 }): BrowserWindow {
+	const permissionsOnly = options?.permissionsOnly === true;
 	const query = {
 		windowType: "onboarding",
+		...(options?.returning ? { returning: "1" } : {}),
+		...(permissionsOnly ? { permissionsOnly: "1" } : {}),
 		...(!app.isPackaged && typeof options?.preview === "boolean"
 			? { onboardingPreview: options.preview ? "1" : "0" }
 			: {}),
@@ -1310,7 +1368,10 @@ export function showOnboardingWindow(options?: {
 	};
 	if (onboardingWindow && !onboardingWindow.isDestroyed()) {
 		hideOtherOnboardingWindows(onboardingWindow);
-		if (!app.isPackaged && typeof options?.preview === "boolean") load(onboardingWindow, query);
+		if (!app.isPackaged && typeof options?.preview === "boolean") {
+			const intro = onboardingIntroWindow && !onboardingIntroWindow.isDestroyed();
+			load(onboardingWindow, intro ? { ...query, welcomeSoundtrack: "intro" } : query);
+		}
 		onboardingWindow.setBounds(getOnboardingWindowBounds());
 		focusOnboardingWindow();
 		return onboardingWindow;
@@ -1341,9 +1402,11 @@ export function showOnboardingWindow(options?: {
 	registerDesktopPresenceWindow(win);
 	if (process.platform !== "darwin") win.setMenu(null);
 	onboardingWindow = win;
+	if (options?.returning) startupOnboarding = { window: win, waiting: true };
 	enforceOnboardingWindowExclusivity(win);
 	win.once("closed", () => {
 		if (onboardingWindow === win) onboardingWindow = null;
+		if (startupOnboarding?.window === win) startupOnboarding = undefined;
 	});
 	hideOtherOnboardingWindows(win);
 	const show = () => {
@@ -1351,6 +1414,7 @@ export function showOnboardingWindow(options?: {
 		bringOnboardingWindowForward(win);
 	};
 	const playIntro =
+		!permissionsOnly &&
 		(process.platform === "darwin" || process.platform === "win32") &&
 		(options?.intro || (!app.isPackaged && options?.preview));
 	if (playIntro) {
@@ -1364,10 +1428,10 @@ export function showOnboardingWindow(options?: {
 		intro.once("closed", () => {
 			if (onboardingIntroWindow === intro) onboardingIntroWindow = null;
 		});
-	} else {
+	} else if (!options?.returning) {
 		win.once("ready-to-show", show);
 	}
-	load(win, query);
+	load(win, playIntro ? { ...query, welcomeSoundtrack: "intro" } : query);
 	return win;
 }
 
@@ -1608,6 +1672,7 @@ export function showAreaRecordingBorder(area: {
 		width: Math.round(area.width) + outset * 2,
 		height: Math.round(area.height) + outset * 2,
 		frame: false,
+		...(process.platform === "win32" ? { roundedCorners: false } : {}),
 		transparent: true,
 		resizable: false,
 		movable: false,
@@ -1632,9 +1697,13 @@ export function showAreaRecordingBorder(area: {
 		if (areaRecordingBorderWindow === win) areaRecordingBorderWindow = null;
 	});
 
+	const outline =
+		process.platform === "win32"
+			? "border:2px dashed rgba(255,255,255,.95)"
+			: "border:2px dashed rgba(255,255,255,.95);box-shadow:0 0 0 1px rgba(0,0,0,.45),inset 0 0 0 1px rgba(0,0,0,.45)";
 	const html = `<!DOCTYPE html><html><head><style>
 html,body{margin:0;height:100%;background:transparent;overflow:hidden}
-div{position:fixed;inset:0;border:2px dashed rgba(255,255,255,.95);box-shadow:0 0 0 1px rgba(0,0,0,.45),inset 0 0 0 1px rgba(0,0,0,.45)}
+div{position:fixed;inset:0;${outline}}
 </style></head><body><div></div></body></html>`;
 	void win
 		.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
@@ -1652,11 +1721,13 @@ export function hideAreaRecordingBorder(): void {
 	if (win && !win.isDestroyed()) win.close();
 }
 
-/** Click-through exterior strips leave the recorded pixels completely untouched. */
+/** Click-through overlays dim the desktop outside the recording. */
 export function showRecordingFocus(target: CaptureArea): void {
 	const hud = getHudOverlayWindow();
+	// Windows and X11 stack the transparent HUD over the dimmer. Keep tint
+	// beneath its transparent corners and shadow instead of cutting out boxes.
 	const protectedAreas =
-		hud?.isVisible() && !hud.isMinimized()
+		process.platform === "darwin" && hud?.isVisible() && !hud.isMinimized()
 			? (hudOverlayInteractiveBounds ?? []).map((rect) => ({
 					x: rect.left - 8,
 					y: rect.top - 8,
@@ -1664,21 +1735,32 @@ export function showRecordingFocus(target: CaptureArea): void {
 					height: rect.bottom - rect.top + 16,
 				}))
 			: [];
-	const rectangles = outsideRecordingRects(
-		getScreen()
-			.getAllDisplays()
-			.map((display) => display.bounds),
-		target,
-		protectedAreas,
-	);
-	for (let i = 0; i < rectangles.length; i++) {
-		const bounds = rectangles[i];
-		let win = recordingFocusWindows[i];
+	const displays = getScreen()
+		.getAllDisplays()
+		.map((display) => display.bounds);
+	const overlays: { bounds: CaptureArea; shape?: CaptureArea[] }[] =
+		process.platform === "win32"
+			? displays.flatMap((bounds) => {
+					// Independent HWNDs round at fractional display scaling and overlap.
+					// Clip one dimmer to the union of the exterior regions on this display.
+					const shape = outsideRecordingRects([bounds], target).map((rect) => ({
+						...rect,
+						x: rect.x - bounds.x,
+						y: rect.y - bounds.y,
+					}));
+					return shape.length ? [{ bounds, shape }] : [];
+				})
+			: outsideRecordingRects(displays, target, protectedAreas).map((bounds) => ({ bounds }));
+	let restackHud = process.platform !== "win32";
+	for (let i = 0; i < overlays.length; i++) {
+		const { bounds, shape } = overlays[i];
+		const shapeKey = shape && JSON.stringify(shape);
+		const previous = recordingFocusWindows[i];
+		let win = previous?.window;
 		if (!win || win.isDestroyed()) {
 			win = new BrowserWindow({
 				...bounds,
 				frame: false,
-				// Exterior strips must meet flush; native rounding leaves undimmed corner gaps.
 				roundedCorners: false,
 				transparent: true,
 				resizable: false,
@@ -1697,20 +1779,25 @@ export function showRecordingFocus(target: CaptureArea): void {
 			win.setAlwaysOnTop(
 				true,
 				process.platform === "win32" ? "screen-saver" : "floating",
-				-1,
+				process.platform === "darwin" ? -1 : undefined,
 			);
+			if (shape) {
+				// Windows can constrain a newly created window to the work area.
+				win.setBounds(bounds);
+				win.setShape(shape);
+			}
 			win.setVisibleOnAllWorkspaces(true, {
 				visibleOnFullScreen: true,
 				skipTransformProcessType: true,
 			});
-			recordingFocusWindows[i] = win;
+			recordingFocusWindows[i] = { window: win, bounds, shapeKey };
 			const created = win;
 			void win
 				.loadURL(
 					`data:text/html;charset=utf-8,${encodeURIComponent('<!DOCTYPE html><html style="margin:0;height:100%;background:rgba(0,0,0,.38)"><body style="margin:0"></body></html>')}`,
 				)
 				.then(() => {
-					if (!created.isDestroyed() && recordingFocusWindows.includes(created)) {
+					if (!created.isDestroyed() && recordingFocusWindows[i]?.window === created) {
 						created.showInactive();
 						created.setIgnoreMouseEvents(true);
 						raiseHudAboveRecordingFocus();
@@ -1720,24 +1807,34 @@ export function showRecordingFocus(target: CaptureArea): void {
 					if (!created.isDestroyed()) created.close();
 				});
 		} else {
-			const old = win.getBounds();
-			if (
+			const old = previous.bounds;
+			const moved =
 				old.x !== bounds.x ||
 				old.y !== bounds.y ||
 				old.width !== bounds.width ||
-				old.height !== bounds.height
-			)
+				old.height !== bounds.height;
+			const shapeChanged = previous.shapeKey !== shapeKey;
+			// The Windows bounds poll still follows a moving target. A stationary
+			// target needs no native window updates or HUD restacking.
+			if (shape && !moved && !shapeChanged && win.isVisible()) continue;
+			if (moved) {
 				win.setBounds(bounds);
-			// Bringing the capture target forward must not leave the surround
-			// behind it. Restore hidden strips without taking keyboard focus.
-			if (process.platform === "win32") win.setAlwaysOnTop(true, "screen-saver", -1);
-			if (!win.isVisible()) win.showInactive();
+				previous.bounds = bounds;
+			}
+			if (shape && (moved || shapeChanged)) {
+				win.setShape(shape);
+				previous.shapeKey = shapeKey;
+			}
+			// Keep the dimmer above the selected window without stealing focus.
+			if (process.platform === "win32") win.setAlwaysOnTop(true, "screen-saver");
+			if (!win.isVisible() && !win.webContents.isLoadingMainFrame()) win.showInactive();
 			win.setIgnoreMouseEvents(true);
+			restackHud = true;
 		}
 	}
-	for (const win of recordingFocusWindows.splice(rectangles.length))
-		if (!win.isDestroyed()) win.close();
-	raiseHudAboveRecordingFocus();
+	for (const { window } of recordingFocusWindows.splice(overlays.length))
+		if (!window.isDestroyed()) window.close();
+	if (restackHud) raiseHudAboveRecordingFocus();
 }
 
 function raiseHudAboveRecordingFocus() {
@@ -1749,5 +1846,5 @@ function raiseHudAboveRecordingFocus() {
 export function hideRecordingFocus(): void {
 	const windows = recordingFocusWindows;
 	recordingFocusWindows = [];
-	for (const win of windows) if (!win.isDestroyed()) win.close();
+	for (const { window } of windows) if (!window.isDestroyed()) window.close();
 }

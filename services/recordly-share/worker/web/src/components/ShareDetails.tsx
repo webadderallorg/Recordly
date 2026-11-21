@@ -2,8 +2,8 @@ import { Button, Tabs } from "@heroui/react";
 import { LinkSimpleIcon } from "@phosphor-icons/react";
 import type { ShareData } from "../scripts/api";
 import { formatTimestamp } from "../scripts/api";
-import { copyLink } from "./ShareUI";
 import PagedPanel from "./PagedPanel";
+import { copyLink } from "./ShareUI";
 
 export default function ShareDetails({
 	data,

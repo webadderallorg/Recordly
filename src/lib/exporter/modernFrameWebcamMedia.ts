@@ -1,9 +1,9 @@
 import { getWebcamMediaTargetTimeSeconds } from "@/components/video-editor/videoPlayback/webcamSync";
 import { clampMediaTimeToDuration } from "@/lib/mediaTiming";
-import { WebcamFrameSource } from "./webcamFrameSource";
 import { resolveMediaElementSource } from "./localMediaSource";
 import type { FrameRenderContext } from "./modernFrameRenderer";
 import { WEBCAM_MEDIA_ELEMENT_READY_TIMEOUT_MS } from "./modernFrameUtils";
+import { WebcamFrameSource } from "./webcamFrameSource";
 
 /** Owns webcam media resources for one export renderer. */
 export class FrameWebcamMedia {

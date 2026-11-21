@@ -166,6 +166,20 @@ static std::wstring utf8ToWide(const std::string& str) {
     return wstr;
 }
 
+static std::string wideToUtf8(const wchar_t* text) {
+    const int length = WideCharToMultiByte(
+        CP_UTF8, WC_ERR_INVALID_CHARS, text, -1, nullptr, 0, nullptr, nullptr);
+    if (length <= 1) return {};
+
+    std::string result(static_cast<size_t>(length), '\0');
+    if (!WideCharToMultiByte(
+            CP_UTF8, WC_ERR_INVALID_CHARS, text, -1, result.data(), length, nullptr, nullptr)) {
+        return {};
+    }
+    result.pop_back();
+    return result;
+}
+
 static int64_t queryPerformanceCounterHns() {
     LARGE_INTEGER counter;
     LARGE_INTEGER frequency;
@@ -284,7 +298,7 @@ static void stdinListenerThread() {
     g_stopCv.notify_all();
 }
 
-int main(int argc, char* argv[]) {
+int wmain(int argc, wchar_t* argv[]) {
     if (argc < 2) {
         std::cerr << "ERROR: Missing JSON config argument" << std::endl;
         return 1;
@@ -297,7 +311,7 @@ int main(int argc, char* argv[]) {
     winrt::init_apartment(winrt::apartment_type::multi_threaded);
 
     CaptureConfig config;
-    if (!parseSimpleJson(argv[1], config)) {
+    if (!parseSimpleJson(wideToUtf8(argv[1]), config)) {
         std::cerr << "ERROR: Failed to parse config JSON" << std::endl;
         return 1;
     }

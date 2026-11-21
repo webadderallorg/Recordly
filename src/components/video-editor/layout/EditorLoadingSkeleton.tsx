@@ -1,5 +1,5 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { Card, Skeleton } from "@heroui/react";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { LoadingFrameHeader } from "./LoadingFrameHeader";
 import { TimelineLoadingSkeleton } from "./TimelineLoadingSkeleton";
 

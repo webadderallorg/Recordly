@@ -1,3 +1,4 @@
+import path from "node:path";
 import { ipcMain } from "electron";
 import { beforeEach, expect, it, vi } from "vitest";
 import {
@@ -53,13 +54,13 @@ vi.mock("../project/manager", () => ({
 	getProjectsDir: mocks.getProjectsDir,
 	listProjectLibraryEntries: async () => ({ entries: [] }),
 	isTrustedProjectPath: (value: unknown) =>
-		typeof value === "string" && value.startsWith("/projects/"),
+		typeof value === "string" && value.startsWith(projectsDirectory + path.sep),
 	isPathInsideDirectory: () => true,
 	saveProjectThumbnail: mocks.thumbnail,
 	rememberRecentProject: mocks.recent,
 	getProjectThumbnailPath: (value: string) => `${value}.png`,
 	getProjectThumbnailPaths: (value: string) => [`${value}.png`],
-	loadRecentProjectPaths: async () => ["/projects/A.recordly", "/projects/B.recordly"],
+	loadRecentProjectPaths: async () => [projectAPath, projectBPath],
 	saveRecentProjectPaths: vi.fn(),
 }));
 vi.mock("../project/libraryDeletion", () => ({
@@ -74,7 +75,14 @@ vi.mock("../recording/library", () => ({
 	setRecordingsRemoved: vi.fn(),
 	trashRecordingSources: mocks.trashSources,
 }));
+
 import { registerProjectHandlers } from "./project";
+
+const projectAPath = path.resolve("/projects/A.recordly");
+const projectBPath = path.resolve("/projects/B.recordly");
+const projectsDirectory = path.resolve("/projects");
+const savedProjectPath = path.resolve("/projects/Saved.recordly");
+
 let handlers: Map<string, Parameters<typeof ipcMain.handle>[1]>;
 const event = {} as Electron.IpcMainInvokeEvent;
 const project = { projectId: "A", videoPath: "/video/shared.mp4" };
@@ -91,11 +99,11 @@ beforeEach(() => {
 	mocks.readFile.mockReset();
 	mocks.unlink.mockResolvedValue(undefined);
 	mocks.rm.mockResolvedValue(undefined);
-	mocks.getProjectsDir.mockReset().mockResolvedValue("/projects");
+	mocks.getProjectsDir.mockReset().mockResolvedValue(projectsDirectory);
 	mocks.write.mockReset().mockResolvedValue(undefined);
-	mocks.create.mockReset().mockResolvedValue("/projects/Untitled Project.recordly");
-	mocks.saveDialog.mockReset().mockResolvedValue({ filePath: "/projects/Saved.recordly" });
-	setCurrentProjectPath("/projects/A.recordly");
+	mocks.create.mockReset().mockResolvedValue(path.resolve("/projects/Untitled Project.recordly"));
+	mocks.saveDialog.mockReset().mockResolvedValue({ filePath: savedProjectPath });
+	setCurrentProjectPath(projectAPath);
 	setCurrentVideoPath(project.videoPath);
 	registerProjectHandlers();
 	handlers = new Map(vi.mocked(ipcMain.handle).mock.calls);
@@ -109,12 +117,12 @@ it.each([
 	mocks.getProjectsDir.mockReturnValueOnce(directory.promise);
 	const saving = handlers.get("save-project-file-named")!(event, project, "Saved", null, mode);
 	// Both projects use the same recording, so source-video equality cannot distinguish them.
-	setCurrentProjectPath("/projects/B.recordly");
-	directory.resolve("/projects");
-	expect(await saving).toMatchObject({ success: true, path: "/projects/Saved.recordly" });
-	expect(currentProjectPath).toBe("/projects/B.recordly");
+	setCurrentProjectPath(projectBPath);
+	directory.resolve(projectsDirectory);
+	expect(await saving).toMatchObject({ success: true, path: savedProjectPath });
+	expect(currentProjectPath).toBe(projectBPath);
 	expect(mocks.unlink).not.toHaveBeenCalled();
-	expect(mocks.unlink).not.toHaveBeenCalledWith("/projects/B.recordly");
+	expect(mocks.unlink).not.toHaveBeenCalledWith(projectBPath);
 });
 
 it.each([
@@ -131,12 +139,12 @@ it.each([
 					event,
 					project,
 					"Saved",
-					mode === "existing" ? "/projects/A.recordly" : undefined,
+					mode === "existing" ? projectAPath : undefined,
 				);
-	setCurrentProjectPath("/projects/B.recordly");
-	directory.resolve("/projects");
+	setCurrentProjectPath(projectBPath);
+	directory.resolve(projectsDirectory);
 	expect(await saving).toMatchObject({ success: true });
-	expect(currentProjectPath).toBe("/projects/B.recordly");
+	expect(currentProjectPath).toBe(projectBPath);
 });
 
 it("preserves a reopened original path while an older named save completes", async () => {
@@ -144,11 +152,11 @@ it("preserves a reopened original path while an older named save completes", asy
 	mocks.write.mockReturnValueOnce(writing.promise);
 	const saving = handlers.get("save-project-file-named")!(event, project, "Saved", null, "copy");
 	await vi.waitFor(() => expect(mocks.write).toHaveBeenCalled());
-	setCurrentProjectPath("/projects/B.recordly");
-	setCurrentProjectPath("/projects/A.recordly");
+	setCurrentProjectPath(projectBPath);
+	setCurrentProjectPath(projectAPath);
 	writing.resolve();
 	expect(await saving).toMatchObject({ success: true });
-	expect(currentProjectPath).toBe("/projects/A.recordly");
+	expect(currentProjectPath).toBe(projectAPath);
 });
 
 it.each([
@@ -157,10 +165,9 @@ it.each([
 ])("still selects the saved project in an uninterrupted named %s", async (mode) => {
 	expect(
 		await handlers.get("save-project-file-named")!(event, project, "Saved", null, mode),
-	).toMatchObject({ success: true, path: "/projects/Saved.recordly" });
-	expect(currentProjectPath).toBe("/projects/Saved.recordly");
-	if (mode === "rename")
-		expect(mocks.unlink).toHaveBeenCalledExactlyOnceWith("/projects/A.recordly");
+	).toMatchObject({ success: true, path: savedProjectPath });
+	expect(currentProjectPath).toBe(savedProjectPath);
+	if (mode === "rename") expect(mocks.unlink).toHaveBeenCalledExactlyOnceWith(projectAPath);
 	else expect(mocks.unlink).not.toHaveBeenCalled();
 });
 
@@ -170,12 +177,12 @@ it("does not authorize overwriting the newly opened project's file as the old sa
 	mocks.stat.mockResolvedValue({});
 	mocks.readFile.mockResolvedValue(JSON.stringify({ ...project, projectId: "B" }));
 	const saving = handlers.get("save-project-file-named")!(event, project, "B", null, "rename");
-	setCurrentProjectPath("/projects/B.recordly");
-	directory.resolve("/projects");
+	setCurrentProjectPath(projectBPath);
+	directory.resolve(projectsDirectory);
 	expect(await saving).toMatchObject({ success: false });
 	expect(mocks.write).not.toHaveBeenCalled();
 	expect(mocks.unlink).not.toHaveBeenCalled();
-	expect(currentProjectPath).toBe("/projects/B.recordly");
+	expect(currentProjectPath).toBe(projectBPath);
 });
 
 it("does not adopt an old save after loading another project from the same path", async () => {
@@ -192,7 +199,7 @@ it("does not adopt an old save after loading another project from the same path"
 	setCurrentRecordingSession({ videoPath: project.videoPath });
 	writing.resolve();
 	expect(await saving).toMatchObject({ success: true });
-	expect(currentProjectPath).toBe("/projects/A.recordly");
+	expect(currentProjectPath).toBe(projectAPath);
 	expect(mocks.unlink).not.toHaveBeenCalled();
 });
 
@@ -211,12 +218,12 @@ it("invalidates a pending save as soon as the same recording starts loading agai
 	setCurrentVideoPath(project.videoPath);
 	writing.resolve();
 	expect(await saving).toMatchObject({ success: true });
-	expect(currentProjectPath).toBe("/projects/A.recordly");
+	expect(currentProjectPath).toBe(projectAPath);
 	expect(mocks.unlink).not.toHaveBeenCalled();
 });
 
 it("counts a newly protected source once when another media deletion fails", async () => {
-	const selected = "/projects/A.recordly";
+	const selected = projectAPath;
 	const protectedSource = "/video/newly-protected.mp4",
 		failedSource = "/video/delete-failed.mp4";
 	mocks.prepareDeletion.mockResolvedValue({

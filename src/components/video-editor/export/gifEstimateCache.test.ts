@@ -137,8 +137,10 @@ vi.mock("@/lib/exporter", () => ({
 	GIF_SIZE_PRESETS: {},
 	calculateOutputDimensions: (width: number, height: number) => ({ width, height }),
 }));
-import { useGifSizeEstimate } from "./useGifSizeEstimate";
+
 import type { ExportRunnerInput } from "./exportRunnerSupport";
+import { useGifSizeEstimate } from "./useGifSizeEstimate";
+
 function gifInput(enabled = true) {
 	gifHooks.reset();
 	vi.useFakeTimers();

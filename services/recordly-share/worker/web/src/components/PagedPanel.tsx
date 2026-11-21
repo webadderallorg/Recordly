@@ -1,6 +1,6 @@
 import { Button } from "@heroui/react";
 import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 /** Flow long content into viewport-sized pages instead of a scroll container. */
 export default function PagedPanel({ children, label }: { children: ReactNode; label: string }) {

@@ -1,4 +1,3 @@
-import type { CursorIdleHideSettings } from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
 import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
@@ -15,6 +14,7 @@ import type {
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
+import type { CursorIdleHideSettings } from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
 import type { ExportProgress, GIF_SIZE_PRESETS, GifFrameRate, GifSizePreset } from "./types";
 
 export interface GifExporterConfig {

@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { setTimeout as wait } from "node:timers/promises";
 import { type WebContents } from "electron";
 import { type NativeVideoExportSession } from "./types";
 
@@ -11,15 +12,23 @@ export function isHardwareAcceleratedVideoEncoder(encoderName: string) {
 	return /(videotoolbox|nvenc|qsv|amf|mf)/i.test(encoderName);
 }
 
-export async function removeTemporaryExportFile(filePath: string | null | undefined) {
+export async function removeTemporaryExportFile(
+	filePath: string | null | undefined,
+	retryIfLocked = false,
+) {
 	if (!filePath) {
 		return;
 	}
 
-	try {
-		await fs.rm(filePath, { force: true });
-	} catch {
-		// Ignore cleanup failures for temp export artifacts.
+	for (let retries = retryIfLocked ? 5 : 0; ; retries--) {
+		try {
+			await fs.rm(filePath, { force: true });
+			return;
+		} catch (error) {
+			const { code } = error as NodeJS.ErrnoException;
+			if (!retries || (code !== "EBUSY" && code !== "EPERM")) return;
+			await wait(100);
+		}
 	}
 }
 

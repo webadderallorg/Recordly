@@ -44,6 +44,9 @@ export interface ExportHardwareInfo {
 
 export type NativeVideoExportSession = {
 	ffmpegProcess: ChildProcessByStdio<Writable, null, Readable>;
+	currentProcess: ReturnType<typeof spawn> | null;
+	finalization?: Promise<{ outputPath: string }>;
+	cancellation?: Promise<void>;
 	outputPath: string;
 	inputByteSize: number;
 	inputMode: "rawvideo" | "h264-stream";
@@ -291,6 +294,7 @@ export interface NativeStaticLayoutExportMetrics extends NativeVideoAudioMuxMetr
 export interface NativeStaticLayoutExportSession {
 	terminating: boolean;
 	currentProcess: ReturnType<typeof spawn> | null;
+	cleanupComplete?: Promise<void>;
 }
 
 export interface NativeExportCapabilities {

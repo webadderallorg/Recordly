@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
-import { productionTest as test } from "./production";
 import { installDesktopBridge } from "./bridge";
+import { productionTest as test } from "./production";
 
 const frameSelector = 'iframe[title="Recordly security check"]';
 const submit = (page: Page) => page.locator('[data-signin-form] button[type="submit"]');

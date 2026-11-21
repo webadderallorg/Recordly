@@ -1,7 +1,7 @@
 import { DOMAdapter, Texture } from "pixi.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { PreviewVideoSource } from "./previewVideoSource";
 import { createPreviewRenderLoop } from "./previewRenderLoop";
+import { PreviewVideoSource } from "./previewVideoSource";
 
 class TestVideo extends EventTarget {
 	videoWidth = 5120;

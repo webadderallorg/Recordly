@@ -203,6 +203,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	hudOverlaySetIgnoreMouse: (ignore: boolean) => {
 		ipcRenderer.send("hud-overlay-set-ignore-mouse", ignore);
 	},
+	hudOverlaySetPopoverOpen: (open: boolean) => {
+		ipcRenderer.send("hud-overlay-set-popover-open", open);
+	},
 	hudOverlaySetSourceSelectionActive: (active: boolean) => {
 		ipcRenderer.send("hud-overlay-set-source-selection-active", active);
 	},
@@ -214,6 +217,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	hudOverlayClose: () => {
 		ipcRenderer.send("hud-overlay-close");
+	},
+	onHudOverlayRestored: (callback: () => void) => {
+		const listener = () => callback();
+		ipcRenderer.on("hud-overlay-restored", listener);
+		return () => ipcRenderer.removeListener("hud-overlay-restored", listener);
 	},
 	getEditorMode: () => ipcRenderer.invoke("get-editor-mode"),
 	onEditorModeChanged: (callback: (inEditor: boolean) => void) => {
@@ -549,11 +557,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		return await ipcRenderer.invoke("get-sources", opts);
 	},
 	showRecordingPermissions: () => ipcRenderer.invoke("show-recording-permissions"),
-	onRecordingPermissionsRequested: (callback: () => void) => {
-		const listener = () => callback();
-		ipcRenderer.on("recording-permissions-requested", listener);
-		return () => ipcRenderer.removeListener("recording-permissions-requested", listener);
-	},
 	showRecordingHud: () => ipcRenderer.invoke("show-recording-hud"),
 	showOnboardingWindow: (options?: { preview?: boolean }) =>
 		ipcRenderer.invoke("show-onboarding-window", options),
@@ -561,12 +564,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		? { replayOnboardingIntro: () => ipcRenderer.invoke("replay-onboarding-intro") }
 		: {}),
 	closeOnboardingWindow: () => ipcRenderer.invoke("close-onboarding-window"),
+	resolveStartupOnboarding: (action: "show" | "continue" | "restart") =>
+		ipcRenderer.invoke("resolve-startup-onboarding", action),
 	reportOnboardingIntro: (stage: "ready" | "finished" | "skipped") =>
 		ipcRenderer.send("onboarding-intro", stage),
 	onOnboardingIntroShown: (callback: () => void) => {
 		const listener = () => callback();
 		ipcRenderer.on("onboarding-intro-shown", listener);
 		return () => ipcRenderer.removeListener("onboarding-intro-shown", listener);
+	},
+	onOnboardingSoundtrackStart: (callback: () => void) => {
+		const listener = () => callback();
+		ipcRenderer.on("onboarding-soundtrack-start", listener);
+		ipcRenderer.send("onboarding-soundtrack-ready");
+		return () => ipcRenderer.removeListener("onboarding-soundtrack-start", listener);
 	},
 	createProjectFile: (data: unknown, thumbnail?: string | null) =>
 		ipcRenderer.invoke("create-project-file", data, thumbnail),
@@ -764,9 +775,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	getAccessibilityPermissionStatus: () => {
 		return ipcRenderer.invoke("get-accessibility-permission-status");
-	},
-	requestAccessibilityPermission: () => {
-		return ipcRenderer.invoke("request-accessibility-permission");
 	},
 	getScreenRecordingPermissionStatus: () => {
 		return ipcRenderer.invoke("get-screen-recording-permission-status");
@@ -1320,6 +1328,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		systemAudioEnabled?: boolean;
 		webcamEnabled?: boolean;
 		webcamDeviceId?: string;
+		floatingWebcamPreviewVisible?: boolean;
 	}) => ipcRenderer.invoke("set-recording-preferences", prefs),
 	getCountdownDelay: () => ipcRenderer.invoke("get-countdown-delay"),
 	setCountdownDelay: (delay: number) => ipcRenderer.invoke("set-countdown-delay", delay),

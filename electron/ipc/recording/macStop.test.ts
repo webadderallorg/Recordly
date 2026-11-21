@@ -19,13 +19,13 @@ vi.mock("../utils", () => ({}));
 vi.mock("./diagnostics", () => ({ validateRecordedVideo: vi.fn() }));
 vi.mock("./macCompanionAudio", () => ({}));
 
+import { validateRecordedVideo } from "./diagnostics";
 import {
 	attachNativeCaptureLifecycle,
 	NativeCaptureStopTimeoutError,
 	recoverNativeMacCaptureOutput,
 	waitForNativeCaptureStop,
 } from "./mac";
-import { validateRecordedVideo } from "./diagnostics";
 
 type CaptureProcess = Parameters<typeof waitForNativeCaptureStop>[0];
 

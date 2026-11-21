@@ -1,9 +1,9 @@
 import { Modal } from "@heroui/react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/contexts/I18nContext";
-import type { DashboardModel } from "./useDashboardModel";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import { LibraryCleanupDialog } from "./LibraryCleanupDialog";
+import type { DashboardModel } from "./useDashboardModel";
 
 export function DashboardLibraryActions({
 	model,

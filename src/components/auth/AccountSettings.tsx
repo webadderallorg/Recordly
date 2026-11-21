@@ -1,12 +1,11 @@
-import { RecordlyPasswordForm } from "./RecordlyPasswordForm";
-import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { Checkbox, Input, Label, TextField } from "@heroui/react";
 import type { User } from "@supabase/supabase-js";
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import { useBilling } from "@/components/billing/BillingProvider";
 import { AccountPlanCard } from "@/components/billing/AccountPlanCard";
+import { useBilling } from "@/components/billing/BillingProvider";
 import { CloudUsageCard } from "@/components/billing/CloudUsageCard";
 import { PlusBadge } from "@/components/billing/PlusBadge";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { AccountAvatar, getAccountProfile } from "@/components/ui/account-avatar";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,10 +14,11 @@ import {
 	requestAccountEmailChange,
 	signOutRecordly,
 	updateAccountName,
-	updateRecordlyPassword,
 	updateMarketingEmailPreference,
+	updateRecordlyPassword,
 } from "@/lib/auth/recordlyAuth";
 import { MARKETING_CONSENT_LABEL, marketingEmailsEnabled } from "@/lib/auth/signupConsent";
+import { RecordlyPasswordForm } from "./RecordlyPasswordForm";
 import "./AccountSettings.css";
 
 type AccountAction = "name" | "email" | "marketing" | "signout";

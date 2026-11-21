@@ -6,6 +6,7 @@ import {
 	setNativeCaptureStopRequested,
 	setNativeScreenRecordingActive,
 } from "../state";
+
 const send = vi.hoisted(() => vi.fn());
 vi.mock("electron", () => ({
 	BrowserWindow: { getAllWindows: () => [{ isDestroyed: () => false, webContents: { send } }] },
@@ -14,7 +15,9 @@ vi.mock("../cursor/telemetry", () => ({}));
 vi.mock("../utils", () => ({}));
 vi.mock("./diagnostics", () => ({}));
 vi.mock("./macCompanionAudio", () => ({}));
+
 import { attachNativeCaptureLifecycle, waitForNativeCaptureStop } from "./mac";
+
 describe("native partial capture error propagation", () => {
 	beforeEach(() => {
 		send.mockClear();

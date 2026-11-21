@@ -77,7 +77,7 @@ for (const viewport of [
 		await page.emulateMedia({ reducedMotion: "reduce" });
 		const dialog = await openUpgrade(page);
 		await expect(
-			dialog.getByRole("heading", { name: "Unlock Recordly's full power", exact: true }),
+			dialog.getByRole("heading", { name: /^Unlock Recordly\s*'s full power$/ }),
 		).toBeVisible();
 		await expect(dialog.getByRole("navigation", { name: "Legal and support" })).toHaveCount(0);
 		await expect(dialog.locator(".pricing-legal-consent")).toHaveCount(0);

@@ -10,6 +10,7 @@ vi.mock("@/components/video-editor/cloud/endpoint", () => ({
 vi.mock("@/contexts/I18nContext", () => ({
 	useScopedT: () => (_key: string, fallback: string) => fallback,
 }));
+
 import { LegalLinks } from "./LegalLinks";
 
 describe("legal links remain available independently of cloud configuration", () => {

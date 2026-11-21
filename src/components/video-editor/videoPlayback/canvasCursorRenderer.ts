@@ -1,5 +1,5 @@
 import { type CursorTelemetryPoint } from "../types";
-import { getCursorIdleOpacity } from "./cursorIdleVisibility";
+import { prepareCinematicCursorTelemetry } from "./cinematicCursorTelemetry";
 import {
 	getCursorPackStyleAsset,
 	getCursorStyleAsset,
@@ -7,7 +7,7 @@ import {
 	loadedCursorAssets,
 } from "./cursorAssetRegistry";
 import { drawClickEffectOnCanvas } from "./cursorClickEffects";
-import { prepareCinematicCursorTelemetry } from "./cinematicCursorTelemetry";
+import { getCursorIdleOpacity } from "./cursorIdleVisibility";
 import { interpolateCursorPosition } from "./cursorPosition";
 import {
 	CURSOR_SVG_DROP_SHADOW_FILTER,

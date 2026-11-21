@@ -3,13 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import { ColorControl } from "@/components/ui/color-picker";
 import { type AppLocale, SUPPORTED_LOCALES } from "@/i18n/config";
 import { translateForLocale } from "@/i18n/messages";
-import { GradientPicker } from "./GradientPicker";
 import {
 	createCustomGradient,
 	normalizeCustomGradients,
 	parseCustomGradient,
 } from "./customGradients";
 import { normalizeEditorPreferences } from "./editorPreferences";
+import { GradientPicker } from "./GradientPicker";
 
 describe("custom gradient backgrounds", () => {
 	it("creates explicit evenly spaced stops and normalizes the direction", () => {

@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import {
 	compareLibraryEntries,
-	libraryMediaKey,
-	readLibraryMediaInfo,
+	defaultLibrarySortDirection,
 	type LibraryMediaInfo,
 	type LibrarySort,
 	type LibrarySortDirection,
-	defaultLibrarySortDirection,
+	libraryMediaKey,
+	readLibraryMediaInfo,
 } from "./librarySort";
 
 const entry = (name: string, updatedAt: number): ProjectLibraryEntry => ({

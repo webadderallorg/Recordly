@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	normalizeCloudEndpoint,
-	parseCloudShareTicket,
 	parseCloudRecordingList,
+	parseCloudShareTicket,
 } from "../cloudShareContract";
 
 describe("cloud share contract", () => {

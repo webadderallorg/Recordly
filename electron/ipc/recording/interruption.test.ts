@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { parseNativeCaptureInterruption } from "./interruption";
+
 it("retains OS errors and never treats partial output as normal completion", () => {
 	expect(
 		parseNativeCaptureInterruption(

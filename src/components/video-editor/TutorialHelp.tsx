@@ -25,7 +25,7 @@ import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { formatBinding, SHORTCUT_ACTIONS, SHORTCUT_LABELS } from "@/lib/shortcuts";
 import { formatShortcut } from "@/utils/platformUtils";
 
-export { RECORDLY_ISSUES_URL, openExternalLink } from "@/components/feedback/FeedbackLinks";
+export { openExternalLink, RECORDLY_ISSUES_URL } from "@/components/feedback/FeedbackLinks";
 export const APP_HEADER_ACTION_BUTTON_CLASS =
 	"h-7 px-2 text-xs text-muted-foreground hover:bg-foreground/10 hover:text-foreground transition-all gap-1.5";
 export const APP_HEADER_ICON_BUTTON_CLASS =

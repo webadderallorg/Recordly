@@ -1,14 +1,14 @@
-import { getSquircleCssRadius } from "@/lib/geometry/squircle";
 import { useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { getAssetPath, getRenderableAssetUrl } from "@/lib/assetPath";
 import { useScopedT } from "@/contexts/I18nContext";
+import { getAssetPath, getRenderableAssetUrl } from "@/lib/assetPath";
+import { getSquircleCssRadius } from "@/lib/geometry/squircle";
 import { getCaptionFontFamily } from "../captionFonts";
 import { prepareCaptionLayout } from "../captionLayout";
 import { CAPTION_STYLE_OPTIONS, getCaptionBackground, getCaptionPreset } from "../captionPresets";
 import { getCaptionPadding, getCaptionScaledRadius } from "../captionStyle";
-import { DEFAULT_AUTO_CAPTION_SETTINGS, type AutoCaptionStyle } from "../types";
+import { type AutoCaptionStyle, DEFAULT_AUTO_CAPTION_SETTINGS } from "../types";
 import styles from "./CaptionStylePicker.module.css";
 
 const SAMPLE = [

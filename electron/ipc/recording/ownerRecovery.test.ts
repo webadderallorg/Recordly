@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import { type CaptureStopResult, RecordingOwnerRecovery } from "./ownerRecovery";
+
 function setup() {
 	const owner = Object.assign(new EventEmitter(), { id: 1 });
 	const deps = {

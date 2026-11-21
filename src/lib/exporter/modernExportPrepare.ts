@@ -1,6 +1,7 @@
 import { isAacAudioEncodingSupported } from "./audioEncoder";
 import {
 	getDefaultLightningRenderBackend,
+	resolveLightningBackendPreference,
 	shouldPreferNativeAutoBackend,
 	shouldPreferNativeStaticLayoutBeforeBreeze,
 } from "./backendPolicy";
@@ -56,12 +57,15 @@ export async function prepareExportAttempt(
 	session.native.nativeStaticLayoutBackgroundSkipReason = null;
 	session.sourceVideoInfo = null;
 	session.metrics.totalExportStartTimeMs = getNowMs();
+	const runtimePlatform = hooks.getRuntimePlatform();
 	// Forced software constrains routing too, including cloud and native fallbacks.
 	const backendPreference =
 		control.nativeFailure || session.config.forceSoftwareEncoding
 			? "webcodecs"
-			: (session.config.backendPreference ?? "auto");
-	const runtimePlatform = hooks.getRuntimePlatform();
+			: resolveLightningBackendPreference(
+					runtimePlatform,
+					session.config.backendPreference ?? "auto",
+				);
 	let useNativeEncoder = false;
 	let triedNativeStaticLayoutWithProbe = false;
 	const prefersNativeStaticLayoutBeforeBreeze = shouldPreferNativeStaticLayoutBeforeBreeze(

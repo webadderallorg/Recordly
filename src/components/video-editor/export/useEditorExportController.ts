@@ -1,12 +1,12 @@
-import { useOptionalBilling } from "@/components/billing/BillingProvider";
-import { getShareResolution } from "../cloud/shareResolution";
 import { type RefObject, useEffect } from "react";
+import { useOptionalBilling } from "@/components/billing/BillingProvider";
+import type { useI18n } from "@/contexts/I18nContext";
 import {
 	estimateMp4FileBytes,
 	getEditedExportDurationSeconds,
 } from "@/lib/exporter/exportSizeEstimate";
-import type { useI18n } from "@/contexts/I18nContext";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
+import { getShareResolution } from "../cloud/shareResolution";
 import type { getSmokeExportConfig } from "../smokeExportConfig";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";

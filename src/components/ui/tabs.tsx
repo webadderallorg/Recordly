@@ -1,5 +1,6 @@
 import { Tabs as HeroTabs } from "@heroui/react";
 import { type ComponentProps } from "react";
+
 type TabsProps = Omit<ComponentProps<typeof HeroTabs>, "onSelectionChange"> & {
 	value?: string;
 	defaultValue?: string;

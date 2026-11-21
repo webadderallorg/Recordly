@@ -11,6 +11,7 @@ import type {
 	OnFrameCallback,
 	StreamingDecodeContext,
 } from "./streamingDecodeTypes";
+import { getVideoDecoderConfig } from "./videoDecoderConfig";
 import {
 	computeVideoSegments,
 	segmentFrameCount,
@@ -39,7 +40,7 @@ export async function decodeVideoStreamAttempt(
 		throw new Error("Must call loadMetadata() before decodeAll()");
 	}
 
-	const decoderConfig = await context.demuxer.getDecoderConfig("video");
+	const decoderConfig = await getVideoDecoderConfig(context.demuxer);
 	const codec = context.metadata.codec.toLowerCase();
 	const shouldPreferSoftwareDecode =
 		forceSoftwareDecode || codec.includes("av01") || codec.includes("av1");

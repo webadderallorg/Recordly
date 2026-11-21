@@ -1,20 +1,20 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 import { promisify } from "node:util";
 import { nativeImage } from "electron";
 import { getFfmpegBinaryPath } from "./ipc/ffmpeg/binary";
 import { readWindowsWindowGeometry } from "./ipc/windowsWindowGeometry";
 
 const execFileAsync = promisify(execFile);
-type CommandRunner = (command: string, args: string[]) => Promise<string>;
+type CommandRunner = (command: string, args: string[], timeout?: number) => Promise<string>;
 
-const runCommand: CommandRunner = async (command, args) => {
+const runCommand: CommandRunner = async (command, args, timeout = 5000) => {
 	const { stdout } = await execFileAsync(command, args, {
 		encoding: "utf8",
-		timeout: 5000,
+		timeout,
 		maxBuffer: 16 * 1024,
 		windowsHide: true,
 	});
@@ -153,6 +153,122 @@ export async function resolveDesktopWallpaperSource(
 	return source;
 }
 
+const SNAPSHOT_FILE = /^[a-f0-9]{64}\.(?:png|jpg)$/;
+const SNAPSHOT_INDEX = "index.json";
+const SNAPSHOT_INDEX_LIMIT = 32;
+// Frame extraction can exceed the 5s lookup budget on a busy machine; a kill leaves no desktop tile.
+const CONVERT_TIMEOUT_MS = 30_000;
+
+type SnapshotIndex = Record<string, string>;
+
+async function readSnapshotIndex(directory: string): Promise<SnapshotIndex> {
+	try {
+		const parsed: unknown = JSON.parse(
+			await fs.readFile(path.join(directory, SNAPSHOT_INDEX), "utf8"),
+		);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+		return Object.fromEntries(
+			Object.entries(parsed).filter(
+				(entry): entry is [string, string] =>
+					typeof entry[1] === "string" && SNAPSHOT_FILE.test(entry[1]),
+			),
+		);
+	} catch {
+		return {};
+	}
+}
+
+async function writeSnapshotIndex(directory: string, index: SnapshotIndex) {
+	const entries = Object.entries(index).slice(-SNAPSHOT_INDEX_LIMIT);
+	const temporary = await fs.mkdtemp(path.join(directory, ".index-"));
+	try {
+		const pending = path.join(temporary, SNAPSHOT_INDEX);
+		await fs.writeFile(pending, JSON.stringify(Object.fromEntries(entries)));
+		await fs.rename(pending, path.join(directory, SNAPSHOT_INDEX));
+	} finally {
+		await fs.rm(temporary, { recursive: true, force: true });
+	}
+}
+
+function encodedImageExtension(bytes: Buffer): "png" | "jpg" | null {
+	if (bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])))
+		return "png";
+	if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
+		return "jpg";
+	return null;
+}
+
+/** Convert with an external tool, keeping its already-encoded JPEG instead of re-encoding. */
+async function convertToJpeg(
+	directory: string,
+	convert: (output: string) => Promise<unknown>,
+): Promise<Buffer | null> {
+	const temporary = await fs.mkdtemp(path.join(directory, ".convert-"));
+	try {
+		const converted = path.join(temporary, "wallpaper.jpg");
+		await convert(converted);
+		if (nativeImage.createFromPath(converted).isEmpty()) return null;
+		const bytes = await fs.readFile(converted);
+		return encodedImageExtension(bytes) === "jpg" ? bytes : null;
+	} finally {
+		await fs.rm(temporary, { recursive: true, force: true });
+	}
+}
+
+async function encodeDesktopWallpaper(
+	source: string,
+	directory: string,
+	aerialVideo: boolean,
+	platform: NodeJS.Platform,
+	run: CommandRunner,
+): Promise<{ bytes: Buffer; extension: "png" | "jpg" }> {
+	if (aerialVideo) {
+		const bytes = await convertToJpeg(directory, (output) =>
+			run(
+				getFfmpegBinaryPath(),
+				[
+					"-hide_banner",
+					"-loglevel",
+					"error",
+					"-nostdin",
+					"-i",
+					source,
+					"-frames:v",
+					"1",
+					"-an",
+					"-q:v",
+					"2",
+					output,
+				],
+				CONVERT_TIMEOUT_MS,
+			),
+		);
+		if (!bytes) throw new Error("Desktop wallpaper image could not be decoded");
+		return { bytes, extension: "jpg" };
+	}
+	const original = await fs.readFile(source);
+	const extension = encodedImageExtension(original);
+	// Browsers decode JPEG/PNG directly, so keep the original bytes instead of a slow 4K re-encode.
+	if (extension && !nativeImage.createFromPath(source).isEmpty()) {
+		return { bytes: original, extension };
+	}
+	// macOS wallpapers can be HEIC; the system converter is much faster than a main-process PNG encode.
+	if (platform === "darwin") {
+		const bytes = await convertToJpeg(directory, (output) =>
+			run(
+				"/usr/bin/sips",
+				["-s", "format", "jpeg", "-s", "formatOptions", "best", source, "--out", output],
+				CONVERT_TIMEOUT_MS,
+			),
+		).catch(() => null);
+		if (bytes) return { bytes, extension: "jpg" };
+	}
+	const image = nativeImage.createFromPath(source);
+	const png = image.isEmpty() ? Buffer.alloc(0) : image.toPNG();
+	if (png.length === 0) throw new Error("Desktop wallpaper image could not be decoded");
+	return { bytes: png, extension: "png" };
+}
+
 /** Import an immutable snapshot so later wallpaper changes cannot change saved recordings. */
 export async function importDesktopWallpaperImage(
 	source: string,
@@ -171,63 +287,47 @@ export async function importDesktopWallpaperImage(
 	}
 	const directory = path.join(userDataPath, "desktop-wallpapers");
 	await fs.mkdir(directory, { recursive: true });
-	let image;
-	if (aerialVideo) {
-		const temporary = await fs.mkdtemp(path.join(directory, ".aerial-"));
+	// Reuse the snapshot for an unchanged source instead of decoding a 4K frame on every launch.
+	const sourceKey = createHash("sha256")
+		.update(JSON.stringify([platform, source, stats.size, stats.mtimeMs]))
+		.digest("hex");
+	const index = await readSnapshotIndex(directory);
+	const cachedFile = index[sourceKey];
+	if (cachedFile) {
+		const cached = path.join(directory, cachedFile);
+		const cachedStats = await fs.stat(cached).catch(() => null);
+		if (cachedStats?.isFile() && cachedStats.size > 0) return cached;
+	}
+	const { bytes, extension } = await encodeDesktopWallpaper(
+		source,
+		directory,
+		aerialVideo,
+		platform,
+		run,
+	);
+	const digest = createHash("sha256").update(bytes).digest("hex");
+	const fileName = `${digest}.${extension}`;
+	const destination = path.join(directory, fileName);
+	// Content-addressed: leave an existing snapshot untouched so its thumbnail cache stays valid.
+	const existing = await fs.stat(destination).catch(() => null);
+	if (!existing?.isFile() || existing.size !== bytes.length) {
+		// Publish complete files only: an interrupted write must not leave a cached partial image.
+		const temporary = await fs.mkdtemp(path.join(directory, ".snapshot-"));
 		try {
-			const converted = path.join(temporary, "wallpaper.png");
-			await run(getFfmpegBinaryPath(), [
-				"-hide_banner",
-				"-loglevel",
-				"error",
-				"-nostdin",
-				"-threads",
-				"1",
-				"-i",
-				source,
-				"-frames:v",
-				"1",
-				"-an",
-				"-c:v",
-				"png",
-				converted,
-			]);
-			image = nativeImage.createFromPath(converted);
+			const pending = path.join(temporary, fileName);
+			await fs.writeFile(pending, bytes, { flag: "wx" });
+			await fs.rename(pending, destination).catch(async (error: NodeJS.ErrnoException) => {
+				// Windows can refuse to replace a same-content snapshot created by another process.
+				if (error.code !== "EEXIST" && error.code !== "EPERM") throw error;
+				if (!(await fs.readFile(destination)).equals(bytes)) throw error;
+			});
 		} finally {
 			await fs.rm(temporary, { recursive: true, force: true });
 		}
-	} else {
-		image = nativeImage.createFromPath(source);
 	}
-	// macOS wallpapers can be HEIC; let the system's image converter decode them.
-	if (image.isEmpty() && platform === "darwin") {
-		const temporary = await fs.mkdtemp(path.join(directory, ".convert-"));
-		try {
-			const converted = path.join(temporary, "wallpaper.png");
-			await run("/usr/bin/sips", ["-s", "format", "png", source, "--out", converted]);
-			image = nativeImage.createFromPath(converted);
-		} finally {
-			await fs.rm(temporary, { recursive: true, force: true });
-		}
-	}
-	if (image.isEmpty()) throw new Error("Desktop wallpaper image could not be decoded");
-	const png = image.toPNG();
-	if (png.length === 0) throw new Error("Desktop wallpaper image could not be decoded");
-	const digest = createHash("sha256").update(png).digest("hex");
-	const destination = path.join(directory, `${digest}.png`);
-	// Publish complete files only: an interrupted write must not leave a cached partial image.
-	const temporary = await fs.mkdtemp(path.join(directory, ".snapshot-"));
-	try {
-		const pending = path.join(temporary, "wallpaper.png");
-		await fs.writeFile(pending, png, { flag: "wx" });
-		await fs.rename(pending, destination).catch(async (error: NodeJS.ErrnoException) => {
-			// Windows can refuse to replace a same-content snapshot created by another process.
-			if (error.code !== "EEXIST" && error.code !== "EPERM") throw error;
-			if (!(await fs.readFile(destination)).equals(png)) throw error;
-		});
-	} finally {
-		await fs.rm(temporary, { recursive: true, force: true });
-	}
+	delete index[sourceKey];
+	index[sourceKey] = fileName;
+	await writeSnapshotIndex(directory, index).catch(() => undefined);
 	return destination;
 }
 

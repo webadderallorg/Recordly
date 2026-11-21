@@ -1,11 +1,11 @@
 import { Button, Label, Modal, Radio, RadioGroup } from "@heroui/react";
 import { Check } from "@phosphor-icons/react";
-import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import {
 	OnboardingHeader,
 	OnboardingHeroTitle,
 	OnboardingLayout,
 } from "@/components/auth/OnboardingLayout";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import type { CloudBillingPrice } from "@/types/cloudBilling";
 import { useBilling } from "./BillingProvider";
@@ -64,13 +64,47 @@ function MonthlyPlanOption({ price, disabled }: { price: CloudBillingPrice; disa
 
 /** Cloud upgrade using Recordly styling and the verified billing catalog. */
 export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
+	const { t } = useI18n();
+	const { pricingOpen, setPricingOpen } = useBilling();
+	return (
+		<Modal isOpen={pricingOpen} onOpenChange={setPricingOpen}>
+			<Modal.Backdrop variant="blur" className="split-upgrade-backdrop">
+				<Modal.Container size="lg" scroll="inside">
+					<Modal.Dialog aria-label="Recordly Cloud" className="split-upgrade-modal">
+						<Modal.CloseTrigger
+							className="split-upgrade-close"
+							aria-label={t("common.actions.close", "Close")}
+						/>
+						<Modal.Body className="split-upgrade-body">
+							<OnboardingLayout
+								stage="account"
+								canViewPermissions={false}
+								showNavigation={false}
+							>
+								<SplitPricingContent onSignIn={onSignIn} />
+							</OnboardingLayout>
+						</Modal.Body>
+					</Modal.Dialog>
+				</Modal.Container>
+			</Modal.Backdrop>
+		</Modal>
+	);
+}
+
+export function SplitPricingContent({
+	onSignIn,
+	animateHeader = true,
+}: {
+	onSignIn: () => void;
+	animateHeader?: boolean;
+}) {
 	const t = useScopedT("billing");
-	const { locale, t: appT } = useI18n();
+	const { locale } = useI18n();
 	const {
 		status,
 		catalog,
+		previewCatalog,
 		catalogLoading,
-		pricingOpen,
 		setPricingOpen,
 		user,
 		loading,
@@ -83,7 +117,7 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 	} = useBilling();
 	// Preserve the existing monthly-only checkout policy.
 	const interval = "monthly";
-	const price = getPlusPrice(catalog, interval);
+	const displayPrice = getPlusPrice(catalog ?? previewCatalog ?? null, interval);
 	const plus = status?.billing.plan === "pro";
 	const checkoutReady = Boolean(
 		!plus &&
@@ -101,9 +135,13 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 	const currentPeriodEnd = status?.billing.currentPeriodEnd;
 	const actionLabel =
 		!user || needsSignIn
-			? t("signIn", "Sign in to continue")
+			? needsSignIn
+				? t("signIn", "Sign in to continue")
+				: t("start", "Get started")
 			: checkingPricing && !busy
-				? t("loadingPricing", "Loading pricing…")
+				? displayPrice && loading
+					? t("loadingPlan", "Loading your plan…")
+					: t("loadingPricing", "Loading pricing…")
 				: paymentPending
 					? t("checkPayment", "Check payment status")
 					: retryPricing
@@ -124,165 +162,135 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 	];
 
 	return (
-		<Modal isOpen={pricingOpen} onOpenChange={setPricingOpen}>
-			<Modal.Backdrop variant="blur" className="split-upgrade-backdrop">
-				<Modal.Container size="lg" scroll="inside">
-					<Modal.Dialog aria-label="Recordly Cloud" className="split-upgrade-modal">
-						<Modal.CloseTrigger
-							className="split-upgrade-close"
-							aria-label={appT("common.actions.close", "Close")}
+		<div className="split-upgrade-copy">
+			<div className="split-upgrade-header">
+				<OnboardingHeader
+					centered
+					animated={animateHeader}
+					title={
+						<OnboardingHeroTitle
+							text={t("upgradeHeading", "Unlock Recordly's full power").replace(
+								"Recordly",
+								"{{brand}}",
+							)}
 						/>
-						<Modal.Body className="split-upgrade-body">
-							<OnboardingLayout
-								stage="account"
-								canViewPermissions={false}
-								showNavigation={false}
+					}
+					description={t(
+						"intro",
+						"Commercial Use, Shareable Links, Cloud Storage and More.",
+					)}
+				/>
+			</div>
+			<div className="split-upgrade-details">
+				<section
+					className="split-upgrade-benefits"
+					aria-label={t("yourBenefits", "Your Cloud benefits")}
+				>
+					<h3>{t("benefits", "Cloud benefits")}</h3>
+					<ul>
+						{benefits.map((benefit) => (
+							<li key={benefit}>
+								<span className="split-upgrade-check">
+									<Check weight="bold" size={14} aria-hidden="true" />
+								</span>
+								<span>{benefit}</span>
+							</li>
+						))}
+					</ul>
+				</section>
+				<div className="split-upgrade-purchase">
+					{showSubscriptionPricing &&
+						(displayPrice ? (
+							<MonthlyPlanOption
+								price={displayPrice}
+								disabled={Boolean(busy) || paymentPending}
+							/>
+						) : (
+							<p className="pricing-feedback" role="status">
+								{catalogLoading
+									? t("loadingPricing", "Loading pricing…")
+									: t("priceUnavailable", "Price unavailable right now.")}
+							</p>
+						))}
+					{user && !loading && !needsSignIn && error && (
+						<p className="pricing-error" role="alert">
+							{t(
+								"connectionError",
+								"We couldn’t connect to secure billing. Try again or refresh your plan, or contact support if the problem continues.",
+							)}
+							<ErrorReportButton error={error} context="billing" />
+						</p>
+					)}
+					{manageSubscription && !plus && (
+						<p className="pricing-feedback" role="status">
+							{t(
+								"attention",
+								"Your subscription needs attention. Open Manage subscription to review your payment details, invoices or cancellation options.",
+							)}
+						</p>
+					)}
+					{plus && (
+						<p className="pricing-feedback" role="status">
+							{t("active", "Your Cloud plan is active.")}
+							{status.billing.cancelAtPeriodEnd && currentPeriodEnd
+								? ` ${t("ends", "It ends on {{date}}.", { date: new Date(currentPeriodEnd * 1000).toLocaleDateString(locale) })}`
+								: ""}{" "}
+							{t(
+								"noExpiry",
+								"Cloud recordings have no expiry while Cloud is active. They expire 7 days after Cloud ends.",
+							)}
+							{portalAvailable
+								? ` ${t("portal", "Manage your payment details or cancel in the secure billing portal.")}`
+								: ""}
+						</p>
+					)}
+					{!plus && awaitingCheckout && (
+						<p className="pricing-feedback" role="status">
+							{t(
+								"checkout",
+								"Complete checkout in your browser, then return here. Your plan will update after payment is confirmed.",
+							)}
+						</p>
+					)}
+					<div className="split-upgrade-actions">
+						{(showSubscriptionPricing ||
+							currentPeriodEnd != null ||
+							portalAvailable) && (
+							<Button
+								variant="primary"
+								size="lg"
+								className="split-upgrade-cta"
+								aria-label={actionLabel}
+								isPending={pending}
+								isDisabled={pending}
+								onPress={() => {
+									if (!user || needsSignIn) {
+										setPricingOpen(false);
+										onSignIn();
+									} else if (retryPricing) void refresh();
+									else
+										void startBilling(
+											manageSubscription ? "portal" : "checkout",
+											interval,
+										);
+								}}
 							>
-								<div className="split-upgrade-copy">
-									<div className="split-upgrade-header">
-										<OnboardingHeader
-											centered
-											title={
-												<OnboardingHeroTitle
-													text={t(
-														"upgradeHeading",
-														"Unlock Recordly's full power",
-													).replace("Recordly", "{{brand}}")}
-												/>
-											}
-											description={t(
-												"intro",
-												"Commercial Use, Shareable Links, Cloud Storage and More.",
-											)}
-										/>
-									</div>
-									<div className="split-upgrade-details">
-										<section
-											className="split-upgrade-benefits"
-											aria-label={t("yourBenefits", "Your Cloud benefits")}
-										>
-											<h3>{t("benefits", "Cloud benefits")}</h3>
-											<ul>
-												{benefits.map((benefit) => (
-													<li key={benefit}>
-														<span className="split-upgrade-check">
-															<Check
-																weight="bold"
-																size={14}
-																aria-hidden="true"
-															/>
-														</span>
-														<span>{benefit}</span>
-													</li>
-												))}
-											</ul>
-										</section>
-										<div className="split-upgrade-purchase">
-											{showSubscriptionPricing && (
-												<>
-													{price && (
-														<MonthlyPlanOption
-															price={price}
-															disabled={
-																Boolean(busy) || paymentPending
-															}
-														/>
-													)}
-												</>
-											)}
-											{user && !loading && !needsSignIn && error && (
-												<p className="pricing-error" role="alert">
-													{t(
-														"connectionError",
-														"We couldn’t connect to secure billing. Try again or refresh your plan, or contact support if the problem continues.",
-													)}
-													<ErrorReportButton
-														error={error}
-														context="billing"
-													/>
-												</p>
-											)}
-											{manageSubscription && !plus && (
-												<p className="pricing-feedback" role="status">
-													{t(
-														"attention",
-														"Your subscription needs attention. Open Manage subscription to review your payment details, invoices or cancellation options.",
-													)}
-												</p>
-											)}
-											{plus && (
-												<p className="pricing-feedback" role="status">
-													{t("active", "Your Cloud plan is active.")}
-													{status.billing.cancelAtPeriodEnd &&
-													currentPeriodEnd
-														? ` ${t("ends", "It ends on {{date}}.", { date: new Date(currentPeriodEnd * 1000).toLocaleDateString(locale) })}`
-														: ""}{" "}
-													{t(
-														"noExpiry",
-														"Cloud recordings have no expiry while Cloud is active. They expire 7 days after Cloud ends.",
-													)}
-													{portalAvailable
-														? ` ${t("portal", "Manage your payment details or cancel in the secure billing portal.")}`
-														: ""}
-												</p>
-											)}
-											{!plus && awaitingCheckout && (
-												<p className="pricing-feedback" role="status">
-													{t(
-														"checkout",
-														"Complete checkout in your browser, then return here. Your plan will update after payment is confirmed.",
-													)}
-												</p>
-											)}
-											<div className="split-upgrade-actions">
-												{(showSubscriptionPricing ||
-													currentPeriodEnd != null ||
-													portalAvailable) && (
-													<Button
-														variant="primary"
-														size="lg"
-														className="split-upgrade-cta"
-														aria-label={actionLabel}
-														isPending={pending}
-														isDisabled={pending}
-														onPress={() => {
-															if (!user || needsSignIn) {
-																setPricingOpen(false);
-																onSignIn();
-															} else if (retryPricing) void refresh();
-															else
-																void startBilling(
-																	manageSubscription
-																		? "portal"
-																		: "checkout",
-																	interval,
-																);
-														}}
-													>
-														{actionLabel}
-													</Button>
-												)}
-											</div>
-											{showSubscriptionPricing && <PaymentMethods />}
-											{paymentPending && checkoutReady && (
-												<Button
-													variant="ghost"
-													isDisabled={pending}
-													onPress={() =>
-														void startBilling("checkout", interval)
-													}
-												>
-													{t("returnToCheckout", "Return to checkout")}
-												</Button>
-											)}
-										</div>
-									</div>
-								</div>
-							</OnboardingLayout>
-						</Modal.Body>
-					</Modal.Dialog>
-				</Modal.Container>
-			</Modal.Backdrop>
-		</Modal>
+								{actionLabel}
+							</Button>
+						)}
+					</div>
+					{showSubscriptionPricing && <PaymentMethods />}
+					{paymentPending && checkoutReady && (
+						<Button
+							variant="ghost"
+							isDisabled={pending}
+							onPress={() => void startBilling("checkout", interval)}
+						>
+							{t("returnToCheckout", "Return to checkout")}
+						</Button>
+					)}
+				</div>
+			</div>
+		</div>
 	);
 }

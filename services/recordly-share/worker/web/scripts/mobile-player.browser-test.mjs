@@ -1,7 +1,8 @@
 // Local fixture APIs only; exercises the actual cloud viewer, without cloud writes.
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { chromium, webkit, expect as baseExpect } from "@playwright/test";
+import { expect as baseExpect, chromium, webkit } from "@playwright/test";
+
 const expect = baseExpect.configure({ timeout: 10_000 });
 const root = fileURLToPath(new URL("../", import.meta.url));
 const port = Number(process.env.MOBILE_PLAYER_TEST_PORT || 5197);

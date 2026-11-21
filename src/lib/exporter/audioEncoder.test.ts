@@ -256,6 +256,37 @@ describe("AudioProcessor offline render preparation", () => {
 		expect(renderAndMuxOfflineAudio).not.toHaveBeenCalled();
 	});
 
+	it("renders single sidecar audio offline when its demuxer cannot read the track", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const sidecar = "/tmp/recording.system.wav";
+		const getDecoderConfig = vi.fn().mockRejectedValue(new Error("Cannot open input file"));
+		const destroy = vi.fn();
+		vi.spyOn(processor, "loadAudioFileDemuxer").mockResolvedValue({
+			getDecoderConfig,
+			destroy,
+		});
+		const renderAndMuxOfflineAudio = vi
+			.spyOn(processor, "renderAndMuxOfflineAudio")
+			.mockImplementation(async () => {
+				expect(destroy).toHaveBeenCalledOnce();
+			});
+
+		await processor.process(
+			null,
+			{} as never,
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			[sidecar],
+		);
+
+		expect(getDecoderConfig).toHaveBeenCalledWith("audio");
+		expect(renderAndMuxOfflineAudio).toHaveBeenCalledOnce();
+		expect(renderAndMuxOfflineAudio.mock.calls[0]?.[4]).toEqual([sidecar]);
+	});
+
 	it("uses recorded companion start-delay metadata instead of inferring from duration gap", async () => {
 		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
 		const mainBuffer = { duration: 600, numberOfChannels: 2 } as AudioBuffer;

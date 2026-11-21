@@ -1,10 +1,10 @@
+import GIF from "gif.js";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
-import GIF from "gif.js";
-import { GifOptimizeSizeControl } from "@/components/video-editor/GifOptimizeSizeCheckbox";
 import { GifOptimizationResult } from "@/components/video-editor/GifOptimizationResult";
+import { GifOptimizeSizeControl } from "@/components/video-editor/GifOptimizeSizeCheckbox";
 import { I18nProvider } from "@/contexts/I18nContext";
-import { optimizeGif, type GifOptimizationSummary } from "@/lib/exporter/gifOptimization";
+import { type GifOptimizationSummary, optimizeGif } from "@/lib/exporter/gifOptimization";
 import "@/index.css";
 
 const workerScript = new URL("gif.js/dist/gif.worker.js", import.meta.url).toString();

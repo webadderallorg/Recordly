@@ -7,7 +7,7 @@ async function openCaptionExport(page: Page, mode: "free" | "pro", signedIn = tr
 		page,
 		({ mode }) => {
 			localStorage.setItem(
-				"recordly.editor.preferences",
+				"recordly.editor.preferences.v2",
 				JSON.stringify({ includeCaptionSidecar: true }),
 			);
 			document.addEventListener("DOMContentLoaded", () => {

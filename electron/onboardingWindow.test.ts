@@ -122,6 +122,38 @@ it("suppresses late-created windows until onboarding closes", async () => {
 	expect(lateWindow.isVisible()).toBe(true);
 });
 
+it.each([
+	false,
+	true,
+])("shows the onboarding permission drag panel (packaged=%s)", async (packaged) => {
+	electron.app.isPackaged = packaged;
+	const { permissionAccessoryWindowOwners } = await import("./permissionAccessoryWindowOwner");
+	const { showOnboardingWindow } = await import("./windows");
+	const onboarding = showOnboardingWindow();
+	const panel = new FakeWindow();
+	const unrelatedPanel = new FakeWindow();
+	const editor = new FakeWindow();
+	const [, onCreated] = electron.app.on.mock.calls.find(
+		([event]) => event === "browser-window-created",
+	)!;
+	for (const window of [panel, unrelatedPanel, editor]) onCreated({}, window);
+	// Electron emits browser-window-created before the constructor returns.
+	type Window = import("electron").BrowserWindow;
+	permissionAccessoryWindowOwners.set(panel as unknown as Window, onboarding);
+	permissionAccessoryWindowOwners.set(
+		unrelatedPanel as unknown as Window,
+		editor as unknown as Window,
+	);
+	panel.show();
+	unrelatedPanel.show();
+	editor.show();
+	expect(panel.isVisible()).toBe(true);
+	expect(unrelatedPanel.isVisible()).toBe(false);
+	expect(editor.isVisible()).toBe(false);
+	showOnboardingWindow();
+	expect(panel.isVisible()).toBe(true);
+});
+
 it("replays only the reveal, keeps existing windows open, and lets it play again", async () => {
 	const { getOnboardingWindow, replayOnboardingIntro } = await import("./windows");
 	const editor = new FakeWindow();
@@ -165,7 +197,9 @@ it("hides every other app window and loads the dev preview", async () => {
 	}
 	expect(onboarding.isDestroyed()).toBe(false);
 	expect(onboarding.loadURL).toHaveBeenCalledWith(
-		"http://localhost:5173?windowType=onboarding&onboardingPreview=1",
+		process.platform === "darwin" || process.platform === "win32"
+			? "http://localhost:5173?windowType=onboarding&onboardingPreview=1&welcomeSoundtrack=intro"
+			: "http://localhost:5173?windowType=onboarding&onboardingPreview=1",
 	);
 	if (process.platform === "darwin" || process.platform === "win32") {
 		expect(windows.at(-1)?.loadURL).toHaveBeenCalledWith(
@@ -191,8 +225,45 @@ it("restarts an existing onboarding preview and hides newly opened windows", asy
 it("does not enable preview in packaged apps", async () => {
 	electron.app.isPackaged = true;
 	const { showOnboardingWindow } = await import("./windows");
-	const onboarding = showOnboardingWindow({ preview: true }) as unknown as FakeWindow;
+	const onboarding = showOnboardingWindow({
+		preview: true,
+	}) as unknown as FakeWindow;
 	expect(onboarding.loadURL).toHaveBeenCalledWith("http://localhost:5173?windowType=onboarding");
+});
+
+it.each([
+	false,
+	true,
+])("opens Permissions directly and restores the HUD (packaged=%s)", async (packaged) => {
+	electron.app.isPackaged = packaged;
+	const { showOnboardingWindow } = await import("./windows");
+	const hud = new FakeWindow();
+	hud.show();
+	const onboarding = showOnboardingWindow({ permissionsOnly: true }) as unknown as FakeWindow;
+	expect(windows).toEqual([hud, onboarding]);
+	expect(onboarding.loadURL).toHaveBeenCalledWith(
+		"http://localhost:5173?windowType=onboarding&permissionsOnly=1",
+	);
+	expect(hud.isVisible()).toBe(false);
+	expect(showOnboardingWindow({ permissionsOnly: true })).toBe(onboarding);
+	expect(onboarding.loadURL).toHaveBeenCalledTimes(1);
+	onboarding.close();
+	expect(hud.isVisible()).toBe(true);
+});
+
+it("keeps a returning launch hidden until the startup gate has a page to show", async () => {
+	electron.app.isPackaged = true;
+	const { focusOnboardingWindow, revealStartupOnboardingWindow, showOnboardingWindow } =
+		await import("./windows");
+	const onboarding = showOnboardingWindow({ returning: true }) as unknown as FakeWindow;
+	expect(windows).toEqual([onboarding]);
+	expect(onboarding.url).toContain("windowType=onboarding&returning=1");
+	onboarding.emit("ready-to-show");
+	focusOnboardingWindow();
+	expect(onboarding.show).not.toHaveBeenCalled();
+	revealStartupOnboardingWindow();
+	expect(onboarding.show).toHaveBeenCalledOnce();
+	expect(onboarding.focus).toHaveBeenCalledOnce();
 });
 
 it("keeps explicit real authentication distinct from the optional development tour", async () => {
@@ -200,7 +271,9 @@ it("keeps explicit real authentication distinct from the optional development to
 	const onboarding = showOnboardingWindow({ preview: true }) as unknown as FakeWindow;
 	expect(showOnboardingWindow({ preview: false })).toBe(onboarding);
 	expect(onboarding.loadURL).toHaveBeenLastCalledWith(
-		"http://localhost:5173?windowType=onboarding&onboardingPreview=0",
+		process.platform === "darwin" || process.platform === "win32"
+			? "http://localhost:5173?windowType=onboarding&onboardingPreview=0&welcomeSoundtrack=intro"
+			: "http://localhost:5173?windowType=onboarding&onboardingPreview=0",
 	);
 });
 
@@ -208,6 +281,7 @@ it.each([
 	undefined,
 	{ preview: false },
 	{ preview: true },
+	{ permissionsOnly: true },
 ])("foregrounds packaged onboarding without reloading existing progress for %j", async (options) => {
 	electron.app.isPackaged = true;
 	const { showOnboardingWindow } = await import("./windows");
@@ -238,7 +312,9 @@ it.each([
 	expect(intro.loadURL).toHaveBeenCalledWith(
 		"http://localhost:9999/?windowType=onboarding-intro",
 	);
-	expect(onboarding.loadURL).toHaveBeenCalledWith("http://localhost:9999/?windowType=onboarding");
+	expect(onboarding.loadURL).toHaveBeenCalledWith(
+		"http://localhost:9999/?windowType=onboarding&welcomeSoundtrack=intro",
+	);
 	focusOnboardingWindow();
 	expect(onboarding.show).not.toHaveBeenCalled();
 	intro.webContents.emit("did-finish-load");

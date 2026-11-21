@@ -4,7 +4,7 @@ import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 test("all click effects select grey for the recording and previews", async ({ page }, testInfo) => {
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
-		const preferencesKey = "recordly.editor.preferences";
+		const preferencesKey = "recordly.editor.preferences.v2";
 		const getAppSetting = window.electronAPI.getAppSetting;
 		const setAppSetting = window.electronAPI.setAppSetting;
 		window.electronAPI.getAppSetting = (key) => {
@@ -31,7 +31,7 @@ test("all click effects select grey for the recording and previews", async ({ pa
 			.poll(() =>
 				page.evaluate(
 					() =>
-						JSON.parse(localStorage.getItem("recordly.editor.preferences") ?? "{}")
+						JSON.parse(localStorage.getItem("recordly.editor.preferences.v2") ?? "{}")
 							.cursorClickEffectColor,
 				),
 			)

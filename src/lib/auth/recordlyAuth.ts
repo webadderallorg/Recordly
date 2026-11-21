@@ -6,6 +6,7 @@ import {
 	createPendingSignupConsentStore,
 	createSignupConsentRetryStore,
 } from "./pendingSignupConsent";
+import { isSavedSignInLocked } from "./savedSignIn";
 import { marketingEmailMetadata, type SignupConsent, signupConsentMetadata } from "./signupConsent";
 import {
 	SignupConsentScopeChangedError,
@@ -107,9 +108,9 @@ function createAuthStorage() {
 			}
 			try {
 				await bridge.authStorageMigrate(snapshot);
-			} catch {
+			} catch (error) {
 				removeLegacyCopies(local, owned);
-				return null;
+				return isSavedSignInLocked(error) ? bridge : null;
 			}
 			// Main migrates existing credentials once. Remove old copies so
 			// logging out cannot restore a stale browser session.
@@ -361,6 +362,7 @@ async function openAuthUrl(url: string | null) {
 export async function signInWithSocial(
 	provider: RecordlyOAuthProvider,
 	consent: SignupConsent,
+	{ selectAccount = false }: { selectAccount?: boolean } = {},
 ): Promise<void> {
 	const metadata = signupConsentMetadata(consent);
 	const client = requireAuth();
@@ -371,6 +373,9 @@ export async function signInWithSocial(
 			redirectTo: callbackUrl,
 			skipBrowserRedirect: true,
 			scopes: provider === "azure" ? "email" : undefined,
+			...(selectAccount && (provider === "google" || provider === "azure")
+				? { queryParams: { prompt: "select_account" } }
+				: {}),
 		},
 	});
 	if (error) throw error;

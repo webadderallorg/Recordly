@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
+import type { Server } from "node:http";
 import os from "node:os";
 import path from "node:path";
-import type { Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { createPackagedRendererServer } from "./rendererServer";
 

@@ -1,22 +1,22 @@
-import { composeSequenceWebcam, sequenceWebcamOutputs } from "./sequenceWebcam";
-import { probeNativeVideoMetadata } from "../ffmpeg/metadata";
-import { isLibrarySequenceSource } from "./sequenceSource";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
-import { getFfmpegBinaryPath } from "../ffmpeg/binary";
-import { rememberApprovedLocalReadPath, resolveApprovedLocalMediaPath } from "../project/manager";
-import { getRecordingsDir, getTelemetryPathForVideo } from "../utils";
-import { getCompanionAudioStartDelayMs, getUsableCompanionAudioCandidates } from "./diagnostics";
-import { normalizeCursorTelemetrySamples, writeCursorTelemetry } from "../cursor/telemetry";
-import { listRecordings } from "./library";
 import type {
 	RecordingImportResult,
 	RecordingWebcamSource,
 } from "../../../src/types/recordingLibrary";
+import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
+import { normalizeCursorTelemetrySamples, writeCursorTelemetry } from "../cursor/telemetry";
+import { getFfmpegBinaryPath } from "../ffmpeg/binary";
+import { probeNativeVideoMetadata } from "../ffmpeg/metadata";
+import { rememberApprovedLocalReadPath, resolveApprovedLocalMediaPath } from "../project/manager";
+import { getRecordingsDir, getTelemetryPathForVideo } from "../utils";
+import { getCompanionAudioStartDelayMs, getUsableCompanionAudioCandidates } from "./diagnostics";
+import { listRecordings } from "./library";
+import { isLibrarySequenceSource } from "./sequenceSource";
+import { composeSequenceWebcam, sequenceWebcamOutputs } from "./sequenceWebcam";
 
 const run = promisify(execFile);
 async function ffmpeg(args: string[], signal?: AbortSignal) {

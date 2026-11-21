@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	closeClipGaps,
-	reorderClipSequence,
 	mapClipSequenceTime,
 	packClipSequence,
+	reorderClipSequence,
 	rippleRegionAnchors,
 	rippleRegions,
 } from "./clipSequence";

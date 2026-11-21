@@ -1,9 +1,9 @@
-import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { Card } from "@heroui/react";
-import { CloudUsageCard } from "@/components/billing/CloudUsageCard";
 import { useBilling } from "@/components/billing/BillingProvider";
+import { CloudUsageCard } from "@/components/billing/CloudUsageCard";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { sidebarCardConfig } from "./sidebarCardConfig";
 
 export function SidebarCards({ onSignIn }: { onSignIn?: () => void }) {

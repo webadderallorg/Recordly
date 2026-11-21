@@ -1,7 +1,7 @@
 import { Modal } from "@heroui/react";
 import { useI18n } from "@/contexts/I18nContext";
-import type { SettingsSection } from "../SettingsSections";
 import { DashboardSettings } from "../dashboard/DashboardSettings";
+import type { SettingsSection } from "../SettingsSections";
 
 /** Reuse the Home settings content without leaving or remounting the editor. */
 export function AppSettingsDialog({
