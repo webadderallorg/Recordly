@@ -17,11 +17,22 @@ for (const standalone of [false, true]) {
 			timeout: 20000,
 		});
 		const audio = tour.locator("audio");
-		await expect(audio).toHaveAttribute("src", /auth\/recordly-demo\.mp4/);
+		await expect(audio).toHaveAttribute("src", /audio\/first-boot\.m4a/);
+		const banner = tour.locator("[data-recordly-demo] video");
+		// The soundtrack outlasts the looping banner instead of being cut to its length.
+		await expect
+			.poll(async () => {
+				const [song, clip] = await Promise.all([
+					audio.evaluate((el: HTMLAudioElement) => el.duration),
+					banner.evaluate((el: HTMLVideoElement) => el.duration),
+				]);
+				return song > clip * 5;
+			})
+			.toBe(true);
 		await expect
 			.poll(() => audio.evaluate((el) => Reflect.get(el, "webkitAudioDecodedByteCount")))
 			.toBeGreaterThan(0);
-		await expect(tour.locator("[data-recordly-demo] video")).toHaveJSProperty("muted", true);
+		await expect(banner).toHaveJSProperty("muted", true);
 	});
 }
 
