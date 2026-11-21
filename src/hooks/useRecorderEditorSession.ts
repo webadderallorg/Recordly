@@ -5,10 +5,18 @@ import type { RecorderCoreContext } from "./recorderContext";
 export function useRecorderEditorSession(
 	context: Pick<
 		RecorderCoreContext,
-		"setFinalizing" | "hideEditorOverlayCursorByDefault" | "webcamTimeOffsetMs"
+		| "setFinalizing"
+		| "hideEditorOverlayCursorByDefault"
+		| "captureSourceKind"
+		| "webcamTimeOffsetMs"
 	>,
 ) {
-	const { setFinalizing, hideEditorOverlayCursorByDefault, webcamTimeOffsetMs } = context;
+	const {
+		setFinalizing,
+		hideEditorOverlayCursorByDefault,
+		captureSourceKind,
+		webcamTimeOffsetMs,
+	} = context;
 	const loadingEditorOpen = useRef<Promise<boolean> | null>(null);
 
 	const openLoadingEditor = () => {
@@ -99,10 +107,12 @@ export function useRecorderEditorSession(
 						webcamPath,
 						timeOffsetMs: webcamTimeOffsetMs.current,
 						hideOverlayCursorByDefault: shouldHideOverlayCursor,
+						captureSourceKind: captureSourceKind.current,
 					});
 				} else {
 					await window.electronAPI.setCurrentVideoPath(videoPath, {
 						hideOverlayCursorByDefault: shouldHideOverlayCursor,
+						captureSourceKind: captureSourceKind.current,
 					});
 				}
 			} catch (error) {
@@ -111,6 +121,7 @@ export function useRecorderEditorSession(
 				try {
 					await window.electronAPI.setCurrentVideoPath(videoPath, {
 						hideOverlayCursorByDefault: shouldHideOverlayCursor,
+						captureSourceKind: captureSourceKind.current,
 					});
 				} catch (fallbackError) {
 					console.error("Failed to persist fallback video path:", fallbackError);
@@ -125,7 +136,7 @@ export function useRecorderEditorSession(
 				`[PERF:RENDERER] Finalize Session & Switch to Editor: COMPLETED in ${(performance.now() - start).toFixed(2)}ms`,
 			);
 		},
-		[hideEditorOverlayCursorByDefault, webcamTimeOffsetMs, setFinalizing],
+		[hideEditorOverlayCursorByDefault, captureSourceKind, webcamTimeOffsetMs, setFinalizing],
 	);
 
 	return {

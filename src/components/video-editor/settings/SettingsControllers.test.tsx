@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { CURSOR_MOTION_PRESETS } from "../cursorMotionPresets";
 import { DEFAULT_EDITOR_PREFERENCES } from "../editorPreferences";
-import { DEFAULT_CURSOR_CLICK_BOUNCE, DEFAULT_PADDING } from "../types";
+import { DEFAULT_CURSOR_CLICK_BOUNCE, DEFAULT_PADDING, DEFAULT_WINDOW_PADDING } from "../types";
 import { resolveSettingsPanelProps } from "./settingsPanelDefaults";
 import { useAppSettings } from "./useAppSettings";
 import { useFrameSettings } from "./useFrameSettings";
@@ -113,7 +113,7 @@ describe("frame settings controller", () => {
 		expect(onBorderRadiusChange).toHaveBeenCalledWith(DEFAULT_EDITOR_PREFERENCES.borderRadius);
 		controller.handleRemoveBackgroundToggle(false);
 		expect(onAspectRatioChange).toHaveBeenLastCalledWith("4:3");
-		expect(onPaddingChange).toHaveBeenLastCalledWith(DEFAULT_PADDING);
+		expect(onPaddingChange).toHaveBeenLastCalledWith(DEFAULT_WINDOW_PADDING);
 	});
 	it("relinks padding to the rounded average and edits unlinked sides independently", () => {
 		const onPaddingChange = vi.fn();

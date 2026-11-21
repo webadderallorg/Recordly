@@ -78,6 +78,8 @@ export type RecordingSessionData = {
 	webcamPath?: string | null;
 	timeOffsetMs?: number;
 	hideOverlayCursorByDefault?: boolean;
+	/** Display/area captures are "screen"; editor padding defaults differ per kind. */
+	captureSourceKind?: "screen" | "window";
 };
 
 export type PauseSegment = {

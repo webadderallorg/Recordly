@@ -45,6 +45,7 @@ function createContext() {
 		resolvedWebcamPath: { current: null },
 		webcamTimeOffsetMs: { current: 0 },
 		hideEditorOverlayCursorByDefault: { current: false },
+		captureSourceKind: { current: "screen" as "screen" | "window" },
 		beginWebcamCapture: vi.fn(),
 		resetRecordingClock: vi.fn(),
 		webcamStartTime: { current: null },

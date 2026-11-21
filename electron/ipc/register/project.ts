@@ -61,6 +61,7 @@ import {
 	windowsNativeCaptureActive,
 	windowsPendingVideoPath,
 } from "../state";
+import type { RecordingSessionData } from "../types";
 import {
 	approveUserPath,
 	getRecordingsDir,
@@ -115,6 +116,10 @@ function libraryDeletionDependencies(protectedSources: unknown = []) {
 
 function normalizeRecordingTimeOffsetMs(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : 0;
+}
+
+function normalizeCaptureSourceKind(value: unknown): RecordingSessionData["captureSourceKind"] {
+	return value === "screen" || value === "window" ? value : undefined;
 }
 
 function normalizeBoolean(value: unknown, fallback = false): boolean {
@@ -1095,7 +1100,11 @@ export function registerProjectHandlers() {
 		async (
 			_,
 			path: string,
-			options?: { preserveProjectPath?: boolean; hideOverlayCursorByDefault?: boolean },
+			options?: {
+				preserveProjectPath?: boolean;
+				hideOverlayCursorByDefault?: boolean;
+				captureSourceKind?: RecordingSessionData["captureSourceKind"];
+			},
 		) => {
 			setCurrentVideoPath(normalizeVideoSourcePath(path) ?? path);
 			approveUserPath(currentVideoPath);
@@ -1110,6 +1119,7 @@ export function registerProjectHandlers() {
 				hideOverlayCursorByDefault:
 					normalizeBoolean(options?.hideOverlayCursorByDefault) ||
 					normalizeBoolean(resolvedSession.hideOverlayCursorByDefault),
+				captureSourceKind: normalizeCaptureSourceKind(options?.captureSourceKind),
 			};
 
 			setCurrentRecordingSession(nextSession);
@@ -1151,6 +1161,7 @@ export function registerProjectHandlers() {
 				webcamPath?: string | null;
 				timeOffsetMs?: number;
 				hideOverlayCursorByDefault?: boolean;
+				captureSourceKind?: RecordingSessionData["captureSourceKind"];
 			},
 			options?: { preserveProjectPath?: boolean },
 		) => {
@@ -1162,6 +1173,7 @@ export function registerProjectHandlers() {
 				webcamPath: normalizeVideoSourcePath(session.webcamPath ?? null),
 				timeOffsetMs: normalizeRecordingTimeOffsetMs(session.timeOffsetMs),
 				hideOverlayCursorByDefault: normalizeBoolean(session.hideOverlayCursorByDefault),
+				captureSourceKind: normalizeCaptureSourceKind(session.captureSourceKind),
 			});
 			await rememberApprovedLocalReadPath(currentRecordingSession!.videoPath);
 			await rememberApprovedLocalReadPath(currentRecordingSession!.webcamPath);

@@ -569,12 +569,27 @@ export interface Padding {
 }
 
 export const DEFAULT_PADDING: Padding = {
+	top: 0,
+	bottom: 0,
+	left: 0,
+	right: 0,
+	linked: true,
+};
+
+/** Window captures look best framed on the wallpaper; screen captures fill the canvas. */
+export const DEFAULT_WINDOW_PADDING: Padding = {
 	top: 25,
 	bottom: 25,
 	left: 25,
 	right: 25,
 	linked: true,
 };
+
+export type CaptureSourceKind = "screen" | "window";
+
+export function getDefaultPaddingForCaptureSource(kind: CaptureSourceKind | null): Padding {
+	return kind === "window" ? DEFAULT_WINDOW_PADDING : DEFAULT_PADDING;
+}
 export type {
 	SourceAudioTrackSetting,
 	SourceAudioTrackSettings,

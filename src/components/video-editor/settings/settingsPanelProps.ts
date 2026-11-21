@@ -126,6 +126,8 @@ export interface SettingsPanelProps {
 	onClearWebcam?: () => void;
 	padding?: Padding;
 	onPaddingChange?: (padding: Padding) => void;
+	/** Padding the frame section resets to for this recording's capture kind. */
+	defaultPadding?: Padding;
 	cropRegion?: CropRegion;
 	onCropChange?: (region: CropRegion) => void;
 	aspectRatio: AspectRatio;

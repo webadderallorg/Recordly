@@ -89,6 +89,7 @@ export function useRecorderState(
 	} = microphoneFallback;
 
 	const hideEditorOverlayCursorByDefault = useRef(false);
+	const captureSourceKind = useRef<"screen" | "window">("screen");
 
 	const selectMimeType = useCallback(() => {
 		return selectRecordingMimeType();
@@ -134,6 +135,7 @@ export function useRecorderState(
 		cleanupMicFallbackRecorder,
 		storeMicrophoneSidecar,
 		hideEditorOverlayCursorByDefault,
+		captureSourceKind,
 		selectMimeType,
 	};
 }

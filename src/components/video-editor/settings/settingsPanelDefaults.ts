@@ -57,6 +57,7 @@ const defaults = {
 	webcamPreviewCurrentTime: () => 0,
 	webcamPreviewPlaying: () => false,
 	padding: () => DEFAULT_PADDING,
+	defaultPadding: () => DEFAULT_PADDING,
 	annotationRegions: () => [],
 	autoCaptions: () => [],
 	autoCaptionSettings: () => DEFAULT_AUTO_CAPTION_SETTINGS,
