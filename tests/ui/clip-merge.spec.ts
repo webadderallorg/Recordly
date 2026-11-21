@@ -40,6 +40,25 @@ test.beforeEach(async ({ page }) => {
 	});
 });
 
+test("deleting a selected clip selects its successor or the remaining predecessor", async ({
+	page,
+}) => {
+	const clips = page.locator('[data-variant="clip"]');
+	const selected = clips.and(page.locator('[data-selected="true"]'));
+	await clips.nth(1).locator(".timeline-block").click();
+	await expect(selected).toHaveAttribute("data-timeline-item-id", "clip-2");
+	await page.keyboard.down("Delete");
+	await expect(clips).toHaveCount(2);
+	await expect(selected).toHaveAttribute("data-timeline-item-id", "clip-3");
+	await expect(selected).toHaveAttribute("data-start-ms", "2000");
+	await page.keyboard.down("Delete");
+	await page.keyboard.up("Delete");
+	await expect(clips).toHaveCount(2);
+	await page.keyboard.press("Backspace");
+	await expect(clips).toHaveCount(1);
+	await expect(selected).toHaveAttribute("data-timeline-item-id", "clip-1");
+});
+
 test("Shift-click selects a clip range, merges it, and supports undo and redo", async ({
 	page,
 }, testInfo) => {

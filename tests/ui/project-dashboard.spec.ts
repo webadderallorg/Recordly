@@ -233,6 +233,40 @@ test("home dashboard searches, sorts, opens projects and returns to the editor",
 	await expect(page.getByRole("button", { name: "Rename project" })).toBeVisible();
 });
 
+test("the editor can start a new take only after saving the current project", async ({ page }) => {
+	await installDesktopBridge(page, "filmstrip.mp4");
+	await page.goto("/?windowType=editor");
+	await expect(page.getByRole("button", { name: "Rename project" })).toBeVisible({
+		timeout: 20000,
+	});
+	await waitForInitialProject(page);
+	const record = page.getByRole("button", { name: "Record new", exact: true });
+	await expect(record).toBeVisible();
+	await page.evaluate(() => {
+		const originalSave = window.electronAPI.saveProjectFile;
+		const status = document.documentElement.dataset;
+		status.recordingSave = "fail";
+		window.electronAPI.saveProjectFile = async (...args) => {
+			if (status.recordingSave === "fail") {
+				status.recordingSave = "failed";
+				return { success: false, message: "Cannot write the test project" };
+			}
+			const result = await originalSave(...args);
+			status.recordingSave = "saved";
+			return result;
+		};
+		window.electronAPI.showRecordingHud = async () => {
+			status.hudOpenedAfterSave = status.recordingSave;
+		};
+	});
+	const root = page.locator("html");
+	await record.click();
+	await expect(root).toHaveAttribute("data-recording-save", "failed");
+	await expect(root).not.toHaveAttribute("data-hud-opened-after-save");
+	await record.click();
+	await expect(root).toHaveAttribute("data-hud-opened-after-save", "saved");
+});
+
 test("home dashboard explains an empty library", async ({ page }) => {
 	await installDesktopBridge(page);
 	await page.goto("/?windowType=editor");

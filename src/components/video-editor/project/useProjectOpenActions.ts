@@ -367,6 +367,29 @@ export function useProjectOpenActions({
 		project.error,
 	]);
 
+	const handleOpenRecordingHud = useCallback(async () => {
+		if (opening.current) return;
+		opening.current = true;
+		try {
+			videoPlaybackRef.current?.pause();
+			setIsPlaying(false);
+			if (project.videoPath && !project.error) {
+				const saved = await saveProject(false, {
+					remountPreviewAfterSave: false,
+					refreshLibraryAfterSave: false,
+				});
+				if (!saved) return;
+			}
+			await window.electronAPI.showRecordingHud();
+		} catch {
+			toast.error(
+				translate("notifications.startRecordingFailed", "Failed to start recording"),
+			);
+		} finally {
+			opening.current = false;
+		}
+	}, [project.error, project.videoPath, saveProject, setIsPlaying, videoPlaybackRef]);
+
 	useEffect(() => {
 		const openRequestedDashboard = () => {
 			if (!localStorage.getItem("recordly.open-dashboard")) return;
@@ -438,6 +461,7 @@ export function useProjectOpenActions({
 		handleOpenProjectFromLibrary,
 		handleImportMediaOrProject,
 		handleOpenProjectBrowser,
+		handleOpenRecordingHud,
 		handleDeleteProjects,
 	};
 }
