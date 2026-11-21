@@ -25,6 +25,8 @@ const STARTUP_STABILIZATION_SECONDS = 1.25;
 const STARTUP_MAX_DECODE_QUEUE = 12;
 
 const STARTUP_MAX_PENDING_FRAMES = 28;
+const DECODE_FRAME_WAIT_MS = 30_000;
+
 export async function decodeVideoStreamAttempt(
 	context: StreamingDecodeContext,
 
@@ -151,6 +153,7 @@ export async function decodeVideoStreamAttempt(
 			notifyBackpressureProgress();
 		},
 	});
+	context.decoder.ondequeue = notifyBackpressureProgress;
 	try {
 		context.decoder.configure(preferredDecoderConfig);
 	} catch (error) {
@@ -175,7 +178,20 @@ export async function decodeVideoStreamAttempt(
 		}
 		if (decodeDone) return Promise.resolve(null);
 		return new Promise((resolve) => {
-			frameResolve = resolve;
+			const timeout = setTimeout(() => {
+				frameResolve = null;
+				recordFirstDecodeError(
+					new DOMException(
+						"Timed out waiting for a decoded video frame.",
+						"TimeoutError",
+					),
+				);
+				resolve(null);
+			}, DECODE_FRAME_WAIT_MS);
+			frameResolve = (frame) => {
+				clearTimeout(timeout);
+				resolve(frame);
+			};
 		});
 	};
 
@@ -452,8 +468,9 @@ export async function decodeVideoStreamAttempt(
 		removeCancellationHandler?.();
 		currentFrame?.close();
 		heldFrame?.close();
-		if (context.decoder && context.decoder.state !== "closed") {
-			context.decoder.close();
+		if (context.decoder) {
+			context.decoder.ondequeue = null;
+			if (context.decoder.state !== "closed") context.decoder.close();
 		}
 		await readerCancellation;
 		await feedPromise;
