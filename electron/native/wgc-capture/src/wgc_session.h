@@ -18,7 +18,8 @@ using Microsoft::WRL::ComPtr;
 
 class WgcSession {
 public:
-    using FrameCallback = std::function<void(ID3D11Texture2D*, int64_t timestampHns)>;
+    using FrameCallback = std::function<void(ID3D11Texture2D*, int contentWidth, int contentHeight,
+                                             int64_t timestampHns)>;
 
     WgcSession();
     ~WgcSession();
@@ -28,7 +29,9 @@ public:
     void setFrameCallback(FrameCallback callback);
     bool startCapture();
     void stopCapture();
-    bool hasFatalError() const { return fatalError_.load(); }
+    bool hasFatalError() const {
+        return fatalError_.load() || (windowHandle_ && !IsWindow(windowHandle_));
+    }
 
     int captureWidth() const { return captureWidth_; }
     int captureHeight() const { return captureHeight_; }
@@ -38,12 +41,11 @@ public:
 private:
     ComPtr<ID3D11Device> d3dDevice_;
     ComPtr<ID3D11DeviceContext> d3dContext_;
-    ComPtr<ID3D11Texture2D> cropTexture_;
-    ComPtr<ID3D11RenderTargetView> cropRenderTargetView_;
     winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice winrtDevice_{nullptr};
     winrt::Windows::Graphics::Capture::GraphicsCaptureItem captureItem_{nullptr};
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool framePool_{nullptr};
     winrt::Windows::Graphics::Capture::GraphicsCaptureSession session_{nullptr};
+    winrt::Windows::Graphics::Capture::GraphicsCaptureItem::Closed_revoker itemClosedRevoker_;
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::FrameArrived_revoker frameArrivedRevoker_;
 
     FrameCallback frameCallback_;
@@ -57,16 +59,12 @@ private:
     int64_t frameIntervalHns_ = 0;
     int64_t lastFrameTimeHns_ = 0;
     HWND windowHandle_ = nullptr;
-    RECT monitorBounds_{};
-    RECT cropRect_{};
 
     bool createD3DDevice();
     winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice createWinRTDevice();
     winrt::Windows::Graphics::Capture::GraphicsCaptureItem createCaptureItemForMonitor(HMONITOR monitor);
     bool initializeWithItem(int fps);
-    bool initializeWindowCrop(HWND hwnd);
-    bool updateWindowCropRect(bool initializeSize = false);
-    bool recreateFramePoolIfNeeded(
+    void recreateFramePoolIfNeeded(
         winrt::Windows::Graphics::SizeInt32 const& contentSize);
     void onFrameArrived(
         winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& sender,
