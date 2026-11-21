@@ -24,7 +24,6 @@
 	"checkout": "Completa el pago en tu navegador y vuelve aquí. Tu plan se actualizará al confirmarse el pago.",
 	"active": "Tu plan Cloud está activo.",
 	"ends": "Finaliza el {{date}}.",
-	"noExpiry": "Las grabaciones en la nube no caducan mientras Cloud esté activo. Caducan 7 días después de que termine Cloud.",
 	"portal": "Gestiona tus datos de pago o cancela en el portal de pagos seguro.",
 	"featureCommercial": "Uso comercial",
 	"featureCaptionFiles": "Exportación de subtítulos en SRT y VTT",

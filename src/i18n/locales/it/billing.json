@@ -24,7 +24,6 @@
 	"checkout": "Completa il pagamento nel browser, poi torna qui. Il piano verrà aggiornato dopo la conferma del pagamento.",
 	"active": "Il tuo piano Cloud è attivo.",
 	"ends": "Termina il {{date}}.",
-	"noExpiry": "Le registrazioni cloud non scadono mentre Cloud è attivo. Scadono 7 giorni dopo la fine di Cloud.",
 	"portal": "Gestisci i dati di pagamento o annulla nel portale di pagamento sicuro.",
 	"featureCommercial": "Uso commerciale",
 	"featureCaptionFiles": "Esportazione dei sottotitoli in file SRT e VTT",

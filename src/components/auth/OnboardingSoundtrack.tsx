@@ -65,7 +65,6 @@ export function OnboardingSoundtrack() {
 		const stopOnRecording = window.electronAPI?.onRecordingStateChanged?.(({ recording }) => {
 			if (recording) finish();
 		});
-		audio.addEventListener("ended", finish);
 		audio.addEventListener("error", onError);
 		window.addEventListener("click", retry, true);
 		window.addEventListener("keydown", retry, true);
@@ -85,7 +84,6 @@ export function OnboardingSoundtrack() {
 			disposed = true;
 			audio.pause();
 			audio.removeEventListener("canplay", ready);
-			audio.removeEventListener("ended", finish);
 			audio.removeEventListener("error", onError);
 			window.removeEventListener("click", retry, true);
 			window.removeEventListener("keydown", retry, true);
@@ -101,7 +99,7 @@ export function OnboardingSoundtrack() {
 	const SoundIcon = audible ? SpeakerHigh : SpeakerX;
 	return (
 		<>
-			<audio ref={audioRef} src={ONBOARDING_SOUNDTRACK_URL} preload="auto" />
+			<audio ref={audioRef} src={ONBOARDING_SOUNDTRACK_URL} preload="auto" loop />
 			{sound && (
 				<div
 					data-welcome-music
