@@ -139,7 +139,9 @@ export function SplitPricingContent({
 				? t("signIn", "Sign in to continue")
 				: t("start", "Get started")
 			: checkingPricing && !busy
-				? t("loadingPricing", "Loading pricing…")
+				? displayPrice && loading
+					? t("loadingPlan", "Loading your plan…")
+					: t("loadingPricing", "Loading pricing…")
 				: paymentPending
 					? t("checkPayment", "Check payment status")
 					: retryPricing

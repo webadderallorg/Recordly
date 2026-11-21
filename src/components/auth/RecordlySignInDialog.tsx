@@ -3,7 +3,7 @@ import { ArrowLeft, X } from "@phosphor-icons/react";
 import type { User } from "@supabase/supabase-js";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { BillingProvider } from "@/components/billing/BillingProvider";
+import { useOptionalBilling } from "@/components/billing/BillingProvider";
 import { LegalLinks } from "@/components/billing/LegalLinks";
 import { SplitPricingContent } from "@/components/billing/SplitPricingModal";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
@@ -101,11 +101,18 @@ export function RecordlySignInDialog({
 }: Props) {
 	const { t } = useI18n();
 	const ot = useScopedT("onboarding");
-	const [upgradeSignIn, setUpgradeSignIn] = useState<{ authenticationVersion: number }>();
+	const billing = useOptionalBilling();
+	const refreshBillingAfterSignIn = billing?.needsSignIn ? billing.refreshAfterSignIn : undefined;
+	const [tourSignIn, setTourSignIn] = useState<{
+		returnTo: "permissions" | "upgrade";
+		authenticationVersion: number;
+	}>();
 	// A cached user or background refresh must not dismiss a requested sign-in.
 	// Only a completed interactive sign-in can finish reauthentication.
-	const reauthenticating = reason === "reauthenticate" || Boolean(upgradeSignIn);
+	const reauthenticating = reason === "reauthenticate" || tourSignIn?.returnTo === "upgrade";
 	const user = reauthenticating ? null : signedInUser;
+	const switchingAccount = tourSignIn?.returnTo === "permissions";
+	const showSignInForm = !user || switchingAccount;
 	const showRecordingStart = Boolean(user && recordingStart);
 	const [directSignInComplete, setDirectSignInComplete] = useState(false);
 	const openedAuthenticationVersion = useRef<number | undefined>(undefined);
@@ -137,7 +144,11 @@ export function RecordlySignInDialog({
 		);
 	}, []);
 	const navigateTo = (next: OnboardingStage) => {
-		if (next !== "account") setUpgradeSignIn(undefined);
+		if (next === "account" && page !== "account" && tour && !preview && user) {
+			setEmail("");
+			setDirectSignInComplete(false);
+			setTourSignIn({ returnTo: "permissions", authenticationVersion });
+		} else if (next !== "account") setTourSignIn(undefined);
 		goTo(next);
 	};
 	const [permissionsReady, setPermissionsReady] = useState(false);
@@ -160,7 +171,7 @@ export function RecordlySignInDialog({
 	const [providersKnown, setProvidersKnown] = useState(false);
 
 	useEffect(() => {
-		if (!open || !configured || user || onUnlockSavedSignIn) return;
+		if (!open || !configured || !showSignInForm || onUnlockSavedSignIn) return;
 		const controller = new AbortController();
 		const timeout = window.setTimeout(
 			() => controller.abort(),
@@ -186,7 +197,7 @@ export function RecordlySignInDialog({
 			window.clearTimeout(timeout);
 			controller.abort();
 		};
-	}, [open, configured, user, onUnlockSavedSignIn]);
+	}, [open, configured, showSignInForm, onUnlockSavedSignIn]);
 
 	useEffect(() => {
 		if (open && callbackError) {
@@ -202,7 +213,7 @@ export function RecordlySignInDialog({
 			goTo("account");
 			setPermissionsReady(false);
 			awaitingSignIn.current = false;
-			setUpgradeSignIn(undefined);
+			setTourSignIn(undefined);
 			setDirectSignInComplete(false);
 			setBusy(undefined);
 			setMessage(undefined);
@@ -242,18 +253,27 @@ export function RecordlySignInDialog({
 	useEffect(() => {
 		if (
 			!open ||
-			!upgradeSignIn ||
+			!tourSignIn ||
 			!signedInUser ||
-			(!directSignInComplete && authenticationVersion <= upgradeSignIn.authenticationVersion)
+			(!directSignInComplete && authenticationVersion <= tourSignIn.authenticationVersion)
 		)
 			return;
 		awaitingSignIn.current = false;
 		setDirectSignInComplete(false);
-		setUpgradeSignIn(undefined);
+		setTourSignIn(undefined);
 		setMessage(undefined);
 		setReportDiagnostic(undefined);
-		goTo("upgrade");
-	}, [open, upgradeSignIn, signedInUser, directSignInComplete, authenticationVersion, goTo]);
+		if (tourSignIn.returnTo === "upgrade") refreshBillingAfterSignIn?.();
+		goTo(tourSignIn.returnTo);
+	}, [
+		open,
+		tourSignIn,
+		signedInUser,
+		directSignInComplete,
+		authenticationVersion,
+		refreshBillingAfterSignIn,
+		goTo,
+	]);
 
 	const run = async (label: SignInAction, action: () => Promise<unknown>) => {
 		setBusy(label);
@@ -321,16 +341,16 @@ export function RecordlySignInDialog({
 					>
 						{onboarding ? (
 							<OnboardingHeader
-								centered={preview || !user || showRecordingStart}
+								centered={preview || showSignInForm || showRecordingStart}
 								title={
-									user && !preview && !showRecordingStart ? (
+									!showSignInForm && !preview && !showRecordingStart ? (
 										ot("yourAccount")
 									) : (
 										<OnboardingHeroTitle text={ot("welcomeTitle")} />
 									)
 								}
 								description={
-									user && !showRecordingStart
+									user && !showSignInForm && !showRecordingStart
 										? user.email || ot("signedIn")
 										: undefined
 								}
@@ -376,7 +396,7 @@ export function RecordlySignInDialog({
 								{ot("restartToUnlockSignIn")}
 							</Button>
 						</div>
-					) : user && onboarding ? null : user ? (
+					) : !showSignInForm && onboarding ? null : !showSignInForm ? (
 						<Button
 							variant="secondary"
 							className="w-full"
@@ -420,7 +440,11 @@ export function RecordlySignInDialog({
 									})
 								}
 								onProvider={(provider) =>
-									void run(provider, () => signInWithSocial(provider, consent))
+									void run(provider, () =>
+										signInWithSocial(provider, consent, {
+											selectAccount: switchingAccount,
+										}),
+									)
 								}
 								providers={providers}
 								providersKnown={providersKnown}
@@ -477,7 +501,7 @@ export function RecordlySignInDialog({
 							</Alert.Content>
 						</Alert>
 					) : null}
-					{!configured && !user && (!(onboarding && preview) || upgradeSignIn) && (
+					{!configured && !user && (!(onboarding && preview) || reauthenticating) && (
 						<Description role="status">{t("editor.cloud.unavailable")}</Description>
 					)}
 				</div>
@@ -623,18 +647,17 @@ export function RecordlySignInDialog({
 									>
 										{upgrade ? (
 											<OnboardingBody>
-												<BillingProvider>
-													<SplitPricingContent
-														animateHeader={false}
-														onSignIn={() => {
-															setDirectSignInComplete(false);
-															setUpgradeSignIn({
-																authenticationVersion,
-															});
-															goTo("account");
-														}}
-													/>
-												</BillingProvider>
+												<SplitPricingContent
+													animateHeader={false}
+													onSignIn={() => {
+														setDirectSignInComplete(false);
+														setTourSignIn({
+															returnTo: "upgrade",
+															authenticationVersion,
+														});
+														goTo("account");
+													}}
+												/>
 											</OnboardingBody>
 										) : permissions ? (
 											<OnboardingPermissions

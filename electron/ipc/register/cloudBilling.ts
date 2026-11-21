@@ -9,7 +9,7 @@ import { normalizeCloudEndpoint } from "../cloudShareContract";
 
 const MAX_RESPONSE_BYTES = 32 * 1024;
 const pendingActions = new Set<number>();
-const requestsByOwner = new Map<number, Set<AbortController>>();
+const accountRequestsByOwner = new Map<number, Set<AbortController>>();
 const latestTokens = new WeakMap<object, string>();
 
 function hasWhitespaceOrControl(value: string): boolean {
@@ -80,7 +80,7 @@ function billingError(status: number): string {
 export function registerCloudBillingHandlers() {
 	ipcMain.handle("cloud-billing-cancel", (event) => {
 		if (!isTrustedRenderer(event)) return { success: false };
-		for (const request of requestsByOwner.get(event.sender.id) ?? []) request.abort();
+		for (const request of accountRequestsByOwner.get(event.sender.id) ?? []) request.abort();
 		return { success: true };
 	});
 	ipcMain.handle("cloud-billing", async (event, input: unknown): Promise<CloudBillingResult> => {
@@ -126,9 +126,11 @@ export function registerCloudBillingHandlers() {
 				ownsAction = true;
 			}
 			owner.once("destroyed", abandon);
-			const requests = requestsByOwner.get(owner.id) ?? new Set<AbortController>();
-			requests.add(controller);
-			requestsByOwner.set(owner.id, requests);
+			if (action !== "catalog") {
+				const requests = accountRequestsByOwner.get(owner.id) ?? new Set<AbortController>();
+				requests.add(controller);
+				accountRequestsByOwner.set(owner.id, requests);
+			}
 			const response = await fetch(
 				new URL(action === "status" ? "/api/billing" : `/api/billing/${action}`, endpoint),
 				{
@@ -184,9 +186,9 @@ export function registerCloudBillingHandlers() {
 			};
 		} finally {
 			owner.removeListener("destroyed", abandon);
-			const requests = requestsByOwner.get(owner.id);
+			const requests = accountRequestsByOwner.get(owner.id);
 			requests?.delete(controller);
-			if (requests?.size === 0) requestsByOwner.delete(owner.id);
+			if (requests?.size === 0) accountRequestsByOwner.delete(owner.id);
 			if (ownsAction) pendingActions.delete(owner.id);
 		}
 	});

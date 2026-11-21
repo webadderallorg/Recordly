@@ -43,6 +43,7 @@
 		"normalize:electron-main-cjs": "node scripts/normalize-electron-main-cjs.mjs",
 		"smoke:electron-main-cjs": "node scripts/smoke-electron-main-cjs.mjs",
 		"smoke:packaged-binaries": "node scripts/smoke-packaged-binaries.mjs",
+		"smoke:packaged-onboarding": "node scripts/smoke-packaged-onboarding.mjs",
 		"verify:macos-distribution": "node scripts/verify-macos-distribution.mjs",
 		"checksums:release": "node scripts/write-release-checksums.mjs",
 		"release:create": "node scripts/create-release.mjs",
