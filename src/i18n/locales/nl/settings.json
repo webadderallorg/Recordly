@@ -293,7 +293,8 @@
 		"ratioWidth": "Breedte",
 		"ratioHeight": "Hoogte",
 		"ratioHint": "Kies een voorinstelling of voer een eigen verhouding in (1:20 tot 20:1).",
-		"freeform": "Vrij"
+		"freeform": "Vrij",
+		"pixelFields": "Pixels"
 	},
 	"background": {
 		"title": "Achtergrond",

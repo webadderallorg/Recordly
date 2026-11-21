@@ -311,7 +311,8 @@
 		"ratioWidth": "Width",
 		"ratioHeight": "Height",
 		"ratioHint": "Choose a preset or enter your own ratio (1:20 to 20:1).",
-		"freeform": "Freeform"
+		"freeform": "Freeform",
+		"pixelFields": "Pixels"
 	},
 	"background": {
 		"title": "Background",

@@ -293,7 +293,8 @@
 		"ratioWidth": "Largeur",
 		"ratioHeight": "Hauteur",
 		"ratioHint": "Choisissez un préréglage ou saisissez votre propre format (de 1:20 à 20:1).",
-		"freeform": "Libre"
+		"freeform": "Libre",
+		"pixelFields": "Pixels"
 	},
 	"background": {
 		"title": "Arrière-plan",

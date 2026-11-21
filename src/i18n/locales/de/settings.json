@@ -293,7 +293,8 @@
 		"ratioWidth": "Breite",
 		"ratioHeight": "Höhe",
 		"ratioHint": "Wähle eine Vorlage oder gib ein eigenes Verhältnis ein (1:20 bis 20:1).",
-		"freeform": "Frei"
+		"freeform": "Frei",
+		"pixelFields": "Pixel"
 	},
 	"background": {
 		"title": "Hintergrund",

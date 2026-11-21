@@ -293,7 +293,8 @@
 		"ratioWidth": "宽度",
 		"ratioHeight": "高度",
 		"ratioHint": "选择预设或输入自定义比例（1:20 到 20:1）。",
-		"freeform": "自由"
+		"freeform": "自由",
+		"pixelFields": "像素"
 	},
 	"background": {
 		"title": "背景",
