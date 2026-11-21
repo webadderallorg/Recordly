@@ -84,6 +84,7 @@ async function inspectPlayback(blob: Blob, sampleTimes = [0.5, 5.5]) {
 		if (!ctx) throw new Error("Canvas pixel inspection is unavailable");
 		const hashes: number[] = [];
 		const centerMaximumRgb: number[] = [];
+		const samplePixels: [number, number, number][] = [];
 		for (const time of sampleTimes) {
 			await mediaEvent(video, "seeked", () => {
 				video.currentTime = time;
@@ -99,6 +100,7 @@ async function inspectPlayback(blob: Blob, sampleTimes = [0.5, 5.5]) {
 				Math.floor(canvas.width * 0.3),
 				Math.floor(canvas.height * 0.3),
 			).data;
+			samplePixels.push([center[0], center[1], center[2]]);
 			let maximum = 0;
 			for (let i = 0; i < center.length; i += 4)
 				maximum = Math.max(maximum, center[i], center[i + 1], center[i + 2]);
@@ -119,6 +121,7 @@ async function inspectPlayback(blob: Blob, sampleTimes = [0.5, 5.5]) {
 			sampleTimes,
 			hashes,
 			centerMaximumRgb,
+			samplePixels,
 		};
 	} finally {
 		video.pause();
@@ -130,6 +133,7 @@ async function inspectPlayback(blob: Blob, sampleTimes = [0.5, 5.5]) {
 
 type ExportScenario =
 	| "clean"
+	| "noncontiguous-clips"
 	| "solid-mask"
 	| "zoomed-edge-blur"
 	| "renderer-recovery"
@@ -299,7 +303,15 @@ async function exportVideo(scenario: ExportScenario) {
 	if (!response.ok) throw new Error(`Filmstrip fixture could not load: ${response.status}`);
 	const source = await inspectMp4(await response.blob());
 	const progress: ExportProgress[] = [];
+	const clipRegions: VideoExporterConfig["clipRegions"] =
+		scenario === "noncontiguous-clips"
+			? [
+					{ id: "later", startMs: 0, endMs: 1000, sourceStartMs: 4000, speed: 1 },
+					{ id: "earlier", startMs: 1000, endMs: 2000, sourceStartMs: 1000, speed: 1 },
+				]
+			: undefined;
 	const hasBlur =
+		!clipRegions &&
 		scenario !== "solid-mask" &&
 		scenario !== "clean" &&
 		scenario !== "renderer-recovery-clean" &&
@@ -330,6 +342,7 @@ async function exportVideo(scenario: ExportScenario) {
 	const config: VideoExporterConfig = {
 		...size,
 		videoUrl,
+		clipRegions,
 		backendPreference: "webcodecs",
 		preferredEncoderPath: path,
 		encodingMode: "balanced",
@@ -426,6 +439,7 @@ async function exportVideo(scenario: ExportScenario) {
 	}
 	if (!result.success || !result.blob)
 		throw new Error(result.error || "The real exporter did not return an MP4 Blob");
+	const clipSampleTimes = clipRegions ? [0.25, 1.25] : undefined;
 	return {
 		scenario,
 		effects,
@@ -444,7 +458,7 @@ async function exportVideo(scenario: ExportScenario) {
 				? Array.from({ length: 90 }, (_, index) => (index + 0.1) / 15)
 				: hasBlur
 					? [0.5, 2, 3.5, 5.5]
-					: undefined,
+					: clipSampleTimes,
 		),
 		metrics: result.metrics,
 		progress,
@@ -473,6 +487,13 @@ function Fixture() {
 			</button>
 			<button type="button" disabled={working} onClick={() => void runExport("clean")}>
 				Export real MP4
+			</button>
+			<button
+				type="button"
+				disabled={working}
+				onClick={() => void runExport("noncontiguous-clips")}
+			>
+				Export two reordered clips
 			</button>
 			<button
 				type="button"
