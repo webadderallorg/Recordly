@@ -79,6 +79,22 @@ test("popover triggers hide their tooltip while open and show the new state afte
 	).toBeVisible();
 });
 
+test("the compact HUD keeps all countdown options reachable by scrolling", async ({ page }) => {
+	await page.setViewportSize({ width: 860, height: 160 });
+	const controls = await open(page);
+	const timer = controls.getByRole("button", { name: "Countdown delay", exact: true });
+	await timer.click();
+	const options = page.getByRole("dialog", { name: "Countdown delay", exact: true });
+	await expect(options).toBeInViewport({ ratio: 1 });
+	expect(await options.evaluate((menu) => menu.scrollHeight)).toBeGreaterThan(
+		await options.evaluate((menu) => menu.clientHeight),
+	);
+	await options.getByText("10 sec", { exact: true }).click();
+	await expect(options).toHaveCount(0);
+	await hover(page, timer);
+	await expect(page.getByRole("tooltip", { name: "Countdown delay: 10 sec" })).toBeVisible();
+});
+
 test("a visible tooltip does not block clicks outside the HUD", async ({ page }) => {
 	const controls = await open(page);
 	await hover(page, controls.getByRole("button", { name: "Home", exact: true }));
