@@ -5,7 +5,7 @@ describe("timelineSelectionUtils", () => {
 	it("treats zoom select-all as a zoom deletion target", () => {
 		expect(
 			resolveDeleteSelectionTarget({
-				selectAllBlocksActive: true,
+				hasZoomGroupSelection: true,
 				selectedKeyframeId: "kf-1",
 				selectedZoomId: "z-1",
 				selectedClipId: "c-1",
@@ -18,14 +18,14 @@ describe("timelineSelectionUtils", () => {
 	it("follows selection priority order", () => {
 		expect(
 			resolveDeleteSelectionTarget({
-				selectAllBlocksActive: false,
+				hasZoomGroupSelection: false,
 				selectedKeyframeId: "kf-1",
 				selectedZoomId: "z-1",
 			}),
 		).toBe("keyframe");
 		expect(
 			resolveDeleteSelectionTarget({
-				selectAllBlocksActive: false,
+				hasZoomGroupSelection: false,
 				selectedKeyframeId: null,
 				selectedZoomId: "z-1",
 				selectedClipId: "c-1",
@@ -33,7 +33,7 @@ describe("timelineSelectionUtils", () => {
 		).toBe("zoom");
 		expect(
 			resolveDeleteSelectionTarget({
-				selectAllBlocksActive: false,
+				hasZoomGroupSelection: false,
 				selectedKeyframeId: null,
 				selectedZoomId: null,
 				selectedClipId: "c-1",
@@ -45,7 +45,7 @@ describe("timelineSelectionUtils", () => {
 	it("returns none when nothing is selected", () => {
 		expect(
 			resolveDeleteSelectionTarget({
-				selectAllBlocksActive: false,
+				hasZoomGroupSelection: false,
 				selectedKeyframeId: null,
 				selectedZoomId: null,
 			}),

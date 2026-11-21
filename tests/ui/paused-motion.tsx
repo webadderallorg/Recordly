@@ -277,7 +277,7 @@ function Preview() {
 							clipRegions={clips}
 							onZoomAdded={noop}
 							onZoomSpanChange={noop}
-							onZoomDelete={noop}
+							onZoomDeleteMany={noop}
 							selectedZoomId={null}
 							onSelectZoom={noop}
 						/>

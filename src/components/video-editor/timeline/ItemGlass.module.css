@@ -345,6 +345,49 @@
 	}
 }
 
+/* The start and end targets occupy different vertical bands on short zooms. */
+.compactResizeHandle {
+	position: absolute;
+	inset-inline: 0;
+	height: 33.333%;
+	cursor: col-resize;
+	touch-action: none;
+	z-index: 11;
+}
+
+.compactStart {
+	top: 0;
+}
+
+.compactEnd {
+	bottom: 0;
+}
+
+.compactResizeHandle::after {
+	content: "";
+	position: absolute;
+	top: 20%;
+	height: 60%;
+	width: 3px;
+	border-radius: 2px;
+	background: rgb(255 255 255 / 90%);
+	pointer-events: none;
+	opacity: 0;
+}
+
+.compactStart::after {
+	inset-inline-start: min(2px, 20%);
+}
+
+.compactEnd::after {
+	inset-inline-end: min(2px, 20%);
+}
+
+.glassBlue:hover .compactResizeHandle::after,
+.glassBlue.selected .compactResizeHandle::after {
+	opacity: 1;
+}
+
 /* Grip lines removed */
 .zoomEndCap::before,
 .zoomEndCap::after {

@@ -79,7 +79,7 @@ export function EditorTimelinePanel(props: Props) {
 				onZoomAdded={zoomCommands.handleZoomAdded}
 				onZoomSuggested={zoomCommands.handleZoomSuggested}
 				onZoomSpanChange={zoomCommands.handleZoomSpanChange}
-				onZoomDelete={zoomCommands.handleZoomDelete}
+				onZoomDeleteMany={zoomCommands.handleZoomDeleteMany}
 				selectedZoomId={timeline.selectedZoomId}
 				onSelectZoom={zoomCommands.handleSelectZoom}
 				trimRegions={timeline.trimRegions}

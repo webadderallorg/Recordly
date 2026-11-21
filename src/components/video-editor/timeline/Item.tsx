@@ -30,6 +30,7 @@ import { formatPlayheadTime } from "./core/time";
 import type { AudioPeaksData } from "./core/timelineTypes";
 import { getZoomDisplaySpan, getZoomResizeSpan } from "./core/zoomPresentation";
 import { getSiblingSpans, resolveDragEnd, resolveResizeEnd } from "./dnd/engine";
+import { useCompactZoomResize } from "./hooks/useCompactZoomResize";
 import glassStyles from "./ItemGlass.module.css";
 
 interface ItemProps {
@@ -271,6 +272,21 @@ export default function Item({
 			}
 		},
 	});
+	const { compact, previewStyle, getHandleProps } = useCompactZoomResize({
+		id,
+		span,
+		displaySpan,
+		enabled: isZoom && !disabled && !isLoading,
+		getSpanFromResizeEvent: getMediaSpanFromResize,
+		getDisplayPreview: (proposed) => {
+			const resolved = resolveResizeEnd(id, proposed, previewConfig);
+			if (!resolved) return null;
+			const visible = toVisibleSpan(resolved);
+			return clipPresentation?.length
+				? getRegionDisplaySpan(visible, clipPresentation)
+				: visible;
+		},
+	});
 	const { setNodeRef, attributes, listeners, itemStyle, itemContentStyle } = useItem({
 		id,
 		// Keep the measured layout fixed during pickup. Moving it as part of a
@@ -283,7 +299,7 @@ export default function Item({
 			getSpanFromDragEvent: getMediaSpanFromDrag,
 			getSpanFromResizeEvent: getMediaSpanFromResize,
 		},
-		resizeHandleWidth: variant === "clip" ? 12 : undefined,
+		resizeHandleWidth: compact ? 0 : variant === "clip" ? 12 : undefined,
 		onResizeMove(event) {
 			if (!clipPresentation) return;
 			const next = getMediaSpanFromResize(event);
@@ -386,6 +402,7 @@ export default function Item({
 					transform: `translate(${timeline.valueToPixels(previewDisplaySpan.start - dragOriginRef.current.displaySpan.start) * (timeline.direction === "rtl" ? -1 : 1)}px, ${dragPreviewRef.current?.deltaY ?? 0}px)`,
 				}
 			: {}),
+		...previewStyle,
 		minWidth: MIN_ITEM_PX,
 		height: "100%",
 		overflow: isClip ? "visible" : "hidden",
@@ -457,32 +474,55 @@ export default function Item({
 							sourceSpan={sourceSpan ?? span}
 						/>
 					)}
-					<div
-						className={cn(
-							glassStyles.zoomEndCap,
-							glassStyles.left,
-							isClip && glassStyles.clipHandle,
-						)}
-						style={{
-							cursor: "col-resize",
-							pointerEvents: isClip ? "none" : "auto",
-							display: isClip && sharedLeftGrip ? "none" : undefined,
-						}}
-						title={te("resizeLeft", "Resize left")}
-					/>
-					<div
-						className={cn(
-							glassStyles.zoomEndCap,
-							glassStyles.right,
-							isClip && glassStyles.clipHandle,
-						)}
-						style={{
-							cursor: "col-resize",
-							pointerEvents: isClip ? "none" : "auto",
-							display: isClip && sharedRightGrip ? "none" : undefined,
-						}}
-						title={te("resizeRight", "Resize right")}
-					/>
+					{compact ? (
+						<>
+							<div
+								className={cn(
+									glassStyles.compactResizeHandle,
+									glassStyles.compactStart,
+								)}
+								title={te("resizeLeft", "Resize left")}
+								{...getHandleProps("start")}
+							/>
+							<div
+								className={cn(
+									glassStyles.compactResizeHandle,
+									glassStyles.compactEnd,
+								)}
+								title={te("resizeRight", "Resize right")}
+								{...getHandleProps("end")}
+							/>
+						</>
+					) : (
+						<>
+							<div
+								className={cn(
+									glassStyles.zoomEndCap,
+									glassStyles.left,
+									isClip && glassStyles.clipHandle,
+								)}
+								style={{
+									cursor: "col-resize",
+									pointerEvents: isClip ? "none" : "auto",
+									display: isClip && sharedLeftGrip ? "none" : undefined,
+								}}
+								title={te("resizeLeft", "Resize left")}
+							/>
+							<div
+								className={cn(
+									glassStyles.zoomEndCap,
+									glassStyles.right,
+									isClip && glassStyles.clipHandle,
+								)}
+								style={{
+									cursor: "col-resize",
+									pointerEvents: isClip ? "none" : "auto",
+									display: isClip && sharedRightGrip ? "none" : undefined,
+								}}
+								title={te("resizeRight", "Resize right")}
+							/>
+						</>
+					)}
 					{showAudioWaveform && waveformPeaks && (
 						<AudioWaveform
 							peaks={waveformPeaks}

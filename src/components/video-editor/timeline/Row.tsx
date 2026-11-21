@@ -1,5 +1,6 @@
 import type { RowDefinition } from "dnd-timeline";
 import { useRow } from "dnd-timeline";
+import type { HTMLAttributes } from "react";
 import { TIMELINE_CLIP_ROW_HEIGHT_PX, TIMELINE_ROW_MIN_HEIGHT_PX } from "./timelineLayout";
 
 interface RowProps extends RowDefinition {
@@ -17,6 +18,14 @@ interface RowProps extends RowDefinition {
 	onMouseLeave?: React.MouseEventHandler<HTMLDivElement>;
 	onMouseDown?: React.MouseEventHandler<HTMLDivElement>;
 	onClick?: React.MouseEventHandler<HTMLDivElement>;
+	pointerHandlers?: Pick<
+		HTMLAttributes<HTMLDivElement>,
+		| "onPointerDown"
+		| "onPointerMove"
+		| "onPointerUp"
+		| "onPointerCancel"
+		| "onLostPointerCapture"
+	>;
 }
 
 export default function Row({
@@ -35,6 +44,7 @@ export default function Row({
 	onMouseLeave,
 	onMouseDown,
 	onClick,
+	pointerHandlers,
 }: RowProps) {
 	const { setNodeRef, rowWrapperStyle, rowStyle } = useRow({ id });
 
@@ -91,6 +101,7 @@ export default function Row({
 				onMouseLeave={onMouseLeave}
 				onMouseDown={onMouseDown}
 				onClick={onClick}
+				{...pointerHandlers}
 			>
 				{children}
 			</div>

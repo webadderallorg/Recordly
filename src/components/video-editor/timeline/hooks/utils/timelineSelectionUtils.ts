@@ -8,7 +8,7 @@ export type DeleteSelectionTarget =
 	| "none";
 
 interface ResolveDeleteSelectionTargetParams {
-	selectAllBlocksActive: boolean;
+	hasZoomGroupSelection: boolean;
 	selectedKeyframeId: string | null;
 	selectedZoomId: string | null;
 	selectedClipId?: string | null;
@@ -18,7 +18,7 @@ interface ResolveDeleteSelectionTargetParams {
 }
 
 export function resolveDeleteSelectionTarget({
-	selectAllBlocksActive,
+	hasZoomGroupSelection,
 	selectedKeyframeId,
 	selectedZoomId,
 	selectedClipId,
@@ -26,7 +26,7 @@ export function resolveDeleteSelectionTarget({
 	selectedAudioId,
 	selectedCaptionId,
 }: ResolveDeleteSelectionTargetParams): DeleteSelectionTarget {
-	if (selectAllBlocksActive) return "zoom";
+	if (hasZoomGroupSelection) return "zoom";
 	if (selectedKeyframeId) return "keyframe";
 	if (selectedZoomId) return "zoom";
 	if (selectedClipId) return "clip";

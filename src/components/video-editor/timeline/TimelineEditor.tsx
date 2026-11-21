@@ -1,5 +1,5 @@
 import type { Span } from "dnd-timeline";
-import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type {
 	SourceAudioTrackMeta,
@@ -43,7 +43,7 @@ export interface TimelineEditorProps {
 	onZoomAdded: (span: Span) => void;
 	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
 	onZoomSpanChange: (id: string, span: Span) => void;
-	onZoomDelete: (id: string) => void;
+	onZoomDeleteMany: (ids: readonly string[]) => void;
 	selectedZoomId: string | null;
 	onSelectZoom: (id: string | null) => void;
 	trimRegions?: TrimRegion[];
@@ -121,7 +121,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onZoomAdded,
 			onZoomSuggested,
 			onZoomSpanChange,
-			onZoomDelete,
+			onZoomDeleteMany,
 			selectedZoomId,
 			onSelectZoom,
 			trimRegions = [],
@@ -208,6 +208,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 
 		const timelineContainerRef = useRef<HTMLDivElement>(null);
 		const isTimelineFocusedRef = useRef(false);
+		const focusTimeline = useCallback(() => {
+			timelineContainerRef.current?.focus({ preventScroll: true });
+			isTimelineFocusedRef.current = true;
+		}, []);
 		const { setRange, clampedRange, handleTimelineWheel } = useTimelineRange({
 			totalMs,
 			timelineContainerRef,
@@ -307,8 +311,9 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			keyframes,
 			selectedKeyframeId,
 			setSelectedKeyframeId,
-			selectAllBlocksActive,
-			setSelectAllBlocksActive,
+			selectedZoomIds,
+			clearZoomSelection,
+			handleSelectZooms,
 			handleKeyframeMove,
 			clearSelectedBlocks,
 			handleSelectZoom,
@@ -338,7 +343,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onZoomAdded,
 			onZoomSuggested,
 			onZoomSpanChange,
-			onZoomDelete,
+			onZoomDeleteMany,
 			selectedZoomId,
 			onSelectZoom,
 			trimRegions,
@@ -462,13 +467,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					onBlur={() => {
 						isTimelineFocusedRef.current = false;
 					}}
-					onPointerDownCapture={() => {
-						timelineContainerRef.current?.focus({ preventScroll: true });
-						isTimelineFocusedRef.current = true;
-					}}
+					onPointerDownCapture={focusTimeline}
 					onClick={() => {
 						setSelectedKeyframeId(null);
-						setSelectAllBlocksActive(false);
+						clearZoomSelection();
 					}}
 					onWheel={handleTimelineWheel}
 				>
@@ -542,7 +544,9 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							selectedAnnotationId={selectedAnnotationId}
 							selectedAudioId={selectedAudioId}
 							selectedCaptionId={selectedCaptionId}
-							selectAllBlocksActive={selectAllBlocksActive}
+							selectedZoomIds={selectedZoomIds}
+							onSelectZooms={handleSelectZooms}
+							onFocusTimeline={focusTimeline}
 							onClearBlockSelection={clearSelectedBlocks}
 							keyframes={keyframes}
 							sourceAudioTracks={sourceAudioTracks}

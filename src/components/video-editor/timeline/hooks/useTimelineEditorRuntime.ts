@@ -33,7 +33,7 @@ interface UseTimelineEditorRuntimeParams {
 	onZoomAdded: (span: Span) => void;
 	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
 	onZoomSpanChange: (id: string, span: Span) => void;
-	onZoomDelete: (id: string) => void;
+	onZoomDeleteMany: (ids: readonly string[]) => void;
 	selectedZoomId: string | null;
 	onSelectZoom: (id: string | null) => void;
 	trimRegions: TrimRegion[];
@@ -85,7 +85,7 @@ export function useTimelineEditorRuntime({
 	onZoomAdded,
 	onZoomSuggested,
 	onZoomSpanChange,
-	onZoomDelete,
+	onZoomDeleteMany,
 	selectedZoomId,
 	onSelectZoom,
 	trimRegions,
@@ -124,8 +124,9 @@ export function useTimelineEditorRuntime({
 		keyframes,
 		selectedKeyframeId,
 		setSelectedKeyframeId,
-		selectAllBlocksActive,
-		setSelectAllBlocksActive,
+		selectedZoomIds,
+		clearZoomSelection,
+		handleSelectZooms,
 		hasAnyZoomBlocks,
 		activateSelectAllZooms,
 		addKeyframe,
@@ -155,7 +156,7 @@ export function useTimelineEditorRuntime({
 		selectedAnnotationId,
 		selectedAudioId,
 		selectedCaptionId,
-		onZoomDelete,
+		onZoomDeleteMany,
 		onClipDelete,
 		onAnnotationDelete,
 		onAudioDelete,
@@ -273,7 +274,7 @@ export function useTimelineEditorRuntime({
 		selectedAnnotationId,
 		selectedAudioId,
 		selectedCaptionId,
-		selectAllBlocksActive,
+		hasZoomGroupSelection: selectedZoomIds.size > 0,
 		addKeyframe,
 		handleAddZoom,
 		handleSplitClip,
@@ -311,8 +312,9 @@ export function useTimelineEditorRuntime({
 		keyframes,
 		selectedKeyframeId,
 		setSelectedKeyframeId,
-		selectAllBlocksActive,
-		setSelectAllBlocksActive,
+		selectedZoomIds,
+		clearZoomSelection,
+		handleSelectZooms,
 		handleKeyframeMove,
 		clearSelectedBlocks,
 		handleSelectZoom,

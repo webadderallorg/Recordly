@@ -30,7 +30,9 @@ export interface TimelineCanvasProps {
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
 	selectedCaptionId?: string | null;
-	selectAllBlocksActive?: boolean;
+	selectedZoomIds: ReadonlySet<string>;
+	onSelectZooms: (ids: readonly string[]) => void;
+	onFocusTimeline: () => void;
 	onClearBlockSelection?: () => void;
 	keyframes?: { id: string; time: number }[];
 	sourceAudioTracks?: SourceAudioTrackWithPeaks[];
@@ -46,7 +48,10 @@ export interface TimelineCanvasRowsProps {
 	videoPath?: string | null;
 	items: TimelineRenderItem[];
 	videoDurationMs: number;
-	selectAllBlocksActive: boolean;
+	selectedZoomIds: ReadonlySet<string>;
+	onSelectZooms: (ids: readonly string[]) => void;
+	onFocusTimeline: () => void;
+	canStartZoomMarquee: boolean;
 	selectedZoomId: string | null;
 	selectedClipId?: string | null;
 	selectedClipIds?: string[];
