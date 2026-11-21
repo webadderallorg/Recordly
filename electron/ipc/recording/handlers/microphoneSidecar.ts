@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { promisify } from "node:util";
 import { ipcMain } from "electron";
@@ -37,7 +38,9 @@ export function registerMicrophoneSidecar() {
 			const baseName = videoPath.replace(/\.[^.]+$/, "");
 			const sidecarPath = `${baseName}.mic.wav`;
 			const sourceWebmPath = `${baseName}.mic.source.webm`;
-			const tempWebmPath = `${sourceWebmPath}.tmp`;
+			const stagingPath = `${baseName}.mic-${randomUUID()}.tmp`;
+			const tempWebmPath = `${stagingPath}.webm`;
+			const tempWavPath = `${stagingPath}.wav`;
 
 			try {
 				await fs.writeFile(tempWebmPath, Buffer.from(audioData));
@@ -62,18 +65,21 @@ export function registerMicrophoneSidecar() {
 						].join(","),
 						"-c:a",
 						"pcm_s16le",
-						sidecarPath,
+						tempWavPath,
 					],
 					{ timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
 				);
-				if (shouldKeepRecordingAudioSidecars()) {
-					await fs.rename(tempWebmPath, sourceWebmPath).catch(async () => {
-						await fs.copyFile(tempWebmPath, sourceWebmPath);
-						await fs.rm(tempWebmPath, { force: true });
-					});
-				} else {
-					await fs.rm(tempWebmPath, { force: true });
-				}
+				// The editor may discover the sidecar as soon as its final name appears.
+				await fs.rename(tempWavPath, sidecarPath);
+				const retainedSourceWebmPath = shouldKeepRecordingAudioSidecars()
+					? await fs.rename(tempWebmPath, sourceWebmPath).then(
+							() => sourceWebmPath,
+							(error) => {
+								console.warn("Failed to retain microphone source audio:", error);
+								return null;
+							},
+						)
+					: null;
 				const startDelayMs = options?.startDelayMs;
 				const mediaTrackSettings = pickPrimitiveRecord(options?.mediaTrackSettings);
 				const audioInputDevices = pickAudioInputDevices(options?.audioInputDevices);
@@ -146,7 +152,7 @@ export function registerMicrophoneSidecar() {
 					microphonePath: sidecarPath,
 					details: {
 						sourceBytes: audioData.byteLength,
-						sourceWebmPath: shouldKeepRecordingAudioSidecars() ? sourceWebmPath : null,
+						sourceWebmPath: retainedSourceWebmPath,
 						metadata,
 					},
 				}).catch((diagnosticsError) => {
@@ -157,12 +163,13 @@ export function registerMicrophoneSidecar() {
 				});
 				return { success: true, path: sidecarPath };
 			} catch (error) {
-				await Promise.all([
-					fs.rm(tempWebmPath, { force: true }).catch(() => undefined),
-					fs.rm(sidecarPath, { force: true }).catch(() => undefined),
-				]);
 				console.error("Failed to store microphone sidecar:", error);
 				return { success: false, error: String(error) };
+			} finally {
+				await Promise.all([
+					fs.rm(tempWebmPath, { force: true }).catch(() => undefined),
+					fs.rm(tempWavPath, { force: true }).catch(() => undefined),
+				]);
 			}
 		},
 	);
