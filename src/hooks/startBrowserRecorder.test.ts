@@ -26,6 +26,30 @@ class TestMediaRecorder {
 		this.state = "inactive";
 	}
 }
+class TestVideo extends EventTarget {
+	muted = false;
+	srcObject: MediaStream | null = null;
+	play = vi.fn().mockResolvedValue(undefined);
+}
+function preparePortal(context: ReturnType<typeof createContext>, startWasCancelled = () => false) {
+	const video = new TestVideo();
+	const track = Object.assign(new EventTarget(), {
+		readyState: "live",
+		getSettings: () => ({ width: 1920, height: 1080, frameRate: 60 }),
+	});
+	vi.stubGlobal("document", { createElement: () => video });
+	vi.stubGlobal("MediaStream", class {});
+	const pending = startBrowserRecorder(
+		context as unknown as Parameters<typeof startBrowserRecorder>[0],
+		{
+			videoTrack: track as unknown as MediaStreamTrack,
+			systemAudioIncluded: false,
+			waitForPortalFrame: true,
+			startWasCancelled,
+		},
+	);
+	return { pending, video, track };
+}
 function createContext() {
 	return {
 		selectMimeType: () => "video/webm",
@@ -76,10 +100,52 @@ beforeEach(() => {
 	vi.spyOn(console, "error").mockImplementation(() => {});
 });
 afterEach(() => {
+	vi.useRealTimers();
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
 });
 describe("browser recording editor boundary", () => {
+	it("starts the clock and recording only after the portal video has a frame", async () => {
+		const context = createContext();
+		const { pending, video } = preparePortal(context);
+		expect(context.mediaRecorder.current).toBeNull();
+		expect(context.beginWebcamCapture).not.toHaveBeenCalled();
+		expect(context.resetRecordingClock).not.toHaveBeenCalled();
+		expect(window.electronAPI.setRecordingState).not.toHaveBeenCalled();
+		vi.spyOn(Date, "now").mockReturnValue(1500);
+		video.dispatchEvent(new Event("loadeddata"));
+		await pending;
+		expect(context.mediaRecorder.current.state).toBe("recording");
+		expect(context.resetRecordingClock).toHaveBeenCalledExactlyOnceWith(1500);
+		expect(window.electronAPI.setRecordingState).toHaveBeenCalledExactlyOnceWith(true);
+		expect(video.srcObject).toBeNull();
+	});
+	it("does not start after cancellation even if a portal frame arrives", async () => {
+		const context = createContext();
+		let canceled = false;
+		const { pending, video } = preparePortal(context, () => canceled);
+		canceled = true;
+		video.dispatchEvent(new Event("loadeddata"));
+		await pending;
+		expect(context.mediaRecorder.current).toBeNull();
+		expect(context.resetRecordingClock).not.toHaveBeenCalled();
+		expect(video.srcObject).toBeNull();
+	});
+	it.each([
+		"ended",
+		"timed out",
+	])("fails a portal stream that %s before a frame", async (reason) => {
+		vi.useFakeTimers();
+		const context = createContext();
+		const { pending, track, video } = preparePortal(context);
+		const failure = expect(pending).rejects.toThrow(/No video frames/);
+		if (reason === "ended") track.dispatchEvent(new Event("ended"));
+		else await vi.runAllTimersAsync();
+		await failure;
+		expect(context.mediaRecorder.current).toBeNull();
+		expect(window.electronAPI.setRecordingState).not.toHaveBeenCalled();
+		expect(video.srcObject).toBeNull();
+	});
 	it("does not start a webcam companion or recording clock when stream acquisition finished after cancellation", async () => {
 		const context = createContext();
 		context.webcamTimeOffsetMs.current = 123;
@@ -96,7 +162,7 @@ describe("browser recording editor boundary", () => {
 		expect(context.beginWebcamCapture).not.toHaveBeenCalled();
 		expect(context.resetRecordingClock).not.toHaveBeenCalled();
 		expect(context.webcamTimeOffsetMs.current).toBe(123);
-		expect(context.mediaRecorder.current.state).toBe("inactive");
+		expect(context.mediaRecorder.current).toBeNull();
 		expect(context.setRecording).not.toHaveBeenCalled();
 		expect(window.electronAPI.setRecordingState).not.toHaveBeenCalled();
 	});
