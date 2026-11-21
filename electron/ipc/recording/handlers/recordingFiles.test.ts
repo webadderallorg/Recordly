@@ -28,7 +28,9 @@ let invoke: Parameters<typeof ipcMain.handle>[1];
 beforeEach(async () => {
 	vi.clearAllMocks();
 	mocks.trusted.mockReturnValue(true);
-	mocks.directory = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-store-finalize-"));
+	mocks.directory = await fs.realpath(
+		await fs.mkdtemp(path.join(os.tmpdir(), "recordly-store-finalize-")),
+	);
 	mocks.finish.mockReset().mockImplementation(async (_ffmpeg, source) => source);
 	mocks.validate.mockReset().mockResolvedValue({ fileSizeBytes: 21, durationSeconds: 1 });
 	mocks.finalize
@@ -72,8 +74,8 @@ it.each([
 		return ipc.get("close-recording-file-stream")!(streamEvent, opened.streamId);
 	};
 
-	const webcamPath = path.join(await fs.realpath(mocks.directory), "recording-1-webcam.webm");
-	const screenPath = path.join(await fs.realpath(mocks.directory), "recording-1.webm");
+	const webcamPath = path.join(mocks.directory, "recording-1-webcam.webm");
+	const screenPath = path.join(mocks.directory, "recording-1.webm");
 	await expect(save("recording-1-webcam.webm")).resolves.toMatchObject({
 		success: true,
 		path: webcamPath,
