@@ -10,6 +10,11 @@ for (const webcam of [false, true]) {
 		await installDesktopBridgeOverrides(
 			page,
 			(webcam) => {
+				window.electronAPI.getMediaPermissionStatus = async () => ({
+					success: true,
+					microphone: "granted",
+					camera: "granted",
+				});
 				window.electronAPI.getRecordingPreferences = async () => ({
 					success: true,
 					webcamEnabled: webcam,
