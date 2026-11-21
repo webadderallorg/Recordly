@@ -1,5 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadThemePreference, persistThemePreference } from "./ThemeContext";
+import { loadThemePreference, persistThemePreference, ThemeProvider } from "./ThemeContext";
+
+const hooks = vi.hoisted(() => ({
+	effects: [] as Array<() => void | (() => void)>,
+	setters: [] as Array<ReturnType<typeof vi.fn>>,
+}));
+
+vi.mock("react", async (importOriginal) => ({
+	...(await importOriginal<typeof import("react")>()),
+	useState: <T>(initial: T | (() => T)) => {
+		const setter = vi.fn();
+		hooks.setters.push(setter);
+		return [typeof initial === "function" ? (initial as () => T)() : initial, setter];
+	},
+	useCallback: <T>(callback: T) => callback,
+	useEffect: (effect: () => void | (() => void)) => hooks.effects.push(effect),
+}));
 
 function createStorageMock(initialValues: Record<string, string> = {}): Storage {
 	const store = new Map(Object.entries(initialValues));
@@ -45,6 +61,8 @@ function stubElectronSettings(initialValues: Record<string, unknown> = {}) {
 
 describe("ThemeContext persistence", () => {
 	afterEach(() => {
+		hooks.effects.length = 0;
+		hooks.setters.length = 0;
 		vi.unstubAllGlobals();
 		Reflect.deleteProperty(globalThis, "electronAPI");
 	});
@@ -67,5 +85,20 @@ describe("ThemeContext persistence", () => {
 		vi.stubGlobal("localStorage", createStorageMock({ "recordly.theme": "light" }));
 
 		expect(loadThemePreference()).toBe("light");
+	});
+
+	it("synchronizes a system theme change that arrives before the listener is installed", () => {
+		stubElectronSettings({ "recordly.theme": "system" });
+		const query = { matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() };
+		vi.stubGlobal("matchMedia", () => query);
+		vi.stubGlobal("document", {
+			documentElement: { dataset: {}, classList: { add: vi.fn(), remove: vi.fn() } },
+		});
+
+		ThemeProvider({ children: null });
+		query.matches = true;
+		const cleanups = hooks.effects.map((effect) => effect());
+		expect(hooks.setters[1]).toHaveBeenCalledWith("dark");
+		for (const cleanup of cleanups) cleanup?.();
 	});
 });
