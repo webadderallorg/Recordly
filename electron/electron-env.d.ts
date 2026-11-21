@@ -281,6 +281,7 @@ interface Window {
 		finishRecordingEditor: (error?: string) => Promise<void>;
 		switchToEditor: () => Promise<void>;
 		openSourceSelector: () => Promise<void>;
+		isWaylandScreenCastMissing: () => Promise<boolean>;
 		selectSource: (source: ProcessedDesktopSource) => Promise<ProcessedDesktopSource>;
 		showSourceHighlight: (source: ProcessedDesktopSource) => Promise<{ success: boolean }>;
 		/** Opens the capture picker on every display and resolves when it closes. */

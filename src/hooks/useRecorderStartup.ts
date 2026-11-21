@@ -125,23 +125,34 @@ export function useRecorderStartup(context: RecorderContext) {
 				runPortalCountdown: usingLinuxPortal ? runCountdown : undefined,
 			});
 		} catch (error) {
-			if (
+			const missingWaylandScreenCast =
 				!startWasCancelled() &&
-				!(usingLinuxPortal && isCapturePermissionDismissed(error))
-			) {
+				usingLinuxPortal &&
+				(await window.electronAPI.isWaylandScreenCastMissing?.().catch(() => false));
+			const portalDismissed = usingLinuxPortal && isCapturePermissionDismissed(error);
+			if (!startWasCancelled() && (missingWaylandScreenCast || !portalDismissed)) {
 				console.error("Failed to start recording:", error);
-				alert(
-					error instanceof Error
-						? translate(
-								"notifications.startRecordingError",
-								"Failed to start recording: {{error}}",
-								{ error: error.message },
-							)
-						: translate(
-								"notifications.startRecordingFailed",
-								"Failed to start recording",
-							),
-				);
+				if (missingWaylandScreenCast) {
+					alert(
+						translate(
+							"notifications.waylandScreenCastMissing",
+							"Screen recording on Wayland needs a ScreenCast portal. Install the screen-sharing portal for your desktop, or switch to an X11 session and try again.",
+						),
+					);
+				} else {
+					alert(
+						error instanceof Error
+							? translate(
+									"notifications.startRecordingError",
+									"Failed to start recording: {{error}}",
+									{ error: error.message },
+								)
+							: translate(
+									"notifications.startRecordingFailed",
+									"Failed to start recording",
+								),
+					);
+				}
 			}
 			setRecording(false);
 			if (nativeScreenRecording.current) {

@@ -33,6 +33,7 @@
 	"windowsStartFailed": "无法启动原生 Windows 捕获。将使用浏览器捕获。",
 	"microphoneDenied": "麦克风权限被拒绝。录制将继续，但不含麦克风音频。",
 	"systemAudioUnavailable": "此来源不支持系统音频。录制将继续，但不含系统音频。",
+	"waylandScreenCastMissing": "在 Wayland 上录制屏幕需要 ScreenCast 门户。请安装适用于当前桌面环境的屏幕共享门户，或切换到 X11 会话后重试。",
 	"startRecordingFailed": "无法开始录制",
 	"saveRecordingFailed": "无法保存录制文件。",
 	"noFrames": "未捕获到视频画面。请重新录制。",
