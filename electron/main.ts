@@ -1428,8 +1428,7 @@ app.whenReady().then(async () => {
 		}, 750);
 	}
 
-	// Register the display media handler so that renderer's getDisplayMedia()
-	// calls land on the pre-selected source without showing a system picker.
+	// Resolve getDisplayMedia to the source chosen in Recordly or the Linux portal.
 	//
 	// IMPORTANT: The callback must receive a plain { id, name } Video object.
 	// Passing the full DesktopCapturerSource (with thumbnail, appIcon, etc.)
@@ -1437,6 +1436,9 @@ app.whenReady().then(async () => {
 	// propagation and causes cursor: 'never' from the renderer to be silently
 	// ignored by the native capture pipeline.
 	session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+		// Electron accepts null for denial, but its generated Streams type omits it.
+		const respond = callback as (streams: Electron.Streams | null) => void;
+		let video: Awaited<ReturnType<typeof resolveDisplayMediaSource>>;
 		try {
 			const frame = request.frame;
 			const isLiveFrame = Boolean(frame && !frame.isDestroyed());
@@ -1461,7 +1463,7 @@ app.whenReady().then(async () => {
 					getTrustedCaptureDocumentBaseUrls(),
 				)
 			) {
-				callback({});
+				respond(null);
 				return;
 			}
 
@@ -1469,7 +1471,7 @@ app.whenReady().then(async () => {
 			// resolves, before recording-state-changed is emitted.
 			beginHudCaptureProtection();
 
-			const video = await resolveDisplayMediaSource({
+			video = await resolveDisplayMediaSource({
 				platform: process.platform,
 				env: process.env,
 				selectedSourceId: getSelectedSourceId(),
@@ -1479,11 +1481,11 @@ app.whenReady().then(async () => {
 						thumbnailSize: { width: 0, height: 0 },
 					}),
 			});
-			callback(video ? { video } : {});
 		} catch (error) {
 			console.error("setDisplayMediaRequestHandler error:", error);
-			callback({});
+			video = null;
 		}
+		respond(video ? { video } : null);
 	});
 
 	const currentToastPayload = getCurrentUpdateToastPayload();

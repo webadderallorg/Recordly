@@ -1,3 +1,5 @@
+export const LINUX_PORTAL_SOURCE_ID = "screen:linux-portal";
+
 /** A dismissed portal is terminal: audio fallback must not reopen the chooser. */
 export function isCapturePermissionDismissed(error: unknown): boolean {
 	return (

@@ -45,12 +45,12 @@ export async function startBrowserRecorder(
 		videoTrack,
 		systemAudioIncluded,
 		startWasCancelled,
-		waitForPortalFrame = false,
+		runPortalCountdown,
 	}: {
 		videoTrack: MediaStreamTrack;
 		systemAudioIncluded: boolean;
 		startWasCancelled: () => boolean;
-		waitForPortalFrame?: boolean;
+		runPortalCountdown?: () => Promise<boolean>;
 	},
 ) {
 	const {
@@ -76,9 +76,13 @@ export async function startBrowserRecorder(
 		webcamStartTime,
 	} = context;
 	if (startWasCancelled()) return;
-	if (waitForPortalFrame) {
+	if (runPortalCountdown) {
 		const frameAvailable = await waitForBrowserCaptureFrame(videoTrack);
 		if (startWasCancelled()) return;
+		if (frameAvailable && videoTrack.readyState !== "ended") {
+			const continueRecording = await runPortalCountdown();
+			if (!continueRecording || startWasCancelled()) return;
+		}
 		if (!frameAvailable || videoTrack.readyState === "ended") {
 			throw new Error(
 				translate(

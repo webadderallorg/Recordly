@@ -52,8 +52,9 @@ describe("getScreenSourceIdForDisplay", () => {
 
 describe("display media source resolution", () => {
 	for (const selectedSourceId of [null, "window:101:0", LINUX_PORTAL_SCREEN_SOURCE_ID]) {
-		it(`opens Wayland through Chromium without pre-enumeration (${selectedSourceId})`, async () => {
-			const getSources = vi.fn();
+		it(`waits for the delegated Wayland source (${selectedSourceId})`, async () => {
+			const source = { id: "window:1:0:s", name: "", thumbnail: "pixels" };
+			const getSources = vi.fn().mockResolvedValue([source]);
 			expect(
 				await resolveDisplayMediaSource({
 					platform: "linux",
@@ -61,10 +62,21 @@ describe("display media source resolution", () => {
 					selectedSourceId,
 					getSources,
 				}),
-			).toEqual({ id: "screen:0:0", name: "Entire screen" });
-			expect(getSources).not.toHaveBeenCalled();
+			).toEqual({ id: source.id, name: source.name });
+			expect(getSources).toHaveBeenCalledOnce();
 		});
 	}
+	it("does not substitute an X11 display for a missing Wayland portal source", async () => {
+		const getSources = vi.fn().mockResolvedValue([{ id: "screen:1:0", name: "Screen" }]);
+		await expect(
+			resolveDisplayMediaSource({
+				platform: "linux",
+				env: { XDG_SESSION_TYPE: "wayland" },
+				selectedSourceId: LINUX_PORTAL_SCREEN_SOURCE_ID,
+				getSources,
+			}),
+		).resolves.toBeNull();
+	});
 	it("returns only the requested X11 source and excludes preview pixels", async () => {
 		const getSources = vi.fn().mockResolvedValue([
 			{ id: "screen:1:0", name: "Screen" },

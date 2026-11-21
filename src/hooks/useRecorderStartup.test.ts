@@ -11,6 +11,7 @@ vi.mock("./startNativeRecorder", () => ({ startNativeRecorder: vi.fn() }));
 vi.mock("@/components/ui/toast", () => ({ toast: { error: vi.fn() } }));
 
 const source = { id: "screen:1:0", name: "Screen" } as ProcessedDesktopSource;
+const portalSource = { id: "screen:linux-portal", name: "Screen" } as ProcessedDesktopSource;
 
 function createContext() {
 	return {
@@ -162,12 +163,17 @@ describe("recording startup coordination", () => {
 
 	it("keeps a dismissed Wayland portal silent while completing cleanup", async () => {
 		const context = createContext();
-		vi.mocked(acquireRecorderBrowserStream).mockImplementation(async (_context, options) => {
-			options.onPortalCapture(true);
-			throw new DOMException("Cancelled", "NotAllowedError");
+		context.prepareRecordingStart.mockResolvedValue({
+			selectedSource: portalSource,
+			useNativeMacScreenCapture: false,
+			useNativeWindowsCapture: false,
 		});
+		vi.mocked(acquireRecorderBrowserStream).mockRejectedValue(
+			new DOMException("Cancelled", "NotAllowedError"),
+		);
 		await start(context);
 		expect(alert).not.toHaveBeenCalled();
+		expect(api.startCountdown).not.toHaveBeenCalled();
 		expect(startBrowserRecorder).not.toHaveBeenCalled();
 		expect(context.cleanupCapturedMedia).toHaveBeenCalledOnce();
 		expect(context.stopWebcamRecorder).toHaveBeenCalledOnce();
@@ -176,17 +182,25 @@ describe("recording startup coordination", () => {
 		expect(api.releaseRecordingStartup).toHaveBeenCalledWith("owner");
 	});
 
-	it("waits for a video frame only for a Wayland portal recording", async () => {
+	it("opens the Wayland portal before handing the countdown to the browser recorder", async () => {
 		const context = createContext();
-		vi.mocked(acquireRecorderBrowserStream).mockImplementation(async (_context, options) => {
-			options.onPortalCapture(true);
-			return { videoTrack: {} as MediaStreamTrack, systemAudioIncluded: false };
+		context.prepareRecordingStart.mockResolvedValue({
+			selectedSource: portalSource,
+			useNativeMacScreenCapture: false,
+			useNativeWindowsCapture: false,
+		});
+		vi.mocked(startBrowserRecorder).mockImplementation(async (_context, options) => {
+			expect(api.startCountdown).not.toHaveBeenCalled();
+			expect(acquireRecorderBrowserStream).toHaveBeenCalledOnce();
+			await options.runPortalCountdown?.();
 		});
 		await start(context);
 		expect(startBrowserRecorder).toHaveBeenCalledWith(
 			context,
-			expect.objectContaining({ waitForPortalFrame: true }),
+			expect.objectContaining({ runPortalCountdown: expect.any(Function) }),
 		);
+		expect(api.startCountdown).toHaveBeenCalledExactlyOnceWith(3);
+		expect(context.setCountdownActive.mock.calls).toEqual([[true], [false]]);
 	});
 	it.each([
 		false,
