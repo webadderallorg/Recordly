@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
-import { get as httpsGet } from "node:https";
 import path from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { app, type WebContents } from "electron";
+import { receiveCaptionDownload } from "./modelDownloadTransport";
 
 export const PARAKEET_MODEL_REVISION = "2bda32ec70b097a55adaa07d9a7173915b43cc78";
 export const PARAKEET_MODEL_FILES = [
@@ -94,67 +94,33 @@ async function downloadVerifiedFile(
 	destination: string,
 	file: (typeof PARAKEET_MODEL_FILES)[number],
 	onBytes: (bytes: number) => void,
-	redirects = 0,
 ): Promise<void> {
-	if (new URL(url).protocol !== "https:")
-		throw new Error("Parakeet model downloads require HTTPS.");
-	await new Promise<void>((resolve, reject) => {
-		const request = httpsGet(url, { timeout: 30_000 }, (response) => {
-			const status = response.statusCode ?? 0;
-			if (status >= 300 && status < 400 && response.headers.location) {
-				response.resume();
-				if (redirects >= 8) {
-					reject(new Error("Too many redirects downloading the Parakeet model."));
+	await receiveCaptionDownload(url, 8, async (response) => {
+		if (response.statusCode !== 200) {
+			throw new Error(`Parakeet model download failed (HTTP ${response.statusCode}).`);
+		}
+		let received = 0;
+		const hash = createHash("sha256");
+		const verify = new Transform({
+			transform(chunk: Buffer, _encoding, callback) {
+				received += chunk.length;
+				if (received > file.size) {
+					callback(
+						new Error(`Parakeet model file ${file.name} is larger than expected.`),
+					);
 					return;
 				}
-				try {
-					void downloadVerifiedFile(
-						new URL(response.headers.location, url).href,
-						destination,
-						file,
-						onBytes,
-						redirects + 1,
-					).then(resolve, reject);
-				} catch (error) {
-					reject(error);
-				}
-				return;
-			}
-			if (status !== 200) {
-				response.resume();
-				reject(new Error(`Parakeet model download failed (HTTP ${status}).`));
-				return;
-			}
-			let received = 0;
-			const hash = createHash("sha256");
-			const verify = new Transform({
-				transform(chunk: Buffer, _encoding, callback) {
-					received += chunk.length;
-					if (received > file.size) {
-						callback(
-							new Error(`Parakeet model file ${file.name} is larger than expected.`),
-						);
-						return;
-					}
-					hash.update(chunk);
-					onBytes(received);
-					callback(null, chunk);
-				},
-			});
-			void pipeline(response, verify, createWriteStream(destination, { flags: "wx" }))
-				.then(() => {
-					if (received !== file.size || hash.digest("hex") !== file.sha256) {
-						throw new Error(
-							`Parakeet model file ${file.name} failed its integrity check. Please try again.`,
-						);
-					}
-				})
-				.then(resolve, reject);
+				hash.update(chunk);
+				onBytes(received);
+				callback(null, chunk);
+			},
 		});
-		request.on("error", reject);
-		request.on("timeout", () =>
-			request.destroy(new Error("Parakeet model download timed out.")),
-		);
+		await pipeline(response, verify, createWriteStream(destination, { flags: "wx" }));
+		if (received !== file.size || hash.digest("hex") !== file.sha256) {
+			throw new Error(
+				`Parakeet model file ${file.name} failed its integrity check. Please try again.`,
+			);
+		}
 	});
 }
 
