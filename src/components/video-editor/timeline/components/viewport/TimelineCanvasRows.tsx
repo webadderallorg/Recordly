@@ -220,8 +220,11 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			"pointermove",
 			(move) => {
 				if (move.pointerId !== pointerId) return;
-				if (Math.abs(move.clientX - startX) < 4 && !suppressZoomClick.current) return;
-				suppressZoomClick.current = true;
+				if (!suppressZoomClick.current) {
+					if (Math.abs(move.clientX - startX) < 4) return;
+					suppressZoomClick.current = true;
+					onSelectZoomIds([]);
+				}
 				setZoomSelection({ from, to: edgeTime(move.clientX) });
 			},
 			{ signal: drag.signal },

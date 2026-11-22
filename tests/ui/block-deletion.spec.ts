@@ -200,11 +200,12 @@ test("a selection box picks several zooms and deletes them in one undo step", as
 	const at = (fraction: number) => box.x + box.width * fraction;
 
 	const groupBar = page.getByTestId("zoom-selection-bar");
-	const selectGroup = async () => {
+	const selectGroup = async (beforeRelease?: () => Promise<void>) => {
 		await page.mouse.move(at(0.49), y);
 		await page.mouse.down();
 		await page.mouse.move(at(0.97), y, { steps: 12 });
 		await expect(page.getByTestId("zoom-selection-box")).toBeVisible();
+		await beforeRelease?.();
 		const clip = (await page.locator('[data-variant="clip"]').boundingBox())!;
 		await page.mouse.move(at(0.97), clip.y + clip.height / 2);
 		await page.mouse.up();
@@ -228,4 +229,10 @@ test("a selection box picks several zooms and deletes them in one undo step", as
 	await page.keyboard.press("Delete");
 	await expect(zooms).toHaveCount(3);
 	await expect(zooms.and(page.locator('[data-start-ms="0"]'))).toHaveCount(0);
+
+	await zooms.and(page.locator('[data-start-ms="2200"]')).click();
+	await selectGroup(async () => {
+		await page.keyboard.press("Delete");
+		await expect(zooms).toHaveCount(3, { timeout: 1500 });
+	});
 });
