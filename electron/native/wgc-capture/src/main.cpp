@@ -412,9 +412,11 @@ int wmain(int argc, wchar_t* argv[]) {
                                  int64_t timestampHns) {
         std::lock_guard<std::mutex> lock(g_videoMutex);
         g_lastFrameTimestampHns = timestampHns;
-        int64_t expectedFirstVideoTimestampHns = -1;
-        firstVideoTimestampHns.compare_exchange_strong(expectedFirstVideoTimestampHns, timestampHns);
         if (videoStopped) return;
+        int64_t expectedFirstVideoTimestampHns = -1;
+        if (firstVideoTimestampHns.compare_exchange_strong(expectedFirstVideoTimestampHns, timestampHns)) {
+            encoder.setTimelineOrigin(adjustedVideoTimestampHns(timestampHns));
+        }
 
         if (g_pauseRequested) {
             if (config.windowHandle <= 0 || contentWidth <= 0 || contentHeight <= 0 ||
@@ -492,6 +494,9 @@ int wmain(int argc, wchar_t* argv[]) {
 
     if (audioInitialized) {
         audioActive = loopback.start();
+    }
+    if (config.captureSystemAudio && !audioActive) {
+        std::cout << "SYSTEM_AUDIO_CAPTURE_UNAVAILABLE" << std::endl;
     }
     if (micInitialized) {
         micActive = micCapture.start();

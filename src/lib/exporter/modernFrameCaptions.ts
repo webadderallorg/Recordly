@@ -8,6 +8,7 @@ import {
 } from "@/components/video-editor/captionPresets";
 import {
 	CAPTION_LINE_HEIGHT,
+	getCaptionBoxCenter,
 	getCaptionPadding,
 	getCaptionScaledFontSize,
 	getCaptionScaledRadius,
@@ -115,11 +116,14 @@ export class FrameCaptions {
 			this.context.config.width * (settings.maxWidth / 100) + padding.x * 2,
 			maxMeasuredWidth + padding.x * 2,
 		);
-		const centerX = this.context.config.width / 2;
-		const centerY =
-			this.context.config.height -
-			(this.context.config.height * settings.bottomOffset) / 100 -
-			boxHeight / 2;
+		const { centerX, centerY } = getCaptionBoxCenter({
+			width: this.context.config.width,
+			height: this.context.config.height,
+			boxWidth,
+			boxHeight,
+			horizontalPosition: settings.horizontalPosition,
+			bottomOffset: settings.bottomOffset,
+		});
 
 		return {
 			key: `${layout.blockKey}:${layout.visiblePageIndex}:${layout.activeWordIndex}:${layout.visibleLines.flatMap((line) => line.words.map((word) => word.revealProgress?.toFixed(4) ?? "")).join(",")}`,

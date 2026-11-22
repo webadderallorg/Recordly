@@ -17,6 +17,8 @@ interface UseTimelineKeyboardShortcutsParams {
 	selectedAudioId?: string | null;
 	selectedCaptionId?: string | null;
 	selectAllBlocksActive: boolean;
+	selectedZoomIds?: readonly string[];
+	clearSelectedBlocks?: () => void;
 	addKeyframe: () => void;
 	handleAddZoom: () => void;
 	handleSplitClip: () => void;
@@ -28,6 +30,7 @@ interface UseTimelineKeyboardShortcutsParams {
 	deleteSelectedAnnotation: () => void;
 	deleteSelectedAudio: () => void;
 	deleteSelectedCaption: () => void;
+	onDuplicateSelectedRegion?: () => void;
 	cycleAnnotationsAtCurrentTime: (backward?: boolean) => boolean;
 }
 
@@ -45,6 +48,8 @@ export function useTimelineKeyboardShortcuts({
 	selectedAudioId,
 	selectedCaptionId,
 	selectAllBlocksActive,
+	selectedZoomIds = [],
+	clearSelectedBlocks,
 	addKeyframe,
 	handleAddZoom,
 	handleSplitClip,
@@ -56,6 +61,7 @@ export function useTimelineKeyboardShortcuts({
 	deleteSelectedAnnotation,
 	deleteSelectedAudio,
 	deleteSelectedCaption,
+	onDuplicateSelectedRegion,
 	cycleAnnotationsAtCurrentTime,
 }: UseTimelineKeyboardShortcutsParams) {
 	useEffect(() => {
@@ -86,6 +92,7 @@ export function useTimelineKeyboardShortcuts({
 			) {
 				const target = resolveDeleteSelectionTarget({
 					selectAllBlocksActive,
+					selectedZoomIds,
 					selectedKeyframeId,
 					selectedZoomId,
 					selectedClipId,
@@ -112,7 +119,29 @@ export function useTimelineKeyboardShortcuts({
 				return;
 			}
 
+			if (e.key === "Escape" && (selectAllBlocksActive || selectedZoomIds.length > 0)) {
+				e.preventDefault();
+				clearSelectedBlocks?.();
+				return;
+			}
+
 			if (!isTimelineFocusedRef.current) {
+				return;
+			}
+
+			if (
+				onDuplicateSelectedRegion &&
+				!selectAllBlocksActive &&
+				!selectedKeyframeId &&
+				(selectedZoomId || selectedAnnotationId || selectedAudioId) &&
+				matchesShortcut(e, keyShortcuts.duplicateSelected, isMac) &&
+				!Object.entries(keyShortcuts).some(
+					([action, binding]) =>
+						action !== "duplicateSelected" && matchesShortcut(e, binding, isMac),
+				)
+			) {
+				e.preventDefault();
+				if (!e.repeat) onDuplicateSelectedRegion();
 				return;
 			}
 
@@ -159,6 +188,7 @@ export function useTimelineKeyboardShortcuts({
 		addKeyframe,
 		annotationCount,
 		clearAllZooms,
+		clearSelectedBlocks,
 		cycleAnnotationsAtCurrentTime,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
@@ -173,7 +203,9 @@ export function useTimelineKeyboardShortcuts({
 		isMac,
 		isTimelineFocusedRef,
 		keyShortcuts,
+		onDuplicateSelectedRegion,
 		selectAllBlocksActive,
+		selectedZoomIds,
 		selectedAnnotationId,
 		selectedAudioId,
 		selectedCaptionId,

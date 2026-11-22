@@ -175,6 +175,45 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 	await expect(update).toBeFocused();
 });
 
+test("playback controls fit and zoom the timeline in compact windows", async ({ page }) => {
+	test.setTimeout(60_000);
+	await installDesktopBridge(page);
+	await page.goto("/?windowType=editor");
+
+	const bar = page.locator(".editor-playback");
+	const tools = bar.locator(".editor-playback-tools");
+	const transport = bar.locator(".editor-playback-center");
+	const controls = bar.locator(".editor-playback-volume");
+	const zoom = controls.getByRole("group", { name: "Zoom Timeline" });
+	const zoomIn = zoom.getByRole("button", { name: "Zoom In", exact: true });
+	const zoomOut = zoom.getByRole("button", { name: "Zoom Out", exact: true });
+	await expect(zoomIn).toBeVisible({ timeout: 20000 });
+	await expect(controls.getByRole("button", { name: "Preview volume" })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Zoom In", exact: true })).toHaveCount(1);
+	await expect(page.getByRole("button", { name: "Zoom Out", exact: true })).toHaveCount(1);
+
+	for (const width of [1100, 1000, 800]) {
+		await page.setViewportSize({ width, height: 600 });
+		const [barBox, toolsBox, transportBox, controlsBox] = await Promise.all(
+			[bar, tools, transport.locator(":scope > div"), controls].map((group) =>
+				group.boundingBox(),
+			),
+		);
+		expect(toolsBox!.x + toolsBox!.width).toBeLessThanOrEqual(transportBox!.x);
+		expect(transportBox!.x + transportBox!.width).toBeLessThanOrEqual(controlsBox!.x);
+		expect(controlsBox!.x + controlsBox!.width).toBeLessThanOrEqual(barBox!.x + barBox!.width);
+	}
+
+	const clip = page.locator('[data-variant="clip"]');
+	await expect(clip).toBeVisible({ timeout: 20000 });
+	const clipWidth = async () => (await clip.boundingBox())!.width;
+	const initialWidth = await clipWidth();
+	await zoomIn.click();
+	await expect.poll(clipWidth).toBeGreaterThan(initialWidth);
+	await zoomOut.click();
+	await expect.poll(clipWidth).toBeCloseTo(initialWidth, 0);
+});
+
 test("header name edits directly without a selection box and saves on blur", async ({ page }) => {
 	await installDesktopBridge(page);
 	await page.addInitScript(() => {

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { getGpuSwitches, shouldForceLinuxEgl } from "./gpuSwitches";
+import {
+	getGpuBlocklistOverrideSwitches,
+	getGpuSwitches,
+	shouldForceLinuxEgl,
+} from "./gpuSwitches";
 
 describe("shouldForceLinuxEgl", () => {
 	it("does not force EGL in a Wayland session", () => {
@@ -79,5 +83,24 @@ describe("getGpuSwitches", () => {
 			useGl: undefined,
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		});
+	});
+});
+
+describe("getGpuBlocklistOverrideSwitches", () => {
+	it("respects Chromium's GPU blocklist by default", () => {
+		expect(getGpuBlocklistOverrideSwitches({})).toEqual([]);
+		expect(getGpuBlocklistOverrideSwitches({ RECORDLY_IGNORE_GPU_BLOCKLIST: "0" })).toEqual([]);
+	});
+
+	it("forces the GPU path only when explicitly requested", () => {
+		for (const value of ["1", "true", " TRUE "]) {
+			expect(
+				getGpuBlocklistOverrideSwitches({ RECORDLY_IGNORE_GPU_BLOCKLIST: value }),
+			).toEqual(["ignore-gpu-blocklist", "enable-unsafe-webgpu", "enable-gpu-rasterization"]);
+		}
+	});
+
+	it("keeps the GPU path for headless smoke-export benchmarks", () => {
+		expect(getGpuBlocklistOverrideSwitches({ RECORDLY_SMOKE_EXPORT: "1" })).toHaveLength(3);
 	});
 });

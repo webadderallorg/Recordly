@@ -55,6 +55,7 @@
 		"showWebcam": "Hiện webcam",
 		"showCursor": "Hiện con trỏ",
 		"loopCursor": "Lặp con trỏ",
+		"alwaysUsePointerCursor": "Luôn dùng con trỏ mặc định",
 		"cursorStyle": "Kiểu con trỏ",
 		"cursorStyleOptions": {
 			"macos": "macOS",
@@ -281,6 +282,8 @@
 		"animationRise": "Trượt lên",
 		"animationPop": "Bật lên",
 		"bottomOffset": "Khoảng cách từ dưới",
+		"horizontalPosition": "Vị trí ngang",
+		"verticalPosition": "Vị trí dọc",
 		"maxWidth": "Chiều rộng tối đa",
 		"boxRadius": "Độ bo góc hộp",
 		"backgroundOpacity": "Độ mờ nền",

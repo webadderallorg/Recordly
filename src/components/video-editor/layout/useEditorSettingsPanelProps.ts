@@ -19,6 +19,7 @@ import {
 
 type Input = {
 	activeEffectSection: EditorEffectSection;
+	onDuplicateSelectedRegion: () => void;
 	appearance: ReturnType<typeof useAppearanceState>;
 	timeline: ReturnType<typeof useTimelineState>;
 	zoomCommands: ReturnType<typeof useZoomRegionCommands>;
@@ -87,6 +88,7 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 
 	return {
 		...clipAudioReset,
+		onDuplicateSelectedRegion: input.onDuplicateSelectedRegion,
 		panelMode: "editor",
 		activeEffectSection,
 		selected: appearance.wallpaper,
@@ -140,6 +142,8 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onShowCursorChange: handleShowCursorChange,
 		loopCursor: appearance.loopCursor,
 		onLoopCursorChange: appearance.setLoopCursor,
+		alwaysUsePointerCursor: appearance.alwaysUsePointerCursor,
+		onAlwaysUsePointerCursorChange: appearance.setAlwaysUsePointerCursor,
 		cursorStyle: appearance.cursorStyle,
 		onCursorStyleChange: appearance.setCursorStyle,
 		cursorSize: appearance.cursorSize,

@@ -41,7 +41,7 @@ async function ffmpeg(args: string[], signal?: AbortSignal) {
 /** Keep webcam media separate from the screen, including blank spans for screen-only clips. */
 export async function composeSequenceWebcam(
 	current: string,
-	added: string,
+	added: string | null,
 	output: string,
 	work: string,
 	baseDurationMs: number,
@@ -55,7 +55,7 @@ export async function composeSequenceWebcam(
 		if (!approved) throw new Error("Current webcam is no longer available");
 		base!.sourcePath = approved;
 	}
-	const next = await linked(added);
+	const next = added ? await linked(added) : undefined;
 	const firstPath = base?.sourcePath || next?.sourcePath;
 	if (!firstPath) return undefined;
 	const meta = await probeNativeVideoMetadata(getFfmpegBinaryPath(), firstPath, signal);

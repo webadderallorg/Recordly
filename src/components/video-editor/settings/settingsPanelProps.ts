@@ -27,6 +27,7 @@ export interface SettingsPanelProps {
 	advanced?: boolean;
 	panelMode?: "editor" | "background";
 	activeEffectSection?: EditorEffectSection;
+	onDuplicateSelectedRegion?: () => void;
 	selected: string;
 	onWallpaperChange: (path: string) => void;
 	selectedZoomDepth?: ZoomDepth | null;
@@ -78,6 +79,8 @@ export interface SettingsPanelProps {
 	onShowCursorChange?: (enabled: boolean) => void;
 	loopCursor?: boolean;
 	onLoopCursorChange?: (enabled: boolean) => void;
+	alwaysUsePointerCursor?: boolean;
+	onAlwaysUsePointerCursorChange?: (enabled: boolean) => void;
 	cursorStyle?: CursorStyle;
 	onCursorStyleChange?: (style: CursorStyle) => void;
 	cursorSize?: number;

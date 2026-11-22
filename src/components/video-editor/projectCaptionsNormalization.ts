@@ -98,8 +98,11 @@ export function normalizeProjectCaptions(editor: Partial<ProjectEditorState>) {
 			? clamp(rawAutoCaptionSettings.fontSize, 16, 72)
 			: defaults.fontSize,
 		bottomOffset: isFiniteNumber(rawAutoCaptionSettings.bottomOffset)
-			? clamp(rawAutoCaptionSettings.bottomOffset, 0, 30)
+			? clamp(rawAutoCaptionSettings.bottomOffset, 0, 100)
 			: defaults.bottomOffset,
+		horizontalPosition: isFiniteNumber(rawAutoCaptionSettings.horizontalPosition)
+			? clamp(rawAutoCaptionSettings.horizontalPosition, 0, 100)
+			: defaults.horizontalPosition,
 		maxWidth: isFiniteNumber(rawAutoCaptionSettings.maxWidth)
 			? clamp(rawAutoCaptionSettings.maxWidth, 40, 95)
 			: defaults.maxWidth,

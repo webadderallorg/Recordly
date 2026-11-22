@@ -36,6 +36,7 @@
 		"show": "显示",
 		"showCursor": "显示光标",
 		"loopCursor": "循环光标",
+		"alwaysUsePointerCursor": "始终使用默认光标",
 		"cursorStyle": "光标样式",
 		"cursorStyleOptions": {
 			"macos": "macOS",
@@ -253,6 +254,8 @@
 		"animationRise": "上移",
 		"animationPop": "弹出",
 		"bottomOffset": "底部偏移",
+		"horizontalPosition": "水平位置",
+		"verticalPosition": "垂直位置",
 		"maxWidth": "最大宽度",
 		"boxRadius": "字幕框圆角",
 		"backgroundOpacity": "背景透明度",

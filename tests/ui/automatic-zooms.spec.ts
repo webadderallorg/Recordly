@@ -45,9 +45,30 @@ async function setup(page: Page) {
 							{ timeMs: 3080, cx: 0.5, cy: 0.5, interactionType: "mouseup" },
 							{ timeMs: 6000, cx: 0.5, cy: 0.5, interactionType: "move" },
 						],
+			recordingZoomMarkers:
+				params.get("markers") === "on" && calls > 1
+					? [
+							{ timeMs: 1000, cx: 0.4, cy: 0.5 },
+							{ timeMs: 1600, cx: 0.6, cy: 0.5 },
+						]
+					: undefined,
 		});
 	});
 }
+
+test("fresh takes apply recorded zoom markers without adding automatic zooms", async ({ page }) => {
+	test.setTimeout(60000);
+	await setup(page);
+	await page.goto("/?windowType=editor&auto=off&markers=on");
+	const zooms = page.locator('[data-variant="zoom"]');
+	await expect(zooms).toHaveCount(2, { timeout: 30000 });
+	await expect(zooms.nth(0)).toHaveAttribute("data-start-ms", "1000");
+	await expect(zooms.nth(0)).toHaveAttribute("data-end-ms", "1600");
+	await expect(zooms.nth(1)).toHaveAttribute("data-start-ms", "1600");
+	await expect(zooms.nth(1)).toHaveAttribute("data-end-ms", "2600");
+	await page.keyboard.press("Meta+z");
+	await expect(zooms).toHaveCount(0);
+});
 
 for (const take of [1, 4]) {
 	test(`auto zooms default on for recording ${take} and stay removed after undo`, async ({

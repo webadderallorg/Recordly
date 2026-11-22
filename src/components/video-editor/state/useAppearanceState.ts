@@ -90,6 +90,9 @@ export function useAppearanceState(preferences: EditorPreferences) {
 	);
 	const [showCursor, setShowCursor] = useState(preferences.showCursor);
 	const [loopCursor, setLoopCursor] = useState(preferences.loopCursor);
+	const [alwaysUsePointerCursor, setAlwaysUsePointerCursor] = useState(
+		preferences.alwaysUsePointerCursor,
+	);
 	const [cursorStyle, setCursorStyle] = useState<CursorStyle>(
 		preferences.cursorStyle ?? DEFAULT_CURSOR_STYLE,
 	);
@@ -180,6 +183,8 @@ export function useAppearanceState(preferences: EditorPreferences) {
 		setShowCursor,
 		loopCursor,
 		setLoopCursor,
+		alwaysUsePointerCursor,
+		setAlwaysUsePointerCursor,
 		cursorStyle,
 		setCursorStyle,
 		cursorSize,

@@ -26,6 +26,22 @@ export function useRecordingLibrary(
 	const lock = useRef(false);
 	const current = useRef({ project, timeline, ui, appearance });
 	current.current = { project, timeline, ui, appearance };
+	const assertActiveProject = (initial: typeof project) => {
+		const latest = current.current.project;
+		if (
+			latest.loading ||
+			latest.videoSourcePath !== initial.videoSourcePath ||
+			latest.currentProjectPath !== initial.currentProjectPath ||
+			latest.lastSavedSnapshot?.projectId !== initial.lastSavedSnapshot?.projectId
+		) {
+			throw new Error(
+				te(
+					"projectChangedWhileImporting",
+					"The project changed while importing. Add the recordings again.",
+				),
+			);
+		}
+	};
 	const refresh = useCallback(async () => {
 		setLoading(true);
 		setError(null);
@@ -110,17 +126,17 @@ export function useRecordingLibrary(
 		}
 	};
 	const addToTimeline = async (paths: string | string[], index?: number) => {
-		const source = current.current.project.videoSourcePath;
+		const initial = current.current;
+		const source = initial.project.videoSourcePath;
 		let retainedSource = source;
-		if (lock.current || !source) return;
+		if (lock.current || initial.project.loading || !source) return;
 		lock.current = true;
 		cancelled.current = false;
 		setCancelling(false);
 		setImporting(true);
-		current.current.ui.videoPlaybackRef.current?.pause();
-		current.current.ui.setIsPlaying(false);
+		initial.ui.videoPlaybackRef.current?.pause();
+		initial.ui.setIsPlaying(false);
 		try {
-			const initial = current.current;
 			const before = sortClipRegions(initial.timeline.clipRegions);
 			let sequence = before;
 			let media;
@@ -132,18 +148,12 @@ export function useRecordingLibrary(
 			for (const path of [...new Set(typeof paths === "string" ? [paths] : paths)]) {
 				if (cancelled.current) break;
 				const result = await window.electronAPI.importRecording(sourcePath, path, webcam);
+				assertActiveProject(initial.project);
 				if (!result.success) {
 					if (cancelled.current) break;
 					throw new Error(result.error);
 				}
 				completed++;
-				if (current.current.project.videoSourcePath !== source)
-					throw new Error(
-						te(
-							"projectChangedWhileImporting",
-							"The project changed while importing. Add the recordings again.",
-						),
-					);
 				media = result.value;
 				sourcePath = media.path;
 				if (media.webcam) webcam = { ...webcam, ...media.webcam, enabled: true };
@@ -165,14 +175,6 @@ export function useRecordingLibrary(
 				sequence = packClipSequence(next);
 			}
 			if (!media) return;
-			const { project, timeline, ui, appearance } = current.current;
-			if (project.videoSourcePath !== source)
-				throw new Error(
-					te(
-						"projectChangedWhileImporting",
-						"The project changed while importing. Add the recordings again.",
-					),
-				);
 			// Prepare cleanup while retaining rollback ownership until the project check passes.
 			const prepared = await window.electronAPI.finishRecordingImport(media.path);
 			if (!prepared.success)
@@ -180,13 +182,8 @@ export function useRecordingLibrary(
 					prepared.error ||
 						te("couldNotFinalizeImportedMedia", "Could not finalize imported media"),
 				);
-			if (current.current.project.videoSourcePath !== source)
-				throw new Error(
-					te(
-						"projectChangedWhileImporting",
-						"The project changed while importing. Add the recordings again.",
-					),
-				);
+			assertActiveProject(initial.project);
+			const { project, timeline, ui, appearance } = current.current;
 			// Send acceptance before synchronous project state updates; no await can switch projects here.
 			void window.electronAPI
 				.finishRecordingImport(media.path, true)
@@ -242,6 +239,32 @@ export function useRecordingLibrary(
 			setCancelling(false);
 		}
 	};
+	const importVideoFile = async () => {
+		const initial = current.current.project;
+		if (lock.current || initial.loading || !initial.videoSourcePath) return;
+		lock.current = true;
+		setBusy(true);
+		let path: string;
+		try {
+			const selected = await window.electronAPI.openVideoFilePicker({
+				preserveProjectPath: true,
+			});
+			if (selected.canceled) return;
+			if (!selected.success || !selected.path || selected.kind === "project")
+				throw new Error(selected.error || selected.message);
+			assertActiveProject(initial);
+			path = selected.path;
+		} catch (error) {
+			toast.error(
+				te("addVideoFailed", "Could not add video: {{error}}", { error: String(error) }),
+			);
+			return;
+		} finally {
+			lock.current = false;
+			setBusy(false);
+		}
+		await addToTimeline(path);
+	};
 	return {
 		open,
 		setOpen,
@@ -259,5 +282,6 @@ export function useRecordingLibrary(
 		cancelling,
 		cancelImport,
 		addToTimeline,
+		importVideoFile,
 	};
 }

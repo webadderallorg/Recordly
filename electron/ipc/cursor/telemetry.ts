@@ -29,6 +29,8 @@ import {
 import type { CursorInteractionType, CursorTelemetryPoint, CursorVisualType } from "../types";
 import { getScreen, getTelemetryPathForVideo } from "../utils";
 
+let activeRecordingZoomMarkers: CursorTelemetryPoint[] = [];
+
 export function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
 }
@@ -39,9 +41,13 @@ export function normalizeCursorTelemetrySamples(rawSamples: unknown): CursorTele
 		: Array.isArray((rawSamples as { samples?: unknown[] } | null | undefined)?.samples)
 			? ((rawSamples as { samples: unknown[] }).samples ?? [])
 			: [];
-	const boundedSamples = samples.slice(0, MAX_CURSOR_SAMPLES);
+	let pointerCount = 0;
 
-	return boundedSamples
+	return samples
+		.filter(
+			(sample: Partial<CursorTelemetryPoint> | null) =>
+				sample?.interactionType === "manual-zoom" || pointerCount++ < MAX_CURSOR_SAMPLES,
+		)
 		.filter((sample: unknown) => Boolean(sample && typeof sample === "object"))
 		.map((sample: unknown) => {
 			const point = sample as Partial<CursorTelemetryPoint>;
@@ -64,7 +70,8 @@ export function normalizeCursorTelemetrySamples(rawSamples: unknown): CursorTele
 					point.interactionType === "right-click" ||
 					point.interactionType === "middle-click" ||
 					point.interactionType === "move" ||
-					point.interactionType === "mouseup"
+					point.interactionType === "mouseup" ||
+					point.interactionType === "manual-zoom"
 						? point.interactionType
 						: undefined,
 				...(point.mouseButton === 1 || point.mouseButton === 2 || point.mouseButton === 3
@@ -99,6 +106,11 @@ export function stopCursorCapture() {
 		clearTimeout(cursorCaptureInterval);
 		setCursorCaptureInterval(null);
 	}
+}
+
+export function clearActiveCursorTelemetry() {
+	setActiveCursorSamples([]);
+	activeRecordingZoomMarkers = [];
 }
 
 export function resetCursorCaptureClock() {
@@ -144,6 +156,9 @@ export function pauseCursorCaptureAtBoundary(pausedAtMs: number) {
 	const pausedElapsedMs = getCursorCaptureElapsedMs(pausedAtMs);
 	setActiveCursorSamples(
 		activeCursorSamples.filter((sample) => sample.timeMs <= pausedElapsedMs),
+	);
+	activeRecordingZoomMarkers = activeRecordingZoomMarkers.filter(
+		(marker) => marker.timeMs <= pausedElapsedMs,
 	);
 	releaseHeldCursorButtons(getCursorCaptureElapsedMs(pausedAtMs));
 	setCursorCapturePauseStartedAtMs(pausedAtMs);
@@ -297,13 +312,28 @@ export function sampleCursorPoint() {
 	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "move");
 }
 
+export function captureRecordingZoomMarker(nowMs = Date.now()) {
+	if (!isCursorCaptureActive || isCursorCapturePaused()) return false;
+	const point = getNormalizedCursorPoint();
+	if (!point) return false;
+	activeRecordingZoomMarkers.push({
+		...point,
+		timeMs: getCursorCaptureElapsedMs(nowMs),
+		interactionType: "manual-zoom",
+	});
+	return true;
+}
+
 export async function persistPendingCursorTelemetry(videoPath: string) {
 	const telemetryPath = getTelemetryPathForVideo(videoPath);
 	if (pendingCursorSamples.length > 0) {
 		await fs.writeFile(
 			telemetryPath,
 			JSON.stringify(
-				{ version: CURSOR_TELEMETRY_VERSION, samples: pendingCursorSamples },
+				{
+					version: CURSOR_TELEMETRY_VERSION,
+					samples: [...pendingCursorSamples].sort((a, b) => a.timeMs - b.timeMs),
+				},
 				null,
 				2,
 			),
@@ -314,19 +344,25 @@ export async function persistPendingCursorTelemetry(videoPath: string) {
 }
 
 export function snapshotCursorTelemetryForPersistence() {
-	if (activeCursorSamples.length === 0) {
+	if (activeCursorSamples.length === 0 && activeRecordingZoomMarkers.length === 0) {
 		return;
 	}
 
 	if (pendingCursorSamples.length === 0) {
-		setPendingCursorSamples([...activeCursorSamples]);
+		setPendingCursorSamples([...activeCursorSamples, ...activeRecordingZoomMarkers]);
 		return;
 	}
 
-	const lastPendingTimeMs = pendingCursorSamples[pendingCursorSamples.length - 1]?.timeMs ?? -1;
+	let lastPendingPointerMs = -1;
+	const pendingMarkers = new Set<CursorTelemetryPoint>();
+	for (const sample of pendingCursorSamples) {
+		if (sample.interactionType === "manual-zoom") pendingMarkers.add(sample);
+		else lastPendingPointerMs = sample.timeMs;
+	}
 	setPendingCursorSamples([
 		...pendingCursorSamples,
-		...activeCursorSamples.filter((sample) => sample.timeMs > lastPendingTimeMs),
+		...activeCursorSamples.filter((sample) => sample.timeMs > lastPendingPointerMs),
+		...activeRecordingZoomMarkers.filter((marker) => !pendingMarkers.has(marker)),
 	]);
 }
 

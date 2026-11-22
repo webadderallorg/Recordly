@@ -55,6 +55,7 @@
 		"showWebcam": "Show webcam",
 		"showCursor": "Show Cursor",
 		"loopCursor": "Loop cursor",
+		"alwaysUsePointerCursor": "Always use default cursor",
 		"cursorStyle": "Cursor Style",
 		"cursorStyleOptions": {
 			"macos": "macOS",
@@ -281,6 +282,8 @@
 		"animationRise": "Rise",
 		"animationPop": "Pop",
 		"bottomOffset": "Bottom Offset",
+		"horizontalPosition": "Horizontal position",
+		"verticalPosition": "Vertical position",
 		"maxWidth": "Max Width",
 		"boxRadius": "Box Radius",
 		"backgroundOpacity": "Background Opacity",

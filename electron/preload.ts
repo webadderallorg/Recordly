@@ -839,7 +839,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	importWallpaperVideo: (file: File) => {
 		return ipcRenderer.invoke("import-wallpaper-video", webUtils.getPathForFile(file));
 	},
-	openVideoFilePicker: (options?: { includeProjects?: boolean }) => {
+	openVideoFilePicker: (options?: {
+		includeProjects?: boolean;
+		preserveProjectPath?: boolean;
+	}) => {
 		return ipcRenderer.invoke("open-video-file-picker", options);
 	},
 	openAudioFilePicker: () => {

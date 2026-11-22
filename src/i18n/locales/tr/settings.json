@@ -55,6 +55,7 @@
 		"showWebcam": "Web kamerasını göster",
 		"showCursor": "İmleci Göster",
 		"loopCursor": "İmleci döngüye al",
+		"alwaysUsePointerCursor": "Her zaman varsayılan imleci kullan",
 		"cursorStyle": "İmleç Stili",
 		"cursorStyleOptions": {
 			"macos": "macOS",
@@ -281,6 +282,8 @@
 		"animationRise": "Yükselme",
 		"animationPop": "Açılma",
 		"bottomOffset": "Alt Boşluk",
+		"horizontalPosition": "Yatay konum",
+		"verticalPosition": "Dikey konum",
 		"maxWidth": "Maksimum Genişlik",
 		"boxRadius": "Kutu Yarıçapı",
 		"backgroundOpacity": "Arka Plan Opaklığı",

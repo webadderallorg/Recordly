@@ -33,6 +33,7 @@
 	"windowsStartFailed": "Yerel Windows yakalama başlatılamadı. Tarayıcı yakalamasına geçiliyor.",
 	"microphoneDenied": "Mikrofon izni reddedildi. Kayıt mikrofon sesi olmadan devam edecek.",
 	"systemAudioUnavailable": "Bu kaynak için sistem sesi kullanılamıyor. Kayıt sistem sesi olmadan devam edecek.",
+	"timelineDuplicateNoRoom": "Bu öğeyi çoğaltmak için yeterli alan yok.",
 	"waylandScreenCastMissing": "Wayland’da ekran kaydı için bir ScreenCast portalı gerekir. Masaüstü ortamınıza uygun ekran paylaşımı portalını kurun veya bir X11 oturumuna geçip yeniden deneyin.",
 	"startRecordingFailed": "Kayıt başlatılamadı",
 	"saveRecordingFailed": "Kayıt kaydedilemedi.",

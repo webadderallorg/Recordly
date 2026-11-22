@@ -3,7 +3,12 @@ import { request } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { createAppLinkRelay, findActivationLink, isActivationLink } from "./appLinkRelay";
+import {
+	createAppLinkRelay,
+	findActivationLink,
+	isActivationLink,
+	shouldForwardPlainLaunch,
+} from "./appLinkRelay";
 
 let directory: string;
 const relays: Array<{ close: () => Promise<void> }> = [];
@@ -132,4 +137,22 @@ it("removes its record on close", async () => {
 	expect(await fs.readdir(directory)).toEqual(["recordly.501.json"]);
 	await running.close();
 	expect(await fs.readdir(directory)).toEqual([]);
+});
+
+it("forwards repeated shortcut launches to the running app only on packaged Windows and Linux", () => {
+	for (const platform of ["win32", "linux"] as const) {
+		expect(shouldForwardPlainLaunch({ platform, isPackaged: true, smokeExport: false })).toBe(
+			true,
+		);
+		expect(shouldForwardPlainLaunch({ platform, isPackaged: false, smokeExport: false })).toBe(
+			false,
+		);
+		expect(shouldForwardPlainLaunch({ platform, isPackaged: true, smokeExport: true })).toBe(
+			false,
+		);
+	}
+	// macOS already reuses the running app at the OS level.
+	expect(
+		shouldForwardPlainLaunch({ platform: "darwin", isPackaged: true, smokeExport: false }),
+	).toBe(false);
 });
