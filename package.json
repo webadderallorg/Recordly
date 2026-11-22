@@ -97,7 +97,6 @@
 		"mediabunny": "^1.25.1",
 		"motion": "^12.23.24",
 		"mp4box": "^2.2.0",
-		"pixi-filters": "^6.1.5",
 		"pixi.js": "^8.14.0",
 		"postcss": "^8.5.6",
 		"react": "^19.3.0",

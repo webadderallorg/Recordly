@@ -29,6 +29,23 @@ const {
 }));
 
 vi.mock("pixi.js", () => ({
+	Filter: class {
+		resources: Record<string, { uniforms: Record<string, unknown> }> = {};
+		padding = 0;
+		constructor(
+			options: { resources?: Record<string, Record<string, { value: unknown }>> } = {},
+		) {
+			for (const [name, group] of Object.entries(options.resources ?? {})) {
+				const uniforms: Record<string, unknown> = {};
+				for (const [key, uniform] of Object.entries(group)) {
+					uniforms[key] = (uniform as { value: unknown }).value;
+				}
+				this.resources[name] = { uniforms };
+			}
+		}
+	},
+	GpuProgram: { from: vi.fn(() => ({})) },
+	GlProgram: { from: vi.fn(() => ({})) },
 	isWebGLSupported: isWebGLSupportedMock,
 	RendererType: { WEBGL: 1, WEBGPU: 2 },
 	Application: class {
@@ -71,10 +88,6 @@ vi.mock("pixi.js", () => ({
 	Texture: {
 		from: vi.fn(() => ({ source: { update: vi.fn() }, destroy: vi.fn() })),
 	},
-}));
-
-vi.mock("pixi-filters/motion-blur", () => ({
-	MotionBlurFilter: class {},
 }));
 
 vi.mock("@/lib/assetPath", () => ({

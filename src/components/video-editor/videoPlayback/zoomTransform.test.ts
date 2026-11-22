@@ -36,8 +36,6 @@ describe("applyZoomTransform motion blur routing", () => {
 		const zoomBlurFilter = {
 			strength: 0,
 			center: { x: 0, y: 0 },
-			innerRadius: 0,
-			radius: -1,
 		};
 
 		const sharedParams = {
@@ -81,8 +79,6 @@ describe("applyZoomTransform motion blur routing", () => {
 		const zoomBlurFilter = {
 			strength: 0,
 			center: { x: 0, y: 0 },
-			innerRadius: 0,
-			radius: -1,
 		};
 		const stageSize = { width: 1000, height: 800 };
 		const baseMask = { x: 100, y: 100, width: 800, height: 600 };
@@ -136,7 +132,6 @@ describe("applyZoomTransform motion blur routing", () => {
 		expect(Math.hypot(motionBlurFilter.velocity.x, motionBlurFilter.velocity.y)).toBe(0);
 		expect(zoomBlurFilter.center.x).toBeCloseTo(stageSize.width / 2, 0);
 		expect(zoomBlurFilter.center.y).toBeCloseTo(stageSize.height / 2, 0);
-		expect(zoomBlurFilter.radius).toBe(-1);
 	});
 
 	it("keeps a fast pan directional despite a small scale change", () => {
@@ -149,8 +144,6 @@ describe("applyZoomTransform motion blur routing", () => {
 		const zoomBlurFilter = {
 			strength: 0,
 			center: { x: 0, y: 0 },
-			innerRadius: 0,
-			radius: -1,
 		};
 		const sharedParams = {
 			cameraContainer: createStubContainer() as never,
@@ -185,7 +178,7 @@ describe("applyZoomTransform motion blur routing", () => {
 describe("paused camera frame blur", () => {
 	it("reconstructs blur without playback or prior render history and remains stable", () => {
 		const motionBlurFilter = { velocity: { x: 0, y: 0 }, kernelSize: 5, offset: 0 };
-		const zoomBlurFilter = { strength: 0, center: { x: 0, y: 0 }, innerRadius: 0, radius: -1 };
+		const zoomBlurFilter = { strength: 0, center: { x: 0, y: 0 } };
 		const params = {
 			cameraContainer: createStubContainer() as never,
 			motionBlurFilter: motionBlurFilter as never,
@@ -217,7 +210,7 @@ describe("paused camera frame blur", () => {
 describe("scene shutter timing matches webcam discontinuities", () => {
 	function createScene() {
 		const motionBlurFilter = { velocity: { x: 0, y: 0 }, kernelSize: 5, offset: 0 };
-		const zoomBlurFilter = { strength: 0, center: { x: 0, y: 0 }, innerRadius: 0, radius: -1 };
+		const zoomBlurFilter = { strength: 0, center: { x: 0, y: 0 } };
 		const params = {
 			cameraContainer: createStubContainer() as never,
 			motionBlurFilter: motionBlurFilter as never,

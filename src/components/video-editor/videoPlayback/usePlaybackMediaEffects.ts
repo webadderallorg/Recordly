@@ -179,8 +179,6 @@ export function usePlaybackMediaEffects(input: usePlaybackMediaEffectsInput) {
 		motionBlurFilter.kernelSize = 5;
 		motionBlurFilter.offset = 0;
 		zoomBlurFilter.strength = 0;
-		zoomBlurFilter.innerRadius = 0;
-		zoomBlurFilter.radius = -1;
 		motionBlurStateRef.current = createMotionBlurState();
 	}, [
 		pixiReady,

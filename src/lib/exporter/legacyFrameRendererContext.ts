@@ -1,6 +1,4 @@
 import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
-import type { MotionBlurFilter } from "pixi-filters/motion-blur";
-import type { ZoomBlurFilter } from "pixi-filters/zoom-blur";
 import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
@@ -23,6 +21,8 @@ import { PixiCursorOverlay } from "@/components/video-editor/videoPlayback/curso
 import { type SpringState } from "@/components/video-editor/videoPlayback/motionSmoothing";
 import { type MotionBlurState } from "@/components/video-editor/videoPlayback/zoomTransform";
 import { WebcamMotionBlur } from "@/components/video-editor/webcamMotionBlur";
+import type { MotionBlurFilter } from "@/lib/exporter/motionBlurFilter";
+import type { ZoomBlurFilter } from "@/lib/exporter/zoomBlurFilter";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import type { SourceRedactionCanvas } from "./sourceRedaction";
 import type { WebcamFrameSource } from "./webcamFrameSource";

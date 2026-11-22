@@ -1,7 +1,7 @@
 import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
-import { MotionBlurFilter } from "pixi-filters/motion-blur";
-import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
+import { MotionBlurFilter } from "@/lib/exporter/motionBlurFilter";
 import { createVideoBlurFilters } from "@/lib/exporter/videoBlurFilters";
+import { ZoomBlurFilter } from "@/lib/exporter/zoomBlurFilter";
 import { drawSquircleOnGraphics } from "@/lib/geometry/squircle";
 
 async function run() {
@@ -39,6 +39,8 @@ async function run() {
 	const motion = new MotionBlurFilter([0, 0], 5, 0);
 	effects.filters = [motion, zoom];
 	const readPixels = () => {
+		for (const filter of effects.filters as (MotionBlurFilter | ZoomBlurFilter)[])
+			filter.enabled = true;
 		app.render();
 		const { pixels, width } = app.renderer.extract.pixels(app.stage);
 		let blended = 0;
