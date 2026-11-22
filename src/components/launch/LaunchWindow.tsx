@@ -230,21 +230,24 @@ function LaunchWindowContent() {
 	const [isPickerPending, setIsPickerPending] = useState(false);
 	const [sourceReady, setSourceReady] = useState(false);
 	const handlePickOnScreen = useCallback(async () => {
-		if (pickerPending.current || recording || finalizing) return;
+		if (pickerPending.current || recording || finalizing) return false;
 		pickerPending.current = true;
 		setIsPickerPending(true);
 		beginInteractiveHudAction();
 		try {
-			if (!(await cancelRecordingStart())) return;
-			if (!(await preparePermissions())) return;
+			if (!(await cancelRecordingStart())) return false;
+			if (!(await preparePermissions())) return false;
 			const result = await window.electronAPI.pickCaptureTarget();
-			if (result.success && result.source) syncSelectedSource(result.source);
+			const source = result.success && !result.canceled ? result.source : undefined;
+			if (source) syncSelectedSource(source);
 			if (result.message && !result.canceled) {
 				if (result.success) toast.info(result.message);
 				else toast.error(result.message);
 			}
+			return Boolean(source);
 		} catch {
 			toast.error(captureT("pickerError"));
+			return false;
 		} finally {
 			pickerPending.current = false;
 			setIsPickerPending(false);
@@ -260,6 +263,14 @@ function LaunchWindowContent() {
 		beginInteractiveHudAction,
 		syncSelectedSource,
 	]);
+	const recordAfterPickingSource = async () => {
+		if (!(await handlePickOnScreen())) return;
+		const recordingPlatform =
+			platform ?? (await window.electronAPI.getPlatform().catch(() => null));
+		if (recordingPlatform === "win32" || recordingPlatform === "darwin") {
+			await toggleRecording();
+		}
+	};
 
 	useEffect(() => {
 		let mounted = true;
@@ -340,7 +351,7 @@ function LaunchWindowContent() {
 				countdownActive={countdownActive}
 				countdownDelay={countdownDelay}
 				disabled={isPickerPending || !sourceReady}
-				onRecord={hasSelectedSource ? toggleRecording : () => void handlePickOnScreen()}
+				onRecord={hasSelectedSource ? toggleRecording : recordAfterPickingSource}
 				onCancel={() => void cancelPendingStart()}
 			/>
 			<HudTooltip
