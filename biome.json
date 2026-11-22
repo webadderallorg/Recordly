@@ -15,7 +15,8 @@
 			"!!output",
 			"!!services/email/billing/**/*.html",
 			"!!services/supabase/templates/**/*.html",
-			"!!**/electron/native/**/build"
+			"!!**/electron/native/**/build",
+			"!!**/electron/native/bin"
 		]
 	},
 	"formatter": {
