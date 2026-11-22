@@ -164,9 +164,10 @@ export function useZoomRegionCommands({
 		[selectedZoomId, setZoomRegions],
 	);
 	const handleZoomDelete = useCallback(
-		(id: string) => {
-			setZoomRegions((current) => current.filter((region) => region.id !== id));
-			if (selectedZoomId === id) setSelectedZoomId(null);
+		(target: string | readonly string[]) => {
+			const ids = new Set(typeof target === "string" ? [target] : target);
+			setZoomRegions((current) => current.filter((region) => !ids.has(region.id)));
+			if (selectedZoomId && ids.has(selectedZoomId)) setSelectedZoomId(null);
 		},
 		[selectedZoomId, setSelectedZoomId, setZoomRegions],
 	);

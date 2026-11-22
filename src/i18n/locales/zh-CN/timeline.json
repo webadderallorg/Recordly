@@ -1,5 +1,7 @@
 {
 	"zoom": {
+		"selectedOne": "已选中 1 个缩放区段",
+		"selectedCount": "已选中 {{count}} 个缩放区段",
 		"applyAutoZooms": "应用自动缩放",
 		"cannotPlace": "无法在此处放置缩放",
 		"existsOrNoSpace": "此位置已存在缩放或空间不足。",

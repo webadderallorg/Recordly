@@ -17,6 +17,8 @@ interface UseTimelineKeyboardShortcutsParams {
 	selectedAudioId?: string | null;
 	selectedCaptionId?: string | null;
 	selectAllBlocksActive: boolean;
+	selectedZoomIds?: readonly string[];
+	clearSelectedBlocks?: () => void;
 	addKeyframe: () => void;
 	handleAddZoom: () => void;
 	handleSplitClip: () => void;
@@ -46,6 +48,8 @@ export function useTimelineKeyboardShortcuts({
 	selectedAudioId,
 	selectedCaptionId,
 	selectAllBlocksActive,
+	selectedZoomIds = [],
+	clearSelectedBlocks,
 	addKeyframe,
 	handleAddZoom,
 	handleSplitClip,
@@ -88,6 +92,7 @@ export function useTimelineKeyboardShortcuts({
 			) {
 				const target = resolveDeleteSelectionTarget({
 					selectAllBlocksActive,
+					selectedZoomIds,
 					selectedKeyframeId,
 					selectedZoomId,
 					selectedClipId,
@@ -111,6 +116,12 @@ export function useTimelineKeyboardShortcuts({
 				} else if (target === "caption") {
 					deleteSelectedCaption();
 				}
+				return;
+			}
+
+			if (e.key === "Escape" && (selectAllBlocksActive || selectedZoomIds.length > 0)) {
+				e.preventDefault();
+				clearSelectedBlocks?.();
 				return;
 			}
 
@@ -177,6 +188,7 @@ export function useTimelineKeyboardShortcuts({
 		addKeyframe,
 		annotationCount,
 		clearAllZooms,
+		clearSelectedBlocks,
 		cycleAnnotationsAtCurrentTime,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
@@ -193,6 +205,7 @@ export function useTimelineKeyboardShortcuts({
 		keyShortcuts,
 		onDuplicateSelectedRegion,
 		selectAllBlocksActive,
+		selectedZoomIds,
 		selectedAnnotationId,
 		selectedAudioId,
 		selectedCaptionId,

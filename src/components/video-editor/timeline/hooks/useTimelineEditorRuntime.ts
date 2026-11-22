@@ -33,7 +33,7 @@ interface UseTimelineEditorRuntimeParams {
 	onZoomAdded: (span: Span) => void;
 	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
 	onZoomSpanChange: (id: string, span: Span) => void;
-	onZoomDelete: (id: string) => void;
+	onZoomDelete: (target: string | readonly string[]) => void;
 	onDuplicateSelectedRegion?: () => void;
 	onClearZooms?: () => void;
 	selectedZoomId: string | null;
@@ -134,6 +134,9 @@ export function useTimelineEditorRuntime({
 		setSelectedKeyframeId,
 		selectAllBlocksActive,
 		setSelectAllBlocksActive,
+		selectedZoomIds,
+		setSelectedZoomIds,
+		selectZoomIds,
 		hasAnyZoomBlocks,
 		activateSelectAllZooms,
 		addKeyframe,
@@ -213,6 +216,13 @@ export function useTimelineEditorRuntime({
 		onCaptionSpanChange,
 	});
 
+	const addZoomAndClearGroup = useCallback(
+		(span: Span) => {
+			onZoomAdded(span);
+			setSelectedZoomIds((ids) => (ids.length ? [] : ids));
+		},
+		[onZoomAdded, setSelectedZoomIds],
+	);
 	const {
 		defaultRegionDurationMs,
 		canPlaceZoomAtMs,
@@ -223,7 +233,7 @@ export function useTimelineEditorRuntime({
 		timeline: { videoDuration, totalMs, currentTimeMs },
 		regions: { zoom: zoomRegions, clip: clipRegions },
 		cursorTelemetry,
-		onZoomAdded,
+		onZoomAdded: addZoomAndClearGroup,
 		onZoomSuggested,
 	});
 
@@ -284,6 +294,8 @@ export function useTimelineEditorRuntime({
 		selectedAudioId,
 		selectedCaptionId,
 		selectAllBlocksActive,
+		selectedZoomIds,
+		clearSelectedBlocks,
 		addKeyframe,
 		handleAddZoom,
 		handleSplitClip,
@@ -331,6 +343,10 @@ export function useTimelineEditorRuntime({
 		setSelectedKeyframeId,
 		selectAllBlocksActive,
 		setSelectAllBlocksActive,
+		selectedZoomIds,
+		setSelectedZoomIds,
+		selectZoomIds,
+		deleteSelectedZoom,
 		handleKeyframeMove,
 		clearSelectedBlocks,
 		handleSelectZoom,
