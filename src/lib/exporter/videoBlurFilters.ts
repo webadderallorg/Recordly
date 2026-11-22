@@ -1,10 +1,9 @@
-import { MotionBlurFilter } from "pixi-filters/motion-blur";
-import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
+import { MotionBlurFilter } from "./motionBlurFilter";
+import { ZoomBlurFilter } from "./zoomBlurFilter";
 
 export function createVideoBlurFilters() {
-	const zoom = new ZoomBlurFilter({ strength: 0, maxKernelSize: 13 });
-	const motion = new MotionBlurFilter([0, 0], 5, 0);
-	// Filter textures default to no MSAA, losing coverage at rounded mask edges.
+	const zoom = new ZoomBlurFilter({ strength: 0, maxKernelSize: 32 });
+	const motion = new MotionBlurFilter({ velocity: [0, 0], kernelSize: 5, offset: 0 });
 	zoom.antialias = "on";
 	motion.antialias = "on";
 	return { zoom, motion };

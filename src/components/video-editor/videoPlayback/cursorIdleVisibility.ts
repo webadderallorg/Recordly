@@ -63,6 +63,7 @@ export function getCursorIdleIntervals(
 	const intervals: IdleInterval[] = [];
 	let anchor = samples[0];
 	let startMs = anchor.timeMs;
+	let cursorType = anchor.cursorType;
 	const held = new Set<number>();
 	// Paired legacy clicks may omit button IDs. Unpaired legacy clicks are
 	// pulses, while explicit button downs stay held until their release.
@@ -92,13 +93,22 @@ export function getCursorIdleIntervals(
 			else held.clear();
 		}
 		const interaction = Boolean(sample.interactionType && sample.interactionType !== "move");
+		const stateChanged = Boolean(
+			sample.cursorType && cursorType && sample.cursorType !== cursorType,
+		);
+		if (sample.cursorType) cursorType = sample.cursorType;
 		// Compare with the last activity position, not the preceding sample:
 		// gradual movement must accumulate rather than being mistaken for jitter.
 		const moved =
 			Math.hypot((sample.cx - anchor.cx) * 1920, (sample.cy - anchor.cy) * 1080) >
 			settings.movementTolerancePx;
-		if (moved || interaction || held.size > 0) {
-			if (!wasHeld) close(interaction ? sample.timeMs : samples[Math.max(0, i - 1)].timeMs);
+		if (moved || interaction || stateChanged || held.size > 0) {
+			if (!wasHeld)
+				close(
+					interaction || stateChanged
+						? sample.timeMs
+						: samples[Math.max(0, i - 1)].timeMs,
+				);
 			anchor = sample;
 			startMs = sample.timeMs;
 		}

@@ -1,6 +1,4 @@
 import { Application, Container, Graphics, Sprite } from "pixi.js";
-import type { MotionBlurFilter } from "pixi-filters/motion-blur";
-import type { ZoomBlurFilter } from "pixi-filters/zoom-blur";
 import {
 	type CursorFollowCameraState,
 	createCursorFollowCameraState,
@@ -15,6 +13,8 @@ import {
 	type MotionBlurState,
 } from "@/components/video-editor/videoPlayback/zoomTransform";
 import { WebcamMotionBlur } from "@/components/video-editor/webcamMotionBlur";
+import type { MotionBlurFilter } from "@/lib/exporter/motionBlurFilter";
+import type { ZoomBlurFilter } from "@/lib/exporter/zoomBlurFilter";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import {
 	createPixiApplication as createPixiApplicationOperation,

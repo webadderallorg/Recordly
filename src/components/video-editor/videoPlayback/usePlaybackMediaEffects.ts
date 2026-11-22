@@ -23,8 +23,6 @@ export type usePlaybackMediaEffectsInput = Pick<
 	| "appRef"
 	| "webcamVideoRef"
 	| "layoutVideoContentRef"
-	| "videoRef"
-	| "currentTimeRef"
 	| "timelineTime"
 	| "lastBackgroundSyncTimeRef"
 	| "videoEffectsContainerRef"
@@ -50,8 +48,6 @@ export function usePlaybackMediaEffects(input: usePlaybackMediaEffectsInput) {
 		appRef,
 		webcamVideoRef,
 		layoutVideoContentRef,
-		videoRef,
-		currentTimeRef,
 		timelineTime,
 		lastBackgroundSyncTimeRef,
 		videoEffectsContainerRef,
@@ -100,25 +96,7 @@ export function usePlaybackMediaEffects(input: usePlaybackMediaEffectsInput) {
 			return;
 		}
 
-		const video = videoRef.current;
-		if (video) {
-			const targetTime = clampMediaTimeToDuration(
-				currentTimeRef.current / 1000,
-				Number.isFinite(video.duration) ? video.duration : null,
-			);
-			if (Math.abs(video.currentTime - targetTime) > 0.001) {
-				try {
-					video.currentTime = targetTime;
-				} catch {
-					// no-op
-				}
-			}
-		}
-		layoutVideoContentRef.current?.();
-		updatePreviewTextureRef.current?.();
-		requestAnimationFrame(() => {
-			appRef.current?.render();
-		});
+		// The render loop redraws on resume. Leave timeline/source mapping to clip playback.
 		if (isPlayingRef.current) {
 			bgVideoRef.current?.play().catch(() => undefined);
 			webcamVideoRef.current?.play().catch(() => undefined);
@@ -131,8 +109,6 @@ export function usePlaybackMediaEffects(input: usePlaybackMediaEffectsInput) {
 		bgVideoRef,
 		webcamVideoRef,
 		layoutVideoContentRef,
-		videoRef,
-		currentTimeRef,
 		isPlayingRef,
 		updatePreviewTextureRef,
 	]);
@@ -203,8 +179,6 @@ export function usePlaybackMediaEffects(input: usePlaybackMediaEffectsInput) {
 		motionBlurFilter.kernelSize = 5;
 		motionBlurFilter.offset = 0;
 		zoomBlurFilter.strength = 0;
-		zoomBlurFilter.innerRadius = 0;
-		zoomBlurFilter.radius = -1;
 		motionBlurStateRef.current = createMotionBlurState();
 	}, [
 		pixiReady,

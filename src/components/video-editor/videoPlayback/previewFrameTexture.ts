@@ -18,7 +18,7 @@ export class PreviewFrameTexture {
 		// Only the compositor may upload frames. An asynchronous video upload
 		// must not put a new raw frame under the previous annotation timestamp.
 		videoSource.autoUpdate = false;
-		this.videoTexture = new Texture({ source: videoSource });
+		this.videoTexture = new Texture({ source: videoSource, dynamic: true });
 	}
 
 	update(video: HTMLVideoElement, options: RedactionOptions): Texture {

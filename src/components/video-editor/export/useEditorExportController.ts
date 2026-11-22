@@ -27,7 +27,6 @@ type Input = {
 	videoPath: string | null;
 	videoSourcePath: string | null;
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
-	isPlaying: boolean;
 	duration: number;
 	error: string | null;
 	loading: boolean;
@@ -86,7 +85,6 @@ export function useEditorExportController(input: Input) {
 		exportIdentity: input.exportIdentity,
 		videoPath: input.videoPath,
 		videoPlaybackRef: input.videoPlaybackRef,
-		isPlaying: input.isPlaying,
 		appearance: input.appearance,
 		timeline: input.timeline,
 		exportSettings: input.settings,
