@@ -327,8 +327,13 @@ async function forwardActivationLink(): Promise<boolean> {
 			isPackaged: app.isPackaged,
 			smokeExport: IS_SMOKE_EXPORT,
 		})
-	)
-		return appLinks.forward();
+	) {
+		if (await appLinks.forward()) return true;
+		// The relay only listens once startup finishes, so clicks during another
+		// launch's startup find nobody. Electron's lock settles that race: the first
+		// launch keeps it and later ones exit, raising "second-instance" there.
+		return !app.requestSingleInstanceLock();
+	}
 	return false;
 }
 
@@ -1290,9 +1295,7 @@ app.on("window-all-closed", () => {
 
 app.on("activate", activateDesktopEntryPoint);
 
-app.on("second-instance", async (_event, commandLine, _workingDirectory, additionalData) => {
-	if ((additionalData as { recordlyRecordingLock?: boolean })?.recordlyRecordingLock === true)
-		return;
+app.on("second-instance", async (_event, commandLine) => {
 	const authCallback = authCallbacks.find(commandLine);
 	if (authCallback) {
 		const routed = await authCallbacks.route(authCallback);
