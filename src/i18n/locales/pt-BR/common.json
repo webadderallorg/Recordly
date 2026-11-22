@@ -58,6 +58,8 @@
 			"tooManyFiles": "Anexe até 5 arquivos.",
 			"emptyFile": "Não é possível anexar arquivos vazios.",
 			"filesTooLarge": "Os anexos devem totalizar no máximo 50 MB.",
+			"uploadExpired": "O envio do anexo expirou. Envie novamente para reiniciá-lo.",
+			"limitRetry": "O limite de feedback foi atingido. Remova os anexos ou envie novamente mais tarde.",
 			"sendFailed": "Não foi possível enviar os comentários. Tente novamente."
 		},
 		"missingMessage": "Conte-nos mais antes de enviar.",

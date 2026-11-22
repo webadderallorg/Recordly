@@ -58,6 +58,8 @@
 			"tooManyFiles": "Joignez jusqu’à 5 fichiers.",
 			"emptyFile": "Les fichiers vides ne peuvent pas être joints.",
 			"filesTooLarge": "La taille totale des pièces jointes ne doit pas dépasser 50 Mo.",
+			"uploadExpired": "Le téléversement de la pièce jointe a expiré. Renvoyez pour le relancer.",
+			"limitRetry": "La limite de retours a été atteinte. Retirez vos pièces jointes ou renvoyez plus tard.",
 			"sendFailed": "Impossible d’envoyer les commentaires. Réessayez."
 		},
 		"missingMessage": "Dites-nous-en plus avant d’envoyer.",

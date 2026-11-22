@@ -58,6 +58,8 @@
 			"tooManyFiles": "最多可附加 5 個檔案。",
 			"emptyFile": "無法附加空白檔案。",
 			"filesTooLarge": "附件總大小不得超過 50 MB。",
+			"uploadExpired": "附件上傳已過期。請重新傳送以重新開始上傳。",
+			"limitRetry": "已達到意見回饋上限。請嘗試移除附件，或稍後再傳送。",
 			"sendFailed": "無法傳送意見回饋。請再試一次。"
 		},
 		"missingMessage": "請先詳細說明再傳送。",

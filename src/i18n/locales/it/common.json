@@ -58,6 +58,8 @@
 			"tooManyFiles": "Allega fino a 5 file.",
 			"emptyFile": "Non è possibile allegare file vuoti.",
 			"filesTooLarge": "Gli allegati non devono superare i 50 MB complessivi.",
+			"uploadExpired": "Il caricamento dell'allegato è scaduto. Invia di nuovo per riavviarlo.",
+			"limitRetry": "È stato raggiunto il limite di feedback. Rimuovi gli allegati o invia di nuovo più tardi.",
 			"sendFailed": "Impossibile inviare i commenti. Riprova."
 		},
 		"missingMessage": "Raccontaci di più prima di inviare.",

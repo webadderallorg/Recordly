@@ -58,6 +58,8 @@
 			"tooManyFiles": "Adjunta hasta 5 archivos.",
 			"emptyFile": "No se pueden adjuntar archivos vacíos.",
 			"filesTooLarge": "Los archivos adjuntos deben sumar 50 MB o menos.",
+			"uploadExpired": "La subida del adjunto caducó. Vuelve a enviar para reiniciarla.",
+			"limitRetry": "Se alcanzó el límite de comentarios. Quita los adjuntos o vuelve a enviarlo más tarde.",
 			"sendFailed": "No se pudieron enviar los comentarios. Inténtalo de nuevo."
 		},
 		"missingMessage": "Cuéntanos más antes de enviar.",

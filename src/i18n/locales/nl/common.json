@@ -58,6 +58,8 @@
 			"tooManyFiles": "Voeg maximaal 5 bestanden toe.",
 			"emptyFile": "Lege bestanden kunnen niet worden bijgevoegd.",
 			"filesTooLarge": "Bijlagen mogen samen maximaal 50 MB groot zijn.",
+			"uploadExpired": "Het uploaden van de bijlage is verlopen. Verstuur opnieuw om het opnieuw te starten.",
+			"limitRetry": "De feedbacklimiet is bereikt. Verwijder je bijlagen of verstuur het later opnieuw.",
 			"sendFailed": "Kan de feedback niet verzenden. Probeer het opnieuw."
 		},
 		"missingMessage": "Vertel ons meer voordat je verzendt.",

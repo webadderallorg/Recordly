@@ -58,6 +58,8 @@
 			"tooManyFiles": "最多可添加 5 个文件。",
 			"emptyFile": "无法添加空文件。",
 			"filesTooLarge": "附件总大小不得超过 50 MB。",
+			"uploadExpired": "附件上传已过期。请重新发送以重新开始上传。",
+			"limitRetry": "已达到反馈上限。请尝试移除附件，或稍后再发送。",
 			"sendFailed": "无法发送反馈。请重试。"
 		},
 		"missingMessage": "请先详细说明再发送。",
