@@ -6,6 +6,7 @@ import type {
 import { getCursorPressState } from "@/components/video-editor/videoPlayback/cursorPress";
 import { projectCursorPositionToViewport } from "@/components/video-editor/videoPlayback/cursorViewport";
 import { resolvePixelGlovePose } from "@/components/video-editor/videoPlayback/pixelGloveMotion";
+import { CURSOR_VISUAL_TYPES } from "@/shared/cursorVisualTypes";
 
 export type NativeStaticLayoutCursorTelemetrySample = {
 	timeMs: number;
@@ -32,18 +33,6 @@ const CURSOR_POSITION_EPSILON = 0.00001;
 const CURSOR_BOUNCE_EPSILON = 0.0005;
 const DEFAULT_CLICK_BOUNCE = 1;
 const DEFAULT_CLICK_BOUNCE_DURATION_MS = 350;
-
-const CURSOR_TYPE_INDEX: Record<string, number> = {
-	arrow: 0,
-	text: 1,
-	pointer: 2,
-	crosshair: 3,
-	"open-hand": 4,
-	"closed-hand": 5,
-	"resize-ew": 6,
-	"resize-ns": 7,
-	"not-allowed": 8,
-};
 
 function clampUnit(value: number) {
 	return Math.min(1, Math.max(0, value));
@@ -78,8 +67,8 @@ function sanitizeCursorTelemetry(telemetry: NativeStaticLayoutCursorTelemetrySam
 		.sort((left, right) => left.timeMs - right.timeMs);
 }
 
-function getCursorTypeIndex(cursorType: string | undefined) {
-	return CURSOR_TYPE_INDEX[cursorType ?? "arrow"] ?? CURSOR_TYPE_INDEX.arrow;
+function getCursorTypeIndex(cursorType: CursorTelemetryPoint["cursorType"]) {
+	return Math.max(0, CURSOR_VISUAL_TYPES.indexOf(cursorType ?? "arrow"));
 }
 
 function createMonotonicCursorRenderSampler(

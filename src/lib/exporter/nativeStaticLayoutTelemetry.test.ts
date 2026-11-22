@@ -2,6 +2,22 @@ import { describe, expect, it } from "vitest";
 import { buildNativeStaticLayoutCursorTelemetry } from "./nativeStaticLayoutTelemetry";
 
 describe("buildNativeStaticLayoutCursorTelemetry", () => {
+	it("keeps legacy cursor indexes and appends the Windows move and diagonal cursors", () => {
+		const cursorTypes = [
+			"resize-ew",
+			"resize-ns",
+			"not-allowed",
+			"move",
+			"resize-nwse",
+			"resize-nesw",
+		] as const;
+		const samples = buildNativeStaticLayoutCursorTelemetry(
+			cursorTypes.map((cursorType, i) => ({ timeMs: i * 250, cx: 0.5, cy: 0.5, cursorType })),
+			{ frameRate: 24, durationSec: 2, cursorStyle: "windows11" },
+		)!;
+		expect(samples.map((sample) => sample.cursorTypeIndex)).toEqual([6, 7, 8, 9, 10, 11]);
+	});
+
 	it("exports a sustained press and releases after dragging", () => {
 		const samples = buildNativeStaticLayoutCursorTelemetry(
 			[

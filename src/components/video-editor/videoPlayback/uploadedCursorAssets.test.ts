@@ -19,6 +19,15 @@ describe("Windows system cursor assets", () => {
 			x: 8 / 32,
 			y: 8 / 32,
 		});
+		expect(cursorSetAssets.windows11.move.fallbackAnchor).toEqual({ x: 11 / 32, y: 11 / 32 });
+		expect(cursorSetAssets.windows11["resize-nwse"].fallbackAnchor).toEqual({
+			x: 8 / 32,
+			y: 8 / 32,
+		});
+		expect(cursorSetAssets.windows11["resize-nesw"].fallbackAnchor).toEqual({
+			x: 8 / 32,
+			y: 8 / 32,
+		});
 	});
 
 	it("normalizes the Windows cursor set from the measured arrow pixel height", () => {
