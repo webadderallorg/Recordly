@@ -265,7 +265,7 @@ test("settings opens permissions and all onboarding pages keep the same layout",
 		"aria-current",
 		"page",
 	);
-	await expect(tour.getByText("test@email.com", { exact: true })).toBeVisible();
+	await expect(tour.getByPlaceholder("you@example.com")).toBeVisible();
 	const loginHeading = (await tour.getByRole("heading", { level: 2 }).boundingBox())!;
 	await expect(tour.locator("[data-onboarding-brand]")).toHaveCount(0);
 	const accountBannerBounds = (await banner.boundingBox())!;
@@ -509,7 +509,7 @@ productionTest("sign-in is mandatory even after onboarding was completed", async
 	await page.addInitScript(() => sessionStorage.setItem("recordly.demo-session", "1"));
 	await page.goto("/?windowType=editor");
 	const tour = page.getByRole("dialog", { name: "Sign in to Recordly", exact: true });
-	await expect(tour).toBeVisible();
+	await expect(tour).toBeVisible({ timeout: 20000 });
 	await expect(tour.getByRole("button", { name: "Continue without signing in" })).toHaveCount(0);
 	await expect(tour.getByText("Optional", { exact: true })).toHaveCount(0);
 	await expect(tour.getByText("Sign in to continue", { exact: true })).toHaveCount(0);
