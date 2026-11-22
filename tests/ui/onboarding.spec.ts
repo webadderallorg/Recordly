@@ -689,15 +689,10 @@ for (const platform of ["win32", "linux"]) {
 			.getByRole("button", { name: "Next", exact: true })
 			.click();
 		const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
-		await expect(tour).toHaveAttribute("data-onboarding-state", "permissions");
-		await expect(
-			tour.getByText(/^Your screen is captured only when you start a recording\./),
-		).toBeVisible();
+		await expect(tour).toHaveAttribute("data-onboarding-state", "upgrade");
 		await expect(tour.getByText("Screen Recording", { exact: true })).toHaveCount(0);
 		await expect(tour.getByText("macOS System Settings", { exact: false })).toHaveCount(0);
 		await expect(page.locator("html")).not.toHaveAttribute("data-hud-opened");
-		await tour.getByRole("button", { name: "Next", exact: true }).click();
-		await expect(tour).toHaveAttribute("data-onboarding-state", "upgrade");
 		await tour.getByRole("button", { name: "Skip and start recording", exact: true }).click();
 		await expect(tour).not.toBeVisible();
 		await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
