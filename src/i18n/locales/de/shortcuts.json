@@ -6,6 +6,7 @@
 		"addAnnotation": "Anmerkung hinzufügen",
 		"addKeyframe": "Keyframe hinzufügen",
 		"deleteSelected": "Ausgewählte löschen",
+		"duplicateSelected": "Auswahl duplizieren",
 		"playPause": "Wiedergabe / Pause",
 		"cycleForward": "Anmerkungen vorwärts durchlaufen",
 		"cycleBackward": "Anmerkungen rückwärts durchlaufen",

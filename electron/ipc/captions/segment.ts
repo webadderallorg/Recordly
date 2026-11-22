@@ -71,7 +71,7 @@ interface CaptionPiece {
 
 const SENTENCE_END = /[.?!…。！？]$/;
 /** Closing quotes/brackets that can trail terminal punctuation, e.g. `said."` */
-const TRAILING_CLOSERS = /[)\]}"'”’»」』）】］｝>]+$/u;
+const TRAILING_CLOSERS = /[\p{Pe}\p{Pf}"'>]+$/u;
 
 /**
  * Unambiguous English titles that take a trailing period mid-sentence. Kept deliberately
@@ -205,7 +205,12 @@ function groupWordsBySentence(words: CaptionWordPayload[]): CaptionWordPayload[]
  * continuous paragraph still becomes one caption per sentence.
  */
 function splitTextBySentence(cue: CaptionCuePayload): CaptionCuePayload[] {
-	const tokens = cue.text.trim().split(/\s+/).filter(Boolean);
+	// Chinese and Japanese can put the next sentence directly after punctuation.
+	const tokens = cue.text
+		.trim()
+		.replace(/([。！？][.?!…。！？\p{Pe}\p{Pf}"'>]*)/gu, "$1 ")
+		.split(/\s+/)
+		.filter(Boolean);
 	if (tokens.length <= 1) {
 		return [cue];
 	}

@@ -188,7 +188,7 @@
 }
 @container editor-header (max-width: 860px) {
 	.editor-header-end {
-		gap: 8px;
+		gap: 4px;
 	}
 	.editor-header-start > [role="separator"] {
 		margin-inline: 8px;
@@ -222,7 +222,7 @@
 }
 @container editor-preview (max-width: 760px) {
 	.editor-playback {
-		grid-template-columns: auto minmax(max-content, 1fr) auto;
+		grid-template-columns: max-content minmax(max-content, 1fr) max-content;
 	}
 	.editor-playback-add-layer {
 		width: 36px;
@@ -234,7 +234,7 @@
 		display: none;
 	}
 }
-@container editor-preview (max-width: 520px) {
+@container editor-preview (max-width: 680px) {
 	.editor-playback {
 		gap: 4px;
 		padding-inline: 8px;
@@ -255,6 +255,25 @@
 	}
 	.editor-playback-center > div {
 		gap: 2px;
+	}
+}
+@container editor-preview (max-width: 520px) {
+	.editor-playback-center > div {
+		position: relative;
+	}
+	.editor-playback-center [role="timer"] {
+		position: absolute;
+		inset-block-end: 100%;
+		margin-inline: 0;
+		line-height: 12px;
+	}
+	.editor-playback-center [role="timer"]:first-child {
+		inset-inline-start: 0;
+		text-align: start;
+	}
+	.editor-playback-center [role="timer"]:last-child {
+		inset-inline-end: 0;
+		text-align: end;
 	}
 }
 @container (max-width: 520px) {

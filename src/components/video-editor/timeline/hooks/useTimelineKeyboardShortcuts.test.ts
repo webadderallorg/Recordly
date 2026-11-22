@@ -75,6 +75,32 @@ const selections = [
 	["selectedKeyframeId", "deleteSelectedKeyframe"],
 ] as const;
 
+it("duplicates one selected region only once while the timeline has focus", () => {
+	const duplicate = vi.fn();
+	const { press } = setup({
+		selectedZoomId: "zoom-1",
+		isTimelineFocusedRef: { current: true },
+		onDuplicateSelectedRegion: duplicate,
+	});
+	const shortcut = { key: "d", metaKey: true, shiftKey: true };
+	expect(press(shortcut).preventDefault).toHaveBeenCalledOnce();
+	expect(press({ ...shortcut, repeat: true }).preventDefault).toHaveBeenCalledOnce();
+	expect(duplicate).toHaveBeenCalledOnce();
+});
+
+it("keeps an existing custom shortcut when it matches the new duplicate default", () => {
+	const duplicate = vi.fn();
+	const { press, params } = setup({
+		keyShortcuts: { ...DEFAULT_SHORTCUTS, splitClip: DEFAULT_SHORTCUTS.duplicateSelected },
+		selectedZoomId: "zoom-1",
+		isTimelineFocusedRef: { current: true },
+		onDuplicateSelectedRegion: duplicate,
+	});
+	press({ key: "d", metaKey: true, shiftKey: true });
+	expect(params.handleSplitClip).toHaveBeenCalledOnce();
+	expect(duplicate).not.toHaveBeenCalled();
+});
+
 describe.each(selections)("delete %s", (selection, action) => {
 	it.each([false, true])("supports both delete keys with timeline focus %s", (focused) => {
 		for (const key of ["Backspace", "Delete"]) {

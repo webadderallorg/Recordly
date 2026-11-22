@@ -4,6 +4,10 @@ const state = vi.hoisted(() => ({
 	handlers: new Map<string, (...args: unknown[]) => Promise<unknown>>(),
 	generate: vi.fn(),
 	remove: vi.fn(),
+	pickFile: vi.fn(),
+	approveLiteral: vi.fn(),
+	approveSelected: vi.fn(),
+	setProjectPath: vi.fn(),
 }));
 vi.mock("electron", () => ({
 	ipcMain: {
@@ -11,7 +15,7 @@ vi.mock("electron", () => ({
 			state.handlers.set(name, handler),
 	},
 	BrowserWindow: { getAllWindows: () => [] },
-	dialog: {},
+	dialog: { showOpenDialog: state.pickFile },
 }));
 vi.mock("../captions/generate", () => ({ generateAutoCaptionsFromVideo: state.generate }));
 vi.mock("../captions/captionModels", () => ({
@@ -39,9 +43,10 @@ vi.mock("../constants", () => ({
 vi.mock("../project/manager", () => ({
 	hasProjectFileExtension: vi.fn(),
 	loadProjectFromPath: vi.fn(),
+	rememberApprovedLocalReadPath: state.approveSelected,
 }));
-vi.mock("../state", () => ({ setCurrentProjectPath: vi.fn() }));
-vi.mock("../utils", () => ({ approveUserPath: vi.fn(), getRecordingsDir: vi.fn() }));
+vi.mock("../state", () => ({ setCurrentProjectPath: state.setProjectPath }));
+vi.mock("../utils", () => ({ approveUserPath: state.approveLiteral, getRecordingsDir: vi.fn() }));
 vi.mock("./wallpaperVideo", () => ({ registerWallpaperVideoHandler: vi.fn() }));
 
 import { registerCaptionHandlers } from "./captions";
@@ -50,7 +55,27 @@ beforeEach(() => {
 	state.handlers.clear();
 	state.generate.mockReset();
 	state.remove.mockReset();
+	state.pickFile.mockReset();
+	state.approveLiteral.mockClear();
+	state.approveSelected.mockClear();
+	state.setProjectPath.mockClear();
 	registerCaptionHandlers();
+});
+
+it("approves a timeline import without clearing the open project path", async () => {
+	state.pickFile.mockResolvedValue({ canceled: false, filePaths: ["/selected.mp4"] });
+	const pick = state.handlers.get("open-video-file-picker")!;
+	await expect(pick({}, { preserveProjectPath: true })).resolves.toMatchObject({
+		success: true,
+		kind: "media",
+		path: "/selected.mp4",
+	});
+	expect(state.approveSelected).toHaveBeenCalledExactlyOnceWith("/selected.mp4");
+	expect(state.setProjectPath).not.toHaveBeenCalled();
+
+	await expect(pick({})).resolves.toMatchObject({ success: true, kind: "media" });
+	expect(state.approveLiteral).toHaveBeenCalledExactlyOnceWith("/selected.mp4");
+	expect(state.setProjectPath).toHaveBeenCalledExactlyOnceWith(null);
 });
 
 it("blocks generation while another window removes a model, then releases the lock", async () => {

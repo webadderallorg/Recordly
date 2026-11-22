@@ -6,6 +6,7 @@
 		"addAnnotation": "Agregar Anotación",
 		"addKeyframe": "Agregar Fotograma clave",
 		"deleteSelected": "Eliminar seleccionado",
+		"duplicateSelected": "Duplicar selección",
 		"playPause": "Reproducir / Pausar",
 		"cycleForward": "Recorrer anotaciones hacia adelante",
 		"cycleBackward": "Recorrer anotaciones hacia atrás",

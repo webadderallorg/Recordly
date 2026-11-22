@@ -7,6 +7,7 @@ import { translate } from "@/i18n/runtime";
 import { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
+import { placeSpanAfter } from "../timeline/hooks/utils/timelineDuplicateUtils";
 import type { TimelineEditorHandle } from "../timeline/TimelineEditor";
 import type { EditorEffectSection } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
@@ -191,6 +192,60 @@ export function useTimelineEditingController(input: Input) {
 		nextAnnotationZIndexRef: input.nextAnnotationZIndexRef,
 	});
 
+	const duplicateSelectedRegion = () => {
+		const totalMs = Math.round(projection.timelineDuration * 1000);
+		const zoom = timeline.zoomRegions.find(({ id }) => id === timeline.selectedZoomId);
+		const annotation = timeline.annotationRegions.find(
+			({ id }) => id === timeline.selectedAnnotationId,
+		);
+		const audioRegion = timeline.audioRegions.find(({ id }) => id === timeline.selectedAudioId);
+
+		if (zoom) {
+			const span = placeSpanAfter(zoom, totalMs, timeline.zoomRegions);
+			if (span) {
+				const id = `zoom-${input.nextZoomIdRef.current++}`;
+				timeline.setZoomRegions((current) => [...current, { ...zoom, ...span, id }]);
+				zoomCommands.handleSelectZoom(id);
+				return;
+			}
+		} else if (annotation) {
+			const span = placeSpanAfter(annotation, totalMs);
+			if (span) {
+				const id = `annotation-${input.nextAnnotationIdRef.current++}`;
+				const zIndex = input.nextAnnotationZIndexRef.current++;
+				timeline.setAnnotationRegions((current) => [
+					...current,
+					{ ...annotation, ...span, id, zIndex },
+				]);
+				handleSelectAnnotation(id);
+				return;
+			}
+		} else if (audioRegion) {
+			const sameTrack = timeline.audioRegions.filter(
+				(region) => (region.trackIndex ?? 0) === (audioRegion.trackIndex ?? 0),
+			);
+			const span = placeSpanAfter(audioRegion, totalMs, sameTrack);
+			if (span) {
+				const id = `audio-${input.nextAudioIdRef.current++}`;
+				timeline.setAudioRegions((current) => [
+					...current,
+					{ ...audioRegion, ...span, id },
+				]);
+				audioCommands.handleSelectAudio(id);
+				return;
+			}
+		} else {
+			return;
+		}
+
+		toast.warning(
+			translate(
+				"notifications.timelineDuplicateNoRoom",
+				"There is no room to duplicate this item.",
+			),
+		);
+	};
+
 	useEditorGlobalInteractions({
 		timeline,
 		videoPlaybackRef: input.videoPlaybackRef,
@@ -212,5 +267,6 @@ export function useTimelineEditingController(input: Input) {
 		audioCommands,
 		annotationCommands,
 		handleSelectAnnotation,
+		duplicateSelectedRegion,
 	};
 }

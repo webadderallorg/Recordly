@@ -14,6 +14,8 @@
 		"dwellPointsOverlap": "Các điểm dừng được phát hiện trùng với vùng thu phóng hiện có.",
 		"addedSuggestions": "Đã thêm {{count}} đề xuất thu phóng dựa trên tương tác",
 		"label": "Thu phóng {{index}}",
+		"selectedOne": "Đã chọn 1 vùng thu phóng",
+		"selectedCount": "Đã chọn {{count}} vùng thu phóng",
 		"addZoom": "Thêm thu phóng (Z)",
 		"suggestZooms": "Đề xuất thu phóng từ con trỏ"
 	},

@@ -81,6 +81,7 @@ Dùng các công cụ kéo thả trên dòng thời gian để chỉnh vùng thu
 - Chỉnh sửa dòng thời gian bằng thao tác kéo thả
 - Cắt bỏ các đoạn không mong muốn
 - Thêm vùng thu phóng thủ công
+- Khi đang ghi, nhấn Ctrl+Alt+Z (Cmd+Option+Z trên macOS) để đánh dấu điểm thu phóng tại vị trí con trỏ
 - Nhận đề xuất thu phóng tự động dựa trên hoạt động của con trỏ
 - Thêm các vùng tăng hoặc giảm tốc độ
 - Thêm chú thích dạng văn bản, hình ảnh và hình khối

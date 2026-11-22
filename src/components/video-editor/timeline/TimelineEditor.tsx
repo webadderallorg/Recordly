@@ -1,7 +1,7 @@
 import type { Span } from "dnd-timeline";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { MinusIcon, Plus, SpeakerHigh } from "@/components/ui/icons";
+import { SpeakerHigh, Trash } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type {
 	SourceAudioTrackMeta,
@@ -46,7 +46,8 @@ export interface TimelineEditorProps {
 	onZoomAdded: (span: Span) => void;
 	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
 	onZoomSpanChange: (id: string, span: Span) => void;
-	onZoomDelete: (id: string) => void;
+	onZoomDelete: (target: string | readonly string[]) => void;
+	onDuplicateSelectedRegion?: () => void;
 	onClearZooms?: () => void;
 	selectedZoomId: string | null;
 	onSelectZoom: (id: string | null) => void;
@@ -104,6 +105,8 @@ export interface TimelineEditorHandle {
 	suggestZooms: () => void;
 	clearAllZooms: () => void;
 	splitClip: () => void;
+	zoomTimelineIn: () => void;
+	zoomTimelineOut: () => void;
 	addAnnotation: (
 		trackIndex?: number,
 		type?: AnnotationRegion["type"],
@@ -128,6 +131,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onZoomSuggested,
 			onZoomSpanChange,
 			onZoomDelete,
+			onDuplicateSelectedRegion,
 			onClearZooms,
 			selectedZoomId,
 			onSelectZoom,
@@ -318,6 +322,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			setSelectedKeyframeId,
 			selectAllBlocksActive,
 			setSelectAllBlocksActive,
+			selectedZoomIds,
+			setSelectedZoomIds,
+			selectZoomIds,
+			deleteSelectedZoom,
 			handleKeyframeMove,
 			clearSelectedBlocks,
 			handleSelectZoom,
@@ -342,6 +350,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			totalMs,
 			currentTimeMs,
 			safeMinDurationMs,
+			onDuplicateSelectedRegion,
 			cursorTelemetry: autoZoomTelemetry,
 			zoomRegions,
 			onZoomAdded,
@@ -382,6 +391,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			isMac,
 			keyShortcuts,
 			isTimelineFocusedRef,
+			zoomTimelineIn: zoomIn,
+			zoomTimelineOut: zoomOut,
 		});
 		const [clipSelection, setClipSelection] = useState<{
 			anchorId: string;
@@ -426,6 +437,11 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			handleSelectClip(id);
 		};
 
+		const zoomIds = new Set(zoomRegions.map((region) => region.id));
+		const pickedZoomCount = selectAllBlocksActive
+			? zoomRegions.length
+			: selectedZoomIds.filter((id) => zoomIds.has(id)).length;
+
 		if (!videoDuration || videoDuration === 0) {
 			return <TimelineLoadingSkeleton />;
 		}
@@ -437,32 +453,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		const sourceVolumeLabel = t("settings.audio.sourceTracksTitle");
 		return (
 			<div className="relative flex-1 min-h-0 flex flex-col bg-transparent overflow-hidden">
-				<div className="ml-3 flex w-fit shrink-0 items-center">
-					<div
-						role="group"
-						aria-label={t("shortcuts.actions.zoomTimeline")}
-						className="flex"
-					>
-						<Button
-							onClick={zoomOut}
-							variant="ghost"
-							size="sm"
-							isIconOnly
-							title={t("native.zoomOut")}
-						>
-							<MinusIcon aria-hidden="true" />
-						</Button>
-						<Button
-							onClick={zoomIn}
-							variant="ghost"
-							size="sm"
-							isIconOnly
-							title={t("native.zoomIn")}
-						>
-							<Plus aria-hidden="true" />
-						</Button>
-					</div>
-					{showSourceVolume && onSelectedClipSourceAudioTrackVolumeChange && (
+				{showSourceVolume && onSelectedClipSourceAudioTrackVolumeChange && (
+					<div className="ml-3 flex w-fit shrink-0 items-center">
 						<Popover>
 							<PopoverTrigger asChild>
 								<Button
@@ -501,9 +493,9 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 								))}
 							</PopoverContent>
 						</Popover>
-					)}
-				</div>
-				{selectedClipIds.length > 1 && onClipMerge && (
+					</div>
+				)}
+				{pickedZoomCount === 0 && selectedClipIds.length > 1 && onClipMerge && (
 					<div className="absolute right-3 top-1 z-30 flex items-center gap-2 rounded-lg bg-editor-surface/95 px-2 py-1 text-xs text-muted-foreground">
 						<span>
 							{te("selectedClips", "{{count}} clips selected", {
@@ -531,6 +523,29 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 						</span>
 					</div>
 				)}
+				{pickedZoomCount > 0 && (
+					<div
+						data-testid="zoom-selection-bar"
+						className="absolute end-3 top-1 z-30 flex items-center gap-2 rounded-lg bg-editor-surface/95 px-2 py-1 text-xs text-muted-foreground"
+					>
+						<span className="text-foreground/80">
+							{pickedZoomCount === 1
+								? t("timeline.zoom.selectedOne")
+								: t("timeline.zoom.selectedCount", "{{count}} zooms selected", {
+										count: pickedZoomCount,
+									})}
+						</span>
+						<Button
+							variant="destructive-soft"
+							size="sm"
+							className="h-7 gap-1.5 rounded-full px-3 text-xs"
+							onClick={deleteSelectedZoom}
+						>
+							<Trash className="h-3 w-3" aria-hidden="true" />
+							{t("common.actions.delete")}
+						</Button>
+					</div>
+				)}
 				<div
 					ref={timelineContainerRef}
 					data-testid="timeline-scroll"
@@ -550,6 +565,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					onClick={() => {
 						setSelectedKeyframeId(null);
 						setSelectAllBlocksActive(false);
+						setSelectedZoomIds([]);
 					}}
 					onWheel={handleTimelineWheel}
 				>
@@ -624,6 +640,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							selectedAudioId={selectedAudioId}
 							selectedCaptionId={selectedCaptionId}
 							selectAllBlocksActive={selectAllBlocksActive}
+							selectedZoomIds={selectedZoomIds}
+							onSelectZoomIds={selectZoomIds}
 							onClearBlockSelection={clearSelectedBlocks}
 							keyframes={keyframes}
 							sourceAudioTracks={sourceAudioTracks}

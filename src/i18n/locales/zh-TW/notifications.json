@@ -33,6 +33,7 @@
 	"windowsStartFailed": "無法啟動原生 Windows 擷取。將使用瀏覽器擷取。",
 	"microphoneDenied": "麥克風權限遭拒。錄影將繼續，但不含麥克風音訊。",
 	"systemAudioUnavailable": "此來源不支援系統音訊。錄影將繼續，但不含系統音訊。",
+	"timelineDuplicateNoRoom": "沒有足夠空間複製此項目。",
 	"waylandScreenCastMissing": "在 Wayland 上錄製螢幕需要 ScreenCast 入口服務。請安裝適用於目前桌面環境的螢幕分享入口服務，或切換至 X11 工作階段後再試一次。",
 	"startRecordingFailed": "無法開始錄影",
 	"saveRecordingFailed": "無法儲存錄影檔案。",
