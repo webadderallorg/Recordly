@@ -30,6 +30,7 @@ import {
 } from "./silence";
 
 const execFileAsync = promisify(execFile);
+const CAPTION_PCM_SAMPLE_RATE = 16_000;
 
 class NoCaptionAudioError extends Error {}
 
@@ -43,10 +44,10 @@ export interface AutoCaptionGenerationOptions {
 	language?: string;
 }
 
-async function executeWhisper(whisperExecutablePath: string, args: string[]) {
+async function executeWhisper(whisperExecutablePath: string, args: string[], timeout: number) {
 	try {
 		await execFileAsync(whisperExecutablePath, args, {
-			timeout: 30 * 60 * 1000,
+			timeout,
 			maxBuffer: 20 * 1024 * 1024,
 		});
 	} catch (error) {
@@ -190,7 +191,7 @@ export async function extractCaptionAudioSource(options: {
 					"-ac",
 					"1",
 					"-ar",
-					"16000",
+					String(CAPTION_PCM_SAMPLE_RATE),
 					"-c:a",
 					"pcm_s16le",
 					options.wavPath,
@@ -323,9 +324,21 @@ async function generateCaptionsForSource(
 				"0",
 			];
 
+			// FFmpeg extracts mono 16-bit PCM. Estimating from file size includes any
+			// extra WAV metadata and gives slower systems three times the audio duration.
+			const { size } = await fs.stat(wavPath);
+			const audioDurationMs = ((size - 44) * 1000) / (CAPTION_PCM_SAMPLE_RATE * 2);
+			const whisperTimeout = Math.min(
+				0x7fff_ffff,
+				Math.max(30 * 60_000, Math.ceil(audioDurationMs * 3)),
+			);
 			let jsonEnabled = true;
 			try {
-				await executeWhisper(whisperExecutablePath!, [...whisperBaseArgs, "-ojf"]);
+				await executeWhisper(
+					whisperExecutablePath!,
+					[...whisperBaseArgs, "-ojf"],
+					whisperTimeout,
+				);
 			} catch (error) {
 				if (!shouldRetryWhisperWithoutJson(error)) {
 					throw error;
@@ -336,7 +349,7 @@ async function generateCaptionsForSource(
 					"[auto-captions] Whisper runtime does not support JSON full output, retrying with SRT only:",
 					error,
 				);
-				await executeWhisper(whisperExecutablePath!, whisperBaseArgs);
+				await executeWhisper(whisperExecutablePath!, whisperBaseArgs, whisperTimeout);
 			}
 
 			cues = await readWhisperCaptionOutput(outputBase, jsonEnabled);
