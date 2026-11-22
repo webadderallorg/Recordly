@@ -1,3 +1,4 @@
+import type { SourceAudioTrackSettings } from "./audio/audioTypes";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -14,6 +15,8 @@ export type EditorHistorySnapshot = {
 	annotationRegions: AnnotationRegion[];
 	audioRegions: AudioRegion[];
 	autoCaptions: CaptionCue[];
+	sourceAudioTrackSettingsByClip: Record<string, SourceAudioTrackSettings>;
+	defaultSourceAudioTrackSettings: SourceAudioTrackSettings;
 	selectedZoomId: string | null;
 	selectedClipId: string | null;
 	selectedAnnotationId: string | null;
@@ -28,7 +31,7 @@ export type EditorHistoryStack = {
 
 export type EditorHistoryRecordResult = "initialized" | "applied" | "recorded" | "unchanged";
 
-export const MAX_EDITOR_HISTORY_ENTRIES = 100;
+export const MAX_EDITOR_HISTORY_ENTRIES = 3000;
 
 export function createEditorHistoryStack(): EditorHistoryStack {
 	return {
@@ -85,37 +88,101 @@ export function areEditorHistorySnapshotsEqual(
 	return areDeepEqual(left, right);
 }
 
+// History owns these objects. Reuse unchanged data between entries, while
+// detaching changed data from the mutable editor state and undo/redo results.
+function captureHistoryCollection<T extends { id: string }>(items: T[], previous: T[]): T[] {
+	if (areDeepEqual(items, previous)) return previous;
+	const previousById = new Map(previous.map((item) => [item.id, item]));
+	return items.map((item) => {
+		const previousItem = previousById.get(item.id);
+		if (!previousItem) return globalThis.structuredClone(item);
+		if (areDeepEqual(item, previousItem)) return previousItem;
+		const captured = { ...item };
+		for (const key of Object.keys(item) as (keyof T)[]) {
+			captured[key] = areDeepEqual(item[key], previousItem[key])
+				? previousItem[key]
+				: globalThis.structuredClone(item[key]);
+		}
+		return captured;
+	});
+}
+
+function captureHistorySnapshot(
+	snapshot: EditorHistorySnapshot,
+	previous: EditorHistorySnapshot,
+): EditorHistorySnapshot {
+	return {
+		...snapshot,
+		zoomRegions: captureHistoryCollection(snapshot.zoomRegions, previous.zoomRegions),
+		clipRegions: captureHistoryCollection(snapshot.clipRegions, previous.clipRegions),
+		speedRegions: captureHistoryCollection(snapshot.speedRegions, previous.speedRegions),
+		annotationRegions: captureHistoryCollection(
+			snapshot.annotationRegions,
+			previous.annotationRegions,
+		),
+		audioRegions: captureHistoryCollection(snapshot.audioRegions, previous.audioRegions),
+		autoCaptions: captureHistoryCollection(snapshot.autoCaptions, previous.autoCaptions),
+		sourceAudioTrackSettingsByClip: areDeepEqual(
+			snapshot.sourceAudioTrackSettingsByClip,
+			previous.sourceAudioTrackSettingsByClip,
+		)
+			? previous.sourceAudioTrackSettingsByClip
+			: globalThis.structuredClone(snapshot.sourceAudioTrackSettingsByClip),
+		defaultSourceAudioTrackSettings: areDeepEqual(
+			snapshot.defaultSourceAudioTrackSettings,
+			previous.defaultSourceAudioTrackSettings,
+		)
+			? previous.defaultSourceAudioTrackSettings
+			: globalThis.structuredClone(snapshot.defaultSourceAudioTrackSettings),
+	};
+}
+
 export function recordEditorHistorySnapshot(
 	stack: EditorHistoryStack,
 	snapshot: EditorHistorySnapshot,
 	options: {
 		applyingHistory?: boolean;
 		maxEntries?: number;
+		ignoreSelectionOnly?: boolean;
+		coalesce?: boolean;
 	} = {},
 ): EditorHistoryRecordResult {
-	const clonedSnapshot = cloneEditorHistorySnapshot(snapshot);
-
 	if (!stack.current) {
-		stack.current = clonedSnapshot;
+		stack.current = cloneEditorHistorySnapshot(snapshot);
 		return "initialized";
 	}
 
+	const capturedSnapshot = captureHistorySnapshot(snapshot, stack.current);
 	if (options.applyingHistory) {
-		stack.current = clonedSnapshot;
+		stack.current = capturedSnapshot;
 		return "applied";
 	}
 
-	if (areEditorHistorySnapshotsEqual(stack.current, snapshot)) {
+	if (areEditorHistorySnapshotsEqual(stack.current, capturedSnapshot)) {
 		return "unchanged";
 	}
 
-	stack.past.push(cloneEditorHistorySnapshot(stack.current));
+	if (
+		options.ignoreSelectionOnly &&
+		areEditorHistorySnapshotsEqual(stack.current, {
+			...capturedSnapshot,
+			selectedZoomId: stack.current.selectedZoomId,
+			selectedClipId: stack.current.selectedClipId,
+			selectedAnnotationId: stack.current.selectedAnnotationId,
+			selectedAudioId: stack.current.selectedAudioId,
+		})
+	) {
+		stack.current = capturedSnapshot;
+		return "unchanged";
+	}
+
+	if (!options.coalesce) stack.past.push(stack.current);
 	const maxEntries = options.maxEntries ?? MAX_EDITOR_HISTORY_ENTRIES;
 	if (stack.past.length > maxEntries) {
 		stack.past.shift();
 	}
 
-	stack.current = clonedSnapshot;
+	stack.current = capturedSnapshot;
 	stack.future = [];
 	return "recorded";
 }
@@ -134,8 +201,8 @@ export function undoEditorHistoryStack(
 		return null;
 	}
 
-	stack.future.push(cloneEditorHistorySnapshot(current));
-	stack.current = cloneEditorHistorySnapshot(previous);
+	stack.future.push(current);
+	stack.current = previous;
 	return cloneEditorHistorySnapshot(previous);
 }
 
@@ -153,7 +220,7 @@ export function redoEditorHistoryStack(
 		return null;
 	}
 
-	stack.past.push(cloneEditorHistorySnapshot(current));
-	stack.current = cloneEditorHistorySnapshot(next);
+	stack.past.push(current);
+	stack.current = next;
 	return cloneEditorHistorySnapshot(next);
 }

@@ -12,8 +12,6 @@ export const RECORDINGS_SETTINGS_FILE = path.join(USER_DATA_PATH, "recordings-se
 export const COUNTDOWN_SETTINGS_FILE = path.join(USER_DATA_PATH, "countdown-settings.json");
 export const APP_SETTINGS_FILE = path.join(USER_DATA_PATH, "app-settings.json");
 export const AUTO_RECORDING_PREFIX = "recording-";
-export const AUTO_RECORDING_RETENTION_COUNT = 20;
-export const AUTO_RECORDING_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 export const ALLOW_RECORDLY_WINDOW_CAPTURE = Boolean(process.env["VITE_DEV_SERVER_URL"]);
 export const RECORDING_SESSION_MANIFEST_SUFFIX = ".recordly-session.json";
 export const WHISPER_MODEL_DOWNLOAD_URL =
@@ -23,6 +21,8 @@ export const WHISPER_SMALL_MODEL_PATH = path.join(WHISPER_MODEL_DIR, "ggml-small
 export const COMPANION_AUDIO_LAYOUTS = [
 	{ platform: "mac" as const, systemSuffix: ".system.m4a", micSuffix: ".mic.m4a" },
 	{ platform: "win" as const, systemSuffix: ".system.wav", micSuffix: ".mic.wav" },
+	// The native system recording may accompany a Chromium microphone fallback.
+	{ platform: "mac" as const, systemSuffix: ".system.m4a", micSuffix: ".mic.wav" },
 	{ platform: "mac" as const, systemSuffix: ".system.webm", micSuffix: ".mic.webm" },
 ];
 

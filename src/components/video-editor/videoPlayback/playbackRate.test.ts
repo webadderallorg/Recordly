@@ -26,11 +26,14 @@ it.each([
 	{ lower: 0.5, upper: 4 },
 	{ lower: 1, upper: 30 },
 ])("exposes only supported steps between $lower and $upper", async ({ lower, upper }) => {
-	vi.stubGlobal("document", { createElement: () => ({
-		set playbackRate(rate: number) {
-			if (rate < lower || rate > upper) throw new DOMException("Unsupported", "NotSupportedError");
-		},
-	}) });
+	vi.stubGlobal("document", {
+		createElement: () => ({
+			set playbackRate(rate: number) {
+				if (rate < lower || rate > upper)
+					throw new DOMException("Unsupported", "NotSupportedError");
+			},
+		}),
+	});
 	const { getPreviewPlaybackRateRange } = await import("./playbackRate");
 	expect(getPreviewPlaybackRateRange()).toEqual({ min: lower, max: upper });
 });

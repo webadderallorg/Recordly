@@ -1,32 +1,81 @@
 import {
-	Camera,
-	ClosedCaptioning,
-	Cursor,
-	Gear,
-	PuzzlePiece,
-	Sparkle,
-	UserCircle,
-} from "@phosphor-icons/react";
-import { motion } from "motion/react";
-import type { ComponentProps, Dispatch, SetStateAction } from "react";
-import { useMemo } from "react";
-import { toast } from "sonner";
+	Button,
+	Card,
+	Label,
+	Switch,
+	ToggleButton,
+	ToggleButtonGroup,
+	Tooltip,
+} from "@heroui/react";
+import type { ComponentProps, ReactNode } from "react";
+import { useMemo, useRef, useState } from "react";
+import { Camera, ClosedCaptioning, Cursor, FrameCorners, Gear } from "@/components/ui/icons";
 import type { useI18n } from "@/contexts/I18nContext";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import ExtensionManager from "../ExtensionManager";
 import { SettingsPanel } from "../SettingsPanel";
 import type { EditorEffectSection } from "../types";
 
+function IconRailTooltip({ label, children }: { label: string; children: ReactNode }) {
+	const [open, setOpen] = useState(false);
+	const triggerRef = useRef<HTMLSpanElement>(null);
+	return (
+		<Tooltip isOpen={open} onOpenChange={setOpen}>
+			<span
+				ref={triggerRef}
+				className="inline-flex"
+				onMouseEnter={() => setOpen(true)}
+				onMouseLeave={() => setOpen(false)}
+				onFocus={(event) => {
+					if (event.target.matches(":focus-visible")) setOpen(true);
+				}}
+				onBlur={() => setOpen(false)}
+				onPointerDown={() => setOpen(false)}
+			>
+				{children}
+			</span>
+			<Tooltip.Content triggerRef={triggerRef} placement="right" offset={8} className="z-50">
+				{label}
+			</Tooltip.Content>
+		</Tooltip>
+	);
+}
+
 type Props = {
+	panelContent?: ReactNode;
 	t: ReturnType<typeof useI18n>["t"];
 	activeSection: EditorEffectSection;
-	setActiveSection: Dispatch<SetStateAction<EditorEffectSection>>;
+	setActiveSection: (section: EditorEffectSection) => void;
+	onOpenSettings: () => void;
 	settingsPanelProps: ComponentProps<typeof SettingsPanel>;
 };
 
-export function EditorSidebar({ t, activeSection, setActiveSection, settingsPanelProps }: Props) {
+export function EditorSidebar({
+	t,
+	activeSection,
+	setActiveSection,
+	onOpenSettings,
+	settingsPanelProps,
+	panelContent,
+}: Props) {
+	const { t: uiText } = useUiLocale();
+	const [advancedSections, setAdvancedSections] = useState<Record<string, boolean>>({});
+	const advanced = advancedSections[activeSection] ?? false;
+	const selectedAnnotation = settingsPanelProps.annotationRegions?.find(
+		(region) => region.id === settingsPanelProps.selectedAnnotationId,
+	);
+	const hasAdvanced =
+		!settingsPanelProps.selectedAnnotationId &&
+		["scene", "frame", "crop", "cursor", "webcam", "captions", "settings", "zoom"].includes(
+			activeSection,
+		);
 	const sections = useMemo(
 		() => [
-			{ id: "scene" as const, label: t("settings.sections.scene", "Scene"), icon: Sparkle },
+			{
+				id: "scene" as const,
+				label: t("settings.sections.scene", "Scene"),
+				icon: FrameCorners,
+			},
 			{ id: "cursor" as const, label: t("settings.sections.cursor", "Cursor"), icon: Cursor },
 			{ id: "webcam" as const, label: t("settings.sections.webcam", "Webcam"), icon: Camera },
 			{
@@ -34,90 +83,113 @@ export function EditorSidebar({ t, activeSection, setActiveSection, settingsPane
 				label: t("settings.sections.captions", "Captions"),
 				icon: ClosedCaptioning,
 			},
-			{
-				id: "settings" as const,
-				label: t("settings.sections.settings", "Settings"),
-				icon: Gear,
-			},
-			{
-				id: "extensions" as const,
-				label: t("settings.sections.extensions", "Extensions"),
-				icon: PuzzlePiece,
-			},
 		],
 		[t],
 	);
 	return (
-		<div className="flex flex-shrink-0 gap-1.5">
-			<div className="flex flex-shrink-0 flex-col items-center gap-0.5 px-2 py-2">
-				{sections.map((section) => {
-					const isActive = activeSection === section.id;
-					return (
-						<div key={section.id} className="flex items-center">
-							<motion.button
-								type="button"
-								onClick={() => setActiveSection(section.id)}
-								title={section.label}
-								className="group relative flex h-9 w-9 items-center justify-center rounded-lg outline-none focus:outline-none focus-visible:outline-none"
-								animate={{ opacity: isActive ? 1 : 0.55 }}
-								transition={{ duration: 0.14 }}
+		<div className="flex min-h-0 shrink-0 pb-3 pr-2">
+			<nav
+				aria-label={t("settings.sections.title", "Editor tools")}
+				className="flex w-16 shrink-0 flex-col items-center gap-3 py-2.5"
+			>
+				<ToggleButtonGroup
+					orientation="vertical"
+					isDetached
+					className="w-full items-center gap-2"
+					selectionMode="single"
+					disallowEmptySelection
+					selectedKeys={panelContent ? [] : [activeSection]}
+					onSelectionChange={(keys) => {
+						const key = Array.from(keys)[0];
+						if (key) setActiveSection(key as EditorEffectSection);
+					}}
+				>
+					{sections.map((section) => (
+						<IconRailTooltip key={section.id} label={section.label}>
+							<ToggleButton
+								id={section.id}
+								variant="ghost"
+								isIconOnly
+								aria-label={section.label}
 							>
-								{isActive ? (
-									<motion.span
-										layoutId="rail-active-bg"
-										className="absolute inset-0 rounded-lg bg-foreground/[0.08]"
-										transition={{ type: "spring", stiffness: 450, damping: 35 }}
-									/>
-								) : null}
-								<motion.span
-									className="relative z-10"
-									animate={{
-										color: isActive ? "#2563EB" : "hsl(var(--foreground))",
-									}}
-									transition={{ duration: 0.14 }}
-								>
-									<section.icon
-										className="h-[27px] w-[27px]"
-										weight={isActive ? "fill" : "regular"}
-									/>
-								</motion.span>
-							</motion.button>
-							<div className="ml-1.5 h-1.5 w-1.5 flex-shrink-0">
-								{isActive ? (
-									<motion.span
-										layoutId="rail-active-dot"
-										className="block h-1.5 w-1.5 rounded-full bg-[#2563EB]"
-										initial={{ opacity: 0, scale: 0.5 }}
-										animate={{ opacity: 1, scale: 1 }}
-										exit={{ opacity: 0, scale: 0.5 }}
-										transition={{ type: "spring", stiffness: 500, damping: 32 }}
-									/>
-								) : null}
-							</div>
-						</div>
-					);
-				})}
-				<div className="mt-auto flex flex-col items-center gap-0.5 pt-3">
-					<motion.button
-						type="button"
-						onClick={() =>
-							toast.info(t("editor.account.comingSoon", "Account coming soon"))
-						}
-						title={t("editor.account.title", "Account")}
-						className="group relative flex h-9 w-9 items-center justify-center rounded-lg text-foreground/55 outline-none transition hover:text-foreground focus:outline-none focus-visible:outline-none"
-						whileHover={{ opacity: 1 }}
-						initial={{ opacity: 0.55 }}
-					>
-						<motion.span className="absolute inset-0 rounded-lg bg-foreground/[0.04] opacity-0 transition group-hover:opacity-100" />
-						<UserCircle className="relative z-10 h-[22px] w-[22px]" />
-					</motion.button>
+								<section.icon
+									weight={
+										!panelContent && activeSection === section.id
+											? "fill"
+											: "regular"
+									}
+									className="size-5"
+								/>
+							</ToggleButton>
+						</IconRailTooltip>
+					))}
+				</ToggleButtonGroup>
+				<div className="mt-auto">
+					<IconRailTooltip label={uiText("ui.settings")}>
+						<Button
+							variant="ghost"
+							isIconOnly
+							aria-label={uiText("ui.settings")}
+							onPress={onOpenSettings}
+						>
+							<Gear weight="fill" className="size-5" aria-hidden="true" />
+						</Button>
+					</IconRailTooltip>
 				</div>
-			</div>
-			{activeSection === "extensions" ? (
-				<ExtensionManager />
-			) : (
-				<SettingsPanel {...settingsPanelProps} />
-			)}
+			</nav>
+			<aside
+				aria-label={panelContent ? uiText("ui.clips") : undefined}
+				className="editor-inspector [--text-sm:0.8125rem] [--text-base:0.8125rem] flex w-[320px] min-h-0 flex-col"
+			>
+				<Card className="app-frame-surface min-h-0 flex-1 gap-0 overflow-hidden rounded-3xl bg-surface p-0 shadow-sm">
+					{panelContent ?? (
+						<>
+							<header className="flex min-h-14 shrink-0 items-center justify-between gap-3 px-5 py-3">
+								<Card.Title className="text-[14px]">
+									{settingsPanelProps.selectedAnnotationId
+										? selectedAnnotation?.type === "blur"
+											? uiText("editing.mask", "Mask")
+											: t("timeline.annotation.label", "Annotation")
+										: (sections.find((section) => section.id === activeSection)
+												?.label ??
+											t(
+												`settings.sections.${activeSection}`,
+												activeSection.charAt(0).toUpperCase() +
+													activeSection.slice(1),
+											))}
+								</Card.Title>
+								{hasAdvanced && (
+									<Switch
+										size="sm"
+										isSelected={advanced}
+										onChange={(value) =>
+											setAdvancedSections((current) => ({
+												...current,
+												[activeSection]: value,
+											}))
+										}
+										aria-label={uiText("ui.advancedSettings")}
+									>
+										<Switch.Content>
+											<Label className="text-xs">
+												{uiText("ui.advanced")}
+											</Label>
+											<Switch.Control>
+												<Switch.Thumb />
+											</Switch.Control>
+										</Switch.Content>
+									</Switch>
+								)}
+							</header>
+							{activeSection === "extensions" ? (
+								<ExtensionManager />
+							) : (
+								<SettingsPanel {...settingsPanelProps} advanced={advanced} />
+							)}
+						</>
+					)}
+				</Card>
+			</aside>
 		</div>
 	);
 }

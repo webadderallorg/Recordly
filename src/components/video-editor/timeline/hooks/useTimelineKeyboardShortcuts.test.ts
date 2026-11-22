@@ -1,35 +1,62 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CLEAR_ALL_ZOOMS_SHORTCUT, DEFAULT_SHORTCUTS } from "@/lib/shortcuts";
 import { useTimelineKeyboardShortcuts } from "./useTimelineKeyboardShortcuts";
 
 vi.mock("react", () => ({ useEffect: (effect: () => void) => effect() }));
-
 class Element {
 	isContentEditable = false;
+	inOverlay = false;
+	closest() {
+		return this.inOverlay ? this : null;
+	}
 }
 class Input extends Element {}
 class Textarea extends Element {}
 class Select extends Element {}
-
 afterEach(() => vi.unstubAllGlobals());
-
-function setup(selectedClipId: string | null = "clip") {
+type Params = Parameters<typeof useTimelineKeyboardShortcuts>[0];
+function setup(overrides: Partial<Params> = {}) {
 	vi.stubGlobal("HTMLElement", Element);
 	vi.stubGlobal("HTMLInputElement", Input);
 	vi.stubGlobal("HTMLTextAreaElement", Textarea);
 	vi.stubGlobal("HTMLSelectElement", Select);
 	const addEventListener = vi.fn();
 	vi.stubGlobal("window", { addEventListener, removeEventListener: vi.fn() });
-	const deleteSelectedClip = vi.fn();
-	// React useEffect is mocked to test listener registration without mounting a component.
-	useTimelineKeyboardShortcuts({
+	const params: Params = {
+		isMac: true,
+		keyShortcuts: DEFAULT_SHORTCUTS,
 		isTimelineFocusedRef: { current: false },
-		selectedClipId,
-		deleteSelectedClip,
-	} as unknown as Parameters<typeof useTimelineKeyboardShortcuts>[0]);
+		hasAnyZoomBlocks: true,
+		activateSelectAllZooms: vi.fn(),
+		annotationCount: 0,
+		selectedKeyframeId: null,
+		selectedZoomId: null,
+		selectedClipId: null,
+		selectAllBlocksActive: false,
+		addKeyframe: vi.fn(),
+		handleAddZoom: vi.fn(),
+		handleSplitClip: vi.fn(),
+		handleAddAnnotation: vi.fn(),
+		deleteSelectedKeyframe: vi.fn(),
+		deleteSelectedZoom: vi.fn(),
+		clearAllZooms: vi.fn(),
+		deleteSelectedClip: vi.fn(),
+		deleteSelectedAnnotation: vi.fn(),
+		deleteSelectedAudio: vi.fn(),
+		deleteSelectedCaption: vi.fn(),
+		cycleAnnotationsAtCurrentTime: vi.fn(),
+		...overrides,
+	};
+	// biome-ignore lint/correctness/useHookAtTopLevel: useEffect is mocked to capture the listener without a React render.
+	useTimelineKeyboardShortcuts(params);
 	const handler = addEventListener.mock.calls[0][1] as (event: KeyboardEvent) => void;
 	const press = (options: Record<string, unknown> = {}) => {
 		const event = {
 			key: "Backspace",
+			ctrlKey: false,
+			metaKey: false,
+			altKey: false,
+			shiftKey: false,
 			target: new Element(),
 			preventDefault: vi.fn(),
 			...options,
@@ -37,32 +64,200 @@ function setup(selectedClipId: string | null = "clip") {
 		handler(event as unknown as KeyboardEvent);
 		return event;
 	};
-	return { press, deleteSelectedClip };
+	return { press, params };
 }
+const selections = [
+	["selectedClipId", "deleteSelectedClip"],
+	["selectedZoomId", "deleteSelectedZoom"],
+	["selectedAnnotationId", "deleteSelectedAnnotation"],
+	["selectedAudioId", "deleteSelectedAudio"],
+	["selectedCaptionId", "deleteSelectedCaption"],
+	["selectedKeyframeId", "deleteSelectedKeyframe"],
+] as const;
 
-describe("selected clip Backspace", () => {
-	it("deletes the selected clip without requiring timeline focus", () => {
-		const { press, deleteSelectedClip } = setup();
-		expect(press().preventDefault).toHaveBeenCalledOnce();
-		expect(deleteSelectedClip).toHaveBeenCalledOnce();
+it("duplicates one selected region only once while the timeline has focus", () => {
+	const duplicate = vi.fn();
+	const { press } = setup({
+		selectedZoomId: "zoom-1",
+		isTimelineFocusedRef: { current: true },
+		onDuplicateSelectedRegion: duplicate,
+	});
+	const shortcut = { key: "d", metaKey: true, shiftKey: true };
+	expect(press(shortcut).preventDefault).toHaveBeenCalledOnce();
+	expect(press({ ...shortcut, repeat: true }).preventDefault).toHaveBeenCalledOnce();
+	expect(duplicate).toHaveBeenCalledOnce();
+});
+
+it("keeps an existing custom shortcut when it matches the new duplicate default", () => {
+	const duplicate = vi.fn();
+	const { press, params } = setup({
+		keyShortcuts: { ...DEFAULT_SHORTCUTS, splitClip: DEFAULT_SHORTCUTS.duplicateSelected },
+		selectedZoomId: "zoom-1",
+		isTimelineFocusedRef: { current: true },
+		onDuplicateSelectedRegion: duplicate,
+	});
+	press({ key: "d", metaKey: true, shiftKey: true });
+	expect(params.handleSplitClip).toHaveBeenCalledOnce();
+	expect(duplicate).not.toHaveBeenCalled();
+});
+
+describe.each(selections)("delete %s", (selection, action) => {
+	it.each([false, true])("supports both delete keys with timeline focus %s", (focused) => {
+		for (const key of ["Backspace", "Delete"]) {
+			const { press, params } = setup({
+				[selection]: "block",
+				isTimelineFocusedRef: { current: focused },
+			});
+			expect(press({ key }).preventDefault).toHaveBeenCalledOnce();
+			expect(params[action]).toHaveBeenCalledOnce();
+		}
+	});
+	it("honors the configured delete shortcut outside the timeline", () => {
+		const { press, params } = setup({ [selection]: "block" });
+		expect(press({ key: "d", metaKey: true }).preventDefault).toHaveBeenCalledOnce();
+		expect(params[action]).toHaveBeenCalledOnce();
 	});
 	it.each([
 		new Input(),
 		new Textarea(),
 		new Select(),
 		Object.assign(new Element(), { isContentEditable: true }),
-	])("does not delete a clip while editing text or a form control", (target) => {
-		const { press, deleteSelectedClip } = setup();
+		Object.assign(new Element(), { inOverlay: true }),
+	])("does not delete behind an editable control or overlay", (target) => {
+		const { press, params } = setup({ [selection]: "block" });
 		expect(press({ target }).preventDefault).not.toHaveBeenCalled();
-		expect(deleteSelectedClip).not.toHaveBeenCalled();
+		expect(params[action]).not.toHaveBeenCalled();
 	});
-	it("ignores consumed events, modifier shortcuts and missing selection", () => {
-		const { press, deleteSelectedClip } = setup();
-		for (const option of ["defaultPrevented", "ctrlKey", "metaKey", "altKey"])
-			press({ [option]: true });
-		expect(deleteSelectedClip).not.toHaveBeenCalled();
-		const unselected = setup(null);
-		unselected.press();
-		expect(unselected.deleteSelectedClip).not.toHaveBeenCalled();
+	it("ignores consumed/composing events and unrelated modifier combinations", () => {
+		const { press, params } = setup({
+			[selection]: "block",
+			isTimelineFocusedRef: { current: true },
+		});
+		for (const flag of [
+			"defaultPrevented",
+			"isComposing",
+			"ctrlKey",
+			"metaKey",
+			"altKey",
+			"shiftKey",
+		]) {
+			press({ [flag]: true });
+		}
+		expect(params[action]).not.toHaveBeenCalled();
+	});
+});
+it("does not consume deletion without a selection", () => {
+	expect(setup().press().preventDefault).not.toHaveBeenCalled();
+});
+it("select-all zooms takes priority over an individual clip selection", () => {
+	const { press, params } = setup({ selectAllBlocksActive: true, selectedClipId: "clip" });
+	press();
+	expect(params.deleteSelectedZoom).toHaveBeenCalledOnce();
+	expect(params.deleteSelectedClip).not.toHaveBeenCalled();
+});
+it("keeps creation and select-all shortcuts scoped to the timeline", () => {
+	const { press, params } = setup();
+	press({ key: "z" });
+	press({ key: "a", metaKey: true });
+	expect(params.handleAddZoom).not.toHaveBeenCalled();
+	expect(params.activateSelectAllZooms).not.toHaveBeenCalled();
+});
+
+describe.each([true, false])("clear all zooms shortcut, macOS=%s", (isMac) => {
+	const chord = { ...(isMac ? { metaKey: true } : { ctrlKey: true }), shiftKey: true };
+
+	it("clears zooms with timeline focus and ignores key repeats and editing", () => {
+		const { press, params } = setup({ isMac, isTimelineFocusedRef: { current: true } });
+		press({ ...chord, repeat: true });
+		press({ ...chord, target: new Input() });
+		expect(params.clearAllZooms).not.toHaveBeenCalled();
+		expect(press(chord).preventDefault).toHaveBeenCalledOnce();
+		expect(params.clearAllZooms).toHaveBeenCalledOnce();
+	});
+
+	it("does not clear zooms outside the timeline or override a saved mapping", () => {
+		const unfocused = setup({ isMac });
+		expect(unfocused.press(chord).preventDefault).not.toHaveBeenCalled();
+		expect(unfocused.params.clearAllZooms).not.toHaveBeenCalled();
+
+		const remapped = setup({
+			isMac,
+			isTimelineFocusedRef: { current: true },
+			keyShortcuts: { ...DEFAULT_SHORTCUTS, splitClip: CLEAR_ALL_ZOOMS_SHORTCUT },
+		});
+		remapped.press(chord);
+		expect(remapped.params.handleSplitClip).toHaveBeenCalledOnce();
+		expect(remapped.params.clearAllZooms).not.toHaveBeenCalled();
+	});
+});
+
+describe.each([true, false])("split shortcut, macOS=%s", (isMac) => {
+	const modifiers = isMac ? { metaKey: true } : { ctrlKey: true };
+	it("splits on Cmd/Ctrl+B and consumes the browser shortcut", () => {
+		const { press, params } = setup({ isMac, isTimelineFocusedRef: { current: true } });
+		expect(press({ key: "b", ...modifiers }).preventDefault).toHaveBeenCalledOnce();
+		expect(params.handleSplitClip).toHaveBeenCalledOnce();
+	});
+	it("does not repeat splits or match bare B/C or extra modifiers", () => {
+		const { press, params } = setup({ isMac, isTimelineFocusedRef: { current: true } });
+		press({ key: "b", ...modifiers, repeat: true });
+		press({ key: "b" });
+		press({ key: "c" });
+		press({ key: "b", ...modifiers, shiftKey: true });
+		expect(params.handleSplitClip).not.toHaveBeenCalled();
+	});
+	it("leaves editable fields and unfocused timelines alone", () => {
+		const { press, params } = setup({ isMac, isTimelineFocusedRef: { current: true } });
+		for (const target of [
+			new Input(),
+			new Textarea(),
+			Object.assign(new Element(), { isContentEditable: true }),
+			Object.assign(new Element(), { inOverlay: true }),
+		]) {
+			const event = press({ key: "b", ...modifiers, target });
+			expect(event.preventDefault).not.toHaveBeenCalled();
+		}
+		expect(params.handleSplitClip).not.toHaveBeenCalled();
+		const unfocused = setup({ isMac });
+		unfocused.press({ key: "b", ...modifiers });
+		expect(unfocused.params.handleSplitClip).not.toHaveBeenCalled();
+	});
+});
+
+describe("trim to playhead", () => {
+	it("trims with Q and W without timeline focus", () => {
+		const handleTrimStart = vi.fn();
+		const handleTrimEnd = vi.fn();
+		const { press } = setup({ handleTrimStart, handleTrimEnd });
+		expect(press({ key: "q" }).preventDefault).toHaveBeenCalled();
+		press({ key: "w" });
+		expect(handleTrimStart).toHaveBeenCalledTimes(1);
+		expect(handleTrimEnd).toHaveBeenCalledTimes(1);
+	});
+
+	it("runs an Option letter trim unless the resulting character has a saved shortcut", () => {
+		const optionW = { key: "∑", code: "KeyW", altKey: true };
+		const handleTrimEnd = vi.fn();
+		const keyShortcuts = { ...DEFAULT_SHORTCUTS, trimEnd: { key: "w", alt: true } };
+		const trim = setup({ keyShortcuts, handleTrimEnd });
+		expect(trim.press(optionW).preventDefault).toHaveBeenCalledOnce();
+		expect(handleTrimEnd).toHaveBeenCalledOnce();
+
+		const custom = setup({
+			keyShortcuts: { ...keyShortcuts, addAnnotation: { key: "∑", alt: true } },
+			isTimelineFocusedRef: { current: true },
+			handleTrimEnd,
+		});
+		custom.press(optionW);
+		expect(custom.params.handleAddAnnotation).toHaveBeenCalledOnce();
+		expect(handleTrimEnd).toHaveBeenCalledOnce();
+	});
+
+	it("leaves Q and W alone while typing and with Cmd held", () => {
+		const handleTrimStart = vi.fn();
+		const { press } = setup({ handleTrimStart });
+		press({ key: "q", target: new Input() });
+		press({ key: "q", metaKey: true });
+		expect(handleTrimStart).not.toHaveBeenCalled();
 	});
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveExportStartSettings } from "./exportStartSettings";
+import { resolveExportStartSettings, resolveShareExportSettings } from "./exportStartSettings";
 
 const baseOptions = {
 	sourceWidth: 1920,
@@ -74,4 +74,38 @@ describe("resolveExportStartSettings", () => {
 			height: 678,
 		});
 	});
+});
+
+it("preserves the selected quality, encoding and FPS for sharing", () => {
+	const local = resolveExportStartSettings({
+		...baseOptions,
+		mp4FrameRate: 60,
+		exportEncodingMode: "quality",
+	});
+	expect(resolveShareExportSettings(local)).toMatchObject({
+		format: "mp4",
+		quality: "good",
+		encodingMode: "quality",
+		mp4FrameRate: 60,
+		includeCaptionSidecar: false,
+	});
+	expect(local).toMatchObject({
+		encodingMode: "quality",
+		mp4FrameRate: 60,
+		quality: "good",
+		includeCaptionSidecar: true,
+	});
+});
+
+it("carries GIF size optimization only for opted-in GIF exports", () => {
+	const settings = resolveExportStartSettings({
+		...baseOptions,
+		exportFormat: "gif",
+		gifOptimizeSize: true,
+	});
+	expect(settings.gifConfig?.optimizeSize).toBe(true);
+	expect(resolveShareExportSettings(settings).gifConfig).toBeUndefined();
+	expect(
+		resolveExportStartSettings({ ...baseOptions, gifOptimizeSize: true }).gifConfig,
+	).toBeUndefined();
 });

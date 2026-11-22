@@ -12,17 +12,23 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
+#include <vector>
+#include <deque>
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <utility>
 
-static std::atomic<bool> g_stopRequested{false};
 static std::atomic<bool> g_pauseRequested{false};
 static std::atomic<int64_t> g_lastFrameTimestampHns{0};
 static std::atomic<int64_t> g_pauseStartTimestampHns{0};
 static std::atomic<int64_t> g_accumulatedPausedHns{0};
+static std::mutex g_videoMutex;
 static std::mutex g_stopMutex;
 static std::condition_variable g_stopCv;
+static bool g_stopRequested = false;
+enum class CaptureCommand { Pause, Resume };
+static std::vector<CaptureCommand> g_captureCommands;
 
 static void reportMicrophoneCaptureUnavailable() {
     std::cerr << "WARNING: Failed to initialize WASAPI mic capture" << std::endl;
@@ -166,6 +172,20 @@ static std::wstring utf8ToWide(const std::string& str) {
     return wstr;
 }
 
+static std::string wideToUtf8(const wchar_t* text) {
+    const int length = WideCharToMultiByte(
+        CP_UTF8, WC_ERR_INVALID_CHARS, text, -1, nullptr, 0, nullptr, nullptr);
+    if (length <= 1) return {};
+
+    std::string result(static_cast<size_t>(length), '\0');
+    if (!WideCharToMultiByte(
+            CP_UTF8, WC_ERR_INVALID_CHARS, text, -1, result.data(), length, nullptr, nullptr)) {
+        return {};
+    }
+    result.pop_back();
+    return result;
+}
+
 static int64_t queryPerformanceCounterHns() {
     LARGE_INTEGER counter;
     LARGE_INTEGER frequency;
@@ -262,29 +282,30 @@ static void stdinListenerThread() {
             line.pop_back();
         }
 
-        if (line == "pause") {
-            openActivePauseAt(queryPerformanceCounterHns());
-            continue;
-        }
-
-        if (line == "resume") {
-            closeActivePauseAt(queryPerformanceCounterHns());
+        if (line == "pause" || line == "resume") {
+            {
+                std::lock_guard<std::mutex> lock(g_stopMutex);
+                g_captureCommands.push_back(
+                    line == "pause" ? CaptureCommand::Pause : CaptureCommand::Resume);
+            }
+            g_stopCv.notify_one();
             continue;
         }
 
         if (line == "stop") {
-            g_stopRequested = true;
-            g_stopCv.notify_all();
-            return;
+            break;
         }
     }
 
-    // stdin closed (parent process died)
-    g_stopRequested = true;
-    g_stopCv.notify_all();
+    // End the recording on Stop or when the parent closes stdin.
+    {
+        std::lock_guard<std::mutex> lock(g_stopMutex);
+        g_stopRequested = true;
+    }
+    g_stopCv.notify_one();
 }
 
-int main(int argc, char* argv[]) {
+int wmain(int argc, wchar_t* argv[]) {
     if (argc < 2) {
         std::cerr << "ERROR: Missing JSON config argument" << std::endl;
         return 1;
@@ -297,7 +318,7 @@ int main(int argc, char* argv[]) {
     winrt::init_apartment(winrt::apartment_type::multi_threaded);
 
     CaptureConfig config;
-    if (!parseSimpleJson(argv[1], config)) {
+    if (!parseSimpleJson(wideToUtf8(argv[1]), config)) {
         std::cerr << "ERROR: Failed to parse config JSON" << std::endl;
         return 1;
     }
@@ -339,6 +360,18 @@ int main(int argc, char* argv[]) {
     captureWidth = (captureWidth / 2) * 2;
     captureHeight = (captureHeight / 2) * 2;
 
+    // Declare before `encoder` so ~MFEncoder() joins the worker before these go out of scope.
+    std::atomic<int64_t> frameCount{0};
+    std::atomic<int64_t> firstVideoTimestampHns{-1};
+    std::atomic<bool> recordingStartedAnnounced{false};
+    std::atomic<bool> captureSetupComplete{false};
+    const auto announceRecordingStarted = [&] {
+        if (captureSetupComplete && frameCount > 0 && !recordingStartedAnnounced.exchange(true)) {
+            std::cout << "CAPTURE_SIZE:" << captureWidth << "x" << captureHeight << "\n";
+            std::cout << "Recording started" << std::endl;
+        }
+    };
+
     // Initialize encoder
     MFEncoder encoder;
     std::wstring outputPathW = utf8ToWide(config.outputPath);
@@ -347,30 +380,82 @@ int main(int argc, char* argv[]) {
         std::cerr << "ERROR: Failed to initialize Media Foundation encoder" << std::endl;
         return 1;
     }
+    encoder.setSampleWrittenCallback([&] {
+        frameCount.fetch_add(1);
+        announceRecordingStarted();
+    });
 
     // Set up frame callback
-    std::atomic<int64_t> frameCount{0};
-    std::atomic<int64_t> firstVideoTimestampHns{-1};
-    std::atomic<bool> recordingStartedAnnounced{false};
-    std::atomic<bool> captureSetupComplete{false};
-    session.setFrameCallback([&](ID3D11Texture2D* texture, int64_t timestampHns) {
-        g_lastFrameTimestampHns = timestampHns;
-        int64_t expectedFirstVideoTimestampHns = -1;
-        firstVideoTimestampHns.compare_exchange_strong(expectedFirstVideoTimestampHns, timestampHns);
-        if (g_stopRequested) return;
-
-        if (g_pauseRequested) return;
-
-        const int64_t adjustedTimestampHns = adjustedVideoTimestampHns(timestampHns);
-
-        if (encoder.writeFrame(texture, adjustedTimestampHns)) {
-            const int64_t writtenFrames = frameCount.fetch_add(1) + 1;
-            if (captureSetupComplete && writtenFrames >= 1 && !recordingStartedAnnounced.exchange(true)) {
-                std::cout << "Recording started" << std::endl;
-                std::cout.flush();
+    struct CachedWindowFrame {
+        ComPtr<ID3D11Texture2D> texture;
+        int width = 0;
+        int height = 0;
+        int64_t timestampHns = 0;
+    };
+    CachedWindowFrame pausedWindowFrame;
+    constexpr size_t kMaxPendingResumeFrames = 4;
+    std::deque<CachedWindowFrame> pendingResumeFrames;
+    bool videoStopped = false;
+    bool encoderInterrupted = false;
+    const auto writeResumedWindowFrames = [&] {
+        while (!pendingResumeFrames.empty()) {
+            auto& frame = pendingResumeFrames.front();
+            if (!encoder.writeFrameSync(frame.texture.Get(), frame.width, frame.height, frame.timestampHns)) {
+                return;
             }
+            if (!pausedWindowFrame.texture) pausedWindowFrame.texture = std::move(frame.texture);
+            pendingResumeFrames.pop_front();
         }
-    });
+    };
+
+    session.setFrameCallback([&](ID3D11Texture2D* texture, int contentWidth, int contentHeight,
+                                 int64_t timestampHns) {
+        std::lock_guard<std::mutex> lock(g_videoMutex);
+        g_lastFrameTimestampHns = timestampHns;
+        if (videoStopped) return;
+        int64_t expectedFirstVideoTimestampHns = -1;
+        if (firstVideoTimestampHns.compare_exchange_strong(expectedFirstVideoTimestampHns, timestampHns)) {
+            encoder.setTimelineOrigin(adjustedVideoTimestampHns(timestampHns));
+        }
+
+        if (g_pauseRequested) {
+            if (config.windowHandle <= 0 || contentWidth <= 0 || contentHeight <= 0 ||
+                timestampHns < g_pauseStartTimestampHns || timestampHns <= pausedWindowFrame.timestampHns) {
+                return;
+            }
+            // WGC does not emit another frame when a window becomes static before Resume.
+            D3D11_TEXTURE2D_DESC sourceDesc{};
+            texture->GetDesc(&sourceDesc);
+            D3D11_TEXTURE2D_DESC cachedDesc{};
+            if (pausedWindowFrame.texture) pausedWindowFrame.texture->GetDesc(&cachedDesc);
+            if (cachedDesc.Width != sourceDesc.Width || cachedDesc.Height != sourceDesc.Height ||
+                cachedDesc.Format != sourceDesc.Format) {
+                sourceDesc.Usage = D3D11_USAGE_DEFAULT;
+                sourceDesc.BindFlags = 0;
+                sourceDesc.CPUAccessFlags = 0;
+                sourceDesc.MiscFlags = 0;
+                ComPtr<ID3D11Texture2D> replacement;
+                if (FAILED(session.device()->CreateTexture2D(
+                        &sourceDesc, nullptr, replacement.GetAddressOf()))) return;
+                pausedWindowFrame.texture = std::move(replacement);
+            }
+            session.context()->CopyResource(pausedWindowFrame.texture.Get(), texture);
+            pausedWindowFrame.width = contentWidth;
+            pausedWindowFrame.height = contentHeight;
+            pausedWindowFrame.timestampHns = timestampHns;
+            return;
+        }
+        writeResumedWindowFrames();
+        const int64_t presentationHns = adjustedVideoTimestampHns(timestampHns);
+        if (!pendingResumeFrames.empty()) {
+            // Confirm the newer live frame actually commits before superseding failed resume frames.
+            if (encoder.writeFrameSync(texture, contentWidth, contentHeight, presentationHns)) {
+                pendingResumeFrames.clear();
+            }
+        } else {
+            encoder.writeFrame(texture, contentWidth, contentHeight, presentationHns);
+        }
+    }, [] { return g_pauseRequested.load(); });
 
     // Start stdin listener
     std::thread stdinThread(stdinListenerThread);
@@ -410,6 +495,9 @@ int main(int argc, char* argv[]) {
     if (audioInitialized) {
         audioActive = loopback.start();
     }
+    if (config.captureSystemAudio && !audioActive) {
+        std::cout << "SYSTEM_AUDIO_CAPTURE_UNAVAILABLE" << std::endl;
+    }
     if (micInitialized) {
         micActive = micCapture.start();
         if (!micActive) {
@@ -417,44 +505,95 @@ int main(int argc, char* argv[]) {
         }
     }
     captureSetupComplete = true;
+    announceRecordingStarted();
 
-    // Wait for stop signal while pausing/resuming audio tracks in lockstep.
-    while (!g_stopRequested && !session.hasFatalError()) {
-        if (g_pauseRequested) {
-            if (audioActive) loopback.pause();
-            if (micActive) micCapture.pause();
-        } else {
-            if (audioActive) loopback.resume();
-            if (micActive) micCapture.resume();
+    const auto resumeAudio = [&] {
+        if (audioActive) loopback.resume();
+        if (micActive) micCapture.resume();
+    };
+
+    while (!session.hasFatalError()) {
+        std::vector<CaptureCommand> commands;
+        bool stopRequested;
+        {
+            std::unique_lock<std::mutex> lock(g_stopMutex);
+            g_stopCv.wait_for(lock, std::chrono::milliseconds(20), [] {
+                return g_stopRequested || !g_captureCommands.empty();
+            });
+            commands.swap(g_captureCommands);
+            stopRequested = g_stopRequested;
         }
+        for (const auto command : commands) {
+            if (command == CaptureCommand::Pause && !g_pauseRequested) {
+                {
+                    std::lock_guard<std::mutex> lock(g_videoMutex);
+                    writeResumedWindowFrames();
+                    openActivePauseAt(queryPerformanceCounterHns());
+                }
+                if (audioActive) loopback.pause();
+                if (micActive) micCapture.pause();
+            } else if (command == CaptureCommand::Resume && g_pauseRequested) {
+                // Frames queued during the drain belong at or after the Resume boundary.
+                const int64_t resumeTimestampHns = queryPerformanceCounterHns();
+                resumeAudio();
+                session.resumeAfterPendingFrames(resumeTimestampHns, [&] {
+                    std::lock_guard<std::mutex> lock(g_videoMutex);
+                    closeActivePauseAt(resumeTimestampHns);
+                    writeResumedWindowFrames();
+                    if (!pausedWindowFrame.timestampHns) return;
+                    if (pendingResumeFrames.size() == kMaxPendingResumeFrames) {
+                        // Recover the take instead of growing GPU memory usage while writes keep failing.
+                        encoderInterrupted = true;
+                        return;
+                    }
+                    pausedWindowFrame.timestampHns = adjustedVideoTimestampHns(resumeTimestampHns);
+                    pendingResumeFrames.push_back(std::exchange(pausedWindowFrame, CachedWindowFrame{}));
+                    writeResumedWindowFrames();
+                });
+                if (encoderInterrupted) break;
+            }
+        }
+        if (stopRequested || encoderInterrupted) break;
 
-        std::unique_lock<std::mutex> lock(g_stopMutex);
-        g_stopCv.wait_for(lock, std::chrono::milliseconds(20), [] { return g_stopRequested.load(); });
+        if (!g_pauseRequested) {
+            resumeAudio();
+            if (config.windowHandle > 0) {
+                std::lock_guard<std::mutex> lock(g_videoMutex);
+                writeResumedWindowFrames();
+            }
+        }
     }
 
-    // Stop capture and finalize
-    const int64_t adjustedStopTimestampHns = adjustedVideoTimestampHns(queryPerformanceCounterHns());
+    // Stop capture admission first so no new live frames can race with the final drain.
+    int64_t adjustedStopTimestampHns;
+    {
+        std::lock_guard<std::mutex> lock(g_videoMutex);
+        videoStopped = true;
+        adjustedStopTimestampHns = adjustedVideoTimestampHns(queryPerformanceCounterHns());
+    }
     session.stopCapture();
     if (audioActive) loopback.stop();
     if (micActive) micCapture.stop();
 
-    if (session.hasFatalError()) {
-        std::cerr << "ERROR: WGC capture session failed during recording" << std::endl;
-        encoder.finalize();
-        DeleteFileW(outputPathW.c_str());
-        if (!config.audioOutputPath.empty()) {
-            const std::wstring audioPathW = utf8ToWide(config.audioOutputPath);
-            const std::wstring audioMetadataPathW = utf8ToWide(config.audioOutputPath + ".json");
-            DeleteFileW(audioPathW.c_str());
-            DeleteFileW(audioMetadataPathW.c_str());
+    // Drain queued live frames so a full staging ring cannot reject cached resume frames
+    // at Stop, and so frameCount reflects every actually committed sample.
+    encoder.drain();
+    {
+        std::lock_guard<std::mutex> lock(g_videoMutex);
+        writeResumedWindowFrames();
+        if (!pendingResumeFrames.empty()) {
+            encoderInterrupted = true;
         }
-        if (!config.micOutputPath.empty()) {
-            const std::wstring micPathW = utf8ToWide(config.micOutputPath);
-            const std::wstring micMetadataPathW = utf8ToWide(config.micOutputPath + ".json");
-            DeleteFileW(micPathW.c_str());
-            DeleteFileW(micMetadataPathW.c_str());
-        }
-        return 1;
+    }
+
+    // A device/source failure can happen after minutes of valid capture. Finalize
+    // the same tracks as an ordinary stop; never discard that recoverable take.
+    const bool interrupted = encoderInterrupted || session.hasFatalError();
+    if (interrupted) {
+        std::cout << "CAPTURE_INTERRUPTED: "
+                  << (encoderInterrupted ? "Could not encode queued window frames"
+                                         : "WGC capture session failed during recording")
+                  << std::endl;
     }
 
     if (audioActive) {
@@ -472,6 +611,7 @@ int main(int argc, char* argv[]) {
 
     if (frameCount.load() <= 0) {
         std::cerr << "ERROR: No video frames were captured before stop" << std::endl;
+        encoder.finalize();
         DeleteFileW(outputPathW.c_str());
         return 1;
     }
@@ -485,7 +625,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    std::cout << "Recording stopped. Output path: " << config.outputPath << std::endl;
+    std::cout << (interrupted ? "Recording interrupted. Output path: " : "Recording stopped. Output path: ")
+              << config.outputPath << std::endl;
     if (audioActive) {
         if (
             loopback.dataDiscontinuityCount() > 0 ||
@@ -534,5 +675,5 @@ int main(int argc, char* argv[]) {
     Sleep(100);
 
     // Fast exit to avoid WinRT/COM teardown crashes during apartment cleanup
-    ExitProcess(0);
+    ExitProcess(interrupted ? 1 : 0);
 }

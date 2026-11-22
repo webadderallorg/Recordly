@@ -2,6 +2,11 @@ import type { Span } from "dnd-timeline";
 import type { ShortcutBinding } from "@/lib/shortcuts";
 import type { ZoomMode } from "../../types";
 
+export interface ClipSequenceSpan extends Span {
+	/** Insertion index after removing the active clip from the ordered sequence. */
+	sequenceIndex?: number;
+}
+
 export interface TimelineRegionSpan {
 	id: string;
 	start: number;
@@ -23,8 +28,12 @@ export interface TimelineShortcutBindings {
 	addKeyframe: ShortcutBinding;
 	addZoom: ShortcutBinding;
 	splitClip: ShortcutBinding;
+	trimStart: ShortcutBinding;
+	trimEnd: ShortcutBinding;
 	addAnnotation: ShortcutBinding;
 	deleteSelected: ShortcutBinding;
+	duplicateSelected: ShortcutBinding;
+	playPause: ShortcutBinding;
 }
 
 export interface TimelineRenderItem {

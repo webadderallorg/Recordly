@@ -1,0 +1,16 @@
+/* The frame viewport drives the application's own breakpoints. Do not rescale its DOM. */
+html,
+body,
+#root {
+	width: 100%;
+	height: 100%;
+	margin: 0;
+}
+body {
+	overflow: hidden;
+}
+.studio-preview-waiting {
+	padding: 24px;
+	color: var(--foreground);
+	font-size: 13px;
+}

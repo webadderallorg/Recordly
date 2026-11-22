@@ -1,14 +1,9 @@
-import {
-	ArrowRight,
-	ArrowSquareOut as ExternalLink,
-	Question as HelpCircle,
-	Keyboard,
-	ChatDots as MessageSquareMore,
-	Scissors,
-	GearSix as Settings2,
-	XLogo as Twitter,
-} from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
+import {
+	DiscordIcon,
+	openExternalLink,
+	RECORDLY_DISCORD_URL,
+} from "@/components/feedback/FeedbackLinks";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -18,168 +13,55 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+	ArrowRight,
+	Question as HelpCircle,
+	Keyboard,
+	Scissors,
+	GearSix as Settings2,
+} from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { formatBinding, SHORTCUT_ACTIONS, SHORTCUT_LABELS } from "@/lib/shortcuts";
 import { formatShortcut } from "@/utils/platformUtils";
-import { toast } from "sonner";
 
-export const RECORDLY_ISSUES_URL = "https://github.com/webadderallorg/Recordly/issues";
-const RECORDLY_DISCORD_URL = "https://discord.gg/sdv2FBVNgE";
-const RECORDLY_X_URL = "https://x.com/webadderall";
-const CONTACT_EMAIL = "youngchen3442@gmail.com";
+export { openExternalLink, RECORDLY_ISSUES_URL } from "@/components/feedback/FeedbackLinks";
 export const APP_HEADER_ACTION_BUTTON_CLASS =
 	"h-7 px-2 text-xs text-muted-foreground hover:bg-foreground/10 hover:text-foreground transition-all gap-1.5";
 export const APP_HEADER_ICON_BUTTON_CLASS =
-	"h-7 w-7 p-0 text-muted-foreground hover:bg-foreground/10 hover:text-foreground transition-all";
+	"h-9 w-9 min-w-9 p-0 text-muted-foreground hover:bg-foreground/10 hover:text-foreground transition-all";
 
 interface KeyboardShortcutsDialogProps {
 	triggerLabel?: string;
 	triggerClassName?: string;
 }
 
-function DiscordIcon(props: React.SVGProps<SVGSVGElement>) {
-	return (
-		<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
-			<path d="M20.317 4.369A19.791 19.791 0 0 0 15.418 3a13.255 13.255 0 0 0-.615 1.263 18.27 18.27 0 0 0-5.606 0A13.25 13.25 0 0 0 8.582 3a19.736 19.736 0 0 0-4.9 1.369C.533 9.091-.32 13.697.099 18.237a19.917 19.917 0 0 0 5.993 3.024 14.32 14.32 0 0 0 1.284-2.108 12.804 12.804 0 0 1-2.021-.972c.17-.126.335-.258.495-.395a14.135 14.135 0 0 0 12.3 0c.16.137.325.269.495.395a12.736 12.736 0 0 1-2.026.974 14.103 14.103 0 0 0 1.284 2.106 19.883 19.883 0 0 0 5.996-3.024c.489-5.258-.836-9.822-3.682-13.868ZM8.02 15.331c-1.182 0-2.154-1.085-2.154-2.419 0-1.334.953-2.419 2.154-2.419 1.211 0 2.173 1.095 2.154 2.419 0 1.334-.953 2.419-2.154 2.419Zm7.96 0c-1.182 0-2.154-1.085-2.154-2.419 0-1.334.953-2.419 2.154-2.419 1.211 0 2.173 1.095 2.154 2.419 0 1.334-.943 2.419-2.154 2.419Z" />
-		</svg>
-	);
-}
-
-export async function openExternalLink(url: string, errorMessage: string) {
-	try {
-		const result = await window.electronAPI.openExternalUrl(url);
-		if (!result.success) {
-			toast.error(result.error || errorMessage);
-		}
-	} catch (error) {
-		toast.error(`${errorMessage} ${String(error)}`);
-	}
-}
-
-export function DiscordLinkButton() {
+export function DiscordLinkButton({ className }: { className?: string }) {
 	const t = useScopedT("editor");
+	const tEditing = useScopedT("editing");
 
 	return (
 		<Button
 			type="button"
 			variant="ghost"
 			size="sm"
+			isIconOnly
 			onClick={() =>
 				void openExternalLink(
 					RECORDLY_DISCORD_URL,
 					t("feedback.openFailed", "Failed to open link."),
 				)
 			}
-			className={APP_HEADER_ICON_BUTTON_CLASS}
-			title={t("common.app.discord", "Join Discord")}
-			aria-label={t("common.app.discord", "Join Discord")}
+			className={className ?? APP_HEADER_ICON_BUTTON_CLASS}
+			title={tEditing("joinDiscord", "Join Discord")}
+			aria-label={tEditing("joinDiscord", "Join Discord")}
 		>
-			<DiscordIcon className="h-3.5 w-3.5" />
+			<DiscordIcon className="size-4 shrink-0" />
 		</Button>
 	);
 }
 
-export function FeedbackDialog() {
-	const t = useScopedT("editor");
-
-	return (
-		<Dialog>
-			<DialogTrigger asChild>
-				<Button
-					variant="ghost"
-					size="sm"
-					className={APP_HEADER_ICON_BUTTON_CLASS}
-					title={t("feedback.trigger", "Feedback")}
-					aria-label={t("feedback.trigger", "Feedback")}
-				>
-					<MessageSquareMore className="h-3.5 w-3.5" />
-				</Button>
-			</DialogTrigger>
-			<DialogContent className="max-w-lg bg-editor-dialog border-foreground/10 [&>button]:text-muted-foreground [&>button:hover]:text-foreground">
-				<DialogHeader>
-					<DialogTitle className="text-xl font-semibold text-foreground flex items-center gap-2">
-						<MessageSquareMore className="h-5 w-5 text-[#2563EB]" />{" "}
-						{t("feedback.title", "Feedback & contact")}
-					</DialogTitle>
-					<DialogDescription className="text-muted-foreground">
-						{t(
-							"feedback.description",
-							"Reach out directly or open an issue if something is broken or missing.",
-						)}
-					</DialogDescription>
-				</DialogHeader>
-				<div className="mt-4 space-y-4">
-					<div className="rounded-xl border border-foreground/10 bg-foreground/[0.03] p-4 space-y-3">
-						<div className="flex items-center justify-between gap-3 rounded-lg border border-foreground/5 bg-foreground/5 px-3 py-3">
-							<div>
-								<p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/70">
-									{t("feedback.emailLabel", "Email")}
-								</p>
-								<p className="mt-1 text-sm font-medium text-foreground">
-									{CONTACT_EMAIL}
-								</p>
-							</div>
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() =>
-									void openExternalLink(
-										`mailto:${CONTACT_EMAIL}`,
-										t("feedback.openFailed", "Failed to open link."),
-									)
-								}
-								className="border-foreground/10 bg-foreground/5 text-foreground hover:bg-foreground/10 hover:text-foreground"
-							>
-								<ExternalLink className="h-3.5 w-3.5" />
-							</Button>
-						</div>
-						<div className="flex items-center justify-between gap-3 rounded-lg border border-foreground/5 bg-foreground/5 px-3 py-3">
-							<div>
-								<p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/70">
-									{t("feedback.xLabel", "X")}
-								</p>
-								<p className="mt-1 text-sm font-medium text-foreground">
-									@webadderall
-								</p>
-							</div>
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() =>
-									void openExternalLink(
-										RECORDLY_X_URL,
-										t("feedback.openFailed", "Failed to open link."),
-									)
-								}
-								className="border-foreground/10 bg-foreground/5 text-foreground hover:bg-foreground/10 hover:text-foreground"
-							>
-								<Twitter className="h-3.5 w-3.5" />
-							</Button>
-						</div>
-					</div>
-					<Button
-						type="button"
-						variant="outline"
-						onClick={() =>
-							void openExternalLink(
-								RECORDLY_ISSUES_URL,
-								t("feedback.openFailed", "Failed to open link."),
-							)
-						}
-						className="h-10 w-full justify-between border-foreground/10 bg-foreground/5 px-4 text-foreground hover:bg-foreground/10 hover:text-foreground"
-					>
-						<span className="flex items-center gap-2 text-sm font-medium">
-							<MessageSquareMore className="h-4 w-4" />
-							{t("feedback.reportIssue", "Report issue / send feedback")}
-						</span>
-						<ExternalLink className="h-3.5 w-3.5 text-muted-foreground/70" />
-					</Button>
-				</div>
-			</DialogContent>
-		</Dialog>
-	);
-}
+export { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 
 export function KeyboardShortcutsDialog({
 	triggerLabel,
@@ -212,7 +94,7 @@ export function KeyboardShortcutsDialog({
 					{triggerLabel ? <span className="font-medium">{triggerLabel}</span> : null}
 				</Button>
 			</DialogTrigger>
-			<DialogContent className="max-w-lg bg-editor-dialog border-foreground/10 [&>button]:text-muted-foreground [&>button:hover]:text-foreground">
+			<DialogContent className="max-w-lg">
 				<DialogHeader>
 					<DialogTitle className="text-xl font-semibold text-foreground flex items-center gap-2">
 						<Keyboard className="h-5 w-5 text-[#2563EB]" />{" "}
@@ -268,12 +150,7 @@ export function KeyboardShortcutsDialog({
 						</div>
 					</div>
 					<div className="flex justify-end">
-						<Button
-							type="button"
-							variant="outline"
-							onClick={openConfig}
-							className="border-foreground/10 bg-foreground/5 text-foreground hover:bg-foreground/10 hover:text-foreground"
-						>
+						<Button type="button" variant="outline" onClick={openConfig}>
 							<Settings2 className="h-4 w-4" />
 							{t("keyboardShortcuts.customize")}
 						</Button>
@@ -295,7 +172,7 @@ export function TutorialHelp() {
 					<span className="font-medium">{t("tutorial.howTrimmingWorks")}</span>
 				</Button>
 			</DialogTrigger>
-			<DialogContent className="max-w-2xl bg-editor-dialog border-foreground/10 [&>button]:text-muted-foreground [&>button:hover]:text-foreground">
+			<DialogContent className="max-w-2xl">
 				<DialogHeader>
 					<DialogTitle className="text-xl font-semibold text-foreground flex items-center gap-2">
 						<Scissors className="w-5 h-5 text-[#ef4444]" /> {t("tutorial.title")}

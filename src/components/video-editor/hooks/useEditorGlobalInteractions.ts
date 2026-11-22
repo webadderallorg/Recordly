@@ -1,4 +1,4 @@
-import { type RefObject, useEffect } from "react";
+import { type RefObject, useEffect, useRef } from "react";
 import type { useShortcuts } from "@/contexts/ShortcutsContext";
 import { matchesShortcut } from "@/lib/shortcuts";
 import type { useTimelineState } from "../state/useTimelineState";
@@ -23,12 +23,36 @@ export function useEditorGlobalInteractions({
 	handleRedo,
 	startPlayback,
 }: Input) {
+	const heldPlaybackKey = useRef<string | null>(null);
+
 	useEffect(() => {
+		const consumePlaybackKey = (event: KeyboardEvent) => {
+			event.preventDefault();
+			// React Aria buttons also handle Space. Own both halves of this shortcut
+			// so their press handler cannot toggle playback a second time.
+			event.stopImmediatePropagation();
+		};
+		const keyIdentity = (event: KeyboardEvent) => event.code || event.key.toLowerCase();
+		const handleKeyUp = (event: KeyboardEvent) => {
+			if (heldPlaybackKey.current !== keyIdentity(event)) return;
+			heldPlaybackKey.current = null;
+			consumePlaybackKey(event);
+		};
+		const releasePlaybackKey = () => {
+			heldPlaybackKey.current = null;
+		};
 		const handleKeyDown = (event: KeyboardEvent) => {
+			if (heldPlaybackKey.current === keyIdentity(event)) {
+				consumePlaybackKey(event);
+				return;
+			}
+			if (event.defaultPrevented || event.isComposing) return;
 			const target = event.target as HTMLElement | null;
+			if (target?.closest?.("[data-recording-library], [data-inline-crop]")) return;
 			const editable =
 				target instanceof HTMLInputElement ||
 				target instanceof HTMLTextAreaElement ||
+				target instanceof HTMLSelectElement ||
 				target?.isContentEditable;
 			const primaryModifier = isMac ? event.metaKey : event.ctrlKey;
 			const key = event.key.toLowerCase();
@@ -49,14 +73,22 @@ export function useEditorGlobalInteractions({
 				return;
 			}
 			if (!matchesShortcut(event, shortcuts.playPause, isMac) || editable) return;
-			event.preventDefault();
+			consumePlaybackKey(event);
+			if (event.repeat) return;
+			heldPlaybackKey.current = keyIdentity(event);
 			const playback = videoPlaybackRef.current;
 			if (!playback?.video) return;
 			if (!playback.isPlaying) startPlayback();
 			else playback.pause();
 		};
 		window.addEventListener("keydown", handleKeyDown, { capture: true });
-		return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+		window.addEventListener("keyup", handleKeyUp, { capture: true });
+		window.addEventListener("blur", releasePlaybackKey);
+		return () => {
+			window.removeEventListener("keydown", handleKeyDown, { capture: true });
+			window.removeEventListener("keyup", handleKeyUp, { capture: true });
+			window.removeEventListener("blur", releasePlaybackKey);
+		};
 	}, [shortcuts, isMac, handleUndo, handleRedo, startPlayback, videoPlaybackRef]);
 
 	useEffect(() => {

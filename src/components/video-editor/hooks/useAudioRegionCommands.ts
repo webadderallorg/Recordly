@@ -3,6 +3,7 @@ import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback 
 import type { AudioRegion, EditorEffectSection } from "../types";
 
 interface UseAudioRegionCommandsParams {
+	setSelectedClipId: Dispatch<SetStateAction<string | null>>;
 	setAudioRegions: Dispatch<SetStateAction<AudioRegion[]>>;
 	selectedAudioId: string | null;
 	setSelectedAudioId: Dispatch<SetStateAction<string | null>>;
@@ -14,6 +15,7 @@ interface UseAudioRegionCommandsParams {
 }
 
 export function useAudioRegionCommands({
+	setSelectedClipId,
 	setAudioRegions,
 	selectedAudioId,
 	setSelectedAudioId,
@@ -29,6 +31,7 @@ export function useAudioRegionCommands({
 			if (id) {
 				setSelectedZoomId(null);
 				setSelectedAnnotationId(null);
+				setSelectedClipId(null);
 				setSelectedCaptionId(null);
 				setActiveEffectSection("audio");
 			}
@@ -36,6 +39,7 @@ export function useAudioRegionCommands({
 		[
 			setActiveEffectSection,
 			setSelectedAnnotationId,
+			setSelectedClipId,
 			setSelectedAudioId,
 			setSelectedCaptionId,
 			setSelectedZoomId,
@@ -58,6 +62,7 @@ export function useAudioRegionCommands({
 			setSelectedAudioId(id);
 			setSelectedZoomId(null);
 			setSelectedAnnotationId(null);
+			setSelectedClipId(null);
 			setSelectedCaptionId(null);
 			setActiveEffectSection("audio");
 		},
@@ -66,6 +71,7 @@ export function useAudioRegionCommands({
 			setActiveEffectSection,
 			setAudioRegions,
 			setSelectedAnnotationId,
+			setSelectedClipId,
 			setSelectedAudioId,
 			setSelectedCaptionId,
 			setSelectedZoomId,

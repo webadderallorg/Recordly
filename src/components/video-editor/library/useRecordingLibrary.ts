@@ -1,0 +1,287 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "@/components/ui/toast";
+import { useScopedT } from "@/contexts/I18nContext";
+import type { RecordingLibraryEntry } from "@/types/recordingLibrary";
+import { packClipSequence, rippleRegionAnchors, rippleRegions } from "../clipSequence";
+import type { useAppearanceState } from "../state/useAppearanceState";
+import type { useEditorUiState } from "../state/useEditorUiState";
+import type { useProjectState } from "../state/useProjectState";
+import type { useTimelineState } from "../state/useTimelineState";
+import { sortClipRegions } from "../types";
+
+export function useRecordingLibrary(
+	project: ReturnType<typeof useProjectState>,
+	timeline: ReturnType<typeof useTimelineState>,
+	ui: ReturnType<typeof useEditorUiState>,
+	appearance: ReturnType<typeof useAppearanceState>,
+) {
+	const te = useScopedT("editing");
+	const [open, setOpen] = useState(false);
+	const [entries, setEntries] = useState<RecordingLibraryEntry[]>([]);
+	const [selected, setSelected] = useState<Set<string>>(new Set());
+	const [loading, setLoading] = useState(false);
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const [removed, setRemoved] = useState<string[][]>([]);
+	const lock = useRef(false);
+	const current = useRef({ project, timeline, ui, appearance });
+	current.current = { project, timeline, ui, appearance };
+	const assertActiveProject = (initial: typeof project) => {
+		const latest = current.current.project;
+		if (
+			latest.loading ||
+			latest.videoSourcePath !== initial.videoSourcePath ||
+			latest.currentProjectPath !== initial.currentProjectPath ||
+			latest.lastSavedSnapshot?.projectId !== initial.lastSavedSnapshot?.projectId
+		) {
+			throw new Error(
+				te(
+					"projectChangedWhileImporting",
+					"The project changed while importing. Add the recordings again.",
+				),
+			);
+		}
+	};
+	const refresh = useCallback(async () => {
+		setLoading(true);
+		setError(null);
+		try {
+			const result = await window.electronAPI.listRecordings();
+			if (!result.success) throw new Error(result.error);
+			setEntries(result.value);
+			setSelected(
+				(previous) =>
+					new Set(
+						[...previous].filter((path) =>
+							result.value.some((entry) => entry.path === path),
+						),
+					),
+			);
+		} catch (error) {
+			setError(String(error));
+		} finally {
+			setLoading(false);
+		}
+	}, []);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: opening another project resets the media-server access list.
+	useEffect(() => {
+		if (open) void refresh();
+	}, [open, refresh, project.videoSourcePath]);
+	const remove = async (paths: string[]) => {
+		if (lock.current || !paths.length) return;
+		lock.current = true;
+		setBusy(true);
+		try {
+			const result = await window.electronAPI.setRecordingsRemoved(paths, true);
+			if (!result.success) throw new Error(result.error);
+			setRemoved([paths]);
+			setEntries((previous) => previous.filter((entry) => !paths.includes(entry.path)));
+			setSelected(new Set());
+		} catch (error) {
+			toast.error(
+				te("removeVideosFailed", "Could not remove videos: {{error}}", {
+					error: String(error),
+				}),
+			);
+		} finally {
+			lock.current = false;
+			setBusy(false);
+		}
+	};
+	const undo = async () => {
+		const paths = removed[removed.length - 1];
+		if (lock.current || !paths) return;
+		lock.current = true;
+		setBusy(true);
+		try {
+			const result = await window.electronAPI.setRecordingsRemoved(paths, false);
+			if (!result.success) throw new Error(result.error);
+			setRemoved((previous) => previous.slice(0, -1));
+			await refresh();
+		} catch (error) {
+			toast.error(
+				te("restoreVideosFailed", "Could not restore videos: {{error}}", {
+					error: String(error),
+				}),
+			);
+		} finally {
+			lock.current = false;
+			setBusy(false);
+		}
+	};
+	const [importing, setImporting] = useState(false);
+	const cancelled = useRef(false);
+	const [cancelling, setCancelling] = useState(false);
+	const cancelImport = async () => {
+		cancelled.current = true;
+		setCancelling(true);
+		try {
+			await window.electronAPI.cancelRecordingImport();
+		} catch (error) {
+			toast.error(
+				te("stopImportFailed", "Could not stop import processing: {{error}}", {
+					error: String(error),
+				}),
+			);
+		}
+	};
+	const addToTimeline = async (paths: string | string[], index?: number) => {
+		const initial = current.current;
+		const source = initial.project.videoSourcePath;
+		let retainedSource = source;
+		if (lock.current || initial.project.loading || !source) return;
+		lock.current = true;
+		cancelled.current = false;
+		setCancelling(false);
+		setImporting(true);
+		initial.ui.videoPlaybackRef.current?.pause();
+		initial.ui.setIsPlaying(false);
+		try {
+			const before = sortClipRegions(initial.timeline.clipRegions);
+			let sequence = before;
+			let media;
+			let webcam = initial.appearance.webcam;
+			let sourcePath = source;
+			let insertAt = Math.min(before.length, Math.max(0, index ?? before.length));
+			let id = "";
+			let completed = 0;
+			for (const path of [...new Set(typeof paths === "string" ? [paths] : paths)]) {
+				if (cancelled.current) break;
+				const result = await window.electronAPI.importRecording(sourcePath, path, webcam);
+				assertActiveProject(initial.project);
+				if (!result.success) {
+					if (cancelled.current) break;
+					throw new Error(result.error);
+				}
+				completed++;
+				media = result.value;
+				sourcePath = media.path;
+				if (media.webcam) webcam = { ...webcam, ...media.webcam, enabled: true };
+				id = `clip-${initial.ui.nextClipIdRef.current++}`;
+				const next = sequence.map((clip) => ({
+					...clip,
+					sourceMinMs: clip.sourceMinMs ?? 0,
+					sourceMaxMs: clip.sourceMaxMs ?? media!.sourceStartMs,
+				}));
+				next.splice(insertAt++, 0, {
+					id,
+					startMs: 0,
+					endMs: media.durationMs,
+					sourceStartMs: media.sourceStartMs,
+					sourceMinMs: media.sourceStartMs,
+					sourceMaxMs: media.sourceStartMs + media.durationMs,
+					speed: 1,
+				});
+				sequence = packClipSequence(next);
+			}
+			if (!media) return;
+			// Prepare cleanup while retaining rollback ownership until the project check passes.
+			const prepared = await window.electronAPI.finishRecordingImport(media.path);
+			if (!prepared.success)
+				throw new Error(
+					prepared.error ||
+						te("couldNotFinalizeImportedMedia", "Could not finalize imported media"),
+				);
+			assertActiveProject(initial.project);
+			const { project, timeline, ui, appearance } = current.current;
+			// Send acceptance before synchronous project state updates; no await can switch projects here.
+			void window.electronAPI
+				.finishRecordingImport(media.path, true)
+				.catch((error) => console.warn("Could not accept imported media", error));
+			ui.clipInitializedRef.current = true;
+			ui.autoFullTrackClipIdRef.current = null;
+			ui.autoFullTrackClipEndMsRef.current = null;
+			ui.setCurrentTime((sequence.find((clip) => clip.id === id)?.startMs ?? 0) / 1000);
+			ui.setDuration(media.totalDurationMs / 1000);
+			timeline.setClipRegions(sequence);
+			timeline.setZoomRegions((current) => rippleRegions(current, before, sequence));
+			timeline.setAnnotationRegions((current) => rippleRegions(current, before, sequence));
+			timeline.setAudioRegions((current) => rippleRegionAnchors(current, before, sequence));
+			timeline.setSelectedClipId(id);
+			if (media.webcam)
+				appearance.setWebcam((previous) => ({
+					...previous,
+					...webcam,
+					enabled: true,
+				}));
+			project.setVideoSourcePath(media.path);
+			retainedSource = media.path;
+			project.setVideoPath(media.url);
+			ui.setIsPreviewReady(false);
+			ui.setPreviewVersion((version) => version + 1);
+			toast.success(
+				completed === 1
+					? te("videoAddedToTimeline", "Video added to timeline")
+					: te("videosAddedToTimeline", "{{count}} videos added to timeline", {
+							count: completed,
+						}),
+			);
+		} catch (error) {
+			if (!cancelled.current)
+				toast.error(
+					te("addVideoFailed", "Could not add video: {{error}}", {
+						error: String(error),
+					}),
+				);
+		} finally {
+			try {
+				const cleanup = await window.electronAPI.finishRecordingImport(
+					retainedSource!,
+					true,
+				);
+				if (!cleanup.success)
+					console.warn("Could not clean up temporary imports", cleanup.error);
+			} catch (error) {
+				console.warn("Could not clean up temporary imports", error);
+			}
+			lock.current = false;
+			setImporting(false);
+			setCancelling(false);
+		}
+	};
+	const importVideoFile = async () => {
+		const initial = current.current.project;
+		if (lock.current || initial.loading || !initial.videoSourcePath) return;
+		lock.current = true;
+		setBusy(true);
+		let path: string;
+		try {
+			const selected = await window.electronAPI.openVideoFilePicker({
+				preserveProjectPath: true,
+			});
+			if (selected.canceled) return;
+			if (!selected.success || !selected.path || selected.kind === "project")
+				throw new Error(selected.error || selected.message);
+			assertActiveProject(initial);
+			path = selected.path;
+		} catch (error) {
+			toast.error(
+				te("addVideoFailed", "Could not add video: {{error}}", { error: String(error) }),
+			);
+			return;
+		} finally {
+			lock.current = false;
+			setBusy(false);
+		}
+		await addToTimeline(path);
+	};
+	return {
+		open,
+		setOpen,
+		entries,
+		selected,
+		setSelected,
+		loading,
+		busy,
+		error,
+		refresh,
+		remove,
+		undo,
+		canUndo: removed.length > 0,
+		importing,
+		cancelling,
+		cancelImport,
+		addToTimeline,
+		importVideoFile,
+	};
+}

@@ -34,12 +34,12 @@ function createMockMediaRecorder(initialState: RecordingState = "inactive") {
 }
 
 describe("createProcessedMicrophoneConstraints", () => {
-	it("requests browser voice processing with AGC for the default microphone", () => {
+	it("disables AGC to avoid microphone crackle while keeping default echo and noise processing", () => {
 		expect(createProcessedMicrophoneConstraints()).toEqual({
 			audio: {
 				echoCancellation: true,
 				noiseSuppression: true,
-				autoGainControl: true,
+				autoGainControl: false,
 				channelCount: { ideal: 1 },
 				sampleRate: { ideal: 48000 },
 			},
@@ -53,7 +53,7 @@ describe("createProcessedMicrophoneConstraints", () => {
 				deviceId: { exact: "device-123" },
 				echoCancellation: true,
 				noiseSuppression: true,
-				autoGainControl: true,
+				autoGainControl: false,
 				channelCount: { ideal: 1 },
 				sampleRate: { ideal: 48000 },
 			},
@@ -107,8 +107,8 @@ describe("createProcessedMicrophoneConstraints", () => {
 
 	it("normalizes invalid lab microphone profiles to production voice processing", () => {
 		expect(normalizeBrowserMicrophoneProfile("RAW")).toBe("raw");
-		expect(normalizeBrowserMicrophoneProfile("unknown")).toBe("processed");
-		expect(normalizeBrowserMicrophoneProfile(null)).toBe("processed");
+		expect(normalizeBrowserMicrophoneProfile("unknown")).toBe("no-agc");
+		expect(normalizeBrowserMicrophoneProfile(null)).toBe("no-agc");
 	});
 });
 
@@ -176,7 +176,7 @@ describe("shouldUseNativeWindowsCaptureForSource", () => {
 
 describe("stopAndDiscardNativeCapture", () => {
 	it("deletes the partial recording after a successful warm-start stop", async () => {
-		const deleteRecordingFile = vi.fn().mockResolvedValue(undefined);
+		const deleteRecordingFile = vi.fn().mockResolvedValue({ success: true });
 
 		await expect(
 			stopAndDiscardNativeCapture({
@@ -211,6 +211,23 @@ describe("stopAndDiscardNativeCapture", () => {
 			error: "helper still running",
 		});
 		expect(deleteRecordingFile).not.toHaveBeenCalled();
+	});
+
+	it("does not confirm deletion when IPC resolves with a failure result", async () => {
+		const result = await stopAndDiscardNativeCapture({
+			stopNativeScreenRecording: vi
+				.fn()
+				.mockResolvedValue({ success: true, path: "/take.mp4" }),
+			deleteRecordingFile: vi
+				.fn()
+				.mockResolvedValue({ success: false, error: "file locked" }),
+		});
+		expect(result).toMatchObject({
+			stopSucceeded: true,
+			deleteSucceeded: false,
+			path: "/take.mp4",
+		});
+		expect(result.error).toEqual(new Error("file locked"));
 	});
 
 	it("keeps the stopped path available when deletion fails so cleanup can retry", async () => {
@@ -397,6 +414,7 @@ function cancelRecording(
 	chunks: { current: Blob[] },
 	webcamRecorder?: ReturnType<typeof createMockMediaRecorder> | null,
 	webcamChunks?: { current: Blob[] },
+	stopMicFallbackRecorder?: () => Promise<Blob | null>,
 ) {
 	if (webcamChunks) webcamChunks.current = [];
 	if (webcamRecorder && webcamRecorder.state !== "inactive") {
@@ -404,6 +422,7 @@ function cancelRecording(
 	}
 
 	if (isNativeRecording) {
+		void stopMicFallbackRecorder?.();
 		return { cancelled: true, wasNative: true };
 	}
 
@@ -738,6 +757,23 @@ describe("useScreenRecorder state machine", () => {
 			expect(result.wasNative).toBe(true);
 			expect(webcam.stop).toHaveBeenCalled();
 			expect(recorder.stop).not.toHaveBeenCalled();
+		});
+
+		it("stops the mic fallback recorder when cancelling native recording", () => {
+			const chunks = { current: [] as Blob[] };
+			const stopMicFallbackRecorder = vi.fn(() => Promise.resolve(null));
+
+			const result = cancelRecording(
+				recorder,
+				true,
+				chunks,
+				null,
+				undefined,
+				stopMicFallbackRecorder,
+			);
+
+			expect(result.wasNative).toBe(true);
+			expect(stopMicFallbackRecorder).toHaveBeenCalled();
 		});
 
 		it("handles cancel when recorder is already inactive", () => {

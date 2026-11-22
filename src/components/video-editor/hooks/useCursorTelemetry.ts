@@ -1,20 +1,21 @@
-import { type MutableRefObject, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { useTimelineState } from "../state/useTimelineState";
+import type { RecordingZoomMarker } from "../timeline/recordingZoomMarkers";
 import { normalizeCursorTelemetry } from "../timeline/zoomSuggestionUtils";
 import type { CursorTelemetryPoint } from "../types";
 import {
 	buildLoopedCursorTelemetry,
 	getDisplayedTimelineWindowMs,
 } from "../videoPlayback/cursorLoopTelemetry";
+import { applyDefaultCursorShape } from "../videoPlayback/cursorShapeOverride";
 
 type UseCursorTelemetryInput = {
 	videoPath: string | null;
 	videoSourcePath: string | null;
 	duration: number;
 	loopCursor: boolean;
+	alwaysUsePointerCursor: boolean;
 	timeline: ReturnType<typeof useTimelineState>;
-	pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
-	autoSuggestedVideoPathRef: MutableRefObject<string | null>;
 };
 
 export function useCursorTelemetry({
@@ -22,22 +23,19 @@ export function useCursorTelemetry({
 	videoSourcePath,
 	duration,
 	loopCursor,
+	alwaysUsePointerCursor,
 	timeline,
-	pendingFreshRecordingAutoZoomPathRef,
-	autoSuggestedVideoPathRef,
 }: UseCursorTelemetryInput) {
 	const pendingRetryTimeoutRef = useRef<number | null>(null);
+	const [recordingZoomMarkers, setRecordingZoomMarkers] = useState<RecordingZoomMarker[]>([]);
 	const { setCursorTelemetry, setCursorTelemetrySourcePath } = timeline;
 
 	useEffect(() => {
 		let mounted = true;
 		let retryAttempts = 0;
+		// A new recording may expose its video before the telemetry sidecar is ready.
 		const scheduleRetry = () => {
-			if (
-				pendingFreshRecordingAutoZoomPathRef.current !== videoPath ||
-				autoSuggestedVideoPathRef.current === videoPath ||
-				retryAttempts >= 12
-			) {
+			if (retryAttempts >= 12) {
 				return;
 			}
 			retryAttempts += 1;
@@ -51,6 +49,7 @@ export function useCursorTelemetry({
 				if (mounted) {
 					setCursorTelemetry([]);
 					setCursorTelemetrySourcePath(null);
+					setRecordingZoomMarkers([]);
 				}
 				return;
 			}
@@ -58,12 +57,18 @@ export function useCursorTelemetry({
 				const result = await window.electronAPI.getCursorTelemetry(videoSourcePath);
 				if (!mounted) return;
 				setCursorTelemetry(result.success ? result.samples : []);
+				setRecordingZoomMarkers(result.success ? (result.recordingZoomMarkers ?? []) : []);
 				setCursorTelemetrySourcePath(videoSourcePath);
-				if (!result.success || result.samples.length === 0) scheduleRetry();
+				if (
+					!result.success ||
+					(!result.samples.length && !result.recordingZoomMarkers?.length)
+				)
+					scheduleRetry();
 			} catch (error) {
 				console.warn("Unable to load cursor telemetry:", error);
 				if (!mounted) return;
 				setCursorTelemetry([]);
+				setRecordingZoomMarkers([]);
 				setCursorTelemetrySourcePath(videoSourcePath);
 				scheduleRetry();
 			}
@@ -81,14 +86,7 @@ export function useCursorTelemetry({
 				pendingRetryTimeoutRef.current = null;
 			}
 		};
-	}, [
-		videoPath,
-		videoSourcePath,
-		setCursorTelemetry,
-		setCursorTelemetrySourcePath,
-		pendingFreshRecordingAutoZoomPathRef,
-		autoSuggestedVideoPathRef,
-	]);
+	}, [videoPath, videoSourcePath, setCursorTelemetry, setCursorTelemetrySourcePath]);
 
 	const normalized = useMemo(() => {
 		if (timeline.cursorTelemetry.length === 0) return [] as CursorTelemetryPoint[];
@@ -107,19 +105,24 @@ export function useCursorTelemetry({
 		[duration, timeline.trimRegions],
 	);
 	const effective = useMemo(() => {
+		const renderSamples = applyDefaultCursorShape(normalized, alwaysUsePointerCursor);
 		if (
 			!loopCursor ||
-			normalized.length < 2 ||
+			renderSamples.length < 2 ||
 			displayedWindow.endMs <= displayedWindow.startMs
 		) {
-			return normalized;
+			return renderSamples;
 		}
 		return buildLoopedCursorTelemetry(
-			normalized,
+			renderSamples,
 			displayedWindow.endMs,
 			displayedWindow.startMs,
 		);
-	}, [loopCursor, normalized, displayedWindow]);
+	}, [alwaysUsePointerCursor, loopCursor, normalized, displayedWindow]);
 
-	return { normalizedCursorTelemetry: normalized, effectiveCursorTelemetry: effective };
+	return {
+		normalizedCursorTelemetry: normalized,
+		effectiveCursorTelemetry: effective,
+		recordingZoomMarkers,
+	};
 }

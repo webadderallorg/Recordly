@@ -1,32 +1,52 @@
+import { Separator } from "@heroui/react";
 import {
-	FolderOpen,
-	ArrowClockwise as Redo2,
-	ArrowCounterClockwise as Undo2,
-} from "@phosphor-icons/react";
-import type { CSSProperties, FormEvent, RefObject } from "react";
+	type FormEvent,
+	type ReactNode,
+	type RefObject,
+	useId,
+	useLayoutEffect,
+	useRef,
+} from "react";
+import { useFocusRing } from "react-aria";
+import { UpgradeButton } from "@/components/billing/UpgradeButton";
+import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { Button } from "@/components/ui/button";
+import { FilmStrip, House, ArrowCounterClockwise as Undo2 } from "@/components/ui/icons";
+import { RecordlyMark } from "@/components/ui/RecordlyMark";
 import type { useI18n } from "@/contexts/I18nContext";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import type { useExportDimensions } from "../export/useExportDimensions";
 import type { useExportSession } from "../export/useExportSession";
 import type { useExportSettings } from "../export/useExportSettings";
 import type { useExportStatusViewModel } from "../export/useExportStatusViewModel";
 import type { useVideoEditorPresets } from "../presets/useVideoEditorPresets";
 import type { useProjectState } from "../state/useProjectState";
-import { APP_HEADER_ICON_BUTTON_CLASS, DiscordLinkButton, FeedbackDialog } from "../TutorialHelp";
+import type { VideoPlaybackRef } from "../VideoPlayback";
+import { AppFrameHeader } from "./AppFrameHeader";
+import { AppUpdateButton } from "./AppUpdateButton";
 import { EditorExportMenu } from "./EditorExportMenu";
 import { EditorPresetMenu } from "./EditorPresetMenu";
 
+// Keep the preset implementation available for future use.
+const SHOW_PRESETS_BUTTON = false;
+
 type Props = {
+	accountMenu?: ReactNode;
+	projectRevision?: string;
+	clipsOpen: boolean;
+	onToggleClips: () => void;
 	t: ReturnType<typeof useI18n>["t"];
 	headerLeftControlsPaddingClass: string;
 	project: ReturnType<typeof useProjectState>;
-	projectBrowserTriggerRef: RefObject<HTMLButtonElement>;
-	projectNameInputRef: RefObject<HTMLInputElement>;
+	projectBrowserTriggerRef: RefObject<HTMLButtonElement | null>;
+	projectNameInputRef: RefObject<HTMLInputElement | null>;
 	projectDisplayName: string;
+	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
 	hasUnsavedChanges: boolean;
 	canUndo: boolean;
 	canRedo: boolean;
 	handleOpenProjectBrowser: () => void;
+	handleOpenRecordingHud: () => Promise<void>;
 	handleUndo: () => void;
 	handleRedo: () => void;
 	handleProjectNameSubmit: (event?: FormEvent<HTMLFormElement>) => void;
@@ -46,10 +66,16 @@ type Props = {
 	handleRetrySaveExport: () => void;
 	handleStartExportFromDropdown: () => void;
 	revealExportedFile: () => void;
-	exportMessage: string | null;
+	prepareExportForShare: () => Promise<string | undefined>;
+	onRequestShareSignIn: () => void;
+	onRequestFeedbackSignIn: () => void;
+	shareRequestNonce: number;
+	authToken?: string;
+	accountId?: string;
 };
 
 export function EditorHeader(props: Props) {
+	const { t: uiText } = useUiLocale();
 	const {
 		t,
 		headerLeftControlsPaddingClass,
@@ -57,10 +83,10 @@ export function EditorHeader(props: Props) {
 		projectBrowserTriggerRef,
 		projectNameInputRef,
 		projectDisplayName,
-		hasUnsavedChanges,
 		canUndo,
 		canRedo,
 		handleOpenProjectBrowser,
+		handleOpenRecordingHud,
 		handleUndo,
 		handleRedo,
 		handleProjectNameSubmit,
@@ -80,7 +106,6 @@ export function EditorHeader(props: Props) {
 		handleRetrySaveExport,
 		handleStartExportFromDropdown,
 		revealExportedFile,
-		exportMessage,
 	} = props;
 	const {
 		isEditingProjectName,
@@ -89,122 +114,180 @@ export function EditorHeader(props: Props) {
 		setProjectNameDraft,
 		isSavingProjectName,
 	} = project;
+	const { isFocusVisible, focusProps } = useFocusRing({ isTextInput: true });
+	const projectTitleId = useId();
+	const renameButtonRef = useRef<HTMLButtonElement>(null);
+	const restoreRenameFocus = useRef(false);
+	useLayoutEffect(() => {
+		if (!isEditingProjectName && restoreRenameFocus.current) {
+			restoreRenameFocus.current = false;
+			renameButtonRef.current?.focus();
+		}
+	}, [isEditingProjectName]);
 
 	return (
-		<div
-			className="relative z-50 flex h-11 flex-shrink-0 items-center justify-between border-b border-foreground/10 bg-editor-header/88 px-5 backdrop-blur-md"
-			style={{ WebkitAppRegion: "drag" } as CSSProperties}
-		>
+		<AppFrameHeader className="editor-header">
 			<div
-				className={`flex items-center justify-self-start gap-1.5 ${headerLeftControlsPaddingClass}`}
-				style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+				className={`editor-header-start flex min-w-0 items-center gap-1 ${headerLeftControlsPaddingClass}`}
 			>
-				<Button
-					ref={projectBrowserTriggerRef}
-					type="button"
-					variant="ghost"
-					size="sm"
-					onClick={handleOpenProjectBrowser}
-					className={APP_HEADER_ICON_BUTTON_CLASS}
-					title={t("editor.project.projects", "Open projects")}
-					aria-label={t("editor.project.projects", "Open projects")}
-				>
-					<FolderOpen className="h-4 w-4" />
-				</Button>
-				<DiscordLinkButton />
-				<FeedbackDialog />
-				<div className="ml-1 h-5 w-px bg-foreground/10" />
-				<Button
-					type="button"
-					variant="ghost"
-					onClick={handleUndo}
-					disabled={!canUndo}
-					className="inline-flex h-8 w-8 items-center justify-center rounded-[5px] border border-foreground/10 bg-foreground/5 p-0 text-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-					title={t("common.actions.undo", "Undo")}
-					aria-label={t("common.actions.undo", "Undo")}
-				>
-					<Undo2 className="h-4 w-4" />
-				</Button>
-				<Button
-					type="button"
-					variant="ghost"
-					onClick={handleRedo}
-					disabled={!canRedo}
-					className="inline-flex h-8 w-8 items-center justify-center rounded-[5px] border border-foreground/10 bg-foreground/5 p-0 text-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-					title={t("common.actions.redo", "Redo")}
-					aria-label={t("common.actions.redo", "Redo")}
-				>
-					<Redo2 className="h-4 w-4" />
-				</Button>
-			</div>
-
-			<div
-				className="absolute left-1/2 flex min-w-0 -translate-x-1/2 items-center justify-center"
-				style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-			>
-				{isEditingProjectName ? (
-					<form
-						onSubmit={(event) => void handleProjectNameSubmit(event)}
-						className="flex max-w-[min(52vw,460px)] items-baseline gap-1 rounded-[7px] border border-foreground/10 bg-editor-panel/[0.88] px-2.5 py-1 shadow-[0_10px_28px_rgba(0,0,0,0.18)]"
-					>
-						{hasUnsavedChanges ? (
-							<span className="mt-[1px] size-2 shrink-0 rounded-full bg-[#2563EB]" />
-						) : null}
-						<input
-							ref={projectNameInputRef}
-							type="text"
-							value={projectNameDraft}
-							onChange={(event) => setProjectNameDraft(event.target.value)}
-							onBlur={() => {
-								if (!isSavingProjectName) closeProjectNameEditor();
-							}}
-							onKeyDown={(event) => {
-								if (event.key === "Escape") {
-									event.preventDefault();
-									closeProjectNameEditor();
-								}
-							}}
-							disabled={isSavingProjectName}
-							className="min-w-[10ch] max-w-[min(40vw,360px)] bg-transparent text-sm font-semibold tracking-tight text-foreground/95 outline-none placeholder:text-muted-foreground/60 disabled:cursor-wait"
-							style={{ width: `${Math.max(projectNameDraft.length, 10)}ch` }}
-							aria-label={t("editor.project.renameInput", "Project name")}
-						/>
-						<span className="shrink-0 text-xs font-medium tracking-tight text-muted-foreground/70">
-							.recordly
-						</span>
-					</form>
-				) : (
-					<button
+				<span className="contents" title={uiText("ui.home")}>
+					<Button
+						ref={projectBrowserTriggerRef}
 						type="button"
-						onClick={() => setIsEditingProjectName(true)}
-						className="inline-flex max-w-[min(52vw,460px)] items-baseline gap-1 rounded-[7px] px-2.5 py-1 transition-colors hover:bg-foreground/5"
-						title={t("editor.project.renameTitle", "Rename project")}
-						aria-label={t("editor.project.renameTitle", "Rename project")}
+						variant="ghost"
+						size="sm"
+						onClick={handleOpenProjectBrowser}
+						className="editor-header-icon-button h-9 shrink-0 gap-2 px-3"
+						aria-label={uiText("ui.home")}
 					>
-						{hasUnsavedChanges ? (
-							<span className="mt-[1px] size-2 shrink-0 rounded-full bg-[#2563EB]" />
-						) : null}
-						<span className="truncate text-sm font-semibold tracking-tight text-foreground/90">
-							{projectDisplayName}
-						</span>
-						<span className="shrink-0 text-xs font-medium tracking-tight text-muted-foreground/70">
-							.recordly
-						</span>
-					</button>
+						<House weight="fill" className="h-4 w-4" />
+						<span className="editor-header-button-label">{uiText("ui.home")}</span>
+					</Button>
+				</span>
+				{!project.projectBrowserOpen && (
+					<span className="contents" title={uiText("ui.recordNew")}>
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							onClick={() => void handleOpenRecordingHud()}
+							disabled={
+								exportSession.isExporting ||
+								exportSession.isOptimizingGif ||
+								exportSession.hasPendingExportSave
+							}
+							className="editor-header-icon-button h-9 shrink-0 gap-2 px-3"
+							aria-label={uiText("ui.recordNew")}
+						>
+							<RecordlyMark />
+							<span className="editor-header-button-label">
+								{uiText("ui.recordNew")}
+							</span>
+						</Button>
+					</span>
 				)}
+				<span
+					aria-hidden="true"
+					className="mx-2 shrink-0 text-xl font-light text-muted-foreground/60"
+				>
+					/
+				</span>
+
+				<div
+					className="editor-header-title flex min-w-0 items-center"
+					title={isEditingProjectName ? undefined : projectDisplayName}
+				>
+					{isEditingProjectName ? (
+						<form
+							onSubmit={(event) => void handleProjectNameSubmit(event)}
+							className="flex w-full min-w-0 items-center gap-1.5 px-2"
+						>
+							<input
+								{...focusProps}
+								ref={projectNameInputRef}
+								type="text"
+								value={projectNameDraft}
+								onChange={(event) => setProjectNameDraft(event.target.value)}
+								onBlur={(event) => {
+									focusProps.onBlur?.(event);
+									if (
+										!isSavingProjectName &&
+										projectNameDraft.trim() !== projectDisplayName
+									)
+										void handleProjectNameSubmit();
+									else if (!isSavingProjectName) closeProjectNameEditor();
+								}}
+								onKeyDown={(event) => {
+									if (event.key === "Escape") {
+										event.preventDefault();
+										restoreRenameFocus.current = true;
+										closeProjectNameEditor();
+									}
+								}}
+								disabled={isSavingProjectName}
+								className="inline-project-name h-9 min-w-0 max-w-full text-sm font-semibold tracking-tight text-foreground/90 disabled:cursor-wait"
+								data-focus-visible={isFocusVisible || undefined}
+								aria-label={t("editor.project.renameInput", "Project name")}
+							/>
+						</form>
+					) : (
+						<Button
+							ref={renameButtonRef}
+							variant="ghost"
+							type="button"
+							onClick={() => setIsEditingProjectName(true)}
+							className="inline-flex h-9 min-w-0 max-w-full cursor-text items-center gap-1.5 rounded-lg px-2 hover:bg-transparent"
+							aria-label={t("editor.project.renameTitle", "Rename project")}
+							aria-describedby={projectTitleId}
+						>
+							<span
+								id={projectTitleId}
+								className="truncate text-sm font-semibold tracking-tight text-foreground/90"
+							>
+								{projectDisplayName}
+							</span>
+						</Button>
+					)}
+				</div>
+				<Separator orientation="vertical" className="mx-3 h-5 shrink-0 self-center" />
+				<span className="contents" title={uiText("ui.clips")}>
+					<Button
+						variant="ghost"
+						size="sm"
+						className={`editor-header-icon-button h-8 shrink-0 gap-2 rounded-lg border px-3 text-xs font-medium transition-colors ${props.clipsOpen ? "border-foreground/20 bg-foreground/10 text-foreground" : "border-border bg-transparent text-muted hover:bg-foreground/5 hover:text-foreground"}`}
+						aria-label={uiText("ui.clips")}
+						aria-expanded={props.clipsOpen}
+						onClick={props.onToggleClips}
+					>
+						<FilmStrip
+							weight={props.clipsOpen ? "fill" : "regular"}
+							className="size-4"
+						/>
+						<span className="editor-header-button-label">{uiText("ui.clips")}</span>
+					</Button>
+				</span>
 			</div>
 
-			<div
-				className="flex items-center justify-self-end"
-				style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-			>
-				<EditorPresetMenu t={t} presets={presets} />
-				<div
-					aria-hidden="true"
-					className="mx-2 h-4 w-px shrink-0 bg-foreground/10 opacity-0"
+			<div className="editor-header-end flex min-w-0 items-center justify-self-end gap-3">
+				<UpgradeButton
+					label={uiText("billing.upgradeButtonLabel", "Upgrade")}
+					variant="secondary"
+					size="sm"
+					className="h-9 gap-1.5"
+				/>
+				<div className="flex items-center gap-1">
+					<Button
+						type="button"
+						variant="ghost"
+						onClick={handleUndo}
+						disabled={!canUndo}
+						className="inline-flex h-9 w-9 min-w-9 items-center justify-center p-0 disabled:cursor-not-allowed"
+						title={t("common.actions.undo", "Undo")}
+						aria-label={t("common.actions.undo", "Undo")}
+					>
+						<Undo2 className="h-4 w-4" />
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						onClick={handleRedo}
+						disabled={!canRedo}
+						className="inline-flex h-9 w-9 min-w-9 items-center justify-center p-0 disabled:cursor-not-allowed"
+						title={t("common.actions.redo", "Redo")}
+						aria-label={t("common.actions.redo", "Redo")}
+					>
+						<Undo2 mirrored className="h-4 w-4" />
+					</Button>
+				</div>
+				{SHOW_PRESETS_BUTTON && <EditorPresetMenu t={t} presets={presets} />}
+				<FeedbackDialog
+					showLabel={false}
+					className="h-9 w-9 min-w-9"
+					onSignIn={props.onRequestFeedbackSignIn}
 				/>
 				<EditorExportMenu
 					t={t}
+					videoPlaybackRef={props.videoPlaybackRef}
 					exportSettings={exportSettings}
 					exportSession={exportSession}
 					exportDimensions={exportDimensions}
@@ -219,9 +302,20 @@ export function EditorHeader(props: Props) {
 					handleRetrySaveExport={handleRetrySaveExport}
 					handleStartExportFromDropdown={handleStartExportFromDropdown}
 					revealExportedFile={revealExportedFile}
-					exportMessage={exportMessage}
+					projectPath={project.currentProjectPath}
+					projectSourcePath={project.videoSourcePath}
+					openedSavedProject={project.openedSavedProject}
+					projectRevision={props.projectRevision}
+					projectTitle={projectDisplayName}
+					prepareExportForShare={props.prepareExportForShare}
+					onRequestShareSignIn={props.onRequestShareSignIn}
+					shareRequestNonce={props.shareRequestNonce}
+					authToken={props.authToken}
+					accountId={props.accountId}
 				/>
+				{props.accountMenu}
+				<AppUpdateButton />
 			</div>
-		</div>
+		</AppFrameHeader>
 	);
 }

@@ -1,0 +1,131 @@
+import { beforeEach, expect, it, vi } from "vitest";
+
+const api = vi.hoisted(() => ({ getUser: vi.fn(), invoke: vi.fn() }));
+vi.mock("@/lib/auth/recordlyAuth", () => ({
+	recordlyAuth: { auth: { getUser: api.getUser }, functions: { invoke: api.invoke } },
+}));
+
+import { feedbackErrorMessage, submitFeedback } from "./submitFeedback";
+
+const input = {
+	title: " Bug ",
+	subject: "bug",
+	message: " Steps ",
+	files: [new File(["notes"], "notes.txt")],
+	logs: "logs",
+};
+beforeEach(() => {
+	vi.resetAllMocks();
+	api.getUser.mockResolvedValue({ data: { user: { id: "user-id" } }, error: null });
+	api.invoke.mockResolvedValue({ data: { success: true }, error: null });
+});
+it("submits attachments and diagnostics through the server endpoint", async () => {
+	await submitFeedback(input);
+	const [name, { body }] = api.invoke.mock.calls[0];
+	expect(name).toBe("submit-feedback");
+	expect(body.get("title")).toBe("Bug");
+	expect(body.get("message")).toBe("Steps");
+	expect(body.get("logs")).toBe("logs");
+	expect(body.getAll("files")[0].name).toBe("notes.txt");
+});
+it("does not submit when the session has expired and explains how to recover", async () => {
+	api.getUser.mockResolvedValue({ data: { user: null }, error: null });
+	const error = await submitFeedback(input).catch((error) => error);
+	expect(feedbackErrorMessage(error)).toContain("sign in again");
+	expect(api.invoke).not.toHaveBeenCalled();
+});
+it("shows the server quota error without exposing internal errors", async () => {
+	api.invoke.mockResolvedValue({
+		error: {
+			context: new Response(JSON.stringify({ code: "FEEDBACK_LIMIT" }), { status: 429 }),
+		},
+	});
+	const error = await submitFeedback(input).catch((error) => error);
+	expect(feedbackErrorMessage(error)).toContain("Try removing your attachments");
+	expect(feedbackErrorMessage(new Error("database private details"))).toBe(
+		"Could not send feedback. Please try again.",
+	);
+});
+it("keeps the report ID when only the text changes before a retry", async () => {
+	const files = [new File([new Uint8Array(11 * 1024 * 1024)], "clip.mp4")];
+	api.invoke.mockImplementation(async (name: string) =>
+		name.includes("upload=prepare")
+			? { data: { success: true }, error: null }
+			: { data: null, error: new Error("offline") },
+	);
+	const prepareId = () =>
+		api.invoke.mock.calls
+			.map(([name]) => name as string)
+			.filter((name) => name.includes("upload=prepare"))
+			.map((name) => new URLSearchParams(name.split("?")[1]).get("id"));
+
+	await expect(submitFeedback({ ...input, files })).rejects.toThrow("offline");
+	await expect(submitFeedback({ ...input, files, message: "Edited" })).rejects.toThrow("offline");
+	await expect(submitFeedback({ ...input, files: [...files] })).rejects.toThrow("offline");
+
+	const [first, edited, reattached] = prepareId();
+	expect(edited).toBe(first);
+	expect(reattached).not.toBe(first);
+});
+it("rejects unconfirmed submissions", async () => {
+	api.invoke.mockResolvedValue({ data: {}, error: null });
+	await expect(submitFeedback(input)).rejects.toThrow("not confirmed");
+});
+
+it("aborts a stalled request after one minute and permits a subsequent submission", async () => {
+	const { FunctionsClient } = await import("@supabase/functions-js");
+	vi.useFakeTimers();
+	let signal: AbortSignal | null | undefined;
+	try {
+		const functions = new FunctionsClient("https://example.test/functions/v1", {
+			customFetch: (_url, options) =>
+				new Promise((_resolve, reject) => {
+					signal = options?.signal;
+					signal?.addEventListener(
+						"abort",
+						() => reject(new DOMException("Aborted", "AbortError")),
+						{ once: true },
+					);
+				}),
+		});
+		api.invoke.mockImplementation(functions.invoke.bind(functions));
+		const pending = submitFeedback(input).catch((error) => error);
+		await vi.advanceTimersByTimeAsync(59_999);
+		expect(signal?.aborted).toBe(false);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(signal?.aborted).toBe(true);
+		expect(feedbackErrorMessage(await pending)).toBe(
+			"Could not send feedback. Please try again.",
+		);
+		api.invoke.mockResolvedValue({ data: { success: true }, error: null });
+		await expect(submitFeedback(input)).resolves.toBeUndefined();
+	} finally {
+		vi.useRealTimers();
+	}
+});
+
+it("preserves omitted diagnostics when logs are disabled by the caller", async () => {
+	await submitFeedback({ ...input, logs: null });
+	const [, { body }] = api.invoke.mock.calls[0];
+	expect(body.has("logs")).toBe(false);
+});
+
+it("normalizes a multiline title without changing the multiline message", async () => {
+	const message = "  First line\n\nSecond line 🙂  ";
+	await submitFeedback({ ...input, title: " \n First \r\n second\t line\u00a0rest ", message });
+	const [, { body }] = api.invoke.mock.calls[0];
+	expect(body.get("title")).toBe("First second line rest");
+	expect(body.get("message")).toBe(message.trim());
+	expect(message).toBe("  First line\n\nSecond line 🙂  ");
+});
+
+it.each([
+	["x".repeat(159) + "😀 tail", "x".repeat(159)],
+	["x".repeat(158) + "😀 tail", "x".repeat(158) + "😀"],
+	["😀".repeat(81), "😀".repeat(80)],
+])("keeps Unicode intact within the server's160 UTF-16-unit title limit", async (title, expected) => {
+	await submitFeedback({ ...input, title });
+	const [, { body }] = api.invoke.mock.calls[0];
+	expect(body.get("title")).toBe(expected);
+	expect(String(body.get("title")).length).toBeLessThanOrEqual(160);
+});

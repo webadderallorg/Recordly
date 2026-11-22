@@ -36,7 +36,7 @@ interface UseCaptionCommandsParams {
 	setSelectedAnnotationId: Dispatch<SetStateAction<string | null>>;
 	setSelectedAudioId: Dispatch<SetStateAction<string | null>>;
 	setActiveEffectSection: Dispatch<SetStateAction<EditorEffectSection>>;
-	videoPlaybackRef: RefObject<VideoPlaybackRef>;
+	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
 	mapSourceTimeToTimelineTime: (timeMs: number) => number;
 	handleSeek: (time: number, options?: { pause?: boolean }) => void;
 }

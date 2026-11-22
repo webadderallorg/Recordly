@@ -1,32 +1,45 @@
-import { useEffect } from "react";
+import { type MutableRefObject, useEffect, useRef } from "react";
+import { desktopWallpaperPreference } from "@/lib/desktopWallpaper";
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
-import { saveEditorPreferences } from "../editorPreferences";
-import type { useExportSettings } from "../export/useExportSettings";
+import {
+	type EditorPreferences,
+	type EditorPreferencesPatch,
+	saveEditorPreferences,
+} from "../editorPreferences";
 import type { useAppearanceState } from "../state/useAppearanceState";
+import type { CaptureSourceKind } from "../types";
 
 type Input = {
+	enabled: boolean;
+	restoringPreferencesRef: MutableRefObject<boolean>;
 	appearance: ReturnType<typeof useAppearanceState>;
-	exportSettings: ReturnType<typeof useExportSettings>;
 	aspectRatio: AspectRatio;
 	whisperExecutablePath: string | null;
 	whisperModelPath: string | null;
+	/** Which per-kind padding preference padding edits update; null leaves both unchanged. */
+	captureSourceKind: CaptureSourceKind | null;
 };
 
 export function useEditorPreferencesPersistence({
+	enabled,
+	restoringPreferencesRef,
 	appearance,
-	exportSettings,
 	aspectRatio,
 	whisperExecutablePath,
 	whisperModelPath,
+	captureSourceKind,
 }: Input) {
+	const previousRef = useRef<
+		(Partial<EditorPreferences> & { padding?: EditorPreferences["screenPadding"] }) | null
+	>(null);
 	useEffect(() => {
-		saveEditorPreferences({
-			wallpaper: appearance.wallpaper,
+		const current = {
+			autoApplyFreshRecordingAutoZooms: appearance.autoApplyFreshRecordingAutoZooms,
+			wallpaper: desktopWallpaperPreference(appearance.wallpaper),
 			shadowIntensity: appearance.shadowIntensity,
 			backgroundBlur: appearance.backgroundBlur,
 			zoomMotionBlur: appearance.zoomMotionBlur,
 			zoomMotionBlurTuning: appearance.zoomMotionBlurTuning,
-			autoApplyFreshRecordingAutoZooms: appearance.autoApplyFreshRecordingAutoZooms,
 			connectZooms: appearance.connectZooms,
 			zoomInDurationMs: appearance.zoomInDurationMs,
 			zoomInOverlapMs: appearance.zoomInOverlapMs,
@@ -38,6 +51,7 @@ export function useEditorPreferencesPersistence({
 			connectedZoomEasing: appearance.connectedZoomEasing,
 			showCursor: appearance.showCursor,
 			loopCursor: appearance.loopCursor,
+			alwaysUsePointerCursor: appearance.alwaysUsePointerCursor,
 			cursorStyle: appearance.cursorStyle,
 			cursorSize: appearance.cursorSize,
 			cursorSmoothing: appearance.cursorSmoothing,
@@ -56,30 +70,58 @@ export function useEditorPreferencesPersistence({
 			cursorClickBounce: appearance.cursorClickBounce,
 			cursorClickBounceDuration: appearance.cursorClickBounceDuration,
 			cursorSway: appearance.cursorSway,
+			cursorIdleHide: appearance.cursorIdleHide,
 			borderRadius: appearance.borderRadius,
 			padding: appearance.padding,
 			webcam: appearance.webcam,
 			aspectRatio,
-			exportEncodingMode: exportSettings.exportEncodingMode,
-			exportBackendPreference: exportSettings.exportBackendPreference,
-			exportPipelineModel: exportSettings.exportPipelineModel,
-			exportQuality: exportSettings.exportQuality,
-			mp4FrameRate: exportSettings.mp4FrameRate,
-			exportFormat: exportSettings.exportFormat,
-			gifFrameRate: exportSettings.gifFrameRate,
-			gifLoop: exportSettings.gifLoop,
-			gifSizePreset: exportSettings.gifSizePreset,
 			whisperExecutablePath,
 			whisperModelPath,
-		});
+		};
+		const previous = previousRef.current;
+		previousRef.current = current;
+		const restoring = restoringPreferencesRef.current;
+		restoringPreferencesRef.current = false;
+		if (!enabled || !previous || restoring) return;
+
+		// Save only changed controls. Another editor or a restored project can have
+		// different values for the rest of the controls, including webcam shadow.
+		const changes: EditorPreferencesPatch = {};
+		for (const key of Object.keys(current) as (keyof typeof current)[]) {
+			if (key === "webcam") {
+				const webcam = Object.fromEntries(
+					Object.entries(current.webcam).filter(
+						([field, value]) =>
+							JSON.stringify(value) !==
+							JSON.stringify(
+								previous.webcam?.[field as keyof EditorPreferences["webcam"]],
+							),
+					),
+				);
+				if (Object.keys(webcam).length) changes.webcam = webcam;
+			} else if (key === "padding") {
+				if (
+					captureSourceKind &&
+					JSON.stringify(current.padding) !== JSON.stringify(previous.padding)
+				) {
+					changes[captureSourceKind === "window" ? "windowPadding" : "screenPadding"] =
+						current.padding;
+				}
+			} else if (JSON.stringify(current[key]) !== JSON.stringify(previous[key])) {
+				Object.assign(changes, { [key]: current[key] });
+			}
+		}
+		if (Object.keys(changes).length) saveEditorPreferences(changes);
 	}, [
+		enabled,
+		restoringPreferencesRef,
 		appearance.wallpaper,
 		appearance.shadowIntensity,
 		appearance.backgroundBlur,
 		appearance.zoomMotionBlur,
 		appearance.zoomMotionBlurTuning,
-		appearance.autoApplyFreshRecordingAutoZooms,
 		appearance.connectZooms,
+		appearance.autoApplyFreshRecordingAutoZooms,
 		appearance.zoomInDurationMs,
 		appearance.zoomInOverlapMs,
 		appearance.zoomOutDurationMs,
@@ -90,6 +132,7 @@ export function useEditorPreferencesPersistence({
 		appearance.connectedZoomEasing,
 		appearance.showCursor,
 		appearance.loopCursor,
+		appearance.alwaysUsePointerCursor,
 		appearance.cursorStyle,
 		appearance.cursorSize,
 		appearance.cursorSmoothing,
@@ -108,20 +151,13 @@ export function useEditorPreferencesPersistence({
 		appearance.cursorClickBounce,
 		appearance.cursorClickBounceDuration,
 		appearance.cursorSway,
+		appearance.cursorIdleHide,
 		appearance.borderRadius,
 		appearance.padding,
 		appearance.webcam,
 		aspectRatio,
-		exportSettings.exportEncodingMode,
-		exportSettings.exportBackendPreference,
-		exportSettings.exportPipelineModel,
-		exportSettings.exportQuality,
-		exportSettings.mp4FrameRate,
-		exportSettings.exportFormat,
-		exportSettings.gifFrameRate,
-		exportSettings.gifLoop,
-		exportSettings.gifSizePreset,
 		whisperExecutablePath,
 		whisperModelPath,
+		captureSourceKind,
 	]);
 }

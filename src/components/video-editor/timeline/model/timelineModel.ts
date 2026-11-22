@@ -26,6 +26,7 @@ export function getAnnotationLabel(region: AnnotationRegion): string {
 	if (region.type === "image") {
 		return "Image";
 	}
+	if (region.type === "blur") return "Mask";
 	return "Annotation";
 }
 
@@ -39,8 +40,8 @@ export function getAudioLabel(region: AudioRegion): string {
 }
 
 function getCaptionLabel(cue: CaptionCue): string {
-	const preview = cue.text.trim() || "Caption";
-	return preview.length > 24 ? `${preview.substring(0, 24)}...` : preview;
+	// Keep the full cue so CSS ellipsis follows the block's available width.
+	return cue.text.trim() || "Caption";
 }
 
 export function buildTimelineItems(params: {
@@ -110,6 +111,8 @@ export function buildTimelineItems(params: {
 }
 
 export function buildAllRegionSpans(params: {
+	annotationRegions?: AnnotationRegion[];
+	captionCues?: CaptionCue[];
 	zoomRegions: ZoomRegion[];
 	clipRegions: ClipRegion[];
 	audioRegions: AudioRegion[];
@@ -133,7 +136,23 @@ export function buildAllRegionSpans(params: {
 		end: r.endMs,
 		rowId: getAudioTrackRowId(r.trackIndex ?? 0),
 	}));
-	return [...zooms, ...clips, ...audios];
+	return [
+		...zooms,
+		...clips,
+		...audios,
+		...(params.annotationRegions ?? []).map((r) => ({
+			id: r.id,
+			start: r.startMs,
+			end: r.endMs,
+			rowId: getAnnotationTrackRowId(r.trackIndex ?? 0),
+		})),
+		...(params.captionCues ?? []).map((r) => ({
+			id: r.id,
+			start: r.startMs,
+			end: r.endMs,
+			rowId: CAPTION_ROW_ID,
+		})),
+	];
 }
 
 export function resolveDropRowId(

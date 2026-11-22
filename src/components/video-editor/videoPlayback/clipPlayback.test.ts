@@ -37,33 +37,89 @@ describe("clip timeline playback", () => {
 			duration: 12,
 			currentTime: 0,
 			seeking: false,
+			paused: true,
 			playbackRate: 1,
-			play: vi.fn(async () => {}),
-			pause: vi.fn(),
+			play: vi.fn(async () => {
+				video.paused = false;
+			}),
+			pause: vi.fn(() => {
+				video.paused = true;
+			}),
 		} as unknown as HTMLVideoElement;
 		const onTime = vi.fn();
 		const onPlaying = vi.fn();
 		const onError = vi.fn();
+		const onSourceSeek = vi.fn();
 		const playback = createClipPlayback({
 			video,
 			getClips: () => clips,
 			onTime,
 			onPlaying,
 			onError,
+			onSourceSeek,
 		});
-		return { video, playback, onTime, onPlaying, onError };
+		return { video, playback, onTime, onPlaying, onError, onSourceSeek };
 	}
-	it("takes real time through a deleted middle at 3x, then resumes at the retained source in-point", async () => {
+	it("crosses a source cut at the same 2.8s timeline timestamp without playing the removed footage", async () => {
+		const { video, playback, onTime, onSourceSeek } = setup([
+			{ id: "a", startMs: 0, endMs: 2800, sourceStartMs: 0, speed: 1 },
+			{ id: "b", startMs: 2800, endMs: 5300, sourceStartMs: 3500, speed: 1 },
+		]);
+		playback.seek(2.799);
+		expect(onTime).toHaveBeenLastCalledWith(2.799, 2.799);
+		expect(onSourceSeek).toHaveBeenLastCalledWith("seek");
+		await playback.play();
+		video.currentTime = 2.8;
+		advance(1);
+		expect(onTime).toHaveBeenLastCalledWith(2.8, 3.5);
+		expect(video.currentTime).toBe(3.5);
+		expect(onSourceSeek).toHaveBeenLastCalledWith("cut");
+		playback.seek(2.8005);
+		expect(onSourceSeek).toHaveBeenLastCalledWith("seek");
+		video.currentTime = 3.501;
+		advance(1);
+		expect(onTime).toHaveBeenLastCalledWith(2.801, 3.501);
+	});
+	it("pauses source playback until a cut seek finishes", async () => {
+		const { video, playback } = setup([
+			{ id: "a", startMs: 0, endMs: 1_000, sourceStartMs: 0, speed: 1 },
+			{ id: "b", startMs: 1_000, endMs: 2_000, sourceStartMs: 5_000, speed: 1 },
+		]);
+		await playback.play();
+		const playCount = vi.mocked(video.play).mock.calls.length;
+		let sourceTime = 0;
+		Object.defineProperty(video, "currentTime", {
+			get: () => sourceTime,
+			set: (value: number) => {
+				sourceTime = value;
+				if (value === 5) Object.assign(video, { seeking: true });
+			},
+		});
+		video.currentTime = 1;
+		advance(1);
+		expect(video.pause).toHaveBeenCalled();
+		expect(video.currentTime).toBe(5);
+		expect(video.play).toHaveBeenCalledTimes(playCount);
+		Object.assign(video, { seeking: false });
+		advance(1);
+		expect(video.play).toHaveBeenCalledTimes(playCount + 1);
+	});
+	it("cannot simulate playback after the final clip is deleted", async () => {
+		const { video, playback, onTime } = setup([]);
+		await playback.play();
+		advance(1000);
+		expect(playback.isPlaying).toBe(false);
+		expect(video.play).not.toHaveBeenCalled();
+		expect(onTime).not.toHaveBeenCalled();
+	});
+
+	it("skips a deleted middle at 3x and resumes at the retained source in-point", async () => {
 		const { video, playback, onTime } = setup();
 		await playback.play();
 		expect(video.playbackRate).toBe(3);
 		video.currentTime = 3;
 		advance(1000);
-		expect(onTime).toHaveBeenLastCalledWith(1, null);
 		expect(playback.isPlaying).toBe(true);
-		advance(500);
-		expect(onTime).toHaveBeenLastCalledWith(1.5, null);
-		advance(500);
 		expect(video.currentTime).toBe(6);
 		expect(onTime).toHaveBeenLastCalledWith(2, 6);
 		video.currentTime = 9;
@@ -73,21 +129,78 @@ describe("clip timeline playback", () => {
 		advance(1000);
 		expect(playback.isPlaying).toBe(false);
 	});
-	it("seeks, pauses and resumes inside a gap without revealing source footage or restarting the gap", async () => {
+	it("keeps paused gap seeks editable and skips to the next clip when play resumes", async () => {
 		const { video, playback, onTime } = setup();
 		playback.seek(1.25);
 		expect(onTime).toHaveBeenLastCalledWith(1.25, null);
 		await playback.play();
-		expect(video.play).not.toHaveBeenCalled();
-		advance(250);
+		expect(onTime).toHaveBeenLastCalledWith(2, 6);
+		expect(video.play).toHaveBeenCalled();
 		playback.pause();
 		advance(5000);
-		expect(onTime).toHaveBeenLastCalledWith(1.5, null);
+		expect(onTime).toHaveBeenLastCalledWith(2, 6);
 		await playback.play();
+		video.currentTime = 6.75;
 		advance(250);
-		expect(onTime).toHaveBeenLastCalledWith(1.75, null);
+		expect(onTime).toHaveBeenLastCalledWith(2.25, 6.75);
+		playback.seek(1.5);
+		expect(onTime).toHaveBeenLastCalledWith(2, 6);
 	});
-	it("does not skip a short gap when a media tick overshoots the cut", async () => {
+	it.each([
+		0.5, 1, 3,
+	])("resumes at %sx without seeking back to the last animation tick", async (speed) => {
+		const { video, playback, onTime, onSourceSeek } = setup([
+			{ id: "clip", startMs: 0, endMs: 4000, sourceStartMs: 2000, speed },
+		]);
+		playback.seek(0.5);
+		await playback.play();
+		onSourceSeek.mockClear();
+		for (let cycle = 0; cycle < 3; cycle++) {
+			video.currentTime += 0.1 * speed;
+			advance(100);
+			// Media advances between the last RAF callback and the pause click.
+			video.currentTime += 0.01 * speed;
+			playback.pause();
+			const pausedTime = video.currentTime;
+			advance(5000);
+			await playback.play();
+			expect(video.currentTime).toBe(pausedTime);
+			expect(onSourceSeek).not.toHaveBeenCalled();
+			advance(16);
+			expect(onTime).toHaveBeenLastCalledWith(
+				expect.closeTo((pausedTime - 2) / speed, 8),
+				expect.closeTo(pausedTime, 8),
+			);
+		}
+		expect(video.play).toHaveBeenCalledTimes(4);
+	});
+	it("resolves a cut reached after the last tick before resuming", async () => {
+		const { video, playback, onTime, onSourceSeek } = setup([
+			{ id: "a", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1 },
+			{ id: "b", startMs: 1000, endMs: 2000, sourceStartMs: 6000, speed: 1 },
+		]);
+		playback.seek(0.99);
+		await playback.play();
+		video.currentTime = 1;
+		playback.pause();
+		await playback.play();
+		expect(video.currentTime).toBe(6);
+		expect(onTime).toHaveBeenLastCalledWith(1, 6);
+		expect(onSourceSeek).toHaveBeenLastCalledWith("cut");
+	});
+	it("restarts from the retained in-point if media ends between the last tick and pause", async () => {
+		const { video, playback, onTime } = setup([
+			{ id: "clip", startMs: 0, endMs: 10000, sourceStartMs: 2000, speed: 1 },
+		]);
+		playback.seek(9.99);
+		await playback.play();
+		Object.assign(video, { currentTime: 12, ended: true });
+		playback.pause();
+		await playback.play();
+		expect(video.currentTime).toBe(2);
+		expect(onTime).toHaveBeenLastCalledWith(0, 2);
+	});
+	it("skips a short gap without skipping the next clip in-point when a tick overshoots", async () => {
 		const { video, playback, onTime } = setup([
 			{ id: "a", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 3 },
 			{ id: "b", startMs: 1010, endMs: 2000, sourceStartMs: 6000, speed: 3 },
@@ -95,8 +208,6 @@ describe("clip timeline playback", () => {
 		await playback.play();
 		video.currentTime = 3.15;
 		advance(1050);
-		expect(onTime).toHaveBeenLastCalledWith(1, null);
-		advance(10);
 		expect(onTime).toHaveBeenLastCalledWith(1.01, 6);
 	});
 	it("leaves a clip at source EOF even when metadata rounding extends its timeline end", async () => {
@@ -119,14 +230,12 @@ describe("clip timeline playback", () => {
 		advance(2000);
 		expect(onTime).toHaveBeenLastCalledWith(3, 9);
 	});
-	it("plays leading gaps and clips placed earlier than their source positions", async () => {
+	it("skips leading gaps and plays clips from their source positions", async () => {
 		const { video, playback, onTime } = setup([
 			{ id: "moved", startMs: 1000, endMs: 2000, sourceStartMs: 9000, speed: 1 },
 		]);
 		await playback.play();
-		advance(500);
-		expect(onTime).toHaveBeenLastCalledWith(0.5, null);
-		advance(500);
+		expect(onTime).toHaveBeenLastCalledWith(1, 9);
 		expect(video.currentTime).toBe(9);
 		expect(video.playbackRate).toBe(1);
 	});
@@ -187,7 +296,9 @@ describe("clip timeline playback", () => {
 	it("does not restart decoder seeks when repeatedly selecting the start", () => {
 		const { playback, video } = setup();
 		let currentTime = 0;
-		const setTime = vi.fn((value: number) => { currentTime = value; });
+		const setTime = vi.fn((value: number) => {
+			currentTime = value;
+		});
 		Object.defineProperty(video, "currentTime", {
 			get: () => currentTime,
 			set: setTime,
@@ -225,5 +336,41 @@ describe("clip timeline playback", () => {
 		expect(findPreviewClipAtTimelineTime(4000, clips)?.id).toBe("c");
 		expect(findPreviewClipAtTimelineTime(4001, clips)).toBeNull();
 		expect(findPreviewClipAtTimelineTime(0, [])).toBeNull();
+	});
+	it("does not seek or redraw a paused frame when only clip mute metadata changes", () => {
+		const clips: ClipRegion[] = [
+			{ id: "a", startMs: 0, endMs: 4000, sourceStartMs: 2000, speed: 1 },
+		];
+		const { video, playback, onTime, onSourceSeek } = setup(clips);
+		playback.seek(1);
+		onTime.mockClear();
+		onSourceSeek.mockClear();
+		clips[0] = { ...clips[0], muted: true, showSourceAudio: true };
+		playback.refresh();
+		expect(video.currentTime).toBe(3);
+		expect(onSourceSeek).not.toHaveBeenCalled();
+		expect(onTime).not.toHaveBeenCalled();
+		clips[0] = { ...clips[0], sourceStartMs: 3000 };
+		playback.refresh();
+		expect(video.currentTime).toBe(4);
+		expect(onSourceSeek).toHaveBeenCalledWith("seek");
+	});
+	it("keeps the live decoder clock and cursor pose when a playing clip is muted between RAFs", async () => {
+		const clips: ClipRegion[] = [
+			{ id: "a", startMs: 0, endMs: 4000, sourceStartMs: 2000, speed: 1 },
+		];
+		const { video, playback, onSourceSeek, onTime } = setup(clips);
+		playback.seek(1);
+		await playback.play();
+		video.currentTime = 3.015;
+		onSourceSeek.mockClear();
+		vi.mocked(video.pause).mockClear();
+		clips[0] = { ...clips[0], muted: true };
+		playback.refresh();
+		expect(video.currentTime).toBe(3.015);
+		expect(onTime).toHaveBeenLastCalledWith(1.015, 3.015);
+		expect(onSourceSeek).not.toHaveBeenCalled();
+		expect(video.pause).not.toHaveBeenCalled();
+		expect(playback.isPlaying).toBe(true);
 	});
 });

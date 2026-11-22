@@ -1,5 +1,5 @@
 import { Application, Graphics, Sprite } from "pixi.js";
-import { drawSquircleOnGraphics } from "@/lib/geometry/squircle";
+import { drawSquircleOnGraphics, getClampedCornerRadius } from "@/lib/geometry/squircle";
 import { ADVANCED_VERTICAL_PADDING_MAX, type CropRegion, type Padding } from "../types";
 
 export const PADDING_SCALE_FACTOR = 0.2;
@@ -10,12 +10,30 @@ export function scalePreviewBorderRadius(
 	width: number,
 	height: number,
 	borderRadiusPercent = 0,
+	frameSize?: { width: number; height: number },
 ): number {
 	if (width <= 0 || height <= 0) {
 		return 0;
 	}
 
-	return (Math.min(width, height) * Math.min(50, Math.max(0, borderRadiusPercent))) / 100;
+	// A video filling the output is the frame itself. Rounding its mask exposes
+	// wallpaper in the output corners, so only inset/letterboxed video is rounded.
+	// One rounded pixel on the shorter viewport side can shift the longer side
+	// by its aspect ratio. Treat that fitting error as full bleed too.
+	if (frameSize) {
+		const tolerance = Math.max(
+			1,
+			frameSize.width / frameSize.height,
+			frameSize.height / frameSize.width,
+		);
+		if (width >= frameSize.width - tolerance && height >= frameSize.height - tolerance)
+			return 0;
+	}
+	return getClampedCornerRadius(
+		width,
+		height,
+		(Math.min(width, height) * borderRadiusPercent) / 100,
+	);
 }
 
 export function isZeroPadding(padding: Padding | number): boolean {
@@ -147,6 +165,7 @@ export function computePaddedLayout(params: {
 interface LayoutParams {
 	container: HTMLDivElement;
 	app: Application;
+	resolution?: number;
 	videoSprite: Sprite;
 	maskGraphics: Graphics;
 	videoElement: HTMLVideoElement;
@@ -177,6 +196,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 	const {
 		container,
 		app,
+		resolution,
 		videoSprite,
 		maskGraphics,
 		videoElement,
@@ -201,7 +221,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 		return null;
 	}
 
-	app.renderer.resize(width, height);
+	app.renderer.resize(width, height, resolution);
 	app.canvas.style.width = "100%";
 	app.canvas.style.height = "100%";
 
@@ -229,6 +249,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 			layout.croppedDisplayWidth,
 			layout.croppedDisplayHeight,
 			borderRadius,
+			{ width, height },
 		),
 	});
 	maskGraphics.fill({ color: 0xffffff });

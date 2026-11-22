@@ -84,7 +84,7 @@ export function getAspectRatioDimensions(
 
 export function getAspectRatioLabel(aspectRatio: AspectRatio): string {
 	if (aspectRatio === "native") {
-		return "Native";
+		return "Original aspect ratio";
 	}
 	if (isCustomAspectRatio(aspectRatio)) {
 		return `Custom ${aspectRatio}`;

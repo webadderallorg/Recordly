@@ -8,6 +8,7 @@ export interface AudioLevelMeterOptions {
 
 export function useAudioLevelMeter(options: AudioLevelMeterOptions) {
 	const [level, setLevel] = useState(0);
+	const [status, setStatus] = useState<"idle" | "monitoring" | "unavailable">("idle");
 	const audioContextRef = useRef<AudioContext | null>(null);
 	const analyserRef = useRef<AnalyserNode | null>(null);
 	const streamRef = useRef<MediaStream | null>(null);
@@ -33,10 +34,12 @@ export function useAudioLevelMeter(options: AudioLevelMeterOptions) {
 		if (!options.enabled) {
 			cleanup();
 			setLevel(0);
+			setStatus("idle");
 			return cleanup;
 		}
 
 		let mounted = true;
+		setStatus("idle");
 
 		const startMonitoring = async () => {
 			try {
@@ -54,10 +57,11 @@ export function useAudioLevelMeter(options: AudioLevelMeterOptions) {
 				streamRef.current = stream;
 
 				const audioContext = new AudioContext();
+				audioContextRef.current = audioContext;
 				if (audioContext.state === "suspended") {
 					await audioContext.resume();
 				}
-				audioContextRef.current = audioContext;
+				if (!mounted) return;
 
 				const analyser = audioContext.createAnalyser();
 				analyser.fftSize = 256;
@@ -66,6 +70,7 @@ export function useAudioLevelMeter(options: AudioLevelMeterOptions) {
 
 				const source = audioContext.createMediaStreamSource(stream);
 				source.connect(analyser);
+				setStatus("monitoring");
 
 				const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
@@ -89,7 +94,9 @@ export function useAudioLevelMeter(options: AudioLevelMeterOptions) {
 			} catch (error) {
 				console.error("Error starting audio level monitoring:", error);
 				if (mounted) {
+					cleanup();
 					setLevel(0);
+					setStatus("unavailable");
 				}
 			}
 		};
@@ -102,5 +109,5 @@ export function useAudioLevelMeter(options: AudioLevelMeterOptions) {
 		};
 	}, [options.deviceId, options.enabled, options.smoothingFactor]);
 
-	return { level };
+	return { level, status };
 }

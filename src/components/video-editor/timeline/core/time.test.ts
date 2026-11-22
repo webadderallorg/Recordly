@@ -6,6 +6,7 @@ import {
 	formatPlayheadTime,
 	formatTimeLabel,
 	normalizeWheelDeltaToPixels,
+	scaleTimelineRange,
 } from "./time";
 
 describe("timeline core/time", () => {
@@ -24,6 +25,28 @@ describe("timeline core/time", () => {
 		expect(calculateTimelineScale(1).defaultItemDurationMs).toBe(100);
 		expect(calculateTimelineScale(100).defaultItemDurationMs).toBe(5000);
 		expect(calculateTimelineScale(10_000).defaultItemDurationMs).toBe(30000);
+	});
+
+	it("zooms the timeline around its center and reverses the step", () => {
+		const range = { start: 1000, end: 5000 };
+		const zoomed = scaleTimelineRange(range, 6000, 300, 0.75);
+		expect(zoomed).toEqual({ start: 1500, end: 4500 });
+		expect(scaleTimelineRange(zoomed, 6000, 300, 4 / 3)).toEqual(range);
+	});
+
+	it("clamps the visible range at the timeline edges and on short clips", () => {
+		expect(scaleTimelineRange({ start: 0, end: 3000 }, 6000, 300, 4 / 3)).toEqual({
+			start: 0,
+			end: 4000,
+		});
+		expect(scaleTimelineRange({ start: 3000, end: 6000 }, 6000, 300, 4 / 3)).toEqual({
+			start: 2000,
+			end: 6000,
+		});
+		expect(scaleTimelineRange({ start: 0, end: 200 }, 200, 300, 0.75)).toEqual({
+			start: 0,
+			end: 200,
+		});
 	});
 
 	it("formats timeline labels in fractional, whole-second, and hour modes", () => {
@@ -54,5 +77,18 @@ describe("timeline core/time", () => {
 		expect(tiny.gridMs).toBeGreaterThan(0);
 		expect(typical.intervalMs).toBeGreaterThanOrEqual(tiny.intervalMs);
 		expect(huge.intervalMs).toBeGreaterThanOrEqual(typical.intervalMs);
+	});
+});
+
+describe("readable timeline ruler", () => {
+	it("carries fractional rounding into the next minute", () => {
+		expect(formatTimeLabel(59999, 100)).toBe("1:00.00");
+		expect(formatPlayheadTime(59999)).toBe("1:00.0");
+		expect(formatTimeLabel(3599999, 100)).toBe("1:00:00.00");
+	});
+	it("reduces tick density in narrow windows", () => {
+		expect(calculateAxisScale(10000, 400).intervalMs).toBeGreaterThan(
+			calculateAxisScale(10000, 1600).intervalMs,
+		);
 	});
 });

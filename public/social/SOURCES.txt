@@ -1,0 +1,10 @@
+Official platform logos for testimonial source identification.
+Downloaded 2026-11-05. Unmodified PNG assets; original colors and aspect ratios retained.
+
+x-logo-black.png: https://about.x.com/content/dam/about-twitter/x/brand-toolkit/logo-black.png
+x-logo-white.png: https://about.x.com/content/dam/about-twitter/x/brand-toolkit/logo-white.png
+reddit-logo.png: https://redditinc.com/hs-fs/hubfs/Reddit%20Inc/Content/Brand%20Page/Reddit_Logo.png?width=400&height=400&name=Reddit_Logo.png
+
+X guidelines: https://about.x.com/content/dam/about-twitter/x/brand-toolkit/x-brand-guidelines.pdf
+Reddit brand resources: https://redditinc.com/brand
+Trademarks belong to their respective owners.

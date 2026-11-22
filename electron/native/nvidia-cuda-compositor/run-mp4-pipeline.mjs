@@ -58,8 +58,12 @@ const cursorTypes = [
 	"resize-ew",
 	"resize-ns",
 	"not-allowed",
+	"move",
+	"resize-nwse",
+	"resize-nesw",
 ];
 const cursorTypeIndexes = new Map(cursorTypes.map((type, index) => [type, index]));
+const maxCursorTypeIndex = cursorTypes.length - 1;
 
 function fail(message) {
 	throw new Error(message);
@@ -502,7 +506,10 @@ function writeCursorSamples(cursorPayload, outputPath) {
 				sample.cy,
 				cursorTypeIndexes.get(sample.cursorType) ??
 					(Number.isFinite(sample.cursorTypeIndex)
-						? Math.max(0, Math.min(8, Math.round(sample.cursorTypeIndex)))
+						? Math.max(
+								0,
+								Math.min(maxCursorTypeIndex, Math.round(sample.cursorTypeIndex)),
+							)
 						: 0),
 				Number(bounceScale.toFixed(4)),
 				sample.visible === false ? 0 : 1,

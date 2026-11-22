@@ -1,16 +1,24 @@
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, ipcMain } from "electron";
 import { USER_DATA_PATH } from "../../appPaths";
-import { getAssetRootPath } from "../project/manager";
+import { isTrustedRenderer } from "../../trustedRenderer";
+import { getAssetRootPath, isAllowedLocalReadPath } from "../project/manager";
 import { normalizePath } from "../utils";
+import { registerDesktopWallpaperHandler } from "./desktopWallpaper";
 
 export function registerAssetHandlers() {
+	registerDesktopWallpaperHandler();
 	async function resolveReadableLocalFilePath(filePath: string) {
+		if (!isAllowedLocalReadPath(filePath))
+			throw new Error("File is outside Recordly's approved locations");
 		const normalizedPath = normalizePath(filePath);
 		const resolvedPath = await fs.realpath(normalizedPath).catch(() => normalizedPath);
+		if (!isAllowedLocalReadPath(resolvedPath))
+			throw new Error("File is outside Recordly's approved locations");
 		const stats = await fs.stat(resolvedPath);
 		if (!stats.isFile()) {
 			throw new Error("Path is not a readable file");
@@ -25,13 +33,33 @@ export function registerAssetHandlers() {
 	const thumbCacheDir = path.join(USER_DATA_PATH, "wallpaper-thumbs");
 	let thumbGenerationQueue: Promise<void> = Promise.resolve();
 
-	ipcMain.handle("generate-wallpaper-thumbnail", async (_, filePath: string) => {
+	ipcMain.handle("generate-wallpaper-thumbnail", async (event, filePath: unknown) => {
 		try {
-			const resolved = await resolveReadableLocalFilePath(filePath);
+			if (!isTrustedRenderer(event)) throw new Error("Untrusted local file request");
+			if (typeof filePath !== "string" || !filePath)
+				throw new Error("Invalid wallpaper path");
+			const bundled = filePath.startsWith("/wallpapers/");
+			const wallpaperRoot = path.resolve(getAssetRootPath(), "wallpapers");
+			const candidate = bundled
+				? path.resolve(
+						wallpaperRoot,
+						decodeURIComponent(filePath.slice("/wallpapers/".length)),
+					)
+				: filePath;
+			if (
+				bundled &&
+				(path.relative(wallpaperRoot, candidate).startsWith("..") ||
+					path.isAbsolute(path.relative(wallpaperRoot, candidate)))
+			) {
+				throw new Error("Wallpaper path is outside the bundled wallpapers");
+			}
+			const resolved = await resolveReadableLocalFilePath(candidate);
 
 			// Deterministic cache key from file path + mtime
 			const stat = await fs.stat(resolved);
-			const cacheKey = Buffer.from(`${resolved}:${stat.mtimeMs}`).toString("base64url");
+			const cacheKey = createHash("sha256")
+				.update(`${resolved}:${stat.mtimeMs}`)
+				.digest("hex");
 			const thumbPath = path.join(thumbCacheDir, `${cacheKey}.jpg`);
 
 			// Return cached thumbnail if it exists (no queue needed)
@@ -72,7 +100,8 @@ export function registerAssetHandlers() {
 	});
 
 	// Return base path for assets so renderer can resolve file:// paths in production
-	ipcMain.handle("get-asset-base-path", () => {
+	ipcMain.handle("get-asset-base-path", (event) => {
+		if (!isTrustedRenderer(event)) return null;
 		if (!app.isPackaged) {
 			return null;
 		}
@@ -86,8 +115,9 @@ export function registerAssetHandlers() {
 		}
 	});
 
-	ipcMain.handle("list-asset-directory", async (_, relativeDir: string) => {
+	ipcMain.handle("list-asset-directory", async (event, relativeDir: string) => {
 		try {
+			if (!isTrustedRenderer(event)) throw new Error("Untrusted asset directory request");
 			const normalizedRelativeDir = String(relativeDir ?? "")
 				.replace(/\\/g, "/")
 				.replace(/^\/+/, "");
@@ -101,7 +131,12 @@ export function registerAssetHandlers() {
 				return { success: false, error: "Invalid asset directory" };
 			}
 
-			const entries = await fs.readdir(targetDirPath, { withFileTypes: true });
+			const realRoot = await fs.realpath(assetRootPath);
+			const realTarget = await fs.realpath(targetDirPath);
+			const relativeTarget = path.relative(realRoot, realTarget);
+			if (relativeTarget.startsWith("..") || path.isAbsolute(relativeTarget))
+				return { success: false, error: "Invalid asset directory" };
+			const entries = await fs.readdir(realTarget, { withFileTypes: true });
 			const files = entries
 				.filter((entry) => entry.isFile())
 				.map((entry) => entry.name)
@@ -114,13 +149,11 @@ export function registerAssetHandlers() {
 		}
 	});
 
-	ipcMain.handle("read-local-file", async (_, filePath: string) => {
+	ipcMain.handle("read-local-file", async (event, filePath: unknown) => {
 		try {
-			// Intentionally more permissive than the media-server allowlist: this IPC
-			// is used for direct renderer-side local file reads after the app has
-			// already accepted a path, while URL-based media serving must stay scoped
-			// to approved/app-managed locations. We still canonicalize the path and
-			// require a real on-disk file so this cannot be used to read directories.
+			if (!isTrustedRenderer(event)) throw new Error("Untrusted local file request");
+			if (typeof filePath !== "string" || !filePath)
+				throw new Error("File is outside Recordly's approved locations");
 			const resolved = await resolveReadableLocalFilePath(filePath);
 
 			const data = await fs.readFile(resolved);

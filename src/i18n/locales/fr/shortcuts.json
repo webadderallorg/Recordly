@@ -6,6 +6,7 @@
 		"addAnnotation": "Ajouter une annotation",
 		"addKeyframe": "Ajouter une image clé",
 		"deleteSelected": "Supprimer la sélection",
+		"duplicateSelected": "Dupliquer la sélection",
 		"playPause": "Lecture / Pause",
 		"cycleForward": "Parcourir les annotations vers l’avant",
 		"cycleBackward": "Parcourir les annotations vers l’arrière",

@@ -1,3 +1,4 @@
+import { Card } from "@heroui/react";
 import type { Dispatch, FormEvent, RefObject, SetStateAction } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,7 +10,9 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import ProjectBrowserDialog, { type ProjectLibraryEntry } from "../ProjectBrowserDialog";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
+import { Dashboard } from "../dashboard/Dashboard";
+import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 
 export type UnsavedChangesDecision = "cancel" | "discard" | "save";
 
@@ -20,12 +23,13 @@ type Translator = (
 ) => string;
 
 interface EditorDialogsProps {
+	getProtectedSourcePaths?: () => string[];
 	t: Translator;
 	projectSaveDialogOpen: boolean;
 	setProjectSaveDialogOpen: Dispatch<SetStateAction<boolean>>;
 	projectSaveDialogDraft: string;
 	setProjectSaveDialogDraft: Dispatch<SetStateAction<string>>;
-	projectSaveDialogInputRef: RefObject<HTMLInputElement>;
+	projectSaveDialogInputRef: RefObject<HTMLInputElement | null>;
 	isSavingProjectDialog: boolean;
 	resolveProjectSaveDialog: (saved: boolean) => void;
 	handleProjectSaveDialogSubmit: (event?: FormEvent<HTMLFormElement>) => Promise<void>;
@@ -36,14 +40,33 @@ interface EditorDialogsProps {
 	projectBrowserOpen: boolean;
 	setProjectBrowserOpen: Dispatch<SetStateAction<boolean>>;
 	projectLibraryEntries: ProjectLibraryEntry[];
-	projectBrowserAnchorRef: RefObject<HTMLButtonElement>;
+	projectLibraryLoading: boolean;
+	projectLibraryError?: string | null;
+	onRetryLibraryLoad?: () => Promise<void>;
+	projectError: string | null;
+	projectErrorSource?: string;
+	projectErrorRecordingSource?: string;
+	onDashboardSignIn: () => void;
+	onDeleteProjects: (
+		paths: string[],
+		options?: { includeSources?: boolean; protectedSources?: string[] },
+	) => Promise<string[]>;
+	onRenameProject: (path: string, name: string) => Promise<string>;
+	onShareProject: (path: string) => Promise<void>;
+	accountLabel?: string;
+	accountId?: string;
+	authToken?: string;
+	dashboardInitialSection?: "projects" | "settings";
+	editorTitle?: string;
+	headerLeftControlsPaddingClass?: string;
 	handleImportMediaOrProject: () => Promise<void>;
-	handleOpenProjectFromLibrary: (projectPath: string) => Promise<void>;
+	handleOpenProjectFromLibrary: (projectPath: string) => Promise<unknown>;
 	nativeCaptureUnavailableModalOpen: boolean;
 	setNativeCaptureUnavailableModalOpen: Dispatch<SetStateAction<boolean>>;
 }
 
 export function EditorDialogs({
+	getProtectedSourcePaths,
 	t,
 	projectSaveDialogOpen,
 	setProjectSaveDialogOpen,
@@ -60,12 +83,28 @@ export function EditorDialogs({
 	projectBrowserOpen,
 	setProjectBrowserOpen,
 	projectLibraryEntries,
-	projectBrowserAnchorRef,
+	projectLibraryLoading,
+	projectLibraryError,
+	onRetryLibraryLoad,
+	projectError,
+	projectErrorSource,
+	projectErrorRecordingSource,
+	onDashboardSignIn,
+	onDeleteProjects,
+	onRenameProject,
+	onShareProject,
+	accountLabel,
+	accountId,
+	authToken,
+	dashboardInitialSection,
+	editorTitle,
+	headerLeftControlsPaddingClass,
 	handleImportMediaOrProject,
 	handleOpenProjectFromLibrary,
 	nativeCaptureUnavailableModalOpen,
 	setNativeCaptureUnavailableModalOpen,
 }: EditorDialogsProps) {
+	useUiLocale();
 	return (
 		<>
 			<Dialog
@@ -75,7 +114,7 @@ export function EditorDialogs({
 					else if (!isSavingProjectDialog) resolveProjectSaveDialog(false);
 				}}
 			>
-				<DialogContent className="max-w-sm border-foreground/10 bg-editor-dialog text-foreground">
+				<DialogContent className="max-w-sm">
 					<form onSubmit={(event) => void handleProjectSaveDialogSubmit(event)}>
 						<DialogHeader>
 							<DialogTitle>
@@ -92,7 +131,7 @@ export function EditorDialogs({
 							<label className="mb-2 block text-xs font-medium text-muted-foreground">
 								{t("editor.project.saveNameLabel", "Project name")}
 							</label>
-							<div className="flex items-center overflow-hidden rounded-md border border-foreground/10 bg-editor-panel">
+							<Card className="flex-row items-center overflow-hidden">
 								<Input
 									ref={projectSaveDialogInputRef}
 									value={projectSaveDialogDraft}
@@ -100,13 +139,13 @@ export function EditorDialogs({
 										setProjectSaveDialogDraft(event.target.value)
 									}
 									disabled={isSavingProjectDialog}
-									className="h-10 flex-1 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+									className="h-10 flex-1"
 									aria-label={t("editor.project.saveNameLabel", "Project name")}
 								/>
 								<span className="shrink-0 px-3 text-xs font-medium text-muted-foreground/70">
-									.recordly
+									{".recordly"}
 								</span>
-							</div>
+							</Card>
 						</div>
 						<DialogFooter>
 							<Button
@@ -134,7 +173,7 @@ export function EditorDialogs({
 					else resolveUnsavedChangesDialog("cancel");
 				}}
 			>
-				<DialogContent className="max-w-sm border-foreground/10 bg-editor-dialog text-foreground">
+				<DialogContent className="max-w-sm">
 					<DialogHeader>
 						<DialogTitle>
 							{t("editor.project.unsavedChangesTitle", "Unsaved changes")}
@@ -169,20 +208,36 @@ export function EditorDialogs({
 				</DialogContent>
 			</Dialog>
 
-			<ProjectBrowserDialog
+			<Dashboard
+				getProtectedSourcePaths={getProtectedSourcePaths}
+				editorTitle={editorTitle}
+				headerLeftControlsPaddingClass={headerLeftControlsPaddingClass}
 				open={projectBrowserOpen}
 				onOpenChange={setProjectBrowserOpen}
 				entries={projectLibraryEntries}
-				anchorRef={projectBrowserAnchorRef}
-				onImportFile={() => void handleImportMediaOrProject()}
-				onOpenProject={(projectPath) => void handleOpenProjectFromLibrary(projectPath)}
+				loading={projectLibraryLoading}
+				libraryError={projectLibraryError}
+				onRetryLibraryLoad={onRetryLibraryLoad}
+				error={projectError}
+				errorSource={projectErrorSource}
+				errorRecordingSource={projectErrorRecordingSource}
+				onSignIn={onDashboardSignIn}
+				onDeleteProjects={onDeleteProjects}
+				onRenameProject={onRenameProject}
+				onShareProject={onShareProject}
+				accountLabel={accountLabel}
+				accountId={accountId}
+				authToken={authToken}
+				initialSection={dashboardInitialSection}
+				onImportFile={handleImportMediaOrProject}
+				onOpenProject={handleOpenProjectFromLibrary}
 			/>
 
 			<Dialog
 				open={nativeCaptureUnavailableModalOpen}
 				onOpenChange={setNativeCaptureUnavailableModalOpen}
 			>
-				<DialogContent className="max-w-md bg-editor-dialog border-foreground/10 text-foreground">
+				<DialogContent className="max-w-md">
 					<DialogHeader>
 						<DialogTitle>
 							{t(

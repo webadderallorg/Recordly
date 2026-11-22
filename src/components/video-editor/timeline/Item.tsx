@@ -1,24 +1,45 @@
+import { useDndMonitor } from "@dnd-kit/core";
+import type { GetSpanFromDragEvent, GetSpanFromResizeEvent, Span } from "dnd-timeline";
+import { useItem, useTimelineContext } from "dnd-timeline";
+import { useCallback, useMemo, useRef } from "react";
+import { GiRabbit, GiTortoise } from "react-icons/gi";
 import {
-	FilmSlate as Film,
 	Gauge,
 	ChatCircle as MessageSquare,
+	Mouse,
 	MusicNotes as Music,
-	MouseLeftClickIcon as PhMouseLeftClick,
 	Scissors,
 	SpeakerX,
-	MagnifyingGlassPlus as ZoomIn,
-} from "@phosphor-icons/react";
-import type { Span } from "dnd-timeline";
-import { useItem } from "dnd-timeline";
-import { useMemo } from "react";
+	MagnifyingGlass as ZoomIn,
+} from "@/components/ui/icons";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { cn } from "@/lib/utils";
 import { formatClipSpeedLabel } from "../clipSpeedChange";
+import { ClipFilmstrip } from "./components/filmstrip/ClipFilmstrip";
 import AudioWaveform from "./components/waveform/AudioWaveform";
+import {
+	type ClipPresentation,
+	getRegionDisplaySpan,
+	getTimeAtClipSeam,
+	snapRegionSpan,
+} from "./core/clipPresentation";
+import { ZOOM_ROW_ID } from "./core/constants";
+import { useTimelinePresentation } from "./core/TimelinePresentation";
+import { formatPlayheadTime } from "./core/time";
 import type { AudioPeaksData } from "./core/timelineTypes";
+import { getZoomDisplaySpan, getZoomResizeSpan } from "./core/zoomPresentation";
+import { getSiblingSpans, resolveDragEnd, resolveResizeEnd } from "./dnd/engine";
 import glassStyles from "./ItemGlass.module.css";
 
 interface ItemProps {
+	clipPresentation?: ClipPresentation[];
+	sharedLeftGrip?: boolean;
+	sharedRightGrip?: boolean;
+	displaySpan?: Span;
+	embedded?: boolean;
+	videoPath?: string | null;
+	sourceSpan?: Span;
 	id: string;
 	span: Span;
 	rowId: string;
@@ -26,7 +47,8 @@ interface ItemProps {
 	children: React.ReactNode;
 	isSelected?: boolean;
 	onSelect?: () => void;
-	onSelectId?: (id: string) => void;
+	onDoubleClick?: () => void;
+	onSelectId?: (id: string, extend?: boolean) => void;
 	zoomDepth?: number;
 	zoomMode?: "auto" | "manual";
 	speedValue?: number;
@@ -38,35 +60,42 @@ interface ItemProps {
 	variant?: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio" | "caption";
 	isLoading?: boolean;
 	loadingLabel?: string;
+	/** Timeline time a clip edge snaps to while resizing, usually the playhead. */
+	playheadMsRef?: React.RefObject<number>;
 }
 
-// Map zoom depth to multiplier labels
-const ZOOM_LABELS: Record<number, string> = {
-	1: "1.25×",
-	2: "1.5×",
-	3: "1.8×",
-	4: "2.2×",
-	5: "3.5×",
-	6: "5×",
+/** Width of the zone around a clip edge that starts a trim, half inside and half outside. */
+const MAX_CLIP_GRAB_RADIUS_PX = 16;
+const MIN_ITEM_PX = 6;
+/** How close a dragged clip edge has to come to the playhead to snap to it. It covers
+ * the 9 px between a clip grip and its edge, so a grip dropped on the playhead snaps. */
+const PLAYHEAD_SNAP_PX = 14;
+
+// Map zoom depth to numeric multipliers for locale-aware display.
+const ZOOM_FACTORS: Record<number, number> = {
+	1: 1.25,
+	2: 1.5,
+	3: 1.8,
+	4: 2.2,
+	5: 3.5,
+	6: 5,
 };
 
-function formatMs(ms: number): string {
-	const totalSeconds = ms / 1000;
-	const minutes = Math.floor(totalSeconds / 60);
-	const seconds = totalSeconds % 60;
-	if (minutes > 0) {
-		return `${minutes}:${seconds.toFixed(1).padStart(4, "0")}`;
-	}
-	return `${seconds.toFixed(1)}s`;
-}
-
 export default function Item({
+	clipPresentation: suppliedPresentation,
 	id,
+	sharedLeftGrip = false,
+	sharedRightGrip = false,
+	embedded = false,
+	videoPath,
+	sourceSpan,
 	span,
+	displaySpan: suppliedDisplaySpan,
 	rowId,
 	disabled = false,
 	isSelected = false,
 	onSelect,
+	onDoubleClick,
 	onSelectId,
 	zoomDepth = 1,
 	zoomMode = "auto",
@@ -79,24 +108,263 @@ export default function Item({
 	variant = "zoom",
 	isLoading = false,
 	loadingLabel,
+	playheadMsRef,
 	children,
 }: ItemProps) {
+	const te = useScopedT("editing");
+	const tSettings = useScopedT("settings");
+	const { locale } = useI18n();
+	const formatNumber = (value: number) =>
+		new Intl.NumberFormat(locale, { useGrouping: false, maximumFractionDigits: 20 }).format(
+			value,
+		);
+	const zoomLabel = `${formatNumber(ZOOM_FACTORS[zoomDepth] ?? zoomDepth)}×`;
+	const timeline = useTimelineContext();
+	const presentation = useTimelinePresentation();
+	const { previewConfig } = presentation;
+	const clipPresentation =
+		variant === "clip" ? undefined : (suppliedPresentation ?? presentation.clips);
+	const isZoom = variant === "zoom";
+	const toVisibleSpan = (next: Span) => {
+		if (!isZoom) return next;
+		const visible = getZoomDisplaySpan(next, presentation.zoomTiming);
+		// Stored edits use whole milliseconds. Keep a snapped end on the same
+		// side of a clip seam.
+		return { ...visible, end: Math.round(visible.end) };
+	};
+	const visibleSpan = toVisibleSpan(span);
+	const displaySpan = clipPresentation?.length
+		? getRegionDisplaySpan(visibleSpan, clipPresentation)
+		: (suppliedDisplaySpan ?? visibleSpan);
+	const nodeRef = useRef<HTMLDivElement | null>(null);
+	const dragOriginRef = useRef<{
+		span: Span;
+		displaySpan: Span;
+		rangeStart: number;
+	} | null>(null);
+	const dragPreviewRef = useRef<{ display: Span; deltaY: number } | null>(null);
+	const targets = useMemo(
+		() => [
+			...new Set(
+				presentation.regions
+					.filter((region) => region.id !== id)
+					.flatMap((region) => {
+						const visible =
+							region.rowId === ZOOM_ROW_ID
+								? getZoomDisplaySpan(region, presentation.zoomTiming)
+								: region;
+						return [
+							visible.start,
+							region.rowId === ZOOM_ROW_ID ? Math.round(visible.end) : visible.end,
+						];
+					}),
+			),
+		],
+		[presentation.regions, presentation.zoomTiming, id],
+	);
+	const snap = (next: Span, edge?: "start" | "end") =>
+		snapRegionSpan(next, targets, presentation.clips, timeline.pixelsToValue(1), edge);
+	const resizeZoom = (resized: Span, edge: "start" | "end") => {
+		// The untouched end must retain its fractional precision. Rounding it up
+		// can make a long zoom exceed the timeline/neighbor boundary,
+		// causing the constraint solver to collapse it to a much shorter interval.
+		const preciseSpan =
+			edge === "start"
+				? { ...resized, end: getZoomDisplaySpan(span, presentation.zoomTiming).end }
+				: resized;
+		const siblings = getSiblingSpans(id, rowId, previewConfig.allRegionSpans);
+		const previous = [...siblings].reverse().find((region) => region.end <= span.start);
+		const next = siblings.find((region) => region.start >= span.end);
+		return getZoomResizeSpan(preciseSpan, presentation.zoomTiming, edge, {
+			start: previous?.end ?? 0,
+			end: Math.min(
+				next?.start ?? Number.MAX_SAFE_INTEGER,
+				previewConfig.totalMs > 0 ? previewConfig.totalMs : Number.MAX_SAFE_INTEGER,
+			),
+			minDurationMs: previewConfig.minItemDurationMs,
+		});
+	};
+	const getMediaSpanFromDrag: GetSpanFromDragEvent = (event) => {
+		if (!("delta" in event)) return span;
+		if (!clipPresentation) {
+			const dragged = timeline.getSpanFromDragEvent(event);
+			if (!dragged) return null;
+			const visualOffset = displaySpan.start - span.start;
+			return { start: dragged.start - visualOffset, end: dragged.end - visualOffset };
+		}
+		// Preview renders move both the node and its span prop. Always measure
+		// from the picked-up position, never from that moving DOM rectangle.
+		const origin = dragOriginRef.current ?? {
+			span,
+			displaySpan,
+			rangeStart: timeline.range.start,
+		};
+		const delta =
+			timeline.pixelsToValue(event.delta.x) * (timeline.direction === "rtl" ? -1 : 1);
+		const displayStart =
+			origin.displaySpan.start + delta + timeline.range.start - origin.rangeStart;
+		const start = getTimeAtClipSeam(displayStart, clipPresentation);
+		const visible = toVisibleSpan(origin.span);
+		const snapped = snap({ start, end: start + visible.end - visible.start });
+		return {
+			start: snapped.start,
+			end: snapped.start + origin.span.end - origin.span.start,
+		};
+	};
+	const getMediaSpanFromResize: GetSpanFromResizeEvent = (event) => {
+		const delta = timeline.pixelsToValue(event.delta.x);
+		const edge = event.direction;
+		if (clipPresentation) {
+			const resized = snap(
+				{
+					...visibleSpan,
+					[edge]: getTimeAtClipSeam(displaySpan[edge] + delta, clipPresentation),
+				},
+				edge,
+			);
+			return isZoom ? resizeZoom(resized, edge) : { ...span, [edge]: resized[edge] };
+		}
+		if (isZoom) {
+			return resizeZoom({ ...visibleSpan, [edge]: visibleSpan[edge] + delta }, edge);
+		}
+		const scale = (span.end - span.start) / (displaySpan.end - displaySpan.start);
+		const next = { ...span, [edge]: span[edge] + delta * scale };
+		const snapToMs = playheadMsRef?.current;
+		if (
+			snapToMs !== undefined &&
+			Math.abs(next[edge] - snapToMs) <= timeline.pixelsToValue(PLAYHEAD_SNAP_PX) * scale
+		) {
+			next[edge] = snapToMs;
+		}
+		return next;
+	};
+
+	const paintPreview = (preview: Span, deltaY = 0) => {
+		const node = nodeRef.current;
+		if (!node || !clipPresentation) return;
+		const display = getRegionDisplaySpan(toVisibleSpan(preview), clipPresentation);
+		const side = timeline.direction === "rtl" ? "right" : "left";
+		const origin = dragOriginRef.current?.displaySpan;
+		if (origin) dragPreviewRef.current = { display, deltaY };
+		const left = origin?.start ?? display.start;
+		node.style[side] = `${timeline.valueToPixels(left - timeline.range.start)}px`;
+		node.style.width = `${timeline.valueToPixels(display.end - display.start)}px`;
+		const deltaX = origin
+			? timeline.valueToPixels(display.start - origin.start) *
+				(timeline.direction === "rtl" ? -1 : 1)
+			: 0;
+		node.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+	};
+	useDndMonitor({
+		onDragStart(event) {
+			if (event.active.id === id && clipPresentation) {
+				dragPreviewRef.current = null;
+				dragOriginRef.current = {
+					span,
+					displaySpan,
+					rangeStart: timeline.range.start,
+				};
+			}
+		},
+		onDragMove(event) {
+			if (event.active.id !== id || !clipPresentation) return;
+			const next = getMediaSpanFromDrag(event);
+			if (next) {
+				const resolved = resolveDragEnd(id, next, rowId, previewConfig);
+				paintPreview(resolved?.span ?? span, event.delta.y);
+			}
+		},
+		onDragEnd(event) {
+			if (event.active.id === id) {
+				paintPreview(span);
+				dragOriginRef.current = null;
+				dragPreviewRef.current = null;
+			}
+		},
+		onDragCancel(event) {
+			if (event.active.id === id) {
+				paintPreview(span);
+				dragOriginRef.current = null;
+				dragPreviewRef.current = null;
+			}
+		},
+	});
+	// Leave a draggable center even when a clip is only a few pixels wide.
+	const clipWidthPx = Math.max(
+		MIN_ITEM_PX,
+		timeline.valueToPixels(displaySpan.end - displaySpan.start),
+	);
+	const clipGrabRadiusPx = Math.min(MAX_CLIP_GRAB_RADIUS_PX, clipWidthPx / 3);
+	const clipStartSide = timeline.direction === "rtl" ? "right" : "left";
+	const clipEndSide = clipStartSide === "left" ? "right" : "left";
+	const precedingClip = sharedLeftGrip
+		? presentation.clips.find((clip) => clip.span.end === span.start)?.displaySpan
+		: undefined;
+	// A very short preceding clip still renders at the minimum block width.
+	const sharedGapPx = precedingClip
+		? Math.max(
+				0,
+				timeline.valueToPixels(displaySpan.start - precedingClip.start) -
+					Math.max(
+						MIN_ITEM_PX,
+						timeline.valueToPixels(precedingClip.end - precedingClip.start),
+					),
+			)
+		: 0;
+	const clipStartGripPx = Math.min(
+		clipGrabRadiusPx,
+		sharedLeftGrip ? Math.min(sharedGapPx, sharedGapPx / 2 + 2) : 9,
+	);
+	const clipStartGrabPx = sharedLeftGrip ? clipStartGripPx : clipGrabRadiusPx;
 	const { setNodeRef, attributes, listeners, itemStyle, itemContentStyle } = useItem({
 		id,
-		span,
+		// Keep the measured layout fixed during pickup. Moving it as part of a
+		// preview makes dnd-kit compensate its delta and can swallow pointer moves.
+		span: dragOriginRef.current?.displaySpan ?? displaySpan,
 		disabled: disabled || isLoading,
-		data: { rowId },
+		data: {
+			rowId,
+			span,
+			getSpanFromDragEvent: getMediaSpanFromDrag,
+			getSpanFromResizeEvent: getMediaSpanFromResize,
+		},
+		resizeHandleWidth: variant === "clip" ? clipGrabRadiusPx * 2 : undefined,
+		onResizeMove(event) {
+			if (!clipPresentation) return;
+			const next = getMediaSpanFromResize(event);
+			if (next) {
+				const resolved = resolveResizeEnd(id, next, previewConfig);
+				if (resolved) paintPreview(resolved);
+			}
+		},
 	});
 
-	const timeLabel = useMemo(
-		() => `${formatMs(span.start)} – ${formatMs(span.end)}`,
-		[span.start, span.end],
+	const attachRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			nodeRef.current = node;
+			setNodeRef(node);
+		},
+		[setNodeRef],
 	);
+	const timeLabel = useMemo(
+		() => `${formatPlayheadTime(visibleSpan.start)} – ${formatPlayheadTime(visibleSpan.end)}`,
+		[visibleSpan.start, visibleSpan.end],
+	);
+	const zoomTitle = tSettings("sections.zoom", "Zoom");
+	const zoomModeLabel = zoomMode === "manual" ? te("manual", "Manual") : te("auto", "Auto");
+	const zoomSummary = `${zoomTitle} · ${zoomLabel} ${zoomModeLabel} · ${timeLabel}`;
+	const durationLabel = new Intl.NumberFormat(locale, {
+		style: "unit",
+		unit: "second",
+		unitDisplay: "narrow",
+		minimumFractionDigits: variant === "clip" ? 1 : 0,
+		maximumFractionDigits: 2,
+	}).format(Math.max(0, span.end - span.start) / 1000);
 
 	if (isLoading) {
 		return (
 			<div
-				ref={setNodeRef}
+				ref={attachRef}
 				style={{
 					...itemStyle,
 					height: "100%",
@@ -106,13 +374,16 @@ export default function Item({
 				{...listeners}
 				{...attributes}
 				data-timeline-item="true"
+				data-variant={variant}
+				data-start-ms={span.start}
+				data-end-ms={variant === "zoom" ? Math.round(visibleSpan.end) : span.end}
+				data-stored-end-ms={variant === "zoom" ? span.end : undefined}
 				onMouseDownCapture={(event) => event.stopPropagation()}
 				onClickCapture={(event) => event.stopPropagation()}
 			>
 				<Skeleton
-					variant="clip"
-					animation="shimmer-premium"
-					label={loadingLabel || "Loading..."}
+					animationType="shimmer"
+					aria-label={loadingLabel || "Loading..."}
 					className="w-full"
 					style={{ height: "85%", minHeight: 22 }}
 				/>
@@ -120,17 +391,18 @@ export default function Item({
 		);
 	}
 
-	const isZoom = variant === "zoom";
 	const isTrim = variant === "trim";
 	const isClip = variant === "clip";
 	const isSpeed = variant === "speed";
 	const isAudio = variant === "audio";
 	const isCaption = variant === "caption";
 	const showAudioWaveform = isAudio && Boolean(waveformPeaks);
-	const clipSpeedLabel = isClip ? formatClipSpeedLabel(speedValue ?? 1) : null;
+	const rawClipSpeedLabel = isClip ? formatClipSpeedLabel(speedValue ?? 1) : null;
+	const clipSpeedLabel = rawClipSpeedLabel ? `${formatNumber(speedValue ?? 1)}x` : null;
+	const SpeedIcon = (speedValue ?? 1) < 1 ? GiTortoise : (speedValue ?? 1) > 1 ? GiRabbit : Gauge;
 
 	const glassClass = isZoom
-		? glassStyles.glassPurple
+		? glassStyles.glassBlue
 		: isTrim
 			? glassStyles.glassRed
 			: isClip
@@ -143,32 +415,60 @@ export default function Item({
 							? glassStyles.glassCaption
 							: glassStyles.glassYellow;
 
-	const MIN_ITEM_PX = 6;
-	const handleSelect = () => {
+	const handleSelect = (event: React.PointerEvent) => {
 		onSelect?.();
-		onSelectId?.(id);
+		onSelectId?.(id, event.shiftKey);
 	};
+	const previewDisplaySpan = dragPreviewRef.current?.display ?? displaySpan;
 	const safeItemStyle = {
 		...itemStyle,
+		...(clipPresentation && dragOriginRef.current
+			? {
+					width: timeline.valueToPixels(
+						previewDisplaySpan.end - previewDisplaySpan.start,
+					),
+					transform: `translate(${timeline.valueToPixels(previewDisplaySpan.start - dragOriginRef.current.displaySpan.start) * (timeline.direction === "rtl" ? -1 : 1)}px, ${dragPreviewRef.current?.deltaY ?? 0}px)`,
+				}
+			: {}),
 		minWidth: MIN_ITEM_PX,
 		height: "100%",
-		overflow: "hidden",
+		overflow: isClip ? "visible" : "hidden",
+		pointerEvents: "auto" as const,
 	};
 
 	return (
 		<div
-			ref={setNodeRef}
+			ref={attachRef}
 			style={safeItemStyle}
+			data-timeline-item-id={id}
+			data-selected={isSelected}
 			{...listeners}
 			{...attributes}
 			data-timeline-item="true"
+			data-variant={variant}
+			data-start-ms={span.start}
+			data-end-ms={variant === "zoom" ? Math.round(visibleSpan.end) : span.end}
+			data-stored-end-ms={variant === "zoom" ? span.end : undefined}
+			aria-label={
+				isClip
+					? `${te("clips")}${clipSpeedLabel ? ` ${clipSpeedLabel}` : ""} · ${timeLabel} · ${durationLabel}`
+					: isZoom
+						? zoomSummary
+						: undefined
+			}
 			onPointerDownCapture={handleSelect}
+			onDoubleClick={(event) => {
+				if (!onDoubleClick) return;
+				event.stopPropagation();
+				onDoubleClick();
+			}}
 			className="group h-full"
 		>
 			<div
 				className="h-full"
 				style={{
 					...itemContentStyle,
+					overflow: isClip ? "visible" : "hidden",
 					minWidth: MIN_ITEM_PX,
 					height: "100%",
 					display: "flex",
@@ -178,33 +478,93 @@ export default function Item({
 				<div
 					className={cn(
 						glassClass,
-						"w-full overflow-hidden flex items-center justify-center gap-1.5 cursor-grab active:cursor-grabbing relative",
+						"timeline-block w-full flex items-center justify-center gap-1.5 relative",
 						isSelected && glassStyles.selected,
+						embedded && glassStyles.embeddedCaption,
+						isClip ? "overflow-visible" : "overflow-hidden",
 					)}
 					style={{
 						height: "85%",
-						minHeight: 22,
+						minHeight: embedded ? 18 : 22,
 						minWidth: MIN_ITEM_PX,
+						containerType: "size",
+						containerName: isZoom ? "timeline-zoom" : undefined,
 					}}
 					onClick={(event) => {
 						event.stopPropagation();
 					}}
 				>
+					{isClip && videoPath && (
+						<ClipFilmstrip
+							path={videoPath}
+							span={span}
+							sourceSpan={sourceSpan ?? span}
+						/>
+					)}
 					<div
-						className={cn(glassStyles.zoomEndCap, glassStyles.left)}
-						style={{ cursor: "col-resize", pointerEvents: "auto" }}
-						title="Resize left"
+						className={cn(
+							glassStyles.zoomEndCap,
+							glassStyles.left,
+							isClip && glassStyles.clipHandle,
+						)}
+						style={{
+							cursor: "col-resize",
+							pointerEvents: isClip ? "none" : "auto",
+							...(isClip && { left: "auto", [clipStartSide]: -clipStartGripPx }),
+						}}
+						data-testid={isClip && sharedLeftGrip ? "clip-seam-grip" : undefined}
+						title={te("resizeLeft", "Resize left")}
 					/>
 					<div
-						className={cn(glassStyles.zoomEndCap, glassStyles.right)}
-						style={{ cursor: "col-resize", pointerEvents: "auto" }}
-						title="Resize right"
+						className={cn(
+							glassStyles.zoomEndCap,
+							glassStyles.right,
+							isClip && glassStyles.clipHandle,
+						)}
+						style={{
+							cursor: "col-resize",
+							pointerEvents: isClip ? "none" : "auto",
+							display: isClip && sharedRightGrip ? "none" : undefined,
+							...(isClip && {
+								right: "auto",
+								[clipEndSide]: -Math.min(9, clipGrabRadiusPx),
+							}),
+						}}
+						title={te("resizeRight", "Resize right")}
 					/>
+					{/* The visible clip grips sit outside the block. These invisible strips put
+					    them inside the area that starts a trim, so grabbing a grip works. */}
+					{isClip && (
+						<div
+							aria-hidden="true"
+							data-clip-grab="start"
+							className="absolute inset-y-0 z-20"
+							style={{
+								[clipStartSide]: -clipStartGrabPx,
+								width: clipStartGrabPx,
+								cursor: "col-resize",
+							}}
+						/>
+					)}
+					{isClip && !sharedRightGrip && (
+						<div
+							aria-hidden="true"
+							data-clip-grab="end"
+							className="absolute inset-y-0 z-20"
+							style={{
+								[clipEndSide]: -clipGrabRadiusPx,
+								width: clipGrabRadiusPx,
+								cursor: "col-resize",
+							}}
+						/>
+					)}
 					{showAudioWaveform && waveformPeaks && (
 						<AudioWaveform
 							peaks={waveformPeaks}
 							segmentStartMs={waveformSegmentSpan?.start ?? span.start}
 							segmentEndMs={waveformSegmentSpan?.end ?? span.end}
+							timelineStartMs={displaySpan.start}
+							timelineEndMs={displaySpan.end}
 							gain={waveformGain}
 							normalize={waveformNormalize}
 							className="absolute inset-0 w-full h-full pointer-events-none opacity-45"
@@ -216,80 +576,92 @@ export default function Item({
 							<SpeakerX className="w-3 h-3 text-red-300/90 shrink-0" />
 						</div>
 					)}
-					{/* Content */}
-					<div className="relative z-10 flex flex-col items-center justify-center text-black/70 dark:text-white/90 opacity-80 group-hover:opacity-100 transition-opacity select-none overflow-hidden">
-						<div className="flex items-center gap-1.5">
-							{isZoom ? (
+					{isClip && (
+						<span data-clip-duration className={glassStyles.clipDuration}>
+							{durationLabel}
+						</span>
+					)}
+					{/* Playback-speed badges remain visible independently of duration. */}
+					{(!isClip || clipSpeedLabel) && (
+						<div
+							title={
+								isZoom
+									? zoomSummary
+									: `${typeof children === "string" ? children : te("clip", "Clip")} · ${timeLabel}`
+							}
+							className={cn(
+								"relative z-10 flex max-w-full items-center justify-center gap-1 px-1 text-[11px] font-medium text-black/70 dark:text-white/90 select-none overflow-hidden",
+								(isClip || isSpeed) && glassStyles.speedBadge,
+								isClip &&
+									"rounded bg-black/65 px-2 py-1 text-white dark:text-white",
+								(isZoom || embedded) && "text-white dark:text-white",
+								embedded && "w-full justify-start px-2",
+							)}
+						>
+							{isClip ? (
 								<>
-									<ZoomIn className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
-										{ZOOM_LABELS[zoomDepth] || `${zoomDepth}×`}
+									<SpeedIcon
+										aria-hidden="true"
+										className="speed-icon size-3.5 shrink-0"
+									/>
+									<span
+										className={cn("whitespace-nowrap", glassStyles.speedValue)}
+									>
+										{clipSpeedLabel}
 									</span>
 								</>
-							) : isTrim ? (
-								<>
-									<Scissors className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
-										Trim
+							) : isZoom ? (
+								<span className="zoom-description flex min-w-0 items-center justify-center gap-1 leading-none">
+									<span className="zoom-title max-w-full truncate text-xs font-medium text-white/25">
+										{zoomTitle}
 									</span>
-								</>
-							) : isClip ? (
-								<>
-									<Film className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
-										Clip
-									</span>
-									{clipSpeedLabel && (
-										<span className="rounded-[4px] bg-black/10 px-1 text-[9px] font-bold tabular-nums text-black/65 dark:bg-white/15 dark:text-white/80">
-											{clipSpeedLabel}
+									<span className="zoom-details flex min-w-0 max-w-full items-center gap-1 text-sm font-normal leading-none">
+										<ZoomIn aria-hidden="true" className="zoom-icon shrink-0" />
+										<span className="zoom-value shrink-0 whitespace-nowrap">
+											{zoomLabel}
 										</span>
-									)}
-								</>
-							) : isSpeed ? (
-								<>
-									<Gauge className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
-										{speedValue !== undefined ? `${speedValue}×` : "Speed"}
+										<span className="zoom-mode min-w-0 items-center gap-1">
+											<Mouse
+												aria-hidden="true"
+												weight="fill"
+												className="size-3.5 shrink-0"
+											/>
+											<span className="truncate">{zoomModeLabel}</span>
+										</span>
 									</span>
-								</>
-							) : isAudio ? (
-								<>
-									<Music className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight truncate max-w-full">
-										{children}
-									</span>
-								</>
+								</span>
+							) : embedded ? (
+								<span className="truncate">{children}</span>
 							) : (
 								<>
-									<MessageSquare className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
-										{children}
+									{isTrim ? (
+										<Scissors className="size-3 shrink-0" />
+									) : isSpeed ? (
+										<SpeedIcon
+											aria-hidden="true"
+											className="speed-icon size-3.5 shrink-0"
+										/>
+									) : isAudio ? (
+										<Music className="size-3 shrink-0" />
+									) : (
+										<MessageSquare className="size-3 shrink-0" />
+									)}
+									<span
+										className={cn(
+											"truncate",
+											isSpeed && glassStyles.speedValue,
+										)}
+									>
+										{isTrim
+											? te("trim", "Trim")
+											: isSpeed
+												? `${formatNumber(speedValue ?? 1)}×`
+												: children}
 									</span>
 								</>
 							)}
 						</div>
-						{isZoom ? (
-							<div
-								className={`flex items-center gap-0.5 transition-opacity ${isSelected ? "opacity-70" : "opacity-0 group-hover:opacity-50"}`}
-							>
-								<PhMouseLeftClick
-									className="w-2.5 h-2.5 shrink-0"
-									weight={zoomMode === "manual" ? "regular" : "fill"}
-								/>
-								<span className="text-[9px] font-medium tracking-tight whitespace-nowrap">
-									{zoomMode === "manual" ? "Manual" : "Auto"}
-								</span>
-							</div>
-						) : (
-							<span
-								className={`text-[9px] tabular-nums tracking-tight whitespace-nowrap transition-opacity ${
-									isSelected ? "opacity-60" : "opacity-0 group-hover:opacity-40"
-								}`}
-							>
-								{timeLabel}
-							</span>
-						)}
-					</div>
+					)}
 				</div>
 			</div>
 		</div>

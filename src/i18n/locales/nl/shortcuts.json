@@ -6,6 +6,7 @@
 		"addAnnotation": "Annotatie toevoegen",
 		"addKeyframe": "Keyframe toevoegen",
 		"deleteSelected": "Selectie verwijderen",
+		"duplicateSelected": "Selectie dupliceren",
 		"playPause": "Afspelen / Pauzeren",
 		"cycleForward": "Annotaties vooruit doorlopen",
 		"cycleBackward": "Annotaties achteruit doorlopen",

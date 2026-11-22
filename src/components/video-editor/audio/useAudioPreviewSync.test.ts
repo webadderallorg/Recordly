@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { resolveMediaElementSource } from "@/lib/exporter/localMediaSource";
 import { useAudioPreviewSync } from "./useAudioPreviewSync";
 
 const harness = vi.hoisted(() => ({
@@ -19,18 +20,170 @@ vi.mock("react", () => ({
 	useState: () => [0, harness.loaded],
 }));
 vi.mock("@/lib/exporter/localMediaSource", () => ({
-	resolveMediaElementSource: async () => ({ src: "file:///audio.wav", revoke: vi.fn() }),
+	resolveMediaElementSource: vi.fn(async () => ({ src: "file:///audio.wav", revoke: vi.fn() })),
 }));
 vi.mock("../videoPlayback/playbackRate", () => ({
 	supportsPreviewPlaybackRate: (rate: number) => rate <= 16,
 }));
 
 afterEach(() => {
+	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
 	harness.effects = [];
 	harness.refs = [];
 	harness.index = 0;
 	harness.loaded.mockClear();
+});
+
+it("does not repeatedly seek healthy fast playback after delayed renders", async () => {
+	let wallTimeMs = 0;
+	vi.spyOn(performance, "now").mockImplementation(() => wallTimeMs);
+	let position = 0;
+	const seeks: number[] = [];
+	const audio = {
+		src: "",
+		dataset: {},
+		duration: 30,
+		playbackRate: 1,
+		paused: false,
+		seeking: false,
+		volume: 1,
+		get currentTime() {
+			return position;
+		},
+		set currentTime(time: number) {
+			position = time;
+			seeks.push(time);
+		},
+		load: vi.fn(),
+		addEventListener: vi.fn(),
+		removeEventListener: vi.fn(),
+		pause: vi.fn(),
+		play: vi.fn().mockResolvedValue(undefined),
+	};
+	vi.stubGlobal("Audio", function () {
+		return audio;
+	});
+	vi.stubGlobal(
+		"AudioContext",
+		class {
+			state = "running";
+			destination = {};
+			createGain() {
+				return { gain: { value: 1 }, connect: vi.fn() };
+			}
+		},
+	);
+	const render = (timelineTime: number, sourceTime = timelineTime * 4) => {
+		harness.index = 0;
+		harness.effects = [];
+		// biome-ignore lint/correctness/useHookAtTopLevel: the mocked React harness explicitly simulates successive renders.
+		useAudioPreviewSync({
+			audioRegions: [],
+			previewVolume: 1,
+			isPlaying: true,
+			currentTime: sourceTime,
+			timelineTime,
+			duration: 30,
+			sourcePlaybackRate: 4,
+			previewSourceAudioFallbackPaths: ["/audio.system.wav"],
+			sourceAudioFallbackStartDelayMsByPath: { "/audio.system.wav": 0 },
+			sourceAudioResourceVersion: 0,
+			isCurrentClipMuted: false,
+			getSourceTrackPreviewGain: () => 1,
+			onSourceFallbackLoadError: vi.fn(),
+		});
+	};
+	render(0);
+	for (const effect of harness.effects) effect();
+	await Promise.resolve();
+	harness.effects.at(-1)?.();
+	await Promise.resolve();
+	seeks.length = 0;
+	for (const time of [0.3, 0.6, 0.9]) {
+		wallTimeMs = time * 1000;
+		position = time * 4 - 0.05;
+		render(time);
+		harness.effects.at(-1)?.();
+	}
+	expect(seeks).toEqual([]);
+	// An actual source discontinuity at a cut still aligns the audio promptly.
+	wallTimeMs += 30;
+	render(0.93, 8);
+	harness.effects.at(-1)?.();
+	expect(seeks).toEqual([8]);
+});
+
+describe("imported preview audio loading", () => {
+	function setup() {
+		const audio = { src: "", volume: 1, pause: vi.fn() };
+		vi.stubGlobal("Audio", function () {
+			return audio;
+		});
+		const render = (audioPath: string, previewVolume = 1) => {
+			harness.index = 0;
+			harness.effects = [];
+			useAudioPreviewSync({
+				audioRegions: [{ id: "imported", startMs: 0, endMs: 10000, audioPath, volume: 1 }],
+				previewVolume,
+				isPlaying: false,
+				currentTime: 0,
+				timelineTime: 0,
+				duration: 10,
+				sourcePlaybackRate: 1,
+				previewSourceAudioFallbackPaths: [],
+				sourceAudioFallbackStartDelayMsByPath: {},
+				sourceAudioResourceVersion: 0,
+				isCurrentClipMuted: false,
+				getSourceTrackPreviewGain: () => 1,
+				onSourceFallbackLoadError: vi.fn(),
+			});
+			return harness.effects[0]();
+		};
+		return { audio, render };
+	}
+
+	it("keeps the in-flight load when only the volume changes", async () => {
+		const { audio, render } = setup();
+		const pending =
+			Promise.withResolvers<Awaited<ReturnType<typeof resolveMediaElementSource>>>();
+		const loaded = { src: "file:///imported.wav", revoke: vi.fn() };
+		vi.mocked(resolveMediaElementSource).mockReturnValueOnce(pending.promise);
+		const cleanup = render("/imported.wav");
+		cleanup?.();
+		render("/imported.wav", 0.5);
+		pending.resolve(loaded);
+		await pending.promise;
+		expect(audio.src).toBe(loaded.src);
+		expect(audio.volume).toBe(0.5);
+		expect(loaded.revoke).not.toHaveBeenCalled();
+	});
+
+	it("discards obsolete loads even when the same path is selected again", async () => {
+		const { audio, render } = setup();
+		const first =
+			Promise.withResolvers<Awaited<ReturnType<typeof resolveMediaElementSource>>>();
+		const second =
+			Promise.withResolvers<Awaited<ReturnType<typeof resolveMediaElementSource>>>();
+		const latest = { src: "file:///latest.wav", revoke: vi.fn() };
+		const obsolete = { src: "file:///obsolete.wav", revoke: vi.fn() };
+		vi.mocked(resolveMediaElementSource)
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise)
+			.mockResolvedValueOnce(latest);
+		const cleanupFirst = render("/imported.wav");
+		cleanupFirst?.();
+		const cleanupSecond = render("/other.wav");
+		cleanupSecond?.();
+		render("/imported.wav");
+		await Promise.resolve();
+		expect(audio.src).toBe(latest.src);
+		first.resolve(obsolete);
+		second.resolve(obsolete);
+		await first.promise;
+		expect(audio.src).toBe(latest.src);
+		expect(obsolete.revoke).toHaveBeenCalledTimes(2);
+	});
 });
 
 describe("source preview playback ownership", () => {
@@ -98,7 +251,37 @@ describe("source preview playback ownership", () => {
 			delay: 0,
 			plays: false,
 		},
+		{
+			name: "microphone before its recorded start",
+			path: "/audio.mic.wav",
+			muted: false,
+			playing: true,
+			rate: 1,
+			time: 0.5,
+			delay: 1500,
+			plays: false,
+		},
+		{
+			name: "microphone after its recorded start",
+			path: "/audio.mic.wav",
+			muted: false,
+			playing: true,
+			rate: 1,
+			time: 3,
+			delay: 1500,
+			plays: true,
+		},
+		{
+			name: "track starting beyond the visible recording",
+			muted: false,
+			playing: true,
+			rate: 1,
+			time: 5,
+			delay: 12000,
+			plays: false,
+		},
 	])("checks $name after a late source load", async ({
+		path = "/audio.system.wav",
 		muted,
 		playing,
 		rate,
@@ -115,6 +298,8 @@ describe("source preview playback ownership", () => {
 			paused: true,
 			volume: 1,
 			load: vi.fn(),
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
 			pause: vi.fn(),
 			play: vi.fn().mockResolvedValue(undefined),
 		};
@@ -140,8 +325,8 @@ describe("source preview playback ownership", () => {
 			timelineTime: time,
 			duration: 10,
 			sourcePlaybackRate: rate,
-			previewSourceAudioFallbackPaths: ["/audio.system.wav"],
-			sourceAudioFallbackStartDelayMsByPath: { "/audio.system.wav": delay },
+			previewSourceAudioFallbackPaths: [path],
+			sourceAudioFallbackStartDelayMsByPath: { [path]: delay },
 			sourceAudioResourceVersion: 0,
 			isCurrentClipMuted: muted,
 			getSourceTrackPreviewGain: () => 1,
@@ -155,5 +340,132 @@ describe("source preview playback ownership", () => {
 		await Promise.resolve();
 		expect(audio.play).toHaveBeenCalledTimes(plays ? 1 : 0);
 		if (plays) expect(audio.currentTime).toBeCloseTo(time - delay / 1000);
+	});
+});
+
+describe("source preview seek completion", () => {
+	class SeekingAudio extends EventTarget {
+		src = "";
+		dataset = {};
+		duration = 10;
+		playbackRate = 1;
+		paused = true;
+		seeking = false;
+		volume = 1;
+		position = 0;
+		load = vi.fn();
+		pause = vi.fn(() => {
+			this.paused = true;
+		});
+		play = vi.fn(async () => {
+			this.paused = false;
+		});
+		get currentTime() {
+			return this.position;
+		}
+		set currentTime(time: number) {
+			this.position = time;
+			this.seeking = true;
+		}
+		finishSeek() {
+			this.seeking = false;
+			this.dispatchEvent(new Event("seeked"));
+		}
+	}
+
+	function setup() {
+		const audio = new SeekingAudio();
+		vi.stubGlobal("Audio", function () {
+			return audio;
+		});
+		vi.stubGlobal(
+			"AudioContext",
+			class {
+				state = "running";
+				destination = {};
+				createGain() {
+					return { gain: { value: 1 }, connect: vi.fn() };
+				}
+			},
+		);
+		const render = (playing = true, muted = false) => {
+			harness.index = 0;
+			harness.effects = [];
+			useAudioPreviewSync({
+				audioRegions: [],
+				previewVolume: 1,
+				isPlaying: playing,
+				currentTime: 2,
+				timelineTime: 2,
+				duration: 10,
+				sourcePlaybackRate: 1,
+				previewSourceAudioFallbackPaths: ["/audio.system.wav"],
+				sourceAudioFallbackStartDelayMsByPath: { "/audio.system.wav": 0 },
+				sourceAudioResourceVersion: 0,
+				isCurrentClipMuted: muted,
+				getSourceTrackPreviewGain: () => 1,
+				onSourceFallbackLoadError: vi.fn(),
+			});
+		};
+		return { audio, render };
+	}
+
+	it("waits for native seeking to finish and resumes without another timeline update", async () => {
+		const { audio, render } = setup();
+		render();
+		for (const effect of harness.effects) effect();
+		await Promise.resolve();
+		const cleanup = harness.effects.at(-1)?.();
+		await Promise.resolve();
+		expect(audio.seeking).toBe(true);
+		expect(audio.play).not.toHaveBeenCalled();
+		audio.finishSeek();
+		await Promise.resolve();
+		expect(audio.play).toHaveBeenCalledOnce();
+		// Later seeked notifications must not restart an already-running track.
+		audio.finishSeek();
+		await Promise.resolve();
+		expect(audio.play).toHaveBeenCalledOnce();
+		cleanup?.();
+	});
+
+	it("pauses a playing source before seeking and restarts after seek completion", async () => {
+		const { audio, render } = setup();
+		render();
+		for (const effect of harness.effects) effect();
+		await Promise.resolve();
+		audio.paused = false;
+		audio.pause.mockClear();
+		const cleanup = harness.effects.at(-1)?.();
+		await Promise.resolve();
+		expect(audio.pause).toHaveBeenCalledOnce();
+		expect(audio.paused).toBe(true);
+		expect(audio.play).not.toHaveBeenCalled();
+		audio.finishSeek();
+		await Promise.resolve();
+		expect(audio.play).toHaveBeenCalledOnce();
+		cleanup?.();
+	});
+
+	it.each([
+		"pause",
+		"mute",
+		"unmount",
+	])("does not resume abandoned seeking after %s", async (transition) => {
+		const { audio, render } = setup();
+		render();
+		for (const effect of harness.effects) effect();
+		await Promise.resolve();
+		const cleanup = harness.effects.at(-1)?.();
+		await Promise.resolve();
+		expect(audio.seeking).toBe(true);
+		cleanup?.();
+		if (transition !== "unmount") {
+			render(transition !== "pause", transition === "mute");
+			harness.effects.at(-1)?.();
+		}
+		audio.finishSeek();
+		await Promise.resolve();
+		expect(audio.play).not.toHaveBeenCalled();
 	});
 });
