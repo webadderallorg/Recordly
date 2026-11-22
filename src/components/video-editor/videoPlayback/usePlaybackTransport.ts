@@ -138,6 +138,7 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		videoSprite.visible = false;
 		videoSpriteRef.current = videoSprite;
 		let reportedTextureError = false;
+		let regenerateWhenMediaReady = false;
 		let lastFramePrivacyKey: string | null = null;
 		let lastFrameCrop: { x: number; y: number; width: number; height: number } | null = null;
 		const rebuildTexture = () => {
@@ -187,6 +188,7 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 				lastFrameCrop = { ...crop };
 				videoSprite.visible = true;
 				reportedTextureError = false;
+				regenerateWhenMediaReady = false;
 			};
 
 			const regenerate = shouldRegenerateFrameRef.current && !suspendRenderingRef.current;
@@ -196,6 +198,7 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 			} catch (error) {
 				// A failed privacy pass must never reveal the unredacted source.
 				videoSprite.visible = false;
+				if (regenerate) regenerateWhenMediaReady = true;
 				let failure = error;
 				if (!regenerate && !reportedTextureError && !suspendRenderingRef.current) {
 					console.warn("Preview frame invalid; rebuilding its texture:", error);
@@ -308,9 +311,19 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		const handleVisibilityChange = () => {
 			if (document.visibilityState === "visible") regenerateFrame();
 		};
+		const handleMediaReady = () => {
+			// A paused preview has no continuous ticker to retry a deferred upload.
+			if (regenerateWhenMediaReady) {
+				regenerateWhenMediaReady = false;
+				shouldRegenerateFrameRef.current = true;
+			}
+			if (shouldRegenerateFrameRef.current) requestPreviewRender();
+		};
 		const canvas = app.canvas;
 		document.addEventListener("visibilitychange", handleVisibilityChange);
 		canvas.addEventListener("webglcontextrestored", regenerateFrame);
+		video.addEventListener("canplay", handleMediaReady);
+		video.addEventListener("loadeddata", handleMediaReady);
 		video.addEventListener("seeked", handleSeeked);
 		video.addEventListener("seeking", handleSeeking);
 
@@ -321,6 +334,8 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 			}
 			document.removeEventListener("visibilitychange", handleVisibilityChange);
 			canvas.removeEventListener("webglcontextrestored", regenerateFrame);
+			video.removeEventListener("canplay", handleMediaReady);
+			video.removeEventListener("loadeddata", handleMediaReady);
 			video.removeEventListener("seeked", handleSeeked);
 			video.removeEventListener("seeking", handleSeeking);
 			transport.dispose();

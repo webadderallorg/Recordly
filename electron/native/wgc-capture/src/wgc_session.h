@@ -12,6 +12,7 @@
 
 #include <functional>
 #include <atomic>
+#include <mutex>
 #include <string>
 
 using Microsoft::WRL::ComPtr;
@@ -26,9 +27,10 @@ public:
 
     bool initialize(HMONITOR monitor, int fps);
     bool initialize(HWND hwnd, int fps);
-    void setFrameCallback(FrameCallback callback);
+    void setFrameCallback(FrameCallback callback, std::function<bool()> isPaused);
     bool startCapture();
     void stopCapture();
+    void resumeAfterPendingFrames(int64_t resumeTimestampHns, const std::function<void()>& resume);
     bool hasFatalError() const {
         return fatalError_.load() || (windowHandle_ && !IsWindow(windowHandle_));
     }
@@ -49,6 +51,8 @@ private:
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::FrameArrived_revoker frameArrivedRevoker_;
 
     FrameCallback frameCallback_;
+    std::function<bool()> isPaused_;
+    std::mutex frameDeliveryMutex_;
     std::atomic<bool> capturing_{false};
     std::atomic<bool> fatalError_{false};
     int fps_ = 60;
@@ -58,6 +62,7 @@ private:
     int framePoolHeight_ = 0;
     int64_t frameIntervalHns_ = 0;
     int64_t lastFrameTimeHns_ = 0;
+    int64_t resumeTimestampHns_ = 0;
     HWND windowHandle_ = nullptr;
 
     bool createD3DDevice();
@@ -69,4 +74,7 @@ private:
     void onFrameArrived(
         winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& sender,
         winrt::Windows::Foundation::IInspectable const& args);
+    bool readFrame(
+        winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& pool,
+        bool skipFrameRateLimit);
 };

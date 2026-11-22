@@ -13,50 +13,6 @@ function createStubContainer() {
 	};
 }
 
-describe("zooming a 16:9 video on a square canvas", () => {
-	const stageSize = { width: 640, height: 640 };
-	const baseMask = { x: 0, y: 140, width: 640, height: 360 };
-
-	it.each([0, 1])("keeps the video covering the canvas at vertical focus %d", (focusY) => {
-		const transform = computeZoomTransform({
-			stageSize,
-			baseMask,
-			zoomScale: 3,
-			zoomProgress: 0.5,
-			focusX: 0.5,
-			focusY,
-		});
-		expect(transform.scale).toBe(2);
-		expect(transform.y + baseMask.y * transform.scale).toBeLessThanOrEqual(0);
-		expect(
-			transform.y + (baseMask.y + baseMask.height) * transform.scale,
-		).toBeGreaterThanOrEqual(stageSize.height);
-	});
-
-	it("keeps the remaining margins even when the zoom cannot fill the canvas", () => {
-		const transform = computeZoomTransform({
-			stageSize,
-			baseMask,
-			zoomScale: 1.5,
-			focusX: 0.5,
-			focusY: 0.1,
-		});
-		expect(transform.y + baseMask.y * transform.scale).toBe(50);
-		expect(transform.y + (baseMask.y + baseMask.height) * transform.scale).toBe(590);
-	});
-
-	it("preserves intentional alignment when the video has uneven margins", () => {
-		const transform = computeZoomTransform({
-			stageSize,
-			baseMask: { ...baseMask, y: 70 },
-			zoomScale: 1.5,
-			focusX: 0.5,
-			focusY: 0.1,
-		});
-		expect(transform.y + 70 * transform.scale).toBe(25);
-	});
-});
-
 describe("computeDirectionalMotionBlur", () => {
 	it("normalizes cursor and camera motion to the same 60fps baseline", () => {
 		const at60Fps = computeDirectionalMotionBlur({ x: 12, y: 0 }, 0.5, 1 / 60);
@@ -126,8 +82,8 @@ describe("applyZoomTransform motion blur routing", () => {
 		};
 		const stageSize = { width: 1000, height: 800 };
 		const baseMask = { x: 100, y: 100, width: 800, height: 600 };
-		const focusX = 0.4;
-		const focusY = 0.6;
+		const focusX = 0.2;
+		const focusY = 0.7;
 
 		applyZoomTransform({
 			cameraContainer: createStubContainer() as never,

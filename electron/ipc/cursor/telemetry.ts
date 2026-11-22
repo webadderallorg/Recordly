@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { isCursorVisualType } from "../../../src/shared/cursorVisualTypes";
 import {
 	CURSOR_SAMPLE_INTERVAL_MS,
 	CURSOR_TELEMETRY_VERSION,
@@ -69,18 +70,7 @@ export function normalizeCursorTelemetrySamples(rawSamples: unknown): CursorTele
 				...(point.mouseButton === 1 || point.mouseButton === 2 || point.mouseButton === 3
 					? { mouseButton: point.mouseButton }
 					: {}),
-				cursorType:
-					point.cursorType === "arrow" ||
-					point.cursorType === "text" ||
-					point.cursorType === "pointer" ||
-					point.cursorType === "crosshair" ||
-					point.cursorType === "open-hand" ||
-					point.cursorType === "closed-hand" ||
-					point.cursorType === "resize-ew" ||
-					point.cursorType === "resize-ns" ||
-					point.cursorType === "not-allowed"
-						? point.cursorType
-						: undefined,
+				cursorType: isCursorVisualType(point.cursorType) ? point.cursorType : undefined,
 			};
 		})
 		.sort((a, b) => a.timeMs - b.timeMs);

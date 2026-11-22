@@ -84,7 +84,6 @@ export function usePreviewMediaState(
 
 	const regenerateFrame = useCallback(() => {
 		shouldRegenerateFrameRef.current = true;
-		shouldSnapPausedFrameRef.current = true;
 		requestPreviewRender();
 	}, [requestPreviewRender]);
 	return {

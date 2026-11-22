@@ -16,6 +16,7 @@ import {
 	Tray,
 } from "electron";
 import { activateFromDesktopIcon } from "./appActivation";
+import { createAppLinkRelay, findActivationLink } from "./appLinkRelay";
 import { initializeInstanceSession, RECORDINGS_DIR } from "./appPaths";
 import { readAppSetting, writeAppSetting } from "./appSettingsStore";
 import { createAuthCallbackController } from "./authCallback";
@@ -279,8 +280,47 @@ let isCreatingEditorWindow = false;
 
 const authCallbacks = createAuthCallbackController({
 	isDev: IS_DEV,
-	focusApp: () => focusOrCreateMainWindow(),
+	// recordly:// hand-offs depend on the browser's "Open app?" prompt, which can
+	// silently do nothing on Windows. macOS keeps its working open-url route.
+	loopbackReturn: process.platform !== "darwin",
+	focusApp: () => bringAppForward(),
 });
+// Lets a browser link (e.g. "Open in Recordly") that launched a new process on
+// Windows/Linux bring the running instance forward instead of a new window.
+const appLinks = createAppLinkRelay({
+	directory: path.join(app.getPath("userData"), "app-links"),
+	protocol: authCallbacks.protocol,
+});
+
+/** Bring Recordly forward after a sign-in return or an "Open in Recordly" link. */
+function bringAppForward() {
+	if (isAppQuitting) return;
+	focusOrCreateMainWindow();
+	// Windows refuses focus() from a background process (the browser owns the
+	// foreground), so the window would only flash in the taskbar. Briefly making
+	// it topmost is permitted and leaves it above other apps once cleared.
+	// Windows that are already always-on-top (the HUD, toasts) are left alone.
+	if (process.platform !== "win32") return;
+	const target = getOnboardingWindow() ?? mainWindow;
+	if (!target || target.isDestroyed() || !target.isVisible() || target.isAlwaysOnTop()) return;
+	target.setAlwaysOnTop(true);
+	target.focus();
+	target.setAlwaysOnTop(false);
+}
+
+/** True when a running instance accepted this launch's activation link. */
+async function forwardActivationLink(): Promise<boolean> {
+	if (process.platform === "darwin") return false;
+	if (findActivationLink(process.argv, authCallbacks.protocol)) return appLinks.forward();
+	// In a source checkout the OS starts `recordly-dev://` links without the dev
+	// server environment, so look for the running development app explicitly.
+	if (!app.isPackaged && findActivationLink(process.argv, "recordly-dev"))
+		return createAppLinkRelay({
+			directory: path.join(app.getPath("appData"), "Recordly-dev", "app-links"),
+			protocol: "recordly-dev",
+		}).forward();
+	return false;
+}
 
 app.on("open-url", (event, rawUrl) => {
 	try {
@@ -544,8 +584,10 @@ function focusOrCreateMainWindow() {
 		// work because they receive an XDG activation token via StatusNotifierItem.ProvideXdgActivationToken;
 		// Electron's tray doesn't handle that yet. Workaround: destroy and recreate the HUD so the new
 		// window gets focus (creation path works). Only for HUD, not editor.
+		// Never recreate the HUD while it owns an active recording.
 		if (
 			process.platform === "linux" &&
+			!desktopRecordingActive &&
 			!mainWindow.isFocused() &&
 			!isEditorWindow(mainWindow)
 		) {
@@ -1202,6 +1244,12 @@ app.on("before-quit", () => {
 	void cleanupAllExportStreams();
 });
 
+// "quit" cannot be cancelled (unlike before-quit, which an unsaved editor can
+// cancel), so the activation relay stays available until the app really exits.
+app.on("quit", () => {
+	void appLinks.close();
+});
+
 let nativeExportQuitState: "idle" | "waiting" | "ready" = "idle";
 app.on("will-quit", (event) => {
 	if (nativeExportQuitState === "ready") return;
@@ -1257,6 +1305,11 @@ app.whenReady().then(async () => {
 		app.setAsDefaultProtocolClient(authCallbacks.protocol);
 	}
 	const startupAuthCallback = authCallbacks.find(process.argv);
+	if (!startupAuthCallback && (await forwardActivationLink())) {
+		// A running instance came forward; this protocol launcher has no window.
+		app.quit();
+		return;
+	}
 	const routedStartupAuth = await authCallbacks.routeStartup(startupAuthCallback);
 	if (isAppQuitting) return;
 	if (routedStartupAuth === "forwarded") {
@@ -1397,6 +1450,10 @@ app.whenReady().then(async () => {
 		authCallbacks.flowStorageHooks,
 	);
 	startupWindowsReady = true;
+	if (process.platform !== "darwin") {
+		void appLinks.listen(bringAppForward);
+		app.on("browser-window-focus", () => void appLinks.markFocused());
+	}
 
 	if (IS_SMOKE_EXPORT || process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT) {
 		await logSmokeExportGpuDiagnostics();

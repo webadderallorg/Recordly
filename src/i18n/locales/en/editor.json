@@ -245,6 +245,7 @@
 		"finishingVideo": "Finishing video…",
 		"savingVideo": "Saving video…",
 		"errorCopied": "Error copied",
+		"nvidiaCudaFallback": "NVIDIA CUDA export failed. Recordly is trying another export path.",
 		"errorCopyFailed": "Couldn't copy. Select the error text and copy it manually.",
 		"copyError": "Copy error"
 	},

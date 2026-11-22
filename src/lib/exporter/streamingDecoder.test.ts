@@ -1079,6 +1079,7 @@ describe("StreamingVideoDecoder decode failures", () => {
 		await decoder.decodeAll(3, undefined, undefined, async (frame) => {
 			complete.push(frame!.timestamp);
 		});
+		expect(complete.slice(0, 6)).toEqual([0, 0, 0, 1_000_000, 1_000_000, 1_000_000]);
 		chunksDecoded = 0;
 		const sample: number[] = [];
 		await decoder.decodeSampleWindow(
@@ -1093,9 +1094,60 @@ describe("StreamingVideoDecoder decode failures", () => {
 			1,
 		);
 		expect(sample).toEqual(complete.slice(2, 3));
-		expect(sample).toEqual([1_000_000]);
+		expect(sample).toEqual([0]);
 		expect(chunksDecoded).toBeLessThan(40);
 		expect(readerCancelled).toHaveBeenCalled();
+	});
+
+	it.each([
+		{ updateUs: 1_000_500, endMs: 1_200, expectedUs: 0 },
+		{ updateUs: 1_000_000, endMs: 1_200, expectedUs: 1_000_000 },
+		{ updateUs: 1_000_000, endMs: 1_001, expectedUs: 1_000_000 },
+	])("selects the presented frame at 1 s with update $updateUs µs and end $endMs ms", async ({
+		updateUs,
+		endMs,
+		expectedUs,
+	}) => {
+		mockDemuxerRead.mockImplementation(
+			() =>
+				new ReadableStream({
+					start(controller) {
+						for (const timestamp of [0, updateUs, 1_100_000, 2_000_000]) {
+							controller.enqueue({ timestamp });
+						}
+						controller.close();
+					},
+				}),
+		);
+		class PresentationDecoder {
+			state = "unconfigured";
+			decodeQueueSize = 0;
+			constructor(private callbacks: { output: (frame: VideoFrame) => void }) {}
+			configure() {
+				this.state = "configured";
+			}
+			decode(chunk: EncodedVideoChunk) {
+				this.callbacks.output({ timestamp: chunk.timestamp, close() {} } as VideoFrame);
+			}
+			async flush() {}
+			close() {
+				this.state = "closed";
+			}
+		}
+		vi.stubGlobal("VideoDecoder", PresentationDecoder);
+		const decoder = new StreamingVideoDecoder();
+		await decoder.loadMetadata("/tmp/presentation.mp4");
+		const frames: number[] = [];
+		await decoder.decodeAll(
+			24,
+			undefined,
+			undefined,
+			async (frame) => {
+				frames.push(frame!.timestamp);
+			},
+			[{ id: "clip", startMs: 0, endMs, speed: 1 }],
+		);
+		expect(frames[24]).toBe(expectedUs);
 	});
 });
 

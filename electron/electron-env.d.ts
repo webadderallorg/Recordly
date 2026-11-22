@@ -147,6 +147,7 @@ interface RendererNativeStaticLayoutMetrics extends RendererFfmpegAudioMuxMetric
 interface RendererNativeStaticLayoutProgress {
 	sessionId?: string;
 	backend?: RendererNativeStaticLayoutChunkMetric["backend"];
+	nvidiaCudaFailed?: boolean;
 	stage?: "preparing" | "finalizing";
 	elapsedMs?: number;
 	averageFps?: number;
@@ -1391,16 +1392,7 @@ interface CursorTelemetryPoint {
 		| "right-click"
 		| "middle-click"
 		| "mouseup";
-	cursorType?:
-		| "arrow"
-		| "text"
-		| "pointer"
-		| "crosshair"
-		| "open-hand"
-		| "closed-hand"
-		| "resize-ew"
-		| "resize-ns"
-		| "not-allowed";
+	cursorType?: import("../src/shared/cursorVisualTypes").CursorVisualType;
 }
 
 interface SystemCursorAsset {

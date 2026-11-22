@@ -103,7 +103,9 @@ int main(int argc, char* argv[]) {
     cursorMap[LoadCursor(NULL, IDC_NO)]       = "not-allowed";
     cursorMap[LoadCursor(NULL, IDC_SIZEWE)]   = "resize-ew";
     cursorMap[LoadCursor(NULL, IDC_SIZENS)]   = "resize-ns";
-    cursorMap[LoadCursor(NULL, IDC_SIZEALL)]  = "open-hand";
+    cursorMap[LoadCursor(NULL, IDC_SIZEALL)]  = "move";
+    cursorMap[LoadCursor(NULL, IDC_SIZENWSE)] = "resize-nwse";
+    cursorMap[LoadCursor(NULL, IDC_SIZENESW)] = "resize-nesw";
     cursorMap[LoadCursor(NULL, IDC_WAIT)]     = "arrow";
     cursorMap[LoadCursor(NULL, IDC_APPSTARTING)] = "arrow";
 

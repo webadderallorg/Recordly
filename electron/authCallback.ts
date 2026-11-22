@@ -16,6 +16,7 @@ const DEV_CALLBACK_ORIGIN = `http://${DEV_CALLBACK_HOST}`;
 const CALLBACK_PATH = "/callback";
 const LOOPBACK_CALLBACK_PATH = "/auth/callback";
 const MAX_CALLBACK_URL_LENGTH = 8192;
+const SERVER_RETRY_MS = 3000;
 const CALLBACK_PARAMETERS = new Set([
 	"code",
 	"sb_flow_id",
@@ -28,6 +29,8 @@ type AuthCallbackOptions = {
 	isDev: boolean;
 	focusApp: () => void;
 	flowRoutingEnabled?: boolean;
+	/** Serve the 127.0.0.1 return page in packaged builds too (Windows/Linux). */
+	loopbackReturn?: boolean;
 };
 
 function callbackHeaders(contentType: string) {
@@ -45,10 +48,12 @@ export function createAuthCallbackController({
 	isDev,
 	focusApp,
 	flowRoutingEnabled = oauthFlowIdRedirectsEnabled,
+	loopbackReturn = false,
 }: AuthCallbackOptions) {
 	const protocol = isDev ? "recordly-dev" : "recordly";
 	let pendingUrl: string | null = null;
 	let server: Server | null = null;
+	let serverRetry: ReturnType<typeof setTimeout> | undefined;
 	let closed = false;
 	let startupFinished = false;
 	let startupDropped = false;
@@ -243,8 +248,11 @@ export function createAuthCallbackController({
 		return startupRouting;
 	}
 
+	// Development, and Windows/Linux builds, return from the browser through this
+	// loopback page instead of a recordly:// link: no browser "Open app?" prompt
+	// is involved, so the return cannot be lost when that hand-off fails.
 	function startDevServer() {
-		if (!isDev || server) return;
+		if (!(isDev || loopbackReturn) || server || closed) return;
 		server = createServer((request, response) => {
 			if (
 				request.method !== "GET" ||
@@ -256,8 +264,14 @@ export function createAuthCallbackController({
 				return;
 			}
 
-			const requestUrl = new URL(request.url ?? "/", DEV_CALLBACK_ORIGIN);
-			if (requestUrl.pathname !== LOOPBACK_CALLBACK_PATH) {
+			// Any local page can reach this port; a malformed target must not throw.
+			let requestUrl: URL | null = null;
+			try {
+				requestUrl = new URL(request.url ?? "/", DEV_CALLBACK_ORIGIN);
+			} catch {
+				requestUrl = null;
+			}
+			if (!requestUrl || requestUrl.pathname !== LOOPBACK_CALLBACK_PATH) {
 				response.writeHead(404, callbackHeaders("text/plain; charset=utf-8"));
 				response.end("Not found");
 				return;
@@ -295,14 +309,28 @@ export function createAuthCallbackController({
 			}
 		});
 		server.on("error", (error) => {
-			console.error("[auth] Could not start local callback server", error);
 			server = null;
+			// Another instance holds the port. Take it over once that instance quits,
+			// whether or not flow-ID routing (and its sign-in hook) is enabled.
+			if ((error as NodeJS.ErrnoException).code === "EADDRINUSE" && !closed) {
+				if (!serverRetry) {
+					serverRetry = setTimeout(() => {
+						serverRetry = undefined;
+						startDevServer();
+					}, SERVER_RETRY_MS);
+					serverRetry.unref?.();
+				}
+				return;
+			}
+			console.error("[auth] Could not start local callback server", error);
 		});
 		server.listen(43821, "127.0.0.1");
 	}
 
 	function close() {
 		closed = true;
+		if (serverRetry) clearTimeout(serverRetry);
+		serverRetry = undefined;
 		startupUrls.length = 0;
 		startupSeen.clear();
 		server?.close();

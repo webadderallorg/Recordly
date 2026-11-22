@@ -4,14 +4,12 @@ import {
 	getCursorPackStyleAsset,
 	getCursorStyleAsset,
 	getStatefulCursorAsset,
-	loadedCursorAssets,
 } from "./cursorAssetRegistry";
 import { drawClickEffectOnCanvas } from "./cursorClickEffects";
 import { getCursorIdleOpacity } from "./cursorIdleVisibility";
 import { interpolateCursorPosition } from "./cursorPosition";
 import {
 	CURSOR_SVG_DROP_SHADOW_FILTER,
-	CursorAssetKey,
 	CursorRenderConfig,
 	DEFAULT_CURSOR_CONFIG,
 	hasBakedCursorShadow,
@@ -71,9 +69,7 @@ export function drawCursorOnCanvas(
 		projectedClickSample && projectedClickSample.visible
 			? viewport.y + projectedClickSample.cy * viewport.height
 			: py;
-	const spriteKey = (
-		cursorType && loadedCursorAssets[cursorType] ? cursorType : "arrow"
-	) as CursorAssetKey;
+	const spriteKey = cursorType ?? "arrow";
 	const asset = isStatefulCursorStyle(config.style)
 		? getStatefulCursorAsset(config.style, spriteKey)
 		: isSingleCursorStyle(config.style)

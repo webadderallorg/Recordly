@@ -95,5 +95,5 @@ export const communityCursorAssets = {
 	},
 } satisfies Record<
 	string,
-	Record<NonNullable<CursorTelemetryPoint["cursorType"]>, UploadedCursorAsset>
+	Partial<Record<NonNullable<CursorTelemetryPoint["cursorType"]>, UploadedCursorAsset>>
 >;

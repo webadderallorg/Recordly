@@ -364,10 +364,7 @@ export async function decodeVideoStreamAttempt(
 			lastDecodedFrameSec = frameTimeSec;
 
 			// Finalize completed segments before handling this frame.
-			while (
-				segmentIdx < segments.length &&
-				frameTimeSec >= segments[segmentIdx].endSec - epsilonSec
-			) {
+			while (segmentIdx < segments.length && frameTimeSec >= segments[segmentIdx].endSec) {
 				const segment = segments[segmentIdx];
 				while (!context.cancelled && (await emitHeldFrameForTarget(segment))) {
 					// Keep emitting remaining output frames for this segment from the last known frame.
@@ -385,7 +382,7 @@ export async function decodeVideoStreamAttempt(
 
 			const currentSegment = segments[segmentIdx];
 
-			// Keep the nearest pre-roll frame for cuts between source frames.
+			// Keep the last presented frame before the start of a cut.
 			if (frameTimeSec < currentSegment.startSec - epsilonSec) {
 				heldFrame?.close();
 				heldFrame = frame;
@@ -401,8 +398,8 @@ export async function decodeVideoStreamAttempt(
 				continue;
 			}
 
-			// Any target timestamp before this midpoint is closer to heldFrame than current frame.
-			const handoffBoundarySec = (heldFrameSec + frameTimeSec) / 2;
+			// Compare on the decoder's microsecond grid so fractional frame rates match their PTS.
+			const frameTimeUs = Math.round(frameTimeSec * 1_000_000);
 			while (!context.cancelled) {
 				const segmentFrameCount = segmentOutputFrameCounts[segmentIdx];
 				if (segmentFrameIndex >= segmentFrameCount) {
@@ -414,7 +411,7 @@ export async function decodeVideoStreamAttempt(
 					segmentFrameIndex,
 					targetFrameRate,
 				);
-				if (sourceTimeSec > handoffBoundarySec) {
+				if (Math.round(sourceTimeSec * 1_000_000) >= frameTimeUs) {
 					break;
 				}
 
