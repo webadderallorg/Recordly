@@ -332,6 +332,80 @@ it("imports different-sized recordings with playable video, separate audio, stab
 	);
 }, 60000);
 
+it("appends a selected external video with its embedded audio and leaves both originals intact", async () => {
+	const base = path.join(state.root, "base.mp4");
+	const folder = path.join(state.root, "external");
+	const added = path.join(folder, "external.mov");
+	const baseCursor = { timeMs: 100, cx: 0.25, cy: 0.4, interactionType: "move" };
+	await fs.mkdir(folder);
+	await run(ffmpeg, [
+		"-v",
+		"error",
+		"-f",
+		"lavfi",
+		"-i",
+		"color=c=red:s=160x90:r=24:d=1",
+		"-c:v",
+		"libx264",
+		"-pix_fmt",
+		"yuv420p",
+		base,
+	]);
+	await run(ffmpeg, [
+		"-v",
+		"error",
+		"-f",
+		"lavfi",
+		"-i",
+		"color=c=blue:s=90x160:r=30:d=1",
+		"-f",
+		"lavfi",
+		"-i",
+		"sine=frequency=800:duration=1",
+		"-shortest",
+		"-c:v",
+		"libx264",
+		"-pix_fmt",
+		"yuv420p",
+		"-c:a",
+		"aac",
+		added,
+	]);
+	await fs.writeFile(`${base}.cursor.json`, JSON.stringify({ samples: [baseCursor] }));
+	await fs.writeFile(
+		`${added}.cursor.json`,
+		JSON.stringify({ samples: [{ timeMs: 200, cx: 0.5, cy: 0.5, interactionType: "click" }] }),
+	);
+	const inputFiles = await Promise.all([fs.readFile(base), fs.readFile(added)]);
+	await listRecordings();
+	await expect(importRecording(base, added)).rejects.toThrow("has not been selected");
+	state.approved.add(added);
+	const result = await importRecording(base, added);
+	expect(result).toMatchObject({ sourceStartMs: 1000, durationMs: 1000, totalDurationMs: 2000 });
+	expect(result.webcam).toBeUndefined();
+	const cursor = JSON.parse(await fs.readFile(`${result.path}.cursor.json`, "utf-8"));
+	expect(cursor.samples).toEqual([baseCursor]);
+	const audio = await run(ffmpeg, [
+		"-hide_banner",
+		"-ss",
+		"1.2",
+		"-i",
+		result.path,
+		"-t",
+		"0.5",
+		"-vn",
+		"-af",
+		"volumedetect",
+		"-f",
+		"null",
+		"-",
+	]);
+	const peak = Number(audio.stderr.match(/max_volume: (-?[\d.]+) dB/)?.[1]);
+	expect(peak).toBeGreaterThan(-35);
+	await run(ffmpeg, ["-v", "error", "-xerror", "-i", result.path, "-f", "null", "-"]);
+	expect(await Promise.all([fs.readFile(base), fs.readFile(added)])).toEqual(inputFiles);
+}, 60000);
+
 it("retains staged originals for undo when the OS refuses Trash", async () => {
 	const { shell } = await import("electron");
 	const file = path.join(state.root, "recording-failure.mp4");

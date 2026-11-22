@@ -706,6 +706,7 @@ interface Window {
 		getCursorTelemetry: (videoPath?: string) => Promise<{
 			success: boolean;
 			samples: CursorTelemetryPoint[];
+			recordingZoomMarkers?: Pick<CursorTelemetryPoint, "timeMs" | "cx" | "cy">[];
 			message?: string;
 			error?: string;
 		}>;
@@ -811,7 +812,10 @@ interface Window {
 			canceled?: boolean;
 		}>;
 		importWallpaperVideo: (file: File) => Promise<{ success: boolean; path?: string }>;
-		openVideoFilePicker: (options?: { includeProjects?: boolean }) => Promise<{
+		openVideoFilePicker: (options?: {
+			includeProjects?: boolean;
+			preserveProjectPath?: boolean;
+		}) => Promise<{
 			success: boolean;
 			kind?: "media" | "project";
 			path?: string;

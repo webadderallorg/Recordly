@@ -1,5 +1,7 @@
 {
 	"zoom": {
+		"selectedOne": "已選取 1 個縮放片段",
+		"selectedCount": "已選取 {{count}} 個縮放片段",
 		"applyAutoZooms": "套用自動縮放",
 		"cannotPlace": "無法在此處新增縮放",
 		"existsOrNoSpace": "此位置已存在縮放，或可用空間不足。",

@@ -1,5 +1,7 @@
 {
 	"zoom": {
+		"selectedOne": "1 zoom geselecteerd",
+		"selectedCount": "{{count}} zooms geselecteerd",
 		"applyAutoZooms": "Automatische zooms toepassen",
 		"cannotPlace": "Kan zoom hier niet plaatsen",
 		"existsOrNoSpace": "Er bestaat al een zoom op deze locatie of er is niet genoeg ruimte beschikbaar.",

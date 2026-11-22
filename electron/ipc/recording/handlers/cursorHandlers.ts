@@ -57,6 +57,15 @@ export function registerCursorHandlers() {
 			const content = await fs.readFile(telemetryPath, "utf-8");
 			const parsed = parseJsonWithByteOrderMark<unknown>(content);
 			const samples = normalizeCursorTelemetrySamples(parsed);
+			if (samples.some((sample) => sample.interactionType === "manual-zoom")) {
+				return {
+					success: true,
+					samples: samples.filter((sample) => sample.interactionType !== "manual-zoom"),
+					recordingZoomMarkers: samples
+						.filter((sample) => sample.interactionType === "manual-zoom")
+						.map(({ timeMs, cx, cy }) => ({ timeMs, cx, cy })),
+				};
+			}
 
 			return { success: true, samples };
 		} catch (error) {

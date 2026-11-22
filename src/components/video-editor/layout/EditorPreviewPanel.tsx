@@ -11,6 +11,7 @@ import {
 	Crop,
 	MagicWand,
 	MagnifyingGlassPlus,
+	MinusIcon,
 	Pause,
 	Play,
 	Plus,
@@ -103,6 +104,8 @@ type Props = {
 	setCurrentTime: Dispatch<SetStateAction<number>>;
 	setIsPlaying: Dispatch<SetStateAction<boolean>>;
 	setError: (message: string | null) => void;
+	onImportVideoClip: () => void;
+	canImportVideoClip: boolean;
 };
 
 export function EditorPreviewPanel(props: Props) {
@@ -316,6 +319,13 @@ export function EditorPreviewPanel(props: Props) {
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="start">
 							<DropdownMenuItem
+								onClick={props.onImportVideoClip}
+								disabled={!props.canImportVideoClip}
+								className="cursor-pointer text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+							>
+								{t("ui.importVideo")}
+							</DropdownMenuItem>
+							<DropdownMenuItem
 								onClick={() => {
 									const nextTrack =
 										timeline.annotationRegions.length > 0
@@ -455,6 +465,30 @@ export function EditorPreviewPanel(props: Props) {
 				</div>
 
 				<div className="editor-playback-volume z-10 ml-auto flex items-center gap-1">
+					<div
+						role="group"
+						aria-label={t("shortcuts.actions.zoomTimeline")}
+						className="flex items-center"
+					>
+						<Button
+							onClick={() => timelineRef.current?.zoomTimelineOut()}
+							variant="ghost"
+							size="icon"
+							aria-label={t("native.zoomOut")}
+							title={t("native.zoomOut")}
+						>
+							<MinusIcon className="size-3.5" aria-hidden="true" />
+						</Button>
+						<Button
+							onClick={() => timelineRef.current?.zoomTimelineIn()}
+							variant="ghost"
+							size="icon"
+							aria-label={t("native.zoomIn")}
+							title={t("native.zoomIn")}
+						>
+							<Plus className="size-3.5" aria-hidden="true" />
+						</Button>
+					</div>
 					<div title={playbackResolutionLabel}>
 						<Select
 							aria-label={playbackResolutionLabel}

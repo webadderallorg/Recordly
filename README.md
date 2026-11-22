@@ -78,6 +78,7 @@ Use drag-and-drop timeline tools for zooms, trims, speed regions, annotations, e
 - Record an entire display or a single app window
 - Jump directly from recording into the editor
 - Capture microphone audio and system audio
+- Press Ctrl+Alt+Z (Cmd+Option+Z on macOS) while recording to mark a zoom at the pointer
 - Use native capture backends where supported
 - Resume editing from saved `.recordly` project files
 - Open existing recordings or existing project files from the app
@@ -197,6 +198,31 @@ You can also extract and launch the AppImage without FUSE.
 ```bash
 ./Recordly-linux-x64.AppImage --appimage-extract-and-run
 ```
+
+### Ubuntu: sandbox launch error
+
+On Ubuntu 24.04 and later, the downloaded AppImage can abort at startup with a fatal error from `setuid_sandbox_host.cc`: the SUID sandbox helper was found, but `chrome-sandbox` is not configured correctly. The same abort has been reported on TUXEDO OS.
+
+AppArmor can restrict unprivileged user namespaces. Chromium then falls back to its `chrome-sandbox` helper and exits, because that helper inside an AppImage is not setuid root. This is a different problem from the missing FUSE dependency above. Installing FUSE, or building Recordly from source, does not lift this restriction.
+
+If the AppImage already opens, launch it with no extra flags. The commands below are only for this sandbox error, and only for a trusted build from the releases page above. They do not fix unrelated launch failures.
+
+From the directory that contains the AppImage:
+
+```bash
+chmod +x ./Recordly-linux-x64.AppImage
+./Recordly-linux-x64.AppImage --no-sandbox
+```
+
+If your system also lacks FUSE, combine both flags:
+
+```bash
+./Recordly-linux-x64.AppImage --appimage-extract-and-run --no-sandbox
+```
+
+`--no-sandbox` disables Chromium's sandbox and reduces process isolation. Include it each time you start this AppImage. Electron documents running without the sandbox as a testing-only option (see the [Electron sandbox documentation](https://www.electronjs.org/docs/latest/tutorial/sandbox)), so treat this as a short-term workaround.
+
+For a stable setup that keeps the sandbox on, use a per-application AppArmor profile that allows user namespaces for Recordly instead of turning the restriction off system-wide. Ubuntu describes this approach in its [notes on unprivileged user namespace restrictions](https://documentation.ubuntu.com/release-notes/24.04/#unprivileged-user-namespace-restrictions).
 
 ## Arch Linux / Manjaro (yay)
 
