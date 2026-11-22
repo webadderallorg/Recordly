@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { flushSync } from "react-dom";
 import { type ZoomFocus } from "../types";
-import { computeCameraTransform } from "./cameraTransform";
+import { computeCameraTransform, resolveCameraTargetFocus } from "./cameraTransform";
 import { type CursorFollowCameraState, createCursorFollowCameraState } from "./cursorFollowCamera";
 import { getFrameMotionSample } from "./frameMotionSample";
 import type { PlaybackProps } from "./playbackProps";
@@ -282,16 +282,23 @@ export function usePlaybackTicker(input: usePlaybackTickerInput) {
 						createCursorFollowCameraState(),
 					)
 				: null;
+			const previousFocus = previousTarget
+				? resolveCameraTargetFocus(
+						previousTarget,
+						stageSizeRef.current,
+						baseMaskRef.current,
+					)
+				: null;
 			const motionSample = sampleFrozenFrame
-				? frameSample && previousTarget
+				? frameSample && previousTarget && previousFocus
 					? {
 							previousTransform: computeZoomTransform({
 								stageSize: stageSizeRef.current,
 								baseMask: baseMaskRef.current,
 								zoomScale: previousTarget.scale,
 								zoomProgress: previousTarget.progress,
-								focusX: previousTarget.focus.cx,
-								focusY: previousTarget.focus.cy,
+								focusX: previousFocus.cx,
+								focusY: previousFocus.cy,
 							}),
 							deltaMs: frameSample.deltaMs,
 						}

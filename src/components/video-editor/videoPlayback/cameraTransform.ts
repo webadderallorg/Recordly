@@ -28,6 +28,25 @@ function advanceCameraSpring(
 	return state.value;
 }
 
+export function resolveCameraTargetFocus(
+	target: SceneZoomTarget,
+	stageSize: { width: number; height: number },
+	baseMask: { width: number; height: number },
+) {
+	const { focus } = target;
+	if (!target.automatic || stageSize.width <= 0 || stageSize.height <= 0) return focus;
+
+	const widthFraction = baseMask.width / stageSize.width;
+	const heightFraction = baseMask.height / stageSize.height;
+	if (Math.abs(widthFraction - heightFraction) < 0.001) return focus;
+
+	// Correct the destination on the letterboxed axis before the camera eases toward it.
+	const axis = widthFraction < heightFraction ? "cx" : "cy";
+	const fraction = Math.min(widthFraction, heightFraction);
+	const margin = Math.min(0.5, 1 / (2 * fraction * target.scale));
+	return { ...focus, [axis]: Math.max(margin, Math.min(focus[axis], 1 - margin)) };
+}
+
 /** Smooth camera panning without extending the timeline's zoom envelope. */
 export function computeCameraTransform({
 	target,
@@ -53,8 +72,9 @@ export function computeCameraTransform({
 	tuning?: CursorSpringTuning;
 }) {
 	let scale = target.scale;
-	let focusX = target.focus.cx;
-	let focusY = target.focus.cy;
+	const goal = resolveCameraTargetFocus(target, stageSize, baseMask);
+	let focusX = goal.cx;
+	let focusY = goal.cy;
 	if (snap || deltaMs <= 0 || target.progress <= 0) {
 		resetSpringState(springScale, scale);
 		resetSpringState(springX, focusX);

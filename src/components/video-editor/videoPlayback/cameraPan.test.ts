@@ -87,6 +87,33 @@ function warmToBeforeIncoming(camera: ReturnType<typeof createCamera>, fps: numb
 	return last;
 }
 
+describe("letterboxed automatic framing", () => {
+	it.each(["auto", "manual"] as const)("uses a smooth endpoint for %s zooms", (mode) => {
+		const square = { width: 400, height: 400 };
+		const mask = { x: 0, y: 87.5, width: 400, height: 225 };
+		const target = resolveSceneZoomTarget({
+			zoomRegions: [{ ...outgoing, depth: 4, mode, focus: { cx: 0.5, cy: 0.02 } }],
+			timeMs: 1500,
+			cursorFollowCamera: createCursorFollowCameraState(),
+		});
+
+		for (const progress of [0.25, 0.5, 0.75, 1]) {
+			const transform = computeCameraTransform({
+				target: { ...target, progress },
+				stageSize: square,
+				baseMask: mask,
+				springScale: createSpringState(1),
+				springX: createSpringState(0.5),
+				springY: createSpringState(0.5),
+				deltaMs: 1000 / 60,
+				snap: true,
+			});
+			const top = mask.y * transform.scale + transform.y;
+			expect(top).toBeCloseTo(mode === "auto" ? mask.y * (1 - progress) : mask.y);
+		}
+	});
+});
+
 /** Independent 1 ms RK4 integration of one default camera spring following raw easing. */
 function referenceSingleSpring(durationMs: number) {
 	const samples = [0];
