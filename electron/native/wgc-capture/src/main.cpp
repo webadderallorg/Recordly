@@ -487,6 +487,9 @@ int wmain(int argc, wchar_t* argv[]) {
     if (audioInitialized) {
         audioActive = loopback.start();
     }
+    if (config.captureSystemAudio && !audioActive) {
+        std::cout << "SYSTEM_AUDIO_CAPTURE_UNAVAILABLE" << std::endl;
+    }
     if (micInitialized) {
         micActive = micCapture.start();
         if (!micActive) {

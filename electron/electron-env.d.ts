@@ -334,6 +334,7 @@ interface Window {
 			error?: string;
 			userNotified?: boolean;
 			microphoneFallbackRequired?: boolean;
+			systemAudioCaptureUnavailable?: boolean;
 		}>;
 		recoverRecordingOwner: () => Promise<void>;
 		reserveRecordingSession: () => Promise<{

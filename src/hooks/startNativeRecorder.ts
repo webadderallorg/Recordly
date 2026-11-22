@@ -188,6 +188,16 @@ export async function startNativeRecorder(
 			return "finished";
 		}
 
+		if (nativeResult.systemAudioCaptureUnavailable) {
+			toast.warning(
+				translate(
+					"notifications.systemAudioUnavailable",
+					"System audio is not available for this source. Recording will continue without system audio.",
+				),
+				{ id: "recording-system-audio-unavailable", duration: 10000 },
+			);
+		}
+
 		setRecording(true);
 		try {
 			await window.electronAPI?.setRecordingState(true);

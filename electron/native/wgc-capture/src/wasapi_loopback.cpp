@@ -252,6 +252,7 @@ bool WasapiCapture::start() {
     if (FAILED(hr)) {
         CloseHandle(outputFile_);
         outputFile_ = INVALID_HANDLE_VALUE;
+        DeleteFileA(outputPath_.c_str());
         return false;
     }
 

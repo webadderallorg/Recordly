@@ -41,7 +41,10 @@ describe("waitForWindowsCaptureStart", () => {
 		proc.stdout.write("CAPTURE_SIZE:764x");
 		proc.stdout.write("562\r\nRecording star");
 		proc.stdout.write("ted\r\n");
-		await expect(started).resolves.toEqual({ width: 764, height: 562 });
+		await expect(started).resolves.toEqual({
+			captureSize: { width: 764, height: 562 },
+			systemAudioCaptureUnavailable: false,
+		});
 	});
 
 	it("accepts legacy start events without dimensions", async () => {
@@ -50,7 +53,24 @@ describe("waitForWindowsCaptureStart", () => {
 			proc as unknown as Parameters<typeof waitForWindowsCaptureStart>[0],
 		);
 		proc.stdout.write("Recording started\r\n");
-		await expect(started).resolves.toBeNull();
+		await expect(started).resolves.toEqual({
+			captureSize: null,
+			systemAudioCaptureUnavailable: false,
+		});
+	});
+
+	it("reports a split system audio marker from stdout before recording starts", async () => {
+		const proc = new FakeCaptureProcess();
+		const started = waitForWindowsCaptureStart(
+			proc as unknown as Parameters<typeof waitForWindowsCaptureStart>[0],
+		);
+		proc.stdout.write("SYSTEM_AUDIO_CAPTURE_UN");
+		proc.stderr.write("WASAPI did not start\r\n");
+		proc.stdout.write("AVAILABLE\r\nRecording started\r\n");
+		await expect(started).resolves.toEqual({
+			captureSize: null,
+			systemAudioCaptureUnavailable: true,
+		});
 	});
 });
 
