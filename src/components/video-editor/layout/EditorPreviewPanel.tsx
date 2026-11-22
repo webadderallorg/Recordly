@@ -404,8 +404,18 @@ export function EditorPreviewPanel(props: Props) {
 							variant="ghost"
 							size="icon"
 							className="h-9 w-9"
-							title={t("editor.playback.skipBack")}
-							onClick={playback.handlePreviewSkipBack}
+							title={`${t("editor.playback.skipBack")} (Home)`}
+							aria-label={t("editor.playback.skipBack")}
+							aria-keyshortcuts="Home"
+							onClick={(event) => {
+								if (event.shiftKey) playback.handleSeek(0);
+								else playback.handlePreviewSkip("backward");
+							}}
+							onKeyDown={(event) => {
+								if (event.key !== "Home") return;
+								event.preventDefault();
+								playback.handleSeek(0);
+							}}
 						>
 							<SkipBack className="h-3.5 w-3.5" weight="fill" />
 						</Button>
@@ -429,7 +439,7 @@ export function EditorPreviewPanel(props: Props) {
 							size="icon"
 							className="h-9 w-9"
 							title={t("editor.playback.skipForward")}
-							onClick={playback.handlePreviewSkipForward}
+							onClick={() => playback.handlePreviewSkip("forward")}
 						>
 							<SkipForward className="h-3.5 w-3.5" weight="fill" />
 						</Button>
