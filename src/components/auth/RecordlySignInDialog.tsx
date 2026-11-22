@@ -21,6 +21,7 @@ import {
 	signOutRecordly,
 	verifySignInCode,
 } from "@/lib/auth/recordlyAuth";
+import { isMac } from "@/utils/platformUtils";
 import {
 	OnboardingBody,
 	OnboardingFooter,
@@ -154,12 +155,27 @@ export function RecordlySignInDialog({
 	const [permissionsReady, setPermissionsReady] = useState(false);
 	const requiresSignIn = ((onboarding && !preview) || requireSignIn) && !user;
 	const opened = useRef(false);
+	// Only macOS grants capture permissions up front; Windows and Linux skip that page.
+	// Start from the user agent so Windows and Linux never render the page, then confirm.
+	const [needsPermissions, setNeedsPermissions] = useState(() =>
+		/Macintosh|Mac OS X/i.test(navigator.userAgent),
+	);
+	useEffect(() => {
+		let active = true;
+		void isMac().then((mac) => {
+			if (active) setNeedsPermissions(mac);
+		});
+		return () => {
+			active = false;
+		};
+	}, []);
 	const canViewPermissions = tour && (Boolean(user) || preview);
-	const stage = canViewPermissions ? page : "account";
+	const visiblePage = page === "permissions" && !needsPermissions ? "upgrade" : page;
+	const stage = canViewPermissions ? visiblePage : "account";
 	const permissions = stage === "permissions";
 	const upgrade = stage === "upgrade";
-	const canViewUpgrade = canViewPermissions && permissionsReady;
-	const backPage = upgrade ? "permissions" : "account";
+	const canViewUpgrade = canViewPermissions && (permissionsReady || !needsPermissions);
+	const backPage = upgrade && needsPermissions ? "permissions" : "account";
 	const [email, setEmail] = useState("");
 	const consent = { legalAccepted: true };
 
@@ -556,6 +572,7 @@ export function RecordlySignInDialog({
 							<OnboardingLayout
 								stage={stage}
 								canViewPermissions={canViewPermissions}
+								showPermissions={needsPermissions}
 								canViewUpgrade={tour ? canViewUpgrade : undefined}
 								showNavigation={!signInOnly && !recordingStart}
 								footer={

@@ -56,10 +56,7 @@ for (const returning of [false, true]) {
 
 		const documentRoot = page.locator("html");
 		if (!returning) {
-			await expect(login).toHaveAttribute("data-onboarding-state", "permissions");
-			await expect(login.getByText("You’re signed in and ready to continue.")).toBeVisible();
-			await expect(documentRoot).not.toHaveAttribute("data-hud-opened");
-			await login.getByRole("button", { name: "Next", exact: true }).click();
+			// Windows has no permissions page, so sign-in lands on Upgrade.
 			await expect(login).toHaveAttribute("data-onboarding-state", "upgrade");
 			await expect(artwork).toHaveAttribute("data-layout-check", "same");
 			await expect(documentRoot).not.toHaveAttribute("data-hud-opened");
