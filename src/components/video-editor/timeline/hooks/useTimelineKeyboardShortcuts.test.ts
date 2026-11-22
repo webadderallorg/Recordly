@@ -235,6 +235,24 @@ describe("trim to playhead", () => {
 		expect(handleTrimEnd).toHaveBeenCalledTimes(1);
 	});
 
+	it("runs an Option letter trim unless the resulting character has a saved shortcut", () => {
+		const optionW = { key: "∑", code: "KeyW", altKey: true };
+		const handleTrimEnd = vi.fn();
+		const keyShortcuts = { ...DEFAULT_SHORTCUTS, trimEnd: { key: "w", alt: true } };
+		const trim = setup({ keyShortcuts, handleTrimEnd });
+		expect(trim.press(optionW).preventDefault).toHaveBeenCalledOnce();
+		expect(handleTrimEnd).toHaveBeenCalledOnce();
+
+		const custom = setup({
+			keyShortcuts: { ...keyShortcuts, addAnnotation: { key: "∑", alt: true } },
+			isTimelineFocusedRef: { current: true },
+			handleTrimEnd,
+		});
+		custom.press(optionW);
+		expect(custom.params.handleAddAnnotation).toHaveBeenCalledOnce();
+		expect(handleTrimEnd).toHaveBeenCalledOnce();
+	});
+
 	it("leaves Q and W alone while typing and with Cmd held", () => {
 		const handleTrimStart = vi.fn();
 		const { press } = setup({ handleTrimStart });

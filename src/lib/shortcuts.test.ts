@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_SHORTCUTS, mergeWithDefaults, serializeShortcuts } from "./shortcuts";
+import {
+	DEFAULT_SHORTCUTS,
+	matchesShortcut,
+	mergeWithDefaults,
+	serializeShortcuts,
+} from "./shortcuts";
 
 describe("split shortcut migration", () => {
 	it("updates an existing saved C default to the primary-modifier B binding", () => {
@@ -58,6 +63,25 @@ it("preserves saved Q and W bindings when adding the new trim shortcuts", () => 
 		trimEnd: { key: "w", alt: true },
 	});
 	expect(mergeWithDefaults(serializeShortcuts(merged))).toEqual(merged);
+});
+
+it("recognizes a macOS Option letter when the shortcut emits a symbol", () => {
+	const optionW = { key: "w", alt: true };
+	const event = {
+		key: "∑",
+		code: "KeyW",
+		altKey: true,
+		ctrlKey: false,
+		metaKey: false,
+		shiftKey: false,
+	} as KeyboardEvent;
+	expect(matchesShortcut(event, optionW, true)).toBe(false);
+	expect(matchesShortcut(event, optionW, true, true)).toBe(true);
+	expect(matchesShortcut({ ...event, code: "KeyQ" }, optionW, true, true)).toBe(false);
+	expect(matchesShortcut({ ...event, key: "z" }, optionW, true, true)).toBe(false);
+	expect(matchesShortcut({ ...event, shiftKey: true }, optionW, true, true)).toBe(false);
+	expect(matchesShortcut(event, { key: "∑", alt: true }, true)).toBe(true);
+	expect(matchesShortcut(event, optionW, false, true)).toBe(false);
 });
 
 const providerHooks = vi.hoisted(() => {

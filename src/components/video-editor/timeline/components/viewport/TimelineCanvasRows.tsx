@@ -384,27 +384,6 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 						{item.label}
 					</Item>
 				))}
-				{clipPresentation.map((left) => {
-					const right = clipPresentation.find(
-						(clip) => clip.span.start === left.span.end,
-					);
-					if (!right) return null;
-					const seam = (left.displaySpan.end + right.displaySpan.start) / 2;
-					return (
-						<div
-							key={`seam-${left.id}`}
-							data-testid="clip-seam-grip"
-							aria-hidden="true"
-							className={cn(glassStyles.zoomEndCap, glassStyles.clipHandle)}
-							style={{
-								height: "59.5%",
-								pointerEvents: "none",
-								[direction === "rtl" ? "right" : "left"]:
-									valueToPixels(seam - rangeStart) - 2,
-							}}
-						/>
-					);
-				})}
 			</Row>
 			{showSourceAudioTrack &&
 				sourceAudioTracks.map((track) => (
