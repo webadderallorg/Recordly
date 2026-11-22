@@ -33,6 +33,7 @@ type Props = {
 	normalizedCursorTelemetry: ReturnType<typeof useTimelineState>["cursorTelemetry"];
 	currentTime: number;
 	handleSelectAnnotation: (id: string | null) => void;
+	onDuplicateSelectedRegion: () => void;
 };
 
 export function EditorTimelinePanel(props: Props) {
@@ -80,6 +81,7 @@ export function EditorTimelinePanel(props: Props) {
 				onZoomSuggested={zoomCommands.handleZoomSuggested}
 				onZoomSpanChange={zoomCommands.handleZoomSpanChange}
 				onZoomDelete={zoomCommands.handleZoomDelete}
+				onDuplicateSelectedRegion={props.onDuplicateSelectedRegion}
 				onClearZooms={zoomCommands.handleClearZooms}
 				selectedZoomId={timeline.selectedZoomId}
 				onSelectZoom={zoomCommands.handleSelectZoom}

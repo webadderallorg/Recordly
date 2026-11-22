@@ -34,6 +34,7 @@ interface UseTimelineEditorRuntimeParams {
 	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
 	onZoomSpanChange: (id: string, span: Span) => void;
 	onZoomDelete: (id: string) => void;
+	onDuplicateSelectedRegion?: () => void;
 	onClearZooms?: () => void;
 	selectedZoomId: string | null;
 	onSelectZoom: (id: string | null) => void;
@@ -87,6 +88,7 @@ export function useTimelineEditorRuntime({
 	onZoomSuggested,
 	onZoomSpanChange,
 	onZoomDelete,
+	onDuplicateSelectedRegion,
 	onClearZooms,
 	selectedZoomId,
 	onSelectZoom,
@@ -289,6 +291,7 @@ export function useTimelineEditorRuntime({
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
 		deleteSelectedCaption,
+		onDuplicateSelectedRegion,
 		cycleAnnotationsAtCurrentTime,
 	});
 
