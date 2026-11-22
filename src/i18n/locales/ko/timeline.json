@@ -1,5 +1,7 @@
 {
 	"zoom": {
+		"selectedOne": "확대 구간 1개 선택됨",
+		"selectedCount": "확대 구간 {{count}}개 선택됨",
 		"applyAutoZooms": "자동 확대 적용",
 		"cannotPlace": "여기에는 확대를 배치할 수 없습니다",
 		"existsOrNoSpace": "이 위치에는 이미 확대가 있거나 사용할 수 있는 공간이 부족합니다.",

@@ -39,6 +39,8 @@ export default function TimelineCanvas({
 	selectedAudioId,
 	selectedCaptionId,
 	selectAllBlocksActive = false,
+	selectedZoomIds,
+	onSelectZoomIds,
 	onClearBlockSelection,
 	keyframes = [],
 	sourceAudioTracks = [],
@@ -324,6 +326,8 @@ export default function TimelineCanvas({
 					items={items}
 					videoDurationMs={videoDurationMs}
 					selectAllBlocksActive={selectAllBlocksActive}
+					selectedZoomIds={selectedZoomIds}
+					onSelectZoomIds={onSelectZoomIds}
 					selectedZoomId={selectedZoomId}
 					selectedClipId={selectedClipId}
 					selectedClipIds={selectedClipIds}
