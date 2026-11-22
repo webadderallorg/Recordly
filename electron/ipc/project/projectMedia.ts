@@ -191,7 +191,7 @@ export async function resolveProjectMediaSources(
 								projectPath,
 								"audio",
 							);
-							if (resolved !== track.sourcePath) {
+							if (resolved !== norm) {
 								relinkedAudio.push({ original: track.sourcePath, resolved });
 							}
 						} catch {
@@ -213,7 +213,7 @@ export async function resolveProjectMediaSources(
 								projectPath,
 								"audio",
 							);
-							if (resolved !== region.audioPath) {
+							if (resolved !== norm) {
 								relinkedAudio.push({ original: region.audioPath, resolved });
 							}
 						} catch {

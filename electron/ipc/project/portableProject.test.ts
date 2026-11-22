@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../utils", () => ({
@@ -33,6 +33,7 @@ describe("portable project media resolution (#1104)", () => {
 			`recordly-portable-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 		);
 		await fs.mkdir(tempDir, { recursive: true });
+		tempDir = await fs.realpath(tempDir);
 	});
 
 	afterEach(async () => {
@@ -208,6 +209,26 @@ describe("portable project media resolution (#1104)", () => {
 			path.join(tempDir, "project.recordly"),
 		);
 		expect(result).toMatchObject({ success: true, videoPath });
+	});
+
+	it("keeps a working audio file URL without marking it as a new location", async () => {
+		const videoPath = path.join(tempDir, "clip.mp4");
+		const audioPath = path.join(tempDir, "music.wav");
+		await fs.writeFile(videoPath, "video");
+		await fs.writeFile(audioPath, "audio");
+		const audioUrl = pathToFileURL(audioPath).href;
+		const project = {
+			videoPath,
+			editor: {
+				audioTracks: [{ sourcePath: audioUrl }],
+				audioRegions: [{ audioPath: audioUrl }],
+			},
+		};
+		const media = await resolveProjectMediaSources(
+			project,
+			path.join(tempDir, "demo.recordly"),
+		);
+		expect(media).toMatchObject({ success: true, relinkedAudio: [] });
 	});
 
 	it("collects all relinked sources including audio", async () => {
