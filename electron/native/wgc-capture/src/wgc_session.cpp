@@ -201,8 +201,9 @@ bool WgcSession::initialize(HWND hwnd, int fps) {
     return initializeWithItem(fps);
 }
 
-void WgcSession::setFrameCallback(FrameCallback callback) {
+void WgcSession::setFrameCallback(FrameCallback callback, std::function<bool()> isPaused) {
     frameCallback_ = std::move(callback);
+    isPaused_ = std::move(isPaused);
 }
 
 bool WgcSession::startCapture() {
@@ -252,7 +253,8 @@ void WgcSession::onFrameArrived(
     winrt::Windows::Foundation::IInspectable const&) {
     if (!capturing_) return;
     std::lock_guard<std::mutex> lock(frameDeliveryMutex_);
-    readFrame(sender, false);
+    const bool cachePausedWindowFrame = windowHandle_ && isPaused_ && isPaused_();
+    readFrame(sender, cachePausedWindowFrame);
 }
 
 void WgcSession::resumeAfterPendingFrames(const std::function<void()>& resume) {
@@ -279,14 +281,16 @@ bool WgcSession::readFrame(
     auto timestamp = frame.SystemRelativeTime();
     int64_t frameTimeHns = std::chrono::duration_cast<std::chrono::duration<int64_t, std::ratio<1, 10000000>>>(timestamp).count();
 
-    // Frame rate limiting: skip frames that arrive too soon
-    if (!skipFrameRateLimit && lastFrameTimeHns_ > 0 &&
-        (frameTimeHns - lastFrameTimeHns_) < (frameIntervalHns_ * 7 / 10)) {
-        frame.Close();
-        recreateFramePoolIfNeeded(contentSize);
-        return true;
+    // Paused window frames replace the cached image instead of reaching the encoder.
+    if (!skipFrameRateLimit) {
+        if (lastFrameTimeHns_ > 0 &&
+            (frameTimeHns - lastFrameTimeHns_) < (frameIntervalHns_ * 7 / 10)) {
+            frame.Close();
+            recreateFramePoolIfNeeded(contentSize);
+            return true;
+        }
+        lastFrameTimeHns_ = frameTimeHns;
     }
-    lastFrameTimeHns_ = frameTimeHns;
 
     if (auto access = frame.Surface().try_as<IDirect3DDxgiInterfaceAccess>()) {
         ComPtr<ID3D11Texture2D> texture;

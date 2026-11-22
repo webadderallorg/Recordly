@@ -443,7 +443,7 @@ int wmain(int argc, wchar_t* argv[]) {
             pendingResumePresentationHns = 0;
             pausedWindowTimestampHns = 0;
         }
-    });
+    }, [] { return g_pauseRequested.load(); });
 
     // Start stdin listener
     std::thread stdinThread(stdinListenerThread);

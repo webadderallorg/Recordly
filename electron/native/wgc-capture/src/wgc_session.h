@@ -27,7 +27,7 @@ public:
 
     bool initialize(HMONITOR monitor, int fps);
     bool initialize(HWND hwnd, int fps);
-    void setFrameCallback(FrameCallback callback);
+    void setFrameCallback(FrameCallback callback, std::function<bool()> isPaused);
     bool startCapture();
     void stopCapture();
     void resumeAfterPendingFrames(const std::function<void()>& resume);
@@ -51,6 +51,7 @@ private:
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::FrameArrived_revoker frameArrivedRevoker_;
 
     FrameCallback frameCallback_;
+    std::function<bool()> isPaused_;
     std::mutex frameDeliveryMutex_;
     std::atomic<bool> capturing_{false};
     std::atomic<bool> fatalError_{false};
