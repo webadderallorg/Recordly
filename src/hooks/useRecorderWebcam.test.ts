@@ -7,10 +7,12 @@ import { useRecorderWebcam } from "./useRecorderWebcam";
 import { acquireWebcamCapture } from "./webcamCapture";
 
 const effects = vi.hoisted(() => [] as Array<() => void | (() => void)>);
+const setWebcamFailure = vi.hoisted(() => vi.fn());
 vi.mock("react", () => ({
 	useCallback: <T>(callback: T) => callback,
 	useEffect: (effect: () => void | (() => void)) => effects.push(effect),
 	useRef: <T>(current: T) => ({ current }),
+	useState: <T>(initial: T) => [initial, setWebcamFailure],
 }));
 vi.mock("@/components/ui/toast", () => ({
 	toast: { error: vi.fn(), warning: vi.fn(), dismiss: vi.fn() },
@@ -306,6 +308,10 @@ describe("recorder webcam sidecar", () => {
 		expect(webcam.webcamRecorder.current).toBeNull();
 		expect(webcam.webcamWriter.current).toBeNull();
 		expect(track.stop).toHaveBeenCalledOnce();
+		expect(setWebcamFailure).toHaveBeenLastCalledWith({
+			deviceId: undefined,
+			message: "Camera disconnected",
+		});
 		expect(toast.warning).toHaveBeenCalledWith("Webcam unavailable", expect.anything());
 		expect(openRecordingFileStream).not.toHaveBeenCalled();
 	});

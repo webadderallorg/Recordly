@@ -1,5 +1,71 @@
 import { expect, test } from "@playwright/test";
-import { installDesktopBridge } from "./bridge";
+import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+
+test("an unavailable camera replaces its preview and only sends a report on request", async ({
+	page,
+}, testInfo) => {
+	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.getEditorMode = async () => false;
+		window.electronAPI.getRecordingPreferences = async () => ({
+			success: true,
+			webcamEnabled: true,
+			floatingWebcamPreviewVisible: true,
+		});
+		window.electronAPI.getMediaPermissionStatus = async () => ({
+			success: true,
+			camera: "granted",
+			microphone: "granted",
+		});
+		navigator.mediaDevices.enumerateDevices = async () => [];
+		navigator.mediaDevices.getUserMedia = async () => {
+			throw new DOMException("Camera is already in use", "NotReadableError");
+		};
+	});
+	const reports: unknown[] = [];
+	await page.route("**/functions/v1/submit-export-error", async (route) => {
+		reports.push(route.request().postDataJSON());
+		await route.fulfill({ json: { success: true } });
+	});
+	await page.goto("/?windowType=hud-overlay");
+	const preview = page.locator("[data-floating-webcam-preview]");
+	const report = preview.getByRole("button", { name: "Report Error" });
+	await expect(preview.getByText("Webcam unavailable", { exact: true })).toBeVisible();
+	await expect(preview.locator("[data-floating]")).not.toHaveCSS(
+		"background-color",
+		"rgba(0, 0, 0, 0)",
+	);
+	await expect(preview.locator("video")).toHaveCount(0);
+	await expect(report).toBeEnabled();
+	const bar = page.locator("[data-recording-state]");
+	const capture = async (name: string) => {
+		const cameraBounds = (await preview.boundingBox())!;
+		const barBounds = (await bar.boundingBox())!;
+		const x = Math.max(0, Math.floor(Math.min(cameraBounds.x, barBounds.x)) - 16);
+		const y = Math.max(0, Math.floor(Math.min(cameraBounds.y, barBounds.y)) - 16);
+		const right = Math.max(cameraBounds.x + cameraBounds.width, barBounds.x + barBounds.width);
+		const bottom = Math.max(
+			cameraBounds.y + cameraBounds.height,
+			barBounds.y + barBounds.height,
+		);
+		await page.screenshot({
+			path: testInfo.outputPath(name),
+			animations: "disabled",
+			clip: { x, y, width: Math.ceil(right - x) + 16, height: Math.ceil(bottom - y) + 16 },
+		});
+	};
+	await capture("webcam-unavailable.png");
+	await page.setViewportSize({ width: 600, height: 700 });
+	await expect(report).toBeInViewport({ ratio: 1 });
+	await expect(bar).toBeInViewport({ ratio: 1 });
+	await capture("webcam-unavailable-compact.png");
+	expect(reports).toHaveLength(0);
+	await report.click();
+	await expect(preview.getByRole("button", { name: "Report sent" })).toBeDisabled();
+	expect(reports).toEqual([
+		expect.objectContaining({ context: "webcam", error: "Camera is already in use" }),
+	]);
+});
 
 test("webcam and HUD stay docked across recording states and drag together within the screen", async ({
 	page,

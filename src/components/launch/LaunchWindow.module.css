@@ -306,6 +306,42 @@
 	transform: translateZ(0);
 }
 
+.webcamUnavailable {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	min-height: 96px;
+	width: 100%;
+	padding: 12px;
+	border: 1px solid var(--launch-border-strong);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--launch-bar-bg) 94%, var(--launch-text));
+	color: var(--launch-text-muted);
+	font-size: 12px;
+	line-height: 1.35;
+	text-align: center;
+	overflow-wrap: anywhere;
+}
+
+.webcamUnavailable[data-floating] {
+	height: 100%;
+	padding-inline: 32px;
+	border-radius: 50%;
+	font-size: 13px;
+}
+
+.webcamUnavailable p {
+	color: var(--launch-text);
+	font-weight: 600;
+}
+
+.webcamUnavailable button {
+	min-height: 28px;
+	padding-inline: 4px;
+}
+
 @keyframes blink {
 	0%,
 	100% {

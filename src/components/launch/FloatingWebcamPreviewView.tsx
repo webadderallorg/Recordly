@@ -1,6 +1,7 @@
 import type { MouseEventHandler, ReactNode } from "react";
 import type { useWebcamPreviewOverlay } from "./hooks/useWebcamPreviewOverlay";
 import styles from "./LaunchWindow.module.css";
+import { WebcamUnavailable } from "./WebcamUnavailable";
 
 /** Renders the circular floating camera and its docked recording controls. */
 export function FloatingWebcamPreviewView({
@@ -27,6 +28,7 @@ export function FloatingWebcamPreviewView({
 		handleWebcamPreviewPointerMove,
 		handleWebcamPreviewPointerUp,
 		setRecordingWebcamPreviewNode,
+		webcamPreviewError,
 	} = preview;
 
 	return (
@@ -55,17 +57,20 @@ export function FloatingWebcamPreviewView({
 				className="absolute inset-0"
 				style={{ filter: "drop-shadow(0 3px 10px rgb(0 0 0 / 0.14))" }}
 			>
-				<video
-					ref={setRecordingWebcamPreviewNode}
-					className={styles.recordingWebcamPreviewVideo}
-					muted
-					playsInline
-					style={{
-						transform: "scaleX(-1)",
-
-						clipPath: "circle(50%)",
-					}}
-				/>
+				{webcamPreviewError ? (
+					<WebcamUnavailable error={webcamPreviewError} floating />
+				) : (
+					<video
+						ref={setRecordingWebcamPreviewNode}
+						className={styles.recordingWebcamPreviewVideo}
+						muted
+						playsInline
+						style={{
+							transform: "scaleX(-1)",
+							clipPath: "circle(50%)",
+						}}
+					/>
+				)}
 			</div>
 		</div>
 	);
