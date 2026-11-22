@@ -71,11 +71,21 @@ export function shareSafeStorageKey(
 	if (typeof osCrypt.encrypted_key === "string" && osCrypt.encrypted_key) {
 		const backupPath = path.join(sessionPath, REPLACED_KEYS_FILE);
 		let replaced: string[] = [];
+		let raw: string | null = null;
 		try {
-			const parsed: unknown = JSON.parse(readFileSync(backupPath, "utf8"));
-			if (Array.isArray(parsed)) replaced = parsed.filter((key) => typeof key === "string");
-		} catch {
-			// No earlier backup.
+			raw = readFileSync(backupPath, "utf8");
+		} catch (error) {
+			// Only a missing backup counts as empty history; anything else must not
+			// overwrite keys kept earlier, so leave both files untouched.
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		}
+		if (raw !== null) {
+			const parsed: unknown = JSON.parse(raw);
+			if (!Array.isArray(parsed) || parsed.some((key) => typeof key !== "string"))
+				throw new Error(
+					`Unexpected contents in ${REPLACED_KEYS_FILE}; keeping this profile's key.`,
+				);
+			replaced = parsed;
 		}
 		if (!replaced.includes(osCrypt.encrypted_key)) replaced.push(osCrypt.encrypted_key);
 		writeFileSync(backupPath, JSON.stringify(replaced), { mode: 0o600 });

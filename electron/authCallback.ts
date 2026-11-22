@@ -264,8 +264,14 @@ export function createAuthCallbackController({
 				return;
 			}
 
-			const requestUrl = new URL(request.url ?? "/", DEV_CALLBACK_ORIGIN);
-			if (requestUrl.pathname !== LOOPBACK_CALLBACK_PATH) {
+			// Any local page can reach this port; a malformed target must not throw.
+			let requestUrl: URL | null = null;
+			try {
+				requestUrl = new URL(request.url ?? "/", DEV_CALLBACK_ORIGIN);
+			} catch {
+				requestUrl = null;
+			}
+			if (!requestUrl || requestUrl.pathname !== LOOPBACK_CALLBACK_PATH) {
 				response.writeHead(404, callbackHeaders("text/plain; charset=utf-8"));
 				response.end("Not found");
 				return;

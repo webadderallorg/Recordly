@@ -53,6 +53,17 @@ it("replaces a secondary's own key, keeps its other settings, and retains the ol
 	expect(readReplaced()).toEqual(["OWN", "NEWER"]);
 });
 
+it("leaves both files untouched when the key backup cannot be trusted", () => {
+	writeState(primary, { os_crypt: { encrypted_key: "PRIMARY" } });
+	writeState(slot, { os_crypt: { encrypted_key: "OWN" } });
+	writeFileSync(path.join(slot, REPLACED_KEYS_FILE), "{not json");
+	expect(() => shareSafeStorageKey(primary, slot)).toThrow();
+	writeFileSync(path.join(slot, REPLACED_KEYS_FILE), JSON.stringify({ keys: ["OLD"] }));
+	expect(() => shareSafeStorageKey(primary, slot)).toThrow("Unexpected contents");
+	expect(readState(slot)).toEqual({ os_crypt: { encrypted_key: "OWN" } });
+	expect(readFileSync(path.join(slot, REPLACED_KEYS_FILE), "utf8")).toBe('{"keys":["OLD"]}');
+});
+
 it("does nothing without a primary key or for the primary profile itself", () => {
 	expect(shareSafeStorageKey(primary, slot)).toBe("no-primary-key");
 	writeState(primary, { os_crypt: {} });

@@ -98,6 +98,25 @@ it("serves the loopback return page in packaged Windows/Linux builds only when e
 	on.close();
 });
 
+it("answers malformed loopback targets with 404 instead of throwing", async () => {
+	const { createAuthCallbackController } = await import("./authCallback");
+	const controller = createAuthCallbackController({
+		isDev: false,
+		focusApp: vi.fn(),
+		flowRoutingEnabled: false,
+		loopbackReturn: true,
+	});
+	controller.startDevServer();
+	for (const url of ["//[", "//user@[::1"]) {
+		const response = { writeHead: vi.fn(), end: vi.fn() };
+		expect(() =>
+			state.request!({ method: "GET", headers: { host: "127.0.0.1:43821" }, url }, response),
+		).not.toThrow();
+		expect(response.writeHead).toHaveBeenCalledWith(404, expect.any(Object));
+	}
+	controller.close();
+});
+
 it("retries the loopback port while another instance holds it, until closed", async () => {
 	vi.useFakeTimers();
 	try {
@@ -111,10 +130,11 @@ it("retries the loopback port while another instance holds it, until closed", as
 		state.servers.length = 0;
 		controller.startDevServer();
 		const busy = Object.assign(new Error("in use"), { code: "EADDRINUSE" });
-		const fail = (server: (typeof state.servers)[number]) =>
-			(server.on.mock.calls.find(([event]) => event === "error")?.[1] as (e: Error) => void)(
-				busy,
-			);
+		const fail = (server: (typeof state.servers)[number]) => {
+			const onError = server.on.mock.calls.find(([event]) => event === "error")?.[1];
+			if (typeof onError !== "function") throw new Error("No error handler registered");
+			(onError as (error: Error) => void)(busy);
+		};
 
 		fail(state.servers[0]);
 		expect(state.servers).toHaveLength(1);
