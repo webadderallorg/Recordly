@@ -130,6 +130,9 @@ function Fixture() {
 				handleRetrySaveExport={() => undefined}
 				handleStartExportFromDropdown={() => undefined}
 				revealExportedFile={() => undefined}
+				onRecordNew={() => {
+					document.documentElement.dataset.recordNew = "true";
+				}}
 				projectTitle="Fixture"
 				authToken={query.has("signed-out") ? undefined : "fixture"}
 				accountId={query.has("signed-out") ? undefined : "fixture-account"}

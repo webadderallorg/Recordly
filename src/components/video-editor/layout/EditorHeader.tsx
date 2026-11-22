@@ -125,6 +125,11 @@ export function EditorHeader(props: Props) {
 		}
 	}, [isEditingProjectName]);
 
+	const recordingUnavailable =
+		exportSession.isExporting ||
+		exportSession.isOptimizingGif ||
+		exportSession.hasPendingExportSave;
+
 	return (
 		<AppFrameHeader className="editor-header">
 			<div
@@ -151,11 +156,7 @@ export function EditorHeader(props: Props) {
 							variant="ghost"
 							size="sm"
 							onClick={() => void handleOpenRecordingHud()}
-							disabled={
-								exportSession.isExporting ||
-								exportSession.isOptimizingGif ||
-								exportSession.hasPendingExportSave
-							}
+							disabled={recordingUnavailable}
 							className="editor-header-icon-button h-9 shrink-0 gap-2 px-3"
 							aria-label={uiText("ui.recordNew")}
 						>
@@ -302,6 +303,11 @@ export function EditorHeader(props: Props) {
 					handleRetrySaveExport={handleRetrySaveExport}
 					handleStartExportFromDropdown={handleStartExportFromDropdown}
 					revealExportedFile={revealExportedFile}
+					onRecordNew={
+						project.projectBrowserOpen || recordingUnavailable
+							? undefined
+							: () => void handleOpenRecordingHud()
+					}
 					projectPath={project.currentProjectPath}
 					projectSourcePath={project.videoSourcePath}
 					openedSavedProject={project.openedSavedProject}
