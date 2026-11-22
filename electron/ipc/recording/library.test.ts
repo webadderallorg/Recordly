@@ -336,6 +336,7 @@ it("appends a selected external video with its embedded audio and leaves both or
 	const base = path.join(state.root, "base.mp4");
 	const folder = path.join(state.root, "external");
 	const added = path.join(folder, "external.mov");
+	const baseCursor = { timeMs: 100, cx: 0.25, cy: 0.4, interactionType: "move" };
 	await fs.mkdir(folder);
 	await run(ffmpeg, [
 		"-v",
@@ -370,6 +371,7 @@ it("appends a selected external video with its embedded audio and leaves both or
 		"aac",
 		added,
 	]);
+	await fs.writeFile(`${base}.cursor.json`, JSON.stringify({ samples: [baseCursor] }));
 	await fs.writeFile(
 		`${added}.cursor.json`,
 		JSON.stringify({ samples: [{ timeMs: 200, cx: 0.5, cy: 0.5, interactionType: "click" }] }),
@@ -381,7 +383,8 @@ it("appends a selected external video with its embedded audio and leaves both or
 	const result = await importRecording(base, added);
 	expect(result).toMatchObject({ sourceStartMs: 1000, durationMs: 1000, totalDurationMs: 2000 });
 	expect(result.webcam).toBeUndefined();
-	await expect(fs.access(`${result.path}.cursor.json`)).rejects.toThrow();
+	const cursor = JSON.parse(await fs.readFile(`${result.path}.cursor.json`, "utf-8"));
+	expect(cursor.samples).toEqual([baseCursor]);
 	const audio = await run(ffmpeg, [
 		"-hide_banner",
 		"-ss",
