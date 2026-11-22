@@ -203,7 +203,9 @@ chmod +x ./Recordly-linux-x64.AppImage
 ./Recordly-linux-x64.AppImage --no-sandbox
 ```
 
-`--no-sandbox` disables Chromium's sandbox and reduces process isolation. Include it each time you start this AppImage. System-wide user-namespace restriction changes affect every application and are not required for this workaround.
+`--no-sandbox` disables Chromium's sandbox and reduces process isolation. Include it each time you start this AppImage. Electron documents running without the sandbox as a testing-only option (see the [Electron sandbox documentation](https://www.electronjs.org/docs/latest/tutorial/sandbox)), so treat this as a short-term workaround.
+
+For a stable setup that keeps the sandbox on, use a per-application AppArmor profile that allows user namespaces for Recordly instead of turning the restriction off system-wide. Ubuntu describes this approach in its [notes on unprivileged user namespace restrictions](https://documentation.ubuntu.com/release-notes/24.04/#unprivileged-user-namespace-restrictions).
 
 ## Arch Linux / Manjaro (yay)
 
