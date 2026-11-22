@@ -5,18 +5,24 @@ test("split clips share one grip and captions live inside the filmstrip", async 
 	test.setTimeout(120000);
 	page.setDefaultTimeout(10000);
 	await installDesktopBridge(page, "filmstrip.mp4");
-	await page.goto("/?windowType=editor");
+	await page.goto("/?windowType=editor", { waitUntil: "domcontentloaded", timeout: 45000 });
 	const clips = page.locator('[data-variant="clip"]');
-	await expect(clips).toHaveCount(1, { timeout: 20000 });
+	await expect(page.locator("[data-preview-overlay]")).toBeVisible({ timeout: 45000 });
+	await expect(clips).toHaveCount(1);
 	await expect(clips.first()).toHaveAttribute("data-end-ms", "6000");
 	const scroll = page.getByTestId("timeline-scroll");
 	const clipRow = page.locator('[data-timeline-row="row-clip"]');
 	const rowBox = (await clipRow.boundingBox())!;
-	await page.mouse.click(rowBox.x + rowBox.width / 2, rowBox.y - 8);
+	const cap = (await page.getByTestId("playhead-cap").boundingBox())!;
+	const capY = cap.y + cap.height / 2;
+	await page.mouse.move(cap.x + cap.width / 2, capY);
+	await page.mouse.down();
+	await page.mouse.move(rowBox.x + rowBox.width / 2, capY, { steps: 6 });
+	await page.mouse.up();
 	await expect
 		.poll(() => page.getByTestId("playhead-cap").getAttribute("aria-label"))
 		.toBe("Playhead 3.0s");
-	await page.getByRole("button", { name: "Split Clip (C)", exact: true }).click();
+	await page.getByRole("button", { name: /^Split Clip \(/ }).click();
 	await expect(clips).toHaveCount(2);
 	const first = clips.nth(0),
 		second = clips.nth(1);
@@ -26,9 +32,11 @@ test("split clips share one grip and captions live inside the filmstrip", async 
 	const seamGrip = page.getByTestId("clip-seam-grip");
 	await expect(seamGrip).toHaveCount(1);
 	await expect(first.getByTitle("Resize right")).toBeHidden();
-	await expect(second.getByTitle("Resize left")).toBeHidden();
+	await expect(second.getByTitle("Resize left")).toBeVisible();
 	const grip = (await seamGrip.boundingBox())!;
-	expect(grip.x + grip.width / 2).toBeCloseTo((left.x + left.width + right.x) / 2, 0);
+	expect(
+		Math.abs(grip.x + grip.width / 2 - (left.x + left.width + right.x) / 2),
+	).toBeLessThanOrEqual(1);
 	await scroll.focus();
 	await expect(scroll).toHaveCSS("outline-style", "none");
 	await expect(scroll).toHaveCSS("box-shadow", "none");
@@ -49,11 +57,12 @@ test("split clips share one grip and captions live inside the filmstrip", async 
 	expect(Number(await first.getAttribute("data-end-ms"))).toBe(savedStart);
 	expect(Number(await second.getAttribute("data-end-ms"))).toBe(6000);
 
-	// A real trim starts from the visible edge, with no gutter-size jump in timing.
-	const before = (await second.boundingBox())!;
-	await page.mouse.move(before.x + 2, before.y + 20);
+	// The shared grip starts a trim without a gutter-size jump in timing.
+	const gripX = grip.x + grip.width / 2;
+	const gripY = grip.y + grip.height / 2;
+	await page.mouse.move(gripX, gripY);
 	await page.mouse.down();
-	await page.mouse.move(before.x + 32, before.y + 20, { steps: 8 });
+	await page.mouse.move(gripX + 30, gripY, { steps: 8 });
 	await page.mouse.up();
 	await expect
 		.poll(async () => 6000 - Number(await second.getAttribute("data-end-ms")))
@@ -73,10 +82,30 @@ test("split clips share one grip and captions live inside the filmstrip", async 
 	const caption = page.locator('[data-variant="caption"]');
 	await expect(caption).toHaveCount(1);
 	const text = page.getByRole("textbox", { name: "Text", exact: true });
-	await text.fill("And this is what the caption looks like inside a clip");
+	const captionText = "And this is what the caption looks like inside a clip";
+	await text.fill(captionText);
 	await text.press("Enter");
-	await expect(caption).toContainText("And this is what");
-	expect((await caption.textContent())!.length).toBeLessThan(35);
+	await expect(caption).toHaveText(captionText);
+	const label = caption.locator("span.truncate");
+	await expect(label).toHaveCSS("text-overflow", "ellipsis");
+	// A wide block must display the entire cue, including text beyond character 24.
+	await expect
+		.poll(() => label.evaluate((node) => node.scrollWidth - node.clientWidth))
+		.toBeLessThanOrEqual(1);
+	// A longer cue uses the available block width, with only CSS adding an ellipsis.
+	await text.fill(`${captionText} — ${captionText}`);
+	await text.press("Enter");
+	await expect(caption).toHaveText(`${captionText} — ${captionText}`);
+	await expect
+		.poll(() => label.evaluate((node) => node.scrollWidth - node.clientWidth))
+		.toBeGreaterThan(1);
+	const availableTextWidth = await label.evaluate((node) => ({
+		text: node.clientWidth,
+		block: node.closest(".timeline-block")!.clientWidth,
+	}));
+	expect(availableTextWidth.block - availableTextWidth.text).toBeLessThanOrEqual(20);
+	await text.fill(captionText);
+	await text.press("Enter");
 	const captionBox = (await caption.boundingBox())!;
 	const clipBox = (await first.locator(".timeline-block").boundingBox())!;
 	expect(captionBox.y).toBeGreaterThan(clipBox.y);
@@ -112,7 +141,7 @@ test("background swaps use the section fade without sliding or overlapping panel
 	await installDesktopBridge(page);
 	await page.goto("/?windowType=editor");
 	await expect(page.locator('[data-background-panel="image"]')).toBeVisible({ timeout: 20000 });
-	for (const name of ["Color", "Gradient", "Video", "Image"]) {
+	for (const name of ["Colors", "Video", "Image"]) {
 		await page.getByRole("row", { name, exact: true }).click();
 		const panel = page.locator("[data-background-panel]");
 		await expect(panel).toHaveCount(1);

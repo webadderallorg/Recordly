@@ -4,7 +4,7 @@ import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setWindowsCaptureOutputBuffer, setWindowsCaptureTargetPath } from "../state";
-import { waitForWindowsCaptureStop } from "./windows";
+import { waitForWindowsCaptureStart, waitForWindowsCaptureStop } from "./windows";
 
 const windowsCaptureSource = readFileSync(
 	fileURLToPath(new URL("../../native/wgc-capture/src/wgc_session.cpp", import.meta.url)),
@@ -32,6 +32,48 @@ class FakeCaptureProcess extends EventEmitter {
 	});
 }
 
+describe("waitForWindowsCaptureStart", () => {
+	it("reads the encoded dimensions before the split start marker", async () => {
+		const proc = new FakeCaptureProcess();
+		const started = waitForWindowsCaptureStart(
+			proc as unknown as Parameters<typeof waitForWindowsCaptureStart>[0],
+		);
+		proc.stdout.write("CAPTURE_SIZE:764x");
+		proc.stdout.write("562\r\nRecording star");
+		proc.stdout.write("ted\r\n");
+		await expect(started).resolves.toEqual({
+			captureSize: { width: 764, height: 562 },
+			systemAudioCaptureUnavailable: false,
+		});
+	});
+
+	it("accepts legacy start events without dimensions", async () => {
+		const proc = new FakeCaptureProcess();
+		const started = waitForWindowsCaptureStart(
+			proc as unknown as Parameters<typeof waitForWindowsCaptureStart>[0],
+		);
+		proc.stdout.write("Recording started\r\n");
+		await expect(started).resolves.toEqual({
+			captureSize: null,
+			systemAudioCaptureUnavailable: false,
+		});
+	});
+
+	it("reports a split system audio marker from stdout before recording starts", async () => {
+		const proc = new FakeCaptureProcess();
+		const started = waitForWindowsCaptureStart(
+			proc as unknown as Parameters<typeof waitForWindowsCaptureStart>[0],
+		);
+		proc.stdout.write("SYSTEM_AUDIO_CAPTURE_UN");
+		proc.stderr.write("WASAPI did not start\r\n");
+		proc.stdout.write("AVAILABLE\r\nRecording started\r\n");
+		await expect(started).resolves.toEqual({
+			captureSize: null,
+			systemAudioCaptureUnavailable: true,
+		});
+	});
+});
+
 describe("waitForWindowsCaptureStop", () => {
 	beforeEach(() => {
 		setWindowsCaptureOutputBuffer("");
@@ -50,6 +92,19 @@ describe("waitForWindowsCaptureStop", () => {
 
 		await expect(stopped).resolves.toBe("C:\\Recordly\\capture.mp4");
 		expect(proc.kill).not.toHaveBeenCalled();
+	});
+
+	it("accepts a finalized interrupted take even though the helper exits with an error", async () => {
+		const proc = new FakeCaptureProcess();
+		setWindowsCaptureOutputBuffer(
+			"CAPTURE_INTERRUPTED: WGC source failed\nRecording interrupted. Output path: C:\\Recordly\\capture.mp4\n",
+		);
+		const stopped = waitForWindowsCaptureStop(
+			proc as unknown as Parameters<typeof waitForWindowsCaptureStop>[0],
+			1000,
+		);
+		proc.emit("close", 1);
+		await expect(stopped).resolves.toBe("C:\\Recordly\\capture.mp4");
 	});
 
 	it("resolves the fallback target path when the helper closes cleanly without output path", async () => {
@@ -109,22 +164,15 @@ describe("waitForWindowsCaptureStop", () => {
 });
 
 describe("native Windows window capture", () => {
-	it("crops monitor frames to the selected window bounds", () => {
-		expect(windowsCaptureSource).not.toContain("CreateForWindow(");
-		expect(windowsCaptureSource).toContain("DwmGetWindowAttribute(");
-		expect(windowsCaptureSource).toContain("CopySubresourceRegion(cropTexture_");
+	it("uses a capture item for the selected window", () => {
+		expect(windowsCaptureSource).toContain("interop->CreateForWindow(");
+		expect(windowsCaptureSource).not.toContain("MonitorFromWindow(");
 	});
 
-	it("maps desktop bounds into WGC texture coordinates and keeps the encoder size fixed", () => {
-		expect(windowsCaptureSource).toContain("normalized * framePoolWidth_");
+	it("recreates the frame pool for the captured window size", () => {
+		expect(windowsCaptureSource).toContain("recreateFramePoolIfNeeded(contentSize)");
 		expect(windowsCaptureSource).toContain(
-			"d3dDevice_->CreateTexture2D(&desc, nullptr, &resizedTexture)",
+			"frameCallback_(texture.Get(), contentSize.Width, contentSize.Height, frameTimeHns)",
 		);
-		expect(windowsCaptureSource).not.toContain("nextWidth != captureWidth_");
-	});
-
-	it("does not expose desktop pixels when the selected window shrinks", () => {
-		expect(windowsCaptureSource).toContain("(std::min)(mappedWidth");
-		expect(windowsCaptureSource).toContain("ClearRenderTargetView");
 	});
 });

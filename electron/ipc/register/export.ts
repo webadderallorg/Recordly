@@ -5,6 +5,12 @@ import path from "node:path";
 import type { Readable, Writable } from "node:stream";
 import type { SaveDialogOptions } from "electron";
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { nativeT } from "../../nativeI18n";
+import {
+	getAvailableExportPath,
+	getSelectedExportPath,
+	saveExportToAvailablePath,
+} from "../export/availableExportPath";
 import {
 	closeExportStream,
 	isOwnedExportPath,
@@ -14,6 +20,7 @@ import {
 	writeToExportStream,
 } from "../export/exportStream";
 import {
+	cancelNativeVideoExportSession,
 	enqueueNativeVideoExportFrameWrite,
 	enqueueNativeVideoExportFrameWrites,
 	exportNativeStaticLayoutVideo,
@@ -37,6 +44,7 @@ import {
 	settleNativeVideoExportWriteFrameRequest,
 } from "../export/native-video";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
+import { observeShareExportSource, progressiveShareFfmpegArgs } from "../growingShareUpload";
 import {
 	buildNativeH264StreamExportArgs,
 	buildNativeVideoExportArgs,
@@ -48,6 +56,7 @@ import { isAllowedLocalReadPath, resolveApprovedLocalMediaPath } from "../projec
 import { approveUserPath } from "../utils";
 import {
 	type CaptionSidecarPayload,
+	getCaptionSidecarExtensions,
 	parseCaptionSidecarPayload,
 	withCaptionSidecarMessage,
 	writeCaptionSidecarsBestEffort,
@@ -246,7 +255,31 @@ function isTempPathSafe(tempPath: string): boolean {
 	return candidate.startsWith(withSep);
 }
 
+function getExportSaveDialogDefaultPath(fileName: string, sidecarExtensions: readonly string[]) {
+	const requestedPath = path.join(app.getPath("downloads"), fileName);
+	return getAvailableExportPath(requestedPath, sidecarExtensions).catch(() => requestedPath);
+}
+
 export function registerExportHandlers() {
+	ipcMain.handle(
+		"suggest-export-file-name",
+		async (_event, fileName: unknown, sidecarFormat: unknown) => {
+			if (
+				typeof fileName !== "string" ||
+				/[<>:"/\\|?*\p{Cc}]/u.test(fileName) ||
+				!/\.(mp4|gif)$/i.test(fileName)
+			) {
+				return null;
+			}
+			const sidecarExtensions = getCaptionSidecarExtensions(
+				sidecarFormat === "srt" || sidecarFormat === "vtt" || sidecarFormat === "both"
+					? { format: sidecarFormat }
+					: null,
+			);
+			return path.basename(await getExportSaveDialogDefaultPath(fileName, sidecarExtensions));
+		},
+	);
+
 	ipcMain.handle(
 		"native-video-export-start",
 		async (
@@ -258,17 +291,24 @@ export function registerExportHandlers() {
 				bitrate: number;
 				encodingMode: NativeExportEncodingMode;
 				inputMode?: "rawvideo" | "h264-stream";
+				deliveryProfile?: "cloud";
 			},
 		) => {
 			try {
-				if (options.width % 2 !== 0 || options.height % 2 !== 0) {
-					throw new Error("Native export requires even output dimensions");
+				if (
+					options.width <= 0 ||
+					options.height <= 0 ||
+					options.width % 2 !== 0 ||
+					options.height % 2 !== 0
+				) {
+					throw new Error("Native export requires positive, even output dimensions");
 				}
 
 				const ffmpegPath = getFfmpegBinaryPath();
 				const inputMode = options.inputMode ?? "rawvideo";
 				const sessionId = `recordly-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 				const outputPath = path.join(app.getPath("temp"), `${sessionId}.mp4`);
+				observeShareExportSource(event.sender.id, outputPath);
 
 				let encoderName: string;
 				let ffmpegArgs: string[];
@@ -281,11 +321,11 @@ export function registerExportHandlers() {
 						outputPath,
 					});
 				} else {
-					encoderName = await resolveNativeVideoEncoder(ffmpegPath, options.encodingMode);
+					encoderName = await resolveNativeVideoEncoder(ffmpegPath, options);
 					ffmpegArgs = buildNativeVideoExportArgs(encoderName, options, outputPath);
 				}
 
-				const ffmpegProcess = spawn(ffmpegPath, ffmpegArgs, {
+				const ffmpegProcess = spawn(ffmpegPath, progressiveShareFfmpegArgs(ffmpegArgs), {
 					stdio: ["pipe", "ignore", "pipe"],
 				}) as ChildProcessByStdio<Writable, null, Readable>;
 				// For rawvideo, frames are a fixed RGBA size. For h264-stream, chunks are variable.
@@ -296,6 +336,7 @@ export function registerExportHandlers() {
 
 				const session: NativeVideoExportSession = {
 					ffmpegProcess,
+					currentProcess: null,
 					outputPath,
 					inputByteSize,
 					inputMode,
@@ -463,6 +504,7 @@ export function registerExportHandlers() {
 
 						event.sender.send("native-static-layout-export-progress", progress);
 					},
+					(filePath) => observeShareExportSource(event.sender.id, filePath),
 				);
 				registerOwnedExportPath(result.outputPath);
 				const primaryBackend = result.metrics.chunks[0]?.backend;
@@ -663,11 +705,20 @@ export function registerExportHandlers() {
 					session.ffmpegProcess.stdin.end();
 				}
 				await session.completionPromise;
+				if (session.terminating)
+					throw new Error("Native video export session was cancelled");
 
-				const finalized = await muxNativeVideoExportAudio(
+				const finalization = muxNativeVideoExportAudio(
 					session.outputPath,
 					options ?? {},
+					undefined,
+					session,
 				);
+				session.finalization = finalization;
+				const finalized = await finalization;
+				if (session.terminating) {
+					throw new Error("Native video export session was cancelled");
+				}
 				nativeVideoExportSessions.delete(sessionId);
 				// Register the finalized path so only app-produced paths can flow back
 				// through finalize-exported-video / discard-exported-temp.
@@ -690,10 +741,10 @@ export function registerExportHandlers() {
 				};
 			} catch (error) {
 				flushNativeVideoExportPendingWriteRequests(sessionId, session, String(error));
-				nativeVideoExportSessions.delete(sessionId);
-				await removeTemporaryExportFile(session.outputPath);
-				const finalizedSuffix = session.outputPath.replace(/\.mp4$/, "-final.mp4");
-				await removeTemporaryExportFile(finalizedSuffix);
+				if (!session.terminating) {
+					await removeTemporaryExportFile(session.outputPath);
+					if (!session.terminating) nativeVideoExportSessions.delete(sessionId);
+				}
 				return {
 					success: false,
 					error: String(error),
@@ -769,9 +820,10 @@ export function registerExportHandlers() {
 		},
 	);
 
-	ipcMain.handle("export-stream-open", async (_event, options?: { extension?: string }) => {
+	ipcMain.handle("export-stream-open", async (event, options?: { extension?: string }) => {
 		try {
 			const result = await openExportStream(options);
+			observeShareExportSource(event.sender.id, result.tempPath);
 			return { success: true, streamId: result.streamId, tempPath: result.tempPath };
 		} catch (error) {
 			return { success: false, error: String(error) };
@@ -812,33 +864,13 @@ export function registerExportHandlers() {
 			return { success: true };
 		}
 
-		session.terminating = true;
-		nativeVideoExportSessions.delete(sessionId);
 		flushNativeVideoExportPendingWriteRequests(
 			sessionId,
 			session,
 			"Native video export session was cancelled",
 		);
 
-		try {
-			if (
-				!session.ffmpegProcess.stdin.destroyed &&
-				!session.ffmpegProcess.stdin.writableEnded
-			) {
-				session.ffmpegProcess.stdin.destroy();
-			}
-		} catch {
-			// Stream may already be closed.
-		}
-
-		try {
-			session.ffmpegProcess.kill("SIGKILL");
-		} catch {
-			// Process may already be closed.
-		}
-
-		await session.completionPromise.catch(() => undefined);
-		await removeTemporaryExportFile(session.outputPath);
+		await cancelNativeVideoExportSession(sessionId, session);
 		return { success: true };
 	});
 
@@ -864,12 +896,15 @@ export function registerExportHandlers() {
 				// Determine file type from extension
 				const isGif = fileName.toLowerCase().endsWith(".gif");
 				const filters = isGif
-					? [{ name: "GIF Image", extensions: ["gif"] }]
-					: [{ name: "MP4 Video", extensions: ["mp4"] }];
+					? [{ name: nativeT("gifImage"), extensions: ["gif"] }]
+					: [{ name: nativeT("mp4Video"), extensions: ["mp4"] }];
 				const parentWindow = BrowserWindow.fromWebContents(event.sender);
 				const saveDialogOptions: SaveDialogOptions = {
-					title: isGif ? "Save Exported GIF" : "Save Exported Video",
-					defaultPath: path.join(app.getPath("downloads"), fileName),
+					title: isGif ? nativeT("saveGif") : nativeT("saveVideo"),
+					defaultPath: await getExportSaveDialogDefaultPath(
+						fileName,
+						getCaptionSidecarExtensions(sidecarPayload),
+					),
 					filters,
 					properties: ["createDirectory", "showOverwriteConfirmation"],
 				};
@@ -886,20 +921,29 @@ export function registerExportHandlers() {
 					};
 				}
 
-				await fs.writeFile(result.filePath, Buffer.from(videoData));
+				const destinationPath = await saveExportToAvailablePath(
+					getSelectedExportPath(
+						result.filePath,
+						saveDialogOptions.defaultPath!,
+						fileName,
+					),
+					(destination) => fs.writeFile(destination, Buffer.from(videoData)),
+					getCaptionSidecarExtensions(sidecarPayload),
+				);
 				const captionSidecarResult = await writeCaptionSidecarsBestEffort(
-					result.filePath,
+					destinationPath,
 					sidecarPayload,
 				);
-				approveUserPath(result.filePath);
+				approveUserPath(destinationPath);
 
 				return {
 					success: true,
-					path: result.filePath,
+					path: destinationPath,
 					message: withCaptionSidecarMessage(
 						"Video exported successfully",
 						captionSidecarResult,
 					),
+					captionSidecarFailed: Boolean(captionSidecarResult.error),
 				};
 			} catch (error) {
 				console.error("Failed to save exported video:", error);
@@ -948,6 +992,7 @@ export function registerExportHandlers() {
 						"Video exported successfully",
 						captionSidecarResult,
 					),
+					captionSidecarFailed: Boolean(captionSidecarResult.error),
 					canceled: false,
 				};
 			} catch (error) {
@@ -1014,17 +1059,21 @@ export function registerExportHandlers() {
 							"Video exported successfully",
 							captionSidecarResult,
 						),
+						captionSidecarFailed: Boolean(captionSidecarResult.error),
 					};
 				}
 
 				const isGif = fileName.toLowerCase().endsWith(".gif");
 				const filters = isGif
-					? [{ name: "GIF Image", extensions: ["gif"] }]
-					: [{ name: "MP4 Video", extensions: ["mp4"] }];
+					? [{ name: nativeT("gifImage"), extensions: ["gif"] }]
+					: [{ name: nativeT("mp4Video"), extensions: ["mp4"] }];
 				const parentWindow = BrowserWindow.fromWebContents(event.sender);
 				const saveDialogOptions: SaveDialogOptions = {
-					title: isGif ? "Save Exported GIF" : "Save Exported Video",
-					defaultPath: path.join(app.getPath("downloads"), fileName),
+					title: isGif ? nativeT("saveGif") : nativeT("saveVideo"),
+					defaultPath: await getExportSaveDialogDefaultPath(
+						fileName,
+						getCaptionSidecarExtensions(sidecarPayload),
+					),
 					filters,
 					properties: ["createDirectory", "showOverwriteConfirmation"],
 				};
@@ -1043,22 +1092,31 @@ export function registerExportHandlers() {
 					};
 				}
 
-				await moveExportedTempFile(tempPath, result.filePath);
+				const destinationPath = await saveExportToAvailablePath(
+					getSelectedExportPath(
+						result.filePath,
+						saveDialogOptions.defaultPath!,
+						fileName,
+					),
+					(destination) => moveExportedTempFile(tempPath, destination),
+					getCaptionSidecarExtensions(sidecarPayload),
+				);
 				releaseOwnedExportPath(tempPath);
 				const captionSidecarResult = await writeCaptionSidecarsBestEffort(
-					result.filePath,
+					destinationPath,
 					sidecarPayload,
 				);
-				approveUserPath(result.filePath);
+				approveUserPath(destinationPath);
 
 				return {
 					success: true,
-					path: result.filePath,
+					path: destinationPath,
 					canceled: false,
 					message: withCaptionSidecarMessage(
 						"Video exported successfully",
 						captionSidecarResult,
 					),
+					captionSidecarFailed: Boolean(captionSidecarResult.error),
 				};
 			} catch (error) {
 				console.error("Failed to finalize exported video:", error);

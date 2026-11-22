@@ -1,9 +1,10 @@
 import type { Range } from "dnd-timeline";
-import { useCallback, useEffect, useMemo, useState, type RefObject, type WheelEvent } from "react";
-import { createInitialRange, normalizeWheelDeltaToPixels } from "../core/time";
+import { type RefObject, useCallback, useEffect, useMemo, useState, type WheelEvent } from "react";
+import { createInitialRange, normalizeWheelDeltaToPixels, scaleTimelineRange } from "../core/time";
 
 interface UseTimelineRangeParams {
 	totalMs: number;
+	minimumSpanMs: number;
 	timelineContainerRef: RefObject<HTMLDivElement | null>;
 }
 
@@ -41,7 +42,11 @@ export function resolveTimelineWheelPanDeltaPx({
 	return 0;
 }
 
-export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineRangeParams) {
+export function useTimelineRange({
+	totalMs,
+	minimumSpanMs,
+	timelineContainerRef,
+}: UseTimelineRangeParams) {
 	const [range, setRange] = useState<Range>(() => createInitialRange(totalMs));
 
 	useEffect(() => {
@@ -57,6 +62,14 @@ export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineR
 			end: Math.min(range.end, totalMs),
 		};
 	}, [range, totalMs]);
+
+	const zoomIn = useCallback(() => {
+		setRange((previous) => scaleTimelineRange(previous, totalMs, minimumSpanMs, 0.75));
+	}, [minimumSpanMs, totalMs]);
+
+	const zoomOut = useCallback(() => {
+		setRange((previous) => scaleTimelineRange(previous, totalMs, minimumSpanMs, 4 / 3));
+	}, [minimumSpanMs, totalMs]);
 
 	const panTimelineRange = useCallback(
 		(deltaMs: number) => {
@@ -115,5 +128,7 @@ export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineR
 		setRange,
 		clampedRange,
 		handleTimelineWheel,
+		zoomIn,
+		zoomOut,
 	};
 }

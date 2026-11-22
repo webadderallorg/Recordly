@@ -246,3 +246,31 @@ describe("clipsToTrims", () => {
 		]);
 	});
 });
+
+describe("legacy trim union", () => {
+	it.each([
+		[
+			[1000, 9000],
+			[2000, 3000],
+		],
+		[
+			[1000, 9000],
+			[1000, 2000],
+		],
+		[
+			[8000, 9000],
+			[1000, 8500],
+			[2000, 3000],
+		],
+	])("does not restore footage inside nested or overlapping trims: %o", (...spans) => {
+		const trims = spans.map(([startMs, endMs], index) => ({
+			id: `trim-${index}`,
+			startMs,
+			endMs,
+		}));
+		expect(trimsToClips(trims, 10000).map(({ startMs, endMs }) => [startMs, endMs])).toEqual([
+			[0, 1000],
+			[9000, 10000],
+		]);
+	});
+});

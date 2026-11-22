@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_SHORTCUTS } from "@/lib/shortcuts";
+import { CLEAR_ALL_ZOOMS_SHORTCUT, DEFAULT_SHORTCUTS } from "@/lib/shortcuts";
 import { useTimelineKeyboardShortcuts } from "./useTimelineKeyboardShortcuts";
 
 vi.mock("react", () => ({ useEffect: (effect: () => void) => effect() }));
@@ -39,6 +39,7 @@ function setup(overrides: Partial<Params> = {}) {
 		handleAddAnnotation: vi.fn(),
 		deleteSelectedKeyframe: vi.fn(),
 		deleteSelectedZoom: vi.fn(),
+		clearAllZooms: vi.fn(),
 		deleteSelectedClip: vi.fn(),
 		deleteSelectedAnnotation: vi.fn(),
 		deleteSelectedAudio: vi.fn(),
@@ -73,6 +74,32 @@ const selections = [
 	["selectedCaptionId", "deleteSelectedCaption"],
 	["selectedKeyframeId", "deleteSelectedKeyframe"],
 ] as const;
+
+it("duplicates one selected region only once while the timeline has focus", () => {
+	const duplicate = vi.fn();
+	const { press } = setup({
+		selectedZoomId: "zoom-1",
+		isTimelineFocusedRef: { current: true },
+		onDuplicateSelectedRegion: duplicate,
+	});
+	const shortcut = { key: "d", metaKey: true, shiftKey: true };
+	expect(press(shortcut).preventDefault).toHaveBeenCalledOnce();
+	expect(press({ ...shortcut, repeat: true }).preventDefault).toHaveBeenCalledOnce();
+	expect(duplicate).toHaveBeenCalledOnce();
+});
+
+it("keeps an existing custom shortcut when it matches the new duplicate default", () => {
+	const duplicate = vi.fn();
+	const { press, params } = setup({
+		keyShortcuts: { ...DEFAULT_SHORTCUTS, splitClip: DEFAULT_SHORTCUTS.duplicateSelected },
+		selectedZoomId: "zoom-1",
+		isTimelineFocusedRef: { current: true },
+		onDuplicateSelectedRegion: duplicate,
+	});
+	press({ key: "d", metaKey: true, shiftKey: true });
+	expect(params.handleSplitClip).toHaveBeenCalledOnce();
+	expect(duplicate).not.toHaveBeenCalled();
+});
 
 describe.each(selections)("delete %s", (selection, action) => {
 	it.each([false, true])("supports both delete keys with timeline focus %s", (focused) => {
@@ -134,4 +161,103 @@ it("keeps creation and select-all shortcuts scoped to the timeline", () => {
 	press({ key: "a", metaKey: true });
 	expect(params.handleAddZoom).not.toHaveBeenCalled();
 	expect(params.activateSelectAllZooms).not.toHaveBeenCalled();
+});
+
+describe.each([true, false])("clear all zooms shortcut, macOS=%s", (isMac) => {
+	const chord = { ...(isMac ? { metaKey: true } : { ctrlKey: true }), shiftKey: true };
+
+	it("clears zooms with timeline focus and ignores key repeats and editing", () => {
+		const { press, params } = setup({ isMac, isTimelineFocusedRef: { current: true } });
+		press({ ...chord, repeat: true });
+		press({ ...chord, target: new Input() });
+		expect(params.clearAllZooms).not.toHaveBeenCalled();
+		expect(press(chord).preventDefault).toHaveBeenCalledOnce();
+		expect(params.clearAllZooms).toHaveBeenCalledOnce();
+	});
+
+	it("does not clear zooms outside the timeline or override a saved mapping", () => {
+		const unfocused = setup({ isMac });
+		expect(unfocused.press(chord).preventDefault).not.toHaveBeenCalled();
+		expect(unfocused.params.clearAllZooms).not.toHaveBeenCalled();
+
+		const remapped = setup({
+			isMac,
+			isTimelineFocusedRef: { current: true },
+			keyShortcuts: { ...DEFAULT_SHORTCUTS, splitClip: CLEAR_ALL_ZOOMS_SHORTCUT },
+		});
+		remapped.press(chord);
+		expect(remapped.params.handleSplitClip).toHaveBeenCalledOnce();
+		expect(remapped.params.clearAllZooms).not.toHaveBeenCalled();
+	});
+});
+
+describe.each([true, false])("split shortcut, macOS=%s", (isMac) => {
+	const modifiers = isMac ? { metaKey: true } : { ctrlKey: true };
+	it("splits on Cmd/Ctrl+B and consumes the browser shortcut", () => {
+		const { press, params } = setup({ isMac, isTimelineFocusedRef: { current: true } });
+		expect(press({ key: "b", ...modifiers }).preventDefault).toHaveBeenCalledOnce();
+		expect(params.handleSplitClip).toHaveBeenCalledOnce();
+	});
+	it("does not repeat splits or match bare B/C or extra modifiers", () => {
+		const { press, params } = setup({ isMac, isTimelineFocusedRef: { current: true } });
+		press({ key: "b", ...modifiers, repeat: true });
+		press({ key: "b" });
+		press({ key: "c" });
+		press({ key: "b", ...modifiers, shiftKey: true });
+		expect(params.handleSplitClip).not.toHaveBeenCalled();
+	});
+	it("leaves editable fields and unfocused timelines alone", () => {
+		const { press, params } = setup({ isMac, isTimelineFocusedRef: { current: true } });
+		for (const target of [
+			new Input(),
+			new Textarea(),
+			Object.assign(new Element(), { isContentEditable: true }),
+			Object.assign(new Element(), { inOverlay: true }),
+		]) {
+			const event = press({ key: "b", ...modifiers, target });
+			expect(event.preventDefault).not.toHaveBeenCalled();
+		}
+		expect(params.handleSplitClip).not.toHaveBeenCalled();
+		const unfocused = setup({ isMac });
+		unfocused.press({ key: "b", ...modifiers });
+		expect(unfocused.params.handleSplitClip).not.toHaveBeenCalled();
+	});
+});
+
+describe("trim to playhead", () => {
+	it("trims with Q and W without timeline focus", () => {
+		const handleTrimStart = vi.fn();
+		const handleTrimEnd = vi.fn();
+		const { press } = setup({ handleTrimStart, handleTrimEnd });
+		expect(press({ key: "q" }).preventDefault).toHaveBeenCalled();
+		press({ key: "w" });
+		expect(handleTrimStart).toHaveBeenCalledTimes(1);
+		expect(handleTrimEnd).toHaveBeenCalledTimes(1);
+	});
+
+	it("runs an Option letter trim unless the resulting character has a saved shortcut", () => {
+		const optionW = { key: "∑", code: "KeyW", altKey: true };
+		const handleTrimEnd = vi.fn();
+		const keyShortcuts = { ...DEFAULT_SHORTCUTS, trimEnd: { key: "w", alt: true } };
+		const trim = setup({ keyShortcuts, handleTrimEnd });
+		expect(trim.press(optionW).preventDefault).toHaveBeenCalledOnce();
+		expect(handleTrimEnd).toHaveBeenCalledOnce();
+
+		const custom = setup({
+			keyShortcuts: { ...keyShortcuts, addAnnotation: { key: "∑", alt: true } },
+			isTimelineFocusedRef: { current: true },
+			handleTrimEnd,
+		});
+		custom.press(optionW);
+		expect(custom.params.handleAddAnnotation).toHaveBeenCalledOnce();
+		expect(handleTrimEnd).toHaveBeenCalledOnce();
+	});
+
+	it("leaves Q and W alone while typing and with Cmd held", () => {
+		const handleTrimStart = vi.fn();
+		const { press } = setup({ handleTrimStart });
+		press({ key: "q", target: new Input() });
+		press({ key: "q", metaKey: true });
+		expect(handleTrimStart).not.toHaveBeenCalled();
+	});
 });

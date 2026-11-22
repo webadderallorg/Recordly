@@ -1,13 +1,21 @@
-import { ProjectFolderChips } from "./ProjectFolderChips";
-import { RawThumbnail } from "./RawRecordings";
-import { AccountAvatar } from "@/components/ui/account-avatar";
 import { Dropdown } from "@heroui/react";
-import { Check, DotsThree, FolderSimple, Plus } from "@/components/ui/icons";
+import { Globe } from "@phosphor-icons/react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { getProjectShareLink, moveProjectShareLink } from "../cloud/projectShareLinks";
+import { Check, DotsThree, FolderSimple, Plus } from "@/components/ui/icons";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
+import { CloudShareButton } from "../cloud/CloudShareButton";
+import {
+	isProjectShareStale,
+	moveProjectShareLink,
+	type ProjectShareLink,
+} from "../cloud/projectShareLinks";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
+import { ProjectFolderChips } from "./ProjectFolderChips";
+import { ProjectPreviewGlass } from "./ProjectPreviewGlass";
 import { ProjectThumbnail } from "./ProjectThumbnail";
+import { PROJECT_DRAG_TYPE } from "./projectDrag";
+import { RawThumbnail } from "./RawRecordings";
 import type { DashboardProps } from "./types";
 import type { DashboardModel } from "./useDashboardModel";
 
@@ -25,9 +33,18 @@ type Props = Pick<
 	| "folders"
 	| "save"
 	| "assignFolder"
-> & { entry: ProjectLibraryEntry };
+> & {
+	entry: ProjectLibraryEntry;
+	share?: ProjectShareLink;
+	webUrl?: string;
+	webReady?: boolean;
+	onDelete?: () => void;
+};
 export function ProjectCard({
-	accountLabel,
+	share,
+	webUrl,
+	webReady = true,
+	onDelete,
 	entry,
 	busy,
 	selecting,
@@ -41,13 +58,18 @@ export function ProjectCard({
 	save,
 	assignFolder,
 }: Props) {
+	const { locale, t: uiText } = useUiLocale();
 	const [hovering, setHovering] = useState(false);
+	const [dragging, setDragging] = useState(false);
+	const suppressClickUntil = useRef(0);
 	const [editing, setEditing] = useState(false);
 	const renaming = useRef(false);
 	const [name, setName] = useState(entry.name);
 	const assignedFolders = folders.filter((folder) => folder.paths.includes(entry.path));
 	const folder = assignedFolders[0];
-	const shareUrl = getProjectShareLink(entry.path);
+	const shareUrl = share?.url;
+	const staleShare = isProjectShareStale(share, undefined, entry.updatedAt);
+	const [showShareLink, setShowShareLink] = useState(false);
 	const rename = () => {
 		if (renaming.current) return;
 		renaming.current = true;
@@ -73,43 +95,72 @@ export function ProjectCard({
 		<li className="group min-w-0">
 			<Button
 				variant="ghost"
-				disabled={busy}
+				disabled={busy || (Boolean(webUrl) && !webReady)}
 				aria-label={entry.name}
+				aria-current={!webUrl && !entry.rawSource && entry.isCurrent ? "true" : undefined}
 				onPointerEnter={(event) => {
 					if (event.pointerType === "mouse") setHovering(true);
 				}}
 				onPointerLeave={() => setHovering(false)}
 				onFocus={() => setHovering(true)}
 				onBlur={() => setHovering(false)}
-				onClick={() => (selecting ? toggleSelected(entry.path) : openEntry(entry))}
+				onClick={() => {
+					if (Date.now() < suppressClickUntil.current) return;
+					selecting ? toggleSelected(entry.path) : openEntry(entry);
+				}}
 				aria-pressed={selecting ? selected.includes(entry.path) : undefined}
-				className="relative block h-auto w-full min-w-0 rounded-xl p-0"
+				className={`project-preview-glass relative block h-auto w-full min-w-0 rounded-xl p-0 transition-none ${dragging ? "opacity-50" : ""} ${hovering ? "ring-2 ring-accent/40 shadow-sm" : ""}`}
 			>
-				{entry.rawSource ? (
-					<RawThumbnail
-						entry={entry.rawSource}
-						active={hovering && !selecting && !busy}
-					/>
-				) : (
-					<ProjectThumbnail
-						key={`${entry.thumbnailPath}-${entry.updatedAt}`}
-						revision={entry.updatedAt}
-						path={entry.thumbnailPath}
-						projectPath={entry.path}
-						previewActive={hovering && !selecting && !busy}
-					/>
-				)}
-				{selecting && (
-					<span
-						className={`absolute right-2 top-2 flex size-5 items-center justify-center rounded-md ${selected.includes(entry.path) ? "bg-accent text-white" : "bg-background/90"}`}
-					>
-						{selected.includes(entry.path) && <Check className="size-3.5" />}
-					</span>
-				)}
+				<div
+					className="w-full rounded-[inherit]"
+					draggable={!webUrl && !entry.rawSource && !busy && !selecting && !editing}
+					onDragStart={(event) => {
+						if (webUrl || entry.rawSource || busy || selecting || editing) {
+							event.preventDefault();
+							return;
+						}
+						event.dataTransfer.setData(PROJECT_DRAG_TYPE, entry.path);
+						event.dataTransfer.effectAllowed = "move";
+						setHovering(false);
+						setDragging(true);
+						suppressClickUntil.current = Number.POSITIVE_INFINITY;
+					}}
+					onDragEnd={() => {
+						setDragging(false);
+						suppressClickUntil.current = Date.now() + 250;
+					}}
+				>
+					{entry.rawSource ? (
+						<RawThumbnail
+							entry={entry.rawSource}
+							active={hovering && !dragging && !selecting && !busy}
+						/>
+					) : (
+						<ProjectThumbnail
+							key={`${entry.thumbnailPath}-${entry.updatedAt}`}
+							revision={entry.updatedAt}
+							path={entry.thumbnailPath}
+							videoSource={
+								webUrl && webReady
+									? new URL(`/v/${entry.path}`, webUrl).href
+									: undefined
+							}
+							projectPath={webUrl ? undefined : entry.path}
+							previewActive={!webUrl && hovering && !dragging && !selecting && !busy}
+						/>
+					)}
+					<ProjectPreviewGlass />
+					{selecting && (
+						<span
+							className={`absolute right-2 top-2 z-10 flex size-5 items-center justify-center rounded-md ${selected.includes(entry.path) ? "bg-accent text-white" : "bg-background/90"}`}
+						>
+							{selected.includes(entry.path) && <Check className="size-3.5" />}
+						</span>
+					)}
+				</div>
 			</Button>
-			<div className="relative flex items-start justify-between gap-4 pt-5">
-				<AccountAvatar label={accountLabel} className="!size-[48px]" />
-				<div data-project-caption className="h-12 min-w-0 flex-1">
+			<div className="relative flex items-start justify-between gap-3 pt-3">
+				<div data-project-caption className="min-w-0 flex-1">
 					{editing ? (
 						<form
 							onSubmit={(event) => {
@@ -119,8 +170,13 @@ export function ProjectCard({
 						>
 							<input
 								autoFocus
-								aria-label={entry.rawSource ? "Raw file name" : "Project name"}
-								className="inline-project-name h-5 w-full pr-8 text-[12px] font-medium"
+								onFocus={(event) => event.currentTarget.select()}
+								aria-label={
+									entry.rawSource
+										? uiText("ui.rawFileName")
+										: uiText("ui.projectName")
+								}
+								className="inline-project-name h-6 w-full pr-9 text-sm font-medium"
 								value={name}
 								disabled={busy}
 								maxLength={120}
@@ -135,126 +191,240 @@ export function ProjectCard({
 							/>
 						</form>
 					) : (
-						<p
+						<button
+							type="button"
+							disabled={busy || (Boolean(webUrl) && !webReady)}
+							aria-label={
+								selecting
+									? uiText("ui.selectNamed", undefined, { name: entry.name })
+									: uiText("ui.openNamed", undefined, { name: entry.name })
+							}
+							aria-pressed={selecting ? selected.includes(entry.path) : undefined}
+							onClick={() =>
+								selecting ? toggleSelected(entry.path) : openEntry(entry)
+							}
 							title={entry.name}
-							className="truncate pr-8 text-[12px] font-medium leading-5"
+							className="block w-full rounded-sm pr-9 text-left text-sm font-medium leading-5 text-foreground disabled:opacity-50"
 						>
-							{entry.name}
-						</p>
+							<span className="line-clamp-2 break-words">{entry.name}</span>
+						</button>
 					)}
-					<div className="mt-1 flex h-6 min-w-0 items-center gap-2">
-						<p className="shrink-0 text-[11px] text-muted-foreground">
-							{new Date(entry.updatedAt).toLocaleDateString(undefined, {
+					<div className="mt-1.5 flex min-h-6 min-w-0 flex-wrap items-center gap-2">
+						{!webUrl && !entry.rawSource && entry.isCurrent && (
+							<span className="rounded-full bg-accent/10 px-2 py-1 text-xs text-foreground">
+								{uiText("ui.currentlyEditing")}
+							</span>
+						)}
+						<p className="shrink-0 text-xs text-muted-foreground">
+							{new Date(entry.updatedAt).toLocaleDateString(locale, {
 								month: "short",
 								day: "numeric",
 							})}
 						</p>
-						<ProjectFolderChips
-							folders={assignedFolders}
-							name={entry.name}
-							onRemove={(id) => assignFolder(entry.path, id)}
-						/>
-						<Dropdown>
-							<Button
-								variant="ghost"
-								size="sm"
-								aria-label={`Add folder to ${entry.name}`}
-								className="h-6 min-w-0 shrink-0 gap-1.5 rounded-full px-2.5 text-[11px] text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
+						{webUrl && (
+							<Globe
+								aria-label={uiText("ui.webProject")}
+								className="size-3.5 text-muted-foreground"
+							/>
+						)}
+						{!webUrl && shareUrl && (
+							<button
+								type="button"
+								aria-label={uiText("ui.viewShareLinkFor", undefined, {
+									name: entry.name,
+								})}
+								onClick={() => setShowShareLink(true)}
+								className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-accent ${staleShare ? "bg-warning/10 text-foreground" : "bg-default/50 text-foreground"}`}
+								title={
+									staleShare
+										? uiText("ui.theSharedLinkContainsAnOlderVersionPublish")
+										: uiText("ui.viewTheSharedVersion")
+								}
 							>
-								<Plus className="size-3" />
-								Add folder
-							</Button>
-							<Dropdown.Popover>
-								<Dropdown.Menu aria-label="Assign project folder">
-									{folders.map((item) => (
-										<Dropdown.Item
-											key={item.id}
-											id={item.id}
-											textValue={item.name}
-											onAction={() => assignFolder(entry.path, item.id)}
+								<Globe className="size-3.5" />
+								{staleShare ? uiText("ui.changesUnpublished") : uiText("ui.shared")}
+							</button>
+						)}
+						{!webUrl && !shareUrl && !entry.rawSource && (
+							<span className="rounded-full bg-default/50 px-2 py-1 text-xs text-muted-foreground">
+								{uiText("ui.localOnly")}
+							</span>
+						)}
+						{webUrl && !webReady && (
+							<span className="text-xs text-muted-foreground">
+								{uiText("ui.incompleteUpload")}
+							</span>
+						)}
+						{!webUrl && (
+							<>
+								<ProjectFolderChips
+									folders={assignedFolders}
+									name={entry.name}
+									onRemove={(id) => assignFolder(entry.path, id)}
+								/>
+								<Dropdown>
+									<Button
+										variant="ghost"
+										size="sm"
+										aria-label={uiText("ui.addFolderTo", undefined, {
+											name: entry.name,
+										})}
+										className="h-6 min-w-0 shrink-0 gap-1.5 rounded-full px-2.5 text-[11px] text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
+									>
+										<Plus className="size-3" />
+										{uiText("ui.addFolder")}
+									</Button>
+									<Dropdown.Popover>
+										<Dropdown.Menu
+											aria-label={uiText("ui.assignProjectFolder")}
 										>
-											<FolderSimple
-												weight="fill"
-												style={{ color: item.color }}
-											/>
-											{item.name}
-											{item.paths.includes(entry.path) && (
-												<Check className="size-3" />
+											{folders.map((item) => (
+												<Dropdown.Item
+													key={item.id}
+													id={item.id}
+													textValue={item.name}
+													onAction={() =>
+														assignFolder(entry.path, item.id)
+													}
+												>
+													<FolderSimple
+														weight="fill"
+														style={{ color: item.color }}
+													/>
+													{item.name}
+													{item.paths.includes(entry.path) && (
+														<Check className="size-3" />
+													)}
+												</Dropdown.Item>
+											))}
+											{folder && (
+												<Dropdown.Item
+													id="remove"
+													onAction={() =>
+														assignFolder(entry.path, "none")
+													}
+												>
+													{uiText("ui.removeFromAllFolders")}
+												</Dropdown.Item>
 											)}
-										</Dropdown.Item>
-									))}
-									{folder && (
-										<Dropdown.Item
-											id="remove"
-											onAction={() => assignFolder(entry.path, "none")}
-										>
-											Remove from all folders
-										</Dropdown.Item>
-									)}
-									{!folders.length && (
-										<Dropdown.Item id="empty" isDisabled>
-											Create a folder in the sidebar
-										</Dropdown.Item>
-									)}
-								</Dropdown.Menu>
-							</Dropdown.Popover>
-						</Dropdown>
+											{!folders.length && (
+												<Dropdown.Item id="empty" isDisabled>
+													{uiText("ui.createAFolderInTheSidebar")}
+												</Dropdown.Item>
+											)}
+										</Dropdown.Menu>
+									</Dropdown.Popover>
+								</Dropdown>
+							</>
+						)}
 					</div>
 				</div>
 				<Dropdown>
 					<Button
 						variant="ghost"
 						size="icon"
-						aria-label={`Options for ${entry.name}`}
-						className="absolute right-0 top-5 size-6 min-w-6 text-muted-foreground"
+						aria-label={uiText("ui.optionsFor", undefined, { name: entry.name })}
+						className="absolute right-0 top-3 size-8 min-w-8 text-muted-foreground"
 					>
 						<DotsThree weight="bold" className="size-5" />
 					</Button>
 					<Dropdown.Popover>
-						<Dropdown.Menu aria-label="Project options">
-							<Dropdown.Item id="open" onAction={() => openEntry(entry)}>
-								{entry.rawSource ? "Preview file" : "Open project"}
-							</Dropdown.Item>
+						<Dropdown.Menu aria-label={uiText("ui.projectOptions")}>
 							<Dropdown.Item
-								id="rename"
-								onAction={() => {
-									setName(entry.name);
-									setEditing(true);
-								}}
+								id="open"
+								isDisabled={Boolean(webUrl) && !webReady}
+								onAction={() => openEntry(entry)}
 							>
-								Rename
+								{webUrl
+									? uiText("ui.openLink")
+									: entry.rawSource
+										? uiText("ui.previewFile")
+										: uiText("ui.openProject")}
 							</Dropdown.Item>
-							{!entry.rawSource && (
+							{!webUrl && (
+								<>
+									<Dropdown.Item
+										id="rename"
+										onAction={() => {
+											setName(entry.name);
+											requestAnimationFrame(() =>
+												requestAnimationFrame(() => setEditing(true)),
+											);
+										}}
+									>
+										{uiText("ui.rename")}
+									</Dropdown.Item>
+									{!entry.rawSource && (
+										<Dropdown.Item
+											id="share"
+											onAction={() =>
+												void run(async () => {
+													if (shareUrl && !staleShare)
+														setShowShareLink(true);
+													else await onShareProject(entry.path);
+												})
+											}
+										>
+											{shareUrl
+												? staleShare
+													? uiText("ui.regenerate")
+													: uiText("ui.viewLink")
+												: uiText("ui.share")}
+										</Dropdown.Item>
+									)}
+									<Dropdown.Item
+										aria-label={
+											entry.rawSource
+												? uiText("ui.showNamedInFolder", undefined, {
+														name: entry.name,
+													})
+												: undefined
+										}
+										id="reveal"
+										onAction={() =>
+											void run(async () => {
+												await window.electronAPI.revealInFolder(entry.path);
+											})
+										}
+									>
+										{uiText("ui.showInFolder")}
+									</Dropdown.Item>
+								</>
+							)}
+							{onDelete && (
 								<Dropdown.Item
-									id="share"
-									onAction={() =>
-										void run(async () => {
-											if (shareUrl)
-												await window.electronAPI.openExternalUrl(shareUrl);
-											else await onShareProject(entry.path);
-										})
-									}
+									id="delete"
+									variant="danger"
+									className="text-danger"
+									isDisabled={busy}
+									onAction={onDelete}
 								>
-									{shareUrl ? "View in web" : "Share"}
+									{webUrl
+										? uiText("ui.deleteRecording")
+										: entry.rawSource
+											? uiText("ui.deleteSourceFilesAction")
+											: uiText("ui.deleteProject")}
 								</Dropdown.Item>
 							)}
-							<Dropdown.Item
-								aria-label={
-									entry.rawSource ? `Show ${entry.name} in folder` : undefined
-								}
-								id="reveal"
-								onAction={() =>
-									void run(async () => {
-										await window.electronAPI.revealInFolder(entry.path);
-									})
-								}
-							>
-								Show in folder
-							</Dropdown.Item>
 						</Dropdown.Menu>
 					</Dropdown.Popover>
 				</Dropdown>
 			</div>
+			{showShareLink && shareUrl && (
+				<CloudShareButton
+					hideTrigger
+					projectPath={entry.path}
+					projectTitle={entry.name}
+					existingShareUrl={shareUrl}
+					linkIsStale={staleShare}
+					open={showShareLink}
+					onOpenChange={setShowShareLink}
+					onRegenerate={() => {
+						setShowShareLink(false);
+						void run(() => onShareProject(entry.path));
+					}}
+				/>
+			)}
 		</li>
 	);
 }

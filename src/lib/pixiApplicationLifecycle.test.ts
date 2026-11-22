@@ -135,4 +135,43 @@ describe("Pixi application lifecycle", () => {
 			vi.useRealTimers();
 		}
 	});
+
+	it("guards FilterSystem against skipped root filter stack entries and stale stack depth", async () => {
+		const renderStartListeners: Array<{ renderStart: () => void }> = [];
+		const filterSystem = {
+			_filterStackIndex: 2,
+			_filterStack: [{ skip: true, inputTexture: null }, { skip: false }],
+			_getPreviousFilterData() {
+				return this._filterStack[0];
+			},
+		};
+		const app = {
+			init: vi.fn(async () => undefined),
+			destroy: vi.fn(),
+			stage: { destroy: vi.fn() },
+			renderer: {
+				destroy: vi.fn(),
+				filter: filterSystem,
+				runners: {
+					renderStart: {
+						add: vi.fn((listener: { renderStart: () => void }) => {
+							renderStartListeners.push(listener);
+						}),
+					},
+				},
+			},
+		} as unknown as Application;
+
+		await initializePixiApplication(app, {});
+
+		expect(filterSystem._getPreviousFilterData()).toBeUndefined();
+		filterSystem._filterStack[0] = { skip: false, inputTexture: "active-target" as never };
+		expect(filterSystem._getPreviousFilterData()).toEqual({
+			skip: false,
+			inputTexture: "active-target",
+		});
+
+		renderStartListeners[0]?.renderStart();
+		expect(filterSystem._filterStackIndex).toBe(0);
+	});
 });

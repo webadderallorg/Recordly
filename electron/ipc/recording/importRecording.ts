@@ -1,22 +1,22 @@
-import { composeSequenceWebcam, sequenceWebcamOutputs } from "./sequenceWebcam";
-import { probeNativeVideoMetadata } from "../ffmpeg/metadata";
-import { isLibrarySequenceSource } from "./sequenceSource";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
-import { getFfmpegBinaryPath } from "../ffmpeg/binary";
-import { rememberApprovedLocalReadPath, resolveApprovedLocalMediaPath } from "../project/manager";
-import { getRecordingsDir, getTelemetryPathForVideo } from "../utils";
-import { getUsableCompanionAudioCandidates } from "./diagnostics";
-import { normalizeCursorTelemetrySamples, writeCursorTelemetry } from "../cursor/telemetry";
-import { listRecordings } from "./library";
 import type {
 	RecordingImportResult,
 	RecordingWebcamSource,
 } from "../../../src/types/recordingLibrary";
+import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
+import { normalizeCursorTelemetrySamples, writeCursorTelemetry } from "../cursor/telemetry";
+import { getFfmpegBinaryPath } from "../ffmpeg/binary";
+import { probeNativeVideoMetadata } from "../ffmpeg/metadata";
+import { rememberApprovedLocalReadPath, resolveApprovedLocalMediaPath } from "../project/manager";
+import { getRecordingsDir, getTelemetryPathForVideo } from "../utils";
+import { getCompanionAudioStartDelayMs, getUsableCompanionAudioCandidates } from "./diagnostics";
+import { listRecordings } from "./library";
+import { isLibrarySequenceSource } from "./sequenceSource";
+import { composeSequenceWebcam, sequenceWebcamOutputs } from "./sequenceWebcam";
 
 const run = promisify(execFile);
 async function ffmpeg(args: string[], signal?: AbortSignal) {
@@ -45,9 +45,10 @@ async function normalize(
 	format: Format,
 	copyVideo: boolean,
 	signal?: AbortSignal,
+	includeCompanions = true,
 ) {
 	const meta = await probe(file, signal);
-	const candidates = await getUsableCompanionAudioCandidates(file);
+	const candidates = includeCompanions ? await getUsableCompanionAudioCandidates(file) : [];
 	const companion = candidates[0];
 	const system = companion?.usablePaths.includes(companion.systemPath)
 		? companion.systemPath
@@ -65,15 +66,7 @@ async function normalize(
 		if (source) {
 			args.push("-i", source);
 			label = `${input++}:a:0`;
-			try {
-				delay = Math.max(
-					0,
-					Number(JSON.parse(await fs.readFile(`${source}.json`, "utf8")).startDelayMs) ||
-						0,
-				);
-			} catch {
-				/* Optional capture timing. */
-			}
+			delay = (await getCompanionAudioStartDelayMs(source)) ?? 0;
 		} else if (kind === "system" && meta.audio) {
 			label = "0:a:0";
 		} else {
@@ -113,7 +106,8 @@ export async function importRecording(
 	signal?: AbortSignal,
 ): Promise<RecordingImportResult> {
 	const entry = (await listRecordings()).find((entry) => entry.path === recordingPath);
-	if (!entry) throw new Error("Recording is no longer in Videos");
+	const added = entry?.path ?? (await resolveApprovedLocalMediaPath(recordingPath));
+	if (!added) throw new Error("Video is no longer available or has not been selected");
 	const current = await resolveApprovedLocalMediaPath(currentPath);
 	if (!current) throw new Error("Current video is no longer available");
 	const server = getMediaServerBaseUrl();
@@ -137,7 +131,7 @@ export async function importRecording(
 		// Only our own normalized source format may be copied across appends.
 		const copyVideo = isLibrarySequenceSource(current);
 		await normalize(current, normalizedBase, format, copyVideo, signal);
-		await normalize(entry.path, normalizedNew, format, false, signal);
+		await normalize(added, normalizedNew, format, false, signal, Boolean(entry));
 		const baseMeta = await probe(normalizedBase, signal);
 		const newMeta = await probe(normalizedNew, signal);
 		await fs.writeFile(path.join(work, "list.txt"), "file 'base.mkv'\nfile 'new.mkv'\n");
@@ -192,10 +186,14 @@ export async function importRecording(
 		);
 		const sourceStartMs = Math.round(baseMeta.duration * 1000);
 		const samples = [];
-		for (const [file, offset, meta] of [
-			[current, 0, base],
-			[entry.path, sourceStartMs, await probe(entry.path, signal)],
-		] as const) {
+		const telemetrySources = [{ file: current, offset: 0, meta: base }];
+		if (entry)
+			telemetrySources.push({
+				file: added,
+				offset: sourceStartMs,
+				meta: await probe(added, signal),
+			});
+		for (const { file, offset, meta } of telemetrySources) {
 			let points: ReturnType<typeof normalizeCursorTelemetrySamples> = [];
 			try {
 				points = normalizeCursorTelemetrySamples(
@@ -222,7 +220,7 @@ export async function importRecording(
 		await writeCursorTelemetry(output, samples);
 		const webcam = await composeSequenceWebcam(
 			current,
-			entry.path,
+			entry ? added : null,
 			output,
 			work,
 			sourceStartMs,

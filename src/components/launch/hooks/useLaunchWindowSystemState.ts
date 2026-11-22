@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 
-export function useLaunchWindowSystemState(
-	preparePermissions: (args: { startup?: boolean }) => Promise<unknown>,
-) {
+export function useLaunchWindowSystemState(preparePermissions: () => Promise<unknown>) {
 	const [hudOverlayMousePassthroughSupported, setHudOverlayMousePassthroughSupported] = useState<
 		boolean | null
 	>(null);
 	const [platform, setPlatform] = useState<string | null>(null);
+	const [dragX11Window, setDragX11Window] = useState(false);
 
 	useEffect(() => {
 		window.electronAPI?.hudOverlayRendererReady?.();
@@ -35,6 +34,7 @@ export function useLaunchWindowSystemState(
 				const result = await window.electronAPI.getHudOverlayMousePassthroughSupported();
 				if (!cancelled && result.success) {
 					setHudOverlayMousePassthroughSupported(result.supported);
+					setDragX11Window(result.dragX11Window === true);
 				}
 			} catch (error) {
 				console.error("Failed to load HUD overlay mouse passthrough support:", error);
@@ -47,8 +47,10 @@ export function useLaunchWindowSystemState(
 	}, []);
 
 	useEffect(() => {
-		void preparePermissions({ startup: true });
+		// Dev onboarding can be skipped to preview the HUD without signing in or
+		// granting permissions. Recording start still runs preparePermissions.
+		if (!import.meta.env.DEV) void preparePermissions();
 	}, [preparePermissions]);
 
-	return { hudOverlayMousePassthroughSupported, platform };
+	return { hudOverlayMousePassthroughSupported, platform, dragX11Window };
 }

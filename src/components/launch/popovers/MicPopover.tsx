@@ -1,10 +1,10 @@
+import type { ReactElement } from "react";
 import { MicrophoneSlashIcon, SpeakerHighIcon, SpeakerXIcon } from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
-import { DropdownItem, HudPopover, MicDeviceRow } from "./PopoverScaffold";
+import styles from "../LaunchWindow.module.css";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import type { DeviceOption } from "./launchPopoverTypes";
-import type { ReactElement } from "react";
-import styles from "../LaunchWindow.module.css";
+import { DropdownItem, HudPopover, MicDeviceRow } from "./PopoverScaffold";
 
 const POPOVER_ID = "mic";
 
@@ -34,6 +34,23 @@ export function MicPopover({
 	const t = useScopedT("launch");
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
 	const open = isOpen(POPOVER_ID);
+	const activeSources = [
+		microphoneEnabled ? t("recording.microphone") : null,
+		systemAudioEnabled ? t("recording.systemAudio") : null,
+	].filter((source): source is string => source !== null);
+	const tooltip = t("recording.settingValue", "{{setting}}: {{value}}", {
+		setting: t("recording.audioSettings", "Audio settings"),
+		value: activeSources.length > 0 ? activeSources.join(", ") : t("recording.off"),
+	});
+	const describeSource = (setting: string, enabled: boolean) =>
+		t("recording.settingValue", "{{setting}}: {{value}}", {
+			setting,
+			value: t(enabled ? "recording.on" : "recording.off"),
+		});
+	const description = [
+		describeSource(t("recording.microphone"), microphoneEnabled),
+		describeSource(t("recording.systemAudio"), systemAudioEnabled),
+	].join(". ");
 
 	return (
 		<HudPopover
@@ -50,8 +67,10 @@ export function MicPopover({
 			}}
 			trigger={trigger}
 			align="start"
+			label={t("recording.audioSettings", "Audio settings")}
+			tooltip={tooltip}
+			description={description}
 		>
-			<div className={styles.ddLabel}>{t("recording.microphone")}</div>
 			<DropdownItem
 				icon={
 					systemAudioEnabled ? <SpeakerHighIcon size={16} /> : <SpeakerXIcon size={16} />
@@ -59,10 +78,9 @@ export function MicPopover({
 				selected={systemAudioEnabled}
 				onClick={onToggleSystemAudio}
 			>
-				{systemAudioEnabled
-					? t("recording.disableSystemAudio")
-					: t("recording.enableSystemAudio")}
+				{t("recording.systemAudio")}
 			</DropdownItem>
+			<div className={styles.ddLabel}>{t("recording.microphone")}</div>
 			{microphoneEnabled && (
 				<DropdownItem
 					icon={<MicrophoneSlashIcon size={16} />}

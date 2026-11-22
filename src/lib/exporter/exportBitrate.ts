@@ -5,6 +5,7 @@ const REFERENCE_FRAME_RATE = 30;
 const HD_PIXELS = 1280 * 720;
 const FULL_HD_PIXELS = 1920 * 1080;
 const UHD_PIXELS = 3840 * 2160;
+const QUALITY_BITS_PER_PIXEL_PER_FRAME = 0.3;
 
 function interpolateBitrate(
 	totalPixels: number,
@@ -65,10 +66,7 @@ function getBaseMp4ExportBitrate(width: number, height: number, quality: ExportQ
 }
 
 function getFrameRateBitrateMultiplier(frameRate: ExportMp4FrameRate): number {
-	// This only scales requestedBitrate above REFERENCE_FRAME_RATE, so 24fps
-	// and 30fps share the same multiplier. useModernNativeStaticLayout can
-	// still change the final bitrate because pixelRateScale uses frameRate
-	// against REFERENCE_PIXEL_RATE for the native layout floor/cap.
+	// Repeated screen content at 60 FPS does not need twice the bitrate of 30 FPS.
 	return Math.sqrt(Math.max(1, frameRate / REFERENCE_FRAME_RATE));
 }
 
@@ -86,8 +84,17 @@ export function getMp4ExportBitrate(options: {
 			getEncodingModeBitrateMultiplier(options.encodingMode),
 	);
 
-	// Keep every backend on the same delivery bitrate policy. Native static-layout
-	// exports previously applied a second set of floors and caps that could more
-	// than double the requested web-delivery target.
-	return Math.max(MIN_MP4_BITRATE, requestedBitrate);
+	// Balanced follows the delivery budget above. Applying a second pixel-per-frame
+	// floor here inflated 1080p/60 output from ~9 Mbps to ~22 Mbps regardless of content.
+	// Explicit Quality mode retains its larger detail budget for demanding footage.
+	const qualityBitrate =
+		options.encodingMode === "quality"
+			? Math.round(
+					options.width *
+						options.height *
+						options.frameRate *
+						QUALITY_BITS_PER_PIXEL_PER_FRAME,
+				)
+			: 0;
+	return Math.max(MIN_MP4_BITRATE, requestedBitrate, qualityBitrate);
 }

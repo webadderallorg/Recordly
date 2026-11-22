@@ -106,6 +106,23 @@ describe("backendPolicy", () => {
 		});
 	});
 
+	it("routes explicit Mac Breeze exports directly to streaming", () => {
+		expect(
+			planLightningExportRoutes({
+				backendPreference: "breeze",
+				platform: "darwin",
+				nativeStaticLayoutAvailable: true,
+			}),
+		).toMatchObject({
+			selectedRoute: "breeze-stream",
+			decisions: [
+				{ route: "native-static-layout", status: "rejected" },
+				{ route: "breeze-stream", status: "selected" },
+				{ route: "webcodecs", status: "fallback" },
+			],
+		});
+	});
+
 	it("keeps explicit Breeze selected when native static layout is unavailable", () => {
 		expect(
 			planLightningExportRoutes({

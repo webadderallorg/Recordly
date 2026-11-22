@@ -3,9 +3,11 @@ import { useCallback } from "react";
 import { toast } from "@/components/ui/toast";
 import type { useI18n } from "@/contexts/I18nContext";
 import type { useShortcuts } from "@/contexts/ShortcutsContext";
+import { translate } from "@/i18n/runtime";
 import { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
+import { placeSpanAfter } from "../timeline/hooks/utils/timelineDuplicateUtils";
 import type { TimelineEditorHandle } from "../timeline/TimelineEditor";
 import type { EditorEffectSection } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
@@ -17,7 +19,6 @@ import { useClipRegionCommands } from "./useClipRegionCommands";
 import { useCursorTelemetry } from "./useCursorTelemetry";
 import { useEditorGlobalInteractions } from "./useEditorGlobalInteractions";
 import { useEditorPlaybackControls } from "./useEditorPlaybackControls";
-import { useFreshRecordingAutoZoom } from "./useFreshRecordingAutoZoom";
 import { useTimelineProjection } from "./useTimelineProjection";
 import { useZoomRegionCommands } from "./useZoomRegionCommands";
 
@@ -25,7 +26,6 @@ type Input = {
 	t: ReturnType<typeof useI18n>["t"];
 	shortcuts: ReturnType<typeof useShortcuts>["shortcuts"];
 	isMac: boolean;
-	appPlatform: string;
 	timeline: ReturnType<typeof useTimelineState>;
 	appearance: ReturnType<typeof useAppearanceState>;
 	videoPath: string | null;
@@ -35,10 +35,7 @@ type Input = {
 	currentTime: number;
 	isPlaying: boolean;
 	previewVolume: number;
-	loading: boolean;
-	isPreviewReady: boolean;
 	setActiveEffectSection: Dispatch<SetStateAction<EditorEffectSection>>;
-	setAutoSuggestZoomsTrigger: Dispatch<SetStateAction<number>>;
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
 	timelineRef: RefObject<TimelineEditorHandle | null>;
 	nextZoomIdRef: MutableRefObject<number>;
@@ -49,10 +46,6 @@ type Input = {
 	clipInitializedRef: MutableRefObject<boolean>;
 	autoFullTrackClipIdRef: MutableRefObject<string | null>;
 	autoFullTrackClipEndMsRef: MutableRefObject<number | null>;
-	autoSuggestedVideoPathRef: MutableRefObject<string | null>;
-	pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
-	pendingFreshRecordingAutoSuggestTimeoutRef: MutableRefObject<number | null>;
-	pendingFreshRecordingAutoSuggestTelemetryCountRef: MutableRefObject<number>;
 	handleUndo: () => void;
 	handleRedo: () => void;
 };
@@ -61,7 +54,11 @@ export function useTimelineEditingController(input: Input) {
 	const { timeline } = input;
 	const handleSourceFallbackLoadError = useCallback((error: unknown) => {
 		toast.warning(
-			`Could not load companion audio source: ${summarizeErrorMessage(getErrorMessage(error))}`,
+			translate(
+				"notifications.companionAudioError",
+				"Could not load companion audio source: {{error}}",
+				{ error: summarizeErrorMessage(getErrorMessage(error)) },
+			),
 			{ duration: 10000 },
 		);
 	}, []);
@@ -70,9 +67,8 @@ export function useTimelineEditingController(input: Input) {
 		videoSourcePath: input.videoSourcePath,
 		duration: input.duration,
 		loopCursor: input.appearance.loopCursor,
+		alwaysUsePointerCursor: input.appearance.alwaysUsePointerCursor,
 		timeline,
-		pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
-		autoSuggestedVideoPathRef: input.autoSuggestedVideoPathRef,
 	});
 	const projection = useTimelineProjection({
 		timeline,
@@ -105,6 +101,8 @@ export function useTimelineEditingController(input: Input) {
 		videoPlaybackRef: input.videoPlaybackRef,
 		timelineRef: input.timelineRef,
 		playSourceAudioPreview: audio.playSourceAudioPreview,
+		clipRegions: timeline.clipRegions,
+		zoomRegions: projection.effectiveZoomRegions,
 		timelinePlayheadTime: projection.timelinePlayheadTime,
 		timelineDuration: projection.timelineDuration,
 	});
@@ -125,7 +123,6 @@ export function useTimelineEditingController(input: Input) {
 	});
 	const zoomCommands = useZoomRegionCommands({
 		setSelectedClipId: timeline.setSelectedClipId,
-		videoPath: input.videoPath,
 		setZoomRegions: timeline.setZoomRegions,
 		selectedZoomId: timeline.selectedZoomId,
 		setSelectedZoomId: timeline.setSelectedZoomId,
@@ -134,8 +131,6 @@ export function useTimelineEditingController(input: Input) {
 		setSelectedCaptionId: timeline.setSelectedCaptionId,
 		setActiveEffectSection: input.setActiveEffectSection,
 		nextZoomIdRef: input.nextZoomIdRef,
-		autoSuggestedVideoPathRef: input.autoSuggestedVideoPathRef,
-		pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
 	});
 	const handleSelectAnnotation = useCallback(
 		(id: string | null) => {
@@ -155,31 +150,14 @@ export function useTimelineEditingController(input: Input) {
 			timeline.setSelectedCaptionId,
 		],
 	);
-	const freshZoom = useFreshRecordingAutoZoom({
-		appPlatform: input.appPlatform,
-		videoPath: input.videoPath,
-		loading: input.loading,
-		isPreviewReady: input.isPreviewReady,
-		duration: input.duration,
-		cursorTelemetryCount: timeline.cursorTelemetry.length,
-		normalizedCursorTelemetry: cursor.normalizedCursorTelemetry,
-		zoomRegions: timeline.zoomRegions,
-		setZoomRegions: timeline.setZoomRegions,
-		setAutoSuggestZoomsTrigger: input.setAutoSuggestZoomsTrigger,
-		videoPlaybackRef: input.videoPlaybackRef,
-		autoSuggestedVideoPathRef: input.autoSuggestedVideoPathRef,
-		pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
-		pendingFreshRecordingAutoSuggestTimeoutRef:
-			input.pendingFreshRecordingAutoSuggestTimeoutRef,
-		pendingFreshRecordingAutoSuggestTelemetryCountRef:
-			input.pendingFreshRecordingAutoSuggestTelemetryCountRef,
-	});
 	const clipCommands = useClipRegionCommands({
+		getSourceAudioTrackSettingsForClip: audio.getSourceAudioTrackSettingsForClip,
 		setAnnotationRegions: timeline.setAnnotationRegions,
 		setAudioRegions: timeline.setAudioRegions,
 		sourceDurationMs: input.duration * 1000,
 		clipRegions: timeline.clipRegions,
 		setClipRegions: timeline.setClipRegions,
+		setSourceAudioTrackSettingsByClip: timeline.setSourceAudioTrackSettingsByClip,
 		zoomRegions: timeline.zoomRegions,
 		setZoomRegions: timeline.setZoomRegions,
 		selectedClipId: timeline.selectedClipId,
@@ -190,6 +168,7 @@ export function useTimelineEditingController(input: Input) {
 		setSelectedCaptionId: timeline.setSelectedCaptionId,
 		setActiveEffectSection: input.setActiveEffectSection,
 		nextClipIdRef: input.nextClipIdRef,
+		nextZoomIdRef: input.nextZoomIdRef,
 		t: input.t,
 	});
 	const audioCommands = useAudioRegionCommands({
@@ -213,6 +192,60 @@ export function useTimelineEditingController(input: Input) {
 		nextAnnotationZIndexRef: input.nextAnnotationZIndexRef,
 	});
 
+	const duplicateSelectedRegion = () => {
+		const totalMs = Math.round(projection.timelineDuration * 1000);
+		const zoom = timeline.zoomRegions.find(({ id }) => id === timeline.selectedZoomId);
+		const annotation = timeline.annotationRegions.find(
+			({ id }) => id === timeline.selectedAnnotationId,
+		);
+		const audioRegion = timeline.audioRegions.find(({ id }) => id === timeline.selectedAudioId);
+
+		if (zoom) {
+			const span = placeSpanAfter(zoom, totalMs, timeline.zoomRegions);
+			if (span) {
+				const id = `zoom-${input.nextZoomIdRef.current++}`;
+				timeline.setZoomRegions((current) => [...current, { ...zoom, ...span, id }]);
+				zoomCommands.handleSelectZoom(id);
+				return;
+			}
+		} else if (annotation) {
+			const span = placeSpanAfter(annotation, totalMs);
+			if (span) {
+				const id = `annotation-${input.nextAnnotationIdRef.current++}`;
+				const zIndex = input.nextAnnotationZIndexRef.current++;
+				timeline.setAnnotationRegions((current) => [
+					...current,
+					{ ...annotation, ...span, id, zIndex },
+				]);
+				handleSelectAnnotation(id);
+				return;
+			}
+		} else if (audioRegion) {
+			const sameTrack = timeline.audioRegions.filter(
+				(region) => (region.trackIndex ?? 0) === (audioRegion.trackIndex ?? 0),
+			);
+			const span = placeSpanAfter(audioRegion, totalMs, sameTrack);
+			if (span) {
+				const id = `audio-${input.nextAudioIdRef.current++}`;
+				timeline.setAudioRegions((current) => [
+					...current,
+					{ ...audioRegion, ...span, id },
+				]);
+				audioCommands.handleSelectAudio(id);
+				return;
+			}
+		} else {
+			return;
+		}
+
+		toast.warning(
+			translate(
+				"notifications.timelineDuplicateNoRoom",
+				"There is no room to duplicate this item.",
+			),
+		);
+	};
+
 	useEditorGlobalInteractions({
 		timeline,
 		videoPlaybackRef: input.videoPlaybackRef,
@@ -234,6 +267,6 @@ export function useTimelineEditingController(input: Input) {
 		audioCommands,
 		annotationCommands,
 		handleSelectAnnotation,
-		handleAutoSuggestZoomsConsumed: freshZoom.handleAutoSuggestZoomsConsumed,
+		duplicateSelectedRegion,
 	};
 }

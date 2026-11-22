@@ -1,5 +1,12 @@
-import type { CropRegion, CursorTelemetryPoint } from "@/components/video-editor/types";
+import type {
+	CropRegion,
+	CursorStyle,
+	CursorTelemetryPoint,
+} from "@/components/video-editor/types";
+import { getCursorPressState } from "@/components/video-editor/videoPlayback/cursorPress";
 import { projectCursorPositionToViewport } from "@/components/video-editor/videoPlayback/cursorViewport";
+import { resolvePixelGlovePose } from "@/components/video-editor/videoPlayback/pixelGloveMotion";
+import { CURSOR_VISUAL_TYPES } from "@/shared/cursorVisualTypes";
 
 export type NativeStaticLayoutCursorTelemetrySample = {
 	timeMs: number;
@@ -7,6 +14,7 @@ export type NativeStaticLayoutCursorTelemetrySample = {
 	cy: number;
 	cursorType?: CursorTelemetryPoint["cursorType"];
 	interactionType?: string;
+	mouseButton?: 1 | 2 | 3;
 	cursorTypeIndex?: number;
 	bounceScale?: number;
 	visible?: boolean;
@@ -16,6 +24,7 @@ export type NativeStaticLayoutCursorTelemetryOptions = {
 	frameRate: number;
 	durationSec: number;
 	clickBounce?: number;
+	cursorStyle?: CursorStyle;
 	clickBounceDurationMs?: number;
 	sourceCrop?: CropRegion;
 };
@@ -24,18 +33,6 @@ const CURSOR_POSITION_EPSILON = 0.00001;
 const CURSOR_BOUNCE_EPSILON = 0.0005;
 const DEFAULT_CLICK_BOUNCE = 1;
 const DEFAULT_CLICK_BOUNCE_DURATION_MS = 350;
-
-const CURSOR_TYPE_INDEX: Record<string, number> = {
-	arrow: 0,
-	text: 1,
-	pointer: 2,
-	crosshair: 3,
-	"open-hand": 4,
-	"closed-hand": 5,
-	"resize-ew": 6,
-	"resize-ns": 7,
-	"not-allowed": 8,
-};
 
 function clampUnit(value: number) {
 	return Math.min(1, Math.max(0, value));
@@ -64,36 +61,14 @@ function sanitizeCursorTelemetry(telemetry: NativeStaticLayoutCursorTelemetrySam
 			cx: clampUnit(sample.cx),
 			cy: clampUnit(sample.cy),
 			cursorType: sample.cursorType,
-			interactionType: sample.interactionType,
+			interactionType: sample.interactionType as CursorTelemetryPoint["interactionType"],
+			mouseButton: sample.mouseButton,
 		}))
 		.sort((left, right) => left.timeMs - right.timeMs);
 }
 
-function getCursorTypeIndex(cursorType: string | undefined) {
-	return CURSOR_TYPE_INDEX[cursorType ?? "arrow"] ?? CURSOR_TYPE_INDEX.arrow;
-}
-
-function getCursorBounceScale(
-	latestClick: NativeStaticLayoutCursorTelemetrySample | null,
-	timeMs: number,
-	options: NativeStaticLayoutCursorTelemetryOptions,
-) {
-	if (!latestClick) {
-		return 1;
-	}
-
-	const clickBounceDurationMs = Math.max(
-		1,
-		options.clickBounceDurationMs ?? DEFAULT_CLICK_BOUNCE_DURATION_MS,
-	);
-	const ageMs = Math.max(0, timeMs - latestClick.timeMs);
-	if (ageMs > clickBounceDurationMs) {
-		return 1;
-	}
-
-	const clickBounce = Math.max(0, options.clickBounce ?? DEFAULT_CLICK_BOUNCE);
-	const progress = 1 - ageMs / clickBounceDurationMs;
-	return Math.max(0.72, 1 - Math.sin(progress * Math.PI) * (0.08 * clickBounce));
+function getCursorTypeIndex(cursorType: CursorTelemetryPoint["cursorType"]) {
+	return Math.max(0, CURSOR_VISUAL_TYPES.indexOf(cursorType ?? "arrow"));
 }
 
 function createMonotonicCursorRenderSampler(
@@ -102,7 +77,6 @@ function createMonotonicCursorRenderSampler(
 ) {
 	let interpolationIndex = 0;
 	let metadataIndex = 0;
-	let latestClick: NativeStaticLayoutCursorTelemetrySample | null = null;
 	let latestStableCursorType: CursorTelemetryPoint["cursorType"] = "arrow";
 
 	return (timeMs: number): NativeStaticLayoutCursorTelemetrySample => {
@@ -115,9 +89,7 @@ function createMonotonicCursorRenderSampler(
 
 		while (metadataIndex < samples.length && samples[metadataIndex].timeMs <= timeMs) {
 			const sample = samples[metadataIndex];
-			if (isCursorInteractionSample(sample)) {
-				latestClick = sample;
-			} else if (sample.cursorType) {
+			if (!isCursorInteractionSample(sample) && sample.cursorType) {
 				latestStableCursorType = sample.cursorType;
 			}
 			metadataIndex += 1;
@@ -144,13 +116,30 @@ function createMonotonicCursorRenderSampler(
 		}
 
 		const projectedPosition = projectCursorPositionToViewport(position, options.sourceCrop);
+		const press = getCursorPressState(
+			samples as CursorTelemetryPoint[],
+			timeMs,
+			options.clickBounceDurationMs ?? DEFAULT_CLICK_BOUNCE_DURATION_MS,
+		);
+		const cursorType = resolvePixelGlovePose(
+			options.cursorStyle,
+			latestStableCursorType,
+			press.pressed ? 0 : press.ageMs,
+			options.clickBounceDurationMs ?? DEFAULT_CLICK_BOUNCE_DURATION_MS,
+			options.clickBounce ?? DEFAULT_CLICK_BOUNCE,
+		);
 		return {
 			...position,
 			cx: projectedPosition.cx,
 			cy: projectedPosition.cy,
-			cursorType: latestStableCursorType,
-			cursorTypeIndex: getCursorTypeIndex(latestStableCursorType),
-			bounceScale: getCursorBounceScale(latestClick, timeMs, options),
+			cursorType,
+			cursorTypeIndex: getCursorTypeIndex(cursorType),
+			bounceScale: Math.max(
+				0.72,
+				1 -
+					Math.sin(press.bounceProgress * Math.PI) *
+						(0.08 * Math.max(0, options.clickBounce ?? DEFAULT_CLICK_BOUNCE)),
+			),
 			...(options.sourceCrop ? { visible: projectedPosition.visible } : {}),
 		};
 	};

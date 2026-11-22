@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import { normalizeRegionSpan } from "../core/spans";
 import type { AudioRegion, SpeedRegion, TrimRegion, ZoomRegion } from "../../types";
+import { normalizeRegionSpan } from "../core/spans";
 
 interface UseTimelineNormalizationParams {
 	totalMs: number;
@@ -33,11 +33,15 @@ export function useTimelineNormalization({
 		}
 
 		zoomRegions.forEach((region) => {
+			// Ripple edits can retain less than the drag minimum. Expanding these
+			// fragments on render would put the zoom onto unrelated footage again.
+			const durationMs = region.endMs - region.startMs;
 			const normalized = normalizeRegionSpan({
 				startMs: region.startMs,
 				endMs: region.endMs,
 				totalMs,
-				minDurationMs: safeMinDurationMs,
+				minDurationMs:
+					durationMs > 0 ? Math.min(safeMinDurationMs, durationMs) : safeMinDurationMs,
 			});
 
 			if (normalized.start !== region.startMs || normalized.end !== region.endMs) {

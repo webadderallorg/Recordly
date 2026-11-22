@@ -10,8 +10,9 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { Dashboard } from "../dashboard/Dashboard";
+import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 
 export type UnsavedChangesDecision = "cancel" | "discard" | "save";
 
@@ -22,6 +23,7 @@ type Translator = (
 ) => string;
 
 interface EditorDialogsProps {
+	getProtectedSourcePaths?: () => string[];
 	t: Translator;
 	projectSaveDialogOpen: boolean;
 	setProjectSaveDialogOpen: Dispatch<SetStateAction<boolean>>;
@@ -38,12 +40,25 @@ interface EditorDialogsProps {
 	projectBrowserOpen: boolean;
 	setProjectBrowserOpen: Dispatch<SetStateAction<boolean>>;
 	projectLibraryEntries: ProjectLibraryEntry[];
+	projectLibraryLoading: boolean;
+	projectLibraryError?: string | null;
+	onRetryLibraryLoad?: () => Promise<void>;
 	projectError: string | null;
+	projectErrorSource?: string;
+	projectErrorRecordingSource?: string;
 	onDashboardSignIn: () => void;
-	onDeleteProjects: (paths: string[]) => Promise<string[]>;
- onRenameProject: (path: string, name: string) => Promise<string>;
- onShareProject: (path: string) => Promise<void>;
+	onDeleteProjects: (
+		paths: string[],
+		options?: { includeSources?: boolean; protectedSources?: string[] },
+	) => Promise<string[]>;
+	onRenameProject: (path: string, name: string) => Promise<string>;
+	onShareProject: (path: string) => Promise<void>;
 	accountLabel?: string;
+	accountId?: string;
+	authToken?: string;
+	dashboardInitialSection?: "projects" | "settings";
+	editorTitle?: string;
+	headerLeftControlsPaddingClass?: string;
 	handleImportMediaOrProject: () => Promise<void>;
 	handleOpenProjectFromLibrary: (projectPath: string) => Promise<unknown>;
 	nativeCaptureUnavailableModalOpen: boolean;
@@ -51,6 +66,7 @@ interface EditorDialogsProps {
 }
 
 export function EditorDialogs({
+	getProtectedSourcePaths,
 	t,
 	projectSaveDialogOpen,
 	setProjectSaveDialogOpen,
@@ -67,17 +83,28 @@ export function EditorDialogs({
 	projectBrowserOpen,
 	setProjectBrowserOpen,
 	projectLibraryEntries,
+	projectLibraryLoading,
+	projectLibraryError,
+	onRetryLibraryLoad,
 	projectError,
+	projectErrorSource,
+	projectErrorRecordingSource,
 	onDashboardSignIn,
 	onDeleteProjects,
- onRenameProject,
- onShareProject,
+	onRenameProject,
+	onShareProject,
 	accountLabel,
+	accountId,
+	authToken,
+	dashboardInitialSection,
+	editorTitle,
+	headerLeftControlsPaddingClass,
 	handleImportMediaOrProject,
 	handleOpenProjectFromLibrary,
 	nativeCaptureUnavailableModalOpen,
 	setNativeCaptureUnavailableModalOpen,
 }: EditorDialogsProps) {
+	useUiLocale();
 	return (
 		<>
 			<Dialog
@@ -116,7 +143,7 @@ export function EditorDialogs({
 									aria-label={t("editor.project.saveNameLabel", "Project name")}
 								/>
 								<span className="shrink-0 px-3 text-xs font-medium text-muted-foreground/70">
-									.recordly
+									{".recordly"}
 								</span>
 							</Card>
 						</div>
@@ -182,15 +209,26 @@ export function EditorDialogs({
 			</Dialog>
 
 			<Dashboard
+				getProtectedSourcePaths={getProtectedSourcePaths}
+				editorTitle={editorTitle}
+				headerLeftControlsPaddingClass={headerLeftControlsPaddingClass}
 				open={projectBrowserOpen}
 				onOpenChange={setProjectBrowserOpen}
 				entries={projectLibraryEntries}
+				loading={projectLibraryLoading}
+				libraryError={projectLibraryError}
+				onRetryLibraryLoad={onRetryLibraryLoad}
 				error={projectError}
+				errorSource={projectErrorSource}
+				errorRecordingSource={projectErrorRecordingSource}
 				onSignIn={onDashboardSignIn}
 				onDeleteProjects={onDeleteProjects}
- onRenameProject={onRenameProject}
- onShareProject={onShareProject}
+				onRenameProject={onRenameProject}
+				onShareProject={onShareProject}
 				accountLabel={accountLabel}
+				accountId={accountId}
+				authToken={authToken}
+				initialSection={dashboardInitialSection}
 				onImportFile={handleImportMediaOrProject}
 				onOpenProject={handleOpenProjectFromLibrary}
 			/>

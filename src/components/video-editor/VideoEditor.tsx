@@ -1,5 +1,7 @@
 /* biome-ignore-all lint/correctness/useExhaustiveDependencies: setters returned by the editor's domain-state hooks are stable React dispatchers. */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { BillingProvider } from "@/components/billing/BillingProvider";
 import { useI18n } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { getAspectRatioValue } from "@/utils/aspectRatioUtils";
@@ -20,8 +22,17 @@ import { useEditorUiState } from "./state/useEditorUiState";
 import { useProjectState } from "./state/useProjectState";
 import { useTimelineState } from "./state/useTimelineState";
 import { useNvidiaCudaExportOptIn } from "./useNvidiaCudaExportOptIn";
+import { getEffectiveNativeAspectRatio } from "./videoPlayback/playbackTypes";
 
 export default function VideoEditor() {
+	return (
+		<BillingProvider>
+			<VideoEditorContent />
+		</BillingProvider>
+	);
+}
+
+function VideoEditorContent() {
 	const { t } = useI18n();
 	const smokeExportConfig = useMemo(
 		() => getSmokeExportConfig(typeof window === "undefined" ? "" : window.location.search),
@@ -41,7 +52,6 @@ export default function VideoEditor() {
 	const { showCursor, setShowCursor, cropRegion, setCropRegion } = appearance;
 	const ui = useEditorUiState(initialEditorPreferences, cropRegion, setCropRegion);
 	const {
-		appPlatform,
 		isPlaying,
 		setIsPlaying,
 		currentTime,
@@ -51,6 +61,7 @@ export default function VideoEditor() {
 		sessionShowCursorOverride,
 		setSessionShowCursorOverride,
 		sessionNativeCaptureUnavailable,
+		sessionCaptureSourceKind,
 		setNativeCaptureUnavailableModalOpen,
 		whisperExecutablePath,
 		setWhisperExecutablePath,
@@ -72,7 +83,6 @@ export default function VideoEditor() {
 		setPreviewVersion,
 		isPreviewReady,
 		setIsPreviewReady,
-		setAutoSuggestZoomsTrigger,
 		videoPlaybackRef,
 		projectNameInputRef,
 		projectSaveDialogInputRef,
@@ -84,10 +94,6 @@ export default function VideoEditor() {
 		nextAudioIdRef,
 		nextAnnotationIdRef,
 		nextAnnotationZIndexRef,
-		autoSuggestedVideoPathRef,
-		pendingFreshRecordingAutoZoomPathRef,
-		pendingFreshRecordingAutoSuggestTimeoutRef,
-		pendingFreshRecordingAutoSuggestTelemetryCountRef,
 		timelineRef,
 		applySessionPresentation,
 	} = ui;
@@ -149,26 +155,12 @@ export default function VideoEditor() {
 			: undefined;
 	const { shortcuts, isMac } = useShortcuts();
 
-	useEffect(() => {
-		autoSuggestedVideoPathRef.current = null;
-		pendingFreshRecordingAutoSuggestTelemetryCountRef.current = 0;
-		if (pendingFreshRecordingAutoSuggestTimeoutRef.current !== null) {
-			window.clearTimeout(pendingFreshRecordingAutoSuggestTimeoutRef.current);
-			pendingFreshRecordingAutoSuggestTimeoutRef.current = null;
-		}
-	}, []);
-
 	const presets = useVideoEditorPresets({
 		t,
 		appearance,
 		timeline,
-		exportSettings,
 		aspectRatio,
 		setAspectRatio,
-		whisperExecutablePath,
-		setWhisperExecutablePath,
-		whisperModelPath,
-		setWhisperModelPath,
 	});
 	const { refreshProjectLibrary, captureProjectThumbnail } = useProjectLibraryController({
 		project,
@@ -198,10 +190,6 @@ export default function VideoEditor() {
 			if (pending?.tempFilePath && typeof window !== "undefined") {
 				void window.electronAPI.discardExportedTemp?.(pending.tempFilePath);
 			}
-			if (pendingFreshRecordingAutoSuggestTimeoutRef.current !== null) {
-				window.clearTimeout(pendingFreshRecordingAutoSuggestTimeoutRef.current);
-				pendingFreshRecordingAutoSuggestTimeoutRef.current = null;
-			}
 		};
 	}, []);
 
@@ -210,6 +198,8 @@ export default function VideoEditor() {
 	}, [refreshProjectLibrary]);
 
 	const exportDimensions = useExportDimensions({
+		customExportResolution: exportSettings.customExportResolution,
+		onCustomExportResolutionChange: exportSettings.setCustomExportResolution,
 		videoPlaybackRef,
 		isPreviewReady,
 		aspectRatio,
@@ -223,8 +213,8 @@ export default function VideoEditor() {
 		project,
 		appearance,
 		timeline,
-		exportSettings,
 		initialPreferences: initialEditorPreferences,
+		captureSourceKind: sessionCaptureSourceKind,
 		smokeConfig: smokeExportConfig,
 		devConfig: devOpenRecordingConfig,
 		aspectRatio,
@@ -259,9 +249,6 @@ export default function VideoEditor() {
 		clipInitializedRef,
 		autoFullTrackClipIdRef,
 		autoFullTrackClipEndMsRef,
-		pendingFreshRecordingAutoZoomPathRef,
-		pendingFreshRecordingAutoSuggestTelemetryCountRef,
-		autoSuggestedVideoPathRef,
 		applySessionPresentation,
 		refreshProjectLibrary,
 		captureProjectThumbnail,
@@ -278,7 +265,6 @@ export default function VideoEditor() {
 		t,
 		shortcuts,
 		isMac,
-		appPlatform,
 		timeline,
 		appearance,
 		videoPath,
@@ -288,10 +274,7 @@ export default function VideoEditor() {
 		currentTime,
 		isPlaying,
 		previewVolume,
-		loading,
-		isPreviewReady,
 		setActiveEffectSection,
-		setAutoSuggestZoomsTrigger,
 		videoPlaybackRef,
 		timelineRef,
 		nextZoomIdRef,
@@ -302,10 +285,6 @@ export default function VideoEditor() {
 		clipInitializedRef,
 		autoFullTrackClipIdRef,
 		autoFullTrackClipEndMsRef,
-		autoSuggestedVideoPathRef,
-		pendingFreshRecordingAutoZoomPathRef,
-		pendingFreshRecordingAutoSuggestTimeoutRef,
-		pendingFreshRecordingAutoSuggestTelemetryCountRef,
 		handleUndo,
 		handleRedo,
 	});
@@ -323,10 +302,15 @@ export default function VideoEditor() {
 
 	const exportController = useEditorExportController({
 		t,
+		projectName: projectController.snapshot.projectDisplayName,
+		exportIdentity: {
+			projectId: project.lastSavedSnapshot?.projectId,
+			projectPath: project.currentProjectPath ?? undefined,
+			sourcePath: project.videoSourcePath ?? undefined,
+		},
 		videoPath,
 		videoSourcePath,
 		videoPlaybackRef,
-		isPlaying,
 		duration,
 		error,
 		loading,
@@ -347,20 +331,23 @@ export default function VideoEditor() {
 		captionSidecarPayload,
 		experimentalNvidiaCudaExport,
 		nvidiaCudaExportAvailable,
-		remountPreview,
 	});
 	const previewAspectRatioValue = getAspectRatioValue(
 		aspectRatio,
 		(() => {
 			const previewVideo = videoPlaybackRef.current?.video;
 			if (previewVideo && previewVideo.videoHeight > 0) {
-				return previewVideo.videoWidth / previewVideo.videoHeight;
+				return getEffectiveNativeAspectRatio(
+					{ width: previewVideo.videoWidth, height: previewVideo.videoHeight },
+					cropRegion,
+				);
 			}
 			return 16 / 9;
 		})(),
 	);
 	const settingsPanelProps = useEditorSettingsPanelProps({
 		activeEffectSection,
+		onDuplicateSelectedRegion: editing.duplicateSelectedRegion,
 		appearance,
 		timeline,
 		zoomCommands,
@@ -381,6 +368,7 @@ export default function VideoEditor() {
 		whisperModelDownloadProgress,
 		isGeneratingCaptions,
 		sessionNativeCaptureUnavailable,
+		sessionCaptureSourceKind,
 		setNativeCaptureUnavailableModalOpen,
 		handleUploadWebcam,
 		handleClearWebcam,

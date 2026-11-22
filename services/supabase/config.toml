@@ -3,3 +3,6 @@ project_id = "recordly-feedback"
 [functions.submit-feedback]
 # The handler verifies the bearer token with auth.getUser before doing any work.
 verify_jwt = false
+
+[functions.submit-export-error]
+verify_jwt = false

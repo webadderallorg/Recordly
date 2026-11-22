@@ -1,4 +1,13 @@
-import { useState } from "react";
+import {
+	type Dispatch,
+	type SetStateAction,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
+import { DESKTOP_WALLPAPER, getDesktopWallpaperPath } from "@/lib/desktopWallpaper";
+import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import type { EditorPreferences } from "../editorPreferences";
 import type {
 	CropRegion,
@@ -24,15 +33,35 @@ import {
 } from "../types";
 
 export function useAppearanceState(preferences: EditorPreferences) {
-	const [wallpaper, setWallpaper] = useState(preferences.wallpaper);
+	const [autoApplyFreshRecordingAutoZooms, setAutoApplyFreshRecordingAutoZooms] = useState(
+		preferences.autoApplyFreshRecordingAutoZooms,
+	);
+	const [wallpaper, setWallpaperState] = useState(
+		preferences.wallpaper === DESKTOP_WALLPAPER
+			? DEFAULT_WALLPAPER_PATH
+			: preferences.wallpaper,
+	);
+	const wallpaperChanged = useRef(false);
+	const setWallpaper = useCallback<Dispatch<SetStateAction<string>>>((value) => {
+		wallpaperChanged.current = true;
+		setWallpaperState(value);
+	}, []);
+	useEffect(() => {
+		if (preferences.wallpaper !== DESKTOP_WALLPAPER) return;
+		let active = true;
+		void getDesktopWallpaperPath().then((path) => {
+			// Restoring a project or picking a background wins over a late OS response.
+			if (active && path && !wallpaperChanged.current) setWallpaperState(path);
+		});
+		return () => {
+			active = false;
+		};
+	}, [preferences.wallpaper]);
 	const [shadowIntensity, setShadowIntensity] = useState(preferences.shadowIntensity);
 	const [backgroundBlur, setBackgroundBlur] = useState(preferences.backgroundBlur);
 	const [zoomMotionBlur, setZoomMotionBlur] = useState(preferences.zoomMotionBlur);
 	const [zoomMotionBlurTuning, setZoomMotionBlurTuning] = useState<ZoomMotionBlurTuning>(
 		preferences.zoomMotionBlurTuning ?? DEFAULT_ZOOM_MOTION_BLUR_TUNING,
-	);
-	const [autoApplyFreshRecordingAutoZooms, setAutoApplyFreshRecordingAutoZooms] = useState(
-		preferences.autoApplyFreshRecordingAutoZooms,
 	);
 	const [connectZooms, setConnectZooms] = useState(preferences.connectZooms);
 	const [zoomInDurationMs, setZoomInDurationMs] = useState(
@@ -61,6 +90,9 @@ export function useAppearanceState(preferences: EditorPreferences) {
 	);
 	const [showCursor, setShowCursor] = useState(preferences.showCursor);
 	const [loopCursor, setLoopCursor] = useState(preferences.loopCursor);
+	const [alwaysUsePointerCursor, setAlwaysUsePointerCursor] = useState(
+		preferences.alwaysUsePointerCursor,
+	);
 	const [cursorStyle, setCursorStyle] = useState<CursorStyle>(
 		preferences.cursorStyle ?? DEFAULT_CURSOR_STYLE,
 	);
@@ -107,8 +139,9 @@ export function useAppearanceState(preferences: EditorPreferences) {
 		preferences.cursorClickBounceDuration,
 	);
 	const [cursorSway, setCursorSway] = useState(preferences.cursorSway);
+	const [cursorIdleHide, setCursorIdleHide] = useState(preferences.cursorIdleHide);
 	const [borderRadius, setBorderRadius] = useState(preferences.borderRadius);
-	const [padding, setPadding] = useState(preferences.padding);
+	const [padding, setPadding] = useState(preferences.screenPadding);
 	const [cropRegion, setCropRegion] = useState<CropRegion>(DEFAULT_CROP_REGION);
 	const [webcam, setWebcam] = useState<WebcamOverlaySettings>(
 		preferences.webcam ?? DEFAULT_WEBCAM_OVERLAY,
@@ -126,9 +159,9 @@ export function useAppearanceState(preferences: EditorPreferences) {
 		setZoomMotionBlur,
 		zoomMotionBlurTuning,
 		setZoomMotionBlurTuning,
+		connectZooms,
 		autoApplyFreshRecordingAutoZooms,
 		setAutoApplyFreshRecordingAutoZooms,
-		connectZooms,
 		setConnectZooms,
 		zoomInDurationMs,
 		setZoomInDurationMs,
@@ -150,6 +183,8 @@ export function useAppearanceState(preferences: EditorPreferences) {
 		setShowCursor,
 		loopCursor,
 		setLoopCursor,
+		alwaysUsePointerCursor,
+		setAlwaysUsePointerCursor,
 		cursorStyle,
 		setCursorStyle,
 		cursorSize,
@@ -190,6 +225,8 @@ export function useAppearanceState(preferences: EditorPreferences) {
 		setCursorClickBounceDuration,
 		cursorSway,
 		setCursorSway,
+		cursorIdleHide,
+		setCursorIdleHide,
 		borderRadius,
 		setBorderRadius,
 		padding,

@@ -1,14 +1,22 @@
 import { ToggleButton } from "@heroui/react";
+import {
+	type AriaAttributes,
+	cloneElement,
+	isValidElement,
+	type ReactElement,
+	type ReactNode,
+	useId,
+} from "react";
+import { AudioLevelMeter } from "@/components/ui/audio-level-meter";
 import { Button } from "@/components/ui/button";
 import { MicrophoneIcon, MicrophoneSlashIcon } from "@/components/ui/icons";
-import { cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAudioLevelMeter } from "@/hooks/useAudioLevelMeter";
-import { AudioLevelMeter } from "@/components/ui/audio-level-meter";
+import { HudTooltip } from "../HudTooltip";
 import styles from "../LaunchWindow.module.css";
 import "../launchTheme.css";
-import type { DeviceOption } from "./launchPopoverTypes";
 import { useHudInteraction } from "../contexts/HudInteractionContext";
+import type { DeviceOption } from "./launchPopoverTypes";
 
 export function DropdownItem({
 	onClick,
@@ -92,19 +100,46 @@ export function HudPopover({
 	trigger,
 	children,
 	align = "center",
+	label,
+	tooltip,
+	description,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	trigger: ReactElement;
 	children: ReactNode;
 	align?: "start" | "center" | "end";
+	label?: string;
+	tooltip?: string;
+	description?: string;
 }) {
 	const { onMouseEnter } = useHudInteraction();
+	const descriptionId = useId();
+	const describedTrigger = description
+		? cloneElement(trigger as ReactElement<AriaAttributes>, {
+				"aria-describedby": descriptionId,
+			})
+		: trigger;
 	return (
 		<Popover open={open} onOpenChange={onOpenChange} modal={true}>
-			<PopoverTrigger asChild>{trigger}</PopoverTrigger>
+			<PopoverTrigger asChild>
+				{tooltip ? (
+					<HudTooltip label={tooltip} suppressed={open}>
+						{describedTrigger}
+					</HudTooltip>
+				) : (
+					describedTrigger
+				)}
+			</PopoverTrigger>
+			{description && (
+				<span id={descriptionId} className="sr-only">
+					{description}
+				</span>
+			)}
 			<PopoverContent
+				aria-label={label}
 				className={`launch-theme ${styles.menuCard} ${styles.electronNoDrag}`}
+				style={{ display: "flex", flexDirection: "column" }}
 				data-hud-interactive
 				unstyled
 				side="top"

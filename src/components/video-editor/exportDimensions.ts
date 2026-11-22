@@ -88,37 +88,49 @@ export function calculateMp4ExportDimensions(
 	baseWidth: number,
 	baseHeight: number,
 	quality: ExportQuality,
+	custom?: { width: number; height: number } | null,
 ): { width: number; height: number } {
+	const width = normalizeEvenDimension(baseWidth);
+	const height = normalizeEvenDimension(baseHeight);
+	if (quality === "custom") {
+		if (!isValidCustomExportResolution(custom))
+			throw new Error("Enter even dimensions between 2 and 8192 pixels.");
+		return { width: custom!.width, height: custom!.height };
+	}
 	if (quality === "source") {
-		return {
-			width: normalizeEvenDimension(baseWidth),
-			height: normalizeEvenDimension(baseHeight),
-		};
+		return { width, height };
 	}
 
-	const qualityScale = quality === "medium" ? 0.6 : quality === "good" ? 0.75 : 0.9;
+	// Resolution tiers use the longest canvas edge, including square, portrait,
+	// and custom ratios. Fixed tiers may upscale; Original preserves source size.
+	const longestEdge = { hd: 1280, medium: 1920, good: 2560, high: 3840 }[quality];
+	const scale = longestEdge / Math.max(width, height);
 	return {
-		width: normalizeEvenDimension(baseWidth * qualityScale),
-		height: normalizeEvenDimension(baseHeight * qualityScale),
+		width: width >= height ? longestEdge : normalizeEvenDimension(width * scale),
+		height: height >= width ? longestEdge : normalizeEvenDimension(height * scale),
 	};
 }
 
-const SHARED_VIDEO_LONG_SIDE_MAX = 1920;
-const SHARED_VIDEO_SHORT_SIDE_MAX = 1080;
+export function isValidCustomExportResolution(
+	value: { width: number; height: number } | null | undefined,
+): boolean {
+	return (
+		!!value &&
+		[value.width, value.height].every(
+			(n) => Number.isSafeInteger(n) && n >= 2 && n <= 8192 && n % 2 === 0,
+		)
+	);
+}
 
-export function capMp4ShareDimensions(
-	width: number,
-	height: number,
-): { width: number; height: number } {
-	const normalizedWidth = normalizeEvenDimension(width);
-	const normalizedHeight = normalizeEvenDimension(height);
-	const landscape = normalizedWidth >= normalizedHeight;
-	const maxWidth = landscape ? SHARED_VIDEO_LONG_SIDE_MAX : SHARED_VIDEO_SHORT_SIDE_MAX;
-	const maxHeight = landscape ? SHARED_VIDEO_SHORT_SIDE_MAX : SHARED_VIDEO_LONG_SIDE_MAX;
-	const scale = Math.min(1, maxWidth / normalizedWidth, maxHeight / normalizedHeight);
-
+export function fitCustomExportResolution(
+	resolution: { width: number; height: number },
+	canvas: { width: number; height: number },
+) {
+	const edge = Math.max(resolution.width, resolution.height);
+	const scale = edge / Math.max(canvas.width, canvas.height);
 	return {
-		width: normalizeEvenDimension(normalizedWidth * scale),
-		height: normalizeEvenDimension(normalizedHeight * scale),
+		width: canvas.width >= canvas.height ? edge : normalizeEvenDimension(canvas.width * scale),
+		height:
+			canvas.height >= canvas.width ? edge : normalizeEvenDimension(canvas.height * scale),
 	};
 }

@@ -1,0 +1,14 @@
+Your next renewal with Recordly
+
+A little heads-up: your {{ .PlanName }} subscription will renew automatically. You can update your payment method or cancel before renewal in your billing settings.
+
+Renewal date: {{ .RenewalDate }}
+Expected total: {{ .Amount }}
+Billing period: {{ .Interval }}
+
+Manage subscription: {{ .ActionURL }}
+
+You received this reminder about your Recordly subscription.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

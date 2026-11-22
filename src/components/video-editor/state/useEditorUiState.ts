@@ -4,11 +4,12 @@ import { type AnnouncementEditorSection, isAnnouncementEditorSection } from "@/l
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
 import type { loadEditorPreferences } from "../editorPreferences";
 import type { TimelineEditorHandle } from "../timeline/TimelineEditor";
-import type { CropRegion, EditorEffectSection } from "../types";
+import type { CaptureSourceKind, CropRegion, EditorEffectSection } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 
 type SessionPresentation = {
 	hideOverlayCursorByDefault?: boolean;
+	captureSourceKind?: CaptureSourceKind;
 	nativeCaptureUnavailable?: boolean;
 };
 
@@ -27,6 +28,8 @@ export function useEditorUiState(
 		null,
 	);
 	const [sessionNativeCaptureUnavailable, setSessionNativeCaptureUnavailable] = useState(false);
+	const [sessionCaptureSourceKind, setSessionCaptureSourceKind] =
+		useState<CaptureSourceKind | null>(null);
 	const [nativeCaptureUnavailableModalOpen, setNativeCaptureUnavailableModalOpen] =
 		useState(false);
 	const [whisperExecutablePath, setWhisperExecutablePath] = useState<string | null>(
@@ -49,7 +52,6 @@ export function useEditorUiState(
 	const [showCropModal, setShowCropModal] = useState(false);
 	const [previewVersion, setPreviewVersion] = useState(0);
 	const [isPreviewReady, setIsPreviewReady] = useState(false);
-	const [autoSuggestZoomsTrigger, setAutoSuggestZoomsTrigger] = useState(0);
 
 	const videoPlaybackRef = useRef<VideoPlaybackRef>(null);
 	const projectBrowserTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -64,10 +66,6 @@ export function useEditorUiState(
 	const nextAudioIdRef = useRef(1);
 	const nextAnnotationIdRef = useRef(1);
 	const nextAnnotationZIndexRef = useRef(1);
-	const autoSuggestedVideoPathRef = useRef<string | null>(null);
-	const pendingFreshRecordingAutoZoomPathRef = useRef<string | null>(null);
-	const pendingFreshRecordingAutoSuggestTimeoutRef = useRef<number | null>(null);
-	const pendingFreshRecordingAutoSuggestTelemetryCountRef = useRef(0);
 	const cropSnapshotRef = useRef<CropRegion | null>(null);
 	const timelineRef = useRef<TimelineEditorHandle>(null);
 
@@ -90,6 +88,7 @@ export function useEditorUiState(
 	const applySessionPresentation = useCallback(
 		(session: SessionPresentation | null | undefined) => {
 			setSessionShowCursorOverride(session?.hideOverlayCursorByDefault ? false : null);
+			setSessionCaptureSourceKind(session?.captureSourceKind ?? null);
 			setSessionNativeCaptureUnavailable(Boolean(session?.nativeCaptureUnavailable));
 			setNativeCaptureUnavailableModalOpen(Boolean(session?.nativeCaptureUnavailable));
 		},
@@ -123,6 +122,7 @@ export function useEditorUiState(
 		sessionShowCursorOverride,
 		setSessionShowCursorOverride,
 		sessionNativeCaptureUnavailable,
+		sessionCaptureSourceKind,
 		nativeCaptureUnavailableModalOpen,
 		setNativeCaptureUnavailableModalOpen,
 		whisperExecutablePath,
@@ -148,8 +148,6 @@ export function useEditorUiState(
 		setPreviewVersion,
 		isPreviewReady,
 		setIsPreviewReady,
-		autoSuggestZoomsTrigger,
-		setAutoSuggestZoomsTrigger,
 		videoPlaybackRef,
 		projectBrowserTriggerRef,
 		projectBrowserFallbackTriggerRef,
@@ -163,10 +161,6 @@ export function useEditorUiState(
 		nextAudioIdRef,
 		nextAnnotationIdRef,
 		nextAnnotationZIndexRef,
-		autoSuggestedVideoPathRef,
-		pendingFreshRecordingAutoZoomPathRef,
-		pendingFreshRecordingAutoSuggestTimeoutRef,
-		pendingFreshRecordingAutoSuggestTelemetryCountRef,
 		timelineRef,
 		applySessionPresentation,
 		handleOpenCropEditor,

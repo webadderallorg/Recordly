@@ -1,7 +1,7 @@
-import { Pause, Play, SpeakerHigh as Volume2, SpeakerX as VolumeX } from "@/components/ui/icons";
-import { useScopedT } from "@/contexts/I18nContext";
 import { Surface } from "@heroui/react";
+import { Pause, Play, SpeakerHigh as Volume2, SpeakerX as VolumeX } from "@/components/ui/icons";
 import { Slider } from "@/components/ui/slider";
+import { useScopedT } from "@/contexts/I18nContext";
 import { Button } from "../ui/button";
 
 interface PlaybackControlsProps {
