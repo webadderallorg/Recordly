@@ -1,4 +1,4 @@
-import { type MutableRefObject, useCallback, useRef, useState } from "react";
+import { type MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
 import { getErrorMessage } from "./recordingError";
@@ -41,6 +41,10 @@ export function useRecorderWebcam({
 		deviceId: string | undefined;
 		message: string;
 	} | null>(null);
+	useEffect(() => {
+		// Turning the webcam off is the user's retry; forget the last take's failure.
+		if (!webcamEnabled) setWebcamFailure(null);
+	}, [webcamEnabled]);
 	const markWebcamUnavailable = useCallback(
 		(error: unknown) =>
 			setWebcamFailure({ deviceId: webcamDeviceId, message: getErrorMessage(error) }),

@@ -96,6 +96,7 @@ export type RecordingSessionManifest = {
 	videoFileName: string;
 	webcamFileName?: string | null;
 	timeOffsetMs?: number;
+	captureSourceKind?: RecordingSessionData["captureSourceKind"];
 };
 
 export type ProjectLibraryEntry = {

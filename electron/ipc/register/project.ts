@@ -1119,7 +1119,9 @@ export function registerProjectHandlers() {
 				hideOverlayCursorByDefault:
 					normalizeBoolean(options?.hideOverlayCursorByDefault) ||
 					normalizeBoolean(resolvedSession.hideOverlayCursorByDefault),
-				captureSourceKind: normalizeCaptureSourceKind(options?.captureSourceKind),
+				captureSourceKind:
+					normalizeCaptureSourceKind(options?.captureSourceKind) ??
+					resolvedSession.captureSourceKind,
 			};
 
 			setCurrentRecordingSession(nextSession);
@@ -1134,7 +1136,7 @@ export function registerProjectHandlers() {
 				]);
 			}
 
-			if (nextSession.webcamPath) {
+			if (nextSession.webcamPath || nextSession.captureSourceKind) {
 				await persistRecordingSessionManifest(nextSession);
 			}
 
@@ -1167,13 +1169,19 @@ export function registerProjectHandlers() {
 		) => {
 			const normalizedVideoPath =
 				normalizeVideoSourcePath(session.videoPath) ?? session.videoPath;
+			const previousCaptureSourceKind =
+				currentRecordingSession?.videoPath === normalizedVideoPath
+					? currentRecordingSession.captureSourceKind
+					: undefined;
 			setCurrentVideoPath(normalizedVideoPath);
 			setCurrentRecordingSession({
 				videoPath: normalizedVideoPath,
 				webcamPath: normalizeVideoSourcePath(session.webcamPath ?? null),
 				timeOffsetMs: normalizeRecordingTimeOffsetMs(session.timeOffsetMs),
 				hideOverlayCursorByDefault: normalizeBoolean(session.hideOverlayCursorByDefault),
-				captureSourceKind: normalizeCaptureSourceKind(session.captureSourceKind),
+				captureSourceKind:
+					normalizeCaptureSourceKind(session.captureSourceKind) ??
+					previousCaptureSourceKind,
 			});
 			await rememberApprovedLocalReadPath(currentRecordingSession!.videoPath);
 			await rememberApprovedLocalReadPath(currentRecordingSession!.webcamPath);

@@ -66,15 +66,15 @@ export function normalizePadding(value: unknown, fallback: Padding = DEFAULT_PAD
 		const p = value as Partial<Padding>;
 		const linked = typeof p.linked === "boolean" ? p.linked : true;
 		const verticalMax = linked ? 100 : ADVANCED_VERTICAL_PADDING_MAX;
-		const top = isFiniteNumber(p.top) ? clamp(p.top, 0, verticalMax) : fallback.top;
+		const top = clamp(isFiniteNumber(p.top) ? p.top : fallback.top, 0, verticalMax);
 		if (linked) {
 			return { top, bottom: top, left: top, right: top, linked: true };
 		}
 		return {
 			top,
-			bottom: isFiniteNumber(p.bottom) ? clamp(p.bottom, 0, verticalMax) : fallback.bottom,
-			left: isFiniteNumber(p.left) ? clamp(p.left, 0, 100) : fallback.left,
-			right: isFiniteNumber(p.right) ? clamp(p.right, 0, 100) : fallback.right,
+			bottom: clamp(isFiniteNumber(p.bottom) ? p.bottom : fallback.bottom, 0, verticalMax),
+			left: clamp(isFiniteNumber(p.left) ? p.left : fallback.left, 0, 100),
+			right: clamp(isFiniteNumber(p.right) ? p.right : fallback.right, 0, 100),
 			linked: false,
 		};
 	}

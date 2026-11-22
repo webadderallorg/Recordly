@@ -126,6 +126,17 @@ describe("recorder webcam sidecar", () => {
 		expect(FakeMediaRecorder.instances).toHaveLength(0);
 	});
 
+	it("forgets a stored failure once the webcam is turned off, so turning it back on retries", () => {
+		createWebcam();
+		for (const effect of effects) effect();
+		expect(setWebcamFailure).not.toHaveBeenCalled();
+
+		effects.length = 0;
+		createWebcam({ webcamEnabled: false });
+		for (const effect of effects) effect();
+		expect(setWebcamFailure).toHaveBeenCalledExactlyOnceWith(null);
+	});
+
 	it("does not acquire or start a disabled webcam", async () => {
 		const webcam = createWebcam({ webcamEnabled: false });
 		await webcam.prepareWebcamRecorder();
@@ -321,6 +332,7 @@ describe("recorder webcam sidecar", () => {
 		"paused",
 	] as const)("flushes a %s webcam's final chunk after the controls unmount", async (state) => {
 		const webcam = createWebcam();
+		effects.length = 0;
 		await webcam.prepareWebcamRecorder();
 		webcam.beginWebcamCapture();
 		recorder().state = state;
