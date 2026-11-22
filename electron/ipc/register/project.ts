@@ -1136,7 +1136,10 @@ export function registerProjectHandlers() {
 				]);
 			}
 
-			if (nextSession.webcamPath || nextSession.captureSourceKind) {
+			if (
+				nextSession.webcamPath ||
+				nextSession.captureSourceKind !== resolvedSession.captureSourceKind
+			) {
 				await persistRecordingSessionManifest(nextSession);
 			}
 
