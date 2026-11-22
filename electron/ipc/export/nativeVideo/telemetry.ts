@@ -1,6 +1,9 @@
 import fs from "node:fs/promises";
+import { CURSOR_VISUAL_TYPES } from "../../../../src/shared/cursorVisualTypes";
 import { formatCliNumber } from "./layout";
 import { type NativeStaticLayoutExportOptions } from "./types";
+
+const MAX_CURSOR_TYPE_INDEX = CURSOR_VISUAL_TYPES.length - 1;
 
 export async function prepareWindowsGpuCursorTelemetry(
 	options: NativeStaticLayoutExportOptions,
@@ -25,7 +28,7 @@ export async function prepareWindowsGpuCursorTelemetry(
 			const cy = Math.min(1, Math.max(0, sample.cy));
 			const cursorTypeIndex = Math.max(
 				0,
-				Math.min(8, Math.round(sample.cursorTypeIndex ?? 0)),
+				Math.min(MAX_CURSOR_TYPE_INDEX, Math.round(sample.cursorTypeIndex ?? 0)),
 			);
 			const bounceScale = Math.min(2, Math.max(0.1, sample.bounceScale ?? 1));
 			const visible = sample.visible !== false ? 1 : 0;
@@ -80,7 +83,7 @@ export async function prepareWindowsGpuCursorAtlas(
 		})
 		.map((entry) =>
 			[
-				String(Math.max(0, Math.min(8, entry.index))),
+				String(Math.max(0, Math.min(MAX_CURSOR_TYPE_INDEX, entry.index))),
 				formatCliNumber(Math.max(0, entry.x)),
 				formatCliNumber(Math.max(0, entry.y)),
 				formatCliNumber(Math.max(1, entry.width)),
@@ -120,7 +123,10 @@ export async function prepareNvidiaCudaCursorTelemetry(
 			timeMs: Math.max(0, sample.timeMs),
 			cx: Math.min(1, Math.max(0, sample.cx)),
 			cy: Math.min(1, Math.max(0, sample.cy)),
-			cursorTypeIndex: Math.max(0, Math.min(8, Math.round(sample.cursorTypeIndex ?? 0))),
+			cursorTypeIndex: Math.max(
+				0,
+				Math.min(MAX_CURSOR_TYPE_INDEX, Math.round(sample.cursorTypeIndex ?? 0)),
+			),
 			bounceScale: Math.min(2, Math.max(0.1, sample.bounceScale ?? 1)),
 			visible: sample.visible !== false,
 		}));
@@ -165,7 +171,7 @@ export async function prepareNvidiaCudaCursorAtlas(
 		})
 		.map((entry) =>
 			[
-				String(Math.max(0, Math.min(8, entry.index))),
+				String(Math.max(0, Math.min(MAX_CURSOR_TYPE_INDEX, entry.index))),
 				formatCliNumber(Math.max(0, entry.x)),
 				formatCliNumber(Math.max(0, entry.y)),
 				formatCliNumber(Math.max(1, entry.width)),

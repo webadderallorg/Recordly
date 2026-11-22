@@ -52,16 +52,13 @@ export function buildCursorPackSourcesSignature(sources: Record<string, CursorPa
 }
 
 export function getCursorAsset(key: CursorAssetKey): LoadedCursorAsset {
-	const asset = loadedCursorAssets[key];
-	if (!asset) {
-		throw new Error(`Missing cursor asset for ${key}`);
-	}
-
-	return asset;
+	return getStatefulCursorAsset("tahoe", key);
 }
 
 export function getAvailableCursorKeys(): CursorAssetKey[] {
-	const loadedKeys = Object.keys(loadedCursorAssets) as CursorAssetKey[];
+	const loadedKeys = SUPPORTED_CURSOR_KEYS.filter(
+		(key) => loadedCursorAssets[key] || loadedCursorSetAssets.windows11?.[key],
+	);
 	return loadedKeys.length > 0 ? loadedKeys : ["arrow"];
 }
 
@@ -92,7 +89,8 @@ export function getCursorPackStyleAsset(style: CursorPackStyle, key: CursorAsset
 
 export function getStatefulCursorAsset(style: StatefulCursorStyle, key: CursorAssetKey) {
 	const assetMap = loadedCursorSetAssets[style] ?? loadedCursorAssets;
-	const asset = assetMap[key] ?? assetMap.arrow;
+	const asset =
+		assetMap[key] ?? (key === "move" ? assetMap["open-hand"] : undefined) ?? assetMap.arrow;
 	if (!asset) {
 		throw new Error(`Missing ${style} cursor asset for ${key}`);
 	}
@@ -144,10 +142,7 @@ export async function preloadCursorAssets() {
 				const entries = await Promise.all(
 					SUPPORTED_CURSOR_KEYS.map(async (key) => {
 						const sourceAsset = cursorSetAssets[style][key];
-						if (!sourceAsset?.url) {
-							console.warn(`[CursorRenderer] No cursor image for: ${style}/${key}`);
-							return null;
-						}
+						if (!sourceAsset) return null;
 
 						try {
 							const asset =

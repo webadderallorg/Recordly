@@ -1,6 +1,7 @@
 import { Texture } from "pixi.js";
 import boldOutlineArrowUrl from "@/assets/cursors/bold-outline/arrow.svg";
 import boldOutlinePointerUrl from "@/assets/cursors/bold-outline/pointer.svg";
+import { CURSOR_VISUAL_TYPES } from "@/shared/cursorVisualTypes";
 import {
 	type CursorClickEffectStyle,
 	type CursorStyle,
@@ -167,22 +168,13 @@ export const DEFAULT_CURSOR_CONFIG: CursorRenderConfig = {
 	style: DEFAULT_CURSOR_STYLE,
 };
 
-export const SUPPORTED_CURSOR_KEYS: CursorAssetKey[] = [
-	"arrow",
-	"text",
-	"pointer",
-	"crosshair",
-	"open-hand",
-	"closed-hand",
-	"resize-ew",
-	"resize-ns",
-	"not-allowed",
-];
+export const SUPPORTED_CURSOR_KEYS = CURSOR_VISUAL_TYPES;
 
 export const CURSOR_PACK_POINTER_TYPES = new Set<CursorAssetKey>([
 	"pointer",
 	"open-hand",
 	"closed-hand",
+	"move",
 ]);
 
 export const BUILTIN_CURSOR_PACK_SOURCES: Record<string, CursorPackSource> = {
