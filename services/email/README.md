@@ -34,10 +34,10 @@ authentication email's plain-text part has not been inspected.
 The 14 subscription/billing messages in `billing/` have been connected in the
 private hosted backend to verified Stripe events, a durable D1 outbox, scheduled
 renewal/trial/card reminders and a Resend HTML/text sender. That implementation
-has passed local Worker/D1 tests. **Production billing delivery remains off pending
-deployment, webhook configuration and a provider delivery check. A sending-only
-Resend key restricted to the verified auth subdomain is now stored as a Cloudflare
-Worker secret.** The private backend keeps credentials and recipient selection outside this
+has passed local Worker/D1 tests. **Production billing delivery was enabled on
+22 November 2026.** It uses a sending-only Resend key, restricted to the verified
+auth subdomain and stored as a Cloudflare Worker secret. The private backend keeps
+credentials and recipient selection outside this
 public desktop source. This folder itself has no queue or network side effects;
 building or previewing never sends mail. All 27 manual previews were sent separately
 to the owner's inbox; those previews did not test production billing delivery.
@@ -64,8 +64,8 @@ Stripe receipts, invoices and recovery emails remain separately controlled in
 Stripe. Before connecting these designs, choose one sender for each notification
 to avoid sending duplicate receipts or reminders.
 
-The prepared billing sender is `Recordly <notifications@auth.recordly.dev>` on
-the existing verified sending subdomain, with `support@recordly.dev` as reply-to.
+The billing sender is `Young from Recordly <young@auth.recordly.dev>` on the
+existing verified sending subdomain, with `support@recordly.dev` as reply-to.
 Support mail now forwards to the owner's inbox. `notifications@recordly.dev` can
 be used later after verifying the root sending domain. The existing Supabase
 SMTP sender (`noreply@auth.recordly.dev`) is unchanged; this source does not create
