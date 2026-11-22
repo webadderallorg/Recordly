@@ -39,6 +39,8 @@ export function OnboardingLayout({
 			: [{ key: "upgrade" as const, label: t("upgrade", "Upgrade") }]),
 	] as const;
 	const reduceMotion = useReducedMotion();
+	const withIntro =
+		new URLSearchParams(window.location.search).get("welcomeSoundtrack") === "intro";
 	const transition = { duration: reduceMotion ? 0 : 0.28, ease: [0.22, 1, 0.36, 1] as const };
 	return (
 		<div
@@ -58,7 +60,10 @@ export function OnboardingLayout({
 				transition={transition}
 				className="onboarding-artwork relative m-2 overflow-hidden rounded-t-2xl"
 			>
-				<RecordlyDemoVideo className="absolute inset-0" />
+				<RecordlyDemoVideo
+					className="absolute inset-0"
+					waitForOnboardingIntro={withIntro}
+				/>
 			</motion.div>
 			<motion.div
 				layout={reduceMotion || carousel ? false : "position"}

@@ -5,7 +5,13 @@ import "./RecordlyDemoVideo.css";
 const STILL_DURATION_MS = 2500;
 
 /** Shared theme-matched still → silent demo loop for account and Cloud banners. */
-export function RecordlyDemoVideo({ className = "" }: { className?: string }) {
+export function RecordlyDemoVideo({
+	className = "",
+	waitForOnboardingIntro = false,
+}: {
+	className?: string;
+	waitForOnboardingIntro?: boolean;
+}) {
 	const rootRef = useRef<HTMLSpanElement>(null);
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const [phase, setPhase] = useState<"loading" | "still" | "video">("loading");
@@ -15,15 +21,16 @@ export function RecordlyDemoVideo({ className = "" }: { className?: string }) {
 		const video = videoRef.current;
 		if (!root || !video) return;
 		const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+		const introCue = waitForOnboardingIntro
+			? window.electronAPI?.waitForOnboardingBanner?.()
+			: undefined;
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		let disposed = false;
-		let imagesReady = false;
 		const clearTimer = () => clearTimeout(timer);
 		const startStill = () => {
 			clearTimer();
 			video.pause();
 			video.currentTime = 0;
-			if (!imagesReady) return;
 			setPhase("still");
 			if (reducedMotion.matches || document.hidden || video.error) return;
 			timer = setTimeout(() => {
@@ -38,21 +45,17 @@ export function RecordlyDemoVideo({ className = "" }: { className?: string }) {
 			if (reducedMotion.matches || document.hidden) video.pause();
 			else setPhase("video");
 		};
-		video.addEventListener("playing", onPlaying);
-		video.addEventListener("ended", startStill);
-		video.addEventListener("error", startStill);
-		document.addEventListener("visibilitychange", startStill);
-		reducedMotion.addEventListener("change", startStill);
-		// Count the 2.5 seconds after the images are ready to display.
-		void Promise.all(
-			Array.from(root.querySelectorAll("img")).map((image) =>
-				image.decode().catch(() => {
-					// A missing still must not prevent the video from being playable.
-				}),
-			),
-		).then(() => {
+		const waitForImages = () =>
+			Promise.allSettled(Array.from(root.querySelectorAll("img"), (image) => image.decode()));
+		// Start on the native cue even if a banner image is still decoding.
+		const ready = introCue ? introCue.catch(waitForImages) : waitForImages();
+		void ready.then(() => {
 			if (disposed) return;
-			imagesReady = true;
+			video.addEventListener("playing", onPlaying);
+			video.addEventListener("ended", startStill);
+			video.addEventListener("error", startStill);
+			document.addEventListener("visibilitychange", startStill);
+			reducedMotion.addEventListener("change", startStill);
 			startStill();
 		});
 		return () => {
@@ -65,7 +68,7 @@ export function RecordlyDemoVideo({ className = "" }: { className?: string }) {
 			reducedMotion.removeEventListener("change", startStill);
 			video.pause();
 		};
-	}, []);
+	}, [waitForOnboardingIntro]);
 
 	return (
 		<span

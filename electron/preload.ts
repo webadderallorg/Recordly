@@ -576,6 +576,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("onboarding-intro-shown", listener);
 		return () => ipcRenderer.removeListener("onboarding-intro-shown", listener);
 	},
+	waitForOnboardingBanner: () => ipcRenderer.invoke("wait-for-onboarding-banner"),
 	onOnboardingSoundtrackStart: (callback: () => void) => {
 		const listener = () => callback();
 		ipcRenderer.on("onboarding-soundtrack-start", listener);
