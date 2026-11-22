@@ -245,6 +245,7 @@
 		"savingGif": "Salvando GIF…",
 		"encodingGif": "Finalizando GIF…",
 		"errorCopied": "Erro copiado",
+		"nvidiaCudaFallback": "A exportação com NVIDIA CUDA falhou. O Recordly está tentando outro método de exportação.",
 		"errorCopyFailed": "Não foi possível copiar. Selecione o texto do erro e copie manualmente.",
 		"copyError": "Copiar erro"
 	},

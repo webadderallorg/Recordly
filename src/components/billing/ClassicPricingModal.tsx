@@ -306,11 +306,7 @@ export function ClassicPricingModal({ onSignIn }: { onSignIn: () => void }) {
 									{t("active", "Your Cloud plan is active.")}
 									{status.billing.cancelAtPeriodEnd && currentPeriodEnd
 										? ` ${t("ends", "It ends on {{date}}.", { date: new Date(currentPeriodEnd * 1000).toLocaleDateString(locale) })}`
-										: ""}{" "}
-									{t(
-										"noExpiry",
-										"Cloud recordings have no expiry while Cloud is active. They expire 7 days after Cloud ends.",
-									)}
+										: ""}
 									{status.billing.portalAvailable &&
 										` ${t("portal", "Manage your payment details or cancel in the secure billing portal.")}`}
 								</p>

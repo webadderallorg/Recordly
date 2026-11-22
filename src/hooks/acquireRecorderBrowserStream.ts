@@ -21,6 +21,7 @@ export async function acquireRecorderBrowserStream(
 	context: Pick<
 		RecorderContext,
 		| "hideEditorOverlayCursorByDefault"
+		| "captureSourceKind"
 		| "microphoneEnabled"
 		| "systemAudioEnabled"
 		| "resolveBrowserCaptureSource"
@@ -42,6 +43,7 @@ export async function acquireRecorderBrowserStream(
 ) {
 	const {
 		hideEditorOverlayCursorByDefault,
+		captureSourceKind,
 		microphoneEnabled,
 		systemAudioEnabled,
 		resolveBrowserCaptureSource,
@@ -225,6 +227,13 @@ export async function acquireRecorderBrowserStream(
 
 	if (!stream.current || !videoTrack) {
 		throw new Error("Media stream is not available.");
+	}
+
+	if (useLinuxPortal) {
+		// The portal's displaySurface is only a preference; the user can pick any surface.
+		const surface = videoTrack.getSettings?.().displaySurface;
+		if (surface === "window") captureSourceKind.current = "window";
+		else if (surface === "monitor") captureSourceKind.current = "screen";
 	}
 
 	try {

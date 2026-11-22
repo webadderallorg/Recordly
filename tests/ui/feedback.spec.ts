@@ -1,8 +1,13 @@
 import { expect, test } from "@playwright/test";
+import { feedbackHandler } from "../../services/supabase/functions/submit-feedback/handler";
+import {
+	CHUNK_BYTES,
+	feedbackUploads,
+} from "../../services/supabase/functions/submit-feedback/uploads";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 for (const clearSelection of [false, true]) {
-	test(`feedback submits without an emoji${clearSelection ? " after clearing a selection" : ""}`, async ({
+	test(`feedback submits ${clearSelection ? "without an emoji after clearing Neutral" : "with Neutral by default"}`, async ({
 		page,
 	}) => {
 		await installDesktopBridge(page);
@@ -18,13 +23,12 @@ for (const clearSelection of [false, true]) {
 			.getByRole("button", { name: "Feedback", exact: true })
 			.click();
 		const modal = page.getByRole("dialog", { name: "Send feedback", exact: true });
+		const neutral = modal.getByRole("button", { name: "Neutral", exact: true });
+		await expect(neutral).toHaveAttribute("aria-pressed", "true");
 		if (clearSelection) {
-			const loving = modal.getByRole("button", { name: "Loving", exact: true });
-			await loving.click();
-			await expect(loving).toHaveAttribute("aria-pressed", "true");
-			await loving.click();
+			await neutral.click();
+			await expect(modal.locator('[aria-pressed="true"]')).toHaveCount(0);
 		}
-		await expect(modal.locator('[aria-pressed="true"]')).toHaveCount(0);
 		await modal.getByRole("button", { name: "Send feedback", exact: true }).click();
 		await expect(modal).toBeVisible();
 		expect(requestBody).toBe("");
@@ -35,8 +39,18 @@ for (const clearSelection of [false, true]) {
 		await expect(
 			page.getByRole("dialog", { name: "Thanks for your feedback", exact: true }),
 		).toBeVisible();
-		expect(requestBody).toContain('name="title"\r\n\r\nPlease add more keyboard shortcuts.');
-		expect(requestBody).not.toMatch(/🥰|😐|😠/u);
+		expect(requestBody).toContain(
+			`name="title"\r\n\r\n${clearSelection ? "" : "😐 "}Please add more keyboard shortcuts.`,
+		);
+		if (clearSelection) {
+			await page.getByRole("button", { name: "Done", exact: true }).click();
+			await page.getByRole("button", { name: "Recordly account", exact: true }).click();
+			await page
+				.getByRole("dialog", { name: "Account menu", exact: true })
+				.getByRole("button", { name: "Feedback", exact: true })
+				.click();
+			await expect(neutral).toHaveAttribute("aria-pressed", "true");
+		}
 	});
 }
 
@@ -109,9 +123,7 @@ test("feedback preserves a draft on failure, supports attachments, and includes 
 	await modal.getByRole("button", { name: "Remove notes.txt" }).click();
 	await expect(modal.getByText("notes.txt", { exact: true })).toHaveCount(0);
 	await expect(
-		modal.getByText(
-			"Diagnostic logs will be attached. Feedback will be sent to support@recordly.dev.",
-		),
+		modal.getByText("Diagnostic logs will be attached.", { exact: true }),
 	).toBeVisible();
 	await expect(modal.getByRole("checkbox")).toHaveCount(0);
 	await expect(modal.getByLabel("Title", { exact: true })).toHaveCount(0);
@@ -169,23 +181,64 @@ test("feedback preserves a draft on failure, supports attachments, and includes 
 	);
 });
 
-test("feedback attaches saved export logs", async ({ page }) => {
+test("large feedback uploads resume from the last saved chunk without creating a second report", async ({
+	page,
+}) => {
 	await installDesktopBridge(page);
-	await page.addInitScript(() => {
-		window.electronAPI.getExportDiagnostics = async () => ({
-			success: true,
-			logs: [
-				'2026-10-18T08:00:00.000Z info: [export] failed {"encoderName":"Breeze","error":"Encoder stopped"}',
-			],
-		});
+	const size = 2 * CHUNK_BYTES + 11;
+	const chunks: number[] = [];
+	const ids = new Set<string>();
+	let savedBytes = 0;
+	let initialized = false;
+	let reports = 0;
+	let notifications = 0;
+	const handle = feedbackUploads({
+		authenticate: async (token) => (token.endsWith(".ui-test-signature") ? "test-user" : null),
+		prepare: async (_user, id, files) => {
+			ids.add(id);
+			expect(files).toEqual([{ name: "recording.webm", size, type: "video/webm" }]);
+			return "ready";
+		},
+		find: async () => ({
+			files: [{ name: "recording.webm", size, type: "video/webm" }],
+			urls: initialized ? { "0": "/upload" } : {},
+		}),
+		create: async () => "/upload",
+		saveUrl: async () => {
+			initialized = true;
+			return "/upload";
+		},
+		offset: async () => savedBytes,
+		append: async (_url, start, bytes) => {
+			expect(start).toBe(savedBytes);
+			chunks.push(bytes.byteLength);
+			savedBytes += bytes.byteLength;
+			if (chunks.length === 1) return null; // The chunk arrived, but the app didn't receive confirmation.
+			return savedBytes;
+		},
+		finish: async () => {
+			expect(savedBytes).toBe(size);
+			reports++;
+			return "new";
+		},
+		notify: async () => {
+			notifications++;
+		},
 	});
-	let requestBody = "";
-	await page.route("**/functions/v1/submit-feedback", async (route) => {
-		requestBody = route.request().postData() ?? "";
+	await page.route(/\/functions\/v1\/submit-feedback\?upload=/, async (route) => {
+		const req = route.request();
+		const result = await handle(
+			new Request(req.url(), {
+				method: req.method(),
+				headers: req.headers(),
+				body: new Uint8Array(req.postDataBuffer() ?? []),
+			}),
+			new URL(req.url()),
+		);
 		await route.fulfill({
-			status: 200,
-			contentType: "application/json",
-			body: JSON.stringify({ success: true }),
+			status: result.status,
+			headers: Object.fromEntries(result.headers),
+			body: await result.text(),
 		});
 	});
 	await page.goto("/?windowType=editor");
@@ -195,17 +248,97 @@ test("feedback attaches saved export logs", async ({ page }) => {
 		.getByRole("button", { name: "Feedback", exact: true })
 		.click();
 	const modal = page.getByRole("dialog", { name: "Send feedback", exact: true });
-	await modal.getByRole("button", { name: "Neutral", exact: true }).click();
+	await modal.getByLabel("Description", { exact: true }).fill("See the attached recording.");
+	await expect(
+		modal.getByRole("button", { name: "Attach files (50 MB)", exact: true }),
+	).toBeVisible();
+	await modal.getByLabel("Attach files", { exact: true }).setInputFiles({
+		name: "recording.webm",
+		mimeType: "video/webm",
+		buffer: Buffer.alloc(size),
+	});
+	const send = modal.getByRole("button", { name: "Send feedback", exact: true });
+	await send.click();
+	await expect(modal.getByRole("alert")).toContainText("Could not send feedback");
+	await expect(modal.getByText("recording.webm", { exact: true })).toBeVisible();
+	await send.click();
+	await expect(page.getByRole("dialog", { name: "Thanks for your feedback" })).toBeVisible();
+	expect(chunks).toEqual([CHUNK_BYTES, CHUNK_BYTES, 11]);
+	expect(ids.size).toBe(1);
+	expect(reports).toBe(1);
+	expect(notifications).toBe(1);
+});
+
+test("feedback stores its attachment and saved export logs through the handler", async ({
+	page,
+}) => {
+	await installDesktopBridge(page);
+	await page.addInitScript(() => {
+		window.electronAPI.getExportDiagnostics = async () => ({
+			success: true,
+			logs: [
+				'2026-10-18T08:00:00.000Z info: [export] failed {"encoderName":"Breeze","error":"Encoder stopped"}',
+			],
+		});
+	});
+	const stored: Record<string, unknown>[] = [];
+	const uploads = new Map<string, string>();
+	const attachment = Buffer.from("Reproduction steps");
+	const handle = feedbackHandler({
+		authenticate: async (token) => (token.endsWith(".ui-test-signature") ? "test-user" : null),
+		reserve: async (_userId, files, bytes) => files === 1 && bytes === attachment.length,
+		upload: async (path, file) => {
+			uploads.set(path, await file.text());
+		},
+		insert: async (report) => {
+			stored.push(report);
+		},
+		remove: async (paths) => {
+			for (const path of paths) uploads.delete(path);
+		},
+	});
+	await page.route("**/functions/v1/submit-feedback", async (route) => {
+		const req = route.request();
+		const result = await handle(
+			new Request(req.url(), {
+				method: req.method(),
+				headers: req.headers(),
+				body: new Uint8Array(req.postDataBuffer() ?? []),
+			}),
+		);
+		await route.fulfill({
+			status: result.status,
+			headers: Object.fromEntries(result.headers),
+			body: await result.text(),
+		});
+	});
+	await page.goto("/?windowType=editor");
+	await page.getByRole("button", { name: "Recordly account", exact: true }).click();
+	await page
+		.getByRole("dialog", { name: "Account menu", exact: true })
+		.getByRole("button", { name: "Feedback", exact: true })
+		.click();
+	const modal = page.getByRole("dialog", { name: "Send feedback", exact: true });
 	await modal
 		.getByLabel("Description", { exact: true })
 		.fill("The exporter stopped before completion.");
+	await modal.getByLabel("Attach files", { exact: true }).setInputFiles({
+		name: "notes.txt",
+		mimeType: "text/plain",
+		buffer: attachment,
+	});
 	await modal.getByRole("button", { name: "Send feedback", exact: true }).click();
 	await expect(
 		page.getByRole("dialog", { name: "Thanks for your feedback", exact: true }),
 	).toBeVisible();
-	expect(requestBody).toContain("😐 The exporter stopped before completion.");
-	expect(requestBody).toContain('name="logs"');
-	expect(requestBody).toContain("[export] failed");
-	expect(requestBody).toContain("Breeze");
-	expect(requestBody).toContain("Encoder stopped");
+	expect(stored).toHaveLength(1);
+	expect(uploads.size).toBe(1);
+	const [path, contents] = [...uploads.entries()][0];
+	expect(contents).toBe("Reproduction steps");
+	expect(stored[0]).toMatchObject({
+		user_id: "test-user",
+		title: "😐 The exporter stopped before completion.",
+		attachments: [{ path, name: "notes.txt", size: attachment.length, type: "text/plain" }],
+		logs: expect.stringMatching(/\[export\] failed.*Breeze.*Encoder stopped/),
+	});
 });

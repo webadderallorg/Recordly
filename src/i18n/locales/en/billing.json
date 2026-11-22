@@ -24,7 +24,6 @@
 	"checkout": "Complete checkout in your browser, then return here. Your plan will update after payment is confirmed.",
 	"active": "Your Cloud plan is active.",
 	"ends": "It ends on {{date}}.",
-	"noExpiry": "Cloud recordings have no expiry while Cloud is active. They expire 7 days after Cloud ends.",
 	"portal": "Manage your payment details or cancel in the secure billing portal.",
 	"featureCommercial": "Commercial use",
 	"featureCaptionFiles": "SRT and VTT caption-file exports",

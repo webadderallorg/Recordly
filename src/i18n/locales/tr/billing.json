@@ -24,7 +24,6 @@
 	"checkout": "Ödemeyi tarayıcınızda tamamlayın, ardından buraya dönün. Planınız ödeme onaylandıktan sonra güncellenecektir.",
 	"active": "Cloud planınız aktif.",
 	"ends": "{{date}} tarihinde sona eriyor.",
-	"noExpiry": "Cloud aktif olduğu sürece bulut kayıtlarının süresi dolmaz. Cloud bittikten 7 gün sonra süreleri dolar.",
 	"portal": "Ödeme bilgilerinizi yönetin veya güvenli fatura portalından iptal edin.",
 	"featureCommercial": "Ticari kullanım",
 	"featureCaptionFiles": "SRT ve VTT altyazı dosyası dışa aktarma",

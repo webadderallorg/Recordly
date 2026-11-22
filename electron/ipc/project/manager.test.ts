@@ -12,7 +12,9 @@ describe("local media path policy", () => {
 	let appPath: string;
 
 	beforeEach(async () => {
-		tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-media-policy-"));
+		tempRoot = await fs.realpath(
+			await fs.mkdtemp(path.join(os.tmpdir(), "recordly-media-policy-")),
+		);
 		appDataPath = path.join(tempRoot, "AppData");
 		userDataPath = path.join(tempRoot, "UserData");
 		tempPath = path.join(tempRoot, "Temp");

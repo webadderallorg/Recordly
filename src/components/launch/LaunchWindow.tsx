@@ -74,6 +74,7 @@ function LaunchWindowContent() {
 		systemAudioEnabled,
 		setSystemAudioEnabled,
 		webcamEnabled,
+		webcamRecordingError,
 		setWebcamEnabled,
 		webcamDeviceId,
 		setWebcamDeviceId,
@@ -94,7 +95,8 @@ function LaunchWindowContent() {
 	const webcamPopoverOpen = openId === "webcam";
 	const cameraPermission = useCameraPermission(platform, webcamPopoverOpen, webcamEnabled);
 	const cameraAllowed = cameraPermission === "granted";
-	const showWebcamControls = cameraAllowed && webcamEnabled && !recording;
+	const showWebcamControls =
+		webcamEnabled && !recording && (cameraAllowed || Boolean(webcamRecordingError));
 	const { devices, selectedDeviceId, setSelectedDeviceId } = useMicrophoneDevices(
 		microphoneEnabled || openId === "mic",
 		microphoneDeviceId,
@@ -108,8 +110,9 @@ function LaunchWindowContent() {
 	}, [selectedDeviceId, setMicrophoneDeviceId]);
 
 	const webcamPreview = useWebcamPreviewOverlay({
-		webcamEnabled: cameraAllowed && webcamEnabled,
+		webcamEnabled: webcamEnabled && (cameraAllowed || Boolean(webcamRecordingError)),
 		webcamDeviceId,
+		webcamRecordingError,
 		showWebcamControls,
 		webcamPopoverOpen,
 		hudOverlayMousePassthroughSupported,
@@ -419,6 +422,7 @@ function LaunchWindowContent() {
 				showFloatingWebcamPreview={showFloatingWebcamPreview}
 				onToggleFloatingPreview={() => setShowFloatingWebcamPreview((current) => !current)}
 				showWebcamControls={showWebcamControls && !showRecordingWebcamPreview}
+				previewError={webcamPreview.webcamPreviewError}
 				roundness={webcamPreviewRoundness}
 				shape={webcamPreviewShape}
 				setWebcamPreviewNode={setWebcamPreviewNode}

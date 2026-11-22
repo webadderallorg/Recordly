@@ -138,7 +138,7 @@ export function useAppearanceState(preferences: EditorPreferences) {
 	const [cursorSway, setCursorSway] = useState(preferences.cursorSway);
 	const [cursorIdleHide, setCursorIdleHide] = useState(preferences.cursorIdleHide);
 	const [borderRadius, setBorderRadius] = useState(preferences.borderRadius);
-	const [padding, setPadding] = useState(preferences.padding);
+	const [padding, setPadding] = useState(preferences.screenPadding);
 	const [cropRegion, setCropRegion] = useState<CropRegion>(DEFAULT_CROP_REGION);
 	const [webcam, setWebcam] = useState<WebcamOverlaySettings>(
 		preferences.webcam ?? DEFAULT_WEBCAM_OVERLAY,

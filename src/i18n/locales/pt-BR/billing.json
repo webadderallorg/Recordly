@@ -24,7 +24,6 @@
 	"checkout": "Conclua o pagamento no navegador e volte aqui. Seu plano será atualizado após a confirmação do pagamento.",
 	"active": "Seu plano Cloud está ativo.",
 	"ends": "Ele termina em {{date}}.",
-	"noExpiry": "As gravações na nuvem não expiram enquanto o Cloud estiver ativo. Elas expiram 7 dias após o fim do Cloud.",
 	"portal": "Gerencie seus dados de pagamento ou cancele no portal de pagamento seguro.",
 	"featureCommercial": "Uso comercial",
 	"featureCaptionFiles": "Exportação de legendas em arquivos SRT e VTT",

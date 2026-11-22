@@ -1,4 +1,4 @@
-import { type MutableRefObject, useCallback, useRef } from "react";
+import { type MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
 import { getErrorMessage } from "./recordingError";
@@ -37,6 +37,19 @@ export function useRecorderWebcam({
 	const webcamStopPromise = useRef<Promise<string | null> | null>(null);
 	const webcamStopResolver = useRef<((path: string | null) => void) | null>(null);
 	const resolvedWebcamPath = useRef<string | null>(null);
+	const [webcamFailure, setWebcamFailure] = useState<{
+		deviceId: string | undefined;
+		message: string;
+	} | null>(null);
+	useEffect(() => {
+		// Turning the webcam off is the user's retry; forget the last take's failure.
+		if (!webcamEnabled) setWebcamFailure(null);
+	}, [webcamEnabled]);
+	const markWebcamUnavailable = useCallback(
+		(error: unknown) =>
+			setWebcamFailure({ deviceId: webcamDeviceId, message: getErrorMessage(error) }),
+		[webcamDeviceId],
+	);
 
 	const releaseWebcamCapture = useCallback(() => {
 		webcamCaptureGeneration.current++;
@@ -50,6 +63,7 @@ export function useRecorderWebcam({
 				"Failed to start webcam recording; continuing without webcam layer:",
 				error,
 			);
+			markWebcamUnavailable(error);
 			webcamStopResolver.current?.(null);
 			webcamStopResolver.current = null;
 			resolvedWebcamPath.current = null;
@@ -70,7 +84,7 @@ export function useRecorderWebcam({
 				),
 			});
 		},
-		[releaseWebcamCapture],
+		[markWebcamUnavailable, releaseWebcamCapture],
 	);
 
 	const stopWebcamRecorder = useCallback(async () => {
@@ -107,6 +121,7 @@ export function useRecorderWebcam({
 
 	/** Acquire and prepare the webcam; begin capture only after the main recording starts. */
 	const prepareWebcamRecorder = useCallback(async () => {
+		setWebcamFailure(null);
 		if (!webcamEnabled) {
 			toast.dismiss("recording-webcam-unavailable");
 			resolvedWebcamPath.current = null;
@@ -159,6 +174,7 @@ export function useRecorderWebcam({
 				`${RECORDING_FILE_PREFIX}${sessionTimestamp}${WEBCAM_SUFFIX}${getVideoExtensionForMimeType(webcamMimeType)}`,
 				webcamMimeType || "video/webm",
 				(message) => {
+					markWebcamUnavailable(message);
 					toast.error(`Webcam recording stopped: ${message}`);
 					if (recorder.state !== "inactive") recorder.stop();
 				},
@@ -167,8 +183,12 @@ export function useRecorderWebcam({
 			const resolveWebcam = webcamStopResolver.current;
 			webcamRecorder.current = recorder;
 			recorder.ondataavailable = (event) => writer.write(event.data);
-			recorder.onerror = () =>
+			recorder.onerror = (event) => {
+				markWebcamUnavailable(
+					"error" in event ? event.error : "The webcam recorder failed.",
+				);
 				toast.error("The webcam recorder failed. The partial recording will be preserved.");
+			};
 			recorder.onstop = async () => {
 				try {
 					const result = await writer.finish(
@@ -203,6 +223,7 @@ export function useRecorderWebcam({
 	}, [
 		getRecordingDurationMs,
 		isMacOS,
+		markWebcamUnavailable,
 		recordingSessionTimestamp,
 		releaseWebcamCapture,
 		releaseUnavailableWebcam,
@@ -224,6 +245,10 @@ export function useRecorderWebcam({
 	}, [releaseUnavailableWebcam]);
 
 	return {
+		webcamRecordingError:
+			webcamEnabled && webcamFailure?.deviceId === webcamDeviceId
+				? (webcamFailure?.message ?? null)
+				: null,
 		webcamRecorder,
 		releaseWebcamCapture,
 		webcamWriter,

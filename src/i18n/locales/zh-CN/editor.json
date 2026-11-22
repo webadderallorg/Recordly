@@ -245,6 +245,7 @@
 		"savingGif": "正在保存 GIF…",
 		"encodingGif": "正在完成 GIF…",
 		"errorCopied": "已复制错误",
+		"nvidiaCudaFallback": "NVIDIA CUDA 导出失败。Recordly 正在尝试其他导出方式。",
 		"errorCopyFailed": "无法复制。请选择错误文本并手动复制。",
 		"copyError": "复制错误"
 	},

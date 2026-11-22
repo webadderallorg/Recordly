@@ -16,6 +16,7 @@ export function useRecorderCaptureSetup(
 		| "storeMicrophoneSidecar"
 		| "finalizeRecordingSession"
 		| "hideEditorOverlayCursorByDefault"
+		| "captureSourceKind"
 		| "preparePermissions"
 		| "recordingSessionTimestamp"
 		| "resetRecordingClock"
@@ -37,6 +38,7 @@ export function useRecorderCaptureSetup(
 		storeMicrophoneSidecar,
 		finalizeRecordingSession,
 		hideEditorOverlayCursorByDefault,
+		captureSourceKind,
 		preparePermissions,
 		recordingSessionTimestamp,
 		resetRecordingClock,
@@ -149,6 +151,10 @@ export function useRecorderCaptureSetup(
 			alert(translate("notifications.selectSource", "Please select a source to record"));
 			return null;
 		}
+		captureSourceKind.current =
+			selectedSource.sourceType === "window" || selectedSource.id?.startsWith("window:")
+				? "window"
+				: "screen";
 
 		const permissionsReady = await preparePermissions();
 		if (!permissionsReady) {
@@ -229,6 +235,7 @@ export function useRecorderCaptureSetup(
 		pendingNativeCleanupPath,
 		resetRecordingClock,
 		hideEditorOverlayCursorByDefault,
+		captureSourceKind,
 		recordingSessionTimestamp,
 		hasShownNativeWindowsFallbackToast,
 	]);

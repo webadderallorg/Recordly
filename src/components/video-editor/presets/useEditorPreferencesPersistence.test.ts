@@ -15,17 +15,27 @@ vi.mock("../editorPreferences", async (original) => ({
 }));
 
 import { DEFAULT_EDITOR_PREFERENCES, saveEditorPreferences } from "../editorPreferences";
+import { DEFAULT_PADDING } from "../types";
 import { useEditorPreferencesPersistence } from "./useEditorPreferencesPersistence";
 
 type Input = Parameters<typeof useEditorPreferencesPersistence>[0];
 const restoringPreferencesRef = { current: false };
 
-function render(appearance: Partial<Input["appearance"]> = {}, enabled = true) {
+function render(
+	appearance: Partial<Input["appearance"]> = {},
+	enabled = true,
+	captureSourceKind: Input["captureSourceKind"] = "screen",
+) {
 	hooks.effects = [];
 	useEditorPreferencesPersistence({
 		enabled,
 		restoringPreferencesRef,
-		appearance: { ...DEFAULT_EDITOR_PREFERENCES, ...appearance } as Input["appearance"],
+		captureSourceKind,
+		appearance: {
+			...DEFAULT_EDITOR_PREFERENCES,
+			padding: DEFAULT_PADDING,
+			...appearance,
+		} as Input["appearance"],
 		aspectRatio: "native",
 		whisperExecutablePath: null,
 		whisperModelPath: null,
@@ -67,4 +77,21 @@ it("persists the automatic zoom opt-out without overwriting the current project 
 	expect(saveEditorPreferences).toHaveBeenCalledExactlyOnceWith({
 		autoApplyFreshRecordingAutoZooms: false,
 	});
+});
+
+it("remembers padding separately for screen and window recordings", () => {
+	const padding = { top: 12, bottom: 12, left: 12, right: 12, linked: true };
+	render({}, true, "window");
+	render({ padding }, true, "window");
+	expect(saveEditorPreferences).toHaveBeenLastCalledWith({ windowPadding: padding });
+	hooks.previous.current = null;
+	render({}, true, "screen");
+	render({ padding }, true, "screen");
+	expect(saveEditorPreferences).toHaveBeenLastCalledWith({ screenPadding: padding });
+});
+
+it("does not remember padding edits when the capture kind is unknown", () => {
+	render({}, true, null);
+	render({ padding: { top: 40, bottom: 40, left: 40, right: 40, linked: true } }, true, null);
+	expect(saveEditorPreferences).not.toHaveBeenCalled();
 });

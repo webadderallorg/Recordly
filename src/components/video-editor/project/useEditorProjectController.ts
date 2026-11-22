@@ -11,6 +11,7 @@ import { getDevOpenRecordingConfig, getSmokeExportConfig } from "../smokeExportC
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
+import type { CaptureSourceKind } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 import { useInitialEditorSource } from "./useInitialEditorSource";
 import type { useProjectLibraryController } from "./useProjectLibraryController";
@@ -25,6 +26,7 @@ type Input = {
 	appearance: ReturnType<typeof useAppearanceState>;
 	timeline: ReturnType<typeof useTimelineState>;
 	initialPreferences: ReturnType<typeof loadEditorPreferences>;
+	captureSourceKind: CaptureSourceKind | null;
 	smokeConfig: ReturnType<typeof getSmokeExportConfig>;
 	devConfig: ReturnType<typeof getDevOpenRecordingConfig>;
 	aspectRatio: AspectRatio;
@@ -151,6 +153,7 @@ export function useEditorProjectController(input: Input) {
 		aspectRatio: input.aspectRatio,
 		whisperExecutablePath: input.whisperExecutablePath,
 		whisperModelPath: input.whisperModelPath,
+		captureSourceKind: input.captureSourceKind,
 	});
 	const autoCaption = useAutoCaptionController({
 		t: input.t,

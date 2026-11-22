@@ -7,10 +7,12 @@ import { useRecorderWebcam } from "./useRecorderWebcam";
 import { acquireWebcamCapture } from "./webcamCapture";
 
 const effects = vi.hoisted(() => [] as Array<() => void | (() => void)>);
+const setWebcamFailure = vi.hoisted(() => vi.fn());
 vi.mock("react", () => ({
 	useCallback: <T>(callback: T) => callback,
 	useEffect: (effect: () => void | (() => void)) => effects.push(effect),
 	useRef: <T>(current: T) => ({ current }),
+	useState: <T>(initial: T) => [initial, setWebcamFailure],
 }));
 vi.mock("@/components/ui/toast", () => ({
 	toast: { error: vi.fn(), warning: vi.fn(), dismiss: vi.fn() },
@@ -122,6 +124,17 @@ describe("recorder webcam sidecar", () => {
 		await webcam.prepareWebcamRecorder();
 		expect(getUserMedia).not.toHaveBeenCalled();
 		expect(FakeMediaRecorder.instances).toHaveLength(0);
+	});
+
+	it("forgets a stored failure once the webcam is turned off, so turning it back on retries", () => {
+		createWebcam();
+		for (const effect of effects) effect();
+		expect(setWebcamFailure).not.toHaveBeenCalled();
+
+		effects.length = 0;
+		createWebcam({ webcamEnabled: false });
+		for (const effect of effects) effect();
+		expect(setWebcamFailure).toHaveBeenCalledExactlyOnceWith(null);
 	});
 
 	it("does not acquire or start a disabled webcam", async () => {
@@ -306,6 +319,10 @@ describe("recorder webcam sidecar", () => {
 		expect(webcam.webcamRecorder.current).toBeNull();
 		expect(webcam.webcamWriter.current).toBeNull();
 		expect(track.stop).toHaveBeenCalledOnce();
+		expect(setWebcamFailure).toHaveBeenLastCalledWith({
+			deviceId: undefined,
+			message: "Camera disconnected",
+		});
 		expect(toast.warning).toHaveBeenCalledWith("Webcam unavailable", expect.anything());
 		expect(openRecordingFileStream).not.toHaveBeenCalled();
 	});
@@ -315,6 +332,7 @@ describe("recorder webcam sidecar", () => {
 		"paused",
 	] as const)("flushes a %s webcam's final chunk after the controls unmount", async (state) => {
 		const webcam = createWebcam();
+		effects.length = 0;
 		await webcam.prepareWebcamRecorder();
 		webcam.beginWebcamCapture();
 		recorder().state = state;

@@ -55,7 +55,6 @@ export function EditorExportMenu(props: Props) {
 		props.exportSettings;
 	const [shareBusy, setShareBusy] = useState(false);
 	const [hasStartedShare, setHasStartedShare] = useState(false);
-	const [shareActivity, setShareActivity] = useState(false);
 	const [shareContainer, setShareContainer] = useState<HTMLDivElement | null>(null);
 	const [thumbnail, setThumbnail] = useState<string>();
 	const { videoPlaybackRef } = props;
@@ -89,23 +88,16 @@ export function EditorExportMenu(props: Props) {
 		}
 		setThumbnail(undefined);
 	}, [videoPlaybackRef]);
-	const handleShareBusyChange = useCallback(
-		(busy: boolean) => {
-			setShareBusy(busy);
-			if (busy) {
-				setHasStartedShare(true);
-				captureThumbnail();
-				setShareActivity(true);
-				setShowExportDropdown(false);
-			}
-		},
-		[captureThumbnail, setShowExportDropdown],
-	);
-	const dismissShareActivity = useCallback(() => setShareActivity(false), []);
+	const handleShareBusyChange = useCallback((busy: boolean) => {
+		setShareBusy(busy);
+		if (busy) setHasStartedShare(true);
+	}, []);
 	const localExportInProgress = destination === "local" && isExporting;
 	const showLocalExportCard =
 		destination === "local" && (isExporting || Boolean(exportError || exportedFilePath));
-	const publishMenuOpen = showExportDropdown && !showLocalExportCard && !shareBusy;
+	// The export cancel handler closes the dropdown; keep the share visible until cleanup settles.
+	const publishMenuOpen =
+		(showExportDropdown || (destination === "link" && shareBusy)) && !showLocalExportCard;
 	const reducedMotion = useReducedMotion();
 	const handledShareRequest = useRef(0);
 	const contentRef = useRef<HTMLDivElement>(null);
@@ -226,10 +218,8 @@ export function EditorExportMenu(props: Props) {
 				open={publishMenuOpen}
 				onOpenChange={(open) => {
 					if (shareBusy || localExportInProgress) return;
-					if (open) {
-						dismissShareActivity();
-						handleOpenExportDropdown();
-					} else setShowExportDropdown(false);
+					if (open) handleOpenExportDropdown();
+					else setShowExportDropdown(false);
 				}}
 				modal={true}
 			>
@@ -337,6 +327,7 @@ export function EditorExportMenu(props: Props) {
 					</motion.div>
 				</PopoverContent>
 			</Popover>
+			{/* Keep the controller and unsaved project's link alive when Publish closes. */}
 			{(hasStartedShare || (destination === "link" && publishMenuOpen)) && (
 				<CloudShareButton
 					inline
@@ -355,17 +346,10 @@ export function EditorExportMenu(props: Props) {
 						setShowExportDropdown(false);
 						props.onRequestShareSignIn();
 					}}
-					floatingActivity={{
-						formContainer:
-							publishMenuOpen && destination === "link" ? shareContainer : null,
-						visible: destination === "link" && shareActivity,
-						thumbnail,
-						onDismiss: dismissShareActivity,
-						onRetry: () => {
-							dismissShareActivity();
-							handleOpenExportDropdown();
-						},
-					}}
+					inlineContainer={
+						publishMenuOpen && destination === "link" ? shareContainer : null
+					}
+					suppressSuccessToast
 				/>
 			)}
 			{showLocalExportCard && (

@@ -13,12 +13,15 @@ export interface FeedbackBackend {
 	upload(path: string, file: File): Promise<void>;
 	insert(report: Record<string, unknown>): Promise<void>;
 	remove(paths: string[]): Promise<void>;
+	notify?(reportId: string): Promise<void>;
 }
+export const feedbackJson = (status: number, payload: object) =>
+	new Response(JSON.stringify(payload), { status, headers });
 const reply = (status: number, code?: string) =>
-	new Response(JSON.stringify(code ? { code } : { success: true }), { status, headers });
+	feedbackJson(status, code ? { code } : { success: true });
 
 // Bound the actual body, not just the caller's Content-Length header.
-async function readForm(request: Request) {
+export async function readBoundedBody(request: Request, limit: number) {
 	const reader = request.body?.getReader();
 	if (!reader) throw new Error("Missing body");
 	const chunks: Uint8Array[] = [];
@@ -28,7 +31,7 @@ async function readForm(request: Request) {
 			const { value, done } = await reader.read();
 			if (done) break;
 			bytes += value.byteLength;
-			if (bytes > MAX_REQUEST_BYTES) throw new Error("Body too large");
+			if (bytes > limit) throw new Error("Body too large");
 			chunks.push(value);
 		}
 	} finally {
@@ -40,9 +43,42 @@ async function readForm(request: Request) {
 		body.set(chunk, offset);
 		offset += chunk.byteLength;
 	}
-	return new Response(body, {
+	return body;
+}
+
+async function readForm(request: Request) {
+	return new Response(await readBoundedBody(request, MAX_REQUEST_BYTES), {
 		headers: { "Content-Type": request.headers.get("Content-Type") ?? "" },
 	}).formData();
+}
+
+export function feedbackPayload(title: unknown, message: unknown, subject: unknown, logs: unknown) {
+	if (
+		typeof title !== "string" ||
+		!title.trim() ||
+		title.trim().length > 160 ||
+		typeof message !== "string" ||
+		!message.trim() ||
+		message.trim().length > 10000 ||
+		typeof subject !== "string" ||
+		!["bug", "idea", "question", "other"].includes(subject) ||
+		(logs !== null &&
+			(typeof logs !== "string" || new TextEncoder().encode(logs).length > 300000))
+	)
+		return null;
+	return { title: title.trim(), message: message.trim(), subject, logs };
+}
+
+export async function notifySavedFeedback(notify: FeedbackBackend["notify"], id: string) {
+	try {
+		await notify?.(id);
+	} catch (error) {
+		console.error(
+			"Feedback notification failed",
+			id,
+			error instanceof Error ? error.message : "Unknown notification error",
+		);
+	}
 }
 
 export function feedbackHandler(backend: FeedbackBackend) {
@@ -61,25 +97,14 @@ export function feedbackHandler(backend: FeedbackBackend) {
 			} catch {
 				return reply(400, "INVALID_FEEDBACK");
 			}
-			const title = form.get("title");
-			const message = form.get("message");
-			const subject = form.get("subject");
-			const logs = form.get("logs");
+			const payload = feedbackPayload(
+				form.get("title"),
+				form.get("message"),
+				form.get("subject"),
+				form.get("logs"),
+			);
 			const files = form.getAll("files");
-			if (
-				typeof title !== "string" ||
-				!title.trim() ||
-				title.trim().length > 160 ||
-				typeof message !== "string" ||
-				!message.trim() ||
-				message.trim().length > 10000 ||
-				typeof subject !== "string" ||
-				!["bug", "idea", "question", "other"].includes(subject) ||
-				(logs !== null &&
-					(typeof logs !== "string" || new TextEncoder().encode(logs).length > 300000))
-			) {
-				return reply(400, "INVALID_FEEDBACK");
-			}
+			if (!payload) return reply(400, "INVALID_FEEDBACK");
 			if (
 				files.length > MAX_FILES ||
 				files.some((file) => typeof file === "string" || file.size === 0)
@@ -102,12 +127,10 @@ export function feedbackHandler(backend: FeedbackBackend) {
 			await backend.insert({
 				id,
 				user_id: userId,
-				title: title.trim(),
-				subject,
-				message: message.trim(),
-				logs,
+				...payload,
 				attachments: metadata,
 			});
+			await notifySavedFeedback(backend.notify, id);
 			return reply(200);
 		} catch {
 			if (uploaded.length) await backend.remove(uploaded).catch(() => undefined);

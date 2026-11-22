@@ -47,6 +47,7 @@ type UseScreenRecorderReturn = {
 	systemAudioEnabled: boolean;
 	setSystemAudioEnabled: (enabled: boolean) => void;
 	webcamEnabled: boolean;
+	webcamRecordingError: string | null;
 	setWebcamEnabled: (enabled: boolean) => void;
 	webcamDeviceId: string | undefined;
 	setWebcamDeviceId: (deviceId: string | undefined) => void;
@@ -94,6 +95,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		systemAudioEnabled,
 		persistSystemAudioEnabled,
 		webcamEnabled,
+		webcamRecordingError,
 		persistWebcamEnabled,
 		webcamDeviceId,
 		persistWebcamDeviceId,
@@ -121,6 +123,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		systemAudioEnabled,
 		setSystemAudioEnabled: persistSystemAudioEnabled,
 		webcamEnabled,
+		webcamRecordingError,
 		setWebcamEnabled: persistWebcamEnabled,
 		webcamDeviceId,
 		setWebcamDeviceId: persistWebcamDeviceId,

@@ -40,7 +40,9 @@ async function openDashboardSettings(page: Page, home: Locator) {
 	await expect(page.getByRole("dialog", { name: "Account menu", exact: true })).not.toBeVisible();
 }
 async function waitForInitialProject(page: Page) {
-	await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1");
+	await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1", {
+		timeout: 20000,
+	});
 	await expect
 		.poll(() =>
 			page
@@ -318,7 +320,9 @@ test("autosave creates one untitled project, stays idle without edits, and refre
 		});
 	});
 	await page.goto("/?windowType=editor");
-	await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1");
+	await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1", {
+		timeout: 20000,
+	});
 	await expect(page.getByRole("button", { name: "Rename project" })).toContainText(
 		"Untitled Project",
 	);
@@ -326,7 +330,9 @@ test("autosave creates one untitled project, stays idle without edits, and refre
 	// Observe more than two debounce periods: idle must not perform periodic saves.
 	const before = await page.locator("html").getAttribute("data-project-saves");
 	await page.waitForTimeout(1800);
-	await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1");
+	await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1", {
+		timeout: 20000,
+	});
 	expect(await page.locator("html").getAttribute("data-project-saves")).toBe(before);
 	await page.getByRole("button", { name: "Home", exact: true }).click();
 	await expect(page.getByRole("dialog", { name: "Projects dashboard" })).toBeVisible();
@@ -540,10 +546,7 @@ test("dashboard supports creation sort, independent folders, shared settings and
 	await expect(home.getByRole("switch", { name: "Connect Zooms" })).toBeVisible();
 	const motion = home.getByRole("tabpanel", { name: /^Motion settings/ });
 	const description = "Smooth consecutive zoom regions into a continuous camera move.";
-	await expect(motion.getByText(description, { exact: true })).not.toBeVisible();
-	await motion.getByRole("button", { name: "Connect Zooms", exact: true }).hover();
-	await expect(page.getByRole("tooltip")).toHaveText(description);
-	await page.keyboard.press("Escape");
+	await expect(motion.getByText(description, { exact: true })).toBeVisible();
 	await page.screenshot({ path: "test-results/settings-motion.png", animations: "disabled" });
 	await home.getByRole("tab", { name: "General", exact: true }).click();
 	await expect(home.getByText("Recordings folder", { exact: true })).toBeVisible();

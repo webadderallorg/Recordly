@@ -56,15 +56,15 @@ describe("normalizeProjectEditor", () => {
 		expect(normalizeProjectEditor({ shadowIntensity: 0.8 }).shadowIntensity).toBe(0.8);
 	});
 
-	it("defaults frame padding to 25% while preserving saved zero padding", () => {
+	it("defaults frame padding to 0% while preserving saved padding", () => {
 		expect(normalizeProjectEditor({}).padding).toEqual({
-			top: 25,
-			bottom: 25,
-			left: 25,
-			right: 25,
+			top: 0,
+			bottom: 0,
+			left: 0,
+			right: 0,
 			linked: true,
 		});
-		const saved = { top: 0, bottom: 0, left: 0, right: 0, linked: true };
+		const saved = { top: 25, bottom: 25, left: 25, right: 25, linked: true };
 		expect(normalizeProjectEditor({ padding: saved }).padding).toEqual(saved);
 	});
 
