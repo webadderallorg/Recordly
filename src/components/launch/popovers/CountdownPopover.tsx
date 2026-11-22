@@ -21,13 +21,13 @@ export function CountdownPopover({
 	const { locale } = useI18n();
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
 	const open = isOpen(POPOVER_ID);
-	const formatDelay = (delay: number) =>
+	const formatDelay = (delay: number, unitDisplay: "short" | "long" = "short") =>
 		delay === 0
 			? t("recording.noDelay")
 			: new Intl.NumberFormat(locale, {
 					style: "unit",
 					unit: "second",
-					unitDisplay: "short",
+					unitDisplay,
 				}).format(delay);
 	const tooltip = t("recording.settingValue", "{{setting}}: {{value}}", {
 		setting: t("recording.countdownDelay"),
@@ -48,6 +48,7 @@ export function CountdownPopover({
 			align="center"
 			label={t("recording.countdownDelay")}
 			tooltip={tooltip}
+			description={formatDelay(countdownDelay, "long")}
 		>
 			<div className={styles.ddLabel}>{t("recording.countdownDelay")}</div>
 			{COUNTDOWN_OPTIONS.map((delay) => (

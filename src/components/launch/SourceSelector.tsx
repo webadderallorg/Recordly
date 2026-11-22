@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -27,6 +27,8 @@ function OverlaySourceSelector() {
 
 function LinuxSourceList() {
 	const t = useScopedT("capture");
+	const launchT = useScopedT("launch");
+	const typeLabelId = useId();
 	const [sources, setSources] = useState<ProcessedDesktopSource[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [selecting, setSelecting] = useState(false);
@@ -97,12 +99,10 @@ function LinuxSourceList() {
 						{error} <ErrorReportButton error={error} />
 					</p>
 				)}
-				{loading ? (
+				{loading || sources.length === 0 ? (
 					<p role="status" className="py-6 text-center text-sm text-muted">
-						{t("loadingSources")}
+						{t(loading ? "loadingSources" : "noSources")}
 					</p>
-				) : sources.length === 0 ? (
-					<p className="py-6 text-center text-sm text-muted">{t("noSources")}</p>
 				) : (
 					["screen", "window"].map((kind) => {
 						const entries = sources.filter((source) =>
@@ -114,12 +114,20 @@ function LinuxSourceList() {
 									<h2 className="px-2 py-2 text-xs font-semibold text-muted">
 										{kind === "screen" ? t("screens") : t("windows")}
 									</h2>
+									<span id={`${typeLabelId}-${kind}`} className="sr-only">
+										{launchT(
+											kind === "screen"
+												? "recording.screen"
+												: "recording.window",
+										)}
+									</span>
 									<div className="space-y-1">
 										{entries.map((source) => (
 											<Button
 												key={source.id}
 												variant="ghost"
 												disabled={selecting}
+												aria-describedby={`${typeLabelId}-${kind}`}
 												className="h-auto w-full justify-start gap-3 rounded-xl px-3 py-2 text-left"
 												onClick={() => void select(source)}
 											>
