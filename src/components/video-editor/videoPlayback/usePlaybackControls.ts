@@ -33,6 +33,7 @@ export type usePlaybackControlsInput = Pick<
 	| "onSelectZoom"
 	| "isDraggingFocusRef"
 	| "shouldSnapPausedFrameRef"
+	| "regenerateFrame"
 	| "annotationFrameStore"
 > & { ref: React.ForwardedRef<VideoPlaybackRef> };
 export function usePlaybackControls(input: usePlaybackControlsInput) {
@@ -58,6 +59,7 @@ export function usePlaybackControls(input: usePlaybackControlsInput) {
 		onSelectZoom,
 		isDraggingFocusRef,
 		shouldSnapPausedFrameRef,
+		regenerateFrame,
 		annotationFrameStore,
 	} = input;
 
@@ -93,6 +95,7 @@ export function usePlaybackControls(input: usePlaybackControlsInput) {
 			clipPlaybackRef.current?.pause();
 		},
 		cancelCaptionEdit,
+		regenerateFrame,
 		getAnnotationPlacement: () =>
 			annotationPlacement(
 				stageSizeRef.current,

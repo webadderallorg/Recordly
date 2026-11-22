@@ -309,7 +309,6 @@ function VideoEditorContent() {
 		videoPath,
 		videoSourcePath,
 		videoPlaybackRef,
-		isPlaying,
 		duration,
 		error,
 		loading,

@@ -49,7 +49,9 @@ const cursorTelemetry = [
 ];
 const noop = () => undefined;
 const onError = (error: string) => {
-	throw new Error(error);
+	setTimeout(() => {
+		throw new Error(error);
+	});
 };
 const annotation: AnnotationRegion = {
 	id: "text",
@@ -130,6 +132,7 @@ function Preview() {
 		} finally {
 			frame?.close();
 			renderer.destroy();
+			playback.current?.regenerateFrame();
 			setSuspended(false);
 		}
 	};

@@ -62,6 +62,7 @@ export function usePreviewMediaState(
 	const isSeekingRef = useRef(false);
 
 	const shouldSnapPausedFrameRef = useRef(false);
+	const shouldRegenerateFrameRef = useRef(false);
 
 	const lastBackgroundSyncTimeRef = useRef<number | null>(null);
 
@@ -80,6 +81,11 @@ export function usePreviewMediaState(
 			requestPreviewRender();
 		}
 	}, [requestPreviewRender]);
+
+	const regenerateFrame = useCallback(() => {
+		shouldRegenerateFrameRef.current = true;
+		requestPreviewRender();
+	}, [requestPreviewRender]);
 	return {
 		videoRef,
 		previewVideoSourceRef,
@@ -96,6 +102,8 @@ export function usePreviewMediaState(
 		suspendRenderingRef,
 		isSeekingRef,
 		shouldSnapPausedFrameRef,
+		shouldRegenerateFrameRef,
+		regenerateFrame,
 		lastBackgroundSyncTimeRef,
 		bgVideoRef,
 		lastRenderedContentTimeRef,
