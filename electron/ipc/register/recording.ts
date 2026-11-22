@@ -113,13 +113,17 @@ export function registerRecordingHandlers(
 		}
 		beginWindowsRecordingCursorCapture();
 	});
-	ipcMain.handle("set-recording-state", (event, recording: boolean) => {
+	ipcMain.handle("set-recording-state", (event, recording: boolean, startedAtMs?: unknown) => {
 		if (!isTrustedRenderer(event) || typeof recording !== "boolean")
 			throw new Error("Invalid recording state caller");
-		setRecordingState(recording, event.sender.id);
+		setRecordingState(
+			recording,
+			event.sender.id,
+			typeof startedAtMs === "number" ? startedAtMs : undefined,
+		);
 	});
 	registerCursorHandlers();
-	function setRecordingState(recording: boolean, ownerId?: number) {
-		applyRecordingState(context, recording, ownerId, onRecordingStateChange);
+	function setRecordingState(recording: boolean, ownerId?: number, startedAtMs?: number) {
+		applyRecordingState(context, recording, ownerId, onRecordingStateChange, startedAtMs);
 	}
 }
