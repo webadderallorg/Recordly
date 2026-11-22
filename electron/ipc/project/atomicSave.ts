@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 const pendingWrites = new Map<string, Promise<unknown>>();
 const PROJECT_IDENTITY_TIMEOUT_MS = 5000;
@@ -244,6 +245,26 @@ async function syncParentDirectory(parentDir: string): Promise<void> {
 	}
 }
 
+async function replaceProjectGeneration(temporaryPath: string, destination: string): Promise<void> {
+	for (let delayMs = 25; ; delayMs *= 2) {
+		try {
+			await fs.rename(temporaryPath, destination);
+			return;
+		} catch (error) {
+			const { code } = error as NodeJS.ErrnoException;
+			// A Windows reader can briefly prevent replacement by opening without delete sharing.
+			if (
+				process.platform !== "win32" ||
+				delayMs > 200 ||
+				(code !== "EPERM" && code !== "EACCES" && code !== "EBUSY")
+			) {
+				throw error;
+			}
+		}
+		await delay(delayMs);
+	}
+}
+
 async function preservePreviousGeneration(
 	targetPath: string,
 	backupPath: string,
@@ -287,7 +308,7 @@ async function preservePreviousGeneration(
 		}
 	}
 	await writeSyncedTemporaryFile(backupTemporaryPath, previous, 0o600);
-	await fs.rename(backupTemporaryPath, backupPath);
+	await replaceProjectGeneration(backupTemporaryPath, backupPath);
 	return true;
 }
 
@@ -319,7 +340,7 @@ async function commitProjectFile(projectPath: string, contents: string): Promise
 		if (recovered && recoveringSameGeneration) {
 			// Preserve the known-good generation instead of backing up the damaged primary.
 			await writeSyncedTemporaryFile(backupTemporaryPath, recovered.contents, 0o600);
-			await fs.rename(backupTemporaryPath, backupPath);
+			await replaceProjectGeneration(backupTemporaryPath, backupPath);
 			validBackupPreserved = true;
 		} else {
 			validBackupPreserved = await preservePreviousGeneration(
@@ -329,7 +350,7 @@ async function commitProjectFile(projectPath: string, contents: string): Promise
 			);
 		}
 		await syncParentDirectory(backupDir);
-		await fs.rename(temporaryPath, targetPath);
+		await replaceProjectGeneration(temporaryPath, targetPath);
 		await syncParentDirectory(parentDir);
 		recoveredGenerations.delete(await getProjectStorageKey(targetPath));
 		// The previous generation is durable in managed storage before retiring an old sidecar.
