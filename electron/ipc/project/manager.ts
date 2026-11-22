@@ -553,6 +553,9 @@ export async function readProjectPreview(projectPath: string): Promise<ProjectPr
 	await rememberApprovedLocalReadPath(media.videoPath, !relinked.has(media.videoPath));
 	if (media.webcamPath)
 		await rememberApprovedLocalReadPath(media.webcamPath, !relinked.has(media.webcamPath));
+	for (const item of relinked) {
+		await rememberApprovedLocalReadPath(item, false);
+	}
 	return {
 		revision: projectPreviewRevision(revision),
 		project: project as ProjectPreviewData["project"],
