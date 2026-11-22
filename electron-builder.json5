@@ -134,7 +134,8 @@
       }
     ],
     "icon": "icons/icons/png",
-    "artifactName": "${productName}-linux-${arch}.${ext}",
+    // AppImage expands ${arch} to x86_64, while published updates use x64.
+    "artifactName": "${productName}-linux-x64.${ext}",
     "files": ["!node_modules/ffmpeg-static/ffmpeg.exe{,.*}"],
     "category": "AudioVideo"
   },
