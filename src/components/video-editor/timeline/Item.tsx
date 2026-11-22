@@ -295,6 +295,13 @@ export default function Item({
 		timeline.valueToPixels(displaySpan.end - displaySpan.start),
 	);
 	const clipGrabRadiusPx = Math.min(MAX_CLIP_GRAB_RADIUS_PX, clipWidthPx / 3);
+	const clipStartSide = timeline.direction === "rtl" ? "right" : "left";
+	const clipEndSide = clipStartSide === "left" ? "right" : "left";
+	const clipStartGripPx = Math.min(
+		clipGrabRadiusPx,
+		sharedLeftGrip ? timeline.valueToPixels(displaySpan.start - span.start) + 2 : 9,
+	);
+	const clipStartGrabPx = sharedLeftGrip ? clipStartGripPx : clipGrabRadiusPx;
 	const { setNodeRef, attributes, listeners, itemStyle, itemContentStyle } = useItem({
 		id,
 		// Keep the measured layout fixed during pickup. Moving it as part of a
@@ -489,9 +496,9 @@ export default function Item({
 						style={{
 							cursor: "col-resize",
 							pointerEvents: isClip ? "none" : "auto",
-							display: isClip && sharedLeftGrip ? "none" : undefined,
-							left: isClip ? -Math.min(9, clipGrabRadiusPx) : undefined,
+							...(isClip && { left: "auto", [clipStartSide]: -clipStartGripPx }),
 						}}
+						data-testid={isClip && sharedLeftGrip ? "clip-seam-grip" : undefined}
 						title={te("resizeLeft", "Resize left")}
 					/>
 					<div
@@ -504,20 +511,23 @@ export default function Item({
 							cursor: "col-resize",
 							pointerEvents: isClip ? "none" : "auto",
 							display: isClip && sharedRightGrip ? "none" : undefined,
-							right: isClip ? -Math.min(9, clipGrabRadiusPx) : undefined,
+							...(isClip && {
+								right: "auto",
+								[clipEndSide]: -Math.min(9, clipGrabRadiusPx),
+							}),
 						}}
 						title={te("resizeRight", "Resize right")}
 					/>
 					{/* The visible clip grips sit outside the block. These invisible strips put
 					    them inside the area that starts a trim, so grabbing a grip works. */}
-					{isClip && !sharedLeftGrip && (
+					{isClip && (
 						<div
 							aria-hidden="true"
 							data-clip-grab="start"
 							className="absolute inset-y-0 z-20"
 							style={{
-								left: -clipGrabRadiusPx,
-								width: clipGrabRadiusPx,
+								[clipStartSide]: -clipStartGrabPx,
+								width: clipStartGrabPx,
 								cursor: "col-resize",
 							}}
 						/>
@@ -528,7 +538,7 @@ export default function Item({
 							data-clip-grab="end"
 							className="absolute inset-y-0 z-20"
 							style={{
-								right: -clipGrabRadiusPx,
+								[clipEndSide]: -clipGrabRadiusPx,
 								width: clipGrabRadiusPx,
 								cursor: "col-resize",
 							}}

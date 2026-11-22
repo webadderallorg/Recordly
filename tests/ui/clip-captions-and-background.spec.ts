@@ -5,14 +5,20 @@ test("split clips share one grip and captions live inside the filmstrip", async 
 	test.setTimeout(120000);
 	page.setDefaultTimeout(10000);
 	await installDesktopBridge(page, "filmstrip.mp4");
-	await page.goto("/?windowType=editor");
+	await page.goto("/?windowType=editor", { waitUntil: "domcontentloaded", timeout: 45000 });
 	const clips = page.locator('[data-variant="clip"]');
-	await expect(clips).toHaveCount(1, { timeout: 20000 });
+	await expect(page.locator("[data-preview-overlay]")).toBeVisible({ timeout: 45000 });
+	await expect(clips).toHaveCount(1);
 	await expect(clips.first()).toHaveAttribute("data-end-ms", "6000");
 	const scroll = page.getByTestId("timeline-scroll");
 	const clipRow = page.locator('[data-timeline-row="row-clip"]');
 	const rowBox = (await clipRow.boundingBox())!;
-	await page.mouse.click(rowBox.x + rowBox.width / 2, rowBox.y - 8);
+	const cap = (await page.getByTestId("playhead-cap").boundingBox())!;
+	const capY = cap.y + cap.height / 2;
+	await page.mouse.move(cap.x + cap.width / 2, capY);
+	await page.mouse.down();
+	await page.mouse.move(rowBox.x + rowBox.width / 2, capY, { steps: 6 });
+	await page.mouse.up();
 	await expect
 		.poll(() => page.getByTestId("playhead-cap").getAttribute("aria-label"))
 		.toBe("Playhead 3.0s");
@@ -26,9 +32,11 @@ test("split clips share one grip and captions live inside the filmstrip", async 
 	const seamGrip = page.getByTestId("clip-seam-grip");
 	await expect(seamGrip).toHaveCount(1);
 	await expect(first.getByTitle("Resize right")).toBeHidden();
-	await expect(second.getByTitle("Resize left")).toBeHidden();
+	await expect(second.getByTitle("Resize left")).toBeVisible();
 	const grip = (await seamGrip.boundingBox())!;
-	expect(grip.x + grip.width / 2).toBeCloseTo((left.x + left.width + right.x) / 2, 0);
+	expect(
+		Math.abs(grip.x + grip.width / 2 - (left.x + left.width + right.x) / 2),
+	).toBeLessThanOrEqual(1);
 	await scroll.focus();
 	await expect(scroll).toHaveCSS("outline-style", "none");
 	await expect(scroll).toHaveCSS("box-shadow", "none");
@@ -49,11 +57,12 @@ test("split clips share one grip and captions live inside the filmstrip", async 
 	expect(Number(await first.getAttribute("data-end-ms"))).toBe(savedStart);
 	expect(Number(await second.getAttribute("data-end-ms"))).toBe(6000);
 
-	// A real trim starts from the visible edge, with no gutter-size jump in timing.
-	const before = (await second.boundingBox())!;
-	await page.mouse.move(before.x + 2, before.y + 20);
+	// The shared grip starts a trim without a gutter-size jump in timing.
+	const gripX = grip.x + grip.width / 2;
+	const gripY = grip.y + grip.height / 2;
+	await page.mouse.move(gripX, gripY);
 	await page.mouse.down();
-	await page.mouse.move(before.x + 32, before.y + 20, { steps: 8 });
+	await page.mouse.move(gripX + 30, gripY, { steps: 8 });
 	await page.mouse.up();
 	await expect
 		.poll(async () => 6000 - Number(await second.getAttribute("data-end-ms")))

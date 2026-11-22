@@ -1,5 +1,5 @@
 import { type RefObject, useEffect } from "react";
-import { CLEAR_ALL_ZOOMS_SHORTCUT, matchesShortcut } from "@/lib/shortcuts";
+import { CLEAR_ALL_ZOOMS_SHORTCUT, matchesShortcut, type ShortcutBinding } from "@/lib/shortcuts";
 import type { TimelineShortcutBindings } from "../core/timelineTypes";
 import { resolveDeleteSelectionTarget } from "./utils/timelineSelectionUtils";
 
@@ -129,13 +129,18 @@ export function useTimelineKeyboardShortcuts({
 				return;
 			}
 
+			// Keep literal bindings ahead of a physical-letter fallback for Option.
+			const matchesTrim = (binding: ShortcutBinding) =>
+				matchesShortcut(e, binding, isMac) ||
+				(matchesShortcut(e, binding, isMac, true) &&
+					!Object.values(keyShortcuts).some((other) => matchesShortcut(e, other, isMac)));
 			// Trimming to the playhead works wherever the playhead was set, like Delete.
-			if (keyShortcuts.trimStart && matchesShortcut(e, keyShortcuts.trimStart, isMac)) {
+			if (keyShortcuts.trimStart && matchesTrim(keyShortcuts.trimStart)) {
 				e.preventDefault();
 				if (!e.repeat) handleTrimStart?.();
 				return;
 			}
-			if (keyShortcuts.trimEnd && matchesShortcut(e, keyShortcuts.trimEnd, isMac)) {
+			if (keyShortcuts.trimEnd && matchesTrim(keyShortcuts.trimEnd)) {
 				e.preventDefault();
 				if (!e.repeat) handleTrimEnd?.();
 				return;
