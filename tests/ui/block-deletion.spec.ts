@@ -203,6 +203,8 @@ test("a selection box picks several zooms and deletes them in one undo step", as
 	await page.mouse.down();
 	await page.mouse.move(at(0.97), y, { steps: 12 });
 	await expect(page.getByTestId("zoom-selection-box")).toBeVisible();
+	const clip = (await page.locator('[data-variant="clip"]').boundingBox())!;
+	await page.mouse.move(at(0.97), clip.y + clip.height / 2);
 	await page.mouse.up();
 	await expect(page.getByTestId("zoom-selection-bar")).toContainText("2 zooms selected");
 	await expect(zooms).toHaveCount(3);

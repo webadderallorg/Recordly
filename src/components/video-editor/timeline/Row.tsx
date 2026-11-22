@@ -16,6 +16,7 @@ interface RowProps extends RowDefinition {
 	onMouseMove?: React.MouseEventHandler<HTMLDivElement>;
 	onMouseLeave?: React.MouseEventHandler<HTMLDivElement>;
 	onMouseDown?: React.MouseEventHandler<HTMLDivElement>;
+	onPointerDown?: React.PointerEventHandler<HTMLDivElement>;
 	onClick?: React.MouseEventHandler<HTMLDivElement>;
 }
 
@@ -34,6 +35,7 @@ export default function Row({
 	onMouseMove,
 	onMouseLeave,
 	onMouseDown,
+	onPointerDown,
 	onClick,
 }: RowProps) {
 	const { setNodeRef, rowWrapperStyle, rowStyle } = useRow({ id });
@@ -90,6 +92,7 @@ export default function Row({
 				onMouseMove={onMouseMove}
 				onMouseLeave={onMouseLeave}
 				onMouseDown={onMouseDown}
+				onPointerDown={onPointerDown}
 				onClick={onClick}
 			>
 				{children}

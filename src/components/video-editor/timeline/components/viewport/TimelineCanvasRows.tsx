@@ -1,5 +1,5 @@
 import { useTimelineContext } from "dnd-timeline";
-import { type MouseEvent, memo, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { memo, type PointerEvent, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { MagicWand, MinusIcon, Plus } from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
@@ -187,10 +187,10 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			? getZoomIdsInRange(visibleZoomItems, zoomSelection.from, zoomSelection.to)
 			: selectedZoomIds,
 	);
-	const startZoomSelection = (event: MouseEvent<HTMLDivElement>) => {
-		onZoomRowMouseDown?.(event);
+	const startZoomSelection = (event: PointerEvent<HTMLDivElement>) => {
 		suppressZoomClick.current = false;
 		if (
+			!event.isPrimary ||
 			event.button !== 0 ||
 			!onSelectZoomIds ||
 			visibleZoomItems.length === 0 ||
@@ -199,6 +199,8 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			return;
 		const rect = event.currentTarget.getBoundingClientRect();
 		if (rect.width <= 0) return;
+		const pointerId = event.pointerId;
+		event.currentTarget.setPointerCapture(pointerId);
 		const edgeTime = (clientX: number) => {
 			const x = direction === "rtl" ? rect.right - clientX : clientX - rect.left;
 			const elapsed = rangeStart + pixelsToValue(Math.max(0, Math.min(x, rect.width)));
@@ -215,8 +217,9 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			setZoomSelection(null);
 		};
 		window.addEventListener(
-			"mousemove",
+			"pointermove",
 			(move) => {
+				if (move.pointerId !== pointerId) return;
 				if (Math.abs(move.clientX - startX) < 4 && !suppressZoomClick.current) return;
 				suppressZoomClick.current = true;
 				setZoomSelection({ from, to: edgeTime(move.clientX) });
@@ -224,8 +227,9 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			{ signal: drag.signal },
 		);
 		window.addEventListener(
-			"mouseup",
+			"pointerup",
 			(up) => {
+				if (up.pointerId !== pointerId) return;
 				if (suppressZoomClick.current) {
 					onSelectZoomIds(
 						getZoomIdsInRange(visibleZoomItems, from, edgeTime(up.clientX)),
@@ -233,7 +237,14 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				}
 				cancel();
 			},
-			{ signal: drag.signal, once: true },
+			{ signal: drag.signal },
+		);
+		window.addEventListener(
+			"pointercancel",
+			(event) => {
+				if (event.pointerId === pointerId) cancel();
+			},
+			{ signal: drag.signal },
 		);
 		window.addEventListener("blur", cancel, { signal: drag.signal, once: true });
 	};
@@ -437,7 +448,8 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				onMouseEnter={onZoomRowMouseEnter}
 				onMouseMove={onZoomRowMouseMove}
 				onMouseLeave={onZoomRowMouseLeave}
-				onMouseDown={startZoomSelection}
+				onMouseDown={onZoomRowMouseDown}
+				onPointerDown={startZoomSelection}
 				onClick={(event) => {
 					if (suppressZoomClick.current) {
 						event.stopPropagation();
