@@ -73,6 +73,7 @@ type NativeStaticLayoutMetrics = NativeVideoAudioMuxMetrics & {
 type NativeStaticLayoutProgress = {
 	sessionId?: string;
 	backend?: NativeStaticLayoutChunkMetric["backend"];
+	nvidiaCudaFailed?: boolean;
 	stage?: "preparing" | "finalizing";
 	elapsedMs?: number;
 	averageFps?: number;

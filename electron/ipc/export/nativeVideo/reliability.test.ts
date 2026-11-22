@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
 	normalize: vi.fn(),
 	source: vi.fn(),
 	gpu: vi.fn(),
+	cuda: vi.fn(),
+	cudaSkipReason: vi.fn(),
 	buildExportArgs: vi.fn(),
 	cachedEncoder: null as typeof import("../../state").cachedNativeVideoEncoder,
 }));
@@ -55,14 +57,14 @@ vi.mock("./probe", () => ({ validateNativeVideoOutputFile: vi.fn() }));
 vi.mock("./timeline", () => ({ prepareNativeStaticLayoutTimelineMap: vi.fn() }));
 vi.mock("./staticFfmpeg", () => ({ renderNativeStaticFfmpeg: vi.fn() }));
 vi.mock("./capabilities", () => ({
-	getExperimentalNvidiaCudaExportSkipReason: () => "disabled",
+	getExperimentalNvidiaCudaExportSkipReason: mocks.cudaSkipReason,
 	isExplicitNvidiaCudaExportEnabled: () => false,
 	isNvidiaCudaForceVideoOnlyEnabled: () => false,
 	isValidatedNvidiaCudaFallbackCandidate: () => false,
 }));
 vi.mock("./gpuArgs", () => ({ canMuxNvidiaCudaSourceAudioInline: () => false }));
 vi.mock("./gpuProcess", () => ({
-	runExperimentalNvidiaCudaStaticLayoutExport: vi.fn(),
+	runExperimentalNvidiaCudaStaticLayoutExport: mocks.cuda,
 	runExperimentalWindowsGpuStaticLayoutExport: mocks.gpu,
 }));
 vi.mock("./telemetry", () => ({
@@ -105,6 +107,7 @@ beforeEach(() => {
 	mocks.normalize.mockImplementation(async (value) => value);
 	mocks.source.mockRejectedValue(new Error("source preparation reached"));
 	mocks.gpu.mockRejectedValue(new Error("GPU unavailable"));
+	mocks.cudaSkipReason.mockReturnValue("disabled");
 	mocks.buildExportArgs.mockReturnValue(["probe"]);
 	mocks.cachedEncoder = null;
 	nativeStaticLayoutExportSessions.clear();
@@ -315,6 +318,52 @@ describe("encoder probe failures", () => {
 		expect(hung.kill).toHaveBeenCalledWith("SIGKILL");
 		expect(vi.getTimerCount()).toBe(0);
 	});
+});
+
+it("reports a failed CUDA attempt before continuing the same export on D3D11", async () => {
+	Object.defineProperty(process, "platform", { value: "win32" });
+	mocks.cudaSkipReason.mockReturnValueOnce(null);
+	mocks.cuda.mockRejectedValueOnce(new Error("NVENC initialization failed"));
+	mocks.stat.mockResolvedValueOnce({ size: 512 });
+	const onProgress = vi.fn();
+	mocks.gpu.mockImplementationOnce(async () => {
+		expect(onProgress).toHaveBeenCalledExactlyOnceWith({
+			sessionId: "active-export",
+			backend: "windows-d3d11-compositor",
+			stage: "preparing",
+			currentFrame: 0,
+			totalFrames: 30,
+			percentage: 0,
+			nvidiaCudaFailed: true,
+		});
+		return { elapsedMs: 4, summary: { frames: 30, seconds: 1 } };
+	});
+
+	await expect(
+		tryNativeStaticGpuExport({
+			ffmpegPath: "ffmpeg",
+			options: {
+				...options,
+				sessionId: "active-export",
+				experimentalWindowsGpuCompositor: true,
+				experimentalNvidiaCudaExport: true,
+			},
+			session: { terminating: false, currentProcess: null },
+			chunkDirectory: "/recordly-temp/session",
+			videoOnlyPath: "/recordly-temp/session.mp4",
+			metrics: {
+				chunkCount: 0,
+				chunkDurationSec: 1,
+				chunkExecMs: 0,
+				fallbackChunkCount: 0,
+				chunks: [],
+			},
+			onProgress,
+			validateRenderedVideoOutput: vi.fn(),
+		}),
+	).resolves.toMatchObject({ didRenderVideo: true, didMuxAudioInline: false });
+	expect(mocks.cuda).toHaveBeenCalledOnce();
+	expect(mocks.gpu).toHaveBeenCalledOnce();
 });
 
 it.each([
