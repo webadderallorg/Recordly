@@ -123,10 +123,34 @@ describe("portable project media resolution (#1104)", () => {
 		);
 	});
 
-	it("resolves and relinks companion audio tracks and audio regions", async () => {
+	it("opens a nested media path saved with Windows separators", async () => {
+		const archiveDir = path.join(tempDir, "assets", "takes");
+		await fs.mkdir(archiveDir, { recursive: true });
+		const videoPath = path.join(archiveDir, "clip.mp4");
+		await fs.writeFile(videoPath, "video");
+		const result = await resolveProjectMediaSources(
+			{ videoPath: "assets\\takes\\clip.mp4" },
+			path.join(tempDir, "project.recordly"),
+		);
+		expect(result).toMatchObject({ success: true, videoPath });
+	});
+
+	it("does not treat a directory as a relative video file", async () => {
+		await fs.mkdir(path.join(tempDir, "clip.mp4"));
+		const result = await resolveProjectMediaSources(
+			{ videoPath: "./clip.mp4" },
+			path.join(tempDir, "project.recordly"),
+		);
+		expect(result).toMatchObject({ success: false });
+	});
+
+	it.each([
+		"flac",
+		"aac",
+	])("relinks companion audio tracks and %s audio regions", async (extension) => {
 		const videoFile = path.join(tempDir, "clip.mp4");
 		const audioFile1 = path.join(tempDir, "clip.mic.wav");
-		const audioFile2 = path.join(tempDir, "bg-music.mp3");
+		const audioFile2 = path.join(tempDir, `bg-music.${extension}`);
 		await fs.writeFile(videoFile, "video");
 		await fs.writeFile(audioFile1, "mic audio");
 		await fs.writeFile(audioFile2, "bg music");
@@ -139,7 +163,7 @@ describe("portable project media resolution (#1104)", () => {
 				audioRegions: [
 					{
 						id: "r1",
-						audioPath: "/old/machine/bg-music.mp3",
+						audioPath: `/old/machine/bg-music.${extension}`,
 						startMs: 0,
 						endMs: 5000,
 					},
@@ -174,6 +198,16 @@ describe("portable project media resolution (#1104)", () => {
 				videoPath: videoFile,
 			}),
 		);
+	});
+
+	it("keeps literal percent sequences in a moved media filename", async () => {
+		const videoPath = path.join(tempDir, "démo%20take.mp4");
+		await fs.writeFile(videoPath, "video");
+		const result = await resolveProjectMediaSources(
+			{ videoPath: "file:///C:/Original/Recordings/d%C3%A9mo%2520take.mp4" },
+			path.join(tempDir, "project.recordly"),
+		);
+		expect(result).toMatchObject({ success: true, videoPath });
 	});
 
 	it("collects all relinked sources including audio", async () => {

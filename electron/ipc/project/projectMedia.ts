@@ -9,62 +9,62 @@ function isMissingPath(error: unknown) {
 }
 
 function extractMediaFilename(sourcePath: string): string | null {
-	const trimmed = sourcePath.trim();
-	if (!trimmed) return null;
-	const raw = trimmed.split(/[/\\]/).pop();
-	if (!raw) return null;
+	if (!/^file:\/\//i.test(sourcePath)) return path.win32.basename(sourcePath) || null;
 	try {
-		return decodeURIComponent(raw);
+		return decodeURIComponent(path.posix.basename(new URL(sourcePath).pathname)) || null;
 	} catch {
-		return raw;
+		return null;
 	}
+}
+
+function isInsideProjectDirectory(directory: string, candidate: string): boolean {
+	const relative = path.relative(directory, candidate);
+	return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+function isExpectedMediaType(filename: string, expectedType: "video" | "audio" | "any") {
+	const type = getMediaContentType(filename);
+	return expectedType === "any"
+		? type.startsWith("video/") || type.startsWith("audio/")
+		: type.startsWith(`${expectedType}/`);
 }
 
 async function findNearbyProjectMedia(
 	sourcePath: string,
 	projectPath: string,
-	expectedType: "video" | "audio" | "any" = "any",
+	expectedType: "video" | "audio" | "any",
 ): Promise<string | null> {
 	const filename = extractMediaFilename(sourcePath);
-	if (!filename) return null;
-	const contentType = getMediaContentType(filename);
-	if (expectedType === "video" && !contentType.startsWith("video/")) return null;
-	if (expectedType === "audio" && !contentType.startsWith("audio/")) return null;
-	if (
-		expectedType === "any" &&
-		!contentType.startsWith("video/") &&
-		!contentType.startsWith("audio/")
-	)
-		return null;
-
-	try {
-		const directory = await fs.realpath(path.dirname(projectPath));
-		const candidates = [
-			path.join(directory, filename),
-			path.join(directory, "recordings", filename),
-			path.join(directory, "media", filename),
-		];
-		if (
-			!path.isAbsolute(sourcePath) &&
-			!path.win32.isAbsolute(sourcePath) &&
-			!path.posix.isAbsolute(sourcePath)
-		) {
-			candidates.unshift(path.resolve(directory, sourcePath));
-		}
-		for (const candidate of candidates) {
-			try {
-				if ((await fs.lstat(candidate)).isFile()) {
-					return candidate;
-				}
-			} catch (error) {
-				if (!isMissingPath(error)) throw error;
-			}
-		}
-		return null;
-	} catch (error) {
-		if (!isMissingPath(error)) throw error;
+	if (!filename || /[/\\]/.test(filename) || !isExpectedMediaType(filename, expectedType)) {
 		return null;
 	}
+
+	const directory = await fs.realpath(path.dirname(projectPath));
+	const candidates = [
+		path.join(directory, filename),
+		path.join(directory, "recordings", filename),
+		path.join(directory, "media", filename),
+	];
+	if (!path.win32.parse(sourcePath).root && !/^file:\/\//i.test(sourcePath)) {
+		candidates.unshift(path.resolve(directory, sourcePath.replace(/\\/g, path.sep)));
+	}
+
+	for (const candidate of candidates) {
+		if (!isInsideProjectDirectory(directory, candidate)) continue;
+		try {
+			if (!(await fs.lstat(candidate)).isFile()) continue;
+			const realPath = await fs.realpath(candidate);
+			if (
+				isInsideProjectDirectory(directory, realPath) &&
+				isExpectedMediaType(realPath, expectedType)
+			) {
+				return realPath;
+			}
+		} catch (error) {
+			if (!isMissingPath(error)) throw error;
+		}
+	}
+	return null;
 }
 
 async function resolveProjectMediaPath(
@@ -72,31 +72,20 @@ async function resolveProjectMediaPath(
 	projectPath?: string,
 	expectedType: "video" | "audio" | "any" = "any",
 ) {
-	if (
-		projectPath &&
-		!path.isAbsolute(sourcePath) &&
-		!path.win32.isAbsolute(sourcePath) &&
-		!path.posix.isAbsolute(sourcePath)
-	) {
+	if (!projectPath || path.isAbsolute(sourcePath)) {
 		try {
-			const relativePath = path.resolve(path.dirname(projectPath), sourcePath);
-			await fs.access(relativePath);
-			return relativePath;
+			await fs.access(sourcePath);
+			return sourcePath;
 		} catch (error) {
-			if (!isMissingPath(error)) throw error;
+			if (!projectPath || !isMissingPath(error)) throw error;
 		}
 	}
 
-	try {
-		await fs.access(sourcePath);
-		return sourcePath;
-	} catch (error) {
-		if (projectPath && isMissingPath(error)) {
-			const nearby = await findNearbyProjectMedia(sourcePath, projectPath, expectedType);
-			if (nearby) return nearby;
-		}
-		throw error;
-	}
+	const nearby = await findNearbyProjectMedia(sourcePath, projectPath, expectedType);
+	if (nearby) return nearby;
+	throw Object.assign(new Error(`Project media file not found: ${sourcePath}`), {
+		code: "ENOENT",
+	});
 }
 
 function getProjectWebcam(project: object) {
