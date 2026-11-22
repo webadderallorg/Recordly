@@ -216,6 +216,13 @@ export function useTimelineEditorRuntime({
 		onCaptionSpanChange,
 	});
 
+	const addZoomAndClearGroup = useCallback(
+		(span: Span) => {
+			onZoomAdded(span);
+			setSelectedZoomIds((ids) => (ids.length ? [] : ids));
+		},
+		[onZoomAdded, setSelectedZoomIds],
+	);
 	const {
 		defaultRegionDurationMs,
 		canPlaceZoomAtMs,
@@ -226,7 +233,7 @@ export function useTimelineEditorRuntime({
 		timeline: { videoDuration, totalMs, currentTimeMs },
 		regions: { zoom: zoomRegions, clip: clipRegions },
 		cursorTelemetry,
-		onZoomAdded,
+		onZoomAdded: addZoomAndClearGroup,
 		onZoomSuggested,
 	});
 
