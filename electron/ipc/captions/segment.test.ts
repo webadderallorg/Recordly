@@ -365,6 +365,32 @@ describe("segmentCuesIntoPhrases", () => {
 		expect(result.map((cue) => cue.id)).toEqual(["caption-1", "caption-2", "caption-3"]);
 	});
 
+	it("splits untimed Chinese sentences that have no spaces between them", () => {
+		const sentences = ["先打开录屏设置。", "然后点击「开始录制！」", "最后检查录制结果。"];
+		const cues: CaptionCuePayload[] = [
+			{ id: "caption-1", startMs: 0, endMs: 15_000, text: sentences.join("") },
+		];
+		const result = segmentCuesIntoPhrases(cues, []);
+		expect(result.map((cue) => cue.text)).toEqual(sentences);
+		expect(result.map((cue) => cue.id)).toEqual(["caption-1", "caption-2", "caption-3"]);
+		for (let index = 0; index < result.length; index += 1) {
+			const cue = result[index];
+			expect(cue.endMs - cue.startMs).toBeGreaterThan(0);
+			expect(cue.endMs - cue.startMs).toBeLessThan(7_000);
+			if (index > 0) expect(result[index - 1].endMs).toBeLessThanOrEqual(cue.startMs);
+		}
+	});
+
+	it("keeps terminal punctuation around a closing bracket in one untimed cue", () => {
+		const sentences = ["先检查设置（确认无误？）。", "接下来开始录制。"];
+		const result = segmentCuesIntoPhrases(
+			[{ id: "caption-1", startMs: 0, endMs: 15_000, text: sentences.join("") }],
+			[],
+			{ edgePadMs: 0, minCaptionMs: 800 },
+		);
+		expect(result.map((cue) => cue.text)).toEqual(sentences);
+	});
+
 	it("returns an empty array for empty input", () => {
 		expect(segmentCuesIntoPhrases([], [])).toEqual([]);
 	});
