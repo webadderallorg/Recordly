@@ -1,9 +1,12 @@
-import type { CursorTelemetryPoint, ZoomFocus, ZoomRegion } from "../types";
+import { isCinematicZoomMotion } from "../cursorMotionPresets";
+import type { CropRegion, CursorTelemetryPoint, ZoomFocus, ZoomRegion } from "../types";
 import { ZOOM_DEPTH_SCALES } from "../types";
 import { DEFAULT_FOCUS } from "./constants";
 import {
 	type CursorFollowCameraState,
 	computeCursorFollowFocus,
+	createCursorFollowCameraState,
+	resetCursorFollowCamera,
 	SNAP_TO_EDGES_RATIO_AUTO,
 } from "./cursorFollowCamera";
 import { findDominantRegion } from "./zoomRegionUtils";
@@ -12,9 +15,20 @@ export type SceneZoomTarget = {
 	scale: number;
 	focus: ZoomFocus;
 	progress: number;
+	connected?: boolean;
+	cinematic?: boolean;
 };
 
 export type PreviewMotionMode = "spring" | "snap" | "preserve";
+
+const connectedCameras = new WeakMap<
+	CursorFollowCameraState,
+	{
+		key: string;
+		startFocus: ZoomFocus;
+		endCamera: CursorFollowCameraState;
+	}
+>();
 
 /**
  * Decide how the preview camera should react to the current transport state.
@@ -45,14 +59,16 @@ export function shouldComposePreviewFrame({
 	isSeeking = false,
 	contentTimeChanged,
 	shouldSnapPausedFrame,
+	hasPendingNeutralFrame = false,
 }: {
 	motionMode: PreviewMotionMode;
 	isSeeking?: boolean;
 	contentTimeChanged: boolean;
 	shouldSnapPausedFrame: boolean;
+	hasPendingNeutralFrame?: boolean;
 }): boolean {
 	// Do not consume the pending composition against the old decoded image.
-	if (isSeeking || motionMode === "preserve") {
+	if (isSeeking || (motionMode === "preserve" && !hasPendingNeutralFrame)) {
 		return false;
 	}
 
@@ -67,9 +83,12 @@ export function resolveSceneZoomTarget({
 	connectZooms,
 	zoomInDurationMs,
 	zoomOutDurationMs,
+	connectedZoomGapMs,
+	connectedZoomDurationMs,
 	zoomClassicMode,
 	cursorTelemetry,
 	cursorFollowCamera,
+	sourceCrop,
 }: {
 	zoomRegions: ZoomRegion[];
 	timeMs: number;
@@ -77,21 +96,98 @@ export function resolveSceneZoomTarget({
 	connectZooms?: boolean;
 	zoomInDurationMs?: number;
 	zoomOutDurationMs?: number;
+	connectedZoomGapMs?: number;
+	connectedZoomDurationMs?: number;
 	zoomClassicMode?: boolean;
 	cursorTelemetry?: CursorTelemetryPoint[];
 	cursorFollowCamera: CursorFollowCameraState;
+	sourceCrop?: CropRegion;
 }): SceneZoomTarget {
-	const { region, strength, blendedScale } = findDominantRegion(zoomRegions, timeMs, {
-		connectZooms,
-		zoomInDurationMs,
-		zoomOutDurationMs,
-	});
+	const weight = isCinematicZoomMotion({ zoomInDurationMs, zoomOutDurationMs })
+		? { cinematic: true }
+		: {};
+	const { region, strength, zoomingOut, blendedScale, transition, completedTransition } =
+		findDominantRegion(zoomRegions, timeMs, {
+			connectZooms,
+			zoomInDurationMs,
+			zoomOutDurationMs,
+			connectedZoomGapMs,
+			connectedZoomDurationMs,
+			sourceCrop,
+		});
 
 	if (!region || strength <= 0) {
+		// A later zoom-in must not inherit the previous zoom-out's frozen focus.
+		resetCursorFollowCamera(cursorFollowCamera);
+		connectedCameras.delete(cursorFollowCamera);
 		return { scale: 1, focus: DEFAULT_FOCUS, progress: 0 };
 	}
 
 	const scale = blendedScale ?? ZOOM_DEPTH_SCALES[region.depth];
+	if (transition) {
+		let camera = connectedCameras.get(cursorFollowCamera);
+		if (camera?.key !== transition.key) {
+			if (camera) Object.assign(cursorFollowCamera, camera.endCamera);
+			camera = {
+				key: transition.key,
+				startFocus: cursorFollowCamera.initialized
+					? { cx: cursorFollowCamera.focusX, cy: cursorFollowCamera.focusY }
+					: transition.startFocus,
+				endCamera: createCursorFollowCameraState(),
+			};
+			connectedCameras.set(cursorFollowCamera, camera);
+		}
+		const endFocus =
+			!zoomClassicMode && region.mode !== "manual" && cursorTelemetry?.length
+				? computeCursorFollowFocus(
+						camera.endCamera,
+						cursorTelemetry,
+						cursorTimeMs,
+						transition.endScale,
+						strength,
+						transition.endFocus,
+						{ snapToEdgesRatio: SNAP_TO_EDGES_RATIO_AUTO, sourceCrop, zoomingOut },
+					)
+				: transition.endFocus;
+		return {
+			...weight,
+			scale,
+			focus: {
+				cx:
+					camera.startFocus.cx +
+					(endFocus.cx - camera.startFocus.cx) * transition.progress,
+				cy:
+					camera.startFocus.cy +
+					(endFocus.cy - camera.startFocus.cy) * transition.progress,
+			},
+			progress: strength,
+			connected: true,
+		};
+	}
+	const pendingCamera = connectedCameras.get(cursorFollowCamera);
+	const connectedCamera =
+		pendingCamera?.key === completedTransition?.key ? pendingCamera : undefined;
+	if (pendingCamera && !connectedCamera) {
+		connectedCameras.delete(cursorFollowCamera);
+		resetCursorFollowCamera(cursorFollowCamera);
+	}
+	if (completedTransition && timeMs < region.startMs) {
+		// Hold the spring goal until the incoming block starts; physical settling continues.
+		const focus = connectedCamera?.endCamera.initialized
+			? { cx: connectedCamera.endCamera.focusX, cy: connectedCamera.endCamera.focusY }
+			: region.focus;
+		return {
+			...weight,
+			scale,
+			focus,
+			progress: strength,
+			connected: true,
+		};
+	}
+	if (connectedCamera) {
+		Object.assign(cursorFollowCamera, connectedCamera.endCamera);
+		connectedCameras.delete(cursorFollowCamera);
+	}
 	let focus = region.focus;
 	if (
 		!zoomClassicMode &&
@@ -106,9 +202,18 @@ export function resolveSceneZoomTarget({
 			scale,
 			strength,
 			region.focus,
-			{ snapToEdgesRatio: SNAP_TO_EDGES_RATIO_AUTO },
+			{ snapToEdgesRatio: SNAP_TO_EDGES_RATIO_AUTO, sourceCrop, zoomingOut },
 		);
+	} else {
+		// Manual/classic framing owns the camera until automatic follow resumes.
+		resetCursorFollowCamera(cursorFollowCamera);
 	}
 
-	return { scale, focus, progress: strength };
+	return {
+		...weight,
+		scale,
+		focus,
+		progress: strength,
+		connected: Boolean(completedTransition),
+	};
 }

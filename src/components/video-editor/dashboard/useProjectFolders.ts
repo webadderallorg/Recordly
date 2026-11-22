@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "@/components/ui/toast";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 export const FOLDER_COLORS = ["#929292", "#de85ac", "#d6ad58", "#70ad8a", "#759bd2", "#a68ccc"];
 export type ProjectFolder = { id: string; name: string; color: string; paths: string[] };
 const KEY = "recordly.project-folders.v1";
@@ -14,6 +15,7 @@ export function moveProjectFolderReferences(previous: string, next: string) {
 	window.dispatchEvent(new CustomEvent("recordly-folders-changed", { detail: updated }));
 }
 export function useProjectFolders() {
+	const { t: uiText } = useUiLocale();
 	const [folders, setFolders] = useState<ProjectFolder[]>(() => {
 		try {
 			const value = JSON.parse(localStorage.getItem(KEY) || "[]");
@@ -44,7 +46,7 @@ export function useProjectFolders() {
 			setFolders(next);
 			window.dispatchEvent(new CustomEvent("recordly-folders-changed", { detail: next }));
 		} catch {
-			toast.error("Could not save folders");
+			toast.error(uiText("ui.couldNotSaveFolders"));
 		}
 	};
 	return { folders, save };

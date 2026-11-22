@@ -1,0 +1,25 @@
+.nudge {
+	animation: auto-zoom-nudge 3s ease-in-out infinite;
+}
+
+@keyframes auto-zoom-nudge {
+	0%,
+	16%,
+	100% {
+		transform: translateX(0) rotate(0deg);
+	}
+	3%,
+	9% {
+		transform: translateX(-3px) rotate(-1.5deg);
+	}
+	6%,
+	12% {
+		transform: translateX(3px) rotate(1.5deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.nudge {
+		animation: none;
+	}
+}

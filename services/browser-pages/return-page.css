@@ -1,0 +1,78 @@
+@import "tailwindcss" source(none);
+@import "@heroui/styles/base" layer(base);
+@import "@heroui/styles/components/button.css" layer(components);
+@import "@heroui/styles/themes/default";
+@import "@heroui/styles/utilities";
+
+/* Layout only. Button appearance and colour tokens come from HeroUI. */
+:root {
+	--font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+}
+body {
+	margin: 0;
+	min-height: 100vh;
+	min-height: 100svh;
+	display: flex;
+	flex-direction: column;
+	background: var(--background);
+	color: var(--foreground);
+	font-family: var(--font-sans);
+	-webkit-font-smoothing: antialiased;
+}
+main {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	max-width: 560px;
+	margin: 0 auto;
+	padding: 64px 24px 32px;
+	text-align: center;
+}
+.recordly-mark {
+	width: 56px;
+	height: 56px;
+	margin-bottom: 28px;
+	color: #006fee;
+	flex-shrink: 0;
+}
+h1 {
+	margin: 0 0 14px;
+	font-size: clamp(28px, 5vw, 36px);
+	line-height: 1.2;
+	font-weight: 600;
+	letter-spacing: -1.2px;
+}
+p {
+	max-width: 410px;
+	margin: 0;
+	color: var(--muted);
+	font-size: 15px;
+	line-height: 1.65;
+}
+.action {
+	margin-top: 28px;
+	text-decoration: none;
+}
+.note {
+	margin-top: 20px;
+	max-width: 360px;
+	font-size: 13px;
+}
+footer {
+	padding: 24px;
+	text-align: center;
+	color: var(--muted);
+	font-size: 12px;
+}
+footer a {
+	color: inherit;
+	text-underline-offset: 4px;
+}
+footer a:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 4px;
+	border-radius: 2px;
+}

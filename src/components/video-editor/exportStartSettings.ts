@@ -23,6 +23,7 @@ export function resolveExportStartSettings({
 	exportBackendPreference,
 	exportPipelineModel,
 	gifFrameRate,
+	gifOptimizeSize = false,
 	gifLoop,
 	gifSizePreset,
 }: {
@@ -36,6 +37,7 @@ export function resolveExportStartSettings({
 	exportBackendPreference: ExportBackendPreference;
 	exportPipelineModel: ExportPipelineModel;
 	gifFrameRate: GifFrameRate;
+	gifOptimizeSize?: boolean;
 	gifLoop: boolean;
 	gifSizePreset: GifSizePreset;
 }): ExportSettings {
@@ -55,6 +57,7 @@ export function resolveExportStartSettings({
 		gifConfig:
 			exportFormat === "gif" && gifDimensions
 				? {
+						...(gifOptimizeSize ? { optimizeSize: true } : {}),
 						frameRate: gifFrameRate,
 						loop: gifLoop,
 						sizePreset: gifSizePreset,
@@ -69,9 +72,6 @@ export function resolveShareExportSettings(settings: ExportSettings): ExportSett
 	return {
 		...settings,
 		format: "mp4",
-		quality: "source",
-		encodingMode: "fast",
-		mp4FrameRate: 30,
 		includeCaptionSidecar: false,
 		gifConfig: undefined,
 	};

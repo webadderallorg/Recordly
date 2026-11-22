@@ -14,6 +14,9 @@ import type {
 export let selectedSource: SelectedSource | null = null;
 
 // ── Project / video state ─────────────────────────────────────────────────────
+// Changes whenever a different editor project/recording context becomes active.
+// Async saves use this to avoid adopting results into a newer session.
+export let currentProjectContextVersion = 0;
 export let currentProjectPath: string | null = null;
 export let currentVideoPath: string | null = null;
 export let currentRecordingSession: RecordingSessionData | null = null;
@@ -39,7 +42,11 @@ export let nativeCursorMonitorOutputBuffer = "";
 export let windowsCaptureProcess: ChildProcessWithoutNullStreams | null = null;
 export let windowsCaptureOutputBuffer = "";
 export let windowsCaptureTargetPath: string | null = null;
+/** Actual helper output, retained independently of its final stdout marker. */
+export let windowsCaptureTempPath: string | null = null;
 export let windowsNativeCaptureActive = false;
+export let windowsWindowCaptureSize: { sourceId: string; width: number; height: number } | null =
+	null;
 export let windowsCaptureStopRequested = false;
 export let windowsCapturePaused = false;
 export let windowsSystemAudioPath: string | null = null;
@@ -85,7 +92,8 @@ export let interactionCaptureCleanup: (() => void) | null = null;
 export let hasLoggedInteractionHookFailure = false;
 export let lastLeftClick: { timeMs: number; cx: number; cy: number } | null = null;
 export let linuxCursorScreenPoint: { x: number; y: number; updatedAt: number } | null = null;
-export let selectedWindowBounds: WindowBounds | null = null;
+export type TrackedWindowBounds = WindowBounds & { physicalOrigin?: Pick<WindowBounds, "x" | "y"> };
+export let selectedWindowBounds: TrackedWindowBounds | null = null;
 export let windowBoundsCaptureInterval: NodeJS.Timeout | null = null;
 
 // ── Native macOS window source cache ─────────────────────────────────────────
@@ -97,6 +105,8 @@ export let cachedNativeVideoEncoder: {
 	ffmpegPath: string;
 	encodingMode: string;
 	encoderName: string;
+	width: number;
+	height: number;
 } | null = null;
 
 // ── Native helper migration ───────────────────────────────────────────────────
@@ -113,12 +123,17 @@ export function setSelectedSource(v: SelectedSource | null) {
 	selectedSource = v;
 }
 export function setCurrentProjectPath(v: string | null) {
+	if (currentProjectPath !== v) currentProjectContextVersion++;
 	currentProjectPath = v;
 }
 export function setCurrentVideoPath(v: string | null) {
+	// Setting a source starts a load even when another project uses the same video.
+	// Invalidate pending saves before that load performs any asynchronous work.
+	currentProjectContextVersion++;
 	currentVideoPath = v;
 }
 export function setCurrentRecordingSession(v: RecordingSessionData | null) {
+	if (currentRecordingSession !== v) currentProjectContextVersion++;
 	currentRecordingSession = v;
 }
 
@@ -163,8 +178,15 @@ export function setWindowsCaptureOutputBuffer(v: string) {
 export function setWindowsCaptureTargetPath(v: string | null) {
 	windowsCaptureTargetPath = v;
 }
+export function setWindowsCaptureTempPath(v: string | null) {
+	windowsCaptureTempPath = v;
+}
 export function setWindowsNativeCaptureActive(v: boolean) {
 	windowsNativeCaptureActive = v;
+	if (!v) windowsWindowCaptureSize = null;
+}
+export function setWindowsWindowCaptureSize(size: typeof windowsWindowCaptureSize) {
+	windowsWindowCaptureSize = size;
 }
 export function setWindowsCaptureStopRequested(v: boolean) {
 	windowsCaptureStopRequested = v;
@@ -266,7 +288,7 @@ export function setLastLeftClick(v: { timeMs: number; cx: number; cy: number } |
 export function setLinuxCursorScreenPoint(v: { x: number; y: number; updatedAt: number } | null) {
 	linuxCursorScreenPoint = v;
 }
-export function setSelectedWindowBounds(v: WindowBounds | null) {
+export function setSelectedWindowBounds(v: TrackedWindowBounds | null) {
 	selectedWindowBounds = v;
 }
 export function setWindowBoundsCaptureInterval(v: NodeJS.Timeout | null) {
@@ -282,9 +304,7 @@ export function setCachedNativeMacWindowSourcesAtMs(v: number) {
 	cachedNativeMacWindowSourcesAtMs = v;
 }
 
-export function setCachedNativeVideoEncoder(
-	v: { ffmpegPath: string; encodingMode: string; encoderName: string } | null,
-) {
+export function setCachedNativeVideoEncoder(v: typeof cachedNativeVideoEncoder) {
 	cachedNativeVideoEncoder = v;
 }
 

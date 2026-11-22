@@ -7,12 +7,14 @@ export function ChoiceGroup({
 	onValueChange,
 	children,
 	className,
+	allowDeselect = false,
 	...props
 }: {
 	value?: string;
 	onValueChange?: (value: string) => void;
 	children: ReactNode;
 	className?: string;
+	allowDeselect?: boolean;
 	type?: "single";
 	size?: "sm" | "md" | "lg";
 	fullWidth?: boolean;
@@ -23,12 +25,13 @@ export function ChoiceGroup({
 			size={props.size ?? "md"}
 			aria-label={props["aria-label"]}
 			selectionMode="single"
-			disallowEmptySelection
+			disallowEmptySelection={!allowDeselect}
 			selectedKeys={value ? [value] : []}
 			onSelectionChange={(keys) => {
 				if (keys !== "all") {
 					const key = Array.from(keys)[0];
 					if (key !== undefined) onValueChange?.(String(key));
+					else if (allowDeselect) onValueChange?.("");
 				}
 			}}
 		>

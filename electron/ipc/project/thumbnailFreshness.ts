@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
 import {
-	PROJECT_THUMBNAIL_WIDTH,
 	PROJECT_THUMBNAIL_HEIGHT,
+	PROJECT_THUMBNAIL_WIDTH,
 } from "../../../src/lib/projectThumbnail";
+import { isComposedThumbnail } from "./composedThumbnail";
 
 // Older releases wrote 320px previews. Hide those and previews predating edits;
 // the editor replaces them with a current-size render when returning home.
@@ -18,7 +19,8 @@ export async function hasFreshProjectThumbnail(thumbnailPath: string, projectMod
 			bytesRead === 24 &&
 			header.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) &&
 			header.readUInt32BE(16) >= PROJECT_THUMBNAIL_WIDTH &&
-			header.readUInt32BE(20) >= PROJECT_THUMBNAIL_HEIGHT
+			header.readUInt32BE(20) >= PROJECT_THUMBNAIL_HEIGHT &&
+			(await isComposedThumbnail(thumbnailPath))
 		);
 	} catch {
 		return false;

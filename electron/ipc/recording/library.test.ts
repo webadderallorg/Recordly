@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { createRequire } from "node:module";
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -46,10 +46,18 @@ vi.mock("../ffmpeg/binary", async () => {
 		getFfprobeBinaryPath: () => require("ffprobe-static").path,
 	};
 });
-import { listRecordings, setRecordingsRemoved, clearRecordingTrashUndo } from "./library";
-import { importRecording, discardRecordingImport } from "./importRecording";
-import { getRecordingThumbnail } from "./thumbnail";
+
+import { shell } from "electron";
 import { getCompanionAudioFallbackInfo } from "./diagnostics";
+import { discardRecordingImport, importRecording } from "./importRecording";
+import {
+	clearRecordingTrashUndo,
+	listRecordings,
+	setRecordingsRemoved,
+	trashRecordingSources,
+} from "./library";
+import { getRecordingThumbnail } from "./thumbnail";
+
 const require = createRequire(import.meta.url);
 const ffmpeg = require("ffmpeg-static") as string;
 const run = promisify(execFile);
@@ -90,6 +98,70 @@ it("lists recordings, moves recordings and their companions to Trash with revers
 		"fixture",
 	);
 	await expect(setRecordingsRemoved(["/tmp/outside.mp4"], true)).rejects.toThrow("outside");
+});
+
+it("trashes selected raw tracks without removing companions or projects", async () => {
+	const names = [
+		"screen.mp4",
+		"screen.webcam.mp4",
+		"screen.mic.wav",
+		"screen.system.wav",
+		"screen.recordly-session.json",
+		"edit.recordly",
+	];
+	for (const name of names) await fs.writeFile(path.join(state.root, name), "fixture");
+	const selected = ["screen.webcam.mp4", "screen.mic.wav"].map((name) =>
+		path.join(state.root, name),
+	);
+	expect(await trashRecordingSources([...selected, selected[0]])).toEqual({
+		deleted: selected,
+		errors: [],
+	});
+	for (const file of selected) await expect(fs.access(file)).rejects.toThrow();
+	for (const name of [
+		"screen.mp4",
+		"screen.system.wav",
+		"screen.recordly-session.json",
+		"edit.recordly",
+	])
+		expect(await fs.readFile(path.join(state.root, name), "utf8")).toBe("fixture");
+	expect((await listRecordings(true)).map((entry) => entry.name).sort()).toEqual([
+		"screen.mp4",
+		"screen.system.wav",
+	]);
+});
+
+it("validates the entire source selection before trashing and rejects links, directories and non-media", async () => {
+	const valid = path.join(state.root, "screen.mp4");
+	await fs.writeFile(valid, "fixture");
+	await fs.writeFile(path.join(state.root, "edit.recordly"), "fixture");
+	await fs.mkdir(path.join(state.root, "folder.mp4"));
+	await fs.symlink(valid, path.join(state.root, "link.mp4"));
+	for (const invalid of [
+		[],
+		[valid, "/tmp/outside.mp4"],
+		[valid, path.join(state.root, "link.mp4")],
+		[valid, path.join(state.root, "folder.mp4")],
+		[valid, path.join(state.root, "edit.recordly")],
+		[valid, path.join(state.root, "missing.mp4")],
+		[1],
+		Array(501).fill(valid),
+	]) {
+		await expect(trashRecordingSources(invalid)).rejects.toThrow();
+		expect(await fs.readFile(valid, "utf8")).toBe("fixture");
+	}
+});
+
+it("reports partial Trash failures and keeps the failed source available", async () => {
+	const selected = ["screen.mp4", "screen.mic.wav"].map((name) => path.join(state.root, name));
+	for (const file of selected) await fs.writeFile(file, "fixture");
+	vi.mocked(shell.trashItem).mockRejectedValueOnce(new Error("locked"));
+	expect(await trashRecordingSources(selected)).toEqual({
+		deleted: [selected[1]],
+		errors: ["Could not move screen.mp4 to Trash"],
+	});
+	expect(await fs.readFile(selected[0], "utf8")).toBe("fixture");
+	await expect(fs.access(selected[1])).rejects.toThrow();
 });
 
 it("imports different-sized recordings with playable video, separate audio, stable offsets, and untouched originals", async () => {
@@ -329,9 +401,10 @@ it("restores on volumes without hard links and preserves conflicts", async () =>
 });
 
 it("Raw includes camera and audio sources without including metadata or symlinks", async () => {
- const files = ["screen.mp4", "screen.webcam.mp4", "screen.mic.wav", "screen.system.m4a"];
- for (const name of [...files, "screen.cursor.json"]) await fs.writeFile(path.join(state.root, name), "fixture");
- await fs.symlink(path.join(state.root, "screen.mp4"), path.join(state.root, "linked.mp4"));
- expect((await listRecordings(true)).map(entry => entry.name).sort()).toEqual(files.sort());
- expect((await listRecordings()).map(entry => entry.name)).toEqual(["screen.mp4"]);
+	const files = ["screen.mp4", "screen.webcam.mp4", "screen.mic.wav", "screen.system.m4a"];
+	for (const name of [...files, "screen.cursor.json"])
+		await fs.writeFile(path.join(state.root, name), "fixture");
+	await fs.symlink(path.join(state.root, "screen.mp4"), path.join(state.root, "linked.mp4"));
+	expect((await listRecordings(true)).map((entry) => entry.name).sort()).toEqual(files.sort());
+	expect((await listRecordings()).map((entry) => entry.name)).toEqual(["screen.mp4"]);
 });

@@ -76,7 +76,7 @@ describe("resolveExportStartSettings", () => {
 	});
 });
 
-it("locks sharing to fast 30 fps source quality without changing Local settings", () => {
+it("preserves the selected quality, encoding and FPS for sharing", () => {
 	const local = resolveExportStartSettings({
 		...baseOptions,
 		mp4FrameRate: 60,
@@ -84,9 +84,9 @@ it("locks sharing to fast 30 fps source quality without changing Local settings"
 	});
 	expect(resolveShareExportSettings(local)).toMatchObject({
 		format: "mp4",
-		quality: "source",
-		encodingMode: "fast",
-		mp4FrameRate: 30,
+		quality: "good",
+		encodingMode: "quality",
+		mp4FrameRate: 60,
 		includeCaptionSidecar: false,
 	});
 	expect(local).toMatchObject({
@@ -95,4 +95,17 @@ it("locks sharing to fast 30 fps source quality without changing Local settings"
 		quality: "good",
 		includeCaptionSidecar: true,
 	});
+});
+
+it("carries GIF size optimization only for opted-in GIF exports", () => {
+	const settings = resolveExportStartSettings({
+		...baseOptions,
+		exportFormat: "gif",
+		gifOptimizeSize: true,
+	});
+	expect(settings.gifConfig?.optimizeSize).toBe(true);
+	expect(resolveShareExportSettings(settings).gifConfig).toBeUndefined();
+	expect(
+		resolveExportStartSettings({ ...baseOptions, gifOptimizeSize: true }).gifConfig,
+	).toBeUndefined();
 });

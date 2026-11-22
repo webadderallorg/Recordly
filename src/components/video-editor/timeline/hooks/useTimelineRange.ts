@@ -1,5 +1,5 @@
 import type { Range } from "dnd-timeline";
-import { useCallback, useEffect, useMemo, useState, type RefObject, type WheelEvent } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useState, type WheelEvent } from "react";
 import { createInitialRange, normalizeWheelDeltaToPixels } from "../core/time";
 
 interface UseTimelineRangeParams {

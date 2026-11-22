@@ -12,6 +12,7 @@ import {
 
 const projectRoot = process.cwd();
 const whisperVersion = "v1.8.4";
+const macosDeploymentTarget = "14.0";
 const nativeRoot = path.join(projectRoot, "electron", "native");
 const cacheRoot = path.join(projectRoot, ".tmp", "whisper-runtime");
 const archivePath = path.join(cacheRoot, `${whisperVersion}.tar.gz`);
@@ -77,6 +78,7 @@ function createDarwinTarget(arch) {
 	const configureArgs = [
 		"-DCMAKE_BUILD_TYPE=Release",
 		`-DCMAKE_OSX_ARCHITECTURES=${targetArch === "arm64" ? "arm64" : "x86_64"}`,
+		`-DCMAKE_OSX_DEPLOYMENT_TARGET=${macosDeploymentTarget}`,
 	];
 
 	if (isCrossCompile) {
@@ -87,6 +89,7 @@ function createDarwinTarget(arch) {
 		platform: "darwin",
 		arch: targetArch,
 		archTag: getNativeArchTag("darwin", targetArch),
+		macosDeploymentTarget,
 		buildRoot: path.join(cacheRoot, `build-darwin-${targetArch}`),
 		outputDir: path.join(nativeRoot, "bin", getNativeArchTag("darwin", targetArch)),
 		configureArgs,
@@ -339,6 +342,7 @@ async function shouldSkipBuild(target) {
 		return (
 			manifest.version === whisperVersion &&
 			manifest.arch === target.arch &&
+			manifest.macosDeploymentTarget === target.macosDeploymentTarget &&
 			existsSync(binaryPath)
 		);
 	} catch {
@@ -427,6 +431,7 @@ async function stageRuntimeArtifacts(target, candidateDir, runtimeEntries) {
 				version: whisperVersion,
 				platform: target.platform,
 				arch: target.arch,
+				macosDeploymentTarget: target.macosDeploymentTarget,
 				binary: target.platform === "win32" ? "whisper-cli.exe" : "whisper-cli",
 			},
 			null,

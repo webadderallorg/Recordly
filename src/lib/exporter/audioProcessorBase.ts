@@ -1,6 +1,6 @@
 import { WebDemuxer } from "web-demuxer";
-import { resolveMediaElementSource } from "./localMediaSource";
 import type { TrimLikeRegion } from "./audioProcessorShared";
+import { resolveMediaElementSource } from "./localMediaSource";
 
 export class AudioProcessorBase {
 	protected cancelled = false;

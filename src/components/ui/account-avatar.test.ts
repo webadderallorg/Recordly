@@ -1,6 +1,7 @@
-import { expect, it } from "vitest";
 import type { User } from "@supabase/supabase-js";
+import { expect, it } from "vitest";
 import { getAccountProfile } from "./account-avatar";
+
 it("uses OAuth profile photos and falls back to name or email initials", () => {
 	const user = {
 		email: "alex@example.com",

@@ -1,5 +1,4 @@
 import type { WebDemuxer } from "web-demuxer";
-import { OfflineAudioProcessor } from "./offlineAudioProcessor";
 import {
 	AUDIO_BITRATE,
 	DECODE_BACKPRESSURE_LIMIT,
@@ -8,6 +7,7 @@ import {
 	type TrimLikeRegion,
 } from "./audioProcessorShared";
 import type { VideoMuxer } from "./muxer";
+import { OfflineAudioProcessor } from "./offlineAudioProcessor";
 
 export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 	protected async processTrimOnlyAudio(
@@ -15,19 +15,19 @@ export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 		muxer: VideoMuxer,
 		sortedTrims: TrimLikeRegion[],
 		readEndSec?: number,
-	): Promise<void> {
+	): Promise<boolean> {
 		let audioConfig: AudioDecoderConfig;
 		try {
 			audioConfig = (await demuxer.getDecoderConfig("audio")) as AudioDecoderConfig;
 		} catch {
 			console.warn("[AudioProcessor] No audio track found, skipping");
-			return;
+			return false;
 		}
 
 		const codecCheck = await AudioDecoder.isConfigSupported(audioConfig);
 		if (!codecCheck.supported) {
 			console.warn("[AudioProcessor] Audio codec not supported:", audioConfig.codec);
-			return;
+			return false;
 		}
 
 		const audioStream =
@@ -57,6 +57,7 @@ export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 				},
 			},
 		);
+		return true;
 	}
 
 	protected async transcodeAudioStream(

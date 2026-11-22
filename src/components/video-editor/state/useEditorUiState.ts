@@ -49,7 +49,6 @@ export function useEditorUiState(
 	const [showCropModal, setShowCropModal] = useState(false);
 	const [previewVersion, setPreviewVersion] = useState(0);
 	const [isPreviewReady, setIsPreviewReady] = useState(false);
-	const [autoSuggestZoomsTrigger, setAutoSuggestZoomsTrigger] = useState(0);
 
 	const videoPlaybackRef = useRef<VideoPlaybackRef>(null);
 	const projectBrowserTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -64,10 +63,6 @@ export function useEditorUiState(
 	const nextAudioIdRef = useRef(1);
 	const nextAnnotationIdRef = useRef(1);
 	const nextAnnotationZIndexRef = useRef(1);
-	const autoSuggestedVideoPathRef = useRef<string | null>(null);
-	const pendingFreshRecordingAutoZoomPathRef = useRef<string | null>(null);
-	const pendingFreshRecordingAutoSuggestTimeoutRef = useRef<number | null>(null);
-	const pendingFreshRecordingAutoSuggestTelemetryCountRef = useRef(0);
 	const cropSnapshotRef = useRef<CropRegion | null>(null);
 	const timelineRef = useRef<TimelineEditorHandle>(null);
 
@@ -148,8 +143,6 @@ export function useEditorUiState(
 		setPreviewVersion,
 		isPreviewReady,
 		setIsPreviewReady,
-		autoSuggestZoomsTrigger,
-		setAutoSuggestZoomsTrigger,
 		videoPlaybackRef,
 		projectBrowserTriggerRef,
 		projectBrowserFallbackTriggerRef,
@@ -163,10 +156,6 @@ export function useEditorUiState(
 		nextAudioIdRef,
 		nextAnnotationIdRef,
 		nextAnnotationZIndexRef,
-		autoSuggestedVideoPathRef,
-		pendingFreshRecordingAutoZoomPathRef,
-		pendingFreshRecordingAutoSuggestTimeoutRef,
-		pendingFreshRecordingAutoSuggestTelemetryCountRef,
 		timelineRef,
 		applySessionPresentation,
 		handleOpenCropEditor,

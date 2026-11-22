@@ -1,0 +1,282 @@
+import { EventEmitter } from "node:events";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+	handlers: new Map<string, (...args: unknown[]) => unknown>(),
+	syncHandlers: new Map<string, (...args: unknown[]) => unknown>(),
+	send: vi.fn(),
+	healthySend: vi.fn(),
+	focusStart: vi.fn(),
+	focusStop: vi.fn(),
+	fromContents: vi.fn(),
+}));
+vi.mock("electron", () => ({
+	app: {},
+	BrowserWindow: {
+		fromWebContents: mocks.fromContents,
+		getAllWindows: () => [
+			{
+				isDestroyed: () => false,
+				webContents: { isDestroyed: () => false, send: mocks.send },
+			},
+			{
+				isDestroyed: () => false,
+				webContents: { isDestroyed: () => false, send: mocks.healthySend },
+			},
+		],
+	},
+	ipcMain: {
+		handle: (channel: string, handler: (...args: unknown[]) => unknown) =>
+			mocks.handlers.set(channel, handler),
+		on: (channel: string, handler: (...args: unknown[]) => unknown) =>
+			mocks.syncHandlers.set(channel, handler),
+	},
+}));
+vi.mock("../recording/focus", () => ({
+	recordingFocus: { start: mocks.focusStart, stop: mocks.focusStop },
+}));
+vi.mock("../../cursorHider", () => ({ hideCursor: vi.fn() }));
+vi.mock("../../appSettingsStore", () => ({
+	hasAppSetting: vi.fn(),
+	readAppSettingsStore: vi.fn(),
+	readAppSettingsStoreWithStatus: vi.fn(),
+	writeAppSettingsStore: vi.fn(),
+}));
+vi.mock("../constants", () => ({
+	COUNTDOWN_SETTINGS_FILE: "/unused/countdown.json",
+	RECORDINGS_SETTINGS_FILE: "/unused/recordings.json",
+	SHORTCUTS_FILE: "/unused/shortcuts.json",
+}));
+vi.mock("../settings/recordingPreferencesStore", () => ({
+	recordingPreferencesStore: { read: vi.fn(), update: vi.fn() },
+}));
+vi.mock("../utils", () => ({ parseJsonWithByteOrderMark: JSON.parse }));
+
+import {
+	hasAppSetting,
+	readAppSettingsStoreWithStatus,
+	writeAppSettingsStore,
+} from "../../appSettingsStore";
+import { registerSettingsHandlers } from "./settings";
+
+describe("custom window controls", () => {
+	const platform = process.platform;
+	afterEach(() => Object.defineProperty(process, "platform", { value: platform }));
+	it.each(["win32", "linux", "darwin"])("reports appropriate controls for %s", (platform) => {
+		Object.defineProperty(process, "platform", { value: platform });
+		mocks.fromContents.mockReturnValue({
+			isMaximized: () => true,
+			isFullScreen: () => false,
+			isSimpleFullScreen: () => false,
+		});
+		registerSettingsHandlers();
+		expect(mocks.handlers.get("get-window-chrome")!({ sender: {} })).toEqual({
+			customControls: platform !== "darwin",
+			maximized: true,
+			trafficLightsVisible: platform === "darwin",
+		});
+	});
+	it("applies controls to the sender's window rather than a global window", () => {
+		const sender = {};
+		const close = vi.fn();
+		mocks.fromContents.mockReturnValue({ isDestroyed: () => false, close });
+		registerSettingsHandlers();
+		expect(mocks.handlers.get("window-control")!({ sender }, "close")).toEqual({
+			success: true,
+		});
+		expect(mocks.fromContents).toHaveBeenCalledWith(sender);
+		expect(close).toHaveBeenCalledOnce();
+	});
+});
+
+describe("app setting read status", () => {
+	beforeEach(() => {
+		mocks.syncHandlers.clear();
+		vi.mocked(readAppSettingsStoreWithStatus).mockReset();
+		vi.mocked(writeAppSettingsStore).mockReset();
+		vi.mocked(hasAppSetting).mockImplementation(
+			(store, key) => Reflect.getOwnPropertyDescriptor(store, key) !== undefined,
+		);
+		registerSettingsHandlers();
+	});
+
+	const read = (key: unknown) => {
+		const event = { returnValue: undefined as unknown };
+		mocks.syncHandlers.get("app-settings:get")!(event, key);
+		return event.returnValue;
+	};
+
+	it("returns successful empty and existing values without conflating storage failure", () => {
+		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({ success: true, store: {} });
+		expect(read("history")).toEqual({ success: true, found: false, value: null });
+		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({
+			success: true,
+			store: { history: 123 },
+		});
+		expect(read("history")).toEqual({ success: true, found: true, value: 123 });
+		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({
+			success: true,
+			store: { history: null },
+		});
+		expect(read("history")).toEqual({ success: true, found: true, value: null });
+		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({ success: false });
+		expect(read("history")).toEqual({ success: false, value: null });
+	});
+
+	const write = (key: unknown, value: unknown) => {
+		const event = { returnValue: undefined as unknown };
+		mocks.syncHandlers.get("app-settings:set")!(event, key, value);
+		return event.returnValue;
+	};
+
+	it("does not replace unreadable settings with a partial map", () => {
+		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({ success: false });
+		expect(write("volume", 0.5)).toEqual({ success: false });
+		expect(writeAppSettingsStore).not.toHaveBeenCalled();
+	});
+
+	it("preserves other settings when updating a successfully read store", () => {
+		vi.mocked(readAppSettingsStoreWithStatus).mockReturnValue({
+			success: true,
+			store: {
+				"recordly.project-share-links.v1": { project: "https://example.test/v/share" },
+			},
+		});
+		expect(write("volume", 0.5)).toEqual({ success: true });
+		expect(writeAppSettingsStore).toHaveBeenCalledExactlyOnceWith({
+			"recordly.project-share-links.v1": { project: "https://example.test/v/share" },
+			volume: 0.5,
+		});
+	});
+
+	it.each([null, "", 1])("rejects invalid setting keys without reading storage: %j", (key) => {
+		expect(read(key)).toEqual({ success: false, value: null });
+		expect(readAppSettingsStoreWithStatus).not.toHaveBeenCalled();
+	});
+});
+
+describe("recording microphone profile configuration", () => {
+	beforeEach(() => {
+		vi.stubEnv("RECORDLY_BROWSER_MIC_PROFILE", undefined);
+		mocks.handlers.clear();
+		registerSettingsHandlers();
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	const getProfile = () => mocks.handlers.get("get-recording-audio-lab-config")!();
+
+	it("disables AGC for normal recordings without a lab override", () => {
+		expect(getProfile()).toEqual({
+			browserMicrophoneProfile: "no-agc",
+			requestedBrowserMicrophoneProfile: null,
+		});
+	});
+
+	it.each(["", "unknown"])("uses the safe default for %j configuration", (value) => {
+		vi.stubEnv("RECORDLY_BROWSER_MIC_PROFILE", value);
+		expect(getProfile()).toMatchObject({ browserMicrophoneProfile: "no-agc" });
+	});
+
+	it("preserves an explicitly requested processed microphone profile", () => {
+		vi.stubEnv("RECORDLY_BROWSER_MIC_PROFILE", " Processed ");
+		expect(getProfile()).toEqual({
+			browserMicrophoneProfile: "processed",
+			requestedBrowserMicrophoneProfile: "Processed",
+		});
+	});
+});
+
+describe("inline recording countdown", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		mocks.handlers.clear();
+		mocks.send.mockReset();
+		mocks.healthySend.mockClear();
+		mocks.focusStart.mockClear();
+		registerSettingsHandlers();
+	});
+	afterEach(() => {
+		mocks.handlers.get("cancel-countdown")?.();
+		vi.useRealTimers();
+	});
+
+	it("broadcasts inline ticks and clears the countdown after success", async () => {
+		const sender = Object.assign(new EventEmitter(), { isDestroyed: () => false });
+		const pending = mocks.handlers.get("start-countdown")!({ sender }, 3);
+		await vi.advanceTimersByTimeAsync(3000);
+		await expect(pending).resolves.toEqual({ success: true });
+		expect(mocks.focusStart).not.toHaveBeenCalled();
+		expect(mocks.send.mock.calls).toEqual([
+			["countdown-tick", 3],
+			["countdown-tick", 2],
+			["countdown-tick", 1],
+			["countdown-tick", 0],
+		]);
+		expect(sender.listenerCount("destroyed")).toBe(0);
+	});
+
+	it.each([
+		3, 2, 0,
+	])("finishes when a renderer rejects tick %s and still updates other windows", async (failedTick) => {
+		const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			mocks.send.mockImplementation((_channel, remaining) => {
+				if (remaining === failedTick) throw new Error("Frame was disposed");
+			});
+			const sender = Object.assign(new EventEmitter(), { isDestroyed: () => false });
+			const pending = mocks.handlers.get("start-countdown")!({ sender }, 3);
+			await vi.advanceTimersByTimeAsync(3000);
+			await expect(pending).resolves.toEqual({ success: true });
+			expect(mocks.healthySend.mock.calls).toEqual(
+				[3, 2, 1, 0].map((tick) => ["countdown-tick", tick]),
+			);
+			expect(sender.listenerCount("destroyed")).toBe(0);
+			expect(sender.listenerCount("render-process-gone")).toBe(0);
+			expect(mocks.handlers.get("get-active-countdown")!()).toEqual({
+				success: true,
+				seconds: null,
+			});
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			warning.mockRestore();
+		}
+	});
+
+	it("resolves cancellation and stops recording focus even when the final broadcast throws", async () => {
+		const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			mocks.focusStop.mockClear();
+			const sender = Object.assign(new EventEmitter(), { isDestroyed: () => false });
+			const pending = mocks.handlers.get("start-countdown")!({ sender }, 3);
+			mocks.send.mockImplementation(() => {
+				throw new Error("Frame was disposed");
+			});
+			sender.emit("render-process-gone");
+			await expect(pending).resolves.toEqual({ success: false, cancelled: true });
+			expect(mocks.focusStop).toHaveBeenCalled();
+			expect(sender.listenerCount("destroyed")).toBe(0);
+			expect(sender.listenerCount("render-process-gone")).toBe(0);
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			warning.mockRestore();
+		}
+	});
+
+	it.each([
+		"destroyed",
+		"render-process-gone",
+	])("cancels when the recording owner exits via %s", async (event) => {
+		const sender = Object.assign(new EventEmitter(), { isDestroyed: () => false });
+		const pending = mocks.handlers.get("start-countdown")!({ sender }, 3);
+		sender.emit(event);
+		await expect(pending).resolves.toEqual({ success: false, cancelled: true });
+		expect(mocks.handlers.get("get-active-countdown")!()).toEqual({
+			success: true,
+			seconds: null,
+		});
+		expect(vi.getTimerCount()).toBe(0);
+	});
+});

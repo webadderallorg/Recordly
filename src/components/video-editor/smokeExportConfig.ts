@@ -1,11 +1,11 @@
 import {
-	isValidMp4FrameRate,
 	type ExportBackendPreference,
 	type ExportEncodingMode,
 	type ExportMp4FrameRate,
 	type ExportPipelineModel,
 	type ExportQuality,
 	type ExportRenderBackend,
+	isValidMp4FrameRate,
 } from "@/lib/exporter/types";
 
 export type SmokeExportConfig = {

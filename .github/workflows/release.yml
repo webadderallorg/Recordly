@@ -18,6 +18,12 @@ on:
           - all
           - windows-linux
 
+env:
+  VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+  VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+  VITE_CLOUD_SHARE_ENDPOINT: ${{ vars.VITE_CLOUD_SHARE_ENDPOINT }}
+  VITE_OAUTH_FLOW_ID_REDIRECTS: 'true'
+
 permissions:
   contents: write
   actions: write
@@ -110,7 +116,7 @@ jobs:
     name: Build macOS x64
     needs: prepare-release
     if: needs.prepare-release.outputs.release_scope == 'all'
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -121,6 +127,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare-release.outputs.source_sha }}
+
+      - name: Show Xcode version
+        run: xcodebuild -version
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -177,16 +186,32 @@ jobs:
       - name: Build native macOS helpers
         run: npm run build:platform-native-helpers
 
+      - name: Validate production cloud configuration
+        run: npm run release:check-cloud
+
       - name: Build macOS x64
         run: |
           npx tsc
           npx vite build
-          npx electron-builder --mac dir dmg zip --x64 --publish never
+          npm run normalize:electron-main-cjs
+          npm run smoke:electron-main-cjs
+          npx electron-builder --mac dir dmg zip --x64 --publish never \
+            -c.mac.forceCodeSigning=true \
+            -c.mac.notarize=true
 
       - name: Smoke test packaged macOS x64 paths
         env:
           PACKAGED_SMOKE_ARCH_TAGS: darwin-x64
         run: npm run smoke:packaged-binaries
+
+      - name: Verify signed and notarized macOS x64 distribution
+        run: >-
+          npm run verify:macos-distribution --
+          --release-dir release
+          --arch x64
+          --team-id "$APPLE_TEAM_ID"
+          --report "release/macos-distribution-report-x64.json"
+          --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Generate macOS x64 artifact checksums
         run: npm run checksums:release -- SHA256SUMS-macos-x64.txt
@@ -206,13 +231,14 @@ jobs:
             release/*.blockmap
             release/latest-mac.yml
             release/SHA256SUMS*.txt
+            release/macos-distribution-report-x64.json
           if-no-files-found: error
 
   build-macos-arm64:
     name: Build macOS arm64
     needs: prepare-release
     if: needs.prepare-release.outputs.release_scope == 'all'
-    runs-on: macos-14
+    runs-on: macos-26
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -223,6 +249,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare-release.outputs.source_sha }}
+
+      - name: Show Xcode version
+        run: xcodebuild -version
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -279,16 +308,32 @@ jobs:
       - name: Build native macOS helpers
         run: npm run build:platform-native-helpers
 
+      - name: Validate production cloud configuration
+        run: npm run release:check-cloud
+
       - name: Build macOS arm64
         run: |
           npx tsc
           npx vite build
-          npx electron-builder --mac dir dmg zip --arm64 --publish never
+          npm run normalize:electron-main-cjs
+          npm run smoke:electron-main-cjs
+          npx electron-builder --mac dir dmg zip --arm64 --publish never \
+            -c.mac.forceCodeSigning=true \
+            -c.mac.notarize=true
 
       - name: Smoke test packaged macOS arm64 paths
         env:
           PACKAGED_SMOKE_ARCH_TAGS: darwin-arm64
         run: npm run smoke:packaged-binaries
+
+      - name: Verify signed and notarized macOS arm64 distribution
+        run: >-
+          npm run verify:macos-distribution --
+          --release-dir release
+          --arch arm64
+          --team-id "$APPLE_TEAM_ID"
+          --report "release/macos-distribution-report-arm64.json"
+          --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Generate macOS arm64 artifact checksums
         run: npm run checksums:release -- SHA256SUMS-macos-arm64.txt
@@ -308,6 +353,7 @@ jobs:
             release/*.blockmap
             release/latest-mac.yml
             release/SHA256SUMS*.txt
+            release/macos-distribution-report-arm64.json
           if-no-files-found: error
 
   merge-macos-update-metadata:
@@ -426,8 +472,24 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Install bundled FFmpeg binary
-        run: node scripts/install-ffmpeg-static.mjs
+      - name: Set up Windows FFmpeg compiler
+        uses: msys2/setup-msys2@v2
+        id: ffmpeg-msys2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make
+            diffutils
+            perl
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-pkgconf
+
+      - name: Build FFmpeg and FFprobe from pinned source
+        env:
+          RECORDLY_MSYS2_ROOT: ${{ steps.ffmpeg-msys2.outputs.msys2-location }}
+        run: npm run build:ffmpeg-source
 
       - name: Verify bundled FFmpeg binary
         run: |
@@ -443,16 +505,30 @@ jobs:
       - name: Install app dependencies
         run: npx electron-builder install-app-deps
 
+      - name: Validate production cloud configuration
+        run: npm run release:check-cloud
+
       - name: Build Windows x64
         shell: pwsh
         run: |
           npm run build:platform-native-helpers
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx tsc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx vite build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run normalize:electron-main-cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run smoke:electron-main-cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx electron-builder --win dir nsis --x64 --publish never
 
       - name: Smoke test packaged Windows x64 paths
         run: npm run smoke:packaged-binaries
+
+
+      - name: Archive corresponding FFmpeg source
+        run: tar -a -cf release/Recordly-windows-x64-ffmpeg-source.zip -C node_modules/ffmpeg-static/ffmpeg.exe.sources .
 
       - name: Generate Windows x64 artifact checksums
         run: npm run checksums:release -- SHA256SUMS-windows-x64.txt
@@ -470,6 +546,7 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/latest*.yml
+            release/*-ffmpeg-source.zip
             release/SHA256SUMS*.txt
           if-no-files-found: error
 
@@ -504,8 +581,13 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Install bundled FFmpeg binary
-        run: node scripts/install-ffmpeg-static.mjs
+      - name: Install Linux FFmpeg build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential binutils diffutils nasm perl pkg-config
+
+      - name: Build FFmpeg and FFprobe from pinned source
+        run: npm run build:ffmpeg-source
 
       - name: Verify bundled FFmpeg binary
         run: |
@@ -517,16 +599,26 @@ jobs:
       - name: Install app dependencies
         run: npx electron-builder install-app-deps
 
+      - name: Validate production cloud configuration
+        run: npm run release:check-cloud
+
       - name: Build Linux x64
         run: |
           export CSC_IDENTITY_AUTO_DISCOVERY=false
           npm run build:platform-native-helpers
           npx tsc
           npx vite build
+          npm run normalize:electron-main-cjs
+          npm run smoke:electron-main-cjs
           npx electron-builder --linux dir AppImage --x64 --publish never
 
       - name: Smoke test packaged Linux x64 paths
         run: npm run smoke:packaged-binaries
+
+
+      - name: Archive corresponding FFmpeg source
+        working-directory: node_modules/ffmpeg-static/ffmpeg.sources
+        run: zip -qr ../../../release/Recordly-linux-x64-ffmpeg-source.zip .
 
       - name: Generate Linux x64 artifact checksums
         run: npm run checksums:release -- SHA256SUMS-linux-x64.txt
@@ -544,6 +636,7 @@ jobs:
             release/*.AppImage
             release/*.blockmap
             release/latest-linux.yml
+            release/*-ffmpeg-source.zip
             release/SHA256SUMS*.txt
           if-no-files-found: error
 
@@ -660,6 +753,8 @@ jobs:
           fi
 
           assets=(
+            release-assets/windows-x64/*-ffmpeg-source.zip
+            release-assets/linux-x64/*-ffmpeg-source.zip
             release-assets/windows-x64/*.exe
             release-assets/windows-x64/*.blockmap
             release-assets/linux-x64/*.AppImage

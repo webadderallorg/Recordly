@@ -2,9 +2,41 @@ import { describe, expect, it } from "vitest";
 
 import {
 	getHudOverlayWindowBounds,
+	getX11HudRecordingShape,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
+
+describe("getX11HudRecordingShape", () => {
+	it("keeps separate rendered regions from blocking the area between them", () => {
+		expect(
+			getX11HudRecordingShape(
+				[
+					{ left: 312.5, top: 74, right: 547.5, bottom: 128 },
+					{ left: 72, top: 10, right: 270, bottom: 128 },
+				],
+				{ width: 860, height: 160 },
+			),
+		).toEqual([
+			{ x: 304, y: 66, width: 252, height: 70 },
+			{ x: 64, y: 2, width: 214, height: 134 },
+		]);
+	});
+
+	it("clips to the viewport and ignores empty or non-finite regions", () => {
+		expect(
+			getX11HudRecordingShape(
+				[
+					{ left: -3, top: 113.5, right: 84, bottom: 160 },
+					{ left: 880, top: 10, right: 900, bottom: 18 },
+					{ left: 120, top: 0, right: 140, bottom: 0 },
+					{ left: 30, top: 45, right: Number.POSITIVE_INFINITY, bottom: 50 },
+				],
+				{ width: 860, height: 160 },
+			),
+		).toEqual([{ x: 0, y: 105, width: 92, height: 55 }]);
+	});
+});
 
 describe("getHudOverlayWindowBounds", () => {
 	const workArea = {
@@ -53,6 +85,17 @@ describe("getHudOverlayWindowBounds", () => {
 			width: 640,
 			height: 160,
 		});
+	});
+
+	it("restores the dragged bottom edge after expanding against the top of a display", () => {
+		const dragged = { x: 310, y: 95, width: 860, height: 160 };
+		expect(getHudOverlayWindowBounds(workArea, false, true, dragged)).toEqual({
+			x: 310,
+			y: 40,
+			width: 860,
+			height: 540,
+		});
+		expect(getHudOverlayWindowBounds(workArea, false, false, dragged)).toEqual(dragged);
 	});
 
 	it("fits the expanded fallback inside small displays", () => {

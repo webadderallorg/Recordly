@@ -1,0 +1,43 @@
+.loading-transition {
+	position: relative;
+	min-width: 0;
+}
+.loading-placeholder[data-retiring="true"] {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	z-index: 1;
+	animation: loading-placeholder-exit 180ms ease-out both;
+}
+.loading-content-enter {
+	animation: loading-content-enter 180ms ease-out both;
+}
+.loading-transition > .loading-content-enter {
+	position: relative;
+	z-index: 0;
+}
+@keyframes loading-content-enter {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+@keyframes loading-placeholder-exit {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.loading-content-enter,
+	.loading-placeholder[data-retiring="true"] {
+		animation: none;
+	}
+	.loading-placeholder[data-retiring="true"] {
+		display: none;
+	}
+}

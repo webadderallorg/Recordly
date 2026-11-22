@@ -1,4 +1,5 @@
 #include "wasapi_loopback.h"
+#include "audio_sample_placement.h"
 #include <functiondiscoverykeys_devpkey.h>
 #include <iostream>
 #include <cstring>
@@ -9,13 +10,7 @@
 #pragma comment(lib, "ole32.lib")
 
 namespace {
-constexpr int64_t kHundredNanosecondsPerSecond = 10000000;
 constexpr uint64_t kSilenceWriteChunkFrames = 4096;
-constexpr uint32_t kMinimumGapFillThresholdMs = 50;
-// Wireless headsets can flag short WASAPI discontinuities that are less audible
-// when compacted and later duration-corrected than when rendered as hard silence.
-constexpr uint32_t kDiscontinuityGapFillThresholdMs = 140;
-constexpr uint32_t kSilentDiscontinuityCompactThresholdMs = 40;
 constexpr uint32_t kBoundaryFadeInMs = 5;
 
 int64_t queryPerformanceCounterHns() {
@@ -389,13 +384,20 @@ void WasapiCapture::writeSilenceFrames(uint64_t frameCount, WORD channels) {
 
     gapFillCount_.fetch_add(1);
     insertedSilenceFrames_.fetch_add(frameCount);
+    const bool needsBoundaryFade = shouldFadeAfterAudioGap(frameCount, sampleRate());
     std::vector<int16_t> silence(static_cast<size_t>(kSilenceWriteChunkFrames * channels), 0);
     while (frameCount > 0) {
         const uint64_t chunkFrames = (std::min)(frameCount, kSilenceWriteChunkFrames);
-        writePcmFrames(silence.data(), static_cast<UINT32>(chunkFrames), channels);
+        // Silence does not consume an existing fade: its progress belongs to
+        // captured PCM, including across a one-sample clock correction.
+        const DWORD bytesToWrite = static_cast<DWORD>(chunkFrames * channels * sizeof(int16_t));
+        DWORD written = 0;
+        WriteFile(outputFile_, silence.data(), bytesToWrite, &written, nullptr);
+        totalDataBytes_.fetch_add(written);
+        framesWritten_.fetch_add(written / (channels * sizeof(int16_t)));
         frameCount -= chunkFrames;
     }
-    fadeInFramesRemaining_ = boundaryFadeInFrameCount();
+    if (needsBoundaryFade) fadeInFramesRemaining_ = boundaryFadeInFrameCount();
 }
 
 uint64_t WasapiCapture::capturedDurationMs() const {
@@ -487,70 +489,22 @@ void WasapiCapture::captureThread() {
             const bool hasReliableTimestamp =
                 numFrames > 0 &&
                 qpcPosition > 0 &&
+                qpcPosition <= static_cast<UINT64>((std::numeric_limits<int64_t>::max)()) &&
                 (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) == 0;
-            if (hasReliableTimestamp) {
-                int64_t expected = -1;
-                firstPacketQpcHns_.compare_exchange_strong(
-                    expected,
-                    static_cast<int64_t>(qpcPosition));
-
-                const int64_t firstPacketQpcHns = firstPacketQpcHns_.load();
-                if (
-                    firstPacketQpcHns >= 0 &&
-                    static_cast<int64_t>(qpcPosition) > firstPacketQpcHns
-                ) {
-                    const int64_t elapsedHns =
-                        static_cast<int64_t>(qpcPosition) - firstPacketQpcHns;
-                    const int64_t adjustedElapsedHns =
-                        elapsedHns > accumulatedPausedQpcHns_.load()
-                            ? elapsedHns - accumulatedPausedQpcHns_.load()
-                            : 0;
-                    const uint64_t expectedStartFrame =
-                        (static_cast<uint64_t>(adjustedElapsedHns) * mixFormat_->nSamplesPerSec +
-                         kHundredNanosecondsPerSecond / 2) /
-                        kHundredNanosecondsPerSecond;
-                    const uint64_t writtenFrames = framesWritten_.load();
-                    const uint32_t gapThresholdMs = hasDataDiscontinuity
-                        ? kDiscontinuityGapFillThresholdMs
-                        : kMinimumGapFillThresholdMs;
-                    const uint32_t gapThresholdFrameCount =
-                        (mixFormat_->nSamplesPerSec * gapThresholdMs) / 1000;
-                    const uint64_t gapThresholdFrames =
-                        gapThresholdFrameCount > 0 ? gapThresholdFrameCount : 1;
-
-                    if (expectedStartFrame > writtenFrames) {
-                        const uint64_t missingFrames = expectedStartFrame - writtenFrames;
-                        if (missingFrames > gapThresholdFrames) {
-                            writeSilenceFrames(missingFrames, channels);
-                        } else if (hasDataDiscontinuity) {
-                            compactedDiscontinuityCount_.fetch_add(1);
-                            compactedDiscontinuityFrames_.fetch_add(missingFrames);
-                        }
-                    }
-                }
-            }
+            const auto placement = planAudioSamplePlacement(
+                firstPacketQpcHns_.load(),
+                hasReliableTimestamp ? static_cast<int64_t>(qpcPosition) : 0,
+                accumulatedPausedQpcHns_.load(),
+                framesWritten_.load(),
+                numFrames,
+                mixFormat_->nSamplesPerSec,
+                hasReliableTimestamp);
+            firstPacketQpcHns_ = placement.originQpcHns;
+            if (placement.rejectedTimestamp) timestampErrorCount_.fetch_add(1);
+            if (placement.silenceFrames > 0) writeSilenceFrames(placement.silenceFrames, channels);
 
             UINT32 totalSamples = numFrames * channels;
             const bool isSilentPacket = (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0;
-            const uint32_t silentCompactThresholdFrames =
-                (mixFormat_->nSamplesPerSec * kSilentDiscontinuityCompactThresholdMs) / 1000;
-            if (
-                hasDataDiscontinuity &&
-                isSilentPacket &&
-                framesWritten_.load() > 0 &&
-                numFrames > 0 &&
-                numFrames <= (silentCompactThresholdFrames > 0 ? silentCompactThresholdFrames : 1)
-            ) {
-                compactedSilentDiscontinuityCount_.fetch_add(1);
-                compactedSilentDiscontinuityFrames_.fetch_add(numFrames);
-                captureClient_->ReleaseBuffer(numFrames);
-                hr = captureClient_->GetNextPacketSize(&packetLength);
-                if (FAILED(hr)) {
-                    std::cerr << "WASAPI: GetNextPacketSize failed hr=0x" << std::hex << hr << std::dec << std::endl;
-                    break;
-                }
-                continue;
-            }
 
             if (isSilentPacket) {
                 pcmBuffer.assign(totalSamples, 0);
@@ -609,7 +563,12 @@ void WasapiCapture::captureThread() {
 
             captureClient_->ReleaseBuffer(numFrames);
 
-            writePcmFrames(pcmBuffer.data(), numFrames, channels);
+            if (placement.trimFrames < numFrames) {
+                writePcmFrames(
+                    pcmBuffer.data() + static_cast<size_t>(placement.trimFrames) * channels,
+                    numFrames - placement.trimFrames,
+                    channels);
+            }
 
             hr = captureClient_->GetNextPacketSize(&packetLength);
             if (FAILED(hr)) {
