@@ -55,10 +55,6 @@ async function setup(page: Page) {
 	await expect(page.locator('[data-variant="clip"]')).toHaveAttribute("data-end-ms", "6000", {
 		timeout: 20000,
 	});
-	await expect(page.locator('[data-variant="clip"] img').first()).toBeVisible();
-	await expect(page.getByLabel("Loading preview")).toHaveCount(0);
-	await page.getByRole("button", { name: "Clips", exact: true }).click();
-	await expect(page.getByLabel("Select first.mp4")).toBeVisible();
 }
 
 test("Clips supports selection, remove all, undo and real timeline drag insertion", async ({
@@ -67,6 +63,10 @@ test("Clips supports selection, remove all, undo and real timeline drag insertio
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await setup(page);
+	await expect(page.locator('[data-variant="clip"] img').first()).toBeVisible();
+	await expect(page.getByLabel("Loading preview")).toHaveCount(0);
+	await page.getByRole("button", { name: "Clips", exact: true }).click();
+	await expect(page.getByLabel("Select first.mp4")).toBeVisible();
 	const panel = page.getByRole("complementary", { name: "Clips" });
 	await panel.getByRole("button", { name: "Open recordings folder", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-recordings-folder-opened", "true");
@@ -133,6 +133,148 @@ test("Clips supports selection, remove all, undo and real timeline drag insertio
 	await expect(panel).toHaveCount(0);
 	await expect(page.getByRole("slider", { name: "Blur", exact: true })).toBeVisible();
 	expect(errors).toEqual([]);
+});
+
+test("Add Layer imports an external video into the current timeline and handles Cancel", async ({
+	page,
+}) => {
+	test.setTimeout(60000);
+	await setup(page);
+	await page.evaluate(() => {
+		let cancel = true;
+		window.electronAPI.openVideoFilePicker = async (options) => {
+			document.documentElement.dataset.preserveProject = String(options?.preserveProjectPath);
+			if (cancel) {
+				cancel = false;
+				return { success: false, canceled: true };
+			}
+			return { success: true, kind: "media", path: "/picked/outside.mp4" };
+		};
+		window.electronAPI.importRecording = async (_current, path) => {
+			document.documentElement.dataset.importedPath = path;
+			const url = `${location.origin}/tests/ui/fixtures/filmstrip.mp4`;
+			return {
+				success: true,
+				value: {
+					path: url,
+					url,
+					sourceStartMs: 6000,
+					durationMs: 1000,
+					totalDurationMs: 7000,
+				},
+			};
+		};
+	});
+	const clips = page.locator('[data-variant="clip"]');
+	const add = page.getByRole("button", { name: "Add Layer", exact: true });
+	const importVideo = page.getByRole("menuitem", { name: "Import video", exact: true });
+	await expect(clips).toHaveCount(1);
+	await add.click();
+	await importVideo.click();
+	await expect(page.locator("html")).toHaveAttribute("data-preserve-project", "true");
+	await expect(page.locator("html")).not.toHaveAttribute("data-imported-path");
+	await expect(clips).toHaveCount(1);
+
+	await add.click();
+	await importVideo.click();
+	await expect(page.locator("html")).toHaveAttribute("data-imported-path", "/picked/outside.mp4");
+	await expect(clips).toHaveCount(2);
+	await expect(clips.last()).toHaveAttribute("data-start-ms", "6000");
+	await expect(clips.last()).toHaveAttribute("data-end-ms", "7000");
+});
+
+test("an import cannot replace another project that uses the same recording", async ({ page }) => {
+	test.setTimeout(60000);
+	await installDesktopBridge(page, "filmstrip.mp4");
+	await installDesktopBridgeOverrides(page, () => {
+		const videoPath = `${location.origin}/tests/ui/fixtures/filmstrip.mp4`;
+		const outputPath = "/recordings/combined.mp4";
+		const secondPath = "/projects/Second.recordly";
+		const project = (projectId: string, endMs: number) => ({
+			version: 2,
+			projectId,
+			videoPath,
+			editor: { clipRegions: [{ id: "clip-1", startMs: 0, endMs, speed: 1 }] },
+		});
+		window.electronAPI.loadCurrentProjectFile = async () => ({
+			success: true,
+			path: "/projects/First.recordly",
+			project: project("first", 6000),
+		});
+		window.electronAPI.saveProjectFile = async (_data, _name, path) => ({
+			success: true,
+			path,
+			projectId: "first",
+		});
+		window.electronAPI.listProjectFiles = async () => ({
+			success: true,
+			entries: [
+				{
+					path: secondPath,
+					name: "Second",
+					updatedAt: Date.now(),
+					thumbnailPath: null,
+					isCurrent: false,
+					isInProjectsDirectory: true,
+				},
+			],
+		});
+		window.electronAPI.openProjectFileAtPath = async (path) => ({
+			success: true,
+			path,
+			project: project("second", 3500),
+		});
+		window.electronAPI.onMenuLoadProject = (open) => {
+			window.addEventListener("test-open-projects", open);
+			return () => window.removeEventListener("test-open-projects", open);
+		};
+		window.electronAPI.openVideoFilePicker = async () => ({
+			success: true,
+			kind: "media",
+			path: "/picked/outside.mp4",
+		});
+		window.electronAPI.importRecording = async () => ({
+			success: true,
+			value: {
+				path: outputPath,
+				url: videoPath,
+				sourceStartMs: 6000,
+				durationMs: 1000,
+				totalDurationMs: 7000,
+			},
+		});
+		window.electronAPI.finishRecordingImport = async (path, accept) => {
+			if (path === outputPath && !accept) {
+				document.documentElement.dataset.importFinalizing = "true";
+				await new Promise<void>((resolve) =>
+					window.addEventListener("test-finish-import", () => resolve(), { once: true }),
+				);
+			} else {
+				document.documentElement.dataset.importRetainedPath = path;
+			}
+			return { success: true, value: null };
+		};
+	});
+	await page.goto("/?windowType=editor");
+	const clips = page.locator('[data-variant="clip"]');
+	await expect(clips).toHaveAttribute("data-end-ms", "6000", { timeout: 20000 });
+	await page.getByRole("button", { name: "Add Layer", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Import video", exact: true }).click();
+	const html = page.locator("html");
+	await expect(html).toHaveAttribute("data-import-finalizing", "true");
+
+	await page.evaluate(() => window.dispatchEvent(new Event("test-open-projects")));
+	const dashboard = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
+	await dashboard.getByRole("button", { name: "Second", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Rename project" })).toHaveText("Second");
+	await expect(clips).toHaveAttribute("data-end-ms", "3500");
+	await page.evaluate(() => window.dispatchEvent(new Event("test-finish-import")));
+	await expect(
+		page.getByText("The project changed while importing.", { exact: false }),
+	).toBeVisible();
+	await expect(html).toHaveAttribute("data-import-retained-path", /filmstrip\.mp4$/);
+	await expect(clips).toHaveCount(1);
+	await expect(clips).toHaveAttribute("data-end-ms", "3500");
 });
 
 test("generating captions leaves the current media session intact and shows the cues", async ({
