@@ -44,6 +44,20 @@ export function isActivationLink(rawUrl: string, protocol: AppLinkProtocol): boo
 	}
 }
 
+/**
+ * Windows and Linux start a new process for every click on the app's shortcut.
+ * A packaged launch there asks the running instance to come forward instead,
+ * matching macOS, where the OS reuses the running app. Headless smoke-export
+ * runs always start their own process.
+ */
+export function shouldForwardPlainLaunch(options: {
+	platform: NodeJS.Platform;
+	isPackaged: boolean;
+	smokeExport: boolean;
+}): boolean {
+	return options.platform !== "darwin" && options.isPackaged && !options.smokeExport;
+}
+
 export function findActivationLink(
 	args: readonly string[],
 	protocol: AppLinkProtocol,
