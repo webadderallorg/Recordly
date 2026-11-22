@@ -137,7 +137,7 @@ test("new recordings default to a circle and retain the squircle option", async 
 	await expect(page.locator("[data-webcam-glass-rim] path")).toHaveAttribute("d", /^M/);
 });
 
-test("Rectangle starts at 50% height in 16:9 and keeps Square roundness with a thin glass rim", async ({
+test("Rectangle starts at 35% height in 16:9 and restores preset roundness with a thin glass rim", async ({
 	page,
 }) => {
 	test.setTimeout(60_000);
@@ -170,8 +170,8 @@ test("Rectangle starts at 50% height in 16:9 and keeps Square roundness with a t
 	for (let step = 0; step < 25; step++) await roundness.press("ArrowRight");
 	await expect(roundness).toHaveValue("25");
 	await page.getByRole("row", { name: "Rectangle", exact: true }).click();
-	await expect(page.getByRole("slider", { name: "Webcam Width" })).toHaveValue("89");
-	await expect(page.getByRole("slider", { name: "Webcam Height" })).toHaveValue("50");
+	await expect(page.getByRole("slider", { name: "Webcam Width" })).toHaveValue("62");
+	await expect(page.getByRole("slider", { name: "Webcam Height" })).toHaveValue("35");
 	await expect
 		.poll(() =>
 			page.locator("[data-webcam-overlay]").evaluate((element) => {
@@ -180,7 +180,7 @@ test("Rectangle starts at 50% height in 16:9 and keeps Square roundness with a t
 			}),
 		)
 		.toBeCloseTo(16 / 9, 2);
-	await expect(roundness).toHaveValue("25");
+	await expect(roundness).toHaveValue("20");
 	const rim = page.locator("[data-webcam-glass-rim]");
 	await expect(rim).toBeVisible();
 	await expect(rim.locator("path")).toHaveAttribute("fill", "none");
@@ -218,7 +218,7 @@ test("Rectangle starts at 50% height in 16:9 and keeps Square roundness with a t
 	await page.getByRole("switch", { name: "Advanced settings" }).press("Space");
 	await page.getByRole("row", { name: "Square", exact: true }).click();
 	await expect(page.getByRole("slider", { name: "Webcam Width" })).toHaveValue("50");
-	await expect(roundness).toHaveValue("25");
+	await expect(roundness).toHaveValue("20");
 	await expect(rim.locator("path")).not.toHaveAttribute("d", rectanglePath!);
 	expect(
 		await originalRim!.evaluate(
