@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ENCODE_BACKPRESSURE_LIMIT } from "./audioProcessorShared";
 import { AudioTranscodeProcessor } from "./audioTranscodeProcessor";
 
 const audioConfig = { codec: "opus", sampleRate: 48_000, numberOfChannels: 2 };
@@ -16,7 +17,7 @@ class BufferedAudioDecoder {
 	ondequeue: (() => void) | null = null;
 	private receivedInput = false;
 
-	constructor(private readonly callbacks: AudioDecoderInit) {}
+	constructor(protected readonly callbacks: AudioDecoderInit) {}
 
 	configure() {
 		this.state = "configured";
@@ -42,10 +43,20 @@ class BufferedAudioDecoder {
 	}
 }
 
+class BurstAudioDecoder extends BufferedAudioDecoder {
+	override async flush() {
+		for (let frame = 0; frame <= ENCODE_BACKPRESSURE_LIMIT; frame++) {
+			this.callbacks.output(audioFrame);
+		}
+	}
+}
+
 class BufferedAudioEncoder {
 	static isConfigSupported = async () => ({ supported: true });
 	state: CodecState = "unconfigured";
 	encodeQueueSize = 0;
+	ondequeue: (() => void) | null = null;
+	private receivedInput = false;
 
 	constructor(private readonly callbacks: AudioEncoderInit) {}
 
@@ -54,11 +65,18 @@ class BufferedAudioEncoder {
 	}
 
 	encode() {
+		this.receivedInput = true;
 		this.encodeQueueSize++;
+		if (this.encodeQueueSize === ENCODE_BACKPRESSURE_LIMIT) {
+			setTimeout(() => {
+				this.encodeQueueSize = 0;
+				this.ondequeue?.();
+			}, 0);
+		}
 	}
 
 	async flush() {
-		if (this.encodeQueueSize > 0) this.callbacks.output(outputChunk);
+		if (this.receivedInput) this.callbacks.output(outputChunk);
 		this.encodeQueueSize = 0;
 	}
 
@@ -67,8 +85,8 @@ class BufferedAudioEncoder {
 	}
 }
 
-async function transcode(packetCount: number) {
-	vi.stubGlobal("AudioDecoder", BufferedAudioDecoder);
+async function transcode(packetCount: number, decoder = BufferedAudioDecoder) {
+	vi.stubGlobal("AudioDecoder", decoder);
 	vi.stubGlobal("AudioEncoder", BufferedAudioEncoder);
 	const addAudioChunk = vi.fn().mockResolvedValue(undefined);
 	const stream = new ReadableStream<EncodedAudioChunk>({
@@ -90,6 +108,13 @@ describe("AudioTranscodeProcessor", () => {
 
 	it("continues when the decode queue drains without output and flushes the encoder", async () => {
 		const { wroteAudio, addAudioChunk } = await transcode(22);
+
+		expect(wroteAudio).toBe(true);
+		expect(addAudioChunk).toHaveBeenCalledExactlyOnceWith(outputChunk, undefined);
+	}, 1500);
+
+	it("continues when a full encode queue drains without emitting an audio packet", async () => {
+		const { wroteAudio, addAudioChunk } = await transcode(1, BurstAudioDecoder);
 
 		expect(wroteAudio).toBe(true);
 		expect(addAudioChunk).toHaveBeenCalledExactlyOnceWith(outputChunk, undefined);
