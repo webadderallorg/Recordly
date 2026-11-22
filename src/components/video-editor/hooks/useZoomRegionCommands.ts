@@ -89,15 +89,16 @@ export function useZoomRegionCommands({
 	);
 
 	const handleZoomSuggested = useCallback(
-		(span: Span, focus: ZoomFocus) => {
+		(span: Span, focus: ZoomFocus, mode: ZoomMode = "auto") => {
+			const depth = mode === "manual" ? DEFAULT_ZOOM_DEPTH : DEFAULT_AUTO_ZOOM_DEPTH;
 			const newRegion: ZoomRegion = {
 				id: `zoom-${nextZoomIdRef.current++}`,
 				startMs: Math.round(span.start),
 				endMs: Math.round(span.end),
-				depth: DEFAULT_AUTO_ZOOM_DEPTH,
-				focus: clampFocusToDepth(focus, DEFAULT_AUTO_ZOOM_DEPTH),
+				depth,
+				focus: clampFocusToDepth(focus, depth),
 				focusSpace: "source",
-				mode: "auto",
+				mode,
 			};
 			setZoomRegions((current) => [...current, newRegion]);
 		},

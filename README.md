@@ -78,6 +78,7 @@ Use drag-and-drop timeline tools for zooms, trims, speed regions, annotations, e
 - Record an entire display or a single app window
 - Jump directly from recording into the editor
 - Capture microphone audio and system audio
+- Press Ctrl+Alt+Z (Cmd+Option+Z on macOS) while recording to mark a zoom at the pointer
 - Use native capture backends where supported
 - Resume editing from saved `.recordly` project files
 - Open existing recordings or existing project files from the app

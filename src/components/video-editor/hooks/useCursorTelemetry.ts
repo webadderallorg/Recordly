@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { useTimelineState } from "../state/useTimelineState";
+import type { RecordingZoomMarker } from "../timeline/recordingZoomMarkers";
 import { normalizeCursorTelemetry } from "../timeline/zoomSuggestionUtils";
 import type { CursorTelemetryPoint } from "../types";
 import {
@@ -26,6 +27,7 @@ export function useCursorTelemetry({
 	timeline,
 }: UseCursorTelemetryInput) {
 	const pendingRetryTimeoutRef = useRef<number | null>(null);
+	const [recordingZoomMarkers, setRecordingZoomMarkers] = useState<RecordingZoomMarker[]>([]);
 	const { setCursorTelemetry, setCursorTelemetrySourcePath } = timeline;
 
 	useEffect(() => {
@@ -47,6 +49,7 @@ export function useCursorTelemetry({
 				if (mounted) {
 					setCursorTelemetry([]);
 					setCursorTelemetrySourcePath(null);
+					setRecordingZoomMarkers([]);
 				}
 				return;
 			}
@@ -54,12 +57,18 @@ export function useCursorTelemetry({
 				const result = await window.electronAPI.getCursorTelemetry(videoSourcePath);
 				if (!mounted) return;
 				setCursorTelemetry(result.success ? result.samples : []);
+				setRecordingZoomMarkers(result.success ? (result.recordingZoomMarkers ?? []) : []);
 				setCursorTelemetrySourcePath(videoSourcePath);
-				if (!result.success || result.samples.length === 0) scheduleRetry();
+				if (
+					!result.success ||
+					(!result.samples.length && !result.recordingZoomMarkers?.length)
+				)
+					scheduleRetry();
 			} catch (error) {
 				console.warn("Unable to load cursor telemetry:", error);
 				if (!mounted) return;
 				setCursorTelemetry([]);
+				setRecordingZoomMarkers([]);
 				setCursorTelemetrySourcePath(videoSourcePath);
 				scheduleRetry();
 			}
@@ -111,5 +120,9 @@ export function useCursorTelemetry({
 		);
 	}, [alwaysUsePointerCursor, loopCursor, normalized, displayedWindow]);
 
-	return { normalizedCursorTelemetry: normalized, effectiveCursorTelemetry: effective };
+	return {
+		normalizedCursorTelemetry: normalized,
+		effectiveCursorTelemetry: effective,
+		recordingZoomMarkers,
+	};
 }

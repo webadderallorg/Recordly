@@ -44,6 +44,7 @@ import {
 } from "./ipc/handlers";
 import { recordingFocus } from "./ipc/recording/focus";
 import { clearRecordingTrashUndo } from "./ipc/recording/library";
+import { setRecordingZoomShortcutActive } from "./ipc/recording/zoomShortcut";
 import { resolveDisplayMediaSource } from "./ipc/register/sourceMapping";
 import { validateAppLocaleRequest } from "./localeIpc";
 import { ensureMediaServer } from "./mediaServer";
@@ -1262,6 +1263,7 @@ app.on("quit", () => {
 
 let nativeExportQuitState: "idle" | "waiting" | "ready" = "idle";
 app.on("will-quit", (event) => {
+	setRecordingZoomShortcutActive(false);
 	if (nativeExportQuitState === "ready") return;
 	if (nativeExportQuitState === "waiting") {
 		event.preventDefault();
