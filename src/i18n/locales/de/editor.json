@@ -245,6 +245,7 @@
 		"savingGif": "GIF wird gespeichert…",
 		"encodingGif": "GIF wird fertiggestellt…",
 		"errorCopied": "Fehler kopiert",
+		"nvidiaCudaFallback": "Der Export mit NVIDIA CUDA ist fehlgeschlagen. Recordly versucht einen anderen Exportweg.",
 		"errorCopyFailed": "Kopieren fehlgeschlagen. Wähle den Fehlertext aus und kopiere ihn manuell.",
 		"copyError": "Fehler kopieren"
 	},

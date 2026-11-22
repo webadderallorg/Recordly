@@ -245,6 +245,7 @@
 		"savingGif": "GIF を保存中…",
 		"encodingGif": "GIF を仕上げ中…",
 		"errorCopied": "エラーをコピーしました",
+		"nvidiaCudaFallback": "NVIDIA CUDA での書き出しに失敗しました。Recordly は別の書き出し方法を試しています。",
 		"errorCopyFailed": "コピーできませんでした。エラーテキストを選択して手動でコピーしてください。",
 		"copyError": "エラーをコピー"
 	},
