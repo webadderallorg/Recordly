@@ -1,5 +1,6 @@
 {
 	"zoom": {
+		"applyAutoZooms": "Apply auto zooms",
 		"cannotPlace": "Cannot place zoom here",
 		"existsOrNoSpace": "Zoom already exists at this location or not enough space available.",
 		"suggestHandlerUnavailable": "Zoom suggestion handler unavailable",
@@ -13,6 +14,8 @@
 		"dwellPointsOverlap": "Detected dwell points overlap existing zoom regions.",
 		"addedSuggestions": "Added {{count}} interaction-based zoom suggestion(s)",
 		"label": "Zoom {{index}}",
+		"selectedOne": "1 zoom selected",
+		"selectedCount": "{{count}} zooms selected",
 		"addZoom": "Add Zoom (Z)",
 		"suggestZooms": "Suggest Zooms from Cursor"
 	},
@@ -37,5 +40,10 @@
 	},
 	"addSpeed": "Add Speed (S)",
 	"resizeLeft": "Resize left",
-	"resizeRight": "Resize right"
+	"resizeRight": "Resize right",
+	"hints": {
+		"splitClip": "Press {{binding}} to split clip",
+		"addAnnotation": "Press {{binding}} to add annotation",
+		"addAudio": "Click music icon to add audio"
+	}
 }

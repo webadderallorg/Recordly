@@ -76,6 +76,21 @@ export function createInitialRange(totalMs: number): Range {
 	return { start: 0, end: FALLBACK_RANGE_MS };
 }
 
+export function scaleTimelineRange(
+	range: Range,
+	totalMs: number,
+	minimumSpanMs: number,
+	factor: number,
+): Range {
+	if (totalMs <= 0) return range;
+
+	const span = range.end - range.start;
+	const scaledSpan = Math.min(totalMs, Math.max(minimumSpanMs, span * factor));
+	const center = range.start + span / 2;
+	const start = Math.max(0, Math.min(center - scaledSpan / 2, totalMs - scaledSpan));
+	return { start, end: start + scaledSpan };
+}
+
 export function normalizeWheelDeltaToPixels(delta: number, deltaMode: number) {
 	if (deltaMode === 1) {
 		return delta * 16;

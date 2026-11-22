@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { isHudInEditorMode } from "./hudEditorMode";
+
 it("allows the webcam when New prepares a recording despite an existing editor", () => {
 	expect(isHudInEditorMode(1, false, false)).toBe(true);
 	expect(isHudInEditorMode(1, true, false)).toBe(false);

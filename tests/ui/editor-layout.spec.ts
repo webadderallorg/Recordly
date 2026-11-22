@@ -1,13 +1,24 @@
 import { expect, test } from "@playwright/test";
-import { installDesktopBridge } from "./bridge";
+import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 test("advanced controls preserve values and remember each section's view", async ({ page }) => {
 	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.getCurrentRecordingSession = async () => ({
+			success: true,
+			session: {
+				videoPath: `${location.origin}/tests/ui/fixtures/preview.mp4`,
+				webcamPath: `${location.origin}/tests/ui/fixtures/preview.mp4`,
+				timeOffsetMs: 0,
+			},
+		});
+	});
 	await page.goto("/?windowType=editor");
 	const advanced = page.getByRole("switch", { name: "Advanced settings" });
 	await expect(advanced).toBeVisible({ timeout: 20000 });
 	await expect(page.getByRole("switch", { name: "Link padding sides" })).toHaveCount(0);
 	const blur = page.getByRole("slider", { name: "Blur", exact: true });
+	await expect(blur).toBeVisible();
 	await blur.focus();
 	await page.keyboard.press("ArrowRight");
 	const value = await blur.inputValue();
@@ -15,6 +26,10 @@ test("advanced controls preserve values and remember each section's view", async
 	await expect(page.getByRole("switch", { name: "Link padding sides" })).toBeVisible();
 	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
 	await expect(advanced).not.toBeChecked();
+	await page
+		.getByRole("grid", { name: "Shape", exact: true })
+		.getByRole("row", { name: "Square", exact: true })
+		.click();
 	await expect(page.getByRole("slider", { name: "Webcam Height" })).toHaveCount(0);
 	await page.locator("aside").getByText("Advanced", { exact: true }).click();
 	await expect(page.getByRole("slider", { name: "Webcam Height" })).toBeAttached();
@@ -27,15 +42,21 @@ test("advanced controls preserve values and remember each section's view", async
 	await expect(blur).toHaveValue(value);
 	await page.locator("aside").getByText("Advanced", { exact: true }).click();
 	await expect(blur).toHaveValue(value);
-	await page.getByRole("row", { name: "Color", exact: true }).click();
-	await page.getByRole("button", { name: "Custom color", exact: true }).click();
+	await page.getByRole("row", { name: "Colors", exact: true }).click();
+	await page.getByRole("button", { name: "Add custom color", exact: true }).click();
 	await page.getByRole("textbox", { name: "Hex color", exact: true }).fill("#27AE60");
 	await page.keyboard.press("Tab");
 	await expect(page.getByRole("textbox", { name: "Hex color", exact: true })).toHaveValue(
 		"#27AE60",
 	);
-	await page.keyboard.press("Escape");
-	await page.getByRole("button", { name: "Custom color", exact: true }).click();
+	await page
+		.getByRole("dialog", { name: "Custom color", exact: true })
+		.getByRole("button", { name: "Add", exact: true })
+		.click();
+	await expect(
+		page.getByRole("button", { name: "Background color #27AE60", exact: true }),
+	).toHaveAttribute("aria-pressed", "true");
+	await page.getByRole("button", { name: "Add custom color", exact: true }).click();
 	await expect(page.getByRole("textbox", { name: "Hex color", exact: true })).toHaveValue(
 		"#27AE60",
 	);
@@ -54,8 +75,8 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 		.fill("A very long project title that should truncate and never cover the toolbar");
 	// Validate the editing state as well as the display state.
 	for (const width of [1440, 1280, 800]) {
-		await page.setViewportSize({ width, height: 800 });
-		for (const trafficLightsVisible of [true, false]) {
+		await page.setViewportSize({ width, height: width === 800 ? 600 : 800 });
+		for (const trafficLightsVisible of [false, true]) {
 			await page.evaluate(
 				(visible) =>
 					window.dispatchEvent(
@@ -71,7 +92,10 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 			);
 			const header = await page.locator(".editor-header").boundingBox();
 			const dividers = await page.locator(".editor-header").getByRole("separator").all();
-			expect(dividers).toHaveLength(2);
+			expect(dividers).toHaveLength(1);
+			await expect(
+				page.locator('.editor-header-start > span[aria-hidden="true"]'),
+			).toHaveText("/");
 			for (const divider of dividers) {
 				const box = await divider.boundingBox();
 				expect(box!.height).toBe(20);
@@ -96,6 +120,11 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 			expect(center!.x).toBeGreaterThan(left!.x);
 			expect(left!.x + left!.width).toBeLessThanOrEqual(right!.x);
 			expect(center!.x + center!.width).toBeLessThanOrEqual(right!.x);
+			expect(center!.width).toBeGreaterThanOrEqual(120);
+			const clips = await page
+				.getByRole("button", { name: "Clips", exact: true })
+				.boundingBox();
+			expect(clips!.x + clips!.width).toBeLessThanOrEqual(right!.x);
 			const buttons = await page.locator(".editor-playback button").evaluateAll((nodes) =>
 				nodes
 					.filter((n) => n.getBoundingClientRect().width > 0)
@@ -112,8 +141,18 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 						a.right <= b.x || b.right <= a.x || a.bottom <= b.y || b.bottom <= a.y,
 					).toBe(true);
 				}
+			const playbackBounds = (await page.locator(".editor-playback").boundingBox())!;
+			for (const button of buttons) {
+				expect(button.x).toBeGreaterThanOrEqual(playbackBounds.x);
+				expect(button.right).toBeLessThanOrEqual(playbackBounds.x + playbackBounds.width);
+				expect(
+					Math.abs(
+						(button.y + button.bottom) / 2 - (buttons[0].y + buttons[0].bottom) / 2,
+					),
+				).toBeLessThan(1);
+			}
 			await expect(
-				page.getByRole("button", { name: "Export", exact: true }),
+				page.getByRole("button", { name: "Publish", exact: true }),
 			).toBeInViewport();
 			await expect(page.getByRole("button", { name: "Play", exact: true })).toBeInViewport();
 		}
@@ -123,10 +162,59 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 		});
 	}
 	await page.keyboard.press("Escape");
-	await expect(page.getByRole("button", { name: "Rename project" })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Rename project" })).toBeFocused();
+	const update = page.getByRole("button", { name: "Update available", exact: true });
+	await expect(update.locator("..")).toHaveAttribute("title", "Update available");
+	await page.locator(".editor-header").screenshot({
+		path: test.info().outputPath("compact-editor-header.png"),
+		animations: "disabled",
+	});
+	await update.press("Enter");
+	await expect(page.getByRole("dialog", { name: "App update", exact: true })).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(update).toBeFocused();
 });
 
-test("header name edits in place and saves on blur without a boxed input", async ({ page }) => {
+test("playback controls fit and zoom the timeline in compact windows", async ({ page }) => {
+	test.setTimeout(60_000);
+	await installDesktopBridge(page);
+	await page.goto("/?windowType=editor");
+
+	const bar = page.locator(".editor-playback");
+	const tools = bar.locator(".editor-playback-tools");
+	const transport = bar.locator(".editor-playback-center");
+	const controls = bar.locator(".editor-playback-volume");
+	const zoom = controls.getByRole("group", { name: "Zoom Timeline" });
+	const zoomIn = zoom.getByRole("button", { name: "Zoom In", exact: true });
+	const zoomOut = zoom.getByRole("button", { name: "Zoom Out", exact: true });
+	await expect(zoomIn).toBeVisible({ timeout: 20000 });
+	await expect(controls.getByRole("button", { name: "Preview volume" })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Zoom In", exact: true })).toHaveCount(1);
+	await expect(page.getByRole("button", { name: "Zoom Out", exact: true })).toHaveCount(1);
+
+	for (const width of [1100, 1000, 800]) {
+		await page.setViewportSize({ width, height: 600 });
+		const [barBox, toolsBox, transportBox, controlsBox] = await Promise.all(
+			[bar, tools, transport.locator(":scope > div"), controls].map((group) =>
+				group.boundingBox(),
+			),
+		);
+		expect(toolsBox!.x + toolsBox!.width).toBeLessThanOrEqual(transportBox!.x);
+		expect(transportBox!.x + transportBox!.width).toBeLessThanOrEqual(controlsBox!.x);
+		expect(controlsBox!.x + controlsBox!.width).toBeLessThanOrEqual(barBox!.x + barBox!.width);
+	}
+
+	const clip = page.locator('[data-variant="clip"]');
+	await expect(clip).toBeVisible({ timeout: 20000 });
+	const clipWidth = async () => (await clip.boundingBox())!.width;
+	const initialWidth = await clipWidth();
+	await zoomIn.click();
+	await expect.poll(clipWidth).toBeGreaterThan(initialWidth);
+	await zoomOut.click();
+	await expect.poll(clipWidth).toBeCloseTo(initialWidth, 0);
+});
+
+test("header name edits directly without a selection box and saves on blur", async ({ page }) => {
 	await installDesktopBridge(page);
 	await page.addInitScript(() => {
 		window.electronAPI.saveProjectFileNamed = async (_data, name) => ({
@@ -137,18 +225,36 @@ test("header name edits in place and saves on blur without a boxed input", async
 	await page.goto("/?windowType=editor");
 	await expect(page.getByRole("button", { name: "Rename project" })).toContainText(
 		"Untitled Project",
+		{ timeout: 30000 },
 	);
-	await page.getByRole("button", { name: "Rename project" }).click();
+	await expect(page.locator('[data-variant="clip"]')).toHaveCount(1);
+	await expect(page.getByLabel("Loading preview")).toHaveCount(0);
+	const title = page.getByRole("button", { name: "Rename project" });
+	const originalTextBox = (await title.locator("span").boundingBox())!;
+	await title.click();
 	const input = page.getByRole("textbox", { name: "Project name" });
-	await expect(input).toHaveCSS("box-shadow", "none");
+	await expect(input).toBeFocused();
+	await expect(input).toHaveCSS("outline-style", "none");
 	await expect(input).toHaveCSS("border-top-width", "0px");
+	await expect(input).toHaveCSS("box-shadow", "none");
+	await expect(input).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+	await expect
+		.poll(() =>
+			input.evaluate((node: HTMLInputElement) => node.selectionStart === node.selectionEnd),
+		)
+		.toBe(true);
+	expect((await input.boundingBox())!.x).toBeCloseTo(originalTextBox.x, 0);
 	await input.fill("Launch demo");
 	await input.press("Tab");
 	await expect(page.getByRole("button", { name: "Rename project" })).toContainText("Launch demo");
-	await page.getByRole("button", { name: "Rename project" }).click();
+	await expect(title).toHaveAccessibleDescription("Launch demo");
+	await title.press("Enter");
+	await expect(input).toBeFocused();
+	await expect(input).toHaveCSS("outline-style", "solid");
 	await input.fill("Discard this");
 	await input.press("Escape");
-	await expect(page.getByRole("button", { name: "Rename project" })).toContainText("Launch demo");
+	await expect(title).toContainText("Launch demo");
+	await expect(title).toBeFocused();
 });
 
 test("new zoom blocks default to 1.8x", async ({ page }) => {
@@ -160,4 +266,27 @@ test("new zoom blocks default to 1.8x", async ({ page }) => {
 		"aria-selected",
 		"true",
 	);
+});
+
+test("the timeline can expand for editing and return to its default height", async ({ page }) => {
+	await page.setViewportSize({ width: 1000, height: 700 });
+	await installDesktopBridge(page, "filmstrip.mp4");
+	await page.goto("/?windowType=editor");
+	await expect(page.locator('[data-variant="clip"]')).toBeVisible({ timeout: 20000 });
+
+	const panel = page.locator("[data-timeline-panel]");
+	const height = async () => (await panel.boundingBox())!.height;
+	const defaultHeight = await height();
+	const expand = page.getByRole("button", { name: "Expand Timeline", exact: true });
+	await expect(expand).toBeVisible();
+	await expand.focus();
+	await page.keyboard.press("Enter");
+
+	const collapse = page.getByRole("button", { name: "Collapse Timeline", exact: true });
+	await expect(collapse).toHaveAttribute("aria-expanded", "true");
+	await expect.poll(height).toBeGreaterThan(defaultHeight + 70);
+	await expect(page.locator(".editor-preview-stage")).toBeVisible();
+	await collapse.click();
+	await expect(expand).toHaveAttribute("aria-expanded", "false");
+	await expect.poll(height).toBe(defaultHeight);
 });

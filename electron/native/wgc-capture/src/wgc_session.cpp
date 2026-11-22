@@ -2,7 +2,7 @@
 
 #include <windows.graphics.capture.interop.h>
 #include <Windows.Graphics.Capture.h>
-#include <dwmapi.h>
+#include <d3d11_4.h>
 #include <inspectable.h>
 
 #include <winrt/Windows.Foundation.h>
@@ -10,8 +10,6 @@
 
 #include <iostream>
 #include <chrono>
-#include <algorithm>
-#include <cmath>
 
 // IDirect3DDxgiInterfaceAccess is a COM interface for getting the DXGI interface
 // from a WinRT IDirect3DSurface
@@ -32,6 +30,9 @@ static int normalizeFramePoolExtent(int value) {
     if ((normalized % 2) != 0) ++normalized;
     return normalized;
 }
+
+// Frames the pool can hold while the consumer is busy; 2 starves easily at high frame rates.
+static constexpr int kFramePoolBuffers = 4;
 
 WgcSession::WgcSession() {}
 
@@ -58,8 +59,28 @@ bool WgcSession::createD3DDevice() {
         &d3dContext_);
 
     if (FAILED(hr)) {
-        std::cerr << "ERROR: D3D11CreateDevice failed: 0x" << std::hex << hr << std::endl;
+        std::cerr << "ERROR: D3D11CreateDevice failed: 0x" << std::hex << hr << std::dec << std::endl;
         return false;
+    }
+
+    // The capture callback and the encoder's readback worker share this immediate context.
+    ComPtr<ID3D11Multithread> multithread;
+    hr = d3dContext_.As(&multithread);
+    if (FAILED(hr) || !multithread) {
+        std::cerr << "ERROR: Failed to query ID3D11Multithread: 0x" << std::hex << hr << std::dec << std::endl;
+        return false;
+    }
+    multithread->SetMultithreadProtected(TRUE);
+
+    // Report which GPU performs the capture; on hybrid laptops this matters for performance.
+    ComPtr<IDXGIDevice> dxgiDevice;
+    ComPtr<IDXGIAdapter> adapter;
+    DXGI_ADAPTER_DESC adapterDesc{};
+    if (SUCCEEDED(d3dDevice_.As(&dxgiDevice)) && SUCCEEDED(dxgiDevice->GetAdapter(&adapter)) &&
+        SUCCEEDED(adapter->GetDesc(&adapterDesc))) {
+        char name[256]{};
+        WideCharToMultiByte(CP_UTF8, 0, adapterDesc.Description, -1, name, sizeof(name) - 1, nullptr, nullptr);
+        std::cerr << "Capture adapter: " << name << std::endl;
     }
 
     return true;
@@ -103,14 +124,14 @@ bool WgcSession::initializeWithItem(int fps) {
     auto size = captureItem_.Size();
     captureWidth_ = size.Width;
     captureHeight_ = size.Height;
-    framePoolWidth_ = size.Width;
-    framePoolHeight_ = size.Height;
+    framePoolWidth_ = normalizeFramePoolExtent(size.Width);
+    framePoolHeight_ = normalizeFramePoolExtent(size.Height);
 
     framePool_ = winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
         winrtDevice_,
         winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
-        2,
-        size);
+        kFramePoolBuffers,
+        {framePoolWidth_, framePoolHeight_});
 
     session_ = framePool_.CreateCaptureSession(captureItem_);
 
@@ -125,14 +146,14 @@ bool WgcSession::initializeWithItem(int fps) {
     return true;
 }
 
-bool WgcSession::recreateFramePoolIfNeeded(
+void WgcSession::recreateFramePoolIfNeeded(
     winrt::Windows::Graphics::SizeInt32 const& contentSize) {
-    if (!framePool_) return false;
+    if (!capturing_ || !framePool_) return;
 
     const int normalizedWidth = normalizeFramePoolExtent(contentSize.Width);
     const int normalizedHeight = normalizeFramePoolExtent(contentSize.Height);
     if (normalizedWidth == framePoolWidth_ && normalizedHeight == framePoolHeight_) {
-        return false;
+        return;
     }
 
     winrt::Windows::Graphics::SizeInt32 normalizedSize{
@@ -144,7 +165,7 @@ bool WgcSession::recreateFramePoolIfNeeded(
         framePool_.Recreate(
             winrtDevice_,
             winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
-            2,
+            kFramePoolBuffers,
             normalizedSize);
         framePoolWidth_ = normalizedWidth;
         framePoolHeight_ = normalizedHeight;
@@ -157,11 +178,10 @@ bool WgcSession::recreateFramePoolIfNeeded(
                   << std::hex << e.code() << std::dec << std::endl;
     }
 
-    return true;
 }
 
 bool WgcSession::initialize(HMONITOR monitor, int fps) {
-    fps_ = fps;
+    fps_ = fps > 0 ? fps : 60;
     frameIntervalHns_ = 10000000LL / fps_;
 
     if (!createD3DDevice()) return false;
@@ -173,11 +193,11 @@ bool WgcSession::initialize(HMONITOR monitor, int fps) {
     }
 
     captureItem_ = createCaptureItemForMonitor(monitor);
-    return initializeWithItem(fps);
+    return initializeWithItem(fps_);
 }
 
 bool WgcSession::initialize(HWND hwnd, int fps) {
-    fps_ = fps;
+    fps_ = fps > 0 ? fps : 60;
     frameIntervalHns_ = 10000000LL / fps_;
 
     if (!createD3DDevice()) return false;
@@ -188,100 +208,24 @@ bool WgcSession::initialize(HWND hwnd, int fps) {
         return false;
     }
 
-    HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-    if (!monitor) return false;
-
-    captureItem_ = createCaptureItemForMonitor(monitor);
-    return initializeWithItem(fps) && initializeWindowCrop(hwnd);
-}
-
-bool WgcSession::initializeWindowCrop(HWND hwnd) {
-    windowHandle_ = hwnd;
-    MONITORINFO monitorInfo{};
-    monitorInfo.cbSize = sizeof(monitorInfo);
-    if (!GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &monitorInfo)) return false;
-    monitorBounds_ = monitorInfo.rcMonitor;
-
-    return updateWindowCropRect(true);
-}
-
-bool WgcSession::updateWindowCropRect(bool initializeSize) {
-    RECT windowBounds{};
-    if (FAILED(DwmGetWindowAttribute(windowHandle_, DWMWA_EXTENDED_FRAME_BOUNDS, &windowBounds, sizeof(windowBounds))) &&
-        !GetWindowRect(windowHandle_, &windowBounds)) return false;
-    RECT clipped{};
-    if (!IntersectRect(&clipped, &windowBounds, &monitorBounds_)) return false;
-
-    const LONG monitorWidth = monitorBounds_.right - monitorBounds_.left;
-    const LONG monitorHeight = monitorBounds_.bottom - monitorBounds_.top;
-    if (monitorWidth <= 0 || monitorHeight <= 0 || framePoolWidth_ < 2 || framePoolHeight_ < 2) return false;
-
-    // WGC textures are in capture-surface pixels, while Win32 monitor/window
-    // rectangles can be DPI-virtualized. Map both edges into texture space
-    // instead of assuming those coordinate systems are identical.
-    const auto mapX = [this, monitorWidth](LONG desktopX) {
-        const double normalized = static_cast<double>(desktopX - monitorBounds_.left) /
-            static_cast<double>(monitorWidth);
-        return std::clamp(
-            static_cast<LONG>(std::llround(normalized * framePoolWidth_)),
-            0L,
-            static_cast<LONG>(framePoolWidth_));
-    };
-    const auto mapY = [this, monitorHeight](LONG desktopY) {
-        const double normalized = static_cast<double>(desktopY - monitorBounds_.top) /
-            static_cast<double>(monitorHeight);
-        return std::clamp(
-            static_cast<LONG>(std::llround(normalized * framePoolHeight_)),
-            0L,
-            static_cast<LONG>(framePoolHeight_));
-    };
-
-    LONG left = mapX(clipped.left);
-    LONG top = mapY(clipped.top);
-    LONG right = mapX(clipped.right);
-    LONG bottom = mapY(clipped.bottom);
-    const LONG mappedWidth = (right - left) & ~1L;
-    const LONG mappedHeight = (bottom - top) & ~1L;
-    if (mappedWidth < 2 || mappedHeight < 2) return false;
-
-    if (initializeSize) {
-        captureWidth_ = static_cast<int>(mappedWidth);
-        captureHeight_ = static_cast<int>(mappedHeight);
-
-        D3D11_TEXTURE2D_DESC desc{};
-        desc.Width = static_cast<UINT>(captureWidth_);
-        desc.Height = static_cast<UINT>(captureHeight_);
-        desc.MipLevels = 1;
-        desc.ArraySize = 1;
-        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-        desc.SampleDesc.Count = 1;
-        desc.Usage = D3D11_USAGE_DEFAULT;
-        desc.BindFlags = D3D11_BIND_RENDER_TARGET;
-
-        ComPtr<ID3D11Texture2D> resizedTexture;
-        if (FAILED(d3dDevice_->CreateTexture2D(&desc, nullptr, &resizedTexture))) return false;
-        ComPtr<ID3D11RenderTargetView> renderTargetView;
-        if (FAILED(d3dDevice_->CreateRenderTargetView(resizedTexture.Get(), nullptr, &renderTargetView))) return false;
-        cropTexture_ = resizedTexture;
-        cropRenderTargetView_ = renderTargetView;
+    auto factory = winrt::get_activation_factory<
+        winrt::Windows::Graphics::Capture::GraphicsCaptureItem>();
+    auto interop = factory.as<IGraphicsCaptureItemInterop>();
+    const HRESULT result = interop->CreateForWindow(
+        hwnd,
+        winrt::guid_of<ABI::Windows::Graphics::Capture::IGraphicsCaptureItem>(),
+        winrt::put_abi(captureItem_));
+    if (FAILED(result)) {
+        std::cerr << "ERROR: CreateForWindow failed: 0x" << std::hex << result << std::dec << std::endl;
+        return false;
     }
-
-    if (!cropTexture_ || !cropRenderTargetView_) return false;
-
-    // The encoder's dimensions are fixed for the lifetime of the MP4. Keep the
-    // crop texture fixed too: reallocating it after a resize made the encoder
-    // pad the changed frame with black bars. If the selected window shrinks,
-    // copy only its current area so the crop never exposes nearby desktop pixels.
-    const LONG copyWidth = (std::min)(mappedWidth, static_cast<LONG>(captureWidth_));
-    const LONG copyHeight = (std::min)(mappedHeight, static_cast<LONG>(captureHeight_));
-    left = std::clamp(left, 0L, static_cast<LONG>(framePoolWidth_) - copyWidth);
-    top = std::clamp(top, 0L, static_cast<LONG>(framePoolHeight_) - copyHeight);
-    cropRect_ = {left, top, left + copyWidth, top + copyHeight};
-    return true;
+    windowHandle_ = hwnd;
+    return initializeWithItem(fps_);
 }
 
-void WgcSession::setFrameCallback(FrameCallback callback) {
+void WgcSession::setFrameCallback(FrameCallback callback, std::function<bool()> isPaused) {
     frameCallback_ = std::move(callback);
+    isPaused_ = std::move(isPaused);
 }
 
 bool WgcSession::startCapture() {
@@ -289,8 +233,14 @@ bool WgcSession::startCapture() {
 
     capturing_ = true;
     fatalError_ = false;
-    lastFrameTimeHns_ = 0;
+    nextFrameDueHns_ = 0;
+    hasNextFrameDue_ = false;
 
+    if (windowHandle_) {
+        itemClosedRevoker_ = captureItem_.Closed(
+            winrt::auto_revoke,
+            [this](auto const&, auto const&) { fatalError_ = true; });
+    }
     frameArrivedRevoker_ = framePool_.FrameArrived(
         winrt::auto_revoke,
         [this](auto const& sender, auto const& args) {
@@ -304,8 +254,13 @@ bool WgcSession::startCapture() {
 void WgcSession::stopCapture() {
     capturing_ = false;
 
+    itemClosedRevoker_.revoke();
     frameArrivedRevoker_.revoke();
 
+    // Wait for the active reader, then release the lock before WinRT closes the frame pool.
+    {
+        std::lock_guard<std::mutex> lock(frameDeliveryMutex_);
+    }
     if (session_) {
         session_.Close();
         session_ = nullptr;
@@ -314,61 +269,78 @@ void WgcSession::stopCapture() {
         framePool_.Close();
         framePool_ = nullptr;
     }
-    cropTexture_.Reset();
-    cropRenderTargetView_.Reset();
 }
 
 void WgcSession::onFrameArrived(
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& sender,
     winrt::Windows::Foundation::IInspectable const&) {
+    if (!capturing_) return;
+    std::lock_guard<std::mutex> lock(frameDeliveryMutex_);
+    const bool cachePausedWindowFrame = windowHandle_ && isPaused_ && isPaused_();
+    readFrame(sender, cachePausedWindowFrame);
+}
 
-    if (!capturing_ || fatalError_) return;
-
-    auto frame = sender.TryGetNextFrame();
-    if (!frame) return;
-    auto contentSize = frame.ContentSize();
-    if (recreateFramePoolIfNeeded(contentSize)) {
-        frame.Close();
-        return;
+void WgcSession::resumeAfterPendingFrames(int64_t resumeTimestampHns, const std::function<void()>& resume) {
+    std::lock_guard<std::mutex> lock(frameDeliveryMutex_);
+    if (windowHandle_) {
+        // Let any callback already in flight finish and drain the frames already queued
+        // by WGC before switching the timestamp and frame writer back to recording.
+        for (int count = 0; count < kFramePoolBuffers; ++count) {
+            if (!readFrame(framePool_, true)) break;
+        }
     }
+    nextFrameDueHns_ = 0;
+    hasNextFrameDue_ = false;
+    resumeTimestampHns_ = resumeTimestampHns;
+    resume();
+}
+
+bool WgcSession::readFrame(
+    winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& pool,
+    bool skipFrameRateLimit) {
+    if (!capturing_ || fatalError_) return false;
+
+    auto frame = pool.TryGetNextFrame();
+    if (!frame) return false;
+    const auto contentSize = frame.ContentSize();
 
     auto timestamp = frame.SystemRelativeTime();
     int64_t frameTimeHns = std::chrono::duration_cast<std::chrono::duration<int64_t, std::ratio<1, 10000000>>>(timestamp).count();
 
-    // Frame rate limiting: skip frames that arrive too soon
-    if (lastFrameTimeHns_ > 0 && (frameTimeHns - lastFrameTimeHns_) < (frameIntervalHns_ * 7 / 10)) {
+    if (frameTimeHns < resumeTimestampHns_) {
         frame.Close();
-        return;
+        recreateFramePoolIfNeeded(contentSize);
+        return true;
     }
-    lastFrameTimeHns_ = frameTimeHns;
 
-    auto surface = frame.Surface();
-
-    // Get the underlying D3D texture from the WinRT surface via COM interop
-    winrt::com_ptr<IDirect3DDxgiInterfaceAccess> access;
-    try {
-        access = surface.as<IDirect3DDxgiInterfaceAccess>();
-    } catch (...) {
-        frame.Close();
-        return;
+    // Paused window frames replace the cached image instead of reaching the encoder.
+    if (!skipFrameRateLimit) {
+        // Frame rate limiting against a fixed schedule. The display can refresh much faster than
+        // the recording rate (e.g. 165 Hz); a plain "minimum gap" test would let through every
+        // second refresh (~82 fps) and make the encoder do far more work than requested.
+        if (!hasNextFrameDue_) {
+            nextFrameDueHns_ = frameTimeHns;
+            hasNextFrameDue_ = true;
+        }
+        if (frameTimeHns + frameIntervalHns_ / 2 < nextFrameDueHns_) {
+            frame.Close();
+            recreateFramePoolIfNeeded(contentSize);
+            return true;
+        }
+        nextFrameDueHns_ += frameIntervalHns_;
+        // After a pause or an idle screen the schedule is stale; restart it from this frame.
+        if (nextFrameDueHns_ < frameTimeHns) nextFrameDueHns_ = frameTimeHns + frameIntervalHns_;
     }
-    ComPtr<ID3D11Texture2D> texture;
-    HRESULT hr = access->GetInterface(IID_PPV_ARGS(&texture));
 
-    if (SUCCEEDED(hr) && texture && frameCallback_) {
-        if (windowHandle_ && cropTexture_ && updateWindowCropRect()) {
-            constexpr float clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-            d3dContext_->ClearRenderTargetView(cropRenderTargetView_.Get(), clearColor);
-            D3D11_BOX sourceBox{
-                static_cast<UINT>(cropRect_.left), static_cast<UINT>(cropRect_.top), 0,
-                static_cast<UINT>(cropRect_.right), static_cast<UINT>(cropRect_.bottom), 1,
-            };
-            d3dContext_->CopySubresourceRegion(cropTexture_.Get(), 0, 0, 0, 0, texture.Get(), 0, &sourceBox);
-            frameCallback_(cropTexture_.Get(), frameTimeHns);
-        } else if (!windowHandle_) {
-            frameCallback_(texture.Get(), frameTimeHns);
+    if (auto access = frame.Surface().try_as<IDirect3DDxgiInterfaceAccess>()) {
+        ComPtr<ID3D11Texture2D> texture;
+        const HRESULT result = access->GetInterface(IID_PPV_ARGS(&texture));
+        if (SUCCEEDED(result) && texture && frameCallback_) {
+            frameCallback_(texture.Get(), contentSize.Width, contentSize.Height, frameTimeHns);
         }
     }
 
     frame.Close();
+    recreateFramePoolIfNeeded(contentSize);
+    return true;
 }

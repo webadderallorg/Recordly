@@ -19,9 +19,14 @@ test("zoom hover, adaptive lanes, clip edges, volume and playhead", async ({ pag
 	expect((await zoomRow.boundingBox())!.height).toBe((await clipRow.boundingBox())!.height);
 	await zoomRow.hover({ position: { x: 250, y: 25 } });
 	await expect(page.getByTestId("timeline-add-preview")).toBeVisible();
+	const hoverPreview = (await page
+		.getByTestId("timeline-add-preview")
+		.locator(":scope > div")
+		.boundingBox())!;
 	await zoomRow.click({ position: { x: 250, y: 25 } });
 	const zoom = page.locator('[data-variant="zoom"]');
 	await expect(zoom).toHaveCount(1);
+	expect((await zoom.boundingBox())!.width).toBeCloseTo(hoverPreview.width, 0);
 	await expect(zoom.locator(".timeline-block")).toHaveCSS("background-image", "none");
 	const normalHeight = (await zoomRow.boundingBox())!.height;
 	await scroll.click({ position: { x: 600, y: 5 } });

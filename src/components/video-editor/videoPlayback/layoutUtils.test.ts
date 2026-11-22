@@ -56,6 +56,27 @@ describe("computePaddedLayout", () => {
 });
 
 describe("scalePreviewBorderRadius", () => {
+	it("keeps edge-to-edge output square at preview and export sizes", () => {
+		for (const [width, height] of [
+			[960, 540],
+			[1920, 1080],
+			[1080, 1920],
+		]) {
+			expect(scalePreviewBorderRadius(width, height, 8, { width, height })).toBe(0);
+		}
+	});
+	it("treats subpixel native-aspect fitting as edge-to-edge", () => {
+		expect(scalePreviewBorderRadius(935.111111, 526, 8, { width: 936, height: 526 })).toBe(0);
+	});
+	it("preserves rounded inset and letterboxed content", () => {
+		expect(scalePreviewBorderRadius(1728, 972, 8, { width: 1920, height: 1080 })).toBeCloseTo(
+			77.76,
+		);
+		expect(scalePreviewBorderRadius(1080, 1080, 8, { width: 1920, height: 1080 })).toBeCloseTo(
+			86.4,
+		);
+	});
+
 	it("uses a percentage of the content's shorter side", () => {
 		expect(scalePreviewBorderRadius(1920, 1080, 8)).toBeCloseTo(86.4, 6);
 		expect(scalePreviewBorderRadius(960, 540, 8)).toBeCloseTo(43.2, 6);

@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { getHudOverlayInteractiveBounds, getHudOverlayWindow } from "../../windows";
+import { isLikelyLinuxWaylandSession } from "../register/sourceMapping";
 import {
 	hasLoggedInteractionHookFailure,
 	interactionCaptureCleanup,
@@ -17,6 +19,7 @@ import type {
 	UiohookLike,
 	UiohookModuleNamespace,
 } from "../types";
+import { getScreen } from "../utils";
 import {
 	getCursorCaptureElapsedMs,
 	getHookCursorScreenPoint,
@@ -177,7 +180,14 @@ function loadUiohookModule() {
 	}
 }
 
-export function shouldStartGlobalInteractionHook(platform: NodeJS.Platform = process.platform) {
+export function shouldStartGlobalInteractionHook(
+	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+) {
+	if (platform === "linux") {
+		return !isLikelyLinuxWaylandSession(env) && Boolean(env.DISPLAY?.trim());
+	}
+
 	// On macOS, uiohook can block forever while its native event tap starts
 	// (notably when Accessibility permission is unavailable or stale). Because
 	// start() executes synchronously, that freezes Electron's main thread and
@@ -190,6 +200,22 @@ export function shouldStartGlobalInteractionHook(platform: NodeJS.Platform = pro
 export function recordCursorMouseDown(button: 1 | 2 | 3) {
 	if (!isCursorCaptureActive || isCursorCapturePaused()) {
 		return;
+	}
+
+	const hudBounds = getHudOverlayInteractiveBounds();
+	const hud = getHudOverlayWindow();
+	if (hud?.isVisible() && !hud.isMinimized() && hudBounds) {
+		const cursor = getScreen().getCursorScreenPoint();
+		const isInsideHudInteractiveElement = hudBounds.some(
+			(bounds) =>
+				cursor.x >= bounds.left &&
+				cursor.x <= bounds.right &&
+				cursor.y >= bounds.top &&
+				cursor.y <= bounds.bottom,
+		);
+		if (isInsideHudInteractiveElement) {
+			return;
+		}
 	}
 
 	const point = getNormalizedCursorPoint();
@@ -217,10 +243,10 @@ export function recordCursorMouseDown(button: 1 | 2 | 3) {
 		setLastLeftClick({ timeMs, cx: point.cx, cy: point.cy });
 	}
 
-	pushCursorSample(point.cx, point.cy, timeMs, interactionType);
+	pushCursorSample(point.cx, point.cy, timeMs, interactionType, undefined, button);
 }
 
-export function recordCursorMouseUp() {
+export function recordCursorMouseUp(button?: 1 | 2 | 3) {
 	if (!isCursorCaptureActive || isCursorCapturePaused()) {
 		return;
 	}
@@ -230,7 +256,7 @@ export function recordCursorMouseUp() {
 		return;
 	}
 
-	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "mouseup");
+	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "mouseup", undefined, button);
 }
 
 export async function startInteractionCapture() {
@@ -243,7 +269,11 @@ export async function startInteractionCapture() {
 	}
 
 	if (!shouldStartGlobalInteractionHook()) {
-		console.warn("[CursorTelemetry] Skipping the blocking global interaction hook on macOS.");
+		console.warn(
+			process.platform === "linux"
+				? "[CursorTelemetry] Skipping the global interaction hook without an X11 session and display."
+				: "[CursorTelemetry] Skipping the blocking global interaction hook on macOS.",
+		);
 		return;
 	}
 
@@ -272,8 +302,8 @@ export async function startInteractionCapture() {
 			recordCursorMouseDown(getHookMouseButton(event));
 		};
 
-		const onMouseUp = () => {
-			recordCursorMouseUp();
+		const onMouseUp = (event: HookMouseEvent) => {
+			recordCursorMouseUp(getHookMouseButton(event));
 		};
 
 		const onMouseMove = (event: HookMouseEvent) => {

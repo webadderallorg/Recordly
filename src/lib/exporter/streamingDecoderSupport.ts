@@ -6,6 +6,8 @@ export interface DecodedVideoInfo {
 	streamStartTime?: number; // seconds
 	streamDuration?: number; // seconds
 	frameRate: number;
+	/** Whether the source FPS was reported by metadata or a decode fallback. */
+	frameRateSource?: "metadata" | "fallback";
 	codec: string;
 	hasAudio: boolean;
 	audioCodec?: string;
@@ -63,7 +65,11 @@ export function buildVideoDecodeFailure(error: unknown, context: VideoDecodeFail
 		details.push(`hardwareAcceleration=${context.decoderConfig.hardwareAcceleration}`);
 	}
 	if (context.sourceMetadata) {
-		details.push(`sourceFps=${context.sourceMetadata.frameRate}`);
+		details.push(
+			context.sourceMetadata.frameRateSource === "fallback"
+				? `sourceFps=unknown; decodeFallbackFps=${context.sourceMetadata.frameRate}`
+				: `sourceFps=${context.sourceMetadata.frameRate}`,
+		);
 		details.push(`sourceDurationSec=${context.sourceMetadata.duration}`);
 	}
 	if (context.chunkIndex !== undefined) {
@@ -89,6 +95,22 @@ export function buildVideoDecodeFailure(error: unknown, context: VideoDecodeFail
 		`[${failureCode}] VideoDecoder failure: ${describeUnknownError(error)} (${details.join(", ")})`,
 	);
 	(failure as Error & { cause?: unknown }).cause = error;
+	return failure;
+}
+
+/** Preserve both decoder attempts without claiming that a damaged source is proven. */
+export function buildVideoDecodeRecoveryFailure(initial: unknown, software: unknown): Error {
+	const describe = (value: unknown) => (value instanceof Error ? value.message : String(value));
+	const failure = new Error(
+		[
+			"[VIDEO_DECODE_RECOVERY_FAILED] Default decoding and the software retry both failed.",
+			`Initial decoder failure: ${describe(initial)}`,
+			`Software decoder failure: ${describe(software)}`,
+			"Chunk positions are the last submitted input, not necessarily the exact failing frame.",
+			"Source corruption is not confirmed. Test this file with an independent decoder; if other files also fail, investigate the system decoder/driver.",
+		].join("\n"),
+	);
+	(failure as Error & { cause?: unknown }).cause = { initial, software };
 	return failure;
 }
 

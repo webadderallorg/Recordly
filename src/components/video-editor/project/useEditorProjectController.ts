@@ -1,10 +1,9 @@
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from "react";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { useI18n } from "@/contexts/I18nContext";
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
 import { useAutoCaptionController } from "../captions/useAutoCaptionController";
 import { loadEditorPreferences } from "../editorPreferences";
-import type { useExportSettings } from "../export/useExportSettings";
 import { useEditorHistory } from "../hooks/useEditorHistory";
 import { useEditorPreferencesPersistence } from "../presets/useEditorPreferencesPersistence";
 import { hasUnsavedProjectChanges } from "../projectDirtyState";
@@ -12,6 +11,7 @@ import { getDevOpenRecordingConfig, getSmokeExportConfig } from "../smokeExportC
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
+import type { CaptureSourceKind } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 import { useInitialEditorSource } from "./useInitialEditorSource";
 import type { useProjectLibraryController } from "./useProjectLibraryController";
@@ -25,8 +25,8 @@ type Input = {
 	project: ReturnType<typeof useProjectState>;
 	appearance: ReturnType<typeof useAppearanceState>;
 	timeline: ReturnType<typeof useTimelineState>;
-	exportSettings: ReturnType<typeof useExportSettings>;
 	initialPreferences: ReturnType<typeof loadEditorPreferences>;
+	captureSourceKind: CaptureSourceKind | null;
 	smokeConfig: ReturnType<typeof getSmokeExportConfig>;
 	devConfig: ReturnType<typeof getDevOpenRecordingConfig>;
 	aspectRatio: AspectRatio;
@@ -63,9 +63,6 @@ type Input = {
 	clipInitializedRef: MutableRefObject<boolean>;
 	autoFullTrackClipIdRef: MutableRefObject<string | null>;
 	autoFullTrackClipEndMsRef: MutableRefObject<number | null>;
-	pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
-	pendingFreshRecordingAutoSuggestTelemetryCountRef: MutableRefObject<number>;
-	autoSuggestedVideoPathRef: MutableRefObject<string | null>;
 	applySessionPresentation: (
 		session:
 			| { hideOverlayCursorByDefault?: boolean; nativeCaptureUnavailable?: boolean }
@@ -80,12 +77,12 @@ type Input = {
 };
 
 export function useEditorProjectController(input: Input) {
+	const restoringPreferencesRef = useRef(false);
 	const snapshot = useProjectSnapshotModel({
 		t: input.t,
 		project: input.project,
 		appearance: input.appearance,
 		timeline: input.timeline,
-		exportSettings: input.exportSettings,
 		aspectRatio: input.aspectRatio,
 		projectNameInputRef: input.projectNameInputRef,
 		projectSaveDialogInputRef: input.projectSaveDialogInputRef,
@@ -99,11 +96,11 @@ export function useEditorProjectController(input: Input) {
 		nextAnnotationZIndexRef: input.nextAnnotationZIndexRef,
 	});
 	const lifecycle = useProjectLifecycle({
+		restoringPreferencesRef,
 		t: input.t,
 		project: input.project,
 		appearance: input.appearance,
 		timeline: input.timeline,
-		exportSettings: input.exportSettings,
 		aspectRatio: input.aspectRatio,
 		setAspectRatio: input.setAspectRatio,
 		currentSourcePath: snapshot.currentSourcePath,
@@ -116,6 +113,8 @@ export function useEditorProjectController(input: Input) {
 		refreshProjectLibrary: input.refreshProjectLibrary,
 		buildPersistedEditorState: snapshot.buildPersistedEditorState,
 		resetHistory: history.resetHistory,
+		restoreHistory: history.restoreHistory,
+		persistedHistory: history.persistedHistory,
 		refs: {
 			nextZoomIdRef: input.nextZoomIdRef,
 			nextClipIdRef: input.nextClipIdRef,
@@ -125,10 +124,6 @@ export function useEditorProjectController(input: Input) {
 			clipInitializedRef: input.clipInitializedRef,
 			autoFullTrackClipIdRef: input.autoFullTrackClipIdRef,
 			autoFullTrackClipEndMsRef: input.autoFullTrackClipEndMsRef,
-			pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
-			pendingFreshRecordingAutoSuggestTelemetryCountRef:
-				input.pendingFreshRecordingAutoSuggestTelemetryCountRef,
-			autoSuggestedVideoPathRef: input.autoSuggestedVideoPathRef,
 		},
 	});
 	const hasUnsavedChanges = useMemo(
@@ -147,17 +142,18 @@ export function useEditorProjectController(input: Input) {
 		smokeConfig: input.smokeConfig,
 		devConfig: input.devConfig,
 		videoSourcePath: input.videoSourcePath,
-		pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
 		applyLoadedProject: lifecycle.applyLoadedProject,
 		resetSourceScopedEditorState: lifecycle.resetSourceScopedEditorState,
 		applySessionPresentation: input.applySessionPresentation,
 	});
 	useEditorPreferencesPersistence({
+		enabled: !input.smokeConfig.enabled,
+		restoringPreferencesRef,
 		appearance: input.appearance,
-		exportSettings: input.exportSettings,
 		aspectRatio: input.aspectRatio,
 		whisperExecutablePath: input.whisperExecutablePath,
 		whisperModelPath: input.whisperModelPath,
+		captureSourceKind: input.captureSourceKind,
 	});
 	const autoCaption = useAutoCaptionController({
 		t: input.t,
@@ -201,7 +197,6 @@ export function useEditorProjectController(input: Input) {
 		project: input.project,
 		appearance: input.appearance,
 		videoPlaybackRef: input.videoPlaybackRef,
-		pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
 		hasUnsavedChanges,
 		setIsPlaying: input.setIsPlaying,
 		setCurrentTime: input.setCurrentTime,
@@ -217,6 +212,7 @@ export function useEditorProjectController(input: Input) {
 	});
 
 	return {
+		refreshProjectLibrary: input.refreshProjectLibrary,
 		snapshot,
 		history,
 		lifecycle,

@@ -1,0 +1,14 @@
+Your invoice from Recordly
+
+A little billing admin: your invoice for {{ .PlanName }} is ready. Open it to review the details and pay any balance due.
+
+Invoice: {{ .InvoiceNumber }}
+Amount due: {{ .Amount }}
+Due date: {{ .DueDate }}
+
+View invoice: {{ .ActionURL }}
+
+Your invoice page shows the latest payment status.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

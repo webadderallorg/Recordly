@@ -90,11 +90,12 @@ export function rippleRegionAnchors<T extends { startMs: number; endMs: number }
 }
 
 /** Map the retained footage covered by each connected effect through a sequence edit. */
-export function rippleRegions<T extends { startMs: number; endMs: number }>(
+export function rippleRegions<T extends { id?: string; startMs: number; endMs: number }>(
 	regions: T[],
 	before: ClipRegion[],
 	after: ClipRegion[],
 ): T[] {
+	const usedIds = new Set(regions.flatMap((region) => (region.id ? [region.id] : [])));
 	return regions.flatMap((region) => {
 		const retainedSpans = before.flatMap((clip) => {
 			const next = after.find((candidate) => candidate.id === clip.id);
@@ -106,10 +107,26 @@ export function rippleRegions<T extends { startMs: number; endMs: number }>(
 			return endMs > startMs ? [{ startMs, endMs }] : [];
 		});
 		if (retainedSpans.length === 0) return [];
-		// Reordering can reverse the original endpoints. Include every retained
-		// segment instead of deleting the effect because its endpoints inverted.
-		const startMs = Math.min(...retainedSpans.map((span) => span.startMs));
-		const endMs = Math.max(...retainedSpans.map((span) => span.endMs));
-		return [{ ...region, startMs, endMs }];
+		// Keep disconnected footage disconnected: a bounding span would apply the
+		// effect to clips inserted between its original pieces after a reorder.
+		const merged: { startMs: number; endMs: number }[] = [];
+		for (const span of retainedSpans.sort((left, right) => left.startMs - right.startMs)) {
+			const previous = merged[merged.length - 1];
+			if (previous && span.startMs <= previous.endMs) {
+				previous.endMs = Math.max(previous.endMs, span.endMs);
+			} else {
+				merged.push({ ...span });
+			}
+		}
+		let part = 1;
+		return merged.map((span, index) => {
+			if (index === 0 || !region.id) return { ...region, ...span };
+			let id: string;
+			do {
+				id = `${region.id}-part-${part++}`;
+			} while (usedIds.has(id));
+			usedIds.add(id);
+			return { ...region, ...span, id };
+		});
 	});
 }

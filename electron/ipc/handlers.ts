@@ -1,9 +1,16 @@
 import { BrowserWindow } from "electron";
+import { usesPrimaryInstanceSession } from "../appPaths";
+import { type AuthFlowStorageHooks, registerAuthStorageHandlers } from "../authStorage";
 import { registerAnnouncementHandlers } from "./register/announcements";
 import { registerAssetHandlers } from "./register/assets";
 import { registerCaptionHandlers } from "./register/captions";
+import { registerCapturePickerHandlers } from "./register/capturePicker";
+import { registerClipboardHandlers } from "./register/clipboard";
+import { registerCloudBillingHandlers } from "./register/cloudBilling";
 import { registerCloudShareHandlers } from "./register/cloudShare";
 import { registerExportHandlers } from "./register/export";
+import { registerExportDiagnosticHandlers } from "./register/exportDiagnostics";
+import { registerGifOptimizationHandlers } from "./register/gifOptimization";
 import { registerPermissionHandlers } from "./register/permissions";
 import { registerProjectHandlers } from "./register/project";
 import { registerRecordingHandlers } from "./register/recording";
@@ -58,19 +65,28 @@ export function registerIpcHandlers(
 	_getMainWindow: () => BrowserWindow | null,
 	getSourceSelectorWindow: () => BrowserWindow | null,
 	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
+	authFlowStorageHooks?: AuthFlowStorageHooks,
 ) {
-	registerSourceHandlers({
+	const { pickSourceList } = registerSourceHandlers({
 		createEditorWindow,
 		createSourceSelectorWindow,
 		getSourceSelectorWindow,
 	});
+	registerCapturePickerHandlers({ pickSourceList });
 	registerRecordingHandlers(onRecordingStateChange);
 	registerPermissionHandlers();
+	registerAuthStorageHandlers(authFlowStorageHooks, {
+		canRecoverUnreadableStore: usesPrimaryInstanceSession,
+	});
+	registerClipboardHandlers();
 	registerAnnouncementHandlers();
 	registerAssetHandlers();
 	registerExportHandlers();
+	registerGifOptimizationHandlers();
+	registerExportDiagnosticHandlers();
 	registerCaptionHandlers();
 	registerCloudShareHandlers();
+	registerCloudBillingHandlers();
 	registerProjectHandlers();
 	registerSettingsHandlers();
 }

@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
+import { isCursorVisualType } from "../../../src/shared/cursorVisualTypes";
 import {
 	CURSOR_SAMPLE_INTERVAL_MS,
 	CURSOR_TELEMETRY_VERSION,
 	MAX_CURSOR_SAMPLES,
 } from "../constants";
+import { getSourceArea } from "../sourceArea";
 import {
 	activeCursorSamples,
 	currentCursorVisualType,
@@ -21,9 +23,13 @@ import {
 	setCursorCaptureInterval,
 	setCursorCapturePauseStartedAtMs,
 	setPendingCursorSamples,
+	windowsNativeCaptureActive,
+	windowsWindowCaptureSize,
 } from "../state";
 import type { CursorInteractionType, CursorTelemetryPoint, CursorVisualType } from "../types";
 import { getScreen, getTelemetryPathForVideo } from "../utils";
+
+let activeRecordingZoomMarkers: CursorTelemetryPoint[] = [];
 
 export function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
@@ -35,9 +41,13 @@ export function normalizeCursorTelemetrySamples(rawSamples: unknown): CursorTele
 		: Array.isArray((rawSamples as { samples?: unknown[] } | null | undefined)?.samples)
 			? ((rawSamples as { samples: unknown[] }).samples ?? [])
 			: [];
-	const boundedSamples = samples.slice(0, MAX_CURSOR_SAMPLES);
+	let pointerCount = 0;
 
-	return boundedSamples
+	return samples
+		.filter(
+			(sample: Partial<CursorTelemetryPoint> | null) =>
+				sample?.interactionType === "manual-zoom" || pointerCount++ < MAX_CURSOR_SAMPLES,
+		)
 		.filter((sample: unknown) => Boolean(sample && typeof sample === "object"))
 		.map((sample: unknown) => {
 			const point = sample as Partial<CursorTelemetryPoint>;
@@ -60,21 +70,14 @@ export function normalizeCursorTelemetrySamples(rawSamples: unknown): CursorTele
 					point.interactionType === "right-click" ||
 					point.interactionType === "middle-click" ||
 					point.interactionType === "move" ||
-					point.interactionType === "mouseup"
+					point.interactionType === "mouseup" ||
+					point.interactionType === "manual-zoom"
 						? point.interactionType
 						: undefined,
-				cursorType:
-					point.cursorType === "arrow" ||
-					point.cursorType === "text" ||
-					point.cursorType === "pointer" ||
-					point.cursorType === "crosshair" ||
-					point.cursorType === "open-hand" ||
-					point.cursorType === "closed-hand" ||
-					point.cursorType === "resize-ew" ||
-					point.cursorType === "resize-ns" ||
-					point.cursorType === "not-allowed"
-						? point.cursorType
-						: undefined,
+				...(point.mouseButton === 1 || point.mouseButton === 2 || point.mouseButton === 3
+					? { mouseButton: point.mouseButton }
+					: {}),
+				cursorType: isCursorVisualType(point.cursorType) ? point.cursorType : undefined,
 			};
 		})
 		.sort((a, b) => a.timeMs - b.timeMs);
@@ -105,6 +108,11 @@ export function stopCursorCapture() {
 	}
 }
 
+export function clearActiveCursorTelemetry() {
+	setActiveCursorSamples([]);
+	activeRecordingZoomMarkers = [];
+}
+
 export function resetCursorCaptureClock() {
 	setCursorCaptureAccumulatedPausedMs(0);
 	setCursorCapturePauseStartedAtMs(null);
@@ -114,11 +122,29 @@ export function isCursorCapturePaused() {
 	return cursorCapturePauseStartedAtMs !== null;
 }
 
+function releaseHeldCursorButtons(timeMs: number) {
+	const held = new Set<1 | 2 | 3>();
+	for (const sample of activeCursorSamples) {
+		if (sample.interactionType === "mouseup") {
+			if (sample.mouseButton) held.delete(sample.mouseButton);
+			else held.clear();
+		} else if (sample.mouseButton && sample.interactionType !== "move") {
+			held.add(sample.mouseButton);
+		}
+	}
+	const last = activeCursorSamples[activeCursorSamples.length - 1];
+	if (last)
+		for (const button of held) {
+			pushCursorSample(last.cx, last.cy, timeMs, "mouseup", last.cursorType, button);
+		}
+}
+
 export function pauseCursorCapture(pausedAtMs: number) {
 	if (cursorCapturePauseStartedAtMs !== null) {
 		return;
 	}
 
+	releaseHeldCursorButtons(getCursorCaptureElapsedMs(pausedAtMs));
 	setCursorCapturePauseStartedAtMs(pausedAtMs);
 }
 
@@ -131,6 +157,10 @@ export function pauseCursorCaptureAtBoundary(pausedAtMs: number) {
 	setActiveCursorSamples(
 		activeCursorSamples.filter((sample) => sample.timeMs <= pausedElapsedMs),
 	);
+	activeRecordingZoomMarkers = activeRecordingZoomMarkers.filter(
+		(marker) => marker.timeMs <= pausedElapsedMs,
+	);
+	releaseHeldCursorButtons(getCursorCaptureElapsedMs(pausedAtMs));
 	setCursorCapturePauseStartedAtMs(pausedAtMs);
 }
 
@@ -165,19 +195,33 @@ export function getCursorCaptureElapsedMs(nowMs = Date.now()) {
 }
 
 export function getNormalizedCursorPoint() {
-	const fallbackCursor = getScreen().getCursorScreenPoint();
-	const linuxCursorCache = process.platform === "linux" ? linuxCursorScreenPoint : null;
-	const isLinuxCacheFresh = !!linuxCursorCache && Date.now() - linuxCursorCache.updatedAt <= 1000;
+	const screen = getScreen();
+	const screenCursor = screen.getCursorScreenPoint();
+	const isWindowSource = selectedSource?.id?.startsWith("window:") === true;
+	if (isWindowSource && process.platform === "win32" && windowsNativeCaptureActive) {
+		if (!selectedWindowBounds) return null;
+		const { physicalOrigin } = selectedWindowBounds;
+		const captureSize = windowsWindowCaptureSize;
+		if (physicalOrigin && captureSize && captureSize.sourceId === selectedSource?.id) {
+			// WGC keeps the original encoded size when the window is resized.
+			const pixel = screen.dipToScreenPoint(screenCursor);
+			return {
+				cx: clamp((pixel.x - physicalOrigin.x) / captureSize.width, 0, 1),
+				cy: clamp((pixel.y - physicalOrigin.y) / captureSize.height, 0, 1),
+			};
+		}
+	}
 
-	const primarySf =
-		process.platform !== "darwin" ? getScreen().getPrimaryDisplay().scaleFactor || 1 : 1;
-
-	const cursor = isLinuxCacheFresh
-		? { x: linuxCursorCache.x / primarySf, y: linuxCursorCache.y / primarySf }
-		: fallbackCursor;
-
-	const windowBounds = selectedSource?.id?.startsWith("window:") ? selectedWindowBounds : null;
+	// Areas are fixed rectangles, so they normalize like a window that never moves.
+	const windowBounds = isWindowSource ? selectedWindowBounds : getSourceArea(selectedSource);
 	if (windowBounds) {
+		const primarySf =
+			process.platform !== "darwin" ? screen.getPrimaryDisplay().scaleFactor || 1 : 1;
+		const linuxCursorCache = process.platform === "linux" ? linuxCursorScreenPoint : null;
+		const cursor =
+			linuxCursorCache && Date.now() - linuxCursorCache.updatedAt <= 1000
+				? { x: linuxCursorCache.x / primarySf, y: linuxCursorCache.y / primarySf }
+				: screenCursor;
 		const sf =
 			process.platform === "win32" || process.platform === "darwin"
 				? 1
@@ -200,13 +244,13 @@ export function getNormalizedCursorPoint() {
 				.getAllDisplays()
 				.find((display) => display.id === sourceDisplayId) ?? null)
 		: null;
-	const display = sourceDisplay ?? getScreen().getDisplayNearestPoint(cursor);
+	const display = sourceDisplay ?? screen.getDisplayNearestPoint(screenCursor);
 	const bounds = display.bounds;
 	const width = Math.max(1, bounds.width);
 	const height = Math.max(1, bounds.height);
 
-	const cx = clamp((cursor.x - bounds.x) / width, 0, 1);
-	const cy = clamp((cursor.y - bounds.y) / height, 0, 1);
+	const cx = clamp((screenCursor.x - bounds.x) / width, 0, 1);
+	const cy = clamp((screenCursor.y - bounds.y) / height, 0, 1);
 	return { cx, cy };
 }
 
@@ -243,6 +287,7 @@ export function pushCursorSample(
 	timeMs: number,
 	interactionType: CursorInteractionType = "move",
 	cursorType?: CursorVisualType,
+	mouseButton?: 1 | 2 | 3,
 ) {
 	activeCursorSamples.push({
 		timeMs: Math.max(0, timeMs),
@@ -250,6 +295,7 @@ export function pushCursorSample(
 		cy,
 		interactionType,
 		cursorType: cursorType ?? currentCursorVisualType,
+		...(mouseButton ? { mouseButton } : {}),
 	} as CursorTelemetryPoint);
 
 	if (activeCursorSamples.length > MAX_CURSOR_SAMPLES) {
@@ -259,7 +305,20 @@ export function pushCursorSample(
 
 export function sampleCursorPoint() {
 	const point = getNormalizedCursorPoint();
+	if (!point) return;
 	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "move");
+}
+
+export function captureRecordingZoomMarker(nowMs = Date.now()) {
+	if (!isCursorCaptureActive || isCursorCapturePaused()) return false;
+	const point = getNormalizedCursorPoint();
+	if (!point) return false;
+	activeRecordingZoomMarkers.push({
+		...point,
+		timeMs: getCursorCaptureElapsedMs(nowMs),
+		interactionType: "manual-zoom",
+	});
+	return true;
 }
 
 export async function persistPendingCursorTelemetry(videoPath: string) {
@@ -268,7 +327,10 @@ export async function persistPendingCursorTelemetry(videoPath: string) {
 		await fs.writeFile(
 			telemetryPath,
 			JSON.stringify(
-				{ version: CURSOR_TELEMETRY_VERSION, samples: pendingCursorSamples },
+				{
+					version: CURSOR_TELEMETRY_VERSION,
+					samples: [...pendingCursorSamples].sort((a, b) => a.timeMs - b.timeMs),
+				},
 				null,
 				2,
 			),
@@ -279,19 +341,25 @@ export async function persistPendingCursorTelemetry(videoPath: string) {
 }
 
 export function snapshotCursorTelemetryForPersistence() {
-	if (activeCursorSamples.length === 0) {
+	if (activeCursorSamples.length === 0 && activeRecordingZoomMarkers.length === 0) {
 		return;
 	}
 
 	if (pendingCursorSamples.length === 0) {
-		setPendingCursorSamples([...activeCursorSamples]);
+		setPendingCursorSamples([...activeCursorSamples, ...activeRecordingZoomMarkers]);
 		return;
 	}
 
-	const lastPendingTimeMs = pendingCursorSamples[pendingCursorSamples.length - 1]?.timeMs ?? -1;
+	let lastPendingPointerMs = -1;
+	const pendingMarkers = new Set<CursorTelemetryPoint>();
+	for (const sample of pendingCursorSamples) {
+		if (sample.interactionType === "manual-zoom") pendingMarkers.add(sample);
+		else lastPendingPointerMs = sample.timeMs;
+	}
 	setPendingCursorSamples([
 		...pendingCursorSamples,
-		...activeCursorSamples.filter((sample) => sample.timeMs > lastPendingTimeMs),
+		...activeCursorSamples.filter((sample) => sample.timeMs > lastPendingPointerMs),
+		...activeRecordingZoomMarkers.filter((marker) => !pendingMarkers.has(marker)),
 	]);
 }
 

@@ -1,8 +1,8 @@
-import { saveProjectShareLink } from "./projectShareLinks";
-import { useI18n } from "@/contexts/I18nContext";
-import { Check, CloudArrowUp, Copy, ShareNetwork } from "@/components/ui/icons";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "@/components/ui/toast";
+import { Input, TextArea } from "@heroui/react";
+import { ArrowClockwise, Export, LinkSimple } from "@phosphor-icons/react";
+import { createPortal } from "react-dom";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
+import { LocalizedError } from "@/components/feedback/LocalizedError";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -11,153 +11,274 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Check, Copy } from "@/components/ui/icons";
 import { Label } from "@/components/ui/label";
+import { useI18n, useI18n as useUiLocale } from "@/contexts/I18nContext";
+import { ExportProgressIndicator } from "../export/ExportProgressIndicator";
+import { EXPORT_LOADING_MESSAGES } from "../export/exportLoadingMessages";
+import type { Props } from "./cloudShareProps";
+import { CLOUD_SHARE_ENDPOINT as DEFAULT_CLOUD_ENDPOINT } from "./endpoint";
+import { PublishedVideoPreview } from "./PublishedVideoPreview";
+import { SharedRecordings } from "./SharedRecordings";
+import { notifyShareCapacityChanged, RECORDING_LIMIT_MESSAGE } from "./shareCapacity";
+import { useCloudShareController } from "./useCloudShareController";
 
-const DEFAULT_CLOUD_ENDPOINT = "http://localhost:8787/api/upload";
-
-type Props = {
- projectPath?: string | null;
-	filePath?: string;
-	projectTitle: string;
-	prepareFile?: () => Promise<string | undefined>;
-	onCancelPrepare?: () => void;
-	open?: boolean;
-	onOpenChange?: (open: boolean) => void;
-	hideTrigger?: boolean;
-	authToken?: string;
-};
-
-export function CloudShareButton({
-	projectPath,
-	filePath,
-	projectTitle,
-	prepareFile,
-	onCancelPrepare,
-	open: controlledOpen,
-	onOpenChange,
-	hideTrigger = false,
-	authToken,
-}: Props) {
+export function CloudShareButton(props: Props & { inlineContainer?: HTMLElement | null }) {
+	const {
+		onRegenerate,
+		filePath,
+		projectTitle,
+		prepareFile,
+		hideTrigger = false,
+		authToken,
+		inline = false,
+		onRequestSignIn,
+		inlineContainer,
+	} = props;
+	const { t: uiText } = useUiLocale();
 	const { t } = useI18n();
-	const [internalOpen, setInternalOpen] = useState(false);
-	const open = controlledOpen ?? internalOpen;
-	const setOpen = useCallback(
-		(nextOpen: boolean) => {
-			onOpenChange?.(nextOpen);
-			if (controlledOpen === undefined) setInternalOpen(nextOpen);
-		},
-		[controlledOpen, onOpenChange],
-	);
-	const [uploadId, setUploadId] = useState<string>();
-	const [progress, setProgress] = useState(0);
-	const [uploading, setUploading] = useState(false);
-	const [phase, setPhase] = useState<"idle" | "preparing" | "uploading">("idle");
-	const [error, setError] = useState<string>();
-	const [shareUrl, setShareUrl] = useState<string>();
-	const [copied, setCopied] = useState(false);
-	const [notes, setNotes] = useState("");
-	const preparedFileRef = useRef<string | undefined>(undefined);
-	const cancelRequestedRef = useRef(false);
+	const {
+		open,
+		setOpen,
+		progress,
+		phase,
+		uploading,
+		checkingCapacity,
+		error,
+		shareUrl,
+		needsRegenerate,
+		copied,
+		shareLinkInput,
+		title,
+		setTitle,
+		notes,
+		setNotes,
+		signInRequired,
+		capacityIdentity,
+		currentCapacityIdentity,
+		capacityError,
+		verifiedCapacity,
+		sessionRecovery,
+		handleOpenChange,
+		handleUpload,
+		handleCancel,
+		copyShareUrl,
+	} = useCloudShareController(props);
 
-	const discardPreparedFile = useCallback(() => {
-		const preparedPath = preparedFileRef.current;
-		preparedFileRef.current = undefined;
-		if (preparedPath) void window.electronAPI.discardExportedTemp(preparedPath);
-	}, []);
-
-	useEffect(() => discardPreparedFile, [discardPreparedFile]);
-
-	useEffect(() => {
-		return window.electronAPI.onCloudShareProgress((next) => {
-			setUploadId(next.uploadId);
-			setProgress(
-				next.totalBytes > 0
-					? Math.min(100, Math.round((next.uploadedBytes / next.totalBytes) * 100))
-					: 0,
-			);
-		});
-	}, []);
-
-	const handleOpenChange = useCallback(
-		(nextOpen: boolean) => {
-			if (!nextOpen && uploading) return;
-			setOpen(nextOpen);
-			if (nextOpen) {
-				setError(undefined);
-				setCopied(false);
-			} else {
-				discardPreparedFile();
+	const recordingLimit = t("editor.cloud.recordingLimit", RECORDING_LIMIT_MESSAGE);
+	const uploadIndicator = (
+		<ExportProgressIndicator
+			label={t("editor.cloud.createLink")}
+			phase={
+				phase === "uploading"
+					? t("editor.cloud.uploadingVideo", "Uploading video…")
+					: t("editor.cloud.preparing", "Preparing the current edit…")
 			}
-		},
-		[discardPreparedFile, setOpen, uploading],
+			// Headlines describe rendering, so show them only while a new export is prepared.
+			headlines={
+				inlineContainer && phase === "preparing" && !filePath
+					? EXPORT_LOADING_MESSAGES
+					: undefined
+			}
+			value={progress}
+		/>
 	);
 
-	const handleUpload = useCallback(async () => {
-		setUploading(true);
-		setProgress(0);
-		setPhase("preparing");
-		cancelRequestedRef.current = false;
-		setError(undefined);
-		setShareUrl(undefined);
-		try {
-			if (!authToken) throw new Error(t("editor.cloud.signInRequired"));
-			let resolvedFilePath = filePath ?? preparedFileRef.current;
-			if (!resolvedFilePath) {
-				resolvedFilePath = await prepareFile?.();
-				if (cancelRequestedRef.current) {
-					if (resolvedFilePath)
-						void window.electronAPI.discardExportedTemp(resolvedFilePath);
-					return;
-				}
-				if (!resolvedFilePath) throw new Error(t("editor.cloud.prepareFailed"));
-				preparedFileRef.current = resolvedFilePath;
-			}
-			const nextUploadId = crypto.randomUUID();
-			setUploadId(nextUploadId);
-			setPhase("uploading");
-			const result = await window.electronAPI.cloudShareUpload({
-				filePath: resolvedFilePath,
-				endpoint: DEFAULT_CLOUD_ENDPOINT,
-				token: authToken,
-				title: projectTitle,
-				notes: notes.trim() || undefined,
-				uploadId: nextUploadId,
-			});
-			if (!result.success || !result.shareUrl) {
-				if (!result.canceled) setError(result.error || t("editor.cloud.uploadFailed"));
-				return;
-			}
-			setProgress(100);
-			setShareUrl(result.shareUrl);
- if (projectPath) { try { saveProjectShareLink(projectPath, result.shareUrl); } catch { toast.error("Share created, but its link could not be saved locally"); } }
-			toast.success(t("editor.cloud.linkCreated"));
-		} catch (cause) {
-			setError(cause instanceof Error ? cause.message : String(cause));
-		} finally {
-			setUploading(false);
-			setPhase("idle");
-			setUploadId(undefined);
-		}
-	}, [projectPath, authToken, filePath, notes, prepareFile, projectTitle, t]);
+	const form = (
+		<>
+			{uploading ? <div className="mb-4">{uploadIndicator}</div> : null}
+			{shareUrl ? (
+				<div className="space-y-3">
+					<PublishedVideoPreview key={shareUrl} url={shareUrl} />
+					<Label htmlFor="cloud-share-link" className="sr-only">
+						{t("editor.cloud.shareLink", "Share link")}
+					</Label>
+					<div className="share-link-field flex min-w-0 items-center gap-3 rounded-2xl border border-input bg-background p-1.5 pl-3">
+						<LinkSimple
+							aria-hidden="true"
+							className="size-5 shrink-0 text-muted-foreground"
+						/>
+						<input
+							id="cloud-share-link"
+							ref={shareLinkInput}
+							readOnly
+							value={shareUrl}
+							onFocus={(event) => event.currentTarget.select()}
+							className="min-w-0 flex-1 bg-transparent py-2 text-sm text-foreground outline-none"
+						/>
+						<Button
+							type="button"
+							size="icon"
+							aria-label={
+								needsRegenerate
+									? uiText("ui.regenerate")
+									: copied
+										? t("editor.cloud.copied")
+										: t("editor.cloud.copyLink", "Copy link")
+							}
+							disabled={uploading}
+							onClick={() => {
+								if (needsRegenerate) {
+									onRegenerate ? onRegenerate() : void handleUpload();
+								} else {
+									void copyShareUrl();
+								}
+							}}
+							className="size-10 shrink-0 rounded-xl bg-[#191a1c] text-white hover:bg-[#303136]"
+						>
+							{needsRegenerate ? (
+								<ArrowClockwise className="h-4 w-4" />
+							) : copied ? (
+								<Check className="h-4 w-4" />
+							) : (
+								<Copy className="size-5" />
+							)}
+						</Button>
+					</div>
+					{needsRegenerate && !uploading && (
+						<>
+							<p className="text-xs text-muted-foreground">
+								{uiText("ui.thisProjectHasChangedSinceThisLinkWas")}
+							</p>
+							{error && (
+								<p role="alert" className="text-sm text-destructive">
+									<LocalizedError
+										error={error}
+										summary={
+											signInRequired
+												? t("editor.cloud.signInRequired")
+												: undefined
+										}
+									/>{" "}
+									<ErrorReportButton error={error} context="cloud-share" />
+								</p>
+							)}
+						</>
+					)}
+				</div>
+			) : (
+				<div className="space-y-4">
+					{!uploading && (
+						<>
+							<div className="space-y-2">
+								<Label htmlFor="cloud-share-title">
+									{t("editor.cloud.title", "Title")}
+								</Label>
+								<Input
+									id="cloud-share-title"
+									value={title}
+									placeholder={projectTitle}
+									maxLength={200}
+									onChange={(event) => setTitle(event.target.value)}
+									className="block w-full rounded-md bg-background text-sm"
+								/>
+							</div>
+							<div className="space-y-2">
+								<Label htmlFor="cloud-share-notes">{t("editor.cloud.notes")}</Label>
+								<TextArea
+									id="cloud-share-notes"
+									placeholder={t("editor.cloud.notesPlaceholder")}
+									value={notes}
+									onChange={(event) =>
+										setNotes(event.target.value.slice(0, 2000))
+									}
+									disabled={uploading}
+									className="block h-20 w-full resize-none rounded-md bg-background text-sm"
+								/>
+								{!inline && (
+									<p className="text-right text-[11px] text-muted-foreground">
+										{notes.length}/2000
+									</p>
+								)}
+							</div>
+						</>
+					)}
+					{authToken && !checkingCapacity && verifiedCapacity === null && !error && (
+						<p className="text-xs text-muted-foreground">
+							{capacityIdentity === currentCapacityIdentity && capacityError
+								? capacityError
+								: t(
+										"editor.cloud.checkStorageFailed",
+										"Could not check cloud storage. Try again.",
+									)}{" "}
+							<button
+								type="button"
+								className="underline"
+								onClick={() => {
+									if (signInRequired && onRequestSignIn) onRequestSignIn();
+									else {
+										sessionRecovery.current.attempted = false;
+										notifyShareCapacityChanged();
+									}
+								}}
+							>
+								{signInRequired && onRequestSignIn
+									? t("editor.cloud.checkSignIn", "Check sign-in")
+									: t("common.actions.retry", "Try again")}
+							</button>
+						</p>
+					)}
+					{error || verifiedCapacity === false ? (
+						<p role={error ? "alert" : undefined} className="text-sm text-destructive">
+							{error ? (
+								<LocalizedError
+									error={error}
+									summary={
+										signInRequired
+											? t("editor.cloud.signInRequired")
+											: error === recordingLimit
+												? recordingLimit
+												: undefined
+									}
+								/>
+							) : (
+								recordingLimit
+							)}
+							{error && <ErrorReportButton error={error} context="cloud-share" />}
+						</p>
+					) : null}
+					<div className="flex justify-end gap-2">
+						{uploading ? (
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => void handleCancel()}
+							>
+								{t("common.actions.cancel")}
+							</Button>
+						) : (
+							<Button
+								type="button"
+								size="lg"
+								className="w-full"
+								disabled={
+									Boolean(authToken) &&
+									// Pending checks do not block the action; handleUpload verifies before export.
+									(verifiedCapacity === false ||
+										(capacityIdentity === currentCapacityIdentity &&
+											Boolean(capacityError)))
+								}
+								onClick={() => {
+									if (!authToken && onRequestSignIn) onRequestSignIn();
+									else void handleUpload();
+								}}
+							>
+								<Export className="h-4 w-4" />
+								{authToken
+									? t("editor.cloud.share", "Share")
+									: t("editor.cloud.signInToShare", "Sign in to share")}
+							</Button>
+						)}
+					</div>
+				</div>
+			)}
+		</>
+	);
 
-	const handleCancel = useCallback(async () => {
-		cancelRequestedRef.current = true;
-		if (phase === "preparing") onCancelPrepare?.();
-		if (uploadId) await window.electronAPI.cloudShareCancel(uploadId);
-	}, [onCancelPrepare, phase, uploadId]);
-
-	const copyShareUrl = useCallback(async () => {
-		if (!shareUrl) return;
-		try {
-			await navigator.clipboard.writeText(shareUrl);
-			setCopied(true);
-			toast.success(t("editor.cloud.linkCopied"));
-		} catch {
-			setCopied(false);
-			toast.error(t("editor.cloud.copyFailed"));
-		}
-	}, [shareUrl, t]);
+	if (inline) {
+		if (inlineContainer === undefined) return <div>{form}</div>;
+		return inlineContainer && createPortal(form, inlineContainer);
+	}
 
 	return (
 		<>
@@ -170,7 +291,7 @@ export function CloudShareButton({
 					className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg border-foreground/10 bg-foreground/5 px-3 text-foreground hover:bg-foreground/10 disabled:opacity-40"
 					title={t("editor.cloud.createLinkTitle")}
 				>
-					<ShareNetwork className="h-4 w-4" />
+					<Export className="h-4 w-4" />
 					<span className="text-sm font-semibold tracking-tight">
 						{t("editor.cloud.createLink")}
 					</span>
@@ -183,84 +304,15 @@ export function CloudShareButton({
 						<DialogDescription>{t("editor.cloud.description")}</DialogDescription>
 					</DialogHeader>
 
-					{shareUrl ? (
-						<div className="space-y-4">
-							<div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-400">
-								<Check className="h-5 w-5 shrink-0" />
-								{t("editor.cloud.ready")}
-							</div>
-							<div className="flex gap-2">
-								<Input value={shareUrl} readOnly className="min-w-0" />
-								<Button type="button" onClick={copyShareUrl} className="shrink-0">
-									{copied ? (
-										<Check className="h-4 w-4" />
-									) : (
-										<Copy className="h-4 w-4" />
-									)}
-									{copied ? t("editor.cloud.copied") : t("editor.cloud.copy")}
-								</Button>
-							</div>
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() => void window.electronAPI.openExternalUrl(shareUrl)}
-								className="w-full"
-							>
-								{t("editor.cloud.openPage")}
-							</Button>
-						</div>
-					) : (
-						<div className="space-y-4">
-							<div className="space-y-2">
-								<Label htmlFor="cloud-share-notes">{t("editor.cloud.notes")}</Label>
-								<textarea
-									id="cloud-share-notes"
-									placeholder={t("editor.cloud.notesPlaceholder")}
-									value={notes}
-									onChange={(event) =>
-										setNotes(event.target.value.slice(0, 2000))
-									}
-									disabled={uploading}
-									className="min-h-24 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-								/>
-								<p className="text-right text-[11px] text-muted-foreground">
-									{notes.length}/2000
-								</p>
-							</div>
-							{uploading ? (
-								<div className="space-y-2">
-									<div className="h-2 overflow-hidden rounded-full bg-foreground/10">
-										<div
-											className="h-full bg-[#2563EB] transition-all"
-											style={{ width: `${progress}%` }}
-										/>
-									</div>
-									<p className="text-xs text-muted-foreground">
-										{phase === "preparing"
-											? t("editor.cloud.preparing")
-											: t("editor.cloud.uploading", undefined, { progress })}
-									</p>
-								</div>
-							) : null}
-							{error ? <p className="text-sm text-destructive">{error}</p> : null}
-							<div className="flex justify-end gap-2">
-								{uploading ? (
-									<Button
-										type="button"
-										variant="outline"
-										onClick={() => void handleCancel()}
-									>
-										{t("common.actions.cancel")}
-									</Button>
-								) : (
-									<Button type="button" onClick={() => void handleUpload()}>
-										<CloudArrowUp className="h-4 w-4" />
-										{t("editor.cloud.publish")}
-									</Button>
-								)}
-							</div>
-						</div>
+					{!uploading && authToken && DEFAULT_CLOUD_ENDPOINT && (
+						<SharedRecordings
+							token={authToken}
+							endpoint={DEFAULT_CLOUD_ENDPOINT}
+							refreshKey={shareUrl}
+						/>
 					)}
+
+					{form}
 				</DialogContent>
 			</Dialog>
 		</>

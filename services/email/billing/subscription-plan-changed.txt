@@ -1,0 +1,14 @@
+Plan updated for Recordly
+
+New plan, same creative you. You've moved from {{ .PreviousPlan }} to {{ .PlanName }}. Your billing page has any charges or credits.
+
+New plan: {{ .PlanName }}
+Effective date: {{ .EffectiveDate }}
+New price: {{ .Amount }} / {{ .Interval }}
+
+View billing details: {{ .ActionURL }}
+
+If you didn't make this change, contact support.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

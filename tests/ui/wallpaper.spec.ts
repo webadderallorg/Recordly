@@ -84,3 +84,90 @@ test("video wallpapers share the gallery's add and remove controls", async ({ pa
 		"true",
 	);
 });
+
+for (const format of ["png", "jpeg-empty-mime", "heic"] as const) {
+	test(`imports and decodes a ${format} wallpaper`, async ({ page }) => {
+		test.setTimeout(60000);
+		await installDesktopBridge(page);
+		await page.goto("/?windowType=editor");
+		const add = page.getByRole("button", { name: "Add wallpaper", exact: true });
+		await expect(add).toBeVisible({ timeout: 20000 });
+		const chooser = page.waitForEvent("filechooser");
+		await add.click();
+		if (format === "png") {
+			await (await chooser).setFiles({
+				name: "background.PNG",
+				mimeType: "image/png",
+				buffer: Buffer.from(
+					"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=",
+					"base64",
+				),
+			});
+		} else if (format === "heic") {
+			await (await chooser).setFiles("tests/ui/fixtures/wallpaper.heic");
+		} else {
+			const { readFile } = await import("node:fs/promises");
+			await (await chooser).setFiles({
+				name: "background.JPEG",
+				mimeType: "",
+				buffer: await readFile("tests/ui/fixtures/recording-thumbnail.jpg"),
+			});
+		}
+		const custom = page.getByRole("button", { name: "Custom wallpaper 1", exact: true });
+		await expect(custom).toHaveAttribute("aria-pressed", "true", { timeout: 20000 });
+		const image = custom.locator("img");
+		await expect.poll(() => image.evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
+		if (format === "heic") await expect(image).toHaveAttribute("src", /^data:image\/png;/);
+		await page.reload();
+		await expect(custom).toHaveAttribute("aria-pressed", "true", { timeout: 20000 });
+	});
+}
+
+test("the image picker routes a video wallpaper into the Video tab", async ({ page }) => {
+	await installDesktopBridge(page);
+	await page.goto("/?windowType=editor");
+	await page.evaluate(() => {
+		window.electronAPI.importWallpaperVideo = async () => ({
+			success: true,
+			path: `${location.origin}/tests/ui/fixtures/background.webm`,
+		});
+	});
+	const chooser = page.waitForEvent("filechooser");
+	await page.getByRole("button", { name: "Add wallpaper", exact: true }).click();
+	await (await chooser).setFiles("tests/ui/fixtures/background.webm");
+	await expect(
+		page.getByRole("button", { name: "background.webm", exact: true }),
+	).toHaveAttribute("aria-pressed", "true");
+	await expect(page.locator('[data-background-panel="video"]')).toBeVisible();
+	await expect
+		.poll(() =>
+			page
+				.getByRole("button", { name: "background.webm", exact: true })
+				.locator("video")
+				.evaluate((video) => video.videoWidth),
+		)
+		.toBeGreaterThan(0);
+});
+
+test("a corrupt image does not add a broken wallpaper or change selection", async ({ page }) => {
+	await installDesktopBridge(page);
+	await page.goto("/?windowType=editor");
+	const original = page.locator('aside button[aria-pressed="true"]');
+	await expect(original).toBeVisible();
+	const name = await original.getAttribute("aria-label");
+	const chooser = page.waitForEvent("filechooser");
+	await page.getByRole("button", { name: "Add wallpaper", exact: true }).click();
+	await (await chooser).setFiles({
+		name: "broken.png",
+		mimeType: "image/png",
+		buffer: Buffer.from("not an image"),
+	});
+	await expect(page.getByText("Could not open this wallpaper.", { exact: false })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Custom wallpaper 1", exact: true })).toHaveCount(
+		0,
+	);
+	await expect(page.getByRole("button", { name: name!, exact: true })).toHaveAttribute(
+		"aria-pressed",
+		"true",
+	);
+});

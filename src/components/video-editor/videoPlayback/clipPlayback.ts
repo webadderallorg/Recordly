@@ -39,8 +39,33 @@ export function createClipPlayback({
 	let request: number | null = null;
 	let lastTick = 0;
 	let activeClip: ClipRegion | null = null;
+	let activePlaybackKey: string | null = null;
+	const playbackKey = (clip: ClipRegion | null) =>
+		clip
+			? JSON.stringify([
+					clip.id,
+					clip.startMs,
+					clip.endMs,
+					getClipSourceStartMs(clip),
+					clip.speed,
+				])
+			: null;
 	let playRequest = 0;
 	const duration = () => getTimelineDurationMs(getClips(), 0);
+	const readSourceTime = () => {
+		if (!activeClip || video.seeking) return;
+		timeMs = video.ended
+			? activeClip.endMs
+			: Math.min(
+					activeClip.endMs,
+					Math.max(
+						activeClip.startMs,
+						activeClip.startMs +
+							(video.currentTime * 1000 - getClipSourceStartMs(activeClip)) /
+								activeClip.speed,
+					),
+				);
+	};
 
 	const pause = () => {
 		playRequest++;
@@ -59,7 +84,7 @@ export function createClipPlayback({
 			onError(error);
 		});
 	};
-	const sync = (seek = false) => {
+	const sync = (seek = false, startSource = false) => {
 		const clips = getClips();
 		// Empty timeline space is skipped during playback. Clip positions and
 		// paused seeks stay intact so editing a gap never moves source footage.
@@ -68,6 +93,8 @@ export function createClipPlayback({
 			if (next) timeMs = next.startMs;
 		}
 		const clip = findPreviewClipAtTimelineTime(timeMs, clips);
+		const nextPlaybackKey = playbackKey(clip);
+		const mappingChanged = nextPlaybackKey !== activePlaybackKey;
 		const sourceMs = clip
 			? getClipSourceStartMs(clip) + (timeMs - clip.startMs) * clip.speed
 			: null;
@@ -80,7 +107,7 @@ export function createClipPlayback({
 				onError(error);
 				return;
 			}
-			if (seek || clip !== activeClip) {
+			if (seek || mappingChanged) {
 				// Clip out-points are exclusive. At the final timeline endpoint,
 				// request a frame inside the clip, not EOF or the following footage.
 				const atEnd = timeMs >= clip.endMs - 1e-7;
@@ -100,15 +127,20 @@ export function createClipPlayback({
 				// asynchronous seek in Chromium (especially disruptive at zero).
 				if (Math.abs(video.currentTime - target) > 1e-8) {
 					onSourceSeek?.(playing && !seek ? "cut" : "seek");
+					if (playing) {
+						playRequest++;
+						video.pause();
+					}
 					video.currentTime = target;
 				}
 			}
-			if (playing && (seek || clip !== activeClip)) playSource();
+			if (playing && (startSource || seek || mappingChanged) && !video.seeking) playSource();
 		} else {
 			playRequest++;
 			video.pause();
 		}
-		activeClip = clip;
+		activeClip = clip ? { ...clip } : null;
+		activePlaybackKey = nextPlaybackKey;
 		onTime(timeMs / 1000, sourceMs === null ? null : sourceMs / 1000);
 	};
 	const tick = (now: number) => {
@@ -117,25 +149,17 @@ export function createClipPlayback({
 		// Follow the media inside footage (buffering must not skip content).
 		// With no clips loaded, elapsed real time is the fallback clock.
 		if (!activeClip) timeMs += now - lastTick;
-		else if (!video.seeking) {
-			timeMs = video.ended
-				? activeClip.endMs
-				: Math.min(
-						activeClip.endMs,
-						Math.max(
-							activeClip.startMs,
-							activeClip.startMs +
-								(video.currentTime * 1000 - getClipSourceStartMs(activeClip)) /
-									activeClip.speed,
-						),
-					);
-		}
+		else readSourceTime();
 		timeMs = Math.min(duration(), timeMs);
 		lastTick = now;
 		sync();
 		if (!playing) return;
-		if (timeMs >= duration()) pause();
-		else request = requestAnimationFrame(tick);
+		if (timeMs >= duration()) {
+			pause();
+		} else {
+			if (activeClip && !video.seeking && video.paused) playSource();
+			request = requestAnimationFrame(tick);
+		}
 	};
 	return {
 		get isPlaying() {
@@ -143,11 +167,17 @@ export function createClipPlayback({
 		},
 		play: async () => {
 			if (playing || getClips().length === 0) return;
-			if (timeMs >= duration()) timeMs = 0;
+			// Include media progress since the last RAF, including reaching a cut/EOF.
+			// Preserve an explicit seek to the timeline endpoint so Play restarts it.
+			if (timeMs < duration()) readSourceTime();
+			const restart = timeMs >= duration();
+			if (restart) timeMs = 0;
 			playing = true;
 			onPlaying(true);
 			lastTick = performance.now();
-			sync(true);
+			// Resume the paused decoder in place. The last RAF timestamp can lag
+			// behind it; seeking there rewinds footage and resets camera/cursor springs.
+			sync(restart, true);
 			if (playing) request = requestAnimationFrame(tick);
 		},
 		pause,
@@ -157,7 +187,17 @@ export function createClipPlayback({
 			sync(true);
 		},
 		refresh: () => {
+			// Muting/showing source audio changes clip metadata, not its media mapping.
+			// Retain the decoder frame and motion pose; while playing include media
+			// progress since the previous RAF instead of seeking backward to it.
+			if (playing) readSourceTime();
 			timeMs = Math.min(timeMs, duration());
+			const nextClip = findPreviewClipAtTimelineTime(timeMs, getClips());
+			if (playbackKey(nextClip) === activePlaybackKey) {
+				activeClip = nextClip ? { ...nextClip } : null;
+				if (playing) sync();
+				return;
+			}
 			sync(true);
 		},
 		dispose: pause,

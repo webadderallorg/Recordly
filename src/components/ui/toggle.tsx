@@ -1,6 +1,7 @@
 import { ToggleButton } from "@heroui/react";
-import { cn } from "@/lib/utils";
 import type { ComponentProps } from "react";
+import { cn } from "@/lib/utils";
+
 type Props = Omit<ComponentProps<typeof ToggleButton>, "size" | "variant"> & {
 	pressed?: boolean;
 	onPressedChange?: (value: boolean) => void;

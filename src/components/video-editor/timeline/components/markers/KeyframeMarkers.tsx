@@ -1,7 +1,7 @@
-import { useTimelinePresentation } from "../../core/TimelinePresentation";
-import { getPlayheadDisplayTime, getTimeAtClipSeam } from "../../core/clipPresentation";
 import { useTimelineContext } from "dnd-timeline";
 import React, { useEffect, useState } from "react";
+import { getPlayheadDisplayTime, getTimeAtClipSeam } from "../../core/clipPresentation";
+import { useTimelinePresentation } from "../../core/TimelinePresentation";
 
 interface Keyframe {
 	id: string;

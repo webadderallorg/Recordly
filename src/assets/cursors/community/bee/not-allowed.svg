@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" fill="none">
+  <g filter="url(#filter0_d)">
+    <g filter="url(#filter1_d)">
+      <path d="M182 100.5C182 146.063 145.063 183 99.5 183C53.9365 183 17 146.063 17 100.5C17 54.9365 53.9365 18 99.5 18C145.063 18 182 54.9365 182 100.5Z" fill="#000000"/>
+    </g>
+    <path d="M169.308 100.5C169.308 139.054 138.054 170.308 99.5 170.308C60.9463 170.308 29.6923 139.054 29.6923 100.5C29.6923 61.9463 60.9463 30.6923 99.5 30.6923C138.054 30.6923 169.308 61.9463 169.308 100.5Z" fill="#000000"/>
+    <path d="M100 55C87.2762 55 75.0725 59.8949 66.0718 68.6088C57.071 77.3227 52.0094 89.1425 52 101.47C51.9958 107.356 53.1448 113.189 55.3861 118.66L135.881 70.6482C131.381 65.7319 125.856 61.7954 119.672 59.0982C113.487 56.401 106.783 55.0042 100 55ZM144.614 84.2218L64.0599 132.233C68.5556 137.178 74.0848 141.141 80.2809 143.859C86.4771 146.577 93.1987 147.989 100 148C106.306 148 112.55 146.796 118.375 144.457C124.2 142.119 129.493 138.691 133.95 134.37C138.408 130.049 141.943 124.92 144.354 119.275C146.765 113.63 148.003 107.58 148 101.47C148.012 95.5647 146.863 89.7109 144.614 84.2218Z" fill="white"/>
+  </g>
+  <defs>
+    <filter id="filter0_d" x="13" y="18" width="173" height="173" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"/>
+      <feOffset dy="2"/>
+      <feGaussianBlur stdDeviation="2"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.5 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow" result="shape"/>
+    </filter>
+    <filter id="filter1_d" x="12" y="17" width="175" height="175" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"/>
+      <feOffset dy="2"/>
+      <feGaussianBlur stdDeviation="2.5"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.5 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow" result="shape"/>
+    </filter>
+  </defs>
+</svg>

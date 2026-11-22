@@ -1,5 +1,5 @@
-import { BookmarkSimple, CaretDown, Check, X } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
+import { BookmarkSimple, CaretDown, Check, X } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { useI18n } from "@/contexts/I18nContext";
@@ -46,7 +46,7 @@ export function EditorPresetMenu({ t, presets }: Props) {
 			<PopoverContent
 				align="end"
 				sideOffset={10}
-				aria-label="Presets"
+				aria-label={t("editor.presets.label", "Presets")}
 				className="w-[320px] p-4"
 			>
 				<div className="space-y-4">

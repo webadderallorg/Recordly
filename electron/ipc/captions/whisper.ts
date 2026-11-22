@@ -1,16 +1,17 @@
-import { createWriteStream } from "node:fs";
-import { constants as fsConstants } from "node:fs";
+import { createWriteStream, constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
-import { get as httpsGet } from "node:https";
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import type Electron from "electron";
 import {
 	WHISPER_MODEL_DIR,
 	WHISPER_MODEL_DOWNLOAD_URL,
 	WHISPER_SMALL_MODEL_PATH,
 } from "../constants";
+import { receiveCaptionDownload } from "./modelDownloadTransport";
 
 export function sendWhisperModelDownloadProgress(
-	webContents: Electron.WebContents,
+	webContents: Electron.WebContents | null | undefined,
 	payload: {
 		status: "idle" | "downloading" | "downloaded" | "error";
 		progress: number;
@@ -18,7 +19,12 @@ export function sendWhisperModelDownloadProgress(
 		error?: string;
 	},
 ) {
-	webContents.send("whisper-small-model-download-progress", payload);
+	try {
+		if (webContents && !webContents.isDestroyed())
+			webContents.send("whisper-small-model-download-progress", payload);
+	} catch {
+		// Closing a window does not interrupt the model installation.
+	}
 }
 
 export async function getWhisperSmallModelStatus() {
@@ -43,75 +49,34 @@ export function downloadFileWithProgress(
 	destinationPath: string,
 	onProgress: (progress: number) => void,
 ): Promise<void> {
-	const request = (currentUrl: string, redirectCount = 0): Promise<void> => {
-		return new Promise((resolve, reject) => {
-			const req = httpsGet(currentUrl, { timeout: 30_000 }, (response) => {
-				const statusCode = response.statusCode ?? 0;
-				const location = response.headers.location;
-
-				if (statusCode >= 300 && statusCode < 400 && location) {
-					response.resume();
-					if (redirectCount >= 5) {
-						reject(new Error("Too many redirects while downloading Whisper model."));
-						return;
+	return receiveCaptionDownload(url, 5, async (response) => {
+		const { statusCode } = response;
+		if (statusCode < 200 || statusCode >= 300) {
+			throw new Error(`Whisper model download failed with status ${statusCode}.`);
+		}
+		const totalBytes = Number.parseInt(String(response.headers["content-length"] ?? "0"), 10);
+		let downloadedBytes = 0;
+		let latestProgress = 0;
+		const progress = new Transform({
+			transform(chunk: Buffer, _encoding, callback) {
+				downloadedBytes += chunk.length;
+				if (Number.isFinite(totalBytes) && totalBytes > 0) {
+					const next = Math.min(99, Math.floor((downloadedBytes / totalBytes) * 100));
+					if (next > latestProgress) {
+						latestProgress = next;
+						onProgress(next);
 					}
-
-					const nextUrl = new URL(location, currentUrl).toString();
-					void request(nextUrl, redirectCount + 1)
-						.then(resolve)
-						.catch(reject);
-					return;
 				}
-
-				if (statusCode < 200 || statusCode >= 300) {
-					response.resume();
-					reject(new Error(`Whisper model download failed with status ${statusCode}.`));
-					return;
-				}
-
-				const totalBytes = Number.parseInt(
-					String(response.headers["content-length"] ?? "0"),
-					10,
-				);
-				let downloadedBytes = 0;
-				const fileStream = createWriteStream(destinationPath);
-
-				response.on("data", (chunk: Buffer) => {
-					downloadedBytes += chunk.length;
-					if (Number.isFinite(totalBytes) && totalBytes > 0) {
-						onProgress(Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)));
-					}
-				});
-
-				response.on("error", (error) => {
-					fileStream.destroy(error);
-				});
-
-				fileStream.on("error", (error) => {
-					response.destroy(error);
-					reject(error);
-				});
-
-				fileStream.on("finish", () => {
-					onProgress(100);
-					resolve();
-				});
-
-				response.pipe(fileStream);
-			});
-
-			req.on("error", reject);
-			req.on("timeout", () => {
-				req.destroy(new Error("Whisper model download timed out."));
-			});
+				callback(null, chunk);
+			},
 		});
-	};
-
-	return request(url);
+		await pipeline(response, progress, createWriteStream(destinationPath));
+		onProgress(100);
+	});
 }
 
 export async function downloadWhisperSmallModel(
-	webContents: Electron.WebContents,
+	webContents: Electron.WebContents | null | undefined,
 ): Promise<string> {
 	await fs.mkdir(WHISPER_MODEL_DIR, { recursive: true });
 	const tempPath = `${WHISPER_SMALL_MODEL_PATH}.download`;
