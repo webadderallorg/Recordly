@@ -110,6 +110,7 @@ export type NativeAudioPlan =
 	| {
 			audioMode: "copy-source" | "trim-source";
 			audioSourcePath: string;
+			audioSourceCodec?: string;
 			trimSegments?: Array<{ startMs: number; endMs: number }>;
 	  }
 	| {
@@ -120,6 +121,7 @@ export type NativeAudioPlan =
 			audioMode: "edited-track";
 			strategy: "filtergraph-fast-path";
 			audioSourcePath: string;
+			audioSourceCodec?: string;
 			audioSourceSampleRate: number;
 			editedTrackSegments: Array<{ startMs: number; endMs: number; speed: number }>;
 	  };
