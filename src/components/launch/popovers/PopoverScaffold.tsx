@@ -1,5 +1,12 @@
 import { ToggleButton } from "@heroui/react";
-import { cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
+import {
+	type AriaAttributes,
+	cloneElement,
+	isValidElement,
+	type ReactElement,
+	type ReactNode,
+	useId,
+} from "react";
 import { AudioLevelMeter } from "@/components/ui/audio-level-meter";
 import { Button } from "@/components/ui/button";
 import { MicrophoneIcon, MicrophoneSlashIcon } from "@/components/ui/icons";
@@ -95,6 +102,7 @@ export function HudPopover({
 	align = "center",
 	label,
 	tooltip,
+	description,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -103,19 +111,31 @@ export function HudPopover({
 	align?: "start" | "center" | "end";
 	label?: string;
 	tooltip?: string;
+	description?: string;
 }) {
 	const { onMouseEnter } = useHudInteraction();
+	const descriptionId = useId();
+	const describedTrigger = description
+		? cloneElement(trigger as ReactElement<AriaAttributes>, {
+				"aria-describedby": descriptionId,
+			})
+		: trigger;
 	return (
 		<Popover open={open} onOpenChange={onOpenChange} modal={true}>
 			<PopoverTrigger asChild>
 				{tooltip ? (
 					<HudTooltip label={tooltip} suppressed={open}>
-						{trigger}
+						{describedTrigger}
 					</HudTooltip>
 				) : (
-					trigger
+					describedTrigger
 				)}
 			</PopoverTrigger>
+			{description && (
+				<span id={descriptionId} className="sr-only">
+					{description}
+				</span>
+			)}
 			<PopoverContent
 				aria-label={label}
 				className={`launch-theme ${styles.menuCard} ${styles.electronNoDrag}`}

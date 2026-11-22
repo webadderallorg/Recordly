@@ -1,5 +1,4 @@
 import { Button, Tooltip } from "@heroui/react";
-import { useState } from "react";
 import { PauseIcon, PlayIcon, Trash } from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
 import styles from "./LaunchWindow.module.css";
@@ -25,8 +24,6 @@ export function RecordingControls({
 }: RecordingControlsProps) {
 	const t = useScopedT("launch");
 	const captureT = useScopedT("capture");
-	const [discarding, setDiscarding] = useState(false);
-	const disabled = busy || discarding;
 	return (
 		<div
 			role="group"
@@ -37,7 +34,7 @@ export function RecordingControls({
 				<Button
 					isIconOnly
 					variant="ghost"
-					isDisabled={disabled}
+					isDisabled={busy}
 					className={styles.hudAction}
 					aria-label={t("recording.stop")}
 					onPress={onStopRecording}
@@ -50,20 +47,13 @@ export function RecordingControls({
 				<span role="timer" aria-live="off" className="text-base font-semibold tabular-nums">
 					{formatTime(elapsed).replace(/^0(?=\d:)/, "")}
 				</span>
-				<span role="status" className="sr-only">
-					{discarding
-						? captureT("discardingRecording")
-						: paused
-							? t("recording.paused")
-							: captureT("recording")}
-				</span>
 			</div>
 			<span aria-hidden="true" className={styles.captureDivider} />
 			<Tooltip>
 				<Button
 					isIconOnly
 					variant="ghost"
-					isDisabled={disabled}
+					isDisabled={busy}
 					className={styles.hudAction}
 					onPress={onPauseResume}
 					aria-label={paused ? t("recording.resume") : t("recording.pause")}
@@ -82,18 +72,10 @@ export function RecordingControls({
 				<Button
 					isIconOnly
 					variant="ghost"
-					isDisabled={disabled}
+					isDisabled={busy}
 					className={styles.hudAction}
 					aria-label={captureT("discardRecording")}
-					onPress={async () => {
-						if (discarding) return;
-						setDiscarding(true);
-						try {
-							await onCancelRecording();
-						} finally {
-							setDiscarding(false);
-						}
-					}}
+					onPress={onCancelRecording}
 				>
 					<Trash className="size-5" />
 				</Button>
