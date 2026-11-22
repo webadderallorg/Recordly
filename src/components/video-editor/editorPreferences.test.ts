@@ -89,12 +89,13 @@ describe("editorPreferences", () => {
 		Reflect.deleteProperty(globalThis, "electronAPI");
 	});
 
-	it("starts from 2.0 defaults while retaining the v1.4 resource library", () => {
+	it("starts from 2.0 defaults while retaining v1.4 padding for windows and the resource library", () => {
 		const legacyKey = "recordly.editor.preferences";
 		const legacy = {
 			wallpaper: "/wallpapers/tahoe-light.jpg",
 			shadowIntensity: 0.67,
 			exportQuality: "source",
+			padding: 0,
 			customWallpapers: ["/fixtures/background.jpg"],
 			whisperModelPath: "/fixtures/whisper.bin",
 		};
@@ -105,6 +106,8 @@ describe("editorPreferences", () => {
 			shadowIntensity: DEFAULT_EDITOR_PREFERENCES.shadowIntensity,
 			exportQuality: "medium",
 			advancedExportSettings: false,
+			screenPadding: DEFAULT_PADDING,
+			windowPadding: DEFAULT_PADDING,
 			customWallpapers: legacy.customWallpapers,
 			whisperModelPath: legacy.whisperModelPath,
 		});
@@ -112,6 +115,8 @@ describe("editorPreferences", () => {
 		saveEditorPreferences({ shadowIntensity: 0.8 });
 		const saved = {
 			shadowIntensity: 0.8,
+			screenPadding: DEFAULT_PADDING,
+			windowPadding: DEFAULT_PADDING,
 			customWallpapers: legacy.customWallpapers,
 			whisperModelPath: legacy.whisperModelPath,
 		};
@@ -497,20 +502,39 @@ describe("editorPreferences", () => {
 		});
 	});
 
-	it("defaults padding per capture kind and ignores the legacy shared padding", () => {
-		vi.stubGlobal(
-			"localStorage",
-			createStorageMock({
-				[EDITOR_PREFERENCES_STORAGE_KEY]: JSON.stringify({ padding: 25 }),
-			}),
-		);
-
+	it("starts with zero screen padding and 25% window padding without saved preferences", () => {
 		const prefs = loadEditorPreferences();
 		expect(getPaddingPreference(prefs, "screen")).toEqual(DEFAULT_PADDING);
 		expect(getPaddingPreference(prefs, null)).toEqual(DEFAULT_PADDING);
 		expect(getPaddingPreference(prefs, "window")).toEqual(DEFAULT_WINDOW_PADDING);
 		expect(DEFAULT_PADDING.top).toBe(0);
 		expect(DEFAULT_WINDOW_PADDING.top).toBe(25);
+	});
+
+	it("migrates legacy shared padding to windows only and saves it under the new key", () => {
+		const padding = { top: 30, bottom: 5, left: 15, right: 20, linked: false };
+		const settings = stubElectronSettings({
+			[EDITOR_PREFERENCES_STORAGE_KEY]: { padding },
+		});
+
+		const prefs = loadEditorPreferences();
+		expect(getPaddingPreference(prefs, "screen")).toEqual(DEFAULT_PADDING);
+		expect(getPaddingPreference(prefs, "window")).toEqual(padding);
+
+		saveEditorPreferences({ screenPadding: DEFAULT_WINDOW_PADDING });
+		expect(settings.get(EDITOR_PREFERENCES_STORAGE_KEY)).not.toHaveProperty("padding");
+		expect(loadEditorPreferences()).toMatchObject({
+			screenPadding: DEFAULT_WINDOW_PADDING,
+			windowPadding: padding,
+		});
+	});
+
+	it("prefers an explicitly saved window setting over the legacy shared setting", () => {
+		stubElectronSettings({
+			[EDITOR_PREFERENCES_STORAGE_KEY]: { padding: 40, windowPadding: DEFAULT_PADDING },
+		});
+
+		expect(getPaddingPreference(loadEditorPreferences(), "window")).toEqual(DEFAULT_PADDING);
 	});
 
 	it("saves custom Whisper paths", () => {
