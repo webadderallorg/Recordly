@@ -99,4 +99,8 @@ describe("getGpuBlocklistOverrideSwitches", () => {
 			).toEqual(["ignore-gpu-blocklist", "enable-unsafe-webgpu", "enable-gpu-rasterization"]);
 		}
 	});
+
+	it("keeps the GPU path for headless smoke-export benchmarks", () => {
+		expect(getGpuBlocklistOverrideSwitches({ RECORDLY_SMOKE_EXPORT: "1" })).toHaveLength(3);
+	});
 });
