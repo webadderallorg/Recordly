@@ -11,7 +11,7 @@ import {
 import { receiveCaptionDownload } from "./modelDownloadTransport";
 
 export function sendWhisperModelDownloadProgress(
-	webContents: Electron.WebContents,
+	webContents: Electron.WebContents | null | undefined,
 	payload: {
 		status: "idle" | "downloading" | "downloaded" | "error";
 		progress: number;
@@ -20,7 +20,7 @@ export function sendWhisperModelDownloadProgress(
 	},
 ) {
 	try {
-		if (!webContents.isDestroyed())
+		if (webContents && !webContents.isDestroyed())
 			webContents.send("whisper-small-model-download-progress", payload);
 	} catch {
 		// Closing a window does not interrupt the model installation.
@@ -76,7 +76,7 @@ export function downloadFileWithProgress(
 }
 
 export async function downloadWhisperSmallModel(
-	webContents: Electron.WebContents,
+	webContents: Electron.WebContents | null | undefined,
 ): Promise<string> {
 	await fs.mkdir(WHISPER_MODEL_DIR, { recursive: true });
 	const tempPath = `${WHISPER_SMALL_MODEL_PATH}.download`;
