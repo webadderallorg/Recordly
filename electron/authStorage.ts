@@ -34,6 +34,8 @@ export type AuthFlowStorageHooks = {
 let pending = Promise.resolve();
 let completedCallback: { key: string; fingerprint: string } | undefined;
 let migrationAttempted = false;
+// Only the process that owns the profile's secure-storage key may decide a store is unreadable for good.
+let canRecoverUnreadableStore: () => boolean = () => false;
 
 export function encryptionAvailable(): boolean {
 	return (
@@ -144,11 +146,34 @@ function prefersNamedKeychain(): boolean {
 	return process.platform === "darwin" && app.isPackaged;
 }
 
-async function load(): Promise<{
+/**
+ * The saved sign-in exists but cannot be read. `permanent` marks failures that
+ * retrying cannot fix: the ciphertext no longer decrypts with this profile's key,
+ * or it is not a store at all. macOS Keychain denials stay non-permanent because
+ * the user can grant access on a later attempt.
+ */
+class UnreadableAuthStoreError extends Error {
+	constructor(readonly permanent: boolean) {
+		super(SAVED_SIGN_IN_LOCKED);
+	}
+}
+
+type LoadedAuthStore = {
 	entries: AuthEntries;
 	persisted: boolean;
 	encoding: AuthEncoding;
-}> {
+};
+
+function emptyStore(): LoadedAuthStore {
+	return {
+		entries: Object.create(null) as AuthEntries,
+		persisted: false,
+		encoding: prefersNamedKeychain() ? "saved-sign-in" : "safe-storage",
+	};
+}
+
+async function load(): Promise<LoadedAuthStore> {
+	let stage: "read" | "decrypt" | "parse" | "validate" = "read";
 	try {
 		const filePath = storagePath();
 		const stat = await fs.stat(filePath);
@@ -158,8 +183,11 @@ async function load(): Promise<{
 		const named = isSavedSignInCiphertext(encrypted);
 		if (!named && !encryptionAvailable())
 			throw new Error("Secure authentication storage is unavailable.");
+		stage = "decrypt";
 		const plaintext = named ? openSavedSignIn(encrypted) : safeStorage.decryptString(encrypted);
+		stage = "parse";
 		const payload = JSON.parse(plaintext);
+		stage = "validate";
 		if (payload.version !== 1) throw new Error("Unsupported authentication storage version.");
 		const entries = validateEntries(payload.entries);
 		let encoding: AuthEncoding = named ? "saved-sign-in" : "safe-storage";
@@ -182,13 +210,35 @@ async function load(): Promise<{
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
 			// Keep an unreadable store intact; never replace it with an empty session.
-			throw new Error(SAVED_SIGN_IN_LOCKED);
+			throw new UnreadableAuthStoreError(
+				process.platform !== "darwin" && (stage === "decrypt" || stage === "parse"),
+			);
 		}
-		return {
-			entries: Object.create(null) as AuthEntries,
-			persisted: false,
-			encoding: prefersNamedKeychain() ? "saved-sign-in" : "safe-storage",
-		};
+		return emptyStore();
+	}
+}
+
+/**
+ * Loads the store for a write that starts or refreshes a sign-in. A store that
+ * can never be decrypted again (for example after the profile's encryption key
+ * changed) would otherwise block every future sign-in, so it is moved aside to a
+ * dated backup and the new session starts from an empty store.
+ */
+async function loadForWrite(): Promise<LoadedAuthStore> {
+	try {
+		return await load();
+	} catch (error) {
+		if (
+			!(error instanceof UnreadableAuthStoreError) ||
+			!error.permanent ||
+			!canRecoverUnreadableStore()
+		)
+			throw error;
+		const filePath = storagePath();
+		const backup = `${filePath}.unreadable-${new Date().toISOString().replace(/[:.]/g, "-")}.bak`;
+		await fs.rename(filePath, backup);
+		console.warn(`[auth] Moved an unreadable saved sign-in aside to ${path.basename(backup)}.`);
+		return emptyStore();
 	}
 }
 
@@ -257,7 +307,11 @@ export function readNativeAuthStorageValue(key: string): Promise<string | null> 
 	return serialize(() => transaction(async () => readStoredValue((await load()).entries, key)));
 }
 
-export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): void {
+export function registerAuthStorageHandlers(
+	flowHooks?: AuthFlowStorageHooks,
+	options: { canRecoverUnreadableStore?: () => boolean } = {},
+): void {
+	canRecoverUnreadableStore = options.canRecoverUnreadableStore ?? (() => false);
 	ipcMain.handle("auth-storage:available", (event) => {
 		assertTrustedRenderer(event);
 		// On macOS, let the read or write request Keychain access. If access is
@@ -270,7 +324,7 @@ export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): v
 		if (Object.keys(validated).length === 0) return;
 		return serialize(() =>
 			transaction(async () => {
-				const current = await load();
+				const current = await loadForWrite();
 				if (!current.persisted) await save(validated, current.encoding);
 			}),
 		);
@@ -295,7 +349,7 @@ export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): v
 			const persistedKeys =
 				flowHooks &&
 				/^sb-[a-z0-9-]{1,100}-auth-token-flow-[A-Za-z0-9_-]{8,64}-code-verifier$/.test(key)
-					? await transaction(async () => Object.keys((await load()).entries))
+					? await transaction(async () => Object.keys((await loadForWrite()).entries))
 					: undefined;
 			const rollback = await flowHooks?.prepareSet(event, key, persistedKeys);
 			if (COMPLETED_CALLBACK_KEY.test(key)) {
@@ -305,7 +359,7 @@ export function registerAuthStorageHandlers(flowHooks?: AuthFlowStorageHooks): v
 			}
 			try {
 				const result = await transaction(async () => {
-					const current = await load();
+					const current = await loadForWrite();
 					const next = { ...current.entries, ...validated };
 					if (completedCallback)
 						for (const candidate of Object.keys(next)) {

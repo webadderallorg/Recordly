@@ -1,4 +1,5 @@
 import { BrowserWindow } from "electron";
+import { usesPrimaryInstanceSession } from "../appPaths";
 import { type AuthFlowStorageHooks, registerAuthStorageHandlers } from "../authStorage";
 import { registerAnnouncementHandlers } from "./register/announcements";
 import { registerAssetHandlers } from "./register/assets";
@@ -74,7 +75,9 @@ export function registerIpcHandlers(
 	registerCapturePickerHandlers({ pickSourceList });
 	registerRecordingHandlers(onRecordingStateChange);
 	registerPermissionHandlers();
-	registerAuthStorageHandlers(authFlowStorageHooks);
+	registerAuthStorageHandlers(authFlowStorageHooks, {
+		canRecoverUnreadableStore: usesPrimaryInstanceSession,
+	});
 	registerClipboardHandlers();
 	registerAnnouncementHandlers();
 	registerAssetHandlers();
