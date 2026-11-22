@@ -1,7 +1,7 @@
 import type { Span } from "dnd-timeline";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { MinusIcon, Plus, SpeakerHigh } from "@/components/ui/icons";
+import { SpeakerHigh } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type {
 	SourceAudioTrackMeta,
@@ -105,6 +105,8 @@ export interface TimelineEditorHandle {
 	suggestZooms: () => void;
 	clearAllZooms: () => void;
 	splitClip: () => void;
+	zoomTimelineIn: () => void;
+	zoomTimelineOut: () => void;
 	addAnnotation: (
 		trackIndex?: number,
 		type?: AnnotationRegion["type"],
@@ -385,6 +387,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			isMac,
 			keyShortcuts,
 			isTimelineFocusedRef,
+			zoomTimelineIn: zoomIn,
+			zoomTimelineOut: zoomOut,
 		});
 		const [clipSelection, setClipSelection] = useState<{
 			anchorId: string;
@@ -440,32 +444,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		const sourceVolumeLabel = t("settings.audio.sourceTracksTitle");
 		return (
 			<div className="relative flex-1 min-h-0 flex flex-col bg-transparent overflow-hidden">
-				<div className="ml-3 flex w-fit shrink-0 items-center">
-					<div
-						role="group"
-						aria-label={t("shortcuts.actions.zoomTimeline")}
-						className="flex"
-					>
-						<Button
-							onClick={zoomOut}
-							variant="ghost"
-							size="sm"
-							isIconOnly
-							title={t("native.zoomOut")}
-						>
-							<MinusIcon aria-hidden="true" />
-						</Button>
-						<Button
-							onClick={zoomIn}
-							variant="ghost"
-							size="sm"
-							isIconOnly
-							title={t("native.zoomIn")}
-						>
-							<Plus aria-hidden="true" />
-						</Button>
-					</div>
-					{showSourceVolume && onSelectedClipSourceAudioTrackVolumeChange && (
+				{showSourceVolume && onSelectedClipSourceAudioTrackVolumeChange && (
+					<div className="ml-3 flex w-fit shrink-0 items-center">
 						<Popover>
 							<PopoverTrigger asChild>
 								<Button
@@ -504,8 +484,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 								))}
 							</PopoverContent>
 						</Popover>
-					)}
-				</div>
+					</div>
+				)}
 				{selectedClipIds.length > 1 && onClipMerge && (
 					<div className="absolute right-3 top-1 z-30 flex items-center gap-2 rounded-lg bg-editor-surface/95 px-2 py-1 text-xs text-muted-foreground">
 						<span>
