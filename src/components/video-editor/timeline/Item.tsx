@@ -297,9 +297,23 @@ export default function Item({
 	const clipGrabRadiusPx = Math.min(MAX_CLIP_GRAB_RADIUS_PX, clipWidthPx / 3);
 	const clipStartSide = timeline.direction === "rtl" ? "right" : "left";
 	const clipEndSide = clipStartSide === "left" ? "right" : "left";
+	const precedingClip = sharedLeftGrip
+		? presentation.clips.find((clip) => clip.span.end === span.start)?.displaySpan
+		: undefined;
+	// A very short preceding clip still renders at the minimum block width.
+	const sharedGapPx = precedingClip
+		? Math.max(
+				0,
+				timeline.valueToPixels(displaySpan.start - precedingClip.start) -
+					Math.max(
+						MIN_ITEM_PX,
+						timeline.valueToPixels(precedingClip.end - precedingClip.start),
+					),
+			)
+		: 0;
 	const clipStartGripPx = Math.min(
 		clipGrabRadiusPx,
-		sharedLeftGrip ? timeline.valueToPixels(displaySpan.start - span.start) + 2 : 9,
+		sharedLeftGrip ? Math.min(sharedGapPx, sharedGapPx / 2 + 2) : 9,
 	);
 	const clipStartGrabPx = sharedLeftGrip ? clipStartGripPx : clipGrabRadiusPx;
 	const { setNodeRef, attributes, listeners, itemStyle, itemContentStyle } = useItem({
