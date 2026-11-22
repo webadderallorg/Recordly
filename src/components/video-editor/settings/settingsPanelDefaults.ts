@@ -33,6 +33,7 @@ const defaults = {
 	zoomOutDurationMs: () => DEFAULT_ZOOM_OUT_DURATION_MS,
 	showCursor: () => false,
 	loopCursor: () => false,
+	alwaysUsePointerCursor: () => false,
 	cursorStyle: () => DEFAULT_CURSOR_STYLE,
 	cursorSize: () => 5,
 	cursorSmoothing: () => 2,

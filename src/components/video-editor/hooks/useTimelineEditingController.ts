@@ -66,6 +66,7 @@ export function useTimelineEditingController(input: Input) {
 		videoSourcePath: input.videoSourcePath,
 		duration: input.duration,
 		loopCursor: input.appearance.loopCursor,
+		alwaysUsePointerCursor: input.appearance.alwaysUsePointerCursor,
 		timeline,
 	});
 	const projection = useTimelineProjection({

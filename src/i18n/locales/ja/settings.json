@@ -54,6 +54,7 @@
 		"show": "表示",
 		"showCursor": "カーソルを表示",
 		"loopCursor": "カーソルをループ",
+		"alwaysUsePointerCursor": "常に標準カーソルを使用",
 		"cursorStyle": "カーソルのスタイル",
 		"cursorStyleOptions": {
 			"macos": "macOS",

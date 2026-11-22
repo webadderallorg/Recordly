@@ -37,6 +37,7 @@ export interface ProjectEditorState {
 	connectedZoomEasing: ZoomTransitionEasing;
 	showCursor: boolean;
 	loopCursor: boolean;
+	alwaysUsePointerCursor: boolean;
 	cursorStyle: CursorStyle;
 	cursorClickEffect: CursorClickEffectStyle;
 	cursorClickEffectColor: string;

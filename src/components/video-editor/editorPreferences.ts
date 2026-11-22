@@ -35,6 +35,7 @@ type PersistedEditorControls = Pick<
 	| "connectedZoomEasing"
 	| "showCursor"
 	| "loopCursor"
+	| "alwaysUsePointerCursor"
 	| "cursorStyle"
 	| "cursorSize"
 	| "cursorSmoothing"
@@ -126,6 +127,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	connectedZoomEasing: DEFAULT_EDITOR_CONTROLS.connectedZoomEasing,
 	showCursor: DEFAULT_EDITOR_CONTROLS.showCursor,
 	loopCursor: DEFAULT_EDITOR_CONTROLS.loopCursor,
+	alwaysUsePointerCursor: DEFAULT_EDITOR_CONTROLS.alwaysUsePointerCursor,
 	cursorStyle: DEFAULT_EDITOR_CONTROLS.cursorStyle,
 	cursorSize: DEFAULT_EDITOR_CONTROLS.cursorSize,
 	cursorSmoothing: DEFAULT_EDITOR_CONTROLS.cursorSmoothing,
@@ -313,6 +315,8 @@ function normalizeEditorControls(
 		connectedZoomEasing: sanitizedRaw.connectedZoomEasing ?? fallback.connectedZoomEasing,
 		showCursor: sanitizedRaw.showCursor ?? fallback.showCursor,
 		loopCursor: sanitizedRaw.loopCursor ?? fallback.loopCursor,
+		alwaysUsePointerCursor:
+			sanitizedRaw.alwaysUsePointerCursor ?? fallback.alwaysUsePointerCursor,
 		cursorStyle: sanitizedRaw.cursorStyle ?? fallback.cursorStyle,
 		cursorSize: sanitizedRaw.cursorSize ?? fallback.cursorSize,
 		cursorSmoothing: sanitizedRaw.cursorSmoothing ?? fallback.cursorSmoothing,
@@ -370,6 +374,7 @@ function normalizeEditorControls(
 		connectedZoomEasing: normalized.connectedZoomEasing,
 		showCursor: normalized.showCursor,
 		loopCursor: normalized.loopCursor,
+		alwaysUsePointerCursor: normalized.alwaysUsePointerCursor,
 		cursorStyle: normalized.cursorStyle,
 		cursorSize: normalized.cursorSize,
 		cursorSmoothing: normalized.cursorSmoothing,

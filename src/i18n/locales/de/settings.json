@@ -36,6 +36,7 @@
 		"show": "Anzeigen",
 		"showCursor": "Cursor anzeigen",
 		"loopCursor": "Cursor wiederholen",
+		"alwaysUsePointerCursor": "Immer Standardcursor verwenden",
 		"cursorStyle": "Cursorstil",
 		"cursorStyleOptions": {
 			"macos": "macOS",

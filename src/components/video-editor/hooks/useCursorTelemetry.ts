@@ -6,12 +6,14 @@ import {
 	buildLoopedCursorTelemetry,
 	getDisplayedTimelineWindowMs,
 } from "../videoPlayback/cursorLoopTelemetry";
+import { applyDefaultCursorShape } from "../videoPlayback/cursorShapeOverride";
 
 type UseCursorTelemetryInput = {
 	videoPath: string | null;
 	videoSourcePath: string | null;
 	duration: number;
 	loopCursor: boolean;
+	alwaysUsePointerCursor: boolean;
 	timeline: ReturnType<typeof useTimelineState>;
 };
 
@@ -20,6 +22,7 @@ export function useCursorTelemetry({
 	videoSourcePath,
 	duration,
 	loopCursor,
+	alwaysUsePointerCursor,
 	timeline,
 }: UseCursorTelemetryInput) {
 	const pendingRetryTimeoutRef = useRef<number | null>(null);
@@ -93,19 +96,20 @@ export function useCursorTelemetry({
 		[duration, timeline.trimRegions],
 	);
 	const effective = useMemo(() => {
+		const renderSamples = applyDefaultCursorShape(normalized, alwaysUsePointerCursor);
 		if (
 			!loopCursor ||
-			normalized.length < 2 ||
+			renderSamples.length < 2 ||
 			displayedWindow.endMs <= displayedWindow.startMs
 		) {
-			return normalized;
+			return renderSamples;
 		}
 		return buildLoopedCursorTelemetry(
-			normalized,
+			renderSamples,
 			displayedWindow.endMs,
 			displayedWindow.startMs,
 		);
-	}, [loopCursor, normalized, displayedWindow]);
+	}, [alwaysUsePointerCursor, loopCursor, normalized, displayedWindow]);
 
 	return { normalizedCursorTelemetry: normalized, effectiveCursorTelemetry: effective };
 }

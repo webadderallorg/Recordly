@@ -39,6 +39,8 @@ export const cursorSettingsKeys = [
 	"onShowCursorChange",
 	"loopCursor",
 	"onLoopCursorChange",
+	"alwaysUsePointerCursor",
+	"onAlwaysUsePointerCursorChange",
 	"cursorStyle",
 	"onCursorStyleChange",
 	"cursorSize",
@@ -72,6 +74,8 @@ export function CursorSettings(props: Props) {
 		onShowCursorChange,
 		loopCursor,
 		onLoopCursorChange,
+		alwaysUsePointerCursor,
+		onAlwaysUsePointerCursorChange,
 		cursorStyle,
 		onCursorStyleChange,
 		cursorSize,
@@ -96,6 +100,10 @@ export function CursorSettings(props: Props) {
 		onCursorSwayChange,
 	} = props;
 	const { te, tSettings, formatNumber } = useSettingsTranslations();
+	const defaultCursorLabel = tSettings(
+		"effects.alwaysUsePointerCursor",
+		"Always use default cursor",
+	);
 	const { lastCursorBounceStrength, cursorPreviewUrls, cursorStyleOptions } = props.cursor;
 	const renderCursorChoice = (option: (typeof cursorStyleOptions)[number]) => (
 		<ChoiceItem
@@ -138,6 +146,14 @@ export function CursorSettings(props: Props) {
 				</div>
 			)}
 			<div className="flex flex-col gap-3">
+				<label className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+					<span>{defaultCursorLabel}</span>
+					<Switch
+						aria-label={defaultCursorLabel}
+						checked={alwaysUsePointerCursor}
+						onCheckedChange={onAlwaysUsePointerCursorChange}
+					/>
+				</label>
 				<div className="space-y-3">
 					<ChoiceGroup
 						type="single"

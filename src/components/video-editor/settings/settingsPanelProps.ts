@@ -78,6 +78,8 @@ export interface SettingsPanelProps {
 	onShowCursorChange?: (enabled: boolean) => void;
 	loopCursor?: boolean;
 	onLoopCursorChange?: (enabled: boolean) => void;
+	alwaysUsePointerCursor?: boolean;
+	onAlwaysUsePointerCursorChange?: (enabled: boolean) => void;
 	cursorStyle?: CursorStyle;
 	onCursorStyleChange?: (style: CursorStyle) => void;
 	cursorSize?: number;

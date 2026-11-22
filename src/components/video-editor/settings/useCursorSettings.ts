@@ -24,6 +24,7 @@ const BUILTIN_CURSOR_STYLE_OPTIONS: CursorStyleOption[] = [
 export const cursorSettingsKeys = [
 	"onShowCursorChange",
 	"onLoopCursorChange",
+	"onAlwaysUsePointerCursorChange",
 	"onCursorStyleChange",
 	"onCursorSizeChange",
 	"onCursorSmoothingChange",
@@ -47,6 +48,7 @@ export function useCursorSettings(
 	const {
 		onShowCursorChange,
 		onLoopCursorChange,
+		onAlwaysUsePointerCursorChange,
 		onCursorStyleChange,
 		onCursorSizeChange,
 		onCursorSmoothingChange,
@@ -106,6 +108,7 @@ export function useCursorSettings(
 	const resetCursorSection = () => {
 		onShowCursorChange?.(DEFAULT_EDITOR_PREFERENCES.showCursor);
 		onLoopCursorChange?.(DEFAULT_EDITOR_PREFERENCES.loopCursor);
+		onAlwaysUsePointerCursorChange?.(DEFAULT_EDITOR_PREFERENCES.alwaysUsePointerCursor);
 		onCursorStyleChange?.(DEFAULT_EDITOR_PREFERENCES.cursorStyle);
 		onCursorSizeChange?.(DEFAULT_EDITOR_PREFERENCES.cursorSize);
 		onCursorSmoothingChange?.(DEFAULT_EDITOR_PREFERENCES.cursorSmoothing);

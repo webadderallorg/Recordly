@@ -55,6 +55,7 @@
 		"showWebcam": "Web kamerasını göster",
 		"showCursor": "İmleci Göster",
 		"loopCursor": "İmleci döngüye al",
+		"alwaysUsePointerCursor": "Her zaman varsayılan imleci kullan",
 		"cursorStyle": "İmleç Stili",
 		"cursorStyleOptions": {
 			"macos": "macOS",

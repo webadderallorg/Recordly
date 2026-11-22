@@ -55,6 +55,7 @@
 		"showWebcam": "Show webcam",
 		"showCursor": "Show Cursor",
 		"loopCursor": "Loop cursor",
+		"alwaysUsePointerCursor": "Always use default cursor",
 		"cursorStyle": "Cursor Style",
 		"cursorStyleOptions": {
 			"macos": "macOS",

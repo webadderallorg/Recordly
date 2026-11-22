@@ -55,6 +55,7 @@
 		"showWebcam": "Hiện webcam",
 		"showCursor": "Hiện con trỏ",
 		"loopCursor": "Lặp con trỏ",
+		"alwaysUsePointerCursor": "Luôn dùng con trỏ mặc định",
 		"cursorStyle": "Kiểu con trỏ",
 		"cursorStyleOptions": {
 			"macos": "macOS",
