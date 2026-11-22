@@ -406,8 +406,10 @@ export function normalizeEditorPreferences(
 	candidate: unknown,
 	fallback: EditorPreferences = DEFAULT_EDITOR_PREFERENCES,
 ): EditorPreferences {
-	const raw =
-		candidate && typeof candidate === "object" ? (candidate as Partial<EditorPreferences>) : {};
+	const { padding: legacyPadding, ...raw } =
+		candidate && typeof candidate === "object"
+			? (candidate as Partial<EditorPreferences> & { padding?: unknown })
+			: {};
 	const controls =
 		raw.borderRadiusUnit === "percent" || typeof raw.borderRadius !== "number"
 			? raw
@@ -419,8 +421,6 @@ export function normalizeEditorPreferences(
 							: legacyBorderRadiusPixelsToPercent(raw.borderRadius),
 				};
 
-	// Padding is remembered per capture kind. The old shared `padding` value is
-	// ignored because it mostly holds a former 25% default, not a user choice.
 	const { padding: _sharedPadding, ...normalizedControls } = normalizeEditorControls(controls, {
 		...fallback,
 		padding: fallback.screenPadding,
@@ -429,7 +429,8 @@ export function normalizeEditorPreferences(
 	return {
 		...normalizedControls,
 		screenPadding: normalizePadding(raw.screenPadding, fallback.screenPadding),
-		windowPadding: normalizePadding(raw.windowPadding, fallback.windowPadding),
+		// Carry shared padding forward for windows only; screens start at zero.
+		windowPadding: normalizePadding(raw.windowPadding ?? legacyPadding, fallback.windowPadding),
 		...normalizeExportPreferences({ ...fallback, ...raw }),
 		borderRadiusUnit: "percent",
 		customAspectWidth: normalizePositiveIntegerString(
@@ -480,8 +481,9 @@ export function loadEditorPreferences(): EditorPreferences {
 	if (!previous) return DEFAULT_EDITOR_PREFERENCES;
 
 	// Older versions wrote their defaults alongside user values. Start with the
-	// new controls and retain the user's resource library and caption tools.
+	// new controls but retain window padding, the resource library, and caption tools.
 	const {
+		windowPadding,
 		customWallpapers,
 		customGradients,
 		customColors,
@@ -490,6 +492,7 @@ export function loadEditorPreferences(): EditorPreferences {
 	} = normalizeEditorPreferences(previous);
 	return {
 		...DEFAULT_EDITOR_PREFERENCES,
+		windowPadding,
 		customWallpapers,
 		customGradients,
 		customColors,
