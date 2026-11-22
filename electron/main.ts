@@ -16,7 +16,7 @@ import {
 	Tray,
 } from "electron";
 import { activateFromDesktopIcon } from "./appActivation";
-import { createAppLinkRelay, findActivationLink } from "./appLinkRelay";
+import { createAppLinkRelay, findActivationLink, shouldForwardPlainLaunch } from "./appLinkRelay";
 import { initializeInstanceSession, RECORDINGS_DIR } from "./appPaths";
 import { readAppSetting, writeAppSetting } from "./appSettingsStore";
 import { createAuthCallbackController } from "./authCallback";
@@ -319,6 +319,16 @@ async function forwardActivationLink(): Promise<boolean> {
 			directory: path.join(app.getPath("appData"), "Recordly-dev", "app-links"),
 			protocol: "recordly-dev",
 		}).forward();
+	// Repeated clicks on the shortcut bring the running app forward instead of
+	// opening another instance with its own recording controls.
+	if (
+		shouldForwardPlainLaunch({
+			platform: process.platform,
+			isPackaged: app.isPackaged,
+			smokeExport: IS_SMOKE_EXPORT,
+		})
+	)
+		return appLinks.forward();
 	return false;
 }
 
@@ -1306,7 +1316,7 @@ app.whenReady().then(async () => {
 	}
 	const startupAuthCallback = authCallbacks.find(process.argv);
 	if (!startupAuthCallback && (await forwardActivationLink())) {
-		// A running instance came forward; this protocol launcher has no window.
+		// A running instance came forward; this launcher has no window.
 		app.quit();
 		return;
 	}
