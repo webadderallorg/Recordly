@@ -1,4 +1,7 @@
-const WINDOWS_MIC_CAPTURE_INIT_WARNING = "WARNING: Failed to initialize WASAPI mic capture";
+const WINDOWS_MIC_CAPTURE_UNAVAILABLE_MARKERS = [
+	"MICROPHONE_CAPTURE_UNAVAILABLE",
+	"WARNING: Failed to initialize WASAPI mic capture",
+];
 export const WINDOWS_MIC_CAPTURE_MODE_ENV = "RECORDLY_WINDOWS_MIC_CAPTURE";
 
 export function shouldStartWindowsBrowserMicrophoneFallback(
@@ -10,14 +13,8 @@ export function shouldStartWindowsBrowserMicrophoneFallback(
 	}
 
 	const mode = env[WINDOWS_MIC_CAPTURE_MODE_ENV]?.trim().toLowerCase();
-	if (mode === "native" || mode === "wasapi") {
-		return false;
-	}
-
-	if (!mode) {
-		return true;
-	}
-
+	// Native WASAPI is the normal Windows path. Keep the renderer path as an
+	// explicit escape hatch and as an automatic fallback when WASAPI cannot start.
 	return mode === "browser" || mode === "fallback" || mode === "renderer";
 }
 
@@ -29,6 +26,8 @@ export function shouldUseWindowsBrowserMicrophoneFallback(
 	return (
 		Boolean(options?.capturesMicrophone) &&
 		(shouldStartWindowsBrowserMicrophoneFallback(options, env) ||
-			captureOutput.includes(WINDOWS_MIC_CAPTURE_INIT_WARNING))
+			WINDOWS_MIC_CAPTURE_UNAVAILABLE_MARKERS.some((marker) =>
+				captureOutput.includes(marker),
+			))
 	);
 }

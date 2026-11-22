@@ -1,8 +1,8 @@
-import { createContext, useContext } from "react";
+import { createContext, type MouseEvent, useContext } from "react";
 
 interface HudInteractionContextType {
 	onMouseEnter: () => void;
-	onMouseLeave: (event: any) => void;
+	onMouseLeave: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
 export const HudInteractionContext = createContext<HudInteractionContextType | null>(null);

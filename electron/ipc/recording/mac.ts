@@ -9,6 +9,7 @@ import {
 	lastNativeCaptureDiagnostics,
 	nativeCaptureMicrophonePath,
 	nativeCaptureOutputBuffer,
+	nativeCaptureProcess,
 	nativeCaptureStopRequested,
 	nativeCaptureSystemAudioPath,
 	nativeCaptureTargetPath,
@@ -23,15 +24,16 @@ import {
 	setNativeCaptureTargetPath,
 	setNativeScreenRecordingActive,
 } from "../state";
-import { isAutoRecordingPath, moveFileWithOverwrite } from "../utils";
+import { moveFileWithOverwrite } from "../utils";
 import {
 	getFileSizeIfPresent,
 	recordNativeCaptureDiagnostics,
 	validateRecordedVideo,
 } from "./diagnostics";
 import { emitRecordingInterrupted } from "./events";
-import { pruneAutoRecordings } from "./prune";
-
+import { parseNativeCaptureInterruption } from "./interruption";
+import { getFinalMacCompanionAudioPath } from "./macCompanionAudio";
+import { attachNativeCaptureStdinLifecycle } from "./nativeCaptureCommand";
 
 export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStreams) {
 	return new Promise<void>((resolve, reject) => {
@@ -77,10 +79,42 @@ export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStream
 	});
 }
 
-export function waitForNativeCaptureStop(process: ChildProcessWithoutNullStreams) {
+export { waitForNativeCaptureCommand } from "./nativeCaptureCommand";
+
+export class NativeCaptureStopTimeoutError extends Error {
+	constructor(readonly captureStillRunning: boolean) {
+		super(
+			captureStillRunning
+				? "ScreenCaptureKit recorder did not exit after stop and termination requests. The capture is still reserved until the helper closes."
+				: "Timed out waiting for ScreenCaptureKit recorder to stop. The helper was terminated; any saved output requires validation.",
+		);
+		this.name = "NativeCaptureStopTimeoutError";
+	}
+}
+
+export function waitForNativeCaptureStop(
+	process: ChildProcessWithoutNullStreams,
+	options: { timeoutMs?: number; terminateGraceMs?: number; killGraceMs?: number } = {},
+) {
+	const stdinState = attachNativeCaptureStdinLifecycle(process);
 	return new Promise<string>((resolve, reject) => {
+		if (stdinState.error) {
+			reject(stdinState.error);
+			return;
+		}
+		let timedOut = false;
+		let timer: ReturnType<typeof setTimeout>;
 		const onClose = (code: number | null) => {
 			cleanup();
+			if (timedOut) {
+				reject(new NativeCaptureStopTimeoutError(false));
+				return;
+			}
+			const interruption = parseNativeCaptureInterruption(nativeCaptureOutputBuffer);
+			if (interruption) {
+				reject(new Error(interruption));
+				return;
+			}
 			const match = nativeCaptureOutputBuffer.match(/Recording stopped\. Output path: (.+)/);
 			if (match?.[1]) {
 				resolve(match[1].trim());
@@ -97,19 +131,40 @@ export function waitForNativeCaptureStop(process: ChildProcessWithoutNullStreams
 				),
 			);
 		};
-
 		const onError = (error: Error) => {
+			// A failed signal can emit error without closing the helper. Keep the
+			// escalation and close-confirmation deadline alive in that case.
+			if (timedOut) return;
 			cleanup();
 			reject(error);
 		};
-
 		const cleanup = () => {
+			clearTimeout(timer);
 			process.off("close", onClose);
+			process.stdin.off("error", onError);
 			process.off("error", onError);
 		};
-
+		const signal = (value: NodeJS.Signals) => {
+			try {
+				process.kill(value);
+			} catch {
+				/* Still wait for close confirmation. */
+			}
+		};
 		process.once("close", onClose);
-		process.once("error", onError);
+		process.stdin.on("error", onError);
+		process.on("error", onError);
+		timer = setTimeout(() => {
+			timedOut = true;
+			timer = setTimeout(() => {
+				timer = setTimeout(() => {
+					cleanup();
+					reject(new NativeCaptureStopTimeoutError(true));
+				}, options.killGraceMs ?? 5_000);
+				signal("SIGKILL");
+			}, options.terminateGraceMs ?? 5_000);
+			signal("SIGTERM");
+		}, options.timeoutMs ?? 45_000);
 	});
 }
 
@@ -119,13 +174,11 @@ export async function muxNativeMacRecordingWithAudio(
 	microphonePath?: string | null,
 ) {
 	console.log("[mac-mux] Optimization active: keeping tracks separate.");
-	
-	const videoPathWithoutExt = videoPath.replace(/\.[^.]+$/u, "");
 
 	// Optimization: instead of heavy FFmpeg muxing, we ensure audio sidecars
 	// are available alongside the video for the editor.
 	if (systemAudioPath) {
-		const finalSystemPath = `${videoPathWithoutExt}.system.wav`;
+		const finalSystemPath = getFinalMacCompanionAudioPath(videoPath, systemAudioPath, "system");
 		try {
 			const stat = await fs.stat(systemAudioPath);
 			if (stat.size > 0 && systemAudioPath !== finalSystemPath) {
@@ -137,7 +190,7 @@ export async function muxNativeMacRecordingWithAudio(
 	}
 
 	if (microphonePath) {
-		const finalMicPath = `${videoPathWithoutExt}.mic.wav`;
+		const finalMicPath = getFinalMacCompanionAudioPath(videoPath, microphonePath, "mic");
 		try {
 			const stat = await fs.stat(microphonePath);
 			if (stat.size > 0 && microphonePath !== finalMicPath) {
@@ -150,6 +203,7 @@ export async function muxNativeMacRecordingWithAudio(
 }
 
 export function attachNativeCaptureLifecycle(process: ChildProcessWithoutNullStreams) {
+	attachNativeCaptureStdinLifecycle(process);
 	process.once("close", () => {
 		const wasActive = nativeScreenRecordingActive;
 		setNativeCaptureProcess(null);
@@ -181,7 +235,8 @@ export function attachNativeCaptureLifecycle(process: ChildProcessWithoutNullStr
 		const message =
 			reason === "window-unavailable"
 				? "The selected window is no longer capturable. Please reselect a window."
-				: "Recording stopped unexpectedly.";
+				: parseNativeCaptureInterruption(nativeCaptureOutputBuffer) ||
+					"Recording stopped unexpectedly.";
 
 		emitRecordingInterrupted(reason, message);
 	});
@@ -229,9 +284,6 @@ export async function finalizeStoredVideo(videoPath: string) {
 	} catch (error) {
 		console.warn("[mac-stop] Failed to persist cursor telemetry:", error);
 	}
-	if (isAutoRecordingPath(videoPath)) {
-		await pruneAutoRecordings([videoPath]);
-	}
 
 	if (
 		lastNativeCaptureDiagnostics?.backend === "mac-screencapturekit" ||
@@ -268,6 +320,8 @@ export async function finalizeStoredVideo(videoPath: string) {
 }
 
 export async function recoverNativeMacCaptureOutput() {
+	// Never publish or validate an MP4 whose writer may still be running.
+	if (nativeScreenRecordingActive || nativeCaptureProcess) return null;
 	const macDiagnostics =
 		lastNativeCaptureDiagnostics?.backend === "mac-screencapturekit"
 			? lastNativeCaptureDiagnostics

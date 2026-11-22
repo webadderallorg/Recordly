@@ -5,19 +5,31 @@ import { BrowserWindow } from "electron";
 import { getWindowsCaptureExePath } from "../paths/binaries";
 import {
 	selectedSource,
+	setNativeScreenRecordingActive,
+	setWindowsCapturePaused,
 	setWindowsCaptureProcess,
 	setWindowsCaptureStopRequested,
+	setWindowsCaptureTargetPath,
+	setWindowsCaptureTempPath,
 	setWindowsNativeCaptureActive,
+	setWindowsPendingVideoPath,
 	windowsCaptureOutputBuffer,
+	windowsCaptureProcess,
 	windowsCaptureStopRequested,
 	windowsCaptureTargetPath,
+	windowsCaptureTempPath,
+	windowsMicAudioPath,
 	windowsNativeCaptureActive,
+	windowsSystemAudioPath,
 } from "../state";
-import {
-	AudioSyncAdjustment,
-} from "../types";
-import { emitRecordingInterrupted } from "./events";
+import { AudioSyncAdjustment } from "../types";
 import { moveFileWithOverwrite } from "../utils";
+import { validateRecordedVideo } from "./diagnostics";
+import { emitRecordingInterrupted } from "./events";
+import { parseNativeCaptureInterruption } from "./interruption";
+import { attachNativeCaptureStdinLifecycle } from "./nativeCaptureCommand";
+
+const WINDOWS_CAPTURE_STOP_TIMEOUT_MS = 45_000;
 
 export type NativeWindowsVideoPaddingResult = {
 	padded: boolean;
@@ -64,7 +76,7 @@ export async function isNativeWindowsCaptureAvailable(): Promise<boolean> {
 }
 
 export function waitForWindowsCaptureStart(proc: ChildProcessWithoutNullStreams) {
-	return new Promise<void>((resolve, reject) => {
+	return new Promise<{ width: number; height: number } | null>((resolve, reject) => {
 		const timer = setTimeout(() => {
 			cleanup();
 			reject(new Error("Timed out waiting for native Windows capture to start"));
@@ -75,7 +87,10 @@ export function waitForWindowsCaptureStart(proc: ChildProcessWithoutNullStreams)
 			stdoutBuffer += chunk.toString();
 			if (stdoutBuffer.includes("Recording started")) {
 				cleanup();
-				resolve();
+				const match = stdoutBuffer.match(/^CAPTURE_SIZE:(\d+)x(\d+)\r?$/m);
+				const width = Number(match?.[1]);
+				const height = Number(match?.[2]);
+				resolve(width > 0 && height > 0 ? { width, height } : null);
 			}
 		};
 
@@ -107,44 +122,84 @@ export function waitForWindowsCaptureStart(proc: ChildProcessWithoutNullStreams)
 	});
 }
 
-export function waitForWindowsCaptureStop(proc: ChildProcessWithoutNullStreams) {
+export function waitForWindowsCaptureStop(
+	proc: ChildProcessWithoutNullStreams,
+	timeoutMs = WINDOWS_CAPTURE_STOP_TIMEOUT_MS,
+) {
+	const stdinState = attachNativeCaptureStdinLifecycle(proc);
 	return new Promise<string>((resolve, reject) => {
-		const onClose = (code: number | null) => {
+		if (stdinState.error) {
+			reject(stdinState.error);
+			return;
+		}
+		let settled = false;
+		const finish = (callback: () => void) => {
+			if (settled) return;
+			settled = true;
 			cleanup();
-			const match = windowsCaptureOutputBuffer.match(/Recording stopped\. Output path: (.+)/);
-			if (match?.[1]) {
-				resolve(match[1].trim());
-				return;
-			}
-			if (code === 0 && windowsCaptureTargetPath) {
-				resolve(windowsCaptureTargetPath);
-				return;
-			}
-			reject(
-				new Error(
-					windowsCaptureOutputBuffer.trim() ||
-						`Native Windows capture exited with code ${code ?? "unknown"}`,
-				),
-			);
+			callback();
+		};
+
+		const timer = setTimeout(() => {
+			finish(() => {
+				try {
+					if (!proc.killed) proc.kill();
+				} catch {
+					// The process may already be gone; the caller only needs the timeout error.
+				}
+				reject(new Error("Timed out waiting for native Windows capture to stop"));
+			});
+		}, timeoutMs);
+
+		const onClose = (code: number | null) => {
+			finish(() => {
+				const match = windowsCaptureOutputBuffer.match(
+					/(?:^|\n)Recording (?:stopped|interrupted)\. Output path: ([^\r\n]+)/,
+				);
+				if (match?.[1]) {
+					resolve(match[1].trim());
+					return;
+				}
+				const capturedPath = windowsCaptureTempPath || windowsCaptureTargetPath;
+				if (code === 0 && capturedPath) {
+					resolve(capturedPath);
+					return;
+				}
+				reject(
+					new Error(
+						windowsCaptureOutputBuffer.trim() ||
+							`Native Windows capture exited with code ${code ?? "unknown"}`,
+					),
+				);
+			});
 		};
 
 		const onError = (error: Error) => {
-			cleanup();
-			reject(error);
+			finish(() => {
+				reject(error);
+			});
 		};
 
 		const cleanup = () => {
+			clearTimeout(timer);
 			proc.off("close", onClose);
+			proc.stdin.off("error", onError);
 			proc.off("error", onError);
 		};
 
 		proc.once("close", onClose);
+		proc.stdin.once("error", onError);
 		proc.once("error", onError);
 	});
 }
 
-export function attachWindowsCaptureLifecycle(proc: ChildProcessWithoutNullStreams) {
+export function attachWindowsCaptureLifecycle(
+	proc: ChildProcessWithoutNullStreams,
+	onInterrupted?: () => void,
+) {
+	attachNativeCaptureStdinLifecycle(proc);
 	proc.once("close", () => {
+		if (windowsCaptureProcess && windowsCaptureProcess !== proc) return;
 		const wasActive = windowsNativeCaptureActive;
 		setWindowsCaptureProcess(null);
 
@@ -154,6 +209,8 @@ export function attachWindowsCaptureLifecycle(proc: ChildProcessWithoutNullStrea
 
 		setWindowsNativeCaptureActive(false);
 		setWindowsCaptureStopRequested(false);
+		// Reserve recovery before captureExited releases the recording owner.
+		onInterrupted?.();
 
 		const sourceName = selectedSource?.name ?? "Screen";
 		BrowserWindow.getAllWindows().forEach((window) => {
@@ -165,8 +222,80 @@ export function attachWindowsCaptureLifecycle(proc: ChildProcessWithoutNullStrea
 			}
 		});
 
-		emitRecordingInterrupted("capture-stopped", "Recording stopped unexpectedly.");
+		emitRecordingInterrupted(
+			"capture-stopped",
+			parseNativeCaptureInterruption(windowsCaptureOutputBuffer) ||
+				"Recording stopped unexpectedly.",
+		);
 	});
+}
+
+/** Recover only a closed helper's finalized output; never read an active MP4. */
+export async function recoverNativeWindowsCaptureOutput() {
+	if (windowsNativeCaptureActive || windowsCaptureProcess) return null;
+	const match = windowsCaptureOutputBuffer.match(
+		/(?:^|\n)Recording (?:stopped|interrupted)\. Output path: ([^\r\n]+)/,
+	);
+	const capturedPath = match?.[1]?.trim() || windowsCaptureTempPath;
+	if (!capturedPath) return null;
+	const targetPath = windowsCaptureTargetPath;
+	const tempPath = windowsCaptureTempPath;
+	const output = windowsCaptureOutputBuffer;
+	const systemAudioPath = windowsSystemAudioPath;
+	const micAudioPath = windowsMicAudioPath;
+	const finalPath = targetPath ?? capturedPath;
+	const isCurrent = () =>
+		!windowsNativeCaptureActive &&
+		!windowsCaptureProcess &&
+		windowsCaptureTargetPath === targetPath &&
+		windowsCaptureTempPath === tempPath &&
+		windowsCaptureOutputBuffer === output &&
+		windowsSystemAudioPath === systemAudioPath &&
+		windowsMicAudioPath === micAudioPath;
+	try {
+		// Validate before publishing it into the recording library. Failed encoder
+		// finalization remains on disk for manual recovery, never a false success.
+		await validateRecordedVideo(capturedPath);
+		if (!isCurrent()) return null;
+		for (const [kind, destination] of [
+			["system", systemAudioPath],
+			["mic", micAudioPath],
+		] as const) {
+			if (!destination) continue;
+			const source = capturedPath.replace(/\.mp4$/i, `.${kind}.wav`);
+			for (const suffix of ["", ".json"]) {
+				if (source === destination) continue;
+				try {
+					await fs.access(source + suffix);
+				} catch {
+					continue;
+				}
+				if (!isCurrent()) return null;
+				await moveFileWithOverwrite(source + suffix, destination + suffix);
+			}
+		}
+		if (!isCurrent()) return null;
+		if (capturedPath !== finalPath) await moveFileWithOverwrite(capturedPath, finalPath);
+		if (!isCurrent()) return null;
+		setNativeScreenRecordingActive(false);
+		setWindowsCapturePaused(false);
+		setWindowsPendingVideoPath(finalPath);
+		setWindowsCaptureTargetPath(null);
+		setWindowsCaptureTempPath(null);
+		const interruption = parseNativeCaptureInterruption(output);
+		return {
+			success: true,
+			path: finalPath,
+			...(interruption
+				? {
+						error: `Recording interrupted: ${interruption}. A partial recording was saved.`,
+					}
+				: {}),
+		};
+	} catch (error) {
+		console.warn("Failed to recover interrupted native Windows recording:", error);
+		return null;
+	}
 }
 
 export async function muxNativeWindowsVideoWithAudio(
@@ -227,9 +356,7 @@ export async function muxNativeWindowsVideoWithAudio(
 		}
 	}
 
-	console.log(
-		`[PERF:MAIN] muxNativeWindowsVideoWithAudio: COMPLETED in ${Date.now() - start}ms`,
-	);
+	console.log(`[PERF:MAIN] muxNativeWindowsVideoWithAudio: COMPLETED in ${Date.now() - start}ms`);
 
 	return {
 		muxed: false,

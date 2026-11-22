@@ -1,23 +1,18 @@
 import type { Span } from "dnd-timeline";
-import { Plus } from "@phosphor-icons/react";
-import {
-	forwardRef,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
-import { useScopedT } from "@/contexts/I18nContext";
-import { useShortcuts } from "@/contexts/ShortcutsContext";
-import { fromFileUrl } from "../projectPersistence";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import type {
 	SourceAudioTrackMeta,
 	SourceAudioTrackSettings,
-	SourceAudioTrackWithPeaks,
 } from "@/components/video-editor/audio/audioTypes";
+import { useScopedT } from "@/contexts/I18nContext";
+import { useShortcuts } from "@/contexts/ShortcutsContext";
+import { selectClipRange } from "../clipMerge";
+import { TimelineLoadingSkeleton } from "../layout/TimelineLoadingSkeleton";
 import type {
 	AnnotationRegion,
 	AudioRegion,
+	CaptionCue,
 	ClipRegion,
 	CursorTelemetryPoint,
 	SpeedRegion,
@@ -25,40 +20,50 @@ import type {
 	ZoomFocus,
 	ZoomRegion,
 } from "../types";
+import { getClipSourceStartMs } from "../types";
 import KeyframeMarkers from "./components/markers/KeyframeMarkers";
+import TimelineCanvas from "./components/viewport/TimelineCanvas";
 import TimelineWrapper from "./components/wrapper/TimelineWrapper";
-import { useTimelineAudioPeaks } from "./hooks/useTimelineAudioPeaks";
 import { calculateTimelineScale } from "./core/time";
+import type { ClipSequenceSpan } from "./core/timelineTypes";
+import type { ZoomPresentationOptions } from "./core/zoomPresentation";
 import { useTimelineEditorRuntime } from "./hooks/useTimelineEditorRuntime";
 import { useTimelineRange } from "./hooks/useTimelineRange";
-import TimelineCanvas from "./components/viewport/TimelineCanvas";
+import { useTimelineSourceAudioTracks } from "./hooks/useTimelineSourceAudioTracks";
 
 export interface TimelineEditorProps {
+	zoomPresentationOptions?: ZoomPresentationOptions;
 	videoDuration: number;
+	sourceDuration?: number;
 	currentTime: number;
 	playheadTime?: number;
 	onSeek?: (time: number) => void;
 	cursorTelemetry?: CursorTelemetryPoint[];
-	autoSuggestZoomsTrigger?: number;
-	onAutoSuggestZoomsConsumed?: () => void;
-	disableSuggestedZooms?: boolean;
 	zoomRegions: ZoomRegion[];
 	onZoomAdded: (span: Span) => void;
 	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
 	onZoomSpanChange: (id: string, span: Span) => void;
 	onZoomDelete: (id: string) => void;
+	onClearZooms?: () => void;
 	selectedZoomId: string | null;
 	onSelectZoom: (id: string | null) => void;
 	trimRegions?: TrimRegion[];
 	onTrimSpanChange?: (id: string, span: Span) => void;
 	clipRegions?: ClipRegion[];
 	onClipSplit?: (splitMs: number) => void;
-	onClipSpanChange?: (id: string, span: Span) => void;
+	onClipMerge?: (ids: string[]) => void;
+	canMergeClips?: (ids: string[]) => boolean;
+	onClipSpanChange?: (id: string, span: ClipSequenceSpan) => void;
 	onClipDelete?: (id: string) => void;
 	selectedClipId?: string | null;
 	onSelectClip?: (id: string | null) => void;
 	annotationRegions?: AnnotationRegion[];
-	onAnnotationAdded?: (span: Span, trackIndex?: number) => void;
+	onAnnotationAdded?: (
+		span: Span,
+		trackIndex?: number,
+		type?: AnnotationRegion["type"],
+		placement?: Pick<AnnotationRegion, "position" | "size">,
+	) => void;
 	onAnnotationSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
 	onAnnotationDelete?: (id: string) => void;
 	selectedAnnotationId?: string | null;
@@ -71,74 +76,62 @@ export interface TimelineEditorProps {
 	onAudioDelete?: (id: string) => void;
 	selectedAudioId?: string | null;
 	onSelectAudio?: (id: string | null) => void;
+	captionRegions?: CaptionCue[];
+	onCaptionSpanChange?: (id: string, span: Span) => void;
+	onCaptionDelete?: (id: string) => void;
+	onCaptionAdded?: (span: Span) => void;
+	captionsEnabled?: boolean;
+	captionQuickAddEnabled?: boolean;
+	selectedCaptionId?: string | null;
+	onSelectCaption?: (id: string | null) => void;
 	videoPath?: string | null;
 	videoSourcePath?: string | null;
 	cursorTelemetrySourcePath?: string | null;
 	showSourceAudioTrack?: boolean;
+	sourceAudioResourceVersion?: number;
 	onSourceAudioAvailabilityChange?: (available: boolean) => void;
 	sourceAudioTrackSettings?: SourceAudioTrackSettings;
-	getSourceAudioTrackSettingsForClip?: (
-		clipId: string | null,
-	) => SourceAudioTrackSettings;
+	getSourceAudioTrackSettingsForClip?: (clipId: string | null) => SourceAudioTrackSettings;
 	onSourceAudioTracksMetaChange?: (tracks: SourceAudioTrackMeta) => void;
-}
-
-function extractLocalPathFromMediaServerUrl(input: string | null | undefined): string | null {
-	if (!input) return null;
-	try {
-		const url = new URL(input);
-		const isLocalMediaServer =
-			(url.protocol === "http:" || url.protocol === "https:") &&
-			(url.hostname === "127.0.0.1" || url.hostname === "localhost") &&
-			url.pathname === "/video";
-		if (!isLocalMediaServer) return null;
-		return url.searchParams.get("path");
-	} catch {
-		return null;
-	}
-}
-
-function buildSourceSidecarPath(source: string, suffix: "mic" | "system"): string {
-	const normalized = source.replace(/\\/g, "/");
-	const lastSlash = normalized.lastIndexOf("/");
-	const dir = lastSlash >= 0 ? normalized.slice(0, lastSlash + 1) : "";
-	const fileName = lastSlash >= 0 ? normalized.slice(lastSlash + 1) : normalized;
-	const dotIndex = fileName.lastIndexOf(".");
-	const baseName = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
-	return `${dir}${baseName}.${suffix}.wav`;
 }
 
 export interface TimelineEditorHandle {
 	addZoom: () => void;
 	suggestZooms: () => void;
+	clearAllZooms: () => void;
 	splitClip: () => void;
-	addAnnotation: (trackIndex?: number) => void;
+	addAnnotation: (
+		trackIndex?: number,
+		type?: AnnotationRegion["type"],
+		placement?: Pick<AnnotationRegion, "position" | "size">,
+	) => void;
 	addAudio: (trackIndex?: number) => Promise<void>;
 	keyframes: { id: string; time: number }[];
 }
-
 
 const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 	function TimelineEditor(
 		{
 			videoDuration,
+			sourceDuration = videoDuration,
 			currentTime,
 			playheadTime,
 			onSeek,
 			cursorTelemetry = [],
-			autoSuggestZoomsTrigger = 0,
-			onAutoSuggestZoomsConsumed,
-			disableSuggestedZooms = false,
 			zoomRegions,
+			zoomPresentationOptions,
 			onZoomAdded,
 			onZoomSuggested,
 			onZoomSpanChange,
 			onZoomDelete,
+			onClearZooms,
 			selectedZoomId,
 			onSelectZoom,
 			trimRegions = [],
 			onTrimSpanChange,
 			clipRegions = [],
+			onClipMerge,
+			canMergeClips,
 			onClipSplit,
 			onClipSpanChange,
 			onClipDelete,
@@ -158,10 +151,19 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onAudioDelete,
 			selectedAudioId,
 			onSelectAudio,
+			captionRegions = [],
+			onCaptionSpanChange,
+			onCaptionDelete,
+			onCaptionAdded,
+			captionsEnabled = false,
+			captionQuickAddEnabled = true,
+			selectedCaptionId,
+			onSelectCaption,
 			videoPath,
 			videoSourcePath,
 			cursorTelemetrySourcePath,
 			showSourceAudioTrack = false,
+			sourceAudioResourceVersion = 0,
 			onSourceAudioAvailabilityChange,
 			sourceAudioTrackSettings = {},
 			getSourceAudioTrackSettingsForClip,
@@ -169,7 +171,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		},
 		ref,
 	) {
-		const t = useScopedT("settings");
+		const te = useScopedT("editing");
 		const totalMs = useMemo(
 			() => Math.max(0, Math.round(videoDuration * 1000)),
 			[videoDuration],
@@ -177,6 +179,26 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		const currentTimeMs = useMemo(
 			() => Math.round((playheadTime ?? currentTime) * 1000),
 			[currentTime, playheadTime],
+		);
+		const clipResizeEndById = useMemo(
+			() =>
+				Object.fromEntries(
+					clipRegions.map((clip) => [
+						clip.id,
+						Math.max(
+							clip.endMs,
+							Math.floor(
+								clip.startMs +
+									(Math.min(sourceDuration * 1000, clip.sourceMaxMs ?? Infinity) -
+										getClipSourceStartMs(clip)) /
+										(Number.isFinite(clip.speed) && clip.speed > 0
+											? clip.speed
+											: 1),
+							),
+						),
+					]),
+				),
+			[clipRegions, sourceDuration],
 		);
 		const timelineScale = useMemo(() => calculateTimelineScale(videoDuration), [videoDuration]);
 		const safeMinDurationMs = useMemo(
@@ -195,6 +217,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		});
 
 		const [liveSpanPreviewById, setLiveSpanPreviewById] = useState<Record<string, Span>>({});
+		const [isDragging, setIsDragging] = useState(false);
 		const liveZoomPreview = useMemo(() => {
 			const previewSpans: Record<string, Span> = { ...liveSpanPreviewById };
 			const hiddenZoomIds = new Set<string>();
@@ -209,9 +232,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					...(newStart > oldClip.startMs
 						? [{ startMs: oldClip.startMs, endMs: newStart }]
 						: []),
-					...(newEnd < oldClip.endMs
-						? [{ startMs: newEnd, endMs: oldClip.endMs }]
-						: []),
+					...(newEnd < oldClip.endMs ? [{ startMs: newEnd, endMs: oldClip.endMs }] : []),
 				];
 
 				const startDelta = newStart - oldClip.startMs;
@@ -245,71 +266,45 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			return { previewSpans, hiddenZoomIds };
 		}, [clipRegions, liveSpanPreviewById, zoomRegions]);
 		const { shortcuts: keyShortcuts, isMac } = useShortcuts();
-		const { peaks: sourceAudioPeaks, loading: sourceAudioLoading } = useTimelineAudioPeaks(videoPath, {
-			enableSourceSidecarFallback: true,
-		});
-		const localSourcePath = useMemo(() => {
-			if (!videoPath) return null;
-			return (
-				extractLocalPathFromMediaServerUrl(videoPath) ||
-				(/^file:\/\//i.test(videoPath) ? fromFileUrl(videoPath) : videoPath)
-			);
-		}, [videoPath]);
-		const micSidecarPath = useMemo(
-			() => (localSourcePath ? buildSourceSidecarPath(localSourcePath, "mic") : null),
-			[localSourcePath],
-		);
-		const systemSidecarPath = useMemo(
-			() => (localSourcePath ? buildSourceSidecarPath(localSourcePath, "system") : null),
-			[localSourcePath],
-		);
-		const { peaks: micSidecarPeaks, loading: micSidecarLoading } = useTimelineAudioPeaks(micSidecarPath);
-		const { peaks: systemSidecarPeaks, loading: systemSidecarLoading } = useTimelineAudioPeaks(systemSidecarPath);
-		const sourceAudioTracks = useMemo<SourceAudioTrackWithPeaks[]>(() => {
-			if (systemSidecarPeaks || micSidecarPeaks) {
-				const tracks: SourceAudioTrackWithPeaks[] = [];
-				if (systemSidecarPeaks)
-					tracks.push({
-						id: "system",
-						label: t("audio.systemLabel", "Source System"),
-						peaks: systemSidecarPeaks,
-					});
-				if (micSidecarPeaks)
-					tracks.push({
-						id: "mic",
-						label: t("audio.micLabel", "Source Mic"),
-						peaks: micSidecarPeaks,
-					});
-				return tracks;
-			}
-			return sourceAudioPeaks
-				? [
-						{
-							id: "mixed",
-							label: t("audio.mixedLabel", "Source"),
-							peaks: sourceAudioPeaks,
-						},
-					]
-				: [];
-		}, [micSidecarPeaks, sourceAudioPeaks, systemSidecarPeaks, t]);
+		const { sourceAudioTracks, sourceAudioLoading, micSidecarLoading, systemSidecarLoading } =
+			useTimelineSourceAudioTracks({
+				videoPath,
+				sourceAudioResourceVersion,
+				onSourceAudioTracksMetaChange,
+				onSourceAudioAvailabilityChange,
+			});
 
 		const isLoading = useMemo(() => {
 			// If we are still actively trying to load audio peaks (main or sidecars)
-			if (videoPath && (sourceAudioLoading || micSidecarLoading || systemSidecarLoading)) return true;
+			if (videoPath && (sourceAudioLoading || micSidecarLoading || systemSidecarLoading))
+				return true;
 
 			// Robust telemetry loading detection:
 			// If a source path is set but telemetry hasn't arrived (or failed/retried) for it yet.
 			if (videoSourcePath && cursorTelemetrySourcePath !== videoSourcePath) return true;
 
 			return false;
-		}, [videoPath, videoSourcePath, cursorTelemetrySourcePath, sourceAudioLoading, micSidecarLoading, systemSidecarLoading]);
-		useEffect(() => {
-			onSourceAudioTracksMetaChange?.(sourceAudioTracks.map((t) => ({ id: t.id, label: t.label })));
-		}, [onSourceAudioTracksMetaChange, sourceAudioTracks]);
+		}, [
+			videoPath,
+			videoSourcePath,
+			cursorTelemetrySourcePath,
+			sourceAudioLoading,
+			micSidecarLoading,
+			systemSidecarLoading,
+		]);
 		void sourceAudioTrackSettings;
-		useEffect(() => {
-			onSourceAudioAvailabilityChange?.(sourceAudioTracks.length > 0);
-		}, [onSourceAudioAvailabilityChange, sourceAudioTracks.length]);
+		const autoZoomSourceReady = Boolean(
+			videoPath &&
+				Number.isFinite(videoDuration) &&
+				videoDuration > 0 &&
+				(!videoSourcePath || cursorTelemetrySourcePath === videoSourcePath),
+		);
+		// The imperative toolbar action shares this runtime: never suggest regions
+		// from telemetry that belongs to a previous source while the new one loads.
+		const autoZoomTelemetry = useMemo(
+			() => (autoZoomSourceReady ? cursorTelemetry : []),
+			[autoZoomSourceReady, cursorTelemetry],
+		);
 
 		const {
 			keyframes,
@@ -323,6 +318,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			handleSelectClip,
 			handleSelectAnnotation,
 			handleSelectAudio,
+			handleSelectCaption,
 			hasOverlap,
 			timelineItems,
 			allRegionSpans,
@@ -330,21 +326,23 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			handleItemSpanChange,
 			canPlaceZoomAtMs,
 			addZoomAtMs,
+			handleSuggestZooms,
+			canPlaceCaptionAtMs,
+			addCaptionAtMs,
+			resolveCaptionSpanAtMs,
 		} = useTimelineEditorRuntime({
 			ref,
 			videoDuration,
 			totalMs,
 			currentTimeMs,
 			safeMinDurationMs,
-			cursorTelemetry,
-			autoSuggestZoomsTrigger,
-			onAutoSuggestZoomsConsumed,
-			disableSuggestedZooms,
+			cursorTelemetry: autoZoomTelemetry,
 			zoomRegions,
 			onZoomAdded,
 			onZoomSuggested,
 			onZoomSpanChange,
 			onZoomDelete,
+			onClearZooms,
 			selectedZoomId,
 			onSelectZoom,
 			trimRegions,
@@ -369,32 +367,98 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onAudioDelete,
 			selectedAudioId,
 			onSelectAudio,
+			captionCues: captionRegions,
+			onCaptionSpanChange,
+			onCaptionDelete,
+			onCaptionAdded,
+			selectedCaptionId,
+			onSelectCaption,
 			isMac,
 			keyShortcuts,
 			isTimelineFocusedRef,
 		});
+		const [clipSelection, setClipSelection] = useState<{
+			anchorId: string;
+			primaryId: string;
+			ids: string[];
+			clips: ClipRegion[];
+		} | null>(null);
+		const selectedClipIds = useMemo(
+			() =>
+				clipSelection?.primaryId === selectedClipId && clipSelection?.clips === clipRegions
+					? clipSelection.ids
+					: selectedClipId
+						? [selectedClipId]
+						: [],
+			[clipSelection, selectedClipId, clipRegions],
+		);
+		useEffect(() => {
+			if (
+				clipSelection &&
+				(selectedClipId !== clipSelection.primaryId || clipRegions !== clipSelection.clips)
+			) {
+				setClipSelection(null);
+			}
+		}, [selectedClipId, clipRegions, clipSelection]);
+		const selectClip = (id: string | null, extend = false) => {
+			const anchorId =
+				extend && selectedClipId
+					? selectedClipIds.length > 1
+						? clipSelection!.anchorId
+						: selectedClipId
+					: id;
+			setClipSelection(
+				id && anchorId
+					? {
+							anchorId,
+							primaryId: id,
+							clips: clipRegions,
+							ids: extend ? selectClipRange(clipRegions, anchorId, id) : [id],
+						}
+					: null,
+			);
+			handleSelectClip(id);
+		};
 
 		if (!videoDuration || videoDuration === 0) {
-			return (
-				<div className="flex-1 flex flex-col items-center justify-center rounded-lg bg-editor-surface gap-3">
-					<div className="w-12 h-12 rounded-full bg-foreground/5 flex items-center justify-center">
-						<Plus className="w-6 h-6 text-muted-foreground" />
-					</div>
-					<div className="text-center">
-						<p className="text-sm font-medium text-muted-foreground">No Video Loaded</p>
-						<p className="text-xs text-muted-foreground/70 mt-1">
-							Drag and drop a video to start editing
-						</p>
-					</div>
-				</div>
-			);
+			return <TimelineLoadingSkeleton />;
 		}
 
 		return (
-			<div className="flex-1 min-h-0 flex flex-col bg-editor-bg overflow-hidden">
+			<div className="relative flex-1 min-h-0 flex flex-col bg-transparent overflow-hidden">
+				{selectedClipIds.length > 1 && onClipMerge && (
+					<div className="absolute right-3 top-1 z-30 flex items-center gap-2 rounded-lg bg-editor-surface/95 px-2 py-1 text-xs text-muted-foreground">
+						<span>
+							{te("selectedClips", "{{count}} clips selected", {
+								count: selectedClipIds.length,
+							})}
+						</span>
+						<span
+							title={
+								canMergeClips?.(selectedClipIds)
+									? te("mergeSelectedClips", "Merge selected clips")
+									: te(
+											"mergeClipsUnavailable",
+											"Merge requires continuous footage with matching speed and audio settings.",
+										)
+							}
+						>
+							<Button
+								size="sm"
+								variant="secondary"
+								disabled={!canMergeClips?.(selectedClipIds)}
+								onClick={() => onClipMerge(selectedClipIds)}
+							>
+								{te("mergeClips", "Merge clips")}
+							</Button>
+						</span>
+					</div>
+				)}
 				<div
 					ref={timelineContainerRef}
-					className="flex-1 min-h-0 overflow-auto bg-editor-bg relative"
+					data-testid="timeline-scroll"
+					style={{ outline: "none", boxShadow: "none" }}
+					className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto bg-transparent relative px-3"
 					tabIndex={0}
 					onFocus={() => {
 						isTimelineFocusedRef.current = true;
@@ -402,8 +466,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					onBlur={() => {
 						isTimelineFocusedRef.current = false;
 					}}
-					onMouseDown={() => {
-						timelineContainerRef.current?.focus();
+					onPointerDownCapture={() => {
+						timelineContainerRef.current?.focus({ preventScroll: true });
 						isTimelineFocusedRef.current = true;
 					}}
 					onClick={() => {
@@ -413,8 +477,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					onWheel={handleTimelineWheel}
 				>
 					<TimelineWrapper
+						zoomPresentationOptions={zoomPresentationOptions}
 						range={clampedRange}
 						videoDuration={videoDuration}
+						clipResizeEndById={clipResizeEndById}
 						hasOverlap={hasOverlap}
 						onRangeChange={setRange}
 						minItemDurationMs={timelineScale.minItemDurationMs}
@@ -422,6 +488,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 						onItemSpanChange={handleItemSpanChange}
 						resolveTargetRowId={getResolvedDropRowId}
 						allRegionSpans={allRegionSpans}
+						onDraggingChange={setIsDragging}
 						onLiveSpanPreviewChange={(id, span) => {
 							setLiveSpanPreviewById((prev) => {
 								if (!span) {
@@ -451,20 +518,34 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							timelineRef={timelineContainerRef}
 						/>
 						<TimelineCanvas
+							videoPath={videoPath}
 							items={timelineItems}
 							videoDurationMs={totalMs}
 							currentTimeMs={currentTimeMs}
 							onSeek={onSeek}
+							onApplyAutoZooms={
+								onZoomSuggested && autoZoomTelemetry.length >= 2
+									? handleSuggestZooms
+									: undefined
+							}
 							onAddZoomAtMs={addZoomAtMs}
 							canPlaceZoomAtMs={canPlaceZoomAtMs}
+							onAddCaptionAtMs={addCaptionAtMs}
+							canPlaceCaptionAtMs={canPlaceCaptionAtMs}
+							resolveCaptionSpanAtMs={resolveCaptionSpanAtMs}
+							captionsEnabled={captionsEnabled}
+							captionQuickAddEnabled={captionQuickAddEnabled}
 							onSelectZoom={handleSelectZoom}
-							onSelectClip={handleSelectClip}
+							onSelectClip={selectClip}
 							onSelectAnnotation={handleSelectAnnotation}
 							onSelectAudio={handleSelectAudio}
+							onSelectCaption={handleSelectCaption}
 							selectedZoomId={selectedZoomId}
 							selectedClipId={selectedClipId}
+							selectedClipIds={selectedClipIds}
 							selectedAnnotationId={selectedAnnotationId}
 							selectedAudioId={selectedAudioId}
+							selectedCaptionId={selectedCaptionId}
 							selectAllBlocksActive={selectAllBlocksActive}
 							onClearBlockSelection={clearSelectedBlocks}
 							keyframes={keyframes}
@@ -473,6 +554,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							showSourceAudioTrack={showSourceAudioTrack}
 							liveSpanPreviewById={liveZoomPreview.previewSpans}
 							liveHiddenItemIds={Array.from(liveZoomPreview.hiddenZoomIds)}
+							isDragging={isDragging}
 							isLoading={isLoading}
 						/>
 					</TimelineWrapper>

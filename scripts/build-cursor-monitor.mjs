@@ -7,6 +7,10 @@ import {
 	updateNativeHelperManifest,
 	verifyNativeHelperManifest,
 } from "./native-helper-manifest.mjs";
+import {
+	configureWithWindowsCmakeGenerator,
+	WINDOWS_VISUAL_STUDIO_INSTALL_DIRS,
+} from "./windows-cmake-generators.mjs";
 
 const projectRoot = process.cwd();
 const sourceDir = path.join(projectRoot, "electron", "native", "cursor-monitor");
@@ -56,7 +60,7 @@ function findCmake() {
 		path.join("C:", "Program Files (x86)", "Microsoft Visual Studio"),
 	];
 	const vsEditions = ["Community", "Professional", "Enterprise", "BuildTools"];
-	const vsVersions = ["2022", "2019"];
+	const vsVersions = WINDOWS_VISUAL_STUDIO_INSTALL_DIRS;
 	for (const root of vsRoots) {
 		for (const version of vsVersions) {
 			for (const edition of vsEditions) {
@@ -117,25 +121,19 @@ function clearCmakeCache() {
 
 console.log("[build-cursor-monitor] Configuring CMake...");
 try {
-	clearCmakeCache();
-	execSync(`${cmake} .. -G "Visual Studio 17 2022" -A x64`, {
-		cwd: buildDir,
-		stdio: "inherit",
-		timeout: 120000,
+	configureWithWindowsCmakeGenerator({
+		prefix: "build-cursor-monitor",
+		clearCache: clearCmakeCache,
+		configure: (generator, toolset) =>
+			execSync(`${cmake} .. -G "${generator}" -A x64${toolset ? ` -T ${toolset}` : ""}`, {
+				cwd: buildDir,
+				stdio: "inherit",
+				timeout: 120000,
+			}),
 	});
-} catch {
-	console.log("[build-cursor-monitor] VS 2022 generator not found, trying VS 2019...");
-	try {
-		clearCmakeCache();
-		execSync(`${cmake} .. -G "Visual Studio 16 2019" -A x64`, {
-			cwd: buildDir,
-			stdio: "inherit",
-			timeout: 120000,
-		});
-	} catch (innerError) {
-		console.error("[build-cursor-monitor] CMake configure failed:", innerError.message);
-		process.exit(1);
-	}
+} catch (error) {
+	console.error("[build-cursor-monitor] CMake configure failed:", error.message);
+	process.exit(1);
 }
 
 console.log("[build-cursor-monitor] Building...");

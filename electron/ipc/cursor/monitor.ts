@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import { BrowserWindow } from "electron";
-import type { CursorVisualType } from "../types";
+import { isCursorVisualType } from "../../../src/shared/cursorVisualTypes";
+import { ensureNativeCursorMonitorBinary, getCursorMonitorExePath } from "../paths/binaries";
 import {
 	currentCursorVisualType,
 	nativeCursorMonitorOutputBuffer,
@@ -11,7 +12,8 @@ import {
 	setNativeCursorMonitorOutputBuffer,
 	setNativeCursorMonitorProcess,
 } from "../state";
-import { getCursorMonitorExePath, ensureNativeCursorMonitorBinary } from "../paths/binaries";
+import type { CursorVisualType } from "../types";
+import { recordCursorMouseDown, recordCursorMouseUp } from "./interaction";
 
 export function emitCursorStateChanged(cursorType: CursorVisualType) {
 	BrowserWindow.getAllWindows().forEach((window) => {
@@ -27,25 +29,26 @@ export function handleCursorMonitorStdout(chunk: Buffer) {
 	setNativeCursorMonitorOutputBuffer(lines.pop() ?? "");
 
 	for (const line of lines) {
+		const interactionMatch = line.match(/^INTERACTION:(mousedown|mouseup)(?::([123]))?$/);
+		if (interactionMatch) {
+			if (interactionMatch[1] === "mouseup") {
+				const button = Number(interactionMatch[2]);
+				recordCursorMouseUp(
+					button === 1 || button === 2 || button === 3 ? button : undefined,
+				);
+			} else {
+				const button = Number(interactionMatch[2]);
+				recordCursorMouseDown(button === 2 || button === 3 ? button : 1);
+			}
+			continue;
+		}
+
 		const match = line.match(/^STATE:(.+)$/);
 		if (!match) continue;
-		const next = match[1].trim() as CursorVisualType;
-		if (
-			next === "arrow" ||
-			next === "text" ||
-			next === "pointer" ||
-			next === "crosshair" ||
-			next === "open-hand" ||
-			next === "closed-hand" ||
-			next === "resize-ew" ||
-			next === "resize-ns" ||
-			next === "not-allowed"
-		) {
-			if (currentCursorVisualType !== next) {
-				setCurrentCursorVisualType(next);
-				// sampleCursorStateChange is called from cursor/telemetry.ts via the handler
-				emitCursorStateChanged(next);
-			}
+		const next = match[1].trim();
+		if (isCursorVisualType(next) && currentCursorVisualType !== next) {
+			setCurrentCursorVisualType(next);
+			emitCursorStateChanged(next);
 		}
 	}
 }

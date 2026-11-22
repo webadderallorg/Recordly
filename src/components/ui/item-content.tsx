@@ -1,4 +1,5 @@
 import type { PropsWithChildren } from "react";
+import { Card } from "@/components/ui/card";
 
 interface ItemContentProps extends PropsWithChildren {
 	classes: string;
@@ -6,12 +7,12 @@ interface ItemContentProps extends PropsWithChildren {
 
 function ItemContent({ children, classes }: ItemContentProps) {
 	return (
-		<div
-			className={`bg-foreground/5 border border-foreground/10 rounded-md shadow-sm w-full flex flex-row items-center px-3 py-1 gap-2 transition-all duration-150 hover:bg-[#2563EB]/10 hover:shadow-lg ${classes}`}
+		<Card
+			className={`w-full flex flex-row items-center px-3 py-1 gap-2 ${classes}`}
 			style={{ minHeight: 40 }}
 		>
 			{children}
-		</div>
+		</Card>
 	);
 }
 

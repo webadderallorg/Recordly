@@ -27,17 +27,21 @@ const SCALE_CANDIDATES = [
 	{ intervalSeconds: 3600, gridSeconds: 300 },
 ];
 
-export function calculateAxisScale(visibleRangeMs: number): {
+export function calculateAxisScale(
+	visibleRangeMs: number,
+	widthPx?: number,
+): {
 	intervalMs: number;
 	gridMs: number;
 } {
 	const visibleSeconds = visibleRangeMs / 1000;
+	const markerCount = widthPx ? Math.max(2, Math.floor(widthPx / 80)) : TARGET_MARKER_COUNT;
 	const candidate =
 		SCALE_CANDIDATES.find((scaleCandidate) => {
 			if (visibleSeconds <= 0) {
 				return true;
 			}
-			return visibleSeconds / scaleCandidate.intervalSeconds <= TARGET_MARKER_COUNT;
+			return visibleSeconds / scaleCandidate.intervalSeconds <= markerCount;
 		}) ?? SCALE_CANDIDATES[SCALE_CANDIDATES.length - 1];
 
 	return {
@@ -85,32 +89,20 @@ export function normalizeWheelDeltaToPixels(delta: number, deltaMode: number) {
 }
 
 export function formatTimeLabel(milliseconds: number, intervalMs: number) {
-	const totalSeconds = milliseconds / 1000;
-	const hours = Math.floor(totalSeconds / 3600);
-	const minutes = Math.floor((totalSeconds % 3600) / 60);
-	const seconds = totalSeconds % 60;
-
-	const fractionalDigits = intervalMs < 250 ? 2 : intervalMs < 1000 ? 1 : 0;
-
-	if (hours > 0) {
-		const minutesString = minutes.toString().padStart(2, "0");
-		const secondsString = Math.floor(seconds).toString().padStart(2, "0");
-		return `${hours}:${minutesString}:${secondsString}`;
-	}
-
-	if (fractionalDigits > 0) {
-		const secondsWithFraction = seconds.toFixed(fractionalDigits);
-		const [wholeSeconds, fraction] = secondsWithFraction.split(".");
-		return `${minutes}:${wholeSeconds.padStart(2, "0")}.${fraction}`;
-	}
-
-	return `${minutes}:${Math.floor(seconds).toString().padStart(2, "0")}`;
+	const digits = intervalMs < 250 ? 2 : intervalMs < 1000 ? 1 : 0;
+	const factor = 10 ** digits;
+	const safeMs = Number.isFinite(milliseconds) ? Math.max(0, milliseconds) : 0;
+	const total =
+		(digits ? Math.round((safeMs / 1000) * factor) : Math.floor(safeMs / 1000)) / factor;
+	const hours = Math.floor(total / 3600);
+	const minutes = Math.floor(total / 60) % 60;
+	const seconds = (total % 60).toFixed(digits).padStart(digits ? 3 + digits : 2, "0");
+	return hours
+		? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
+		: `${minutes}:${seconds}`;
 }
 
 export function formatPlayheadTime(ms: number): string {
-	const s = ms / 1000;
-	const min = Math.floor(s / 60);
-	const sec = s % 60;
-	if (min > 0) return `${min}:${sec.toFixed(1).padStart(4, "0")}`;
-	return `${sec.toFixed(1)}s`;
+	const rounded = Math.round(Math.max(0, ms) / 100) * 100;
+	return rounded < 60000 ? `${(rounded / 1000).toFixed(1)}s` : formatTimeLabel(rounded, 500);
 }

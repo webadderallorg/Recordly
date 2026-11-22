@@ -1,0 +1,10 @@
+Update your email for Recordly
+
+Confirm {{ .NewEmail }} as the new email address for your Recordly account.
+
+Confirm email address: {{ .ConfirmationURL }}
+
+Didn't request this? You can safely ignore this email.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

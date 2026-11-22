@@ -1,5 +1,35 @@
-import type { ExportQuality } from "@/lib/exporter";
+import type { ExportMp4FrameRate, ExportQuality } from "@/lib/exporter";
 import { type AspectRatio, getAspectRatioValue } from "@/utils/aspectRatioUtils";
+
+export type Mp4SupportProbeSnapshot = {
+	sourceWidth: number;
+	sourceHeight: number;
+	targetWidth: number;
+	targetHeight: number;
+	aspectRatio: AspectRatio;
+	frameRate: ExportMp4FrameRate;
+};
+
+export function shouldDebounceMp4SupportProbe(
+	previous: Mp4SupportProbeSnapshot | null,
+	current: Mp4SupportProbeSnapshot,
+): boolean {
+	if (
+		!previous ||
+		current.aspectRatio !== "native" ||
+		previous.aspectRatio !== current.aspectRatio ||
+		previous.frameRate !== current.frameRate ||
+		previous.sourceWidth !== current.sourceWidth ||
+		previous.sourceHeight !== current.sourceHeight
+	) {
+		return false;
+	}
+
+	return (
+		previous.targetWidth !== current.targetWidth ||
+		previous.targetHeight !== current.targetHeight
+	);
+}
 
 function normalizeEvenDimension(value: number): number {
 	return Math.max(2, Math.floor(value / 2) * 2);
@@ -30,9 +60,15 @@ export function calculateMp4SourceDimensions(
 	sourceWidth: number,
 	sourceHeight: number,
 	aspectRatio: AspectRatio,
+	cropRegion?: { width: number; height: number },
 ): { width: number; height: number } {
-	const safeSourceWidth = normalizeEvenDimension(sourceWidth);
-	const safeSourceHeight = normalizeEvenDimension(sourceHeight);
+	const useCroppedBounds = aspectRatio === "native";
+	const safeSourceWidth = normalizeEvenDimension(
+		sourceWidth * (useCroppedBounds ? (cropRegion?.width ?? 1) : 1),
+	);
+	const safeSourceHeight = normalizeEvenDimension(
+		sourceHeight * (useCroppedBounds ? (cropRegion?.height ?? 1) : 1),
+	);
 	const sourceAspectRatio = safeSourceHeight > 0 ? safeSourceWidth / safeSourceHeight : 16 / 9;
 	const aspectRatioValue = getAspectRatioValue(aspectRatio, sourceAspectRatio);
 
@@ -52,17 +88,49 @@ export function calculateMp4ExportDimensions(
 	baseWidth: number,
 	baseHeight: number,
 	quality: ExportQuality,
+	custom?: { width: number; height: number } | null,
 ): { width: number; height: number } {
+	const width = normalizeEvenDimension(baseWidth);
+	const height = normalizeEvenDimension(baseHeight);
+	if (quality === "custom") {
+		if (!isValidCustomExportResolution(custom))
+			throw new Error("Enter even dimensions between 2 and 8192 pixels.");
+		return { width: custom!.width, height: custom!.height };
+	}
 	if (quality === "source") {
-		return {
-			width: normalizeEvenDimension(baseWidth),
-			height: normalizeEvenDimension(baseHeight),
-		};
+		return { width, height };
 	}
 
-	const qualityScale = quality === "medium" ? 0.6 : quality === "good" ? 0.75 : 0.9;
+	// Resolution tiers use the longest canvas edge, including square, portrait,
+	// and custom ratios. Fixed tiers may upscale; Original preserves source size.
+	const longestEdge = { hd: 1280, medium: 1920, good: 2560, high: 3840 }[quality];
+	const scale = longestEdge / Math.max(width, height);
 	return {
-		width: normalizeEvenDimension(baseWidth * qualityScale),
-		height: normalizeEvenDimension(baseHeight * qualityScale),
+		width: width >= height ? longestEdge : normalizeEvenDimension(width * scale),
+		height: height >= width ? longestEdge : normalizeEvenDimension(height * scale),
+	};
+}
+
+export function isValidCustomExportResolution(
+	value: { width: number; height: number } | null | undefined,
+): boolean {
+	return (
+		!!value &&
+		[value.width, value.height].every(
+			(n) => Number.isSafeInteger(n) && n >= 2 && n <= 8192 && n % 2 === 0,
+		)
+	);
+}
+
+export function fitCustomExportResolution(
+	resolution: { width: number; height: number },
+	canvas: { width: number; height: number },
+) {
+	const edge = Math.max(resolution.width, resolution.height);
+	const scale = edge / Math.max(canvas.width, canvas.height);
+	return {
+		width: canvas.width >= canvas.height ? edge : normalizeEvenDimension(canvas.width * scale),
+		height:
+			canvas.height >= canvas.width ? edge : normalizeEvenDimension(canvas.height * scale),
 	};
 }

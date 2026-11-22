@@ -201,7 +201,12 @@ function parseExportQuality(rawValue) {
 		return null;
 	}
 
-	if (rawValue === "medium" || rawValue === "good" || rawValue === "high" || rawValue === "source") {
+	if (
+		rawValue === "medium" ||
+		rawValue === "good" ||
+		rawValue === "high" ||
+		rawValue === "source"
+	) {
 		return rawValue;
 	}
 
@@ -928,7 +933,9 @@ async function main() {
 		printRequestedConfigTable(benchmarkRequests);
 
 		if (providedInputPath) {
-			console.log(`[benchmark-export-queues] Using provided input video: ${providedInputPath}`);
+			console.log(
+				`[benchmark-export-queues] Using provided input video: ${providedInputPath}`,
+			);
 			await fs.copyFile(providedInputPath, inputPath);
 		} else {
 			console.log(`[benchmark-export-queues] Generating fixture video: ${inputPath}`);

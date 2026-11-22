@@ -1,8 +1,8 @@
 import { fromFileUrl, toFileUrl } from "@/components/video-editor/projectPersistence";
+import { getLocalMediaServerPath } from "../localMediaUrl";
 
 const NOOP = () => undefined;
 const REMOTE_MEDIA_URL_PATTERN = /^(https?:|blob:|data:)/i;
-const LOOPBACK_MEDIA_HOSTS = new Set(["127.0.0.1", "localhost"]);
 const BUNDLED_ASSET_PATH_PREFIXES = ["/wallpapers/", "/app-icons/"];
 
 export function isAbsoluteLocalPath(resource: string) {
@@ -15,24 +15,6 @@ export function isAbsoluteLocalPath(resource: string) {
 
 function isBundledAssetPath(resource: string) {
 	return BUNDLED_ASSET_PATH_PREFIXES.some((prefix) => resource.startsWith(prefix));
-}
-
-function getLocalMediaServerPath(resource: string) {
-	if (!/^https?:\/\//i.test(resource)) {
-		return null;
-	}
-
-	try {
-		const url = new URL(resource);
-		if (!LOOPBACK_MEDIA_HOSTS.has(url.hostname) || url.pathname !== "/video") {
-			return null;
-		}
-
-		const mediaPath = url.searchParams.get("path");
-		return mediaPath && mediaPath.trim().length > 0 ? mediaPath : null;
-	} catch {
-		return null;
-	}
 }
 
 export function isLocalMediaServerUrl(resource: string) {
@@ -98,10 +80,6 @@ export async function resolveMediaResourceUrl(resource: string): Promise<string>
 		return resource;
 	}
 
-	if (isLocalMediaServerUrl(resource)) {
-		return resource;
-	}
-
 	if (typeof window !== "undefined" && window.electronAPI?.getLocalMediaUrl) {
 		try {
 			const result = await window.electronAPI.getLocalMediaUrl(localFilePath);
@@ -109,41 +87,36 @@ export async function resolveMediaResourceUrl(resource: string): Promise<string>
 				return result.url;
 			}
 		} catch {
-			// Fall through to a file URL when the local media server is unavailable.
+			// Preserve an existing media URL if refreshing the server URL fails.
 		}
 	}
 
-	return /^file:\/\//i.test(resource) ? resource : toFileUrl(localFilePath);
+	return /^file:\/\//i.test(resource) || isLocalMediaServerUrl(resource)
+		? resource
+		: toFileUrl(localFilePath);
 }
 
-export async function createReadableMediaResourceFile(resource: string): Promise<File> {
-	const localFilePath = getLocalFilePath(resource);
-	const filename = (localFilePath ?? resource).split(/[\\/]/).pop()?.split("?")[0] || "media";
-
-	if (localFilePath && typeof window !== "undefined" && window.electronAPI?.readLocalFile) {
-		const result = await window.electronAPI.readLocalFile(localFilePath);
-		if (!result.success || !result.data) {
-			throw new Error(result.error || "Failed to read local media file");
-		}
-
-		const bytes = result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data);
-		const arrayBuffer = bytes.buffer.slice(
-			bytes.byteOffset,
-			bytes.byteOffset + bytes.byteLength,
-		) as ArrayBuffer;
-		return new File([arrayBuffer], filename, { type: inferMimeType(filename) });
-	}
-
+async function createReadableMediaResourceFile(resource: string): Promise<File> {
+	const filename = resource.split(/[\\/]/).pop()?.split("?")[0] || "media";
 	const resourceUrl = await resolveMediaResourceUrl(resource);
 	const response = await fetch(resourceUrl);
 	if (!response.ok) {
-		throw new Error(
-			`Failed to load media resource: ${response.status} ${response.statusText}`,
-		);
+		throw new Error(`Failed to load media resource: ${response.status} ${response.statusText}`);
 	}
 
 	const blob = await response.blob();
 	return new File([blob], filename, { type: blob.type || inferMimeType(filename) });
+}
+
+export async function createFallbackDemuxerSource(resource: string): Promise<string | File> {
+	// Local media already has a random-access transport: WebDemuxer issues bounded
+	// byte-range requests against this URL. Converting it to a File would copy the
+	// complete recording through Electron IPC and make memory use scale with file size.
+	if (getLocalFilePath(resource)) {
+		return resolveMediaResourceUrl(resource);
+	}
+
+	return createReadableMediaResourceFile(resource);
 }
 
 export async function resolveMediaElementSource(resource: string): Promise<{

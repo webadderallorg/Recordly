@@ -1,0 +1,9 @@
+.wrangler/
+node_modules/
+.dev.vars
+*.local.json
+web/.astro/
+videos/
+
+# Wrangler builds the viewer from source before deployment.
+web/dist/

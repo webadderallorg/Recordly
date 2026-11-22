@@ -1,18 +1,36 @@
 #include "mf_encoder.h"
+#include "frame_padding.h"
 #include <mfapi.h>
 #include <mferror.h>
 #include <codecapi.h>
 #include <algorithm>
+#include <cstdint>
 #include <iostream>
 #include <cstring>
+#include "../../common/bt709_video.h"
 
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "mfuuid.lib")
 
-static int clampByte(int v) {
-    return v < 0 ? 0 : (v > 255 ? 255 : v);
+static UINT32 calculateScreenRecordingBitrate(int width, int height, int fps) {
+    constexpr uint64_t kFourKPixels = 3840ULL * 2160ULL;
+    constexpr uint64_t kQhdPixels = 2560ULL * 1440ULL;
+    constexpr UINT32 kBitrate4K = 45000000;
+    constexpr UINT32 kBitrateQhd = 28000000;
+    constexpr UINT32 kBitrateBase = 18000000;
+    constexpr double kHighFrameRateBoost = 1.35;
+
+    const uint64_t pixels =
+        static_cast<uint64_t>((std::max)(width, 1)) *
+        static_cast<uint64_t>((std::max)(height, 1));
+    const UINT32 baseBitrate =
+        pixels >= kFourKPixels ? kBitrate4K :
+        pixels >= kQhdPixels ? kBitrateQhd :
+        kBitrateBase;
+    const double boost = fps >= 60 ? kHighFrameRateBoost : 1.0;
+    return static_cast<UINT32>(static_cast<double>(baseBitrate) * boost + 0.5);
 }
 
 MFEncoder::MFEncoder() {}
@@ -26,6 +44,11 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (initialized_) return false;
+
+    if (fps <= 0) {
+        std::cerr << "ERROR: Encoder fps must be positive, got " << fps << std::endl;
+        return false;
+    }
 
     if (width % 2 != 0 || height % 2 != 0) {
         std::cerr << "ERROR: Encoder dimensions must be even, got " << width << "x" << height << std::endl;
@@ -51,11 +74,16 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
 
     outputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
     outputType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
-    outputType->SetUINT32(MF_MT_AVG_BITRATE, 20000000);
+    const UINT32 videoBitrate = calculateScreenRecordingBitrate(width_, height_, fps_);
+    outputType->SetUINT32(MF_MT_AVG_BITRATE, videoBitrate);
     MFSetAttributeSize(outputType.Get(), MF_MT_FRAME_SIZE, width_, height_);
     MFSetAttributeRatio(outputType.Get(), MF_MT_FRAME_RATE, fps_, 1);
     MFSetAttributeRatio(outputType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
     outputType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    hr = setBt709LimitedVideoAttributes(outputType.Get());
+    if (FAILED(hr)) return false;
+    std::cerr << "Encoder bitrate: " << videoBitrate << " bps for "
+              << width_ << "x" << height_ << "@" << fps_ << "fps" << std::endl;
 
     // Input media type (NV12)
     ComPtr<IMFMediaType> inputType;
@@ -68,6 +96,8 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
     MFSetAttributeRatio(inputType.Get(), MF_MT_FRAME_RATE, fps_, 1);
     MFSetAttributeRatio(inputType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
     inputType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    hr = setBt709LimitedVideoAttributes(inputType.Get());
+    if (FAILED(hr)) return false;
 
     // Create SinkWriter with MPEG4 container
     ComPtr<IMFAttributes> writerAttrs;
@@ -147,22 +177,27 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
     const int uvSize = (width_ / 2) * (height_ / 2) * 2;
     nv12Buffer_.resize(ySize + uvSize);
     lastFrameBuffer_.clear();
-    lastSampleTimeHns_ = -1;
+    firstSampleTimeHns_ = -1;
+    lastSampleEndTimeHns_ = -1;
 
     initialized_ = true;
     return true;
 }
 
-bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
+bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int contentWidth, int contentHeight,
+                           int64_t timestampHns) {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    if (!initialized_ || !sinkWriter_) return false;
+    if (!initialized_ || !sinkWriter_ || contentWidth <= 0 || contentHeight <= 0) return false;
 
     D3D11_TEXTURE2D_DESC sourceDesc = {};
     texture->GetDesc(&sourceDesc);
 
+    const UINT validWidth = (std::min)(sourceDesc.Width, static_cast<UINT>(contentWidth));
+    const UINT validHeight = (std::min)(sourceDesc.Height, static_cast<UINT>(contentHeight));
     if (sourceDesc.Width == static_cast<UINT>(width_) &&
-        sourceDesc.Height == static_cast<UINT>(height_)) {
+        sourceDesc.Height == static_cast<UINT>(height_) &&
+        validWidth == sourceDesc.Width && validHeight == sourceDesc.Height) {
         context_->CopyResource(stagingTexture_.Get(), texture);
     } else {
         if (!resizeCompositeTexture_ || !resizeCompositeView_) return false;
@@ -174,8 +209,8 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
         sourceBox.left = 0;
         sourceBox.top = 0;
         sourceBox.front = 0;
-        sourceBox.right = (std::min)(sourceDesc.Width, static_cast<UINT>(width_));
-        sourceBox.bottom = (std::min)(sourceDesc.Height, static_cast<UINT>(height_));
+        sourceBox.right = (std::min)(validWidth, static_cast<UINT>(width_));
+        sourceBox.bottom = (std::min)(validHeight, static_cast<UINT>(height_));
         sourceBox.back = 1;
 
         if (sourceBox.right == 0 || sourceBox.bottom == 0) return false;
@@ -196,41 +231,27 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
     HRESULT hr = context_->Map(stagingTexture_.Get(), 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(hr)) return false;
 
-    // Convert BGRA → NV12
+    // Convert full-range desktop BGRA to explicitly tagged BT.709 video-range NV12.
     const uint8_t* bgra = static_cast<const uint8_t*>(mapped.pData);
     const int bgraPitch = static_cast<int>(mapped.RowPitch);
-
-    // Y plane
-    for (int y = 0; y < height_; y++) {
-        for (int x = 0; x < width_; x++) {
-            const uint8_t* pixel = bgra + y * bgraPitch + x * 4;
-            uint8_t b = pixel[0], g = pixel[1], r = pixel[2];
-            int yVal = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
-            nv12Buffer_[y * width_ + x] = static_cast<uint8_t>(clampByte(yVal));
-        }
-    }
-
-    // UV plane (interleaved, subsampled 2x2)
-    const int ySize = width_ * height_;
-    uint8_t* uvPlane = nv12Buffer_.data() + ySize;
-    for (int y = 0; y < height_; y += 2) {
-        for (int x = 0; x < width_; x += 2) {
-            const uint8_t* pixel = bgra + y * bgraPitch + x * 4;
-            uint8_t b = pixel[0], g = pixel[1], r = pixel[2];
-            int u = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
-            int v = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
-            int uvIdx = (y / 2) * width_ + (x / 2) * 2;
-            uvPlane[uvIdx] = static_cast<uint8_t>(clampByte(u));
-            uvPlane[uvIdx + 1] = static_cast<uint8_t>(clampByte(v));
-        }
-    }
+    convertBgraToBt709LimitedNv12(bgra, bgraPitch, width_, height_, nv12Buffer_);
 
     context_->Unmap(stagingTexture_.Get(), 0);
 
-    bool wroteSample = writeNv12SampleLocked(nv12Buffer_, timestampHns);
+    // WGC may stop delivering frames while the scene is static; keep the MP4
+    // timeline continuous with one duration-bearing sample for each gap.
+    int64_t normalizedTimestampHns = 0;
+    normalizeWriteTimestampHnsLocked(timestampHns, normalizedTimestampHns);
+
+    if (!lastFrameBuffer_.empty() && !extendLastFrameToLocked(normalizedTimestampHns, false)) {
+        return false;
+    }
+
+    const int64_t frameDurationHns = 10000000LL / fps_;
+    bool wroteSample = writeNv12SampleLocked(
+        nv12Buffer_, normalizedTimestampHns, frameDurationHns);
     if (wroteSample) {
         lastFrameBuffer_ = nv12Buffer_;
-        lastSampleTimeHns_ = timestampHns;
     }
     return wroteSample;
 }
@@ -238,24 +259,64 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
 bool MFEncoder::extendLastFrameTo(int64_t timestampHns) {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    if (!initialized_ || !sinkWriter_) return false;
-    if (lastFrameBuffer_.empty()) return false;
-
-    const int64_t frameDurationHns = 10000000LL / fps_;
-    if (lastSampleTimeHns_ >= 0 && timestampHns <= lastSampleTimeHns_ + frameDurationHns) {
-        return true;
-    }
-
-    if (!writeNv12SampleLocked(lastFrameBuffer_, timestampHns)) {
+    int64_t normalizedTimestampHns = 0;
+    if (!normalizeTimelineTimestampHnsLocked(timestampHns, normalizedTimestampHns)) {
         return false;
     }
 
-    lastSampleTimeHns_ = timestampHns;
+    return extendLastFrameToLocked(normalizedTimestampHns, true);
+}
+
+void MFEncoder::normalizeWriteTimestampHnsLocked(int64_t timestampHns, int64_t& normalizedTimestampHns) {
+    if (firstSampleTimeHns_ < 0) {
+        firstSampleTimeHns_ = timestampHns < 0 ? 0 : timestampHns;
+    }
+
+    normalizedTimestampHns = timestampHns - firstSampleTimeHns_;
+    if (normalizedTimestampHns < 0) {
+        normalizedTimestampHns = 0;
+    }
+}
+
+bool MFEncoder::normalizeTimelineTimestampHnsLocked(
+    int64_t timestampHns,
+    int64_t& normalizedTimestampHns
+) const {
+    if (firstSampleTimeHns_ < 0) return false;
+
+    normalizedTimestampHns = timestampHns - firstSampleTimeHns_;
+    if (normalizedTimestampHns < 0) {
+        normalizedTimestampHns = 0;
+    }
     return true;
 }
 
-bool MFEncoder::writeNv12SampleLocked(const std::vector<uint8_t>& frameBuffer, int64_t timestampHns) {
-    if (frameBuffer.empty()) return false;
+bool MFEncoder::extendLastFrameToLocked(int64_t timestampHns, bool includePartialFrame) {
+    if (!initialized_ || !sinkWriter_) return false;
+    if (lastFrameBuffer_.empty()) return false;
+    if (lastSampleEndTimeHns_ < 0) return false;
+
+    if (fps_ <= 0) return false;
+    const int64_t frameDurationHns = 10000000LL / fps_;
+    if (frameDurationHns <= 0) return false;
+    // Avoid an extra sample for normal sub-frame timestamp jitter. At Stop,
+    // cover even a fractional final frame so the recording reaches its endpoint.
+    const auto padding = includePartialFrame
+        ? planFinalFramePadding(lastSampleEndTimeHns_, timestampHns, frameDurationHns)
+        : planFramePadding(lastSampleEndTimeHns_, timestampHns, frameDurationHns);
+    if (padding.durationHns == 0) return true;
+
+    // One duplicate per gap keeps the work bounded after a static scene.
+    return writeNv12SampleLocked(
+        lastFrameBuffer_, padding.timestampHns, padding.durationHns);
+}
+
+bool MFEncoder::writeNv12SampleLocked(
+    const std::vector<uint8_t>& frameBuffer,
+    int64_t timestampHns,
+    int64_t durationHns
+) {
+    if (frameBuffer.empty() || durationHns <= 0) return false;
 
     // Create MF sample
     DWORD bufferSize = static_cast<DWORD>(frameBuffer.size());
@@ -277,11 +338,14 @@ bool MFEncoder::writeNv12SampleLocked(const std::vector<uint8_t>& frameBuffer, i
 
     sample->AddBuffer(buffer.Get());
     sample->SetSampleTime(timestampHns);
-    sample->SetSampleDuration(10000000LL / fps_);
+    sample->SetSampleDuration(durationHns);
 
     hr = sinkWriter_->WriteSample(streamIndex_, sample.Get());
     if (FAILED(hr)) {
         std::cerr << "ERROR: WriteSample failed: 0x" << std::hex << hr << std::endl;
+    }
+    if (SUCCEEDED(hr)) {
+        lastSampleEndTimeHns_ = timestampHns + durationHns;
     }
     return SUCCEEDED(hr);
 }
@@ -306,7 +370,8 @@ bool MFEncoder::finalize() {
     lastFrameBuffer_.clear();
     nv12Buffer_.shrink_to_fit();
     lastFrameBuffer_.shrink_to_fit();
-    lastSampleTimeHns_ = -1;
+    firstSampleTimeHns_ = -1;
+    lastSampleEndTimeHns_ = -1;
     MFShutdown();
     return SUCCEEDED(hr);
 }

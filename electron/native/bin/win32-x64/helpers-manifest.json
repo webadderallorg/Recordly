@@ -5,31 +5,31 @@
   "helpers": {
     "wgc-capture": {
       "binaryName": "wgc-capture.exe",
-      "binarySha256": "4f8873abbff58add37672114184c154dee838939ee8f2b7df45d658d078af28c",
+      "binarySha256": "aaa4f01a4d4f357008d4e1e6d4abec7436f04e8b49a53997f01007ddce367f6f",
       "sourceDir": "electron/native/wgc-capture",
-      "sourceFingerprint": "6f725fad6eb515d81b2d553ec45ddbf7c681d2725bba48f0c0722ce00166d967",
-      "updatedAt": "2026-05-09T00:49:28.306Z"
+      "sourceFingerprint": "0cc04bbd6d2ce3f333164bc74773e17bed02bc118e2f3118dfef1aab5b4584f3",
+      "updatedAt": "2026-11-22T01:43:47.496Z"
     },
     "cursor-monitor": {
       "binaryName": "cursor-monitor.exe",
-      "binarySha256": "6ae6d91103b6e891a851e8ea5791e1c1f9aaab700134c18bc4c46cfffd7fdd12",
+      "binarySha256": "dcc87decdd9b884f53e0984df5ec7e32b3b2e7516fe99023acf1e93c0893696c",
       "sourceDir": "electron/native/cursor-monitor",
-      "sourceFingerprint": "6ad1b8b50bb336f2a48937b06f5ec56d90b6ab4a3e56a4bca278cf67a5d3e52e",
-      "updatedAt": "2026-05-07T15:22:18.173Z"
+      "sourceFingerprint": "5581d735caab2b099828f99798ee41a484b4379b6a9244f62bb1b55844b9507c",
+      "updatedAt": "2026-11-22T01:53:45.543Z"
     },
     "recordly-gpu-export": {
       "binaryName": "recordly-gpu-export.exe",
-      "binarySha256": "4cb3a293fd36f718af55906820d9b3fd78babc855888c2e248f0b918ec1aff3c",
+      "binarySha256": "39d75f7b9d5f6b58006087f181eeb13d705eb426a80f4afc40a28f308dbaefa8",
       "sourceDir": "electron/native/gpu-export-probe",
-      "sourceFingerprint": "743b386a5f1bbcc99cec5465c3de228d2b045061dead31dfcbf25cf6a1e61de5",
-      "updatedAt": "2026-05-07T20:13:48.585Z"
+      "sourceFingerprint": "3a3aade0267baa136c0bc1e2386942842910d920039a62a1e56ac7f0dec0ccbb",
+      "updatedAt": "2026-11-22T01:48:36.414Z"
     },
     "recordly-nvidia-cuda-compositor": {
       "binaryName": "recordly-nvidia-cuda-compositor.exe",
-      "binarySha256": "a787531c07142de7c292d1726e0339c97dbce5073d9a0853d539a725265fd945",
+      "binarySha256": "606127b134c56413b24fbfe1e19881542c4d18b0e3e371a502b24639ef59c2f4",
       "sourceDir": "electron/native/nvidia-cuda-compositor",
-      "sourceFingerprint": "528b599e9d576d81ec087d0d4dc93a79af1bbf30fdb969f44f773bef90146135",
-      "updatedAt": "2026-05-07T20:14:13.794Z"
+      "sourceFingerprint": "a4f0024b4f3e3ada20047d4f431ccbb0b7c3069cb8f470be4d6f9df605b47071",
+      "updatedAt": "2026-11-22T02:13:52.175Z"
     }
   }
 }

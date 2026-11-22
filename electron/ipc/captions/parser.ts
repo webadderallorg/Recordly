@@ -23,6 +23,29 @@ export function parseWhisperJsonWords(tokens: unknown): CaptionWordPayload[] {
 
 	const words: CaptionWordPayload[] = [];
 	let nextLeadingSpace = false;
+	let textOffset = 0;
+	const tokenText = (token: unknown): string => {
+		if (!token || typeof token !== "object") return "";
+		const text = (token as WhisperJsonToken).text;
+		return typeof text === "string" && !/^\[_[^\]]+\]$/.test(text) ? text : "";
+	};
+	const transcript = tokens.map(tokenText).join("");
+	// Spaces do not delimit words in these scripts. Split only where a linguistic
+	// boundary also coincides with an actual timestamped token boundary; never
+	// invent timing for several words emitted inside the same model token.
+	const unspaced =
+		/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u.test(
+			transcript,
+		);
+	const wordBoundaries = unspaced
+		? new Set(
+				Array.from(
+					new Intl.Segmenter(undefined, { granularity: "word" }).segment(transcript),
+				)
+					.filter((segment) => segment.isWordLike)
+					.map((segment) => segment.index),
+			)
+		: new Set<number>();
 
 	for (const token of tokens) {
 		if (!token || typeof token !== "object") {
@@ -31,7 +54,7 @@ export function parseWhisperJsonWords(tokens: unknown): CaptionWordPayload[] {
 
 		const tokenData = token as WhisperJsonToken;
 		const tokenText = typeof tokenData.text === "string" ? tokenData.text : "";
-		if (!tokenText) {
+		if (!tokenText || /^\[_[^\]]+\]$/.test(tokenText)) {
 			continue;
 		}
 
@@ -44,17 +67,21 @@ export function parseWhisperJsonWords(tokens: unknown): CaptionWordPayload[] {
 		const parts = tokenText.match(/\s+|[^\s]+/g) ?? [];
 
 		for (const part of parts) {
+			const partOffset = textOffset;
+			textOffset += part.length;
 			if (/^\s+$/.test(part)) {
 				nextLeadingSpace = words.length > 0;
 				continue;
 			}
 
-			if (tokenStartMs == null || tokenEndMs == null || tokenEndMs <= tokenStartMs) {
-				return [];
-			}
-
 			const previousWord = words.length > 0 ? words[words.length - 1] : null;
-			if (!previousWord || nextLeadingSpace) {
+			if (previousWord && !nextLeadingSpace && /^\p{P}+$/u.test(part)) {
+				previousWord.text += part;
+				continue;
+			}
+			if (tokenStartMs == null || tokenEndMs == null || tokenEndMs <= tokenStartMs) return [];
+
+			if (!previousWord || nextLeadingSpace || wordBoundaries.has(partOffset)) {
 				words.push({
 					text: part,
 					startMs: tokenStartMs,
@@ -179,5 +206,7 @@ export function parseSrtCues(content: string): CaptionCuePayload[] {
 
 export function shouldRetryWhisperWithoutJson(error: unknown): boolean {
 	const message = error instanceof Error ? error.message : String(error);
-	return /unknown argument|output-json-full|output-json|ojf|\boj\b/i.test(message);
+	return /(?:unknown|unrecognized|unsupported) (?:argument|option)[:\s=]+['"]?--?(?:ojf|output-json-full)\b/i.test(
+		message,
+	);
 }

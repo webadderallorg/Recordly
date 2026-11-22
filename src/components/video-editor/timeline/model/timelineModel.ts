@@ -1,11 +1,13 @@
+import { formatClipSpeedLabel } from "../../clipSpeedChange";
 import type {
 	AnnotationRegion,
 	AudioRegion,
+	CaptionCue,
 	ClipRegion,
 	ZoomRegion,
 } from "../../types";
-import type { TimelineRegionSpan, TimelineRenderItem } from "../core/timelineTypes";
-import { CLIP_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
+import { getClipSourceEndMs, getClipSourceStartMs } from "../../types";
+import { CAPTION_ROW_ID, CLIP_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
 import {
 	getAnnotationTrackIndex,
 	getAnnotationTrackRowId,
@@ -14,6 +16,7 @@ import {
 	isAnnotationTrackRowId,
 	isAudioTrackRowId,
 } from "../core/rows";
+import type { TimelineRegionSpan, TimelineRenderItem } from "../core/timelineTypes";
 
 export function getAnnotationLabel(region: AnnotationRegion): string {
 	if (region.type === "text") {
@@ -23,11 +26,22 @@ export function getAnnotationLabel(region: AnnotationRegion): string {
 	if (region.type === "image") {
 		return "Image";
 	}
+	if (region.type === "blur") return "Mask";
 	return "Annotation";
 }
 
 export function getAudioLabel(region: AudioRegion): string {
-	return region.audioPath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "Audio";
+	return (
+		region.audioPath
+			.split(/[\\/]/)
+			.pop()
+			?.replace(/\.[^.]+$/, "") || "Audio"
+	);
+}
+
+function getCaptionLabel(cue: CaptionCue): string {
+	// Keep the full cue so CSS ellipsis follows the block's available width.
+	return cue.text.trim() || "Caption";
 }
 
 export function buildTimelineItems(params: {
@@ -35,8 +49,9 @@ export function buildTimelineItems(params: {
 	clipRegions: ClipRegion[];
 	annotationRegions: AnnotationRegion[];
 	audioRegions: AudioRegion[];
+	captionCues?: CaptionCue[];
 }): TimelineRenderItem[] {
-	const { zoomRegions, clipRegions, annotationRegions, audioRegions } = params;
+	const { zoomRegions, clipRegions, annotationRegions, audioRegions, captionCues = [] } = params;
 	const zooms: TimelineRenderItem[] = zoomRegions.map((region, index) => ({
 		id: region.id,
 		rowId: ZOOM_ROW_ID,
@@ -48,16 +63,17 @@ export function buildTimelineItems(params: {
 	}));
 
 	const clips: TimelineRenderItem[] = clipRegions.map((region, index) => {
-		const displayDurationMs = Math.max(0, region.endMs - region.startMs);
 		const speed = Number.isFinite(region.speed) && region.speed > 0 ? region.speed : 1;
-		const sourceEndMs = region.startMs + displayDurationMs * speed;
+		const sourceEndMs = getClipSourceEndMs(region);
+		const speedLabel = formatClipSpeedLabel(speed);
 
 		return {
 			id: region.id,
 			rowId: CLIP_ROW_ID,
 			span: { start: region.startMs, end: region.endMs },
-			sourceSpan: { start: region.startMs, end: sourceEndMs },
-			label: `Clip ${index + 1}`,
+			sourceSpan: { start: getClipSourceStartMs(region), end: sourceEndMs },
+			label: speedLabel ? `Clip ${index + 1} ${speedLabel}` : `Clip ${index + 1}`,
+			speedValue: speedLabel ? speed : undefined,
 			showSourceAudio: region.showSourceAudio,
 			muted: Boolean(region.muted),
 			variant: "clip",
@@ -83,10 +99,20 @@ export function buildTimelineItems(params: {
 		variant: "audio",
 	}));
 
-	return [...zooms, ...clips, ...annotations, ...audios];
+	const captions: TimelineRenderItem[] = captionCues.map((cue) => ({
+		id: cue.id,
+		rowId: CAPTION_ROW_ID,
+		span: { start: cue.startMs, end: cue.endMs },
+		label: getCaptionLabel(cue),
+		variant: "caption",
+	}));
+
+	return [...zooms, ...clips, ...annotations, ...audios, ...captions];
 }
 
 export function buildAllRegionSpans(params: {
+	annotationRegions?: AnnotationRegion[];
+	captionCues?: CaptionCue[];
 	zoomRegions: ZoomRegion[];
 	clipRegions: ClipRegion[];
 	audioRegions: AudioRegion[];
@@ -110,7 +136,23 @@ export function buildAllRegionSpans(params: {
 		end: r.endMs,
 		rowId: getAudioTrackRowId(r.trackIndex ?? 0),
 	}));
-	return [...zooms, ...clips, ...audios];
+	return [
+		...zooms,
+		...clips,
+		...audios,
+		...(params.annotationRegions ?? []).map((r) => ({
+			id: r.id,
+			start: r.startMs,
+			end: r.endMs,
+			rowId: getAnnotationTrackRowId(r.trackIndex ?? 0),
+		})),
+		...(params.captionCues ?? []).map((r) => ({
+			id: r.id,
+			start: r.startMs,
+			end: r.endMs,
+			rowId: CAPTION_ROW_ID,
+		})),
+	];
 }
 
 export function resolveDropRowId(

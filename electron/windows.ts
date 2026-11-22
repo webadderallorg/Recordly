@@ -1,10 +1,40 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, type WebContents } from "electron";
+import {
+	getHudCaptureExcludedProcessIds,
+	shouldProtectHudCapture,
+	supportsHudCaptureProtection,
+} from "../src/lib/hudCaptureProtection";
 import { USER_DATA_PATH } from "./appPaths";
+import { registerDesktopPresenceWindow } from "./desktopPresence";
+import { resolveEditorStartupView } from "./editorStartupView";
+import { isHudInEditorMode } from "./hudEditorMode";
+import {
+	getHudOverlayWindowBounds,
+	getX11HudRecordingShape,
+	type HudOverlayRegion,
+	type HudOverlayWorkArea,
+	resizeHudOverlayFallbackBounds,
+	shouldExpandHudOverlayFallback,
+} from "./hudOverlayBounds";
+import { getHudOverlayTaskbarOptions, supportsX11HudWindowDrag } from "./hudOverlayWindowOptions";
+import { startHudPointerRecovery } from "./hudPointerRecovery";
+import { sendNativeHudCaptureExclusions } from "./ipc/recording/nativeCaptureCommand";
+import {
+	currentProjectPath,
+	currentRecordingSession,
+	currentVideoPath,
+	nativeCaptureProcess,
+} from "./ipc/state";
+import type { CaptureArea } from "./ipc/types";
+import { nativeT } from "./nativeI18n";
+import { startOnboardingIntro } from "./onboardingIntro";
+import { permissionAccessoryWindowOwners } from "./permissionAccessoryWindowOwner";
+import { recordingEditorLoading } from "./recordingEditorLoading";
+import { outsideRecordingRects } from "./recordingFocus";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 
 const electronWindowsDir = path.dirname(fileURLToPath(import.meta.url));
@@ -13,24 +43,71 @@ const nodeRequire = createRequire(import.meta.url);
 const APP_ROOT = path.join(electronWindowsDir, "..");
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 const RENDERER_DIST = path.join(APP_ROOT, "dist");
-const WINDOW_ICON_FILENAME = process.platform === "darwin" ? "recordlymac-512.png" : "recordly-512.png";
+const WINDOW_ICON_FILENAME =
+	process.platform === "darwin" ? "recordlymac-512.png" : "recordly-512.png";
+// Resolved here rather than from VITE_PUBLIC: main.ts sets that only after this
+// module loads, so dev would otherwise read stale icons from an old dist build.
 const WINDOW_ICON_PATH = path.join(
-	process.env.VITE_PUBLIC || RENDERER_DIST,
+	VITE_DEV_SERVER_URL ? path.join(APP_ROOT, "public") : RENDERER_DIST,
 	"app-icons",
 	WINDOW_ICON_FILENAME,
 );
 
 let hudOverlayWindow: BrowserWindow | null = null;
+let x11HudDraggedBounds: HudOverlayWorkArea | undefined;
+let x11HudRecordingShapeKey = "";
+let hiddenLinuxHud: { window: BrowserWindow; restoreOnActivation: boolean } | null = null;
 let hudOverlayHiddenFromCapture = true;
 let hudOverlayCaptureProtectionLoaded = false;
+let hudOverlayFallbackExpanded = false;
+let hudOverlayIgnoringMouse = true;
+let hudOverlaySourceSelectionActive = false;
+let hudOverlayMouseReassertTimer: NodeJS.Timeout | null = null;
+let hudOverlayRecordingActive = false;
+let hudCaptureStarting = false;
+let hudOverlayWebcamPreviewVisible = false;
+let hudOverlayInteractiveBounds: Array<{
+	left: number;
+	top: number;
+	right: number;
+	bottom: number;
+	shape?: "ellipse";
+}> | null = null;
 let countdownWindow: BrowserWindow | null = null;
+let capturePickerWindows: BrowserWindow[] = [];
+let areaRecordingBorderWindow: BrowserWindow | null = null;
+let recordingFocusWindows: {
+	window: BrowserWindow;
+	bounds: CaptureArea;
+	shapeKey: string | undefined;
+}[] = [];
 let updateToastWindow: BrowserWindow | null = null;
+let onboardingWindow: BrowserWindow | null = null;
+let startupOnboarding: { window: BrowserWindow; waiting: boolean } | undefined;
+let onboardingIntroWindow: BrowserWindow | null = null;
+let onboardingIntroReplayWindow: BrowserWindow | null = null;
+let hudWasVisibleBeforeUpdateToast = false;
 
 const HUD_OVERLAY_SETTINGS_FILE = path.join(USER_DATA_PATH, "hud-overlay-settings.json");
 const HUD_EDGE_MARGIN_DIP = 16;
-const UPDATE_TOAST_WIDTH = 456;
-const UPDATE_TOAST_HEIGHT = 252;
-const UPDATE_TOAST_GAP_DIP = 18;
+const UPDATE_TOAST_WIDTH = 420;
+const UPDATE_TOAST_HEIGHT = 236;
+/** Shows a capture picker that never reported ready. */
+const CAPTURE_PICKER_READY_TIMEOUT_MS = 1500;
+
+// Synchronous and metadata-only so the HTML boot shell matches its destination,
+// including reloads of a Home window after a fresh recording finishes.
+ipcMain.on("get-editor-startup-view", (event) => {
+	event.returnValue = recordingEditorLoading.active
+		? "editor"
+		: resolveEditorStartupView({
+				projectPath: currentProjectPath,
+				videoPath: currentVideoPath,
+				recordingVideoPath: currentRecordingSession?.videoPath,
+				devInput: process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT,
+				smokeExport: process.env.RECORDLY_SMOKE_EXPORT === "1",
+			});
+});
 
 function getEditorWindowQuery(): Record<string, string> {
 	const query: Record<string, string> = {
@@ -102,30 +179,8 @@ function getEditorWindowQuery(): Record<string, string> {
 	return query;
 }
 
-function isHudOverlayCaptureProtectionSupported(): boolean {
-	return process.platform !== "linux";
-}
-
-function getWindowsBuildNumber(): number | null {
-	if (process.platform !== "win32") {
-		return null;
-	}
-
-	const build = Number.parseInt(os.release().split(".")[2] ?? "", 10);
-	return Number.isFinite(build) ? build : null;
-}
-
 export function isHudOverlayMousePassthroughSupported(): boolean {
-	if (process.platform === "linux") {
-		return false;
-	}
-
-	const build = getWindowsBuildNumber();
-	if (build !== null && build < 22000) {
-		return false;
-	}
-
-	return true;
+	return process.platform !== "linux";
 }
 
 function loadHudOverlayCaptureProtectionSetting(): boolean {
@@ -150,6 +205,46 @@ function loadHudOverlayCaptureProtectionSetting(): boolean {
 	}
 
 	return hudOverlayHiddenFromCapture;
+}
+
+export function getHudOverlayCaptureProtectionEnabled(): boolean {
+	return loadHudOverlayCaptureProtectionSetting();
+}
+
+function applyHudOverlayCaptureProtectionToWindow(hud: BrowserWindow, enabled: boolean): void {
+	if (!supportsHudCaptureProtection(process.platform)) {
+		return;
+	}
+
+	try {
+		// Keep the idle HUD visible to screenshots and other capture applications.
+		hud.setContentProtection(
+			shouldProtectHudCapture(enabled, hudOverlayRecordingActive, hudCaptureStarting),
+		);
+	} catch (error) {
+		console.warn("Failed to apply HUD capture protection:", error);
+	}
+}
+
+export function beginHudCaptureProtection(): void {
+	hudCaptureStarting = true;
+	reassertHudOverlayCaptureProtection();
+}
+ipcMain.handle("finish-recording-startup", () => {
+	hudCaptureStarting = false;
+	reassertHudOverlayCaptureProtection();
+});
+
+export function reassertHudOverlayCaptureProtection(): boolean {
+	const enabled = loadHudOverlayCaptureProtectionSetting();
+	const hud = getHudOverlayWindow();
+	if (!hud) {
+		return enabled;
+	}
+
+	applyHudOverlayCaptureProtectionToWindow(hud, enabled);
+
+	return enabled;
 }
 
 function persistHudOverlayCaptureProtectionSetting(enabled: boolean): void {
@@ -183,12 +278,17 @@ function getHudOverlayDisplay() {
 
 function getHudOverlayBounds() {
 	const { workArea } = getHudOverlayDisplay();
-	return {
-		x: workArea.x,
-		y: workArea.y,
-		width: workArea.width,
-		height: workArea.height,
-	};
+	const fallbackExpanded = shouldExpandHudOverlayFallback({
+		fallbackExpanded: hudOverlayFallbackExpanded,
+		recordingActive: hudOverlayRecordingActive,
+		webcamPreviewVisible: hudOverlayWebcamPreviewVisible,
+	});
+	return getHudOverlayWindowBounds(
+		workArea,
+		isHudOverlayMousePassthroughSupported(),
+		fallbackExpanded,
+		x11HudDraggedBounds,
+	);
 }
 
 function applyHudOverlayBounds() {
@@ -209,10 +309,10 @@ function getUpdateToastBounds() {
 	if (hudWindow) {
 		const hudBounds = hudWindow.getBounds();
 		const display = getScreen().getDisplayMatching(hudBounds);
-		const x = Math.round(hudBounds.x + (hudBounds.width - UPDATE_TOAST_WIDTH) / 2);
-		const y = Math.max(
-			display.workArea.y + HUD_EDGE_MARGIN_DIP,
-			hudBounds.y - UPDATE_TOAST_HEIGHT - UPDATE_TOAST_GAP_DIP,
+		const { workArea } = display;
+		const x = Math.round(workArea.x + (workArea.width - UPDATE_TOAST_WIDTH) / 2);
+		const y = Math.round(
+			workArea.y + workArea.height - UPDATE_TOAST_HEIGHT - HUD_EDGE_MARGIN_DIP,
 		);
 
 		return {
@@ -227,7 +327,7 @@ function getUpdateToastBounds() {
 	const { workArea } = primaryDisplay;
 	return {
 		x: Math.round(workArea.x + (workArea.width - UPDATE_TOAST_WIDTH) / 2),
-		y: workArea.y + HUD_EDGE_MARGIN_DIP,
+		y: Math.round(workArea.y + workArea.height - UPDATE_TOAST_HEIGHT - HUD_EDGE_MARGIN_DIP),
 		width: UPDATE_TOAST_WIDTH,
 		height: UPDATE_TOAST_HEIGHT,
 	};
@@ -242,47 +342,139 @@ function positionUpdateToastWindow() {
 	updateToastWindow.moveTop();
 }
 
-ipcMain.on("hud-overlay-set-ignore-mouse", (_event, ignore: boolean) => {
-	if (hudOverlayWindow && !hudOverlayWindow.isDestroyed()) {
-		if (!isHudOverlayMousePassthroughSupported()) {
-			hudOverlayWindow.setIgnoreMouseEvents(false);
-			return;
-		}
-
-		if (ignore) {
-			hudOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
-			return;
-		}
-
-		hudOverlayWindow.setIgnoreMouseEvents(false);
+function setHudOverlayFallbackExpanded(expanded: boolean) {
+	if (hudOverlayRecordingActive) {
+		hudOverlayFallbackExpanded = false;
+		return;
 	}
+
+	hudOverlayFallbackExpanded = expanded;
+	if (
+		!hudOverlayWindow ||
+		hudOverlayWindow.isDestroyed() ||
+		isHudOverlayMousePassthroughSupported()
+	) {
+		return;
+	}
+
+	const { workArea } = getHudOverlayDisplay();
+	const nextBounds = resizeHudOverlayFallbackBounds(
+		workArea,
+		x11HudDraggedBounds ?? hudOverlayWindow.getBounds(),
+		expanded,
+	);
+	hudOverlayWindow.setBounds(nextBounds, false);
+	positionUpdateToastWindow();
+	if (hudOverlayWindow.isVisible()) {
+		hudOverlayWindow.moveTop();
+	}
+}
+
+function setHudOverlayMousePassthrough(ignore: boolean) {
+	// Retain the latest requested state while source selection temporarily forces passthrough.
+	hudOverlayIgnoringMouse = ignore;
+	const effectiveIgnore =
+		hudOverlaySourceSelectionActive && !hudOverlayRecordingActive ? true : ignore;
+
+	if (hudOverlayMouseReassertTimer) {
+		clearTimeout(hudOverlayMouseReassertTimer);
+		hudOverlayMouseReassertTimer = null;
+	}
+
+	if (!hudOverlayWindow || hudOverlayWindow.isDestroyed()) {
+		return;
+	}
+
+	if (hudOverlayRecordingActive) {
+		hudOverlayFallbackExpanded = false;
+		applyHudOverlayBounds();
+	}
+
+	if (!isHudOverlayMousePassthroughSupported()) {
+		if (process.platform !== "linux") {
+			setHudOverlayFallbackExpanded(!effectiveIgnore);
+		}
+		hudOverlayWindow.setIgnoreMouseEvents(false);
+		return;
+	}
+
+	if (effectiveIgnore) {
+		hudOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
+		return;
+	}
+
+	hudOverlayWindow.setIgnoreMouseEvents(false);
+}
+
+ipcMain.on("hud-overlay-set-ignore-mouse", (_event, ignore: boolean) => {
+	setHudOverlayMousePassthrough(Boolean(ignore));
+});
+
+function useX11HudWindowDrag() {
+	return supportsX11HudWindowDrag(
+		process.platform,
+		process.env,
+		app.commandLine.getSwitchValue("ozone-platform"),
+	);
+}
+
+function applyX11HudRecordingShape(win: BrowserWindow, regions?: HudOverlayRegion[]) {
+	const shape =
+		hudOverlayRecordingActive && Array.isArray(regions)
+			? getX11HudRecordingShape(regions, win.getContentBounds())
+			: [];
+	const key = shape.length ? JSON.stringify(shape) : "";
+	if (key === x11HudRecordingShapeKey) return;
+	win.setShape(shape);
+	x11HudRecordingShapeKey = key;
+}
+
+ipcMain.on("hud-overlay-set-popover-open", (event, open: boolean) => {
+	if (
+		!useX11HudWindowDrag() ||
+		hudOverlayRecordingActive ||
+		hudOverlaySourceSelectionActive ||
+		!hudOverlayWindow ||
+		hudOverlayWindow.isDestroyed() ||
+		event.sender !== hudOverlayWindow.webContents ||
+		typeof open !== "boolean" ||
+		open === hudOverlayFallbackExpanded
+	) {
+		return;
+	}
+	setHudOverlayFallbackExpanded(open);
+});
+
+ipcMain.on("hud-overlay-set-source-selection-active", (_event, active: boolean) => {
+	hudOverlaySourceSelectionActive = Boolean(active);
+	if (hudOverlaySourceSelectionActive) {
+		hudOverlayFallbackExpanded = false;
+		applyHudOverlayBounds();
+		setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
+		return;
+	}
+
+	setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 });
 
 // Keep compatibility with existing drag IPC/state.
 let hudUserPosition: { x: number; y: number } | null = null;
 let hudDragOffset: { x: number; y: number } | null = null;
 let hudDragLastCursor: { x: number; y: number } | null = null;
-let hudDragFixedSize: { width: number; height: number } | null = null;
+let hudDragStartBounds: HudOverlayWorkArea | null = null;
 
-ipcMain.on("hud-overlay-drag", (_event, phase: string, screenX: number, screenY: number) => {
-	if (!hudOverlayWindow || hudOverlayWindow.isDestroyed()) return;
-
-	// On Linux the compositor (especially Wayland) refuses programmatic window
-	// placement, so BrowserWindow.setBounds() with x/y is silently ignored and
-	// the HUD appears "stuck".  The renderer marks the drag handle as
-	// -webkit-app-region: drag on Linux, letting the OS move the window for us.
-	// The resulting position is captured by the win.on("moved", ...) listener
-	// below so `hudUserPosition` stays in sync.
-	if (process.platform === "linux") {
-		return;
-	}
+ipcMain.on("hud-overlay-drag", (event, phase: string, screenX: number, screenY: number) => {
+	const win = getHudOverlayWindow();
+	const x11 = useX11HudWindowDrag();
+	if (!win || event.sender !== win.webContents || (process.platform === "linux" && !x11)) return;
+	if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return;
 
 	if (phase === "start") {
-		const bounds = hudOverlayWindow.getBounds();
+		const bounds = win.getBounds();
 		hudDragOffset = { x: screenX - bounds.x, y: screenY - bounds.y };
 		hudDragLastCursor = { x: screenX, y: screenY };
-		hudDragFixedSize = { width: bounds.width, height: bounds.height };
-	} else if (phase === "move" && hudDragOffset) {
+		hudDragStartBounds = bounds;
+	} else if (phase === "move" && hudDragOffset && hudDragStartBounds) {
 		if (
 			hudDragLastCursor &&
 			hudDragLastCursor.x === screenX &&
@@ -294,31 +486,43 @@ ipcMain.on("hud-overlay-drag", (_event, phase: string, screenX: number, screenY:
 		hudDragLastCursor = { x: screenX, y: screenY };
 		const targetX = Math.round(screenX - hudDragOffset.x);
 		const targetY = Math.round(screenY - hudDragOffset.y);
-		const fixedWidth = hudDragFixedSize?.width ?? hudOverlayWindow.getBounds().width;
-		const fixedHeight = hudDragFixedSize?.height ?? hudOverlayWindow.getBounds().height;
-		hudOverlayWindow.setBounds(
+		win.setBounds(
 			{
 				x: targetX,
 				y: targetY,
-				width: fixedWidth,
-				height: fixedHeight,
+				width: hudDragStartBounds.width,
+				height: hudDragStartBounds.height,
 			},
 			false,
 		);
-	} else if (phase === "end") {
-		const finalBounds = hudOverlayWindow.getBounds();
+	} else if (phase === "end" && hudDragStartBounds) {
+		const finalBounds = win.getBounds();
 		hudUserPosition = { x: finalBounds.x, y: finalBounds.y };
+		if (
+			x11 &&
+			(finalBounds.x !== hudDragStartBounds.x || finalBounds.y !== hudDragStartBounds.y)
+		) {
+			x11HudDraggedBounds = finalBounds;
+			applyHudOverlayBounds();
+		}
 
 		hudDragOffset = null;
 		hudDragLastCursor = null;
-		hudDragFixedSize = null;
+		hudDragStartBounds = null;
 	}
 });
 
 ipcMain.on("hud-overlay-hide", () => {
-	if (hudOverlayWindow && !hudOverlayWindow.isDestroyed()) {
-		hudOverlayWindow.minimize();
+	const window = getHudOverlayWindow();
+	if (!window) return;
+
+	if (process.platform === "linux") {
+		// Wayland compositors and X11's non-focusable HUD can stay mapped after minimize().
+		hiddenLinuxHud = { window, restoreOnActivation: true };
+		window.hide();
+		return;
 	}
+	window.minimize();
 });
 
 ipcMain.handle("get-hud-overlay-capture-protection", () => {
@@ -334,30 +538,129 @@ ipcMain.handle("get-hud-overlay-mouse-passthrough-supported", () => {
 	return {
 		success: true,
 		supported: isHudOverlayMousePassthroughSupported(),
+		dragX11Window: useX11HudWindowDrag(),
 	};
 });
 
+ipcMain.on("hud-overlay-set-webcam-preview-visible", (_event, visible: boolean) => {
+	const nextVisible = Boolean(visible);
+	if (hudOverlayWebcamPreviewVisible === nextVisible) {
+		return;
+	}
+
+	hudOverlayWebcamPreviewVisible = nextVisible;
+	if (hudOverlayRecordingActive) {
+		applyHudOverlayBounds();
+	}
+});
+
+ipcMain.on(
+	"hud-overlay-set-interactive-bounds",
+	(
+		event,
+		bounds:
+			| Array<{ left: number; top: number; right: number; bottom: number; shape?: "ellipse" }>
+			| null
+			| undefined,
+		recordingShape?: HudOverlayRegion[],
+	) => {
+		const win = getHudOverlayWindow();
+		const x11 = useX11HudWindowDrag();
+		if (x11 && win?.webContents === event.sender) {
+			applyX11HudRecordingShape(win, recordingShape);
+		}
+		if (
+			!Array.isArray(bounds) ||
+			bounds.some(
+				(rect) =>
+					!rect ||
+					typeof rect !== "object" ||
+					![rect.left, rect.top, rect.right, rect.bottom].every(Number.isFinite) ||
+					rect.right < rect.left ||
+					rect.bottom < rect.top,
+			)
+		) {
+			hudOverlayInteractiveBounds = null;
+			return;
+		}
+
+		hudOverlayInteractiveBounds = bounds;
+	},
+);
+
+export function getHudOverlayInteractiveBounds() {
+	return hudOverlayInteractiveBounds;
+}
+
+let hudCaptureProtectionUpdates = Promise.resolve();
 ipcMain.handle("set-hud-overlay-capture-protection", (_event, enabled: boolean) => {
+	// Settings can be open in more than one window. Match each helper acknowledgement
+	// to one change and persist preferences in the same order as capture updates.
+	const update = hudCaptureProtectionUpdates.then(() => setHudCaptureProtection(enabled));
+	hudCaptureProtectionUpdates = update.then(
+		() => undefined,
+		() => undefined,
+	);
+	return update;
+});
+
+async function setHudCaptureProtection(enabled: boolean) {
 	loadHudOverlayCaptureProtectionSetting();
+	// ScreenCaptureKit ignores window content protection. Update its live filter
+	// before saving the preference or reporting that the change succeeded.
+	if (process.platform === "darwin" && nativeCaptureProcess) {
+		try {
+			const excludedProcessIds = getHudCaptureExcludedProcessIds(
+				"darwin",
+				Boolean(enabled),
+				process.pid,
+			);
+			await sendNativeHudCaptureExclusions(nativeCaptureProcess, excludedProcessIds);
+		} catch (error) {
+			console.warn("Failed to update HUD capture filter:", error);
+			return { success: false, enabled: hudOverlayHiddenFromCapture };
+		}
+	}
 	hudOverlayHiddenFromCapture = Boolean(enabled);
 	persistHudOverlayCaptureProtectionSetting(hudOverlayHiddenFromCapture);
 
-	if (
-		isHudOverlayCaptureProtectionSupported() &&
-		hudOverlayWindow &&
-		!hudOverlayWindow.isDestroyed()
-	) {
-		hudOverlayWindow.setContentProtection(hudOverlayHiddenFromCapture);
-	}
+	reassertHudOverlayCaptureProtection();
 
 	return {
 		success: true,
 		enabled: hudOverlayHiddenFromCapture,
 	};
-});
+}
+
+const editorWindows = new Set<BrowserWindow>();
+let recordingPreparationActive = false;
+function getHudEditorMode() {
+	return isHudInEditorMode(
+		editorWindows.size,
+		recordingPreparationActive,
+		hudOverlayRecordingActive,
+	);
+}
+export function setHudRecordingPreparationActive(active: boolean) {
+	recordingPreparationActive = active;
+	notifyEditorMode();
+}
+function notifyEditorMode() {
+	if (hudOverlayWindow && !hudOverlayWindow.webContents.isDestroyed()) {
+		hudOverlayWindow.webContents.send("editor-mode-changed", getHudEditorMode());
+	}
+}
+ipcMain.handle("get-editor-mode", getHudEditorMode);
 
 export function createHudOverlayWindow(): BrowserWindow {
+	const perfStart = Date.now();
 	loadHudOverlayCaptureProtectionSetting();
+	hudOverlayFallbackExpanded = false;
+	hudOverlayWebcamPreviewVisible = false;
+	x11HudDraggedBounds = undefined;
+	hudDragOffset = null;
+	hudDragLastCursor = null;
+	hudDragStartBounds = null;
 	const initialBounds = getHudOverlayBounds();
 	let hasShownHudWindow = false;
 
@@ -371,42 +674,93 @@ export function createHudOverlayWindow(): BrowserWindow {
 		backgroundColor: "#00000000",
 		resizable: false,
 		alwaysOnTop: true,
-		skipTaskbar: true,
+		// The HUD is Recordly's persistent top-level window, so it owns the
+		// Windows taskbar entry while auxiliary overlays stay hidden there.
+		...getHudOverlayTaskbarOptions(process.platform),
 		hasShadow: false,
 		show: false,
-		focusable: false,
 		webPreferences: {
-			preload: path.join(electronWindowsDir, "preload.mjs"),
+			preload: path.join(electronWindowsDir, "preload.js"),
 			nodeIntegration: false,
 			contextIsolation: true,
-			webSecurity: false,
+			webSecurity: true,
 			backgroundThrottling: false,
 		},
 	});
+	// Keep the recording controls and webcam above normal and full-screen apps.
+	registerDesktopPresenceWindow(win, process.platform === "win32", true);
+	// Transparent regions remain click-through via setIgnoreMouseEvents().
+	win.setAlwaysOnTop(true, "screen-saver");
+	if (process.platform === "darwin") {
+		win.setVisibleOnAllWorkspaces(true, {
+			visibleOnFullScreen: true,
+			skipTransformProcessType: true,
+		});
+	}
 
 	const showHudWindow = () => {
 		if (hasShownHudWindow || win.isDestroyed()) {
 			return;
 		}
+		if (
+			updateToastWindow &&
+			!updateToastWindow.isDestroyed() &&
+			updateToastWindow.isVisible()
+		) {
+			hudWasVisibleBeforeUpdateToast = true;
+			return;
+		}
 		hasShownHudWindow = true;
-		win.show();
+		// Showing or changing native window state can recreate platform window
+		// flags. Reassert capture protection on both sides of the transition.
+		applyHudOverlayCaptureProtectionToWindow(win, hudOverlayHiddenFromCapture);
+		if (process.platform === "win32") {
+			// A focusable window is required for a Windows taskbar entry, but the
+			// always-on-top HUD must not steal focus when Recordly starts.
+			win.showInactive();
+		} else {
+			win.show();
+		}
 		win.moveTop();
+		applyHudOverlayCaptureProtectionToWindow(win, hudOverlayHiddenFromCapture);
 		if (process.platform === "win32" && isHudOverlayMousePassthroughSupported()) {
 			win.setIgnoreMouseEvents(false);
 			setTimeout(() => {
 				if (!win.isDestroyed()) {
-					win.setIgnoreMouseEvents(true, { forward: true });
+					setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 				}
 			}, 50);
 		}
 	};
 
-	if (isHudOverlayCaptureProtectionSupported()) {
-		win.setContentProtection(hudOverlayHiddenFromCapture);
-	}
+	applyHudOverlayCaptureProtectionToWindow(win, hudOverlayHiddenFromCapture);
+	win.on("show", () => {
+		if (!win.isDestroyed()) {
+			applyHudOverlayCaptureProtectionToWindow(win, hudOverlayHiddenFromCapture);
+			if (hiddenLinuxHud?.window === win) {
+				hiddenLinuxHud = null;
+				win.webContents.send("hud-overlay-restored");
+			}
+			if (process.platform === "win32" && recordingFocusWindows.length > 0)
+				raiseHudAboveRecordingFocus();
+		}
+	});
+	win.on("restore", () => {
+		if (!win.isDestroyed()) {
+			win.webContents.send("hud-overlay-restored");
+			if (process.platform === "win32" && recordingFocusWindows.length > 0)
+				raiseHudAboveRecordingFocus();
+		}
+	});
 
 	if (isHudOverlayMousePassthroughSupported()) {
-		win.setIgnoreMouseEvents(true, { forward: true });
+		if (hudOverlayRecordingActive) {
+			hudOverlayIgnoringMouse = false;
+			win.setIgnoreMouseEvents(false);
+		} else {
+			hudOverlayIgnoringMouse = true;
+			win.setIgnoreMouseEvents(true, { forward: true });
+		}
 	}
 
 	// On Windows 11+, focus changes (e.g. showing a native notification) can break
@@ -414,14 +768,13 @@ export function createHudOverlayWindow(): BrowserWindow {
 	// it permanently click-through without hover detection.  Re-initialise the
 	// pass-through-with-forwarding state whenever the window gains focus by toggling
 	// the flag off then back on so the native WS_EX_TRANSPARENT flag is fully reset.
-	// On Windows 10 (build < 22000) passthrough is disabled entirely, so skip this.
 	if (process.platform === "win32" && isHudOverlayMousePassthroughSupported()) {
 		win.on("focus", () => {
 			if (!win.isDestroyed()) {
 				win.setIgnoreMouseEvents(false);
 				setTimeout(() => {
 					if (!win.isDestroyed()) {
-						win.setIgnoreMouseEvents(true, { forward: true });
+						setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 					}
 				}, 50);
 			}
@@ -429,6 +782,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 	}
 
 	win.webContents.on("did-finish-load", () => {
+		console.log(`[PERF:MAIN] HUD Window: did-finish-load in ${Date.now() - perfStart}ms`);
 		win?.webContents.send("main-process-message", new Date().toLocaleString());
 		// Safety fallback if renderer-ready signal never arrives.
 		setTimeout(() => {
@@ -449,6 +803,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 
 	const handleHudRendererReady = () => {
 		if (!win.isDestroyed()) {
+			console.log(`[PERF:MAIN] HUD Window: renderer-ready in ${Date.now() - perfStart}ms`);
 			showHudWindow();
 		}
 	};
@@ -456,8 +811,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 
 	hudOverlayWindow = win;
 
-	// On Linux the HUD is dragged by the OS via -webkit-app-region (Wayland
-	// forbids client-side positioning). Mirror moved bounds into drag state.
+	// Keep the last HUD position in sync with Linux window moves.
 	if (process.platform === "linux") {
 		win.on("moved", () => {
 			if (win.isDestroyed()) return;
@@ -469,8 +823,27 @@ export function createHudOverlayWindow(): BrowserWindow {
 	// Reset the user's saved HUD position when displays change so the bar
 	// doesn't end up stranded off-screen after a monitor is disconnected.
 	const screen = getScreen();
+	const stopPointerRecovery =
+		process.platform === "win32"
+			? startHudPointerRecovery({
+					canRecover: () =>
+						!win.isDestroyed() && win.isVisible() && !hudOverlaySourceSelectionActive,
+					getCursor: () => screen.getCursorScreenPoint(),
+					getBounds: () => hudOverlayInteractiveBounds,
+					recover: () => {
+						// A sibling overlay or focus change can break forwarded mousemove.
+						// Reassert the native flag over controls even if our cached state says
+						// they are already interactive. The renderer still handles leaving,
+						// popover dismissal and drag capture as usual.
+						hudOverlayIgnoringMouse = false;
+						win.setIgnoreMouseEvents(false);
+					},
+				})
+			: () => undefined;
 	const handleDisplayRemoved = () => {
 		hudUserPosition = null;
+		x11HudDraggedBounds = undefined;
+		if (useX11HudWindowDrag()) applyHudOverlayBounds();
 	};
 	const handleDisplayMetricsChanged = () => {
 		if (hudUserPosition) {
@@ -492,20 +865,25 @@ export function createHudOverlayWindow(): BrowserWindow {
 	screen.on("display-metrics-changed", handleDisplayMetricsChanged);
 
 	win.on("closed", () => {
+		stopPointerRecovery();
 		ipcMain.removeListener("hud-overlay-renderer-ready", handleHudRendererReady);
 		screen.removeListener("display-removed", handleDisplayRemoved);
 		screen.removeListener("display-metrics-changed", handleDisplayMetricsChanged);
 		if (hudOverlayWindow === win) {
 			hudOverlayWindow = null;
+			x11HudRecordingShapeKey = "";
+			hiddenLinuxHud = null;
+			hudOverlayInteractiveBounds = null;
+			recordingPreparationActive = false;
+			hudCaptureStarting = false;
+			hudOverlayRecordingActive = false;
 		}
 	});
 
 	if (VITE_DEV_SERVER_URL) {
 		win.loadURL(VITE_DEV_SERVER_URL + "?windowType=hud-overlay");
 	} else {
-		win.loadFile(path.join(RENDERER_DIST, "index.html"), {
-			query: { windowType: "hud-overlay" },
-		});
+		loadPackagedRendererWindow(win, { windowType: "hud-overlay" });
 	}
 
 	return win;
@@ -513,6 +891,19 @@ export function createHudOverlayWindow(): BrowserWindow {
 
 export function getHudOverlayWindow(): BrowserWindow | null {
 	return hudOverlayWindow && !hudOverlayWindow.isDestroyed() ? hudOverlayWindow : null;
+}
+
+export function shouldRestoreHiddenHudOnActivation(): boolean {
+	return (
+		hiddenLinuxHud?.restoreOnActivation === true &&
+		hiddenLinuxHud.window === getHudOverlayWindow()
+	);
+}
+
+export function cancelHiddenHudRestoreOnActivation(): void {
+	if (hiddenLinuxHud) {
+		hiddenLinuxHud.restoreOnActivation = false;
+	}
 }
 
 /**
@@ -538,20 +929,36 @@ export function reassertHudOverlayMousePassthrough(): void {
 	// Toggle off then back on so the native WS_EX_TRANSPARENT flag is fully
 	// re-initialised rather than merely re-asserted in a potentially broken state.
 	hud.setIgnoreMouseEvents(false);
-	setTimeout(() => {
+	if (hudOverlayMouseReassertTimer) {
+		clearTimeout(hudOverlayMouseReassertTimer);
+	}
+	hudOverlayMouseReassertTimer = setTimeout(() => {
+		hudOverlayMouseReassertTimer = null;
 		if (!hud.isDestroyed()) {
-			hud.setIgnoreMouseEvents(true, { forward: true });
+			setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 		}
 	}, 50);
 }
 
+export function setHudOverlayRecordingActive(recording: boolean): void {
+	hudCaptureStarting = false;
+	hudOverlayRecordingActive = Boolean(recording);
+	if (!recording && x11HudRecordingShapeKey) {
+		const win = getHudOverlayWindow();
+		if (win) applyX11HudRecordingShape(win);
+	}
+	notifyEditorMode();
+	hudOverlayFallbackExpanded = false;
+	applyHudOverlayBounds();
+	reassertHudOverlayCaptureProtection();
+	// Keep whatever hover state the renderer last reported. Forcing passthrough
+	// here made the HUD click-through right after the user pressed record, so the
+	// stop button swallowed clicks until the pointer moved again.
+	setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
+}
+
 export function createUpdateToastWindow(): BrowserWindow {
 	const initialBounds = getUpdateToastBounds();
-	const parentWindow =
-		process.platform === "darwin" && hudOverlayWindow && !hudOverlayWindow.isDestroyed()
-			? hudOverlayWindow
-			: undefined;
-	const useTransparentToastWindow = process.platform !== "win32";
 
 	const win = new BrowserWindow({
 		width: initialBounds.width,
@@ -559,17 +966,16 @@ export function createUpdateToastWindow(): BrowserWindow {
 		x: initialBounds.x,
 		y: initialBounds.y,
 		frame: false,
-		transparent: useTransparentToastWindow,
+		transparent: true,
 		resizable: false,
 		alwaysOnTop: true,
 		skipTaskbar: true,
 		hasShadow: false,
 		show: false,
 		focusable: true,
-		...(parentWindow ? { parent: parentWindow } : {}),
-		backgroundColor: useTransparentToastWindow ? "#00000000" : "#101418",
+		backgroundColor: "#00000000",
 		webPreferences: {
-			preload: path.join(electronWindowsDir, "preload.mjs"),
+			preload: path.join(electronWindowsDir, "preload.js"),
 			nodeIntegration: false,
 			contextIsolation: true,
 			backgroundThrottling: false,
@@ -580,13 +986,19 @@ export function createUpdateToastWindow(): BrowserWindow {
 		win.setAlwaysOnTop(true, "status");
 	}
 
-	win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+	win.setVisibleOnAllWorkspaces(true, {
+		visibleOnFullScreen: true,
+		// Keep Recordly a foreground application so macOS does not temporarily
+		// remove its Dock icon while showing an overlay window.
+		skipTransformProcessType: process.platform === "darwin",
+	});
 	updateToastWindow = win;
 
 	win.on("closed", () => {
 		if (updateToastWindow === win) {
 			updateToastWindow = null;
 		}
+		restoreHudAfterUpdateToast();
 	});
 
 	if (VITE_DEV_SERVER_URL) {
@@ -606,31 +1018,54 @@ export function getUpdateToastWindow(): BrowserWindow | null {
 
 export function showUpdateToastWindow(): BrowserWindow {
 	const win = getUpdateToastWindow() ?? createUpdateToastWindow();
+	const hud = getHudOverlayWindow();
+	if (!win.isVisible()) {
+		hudWasVisibleBeforeUpdateToast = Boolean(hud?.isVisible());
+	}
+	if (hud?.isVisible()) {
+		hud.hide();
+	}
 	positionUpdateToastWindow();
 	if (!win.isVisible()) {
 		if (process.platform === "win32") {
 			win.show();
-			win.moveTop();
 		} else {
 			win.showInactive();
 		}
-	} else {
-		win.moveTop();
 	}
+	win.moveTop();
 
 	return win;
 }
 
-export function hideUpdateToastWindow(): void {
-	if (!updateToastWindow || updateToastWindow.isDestroyed()) {
+function restoreHudAfterUpdateToast(): void {
+	if (!hudWasVisibleBeforeUpdateToast) {
 		return;
 	}
 
-	updateToastWindow.hide();
+	hudWasVisibleBeforeUpdateToast = false;
+	const hud = getHudOverlayWindow();
+	if (!hud) {
+		return;
+	}
+
+	if (process.platform === "win32") {
+		hud.showInactive();
+	} else {
+		hud.show();
+	}
+	hud.moveTop();
+	setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 }
 
-function loadPackagedEditorWindow(win: BrowserWindow) {
-	const query = getEditorWindowQuery();
+export function hideUpdateToastWindow(): void {
+	if (updateToastWindow && !updateToastWindow.isDestroyed()) {
+		updateToastWindow.hide();
+	}
+	restoreHudAfterUpdateToast();
+}
+
+function loadPackagedRendererWindow(win: BrowserWindow, query: Record<string, string>) {
 	const queryString = new URLSearchParams(query).toString();
 	const indexHtmlPath = path.join(RENDERER_DIST, "index.html");
 	const packagedRendererBaseUrl = getPackagedRendererBaseUrl();
@@ -744,12 +1179,13 @@ export function createEditorWindow(): BrowserWindow {
 		}),
 		minWidth: 800,
 		minHeight: 600,
+		...(!isMac && { frame: false }),
 		...(process.platform !== "darwin" && {
 			icon: WINDOW_ICON_PATH,
 		}),
 		...(isMac && {
 			titleBarStyle: "hiddenInset",
-			trafficLightPosition: { x: 12, y: 12 },
+			trafficLightPosition: { x: 16, y: 20 },
 		}),
 		autoHideMenuBar: !isMac,
 		transparent: false,
@@ -760,13 +1196,37 @@ export function createEditorWindow(): BrowserWindow {
 		show: false,
 		backgroundColor: "#000000",
 		webPreferences: {
-			preload: path.join(electronWindowsDir, "preload.mjs"),
+			preload: path.join(electronWindowsDir, "preload.js"),
 			nodeIntegration: false,
 			contextIsolation: true,
-			webSecurity: false,
+			webSecurity: true,
 			backgroundThrottling: false,
 		},
 	});
+
+	recordingPreparationActive = false;
+	registerDesktopPresenceWindow(win);
+	editorWindows.add(win);
+	notifyEditorMode();
+	win.once("closed", () => {
+		editorWindows.delete(win);
+		notifyEditorMode();
+	});
+
+	const publishWindowChrome = () => {
+		if (!win.isDestroyed())
+			win.webContents.send("window-chrome-changed", {
+				trafficLightsVisible: isMac && !win.isFullScreen() && !win.isSimpleFullScreen(),
+				customControls: !isMac,
+				maximized: win.isMaximized(),
+			});
+	};
+	win.on("enter-full-screen", publishWindowChrome);
+	win.on("leave-full-screen", publishWindowChrome);
+	win.on("resize", publishWindowChrome);
+	win.on("maximize", publishWindowChrome);
+	win.on("unmaximize", publishWindowChrome);
+	win.webContents.on("did-finish-load", publishWindowChrome);
 
 	win.once("ready-to-show", () => {
 		console.log(`[PERF:MAIN] Editor Window: ready-to-show in ${Date.now() - perfStart}ms`);
@@ -803,14 +1263,245 @@ export function createEditorWindow(): BrowserWindow {
 		console.log("[editor-window] focus");
 	});
 
+	win.on("enter-full-screen", () => {
+		if (!win.isDestroyed()) win.webContents.send("window-fullscreen-changed", true);
+	});
+
+	win.on("leave-full-screen", () => {
+		if (!win.isDestroyed()) win.webContents.send("window-fullscreen-changed", false);
+	});
+
 	if (VITE_DEV_SERVER_URL) {
 		const query = new URLSearchParams(getEditorWindowQuery());
 		win.loadURL(`${VITE_DEV_SERVER_URL}?${query.toString()}`);
 	} else {
-		loadPackagedEditorWindow(win);
+		loadPackagedRendererWindow(win, getEditorWindowQuery());
 	}
 
 	return win;
+}
+
+function getOnboardingWindowBounds() {
+	const { x, y, width, height } = getScreen().getPrimaryDisplay().workArea;
+	const side = Math.min(width, Math.round(height * 0.85));
+	return {
+		x: Math.round(x + (width - side) / 2),
+		y: Math.round(y + (height - side) / 2),
+		width: side,
+		height: side,
+	};
+}
+
+function bringOnboardingWindowForward(win: BrowserWindow): void {
+	win.show();
+	if (process.platform === "darwin") app.focus({ steal: true });
+	win.moveTop();
+	win.focus();
+}
+
+export function focusOnboardingWindow(): void {
+	const win = getOnboardingWindow();
+	if (!win) return;
+	if (startupOnboarding?.window === win && startupOnboarding.waiting) return;
+	if (win.isMinimized()) win.restore();
+	if (onboardingIntroWindow && !onboardingIntroWindow.isDestroyed() && !win.isVisible()) return;
+	bringOnboardingWindowForward(win);
+}
+
+export function getStartupOnboardingWindow(): BrowserWindow | null {
+	return startupOnboarding?.window ?? null;
+}
+
+export function revealStartupOnboardingWindow(): void {
+	if (startupOnboarding?.waiting) {
+		startupOnboarding.waiting = false;
+		focusOnboardingWindow();
+	}
+}
+
+export function getOnboardingWindow(): BrowserWindow | null {
+	return onboardingWindow && !onboardingWindow.isDestroyed() ? onboardingWindow : null;
+}
+
+function shouldHideDuringOnboarding(win: BrowserWindow, other: BrowserWindow): boolean {
+	return (
+		other !== win &&
+		other !== onboardingIntroWindow &&
+		!other.isDestroyed() &&
+		permissionAccessoryWindowOwners.get(other) !== win
+	);
+}
+
+function hideOtherOnboardingWindows(win: BrowserWindow) {
+	for (const other of BrowserWindow.getAllWindows()) {
+		if (shouldHideDuringOnboarding(win, other)) other.hide();
+	}
+}
+
+/** Keep existing windows, delayed loads and tray restores behind onboarding. */
+function enforceOnboardingWindowExclusivity(win: BrowserWindow): void {
+	const listeners = new Map<BrowserWindow, () => void>();
+	const deferredWindows = new Set<BrowserWindow>();
+	const watch = (other: BrowserWindow) => {
+		if (other === win || other.isDestroyed() || listeners.has(other)) return;
+		const hide = () => {
+			if (!win.isDestroyed() && shouldHideDuringOnboarding(win, other)) {
+				if (other.isVisible()) deferredWindows.add(other);
+				other.hide();
+			}
+		};
+		listeners.set(other, hide);
+		other.on("show", hide);
+		other.on("restore", hide);
+		hide();
+	};
+	const onCreated = (_event: Electron.Event, other: BrowserWindow) => watch(other);
+	app.on("browser-window-created", onCreated);
+	for (const other of BrowserWindow.getAllWindows()) watch(other);
+	win.once("closed", () => {
+		app.removeListener("browser-window-created", onCreated);
+		for (const [other, hide] of listeners) {
+			other.removeListener("show", hide);
+			other.removeListener("restore", hide);
+		}
+		// Permissions completion prepares the HUD before closing onboarding. Show
+		// that destination only after onboarding is gone, preserving existing work.
+		for (const other of deferredWindows) {
+			if (!other.isDestroyed()) other.show();
+		}
+	});
+}
+
+export function replayOnboardingIntro(owner: BrowserWindow): boolean {
+	if (
+		app.isPackaged ||
+		!VITE_DEV_SERVER_URL ||
+		(process.platform !== "darwin" && process.platform !== "win32") ||
+		getOnboardingWindow()
+	) {
+		return false;
+	}
+	if (onboardingIntroReplayWindow && !onboardingIntroReplayWindow.isDestroyed()) return true;
+
+	const bounds = getScreen().getDisplayMatching(owner.getBounds()).bounds;
+	const replay = startOnboardingIntro(
+		bounds,
+		path.join(electronWindowsDir, "preload.js"),
+		(backdrop) => {
+			void backdrop
+				.loadURL(`${VITE_DEV_SERVER_URL}?windowType=onboarding-intro`)
+				.catch(() => {
+					if (!backdrop.isDestroyed()) backdrop.destroy();
+				});
+		},
+	);
+	onboardingIntroReplayWindow = replay;
+	const closeReplay = () => {
+		if (!replay.isDestroyed()) replay.destroy();
+	};
+	owner.once("closed", closeReplay);
+	replay.once("closed", () => {
+		owner.removeListener("closed", closeReplay);
+		if (onboardingIntroReplayWindow === replay) onboardingIntroReplayWindow = null;
+	});
+	return true;
+}
+
+export function showOnboardingWindow(options?: {
+	preview?: boolean;
+	intro?: boolean;
+	returning?: boolean;
+	permissionsOnly?: boolean;
+}): BrowserWindow {
+	const permissionsOnly = options?.permissionsOnly === true;
+	const query = {
+		windowType: "onboarding",
+		...(options?.returning ? { returning: "1" } : {}),
+		...(permissionsOnly ? { permissionsOnly: "1" } : {}),
+		...(!app.isPackaged && typeof options?.preview === "boolean"
+			? { onboardingPreview: options.preview ? "1" : "0" }
+			: {}),
+	};
+	const load = (win: BrowserWindow, query: Record<string, string>) => {
+		if (VITE_DEV_SERVER_URL) {
+			void win
+				.loadURL(`${VITE_DEV_SERVER_URL}?${new URLSearchParams(query)}`)
+				.catch((error) => console.error("[onboarding] Could not load window", error));
+		} else {
+			loadPackagedRendererWindow(win, query);
+		}
+	};
+	if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+		hideOtherOnboardingWindows(onboardingWindow);
+		if (!app.isPackaged && typeof options?.preview === "boolean") {
+			const intro = onboardingIntroWindow && !onboardingIntroWindow.isDestroyed();
+			load(onboardingWindow, intro ? { ...query, welcomeSoundtrack: "intro" } : query);
+		}
+		onboardingWindow.setBounds(getOnboardingWindowBounds());
+		focusOnboardingWindow();
+		return onboardingWindow;
+	}
+
+	const bounds = getOnboardingWindowBounds();
+	const minimumSide = Math.min(360, bounds.width);
+	const win = new BrowserWindow({
+		...bounds,
+		minWidth: minimumSide,
+		minHeight: minimumSide,
+		...(process.platform !== "darwin" && { icon: WINDOW_ICON_PATH }),
+		frame: false,
+		alwaysOnTop: false,
+		autoHideMenuBar: true,
+		resizable: true,
+		show: false,
+		backgroundColor: "#111214",
+		title: nativeT("welcome"),
+		webPreferences: {
+			preload: path.join(electronWindowsDir, "preload.js"),
+			nodeIntegration: false,
+			contextIsolation: true,
+			webSecurity: true,
+			backgroundThrottling: false,
+		},
+	});
+	registerDesktopPresenceWindow(win);
+	if (process.platform !== "darwin") win.setMenu(null);
+	onboardingWindow = win;
+	if (options?.returning) startupOnboarding = { window: win, waiting: true };
+	enforceOnboardingWindowExclusivity(win);
+	win.once("closed", () => {
+		if (onboardingWindow === win) onboardingWindow = null;
+		if (startupOnboarding?.window === win) startupOnboarding = undefined;
+	});
+	hideOtherOnboardingWindows(win);
+	const show = () => {
+		win.setBounds(bounds);
+		bringOnboardingWindowForward(win);
+	};
+	const playIntro =
+		!permissionsOnly &&
+		(process.platform === "darwin" || process.platform === "win32") &&
+		(options?.intro || (!app.isPackaged && options?.preview));
+	if (playIntro) {
+		const intro = startOnboardingIntro(
+			getScreen().getPrimaryDisplay().bounds,
+			path.join(electronWindowsDir, "preload.js"),
+			(backdrop) => load(backdrop, { windowType: "onboarding-intro" }),
+			{ popup: win, show },
+		);
+		onboardingIntroWindow = intro;
+		intro.once("closed", () => {
+			if (onboardingIntroWindow === intro) onboardingIntroWindow = null;
+		});
+	} else if (!options?.returning) {
+		win.once("ready-to-show", show);
+	}
+	load(win, playIntro ? { ...query, welcomeSoundtrack: "intro" } : query);
+	return win;
+}
+
+export function closeOnboardingWindow(): void {
+	if (onboardingWindow && !onboardingWindow.isDestroyed()) onboardingWindow.close();
 }
 
 export function createSourceSelectorWindow(): BrowserWindow {
@@ -833,7 +1524,7 @@ export function createSourceSelectorWindow(): BrowserWindow {
 		}),
 		backgroundColor: "#00000000",
 		webPreferences: {
-			preload: path.join(electronWindowsDir, "preload.mjs"),
+			preload: path.join(electronWindowsDir, "preload.js"),
 			nodeIntegration: false,
 			contextIsolation: true,
 		},
@@ -880,7 +1571,7 @@ export function createCountdownWindow(): BrowserWindow {
 		focusable: true,
 		show: false,
 		webPreferences: {
-			preload: path.join(electronWindowsDir, "preload.mjs"),
+			preload: path.join(electronWindowsDir, "preload.js"),
 			nodeIntegration: false,
 			contextIsolation: true,
 		},
@@ -888,7 +1579,12 @@ export function createCountdownWindow(): BrowserWindow {
 
 	countdownWindow = win;
 
-	win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+	win.setVisibleOnAllWorkspaces(true, {
+		visibleOnFullScreen: true,
+		// Keep Recordly a foreground application so macOS does not temporarily
+		// remove its Dock icon while showing the countdown.
+		skipTransformProcessType: process.platform === "darwin",
+	});
 
 	win.webContents.on("did-finish-load", () => {
 		if (!win.isDestroyed()) {
@@ -927,4 +1623,293 @@ export function closeCountdownWindow(): void {
 		countdownWindow.close();
 		countdownWindow = null;
 	}
+}
+
+/**
+ * Covers every display with a transparent overlay for picking what to record.
+ * Each overlay renders the `capture-picker` window and reports back over IPC.
+ */
+export function createCapturePickerWindows(onClosed: () => void): BrowserWindow[] {
+	closeCapturePickerWindows();
+	const cursorDisplayId = getScreen().getDisplayNearestPoint(
+		getScreen().getCursorScreenPoint(),
+	).id;
+	capturePickerWindows = getScreen()
+		.getAllDisplays()
+		.map((display) => {
+			const win = new BrowserWindow({
+				...display.bounds,
+				frame: false,
+				transparent: true,
+				resizable: false,
+				movable: false,
+				minimizable: false,
+				maximizable: false,
+				fullscreenable: false,
+				alwaysOnTop: true,
+				skipTaskbar: true,
+				hasShadow: false,
+				enableLargerThanScreen: true,
+				show: false,
+				backgroundColor: "#00000000",
+				...(process.platform === "darwin" ? { type: "panel" as const } : {}),
+				webPreferences: {
+					preload: path.join(electronWindowsDir, "preload.js"),
+					nodeIntegration: false,
+					contextIsolation: true,
+				},
+			});
+			// Above the menu bar and the HUD, on every Space and over full-screen apps.
+			win.setAlwaysOnTop(true, "screen-saver");
+			win.setVisibleOnAllWorkspaces(true, {
+				visibleOnFullScreen: true,
+				skipTransformProcessType: true,
+			});
+			win.setBounds(display.bounds);
+			// The page paints the app's opaque background before React makes it
+			// transparent, so the overlay stays hidden until the picker has painted.
+			let shown = false;
+			const show = () => {
+				if (shown || win.isDestroyed()) return;
+				shown = true;
+				win.show();
+				if (display.id === cursorDisplayId) {
+					app.focus({ steal: true });
+					win.focus();
+				}
+			};
+			win.webContents.ipc.once("capture-picker-ready", show);
+			win.webContents.once("did-finish-load", () => {
+				setTimeout(show, CAPTURE_PICKER_READY_TIMEOUT_MS);
+			});
+			win.on("closed", () => {
+				const wasOpen = capturePickerWindows.includes(win);
+				capturePickerWindows = capturePickerWindows.filter(
+					(candidate) => candidate !== win,
+				);
+				if (wasOpen) onClosed();
+			});
+
+			const query = { windowType: "capture-picker", displayId: String(display.id) };
+			if (VITE_DEV_SERVER_URL) {
+				win.loadURL(`${VITE_DEV_SERVER_URL}?${new URLSearchParams(query).toString()}`);
+			} else {
+				win.loadFile(path.join(RENDERER_DIST, "index.html"), { query });
+			}
+			return win;
+		});
+	return capturePickerWindows;
+}
+
+export function getCapturePickerWindows(): BrowserWindow[] {
+	return [...capturePickerWindows];
+}
+
+export function closeCapturePickerWindows(): void {
+	const windows = capturePickerWindows;
+	capturePickerWindows = [];
+	for (const win of windows) {
+		if (!win.isDestroyed()) win.close();
+	}
+}
+
+/** Whether a message came from one of the open picker overlays. */
+export function isCapturePickerWebContents(contents: WebContents): boolean {
+	return capturePickerWindows.some((win) => !win.isDestroyed() && win.webContents === contents);
+}
+
+/**
+ * Outlines the area being recorded. The outline sits just outside the recorded
+ * rectangle and belongs to Recordly, which recordings exclude, so it never shows
+ * up in the video.
+ */
+export function showAreaRecordingBorder(area: {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}): void {
+	hideAreaRecordingBorder();
+	const outset = 3;
+	const win = new BrowserWindow({
+		x: Math.round(area.x) - outset,
+		y: Math.round(area.y) - outset,
+		width: Math.round(area.width) + outset * 2,
+		height: Math.round(area.height) + outset * 2,
+		frame: false,
+		...(process.platform === "win32" ? { roundedCorners: false } : {}),
+		transparent: true,
+		resizable: false,
+		movable: false,
+		focusable: false,
+		skipTaskbar: true,
+		hasShadow: false,
+		enableLargerThanScreen: true,
+		show: false,
+		backgroundColor: "#00000000",
+		...(process.platform === "darwin" ? { type: "panel" as const } : {}),
+		webPreferences: { nodeIntegration: false, contextIsolation: true },
+	});
+	win.setIgnoreMouseEvents(true);
+	win.setAlwaysOnTop(true, "screen-saver");
+	win.setVisibleOnAllWorkspaces(true, {
+		visibleOnFullScreen: true,
+		skipTransformProcessType: true,
+	});
+	win.setContentProtection(true);
+	areaRecordingBorderWindow = win;
+	win.on("closed", () => {
+		if (areaRecordingBorderWindow === win) areaRecordingBorderWindow = null;
+	});
+
+	const outline =
+		process.platform === "win32"
+			? "border:2px dashed rgba(255,255,255,.95)"
+			: "border:2px dashed rgba(255,255,255,.95);box-shadow:0 0 0 1px rgba(0,0,0,.45),inset 0 0 0 1px rgba(0,0,0,.45)";
+	const html = `<!DOCTYPE html><html><head><style>
+html,body{margin:0;height:100%;background:transparent;overflow:hidden}
+div{position:fixed;inset:0;${outline}}
+</style></head><body><div></div></body></html>`;
+	void win
+		.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+		.then(() => {
+			if (!win.isDestroyed()) win.showInactive();
+		})
+		.catch(() => {
+			if (!win.isDestroyed()) win.close();
+		});
+}
+
+export function hideAreaRecordingBorder(): void {
+	const win = areaRecordingBorderWindow;
+	areaRecordingBorderWindow = null;
+	if (win && !win.isDestroyed()) win.close();
+}
+
+/** Click-through overlays dim the desktop outside the recording. */
+export function showRecordingFocus(target: CaptureArea): void {
+	const hud = getHudOverlayWindow();
+	// Windows and X11 stack the transparent HUD over the dimmer. Keep tint
+	// beneath its transparent corners and shadow instead of cutting out boxes.
+	const protectedAreas =
+		process.platform === "darwin" && hud?.isVisible() && !hud.isMinimized()
+			? (hudOverlayInteractiveBounds ?? []).map((rect) => ({
+					x: rect.left - 8,
+					y: rect.top - 8,
+					width: rect.right - rect.left + 16,
+					height: rect.bottom - rect.top + 16,
+				}))
+			: [];
+	const displays = getScreen()
+		.getAllDisplays()
+		.map((display) => display.bounds);
+	const overlays: { bounds: CaptureArea; shape?: CaptureArea[] }[] =
+		process.platform === "win32"
+			? displays.flatMap((bounds) => {
+					// Independent HWNDs round at fractional display scaling and overlap.
+					// Clip one dimmer to the union of the exterior regions on this display.
+					const shape = outsideRecordingRects([bounds], target).map((rect) => ({
+						...rect,
+						x: rect.x - bounds.x,
+						y: rect.y - bounds.y,
+					}));
+					return shape.length ? [{ bounds, shape }] : [];
+				})
+			: outsideRecordingRects(displays, target, protectedAreas).map((bounds) => ({ bounds }));
+	let restackHud = process.platform !== "win32";
+	for (let i = 0; i < overlays.length; i++) {
+		const { bounds, shape } = overlays[i];
+		const shapeKey = shape && JSON.stringify(shape);
+		const previous = recordingFocusWindows[i];
+		let win = previous?.window;
+		if (!win || win.isDestroyed()) {
+			win = new BrowserWindow({
+				...bounds,
+				frame: false,
+				roundedCorners: false,
+				transparent: true,
+				resizable: false,
+				movable: false,
+				focusable: false,
+				skipTaskbar: true,
+				hasShadow: false,
+				enableLargerThanScreen: true,
+				show: false,
+				backgroundColor: "#00000000",
+				...(process.platform === "darwin" ? { type: "panel" as const } : {}),
+				webPreferences: { nodeIntegration: false, contextIsolation: true },
+			});
+			win.setIgnoreMouseEvents(true);
+			win.setContentProtection(true);
+			win.setAlwaysOnTop(
+				true,
+				process.platform === "win32" ? "screen-saver" : "floating",
+				process.platform === "darwin" ? -1 : undefined,
+			);
+			if (shape) {
+				// Windows can constrain a newly created window to the work area.
+				win.setBounds(bounds);
+				win.setShape(shape);
+			}
+			win.setVisibleOnAllWorkspaces(true, {
+				visibleOnFullScreen: true,
+				skipTransformProcessType: true,
+			});
+			recordingFocusWindows[i] = { window: win, bounds, shapeKey };
+			const created = win;
+			void win
+				.loadURL(
+					`data:text/html;charset=utf-8,${encodeURIComponent('<!DOCTYPE html><html style="margin:0;height:100%;background:rgba(0,0,0,.38)"><body style="margin:0"></body></html>')}`,
+				)
+				.then(() => {
+					if (!created.isDestroyed() && recordingFocusWindows[i]?.window === created) {
+						created.showInactive();
+						created.setIgnoreMouseEvents(true);
+						raiseHudAboveRecordingFocus();
+					}
+				})
+				.catch(() => {
+					if (!created.isDestroyed()) created.close();
+				});
+		} else {
+			const old = previous.bounds;
+			const moved =
+				old.x !== bounds.x ||
+				old.y !== bounds.y ||
+				old.width !== bounds.width ||
+				old.height !== bounds.height;
+			const shapeChanged = previous.shapeKey !== shapeKey;
+			// The Windows bounds poll still follows a moving target. A stationary
+			// target needs no native window updates or HUD restacking.
+			if (shape && !moved && !shapeChanged && win.isVisible()) continue;
+			if (moved) {
+				win.setBounds(bounds);
+				previous.bounds = bounds;
+			}
+			if (shape && (moved || shapeChanged)) {
+				win.setShape(shape);
+				previous.shapeKey = shapeKey;
+			}
+			// Keep the dimmer above the selected window without stealing focus.
+			if (process.platform === "win32") win.setAlwaysOnTop(true, "screen-saver");
+			if (!win.isVisible() && !win.webContents.isLoadingMainFrame()) win.showInactive();
+			win.setIgnoreMouseEvents(true);
+			restackHud = true;
+		}
+	}
+	for (const { window } of recordingFocusWindows.splice(overlays.length))
+		if (!window.isDestroyed()) window.close();
+	if (restackHud) raiseHudAboveRecordingFocus();
+}
+
+function raiseHudAboveRecordingFocus() {
+	if (capturePickerWindows.some((win) => !win.isDestroyed())) return;
+	const hud = getHudOverlayWindow();
+	if (hud?.isVisible() && !hud.isMinimized()) hud.moveTop();
+}
+
+export function hideRecordingFocus(): void {
+	const windows = recordingFocusWindows;
+	recordingFocusWindows = [];
+	for (const { window } of windows) if (!window.isDestroyed()) window.close();
 }

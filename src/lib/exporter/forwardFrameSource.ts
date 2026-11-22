@@ -1,10 +1,8 @@
 import { WebDemuxer } from "web-demuxer";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
+import { createFallbackDemuxerSource, resolveMediaResourceUrl } from "./localMediaSource";
 import { getDecodedFrameTimelineOffsetUs } from "./streamingDecoder";
-import {
-	createReadableMediaResourceFile,
-	resolveMediaResourceUrl,
-} from "./localMediaSource";
+import { getVideoDecoderConfig } from "./videoDecoderConfig";
 
 const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
@@ -59,7 +57,7 @@ export class ForwardFrameSource {
 			mediaInfo = await loadMediaInfo(resourceUrl);
 		} catch (error) {
 			console.warn(
-				"[ForwardFrameSource] Direct source load failed, retrying with file fallback:",
+				"[ForwardFrameSource] Direct source load failed, retrying with a fresh media source:",
 				error,
 			);
 			const currentDemuxer = this.demuxer;
@@ -70,7 +68,7 @@ export class ForwardFrameSource {
 					// Ignore cleanup errors before fallback re-init.
 				}
 			}
-			mediaInfo = await loadMediaInfo(await createReadableMediaResourceFile(videoUrl));
+			mediaInfo = await loadMediaInfo(await createFallbackDemuxerSource(videoUrl));
 		}
 
 		const videoStream = mediaInfo.streams.find(
@@ -98,7 +96,12 @@ export class ForwardFrameSource {
 			codec: videoStream?.codec_string || "unknown",
 		};
 
-		await this.startDecoder();
+		try {
+			await this.startDecoder();
+		} catch (error) {
+			await this.destroy();
+			throw error;
+		}
 		return this.metadata;
 	}
 
@@ -107,7 +110,7 @@ export class ForwardFrameSource {
 			throw new Error("Must call initialize() before starting decoder");
 		}
 
-		const decoderConfig = await this.demuxer.getDecoderConfig("video");
+		const decoderConfig = await getVideoDecoderConfig(this.demuxer);
 		const codec = this.metadata.codec.toLowerCase();
 		const shouldPreferSoftwareDecode = codec.includes("av01") || codec.includes("av1");
 

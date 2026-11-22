@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 32 32" style="enable-background:new 0 0 32 32;" xml:space="preserve">
+<g transform="translate(0 32) scale(1 -1)">
+	<rect x="15" y="26" style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" width="10" height="2"/>
+	<rect x="15" y="12" style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" width="10" height="2"/>
+	<polygon style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" points="18,21 16,23 16,26 24,26 24,23 22,21 22,19 24,17
+			24,14 16,14 16,17 18,19 		"/>
+	<line style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" x1="17.5" y1="24" x2="18.5" y2="24"/>
+	<line style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" x1="18.5" y1="23" x2="19.5" y2="23"/>
+	<line style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" x1="19.5" y1="22" x2="20.5" y2="22"/>
+	<line style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" x1="19.5" y1="20" x2="20.5" y2="20"/>
+	<line style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" x1="19.5" y1="17" x2="20.5" y2="17"/>
+	<line style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" x1="18.5" y1="16" x2="19.5" y2="16"/>
+	<line style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" x1="20.5" y1="16" x2="21.5" y2="16"/>
+	<line style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" x1="21.5" y1="15" x2="22.5" y2="15"/>
+	<line style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" x1="17.5" y1="15" x2="18.5" y2="15"/>
+	<line style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" x1="19.5" y1="15" x2="20.5" y2="15"/>
+	<line style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" x1="19.5" y1="24" x2="20.5" y2="24"/>
+	<line style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" x1="21.5" y1="24" x2="22.5" y2="24"/>
+<polygon style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" points="12.73606,18.4659 7.80159,18.4659 9.82813,14.34343
+	6.88341,12.8503 4.62301,17.48387 1.26394,14.2081 1.26394,30 "/>
+</g>
+</svg>

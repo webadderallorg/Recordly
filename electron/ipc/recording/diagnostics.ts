@@ -6,6 +6,7 @@ import { getFfmpegBinaryPath, getFfprobeBinaryPath } from "../ffmpeg/binary";
 import { lastNativeCaptureDiagnostics, setLastNativeCaptureDiagnostics } from "../state";
 import type { CompanionAudioCandidate, NativeCaptureDiagnostics } from "../types";
 import { parseJsonWithByteOrderMark } from "../utils";
+import { isLibrarySequenceSource } from "./sequenceSource";
 
 const execFileAsync = promisify(execFile);
 export const MIN_VALID_RECORDED_VIDEO_BYTES = 1024;
@@ -201,9 +202,7 @@ export async function probeMediaDurationSeconds(filePath: string): Promise<numbe
 			return duration;
 		}
 	} finally {
-		console.log(
-			`[PERF:MAIN] probeMediaDurationSeconds: COMPLETED in ${Date.now() - start}ms`,
-		);
+		console.log(`[PERF:MAIN] probeMediaDurationSeconds: COMPLETED in ${Date.now() - start}ms`);
 	}
 	return 0;
 }
@@ -292,9 +291,7 @@ export async function probeVideoStreamDuration(
 	} catch {
 		return null;
 	} finally {
-		console.log(
-			`[PERF:MAIN] probeVideoStreamDuration: COMPLETED in ${Date.now() - start}ms`,
-		);
+		console.log(`[PERF:MAIN] probeVideoStreamDuration: COMPLETED in ${Date.now() - start}ms`);
 	}
 }
 
@@ -448,7 +445,9 @@ export async function getUsableCompanionAudioCandidates(
 		}
 	}
 
-	return candidates;
+	// Mixed native/browser layouts can share only one path with an earlier layout.
+	// Prefer a complete pair without discarding any usable fallback files.
+	return candidates.sort((left, right) => right.usablePaths.length - left.usablePaths.length);
 }
 
 async function readCompanionAudioTimingMetadata(
@@ -500,6 +499,16 @@ export async function getCompanionAudioFallbackPaths(videoPath: string) {
 	return paths;
 }
 
+/**
+ * Resolve which audio files the editor should play alongside `videoPath`, and
+ * the start delay recorded for each.
+ *
+ * The renderer treats a `.system.`/`.mic.` pair as independent tracks and mutes
+ * the video's own track when both are present.  The macOS helper writes system
+ * audio to the inline track but keeps both sources as sidecars, so once a mac
+ * system sidecar exists the sidecars are authoritative and are returned in place
+ * of the video.  Other layouts keep the embedded track and add the mic sidecar.
+ */
 export async function getCompanionAudioFallbackInfo(videoPath: string) {
 	const companionCandidates = await getUsableCompanionAudioCandidates(videoPath);
 	if (companionCandidates.length === 0) {
@@ -507,22 +516,61 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 	}
 
 	let paths: string[];
-	if (await hasEmbeddedAudioStream(videoPath)) {
-		const companionPaths = Array.from(
+	if (isLibrarySequenceSource(videoPath)) {
+		paths = Array.from(
+			new Set(companionCandidates.flatMap((candidate) => candidate.usablePaths)),
+		);
+	} else if (await hasEmbeddedAudioStream(videoPath)) {
+		const hasUsableMacSystemCompanion = companionCandidates.some(
+			(candidate) =>
+				candidate.platform === "mac" &&
+				candidate.usablePaths.includes(candidate.systemPath),
+		);
+		const usableMacMicOnlyCompanions = Array.from(
 			new Set(
 				companionCandidates.flatMap((candidate) =>
-					candidate.usablePaths.filter(
-						(companionPath) =>
-							companionPath === candidate.micPath || companionPath === candidate.systemPath,
-					),
+					candidate.platform === "mac" &&
+					!candidate.usablePaths.includes(candidate.systemPath) &&
+					candidate.usablePaths.includes(candidate.micPath)
+						? [candidate.micPath]
+						: [],
 				),
 			),
 		);
-		if (companionPaths.length === 0) {
-			return { paths: [], startDelayMsByPath: {} };
-		}
 
-		paths = [videoPath, ...companionPaths];
+		if (!hasUsableMacSystemCompanion && usableMacMicOnlyCompanions.length > 0) {
+			// Browser mic audio supplements the MP4; native mic-only audio duplicates it.
+			paths = usableMacMicOnlyCompanions.some((micPath) => micPath.endsWith(".mic.wav"))
+				? [videoPath, ...usableMacMicOnlyCompanions]
+				: usableMacMicOnlyCompanions;
+		} else if (hasUsableMacSystemCompanion) {
+			// The inline mp4 audio track carries system audio only (the helper skips
+			// the microphone while system audio is captured), so returning the video
+			// alone drops the mic entirely.  Hand over both mac sidecars instead and
+			// let the renderer route them as independent system/mic tracks.
+			paths = Array.from(
+				new Set(
+					companionCandidates.flatMap((candidate) =>
+						candidate.platform === "mac" ? candidate.usablePaths : [],
+					),
+				),
+			);
+		} else {
+			const companionPaths = Array.from(
+				new Set(
+					companionCandidates.flatMap((candidate) =>
+						candidate.usablePaths.filter(
+							(companionPath) => companionPath === candidate.micPath,
+						),
+					),
+				),
+			);
+			if (companionPaths.length === 0) {
+				return { paths: [], startDelayMsByPath: {} };
+			}
+
+			paths = [videoPath, ...companionPaths];
+		}
 	} else {
 		paths = Array.from(
 			new Set(companionCandidates.flatMap((candidate) => candidate.usablePaths)),
@@ -575,7 +623,18 @@ export async function validateRecordedVideo(videoPath: string) {
 		);
 		stderr = result.stderr;
 	} catch (error) {
-		const execError = error as NodeJS.ErrnoException & { stderr?: string };
+		const execError = error as NodeJS.ErrnoException & {
+			signal?: NodeJS.Signals | null;
+			stderr?: string;
+		};
+		if (execError.syscall?.startsWith("spawn")) {
+			throw new Error(`FFmpeg could not start (${execError.code ?? execError.message}).`);
+		}
+		if (execError.signal) {
+			throw new Error(
+				`FFmpeg was stopped by ${execError.signal} while checking the recording.`,
+			);
+		}
 		const output = execError.stderr?.trim();
 		throw new Error(output || `Recorded output could not be decoded: ${videoPath}`);
 	}

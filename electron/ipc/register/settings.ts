@@ -1,23 +1,24 @@
-import { readFileSync, writeFileSync } from "node:fs";
 import fs from "node:fs/promises";
-import { app, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
+import {
+	hasAppSetting,
+	readAppSettingsStoreWithStatus,
+	writeAppSettingsStore,
+} from "../../appSettingsStore";
+import { createCountdownController } from "../../countdownController";
 import { hideCursor } from "../../cursorHider";
-import { closeCountdownWindow, createCountdownWindow, getCountdownWindow } from "../../windows";
+import { applyWindowControl } from "../../windowControls";
+import { COUNTDOWN_SETTINGS_FILE, SHORTCUTS_FILE } from "../constants";
+import { recordingFocus } from "../recording/focus";
 import {
-	APP_SETTINGS_FILE,
-	COUNTDOWN_SETTINGS_FILE,
-	RECORDINGS_SETTINGS_FILE,
-	SHORTCUTS_FILE,
-} from "../constants";
+	type RecordingPreferencesPatch,
+	recordingPreferencesStore,
+} from "../settings/recordingPreferencesStore";
 import {
-	countdownCancelled,
 	countdownInProgress,
 	countdownRemaining,
-	countdownTimer,
-	setCountdownCancelled,
 	setCountdownInProgress,
 	setCountdownRemaining,
-	setCountdownTimer,
 } from "../state";
 import { parseJsonWithByteOrderMark } from "../utils";
 
@@ -42,32 +43,34 @@ function getBrowserMicrophoneProfileFromEnv() {
 	};
 }
 
-function readAppSettingsStore(): Record<string, unknown> {
-	try {
-		const content = readFileSync(APP_SETTINGS_FILE, "utf-8");
-		const parsed = parseJsonWithByteOrderMark<unknown>(content);
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-			return {};
-		}
-
-		return parsed as Record<string, unknown>;
-	} catch {
-		return {};
-	}
-}
-
-function writeAppSettingsStore(store: Record<string, unknown>) {
-	writeFileSync(APP_SETTINGS_FILE, JSON.stringify(store, null, 2), "utf-8");
-}
-
 export function registerSettingsHandlers() {
-  ipcMain.handle('app:getVersion', () => {
-    return app.getVersion()
-  })
+	ipcMain.handle(
+		"get-window-fullscreen",
+		(event) => BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false,
+	);
+	ipcMain.handle("app:getVersion", () => {
+		return app.getVersion();
+	});
 
-  ipcMain.handle('get-platform', () => {
-    return process.platform;
-  });
+	ipcMain.handle("get-window-chrome", (event) => {
+		const win = BrowserWindow.fromWebContents(event.sender);
+		return {
+			customControls: process.platform === "win32" || process.platform === "linux",
+			maximized: win?.isMaximized() ?? false,
+			trafficLightsVisible:
+				process.platform === "darwin" &&
+				!!win &&
+				!win.isFullScreen() &&
+				!win.isSimpleFullScreen(),
+		};
+	});
+	ipcMain.handle("window-control", (event, action: unknown) => ({
+		success: applyWindowControl(BrowserWindow.fromWebContents(event.sender), action),
+	}));
+
+	ipcMain.handle("get-platform", () => {
+		return process.platform;
+	});
 
 	ipcMain.on("app-settings:get", (event, key: unknown) => {
 		try {
@@ -76,10 +79,17 @@ export function registerSettingsHandlers() {
 				return;
 			}
 
-			const store = readAppSettingsStore();
+			const result = readAppSettingsStoreWithStatus();
+			if (!result.success) {
+				event.returnValue = { success: false, value: null };
+				return;
+			}
+			const store = result.store;
+			const found = hasAppSetting(store, key);
 			event.returnValue = {
 				success: true,
-				value: Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null,
+				found,
+				value: found ? store[key] : null,
 			};
 		} catch (error) {
 			console.error("Failed to read app setting:", error);
@@ -94,7 +104,12 @@ export function registerSettingsHandlers() {
 				return;
 			}
 
-			const store = readAppSettingsStore();
+			const result = readAppSettingsStoreWithStatus();
+			if (!result.success) {
+				event.returnValue = { success: false };
+				return;
+			}
+			const store = result.store;
 			store[key] = value;
 			writeAppSettingsStore(store);
 			event.returnValue = { success: true };
@@ -104,173 +119,145 @@ export function registerSettingsHandlers() {
 		}
 	});
 
-  // ---------------------------------------------------------------------------
-  // Cursor hiding for the browser-capture fallback.
-  // The IPC promise resolves only after the cursor hide attempt completes.
-  // ---------------------------------------------------------------------------
-  ipcMain.handle('hide-cursor', () => {
-    if (process.platform !== 'win32') {
-      return { success: true }
-    }
+	// ---------------------------------------------------------------------------
+	// Cursor hiding for the browser-capture fallback.
+	// The IPC promise resolves only after the cursor hide attempt completes.
+	// ---------------------------------------------------------------------------
+	ipcMain.handle("hide-cursor", () => {
+		if (process.platform !== "win32") {
+			return { success: true };
+		}
 
-    return { success: hideCursor() }
-  })
+		return { success: hideCursor() };
+	});
 
-  ipcMain.handle('get-shortcuts', async () => {
-    try {
-      const data = await fs.readFile(SHORTCUTS_FILE, 'utf-8');
-      return parseJsonWithByteOrderMark(data);
-    } catch {
-      return null;
-    }
-  });
+	ipcMain.handle("get-shortcuts", async () => {
+		try {
+			const data = await fs.readFile(SHORTCUTS_FILE, "utf-8");
+			return parseJsonWithByteOrderMark(data);
+		} catch {
+			return null;
+		}
+	});
 
-  ipcMain.handle('save-shortcuts', async (_, shortcuts: unknown) => {
-    try {
-      await fs.writeFile(SHORTCUTS_FILE, JSON.stringify(shortcuts, null, 2), 'utf-8');
-      return { success: true };
-    } catch (error) {
-      console.error('Failed to save shortcuts:', error);
-      return { success: false, error: String(error) };
-    }
-  });
+	ipcMain.handle("save-shortcuts", async (_, shortcuts: unknown) => {
+		try {
+			await fs.writeFile(SHORTCUTS_FILE, JSON.stringify(shortcuts, null, 2), "utf-8");
+			return { success: true };
+		} catch (error) {
+			console.error("Failed to save shortcuts:", error);
+			return { success: false, error: String(error) };
+		}
+	});
 
-  // ---------------------------------------------------------------------------
-  // Countdown timer before recording
-  // ---------------------------------------------------------------------------
-    ipcMain.handle('get-recording-preferences', async () => {
-      try {
-        const content = await fs.readFile(RECORDINGS_SETTINGS_FILE, 'utf-8')
-        const parsed = parseJsonWithByteOrderMark<Record<string, unknown>>(content)
-        return {
-          success: true,
-          microphoneEnabled: parsed.microphoneEnabled === true,
-          microphoneDeviceId: typeof parsed.microphoneDeviceId === 'string' ? parsed.microphoneDeviceId : undefined,
-          systemAudioEnabled: parsed.systemAudioEnabled === true,
-        }
-      } catch {
-        return { success: true, microphoneEnabled: false, microphoneDeviceId: undefined, systemAudioEnabled: false }
-      }
-    })
+	// ---------------------------------------------------------------------------
+	// Countdown timer before recording
+	// ---------------------------------------------------------------------------
+	ipcMain.handle("get-recording-preferences", async () => {
+		try {
+			const parsed = await recordingPreferencesStore.read();
+			return {
+				success: true,
+				microphoneEnabled: parsed.microphoneEnabled === true,
+				microphoneDeviceId:
+					typeof parsed.microphoneDeviceId === "string"
+						? parsed.microphoneDeviceId
+						: undefined,
+				systemAudioEnabled: parsed.systemAudioEnabled === true,
+				webcamEnabled: parsed.webcamEnabled === true,
+				webcamDeviceId:
+					typeof parsed.webcamDeviceId === "string" ? parsed.webcamDeviceId : undefined,
+				// Shown by default; only an explicit "hide" is remembered as hidden.
+				floatingWebcamPreviewVisible: parsed.floatingWebcamPreviewVisible !== false,
+			};
+		} catch {
+			return {
+				success: true,
+				microphoneEnabled: false,
+				microphoneDeviceId: undefined,
+				systemAudioEnabled: false,
+				webcamEnabled: false,
+				webcamDeviceId: undefined,
+				floatingWebcamPreviewVisible: true,
+			};
+		}
+	});
 
-    ipcMain.handle('get-recording-audio-lab-config', () => {
-      return getBrowserMicrophoneProfileFromEnv()
-    })
+	ipcMain.handle("get-recording-audio-lab-config", () => {
+		return getBrowserMicrophoneProfileFromEnv();
+	});
 
-    ipcMain.handle('set-recording-preferences', async (_, prefs: { microphoneEnabled?: boolean; microphoneDeviceId?: string; systemAudioEnabled?: boolean }) => {
-      try {
-        let existing: Record<string, unknown> = {}
-        try {
-          const content = await fs.readFile(RECORDINGS_SETTINGS_FILE, 'utf-8')
-          existing = parseJsonWithByteOrderMark<Record<string, unknown>>(content)
-        } catch {
-          // file doesn't exist yet
-        }
-        const merged = { ...existing, ...prefs }
-        await fs.writeFile(RECORDINGS_SETTINGS_FILE, JSON.stringify(merged, null, 2), 'utf-8')
-        return { success: true }
-      } catch (error) {
-        console.error('Failed to save recording preferences:', error)
-        return { success: false, error: String(error) }
-      }
-    })
+	ipcMain.handle("set-recording-preferences", async (_, prefs: RecordingPreferencesPatch) => {
+		try {
+			await recordingPreferencesStore.update(prefs);
+			return { success: true };
+		} catch (error) {
+			console.error("Failed to save recording preferences:", error);
+			return { success: false, error: String(error) };
+		}
+	});
 
-  ipcMain.handle('get-countdown-delay', async () => {
-    try {
-      const content = await fs.readFile(COUNTDOWN_SETTINGS_FILE, 'utf-8')
-      const parsed = parseJsonWithByteOrderMark<{ delay?: number }>(content)
-      return { success: true, delay: parsed.delay ?? 3 }
-    } catch {
-      return { success: true, delay: 3 }
-    }
-  })
+	ipcMain.handle("get-countdown-delay", async () => {
+		try {
+			const content = await fs.readFile(COUNTDOWN_SETTINGS_FILE, "utf-8");
+			const parsed = parseJsonWithByteOrderMark<{ delay?: number }>(content);
+			return { success: true, delay: parsed.delay ?? 3 };
+		} catch {
+			return { success: true, delay: 3 };
+		}
+	});
 
-  ipcMain.handle('set-countdown-delay', async (_, delay: number) => {
-    try {
-      await fs.writeFile(COUNTDOWN_SETTINGS_FILE, JSON.stringify({ delay }, null, 2), 'utf-8')
-      return { success: true }
-    } catch (error) {
-      console.error('Failed to save countdown delay:', error)
-      return { success: false, error: String(error) }
-    }
-  })
+	ipcMain.handle("set-countdown-delay", async (_, delay: number) => {
+		try {
+			await fs.writeFile(
+				COUNTDOWN_SETTINGS_FILE,
+				JSON.stringify({ delay }, null, 2),
+				"utf-8",
+			);
+			return { success: true };
+		} catch (error) {
+			console.error("Failed to save countdown delay:", error);
+			return { success: false, error: String(error) };
+		}
+	});
 
-  ipcMain.handle('start-countdown', async (_, seconds: number) => {
-    if (countdownInProgress) {
-      return { success: false, error: 'Countdown already in progress' }
-    }
+	const countdown = createCountdownController((remaining) => {
+		setCountdownRemaining(remaining);
+		setCountdownInProgress(remaining !== null);
+		for (const win of BrowserWindow.getAllWindows()) {
+			if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
+			try {
+				win.webContents.send("countdown-tick", remaining ?? 0);
+			} catch (error) {
+				console.warn("Could not deliver countdown tick:", error);
+			}
+		}
+	});
+	ipcMain.handle("start-countdown", async (event, seconds: number) => {
+		if (countdownInProgress) return countdown.start(seconds);
+		const owner = event.sender;
+		if (owner.isDestroyed()) return { success: false, cancelled: true };
+		const cancel = () => countdown.cancel();
+		owner.once("destroyed", cancel);
+		owner.once("render-process-gone", cancel);
+		try {
+			const result = await countdown.start(seconds);
+			if (!result.success) recordingFocus.stop();
+			return result;
+		} finally {
+			owner.removeListener("destroyed", cancel);
+			owner.removeListener("render-process-gone", cancel);
+		}
+	});
+	ipcMain.handle("cancel-countdown", () => {
+		recordingFocus.stop();
+		return countdown.cancel();
+	});
 
-    setCountdownInProgress(true)
-    setCountdownCancelled(false)
-    setCountdownRemaining(seconds)
-
-    const countdownWin = createCountdownWindow()
-
-    if (countdownWin.webContents.isLoadingMainFrame()) {
-      await new Promise<void>((resolve) => {
-        countdownWin.webContents.once('did-finish-load', () => {
-          resolve()
-        })
-      })
-    }
-
-    return new Promise<{ success: boolean; cancelled?: boolean }>((resolve) => {
-      let remaining = seconds
-      setCountdownRemaining(remaining)
-
-      countdownWin.webContents.send('countdown-tick', remaining)
-
-      setCountdownTimer(setInterval(() => {
-        if (countdownCancelled) {
-          if (countdownTimer) {
-            clearInterval(countdownTimer)
-            setCountdownTimer(null)
-          }
-          closeCountdownWindow()
-          setCountdownInProgress(false)
-          setCountdownRemaining(null)
-          resolve({ success: false, cancelled: true })
-          return
-        }
-
-        remaining--
-        setCountdownRemaining(remaining)
-
-        if (remaining <= 0) {
-          if (countdownTimer) {
-            clearInterval(countdownTimer)
-            setCountdownTimer(null)
-          }
-          closeCountdownWindow()
-          setCountdownInProgress(false)
-          setCountdownRemaining(null)
-          resolve({ success: true })
-        } else {
-          const win = getCountdownWindow()
-          if (win && !win.isDestroyed()) {
-            win.webContents.send('countdown-tick', remaining)
-          }
-        }
-      }, 1000))
-    })
-  })
-
-  ipcMain.handle('cancel-countdown', () => {
-    setCountdownCancelled(true)
-    setCountdownInProgress(false)
-    setCountdownRemaining(null)
-    if (countdownTimer) {
-      clearInterval(countdownTimer)
-      setCountdownTimer(null)
-    }
-    closeCountdownWindow()
-    return { success: true }
-  })
-
-  ipcMain.handle('get-active-countdown', () => {
-    return {
-      success: true,
-      seconds: countdownInProgress ? countdownRemaining : null,
-    }
-  })
+	ipcMain.handle("get-active-countdown", () => {
+		return {
+			success: true,
+			seconds: countdownInProgress ? countdownRemaining : null,
+		};
+	});
 }

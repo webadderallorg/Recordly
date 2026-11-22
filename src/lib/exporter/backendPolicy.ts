@@ -1,4 +1,4 @@
-import type { ExportRenderBackend } from "./types";
+import type { ExportBackendPreference, ExportRenderBackend } from "./types";
 
 export type LightningRuntimePlatform = "darwin" | "win32" | "linux" | "unknown";
 
@@ -26,6 +26,137 @@ export function normalizeLightningRuntimePlatform(
 
 export function shouldPreferNativeAutoBackend(_platform: LightningRuntimePlatform): boolean {
 	return _platform === "darwin" || _platform === "win32";
+}
+
+export function resolveLightningBackendPreference(
+	platform: LightningRuntimePlatform,
+	preference: ExportBackendPreference,
+): ExportBackendPreference {
+	// The static-layout route requires a Windows compositor or NVIDIA FFmpeg.
+	// On macOS the automatic route already selects Breeze streaming.
+	return platform === "darwin" && preference === "breeze" ? "auto" : preference;
+}
+
+export type LightningExportRoute = "native-static-layout" | "breeze-stream" | "webcodecs";
+
+export interface LightningExportRouteDecision {
+	route: LightningExportRoute;
+	status: "selected" | "fallback" | "rejected";
+	reasons: string[];
+}
+
+export interface LightningExportRoutePlan {
+	selectedRoute: LightningExportRoute;
+	decisions: LightningExportRouteDecision[];
+}
+
+// Disabled while stabilizing v1.3.0: the Windows auto static-layout probe can
+// leave Lightning at "Preparing export..." before the stable streaming fallback.
+const WINDOWS_AUTO_STATIC_LAYOUT_FIRST_ENABLED = false;
+
+export function shouldPreferNativeStaticLayoutBeforeBreeze(
+	platform: LightningRuntimePlatform,
+	backendPreference: ExportBackendPreference,
+): boolean {
+	return (
+		WINDOWS_AUTO_STATIC_LAYOUT_FIRST_ENABLED &&
+		backendPreference === "auto" &&
+		platform === "win32"
+	);
+}
+
+export function planLightningExportRoutes(options: {
+	backendPreference: ExportBackendPreference;
+	platform: LightningRuntimePlatform;
+	nativeStaticLayoutAvailable: boolean;
+	nativeStaticLayoutSkipReasons?: string[];
+}): LightningExportRoutePlan {
+	const decisions: LightningExportRouteDecision[] = [];
+	const nativeStaticLayoutSkipReasons = options.nativeStaticLayoutSkipReasons ?? [];
+	const canUseNativeStaticLayout =
+		options.nativeStaticLayoutAvailable && nativeStaticLayoutSkipReasons.length === 0;
+
+	const addNativeStaticLayoutDecision = (status: LightningExportRouteDecision["status"]) => {
+		decisions.push({
+			route: "native-static-layout",
+			status,
+			reasons: canUseNativeStaticLayout
+				? ["visually-compatible"]
+				: nativeStaticLayoutSkipReasons.length > 0
+					? nativeStaticLayoutSkipReasons
+					: ["native-static-unavailable"],
+		});
+	};
+
+	const backendPreference = resolveLightningBackendPreference(
+		options.platform,
+		options.backendPreference,
+	);
+	if (backendPreference === "webcodecs") {
+		decisions.push({
+			route: "webcodecs",
+			status: "selected",
+			reasons: ["user-selected-webcodecs"],
+		});
+		return { selectedRoute: "webcodecs", decisions };
+	}
+
+	const preferStaticFirst =
+		backendPreference === "breeze" ||
+		shouldPreferNativeStaticLayoutBeforeBreeze(options.platform, backendPreference);
+
+	if (preferStaticFirst) {
+		addNativeStaticLayoutDecision(canUseNativeStaticLayout ? "selected" : "rejected");
+		decisions.push({
+			route: "breeze-stream",
+			status: canUseNativeStaticLayout ? "fallback" : "selected",
+			reasons: [
+				backendPreference === "breeze"
+					? "user-selected-breeze"
+					: "native-static-layout-not-auto-default",
+			],
+		});
+		decisions.push({
+			route: "webcodecs",
+			status: "fallback",
+			reasons: ["breeze-unavailable-fallback"],
+		});
+		return {
+			selectedRoute: canUseNativeStaticLayout ? "native-static-layout" : "breeze-stream",
+			decisions,
+		};
+	}
+
+	if (backendPreference === "auto" && shouldPreferNativeAutoBackend(options.platform)) {
+		decisions.push({
+			route: "native-static-layout",
+			status: "rejected",
+			reasons: ["platform-does-not-use-native-static-layout"],
+		});
+		decisions.push({
+			route: "breeze-stream",
+			status: "selected",
+			reasons: ["platform-prefers-native-streaming"],
+		});
+		decisions.push({
+			route: "webcodecs",
+			status: "fallback",
+			reasons: ["breeze-unavailable-fallback"],
+		});
+		return { selectedRoute: "breeze-stream", decisions };
+	}
+
+	decisions.push({
+		route: "webcodecs",
+		status: "selected",
+		reasons: ["default-webcodecs-first"],
+	});
+	decisions.push({
+		route: "breeze-stream",
+		status: "fallback",
+		reasons: ["webcodecs-software-or-unavailable-fallback"],
+	});
+	return { selectedRoute: "webcodecs", decisions };
 }
 
 export function getDefaultLightningRenderBackend(): ExportRenderBackend {

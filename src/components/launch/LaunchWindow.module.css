@@ -7,6 +7,9 @@
 }
 
 .bar {
+	cursor: grab;
+	touch-action: none;
+	user-select: none;
 	display: flex;
 	align-items: center;
 	gap: 10px;
@@ -14,8 +17,8 @@
 	max-width: 1200px;
 	background: var(--launch-bar-bg);
 	border: 1px solid var(--launch-bar-border);
-	border-radius: 20px;
-	padding: 11px 20px 11px 18px;
+	border-radius: var(--radius-xl);
+	padding: 8px 12px;
 	box-shadow: var(--launch-bar-shadow);
 	overflow: visible;
 	position: relative;
@@ -27,9 +30,13 @@
 	display: flex;
 	align-items: center;
 	flex: 0 1 auto;
-	min-height: 46px;
+	min-height: 36px;
 	min-width: fit-content;
 	padding-right: 2px;
+}
+
+.bar[data-hud-dragging="true"] {
+	cursor: grabbing;
 }
 
 .barState {
@@ -42,6 +49,153 @@
 	pointer-events: auto;
 }
 
+.recordingControls {
+	--source-control-width: 120px;
+	position: relative;
+	display: flex;
+	align-items: center;
+	width: max-content;
+	height: 36px;
+	gap: 8px;
+}
+
+.hudAction,
+.recordingControls > button {
+	width: 36px;
+	min-width: 36px;
+	height: 36px;
+	padding: 0;
+	border-radius: var(--radius-lg);
+	-webkit-app-region: no-drag;
+}
+
+.recordingControls .recordControl {
+	border-radius: 50%;
+	corner-shape: round;
+}
+
+.recordingControls .sourceControl {
+	width: var(--source-control-width);
+	min-width: 0;
+	max-width: var(--source-control-width);
+	padding: 0 8px;
+	font-size: 13px;
+	justify-content: flex-start;
+}
+
+.sourceDivider {
+	width: 1px;
+	height: 24px;
+	margin: 0 2px;
+	background: var(--separator);
+	flex-shrink: 0;
+	pointer-events: none;
+}
+
+.recordControl {
+	position: relative;
+}
+
+.countdownValue {
+	display: grid;
+	place-items: center;
+	font-size: 20px;
+	line-height: 1;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.countdownDigits {
+	position: relative;
+	display: block;
+	width: 24px;
+	height: 24px;
+	overflow: hidden;
+}
+
+.countdownDigit {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
+}
+
+.countdownCancel {
+	position: absolute;
+	opacity: 0;
+	transform: scale(0.75);
+	transition:
+		opacity 120ms ease,
+		transform 120ms ease;
+}
+
+.recordControl[data-countdown]:is(:hover, :focus-visible) .countdownValue {
+	opacity: 0;
+}
+
+.recordControl[data-countdown]:is(:hover, :focus-visible) .countdownCancel {
+	opacity: 1;
+	transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.countdownCancel {
+		transition: none;
+	}
+}
+
+.recordingTimer {
+	width: 56px;
+	padding: 0;
+	color: var(--danger);
+}
+
+.captureControls {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 36px;
+}
+
+.captureDivider {
+	width: 1px;
+	height: 28px;
+	margin: 0 8px;
+	background: var(--separator);
+}
+
+.webcamHudDock {
+	position: absolute;
+	z-index: 1;
+	left: calc(100% + 10px + var(--hud-centering-inset, 0px));
+	bottom: 0;
+	cursor: grab;
+}
+
+.recordingWebcamPreview[data-hud-layout="stacked"] .webcamHudDock {
+	left: 50%;
+	top: calc(100% + 10px);
+	bottom: auto;
+	transform: translateX(-50%);
+}
+
+.recordingFinalizing {
+	display: flex;
+	justify-content: center;
+}
+
+.recordingBar {
+	border-color: var(--separator);
+	border-radius: 999px;
+	corner-shape: round;
+	padding: 8px 14px;
+	box-shadow: 0 2px 8px rgb(0 0 0 / 0.1);
+}
+
+.recordingBar[data-recording-state="paused"] {
+	border-color: var(--warning);
+}
+
 .sep {
 	width: 1px;
 	height: 26px;
@@ -50,70 +204,14 @@
 	flex-shrink: 0;
 }
 
-.ib {
-	position: relative;
-	width: 40px;
-	height: 40px;
-	border-radius: 11px;
-	border: none;
-	background: transparent;
-	color: var(--launch-text-muted);
-	cursor: pointer;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	transition: all 0.15s ease;
-	flex-shrink: 0;
-}
-
-.ib:hover {
-	background: var(--launch-hover);
-	color: var(--launch-text);
-}
-
-.ibActive {
-	color: #3d8bff;
-}
-
-.ibActive:hover {
-	color: #62a4ff;
-}
-
-.ibRed {
-	color: #f43f5e;
-}
-
-.ibRed:hover {
-	color: #ff5a75;
-}
-
-.ibGreen {
-	color: #34d399;
-}
-
-.ibGreen:hover {
-	color: #4eeeb0;
-}
-
-
-
 .menuCard {
 	width: 300px;
 	max-height: 400px;
 	overflow-y: auto;
-	background: var(--launch-surface);
-	border: 1px solid var(--launch-border);
-	border-radius: 16px;
-	backdrop-filter: blur(var(--launch-popover-blur, 24px))
-		saturate(var(--launch-popover-saturate, 145%));
-	-webkit-backdrop-filter: blur(var(--launch-popover-blur, 24px))
-		saturate(var(--launch-popover-saturate, 145%));
-	padding: 8px;
-	margin-top: auto;
-	margin-bottom: 8px;
-	box-shadow: var(--launch-bar-shadow);
+	overflow-x: hidden;
+	scrollbar-width: thin;
+	scrollbar-color: var(--launch-border-strong) transparent;
 	pointer-events: auto;
-	animation: menuCardIn 0.18s ease;
 }
 
 @keyframes menuCardIn {
@@ -149,107 +247,20 @@
 	padding: 6px 10px 4px;
 }
 
-.ddItem {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	width: 100%;
-	padding: 8px 10px;
-	border-radius: 8px;
-	border: none;
-	background: transparent;
-	font-size: 12px;
-	color: var(--launch-text-muted);
-	cursor: pointer;
-	transition: all 0.12s ease;
-	text-align: left;
-}
-
-.ddItem:hover {
-	background: var(--launch-hover);
-	color: var(--launch-text);
-}
-
-.ddItemSelected {
-	background: var(--launch-selected);
-	color: var(--launch-accent);
-}
-
-.finalizingState {
-	display: inline-flex;
-	align-items: center;
-	gap: 11px;
-	min-width: 238px;
-	color: #eeeef2;
-}
-
-.finalizingSpin {
-	color: #3d8bff;
-	animation: finalizingSpin 0.9s linear infinite;
-}
-
-.finalizingCopy {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	font-size: 12px;
-	font-weight: 700;
-	line-height: 1.15;
-}
-
-.finalizingCopy small {
-	color: #8a8a96;
-	font-size: 10px;
-	font-weight: 600;
-}
-
-@keyframes finalizingSpin {
-	from {
-		transform: rotate(0deg);
-	}
-	to {
-		transform: rotate(360deg);
-	}
-}
-
-.recBtn {
-	position: relative;
-	width: 46px;
-	height: 46px;
-	border-radius: 50%;
-	border: none;
-	background: #f43f5e;
-	color: #fff;
-	cursor: pointer;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	transition: all 0.2s ease;
-	flex-shrink: 0;
-	box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.3);
-}
-
-.recBtn:hover {
-	background: #ff5a75;
-	box-shadow: 0 0 0 6px rgba(244, 63, 94, 0.15);
-}
-
-.recBtn:disabled {
-	opacity: 0.4;
-	cursor: not-allowed;
-}
-
-.recBtn:disabled:hover {
-	background: #f43f5e;
-	box-shadow: none;
-}
-
 .recDot {
 	width: 14px;
 	height: 14px;
 	border-radius: 50%;
+	corner-shape: round;
 	background: #fff;
 	transition: all 0.2s ease;
+}
+
+.stopSquare {
+	width: 15px;
+	height: 15px;
+	border-radius: 3px;
+	background: #fff;
 }
 
 .recDotBlink {
@@ -257,16 +268,16 @@
 }
 
 .recordingWebcamPreview {
+	width: 230px;
+	height: 230px;
 	position: fixed;
-	right: 32px;
-	bottom: 120px;
-	height: 288px;
-	width: 288px;
-	overflow: hidden;
-	border-radius: 24px;
-	background: var(--launch-surface);
-	border: 1px solid var(--launch-border-strong);
-	box-shadow: var(--launch-bar-shadow);
+	left: 32px;
+	bottom: 32px;
+	overflow: visible;
+	border-radius: 0;
+	background: transparent;
+	border: 0;
+	box-shadow: none;
 	cursor: grab;
 	touch-action: none;
 	user-select: none;
@@ -278,7 +289,14 @@
 	cursor: grabbing;
 }
 
+/* Pointer capture can leave the preview or cross HUD controls mid-drag. */
+:global(html[data-webcam-preview-cursor]),
+:global(html[data-webcam-preview-cursor] *) {
+	cursor: var(--webcam-preview-cursor) !important;
+}
+
 .recordingWebcamPreviewVideo {
+	background: var(--launch-surface);
 	display: block;
 	height: 100%;
 	width: 100%;
@@ -286,6 +304,42 @@
 	border-radius: inherit;
 	overflow: hidden;
 	transform: translateZ(0);
+}
+
+.webcamUnavailable {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	min-height: 96px;
+	width: 100%;
+	padding: 12px;
+	border: 1px solid var(--launch-border-strong);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--launch-bar-bg) 94%, var(--launch-text));
+	color: var(--launch-text-muted);
+	font-size: 12px;
+	line-height: 1.35;
+	text-align: center;
+	overflow-wrap: anywhere;
+}
+
+.webcamUnavailable[data-floating] {
+	height: 100%;
+	padding-inline: 32px;
+	border-radius: 50%;
+	font-size: 13px;
+}
+
+.webcamUnavailable p {
+	color: var(--launch-text);
+	font-weight: 600;
+}
+
+.webcamUnavailable button {
+	min-height: 28px;
+	padding-inline: 4px;
 }
 
 @keyframes blink {
@@ -303,6 +357,6 @@
 }
 
 .micSelect option {
-	background-color: #1a1a22;
-	color: #eeeef2;
+	background-color: var(--surface);
+	color: var(--foreground);
 }

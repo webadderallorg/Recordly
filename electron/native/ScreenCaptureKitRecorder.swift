@@ -2,11 +2,21 @@ import Foundation
 import ScreenCaptureKit
 import AVFoundation
 import CoreGraphics
+import CoreImage
 
 struct CaptureConfig: Codable {
 	let fps: Int?
 	let displayId: CGDirectDisplayID?
 	let windowId: UInt32?
+	let windowX: Double?
+	let windowY: Double?
+	let windowWidth: Double?
+	let windowHeight: Double?
+	/// A fixed area of `displayId` in global display points (top-left origin).
+	let regionX: Double?
+	let regionY: Double?
+	let regionWidth: Double?
+	let regionHeight: Double?
 	let outputPath: String?
 	let capturesSystemAudio: Bool?
 	let capturesMicrophone: Bool?
@@ -14,23 +24,333 @@ struct CaptureConfig: Codable {
 	let microphoneDeviceId: String?
 	let microphoneLabel: String?
 	let microphoneOutputPath: String?
+	let excludedProcessIds: [Int32]?
 }
 
 let targetCaptureFPS = 60
 let maxInlineAudioTailExtension = CMTime(seconds: 2.0, preferredTimescale: 600)
+/// Keeps short encoder stalls from losing speech. Missing source intervals become
+/// silence; exceeding the retention bounds explicitly fails instead of compacting AAC audio.
+/// Accessed only on the recorder queue, or after capture has stopped during finish.
+final class AudioSampleQueue {
+	private struct Pending {
+		let buffer: CMSampleBuffer
+		let time: CMTime
+		let duration: Double
+		let bytes: Int
+	}
+	private let isReady: () -> Bool
+	private let canWrite: () -> Bool
+	private let appendSample: (CMSampleBuffer) -> Bool
+	private var pending: [Pending] = []
+	private var queuedDuration = 0.0
+	private var queuedBytes = 0
+	private var lastFormat: CMFormatDescription?
+	private(set) var failure: Error?
+	private(set) var endTime = CMTime.zero
+	private(set) var droppedBuffers = 0
+	private(set) var silenceFrames: Int64 = 0
+	private(set) var peakQueuedBytes = 0
+	private(set) var peakQueuedDuration = 0.0
+
+	init(isReady: @escaping () -> Bool, canWrite: @escaping () -> Bool, append: @escaping (CMSampleBuffer) -> Bool) {
+		self.isReady = isReady
+		self.canWrite = canWrite
+		self.appendSample = append
+	}
+
+	func enqueue(_ buffer: CMSampleBuffer, at time: CMTime) {
+		drain()
+		guard failure == nil,
+			let format = buffer.formatDescription,
+			let asbd = format.audioStreamBasicDescription,
+			asbd.mFormatID == kAudioFormatLinearPCM,
+			asbd.mSampleRate.isFinite, asbd.mSampleRate > 0, asbd.mSampleRate <= 384_000,
+			asbd.mSampleRate.rounded() == asbd.mSampleRate, buffer.numSamples > 0,
+			time.isValid, time.seconds.isFinite else {
+			failure = failure ?? audioError("Invalid PCM audio buffer")
+			return
+		}
+		lastFormat = format
+		let duration = Double(buffer.numSamples) / asbd.mSampleRate
+		let bytes = buffer.dataBuffer?.dataLength ?? buffer.totalSampleSize
+		// Bound both media time and retained memory, even with unusual input formats.
+		guard pending.count < 256, queuedDuration + duration <= 2.0,
+			bytes <= 4 * 1024 * 1024 - queuedBytes else {
+			droppedBuffers += 1
+			failure = audioError("Audio encoder queue exceeded its safe recording limit")
+			return
+		}
+		pending.append(Pending(buffer: buffer, time: time, duration: duration, bytes: bytes))
+		queuedDuration += duration
+		queuedBytes += bytes
+		peakQueuedBytes = max(peakQueuedBytes, queuedBytes)
+		peakQueuedDuration = max(peakQueuedDuration, queuedDuration)
+		drain()
+	}
+
+	/// Pads the end too: a final dropped buffer has no later timestamp to reveal its gap.
+	func finish(at targetTime: CMTime, timeout: TimeInterval = 5.0) async -> Error? {
+		var deadline = ProcessInfo.processInfo.systemUptime + timeout
+		guard targetTime.isValid, targetTime.seconds.isFinite, targetTime >= .zero else {
+			return audioError("Invalid audio finalization time")
+		}
+		while failure == nil {
+			if Task.isCancelled { failure = CancellationError(); break }
+			let previousEnd = endTime
+			drain(until: targetTime)
+			if pending.isEmpty {
+				if let format = lastFormat {
+					fillSilence(to: targetTime, format: format)
+				}
+				if failure != nil || lastFormat == nil || endTime >= targetTime {
+					break
+				}
+			}
+			if endTime > previousEnd {
+				// The timeout measures a stalled encoder, not time spent restoring audio.
+				deadline = ProcessInfo.processInfo.systemUptime + timeout
+				await Task.yield()
+				continue
+			}
+			if ProcessInfo.processInfo.systemUptime >= deadline {
+				failure = audioError("Audio encoder did not drain before finalization")
+				break
+			}
+			do { try await Task.sleep(nanoseconds: 10_000_000) }
+			catch { failure = error }
+		}
+		pending.removeAll()
+		queuedDuration = 0
+		queuedBytes = 0
+		return failure
+	}
+
+	private func drain(until limit: CMTime? = nil) {
+		guard failure == nil else { return }
+		guard canWrite() else {
+			failure = audioError("Audio writer stopped accepting data")
+			pending.removeAll()
+			queuedDuration = 0
+			queuedBytes = 0
+			return
+		}
+		while let next = pending.first, failure == nil {
+			if let limit, next.time >= limit || endTime >= limit {
+				removeFirst()
+				continue
+			}
+			guard isReady() else { return }
+			guard let format = next.buffer.formatDescription,
+				let asbd = format.audioStreamBasicDescription else {
+				failure = audioError("Missing audio format")
+				return
+			}
+			let rate = CMTimeScale(asbd.mSampleRate)
+			guard fillSilence(to: next.time, format: format) else { return }
+			guard failure == nil, isReady() else { return }
+			// Trim overlapping or repeated samples instead of writing time twice.
+			let overlap = Int(min(Double(next.buffer.numSamples), max(0, ((endTime - next.time).seconds * asbd.mSampleRate).rounded())))
+			let skip = overlap <= 1 ? 0 : overlap // CMTime(seconds:) can round adjacent timestamps by one frame.
+			let remainingFrames = next.buffer.numSamples - skip
+			let count = limit.map { Int(min(Double(remainingFrames), max(0, (($0 - endTime).seconds * asbd.mSampleRate).rounded()))) } ?? remainingFrames
+			if count > 0 {
+				do {
+					let buffer: CMSampleBuffer
+					if skip > 0 || count < next.buffer.numSamples {
+						guard let pcmFormat = pcmStorageFormat(for: format) else { throw audioError("Unsupported PCM audio format") }
+						guard let pcm = AVAudioPCMBuffer(pcmFormat: pcmFormat, frameCapacity: AVAudioFrameCount(count)) else {
+							throw audioError("Cannot allocate trimmed audio")
+						}
+						pcm.frameLength = AVAudioFrameCount(count)
+						guard CMSampleBufferCopyPCMDataIntoAudioBufferList(next.buffer, at: Int32(skip), frameCount: Int32(count), into: pcm.mutableAudioBufferList) == noErr,
+							let slice = makeSample(pcm, format: format, at: endTime) else { throw audioError("Cannot trim overlapping audio") }
+						buffer = slice
+					} else { buffer = next.buffer }
+					let timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: rate), presentationTimeStamp: endTime, decodeTimeStamp: .invalid)
+					let retimed = try CMSampleBuffer(copying: buffer, withNewTiming: [timing])
+					guard appendSample(retimed) else { throw audioError("Cannot append audio") }
+					endTime = endTime + CMTime(value: Int64(buffer.numSamples), timescale: rate)
+				} catch { failure = error; return }
+			}
+			removeFirst()
+		}
+	}
+
+	private func removeFirst() {
+		let next = pending.removeFirst()
+		queuedDuration = max(0, queuedDuration - next.duration)
+		queuedBytes -= next.bytes
+	}
+
+	@discardableResult
+	private func fillSilence(to target: CMTime, format: CMFormatDescription) -> Bool {
+		guard let asbd = format.audioStreamBasicDescription else { return false }
+		let rate = CMTimeScale(asbd.mSampleRate)
+		guard target.isValid, target.seconds.isFinite, (target - endTime).seconds <= 120 else {
+			failure = audioError("Audio timestamp gap exceeded the safe recovery limit")
+			return false
+		}
+		// Bound work as well as memory. Long gaps resume on the next callback or finish poll.
+		var chunksRemaining = 16
+		while isReady(), failure == nil, chunksRemaining > 0 {
+			chunksRemaining -= 1
+			let frames = Int64(min(4096, max(0, ((target - endTime).seconds * asbd.mSampleRate).rounded())))
+			guard frames > 0 else {
+				// Avoid sub-sample rounding leaving finish in a retry loop.
+				if target > endTime { endTime = target }
+				return true
+			}
+			guard let pcmFormat = pcmStorageFormat(for: format) else {
+				failure = audioError("Unsupported PCM audio format")
+				return false
+			}
+			guard let pcm = AVAudioPCMBuffer(pcmFormat: pcmFormat, frameCapacity: AVAudioFrameCount(frames)) else {
+				failure = audioError("Cannot allocate audio silence")
+				return false
+			}
+			pcm.frameLength = AVAudioFrameCount(frames)
+			for buffer in UnsafeMutableAudioBufferListPointer(pcm.mutableAudioBufferList) {
+				buffer.mData?.initializeMemory(as: UInt8.self, repeating: 0, count: Int(buffer.mDataByteSize))
+			}
+			guard let silence = makeSample(pcm, format: format, at: endTime), appendSample(silence) else {
+				failure = audioError("Cannot write audio silence")
+				return false
+			}
+			endTime = endTime + CMTime(value: frames, timescale: rate)
+			silenceFrames += frames
+		}
+		return endTime >= target
+	}
+
+	/// ScreenCaptureKit can supply multichannel microphone PCM without a layout.
+	/// AVAudioFormat(cmAudioFormatDescription:) then returns nil despite its
+	/// nonoptional Swift signature. Use a failable initializer and a discrete
+	/// layout for storage, preserving the original sample format and channel order.
+	private func pcmStorageFormat(for format: CMFormatDescription) -> AVAudioFormat? {
+		guard var asbd = format.audioStreamBasicDescription,
+			asbd.mFormatID == kAudioFormatLinearPCM,
+			asbd.mChannelsPerFrame > 0, asbd.mChannelsPerFrame <= 64 else { return nil }
+		if let layout = CMAudioFormatDescriptionGetChannelLayout(format, sizeOut: nil) {
+			return AVAudioFormat(streamDescription: &asbd, channelLayout: AVAudioChannelLayout(layout: layout))
+		}
+		if asbd.mChannelsPerFrame > 2 {
+			guard let layout = AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | asbd.mChannelsPerFrame) else { return nil }
+			return AVAudioFormat(streamDescription: &asbd, channelLayout: layout)
+		}
+		return AVAudioFormat(streamDescription: &asbd)
+	}
+
+	private func makeSample(_ pcm: AVAudioPCMBuffer, format: CMFormatDescription, at time: CMTime) -> CMSampleBuffer? {
+		var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: CMTimeScale(pcm.format.sampleRate)), presentationTimeStamp: time, decodeTimeStamp: .invalid)
+		var sample: CMSampleBuffer?
+		guard CMSampleBufferCreate(allocator: kCFAllocatorDefault, dataBuffer: nil,
+			dataReady: false, makeDataReadyCallback: nil, refcon: nil, formatDescription: format,
+			sampleCount: Int(pcm.frameLength), sampleTimingEntryCount: 1, sampleTimingArray: &timing,
+			sampleSizeEntryCount: 0, sampleSizeArray: nil, sampleBufferOut: &sample) == noErr,
+			let sample,
+			CMSampleBufferSetDataBufferFromAudioBufferList(sample, blockBufferAllocator: nil,
+				blockBufferMemoryAllocator: nil, flags: 0, bufferList: pcm.audioBufferList) == noErr else { return nil }
+		return sample
+	}
+
+	private func audioError(_ message: String) -> Error {
+		NSError(domain: "RecordlyCapture", code: 17, userInfo: [NSLocalizedDescriptionKey: message])
+	}
+}
+/// Bounds samples retained by asynchronous delivery before the recorder queue can inspect them.
+final class AudioDeliveryBudget {
+	private let lock = NSLock()
+	private var bytes = 0
+	private var duration = 0.0
+	private var count = 0
+	private var failed = false
+
+	func reserve(bytes amount: Int, duration seconds: Double) -> (accepted: Bool, reportFailure: Bool) {
+		lock.lock()
+		defer { lock.unlock() }
+		guard !failed else { return (false, false) }
+		guard amount >= 0, seconds.isFinite, seconds > 0, count < 256,
+			bytes + amount <= 4 * 1024 * 1024, duration + seconds <= 2 else {
+			failed = true
+			return (false, true)
+		}
+		bytes += amount
+		duration += seconds
+		count += 1
+		return (true, false)
+	}
+
+	func release(bytes amount: Int, duration seconds: Double) {
+		lock.lock()
+		defer { lock.unlock() }
+		bytes = max(0, bytes - amount)
+		duration = max(0, duration - seconds)
+		count -= 1
+	}
+}
+
+func matchMicrophoneCaptureDeviceID(label: String?, deviceId: String?, devices: [(name: String, uniqueID: String)]) -> String? {
+	let identifier = deviceId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+	if !identifier.isEmpty, let exact = devices.first(where: { $0.uniqueID == identifier }) { return exact.uniqueID }
+	let name = label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+	guard !name.isEmpty else { return nil }
+	let matches = devices.filter { $0.name == name }
+	if !matches.isEmpty { return matches.count == 1 ? matches[0].uniqueID : nil }
+	// Chromium appends transport details, e.g. "USB Mic (14ed:1012)".
+	// Preserve native-ID priority and reject ambiguous fallback names.
+	guard name.hasSuffix(")"), let suffix = name.range(of: " (", options: .backwards) else { return nil }
+	let undecorated = name[..<suffix.lowerBound].trimmingCharacters(in: .whitespaces)
+	guard !undecorated.isEmpty else { return nil }
+	let undecoratedMatches = devices.filter { $0.name == undecorated }
+	return undecoratedMatches.count == 1 ? undecoratedMatches[0].uniqueID : nil
+}
+
+/// How long finalization waits for a backed-up encoder queue before giving up on
+/// the optional tail frame: 100 polls x 10 ms = 1 s.
+let writerReadinessPollAttempts = 100
+let writerReadinessPollInterval: UInt64 = 10_000_000
 
 final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
+	private struct CaptureFinalizationResult {
+		let outputResult: Result<String, Error>
+		let interactiveStopParticipated: Bool
+	}
+
 	private let queue = DispatchQueue(label: "recordly.screencapturekit.video")
+	private let audioDeliveryQueue = DispatchQueue(label: "recordly.screencapturekit.audio-delivery")
+	private let audioDeliveryBudget = AudioDeliveryBudget()
+	private var audioSampleQueues: [ObjectIdentifier: AudioSampleQueue] = [:]
+	private var captureFailure: Error?
+	private var stopTimelineTime: CMTime?
+	private var stillFrameTimer: DispatchSourceTimer?
 	private var assetWriter: AVAssetWriter?
 	private var videoInput: AVAssetWriterInput?
+	private var videoPixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
+	private var windowCropRect: CGRect?
+	private var windowCropDisplayId: CGDirectDisplayID?
+	private var excludedProcessIds = Set<Int32>()
+	private var captureDisplayId: CGDirectDisplayID?
+	private var lastCroppedPixelBuffer: CVPixelBuffer?
+	private let imageContext = CIContext(options: [.cacheIntermediates: false])
 	private var systemAudioWriter: AVAssetWriter?
 	private var systemAudioInput: AVAssetWriterInput?
 	private var microphoneOnlyWriter: AVAssetWriter?
 	private var microphoneOnlyInput: AVAssetWriterInput?
 	private var stream: SCStream?
+	private var captureFilter: SCContentFilter?
+	private var captureConfiguration: SCStreamConfiguration?
+	private var captureFPS = targetCaptureFPS
+	// All recovery state is owned by the sample queue. Keep the writers and
+	// firstSampleTime across stream replacements so every track keeps its clock.
+	private var recoveryTask: Task<Void, Never>?
+	private var streamFailure: Error?
+	private var streamHasVideo = false
 	private var firstSampleTime: CMTime = .zero
 	private var firstSystemAudioSampleTime: CMTime?
 	private var firstMicrophoneSampleTime: CMTime?
+	private var lastSystemAudioPresentationTime: CMTime = .invalid
+	private var lastMicrophonePresentationTime: CMTime = .invalid
 	private var lastSampleBuffer: CMSampleBuffer?
 	private var lastVideoPresentationTime: CMTime = .zero
 	private var lastVideoDuration: CMTime = .zero
@@ -47,6 +367,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var microphoneOutputURL: URL?
 	private var trackedWindowId: UInt32?
 	private var windowValidationTask: Task<Void, Never>?
+	private var isFinalizing = false
+	private var interactiveStopParticipated = false
+	private var finalizationWaiters: [CheckedContinuation<CaptureFinalizationResult, Never>] = []
 	private var inlineAudioInput: AVAssetWriterInput?
 	private var firstInlineAudioSampleTime: CMTime?
 	private var capturesSystemAudio = false
@@ -75,15 +398,29 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			fflush(stderr)
 			capturesMicrophone = false
 		}
+		if capturesMicrophone {
+			let selectedID = config.microphoneDeviceId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+			let selectedLabel = config.microphoneLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+			let explicitSelection = (!selectedID.isEmpty && selectedID != "default" && selectedID != "communications")
+				|| (selectedID.isEmpty && !selectedLabel.isEmpty)
+			if let deviceID = Self.resolveMicrophoneCaptureDeviceID(config: config) {
+				streamConfig.setValue(deviceID, forKey: "microphoneCaptureDeviceID")
+			} else if explicitSelection {
+				fputs("MICROPHONE_DEVICE_UNAVAILABLE\n", stderr)
+				fflush(stderr)
+				capturesMicrophone = false
+			}
+		}
 		writesSystemAudioToSeparateTrack = capturesSystemAudio
 		writesMicrophoneToSeparateTrack = capturesSystemAudio && capturesMicrophone
-		if capturesMicrophone && !capturesSystemAudio {
-			writesMicrophoneToSeparateTrack = true
-		}
-		let requestedFPS = max(targetCaptureFPS, config.fps ?? targetCaptureFPS)
+		let configuredFPS = config.fps ?? targetCaptureFPS
+		let requestedFPS = (1...240).contains(configuredFPS) ? configuredFPS : targetCaptureFPS
+		captureFPS = requestedFPS
 		streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(requestedFPS))
 		streamConfig.queueDepth = 6
-		streamConfig.pixelFormat = kCVPixelFormatType_32BGRA
+		streamConfig.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+		streamConfig.colorSpaceName = CGColorSpace.sRGB
+		streamConfig.colorMatrix = CGDisplayStream.yCbCrMatrix_ITU_R_709_2
 		streamConfig.showsCursor = false
 		streamConfig.capturesAudio = capturesSystemAudio || capturesMicrophone
 		streamConfig.sampleRate = 48000
@@ -92,43 +429,94 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
 		if capturesMicrophone {
 			streamConfig.setValue(true, forKey: "captureMicrophone")
-			if let microphoneDeviceId = Self.resolveMicrophoneCaptureDeviceID(config: config) {
-				streamConfig.setValue(microphoneDeviceId, forKey: "microphoneCaptureDeviceID")
-			}
 		}
 
 		let filter: SCContentFilter
 		let outputWidth: Int
 		let outputHeight: Int
+		excludedProcessIds = Set(config.excludedProcessIds ?? [])
+		let excludedApplications = availableContent.applications.filter {
+			excludedProcessIds.contains($0.processID)
+		}
 
+		// A window or an area records the part of its display inside a frame, so menus
+		// and popovers over a window are captured just as they appear on screen.
+		let requestedFrame: CGRect?
 		if let windowId = config.windowId {
 			trackedWindowId = windowId
 			guard let window = availableContent.windows.first(where: { $0.windowID == windowId }) else {
 				throw NSError(domain: "RecordlyCapture", code: 3, userInfo: [NSLocalizedDescriptionKey: "Window not found"])
 			}
 
-			filter = SCContentFilter(desktopIndependentWindow: window)
-
-			let candidateDisplay = availableContent.displays.first(where: {
-				$0.frame.intersects(window.frame) || $0.frame.contains(CGPoint(x: window.frame.midX, y: window.frame.midY))
-			})
-			let scaleFactor = ScreenCaptureRecorder.scaleFactor(for: candidateDisplay?.displayID ?? CGMainDisplayID())
-			outputWidth = max(2, Int(window.frame.width) * scaleFactor)
-			outputHeight = max(2, Int(window.frame.height) * scaleFactor)
-			if #available(macOS 14.0, *) {
-				streamConfig.ignoreShadowsSingleWindow = true
+			// Accessibility reports the visible frame at the native border.
+			if let x = config.windowX,
+			   let y = config.windowY,
+			   let width = config.windowWidth,
+			   let height = config.windowHeight,
+			   width > 0,
+			   height > 0 {
+				requestedFrame = CGRect(x: x, y: y, width: width, height: height)
+			} else {
+				requestedFrame = window.frame
 			}
-			streamConfig.width = outputWidth
-			streamConfig.height = outputHeight
+		} else if let x = config.regionX,
+				  let y = config.regionY,
+				  let width = config.regionWidth,
+				  let height = config.regionHeight,
+				  width > 0,
+				  height > 0 {
+			trackedWindowId = nil
+			requestedFrame = CGRect(x: x, y: y, width: width, height: height)
+		} else {
+			requestedFrame = nil
+		}
+
+		if let visibleFrame = requestedFrame {
+			let preferredDisplay = config.windowId == nil
+				? config.displayId.flatMap { displayId in availableContent.displays.first(where: { $0.displayID == displayId }) }
+				: nil
+			guard let display = preferredDisplay ?? Self.captureDisplay(for: visibleFrame, from: availableContent.displays) else {
+				throw NSError(domain: "RecordlyCapture", code: 4, userInfo: [NSLocalizedDescriptionKey: "Window display not found"])
+			}
+			let scaleFactor = ScreenCaptureRecorder.scaleFactor(for: display.displayID)
+			let captureRect = visibleFrame.intersection(display.frame)
+			guard captureRect.width >= 2, captureRect.height >= 2 else {
+				throw NSError(domain: "RecordlyCapture", code: 18, userInfo: [NSLocalizedDescriptionKey: "Capture area is outside the display"])
+			}
+			filter = SCContentFilter(
+				display: display,
+				excludingApplications: excludedApplications,
+				exceptingWindows: []
+			)
+			windowCropRect = CGRect(
+				x: (captureRect.minX - display.frame.minX) / display.frame.width,
+				y: (captureRect.minY - display.frame.minY) / display.frame.height,
+				width: captureRect.width / display.frame.width,
+				height: captureRect.height / display.frame.height
+			)
+			windowCropDisplayId = display.displayID
+			captureDisplayId = display.displayID
+			outputWidth = max(2, Int(captureRect.width) * scaleFactor) & ~1
+			outputHeight = max(2, Int(captureRect.height) * scaleFactor) & ~1
+			streamConfig.width = max(2, Int(display.frame.width) * scaleFactor)
+			streamConfig.height = max(2, Int(display.frame.height) * scaleFactor)
+			streamConfig.pixelFormat = kCVPixelFormatType_32BGRA
 		} else {
 			trackedWindowId = nil
+			windowCropRect = nil
+			windowCropDisplayId = nil
 			let displayId = config.displayId ?? CGMainDisplayID()
 			guard let display = availableContent.displays.first(where: { $0.displayID == displayId }) else {
 				throw NSError(domain: "RecordlyCapture", code: 4, userInfo: [NSLocalizedDescriptionKey: "Display not found"])
 			}
 
-			filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
+			filter = SCContentFilter(
+				display: display,
+				excludingApplications: excludedApplications,
+				exceptingWindows: []
+			)
 			let displayBounds = CGDisplayBounds(display.displayID)
+			captureDisplayId = display.displayID
 			let scaleFactor = ScreenCaptureRecorder.scaleFactor(for: display.displayID)
 			outputWidth = max(2, Int(displayBounds.width) * scaleFactor)
 			outputHeight = max(2, Int(displayBounds.height) * scaleFactor)
@@ -150,16 +538,23 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		microphoneOutputURL = nil
 		firstSystemAudioSampleTime = nil
 		firstMicrophoneSampleTime = nil
+		lastSystemAudioPresentationTime = .invalid
+		lastMicrophonePresentationTime = .invalid
 
 		guard let assistant = AVOutputSettingsAssistant(preset: .preset3840x2160) else {
 			throw NSError(domain: "RecordlyCapture", code: 5, userInfo: [NSLocalizedDescriptionKey: "Unable to create output settings assistant"])
 		}
 
-		assistant.sourceVideoFormat = try CMVideoFormatDescription(
-			videoCodecType: .h264,
+		let sourceVideoFormat = try CMVideoFormatDescription(
+			videoCodecType: CMFormatDescription.MediaSubType(
+				rawValue: windowCropRect == nil
+					? kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+					: kCVPixelFormatType_32BGRA
+			),
 			width: outputWidth,
 			height: outputHeight
 		)
+		assistant.sourceVideoFormat = sourceVideoFormat
 
 		guard var outputSettings = assistant.videoSettings else {
 			throw NSError(domain: "RecordlyCapture", code: 6, userInfo: [NSLocalizedDescriptionKey: "Output settings unavailable"])
@@ -167,8 +562,25 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
 		outputSettings[AVVideoWidthKey] = outputWidth
 		outputSettings[AVVideoHeightKey] = outputHeight
+		// Preserve detail in small UI text before the recording reaches the editor.
+		// Give Retina pixels and 60 FPS an explicit bitrate budget.
+		var compression = outputSettings[AVVideoCompressionPropertiesKey] as? [String: Any] ?? [:]
+		compression.merge(
+			Self.videoCompressionSettings(width: outputWidth, height: outputHeight, fps: requestedFPS)
+		) { _, requested in requested }
+		outputSettings[AVVideoCompressionPropertiesKey] = compression
 
-		let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: outputSettings)
+		outputSettings[AVVideoColorPropertiesKey] = [
+			AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+			AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+			AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
+		]
+
+		let videoInput = AVAssetWriterInput(
+			mediaType: .video,
+			outputSettings: outputSettings,
+			sourceFormatHint: sourceVideoFormat
+		)
 		videoInput.expectsMediaDataInRealTime = true
 
 		guard let assetWriter = assetWriter, assetWriter.canAdd(videoInput) else {
@@ -177,6 +589,16 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
 		assetWriter.add(videoInput)
 		self.videoInput = videoInput
+		videoPixelBufferAdaptor = windowCropRect.map { _ in
+			AVAssetWriterInputPixelBufferAdaptor(
+				assetWriterInput: videoInput,
+				sourcePixelBufferAttributes: [
+					kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+					kCVPixelBufferWidthKey as String: outputWidth,
+					kCVPixelBufferHeightKey as String: outputHeight,
+				]
+			)
+		}
 
 		// Add inline audio track directly to the video so the .mp4 always contains audio.
 		// This eliminates the dependency on the post-recording ffmpeg mux step.
@@ -240,22 +662,10 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			microphoneWriter.startSession(atSourceTime: .zero)
 		}
 
-		let stream = SCStream(filter: filter, configuration: streamConfig, delegate: self)
+		captureFilter = filter
+		captureConfiguration = streamConfig
+		let stream = try makeCaptureStream()
 		self.stream = stream
-		try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
-		if capturesSystemAudio {
-			try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
-		}
-		if capturesMicrophone {
-			guard let microphoneOutputType = SCStreamOutputType(rawValue: microphoneOutputTypeRawValue) else {
-				throw NSError(
-					domain: "RecordlyCapture",
-					code: 17,
-					userInfo: [NSLocalizedDescriptionKey: "Microphone stream output type is unavailable"]
-				)
-			}
-			try stream.addStreamOutput(self, type: microphoneOutputType, sampleHandlerQueue: queue)
-		}
 		try await stream.startCapture()
 
 		guard assetWriter.startWriting() else {
@@ -274,34 +684,89 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		lastVideoPresentationTime = .zero
 		lastVideoDuration = .zero
 		startWindowValidationIfNeeded()
-		print("Recording started")
-		fflush(stdout)
+		startStillFrameTimer()
 	}
 
 	func stopCapture() async throws -> String {
-		guard isRecording else {
-			throw NSError(domain: "RecordlyCapture", code: 9, userInfo: [NSLocalizedDescriptionKey: "No recording in progress"])
+		let finalization = await finalizeCapture(interactive: true)
+		return try finalization.outputResult.get()
+	}
+
+	func pauseCapture() async -> Bool {
+		await withCheckedContinuation { continuation in
+			queue.async {
+				guard self.isRecording, !self.isPaused else {
+					continuation.resume(returning: self.isRecording && self.isPaused)
+					return
+				}
+				self.isPaused = true
+				self.pauseStartedHostTime = CMClockGetTime(CMClockGetHostTimeClock())
+				self.pendingResumeAdjustment = false
+				continuation.resume(returning: true)
+			}
 		}
-
-		return try await finishCapture()
 	}
 
-	func pauseCapture() {
-		guard isRecording, !isPaused else { return }
-		isPaused = true
-		pauseStartedHostTime = CMClockGetTime(CMClockGetHostTimeClock())
-		pendingResumeAdjustment = false
-	}
-
-	func resumeCapture() {
-		guard isRecording, isPaused else { return }
-		isPaused = false
-		pendingResumeAdjustment = true
+	func resumeCapture() async -> Bool {
+		await withCheckedContinuation { continuation in
+			queue.async {
+				guard self.isRecording, self.isPaused else {
+					continuation.resume(returning: self.isRecording && !self.isPaused)
+					return
+				}
+				self.isPaused = false
+				self.pendingResumeAdjustment = true
+				continuation.resume(returning: true)
+			}
+		}
 	}
 
 	func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
-		guard sessionStarted, sampleBuffer.isValid, isRecording else { return }
-		guard let presentationTime = adjustedPresentationTime(for: sampleBuffer, outputType: outputType) else { return }
+		if outputType != .screen {
+			deliverAudioSampleBuffer(sampleBuffer, of: outputType, from: stream)
+		} else {
+			guard isRecording, stream === self.stream else { return }
+			handleSampleBuffer(sampleBuffer, of: outputType)
+		}
+	}
+
+	private func deliverAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType, from sourceStream: SCStream?) {
+		// ScreenCaptureKit may send invalid or empty callbacks during a transition.
+		// Discard these before reserving media time; they are not an overload.
+		guard sampleBuffer.isValid, sampleBuffer.numSamples > 0 else { return }
+		let bytes = sampleBuffer.dataBuffer?.dataLength ?? sampleBuffer.totalSampleSize
+		let rate = sampleBuffer.formatDescription?.audioStreamBasicDescription?.mSampleRate ?? 0
+		let duration = rate > 0 ? Double(sampleBuffer.numSamples) / rate : 0
+		let reservation = audioDeliveryBudget.reserve(bytes: bytes, duration: duration)
+		guard reservation.accepted else {
+			if reservation.reportFailure {
+				queue.async {
+					// This budget belongs to the whole recording and stays failed after
+					// overload. A replacement stream cannot resume audio, so never hide
+					// the terminal failure just because its original stream is obsolete.
+					guard self.isRecording else { return }
+					self.interruptCapture(NSError(domain: "RecordlyCapture", code: 18, userInfo: [NSLocalizedDescriptionKey: "Audio delivery exceeded its safe recording limit"]))
+				}
+			}
+			return
+		}
+		queue.async {
+			defer { self.audioDeliveryBudget.release(bytes: bytes, duration: duration) }
+			guard self.isRecording, sourceStream === self.stream else { return }
+			self.handleSampleBuffer(sampleBuffer, of: outputType)
+		}
+	}
+
+	private func handleSampleBuffer(_ sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
+		guard isRecording, sessionStarted, sampleBuffer.isValid else { return }
+		if let failedWriter = [assetWriter, systemAudioWriter, microphoneOnlyWriter]
+			.compactMap({ $0 }).first(where: { $0.status == .failed }) {
+			interruptCapture(failedWriter.error ?? unfinalizedWriterError(status: failedWriter.status))
+			return
+		}
+		if outputType == .screen, isCompleteVideoFrame(sampleBuffer), isPaused {
+			streamHasVideo = true
+		}
 
 		if outputType == .screen {
 			guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
@@ -312,40 +777,66 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				return
 			}
 
-			guard let videoInput = videoInput, videoInput.isReadyForMoreMediaData else { return }
+			guard let videoInput = videoInput,
+				  assetWriter?.status == .writing,
+				  videoInput.isReadyForMoreMediaData else { return }
 
-			if firstSampleTime == .zero {
-				firstSampleTime = sampleBuffer.presentationTimeStamp
+			// Only a complete frame that the writer can accept may establish time zero.
+			guard let presentationTime = adjustedPresentationTime(for: sampleBuffer, outputType: outputType) else { return }
+			if frameCount > 0 && CMTimeCompare(presentationTime, lastVideoPresentationTime) <= 0 {
+				return
 			}
 
 			lastSampleBuffer = sampleBuffer
-			let timing = CMSampleTimingInfo(duration: sampleBuffer.duration, presentationTimeStamp: presentationTime, decodeTimeStamp: sampleBuffer.decodeTimeStamp)
-			if let retimedSampleBuffer = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]) {
-				videoInput.append(retimedSampleBuffer)
-				lastVideoPresentationTime = presentationTime
-				lastVideoDuration = sampleBuffer.duration
-				frameCount += 1
+			let appended: Bool
+			if videoPixelBufferAdaptor != nil {
+				appended = appendCroppedVideoFrame(sampleBuffer, at: presentationTime)
+			} else {
+				let timing = CMSampleTimingInfo(duration: sampleBuffer.duration, presentationTimeStamp: presentationTime, decodeTimeStamp: sampleBuffer.decodeTimeStamp)
+				if let retimed = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]) {
+					appended = videoInput.append(retimed)
+				} else {
+					appended = false
+				}
+			}
+			if appended {
+					streamHasVideo = true
+					lastVideoPresentationTime = presentationTime
+					lastVideoDuration = sampleBuffer.duration
+					frameCount += 1
+					if frameCount == 1 {
+						// Signal readiness only after AVAssetWriter has accepted a
+						// real frame, so countdown warm-start cannot pause too early.
+						print("Recording started")
+						fflush(stdout)
+					}
+			} else if frameCount == 0 {
+				// A failed crop/append must not leave an empty interval before frame one.
+				firstSampleTime = .zero
 			}
 			return
 		}
 
+		guard frameCount > 0,
+			  let presentationTime = adjustedPresentationTime(for: sampleBuffer, outputType: outputType) else { return }
+
 		if outputType == .audio {
 			guard let systemAudioInput else { return }
-			appendAudioSampleBuffer(sampleBuffer, to: systemAudioInput, firstSampleTime: &firstSystemAudioSampleTime, presentationTime: presentationTime)
+			appendAudioSampleBuffer(sampleBuffer, to: systemAudioInput, of: systemAudioWriter, firstSampleTime: &firstSystemAudioSampleTime, lastPresentationTime: &lastSystemAudioPresentationTime, presentationTime: presentationTime)
 			// Also write system audio to the inline video track
-			if let inlineAudioInput, inlineAudioInput.isReadyForMoreMediaData {
-				appendAudioSampleBuffer(sampleBuffer, to: inlineAudioInput, firstSampleTime: &firstInlineAudioSampleTime, presentationTime: presentationTime)
+			if let inlineAudioInput {
+				appendAudioSampleBuffer(sampleBuffer, to: inlineAudioInput, of: assetWriter, firstSampleTime: &firstInlineAudioSampleTime, lastPresentationTime: &lastInlineAudioPresentationTime, presentationTime: presentationTime)
 			}
 			return
 		}
 
 		if outputType.rawValue == microphoneOutputTypeRawValue {
 			if let microphoneOnlyInput {
-				appendAudioSampleBuffer(sampleBuffer, to: microphoneOnlyInput, firstSampleTime: &firstMicrophoneSampleTime, presentationTime: presentationTime)
+				appendAudioSampleBuffer(sampleBuffer, to: microphoneOnlyInput, of: microphoneOnlyWriter, firstSampleTime: &firstMicrophoneSampleTime, lastPresentationTime: &lastMicrophonePresentationTime, presentationTime: presentationTime)
 			}
 			// Write mic to inline video track only if there's no system audio (avoids double-writing)
-			if !capturesSystemAudio, let inlineAudioInput, inlineAudioInput.isReadyForMoreMediaData {
-				appendAudioSampleBuffer(sampleBuffer, to: inlineAudioInput, firstSampleTime: &firstInlineAudioSampleTime, presentationTime: presentationTime)
+			if !capturesSystemAudio, let inlineAudioInput {
+				appendAudioSampleBuffer(sampleBuffer, to: inlineAudioInput, of: assetWriter, firstSampleTime: &firstInlineAudioSampleTime, lastPresentationTime: &lastInlineAudioPresentationTime, presentationTime: presentationTime)
 			}
 			return
 		}
@@ -353,15 +844,245 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		return
 	}
 
+	private func appendCroppedVideoFrame(_ sampleBuffer: CMSampleBuffer, at presentationTime: CMTime) -> Bool {
+		guard let crop = windowCropRect,
+			  let adaptor = videoPixelBufferAdaptor,
+			  let pool = adaptor.pixelBufferPool,
+			  let source = CMSampleBufferGetImageBuffer(sampleBuffer) else { return false }
+
+		var destination: CVPixelBuffer?
+		guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &destination) == kCVReturnSuccess,
+			  let destination else { return false }
+
+		let sourceWidth = CGFloat(CVPixelBufferGetWidth(source))
+		let sourceHeight = CGFloat(CVPixelBufferGetHeight(source))
+		let sourceRect = CGRect(
+			x: crop.minX * sourceWidth,
+			y: (1 - crop.maxY) * sourceHeight,
+			width: crop.width * sourceWidth,
+			height: crop.height * sourceHeight
+		)
+		let destinationSize = CGSize(
+			width: CVPixelBufferGetWidth(destination),
+			height: CVPixelBufferGetHeight(destination)
+		)
+		let image = CIImage(cvPixelBuffer: source)
+			.cropped(to: sourceRect)
+			.transformed(by: CGAffineTransform(translationX: -sourceRect.minX, y: -sourceRect.minY))
+			.transformed(by: CGAffineTransform(
+				scaleX: destinationSize.width / sourceRect.width,
+				y: destinationSize.height / sourceRect.height
+			))
+		let bounds = CGRect(origin: .zero, size: destinationSize)
+		imageContext.render(
+			image,
+			to: destination,
+			bounds: bounds,
+			colorSpace: CGColorSpace(name: CGColorSpace.sRGB)
+		)
+
+		let appended = adaptor.append(destination, withPresentationTime: presentationTime)
+		if appended { lastCroppedPixelBuffer = destination }
+		return appended
+	}
+
 	func stream(_ stream: SCStream, didStopWithError error: Error) {
-		fputs("Error: \(error.localizedDescription)\n", stderr)
+		queue.async {
+			guard self.isRecording, !self.isFinalizing, self.captureFailure == nil,
+				stream === self.stream else { return }
+			let nativeError = error as NSError
+			if nativeError.domain == SCStreamErrorDomain,
+				nativeError.code == SCStreamError.Code.userStopped.rawValue || nativeError.code == SCStreamError.Code.userDeclined.rawValue {
+				// A stop or permission withdrawal in macOS is not a transient fault.
+				self.interruptCapture(error)
+				return
+			}
+			self.streamFailure = error
+			self.logCaptureEvent("STREAM_INTERRUPTED", error.localizedDescription)
+			guard self.recoveryTask == nil else { return }
+			self.recoveryTask = Task { await self.recoverStream() }
+		}
+	}
+
+	private func onCaptureQueue<T>(_ operation: @escaping () -> T) async -> T {
+		await withCheckedContinuation { continuation in
+			queue.async { continuation.resume(returning: operation()) }
+		}
+	}
+
+	private func logCaptureEvent(_ marker: String, _ detail: String) {
+		let line = detail.replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ")
+		fputs("\(marker): \(line)\n", stderr)
 		fflush(stderr)
 	}
 
+	private func isCompleteVideoFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
+		guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
+			let rawStatus = attachments.first?[SCStreamFrameInfo.status] as? Int else { return false }
+		return SCFrameStatus(rawValue: rawStatus) == .complete
+	}
+
+	private func makeCaptureStream() throws -> SCStream {
+		guard let captureFilter, let captureConfiguration else {
+			throw NSError(domain: "RecordlyCapture", code: 18, userInfo: [NSLocalizedDescriptionKey: "Capture configuration is unavailable"])
+		}
+		let replacement = SCStream(filter: captureFilter, configuration: captureConfiguration, delegate: self)
+		try replacement.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+		if capturesSystemAudio {
+			try replacement.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioDeliveryQueue)
+		}
+		if capturesMicrophone {
+			guard let microphoneType = SCStreamOutputType(rawValue: microphoneOutputTypeRawValue) else {
+				throw NSError(domain: "RecordlyCapture", code: 17, userInfo: [NSLocalizedDescriptionKey: "Microphone stream output type is unavailable"])
+			}
+			try replacement.addStreamOutput(self, type: microphoneType, sampleHandlerQueue: audioDeliveryQueue)
+		}
+		return replacement
+	}
+
+	private func recoverStream() async {
+		// Retry each interruption, not just the first few in a long recording.
+		// A new stream must actually deliver video before recovery is successful.
+		var lastError: Error = await onCaptureQueue {
+			self.streamFailure ?? NSError(domain: "RecordlyCapture", code: 19, userInfo: [NSLocalizedDescriptionKey: "Screen capture stopped"])
+		}
+		for attempt in 1...3 {
+			var candidate: SCStream?
+			do {
+				try Task.checkCancellation()
+				if attempt > 1 { try await Task.sleep(nanoseconds: UInt64(attempt - 1) * 500_000_000) }
+				let creation: Result<SCStream, Error> = await onCaptureQueue {
+					guard self.isRecording, !self.isFinalizing, self.captureFailure == nil else { return .failure(CancellationError()) }
+					self.logCaptureEvent("STREAM_RECOVERING", "attempt \(attempt)")
+					return Result {
+						let replacement = try self.makeCaptureStream()
+						self.stream = replacement
+						self.streamHasVideo = false
+						self.streamFailure = nil
+						return replacement
+					}
+				}
+				let replacement = try creation.get()
+				candidate = replacement
+				try await replacement.startCapture()
+				for _ in 0..<50 {
+					try Task.checkCancellation()
+					let status: Result<Bool, Error> = await onCaptureQueue {
+						guard self.isRecording, !self.isFinalizing, self.captureFailure == nil else { return .failure(CancellationError()) }
+						if let error = self.streamFailure { return .failure(error) }
+						guard self.stream === replacement, self.streamHasVideo else { return .success(false) }
+						self.recoveryTask = nil
+						self.logCaptureEvent("STREAM_RECOVERED", "continuing the same recording")
+						return .success(true)
+					}
+					if try status.get() { return }
+					try await Task.sleep(nanoseconds: 100_000_000)
+				}
+				throw NSError(domain: "RecordlyCapture", code: 20, userInfo: [NSLocalizedDescriptionKey: "Replacement screen stream did not deliver video"])
+			} catch is CancellationError {
+				// Finalization waits for this task, then stops the current candidate.
+				return
+			} catch {
+				lastError = error
+				if Task.isCancelled { return }
+				// Ignore late callbacks from a failed candidate while stopping it.
+				await onCaptureQueue { if self.stream === candidate { self.stream = nil } }
+				if let candidate { try? await candidate.stopCapture() }
+			}
+		}
+		await onCaptureQueue {
+			self.recoveryTask = nil
+			if self.isRecording, !self.isFinalizing {
+				self.logCaptureEvent("STREAM_RECOVERY_FAILED", lastError.localizedDescription)
+				self.interruptCapture(lastError)
+			}
+		}
+	}
+
+
+	private func interruptCapture(_ error: Error) {
+		guard isRecording, captureFailure == nil else { return }
+		captureFailure = error
+		let partialPath = outputURL?.path ?? ""
+		fputs("CAPTURE_INTERRUPTED: \(error.localizedDescription)\n", stderr)
+		fflush(stderr)
+		Task {
+			let finalization = await self.finalizeCapture(interactive: false)
+			print("Recording interrupted. Output path: \(partialPath)")
+			fflush(stdout)
+			if !finalization.interactiveStopParticipated { exit(1) }
+		}
+	}
+
+	/// Starts one finalization operation after all previously delivered samples on
+	/// the recorder queue have drained. Manual stop and automatic window-close
+	/// detection join the same operation instead of racing the asset writers.
+	private func finalizeCapture(interactive: Bool) async -> CaptureFinalizationResult {
+		await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+			audioDeliveryQueue.async { continuation.resume() }
+		}
+		return await withCheckedContinuation { continuation in
+			queue.async {
+				if self.isFinalizing {
+					self.interactiveStopParticipated = self.interactiveStopParticipated || interactive
+					self.finalizationWaiters.append(continuation)
+					return
+				}
+
+				guard self.isRecording else {
+					continuation.resume(returning: CaptureFinalizationResult(
+						outputResult: .failure(NSError(
+							domain: "RecordlyCapture",
+							code: 9,
+							userInfo: [NSLocalizedDescriptionKey: "No recording in progress"]
+						)),
+						interactiveStopParticipated: interactive
+					))
+					return
+				}
+
+				self.isFinalizing = true
+				self.interactiveStopParticipated = interactive
+				self.stopTimelineTime = self.recoveryTask == nil && self.captureFailure == nil ? self.timelineTimeOfStop() : nil
+				self.stillFrameTimer?.cancel()
+				self.stillFrameTimer = nil
+				self.isRecording = false
+				let pendingRecovery = self.recoveryTask
+				self.recoveryTask = nil
+				pendingRecovery?.cancel()
+				self.windowValidationTask?.cancel()
+				self.windowValidationTask = nil
+				self.trackedWindowId = nil
+				self.finalizationWaiters.append(continuation)
+
+				Task {
+					await pendingRecovery?.value
+					let outputResult: Result<String, Error>
+					do {
+						outputResult = .success(try await self.finishCapture())
+					} catch {
+						outputResult = .failure(error)
+					}
+
+					self.queue.async {
+						let finalizationResult = CaptureFinalizationResult(
+							outputResult: outputResult,
+							interactiveStopParticipated: self.interactiveStopParticipated
+						)
+						let waiters = self.finalizationWaiters
+						self.finalizationWaiters.removeAll()
+						self.isFinalizing = false
+						self.interactiveStopParticipated = false
+						for waiter in waiters {
+							waiter.resume(returning: finalizationResult)
+						}
+					}
+				}
+			}
+		}
+	}
+
 	private func finishCapture() async throws -> String {
-		windowValidationTask?.cancel()
-		windowValidationTask = nil
-		trackedWindowId = nil
 
 		if let activeStream = stream {
 			do {
@@ -371,32 +1092,91 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			}
 		}
 		stream = nil
-		isRecording = false
+		let videoEndTime = lastVideoPresentationTime + (lastSampleBuffer.map { frameDuration(for: $0) } ?? .zero)
+		let endTime = stopTimelineTime.map { max($0, videoEndTime) } ?? resolvedCaptureEndTime(videoEndTime: videoEndTime)
 
-		if let originalBuffer = lastSampleBuffer, let videoInput = videoInput {
-			let additionalTime = lastVideoPresentationTime + frameDuration(for: originalBuffer)
-			let timing = CMSampleTimingInfo(duration: originalBuffer.duration, presentationTimeStamp: additionalTime, decodeTimeStamp: originalBuffer.decodeTimeStamp)
-			if let additionalSampleBuffer = try? CMSampleBuffer(copying: originalBuffer, withNewTiming: [timing]) {
+		// The tail frame only gives the last captured frame its full duration, so
+		// it must never put the file at risk.  Appending to an input whose encoder
+		// queue is still backed up — routine after a long high-resolution capture —
+		// raises an Objective-C exception that Swift cannot catch, aborting the
+		// helper before `finishWriting()` and leaving an mdat with no moov atom:
+		// an unplayable recording.  Wait briefly for the queue to drain, then skip
+		// the frame rather than lose the recording.
+		if let originalBuffer = lastSampleBuffer,
+		   let videoInput = videoInput,
+		   await waitUntilReady(videoInput, of: assetWriter) {
+			let tailDuration = frameDuration(for: originalBuffer)
+			let additionalTime = max(lastVideoPresentationTime + tailDuration, endTime - tailDuration)
+			if let adaptor = videoPixelBufferAdaptor, let pixelBuffer = lastCroppedPixelBuffer {
+				adaptor.append(pixelBuffer, withPresentationTime: additionalTime)
+			} else {
+				let timing = CMSampleTimingInfo(duration: tailDuration, presentationTimeStamp: additionalTime, decodeTimeStamp: originalBuffer.decodeTimeStamp)
+				if let additionalSampleBuffer = try? CMSampleBuffer(copying: originalBuffer, withNewTiming: [timing]) {
 				videoInput.append(additionalSampleBuffer)
+				}
 			}
 		}
 
-		let videoEndTime = lastVideoPresentationTime + (lastSampleBuffer.map { frameDuration(for: $0) } ?? .zero)
-		let endTime = resolvedCaptureEndTime(videoEndTime: videoEndTime)
-		assetWriter?.endSession(atSourceTime: endTime)
-		videoInput?.markAsFinished()
-		inlineAudioInput?.markAsFinished()
-		await assetWriter?.finishWriting()
+		// No more video is appended after the tail. Close this lane before padding
+		// audio: AVAssetWriter can otherwise hold audio readiness waiting for video
+		// interleaving, leaving the final audio queue unable to drain.
+		if assetWriter?.status == .writing { videoInput?.markAsFinished() }
 
-		systemAudioInput?.markAsFinished()
-		await systemAudioWriter?.finishWriting()
+		// `endSession`, `markAsFinished` and `finishWriting` all raise when the
+		// writer is no longer in the `.writing` state (a mid-capture failure, for
+		// example a full disk), which would abort the helper the same way.
+		var audioFailure: Error?
+		for samples in audioSampleQueues.values {
+			if let error = await samples.finish(at: endTime) { audioFailure = audioFailure ?? error }
+			if samples.silenceFrames > 0 {
+				fputs("AUDIO_GAPS: silenceFramesInserted=\(samples.silenceFrames)\n", stderr)
+				fflush(stderr)
+			}
+		}
+		for input in [inlineAudioInput, systemAudioInput, microphoneOnlyInput].compactMap({ $0 }) {
+			if audioSampleQueues[ObjectIdentifier(input)] == nil {
+				audioFailure = audioFailure ?? NSError(domain: "RecordlyCapture", code: 19, userInfo: [NSLocalizedDescriptionKey: "Requested audio stream delivered no samples"])
+			}
+		}
+		audioSampleQueues.removeAll()
+		if let assetWriter, assetWriter.status == .writing {
+			assetWriter.endSession(atSourceTime: endTime)
+			inlineAudioInput?.markAsFinished()
+			await assetWriter.finishWriting()
+		}
 
-		microphoneOnlyInput?.markAsFinished()
-		await microphoneOnlyWriter?.finishWriting()
+		if let systemAudioWriter, systemAudioWriter.status == .writing {
+			systemAudioInput?.markAsFinished()
+			await systemAudioWriter.finishWriting()
+		}
 
+		if let microphoneOnlyWriter, microphoneOnlyWriter.status == .writing {
+			microphoneOnlyInput?.markAsFinished()
+			await microphoneOnlyWriter.finishWriting()
+		}
+
+		let finalizeFailure: Error? = [assetWriter, systemAudioWriter, microphoneOnlyWriter]
+			.compactMap { $0 }
+			.compactMap { writer in
+				writer.status == .completed
+					? nil
+					: (writer.error ?? unfinalizedWriterError(status: writer.status))
+			}
+			.first ?? captureFailure ?? audioFailure
 		let path = outputURL?.path ?? ""
+		captureFailure = nil
+		captureFilter = nil
+		captureConfiguration = nil
+		streamFailure = nil
+		streamHasVideo = false
+		stopTimelineTime = nil
 		assetWriter = nil
 		videoInput = nil
+		videoPixelBufferAdaptor = nil
+		windowCropRect = nil
+		windowCropDisplayId = nil
+		excludedProcessIds.removeAll()
+		lastCroppedPixelBuffer = nil
 		systemAudioWriter = nil
 		systemAudioInput = nil
 		microphoneOnlyWriter = nil
@@ -408,6 +1188,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		firstSampleTime = .zero
 		firstSystemAudioSampleTime = nil
 		firstMicrophoneSampleTime = nil
+		lastSystemAudioPresentationTime = .invalid
+		lastMicrophonePresentationTime = .invalid
 		firstInlineAudioSampleTime = nil
 		lastSampleBuffer = nil
 		lastVideoPresentationTime = .zero
@@ -423,7 +1205,46 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		capturesMicrophone = false
 		writesSystemAudioToSeparateTrack = false
 		writesMicrophoneToSeparateTrack = false
+
+		// Report a half-written file as a failure instead of handing the editor a
+		// path it cannot decode.
+		if let finalizeFailure {
+			throw finalizeFailure
+		}
+
 		return path
+	}
+
+	/// Waits briefly for an input's encoder queue to drain.  Returns false when the
+	/// input stays backed up or its writer is no longer accepting data, in which
+	/// case the caller must skip the append: `AVAssetWriterInput.append` raises an
+	/// uncatchable Objective-C exception in both cases.
+	private func waitUntilReady(_ input: AVAssetWriterInput, of writer: AVAssetWriter?) async -> Bool {
+		guard let writer else { return false }
+
+		var attemptsRemaining = writerReadinessPollAttempts
+		while writer.status == .writing {
+			if input.isReadyForMoreMediaData {
+				return true
+			}
+			guard attemptsRemaining > 0 else { return false }
+			attemptsRemaining -= 1
+			do {
+				try await Task.sleep(nanoseconds: writerReadinessPollInterval)
+			} catch is CancellationError {
+				return false
+			} catch {
+				return false
+			}
+		}
+
+		return false
+	}
+
+	private func unfinalizedWriterError(status: AVAssetWriter.Status) -> Error {
+		NSError(domain: "RecordlyCapture", code: 10, userInfo: [
+			NSLocalizedDescriptionKey: "Recording could not be finalized (writer status \(status.rawValue))",
+		])
 	}
 
 	private func adjustedPresentationTime(for sampleBuffer: CMSampleBuffer, outputType: SCStreamOutputType) -> CMTime? {
@@ -432,7 +1253,14 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 
 		let sampleTime = sampleBuffer.presentationTimeStamp
-		if pendingResumeAdjustment, let pauseStartedHostTime {
+		if pendingResumeAdjustment {
+			// Audio and video callbacks share this queue but their timestamps can be
+			// offset slightly. Anchor the post-countdown adjustment to video and drop
+			// audio until that anchor exists; otherwise the first audio callback can
+			// make the following video timestamp move backwards and fail the writer.
+			guard outputType == .screen, let pauseStartedHostTime else {
+				return nil
+			}
 			let pauseGap = sampleTime - pauseStartedHostTime
 			if pauseGap > .zero {
 				accumulatedPausedDuration = accumulatedPausedDuration + pauseGap
@@ -457,7 +1285,65 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			return nil
 		}
 
-		return max(.zero, sampleTime - firstSampleTime - accumulatedPausedDuration)
+		let presentationTime = sampleTime - firstSampleTime - accumulatedPausedDuration
+		// Audio buffers can straddle the first video frame. Preserve their signed
+		// start so AudioSampleQueue trims only pre-origin samples; clamping here
+		// shifts that speech forward and overlaps the next packet.
+		return outputType == .screen ? max(.zero, presentationTime) : presentationTime
+	}
+
+	/// ScreenCaptureKit sends no frames while the screen does not change, so a still
+	/// stretch would end the video early and cut off the audio recorded over it.
+	private func startStillFrameTimer() {
+		stillFrameTimer?.cancel()
+		let timer = DispatchSource.makeTimerSource(queue: queue)
+		timer.schedule(deadline: .now() + 1.0 / 2, repeating: 1.0 / 2)
+		timer.setEventHandler { [weak self] in
+			self?.appendStillFrameIfIdle()
+		}
+		timer.resume()
+		stillFrameTimer = timer
+	}
+
+	/// Writes the last frame again once the screen has been still for a second. The
+	/// repeat is stamped slightly in the past, so a real frame still on its way stays
+	/// newer than it. Runs on the recorder queue.
+	private func appendStillFrameIfIdle() {
+		guard isRecording, recoveryTask == nil, captureFailure == nil, frameCount > 0, !isPaused, !pendingResumeAdjustment,
+			  let lastSampleBuffer,
+			  let videoInput,
+			  assetWriter?.status == .writing,
+			  videoInput.isReadyForMoreMediaData,
+			  let now = timelineTime(atHostTime: CMClockGetTime(CMClockGetHostTimeClock())) else { return }
+		let repeatTime = now - CMTime(seconds: 0.1, preferredTimescale: 600)
+		guard CMTimeCompare(repeatTime - lastVideoPresentationTime, CMTime(seconds: 1, preferredTimescale: 600)) >= 0 else { return }
+		let appended: Bool
+		if let adaptor = videoPixelBufferAdaptor {
+			guard let pixelBuffer = lastCroppedPixelBuffer else { return }
+			appended = adaptor.append(pixelBuffer, withPresentationTime: repeatTime)
+		} else {
+			let timing = CMSampleTimingInfo(duration: lastSampleBuffer.duration, presentationTimeStamp: repeatTime, decodeTimeStamp: lastSampleBuffer.decodeTimeStamp)
+			guard let repeated = try? CMSampleBuffer(copying: lastSampleBuffer, withNewTiming: [timing]) else { return }
+			appended = videoInput.append(repeated)
+		}
+		if appended {
+			lastVideoPresentationTime = repeatTime
+		}
+	}
+
+	/// Where the recording ends: now, or where it was paused. Nil before the first
+	/// frame, and after a resume that no frame has anchored yet.
+	private func timelineTimeOfStop() -> CMTime? {
+		guard !pendingResumeAdjustment else { return nil }
+		let stopHostTime = isPaused ? pauseStartedHostTime : CMClockGetTime(CMClockGetHostTimeClock())
+		return stopHostTime.flatMap { timelineTime(atHostTime: $0) }
+	}
+
+	/// Maps a host clock time onto the recording timeline, as `adjustedPresentationTime`
+	/// does for sample timestamps.
+	private func timelineTime(atHostTime hostTime: CMTime) -> CMTime? {
+		guard firstSampleTime != .zero else { return nil }
+		return max(.zero, hostTime - firstSampleTime - accumulatedPausedDuration)
 	}
 
 	private func frameDuration(for sampleBuffer: CMSampleBuffer) -> CMTime {
@@ -469,7 +1355,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			return lastVideoDuration
 		}
 
-		return CMTime(value: 1, timescale: CMTimeScale(targetCaptureFPS))
+		return CMTime(value: 1, timescale: CMTimeScale(captureFPS))
 	}
 
 	private func latestInlineAudioEndTime() -> CMTime {
@@ -500,23 +1386,42 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		return videoEndTime + CMTimeMinimum(tailExtension, maxInlineAudioTailExtension)
 	}
 
-	private func appendAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, to input: AVAssetWriterInput, firstSampleTime: inout CMTime?, presentationTime: CMTime) {
-		guard input.isReadyForMoreMediaData else { return }
-
-		if firstSampleTime == nil {
-			firstSampleTime = presentationTime
+	private func appendAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, to input: AVAssetWriterInput, of writer: AVAssetWriter?, firstSampleTime: inout CMTime?, lastPresentationTime: inout CMTime, presentationTime: CMTime) {
+		guard let writer else { return }
+		guard writer.status == .writing else {
+			interruptCapture(writer.error ?? unfinalizedWriterError(status: writer.status))
+			return
 		}
-
-		// presentationTime is already relative to the video's first frame
-		// (computed by adjustedPresentationTime), so use it directly.
-		let timing = CMSampleTimingInfo(duration: sampleBuffer.duration, presentationTimeStamp: presentationTime, decodeTimeStamp: sampleBuffer.decodeTimeStamp)
-		if let retimedSampleBuffer = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]) {
-			let appended = input.append(retimedSampleBuffer)
-			if appended, input === inlineAudioInput {
-				lastInlineAudioPresentationTime = presentationTime
-				lastInlineAudioDuration = sampleBuffer.duration
-			}
+		guard !lastPresentationTime.isValid || CMTimeCompare(presentationTime, lastPresentationTime) > 0 else { return }
+		let key = ObjectIdentifier(input)
+		let samples: AudioSampleQueue
+		if let existing = audioSampleQueues[key] {
+			samples = existing
+		} else {
+			samples = AudioSampleQueue(
+				isReady: { [weak writer] in writer?.status == .writing && input.isReadyForMoreMediaData },
+				canWrite: { [weak writer] in writer?.status == .writing },
+				append: { [weak writer] sample in
+					guard writer?.status == .writing, input.isReadyForMoreMediaData else { return false }
+					return input.append(sample)
+				})
+			audioSampleQueues[key] = samples
 		}
+		samples.enqueue(sampleBuffer, at: presentationTime)
+		if let error = samples.failure { interruptCapture(error) }
+		if firstSampleTime == nil { firstSampleTime = presentationTime }
+		// Track offered time, including queued samples, when calculating the MP4 tail.
+		lastPresentationTime = presentationTime
+		if input === inlineAudioInput { lastInlineAudioDuration = sampleBuffer.duration }
+	}
+
+	static func videoCompressionSettings(width: Int, height: Int, fps: Int) -> [String: Any] {
+		let pixelsPerSecond = Double(width) * Double(height) * Double(fps)
+		return [
+			AVVideoAverageBitRateKey: max(8_000_000, Int((pixelsPerSecond * 0.15).rounded())),
+			AVVideoExpectedSourceFrameRateKey: fps,
+			AVVideoMaxKeyFrameIntervalDurationKey: 2,
+		]
 	}
 
 	private static func audioOutputSettings(bitRate: Int) -> [String: Any] {
@@ -529,21 +1434,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	}
 
 	private static func resolveMicrophoneCaptureDeviceID(config: CaptureConfig) -> String? {
-		let audioDevices = AVCaptureDevice.devices(for: .audio)
-
-		if let microphoneLabel = config.microphoneLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !microphoneLabel.isEmpty {
-			if let matchedDevice = audioDevices.first(where: { $0.localizedName == microphoneLabel }) {
-				return matchedDevice.uniqueID
-			}
-		}
-
-		if let microphoneDeviceId = config.microphoneDeviceId?.trimmingCharacters(in: .whitespacesAndNewlines), !microphoneDeviceId.isEmpty {
-			if audioDevices.contains(where: { $0.uniqueID == microphoneDeviceId }) {
-				return microphoneDeviceId
-			}
-		}
-
-		return nil
+		matchMicrophoneCaptureDeviceID(label: config.microphoneLabel, deviceId: config.microphoneDeviceId,
+			devices: AVCaptureDevice.devices(for: .audio).map { (name: $0.localizedName, uniqueID: $0.uniqueID) })
 	}
 
 	private func supportsNativeMicrophoneCapture(streamConfig: SCStreamConfiguration) -> Bool {
@@ -551,6 +1443,34 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		let supportsDeviceSelector = streamConfig.responds(to: Selector(("setMicrophoneCaptureDeviceID:")))
 		let supportsOutputType = SCStreamOutputType(rawValue: microphoneOutputTypeRawValue) != nil
 		return supportsConfigSelector && supportsDeviceSelector && supportsOutputType
+	}
+
+	func updateHudExclusions(_ processIds: [Int32]) async throws {
+		// Finish any in-flight display migration before replacing its filter.
+		let validation = windowValidationTask
+		validation?.cancel()
+		await validation?.value
+		defer { if isRecording { startWindowValidationIfNeeded() } }
+		guard isRecording, let displayId = windowCropDisplayId ?? captureDisplayId else {
+			throw NSError(domain: "RecordlyCapture", code: 19, userInfo: [NSLocalizedDescriptionKey: "No active capture display"])
+		}
+		let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+		guard let display = content.displays.first(where: { $0.displayID == displayId }) else {
+			throw NSError(domain: "RecordlyCapture", code: 20, userInfo: [NSLocalizedDescriptionKey: "Capture display unavailable"])
+		}
+		let exclusions = Set(processIds)
+		let filter = SCContentFilter(display: display, excludingApplications: content.applications.filter {
+			exclusions.contains($0.processID)
+		}, exceptingWindows: [])
+		// Publish the desired filter before awaiting the OS update. A stream
+		// replaced in the meantime must inherit the current HUD exclusions.
+		let activeStream = await onCaptureQueue { () -> SCStream? in
+			guard self.isRecording, !self.isFinalizing else { return nil }
+			self.captureFilter = filter
+			self.excludedProcessIds = exclusions
+			return self.stream
+		}
+		if let activeStream { try await activeStream.updateContentFilter(filter) }
 	}
 
 	private func startWindowValidationIfNeeded() {
@@ -568,22 +1488,86 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				if Task.isCancelled { return }
 				guard self.isRecording else { return }
 
+				let availableContent: SCShareableContent
 				do {
-					let availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-					let windowStillAvailable = availableContent.windows.contains(where: { $0.windowID == trackedWindowId })
-					if !windowStillAvailable {
-						print("WINDOW_UNAVAILABLE")
-						fflush(stdout)
-						let outputPath = try await self.finishCapture()
-						print("Recording stopped. Output path: \(outputPath)")
-						fflush(stdout)
-						exit(0)
-					}
+					availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
 				} catch {
 					continue
 				}
+
+				guard let window = availableContent.windows.first(where: { $0.windowID == trackedWindowId }) else {
+					print("WINDOW_UNAVAILABLE")
+					fflush(stdout)
+					let finalization = await self.finalizeCapture(interactive: false)
+					if finalization.interactiveStopParticipated {
+						return
+					}
+					do {
+						let outputPath = try finalization.outputResult.get()
+						print("Recording stopped. Output path: \(outputPath)")
+						fflush(stdout)
+						exit(0)
+					} catch {
+						fputs("Error stopping capture: \(error.localizedDescription)\n", stderr)
+						fflush(stderr)
+						exit(1)
+					}
+					return
+				}
+
+				guard let display = Self.captureDisplay(for: window.frame, from: availableContent.displays) else {
+					continue
+				}
+				let captureRect = window.frame.intersection(display.frame)
+				guard captureRect.width > 0, captureRect.height > 0 else { continue }
+				let cropRect = CGRect(
+					x: (captureRect.minX - display.frame.minX) / display.frame.width,
+					y: (captureRect.minY - display.frame.minY) / display.frame.height,
+					width: captureRect.width / display.frame.width,
+					height: captureRect.height / display.frame.height
+				)
+
+				if self.windowCropDisplayId != display.displayID {
+					let excludedApplications = availableContent.applications.filter {
+						self.excludedProcessIds.contains($0.processID)
+					}
+					let filter = SCContentFilter(
+						display: display,
+						excludingApplications: excludedApplications,
+						exceptingWindows: []
+					)
+					do {
+						let activeStream = await self.onCaptureQueue { () -> SCStream? in
+							guard self.isRecording, !self.isFinalizing else { return nil }
+							self.captureFilter = filter
+							return self.stream
+						}
+						if let activeStream { try await activeStream.updateContentFilter(filter) }
+					} catch {
+						continue
+					}
+				}
+
+				await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+					self.queue.async {
+						if self.isRecording {
+							self.windowCropRect = cropRect
+							self.windowCropDisplayId = display.displayID
+						}
+						continuation.resume()
+					}
+				}
 			}
 		}
+	}
+
+	private static func captureDisplay(for frame: CGRect, from displays: [SCDisplay]) -> SCDisplay? {
+		let midpoint = CGPoint(x: frame.midX, y: frame.midY)
+		return displays.first(where: { $0.frame.contains(midpoint) })
+			?? displays.filter { $0.frame.intersects(frame) }.max {
+				$0.frame.intersection(frame).width * $0.frame.intersection(frame).height
+					< $1.frame.intersection(frame).width * $1.frame.intersection(frame).height
+			}
 	}
 
 	private static func scaleFactor(for displayId: CGDirectDisplayID) -> Int {
@@ -598,53 +1582,89 @@ final class RecorderService {
 	private let recorder = ScreenCaptureRecorder()
 	private let queue = DispatchQueue(label: "recordly.screencapturekit.commands")
 	private let completionGroup = DispatchGroup()
+	private var succeeded = true
+	// Accessed only by serialized command operations.
+	private var captureStarted = false
+
+	private func enqueue(_ operation: @escaping () async -> Void) {
+		queue.async {
+			let semaphore = DispatchSemaphore(value: 0)
+			Task {
+				await operation()
+				semaphore.signal()
+			}
+			semaphore.wait()
+		}
+	}
 
 	func start(configJSON: String) {
 		completionGroup.enter()
-		queue.async {
-			Task {
-				do {
-					try await self.recorder.startCapture(configJSON: configJSON)
-				} catch {
-					fputs("Error starting capture: \(error.localizedDescription)\n", stderr)
-					fflush(stderr)
-					self.completionGroup.leave()
-				}
+		enqueue {
+			do {
+				try await self.recorder.startCapture(configJSON: configJSON)
+				self.captureStarted = true
+			} catch {
+				self.succeeded = false
+				fputs("Error starting capture: \(error.localizedDescription)\n", stderr)
+				fflush(stderr)
+				self.completionGroup.leave()
 			}
 		}
 	}
 
 	func stop() {
-		queue.async {
-			Task {
-				do {
-					let outputPath = try await self.recorder.stopCapture()
-					print("Recording stopped. Output path: \(outputPath)")
-					fflush(stdout)
-					self.completionGroup.leave()
-				} catch {
-					fputs("Error stopping capture: \(error.localizedDescription)\n", stderr)
-					fflush(stderr)
-					self.completionGroup.leave()
-				}
+		enqueue {
+			// Failed startup already releases completionGroup. EOF must not do it again.
+			guard self.captureStarted else { return }
+			self.captureStarted = false
+			do {
+				let outputPath = try await self.recorder.stopCapture()
+				print("Recording stopped. Output path: \(outputPath)")
+				fflush(stdout)
+				self.completionGroup.leave()
+			} catch {
+				self.succeeded = false
+				fputs("Error stopping capture: \(error.localizedDescription)\n", stderr)
+				fflush(stderr)
+				self.completionGroup.leave()
 			}
 		}
 	}
 
 	func pause() {
-		queue.async {
-			self.recorder.pauseCapture()
+		enqueue {
+			if await self.recorder.pauseCapture() {
+				print("Recording paused")
+				fflush(stdout)
+			}
 		}
 	}
 
 	func resume() {
-		queue.async {
-			self.recorder.resumeCapture()
+		enqueue {
+			if await self.recorder.resumeCapture() {
+				print("Recording resumed")
+				fflush(stdout)
+			}
 		}
 	}
 
-	func waitUntilFinished() {
+	func waitUntilFinished() -> Bool {
 		completionGroup.wait()
+		return succeeded
+	}
+
+	func updateHudExclusions(_ processIds: [Int32], commandId: String? = nil) {
+		enqueue {
+			do {
+				try await self.recorder.updateHudExclusions(processIds)
+				print("HUD capture filter updated" + (commandId.map { " " + $0 } ?? ""))
+				fflush(stdout)
+			} catch {
+				fputs("Error updating HUD capture filter: \(error.localizedDescription)\n", stderr)
+				fflush(stderr)
+			}
+		}
 	}
 }
 
@@ -655,8 +1675,7 @@ guard CommandLine.arguments.count >= 2 else {
 }
 
 // Force CoreGraphics Services initialization on the main thread.
-// Without this, SCContentFilter(desktopIndependentWindow:) crashes with
-// CGS_REQUIRE_INIT because CGS is never initialised in a CLI tool.
+// ScreenCaptureKit still requires CoreGraphics Services to be initialized in a CLI tool.
 let _ = CGMainDisplayID()
 
 // Pre-flight check: ensure screen recording permission is granted before
@@ -698,8 +1717,24 @@ if let configData = CommandLine.arguments[1].data(using: .utf8),
 let service = RecorderService()
 service.start(configJSON: CommandLine.arguments[1])
 
+struct HudExclusionCommand: Decodable {
+	let commandId: String
+	let processIds: [Int32]
+}
+
 DispatchQueue.global(qos: .utility).async {
-	while let input = readLine(strippingNewline: true)?.lowercased() {
+	while let rawInput = readLine(strippingNewline: true) {
+		let input = rawInput.lowercased()
+		if input.hasPrefix("hud-exclusions "),
+		   let data = String(rawInput.dropFirst("hud-exclusions ".count)).data(using: .utf8) {
+			if let command = try? JSONDecoder().decode(HudExclusionCommand.self, from: data),
+			   UUID(uuidString: command.commandId) != nil {
+				service.updateHudExclusions(command.processIds, commandId: command.commandId)
+			} else if let processIds = try? JSONDecoder().decode([Int32].self, from: data) {
+				service.updateHudExclusions(processIds)
+			}
+			continue
+		}
 		if input == "pause" {
 			service.pause()
 			continue
@@ -711,11 +1746,14 @@ DispatchQueue.global(qos: .utility).async {
 		}
 
 		if input == "stop" {
-			service.stop()
 			break
 		}
 	}
+	// EOF means the Electron parent exited or restarted. Finalize and release
+	// capture devices just as we do for an explicit stop command.
+	service.stop()
 }
 
-service.waitUntilFinished()
-
+if !service.waitUntilFinished() {
+	exit(1)
+}

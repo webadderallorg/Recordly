@@ -1,6 +1,11 @@
-import type { ShortcutBinding } from "@/lib/shortcuts";
 import type { Span } from "dnd-timeline";
+import type { ShortcutBinding } from "@/lib/shortcuts";
 import type { ZoomMode } from "../../types";
+
+export interface ClipSequenceSpan extends Span {
+	/** Insertion index after removing the active clip from the ordered sequence. */
+	sequenceIndex?: number;
+}
 
 export interface TimelineRegionSpan {
 	id: string;
@@ -41,7 +46,7 @@ export interface TimelineRenderItem {
 	speedValue?: number;
 	showSourceAudio?: boolean;
 	muted?: boolean;
-	variant: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio";
+	variant: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio" | "caption";
 }
 
 export interface AudioPeaksData {

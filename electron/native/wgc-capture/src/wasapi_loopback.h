@@ -14,7 +14,10 @@ public:
     ~WasapiCapture();
 
     bool initializeLoopback(const std::string& outputPath);
-    bool initializeMic(const std::string& outputPath, const std::string& deviceName = "");
+    bool initializeMic(
+        const std::string& outputPath,
+        const std::string& deviceId = "",
+        const std::string& deviceName = "");
     bool start();
     bool pause();
     bool resume();

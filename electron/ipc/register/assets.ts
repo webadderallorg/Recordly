@@ -1,127 +1,166 @@
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { ipcMain } from "electron";
+import { app, ipcMain } from "electron";
 import { USER_DATA_PATH } from "../../appPaths";
+import { isTrustedRenderer } from "../../trustedRenderer";
+import { getAssetRootPath, isAllowedLocalReadPath } from "../project/manager";
 import { normalizePath } from "../utils";
-import { getAssetRootPath } from "../project/manager";
+import { registerDesktopWallpaperHandler } from "./desktopWallpaper";
 
 export function registerAssetHandlers() {
-  async function resolveReadableLocalFilePath(filePath: string) {
-    const normalizedPath = normalizePath(filePath)
-    const resolvedPath = await fs.realpath(normalizedPath).catch(() => normalizedPath)
-    const stats = await fs.stat(resolvedPath)
-    if (!stats.isFile()) {
-      throw new Error('Path is not a readable file')
-    }
-    return normalizePath(resolvedPath)
-  }
+	registerDesktopWallpaperHandler();
+	async function resolveReadableLocalFilePath(filePath: string) {
+		if (!isAllowedLocalReadPath(filePath))
+			throw new Error("File is outside Recordly's approved locations");
+		const normalizedPath = normalizePath(filePath);
+		const resolvedPath = await fs.realpath(normalizedPath).catch(() => normalizedPath);
+		if (!isAllowedLocalReadPath(resolvedPath))
+			throw new Error("File is outside Recordly's approved locations");
+		const stats = await fs.stat(resolvedPath);
+		if (!stats.isFile()) {
+			throw new Error("Path is not a readable file");
+		}
+		return normalizePath(resolvedPath);
+	}
 
-  // Generate a tiny thumbnail for a wallpaper image and cache it in userData.
-  // Returns the cached thumbnail as raw JPEG bytes for fast grid rendering.
-  // Serialized to prevent concurrent nativeImage operations from eating memory.
-  const THUMB_SIZE = 96
-  const thumbCacheDir = path.join(USER_DATA_PATH, 'wallpaper-thumbs')
-  let thumbGenerationQueue: Promise<void> = Promise.resolve()
+	// Generate a tiny thumbnail for a wallpaper image and cache it in userData.
+	// Returns the cached thumbnail as raw JPEG bytes for fast grid rendering.
+	// Serialized to prevent concurrent nativeImage operations from eating memory.
+	const THUMB_SIZE = 96;
+	const thumbCacheDir = path.join(USER_DATA_PATH, "wallpaper-thumbs");
+	let thumbGenerationQueue: Promise<void> = Promise.resolve();
 
-  ipcMain.handle('generate-wallpaper-thumbnail', async (_, filePath: string) => {
-    try {
-      const resolved = await resolveReadableLocalFilePath(filePath)
+	ipcMain.handle("generate-wallpaper-thumbnail", async (event, filePath: unknown) => {
+		try {
+			if (!isTrustedRenderer(event)) throw new Error("Untrusted local file request");
+			if (typeof filePath !== "string" || !filePath)
+				throw new Error("Invalid wallpaper path");
+			const bundled = filePath.startsWith("/wallpapers/");
+			const wallpaperRoot = path.resolve(getAssetRootPath(), "wallpapers");
+			const candidate = bundled
+				? path.resolve(
+						wallpaperRoot,
+						decodeURIComponent(filePath.slice("/wallpapers/".length)),
+					)
+				: filePath;
+			if (
+				bundled &&
+				(path.relative(wallpaperRoot, candidate).startsWith("..") ||
+					path.isAbsolute(path.relative(wallpaperRoot, candidate)))
+			) {
+				throw new Error("Wallpaper path is outside the bundled wallpapers");
+			}
+			const resolved = await resolveReadableLocalFilePath(candidate);
 
-      // Deterministic cache key from file path + mtime
-      const stat = await fs.stat(resolved)
-      const cacheKey = Buffer.from(`${resolved}:${stat.mtimeMs}`).toString('base64url')
-      const thumbPath = path.join(thumbCacheDir, `${cacheKey}.jpg`)
+			// Deterministic cache key from file path + mtime
+			const stat = await fs.stat(resolved);
+			const cacheKey = createHash("sha256")
+				.update(`${resolved}:${stat.mtimeMs}`)
+				.digest("hex");
+			const thumbPath = path.join(thumbCacheDir, `${cacheKey}.jpg`);
 
-      // Return cached thumbnail if it exists (no queue needed)
-      if (existsSync(thumbPath)) {
-        const data = await fs.readFile(thumbPath)
-        return { success: true, data }
-      }
+			// Return cached thumbnail if it exists (no queue needed)
+			if (existsSync(thumbPath)) {
+				const data = await fs.readFile(thumbPath);
+				return { success: true, data };
+			}
 
-      // Serialize nativeImage operations to avoid OOM from concurrent full-res decodes
-      let jpegData: Buffer
-      const generation = thumbGenerationQueue.then(async () => {
-        const { nativeImage } = await import('electron')
-        const img = nativeImage.createFromPath(resolved)
-        if (img.isEmpty()) {
-          throw new Error('Failed to load image')
-        }
-        const { width, height } = img.getSize()
-        const scale = THUMB_SIZE / Math.min(width, height)
-        const resized = img.resize({
-          width: Math.round(width * scale),
-          height: Math.round(height * scale),
-          quality: 'good',
-        })
-        jpegData = resized.toJPEG(70)
+			// Serialize nativeImage operations to avoid OOM from concurrent full-res decodes
+			let jpegData: Buffer;
+			const generation = thumbGenerationQueue.then(async () => {
+				const { nativeImage } = await import("electron");
+				const img = nativeImage.createFromPath(resolved);
+				if (img.isEmpty()) {
+					throw new Error("Failed to load image");
+				}
+				const { width, height } = img.getSize();
+				const scale = THUMB_SIZE / Math.min(width, height);
+				const resized = img.resize({
+					width: Math.round(width * scale),
+					height: Math.round(height * scale),
+					quality: "good",
+				});
+				jpegData = resized.toJPEG(70);
 
-        // Cache to disk
-        await fs.mkdir(thumbCacheDir, { recursive: true })
-        await fs.writeFile(thumbPath, jpegData)
-      })
-      // Keep the queue moving even if one fails
-      thumbGenerationQueue = generation.catch(() => {})
-      await generation
+				// Cache to disk
+				await fs.mkdir(thumbCacheDir, { recursive: true });
+				await fs.writeFile(thumbPath, jpegData);
+			});
+			// Keep the queue moving even if one fails
+			thumbGenerationQueue = generation.catch(() => undefined);
+			await generation;
 
-      return { success: true, data: jpegData! }
-    } catch (error) {
-      return { success: false, error: String(error) }
-    }
-  })
+			return { success: true, data: jpegData! };
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
+	});
 
-  // Return base path for assets so renderer can resolve file:// paths in production
-  ipcMain.handle('get-asset-base-path', () => {
-    try {
-      const assetPath = getAssetRootPath()
-      return pathToFileURL(`${assetPath}${path.sep}`).toString()
-    } catch (err) {
-      console.error('Failed to resolve asset base path:', err)
-      return null
-    }
-  })
+	// Return base path for assets so renderer can resolve file:// paths in production
+	ipcMain.handle("get-asset-base-path", (event) => {
+		if (!isTrustedRenderer(event)) return null;
+		if (!app.isPackaged) {
+			return null;
+		}
 
-  ipcMain.handle('list-asset-directory', async (_, relativeDir: string) => {
-    try {
-      const normalizedRelativeDir = String(relativeDir ?? '')
-        .replace(/\\/g, '/')
-        .replace(/^\/+/, '')
+		try {
+			const assetPath = getAssetRootPath();
+			return pathToFileURL(`${assetPath}${path.sep}`).toString();
+		} catch (err) {
+			console.error("Failed to resolve asset base path:", err);
+			return null;
+		}
+	});
 
-      const assetRootPath = path.resolve(getAssetRootPath())
-      const targetDirPath = path.resolve(assetRootPath, normalizedRelativeDir)
-      if (targetDirPath !== assetRootPath && !targetDirPath.startsWith(`${assetRootPath}${path.sep}`)) {
-        return { success: false, error: 'Invalid asset directory' }
-      }
+	ipcMain.handle("list-asset-directory", async (event, relativeDir: string) => {
+		try {
+			if (!isTrustedRenderer(event)) throw new Error("Untrusted asset directory request");
+			const normalizedRelativeDir = String(relativeDir ?? "")
+				.replace(/\\/g, "/")
+				.replace(/^\/+/, "");
 
-      const entries = await fs.readdir(targetDirPath, { withFileTypes: true })
-      const files = entries
-        .filter((entry) => entry.isFile())
-        .map((entry) => entry.name)
-        .sort(new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }).compare)
+			const assetRootPath = path.resolve(getAssetRootPath());
+			const targetDirPath = path.resolve(assetRootPath, normalizedRelativeDir);
+			if (
+				targetDirPath !== assetRootPath &&
+				!targetDirPath.startsWith(`${assetRootPath}${path.sep}`)
+			) {
+				return { success: false, error: "Invalid asset directory" };
+			}
 
-      return { success: true, files }
-    } catch (error) {
-      console.error('Failed to list asset directory:', error)
-      return { success: false, error: String(error) }
-    }
-  })
+			const realRoot = await fs.realpath(assetRootPath);
+			const realTarget = await fs.realpath(targetDirPath);
+			const relativeTarget = path.relative(realRoot, realTarget);
+			if (relativeTarget.startsWith("..") || path.isAbsolute(relativeTarget))
+				return { success: false, error: "Invalid asset directory" };
+			const entries = await fs.readdir(realTarget, { withFileTypes: true });
+			const files = entries
+				.filter((entry) => entry.isFile())
+				.map((entry) => entry.name)
+				.sort(new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }).compare);
 
-  ipcMain.handle('read-local-file', async (_, filePath: string) => {
-    try {
-      // Intentionally more permissive than the media-server allowlist: this IPC
-      // is used for direct renderer-side local file reads after the app has
-      // already accepted a path, while URL-based media serving must stay scoped
-      // to approved/app-managed locations. We still canonicalize the path and
-      // require a real on-disk file so this cannot be used to read directories.
-      const resolved = await resolveReadableLocalFilePath(filePath)
+			return { success: true, files };
+		} catch (error) {
+			console.error("Failed to list asset directory:", error);
+			return { success: false, error: String(error) };
+		}
+	});
 
-      const data = await fs.readFile(resolved)
-      return { success: true, data }
-    } catch (error) {
-      console.error('Failed to read local file:', error)
-      return { success: false, error: String(error) }
-    }
-  })
+	ipcMain.handle("read-local-file", async (event, filePath: unknown) => {
+		try {
+			if (!isTrustedRenderer(event)) throw new Error("Untrusted local file request");
+			if (typeof filePath !== "string" || !filePath)
+				throw new Error("File is outside Recordly's approved locations");
+			const resolved = await resolveReadableLocalFilePath(filePath);
 
+			const data = await fs.readFile(resolved);
+			return { success: true, data };
+		} catch (error) {
+			console.error("Failed to read local file:", error);
+			return { success: false, error: String(error) };
+		}
+	});
 }

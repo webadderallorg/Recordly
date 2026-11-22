@@ -12,6 +12,9 @@ const MIME_TYPES: Record<string, string> = {
 	".jpg": "image/jpeg",
 	".jpeg": "image/jpeg",
 	".mjs": "text/javascript; charset=utf-8",
+	".m4a": "audio/mp4",
+	".mp4": "video/mp4",
+	".webm": "video/webm",
 	".png": "image/png",
 	".svg": "image/svg+xml",
 	".txt": "text/plain; charset=utf-8",
@@ -26,6 +29,15 @@ let packagedRendererServerStartPromise: Promise<string> | null = null;
 
 function getContentType(filePath: string): string {
 	return MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+}
+
+function getCacheControl(filePath: string): string {
+	// Vite fingerprints production assets, so they can be reused across the HUD,
+	// picker, toast, and editor windows without revalidation. Keep index.html
+	// uncached because it points at the current fingerprinted files.
+	return /-[A-Za-z0-9_-]{8,}\.[^.]+$/.test(path.basename(filePath))
+		? "public, max-age=31536000, immutable"
+		: "no-cache";
 }
 
 function resolveRequestedFilePath(rootDir: string, requestPathname: string): string | null {
@@ -55,12 +67,23 @@ function resolveRequestedFilePath(rootDir: string, requestPathname: string): str
 
 async function servePackagedRendererRequest(
 	rootDir: string,
+	assetRoot: string,
 	request: IncomingMessage,
 	response: ServerResponse,
 ): Promise<void> {
 	try {
+		if (request.method !== "GET" && request.method !== "HEAD") {
+			response.writeHead(405, { Allow: "GET, HEAD" });
+			response.end();
+			return;
+		}
 		const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
-		const resolvedFilePath = resolveRequestedFilePath(rootDir, requestUrl.pathname);
+		const assetPrefix = "/__recordly_assets/";
+		const isBundledAsset = requestUrl.pathname.startsWith(assetPrefix);
+		const resolvedFilePath = resolveRequestedFilePath(
+			isBundledAsset ? assetRoot : rootDir,
+			isBundledAsset ? requestUrl.pathname.slice(assetPrefix.length) : requestUrl.pathname,
+		);
 
 		if (!resolvedFilePath) {
 			response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
@@ -72,7 +95,8 @@ async function servePackagedRendererRequest(
 		const fileContents = await fs.readFile(filePath);
 
 		response.writeHead(200, {
-			"Cache-Control": "no-cache",
+			"X-Content-Type-Options": "nosniff",
+			"Cache-Control": getCacheControl(filePath),
 			"Content-Type": getContentType(filePath),
 		});
 
@@ -98,7 +122,16 @@ export function getPackagedRendererBaseUrl(): string | null {
 	return packagedRendererBaseUrl;
 }
 
-export async function ensurePackagedRendererServer(rootDir: string): Promise<string> {
+export function createPackagedRendererServer(rootDir: string, assetRoot: string) {
+	return createServer((request, response) => {
+		void servePackagedRendererRequest(rootDir, assetRoot, request, response);
+	});
+}
+
+export async function ensurePackagedRendererServer(
+	rootDir: string,
+	assetRoot = path.join(process.resourcesPath, "assets"),
+): Promise<string> {
 	if (packagedRendererBaseUrl) {
 		return packagedRendererBaseUrl;
 	}
@@ -108,9 +141,7 @@ export async function ensurePackagedRendererServer(rootDir: string): Promise<str
 	}
 
 	packagedRendererServerStartPromise = new Promise((resolve, reject) => {
-		const server = createServer((request, response) => {
-			void servePackagedRendererRequest(rootDir, request, response);
-		});
+		const server = createPackagedRendererServer(rootDir, assetRoot);
 
 		server.once("error", (error) => {
 			reject(error);

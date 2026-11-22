@@ -9,22 +9,29 @@ function normalizeRecordingTimeOffsetMs(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : 0;
 }
 
+function normalizeCaptureSourceKind(value: unknown): RecordingSessionData["captureSourceKind"] {
+	return value === "screen" || value === "window" ? value : undefined;
+}
+
 export function getRecordingSessionManifestPath(videoPath: string) {
 	const extension = path.extname(videoPath);
 	const baseName = path.basename(videoPath, extension);
 	return path.join(path.dirname(videoPath), `${baseName}${RECORDING_SESSION_MANIFEST_SUFFIX}`);
 }
 
-export async function persistRecordingSessionManifest(session: RecordingSessionData): Promise<void> {
+export async function persistRecordingSessionManifest(
+	session: RecordingSessionData,
+): Promise<void> {
 	const normalizedVideoPath = normalizeVideoSourcePath(session.videoPath);
 	if (!normalizedVideoPath) {
 		return;
 	}
 
 	const normalizedWebcamPath = normalizeVideoSourcePath(session.webcamPath ?? null);
+	const captureSourceKind = normalizeCaptureSourceKind(session.captureSourceKind);
 	const manifestPath = getRecordingSessionManifestPath(normalizedVideoPath);
 
-	if (!normalizedWebcamPath) {
+	if (!normalizedWebcamPath && !captureSourceKind) {
 		await fs.rm(manifestPath, { force: true });
 		return;
 	}
@@ -32,8 +39,9 @@ export async function persistRecordingSessionManifest(session: RecordingSessionD
 	const manifest: RecordingSessionManifest = {
 		version: 2,
 		videoFileName: path.basename(normalizedVideoPath),
-		webcamFileName: path.basename(normalizedWebcamPath),
+		webcamFileName: normalizedWebcamPath ? path.basename(normalizedWebcamPath) : null,
 		timeOffsetMs: normalizeRecordingTimeOffsetMs(session.timeOffsetMs),
+		...(captureSourceKind ? { captureSourceKind } : {}),
 	};
 
 	await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
@@ -51,8 +59,7 @@ export async function resolveRecordingSessionManifest(
 
 	try {
 		const content = await fs.readFile(manifestPath, "utf-8");
-		const parsed =
-			parseJsonWithByteOrderMark<Partial<RecordingSessionManifest>>(content);
+		const parsed = parseJsonWithByteOrderMark<Partial<RecordingSessionManifest>>(content);
 		if (parsed.version !== 1 && parsed.version !== 2) {
 			return null;
 		}
@@ -61,12 +68,14 @@ export async function resolveRecordingSessionManifest(
 			typeof parsed.webcamFileName === "string" && parsed.webcamFileName.trim()
 				? parsed.webcamFileName.trim()
 				: null;
-
+		const captureSourceKind = normalizeCaptureSourceKind(parsed.captureSourceKind);
+		const kind = captureSourceKind ? { captureSourceKind } : {};
 		if (!webcamFileName) {
 			return {
 				videoPath: normalizedVideoPath,
 				webcamPath: null,
 				timeOffsetMs: normalizeRecordingTimeOffsetMs(parsed.timeOffsetMs),
+				...kind,
 			};
 		}
 
@@ -80,6 +89,7 @@ export async function resolveRecordingSessionManifest(
 			videoPath: normalizedVideoPath,
 			webcamPath: webcamExists ? webcamPath : null,
 			timeOffsetMs: normalizeRecordingTimeOffsetMs(parsed.timeOffsetMs),
+			...kind,
 		};
 	} catch {
 		return null;
@@ -138,5 +148,3 @@ export async function resolveRecordingSession(
 		webcamPath: linkedWebcamPath,
 	};
 }
-
-

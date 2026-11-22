@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+	createBrowserRecordingOptions,
 	createProcessedMicrophoneConstraints,
 	normalizeBrowserMicrophoneProfile,
+	resolveBrowserCaptureCursorPolicy,
+	shouldUseNativeWindowsCaptureForSource,
+	stopAndDiscardNativeCapture,
 } from "./useScreenRecorder";
 
 type RecordingState = "inactive" | "recording" | "paused";
@@ -30,7 +34,7 @@ function createMockMediaRecorder(initialState: RecordingState = "inactive") {
 }
 
 describe("createProcessedMicrophoneConstraints", () => {
-	it("requests browser voice processing without AGC for the default microphone", () => {
+	it("disables AGC to avoid microphone crackle while keeping default echo and noise processing", () => {
 		expect(createProcessedMicrophoneConstraints()).toEqual({
 			audio: {
 				echoCancellation: true,
@@ -43,7 +47,7 @@ describe("createProcessedMicrophoneConstraints", () => {
 		});
 	});
 
-	it("keeps no-AGC voice processing when a specific microphone is selected", () => {
+	it("keeps default voice processing when a specific microphone is selected", () => {
 		expect(createProcessedMicrophoneConstraints("device-123")).toMatchObject({
 			audio: {
 				deviceId: { exact: "device-123" },
@@ -101,10 +105,148 @@ describe("createProcessedMicrophoneConstraints", () => {
 		});
 	});
 
-	it("normalizes invalid lab microphone profiles to production no-AGC processing", () => {
+	it("normalizes invalid lab microphone profiles to production voice processing", () => {
 		expect(normalizeBrowserMicrophoneProfile("RAW")).toBe("raw");
 		expect(normalizeBrowserMicrophoneProfile("unknown")).toBe("no-agc");
 		expect(normalizeBrowserMicrophoneProfile(null)).toBe("no-agc");
+	});
+});
+
+describe("createBrowserRecordingOptions", () => {
+	it("sets an aggregate bitrate target for browser screen recordings", () => {
+		expect(
+			createBrowserRecordingOptions({
+				audioBitsPerSecond: 128_000,
+				mimeType: "video/webm;codecs=vp9",
+				videoBitsPerSecond: 30_600_000,
+			}),
+		).toEqual({
+			audioBitsPerSecond: 128_000,
+			bitsPerSecond: 30_728_000,
+			mimeType: "video/webm;codecs=vp9",
+			videoBitsPerSecond: 30_600_000,
+		});
+	});
+
+	it("keeps video-only recordings on the requested video budget", () => {
+		expect(
+			createBrowserRecordingOptions({
+				videoBitsPerSecond: 30_600_000,
+			}),
+		).toEqual({
+			bitsPerSecond: 30_600_000,
+			videoBitsPerSecond: 30_600_000,
+		});
+	});
+});
+
+describe("resolveBrowserCaptureCursorPolicy", () => {
+	it("preserves the existing hidden-cursor browser policy by default", () => {
+		expect(resolveBrowserCaptureCursorPolicy()).toEqual({
+			streamCursor: "never",
+			hideOsCursorBeforeRecording: true,
+			hideEditorOverlayCursorByDefault: true,
+		});
+	});
+
+	it("uses the browser captured cursor after native Windows capture fails to start", () => {
+		expect(
+			resolveBrowserCaptureCursorPolicy({ nativeWindowsCaptureStartFailed: true }),
+		).toEqual({
+			streamCursor: "always",
+			hideOsCursorBeforeRecording: false,
+			hideEditorOverlayCursorByDefault: true,
+		});
+	});
+});
+
+describe("shouldUseNativeWindowsCaptureForSource", () => {
+	it("keeps native Windows capture on screen sources", () => {
+		expect(shouldUseNativeWindowsCaptureForSource({ id: "screen:101:0" })).toBe(true);
+	});
+
+	it("keeps native Windows capture on window sources", () => {
+		expect(shouldUseNativeWindowsCaptureForSource({ id: "window:123456:0" })).toBe(true);
+	});
+
+	it("keeps browser capture for non-desktop sources", () => {
+		expect(shouldUseNativeWindowsCaptureForSource({ id: "browser-tab:abc" })).toBe(false);
+	});
+});
+
+describe("stopAndDiscardNativeCapture", () => {
+	it("deletes the partial recording after a successful warm-start stop", async () => {
+		const deleteRecordingFile = vi.fn().mockResolvedValue({ success: true });
+
+		await expect(
+			stopAndDiscardNativeCapture({
+				stopNativeScreenRecording: vi.fn().mockResolvedValue({
+					success: true,
+					path: "C:\\Recordly\\warm-start.mp4",
+				}),
+				deleteRecordingFile,
+			}),
+		).resolves.toEqual({
+			stopSucceeded: true,
+			deleteSucceeded: true,
+			path: "C:\\Recordly\\warm-start.mp4",
+		});
+		expect(deleteRecordingFile).toHaveBeenCalledWith("C:\\Recordly\\warm-start.mp4");
+	});
+
+	it("reports an unsuccessful stop without deleting or confirming cleanup", async () => {
+		const deleteRecordingFile = vi.fn();
+
+		await expect(
+			stopAndDiscardNativeCapture({
+				stopNativeScreenRecording: vi.fn().mockResolvedValue({
+					success: false,
+					error: "helper still running",
+				}),
+				deleteRecordingFile,
+			}),
+		).resolves.toEqual({
+			stopSucceeded: false,
+			deleteSucceeded: false,
+			error: "helper still running",
+		});
+		expect(deleteRecordingFile).not.toHaveBeenCalled();
+	});
+
+	it("does not confirm deletion when IPC resolves with a failure result", async () => {
+		const result = await stopAndDiscardNativeCapture({
+			stopNativeScreenRecording: vi
+				.fn()
+				.mockResolvedValue({ success: true, path: "/take.mp4" }),
+			deleteRecordingFile: vi
+				.fn()
+				.mockResolvedValue({ success: false, error: "file locked" }),
+		});
+		expect(result).toMatchObject({
+			stopSucceeded: true,
+			deleteSucceeded: false,
+			path: "/take.mp4",
+		});
+		expect(result.error).toEqual(new Error("file locked"));
+	});
+
+	it("keeps the stopped path available when deletion fails so cleanup can retry", async () => {
+		const deleteError = new Error("file locked");
+
+		await expect(
+			stopAndDiscardNativeCapture({
+				stopNativeScreenRecording: vi.fn().mockResolvedValue({
+					success: true,
+					path: "C:\\Recordly\\warm-start.mp4",
+				}),
+				deleteRecordingFile: vi.fn().mockRejectedValue(deleteError),
+			}),
+		).resolves.toEqual({
+			stopSucceeded: true,
+			deleteSucceeded: false,
+			path: "C:\\Recordly\\warm-start.mp4",
+			error: deleteError,
+		});
 	});
 });
 
@@ -272,6 +414,7 @@ function cancelRecording(
 	chunks: { current: Blob[] },
 	webcamRecorder?: ReturnType<typeof createMockMediaRecorder> | null,
 	webcamChunks?: { current: Blob[] },
+	stopMicFallbackRecorder?: () => Promise<Blob | null>,
 ) {
 	if (webcamChunks) webcamChunks.current = [];
 	if (webcamRecorder && webcamRecorder.state !== "inactive") {
@@ -279,6 +422,7 @@ function cancelRecording(
 	}
 
 	if (isNativeRecording) {
+		void stopMicFallbackRecorder?.();
 		return { cancelled: true, wasNative: true };
 	}
 
@@ -613,6 +757,23 @@ describe("useScreenRecorder state machine", () => {
 			expect(result.wasNative).toBe(true);
 			expect(webcam.stop).toHaveBeenCalled();
 			expect(recorder.stop).not.toHaveBeenCalled();
+		});
+
+		it("stops the mic fallback recorder when cancelling native recording", () => {
+			const chunks = { current: [] as Blob[] };
+			const stopMicFallbackRecorder = vi.fn(() => Promise.resolve(null));
+
+			const result = cancelRecording(
+				recorder,
+				true,
+				chunks,
+				null,
+				undefined,
+				stopMicFallbackRecorder,
+			);
+
+			expect(result.wasNative).toBe(true);
+			expect(stopMicFallbackRecorder).toHaveBeenCalled();
 		});
 
 		it("handles cancel when recorder is already inactive", () => {

@@ -46,9 +46,7 @@ export function persistThemePreference(pref: ThemePreference): void {
 
 function resolveTheme(pref: ThemePreference): ResolvedTheme {
 	if (pref === "system") {
-		return globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches
-			? "dark"
-			: "light";
+		return globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 	}
 	return pref;
 }
@@ -70,9 +68,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 		return stored;
 	});
 
-	const [resolved, setResolved] = useState<ResolvedTheme>(() =>
-		resolveTheme(preference),
-	);
+	const [resolved, setResolved] = useState<ResolvedTheme>(() => resolveTheme(preference));
 
 	const setPreference = useCallback((pref: ThemePreference) => {
 		setPreferenceState(pref);
@@ -92,11 +88,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 		const mq = globalThis.matchMedia?.("(prefers-color-scheme: dark)");
 		if (!mq) return;
 		const handler = () => {
-			const r = resolveTheme("system");
+			const r = mq.matches ? "dark" : "light";
 			setResolved(r);
 			applyThemeToDOM(r);
 		};
 		mq.addEventListener("change", handler);
+		handler();
 		return () => mq.removeEventListener("change", handler);
 	}, [preference]);
 
@@ -105,9 +102,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 	}, [resolved]);
 
 	return (
-		<ThemeContext.Provider
-			value={{ preference, theme: resolved, setPreference, toggleTheme }}
-		>
+		<ThemeContext.Provider value={{ preference, theme: resolved, setPreference, toggleTheme }}>
 			{children}
 		</ThemeContext.Provider>
 	);

@@ -4,13 +4,42 @@ import {
 	DEFAULT_EDITOR_PREFERENCES,
 	EDITOR_PREFERENCES_STORAGE_KEY,
 	EDITOR_PRESETS_STORAGE_KEY,
+	getPaddingPreference,
 	loadEditorPreferences,
 	loadEditorPresets,
 	normalizeEditorPreferences,
 	saveEditorPreferences,
 	saveEditorPresets,
 } from "./editorPreferences";
-import { DEFAULT_AUTO_CAPTION_SETTINGS } from "./types";
+import {
+	DEFAULT_AUTO_CAPTION_SETTINGS,
+	DEFAULT_CROP_REGION,
+	DEFAULT_PADDING,
+	DEFAULT_WINDOW_PADDING,
+} from "./types";
+
+describe("border radius preferences", () => {
+	it("migrates legacy pixels once and marks the stored unit", () => {
+		expect(normalizeEditorPreferences({ borderRadius: 54 })).toMatchObject({
+			borderRadius: 5,
+			borderRadiusUnit: "percent",
+		});
+		expect(
+			normalizeEditorPreferences({ borderRadius: 8, borderRadiusUnit: "percent" }),
+		).toMatchObject({ borderRadius: 8, borderRadiusUnit: "percent" });
+	});
+
+	it("only replaces a legacy zero radius on macOS", () => {
+		try {
+			vi.stubGlobal("navigator", { platform: "Win32" });
+			expect(normalizeEditorPreferences({ borderRadius: 0 }).borderRadius).toBe(0);
+			vi.stubGlobal("navigator", { platform: "MacIntel" });
+			expect(normalizeEditorPreferences({ borderRadius: 0 }).borderRadius).toBe(4);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});
 
 function createStorageMock(initialValues: Record<string, string> = {}): Storage {
 	const store = new Map(Object.entries(initialValues));
@@ -60,6 +89,100 @@ describe("editorPreferences", () => {
 		Reflect.deleteProperty(globalThis, "electronAPI");
 	});
 
+	it("starts from 2.0 defaults while retaining v1.4 padding for windows and the resource library", () => {
+		const legacyKey = "recordly.editor.preferences";
+		const legacy = {
+			wallpaper: "/wallpapers/tahoe-light.jpg",
+			shadowIntensity: 0.67,
+			exportQuality: "source",
+			padding: 0,
+			customWallpapers: ["/fixtures/background.jpg"],
+			whisperModelPath: "/fixtures/whisper.bin",
+		};
+		const settings = stubElectronSettings({ [legacyKey]: legacy });
+
+		expect(loadEditorPreferences()).toMatchObject({
+			wallpaper: DEFAULT_EDITOR_PREFERENCES.wallpaper,
+			shadowIntensity: DEFAULT_EDITOR_PREFERENCES.shadowIntensity,
+			exportQuality: "medium",
+			advancedExportSettings: false,
+			screenPadding: DEFAULT_PADDING,
+			windowPadding: DEFAULT_PADDING,
+			customWallpapers: legacy.customWallpapers,
+			whisperModelPath: legacy.whisperModelPath,
+		});
+
+		saveEditorPreferences({ shadowIntensity: 0.8 });
+		const saved = {
+			shadowIntensity: 0.8,
+			screenPadding: DEFAULT_PADDING,
+			windowPadding: DEFAULT_PADDING,
+			customWallpapers: legacy.customWallpapers,
+			whisperModelPath: legacy.whisperModelPath,
+		};
+		expect(settings.get(EDITOR_PREFERENCES_STORAGE_KEY)).toMatchObject(saved);
+		expect(loadEditorPreferences()).toMatchObject(saved);
+		expect(settings.get(legacyKey)).toEqual(legacy);
+	});
+
+	it("applies the same upgrade rule to browser-stored v1.4 preferences", () => {
+		vi.stubGlobal(
+			"localStorage",
+			createStorageMock({
+				"recordly.editor.preferences": JSON.stringify({
+					shadowIntensity: 0.67,
+					customWallpapers: ["/fixtures/background.jpg"],
+				}),
+			}),
+		);
+		expect(loadEditorPreferences()).toMatchObject({
+			shadowIntensity: DEFAULT_EDITOR_PREFERENCES.shadowIntensity,
+			customWallpapers: ["/fixtures/background.jpg"],
+		});
+	});
+
+	it("uses valid browser preferences when the native v2 record is invalid", () => {
+		stubElectronSettings({ [EDITOR_PREFERENCES_STORAGE_KEY]: false });
+		vi.stubGlobal(
+			"localStorage",
+			createStorageMock({
+				[EDITOR_PREFERENCES_STORAGE_KEY]: JSON.stringify({ shadowIntensity: 0.8 }),
+			}),
+		);
+		expect(loadEditorPreferences().shadowIntensity).toBe(0.8);
+	});
+
+	it("recovers legacy resources when neither store has a valid v2 record", () => {
+		const legacy = { customWallpapers: ["/fixtures/background.jpg"] };
+		const settings = stubElectronSettings({
+			"recordly.editor.preferences": legacy,
+			[EDITOR_PREFERENCES_STORAGE_KEY]: [],
+		});
+		vi.stubGlobal(
+			"localStorage",
+			createStorageMock({ [EDITOR_PREFERENCES_STORAGE_KEY]: "false" }),
+		);
+		expect(loadEditorPreferences().customWallpapers).toEqual(legacy.customWallpapers);
+
+		settings.set(EDITOR_PREFERENCES_STORAGE_KEY, { customWallpapers: [] });
+		expect(loadEditorPreferences().customWallpapers).toEqual([]);
+	});
+
+	it("defaults automatic zooms on and preserves the saved opt-out", () => {
+		expect(normalizeEditorPreferences({}).autoApplyFreshRecordingAutoZooms).toBe(true);
+		for (const enabled of [false, true]) {
+			vi.stubGlobal(
+				"localStorage",
+				createStorageMock({
+					[EDITOR_PREFERENCES_STORAGE_KEY]: JSON.stringify({
+						autoApplyFreshRecordingAutoZooms: enabled,
+					}),
+				}),
+			);
+			expect(loadEditorPreferences().autoApplyFreshRecordingAutoZooms).toBe(enabled);
+		}
+	});
+
 	it("normalizes invalid values back to safe defaults", () => {
 		expect(
 			normalizeEditorPreferences({
@@ -83,18 +206,84 @@ describe("editorPreferences", () => {
 		});
 	});
 
-	it("defaults MP4 exports to source quality", () => {
-		expect(DEFAULT_EDITOR_PREFERENCES.exportQuality).toBe("source");
+	it("saves webcam controls independently and retains a zero shadow after reload", () => {
+		vi.stubGlobal("localStorage", createStorageMock());
+		stubElectronSettings();
+		saveEditorPreferences({
+			webcam: { shadow: 0.2, width: 55, roundness: 69 },
+		});
+		saveEditorPreferences({ webcam: { width: 60 } });
+		expect(loadEditorPreferences().webcam).toMatchObject({
+			shadow: 0.2,
+			width: 60,
+			roundness: 69,
+		});
+		saveEditorPreferences({ webcam: { shadow: 0 } });
+		saveEditorPreferences({ shadowIntensity: 0.67 });
+		expect(loadEditorPreferences().webcam.shadow).toBe(0);
 	});
 
-	it("defaults cursor preferences to macOS at 2.5x with gentler sway", () => {
-		expect(DEFAULT_EDITOR_PREFERENCES.cursorStyle).toBe("macos");
+	it("defaults MP4 exports to FHD with advanced settings collapsed", () => {
+		expect(DEFAULT_EDITOR_PREFERENCES.exportQuality).toBe("medium");
+		expect(DEFAULT_EDITOR_PREFERENCES.advancedExportSettings).toBe(false);
+		expect(DEFAULT_EDITOR_PREFERENCES.exportEncodingMode).toBe("balanced");
+	});
+
+	it("defaults fresh editor preferences to a 50% shadow", () => {
+		vi.stubGlobal("localStorage", createStorageMock());
+		stubElectronSettings();
+		expect(DEFAULT_EDITOR_PREFERENCES.shadowIntensity).toBe(0.5);
+		expect(loadEditorPreferences().shadowIntensity).toBe(0.5);
+	});
+
+	it("keeps encoding mode when Advanced collapses and reopens after a restart", () => {
+		vi.stubGlobal("localStorage", createStorageMock());
+		saveEditorPreferences({
+			advancedExportSettings: true,
+			exportQuality: "medium",
+			exportEncodingMode: "quality",
+		});
+		saveEditorPreferences({ advancedExportSettings: false });
+		expect(loadEditorPreferences()).toMatchObject({
+			advancedExportSettings: false,
+			exportQuality: "medium",
+			exportEncodingMode: "quality",
+		});
+	});
+
+	it("restores valid advanced custom resolution preferences and rejects invalid sizes", () => {
+		expect(
+			normalizeEditorPreferences({
+				exportQuality: "custom",
+				advancedExportSettings: true,
+				customExportResolution: { width: 2400, height: 1350 },
+			}),
+		).toMatchObject({
+			exportQuality: "custom",
+			advancedExportSettings: true,
+			customExportResolution: { width: 2400, height: 1350 },
+		});
+		expect(
+			normalizeEditorPreferences({ customExportResolution: { width: 8193, height: 1080 } })
+				.customExportResolution,
+		).toEqual({ width: 1920, height: 1080 });
+		expect(normalizeEditorPreferences({ exportQuality: "hd" }).exportQuality).toBe("hd");
+	});
+
+	it("defaults cursor preferences to Tahoe at 2.5x with gentler sway", () => {
+		expect(DEFAULT_EDITOR_PREFERENCES.cursorStyle).toBe("tahoe");
 		expect(DEFAULT_EDITOR_PREFERENCES.cursorSize).toBe(2.5);
 		expect(DEFAULT_EDITOR_PREFERENCES.cursorSway).toBe(0.4);
 	});
 
 	it("defaults MP4 exports to the Lightning pipeline", () => {
 		expect(DEFAULT_EDITOR_PREFERENCES.exportPipelineModel).toBe("modern");
+	});
+
+	it("migrates hidden legacy pipeline preferences to Lightning", () => {
+		expect(normalizeEditorPreferences({ exportPipelineModel: "legacy" })).toMatchObject({
+			exportPipelineModel: "modern",
+		});
 	});
 
 	it("bakes in the stronger split motion blur defaults", () => {
@@ -126,7 +315,9 @@ describe("editorPreferences", () => {
 
 		const loaded = loadEditorPreferences();
 
-		expect(loaded.zoomMotionBlurTuning).toEqual(DEFAULT_EDITOR_PREFERENCES.zoomMotionBlurTuning);
+		expect(loaded.zoomMotionBlurTuning).toEqual(
+			DEFAULT_EDITOR_PREFERENCES.zoomMotionBlurTuning,
+		);
 	});
 
 	it("does not save dev-only split blur tuning overrides to editor preferences", () => {
@@ -263,8 +454,8 @@ describe("editorPreferences", () => {
 			cursorClickBounceDuration: 350,
 			cursorSway: 1.5,
 			borderRadius: 18,
-			padding: { top: 30, right: 30, bottom: 30, left: 30, linked: true },
-			frame: DEFAULT_EDITOR_PREFERENCES.frame,
+			screenPadding: { top: 30, right: 30, bottom: 30, left: 30, linked: true },
+			windowPadding: { top: 40, right: 10, bottom: 10, left: 10, linked: false },
 			aspectRatio: "4:5",
 			exportEncodingMode: "quality",
 			exportBackendPreference: DEFAULT_EDITOR_PREFERENCES.exportBackendPreference,
@@ -278,7 +469,6 @@ describe("editorPreferences", () => {
 			customAspectWidth: "4",
 			customAspectHeight: "5",
 			customWallpapers: ["data:image/jpeg;base64,abc", "data:image/jpeg;base64,abc"],
-			autoApplyFreshRecordingAutoZooms: false,
 		});
 
 		expect(loadEditorPreferences()).toMatchObject({
@@ -298,7 +488,8 @@ describe("editorPreferences", () => {
 			cursorClickBounceDuration: DEFAULT_EDITOR_PREFERENCES.cursorClickBounceDuration,
 			cursorSway: 1.5,
 			borderRadius: 18,
-			padding: { top: 30, right: 30, bottom: 30, left: 30, linked: true },
+			screenPadding: { top: 30, right: 30, bottom: 30, left: 30, linked: true },
+			windowPadding: { top: 40, right: 10, bottom: 10, left: 10, linked: false },
 			aspectRatio: "4:5",
 			exportEncodingMode: "quality",
 			exportFormat: "gif",
@@ -308,8 +499,42 @@ describe("editorPreferences", () => {
 			customAspectWidth: "4",
 			customAspectHeight: "5",
 			customWallpapers: ["data:image/jpeg;base64,abc"],
-			autoApplyFreshRecordingAutoZooms: false,
 		});
+	});
+
+	it("starts with zero screen padding and 25% window padding without saved preferences", () => {
+		const prefs = loadEditorPreferences();
+		expect(getPaddingPreference(prefs, "screen")).toEqual(DEFAULT_PADDING);
+		expect(getPaddingPreference(prefs, null)).toEqual(DEFAULT_PADDING);
+		expect(getPaddingPreference(prefs, "window")).toEqual(DEFAULT_WINDOW_PADDING);
+		expect(DEFAULT_PADDING.top).toBe(0);
+		expect(DEFAULT_WINDOW_PADDING.top).toBe(25);
+	});
+
+	it("migrates legacy shared padding to windows only and saves it under the new key", () => {
+		const padding = { top: 30, bottom: 5, left: 15, right: 20, linked: false };
+		const settings = stubElectronSettings({
+			[EDITOR_PREFERENCES_STORAGE_KEY]: { padding },
+		});
+
+		const prefs = loadEditorPreferences();
+		expect(getPaddingPreference(prefs, "screen")).toEqual(DEFAULT_PADDING);
+		expect(getPaddingPreference(prefs, "window")).toEqual(padding);
+
+		saveEditorPreferences({ screenPadding: DEFAULT_WINDOW_PADDING });
+		expect(settings.get(EDITOR_PREFERENCES_STORAGE_KEY)).not.toHaveProperty("padding");
+		expect(loadEditorPreferences()).toMatchObject({
+			screenPadding: DEFAULT_WINDOW_PADDING,
+			windowPadding: padding,
+		});
+	});
+
+	it("prefers an explicitly saved window setting over the legacy shared setting", () => {
+		stubElectronSettings({
+			[EDITOR_PREFERENCES_STORAGE_KEY]: { padding: 40, windowPadding: DEFAULT_PADDING },
+		});
+
+		expect(getPaddingPreference(loadEditorPreferences(), "window")).toEqual(DEFAULT_PADDING);
 	});
 
 	it("saves custom Whisper paths", () => {
@@ -358,6 +583,7 @@ describe("editorPreferences", () => {
 					updatedAt: "2026-05-01T00:00:00.000Z",
 					snapshot: {
 						...DEFAULT_EDITOR_PREFERENCES,
+						cropRegion: DEFAULT_CROP_REGION,
 						autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
 					},
 				},
@@ -385,6 +611,7 @@ describe("editorPreferences", () => {
 					updatedAt: "2026-05-02T00:00:00.000Z",
 					snapshot: {
 						...DEFAULT_EDITOR_PREFERENCES,
+						cropRegion: DEFAULT_CROP_REGION,
 						autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
 					},
 				},
@@ -399,6 +626,66 @@ describe("editorPreferences", () => {
 		]);
 	});
 
+	it("does not let localStorage failures mask Electron preset persistence", () => {
+		const settingsStore = stubElectronSettings();
+		const localStorage = createStorageMock();
+		localStorage.setItem = () => {
+			throw new Error("localStorage unavailable");
+		};
+		vi.stubGlobal("localStorage", localStorage);
+
+		expect(
+			saveEditorPresets([
+				{
+					id: "preset-1",
+					name: "Demo Preset",
+					createdAt: "2026-05-01T00:00:00.000Z",
+					updatedAt: "2026-05-02T00:00:00.000Z",
+					snapshot: {
+						...DEFAULT_EDITOR_PREFERENCES,
+						cropRegion: DEFAULT_CROP_REGION,
+						autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
+					},
+				},
+			]),
+		).toBe(true);
+
+		expect(settingsStore.get(EDITOR_PRESETS_STORAGE_KEY)).toMatchObject([
+			{
+				id: "preset-1",
+				name: "Demo Preset",
+			},
+		]);
+	});
+
+	it("preserves crop region in editor preset snapshots", () => {
+		const localStorage = createStorageMock();
+		vi.stubGlobal("localStorage", localStorage);
+
+		expect(
+			saveEditorPresets([
+				{
+					id: "preset-1",
+					name: "Cropped Demo",
+					createdAt: "2026-05-01T00:00:00.000Z",
+					updatedAt: "2026-05-01T00:00:00.000Z",
+					snapshot: {
+						...DEFAULT_EDITOR_PREFERENCES,
+						cropRegion: { x: 0.08, y: 0.12, width: 0.8, height: 0.7 },
+						autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
+					},
+				},
+			]),
+		).toBe(true);
+
+		expect(loadEditorPresets()[0]?.snapshot.cropRegion).toEqual({
+			x: 0.08,
+			y: 0.12,
+			width: 0.8,
+			height: 0.7,
+		});
+	});
+
 	it("returns false when preset persistence fails", () => {
 		const localStorage = createStorageMock();
 		localStorage.setItem = () => {
@@ -407,5 +694,111 @@ describe("editorPreferences", () => {
 		vi.stubGlobal("localStorage", localStorage);
 
 		expect(saveEditorPresets([])).toBe(false);
+	});
+});
+
+describe("source-specific webcam metadata", () => {
+	it("does not copy imported source ranges into a reusable style preset", () => {
+		vi.stubGlobal("localStorage", createStorageMock());
+		saveEditorPresets([
+			{
+				id: "webcam",
+				name: "Webcam",
+				createdAt: "2026-09-20T00:00:00Z",
+				updatedAt: "2026-09-20T00:00:00Z",
+				snapshot: {
+					...DEFAULT_EDITOR_PREFERENCES,
+					cropRegion: DEFAULT_CROP_REGION,
+					autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
+					webcam: {
+						...DEFAULT_EDITOR_PREFERENCES.webcam,
+						sourcePath: "/imported-webcam.mp4",
+						visibleRanges: [{ startMs: 1000, endMs: 2000 }],
+					},
+				} as never,
+			},
+		]);
+		expect(loadEditorPresets()[0].snapshot.webcam).not.toHaveProperty("visibleRanges");
+		expect(loadEditorPresets()[0].snapshot.webcam).not.toHaveProperty("sourcePath");
+	});
+});
+
+describe("user preferences stay independent from projects and presets", () => {
+	afterEach(() => vi.unstubAllGlobals());
+	it("defaults Publish to Link and persists Local and export settings across reloads", () => {
+		vi.stubGlobal("localStorage", createStorageMock());
+		expect(loadEditorPreferences().publishDestination).toBe("link");
+		expect(loadEditorPreferences().mp4FrameRate).toBe(30);
+		expect(normalizeEditorPreferences({ mp4FrameRate: 25 as never }).mp4FrameRate).toBe(30);
+		saveEditorPreferences({
+			publishDestination: "local",
+			exportQuality: "high",
+			mp4FrameRate: 60,
+			includeCaptionSidecar: true,
+		});
+		expect(loadEditorPreferences()).toMatchObject({
+			publishDestination: "local",
+			exportQuality: "high",
+			mp4FrameRate: 60,
+			includeCaptionSidecar: true,
+		});
+		saveEditorPreferences({ wallpaper: "#123456" });
+		expect(loadEditorPreferences().publishDestination).toBe("local");
+		expect(normalizeEditorPreferences({ publishDestination: null }).publishDestination).toBe(
+			"link",
+		);
+	});
+	it("drops export settings and machine paths from legacy presets", () => {
+		vi.stubGlobal("localStorage", createStorageMock());
+		const snapshot = {
+			...DEFAULT_EDITOR_PREFERENCES,
+			cropRegion: DEFAULT_CROP_REGION,
+			autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
+			whisperModelPath: "/machine/model.bin",
+		};
+		saveEditorPresets([
+			{
+				id: "legacy",
+				name: "Legacy",
+				createdAt: "2026-01-01",
+				updatedAt: "2026-01-01",
+				snapshot,
+			},
+		]);
+		const loaded = loadEditorPresets()[0].snapshot;
+		expect(loaded.wallpaper).toBe(snapshot.wallpaper);
+		for (const key of [
+			"exportQuality",
+			"mp4FrameRate",
+			"publishDestination",
+			"whisperExecutablePath",
+			"whisperModelPath",
+		])
+			expect(loaded).not.toHaveProperty(key);
+	});
+});
+
+describe("camera shape preferences", () => {
+	it("resets legacy roundness and retains overrides from the current version", () => {
+		expect(normalizeEditorPreferences({}).webcam.shape).toBe("circle");
+		const legacy = normalizeEditorPreferences({
+			webcam: { size: 60, roundness: 100 } as never,
+		});
+		expect(legacy.webcam).toMatchObject({
+			shape: "circle",
+			width: 60,
+			height: 60,
+			roundness: 20,
+			roundnessVersion: 1,
+		});
+		expect(normalizeEditorPreferences(legacy).webcam.roundness).toBe(20);
+		expect(
+			normalizeEditorPreferences({ webcam: { shape: "squircle", roundness: 100 } }).webcam,
+		).toMatchObject({ shape: "squircle", roundness: 20 });
+		expect(
+			normalizeEditorPreferences({
+				webcam: { shape: "rectangle", roundness: 0, roundnessVersion: 1 },
+			}).webcam,
+		).toMatchObject({ shape: "rectangle", roundness: 0 });
 	});
 });

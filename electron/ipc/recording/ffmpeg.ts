@@ -1,9 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs/promises";
 import { resolveLinuxWindowBounds } from "../cursor/bounds";
-import {
-	ffmpegCaptureOutputBuffer,
-} from "../state";
+import { ffmpegCaptureOutputBuffer } from "../state";
 import type { SelectedSource } from "../types";
 import { getScreen, parseWindowId } from "../utils";
 import { resolveWindowsCaptureDisplay } from "../windowsCaptureSelection";
@@ -25,18 +23,29 @@ export function getDisplayWorkAreaForSource(source: SelectedSource) {
 }
 
 export async function buildFfmpegCaptureArgs(source: SelectedSource, outputPath: string) {
-	const commonOutputArgs = [
+	const buildOutputArgs = (inputRange: "auto" | "full") => [
 		"-an",
+		"-vf",
+		`scale=in_range=${inputRange}:out_range=tv:out_color_matrix=bt709:sws_dither=bayer`,
 		"-c:v",
 		"libx264",
 		"-preset",
 		"veryfast",
 		"-pix_fmt",
 		"yuv420p",
+		"-colorspace",
+		"bt709",
+		"-color_primaries",
+		"bt709",
+		"-color_trc",
+		"bt709",
+		"-color_range",
+		"tv",
 		"-movflags",
 		"+faststart",
 		outputPath,
 	];
+	const fullRangeOutputArgs = buildOutputArgs("full");
 
 	if (process.platform === "win32") {
 		if (source?.id?.startsWith("window:")) {
@@ -59,7 +68,7 @@ export async function buildFfmpegCaptureArgs(source: SelectedSource, outputPath:
 				"0",
 				"-i",
 				windowId ? `hwnd=${windowId}` : `title=${windowTitle}`,
-				...commonOutputArgs,
+				...fullRangeOutputArgs,
 			];
 		}
 
@@ -73,7 +82,7 @@ export async function buildFfmpegCaptureArgs(source: SelectedSource, outputPath:
 			"0",
 			"-i",
 			"desktop",
-			...commonOutputArgs,
+			...fullRangeOutputArgs,
 		];
 	}
 
@@ -97,7 +106,7 @@ export async function buildFfmpegCaptureArgs(source: SelectedSource, outputPath:
 				`${Math.max(2, bounds.width)}x${Math.max(2, bounds.height)}`,
 				"-i",
 				`${displayEnv}+${Math.round(bounds.x)},${Math.round(bounds.y)}`,
-				...commonOutputArgs,
+				...fullRangeOutputArgs,
 			];
 		}
 
@@ -114,7 +123,7 @@ export async function buildFfmpegCaptureArgs(source: SelectedSource, outputPath:
 			`${Math.max(2, bounds.width)}x${Math.max(2, bounds.height)}`,
 			"-i",
 			`${displayEnv}+${Math.round(bounds.x)},${Math.round(bounds.y)}`,
-			...commonOutputArgs,
+			...fullRangeOutputArgs,
 		];
 	}
 
@@ -129,7 +138,7 @@ export async function buildFfmpegCaptureArgs(source: SelectedSource, outputPath:
 			"60",
 			"-i",
 			"1:none",
-			...commonOutputArgs,
+			...buildOutputArgs("auto"),
 		];
 	}
 
@@ -169,7 +178,10 @@ export function waitForFfmpegCaptureStart(process: ChildProcessWithoutNullStream
 	});
 }
 
-export function waitForFfmpegCaptureStop(process: ChildProcessWithoutNullStreams, outputPath: string) {
+export function waitForFfmpegCaptureStop(
+	process: ChildProcessWithoutNullStreams,
+	outputPath: string,
+) {
 	return new Promise<string>((resolve, reject) => {
 		const onClose = async (code: number | null) => {
 			cleanup();

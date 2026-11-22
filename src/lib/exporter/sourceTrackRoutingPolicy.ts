@@ -1,7 +1,4 @@
-import {
-	buildResolvedAudioPlan,
-	type SourceTrackId,
-} from "./audioRoutingEngine";
+import { buildResolvedAudioPlan, type SourceTrackId } from "./audioRoutingEngine";
 
 export interface SourceTrackRoutingPolicy {
 	hasEmbeddedSourceAudio: boolean;

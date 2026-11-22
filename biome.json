@@ -1,7 +1,24 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.3.13/schema.json",
 	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
-	"files": { "ignoreUnknown": false },
+	"files": {
+		"ignoreUnknown": false,
+		"includes": [
+			"**",
+			"!!**/dist",
+			"!!**/dist-electron",
+			"!!**/dist-ssr",
+			"!!**/release",
+			"!!**/.tmp",
+			"!!aside-react/extracted",
+			"!!aside-react/src/vendor/aceternity/sticky-scroll-reveal.original.tsx",
+			"!!output",
+			"!!services/email/billing/**/*.html",
+			"!!services/supabase/templates/**/*.html",
+			"!!**/electron/native/**/build",
+			"!!**/electron/native/bin"
+		]
+	},
 	"formatter": {
 		"enabled": true,
 		"indentStyle": "tab",
@@ -92,41 +109,18 @@
 				"noWith": "error",
 				"useGetterReturn": "error"
 			}
-		},
-		"includes": ["**", "**/dist", "**/.eslintrc.cjs", "**", "**/dist", "**/.eslintrc.cjs"]
+		}
 	},
 	"javascript": { "formatter": { "quoteStyle": "double" } },
-	"css": { "parser": { "tailwindDirectives": true } },
+	"css": { "parser": { "cssModules": true, "tailwindDirectives": true } },
 	"overrides": [
 		{
-			"includes": ["*.ts", "*.tsx", "*.mts", "*.cts"],
-			"linter": {
-				"rules": {
-					"complexity": { "noArguments": "error" },
-					"correctness": {
-						"noConstAssign": "off",
-						"noGlobalObjectCalls": "off",
-						"noInvalidBuiltinInstantiation": "off",
-						"noInvalidConstructorSuper": "off",
-						"noSetterReturn": "off",
-						"noUndeclaredVariables": "off",
-						"noUnreachable": "off",
-						"noUnreachableSuper": "off"
-					},
-					"style": { "useConst": "error" },
-					"suspicious": {
-						"noDuplicateClassMembers": "off",
-						"noDuplicateObjectKeys": "off",
-						"noDuplicateParameters": "off",
-						"noFunctionAssign": "off",
-						"noImportAssign": "off",
-						"noRedeclare": "off",
-						"noUnsafeNegation": "off",
-						"noVar": "error",
-						"useGetterReturn": "off"
-					}
-				}
-			}
+			"includes": ["**/*.astro"],
+			"linter": { "rules": { "correctness": { "noUnusedVariables": "off" } } }
+		},
+		{
+			"includes": ["services/supabase/functions/**/*.ts"],
+			"javascript": { "globals": ["Deno"] }
 		},
 		{
 			"includes": ["*.ts", "*.tsx", "*.mts", "*.cts"],

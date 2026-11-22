@@ -1,14 +1,9 @@
-import { Keyboard, ArrowCounterClockwise as RotateCcw } from "@phosphor-icons/react";
+import { Description, Kbd } from "@heroui/react";
 import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-	Dialog,
-	DialogContent,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Keyboard, ArrowCounterClockwise as RotateCcw } from "@/components/ui/icons";
+import { toast } from "@/components/ui/toast";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import {
 	DEFAULT_SHORTCUTS,
@@ -26,10 +21,45 @@ import { useScopedT } from "../../contexts/I18nContext";
 
 const MODIFIER_KEYS = new Set(["Control", "Shift", "Alt", "Meta"]);
 
-export function ShortcutsConfigDialog() {
+export function ShortcutsConfigDialog({
+	inline = false,
+	active = true,
+}: {
+	inline?: boolean;
+	active?: boolean;
+} = {}) {
 	const t = useScopedT("dialogs");
+	const ts = useScopedT("shortcuts");
+	const te = useScopedT("editing");
+	const tSettings = useScopedT("settings");
+	const actionLabel = (action: keyof typeof SHORTCUT_LABELS) =>
+		action === "splitClip"
+			? te("splitClip", "Split Clip")
+			: ts(`actions.${action}`, SHORTCUT_LABELS[action]);
+	const bindingLabel = (text: string) =>
+		text
+			.replace(/\bSpace\b/g, te("spaceKey", "Space"))
+			.replace(/\bScroll\b/g, te("scrollKey", "Scroll"));
+
+	const fixedLabel = useCallback(
+		(label: string) => {
+			if (label === "Clear All Zooms") return tSettings("zoom.clearAllZooms", label);
+			const key = {
+				"Cycle Annotations Forward": "cycleForward",
+				"Cycle Annotations Backward": "cycleBackward",
+				"Delete Selected (alt)": "deleteSelectedAlt",
+				"Pan Timeline": "panTimeline",
+				"Zoom Timeline": "zoomTimeline",
+			}[label];
+			return key ? ts(`actions.${key}`, label) : label;
+		},
+		[tSettings, ts],
+	);
+
 	const { shortcuts, isMac, isConfigOpen, closeConfig, setShortcuts, persistShortcuts } =
 		useShortcuts();
+
+	const editorActive = inline ? active : isConfigOpen;
 
 	const [draft, setDraft] = useState<ShortcutsConfig>(shortcuts);
 	const [captureFor, setCaptureFor] = useState<ShortcutAction | null>(null);
@@ -40,15 +70,18 @@ export function ShortcutsConfigDialog() {
 	} | null>(null);
 
 	useEffect(() => {
-		if (isConfigOpen) {
+		if (editorActive) {
 			setDraft(shortcuts);
 			setCaptureFor(null);
 			setConflict(null);
+		} else {
+			setCaptureFor(null);
+			setConflict(null);
 		}
-	}, [isConfigOpen, shortcuts]);
+	}, [editorActive, shortcuts]);
 
 	useEffect(() => {
-		if (!captureFor) return;
+		if (!captureFor || !editorActive) return;
 
 		const handleCapture = (e: KeyboardEvent) => {
 			e.preventDefault();
@@ -72,7 +105,9 @@ export function ShortcutsConfigDialog() {
 			setCaptureFor(null);
 
 			if (found?.type === "fixed") {
-				toast.error(t("shortcutsConfig.reserved", undefined, { label: found.label }));
+				toast.error(
+					t("shortcutsConfig.reserved", undefined, { label: fixedLabel(found.label) }),
+				);
 				return;
 			}
 
@@ -86,7 +121,7 @@ export function ShortcutsConfigDialog() {
 
 		window.addEventListener("keydown", handleCapture, { capture: true });
 		return () => window.removeEventListener("keydown", handleCapture, { capture: true });
-	}, [captureFor, draft, t]);
+	}, [captureFor, draft, t, fixedLabel, editorActive]);
 
 	const handleSwap = useCallback(() => {
 		if (!conflict || conflict.conflictWith.type !== "configurable") return;
@@ -105,8 +140,8 @@ export function ShortcutsConfigDialog() {
 		setShortcuts(draft);
 		await persistShortcuts(draft);
 		toast.success(t("shortcutsConfig.saved"));
-		closeConfig();
-	}, [draft, setShortcuts, persistShortcuts, closeConfig, t]);
+		if (!inline) closeConfig();
+	}, [draft, setShortcuts, persistShortcuts, closeConfig, t, inline]);
 
 	const handleReset = useCallback(() => {
 		setDraft({ ...DEFAULT_SHORTCUTS });
@@ -116,26 +151,44 @@ export function ShortcutsConfigDialog() {
 	const handleClose = useCallback(() => {
 		setCaptureFor(null);
 		setConflict(null);
-		closeConfig();
-	}, [closeConfig]);
+		if (inline) setDraft(shortcuts);
+		else closeConfig();
+	}, [closeConfig, inline, shortcuts]);
 
-	return (
-		<Dialog
-			open={isConfigOpen}
-			onOpenChange={(open: boolean) => {
-				if (!open) handleClose();
-			}}
+	const actions = (
+		<div
+			className={`flex shrink-0 flex-wrap items-center justify-between gap-3 ${inline ? "settings-shortcuts-actions" : "mt-4"}`}
 		>
-			<DialogContent className="bg-editor-dialog border-foreground/10 text-foreground max-w-[460px]">
-				<DialogHeader>
-					<DialogTitle className="flex items-center gap-2 text-sm">
-						<Keyboard className="w-4 h-4 text-[#2563EB]" />
-						{t("shortcutsConfig.title")}
-					</DialogTitle>
-				</DialogHeader>
+			<Button
+				title={t("shortcutsConfig.resetToDefaults")}
+				variant="ghost"
+				size="sm"
+				className="gap-1.5 max-w-[200px]"
+				onClick={handleReset}
+			>
+				<RotateCcw className="w-3 h-3" />
+				<span className="truncate">{t("shortcutsConfig.resetToDefaults")}</span>
+			</Button>
+			<div className="flex gap-2">
+				<Button variant="ghost" size="sm" onClick={handleClose}>
+					{t("shortcutsConfig.cancel")}
+				</Button>
+				<Button size="sm" onClick={handleSave}>
+					{t("shortcutsConfig.save")}
+				</Button>
+			</div>
+		</div>
+	);
 
+	const editor = (
+		<div
+			className={`flex min-h-0 min-w-0 flex-col${inline ? " settings-shortcuts-editor" : ""}`}
+		>
+			<Description className="mt-2 text-xs">{t("shortcutsConfig.instructions")}</Description>
+			{inline && actions}
+			<div className="min-h-0 space-y-6 overflow-y-auto">
 				<div className="space-y-0.5">
-					<p className="text-[10px] text-muted-foreground/70 mb-2 uppercase tracking-wide font-semibold">
+					<p className="mb-3 text-[13px] font-medium text-foreground">
 						{t("shortcutsConfig.configurable")}
 					</p>
 					{SHORTCUT_ACTIONS.map((action) => {
@@ -143,12 +196,28 @@ export function ShortcutsConfigDialog() {
 						const hasConflict = conflict?.forAction === action;
 						return (
 							<div key={action}>
-								<div className="flex items-center justify-between py-1.5 px-1 border-b border-foreground/5">
-									<span className="text-sm text-muted-foreground">
-										{SHORTCUT_LABELS[action]}
+								<div className="flex flex-wrap items-center justify-between gap-4 border-b border-separator py-3">
+									<span className="text-[13px] text-foreground">
+										{actionLabel(action)}
 									</span>
-									<button
+									<Button
 										type="button"
+										variant="secondary"
+										size="sm"
+										aria-label={
+											isCapturing
+												? `${actionLabel(action)}: ${t("shortcutsConfig.pressAKey")}`
+												: te(
+														"changeShortcut",
+														"Change {{action}} shortcut, currently {{binding}}",
+														{
+															action: actionLabel(action),
+															binding: bindingLabel(
+																formatBinding(draft[action], isMac),
+															),
+														},
+													)
+										}
 										onClick={() => {
 											setConflict(null);
 											setCaptureFor(isCapturing ? null : action);
@@ -159,43 +228,43 @@ export function ShortcutsConfigDialog() {
 												: t("shortcutsConfig.clickToChange")
 										}
 										className={[
-											"px-2 py-1 rounded text-xs font-mono border transition-all min-w-[90px] text-center select-none",
+											"px-2 py-1 text-xs min-w-[90px] text-center select-none",
 											isCapturing
-												? "bg-[#2563EB]/20 border-[#2563EB] text-[#2563EB] animate-pulse"
+												? "animate-pulse"
 												: hasConflict
-													? "bg-amber-500/10 border-amber-500/50 text-amber-400"
-													: "bg-foreground/5 border-foreground/10 text-foreground hover:border-[#2563EB]/50 hover:text-[#2563EB] cursor-pointer",
+													? "text-warning"
+													: "cursor-pointer",
 										].join(" ")}
 									>
 										{isCapturing
 											? t("shortcutsConfig.pressAKey")
-											: formatBinding(draft[action], isMac)}
-									</button>
+											: bindingLabel(formatBinding(draft[action], isMac))}
+									</Button>
 								</div>
 								{hasConflict && conflict?.conflictWith.type === "configurable" && (
-									<div className="flex items-center justify-between px-1 py-1.5 mb-0.5 bg-amber-500/10 border border-amber-500/20 rounded text-xs">
-										<span className="text-amber-400">
+									<div className="flex items-center justify-between px-1 py-1.5 mb-0.5 bg-warning-soft border border-warning/20 rounded text-xs">
+										<span className="text-warning">
 											{t("shortcutsConfig.alreadyUsedBy", undefined, {
-												action: SHORTCUT_LABELS[
-													conflict.conflictWith.action
-												],
+												action: actionLabel(conflict.conflictWith.action),
 											})}
 										</span>
 										<div className="flex gap-1.5">
-											<button
+											<Button
+												variant="ghost"
 												type="button"
 												onClick={handleSwap}
-												className="px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded text-amber-300 font-medium transition-colors"
+												className="px-2 py-0.5 text-warning"
 											>
 												{t("shortcutsConfig.swap")}
-											</button>
-											<button
+											</Button>
+											<Button
+												variant="ghost"
 												type="button"
 												onClick={handleCancelConflict}
-												className="px-2 py-0.5 bg-foreground/5 hover:bg-foreground/10 border border-foreground/10 rounded text-muted-foreground transition-colors"
+												className="px-2 py-0.5"
 											>
 												{t("shortcutsConfig.cancel")}
-											</button>
+											</Button>
 										</div>
 									</div>
 								)}
@@ -205,50 +274,49 @@ export function ShortcutsConfigDialog() {
 				</div>
 
 				<div className="space-y-0.5 mt-2">
-					<p className="text-[10px] text-muted-foreground/70 mb-2 uppercase tracking-wide font-semibold">
+					<p className="mb-3 text-[13px] font-medium text-foreground">
 						{t("shortcutsConfig.fixed")}
 					</p>
-					{FIXED_SHORTCUTS.map(({ label, display }) => (
+					{FIXED_SHORTCUTS.map(({ label, display, bindings }) => (
 						<div
 							key={label}
-							className="flex items-center justify-between py-1.5 px-1 border-b border-foreground/5 last:border-0"
+							className="flex flex-wrap items-center justify-between gap-4 border-b border-separator py-3 last:border-0"
 						>
-							<span className="text-sm text-muted-foreground">{label}</span>
-							<kbd className="px-2 py-1 bg-foreground/5 border border-foreground/10 rounded text-xs font-mono text-muted-foreground min-w-[90px] text-center">
-								{display}
-							</kbd>
+							<span className="text-[13px] text-foreground">{fixedLabel(label)}</span>
+							<Kbd className="min-w-[90px] justify-center">
+								{bindingLabel(
+									display ??
+										bindings
+											.map((binding) => formatBinding(binding, isMac))
+											.join(" / "),
+								)}
+							</Kbd>
 						</div>
 					))}
 				</div>
+			</div>
 
-				<p className="text-[10px] text-muted-foreground/70 mt-1">
-					{t("shortcutsConfig.instructions")}
-				</p>
+			{!inline && actions}
+		</div>
+	);
+	if (inline) return editor;
 
-				<DialogFooter className="flex gap-2 sm:justify-between mt-2">
-					<Button
-						title={t("shortcutsConfig.resetToDefaults")}
-						variant="ghost"
-						size="sm"
-						className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 gap-1.5 max-w-[200px]"
-						onClick={handleReset}
-					>
-						<RotateCcw className="w-3 h-3" />
-						<span className="truncate">{t("shortcutsConfig.resetToDefaults")}</span>
-					</Button>
-					<div className="flex gap-2">
-						<Button variant="ghost" size="sm" onClick={handleClose}>
-							{t("shortcutsConfig.cancel")}
-						</Button>
-						<Button
-							size="sm"
-							className="bg-[#2563EB] hover:bg-[#1d4ed8] text-white"
-							onClick={handleSave}
-						>
-							{t("shortcutsConfig.save")}
-						</Button>
-					</div>
-				</DialogFooter>
+	return (
+		<Dialog
+			open={isConfigOpen}
+			onOpenChange={(open: boolean) => {
+				if (!open) handleClose();
+			}}
+		>
+			<DialogContent className="max-w-lg max-h-[85vh] overflow-hidden">
+				<DialogHeader className="shrink-0">
+					<DialogTitle className="flex items-center gap-2 text-base font-semibold">
+						<Keyboard className="w-4 h-4 text-accent" />
+						{t("shortcutsConfig.title")}
+					</DialogTitle>
+				</DialogHeader>
+
+				{editor}
 			</DialogContent>
 		</Dialog>
 	);

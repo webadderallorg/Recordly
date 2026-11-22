@@ -134,6 +134,131 @@ describe("getCompanionAudioFallbackPaths", () => {
 		]);
 	});
 
+	it.each([
+		true,
+		false,
+	])("pairs native AAC system audio with a browser WAV microphone (embedded=%s)", async (embedded) => {
+		const videoPath = path.join(tempRoot, "recording.mp4");
+		const systemPath = path.join(tempRoot, "recording.system.m4a");
+		const micPath = path.join(tempRoot, "recording.mic.wav");
+		await Promise.all(
+			[videoPath, systemPath, micPath].map((file) => fs.writeFile(file, "media")),
+		);
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				const stderr = embedded ? "Stream #0:1: Audio: aac" : "Stream #0:0: Video: h264";
+				const error = Object.assign(new Error("probe"), { stderr });
+				callback(error, "", stderr);
+			},
+		);
+		const { getCompanionAudioFallbackPaths, getUsableCompanionAudioCandidates } = await import(
+			"./diagnostics"
+		);
+		const candidates = await getUsableCompanionAudioCandidates(videoPath);
+		expect(candidates[0]).toMatchObject({
+			platform: "mac",
+			systemPath,
+			micPath,
+			usablePaths: [systemPath, micPath],
+		});
+		await expect(getCompanionAudioFallbackPaths(videoPath)).resolves.toEqual([
+			systemPath,
+			micPath,
+		]);
+	});
+
+	it("retains embedded sound beside a browser microphone when its system sidecar is absent", async () => {
+		const videoPath = path.join(tempRoot, "recording.mp4");
+		const micPath = path.join(tempRoot, "recording.mic.wav");
+		await Promise.all([videoPath, micPath].map((file) => fs.writeFile(file, "media")));
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				callback(
+					Object.assign(new Error("probe"), { stderr: "Stream #0:1: Audio: aac" }),
+					"",
+					"Stream #0:1: Audio: aac",
+				);
+			},
+		);
+		const { getCompanionAudioFallbackPaths } = await import("./diagnostics");
+		await expect(getCompanionAudioFallbackPaths(videoPath)).resolves.toEqual([
+			videoPath,
+			micPath,
+		]);
+	});
+
+	it("returns both mac sidecars instead of the video when a system sidecar exists", async () => {
+		const videoPath = path.join(tempRoot, "recording.mp4");
+		const systemPath = path.join(tempRoot, "recording.system.m4a");
+		const micPath = path.join(tempRoot, "recording.mic.m4a");
+
+		await Promise.all([
+			fs.writeFile(videoPath, "video"),
+			fs.writeFile(systemPath, "system"),
+			fs.writeFile(micPath, "mic"),
+		]);
+
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				const error = new Error("ffmpeg probe found embedded audio") as Error & {
+					stderr?: string;
+				};
+				error.stderr = "Stream #0:1: Audio: aac";
+				callback(error, "", error.stderr);
+			},
+		);
+
+		const { getCompanionAudioFallbackPaths } = await import("./diagnostics");
+
+		// The inline mp4 track holds system audio only, so returning [videoPath]
+		// here silently dropped the microphone.
+		await expect(getCompanionAudioFallbackPaths(videoPath)).resolves.toEqual([
+			systemPath,
+			micPath,
+		]);
+	});
+
+	it("prefers the mac mic companion alone when embedded audio already exists and no system sidecar is present", async () => {
+		const videoPath = path.join(tempRoot, "recording.mp4");
+		const micPath = path.join(tempRoot, "recording.mic.m4a");
+
+		await Promise.all([fs.writeFile(videoPath, "video"), fs.writeFile(micPath, "mic")]);
+
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				const error = new Error("ffmpeg probe found embedded audio") as Error & {
+					stderr?: string;
+				};
+				error.stderr = "Stream #0:1: Audio: aac";
+				callback(error, "", error.stderr);
+			},
+		);
+
+		const { getCompanionAudioFallbackPaths } = await import("./diagnostics");
+
+		await expect(getCompanionAudioFallbackPaths(videoPath)).resolves.toEqual([micPath]);
+	});
+
 	it("loads saved sidecar timing metadata alongside companion audio paths", async () => {
 		const videoPath = path.join(tempRoot, "recording.mp4");
 		const micPath = path.join(tempRoot, "recording.mic.webm");
@@ -380,5 +505,35 @@ describe("getCompanionAudioFallbackPaths", () => {
 		await expect(validateRecordedVideo(videoPath)).rejects.toThrow(
 			"Recorded output is too small to contain playable video",
 		);
+	});
+
+	it.each([
+		[
+			Object.assign(new Error("spawn ffmpeg EACCES"), {
+				syscall: "spawn ffmpeg",
+				code: "EACCES",
+			}),
+			"FFmpeg could not start (EACCES)",
+		],
+		[
+			Object.assign(new Error("terminated"), { signal: "SIGSEGV" }),
+			"FFmpeg was stopped by SIGSEGV",
+		],
+		[
+			Object.assign(new Error("exit 1"), {
+				code: 1,
+				stderr: "Invalid data found when processing input",
+			}),
+			"Invalid data found when processing input",
+		],
+	])("distinguishes FFmpeg process failures from decode failures (%s)", async (failure, message) => {
+		const videoPath = path.join(tempRoot, "recording.webm");
+		await fs.writeFile(videoPath, Buffer.alloc(2048));
+		execFileMock.mockImplementation(
+			(_file: string, _args: string[], _opts: unknown, callback: ExecFileCallback) =>
+				callback(failure),
+		);
+		const { validateRecordedVideo } = await import("./diagnostics");
+		await expect(validateRecordedVideo(videoPath)).rejects.toThrow(message);
 	});
 });

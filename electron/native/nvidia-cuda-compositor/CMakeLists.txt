@@ -29,6 +29,7 @@ add_executable(recordly-nvidia-cuda-compositor
 target_include_directories(recordly-nvidia-cuda-compositor PRIVATE
   "${NVIDIA_SAMPLES_DIR}"
   "${NVCODEC_DIR}"
+  "${RECORDLY_NVIDIA_VIDEO_CODEC_SDK_ROOT}/Interface"
 )
 
 target_compile_definitions(recordly-nvidia-cuda-compositor PRIVATE
@@ -37,9 +38,14 @@ target_compile_definitions(recordly-nvidia-cuda-compositor PRIVATE
 )
 
 find_package(CUDAToolkit REQUIRED)
+find_library(NVCUVID_LIBRARY NAMES nvcuvid PATHS
+  "${RECORDLY_NVIDIA_VIDEO_CODEC_SDK_ROOT}/Lib/x64"
+  "${NVCODEC_DIR}/Lib/x64"
+  NO_DEFAULT_PATH REQUIRED
+)
 target_link_libraries(recordly-nvidia-cuda-compositor PRIVATE
   CUDA::cuda_driver
-  "${NVCODEC_DIR}/Lib/x64/nvcuvid.lib"
+  "${NVCUVID_LIBRARY}"
 )
 
 set_target_properties(recordly-nvidia-cuda-compositor PROPERTIES

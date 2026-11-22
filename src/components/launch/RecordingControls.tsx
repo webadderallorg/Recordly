@@ -1,146 +1,104 @@
-import { MicrophoneIcon, MicrophoneSlashIcon, MinusIcon, PauseIcon, PlayIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
-import { useMemo } from "react";
+import { Button, Tooltip } from "@heroui/react";
+import { useState } from "react";
+import { PauseIcon, PlayIcon, Trash } from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import styles from "./LaunchWindow.module.css";
 
 interface RecordingControlsProps {
 	paused: boolean;
-	microphoneEnabled: boolean;
+	busy?: boolean;
 	elapsed: number;
-	onToggleMicrophone: () => void;
 	onPauseResume: () => void;
 	onStopRecording: () => void;
-	onHideHud: () => void;
-	onCancelRecording: () => void;
+	onCancelRecording: () => void | Promise<unknown>;
 	formatTime: (seconds: number) => string;
 }
 
-export const RecordingControls = ({
+export function RecordingControls({
 	paused,
-	microphoneEnabled,
+	busy = false,
 	elapsed,
-	onToggleMicrophone,
 	onPauseResume,
 	onStopRecording,
-	onHideHud,
 	onCancelRecording,
 	formatTime,
-}: RecordingControlsProps) => {
+}: RecordingControlsProps) {
 	const t = useScopedT("launch");
-
-	const memoizedControls = useMemo(() => {
-		return (
-			<>
-				<div className="flex items-center gap-[5px]">
-					<div
-						className={`w-[7px] h-[7px] rounded-full ${
-							paused ? "bg-[#fbbf24]" : `bg-[#f43f5e] ${styles.recDotBlink}`
-						}`}
-					/>
-					<span
-						className={`text-[10px] font-bold tracking-[0.06em] ${
-							paused ? "text-[#fbbf24]" : "text-[#f43f5e]"
-						}`}
-					>
-						{paused ? t("recording.paused") : t("recording.rec")}
-					</span>
-				</div>
-
-				<span
-					className={`font-mono text-xs font-semibold min-w-[52px] text-center tracking-[0.02em] ${
-						paused ? "text-[#fbbf24]" : "text-[var(--launch-text)]"
-					}`}
-				>
-					{formatTime(elapsed)}
-				</span>
-
-				<Separator orientation="vertical" className="mx-[5px] h-6" />
-
-				<span title={t("recording.micToggleDisabledTip")}>
-					<Button
-						variant="ghost"
-						size="icon"
-						iconSize="lg"
-						className={microphoneEnabled ? styles.ibActive : ""}
-						aria-label={t("recording.micToggleDisabledTip")}
-						disabled
-						onClick={onToggleMicrophone}
-					>
-						{microphoneEnabled ? (
-							<MicrophoneIcon size={18} />
-						) : (
-							<MicrophoneSlashIcon size={18} />
-						)}
-					</Button>
-				</span>
-
-				<Separator orientation="vertical" className="mx-[5px] h-6" />
-
+	const captureT = useScopedT("capture");
+	const [discarding, setDiscarding] = useState(false);
+	const disabled = busy || discarding;
+	return (
+		<div
+			role="group"
+			aria-label={captureT("recordingControls")}
+			className={styles.captureControls}
+		>
+			<Tooltip>
 				<Button
-					variant={paused ? "default" : "ghost"}
-					size="icon"
-					iconSize="lg"
-					onClick={onPauseResume}
-					title={paused ? t("recording.resume") : t("recording.pause")}
+					isIconOnly
+					variant="ghost"
+					isDisabled={disabled}
+					className={styles.hudAction}
+					aria-label={t("recording.stop")}
+					onPress={onStopRecording}
+				>
+					<span aria-hidden="true" className="size-4 rounded-[3px] bg-danger" />
+				</Button>
+				<Tooltip.Content>{t("recording.stop")}</Tooltip.Content>
+			</Tooltip>
+			<div className={styles.recordingTimer}>
+				<span role="timer" aria-live="off" className="text-base font-semibold tabular-nums">
+					{formatTime(elapsed).replace(/^0(?=\d:)/, "")}
+				</span>
+				<span role="status" className="sr-only">
+					{discarding
+						? captureT("discardingRecording")
+						: paused
+							? t("recording.paused")
+							: captureT("recording")}
+				</span>
+			</div>
+			<span aria-hidden="true" className={styles.captureDivider} />
+			<Tooltip>
+				<Button
+					isIconOnly
+					variant="ghost"
+					isDisabled={disabled}
+					className={styles.hudAction}
+					onPress={onPauseResume}
 					aria-label={paused ? t("recording.resume") : t("recording.pause")}
-					className={paused ? styles.ibGreen : ""}
 				>
 					{paused ? (
-						<PlayIcon size={18} fill="currentColor" strokeWidth={0} />
+						<PlayIcon weight="fill" className="size-5" />
 					) : (
-						<PauseIcon size={18} />
+						<PauseIcon weight="fill" className="size-5" />
 					)}
 				</Button>
-
+				<Tooltip.Content>
+					{paused ? t("recording.resume") : t("recording.pause")}
+				</Tooltip.Content>
+			</Tooltip>
+			<Tooltip>
 				<Button
+					isIconOnly
 					variant="ghost"
-					size="icon"
-					iconSize="lg"
-					onClick={onStopRecording}
-					title={t("recording.stop")}
-					aria-label={t("recording.stop")}
-					className={styles.ibRed}
+					isDisabled={disabled}
+					className={styles.hudAction}
+					aria-label={captureT("discardRecording")}
+					onPress={async () => {
+						if (discarding) return;
+						setDiscarding(true);
+						try {
+							await onCancelRecording();
+						} finally {
+							setDiscarding(false);
+						}
+					}}
 				>
-					<SquareIcon size={16} fill="currentColor" strokeWidth={0} />
+					<Trash className="size-5" />
 				</Button>
-
-				<Button
-					variant="ghost"
-					size="icon"
-					iconSize="lg"
-					onClick={onHideHud}
-					title={t("recording.hideHud")}
-					aria-label={t("recording.hideHud")}
-				>
-					<MinusIcon size={16} />
-				</Button>
-
-				<Button
-					variant="ghost"
-					size="icon"
-					iconSize="lg"
-					onClick={onCancelRecording}
-					title={t("recording.cancel")}
-					aria-label={t("recording.cancel")}
-				>
-					<XIcon size={18} />
-				</Button>
-			</>
-		);
-	}, [
-		paused,
-		microphoneEnabled,
-		elapsed,
-		onToggleMicrophone,
-		onPauseResume,
-		onStopRecording,
-		onHideHud,
-		onCancelRecording,
-		formatTime,
-		t,
-	]);
-
-	return memoizedControls;
-};
+				<Tooltip.Content>{captureT("discardRecording")}</Tooltip.Content>
+			</Tooltip>
+		</div>
+	);
+}

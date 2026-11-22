@@ -1,8 +1,9 @@
-import type { ReactElement } from "react";
+import { lazy, type ReactElement, Suspense } from "react";
+import type { ProjectLibraryEntry } from "../../video-editor/ProjectBrowserDialog";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import { HudPopover } from "./PopoverScaffold";
-import ProjectBrowserDialog from "../../video-editor/ProjectBrowserDialog";
-import type { ProjectLibraryEntry } from "../../video-editor/ProjectBrowserDialog";
+
+const ProjectBrowserDialog = lazy(() => import("../../video-editor/ProjectBrowserDialog"));
 
 const POPOVER_ID = "projects";
 
@@ -31,18 +32,20 @@ export function ProjectPopover({
 			trigger={trigger}
 			align="center"
 		>
-			<ProjectBrowserDialog
-				open={open}
-				onOpenChange={(nextOpen) => {
-					if (!nextOpen) requestClose(POPOVER_ID);
-				}}
-				entries={entries}
-				renderMode="inline"
-				onOpenProject={(path) => {
-					onOpenProject(path);
-					requestClose(POPOVER_ID);
-				}}
-			/>
+			<Suspense fallback={null}>
+				<ProjectBrowserDialog
+					open={open}
+					onOpenChange={(nextOpen) => {
+						if (!nextOpen) requestClose(POPOVER_ID);
+					}}
+					entries={entries}
+					renderMode="inline"
+					onOpenProject={(path) => {
+						onOpenProject(path);
+						requestClose(POPOVER_ID);
+					}}
+				/>
+			</Suspense>
 		</HudPopover>
 	);
 }

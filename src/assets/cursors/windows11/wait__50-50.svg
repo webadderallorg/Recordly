@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 32 32" style="enable-background:new 0 0 32 32;" xml:space="preserve">
+<g transform="translate(0 32) scale(1 -1)">
+<polygon style="fill:#FFFFFE;" points="10,25.5 22,25.5 22,21.5 18,17.5 18,15.5 22,11.5 22,6.5 10,6.5 10,11.5 14,15.5 14,17.5
+	10,21.5 "/>
+<polyline style="fill:none;stroke:#000001;stroke-miterlimit:10;" points="22,25.5 22,21.5 18,17.5 18,15.5 22,11.5 22,6.5 "/>
+<polyline style="fill:none;stroke:#000001;stroke-miterlimit:10;" points="10,6.5 10,11.5 14,15.5 14,17.5 10,21.5 10,25.5 "/>
+<rect x="9" y="4.5" style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" width="14" height="2"/>
+<rect x="9" y="25.5" style="fill:#FFFFFE;stroke:#000001;stroke-miterlimit:10;" width="14" height="2"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="15.5" y1="14.5" x2="16.5" y2="14.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="16.5" y1="13.5" x2="17.5" y2="13.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="16.5" y1="11.5" x2="17.5" y2="11.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="14.5" y1="11.5" x2="15.5" y2="11.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="15.5" y1="10.5" x2="16.5" y2="10.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="13.5" y1="10.5" x2="14.5" y2="10.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="14.5" y1="9.5" x2="15.5" y2="9.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="16.5" y1="9.5" x2="17.5" y2="9.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="17.5" y1="10.5" x2="18.5" y2="10.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="18.5" y1="9.5" x2="19.5" y2="9.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="19.5" y1="8.5" x2="20.5" y2="8.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="17.5" y1="8.5" x2="18.5" y2="8.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="15.5" y1="8.5" x2="16.5" y2="8.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="13.5" y1="8.5" x2="14.5" y2="8.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="12.5" y1="9.5" x2="13.5" y2="9.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="11.5" y1="8.5" x2="12.5" y2="8.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="11.5" y1="23.5" x2="12.5" y2="23.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="13.5" y1="23.5" x2="14.5" y2="23.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="15.5" y1="23.5" x2="16.5" y2="23.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="17.5" y1="23.5" x2="18.5" y2="23.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="19.5" y1="23.5" x2="20.5" y2="23.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="12.5" y1="22.5" x2="13.5" y2="22.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="14.5" y1="22.5" x2="15.5" y2="22.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="16.5" y1="22.5" x2="17.5" y2="22.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="18.5" y1="22.5" x2="19.5" y2="22.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="13.5" y1="21.5" x2="14.5" y2="21.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="15.5" y1="21.5" x2="16.5" y2="21.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="14.5" y1="20.5" x2="15.5" y2="20.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="16.5" y1="20.5" x2="17.5" y2="20.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="15.5" y1="19.5" x2="16.5" y2="19.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="17.5" y1="21.5" x2="18.5" y2="21.5"/>
+<line style="fill:none;stroke:#000001;stroke-miterlimit:10;" x1="15.5" y1="16.5" x2="16.5" y2="16.5"/>
+</g>
+</svg>

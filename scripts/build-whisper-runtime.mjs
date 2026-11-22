@@ -1,15 +1,24 @@
 import { execFileSync, execSync } from "node:child_process";
-import { createWriteStream, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { createWriteStream, existsSync, rmSync } from "node:fs";
 import { chmod, cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { get as httpsGet } from "node:https";
 import path from "node:path";
 
+import {
+	configureWithWindowsCmakeGenerator,
+	WINDOWS_VISUAL_STUDIO_INSTALL_DIRS,
+} from "./windows-cmake-generators.mjs";
+
 const projectRoot = process.cwd();
 const whisperVersion = "v1.8.4";
+const macosDeploymentTarget = "14.0";
 const nativeRoot = path.join(projectRoot, "electron", "native");
 const cacheRoot = path.join(projectRoot, ".tmp", "whisper-runtime");
 const archivePath = path.join(cacheRoot, `${whisperVersion}.tar.gz`);
 const extractRoot = path.join(cacheRoot, `src-${whisperVersion}`);
+const windowsX64ArchivePath = path.join(cacheRoot, `${whisperVersion}-windows-x64.zip`);
+const windowsX64ArchiveSha256 = "74f973345cb52ef5ba3ec9e7e7af8e48cc8c71722d1528603b80588a11f82e3e";
 
 function getHostArch() {
 	return process.arch === "arm64" ? "arm64" : "x64";
@@ -69,6 +78,7 @@ function createDarwinTarget(arch) {
 	const configureArgs = [
 		"-DCMAKE_BUILD_TYPE=Release",
 		`-DCMAKE_OSX_ARCHITECTURES=${targetArch === "arm64" ? "arm64" : "x86_64"}`,
+		`-DCMAKE_OSX_DEPLOYMENT_TARGET=${macosDeploymentTarget}`,
 	];
 
 	if (isCrossCompile) {
@@ -79,6 +89,7 @@ function createDarwinTarget(arch) {
 		platform: "darwin",
 		arch: targetArch,
 		archTag: getNativeArchTag("darwin", targetArch),
+		macosDeploymentTarget,
 		buildRoot: path.join(cacheRoot, `build-darwin-${targetArch}`),
 		outputDir: path.join(nativeRoot, "bin", getNativeArchTag("darwin", targetArch)),
 		configureArgs,
@@ -101,12 +112,7 @@ function getTargetConfigs() {
 				archTag,
 				buildRoot: path.join(cacheRoot, `build-${archTag}`),
 				outputDir: path.join(nativeRoot, "bin", archTag),
-				configureArgs: [
-					"-G",
-					"Visual Studio 17 2022",
-					"-A",
-					arch === "arm64" ? "ARM64" : "x64",
-				],
+				configureArgs: ["-A", arch === "arm64" ? "ARM64" : "x64"],
 			},
 		];
 	}
@@ -143,24 +149,26 @@ function findCmake() {
 
 	if (process.platform === "win32") {
 		const vsEditions = ["Community", "Professional", "Enterprise", "BuildTools"];
-		for (const edition of vsEditions) {
-			const cmakePath = path.join(
-				"C:",
-				"Program Files",
-				"Microsoft Visual Studio",
-				"2022",
-				edition,
-				"Common7",
-				"IDE",
-				"CommonExtensions",
-				"Microsoft",
-				"CMake",
-				"CMake",
-				"bin",
-				"cmake.exe",
-			);
-			if (existsSync(cmakePath)) {
-				return cmakePath;
+		for (const version of WINDOWS_VISUAL_STUDIO_INSTALL_DIRS) {
+			for (const edition of vsEditions) {
+				const cmakePath = path.join(
+					"C:",
+					"Program Files",
+					"Microsoft Visual Studio",
+					version,
+					edition,
+					"Common7",
+					"IDE",
+					"CommonExtensions",
+					"Microsoft",
+					"CMake",
+					"CMake",
+					"bin",
+					"cmake.exe",
+				);
+				if (existsSync(cmakePath)) {
+					return cmakePath;
+				}
 			}
 		}
 	}
@@ -223,6 +231,75 @@ async function downloadFile(url, destinationPath) {
 	});
 }
 
+async function getFileSha256(filePath) {
+	return createHash("sha256")
+		.update(await readFile(filePath))
+		.digest("hex");
+}
+
+async function findDirectoryContaining(rootPath, fileName) {
+	const pending = [rootPath];
+	while (pending.length > 0) {
+		const currentPath = pending.shift();
+		const entries = await readdir(currentPath, { withFileTypes: true });
+		if (entries.some((entry) => entry.isFile() && entry.name === fileName)) {
+			return currentPath;
+		}
+		for (const entry of entries) {
+			if (entry.isDirectory()) {
+				pending.push(path.join(currentPath, entry.name));
+			}
+		}
+	}
+	return null;
+}
+
+async function stageWindowsX64PrebuiltRuntime(target) {
+	if (target.platform !== "win32" || target.arch !== "x64") {
+		return false;
+	}
+
+	await mkdir(cacheRoot, { recursive: true });
+	const archiveUrl = `https://github.com/ggml-org/whisper.cpp/releases/download/${whisperVersion}/whisper-bin-x64.zip`;
+	let archiveIsValid =
+		existsSync(windowsX64ArchivePath) &&
+		(await getFileSha256(windowsX64ArchivePath)) === windowsX64ArchiveSha256;
+	if (!archiveIsValid) {
+		await rm(windowsX64ArchivePath, { force: true });
+		console.log(
+			`[build-whisper-runtime] Downloading official whisper.cpp ${whisperVersion} Windows x64 runtime...`,
+		);
+		await downloadFile(archiveUrl, windowsX64ArchivePath);
+		archiveIsValid = (await getFileSha256(windowsX64ArchivePath)) === windowsX64ArchiveSha256;
+	}
+
+	if (!archiveIsValid) {
+		throw new Error(
+			"[build-whisper-runtime] Windows x64 runtime archive failed its SHA-256 integrity check.",
+		);
+	}
+
+	const prebuiltExtractRoot = path.join(cacheRoot, `prebuilt-${target.archTag}`);
+	await rm(prebuiltExtractRoot, { recursive: true, force: true });
+	await mkdir(prebuiltExtractRoot, { recursive: true });
+	execFileSync("tar", ["-xf", windowsX64ArchivePath, "-C", prebuiltExtractRoot], {
+		stdio: "inherit",
+	});
+
+	const runtimeDir = await findDirectoryContaining(prebuiltExtractRoot, "whisper-cli.exe");
+	if (!runtimeDir) {
+		throw new Error(
+			"[build-whisper-runtime] Official Windows archive did not contain whisper-cli.exe.",
+		);
+	}
+
+	const runtimeEntries = (await readdir(runtimeDir)).filter(
+		(entry) => /^(whisper|ggml)/i.test(entry) || entry.toLowerCase().endsWith(".dll"),
+	);
+	await stageRuntimeArtifacts(target, runtimeDir, runtimeEntries);
+	return true;
+}
+
 async function ensureSourceTree() {
 	const extractedSourceDir = path.join(
 		extractRoot,
@@ -265,6 +342,7 @@ async function shouldSkipBuild(target) {
 		return (
 			manifest.version === whisperVersion &&
 			manifest.arch === target.arch &&
+			manifest.macosDeploymentTarget === target.macosDeploymentTarget &&
 			existsSync(binaryPath)
 		);
 	} catch {
@@ -272,7 +350,7 @@ async function shouldSkipBuild(target) {
 	}
 }
 
-function getConfigureArgs(sourceDir, target) {
+function getConfigureArgs(sourceDir, target, generator, toolset) {
 	const args = [
 		"-S",
 		sourceDir,
@@ -281,6 +359,8 @@ function getConfigureArgs(sourceDir, target) {
 		"-DWHISPER_BUILD_TESTS=OFF",
 		"-DWHISPER_BUILD_SERVER=OFF",
 		"-DBUILD_SHARED_LIBS=OFF",
+		...(generator ? ["-G", generator] : []),
+		...(toolset ? ["-T", toolset] : []),
 		...target.configureArgs,
 	];
 
@@ -351,6 +431,7 @@ async function stageRuntimeArtifacts(target, candidateDir, runtimeEntries) {
 				version: whisperVersion,
 				platform: target.platform,
 				arch: target.arch,
+				macosDeploymentTarget: target.macosDeploymentTarget,
 				binary: target.platform === "win32" ? "whisper-cli.exe" : "whisper-cli",
 			},
 			null,
@@ -362,6 +443,31 @@ async function stageRuntimeArtifacts(target, candidateDir, runtimeEntries) {
 
 async function main() {
 	const targets = getTargetConfigs();
+
+	// Official whisper.cpp releases include a signed, portable Windows x64
+	// runtime. Prefer it so developers and packaged builds do not require a full
+	// Visual Studio C++ installation just to enable captions.
+	for (const target of targets) {
+		if (!(await shouldSkipBuild(target))) {
+			try {
+				await stageWindowsX64PrebuiltRuntime(target);
+			} catch (error) {
+				console.warn(
+					"[build-whisper-runtime] Failed to stage the official Windows runtime; falling back to a source build:",
+					error,
+				);
+			}
+		}
+	}
+
+	const stagedChecks = await Promise.all(targets.map((target) => shouldSkipBuild(target)));
+	if (stagedChecks.every(Boolean)) {
+		console.log(
+			`[build-whisper-runtime] Whisper runtime ${whisperVersion} is staged for ${targets.map((target) => target.archTag).join(", ")}.`,
+		);
+		return;
+	}
+
 	const cmake = findCmake();
 
 	if (!cmake) {
@@ -424,36 +530,27 @@ async function main() {
 		console.log(
 			`[build-whisper-runtime] Configuring whisper.cpp ${whisperVersion} for ${target.archTag}...`,
 		);
-		try {
+		if (target.platform === "win32") {
+			configureWithWindowsCmakeGenerator({
+				prefix: "build-whisper-runtime",
+				clearCache: () => {
+					rmSync(path.join(target.buildRoot, "CMakeCache.txt"), { force: true });
+					rmSync(path.join(target.buildRoot, "CMakeFiles"), {
+						recursive: true,
+						force: true,
+					});
+				},
+				configure: (generator, toolset) =>
+					execFileSync(cmake, getConfigureArgs(sourceDir, target, generator, toolset), {
+						stdio: "inherit",
+						timeout: 300000,
+					}),
+			});
+		} else {
 			execFileSync(cmake, getConfigureArgs(sourceDir, target), {
 				stdio: "inherit",
 				timeout: 300000,
 			});
-		} catch (error) {
-			if (target.platform === "win32" && target.arch !== "arm64") {
-				console.log(
-					"[build-whisper-runtime] VS 2022 generator unavailable, retrying with VS 2019...",
-				);
-				execFileSync(
-					cmake,
-					[
-						"-S",
-						sourceDir,
-						"-B",
-						target.buildRoot,
-						"-G",
-						"Visual Studio 16 2019",
-						"-A",
-						"x64",
-						"-DWHISPER_BUILD_TESTS=OFF",
-						"-DWHISPER_BUILD_SERVER=OFF",
-						"-DBUILD_SHARED_LIBS=OFF",
-					],
-					{ stdio: "inherit", timeout: 300000 },
-				);
-			} else {
-				throw error;
-			}
 		}
 
 		console.log(

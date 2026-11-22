@@ -4,15 +4,12 @@
 #include <codecapi.h>
 #include <iostream>
 #include <cstring>
+#include "../../common/bt709_video.h"
 
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "mfuuid.lib")
-
-static int clampByte(int v) {
-    return v < 0 ? 0 : (v > 255 ? 255 : v);
-}
 
 MFEncoder::MFEncoder() {}
 
@@ -53,6 +50,8 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
     MFSetAttributeRatio(outputType.Get(), MF_MT_FRAME_RATE, fps_, 1);
     MFSetAttributeRatio(outputType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
     outputType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    hr = setBt709LimitedVideoAttributes(outputType.Get());
+    if (FAILED(hr)) return false;
 
     // Input media type (NV12)
     ComPtr<IMFMediaType> inputType;
@@ -65,6 +64,8 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
     MFSetAttributeRatio(inputType.Get(), MF_MT_FRAME_RATE, fps_, 1);
     MFSetAttributeRatio(inputType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
     inputType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    hr = setBt709LimitedVideoAttributes(inputType.Get());
+    if (FAILED(hr)) return false;
 
     // Create SinkWriter with MPEG4 container
     ComPtr<IMFAttributes> writerAttrs;
@@ -132,34 +133,10 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
     HRESULT hr = context_->Map(stagingTexture_.Get(), 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(hr)) return false;
 
-    // Convert BGRA → NV12
+    // Convert full-range desktop BGRA to explicitly tagged BT.709 video-range NV12.
     const uint8_t* bgra = static_cast<const uint8_t*>(mapped.pData);
     const int bgraPitch = static_cast<int>(mapped.RowPitch);
-
-    // Y plane
-    for (int y = 0; y < height_; y++) {
-        for (int x = 0; x < width_; x++) {
-            const uint8_t* pixel = bgra + y * bgraPitch + x * 4;
-            uint8_t b = pixel[0], g = pixel[1], r = pixel[2];
-            int yVal = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
-            nv12Buffer_[y * width_ + x] = static_cast<uint8_t>(clampByte(yVal));
-        }
-    }
-
-    // UV plane (interleaved, subsampled 2x2)
-    const int ySize = width_ * height_;
-    uint8_t* uvPlane = nv12Buffer_.data() + ySize;
-    for (int y = 0; y < height_; y += 2) {
-        for (int x = 0; x < width_; x += 2) {
-            const uint8_t* pixel = bgra + y * bgraPitch + x * 4;
-            uint8_t b = pixel[0], g = pixel[1], r = pixel[2];
-            int u = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
-            int v = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
-            int uvIdx = (y / 2) * width_ + (x / 2) * 2;
-            uvPlane[uvIdx] = static_cast<uint8_t>(clampByte(u));
-            uvPlane[uvIdx + 1] = static_cast<uint8_t>(clampByte(v));
-        }
-    }
+    convertBgraToBt709LimitedNv12(bgra, bgraPitch, width_, height_, nv12Buffer_);
 
     context_->Unmap(stagingTexture_.Get(), 0);
 

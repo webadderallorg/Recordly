@@ -9,6 +9,20 @@ on:
         description: Existing release tag to rebuild and publish
         required: true
         type: string
+      release_scope:
+        description: Platforms to publish
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - windows-linux
+
+env:
+  VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+  VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+  VITE_CLOUD_SHARE_ENDPOINT: ${{ vars.VITE_CLOUD_SHARE_ENDPOINT }}
+  VITE_OAUTH_FLOW_ID_REDIRECTS: 'true'
 
 permissions:
   contents: write
@@ -30,6 +44,7 @@ jobs:
       package_version: ${{ steps.prepare.outputs.package_version }}
       source_sha: ${{ steps.prepare.outputs.source_sha }}
       prerelease: ${{ steps.prepare.outputs.prerelease }}
+      release_scope: ${{ steps.prepare.outputs.release_scope }}
     steps:
       - name: Checkout release source
         uses: actions/checkout@v4
@@ -42,14 +57,23 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          REQUESTED_SCOPE: ${{ github.event.inputs.release_scope }}
+          RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          DISPATCH_TAG_NAME: ${{ github.event.inputs.tag_name }}
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "release" ]; then
-            TAG_NAME="${{ github.event.release.tag_name }}"
+            TAG_NAME="$RELEASE_TAG_NAME"
             IS_PRERELEASE="${{ github.event.release.prerelease }}"
+            RELEASE_SCOPE="all"
+            if [ "$IS_PRERELEASE" = "true" ] && grep -Fq '<!-- release-scope: windows-linux -->' <<< "$RELEASE_BODY"; then
+              RELEASE_SCOPE="windows-linux"
+            fi
           else
-            TAG_NAME="${{ github.event.inputs.tag_name }}"
+            TAG_NAME="$DISPATCH_TAG_NAME"
             IS_PRERELEASE="$(gh release view "$TAG_NAME" --repo "${{ github.repository }}" --json isPrerelease --jq '.isPrerelease' 2>/dev/null || echo false)"
+            RELEASE_SCOPE="${REQUESTED_SCOPE:-all}"
           fi
 
           if [ -z "$TAG_NAME" ]; then
@@ -65,6 +89,19 @@ jobs:
             exit 1
           fi
 
+          case "$RELEASE_SCOPE" in
+            all|windows-linux) ;;
+            *)
+              echo "Unsupported release scope: $RELEASE_SCOPE"
+              exit 1
+              ;;
+          esac
+
+          if [ "$IS_PRERELEASE" != "true" ] && [ "$RELEASE_SCOPE" != "all" ]; then
+            echo "Partial platform scope is allowed only for prereleases."
+            exit 1
+          fi
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
               gh release create "$TAG_NAME" --repo "${{ github.repository }}" --verify-tag --draft --title "$TAG_NAME"
@@ -74,10 +111,12 @@ jobs:
           echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "release_scope=$RELEASE_SCOPE" >> "$GITHUB_OUTPUT"
   build-macos-x64:
     name: Build macOS x64
     needs: prepare-release
-    runs-on: macos-15-intel
+    if: needs.prepare-release.outputs.release_scope == 'all'
+    runs-on: macos-26-intel
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -88,6 +127,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare-release.outputs.source_sha }}
+
+      - name: Show Xcode version
+        run: xcodebuild -version
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -144,16 +186,32 @@ jobs:
       - name: Build native macOS helpers
         run: npm run build:platform-native-helpers
 
+      - name: Validate production cloud configuration
+        run: npm run release:check-cloud
+
       - name: Build macOS x64
         run: |
           npx tsc
           npx vite build
-          npx electron-builder --mac dir dmg zip --x64 --publish never
+          npm run normalize:electron-main-cjs
+          npm run smoke:electron-main-cjs
+          npx electron-builder --mac dir dmg zip --x64 --publish never \
+            -c.mac.forceCodeSigning=true \
+            -c.mac.notarize=true
 
       - name: Smoke test packaged macOS x64 paths
         env:
           PACKAGED_SMOKE_ARCH_TAGS: darwin-x64
         run: npm run smoke:packaged-binaries
+
+      - name: Verify signed and notarized macOS x64 distribution
+        run: >-
+          npm run verify:macos-distribution --
+          --release-dir release
+          --arch x64
+          --team-id "$APPLE_TEAM_ID"
+          --report "release/macos-distribution-report-x64.json"
+          --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Generate macOS x64 artifact checksums
         run: npm run checksums:release -- SHA256SUMS-macos-x64.txt
@@ -173,12 +231,14 @@ jobs:
             release/*.blockmap
             release/latest-mac.yml
             release/SHA256SUMS*.txt
+            release/macos-distribution-report-x64.json
           if-no-files-found: error
 
   build-macos-arm64:
     name: Build macOS arm64
     needs: prepare-release
-    runs-on: macos-14
+    if: needs.prepare-release.outputs.release_scope == 'all'
+    runs-on: macos-26
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -189,6 +249,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare-release.outputs.source_sha }}
+
+      - name: Show Xcode version
+        run: xcodebuild -version
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -245,16 +308,32 @@ jobs:
       - name: Build native macOS helpers
         run: npm run build:platform-native-helpers
 
+      - name: Validate production cloud configuration
+        run: npm run release:check-cloud
+
       - name: Build macOS arm64
         run: |
           npx tsc
           npx vite build
-          npx electron-builder --mac dir dmg zip --arm64 --publish never
+          npm run normalize:electron-main-cjs
+          npm run smoke:electron-main-cjs
+          npx electron-builder --mac dir dmg zip --arm64 --publish never \
+            -c.mac.forceCodeSigning=true \
+            -c.mac.notarize=true
 
       - name: Smoke test packaged macOS arm64 paths
         env:
           PACKAGED_SMOKE_ARCH_TAGS: darwin-arm64
         run: npm run smoke:packaged-binaries
+
+      - name: Verify signed and notarized macOS arm64 distribution
+        run: >-
+          npm run verify:macos-distribution --
+          --release-dir release
+          --arch arm64
+          --team-id "$APPLE_TEAM_ID"
+          --report "release/macos-distribution-report-arm64.json"
+          --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Generate macOS arm64 artifact checksums
         run: npm run checksums:release -- SHA256SUMS-macos-arm64.txt
@@ -274,6 +353,7 @@ jobs:
             release/*.blockmap
             release/latest-mac.yml
             release/SHA256SUMS*.txt
+            release/macos-distribution-report-arm64.json
           if-no-files-found: error
 
   merge-macos-update-metadata:
@@ -282,6 +362,7 @@ jobs:
       - prepare-release
       - build-macos-x64
       - build-macos-arm64
+    if: needs.prepare-release.outputs.release_scope == 'all'
     runs-on: ubuntu-latest
     steps:
       - name: Download macOS x64 artifacts
@@ -391,8 +472,24 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Install bundled FFmpeg binary
-        run: node scripts/install-ffmpeg-static.mjs
+      - name: Set up Windows FFmpeg compiler
+        uses: msys2/setup-msys2@v2
+        id: ffmpeg-msys2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make
+            diffutils
+            perl
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-pkgconf
+
+      - name: Build FFmpeg and FFprobe from pinned source
+        env:
+          RECORDLY_MSYS2_ROOT: ${{ steps.ffmpeg-msys2.outputs.msys2-location }}
+        run: npm run build:ffmpeg-source
 
       - name: Verify bundled FFmpeg binary
         run: |
@@ -408,16 +505,36 @@ jobs:
       - name: Install app dependencies
         run: npx electron-builder install-app-deps
 
+      - name: Validate production cloud configuration
+        run: npm run release:check-cloud
+
       - name: Build Windows x64
         shell: pwsh
         run: |
           npm run build:platform-native-helpers
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx tsc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx vite build
-          npx electron-builder --win dir nsis --x64 --publish never
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run normalize:electron-main-cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run smoke:electron-main-cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx electron-builder --win dir nsis zip --x64 --publish never
 
-      - name: Smoke test packaged Windows x64 paths
-        run: npm run smoke:packaged-binaries
+      - name: Smoke test the extracted Windows x64 ZIP
+        shell: pwsh
+        run: |
+          $env:RECORDLY_RELEASE_DIR = 'release/zip-smoke'
+          New-Item -ItemType Directory -Path $env:RECORDLY_RELEASE_DIR -Force | Out-Null
+          tar -xf release/Recordly-windows-x64.zip -C $env:RECORDLY_RELEASE_DIR
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run smoke:packaged-binaries
+
+
+      - name: Archive corresponding FFmpeg source
+        run: tar -a -cf release/Recordly-windows-x64-ffmpeg-source.zip -C node_modules/ffmpeg-static/ffmpeg.exe.sources .
 
       - name: Generate Windows x64 artifact checksums
         run: npm run checksums:release -- SHA256SUMS-windows-x64.txt
@@ -435,6 +552,8 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/latest*.yml
+            release/Recordly-windows-x64.zip
+            release/*-ffmpeg-source.zip
             release/SHA256SUMS*.txt
           if-no-files-found: error
 
@@ -469,8 +588,13 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Install bundled FFmpeg binary
-        run: node scripts/install-ffmpeg-static.mjs
+      - name: Install Linux FFmpeg build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential binutils diffutils nasm perl pkg-config zsync
+
+      - name: Build FFmpeg and FFprobe from pinned source
+        run: npm run build:ffmpeg-source
 
       - name: Verify bundled FFmpeg binary
         run: |
@@ -482,16 +606,31 @@ jobs:
       - name: Install app dependencies
         run: npx electron-builder install-app-deps
 
+      - name: Validate production cloud configuration
+        run: npm run release:check-cloud
+
       - name: Build Linux x64
+        env:
+          RECORDLY_APPIMAGE_DELTA: ${{ needs.prepare-release.outputs.prerelease == 'false' && '1' || '0' }}
         run: |
           export CSC_IDENTITY_AUTO_DISCOVERY=false
           npm run build:platform-native-helpers
           npx tsc
           npx vite build
+          npm run normalize:electron-main-cjs
+          npm run smoke:electron-main-cjs
           npx electron-builder --linux dir AppImage --x64 --publish never
+          if [ "$RECORDLY_APPIMAGE_DELTA" = '1' ] && [ -f scripts/prepare-appimage-delta.mjs ]; then
+            test -s release/Recordly-linux-x64.AppImage.zsync
+          fi
 
       - name: Smoke test packaged Linux x64 paths
         run: npm run smoke:packaged-binaries
+
+
+      - name: Archive corresponding FFmpeg source
+        working-directory: node_modules/ffmpeg-static/ffmpeg.sources
+        run: zip -qr ../../../release/Recordly-linux-x64-ffmpeg-source.zip .
 
       - name: Generate Linux x64 artifact checksums
         run: npm run checksums:release -- SHA256SUMS-linux-x64.txt
@@ -507,8 +646,10 @@ jobs:
           name: linux-x64-release
           path: |
             release/*.AppImage
+            release/*.AppImage.zsync
             release/*.blockmap
             release/latest-linux.yml
+            release/*-ffmpeg-source.zip
             release/SHA256SUMS*.txt
           if-no-files-found: error
 
@@ -521,21 +662,37 @@ jobs:
       - merge-macos-update-metadata
       - build-windows-x64
       - build-linux-x64
+    if: |
+      always() &&
+      needs.prepare-release.result == 'success' &&
+      needs.build-windows-x64.result == 'success' &&
+      needs.build-linux-x64.result == 'success' &&
+      (
+        needs.prepare-release.outputs.release_scope == 'windows-linux' ||
+        (
+          needs.build-macos-x64.result == 'success' &&
+          needs.build-macos-arm64.result == 'success' &&
+          needs.merge-macos-update-metadata.result == 'success'
+        )
+      )
     runs-on: ubuntu-latest
     steps:
       - name: Download macOS x64 artifacts
+        if: needs.prepare-release.outputs.release_scope == 'all'
         uses: actions/download-artifact@v4
         with:
           name: macos-x64-release
           path: release-assets/macos-x64
 
       - name: Download macOS arm64 artifacts
+        if: needs.prepare-release.outputs.release_scope == 'all'
         uses: actions/download-artifact@v4
         with:
           name: macos-arm64-release
           path: release-assets/macos-arm64
 
       - name: Download merged macOS metadata
+        if: needs.prepare-release.outputs.release_scope == 'all'
         uses: actions/download-artifact@v4
         with:
           name: macos-merged-metadata
@@ -556,32 +713,81 @@ jobs:
       - name: Stage release assets
         shell: bash
         env:
+          RELEASE_SCOPE: ${{ needs.prepare-release.outputs.release_scope }}
           IS_PRERELEASE: ${{ needs.prepare-release.outputs.prerelease }}
         run: |
           set -euo pipefail
           shopt -s nullglob
 
           mkdir -p release-assets/upload
+
+          if [ "$IS_PRERELEASE" = "true" ] && [ "$RELEASE_SCOPE" != "all" ]; then
+            echo "Prerelease beta updates must include all platforms so every opted-in client can resolve beta metadata."
+            exit 1
+          fi
+
+          required_metadata=(
+            release-assets/windows-x64/latest.yml
+            release-assets/linux-x64/latest-linux.yml
+          )
+
+          if [ "$RELEASE_SCOPE" = "all" ]; then
+            required_metadata+=(release-assets/macos-merged/latest-mac.yml)
+          fi
+
+          for file in "${required_metadata[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "Required update metadata is missing: $file"
+              exit 1
+            fi
+          done
+
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            cp release-assets/windows-x64/latest.yml release-assets/windows-x64/beta.yml
+            cp release-assets/linux-x64/latest-linux.yml release-assets/linux-x64/beta-linux.yml
+            update_metadata=(
+              release-assets/windows-x64/beta.yml
+              release-assets/linux-x64/beta-linux.yml
+            )
+
+            if [ "$RELEASE_SCOPE" = "all" ]; then
+              cp release-assets/macos-merged/latest-mac.yml release-assets/macos-merged/beta-mac.yml
+              update_metadata+=(release-assets/macos-merged/beta-mac.yml)
+            fi
+          else
+            update_metadata=(
+              release-assets/windows-x64/latest.yml
+              release-assets/linux-x64/latest-linux.yml
+            )
+
+            if [ "$RELEASE_SCOPE" = "all" ]; then
+              update_metadata+=(release-assets/macos-merged/latest-mac.yml)
+            fi
+          fi
+
           assets=(
-            release-assets/macos-x64/*.dmg
-            release-assets/macos-x64/*.zip
-            release-assets/macos-x64/*.blockmap
-            release-assets/macos-arm64/*.dmg
-            release-assets/macos-arm64/*.zip
-            release-assets/macos-arm64/*.blockmap
+            release-assets/windows-x64/Recordly-windows-x64.zip
+            release-assets/windows-x64/*-ffmpeg-source.zip
+            release-assets/linux-x64/*-ffmpeg-source.zip
             release-assets/windows-x64/*.exe
             release-assets/windows-x64/*.blockmap
             release-assets/linux-x64/*.AppImage
+            release-assets/linux-x64/*.AppImage.zsync
             release-assets/linux-x64/*.blockmap
           )
 
-          if [ "$IS_PRERELEASE" != "true" ]; then
+          if [ "$RELEASE_SCOPE" = "all" ]; then
             assets+=(
-              release-assets/macos-merged/latest-mac.yml
-              release-assets/windows-x64/latest*.yml
-              release-assets/linux-x64/latest-linux.yml
+              release-assets/macos-x64/*.dmg
+              release-assets/macos-x64/*.zip
+              release-assets/macos-x64/*.blockmap
+              release-assets/macos-arm64/*.dmg
+              release-assets/macos-arm64/*.zip
+              release-assets/macos-arm64/*.blockmap
             )
           fi
+
+          assets+=("${update_metadata[@]}")
 
           if [ ${#assets[@]} -eq 0 ]; then
             echo "No release assets found to checksum."
@@ -638,7 +844,7 @@ jobs:
       - prepare-release
       - publish-release-assets
     runs-on: ubuntu-latest
-    if: needs.prepare-release.outputs.prerelease != 'true'
+    if: needs.prepare-release.outputs.prerelease != 'true' && needs.prepare-release.outputs.release_scope == 'all'
     steps:
       - name: Dispatch Homebrew tap workflow
         shell: bash

@@ -1,139 +1,49 @@
-import GIF from "gif.js";
-import type {
-	AnnotationRegion,
-	AutoCaptionSettings,
-	CaptionCue,
-	CropRegion,
-	CursorStyle,
-	CursorTelemetryPoint,
-	Padding,
-	SpeedRegion,
-	TrimRegion,
-	WebcamOverlaySettings,
-	ZoomMotionBlurTuning,
-	ZoomRegion,
-	ZoomTransitionEasing,
-} from "@/components/video-editor/types";
+import {
+	buildGifFrameRendererConfig,
+	type GifExporterConfig,
+	type GifSizeEstimate,
+	getGifRepeat,
+} from "./gifExporterConfig";
+
+export {
+	buildGifFrameRendererConfig,
+	calculateOutputDimensions,
+	type GifExporterConfig,
+	type GifSizeEstimate,
+	getGifRepeat,
+} from "./gifExporterConfig";
+
 import { FrameRenderer } from "./frameRenderer";
+
+import { optimizeGif } from "./gifOptimization";
+
 import { StreamingVideoDecoder } from "./streamingDecoder";
-import type {
-	ExportProgress,
-	ExportResult,
-	GIF_SIZE_PRESETS,
-	GifFrameRate,
-	GifSizePreset,
-} from "./types";
+
+import { StreamingGifEncoder } from "./streamingGifEncoder";
+
+import type { ExportResult } from "./types";
 
 const GIF_WORKER_URL = new URL("gif.js/dist/gif.worker.js", import.meta.url).toString();
 
 const PROGRESS_SAMPLE_WINDOW_MS = 1_000;
 
-interface GifExporterConfig {
-	videoUrl: string;
-	width: number;
-	height: number;
-	frameRate: GifFrameRate;
-	loop: boolean;
-	sizePreset: GifSizePreset;
-	wallpaper: string;
-	zoomRegions: ZoomRegion[];
-	trimRegions?: TrimRegion[];
-	speedRegions?: SpeedRegion[];
-	showShadow: boolean;
-	shadowIntensity: number;
-	backgroundBlur: number;
-	zoomMotionBlur?: number;
-	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
-	zoomTemporalMotionBlur?: number;
-	zoomMotionBlurSampleCount?: number | null;
-	zoomMotionBlurShutterFraction?: number | null;
-	connectZooms?: boolean;
-	zoomInDurationMs?: number;
-	zoomInOverlapMs?: number;
-	zoomOutDurationMs?: number;
-	connectedZoomGapMs?: number;
-	connectedZoomDurationMs?: number;
-	zoomInEasing?: ZoomTransitionEasing;
-	zoomOutEasing?: ZoomTransitionEasing;
-	connectedZoomEasing?: ZoomTransitionEasing;
-	borderRadius?: number;
-	padding?: Padding | number;
-	videoPadding?: Padding | number;
-	cropRegion: CropRegion;
-	webcam?: WebcamOverlaySettings;
-	webcamUrl?: string | null;
-	annotationRegions?: AnnotationRegion[];
-	autoCaptions?: CaptionCue[];
-	autoCaptionSettings?: AutoCaptionSettings;
-	cursorTelemetry?: CursorTelemetryPoint[];
-	showCursor?: boolean;
-	cursorStyle?: CursorStyle;
-	cursorSize?: number;
-	cursorSmoothing?: number;
-	cursorSpringStiffnessMultiplier?: number;
-	cursorSpringDampingMultiplier?: number;
-	cursorSpringMassMultiplier?: number;
-	cameraSpringStiffnessMultiplier?: number;
-	cameraSpringDampingMultiplier?: number;
-	cameraSpringMassMultiplier?: number;
-	zoomSmoothness?: number;
-	zoomClassicMode?: boolean;
-	cursorMotionBlur?: number;
-	cursorClickBounce?: number;
-	cursorClickBounceDuration?: number;
-	cursorSway?: number;
-	frame?: string | null;
-	previewWidth?: number;
-	previewHeight?: number;
-	maxDecodeQueue?: number;
-	maxPendingFrames?: number;
-	onProgress?: (progress: ExportProgress) => void;
-}
-
-/**
- * Calculate output dimensions based on size preset and source dimensions while preserving aspect ratio.
- * @param sourceWidth - Original video width
- * @param sourceHeight - Original video height
- * @param sizePreset - The size preset to use
- * @param sizePresets - The size presets configuration
- * @returns The calculated output dimensions
- */
-export function calculateOutputDimensions(
-	sourceWidth: number,
-	sourceHeight: number,
-	sizePreset: GifSizePreset,
-	sizePresets: typeof GIF_SIZE_PRESETS,
-): { width: number; height: number } {
-	const preset = sizePresets[sizePreset];
-	const maxHeight = preset.maxHeight;
-
-	// If original is smaller than max height or preset is 'original', use source dimensions
-	if (sourceHeight <= maxHeight || sizePreset === "original") {
-		return { width: sourceWidth, height: sourceHeight };
-	}
-
-	// Calculate scaled dimensions preserving aspect ratio
-	const aspectRatio = sourceWidth / sourceHeight;
-	const newHeight = maxHeight;
-	const newWidth = Math.round(newHeight * aspectRatio);
-
-	// Ensure dimensions are even (required for some encoders)
-	return {
-		width: newWidth % 2 === 0 ? newWidth : newWidth + 1,
-		height: newHeight % 2 === 0 ? newHeight : newHeight + 1,
-	};
-}
-
-export function getGifRepeat(loop: boolean): 0 | 1 {
-	return loop ? 0 : 1;
+function createGifEncoder(config: GifExporterConfig): StreamingGifEncoder {
+	return new StreamingGifEncoder({
+		width: config.width,
+		height: config.height,
+		workerScript: GIF_WORKER_URL,
+		repeat: getGifRepeat(config.loop),
+	});
 }
 
 export class GifExporter {
 	private config: GifExporterConfig;
 	private streamingDecoder: StreamingVideoDecoder | null = null;
 	private renderer: FrameRenderer | null = null;
-	private gif: GIF | null = null;
+	private encoder: StreamingGifEncoder | null = null;
 	private cancelled = false;
+	private cancelEstimate: (() => void) | undefined;
+	private estimateCleanup: Promise<void> = Promise.resolve();
 	private exportStartTimeMs = 0;
 	private progressSampleStartTimeMs = 0;
 	private progressSampleStartFrame = 0;
@@ -141,6 +51,129 @@ export class GifExporter {
 
 	constructor(config: GifExporterConfig) {
 		this.config = config;
+	}
+
+	/** Wait for cancelled preflight rendering to release its resources before exporting. */
+	waitForEstimateCleanup(): Promise<void> {
+		return this.estimateCleanup;
+	}
+
+	/** Encode and optimize a centered 60-frame sample, then extrapolate to the edited duration. */
+	async estimateSize(signal?: AbortSignal): Promise<GifSizeEstimate> {
+		this.cancelEstimate?.();
+		const controller = new AbortController();
+		const decoder = new StreamingVideoDecoder({
+			maxDecodeQueue: this.config.maxDecodeQueue ?? 4,
+			maxPendingFrames: this.config.maxPendingFrames ?? 4,
+		});
+		let renderer: FrameRenderer | undefined;
+		let gif: StreamingGifEncoder | undefined;
+		const abortError = () => new DOMException("GIF size estimate cancelled", "AbortError");
+		const checkAbort = () => {
+			if (controller.signal.aborted) throw abortError();
+		};
+		const cancel = () => {
+			controller.abort();
+			decoder.cancel();
+			renderer?.cancelPendingMedia();
+			gif?.abort();
+		};
+		this.cancelEstimate = cancel;
+		const abort = () => cancel();
+		const timeout = setTimeout(cancel, 45_000);
+		signal?.addEventListener("abort", abort, { once: true });
+		if (signal?.aborted) cancel();
+
+		const work = async (): Promise<GifSizeEstimate> => {
+			try {
+				checkAbort();
+				const videoInfo = await decoder.loadMetadata(this.config.videoUrl);
+				checkAbort();
+				const totalFrames = Math.ceil(
+					decoder.getEffectiveDuration(
+						this.config.trimRegions,
+						this.config.speedRegions,
+						this.config.clipRegions,
+					) * this.config.frameRate,
+				);
+				if (totalFrames <= 0) throw new Error("No frames available to estimate");
+				const sampleLimit = Math.min(totalFrames, 60);
+				const sampleStart = Math.floor((totalFrames - sampleLimit) / 2);
+				renderer = new FrameRenderer({
+					...buildGifFrameRendererConfig(this.config, videoInfo),
+					preferMediaElementSampling: true,
+				});
+				await renderer.initialize();
+				checkAbort();
+				gif = createGifEncoder(this.config);
+				let sampleFrames = 0;
+				const frameDurationUs = 1_000_000 / this.config.frameRate;
+				await decoder.decodeSampleWindow(
+					this.config.frameRate,
+					this.config.trimRegions,
+					this.config.speedRegions,
+					async (frame, timestamp, sourceMs, cursorMs) => {
+						checkAbort();
+						if (sampleFrames >= sampleLimit) return;
+						await renderer!.renderFrame(
+							frame,
+							sourceMs * 1000,
+							cursorMs * 1000,
+							frameDurationUs,
+							timestamp,
+						);
+						checkAbort();
+						await gif!.addFrame(
+							renderer!.getCanvas(),
+							Math.round(1000 / this.config.frameRate),
+						);
+						sampleFrames++;
+					},
+					this.config.clipRegions,
+					sampleStart,
+					sampleLimit,
+				);
+				checkAbort();
+				if (sampleFrames !== sampleLimit) throw new Error("Incomplete GIF size sample");
+				const blob = await gif.finish();
+				checkAbort();
+				const optimized = await optimizeGif(blob, controller.signal);
+				checkAbort();
+				if (optimized.status === "failed") throw new Error("GIF size estimation failed");
+				const scale = totalFrames / sampleFrames;
+				return {
+					originalBytes: Math.round(blob.size * scale),
+					optimizedBytes: Math.round(optimized.blob.size * scale),
+					reductionPercent: optimized.reductionPercent,
+					sampleFrames,
+					totalFrames,
+				};
+			} finally {
+				// Await in-flight rendering before destroying its resources.
+				gif?.abort();
+				renderer?.destroy();
+				decoder.destroy();
+			}
+		};
+		let onAbort: (() => void) | undefined;
+		const interrupted = new Promise<never>((_resolve, reject) => {
+			onAbort = () => reject(abortError());
+			controller.signal.addEventListener("abort", onAbort, { once: true });
+			if (controller.signal.aborted) onAbort();
+		});
+		try {
+			const estimation = work();
+			this.estimateCleanup = estimation.then(
+				() => undefined,
+				() => undefined,
+			);
+			return await Promise.race([estimation, interrupted]);
+		} finally {
+			clearTimeout(timeout);
+			signal?.removeEventListener("abort", abort);
+			if (onAbort) controller.signal.removeEventListener("abort", onAbort);
+			if (this.cancelEstimate === cancel) this.cancelEstimate = undefined;
+		}
 	}
 
 	async export(): Promise<ExportResult> {
@@ -154,95 +187,37 @@ export class GifExporter {
 
 			// Initialize streaming decoder and load video metadata
 			this.streamingDecoder = new StreamingVideoDecoder({
-				maxDecodeQueue: this.config.maxDecodeQueue,
-				maxPendingFrames: this.config.maxPendingFrames,
+				maxDecodeQueue: this.config.maxDecodeQueue ?? 4,
+				maxPendingFrames: this.config.maxPendingFrames ?? 4,
 			});
 			const videoInfo = await this.streamingDecoder.loadMetadata(this.config.videoUrl);
+			if (this.cancelled) throw new Error("Export cancelled");
 
 			// Initialize frame renderer
-			this.renderer = new FrameRenderer({
-				width: this.config.width,
-				height: this.config.height,
-				wallpaper: this.config.wallpaper,
-				zoomRegions: this.config.zoomRegions,
-				showShadow: this.config.showShadow,
-				shadowIntensity: this.config.shadowIntensity,
-				backgroundBlur: this.config.backgroundBlur,
-				zoomMotionBlur: this.config.zoomMotionBlur,
-				zoomMotionBlurTuning: this.config.zoomMotionBlurTuning,
-				zoomTemporalMotionBlur: this.config.zoomTemporalMotionBlur,
-				zoomMotionBlurSampleCount: this.config.zoomMotionBlurSampleCount,
-				zoomMotionBlurShutterFraction: this.config.zoomMotionBlurShutterFraction,
-				connectZooms: this.config.connectZooms,
-				zoomInDurationMs: this.config.zoomInDurationMs,
-				zoomInOverlapMs: this.config.zoomInOverlapMs,
-				zoomOutDurationMs: this.config.zoomOutDurationMs,
-				connectedZoomGapMs: this.config.connectedZoomGapMs,
-				connectedZoomDurationMs: this.config.connectedZoomDurationMs,
-				zoomInEasing: this.config.zoomInEasing,
-				zoomOutEasing: this.config.zoomOutEasing,
-				connectedZoomEasing: this.config.connectedZoomEasing,
-				borderRadius: this.config.borderRadius,
-				padding: this.config.padding,
-				cropRegion: this.config.cropRegion,
-				webcam: this.config.webcam,
-				webcamUrl: this.config.webcamUrl,
-				videoWidth: videoInfo.width,
-				videoHeight: videoInfo.height,
-				annotationRegions: this.config.annotationRegions,
-				autoCaptions: this.config.autoCaptions,
-				autoCaptionSettings: this.config.autoCaptionSettings,
-				speedRegions: this.config.speedRegions,
-				previewWidth: this.config.previewWidth,
-				previewHeight: this.config.previewHeight,
-				cursorTelemetry: this.config.cursorTelemetry,
-				showCursor: this.config.showCursor,
-				cursorStyle: this.config.cursorStyle,
-				cursorSize: this.config.cursorSize,
-				cursorSmoothing: this.config.cursorSmoothing,
-				cursorSpringStiffnessMultiplier: this.config.cursorSpringStiffnessMultiplier,
-				cursorSpringDampingMultiplier: this.config.cursorSpringDampingMultiplier,
-				cursorSpringMassMultiplier: this.config.cursorSpringMassMultiplier,
-				cameraSpringStiffnessMultiplier: this.config.cameraSpringStiffnessMultiplier,
-				cameraSpringDampingMultiplier: this.config.cameraSpringDampingMultiplier,
-				cameraSpringMassMultiplier: this.config.cameraSpringMassMultiplier,
-				zoomSmoothness: this.config.zoomSmoothness,
-				zoomClassicMode: this.config.zoomClassicMode,
-				cursorMotionBlur: this.config.cursorMotionBlur,
-				cursorClickBounce: this.config.cursorClickBounce,
-				cursorClickBounceDuration: this.config.cursorClickBounceDuration,
-				cursorSway: this.config.cursorSway,
-				frame: this.config.frame,
-			});
+			this.renderer = new FrameRenderer(buildGifFrameRendererConfig(this.config, videoInfo));
 			await this.renderer.initialize();
-
-			// Initialize GIF encoder
-			// Loop: 0 = infinite loop, 1 = play once (no loop)
-			const repeat = getGifRepeat(this.config.loop);
-			const cores = navigator.hardwareConcurrency || 4;
-			const WORKER_COUNT = Math.max(1, Math.min(8, cores - 1));
-
-			this.gif = new GIF({
-				workers: WORKER_COUNT,
-				quality: 10,
-				width: this.config.width,
-				height: this.config.height,
-				workerScript: GIF_WORKER_URL,
-				repeat,
-				background: "#000000",
-				transparent: null,
-				dither: "FloydSteinberg",
-			});
+			if (this.cancelled) throw new Error("Export cancelled");
 
 			// Calculate effective duration and frame count (excluding trim regions)
 			const effectiveDuration = this.streamingDecoder.getEffectiveDuration(
 				this.config.trimRegions,
 				this.config.speedRegions,
+				this.config.clipRegions,
 			);
 			const totalFrames = Math.ceil(effectiveDuration * this.config.frameRate);
 
 			// Calculate frame delay in milliseconds (gif.js uses ms)
 			const frameDelay = Math.round(1000 / this.config.frameRate);
+			let draining = false;
+			this.encoder = new StreamingGifEncoder({
+				width: this.config.width,
+				height: this.config.height,
+				repeat: getGifRepeat(this.config.loop),
+				workerScript: GIF_WORKER_URL,
+				onFrameEncoded: (completed) => {
+					if (!draining && !this.cancelled) this.reportProgress(completed, totalFrames);
+				},
+			});
 
 			console.log("[GifExporter] Original duration:", videoInfo.duration, "s");
 			console.log("[GifExporter] Effective duration:", effectiveDuration, "s");
@@ -275,52 +250,29 @@ export class GifExporter {
 						frameIndex * frameDurationUs,
 					);
 
-					this.addRenderedGifFrame(frameDelay);
+					if (this.cancelled) throw new Error("Export cancelled");
+					await this.encoder!.addFrame(this.renderer!.getCanvas(), frameDelay);
 					frameIndex++;
-					this.reportProgress(frameIndex, totalFrames);
 				},
+				this.config.clipRegions,
 			);
 
 			if (this.cancelled) {
 				return { success: false, error: "Export cancelled" };
 			}
 
-			// Update progress to show we're now in the finalizing phase
-			if (this.config.onProgress) {
-				this.config.onProgress({
-					currentFrame: totalFrames,
-					totalFrames,
-					percentage: 100,
-					estimatedTimeRemaining: 0,
-					phase: "finalizing",
-					renderFps: this.lastRenderFps,
-				});
-			}
-
-			// Render the GIF
-			const blob = await new Promise<Blob>((resolve, _reject) => {
-				this.gif!.on("finished", (blob: Blob) => {
-					resolve(blob);
-				});
-
-				// Track rendering progress
-				this.gif!.on("progress", (progress: number) => {
-					if (this.config.onProgress) {
-						this.config.onProgress({
-							currentFrame: totalFrames,
-							totalFrames,
-							percentage: 100,
-							estimatedTimeRemaining: 0,
-							phase: "finalizing",
-							renderFps: this.lastRenderFps,
-							renderProgress: Math.round(progress * 100),
-						});
-					}
-				});
-
-				// gif.js doesn't have a typed 'error' event, but we can catch errors in the try/catch
-				this.gif!.render();
+			// Raw frames have already been encoded alongside rendering. Only the
+			// bounded tail of worker jobs remains; duration is unknown until it drains.
+			draining = true;
+			this.config.onProgress?.({
+				currentFrame: frameIndex,
+				totalFrames: frameIndex,
+				percentage: 95,
+				estimatedTimeRemaining: Number.POSITIVE_INFINITY,
+				phase: "finalizing",
+				renderFps: this.lastRenderFps,
 			});
+			const blob = await this.encoder.finish();
 
 			return { success: true, blob };
 		} catch (error) {
@@ -334,11 +286,6 @@ export class GifExporter {
 		}
 	}
 
-	private addRenderedGifFrame(frameDelay: number) {
-		const canvas = this.renderer!.getCanvas();
-		this.gif!.addFrame(canvas, { delay: frameDelay, copy: true });
-	}
-
 	private reportProgress(currentFrame: number, totalFrames: number) {
 		const nowMs = this.getNowMs();
 		const elapsedSeconds = Math.max((nowMs - this.exportStartTimeMs) / 1000, 0.001);
@@ -348,7 +295,9 @@ export class GifExporter {
 		const renderFps = (sampleFrameDelta * 1000) / sampleElapsedMs;
 		const remainingFrames = Math.max(totalFrames - currentFrame, 0);
 		const estimatedTimeRemaining =
-			averageRenderFps > 0 ? remainingFrames / averageRenderFps : 0;
+			averageRenderFps > 0 && remainingFrames > 0
+				? remainingFrames / averageRenderFps
+				: Number.POSITIVE_INFINITY;
 		this.lastRenderFps = renderFps;
 
 		if (sampleElapsedMs >= PROGRESS_SAMPLE_WINDOW_MS) {
@@ -360,7 +309,7 @@ export class GifExporter {
 			this.config.onProgress({
 				currentFrame,
 				totalFrames,
-				percentage: totalFrames > 0 ? (currentFrame / totalFrames) * 100 : 100,
+				percentage: totalFrames > 0 ? Math.min(95, (currentFrame / totalFrames) * 95) : 0,
 				estimatedTimeRemaining,
 				renderFps,
 			});
@@ -372,14 +321,13 @@ export class GifExporter {
 	}
 
 	cancel(): void {
+		this.cancelEstimate?.();
 		this.cancelled = true;
 		if (this.streamingDecoder) {
 			this.streamingDecoder.cancel();
 		}
-		if (this.gif) {
-			this.gif.abort();
-		}
-		this.cleanup();
+		this.encoder?.abort();
+		// Cleanup belongs to export() finally, after any in-flight render settles.
 	}
 
 	private cleanup(): void {
@@ -401,6 +349,7 @@ export class GifExporter {
 			this.renderer = null;
 		}
 
-		this.gif = null;
+		this.encoder?.abort();
+		this.encoder = null;
 	}
 }

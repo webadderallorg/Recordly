@@ -3,7 +3,7 @@ import type { ProjectLibraryEntry } from "@/components/video-editor/ProjectBrows
 import type { DesktopSource } from "../popovers/launchPopoverTypes";
 
 export function useLaunchWindowActions() {
-	const [selectedSource, setSelectedSource] = useState("Screen");
+	const [selectedSource, setSelectedSource] = useState("");
 	const [hasSelectedSource, setHasSelectedSource] = useState(false);
 	const [projectLibraryEntries, setProjectLibraryEntries] = useState<ProjectLibraryEntry[]>([]);
 
@@ -19,8 +19,12 @@ export function useLaunchWindowActions() {
 	}, []);
 
 	const openVideoFile = useCallback(async () => {
-		const result = await window.electronAPI.openVideoFilePicker();
+		const result = await window.electronAPI.openVideoFilePicker({ includeProjects: true });
 		if (result.canceled) return;
+		if (result.success && result.kind === "project") {
+			await window.electronAPI.switchToEditor();
+			return;
+		}
 		if (result.success && result.path) {
 			await window.electronAPI.setCurrentVideoPath(result.path);
 			await window.electronAPI.switchToEditor();
@@ -54,7 +58,7 @@ export function useLaunchWindowActions() {
 			setHasSelectedSource(true);
 			return;
 		}
-		setSelectedSource("Screen");
+		setSelectedSource("");
 		setHasSelectedSource(false);
 	}, []);
 

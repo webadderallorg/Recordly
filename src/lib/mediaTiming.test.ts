@@ -7,6 +7,7 @@ import {
 	getEffectiveRecordingDurationMs,
 	getEffectiveVideoStreamDurationSeconds,
 	getMediaSyncPlaybackRate,
+	resolvePreviewMediaDuration,
 } from "./mediaTiming";
 
 describe("clampMediaTimeToDuration", () => {
@@ -18,6 +19,30 @@ describe("clampMediaTimeToDuration", () => {
 	it("leaves playback time unchanged when duration is unknown", () => {
 		expect(clampMediaTimeToDuration(12, null)).toBe(12);
 		expect(clampMediaTimeToDuration(12, Number.NaN)).toBe(12);
+	});
+});
+
+describe("resolvePreviewMediaDuration", () => {
+	it("keeps reported durations that approximately match the timeline", () => {
+		expect(resolvePreviewMediaDuration(120, 120)).toBe(120);
+		expect(resolvePreviewMediaDuration(119.25, 120)).toBe(119.25);
+	});
+
+	it("treats non-finite or missing reported durations as unknown", () => {
+		expect(resolvePreviewMediaDuration(Number.POSITIVE_INFINITY, 120)).toBeNull();
+		expect(resolvePreviewMediaDuration(Number.NaN, 120)).toBeNull();
+		expect(resolvePreviewMediaDuration(null, 120)).toBeNull();
+	});
+
+	it("treats implausibly short reported durations as unknown", () => {
+		expect(resolvePreviewMediaDuration(20, 120)).toBeNull();
+		expect(resolvePreviewMediaDuration(0, 120)).toBeNull();
+	});
+
+	it("falls back to the reported duration when the timeline duration is unknown", () => {
+		expect(resolvePreviewMediaDuration(20, Number.NaN)).toBe(20);
+		expect(resolvePreviewMediaDuration(20, null)).toBe(20);
+		expect(resolvePreviewMediaDuration(Number.NaN, Number.NaN)).toBeNull();
 	});
 });
 

@@ -1,19 +1,46 @@
 import { Application, Graphics, Sprite } from "pixi.js";
-import { drawSquircleOnGraphics } from "@/lib/geometry/squircle";
-import type { CropRegion, Padding } from "../types";
+import { drawSquircleOnGraphics, getClampedCornerRadius } from "@/lib/geometry/squircle";
+import { ADVANCED_VERTICAL_PADDING_MAX, type CropRegion, type Padding } from "../types";
 
 export const PADDING_SCALE_FACTOR = 0.2;
+export const BASE_PREVIEW_WIDTH = 1920;
+export const BASE_PREVIEW_HEIGHT = 1080;
+
+export function scalePreviewBorderRadius(
+	width: number,
+	height: number,
+	borderRadiusPercent = 0,
+	frameSize?: { width: number; height: number },
+): number {
+	if (width <= 0 || height <= 0) {
+		return 0;
+	}
+
+	// A video filling the output is the frame itself. Rounding its mask exposes
+	// wallpaper in the output corners, so only inset/letterboxed video is rounded.
+	// One rounded pixel on the shorter viewport side can shift the longer side
+	// by its aspect ratio. Treat that fitting error as full bleed too.
+	if (frameSize) {
+		const tolerance = Math.max(
+			1,
+			frameSize.width / frameSize.height,
+			frameSize.height / frameSize.width,
+		);
+		if (width >= frameSize.width - tolerance && height >= frameSize.height - tolerance)
+			return 0;
+	}
+	return getClampedCornerRadius(
+		width,
+		height,
+		(Math.min(width, height) * borderRadiusPercent) / 100,
+	);
+}
 
 export function isZeroPadding(padding: Padding | number): boolean {
 	if (typeof padding === "number") {
 		return padding === 0;
 	}
-	return (
-		padding.top === 0 &&
-		padding.bottom === 0 &&
-		padding.left === 0 &&
-		padding.right === 0
-	);
+	return padding.top === 0 && padding.bottom === 0 && padding.left === 0 && padding.right === 0;
 }
 
 export interface PaddedLayoutResult {
@@ -49,13 +76,21 @@ export function computePaddedLayout(params: {
 			? { top: padding, bottom: padding, left: padding, right: padding }
 			: padding;
 
-	// Padding is a percentage (0-100)
-	// Clamp to ensure we don't have overlapping padding that exceeds 100% of a dimension
-	const clampPercent = (v: number) => Math.min(100, Math.max(0, v));
-	const leftPadFrac = (clampPercent(p.left) / 100) * PADDING_SCALE_FACTOR;
-	const rightPadFrac = (clampPercent(p.right) / 100) * PADDING_SCALE_FACTOR;
-	const topPadFrac = (clampPercent(p.top) / 100) * PADDING_SCALE_FACTOR;
-	const bottomPadFrac = (clampPercent(p.bottom) / 100) * PADDING_SCALE_FACTOR;
+	// Padding is a percentage. Linked padding keeps the original 0-100 scaling
+	// behavior; advanced vertical padding gets extra range for positioning.
+	const isAdvancedPadding = typeof padding !== "number" && padding.linked === false;
+	const clampPercent = (v: number, max = 100) => Math.min(max, Math.max(0, v));
+	const leftPercent = clampPercent(p.left);
+	const rightPercent = clampPercent(p.right);
+	const topPercent = clampPercent(p.top, isAdvancedPadding ? ADVANCED_VERTICAL_PADDING_MAX : 100);
+	const bottomPercent = clampPercent(
+		p.bottom,
+		isAdvancedPadding ? ADVANCED_VERTICAL_PADDING_MAX : 100,
+	);
+	const leftPadFrac = (leftPercent / 100) * PADDING_SCALE_FACTOR;
+	const rightPadFrac = (rightPercent / 100) * PADDING_SCALE_FACTOR;
+	const topPadFrac = (Math.min(topPercent, 100) / 100) * PADDING_SCALE_FACTOR;
+	const bottomPadFrac = (Math.min(bottomPercent, 100) / 100) * PADDING_SCALE_FACTOR;
 
 	const availableFracW = Math.max(0, 1.0 - leftPadFrac - rightPadFrac);
 	const availableFracH = Math.max(0, 1.0 - topPadFrac - bottomPadFrac);
@@ -88,17 +123,24 @@ export function computePaddedLayout(params: {
 	const fullFrameDisplayH = fullFrameVideoH * scale;
 
 	const availableCenterX = leftPadFrac * width + maxDisplayWidth / 2;
-	const availableCenterY = topPadFrac * height + maxDisplayHeight / 2;
+	const availableCenterY = isAdvancedPadding
+		? (() => {
+				const verticalTravel = Math.max(0, height - fullFrameDisplayH);
+				const centeredOffsetY = verticalTravel / 2;
+				const directionalOffsetY =
+					centeredOffsetY +
+					((topPercent - bottomPercent) / ADVANCED_VERTICAL_PADDING_MAX) *
+						centeredOffsetY;
+				const frameOffsetY = Math.min(verticalTravel, Math.max(0, directionalOffsetY));
+				return frameOffsetY + fullFrameDisplayH / 2;
+			})()
+		: topPadFrac * height + maxDisplayHeight / 2;
 
 	const frameCenterX = availableCenterX - fullFrameDisplayW / 2;
 	const frameCenterY = availableCenterY - fullFrameDisplayH / 2;
 
-	const centerOffsetX = insets
-		? frameCenterX + insets.left * fullFrameDisplayW
-		: frameCenterX;
-	const centerOffsetY = insets
-		? frameCenterY + insets.top * fullFrameDisplayH
-		: frameCenterY;
+	const centerOffsetX = insets ? frameCenterX + insets.left * fullFrameDisplayW : frameCenterX;
+	const centerOffsetY = insets ? frameCenterY + insets.top * fullFrameDisplayH : frameCenterY;
 
 	const spriteX = centerOffsetX - crop.x * fullVideoDisplayWidth;
 	const spriteY = centerOffsetY - crop.y * fullVideoDisplayHeight;
@@ -123,6 +165,7 @@ export function computePaddedLayout(params: {
 interface LayoutParams {
 	container: HTMLDivElement;
 	app: Application;
+	resolution?: number;
 	videoSprite: Sprite;
 	maskGraphics: Graphics;
 	videoElement: HTMLVideoElement;
@@ -153,6 +196,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 	const {
 		container,
 		app,
+		resolution,
 		videoSprite,
 		maskGraphics,
 		videoElement,
@@ -177,7 +221,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 		return null;
 	}
 
-	app.renderer.resize(width, height);
+	app.renderer.resize(width, height, resolution);
 	app.canvas.style.width = "100%";
 	app.canvas.style.height = "100%";
 
@@ -201,7 +245,12 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 		y: layout.centerOffsetY,
 		width: layout.croppedDisplayWidth,
 		height: layout.croppedDisplayHeight,
-		radius: borderRadius,
+		radius: scalePreviewBorderRadius(
+			layout.croppedDisplayWidth,
+			layout.croppedDisplayHeight,
+			borderRadius,
+			{ width, height },
+		),
 	});
 	maskGraphics.fill({ color: 0xffffff });
 

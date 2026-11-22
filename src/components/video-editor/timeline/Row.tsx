@@ -1,7 +1,12 @@
 import type { RowDefinition } from "dnd-timeline";
 import { useRow } from "dnd-timeline";
+import { TIMELINE_CLIP_ROW_HEIGHT_PX, TIMELINE_ROW_MIN_HEIGHT_PX } from "./timelineLayout";
 
 interface RowProps extends RowDefinition {
+	embedded?: boolean;
+	caption?: boolean;
+	compact?: boolean;
+	filmstrip?: boolean;
 	children: React.ReactNode;
 	label?: string;
 	hint?: string;
@@ -16,6 +21,10 @@ interface RowProps extends RowDefinition {
 
 export default function Row({
 	id,
+	embedded = false,
+	caption = false,
+	compact = true,
+	filmstrip = false,
 	children,
 	label,
 	hint,
@@ -31,8 +40,34 @@ export default function Row({
 
 	return (
 		<div
-			className="bg-transparent relative flex-1 min-h-[26px]"
-			style={{ ...rowWrapperStyle, marginBottom: 2 }}
+			data-timeline-row={id}
+			className="bg-transparent relative"
+			style={{
+				...rowWrapperStyle,
+				...(embedded || caption
+					? {
+							position: "absolute" as const,
+							insetInline: 0,
+							...(caption ? { top: 36 } : { bottom: 7 }),
+							zIndex: 15,
+							pointerEvents: "none" as const,
+						}
+					: {}),
+				marginBottom: 2,
+				flexGrow: 0,
+				flexShrink: 0,
+				height:
+					embedded || caption
+						? 20
+						: filmstrip || !compact
+							? TIMELINE_CLIP_ROW_HEIGHT_PX
+							: TIMELINE_ROW_MIN_HEIGHT_PX,
+				flexBasis: caption
+					? 20
+					: filmstrip || !compact
+						? TIMELINE_CLIP_ROW_HEIGHT_PX
+						: TIMELINE_ROW_MIN_HEIGHT_PX,
+			}}
 		>
 			{label && (
 				<div
@@ -49,7 +84,7 @@ export default function Row({
 			)}
 			<div
 				ref={setNodeRef}
-				className="relative h-full min-h-[26px] overflow-hidden"
+				className="relative min-w-0 self-stretch"
 				style={rowStyle}
 				onMouseEnter={onMouseEnter}
 				onMouseMove={onMouseMove}

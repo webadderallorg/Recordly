@@ -18,68 +18,69 @@ const BASE_SPANS = [
 
 describe("timeline dnd engine", () => {
 	it("clamps item span to timeline bounds and min duration", () => {
-		expect(clampSpanToBounds({ start: -100, end: 20 }, { totalMs: 5000, minItemDurationMs: 100 })).toEqual({ start: 0, end: 120 });
-		expect(clampSpanToBounds({ start: 4900, end: 7000 }, { totalMs: 5000, minItemDurationMs: 100 })).toEqual({ start: 2900, end: 5000 });
+		expect(
+			clampSpanToBounds({ start: -100, end: 20 }, { totalMs: 5000, minItemDurationMs: 100 }),
+		).toEqual({ start: 0, end: 120 });
+		expect(
+			clampSpanToBounds(
+				{ start: 4900, end: 7000 },
+				{ totalMs: 5000, minItemDurationMs: 100 },
+			),
+		).toEqual({ start: 2900, end: 5000 });
 	});
 
 	it("handles zero-duration timelines in span clamping", () => {
-		expect(clampSpanToBounds({ start: -10, end: -5 }, { totalMs: 0, minItemDurationMs: 100 })).toEqual({ start: 0, end: 100 });
-		expect(clampSpanToBounds({ start: 50, end: 60 }, { totalMs: 0, minItemDurationMs: 1 })).toEqual({ start: 50, end: 60 });
+		expect(
+			clampSpanToBounds({ start: -10, end: -5 }, { totalMs: 0, minItemDurationMs: 100 }),
+		).toEqual({ start: 0, end: 100 });
+		expect(
+			clampSpanToBounds({ start: 50, end: 60 }, { totalMs: 0, minItemDurationMs: 1 }),
+		).toEqual({ start: 50, end: 60 });
 	});
 
 	it("clamps visible range for bounded and unbounded timelines", () => {
-		expect(clampRange({ start: 4900, end: 5200 }, { totalMs: 5000, minVisibleRangeMs: 300 })).toEqual({ start: 4700, end: 5000 });
-		expect(clampRange({ start: -20, end: 50 }, { totalMs: 0, minVisibleRangeMs: 300 })).toEqual({ start: 0, end: 300 });
+		expect(
+			clampRange({ start: 4900, end: 5200 }, { totalMs: 5000, minVisibleRangeMs: 300 }),
+		).toEqual({ start: 4700, end: 5000 });
+		expect(clampRange({ start: -20, end: 50 }, { totalMs: 0, minVisibleRangeMs: 300 })).toEqual(
+			{ start: 0, end: 300 },
+		);
 	});
 
 	it("resolves siblings by row and active item", () => {
 		expect(getSiblingSpans("b", undefined, BASE_SPANS).map((s) => s.id)).toEqual(["a", "c"]);
-		expect(getSiblingSpans("missing", "row-clip", BASE_SPANS).map((s) => s.id)).toEqual(["a", "b", "c"]);
+		expect(getSiblingSpans("missing", "row-clip", BASE_SPANS).map((s) => s.id)).toEqual([
+			"a",
+			"b",
+			"c",
+		]);
 		expect(getSiblingSpans("missing", undefined, BASE_SPANS)).toEqual([]);
 	});
 
 	it("clamps resize against nearest neighbours and min duration", () => {
-		const resizedRight = clampResizedSpanToNeighbours(
-			{ start: 900, end: 2000 },
-			"a",
-			{ allRegionSpans: BASE_SPANS, minItemDurationMs: 100, totalMs: 5000 },
-		);
+		const resizedRight = clampResizedSpanToNeighbours({ start: 900, end: 2000 }, "a", {
+			allRegionSpans: BASE_SPANS,
+			minItemDurationMs: 100,
+			totalMs: 5000,
+		});
 		expect(resizedRight.end).toBe(1500);
 
-		const resizedLeft = clampResizedSpanToNeighbours(
-			{ start: 900, end: 2500 },
-			"b",
-			{ allRegionSpans: BASE_SPANS, minItemDurationMs: 100, totalMs: 5000 },
-		);
+		const resizedLeft = clampResizedSpanToNeighbours({ start: 900, end: 2500 }, "b", {
+			allRegionSpans: BASE_SPANS,
+			minItemDurationMs: 100,
+			totalMs: 5000,
+		});
 		expect(resizedLeft.start).toBe(1000);
 	});
 
-	it("keeps drag unchanged when already inside valid neighbour gap", () => {
-		const dragged = clampDraggedSpanToNeighbours(
-			{ start: 1400, end: 2400 },
-			"b",
-			"row-clip",
-			{ allRegionSpans: BASE_SPANS, minItemDurationMs: 100, totalMs: 5000 },
-		);
-		expect(dragged).toEqual({ start: 1400, end: 2400 });
-	});
-
-	it("clamps drag to previous or next neighbour bounds", () => {
-		const toLeftBoundary = clampDraggedSpanToNeighbours(
-			{ start: -500, end: 500 },
-			"b",
-			"row-clip",
-			{ allRegionSpans: BASE_SPANS, minItemDurationMs: 100, totalMs: 5000 },
-		);
-		expect(toLeftBoundary).toEqual({ start: 1000, end: 2000 });
-
-		const toRightBoundary = clampDraggedSpanToNeighbours(
-			{ start: 3500, end: 4500 },
-			"b",
-			"row-clip",
-			{ allRegionSpans: BASE_SPANS, minItemDurationMs: 100, totalMs: 5000 },
-		);
-		expect(toRightBoundary).toEqual({ start: 2000, end: 3000 });
+	it("inserts into a compact sequence even when legacy positions contain gaps", () => {
+		expect(
+			clampDraggedSpanToNeighbours({ start: 1400, end: 2400 }, "b", "row-clip", {
+				allRegionSpans: BASE_SPANS,
+				minItemDurationMs: 100,
+				totalMs: 5000,
+			}),
+		).toEqual({ start: 1000, end: 2000, sequenceIndex: 1 });
 	});
 
 	it("falls back to generic clamping when active drag item is unknown", () => {
@@ -93,68 +94,205 @@ describe("timeline dnd engine", () => {
 	});
 
 	it("resolves resize end with overlap fallback semantics", () => {
-		const result = resolveResizeEnd("a", { start: 900, end: 2200 }, {
-			totalMs: 5000,
-			minItemDurationMs: 100,
-			allRegionSpans: BASE_SPANS,
-			hasOverlap: (span, id) => id === "a" && span.end > 1500,
-		});
-		expect(result).toEqual({ start: 900, end: 1500 });
+		const result = resolveResizeEnd(
+			"aud-1",
+			{ start: 100, end: 2200 },
+			{
+				totalMs: 5000,
+				minItemDurationMs: 100,
+				allRegionSpans: [
+					...BASE_SPANS,
+					{ id: "aud-2", rowId: "row-audio-0", start: 1500, end: 2500 },
+				],
+				hasOverlap: (span) => span.end > 1500,
+			},
+		);
+		expect(result).toEqual({ start: 100, end: 1500 });
 	});
 
 	it("returns null when resize still overlaps after neighbour clamp", () => {
-		const result = resolveResizeEnd("a", { start: 900, end: 2200 }, {
-			totalMs: 5000,
-			minItemDurationMs: 100,
-			allRegionSpans: BASE_SPANS,
-			hasOverlap: () => true,
-		});
-		expect(result).toBeNull();
-	});
-
-	it("resolves drag end with row resolver while preserving duration", () => {
-		const result = resolveDragEnd(
-			"b",
-			{ start: 1200, end: 1800 },
-			"row-clip",
+		const result = resolveResizeEnd(
+			"aud-1",
+			{ start: 100, end: 2200 },
 			{
-				allRegionSpans: BASE_SPANS,
 				totalMs: 5000,
 				minItemDurationMs: 100,
-				hasOverlap: () => false,
-			},
-			(id, rowId) => (id === "b" ? rowId : rowId),
-		);
-		expect(result).toEqual({ rowId: "row-clip", span: { start: 1200, end: 2200 } });
-	});
-
-	it("returns null when drag still overlaps after neighbour clamp", () => {
-		const result = resolveDragEnd(
-			"b",
-			{ start: 1200, end: 1800 },
-			"row-clip",
-			{
 				allRegionSpans: BASE_SPANS,
-				totalMs: 5000,
-				minItemDurationMs: 100,
 				hasOverlap: () => true,
 			},
 		);
 		expect(result).toBeNull();
 	});
 
-	it("keeps proposed row when no target row resolver is provided", () => {
+	const sequence = [
+		{ id: "a", start: 0, end: 1000, rowId: "row-clip" },
+		{ id: "b", start: 1000, end: 2000, rowId: "row-clip" },
+		{ id: "c", start: 2000, end: 3000, rowId: "row-clip" },
+	];
+	const sequenceConfig = {
+		allRegionSpans: sequence,
+		totalMs: 3000,
+		minItemDurationMs: 100,
+		hasOverlap: () => true,
+	};
+
+	it("inserts A after B without jumping over C", () => {
+		const result = resolveDragEnd("a", { start: 1100, end: 2100 }, "row-clip", sequenceConfig);
+		expect(result).toEqual({
+			rowId: "row-clip",
+			span: { start: 1000, end: 2000, sequenceIndex: 1 },
+		});
+	});
+	it.each([
+		[1999, 1998],
+		[3000, 1000],
+	])("commits the preview insertion when clip durations differ (%s / %s)", (first, second) => {
+		const config = {
+			...sequenceConfig,
+			totalMs: first + second + 2000,
+			allRegionSpans: [
+				{ id: "a", start: 0, end: first, rowId: "row-clip" },
+				{ id: "b", start: first, end: first + second, rowId: "row-clip" },
+				{ id: "c", start: first + second, end: first + second + 2000, rowId: "row-clip" },
+			],
+		};
+		const pointerStart = first + second / 2 - first / 2 + 1;
+		const preview = resolveDragEnd(
+			"a",
+			{ start: pointerStart, end: pointerStart + first },
+			"row-clip",
+			config,
+		)!;
+		expect(preview.span.sequenceIndex).toBe(1);
+		expect(resolveDragEnd("a", preview.span, preview.rowId, config)).toEqual(preview);
+	});
+
+	it("inserts B before A at the start of the sequence", () => {
+		const result = resolveDragEnd("b", { start: 0, end: 1000 }, "row-clip", sequenceConfig);
+		expect(result).toEqual({
+			rowId: "row-clip",
+			span: { start: 0, end: 1000, sequenceIndex: 0 },
+		});
+	});
+	it.each([0, 2])("keeps an already resolved insertion at sequence edge %s", (sequenceIndex) => {
 		const result = resolveDragEnd(
-			"aud-1",
-			{ start: 700, end: 1000 },
-			"row-audio-2",
-			{
-				allRegionSpans: BASE_SPANS,
-				totalMs: 5000,
-				minItemDurationMs: 100,
-				hasOverlap: () => false,
-			},
+			"b",
+			{ start: 1000, end: 2000, sequenceIndex },
+			"row-clip",
+			sequenceConfig,
 		);
+		expect(result?.span).toEqual({
+			start: sequenceIndex * 1000,
+			end: (sequenceIndex + 1) * 1000,
+			sequenceIndex,
+		});
+		expect(resolveDragEnd("b", result!.span, "row-clip", sequenceConfig)).toEqual(result);
+	});
+	it.each([
+		Number.NaN,
+		Number.POSITIVE_INFINITY,
+		0.5,
+	])("recomputes invalid insertion index %s from the pointer", (sequenceIndex) => {
+		expect(
+			resolveDragEnd(
+				"a",
+				{ start: 1100, end: 2100, sequenceIndex },
+				"row-clip",
+				sequenceConfig,
+			)?.span.sequenceIndex,
+		).toBe(1);
+	});
+
+	it("keeps the final clip in the sequence when dragged beyond its end", () => {
+		const result = resolveDragEnd("c", { start: 5200, end: 5800 }, "row-clip", sequenceConfig);
+		expect(result).toEqual({
+			rowId: "row-clip",
+			span: { start: 2000, end: 3000, sequenceIndex: 2 },
+		});
+	});
+
+	it("inserts a middle clip after the final clip without adding empty time", () => {
+		const result = resolveDragEnd("b", { start: 4200, end: 5200 }, "row-clip", sequenceConfig);
+		expect(result).toEqual({
+			rowId: "row-clip",
+			span: { start: 2000, end: 3000, sequenceIndex: 2 },
+		});
+	});
+
+	it("uses the resolved target row for primary sequence insertion", () => {
+		const result = resolveDragEnd(
+			"a",
+			{ start: 1100, end: 2100 },
+			"row-audio-0",
+			sequenceConfig,
+			() => "row-clip",
+		);
+		expect(result?.span.sequenceIndex).toBe(1);
+	});
+
+	it("allows restoring a trimmed clip into its adjacent clip's old time", () => {
+		expect(resolveResizeEnd("a", { start: 0, end: 1500 }, sequenceConfig)).toEqual({
+			start: 0,
+			end: 1500,
+		});
+	});
+
+	it("allows restoring the final clip beyond the current sequence end", () => {
+		expect(resolveResizeEnd("c", { start: 2000, end: 4000 }, sequenceConfig)).toEqual({
+			start: 2000,
+			end: 4000,
+		});
+	});
+
+	it("allows restoring a trimmed first clip before time zero for source-aware repacking", () => {
+		expect(resolveResizeEnd("a", { start: -500, end: 1000 }, sequenceConfig)).toEqual({
+			start: -500,
+			end: 1000,
+		});
+	});
+
+	it("preserves the stationary edge when a clip trim crosses its minimum duration", () => {
+		expect(resolveResizeEnd("b", { start: 1990, end: 2000 }, sequenceConfig)).toEqual({
+			start: 1900,
+			end: 2000,
+		});
+		expect(resolveResizeEnd("b", { start: 1000, end: 1010 }, sequenceConfig)).toEqual({
+			start: 1000,
+			end: 1100,
+		});
+	});
+
+	it("rejects non-finite clip resize positions", () => {
+		expect(resolveResizeEnd("a", { start: NaN, end: 1000 }, sequenceConfig)).toBeNull();
+	});
+
+	it("keeps non-clip drags bounded by the current timeline duration", () => {
+		const result = resolveDragEnd("aud-1", { start: 5200, end: 5600 }, "row-audio-0", {
+			allRegionSpans: BASE_SPANS,
+			totalMs: 5000,
+			minItemDurationMs: 100,
+			hasOverlap: () => false,
+		});
+		expect(result).toEqual({ rowId: "row-audio-0", span: { start: 4600, end: 5000 } });
+	});
+
+	it("returns null when drag still overlaps after neighbour clamp", () => {
+		const result = resolveDragEnd("aud-1", { start: 1200, end: 1800 }, "row-audio-0", {
+			allRegionSpans: BASE_SPANS,
+			totalMs: 5000,
+			minItemDurationMs: 100,
+			hasOverlap: () => true,
+		});
+		expect(result).toBeNull();
+	});
+
+	it("keeps proposed row when no target row resolver is provided", () => {
+		const result = resolveDragEnd("aud-1", { start: 700, end: 1000 }, "row-audio-2", {
+			allRegionSpans: BASE_SPANS,
+			totalMs: 5000,
+			minItemDurationMs: 100,
+			hasOverlap: () => false,
+		});
 		expect(result?.rowId).toBe("row-audio-2");
 	});
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { AudioProcessor } from "./audioEncoder";
+import { AudioProcessor, softLimitOfflineMixPeaksInPlace } from "./audioEncoder";
 
 type OfflineRenderTestHarness = AudioProcessor & {
 	decodeAudioFromUrl(url: string): Promise<AudioBuffer | null>;
@@ -9,13 +9,13 @@ type OfflineRenderTestHarness = AudioProcessor & {
 	prepareOfflineRender(
 		videoUrl: string,
 		trimRegions: never[],
-		speedRegions: never[],
+		speedRegions: import("@/components/video-editor/types").SpeedRegion[],
 		audioRegions: never[],
 		sourceAudioFallbackPaths: string[],
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
 	): Promise<{
-		mainBuffer: AudioBuffer | null;
-		companionEntries: Array<{ buffer: AudioBuffer; startDelaySec: number }>;
+		mainBufferEntry: { buffer: AudioBuffer; gain: number } | null;
+		companionEntries: Array<{ buffer: AudioBuffer; startDelaySec: number; gain: number }>;
 	}>;
 	renderAndMuxOfflineAudio(
 		videoUrl: string,
@@ -26,9 +26,178 @@ type OfflineRenderTestHarness = AudioProcessor & {
 		sourceAudioFallbackStartDelayMsByPath: Record<string, number> | undefined,
 		muxer: unknown,
 	): Promise<void>;
+	renderChunked(
+		prepared: {
+			mainBufferEntry: null;
+			companionEntries: [];
+			regionEntries: [];
+			mutedSourceOutputRangesSec: [];
+			slices: [];
+			outputDurationMs: number;
+			numChannels: number;
+		},
+		totalOutputSec: number,
+		onChunk: (
+			rendered: AudioBuffer,
+			outputOffsetSec: number,
+			chunkIndex: number,
+		) => Promise<void>,
+	): Promise<void>;
 };
 
+function fakeAudioBuffer(channels: Float32Array[]): AudioBuffer {
+	return {
+		numberOfChannels: channels.length,
+		getChannelData: (channel: number) => channels[channel],
+	} as AudioBuffer;
+}
+
 describe("AudioProcessor offline render preparation", () => {
+	it("prepares edited sidecar audio when remote video metadata does not allow CORS", async () => {
+		// A metadata-only video can load cross-origin without a CORS opt-in; the
+		// same response is rejected when the request explicitly asks for CORS.
+		class MetadataVideo extends EventTarget {
+			crossOrigin = "";
+			preload = "";
+			duration = 12;
+			private source = "";
+			load = vi.fn();
+			set src(value: string) {
+				this.source = value;
+				if (value)
+					queueMicrotask(() =>
+						this.dispatchEvent(
+							new Event(
+								this.crossOrigin === "anonymous" ? "error" : "loadedmetadata",
+							),
+						),
+					);
+			}
+			get src() {
+				return this.source;
+			}
+		}
+		const videos: MetadataVideo[] = [];
+		vi.stubGlobal("document", {
+			createElement: (tag: string) => {
+				expect(tag).toBe("video");
+				const video = new MetadataVideo();
+				videos.push(video);
+				return video;
+			},
+		});
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const sidecar = { duration: 12, numberOfChannels: 2 } as AudioBuffer;
+		const decode = vi.spyOn(processor, "decodeAudioFromUrl").mockResolvedValue(sidecar);
+		try {
+			const prepared = await processor.prepareOfflineRender(
+				"https://media.example.test/no-cors/recording.mp4",
+				[],
+				[{ id: "speed", startMs: 0, endMs: 1000, speed: 2 }],
+				[],
+				["/tmp/recording.system.wav"],
+			);
+			expect(prepared.mainBufferEntry).toBeNull();
+			expect(prepared.companionEntries[0].buffer).toBe(sidecar);
+			expect(prepared).toMatchObject({ outputDurationMs: 11500 });
+			expect(decode).toHaveBeenCalledExactlyOnceWith("/tmp/recording.system.wav");
+			expect(videos).toHaveLength(2);
+			for (const video of videos) {
+				expect(video.preload).toBe("metadata");
+				expect(video.src).toBe("");
+				expect(video.load).toHaveBeenCalledOnce();
+			}
+		} finally {
+			decode.mockRestore();
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("routes a muted full-track clip through offline audio rendering", async () => {
+		const processor = new AudioProcessor();
+		const render = vi
+			.spyOn(processor as unknown as OfflineRenderTestHarness, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+		const clips = [
+			{ id: "clip", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1, muted: true },
+		];
+		const muxer = {} as never;
+		await processor.process(
+			null,
+			muxer,
+			"recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			[],
+			undefined,
+			undefined,
+			clips,
+		);
+		expect(render).toHaveBeenCalledWith(
+			"recording.mp4",
+			[],
+			[],
+			[],
+			[],
+			undefined,
+			undefined,
+			clips,
+			muxer,
+			undefined,
+		);
+	});
+
+	it("routes full-track clip volume overrides through offline rendering and passes all overrides", async () => {
+		const processor = new AudioProcessor();
+		const render = vi
+			.spyOn(processor as unknown as OfflineRenderTestHarness, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+		const clips = [{ id: "clip", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1 }];
+		const overrides = { clip: { mixed: { volume: 0.2, normalize: true } } };
+		const muxer = {} as never;
+		await processor.process(
+			null,
+			muxer,
+			"recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			[],
+			undefined,
+			{},
+			clips,
+			overrides,
+		);
+		expect(render).toHaveBeenCalledWith(
+			"recording.mp4",
+			[],
+			[],
+			[],
+			[],
+			undefined,
+			{},
+			clips,
+			muxer,
+			overrides,
+		);
+	});
+
+	it("rejects a cancelled chunked render instead of returning a partial WAV", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		vi.spyOn(processor, "prepareOfflineRender").mockResolvedValue({
+			mainBufferEntry: null,
+			companionEntries: [],
+			outputDurationMs: 1000,
+			numChannels: 2,
+		} as never);
+		vi.spyOn(processor, "renderChunked").mockImplementation(async () => processor.cancel());
+		await expect(processor.renderEditedAudioTrack("source.mp4")).rejects.toThrow(
+			"Export cancelled",
+		);
+	});
 	it("keeps embedded source audio separate from external companion sidecars", async () => {
 		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
 		const mainBuffer = { duration: 10, numberOfChannels: 2 } as AudioBuffer;
@@ -55,9 +224,11 @@ describe("AudioProcessor offline render preparation", () => {
 			["/tmp/recording.mp4", "/tmp/recording.mic.wav"],
 		);
 
-		expect(prepared.mainBuffer).toBe(mainBuffer);
+		expect(prepared.mainBufferEntry?.buffer).toBe(mainBuffer);
+		expect(prepared.mainBufferEntry?.gain).toBe(1);
 		expect(prepared.companionEntries).toHaveLength(1);
 		expect(prepared.companionEntries[0]?.buffer).toBe(micBuffer);
+		expect(prepared.companionEntries[0]?.gain).toBe(1);
 		expect(decodeAudioFromUrl).toHaveBeenCalledWith("file:///tmp/recording.mp4");
 		expect(decodeAudioFromUrl).toHaveBeenCalledWith("/tmp/recording.mic.wav");
 		expect(decodeAudioFromUrl).not.toHaveBeenCalledWith("/tmp/recording.mp4");
@@ -83,6 +254,37 @@ describe("AudioProcessor offline render preparation", () => {
 
 		expect(loadAudioFileDemuxer).not.toHaveBeenCalled();
 		expect(renderAndMuxOfflineAudio).not.toHaveBeenCalled();
+	});
+
+	it("renders single sidecar audio offline when its demuxer cannot read the track", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const sidecar = "/tmp/recording.system.wav";
+		const getDecoderConfig = vi.fn().mockRejectedValue(new Error("Cannot open input file"));
+		const destroy = vi.fn();
+		vi.spyOn(processor, "loadAudioFileDemuxer").mockResolvedValue({
+			getDecoderConfig,
+			destroy,
+		});
+		const renderAndMuxOfflineAudio = vi
+			.spyOn(processor, "renderAndMuxOfflineAudio")
+			.mockImplementation(async () => {
+				expect(destroy).toHaveBeenCalledOnce();
+			});
+
+		await processor.process(
+			null,
+			{} as never,
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			[sidecar],
+		);
+
+		expect(getDecoderConfig).toHaveBeenCalledWith("audio");
+		expect(renderAndMuxOfflineAudio).toHaveBeenCalledOnce();
+		expect(renderAndMuxOfflineAudio.mock.calls[0]?.[4]).toEqual([sidecar]);
 	});
 
 	it("uses recorded companion start-delay metadata instead of inferring from duration gap", async () => {
@@ -133,5 +335,94 @@ describe("AudioProcessor offline render preparation", () => {
 
 		expect(loadAudioFileDemuxer).not.toHaveBeenCalled();
 		expect(renderAndMuxOfflineAudio).toHaveBeenCalled();
+	});
+
+	it("avoids the single-sidecar fast path for legacy mac mic sidecars that still need embedded audio", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const loadAudioFileDemuxer = vi.spyOn(processor, "loadAudioFileDemuxer");
+		const renderAndMuxOfflineAudio = vi
+			.spyOn(processor, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+
+		await processor.process(
+			{} as never,
+			{} as never,
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			["/tmp/recording.mic.m4a"],
+		);
+
+		expect(loadAudioFileDemuxer).not.toHaveBeenCalled();
+		expect(renderAndMuxOfflineAudio).toHaveBeenCalled();
+	});
+
+	it("soft-limits mixed peaks before encoding or WAV conversion", () => {
+		const samples = new Float32Array([
+			-1.6,
+			-0.5,
+			Number.NEGATIVE_INFINITY,
+			Number.NaN,
+			0,
+			0.5,
+			0.95,
+			Number.POSITIVE_INFINITY,
+			1.6,
+		]);
+		const changed = softLimitOfflineMixPeaksInPlace(fakeAudioBuffer([samples]));
+
+		expect(changed).toBe(true);
+		expect(samples[0]).toBeGreaterThanOrEqual(-0.986);
+		expect(samples[1]).toBe(-0.5);
+		expect(samples[2]).toBe(0);
+		expect(samples[3]).toBe(0);
+		expect(samples[5]).toBe(0.5);
+		expect(samples[6]).toBeLessThan(0.95);
+		expect(samples[6]).toBeGreaterThan(0.9);
+		expect(samples[7]).toBe(0);
+		expect(samples[8]).toBeLessThanOrEqual(0.986);
+	});
+
+	it("runs the offline mix limiter for every rendered chunk", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const renderedSamples = new Float32Array([1.4]);
+		const renderedBuffer = fakeAudioBuffer([renderedSamples]);
+		const originalOfflineAudioContext = globalThis.OfflineAudioContext;
+		(
+			globalThis as unknown as { OfflineAudioContext: typeof OfflineAudioContext }
+		).OfflineAudioContext = class {
+			constructor() {}
+
+			startRendering() {
+				return Promise.resolve(renderedBuffer);
+			}
+		} as unknown as typeof OfflineAudioContext;
+
+		try {
+			let observedPeak = Number.POSITIVE_INFINITY;
+			await processor.renderChunked(
+				{
+					mainBufferEntry: null,
+					companionEntries: [],
+					regionEntries: [],
+					mutedSourceOutputRangesSec: [],
+					slices: [],
+					outputDurationMs: 100,
+					numChannels: 1,
+				},
+				0.1,
+				async (rendered) => {
+					observedPeak = rendered.getChannelData(0)[0] ?? 0;
+				},
+			);
+
+			expect(observedPeak).toBeLessThanOrEqual(0.986);
+		} finally {
+			(
+				globalThis as unknown as { OfflineAudioContext: typeof OfflineAudioContext }
+			).OfflineAudioContext = originalOfflineAudioContext;
+		}
 	});
 });

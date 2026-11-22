@@ -22,6 +22,21 @@ describe("resolveAutoCaptionSourcePath", () => {
 		).toBe("/Users/test/Desktop/capture.mp4");
 	});
 
+	it("extracts local paths from Recordly media-server URLs", () => {
+		expect(
+			resolveAutoCaptionSourcePath({
+				videoPath:
+					"http://127.0.0.1:43123/video?path=%2FUsers%2Ftest%2FDesktop%2Fcapture.mp4",
+			}),
+		).toBe("/Users/test/Desktop/capture.mp4");
+	});
+
+	it("rejects remote URLs that native captioning cannot read", () => {
+		expect(
+			resolveAutoCaptionSourcePath({ videoPath: "https://example.com/capture.mp4" }),
+		).toBeNull();
+	});
+
 	it("uses session and current video fallbacks only when nothing is loaded", () => {
 		expect(
 			resolveAutoCaptionSourcePath({

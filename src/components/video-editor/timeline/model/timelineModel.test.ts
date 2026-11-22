@@ -35,10 +35,22 @@ describe("timeline model", () => {
 			],
 			clipRegions: [{ id: "c1", startMs: 0, endMs: 4000, speed: 1 }],
 			annotationRegions: [
-				{ ...BASE_ANNOTATION, type: "text" as const, content: "Hello timeline", trackIndex: 1 },
+				{
+					...BASE_ANNOTATION,
+					type: "text" as const,
+					content: "Hello timeline",
+					trackIndex: 1,
+				},
 			],
 			audioRegions: [
-				{ id: "au1", startMs: 500, endMs: 2000, audioPath: "/tmp/foo.mp3", volume: 1, trackIndex: 0 },
+				{
+					id: "au1",
+					startMs: 500,
+					endMs: 2000,
+					audioPath: "/tmp/foo.mp3",
+					volume: 1,
+					trackIndex: 0,
+				},
 			],
 		});
 
@@ -47,7 +59,41 @@ describe("timeline model", () => {
 		expect(items.find((i) => i.id === "au1")?.label).toBe("foo");
 	});
 
+	it("exposes clip speed for non-default speed labels", () => {
+		const items = buildTimelineItems({
+			zoomRegions: [],
+			clipRegions: [{ id: "c1", startMs: 0, endMs: 8000, speed: 0.5 }],
+			annotationRegions: [],
+			audioRegions: [],
+		});
+
+		expect(items[0]).toMatchObject({
+			id: "c1",
+			label: "Clip 1 0.5x",
+			speedValue: 0.5,
+		});
+	});
+
+	it("keeps a split clip's sourceSpan in source coordinates", () => {
+		const items = buildTimelineItems({
+			zoomRegions: [],
+			// The right half of a 2x clip split at timeline 10s: it still sits at
+			// 10s but reads from 20s.
+			clipRegions: [
+				{ id: "c1", startMs: 10_000, endMs: 60_000, sourceStartMs: 20_000, speed: 2 },
+			],
+			annotationRegions: [],
+			audioRegions: [],
+		});
+
+		expect(items[0]).toMatchObject({
+			span: { start: 10_000, end: 60_000 },
+			sourceSpan: { start: 20_000, end: 120_000 },
+		});
+	});
+
 	it("builds all variant labels for annotation and audio", () => {
+		expect(getAnnotationLabel({ ...BASE_ANNOTATION, type: "blur", content: "" })).toBe("Mask");
 		expect(getAnnotationLabel({ ...BASE_ANNOTATION, type: "text", content: "   " })).toBe(
 			"Empty text",
 		);
@@ -65,8 +111,18 @@ describe("timeline model", () => {
 			"Annotation",
 		);
 
-		expect(getAudioLabel({ id: "1", startMs: 0, endMs: 1, audioPath: "C:\\x\\y\\z.wav", volume: 1 })).toBe("z");
-		expect(getAudioLabel({ id: "2", startMs: 0, endMs: 1, audioPath: "", volume: 1 })).toBe("Audio");
+		expect(
+			getAudioLabel({
+				id: "1",
+				startMs: 0,
+				endMs: 1,
+				audioPath: "C:\\x\\y\\z.wav",
+				volume: 1,
+			}),
+		).toBe("z");
+		expect(getAudioLabel({ id: "2", startMs: 0, endMs: 1, audioPath: "", volume: 1 })).toBe(
+			"Audio",
+		);
 	});
 
 	it("builds row spans for dnd constraints", () => {
@@ -76,7 +132,14 @@ describe("timeline model", () => {
 			],
 			clipRegions: [{ id: "c1", startMs: 0, endMs: 4000, speed: 1 }],
 			audioRegions: [
-				{ id: "au1", startMs: 500, endMs: 2000, audioPath: "x.wav", volume: 1, trackIndex: 2 },
+				{
+					id: "au1",
+					startMs: 500,
+					endMs: 2000,
+					audioPath: "x.wav",
+					volume: 1,
+					trackIndex: 2,
+				},
 			],
 		});
 		expect(spans.map((s) => s.rowId)).toEqual(["row-zoom", "row-clip", "row-audio-2"]);
@@ -84,9 +147,27 @@ describe("timeline model", () => {
 
 	it("keeps items in their domain rows during dnd", () => {
 		const items = [
-			{ id: "a1", rowId: "row-annotation-1", span: { start: 0, end: 1 }, label: "A", variant: "annotation" as const },
-			{ id: "au1", rowId: "row-audio-2", span: { start: 0, end: 1 }, label: "X", variant: "audio" as const },
-			{ id: "z1", rowId: "row-zoom", span: { start: 0, end: 1 }, label: "Z", variant: "zoom" as const },
+			{
+				id: "a1",
+				rowId: "row-annotation-1",
+				span: { start: 0, end: 1 },
+				label: "A",
+				variant: "annotation" as const,
+			},
+			{
+				id: "au1",
+				rowId: "row-audio-2",
+				span: { start: 0, end: 1 },
+				label: "X",
+				variant: "audio" as const,
+			},
+			{
+				id: "z1",
+				rowId: "row-zoom",
+				span: { start: 0, end: 1 },
+				label: "Z",
+				variant: "zoom" as const,
+			},
 		];
 		expect(resolveDropRowId("a1", "row-audio-0", items)).toBe("row-annotation-1");
 		expect(resolveDropRowId("a1", "row-annotation-3", items)).toBe("row-annotation-3");

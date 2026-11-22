@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+	createContext,
+	type ReactNode,
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 
 interface LaunchPopoverCoordinatorValue {
 	openId: string | null;
@@ -48,7 +56,9 @@ export function LaunchPopoverCoordinatorProvider({ children }: { children: React
 export function useLaunchPopoverCoordinator() {
 	const context = useContext(LaunchPopoverCoordinatorContext);
 	if (!context) {
-		throw new Error("useLaunchPopoverCoordinator must be used within LaunchPopoverCoordinatorProvider");
+		throw new Error(
+			"useLaunchPopoverCoordinator must be used within LaunchPopoverCoordinatorProvider",
+		);
 	}
 	return context;
 }

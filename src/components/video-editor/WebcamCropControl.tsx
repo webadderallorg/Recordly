@@ -1,18 +1,16 @@
+import { Surface } from "@heroui/react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { useScopedT } from "@/contexts/I18nContext";
 import { cn } from "@/lib/utils";
 import type { CropRegion } from "./types";
-import { getWebcamPreviewTargetTimeSeconds } from "./videoPlayback/webcamSync";
+import {
+	getWebcamPreviewTargetTimeSeconds,
+	isWebcamMediaSynchronized,
+} from "./videoPlayback/webcamSync";
 import { normalizeWebcamCropRegion } from "./webcamOverlay";
 
 type CropHandle = "move" | "nw" | "ne" | "sw" | "se";
-
-const HANDLE_LABELS: Record<CropHandle, string> = {
-	move: "Move webcam crop",
-	nw: "Resize webcam crop from top left",
-	ne: "Resize webcam crop from top right",
-	sw: "Resize webcam crop from bottom left",
-	se: "Resize webcam crop from bottom right",
-};
 
 interface WebcamCropControlProps {
 	cropRegion: CropRegion;
@@ -21,7 +19,7 @@ interface WebcamCropControlProps {
 	previewCurrentTime?: number;
 	previewPlaying?: boolean;
 	previewTimeOffsetMs?: number | null;
-	onCropChange: (cropRegion: CropRegion) => void;
+	onCropChange: (cropRegion: CropRegion, previewFrame?: PreviewFrame | null) => void;
 }
 
 interface DragState {
@@ -45,26 +43,31 @@ const RESIZE_HANDLES: Array<{
 	handle: Exclude<CropHandle, "move">;
 	className: string;
 	cursorClassName: string;
+	cornerClassName: string;
 }> = [
 	{
 		handle: "nw",
 		className: "left-0 top-0 -translate-x-1/2 -translate-y-1/2",
 		cursorClassName: "cursor-nwse-resize",
+		cornerClassName: "left-1/2 top-1/2 rounded-tl-[3px] border-l-2 border-t-2",
 	},
 	{
 		handle: "ne",
 		className: "right-0 top-0 translate-x-1/2 -translate-y-1/2",
 		cursorClassName: "cursor-nesw-resize",
+		cornerClassName: "right-1/2 top-1/2 rounded-tr-[3px] border-r-2 border-t-2",
 	},
 	{
 		handle: "se",
 		className: "bottom-0 right-0 translate-x-1/2 translate-y-1/2",
 		cursorClassName: "cursor-nwse-resize",
+		cornerClassName: "bottom-1/2 right-1/2 rounded-br-[3px] border-b-2 border-r-2",
 	},
 	{
 		handle: "sw",
 		className: "bottom-0 left-0 -translate-x-1/2 translate-y-1/2",
 		cursorClassName: "cursor-nesw-resize",
+		cornerClassName: "bottom-1/2 left-1/2 rounded-bl-[3px] border-b-2 border-l-2",
 	},
 ];
 
@@ -72,51 +75,23 @@ function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
 }
 
-function normalizeAspectCropRegion(cropRegion: CropRegion, displayAspectRatio: number): CropRegion {
+function flipCropHorizontally(cropRegion: CropRegion): CropRegion {
 	const crop = normalizeWebcamCropRegion(cropRegion);
-	const aspectRatio =
-		Number.isFinite(displayAspectRatio) && displayAspectRatio > 0 ? displayAspectRatio : 1;
-	const maxWidth = Math.min(1, 1 / aspectRatio);
-	const minWidth = Math.min(MIN_CROP_SIZE, maxWidth);
-	const width = clamp(Math.min(crop.width, crop.height / aspectRatio), minWidth, maxWidth);
-	const height = width * aspectRatio;
-	const centerX = crop.x + crop.width / 2;
-	const centerY = crop.y + crop.height / 2;
-	const x = clamp(centerX - width / 2, 0, 1 - width);
-	const y = clamp(centerY - height / 2, 0, 1 - height);
-
-	return { x, y, width, height };
-}
-
-function flipCropHorizontally(cropRegion: CropRegion, displayAspectRatio: number): CropRegion {
-	const crop = normalizeAspectCropRegion(cropRegion, displayAspectRatio);
 	return {
 		...crop,
 		x: clamp(1 - crop.x - crop.width, 0, 1 - crop.width),
 	};
 }
 
-function resizeCrop(
-	cropRegion: CropRegion,
-	handle: CropHandle,
-	deltaX: number,
-	deltaY: number,
-	displayAspectRatio: number,
-) {
-	const aspectRatio =
-		Number.isFinite(displayAspectRatio) && displayAspectRatio > 0 ? displayAspectRatio : 1;
-	const crop = normalizeAspectCropRegion(cropRegion, aspectRatio);
-	const minWidth = Math.min(MIN_CROP_SIZE, Math.min(1, 1 / aspectRatio));
+function resizeCrop(cropRegion: CropRegion, handle: CropHandle, deltaX: number, deltaY: number) {
+	const crop = normalizeWebcamCropRegion(cropRegion);
 
 	if (handle === "move") {
-		return normalizeAspectCropRegion(
-			{
-				...crop,
-				x: clamp(crop.x + deltaX, 0, 1 - crop.width),
-				y: clamp(crop.y + deltaY, 0, 1 - crop.height),
-			},
-			aspectRatio,
-		);
+		return normalizeWebcamCropRegion({
+			...crop,
+			x: clamp(crop.x + deltaX, 0, 1 - crop.width),
+			y: clamp(crop.y + deltaY, 0, 1 - crop.height),
+		});
 	}
 
 	let left = crop.x;
@@ -124,59 +99,25 @@ function resizeCrop(
 	let right = crop.x + crop.width;
 	let bottom = crop.y + crop.height;
 
-	if (handle === "nw") {
-		const delta = Math.max(deltaX, deltaY / aspectRatio);
-		const nextWidth = clamp(
-			crop.width - delta,
-			minWidth,
-			Math.min(right, bottom / aspectRatio),
-		);
-		left = right - nextWidth;
-		top = bottom - nextWidth * aspectRatio;
+	if (handle === "nw" || handle === "sw") {
+		left = clamp(left + deltaX, 0, right - MIN_CROP_SIZE);
+	}
+	if (handle === "ne" || handle === "se") {
+		right = clamp(right + deltaX, left + MIN_CROP_SIZE, 1);
+	}
+	if (handle === "nw" || handle === "ne") {
+		top = clamp(top + deltaY, 0, bottom - MIN_CROP_SIZE);
+	}
+	if (handle === "sw" || handle === "se") {
+		bottom = clamp(bottom + deltaY, top + MIN_CROP_SIZE, 1);
 	}
 
-	if (handle === "ne") {
-		const delta = Math.max(deltaX, -deltaY / aspectRatio);
-		const nextWidth = clamp(
-			crop.width + delta,
-			minWidth,
-			Math.min(1 - left, bottom / aspectRatio),
-		);
-		right = left + nextWidth;
-		top = bottom - nextWidth * aspectRatio;
-	}
-
-	if (handle === "sw") {
-		const delta = Math.max(-deltaX, deltaY / aspectRatio);
-		const nextWidth = clamp(
-			crop.width + delta,
-			minWidth,
-			Math.min(right, (1 - top) / aspectRatio),
-		);
-		left = right - nextWidth;
-		bottom = top + nextWidth * aspectRatio;
-	}
-
-	if (handle === "se") {
-		const delta = Math.max(deltaX, deltaY / aspectRatio);
-		const nextWidth = clamp(
-			crop.width + delta,
-			minWidth,
-			Math.min(1 - left, (1 - top) / aspectRatio),
-		);
-		right = left + nextWidth;
-		bottom = top + nextWidth * aspectRatio;
-	}
-
-	return normalizeAspectCropRegion(
-		{
-			x: left,
-			y: top,
-			width: right - left,
-			height: bottom - top,
-		},
-		aspectRatio,
-	);
+	return normalizeWebcamCropRegion({
+		x: left,
+		y: top,
+		width: right - left,
+		height: bottom - top,
+	});
 }
 
 export function WebcamCropControl({
@@ -188,6 +129,7 @@ export function WebcamCropControl({
 	previewTimeOffsetMs = 0,
 	onCropChange,
 }: WebcamCropControlProps) {
+	const te = useScopedT("editing");
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const previewVideoRef = useRef<HTMLVideoElement | null>(null);
 	const dragStateRef = useRef<DragState | null>(null);
@@ -197,15 +139,16 @@ export function WebcamCropControl({
 	const [activeHandle, setActiveHandle] = useState<CropHandle | null>(null);
 	const [draftVisualCrop, setDraftVisualCrop] = useState<CropRegion | null>(null);
 	const [previewFrame, setPreviewFrame] = useState<PreviewFrame | null>(null);
+	const synchronizedPreviewSrcRef = useRef<string | null>(null);
+	const [synchronizedPreviewSrc, setSynchronizedPreviewSrc] = useState<string | null>(null);
+	const previewSynchronized = previewSrc !== null && synchronizedPreviewSrc === previewSrc;
 	const hasPreviewFrame = previewSrc !== null && previewFrame?.src === previewSrc;
 	const previewAspectRatio =
 		hasPreviewFrame && previewFrame && previewFrame.width > 0 && previewFrame.height > 0
 			? previewFrame.width / previewFrame.height
 			: 1;
-	const sourceCrop = normalizeAspectCropRegion(cropRegion, previewAspectRatio);
-	const propVisualCrop = mirrored
-		? flipCropHorizontally(sourceCrop, previewAspectRatio)
-		: sourceCrop;
+	const sourceCrop = normalizeWebcamCropRegion(cropRegion);
+	const propVisualCrop = mirrored ? flipCropHorizontally(sourceCrop) : sourceCrop;
 	const crop = draftVisualCrop ?? propVisualCrop;
 	const cropLeft = crop.x * 100;
 	const cropTop = crop.y * 100;
@@ -224,7 +167,7 @@ export function WebcamCropControl({
 		}
 		cancelPendingCommit();
 		pendingCropRef.current = null;
-		onCropChange(nextCrop);
+		onCropChange(nextCrop, previewFrame);
 	};
 	const syncPreviewMedia = useCallback(() => {
 		const video = previewVideoRef.current;
@@ -242,6 +185,35 @@ export function WebcamCropControl({
 			targetTime <= 0 && webcamDuration !== null && webcamDuration > 0
 				? Math.min(1 / 60, webcamDuration)
 				: targetTime;
+
+		if (
+			synchronizedPreviewSrcRef.current !== previewSrc &&
+			!isWebcamMediaSynchronized({
+				currentTime: video.currentTime,
+				targetTime: mediaTargetTime,
+				readyState: video.readyState,
+				isSeeking: video.seeking,
+			})
+		) {
+			video.pause();
+			if (
+				video.readyState >= HTMLMediaElement.HAVE_METADATA &&
+				!video.seeking &&
+				Math.abs(video.currentTime - mediaTargetTime) > 0.01
+			) {
+				try {
+					video.currentTime = mediaTargetTime;
+				} catch {
+					/* The next media-ready event retries once the source accepts seeks. */
+				}
+			}
+			return;
+		}
+
+		if (synchronizedPreviewSrcRef.current !== previewSrc) {
+			synchronizedPreviewSrcRef.current = previewSrc;
+			setSynchronizedPreviewSrc(previewSrc);
+		}
 		const driftThreshold = previewPlaying ? 0.35 : 0.01;
 
 		if (Math.abs(video.currentTime - mediaTargetTime) > driftThreshold) {
@@ -278,14 +250,21 @@ export function WebcamCropControl({
 		syncPreviewMedia();
 	}, [syncPreviewMedia]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: The source identity intentionally resets cached synchronization state.
+	useEffect(() => {
+		synchronizedPreviewSrcRef.current = null;
+		setSynchronizedPreviewSrc(null);
+		setPreviewFrame(null);
+	}, [previewSrc]);
+
 	const commitVisualCrop = (nextVisualCrop: CropRegion, immediate = false) => {
 		const nextCrop = mirrored
-			? flipCropHorizontally(nextVisualCrop, previewAspectRatio)
-			: nextVisualCrop;
+			? flipCropHorizontally(nextVisualCrop)
+			: normalizeWebcamCropRegion(nextVisualCrop);
 		if (immediate) {
 			cancelPendingCommit();
 			pendingCropRef.current = null;
-			onCropChange(nextCrop);
+			onCropChange(nextCrop, previewFrame);
 			return;
 		}
 
@@ -307,7 +286,7 @@ export function WebcamCropControl({
 		};
 	}, []);
 
-	const getPointerPosition = (event: React.PointerEvent<HTMLDivElement>) => {
+	const getPointerPosition = (event: React.PointerEvent<HTMLElement>) => {
 		const rect = containerRef.current?.getBoundingClientRect();
 		if (!rect || rect.width <= 0 || rect.height <= 0) {
 			return null;
@@ -319,7 +298,7 @@ export function WebcamCropControl({
 		};
 	};
 
-	const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>, handle: CropHandle) => {
+	const handlePointerDown = (event: React.PointerEvent<HTMLElement>, handle: CropHandle) => {
 		const pointer = getPointerPosition(event);
 		if (!pointer) {
 			return;
@@ -358,7 +337,6 @@ export function WebcamCropControl({
 			dragState.handle,
 			pointer.x - dragState.startX,
 			pointer.y - dragState.startY,
-			previewAspectRatio,
 		);
 		setDraftVisualCrop(nextVisualCrop);
 		commitVisualCrop(nextVisualCrop);
@@ -402,13 +380,15 @@ export function WebcamCropControl({
 		}
 		event.preventDefault();
 		event.stopPropagation();
-		commitVisualCrop(resizeCrop(crop, handle, delta.x, delta.y, previewAspectRatio), true);
+		commitVisualCrop(resizeCrop(crop, handle, delta.x, delta.y), true);
 	};
 
 	return (
-		<div
+		<Surface
 			ref={containerRef}
-			className="relative w-full touch-none select-none overflow-hidden rounded-lg border border-foreground/10 bg-editor-dialog-alt"
+			variant="secondary"
+			data-webcam-crop-control
+			className="relative w-full touch-none select-none overflow-clip rounded-lg border border-foreground/10"
 			style={{ aspectRatio: previewAspectRatio }}
 			onPointerMove={handlePointerMove}
 			onPointerUp={endDrag}
@@ -420,7 +400,7 @@ export function WebcamCropControl({
 					src={previewSrc}
 					className="pointer-events-none absolute inset-0 block h-full w-full object-fill"
 					style={{
-						opacity: hasPreviewFrame ? 1 : 0,
+						opacity: hasPreviewFrame && previewSynchronized ? 1 : 0,
 						transform: mirrored ? "scaleX(-1)" : undefined,
 					}}
 					muted
@@ -429,6 +409,7 @@ export function WebcamCropControl({
 					aria-hidden="true"
 					onLoadedMetadata={handlePreviewFrameReady}
 					onLoadedData={handlePreviewFrameReady}
+					onCanPlay={handlePreviewFrameReady}
 					onSeeked={handlePreviewFrameReady}
 				/>
 			) : null}
@@ -463,8 +444,8 @@ export function WebcamCropControl({
 
 			<div
 				className={cn(
-					"absolute border border-white shadow-[0_0_0_1px_rgba(37,99,235,0.9),0_8px_24px_rgba(0,0,0,0.25)] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/60 focus:ring-offset-2 focus:ring-offset-editor-dialog",
-					activeHandle === "move" ? "cursor-grabbing" : "cursor-move",
+					"group/webcam-crop absolute border border-white/80 shadow-[0_0_0_1px_rgba(0,0,0,0.15)] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-editor-dialog",
+					activeHandle === "move" ? "cursor-grabbing" : "cursor-grab",
 				)}
 				style={{
 					left: `${cropLeft}%`,
@@ -473,40 +454,51 @@ export function WebcamCropControl({
 					height: `${cropHeight}%`,
 				}}
 				tabIndex={0}
-				aria-label={HANDLE_LABELS.move}
+				aria-label={te("webcamCropmove")}
 				onPointerDown={(event) => handlePointerDown(event, "move")}
 				onFocus={() => setActiveHandle("move")}
 				onBlur={() => setActiveHandle(null)}
 				onKeyDown={(event) => handleKeyboardAdjust(event, "move")}
 			>
-				<div className="pointer-events-none absolute left-1/3 top-0 h-full w-px bg-white/45" />
-				<div className="pointer-events-none absolute left-2/3 top-0 h-full w-px bg-white/45" />
-				<div className="pointer-events-none absolute left-0 top-1/3 h-px w-full bg-white/45" />
-				<div className="pointer-events-none absolute left-0 top-2/3 h-px w-full bg-white/45" />
+				<div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover/webcam-crop:opacity-100 group-focus-within/webcam-crop:opacity-100">
+					<div className="absolute left-1/3 top-0 h-full w-px bg-white/30" />
+					<div className="absolute left-2/3 top-0 h-full w-px bg-white/30" />
+					<div className="absolute left-0 top-1/3 h-px w-full bg-white/30" />
+					<div className="absolute left-0 top-2/3 h-px w-full bg-white/30" />
+				</div>
+				<span id={`${maskId}-dimensions`} className="sr-only">
+					{Math.round(crop.width * 100)}% × {Math.round(crop.height * 100)}%
+				</span>
 
 				{RESIZE_HANDLES.map((handle) => (
-					<div
+					<Button
 						key={handle.handle}
-						role="slider"
+						type="button"
+						variant="ghost"
+						size="icon"
 						tabIndex={0}
-						aria-label={HANDLE_LABELS[handle.handle]}
-						aria-valuemin={Math.round(MIN_CROP_SIZE * 100)}
-						aria-valuemax={100}
-						aria-valuenow={Math.round(crop.width * 100)}
-						aria-valuetext={`${Math.round(crop.width * 100)}%`}
+						aria-label={te(`webcamCrop${handle.handle}`)}
+						aria-describedby={`${maskId}-dimensions`}
 						className={cn(
-							"absolute z-10 h-3.5 w-3.5 rounded-[3px] border-2 border-white bg-[#2563EB] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/60 focus:ring-offset-2 focus:ring-offset-editor-dialog",
+							"absolute z-10 !size-7 !min-w-0 !scale-100 !rounded-none !border-0 !bg-transparent !p-0",
 							handle.className,
 							handle.cursorClassName,
-							activeHandle === handle.handle && "scale-110",
 						)}
 						onPointerDown={(event) => handlePointerDown(event, handle.handle)}
 						onFocus={() => setActiveHandle(handle.handle)}
 						onBlur={() => setActiveHandle(null)}
 						onKeyDown={(event) => handleKeyboardAdjust(event, handle.handle)}
-					/>
+					>
+						<span
+							aria-hidden="true"
+							className={cn(
+								"pointer-events-none absolute size-3.5 border-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]",
+								handle.cornerClassName,
+							)}
+						/>
+					</Button>
 				))}
 			</div>
-		</div>
+		</Surface>
 	);
 }

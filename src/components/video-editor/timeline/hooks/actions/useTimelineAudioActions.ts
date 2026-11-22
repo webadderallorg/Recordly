@@ -24,7 +24,11 @@ interface UseTimelineAudioActionsParams {
 	regions: {
 		audio: TimelineAudioRegion[];
 	};
-	onAudioAdded?: (span: { start: number; end: number }, audioPath: string, trackIndex?: number) => void;
+	onAudioAdded?: (
+		span: { start: number; end: number },
+		audioPath: string,
+		trackIndex?: number,
+	) => void;
 	deps?: Partial<TimelineAudioActionsDeps>;
 }
 

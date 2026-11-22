@@ -4,10 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { app } from "electron";
-import {
-	nativeHelperMigrationPromise,
-	setNativeHelperMigrationPromise,
-} from "../state";
+import { nativeHelperMigrationPromise, setNativeHelperMigrationPromise } from "../state";
 
 const execFileAsync = promisify(execFile);
 
@@ -29,24 +26,27 @@ export function getNativeCaptureHelperSourcePath(): string {
 	return resolveUnpackedAppPath("electron", "native", "ScreenCaptureKitRecorder.swift");
 }
 
-export function getNativeArchTag(): string {
-	if (process.platform === "darwin") {
+export function getNativeArchTag(platform: NodeJS.Platform = process.platform): string {
+	if (platform === "darwin") {
 		return process.arch === "arm64" ? "darwin-arm64" : "darwin-x64";
 	}
 
-	if (process.platform === "win32") {
+	if (platform === "win32") {
 		return process.arch === "arm64" ? "win32-arm64" : "win32-x64";
 	}
 
-	if (process.platform === "linux") {
+	if (platform === "linux") {
 		return process.arch === "arm64" ? "linux-arm64" : "linux-x64";
 	}
 
-	return `${process.platform}-${process.arch}`;
+	return `${platform}-${process.arch}`;
 }
 
-export function getPrebundledNativeHelperPath(binaryName: string): string {
-	return resolveUnpackedAppPath("electron", "native", "bin", getNativeArchTag(), binaryName);
+export function getPrebundledNativeHelperPath(
+	binaryName: string,
+	archTag = getNativeArchTag(),
+): string {
+	return resolveUnpackedAppPath("electron", "native", "bin", archTag, binaryName);
 }
 
 export function resolvePreferredWindowsNativeHelperPath(
@@ -61,7 +61,7 @@ export function resolvePreferredWindowsNativeHelperPath(
 		"Release",
 		binaryName,
 	);
-	const prebundledPath = getPrebundledNativeHelperPath(binaryName);
+	const prebundledPath = getPrebundledNativeHelperPath(binaryName, getNativeArchTag("win32"));
 
 	if (app.isPackaged && existsSync(prebundledPath)) {
 		return prebundledPath;
@@ -128,7 +128,11 @@ export function getCursorMonitorExePath(): string {
 async function migrateLegacyNativeHelperBinaries(): Promise<void> {
 	const legacyToCurrentPaths: Array<[string, string]> = [
 		[
-			path.join(app.getPath("userData"), "native-tools", "openscreen-screencapturekit-helper"),
+			path.join(
+				app.getPath("userData"),
+				"native-tools",
+				"openscreen-screencapturekit-helper",
+			),
 			getNativeCaptureHelperBinaryPath(),
 		],
 		[
@@ -186,7 +190,17 @@ export async function ensureSwiftHelperBinary(
 		const prebundledPath = getPrebundledNativeHelperPath(prebundledBinaryName);
 		try {
 			await fs.access(prebundledPath, fsConstants.X_OK);
-			return prebundledPath;
+			if (app.isPackaged) {
+				return prebundledPath;
+			}
+
+			const [sourceStat, prebundledStat] = await Promise.all([
+				fs.stat(sourcePath),
+				fs.stat(prebundledPath),
+			]);
+			if (prebundledStat.mtimeMs >= sourceStat.mtimeMs) {
+				return prebundledPath;
+			}
 		} catch {
 			if (app.isPackaged) {
 				throw new Error(
@@ -245,6 +259,15 @@ export async function ensureNativeWindowListBinary(): Promise<string> {
 		getNativeWindowListBinaryPath(),
 		"native ScreenCaptureKit window list helper",
 		"recordly-window-list",
+	);
+}
+
+export async function ensurePermissionDragHelperBinary(): Promise<string> {
+	return ensureSwiftHelperBinary(
+		resolveUnpackedAppPath("electron", "native", "PermissionDragHelper.swift"),
+		path.join(app.getPath("userData"), "native-tools", "recordly-permission-drag-helper"),
+		"native permission drag helper",
+		"recordly-permission-drag-helper",
 	);
 }
 

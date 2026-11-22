@@ -30,6 +30,8 @@ static int normalizeFramePoolExtent(int value) {
     return normalized;
 }
 
+static constexpr int kFramePoolBuffers = 2;
+
 WgcSession::WgcSession() {}
 
 WgcSession::~WgcSession() {
@@ -94,40 +96,20 @@ winrt::Windows::Graphics::Capture::GraphicsCaptureItem WgcSession::createCapture
     return item;
 }
 
-winrt::Windows::Graphics::Capture::GraphicsCaptureItem WgcSession::createCaptureItemForWindow(HWND hwnd) {
-    auto factory = winrt::get_activation_factory<
-        winrt::Windows::Graphics::Capture::GraphicsCaptureItem>();
-
-    auto interop = factory.as<IGraphicsCaptureItemInterop>();
-
-    winrt::Windows::Graphics::Capture::GraphicsCaptureItem item{nullptr};
-    HRESULT hr = interop->CreateForWindow(
-        hwnd,
-        winrt::guid_of<ABI::Windows::Graphics::Capture::IGraphicsCaptureItem>(),
-        winrt::put_abi(item));
-
-    if (FAILED(hr)) {
-        std::cerr << "ERROR: CreateForWindow failed: 0x" << std::hex << hr << std::endl;
-        return nullptr;
-    }
-
-    return item;
-}
-
 bool WgcSession::initializeWithItem(int fps) {
     if (!captureItem_) return false;
 
     auto size = captureItem_.Size();
     captureWidth_ = size.Width;
     captureHeight_ = size.Height;
-    framePoolWidth_ = size.Width;
-    framePoolHeight_ = size.Height;
+    framePoolWidth_ = normalizeFramePoolExtent(size.Width);
+    framePoolHeight_ = normalizeFramePoolExtent(size.Height);
 
     framePool_ = winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
         winrtDevice_,
         winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
-        2,
-        size);
+        kFramePoolBuffers,
+        {framePoolWidth_, framePoolHeight_});
 
     session_ = framePool_.CreateCaptureSession(captureItem_);
 
@@ -142,14 +124,14 @@ bool WgcSession::initializeWithItem(int fps) {
     return true;
 }
 
-bool WgcSession::recreateFramePoolIfNeeded(
+void WgcSession::recreateFramePoolIfNeeded(
     winrt::Windows::Graphics::SizeInt32 const& contentSize) {
-    if (!framePool_) return false;
+    if (!capturing_ || !framePool_) return;
 
     const int normalizedWidth = normalizeFramePoolExtent(contentSize.Width);
     const int normalizedHeight = normalizeFramePoolExtent(contentSize.Height);
     if (normalizedWidth == framePoolWidth_ && normalizedHeight == framePoolHeight_) {
-        return false;
+        return;
     }
 
     winrt::Windows::Graphics::SizeInt32 normalizedSize{
@@ -161,7 +143,7 @@ bool WgcSession::recreateFramePoolIfNeeded(
         framePool_.Recreate(
             winrtDevice_,
             winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
-            2,
+            kFramePoolBuffers,
             normalizedSize);
         framePoolWidth_ = normalizedWidth;
         framePoolHeight_ = normalizedHeight;
@@ -174,7 +156,6 @@ bool WgcSession::recreateFramePoolIfNeeded(
                   << std::hex << e.code() << std::dec << std::endl;
     }
 
-    return true;
 }
 
 bool WgcSession::initialize(HMONITOR monitor, int fps) {
@@ -205,12 +186,24 @@ bool WgcSession::initialize(HWND hwnd, int fps) {
         return false;
     }
 
-    captureItem_ = createCaptureItemForWindow(hwnd);
+    auto factory = winrt::get_activation_factory<
+        winrt::Windows::Graphics::Capture::GraphicsCaptureItem>();
+    auto interop = factory.as<IGraphicsCaptureItemInterop>();
+    const HRESULT result = interop->CreateForWindow(
+        hwnd,
+        winrt::guid_of<ABI::Windows::Graphics::Capture::IGraphicsCaptureItem>(),
+        winrt::put_abi(captureItem_));
+    if (FAILED(result)) {
+        std::cerr << "ERROR: CreateForWindow failed: 0x" << std::hex << result << std::dec << std::endl;
+        return false;
+    }
+    windowHandle_ = hwnd;
     return initializeWithItem(fps);
 }
 
-void WgcSession::setFrameCallback(FrameCallback callback) {
+void WgcSession::setFrameCallback(FrameCallback callback, std::function<bool()> isPaused) {
     frameCallback_ = std::move(callback);
+    isPaused_ = std::move(isPaused);
 }
 
 bool WgcSession::startCapture() {
@@ -220,6 +213,11 @@ bool WgcSession::startCapture() {
     fatalError_ = false;
     lastFrameTimeHns_ = 0;
 
+    if (windowHandle_) {
+        itemClosedRevoker_ = captureItem_.Closed(
+            winrt::auto_revoke,
+            [this](auto const&, auto const&) { fatalError_ = true; });
+    }
     frameArrivedRevoker_ = framePool_.FrameArrived(
         winrt::auto_revoke,
         [this](auto const& sender, auto const& args) {
@@ -233,8 +231,13 @@ bool WgcSession::startCapture() {
 void WgcSession::stopCapture() {
     capturing_ = false;
 
+    itemClosedRevoker_.revoke();
     frameArrivedRevoker_.revoke();
 
+    // Wait for the active reader, then release the lock before WinRT closes the frame pool.
+    {
+        std::lock_guard<std::mutex> lock(frameDeliveryMutex_);
+    }
     if (session_) {
         session_.Close();
         session_ = nullptr;
@@ -248,43 +251,57 @@ void WgcSession::stopCapture() {
 void WgcSession::onFrameArrived(
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& sender,
     winrt::Windows::Foundation::IInspectable const&) {
+    if (!capturing_) return;
+    std::lock_guard<std::mutex> lock(frameDeliveryMutex_);
+    const bool cachePausedWindowFrame = windowHandle_ && isPaused_ && isPaused_();
+    readFrame(sender, cachePausedWindowFrame);
+}
 
-    if (!capturing_ || fatalError_) return;
-
-    auto frame = sender.TryGetNextFrame();
-    if (!frame) return;
-    auto contentSize = frame.ContentSize();
-    if (recreateFramePoolIfNeeded(contentSize)) {
-        frame.Close();
-        return;
+void WgcSession::resumeAfterPendingFrames(int64_t resumeTimestampHns, const std::function<void()>& resume) {
+    std::lock_guard<std::mutex> lock(frameDeliveryMutex_);
+    if (windowHandle_) {
+        // Let any callback already in flight finish and drain the frames already queued
+        // by WGC before switching the timestamp and frame writer back to recording.
+        for (int count = 0; count < kFramePoolBuffers; ++count) {
+            if (!readFrame(framePool_, true)) break;
+        }
+        lastFrameTimeHns_ = 0;
     }
+    resumeTimestampHns_ = resumeTimestampHns;
+    resume();
+}
+
+bool WgcSession::readFrame(
+    winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& pool,
+    bool skipFrameRateLimit) {
+    if (!capturing_ || fatalError_) return false;
+
+    auto frame = pool.TryGetNextFrame();
+    if (!frame) return false;
+    const auto contentSize = frame.ContentSize();
 
     auto timestamp = frame.SystemRelativeTime();
     int64_t frameTimeHns = std::chrono::duration_cast<std::chrono::duration<int64_t, std::ratio<1, 10000000>>>(timestamp).count();
 
-    // Frame rate limiting: skip frames that arrive too soon
-    if (lastFrameTimeHns_ > 0 && (frameTimeHns - lastFrameTimeHns_) < (frameIntervalHns_ * 7 / 10)) {
+    // Paused window frames replace the cached image instead of reaching the encoder.
+    const bool rateLimited = !skipFrameRateLimit && lastFrameTimeHns_ > 0 &&
+        (frameTimeHns - lastFrameTimeHns_) < (frameIntervalHns_ * 7 / 10);
+    if (frameTimeHns < resumeTimestampHns_ || rateLimited) {
         frame.Close();
-        return;
+        recreateFramePoolIfNeeded(contentSize);
+        return true;
     }
-    lastFrameTimeHns_ = frameTimeHns;
+    if (!skipFrameRateLimit) lastFrameTimeHns_ = frameTimeHns;
 
-    auto surface = frame.Surface();
-
-    // Get the underlying D3D texture from the WinRT surface via COM interop
-    winrt::com_ptr<IDirect3DDxgiInterfaceAccess> access;
-    try {
-        access = surface.as<IDirect3DDxgiInterfaceAccess>();
-    } catch (...) {
-        frame.Close();
-        return;
-    }
-    ComPtr<ID3D11Texture2D> texture;
-    HRESULT hr = access->GetInterface(IID_PPV_ARGS(&texture));
-
-    if (SUCCEEDED(hr) && texture && frameCallback_) {
-        frameCallback_(texture.Get(), frameTimeHns);
+    if (auto access = frame.Surface().try_as<IDirect3DDxgiInterfaceAccess>()) {
+        ComPtr<ID3D11Texture2D> texture;
+        const HRESULT result = access->GetInterface(IID_PPV_ARGS(&texture));
+        if (SUCCEEDED(result) && texture && frameCallback_) {
+            frameCallback_(texture.Get(), contentSize.Width, contentSize.Height, frameTimeHns);
+        }
     }
 
     frame.Close();
+    recreateFramePoolIfNeeded(contentSize);
+    return true;
 }

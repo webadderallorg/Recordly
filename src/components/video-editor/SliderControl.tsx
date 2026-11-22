@@ -1,199 +1,168 @@
-import type { PointerEvent as ReactPointerEvent } from "react";
-import { useCallback, useRef, memo, useEffect } from "react";
-import { cn } from "@/lib/utils";
+import { Label, Slider, Tooltip } from "@heroui/react";
+import {
+	memo,
+	type ReactNode,
+	type RefObject,
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
+import { useOverlayPosition } from "react-aria";
 
+function SliderValueTooltip({
+	thumbRef,
+	isOpen,
+	value,
+	position,
+}: {
+	thumbRef: RefObject<HTMLDivElement | null>;
+	isOpen: boolean;
+	value: string;
+	position: number;
+}) {
+	const tooltipRef = useRef<HTMLDivElement>(null);
+	const { overlayProps, updatePosition } = useOverlayPosition({
+		targetRef: thumbRef,
+		overlayRef: tooltipRef,
+		placement: "top",
+		offset: 8,
+		isOpen,
+	});
+	// Moving a thumb doesn't resize it, so reposition even when the text width stays the same.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: the value change moves the anchor.
+	useLayoutEffect(() => updatePosition(), [updatePosition, position]);
+
+	return (
+		<Tooltip isOpen={isOpen} delay={0} closeDelay={0}>
+			<Tooltip.Content
+				ref={tooltipRef}
+				triggerRef={thumbRef}
+				placement="top"
+				offset={8}
+				style={overlayProps.style}
+				className="pointer-events-none text-xs tabular-nums"
+			>
+				{value}
+			</Tooltip.Content>
+		</Tooltip>
+	);
+}
 interface SliderControlProps {
 	label: string;
+	ariaLabel?: string;
+	hideLabel?: boolean;
+	startContent?: ReactNode;
+	endContent?: ReactNode;
 	value: number;
-	defaultValue: number;
 	min: number;
 	max: number;
 	step: number;
 	onChange: (value: number) => void;
 	formatValue: (value: number) => string;
-	parseInput: (text: string) => number | null;
-	accentColor?: "purple" | "blue";
 }
-
-function clamp(value: number, min: number, max: number) {
-	return Math.min(max, Math.max(min, value));
-}
-
-function quantizeToStep(value: number, min: number, step: number) {
-	if (!(step > 0)) {
-		return value;
-	}
-
-	return min + Math.round((value - min) / step) * step;
-}
-
 export const SliderControl = memo(function SliderControl({
 	label,
+	ariaLabel,
+	hideLabel = false,
+	startContent,
+	endContent,
 	value,
-	defaultValue: _defaultValue,
 	min,
 	max,
 	step,
 	onChange,
 	formatValue,
-	parseInput: _parseInput,
-	accentColor = "blue",
 }: SliderControlProps) {
-	const rootRef = useRef<HTMLDivElement | null>(null);
-	const valueTextRef = useRef<HTMLSpanElement | null>(null);
-	const boundsRef = useRef<DOMRect | null>(null);
-	const requestRef = useRef<number | null>(null);
+	const thumbRef = useRef<HTMLDivElement>(null);
+	const pointerActive = useRef(false);
+	const [dragValue, setDragValue] = useState<number | null>(null);
+	const isPointerDragging = dragValue !== null;
+	const endPointerDrag = useCallback(() => {
+		pointerActive.current = false;
+		setDragValue(null);
+	}, []);
 
-	const pct = Math.min(100, Math.max(0, ((value - min) / (max - min || 1)) * 100));
-
-	const dividerClass =
-		accentColor === "purple"
-			? "bg-foreground/95 shadow-[0_0_10px_rgba(139,92,246,0.28)]"
-			: "bg-foreground/95 shadow-[0_0_10px_rgba(37,99,235,0.28)]";
-
-	// Sync initial and prop-driven changes to CSS variable
 	useEffect(() => {
-		if (rootRef.current) {
-			rootRef.current.style.setProperty("--slider-pct", String(pct / 100));
-		}
-	}, [pct]);
+		if (!isPointerDragging) return;
+		// Also clean up if the pointer leaves the control or the window loses focus.
+		window.addEventListener("pointerup", endPointerDrag);
+		window.addEventListener("pointercancel", endPointerDrag);
+		window.addEventListener("blur", endPointerDrag);
+		return () => {
+			window.removeEventListener("pointerup", endPointerDrag);
+			window.removeEventListener("pointercancel", endPointerDrag);
+			window.removeEventListener("blur", endPointerDrag);
+		};
+	}, [isPointerDragging, endPointerDrag]);
 
-	const updateValue = useCallback(
-		(clientX: number) => {
-			const bounds = boundsRef.current;
-			if (!bounds || bounds.width <= 6) {
-				return;
-			}
-
-			const normalized = clamp((clientX - (bounds.left + 3)) / (bounds.width - 6), 0, 1);
-			const rawValue = min + normalized * (max - min);
-			const nextValue = clamp(quantizeToStep(rawValue, min, step), min, max);
-			const finalValue = Number(nextValue.toFixed(6));
-			const finalPct = (((finalValue - min) / (max - min || 1)) * 100).toFixed(4);
-
-			// Direct DOM update for instant feedback
-			if (rootRef.current) {
-				rootRef.current.style.setProperty("--slider-pct", String(Number(finalPct) / 100));
-				rootRef.current.setAttribute("aria-valuenow", String(finalValue));
-				rootRef.current.setAttribute("aria-valuetext", formatValue(finalValue));
-			}
-			if (valueTextRef.current) {
-				valueTextRef.current.textContent = formatValue(finalValue);
-			}
-
-			// Notify parent
-			onChange(finalValue);
-		},
-		[max, min, onChange, step, formatValue],
-	);
-
-	const handlePointerDown = useCallback(
-		(event: ReactPointerEvent<HTMLDivElement>) => {
-			event.preventDefault();
-			const pointerId = event.pointerId;
-			const target = event.currentTarget;
-
-			// Cache bounds to avoid layout thrashing during move
-			boundsRef.current = target.getBoundingClientRect();
-
-			target.setPointerCapture(pointerId);
-			updateValue(event.clientX);
-
-			const handlePointerMove = (moveEvent: PointerEvent) => {
-				if (moveEvent.pointerId !== pointerId) {
-					return;
-				}
-
-				if (requestRef.current) {
-					cancelAnimationFrame(requestRef.current);
-				}
-
-				requestRef.current = requestAnimationFrame(() => {
-					updateValue(moveEvent.clientX);
-				});
-			};
-
-			const finishPointer = (finishEvent: PointerEvent) => {
-				if (finishEvent.pointerId !== pointerId) {
-					return;
-				}
-
-				if (requestRef.current) {
-					cancelAnimationFrame(requestRef.current);
-					requestRef.current = null;
-				}
-
-				if (finishEvent.type === "pointerup") {
-					updateValue(finishEvent.clientX);
-				}
-
-				target.releasePointerCapture(pointerId);
-				target.removeEventListener("pointermove", handlePointerMove);
-				target.removeEventListener("pointerup", finishPointer);
-				target.removeEventListener("pointercancel", finishPointer);
-				boundsRef.current = null;
-			};
-
-			target.addEventListener("pointermove", handlePointerMove);
-			target.addEventListener("pointerup", finishPointer);
-			target.addEventListener("pointercancel", finishPointer);
-		},
-		[updateValue],
-	);
+	// Keep pointer movement fine enough to follow the hand, while settings and keyboard
+	// changes retain their configured increments (including integer-only settings).
+	const pointerStep = Math.min(step, (max - min) / 1000);
+	const formattedValue = formatValue(value);
 
 	return (
-		<div
-			ref={rootRef}
-			role="slider"
-			tabIndex={0}
-			aria-label={label}
-			aria-valuemin={min}
-			aria-valuemax={max}
-			aria-valuenow={value}
-			aria-valuetext={formatValue(value)}
-			onPointerDown={handlePointerDown}
-			onKeyDown={(event) => {
-				if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
-					event.preventDefault();
-					onChange(clamp(quantizeToStep(value - step, min, step), min, max));
-				}
-
-				if (event.key === "ArrowRight" || event.key === "ArrowUp") {
-					event.preventDefault();
-					onChange(clamp(quantizeToStep(value + step, min, step), min, max));
-				}
+		<Slider
+			aria-label={ariaLabel ?? label}
+			value={dragValue ?? value}
+			minValue={min}
+			maxValue={max}
+			step={isPointerDragging ? pointerStep : step}
+			onChange={(nextValue) => {
+				const next = Number(nextValue);
+				if (pointerActive.current) setDragValue(next);
+				const snapped = Number(
+					Math.min(
+						max,
+						Math.max(min, min + Math.round((next - min) / step) * step),
+					).toFixed(10),
+				);
+				if (snapped !== value) onChange(snapped);
 			}}
-			className="relative flex h-10 w-full select-none items-center overflow-hidden rounded-xl bg-editor-bg/80 px-1.5 outline-none focus-visible:ring-1 focus-visible:ring-[#2563EB]/40"
-			style={
-				{
-					"--slider-pct": String(pct / 100),
-				} as React.CSSProperties
-			}
+			onChangeEnd={endPointerDrag}
+			className={hideLabel ? "my-1 w-full gap-y-0" : "my-1 w-full gap-y-2"}
 		>
-			<div
-				className="pointer-events-none absolute inset-y-[3px] left-[3px] right-auto rounded-[10px] bg-foreground/[0.08] shadow-[0_4px_10px_0_rgba(0,0,0,0.18)] transition-none"
-				style={{
-					width: "calc(var(--slider-pct) * (100% - 6px))",
-				}}
-			/>
-			<div
-				className={cn(
-					"pointer-events-none absolute bottom-[18%] top-[18%] z-10 w-[2px] rounded-full transition-none",
-					dividerClass,
+			<Label className={hideLabel ? "sr-only" : "text-xs"}>{label}</Label>
+			<div className="flex min-w-0 items-center gap-2 [grid-area:track]">
+				{startContent && (
+					<span
+						aria-hidden="true"
+						className="pointer-events-none flex shrink-0 items-center text-muted-foreground"
+					>
+						{startContent}
+					</span>
 				)}
-				style={{
-					left: "calc(var(--slider-pct) * (100% - 6px) - 6px)",
-				}}
-			/>
-			<span className="pointer-events-none relative z-10 flex-1 pl-3 text-[12px] font-medium text-muted-foreground">
-				{label}
-			</span>
-			<span
-				ref={valueTextRef}
-				className="pointer-events-none relative z-10 pr-3 text-[12px] font-medium tabular-nums text-foreground"
-			>
-				{formatValue(value)}
-			</span>
-		</div>
+				<Slider.Track
+					className="min-w-0 flex-1"
+					onPointerDownCapture={(event) => {
+						if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey)
+							return;
+						pointerActive.current = true;
+						setDragValue(value);
+					}}
+				>
+					<Slider.Fill />
+					<Slider.Thumb ref={thumbRef}>
+						{({ isDragging, isFocusVisible }) => (
+							<SliderValueTooltip
+								thumbRef={thumbRef}
+								isOpen={(isDragging && isPointerDragging) || isFocusVisible}
+								value={formattedValue}
+								position={dragValue ?? value}
+							/>
+						)}
+					</Slider.Thumb>
+				</Slider.Track>
+				{endContent && (
+					<span
+						aria-hidden="true"
+						className="pointer-events-none flex shrink-0 items-center text-muted-foreground"
+					>
+						{endContent}
+					</span>
+				)}
+			</div>
+		</Slider>
 	);
 });
