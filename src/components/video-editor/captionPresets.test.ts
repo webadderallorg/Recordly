@@ -14,7 +14,8 @@ describe("caption styles", () => {
 			const settings = {
 				...applyCaptionPreset(DEFAULT_AUTO_CAPTION_SETTINGS, preset.id),
 				fontSize: 42,
-				bottomOffset: 9,
+				bottomOffset: 70,
+				horizontalPosition: 23,
 				maxWidth: 75,
 				maxRows: 2,
 				backgroundOpacity: 0.4,
@@ -51,6 +52,7 @@ describe("caption styles", () => {
 			maxWidth: 80,
 			maxRows: 3,
 			bottomOffset: 8,
+			horizontalPosition: 42,
 		};
 		for (const preset of CAPTION_PRESETS) {
 			const result = applyCaptionPreset(settings, preset.id);
@@ -62,6 +64,7 @@ describe("caption styles", () => {
 				"maxWidth",
 				"maxRows",
 				"bottomOffset",
+				"horizontalPosition",
 			] as const)
 				expect(result[key]).toEqual(settings[key]);
 		}

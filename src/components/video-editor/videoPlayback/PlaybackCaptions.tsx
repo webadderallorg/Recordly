@@ -70,19 +70,24 @@ export function PlaybackCaptions(
 	const boxWidth = activeCaptionLayout
 		? Math.max(...activeCaptionLayout.visibleLines.map((line) => line.width), 0) + padding.x * 2
 		: 0;
+	const boxHeight =
+		(activeCaptionLayout?.visibleLines.length ?? 0) * fontSize * CAPTION_LINE_HEIGHT +
+		padding.y * 2;
 	return !isGap && activeCaptionLayout && autoCaptionSettings ? (
 		<div
-			className="absolute inset-x-0 flex justify-center"
+			className="absolute inset-x-0"
 			style={{
-				bottom: `${autoCaptionSettings.bottomOffset}%`,
+				bottom: `clamp(0px, ${autoCaptionSettings.bottomOffset}%, calc(100% - ${boxHeight}px))`,
 				pointerEvents: onEditAutoCaption ? "auto" : "none",
 			}}
 		>
 			<div
+				className="relative w-fit"
 				style={{
+					left: `${autoCaptionSettings.horizontalPosition}%`,
 					maxWidth: `${autoCaptionSettings.maxWidth}%`,
 					opacity: activeCaptionLayout.opacity,
-					transform: `translateY(${activeCaptionLayout.translateY}px) scale(${activeCaptionLayout.scale})`,
+					transform: `translate(${-autoCaptionSettings.horizontalPosition}%, ${activeCaptionLayout.translateY}px) scale(${activeCaptionLayout.scale})`,
 					transformOrigin: "center center",
 				}}
 			>

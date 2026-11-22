@@ -254,6 +254,8 @@
 		"animationRise": "上升",
 		"animationPop": "彈出",
 		"bottomOffset": "底部偏移",
+		"horizontalPosition": "水平位置",
+		"verticalPosition": "垂直位置",
 		"maxWidth": "最大寬度",
 		"boxRadius": "字幕框圓角",
 		"backgroundOpacity": "背景不透明度",

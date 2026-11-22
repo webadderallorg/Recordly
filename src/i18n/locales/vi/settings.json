@@ -282,6 +282,8 @@
 		"animationRise": "Trượt lên",
 		"animationPop": "Bật lên",
 		"bottomOffset": "Khoảng cách từ dưới",
+		"horizontalPosition": "Vị trí ngang",
+		"verticalPosition": "Vị trí dọc",
 		"maxWidth": "Chiều rộng tối đa",
 		"boxRadius": "Độ bo góc hộp",
 		"backgroundOpacity": "Độ mờ nền",

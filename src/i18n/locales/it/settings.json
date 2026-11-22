@@ -254,6 +254,8 @@
 		"animationRise": "Salita",
 		"animationPop": "Comparsa",
 		"bottomOffset": "Margine inferiore",
+		"horizontalPosition": "Posizione orizzontale",
+		"verticalPosition": "Posizione verticale",
 		"maxWidth": "Larghezza massima",
 		"boxRadius": "Raggio riquadro",
 		"backgroundOpacity": "Opacità sfondo",

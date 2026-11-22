@@ -33,6 +33,7 @@
 	"windowsStartFailed": "La capture native Windows n’a pas démarré. La capture du navigateur sera utilisée.",
 	"microphoneDenied": "Accès au microphone refusé. L’enregistrement continuera sans le son du microphone.",
 	"systemAudioUnavailable": "Le son système n’est pas disponible pour cette source. L’enregistrement continuera sans ce son.",
+	"timelineDuplicateNoRoom": "Il n’y a pas assez de place pour dupliquer cet élément.",
 	"waylandScreenCastMissing": "L’enregistrement d’écran sous Wayland nécessite un portail ScreenCast. Installez le portail de partage d’écran de votre environnement de bureau ou passez à une session X11 et réessayez.",
 	"startRecordingFailed": "Impossible de démarrer l’enregistrement",
 	"saveRecordingFailed": "Impossible d’enregistrer la capture.",

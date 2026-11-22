@@ -254,6 +254,8 @@
 		"animationRise": "올라오기",
 		"animationPop": "팝",
 		"bottomOffset": "하단 오프셋",
+		"horizontalPosition": "가로 위치",
+		"verticalPosition": "세로 위치",
 		"maxWidth": "최대 너비",
 		"boxRadius": "박스 반경",
 		"backgroundOpacity": "배경 투명도",
