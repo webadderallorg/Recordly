@@ -39,6 +39,7 @@ type Props = {
 	handleRetrySaveExport: () => void;
 	handleStartExportFromDropdown: () => void;
 	revealExportedFile: () => void;
+	onRecordNew?: () => void;
 	projectTitle: string;
 	prepareExportForShare: () => Promise<string | undefined>;
 	onRequestShareSignIn: () => void;
@@ -364,6 +365,7 @@ export function EditorExportMenu(props: Props) {
 					onDismiss={handleExportDropdownClose}
 					onRetrySave={handleRetrySaveExport}
 					onRevealFile={revealExportedFile}
+					onRecordNew={props.onRecordNew}
 				/>
 			)}
 		</>
