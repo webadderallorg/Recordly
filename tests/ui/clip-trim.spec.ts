@@ -62,14 +62,16 @@ test("the visible grip starts a trim and an edge snaps to the playhead", async (
 	await expect.poll(async () => (await spanFor(clip(page))).end).toBe(6000 - cut);
 });
 
-test("a narrow clip still moves when dragged from its center", async ({ page }) => {
-	const cut = await seekTo(page, 0.02);
+test("a narrow clip still moves when its longer neighbor is selected", async ({ page }) => {
+	const cut = await seekTo(page, 0.002);
 	await page.getByRole("button", { name: /^Split Clip \(/ }).click();
 	const clips = page.locator('[data-variant="clip"]');
 	await expect(clips).toHaveCount(2);
+	await clips.last().click();
+	await expect(clips.last()).toHaveAttribute("data-selected", "true");
 	const first = (await clips.first().boundingBox())!;
 	const second = (await clips.last().boundingBox())!;
-	expect(first.width).toBeLessThan(32);
+	expect(first.width).toBeLessThanOrEqual(8);
 
 	const y = first.y + first.height / 2;
 	await page.mouse.move(first.x + first.width / 2, y);
