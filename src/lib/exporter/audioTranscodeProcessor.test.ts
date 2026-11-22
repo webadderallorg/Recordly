@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ENCODE_BACKPRESSURE_LIMIT } from "./audioProcessorShared";
+import { ENCODE_BACKPRESSURE_LIMIT, resolveAudioTimestampOffsetUs } from "./audioProcessorShared";
 import { AudioTranscodeProcessor } from "./audioTranscodeProcessor";
 
 const audioConfig = { codec: "opus", sampleRate: 48_000, numberOfChannels: 2 };
@@ -136,5 +136,73 @@ describe("AudioTranscodeProcessor", () => {
 		} finally {
 			flush.mockRestore();
 		}
+	});
+
+	it("preserves non-zero audio start timestamps instead of shifting to zero", async () => {
+		class MockDemuxer {
+			getDecoderConfig = vi.fn().mockResolvedValue({
+				codec: "opus",
+				sampleRate: 48_000,
+				numberOfChannels: 2,
+			});
+			read = vi.fn().mockReturnValue(
+				new ReadableStream<EncodedAudioChunk>({
+					start(controller) {
+						controller.enqueue({ timestamp: 2_000_000 } as EncodedAudioChunk);
+						controller.close();
+					},
+				}),
+			);
+		}
+
+		class TimestampRecordingDecoder extends BufferedAudioDecoder {
+			override decode(chunk: EncodedAudioChunk) {
+				super.decode();
+				this.callbacks.output({
+					timestamp: chunk.timestamp,
+					close: vi.fn(),
+				} as unknown as AudioData);
+			}
+
+			override async flush() {}
+		}
+
+		vi.stubGlobal("AudioDecoder", TimestampRecordingDecoder);
+		vi.stubGlobal("AudioEncoder", BufferedAudioEncoder);
+
+		class TestProcessorWithCloner extends AudioTranscodeProcessor {
+			process = this.processTrimOnlyAudio;
+			clonedTimestamps: number[] = [];
+			protected override cloneWithTimestamp(src: AudioData, newTimestamp: number): AudioData {
+				this.clonedTimestamps.push(newTimestamp);
+				return src;
+			}
+		}
+
+		const processor = new TestProcessorWithCloner();
+		const demuxer = new MockDemuxer();
+		const muxer = { addAudioChunk: vi.fn().mockResolvedValue(undefined) };
+
+		await processor.process(demuxer as never, muxer as never, []);
+
+		expect(processor.clonedTimestamps).toEqual([2_000_000]);
+	});
+});
+
+describe("resolveAudioTimestampOffsetUs", () => {
+	it("retains negative timestamps so priming offset shifts to zero", () => {
+		expect(resolveAudioTimestampOffsetUs(-21_333)).toBe(-21_333);
+	});
+
+	it("normalizes small codec priming offsets under 45ms", () => {
+		expect(resolveAudioTimestampOffsetUs(0)).toBe(0);
+		expect(resolveAudioTimestampOffsetUs(21_333)).toBe(21_333);
+		expect(resolveAudioTimestampOffsetUs(45_000)).toBe(45_000);
+	});
+
+	it("does not offset stream starts exceeding codec priming delay", () => {
+		expect(resolveAudioTimestampOffsetUs(45_001)).toBe(0);
+		expect(resolveAudioTimestampOffsetUs(500_000)).toBe(0);
+		expect(resolveAudioTimestampOffsetUs(2_000_000)).toBe(0);
 	});
 });

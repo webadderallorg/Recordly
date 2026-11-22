@@ -426,3 +426,45 @@ describe("AudioProcessor offline render preparation", () => {
 		}
 	});
 });
+
+describe("AudioProcessor passthroughAudioStream", () => {
+	class TestAudioProcessor extends AudioProcessor {
+		passthrough = this.passthroughAudioStream;
+	}
+
+	it("preserves non-zero initial audio timestamps without offsetting", async () => {
+		const processor = new TestAudioProcessor();
+		const sentChunks: EncodedAudioChunk[] = [];
+		const muxer = {
+			addAudioChunk: vi.fn().mockImplementation(async (chunk: EncodedAudioChunk) => {
+				sentChunks.push(chunk);
+			}),
+		};
+
+		const chunk1 = {
+			timestamp: 2_000_000,
+			type: "key" as const,
+			byteLength: 10,
+			copyTo: vi.fn(),
+		} as unknown as EncodedAudioChunk;
+
+		const stream = new ReadableStream<EncodedAudioChunk>({
+			start(controller) {
+				controller.enqueue(chunk1);
+				controller.close();
+			},
+		});
+
+		const result = await processor.passthrough(
+			stream,
+			{ codec: "mp4a.40.2", sampleRate: 48_000, numberOfChannels: 2 },
+			muxer as never,
+		);
+
+		expect(result).toBe(true);
+		expect(sentChunks).toHaveLength(1);
+		expect(sentChunks[0].timestamp).toBe(2_000_000);
+		// Direct reference equality: chunk was passed through without cloning
+		expect(sentChunks[0]).toBe(chunk1);
+	});
+});
