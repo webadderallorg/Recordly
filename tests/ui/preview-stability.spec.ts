@@ -122,6 +122,62 @@ test("export recovery redraws the recording when the paused decoder becomes read
 	await frame.dispose();
 });
 
+test("a failed post-export regeneration retries when the decoder reports it is ready", async ({
+	page,
+}) => {
+	const errors: string[] = [];
+	page.on("pageerror", (error) => errors.push(error.message));
+	await installDesktopBridge(page, "filmstrip.mp4");
+	await page.goto("/tests/ui/preview-performance.html");
+	await expect
+		.poll(
+			() =>
+				page.evaluate(() => Boolean(window.performancePreview?.api?.videoSprite?.visible)),
+			{ timeout: 30_000 },
+		)
+		.toBe(true);
+
+	const frame = await page.evaluateHandle(() => {
+		const api = window.performancePreview.api!;
+		const video = api.video!;
+		const texture = api.videoSprite!.texture;
+		const source = texture.source as unknown as { update: () => void };
+		source.update = () => {
+			throw new Error("Decoder lost the current frame");
+		};
+		return {
+			texture,
+			restoreDecoder: () => {
+				Reflect.deleteProperty(source, "update");
+				video.dispatchEvent(new Event("canplay"));
+			},
+			read: () => {
+				const sprite = window.performancePreview.api!.videoSprite!;
+				return {
+					regenerated: texture.destroyed,
+					visible: sprite.visible,
+					matchesVideo: sprite.texture.width === video.videoWidth,
+				};
+			},
+		};
+	});
+	await page.getByRole("button", { name: "Run export cycle", exact: true }).click();
+	await expect(page.locator("[data-export-status]")).toHaveText("done");
+	await expect
+		.poll(() => frame.evaluate((frame) => frame.read()))
+		.toMatchObject({ regenerated: true, visible: false });
+	await page.evaluate(async () => {
+		for (let i = 0; i < 10; i++) await new Promise(requestAnimationFrame);
+	});
+	expect(await frame.evaluate((frame) => frame.read().visible)).toBe(false);
+	await frame.evaluate((frame) => frame.restoreDecoder());
+	await expect
+		.poll(() => frame.evaluate((frame) => frame.read()))
+		.toEqual({ regenerated: true, visible: true, matchesVideo: true });
+	expect(errors).toEqual(["Decoder lost the current frame"]);
+	await frame.dispose();
+});
+
 test("a shrunken recording texture and a return to the editor restore the paused frame", async ({
 	page,
 }) => {
