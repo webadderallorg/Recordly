@@ -168,6 +168,10 @@ Prebuilt releases are available at:
 
 https://github.com/webadderallorg/Recordly/releases
 
+## Windows ZIP
+
+If a release provides `Recordly-windows-x64.zip`, extract the entire archive to a folder and open `Recordly.exe` from that folder. To update without running an installer, download and extract the ZIP from a newer release.
+
 ---
 
 ## Linux AppImage
