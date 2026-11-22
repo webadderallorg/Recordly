@@ -39,6 +39,8 @@ async function run() {
 	const motion = new MotionBlurFilter([0, 0], 5, 0);
 	effects.filters = [motion, zoom];
 	const readPixels = () => {
+		for (const filter of effects.filters as (MotionBlurFilter | ZoomBlurFilter)[])
+			filter.enabled = true;
 		app.render();
 		const { pixels, width } = app.renderer.extract.pixels(app.stage);
 		let blended = 0;
