@@ -55,6 +55,7 @@ function LaunchWindowContent() {
 	const t = useScopedT("launch");
 	const captureT = useScopedT("capture");
 	const { openId } = useLaunchPopoverCoordinator();
+	const [discarding, setDiscarding] = useState(false);
 
 	const {
 		recording,
@@ -332,15 +333,28 @@ function LaunchWindowContent() {
 
 	const recordingControls = (
 		<RecordingControls
-			busy={restarting}
+			busy={restarting || discarding}
 			paused={paused}
 			elapsed={elapsed}
 			onPauseResume={paused ? resumeRecording : pauseRecording}
 			onStopRecording={toggleRecording}
-			onCancelRecording={cancelRecording}
+			onCancelRecording={async () => {
+				if (discarding) return;
+				setDiscarding(true);
+				try {
+					await cancelRecording();
+				} finally {
+					setDiscarding(false);
+				}
+			}}
 			formatTime={formatTime}
 		/>
 	);
+	let recordingAnnouncement = "";
+	if (discarding) recordingAnnouncement = captureT("discardingRecording");
+	else if (finalizing && !restarting) recordingAnnouncement = captureT("finishingRecording");
+	else if (recording || restarting)
+		recordingAnnouncement = paused ? t("recording.paused") : captureT("recording");
 
 	const idleControls = (
 		<div
@@ -559,7 +573,6 @@ function LaunchWindowContent() {
 					<div className={styles.barState}>
 						{finalizing && !restarting ? (
 							<div
-								role="status"
 								className={`${styles.recordingControls} ${styles.recordingFinalizing} gap-2 text-sm text-muted-foreground`}
 							>
 								<Spinner size="sm" />
@@ -580,6 +593,9 @@ function LaunchWindowContent() {
 		<HudInteractionContext.Provider
 			value={{ onMouseEnter: handleHudMouseEnter, onMouseLeave: handleHudMouseLeave }}
 		>
+			<span className="sr-only" role="status" aria-atomic="true">
+				{recordingAnnouncement}
+			</span>
 			<div
 				className="w-full flex justify-center bg-transparent overflow-visible items-end pb-6 pointer-events-none"
 				style={{ height: "100vh" }}

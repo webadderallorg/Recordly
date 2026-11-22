@@ -42,6 +42,46 @@ test("HUD controls describe the active source, audio, camera and countdown", asy
 	await expect(countdown).toHaveAccessibleDescription(/No delay/);
 });
 
+test("the same status region announces recording, pause and finalization", async ({ page }) => {
+	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		Object.assign(window.electronAPI, {
+			getPlatform: async () => "win32",
+			getSelectedSource: async () => ({ id: "screen:1:0", name: "Built-in display" }),
+			getCountdownDelay: async () => ({ success: true, delay: 0 }),
+			isNativeWindowsCaptureAvailable: async () => ({ available: true }),
+			startNativeScreenRecording: async () => ({ success: true }),
+			pauseNativeScreenRecording: async () => ({ success: true }),
+			resumeNativeScreenRecording: async () => ({ success: true }),
+			stopNativeScreenRecording: () =>
+				new Promise((resolve) =>
+					window.addEventListener(
+						"test-release-native-stop",
+						() => resolve({ success: true, path: "/screen.mp4" }),
+						{ once: true },
+					),
+				),
+		});
+	});
+	await page.goto("/?windowType=hud-overlay");
+	const status = page.locator('[role="status"][aria-atomic="true"]');
+	await expect(status).toHaveCount(1);
+	await status.evaluate((element) => element.setAttribute("data-tested-announcement", "true"));
+	const announcement = page.locator('[data-tested-announcement="true"]');
+	await expect(announcement).toBeEmpty();
+	await page.getByRole("button", { name: "Record", exact: true }).click();
+	await expect(announcement).toHaveText("Recording");
+	const controls = page.getByRole("group", { name: "Recording controls", exact: true });
+	await expect(controls.getByRole("timer")).toHaveAttribute("aria-live", "off");
+	await controls.getByRole("button", { name: "Pause", exact: true }).click();
+	await expect(announcement).toHaveText("PAUSED");
+	await controls.getByRole("button", { name: "Resume", exact: true }).click();
+	await expect(announcement).toHaveText("Recording");
+	await controls.getByRole("button", { name: "Stop", exact: true }).click();
+	await expect(announcement).toHaveText("Finishing recording…");
+	await page.evaluate(() => window.dispatchEvent(new Event("test-release-native-stop")));
+});
+
 test("Linux source list announces an empty result and describes the source type", async ({
 	page,
 }) => {
