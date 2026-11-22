@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import type { TrackedWindowBounds } from "./state";
 import type { SelectedSource, WindowBounds } from "./types";
 import { getScreen, parseWindowId } from "./utils";
 import { convertPhysicalBoundsToDip } from "./windowsCaptureSelection";
@@ -28,9 +29,11 @@ export async function bringWindowsWindowForward(windowId: number): Promise<void>
 	});
 }
 
-const pendingBoundsQueries = new Map<string, Promise<WindowBounds | null>>();
+const pendingBoundsQueries = new Map<string, Promise<TrackedWindowBounds | null>>();
 
-export function resolveWindowsWindowBounds(source: SelectedSource): Promise<WindowBounds | null> {
+export function resolveWindowsWindowBounds(
+	source: SelectedSource,
+): Promise<TrackedWindowBounds | null> {
 	const key = source.id || source.windowTitle || source.name;
 	const pending = pendingBoundsQueries.get(key);
 	if (pending) return pending;
@@ -42,7 +45,20 @@ export function resolveWindowsWindowBounds(source: SelectedSource): Promise<Wind
 	return query;
 }
 
-async function queryWindowsWindowBounds(source: SelectedSource): Promise<WindowBounds | null> {
+function trackWindowsWindowBounds(physicalBounds: WindowBounds): TrackedWindowBounds {
+	const electronScreen = getScreen();
+	const bounds =
+		typeof electronScreen.screenToDipPoint === "function"
+			? convertPhysicalBoundsToDip(physicalBounds, (point) =>
+					electronScreen.screenToDipPoint(point),
+				)
+			: physicalBounds;
+	return { ...bounds, physicalOrigin: { x: physicalBounds.x, y: physicalBounds.y } };
+}
+
+async function queryWindowsWindowBounds(
+	source: SelectedSource,
+): Promise<TrackedWindowBounds | null> {
 	const windowId = parseWindowId(source.id);
 	const windowTitle =
 		typeof source.windowTitle === "string" ? source.windowTitle.trim() : source.name.trim();
@@ -61,12 +77,7 @@ async function queryWindowsWindowBounds(source: SelectedSource): Promise<WindowB
 				bounds.height <= 0
 			)
 				return null;
-			const electronScreen = getScreen();
-			return typeof electronScreen.screenToDipPoint === "function"
-				? convertPhysicalBoundsToDip(bounds, (point) =>
-						electronScreen.screenToDipPoint(point),
-					)
-				: bounds;
+			return trackWindowsWindowBounds(bounds);
 		} catch {
 			// Older helper bundles do not have geometry commands; retain their fallback.
 		}
@@ -127,10 +138,7 @@ async function queryWindowsWindowBounds(source: SelectedSource): Promise<WindowB
 		const bounds = JSON.parse(stdout) as WindowBounds;
 		if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
 
-		const electronScreen = getScreen();
-		return typeof electronScreen.screenToDipPoint === "function"
-			? convertPhysicalBoundsToDip(bounds, (point) => electronScreen.screenToDipPoint(point))
-			: bounds;
+		return trackWindowsWindowBounds(bounds);
 	} catch {
 		return null;
 	}

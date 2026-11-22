@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
 	buildUrl: vi.fn(),
 	remember: vi.fn(),
 	replace: vi.fn(),
+	resolveSession: vi.fn(),
+	persistSession: vi.fn(),
 }));
 vi.mock("electron", () => ({
 	app: { isPackaged: false, getPath: () => "/recordly-user", getAppPath: () => "/recordly" },
@@ -26,7 +28,10 @@ vi.mock("../project/manager", () => ({
 	rememberApprovedLocalReadPath: mocks.remember,
 	replaceApprovedSessionLocalReadPaths: mocks.replace,
 }));
-vi.mock("../project/session", () => ({ resolveRecordingSession: async () => null }));
+vi.mock("../project/session", () => ({
+	resolveRecordingSession: mocks.resolveSession,
+	persistRecordingSessionManifest: mocks.persistSession,
+}));
 
 import { registerProjectHandlers } from "./project";
 
@@ -39,6 +44,8 @@ beforeEach(() => {
 	mocks.buildUrl.mockReset().mockReturnValue("http://127.0.0.1:43822/video?token=capability");
 	mocks.remember.mockClear();
 	mocks.replace.mockClear();
+	mocks.resolveSession.mockReset().mockResolvedValue(null);
+	mocks.persistSession.mockReset().mockResolvedValue(undefined);
 	registerProjectHandlers();
 	handlers = new Map(vi.mocked(ipcMain.handle).mock.calls);
 });
@@ -57,6 +64,27 @@ it.each([
 	} else {
 		expect(mocks.replace).toHaveBeenCalledWith(["/recording.mp4", null]);
 	}
+});
+
+it("rewrites the session manifest on open only when the capture kind changes", async () => {
+	mocks.resolveSession.mockResolvedValue({
+		videoPath: "/recording.mp4",
+		webcamPath: null,
+		timeOffsetMs: 0,
+		captureSourceKind: "window",
+	});
+	const open = handlers.get("set-current-video-path")!;
+
+	expect(await open(trusted, "/recording.mp4")).toMatchObject({ success: true });
+	expect(await open(trusted, "/recording.mp4", { captureSourceKind: "window" })).toMatchObject({
+		success: true,
+	});
+	expect(mocks.persistSession).not.toHaveBeenCalled();
+
+	await open(trusted, "/recording.mp4", { captureSourceKind: "screen" });
+	expect(mocks.persistSession).toHaveBeenCalledWith(
+		expect.objectContaining({ captureSourceKind: "screen" }),
+	);
 });
 
 it("rejects every project channel for foreign and embedded frames before performing work", async () => {

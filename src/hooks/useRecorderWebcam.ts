@@ -1,14 +1,12 @@
-import { type MutableRefObject, useCallback, useRef } from "react";
+import { type MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
 import { getErrorMessage } from "./recordingError";
 import { RecordingFileWriter } from "./recordingFileWriter";
 import { getVideoExtensionForMimeType, selectWebcamRecordingMimeType } from "./recordingMimeType";
+import { acquireWebcamCapture, type WebcamCapture } from "./webcamCapture";
 
 const WEBCAM_BITRATE = 8_000_000;
-const WEBCAM_WIDTH = 1280;
-const WEBCAM_HEIGHT = 720;
-const WEBCAM_FRAME_RATE = 60;
 const RECORDER_TIMESLICE_MS = 250;
 const RECORDING_FILE_PREFIX = "recording-";
 const WEBCAM_SUFFIX = "-webcam";
@@ -30,7 +28,8 @@ export function useRecorderWebcam({
 	getRecordingDurationMs,
 }: RecorderWebcamOptions) {
 	const webcamRecorder = useRef<MediaRecorder | null>(null);
-	const webcamStream = useRef<MediaStream | null>(null);
+	const webcamCapture = useRef<WebcamCapture | null>(null);
+	const webcamCaptureGeneration = useRef(0);
 	const webcamWriter = useRef<RecordingFileWriter | null>(null);
 	const webcamStartTime = useRef<number | null>(null);
 	const webcamTimeOffsetMs = useRef(0);
@@ -38,30 +37,55 @@ export function useRecorderWebcam({
 	const webcamStopPromise = useRef<Promise<string | null> | null>(null);
 	const webcamStopResolver = useRef<((path: string | null) => void) | null>(null);
 	const resolvedWebcamPath = useRef<string | null>(null);
+	const [webcamFailure, setWebcamFailure] = useState<{
+		deviceId: string | undefined;
+		message: string;
+	} | null>(null);
+	useEffect(() => {
+		// Turning the webcam off is the user's retry; forget the last take's failure.
+		if (!webcamEnabled) setWebcamFailure(null);
+	}, [webcamEnabled]);
+	const markWebcamUnavailable = useCallback(
+		(error: unknown) =>
+			setWebcamFailure({ deviceId: webcamDeviceId, message: getErrorMessage(error) }),
+		[webcamDeviceId],
+	);
 
-	const releaseUnavailableWebcam = useCallback((error: unknown) => {
-		console.warn("Failed to start webcam recording; continuing without webcam layer:", error);
-		webcamStopResolver.current?.(null);
-		webcamStopResolver.current = null;
-		resolvedWebcamPath.current = null;
-		const unavailablePath = Promise.resolve(null);
-		pendingWebcamPathPromise.current = unavailablePath;
-		webcamStopPromise.current = unavailablePath;
-		webcamRecorder.current = null;
-		webcamWriter.current = null;
-		webcamStartTime.current = null;
-		webcamTimeOffsetMs.current = 0;
-		webcamStream.current?.getTracks().forEach((track) => track.stop());
-		webcamStream.current = null;
-		toast.warning(translate("notifications.webcamUnavailable", "Webcam unavailable"), {
-			id: "recording-webcam-unavailable",
-			duration: Infinity,
-			description: translate(
-				"notifications.webcamUnavailableDescription",
-				"Your webcam could not start. Check your camera selection and permissions before the next take.",
-			),
-		});
+	const releaseWebcamCapture = useCallback(() => {
+		webcamCaptureGeneration.current++;
+		webcamCapture.current?.release();
+		webcamCapture.current = null;
 	}, []);
+
+	const releaseUnavailableWebcam = useCallback(
+		(error: unknown) => {
+			console.warn(
+				"Failed to start webcam recording; continuing without webcam layer:",
+				error,
+			);
+			markWebcamUnavailable(error);
+			webcamStopResolver.current?.(null);
+			webcamStopResolver.current = null;
+			resolvedWebcamPath.current = null;
+			const unavailablePath = Promise.resolve(null);
+			pendingWebcamPathPromise.current = unavailablePath;
+			webcamStopPromise.current = unavailablePath;
+			webcamRecorder.current = null;
+			webcamWriter.current = null;
+			webcamStartTime.current = null;
+			webcamTimeOffsetMs.current = 0;
+			releaseWebcamCapture();
+			toast.warning(translate("notifications.webcamUnavailable", "Webcam unavailable"), {
+				id: "recording-webcam-unavailable",
+				duration: Infinity,
+				description: translate(
+					"notifications.webcamUnavailableDescription",
+					"Your webcam could not start. Check your camera selection and permissions before the next take.",
+				),
+			});
+		},
+		[markWebcamUnavailable, releaseWebcamCapture],
+	);
 
 	const stopWebcamRecorder = useCallback(async () => {
 		const recorder = webcamRecorder.current;
@@ -82,6 +106,7 @@ export function useRecorderWebcam({
 		} else if (webcamStartTime.current === null && pending && webcamStopResolver.current) {
 			webcamStopResolver.current(resolvedWebcamPath.current);
 			webcamStopResolver.current = null;
+			releaseWebcamCapture();
 		}
 
 		const result = pending ? await pending : resolvedWebcamPath.current;
@@ -92,10 +117,11 @@ export function useRecorderWebcam({
 		}
 		if (webcamRecorder.current === recorder) webcamRecorder.current = null;
 		return result ?? null;
-	}, []);
+	}, [releaseWebcamCapture]);
 
 	/** Acquire and prepare the webcam; begin capture only after the main recording starts. */
 	const prepareWebcamRecorder = useCallback(async () => {
+		setWebcamFailure(null);
 		if (!webcamEnabled) {
 			toast.dismiss("recording-webcam-unavailable");
 			resolvedWebcamPath.current = null;
@@ -105,31 +131,23 @@ export function useRecorderWebcam({
 			return;
 		}
 
+		const generation = webcamCaptureGeneration.current;
 		try {
 			if (isMacOS) {
 				const permission = await window.electronAPI.getMediaPermissionStatus();
 				if (!permission.success || permission.camera !== "granted")
 					throw new Error("Camera access must be granted in Camera settings.");
 			}
-			webcamStream.current = await navigator.mediaDevices.getUserMedia({
-				video: webcamDeviceId
-					? {
-							deviceId: { exact: webcamDeviceId },
-							width: { ideal: WEBCAM_WIDTH },
-							height: { ideal: WEBCAM_HEIGHT },
-							frameRate: { ideal: WEBCAM_FRAME_RATE, max: WEBCAM_FRAME_RATE },
-						}
-					: {
-							width: { ideal: WEBCAM_WIDTH },
-							height: { ideal: WEBCAM_HEIGHT },
-							frameRate: { ideal: WEBCAM_FRAME_RATE, max: WEBCAM_FRAME_RATE },
-						},
-				audio: false,
-			});
+			const capture = await acquireWebcamCapture(webcamDeviceId);
+			if (generation !== webcamCaptureGeneration.current) {
+				capture.release();
+				return;
+			}
+			webcamCapture.current = capture;
 
-			const settings = webcamStream.current.getVideoTracks?.()[0]?.getSettings?.();
+			const settings = capture.stream.getVideoTracks?.()[0]?.getSettings?.();
 			console.info("[Recorder] Webcam capture settings", {
-				requestedFrameRate: WEBCAM_FRAME_RATE,
+				requestedFrameRate: 60,
 				frameRate: settings?.frameRate ?? null,
 				width: settings?.width ?? null,
 				height: settings?.height ?? null,
@@ -144,7 +162,7 @@ export function useRecorderWebcam({
 			});
 			pendingWebcamPathPromise.current = webcamStopPromise.current;
 
-			const recorder = new MediaRecorder(webcamStream.current, {
+			const recorder = new MediaRecorder(capture.stream, {
 				videoBitsPerSecond: WEBCAM_BITRATE,
 				...(mimeType ? { mimeType } : {}),
 			});
@@ -156,6 +174,7 @@ export function useRecorderWebcam({
 				`${RECORDING_FILE_PREFIX}${sessionTimestamp}${WEBCAM_SUFFIX}${getVideoExtensionForMimeType(webcamMimeType)}`,
 				webcamMimeType || "video/webm",
 				(message) => {
+					markWebcamUnavailable(message);
 					toast.error(`Webcam recording stopped: ${message}`);
 					if (recorder.state !== "inactive") recorder.stop();
 				},
@@ -164,8 +183,12 @@ export function useRecorderWebcam({
 			const resolveWebcam = webcamStopResolver.current;
 			webcamRecorder.current = recorder;
 			recorder.ondataavailable = (event) => writer.write(event.data);
-			recorder.onerror = () =>
+			recorder.onerror = (event) => {
+				markWebcamUnavailable(
+					"error" in event ? event.error : "The webcam recorder failed.",
+				);
 				toast.error("The webcam recorder failed. The partial recording will be preserved.");
+			};
 			recorder.onstop = async () => {
 				try {
 					const result = await writer.finish(
@@ -189,19 +212,20 @@ export function useRecorderWebcam({
 						webcamRecorder.current = null;
 						webcamWriter.current = null;
 						webcamStartTime.current = null;
-						webcamStream.current?.getTracks().forEach((track) => track.stop());
-						webcamStream.current = null;
+						releaseWebcamCapture();
 					}
 				}
 			};
 			toast.dismiss("recording-webcam-unavailable");
 		} catch (error) {
-			releaseUnavailableWebcam(error);
+			if (generation === webcamCaptureGeneration.current) releaseUnavailableWebcam(error);
 		}
 	}, [
 		getRecordingDurationMs,
 		isMacOS,
+		markWebcamUnavailable,
 		recordingSessionTimestamp,
+		releaseWebcamCapture,
 		releaseUnavailableWebcam,
 		webcamDeviceId,
 		webcamEnabled,
@@ -221,8 +245,12 @@ export function useRecorderWebcam({
 	}, [releaseUnavailableWebcam]);
 
 	return {
+		webcamRecordingError:
+			webcamEnabled && webcamFailure?.deviceId === webcamDeviceId
+				? (webcamFailure?.message ?? null)
+				: null,
 		webcamRecorder,
-		webcamStream,
+		releaseWebcamCapture,
 		webcamWriter,
 		webcamStartTime,
 		webcamTimeOffsetMs,

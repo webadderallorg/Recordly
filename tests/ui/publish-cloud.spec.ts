@@ -15,9 +15,8 @@ for (const full of [false, true]) {
 			.getByRole("button", { name: "Fixture finish capacity checks", exact: true })
 			.evaluate((button: HTMLButtonElement) => button.click());
 		if (full) {
-			const card = page.getByRole("region", { name: "Create link", exact: true });
-			await expect(card.getByRole("alert")).toContainText("You have 5 cloud recordings");
-			await card.getByRole("button", { name: "Try again", exact: true }).click();
+			const menu = page.getByRole("dialog", { name: "Publish", exact: true });
+			await expect(menu.getByRole("alert")).toContainText("You have 5 cloud recordings");
 			await expect(share).toBeDisabled();
 			await expect(page.locator("html")).not.toHaveAttribute("data-preparation-started");
 			const details = page.getByRole("button", { name: "Technical details", exact: true });
@@ -25,9 +24,11 @@ for (const full of [false, true]) {
 			await details.click();
 			await expect(details).toHaveAttribute("aria-expanded", "true");
 			await expect(
-				page.getByText(
-					"You have 5 cloud recordings. Delete one from Shared before sharing another.",
-				),
+				menu
+					.getByText(
+						"You have 5 cloud recordings. Delete one from Shared before sharing another.",
+					)
+					.last(),
 			).toBeVisible();
 			await expect(share).toBeDisabled();
 			await expect(page.locator("html")).not.toHaveAttribute("data-preparation-started");
@@ -37,11 +38,11 @@ for (const full of [false, true]) {
 	});
 }
 
-test("publish preserves local destination and sharing continues in the background", async ({
+test("Publish remembers the local destination and retains an unsaved project's link", async ({
 	page,
 }) => {
 	test.setTimeout(60_000);
-	await page.goto("/tests/ui/publish.html?switch");
+	await page.goto("/tests/ui/publish.html?switch&controlled");
 	await page.getByRole("button", { name: "Publish", exact: true }).click();
 	await page.getByRole("row", { name: "Save to device", exact: true }).click();
 	await page.screenshot({
@@ -57,21 +58,22 @@ test("publish preserves local destination and sharing continues in the backgroun
 	);
 	await page.getByRole("row", { name: "Create share link", exact: true }).click();
 	await page.getByRole("button", { name: "Share", exact: true }).click();
-	await expect(page.getByRole("progressbar").getByText(/^\d+%$/)).toBeVisible();
+	const menu = page.getByRole("dialog", { name: "Publish", exact: true });
+	const progress = menu.getByRole("progressbar");
+	await expect(progress).toHaveAttribute("aria-valuenow", "85");
 	await page.keyboard.press("Escape");
-	await expect(page.getByRole("progressbar").getByText(/^\d+%$/)).toBeVisible();
-	await expect(page.getByRole("dialog", { name: "Publish", exact: true })).toHaveCount(0);
+	await expect(progress).toBeVisible();
 	await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeDisabled();
-	await expect(page.getByRole("button", { name: "Copy link", exact: true })).toBeVisible({
-		timeout: 20000,
-	});
+	await page
+		.getByRole("button", { name: "Fixture finish upload", exact: true })
+		.evaluate((button: HTMLButtonElement) => button.click());
+	await expect(menu.getByRole("button", { name: "Copy link", exact: true })).toBeVisible();
 	await page
 		.getByRole("button", { name: "Fixture refresh token", exact: true })
 		.evaluate((button: HTMLButtonElement) => button.click());
 	await expect(page.getByRole("button", { name: "Copy link", exact: true })).toBeVisible();
-	await expect(page.getByRole("region", { name: "Create link" })).toHaveCount(0, {
-		timeout: 15_000,
-	});
+	await menu.getByRole("row", { name: "Create share link", exact: true }).press("Escape");
+	await expect(menu).toHaveCount(0);
 	await page.getByRole("button", { name: "Publish", exact: true }).click();
 	await expect(page.getByRole("textbox", { name: "Share link" })).toHaveValue(
 		"https://example.test/s/preview",
@@ -81,7 +83,8 @@ test("publish preserves local destination and sharing continues in the backgroun
 	await expect(page.getByRole("textbox", { name: "Share link" })).toHaveValue(
 		"https://example.test/s/preview",
 	);
-	await page.keyboard.press("Escape");
+	await menu.getByRole("row", { name: "Create share link", exact: true }).press("Escape");
+	await expect(menu).toHaveCount(0);
 	await page
 		.getByRole("button", { name: "Fixture switch account", exact: true })
 		.evaluate((button: HTMLButtonElement) => button.click());
@@ -177,7 +180,6 @@ for (const fails of [false, true]) {
 		await page
 			.getByRole("button", { name: "Fixture finish upload", exact: true })
 			.evaluate((button: HTMLButtonElement) => button.click());
-		await page.getByRole("button", { name: "Publish", exact: true }).click();
 		await expect(page.getByRole("button", { name: "Share", exact: true })).toBeEnabled();
 		await expect(page.getByRole("button", { name: "Copy link", exact: true })).toHaveCount(0);
 		await expect(
@@ -242,10 +244,9 @@ for (const destination of ["Save to device", "Create share link"]) {
 				.getByRole("button", { name: "Fixture finish upload", exact: true })
 				.evaluate((button: HTMLButtonElement) => button.click());
 		}
-		const publish = page.getByRole("region", {
-			name: cloud ? "Create link" : "Export",
-			exact: true,
-		});
+		const publish = cloud
+			? page.getByRole("dialog", { name: "Publish", exact: true })
+			: page.getByRole("region", { name: "Export", exact: true });
 		const report = publish.getByRole("button", { name: "Report Error", exact: true });
 		await expect(report).toBeVisible();
 		expect(reports).toHaveLength(0);
@@ -281,39 +282,35 @@ test("publishing omits file-size estimates for both destinations", async ({ page
 	await expect(estimate).toHaveCount(0);
 });
 
-test("share uses one continuous progress bar from export to link creation", async ({ page }) => {
+test("Publish keeps one inline progress bar from export to link creation", async ({ page }) => {
 	await page.goto("/tests/ui/publish.html?switch&controlled&saved");
 	await page.getByRole("button", { name: "Publish", exact: true }).click();
 	await page.getByRole("button", { name: "Share", exact: true }).click();
-	const progress = page.getByRole("progressbar");
+	const menu = page.getByRole("dialog", { name: "Publish", exact: true });
+	const progress = menu.getByRole("progressbar");
 	await expect(progress).toHaveCount(1);
 	await expect(progress).toHaveAttribute("aria-valuenow", "35");
-	const card = page.getByRole("region", { name: "Create link", exact: true });
-	await expect(card.getByRole("status")).toContainText("Preparing the current edit…");
-	await expect(page.getByRole("dialog", { name: "Publish", exact: true })).toHaveCount(0);
+	await expect(menu.getByRole("status")).toContainText("Preparing the current edit…");
+	await expect(page.getByRole("region", { name: "Create link", exact: true })).toHaveCount(0);
 	await expect(page.locator(".export-animation")).toHaveCount(0);
 	await expect(page.locator("body")).toHaveAttribute("data-share-armed-before-export", "true");
 	await expect(progress).toBeVisible();
-	await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
+	await expect(menu.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
 	await page.keyboard.press("Escape");
 	await expect(progress).toBeVisible();
 	await expect(progress).toHaveAttribute("aria-valuenow", "70");
-	await expect(page.getByText("Uploading video…", { exact: true })).toBeVisible();
+	await expect(menu.getByText("Uploading video…", { exact: true })).toBeVisible();
 	await expect(progress).toHaveAttribute("aria-valuenow", "85");
 	await expect(page.locator(".export-animation")).toHaveCount(0);
 	await expect(progress).toHaveCount(1);
-	await page.clock.install();
 	await page
 		.getByRole("button", { name: "Fixture finish upload", exact: true })
 		.evaluate((button: HTMLButtonElement) => button.click());
 	await expect(progress).toHaveCount(0);
 	await expect(page.locator(".export-animation")).toHaveCount(0);
 	await expect(page.locator("body")).toHaveAttribute("data-share-upload-id-preserved", "true");
-	await expect(card.getByRole("button", { name: "Copy link", exact: true })).toBeVisible();
-	await page.clock.fastForward(10100);
-	await expect(card).toHaveCount(0);
-	await page.getByRole("button", { name: "Publish", exact: true }).click();
-	await expect(page.getByLabel("Share link", { exact: true })).toHaveValue(
+	await expect(menu.getByRole("button", { name: "Copy link", exact: true })).toBeVisible();
+	await expect(menu.getByLabel("Share link", { exact: true })).toHaveValue(
 		"https://example.test/s/preview",
 	);
 });
@@ -354,6 +351,34 @@ test("existing project links reopen the completed copy-link view without exporti
 	await expect(page.locator("html")).not.toHaveAttribute("data-preparation-started", "true");
 });
 
+test("Cancel inside Publish discards the export and preserves the old link on reopen", async ({
+	page,
+}) => {
+	await seedExistingShare(page);
+	await page.goto("/tests/ui/publish.html?switch&saved&edited&controlled-preparation");
+	const publish = page.getByRole("button", { name: "Publish", exact: true });
+	const menu = page.getByRole("dialog", { name: "Publish", exact: true });
+	await publish.click();
+	await menu.getByRole("button", { name: "Regenerate", exact: true }).click();
+	await expect(page.locator("html")).toHaveAttribute("data-preparation-started", "true");
+	await menu.getByRole("button", { name: "Cancel", exact: true }).click();
+	await expect(page.locator("html")).toHaveAttribute("data-preparation-canceled", "true");
+	await expect(page.locator("html")).toHaveAttribute("data-canceled-expected-upload", "true");
+	await page
+		.getByRole("button", { name: "Fixture finish preparation", exact: true })
+		.evaluate((button: HTMLButtonElement) => button.click());
+	await expect(page.locator("html")).toHaveAttribute(
+		"data-discarded-temp",
+		"synthetic-preview.mp4",
+	);
+	await expect(page.locator("html")).not.toHaveAttribute("data-upload-started");
+	await expect(menu).toHaveCount(0);
+	await publish.click();
+	await expect(menu.getByLabel("Share link", { exact: true })).toHaveValue(
+		"https://example.test/s/original",
+	);
+});
+
 for (const fails of [false, true]) {
 	test(`stale links offer Regenerate and ${fails ? "keep the original link on failure" : "save the new link on success"}`, async ({
 		page,
@@ -378,7 +403,6 @@ for (const fails of [false, true]) {
 		await page
 			.getByRole("button", { name: "Fixture finish upload", exact: true })
 			.evaluate((button: HTMLButtonElement) => button.click());
-		await page.getByRole("button", { name: "Publish", exact: true }).click();
 		await expect(page.getByLabel("Share link", { exact: true })).toHaveValue(
 			`https://example.test/s/${fails ? "original" : "preview"}`,
 		);
@@ -500,7 +524,6 @@ test("failed regeneration cannot restore a share deleted while the upload was pe
 		.evaluate((button: HTMLButtonElement) => button.click());
 	await expect(page.getByRole("progressbar")).toHaveCount(0);
 	await expect(page.getByLabel("Share link", { exact: true })).toHaveCount(0);
-	await page.getByRole("button", { name: "Publish", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Share", exact: true })).toBeEnabled();
 });
 
@@ -512,8 +535,8 @@ for (const duringUpload of [true, false]) {
 		const publish = page.getByRole("button", { name: "Publish", exact: true });
 		await publish.click();
 		await page.getByRole("button", { name: "Share", exact: true }).click();
-		const card = page.getByRole("region", { name: "Create link", exact: true });
-		const progress = card.getByRole("progressbar", { name: "Create link", exact: true });
+		const menu = page.getByRole("dialog", { name: "Publish", exact: true });
+		const progress = menu.getByRole("progressbar", { name: "Create link", exact: true });
 		await expect(progress).toHaveAttribute("aria-valuenow", "85");
 		const finish = () =>
 			page
@@ -532,11 +555,11 @@ for (const duringUpload of [true, false]) {
 		} else {
 			await finish();
 			await expect(
-				card.getByRole("button", { name: "Copy link", exact: true }),
+				menu.getByRole("button", { name: "Copy link", exact: true }),
 			).toBeVisible();
 			await save();
 		}
-		await expect(card.getByRole("button", { name: "Copy link", exact: true })).toBeVisible();
+		await expect(menu.getByRole("button", { name: "Copy link", exact: true })).toBeVisible();
 		await expect
 			.poll(() =>
 				page.evaluate(
@@ -570,7 +593,6 @@ for (const saved of [true, false]) {
 			.getByRole("button", { name: "Fixture finish upload" })
 			.evaluate((button: HTMLButtonElement) => button.click());
 		await expect(publish).toBeEnabled();
-		await publish.click();
 		await expect(page.getByRole("button", { name: "Share", exact: true })).toBeVisible();
 		await expect(page.getByRole("textbox", { name: "Share link" })).toHaveCount(0);
 	});

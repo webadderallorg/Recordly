@@ -8,7 +8,8 @@ export type FeedbackDraft = {
 	files: File[];
 };
 
-const emptyDraft: FeedbackDraft = { sentiment: null, message: "", files: [] };
+export const DEFAULT_FEEDBACK_SENTIMENT = "neutral";
+const emptyDraft: FeedbackDraft = { sentiment: DEFAULT_FEEDBACK_SENTIMENT, message: "", files: [] };
 const drafts = new Map<string, FeedbackDraft>();
 const listeners = new Set<() => void>();
 const keyFor = (userId: string) => `recordly.feedback.draft.v1.${userId}`;
@@ -26,19 +27,19 @@ export function getFeedbackDraft(userId: string | undefined): FeedbackDraft {
 		}
 	}
 	const saved = stored as (Partial<FeedbackDraft> & { subject?: string }) | null;
+	const message = [saved?.subject, saved?.message]
+		.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+		.join("\n\n")
+		.slice(0, 10000);
 	const draft: FeedbackDraft = {
 		sentiment:
 			saved?.sentiment === "loving" ||
 			saved?.sentiment === "neutral" ||
-			saved?.sentiment === "angry"
+			saved?.sentiment === "angry" ||
+			(saved?.sentiment === null && message.trim().length > 0)
 				? saved.sentiment
-				: null,
-		message: [saved?.subject, saved?.message]
-			.filter(
-				(value): value is string => typeof value === "string" && value.trim().length > 0,
-			)
-			.join("\n\n")
-			.slice(0, 10000),
+				: DEFAULT_FEEDBACK_SENTIMENT,
+		message,
 		files: [],
 	};
 	drafts.set(userId, draft);

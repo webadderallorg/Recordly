@@ -16,6 +16,23 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+async function publishMicrophoneWav(encodedPath: string, sidecarPath: string) {
+	try {
+		await fs.rename(encodedPath, sidecarPath);
+		return;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EXDEV") throw error;
+	}
+
+	const destinationStagingPath = `${sidecarPath}.${randomUUID()}.tmp`;
+	try {
+		await fs.copyFile(encodedPath, destinationStagingPath);
+		await fs.rename(destinationStagingPath, sidecarPath);
+	} finally {
+		await fs.rm(destinationStagingPath, { force: true }).catch(() => undefined);
+	}
+}
+
 export function registerMicrophoneSidecar() {
 	ipcMain.handle(
 		"store-microphone-sidecar",
@@ -70,7 +87,7 @@ export function registerMicrophoneSidecar() {
 					{ timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
 				);
 				// The editor may discover the sidecar as soon as its final name appears.
-				await fs.rename(tempWavPath, sidecarPath);
+				await publishMicrophoneWav(tempWavPath, sidecarPath);
 				const retainedSourceWebmPath = shouldKeepRecordingAudioSidecars()
 					? await fs.rename(tempWebmPath, sourceWebmPath).then(
 							() => sourceWebmPath,

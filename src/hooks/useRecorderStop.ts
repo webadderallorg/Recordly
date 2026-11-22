@@ -96,6 +96,7 @@ export function useRecorderStop(
 
 			void (async () => {
 				const stopStart = performance.now();
+				const stopCaptureSourceKind = captureSourceKind.current;
 				console.log("[PERF:RENDERER] Total Stop Sequence: STARTED");
 
 				const fallbackStartDelayMs = microphoneFallback.startDelayMs;
@@ -202,7 +203,7 @@ export function useRecorderStop(
 										timeOffsetMs: webcamTimeOffsetMs.current,
 										hideOverlayCursorByDefault:
 											hideEditorOverlayCursorByDefault.current,
-										captureSourceKind: captureSourceKind.current,
+										captureSourceKind: stopCaptureSourceKind,
 									});
 								} catch (sessionError) {
 									console.error(
@@ -256,7 +257,7 @@ export function useRecorderStop(
 							webcamPath,
 							timeOffsetMs: webcamTimeOffsetMs.current,
 							hideOverlayCursorByDefault: hideEditorOverlayCursorByDefault.current,
-							captureSourceKind: captureSourceKind.current,
+							captureSourceKind: stopCaptureSourceKind,
 						});
 
 						console.log(

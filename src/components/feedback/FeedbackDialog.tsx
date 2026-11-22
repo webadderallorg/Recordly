@@ -15,6 +15,7 @@ import { ChatWarning, X } from "@/components/ui/icons";
 import { useI18n } from "@/contexts/I18nContext";
 import { collectFeedbackDiagnostics } from "@/lib/feedback/diagnostics";
 import {
+	DEFAULT_FEEDBACK_SENTIMENT,
 	type FeedbackSentiment,
 	getFeedbackDraft,
 	subscribeFeedbackDraft,
@@ -72,6 +73,7 @@ export function FeedbackDialog({
 	};
 	const [error, setError] = useState("");
 	const [sending, setSending] = useState(false);
+	const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 	const [sent, setSent] = useState(false);
 	const sendingRef = useRef(false);
 	const picker = useRef<HTMLInputElement>(null);
@@ -186,11 +188,12 @@ export function FeedbackDialog({
 									message,
 									files,
 									logs: await collectFeedbackDiagnostics(),
+									onUploadProgress: setUploadProgress,
 								});
 								setSent(true);
 								if (userId)
 									updateFeedbackDraft(userId, {
-										sentiment: null,
+										sentiment: DEFAULT_FEEDBACK_SENTIMENT,
 										message: "",
 										files: [],
 									});
@@ -199,6 +202,7 @@ export function FeedbackDialog({
 							} finally {
 								sendingRef.current = false;
 								setSending(false);
+								setUploadProgress(null);
 							}
 						}}
 					>
@@ -279,7 +283,7 @@ export function FeedbackDialog({
 							onPress={() => picker.current?.click()}
 						>
 							<Paperclip className="size-4" aria-hidden="true" />
-							{t("common.feedback.attachFiles", "Attach files")}
+							{t("common.feedback.attachFilesWithLimit", "Attach files (50 MB)")}
 						</Button>
 						{files.length > 0 && (
 							<div className="flex flex-col gap-1">
@@ -311,11 +315,16 @@ export function FeedbackDialog({
 							</div>
 						)}
 						<Description className={styles.diagnostics}>
-							{t(
-								"common.feedback.diagnostics",
-								"Diagnostic logs will be attached. Feedback will be sent to support@recordly.dev.",
-							)}
+							{t("common.feedback.diagnostics", "Diagnostic logs will be attached.")}
 						</Description>
+						{uploadProgress !== null && (
+							<progress
+								className="w-full"
+								aria-label={t("common.feedback.attachFiles", "Attach files")}
+								value={uploadProgress}
+								max={100}
+							/>
+						)}
 						{error && (
 							<Description role="alert" className="text-danger">
 								{error} <ErrorReportButton error={error} />

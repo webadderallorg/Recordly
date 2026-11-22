@@ -12,6 +12,7 @@ import { UpgradeButton } from "@/components/billing/UpgradeButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { Button } from "@/components/ui/button";
 import { FilmStrip, House, ArrowCounterClockwise as Undo2 } from "@/components/ui/icons";
+import { RecordlyMark } from "@/components/ui/RecordlyMark";
 import type { useI18n } from "@/contexts/I18nContext";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import type { useExportDimensions } from "../export/useExportDimensions";
@@ -45,6 +46,7 @@ type Props = {
 	canUndo: boolean;
 	canRedo: boolean;
 	handleOpenProjectBrowser: () => void;
+	handleOpenRecordingHud: () => Promise<void>;
 	handleUndo: () => void;
 	handleRedo: () => void;
 	handleProjectNameSubmit: (event?: FormEvent<HTMLFormElement>) => void;
@@ -84,6 +86,7 @@ export function EditorHeader(props: Props) {
 		canUndo,
 		canRedo,
 		handleOpenProjectBrowser,
+		handleOpenRecordingHud,
 		handleUndo,
 		handleRedo,
 		handleProjectNameSubmit,
@@ -141,6 +144,28 @@ export function EditorHeader(props: Props) {
 						<span className="editor-header-button-label">{uiText("ui.home")}</span>
 					</Button>
 				</span>
+				{!project.projectBrowserOpen && (
+					<span className="contents" title={uiText("ui.recordNew")}>
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							onClick={() => void handleOpenRecordingHud()}
+							disabled={
+								exportSession.isExporting ||
+								exportSession.isOptimizingGif ||
+								exportSession.hasPendingExportSave
+							}
+							className="editor-header-icon-button h-9 shrink-0 gap-2 px-3"
+							aria-label={uiText("ui.recordNew")}
+						>
+							<RecordlyMark />
+							<span className="editor-header-button-label">
+								{uiText("ui.recordNew")}
+							</span>
+						</Button>
+					</span>
+				)}
 				<span
 					aria-hidden="true"
 					className="mx-2 shrink-0 text-xl font-light text-muted-foreground/60"

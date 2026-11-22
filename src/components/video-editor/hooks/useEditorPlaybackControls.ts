@@ -1,11 +1,14 @@
 import { type RefObject, useCallback } from "react";
 import type { TimelineEditorHandle } from "../timeline/TimelineEditor";
+import type { ClipRegion, ZoomRegion } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 
 interface UseEditorPlaybackControlsParams {
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
 	timelineRef: RefObject<TimelineEditorHandle | null>;
 	playSourceAudioPreview: () => void;
+	clipRegions: readonly ClipRegion[];
+	zoomRegions: readonly ZoomRegion[];
 	timelinePlayheadTime: number;
 	timelineDuration: number;
 }
@@ -14,6 +17,8 @@ export function useEditorPlaybackControls({
 	videoPlaybackRef,
 	timelineRef,
 	playSourceAudioPreview,
+	clipRegions,
+	zoomRegions,
 	timelinePlayheadTime,
 	timelineDuration,
 }: UseEditorPlaybackControlsParams) {
@@ -53,28 +58,33 @@ export function useEditorPlaybackControls({
 		[handleSeek],
 	);
 
-	const handlePreviewSkipBack = useCallback(() => {
-		const currentMs = timelinePlayheadTime * 1000;
-		const keyframes = timelineRef.current?.keyframes ?? [];
-		const previous = [...keyframes]
-			.reverse()
-			.find((keyframe) => keyframe.time < currentMs - 50);
-		handleSeek(previous ? previous.time / 1000 : Math.max(0, timelinePlayheadTime - 5));
-	}, [handleSeek, timelinePlayheadTime, timelineRef]);
-
-	const handlePreviewSkipForward = useCallback(() => {
-		const currentMs = timelinePlayheadTime * 1000;
-		const keyframes = timelineRef.current?.keyframes ?? [];
-		const next = keyframes.find((keyframe) => keyframe.time > currentMs + 50);
-		handleSeek(next ? next.time / 1000 : Math.min(timelineDuration, timelinePlayheadTime + 5));
-	}, [handleSeek, timelineDuration, timelinePlayheadTime, timelineRef]);
+	const handlePreviewSkip = useCallback(
+		(direction: "backward" | "forward") => {
+			const forward = direction === "forward";
+			const currentMs = timelinePlayheadTime * 1000;
+			const durationMs = timelineDuration * 1000;
+			const points = [
+				...clipRegions.map((clip) => clip.startMs),
+				...zoomRegions.map((zoom) => zoom.startMs),
+				...(timelineRef.current?.keyframes ?? []).map((keyframe) => keyframe.time),
+			];
+			let targetMs = forward ? durationMs : 0;
+			for (const point of points) {
+				const nearer = forward
+					? point > currentMs + 1 && point < targetMs
+					: point < currentMs - 1 && point > targetMs;
+				if (nearer) targetMs = point;
+			}
+			handleSeek(targetMs / 1000);
+		},
+		[clipRegions, handleSeek, timelineDuration, timelinePlayheadTime, timelineRef, zoomRegions],
+	);
 
 	return {
 		startPlayback,
 		togglePlayPause,
 		handleSeek,
 		handleTimelineSeek,
-		handlePreviewSkipBack,
-		handlePreviewSkipForward,
+		handlePreviewSkip,
 	};
 }

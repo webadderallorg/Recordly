@@ -1,3 +1,7 @@
+import type { CursorVisualType } from "../../src/shared/cursorVisualTypes";
+
+export type { CursorVisualType };
+
 /** A rectangle in global display points (top-left origin). */
 export type CaptureArea = {
 	x: number;
@@ -92,6 +96,7 @@ export type RecordingSessionManifest = {
 	videoFileName: string;
 	webcamFileName?: string | null;
 	timeOffsetMs?: number;
+	captureSourceKind?: RecordingSessionData["captureSourceKind"];
 };
 
 export type ProjectLibraryEntry = {
@@ -111,17 +116,6 @@ export type SystemCursorAsset = {
 	width: number;
 	height: number;
 };
-
-export type CursorVisualType =
-	| "arrow"
-	| "text"
-	| "pointer"
-	| "crosshair"
-	| "open-hand"
-	| "closed-hand"
-	| "resize-ew"
-	| "resize-ns"
-	| "not-allowed";
 
 export type CursorInteractionType =
 	| "move"

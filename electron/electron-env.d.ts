@@ -147,6 +147,7 @@ interface RendererNativeStaticLayoutMetrics extends RendererFfmpegAudioMuxMetric
 interface RendererNativeStaticLayoutProgress {
 	sessionId?: string;
 	backend?: RendererNativeStaticLayoutChunkMetric["backend"];
+	nvidiaCudaFailed?: boolean;
 	stage?: "preparing" | "finalizing";
 	elapsedMs?: number;
 	averageFps?: number;
@@ -263,11 +264,13 @@ interface Window {
 				bottom: number;
 				shape?: "ellipse";
 			}> | null,
+			recordingShape?: import("./hudOverlayBounds").HudOverlayRegion[],
 		) => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;
 			supported: boolean;
+			dragX11Window?: boolean;
 		}>;
 		setHudOverlayCaptureProtection: (
 			enabled: boolean,
@@ -280,6 +283,7 @@ interface Window {
 		finishRecordingEditor: (error?: string) => Promise<void>;
 		switchToEditor: () => Promise<void>;
 		openSourceSelector: () => Promise<void>;
+		isWaylandScreenCastMissing: () => Promise<boolean>;
 		selectSource: (source: ProcessedDesktopSource) => Promise<ProcessedDesktopSource>;
 		showSourceHighlight: (source: ProcessedDesktopSource) => Promise<{ success: boolean }>;
 		/** Opens the capture picker on every display and resolves when it closes. */
@@ -374,6 +378,7 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		beginWindowsRecordingCursorCapture?: () => Promise<void>;
 		startFfmpegRecording: (
 			source: ProcessedDesktopSource,
 		) => Promise<{ success: boolean; path?: string; message?: string; error?: string }>;
@@ -1390,16 +1395,7 @@ interface CursorTelemetryPoint {
 		| "right-click"
 		| "middle-click"
 		| "mouseup";
-	cursorType?:
-		| "arrow"
-		| "text"
-		| "pointer"
-		| "crosshair"
-		| "open-hand"
-		| "closed-hand"
-		| "resize-ew"
-		| "resize-ns"
-		| "not-allowed";
+	cursorType?: import("../src/shared/cursorVisualTypes").CursorVisualType;
 }
 
 interface SystemCursorAsset {

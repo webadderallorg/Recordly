@@ -31,7 +31,7 @@ int main() {
     assert(planFramePadding(frame, 2 * frame - 1, frame).durationHns == 0);
     assert(planFramePadding(frame, 2 * frame, frame).durationHns == frame);
 
-    // A static hour followed by Stop requires one sample, not 216,000.
+    // A static hour between real frames requires one padding sample.
     const int64_t stop = 3600LL * 10000000 + 12345;
     auto padding = planFramePadding(frame, stop);
     assert(padding.timestampHns == frame);
@@ -39,6 +39,15 @@ int main() {
     const int64_t end = padding.timestampHns + padding.durationHns;
     assert(end == stop);
     assert(planFramePadding(end, stop).durationHns == 0);
+
+    // The last encoded frame must start near Stop even when the screen is static.
+    const auto tail = planFinalFramePadding(frame, stop, frame);
+    assert(tail.timestampHns == stop - frame);
+    assert(tail.durationHns == frame);
+    const auto partialTail = planFinalFramePadding(stop - 1, stop, frame);
+    assert(partialTail.timestampHns == stop - 1);
+    assert(partialTail.durationHns == 1);
+    assert(planFinalFramePadding(stop, stop, frame).durationHns == 0);
 
     // Repeated extensions must start after the full duration already written,
     // rather than one nominal frame after that sample's starting timestamp.

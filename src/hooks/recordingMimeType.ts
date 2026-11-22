@@ -18,24 +18,21 @@ type MimeTypeSelectorOptions = {
 	canPlayType?: (type: string) => string;
 };
 
-function selectMimeTypeFromPreferences(
-	preferences: readonly string[],
-	options: MimeTypeSelectorOptions = {},
-): string | undefined {
+export function getRecordingMimeTypes(options: MimeTypeSelectorOptions = {}): string[] {
 	const isTypeSupported =
 		options.isTypeSupported ?? ((type: string) => MediaRecorder.isTypeSupported(type));
 	const canPlayType =
 		options.canPlayType ??
 		((type: string) => document.createElement("video").canPlayType(type));
 
-	const supportedTypes = preferences.filter((type) => isTypeSupported(type));
-	const playableType = supportedTypes.find((type) => canPlayType(type) !== "");
-
-	return playableType ?? supportedTypes[0];
-}
-
-export function selectRecordingMimeType(options: MimeTypeSelectorOptions = {}): string | undefined {
-	return selectMimeTypeFromPreferences(RECORDING_MIME_TYPE_PREFERENCES, options);
+	const playableTypes: string[] = [];
+	const recorderOnlyTypes: string[] = [];
+	for (const type of RECORDING_MIME_TYPE_PREFERENCES) {
+		if (isTypeSupported(type)) {
+			(canPlayType(type) ? playableTypes : recorderOnlyTypes).push(type);
+		}
+	}
+	return [...playableTypes, ...recorderOnlyTypes];
 }
 
 export function selectWebcamRecordingMimeType(

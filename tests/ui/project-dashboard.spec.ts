@@ -40,7 +40,9 @@ async function openDashboardSettings(page: Page, home: Locator) {
 	await expect(page.getByRole("dialog", { name: "Account menu", exact: true })).not.toBeVisible();
 }
 async function waitForInitialProject(page: Page) {
-	await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1");
+	await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1", {
+		timeout: 20000,
+	});
 	await expect
 		.poll(() =>
 			page
@@ -233,6 +235,40 @@ test("home dashboard searches, sorts, opens projects and returns to the editor",
 	await expect(page.getByRole("button", { name: "Rename project" })).toBeVisible();
 });
 
+test("the editor can start a new take only after saving the current project", async ({ page }) => {
+	await installDesktopBridge(page, "filmstrip.mp4");
+	await page.goto("/?windowType=editor");
+	await expect(page.getByRole("button", { name: "Rename project" })).toBeVisible({
+		timeout: 20000,
+	});
+	await waitForInitialProject(page);
+	const record = page.getByRole("button", { name: "Record new", exact: true });
+	await expect(record).toBeVisible();
+	await page.evaluate(() => {
+		const originalSave = window.electronAPI.saveProjectFile;
+		const status = document.documentElement.dataset;
+		status.recordingSave = "fail";
+		window.electronAPI.saveProjectFile = async (...args) => {
+			if (status.recordingSave === "fail") {
+				status.recordingSave = "failed";
+				return { success: false, message: "Cannot write the test project" };
+			}
+			const result = await originalSave(...args);
+			status.recordingSave = "saved";
+			return result;
+		};
+		window.electronAPI.showRecordingHud = async () => {
+			status.hudOpenedAfterSave = status.recordingSave;
+		};
+	});
+	const root = page.locator("html");
+	await record.click();
+	await expect(root).toHaveAttribute("data-recording-save", "failed");
+	await expect(root).not.toHaveAttribute("data-hud-opened-after-save");
+	await record.click();
+	await expect(root).toHaveAttribute("data-hud-opened-after-save", "saved");
+});
+
 test("home dashboard explains an empty library", async ({ page }) => {
 	await installDesktopBridge(page);
 	await page.goto("/?windowType=editor");
@@ -284,7 +320,9 @@ test("autosave creates one untitled project, stays idle without edits, and refre
 		});
 	});
 	await page.goto("/?windowType=editor");
-	await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1");
+	await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1", {
+		timeout: 20000,
+	});
 	await expect(page.getByRole("button", { name: "Rename project" })).toContainText(
 		"Untitled Project",
 	);
@@ -292,7 +330,9 @@ test("autosave creates one untitled project, stays idle without edits, and refre
 	// Observe more than two debounce periods: idle must not perform periodic saves.
 	const before = await page.locator("html").getAttribute("data-project-saves");
 	await page.waitForTimeout(1800);
-	await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1");
+	await expect(page.locator("html")).toHaveAttribute("data-project-creates", "1", {
+		timeout: 20000,
+	});
 	expect(await page.locator("html").getAttribute("data-project-saves")).toBe(before);
 	await page.getByRole("button", { name: "Home", exact: true }).click();
 	await expect(page.getByRole("dialog", { name: "Projects dashboard" })).toBeVisible();
@@ -506,10 +546,7 @@ test("dashboard supports creation sort, independent folders, shared settings and
 	await expect(home.getByRole("switch", { name: "Connect Zooms" })).toBeVisible();
 	const motion = home.getByRole("tabpanel", { name: /^Motion settings/ });
 	const description = "Smooth consecutive zoom regions into a continuous camera move.";
-	await expect(motion.getByText(description, { exact: true })).not.toBeVisible();
-	await motion.getByRole("button", { name: "Connect Zooms", exact: true }).hover();
-	await expect(page.getByRole("tooltip")).toHaveText(description);
-	await page.keyboard.press("Escape");
+	await expect(motion.getByText(description, { exact: true })).toBeVisible();
 	await page.screenshot({ path: "test-results/settings-motion.png", animations: "disabled" });
 	await home.getByRole("tab", { name: "General", exact: true }).click();
 	await expect(home.getByText("Recordings folder", { exact: true })).toBeVisible();

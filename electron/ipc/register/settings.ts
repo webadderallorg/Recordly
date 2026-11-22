@@ -8,11 +8,11 @@ import {
 import { createCountdownController } from "../../countdownController";
 import { hideCursor } from "../../cursorHider";
 import { applyWindowControl } from "../../windowControls";
-import { COUNTDOWN_SETTINGS_FILE, RECORDINGS_SETTINGS_FILE, SHORTCUTS_FILE } from "../constants";
+import { COUNTDOWN_SETTINGS_FILE, SHORTCUTS_FILE } from "../constants";
 import { recordingFocus } from "../recording/focus";
 import {
-	createRecordingPreferencesStore,
 	type RecordingPreferencesPatch,
+	recordingPreferencesStore,
 } from "../settings/recordingPreferencesStore";
 import {
 	countdownInProgress,
@@ -24,7 +24,6 @@ import { parseJsonWithByteOrderMark } from "../utils";
 
 const BROWSER_MICROPHONE_PROFILE_ENV = "RECORDLY_BROWSER_MIC_PROFILE";
 const DEFAULT_BROWSER_MICROPHONE_PROFILE = "no-agc";
-const recordingPreferencesStore = createRecordingPreferencesStore(RECORDINGS_SETTINGS_FILE);
 const BROWSER_MICROPHONE_PROFILES = new Set([
 	"processed",
 	"no-agc",

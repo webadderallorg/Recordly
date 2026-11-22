@@ -1,5 +1,5 @@
 import { BlurFilter, Container, Graphics, Sprite } from "pixi.js";
-import { MotionBlurFilter } from "pixi-filters/motion-blur";
+import { MotionBlurFilter } from "@/lib/exporter/motionBlurFilter";
 import type { CursorStyle } from "../types";
 import {
 	getAvailableCursorKeys,

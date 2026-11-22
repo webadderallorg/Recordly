@@ -1,3 +1,5 @@
+import type { CursorVisualType } from "@/shared/cursorVisualTypes";
+
 export type ZoomDepth = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface ZoomFocus {
@@ -32,16 +34,7 @@ export interface CursorTelemetryPoint {
 		| "mouseup";
 	/** Button whose down/up transition this sample records. */
 	mouseButton?: 1 | 2 | 3;
-	cursorType?:
-		| "arrow"
-		| "text"
-		| "pointer"
-		| "crosshair"
-		| "open-hand"
-		| "closed-hand"
-		| "resize-ew"
-		| "resize-ns"
-		| "not-allowed";
+	cursorType?: CursorVisualType;
 }
 
 export interface CursorVisualSettings {

@@ -33,6 +33,7 @@
 	"windowsStartFailed": "Không bắt đầu được phiên ghi màn hình gốc của Windows. Đang chuyển sang ghi qua trình duyệt.",
 	"microphoneDenied": "Chưa có quyền dùng micrô. Bản ghi sẽ tiếp tục mà không có tiếng micrô.",
 	"systemAudioUnavailable": "Không có âm thanh hệ thống cho nguồn này. Quá trình ghi sẽ tiếp tục mà không có âm thanh hệ thống.",
+	"waylandScreenCastMissing": "Để ghi màn hình trên Wayland, cần có cổng chia sẻ màn hình ScreenCast. Hãy cài cổng phù hợp với môi trường desktop của bạn hoặc chuyển sang phiên X11 rồi thử lại.",
 	"startRecordingFailed": "Không thể bắt đầu ghi",
 	"saveRecordingFailed": "Không lưu được bản ghi.",
 	"noFrames": "Chưa ghi được khung hình nào. Vui lòng ghi lại.",

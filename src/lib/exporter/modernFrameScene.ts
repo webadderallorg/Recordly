@@ -7,15 +7,15 @@ import {
 	RendererType,
 	Sprite,
 } from "pixi.js";
-import type { MotionBlurFilter } from "pixi-filters/motion-blur";
-import type { ZoomBlurFilter } from "pixi-filters/zoom-blur";
 import { ensureCaptionFontLoaded } from "@/components/video-editor/captionFonts";
 import {
 	DEFAULT_CURSOR_CONFIG,
 	PixiCursorOverlay,
 	preloadCursorAssets,
 } from "@/components/video-editor/videoPlayback/cursorRenderer";
+import type { MotionBlurFilter } from "@/lib/exporter/motionBlurFilter";
 import { createVideoBlurFilters } from "@/lib/exporter/videoBlurFilters";
+import type { ZoomBlurFilter } from "@/lib/exporter/zoomBlurFilter";
 import {
 	destroyPixiApplication,
 	initializePixiApplicationWithTimeout,

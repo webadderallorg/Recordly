@@ -3,6 +3,7 @@
 		"level": "縮放倍率",
 		"selectRegion": "選取要調整的縮放區域",
 		"deleteZoom": "刪除縮放",
+		"clearAllZooms": "刪除所有縮放",
 		"modeAuto": "自動",
 		"modeManual": "手動",
 		"modeManualDescription": "為此縮放設定固定的對焦點",
@@ -293,7 +294,8 @@
 		"ratioWidth": "寬度",
 		"ratioHeight": "高度",
 		"ratioHint": "選擇預設或輸入自訂比例（1:20 到 20:1）。",
-		"freeform": "自由"
+		"freeform": "自由",
+		"pixelFields": "像素"
 	},
 	"background": {
 		"title": "背景",
@@ -512,7 +514,7 @@
 		"recordingDescription": "這些偏好設定適用於新的錄製內容。",
 		"motionScope": "變更會影響目前的專案，並套用至新專案。已儲存的專案會保留各自的設定。",
 		"hideControls": "在錄製影片中隱藏錄製控制項",
-		"hideControlsDescription": "錄製時，控制項仍會顯示在桌面上，但不會出現在影片中。未錄製時，控制項可能出現在其他螢幕擷取內容中。",
+		"hideControlsDescription": "錄製時，控制項仍會顯示在你的桌面上，並從影片中隱藏。透過螢幕共享或遠端桌面應用程式查看時，控制項也可能不會顯示。",
 		"storage": "儲存空間",
 		"storageDescription": "尋找此電腦上的錄製內容與已儲存的專案。",
 		"loadingFolder": "正在載入檔案夾位置…",

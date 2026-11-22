@@ -149,6 +149,24 @@ describe("cursor idle visibility", () => {
 		expect(normalizeCursorIdleHideSettings({ fadeDelayMs: Number.NaN }).fadeDelayMs).toBe(500);
 	});
 
+	it("treats a cursor state change without movement as activity", () => {
+		const samples: CursorTelemetryPoint[] = [
+			{ ...point(0), cursorType: "arrow" },
+			{ ...point(3000), cursorType: "arrow" },
+			{ ...point(3100), cursorType: "pointer" },
+			point(3200),
+			{ ...point(6000), cursorType: "pointer" },
+			point(9000),
+		];
+		expect(opacity(samples, 2000)).toBe(0);
+		expect(opacity(samples, 3100)).toBe(0);
+		expect(opacity(samples, 3175)).toBeCloseTo(0.5);
+		expect(opacity(samples, 3250)).toBe(1);
+		expect(opacity(samples, 3500)).toBe(1);
+		// Unchanged or missing types are not activity.
+		expect(opacity(samples, 6000)).toBe(0);
+	});
+
 	it("rebuilds an appended telemetry index and sanitizes saved settings", () => {
 		const samples = [point(0), point(1000)];
 		expect(opacity(samples, 800)).toBe(1);

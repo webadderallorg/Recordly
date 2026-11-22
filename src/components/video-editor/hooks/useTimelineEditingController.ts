@@ -99,6 +99,8 @@ export function useTimelineEditingController(input: Input) {
 		videoPlaybackRef: input.videoPlaybackRef,
 		timelineRef: input.timelineRef,
 		playSourceAudioPreview: audio.playSourceAudioPreview,
+		clipRegions: timeline.clipRegions,
+		zoomRegions: projection.effectiveZoomRegions,
 		timelinePlayheadTime: projection.timelinePlayheadTime,
 		timelineDuration: projection.timelineDuration,
 	});

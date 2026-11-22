@@ -74,6 +74,7 @@ function LaunchWindowContent() {
 		systemAudioEnabled,
 		setSystemAudioEnabled,
 		webcamEnabled,
+		webcamRecordingError,
 		setWebcamEnabled,
 		webcamDeviceId,
 		setWebcamDeviceId,
@@ -89,22 +90,17 @@ function LaunchWindowContent() {
 
 	const { selectedSource, hasSelectedSource, syncSelectedSource } = useLaunchWindowActions();
 
-	const { hudOverlayMousePassthroughSupported, platform } =
+	const { hudOverlayMousePassthroughSupported, platform, dragX11Window } =
 		useLaunchWindowSystemState(preparePermissions);
 	const webcamPopoverOpen = openId === "webcam";
 	const cameraPermission = useCameraPermission(platform, webcamPopoverOpen, webcamEnabled);
 	const cameraAllowed = cameraPermission === "granted";
-	const showWebcamControls = cameraAllowed && webcamEnabled && !recording;
+	const showWebcamControls =
+		webcamEnabled && !recording && (cameraAllowed || Boolean(webcamRecordingError));
 	const { devices, selectedDeviceId, setSelectedDeviceId } = useMicrophoneDevices(
 		microphoneEnabled || openId === "mic",
 		microphoneDeviceId,
 	);
-	const {
-		devices: videoDevices,
-		selectedDeviceId: selectedVideoDeviceId,
-		setSelectedDeviceId: setSelectedVideoDeviceId,
-	} = useVideoDevices(cameraAllowed && (webcamEnabled || webcamPopoverOpen), webcamDeviceId);
-
 	useEffect(() => {
 		if (!selectedDeviceId) {
 			return;
@@ -113,20 +109,30 @@ function LaunchWindowContent() {
 		setMicrophoneDeviceId(selectedDeviceId === "default" ? undefined : selectedDeviceId);
 	}, [selectedDeviceId, setMicrophoneDeviceId]);
 
+	const webcamPreview = useWebcamPreviewOverlay({
+		webcamEnabled: webcamEnabled && (cameraAllowed || Boolean(webcamRecordingError)),
+		webcamDeviceId,
+		webcamRecordingError,
+		showWebcamControls,
+		webcamPopoverOpen,
+		hudOverlayMousePassthroughSupported,
+		hudBarRef,
+	});
+	const {
+		devices: videoDevices,
+		selectedDeviceId: selectedVideoDeviceId,
+		setSelectedDeviceId: setSelectedVideoDeviceId,
+	} = useVideoDevices(
+		cameraAllowed && (webcamEnabled || webcamPopoverOpen),
+		webcamDeviceId,
+		webcamPopoverOpen && !webcamPreview.editorMode,
+	);
 	useEffect(() => {
 		if (selectedVideoDeviceId && selectedVideoDeviceId !== "default") {
 			setWebcamDeviceId(selectedVideoDeviceId);
 		}
 	}, [selectedVideoDeviceId, setWebcamDeviceId]);
 
-	const webcamPreview = useWebcamPreviewOverlay({
-		webcamEnabled: cameraAllowed && webcamEnabled,
-		webcamDeviceId,
-		showWebcamControls,
-		webcamPopoverOpen,
-		hudOverlayMousePassthroughSupported,
-		hudBarRef,
-	});
 	const {
 		webcamPreviewRoundness,
 		webcamPreviewShape,
@@ -162,18 +168,30 @@ function LaunchWindowContent() {
 		hudBarRef,
 		recordingWebcamPreviewContainerRef,
 		docked: showRecordingWebcamPreview,
+		dragX11Window,
 	});
 
+	const useRecordingShape = dragX11Window && (recording || restarting || finalizing);
 	useEffect(() => {
 		const reportInteractiveBounds = () => {
+			const interactiveBounds = getHudInteractiveBounds(document);
+			const recordingShape = useRecordingShape
+				? interactiveBounds.concat(
+						Array.from(document.querySelectorAll('[role="tooltip"]'), (element) => {
+							const { left, top, right, bottom } = element.getBoundingClientRect();
+							return { left, top, right, bottom };
+						}),
+					)
+				: undefined;
 			window.electronAPI?.hudOverlaySetInteractiveBounds?.(
-				getHudInteractiveBounds(document).map((rect) => ({
+				interactiveBounds.map((rect) => ({
 					left: window.screenX + rect.left,
 					top: window.screenY + rect.top,
 					right: window.screenX + rect.right,
 					bottom: window.screenY + rect.bottom,
 					shape: rect.shape,
 				})),
+				recordingShape,
 			);
 		};
 
@@ -196,7 +214,7 @@ function LaunchWindowContent() {
 			window.removeEventListener("resize", reportInteractiveBounds);
 			window.electronAPI?.hudOverlaySetInteractiveBounds?.(null);
 		};
-	}, [recordingWebcamPreviewContainerRef]);
+	}, [useRecordingShape, recordingWebcamPreviewContainerRef]);
 
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } =
 		useLaunchHudInteractionState({
@@ -404,6 +422,7 @@ function LaunchWindowContent() {
 				showFloatingWebcamPreview={showFloatingWebcamPreview}
 				onToggleFloatingPreview={() => setShowFloatingWebcamPreview((current) => !current)}
 				showWebcamControls={showWebcamControls && !showRecordingWebcamPreview}
+				previewError={webcamPreview.webcamPreviewError}
 				roundness={webcamPreviewRoundness}
 				shape={webcamPreviewShape}
 				setWebcamPreviewNode={setWebcamPreviewNode}
@@ -472,7 +491,7 @@ function LaunchWindowContent() {
 	);
 
 	const useNativeHudBarDrag =
-		platform === "linux" || hudOverlayMousePassthroughSupported === false;
+		!dragX11Window && (platform === "linux" || hudOverlayMousePassthroughSupported === false);
 	const finishHudTransition = useHudStateTransition(
 		hudBarRef,
 		finalizing && !restarting ? "finalizing" : recording || restarting ? "recording" : "idle",

@@ -16,7 +16,13 @@ import {
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
 const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
-const callbackUrl = import.meta.env.DEV
+// Windows/Linux return through the app's loopback page (see electron/authCallback.ts)
+// so sign-in never depends on the browser's "Open app?" prompt. macOS keeps the
+// recordly:// route. Both are in the Supabase redirect allow list.
+const usesLoopbackReturn =
+	import.meta.env.DEV ||
+	(typeof navigator !== "undefined" && /Windows|Linux/i.test(navigator.userAgent));
+const callbackUrl = usesLoopbackReturn
 	? "http://127.0.0.1:43821/auth/callback"
 	: "recordly://auth/callback";
 

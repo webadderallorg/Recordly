@@ -128,9 +128,9 @@ describe("webcam settings controls", () => {
 	});
 
 	it.each([
-		["rectangle", 16 / 9],
-		["squircle", 1],
-	] as const)("applies %s preset dimensions and roundness while keeping footage and timing", (shape, aspect) => {
+		["rectangle", 35, 16 / 9],
+		["squircle", DEFAULT_WEBCAM_SIZE, 1],
+	] as const)("applies %s preset dimensions and roundness while keeping footage and timing", (shape, height, aspect) => {
 		const onWebcamChange = vi.fn();
 		const tree = webcamView({
 			onWebcamChange,
@@ -152,8 +152,8 @@ describe("webcam settings controls", () => {
 				shape,
 				roundness: DEFAULT_WEBCAM_ROUNDNESS,
 				sourcePath: "/recordings/camera.mp4",
-				width: expect.closeTo(DEFAULT_WEBCAM_SIZE * aspect, 4),
-				height: DEFAULT_WEBCAM_SIZE,
+				width: expect.closeTo(height * aspect, 4),
+				height,
 				timeOffsetMs: 75,
 				visibleRanges: [{ startMs: 100, endMs: 2500 }],
 			}),

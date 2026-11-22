@@ -69,7 +69,6 @@ export function useCloudShareController(props: Props) {
 	const [error, setError] = useState<string>();
 
 	const [shareUrl, setShareUrl] = useState<string>();
-	const [publishedUrl, setPublishedUrl] = useState<string>();
 
 	const [savedShare, setSavedShare] = useState<ProjectShareLink>();
 	const sessionLink = useRef<ProjectShareLink | undefined>(undefined);
@@ -164,7 +163,6 @@ export function useCloudShareController(props: Props) {
 		sessionLink.current = undefined;
 		setError(undefined);
 		setShareUrl(undefined);
-		setPublishedUrl(undefined);
 		setSavedShare(undefined);
 		setCopied(false);
 	}, [projectPath, projectSourcePath, openedSavedProject, accountId, phase, onCancelPrepare]);
@@ -287,7 +285,6 @@ export function useCloudShareController(props: Props) {
 		cancelRequestedRef.current = false;
 		setError(undefined);
 		setShareUrl(undefined);
-		setPublishedUrl(undefined);
 		try {
 			if (!DEFAULT_CLOUD_ENDPOINT)
 				throw new Error(
@@ -353,7 +350,6 @@ export function useCloudShareController(props: Props) {
 			}
 			setProgress(100);
 			setShareUrl(result.shareUrl);
-			setPublishedUrl(result.shareUrl);
 			completed = true;
 			const link = {
 				url: result.shareUrl,
@@ -437,7 +433,6 @@ export function useCloudShareController(props: Props) {
 		checkingCapacity,
 		error,
 		shareUrl,
-		publishedUrl,
 		needsRegenerate,
 		copied,
 		shareLinkInput,

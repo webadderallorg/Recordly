@@ -3,6 +3,7 @@
 		"level": "Nível de zoom",
 		"selectRegion": "Selecione uma região de zoom para ajustar",
 		"deleteZoom": "Excluir zoom",
+		"clearAllZooms": "Excluir todos os zooms",
 		"modeAuto": "Auto",
 		"modeManual": "Manual",
 		"modeManualDescription": "Defina um ponto de foco fixo para este zoom",
@@ -293,7 +294,8 @@
 		"ratioWidth": "Largura",
 		"ratioHeight": "Altura",
 		"ratioHint": "Escolha uma predefinição ou insira sua própria proporção (1:20 a 20:1).",
-		"freeform": "Livre"
+		"freeform": "Livre",
+		"pixelFields": "Pixels"
 	},
 	"background": {
 		"title": "Fundo",
@@ -512,7 +514,7 @@
 		"recordingDescription": "Estas preferências se aplicam a novas gravações.",
 		"motionScope": "As alterações afetam este projeto e são lembradas para novos projetos. Os projetos salvos mantêm suas próprias configurações.",
 		"hideControls": "Ocultar os controles de gravação no vídeo capturado",
-		"hideControlsDescription": "Os controles continuam visíveis na área de trabalho, mas são excluídos do vídeo durante a gravação. Quando não há gravação, eles podem aparecer em outras capturas de tela.",
+		"hideControlsDescription": "Durante a gravação, os controles continuam visíveis na área de trabalho e ficam ocultos no vídeo. Eles também podem sumir em aplicativos de compartilhamento de tela e de acesso remoto.",
 		"storage": "Armazenamento",
 		"storageDescription": "Encontre suas gravações e projetos salvos neste computador.",
 		"loadingFolder": "Carregando o local da pasta…",

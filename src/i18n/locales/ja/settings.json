@@ -21,6 +21,7 @@
 		"level": "ズーム倍率",
 		"selectRegion": "調整するズーム区間を選択してください",
 		"deleteZoom": "ズームを削除",
+		"clearAllZooms": "すべてのズームを削除",
 		"modeAuto": "自動",
 		"modeManual": "手動",
 		"modeManualDescription": "このズームの中心位置を固定します",
@@ -311,7 +312,8 @@
 		"ratioWidth": "幅",
 		"ratioHeight": "高さ",
 		"ratioHint": "プリセットを選ぶか、比率を入力してください（1:20〜20:1）。",
-		"freeform": "自由"
+		"freeform": "自由",
+		"pixelFields": "ピクセル"
 	},
 	"background": {
 		"title": "背景",
@@ -511,7 +513,7 @@
 		"recordingDescription": "この設定は新しい録画に適用されます。",
 		"motionScope": "変更はこのプロジェクトに適用され、新しいプロジェクトにも引き継がれます。保存済みのプロジェクトはそれぞれの設定を保持します。",
 		"hideControls": "録画した動画に録画コントロールを含めない",
-		"hideControlsDescription": "コントロールはデスクトップに表示されたまま、録画中の動画には映りません。待機中は他の画面キャプチャに映る場合があります。",
+		"hideControlsDescription": "録画中もコントロールはデスクトップに表示され、動画には映りません。画面共有やリモートデスクトップのアプリでも非表示になる場合があります。",
 		"storage": "ストレージ",
 		"storageDescription": "このコンピューターの録画と保存済みプロジェクトを確認します。",
 		"loadingFolder": "フォルダーの場所を読み込み中…",

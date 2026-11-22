@@ -11,6 +11,7 @@ vi.mock("./startNativeRecorder", () => ({ startNativeRecorder: vi.fn() }));
 vi.mock("@/components/ui/toast", () => ({ toast: { error: vi.fn() } }));
 
 const source = { id: "screen:1:0", name: "Screen" } as ProcessedDesktopSource;
+const portalSource = { id: "screen:linux-portal", name: "Screen" } as ProcessedDesktopSource;
 
 function createContext() {
 	return {
@@ -46,6 +47,7 @@ describe("recording startup coordination", () => {
 		finishRecordingStartup: ReturnType<typeof vi.fn>;
 		setRecordingState: ReturnType<typeof vi.fn>;
 		startCountdown: ReturnType<typeof vi.fn>;
+		isWaylandScreenCastMissing: ReturnType<typeof vi.fn>;
 	};
 	const start = (context: ReturnType<typeof createContext>) =>
 		useRecorderStartup(context as unknown as RecorderContext).startRecording();
@@ -64,6 +66,7 @@ describe("recording startup coordination", () => {
 			finishRecordingStartup: vi.fn().mockResolvedValue(undefined),
 			setRecordingState: vi.fn().mockResolvedValue(undefined),
 			startCountdown: vi.fn().mockResolvedValue({ success: true }),
+			isWaylandScreenCastMissing: vi.fn().mockResolvedValue(false),
 		};
 		vi.stubGlobal("window", { electronAPI: api });
 		vi.stubGlobal("alert", vi.fn());
@@ -162,17 +165,86 @@ describe("recording startup coordination", () => {
 
 	it("keeps a dismissed Wayland portal silent while completing cleanup", async () => {
 		const context = createContext();
-		vi.mocked(acquireRecorderBrowserStream).mockImplementation(async (_context, options) => {
-			options.onPortalCapture(true);
-			throw new DOMException("Cancelled", "NotAllowedError");
+		context.prepareRecordingStart.mockResolvedValue({
+			selectedSource: portalSource,
+			useNativeMacScreenCapture: false,
+			useNativeWindowsCapture: false,
 		});
+		vi.mocked(acquireRecorderBrowserStream).mockRejectedValue(
+			new DOMException("Cancelled", "NotAllowedError"),
+		);
 		await start(context);
 		expect(alert).not.toHaveBeenCalled();
+		expect(api.startCountdown).not.toHaveBeenCalled();
 		expect(startBrowserRecorder).not.toHaveBeenCalled();
 		expect(context.cleanupCapturedMedia).toHaveBeenCalledOnce();
 		expect(context.stopWebcamRecorder).toHaveBeenCalledOnce();
 		expect(api.setRecordingState).toHaveBeenCalledWith(false);
 		expect(api.finishRecordingStartup).toHaveBeenCalledOnce();
+		expect(api.releaseRecordingStartup).toHaveBeenCalledWith("owner");
+	});
+
+	it("opens the Wayland portal before handing the countdown to the browser recorder", async () => {
+		const context = createContext();
+		context.prepareRecordingStart.mockResolvedValue({
+			selectedSource: portalSource,
+			useNativeMacScreenCapture: false,
+			useNativeWindowsCapture: false,
+		});
+		vi.mocked(startBrowserRecorder).mockImplementation(async (_context, options) => {
+			expect(api.startCountdown).not.toHaveBeenCalled();
+			expect(acquireRecorderBrowserStream).toHaveBeenCalledOnce();
+			await options.runPortalCountdown?.();
+		});
+		await start(context);
+		expect(startBrowserRecorder).toHaveBeenCalledWith(
+			context,
+			expect.objectContaining({ runPortalCountdown: expect.any(Function) }),
+		);
+		expect(api.startCountdown).toHaveBeenCalledExactlyOnceWith(3);
+		expect(context.setCountdownActive.mock.calls).toEqual([[true], [false]]);
+		expect(api.isWaylandScreenCastMissing).not.toHaveBeenCalled();
+	});
+
+	it("explains a missing ScreenCast portal after the Wayland capture aborts", async () => {
+		const context = createContext();
+		context.prepareRecordingStart.mockResolvedValue({
+			selectedSource: portalSource,
+			useNativeMacScreenCapture: false,
+			useNativeWindowsCapture: false,
+		});
+		vi.mocked(acquireRecorderBrowserStream).mockRejectedValue(
+			new DOMException("Invalid capture constraints", "AbortError"),
+		);
+		api.isWaylandScreenCastMissing.mockResolvedValue(true);
+		await start(context);
+		expect(alert).toHaveBeenCalledWith(expect.stringMatching(/ScreenCast portal.*X11 session/));
+		expect(api.startCountdown).not.toHaveBeenCalled();
+		expect(api.releaseRecordingStartup).toHaveBeenCalledWith("owner");
+	});
+
+	it("keeps a canceled start silent while the ScreenCast probe completes", async () => {
+		const context = createContext();
+		context.prepareRecordingStart.mockResolvedValue({
+			selectedSource: portalSource,
+			useNativeMacScreenCapture: false,
+			useNativeWindowsCapture: false,
+		});
+		vi.mocked(acquireRecorderBrowserStream).mockRejectedValue(
+			new DOMException("Invalid capture constraints", "AbortError"),
+		);
+		let finishProbe!: (missing: boolean) => void;
+		api.isWaylandScreenCastMissing.mockReturnValue(
+			new Promise<boolean>((resolve) => {
+				finishProbe = resolve;
+			}),
+		);
+		const pending = start(context);
+		await vi.waitFor(() => expect(api.isWaylandScreenCastMissing).toHaveBeenCalledOnce());
+		context.recordingStartGeneration.current += 1;
+		finishProbe(true);
+		await pending;
+		expect(alert).not.toHaveBeenCalled();
 		expect(api.releaseRecordingStartup).toHaveBeenCalledWith("owner");
 	});
 	it.each([

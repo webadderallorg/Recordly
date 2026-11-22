@@ -21,6 +21,7 @@
 		"level": "Yakınlaştırma Seviyesi",
 		"selectRegion": "Ayarlamak için bir yakınlaştırma bölgesi seçin",
 		"deleteZoom": "Yakınlaştırmayı Sil",
+		"clearAllZooms": "Tüm yakınlaştırmaları sil",
 		"modeAuto": "Otomatik",
 		"modeManual": "Manuel",
 		"modeManualDescription": "Bu yakınlaştırma için sabit bir odak noktası belirleyin",
@@ -311,7 +312,8 @@
 		"ratioWidth": "Genişlik",
 		"ratioHeight": "Yükseklik",
 		"ratioHint": "Bir hazır ayar seçin veya kendi oranınızı girin (1:20 ile 20:1 arası).",
-		"freeform": "Serbest"
+		"freeform": "Serbest",
+		"pixelFields": "Piksel"
 	},
 	"background": {
 		"title": "Arka Plan",
@@ -511,7 +513,7 @@
 		"recordingDescription": "Bu tercihler yeni kayıtlara uygulanır.",
 		"motionScope": "Değişiklikler bu projeyi etkiler ve yeni projeler için hatırlanır. Kaydedilen projeler kendi ayarlarını korur.",
 		"hideControls": "Kayıt kontrollerini yakalanan videodan gizle",
-		"hideControlsDescription": "Kontroller masaüstünüzde görünür kalır ancak kayıt sırasında videodan hariç tutulur. Boştayken diğer ekran yakalamalarında görünebilirler.",
+		"hideControlsDescription": "Kayıt sırasında kontroller masaüstünüzde görünmeye devam eder ve videoda gizlenir. Ekran paylaşımı ve uzak masaüstü uygulamalarında da görünmeyebilirler.",
 		"storage": "Depolama",
 		"storageDescription": "Bu bilgisayardaki kayıtlarınızı ve kayıtlı projelerinizi bulun.",
 		"loadingFolder": "Klasör konumu yükleniyor…",

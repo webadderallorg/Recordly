@@ -41,10 +41,31 @@ it("shows the server quota error without exposing internal errors", async () => 
 		},
 	});
 	const error = await submitFeedback(input).catch((error) => error);
-	expect(feedbackErrorMessage(error)).toContain("tomorrow");
+	expect(feedbackErrorMessage(error)).toContain("Try removing your attachments");
 	expect(feedbackErrorMessage(new Error("database private details"))).toBe(
 		"Could not send feedback. Please try again.",
 	);
+});
+it("keeps the report ID when only the text changes before a retry", async () => {
+	const files = [new File([new Uint8Array(11 * 1024 * 1024)], "clip.mp4")];
+	api.invoke.mockImplementation(async (name: string) =>
+		name.includes("upload=prepare")
+			? { data: { success: true }, error: null }
+			: { data: null, error: new Error("offline") },
+	);
+	const prepareId = () =>
+		api.invoke.mock.calls
+			.map(([name]) => name as string)
+			.filter((name) => name.includes("upload=prepare"))
+			.map((name) => new URLSearchParams(name.split("?")[1]).get("id"));
+
+	await expect(submitFeedback({ ...input, files })).rejects.toThrow("offline");
+	await expect(submitFeedback({ ...input, files, message: "Edited" })).rejects.toThrow("offline");
+	await expect(submitFeedback({ ...input, files: [...files] })).rejects.toThrow("offline");
+
+	const [first, edited, reattached] = prepareId();
+	expect(edited).toBe(first);
+	expect(reattached).not.toBe(first);
 });
 it("rejects unconfirmed submissions", async () => {
 	api.invoke.mockResolvedValue({ data: {}, error: null });

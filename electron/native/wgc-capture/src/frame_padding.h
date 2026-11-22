@@ -19,3 +19,13 @@ inline FramePadding planFramePadding(
     if (durationHns < minimumDurationHns) return {lastSampleEndHns, 0};
     return {lastSampleEndHns, durationHns};
 }
+
+inline FramePadding planFinalFramePadding(
+    int64_t lastSampleEndHns, int64_t stopHns, int64_t frameDurationHns
+) {
+    const auto padding = planFramePadding(lastSampleEndHns, stopHns);
+    if (padding.durationHns <= frameDurationHns) return padding;
+    // Media Foundation can write the last sample with a nominal duration.
+    // Its timestamp must be close to Stop to preserve a long static tail.
+    return {stopHns - frameDurationHns, frameDurationHns};
+}

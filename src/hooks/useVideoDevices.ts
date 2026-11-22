@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "@/contexts/I18nContext";
+import { createInputDeviceLister } from "./inputDeviceLabels";
+import { acquireWebcamCapture } from "./webcamCapture";
 
 export interface VideoDevice {
 	deviceId: string;
@@ -7,7 +9,13 @@ export interface VideoDevice {
 	groupId: string;
 }
 
-export function useVideoDevices(enabled: boolean = true, preferredDeviceId?: string) {
+const listCameras = createInputDeviceLister("videoinput");
+
+export function useVideoDevices(
+	enabled: boolean,
+	preferredDeviceId: string | undefined,
+	canRequestLabels: boolean,
+) {
 	const { t } = useI18n();
 	const [devices, setDevices] = useState<VideoDevice[]>([]);
 	const [selectedDeviceId, setSelectedDeviceId] = useState<string>("default");
@@ -24,25 +32,43 @@ export function useVideoDevices(enabled: boolean = true, preferredDeviceId?: str
 
 		const loadDevices = async () => {
 			const loadId = ++activeLoadId;
+			const isCurrent = () => mounted && loadId === activeLoadId;
 
 			try {
-				if (mounted && loadId === activeLoadId) {
+				if (isCurrent()) {
 					setIsLoading(true);
 					setError(null);
 				}
 
-				const allDevices = await navigator.mediaDevices.enumerateDevices();
-				const videoInputs = allDevices
-					.filter((device) => device.kind === "videoinput")
-					.map((device, index) => ({
+				const rawVideoInputs = await listCameras(
+					() => canRequestLabels && isCurrent(),
+					async () => {
+						try {
+							return (await acquireWebcamCapture(preferredDeviceId)).release;
+						} catch (error) {
+							if (
+								!preferredDeviceId ||
+								!(error instanceof DOMException) ||
+								(error.name !== "OverconstrainedError" &&
+									error.name !== "NotFoundError")
+							) {
+								throw error;
+							}
+							// A newer enumeration in this effect can still be waiting for this probe.
+							if (!mounted || !canRequestLabels) return undefined;
+							return (await acquireWebcamCapture()).release;
+						}
+					},
+				);
+
+				if (isCurrent()) {
+					const videoInputs = rawVideoInputs.map((device, index) => ({
 						deviceId: device.deviceId,
 						label:
 							device.label ||
 							t("notifications.camera", "Camera {{index}}", { index: index + 1 }),
 						groupId: device.groupId,
 					}));
-
-				if (mounted && loadId === activeLoadId) {
 					setDevices(videoInputs);
 					setSelectedDeviceId((currentDeviceId) => {
 						if (
@@ -63,7 +89,7 @@ export function useVideoDevices(enabled: boolean = true, preferredDeviceId?: str
 					});
 				}
 			} catch (error) {
-				if (mounted && loadId === activeLoadId) {
+				if (isCurrent()) {
 					const message =
 						error instanceof Error
 							? error.message
@@ -75,7 +101,7 @@ export function useVideoDevices(enabled: boolean = true, preferredDeviceId?: str
 					console.error("Error loading video devices:", error);
 				}
 			} finally {
-				if (mounted && loadId === activeLoadId) {
+				if (isCurrent()) {
 					setIsLoading(false);
 				}
 			}
@@ -93,7 +119,7 @@ export function useVideoDevices(enabled: boolean = true, preferredDeviceId?: str
 			mounted = false;
 			navigator.mediaDevices.removeEventListener("devicechange", handleDeviceChange);
 		};
-	}, [enabled, preferredDeviceId, t]);
+	}, [enabled, preferredDeviceId, canRequestLabels, t]);
 
 	return {
 		devices,

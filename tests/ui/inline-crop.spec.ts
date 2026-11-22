@@ -15,6 +15,56 @@ async function selection(page: Page) {
 	return box;
 }
 
+test("edits the inline crop in source pixels and keeps those values after Done", async ({
+	page,
+}) => {
+	await openCrop(page);
+	await page.getByRole("button", { name: "Pixels", exact: true }).click({ timeout: 2000 });
+	const left = page.getByRole("spinbutton", { name: "Left (px)", exact: true });
+	const top = page.getByRole("spinbutton", { name: "Top (px)", exact: true });
+	const width = page.getByRole("spinbutton", { name: "Width (px)", exact: true });
+	const height = page.getByRole("spinbutton", { name: "Height (px)", exact: true });
+	await expect(left).toBeEnabled();
+	const source = await page
+		.locator("video")
+		.first()
+		.evaluate((video: HTMLVideoElement) => ({
+			width: video.videoWidth,
+			height: video.videoHeight,
+		}));
+	const cropWidth = Math.floor(source.width / 2);
+	const cropHeight = Math.floor(source.height / 2);
+	await left.fill("31");
+	await left.dispatchEvent("keydown", { key: "Enter", isComposing: true });
+	await expect(left).toBeFocused();
+	for (const [field, value] of [
+		[left, 31],
+		[top, 27],
+		[width, cropWidth],
+		[height, cropHeight],
+	] as const) {
+		await field.fill(String(value));
+		await field.press("Enter");
+		await expect(field).toHaveValue(String(value));
+	}
+	const [x, y, w, h] = await page.getByTestId("crop-selection").evaluate((element) => {
+		const { left, top, width, height } = element.style;
+		return [left, top, width, height].map(Number.parseFloat);
+	});
+	expect(x).toBeCloseTo((31 / source.width) * 100, 5);
+	expect(y).toBeCloseTo((27 / source.height) * 100, 5);
+	expect(w).toBeCloseTo((cropWidth / source.width) * 100, 5);
+	expect(h).toBeCloseTo((cropHeight / source.height) * 100, 5);
+
+	await page.getByRole("button", { name: "Done", exact: true }).click();
+	await page.getByRole("button", { name: "Crop", exact: true }).click();
+	await page.getByRole("button", { name: "Pixels", exact: true }).click();
+	await expect(left).toHaveValue("31");
+	await expect(top).toHaveValue("27");
+	await expect(width).toHaveValue(String(cropWidth));
+	await expect(height).toHaveValue(String(cropHeight));
+});
+
 test("crops directly in the preview, Shift snaps to square, cancel restores and done keeps it", async ({
 	page,
 }) => {

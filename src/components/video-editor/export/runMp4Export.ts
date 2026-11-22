@@ -142,6 +142,7 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 		bitrate,
 	});
 	const sourceAudioTrackSettingsForExport = timeline.defaultSourceAudioTrackSettings;
+	let reportedNvidiaFallback = false;
 
 	const exporterConfig = {
 		videoUrl: videoPath,
@@ -170,6 +171,15 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 			shadowIntensity: effectiveShadowIntensity,
 			onProgress: (progress) => {
 				if (exportWasCancelled()) return;
+				if (progress.nvidiaCudaFailed && !reportedNvidiaFallback) {
+					reportedNvidiaFallback = true;
+					toast.warning(
+						translate(
+							"editor.exportStatus.nvidiaCudaFallback",
+							"NVIDIA CUDA export failed. Recordly is trying another export path.",
+						),
+					);
+				}
 				diagnostics.progress(progress);
 				recordSmokeProgress(progress);
 				setExportProgress(progress);

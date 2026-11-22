@@ -3,6 +3,7 @@
 		"level": "缩放级别",
 		"selectRegion": "选择缩放区域以调整",
 		"deleteZoom": "删除缩放",
+		"clearAllZooms": "删除所有缩放",
 		"modeAuto": "自动",
 		"modeManual": "手动",
 		"modeManualDescription": "为此缩放设置固定焦点",
@@ -293,7 +294,8 @@
 		"ratioWidth": "宽度",
 		"ratioHeight": "高度",
 		"ratioHint": "选择预设或输入自定义比例（1:20 到 20:1）。",
-		"freeform": "自由"
+		"freeform": "自由",
+		"pixelFields": "像素"
 	},
 	"background": {
 		"title": "背景",
@@ -512,7 +514,7 @@
 		"recordingDescription": "这些偏好设置适用于新录制的视频。",
 		"motionScope": "更改会影响当前项目，并应用于新项目。已保存的项目会保留各自的设置。",
 		"hideControls": "在录制视频中隐藏录制控件",
-		"hideControlsDescription": "录制时，控件仍会显示在桌面上，但不会出现在视频中。未录制时，它们可能出现在其他屏幕截图或录屏中。",
+		"hideControlsDescription": "录制时，控件仍会显示在你的桌面上，同时从视频中隐藏。通过屏幕共享或远程桌面应用查看时，控件也可能不显示。",
 		"storage": "存储",
 		"storageDescription": "查找此电脑上的录制视频和已保存的项目。",
 		"loadingFolder": "正在加载文件夹位置…",

@@ -4,7 +4,7 @@ test.use({
 	launchOptions: { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] },
 });
 
-test("Windows and Linux OS icons use a flat plate like macOS", async ({ page }) => {
+test("Windows and Linux OS icons use a solid rounded plate like macOS", async ({ page }) => {
 	await page.goto("/?windowType=onboarding-intro");
 	for (const url of [
 		"/icons/icons/png/512x512.png",
@@ -22,9 +22,14 @@ test("Windows and Linux OS icons use a flat plate like macOS", async ({ page }) 
 			const sample = (y: number) => [
 				...context.getImageData(image.width / 2, Math.floor(image.height * y), 1, 1).data,
 			];
-			return { top: sample(0.08), bottom: sample(0.92) };
+			const corner = [...context.getImageData(0, 0, 1, 1).data];
+			return { top: sample(0.15), bottom: sample(0.85), corner };
 		}, url);
-		expect(plate.top, url).toEqual(plate.bottom);
+		// Solid fill, not a gradient; allow resampling noise at 16px.
+		for (const [i, channel] of plate.top.entries()) {
+			expect(Math.abs(channel - plate.bottom[i]), url).toBeLessThanOrEqual(4);
+		}
+		expect(plate.corner[3], url).toBe(0);
 		expect(plate.top[2], url).toBeGreaterThan(plate.top[0] + 200);
 	}
 });

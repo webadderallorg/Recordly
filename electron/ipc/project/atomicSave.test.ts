@@ -64,6 +64,31 @@ describe("writeProjectFileAtomically", () => {
 		await expectNoTemporaryArtifacts();
 	});
 
+	it.skipIf(process.platform !== "win32").each(["primary", "backup"])(
+		"retries a transient Windows lock on the %s generation",
+		async (generation) => {
+			await writeProjectFileAtomically(projectPath, '{"revision":1}');
+			await writeProjectFileAtomically(projectPath, '{"revision":2}');
+			const backupPath = await getProjectBackupPath(projectPath);
+			const lockedPath = generation === "backup" ? backupPath : projectPath;
+			const rename = fs.rename.bind(fs);
+			let attempts = 0;
+			vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+				if (to === lockedPath && ++attempts === 1) {
+					throw Object.assign(new Error("Windows sharing violation"), { code: "EPERM" });
+				}
+				await rename(from, to);
+			});
+
+			await writeProjectFileAtomically(projectPath, '{"revision":3}');
+
+			expect(attempts).toBe(2);
+			await expect(fs.readFile(projectPath, "utf-8")).resolves.toBe('{"revision":3}');
+			await expect(fs.readFile(backupPath, "utf-8")).resolves.toBe('{"revision":2}');
+			await expectNoTemporaryArtifacts();
+		},
+	);
+
 	it("keeps the active generation unchanged when backup commit fails", async () => {
 		await writeProjectFileAtomically(projectPath, '{"version":1,"name":"old"}');
 		await fs.mkdir(await getProjectBackupPath(projectPath), { recursive: true });
@@ -85,6 +110,30 @@ describe("writeProjectFileAtomically", () => {
 		);
 		await expectNoTemporaryArtifacts();
 	});
+
+	it.skipIf(process.platform !== "win32")(
+		"leaves a persistently locked project intact",
+		async () => {
+			await writeProjectFileAtomically(projectPath, '{"revision":1}');
+			const rename = fs.rename.bind(fs);
+			const locked = Object.assign(new Error("Windows sharing violation"), { code: "EPERM" });
+			let attempts = 0;
+			vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+				if (to === projectPath) {
+					attempts++;
+					throw locked;
+				}
+				await rename(from, to);
+			});
+
+			await expect(writeProjectFileAtomically(projectPath, '{"revision":2}')).rejects.toBe(
+				locked,
+			);
+			expect(attempts).toBe(5);
+			await expect(fs.readFile(projectPath, "utf-8")).resolves.toBe('{"revision":1}');
+			await expectNoTemporaryArtifacts();
+		},
+	);
 
 	it("serializes overlapping writes to the same project", async () => {
 		await writeProjectFileAtomically(projectPath, '{"revision":1}');

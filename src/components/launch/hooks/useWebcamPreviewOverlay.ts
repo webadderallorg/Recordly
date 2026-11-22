@@ -6,6 +6,8 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { getErrorMessage } from "@/hooks/recordingError";
+import { acquireWebcamCapture, type WebcamCapture } from "../../../hooks/webcamCapture";
 import { loadEditorPreferences } from "../../video-editor/editorPreferences";
 import { canShowFloatingWebcamPreview } from "../floatingWebcamPreview";
 import { useWebcamPreviewGeometry } from "./useWebcamPreviewGeometry";
@@ -14,6 +16,7 @@ import { useWebcamPreviewPointer } from "./useWebcamPreviewPointer";
 export function useWebcamPreviewOverlay({
 	webcamEnabled,
 	webcamDeviceId,
+	webcamRecordingError,
 	showWebcamControls,
 	webcamPopoverOpen,
 	hudOverlayMousePassthroughSupported,
@@ -21,6 +24,7 @@ export function useWebcamPreviewOverlay({
 }: {
 	webcamEnabled: boolean;
 	webcamDeviceId?: string;
+	webcamRecordingError?: string | null;
 	showWebcamControls: boolean;
 	webcamPopoverOpen: boolean;
 	hudOverlayMousePassthroughSupported: boolean | null;
@@ -98,6 +102,10 @@ export function useWebcamPreviewOverlay({
 	const webcamPreviewRef = useRef<HTMLVideoElement | null>(null);
 	const recordingWebcamPreviewRef = useRef<HTMLVideoElement | null>(null);
 	const previewStreamRef = useRef<MediaStream | null>(null);
+	const [previewFailure, setPreviewFailure] = useState<{
+		deviceId: string | undefined;
+		message: string;
+	} | null>(null);
 	const showRecordingWebcamPreview =
 		webcamEnabled &&
 		floatingPreviewChoiceLoaded &&
@@ -108,6 +116,7 @@ export function useWebcamPreviewOverlay({
 	const shouldStreamWebcamPreview =
 		!editorMode &&
 		webcamEnabled &&
+		!webcamRecordingError &&
 		(showRecordingWebcamPreview || (showWebcamControls && webcamPopoverOpen));
 	const geometry = useWebcamPreviewGeometry({ hudBarRef, showRecordingWebcamPreview });
 	const pointer = useWebcamPreviewPointer({
@@ -149,6 +158,8 @@ export function useWebcamPreviewOverlay({
 
 	useEffect(() => {
 		let mounted = true;
+		let capture: WebcamCapture | undefined;
+		setPreviewFailure(null);
 
 		const startPreview = async () => {
 			if (!shouldStreamWebcamPreview) {
@@ -156,32 +167,20 @@ export function useWebcamPreviewOverlay({
 			}
 
 			try {
-				const previewStream = await navigator.mediaDevices.getUserMedia({
-					video: webcamDeviceId
-						? {
-								deviceId: { exact: webcamDeviceId },
-								width: { ideal: 320 },
-								height: { ideal: 320 },
-								frameRate: { ideal: 60, max: 60 },
-							}
-						: {
-								width: { ideal: 320 },
-								height: { ideal: 320 },
-								frameRate: { ideal: 60, max: 60 },
-							},
-					audio: false,
-				});
+				capture = await acquireWebcamCapture(webcamDeviceId);
 
 				if (!mounted) {
-					previewStream.getTracks().forEach((track) => track.stop());
+					capture.release();
 					return;
 				}
 
-				previewStreamRef.current = previewStream;
+				previewStreamRef.current = capture.stream;
 				attachPreviewStreamToNode(webcamPreviewRef.current);
 				attachPreviewStreamToNode(recordingWebcamPreviewRef.current);
 			} catch (error) {
+				if (!mounted) return;
 				console.warn("Failed to start live webcam preview:", error);
+				setPreviewFailure({ deviceId: webcamDeviceId, message: getErrorMessage(error) });
 			}
 		};
 
@@ -199,7 +198,7 @@ export function useWebcamPreviewOverlay({
 					videoElement.pause();
 					videoElement.srcObject = null;
 				});
-			previewStream?.getTracks().forEach((track) => track.stop());
+			capture?.release();
 			if (previewStreamRef.current === previewStream) {
 				previewStreamRef.current = null;
 			}
@@ -207,6 +206,12 @@ export function useWebcamPreviewOverlay({
 	}, [attachPreviewStreamToNode, shouldStreamWebcamPreview, webcamDeviceId]);
 
 	return {
+		editorMode,
+		webcamPreviewError:
+			webcamRecordingError ??
+			(shouldStreamWebcamPreview && previewFailure?.deviceId === webcamDeviceId
+				? (previewFailure?.message ?? null)
+				: null),
 		webcamPreviewRoundness,
 		webcamPreviewShape,
 		showFloatingWebcamPreview,

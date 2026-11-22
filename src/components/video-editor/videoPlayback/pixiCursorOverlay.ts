@@ -100,12 +100,8 @@ export class PixiCursorOverlay {
 
 	setMotionBlur(motionBlur: number) {
 		this.config.motionBlur = Math.max(0, motionBlur);
-		this.visuals.container.filters =
-			this.config.motionBlur > 0 ? [this.visuals.cursorMotionBlurFilter] : null;
 		if (this.config.motionBlur <= 0) {
-			this.visuals.cursorMotionBlurFilter.velocity = { x: 0, y: 0 };
-			this.visuals.cursorMotionBlurFilter.kernelSize = 5;
-			this.visuals.cursorMotionBlurFilter.offset = 0;
+			this.syncCursorMotionBlurFilter({ x: 0, y: 0 }, 5, 0);
 		}
 	}
 
@@ -191,7 +187,7 @@ export class PixiCursorOverlay {
 			this.lastRenderedTimeMs = null;
 			this.swayRotation = 0;
 			resetSpringState(this.swaySpring, 0);
-			this.visuals.cursorMotionBlurFilter.velocity = { x: 0, y: 0 };
+			this.syncCursorMotionBlurFilter({ x: 0, y: 0 }, 5, 0);
 			this.visuals.customCursorShadowSprite.visible = false;
 			this.visuals.customCursorSprite.visible = false;
 			for (const shadowSprite of Object.values(this.visuals.cursorShadowSprites)) {
@@ -268,7 +264,7 @@ export class PixiCursorOverlay {
 			this.lastRenderedTimeMs = null;
 			this.swayRotation = 0;
 			resetSpringState(this.swaySpring, 0);
-			this.visuals.cursorMotionBlurFilter.velocity = { x: 0, y: 0 };
+			this.syncCursorMotionBlurFilter({ x: 0, y: 0 }, 5, 0);
 			return;
 		}
 
@@ -425,14 +421,29 @@ export class PixiCursorOverlay {
 				this.config.motionBlur,
 				CURSOR_DIRECTIONAL_BLUR_STRENGTH,
 			);
-			this.visuals.cursorMotionBlurFilter.velocity = blur.velocity;
-			this.visuals.cursorMotionBlurFilter.kernelSize = blur.kernelSize;
-			this.visuals.cursorMotionBlurFilter.offset = blur.offset;
+			this.syncCursorMotionBlurFilter(blur.velocity, blur.kernelSize, blur.offset);
 		} else {
 			this.applyCursorMotionBlur(px, py, timeMs, shouldFreezeCursorMotion);
 		}
 		this.lastRenderedPoint = shouldShowCursorSprite ? { px, py } : null;
 		this.lastRenderedTimeMs = timeMs;
+	}
+
+	private syncCursorMotionBlurFilter(
+		velocity: { x: number; y: number },
+		kernelSize = 5,
+		offset = 0,
+	) {
+		this.visuals.cursorMotionBlurFilter.velocity = velocity;
+		this.visuals.cursorMotionBlurFilter.kernelSize = kernelSize;
+		this.visuals.cursorMotionBlurFilter.offset = offset;
+		const hasActiveBlur =
+			this.config.motionBlur > 0 &&
+			this.visuals.cursorMotionBlurFilter.enabled !== false &&
+			(velocity.x !== 0 || velocity.y !== 0);
+		this.visuals.container.filters = hasActiveBlur
+			? [this.visuals.cursorMotionBlurFilter]
+			: null;
 	}
 
 	private updateCursorSway(px: number, py: number, timeMs: number, freeze: boolean) {
@@ -471,9 +482,7 @@ export class PixiCursorOverlay {
 			!this.lastRenderedPoint ||
 			this.lastRenderedTimeMs === null
 		) {
-			this.visuals.cursorMotionBlurFilter.velocity = { x: 0, y: 0 };
-			this.visuals.cursorMotionBlurFilter.kernelSize = 5;
-			this.visuals.cursorMotionBlurFilter.offset = 0;
+			this.syncCursorMotionBlurFilter({ x: 0, y: 0 }, 5, 0);
 			return;
 		}
 
@@ -487,9 +496,7 @@ export class PixiCursorOverlay {
 			CURSOR_DIRECTIONAL_BLUR_STRENGTH,
 		);
 
-		this.visuals.cursorMotionBlurFilter.velocity = blur.velocity;
-		this.visuals.cursorMotionBlurFilter.kernelSize = blur.kernelSize;
-		this.visuals.cursorMotionBlurFilter.offset = blur.offset;
+		this.syncCursorMotionBlurFilter(blur.velocity, blur.kernelSize, blur.offset);
 	}
 
 	reset(): void {
@@ -513,9 +520,7 @@ export class PixiCursorOverlay {
 		this.lastRenderedTimeMs = null;
 		this.swayRotation = 0;
 		resetSpringState(this.swaySpring, 0);
-		this.visuals.cursorMotionBlurFilter.velocity = { x: 0, y: 0 };
-		this.visuals.cursorMotionBlurFilter.kernelSize = 5;
-		this.visuals.cursorMotionBlurFilter.offset = 0;
+		this.syncCursorMotionBlurFilter({ x: 0, y: 0 }, 5, 0);
 	}
 
 	destroy(): void {

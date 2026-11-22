@@ -24,6 +24,7 @@ jobs:
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
       VITE_CLOUD_SHARE_ENDPOINT: ${{ vars.VITE_CLOUD_SHARE_ENDPOINT }}
+      VITE_OAUTH_FLOW_ID_REDIRECTS: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

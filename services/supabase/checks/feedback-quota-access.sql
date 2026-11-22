@@ -74,9 +74,11 @@ rollback to savepoint empty_usage;
 do $$
 declare account uuid := current_setting('recordly.quota_test_owner')::uuid;
 begin
-  for i in 1..5 loop
-    if not public.reserve_feedback_quota(account,1,10485760) then raise exception 'Valid byte quota rejected'; end if;
-  end loop;
+  -- Other accounts' usage must not make this per-account probe fail; the savepoint rolls it back.
+  update public.feedback_global_usage set bytes = 0, reports = 0
+    where day >= (now() at time zone 'UTC')::date - 30;
+  if public.prepare_feedback_upload(account,gen_random_uuid(),'[{"name":"large.dat","size":52428800,"type":""}]')
+     <> 'ready' then raise exception 'Full-size upload rejected'; end if;
   if public.reserve_feedback_quota(account,1,1) then raise exception 'Daily byte quota bypassed'; end if;
 end $$;
 rollback to savepoint empty_usage;

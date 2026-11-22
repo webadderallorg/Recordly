@@ -6,7 +6,7 @@ export function useRecorderMediaCleanup(
 		| "stream"
 		| "screenStream"
 		| "microphoneStream"
-		| "webcamStream"
+		| "releaseWebcamCapture"
 		| "mixingContext"
 		| "cleanupMicFallbackRecorder"
 	>,
@@ -15,7 +15,7 @@ export function useRecorderMediaCleanup(
 		stream,
 		screenStream,
 		microphoneStream,
-		webcamStream,
+		releaseWebcamCapture,
 		mixingContext,
 		cleanupMicFallbackRecorder,
 	} = context;
@@ -35,10 +35,7 @@ export function useRecorderMediaCleanup(
 			microphoneStream.current = null;
 		}
 
-		if (webcamStream.current) {
-			webcamStream.current.getTracks().forEach((track) => track.stop());
-			webcamStream.current = null;
-		}
+		releaseWebcamCapture();
 
 		if (mixingContext.current) {
 			mixingContext.current.close().catch(() => undefined);
@@ -51,7 +48,7 @@ export function useRecorderMediaCleanup(
 		stream,
 		screenStream,
 		microphoneStream,
-		webcamStream,
+		releaseWebcamCapture,
 		mixingContext,
 	]);
 

@@ -14,6 +14,8 @@ const cursorTypes = [
 	"resize-ns",
 	"not-allowed",
 ];
+// The native slots for move and diagonal resize reuse Tahoe's existing artwork.
+const fallbackSlots = ["open-hand", "arrow", "arrow"].map((type) => cursorTypes.indexOf(type));
 const tahoeAssets = {
 	arrow: ["pointer-1__14-6.svg", 0.14, 0.06],
 	text: ["ibeam-1__50-44.svg", 0.5, 0.44],
@@ -83,6 +85,7 @@ const atlasRgbaPath = ${JSON.stringify(atlasRgbaPath)};
 const atlasMetadataPath = ${JSON.stringify(atlasMetadataPath)};
 const drawHeight = ${drawHeight};
 const padding = ${padding};
+const fallbackSlots = ${JSON.stringify(fallbackSlots)};
 
 function loadImage(asset) {
   return new Promise((resolve, reject) => {
@@ -128,13 +131,17 @@ function loadImage(asset) {
       item.asset.anchorX,
       item.asset.anchorY,
       item.aspectRatio,
-    ].join("\\t"));
+    ]);
     x += item.width + padding;
+  }
+  const originalCount = rows.length;
+  for (const [offset, sourceIndex] of fallbackSlots.entries()) {
+    rows.push([originalCount + offset, ...rows[sourceIndex].slice(1)]);
   }
 
   const imageData = ctx.getImageData(0, 0, atlasWidth, atlasHeight).data;
   fs.writeFileSync(atlasRgbaPath, Buffer.from(imageData.buffer));
-  fs.writeFileSync(atlasMetadataPath, rows.join("\\n") + "\\n");
+  fs.writeFileSync(atlasMetadataPath, rows.map(row => row.join("\\t")).join("\\n") + "\\n");
   ipcRenderer.send("atlas-ready", { width: atlasWidth, height: atlasHeight, entries: rows.length });
 })().catch((error) => {
   ipcRenderer.send("atlas-ready", { error: error.message });

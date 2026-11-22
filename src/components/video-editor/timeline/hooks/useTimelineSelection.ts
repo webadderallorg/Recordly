@@ -14,6 +14,7 @@ interface UseTimelineSelectionParams {
 	selectedAudioId?: string | null;
 	selectedCaptionId?: string | null;
 	onZoomDelete: (id: string) => void;
+	onClearZooms?: () => void;
 	onClipDelete?: (id: string) => void;
 	onAnnotationDelete?: (id: string) => void;
 	onAudioDelete?: (id: string) => void;
@@ -36,6 +37,7 @@ export function useTimelineSelection({
 	selectedAudioId,
 	selectedCaptionId,
 	onZoomDelete,
+	onClearZooms,
 	onClipDelete,
 	onAnnotationDelete,
 	onAudioDelete,
@@ -75,24 +77,32 @@ export function useTimelineSelection({
 		[totalMs],
 	);
 
+	const clearAllZooms = useCallback(() => {
+		if (hasAnyZoomBlocks) {
+			if (onClearZooms) onClearZooms();
+			else zoomRegions.forEach(({ id }) => onZoomDelete(id));
+		}
+		onSelectZoom(null);
+		setSelectAllBlocksActive(false);
+	}, [hasAnyZoomBlocks, onClearZooms, onZoomDelete, onSelectZoom, zoomRegions]);
+
 	const deleteSelectedZoom = useCallback(() => {
 		if (selectAllBlocksActive) {
-			zoomRegions.map((region) => region.id).forEach((id) => onZoomDelete(id));
+			clearAllZooms();
 		} else if (selectedZoomId) {
 			onZoomDelete(selectedZoomId);
+			onSelectZoom(null);
 		} else {
 			return;
 		}
 
-		onSelectZoom(null);
 		onSelectClip?.(null);
 		onSelectAnnotation?.(null);
 		onSelectAudio?.(null);
 		onSelectCaption?.(null);
-		setSelectAllBlocksActive(false);
 	}, [
+		clearAllZooms,
 		selectAllBlocksActive,
-		zoomRegions,
 		onZoomDelete,
 		selectedZoomId,
 		onSelectZoom,
@@ -105,8 +115,7 @@ export function useTimelineSelection({
 	const deleteSelectedClip = useCallback(() => {
 		if (!selectedClipId || !onClipDelete) return;
 		onClipDelete(selectedClipId);
-		onSelectClip?.(null);
-	}, [selectedClipId, onClipDelete, onSelectClip]);
+	}, [selectedClipId, onClipDelete]);
 
 	const deleteSelectedAnnotation = useCallback(() => {
 		if (!selectedAnnotationId || !onAnnotationDelete) return;
@@ -226,6 +235,7 @@ export function useTimelineSelection({
 		deleteSelectedKeyframe,
 		handleKeyframeMove,
 		deleteSelectedZoom,
+		clearAllZooms,
 		deleteSelectedClip,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,

@@ -8,16 +8,23 @@ vi.mock("@/lib/appSettings", () => ({
 
 import { getFeedbackDraft, updateFeedbackDraft } from "./draft";
 
+it("defaults to Neutral on a new draft and an empty draft saved by an older version", () => {
+	storage.load.mockReturnValueOnce(null);
+	expect(getFeedbackDraft("new-user").sentiment).toBe("neutral");
+	storage.load.mockReturnValueOnce({ sentiment: null, message: "" });
+	expect(getFeedbackDraft("old-empty-user").sentiment).toBe("neutral");
+});
+
 it("keeps a previous subject and message when loading an older draft", () => {
 	storage.load.mockReturnValueOnce({ subject: "Export failed", message: "Stopped early." });
 	expect(getFeedbackDraft("legacy-user")).toEqual({
-		sentiment: null,
+		sentiment: "neutral",
 		message: "Export failed\n\nStopped early.",
 		files: [],
 	});
 });
 
-it("persists the selected face with the message and clears both after sending", () => {
+it("persists the selected face with the message and allows explicitly clearing it", () => {
 	storage.load.mockReturnValueOnce({ sentiment: "loving", message: "Great app!" });
 	expect(getFeedbackDraft("sentiment-user").sentiment).toBe("loving");
 	updateFeedbackDraft("sentiment-user", { sentiment: "neutral" });
@@ -25,8 +32,10 @@ it("persists the selected face with the message and clears both after sending", 
 		sentiment: "neutral",
 		message: "Great app!",
 	});
-	updateFeedbackDraft("sentiment-user", { sentiment: null, message: "", files: [] });
-	expect(getFeedbackDraft("sentiment-user")).toEqual({ sentiment: null, message: "", files: [] });
+	updateFeedbackDraft("sentiment-user", { sentiment: null });
+	expect(getFeedbackDraft("sentiment-user").sentiment).toBeNull();
+	storage.load.mockReturnValueOnce({ sentiment: null, message: "Great app!" });
+	expect(getFeedbackDraft("cleared-sentiment-user").sentiment).toBeNull();
 });
 
 it("restores whitespace-only drafts as empty so the placeholder is visible", () => {

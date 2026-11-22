@@ -86,10 +86,26 @@ test("soundtrack loops after the full track ends", async ({ page }) => {
 
 test("soundtrack fades in over two seconds from silence", async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
-	await page.goto("/?windowType=onboarding");
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.onOnboardingSoundtrackStart = (callback) => {
+			document.documentElement.dataset.soundtrackReady = "true";
+			window.addEventListener("test-logo-start", callback);
+			return () => window.removeEventListener("test-logo-start", callback);
+		};
+	});
+	await page.goto("/?windowType=onboarding&welcomeSoundtrack=intro");
 	const audio = page.getByRole("dialog", { name: "Welcome to Recordly" }).locator("audio");
-	await expect(audio).toHaveJSProperty("paused", false);
-	expect(await audio.evaluate((el: HTMLAudioElement) => el.volume)).toBeLessThan(0.6);
+	await expect(page.locator("html")).toHaveAttribute("data-soundtrack-ready", "true");
+	// Start playback and read the volume in the page, so runner delays cannot advance the fade.
+	const initialVolume = await audio.evaluate(async (el: HTMLAudioElement) => {
+		const playing = new Promise((resolve) =>
+			el.addEventListener("playing", resolve, { once: true }),
+		);
+		window.dispatchEvent(new Event("test-logo-start"));
+		await playing;
+		return el.volume;
+	});
+	expect(initialVolume).toBeLessThan(0.6);
 	await expect(audio).toHaveJSProperty("volume", 1, { timeout: 4000 });
 });
 
@@ -131,10 +147,6 @@ test("recording stops the soundtrack and a new onboarding opening restarts it", 
 }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: true });
 	await installDesktopBridgeOverrides(page, () => {
-		window.electronAPI.onRecordingPermissionsRequested = (callback) => {
-			window.addEventListener("test-open-onboarding", callback);
-			return () => window.removeEventListener("test-open-onboarding", callback);
-		};
 		window.electronAPI.onRecordingStateChanged = (callback) => {
 			const recordingStarted = () => callback({ recording: true, sourceName: "Test source" });
 			window.addEventListener("test-recording-started", recordingStarted);
@@ -151,7 +163,8 @@ test("recording stops the soundtrack and a new onboarding opening restarts it", 
 	await expect(tour.locator("[data-welcome-music]")).toHaveCount(0);
 	await tour.getByRole("button", { name: "Close onboarding window" }).click();
 	await expect(tour).not.toBeVisible();
-	await page.evaluate(() => window.dispatchEvent(new Event("test-open-onboarding")));
+	// Closing destroys the onboarding window, so the next opening is a fresh load.
+	await page.reload();
 	await expect(mute).toBeVisible();
 	await expect(audio).toHaveJSProperty("paused", false);
 });

@@ -21,7 +21,11 @@
   "npmRebuild": true,
   "buildDependenciesFromSource": true,
   "compression": "normal",
+  "toolsets": {
+    "appimage": "1.0.3"
+  },
   "beforePack": "./scripts/prepare-distribution-notices.mjs",
+  "artifactBuildCompleted": "./scripts/prepare-appimage-delta.mjs",
   "directories": {
     "output": "release"
   },
@@ -120,15 +124,26 @@
   },
   "linux": {
     "target": [
-      "AppImage"
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      }
     ],
     "icon": "icons/icons/png",
+    // AppImage expands ${arch} to x86_64, while published updates use x64.
     "artifactName": "${productName}-linux-x64.${ext}",
     "category": "AudioVideo"
   },
   "win": {
     "target": [
-      "nsis"
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64"]
+      }
     ],
     "icon": "icons/icons/win/icon.ico",
     "executableName": "Recordly",

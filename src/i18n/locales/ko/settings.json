@@ -3,6 +3,7 @@
 		"level": "확대 레벨",
 		"selectRegion": "조정할 확대 구간을 선택하세요",
 		"deleteZoom": "확대 삭제",
+		"clearAllZooms": "모든 확대 효과 삭제",
 		"modeAuto": "자동",
 		"modeManual": "수동",
 		"modeManualDescription": "이 확대에 고정 초점을 설정합니다",
@@ -293,7 +294,8 @@
 		"ratioWidth": "너비",
 		"ratioHeight": "높이",
 		"ratioHint": "프리셋을 선택하거나 원하는 비율을 입력하세요(1:20~20:1).",
-		"freeform": "자유형"
+		"freeform": "자유형",
+		"pixelFields": "픽셀"
 	},
 	"background": {
 		"title": "배경",
@@ -512,7 +514,7 @@
 		"recordingDescription": "이 환경설정은 새 녹화에 적용됩니다.",
 		"motionScope": "변경 사항은 현재 프로젝트에 적용되며 새 프로젝트에도 사용됩니다. 저장된 프로젝트는 자체 설정을 유지합니다.",
 		"hideControls": "녹화 영상에서 녹화 컨트롤 숨기기",
-		"hideControlsDescription": "녹화 중에도 데스크톱에는 컨트롤이 표시되지만 영상에는 포함되지 않습니다. 녹화하지 않을 때는 다른 화면 캡처에 표시될 수 있습니다.",
+		"hideControlsDescription": "녹화 중에도 컨트롤은 데스크톱에 표시되며 영상에는 포함되지 않습니다. 화면 공유나 원격 데스크톱 앱에서도 컨트롤이 보이지 않을 수 있습니다.",
 		"storage": "저장 공간",
 		"storageDescription": "이 컴퓨터의 녹화 파일과 저장된 프로젝트를 확인합니다.",
 		"loadingFolder": "폴더 위치 불러오는 중…",

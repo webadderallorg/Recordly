@@ -1,7 +1,7 @@
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
 import { acquireRecorderBrowserStream } from "./acquireRecorderBrowserStream";
-import { isCapturePermissionDismissed } from "./browserScreenCapture";
+import { isCapturePermissionDismissed, LINUX_PORTAL_SOURCE_ID } from "./browserScreenCapture";
 import type { RecorderContext } from "./recorderContext";
 import { startBrowserRecorder } from "./startBrowserRecorder";
 import { startNativeRecorder } from "./startNativeRecorder";
@@ -33,6 +33,23 @@ export function useRecorderStartup(context: RecorderContext) {
 		recordingStartGeneration.current = startGeneration;
 		const startWasCancelled = () => recordingStartGeneration.current !== startGeneration;
 		let usingLinuxPortal = false;
+		const runCountdown = async () => {
+			if (countdownDelay <= 0) return true;
+			setCountdownActive(true);
+			try {
+				const result = await window.electronAPI.startCountdown(countdownDelay);
+				if (startWasCancelled()) return false;
+				if (!result.success || result.cancelled) {
+					cleanupCapturedMedia();
+					await stopWebcamRecorder();
+					return false;
+				}
+			} finally {
+				setCountdownActive(false);
+			}
+			resetRecordingClock(Date.now());
+			return true;
+		};
 
 		let hudSourceSelectionActive = false;
 		const setHudSourceSelectionActive = (active: boolean) => {
@@ -70,22 +87,11 @@ export function useRecorderStartup(context: RecorderContext) {
 
 			const { selectedSource, useNativeMacScreenCapture, useNativeWindowsCapture, micLabel } =
 				preparedStart;
+			usingLinuxPortal = selectedSource.id === LINUX_PORTAL_SOURCE_ID;
 			const useNativeCapture = useNativeMacScreenCapture || useNativeWindowsCapture;
 			const shouldWarmStartNativeCapture = useNativeCapture && countdownDelay > 0;
-			if (countdownDelay > 0 && !shouldWarmStartNativeCapture) {
-				setCountdownActive(true);
-				try {
-					const result = await window.electronAPI.startCountdown(countdownDelay);
-					if (!result.success || result.cancelled || startWasCancelled()) {
-						cleanupCapturedMedia();
-						await stopWebcamRecorder();
-						return;
-					}
-				} finally {
-					setCountdownActive(false);
-				}
-				resetRecordingClock(Date.now());
-			}
+			if (!usingLinuxPortal && !shouldWarmStartNativeCapture && !(await runCountdown()))
+				return;
 
 			let nativeWindowsCaptureStartFailed = false;
 
@@ -102,20 +108,7 @@ export function useRecorderStartup(context: RecorderContext) {
 			}
 
 			if (startWasCancelled()) return;
-			if (nativeWindowsCaptureStartFailed && countdownDelay > 0) {
-				setCountdownActive(true);
-				try {
-					const result = await window.electronAPI.startCountdown(countdownDelay);
-					if (!result.success || result.cancelled || startWasCancelled()) {
-						cleanupCapturedMedia();
-						await stopWebcamRecorder();
-						return;
-					}
-				} finally {
-					setCountdownActive(false);
-				}
-				resetRecordingClock(Date.now());
-			}
+			if (nativeWindowsCaptureStartFailed && !(await runCountdown())) return;
 
 			if (startWasCancelled()) return;
 			const { videoTrack, systemAudioIncluded } = await acquireRecorderBrowserStream(
@@ -123,34 +116,43 @@ export function useRecorderStartup(context: RecorderContext) {
 				{
 					selectedSource,
 					nativeWindowsCaptureStartFailed,
-					onPortalCapture: (value) => {
-						usingLinuxPortal = value;
-					},
 				},
 			);
 			await startBrowserRecorder(context, {
 				videoTrack,
 				systemAudioIncluded,
 				startWasCancelled,
+				runPortalCountdown: usingLinuxPortal ? runCountdown : undefined,
 			});
 		} catch (error) {
-			if (
+			const missingWaylandScreenCast =
 				!startWasCancelled() &&
-				!(usingLinuxPortal && isCapturePermissionDismissed(error))
-			) {
+				usingLinuxPortal &&
+				(await window.electronAPI.isWaylandScreenCastMissing?.().catch(() => false));
+			const portalDismissed = usingLinuxPortal && isCapturePermissionDismissed(error);
+			if (!startWasCancelled() && (missingWaylandScreenCast || !portalDismissed)) {
 				console.error("Failed to start recording:", error);
-				alert(
-					error instanceof Error
-						? translate(
-								"notifications.startRecordingError",
-								"Failed to start recording: {{error}}",
-								{ error: error.message },
-							)
-						: translate(
-								"notifications.startRecordingFailed",
-								"Failed to start recording",
-							),
-				);
+				if (missingWaylandScreenCast) {
+					alert(
+						translate(
+							"notifications.waylandScreenCastMissing",
+							"Screen recording on Wayland needs a ScreenCast portal. Install the screen-sharing portal for your desktop, or switch to an X11 session and try again.",
+						),
+					);
+				} else {
+					alert(
+						error instanceof Error
+							? translate(
+									"notifications.startRecordingError",
+									"Failed to start recording: {{error}}",
+									{ error: error.message },
+								)
+							: translate(
+									"notifications.startRecordingFailed",
+									"Failed to start recording",
+								),
+					);
+				}
 			}
 			setRecording(false);
 			if (nativeScreenRecording.current) {

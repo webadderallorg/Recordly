@@ -72,7 +72,7 @@ export function useRecorderControls(
 		| "screenWriter"
 		| "webcamStartTime"
 		| "webcamTimeOffsetMs"
-		| "webcamStream"
+		| "releaseWebcamCapture"
 		| "pendingWebcamPathPromise"
 		| "resolvedWebcamPath"
 		| "discardActiveNativeCapture"
@@ -109,7 +109,7 @@ export function useRecorderControls(
 		screenWriter,
 		webcamStartTime,
 		webcamTimeOffsetMs,
-		webcamStream,
+		releaseWebcamCapture,
 		pendingWebcamPathPromise,
 		resolvedWebcamPath,
 		discardActiveNativeCapture,
@@ -317,8 +317,7 @@ export function useRecorderControls(
 			webcamRecorder.current = null;
 			webcamStartTime.current = null;
 			webcamTimeOffsetMs.current = 0;
-			webcamStream.current?.getTracks().forEach((t) => t.stop());
-			webcamStream.current = null;
+			releaseWebcamCapture();
 			pendingWebcamPathPromise.current = null;
 			resolvedWebcamPath.current = null;
 
@@ -393,7 +392,7 @@ export function useRecorderControls(
 		webcamStopPromise,
 		webcamStartTime,
 		webcamTimeOffsetMs,
-		webcamStream,
+		releaseWebcamCapture,
 		pendingWebcamPathPromise,
 		resolvedWebcamPath,
 		nativeScreenRecording,

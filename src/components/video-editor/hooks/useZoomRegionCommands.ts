@@ -169,6 +169,9 @@ export function useZoomRegionCommands({
 		},
 		[selectedZoomId, setSelectedZoomId, setZoomRegions],
 	);
+	const handleClearZooms = useCallback(() => {
+		setZoomRegions((current) => (current.length > 0 ? [] : current));
+	}, [setZoomRegions]);
 
 	return {
 		handleSelectZoom,
@@ -179,5 +182,6 @@ export function useZoomRegionCommands({
 		handleZoomDepthChange,
 		handleZoomModeChange,
 		handleZoomDelete,
+		handleClearZooms,
 	};
 }

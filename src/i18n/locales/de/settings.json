@@ -3,6 +3,7 @@
 		"level": "Zoomstufe",
 		"selectRegion": "Zoombereich zum Anpassen auswählen",
 		"deleteZoom": "Zoom löschen",
+		"clearAllZooms": "Alle Zooms löschen",
 		"modeAuto": "Automatisch",
 		"modeManual": "Manuell",
 		"modeManualDescription": "Legen Sie einen festen Fokuspunkt für diesen Zoom fest",
@@ -293,7 +294,8 @@
 		"ratioWidth": "Breite",
 		"ratioHeight": "Höhe",
 		"ratioHint": "Wähle eine Vorlage oder gib ein eigenes Verhältnis ein (1:20 bis 20:1).",
-		"freeform": "Frei"
+		"freeform": "Frei",
+		"pixelFields": "Pixel"
 	},
 	"background": {
 		"title": "Hintergrund",
@@ -512,7 +514,7 @@
 		"recordingDescription": "Diese Einstellungen gelten für neue Aufnahmen.",
 		"motionScope": "Änderungen gelten für dieses Projekt und werden für neue Projekte übernommen. Gespeicherte Projekte behalten ihre eigenen Einstellungen.",
 		"hideControls": "Aufnahmesteuerung im aufgenommenen Video ausblenden",
-		"hideControlsDescription": "Die Steuerung bleibt auf dem Desktop sichtbar, wird aber während der Aufnahme nicht im Video gezeigt. Außerhalb einer Aufnahme kann sie in anderen Bildschirmaufnahmen erscheinen.",
+		"hideControlsDescription": "Während der Aufnahme bleibt die Steuerung auf deinem Desktop sichtbar und wird im Video ausgeblendet. Sie kann auch bei der Bildschirmfreigabe und in Remotedesktop-Apps ausgeblendet werden.",
 		"storage": "Speicher",
 		"storageDescription": "Finde deine Aufnahmen und gespeicherten Projekte auf diesem Computer.",
 		"loadingFolder": "Ordnerpfad wird geladen…",

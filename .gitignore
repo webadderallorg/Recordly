@@ -49,6 +49,7 @@ electron/native/gpu-export-probe/build/
 electron/native/nvidia-cuda-compositor/build/
 electron/native/bin/*/whisper-*
 electron/native/bin/*/whisper-runtime.json
+electron/native/bin/win32-*/*.dll
 electron/native/bin/darwin-*/recordly-saved-sign-in.node
 
 # Local debug helpers

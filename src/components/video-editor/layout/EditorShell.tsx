@@ -376,6 +376,9 @@ export function EditorShell(props: Props) {
 						canUndo={history.canUndo}
 						canRedo={history.canRedo}
 						handleOpenProjectBrowser={() => openDashboard()}
+						handleOpenRecordingHud={
+							projectController.openActions.handleOpenRecordingHud
+						}
 						handleUndo={history.handleUndo}
 						handleRedo={history.handleRedo}
 						handleProjectNameSubmit={saveActions.handleProjectNameSubmit}
@@ -481,6 +484,7 @@ export function EditorShell(props: Props) {
 								}}
 								settingsPanelProps={{
 									...settingsPanelProps,
+									onClearZooms: () => ui.timelineRef.current?.clearAllZooms(),
 									accountUser: auth.user,
 									onShowOnboarding: showOnboarding,
 								}}

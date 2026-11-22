@@ -21,6 +21,7 @@
 		"level": "Mức thu phóng",
 		"selectRegion": "Chọn vùng thu phóng để điều chỉnh",
 		"deleteZoom": "Xóa vùng thu phóng",
+		"clearAllZooms": "Xóa tất cả vùng thu phóng",
 		"modeAuto": "Tự động",
 		"modeManual": "Thủ công",
 		"modeManualDescription": "Đặt điểm lấy nét cố định cho vùng thu phóng này",
@@ -311,7 +312,8 @@
 		"ratioWidth": "Chiều rộng",
 		"ratioHeight": "Chiều cao",
 		"ratioHint": "Chọn tỷ lệ có sẵn hoặc nhập tỷ lệ riêng (từ 1:20 đến 20:1).",
-		"freeform": "Tự do"
+		"freeform": "Tự do",
+		"pixelFields": "Điểm ảnh"
 	},
 	"background": {
 		"title": "Nền",
@@ -511,7 +513,7 @@
 		"recordingDescription": "Các tùy chọn này áp dụng cho bản ghi mới.",
 		"motionScope": "Thay đổi áp dụng cho dự án này và được dùng cho dự án mới. Dự án đã lưu giữ cài đặt riêng.",
 		"hideControls": "Ẩn thanh điều khiển khỏi video ghi lại",
-		"hideControlsDescription": "Thanh điều khiển vẫn hiện trên màn hình nhưng không xuất hiện trong video khi đang ghi. Khi không ghi, thanh vẫn có thể xuất hiện trong bản ghi của ứng dụng khác.",
+		"hideControlsDescription": "Khi đang ghi, thanh điều khiển vẫn hiện trên màn hình của bạn và được ẩn khỏi video. Thanh cũng có thể biến mất khỏi các ứng dụng chia sẻ màn hình và điều khiển từ xa.",
 		"storage": "Lưu trữ",
 		"storageDescription": "Tìm bản ghi và dự án đã lưu trên máy này.",
 		"loadingFolder": "Đang tải vị trí thư mục…",

@@ -64,10 +64,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run smoke:electron-main-cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npx electron-builder --win dir nsis --x64 --publish never
+          npx electron-builder --win dir nsis zip --x64 --publish never
 
-      - name: Smoke test packaged Windows paths
-        run: npm run smoke:packaged-binaries
+      - name: Smoke test the extracted Windows ZIP
+        shell: pwsh
+        run: |
+          $env:RECORDLY_RELEASE_DIR = 'release/zip-smoke'
+          New-Item -ItemType Directory -Path $env:RECORDLY_RELEASE_DIR -Force | Out-Null
+          tar -xf release/Recordly-windows-x64.zip -C $env:RECORDLY_RELEASE_DIR
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run smoke:packaged-binaries
 
 
       - name: Archive corresponding FFmpeg source
@@ -89,6 +95,7 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/latest*.yml
+            release/Recordly-windows-x64.zip
             release/*-ffmpeg-source.zip
             release/SHA256SUMS*.txt
           if-no-files-found: error
@@ -188,7 +195,7 @@ jobs:
       - name: Install Linux FFmpeg build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential binutils diffutils nasm perl pkg-config
+          sudo apt-get install -y build-essential binutils diffutils nasm perl pkg-config zsync
 
       - name: Build FFmpeg and FFprobe from pinned source
         run: npm run build:ffmpeg-source
@@ -209,6 +216,8 @@ jobs:
         run: npx electron-builder install-app-deps
 
       - name: Build Linux app
+        env:
+          RECORDLY_APPIMAGE_DELTA: '1'
         run: |
           npm run build:platform-native-helpers
           npx tsc
@@ -216,6 +225,7 @@ jobs:
           npm run normalize:electron-main-cjs
           npm run smoke:electron-main-cjs
           npx electron-builder --linux dir AppImage --x64 --publish never
+          test -s release/Recordly-linux-x64.AppImage.zsync
 
       - name: Smoke test packaged Linux paths
         run: npm run smoke:packaged-binaries
@@ -239,6 +249,7 @@ jobs:
           name: linux-x64-release
           path: |
             release/**/*.AppImage
+            release/**/*.AppImage.zsync
             release/**/*.blockmap
             release/latest-linux.yml
             release/*-ffmpeg-source.zip

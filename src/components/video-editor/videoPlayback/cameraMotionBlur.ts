@@ -1,5 +1,5 @@
-import { MotionBlurFilter } from "pixi-filters/motion-blur";
-import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
+import type { MotionBlurFilter } from "@/lib/exporter/motionBlurFilter";
+import type { ZoomBlurFilter } from "@/lib/exporter/zoomBlurFilter";
 import { DEFAULT_ZOOM_MOTION_BLUR_TUNING, type ZoomMotionBlurTuning } from "../types";
 
 const MIN_DIRECTIONAL_BLUR_MAGNITUDE = 0.01;
@@ -8,11 +8,8 @@ export const DIRECTIONAL_BLUR_KERNEL_SIZE = 13;
 
 const DIRECTIONAL_BLUR_OFFSET_DIVISOR = 32;
 
-// Shorter pan exposure keeps directional trails from overpowering screen text.
 const SPATIAL_PAN_SHUTTER_MULTIPLIER = 3;
 
-// Spatial equivalent of a longer exposure. This extends the one-pass zoom
-// trail without multiplying scene renders like temporal accumulation does.
 const SPATIAL_ZOOM_SHUTTER_MULTIPLIER = 4;
 
 export interface DirectionalMotionBlur {
@@ -224,9 +221,6 @@ function computeSizeDelta(previousQuad: TransformQuad, currentQuad: TransformQua
 }
 
 function computeZoomStrength(previousQuad: TransformQuad, currentQuad: TransformQuad) {
-	// Keep the spatial approximation sampling inward. Sampling outward during
-	// expansion can leave the filter's captured texture and produce transparent
-	// or black frames; true directionality requires temporal/overscanned input.
 	return Math.abs(1 - currentQuad.diagonal / Math.max(0.0001, previousQuad.diagonal));
 }
 
@@ -255,8 +249,6 @@ function classifyMotionMode(
 		return null;
 	}
 
-	// Compare size and centre movement in the same stage-pixel units. A small
-	// scale ripple must not suppress a stronger pan; exact ties favour movement.
 	if (zoomActive && (!moveActive || zoomDistance > moveDistance)) {
 		return "zoom";
 	}
@@ -326,7 +318,5 @@ export function applyCameraStepBlur({
 	if (zoomBlurFilter) {
 		zoomBlurFilter.center = analysis.zoomCenter;
 		zoomBlurFilter.strength = analysis.zoomStrength;
-		zoomBlurFilter.innerRadius = 0;
-		zoomBlurFilter.radius = -1;
 	}
 }

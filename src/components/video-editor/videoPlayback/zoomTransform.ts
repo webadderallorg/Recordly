@@ -10,9 +10,9 @@ import {
 export type { DirectionalMotionBlur } from "./cameraMotionBlur";
 export { computeDirectionalMotionBlur } from "./cameraMotionBlur";
 
-import { MotionBlurFilter } from "pixi-filters/motion-blur";
+import type { MotionBlurFilter } from "@/lib/exporter/motionBlurFilter";
 
-import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
+import type { ZoomBlurFilter } from "@/lib/exporter/zoomBlurFilter";
 
 import { DEFAULT_ZOOM_MOTION_BLUR_TUNING, type ZoomMotionBlurTuning } from "../types";
 
@@ -83,8 +83,6 @@ function resetMotionEffects(
 
 	if (zoomBlurFilter) {
 		zoomBlurFilter.strength = 0;
-		zoomBlurFilter.innerRadius = 0;
-		zoomBlurFilter.radius = -1;
 	}
 
 	if (motionBlurState) {
@@ -209,7 +207,6 @@ export function applyZoomTransform({
 			focusY,
 		});
 
-	// Apply position & scale to camera container
 	cameraContainer.scale.set(transform.scale);
 	cameraContainer.position.set(transform.x, transform.y);
 	const resolvedTuning = resolveMotionBlurTuning(motionBlurTuning);

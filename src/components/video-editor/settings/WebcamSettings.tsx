@@ -38,6 +38,8 @@ interface WebcamSettingsProps {
 	onUploadWebcam?: () => void;
 }
 
+const RECTANGLE_WEBCAM_HEIGHT = 35;
+
 const WEBCAM_POSITION_PRESETS: Array<{
 	preset: Exclude<WebcamPositionPreset, "custom">;
 	label: string;
@@ -340,16 +342,18 @@ export function WebcamSettings({
 								shape === "squircle" ||
 								shape === "rectangle"
 							) {
-								const width =
+								const height =
 									shape === "rectangle"
-										? DEFAULT_WEBCAM_SIZE * (16 / 9)
+										? RECTANGLE_WEBCAM_HEIGHT
 										: DEFAULT_WEBCAM_SIZE;
+								const width =
+									shape === "rectangle" ? height * (16 / 9) : DEFAULT_WEBCAM_SIZE;
 								updateWebcam({
 									shape,
 									roundness: DEFAULT_WEBCAM_ROUNDNESS,
 									width,
 									size: width,
-									height: DEFAULT_WEBCAM_SIZE,
+									height,
 								});
 							}
 						}}

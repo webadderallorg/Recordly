@@ -3,6 +3,7 @@
 		"level": "Zoomniveau",
 		"selectRegion": "Selecteer een zoomgebied om aan te passen",
 		"deleteZoom": "Zoom verwijderen",
+		"clearAllZooms": "Alle zoomeffecten verwijderen",
 		"modeAuto": "Auto",
 		"modeManual": "Handmatig",
 		"modeManualDescription": "Stel een vast focuspunt in voor deze zoom",
@@ -293,7 +294,8 @@
 		"ratioWidth": "Breedte",
 		"ratioHeight": "Hoogte",
 		"ratioHint": "Kies een voorinstelling of voer een eigen verhouding in (1:20 tot 20:1).",
-		"freeform": "Vrij"
+		"freeform": "Vrij",
+		"pixelFields": "Pixels"
 	},
 	"background": {
 		"title": "Achtergrond",
@@ -512,7 +514,7 @@
 		"recordingDescription": "Deze voorkeuren gelden voor nieuwe opnamen.",
 		"motionScope": "Wijzigingen gelden voor dit project en worden onthouden voor nieuwe projecten. Opgeslagen projecten behouden hun eigen instellingen.",
 		"hideControls": "Opnamebediening verbergen in de opgenomen video",
-		"hideControlsDescription": "De bediening blijft zichtbaar op je bureaublad, maar wordt tijdens het opnemen niet in de video getoond. Wanneer je niet opneemt, kan deze in andere schermopnamen verschijnen.",
+		"hideControlsDescription": "Tijdens de opname blijft de bediening zichtbaar op je bureaublad en wordt deze verborgen in de video. De bediening kan ook wegvallen bij schermdelen of in apps voor extern bureaublad.",
 		"storage": "Opslag",
 		"storageDescription": "Vind je opnamen en opgeslagen projecten op deze computer.",
 		"loadingFolder": "Maplocatie laden…",

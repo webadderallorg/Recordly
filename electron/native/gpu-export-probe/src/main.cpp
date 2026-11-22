@@ -2052,7 +2052,7 @@ float4 main(PSIn input) : SV_Target {
                 std::max(0.0, timeMs),
                 std::min(1.0f, std::max(0.0f, cx)),
                 std::min(1.0f, std::max(0.0f, cy)),
-                std::min(8, std::max(0, cursorTypeIndex)),
+                std::clamp(cursorTypeIndex, 0, static_cast<int>(cursorAtlasEntries_.size()) - 1),
                 std::isfinite(bounceScale)
                     ? std::min(2.0f, std::max(0.1f, bounceScale))
                     : 1.0f,
@@ -2104,7 +2104,7 @@ float4 main(PSIn input) : SV_Target {
         }
 
         const size_t index = static_cast<size_t>(
-            std::min(8, std::max(0, cursorTypeIndex)));
+            std::clamp(cursorTypeIndex, 0, static_cast<int>(cursorAtlasEntries_.size()) - 1));
         if (index >= cursorAtlasEntries_.size() || !cursorAtlasEntries_[index].valid) {
             return nullptr;
         }
@@ -3348,7 +3348,7 @@ float4 main(PSIn input) : SV_Target {
     UINT cursorAtlasWidth_ = 1;
     UINT cursorAtlasHeight_ = 1;
     bool hasCursorAtlas_ = false;
-    std::array<CursorAtlasEntry, 9> cursorAtlasEntries_;
+    std::array<CursorAtlasEntry, 16> cursorAtlasEntries_;
     UINT webcamWidth_ = 640;
     UINT webcamHeight_ = 480;
     bool webcamFrameReady_ = false;

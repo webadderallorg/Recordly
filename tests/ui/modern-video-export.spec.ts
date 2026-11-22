@@ -1,6 +1,44 @@
 import { expect, test } from "@playwright/test";
 import type { ExportProgress } from "../../src/lib/exporter/types";
 
+test("real WebCodecs export finishes with reordered clips from one source", async ({
+	page,
+}, testInfo) => {
+	test.setTimeout(90_000);
+	await page.route("**/tests/ui/wasm/web-demuxer.wasm", (route) =>
+		route.fulfill({ path: "public/wasm/web-demuxer.wasm", contentType: "application/wasm" }),
+	);
+	await page.goto("/tests/ui/modern-video-export.html");
+	await page.getByRole("button", { name: "Export two reordered clips", exact: true }).click();
+	const report = page.locator("#result");
+	await expect(report).toHaveAttribute("data-state", "done", { timeout: 75_000 });
+	const result = JSON.parse(await report.innerText());
+	await testInfo.attach("reordered-clip-export.json", {
+		body: JSON.stringify(result, null, 2),
+		contentType: "application/json",
+	});
+	expect(result.error, JSON.stringify(result)).toBeUndefined();
+	expect(result.success).toBe(true);
+	expect(result.output).toMatchObject({ container: "mp4", codec: "avc", frameCount: 30 });
+	expect(result.output.duration).toBeCloseTo(2, 3);
+	expect(result.playback.advanced).toBe(true);
+	// At the sampled pixel, the later source segment is blue and the earlier is yellow.
+	const [later, earlier] = result.playback.samplePixels as [number, number, number][];
+	expect(later[0]).toBeLessThan(100);
+	expect(later[2]).toBeGreaterThan(200);
+	expect(earlier[0]).toBeGreaterThan(200);
+	expect(earlier[1]).toBeGreaterThan(200);
+	expect(earlier[2]).toBeLessThan(30);
+	const progress = result.progress as ExportProgress[];
+	const extracting = progress.filter((update) => update.phase === "extracting");
+	expect(extracting.at(-1)).toMatchObject({ currentFrame: 30, totalFrames: 30, percentage: 100 });
+	expect(progress.at(-1)).toMatchObject({
+		phase: "finalizing",
+		currentFrame: 30,
+		totalFrames: 30,
+	});
+});
+
 test("solid masks replace hidden pixels in every decoded frame of a real H.264 MP4", async ({
 	page,
 }) => {

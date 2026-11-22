@@ -28,4 +28,4 @@ export const pixelGloveAssets = {
 		fallbackAnchor: { x: 0.5, y: 0.348 },
 		preserveCanvas: true,
 	},
-} satisfies Record<NonNullable<CursorTelemetryPoint["cursorType"]>, UploadedCursorAsset>;
+} satisfies Partial<Record<NonNullable<CursorTelemetryPoint["cursorType"]>, UploadedCursorAsset>>;

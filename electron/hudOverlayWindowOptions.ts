@@ -1,3 +1,5 @@
+import { isLikelyLinuxWaylandSession } from "./ipc/register/sourceMapping";
+
 export interface HudOverlayTaskbarOptions {
 	skipTaskbar: boolean;
 	focusable: boolean;
@@ -16,4 +18,17 @@ export function getHudOverlayTaskbarOptions(platform: NodeJS.Platform): HudOverl
 		// macOS app activation and focuses the normal Home window instead.
 		...(platform === "darwin" ? { type: "panel" as const } : {}),
 	};
+}
+
+export function supportsX11HudWindowDrag(
+	platform: NodeJS.Platform,
+	env: NodeJS.ProcessEnv,
+	ozonePlatform?: string,
+): boolean {
+	return (
+		platform === "linux" &&
+		Boolean(env.DISPLAY?.trim()) &&
+		(ozonePlatform === "x11" ||
+			(ozonePlatform !== "wayland" && !isLikelyLinuxWaylandSession(env)))
+	);
 }

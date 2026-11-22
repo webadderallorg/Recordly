@@ -233,8 +233,10 @@ describe("floating webcam preview lifecycle and pointer ownership", () => {
 				video: expect.objectContaining({ frameRate: { ideal: 60, max: 60 } }),
 			}),
 		);
-		expect(popoverVideo.srcObject).toBe(stream);
-		expect(floatingVideo.srcObject).toBe(stream);
+		await vi.waitFor(() => {
+			expect(popoverVideo.srcObject).toBe(stream);
+			expect(floatingVideo.srcObject).toBe(stream);
+		});
 		expect(preview.setWebcamPreviewNode).toBe(initial.setWebcamPreviewNode);
 		expect(preview.setRecordingWebcamPreviewNode).toBe(initial.setRecordingWebcamPreviewNode);
 		expect(preview.webcamPreviewRoundness).toBe(69);
@@ -277,8 +279,7 @@ describe("floating webcam preview lifecycle and pointer ownership", () => {
 		preview.setRecordingWebcamPreviewNode(node as unknown as HTMLVideoElement);
 		render({ webcamEnabled: false });
 		resolveStream(stream);
-		await Promise.resolve();
-		expect(trackStop).toHaveBeenCalledOnce();
+		await vi.waitFor(() => expect(trackStop).toHaveBeenCalledOnce());
 		expect(node.srcObject).toBeNull();
 		expect(node.play).not.toHaveBeenCalled();
 	});

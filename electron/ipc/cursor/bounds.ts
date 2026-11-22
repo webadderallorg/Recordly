@@ -11,6 +11,7 @@ import {
 	setInteractionCaptureCleanup,
 	setSelectedWindowBounds,
 	setWindowBoundsCaptureInterval,
+	type TrackedWindowBounds,
 	windowBoundsCaptureInterval,
 } from "../state";
 import type { NativeMacWindowSource, SelectedSource, WindowBounds } from "../types";
@@ -223,7 +224,7 @@ async function refreshSelectedWindowBounds(captureInterval: NodeJS.Timeout) {
 		return;
 	}
 
-	let bounds: WindowBounds | null = null;
+	let bounds: TrackedWindowBounds | null = null;
 
 	if (process.platform === "darwin") {
 		bounds = await resolveMacWindowBounds(source);

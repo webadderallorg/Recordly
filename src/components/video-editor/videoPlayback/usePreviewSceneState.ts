@@ -1,7 +1,7 @@
 import { Application, Container, Graphics, Sprite } from "pixi.js";
-import type { MotionBlurFilter } from "pixi-filters/motion-blur";
-import type { ZoomBlurFilter } from "pixi-filters/zoom-blur";
 import { useRef, useState } from "react";
+import type { MotionBlurFilter } from "@/lib/exporter/motionBlurFilter";
+import type { ZoomBlurFilter } from "@/lib/exporter/zoomBlurFilter";
 import { type ZoomRegion } from "../types";
 import { createAnnotationFrameStore } from "./annotationFrameStore";
 import {

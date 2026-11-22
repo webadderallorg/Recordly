@@ -83,6 +83,7 @@ html[data-theme="dark"] :is(.dashboard-settings-page, .app-settings-dialog) {
 	width: 100%;
 	min-height: 36px;
 	justify-content: flex-start;
+	gap: 8px;
 	padding: 8px 10px;
 	border-radius: var(--radius-md);
 	font-size: 13px;

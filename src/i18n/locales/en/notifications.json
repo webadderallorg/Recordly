@@ -33,6 +33,7 @@
 	"windowsStartFailed": "Native Windows capture failed to start. Falling back to browser capture.",
 	"microphoneDenied": "Microphone permission denied. Recording will continue without microphone audio.",
 	"systemAudioUnavailable": "System audio is not available for this source. Recording will continue without system audio.",
+	"waylandScreenCastMissing": "Screen recording on Wayland needs a ScreenCast portal. Install the screen-sharing portal for your desktop, or switch to an X11 session and try again.",
 	"startRecordingFailed": "Failed to start recording",
 	"saveRecordingFailed": "Failed to save the recording.",
 	"noFrames": "No video frames were captured. Please record again.",

@@ -16,7 +16,10 @@ describe("feedback diagnostics", () => {
 	it("enforces attachment count, total size, and nonempty files", () => {
 		const file = (size: number) => ({ size }) as File;
 		expect(validateAttachments(Array.from({ length: 6 }, () => file(1)))).toBeTruthy();
-		expect(validateAttachments([file(6 * 1024 * 1024), file(5 * 1024 * 1024)])).toBeTruthy();
+		expect(validateAttachments([file(50 * 1024 * 1024)])).toBeNull();
+		expect(
+			validateAttachments([file(25 * 1024 * 1024), file(25 * 1024 * 1024 + 1)]),
+		).toBeTruthy();
 		expect(validateAttachments([file(0)])).toBeTruthy();
 		expect(validateAttachments([file(100)])).toBeNull();
 	});

@@ -1,5 +1,6 @@
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
+import { waitForBrowserCaptureFrame } from "./browserScreenCapture";
 import {
 	AUDIO_BITRATE_SYSTEM,
 	AUDIO_BITRATE_VOICE,
@@ -16,10 +17,49 @@ import {
 import type { RecorderContext } from "./recorderContext";
 import { RecordingFileWriter } from "./recordingFileWriter";
 import { getVideoExtensionForMimeType } from "./recordingMimeType";
+
+function startScreenRecorder(
+	stream: MediaStream,
+	videoTrack: MediaStreamTrack,
+	mimeTypes: string[],
+	bitrates: { videoBitsPerSecond: number; audioBitsPerSecond: number | undefined },
+) {
+	const startWithType = (mimeType?: string) => {
+		const recorder = new MediaRecorder(
+			stream,
+			createBrowserRecordingOptions({ ...bitrates, mimeType }),
+		);
+		const startedAt = Date.now();
+		recorder.start(RECORDER_TIMESLICE_MS);
+		return { recorder, mimeType, startedAt };
+	};
+
+	for (const mimeType of mimeTypes.slice(0, -1)) {
+		try {
+			return startWithType(mimeType);
+		} catch (error) {
+			if (
+				stream.active === false ||
+				videoTrack.readyState === "ended" ||
+				!(error instanceof DOMException) ||
+				(error.name !== "NotSupportedError" && error.name !== "InvalidStateError")
+			) {
+				throw error;
+			}
+			console.warn(
+				`Could not start the screen recorder with ${mimeType}, trying another codec:`,
+				error,
+			);
+		}
+	}
+
+	return startWithType(mimeTypes[mimeTypes.length - 1]);
+}
+
 export async function startBrowserRecorder(
 	context: Pick<
 		RecorderContext,
-		| "selectMimeType"
+		| "getMimeTypes"
 		| "stream"
 		| "recordingSessionTimestamp"
 		| "screenWriter"
@@ -45,14 +85,16 @@ export async function startBrowserRecorder(
 		videoTrack,
 		systemAudioIncluded,
 		startWasCancelled,
+		runPortalCountdown,
 	}: {
 		videoTrack: MediaStreamTrack;
 		systemAudioIncluded: boolean;
 		startWasCancelled: () => boolean;
+		runPortalCountdown?: () => Promise<boolean>;
 	},
 ) {
 	const {
-		selectMimeType,
+		getMimeTypes,
 		stream,
 		recordingSessionTimestamp,
 		screenWriter,
@@ -74,6 +116,23 @@ export async function startBrowserRecorder(
 		resetRecordingClock,
 		webcamStartTime,
 	} = context;
+	if (startWasCancelled()) return;
+	if (runPortalCountdown) {
+		const frameAvailable = await waitForBrowserCaptureFrame(videoTrack);
+		if (startWasCancelled()) return;
+		if (frameAvailable && videoTrack.readyState !== "ended") {
+			const continueRecording = await runPortalCountdown();
+			if (!continueRecording || startWasCancelled()) return;
+		}
+		if (!frameAvailable || videoTrack.readyState === "ended") {
+			throw new Error(
+				translate(
+					"notifications.noFrames",
+					"No video frames were captured. Please record again.",
+				),
+			);
+		}
+	}
 
 	let {
 		width = DEFAULT_WIDTH,
@@ -85,27 +144,27 @@ export async function startBrowserRecorder(
 	height = Math.floor(height / CODEC_ALIGNMENT) * CODEC_ALIGNMENT;
 
 	const videoBitsPerSecond = computeBitrate(width, height);
-	const mimeType = selectMimeType();
-
-	console.log(
-		`Recording at ${width}x${height} @ ${frameRate ?? TARGET_FRAME_RATE}fps using ${mimeType ?? "browser default"} / ${Math.round(
-			videoBitsPerSecond / BITS_PER_MEGABIT,
-		)} Mbps`,
-	);
-
-	const hasAudio = stream.current!.getAudioTracks().length > 0;
+	const capturedStream = stream.current!;
+	const hasAudio = capturedStream.getAudioTracks().length > 0;
 	const audioBitsPerSecond = hasAudio
 		? systemAudioIncluded
 			? AUDIO_BITRATE_SYSTEM
 			: AUDIO_BITRATE_VOICE
 		: undefined;
-	const recorder = new MediaRecorder(
-		stream.current!,
-		createBrowserRecordingOptions({
+	const { recorder, mimeType, startedAt } = startScreenRecorder(
+		capturedStream,
+		videoTrack,
+		getMimeTypes(),
+		{
 			audioBitsPerSecond,
-			mimeType,
 			videoBitsPerSecond,
-		}),
+		},
+	);
+
+	console.log(
+		`Recording at ${width}x${height} @ ${frameRate ?? TARGET_FRAME_RATE}fps using ${mimeType ?? "browser default"} / ${Math.round(
+			videoBitsPerSecond / BITS_PER_MEGABIT,
+		)} Mbps`,
 	);
 
 	const recordingBlobType = recorder.mimeType || mimeType || "video/webm";
@@ -215,13 +274,10 @@ export async function startBrowserRecorder(
 	recorder.onerror = () => {
 		setRecording(false);
 	};
-	const mainStartedAt = Date.now();
-	if (startWasCancelled()) return;
 	beginWebcamCapture();
-	resetRecordingClock(mainStartedAt);
+	resetRecordingClock(startedAt);
 	webcamTimeOffsetMs.current =
-		webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
-	recorder.start(RECORDER_TIMESLICE_MS);
+		webcamStartTime.current === null ? 0 : webcamStartTime.current - startedAt;
 	setRecording(true);
 	try {
 		await window.electronAPI?.setRecordingState(true);

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("local media path policy", () => {
@@ -11,7 +12,9 @@ describe("local media path policy", () => {
 	let appPath: string;
 
 	beforeEach(async () => {
-		tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-media-policy-"));
+		tempRoot = await fs.realpath(
+			await fs.mkdtemp(path.join(os.tmpdir(), "recordly-media-policy-")),
+		);
 		appDataPath = path.join(tempRoot, "AppData");
 		userDataPath = path.join(tempRoot, "UserData");
 		tempPath = path.join(tempRoot, "Temp");
@@ -47,6 +50,36 @@ describe("local media path policy", () => {
 		if (tempRoot) {
 			await fs.rm(tempRoot, { recursive: true, force: true });
 		}
+	});
+
+	it("keeps audio and camera selections when the recordings directory changes", async () => {
+		const { RECORDINGS_SETTINGS_FILE } = await import("../constants");
+		const { recordingPreferencesStore } = await import("../settings/recordingPreferencesStore");
+		const { persistRecordingsDirectorySetting } = await import("./manager");
+		const selections = {
+			microphoneEnabled: true,
+			microphoneDeviceId: "selected-mic",
+			systemAudioEnabled: true,
+			webcamEnabled: true,
+			webcamDeviceId: "selected-camera",
+			floatingWebcamPreviewVisible: false,
+		};
+		await fs.writeFile(RECORDINGS_SETTINGS_FILE, JSON.stringify(selections));
+		const target = path.join(tempRoot, "New recordings");
+		await Promise.all([
+			persistRecordingsDirectorySetting(target),
+			recordingPreferencesStore.update({ microphoneDeviceId: "new-microphone" }),
+		]);
+
+		const actual = JSON.parse(await fs.readFile(RECORDINGS_SETTINGS_FILE, "utf8"));
+		expect(actual).toEqual({
+			...selections,
+			microphoneDeviceId: "new-microphone",
+			recordingsDir: target,
+		});
+		vi.resetModules();
+		const { getRecordingsDir } = await import("../utils");
+		await expect(getRecordingsDir()).resolves.toBe(target);
 	});
 
 	it("restores uploaded webcam media and its edge style from disk after a restart", async () => {
@@ -113,6 +146,99 @@ describe("local media path policy", () => {
 		await expect(
 			manager.readProjectPreview(path.join(tempRoot, "unknown.recordly")),
 		).rejects.toThrow("not in the library");
+	});
+
+	it("opens and previews a moved project with its recording and webcam beside it", async () => {
+		const thumbnail = vi.fn(async () => Buffer.from("test thumbnail"));
+		vi.doMock("./firstFrameThumbnail", () => ({ createProjectFirstFrameThumbnail: thumbnail }));
+		vi.doMock("../../mediaServer", () => ({
+			getMediaServerBaseUrl: () => "http://127.0.0.1:1234",
+			buildMediaUrl: (base: string, file: string) =>
+				`${base}/media?path=${encodeURIComponent(file)}`,
+		}));
+		const manager = await import("./manager");
+		const state = await import("../state");
+		const projectDir = path.join(tempRoot, "Moved project");
+		const projectPath = path.join(projectDir, "Demo.recordly");
+		const videoPath = path.join(projectDir, "Nagranie próbne.mp4");
+		const webcamPath = path.join(projectDir, "Nagranie próbne-webcam.mp4");
+		const contents = JSON.stringify({
+			version: 1,
+			videoPath: pathToFileURL(path.join(tempRoot, "Old folder", path.basename(videoPath)))
+				.href,
+			editor: {
+				webcam: {
+					enabled: true,
+					sourcePath: path.join(tempRoot, "Old folder", path.basename(webcamPath)),
+				},
+			},
+		});
+		await fs.mkdir(projectDir);
+		await fs.writeFile(projectPath, contents);
+		await fs.writeFile(videoPath, "video");
+		await fs.writeFile(webcamPath, "webcam");
+		await manager.saveRecentProjectPaths([projectPath]);
+		state.setCurrentProjectPath("active.recordly");
+
+		const preview = await manager.readProjectPreview(projectPath);
+		expect(preview.videoUrl).toContain(encodeURIComponent(videoPath));
+		expect(preview.webcamUrl).toContain(encodeURIComponent(webcamPath));
+		expect(preview.sourcePaths).toEqual([videoPath, webcamPath]);
+		expect(state.currentProjectPath).toBe("active.recordly");
+		await expect(
+			manager.refreshProjectThumbnail(projectPath, await fs.stat(projectPath)),
+		).resolves.toMatchObject({ path: projectPath });
+		expect(thumbnail).toHaveBeenCalledWith(videoPath);
+
+		const loaded = await manager.loadProjectFromPath(projectPath);
+		expect(loaded).toMatchObject({
+			success: true,
+			project: { videoPath, editor: { webcam: { enabled: true, sourcePath: webcamPath } } },
+		});
+		expect(state.currentRecordingSession).toMatchObject({ videoPath, webcamPath });
+		expect(await fs.readFile(projectPath, "utf-8")).toBe(contents);
+	});
+
+	it("leaves the project on the missing-recording path when its nearby match is a directory", async () => {
+		const manager = await import("./manager");
+		const missing = path.join(tempRoot, "Old folder", "recording.mp4");
+		const projectPath = path.join(tempPath, "Demo.recordly");
+		await fs.mkdir(path.join(tempPath, "recording.mp4"));
+		await fs.writeFile(
+			projectPath,
+			JSON.stringify({ version: 1, videoPath: missing, editor: {} }),
+		);
+		await expect(manager.loadProjectFromPath(projectPath)).resolves.toMatchObject({
+			success: false,
+			missingRecordingPath: missing,
+		});
+	});
+
+	it("keeps a working path and reports access failures when a same-named file is nearby", async () => {
+		const { resolveProjectMediaSources } = await import("./manager");
+		const videoPath = path.join(tempRoot, "Original recording.mp4");
+		const projectPath = path.join(tempPath, "Demo.recordly");
+		await fs.writeFile(videoPath, "original");
+		await fs.writeFile(path.join(tempPath, path.basename(videoPath)), "other file");
+		const project = { videoPath };
+
+		await expect(resolveProjectMediaSources(project, projectPath)).resolves.toMatchObject({
+			success: true,
+			videoPath,
+		});
+
+		const access = vi.spyOn(fs, "access");
+		try {
+			access.mockRejectedValueOnce(
+				Object.assign(new Error("Access denied"), { code: "EACCES" }),
+			);
+			await expect(resolveProjectMediaSources(project, projectPath)).resolves.toEqual({
+				success: false,
+				message: "Could not access project recording: Access denied",
+			});
+		} finally {
+			access.mockRestore();
+		}
 	});
 
 	it("rejects existing media files outside allowed directories until they are approved", async () => {

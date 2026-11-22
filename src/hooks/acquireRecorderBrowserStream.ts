@@ -1,5 +1,5 @@
 import { translate } from "@/i18n/runtime";
-import { acquireBrowserScreenCapture } from "./browserScreenCapture";
+import { acquireBrowserScreenCapture, LINUX_PORTAL_SOURCE_ID } from "./browserScreenCapture";
 import {
 	CHROME_MEDIA_SOURCE,
 	MIC_GAIN_BOOST,
@@ -21,6 +21,7 @@ export async function acquireRecorderBrowserStream(
 	context: Pick<
 		RecorderContext,
 		| "hideEditorOverlayCursorByDefault"
+		| "captureSourceKind"
 		| "microphoneEnabled"
 		| "systemAudioEnabled"
 		| "resolveBrowserCaptureSource"
@@ -35,15 +36,14 @@ export async function acquireRecorderBrowserStream(
 	{
 		selectedSource,
 		nativeWindowsCaptureStartFailed,
-		onPortalCapture,
 	}: {
 		selectedSource: ProcessedDesktopSource;
 		nativeWindowsCaptureStartFailed: boolean;
-		onPortalCapture: (usingPortal: boolean) => void;
 	},
 ) {
 	const {
 		hideEditorOverlayCursorByDefault,
+		captureSourceKind,
 		microphoneEnabled,
 		systemAudioEnabled,
 		resolveBrowserCaptureSource,
@@ -85,8 +85,7 @@ export async function acquireRecorderBrowserStream(
 	let videoTrack: MediaStreamTrack | undefined;
 	let systemAudioIncluded = false;
 	const mediaDevices = navigator.mediaDevices as DesktopCaptureMediaDevices;
-	const useLinuxPortal = selectedSource.id === "screen:linux-portal";
-	onPortalCapture(useLinuxPortal);
+	const useLinuxPortal = selectedSource.id === LINUX_PORTAL_SOURCE_ID;
 	const browserScreenVideoConstraints = {
 		mandatory: {
 			chromeMediaSource: CHROME_MEDIA_SOURCE,
@@ -228,6 +227,13 @@ export async function acquireRecorderBrowserStream(
 
 	if (!stream.current || !videoTrack) {
 		throw new Error("Media stream is not available.");
+	}
+
+	if (useLinuxPortal) {
+		// The portal's displaySurface is only a preference; the user can pick any surface.
+		const surface = videoTrack.getSettings?.().displaySurface;
+		if (surface === "window") captureSourceKind.current = "window";
+		else if (surface === "monitor") captureSourceKind.current = "screen";
 	}
 
 	try {

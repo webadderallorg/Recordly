@@ -94,6 +94,12 @@ test("compact microphone and camera selectors preserve their original choices", 
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
 		window.electronAPI.getEditorMode = async () => true;
+		window.electronAPI.getMediaPermissionStatus = async () => ({
+			success: true,
+			screen: "granted",
+			microphone: "granted",
+			camera: "granted",
+		});
 		navigator.mediaDevices.enumerateDevices = async () =>
 			[
 				{
@@ -124,6 +130,113 @@ test("compact microphone and camera selectors preserve their original choices", 
 	await page
 		.locator("[data-recording-state]")
 		.screenshot({ path: "test-results/recorder-restored-selectors.png" });
+});
+
+test("finds microphone and camera on a fresh profile with an empty device list", async ({
+	page,
+}) => {
+	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.getMediaPermissionStatus = async () => ({
+			success: true,
+			screen: "granted",
+			microphone: "granted",
+			camera: "granted",
+		});
+		const devices: MediaDeviceInfo[] = [];
+		navigator.mediaDevices.enumerateDevices = async () => [...devices];
+		navigator.mediaDevices.getUserMedia = async ({ audio, video } = {}) => {
+			const unlock = (kind: MediaDeviceKind, deviceId: string, label: string) => {
+				if (!devices.some((device) => device.deviceId === deviceId)) {
+					devices.push({ kind, deviceId, label, groupId: label } as MediaDeviceInfo);
+				}
+			};
+			if (audio) unlock("audioinput", "desk-mic", "Desk microphone");
+			if (video) unlock("videoinput", "desk-camera", "Desk camera");
+			return new MediaStream();
+		};
+	});
+	await page.goto("/?windowType=hud-overlay");
+	await page.getByRole("button", { name: "Audio settings", exact: true }).click();
+	await expect(page.getByRole("button", { name: /^Desk microphone\b/ })).toBeVisible({
+		timeout: 5000,
+	});
+	await page.keyboard.press("Escape");
+	await page.getByRole("button", { name: "Camera settings", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Desk camera", exact: true })).toBeVisible({
+		timeout: 5000,
+	});
+});
+
+test("records the camera already open in the floating preview", async ({ page }) => {
+	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		let stream: MediaStream | undefined;
+		let cameraRequests = 0;
+		let writtenBytes = 0;
+		navigator.mediaDevices.enumerateDevices = async () =>
+			[
+				{ kind: "videoinput", deviceId: "desk-camera", label: "Desk camera", groupId: "" },
+			] as MediaDeviceInfo[];
+		navigator.mediaDevices.getUserMedia = async () => {
+			document.documentElement.dataset.cameraRequests = String(++cameraRequests);
+			if (stream?.active)
+				throw new DOMException("Camera is already open", "NotReadableError");
+			const canvas = document.createElement("canvas");
+			canvas.width = 160;
+			canvas.height = 90;
+			const context = canvas.getContext("2d")!;
+			let frame = 0;
+			setInterval(() => {
+				context.fillStyle = frame++ % 2 ? "lime" : "blue";
+				context.fillRect(0, 0, canvas.width, canvas.height);
+			}, 25);
+			stream = canvas.captureStream(30);
+			return stream;
+		};
+		Object.assign(window.electronAPI, {
+			getMediaPermissionStatus: async () => ({
+				success: true,
+				screen: "granted",
+				microphone: "granted",
+				camera: "granted",
+			}),
+			getCountdownDelay: async () => ({ success: true, delay: 0 }),
+			getRecordingPreferences: async () => ({
+				success: true,
+				microphoneEnabled: false,
+				systemAudioEnabled: false,
+				webcamEnabled: true,
+				webcamDeviceId: "desk-camera",
+			}),
+			startNativeScreenRecording: async () => ({ success: true }),
+			stopNativeScreenRecording: async () => ({ success: true, path: "/screen.mp4" }),
+			openRecordingFileStream: async () => ({ success: true, streamId: "camera" }),
+			appendRecordingFileStream: async (_streamId: string, bytes: ArrayBuffer) => {
+				writtenBytes += bytes.byteLength;
+				return { success: true };
+			},
+			closeRecordingFileStream: async () => {
+				document.documentElement.dataset.cameraBytes = String(writtenBytes);
+				return { success: true, path: "/camera.webm" };
+			},
+		});
+	});
+	await page.goto("/?windowType=hud-overlay");
+	const preview = page.locator("[data-floating-webcam-preview] video");
+	await expect
+		.poll(() => preview.evaluate((video: HTMLVideoElement) => video.currentTime))
+		.toBeGreaterThan(0);
+	await page.getByRole("button", { name: "Record", exact: true }).click();
+	const stop = page.getByRole("button", { name: "Stop", exact: true });
+	await expect(stop).toBeVisible();
+	const playbackTime = await preview.evaluate((video: HTMLVideoElement) => video.currentTime);
+	await expect
+		.poll(() => preview.evaluate((video: HTMLVideoElement) => video.currentTime))
+		.toBeGreaterThan(playbackTime + 0.3);
+	await stop.click();
+	await expect(page.locator("html")).toHaveAttribute("data-camera-bytes", /^[1-9]\d*$/);
+	await expect(page.locator("html")).toHaveAttribute("data-camera-requests", "1");
 });
 
 for (const reducedMotion of [false, true]) {

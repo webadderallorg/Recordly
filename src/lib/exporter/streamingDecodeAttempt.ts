@@ -25,6 +25,8 @@ const STARTUP_STABILIZATION_SECONDS = 1.25;
 const STARTUP_MAX_DECODE_QUEUE = 12;
 
 const STARTUP_MAX_PENDING_FRAMES = 28;
+const DECODE_FRAME_WAIT_MS = 30_000;
+
 export async function decodeVideoStreamAttempt(
 	context: StreamingDecodeContext,
 
@@ -151,6 +153,7 @@ export async function decodeVideoStreamAttempt(
 			notifyBackpressureProgress();
 		},
 	});
+	context.decoder.ondequeue = notifyBackpressureProgress;
 	try {
 		context.decoder.configure(preferredDecoderConfig);
 	} catch (error) {
@@ -175,7 +178,20 @@ export async function decodeVideoStreamAttempt(
 		}
 		if (decodeDone) return Promise.resolve(null);
 		return new Promise((resolve) => {
-			frameResolve = resolve;
+			const timeout = setTimeout(() => {
+				frameResolve = null;
+				recordFirstDecodeError(
+					new DOMException(
+						"Timed out waiting for a decoded video frame.",
+						"TimeoutError",
+					),
+				);
+				resolve(null);
+			}, DECODE_FRAME_WAIT_MS);
+			frameResolve = (frame) => {
+				clearTimeout(timeout);
+				resolve(frame);
+			};
 		});
 	};
 
@@ -348,10 +364,7 @@ export async function decodeVideoStreamAttempt(
 			lastDecodedFrameSec = frameTimeSec;
 
 			// Finalize completed segments before handling this frame.
-			while (
-				segmentIdx < segments.length &&
-				frameTimeSec >= segments[segmentIdx].endSec - epsilonSec
-			) {
+			while (segmentIdx < segments.length && frameTimeSec >= segments[segmentIdx].endSec) {
 				const segment = segments[segmentIdx];
 				while (!context.cancelled && (await emitHeldFrameForTarget(segment))) {
 					// Keep emitting remaining output frames for this segment from the last known frame.
@@ -369,7 +382,7 @@ export async function decodeVideoStreamAttempt(
 
 			const currentSegment = segments[segmentIdx];
 
-			// Keep the nearest pre-roll frame for cuts between source frames.
+			// Keep the last presented frame before the start of a cut.
 			if (frameTimeSec < currentSegment.startSec - epsilonSec) {
 				heldFrame?.close();
 				heldFrame = frame;
@@ -385,8 +398,8 @@ export async function decodeVideoStreamAttempt(
 				continue;
 			}
 
-			// Any target timestamp before this midpoint is closer to heldFrame than current frame.
-			const handoffBoundarySec = (heldFrameSec + frameTimeSec) / 2;
+			// Compare on the decoder's microsecond grid so fractional frame rates match their PTS.
+			const frameTimeUs = Math.round(frameTimeSec * 1_000_000);
 			while (!context.cancelled) {
 				const segmentFrameCount = segmentOutputFrameCounts[segmentIdx];
 				if (segmentFrameIndex >= segmentFrameCount) {
@@ -398,7 +411,7 @@ export async function decodeVideoStreamAttempt(
 					segmentFrameIndex,
 					targetFrameRate,
 				);
-				if (sourceTimeSec > handoffBoundarySec) {
+				if (Math.round(sourceTimeSec * 1_000_000) >= frameTimeUs) {
 					break;
 				}
 
@@ -452,8 +465,9 @@ export async function decodeVideoStreamAttempt(
 		removeCancellationHandler?.();
 		currentFrame?.close();
 		heldFrame?.close();
-		if (context.decoder && context.decoder.state !== "closed") {
-			context.decoder.close();
+		if (context.decoder) {
+			context.decoder.ondequeue = null;
+			if (context.decoder.state !== "closed") context.decoder.close();
 		}
 		await readerCancellation;
 		await feedPromise;

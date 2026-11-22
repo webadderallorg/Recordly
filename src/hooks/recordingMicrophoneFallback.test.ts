@@ -553,7 +553,6 @@ describe("microphone device label permission", () => {
 	it.each([
 		["labeled", [microphone("Desk")]],
 		["mixed", [microphone("Desk"), microphone("", "second")]],
-		["no audio", [{ kind: "videoinput", deviceId: "camera", label: "" }]],
 	])("does not request label permission for %s inputs", async (_label, devices) => {
 		enumerateDevices.mockResolvedValue(devices);
 		mount();
@@ -567,6 +566,68 @@ describe("microphone device label permission", () => {
 				label: "Micrófono second",
 			});
 		}
+	});
+
+	it("retries an empty list after a microphone is plugged in", async () => {
+		enumerateDevices.mockResolvedValue([]);
+		getUserMedia.mockRejectedValueOnce(new DOMException("No microphone", "NotFoundError"));
+		mount();
+		await flush();
+		expect(microphoneHooks.states[0]).toEqual([]);
+		expect(microphoneHooks.states[3]).toBeNull();
+		enumerateDevices
+			.mockResolvedValueOnce([])
+			.mockResolvedValueOnce([microphone("Desk microphone")]);
+		deviceChange?.();
+		await flush();
+		expect(microphoneHooks.states[0]).toEqual([
+			{ deviceId: "microphone-1", groupId: "group-1", label: "Desk microphone" },
+		]);
+		expect(getUserMedia).toHaveBeenCalledTimes(2);
+		expect(stop).toHaveBeenCalledOnce();
+	});
+
+	it("shares a label request when the device list changes before permission resolves", async () => {
+		let resolve!: (stream: MediaStream) => void;
+		getUserMedia.mockReturnValueOnce(
+			new Promise<MediaStream>((done) => {
+				resolve = done;
+			}),
+		);
+		mount();
+		await flush();
+		deviceChange?.();
+		await flush();
+		enumerateDevices.mockResolvedValue([microphone("Desk microphone")]);
+		resolve(stream);
+		await flush();
+		expect(getUserMedia).toHaveBeenCalledOnce();
+		expect(stop).toHaveBeenCalledOnce();
+		expect(microphoneHooks.states[0]).toEqual([
+			{ deviceId: "microphone-1", groupId: "group-1", label: "Desk microphone" },
+		]);
+	});
+
+	it("lists a microphone plugged in while an empty permission request was pending", async () => {
+		const permission = Promise.withResolvers<MediaStream>();
+		getUserMedia.mockReturnValueOnce(permission.promise);
+		enumerateDevices.mockResolvedValue([]);
+		mount();
+		await flush();
+		const connected = microphone();
+		enumerateDevices.mockResolvedValue([connected]);
+		deviceChange?.();
+		await flush();
+		permission.reject(new DOMException("No microphone when requested", "NotFoundError"));
+		await flush();
+		expect(getUserMedia).toHaveBeenCalledOnce();
+		expect(microphoneHooks.states[0]).toEqual([
+			{
+				deviceId: connected.deviceId,
+				groupId: connected.groupId,
+				label: "Micrófono micropho",
+			},
+		]);
 	});
 
 	it("treats whitespace-only raw labels as hidden", async () => {
