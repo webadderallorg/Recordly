@@ -124,16 +124,26 @@
   },
   "linux": {
     "target": [
-      "AppImage"
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      }
     ],
     "icon": "icons/icons/png",
+    // AppImage expands ${arch} to x86_64, while published updates use x64.
     "artifactName": "${productName}-linux-x64.${ext}",
     "category": "AudioVideo"
   },
   "win": {
     "target": [
-      "nsis",
-      "zip"
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64"]
+      }
     ],
     "icon": "icons/icons/win/icon.ico",
     "executableName": "Recordly",
