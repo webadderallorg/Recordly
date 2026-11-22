@@ -86,10 +86,26 @@ test("soundtrack loops after the full track ends", async ({ page }) => {
 
 test("soundtrack fades in over two seconds from silence", async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
-	await page.goto("/?windowType=onboarding");
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.onOnboardingSoundtrackStart = (callback) => {
+			document.documentElement.dataset.soundtrackReady = "true";
+			window.addEventListener("test-logo-start", callback);
+			return () => window.removeEventListener("test-logo-start", callback);
+		};
+	});
+	await page.goto("/?windowType=onboarding&welcomeSoundtrack=intro");
 	const audio = page.getByRole("dialog", { name: "Welcome to Recordly" }).locator("audio");
-	await expect(audio).toHaveJSProperty("paused", false);
-	expect(await audio.evaluate((el: HTMLAudioElement) => el.volume)).toBeLessThan(0.6);
+	await expect(page.locator("html")).toHaveAttribute("data-soundtrack-ready", "true");
+	// Start playback and read the volume in the page, so runner delays cannot advance the fade.
+	const initialVolume = await audio.evaluate(async (el: HTMLAudioElement) => {
+		const playing = new Promise((resolve) =>
+			el.addEventListener("playing", resolve, { once: true }),
+		);
+		window.dispatchEvent(new Event("test-logo-start"));
+		await playing;
+		return el.volume;
+	});
+	expect(initialVolume).toBeLessThan(0.6);
 	await expect(audio).toHaveJSProperty("volume", 1, { timeout: 4000 });
 });
 

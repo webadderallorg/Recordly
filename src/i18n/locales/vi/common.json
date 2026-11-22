@@ -52,7 +52,7 @@
 		"attachFiles": "Đính kèm tệp",
 		"attachFilesWithLimit": "Đính kèm tệp (50 MB)",
 		"removeFile": "Bỏ tệp {{name}}",
-		"diagnostics": "Nhật ký chẩn đoán sẽ được đính kèm. Phản hồi sẽ được gửi đến support@recordly.dev.",
+		"diagnostics": "Nhật ký chẩn đoán sẽ được đính kèm.",
 		"sending": "Đang gửi…",
 		"errors": {
 			"unavailable": "Bạn có thể gửi phản hồi sau khi dịch vụ tài khoản được cấu hình.",

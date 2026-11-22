@@ -52,7 +52,7 @@
 		"attachFiles": "Dosya ekle",
 		"attachFilesWithLimit": "Dosya ekle (50 MB)",
 		"removeFile": "{{name}} dosyasını kaldır",
-		"diagnostics": "Tanılama günlükleri eklenecektir. Geri bildirim support@recordly.dev adresine gönderilecek.",
+		"diagnostics": "Tanılama günlükleri eklenecektir.",
 		"sending": "Gönderiliyor…",
 		"errors": {
 			"unavailable": "Hesap hizmetleri yapılandırılana kadar geri bildirim kullanılamaz.",
