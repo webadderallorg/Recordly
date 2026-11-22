@@ -12,11 +12,11 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
+#include <vector>
 #include <chrono>
 #include <cstdio>
 #include <fstream>
 
-static std::atomic<bool> g_stopRequested{false};
 static std::atomic<bool> g_pauseRequested{false};
 static std::atomic<int64_t> g_lastFrameTimestampHns{0};
 static std::atomic<int64_t> g_pauseStartTimestampHns{0};
@@ -25,6 +25,9 @@ static std::mutex g_videoMutex;
 static int64_t g_lastResumeTimestampHns = 0;
 static std::mutex g_stopMutex;
 static std::condition_variable g_stopCv;
+static bool g_stopRequested = false;
+enum class CaptureCommand { Pause, Resume };
+static std::vector<CaptureCommand> g_captureCommands;
 
 static void reportMicrophoneCaptureUnavailable() {
     std::cerr << "WARNING: Failed to initialize WASAPI mic capture" << std::endl;
@@ -278,31 +281,27 @@ static void stdinListenerThread() {
             line.pop_back();
         }
 
-        if (line == "pause") {
-            std::lock_guard<std::mutex> lock(g_videoMutex);
-            if (!g_pauseRequested) openActivePauseAt(queryPerformanceCounterHns());
-            continue;
-        }
-
-        if (line == "resume") {
-            std::lock_guard<std::mutex> lock(g_videoMutex);
-            if (g_pauseRequested) {
-                g_lastResumeTimestampHns = queryPerformanceCounterHns();
-                closeActivePauseAt(g_lastResumeTimestampHns);
+        if (line == "pause" || line == "resume") {
+            {
+                std::lock_guard<std::mutex> lock(g_stopMutex);
+                g_captureCommands.push_back(
+                    line == "pause" ? CaptureCommand::Pause : CaptureCommand::Resume);
             }
+            g_stopCv.notify_one();
             continue;
         }
 
         if (line == "stop") {
-            g_stopRequested = true;
-            g_stopCv.notify_all();
-            return;
+            break;
         }
     }
 
-    // stdin closed (parent process died)
-    g_stopRequested = true;
-    g_stopCv.notify_all();
+    // End the recording on Stop or when the parent closes stdin.
+    {
+        std::lock_guard<std::mutex> lock(g_stopMutex);
+        g_stopRequested = true;
+    }
+    g_stopCv.notify_one();
 }
 
 int wmain(int argc, wchar_t* argv[]) {
@@ -384,20 +383,22 @@ int wmain(int argc, wchar_t* argv[]) {
     int pausedContentWidth = 0;
     int pausedContentHeight = 0;
     int64_t pausedWindowTimestampHns = 0;
+    int64_t pendingResumePresentationHns = 0;
+    bool videoStopped = false;
     const auto writeFrame = [&](ID3D11Texture2D* texture, int contentWidth, int contentHeight,
-                                int64_t timestampHns) {
-        if (encoder.writeFrame(texture, contentWidth, contentHeight,
-                               adjustedVideoTimestampHns(timestampHns))) {
-            frameCount.fetch_add(1);
-            announceRecordingStarted();
-        }
+                                int64_t presentationHns) {
+        if (!encoder.writeFrame(texture, contentWidth, contentHeight, presentationHns)) return false;
+        frameCount.fetch_add(1);
+        announceRecordingStarted();
+        return true;
     };
     const auto writeResumedWindowFrame = [&] {
-        if (g_pauseRequested || !pausedWindowTimestampHns ||
-            g_lastResumeTimestampHns < pausedWindowTimestampHns) return;
-        writeFrame(pausedWindowTexture.Get(), pausedContentWidth, pausedContentHeight,
-                   g_lastResumeTimestampHns);
-        pausedWindowTimestampHns = 0;
+        if (g_pauseRequested || !pendingResumePresentationHns) return;
+        if (writeFrame(pausedWindowTexture.Get(), pausedContentWidth, pausedContentHeight,
+                       pendingResumePresentationHns)) {
+            pendingResumePresentationHns = 0;
+            pausedWindowTimestampHns = 0;
+        }
     };
 
     session.setFrameCallback([&](ID3D11Texture2D* texture, int contentWidth, int contentHeight,
@@ -406,10 +407,13 @@ int wmain(int argc, wchar_t* argv[]) {
         g_lastFrameTimestampHns = timestampHns;
         int64_t expectedFirstVideoTimestampHns = -1;
         firstVideoTimestampHns.compare_exchange_strong(expectedFirstVideoTimestampHns, timestampHns);
-        if (g_stopRequested) return;
+        if (videoStopped) return;
 
         if (g_pauseRequested) {
-            if (config.windowHandle <= 0 || contentWidth <= 0 || contentHeight <= 0) return;
+            if (config.windowHandle <= 0 || contentWidth <= 0 || contentHeight <= 0 ||
+                timestampHns < g_pauseStartTimestampHns || timestampHns <= pausedWindowTimestampHns) {
+                return;
+            }
             // WGC does not emit another frame when a window becomes static before Resume.
             D3D11_TEXTURE2D_DESC sourceDesc{};
             texture->GetDesc(&sourceDesc);
@@ -421,21 +425,24 @@ int wmain(int argc, wchar_t* argv[]) {
                 sourceDesc.BindFlags = 0;
                 sourceDesc.CPUAccessFlags = 0;
                 sourceDesc.MiscFlags = 0;
+                ComPtr<ID3D11Texture2D> replacement;
                 if (FAILED(session.device()->CreateTexture2D(
-                        &sourceDesc, nullptr, pausedWindowTexture.ReleaseAndGetAddressOf()))) {
-                    pausedWindowTimestampHns = 0;
-                    return;
-                }
+                        &sourceDesc, nullptr, replacement.GetAddressOf()))) return;
+                pausedWindowTexture = std::move(replacement);
             }
             session.context()->CopyResource(pausedWindowTexture.Get(), texture);
             pausedContentWidth = contentWidth;
             pausedContentHeight = contentHeight;
             pausedWindowTimestampHns = timestampHns;
+            pendingResumePresentationHns = 0;
             return;
         }
         if (timestampHns < g_lastResumeTimestampHns) return;
         writeResumedWindowFrame();
-        writeFrame(texture, contentWidth, contentHeight, timestampHns);
+        if (writeFrame(texture, contentWidth, contentHeight, adjustedVideoTimestampHns(timestampHns))) {
+            pendingResumePresentationHns = 0;
+            pausedWindowTimestampHns = 0;
+        }
     });
 
     // Start stdin listener
@@ -485,8 +492,36 @@ int wmain(int argc, wchar_t* argv[]) {
     captureSetupComplete = true;
     announceRecordingStarted();
 
-    // Wait for stop signal while pausing/resuming audio tracks in lockstep.
-    while (!g_stopRequested && !session.hasFatalError()) {
+    while (!session.hasFatalError()) {
+        std::vector<CaptureCommand> commands;
+        bool stopRequested;
+        {
+            std::unique_lock<std::mutex> lock(g_stopMutex);
+            g_stopCv.wait_for(lock, std::chrono::milliseconds(20), [] {
+                return g_stopRequested || !g_captureCommands.empty();
+            });
+            commands.swap(g_captureCommands);
+            stopRequested = g_stopRequested;
+        }
+        for (const auto command : commands) {
+            if (command == CaptureCommand::Pause && !g_pauseRequested) {
+                std::lock_guard<std::mutex> lock(g_videoMutex);
+                writeResumedWindowFrame();
+                openActivePauseAt(queryPerformanceCounterHns());
+            } else if (command == CaptureCommand::Resume && g_pauseRequested) {
+                session.resumeAfterPendingFrames([&] {
+                    std::lock_guard<std::mutex> lock(g_videoMutex);
+                    g_lastResumeTimestampHns = queryPerformanceCounterHns();
+                    closeActivePauseAt(g_lastResumeTimestampHns);
+                    if (pausedWindowTimestampHns && !pendingResumePresentationHns) {
+                        pendingResumePresentationHns = adjustedVideoTimestampHns(g_lastResumeTimestampHns);
+                    }
+                    writeResumedWindowFrame();
+                });
+            }
+        }
+        if (stopRequested) break;
+
         if (g_pauseRequested) {
             if (audioActive) loopback.pause();
             if (micActive) micCapture.pause();
@@ -498,15 +533,13 @@ int wmain(int argc, wchar_t* argv[]) {
                 writeResumedWindowFrame();
             }
         }
-
-        std::unique_lock<std::mutex> lock(g_stopMutex);
-        g_stopCv.wait_for(lock, std::chrono::milliseconds(20), [] { return g_stopRequested.load(); });
     }
 
     // Stop capture and finalize
     int64_t adjustedStopTimestampHns;
     {
         std::lock_guard<std::mutex> lock(g_videoMutex);
+        videoStopped = true;
         writeResumedWindowFrame();
         adjustedStopTimestampHns = adjustedVideoTimestampHns(queryPerformanceCounterHns());
     }

@@ -12,6 +12,7 @@
 
 #include <functional>
 #include <atomic>
+#include <mutex>
 #include <string>
 
 using Microsoft::WRL::ComPtr;
@@ -29,6 +30,7 @@ public:
     void setFrameCallback(FrameCallback callback);
     bool startCapture();
     void stopCapture();
+    void resumeAfterPendingFrames(const std::function<void()>& resume);
     bool hasFatalError() const {
         return fatalError_.load() || (windowHandle_ && !IsWindow(windowHandle_));
     }
@@ -49,6 +51,7 @@ private:
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::FrameArrived_revoker frameArrivedRevoker_;
 
     FrameCallback frameCallback_;
+    std::mutex frameDeliveryMutex_;
     std::atomic<bool> capturing_{false};
     std::atomic<bool> fatalError_{false};
     int fps_ = 60;
@@ -69,4 +72,7 @@ private:
     void onFrameArrived(
         winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& sender,
         winrt::Windows::Foundation::IInspectable const& args);
+    bool readFrame(
+        winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& pool,
+        bool skipFrameRateLimit);
 };
