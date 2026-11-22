@@ -4,23 +4,28 @@ This project uses a namespace-based i18n setup so contributors can localize safe
 
 ## Locale Files
 
-All locale files live under:
+Each locale has a directory under [`src/i18n/locales/`](src/i18n/locales/). See
+[`src/i18n/config.ts`](src/i18n/config.ts) for the supported locale codes
+(`SUPPORTED_LOCALES`) and required namespace files (`I18N_NAMESPACES`).
+The [English catalog](src/i18n/locales/en/) defines the key structure for each
+namespace.
 
-- `src/i18n/locales/en/`
-- `src/i18n/locales/es/`
-- `src/i18n/locales/zh-CN/`
+## Add a Language
 
-Each locale has the same namespace files:
-
-- `common.json`
-- `launch.json`
-- `editor.json`
-- `timeline.json`
-- `settings.json`
-- `dialogs.json`
-- `shortcuts.json`
-
-English (`en`) is the source of truth for key structure.
+1. Add a canonical BCP 47 locale code, such as `pt-PT`, to `SUPPORTED_LOCALES`
+   in [`src/i18n/config.ts`](src/i18n/config.ts).
+   Create a directory with the same code under `src/i18n/locales/` and translate
+   each namespace file from the English catalog.
+2. Add the language's display name to `APP_LANGUAGE_LABELS` in
+   [`AppSettings.tsx`](src/components/video-editor/settings/AppSettings.tsx)
+   and its country mapping and flag artwork in
+   [`language-flag.tsx`](src/components/ui/language-flag.tsx).
+3. Import the new `native.json` and register it in `catalogs` in
+   [`electron/nativeI18n.ts`](electron/nativeI18n.ts) for native dialogs.
+   The renderer loads catalogs automatically through
+   [`src/i18n/messages.ts`](src/i18n/messages.ts).
+4. Run both checks below. Start the app with `npm run dev`, select the language
+   in Settings, and check that the interface and a native dialog use it.
 
 ## Key Rules
 
@@ -42,15 +47,17 @@ Run:
 
 ```bash
 npm run i18n:check
+npm run typecheck
 ```
 
-This checks for:
+`i18n:check` validates namespace files for locales in `SUPPORTED_LOCALES`.
+It checks key parity with English, nonempty strings, matching interpolation
+placeholders, and literal keys in recognized translation calls under `src`.
+Check dynamic and native dialog text in the running app. A directory alone can
+pass unnoticed until its code is registered. TypeScript checks that the
+language label, flag's country mapping, and native catalog cover each locale.
 
-- Missing namespace files
-- Missing keys compared to `en`
-- Extra keys not present in `en`
-
-## Contributor Workflow
+## Update Existing Translations
 
 1. Pull latest `main`.
 2. Update `en/<namespace>.json` with new keys if needed.

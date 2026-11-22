@@ -1,5 +1,15 @@
 {
 	"recording": {
+		"audio": "Audio",
+		"audioSettings": "Audio settings",
+		"camera": "Camera",
+		"cameraSettings": "Camera settings",
+		"systemAudio": "Computer audio",
+		"systemAudioDescription": "Apps, videos and system sounds",
+		"off": "Off",
+		"on": "On",
+		"cameraPreview": "Preview",
+		"cancelCountdown": "Cancel countdown",
 		"home": "Home",
 		"disableSystemAudio": "Disable system audio",
 		"enableSystemAudio": "Enable system audio",
@@ -10,7 +20,9 @@
 		"enableWebcam": "Enable webcam overlay",
 		"countdownDelay": "Countdown delay",
 		"noDelay": "No delay",
+		"settingValue": "{{setting}}: {{value}}",
 		"record": "Record",
+		"startRecording": "Start recording",
 		"recordingFolder": "Recordings Path: {{path}}",
 		"chooseRecordingsFolder": "Choose recordings path",
 		"folderPath": "Path: /{{name}}/",
@@ -90,6 +102,7 @@
 		"previewBadge": "Preview",
 		"notNow": "Not now",
 		"updateNow": "Update now",
+		"updateAndRestart": "Update & restart",
 		"restartToUpdate": "Restart to update",
 		"tryAgain": "Try again"
 	}

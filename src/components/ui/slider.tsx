@@ -1,5 +1,5 @@
 import { Slider as HeroSlider } from "@heroui/react";
-import { forwardRef, type ComponentProps } from "react";
+import { type ComponentProps, forwardRef } from "react";
 
 type SliderProps = Omit<
 	Omit<ComponentProps<typeof HeroSlider>, "children"> & { children?: import("react").ReactNode },

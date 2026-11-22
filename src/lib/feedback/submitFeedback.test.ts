@@ -1,9 +1,12 @@
 import { beforeEach, expect, it, vi } from "vitest";
+
 const api = vi.hoisted(() => ({ getUser: vi.fn(), invoke: vi.fn() }));
 vi.mock("@/lib/auth/recordlyAuth", () => ({
 	recordlyAuth: { auth: { getUser: api.getUser }, functions: { invoke: api.invoke } },
 }));
+
 import { feedbackErrorMessage, submitFeedback } from "./submitFeedback";
+
 const input = {
 	title: " Bug ",
 	subject: "bug",
@@ -38,10 +41,31 @@ it("shows the server quota error without exposing internal errors", async () => 
 		},
 	});
 	const error = await submitFeedback(input).catch((error) => error);
-	expect(feedbackErrorMessage(error)).toContain("tomorrow");
+	expect(feedbackErrorMessage(error)).toContain("Try removing your attachments");
 	expect(feedbackErrorMessage(new Error("database private details"))).toBe(
 		"Could not send feedback. Please try again.",
 	);
+});
+it("keeps the report ID when only the text changes before a retry", async () => {
+	const files = [new File([new Uint8Array(11 * 1024 * 1024)], "clip.mp4")];
+	api.invoke.mockImplementation(async (name: string) =>
+		name.includes("upload=prepare")
+			? { data: { success: true }, error: null }
+			: { data: null, error: new Error("offline") },
+	);
+	const prepareId = () =>
+		api.invoke.mock.calls
+			.map(([name]) => name as string)
+			.filter((name) => name.includes("upload=prepare"))
+			.map((name) => new URLSearchParams(name.split("?")[1]).get("id"));
+
+	await expect(submitFeedback({ ...input, files })).rejects.toThrow("offline");
+	await expect(submitFeedback({ ...input, files, message: "Edited" })).rejects.toThrow("offline");
+	await expect(submitFeedback({ ...input, files: [...files] })).rejects.toThrow("offline");
+
+	const [first, edited, reattached] = prepareId();
+	expect(edited).toBe(first);
+	expect(reattached).not.toBe(first);
 });
 it("rejects unconfirmed submissions", async () => {
 	api.invoke.mockResolvedValue({ data: {}, error: null });
@@ -78,4 +102,30 @@ it("aborts a stalled request after one minute and permits a subsequent submissio
 	} finally {
 		vi.useRealTimers();
 	}
+});
+
+it("preserves omitted diagnostics when logs are disabled by the caller", async () => {
+	await submitFeedback({ ...input, logs: null });
+	const [, { body }] = api.invoke.mock.calls[0];
+	expect(body.has("logs")).toBe(false);
+});
+
+it("normalizes a multiline title without changing the multiline message", async () => {
+	const message = "  First line\n\nSecond line 🙂  ";
+	await submitFeedback({ ...input, title: " \n First \r\n second\t line\u00a0rest ", message });
+	const [, { body }] = api.invoke.mock.calls[0];
+	expect(body.get("title")).toBe("First second line rest");
+	expect(body.get("message")).toBe(message.trim());
+	expect(message).toBe("  First line\n\nSecond line 🙂  ");
+});
+
+it.each([
+	["x".repeat(159) + "😀 tail", "x".repeat(159)],
+	["x".repeat(158) + "😀 tail", "x".repeat(158) + "😀"],
+	["😀".repeat(81), "😀".repeat(80)],
+])("keeps Unicode intact within the server's160 UTF-16-unit title limit", async (title, expected) => {
+	await submitFeedback({ ...input, title });
+	const [, { body }] = api.invoke.mock.calls[0];
+	expect(body.get("title")).toBe(expected);
+	expect(String(body.get("title")).length).toBeLessThanOrEqual(160);
 });

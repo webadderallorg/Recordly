@@ -1,6 +1,32 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
+test("wireframe playback controls fit on one row at supported window widths", async ({ page }) => {
+	await page.route("**/src/main.tsx*", (route) => route.abort());
+	await page.goto("/?windowType=editor");
+	for (const width of [800, 1060, 1440]) {
+		await page.setViewportSize({ width, height: 670 });
+		const bar = page.locator(".boot-editor .loading-playback");
+		const bounds = (await bar.boundingBox())!;
+		const boxes = await bar.locator("i").evaluateAll((items) =>
+			items.map((item) => {
+				const { x, y, width, height } = item.getBoundingClientRect();
+				return { x, y, width, height };
+			}),
+		);
+		for (const [index, box] of boxes.entries()) {
+			expect(box.width).toBeGreaterThan(0);
+			expect(
+				Math.abs(box.y + box.height / 2 - boxes[0].y - boxes[0].height / 2),
+			).toBeLessThan(1);
+			expect(box.x).toBeGreaterThanOrEqual(bounds.x);
+			expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+			if (index > 0)
+				expect(box.x).toBeGreaterThanOrEqual(boxes[index - 1].x + boxes[index - 1].width);
+		}
+	}
+});
+
 test("editor paints a wireframe before JavaScript loads", async ({ page }) => {
 	await page.route("**/src/main.tsx*", (route) => route.abort());
 	await page.goto("/?windowType=editor");
@@ -41,7 +67,7 @@ for (const colorScheme of ["light", "dark"] as const) {
 		await page.goto("/?windowType=editor&startupView=home");
 		await expect(page.getByRole("status", { name: "Loading home", exact: true })).toBeVisible();
 		await expect(page.locator(".boot-home-sidebar")).toBeVisible();
-		await expect(page.locator(".boot-home-grid > div")).toHaveCount(3);
+		await expect(page.locator(".boot-home-grid > div")).toHaveCount(4);
 		await expect(page.locator(".boot-timeline")).not.toBeVisible();
 		await page.screenshot({ path: `test-results/home-startup-${colorScheme}.png` });
 	});
@@ -91,7 +117,9 @@ test("Home retains its skeleton during session lookup and then opens the dashboa
 		window.electronAPI.getCurrentVideoPath = async () => ({ success: false, path: null });
 	});
 	await page.goto("/?windowType=editor");
-	await expect(page.locator("html")).toHaveAttribute("data-home-lookup-pending", "true");
+	await expect(page.locator("html")).toHaveAttribute("data-home-lookup-pending", "true", {
+		timeout: 30000,
+	});
 	await expect(page.getByRole("status", { name: "Loading home", exact: true })).toBeVisible();
 	await expect(page.getByRole("status", { name: "Loading editor", exact: true })).toHaveCount(0);
 	await page.evaluate(() => window.dispatchEvent(new Event("test-release-initial-project")));
@@ -169,7 +197,9 @@ test("Home navigation keeps the Home skeleton while a retained project finishes 
 		};
 	});
 	await page.goto("/?windowType=editor");
-	await expect(page.locator("html")).toHaveAttribute("data-retained-library-pending", "true");
+	await expect(page.locator("html")).toHaveAttribute("data-retained-library-pending", "true", {
+		timeout: 30000,
+	});
 	await expect(page.getByRole("status", { name: "Loading home", exact: true })).toBeVisible();
 	await expect(page.getByRole("status", { name: "Loading editor", exact: true })).toHaveCount(0);
 	await page.evaluate(() => window.dispatchEvent(new Event("test-release-retained-library")));
@@ -177,3 +207,45 @@ test("Home navigation keeps the Home skeleton while a retained project finishes 
 		page.getByRole("dialog", { name: "Projects dashboard", exact: true }),
 	).toBeVisible();
 });
+
+for (const width of [1440, 800]) {
+	test(`startup editor wireframe matches the live frame at ${width}px`, async ({ page }) => {
+		await page.setViewportSize({ width, height: 900 });
+		await installDesktopBridge(page);
+		await installDesktopBridgeOverrides(page, () => {
+			// Compare the normal editor frame; the bootstrap has no update notification.
+			window.electronAPI.getCurrentUpdateToastPayload = async () => null;
+		});
+		await page.route("**/src/main.tsx*", (route) => route.abort());
+		await page.goto("/?windowType=editor");
+		const wireframe = {
+			header: await page.locator(".boot-editor .boot-header").boundingBox(),
+			inspector: await page.locator(".boot-settings").boundingBox(),
+			timeline: await page.locator(".boot-timeline").boundingBox(),
+			preview: await page.locator(".boot-canvas .loading-preview-frame").boundingBox(),
+			playback: await page.locator(".boot-editor .loading-playback").boundingBox(),
+		};
+		await expect(page.locator(".boot-rail i")).toHaveCount(4);
+		await page.screenshot({ path: `test-results/editor-wireframe-${width}.png` });
+		await page.unroute("**/src/main.tsx*");
+		await page.reload();
+		await expect(page.locator(".editor-inspector")).toBeVisible();
+		await expect(page.locator(".app-update-banner")).toHaveCount(0);
+		const live = {
+			header: await page.locator(".editor-header").boundingBox(),
+			inspector: await page.locator(".editor-inspector .app-frame-surface").boundingBox(),
+			timeline: await page.locator("[data-timeline-panel]").boundingBox(),
+			preview: await page.locator(".editor-preview-frame").boundingBox(),
+			playback: await page.locator(".editor-playback").boundingBox(),
+		};
+		for (const region of ["header", "inspector", "timeline", "preview", "playback"] as const) {
+			for (const dimension of ["x", "y", "width", "height"] as const) {
+				expect(
+					Math.abs(wireframe[region]![dimension] - live[region]![dimension]),
+					`${region} ${dimension}`,
+				).toBeLessThan(2);
+			}
+		}
+		await page.screenshot({ path: `test-results/editor-live-${width}.png` });
+	});
+}

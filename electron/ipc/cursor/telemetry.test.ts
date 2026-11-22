@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CURSOR_TELEMETRY_VERSION } from "../constants";
 
 const { writeFile, rm } = vi.hoisted(() => ({
@@ -23,23 +23,72 @@ vi.mock("../utils", () => ({
 	getTelemetryPathForVideo: vi.fn(() => "/tmp/recording.cursor.json"),
 	getScreen: vi.fn(() => ({
 		getCursorScreenPoint: () => ({ x: 0, y: 0 }),
+		dipToScreenPoint: () => ({ x: 492, y: 346 }),
 		getPrimaryDisplay: () => ({ scaleFactor: 1 }),
 		getDisplayNearestPoint: () => ({ bounds: { x: 0, y: 0, width: 1, height: 1 } }),
 		getAllDisplays: () => [],
 	})),
 }));
 
-import { activeCursorSamples, setActiveCursorSamples, setCursorCaptureStartTimeMs } from "../state";
+import {
+	activeCursorSamples,
+	setActiveCursorSamples,
+	setCursorCaptureStartTimeMs,
+	setSelectedSource,
+	setSelectedWindowBounds,
+	setWindowsNativeCaptureActive,
+	setWindowsWindowCaptureSize,
+} from "../state";
 import {
 	getCursorCaptureElapsedMs,
+	getNormalizedCursorPoint,
 	normalizeCursorTelemetrySamples,
 	pauseCursorCapture,
 	pauseCursorCaptureAtBoundary,
 	pushCursorSample,
 	resetCursorCaptureClock,
 	resumeCursorCapture,
+	sampleCursorPoint,
 	writeCursorTelemetry,
 } from "./telemetry";
+
+describe("Windows window cursor coordinates", () => {
+	const platform = process.platform;
+	const source = { id: "window:123:0", name: "Window" };
+
+	beforeEach(() => {
+		Object.defineProperty(process, "platform", { value: "win32" });
+		setSelectedSource(source);
+		setSelectedWindowBounds(null);
+		setWindowsNativeCaptureActive(true);
+		setWindowsWindowCaptureSize({ sourceId: source.id, width: 764, height: 562 });
+		setActiveCursorSamples([]);
+	});
+
+	afterEach(() => {
+		Object.defineProperty(process, "platform", { value: platform });
+		setSelectedSource(null);
+		setSelectedWindowBounds(null);
+		setWindowsNativeCaptureActive(false);
+		setActiveCursorSamples([]);
+	});
+
+	it("uses the encoded frame after the source shrinks", () => {
+		setSelectedWindowBounds({
+			x: 112,
+			y: 75,
+			width: 502,
+			height: 329,
+			physicalOrigin: { x: 140, y: 94 },
+		});
+		expect(getNormalizedCursorPoint()).toEqual({ cx: 352 / 764, cy: 252 / 562 });
+	});
+
+	it("skips samples until the selected window's geometry arrives", () => {
+		sampleCursorPoint();
+		expect(activeCursorSamples).toEqual([]);
+	});
+});
 
 describe("cursor telemetry pause clock", () => {
 	beforeEach(() => {
@@ -118,5 +167,29 @@ describe("cursor telemetry pause clock", () => {
 
 		expect(rm).toHaveBeenCalledWith("/tmp/recording.cursor.json", { force: true });
 		expect(writeFile).not.toHaveBeenCalled();
+	});
+
+	it("preserves button identity through persistence and rejects invalid button values", async () => {
+		pushCursorSample(0.2, 0.3, 100, "right-click", "arrow", 2);
+		pushCursorSample(0.8, 0.6, 2000, "mouseup", "arrow", 2);
+		await writeCursorTelemetry("/tmp/recording.mp4", activeCursorSamples);
+		const saved = JSON.parse(writeFile.mock.calls[0][1]);
+		expect(saved.samples.map((sample: { mouseButton: number }) => sample.mouseButton)).toEqual([
+			2, 2,
+		]);
+		expect(
+			normalizeCursorTelemetrySamples([{ timeMs: 0, cx: 0, cy: 0, mouseButton: 99 }])[0]
+				.mouseButton,
+		).toBeUndefined();
+	});
+
+	it("releases held buttons at pause so mouseup during the pause cannot leave a stuck effect", () => {
+		pushCursorSample(0.1, 0.2, 100, "click", "arrow", 1);
+		pauseCursorCaptureAtBoundary(1500);
+		expect(activeCursorSamples.at(-1)).toMatchObject({
+			timeMs: 500,
+			interactionType: "mouseup",
+			mouseButton: 1,
+		});
 	});
 });

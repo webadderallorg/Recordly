@@ -1,5 +1,6 @@
 {
 	"zoom": {
+		"applyAutoZooms": "套用自動縮放",
 		"cannotPlace": "無法在此處新增縮放",
 		"existsOrNoSpace": "此位置已存在縮放，或可用空間不足。",
 		"suggestHandlerUnavailable": "無法使用縮放建議功能",
@@ -37,5 +38,10 @@
 	},
 	"addSpeed": "新增速度（S）",
 	"resizeLeft": "向左調整大小",
-	"resizeRight": "向右調整大小"
+	"resizeRight": "向右調整大小",
+	"hints": {
+		"splitClip": "按 {{binding}} 分割片段",
+		"addAnnotation": "按 {{binding}} 新增註解",
+		"addAudio": "點選音樂圖示以新增音訊"
+	}
 }

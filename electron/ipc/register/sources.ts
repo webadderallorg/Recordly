@@ -1,16 +1,18 @@
-import { createSourceListPicker } from "../../sourceListPicker";
-import { writeAppSetting } from "../../appSettingsStore";
-import { getSessionCaptureSource, validateCaptureSource } from "../captureSelection";
-import { createRecordingEditorNavigation } from "../../recordingEditorNavigation";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { app, BrowserWindow, desktopCapturer, ipcMain, systemPreferences } from "electron";
+import { recordingEditorLoading } from "../../recordingEditorLoading";
+import { createRecordingEditorNavigation } from "../../recordingEditorNavigation";
+import { createSourceListPicker } from "../../sourceListPicker";
 import {
-	setHudRecordingPreparationActive,
+	cancelHiddenHudRestoreOnActivation,
 	createHudOverlayWindow,
 	getHudOverlayWindow,
 	reassertHudOverlayMousePassthrough,
+	setHudRecordingPreparationActive,
+	showOnboardingWindow,
 } from "../../windows";
+import { getSessionCaptureSource, validateCaptureSource } from "../captureSelection";
 import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
 import {
 	getNativeMacWindowSources,
@@ -19,10 +21,17 @@ import {
 	stopWindowBoundsCapture,
 } from "../cursor/bounds";
 import { getDisplayBoundsForSource, getDisplayWorkAreaForSource } from "../recording/ffmpeg";
-import { isCursorCaptureActive, selectedSource, setSelectedSource } from "../state";
-import type { SelectedSource, WindowBounds } from "../types";
+import { recordingFocus } from "../recording/focus";
 import { getSourceArea } from "../sourceArea";
+import {
+	isCursorCaptureActive,
+	selectedSource,
+	setCurrentProjectPath,
+	setSelectedSource,
+} from "../state";
+import type { SelectedSource, WindowBounds } from "../types";
 import { getScreen, parseWindowId } from "../utils";
+import { isWaylandScreenCastMissing } from "../waylandScreenCast";
 import { bringWindowsWindowForward, resolveWindowsWindowBounds } from "../windowsWindowControl";
 import {
 	getScreenSourceIdForDisplay,
@@ -43,6 +52,7 @@ function normalizeDesktopSourceName(value: string) {
 }
 
 export function broadcastSelectedSourceChange() {
+	recordingFocus.sourceChanged(selectedSource);
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) {
 			window.webContents.send("selected-source-changed", selectedSource);
@@ -408,6 +418,10 @@ export function registerSourceHandlers({
 	getSourceSelectorWindow: () => BrowserWindow | null;
 }) {
 	const recordingNavigation = createRecordingEditorNavigation(createEditorWindow);
+	function openRecordingEditor(reload = true) {
+		cancelHiddenHudRestoreOnActivation();
+		recordingNavigation.open(reload);
+	}
 	const sourceListPicker = createSourceListPicker(
 		() => getSourceSelectorWindow() ?? createSourceSelectorWindow(),
 	);
@@ -629,6 +643,15 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 	ipcMain.handle("get-selected-source", () => {
 		return getSessionCaptureSource();
 	});
+	ipcMain.handle("is-wayland-screencast-missing", (event) => {
+		return (
+			process.platform === "linux" &&
+			isLikelyLinuxWaylandSession(process.env) &&
+			getHudOverlayWindow()?.webContents === event.sender &&
+			event.senderFrame === event.sender.mainFrame &&
+			isWaylandScreenCastMissing()
+		);
+	});
 
 	ipcMain.handle("open-source-selector", async () => {
 		if (isCursorCaptureActive) return;
@@ -649,6 +672,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 		createSourceSelectorWindow();
 	});
 	ipcMain.handle("show-recording-hud", (event) => {
+		recordingEditorLoading.clearError();
 		setHudRecordingPreparationActive(true);
 		recordingNavigation.setReturnWindow(BrowserWindow.fromWebContents(event.sender));
 		const hud = getHudOverlayWindow();
@@ -661,16 +685,44 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 	});
 	ipcMain.handle("show-recording-permissions", () => {
 		if (isCursorCaptureActive) return;
-		writeAppSetting("recordly.onboarding.permissionsRequested", true);
 		setHudRecordingPreparationActive(false);
-		recordingNavigation.open(false);
-		for (const window of BrowserWindow.getAllWindows()) {
-			if (!window.isDestroyed()) window.webContents.send("recording-permissions-requested");
-		}
+		showOnboardingWindow({ permissionsOnly: true });
 	});
 	ipcMain.handle("show-project-dashboard", () => {
+		recordingEditorLoading.clearError();
 		setHudRecordingPreparationActive(false);
-		recordingNavigation.open(false);
+		openRecordingEditor(false);
+	});
+	ipcMain.handle("open-loading-recording-editor", (event) => {
+		const sender = event.sender;
+		const owner = sender.id;
+		if (!recordingEditorLoading.begin(owner)) return { success: false };
+		const disconnected = () =>
+			recordingEditorLoading.finish(
+				owner,
+				"Recording preparation was interrupted. Your recording may still be available in Projects.",
+			);
+		sender.once("destroyed", disconnected);
+		void recordingEditorLoading.wait().finally(() => {
+			if (!sender.isDestroyed()) sender.removeListener("destroyed", disconnected);
+		});
+		setCurrentProjectPath(null);
+		setHudRecordingPreparationActive(false);
+		getHudOverlayWindow()?.hide();
+		try {
+			openRecordingEditor();
+			return { success: true };
+		} catch (error) {
+			recordingEditorLoading.finish(owner, "Could not open the editor.");
+			throw error;
+		}
+	});
+	ipcMain.handle("wait-for-recording-editor", () => recordingEditorLoading.wait());
+	ipcMain.handle("finish-recording-editor", (event, error?: string) => {
+		recordingEditorLoading.finish(
+			event.sender.id,
+			typeof error === "string" ? error.slice(0, 2000) : undefined,
+		);
 	});
 	ipcMain.handle("switch-to-editor", () => {
 		setHudRecordingPreparationActive(false);
@@ -679,7 +731,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 		if (sourceSelectorWin && !sourceSelectorWin.isDestroyed()) {
 			sourceSelectorWin.close();
 		}
-		recordingNavigation.open();
+		openRecordingEditor();
 	});
 	return { pickSourceList: () => sourceListPicker.open() };
 }

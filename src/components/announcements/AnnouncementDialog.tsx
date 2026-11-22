@@ -1,5 +1,5 @@
-import { ArrowLeft, ArrowRight, ArrowSquareOut, Megaphone } from "@/components/ui/icons";
 import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, ArrowSquareOut, Megaphone } from "@/components/ui/icons";
 import { toast } from "@/components/ui/toast";
 import { BUNDLED_ANNOUNCEMENT_FEED } from "@/content/announcements";
 import { useI18n } from "@/contexts/I18nContext";

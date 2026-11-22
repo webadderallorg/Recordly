@@ -1,24 +1,30 @@
-import { ExportErrorReportButton } from "@/components/feedback/ExportErrorReportButton";
-import { LinkSimple, HardDrive, Export } from "@phosphor-icons/react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { CloudShareButton } from "../cloud/CloudShareButton";
-import { Card, TagGroup, Tag } from "@heroui/react";
+import { useI18n as useUiLocale } from "@/contexts/I18nContext";
+import "./EditorExportMenu.css";
+import { Tag, TagGroup } from "@heroui/react";
 import { motion, useReducedMotion } from "motion/react";
-import { ProgressBar } from "@heroui/react";
-
-import { toast } from "@/components/ui/toast";
+import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { RecordlyMark } from "@/components/ui/RecordlyMark";
 import type { useI18n } from "@/contexts/I18nContext";
+import { captureProjectThumbnailCanvas } from "@/lib/projectThumbnailCanvas";
+import { CloudShareButton } from "../cloud/CloudShareButton";
 import { ExportSettingsMenu } from "../ExportSettingsMenu";
 import type { useExportDimensions } from "../export/useExportDimensions";
 import type { useExportSession } from "../export/useExportSession";
 import type { useExportSettings } from "../export/useExportSettings";
 import type { useExportStatusViewModel } from "../export/useExportStatusViewModel";
+import type { VideoPlaybackRef } from "../VideoPlayback";
+import { EditorExportCard } from "./EditorExportCard";
+import { PublishLinkIcon, PublishSaveIcon } from "./PublishDestinationIcons";
 
 type Props = {
+	projectRevision?: string;
 	projectPath?: string | null;
+	projectSourcePath?: string | null;
+	openedSavedProject?: boolean;
 	t: ReturnType<typeof useI18n>["t"];
+	videoPlaybackRef?: RefObject<VideoPlaybackRef | null>;
 	exportSettings: ReturnType<typeof useExportSettings>;
 	exportSession: ReturnType<typeof useExportSession>;
 	exportDimensions: ReturnType<typeof useExportDimensions>;
@@ -33,7 +39,6 @@ type Props = {
 	handleRetrySaveExport: () => void;
 	handleStartExportFromDropdown: () => void;
 	revealExportedFile: () => void;
-	exportMessage: string | null;
 	projectTitle: string;
 	prepareExportForShare: () => Promise<string | undefined>;
 	onRequestShareSignIn: () => void;
@@ -43,15 +48,62 @@ type Props = {
 };
 
 export function EditorExportMenu(props: Props) {
+	const { t: uiText } = useUiLocale();
+	const shareLinkLabel = uiText("ui.createShareLink");
+	const saveToDeviceLabel = uiText("ui.saveToDevice", "Save to device");
 	const { publishDestination: destination, setPublishDestination: setDestination } =
 		props.exportSettings;
 	const [shareBusy, setShareBusy] = useState(false);
+	const [hasStartedShare, setHasStartedShare] = useState(false);
+	const [shareContainer, setShareContainer] = useState<HTMLDivElement | null>(null);
+	const [thumbnail, setThumbnail] = useState<string>();
+	const { videoPlaybackRef } = props;
+	const {
+		isExporting,
+		exportProgress,
+		exportError,
+		showExportDropdown,
+		setShowExportDropdown,
+		exportedFilePath,
+		hasPendingExportSave,
+	} = props.exportSession;
+	const captureThumbnail = useCallback(() => {
+		const preview = videoPlaybackRef?.current;
+		const app = preview?.app;
+		try {
+			const canvas = app?.canvas;
+			if (
+				app &&
+				preview?.composedFrame &&
+				canvas instanceof HTMLCanvasElement &&
+				canvas.width &&
+				canvas.height
+			) {
+				app.render();
+				setThumbnail(captureProjectThumbnailCanvas(canvas, canvas.width, canvas.height));
+				return;
+			}
+		} catch {
+			// The export can proceed with the format icon when the preview cannot be captured.
+		}
+		setThumbnail(undefined);
+	}, [videoPlaybackRef]);
+	const handleShareBusyChange = useCallback((busy: boolean) => {
+		setShareBusy(busy);
+		if (busy) setHasStartedShare(true);
+	}, []);
+	const localExportInProgress = destination === "local" && isExporting;
+	const showLocalExportCard =
+		destination === "local" && (isExporting || Boolean(exportError || exportedFilePath));
+	// The export cancel handler closes the dropdown; keep the share visible until cleanup settles.
+	const publishMenuOpen =
+		(showExportDropdown || (destination === "link" && shareBusy)) && !showLocalExportCard;
 	const reducedMotion = useReducedMotion();
 	const handledShareRequest = useRef(0);
 	const contentRef = useRef<HTMLDivElement>(null);
 	const [contentHeight, setContentHeight] = useState<number>();
 	useLayoutEffect(() => {
-		if (!props.exportSession.showExportDropdown) return;
+		if (!publishMenuOpen) return;
 		const content = contentRef.current;
 		if (!content) return;
 		// The popover scales in on entry. Its bounding rect includes that scale,
@@ -61,14 +113,21 @@ export function EditorExportMenu(props: Props) {
 		const observer = new ResizeObserver(measure);
 		observer.observe(content);
 		return () => observer.disconnect();
-	}, [props.exportSession.showExportDropdown]);
+	}, [publishMenuOpen]);
 	useEffect(() => {
 		if (props.shareRequestNonce > handledShareRequest.current) {
 			handledShareRequest.current = props.shareRequestNonce;
+			if (isExporting || shareBusy) return;
 			setDestination("link");
 			props.handleOpenExportDropdown();
 		}
-	}, [props.shareRequestNonce, props.handleOpenExportDropdown, setDestination]);
+	}, [
+		props.shareRequestNonce,
+		props.handleOpenExportDropdown,
+		setDestination,
+		isExporting,
+		shareBusy,
+	]);
 
 	const {
 		t,
@@ -86,7 +145,6 @@ export function EditorExportMenu(props: Props) {
 		handleRetrySaveExport,
 		handleStartExportFromDropdown,
 		revealExportedFile,
-		exportMessage,
 	} = props;
 	const {
 		exportQuality,
@@ -100,6 +158,8 @@ export function EditorExportMenu(props: Props) {
 		setExportFormat,
 		gifFrameRate,
 		setGifFrameRate,
+		gifOptimizeSize,
+		setGifOptimizeSize,
 		gifLoop,
 		setGifLoop,
 		gifSizePreset,
@@ -107,32 +167,15 @@ export function EditorExportMenu(props: Props) {
 		includeCaptionSidecar,
 		setIncludeCaptionSidecar,
 	} = exportSettings;
-	const {
-		isExporting,
-		exportProgress,
-		exportError,
-		showExportDropdown,
-		setShowExportDropdown,
-		exportedFilePath,
-		hasPendingExportSave,
-	} = exportSession;
-	const { gifOutputDimensions, mp4OutputDimensions } = exportDimensions;
-	const {
-		isExportPreparing,
-		isExportSaving,
-		isRenderingAudio,
-		isExportFinalSaveIndeterminate,
-		isLightningExportInProgress,
-		isLegacyExportInProgress,
-		exportFinalizingProgress,
-		exportRenderSpeedLabel,
-		exportPercentLabel,
-		runtimeLabel: exportRuntimeLabel,
-		nativeSkipLabel: exportNativeSkipLabel,
-	} = exportStatus;
+	const { mp4OutputDimensions } = exportDimensions;
 
 	const settingsForm = (
 		<ExportSettingsMenu
+			advancedExportSettings={exportSettings.advancedExportSettings}
+			onAdvancedExportSettingsChange={exportSettings.setAdvancedExportSettings}
+			customExportResolution={exportSettings.customExportResolution}
+			onCustomExportResolutionChange={exportSettings.setCustomExportResolution}
+			mp4SizeEstimate={exportSession.mp4SizeEstimate}
 			exportFormat={destination === "link" ? "mp4" : exportFormat}
 			onExportFormatChange={setExportFormat}
 			exportEncodingMode={exportEncodingMode}
@@ -147,6 +190,9 @@ export function EditorExportMenu(props: Props) {
 			onExportQualityChange={setExportQuality}
 			gifFrameRate={gifFrameRate}
 			onGifFrameRateChange={setGifFrameRate}
+			gifSizeEstimate={exportSession.gifSizeEstimate}
+			gifOptimizeSize={gifOptimizeSize}
+			onGifOptimizeSizeChange={setGifOptimizeSize}
 			gifLoop={gifLoop}
 			onGifLoopChange={setGifLoop}
 			gifSizePreset={gifSizePreset}
@@ -155,41 +201,45 @@ export function EditorExportMenu(props: Props) {
 			includeCaptionSidecar={includeCaptionSidecar}
 			onIncludeCaptionSidecarChange={setIncludeCaptionSidecar}
 			mp4OutputDimensions={mp4OutputDimensions}
-			gifOutputDimensions={gifOutputDimensions}
-			onExport={handleStartExportFromDropdown}
+			onExport={() => {
+				captureThumbnail();
+				handleStartExportFromDropdown();
+			}}
 			hideHeading
 			hideAction={destination === "link"}
 			linkMode={destination === "link"}
-			className="rounded-none bg-transparent px-5 pb-5 pt-0 shadow-none"
+			className="rounded-none bg-transparent px-5 pt-0 shadow-none"
 		/>
 	);
 
 	return (
 		<>
 			<Popover
-				open={showExportDropdown}
+				open={publishMenuOpen}
 				onOpenChange={(open) => {
-					if (shareBusy) return;
-					if (open) {
-						handleOpenExportDropdown();
-					} else setShowExportDropdown(false);
+					if (shareBusy || localExportInProgress) return;
+					if (open) handleOpenExportDropdown();
+					else setShowExportDropdown(false);
 				}}
 				modal={true}
 			>
 				<PopoverTrigger asChild>
 					<Button
 						type="button"
+						disabled={localExportInProgress || hasPendingExportSave || shareBusy}
 						className="inline-flex h-9 min-w-[104px] items-center justify-center gap-2 px-4.5"
 					>
-						<Export className="h-4 w-4" />
-						<span className="text-sm font-semibold tracking-tight">Publish</span>
+						<RecordlyMark />
+						<span className="text-sm font-semibold tracking-tight">
+							{uiText("ui.publish")}
+						</span>
 					</Button>
 				</PopoverTrigger>
 				<PopoverContent
-					aria-label="Publish"
+					aria-label={uiText("ui.publish")}
 					align="end"
 					sideOffset={10}
-					className="w-[360px] max-h-none overflow-hidden p-0"
+					className="publish-menu w-[360px] max-h-[inherit] overflow-hidden p-0"
 					isKeyboardDismissDisabled={shareBusy}
 					shouldCloseOnInteractOutside={() => !shareBusy}
 				>
@@ -197,260 +247,78 @@ export function EditorExportMenu(props: Props) {
 						initial={false}
 						animate={{ height: contentHeight ?? "auto" }}
 						transition={{ duration: reducedMotion ? 0 : 0.22, ease: "easeInOut" }}
-						className="overflow-hidden"
+						className="max-h-[inherit] overflow-hidden"
 					>
-						<div ref={contentRef}>
-							<div className="p-5 space-y-3">
-								<h2 className="text-sm font-semibold">Publish</h2>
-								<TagGroup
-									aria-label="Publish destination"
-									selectionMode="single"
-									disallowEmptySelection
-									selectedKeys={[destination]}
-									onSelectionChange={(keys) => {
-										if (
-											keys !== "all" &&
-											keys.size > 0 &&
-											!isExporting &&
-											!shareBusy
-										)
-											setDestination(keys.has("link") ? "link" : "local");
-									}}
-								>
-									<TagGroup.List className="flex gap-2">
-										<Tag
-											id="link"
-											isDisabled={isExporting || shareBusy}
-											className="h-24 flex-1 flex-col justify-center gap-2 rounded-xl border border-foreground/10"
-										>
-											<LinkSimple className="size-6" />
-											Link
-										</Tag>
-										<Tag
-											id="local"
-											isDisabled={isExporting || shareBusy}
-											className="h-24 flex-1 flex-col justify-center gap-2 rounded-xl border border-foreground/10"
-										>
-											<HardDrive className="size-6" />
-											Local
-										</Tag>
-									</TagGroup.List>
-								</TagGroup>
-							</div>
+						<div
+							ref={contentRef}
+							className="publish-menu-scroll max-h-[inherit] overflow-y-auto"
+						>
+							{(!isExporting || destination === "link") && (
+								<div className="p-5 space-y-3">
+									<h2 className="text-sm font-semibold">
+										{uiText("ui.publish")}
+									</h2>
+									<TagGroup
+										aria-label={uiText("ui.publishDestination")}
+										selectionMode="single"
+										disallowEmptySelection
+										selectedKeys={[destination]}
+										onSelectionChange={(keys) => {
+											if (
+												keys !== "all" &&
+												keys.size > 0 &&
+												!isExporting &&
+												!shareBusy
+											)
+												setDestination(keys.has("link") ? "link" : "local");
+										}}
+									>
+										<TagGroup.List className="flex gap-2">
+											<Tag
+												id="link"
+												textValue={shareLinkLabel}
+												isDisabled={isExporting || shareBusy}
+												className="h-24 flex-1 flex-col justify-center gap-2 rounded-xl border border-foreground/10"
+											>
+												{({ isHovered, isDisabled }) => (
+													<>
+														<PublishLinkIcon
+															hovered={
+																isHovered &&
+																!isDisabled &&
+																!reducedMotion
+															}
+														/>
+														{shareLinkLabel}
+													</>
+												)}
+											</Tag>
+											<Tag
+												id="local"
+												textValue={saveToDeviceLabel}
+												isDisabled={isExporting || shareBusy}
+												className="h-24 flex-1 flex-col justify-center gap-2 rounded-xl border border-foreground/10"
+											>
+												{({ isHovered, isDisabled }) => (
+													<>
+														<PublishSaveIcon
+															hovered={
+																isHovered &&
+																!isDisabled &&
+																!reducedMotion
+															}
+														/>
+														{saveToDeviceLabel}
+													</>
+												)}
+											</Tag>
+										</TagGroup.List>
+									</TagGroup>
+								</div>
+							)}
 							<div>
 								{destination === "link" ? (
-									<div className="px-5 pb-5">
-										<CloudShareButton
-											inline
-											projectPath={props.projectPath}
-											projectTitle={props.projectTitle}
-											prepareFile={props.prepareExportForShare}
-											onCancelPrepare={handleCancelExport}
-											preparationProgress={exportProgress?.percentage ?? 0}
-											authToken={props.authToken}
-											accountId={props.accountId}
-											onBusyChange={setShareBusy}
-											onRequestSignIn={() => {
-												setShowExportDropdown(false);
-												props.onRequestShareSignIn();
-											}}
-										/>
-										{exportError && !shareBusy && (
-											<ExportErrorReportButton
-												key={exportError}
-												error={exportError}
-												format="mp4"
-											/>
-										)}
-									</div>
-								) : isExporting ? (
-									<Card className="rounded-none bg-transparent p-5 text-foreground shadow-none">
-										<div className="mb-3 flex items-center justify-between gap-3">
-											<div>
-												<p className="text-sm font-semibold text-foreground">
-													{t(
-														"editor.exportStatus.exporting",
-														"Exporting",
-													)}
-												</p>
-												<p className="text-xs text-muted-foreground">
-													{t(
-														"editor.exportStatus.renderingFile",
-														"Rendering your file.",
-													)}
-												</p>
-												{isLightningExportInProgress && exportMessage ? (
-													<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground/70">
-														{exportMessage}
-													</p>
-												) : null}
-												{isLegacyExportInProgress ? (
-													<p className="mt-1 text-[11px] text-muted-foreground/70">
-														Export too slow? Cancel and try Lightning
-														export!
-													</p>
-												) : null}
-											</div>
-											<Button
-												type="button"
-												variant="outline"
-												onClick={handleCancelExport}
-												className="h-8 px-3 text-xs"
-											>
-												{t("common.actions.cancel")}
-											</Button>
-										</div>
-										<ProgressBar
-											aria-label={t(
-												"editor.exportStatus.exporting",
-												"Exporting",
-											)}
-											isIndeterminate={
-												isExportPreparing ||
-												isExportSaving ||
-												isExportFinalSaveIndeterminate
-											}
-											value={Math.min(
-												isRenderingAudio
-													? (exportProgress?.audioProgress ?? 0) * 100
-													: (exportFinalizingProgress ??
-															exportProgress?.percentage ??
-															8),
-												100,
-											)}
-										>
-											<ProgressBar.Track>
-												<ProgressBar.Fill />
-											</ProgressBar.Track>
-										</ProgressBar>
-										<p className="mt-2 text-xs text-muted-foreground">
-											{exportPercentLabel}
-										</p>
-										{isRenderingAudio ? (
-											<p className="mt-1 text-[11px] text-muted-foreground/70">
-												{t(
-													"editor.export.processingAudioEdits",
-													"Processing audio with speed/overlay edits",
-												)}
-											</p>
-										) : exportRenderSpeedLabel ? (
-											<p className="mt-1 text-[11px] text-muted-foreground/70">
-												{exportRenderSpeedLabel}
-											</p>
-										) : null}
-										{exportRuntimeLabel ? (
-											<p className="mt-1 text-[11px] text-muted-foreground/70">
-												Path: {exportRuntimeLabel}
-											</p>
-										) : null}
-										{exportNativeSkipLabel ? (
-											<p className="mt-1 text-[11px] text-amber-500/80">
-												{exportNativeSkipLabel}
-											</p>
-										) : null}
-									</Card>
-								) : exportError ? (
-									<Card className="rounded-none bg-transparent p-5 text-foreground shadow-none">
-										<p className="text-sm font-semibold text-foreground">
-											{t("editor.exportStatus.issue", "Export issue")}
-										</p>
-										{exportRuntimeLabel ? (
-											<p className="mt-1 text-[11px] text-muted-foreground/70">
-												Path: {exportRuntimeLabel}
-											</p>
-										) : null}
-										<p className="mt-1 select-text whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
-											{exportError}
-										</p>
-										<div className="mt-4 flex gap-2">
-											<Button
-												type="button"
-												variant="outline"
-												className="h-8 text-xs"
-												onClick={async () => {
-													try {
-														await navigator.clipboard.writeText(
-															exportError,
-														);
-														toast.success(
-															t(
-																"editor.exportStatus.errorCopied",
-																"Error copied",
-															),
-														);
-													} catch {
-														toast.error(
-															t(
-																"editor.exportStatus.errorCopyFailed",
-																"Couldn't copy. Select the error text and copy it manually.",
-															),
-														);
-													}
-												}}
-											>
-												{t("editor.exportStatus.copyError", "Copy error")}
-											</Button>
-											<ExportErrorReportButton
-												key={exportError}
-												error={exportError}
-												format={exportFormat}
-											/>
-											{hasPendingExportSave ? (
-												<Button
-													type="button"
-													onClick={handleRetrySaveExport}
-													className="h-8 flex-1 text-xs"
-												>
-													{t("editor.actions.saveAgain", "Save Again")}
-												</Button>
-											) : null}
-											<Button
-												type="button"
-												variant="outline"
-												onClick={handleExportDropdownClose}
-												className="h-8 flex-1 text-xs"
-											>
-												{t("common.actions.close", "Close")}
-											</Button>
-										</div>
-									</Card>
-								) : exportedFilePath ? (
-									<Card className="rounded-none bg-transparent p-5 text-foreground shadow-none">
-										<p className="text-sm font-semibold text-foreground">
-											{t("editor.exportStatus.complete", "Export complete")}
-										</p>
-										<p className="mt-1 text-xs text-muted-foreground">
-											{t(
-												"editor.exportStatus.savedSuccessfully",
-												"Your file was saved successfully.",
-											)}
-										</p>
-										{exportRuntimeLabel ? (
-											<p className="mt-1 text-[11px] text-muted-foreground/70">
-												Path: {exportRuntimeLabel}
-											</p>
-										) : null}
-										<p className="mt-3 truncate text-xs text-muted-foreground/70">
-											{exportedFilePath.split(/[\\/]/).pop()}
-										</p>
-										<div className="mt-4 flex gap-2">
-											<Button
-												type="button"
-												onClick={revealExportedFile}
-												className="h-8 flex-1 text-xs"
-											>
-												{t("editor.actions.showInFolder", "Show In Folder")}
-											</Button>
-											<Button
-												type="button"
-												variant="outline"
-												onClick={handleExportDropdownClose}
-												className="h-8 flex-1 text-xs"
-											>
-												{t("editor.cloud.done")}
-											</Button>
-										</div>
-									</Card>
+									<div className="px-5 pb-5" ref={setShareContainer} />
 								) : (
 									<>{settingsForm}</>
 								)}
@@ -459,6 +327,45 @@ export function EditorExportMenu(props: Props) {
 					</motion.div>
 				</PopoverContent>
 			</Popover>
+			{/* Keep the controller and unsaved project's link alive when Publish closes. */}
+			{(hasStartedShare || (destination === "link" && publishMenuOpen)) && (
+				<CloudShareButton
+					inline
+					projectPath={props.projectPath}
+					projectSourcePath={props.projectSourcePath}
+					openedSavedProject={props.openedSavedProject}
+					projectRevision={props.projectRevision}
+					projectTitle={props.projectTitle}
+					prepareFile={props.prepareExportForShare}
+					onCancelPrepare={handleCancelExport}
+					preparationProgress={exportProgress?.percentage ?? 0}
+					authToken={props.authToken}
+					accountId={props.accountId}
+					onBusyChange={handleShareBusyChange}
+					onRequestSignIn={() => {
+						setShowExportDropdown(false);
+						props.onRequestShareSignIn();
+					}}
+					inlineContainer={
+						publishMenuOpen && destination === "link" ? shareContainer : null
+					}
+					suppressSuccessToast
+				/>
+			)}
+			{showLocalExportCard && (
+				<EditorExportCard
+					t={t}
+					session={exportSession}
+					status={exportStatus}
+					format={exportFormat}
+					projectTitle={props.projectTitle}
+					thumbnail={thumbnail}
+					onCancel={handleCancelExport}
+					onDismiss={handleExportDropdownClose}
+					onRetrySave={handleRetrySaveExport}
+					onRevealFile={revealExportedFile}
+				/>
+			)}
 		</>
 	);
 }

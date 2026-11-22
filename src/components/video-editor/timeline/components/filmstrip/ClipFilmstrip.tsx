@@ -1,6 +1,6 @@
-import { Skeleton } from "@/components/ui/skeleton";
-import { useTimelineContext, type Span } from "dnd-timeline";
+import { type Span, useTimelineContext } from "dnd-timeline";
 import { useEffect, useRef, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { filmstripSampleTimes } from "../../core/filmstrip";
 import { extractFilmstrip } from "./frameCache";
 

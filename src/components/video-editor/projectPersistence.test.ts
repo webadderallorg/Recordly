@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { CURSOR_MOTION_PRESETS, getMatchingCursorMotionPresetId } from "./cursorMotionPresets";
+import {
+	createEditorHistoryStack,
+	type EditorHistorySnapshot,
+	recordEditorHistorySnapshot,
+	undoEditorHistoryStack,
+} from "./editorHistory";
 import {
 	getDefaultBorderRadiusPercent,
 	legacyBorderRadiusPixelsToPercent,
 	normalizeProjectEditor,
 	resolveVideoUrl,
 } from "./projectPersistence";
-import {
-	createEditorHistoryStack,
-	recordEditorHistorySnapshot,
-	undoEditorHistoryStack,
-	type EditorHistorySnapshot,
-} from "./editorHistory";
 import { ADVANCED_VERTICAL_PADDING_MAX } from "./types";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -40,6 +40,78 @@ describe("resolveVideoUrl", () => {
 });
 
 describe("normalizeProjectEditor", () => {
+	it("preserves the webcam preview frame when reopening a project", () => {
+		for (const previewFrame of ["standard", "soft-blur"] as const) {
+			const editor = normalizeProjectEditor({ webcam: { previewFrame } as never });
+			expect(
+				normalizeProjectEditor(JSON.parse(JSON.stringify(editor))).webcam.previewFrame,
+			).toBe(previewFrame);
+		}
+		expect(normalizeProjectEditor({}).webcam.previewFrame).toBe("soft-blur");
+	});
+
+	it("defaults the shadow to 50% while preserving saved intensity", () => {
+		expect(normalizeProjectEditor({}).shadowIntensity).toBe(0.5);
+		expect(normalizeProjectEditor({ shadowIntensity: 0 }).shadowIntensity).toBe(0);
+		expect(normalizeProjectEditor({ shadowIntensity: 0.8 }).shadowIntensity).toBe(0.8);
+	});
+
+	it("defaults frame padding to 0% while preserving saved padding", () => {
+		expect(normalizeProjectEditor({}).padding).toEqual({
+			top: 0,
+			bottom: 0,
+			left: 0,
+			right: 0,
+			linked: true,
+		});
+		const saved = { top: 25, bottom: 25, left: 25, right: 25, linked: true };
+		expect(normalizeProjectEditor({ padding: saved }).padding).toEqual(saved);
+	});
+
+	it("defaults new cameras to circle and resets legacy project radius to its shape default", () => {
+		expect(normalizeProjectEditor({}).webcam.shape).toBe("circle");
+		const legacy = normalizeProjectEditor({ webcam: { roundness: 100 } as never });
+		expect(legacy.webcam).toMatchObject({
+			shape: "squircle",
+			roundness: 20,
+			roundnessVersion: 1,
+		});
+		expect(normalizeProjectEditor(legacy).webcam.roundness).toBe(20);
+		for (const shape of ["circle", "squircle", "rectangle"] as const) {
+			const editor = normalizeProjectEditor({
+				webcam: { shape, width: 50, height: 30, roundness: 100 } as never,
+			});
+			expect(normalizeProjectEditor(JSON.parse(JSON.stringify(editor))).webcam).toMatchObject(
+				{
+					shape,
+					roundness: 20,
+				},
+			);
+		}
+	});
+
+	it.each([
+		"source",
+		"viewport",
+	] as const)("retains %s zoom coordinates when reopening a saved project", (focusSpace) => {
+		const saved = {
+			zoomRegions: [
+				{
+					id: "crop-zoom",
+					startMs: 0,
+					endMs: 4000,
+					depth: 3,
+					focus: { cx: 0.6, cy: 0.4 },
+					mode: "manual",
+					focusSpace,
+				},
+			],
+		};
+		const editor = normalizeProjectEditor(saved);
+		expect(editor.zoomRegions[0].focusSpace).toBe(focusSpace);
+		expect(normalizeProjectEditor(editor).zoomRegions[0]).toEqual(editor.zoomRegions[0]);
+	});
+
 	it("ignores retired temporal blur fields when opening an older project", () => {
 		const savedEditor = {
 			zoomMotionBlur: 0.6,
@@ -58,7 +130,7 @@ describe("normalizeProjectEditor", () => {
 		}
 	});
 	it("defaults to 8% on macOS and square corners elsewhere", () => {
-		expect(getDefaultBorderRadiusPercent("MacIntel")).toBe(8);
+		expect(getDefaultBorderRadiusPercent("MacIntel")).toBe(4);
 		expect(getDefaultBorderRadiusPercent("Win32")).toBe(0);
 		expect(getDefaultBorderRadiusPercent("Linux x86_64")).toBe(0);
 	});
@@ -111,20 +183,7 @@ describe("normalizeProjectEditor", () => {
 		});
 	});
 
-	it("migrates legacy webcam radius pixels to percentage roundness", () => {
-		const editor = normalizeProjectEditor({
-			webcam: {
-				cornerRadius: 90,
-				width: 40,
-				height: 40,
-			} as never,
-		});
-
-		expect(editor.webcam.roundness).toBeCloseTo(17.36, 1);
-		expect(editor.webcam.cornerRadius).toBeUndefined();
-	});
-
-	it("uses the legacy webcam size when migrating radius pixels", () => {
+	it("keeps legacy webcam dimensions while dropping a pixel radius", () => {
 		const editor = normalizeProjectEditor({
 			webcam: {
 				cornerRadius: 90,
@@ -134,7 +193,8 @@ describe("normalizeProjectEditor", () => {
 
 		expect(editor.webcam.width).toBe(80);
 		expect(editor.webcam.height).toBe(80);
-		expect(editor.webcam.roundness).toBeCloseTo(4.34, 1);
+		expect(editor.webcam.roundness).toBe(20);
+		expect(editor.webcam).not.toHaveProperty("cornerRadius");
 	});
 });
 
@@ -186,6 +246,8 @@ describe("loaded clip sequence migration", () => {
 			audioRegions: value.audioRegions,
 			speedRegions: value.speedRegions,
 			autoCaptions: value.autoCaptions,
+			sourceAudioTrackSettingsByClip: value.sourceAudioTrackSettingsByClip ?? {},
+			defaultSourceAudioTrackSettings: value.defaultSourceAudioTrackSettings ?? {},
 			selectedZoomId: null,
 			selectedClipId: null,
 			selectedAnnotationId: null,
@@ -223,6 +285,27 @@ it("reopens persisted local media URLs using the current server port", async () 
 });
 
 describe("annotations across the canvas and imported webcam ranges", () => {
+	it("reopens previously frosted masks as the original blur without changing geometry or strength", () => {
+		const editor = normalizeProjectEditor({
+			annotationRegions: [
+				{
+					id: "frost",
+					type: "blur",
+					startMs: 0,
+					endMs: 1000,
+					blurMode: "frosted",
+					blurIntensity: 47,
+				},
+				{ id: "legacy", type: "blur", startMs: 0, endMs: 1000, blurIntensity: 12 },
+			] as never,
+		});
+		const reopened = normalizeProjectEditor(JSON.parse(JSON.stringify(editor)));
+		expect(reopened.annotationRegions[0]).toMatchObject({
+			blurIntensity: 47,
+		});
+		expect(reopened.annotationRegions[0]).not.toHaveProperty("blurMode");
+		expect(reopened.annotationRegions[1].blurIntensity).toBe(12);
+	});
 	it("preserves annotations outside the recording rectangle and webcam visibility when a project is reopened", () => {
 		const editor = normalizeProjectEditor({
 			annotationRegions: [
@@ -268,6 +351,44 @@ it("discards inverted saved source bounds while preserving the in-point", () => 
 	expect(editor.clipRegions[0].sourceMaxMs).toBeUndefined();
 });
 
+it("keeps independently timed effects when saved clips only need array sorting", () => {
+	const editor = normalizeProjectEditor({
+		clipRegions: [
+			{ id: "later", startMs: 1000, endMs: 2000, speed: 1 },
+			{ id: "first", startMs: 0, endMs: 1000, speed: 1 },
+		],
+		annotationRegions: [
+			{ id: "after-footage", type: "text", content: "Keep", startMs: 2500, endMs: 2800 },
+		] as never,
+		zoomRegions: [{ id: "late-zoom", startMs: 2500, endMs: 2800, depth: 2 }] as never,
+	});
+	expect(editor.clipRegions.map(({ id }) => id)).toEqual(["first", "later"]);
+	expect(editor.annotationRegions).toHaveLength(1);
+	expect(editor.annotationRegions[0]).toMatchObject({
+		id: "after-footage",
+		startMs: 2500,
+		endMs: 2800,
+	});
+	expect(editor.zoomRegions[0]).toMatchObject({ id: "late-zoom", startMs: 2500, endMs: 2800 });
+	expect(normalizeProjectEditor(editor).annotationRegions).toEqual(editor.annotationRegions);
+});
+
+it("discards saved source audio overrides for absent clips before IDs can be reused", () => {
+	const kept = { mic: { volume: 0.4, normalize: true } };
+	const stale = { mic: { volume: 0, normalize: true } };
+	const editor = normalizeProjectEditor({
+		clipRegions: [{ id: "clip-1", startMs: 0, endMs: 2000, speed: 1 }],
+		sourceAudioTrackSettingsByClip: { "clip-1": kept, "clip-2": stale },
+	});
+	expect(editor.sourceAudioTrackSettingsByClip).toEqual({ "clip-1": kept });
+	expect(
+		normalizeProjectEditor({
+			clipRegions: [],
+			sourceAudioTrackSettingsByClip: { "clip-1": stale },
+		}).sourceAudioTrackSettingsByClip,
+	).toEqual({});
+});
+
 it("ignores legacy export preferences when opening and resaving a project", async () => {
 	const { createProjectData } = await import("./projectPersistence");
 	const legacyEditor = {
@@ -291,4 +412,47 @@ it("ignores legacy export preferences when opening and resaving a project", asyn
 		expect(createProjectData("/clip.mp4", legacyEditor).editor).not.toHaveProperty(key);
 	}
 	expect(legacyEditor.exportQuality).toBe("high");
+});
+
+describe("legacy motion preset compatibility", () => {
+	const legacySmooth = {
+		zoomInDurationMs: 1522.575,
+		zoomOutDurationMs: 1015.05,
+		cursorSize: 2.5,
+		cursorSmoothing: 0.67,
+		cursorSpringStiffnessMultiplier: 0.92,
+		cursorSpringDampingMultiplier: 1.36,
+		cursorSpringMassMultiplier: 1.29,
+		cursorClickBounce: 2,
+		cursorClickBounceDuration: 350,
+	};
+
+	it("loads a published Smooth tuple as Cinematic rather than Focused", () => {
+		expect(getMatchingCursorMotionPresetId(legacySmooth)).toBe("smooth");
+		const result = normalizeProjectEditor(legacySmooth);
+		const cinematic = CURSOR_MOTION_PRESETS.smooth;
+		expect(result.zoomInDurationMs).toBe(cinematic.zoomInDurationMs);
+		expect(result.zoomOutDurationMs).toBe(cinematic.zoomOutDurationMs);
+		expect(result.cursorSpringStiffnessMultiplier).toBe(
+			cinematic.cursorSpringStiffnessMultiplier,
+		);
+		expect(result.cursorSpringDampingMultiplier).toBe(cinematic.cursorSpringDampingMultiplier);
+		expect(getMatchingCursorMotionPresetId(normalizeProjectEditor(result))).toBe("smooth");
+	});
+
+	it("does not mistake a custom tuple for the legacy preset or change new-project defaults", () => {
+		expect(
+			getMatchingCursorMotionPresetId({
+				...legacySmooth,
+				cursorSpringDampingMultiplier: 1.361,
+			}),
+		).toBeNull();
+		const focused = CURSOR_MOTION_PRESETS.focused;
+		expect(normalizeProjectEditor({})).toMatchObject({
+			zoomInDurationMs: focused.zoomInDurationMs,
+			zoomOutDurationMs: focused.zoomOutDurationMs,
+			cursorSpringStiffnessMultiplier: focused.cursorSpringStiffnessMultiplier,
+			cursorSpringDampingMultiplier: focused.cursorSpringDampingMultiplier,
+		});
+	});
 });

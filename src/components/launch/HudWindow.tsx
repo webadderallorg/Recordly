@@ -5,7 +5,7 @@ export default function HudWindow() {
 	return (
 		<>
 			<LaunchWindow />
-			<Toaster className="pointer-events-auto" />
+			<Toaster />
 		</>
 	);
 }

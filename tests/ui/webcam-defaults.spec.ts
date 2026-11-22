@@ -1,17 +1,20 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
-for (const savedRoundness of [undefined, 69]) {
-	test(`new recording webcam uses ${savedRoundness === undefined ? "100% by default" : "saved roundness"}`, async ({
+for (const savedRoundness of [undefined, 0, 69, 100]) {
+	test(`squircle camera uses ${savedRoundness === undefined ? "20% by default" : `saved ${savedRoundness}% roundness`}`, async ({
 		page,
 	}) => {
 		await installDesktopBridge(page);
 		await installDesktopBridgeOverrides(
 			page,
 			(roundness) => {
-				if (roundness !== undefined) {
+				{
+					const getAppSetting = window.electronAPI.getAppSetting;
 					window.electronAPI.getAppSetting = (key) =>
-						key === "recordly.editor.preferences" ? { webcam: { roundness } } : null;
+						key === "recordly.editor.preferences.v2"
+							? { webcam: { shape: "squircle", roundness, previewFrame: "standard" } }
+							: getAppSetting(key);
 				}
 				window.electronAPI.getCurrentRecordingSession = async () => ({
 					success: true,
@@ -26,7 +29,8 @@ for (const savedRoundness of [undefined, 69]) {
 		);
 		await page.goto("/?windowType=editor");
 		await page.getByRole("radio", { name: "Webcam", exact: true }).click();
-		const expected = savedRoundness ?? 100;
+		await page.getByRole("switch", { name: "Advanced settings" }).press("Space");
+		const expected = savedRoundness ?? 20;
 		await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveValue(
 			String(expected),
 		);
@@ -35,17 +39,223 @@ for (const savedRoundness of [undefined, 69]) {
 		await expect
 			.poll(async () =>
 				mask.evaluate((node) => {
-					const radius = Number(
-						getComputedStyle(node).clipPath.match(/M\s+([\d.]+)/)?.[1],
-					);
 					const box = node.getBoundingClientRect();
-					return Math.round(100 * (radius / (Math.min(box.width, box.height) / 2)) ** 2);
+					const clip = getComputedStyle(node).clipPath;
+					const topEdge = Array.from(clip.matchAll(/[ML]\s+([\d.]+)\s+([\d.]+)/g))
+						.filter(([, , y]) => Number(y) === 0)
+						.map(([, x]) => Number(x));
+					const radius = Math.min(...topEdge);
+					return Math.round(100 * (radius / (Math.min(box.width, box.height) / 2)));
 				}),
 			)
 			.toBe(expected);
+		await expect(page.locator("[data-webcam-glass-rim] path")).toHaveAttribute("d", /^M/);
+		// Full roundness should soften the corners while keeping a squircle.
+		if (expected === 100) {
+			const shape = await mask.evaluate((node) => {
+				const element = node as HTMLElement;
+				const previousPointerEvents = element.style.pointerEvents;
+				element.style.pointerEvents = "auto";
+				const box = node.getBoundingClientRect();
+				const x = box.left + box.width * 0.08;
+				const y = box.top + box.height * 0.08;
+				const result = {
+					clipPath: getComputedStyle(node).clipPath,
+					// Inside a squircle, outside a circle: catches accidentally switching shapes.
+					squircleShoulderVisible: document
+						.elementsFromPoint(
+							box.left + box.width * 0.144,
+							box.top + box.height * 0.144,
+						)
+						.includes(node),
+					cornerVisible: document.elementsFromPoint(x, y).includes(node),
+					centerVisible: document
+						.elementsFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+						.includes(node),
+				};
+				element.style.pointerEvents = previousPointerEvents;
+				return result;
+			});
+			expect(shape.clipPath).toMatch(/^path\(/);
+			expect(shape.squircleShoulderVisible).toBe(true);
+			expect(shape.cornerVisible).toBe(false);
+			expect(shape.centerVisible).toBe(true);
+		}
 		await page.screenshot({
 			path: `test-results/webcam-new-recording-${expected}.png`,
 			animations: "disabled",
 		});
 	});
 }
+
+test("new recordings default to a circle and retain the squircle option", async ({ page }) => {
+	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.getCurrentRecordingSession = async () => ({
+			success: true,
+			session: {
+				videoPath: `${location.origin}/tests/ui/fixtures/preview.mp4`,
+				webcamPath: `${location.origin}/tests/ui/fixtures/preview.mp4`,
+				timeOffsetMs: 0,
+			},
+		});
+	});
+	await page.goto("/?windowType=editor");
+	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
+	const circle = page.getByRole("row", { name: "Circle", exact: true });
+	await expect(circle).toHaveAttribute("aria-selected", "true");
+	await page.getByRole("switch", { name: "Advanced settings" }).press("Space");
+	await expect(page.getByRole("slider", { name: "Webcam Shadow" })).toHaveValue("0.2");
+	const mask = page.locator('div[style*="clip-path"][style*="contain: paint"]:has(video)');
+	await expect(mask).toHaveCSS("clip-path", "circle(50% at 50% 50%)");
+	await expect(page.locator("[data-webcam-glass-rim] path")).toHaveAttribute("d", /^M/);
+	await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveCount(0);
+	const width = page.getByRole("slider", { name: "Webcam Width" });
+	await expect(width).toHaveValue("50");
+	await width.focus();
+	await width.press("ArrowRight");
+	await expect
+		.poll(() =>
+			mask.evaluate((el) => {
+				const box = el.getBoundingClientRect();
+				return Math.abs(box.width - box.height);
+			}),
+		)
+		.toBeLessThan(1);
+	await page.screenshot({
+		path: "test-results/webcam-circle-default.png",
+		animations: "disabled",
+	});
+	await page.getByRole("row", { name: "Square", exact: true }).click();
+	await expect(width).toHaveValue("50");
+	await expect(page.getByRole("slider", { name: "Webcam Height" })).toHaveValue("50");
+	await expect(page.getByRole("slider", { name: "Webcam Roundness" })).toHaveValue("20");
+	await expect(mask).toHaveCSS("clip-path", /^path\(/);
+	await circle.click();
+	await expect(width).toHaveValue("50");
+	await expect(mask).toHaveCSS("clip-path", "circle(50% at 50% 50%)");
+	await expect(page.locator("[data-webcam-glass-rim] path")).toHaveAttribute("d", /^M/);
+});
+
+test("Rectangle starts at 35% height in 16:9 and restores preset roundness with a thin glass rim", async ({
+	page,
+}) => {
+	test.setTimeout(60_000);
+	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		const getAppSetting = window.electronAPI.getAppSetting;
+		window.electronAPI.getAppSetting = (key) =>
+			key === "recordly.editor.preferences.v2"
+				? { webcam: { previewFrame: "standard" } }
+				: getAppSetting(key);
+		window.electronAPI.getCurrentRecordingSession = async () => ({
+			success: true,
+			session: {
+				videoPath: `${location.origin}/tests/ui/fixtures/preview.mp4`,
+				webcamPath: `${location.origin}/tests/ui/fixtures/preview.mp4`,
+				timeOffsetMs: 0,
+			},
+		});
+	});
+	await page.goto("/?windowType=editor");
+	await page.getByRole("radio", { name: "Webcam", exact: true }).click();
+	await page.getByRole("row", { name: "Square", exact: true }).click();
+	for (const name of ["Webcam Width", "Webcam Height", "Webcam Roundness"])
+		await expect(page.getByRole("slider", { name, exact: true })).toHaveCount(0);
+	await page.getByRole("switch", { name: "Advanced settings" }).press("Space");
+	const roundness = page.getByRole("slider", { name: "Webcam Roundness" });
+	await expect(roundness).toHaveValue("20");
+	await roundness.focus();
+	await roundness.press("Home");
+	for (let step = 0; step < 25; step++) await roundness.press("ArrowRight");
+	await expect(roundness).toHaveValue("25");
+	await page.getByRole("row", { name: "Rectangle", exact: true }).click();
+	await expect(page.getByRole("slider", { name: "Webcam Width" })).toHaveValue("62");
+	await expect(page.getByRole("slider", { name: "Webcam Height" })).toHaveValue("35");
+	await expect
+		.poll(() =>
+			page.locator("[data-webcam-overlay]").evaluate((element) => {
+				const box = element.getBoundingClientRect();
+				return box.width / box.height;
+			}),
+		)
+		.toBeCloseTo(16 / 9, 2);
+	await expect(roundness).toHaveValue("20");
+	const rim = page.locator("[data-webcam-glass-rim]");
+	await expect(rim).toBeVisible();
+	await expect(rim.locator("path")).toHaveAttribute("fill", "none");
+	await expect(rim.locator("path")).toHaveAttribute("stroke", "rgb(255 255 255 / 26%)");
+	await expect
+		.poll(() =>
+			rim.evaluate((element) => {
+				const bounds = element.getBoundingClientRect();
+				return (
+					Number(element.querySelector("path")!.getAttribute("stroke-width")) /
+					Math.min(bounds.width, bounds.height)
+				);
+			}),
+		)
+		.toBeCloseTo(0.005, 5);
+	await expect(rim.locator("path")).toHaveAttribute("d", /^M/);
+	const rectanglePath = await rim.locator("path").getAttribute("d");
+	const originalRim = await rim.elementHandle();
+	const originalFootage = await page.locator("[data-webcam-overlay] video").elementHandle();
+	await expect(page.locator("[data-webcam-overlay]")).toHaveAttribute(
+		"data-webcam-ready",
+		"true",
+	);
+	await page.screenshot({
+		path: "test-results/webcam-rectangle-controls.png",
+		animations: "disabled",
+	});
+	await page.getByRole("switch", { name: "Advanced settings" }).press("Space");
+	for (const name of ["Webcam Width", "Webcam Height", "Webcam Roundness"])
+		await expect(page.getByRole("slider", { name, exact: true })).toHaveCount(0);
+	await page.screenshot({
+		path: "test-results/webcam-basic-controls.png",
+		animations: "disabled",
+	});
+	await page.getByRole("switch", { name: "Advanced settings" }).press("Space");
+	await page.getByRole("row", { name: "Square", exact: true }).click();
+	await expect(page.getByRole("slider", { name: "Webcam Width" })).toHaveValue("50");
+	await expect(roundness).toHaveValue("20");
+	await expect(rim.locator("path")).not.toHaveAttribute("d", rectanglePath!);
+	expect(
+		await originalRim!.evaluate(
+			(node) => node === document.querySelector("[data-webcam-glass-rim]"),
+		),
+	).toBe(true);
+	expect(
+		await originalFootage!.evaluate(
+			(node) => node === document.querySelector("[data-webcam-overlay] video"),
+		),
+	).toBe(true);
+	await expect
+		.poll(() =>
+			page.locator("[data-webcam-overlay]").evaluate((element) => {
+				const box = element.getBoundingClientRect();
+				return Math.abs(box.width - box.height);
+			}),
+		)
+		.toBeLessThan(1);
+	const renderedCamera = page.locator("[data-webcam-motion-blur]");
+	await page.getByRole("button", { name: "Play", exact: true }).click();
+	await expect(renderedCamera).toBeVisible();
+	await expect(rim).toBeHidden();
+	await page.getByRole("button", { name: "Pause", exact: true }).click();
+	await expect(renderedCamera).toBeHidden();
+	await expect(rim).toBeVisible();
+	expect(
+		await originalRim!.evaluate(
+			(node) => node === document.querySelector("[data-webcam-glass-rim]"),
+		),
+	).toBe(true);
+	expect(
+		await originalFootage!.evaluate(
+			(node) => node === document.querySelector("[data-webcam-overlay] video"),
+		),
+	).toBe(true);
+	await page.locator("[data-webcam-overlay]").screenshot({
+		path: test.info().outputPath("paused-camera-rim.png"),
+	});
+});

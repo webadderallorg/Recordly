@@ -1,5 +1,10 @@
 import { listCapturePickerWindows } from "./capturePickerSources";
 import {
+	isLikelyLinuxWaylandSession,
+	LINUX_PORTAL_SCREEN_SOURCE_ID,
+} from "./register/sourceMapping";
+import { getDesktopSources } from "./register/sources";
+import {
 	createAreaSource,
 	createWindowSource,
 	getSourceArea,
@@ -8,11 +13,6 @@ import {
 import { selectedSource } from "./state";
 import type { SelectedSource } from "./types";
 import { getScreen } from "./utils";
-import { getDesktopSources } from "./register/sources";
-import {
-	isLikelyLinuxWaylandSession,
-	LINUX_PORTAL_SCREEN_SOURCE_ID,
-} from "./register/sourceMapping";
 
 /** Revalidate identity and geometry; never substitute a broader capture source. */
 export async function validateCaptureSource(candidate: unknown): Promise<SelectedSource | null> {

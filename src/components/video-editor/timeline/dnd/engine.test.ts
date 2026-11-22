@@ -143,6 +143,29 @@ describe("timeline dnd engine", () => {
 			span: { start: 1000, end: 2000, sequenceIndex: 1 },
 		});
 	});
+	it.each([
+		[1999, 1998],
+		[3000, 1000],
+	])("commits the preview insertion when clip durations differ (%s / %s)", (first, second) => {
+		const config = {
+			...sequenceConfig,
+			totalMs: first + second + 2000,
+			allRegionSpans: [
+				{ id: "a", start: 0, end: first, rowId: "row-clip" },
+				{ id: "b", start: first, end: first + second, rowId: "row-clip" },
+				{ id: "c", start: first + second, end: first + second + 2000, rowId: "row-clip" },
+			],
+		};
+		const pointerStart = first + second / 2 - first / 2 + 1;
+		const preview = resolveDragEnd(
+			"a",
+			{ start: pointerStart, end: pointerStart + first },
+			"row-clip",
+			config,
+		)!;
+		expect(preview.span.sequenceIndex).toBe(1);
+		expect(resolveDragEnd("a", preview.span, preview.rowId, config)).toEqual(preview);
+	});
 
 	it("inserts B before A at the start of the sequence", () => {
 		const result = resolveDragEnd("b", { start: 0, end: 1000 }, "row-clip", sequenceConfig);
@@ -150,6 +173,34 @@ describe("timeline dnd engine", () => {
 			rowId: "row-clip",
 			span: { start: 0, end: 1000, sequenceIndex: 0 },
 		});
+	});
+	it.each([0, 2])("keeps an already resolved insertion at sequence edge %s", (sequenceIndex) => {
+		const result = resolveDragEnd(
+			"b",
+			{ start: 1000, end: 2000, sequenceIndex },
+			"row-clip",
+			sequenceConfig,
+		);
+		expect(result?.span).toEqual({
+			start: sequenceIndex * 1000,
+			end: (sequenceIndex + 1) * 1000,
+			sequenceIndex,
+		});
+		expect(resolveDragEnd("b", result!.span, "row-clip", sequenceConfig)).toEqual(result);
+	});
+	it.each([
+		Number.NaN,
+		Number.POSITIVE_INFINITY,
+		0.5,
+	])("recomputes invalid insertion index %s from the pointer", (sequenceIndex) => {
+		expect(
+			resolveDragEnd(
+				"a",
+				{ start: 1100, end: 2100, sequenceIndex },
+				"row-clip",
+				sequenceConfig,
+			)?.span.sequenceIndex,
+		).toBe(1);
 	});
 
 	it("keeps the final clip in the sequence when dragged beyond its end", () => {
