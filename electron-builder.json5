@@ -25,6 +25,7 @@
     "appimage": "1.0.3"
   },
   "beforePack": "./scripts/prepare-distribution-notices.mjs",
+  "artifactBuildCompleted": "./scripts/prepare-appimage-delta.mjs",
   "directories": {
     "output": "release"
   },
