@@ -308,9 +308,15 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 		const handleVisibilityChange = () => {
 			if (document.visibilityState === "visible") regenerateFrame();
 		};
+		const handleMediaReady = () => {
+			// A paused preview has no continuous ticker to retry a deferred upload.
+			if (shouldRegenerateFrameRef.current) requestPreviewRender();
+		};
 		const canvas = app.canvas;
 		document.addEventListener("visibilitychange", handleVisibilityChange);
 		canvas.addEventListener("webglcontextrestored", regenerateFrame);
+		video.addEventListener("canplay", handleMediaReady);
+		video.addEventListener("loadeddata", handleMediaReady);
 		video.addEventListener("seeked", handleSeeked);
 		video.addEventListener("seeking", handleSeeking);
 
@@ -321,6 +327,8 @@ export function usePlaybackTransport(input: usePlaybackTransportInput) {
 			}
 			document.removeEventListener("visibilitychange", handleVisibilityChange);
 			canvas.removeEventListener("webglcontextrestored", regenerateFrame);
+			video.removeEventListener("canplay", handleMediaReady);
+			video.removeEventListener("loadeddata", handleMediaReady);
 			video.removeEventListener("seeked", handleSeeked);
 			video.removeEventListener("seeking", handleSeeking);
 			transport.dispose();
