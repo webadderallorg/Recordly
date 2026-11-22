@@ -254,7 +254,9 @@
 	},
 	"toolbar": {
 		"addLayer": "レイヤーを追加",
-		"splitClip": "クリップを分割 (C)"
+		"splitClip": "クリップを分割 (C)",
+		"trimStart": "再生ヘッドの位置まで先頭をトリミング ({{shortcut}})",
+		"trimEnd": "再生ヘッドの位置まで末尾をトリミング ({{shortcut}})"
 	},
 	"timeline": {
 		"expand": "タイムラインを展開",
