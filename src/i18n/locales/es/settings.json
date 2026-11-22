@@ -254,6 +254,8 @@
 		"animationRise": "Elevar",
 		"animationPop": "Resaltar",
 		"bottomOffset": "Desplazamiento inferior",
+		"horizontalPosition": "Posición horizontal",
+		"verticalPosition": "Posición vertical",
 		"maxWidth": "Ancho máximo",
 		"boxRadius": "Radio del contenedor",
 		"backgroundOpacity": "Opacidad del fondo",

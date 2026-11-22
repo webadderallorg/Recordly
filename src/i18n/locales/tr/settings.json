@@ -282,6 +282,8 @@
 		"animationRise": "Yükselme",
 		"animationPop": "Açılma",
 		"bottomOffset": "Alt Boşluk",
+		"horizontalPosition": "Yatay konum",
+		"verticalPosition": "Dikey konum",
 		"maxWidth": "Maksimum Genişlik",
 		"boxRadius": "Kutu Yarıçapı",
 		"backgroundOpacity": "Arka Plan Opaklığı",

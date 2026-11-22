@@ -254,6 +254,8 @@
 		"animationRise": "Subir",
 		"animationPop": "Surgir",
 		"bottomOffset": "Deslocamento inferior",
+		"horizontalPosition": "Posição horizontal",
+		"verticalPosition": "Posição vertical",
 		"maxWidth": "Largura máxima",
 		"boxRadius": "Raio da caixa",
 		"backgroundOpacity": "Opacidade do fundo",

@@ -36,6 +36,26 @@ export function getCaptionPadding(fontSize: number, style?: AutoCaptionStyle) {
 	};
 }
 
+export function getCaptionBoxCenter({
+	width,
+	height,
+	boxWidth,
+	boxHeight,
+	horizontalPosition,
+	bottomOffset,
+}: {
+	width: number;
+	height: number;
+	boxWidth: number;
+	boxHeight: number;
+	horizontalPosition: number;
+	bottomOffset: number;
+}) {
+	const left = Math.max(0, width - boxWidth) * (horizontalPosition / 100);
+	const bottom = Math.min(Math.max(0, height - boxHeight), (height * bottomOffset) / 100);
+	return { centerX: left + boxWidth / 2, centerY: height - bottom - boxHeight / 2 };
+}
+
 export function getCaptionScaledRadius(radius: number, fontSize: number) {
 	const baseline = Math.max(1, DEFAULT_AUTO_CAPTION_SETTINGS.fontSize);
 	return Math.max(0, radius * (fontSize / baseline));

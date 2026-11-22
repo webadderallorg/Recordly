@@ -293,15 +293,30 @@ export function CaptionGenerationSettings({
 					/>
 				)}
 				{advanced && (
-					<SliderControl
-						label={tSettings("captions.bottomOffset", "Bottom offset")}
-						value={autoCaptionSettings.bottomOffset}
-						min={0}
-						max={30}
-						step={1}
-						onChange={(value) => updateAutoCaptionSettings({ bottomOffset: value })}
-						formatValue={(value) => `${Math.round(value)}%`}
-					/>
+					<>
+						<SliderControl
+							label={tSettings("captions.horizontalPosition", "Horizontal position")}
+							value={autoCaptionSettings.horizontalPosition}
+							min={0}
+							max={100}
+							step={1}
+							onChange={(value) =>
+								updateAutoCaptionSettings({ horizontalPosition: value })
+							}
+							formatValue={(value) => `${Math.round(value)}%`}
+						/>
+						<SliderControl
+							label={tSettings("captions.verticalPosition", "Vertical position")}
+							value={100 - autoCaptionSettings.bottomOffset}
+							min={0}
+							max={100}
+							step={1}
+							onChange={(value) =>
+								updateAutoCaptionSettings({ bottomOffset: 100 - value })
+							}
+							formatValue={(value) => `${Math.round(value)}%`}
+						/>
+					</>
 				)}
 				{advanced && (
 					<SliderControl
