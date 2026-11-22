@@ -1,12 +1,21 @@
-import { normalizeExportPreferences, type ExportPreferences } from "./exportPreferences";
+import { DESKTOP_WALLPAPER } from "@/lib/desktopWallpaper";
 import { loadAppSetting, saveAppSetting } from "../../lib/appSettings";
+import { normalizeCustomGradients } from "./customGradients";
+import { type ExportPreferences, normalizeExportPreferences } from "./exportPreferences";
 import {
 	getDefaultBorderRadiusPercent,
 	legacyBorderRadiusPixelsToPercent,
+	normalizePadding,
 	normalizeProjectEditor,
 	type ProjectEditorState,
 	stripPersistedDevMotionBlurSettings,
 } from "./projectPersistence";
+import {
+	type CaptureSourceKind,
+	DEFAULT_PADDING,
+	DEFAULT_WINDOW_PADDING,
+	type Padding,
+} from "./types";
 
 type PersistedEditorControls = Pick<
 	ProjectEditorState,
@@ -45,6 +54,7 @@ type PersistedEditorControls = Pick<
 	| "cursorClickBounce"
 	| "cursorClickBounceDuration"
 	| "cursorSway"
+	| "cursorIdleHide"
 	| "borderRadius"
 	| "padding"
 	| "webcam"
@@ -55,7 +65,10 @@ type PartialEditorControls = Partial<PersistedEditorControls>;
 
 type PresetAutoCaptionSettings = ProjectEditorState["autoCaptionSettings"];
 type PresetCropRegion = ProjectEditorState["cropRegion"];
-type PresetWebcamSettings = Omit<ProjectEditorState["webcam"], "sourcePath" | "visibleRanges">;
+type PresetWebcamSettings = Omit<
+	ProjectEditorState["webcam"],
+	"sourcePath" | "visibleRanges" | "loop"
+>;
 
 export interface EditorPresetSnapshot extends Omit<PersistedEditorControls, "webcam"> {
 	borderRadiusUnit: "percent";
@@ -72,23 +85,33 @@ export interface EditorPreset {
 	snapshot: EditorPresetSnapshot;
 }
 
-export interface EditorPreferences extends PersistedEditorControls, ExportPreferences {
+export interface EditorPreferences
+	extends Omit<PersistedEditorControls, "padding">,
+		ExportPreferences {
+	/** Last padding used for display and area recordings. */
+	screenPadding: Padding;
+	/** Last padding used for window recordings. */
+	windowPadding: Padding;
+	autoApplyFreshRecordingAutoZooms: boolean;
 	borderRadiusUnit: "percent";
 	customAspectWidth: string;
 	customAspectHeight: string;
 	customWallpapers: string[];
-	autoApplyFreshRecordingAutoZooms: boolean;
+	customGradients: string[];
+	customColors: string[];
 	whisperExecutablePath: string | null;
 	whisperModelPath: string | null;
 }
 
-export const EDITOR_PREFERENCES_STORAGE_KEY = "recordly.editor.preferences";
+const LEGACY_EDITOR_PREFERENCES_STORAGE_KEY = "recordly.editor.preferences";
+export const EDITOR_PREFERENCES_STORAGE_KEY = "recordly.editor.preferences.v2";
 export const EDITOR_PRESETS_STORAGE_KEY = "recordly.editor.presets";
 
 const DEFAULT_EDITOR_CONTROLS = normalizeProjectEditor({});
 
 export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
-	wallpaper: DEFAULT_EDITOR_CONTROLS.wallpaper,
+	autoApplyFreshRecordingAutoZooms: true,
+	wallpaper: DESKTOP_WALLPAPER,
 	shadowIntensity: DEFAULT_EDITOR_CONTROLS.shadowIntensity,
 	backgroundBlur: DEFAULT_EDITOR_CONTROLS.backgroundBlur,
 	zoomMotionBlur: DEFAULT_EDITOR_CONTROLS.zoomMotionBlur,
@@ -123,23 +146,22 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	cursorClickBounce: DEFAULT_EDITOR_CONTROLS.cursorClickBounce,
 	cursorClickBounceDuration: DEFAULT_EDITOR_CONTROLS.cursorClickBounceDuration,
 	cursorSway: DEFAULT_EDITOR_CONTROLS.cursorSway,
+	cursorIdleHide: DEFAULT_EDITOR_CONTROLS.cursorIdleHide,
 	borderRadius: DEFAULT_EDITOR_CONTROLS.borderRadius,
 	borderRadiusUnit: "percent",
-	padding: DEFAULT_EDITOR_CONTROLS.padding,
+	screenPadding: { ...DEFAULT_PADDING },
+	windowPadding: { ...DEFAULT_WINDOW_PADDING },
 	webcam: DEFAULT_EDITOR_CONTROLS.webcam,
 	aspectRatio: DEFAULT_EDITOR_CONTROLS.aspectRatio,
 	...normalizeExportPreferences({}),
 	customAspectWidth: "16",
 	customAspectHeight: "9",
 	customWallpapers: [],
-	autoApplyFreshRecordingAutoZooms: true,
+	customGradients: [],
+	customColors: [],
 	whisperExecutablePath: null,
 	whisperModelPath: null,
 };
-
-function normalizeBoolean(value: unknown, fallback: boolean): boolean {
-	return typeof value === "boolean" ? value : fallback;
-}
 
 function normalizePositiveIntegerString(value: unknown, fallback: string): string {
 	if (typeof value !== "string" || value.trim().length === 0) {
@@ -192,12 +214,13 @@ function normalizeEditorPresetSnapshot(candidate: unknown): EditorPresetSnapshot
 		cropRegion: raw.cropRegion,
 	}).cropRegion;
 	const normalizedControls = normalizeEditorControls(
-		normalizedPreferences,
-		normalizedPreferences,
+		{ ...normalizedPreferences, padding: raw.padding },
+		{ ...normalizedPreferences, padding: DEFAULT_PADDING },
 	);
 	const {
 		sourcePath: _sourcePath,
 		visibleRanges: _visibleRanges,
+		loop: _loop,
 		...webcam
 	} = normalizedControls.webcam;
 
@@ -268,12 +291,15 @@ export function serializeEditorPresetSnapshot(snapshot: EditorPresetSnapshot): s
 }
 
 function normalizeEditorControls(
-	raw: Partial<EditorPreferences>,
-	fallback: EditorPreferences,
+	raw: PartialEditorControls,
+	fallback: PersistedEditorControls,
 ): PersistedEditorControls {
 	const sanitizedRaw = stripPersistedDevMotionBlurSettings(raw);
 	const candidate: PartialEditorControls = {
-		wallpaper: sanitizedRaw.wallpaper ?? fallback.wallpaper,
+		wallpaper:
+			typeof sanitizedRaw.wallpaper === "string"
+				? sanitizedRaw.wallpaper
+				: fallback.wallpaper,
 		shadowIntensity: sanitizedRaw.shadowIntensity ?? fallback.shadowIntensity,
 		backgroundBlur: sanitizedRaw.backgroundBlur ?? fallback.backgroundBlur,
 		zoomMotionBlur: sanitizedRaw.zoomMotionBlur ?? fallback.zoomMotionBlur,
@@ -322,6 +348,7 @@ function normalizeEditorControls(
 		cursorClickBounceDuration:
 			sanitizedRaw.cursorClickBounceDuration ?? fallback.cursorClickBounceDuration,
 		cursorSway: sanitizedRaw.cursorSway ?? fallback.cursorSway,
+		cursorIdleHide: sanitizedRaw.cursorIdleHide ?? fallback.cursorIdleHide,
 		borderRadius: sanitizedRaw.borderRadius ?? fallback.borderRadius,
 		padding: sanitizedRaw.padding ?? fallback.padding,
 		webcam: sanitizedRaw.webcam ?? fallback.webcam,
@@ -366,9 +393,16 @@ function normalizeEditorControls(
 		cursorClickBounce: normalized.cursorClickBounce,
 		cursorClickBounceDuration: normalized.cursorClickBounceDuration,
 		cursorSway: normalized.cursorSway,
+		cursorIdleHide: normalized.cursorIdleHide,
 		borderRadius: normalized.borderRadius,
 		padding: normalized.padding,
-		webcam: normalized.webcam,
+		webcam: {
+			...normalized.webcam,
+			shape:
+				sanitizedRaw.webcam?.shape == null
+					? fallback.webcam.shape
+					: normalized.webcam.shape,
+		},
 		aspectRatio: normalized.aspectRatio,
 	};
 }
@@ -377,8 +411,10 @@ export function normalizeEditorPreferences(
 	candidate: unknown,
 	fallback: EditorPreferences = DEFAULT_EDITOR_PREFERENCES,
 ): EditorPreferences {
-	const raw =
-		candidate && typeof candidate === "object" ? (candidate as Partial<EditorPreferences>) : {};
+	const { padding: legacyPadding, ...raw } =
+		candidate && typeof candidate === "object"
+			? (candidate as Partial<EditorPreferences> & { padding?: unknown })
+			: {};
 	const controls =
 		raw.borderRadiusUnit === "percent" || typeof raw.borderRadius !== "number"
 			? raw
@@ -390,8 +426,16 @@ export function normalizeEditorPreferences(
 							: legacyBorderRadiusPixelsToPercent(raw.borderRadius),
 				};
 
+	const { padding: _sharedPadding, ...normalizedControls } = normalizeEditorControls(controls, {
+		...fallback,
+		padding: fallback.screenPadding,
+	});
+
 	return {
-		...normalizeEditorControls(controls, fallback),
+		...normalizedControls,
+		screenPadding: normalizePadding(raw.screenPadding, fallback.screenPadding),
+		// Carry shared padding forward for windows only; screens start at zero.
+		windowPadding: normalizePadding(raw.windowPadding ?? legacyPadding, fallback.windowPadding),
 		...normalizeExportPreferences({ ...fallback, ...raw }),
 		borderRadiusUnit: "percent",
 		customAspectWidth: normalizePositiveIntegerString(
@@ -406,38 +450,84 @@ export function normalizeEditorPreferences(
 			raw.customWallpapers,
 			fallback.customWallpapers,
 		),
-		autoApplyFreshRecordingAutoZooms: normalizeBoolean(
-			raw.autoApplyFreshRecordingAutoZooms,
-			fallback.autoApplyFreshRecordingAutoZooms,
-		),
+		customGradients: normalizeCustomGradients(raw.customGradients ?? fallback.customGradients),
+		customColors: normalizeCustomColors(raw.customColors ?? fallback.customColors),
+		autoApplyFreshRecordingAutoZooms:
+			typeof raw.autoApplyFreshRecordingAutoZooms === "boolean"
+				? raw.autoApplyFreshRecordingAutoZooms
+				: fallback.autoApplyFreshRecordingAutoZooms,
 		whisperExecutablePath:
 			normalizeNullablePath(raw.whisperExecutablePath) ?? fallback.whisperExecutablePath,
 		whisperModelPath: normalizeNullablePath(raw.whisperModelPath) ?? fallback.whisperModelPath,
 	};
 }
 
-export function loadEditorPreferences(): EditorPreferences {
-	const persisted = loadAppSetting<unknown>(EDITOR_PREFERENCES_STORAGE_KEY);
-	if (persisted !== null) {
-		return normalizeEditorPreferences(persisted);
-	}
+function isEditorPreferenceRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
+function readStoredEditorPreferences(key: string): Record<string, unknown> | null {
+	const persisted = loadAppSetting<unknown>(key);
+	if (isEditorPreferenceRecord(persisted)) return persisted;
 	try {
-		const stored = globalThis.localStorage?.getItem(EDITOR_PREFERENCES_STORAGE_KEY);
-		if (!stored) {
-			return DEFAULT_EDITOR_PREFERENCES;
-		}
-
-		return normalizeEditorPreferences(JSON.parse(stored));
+		const stored = globalThis.localStorage?.getItem(key);
+		const parsed: unknown = stored ? JSON.parse(stored) : null;
+		return isEditorPreferenceRecord(parsed) ? parsed : null;
 	} catch {
-		return DEFAULT_EDITOR_PREFERENCES;
+		return null;
 	}
 }
 
-export function saveEditorPreferences(preferences: Partial<EditorPreferences>): void {
+export function loadEditorPreferences(): EditorPreferences {
+	const current = readStoredEditorPreferences(EDITOR_PREFERENCES_STORAGE_KEY);
+	if (current !== null) return normalizeEditorPreferences(current);
+
+	const previous = readStoredEditorPreferences(LEGACY_EDITOR_PREFERENCES_STORAGE_KEY);
+	if (!previous) return DEFAULT_EDITOR_PREFERENCES;
+
+	// Older versions wrote their defaults alongside user values. Start with the
+	// new controls but retain window padding, the resource library, and caption tools.
+	const {
+		windowPadding,
+		customWallpapers,
+		customGradients,
+		customColors,
+		whisperExecutablePath,
+		whisperModelPath,
+	} = normalizeEditorPreferences(previous);
+	return {
+		...DEFAULT_EDITOR_PREFERENCES,
+		windowPadding,
+		customWallpapers,
+		customGradients,
+		customColors,
+		whisperExecutablePath,
+		whisperModelPath,
+	};
+}
+
+export function getPaddingPreference(
+	preferences: Pick<EditorPreferences, "screenPadding" | "windowPadding">,
+	kind: CaptureSourceKind | null,
+): Padding {
+	return { ...(kind === "window" ? preferences.windowPadding : preferences.screenPadding) };
+}
+
+export type EditorPreferencesPatch = Omit<Partial<EditorPreferences>, "webcam"> & {
+	webcam?: Partial<EditorPreferences["webcam"]>;
+};
+
+export function saveEditorPreferences(preferences: EditorPreferencesPatch): void {
 	try {
 		const current = loadEditorPreferences();
-		const merged = normalizeEditorPreferences({ ...current, ...preferences }, current);
+		const merged = normalizeEditorPreferences(
+			{
+				...current,
+				...preferences,
+				webcam: { ...current.webcam, ...preferences.webcam },
+			},
+			current,
+		);
 		const persisted = stripPersistedDevMotionBlurSettings(merged);
 		saveAppSetting(EDITOR_PREFERENCES_STORAGE_KEY, persisted);
 		saveLocalStorageJson(EDITOR_PREFERENCES_STORAGE_KEY, persisted);
@@ -490,4 +580,18 @@ export function saveEditorPresets(presets: EditorPreset[]): boolean {
 		// Ignore storage failures so editor controls still work.
 		return false;
 	}
+}
+
+function normalizeCustomColors(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	return [
+		...new Set(
+			value
+				.filter(
+					(color): color is string =>
+						typeof color === "string" && /^#[\da-f]{6}$/i.test(color),
+				)
+				.map((color) => color.toLowerCase()),
+		),
+	].slice(0, 50);
 }

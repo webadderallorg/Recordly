@@ -1,6 +1,22 @@
 import path from "node:path";
-import { dialog, ipcMain } from "electron";
-import { generateAutoCaptionsFromVideo } from "../captions/generate";
+import { BrowserWindow, dialog, ipcMain } from "electron";
+import { isCaptionModelId } from "../../../src/shared/captionModels";
+import {
+	deleteCaptionModel,
+	downloadCaptionModel,
+	getCaptionModelStatus,
+	sendCaptionModelDownloadProgress,
+} from "../captions/captionModels";
+import {
+	type AutoCaptionGenerationOptions,
+	generateAutoCaptionsFromVideo,
+} from "../captions/generate";
+import {
+	deleteParakeetModel,
+	downloadParakeetModel,
+	getParakeetModelStatus,
+	sendParakeetModelDownloadProgress,
+} from "../captions/parakeetModel";
 import {
 	deleteWhisperSmallModel,
 	downloadWhisperSmallModel,
@@ -11,8 +27,9 @@ import { LEGACY_PROJECT_FILE_EXTENSIONS, PROJECT_FILE_EXTENSION } from "../const
 import { hasProjectFileExtension, loadProjectFromPath } from "../project/manager";
 import { setCurrentProjectPath } from "../state";
 import { approveUserPath, getRecordingsDir } from "../utils";
+import { registerWallpaperVideoHandler } from "./wallpaperVideo";
 
-const VIDEO_FILE_EXTENSIONS = ["webm", "mp4", "mov", "avi", "mkv"];
+const VIDEO_FILE_EXTENSIONS = ["webm", "mp4", "mov", "m4v", "avi", "mkv"];
 const PROJECT_FILE_EXTENSIONS = [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS];
 
 type OpenVideoFilePickerOptions = {
@@ -20,6 +37,99 @@ type OpenVideoFilePickerOptions = {
 };
 
 export function registerCaptionHandlers() {
+	registerWallpaperVideoHandler();
+	let generatingCaptions = false;
+	let deletingModel = false;
+	const deleteModelWhenIdle = async (action: () => Promise<void>) => {
+		if (generatingCaptions || deletingModel)
+			throw new Error(
+				"Wait for the current caption operation to finish before deleting a model.",
+			);
+		deletingModel = true;
+		try {
+			await action();
+		} finally {
+			deletingModel = false;
+		}
+	};
+	ipcMain.handle("get-caption-model-status", async (_, modelId: unknown) => {
+		try {
+			return await getCaptionModelStatus(modelId);
+		} catch (error) {
+			return { success: false, exists: false, path: null, error: String(error) };
+		}
+	});
+	ipcMain.handle("download-caption-model", async (event, modelId: unknown) => {
+		try {
+			return { success: true, path: await downloadCaptionModel(modelId, event.sender) };
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
+	});
+	ipcMain.handle("delete-caption-model", async (_, modelId: unknown) => {
+		try {
+			if (generatingCaptions)
+				throw new Error("Wait for caption generation to finish before deleting the model.");
+			if (!isCaptionModelId(modelId)) throw new Error("Unknown caption model.");
+			await deleteModelWhenIdle(() => deleteCaptionModel(modelId));
+			for (const window of BrowserWindow.getAllWindows()) {
+				if (modelId === "parakeet-v3")
+					sendParakeetModelDownloadProgress(window.webContents, {
+						status: "idle",
+						progress: 0,
+						path: null,
+					});
+				else
+					sendCaptionModelDownloadProgress(window.webContents, {
+						modelId,
+						status: "idle",
+						progress: 0,
+						path: null,
+					});
+			}
+			return { success: true };
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
+	});
+
+	ipcMain.handle("get-parakeet-model-status", async () => {
+		try {
+			return await getParakeetModelStatus();
+		} catch (error) {
+			return {
+				success: false,
+				exists: false,
+				path: null,
+				error: String(error),
+			};
+		}
+	});
+	ipcMain.handle("download-parakeet-model", async (event) => {
+		try {
+			return { success: true, path: await downloadParakeetModel(event.sender) };
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
+	});
+	ipcMain.handle("delete-parakeet-model", async () => {
+		try {
+			if (generatingCaptions)
+				throw new Error("Wait for caption generation to finish before deleting the model.");
+			await deleteModelWhenIdle(() => deleteParakeetModel());
+			for (const window of BrowserWindow.getAllWindows()) {
+				sendParakeetModelDownloadProgress(window.webContents, {
+					status: "idle",
+					progress: 0,
+					path: null,
+				});
+			}
+			return { success: true };
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
+	});
+
 	ipcMain.handle("open-video-file-picker", async (_, options?: OpenVideoFilePickerOptions) => {
 		try {
 			const includeProjects = Boolean(options?.includeProjects);
@@ -41,7 +151,12 @@ export function registerCaptionHandlers() {
 						: []),
 					{ name: "Video Files", extensions: VIDEO_FILE_EXTENSIONS },
 					...(includeProjects
-						? [{ name: "Recordly Projects", extensions: PROJECT_FILE_EXTENSIONS }]
+						? [
+								{
+									name: "Recordly Projects",
+									extensions: PROJECT_FILE_EXTENSIONS,
+								},
+							]
 						: []),
 					{ name: "All Files", extensions: ["*"] },
 				],
@@ -165,7 +280,12 @@ export function registerCaptionHandlers() {
 		try {
 			return await getWhisperSmallModelStatus();
 		} catch (error) {
-			return { success: false, exists: false, path: null, error: String(error) };
+			return {
+				success: false,
+				exists: false,
+				path: null,
+				error: String(error),
+			};
 		}
 	});
 
@@ -191,7 +311,7 @@ export function registerCaptionHandlers() {
 
 	ipcMain.handle("delete-whisper-small-model", async (event) => {
 		try {
-			await deleteWhisperSmallModel();
+			await deleteModelWhenIdle(() => deleteWhisperSmallModel());
 			sendWhisperModelDownloadProgress(event.sender, {
 				status: "idle",
 				progress: 0,
@@ -221,36 +341,33 @@ export function registerCaptionHandlers() {
 		}
 	});
 
-	ipcMain.handle(
-		"generate-auto-captions",
-		async (
-			_,
-			options: {
-				videoPath: string;
-				whisperExecutablePath: string;
-				whisperModelPath: string;
-				language?: string;
-			},
-		) => {
-			try {
-				const result = await generateAutoCaptionsFromVideo(options);
-				return {
-					success: true,
-					cues: result.cues,
-					message:
-						result.audioSourceLabel === "recording"
-							? `Generated ${result.cues.length} caption cues.`
-							: `Generated ${result.cues.length} caption cues from the ${result.audioSourceLabel}.`,
-				};
-			} catch (error) {
-				console.error("Failed to generate auto captions:", error);
-				return {
-					success: false,
-					error: String(error),
-					message:
-						error instanceof Error ? error.message : "Failed to generate auto captions",
-				};
-			}
-		},
-	);
+	ipcMain.handle("generate-auto-captions", async (_, options: AutoCaptionGenerationOptions) => {
+		if (generatingCaptions || deletingModel)
+			return {
+				success: false,
+				error: "Wait for the current caption operation to finish.",
+			};
+		generatingCaptions = true;
+		try {
+			const result = await generateAutoCaptionsFromVideo(options);
+			return {
+				success: true,
+				cues: result.cues,
+				message:
+					result.audioSourceLabel === "recording"
+						? `Generated ${result.cues.length} caption cues.`
+						: `Generated ${result.cues.length} caption cues from the ${result.audioSourceLabel}.`,
+			};
+		} catch (error) {
+			console.error("Failed to generate auto captions:", error);
+			return {
+				success: false,
+				error: String(error),
+				message:
+					error instanceof Error ? error.message : "Failed to generate auto captions",
+			};
+		} finally {
+			generatingCaptions = false;
+		}
+	});
 }

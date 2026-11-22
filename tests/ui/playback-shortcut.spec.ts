@@ -22,6 +22,8 @@ test("Space toggles once per press, including on the focused playback button", a
 				.evaluate((video: HTMLVideoElement) => video.readyState),
 		)
 		.toBeGreaterThanOrEqual(2);
+	// The decoded video can be ready before Pixi creates the playback transport.
+	await expect(page.locator("[data-preview-overlay]")).toBeVisible({ timeout: 20000 });
 	await play.focus();
 	await page.keyboard.down("Space");
 	await expect(pause).toBeVisible();

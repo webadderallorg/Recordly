@@ -1,13 +1,13 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { CURSOR_MOTION_PRESETS } from "./cursorMotionPresets";
-import { DEFAULT_CURSOR_MOTION_BLUR } from "./types";
 import {
 	fromFileUrl,
 	normalizeProjectEditor,
 	stripPersistedDevMotionBlurSettings,
 	toFileUrl,
 } from "./projectPersistence";
+import { DEFAULT_CURSOR_MOTION_BLUR } from "./types";
 
 describe("Audio path handling", () => {
 	describe("toFileUrl produces valid file:// URLs for audio paths", () => {

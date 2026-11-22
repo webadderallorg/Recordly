@@ -1,5 +1,6 @@
-import { isExportErrorReport, type ExportErrorReport } from "../_shared/exportErrorReport.ts";
-const MAX_BYTES = 4096;
+import { isSupportErrorReport, type SupportErrorReport } from "../_shared/appErrorReport.ts";
+
+const MAX_BYTES = 1_000_000;
 const headers = {
 	"Access-Control-Allow-Origin": "*",
 	"Access-Control-Allow-Headers": "apikey, content-type",
@@ -9,10 +10,10 @@ const headers = {
 const reply = (status: number, code?: string) =>
 	new Response(JSON.stringify(code ? { code } : { success: true }), { status, headers });
 export interface ExportErrorBackend {
-	reserve(): Promise<boolean>;
-	insert(report: ExportErrorReport): Promise<void>;
+	reserve(report: SupportErrorReport): Promise<boolean>;
+	insert(report: SupportErrorReport): Promise<void>;
 }
-/** Public, minimal reports only. No identity/IP/device identifier is read or persisted. */
+/** Public, bounded support reports. No identity/IP/device identifier is read or persisted. */
 export function exportErrorHandler(backend: ExportErrorBackend) {
 	return async (request: Request): Promise<Response> => {
 		if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
@@ -47,9 +48,9 @@ export function exportErrorHandler(backend: ExportErrorBackend) {
 		} catch {
 			return reply(400, "INVALID_REPORT");
 		}
-		if (!isExportErrorReport(report)) return reply(400, "INVALID_REPORT");
+		if (!isSupportErrorReport(report)) return reply(400, "INVALID_REPORT");
 		try {
-			if (!(await backend.reserve())) return reply(429, "REPORT_LIMIT");
+			if (!(await backend.reserve(report))) return reply(429, "REPORT_LIMIT");
 			await backend.insert(report);
 			return reply(200);
 		} catch {

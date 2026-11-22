@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	getTimelineContentMinHeightPx,
 	getTimelineRowsMinHeightPx,
-	TIMELINE_CLIP_ROW_HEIGHT_PX,
 	TIMELINE_AXIS_HEIGHT_PX,
+	TIMELINE_CLIP_ROW_HEIGHT_PX,
 	TIMELINE_ROW_MIN_HEIGHT_PX,
 } from "./timelineLayout";
 
@@ -41,7 +41,7 @@ describe("timelineLayout", () => {
 	});
 
 	it("fits clip and full zoom, or clip and two compact tracks, in the minimum viewport", () => {
-		const availableHeight = 180 - 24;
+		const availableHeight = 188 - 16;
 		expect(getTimelineContentMinHeightPx(2)).toBeLessThanOrEqual(availableHeight);
 		expect(getTimelineContentMinHeightPx(3)).toBeLessThanOrEqual(availableHeight);
 		expect(getTimelineContentMinHeightPx(4)).toBeGreaterThan(availableHeight);

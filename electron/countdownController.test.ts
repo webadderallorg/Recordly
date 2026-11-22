@@ -1,26 +1,23 @@
-import { EventEmitter } from "node:events";
-import type { BrowserWindow } from "electron";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createCountdownController } from "./countdownController";
-function fixture(loading = false) {
-	const contents = Object.assign(new EventEmitter(), {
-		isLoadingMainFrame: () => loading,
-		isDestroyed: () => false,
-		send: vi.fn(),
-	});
-	const win = Object.assign(new EventEmitter(), {
-		webContents: contents,
-		isDestroyed: () => false,
-		close: vi.fn(),
-	});
-	const state = vi.fn();
-	const controller = createCountdownController(() => win as unknown as BrowserWindow, state);
-	return { controller, win, contents, state };
-}
+
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
-it("cancels an active countdown immediately and allows another start", async () => {
-	const { controller, state } = fixture();
+
+it("emits 3, 2, 1 from the main-process timer and settles without a window", async () => {
+	const state = vi.fn();
+	const controller = createCountdownController(state);
+	const pending = controller.start(3);
+	expect(state).toHaveBeenLastCalledWith(3);
+	await vi.advanceTimersByTimeAsync(3000);
+	await expect(pending).resolves.toEqual({ success: true });
+	expect(state.mock.calls).toEqual([[3], [2], [1], [null]]);
+	expect(vi.getTimerCount()).toBe(0);
+});
+
+it("cancels immediately, releases the timer and allows another start", async () => {
+	const state = vi.fn();
+	const controller = createCountdownController(state);
 	const pending = controller.start(3);
 	controller.cancel();
 	await expect(pending).resolves.toEqual({ success: false, cancelled: true });
@@ -30,57 +27,29 @@ it("cancels an active countdown immediately and allows another start", async () 
 	await vi.advanceTimersByTimeAsync(1000);
 	await expect(next).resolves.toEqual({ success: true });
 });
-it("settles cancellation before the countdown renderer finishes loading", async () => {
-	const { controller, contents } = fixture(true);
-	const pending = controller.start(3);
-	controller.cancel();
-	await expect(pending).resolves.toEqual({ success: false, cancelled: true });
-	contents.emit("did-finish-load");
-	expect(contents.send).not.toHaveBeenCalled();
-	expect(vi.getTimerCount()).toBe(0);
-});
-it.each([
-	"closed",
-	"render-process-gone",
-])("settles when the window exits through %s", async (event) => {
-	const { controller, win, contents } = fixture(true);
-	const pending = controller.start(3);
-	(event === "closed" ? win : contents).emit(event);
-	await expect(pending).resolves.toEqual({ success: false, cancelled: true });
-});
-it("settles loading failures and releases the countdown lock", async () => {
-	const { controller, contents } = fixture(true);
-	const pending = controller.start(3);
-	contents.emit("did-fail-load");
-	await expect(pending).resolves.toMatchObject({ success: false, error: expect.any(String) });
-	const next = controller.start(1);
-	contents.emit("did-finish-load");
-	await vi.advanceTimersByTimeAsync(1000);
-	await expect(next).resolves.toEqual({ success: true });
-});
-it("rejects concurrent starts and emits ticks until normal completion", async () => {
-	const { controller, contents } = fixture();
+
+it("does not let a concurrent start replace the active recording countdown", async () => {
+	const state = vi.fn();
+	const controller = createCountdownController(state);
 	const pending = controller.start(2);
-	await expect(controller.start(3)).resolves.toMatchObject({
-		success: false,
-		error: expect.any(String),
-	});
+	await expect(controller.start(3)).resolves.toMatchObject({ success: false });
 	await vi.advanceTimersByTimeAsync(2000);
 	await expect(pending).resolves.toEqual({ success: true });
-	expect(contents.send.mock.calls).toEqual([
-		["countdown-tick", 2],
-		["countdown-tick", 1],
-	]);
+	expect(state.mock.calls).toEqual([[2], [1], [null]]);
+});
+
+it.each([-1, Number.NaN, Number.POSITIVE_INFINITY])("rejects invalid delay %s", async (delay) => {
+	const state = vi.fn();
+	await expect(createCountdownController(state).start(delay)).resolves.toMatchObject({
+		success: false,
+	});
+	expect(state).not.toHaveBeenCalled();
 	expect(vi.getTimerCount()).toBe(0);
 });
-it("resets state if creating the countdown window fails", async () => {
+
+it("settles zero delay immediately without adding a timer", async () => {
 	const state = vi.fn();
-	const controller = createCountdownController(() => {
-		throw Error("window unavailable");
-	}, state);
-	await expect(controller.start(3)).resolves.toMatchObject({
-		success: false,
-		error: expect.any(String),
-	});
-	expect(state).toHaveBeenLastCalledWith(null);
+	await expect(createCountdownController(state).start(0)).resolves.toEqual({ success: true });
+	expect(state.mock.calls).toEqual([[null]]);
+	expect(vi.getTimerCount()).toBe(0);
 });

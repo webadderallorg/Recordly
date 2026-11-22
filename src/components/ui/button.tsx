@@ -1,5 +1,5 @@
 import { Button as HeroButton, type ButtonProps as HeroButtonProps } from "@heroui/react";
-import { forwardRef, type ButtonHTMLAttributes } from "react";
+import { type ButtonHTMLAttributes, forwardRef } from "react";
 import { cn } from "@/lib/utils";
 
 type Variant =
@@ -54,7 +54,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 		"aria-label": props["aria-label"] ?? title,
 		isDisabled: disabled ?? isDisabled,
 		size: size === "default" || size === "icon" ? ("md" as const) : size,
-		isIconOnly: size === "icon",
+		isIconOnly: props.isIconOnly ?? size === "icon",
 		className: cn(
 			{
 				"[&_svg:not([class*=size-])]:size-4": iconSize === "default",

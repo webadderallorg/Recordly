@@ -1,0 +1,10 @@
+Verify your email for Recordly
+
+Enter this code into Recordly to verify your email. Don't share this with anyone.
+
+{{ .Token }}
+
+Didn't request this? You can safely ignore this email.
+
+Contact support: support@recordly.dev
+Privacy: https://videos.recordly.dev/privacy

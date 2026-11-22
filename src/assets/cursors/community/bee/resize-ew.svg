@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" fill="none">
+  <g filter="url(#filter0_d)">
+    <path d="M119.524 116.666H79.4803L79.5038 140.132L5.82764 100.001L79.4428 59.8762L79.4663 83.3325L119.54 83.3325L119.563 59.8762L193.178 100.002L119.5 140.131L119.524 116.666Z" fill="#000000"/>
+  </g>
+  <path d="M127.029 90.8333L127.048 72.5L177.5 100L127.01 127.5L127.028 109.167L71.9699 109.167L71.9882 127.5L21.5001 100L71.9525 72.5L71.9709 90.8333H127.029Z" fill="url(#bibata-bee)" stroke="#000000"/>
+  <defs>
+    <pattern id="bibata-bee" patternUnits="userSpaceOnUse" x="0" y="0" width="200" height="200">
+      <g>
+        <g transform="rotate(20 50 50) scale(2.4)">
+          <rect x="-20" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="-10" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="0" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="10" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="20" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="30" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="40" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="50" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="60" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="70" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="80" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="90" y="-10" width="10" height="120" fill="#f6e000"/>
+          <rect x="100" y="-10" width="10" height="120" fill="#000000"/>
+          <rect x="110" y="-10" width="10" height="120" fill="#000000"/>
+        </g>
+
+      </g>
+    </pattern>
+    <filter id="filter0_d" x="0.827637" y="58.8762" width="197.351" height="90.2553" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"/>
+      <feOffset dy="4"/>
+      <feGaussianBlur stdDeviation="2.5"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.5 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow" result="shape"/>
+    </filter>
+  </defs>
+</svg>

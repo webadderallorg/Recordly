@@ -56,6 +56,56 @@ function completeDestroy(app: Application): void {
 	}
 }
 
+type InternalFilterData = {
+	skip?: boolean;
+};
+
+type InternalFilterSystem = {
+	_filterStackIndex?: number;
+	_filterStack?: InternalFilterData[];
+	_getPreviousFilterData?: () => InternalFilterData | undefined;
+};
+
+function patchPixiFilterSystem(app: Application): void {
+	const renderer = app.renderer as unknown as {
+		filter?: InternalFilterSystem;
+		runners?: {
+			renderStart?: {
+				add: (item: { renderStart: () => void }) => void;
+			};
+		};
+	};
+	const filterSystem = renderer?.filter;
+	if (!filterSystem) {
+		return;
+	}
+
+	filterSystem._getPreviousFilterData = function _getPreviousFilterData(
+		this: InternalFilterSystem,
+	): InternalFilterData | undefined {
+		let index = (this._filterStackIndex ?? 0) - 1;
+		while (index > 0) {
+			index--;
+			const previousFilterData = this._filterStack?.[index];
+			if (previousFilterData && !previousFilterData.skip) {
+				return previousFilterData;
+			}
+		}
+		return undefined;
+	};
+
+	renderer.runners?.renderStart?.add({
+		renderStart() {
+			if (
+				typeof filterSystem._filterStackIndex === "number" &&
+				filterSystem._filterStackIndex !== 0
+			) {
+				filterSystem._filterStackIndex = 0;
+			}
+		},
+	});
+}
+
 export async function initializePixiApplication(
 	app: Application,
 	options: PixiInitOptions,
@@ -67,6 +117,7 @@ export async function initializePixiApplication(
 	initializationStates.set(app, "initializing");
 	try {
 		await app.init(options);
+		patchPixiFilterSystem(app);
 		initializationStates.set(app, "initialized");
 	} catch (error) {
 		initializationStates.set(app, "failed");

@@ -1,3 +1,7 @@
+import type { CursorVisualType } from "../../src/shared/cursorVisualTypes";
+
+export type { CursorVisualType };
+
 /** A rectangle in global display points (top-left origin). */
 export type CaptureArea = {
 	x: number;
@@ -78,6 +82,8 @@ export type RecordingSessionData = {
 	webcamPath?: string | null;
 	timeOffsetMs?: number;
 	hideOverlayCursorByDefault?: boolean;
+	/** Display/area captures are "screen"; editor padding defaults differ per kind. */
+	captureSourceKind?: "screen" | "window";
 };
 
 export type PauseSegment = {
@@ -90,6 +96,7 @@ export type RecordingSessionManifest = {
 	videoFileName: string;
 	webcamFileName?: string | null;
 	timeOffsetMs?: number;
+	captureSourceKind?: RecordingSessionData["captureSourceKind"];
 };
 
 export type ProjectLibraryEntry = {
@@ -110,17 +117,6 @@ export type SystemCursorAsset = {
 	height: number;
 };
 
-export type CursorVisualType =
-	| "arrow"
-	| "text"
-	| "pointer"
-	| "crosshair"
-	| "open-hand"
-	| "closed-hand"
-	| "resize-ew"
-	| "resize-ns"
-	| "not-allowed";
-
 export type CursorInteractionType =
 	| "move"
 	| "click"
@@ -134,6 +130,8 @@ export interface CursorTelemetryPoint {
 	cx: number;
 	cy: number;
 	interactionType?: CursorInteractionType;
+	/** Button whose down/up transition this sample records. */
+	mouseButton?: 1 | 2 | 3;
 	cursorType?: CursorVisualType;
 }
 

@@ -1,7 +1,10 @@
 /* biome-ignore-all lint/correctness/useExhaustiveDependencies: grouped editor domain objects contain the thumbnail renderer dependencies. */
 import { type RefObject, useCallback, useEffect, useRef } from "react";
-import { PROJECT_THUMBNAIL_WIDTH, PROJECT_THUMBNAIL_HEIGHT } from "@/lib/projectThumbnail";
 import { FrameRenderer } from "@/lib/exporter/frameRenderer";
+import {
+	captureProjectThumbnailCanvas,
+	getProjectThumbnailRenderSize,
+} from "@/lib/projectThumbnailCanvas";
 import { toFileUrl } from "../projectPersistence";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";
@@ -9,6 +12,7 @@ import type { useTimelineState } from "../state/useTimelineState";
 import { getClipSourceEndMs, getClipSourceStartMs, type SpeedRegion } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 import { findPreviewClipAtTimelineTime } from "../videoPlayback/clipPlayback";
+import { applyDefaultCursorShape } from "../videoPlayback/cursorShapeOverride";
 
 type Input = {
 	project: ReturnType<typeof useProjectState>;
@@ -26,9 +30,8 @@ export function useProjectLibraryController({
 	videoPlaybackRef,
 	effectiveShowCursor,
 }: Input) {
-	const { setProjectLibraryEntries, setProjectLibraryLoading } = project;
+	const { setProjectLibraryEntries, setProjectLibraryLoading, setProjectLibraryError } = project;
 	const {
-		alwaysUsePointerCursor,
 		backgroundBlur,
 		borderRadius,
 		connectZooms,
@@ -55,6 +58,8 @@ export function useProjectLibraryController({
 		zoomSmoothness,
 		cursorStyle,
 		cursorSway,
+		cursorIdleHide,
+		alwaysUsePointerCursor,
 		padding,
 		resolvedWebcamVideoUrl,
 		shadowIntensity,
@@ -101,8 +106,14 @@ export function useProjectLibraryController({
 			for (const key of thumbnailUpdates.current.keys()) {
 				if (!paths.has(key)) thumbnailUpdates.current.delete(key);
 			}
+			setProjectLibraryError(null);
 		} catch (projectLibraryError) {
 			console.warn("Unable to refresh project library:", projectLibraryError);
+			setProjectLibraryError(
+				projectLibraryError instanceof Error
+					? projectLibraryError.message
+					: String(projectLibraryError),
+			);
 		} finally {
 			setProjectLibraryLoading(false);
 		}
@@ -127,11 +138,9 @@ export function useProjectLibraryController({
 		const previewHandle = videoPlaybackRef.current;
 		const previewVideo = previewHandle?.video ?? null;
 
-		const targetWidth = PROJECT_THUMBNAIL_WIDTH;
-		const targetHeight = PROJECT_THUMBNAIL_HEIGHT;
-
 		const previewWidth = previewHandle?.containerRef.current?.clientWidth || 1920;
 		const previewHeight = previewHandle?.containerRef.current?.clientHeight || 1080;
+		const renderSize = getProjectThumbnailRenderSize(previewWidth / previewHeight);
 		const frameTimestampUs = 0;
 
 		if (previewVideo && previewVideo.videoWidth > 0 && previewVideo.videoHeight > 0) {
@@ -172,8 +181,7 @@ export function useProjectLibraryController({
 				}
 				frameRenderer = new FrameRenderer({
 					timelineEffects: true,
-					width: targetWidth,
-					height: targetHeight,
+					...renderSize,
 					wallpaper,
 					zoomRegions,
 					showShadow: shadowIntensity > 0,
@@ -225,9 +233,11 @@ export function useProjectLibraryController({
 					})(),
 					previewWidth,
 					previewHeight,
-					cursorTelemetry,
+					cursorTelemetry: applyDefaultCursorShape(
+						cursorTelemetry,
+						alwaysUsePointerCursor,
+					),
 					showCursor: effectiveShowCursor,
-					alwaysUsePointerCursor,
 					cursorStyle,
 					cursorSize,
 					cursorSmoothing,
@@ -248,6 +258,7 @@ export function useProjectLibraryController({
 					cursorClickBounce,
 					cursorClickBounceDuration,
 					cursorSway,
+					cursorIdleHide,
 				});
 				await frameRenderer.initialize();
 				await frameRenderer.renderFrame(
@@ -257,7 +268,11 @@ export function useProjectLibraryController({
 					undefined,
 					frameTimestampUs,
 				);
-				return frameRenderer.getCanvas().toDataURL("image/png");
+				return captureProjectThumbnailCanvas(
+					frameRenderer.getCanvas(),
+					renderSize.width,
+					renderSize.height,
+				);
 			} catch (thumbnailRenderError) {
 				console.warn(
 					"Unable to render thumbnail from composed frame:",
@@ -276,7 +291,6 @@ export function useProjectLibraryController({
 		annotationRegions,
 		autoCaptionSettings,
 		autoCaptions,
-		alwaysUsePointerCursor,
 		backgroundBlur,
 		borderRadius,
 		connectZooms,
@@ -303,6 +317,8 @@ export function useProjectLibraryController({
 		zoomSmoothness,
 		cursorStyle,
 		cursorSway,
+		cursorIdleHide,
+		alwaysUsePointerCursor,
 		cursorTelemetry,
 		clipRegions,
 		padding,

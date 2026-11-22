@@ -2,8 +2,10 @@ import Foundation
 import AppKit
 import ApplicationServices
 
-// Force AppKit initialization so cursor images are populated in CLI context
-let _ = NSApplication.shared
+// AppKit supplies cursor images, but this command-line helper must never become
+// a foreground app. Otherwise LaunchServices gives it the parent Electron app's
+// identity and adds another Dock icon each time recording starts.
+NSApplication.shared.setActivationPolicy(.prohibited)
 
 func knownCursorCandidates() -> [(String, NSCursor)] {
 	var candidates: [(String, NSCursor)] = [

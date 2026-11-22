@@ -23,16 +23,19 @@ describe("getSceneEffectMetrics", () => {
 		const preview = getSceneEffectMetrics({
 			viewportWidth: 640,
 			backgroundBlur: 0,
-			shadowIntensity: 1,
+			shadowIntensity: 0.5,
 		});
 		const exportFrame = getSceneEffectMetrics({
 			viewportWidth: 1280,
 			backgroundBlur: 0,
-			shadowIntensity: 1,
+			shadowIntensity: 0.5,
 		});
 
-		expect(preview.shadowFilter).toContain("12px 48px");
-		expect(exportFrame.shadowFilter).toContain("24px 96px");
+		expect(preview.shadowFilter).toContain("12px 28px");
+		expect(exportFrame.shadowFilter).toContain("24px 56px");
+		expect(preview.shadowFilter).toContain("2px 3px");
+		expect(exportFrame.shadowFilter).toContain("4px 6px");
+		expect(preview.shadowFilter.match(/drop-shadow/g)).toHaveLength(2);
 	});
 
 	it("disables negative effect values", () => {

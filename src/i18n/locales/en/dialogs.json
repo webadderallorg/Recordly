@@ -40,7 +40,9 @@
 		"addSuccess": "Font \"{{name}}\" added successfully",
 		"addFailed": "Failed to add font",
 		"loadTimeout": "Font took too long to load. Please check the URL and try again.",
-		"loadFailed": "The font could not be loaded. Please verify the Google Fonts URL is correct."
+		"loadFailed": "The font could not be loaded. Please verify the Google Fonts URL is correct.",
+		"alreadyAdded": "This font has already been added.",
+		"cancel": "Cancel"
 	},
 	"shortcutsConfig": {
 		"title": "Keyboard Shortcuts",

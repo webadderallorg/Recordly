@@ -16,7 +16,7 @@ test("split clips share one grip and captions live inside the filmstrip", async 
 	await expect
 		.poll(() => page.getByTestId("playhead-cap").getAttribute("aria-label"))
 		.toBe("Playhead 3.0s");
-	await page.getByRole("button", { name: "Split Clip (C)", exact: true }).click();
+	await page.getByRole("button", { name: /^Split Clip \(/ }).click();
 	await expect(clips).toHaveCount(2);
 	const first = clips.nth(0),
 		second = clips.nth(1);
@@ -73,10 +73,30 @@ test("split clips share one grip and captions live inside the filmstrip", async 
 	const caption = page.locator('[data-variant="caption"]');
 	await expect(caption).toHaveCount(1);
 	const text = page.getByRole("textbox", { name: "Text", exact: true });
-	await text.fill("And this is what the caption looks like inside a clip");
+	const captionText = "And this is what the caption looks like inside a clip";
+	await text.fill(captionText);
 	await text.press("Enter");
-	await expect(caption).toContainText("And this is what");
-	expect((await caption.textContent())!.length).toBeLessThan(35);
+	await expect(caption).toHaveText(captionText);
+	const label = caption.locator("span.truncate");
+	await expect(label).toHaveCSS("text-overflow", "ellipsis");
+	// A wide block must display the entire cue, including text beyond character 24.
+	await expect
+		.poll(() => label.evaluate((node) => node.scrollWidth - node.clientWidth))
+		.toBeLessThanOrEqual(1);
+	// A longer cue uses the available block width, with only CSS adding an ellipsis.
+	await text.fill(`${captionText} — ${captionText}`);
+	await text.press("Enter");
+	await expect(caption).toHaveText(`${captionText} — ${captionText}`);
+	await expect
+		.poll(() => label.evaluate((node) => node.scrollWidth - node.clientWidth))
+		.toBeGreaterThan(1);
+	const availableTextWidth = await label.evaluate((node) => ({
+		text: node.clientWidth,
+		block: node.closest(".timeline-block")!.clientWidth,
+	}));
+	expect(availableTextWidth.block - availableTextWidth.text).toBeLessThanOrEqual(20);
+	await text.fill(captionText);
+	await text.press("Enter");
 	const captionBox = (await caption.boundingBox())!;
 	const clipBox = (await first.locator(".timeline-block").boundingBox())!;
 	expect(captionBox.y).toBeGreaterThan(clipBox.y);
@@ -112,7 +132,7 @@ test("background swaps use the section fade without sliding or overlapping panel
 	await installDesktopBridge(page);
 	await page.goto("/?windowType=editor");
 	await expect(page.locator('[data-background-panel="image"]')).toBeVisible({ timeout: 20000 });
-	for (const name of ["Color", "Gradient", "Video", "Image"]) {
+	for (const name of ["Colors", "Video", "Image"]) {
 		await page.getByRole("row", { name, exact: true }).click();
 		const panel = page.locator("[data-background-panel]");
 		await expect(panel).toHaveCount(1);

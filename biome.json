@@ -10,7 +10,13 @@
 			"!!**/dist-ssr",
 			"!!**/release",
 			"!!**/.tmp",
-			"!!**/electron/native/**/build"
+			"!!aside-react/extracted",
+			"!!aside-react/src/vendor/aceternity/sticky-scroll-reveal.original.tsx",
+			"!!output",
+			"!!services/email/billing/**/*.html",
+			"!!services/supabase/templates/**/*.html",
+			"!!**/electron/native/**/build",
+			"!!**/electron/native/bin"
 		]
 	},
 	"formatter": {
@@ -108,6 +114,10 @@
 	"javascript": { "formatter": { "quoteStyle": "double" } },
 	"css": { "parser": { "cssModules": true, "tailwindDirectives": true } },
 	"overrides": [
+		{
+			"includes": ["**/*.astro"],
+			"linter": { "rules": { "correctness": { "noUnusedVariables": "off" } } }
+		},
 		{
 			"includes": ["services/supabase/functions/**/*.ts"],
 			"javascript": { "globals": ["Deno"] }

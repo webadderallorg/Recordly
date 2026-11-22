@@ -1,0 +1,440 @@
+import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { app, type IpcMainInvokeEvent, ipcMain, safeStorage } from "electron";
+import { SAVED_SIGN_IN_LOCKED } from "../src/lib/auth/savedSignIn";
+import { withAuthStorageTransaction } from "./authStorageTransactionLock";
+import { getPackagedRendererBaseUrl } from "./rendererServer";
+import { isSavedSignInCiphertext, openSavedSignIn, sealSavedSignIn } from "./savedSignInEncryption";
+
+const MAX_VALUE_LENGTH = 256 * 1024;
+const MAX_STORE_LENGTH = 1024 * 1024;
+const MAX_PENDING_CONSENTS = 5;
+const MAX_CONSENT_RETRIES = 5;
+const MAX_KEYS = 16 + MAX_CONSENT_RETRIES;
+const MAX_CONSENT_LENGTH = 8192;
+const COMPLETED_CALLBACK_KEY = /^sb-[a-z0-9-]{1,100}-auth-token-completed-callback$/;
+const PENDING_CONSENT_KEY = /^sb-[a-z0-9-]{1,100}-auth-token-signup-consent-[A-Za-z0-9_-]{43}$/;
+const CONSENT_RETRY_KEY =
+	/^sb-[a-z0-9-]{1,100}-auth-token-signup-consent-retry:[A-Za-z0-9_-]{1,128}$/;
+// Supabase stores a bounded index and one verifier per pending PKCE flow.
+const AUTH_KEY =
+	/^sb-[a-z0-9-]{1,100}-auth-token(?:-code-verifier|-user|-flows-code-verifier|-flow-[A-Za-z0-9_-]{8,64}-code-verifier|-signup-consent-[A-Za-z0-9_-]{43}|-signup-consent-retry:[A-Za-z0-9_-]{1,128}|-completed-callback)?$/;
+type AuthEntries = Record<string, string>;
+type AuthEncoding = "safe-storage" | "saved-sign-in";
+export type AuthFlowStorageHooks = {
+	prepareSet: (
+		event: IpcMainInvokeEvent,
+		key: string,
+		persistedKeys?: readonly string[],
+	) => Promise<(() => Promise<void>) | undefined>;
+	didRemove: (event: IpcMainInvokeEvent, key: string) => Promise<void>;
+};
+let pending = Promise.resolve();
+let completedCallback: { key: string; fingerprint: string } | undefined;
+let migrationAttempted = false;
+// Only the process that owns the profile's secure-storage key may decide a store is unreadable for good.
+let canRecoverUnreadableStore: () => boolean = () => false;
+
+export function encryptionAvailable(): boolean {
+	return (
+		safeStorage.isEncryptionAvailable() &&
+		(process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text")
+	);
+}
+
+function assertTrustedRenderer(event: IpcMainInvokeEvent): void {
+	if (!event.senderFrame || event.senderFrame !== event.sender.mainFrame) {
+		throw new Error("Authentication storage requires the app's main frame.");
+	}
+	const candidate = new URL(event.senderFrame.url);
+	const trusted = [
+		process.env.VITE_DEV_SERVER_URL,
+		getPackagedRendererBaseUrl(),
+		pathToFileURL(path.join(process.env.APP_ROOT || app.getAppPath(), "dist", "index.html"))
+			.href,
+	].filter((value): value is string => Boolean(value));
+	if (
+		candidate.username ||
+		candidate.password ||
+		!trusted.some((value) => {
+			const base = new URL(value);
+			return candidate.origin === base.origin && candidate.pathname === base.pathname;
+		})
+	) {
+		throw new Error("Authentication storage is only available to Recordly.");
+	}
+}
+
+function assertKey(key: unknown): asserts key is string {
+	if (typeof key !== "string" || !AUTH_KEY.test(key)) {
+		throw new Error("Invalid authentication storage key.");
+	}
+}
+
+function validateEntries(value: unknown): AuthEntries {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		throw new Error("Invalid authentication storage data.");
+	}
+	const values = Object.entries(value);
+	if (values.length > MAX_KEYS) throw new Error("Authentication storage is too large.");
+	const result: AuthEntries = Object.create(null);
+	let pendingConsents = 0;
+	let consentRetries = 0;
+	for (const [key, item] of values) {
+		if (PENDING_CONSENT_KEY.test(key) && ++pendingConsents > MAX_PENDING_CONSENTS) {
+			throw new Error("Too many pending signup acknowledgements.");
+		}
+		if (CONSENT_RETRY_KEY.test(key) && ++consentRetries > MAX_CONSENT_RETRIES) {
+			throw new Error("Too many signup acknowledgement retries.");
+		}
+		assertKey(key);
+		if (typeof item !== "string" || item.length > MAX_VALUE_LENGTH) {
+			throw new Error("Invalid authentication storage value.");
+		}
+		if (COMPLETED_CALLBACK_KEY.test(key) && !/^[0-9a-f]{64}$/.test(item)) {
+			throw new Error("Invalid completed callback fingerprint.");
+		}
+		if (
+			(PENDING_CONSENT_KEY.test(key) || CONSENT_RETRY_KEY.test(key)) &&
+			item.length > MAX_CONSENT_LENGTH
+		) {
+			throw new Error("Pending signup acknowledgement is too large.");
+		}
+		result[key] = item;
+	}
+	if (JSON.stringify(result).length > MAX_STORE_LENGTH) {
+		throw new Error("Authentication storage is too large.");
+	}
+	return result;
+}
+
+function readStoredValue(entries: AuthEntries, key: string): string | null {
+	const prefix = /^(sb-[a-z0-9-]{1,100}-auth-token)-flows-code-verifier$/.exec(key)?.[1];
+	if (!prefix) return entries[key] ?? null;
+	const present = new Set<string>();
+	for (const candidate of Object.keys(entries)) {
+		const slot =
+			/^(sb-[a-z0-9-]{1,100}-auth-token)-flow-([A-Za-z0-9_-]{8,64})-code-verifier$/.exec(
+				candidate,
+			);
+		if (slot?.[1] === prefix) present.add(slot[2]);
+	}
+	let stored: unknown;
+	try {
+		stored = JSON.parse(entries[key] ?? "null");
+	} catch {
+		// The index is bookkeeping; exact persisted verifier slots are authoritative.
+	}
+	const ids = new Set<string>(
+		Array.isArray(stored)
+			? stored.filter((id) => typeof id === "string" && present.has(id))
+			: [],
+	);
+	for (const id of present) ids.add(id);
+	// SDK starts race their index read/modify/write. Repair reads without deleting
+	// any active slot; only the SDK's normal explicit ring removals evict verifiers.
+	return ids.size || key in entries ? JSON.stringify([...ids]) : null;
+}
+
+function storagePath(): string {
+	return path.join(app.getPath("userData"), "private-auth", "session.enc");
+}
+
+function prefersNamedKeychain(): boolean {
+	return process.platform === "darwin" && app.isPackaged;
+}
+
+/**
+ * The saved sign-in exists but cannot be read. `permanent` marks failures that
+ * retrying cannot fix: the ciphertext no longer decrypts with this profile's key,
+ * or it is not a store at all. macOS Keychain denials stay non-permanent because
+ * the user can grant access on a later attempt.
+ */
+class UnreadableAuthStoreError extends Error {
+	constructor(readonly permanent: boolean) {
+		super(SAVED_SIGN_IN_LOCKED);
+	}
+}
+
+type LoadedAuthStore = {
+	entries: AuthEntries;
+	persisted: boolean;
+	encoding: AuthEncoding;
+};
+
+function emptyStore(): LoadedAuthStore {
+	return {
+		entries: Object.create(null) as AuthEntries,
+		persisted: false,
+		encoding: prefersNamedKeychain() ? "saved-sign-in" : "safe-storage",
+	};
+}
+
+async function load(): Promise<LoadedAuthStore> {
+	let stage: "read" | "decrypt" | "parse" | "validate" = "read";
+	try {
+		const filePath = storagePath();
+		const stat = await fs.stat(filePath);
+		if (stat.size > MAX_STORE_LENGTH * 8)
+			throw new Error("Authentication storage is too large.");
+		const encrypted = await fs.readFile(filePath);
+		const named = isSavedSignInCiphertext(encrypted);
+		if (!named && !encryptionAvailable())
+			throw new Error("Secure authentication storage is unavailable.");
+		stage = "decrypt";
+		const plaintext = named ? openSavedSignIn(encrypted) : safeStorage.decryptString(encrypted);
+		stage = "parse";
+		const payload = JSON.parse(plaintext);
+		stage = "validate";
+		if (payload.version !== 1) throw new Error("Unsupported authentication storage version.");
+		const entries = validateEntries(payload.entries);
+		let encoding: AuthEncoding = named ? "saved-sign-in" : "safe-storage";
+		if (!named && prefersNamedKeychain() && !migrationAttempted) {
+			migrationAttempted = true;
+			try {
+				const migrated = sealSavedSignIn(plaintext);
+				if (openSavedSignIn(migrated, true) !== plaintext)
+					throw new Error("Saved sign-in verification failed.");
+				// All callers hold the cross-process transaction lock. The old
+				// file remains readable until the verified replacement is durable.
+				await writeEncryptedStore(migrated);
+				encoding = "saved-sign-in";
+			} catch {
+				// Keep this launch's session usable, including refresh and sign-out.
+				// A later launch can retry with the original key and current file.
+			}
+		}
+		return { entries, persisted: true, encoding };
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+			// Keep an unreadable store intact; never replace it with an empty session.
+			throw new UnreadableAuthStoreError(
+				process.platform !== "darwin" && (stage === "decrypt" || stage === "parse"),
+			);
+		}
+		return emptyStore();
+	}
+}
+
+/**
+ * Loads the store for a write that starts or refreshes a sign-in. A store that
+ * can never be decrypted again (for example after the profile's encryption key
+ * changed) would otherwise block every future sign-in, so it is moved aside to a
+ * dated backup and the new session starts from an empty store.
+ */
+async function loadForWrite(): Promise<LoadedAuthStore> {
+	try {
+		return await load();
+	} catch (error) {
+		if (!isRecoverable(error)) throw error;
+		const filePath = storagePath();
+		const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+		const backup = `${filePath}.unreadable-${stamp}-${randomUUID()}.bak`;
+		await fs.rename(filePath, backup);
+		console.warn(`[auth] Moved an unreadable saved sign-in aside to ${path.basename(backup)}.`);
+		return emptyStore();
+	}
+}
+
+/**
+ * Loads the store for a read or removal. A permanently unreadable store reads
+ * as signed out, without touching the file, so the sign-in form appears and the
+ * next sign-in write can recover it through `loadForWrite`.
+ */
+async function loadForRead(): Promise<LoadedAuthStore> {
+	try {
+		return await load();
+	} catch (error) {
+		if (!isRecoverable(error)) throw error;
+		return emptyStore();
+	}
+}
+
+function isRecoverable(error: unknown): boolean {
+	return (
+		error instanceof UnreadableAuthStoreError && error.permanent && canRecoverUnreadableStore()
+	);
+}
+
+class AuthEncryptionUnavailableError extends Error {}
+
+async function save(next: AuthEntries, encoding: AuthEncoding): Promise<void> {
+	const validated = validateEntries(next);
+	const plaintext = JSON.stringify({ version: 1, entries: validated });
+	let encrypted: Buffer;
+	if (encoding === "saved-sign-in") {
+		try {
+			encrypted = sealSavedSignIn(plaintext);
+		} catch {
+			throw new AuthEncryptionUnavailableError("Saved sign-in Keychain item is unavailable.");
+		}
+	} else {
+		if (!encryptionAvailable())
+			throw new AuthEncryptionUnavailableError(
+				"Secure authentication storage is unavailable.",
+			);
+		encrypted = safeStorage.encryptString(plaintext);
+	}
+	await writeEncryptedStore(encrypted);
+}
+
+async function writeEncryptedStore(encrypted: Buffer): Promise<void> {
+	const filePath = storagePath();
+	const directory = path.dirname(filePath);
+	await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+	if (process.platform !== "win32") await fs.chmod(directory, 0o700);
+	const temporary = path.join(directory, `${randomUUID()}.tmp`);
+	try {
+		const file = await fs.open(temporary, "wx", 0o600);
+		try {
+			await file.writeFile(encrypted);
+			await file.sync();
+		} finally {
+			await file.close();
+		}
+		await fs.rename(temporary, filePath);
+	} finally {
+		await fs.rm(temporary, { force: true }).catch(() => {
+			// A cleanup failure must not mask the original storage error.
+		});
+	}
+}
+
+function serialize<T>(operation: () => Promise<T>): Promise<T> {
+	const result = pending.then(operation);
+	pending = result.then(
+		() => undefined,
+		() => undefined,
+	);
+	return result;
+}
+
+function transaction<T>(operation: () => Promise<T>): Promise<T> {
+	return withAuthStorageTransaction(
+		path.join(path.dirname(storagePath()), "transactions"),
+		operation,
+	);
+}
+
+export function readNativeAuthStorageValue(key: string): Promise<string | null> {
+	assertKey(key);
+	return serialize(() =>
+		transaction(async () => readStoredValue((await loadForRead()).entries, key)),
+	);
+}
+
+export function registerAuthStorageHandlers(
+	flowHooks?: AuthFlowStorageHooks,
+	options: { canRecoverUnreadableStore?: () => boolean } = {},
+): void {
+	canRecoverUnreadableStore = options.canRecoverUnreadableStore ?? (() => false);
+	ipcMain.handle("auth-storage:available", (event) => {
+		assertTrustedRenderer(event);
+		// On macOS, let the read or write request Keychain access. If access is
+		// denied for an existing store, report it instead of falling back to memory.
+		return process.platform === "darwin" || encryptionAvailable();
+	});
+	ipcMain.handle("auth-storage:migrate", (event, snapshot: unknown) => {
+		assertTrustedRenderer(event);
+		const validated = validateEntries(snapshot);
+		if (Object.keys(validated).length === 0) return;
+		return serialize(() =>
+			transaction(async () => {
+				const current = await loadForWrite();
+				if (!current.persisted) await save(validated, current.encoding);
+			}),
+		);
+	});
+	ipcMain.handle("auth-storage:get", (event, key: unknown) => {
+		assertTrustedRenderer(event);
+		assertKey(key);
+		return serialize(async () =>
+			completedCallback?.key === key
+				? completedCallback.fingerprint
+				: transaction(async () => readStoredValue((await loadForRead()).entries, key)),
+		);
+	});
+	ipcMain.handle("auth-storage:set", (event, key: unknown, value: unknown) => {
+		assertTrustedRenderer(event);
+		assertKey(key);
+		const validated = validateEntries({ [key]: value });
+		return serialize(async () => {
+			// This process's queue spans snapshot, registration and commit/rollback.
+			// Only queued prepareSet calls add owned routes, so no earlier own route
+			// can still be preparing its verifier when this snapshot is captured.
+			const persistedKeys =
+				flowHooks &&
+				/^sb-[a-z0-9-]{1,100}-auth-token-flow-[A-Za-z0-9_-]{8,64}-code-verifier$/.test(key)
+					? await transaction(async () => Object.keys((await loadForWrite()).entries))
+					: undefined;
+			const rollback = await flowHooks?.prepareSet(event, key, persistedKeys);
+			if (COMPLETED_CALLBACK_KEY.test(key)) {
+				// Keep one non-secret completion marker available to all our windows even
+				// if optional bookkeeping cannot be persisted after a successful exchange.
+				completedCallback = { key, fingerprint: validated[key] };
+			}
+			try {
+				const result = await transaction(async () => {
+					const current = await loadForWrite();
+					const next = { ...current.entries, ...validated };
+					if (completedCallback)
+						for (const candidate of Object.keys(next)) {
+							if (
+								candidate !== completedCallback.key &&
+								COMPLETED_CALLBACK_KEY.test(candidate)
+							)
+								delete next[candidate];
+						}
+					const consents = Object.keys(next).filter((item) =>
+						PENDING_CONSENT_KEY.test(item),
+					);
+					for (const expired of consents.slice(0, -MAX_PENDING_CONSENTS))
+						delete next[expired];
+					const retries = Object.keys(next).filter((item) =>
+						CONSENT_RETRY_KEY.test(item),
+					);
+					for (const expired of retries.slice(0, -MAX_CONSENT_RETRIES))
+						delete next[expired];
+					try {
+						await save(next, current.encoding);
+					} catch (error) {
+						// Let the renderer use temporary sign-in only if there is no store to unlock.
+						if (
+							process.platform === "darwin" &&
+							!current.persisted &&
+							error instanceof AuthEncryptionUnavailableError
+						) {
+							return false as const;
+						}
+						throw error;
+					}
+				});
+				if (result === false) await rollback?.().catch(() => undefined);
+				return result;
+			} catch (error) {
+				await rollback?.().catch(() => undefined);
+				throw error;
+			}
+		});
+	});
+	ipcMain.handle("auth-storage:remove", (event, key: unknown) => {
+		assertTrustedRenderer(event);
+		assertKey(key);
+		return serialize(async () => {
+			await transaction(async () => {
+				const { entries, encoding } = await loadForRead();
+				if (key in entries) {
+					delete entries[key];
+					await save(entries, encoding);
+				}
+				if (completedCallback?.key === key) completedCallback = undefined;
+			});
+			// The verifier is already removed durably. Optional route cleanup must
+			// not turn a completed server exchange into a storage failure; a stale
+			// route still cannot deliver without that exact verifier.
+			await flowHooks?.didRemove(event, key).catch(() => undefined);
+		});
+	});
+}

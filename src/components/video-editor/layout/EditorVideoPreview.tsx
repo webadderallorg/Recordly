@@ -15,6 +15,8 @@ type Handlers = Pick<
 	| "onSelectAnnotation"
 	| "onAnnotationPositionChange"
 	| "onAnnotationSizeChange"
+	| "onAnnotationContentChange"
+	| "onAnnotationDelete"
 >;
 
 type Props = {
@@ -25,6 +27,7 @@ type Props = {
 	currentTime: number;
 	isPlaying: boolean;
 	previewVolume: number;
+	previewResolutionScale: number;
 	suspendRendering: boolean;
 	appearance: ReturnType<typeof useAppearanceState>;
 	timeline: ReturnType<typeof useTimelineState>;
@@ -48,6 +51,7 @@ export function EditorVideoPreview({
 	currentTime,
 	isPlaying,
 	previewVolume,
+	previewResolutionScale,
 	suspendRendering,
 	appearance,
 	timeline,
@@ -79,6 +83,7 @@ export function EditorVideoPreview({
 			zoomRegions={effectiveZoomRegions}
 			selectedZoomId={timeline.selectedZoomId}
 			isPlaying={isPlaying}
+			previewResolutionScale={isPlaying ? previewResolutionScale : 1}
 			showShadow={appearance.shadowIntensity > 0}
 			shadowIntensity={appearance.shadowIntensity}
 			backgroundBlur={appearance.backgroundBlur}
@@ -104,7 +109,6 @@ export function EditorVideoPreview({
 			selectedAnnotationId={timeline.selectedAnnotationId}
 			cursorTelemetry={effectiveCursorTelemetry}
 			showCursor={effectiveShowCursor}
-			alwaysUsePointerCursor={appearance.alwaysUsePointerCursor}
 			cursorStyle={appearance.cursorStyle}
 			cursorSize={appearance.cursorSize}
 			cursorSmoothing={appearance.cursorSmoothing}
@@ -127,6 +131,7 @@ export function EditorVideoPreview({
 			cursorClickBounce={appearance.cursorClickBounce}
 			cursorClickBounceDuration={appearance.cursorClickBounceDuration}
 			cursorSway={appearance.cursorSway}
+			cursorIdleHide={appearance.cursorIdleHide}
 			volume={
 				audio.shouldMutePreviewVideo || audio.isCurrentClipMuted
 					? 0

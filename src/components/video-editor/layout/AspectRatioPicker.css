@@ -1,0 +1,218 @@
+/* Recordly frame presets: a viewport-bounded form and three-column radio grid.
+   Geometry follows the picker component; colors and focus use app theme tokens. */
+.aspect-ratio-picker {
+	inline-size: 20rem;
+	max-inline-size: calc(100vw - 1.5rem);
+	border: 1px solid var(--separator);
+	border-radius: 1rem;
+	box-shadow: var(--shadow-overlay, 0 0.75rem 1.5rem rgb(0 0 0 / 0.32));
+}
+
+.aspect-ratio-picker__dialog {
+	padding: 0;
+}
+
+.aspect-ratio-picker__body {
+	display: grid;
+	align-content: start;
+	gap: 0.75rem;
+	block-size: 70vh;
+	max-block-size: min(70vh, var(--available-height, 70vh));
+	overflow: auto;
+	overscroll-behavior: contain;
+	padding: 0.75rem;
+}
+
+.aspect-ratio-picker__custom {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.5rem;
+}
+
+.aspect-ratio-picker__field {
+	position: relative;
+	min-inline-size: 0;
+}
+
+.aspect-ratio-picker__field > [data-slot="label"] {
+	position: absolute;
+	inset-block-start: 0.625rem;
+	inset-inline-start: 0.625rem;
+	z-index: 1;
+	color: var(--muted);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	line-height: 1rem;
+	pointer-events: none;
+}
+
+.aspect-ratio-picker__field input {
+	appearance: textfield;
+	inline-size: 100%;
+	min-inline-size: 0;
+	block-size: 2.25rem;
+	padding-block: 0.4375rem;
+	padding-inline: 1.625rem 0.625rem;
+	font-size: 1rem;
+	line-height: 1.25rem;
+	text-align: end;
+}
+
+.aspect-ratio-picker__field input::-webkit-inner-spin-button,
+.aspect-ratio-picker__field input::-webkit-outer-spin-button {
+	appearance: none;
+	margin: 0;
+}
+
+.aspect-ratio-picker__groups,
+.aspect-ratio-picker__platform {
+	display: grid;
+	gap: 0.75rem;
+	min-inline-size: 0;
+}
+
+.aspect-ratio-picker__divider {
+	inline-size: calc(100% - 1rem);
+	margin-inline: 0.5rem;
+}
+
+.aspect-ratio-picker__grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	align-items: end;
+	gap: 0.5rem;
+}
+
+.aspect-ratio-picker__option {
+	min-inline-size: 0;
+	margin: 0;
+	gap: 0;
+}
+
+.aspect-ratio-picker__item {
+	display: grid;
+	inline-size: 100%;
+	min-inline-size: 0;
+	padding: 0;
+	gap: 0;
+	font-weight: 400;
+	text-align: center;
+	cursor: pointer;
+}
+
+/* Each preview owns an equal cell; its inline aspect-ratio sizes the frame. */
+.aspect-ratio-picker__icon-wrapper {
+	position: relative;
+	inline-size: 100%;
+	aspect-ratio: 10 / 9;
+	overflow: hidden;
+}
+
+.aspect-ratio-picker__item.is-portrait .aspect-ratio-picker__icon-wrapper {
+	aspect-ratio: 9 / 10;
+}
+
+.aspect-ratio-picker__icon-display {
+	position: absolute;
+	inset: 0.5rem;
+}
+
+.aspect-ratio-picker__shape {
+	position: absolute;
+	inset: 0;
+	max-block-size: 100%;
+	margin: auto auto 0;
+	display: grid;
+	place-items: center;
+	border: 1.5px solid var(--separator);
+	border-radius: 0.625rem;
+	background: color-mix(in srgb, var(--foreground) 8%, transparent);
+	transition:
+		background-color 200ms,
+		outline-color 200ms;
+}
+
+.aspect-ratio-picker__option[data-selected] .aspect-ratio-picker__shape {
+	outline: 1.5px solid color-mix(in srgb, var(--foreground) 50%, transparent);
+	outline-offset: 2.5px;
+}
+
+.aspect-ratio-picker__option[data-hovered="true"] .aspect-ratio-picker__shape,
+.aspect-ratio-picker__item[data-hovered="true"] .aspect-ratio-picker__shape {
+	background: color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+
+.aspect-ratio-picker__option[data-focus-visible="true"] .aspect-ratio-picker__shape,
+.aspect-ratio-picker__item[data-focus-visible="true"] .aspect-ratio-picker__shape {
+	outline: 2px solid var(--focus);
+	outline-offset: 2.5px;
+}
+
+.aspect-ratio-picker__details {
+	display: grid;
+	gap: 0.125rem;
+	min-inline-size: 0;
+	inline-size: 100%;
+}
+
+.aspect-ratio-picker__name,
+.aspect-ratio-picker__ratio {
+	font-size: 0.6875rem;
+}
+
+.aspect-ratio-picker__name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	line-height: 0.875rem;
+}
+
+.aspect-ratio-picker__ratio {
+	color: var(--muted);
+	font-weight: 600;
+	line-height: 1rem;
+}
+
+.aspect-ratio-picker__heading {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin: 0 0 -0.25rem 0.5rem;
+	font-size: 1.0625rem;
+	font-weight: 500;
+	line-height: 1.5rem;
+}
+
+.aspect-ratio-picker__heading :is(img, svg) {
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+}
+
+.aspect-ratio-picker__shape :is(img, svg) {
+	inline-size: 1rem;
+	block-size: 1rem;
+}
+
+.aspect-ratio-picker__trigger-shape {
+	block-size: 0.625rem;
+	max-inline-size: 1.125rem;
+	border: 1px solid currentColor;
+	border-radius: 0.1875rem;
+	opacity: 0.65;
+}
+
+.aspect-ratio-picker__youtube {
+	color: #ff0000;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.aspect-ratio-picker__shape {
+		transition: none;
+	}
+}
+
+@media (forced-colors: active) {
+	.aspect-ratio-picker__option[data-focus-visible="true"] .aspect-ratio-picker__shape {
+		outline-color: Highlight;
+	}
+}

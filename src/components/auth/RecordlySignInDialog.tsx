@@ -1,189 +1,323 @@
-import { ArrowRight, GithubLogo } from "@phosphor-icons/react";
-import { OnboardingPermissions } from "./OnboardingPermissions";
+import { Alert, Button, Description, Modal } from "@heroui/react";
+import { ArrowLeft, X } from "@phosphor-icons/react";
+import type { User } from "@supabase/supabase-js";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useOptionalBilling } from "@/components/billing/BillingProvider";
+import { LegalLinks } from "@/components/billing/LegalLinks";
+import { SplitPricingContent } from "@/components/billing/SplitPricingModal";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
+import { SignOut } from "@/components/ui/icons";
+import { RecordlyDemoVideo } from "@/components/ui/RecordlyDemoVideo";
+import { RecordlyMark } from "@/components/ui/RecordlyMark";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
+import { captureAuthFailure, recordAuthEvent, type SignInAction } from "@/lib/auth/authDiagnostics";
+import {
+	getEnabledSignInProviders,
+	type RecordlyOAuthProvider,
+	sendSignInCode,
+	signInWithEmail,
+	signInWithSocial,
+	signOutRecordly,
+	verifySignInCode,
+} from "@/lib/auth/recordlyAuth";
+import { isMac } from "@/utils/platformUtils";
 import {
 	OnboardingBody,
 	OnboardingFooter,
 	OnboardingHeader,
+	OnboardingHeroTitle,
 	OnboardingLayout,
+	OnboardingPrimaryAction,
+	type OnboardingStage,
 } from "./OnboardingLayout";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useI18n } from "@/contexts/I18nContext";
-import { SignOut } from "@/components/ui/icons";
-import type { User } from "@supabase/supabase-js";
-import { Fragment, type FormEvent, useEffect, useState, useRef } from "react";
-import {
-	Modal,
-	Button,
-	Form,
-	TextField,
-	Input,
-	Label,
-	Description,
-	FieldError,
-	Separator,
-	Alert,
-} from "@heroui/react";
-import {
-	getEnabledSignInProviders,
-	type RecordlyOAuthProvider,
-	sendSignInLink,
-	signInWithSocial,
-	signOutRecordly,
-} from "@/lib/auth/recordlyAuth";
+import { OnboardingPermissions } from "./OnboardingPermissions";
+import { OnboardingSoundtrack } from "./OnboardingSoundtrack";
+import { RecordlySignInFields, SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS } from "./RecordlySignInFields";
 
 const MotionDialog = motion.create(Modal.Dialog);
+const pageIndex: Record<OnboardingStage, number> = { account: 0, permissions: 1, upgrade: 2 };
 
-export type SignInReason = "account" | "share";
+export type SignInReason = "account" | "share" | "reauthenticate";
 
 type Props = {
 	variant?: "compact" | "wide";
 	onboarding?: boolean;
+	signInOnly?: boolean;
+	preview?: boolean;
 	startWithPermissions?: boolean;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	reason?: SignInReason;
+	authenticationVersion?: number;
 	user: User | null;
 	configured: boolean;
 	callbackError?: string;
 	onAuthenticated: () => void;
+	recordingStart?: { disabled: boolean; onPress: () => void };
+	finishDisabled?: boolean;
+	onWindowClose?: () => void;
+	onUnlockSavedSignIn?: () => void;
+	requireSignIn?: boolean;
 };
 
 function friendlyAuthError(
 	error: unknown,
 	action: string,
 	t: ReturnType<typeof useI18n>["t"],
+	ot: ReturnType<typeof useScopedT>,
 ): string {
 	const message = error instanceof Error ? error.message : String(error);
 	if (/unsupported provider|provider is not enabled/i.test(message)) {
 		if (action === "google") {
 			return t("editor.cloud.googleUnavailable");
 		}
-		if (action === "azure") return "Microsoft sign-in is not available yet.";
-		if (action === "github") return "GitHub sign-in is not available yet.";
+		if (action === "azure")
+			return ot("providerUnavailable", undefined, { provider: "Microsoft" });
+		if (action === "apple") return ot("providerUnavailable", undefined, { provider: "Apple" });
 		return t("editor.cloud.providerUnavailable");
 	}
-	return message;
+	return ot("signInFailed");
 }
 
 export function RecordlySignInDialog({
 	variant = "compact",
 	onboarding = false,
+	signInOnly = false,
+	preview = false,
 	startWithPermissions = false,
 	open,
 	onOpenChange,
-	user,
+	user: signedInUser,
+	reason = "account",
+	authenticationVersion = 0,
 	configured,
 	callbackError,
 	onAuthenticated,
+	recordingStart,
+	finishDisabled = false,
+	onWindowClose,
+	onUnlockSavedSignIn,
+	requireSignIn = false,
 }: Props) {
 	const { t } = useI18n();
+	const ot = useScopedT("onboarding");
+	const billing = useOptionalBilling();
+	const refreshBillingAfterSignIn = billing?.needsSignIn ? billing.refreshAfterSignIn : undefined;
+	const [tourSignIn, setTourSignIn] = useState<{
+		returnTo: "permissions" | "upgrade";
+		authenticationVersion: number;
+	}>();
+	// A cached user or background refresh must not dismiss a requested sign-in.
+	// Only a completed interactive sign-in can finish reauthentication.
+	const reauthenticating = reason === "reauthenticate" || tourSignIn?.returnTo === "upgrade";
+	const user = reauthenticating ? null : signedInUser;
+	const showRecordingStart = Boolean(user && recordingStart);
+	const [directSignInComplete, setDirectSignInComplete] = useState(false);
+	const openedAuthenticationVersion = useRef<number | undefined>(undefined);
+	useEffect(() => {
+		if (!open) {
+			openedAuthenticationVersion.current = undefined;
+			return;
+		}
+		openedAuthenticationVersion.current ??= authenticationVersion;
+		if (
+			reason === "reauthenticate" &&
+			signedInUser &&
+			(authenticationVersion > openedAuthenticationVersion.current || directSignInComplete)
+		)
+			onAuthenticated();
+	}, [open, reason, signedInUser, authenticationVersion, directSignInComplete, onAuthenticated]);
 	const awaitingSignIn = useRef(false);
 	const wide = onboarding || variant === "wide";
-	const [showPermissions, setShowPermissions] = useState(false);
-	const requiresSignIn = onboarding && !user;
-	const permissions = onboarding && Boolean(user) && showPermissions;
+	const tour = onboarding && !signInOnly && !recordingStart;
+	const [{ page, direction }, setPage] = useState<{ page: OnboardingStage; direction: number }>({
+		page: "account",
+		direction: 1,
+	});
+	const switchingAccount =
+		tourSignIn?.returnTo === "permissions" ||
+		(preview && tour && page === "account" && Boolean(user));
+	const showSignInForm = !user || switchingAccount;
+	const goTo = useCallback((next: OnboardingStage) => {
+		setPage((current) =>
+			current.page === next
+				? current
+				: { page: next, direction: pageIndex[next] > pageIndex[current.page] ? 1 : -1 },
+		);
+	}, []);
+	const navigateTo = (next: OnboardingStage) => {
+		if (next === "account" && page !== "account" && tour && !preview && user) {
+			setEmail("");
+			setDirectSignInComplete(false);
+			setTourSignIn({ returnTo: "permissions", authenticationVersion });
+		} else if (next !== "account") setTourSignIn(undefined);
+		goTo(next);
+	};
+	const [permissionsReady, setPermissionsReady] = useState(false);
+	const requiresSignIn = ((onboarding && !preview) || requireSignIn) && !user;
+	const opened = useRef(false);
+	// Only macOS grants capture permissions up front; Windows and Linux skip that page.
+	// Start from the user agent so Windows and Linux never render the page, then confirm.
+	const [needsPermissions, setNeedsPermissions] = useState(() =>
+		/Macintosh|Mac OS X/i.test(navigator.userAgent),
+	);
+	useEffect(() => {
+		let active = true;
+		void isMac().then((mac) => {
+			if (active) setNeedsPermissions(mac);
+		});
+		return () => {
+			active = false;
+		};
+	}, []);
+	const canViewPermissions = tour && (Boolean(user) || preview);
+	const visiblePage = page === "permissions" && !needsPermissions ? "upgrade" : page;
+	const stage = canViewPermissions ? visiblePage : "account";
+	const permissions = stage === "permissions";
+	const upgrade = stage === "upgrade";
+	const canViewUpgrade = canViewPermissions && (permissionsReady || !needsPermissions);
+	const backPage = upgrade && needsPermissions ? "permissions" : "account";
 	const [email, setEmail] = useState("");
-	const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+	const consent = { legalAccepted: true };
+
 	const [busy, setBusy] = useState<string>();
 	const [message, setMessage] = useState<string>();
+	const [reportDiagnostic, setReportDiagnostic] = useState<string>();
 	const [linkSent, setLinkSent] = useState(false);
 	const [providers, setProviders] = useState<RecordlyOAuthProvider[]>([]);
-	const [loadingProviders, setLoadingProviders] = useState(false);
+	const [providersKnown, setProvidersKnown] = useState(false);
 
 	useEffect(() => {
-		if (!open || !configured || user) return;
-		let disposed = false;
+		if (!open || !configured || !showSignInForm || onUnlockSavedSignIn) return;
 		const controller = new AbortController();
-		const timeout = window.setTimeout(() => controller.abort(), 10000);
-		setLoadingProviders(true);
+		const timeout = window.setTimeout(
+			() => controller.abort(),
+			SIGN_IN_PROVIDER_CHECK_TIMEOUT_MS,
+		);
+		setProvidersKnown(false);
 		setProviders([]);
 		void getEnabledSignInProviders(controller.signal)
 			.then((enabled) => {
-				if (!controller.signal.aborted) setProviders(enabled);
+				if (!controller.signal.aborted) {
+					setProviders(enabled);
+					setProvidersKnown(true);
+				}
 			})
-			.catch(() => {
-				// Email remains available to retry when provider discovery cannot reach Auth.
+			.catch((error) => {
+				// Allow sign-in attempts when provider availability could not be checked.
+				if (!controller.signal.aborted) captureAuthFailure("provider-discovery", error);
 			})
 			.finally(() => {
 				window.clearTimeout(timeout);
-				if (!disposed) setLoadingProviders(false);
 			});
 		return () => {
-			disposed = true;
 			window.clearTimeout(timeout);
 			controller.abort();
 		};
-	}, [open, configured, user]);
+	}, [open, configured, showSignInForm, onUnlockSavedSignIn]);
 
 	useEffect(() => {
 		if (open && callbackError) {
-			setMessage(callbackError);
+			setMessage(ot("signInFailed"));
+			setReportDiagnostic(callbackError);
 			setLinkSent(false);
 		}
-	}, [open, callbackError]);
+	}, [open, callbackError, ot]);
 
 	useEffect(() => {
 		if (!open) {
-			setShowPermissions(false);
+			opened.current = false;
+			goTo("account");
+			setPermissionsReady(false);
 			awaitingSignIn.current = false;
+			setTourSignIn(undefined);
+			setDirectSignInComplete(false);
 			setBusy(undefined);
 			setMessage(undefined);
+			setReportDiagnostic(undefined);
 			setLinkSent(false);
 		}
-	}, [open]);
+	}, [open, goTo]);
 
 	useEffect(() => {
-		if (open && startWithPermissions && user) setShowPermissions(true);
-	}, [open, startWithPermissions, user]);
+		if (!open || opened.current) return;
+		opened.current = true;
+		if (tour && user && !preview) goTo("permissions");
+	}, [open, tour, user, preview, goTo]);
+
+	const hasSignedInUser = Boolean(signedInUser);
+	useEffect(() => {
+		if (open && tour && startWithPermissions && hasSignedInUser) goTo("permissions");
+	}, [open, tour, startWithPermissions, hasSignedInUser, goTo]);
 
 	useEffect(() => {
-		if (!open) return;
+		if (!open || recordingStart || reauthenticating) return;
+		if (user && !tour) {
+			onAuthenticated();
+			return;
+		}
 		if (!user) awaitingSignIn.current = true;
 		else if (awaitingSignIn.current) {
 			awaitingSignIn.current = false;
 			setMessage(undefined);
-			if (onboarding) setShowPermissions(true);
-			else onAuthenticated();
+			setReportDiagnostic(undefined);
+			if (tour) {
+				if (!preview) goTo("permissions");
+			} else onAuthenticated();
 		}
-	}, [open, user, onAuthenticated, onboarding]);
+	}, [open, user, onAuthenticated, tour, preview, goTo, recordingStart, reauthenticating]);
 
-	const run = async (label: string, action: () => Promise<unknown>) => {
+	useEffect(() => {
+		if (
+			!open ||
+			!tourSignIn ||
+			!signedInUser ||
+			(!directSignInComplete && authenticationVersion <= tourSignIn.authenticationVersion)
+		)
+			return;
+		awaitingSignIn.current = false;
+		setDirectSignInComplete(false);
+		setTourSignIn(undefined);
+		setMessage(undefined);
+		setReportDiagnostic(undefined);
+		if (tourSignIn.returnTo === "upgrade") refreshBillingAfterSignIn?.();
+		goTo(tourSignIn.returnTo);
+	}, [
+		open,
+		tourSignIn,
+		signedInUser,
+		directSignInComplete,
+		authenticationVersion,
+		refreshBillingAfterSignIn,
+		goTo,
+	]);
+
+	const run = async (label: SignInAction, action: () => Promise<unknown>) => {
 		setBusy(label);
 		setMessage(undefined);
+		setReportDiagnostic(undefined);
 		setLinkSent(false);
+		recordAuthEvent(`sign-in-${label}`, "started");
 		try {
 			await action();
+			recordAuthEvent(`sign-in-${label}`, "succeeded");
+			return true;
 		} catch (error) {
-			setMessage(friendlyAuthError(error, label, t));
+			setReportDiagnostic(captureAuthFailure(`sign-in-${label}`, error));
+			setMessage(
+				label === "verify" ? ot("invalidCode") : friendlyAuthError(error, label, t, ot),
+			);
+			return false;
 		} finally {
 			setBusy(undefined);
 		}
 	};
 
-	const submitEmail = (event: FormEvent<HTMLFormElement>) => {
-		event.preventDefault();
-		if (!configured || busy) return;
-		emailSignInLink();
-	};
-
-	const emailSignInLink = () => {
-		if (!validEmail) {
-			setMessage(t("editor.cloud.enterEmail"));
-			return;
-		}
-		void run("link", async () => {
-			await sendSignInLink(email.trim());
-			setMessage(
-				"Check your inbox to verify your email and continue to Recordly. Open the link on this computer with Recordly running.",
-			);
-			setLinkSent(true);
-		});
-	};
-
 	const reduceMotion = useReducedMotion();
 	const transition = { duration: reduceMotion ? 0 : 0.28, ease: [0.22, 1, 0.36, 1] as const };
 	const reveal = {
-		initial: { opacity: 0, y: reduceMotion || onboarding ? 0 : 10 },
+		initial: { opacity: 0, y: reduceMotion ? 0 : 10 },
 		animate: { opacity: 1, y: 0 },
 		transition,
 	};
@@ -200,7 +334,6 @@ export function RecordlySignInDialog({
 		}),
 	};
 	const disabled = Boolean(busy);
-	const artwork = `${import.meta.env.BASE_URL}auth/login-banner.png`;
 	const SignInBody = onboarding ? OnboardingBody : Fragment;
 	const signInContent = (
 		<motion.div
@@ -208,70 +341,80 @@ export function RecordlySignInDialog({
 			transition={transition}
 			className={
 				onboarding
-					? "flex h-full min-h-0 flex-col"
-					: `flex flex-1 flex-col justify-center px-5 py-6 sm:px-8 ${wide ? "md:order-1 md:min-w-0" : ""}`
+					? "recordly-signin-content flex shrink-0 flex-col"
+					: `recordly-signin-content recordly-signin-content-popup flex shrink-0 flex-col justify-center ${wide ? "md:order-1 md:min-w-0" : ""}`
 			}
 		>
 			<SignInBody>
 				<div
 					className={
 						onboarding
-							? "space-y-6 @container"
-							: "w-full max-w-[420px] self-center space-y-4 @container"
+							? "recordly-signin-controls @container"
+							: "recordly-signin-controls w-full max-w-[420px] self-center @container"
 					}
 				>
-					<motion.div {...reveal}>
+					<motion.div
+						{...reveal}
+						transition={{ ...transition, delay: reduceMotion ? 0 : 0.1 }}
+					>
 						{onboarding ? (
 							<OnboardingHeader
-								centered={!user}
-								showBrand={Boolean(user)}
+								centered={preview || showSignInForm || showRecordingStart}
 								title={
-									user ? (
-										"Your account"
+									!showSignInForm && !preview && !showRecordingStart ? (
+										ot("yourAccount")
 									) : (
-										<>
-											Welcome to{" "}
-											<span className="inline-flex items-center gap-2 whitespace-nowrap align-bottom">
-												<img
-													src={`${import.meta.env.BASE_URL}app-icons/recordly-128.png`}
-													alt=""
-													className="size-7 rounded-lg sm:size-8"
-												/>
-												Recordly
-											</span>
-										</>
+										<OnboardingHeroTitle text={ot("welcomeTitle")} />
 									)
 								}
 								description={
-									user
-										? user.email || "You’re signed in and ready to continue."
-										: "Sign in to Recordly to start recording, save your work and share it."
+									user && !showSignInForm && !showRecordingStart
+										? user.email || ot("signedIn")
+										: undefined
 								}
 							/>
 						) : (
-							<Modal.Header className="items-center gap-3 text-center">
-								<div className="flex items-center gap-3" aria-label="Recordly">
-									<img
-										src={`${import.meta.env.BASE_URL}app-icons/recordly-128.png`}
-										alt=""
-										className="size-12 rounded-xl"
-									/>
-									<span className="text-3xl font-semibold tracking-tight">
-										Recordly
-									</span>
-								</div>
-								<Modal.Heading className="whitespace-nowrap text-[clamp(12px,5cqw,22px)] font-semibold leading-tight tracking-tight">
-									{user
-										? "Your account"
-										: "Beautiful, shareable screen recordings"}
+							<Modal.Header className="recordly-signin-header items-center gap-2 p-0 text-center">
+								<Modal.Heading className="heading-display">
+									<OnboardingHeroTitle text={ot("signInTitle")} />
 								</Modal.Heading>
-								<Description className="text-sm">
-									{user ? user.email : "Sign in to get started"}
-								</Description>
 							</Modal.Header>
 						)}
 					</motion.div>
-					{user && onboarding ? null : user ? (
+					{showRecordingStart && recordingStart ? (
+						<div data-signin-fields className="recordly-signin-start">
+							<p
+								role="status"
+								className="grid place-items-center text-center text-sm text-muted"
+							>
+								{ot("signedIn")}
+							</p>
+							<Button
+								variant="primary"
+								className="col-start-1 row-start-3 h-11 w-full gap-2 rounded-xl"
+								isDisabled={recordingStart.disabled}
+								onPress={recordingStart.onPress}
+							>
+								<RecordlyMark className="text-white" />
+								{ot("startRecording")}
+							</Button>
+						</div>
+					) : onUnlockSavedSignIn ? (
+						<div className="flex flex-col gap-3">
+							<Alert status="warning" role="alert">
+								<Alert.Indicator />
+								<Alert.Content>
+									<Alert.Title>{ot("unlockSavedSignIn")}</Alert.Title>
+									<Alert.Description>
+										{ot("unlockSavedSignInHelp")}
+									</Alert.Description>
+								</Alert.Content>
+							</Alert>
+							<Button className="w-full" onPress={onUnlockSavedSignIn}>
+								{ot("restartToUnlockSignIn")}
+							</Button>
+						</div>
+					) : !showSignInForm && onboarding ? null : !showSignInForm ? (
 						<Button
 							variant="secondary"
 							className="w-full"
@@ -290,166 +433,98 @@ export function RecordlySignInDialog({
 						</Button>
 					) : (
 						<>
-							{loadingProviders ? (
-								<div
-									role="status"
-									aria-label="Loading sign-in options"
-									className="h-11 rounded-xl bg-surface-secondary"
-								/>
-							) : providers.length > 0 ? (
-								<motion.div
-									{...reveal}
-									transition={{
-										...transition,
-										delay: reduceMotion ? 0 : 0.05,
-									}}
-									className="flex gap-2"
-								>
-									{(
-										[
-											{
-												provider: "google",
-												label: "Google",
-												image: "google-logo.png",
-											},
-											{
-												provider: "azure",
-												label: "Microsoft",
-												image: "microsoft-logo.svg",
-											},
-											{
-												provider: "github",
-												label: "GitHub",
-												image: null,
-											},
-										] as const
+							<RecordlySignInFields
+								email={email}
+								onEmailChange={(value) => {
+									setEmail(value);
+									setLinkSent(false);
+									setMessage(undefined);
+								}}
+								onRequestCode={(captchaToken) =>
+									run("code", () =>
+										sendSignInCode(email.trim(), consent, captchaToken),
 									)
-										.filter(({ provider }) => providers.includes(provider))
-										.map(({ provider, label, image }) => (
-											<Button
-												key={provider}
-												variant="secondary"
-												aria-label={`Continue with ${label}`}
-												className="h-11 w-full min-w-0 gap-2 rounded-xl px-2 text-xs font-medium text-foreground @[360px]:text-sm"
-												isDisabled={disabled || !configured}
-												onPress={() =>
-													void run(provider, () =>
-														signInWithSocial(provider),
-													)
-												}
-											>
-												{image ? (
-													<img
-														src={`${import.meta.env.BASE_URL}auth/${image}`}
-														alt=""
-														className="size-4 shrink-0"
-													/>
-												) : (
-													<GithubLogo
-														aria-hidden="true"
-														weight="fill"
-														className="size-4 shrink-0"
-													/>
-												)}
-												{label}
-											</Button>
-										))}
-								</motion.div>
-							) : null}
-							{(loadingProviders || providers.length > 0) && (
-								<div className="flex items-center gap-4">
-									<Separator className="flex-1" />
-									<span className="text-xs text-muted">
-										or continue with email
-									</span>
-									<Separator className="flex-1" />
-								</div>
-							)}
-							<Form className="flex flex-col" onSubmit={submitEmail}>
-								<TextField
-									name="email"
-									type="email"
-									value={email}
-									onChange={(value) => {
-										setEmail(value);
-										setLinkSent(false);
-										setMessage(undefined);
-									}}
-									isRequired
-									isDisabled={disabled}
-								>
-									<Label>Email</Label>
-									<Input
-										className={onboarding ? "h-11" : "h-12"}
-										placeholder="you@example.com"
-										autoComplete="email"
-									/>
-									<FieldError />
-								</TextField>
-								<AnimatePresence initial={false}>
-									{validEmail && (
-										<motion.div
-											key="magic-link"
-											initial={{
-												height: 0,
-												opacity: 0,
-												y: reduceMotion ? 0 : -6,
-											}}
-											animate={{ height: "auto", opacity: 1, y: 0 }}
-											exit={{
-												height: 0,
-												opacity: 0,
-												y: reduceMotion ? 0 : -6,
-											}}
-											transition={transition}
-											className="w-full overflow-hidden"
-										>
-											<Button
-												type="submit"
-												variant="primary"
-												className={
-													onboarding
-														? "mt-3 h-11 w-full rounded-xl"
-														: "mt-3 h-12 w-full"
-												}
-												isDisabled={disabled || !configured}
-											>
-												{busy === "link"
-													? "Sending sign-in link…"
-													: "Email me a magic link"}
-											</Button>
-										</motion.div>
-									)}
-								</AnimatePresence>
-							</Form>
+								}
+								onVerifyCode={(targetEmail, code) =>
+									run("verify", async () => {
+										await verifySignInCode(targetEmail, code);
+										setDirectSignInComplete(true);
+									})
+								}
+								onPasswordSignIn={(password, captchaToken) =>
+									run("password", async () => {
+										await signInWithEmail(email.trim(), password, captchaToken);
+										setDirectSignInComplete(true);
+									})
+								}
+								onProvider={(provider) =>
+									void run(provider, () =>
+										signInWithSocial(provider, consent, {
+											selectAccount: switchingAccount,
+										}),
+									)
+								}
+								providers={providers}
+								providersKnown={providersKnown}
+								configured={configured}
+								busy={busy}
+								compact={onboarding}
+								assetBase={import.meta.env.BASE_URL}
+								labels={{
+									checkInbox: ot("checkInbox"),
+									code: ot("code"),
+									verifyCode: ot("verifyCode"),
+									verifyingCode: ot("verifyingCode"),
+									resendCode: ot("resendCode"),
+									resendIn: ot("resendIn"),
+									changeEmail: ot("changeEmail"),
+									usePassword: ot("usePassword"),
+									usePasswordLink: ot("usePasswordLink"),
+									useCode: ot("useCode"),
+									password: ot("password"),
+									signingIn: ot("signingIn"),
+									passwordHelp: ot("passwordHelp"),
+									botChecking: ot("botChecking"),
+									botFailed: ot("botFailed"),
+									botRetry: ot("botRetry"),
+									botTitle: ot("botTitle"),
+									continueWith: (provider) =>
+										ot("continueWith", undefined, { provider }),
+									providerDisabled: (provider) =>
+										ot("providerDisabled", undefined, { provider }),
+									continueEmail: ot("continueEmail"),
+									email: ot("email"),
+									emailPlaceholder: ot("emailPlaceholder"),
+									invalidEmail: t("editor.cloud.enterEmail"),
+									sendingLink: ot("sendingLink"),
+									sendLink: ot("sendLink"),
+								}}
+							/>
 						</>
 					)}
-					{message ? (
-						<Alert status={linkSent ? "success" : "danger"}>
+					{message && !showRecordingStart ? (
+						<Alert
+							role={linkSent ? "status" : "alert"}
+							status={linkSent ? "success" : "danger"}
+						>
 							<Alert.Indicator />
 							<Alert.Content>
 								<Alert.Description>{message}</Alert.Description>
+								{!linkSent && (
+									<ErrorReportButton
+										error={reportDiagnostic ?? message}
+										context="sign-in"
+									/>
+								)}
 							</Alert.Content>
 						</Alert>
 					) : null}
-					{!configured && !user && (
+					{!configured && !user && (!(onboarding && preview) || reauthenticating) && (
 						<Description role="status">{t("editor.cloud.unavailable")}</Description>
 					)}
 				</div>
+				<LegalLinks consent />
 			</SignInBody>
-			{onboarding && user && (
-				<OnboardingFooter>
-					<div className="flex w-full justify-end">
-						<Button
-							variant="primary"
-							isDisabled={disabled}
-							onPress={() => setShowPermissions(true)}
-						>
-							Continue <ArrowRight size={16} />
-						</Button>
-					</div>
-				</OnboardingFooter>
-			)}
 		</motion.div>
 	);
 	return (
@@ -460,56 +535,154 @@ export function RecordlySignInDialog({
 			}}
 		>
 			<Modal.Backdrop
+				variant="blur"
 				isDismissable={!requiresSignIn}
 				isKeyboardDismissDisabled={requiresSignIn}
 			>
 				<Modal.Container
 					size="cover"
 					placement="center"
-					className={onboarding ? "p-4" : "p-4 sm:p-8"}
+					className={onboarding ? "p-0" : "p-4 sm:p-8"}
 				>
 					<MotionDialog
 						layout={!onboarding}
 						transition={transition}
-						aria-label={onboarding ? "Welcome to Recordly" : undefined}
+						aria-label={onboarding ? ot("welcomeLabel") : ot("signInLabel")}
 						data-onboarding-state={
-							onboarding ? (permissions ? "permissions" : "login") : undefined
+							onboarding
+								? showRecordingStart
+									? "ready"
+									: stage === "account"
+										? "login"
+										: stage
+								: undefined
 						}
 						className={
 							onboarding
-								? "h-[min(760px,calc(100dvh-32px))] min-h-0 w-full max-w-[720px] gap-0 overflow-hidden rounded-3xl p-0"
-								: `h-auto min-h-0 w-full max-h-[calc(100dvh-48px)] gap-0 overflow-y-auto rounded-[32px] p-2 ${wide ? "max-w-[1120px] md:grid md:grid-cols-2 md:aspect-[28/19]" : "max-w-[600px]"}`
+								? "relative h-full min-h-0 w-full max-w-none gap-0 overflow-hidden rounded-none p-0"
+								: `recordly-signin-dialog h-auto min-h-0 w-full max-h-[calc(100dvh-32px)] gap-0 p-2 ${wide ? "recordly-signin-dialog-wide max-w-[1120px] md:grid md:grid-cols-2 md:aspect-[28/19]" : "max-w-[600px]"}`
 						}
 					>
+						{onboarding && onWindowClose && (
+							<div
+								aria-hidden="true"
+								data-onboarding-window-drag
+								className="onboarding-window-drag absolute left-0 right-12 top-0 z-30 h-8"
+							/>
+						)}
 						{onboarding ? (
 							<OnboardingLayout
-								stage={permissions ? "permissions" : "account"}
-								canViewPermissions={Boolean(user)}
-								onStageChange={(stage) =>
-									setShowPermissions(stage === "permissions" && Boolean(user))
+								stage={stage}
+								canViewPermissions={canViewPermissions}
+								showPermissions={needsPermissions}
+								canViewUpgrade={tour ? canViewUpgrade : undefined}
+								showNavigation={!signInOnly && !recordingStart}
+								footer={
+									canViewPermissions && (
+										<OnboardingFooter>
+											<div
+												className="flex min-w-0 flex-wrap items-center gap-1"
+												data-onboarding-preview-actions={
+													import.meta.env.DEV && preview
+														? "true"
+														: undefined
+												}
+											>
+												<Button
+													variant="ghost"
+													className={
+														stage === "account"
+															? "invisible"
+															: undefined
+													}
+													aria-hidden={stage === "account" || undefined}
+													isDisabled={stage === "account"}
+													aria-label={
+														backPage === "permissions"
+															? ot(
+																	"backToPermissions",
+																	"Back to permissions",
+																)
+															: ot("backToAccount")
+													}
+													onPress={() => navigateTo(backPage)}
+												>
+													<ArrowLeft size={16} /> {ot("back")}
+												</Button>
+												{import.meta.env.DEV && preview && (
+													<Button
+														variant="ghost"
+														onPress={onAuthenticated}
+													>
+														{ot("skipOnboarding", "Skip onboarding")}
+													</Button>
+												)}
+											</div>
+											{upgrade ? (
+												<Button
+													variant="ghost"
+													isDisabled={finishDisabled}
+													onPress={onAuthenticated}
+												>
+													{ot(
+														"skipAndStartRecording",
+														"Skip and start recording",
+													)}
+												</Button>
+											) : (
+												<OnboardingPrimaryAction
+													isDisabled={
+														permissions ? !permissionsReady : disabled
+													}
+													onPress={() => {
+														if (permissions && permissionsReady)
+															navigateTo("upgrade");
+														else if (!permissions)
+															navigateTo("permissions");
+													}}
+												>
+													{ot("next", "Next")}
+												</OnboardingPrimaryAction>
+											)}
+										</OnboardingFooter>
+									)
 								}
+								onStageChange={navigateTo}
 							>
 								<AnimatePresence
 									initial={false}
-									mode="wait"
-									custom={permissions ? 1 : -1}
+									mode="popLayout"
+									custom={direction}
 								>
 									<motion.div
-										key={permissions ? "permissions" : "account"}
-										custom={permissions ? 1 : -1}
+										key={stage}
+										custom={direction}
 										variants={carouselMotion}
 										initial="enter"
 										animate="center"
 										exit="exit"
 										transition={transition}
-										className="flex h-full min-h-0 flex-col"
+										className={`col-start-1 row-start-1 flex min-h-0 flex-col ${stage !== "account" ? "h-full" : ""}`}
 									>
-										{permissions ? (
+										{upgrade ? (
+											<OnboardingBody>
+												<SplitPricingContent
+													animateHeader={false}
+													onSignIn={() => {
+														setDirectSignInComplete(false);
+														setTourSignIn({
+															returnTo: "upgrade",
+															authenticationVersion,
+														});
+														goTo("account");
+													}}
+												/>
+											</OnboardingBody>
+										) : permissions ? (
 											<OnboardingPermissions
-												onBack={() => setShowPermissions(false)}
-												onFinish={() => {
-													if (user) onAuthenticated();
-												}}
+												showFooter={false}
+												onReadyChange={setPermissionsReady}
+												preview={preview}
 											/>
 										) : (
 											signInContent
@@ -519,28 +692,33 @@ export function RecordlySignInDialog({
 							</OnboardingLayout>
 						) : (
 							<>
-								<div
-									className={`relative shrink-0 overflow-hidden rounded-[24px] h-32 sm:h-36 ${wide ? "md:order-2 md:h-full md:min-h-0" : ""}`}
-								>
-									<img
-										src={
-											wide
-												? `${import.meta.env.BASE_URL}auth/login-side.png`
-												: artwork
-										}
-										alt=""
-										className="absolute inset-0 size-full object-cover object-center"
-									/>
-								</div>
+								{wide && (
+									<div className="recordly-signin-artwork relative overflow-hidden rounded-2xl md:order-2 md:h-full md:min-h-0">
+										<RecordlyDemoVideo className="absolute inset-0" />
+									</div>
+								)}
 								{signInContent}
 							</>
 						)}
-						{!requiresSignIn && (
-							<Modal.CloseTrigger
-								aria-label={t("common.actions.close")}
-								className="z-20"
-							/>
+						{onWindowClose ? (
+							<Button
+								isIconOnly
+								variant="ghost"
+								aria-label={ot("closeWindow")}
+								onPress={onWindowClose}
+								className="onboarding-window-close absolute right-2 top-2 z-40 size-8 min-w-0 rounded-full bg-background/80"
+							>
+								<X size={16} aria-hidden="true" />
+							</Button>
+						) : (
+							!requiresSignIn && (
+								<Modal.CloseTrigger
+									aria-label={t("common.actions.close")}
+									className="z-20"
+								/>
+							)
 						)}
+						{onboarding && !signInOnly && open && <OnboardingSoundtrack />}
 					</MotionDialog>
 				</Modal.Container>
 			</Modal.Backdrop>

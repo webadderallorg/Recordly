@@ -1,8 +1,10 @@
 import { Meter } from "@heroui/react";
+import { useScopedT } from "@/contexts/I18nContext";
 export function AudioLevelMeter({ level, className }: { level: number; className?: string }) {
+	const t = useScopedT("capture");
 	return (
 		<Meter
-			aria-label="Microphone level"
+			aria-label={t("microphoneLevel")}
 			value={Math.min(100, Math.max(0, level))}
 			minValue={0}
 			maxValue={100}

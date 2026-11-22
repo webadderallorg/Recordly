@@ -1,5 +1,6 @@
-import { Select as HeroSelect, ListBox, Label, Separator } from "@heroui/react";
+import { Select as HeroSelect, Label, ListBox, Separator } from "@heroui/react";
 import { type ComponentProps, type ReactNode } from "react";
+import { useI18n } from "@/contexts/I18nContext";
 import { cn } from "@/lib/utils";
 export function Select({
 	value,
@@ -15,10 +16,11 @@ export function Select({
 	disabled?: boolean;
 	children: ReactNode;
 }) {
+	const { t } = useI18n();
 	return (
 		<HeroSelect
 			{...props}
-			aria-label={props["aria-label"] ?? "Select option"}
+			aria-label={props["aria-label"] ?? t("support.selectOption", "Select option")}
 			value={value || null}
 			defaultValue={defaultValue}
 			onChange={(key) => onValueChange?.(String(key ?? ""))}
@@ -45,9 +47,10 @@ export function SelectValue({
 	placeholder,
 	...props
 }: ComponentProps<typeof HeroSelect.Value> & { placeholder?: string }) {
+	const { t } = useI18n();
 	return (
 		<HeroSelect.Value {...props}>
-			{({ selectedText }) => selectedText || placeholder || "Select"}
+			{({ selectedText }) => selectedText || placeholder || t("support.select", "Select")}
 		</HeroSelect.Value>
 	);
 }

@@ -21,6 +21,8 @@
 #include "NvEncoder/NvEncoderCuda.h"
 #include "Utils/Logger.h"
 
+static_assert(NVENCAPI_MAJOR_VERSION >= 10, "Recordly needs NVENCODE API 10.0 or newer");
+
 simplelogger::Logger* logger = simplelogger::LoggerFactory::CreateConsoleLogger(ERROR);
 
 namespace {
@@ -1056,12 +1058,22 @@ __device__ bool isInsideRoundedRect(
     int top,
     int width,
     int height,
-    int radius) {
+    int radius,
+    bool squircle = false) {
     if (x < left || y < top || x >= left + width || y >= top + height) {
         return false;
     }
     if (radius <= 0) {
         return true;
+    }
+    if (squircle) {
+        const float r = fminf(static_cast<float>(radius), 0.5f * min(width, height));
+        const float dx = fmaxf(0.0f, r - (min(x - left, left + width - 1 - x) + 0.5f));
+        const float dy = fmaxf(0.0f, r - (min(y - top, top + height - 1 - y) + 0.5f));
+        const float dx2 = dx * dx;
+        const float dy2 = dy * dy;
+        const float r2 = r * r;
+        return dx2 * dx2 + dy2 * dy2 <= r2 * r2;
     }
 
     const int right = left + width - 1;
@@ -1176,7 +1188,7 @@ __global__ void overlayContentTransformNv12Kernel(
     const float layoutYf = (static_cast<float>(y) - zoomY) * invZoomScale;
     const int layoutX = __float2int_rd(layoutXf);
     const int layoutY = __float2int_rd(layoutYf);
-    if (!isInsideRoundedRect(layoutX, layoutY, contentX, contentY, contentWidth, contentHeight, radius)) {
+    if (!isInsideRoundedRect(layoutX, layoutY, contentX, contentY, contentWidth, contentHeight, radius, true)) {
         return;
     }
 
@@ -1202,7 +1214,8 @@ __global__ void overlayContentTransformNv12Kernel(
                 contentY,
                 contentWidth,
                 contentHeight,
-                radius)) {
+                radius,
+                true)) {
             const float uvLocalContentX =
                 fminf(static_cast<float>(contentWidth - 1), fmaxf(0.0f, uvLayoutXf - contentX));
             const float uvLocalContentY =
@@ -1249,12 +1262,12 @@ __global__ void restoreRoundedContentCornersNv12Kernel(
         return;
     }
 
-    if (!isInsideRoundedRect(x, y, contentX, contentY, contentWidth, contentHeight, radius)) {
+    if (!isInsideRoundedRect(x, y, contentX, contentY, contentWidth, contentHeight, radius, true)) {
         dst[y * dstPitch + x] = background ? background[y * dstWidth + x] : backgroundY;
     }
 
     if ((x % 2) == 0 && (y % 2) == 0 &&
-        !isInsideRoundedRect(x + 1, y + 1, contentX, contentY, contentWidth, contentHeight, radius)) {
+        !isInsideRoundedRect(x + 1, y + 1, contentX, contentY, contentWidth, contentHeight, radius, true)) {
         unsigned char* dstUv = dst + dstChromaOffset + (y / 2) * dstPitch + x;
         if (background) {
             const unsigned char* bgUv = background + dstWidth * dstHeight + (y / 2) * dstWidth + x;
@@ -1551,7 +1564,8 @@ __global__ void compositeStaticNv12Kernel(
     const int cropY = max(0, min(sourceCropY, srcHeight - 1));
     const int cropWidth = max(1, min(sourceCropWidth > 0 ? sourceCropWidth : srcWidth, srcWidth - cropX));
     const int cropHeight = max(1, min(sourceCropHeight > 0 ? sourceCropHeight : srcHeight, srcHeight - cropY));
-    const bool inside = isInsideRoundedRect(layoutX, layoutY, contentX, contentY, contentWidth, contentHeight, radius);
+    const bool inside = isInsideRoundedRect(
+        layoutX, layoutY, contentX, contentY, contentWidth, contentHeight, radius, true);
     unsigned char outY = background ? background[y * dstWidth + x] : backgroundY;
     if (inside) {
         const float localX = fminf(static_cast<float>(contentWidth - 1), fmaxf(0.0f, layoutXf - contentX));
@@ -1569,7 +1583,8 @@ __global__ void compositeStaticNv12Kernel(
                 contentY + shadowOffsetY,
                 contentWidth,
                 contentHeight,
-                radius + 8);
+                radius + 8,
+                true);
         if (shadowInside) {
             const int darkenPct = min(75, max(0, shadowIntensityPct / 2));
             outY = static_cast<unsigned char>((static_cast<int>(outY) * (100 - darkenPct)) / 100);
@@ -1655,7 +1670,8 @@ __global__ void compositeStaticNv12Kernel(
             contentY,
             contentWidth,
             contentHeight,
-            radius);
+            radius,
+            true);
         if (uvInside) {
             const float localX = fminf(static_cast<float>(contentWidth - 1), fmaxf(0.0f, uvLayoutXf - contentX));
             const float localY = fminf(static_cast<float>(contentHeight - 1), fmaxf(0.0f, uvLayoutYf - contentY));
@@ -1995,7 +2011,9 @@ void prewarmCuda(int durationMs) {
 }
 
 GUID getNvencPresetGuid(const std::string& encodingMode) {
-    return encodingMode == "fast" ? NV_ENC_PRESET_HP_GUID : NV_ENC_PRESET_HQ_GUID;
+    if (encodingMode == "fast") return NV_ENC_PRESET_P2_GUID;
+    if (encodingMode == "quality") return NV_ENC_PRESET_P5_GUID;
+    return NV_ENC_PRESET_P4_GUID;
 }
 
 uint32_t getNvencMaxBitrate(uint32_t bitrate, const std::string& encodingMode) {
@@ -2010,6 +2028,18 @@ uint32_t getNvencBufferSize(uint32_t bitrate, const std::string& encodingMode) {
     return static_cast<uint32_t>(
         std::min<uint64_t>(0xffffffffu, static_cast<uint64_t>(bitrate) * multiplier));
 }
+
+class RecordlyNvEncoderCuda : public NvEncoderCuda {
+public:
+    using NvEncoderCuda::NvEncoderCuda;
+
+    NV_ENC_CONFIG getH264PresetConfig(GUID preset, NV_ENC_TUNING_INFO tuning) {
+        NV_ENC_PRESET_CONFIG config = {NV_ENC_PRESET_CONFIG_VER, {NV_ENC_CONFIG_VER}};
+        NVENC_API_CALL(m_nvenc.nvEncGetEncodePresetConfigEx(
+            m_hEncoder, NV_ENC_CODEC_H264_GUID, preset, tuning, &config));
+        return config.presetCfg;
+    }
+};
 
 class NvencSink {
 public:
@@ -2041,14 +2071,21 @@ public:
             checkCuda(cudaStreamCreateWithFlags(&copyStream_, cudaStreamNonBlocking), "cudaStreamCreateWithFlags");
         }
 
+        const GUID preset = getNvencPresetGuid(layoutOptions_.encodingMode);
+        const NV_ENC_TUNING_INFO tuning = NV_ENC_TUNING_INFO_HIGH_QUALITY;
+        NV_ENC_CONFIG encodeConfig = encoder_.getH264PresetConfig(preset, tuning);
         NV_ENC_INITIALIZE_PARAMS initializeParams = {NV_ENC_INITIALIZE_PARAMS_VER};
-        NV_ENC_CONFIG encodeConfig = {NV_ENC_CONFIG_VER};
         initializeParams.encodeConfig = &encodeConfig;
-        encoder_.CreateDefaultEncoderParams(
-            &initializeParams,
-            NV_ENC_CODEC_H264_GUID,
-            getNvencPresetGuid(layoutOptions_.encodingMode));
-
+        initializeParams.encodeGUID = NV_ENC_CODEC_H264_GUID;
+        initializeParams.presetGUID = preset;
+        initializeParams.tuningInfo = tuning;
+        initializeParams.encodeWidth = static_cast<uint32_t>(width);
+        initializeParams.encodeHeight = static_cast<uint32_t>(height);
+        initializeParams.darWidth = initializeParams.encodeWidth;
+        initializeParams.darHeight = initializeParams.encodeHeight;
+        initializeParams.maxEncodeWidth = initializeParams.encodeWidth;
+        initializeParams.maxEncodeHeight = initializeParams.encodeHeight;
+        initializeParams.enablePTD = 1;
         initializeParams.frameRateNum = static_cast<uint32_t>(fps);
         initializeParams.frameRateDen = 1;
         initializeParams.enableEncodeAsync = 1;
@@ -2759,7 +2796,7 @@ private:
         }
     }
 
-    NvEncoderCuda encoder_;
+    RecordlyNvEncoderCuda encoder_;
     std::ofstream output_;
     int width_ = 0;
     int height_ = 0;

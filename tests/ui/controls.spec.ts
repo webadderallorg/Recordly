@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+
 test("HeroUI controls preserve editing, focus, keyboard and overlay behavior", async ({ page }) => {
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));

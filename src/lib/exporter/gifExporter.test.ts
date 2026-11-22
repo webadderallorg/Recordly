@@ -1,8 +1,10 @@
 import * as fc from "fast-check";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildGifFrameRendererConfig,
 	calculateOutputDimensions,
+	GifExporter,
+	type GifExporterConfig,
 	getGifRepeat,
 } from "./gifExporter";
 import { GIF_SIZE_PRESETS, GifSizePreset } from "./types";
@@ -504,6 +506,252 @@ describe("Property 7: MP4 Export Regression", () => {
 				},
 			),
 			{ numRuns: 100 },
+		);
+	});
+});
+
+const estimateMocks = vi.hoisted(() => ({
+	duration: 10,
+	renderFrame: vi.fn(async () => {}),
+	destroyRenderer: vi.fn(),
+	destroyDecoder: vi.fn(),
+	optimize: vi.fn(),
+	encode: true,
+	frames: 0,
+}));
+vi.mock("./frameRenderer", () => ({
+	FrameRenderer: class {
+		initialize = async () => {};
+		cancelPendingMedia = () => {};
+		renderFrame = estimateMocks.renderFrame;
+		getCanvas = () => ({});
+		destroy = estimateMocks.destroyRenderer;
+	},
+}));
+vi.mock("./streamingDecoder", () => ({
+	StreamingVideoDecoder: class {
+		cancelled = false;
+		loadMetadata = async () => ({ width: 100, height: 100, duration: estimateMocks.duration });
+		getEffectiveDuration = () => estimateMocks.duration;
+		async decodeAll(
+			_fps: number,
+			_trims: unknown,
+			_speeds: unknown,
+			onFrame: (...args: unknown[]) => Promise<void>,
+		) {
+			for (let i = 0; i < 500 && !this.cancelled; i++) await onFrame(null, i * 1000, i, i);
+		}
+		async decodeSampleWindow(
+			fps: number,
+			_trims: unknown,
+			_speeds: unknown,
+			onFrame: (...args: unknown[]) => Promise<void>,
+			_clips: unknown,
+			start: number,
+			count: number,
+		) {
+			for (let i = start; i < start + count && !this.cancelled; i++)
+				await onFrame(null, (i * 1_000_000) / fps, (i * 1000) / fps, (i * 1000) / fps);
+		}
+
+		cancel() {
+			this.cancelled = true;
+		}
+		destroy = estimateMocks.destroyDecoder;
+	},
+}));
+vi.mock("./streamingGifEncoder", () => ({
+	StreamingGifEncoder: class {
+		rejectEncoding?: (error: Error) => void;
+		constructor(private config: { onFrameEncoded?: (completed: number) => void }) {}
+		async addFrame() {
+			estimateMocks.frames++;
+			this.config.onFrameEncoded?.(estimateMocks.frames);
+		}
+		finish() {
+			return estimateMocks.encode
+				? Promise.resolve(new Blob([new Uint8Array(100)]))
+				: new Promise<Blob>((_resolve, reject) => {
+						this.rejectEncoding = reject;
+					});
+		}
+		abort() {
+			this.rejectEncoding?.(new DOMException("GIF export cancelled", "AbortError"));
+		}
+	},
+}));
+vi.mock("./gifOptimization", () => ({ optimizeGif: estimateMocks.optimize }));
+
+describe("GIF pre-export size estimation", () => {
+	const config: GifExporterConfig = {
+		videoUrl: "video.mp4",
+		width: 100,
+		height: 100,
+		frameRate: 30,
+		loop: true,
+		sizePreset: "original",
+		wallpaper: "#000",
+		zoomRegions: [],
+		showShadow: false,
+		shadowIntensity: 0,
+		backgroundBlur: 0,
+		cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+	};
+	beforeEach(() => {
+		vi.stubGlobal("navigator", { hardwareConcurrency: 4 });
+		estimateMocks.duration = 10;
+		estimateMocks.frames = 0;
+		estimateMocks.encode = true;
+		vi.clearAllMocks();
+		estimateMocks.renderFrame.mockImplementation(async () => {});
+		estimateMocks.optimize.mockResolvedValue({
+			blob: new Blob([new Uint8Array(40)]),
+			status: "optimized",
+			reductionPercent: 60,
+		});
+	});
+	afterEach(() => vi.unstubAllGlobals());
+
+	it("encodes during rendering and never reports100 or a zero ETA for unfinished work", async () => {
+		const progress = vi.fn();
+		const result = await new GifExporter({ ...config, onProgress: progress }).export();
+		expect(result.success).toBe(true);
+		expect(progress.mock.calls.length).toBeGreaterThan(1);
+		for (const [update] of progress.mock.calls) {
+			expect(update.percentage).toBeLessThanOrEqual(95);
+			expect(update.estimatedTimeRemaining).toBeGreaterThan(0);
+		}
+		expect(progress.mock.lastCall?.[0].phase).toBe("finalizing");
+	});
+
+	it("settles cancellation while export workers drain", async () => {
+		estimateMocks.encode = false;
+		const exporter = new GifExporter(config);
+		const result = exporter.export();
+		await vi.waitFor(() => expect(estimateMocks.frames).toBe(500));
+		exporter.cancel();
+		await expect(result).resolves.toMatchObject({ success: false });
+		expect(estimateMocks.destroyRenderer).toHaveBeenCalledOnce();
+		expect(estimateMocks.destroyDecoder).toHaveBeenCalledOnce();
+	});
+
+	it("waits for an active export render before destroying resources on cancellation", async () => {
+		let completeFrame!: () => void;
+		estimateMocks.renderFrame.mockImplementationOnce(
+			() =>
+				new Promise<void>((resolve) => {
+					completeFrame = resolve;
+				}),
+		);
+		const exporter = new GifExporter(config);
+		const result = exporter.export();
+		await vi.waitFor(() => expect(completeFrame).toBeTypeOf("function"));
+		exporter.cancel();
+		expect(estimateMocks.destroyRenderer).not.toHaveBeenCalled();
+		completeFrame();
+		await expect(result).resolves.toMatchObject({ success: false });
+		expect(estimateMocks.destroyRenderer).toHaveBeenCalledOnce();
+		expect(estimateMocks.frames).toBe(0);
+	});
+
+	it("encodes 60 centered frames and scales the real sample's byte sizes to the edited duration", async () => {
+		const estimate = await new GifExporter(config).estimateSize();
+		expect(estimate).toEqual({
+			originalBytes: 500,
+			optimizedBytes: 200,
+			reductionPercent: 60,
+			sampleFrames: 60,
+			totalFrames: 300,
+		});
+		expect(estimateMocks.frames).toBe(60);
+		expect(estimateMocks.renderFrame.mock.calls[0]).toEqual([
+			null,
+			4_000_000,
+			4_000_000,
+			1_000_000 / 30,
+			4_000_000,
+		]);
+		expect(estimateMocks.optimize).toHaveBeenCalledWith(
+			expect.objectContaining({ size: 100 }),
+			expect.any(AbortSignal),
+		);
+		expect(estimateMocks.destroyRenderer).toHaveBeenCalledOnce();
+		expect(estimateMocks.destroyDecoder).toHaveBeenCalledOnce();
+	});
+
+	it("uses 60 frames at 10 FPS too", async () => {
+		await new GifExporter({ ...config, frameRate: 10 }).estimateSize();
+		expect(estimateMocks.frames).toBe(60);
+	});
+
+	it("samples the entire very short export without extrapolating extra frames", async () => {
+		estimateMocks.duration = 0.1;
+		await expect(new GifExporter(config).estimateSize()).resolves.toMatchObject({
+			originalBytes: 100,
+			optimizedBytes: 40,
+			sampleFrames: 3,
+			totalFrames: 3,
+		});
+	});
+
+	it("rejects a pre-aborted request without encoding", async () => {
+		const controller = new AbortController();
+		controller.abort();
+		await expect(new GifExporter(config).estimateSize(controller.signal)).rejects.toMatchObject(
+			{ name: "AbortError" },
+		);
+		expect(estimateMocks.frames).toBe(0);
+	});
+
+	it("settles cancellation while the encoder is draining", async () => {
+		estimateMocks.encode = false;
+		const exporter = new GifExporter(config);
+		const result = exporter.estimateSize();
+		await vi.waitFor(() => expect(estimateMocks.frames).toBe(60));
+		exporter.cancel();
+		await expect(result).rejects.toMatchObject({ name: "AbortError" });
+		expect(estimateMocks.optimize).not.toHaveBeenCalled();
+	});
+
+	it("defers renderer cleanup until an in-flight frame has settled after abort", async () => {
+		let completeFrame!: () => void;
+		estimateMocks.renderFrame.mockImplementationOnce(
+			() =>
+				new Promise<void>((resolve) => {
+					completeFrame = resolve;
+				}),
+		);
+		const controller = new AbortController();
+		const result = new GifExporter(config).estimateSize(controller.signal);
+		await vi.waitFor(() => expect(completeFrame).toBeTypeOf("function"));
+		controller.abort();
+		await expect(result).rejects.toMatchObject({ name: "AbortError" });
+		expect(estimateMocks.destroyRenderer).not.toHaveBeenCalled();
+		completeFrame();
+		await vi.waitFor(() => expect(estimateMocks.destroyRenderer).toHaveBeenCalledOnce());
+		expect(estimateMocks.frames).toBe(0);
+	});
+
+	it("bounds a stalled encoder with a timeout", async () => {
+		vi.useFakeTimers();
+		try {
+			estimateMocks.encode = false;
+			const result = new GifExporter(config).estimateSize();
+			const rejected = expect(result).rejects.toMatchObject({ name: "AbortError" });
+			await vi.advanceTimersByTimeAsync(0);
+			expect(estimateMocks.frames).toBe(60);
+			await vi.advanceTimersByTimeAsync(45_000);
+			await rejected;
+			expect(estimateMocks.destroyRenderer).toHaveBeenCalledOnce();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("does not report a fabricated 0% reduction when optimization fails", async () => {
+		estimateMocks.optimize.mockResolvedValue({ status: "failed" });
+		await expect(new GifExporter(config).estimateSize()).rejects.toThrow(
+			"GIF size estimation failed",
 		);
 	});
 });

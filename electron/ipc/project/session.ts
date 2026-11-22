@@ -9,6 +9,10 @@ function normalizeRecordingTimeOffsetMs(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : 0;
 }
 
+function normalizeCaptureSourceKind(value: unknown): RecordingSessionData["captureSourceKind"] {
+	return value === "screen" || value === "window" ? value : undefined;
+}
+
 export function getRecordingSessionManifestPath(videoPath: string) {
 	const extension = path.extname(videoPath);
 	const baseName = path.basename(videoPath, extension);
@@ -24,9 +28,10 @@ export async function persistRecordingSessionManifest(
 	}
 
 	const normalizedWebcamPath = normalizeVideoSourcePath(session.webcamPath ?? null);
+	const captureSourceKind = normalizeCaptureSourceKind(session.captureSourceKind);
 	const manifestPath = getRecordingSessionManifestPath(normalizedVideoPath);
 
-	if (!normalizedWebcamPath) {
+	if (!normalizedWebcamPath && !captureSourceKind) {
 		await fs.rm(manifestPath, { force: true });
 		return;
 	}
@@ -34,8 +39,9 @@ export async function persistRecordingSessionManifest(
 	const manifest: RecordingSessionManifest = {
 		version: 2,
 		videoFileName: path.basename(normalizedVideoPath),
-		webcamFileName: path.basename(normalizedWebcamPath),
+		webcamFileName: normalizedWebcamPath ? path.basename(normalizedWebcamPath) : null,
 		timeOffsetMs: normalizeRecordingTimeOffsetMs(session.timeOffsetMs),
+		...(captureSourceKind ? { captureSourceKind } : {}),
 	};
 
 	await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
@@ -62,11 +68,14 @@ export async function resolveRecordingSessionManifest(
 			typeof parsed.webcamFileName === "string" && parsed.webcamFileName.trim()
 				? parsed.webcamFileName.trim()
 				: null;
+		const captureSourceKind = normalizeCaptureSourceKind(parsed.captureSourceKind);
+		const kind = captureSourceKind ? { captureSourceKind } : {};
 		if (!webcamFileName) {
 			return {
 				videoPath: normalizedVideoPath,
 				webcamPath: null,
 				timeOffsetMs: normalizeRecordingTimeOffsetMs(parsed.timeOffsetMs),
+				...kind,
 			};
 		}
 
@@ -80,6 +89,7 @@ export async function resolveRecordingSessionManifest(
 			videoPath: normalizedVideoPath,
 			webcamPath: webcamExists ? webcamPath : null,
 			timeOffsetMs: normalizeRecordingTimeOffsetMs(parsed.timeOffsetMs),
+			...kind,
 		};
 	} catch {
 		return null;

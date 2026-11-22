@@ -3,9 +3,8 @@ import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
 import {
-	formatNativeHelperManifestWarning,
+	assertNativeHelperManifest,
 	updateNativeHelperManifest,
-	verifyNativeHelperManifest,
 } from "./native-helper-manifest.mjs";
 import {
 	configureWithWindowsCmakeGenerator,
@@ -93,15 +92,17 @@ function findCmake() {
 const cmake = findCmake();
 if (!cmake) {
 	if (existsSync(bundledExePath)) {
-		const verification = verifyNativeHelperManifest({
-			projectRoot,
-			helperId,
-			sourceDir,
-			binaryPath: bundledExePath,
-			binaryName: "wgc-capture.exe",
-		});
-		if (!verification.ok) {
-			console.warn(formatNativeHelperManifestWarning("build-windows-capture", verification));
+		try {
+			assertNativeHelperManifest({
+				projectRoot,
+				helperId,
+				sourceDir,
+				binaryPath: bundledExePath,
+				binaryName: "wgc-capture.exe",
+			});
+		} catch (error) {
+			console.error(`[build-windows-capture] ${error.message}`);
+			process.exit(1);
 		}
 		console.log(`[build-windows-capture] Using bundled helper: ${bundledExePath}`);
 		process.exit(0);

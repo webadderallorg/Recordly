@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
+import { isCursorVisualType } from "../../../src/shared/cursorVisualTypes";
 import {
 	CURSOR_SAMPLE_INTERVAL_MS,
 	CURSOR_TELEMETRY_VERSION,
 	MAX_CURSOR_SAMPLES,
 } from "../constants";
+import { getSourceArea } from "../sourceArea";
 import {
 	activeCursorSamples,
 	currentCursorVisualType,
@@ -21,9 +23,10 @@ import {
 	setCursorCaptureInterval,
 	setCursorCapturePauseStartedAtMs,
 	setPendingCursorSamples,
+	windowsNativeCaptureActive,
+	windowsWindowCaptureSize,
 } from "../state";
 import type { CursorInteractionType, CursorTelemetryPoint, CursorVisualType } from "../types";
-import { getSourceArea } from "../sourceArea";
 import { getScreen, getTelemetryPathForVideo } from "../utils";
 
 export function clamp(value: number, min: number, max: number) {
@@ -64,18 +67,10 @@ export function normalizeCursorTelemetrySamples(rawSamples: unknown): CursorTele
 					point.interactionType === "mouseup"
 						? point.interactionType
 						: undefined,
-				cursorType:
-					point.cursorType === "arrow" ||
-					point.cursorType === "text" ||
-					point.cursorType === "pointer" ||
-					point.cursorType === "crosshair" ||
-					point.cursorType === "open-hand" ||
-					point.cursorType === "closed-hand" ||
-					point.cursorType === "resize-ew" ||
-					point.cursorType === "resize-ns" ||
-					point.cursorType === "not-allowed"
-						? point.cursorType
-						: undefined,
+				...(point.mouseButton === 1 || point.mouseButton === 2 || point.mouseButton === 3
+					? { mouseButton: point.mouseButton }
+					: {}),
+				cursorType: isCursorVisualType(point.cursorType) ? point.cursorType : undefined,
 			};
 		})
 		.sort((a, b) => a.timeMs - b.timeMs);
@@ -115,11 +110,29 @@ export function isCursorCapturePaused() {
 	return cursorCapturePauseStartedAtMs !== null;
 }
 
+function releaseHeldCursorButtons(timeMs: number) {
+	const held = new Set<1 | 2 | 3>();
+	for (const sample of activeCursorSamples) {
+		if (sample.interactionType === "mouseup") {
+			if (sample.mouseButton) held.delete(sample.mouseButton);
+			else held.clear();
+		} else if (sample.mouseButton && sample.interactionType !== "move") {
+			held.add(sample.mouseButton);
+		}
+	}
+	const last = activeCursorSamples[activeCursorSamples.length - 1];
+	if (last)
+		for (const button of held) {
+			pushCursorSample(last.cx, last.cy, timeMs, "mouseup", last.cursorType, button);
+		}
+}
+
 export function pauseCursorCapture(pausedAtMs: number) {
 	if (cursorCapturePauseStartedAtMs !== null) {
 		return;
 	}
 
+	releaseHeldCursorButtons(getCursorCaptureElapsedMs(pausedAtMs));
 	setCursorCapturePauseStartedAtMs(pausedAtMs);
 }
 
@@ -132,6 +145,7 @@ export function pauseCursorCaptureAtBoundary(pausedAtMs: number) {
 	setActiveCursorSamples(
 		activeCursorSamples.filter((sample) => sample.timeMs <= pausedElapsedMs),
 	);
+	releaseHeldCursorButtons(getCursorCaptureElapsedMs(pausedAtMs));
 	setCursorCapturePauseStartedAtMs(pausedAtMs);
 }
 
@@ -166,7 +180,23 @@ export function getCursorCaptureElapsedMs(nowMs = Date.now()) {
 }
 
 export function getNormalizedCursorPoint() {
-	const fallbackCursor = getScreen().getCursorScreenPoint();
+	const screen = getScreen();
+	const fallbackCursor = screen.getCursorScreenPoint();
+	const isWindowSource = selectedSource?.id?.startsWith("window:") === true;
+	if (isWindowSource && process.platform === "win32" && windowsNativeCaptureActive) {
+		if (!selectedWindowBounds) return null;
+		const { physicalOrigin } = selectedWindowBounds;
+		const captureSize = windowsWindowCaptureSize;
+		if (physicalOrigin && captureSize && captureSize.sourceId === selectedSource?.id) {
+			// WGC keeps the original encoded size when the window is resized.
+			const pixel = screen.dipToScreenPoint(fallbackCursor);
+			return {
+				cx: clamp((pixel.x - physicalOrigin.x) / captureSize.width, 0, 1),
+				cy: clamp((pixel.y - physicalOrigin.y) / captureSize.height, 0, 1),
+			};
+		}
+	}
+
 	const linuxCursorCache = process.platform === "linux" ? linuxCursorScreenPoint : null;
 	const isLinuxCacheFresh = !!linuxCursorCache && Date.now() - linuxCursorCache.updatedAt <= 1000;
 
@@ -178,9 +208,7 @@ export function getNormalizedCursorPoint() {
 		: fallbackCursor;
 
 	// Areas are fixed rectangles, so they normalize like a window that never moves.
-	const windowBounds = selectedSource?.id?.startsWith("window:")
-		? selectedWindowBounds
-		: getSourceArea(selectedSource);
+	const windowBounds = isWindowSource ? selectedWindowBounds : getSourceArea(selectedSource);
 	if (windowBounds) {
 		const sf =
 			process.platform === "win32" || process.platform === "darwin"
@@ -247,6 +275,7 @@ export function pushCursorSample(
 	timeMs: number,
 	interactionType: CursorInteractionType = "move",
 	cursorType?: CursorVisualType,
+	mouseButton?: 1 | 2 | 3,
 ) {
 	activeCursorSamples.push({
 		timeMs: Math.max(0, timeMs),
@@ -254,6 +283,7 @@ export function pushCursorSample(
 		cy,
 		interactionType,
 		cursorType: cursorType ?? currentCursorVisualType,
+		...(mouseButton ? { mouseButton } : {}),
 	} as CursorTelemetryPoint);
 
 	if (activeCursorSamples.length > MAX_CURSOR_SAMPLES) {
@@ -263,6 +293,7 @@ export function pushCursorSample(
 
 export function sampleCursorPoint() {
 	const point = getNormalizedCursorPoint();
+	if (!point) return;
 	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "move");
 }
 
