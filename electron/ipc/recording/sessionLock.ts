@@ -15,6 +15,10 @@ export class RecordingSessionLock {
 		unwatch: Release;
 	} | null = null;
 	constructor(private onOwnerLost: () => void) {}
+	isOwnedBy(ownerId: number) {
+		return this.ownerId === ownerId;
+	}
+
 	acquire(ownerId: number): Release | null {
 		if (this.ownerId !== null && this.ownerId !== ownerId) return null;
 		this.ownerId = ownerId;

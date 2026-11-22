@@ -8,7 +8,10 @@ import { registerMicrophoneSidecar } from "../recording/handlers/microphoneSidec
 import { registerNativeControls } from "../recording/handlers/nativeControls";
 import { registerNativeStart } from "../recording/handlers/nativeStart";
 import { registerRecordingFiles } from "../recording/handlers/recordingFiles";
-import { applyRecordingState } from "../recording/handlers/recordingState";
+import {
+	applyRecordingState,
+	beginWindowsRecordingCursorCapture,
+} from "../recording/handlers/recordingState";
 import { stopNativeCapture } from "../recording/handlers/stopNativeCapture";
 import { performWindowsMux } from "../recording/handlers/windowsMux";
 import { RecordingOwnerRecovery } from "../recording/ownerRecovery";
@@ -104,6 +107,12 @@ export function registerRecordingHandlers(
 	registerFfmpegHandlers(context);
 	registerMicrophoneSidecar();
 	registerRecordingFiles();
+	ipcMain.handle("begin-windows-recording-cursor-capture", (event) => {
+		if (!isTrustedRenderer(event) || !sessionLock.isOwnedBy(event.sender.id)) {
+			throw new Error("Invalid recording cursor capture caller");
+		}
+		beginWindowsRecordingCursorCapture();
+	});
 	ipcMain.handle("set-recording-state", (event, recording: boolean) => {
 		if (!isTrustedRenderer(event) || typeof recording !== "boolean")
 			throw new Error("Invalid recording state caller");

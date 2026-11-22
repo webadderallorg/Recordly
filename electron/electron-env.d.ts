@@ -377,6 +377,7 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		beginWindowsRecordingCursorCapture?: () => Promise<void>;
 		startFfmpegRecording: (
 			source: ProcessedDesktopSource,
 		) => Promise<{ success: boolean; path?: string; message?: string; error?: string }>;
