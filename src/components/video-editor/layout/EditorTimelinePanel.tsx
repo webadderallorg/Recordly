@@ -164,8 +164,13 @@ export function EditorTimelinePanel(props: Props) {
 				}}
 				showSourceAudioTrack={timeline.clipRegions.some((clip) => clip.showSourceAudio)}
 				sourceAudioResourceVersion={timeline.sourceAudioFallbackRefreshKey}
-				sourceAudioTrackSettings={audio.activeSourceAudioTrackSettings}
+				sourceAudioTrackSettings={audio.getSourceAudioTrackSettingsForClip(
+					timeline.selectedClipId,
+				)}
 				getSourceAudioTrackSettingsForClip={audio.getSourceAudioTrackSettingsForClip}
+				onSelectedClipSourceAudioTrackVolumeChange={
+					audio.onSelectedClipSourceAudioTrackVolumeChange
+				}
 				onSourceAudioAvailabilityChange={timeline.setHasClipSourceAudio}
 				onSourceAudioTracksMetaChange={audio.onSourceAudioTracksMetaChange}
 			/>
