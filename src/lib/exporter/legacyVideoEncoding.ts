@@ -1,17 +1,44 @@
 import type { LegacyVideoExporterContext } from "./legacyVideoExporterContext";
 import { DEFAULT_MAX_ENCODE_QUEUE } from "./legacyVideoExporterContext";
+import { ENCODER_PROGRESS_TIMEOUT_MS, getNowMs } from "./modernExportConstants";
 import { MP4_CODEC_FALLBACK_LIST } from "./mp4Support";
 import { ENCODED_H264_COLOR_SPACE_FALLBACK, EXPORT_CANVAS_COLOR_SPACE } from "./videoColorSpace";
 
 export async function encodeRenderedFrame(
 	context: Pick<
 		LegacyVideoExporterContext,
-		"renderer" | "encoder" | "config" | "cancelled" | "encodeQueue"
+		"renderer" | "encoder" | "config" | "cancelled" | "encodeQueue" | "encoderError"
 	>,
 	timestamp: number,
 	frameDuration: number,
 	frameIndex: number,
 ): Promise<void> {
+	if (context.encoderError) throw context.encoderError;
+
+	const maxQueue = Math.max(
+		1,
+		Math.floor(context.config.maxEncodeQueue ?? DEFAULT_MAX_ENCODE_QUEUE),
+	);
+	let idleSince = getNowMs();
+	let previousQueueSize = context.encoder?.encodeQueueSize ?? 0;
+
+	while (context.encoder && context.encoder.encodeQueueSize >= maxQueue && !context.cancelled) {
+		if (context.encoderError) throw context.encoderError;
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		if (context.encoderError) throw context.encoderError;
+		const currentQueueSize = context.encoder?.encodeQueueSize ?? 0;
+		if (currentQueueSize < previousQueueSize) {
+			idleSince = getNowMs();
+		}
+		if (getNowMs() - idleSince >= ENCODER_PROGRESS_TIMEOUT_MS) {
+			throw new Error("WebCodecs encoder made no progress for 30 seconds");
+		}
+		previousQueueSize = currentQueueSize;
+	}
+
+	if (context.cancelled) return;
+	if (context.encoderError) throw context.encoderError;
+
 	const canvas = context.renderer!.getCanvas();
 
 	// @ts-expect-error - colorSpace not in TypeScript definitions but works at runtime
@@ -21,23 +48,18 @@ export async function encodeRenderedFrame(
 		colorSpace: EXPORT_CANVAS_COLOR_SPACE,
 	});
 
-	while (
-		context.encoder &&
-		context.encoder.encodeQueueSize >=
-			Math.max(1, Math.floor(context.config.maxEncodeQueue ?? DEFAULT_MAX_ENCODE_QUEUE)) &&
-		!context.cancelled
-	) {
-		await new Promise((resolve) => setTimeout(resolve, 5));
+	try {
+		if (context.encoder && context.encoder.state === "configured") {
+			context.encodeQueue++;
+			context.encoder.encode(exportFrame, { keyFrame: frameIndex % 150 === 0 });
+		} else {
+			console.warn(
+				`[Frame ${frameIndex}] Encoder not ready! State: ${context.encoder?.state}`,
+			);
+		}
+	} finally {
+		exportFrame.close();
 	}
-
-	if (context.encoder && context.encoder.state === "configured") {
-		context.encodeQueue++;
-		context.encoder.encode(exportFrame, { keyFrame: frameIndex % 150 === 0 });
-	} else {
-		console.warn(`[Frame ${frameIndex}] Encoder not ready! State: ${context.encoder?.state}`);
-	}
-
-	exportFrame.close();
 }
 
 export async function initializeEncoder(
