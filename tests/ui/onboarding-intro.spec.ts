@@ -22,7 +22,7 @@ test("Windows and Linux OS icons use a solid rounded plate like macOS", async ({
 			const sample = (y: number) => [
 				...context.getImageData(image.width / 2, Math.floor(image.height * y), 1, 1).data,
 			];
-			const corner = [...context.getImageData(1, 1, 1, 1).data];
+			const corner = [...context.getImageData(0, 0, 1, 1).data];
 			return { top: sample(0.15), bottom: sample(0.85), corner };
 		}, url);
 		// Solid fill, not a gradient; allow resampling noise at 16px.

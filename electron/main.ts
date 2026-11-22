@@ -1320,7 +1320,9 @@ app.whenReady().then(async () => {
 	}
 
 	if (process.platform === "win32" && !process.windowsStore) {
-		app.setAppUserModelId("dev.recordly.app");
+		// Dev gets its own taskbar identity; sharing the installed app's ID makes
+		// Windows show the installed shortcut's icon for dev windows.
+		app.setAppUserModelId(IS_DEV ? "dev.recordly.app.dev" : "dev.recordly.app");
 	}
 
 	session.defaultSession.setPermissionCheckHandler(
