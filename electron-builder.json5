@@ -93,10 +93,6 @@
     ],
     "icon": "icons/icons/mac/Recordly.icon",
     "artifactName": "${productName}-${arch}.${ext}",
-    "files": [
-      "!node_modules/ffmpeg-static/ffmpeg.exe{,.*}",
-      "!node_modules/ffmpeg-static/ffprobe-recordly{,.*}"
-    ],
     "extendInfo": {
       "NSAudioCaptureUsageDescription": "Recordly needs audio capture permission to record system audio.",
       "NSCameraUsageDescription": "Recordly needs camera access to record webcam video.",
@@ -136,7 +132,6 @@
     "icon": "icons/icons/png",
     // AppImage expands ${arch} to x86_64, while published updates use x64.
     "artifactName": "${productName}-linux-x64.${ext}",
-    "files": ["!node_modules/ffmpeg-static/ffmpeg.exe{,.*}"],
     "category": "AudioVideo"
   },
   "win": {
@@ -152,11 +147,7 @@
     ],
     "icon": "icons/icons/win/icon.ico",
     "executableName": "Recordly",
-    "artifactName": "${productName}-windows-${arch}.${ext}",
-    "files": [
-      "!node_modules/ffmpeg-static/ffmpeg{,.distribution.json,.LICENSE,.README}",
-      "!node_modules/ffmpeg-static/ffprobe-recordly{,.*}"
-    ]
+    "artifactName": "${productName}-windows-${arch}.${ext}"
   },
   "nsis": {
     "oneClick": false,

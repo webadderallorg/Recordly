@@ -322,6 +322,16 @@ export default async function beforePack(context) {
 	const arch = typeof context.arch === "number" ? archNames[context.arch] : context.arch;
 	if (!arch) throw new Error(`Unsupported packaging architecture: ${context.arch}`);
 	const platform = context.electronPlatformName;
+	const ffmpegDir = path.join(projectDir, "node_modules/ffmpeg-static");
+	const foreignBinaries = [platform === "win32" ? "ffmpeg" : "ffmpeg.exe"];
+	if (platform !== "linux") foreignBinaries.push("ffprobe-recordly");
+	for (const name of foreignBinaries) {
+		if (await exists(path.join(ffmpegDir, name))) {
+			throw new Error(
+				`Remove node_modules/ffmpeg-static/${name} before packaging for ${platform}/${arch}. It belongs to another platform.`,
+			);
+		}
+	}
 	// Direct and cross-target packaging can bypass the Windows build script.
 	// Never ship a cached capture executable after its source has changed.
 	if (platform === "win32") {
@@ -340,15 +350,11 @@ export default async function beforePack(context) {
 			arch,
 		});
 	}
-	const binary = path.join(
-		projectDir,
-		"node_modules/ffmpeg-static",
-		platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
-	);
+	const binary = path.join(ffmpegDir, platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
 	const ffprobe =
 		platform === "win32"
 			? path.join(projectDir, "node_modules/ffprobe-static/bin/win32", arch, "ffprobe.exe")
-			: path.join(path.dirname(binary), "ffprobe-recordly");
+			: path.join(ffmpegDir, "ffprobe-recordly");
 	assertFfmpegSourceClearance({
 		platform,
 		arch,
