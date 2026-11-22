@@ -18,7 +18,13 @@ Language: EN | [Tiếng Việt](README.vi.md) | [简中](README.zh-CN.md)
 
 ---
 ### Backed by the community
-<a href="https://coderabbit.link/recordly"><img width="400" alt="CodeRabbit Typemark" src="https://github.com/user-attachments/assets/3926ecfd-8652-4f2d-8da8-ac7641017cf5" /></a>
+<a href="https://coderabbit.link/recordly">
+    <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="https://www.coderabbit.ai/content/assets/white-typemark.svg">
+          <source media="(prefers-color-scheme: light)" srcset="https://www.coderabbit.ai/content/assets/orange-typemark.svg">
+          <img alt="CodeRabbit" height="44" src="https://www.coderabbit.ai/content/assets/orange-typemark.svg" />
+    </picture>
+</a>
 
 ---
 
