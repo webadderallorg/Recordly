@@ -11,6 +11,12 @@ if (process.env["VITE_DEV_SERVER_URL"]) {
 }
 
 let instanceSession: ReturnType<typeof reserveInstanceSession> | undefined;
+let isPrimarySession = false;
+
+/** True when this process owns the profile's primary Chromium storage and its secure-storage key. */
+export function usesPrimaryInstanceSession(): boolean {
+	return isPrimarySession;
+}
 
 // Reuse existing Chromium storage for the primary process and durable isolated
 // slots for additional processes. Projects and account storage remain shared.
@@ -40,6 +46,7 @@ export function initializeInstanceSession() {
 		throw error;
 	}
 	instanceSession = reservation;
+	isPrimarySession = reservation.sessionPath === primarySessionPath;
 	const release = () => reservation.release();
 	app.once("will-quit", release);
 	process.once("exit", release);

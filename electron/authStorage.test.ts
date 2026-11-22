@@ -754,3 +754,91 @@ it.each([
 			expect(index).toContain(key.slice(`${prefix}-flow-`.length, -"-code-verifier".length));
 	}
 });
+
+async function registerWithRecovery(allowed: boolean) {
+	vi.resetModules();
+	const { registerAuthStorageHandlers } = await import("./authStorage");
+	registerAuthStorageHandlers(undefined, { canRecoverUnreadableStore: () => allowed });
+}
+
+it("moves a store that can never decrypt aside so a new sign-in can be saved", async () => {
+	const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+	Object.defineProperty(process, "platform", { ...platform, value: "win32" });
+	onTestFinished(() => Object.defineProperty(process, "platform", platform));
+	await registerWithRecovery(true);
+	const key = "sb-recordlytest-auth-token";
+	const directory = path.join(native.directory, "private-auth");
+	await fs.mkdir(directory, { recursive: true });
+	await fs.writeFile(path.join(directory, "session.enc"), "written with an old profile key");
+	const decrypt = vi.spyOn(safeStorage, "decryptString");
+	decrypt.mockImplementation((value: Buffer) => {
+		if (value.toString() === "written with an old profile key")
+			throw new Error("Error while decrypting the ciphertext");
+		return value.toString();
+	});
+	onTestFinished(() => decrypt.mockRestore());
+
+	// Reads and sign-out treat it as signed out so the sign-in form can appear.
+	expect(await invoke("get", key)).toBeNull();
+	await invoke("remove", key);
+	expect(await fs.readdir(directory)).not.toContainEqual(expect.stringMatching(/unreadable/));
+
+	await invoke("set", key, "new session");
+
+	expect(await invoke("get", key)).toBe("new session");
+	const files = await fs.readdir(directory);
+	const backup = files.find((name) => /^session.enc.unreadable-.+-[0-9a-f-]{36}.bak$/.test(name));
+	expect(backup).toBeDefined();
+	expect(await fs.readFile(path.join(directory, backup!), "utf8")).toBe(
+		"written with an old profile key",
+	);
+});
+
+it("keeps an unreadable store when this instance does not own the profile key", async () => {
+	const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+	Object.defineProperty(process, "platform", { ...platform, value: "win32" });
+	onTestFinished(() => Object.defineProperty(process, "platform", platform));
+	await registerWithRecovery(false);
+	const file = path.join(native.directory, "private-auth", "session.enc");
+	await fs.mkdir(path.dirname(file), { recursive: true });
+	await fs.writeFile(file, "primary instance session");
+	await expect(invoke("get", "sb-recordlytest-auth-token")).rejects.toThrow("Could not unlock");
+
+	await expect(invoke("set", "sb-recordlytest-auth-token", "x")).rejects.toThrow(
+		"Could not unlock",
+	);
+	expect(await fs.readFile(file, "utf8")).toBe("primary instance session");
+	expect(await fs.readdir(path.dirname(file))).not.toContainEqual(
+		expect.stringMatching(/unreadable/),
+	);
+});
+
+it("never moves a macOS store aside after a Keychain denial", async () => {
+	const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+	Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+	onTestFinished(() => Object.defineProperty(process, "platform", platform));
+	await registerWithRecovery(true);
+	const file = path.join(native.directory, "private-auth", "session.enc");
+	await fs.mkdir(path.dirname(file), { recursive: true });
+	await fs.writeFile(file, "keychain protected session");
+	const decrypt = vi.spyOn(safeStorage, "decryptString").mockImplementationOnce(() => {
+		throw new Error("Keychain access denied");
+	});
+	onTestFinished(() => decrypt.mockRestore());
+
+	await expect(invoke("set", "sb-recordlytest-auth-token", "x")).rejects.toThrow(
+		"Could not unlock",
+	);
+	expect(await fs.readFile(file, "utf8")).toBe("keychain protected session");
+});
+
+it("does not move aside a store that decrypts but fails validation", async () => {
+	await registerWithRecovery(true);
+	const key = "sb-recordlytest-auth-token";
+	await invoke("set", key, "saved");
+	const file = path.join(native.directory, "private-auth", "session.enc");
+	const unsupported = JSON.stringify({ version: 2, entries: {} });
+	await fs.writeFile(file, unsupported);
+	await expect(invoke("set", key, "x")).rejects.toThrow("Could not unlock");
+	expect(await fs.readFile(file, "utf8")).toBe(unsupported);
+});
