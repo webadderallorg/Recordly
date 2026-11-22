@@ -40,12 +40,14 @@ import {
 	setActiveCursorSamples,
 	setCursorCaptureStartTimeMs,
 	setIsCursorCaptureActive,
+	setLinuxCursorScreenPoint,
 	setPendingCursorSamples,
 	setSelectedSource,
 	setSelectedWindowBounds,
 	setWindowsNativeCaptureActive,
 	setWindowsWindowCaptureSize,
 } from "../state";
+import { getScreen } from "../utils";
 import {
 	captureRecordingZoomMarker,
 	clearActiveCursorTelemetry,
@@ -99,6 +101,32 @@ describe("Windows window cursor coordinates", () => {
 		sampleCursorPoint();
 		expect(activeCursorSamples).toEqual([]);
 	});
+});
+
+it("normalizes a Linux screen cursor in the selected display's DIP coordinates", () => {
+	const platform = process.platform;
+	Object.defineProperty(process, "platform", { value: "linux" });
+	setSelectedSource({ id: "screen:1:0", name: "Left display", display_id: "2" });
+	// uiohook reports a position in the merged X screen, while Electron uses DIP.
+	setLinuxCursorScreenPoint({ x: 960, y: 540, updatedAt: Date.now() });
+	const left = { id: 2, bounds: { x: -1536, y: 0, width: 1536, height: 864 } };
+	const cursor = vi.fn(() => ({ x: -768, y: 432 }));
+	const screen = {
+		getCursorScreenPoint: cursor,
+		getPrimaryDisplay: () => ({ scaleFactor: 1.25 }),
+		getAllDisplays: () => [left],
+	} as unknown as ReturnType<typeof getScreen>;
+	vi.mocked(getScreen).mockReturnValue(screen);
+	try {
+		expect(getNormalizedCursorPoint()).toEqual({ cx: 0.5, cy: 0.5 });
+		cursor.mockReturnValue({ x: -1152, y: 216 });
+		expect(getNormalizedCursorPoint()).toEqual({ cx: 0.25, cy: 0.25 });
+	} finally {
+		vi.mocked(getScreen).mockReset();
+		Object.defineProperty(process, "platform", { value: platform });
+		setSelectedSource(null);
+		setLinuxCursorScreenPoint(null);
+	}
 });
 
 describe("cursor telemetry pause clock", () => {

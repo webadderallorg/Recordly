@@ -196,7 +196,7 @@ export function getCursorCaptureElapsedMs(nowMs = Date.now()) {
 
 export function getNormalizedCursorPoint() {
 	const screen = getScreen();
-	const fallbackCursor = screen.getCursorScreenPoint();
+	const screenCursor = screen.getCursorScreenPoint();
 	const isWindowSource = selectedSource?.id?.startsWith("window:") === true;
 	if (isWindowSource && process.platform === "win32" && windowsNativeCaptureActive) {
 		if (!selectedWindowBounds) return null;
@@ -204,7 +204,7 @@ export function getNormalizedCursorPoint() {
 		const captureSize = windowsWindowCaptureSize;
 		if (physicalOrigin && captureSize && captureSize.sourceId === selectedSource?.id) {
 			// WGC keeps the original encoded size when the window is resized.
-			const pixel = screen.dipToScreenPoint(fallbackCursor);
+			const pixel = screen.dipToScreenPoint(screenCursor);
 			return {
 				cx: clamp((pixel.x - physicalOrigin.x) / captureSize.width, 0, 1),
 				cy: clamp((pixel.y - physicalOrigin.y) / captureSize.height, 0, 1),
@@ -212,19 +212,16 @@ export function getNormalizedCursorPoint() {
 		}
 	}
 
-	const linuxCursorCache = process.platform === "linux" ? linuxCursorScreenPoint : null;
-	const isLinuxCacheFresh = !!linuxCursorCache && Date.now() - linuxCursorCache.updatedAt <= 1000;
-
-	const primarySf =
-		process.platform !== "darwin" ? getScreen().getPrimaryDisplay().scaleFactor || 1 : 1;
-
-	const cursor = isLinuxCacheFresh
-		? { x: linuxCursorCache.x / primarySf, y: linuxCursorCache.y / primarySf }
-		: fallbackCursor;
-
 	// Areas are fixed rectangles, so they normalize like a window that never moves.
 	const windowBounds = isWindowSource ? selectedWindowBounds : getSourceArea(selectedSource);
 	if (windowBounds) {
+		const primarySf =
+			process.platform !== "darwin" ? screen.getPrimaryDisplay().scaleFactor || 1 : 1;
+		const linuxCursorCache = process.platform === "linux" ? linuxCursorScreenPoint : null;
+		const cursor =
+			linuxCursorCache && Date.now() - linuxCursorCache.updatedAt <= 1000
+				? { x: linuxCursorCache.x / primarySf, y: linuxCursorCache.y / primarySf }
+				: screenCursor;
 		const sf =
 			process.platform === "win32" || process.platform === "darwin"
 				? 1
@@ -247,13 +244,13 @@ export function getNormalizedCursorPoint() {
 				.getAllDisplays()
 				.find((display) => display.id === sourceDisplayId) ?? null)
 		: null;
-	const display = sourceDisplay ?? getScreen().getDisplayNearestPoint(cursor);
+	const display = sourceDisplay ?? screen.getDisplayNearestPoint(screenCursor);
 	const bounds = display.bounds;
 	const width = Math.max(1, bounds.width);
 	const height = Math.max(1, bounds.height);
 
-	const cx = clamp((cursor.x - bounds.x) / width, 0, 1);
-	const cy = clamp((cursor.y - bounds.y) / height, 0, 1);
+	const cx = clamp((screenCursor.x - bounds.x) / width, 0, 1);
+	const cy = clamp((screenCursor.y - bounds.y) / height, 0, 1);
 	return { cx, cy };
 }
 
