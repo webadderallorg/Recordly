@@ -364,10 +364,7 @@ export async function decodeVideoStreamAttempt(
 			lastDecodedFrameSec = frameTimeSec;
 
 			// Finalize completed segments before handling this frame.
-			while (
-				segmentIdx < segments.length &&
-				frameTimeSec >= segments[segmentIdx].endSec - epsilonSec
-			) {
+			while (segmentIdx < segments.length && frameTimeSec >= segments[segmentIdx].endSec) {
 				const segment = segments[segmentIdx];
 				while (!context.cancelled && (await emitHeldFrameForTarget(segment))) {
 					// Keep emitting remaining output frames for this segment from the last known frame.
@@ -401,7 +398,8 @@ export async function decodeVideoStreamAttempt(
 				continue;
 			}
 
-			// The current frame becomes visible at its presentation timestamp.
+			// Compare on the decoder's microsecond grid so fractional frame rates match their PTS.
+			const frameTimeUs = Math.round(frameTimeSec * 1_000_000);
 			while (!context.cancelled) {
 				const segmentFrameCount = segmentOutputFrameCounts[segmentIdx];
 				if (segmentFrameIndex >= segmentFrameCount) {
@@ -413,7 +411,7 @@ export async function decodeVideoStreamAttempt(
 					segmentFrameIndex,
 					targetFrameRate,
 				);
-				if (sourceTimeSec >= frameTimeSec - epsilonSec) {
+				if (Math.round(sourceTimeSec * 1_000_000) >= frameTimeUs) {
 					break;
 				}
 
