@@ -16,6 +16,18 @@ export const MP4_AUDIO_CODEC = "mp4a.40.2";
 export const OFFLINE_AUDIO_SAMPLE_RATE = 48_000;
 export const OFFLINE_ENCODE_CHUNK_FRAMES = 1024;
 export const OFFLINE_CHUNK_DURATION_SEC = 30;
+export const MAX_CODEC_PRIMING_OFFSET_US = 45_000;
+
+export function resolveAudioTimestampOffsetUs(firstChunkTimestampUs: number): number {
+	if (firstChunkTimestampUs < 0) {
+		return firstChunkTimestampUs;
+	}
+	if (firstChunkTimestampUs <= MAX_CODEC_PRIMING_OFFSET_US) {
+		return firstChunkTimestampUs;
+	}
+	return 0;
+}
+
 const OFFLINE_MIX_SOFT_LIMITER_THRESHOLD = 0.9;
 const OFFLINE_MIX_SOFT_LIMITER_CEILING = 0.985;
 

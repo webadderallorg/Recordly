@@ -62,6 +62,13 @@ describe("estimateCompanionAudioStartDelaySeconds", () => {
 		expect(estimateCompanionAudioStartDelaySeconds(10, 10.5)).toBe(0);
 		expect(estimateCompanionAudioStartDelaySeconds(600, 565)).toBe(0);
 	});
+
+	it("does not infer start delay for system audio without an explicit recorded delay", () => {
+		expect(estimateCompanionAudioStartDelaySeconds(10, 9.6, undefined, "system")).toBe(0);
+		expect(estimateCompanionAudioStartDelaySeconds(10, 9.6, null, "system")).toBe(0);
+		expect(estimateCompanionAudioStartDelaySeconds(10, 9.6, 250, "system")).toBeCloseTo(0.25);
+		expect(estimateCompanionAudioStartDelaySeconds(10, 9.6, undefined, "mic")).toBeCloseTo(0.4);
+	});
 });
 
 describe("getEffectiveRecordingDurationMs", () => {

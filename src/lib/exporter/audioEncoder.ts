@@ -10,6 +10,7 @@ import {
 	hasNonDefaultSourceTrackSettings,
 	MIN_SPEED_REGION_DELTA_MS,
 	MP4_AUDIO_CODEC,
+	resolveAudioTimestampOffsetUs,
 	type TrimLikeRegion,
 } from "./audioProcessorShared";
 import { AudioTranscodeProcessor } from "./audioTranscodeProcessor";
@@ -21,6 +22,7 @@ export {
 	getSourceTrackIdFromPath,
 	hasNonDefaultSourceTrackSettings,
 	isAacAudioEncodingSupported,
+	resolveAudioTimestampOffsetUs,
 	softLimitOfflineMixPeaksInPlace,
 } from "./audioProcessorShared";
 
@@ -58,7 +60,7 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 				if (done || !chunk) break;
 
 				if (passthroughTimestampOffsetUs === null) {
-					passthroughTimestampOffsetUs = chunk.timestamp;
+					passthroughTimestampOffsetUs = resolveAudioTimestampOffsetUs(chunk.timestamp);
 				}
 
 				const normalizedTimestamp = Math.max(
