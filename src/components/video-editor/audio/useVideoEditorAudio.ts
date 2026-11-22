@@ -38,6 +38,7 @@ interface UseVideoEditorAudioParams {
 	>;
 	currentTime: number;
 	timelineTime: number;
+	previewSeekVersion: number;
 	duration: number;
 	isPlaying: boolean;
 	previewVolume: number;
@@ -57,6 +58,7 @@ export function useVideoEditorAudio({
 	setDefaultSourceAudioTrackSettings,
 	currentTime,
 	timelineTime,
+	previewSeekVersion,
 	duration,
 	isPlaying,
 	previewVolume,
@@ -119,6 +121,7 @@ export function useVideoEditorAudio({
 		isPlaying,
 		currentTime,
 		timelineTime,
+		previewSeekVersion,
 		duration,
 		sourcePlaybackRate: findClipAtTimelineTime(timelineTime * 1000, clipRegions)?.speed ?? 1,
 		previewSourceAudioFallbackPaths,

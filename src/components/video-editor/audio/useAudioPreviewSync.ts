@@ -28,6 +28,7 @@ interface UseAudioPreviewSyncParams {
 	isPlaying: boolean;
 	currentTime: number;
 	timelineTime: number;
+	previewSeekVersion: number;
 	duration: number;
 	sourcePlaybackRate: number;
 	previewSourceAudioFallbackPaths: string[];
@@ -44,6 +45,7 @@ export function useAudioPreviewSync({
 	isPlaying,
 	currentTime,
 	timelineTime,
+	previewSeekVersion,
 	duration,
 	sourcePlaybackRate,
 	previewSourceAudioFallbackPaths,
@@ -85,8 +87,8 @@ export function useAudioPreviewSync({
 	const lastSourceAudioSyncTimeRef = useRef<{
 		sourceTime: number;
 		timelineTime: number;
+		previewSeekVersion: number;
 		playbackRate: number;
-		wallTime: number;
 		isPlaying: boolean;
 	} | null>(null);
 	const [sourceLoadVersion, setSourceLoadVersion] = useState(0);
@@ -384,20 +386,17 @@ export function useAudioPreviewSync({
 		void sourceLoadVersion;
 
 		const previousSync = lastSourceAudioSyncTimeRef.current;
-		const wallTime = performance.now() / 1000;
-		// A delayed render or a fast clip can advance source time by more than a
-		// quarter second without seeking. Compare the clocks, not a fixed step.
+		const timelineDelta = previousSync ? timelineTime - previousSync.timelineTime : 0;
+		// The editor reports explicit seeks. Source discontinuities also occur
+		// during playback at cuts or when the active clip mapping changes.
 		const timelineJumped =
 			previousSync === null ||
 			!previousSync.isPlaying ||
+			previewSeekVersion !== previousSync.previewSeekVersion ||
 			Math.abs(
-				currentTime -
-					previousSync.sourceTime -
-					(timelineTime - previousSync.timelineTime) * previousSync.playbackRate,
+				currentTime - previousSync.sourceTime - timelineDelta * previousSync.playbackRate,
 			) > 0.05 ||
-			Math.abs(
-				timelineTime - previousSync.timelineTime - (wallTime - previousSync.wallTime),
-			) > 0.12;
+			timelineDelta < -0.02;
 		if (sourceAudioMasterGainRef.current) {
 			sourceAudioMasterGainRef.current.gain.value = isCurrentClipMuted
 				? 0
@@ -469,8 +468,8 @@ export function useAudioPreviewSync({
 		lastSourceAudioSyncTimeRef.current = {
 			sourceTime: currentTime,
 			timelineTime,
+			previewSeekVersion,
 			playbackRate: sourcePlaybackRate,
-			wallTime,
 			isPlaying,
 		};
 		return () => {
@@ -483,6 +482,7 @@ export function useAudioPreviewSync({
 		sourceLoadVersion,
 		currentTime,
 		timelineTime,
+		previewSeekVersion,
 		duration,
 		sourcePlaybackRate,
 		getSourceTrackPreviewGain,

@@ -1,5 +1,5 @@
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from "react";
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import type { useI18n } from "@/contexts/I18nContext";
 import type { useShortcuts } from "@/contexts/ShortcutsContext";
@@ -60,6 +60,10 @@ type CopiedTimelineRegion =
 
 export function useTimelineEditingController(input: Input) {
 	const { timeline } = input;
+	const [previewSeekVersion, setPreviewSeekVersion] = useState(0);
+	const handlePreviewSeek = useCallback(() => {
+		setPreviewSeekVersion((version) => version + 1);
+	}, []);
 	const handleSourceFallbackLoadError = useCallback((error: unknown) => {
 		toast.warning(
 			translate(
@@ -98,6 +102,7 @@ export function useTimelineEditingController(input: Input) {
 		setDefaultSourceAudioTrackSettings: timeline.setDefaultSourceAudioTrackSettings,
 		timelineTime: projection.timelinePlayheadTime,
 		currentTime: projection.mapTimelineTimeToSourceTime(input.currentTime * 1000) / 1000,
+		previewSeekVersion,
 		duration: input.duration,
 		isPlaying: input.isPlaying,
 		previewVolume: input.previewVolume,
@@ -109,6 +114,7 @@ export function useTimelineEditingController(input: Input) {
 		videoPlaybackRef: input.videoPlaybackRef,
 		timelineRef: input.timelineRef,
 		playSourceAudioPreview: audio.playSourceAudioPreview,
+		onPreviewSeek: handlePreviewSeek,
 		clipRegions: timeline.clipRegions,
 		zoomRegions: projection.effectiveZoomRegions,
 		timelinePlayheadTime: projection.timelinePlayheadTime,
