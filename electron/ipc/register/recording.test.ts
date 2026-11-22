@@ -88,9 +88,14 @@ vi.mock("../recording/windows", () => ({
 }));
 
 import {
+	activeCursorSamples,
+	cursorCaptureStartTimeMs,
 	isCursorCaptureActive,
+	setActiveCursorSamples,
 	setCurrentVideoPath,
+	setIsCursorCaptureActive,
 	setSelectedSource,
+	setWindowsNativeCaptureActive,
 	setWindowsPendingVideoPath,
 } from "../state";
 import { registerRecordingHandlers } from "./recording";
@@ -109,6 +114,8 @@ describe("recording IPC composition", () => {
 		setSelectedSource(null);
 		setCurrentVideoPath(null);
 		setWindowsPendingVideoPath(null);
+		setWindowsNativeCaptureActive(false);
+		setIsCursorCaptureActive(false);
 		Object.defineProperty(process, "platform", { value: "linux" });
 	});
 	afterEach(() => Object.defineProperty(process, "platform", { value: platform }));
@@ -118,6 +125,7 @@ describe("recording IPC composition", () => {
 		expect([...mocks.handlers.keys()].sort()).toEqual(
 			[
 				"append-recording-file-stream",
+				"begin-windows-recording-cursor-capture",
 				"close-recording-file-stream",
 				"discard-recording-file-stream",
 				"get-cursor-telemetry",
@@ -202,6 +210,7 @@ describe("recording IPC composition", () => {
 			"stop-native-screen-recording",
 			"recover-recording-owner",
 			"set-recording-state",
+			"begin-windows-recording-cursor-capture",
 		]) {
 			expect(() => invoke(channel, event, true)).toThrow(/caller/);
 		}
@@ -232,6 +241,32 @@ describe("recording IPC composition", () => {
 			recording: false,
 			sourceName: "Second screen",
 		});
+	});
+
+	it("keeps Windows cursor samples captured while the microphone is starting", () => {
+		Object.defineProperty(process, "platform", { value: "win32" });
+		registerRecordingHandlers();
+		const event = { sender: sender() };
+		const channel = "begin-windows-recording-cursor-capture";
+		invoke("reserve-recording-session", event);
+		invoke(channel, event);
+		expect(mocks.startTelemetry).not.toHaveBeenCalled();
+		setWindowsNativeCaptureActive(true);
+		expect(() => invoke(channel, { sender: { id: 99 } })).toThrow(/caller/);
+		invoke(channel, event);
+		invoke(channel, event);
+		expect(isCursorCaptureActive).toBe(true);
+		expect(mocks.startTelemetry).toHaveBeenCalledOnce();
+		expect(mocks.broadcast).not.toHaveBeenCalled();
+		const startedAt = cursorCaptureStartTimeMs;
+		const point = { timeMs: 300, cx: 0.5, cy: 0.5, interactionType: "move" as const };
+		setActiveCursorSamples([point]);
+		invoke("set-recording-state", event, true);
+		expect(mocks.startTelemetry).toHaveBeenCalledOnce();
+		expect(cursorCaptureStartTimeMs).toBe(startedAt);
+		expect(activeCursorSamples).toEqual([point]);
+		invoke("set-recording-state", event, false);
+		expect(isCursorCaptureActive).toBe(false);
 	});
 
 	it("shares a Windows interrupted-recovery failure across repeated requests", async () => {

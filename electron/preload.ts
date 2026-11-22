@@ -725,6 +725,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getRecordedVideoPath: () => {
 		return ipcRenderer.invoke("get-recorded-video-path");
 	},
+	beginWindowsRecordingCursorCapture: () =>
+		ipcRenderer.invoke("begin-windows-recording-cursor-capture"),
 	setRecordingState: (recording: boolean) => {
 		return ipcRenderer.invoke("set-recording-state", recording);
 	},
