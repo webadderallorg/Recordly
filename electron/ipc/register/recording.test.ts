@@ -54,6 +54,7 @@ vi.mock("../recording/zoomShortcut", () => ({
 vi.mock("../cursor/telemetry", () => ({
 	stopCursorCapture: mocks.stopTelemetry,
 	startCursorSampling: mocks.startTelemetry,
+	clearActiveCursorTelemetry: vi.fn(),
 	resetCursorCaptureClock: vi.fn(),
 	sampleCursorPoint: vi.fn(),
 	snapshotCursorTelemetryForPersistence: vi.fn(),

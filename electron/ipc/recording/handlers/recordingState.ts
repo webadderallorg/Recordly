@@ -5,6 +5,7 @@ import { startWindowBoundsCapture, stopWindowBoundsCapture } from "../../cursor/
 import { startInteractionCapture, stopInteractionCapture } from "../../cursor/interaction";
 import { startNativeCursorMonitor, stopNativeCursorMonitor } from "../../cursor/monitor";
 import {
+	clearActiveCursorTelemetry,
 	resetCursorCaptureClock,
 	sampleCursorPoint,
 	snapshotCursorTelemetryForPersistence,
@@ -15,7 +16,6 @@ import { getSourceArea } from "../../sourceArea";
 import {
 	isCursorCaptureActive,
 	selectedSource,
-	setActiveCursorSamples,
 	setCursorCaptureStartTimeMs,
 	setIsCursorCaptureActive,
 	setLastLeftClick,
@@ -35,7 +35,7 @@ function startRecordingCursorCapture() {
 	startWindowBoundsCapture();
 	void startNativeCursorMonitor();
 	setIsCursorCaptureActive(true);
-	setActiveCursorSamples([]);
+	clearActiveCursorTelemetry();
 	setPendingCursorSamples([]);
 	setCursorCaptureStartTimeMs(startedAtMs);
 	resetCursorCaptureClock();
@@ -73,7 +73,7 @@ export function applyRecordingState(
 		setLinuxCursorScreenPoint(null);
 		resetCursorCaptureClock();
 		snapshotCursorTelemetryForPersistence();
-		setActiveCursorSamples([]);
+		clearActiveCursorTelemetry();
 	}
 
 	setRecordingZoomShortcutActive(recording);

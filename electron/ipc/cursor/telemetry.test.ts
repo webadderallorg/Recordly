@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CURSOR_TELEMETRY_VERSION } from "../constants";
+import { CURSOR_TELEMETRY_VERSION, MAX_CURSOR_SAMPLES } from "../constants";
+
+vi.mock(import("../constants"), async (original) => ({
+	...(await original()),
+	MAX_CURSOR_SAMPLES: 4,
+}));
 
 const { writeFile, rm } = vi.hoisted(() => ({
 	writeFile: vi.fn(),
@@ -35,6 +40,7 @@ import {
 	setActiveCursorSamples,
 	setCursorCaptureStartTimeMs,
 	setIsCursorCaptureActive,
+	setPendingCursorSamples,
 	setSelectedSource,
 	setSelectedWindowBounds,
 	setWindowsNativeCaptureActive,
@@ -42,15 +48,18 @@ import {
 } from "../state";
 import {
 	captureRecordingZoomMarker,
+	clearActiveCursorTelemetry,
 	getCursorCaptureElapsedMs,
 	getNormalizedCursorPoint,
 	normalizeCursorTelemetrySamples,
 	pauseCursorCapture,
 	pauseCursorCaptureAtBoundary,
+	persistPendingCursorTelemetry,
 	pushCursorSample,
 	resetCursorCaptureClock,
 	resumeCursorCapture,
 	sampleCursorPoint,
+	snapshotCursorTelemetryForPersistence,
 	writeCursorTelemetry,
 } from "./telemetry";
 
@@ -97,7 +106,8 @@ describe("cursor telemetry pause clock", () => {
 		writeFile.mockReset();
 		rm.mockReset();
 		setCursorCaptureStartTimeMs(1_000);
-		setActiveCursorSamples([]);
+		clearActiveCursorTelemetry();
+		setPendingCursorSamples([]);
 		resetCursorCaptureClock();
 	});
 
@@ -111,20 +121,43 @@ describe("cursor telemetry pause clock", () => {
 		expect(getCursorCaptureElapsedMs(1_900)).toBe(400);
 	});
 
-	it("records markers only during active capture and preserves them when reading telemetry", () => {
+	it("retains zoom markers through pointer eviction, repeated snapshots and sidecar normalization", async () => {
 		setIsCursorCaptureActive(false);
 		expect(captureRecordingZoomMarker(1_050)).toBe(false);
 		setIsCursorCaptureActive(true);
 		try {
 			expect(captureRecordingZoomMarker(1_100)).toBe(true);
-			pauseCursorCapture(1_200);
+			expect(captureRecordingZoomMarker(1_210)).toBe(true);
+			pauseCursorCaptureAtBoundary(1_200);
 			expect(captureRecordingZoomMarker(1_300)).toBe(false);
 			resumeCursorCapture(1_500);
+			for (let i = 0; i <= MAX_CURSOR_SAMPLES; i++) {
+				pushCursorSample(0.5, 0.5, 210 + i);
+			}
+			expect(activeCursorSamples).toHaveLength(MAX_CURSOR_SAMPLES);
+			snapshotCursorTelemetryForPersistence();
+			// A marker may share a timestamp with the most recent pointer sample.
+			expect(captureRecordingZoomMarker(1_510 + MAX_CURSOR_SAMPLES)).toBe(true);
 			expect(captureRecordingZoomMarker(1_750)).toBe(true);
-			expect(normalizeCursorTelemetrySamples(activeCursorSamples)).toMatchObject([
+			snapshotCursorTelemetryForPersistence();
+			clearActiveCursorTelemetry();
+			snapshotCursorTelemetryForPersistence();
+			await persistPendingCursorTelemetry("/tmp/recording.mp4");
+			const saved = JSON.parse(writeFile.mock.calls[0][1]);
+			const normalized = normalizeCursorTelemetrySamples(saved);
+			expect(
+				normalized.filter((sample) => sample.interactionType !== "manual-zoom"),
+			).toHaveLength(MAX_CURSOR_SAMPLES);
+			expect(
+				normalized.filter((sample) => sample.interactionType === "manual-zoom"),
+			).toMatchObject([
 				{ timeMs: 100, interactionType: "manual-zoom" },
+				{ timeMs: 210 + MAX_CURSOR_SAMPLES, interactionType: "manual-zoom" },
 				{ timeMs: 450, interactionType: "manual-zoom" },
 			]);
+			expect(normalized.map((sample) => sample.timeMs)).toEqual(
+				saved.samples.map((sample: { timeMs: number }) => sample.timeMs),
+			);
 		} finally {
 			setIsCursorCaptureActive(false);
 		}
