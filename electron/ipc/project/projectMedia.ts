@@ -8,28 +8,91 @@ function isMissingPath(error: unknown) {
 	return code === "ENOENT" || code === "ENOTDIR";
 }
 
-async function findNearbyProjectVideo(sourcePath: string, projectPath: string) {
-	const sourcePathStyle = path.isAbsolute(sourcePath) ? path : path.win32;
-	if (!sourcePathStyle.isAbsolute(sourcePath)) return null;
-	const filename = sourcePathStyle.basename(sourcePath);
-	if (!getMediaContentType(filename).startsWith("video/")) return null;
+function extractMediaFilename(sourcePath: string): string | null {
+	const trimmed = sourcePath.trim();
+	if (!trimmed) return null;
+	const raw = trimmed.split(/[/\\]/).pop();
+	if (!raw) return null;
+	try {
+		return decodeURIComponent(raw);
+	} catch {
+		return raw;
+	}
+}
+
+async function findNearbyProjectMedia(
+	sourcePath: string,
+	projectPath: string,
+	expectedType: "video" | "audio" | "any" = "any",
+): Promise<string | null> {
+	const filename = extractMediaFilename(sourcePath);
+	if (!filename) return null;
+	const contentType = getMediaContentType(filename);
+	if (expectedType === "video" && !contentType.startsWith("video/")) return null;
+	if (expectedType === "audio" && !contentType.startsWith("audio/")) return null;
+	if (
+		expectedType === "any" &&
+		!contentType.startsWith("video/") &&
+		!contentType.startsWith("audio/")
+	)
+		return null;
+
 	try {
 		const directory = await fs.realpath(path.dirname(projectPath));
-		const candidate = path.join(directory, filename);
-		return (await fs.lstat(candidate)).isFile() ? candidate : null;
+		const candidates = [
+			path.join(directory, filename),
+			path.join(directory, "recordings", filename),
+			path.join(directory, "media", filename),
+		];
+		if (
+			!path.isAbsolute(sourcePath) &&
+			!path.win32.isAbsolute(sourcePath) &&
+			!path.posix.isAbsolute(sourcePath)
+		) {
+			candidates.unshift(path.resolve(directory, sourcePath));
+		}
+		for (const candidate of candidates) {
+			try {
+				if ((await fs.lstat(candidate)).isFile()) {
+					return candidate;
+				}
+			} catch (error) {
+				if (!isMissingPath(error)) throw error;
+			}
+		}
+		return null;
 	} catch (error) {
 		if (!isMissingPath(error)) throw error;
 		return null;
 	}
 }
 
-async function resolveProjectMediaPath(sourcePath: string, projectPath?: string) {
+async function resolveProjectMediaPath(
+	sourcePath: string,
+	projectPath?: string,
+	expectedType: "video" | "audio" | "any" = "any",
+) {
+	if (
+		projectPath &&
+		!path.isAbsolute(sourcePath) &&
+		!path.win32.isAbsolute(sourcePath) &&
+		!path.posix.isAbsolute(sourcePath)
+	) {
+		try {
+			const relativePath = path.resolve(path.dirname(projectPath), sourcePath);
+			await fs.access(relativePath);
+			return relativePath;
+		} catch (error) {
+			if (!isMissingPath(error)) throw error;
+		}
+	}
+
 	try {
 		await fs.access(sourcePath);
 		return sourcePath;
 	} catch (error) {
 		if (projectPath && isMissingPath(error)) {
-			const nearby = await findNearbyProjectVideo(sourcePath, projectPath);
+			const nearby = await findNearbyProjectMedia(sourcePath, projectPath, expectedType);
 			if (nearby) return nearby;
 		}
 		throw error;
@@ -41,16 +104,34 @@ function getProjectWebcam(project: object) {
 	return typeof webcam?.sourcePath === "string" ? webcam : null;
 }
 
-type ProjectMediaSources = { success: true; videoPath: string; webcamPath: string | null };
+export type RelinkedAudioItem = { original: string; resolved: string };
+
+export type ProjectMediaSources = {
+	success: true;
+	videoPath: string;
+	webcamPath: string | null;
+	relinkedAudio?: RelinkedAudioItem[];
+};
 
 export async function collectRelinkedProjectMedia(project: unknown, projectPath: string) {
 	const sources: string[] = [];
 	let complete = true;
 	if (project && typeof project === "object") {
-		const savedPaths = [
+		const editor = (project as { editor?: Record<string, unknown> }).editor;
+		const savedPaths: unknown[] = [
 			(project as { videoPath?: unknown }).videoPath,
 			getProjectWebcam(project)?.sourcePath,
 		];
+		if (Array.isArray(editor?.audioTracks)) {
+			for (const track of editor.audioTracks) {
+				if (typeof track?.sourcePath === "string") savedPaths.push(track.sourcePath);
+			}
+		}
+		if (Array.isArray(editor?.audioRegions)) {
+			for (const region of editor.audioRegions) {
+				if (typeof region?.audioPath === "string") savedPaths.push(region.audioPath);
+			}
+		}
 		for (const savedPath of savedPaths) {
 			if (typeof savedPath !== "string") continue;
 			const sourcePath = normalizeVideoSourcePath(savedPath);
@@ -86,7 +167,7 @@ export async function resolveProjectMediaSources(
 
 	let videoPath: string;
 	try {
-		videoPath = await resolveProjectMediaPath(normalizedVideoPath, projectPath);
+		videoPath = await resolveProjectMediaPath(normalizedVideoPath, projectPath, "video");
 	} catch (error) {
 		return {
 			success: false,
@@ -100,16 +181,66 @@ export async function resolveProjectMediaSources(
 	let webcamPath = normalizeVideoSourcePath(getProjectWebcam(project)?.sourcePath);
 	if (webcamPath) {
 		try {
-			webcamPath = await resolveProjectMediaPath(webcamPath, projectPath);
+			webcamPath = await resolveProjectMediaPath(webcamPath, projectPath, "video");
 		} catch {
 			webcamPath = null;
 		}
 	}
-	return { success: true, videoPath, webcamPath };
+
+	const relinkedAudio: RelinkedAudioItem[] = [];
+	const editor = (project as { editor?: Record<string, unknown> }).editor;
+	if (projectPath && editor && typeof editor === "object") {
+		const tracks = editor.audioTracks;
+		if (Array.isArray(tracks)) {
+			for (const track of tracks) {
+				if (typeof track?.sourcePath === "string") {
+					const norm = normalizeVideoSourcePath(track.sourcePath);
+					if (norm) {
+						try {
+							const resolved = await resolveProjectMediaPath(
+								norm,
+								projectPath,
+								"audio",
+							);
+							if (resolved !== track.sourcePath) {
+								relinkedAudio.push({ original: track.sourcePath, resolved });
+							}
+						} catch {
+							// Missing companion audio does not block project loading
+						}
+					}
+				}
+			}
+		}
+		const regions = editor.audioRegions;
+		if (Array.isArray(regions)) {
+			for (const region of regions) {
+				if (typeof region?.audioPath === "string") {
+					const norm = normalizeVideoSourcePath(region.audioPath);
+					if (norm) {
+						try {
+							const resolved = await resolveProjectMediaPath(
+								norm,
+								projectPath,
+								"audio",
+							);
+							if (resolved !== region.audioPath) {
+								relinkedAudio.push({ original: region.audioPath, resolved });
+							}
+						} catch {
+							// Missing companion audio does not block project loading
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return { success: true, videoPath, webcamPath, relinkedAudio };
 }
 
 export function applyRelinkedProjectMedia(
-	project: { videoPath: string },
+	project: { videoPath: string; editor?: unknown },
 	media: ProjectMediaSources,
 ) {
 	const relinked = new Set<string>();
@@ -125,6 +256,30 @@ export function applyRelinkedProjectMedia(
 	) {
 		webcam.sourcePath = media.webcamPath;
 		relinked.add(media.webcamPath);
+	}
+	if (media.relinkedAudio && media.relinkedAudio.length > 0) {
+		const audioMap = new Map(media.relinkedAudio.map((a) => [a.original, a.resolved]));
+		const editor = (project as { editor?: Record<string, unknown> }).editor;
+		const tracks = editor?.audioTracks;
+		if (Array.isArray(tracks)) {
+			for (const track of tracks) {
+				if (typeof track?.sourcePath === "string" && audioMap.has(track.sourcePath)) {
+					const replacement = audioMap.get(track.sourcePath)!;
+					track.sourcePath = replacement;
+					relinked.add(replacement);
+				}
+			}
+		}
+		const regions = editor?.audioRegions;
+		if (Array.isArray(regions)) {
+			for (const region of regions) {
+				if (typeof region?.audioPath === "string" && audioMap.has(region.audioPath)) {
+					const replacement = audioMap.get(region.audioPath)!;
+					region.audioPath = replacement;
+					relinked.add(replacement);
+				}
+			}
+		}
 	}
 	return relinked;
 }
