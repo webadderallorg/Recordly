@@ -43,7 +43,12 @@ vi.mock("@/lib/exporter/videoExporter", () => ({
 	},
 }));
 vi.mock("./buildExportRenderOptions", () => ({
-	buildExportRenderOptions: () => ({
+	buildExportRenderOptions: ({
+		onProgress,
+	}: {
+		onProgress: (progress: ExportProgress) => void;
+	}) => ({
+		onProgress,
 		wallpaper: "#101010",
 		zoomRegions: [],
 		showShadow: false,
@@ -141,6 +146,37 @@ beforeEach(() => {
 	});
 	mocks.streamBlob.mockResolvedValue("/tmp/share.mp4");
 	mocks.gifExport.mockResolvedValue({ success: true, blob: new Blob(["gif"]) });
+});
+
+it("shows one NVIDIA fallback warning and saves when the fallback succeeds", async () => {
+	const { value, input } = context();
+	mocks.modernExport.mockImplementationOnce(async () => {
+		const config = mocks.modernConstruct.mock.calls[0][0] as {
+			onProgress: (progress: ExportProgress) => void;
+		};
+		const progress = {
+			currentFrame: 0,
+			totalFrames: 30,
+			percentage: 0,
+			estimatedTimeRemaining: 0,
+		};
+		config.onProgress({ ...progress, phase: "preparing" });
+		expect(toast.warning).not.toHaveBeenCalled();
+		config.onProgress({ ...progress, phase: "preparing", nvidiaCudaFailed: true });
+		config.onProgress({
+			...progress,
+			phase: "extracting",
+			currentFrame: 15,
+			percentage: 50,
+			nvidiaCudaFailed: true,
+		});
+		return { success: true, blob: new Blob(["mp4"]) };
+	});
+	await runMp4Export(value);
+	expect(toast.warning).toHaveBeenCalledExactlyOnceWith(
+		"NVIDIA CUDA export failed. Recordly is trying another export path.",
+	);
+	expect(input.exportSession.setExportedFilePath).toHaveBeenCalledWith("/saved/export.mp4");
 });
 
 describe("project-named output", () => {

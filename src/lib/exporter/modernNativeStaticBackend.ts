@@ -260,6 +260,7 @@ export async function exportNativeStaticLayout(
 			if (!Number.isFinite(progress.currentFrame) || !Number.isFinite(progress.totalFrames)) {
 				return;
 			}
+			if (progress.nvidiaCudaFailed) session.progress.nvidiaCudaFailed = true;
 
 			const nativeTotalFrames = Math.max(1, Math.floor(progress.totalFrames));
 			const rawNativeCurrentFrame = Math.max(0, Math.floor(progress.currentFrame));

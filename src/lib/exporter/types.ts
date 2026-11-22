@@ -32,6 +32,7 @@ export interface ExportProgress {
 	renderBackend?: ExportRenderBackend;
 	encodeBackend?: ExportEncodeBackend;
 	encoderName?: string;
+	nvidiaCudaFailed?: boolean;
 	nativeStaticLayoutSkipReason?: string;
 	nativeStaticLayoutSkipReasons?: string[];
 	phase?: "preparing" | "extracting" | "finalizing" | "saving"; // Phase of export

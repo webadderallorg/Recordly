@@ -18,6 +18,7 @@ export class ModernExportProgress {
 	exportStartTimeMs = 0;
 	lastThroughputLogTimeMs = 0;
 	nativeStaticLayoutAverageFps: number | null = null;
+	nvidiaCudaFailed = false;
 	activeFinalizationProgressWatchdog: FinalizationProgressWatchdog | null = null;
 	lastFinalizationRenderProgress = INITIAL_FINALIZATION_PROGRESS_STATE.lastRenderProgress;
 	lastFinalizationAudioProgress = INITIAL_FINALIZATION_PROGRESS_STATE.lastAudioProgress;
@@ -42,6 +43,7 @@ export class ModernExportProgress {
 		this.displayedRenderFps = 0;
 		this.renderCompletedAtMs = null;
 		this.nativeStaticLayoutAverageFps = null;
+		this.nvidiaCudaFailed = false;
 	}
 
 	async awaitWithFinalizationTimeout<T>(
@@ -222,6 +224,7 @@ export class ModernExportProgress {
 				renderBackend: this.session.metrics.renderBackend ?? undefined,
 				encodeBackend: this.session.metrics.encodeBackend ?? undefined,
 				encoderName: this.session.metrics.encoderName ?? undefined,
+				nvidiaCudaFailed: this.nvidiaCudaFailed || undefined,
 				nativeStaticLayoutSkipReason:
 					this.session.native.nativeStaticLayoutSkipReason ?? undefined,
 				nativeStaticLayoutSkipReasons:

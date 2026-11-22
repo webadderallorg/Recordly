@@ -147,6 +147,7 @@ interface RendererNativeStaticLayoutMetrics extends RendererFfmpegAudioMuxMetric
 interface RendererNativeStaticLayoutProgress {
 	sessionId?: string;
 	backend?: RendererNativeStaticLayoutChunkMetric["backend"];
+	nvidiaCudaFailed?: boolean;
 	stage?: "preparing" | "finalizing";
 	elapsedMs?: number;
 	averageFps?: number;

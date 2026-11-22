@@ -257,6 +257,15 @@ export async function tryNativeStaticGpuExport({
 						"[native-static-layout-export] Experimental NVIDIA CUDA compositor failed or produced invalid output; falling back to Windows GPU compositor:",
 						error,
 					);
+					onProgress?.({
+						sessionId: options.sessionId,
+						backend: "windows-d3d11-compositor",
+						stage: "preparing",
+						currentFrame: 0,
+						totalFrames: Math.ceil(options.durationSec * options.frameRate),
+						percentage: 0,
+						nvidiaCudaFailed: true,
+					});
 					await removeTemporaryExportFile(videoOnlyPath);
 				}
 			}
