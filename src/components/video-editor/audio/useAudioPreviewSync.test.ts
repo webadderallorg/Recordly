@@ -35,7 +35,69 @@ afterEach(() => {
 	harness.loaded.mockClear();
 });
 
-it("does not repeatedly seek healthy fast playback after delayed renders", async () => {
+it.each([
+	{
+		name: "keeps healthy 4x playback running",
+		rate: 4,
+		updates: [
+			{ wallTime: 300, timelineTime: 0.3, audioTime: 1.15 },
+			{ wallTime: 600, timelineTime: 0.6, audioTime: 2.35 },
+			{ wallTime: 900, timelineTime: 0.9, audioTime: 3.55 },
+		],
+		expectedSeeks: [],
+	},
+	{
+		name: "keeps audio playing when the timeline falls behind during a delayed render",
+		rate: 1,
+		updates: [
+			{ wallTime: 300, timelineTime: 0.3, audioTime: 0.28 },
+			{ wallTime: 550, timelineTime: 0.4, audioTime: 0.38 },
+			{ wallTime: 630, timelineTime: 0.62, audioTime: 0.65 },
+			{ wallTime: 750, timelineTime: 0.74, audioTime: 0.77 },
+		],
+		expectedSeeks: [],
+	},
+	{
+		name: "resyncs immediately after a forward timeline seek at 2x",
+		rate: 2,
+		updates: [{ wallTime: 200, timelineTime: 0.5, audioTime: 0.4, seekVersion: 1 }],
+		expectedSeeks: [1],
+	},
+	{
+		name: "resyncs after a backward timeline seek",
+		rate: 1,
+		updates: [
+			{ wallTime: 300, timelineTime: 0.3, audioTime: 0.28 },
+			{ wallTime: 320, timelineTime: 0.1, audioTime: 0.3 },
+		],
+		expectedSeeks: [0.1],
+	},
+	{
+		name: "resyncs after a backward seek that follows a delayed render",
+		rate: 1,
+		updates: [
+			{ wallTime: 1000, timelineTime: 1, audioTime: 1 },
+			{ wallTime: 1400, timelineTime: 1.1, audioTime: 1.4, seekVersion: 1 },
+			{ wallTime: 1500, timelineTime: 1.2, audioTime: 1.17, seekVersion: 1 },
+		],
+		expectedSeeks: [1.1],
+	},
+	{
+		name: "resyncs companion audio that has drifted beyond its playing tolerance",
+		rate: 1,
+		updates: [{ wallTime: 500, timelineTime: 0.5, audioTime: 1.5 }],
+		expectedSeeks: [0.5],
+	},
+	{
+		name: "resyncs promptly at a source discontinuity",
+		rate: 4,
+		updates: [
+			{ wallTime: 300, timelineTime: 0.3, audioTime: 1.15 },
+			{ wallTime: 330, timelineTime: 0.33, audioTime: 1.32, sourceTime: 8 },
+		],
+		expectedSeeks: [8],
+	},
+])("$name", async ({ rate, updates, expectedSeeks }) => {
 	let wallTimeMs = 0;
 	vi.spyOn(performance, "now").mockImplementation(() => wallTimeMs);
 	let position = 0;
@@ -74,7 +136,7 @@ it("does not repeatedly seek healthy fast playback after delayed renders", async
 			}
 		},
 	);
-	const render = (timelineTime: number, sourceTime = timelineTime * 4) => {
+	const render = (timelineTime: number, sourceTime = timelineTime * rate, seekVersion = 0) => {
 		harness.index = 0;
 		harness.effects = [];
 		// biome-ignore lint/correctness/useHookAtTopLevel: the mocked React harness explicitly simulates successive renders.
@@ -84,8 +146,9 @@ it("does not repeatedly seek healthy fast playback after delayed renders", async
 			isPlaying: true,
 			currentTime: sourceTime,
 			timelineTime,
+			previewSeekVersion: seekVersion,
 			duration: 30,
-			sourcePlaybackRate: 4,
+			sourcePlaybackRate: rate,
 			previewSourceAudioFallbackPaths: ["/audio.system.wav"],
 			sourceAudioFallbackStartDelayMsByPath: { "/audio.system.wav": 0 },
 			sourceAudioResourceVersion: 0,
@@ -100,18 +163,13 @@ it("does not repeatedly seek healthy fast playback after delayed renders", async
 	harness.effects.at(-1)?.();
 	await Promise.resolve();
 	seeks.length = 0;
-	for (const time of [0.3, 0.6, 0.9]) {
-		wallTimeMs = time * 1000;
-		position = time * 4 - 0.05;
-		render(time);
+	for (const update of updates) {
+		wallTimeMs = update.wallTime;
+		position = update.audioTime;
+		render(update.timelineTime, update.sourceTime, update.seekVersion);
 		harness.effects.at(-1)?.();
 	}
-	expect(seeks).toEqual([]);
-	// An actual source discontinuity at a cut still aligns the audio promptly.
-	wallTimeMs += 30;
-	render(0.93, 8);
-	harness.effects.at(-1)?.();
-	expect(seeks).toEqual([8]);
+	expect(seeks).toEqual(expectedSeeks);
 });
 
 describe("imported preview audio loading", () => {
@@ -129,6 +187,7 @@ describe("imported preview audio loading", () => {
 				isPlaying: false,
 				currentTime: 0,
 				timelineTime: 0,
+				previewSeekVersion: 0,
 				duration: 10,
 				sourcePlaybackRate: 1,
 				previewSourceAudioFallbackPaths: [],
@@ -323,6 +382,7 @@ describe("source preview playback ownership", () => {
 			isPlaying: playing,
 			currentTime: time,
 			timelineTime: time,
+			previewSeekVersion: 0,
 			duration: 10,
 			sourcePlaybackRate: rate,
 			previewSourceAudioFallbackPaths: [path],
@@ -397,6 +457,7 @@ describe("source preview seek completion", () => {
 				isPlaying: playing,
 				currentTime: 2,
 				timelineTime: 2,
+				previewSeekVersion: 0,
 				duration: 10,
 				sourcePlaybackRate: 1,
 				previewSourceAudioFallbackPaths: ["/audio.system.wav"],

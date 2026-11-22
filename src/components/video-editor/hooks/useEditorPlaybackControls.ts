@@ -7,6 +7,7 @@ interface UseEditorPlaybackControlsParams {
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
 	timelineRef: RefObject<TimelineEditorHandle | null>;
 	playSourceAudioPreview: () => void;
+	onPreviewSeek: () => void;
 	clipRegions: readonly ClipRegion[];
 	zoomRegions: readonly ZoomRegion[];
 	timelinePlayheadTime: number;
@@ -17,6 +18,7 @@ export function useEditorPlaybackControls({
 	videoPlaybackRef,
 	timelineRef,
 	playSourceAudioPreview,
+	onPreviewSeek,
 	clipRegions,
 	zoomRegions,
 	timelinePlayheadTime,
@@ -49,8 +51,9 @@ export function useEditorPlaybackControls({
 
 			if (options.pause) playback.pause();
 			playback.seekTimeline(time);
+			onPreviewSeek();
 		},
-		[getActivePlayback],
+		[getActivePlayback, onPreviewSeek],
 	);
 
 	const handleTimelineSeek = useCallback(
