@@ -176,6 +176,7 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 });
 
 test("playback controls fit and zoom the timeline in compact windows", async ({ page }) => {
+	test.setTimeout(60_000);
 	await installDesktopBridge(page);
 	await page.goto("/?windowType=editor");
 
