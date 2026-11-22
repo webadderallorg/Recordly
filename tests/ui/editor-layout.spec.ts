@@ -267,3 +267,26 @@ test("new zoom blocks default to 1.8x", async ({ page }) => {
 		"true",
 	);
 });
+
+test("the timeline can expand for editing and return to its default height", async ({ page }) => {
+	await page.setViewportSize({ width: 1000, height: 700 });
+	await installDesktopBridge(page, "filmstrip.mp4");
+	await page.goto("/?windowType=editor");
+	await expect(page.locator('[data-variant="clip"]')).toBeVisible({ timeout: 20000 });
+
+	const panel = page.locator("[data-timeline-panel]");
+	const height = async () => (await panel.boundingBox())!.height;
+	const defaultHeight = await height();
+	const expand = page.getByRole("button", { name: "Expand Timeline", exact: true });
+	await expect(expand).toBeVisible();
+	await expand.focus();
+	await page.keyboard.press("Enter");
+
+	const collapse = page.getByRole("button", { name: "Collapse Timeline", exact: true });
+	await expect(collapse).toHaveAttribute("aria-expanded", "true");
+	await expect.poll(height).toBeGreaterThan(defaultHeight + 70);
+	await expect(page.locator(".editor-preview-stage")).toBeVisible();
+	await collapse.click();
+	await expect(expand).toHaveAttribute("aria-expanded", "false");
+	await expect.poll(height).toBe(defaultHeight);
+});
