@@ -247,6 +247,25 @@ describe("recording IPC composition", () => {
 		});
 	});
 
+	it.each([
+		[8000, 8000],
+		[undefined, 10000],
+		[11000, 10000],
+		[-1, 10000],
+		["8000", 10000],
+	])("uses the passed browser recording origin %s when valid", (origin, expected) => {
+		vi.spyOn(Date, "now").mockReturnValue(10000);
+		try {
+			registerRecordingHandlers();
+			const event = { sender: sender() };
+			setSelectedSource({ id: "screen:linux-portal", name: "Wayland display" });
+			invoke("set-recording-state", event, true, origin);
+			expect(cursorCaptureStartTimeMs).toBe(expected);
+		} finally {
+			vi.restoreAllMocks();
+		}
+	});
+
 	it("keeps Windows cursor samples captured while the microphone is starting", () => {
 		Object.defineProperty(process, "platform", { value: "win32" });
 		registerRecordingHandlers();

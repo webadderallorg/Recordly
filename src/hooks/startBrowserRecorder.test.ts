@@ -212,7 +212,7 @@ describe("browser recording editor boundary", () => {
 		expect(earlyTelemetry).toBe(0);
 		expect(recorder.state).toBe("recording");
 		expect(context.resetRecordingClock).toHaveBeenCalledExactlyOnceWith(1800);
-		expect(window.electronAPI.setRecordingState).toHaveBeenCalledExactlyOnceWith(true);
+		expect(window.electronAPI.setRecordingState).toHaveBeenCalledExactlyOnceWith(true, 1800);
 		expect(video.srcObject).toBeNull();
 	});
 	it.each([
@@ -263,7 +263,7 @@ describe("browser recording editor boundary", () => {
 		await vi.advanceTimersByTimeAsync(2000);
 		await pending;
 		expect(context.resetRecordingClock).toHaveBeenCalledExactlyOnceWith(1000);
-		expect(window.electronAPI.setRecordingState).toHaveBeenCalledExactlyOnceWith(true);
+		expect(window.electronAPI.setRecordingState).toHaveBeenCalledExactlyOnceWith(true, 1000);
 	});
 	it("does not start when the portal countdown is cancelled", async () => {
 		const context = createContext();

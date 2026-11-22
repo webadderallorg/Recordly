@@ -348,7 +348,8 @@ export async function startBrowserRecorder(
 		webcamStartTime.current === null ? 0 : webcamStartTime.current - clockStartedAt;
 	setRecording(true);
 	try {
-		await window.electronAPI?.setRecordingState(true);
+		if (portalStart) await window.electronAPI?.setRecordingState(true, clockStartedAt);
+		else await window.electronAPI?.setRecordingState(true);
 	} catch (stateError) {
 		console.warn("Failed to notify main process that recording started:", stateError);
 	}
