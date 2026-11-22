@@ -3,6 +3,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import path from "node:path";
 
 const MANIFEST_FILE_NAME = "helpers-manifest.json";
+const EXTRA_HELPER_SOURCE_FILES = {
+	"wgc-capture": ["electron/native/common/bt709_video.h"],
+};
 
 function getPlatformArchDir(platform, arch) {
 	if (platform !== "win32") {
@@ -42,11 +45,23 @@ function collectSourceFiles(sourceDir, rootDir = sourceDir) {
 	return files;
 }
 
-function hashSourceTree(sourceDir) {
+function hashSourceTree(sourceDir, { projectRoot, helperId } = {}) {
 	const hash = createHash("sha256");
 	for (const relativePath of collectSourceFiles(sourceDir)) {
 		const absolutePath = path.join(sourceDir, relativePath);
 		hash.update(relativePath);
+		hash.update("\n");
+		hash.update(readFileSync(absolutePath));
+		hash.update("\n");
+	}
+
+	const extraFiles = projectRoot && helperId ? (EXTRA_HELPER_SOURCE_FILES[helperId] ?? []) : [];
+	for (const relativePath of [...extraFiles].sort((left, right) => left.localeCompare(right))) {
+		const absolutePath = path.join(projectRoot, relativePath);
+		if (!existsSync(absolutePath) || !statSync(absolutePath).isFile()) {
+			continue;
+		}
+		hash.update(`extra:${relativePath}`);
 		hash.update("\n");
 		hash.update(readFileSync(absolutePath));
 		hash.update("\n");
@@ -112,7 +127,7 @@ export function updateNativeHelperManifest({
 		binaryName,
 		binarySha256: hashFile(binaryPath),
 		sourceDir: path.relative(projectRoot, sourceDir).replaceAll("\\", "/"),
-		sourceFingerprint: hashSourceTree(sourceDir),
+		sourceFingerprint: hashSourceTree(sourceDir, { projectRoot, helperId }),
 		updatedAt: new Date().toISOString(),
 	};
 
@@ -170,7 +185,7 @@ export function verifyNativeHelperManifest({
 	}
 
 	const expectedSourceFingerprint = helperManifest.sourceFingerprint;
-	const actualSourceFingerprint = hashSourceTree(sourceDir);
+	const actualSourceFingerprint = hashSourceTree(sourceDir, { projectRoot, helperId });
 	if (expectedSourceFingerprint !== actualSourceFingerprint) {
 		reasons.push("source fingerprint mismatch");
 	}
