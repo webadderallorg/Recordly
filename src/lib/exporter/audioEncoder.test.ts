@@ -287,6 +287,62 @@ describe("AudioProcessor offline render preparation", () => {
 		expect(renderAndMuxOfflineAudio.mock.calls[0]?.[4]).toEqual([sidecar]);
 	});
 
+	it("renders video audio offline when fast demux transcode returns false", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const demuxer = {
+			getDecoderConfig: vi.fn().mockResolvedValue({ codec: "unsupported" }),
+		} as unknown as import("web-demuxer").WebDemuxer;
+		vi.spyOn(
+			processor as unknown as { processTrimOnlyAudio: () => Promise<boolean> },
+			"processTrimOnlyAudio",
+		).mockResolvedValue(false);
+		const renderAndMuxOfflineAudio = vi
+			.spyOn(processor, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+
+		await processor.process(
+			demuxer,
+			{} as never,
+			"file:///tmp/recording.mp4",
+			[{ id: "t1", startMs: 0, endMs: 500 }],
+			[],
+			undefined,
+			[],
+			[],
+		);
+
+		expect(renderAndMuxOfflineAudio).toHaveBeenCalledOnce();
+		expect(renderAndMuxOfflineAudio.mock.calls[0]?.[0]).toBe("file:///tmp/recording.mp4");
+	});
+
+	it("renders video audio offline when untrimmed demux has no fast config and transcode returns false", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const demuxer = {
+			getDecoderConfig: vi.fn().mockRejectedValue(new Error("Cannot read audio track")),
+		} as unknown as import("web-demuxer").WebDemuxer;
+		vi.spyOn(
+			processor as unknown as { processTrimOnlyAudio: () => Promise<boolean> },
+			"processTrimOnlyAudio",
+		).mockResolvedValue(false);
+		const renderAndMuxOfflineAudio = vi
+			.spyOn(processor, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+
+		await processor.process(
+			demuxer,
+			{} as never,
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			[],
+		);
+
+		expect(renderAndMuxOfflineAudio).toHaveBeenCalledOnce();
+		expect(renderAndMuxOfflineAudio.mock.calls[0]?.[0]).toBe("file:///tmp/recording.mp4");
+	});
+
 	it("uses recorded companion start-delay metadata instead of inferring from duration gap", async () => {
 		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
 		const mainBuffer = { duration: 600, numberOfChannels: 2 } as AudioBuffer;
