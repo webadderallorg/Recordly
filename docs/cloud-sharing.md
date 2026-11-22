@@ -1,6 +1,6 @@
 # Recordly cloud sharing
 
-Recordly's **Publish** menu can save the current edit as a local file or create a shared link. The account menu opens sign-in. For **Create share link**, one progress bar in the Publish menu tracks both export and upload. When the link is ready, the same menu shows the preview and **Copy link**. Sharing renders an MP4 to a temporary file, uploads it to Recordly Share, finalizes its metadata, and removes the temporary file.
+Recordly's **Publish** menu can save the current edit as a local file or create a shared link. The account menu opens sign-in. For **Create share link**, one progress bar in the Publish menu tracks both export and upload. When the link is ready, the same menu shows the preview and **Copy link**. Sharing renders an MP4 to a temporary file, uploads it to Recordly Share, and finalizes its metadata. The temporary file stays until the share controller unmounts, then Recordly removes it.
 
 While rendering for either destination, the loader shuffles its lines, about 80% sensible and 20% playful.
 

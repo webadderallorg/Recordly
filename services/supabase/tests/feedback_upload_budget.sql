@@ -26,8 +26,10 @@ begin
      or public.prepare_feedback_upload(a, report, manifest) <> 'ready'
      or public.prepare_feedback_upload(b, report, manifest) <> 'invalid'
      or public.reserve_feedback_quota(a, 1, 1)
-     or (select reports from public.feedback_daily_usage where user_id = a) <> 1
      then raise exception 'Reservation, retry, ownership or per-account limit failed'; end if;
+  -- Read usage in its own statement so it sees the reservations above.
+  if (select reports from public.feedback_daily_usage where user_id = a) is distinct from 1
+     then raise exception 'Retried reservation was charged twice'; end if;
   if public.finish_feedback_upload(a, report, payload) <> 'incomplete'
      then raise exception 'Missing object passed finalization'; end if;
   insert into storage.objects (bucket_id,name,metadata) values ('feedback-attachments',upload_path,'{"size":1}');
@@ -44,9 +46,10 @@ begin
      then raise exception 'Finalized report lost attachment metadata'; end if;
   if public.prepare_feedback_upload(b, gen_random_uuid(), manifest) <> 'ready'
      or public.prepare_feedback_upload(c, gen_random_uuid(), manifest) <> 'limit'
-     or exists(select 1 from public.feedback_daily_usage where user_id = c)
      or not public.reserve_feedback_quota(d, 0, 0)
      then raise exception 'Shared byte budget failed or blocked text-only feedback'; end if;
+  if exists(select 1 from public.feedback_daily_usage where user_id = c)
+     then raise exception 'Rejected reservation charged the account'; end if;
   insert into public.feedback_global_usage (day, bytes)
     values ((now() at time zone 'UTC')::date - 10, 524288000);
   update public.feedback_global_usage set bytes = 0 where day = (now() at time zone 'UTC')::date;

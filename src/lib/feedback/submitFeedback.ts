@@ -35,10 +35,9 @@ export const MAX_FILES = 5;
 export const MAX_BYTES = 50 * 1024 * 1024;
 const LEGACY_BYTES = 10 * 1024 * 1024;
 const CHUNK_BYTES = 6 * 1024 * 1024;
-const drafts = new WeakMap<
-	File[],
-	{ id: string; userId: string; title: string; subject: string; message: string }
->();
+// Keyed by the attachment list: editing the text keeps the report ID, so a retry
+// resumes the same reservation instead of charging the daily budget again.
+const drafts = new WeakMap<File[], { id: string; userId: string }>();
 export function validateAttachments(files: File[]) {
 	if (files.length > MAX_FILES)
 		return translate("common.feedback.errors.tooManyFiles", "Attach up to 5 files.");
@@ -121,20 +120,8 @@ export async function submitFeedback(input: {
 
 	const userId = data.user.id;
 	const existing = drafts.get(input.files);
-	const id =
-		existing?.userId === userId &&
-		existing.title === payload.title &&
-		existing.subject === payload.subject &&
-		existing.message === payload.message
-			? existing.id
-			: crypto.randomUUID();
-	drafts.set(input.files, {
-		id,
-		userId,
-		title: payload.title,
-		subject: payload.subject,
-		message: payload.message,
-	});
+	const id = existing?.userId === userId ? existing.id : crypto.randomUUID();
+	drafts.set(input.files, { id, userId });
 	const query = (action: string, other = "") => `?upload=${action}&id=${id}${other}`;
 	const prepared = await invoke<{ success?: boolean; saved?: boolean }>(
 		{

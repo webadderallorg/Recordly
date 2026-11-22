@@ -33,7 +33,8 @@ begin
   for i in 1..5 loop
     if not public.reserve_feedback_quota(account, 1, 10485760) then raise exception 'Valid byte quota rejected'; end if;
   end loop;
-  if public.prepare_feedback_upload(account, gen_random_uuid(), '[{"name":"large.dat","size":52428800,"type":""}]')
+  -- One byte crosses this account's 50 MiB cap while staying under the shared 100 MiB cap.
+  if public.prepare_feedback_upload(account, gen_random_uuid(), '[{"name":"tiny.dat","size":1,"type":""}]')
      <> 'limit' then raise exception 'Legacy reservations did not count toward the new upload budget'; end if;
   account := '77000000-0000-0000-0000-000000000003';
   for i in 1..10 loop
