@@ -21,6 +21,8 @@
 #include "NvEncoder/NvEncoderCuda.h"
 #include "Utils/Logger.h"
 
+static_assert(NVENCAPI_MAJOR_VERSION >= 10, "Recordly needs NVENCODE API 10.0 or newer");
+
 simplelogger::Logger* logger = simplelogger::LoggerFactory::CreateConsoleLogger(ERROR);
 
 namespace {
@@ -2009,7 +2011,9 @@ void prewarmCuda(int durationMs) {
 }
 
 GUID getNvencPresetGuid(const std::string& encodingMode) {
-    return encodingMode == "fast" ? NV_ENC_PRESET_HP_GUID : NV_ENC_PRESET_HQ_GUID;
+    if (encodingMode == "fast") return NV_ENC_PRESET_P2_GUID;
+    if (encodingMode == "quality") return NV_ENC_PRESET_P5_GUID;
+    return NV_ENC_PRESET_P4_GUID;
 }
 
 uint32_t getNvencMaxBitrate(uint32_t bitrate, const std::string& encodingMode) {
@@ -2024,6 +2028,18 @@ uint32_t getNvencBufferSize(uint32_t bitrate, const std::string& encodingMode) {
     return static_cast<uint32_t>(
         std::min<uint64_t>(0xffffffffu, static_cast<uint64_t>(bitrate) * multiplier));
 }
+
+class RecordlyNvEncoderCuda : public NvEncoderCuda {
+public:
+    using NvEncoderCuda::NvEncoderCuda;
+
+    NV_ENC_CONFIG getH264PresetConfig(GUID preset, NV_ENC_TUNING_INFO tuning) {
+        NV_ENC_PRESET_CONFIG config = {NV_ENC_PRESET_CONFIG_VER, {NV_ENC_CONFIG_VER}};
+        NVENC_API_CALL(m_nvenc.nvEncGetEncodePresetConfigEx(
+            m_hEncoder, NV_ENC_CODEC_H264_GUID, preset, tuning, &config));
+        return config.presetCfg;
+    }
+};
 
 class NvencSink {
 public:
@@ -2055,14 +2071,21 @@ public:
             checkCuda(cudaStreamCreateWithFlags(&copyStream_, cudaStreamNonBlocking), "cudaStreamCreateWithFlags");
         }
 
+        const GUID preset = getNvencPresetGuid(layoutOptions_.encodingMode);
+        const NV_ENC_TUNING_INFO tuning = NV_ENC_TUNING_INFO_HIGH_QUALITY;
+        NV_ENC_CONFIG encodeConfig = encoder_.getH264PresetConfig(preset, tuning);
         NV_ENC_INITIALIZE_PARAMS initializeParams = {NV_ENC_INITIALIZE_PARAMS_VER};
-        NV_ENC_CONFIG encodeConfig = {NV_ENC_CONFIG_VER};
         initializeParams.encodeConfig = &encodeConfig;
-        encoder_.CreateDefaultEncoderParams(
-            &initializeParams,
-            NV_ENC_CODEC_H264_GUID,
-            getNvencPresetGuid(layoutOptions_.encodingMode));
-
+        initializeParams.encodeGUID = NV_ENC_CODEC_H264_GUID;
+        initializeParams.presetGUID = preset;
+        initializeParams.tuningInfo = tuning;
+        initializeParams.encodeWidth = static_cast<uint32_t>(width);
+        initializeParams.encodeHeight = static_cast<uint32_t>(height);
+        initializeParams.darWidth = initializeParams.encodeWidth;
+        initializeParams.darHeight = initializeParams.encodeHeight;
+        initializeParams.maxEncodeWidth = initializeParams.encodeWidth;
+        initializeParams.maxEncodeHeight = initializeParams.encodeHeight;
+        initializeParams.enablePTD = 1;
         initializeParams.frameRateNum = static_cast<uint32_t>(fps);
         initializeParams.frameRateDen = 1;
         initializeParams.enableEncodeAsync = 1;
@@ -2773,7 +2796,7 @@ private:
         }
     }
 
-    NvEncoderCuda encoder_;
+    RecordlyNvEncoderCuda encoder_;
     std::ofstream output_;
     int width_ = 0;
     int height_ = 0;
