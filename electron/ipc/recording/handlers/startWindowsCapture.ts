@@ -15,6 +15,7 @@ import {
 	setWindowsNativeCaptureActive,
 	setWindowsOrphanedMicAudioPath,
 	setWindowsSystemAudioPath,
+	setWindowsWindowCaptureSize,
 	windowsCaptureOutputBuffer,
 	windowsCaptureProcess,
 	windowsCaptureTargetPath,
@@ -214,7 +215,7 @@ export async function startWindowsCapture(
 			setWindowsCaptureOutputBuffer(captureOutput);
 		});
 
-		await waitForWindowsCaptureStart(wcProc);
+		const captureSize = await waitForWindowsCaptureStart(wcProc);
 		const microphoneFallbackRequired =
 			browserMicFallbackRequested ||
 			shouldUseWindowsBrowserMicrophoneFallback(captureOutput, options);
@@ -224,6 +225,11 @@ export async function startWindowsCapture(
 			microphonePath = null;
 			setWindowsMicAudioPath(null);
 		}
+		setWindowsWindowCaptureSize(
+			captureTarget.kind === "window" && source.id && captureSize
+				? { sourceId: source.id, ...captureSize }
+				: null,
+		);
 		setWindowsNativeCaptureActive(true);
 		setNativeScreenRecordingActive(true);
 		recordNativeCaptureDiagnostics({

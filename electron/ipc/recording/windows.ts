@@ -76,7 +76,7 @@ export async function isNativeWindowsCaptureAvailable(): Promise<boolean> {
 }
 
 export function waitForWindowsCaptureStart(proc: ChildProcessWithoutNullStreams) {
-	return new Promise<void>((resolve, reject) => {
+	return new Promise<{ width: number; height: number } | null>((resolve, reject) => {
 		const timer = setTimeout(() => {
 			cleanup();
 			reject(new Error("Timed out waiting for native Windows capture to start"));
@@ -87,7 +87,10 @@ export function waitForWindowsCaptureStart(proc: ChildProcessWithoutNullStreams)
 			stdoutBuffer += chunk.toString();
 			if (stdoutBuffer.includes("Recording started")) {
 				cleanup();
-				resolve();
+				const match = stdoutBuffer.match(/^CAPTURE_SIZE:(\d+)x(\d+)\r?$/m);
+				const width = Number(match?.[1]);
+				const height = Number(match?.[2]);
+				resolve(width > 0 && height > 0 ? { width, height } : null);
 			}
 		};
 

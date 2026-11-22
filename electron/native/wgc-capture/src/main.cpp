@@ -369,6 +369,7 @@ int wmain(int argc, wchar_t* argv[]) {
     std::atomic<bool> captureSetupComplete{false};
     const auto announceRecordingStarted = [&] {
         if (captureSetupComplete && frameCount > 0 && !recordingStartedAnnounced.exchange(true)) {
+            std::cout << "CAPTURE_SIZE:" << captureWidth << "x" << captureHeight << "\n";
             std::cout << "Recording started" << std::endl;
         }
     };
