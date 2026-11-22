@@ -137,6 +137,7 @@ export interface NativeStaticLayoutExportOptions {
 export interface NativeStaticLayoutExportProgress {
 	sessionId?: string;
 	backend?: NativeStaticLayoutBackend;
+	nvidiaCudaFailed?: boolean;
 	stage?: "preparing" | "finalizing";
 	elapsedMs?: number;
 	averageFps?: number;
