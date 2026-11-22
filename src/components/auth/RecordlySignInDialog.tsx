@@ -112,8 +112,6 @@ export function RecordlySignInDialog({
 	// Only a completed interactive sign-in can finish reauthentication.
 	const reauthenticating = reason === "reauthenticate" || tourSignIn?.returnTo === "upgrade";
 	const user = reauthenticating ? null : signedInUser;
-	const switchingAccount = tourSignIn?.returnTo === "permissions";
-	const showSignInForm = !user || switchingAccount;
 	const showRecordingStart = Boolean(user && recordingStart);
 	const [directSignInComplete, setDirectSignInComplete] = useState(false);
 	const openedAuthenticationVersion = useRef<number | undefined>(undefined);
@@ -137,6 +135,10 @@ export function RecordlySignInDialog({
 		page: "account",
 		direction: 1,
 	});
+	const switchingAccount =
+		tourSignIn?.returnTo === "permissions" ||
+		(preview && tour && page === "account" && Boolean(user));
+	const showSignInForm = !user || switchingAccount;
 	const goTo = useCallback((next: OnboardingStage) => {
 		setPage((current) =>
 			current.page === next

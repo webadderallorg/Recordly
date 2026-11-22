@@ -1,6 +1,8 @@
 # Recordly cloud sharing
 
-Recordly's **Publish** menu can save the current edit as a local file or create a shared link. The account menu opens sign-in. Sharing renders an MP4 to a temporary file, uploads it to Recordly Share, finalizes its metadata, and removes the temporary file when the dialog closes.
+Recordly's **Publish** menu can save the current edit as a local file or create a shared link. The account menu opens sign-in. For **Create share link**, one progress bar in the Publish menu tracks both export and upload. When the link is ready, the same menu shows the preview and **Copy link**. Sharing renders an MP4 to a temporary file, uploads it to Recordly Share, finalizes its metadata, and removes the temporary file.
+
+While rendering for either destination, the loader shuffles its lines, about 80% sensible and 20% playful.
 
 Set `VITE_CLOUD_SHARE_ENDPOINT` in `.env` before building. Development falls
 back to `http://localhost:8787/api/upload` when the setting is unset. Packaged

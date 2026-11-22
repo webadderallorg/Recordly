@@ -9,6 +9,18 @@ import {
 	useState,
 } from "react";
 import { ChoiceGroup, ChoiceItem } from "@/components/ui/choice-group";
+import {
+	AppWindowIcon,
+	BoundingBox,
+	DownloadSimple,
+	FolderSimple,
+	Gauge,
+	GearSix,
+	Keyboard,
+	Palette,
+	UserCircle,
+	VideoCamera,
+} from "@/components/ui/icons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useI18n } from "@/contexts/I18nContext";
 import { useScrollFade } from "./settings/useScrollFade";
@@ -24,6 +36,18 @@ export type SettingsSection =
 	| "files"
 	| "updates"
 	| "developer";
+const categoryIcons = {
+	appearance: Palette,
+	general: GearSix,
+	shortcuts: Keyboard,
+	account: UserCircle,
+	permissions: BoundingBox,
+	motion: Gauge,
+	recording: VideoCamera,
+	files: FolderSimple,
+	updates: DownloadSimple,
+	developer: AppWindowIcon,
+} satisfies Record<SettingsSection, typeof GearSix>;
 const SettingsCategoryContext = createContext<SettingsSection | null>(null);
 
 export function useSettingsCategoryActive(category: SettingsSection) {
@@ -93,11 +117,15 @@ export function SettingsSections({
 							aria-label={t("settings.categories.label", "Settings sections")}
 							className="dashboard-settings-tab-list"
 						>
-							{available.map((category) => (
-								<TabsTrigger key={category} value={category}>
-									{labels[category]}
-								</TabsTrigger>
-							))}
+							{available.map((category) => {
+								const Icon = categoryIcons[category];
+								return (
+									<TabsTrigger key={category} value={category}>
+										<Icon aria-hidden="true" className="size-4 shrink-0" />
+										<span>{labels[category]}</span>
+									</TabsTrigger>
+								);
+							})}
 						</CategoryList>
 						{sidebarFooter && (
 							<div className="dashboard-settings-sidebar-footer">

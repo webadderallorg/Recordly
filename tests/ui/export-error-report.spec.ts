@@ -1,21 +1,57 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
+import type { SupportErrorReport } from "../../services/supabase/functions/_shared/appErrorReport";
+import { exportErrorHandler } from "../../services/supabase/functions/submit-export-error/handler";
+
+async function expectAlignedToastActions(report: Locator, copy: Locator) {
+	// Read both boxes in one frame while the toast is still entering.
+	const positions = await report.or(copy).evaluateAll((buttons) => {
+		const reportBox = buttons
+			.find((button) => button.closest("[data-error-report]"))
+			?.getBoundingClientRect();
+		const copyBox = buttons
+			.find((button) => !button.closest("[data-error-report]"))
+			?.getBoundingClientRect();
+		if (!reportBox || !copyBox) return null;
+		return {
+			centerOffset: Math.abs(
+				reportBox.y + reportBox.height / 2 - (copyBox.y + copyBox.height / 2),
+			),
+			gap: copyBox.left - reportBox.right,
+		};
+	});
+	expect(positions?.centerOffset).toBeLessThan(3);
+	expect(positions?.gap).toBeGreaterThan(0);
+}
 
 test("one click sends actual redacted logs, handles failure and retries without confirmation", async ({
 	page,
 }) => {
 	const reports: Record<string, unknown>[] = [];
+	const stored: SupportErrorReport[] = [];
+	const handle = exportErrorHandler({
+		reserve: async () => true,
+		insert: async (report) => {
+			if (reports.length === 1) throw new Error("Test storage unavailable");
+			stored.push(report);
+		},
+	});
 	await page.route("**/functions/v1/submit-export-error", async (route) => {
 		const req = route.request();
 		expect(req.headers().authorization).toBeUndefined();
 		expect(req.headers().cookie).toBeUndefined();
 		expect(req.headers().referer).toBeUndefined();
 		reports.push(req.postDataJSON());
+		const result = await handle(
+			new Request(req.url(), {
+				method: req.method(),
+				headers: req.headers(),
+				body: req.postData(),
+			}),
+		);
 		await route.fulfill({
-			status: reports.length === 1 ? 500 : 200,
-			contentType: "application/json",
-			body: JSON.stringify(
-				reports.length === 1 ? { code: "SUBMISSION_FAILED" } : { success: true },
-			),
+			status: result.status,
+			headers: Object.fromEntries(result.headers),
+			body: await result.text(),
 		});
 	});
 	await page.goto("/tests/ui/export-error-report.html");
@@ -27,6 +63,7 @@ test("one click sends actual redacted logs, handles failure and retries without 
 	await page.getByRole("button", { name: "Retry report", exact: true }).click();
 	await expect(page.getByRole("button", { name: "Report sent", exact: true })).toBeDisabled();
 	expect(reports).toHaveLength(2);
+	expect(stored).toEqual([reports[1]]);
 	expect(reports[1]).toMatchObject({ schemaVersion: 2, context: "export", format: "mp4" });
 	expect(JSON.stringify(reports[1])).not.toContain("Alice");
 	expect(JSON.stringify(reports[1])).not.toContain("alice@example.com");
@@ -131,10 +168,7 @@ for (const engine of ["lightning", "native"]) {
 		await expect(report).toBeInViewport({ ratio: 1 });
 		const copy = page.getByRole("button", { name: "Copy", exact: true });
 		await expect(copy).toBeInViewport({ ratio: 1 });
-		const reportBox = (await report.boundingBox())!;
-		const copyBox = (await copy.boundingBox())!;
-		expect(Math.abs(reportBox.y - copyBox.y)).toBeLessThan(1);
-		expect(reportBox.x + reportBox.width).toBeLessThan(copyBox.x);
+		await expectAlignedToastActions(report, copy);
 		const details = page.locator("[data-error-diagnostics]");
 		await expect(details).toContainText("Diagnostic tail: full failure retained");
 		expect(await details.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
@@ -147,10 +181,7 @@ for (const engine of ["lightning", "native"]) {
 		releaseFirst?.();
 		const retry = page.getByRole("button", { name: "Retry report", exact: true });
 		await expect(retry).toBeInViewport({ ratio: 1 });
-		const retryBox = (await retry.boundingBox())!;
-		const retryCopyBox = (await copy.boundingBox())!;
-		expect(Math.abs(retryBox.y - retryCopyBox.y)).toBeLessThan(1);
-		expect(retryBox.x + retryBox.width).toBeLessThan(retryCopyBox.x);
+		await expectAlignedToastActions(retry, copy);
 		await retry.click();
 		await expect(page.getByRole("button", { name: "Report sent", exact: true })).toBeDisabled();
 		expect(reports).toHaveLength(2);

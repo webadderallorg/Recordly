@@ -123,6 +123,7 @@ function Preview() {
 		handleExportDropdownClose: () => setOpen(false),
 		handleCancelExport: () => {
 			document.documentElement.dataset.preparationCanceled = "true";
+			setOpen(false);
 		},
 		handleStartExportFromDropdown: noop,
 		prepareExportForShare: async () => {

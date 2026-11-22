@@ -780,8 +780,8 @@ for (const signedIn of [true, false]) {
 		const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 		await expect(tour).toHaveAttribute("data-onboarding-state", "login");
 		await expect(tour.getByRole("heading", { name: "Welcome to Recordly" })).toBeVisible();
-		await expect(tour.getByPlaceholder("you@example.com")).toHaveCount(signedIn ? 0 : 1);
-		if (signedIn) await expect(tour.getByText("test@email.com", { exact: true })).toBeVisible();
+		await expect(tour.getByPlaceholder("you@example.com")).toBeVisible();
+		await expect(tour.getByRole("button", { name: "Continue with Google" })).toBeVisible();
 		await expect(tour.getByText("Your account", { exact: true })).toHaveCount(0);
 		const music = tour.getByRole("button", { name: "Mute welcome music", exact: true });
 		const pausedMusic = tour.getByRole("button", { name: "Unmute welcome music", exact: true });
@@ -811,6 +811,7 @@ for (const signedIn of [true, false]) {
 		await tour.getByRole("button", { name: "Next", exact: true }).click();
 		await expect(tour).toHaveAttribute("data-onboarding-state", "permissions");
 		await tour.getByRole("button", { name: "Back to account" }).click();
+		await expect(tour.getByPlaceholder("you@example.com")).toBeVisible();
 		await tour
 			.getByRole("navigation")
 			.getByRole("button", { name: "Permissions", exact: true })
@@ -858,8 +859,7 @@ test("Review permission setup uses onboarding preview in development", async ({ 
 	await page.getByRole("button", { name: "Review permission setup", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-preview-requested", "true");
 	const tour = page.getByRole("dialog", { name: "Welcome to Recordly", exact: true });
-	await expect(tour.getByPlaceholder("you@example.com")).toHaveCount(0);
-	await expect(tour.getByText("test@email.com", { exact: true })).toBeVisible();
+	await expect(tour.getByPlaceholder("you@example.com")).toBeVisible();
 	await tour.getByRole("button", { name: "Next", exact: true }).click();
 	await expect(tour.getByRole("navigation")).toBeVisible();
 	await expect(tour.getByRole("button", { name: "Back to account" })).toBeVisible();

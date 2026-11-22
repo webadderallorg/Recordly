@@ -41,7 +41,7 @@ it("shows the server quota error without exposing internal errors", async () => 
 		},
 	});
 	const error = await submitFeedback(input).catch((error) => error);
-	expect(feedbackErrorMessage(error)).toContain("tomorrow");
+	expect(feedbackErrorMessage(error)).toContain("Try removing your attachments");
 	expect(feedbackErrorMessage(new Error("database private details"))).toBe(
 		"Could not send feedback. Please try again.",
 	);

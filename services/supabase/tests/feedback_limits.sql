@@ -1,4 +1,4 @@
--- Run as migration owner in a disposable Supabase database after both migrations.
+-- Run as migration owner in a disposable Supabase database after the feedback migrations.
 begin;
 insert into auth.users (id) values
   ('77000000-0000-0000-0000-000000000001'),
@@ -33,7 +33,8 @@ begin
   for i in 1..5 loop
     if not public.reserve_feedback_quota(account, 1, 10485760) then raise exception 'Valid byte quota rejected'; end if;
   end loop;
-  if public.reserve_feedback_quota(account, 1, 1) then raise exception 'Daily byte cap bypassed'; end if;
+  if public.prepare_feedback_upload(account, gen_random_uuid(), '[{"name":"large.dat","size":52428800,"type":""}]')
+     <> 'limit' then raise exception 'Legacy reservations did not count toward the new upload budget'; end if;
   account := '77000000-0000-0000-0000-000000000003';
   for i in 1..10 loop
     if not public.reserve_feedback_quota(account, 0, 0) then raise exception 'Valid report quota rejected'; end if;
