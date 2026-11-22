@@ -191,6 +191,7 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 					}
 				}
 			}
+			if (this.cancelled) return;
 			console.warn(
 				"[AudioProcessor] Could not read a supported sidecar audio track; trying offline rendering",
 			);
