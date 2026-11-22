@@ -105,6 +105,8 @@ export interface TimelineEditorHandle {
 	suggestZooms: () => void;
 	clearAllZooms: () => void;
 	splitClip: () => void;
+	trimStart: () => void;
+	trimEnd: () => void;
 	zoomTimelineIn: () => void;
 	zoomTimelineOut: () => void;
 	addAnnotation: (
@@ -364,6 +366,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onTrimSpanChange,
 			clipRegions,
 			onClipSplit,
+			onSeek,
 			onClipSpanChange,
 			onClipDelete,
 			selectedClipId,

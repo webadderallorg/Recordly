@@ -60,7 +60,16 @@ interface ItemProps {
 	variant?: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio" | "caption";
 	isLoading?: boolean;
 	loadingLabel?: string;
+	/** Timeline time a clip edge snaps to while resizing, usually the playhead. */
+	playheadMsRef?: React.RefObject<number>;
 }
+
+/** Width of the zone around a clip edge that starts a trim, half inside and half outside. */
+const MAX_CLIP_GRAB_RADIUS_PX = 16;
+const MIN_ITEM_PX = 6;
+/** How close a dragged clip edge has to come to the playhead to snap to it. It covers
+ * the 9 px between a clip grip and its edge, so a grip dropped on the playhead snaps. */
+const PLAYHEAD_SNAP_PX = 14;
 
 // Map zoom depth to numeric multipliers for locale-aware display.
 const ZOOM_FACTORS: Record<number, number> = {
@@ -99,6 +108,7 @@ export default function Item({
 	variant = "zoom",
 	isLoading = false,
 	loadingLabel,
+	playheadMsRef,
 	children,
 }: ItemProps) {
 	const te = useScopedT("editing");
@@ -218,7 +228,15 @@ export default function Item({
 			return resizeZoom({ ...visibleSpan, [edge]: visibleSpan[edge] + delta }, edge);
 		}
 		const scale = (span.end - span.start) / (displaySpan.end - displaySpan.start);
-		return { ...span, [edge]: span[edge] + delta * scale };
+		const next = { ...span, [edge]: span[edge] + delta * scale };
+		const snapToMs = playheadMsRef?.current;
+		if (
+			snapToMs !== undefined &&
+			Math.abs(next[edge] - snapToMs) <= timeline.pixelsToValue(PLAYHEAD_SNAP_PX) * scale
+		) {
+			next[edge] = snapToMs;
+		}
+		return next;
 	};
 
 	const paintPreview = (preview: Span, deltaY = 0) => {
@@ -271,6 +289,33 @@ export default function Item({
 			}
 		},
 	});
+	// Leave a draggable center even when a clip is only a few pixels wide.
+	const clipWidthPx = Math.max(
+		MIN_ITEM_PX,
+		timeline.valueToPixels(displaySpan.end - displaySpan.start),
+	);
+	const clipGrabRadiusPx = Math.min(MAX_CLIP_GRAB_RADIUS_PX, clipWidthPx / 3);
+	const clipStartSide = timeline.direction === "rtl" ? "right" : "left";
+	const clipEndSide = clipStartSide === "left" ? "right" : "left";
+	const precedingClip = sharedLeftGrip
+		? presentation.clips.find((clip) => clip.span.end === span.start)?.displaySpan
+		: undefined;
+	// A very short preceding clip still renders at the minimum block width.
+	const sharedGapPx = precedingClip
+		? Math.max(
+				0,
+				timeline.valueToPixels(displaySpan.start - precedingClip.start) -
+					Math.max(
+						MIN_ITEM_PX,
+						timeline.valueToPixels(precedingClip.end - precedingClip.start),
+					),
+			)
+		: 0;
+	const clipStartGripPx = Math.min(
+		clipGrabRadiusPx,
+		sharedLeftGrip ? Math.min(sharedGapPx, sharedGapPx / 2 + 2) : 9,
+	);
+	const clipStartGrabPx = sharedLeftGrip ? clipStartGripPx : clipGrabRadiusPx;
 	const { setNodeRef, attributes, listeners, itemStyle, itemContentStyle } = useItem({
 		id,
 		// Keep the measured layout fixed during pickup. Moving it as part of a
@@ -283,7 +328,7 @@ export default function Item({
 			getSpanFromDragEvent: getMediaSpanFromDrag,
 			getSpanFromResizeEvent: getMediaSpanFromResize,
 		},
-		resizeHandleWidth: variant === "clip" ? 12 : undefined,
+		resizeHandleWidth: variant === "clip" ? clipGrabRadiusPx * 2 : undefined,
 		onResizeMove(event) {
 			if (!clipPresentation) return;
 			const next = getMediaSpanFromResize(event);
@@ -370,7 +415,6 @@ export default function Item({
 							? glassStyles.glassCaption
 							: glassStyles.glassYellow;
 
-	const MIN_ITEM_PX = 6;
 	const handleSelect = (event: React.PointerEvent) => {
 		onSelect?.();
 		onSelectId?.(id, event.shiftKey);
@@ -466,8 +510,9 @@ export default function Item({
 						style={{
 							cursor: "col-resize",
 							pointerEvents: isClip ? "none" : "auto",
-							display: isClip && sharedLeftGrip ? "none" : undefined,
+							...(isClip && { left: "auto", [clipStartSide]: -clipStartGripPx }),
 						}}
+						data-testid={isClip && sharedLeftGrip ? "clip-seam-grip" : undefined}
 						title={te("resizeLeft", "Resize left")}
 					/>
 					<div
@@ -480,9 +525,39 @@ export default function Item({
 							cursor: "col-resize",
 							pointerEvents: isClip ? "none" : "auto",
 							display: isClip && sharedRightGrip ? "none" : undefined,
+							...(isClip && {
+								right: "auto",
+								[clipEndSide]: -Math.min(9, clipGrabRadiusPx),
+							}),
 						}}
 						title={te("resizeRight", "Resize right")}
 					/>
+					{/* The visible clip grips sit outside the block. These invisible strips put
+					    them inside the area that starts a trim, so grabbing a grip works. */}
+					{isClip && (
+						<div
+							aria-hidden="true"
+							data-clip-grab="start"
+							className="absolute inset-y-0 z-20"
+							style={{
+								[clipStartSide]: -clipStartGrabPx,
+								width: clipStartGrabPx,
+								cursor: "col-resize",
+							}}
+						/>
+					)}
+					{isClip && !sharedRightGrip && (
+						<div
+							aria-hidden="true"
+							data-clip-grab="end"
+							className="absolute inset-y-0 z-20"
+							style={{
+								[clipEndSide]: -clipGrabRadiusPx,
+								width: clipGrabRadiusPx,
+								cursor: "col-resize",
+							}}
+						/>
+					)}
 					{showAudioWaveform && waveformPeaks && (
 						<AudioWaveform
 							peaks={waveformPeaks}
