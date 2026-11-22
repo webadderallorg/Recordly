@@ -131,10 +131,6 @@ test("recording stops the soundtrack and a new onboarding opening restarts it", 
 }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: true });
 	await installDesktopBridgeOverrides(page, () => {
-		window.electronAPI.onRecordingPermissionsRequested = (callback) => {
-			window.addEventListener("test-open-onboarding", callback);
-			return () => window.removeEventListener("test-open-onboarding", callback);
-		};
 		window.electronAPI.onRecordingStateChanged = (callback) => {
 			const recordingStarted = () => callback({ recording: true, sourceName: "Test source" });
 			window.addEventListener("test-recording-started", recordingStarted);
@@ -151,7 +147,8 @@ test("recording stops the soundtrack and a new onboarding opening restarts it", 
 	await expect(tour.locator("[data-welcome-music]")).toHaveCount(0);
 	await tour.getByRole("button", { name: "Close onboarding window" }).click();
 	await expect(tour).not.toBeVisible();
-	await page.evaluate(() => window.dispatchEvent(new Event("test-open-onboarding")));
+	// Closing destroys the onboarding window, so the next opening is a fresh load.
+	await page.reload();
 	await expect(mute).toBeVisible();
 	await expect(audio).toHaveJSProperty("paused", false);
 });
