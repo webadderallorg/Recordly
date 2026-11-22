@@ -22,6 +22,8 @@ import {
 	setCursorCaptureInterval,
 	setCursorCapturePauseStartedAtMs,
 	setPendingCursorSamples,
+	windowsNativeCaptureActive,
+	windowsWindowCaptureSize,
 } from "../state";
 import type { CursorInteractionType, CursorTelemetryPoint, CursorVisualType } from "../types";
 import { getScreen, getTelemetryPathForVideo } from "../utils";
@@ -188,7 +190,23 @@ export function getCursorCaptureElapsedMs(nowMs = Date.now()) {
 }
 
 export function getNormalizedCursorPoint() {
-	const fallbackCursor = getScreen().getCursorScreenPoint();
+	const screen = getScreen();
+	const fallbackCursor = screen.getCursorScreenPoint();
+	const isWindowSource = selectedSource?.id?.startsWith("window:") === true;
+	if (isWindowSource && process.platform === "win32" && windowsNativeCaptureActive) {
+		if (!selectedWindowBounds) return null;
+		const { physicalOrigin } = selectedWindowBounds;
+		const captureSize = windowsWindowCaptureSize;
+		if (physicalOrigin && captureSize && captureSize.sourceId === selectedSource?.id) {
+			// WGC keeps the original encoded size when the window is resized.
+			const pixel = screen.dipToScreenPoint(fallbackCursor);
+			return {
+				cx: clamp((pixel.x - physicalOrigin.x) / captureSize.width, 0, 1),
+				cy: clamp((pixel.y - physicalOrigin.y) / captureSize.height, 0, 1),
+			};
+		}
+	}
+
 	const linuxCursorCache = process.platform === "linux" ? linuxCursorScreenPoint : null;
 	const isLinuxCacheFresh = !!linuxCursorCache && Date.now() - linuxCursorCache.updatedAt <= 1000;
 
@@ -200,9 +218,7 @@ export function getNormalizedCursorPoint() {
 		: fallbackCursor;
 
 	// Areas are fixed rectangles, so they normalize like a window that never moves.
-	const windowBounds = selectedSource?.id?.startsWith("window:")
-		? selectedWindowBounds
-		: getSourceArea(selectedSource);
+	const windowBounds = isWindowSource ? selectedWindowBounds : getSourceArea(selectedSource);
 	if (windowBounds) {
 		const sf =
 			process.platform === "win32" || process.platform === "darwin"
@@ -287,6 +303,7 @@ export function pushCursorSample(
 
 export function sampleCursorPoint() {
 	const point = getNormalizedCursorPoint();
+	if (!point) return;
 	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "move");
 }
 

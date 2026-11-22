@@ -45,6 +45,8 @@ export let windowsCaptureTargetPath: string | null = null;
 /** Actual helper output, retained independently of its final stdout marker. */
 export let windowsCaptureTempPath: string | null = null;
 export let windowsNativeCaptureActive = false;
+export let windowsWindowCaptureSize: { sourceId: string; width: number; height: number } | null =
+	null;
 export let windowsCaptureStopRequested = false;
 export let windowsCapturePaused = false;
 export let windowsSystemAudioPath: string | null = null;
@@ -90,7 +92,8 @@ export let interactionCaptureCleanup: (() => void) | null = null;
 export let hasLoggedInteractionHookFailure = false;
 export let lastLeftClick: { timeMs: number; cx: number; cy: number } | null = null;
 export let linuxCursorScreenPoint: { x: number; y: number; updatedAt: number } | null = null;
-export let selectedWindowBounds: WindowBounds | null = null;
+export type TrackedWindowBounds = WindowBounds & { physicalOrigin?: Pick<WindowBounds, "x" | "y"> };
+export let selectedWindowBounds: TrackedWindowBounds | null = null;
 export let windowBoundsCaptureInterval: NodeJS.Timeout | null = null;
 
 // ── Native macOS window source cache ─────────────────────────────────────────
@@ -180,6 +183,10 @@ export function setWindowsCaptureTempPath(v: string | null) {
 }
 export function setWindowsNativeCaptureActive(v: boolean) {
 	windowsNativeCaptureActive = v;
+	if (!v) windowsWindowCaptureSize = null;
+}
+export function setWindowsWindowCaptureSize(size: typeof windowsWindowCaptureSize) {
+	windowsWindowCaptureSize = size;
 }
 export function setWindowsCaptureStopRequested(v: boolean) {
 	windowsCaptureStopRequested = v;
@@ -281,7 +288,7 @@ export function setLastLeftClick(v: { timeMs: number; cx: number; cy: number } |
 export function setLinuxCursorScreenPoint(v: { x: number; y: number; updatedAt: number } | null) {
 	linuxCursorScreenPoint = v;
 }
-export function setSelectedWindowBounds(v: WindowBounds | null) {
+export function setSelectedWindowBounds(v: TrackedWindowBounds | null) {
 	selectedWindowBounds = v;
 }
 export function setWindowBoundsCaptureInterval(v: NodeJS.Timeout | null) {
