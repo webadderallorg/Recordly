@@ -385,7 +385,7 @@ export async function decodeVideoStreamAttempt(
 
 			const currentSegment = segments[segmentIdx];
 
-			// Keep the nearest pre-roll frame for cuts between source frames.
+			// Keep the last presented frame before the start of a cut.
 			if (frameTimeSec < currentSegment.startSec - epsilonSec) {
 				heldFrame?.close();
 				heldFrame = frame;
@@ -401,8 +401,7 @@ export async function decodeVideoStreamAttempt(
 				continue;
 			}
 
-			// Any target timestamp before this midpoint is closer to heldFrame than current frame.
-			const handoffBoundarySec = (heldFrameSec + frameTimeSec) / 2;
+			// The current frame becomes visible at its presentation timestamp.
 			while (!context.cancelled) {
 				const segmentFrameCount = segmentOutputFrameCounts[segmentIdx];
 				if (segmentFrameIndex >= segmentFrameCount) {
@@ -414,7 +413,7 @@ export async function decodeVideoStreamAttempt(
 					segmentFrameIndex,
 					targetFrameRate,
 				);
-				if (sourceTimeSec > handoffBoundarySec) {
+				if (sourceTimeSec >= frameTimeSec - epsilonSec) {
 					break;
 				}
 

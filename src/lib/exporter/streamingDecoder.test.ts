@@ -1079,6 +1079,7 @@ describe("StreamingVideoDecoder decode failures", () => {
 		await decoder.decodeAll(3, undefined, undefined, async (frame) => {
 			complete.push(frame!.timestamp);
 		});
+		expect(complete.slice(0, 6)).toEqual([0, 0, 0, 1_000_000, 1_000_000, 1_000_000]);
 		chunksDecoded = 0;
 		const sample: number[] = [];
 		await decoder.decodeSampleWindow(
@@ -1093,7 +1094,7 @@ describe("StreamingVideoDecoder decode failures", () => {
 			1,
 		);
 		expect(sample).toEqual(complete.slice(2, 3));
-		expect(sample).toEqual([1_000_000]);
+		expect(sample).toEqual([0]);
 		expect(chunksDecoded).toBeLessThan(40);
 		expect(readerCancelled).toHaveBeenCalled();
 	});
