@@ -584,8 +584,10 @@ function focusOrCreateMainWindow() {
 		// work because they receive an XDG activation token via StatusNotifierItem.ProvideXdgActivationToken;
 		// Electron's tray doesn't handle that yet. Workaround: destroy and recreate the HUD so the new
 		// window gets focus (creation path works). Only for HUD, not editor.
+		// Never recreate the HUD while it owns an active recording.
 		if (
 			process.platform === "linux" &&
+			!desktopRecordingActive &&
 			!mainWindow.isFocused() &&
 			!isEditorWindow(mainWindow)
 		) {
@@ -1234,13 +1236,18 @@ app.on("before-quit", () => {
 	recordingFocus.stop();
 	isAppQuitting = true;
 	authCallbacks.close();
-	void appLinks.close();
 	void clearRecordingTrashUndo().catch((error) =>
 		console.warn("Could not clear recording undo cache", error),
 	);
 	killWindowsCaptureProcess();
 	showCursor();
 	void cleanupAllExportStreams();
+});
+
+// "quit" cannot be cancelled (unlike before-quit, which an unsaved editor can
+// cancel), so the activation relay stays available until the app really exits.
+app.on("quit", () => {
+	void appLinks.close();
 });
 
 let nativeExportQuitState: "idle" | "waiting" | "ready" = "idle";

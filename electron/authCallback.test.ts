@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
 	send: vi.fn(),
 	foreignSend: vi.fn(),
 	relayRoute: vi.fn(),
+	servers: [] as Array<{ on: ReturnType<typeof vi.fn>; listen: ReturnType<typeof vi.fn> }>,
 }));
 vi.mock("./authFlowRelay", () => ({
 	createAuthFlowRelay: () => ({ route: state.relayRoute, close: async () => undefined }),
@@ -14,7 +15,9 @@ vi.mock("./authFlowRelay", () => ({
 vi.mock("node:http", () => ({
 	createServer: (handler: (request: unknown, response: unknown) => void) => {
 		state.request = handler;
-		return { on: vi.fn(), listen: vi.fn(), close: vi.fn() };
+		const server = { on: vi.fn(), listen: vi.fn(), close: vi.fn() };
+		state.servers.push(server);
+		return server;
 	},
 }));
 vi.mock("electron", () => ({
@@ -93,6 +96,39 @@ it("serves the loopback return page in packaged Windows/Linux builds only when e
 	expect(response.writeHead).toHaveBeenCalledWith(200, expect.any(Object));
 	expect(String(response.end.mock.calls[0][0])).toContain('href="recordly://app/open"');
 	on.close();
+});
+
+it("retries the loopback port while another instance holds it, until closed", async () => {
+	vi.useFakeTimers();
+	try {
+		const { createAuthCallbackController } = await import("./authCallback");
+		const controller = createAuthCallbackController({
+			isDev: false,
+			focusApp: vi.fn(),
+			flowRoutingEnabled: false,
+			loopbackReturn: true,
+		});
+		state.servers.length = 0;
+		controller.startDevServer();
+		const busy = Object.assign(new Error("in use"), { code: "EADDRINUSE" });
+		const fail = (server: (typeof state.servers)[number]) =>
+			(server.on.mock.calls.find(([event]) => event === "error")?.[1] as (e: Error) => void)(
+				busy,
+			);
+
+		fail(state.servers[0]);
+		expect(state.servers).toHaveLength(1);
+		vi.advanceTimersByTime(5000);
+		expect(state.servers).toHaveLength(2);
+		expect(state.servers[1].listen).toHaveBeenCalledWith(43821, "127.0.0.1");
+
+		fail(state.servers[1]);
+		controller.close();
+		vi.advanceTimersByTime(10_000);
+		expect(state.servers).toHaveLength(2);
+	} finally {
+		vi.useRealTimers();
+	}
 });
 
 it("restricts callback reads and acknowledgements to the trusted main frame", async () => {

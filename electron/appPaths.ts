@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { app } from "electron";
-import { reserveInstanceSession, shareSafeStorageKey } from "./instanceSession";
+import { reserveInstanceSession, shareSafeStorageKeyWhenReady } from "./instanceSession";
 
 if (process.env["VITE_DEV_SERVER_URL"]) {
 	const devUserDataPath = path.join(app.getPath("appData"), "Recordly-dev");
@@ -21,7 +21,15 @@ export function initializeInstanceSession() {
 	try {
 		if (process.platform === "win32") {
 			try {
-				shareSafeStorageKey(primarySessionPath, reservation.sessionPath);
+				const shared = shareSafeStorageKeyWhenReady(
+					primarySessionPath,
+					reservation.sessionPath,
+				);
+				if (shared === "no-primary-key")
+					console.warn(
+						"[instance-session] The primary profile has no secure storage key yet; this " +
+							"instance uses its own until a later launch shares it (the replaced key is kept).",
+					);
 			} catch (error) {
 				console.warn("[instance-session] Could not share the secure storage key", error);
 			}

@@ -16,6 +16,7 @@ const DEV_CALLBACK_ORIGIN = `http://${DEV_CALLBACK_HOST}`;
 const CALLBACK_PATH = "/callback";
 const LOOPBACK_CALLBACK_PATH = "/auth/callback";
 const MAX_CALLBACK_URL_LENGTH = 8192;
+const SERVER_RETRY_MS = 3000;
 const CALLBACK_PARAMETERS = new Set([
 	"code",
 	"sb_flow_id",
@@ -52,6 +53,7 @@ export function createAuthCallbackController({
 	const protocol = isDev ? "recordly-dev" : "recordly";
 	let pendingUrl: string | null = null;
 	let server: Server | null = null;
+	let serverRetry: ReturnType<typeof setTimeout> | undefined;
 	let closed = false;
 	let startupFinished = false;
 	let startupDropped = false;
@@ -97,9 +99,6 @@ export function createAuthCallbackController({
 				prepareSet: async (event, key, persistedKeys) => {
 					const flowId = flowKey(key);
 					if (!flowId) return;
-					// Another instance may have held the return port at startup and
-					// since quit; claim it now that this instance starts a sign-in.
-					startDevServer();
 					if (persistedKeys) {
 						const present = new Set(persistedKeys);
 						for (const [id, flow] of flowOwners) {
@@ -304,14 +303,28 @@ export function createAuthCallbackController({
 			}
 		});
 		server.on("error", (error) => {
-			console.error("[auth] Could not start local callback server", error);
 			server = null;
+			// Another instance holds the port. Take it over once that instance quits,
+			// whether or not flow-ID routing (and its sign-in hook) is enabled.
+			if ((error as NodeJS.ErrnoException).code === "EADDRINUSE" && !closed) {
+				if (!serverRetry) {
+					serverRetry = setTimeout(() => {
+						serverRetry = undefined;
+						startDevServer();
+					}, SERVER_RETRY_MS);
+					serverRetry.unref?.();
+				}
+				return;
+			}
+			console.error("[auth] Could not start local callback server", error);
 		});
 		server.listen(43821, "127.0.0.1");
 	}
 
 	function close() {
 		closed = true;
+		if (serverRetry) clearTimeout(serverRetry);
+		serverRetry = undefined;
 		startupUrls.length = 0;
 		startupSeen.clear();
 		server?.close();
