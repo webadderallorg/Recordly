@@ -76,6 +76,7 @@ it("ignores its own record and falls through unreachable instances", async () =>
 	const self = relay(301);
 	await self.listen(vi.fn());
 	await expect(self.forward()).resolves.toBe(false);
+	await self.close();
 
 	await fs.writeFile(
 		path.join(directory, "recordly.302.json"),
