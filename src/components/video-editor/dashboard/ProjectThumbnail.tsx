@@ -166,7 +166,7 @@ export function ProjectThumbnail({
 					!generatedThumbnail &&
 					failedGenerationKey !== cacheKey &&
 					(projectPath || videoSource))) && (
-				<Skeleton className="absolute inset-0 rounded-xl" />
+				<Skeleton animationType="none" className="absolute inset-0 rounded-xl" />
 			)}
 			{path && !sourceFailed ? (
 				thumbnailSource.url ? (
@@ -178,7 +178,7 @@ export function ProjectThumbnail({
 						draggable={false}
 						onError={() => setFailedSource(sourceKey)}
 						onLoad={() => setLoadedSource(sourceKey)}
-						className={`h-full w-full object-cover${loadedSource === sourceKey ? " loading-content-enter" : " opacity-0"}`}
+						className={`h-full w-full object-cover${loadedSource === sourceKey ? "" : " opacity-0"}`}
 					/>
 				) : null
 			) : generatedThumbnail ? (
@@ -186,7 +186,7 @@ export function ProjectThumbnail({
 					src={generatedThumbnail}
 					alt=""
 					draggable={false}
-					className="loading-content-enter h-full w-full object-cover"
+					className="h-full w-full object-cover"
 				/>
 			) : videoSource && visible ? (
 				<video

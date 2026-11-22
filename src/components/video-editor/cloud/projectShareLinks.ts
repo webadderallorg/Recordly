@@ -106,13 +106,21 @@ function writeLinks(links: Record<string, ProjectShareLink>) {
 	if (nativeSettingsAvailable && !savedNatively)
 		throw new Error("Could not save share links to desktop settings");
 }
-export function getProjectShare(path: string, accountId?: string): ProjectShareLink | undefined {
+/** Read the synchronous settings bridge once when rendering a collection of projects. */
+export function getProjectShareLookup(accountId?: string) {
 	try {
-		const entry = readLinks()[path];
-		return entry?.accountId && entry.accountId !== accountId ? undefined : entry;
+		const links = readLinks();
+		return (path: string): ProjectShareLink | undefined => {
+			const entry = links[path];
+			if (!entry?.url || (entry.accountId && entry.accountId !== accountId)) return undefined;
+			return entry;
+		};
 	} catch {
-		return undefined;
+		return () => undefined;
 	}
+}
+export function getProjectShare(path: string, accountId?: string): ProjectShareLink | undefined {
+	return getProjectShareLookup(accountId)(path);
 }
 export function getProjectShareLink(path: string): string | undefined {
 	try {
