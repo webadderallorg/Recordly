@@ -98,7 +98,6 @@
       "NSCameraUsageDescription": "Recordly needs camera access to record webcam video.",
       "NSMicrophoneUsageDescription": "Recordly needs microphone access to record voice audio.",
       "NSCameraUseContinuityCameraDeviceType": true,
-      "com.apple.security.device.audio-input": true,
       "CFBundleDocumentTypes": [
         {
           "CFBundleTypeName": "Recordly Project",

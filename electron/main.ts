@@ -34,7 +34,7 @@ import {
 	type ProjectMenuAction,
 	withHiddenDockEditorMenus,
 } from "./editorCommandMenu";
-import { getGpuSwitches } from "./gpuSwitches";
+import { getGpuBlocklistOverrideSwitches, getGpuSwitches } from "./gpuSwitches";
 import {
 	cleanupAllExportStreams,
 	cleanupNativeVideoExportSessions,
@@ -153,9 +153,9 @@ ipcMain.handle("resolve-startup-onboarding", (event, action: unknown) => {
 ignoreBrokenConsolePipe(process.stdout);
 ignoreBrokenConsolePipe(process.stderr);
 
-app.commandLine.appendSwitch("ignore-gpu-blocklist");
-app.commandLine.appendSwitch("enable-unsafe-webgpu");
-app.commandLine.appendSwitch("enable-gpu-rasterization");
+for (const gpuSwitch of getGpuBlocklistOverrideSwitches()) {
+	app.commandLine.appendSwitch(gpuSwitch);
+}
 
 app.on("web-contents-created", (_event, contents) => {
 	if (!shouldHardenWebContentsType(contents.getType())) {
