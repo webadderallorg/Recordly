@@ -164,6 +164,10 @@ Recordly 可以根据操作自动强调重点区域，平滑光标运动，添�
 
 https://github.com/webadderallorg/Recordly/releases
 
+## Windows ZIP 版
+
+如果发布版本提供 `Recordly-windows-x64.zip`，请将整个压缩包解压到一个文件夹，再从该文件夹运行 `Recordly.exe`。如需免安装更新，请下载并解压新版的 ZIP 压缩包。
+
 ---
 
 ## Linux AppImage

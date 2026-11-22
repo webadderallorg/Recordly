@@ -64,10 +64,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run smoke:electron-main-cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npx electron-builder --win dir nsis --x64 --publish never
+          npx electron-builder --win dir nsis zip --x64 --publish never
 
-      - name: Smoke test packaged Windows paths
-        run: npm run smoke:packaged-binaries
+      - name: Smoke test the extracted Windows ZIP
+        shell: pwsh
+        run: |
+          $env:RECORDLY_RELEASE_DIR = 'release/zip-smoke'
+          New-Item -ItemType Directory -Path $env:RECORDLY_RELEASE_DIR -Force | Out-Null
+          tar -xf release/Recordly-windows-x64.zip -C $env:RECORDLY_RELEASE_DIR
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run smoke:packaged-binaries
 
 
       - name: Archive corresponding FFmpeg source
@@ -89,6 +95,7 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/latest*.yml
+            release/Recordly-windows-x64.zip
             release/*-ffmpeg-source.zip
             release/SHA256SUMS*.txt
           if-no-files-found: error

@@ -132,7 +132,8 @@
   },
   "win": {
     "target": [
-      "nsis"
+      "nsis",
+      "zip"
     ],
     "icon": "icons/icons/win/icon.ico",
     "executableName": "Recordly",

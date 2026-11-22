@@ -169,6 +169,10 @@ Các bản phát hành dựng sẵn có tại:
 
 https://github.com/webadderallorg/Recordly/releases
 
+## Bản ZIP cho Windows
+
+Nếu bản phát hành có tệp `Recordly-windows-x64.zip`, hãy giải nén toàn bộ vào một thư mục rồi mở `Recordly.exe` trong đó. Để cập nhật mà không cần chạy trình cài đặt, tải và giải nén tệp ZIP từ bản phát hành mới hơn.
+
 ---
 
 ## AppImage trên Linux
