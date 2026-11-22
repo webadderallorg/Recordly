@@ -1,4 +1,4 @@
-Language: EN | [简中](README.zh-CN.md)
+Language: EN | [Tiếng Việt](README.vi.md) | [简中](README.zh-CN.md)
 
 <p align="center">
   <img width="220" alt="Recordly Logo" src="https://github.com/user-attachments/assets/414b8838-6731-45d4-a815-6e3c0aa1fe52" />
@@ -18,7 +18,13 @@ Language: EN | [简中](README.zh-CN.md)
 
 ---
 ### Backed by the community
-<a href="https://coderabbit.link/recordly"><img width="400" alt="CodeRabbit Typemark" src="https://github.com/user-attachments/assets/3926ecfd-8652-4f2d-8da8-ac7641017cf5" /></a>
+<a href="https://coderabbit.link/recordly">
+    <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="https://www.coderabbit.ai/content/assets/white-typemark.svg">
+          <source media="(prefers-color-scheme: light)" srcset="https://www.coderabbit.ai/content/assets/orange-typemark.svg">
+          <img alt="CodeRabbit" height="44" src="https://www.coderabbit.ai/content/assets/orange-typemark.svg" />
+    </picture>
+</a>
 
 ---
 
@@ -36,7 +42,7 @@ Platform notes:
 
 - **macOS** uses native ScreenCaptureKit-based capture helpers.
 - **Windows** uses a native Windows Graphics Capture (WGC) helper on supported builds, with native WASAPI audio support.
-- **Linux** records through Electron capture APIs. Cursor hiding is not supported on Linux today.
+- **Linux** records through Electron capture APIs. X11 uses a screen/window source list; Wayland opens the system picker when recording starts. Cursor hiding is not supported on Linux today.
 
 ---
 
@@ -63,12 +69,6 @@ Use drag-and-drop timeline tools for zooms, trims, speed regions, annotations, e
   <img width="450" alt="timeline editor" src="https://github.com/user-attachments/assets/3692bd8f-7b8d-4a93-b696-d17c828487ea" />
 </p>
 
-## Extensions & Marketplace
-
-Recordly has a community-driven extension system. Anyone can build and publish extensions that add new capabilities to Recordly — cursor click sounds, device frames, browser mockups, wallpapers, render hooks, settings panels, and more.
-
-Browse and install community extensions from the [Recordly Marketplace](https://marketplace.recordly.dev/extensions).
-
 ---
 
 ## All Features
@@ -78,6 +78,7 @@ Browse and install community extensions from the [Recordly Marketplace](https://
 - Record an entire display or a single app window
 - Jump directly from recording into the editor
 - Capture microphone audio and system audio
+- Press Ctrl+Alt+Z (Cmd+Option+Z on macOS) while recording to mark a zoom at the pointer
 - Use native capture backends where supported
 - Resume editing from saved `.recordly` project files
 - Open existing recordings or existing project files from the app
@@ -174,7 +175,54 @@ Prebuilt releases are available at:
 
 https://github.com/webadderallorg/Recordly/releases
 
+## Windows ZIP
+
+If a release provides `Recordly-windows-x64.zip`, extract the entire archive to a folder and open `Recordly.exe` from that folder. To update without running an installer, download and extract the ZIP from a newer release.
+
 ---
+
+## Linux AppImage
+
+If the AppImage appears to do nothing when opened from a file manager, run it from a terminal to see the error.
+Open the terminal in the folder containing the downloaded AppImage before running these commands.
+
+```bash
+chmod +x ./Recordly-linux-x64.AppImage
+./Recordly-linux-x64.AppImage
+```
+
+If you see `libfuse.so.2` in the error, install the FUSE 2 compatibility package for your distribution. See the [AppImage FUSE guide](https://docs.appimage.org/user-guide/troubleshooting/fuse.html) for package names such as `libfuse2` and `libfuse2t64`.
+
+You can also extract and launch the AppImage without FUSE.
+
+```bash
+./Recordly-linux-x64.AppImage --appimage-extract-and-run
+```
+
+### Ubuntu: sandbox launch error
+
+On Ubuntu 24.04 and later, the downloaded AppImage can abort at startup with a fatal error from `setuid_sandbox_host.cc`: the SUID sandbox helper was found, but `chrome-sandbox` is not configured correctly. The same abort has been reported on TUXEDO OS.
+
+AppArmor can restrict unprivileged user namespaces. Chromium then falls back to its `chrome-sandbox` helper and exits, because that helper inside an AppImage is not setuid root. This is a different problem from the missing FUSE dependency above. Installing FUSE, or building Recordly from source, does not lift this restriction.
+
+If the AppImage already opens, launch it with no extra flags. The commands below are only for this sandbox error, and only for a trusted build from the releases page above. They do not fix unrelated launch failures.
+
+From the directory that contains the AppImage:
+
+```bash
+chmod +x ./Recordly-linux-x64.AppImage
+./Recordly-linux-x64.AppImage --no-sandbox
+```
+
+If your system also lacks FUSE, combine both flags:
+
+```bash
+./Recordly-linux-x64.AppImage --appimage-extract-and-run --no-sandbox
+```
+
+`--no-sandbox` disables Chromium's sandbox and reduces process isolation. Include it each time you start this AppImage. Electron documents running without the sandbox as a testing-only option (see the [Electron sandbox documentation](https://www.electronjs.org/docs/latest/tutorial/sandbox)), so treat this as a short-term workaround.
+
+For a stable setup that keeps the sandbox on, use a per-application AppArmor profile that allows user namespaces for Recordly instead of turning the restriction off system-wide. Ubuntu describes this approach in its [notes on unprivileged user namespace restrictions](https://documentation.ubuntu.com/release-notes/24.04/#unprivileged-user-namespace-restrictions).
 
 ## Arch Linux / Manjaro (yay)
 
@@ -192,7 +240,7 @@ PKGBUILD, desktop entry, release sync, and optional **local-from-source** packag
 
 ### Prerequisites
 
-**macOS:** Xcode Command Line Tools (`xcode-select --install`).
+**macOS:** Install Xcode Command Line Tools (`xcode-select --install`) for development. To package the app, select a full Xcode 26 or later installation with `xcode-select` so Electron Builder can compile the icon with `actool`. Xcode 26 requires macOS 15.6 or later.
 
 **Linux (Ubuntu/Debian):**
 
@@ -205,8 +253,8 @@ sudo apt install build-essential cmake libx11-dev libxtst-dev libxrandr-dev libx
 ### Steps
 
 ```bash
-git clone https://github.com/webadderallorg/Recordly.git recordly
-cd recordly
+git clone https://github.com/webadderallorg/Recordly.git
+cd Recordly
 npm install
 npm run dev
 ```
@@ -392,7 +440,12 @@ Pull requests are welcome.
 
 # License
 
-Recordly is licensed under the **AGPL 3.0**.
+Recordly is licensed under the **[GNU AGPLv3](LICENSE.md)**.
+
+Copyright (C) 2026 webadderall
+
+Third-party copyright and license notices are provided in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 

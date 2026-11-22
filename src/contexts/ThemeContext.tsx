@@ -88,11 +88,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 		const mq = globalThis.matchMedia?.("(prefers-color-scheme: dark)");
 		if (!mq) return;
 		const handler = () => {
-			const r = resolveTheme("system");
+			const r = mq.matches ? "dark" : "light";
 			setResolved(r);
 			applyThemeToDOM(r);
 		};
 		mq.addEventListener("change", handler);
+		handler();
 		return () => mq.removeEventListener("change", handler);
 	}, [preference]);
 

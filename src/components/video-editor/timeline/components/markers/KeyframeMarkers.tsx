@@ -1,5 +1,7 @@
 import { useTimelineContext } from "dnd-timeline";
 import React, { useEffect, useState } from "react";
+import { getPlayheadDisplayTime, getTimeAtClipSeam } from "../../core/clipPresentation";
+import { useTimelinePresentation } from "../../core/TimelinePresentation";
 
 interface Keyframe {
 	id: string;
@@ -12,7 +14,7 @@ interface KeyframeMarkersProps {
 	setSelectedKeyframeId: (id: string | null) => void;
 	onKeyframeMove: (id: string, newTime: number) => void;
 	videoDurationMs: number;
-	timelineRef: React.RefObject<HTMLDivElement>;
+	timelineRef: React.RefObject<HTMLDivElement | null>;
 }
 
 const KeyframeMarkers: React.FC<KeyframeMarkersProps> = ({
@@ -24,6 +26,7 @@ const KeyframeMarkers: React.FC<KeyframeMarkersProps> = ({
 	timelineRef,
 }) => {
 	const { sidebarWidth, range, valueToPixels, pixelsToValue } = useTimelineContext();
+	const { clips } = useTimelinePresentation();
 	const [draggingKeyframeId, setDraggingKeyframeId] = useState<string | null>(null);
 
 	useEffect(() => {
@@ -38,7 +41,7 @@ const KeyframeMarkers: React.FC<KeyframeMarkersProps> = ({
 			const absoluteMs = Math.max(0, Math.min(range.start + relativeMs, videoDurationMs));
 
 			// Update the keyframe position in real-time
-			onKeyframeMove(draggingKeyframeId, absoluteMs);
+			onKeyframeMove(draggingKeyframeId, getTimeAtClipSeam(absoluteMs, clips));
 		};
 
 		const handleMouseUp = () => {
@@ -56,6 +59,7 @@ const KeyframeMarkers: React.FC<KeyframeMarkersProps> = ({
 			document.body.style.cursor = "";
 		};
 	}, [
+		clips,
 		draggingKeyframeId,
 		onKeyframeMove,
 		timelineRef,
@@ -68,7 +72,7 @@ const KeyframeMarkers: React.FC<KeyframeMarkersProps> = ({
 	return (
 		<>
 			{keyframes.map((kf) => {
-				const offset = valueToPixels(kf.time - range.start);
+				const offset = valueToPixels(getPlayheadDisplayTime(kf.time, clips) - range.start);
 				const isSelected = kf.id === selectedKeyframeId;
 				const isDragging = kf.id === draggingKeyframeId;
 

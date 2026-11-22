@@ -46,7 +46,6 @@ export function useSourceAudioTrackSettings({
 	sourceAudioTrackSettingsByClip,
 	setSourceAudioTrackSettingsByClip,
 	defaultSourceAudioTrackSettings,
-	setDefaultSourceAudioTrackSettings,
 }: UseSourceAudioTrackSettingsParams): UseSourceAudioTrackSettingsResult {
 	const [sourceAudioTrackMeta, setSourceAudioTrackMeta] = useState<SourceAudioTrackMeta>([]);
 
@@ -70,37 +69,11 @@ export function useSourceAudioTrackSettings({
 		};
 	}, [defaultSourceAudioTrackSettings, selectedClipId, sourceAudioTrackSettingsByClip]);
 
-	const onSourceAudioTracksMetaChange = useCallback(
-		(tracks: SourceAudioTrackMeta) => {
-			setSourceAudioTrackMeta((prev) => (isSameTrackMeta(prev, tracks) ? prev : tracks));
-			setDefaultSourceAudioTrackSettings((prev) => {
-				const next: SourceAudioTrackSettings = {};
-				for (const track of tracks) {
-					next[track.id] = prev[track.id] ?? { volume: 1, normalize: false };
-				}
-				const prevKeys = Object.keys(prev);
-				const nextKeys = Object.keys(next);
-				if (prevKeys.length !== nextKeys.length) {
-					return next;
-				}
-				for (const key of nextKeys) {
-					const prevSetting = prev[key];
-					const nextSetting = next[key];
-					if (!prevSetting || !nextSetting) {
-						return next;
-					}
-					if (
-						prevSetting.volume !== nextSetting.volume ||
-						prevSetting.normalize !== nextSetting.normalize
-					) {
-						return next;
-					}
-				}
-				return prev;
-			});
-		},
-		[setDefaultSourceAudioTrackSettings],
-	);
+	const onSourceAudioTracksMetaChange = useCallback((tracks: SourceAudioTrackMeta) => {
+		setSourceAudioTrackMeta((prev) => (isSameTrackMeta(prev, tracks) ? prev : tracks));
+		// Discovery can temporarily report no tracks while loading or switching media.
+		// Keep saved volumes intact; unconfigured tracks already default to unity at use.
+	}, []);
 
 	const getSourceAudioTrackSettingsForClip = useCallback(
 		(clipId: string | null): SourceAudioTrackSettings => {

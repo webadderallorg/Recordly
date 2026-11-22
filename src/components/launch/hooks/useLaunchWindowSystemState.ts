@@ -1,34 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
-export function useLaunchWindowSystemState(
-	preparePermissions: (args: { startup?: boolean }) => Promise<unknown>,
-) {
-	const [recordingsDirectory, setRecordingsDirectory] = useState<string | null>(null);
+export function useLaunchWindowSystemState(preparePermissions: () => Promise<unknown>) {
 	const [hudOverlayMousePassthroughSupported, setHudOverlayMousePassthroughSupported] = useState<
 		boolean | null
 	>(null);
 	const [platform, setPlatform] = useState<string | null>(null);
-	const [appVersion, setAppVersion] = useState<string | null>(null);
-	const [hideHudFromCapture, setHideHudFromCapture] = useState(true);
+	const [dragX11Window, setDragX11Window] = useState(false);
 
 	useEffect(() => {
 		window.electronAPI?.hudOverlayRendererReady?.();
-	}, []);
-
-	useEffect(() => {
-		let cancelled = false;
-		const load = async () => {
-			try {
-				const result = await window.electronAPI.getRecordingsDirectory();
-				if (!cancelled && result.success) setRecordingsDirectory(result.path);
-			} catch (error) {
-				console.error("Failed to load recordings directory:", error);
-			}
-		};
-		void load();
-		return () => {
-			cancelled = true;
-		};
 	}, []);
 
 	useEffect(() => {
@@ -54,6 +34,7 @@ export function useLaunchWindowSystemState(
 				const result = await window.electronAPI.getHudOverlayMousePassthroughSupported();
 				if (!cancelled && result.success) {
 					setHudOverlayMousePassthroughSupported(result.supported);
+					setDragX11Window(result.dragX11Window === true);
 				}
 			} catch (error) {
 				console.error("Failed to load HUD overlay mouse passthrough support:", error);
@@ -66,77 +47,10 @@ export function useLaunchWindowSystemState(
 	}, []);
 
 	useEffect(() => {
-		void preparePermissions({ startup: true });
+		// Dev onboarding can be skipped to preview the HUD without signing in or
+		// granting permissions. Recording start still runs preparePermissions.
+		if (!import.meta.env.DEV) void preparePermissions();
 	}, [preparePermissions]);
 
-	useEffect(() => {
-		let cancelled = false;
-		const loadVersion = async () => {
-			try {
-				const version = await window.electronAPI.getAppVersion();
-				if (!cancelled) setAppVersion(version);
-			} catch (error) {
-				console.error("Failed to load app version:", error);
-			}
-		};
-		void loadVersion();
-		return () => {
-			cancelled = true;
-		};
-	}, []);
-
-	useEffect(() => {
-		let cancelled = false;
-		const loadCaptureProtection = async () => {
-			try {
-				const result = await window.electronAPI.getHudOverlayCaptureProtection();
-				if (!cancelled && result.success) {
-					setHideHudFromCapture(result.enabled);
-				}
-			} catch (error) {
-				console.error("Failed to load HUD capture protection state:", error);
-			}
-		};
-		void loadCaptureProtection();
-		return () => {
-			cancelled = true;
-		};
-	}, []);
-
-	const chooseRecordingsDirectory = useCallback(async () => {
-		try {
-			const result = await window.electronAPI.chooseRecordingsDirectory();
-			if (result.canceled) return;
-			if (result.success && result.path) setRecordingsDirectory(result.path);
-		} catch (error) {
-			console.error("Failed to choose recordings directory:", error);
-		}
-	}, []);
-
-	const toggleHudCaptureProtection = useCallback(async () => {
-		const nextValue = !hideHudFromCapture;
-		setHideHudFromCapture(nextValue);
-		try {
-			const result = await window.electronAPI.setHudOverlayCaptureProtection(nextValue);
-			if (!result.success) {
-				setHideHudFromCapture(!nextValue);
-				return;
-			}
-			setHideHudFromCapture(result.enabled);
-		} catch (error) {
-			console.error("Failed to update HUD capture protection:", error);
-			setHideHudFromCapture(!nextValue);
-		}
-	}, [hideHudFromCapture]);
-
-	return {
-		recordingsDirectory,
-		hudOverlayMousePassthroughSupported,
-		platform,
-		appVersion,
-		hideHudFromCapture,
-		setHideHudFromCapture,
-		chooseRecordingsDirectory,
-		toggleHudCaptureProtection,
-	};
+	return { hudOverlayMousePassthroughSupported, platform, dragX11Window };
 }

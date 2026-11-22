@@ -1,6 +1,5 @@
 import { type RefObject, useCallback, useEffect, useMemo } from "react";
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
-import type { useExportSettings } from "../export/useExportSettings";
 import {
 	fromFileUrl,
 	type ProjectEditorState,
@@ -15,41 +14,39 @@ type Input = {
 	project: ReturnType<typeof useProjectState>;
 	appearance: ReturnType<typeof useAppearanceState>;
 	timeline: ReturnType<typeof useTimelineState>;
-	exportSettings: ReturnType<typeof useExportSettings>;
 	aspectRatio: AspectRatio;
 	projectNameInputRef: RefObject<HTMLInputElement | null>;
 	projectSaveDialogInputRef: RefObject<HTMLInputElement | null>;
 };
+
+/** Persist editor values, excluding runtime bookkeeping absent from live snapshots. */
+export function buildPersistedEditorState(editor: Partial<ProjectEditorState>) {
+	const { autoFullTrackClipId: _clipId, autoFullTrackClipEndMs: _clipEnd, ...persisted } = editor;
+	return stripPersistedDevMotionBlurSettings(persisted);
+}
 
 export function useProjectSnapshotModel({
 	t,
 	project,
 	appearance,
 	timeline,
-	exportSettings,
 	aspectRatio,
 	projectNameInputRef,
 	projectSaveDialogInputRef,
 }: Input) {
-	const buildPersistedEditorState = useCallback(
-		(editor: Partial<ProjectEditorState>) => stripPersistedDevMotionBlurSettings(editor),
-		[],
-	);
+	const buildPersistedState = useCallback(buildPersistedEditorState, []);
 	const currentSourcePath = useMemo(
 		() =>
 			project.videoSourcePath ?? (project.videoPath ? fromFileUrl(project.videoPath) : null),
 		[project.videoPath, project.videoSourcePath],
 	);
 	const projectDisplayName = useMemo(() => {
-		const fileName =
-			project.currentProjectPath?.split(/[\\/]/).pop() ??
-			currentSourcePath?.split(/[\\/]/).pop() ??
-			"";
+		const fileName = project.currentProjectPath?.split(/[\\/]/).pop() ?? "";
 		return (
 			fileName.replace(/\.recordly$/i, "").replace(/\.[^.]+$/, "") ||
-			t("editor.project.untitled", "Untitled")
+			t("editor.project.untitled", "Untitled Project")
 		);
-	}, [project.currentProjectPath, currentSourcePath, t]);
+	}, [project.currentProjectPath, t]);
 
 	useEffect(() => {
 		if (!project.isEditingProjectName) project.setProjectNameDraft(projectDisplayName);
@@ -58,7 +55,6 @@ export function useProjectSnapshotModel({
 		if (!project.isEditingProjectName) return;
 		const frameId = window.requestAnimationFrame(() => {
 			projectNameInputRef.current?.focus();
-			projectNameInputRef.current?.select();
 		});
 		return () => window.cancelAnimationFrame(frameId);
 	}, [project.isEditingProjectName, projectNameInputRef]);
@@ -73,7 +69,7 @@ export function useProjectSnapshotModel({
 
 	const currentPersistedEditorState = useMemo(
 		() =>
-			buildPersistedEditorState({
+			buildPersistedState({
 				wallpaper: appearance.wallpaper,
 				shadowIntensity: appearance.shadowIntensity,
 				backgroundBlur: appearance.backgroundBlur,
@@ -90,6 +86,7 @@ export function useProjectSnapshotModel({
 				connectedZoomEasing: appearance.connectedZoomEasing,
 				showCursor: appearance.showCursor,
 				loopCursor: appearance.loopCursor,
+				alwaysUsePointerCursor: appearance.alwaysUsePointerCursor,
 				cursorStyle: appearance.cursorStyle,
 				cursorSize: appearance.cursorSize,
 				cursorSmoothing: appearance.cursorSmoothing,
@@ -110,6 +107,7 @@ export function useProjectSnapshotModel({
 				cursorClickBounce: appearance.cursorClickBounce,
 				cursorClickBounceDuration: appearance.cursorClickBounceDuration,
 				cursorSway: appearance.cursorSway,
+				cursorIdleHide: appearance.cursorIdleHide,
 				borderRadius: appearance.borderRadius,
 				padding: appearance.padding,
 				cropRegion: appearance.cropRegion,
@@ -123,15 +121,6 @@ export function useProjectSnapshotModel({
 				autoCaptions: timeline.autoCaptions,
 				autoCaptionSettings: timeline.autoCaptionSettings,
 				aspectRatio,
-				exportEncodingMode: exportSettings.exportEncodingMode,
-				exportBackendPreference: exportSettings.exportBackendPreference,
-				exportPipelineModel: exportSettings.exportPipelineModel,
-				exportQuality: exportSettings.exportQuality,
-				mp4FrameRate: exportSettings.mp4FrameRate,
-				exportFormat: exportSettings.exportFormat,
-				gifFrameRate: exportSettings.gifFrameRate,
-				gifLoop: exportSettings.gifLoop,
-				gifSizePreset: exportSettings.gifSizePreset,
 				sourceAudioTrackSettingsByClip: timeline.sourceAudioTrackSettingsByClip,
 				defaultSourceAudioTrackSettings: timeline.defaultSourceAudioTrackSettings,
 			}),
@@ -152,6 +141,7 @@ export function useProjectSnapshotModel({
 			appearance.connectedZoomEasing,
 			appearance.showCursor,
 			appearance.loopCursor,
+			appearance.alwaysUsePointerCursor,
 			appearance.cursorStyle,
 			appearance.cursorSize,
 			appearance.cursorSmoothing,
@@ -172,6 +162,7 @@ export function useProjectSnapshotModel({
 			appearance.cursorClickBounce,
 			appearance.cursorClickBounceDuration,
 			appearance.cursorSway,
+			appearance.cursorIdleHide,
 			appearance.borderRadius,
 			appearance.padding,
 			appearance.cropRegion,
@@ -185,23 +176,14 @@ export function useProjectSnapshotModel({
 			timeline.autoCaptions,
 			timeline.autoCaptionSettings,
 			aspectRatio,
-			exportSettings.exportEncodingMode,
-			exportSettings.exportBackendPreference,
-			exportSettings.exportPipelineModel,
-			exportSettings.exportQuality,
-			exportSettings.mp4FrameRate,
-			exportSettings.exportFormat,
-			exportSettings.gifFrameRate,
-			exportSettings.gifLoop,
-			exportSettings.gifSizePreset,
 			timeline.sourceAudioTrackSettingsByClip,
 			timeline.defaultSourceAudioTrackSettings,
-			buildPersistedEditorState,
+			buildPersistedState,
 		],
 	);
 
 	return {
-		buildPersistedEditorState,
+		buildPersistedEditorState: buildPersistedState,
 		currentSourcePath,
 		projectDisplayName,
 		currentPersistedEditorState,

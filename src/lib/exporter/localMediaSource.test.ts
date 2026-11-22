@@ -43,14 +43,24 @@ describe("resolveMediaElementSource", () => {
 		expect(result.src).toBe("http://127.0.0.1:4321/video?path=%2Ftmp%2Fexample.wav");
 	});
 
-	it("preserves loopback media-server URLs instead of materializing them through IPC", async () => {
+	it("refreshes loopback URLs through the current media server", async () => {
 		const result = await resolveMediaElementSource(
 			"http://127.0.0.1:43123/video?path=%2Ftmp%2Fexample%20clip.mp4",
 		);
 
 		expect(readLocalFile).not.toHaveBeenCalled();
-		expect(getLocalMediaUrl).not.toHaveBeenCalled();
-		expect(result.src).toBe("http://127.0.0.1:43123/video?path=%2Ftmp%2Fexample%20clip.mp4");
+		expect(getLocalMediaUrl).toHaveBeenCalledWith("/tmp/example clip.mp4");
+		expect(result.src).toBe("http://127.0.0.1:4321/video?path=%2Ftmp%2Fexample%20clip.mp4");
+	});
+
+	it.each([
+		"failure",
+		"exception",
+	])("keeps the existing media URL after refresh %s", async (mode) => {
+		if (mode === "failure") getLocalMediaUrl.mockResolvedValueOnce({ success: false, url: "" });
+		else getLocalMediaUrl.mockRejectedValueOnce(new Error("Server unavailable"));
+		const resource = "http://127.0.0.1:43123/video?path=%2Ftmp%2Fexample.mp4";
+		expect((await resolveMediaElementSource(resource)).src).toBe(resource);
 	});
 
 	it("leaves remote URLs untouched", async () => {

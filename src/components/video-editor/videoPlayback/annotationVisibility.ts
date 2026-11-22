@@ -12,19 +12,3 @@ export function isAnnotationActiveAtTime(
 		timeMs <= annotation.endMs
 	);
 }
-
-/** Return whether the current playhead has left the selected annotation's range. */
-export function shouldClearSelectedAnnotation(
-	annotations: AnnotationRegion[],
-	selectedAnnotationId: string | null | undefined,
-	timeMs: number,
-): boolean {
-	if (!selectedAnnotationId) {
-		return false;
-	}
-
-	const selectedAnnotation = annotations.find(
-		(annotation) => annotation.id === selectedAnnotationId,
-	);
-	return Boolean(selectedAnnotation && !isAnnotationActiveAtTime(selectedAnnotation, timeMs));
-}

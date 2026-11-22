@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { getGpuSwitches, shouldForceLinuxEgl } from "./gpuSwitches";
+import {
+	getGpuBlocklistOverrideSwitches,
+	getGpuSwitches,
+	shouldForceLinuxEgl,
+} from "./gpuSwitches";
 
 describe("shouldForceLinuxEgl", () => {
 	it("does not force EGL in a Wayland session", () => {
@@ -31,21 +35,37 @@ describe("shouldForceLinuxEgl", () => {
 		).toBe(false);
 	});
 
-	it("forces EGL in an X11 session", () => {
-		expect(shouldForceLinuxEgl({ XDG_SESSION_TYPE: "x11" })).toBe(true);
+	it("does not force EGL in an X11 session", () => {
+		expect(shouldForceLinuxEgl({ XDG_SESSION_TYPE: "x11" })).toBe(false);
 	});
 
-	it("forces EGL when x11 is explicitly requested via Electron's ozone hint", () => {
+	it("does not confuse an explicit X11 session request with a supported GL implementation", () => {
 		expect(
 			shouldForceLinuxEgl({
 				ELECTRON_OZONE_PLATFORM_HINT: "x11",
 				WAYLAND_DISPLAY: "wayland-0",
 			}),
-		).toBe(true);
+		).toBe(false);
+	});
+	it("retains an explicit native EGL opt-in", () => {
+		expect(shouldForceLinuxEgl({ RECORDLY_FORCE_EGL: "1" })).toBe(true);
+		expect(shouldForceLinuxEgl({ RECORDLY_FORCE_EGL: " true " })).toBe(true);
+		expect(shouldForceLinuxEgl({ RECORDLY_FORCE_EGL: "0" })).toBe(false);
 	});
 });
 
 describe("getGpuSwitches", () => {
+	it("keeps macOS audio in-process while preserving Metal and the capture workaround", () => {
+		expect(getGpuSwitches("darwin", {})).toEqual({
+			useAngle: "metal",
+			disableFeatures: ["MacCatapLoopbackAudioForScreenShare", "AudioServiceOutOfProcess"],
+		});
+	});
+
+	it("leaves Windows audio process isolation enabled", () => {
+		expect(getGpuSwitches("win32", {})).toEqual({ useAngle: "d3d11" });
+	});
+
 	it("returns the Linux VAAPI workaround without forcing EGL on Wayland", () => {
 		expect(
 			getGpuSwitches("linux", {
@@ -58,10 +78,29 @@ describe("getGpuSwitches", () => {
 		});
 	});
 
-	it("returns the X11 EGL workaround on Linux X11", () => {
+	it("leaves Linux X11 GL selection to Chromium", () => {
 		expect(getGpuSwitches("linux", { XDG_SESSION_TYPE: "x11" })).toEqual({
-			useGl: "egl",
+			useGl: undefined,
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		});
+	});
+});
+
+describe("getGpuBlocklistOverrideSwitches", () => {
+	it("respects Chromium's GPU blocklist by default", () => {
+		expect(getGpuBlocklistOverrideSwitches({})).toEqual([]);
+		expect(getGpuBlocklistOverrideSwitches({ RECORDLY_IGNORE_GPU_BLOCKLIST: "0" })).toEqual([]);
+	});
+
+	it("forces the GPU path only when explicitly requested", () => {
+		for (const value of ["1", "true", " TRUE "]) {
+			expect(
+				getGpuBlocklistOverrideSwitches({ RECORDLY_IGNORE_GPU_BLOCKLIST: value }),
+			).toEqual(["ignore-gpu-blocklist", "enable-unsafe-webgpu", "enable-gpu-rasterization"]);
+		}
+	});
+
+	it("keeps the GPU path for headless smoke-export benchmarks", () => {
+		expect(getGpuBlocklistOverrideSwitches({ RECORDLY_SMOKE_EXPORT: "1" })).toHaveLength(3);
 	});
 });

@@ -33,3 +33,27 @@ export function getScreenSourceIdForDisplay({
 
 	return `screen:fallback:${displayId}`;
 }
+
+export async function resolveDisplayMediaSource({
+	platform,
+	env,
+	selectedSourceId,
+	getSources,
+}: {
+	platform: string;
+	env: NodeJS.ProcessEnv;
+	selectedSourceId: string | null | undefined;
+	getSources: () => Promise<Array<{ id: string; name: string }>>;
+}): Promise<{ id: string; name: string } | null> {
+	const usePortal = platform === "linux" && isLikelyLinuxWaylandSession(env);
+	if (!usePortal && (!selectedSourceId || selectedSourceId === LINUX_PORTAL_SCREEN_SOURCE_ID)) {
+		return null;
+	}
+	const sources = await getSources();
+	// Chromium marks sources chosen through a native picker session with :s.
+	const source = usePortal
+		? sources.find((source) => source.id.endsWith(":s"))
+		: sources.find((source) => source.id === selectedSourceId);
+	// A vanished source must never silently become a different window or the whole screen.
+	return source ? { id: source.id, name: source.name } : null;
+}

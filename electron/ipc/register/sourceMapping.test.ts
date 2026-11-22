@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { getScreenSourceIdForDisplay, LINUX_PORTAL_SCREEN_SOURCE_ID } from "./sourceMapping";
+import {
+	getScreenSourceIdForDisplay,
+	LINUX_PORTAL_SCREEN_SOURCE_ID,
+	resolveDisplayMediaSource,
+} from "./sourceMapping";
 
 describe("getScreenSourceIdForDisplay", () => {
 	it("keeps the live Electron screen source when one is available", () => {
@@ -44,4 +48,72 @@ describe("getScreenSourceIdForDisplay", () => {
 			}),
 		).toBe("screen:fallback:42");
 	});
+});
+
+describe("display media source resolution", () => {
+	for (const selectedSourceId of [null, "window:101:0", LINUX_PORTAL_SCREEN_SOURCE_ID]) {
+		it(`waits for the delegated Wayland source (${selectedSourceId})`, async () => {
+			const source = { id: "window:1:0:s", name: "", thumbnail: "pixels" };
+			const getSources = vi.fn().mockResolvedValue([source]);
+			expect(
+				await resolveDisplayMediaSource({
+					platform: "linux",
+					env: { XDG_SESSION_TYPE: "wayland" },
+					selectedSourceId,
+					getSources,
+				}),
+			).toEqual({ id: source.id, name: source.name });
+			expect(getSources).toHaveBeenCalledOnce();
+		});
+	}
+	it("does not substitute an X11 display for a missing Wayland portal source", async () => {
+		const getSources = vi.fn().mockResolvedValue([{ id: "screen:1:0", name: "Screen" }]);
+		await expect(
+			resolveDisplayMediaSource({
+				platform: "linux",
+				env: { XDG_SESSION_TYPE: "wayland" },
+				selectedSourceId: LINUX_PORTAL_SCREEN_SOURCE_ID,
+				getSources,
+			}),
+		).resolves.toBeNull();
+	});
+	it("returns only the requested X11 source and excludes preview pixels", async () => {
+		const getSources = vi.fn().mockResolvedValue([
+			{ id: "screen:1:0", name: "Screen" },
+			{ id: "window:101:0", name: "Document", thumbnail: "pixels" },
+		]);
+		expect(
+			await resolveDisplayMediaSource({
+				platform: "linux",
+				env: { XDG_SESSION_TYPE: "x11" },
+				selectedSourceId: "window:101:0",
+				getSources,
+			}),
+		).toEqual({ id: "window:101:0", name: "Document" });
+	});
+	it("does not record a different source if the selected window closes", async () => {
+		const getSources = vi.fn().mockResolvedValue([{ id: "screen:1:0", name: "Screen" }]);
+		expect(
+			await resolveDisplayMediaSource({
+				platform: "linux",
+				env: { XDG_SESSION_TYPE: "x11" },
+				selectedSourceId: "window:101:0",
+				getSources,
+			}),
+		).toBeNull();
+	});
+	for (const selectedSourceId of [null, LINUX_PORTAL_SCREEN_SOURCE_ID]) {
+		it(`does not open a portal or pick a default on X11 (${selectedSourceId})`, async () => {
+			const getSources = vi.fn();
+			expect(
+				await resolveDisplayMediaSource({
+					platform: "linux",
+					env: { XDG_SESSION_TYPE: "x11", WAYLAND_DISPLAY: "wayland-0" },
+					selectedSourceId,
+					getSources,
+				}),
+			).toBeNull();
+			expect(getSources).not.toHaveBeenCalled();
+		});
+	}
 });

@@ -9,19 +9,6 @@
 	background: transparent;
 }
 
-.card {
-	display: flex;
-	align-items: flex-start;
-	gap: 12px;
-	width: 100%;
-	padding: 14px;
-	border: 1px solid hsl(var(--border));
-	border-radius: 8px;
-	background: hsl(var(--background));
-	box-shadow: none;
-	color: hsl(var(--foreground));
-}
-
 .icon {
 	display: flex;
 	align-items: center;
@@ -30,13 +17,29 @@
 	width: 32px;
 	height: 32px;
 	border-radius: 7px;
-	background: hsl(var(--muted));
-	color: hsl(var(--muted-foreground));
+	background: color-mix(in oklab, var(--accent) 12%, transparent);
+	color: var(--accent);
+}
+
+.card {
+	max-width: 440px;
+	padding: 16px;
+	border: 1px solid var(--separator);
+	box-shadow: 0 8px 28px rgb(0 0 0 / 12%);
+}
+
+.iconReady {
+	background: color-mix(in oklab, var(--success) 12%, transparent);
+	color: var(--success);
+}
+
+.content > .error {
+	color: var(--danger);
 }
 
 .iconError {
-	background: hsl(var(--destructive) / 0.14);
-	color: hsl(var(--destructive));
+	background: color-mix(in oklab, var(--destructive) 14%, transparent);
+	color: var(--destructive);
 }
 
 .content {
@@ -46,6 +49,7 @@
 
 .headingRow {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 6px;
 	min-height: 19px;
@@ -61,27 +65,9 @@
 
 .content > p {
 	margin: 4px 0 0;
-	color: hsl(var(--muted-foreground));
+	color: var(--muted-foreground);
 	font-size: 12px;
 	line-height: 1.45;
-}
-
-.version,
-.preview {
-	padding: 2px 6px;
-	border-radius: 999px;
-	background: hsl(var(--muted));
-	color: hsl(var(--muted-foreground));
-	font-size: 10px;
-	font-weight: 600;
-	line-height: 1;
-}
-
-.preview {
-	background: hsl(var(--primary) / 0.12);
-	color: hsl(var(--primary));
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
 }
 
 .actions {
@@ -89,64 +75,11 @@
 	justify-content: flex-end;
 	gap: 8px;
 	margin-top: 12px;
-}
-
-.primaryButton,
-.secondaryButton {
-	height: 30px;
-	padding: 0 12px;
-	border-radius: 6px;
-	font-size: 12px;
-	font-weight: 600;
-	cursor: pointer;
-	transition:
-		background 140ms ease,
-		border-color 140ms ease,
-		transform 140ms ease;
-}
-
-.primaryButton:active,
-.secondaryButton:active {
-	transform: translateY(1px);
-}
-
-.primaryButton {
-	border: 1px solid hsl(var(--primary));
-	background: hsl(var(--primary));
-	color: hsl(var(--primary-foreground));
-}
-
-.primaryButton:hover {
-	background: hsl(var(--primary) / 0.9);
-}
-
-.secondaryButton {
-	border: 1px solid hsl(var(--input));
-	background: hsl(var(--background));
-	color: hsl(var(--muted-foreground));
-}
-
-.secondaryButton:hover {
-	background: hsl(var(--accent));
-	color: hsl(var(--accent-foreground));
+	flex-wrap: wrap;
 }
 
 .progressBlock {
 	margin-top: 12px;
-}
-
-.progressTrack {
-	height: 5px;
-	overflow: hidden;
-	border-radius: 999px;
-	background: hsl(var(--muted));
-}
-
-.progressFill {
-	height: 100%;
-	border-radius: inherit;
-	background: hsl(var(--primary));
-	transition: width 220ms ease;
 }
 
 .progressMeta {
@@ -154,12 +87,12 @@
 	justify-content: space-between;
 	gap: 12px;
 	margin-top: 6px;
-	color: hsl(var(--muted-foreground));
+	color: var(--muted-foreground);
 	font-size: 10px;
 }
 
 .progressMeta strong {
-	color: hsl(var(--foreground));
+	color: var(--foreground);
 	font-weight: 600;
 }
 
@@ -170,5 +103,11 @@
 @keyframes spin {
 	to {
 		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.spin {
+		animation: none;
 	}
 }

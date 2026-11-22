@@ -13,3 +13,11 @@ export function getHudCaptureExcludedProcessIds(
 
 	return [processId];
 }
+
+export function shouldProtectHudCapture(
+	enabled: boolean,
+	recording: boolean,
+	starting: boolean,
+): boolean {
+	return enabled && (recording || starting);
+}

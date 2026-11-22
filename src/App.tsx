@@ -1,5 +1,10 @@
+import { Card } from "@heroui/react";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { RecordlyMark } from "./components/ui/RecordlyMark";
+import { HomeLoadingSkeleton } from "./components/video-editor/dashboard/HomeLoadingSkeleton";
+import { EditorLoadingSkeleton } from "./components/video-editor/layout/EditorLoadingSkeleton";
 import { useI18n } from "./contexts/I18nContext";
+import { getStartupView } from "./lib/startupView";
 
 const HudWindow = lazy(() => import("./components/launch/HudWindow"));
 const SourceSelector = lazy(() =>
@@ -18,22 +23,38 @@ const UpdateToastWindow = lazy(() =>
 	})),
 );
 const EditorWindow = lazy(() => import("./components/video-editor/EditorWindow"));
+const CapturePicker = lazy(() => import("./components/capture-picker/CapturePicker"));
+const OnboardingWindow = lazy(() => import("./components/auth/OnboardingWindow"));
+const OnboardingIntroWindow = lazy(() => import("./components/auth/OnboardingIntroWindow"));
+const PermissionAccessoryWindow = lazy(() => import("./components/auth/PermissionAccessoryWindow"));
 
 export default function App() {
 	const [windowType] = useState(
 		() => new URLSearchParams(window.location.search).get("windowType") || "",
 	);
 	const { t } = useI18n();
-	const appIconSrc = "/app-icons/recordly-128.png";
 
 	useEffect(() => {
 		document.documentElement.dataset.windowType = windowType;
+		const syncWindowChrome = (chrome: { trafficLightsVisible: boolean }) => {
+			document.documentElement.dataset.nativeTrafficLights = String(
+				chrome.trafficLightsVisible,
+			);
+		};
+		void window.electronAPI
+			?.getWindowChrome?.()
+			.then(syncWindowChrome)
+			.catch(() => undefined);
+		const unsubscribeWindowChrome =
+			window.electronAPI?.onWindowChromeChanged?.(syncWindowChrome);
 
 		if (
 			windowType === "hud-overlay" ||
 			windowType === "source-selector" ||
 			windowType === "countdown" ||
-			windowType === "update-toast"
+			windowType === "update-toast" ||
+			windowType === "permission-accessory" ||
+			windowType === "capture-picker"
 		) {
 			document.body.style.background = "transparent";
 			document.documentElement.style.background = "transparent";
@@ -50,13 +71,16 @@ export default function App() {
 			document.body.style.overflow = "visible";
 			document.getElementById("root")?.style.setProperty("overflow", "visible");
 		}
+		return () => unsubscribeWindowChrome?.();
 	}, [windowType]);
 
 	useEffect(() => {
 		document.title =
-			windowType === "editor"
-				? t("app.editorTitle", "Recordly Editor")
-				: t("app.name", "Recordly");
+			windowType === "onboarding"
+				? t("onboarding.welcomeLabel", "Welcome to Recordly")
+				: windowType === "editor"
+					? t("app.editorTitle", "Recordly Editor")
+					: t("app.name", "Recordly");
 	}, [windowType, t]);
 
 	let content;
@@ -76,15 +100,23 @@ export default function App() {
 		case "editor":
 			content = <EditorWindow />;
 			break;
+		case "capture-picker":
+			content = <CapturePicker />;
+			break;
+		case "onboarding":
+			content = <OnboardingWindow />;
+			break;
+		case "onboarding-intro":
+			content = <OnboardingIntroWindow />;
+			break;
+		case "permission-accessory":
+			content = <PermissionAccessoryWindow />;
+			break;
 		default:
 			content = (
 				<div className="flex h-full w-full items-center justify-center bg-editor-bg text-foreground">
-					<div className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-foreground/5 px-6 py-5 shadow-2xl shadow-black/30 backdrop-blur-xl">
-						<img
-							src={appIconSrc}
-							alt={t("app.name", "Recordly")}
-							className="h-12 w-12 rounded-xl"
-						/>
+					<Card className="flex-row items-center gap-4 px-6 py-5">
+						<RecordlyMark className="size-12 text-accent" />
 						<div>
 							<h1 className="text-xl font-semibold tracking-tight">
 								{t("app.name", "Recordly")}
@@ -93,10 +125,24 @@ export default function App() {
 								{t("app.subtitle", "Screen recording and editing")}
 							</p>
 						</div>
-					</div>
+					</Card>
 				</div>
 			);
 	}
 
-	return <Suspense fallback={null}>{content}</Suspense>;
+	return (
+		<Suspense
+			fallback={
+				windowType === "editor" ? (
+					getStartupView() === "home" ? (
+						<HomeLoadingSkeleton />
+					) : (
+						<EditorLoadingSkeleton />
+					)
+				) : null
+			}
+		>
+			{content}
+		</Suspense>
+	);
 }

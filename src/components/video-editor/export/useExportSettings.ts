@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
 	ExportBackendPreference,
 	ExportEncodingMode,
@@ -10,17 +10,25 @@ import type {
 	GifSizePreset,
 } from "@/lib/exporter";
 import { projectCaptionCues } from "../captionTimeline";
-import type { EditorPreferences } from "../editorPreferences";
+import { type EditorPreferences, saveEditorPreferences } from "../editorPreferences";
+import { DEFAULT_MP4_EXPORT_FRAME_RATE } from "../exportPreferences";
 import type { CaptionCue, ClipRegion } from "../types";
-
-const DEFAULT_MP4_EXPORT_FRAME_RATE: ExportMp4FrameRate = 30;
 
 export function useExportSettings(
 	preferences: EditorPreferences,
 	autoCaptions: CaptionCue[],
 	clips: ClipRegion[],
 ) {
-	const [includeCaptionSidecar, setIncludeCaptionSidecar] = useState(false);
+	const [includeCaptionSidecar, setIncludeCaptionSidecar] = useState(
+		preferences.includeCaptionSidecar,
+	);
+	const [publishDestination, setPublishDestination] = useState(preferences.publishDestination);
+	const [advancedExportSettings, setAdvancedExportSettings] = useState(
+		preferences.advancedExportSettings,
+	);
+	const [customExportResolution, setCustomExportResolution] = useState(
+		preferences.customExportResolution,
+	);
 	const [exportQuality, setExportQuality] = useState<ExportQuality>(preferences.exportQuality);
 	const [exportEncodingMode, setExportEncodingMode] = useState<ExportEncodingMode>(
 		preferences.exportEncodingMode,
@@ -36,8 +44,41 @@ export function useExportSettings(
 	);
 	const [exportFormat, setExportFormat] = useState<ExportFormat>(preferences.exportFormat);
 	const [gifFrameRate, setGifFrameRate] = useState<GifFrameRate>(preferences.gifFrameRate);
+	const [gifOptimizeSize, setGifOptimizeSize] = useState(false);
 	const [gifLoop, setGifLoop] = useState(preferences.gifLoop);
 	const [gifSizePreset, setGifSizePreset] = useState<GifSizePreset>(preferences.gifSizePreset);
+	useEffect(() => {
+		saveEditorPreferences({
+			advancedExportSettings,
+			customExportResolution,
+			publishDestination,
+			includeCaptionSidecar,
+			exportQuality,
+			exportEncodingMode,
+			exportBackendPreference,
+			exportPipelineModel,
+			mp4FrameRate,
+			exportFormat,
+			gifFrameRate,
+			gifLoop,
+			gifSizePreset,
+		});
+	}, [
+		advancedExportSettings,
+		customExportResolution,
+		publishDestination,
+		includeCaptionSidecar,
+		exportQuality,
+		exportEncodingMode,
+		exportBackendPreference,
+		exportPipelineModel,
+		mp4FrameRate,
+		exportFormat,
+		gifFrameRate,
+		gifLoop,
+		gifSizePreset,
+	]);
+
 	const captionSidecarCues = useMemo(
 		() =>
 			projectCaptionCues(autoCaptions, clips)
@@ -54,11 +95,17 @@ export function useExportSettings(
 	);
 
 	return {
+		publishDestination,
+		setPublishDestination,
 		includeCaptionSidecar,
 		setIncludeCaptionSidecar,
 		exportQuality,
 		setExportQuality,
-		exportEncodingMode,
+		advancedExportSettings,
+		setAdvancedExportSettings,
+		customExportResolution,
+		setCustomExportResolution,
+		exportEncodingMode: advancedExportSettings ? exportEncodingMode : ("balanced" as const),
 		setExportEncodingMode,
 		exportBackendPreference,
 		setExportBackendPreference,
@@ -72,6 +119,8 @@ export function useExportSettings(
 		setGifFrameRate,
 		gifLoop,
 		setGifLoop,
+		gifOptimizeSize,
+		setGifOptimizeSize,
 		gifSizePreset,
 		setGifSizePreset,
 		captionSidecarCues,

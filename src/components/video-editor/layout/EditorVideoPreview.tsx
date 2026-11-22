@@ -15,16 +15,19 @@ type Handlers = Pick<
 	| "onSelectAnnotation"
 	| "onAnnotationPositionChange"
 	| "onAnnotationSizeChange"
+	| "onAnnotationContentChange"
+	| "onAnnotationDelete"
 >;
 
 type Props = {
 	videoPath: string | null;
 	previewVersion: number;
 	aspectRatio: AspectRatio;
-	playbackRef: RefObject<VideoPlaybackRef>;
+	playbackRef: RefObject<VideoPlaybackRef | null>;
 	currentTime: number;
 	isPlaying: boolean;
 	previewVolume: number;
+	previewResolutionScale: number;
 	suspendRendering: boolean;
 	appearance: ReturnType<typeof useAppearanceState>;
 	timeline: ReturnType<typeof useTimelineState>;
@@ -36,7 +39,7 @@ type Props = {
 	setIsPreviewReady: Dispatch<SetStateAction<boolean>>;
 	setCurrentTime: Dispatch<SetStateAction<number>>;
 	setIsPlaying: Dispatch<SetStateAction<boolean>>;
-	setError: Dispatch<SetStateAction<string | null>>;
+	setError: (message: string | null) => void;
 	handlers: Handlers;
 };
 
@@ -48,6 +51,7 @@ export function EditorVideoPreview({
 	currentTime,
 	isPlaying,
 	previewVolume,
+	previewResolutionScale,
 	suspendRendering,
 	appearance,
 	timeline,
@@ -79,6 +83,7 @@ export function EditorVideoPreview({
 			zoomRegions={effectiveZoomRegions}
 			selectedZoomId={timeline.selectedZoomId}
 			isPlaying={isPlaying}
+			previewResolutionScale={isPlaying ? previewResolutionScale : 1}
 			showShadow={appearance.shadowIntensity > 0}
 			shadowIntensity={appearance.shadowIntensity}
 			backgroundBlur={appearance.backgroundBlur}
@@ -126,6 +131,7 @@ export function EditorVideoPreview({
 			cursorClickBounce={appearance.cursorClickBounce}
 			cursorClickBounceDuration={appearance.cursorClickBounceDuration}
 			cursorSway={appearance.cursorSway}
+			cursorIdleHide={appearance.cursorIdleHide}
 			volume={
 				audio.shouldMutePreviewVideo || audio.isCurrentClipMuted
 					? 0

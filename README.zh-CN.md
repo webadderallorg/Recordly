@@ -1,4 +1,4 @@
-语言: [EN](README.md) | 简中
+语言: [EN](README.md) | [Tiếng Việt](README.vi.md) | 简中
 
 <p align="center">
   <img width="220" alt="Recordly logo" src="https://github.com/user-attachments/assets/082bb4b0-5fc5-4e9f-abda-55611fd6aded" />
@@ -57,12 +57,6 @@ Recordly 可以根据操作自动强调重点区域，平滑光标运动，添�
 <p>
   <img width="450" alt="timeline editor" src="https://github.com/user-attachments/assets/3692bd8f-7b8d-4a93-b696-d17c828487ea" />
 </p>
-
-## 扩展与市场
-
-Recordly 拥有一个社区驱动的扩展系统。任何人都可以构建和发布扩展来为 Recordly 添加新功能，例如光标点击音效、设备边框、浏览器模拟外壳、壁纸、渲染钩子、设置面板等等。
-
-浏览并安装社区扩展：[Recordly 扩展市场](https://marketplace.recordly.dev/extensions)。
 
 ---
 
@@ -170,7 +164,29 @@ Recordly 拥有一个社区驱动的扩展系统。任何人都可以构建和�
 
 https://github.com/webadderallorg/Recordly/releases
 
+## Windows ZIP 版
+
+如果发布版本提供 `Recordly-windows-x64.zip`，请将整个压缩包解压到一个文件夹，再从该文件夹运行 `Recordly.exe`。如需免安装更新，请下载并解压新版的 ZIP 压缩包。
+
 ---
+
+## Linux AppImage
+
+如果从文件管理器打开 AppImage 后没有反应，请在终端中运行以查看错误信息。
+请先在下载的 AppImage 文件所在目录打开终端，再运行以下命令。
+
+```bash
+chmod +x ./Recordly-linux-x64.AppImage
+./Recordly-linux-x64.AppImage
+```
+
+如果错误中出现 `libfuse.so.2`，请安装适用于当前发行版的 FUSE 2 兼容包。可参阅 [AppImage 的 FUSE 指南](https://docs.appimage.org/user-guide/troubleshooting/fuse.html)，查找 `libfuse2`、`libfuse2t64` 等软件包。
+
+也可以解包并直接运行 AppImage，无需 FUSE。
+
+```bash
+./Recordly-linux-x64.AppImage --appimage-extract-and-run
+```
 
 ## Arch Linux / Manjaro（yay）
 

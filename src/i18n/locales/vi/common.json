@@ -1,0 +1,94 @@
+{
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Trình chỉnh sửa Recordly",
+		"subtitle": "Ghi màn hình và chỉnh sửa video",
+		"language": "Ngôn ngữ",
+		"manageRecordings": "Mở thư mục bản ghi"
+	},
+	"actions": {
+		"cancel": "Hủy",
+		"close": "Đóng",
+		"export": "Xuất",
+		"load": "Tải",
+		"redo": "Làm lại",
+		"reset": "Đặt lại",
+		"save": "Lưu",
+		"undo": "Hoàn tác",
+		"delete": "Xóa",
+		"done": "Xong",
+		"retry": "Thử lại",
+		"apply": "Áp dụng",
+		"minimize": "Thu nhỏ",
+		"maximize": "Phóng to",
+		"restoreWindow": "Khôi phục cửa sổ"
+	},
+	"errors": {
+		"invalidFileType": "Loại tệp không hợp lệ",
+		"failedToUploadImage": "Không thể tải ảnh lên",
+		"fileReadError": "Đã xảy ra lỗi khi đọc tệp."
+	},
+	"clipboard": {
+		"copy": "Sao chép",
+		"errorCopied": "Đã sao chép thông báo lỗi",
+		"errorCopyFailed": "Không sao chép được thông báo lỗi"
+	},
+	"feedback": {
+		"trigger": "Phản hồi",
+		"send": "Gửi phản hồi",
+		"thanks": "Cảm ơn bạn đã gửi phản hồi",
+		"signInRequired": "Đăng nhập để gửi phản hồi.",
+		"openHome": "Mở Trang chủ để đăng nhập.",
+		"orEmail": "Hoặc gửi email",
+		"missingMessage": "Hãy viết thêm vài dòng trước khi gửi.",
+		"sentiment": "Bạn thấy thế nào?",
+		"loving": "Rất thích",
+		"neutral": "Bình thường",
+		"angry": "Bực mình",
+		"subject": "Chủ đề",
+		"subjectPlaceholder": "Bạn muốn góp ý gì?",
+		"description": "Nội dung",
+		"descriptionPlaceholder": "Recordly đọc mọi phản hồi…",
+		"attachFiles": "Đính kèm tệp",
+		"attachFilesWithLimit": "Đính kèm tệp (50 MB)",
+		"removeFile": "Bỏ tệp {{name}}",
+		"diagnostics": "Nhật ký chẩn đoán sẽ được đính kèm.",
+		"sending": "Đang gửi…",
+		"errors": {
+			"unavailable": "Bạn có thể gửi phản hồi sau khi dịch vụ tài khoản được cấu hình.",
+			"signIn": "Vui lòng đăng nhập lại để gửi phản hồi.",
+			"invalid": "Hãy kiểm tra nội dung phản hồi rồi thử lại.",
+			"attachments": "Bạn có thể đính kèm tối đa 5 tệp có nội dung, với tổng dung lượng không quá 50 MB.",
+			"limit": "Bạn đã gửi hết lượt phản hồi hôm nay. Vui lòng thử lại vào ngày mai.",
+			"tooManyFiles": "Bạn có thể đính kèm tối đa 5 tệp.",
+			"emptyFile": "Không thể đính kèm tệp trống.",
+			"filesTooLarge": "Tổng dung lượng tệp đính kèm không được vượt quá 50 MB.",
+			"uploadExpired": "Phiên tải tệp đính kèm đã hết hạn. Hãy gửi lại để bắt đầu lại.",
+			"limitRetry": "Đã đạt giới hạn phản hồi. Hãy thử gỡ tệp đính kèm hoặc gửi lại sau.",
+			"sendFailed": "Không gửi được phản hồi. Vui lòng thử lại."
+		}
+	},
+	"announcements": {
+		"openFailed": "Không thể mở liên kết.",
+		"dismiss": "Bỏ qua",
+		"carousel": "Thông báo",
+		"previous": "Thông báo trước",
+		"show": "Hiện thông báo",
+		"next": "Thông báo tiếp theo"
+	},
+	"updates": {
+		"download": "Tải bản cập nhật",
+		"actionFailed": "Không cập nhật được. Hãy thử lại.",
+		"notification": "Bản cập nhật ứng dụng",
+		"backgroundProgress": "Đang tải Recordly {{version}} trong nền · {{progress}}",
+		"ready": "Recordly {{version}} đã sẵn sàng để cài đặt.",
+		"failed": "Cập nhật chưa hoàn tất. Bạn có thể thử lại.",
+		"available": "Đã có Recordly {{version}}.",
+		"saveFirst": "Hãy lưu công việc rồi khởi động lại khi sẵn sàng.",
+		"later": "Để sau",
+		"downloadingButton": "Đang tải · {{progress}}"
+	},
+	"width": "Chiều rộng",
+	"height": "Chiều cao",
+	"windowControls": "Điều khiển cửa sổ"
+}

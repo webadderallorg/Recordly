@@ -71,7 +71,7 @@ interface CaptionPiece {
 
 const SENTENCE_END = /[.?!…。！？]$/;
 /** Closing quotes/brackets that can trail terminal punctuation, e.g. `said."` */
-const TRAILING_CLOSERS = /[)\]}"'”’»」』）】］｝>]+$/u;
+const TRAILING_CLOSERS = /[\p{Pe}\p{Pf}"'>]+$/u;
 
 /**
  * Unambiguous English titles that take a trailing period mid-sentence. Kept deliberately
@@ -205,7 +205,12 @@ function groupWordsBySentence(words: CaptionWordPayload[]): CaptionWordPayload[]
  * continuous paragraph still becomes one caption per sentence.
  */
 function splitTextBySentence(cue: CaptionCuePayload): CaptionCuePayload[] {
-	const tokens = cue.text.trim().split(/\s+/).filter(Boolean);
+	// Chinese and Japanese can put the next sentence directly after punctuation.
+	const tokens = cue.text
+		.trim()
+		.replace(/([。！？][.?!…。！？\p{Pe}\p{Pf}"'>]*)/gu, "$1 ")
+		.split(/\s+/)
+		.filter(Boolean);
 	if (tokens.length <= 1) {
 		return [cue];
 	}
@@ -351,7 +356,7 @@ function renumberCues(cues: CaptionCuePayload[]): CaptionCuePayload[] {
 
 /**
  * Re-segment Whisper cues into one caption per sentence/phrase, then merge rapid-fire short
- * sentences back together. Returns sorted, non-overlapping cues with fresh ids. Falls back to
+ * sentences back together. Returns sorted cues with fresh ids, preserving overlaps required by word timing. Falls back to
  * silence-only re-segmentation (plus sentence splitting) when the transcript has no word timings.
  */
 export function segmentCuesIntoPhrases(
@@ -372,6 +377,22 @@ export function segmentCuesIntoPhrases(
 
 	if (cues.length === 0) {
 		return [];
+	}
+
+	// Keep untimed segments separate: merging them into timed segments would
+	// rebuild the text from words and silently discard the untimed speech.
+	if (!hasWordTimings(cues) && cues.some((cue) => (cue.words?.length ?? 0) > 0)) {
+		const segmented = cues.flatMap((cue) => segmentCuesIntoPhrases([cue], silences, options));
+		segmented.sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+		for (let index = 0; index < segmented.length - 1; index++) {
+			const cue = segmented[index];
+			const lastWordEnd = Math.max(
+				cue.startMs,
+				...(cue.words ?? []).map((word) => word.endMs),
+			);
+			cue.endMs = Math.max(lastWordEnd, Math.min(cue.endMs, segmented[index + 1].startMs));
+		}
+		return renumberCues(segmented.filter((cue) => cue.endMs > cue.startMs));
 	}
 
 	// No word timings (SRT path): the silence-only segmenter trims/merges by acoustic

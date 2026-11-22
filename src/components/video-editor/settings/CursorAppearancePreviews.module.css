@@ -1,0 +1,22 @@
+.effectPreview {
+	transform-origin: center;
+}
+@media (prefers-reduced-motion: no-preference) {
+	.effectTile:is(:hover, :focus-visible) .effectPreview {
+		animation: preview-click 900ms ease-out infinite;
+	}
+}
+@keyframes preview-click {
+	0% {
+		transform: scale(0.55);
+		opacity: 0.15;
+	}
+	25% {
+		opacity: 1;
+	}
+	75%,
+	100% {
+		transform: scale(1.15);
+		opacity: 0.1;
+	}
+}

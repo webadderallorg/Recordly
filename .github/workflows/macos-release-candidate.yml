@@ -10,6 +10,12 @@ on:
         required: true
         type: string
 
+env:
+  VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+  VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+  VITE_CLOUD_SHARE_ENDPOINT: ${{ vars.VITE_CLOUD_SHARE_ENDPOINT }}
+  VITE_OAUTH_FLOW_ID_REDIRECTS: 'true'
+
 permissions:
   contents: read
 
@@ -78,10 +84,10 @@ jobs:
         include:
           - arch: x64
             arch_tag: darwin-x64
-            runner: macos-15-intel
+            runner: macos-26-intel
           - arch: arm64
             arch_tag: darwin-arm64
-            runner: macos-14
+            runner: macos-26
     env:
       CI: true
     steps:
@@ -90,6 +96,9 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.authorize-source.outputs.source_sha }}
+
+      - name: Show Xcode version
+        run: xcodebuild -version
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -120,6 +129,9 @@ jobs:
         run: |
           plutil -lint build/entitlements.mac.plist
           plutil -lint build/entitlements.mac.inherit.plist
+
+      - name: Validate production cloud configuration
+        run: npm run release:check-cloud
 
       - name: Build macOS application inputs
         shell: bash

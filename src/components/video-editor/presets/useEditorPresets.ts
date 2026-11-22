@@ -1,5 +1,5 @@
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo } from "react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import {
 	type EditorPreset,
 	type EditorPresetSnapshot,

@@ -1,5 +1,6 @@
 {
 	"recording": {
+		"home": "Главная",
 		"disableSystemAudio": "Отключить системные звуки",
 		"enableSystemAudio": "Включить системные звуки",
 		"disableMicrophone": "Отключить микрофон",

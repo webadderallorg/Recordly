@@ -1,18 +1,18 @@
-import { ArrowRight, ArrowSquareOut, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ArrowRight, ArrowSquareOut, X } from "@/components/ui/icons";
+import { toast } from "@/components/ui/toast";
 import { BUNDLED_ANNOUNCEMENT_FEED } from "@/content/announcements";
 import { useI18n } from "@/contexts/I18nContext";
 import { runAnnouncementAction } from "@/lib/announcementActions";
-import type { Announcement } from "@/lib/announcements";
-import { parseAnnouncementFeed, selectAnnouncements } from "@/lib/announcements";
 import {
 	dismissAnnouncements,
 	readAnnouncementImpressionCounts,
 	readDismissedAnnouncementIds,
 	recordAnnouncementImpression,
 } from "@/lib/announcementState";
+import type { Announcement } from "@/lib/announcements";
+import { parseAnnouncementFeed, selectAnnouncements } from "@/lib/announcements";
 
 export function EditorAnnouncementBanner() {
 	const { t } = useI18n();
@@ -118,7 +118,7 @@ export function EditorAnnouncementBanner() {
 					variant="link"
 					size="sm"
 					onClick={() => void openAction()}
-					className="h-auto shrink-0 gap-1 px-1 py-0 text-xs text-white underline decoration-white/50 underline-offset-2 hover:text-white dark:text-black dark:decoration-black/50 dark:hover:text-black"
+					className="text-current h-auto shrink-0 gap-1 px-1 py-0 text-xs underline decoration-white/50 underline-offset-2 dark:decoration-black/50"
 				>
 					{current.action?.label}
 					{current.action?.url ? (
@@ -129,14 +129,15 @@ export function EditorAnnouncementBanner() {
 				</Button>
 			) : null}
 			{showClose ? (
-				<button
+				<Button
+					variant="ghost"
 					type="button"
 					onClick={dismissCurrent}
-					className="absolute right-4 inline-flex h-6 w-6 items-center justify-center rounded-md text-white/70 transition-colors hover:bg-white/15 hover:text-white dark:text-black/70 dark:hover:bg-black/10 dark:hover:text-black"
+					className="text-current absolute right-4 inline-flex h-6 w-6 items-center justify-center"
 					aria-label={t("announcements.dismiss", "Dismiss")}
 				>
 					<X className="h-3.5 w-3.5" />
-				</button>
+				</Button>
 			) : null}
 		</div>
 	);

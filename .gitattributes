@@ -23,3 +23,5 @@
 *.woff binary
 *.woff2 binary
 *.zip binary
+
+/scripts/build-pinned-ffmpeg.sh text eol=lf
