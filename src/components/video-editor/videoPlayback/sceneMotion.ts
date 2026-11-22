@@ -17,6 +17,7 @@ export type SceneZoomTarget = {
 	progress: number;
 	connected?: boolean;
 	cinematic?: boolean;
+	automatic?: boolean;
 };
 
 export type PreviewMotionMode = "spring" | "snap" | "preserve";
@@ -103,9 +104,6 @@ export function resolveSceneZoomTarget({
 	cursorFollowCamera: CursorFollowCameraState;
 	sourceCrop?: CropRegion;
 }): SceneZoomTarget {
-	const weight = isCinematicZoomMotion({ zoomInDurationMs, zoomOutDurationMs })
-		? { cinematic: true }
-		: {};
 	const { region, strength, zoomingOut, blendedScale, transition, completedTransition } =
 		findDominantRegion(zoomRegions, timeMs, {
 			connectZooms,
@@ -123,6 +121,12 @@ export function resolveSceneZoomTarget({
 		return { scale: 1, focus: DEFAULT_FOCUS, progress: 0 };
 	}
 
+	const weight = {
+		...(isCinematicZoomMotion({ zoomInDurationMs, zoomOutDurationMs })
+			? { cinematic: true }
+			: {}),
+		...(region.mode === "manual" ? {} : { automatic: true }),
+	};
 	const scale = blendedScale ?? ZOOM_DEPTH_SCALES[region.depth];
 	if (transition) {
 		let camera = connectedCameras.get(cursorFollowCamera);
