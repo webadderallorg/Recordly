@@ -28,8 +28,15 @@ import { setRecordingZoomShortcutActive } from "../zoomShortcut";
 
 import type { RecordingHandlerContext } from "./handlerContext";
 
-function startRecordingCursorCapture() {
-	const startedAtMs = Date.now();
+function startRecordingCursorCapture(recordingStartedAtMs?: number) {
+	const now = Date.now();
+	const startedAtMs =
+		recordingStartedAtMs !== undefined &&
+		Number.isSafeInteger(recordingStartedAtMs) &&
+		recordingStartedAtMs > 0 &&
+		recordingStartedAtMs <= now
+			? recordingStartedAtMs
+			: now;
 	stopCursorCapture();
 	stopInteractionCapture();
 	startWindowBoundsCapture();
@@ -55,6 +62,7 @@ export function applyRecordingState(
 	recording: boolean,
 	ownerId?: number,
 	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
+	recordingStartedAtMs?: number,
 ) {
 	const { sessionLock, ownerRecovery } = context;
 
@@ -62,7 +70,8 @@ export function applyRecordingState(
 	ownerRecovery.setUserRecording(recording, ownerId);
 	if (recording) {
 		void recordingFocus.start(selectedSource);
-		if (!windowsNativeCaptureActive || !isCursorCaptureActive) startRecordingCursorCapture();
+		if (!windowsNativeCaptureActive || !isCursorCaptureActive)
+			startRecordingCursorCapture(recordingStartedAtMs);
 	} else {
 		setIsCursorCaptureActive(false);
 		stopCursorCapture();
