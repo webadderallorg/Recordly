@@ -30,6 +30,8 @@ static int normalizeFramePoolExtent(int value) {
     return normalized;
 }
 
+static constexpr int kFramePoolBuffers = 2;
+
 WgcSession::WgcSession() {}
 
 WgcSession::~WgcSession() {
@@ -106,7 +108,7 @@ bool WgcSession::initializeWithItem(int fps) {
     framePool_ = winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
         winrtDevice_,
         winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
-        2,
+        kFramePoolBuffers,
         {framePoolWidth_, framePoolHeight_});
 
     session_ = framePool_.CreateCaptureSession(captureItem_);
@@ -141,7 +143,7 @@ void WgcSession::recreateFramePoolIfNeeded(
         framePool_.Recreate(
             winrtDevice_,
             winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
-            2,
+            kFramePoolBuffers,
             normalizedSize);
         framePoolWidth_ = normalizedWidth;
         framePoolHeight_ = normalizedHeight;
@@ -199,8 +201,9 @@ bool WgcSession::initialize(HWND hwnd, int fps) {
     return initializeWithItem(fps);
 }
 
-void WgcSession::setFrameCallback(FrameCallback callback) {
+void WgcSession::setFrameCallback(FrameCallback callback, std::function<bool()> isPaused) {
     frameCallback_ = std::move(callback);
+    isPaused_ = std::move(isPaused);
 }
 
 bool WgcSession::startCapture() {
@@ -231,6 +234,10 @@ void WgcSession::stopCapture() {
     itemClosedRevoker_.revoke();
     frameArrivedRevoker_.revoke();
 
+    // Wait for the active reader, then release the lock before WinRT closes the frame pool.
+    {
+        std::lock_guard<std::mutex> lock(frameDeliveryMutex_);
+    }
     if (session_) {
         session_.Close();
         session_ = nullptr;
@@ -244,23 +251,47 @@ void WgcSession::stopCapture() {
 void WgcSession::onFrameArrived(
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& sender,
     winrt::Windows::Foundation::IInspectable const&) {
+    if (!capturing_) return;
+    std::lock_guard<std::mutex> lock(frameDeliveryMutex_);
+    const bool cachePausedWindowFrame = windowHandle_ && isPaused_ && isPaused_();
+    readFrame(sender, cachePausedWindowFrame);
+}
 
-    if (!capturing_ || fatalError_) return;
+void WgcSession::resumeAfterPendingFrames(int64_t resumeTimestampHns, const std::function<void()>& resume) {
+    std::lock_guard<std::mutex> lock(frameDeliveryMutex_);
+    if (windowHandle_) {
+        // Let any callback already in flight finish and drain the frames already queued
+        // by WGC before switching the timestamp and frame writer back to recording.
+        for (int count = 0; count < kFramePoolBuffers; ++count) {
+            if (!readFrame(framePool_, true)) break;
+        }
+        lastFrameTimeHns_ = 0;
+    }
+    resumeTimestampHns_ = resumeTimestampHns;
+    resume();
+}
 
-    auto frame = sender.TryGetNextFrame();
-    if (!frame) return;
+bool WgcSession::readFrame(
+    winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& pool,
+    bool skipFrameRateLimit) {
+    if (!capturing_ || fatalError_) return false;
+
+    auto frame = pool.TryGetNextFrame();
+    if (!frame) return false;
     const auto contentSize = frame.ContentSize();
 
     auto timestamp = frame.SystemRelativeTime();
     int64_t frameTimeHns = std::chrono::duration_cast<std::chrono::duration<int64_t, std::ratio<1, 10000000>>>(timestamp).count();
 
-    // Frame rate limiting: skip frames that arrive too soon
-    if (lastFrameTimeHns_ > 0 && (frameTimeHns - lastFrameTimeHns_) < (frameIntervalHns_ * 7 / 10)) {
+    // Paused window frames replace the cached image instead of reaching the encoder.
+    const bool rateLimited = !skipFrameRateLimit && lastFrameTimeHns_ > 0 &&
+        (frameTimeHns - lastFrameTimeHns_) < (frameIntervalHns_ * 7 / 10);
+    if (frameTimeHns < resumeTimestampHns_ || rateLimited) {
         frame.Close();
         recreateFramePoolIfNeeded(contentSize);
-        return;
+        return true;
     }
-    lastFrameTimeHns_ = frameTimeHns;
+    if (!skipFrameRateLimit) lastFrameTimeHns_ = frameTimeHns;
 
     if (auto access = frame.Surface().try_as<IDirect3DDxgiInterfaceAccess>()) {
         ComPtr<ID3D11Texture2D> texture;
@@ -272,4 +303,5 @@ void WgcSession::onFrameArrived(
 
     frame.Close();
     recreateFramePoolIfNeeded(contentSize);
+    return true;
 }
