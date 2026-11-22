@@ -3,6 +3,7 @@ import { startBrowserRecorder } from "./startBrowserRecorder";
 
 const writer = vi.hoisted(() => ({
 	isCancelled: false,
+	cancel: vi.fn(),
 	write: vi.fn(),
 	discard: vi.fn(),
 	finish: vi.fn(),
@@ -17,7 +18,7 @@ vi.mock("./recordingFileWriter", () => ({
 	},
 }));
 vi.mock("@/components/ui/toast", () => ({ toast: { error: vi.fn() } }));
-class TestMediaRecorder {
+class TestMediaRecorder extends EventTarget {
 	state = "inactive";
 	mimeType = "video/webm";
 	onstop: (() => Promise<void>) | null = null;
@@ -180,7 +181,7 @@ describe("browser recording editor boundary", () => {
 		expect(window.electronAPI.setRecordingState).not.toHaveBeenCalled();
 	});
 
-	it("starts the clock and recording only after the portal video has a frame", async () => {
+	it("starts the portal clock when the recorder confirms it is running", async () => {
 		const context = createContext();
 		const { pending, video, runPortalCountdown } = preparePortal(context);
 		let finishCountdown!: (keepGoing: boolean) => void;
@@ -198,13 +199,71 @@ describe("browser recording editor boundary", () => {
 		await vi.waitFor(() => expect(runPortalCountdown).toHaveBeenCalledOnce());
 		expect(context.mediaRecorder.current).toBeNull();
 		expect(context.resetRecordingClock).not.toHaveBeenCalled();
-		vi.spyOn(Date, "now").mockReturnValue(1500);
+		const clock = vi.spyOn(Date, "now").mockReturnValue(1500);
 		finishCountdown(true);
+		await vi.waitFor(() => expect(createWriter).toHaveBeenCalledOnce());
+		const recorder = context.mediaRecorder.current;
+		const earlyClock = context.resetRecordingClock.mock.calls.length;
+		const earlyTelemetry = vi.mocked(window.electronAPI.setRecordingState).mock.calls.length;
+		clock.mockReturnValue(1800);
+		recorder.dispatchEvent(new Event("start"));
 		await pending;
-		expect(context.mediaRecorder.current.state).toBe("recording");
-		expect(context.resetRecordingClock).toHaveBeenCalledExactlyOnceWith(1500);
-		expect(window.electronAPI.setRecordingState).toHaveBeenCalledExactlyOnceWith(true);
+		expect(earlyClock).toBe(0);
+		expect(earlyTelemetry).toBe(0);
+		expect(recorder.state).toBe("recording");
+		expect(context.resetRecordingClock).toHaveBeenCalledExactlyOnceWith(1800);
+		expect(window.electronAPI.setRecordingState).toHaveBeenCalledExactlyOnceWith(true, 1800);
 		expect(video.srcObject).toBeNull();
+	});
+	it.each([
+		"cancelled",
+		"stopped",
+		"errored",
+	])("discards a portal recorder %s before startup and leaves the editor closed", async (result) => {
+		vi.useFakeTimers();
+		const context = createContext();
+		let cancelled = false;
+		const { pending, video } = preparePortal(context, () => cancelled);
+		const completion =
+			result === "cancelled"
+				? expect(pending).resolves.toBeUndefined()
+				: expect(pending).rejects.toThrow(/No video frames/);
+		video.dispatchEvent(new Event("loadeddata"));
+		await vi.advanceTimersByTimeAsync(0);
+		const recorder = context.mediaRecorder.current;
+		expect(recorder.state).toBe("recording");
+		if (result === "cancelled") {
+			cancelled = true;
+			recorder.dispatchEvent(new Event("start"));
+		} else if (result === "stopped") {
+			recorder.stop();
+			recorder.dispatchEvent(new Event("stop"));
+			await recorder.onstop?.();
+		} else {
+			recorder.dispatchEvent(new Event("error"));
+		}
+		await completion;
+		expect(recorder.state).toBe("inactive");
+		expect(context.mediaRecorder.current).toBeNull();
+		expect(context.screenWriter.current).toBeNull();
+		expect(writer.cancel).toHaveBeenCalledOnce();
+		expect(writer.discard).toHaveBeenCalledOnce();
+		expect(context.openLoadingEditor).not.toHaveBeenCalled();
+		expect(context.resetRecordingClock).not.toHaveBeenCalled();
+		expect(window.electronAPI.setRecordingState).not.toHaveBeenCalled();
+	});
+	it("uses the request timestamp when an active portal recorder has a delayed start event", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(1000);
+		const context = createContext();
+		const { pending, video } = preparePortal(context);
+		video.dispatchEvent(new Event("loadeddata"));
+		await vi.advanceTimersByTimeAsync(0);
+		expect(context.resetRecordingClock).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(2000);
+		await pending;
+		expect(context.resetRecordingClock).toHaveBeenCalledExactlyOnceWith(1000);
+		expect(window.electronAPI.setRecordingState).toHaveBeenCalledExactlyOnceWith(true, 1000);
 	});
 	it("does not start when the portal countdown is cancelled", async () => {
 		const context = createContext();
