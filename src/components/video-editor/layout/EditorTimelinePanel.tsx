@@ -1,4 +1,7 @@
-import type { RefObject } from "react";
+import { type RefObject, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { CaretDown, CaretUpIcon } from "@/components/ui/icons";
+import { useScopedT } from "@/contexts/I18nContext";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import { retimeCaptionFragment } from "../captionTimeline";
 import type { useAnnotationRegionCommands } from "../hooks/useAnnotationRegionCommands";
@@ -37,6 +40,12 @@ type Props = {
 };
 
 export function EditorTimelinePanel(props: Props) {
+	const t = useScopedT("editor");
+	const [expanded, setExpanded] = useState(false);
+	const toggleLabel = expanded
+		? t("timeline.collapse", "Collapse Timeline")
+		: t("timeline.expand", "Expand Timeline");
+	const ToggleIcon = expanded ? CaretDown : CaretUpIcon;
 	const {
 		timelineRef,
 		timeline,
@@ -61,9 +70,25 @@ export function EditorTimelinePanel(props: Props) {
 			ref={props.panelRef}
 			tabIndex={-1}
 			data-timeline-panel
-			className="outline-none flex flex-shrink-0 flex-col bg-transparent px-4 pb-4"
-			style={{ height: "calc(22% + 8px)", minHeight: 188, maxHeight: 288 }}
+			className="relative outline-none flex flex-shrink-0 flex-col bg-transparent px-4 pb-4"
+			style={{
+				height: expanded ? "48%" : "calc(22% + 8px)",
+				minHeight: 188,
+				maxHeight: expanded ? undefined : 288,
+			}}
 		>
+			<Button
+				type="button"
+				variant="ghost"
+				size="icon"
+				className="absolute top-0 left-1/2 z-40 h-5 w-10 -translate-x-1/2 -translate-y-1/2 rounded-md border border-separator bg-editor-bg text-muted-foreground"
+				title={toggleLabel}
+				aria-label={toggleLabel}
+				aria-expanded={expanded}
+				onClick={() => setExpanded((value) => !value)}
+			>
+				<ToggleIcon className="size-3" aria-hidden="true" />
+			</Button>
 			<TimelineEditor
 				zoomPresentationOptions={props.zoomPresentationOptions}
 				ref={timelineRef}
