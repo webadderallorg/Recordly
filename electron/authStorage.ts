@@ -228,18 +228,34 @@ async function loadForWrite(): Promise<LoadedAuthStore> {
 	try {
 		return await load();
 	} catch (error) {
-		if (
-			!(error instanceof UnreadableAuthStoreError) ||
-			!error.permanent ||
-			!canRecoverUnreadableStore()
-		)
-			throw error;
+		if (!isRecoverable(error)) throw error;
 		const filePath = storagePath();
-		const backup = `${filePath}.unreadable-${new Date().toISOString().replace(/[:.]/g, "-")}.bak`;
+		const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+		const backup = `${filePath}.unreadable-${stamp}-${randomUUID()}.bak`;
 		await fs.rename(filePath, backup);
 		console.warn(`[auth] Moved an unreadable saved sign-in aside to ${path.basename(backup)}.`);
 		return emptyStore();
 	}
+}
+
+/**
+ * Loads the store for a read or removal. A permanently unreadable store reads
+ * as signed out, without touching the file, so the sign-in form appears and the
+ * next sign-in write can recover it through `loadForWrite`.
+ */
+async function loadForRead(): Promise<LoadedAuthStore> {
+	try {
+		return await load();
+	} catch (error) {
+		if (!isRecoverable(error)) throw error;
+		return emptyStore();
+	}
+}
+
+function isRecoverable(error: unknown): boolean {
+	return (
+		error instanceof UnreadableAuthStoreError && error.permanent && canRecoverUnreadableStore()
+	);
 }
 
 class AuthEncryptionUnavailableError extends Error {}
@@ -304,7 +320,9 @@ function transaction<T>(operation: () => Promise<T>): Promise<T> {
 
 export function readNativeAuthStorageValue(key: string): Promise<string | null> {
 	assertKey(key);
-	return serialize(() => transaction(async () => readStoredValue((await load()).entries, key)));
+	return serialize(() =>
+		transaction(async () => readStoredValue((await loadForRead()).entries, key)),
+	);
 }
 
 export function registerAuthStorageHandlers(
@@ -335,7 +353,7 @@ export function registerAuthStorageHandlers(
 		return serialize(async () =>
 			completedCallback?.key === key
 				? completedCallback.fingerprint
-				: transaction(async () => readStoredValue((await load()).entries, key)),
+				: transaction(async () => readStoredValue((await loadForRead()).entries, key)),
 		);
 	});
 	ipcMain.handle("auth-storage:set", (event, key: unknown, value: unknown) => {
@@ -406,7 +424,7 @@ export function registerAuthStorageHandlers(
 		assertKey(key);
 		return serialize(async () => {
 			await transaction(async () => {
-				const { entries, encoding } = await load();
+				const { entries, encoding } = await loadForRead();
 				if (key in entries) {
 					delete entries[key];
 					await save(entries, encoding);
