@@ -381,6 +381,16 @@ describe("segmentCuesIntoPhrases", () => {
 		}
 	});
 
+	it("keeps terminal punctuation around a closing bracket in one untimed cue", () => {
+		const sentences = ["先检查设置（确认无误？）。", "接下来开始录制。"];
+		const result = segmentCuesIntoPhrases(
+			[{ id: "caption-1", startMs: 0, endMs: 15_000, text: sentences.join("") }],
+			[],
+			{ edgePadMs: 0, minCaptionMs: 800 },
+		);
+		expect(result.map((cue) => cue.text)).toEqual(sentences);
+	});
+
 	it("returns an empty array for empty input", () => {
 		expect(segmentCuesIntoPhrases([], [])).toEqual([]);
 	});

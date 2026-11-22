@@ -208,7 +208,7 @@ function splitTextBySentence(cue: CaptionCuePayload): CaptionCuePayload[] {
 	// Chinese and Japanese can put the next sentence directly after punctuation.
 	const tokens = cue.text
 		.trim()
-		.replace(/([。！？]+[\p{Pe}\p{Pf}"'>]*)/gu, "$1 ")
+		.replace(/([。！？][.?!…。！？\p{Pe}\p{Pf}"'>]*)/gu, "$1 ")
 		.split(/\s+/)
 		.filter(Boolean);
 	if (tokens.length <= 1) {
