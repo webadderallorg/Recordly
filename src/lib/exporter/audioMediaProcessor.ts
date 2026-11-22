@@ -117,6 +117,7 @@ export class AudioMediaProcessor extends AudioTimelineProcessor {
 				},
 			});
 
+			decoder.ondequeue = notifyDecodeCapacityAvailable;
 			decoder.configure(audioConfig);
 
 			const audioStream = demuxer.read("audio");
@@ -141,6 +142,7 @@ export class AudioMediaProcessor extends AudioTimelineProcessor {
 				}
 				if (decodeError) throw decodeError;
 			} finally {
+				decoder.ondequeue = null;
 				notifyDecodeCapacityAvailable();
 				try {
 					await reader.cancel();
