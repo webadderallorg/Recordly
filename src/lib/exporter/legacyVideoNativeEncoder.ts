@@ -1,5 +1,6 @@
 import type { LegacyVideoExporterContext } from "./legacyVideoExporterContext";
 import { DEFAULT_MAX_ENCODE_QUEUE } from "./legacyVideoExporterContext";
+import { ENCODER_PROGRESS_TIMEOUT_MS, getNowMs } from "./modernExportConstants";
 import { EXPORT_CANVAS_COLOR_SPACE } from "./videoColorSpace";
 
 export function shouldUseExperimentalNativeExport(
@@ -192,15 +193,27 @@ export async function encodeRenderedFrameNative(
 	}
 
 	// Apply backpressure: don't queue too far ahead of FFmpeg's stdin pipe
-	while (
-		context.nativeH264Encoder.encodeQueueSize >=
-		Math.max(1, Math.floor(context.config.maxEncodeQueue ?? DEFAULT_MAX_ENCODE_QUEUE))
-	) {
+	const maxQueue = Math.max(
+		1,
+		Math.floor(context.config.maxEncodeQueue ?? DEFAULT_MAX_ENCODE_QUEUE),
+	);
+	let idleSince = getNowMs();
+	let previousQueueSize = context.nativeH264Encoder.encodeQueueSize;
+	while (context.nativeH264Encoder.encodeQueueSize >= maxQueue && !context.cancelled) {
 		await new Promise<void>((r) => setTimeout(r, 2));
 		if (context.cancelled) return;
 		if (context.nativeEncoderError) throw context.nativeEncoderError;
 		if (context.nativeWriteError) throw context.nativeWriteError;
+		const currentQueueSize = context.nativeH264Encoder.encodeQueueSize;
+		if (currentQueueSize < previousQueueSize) {
+			idleSince = getNowMs();
+		}
+		if (getNowMs() - idleSince >= ENCODER_PROGRESS_TIMEOUT_MS) {
+			throw new Error("Native H.264 encoder made no progress for 30 seconds");
+		}
+		previousQueueSize = currentQueueSize;
 	}
+	if (context.cancelled) return;
 
 	const canvas = context.renderer!.getCanvas();
 	// @ts-expect-error - colorSpace not in TypeScript definitions but works at runtime
@@ -209,8 +222,11 @@ export async function encodeRenderedFrameNative(
 		duration: frameDuration,
 		colorSpace: EXPORT_CANVAS_COLOR_SPACE,
 	});
-	context.nativeH264Encoder.encode(frame, { keyFrame: frameIndex % 300 === 0 });
-	frame.close();
+	try {
+		context.nativeH264Encoder.encode(frame, { keyFrame: frameIndex % 300 === 0 });
+	} finally {
+		frame.close();
+	}
 }
 
 export function trackNativeWritePromise(
