@@ -906,3 +906,26 @@ test("welcome mark and video blend into floating blue blobs regardless of reduce
 		.toBeGreaterThan(8);
 	await page.screenshot({ path: test.info().outputPath("welcome-pulse-preview.png") });
 });
+
+for (const platform of ["win32", "linux"]) {
+	test(`${platform} onboarding skips the permissions page`, async ({ page }) => {
+		await installDesktopBridge(page, "preview.mp4", { signedIn: true, onboarded: true });
+		await page.addInitScript((platform) => {
+			window.electronAPI.getPlatform = async () => platform;
+		}, platform);
+		await page.goto("/?windowType=onboarding&onboardingPreview=1");
+		const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
+		const pages = tour.getByRole("navigation", { name: "Onboarding pages" });
+		await expect(pages.getByRole("button", { name: "Permissions", exact: true })).toHaveCount(
+			0,
+		);
+		await expect(pages.getByRole("button")).toHaveCount(2);
+		await tour.getByRole("button", { name: "Next", exact: true }).click();
+		await expect(tour).toHaveAttribute("data-onboarding-state", "upgrade");
+		await expect(
+			tour.getByRole("button", { name: "Skip and start recording", exact: true }),
+		).toBeVisible();
+		await tour.getByRole("button", { name: "Back to account" }).click();
+		await expect(tour).toHaveAttribute("data-onboarding-state", "login");
+	});
+}

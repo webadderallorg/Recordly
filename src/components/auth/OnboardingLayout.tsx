@@ -13,6 +13,7 @@ export function OnboardingLayout({
 	stage,
 	onStageChange,
 	canViewPermissions,
+	showPermissions = true,
 	canViewUpgrade,
 	showNavigation = true,
 	carousel = Boolean(onStageChange),
@@ -22,6 +23,7 @@ export function OnboardingLayout({
 	stage: OnboardingStage;
 	onStageChange?: (stage: OnboardingStage) => void;
 	canViewPermissions: boolean;
+	showPermissions?: boolean;
 	canViewUpgrade?: boolean;
 	showNavigation?: boolean;
 	carousel?: boolean;
@@ -31,7 +33,7 @@ export function OnboardingLayout({
 	const t = useScopedT("onboarding");
 	const stages = [
 		{ key: "account", label: t("account") },
-		{ key: "permissions", label: t("permissions") },
+		...(showPermissions ? [{ key: "permissions" as const, label: t("permissions") }] : []),
 		...(canViewUpgrade === undefined
 			? []
 			: [{ key: "upgrade" as const, label: t("upgrade", "Upgrade") }]),
