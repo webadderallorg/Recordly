@@ -16,6 +16,7 @@
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <utility>
 
 static std::atomic<bool> g_pauseRequested{false};
 static std::atomic<int64_t> g_lastFrameTimestampHns{0};
@@ -378,11 +379,14 @@ int wmain(int argc, wchar_t* argv[]) {
             std::cout << "Recording started" << std::endl;
         }
     };
-    ComPtr<ID3D11Texture2D> pausedWindowTexture;
-    int pausedContentWidth = 0;
-    int pausedContentHeight = 0;
-    int64_t pausedWindowTimestampHns = 0;
-    int64_t pendingResumePresentationHns = 0;
+    struct CachedWindowFrame {
+        ComPtr<ID3D11Texture2D> texture;
+        int width = 0;
+        int height = 0;
+        int64_t timestampHns = 0;
+    };
+    CachedWindowFrame pausedWindowFrame;
+    CachedWindowFrame pendingResumeFrame;
     bool videoStopped = false;
     const auto writeFrame = [&](ID3D11Texture2D* texture, int contentWidth, int contentHeight,
                                 int64_t presentationHns) {
@@ -392,11 +396,10 @@ int wmain(int argc, wchar_t* argv[]) {
         return true;
     };
     const auto writeResumedWindowFrame = [&] {
-        if (g_pauseRequested || !pendingResumePresentationHns) return;
-        if (writeFrame(pausedWindowTexture.Get(), pausedContentWidth, pausedContentHeight,
-                       pendingResumePresentationHns)) {
-            pendingResumePresentationHns = 0;
-            pausedWindowTimestampHns = 0;
+        if (!pendingResumeFrame.timestampHns) return;
+        if (writeFrame(pendingResumeFrame.texture.Get(), pendingResumeFrame.width,
+                       pendingResumeFrame.height, pendingResumeFrame.timestampHns)) {
+            pendingResumeFrame.timestampHns = 0;
         }
     };
 
@@ -410,14 +413,14 @@ int wmain(int argc, wchar_t* argv[]) {
 
         if (g_pauseRequested) {
             if (config.windowHandle <= 0 || contentWidth <= 0 || contentHeight <= 0 ||
-                timestampHns < g_pauseStartTimestampHns || timestampHns <= pausedWindowTimestampHns) {
+                timestampHns < g_pauseStartTimestampHns || timestampHns <= pausedWindowFrame.timestampHns) {
                 return;
             }
             // WGC does not emit another frame when a window becomes static before Resume.
             D3D11_TEXTURE2D_DESC sourceDesc{};
             texture->GetDesc(&sourceDesc);
             D3D11_TEXTURE2D_DESC cachedDesc{};
-            if (pausedWindowTexture) pausedWindowTexture->GetDesc(&cachedDesc);
+            if (pausedWindowFrame.texture) pausedWindowFrame.texture->GetDesc(&cachedDesc);
             if (cachedDesc.Width != sourceDesc.Width || cachedDesc.Height != sourceDesc.Height ||
                 cachedDesc.Format != sourceDesc.Format) {
                 sourceDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -427,19 +430,18 @@ int wmain(int argc, wchar_t* argv[]) {
                 ComPtr<ID3D11Texture2D> replacement;
                 if (FAILED(session.device()->CreateTexture2D(
                         &sourceDesc, nullptr, replacement.GetAddressOf()))) return;
-                pausedWindowTexture = std::move(replacement);
+                pausedWindowFrame.texture = std::move(replacement);
             }
-            session.context()->CopyResource(pausedWindowTexture.Get(), texture);
-            pausedContentWidth = contentWidth;
-            pausedContentHeight = contentHeight;
-            pausedWindowTimestampHns = timestampHns;
-            pendingResumePresentationHns = 0;
+            session.context()->CopyResource(pausedWindowFrame.texture.Get(), texture);
+            pausedWindowFrame.width = contentWidth;
+            pausedWindowFrame.height = contentHeight;
+            pausedWindowFrame.timestampHns = timestampHns;
             return;
         }
         writeResumedWindowFrame();
         if (writeFrame(texture, contentWidth, contentHeight, adjustedVideoTimestampHns(timestampHns))) {
-            pendingResumePresentationHns = 0;
-            pausedWindowTimestampHns = 0;
+            // A later successful sample supersedes the failed resume sample.
+            pendingResumeFrame.timestampHns = 0;
         }
     }, [] { return g_pauseRequested.load(); });
 
@@ -522,10 +524,13 @@ int wmain(int argc, wchar_t* argv[]) {
                 session.resumeAfterPendingFrames(resumeTimestampHns, [&] {
                     std::lock_guard<std::mutex> lock(g_videoMutex);
                     closeActivePauseAt(resumeTimestampHns);
-                    if (pausedWindowTimestampHns && !pendingResumePresentationHns) {
-                        pendingResumePresentationHns = adjustedVideoTimestampHns(resumeTimestampHns);
-                    }
                     writeResumedWindowFrame();
+                    if (pausedWindowFrame.timestampHns && !pendingResumeFrame.timestampHns) {
+                        std::swap(pausedWindowFrame, pendingResumeFrame);
+                        pendingResumeFrame.timestampHns = adjustedVideoTimestampHns(resumeTimestampHns);
+                        writeResumedWindowFrame();
+                    }
+                    pausedWindowFrame.timestampHns = 0;
                 });
             }
         }
