@@ -149,6 +149,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		),
 		showCursor: typeof editor.showCursor === "boolean" ? editor.showCursor : true,
 		loopCursor: typeof editor.loopCursor === "boolean" ? editor.loopCursor : false,
+		alwaysUsePointerCursor: editor.alwaysUsePointerCursor === true,
 		cursorStyle: normalizedCursorStyle,
 		cursorClickEffect: normalizeCursorClickEffectStyle(
 			(editor as Partial<ProjectEditorState>).cursorClickEffect,

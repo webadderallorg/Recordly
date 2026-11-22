@@ -140,6 +140,7 @@ export function EditorShell(props: Props) {
 		clipRegions: timeline.clipRegions,
 		zoomRegions: timeline.zoomRegions,
 		cursorTelemetry: editing.cursor.normalizedCursorTelemetry,
+		recordingZoomMarkers: editing.cursor.recordingZoomMarkers,
 		cursorTelemetrySourcePath: timeline.cursorTelemetrySourcePath,
 		onZoomSuggested: editing.zoomCommands.handleZoomSuggested,
 	});
@@ -491,6 +492,12 @@ export function EditorShell(props: Props) {
 							/>
 							<EditorPreviewPanel
 								t={t}
+								onImportVideoClip={() => void library.importVideoFile()}
+								canImportVideoClip={
+									Boolean(project.videoSourcePath) &&
+									!library.busy &&
+									!library.importing
+								}
 								videoPath={project.videoPath}
 								previewVersion={ui.previewVersion}
 								aspectRatio={ui.aspectRatio}
@@ -549,6 +556,7 @@ export function EditorShell(props: Props) {
 								normalizedCursorTelemetry={cursor.normalizedCursorTelemetry}
 								currentTime={ui.currentTime}
 								handleSelectAnnotation={handleSelectAnnotation}
+								onDuplicateSelectedRegion={editing.duplicateSelectedRegion}
 							/>
 						</AutoZoomNudgeContext.Provider>
 					</div>

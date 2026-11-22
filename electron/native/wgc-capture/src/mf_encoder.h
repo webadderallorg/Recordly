@@ -34,6 +34,7 @@ public:
     bool initialize(const std::wstring& outputPath, int width, int height, int fps,
                     ID3D11Device* device, ID3D11DeviceContext* context);
     void setSampleWrittenCallback(SampleWrittenCallback callback);
+    void setTimelineOrigin(int64_t timestampHns);
     // Returns true when the frame was accepted for encoding. Returns false when it was
     // dropped (every staging slot busy) or could not be copied.
     bool writeFrame(ID3D11Texture2D* texture, int contentWidth, int contentHeight,

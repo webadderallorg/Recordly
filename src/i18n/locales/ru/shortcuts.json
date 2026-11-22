@@ -6,6 +6,7 @@
 		"addAnnotation": "Добавить аннотацию",
 		"addKeyframe": "Добавить ключ",
 		"deleteSelected": "Удалить выбранное",
+		"duplicateSelected": "Дублировать выбранное",
 		"playPause": "Воспроизведение / Пауза",
 		"cycleForward": "Следующая аннотация",
 		"cycleBackward": "Предыдущая аннотация",

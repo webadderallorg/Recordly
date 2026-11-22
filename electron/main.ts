@@ -16,7 +16,7 @@ import {
 	Tray,
 } from "electron";
 import { activateFromDesktopIcon } from "./appActivation";
-import { createAppLinkRelay, findActivationLink } from "./appLinkRelay";
+import { createAppLinkRelay, findActivationLink, shouldForwardPlainLaunch } from "./appLinkRelay";
 import { initializeInstanceSession, RECORDINGS_DIR } from "./appPaths";
 import { readAppSetting, writeAppSetting } from "./appSettingsStore";
 import { createAuthCallbackController } from "./authCallback";
@@ -34,7 +34,7 @@ import {
 	type ProjectMenuAction,
 	withHiddenDockEditorMenus,
 } from "./editorCommandMenu";
-import { getGpuSwitches } from "./gpuSwitches";
+import { getGpuBlocklistOverrideSwitches, getGpuSwitches } from "./gpuSwitches";
 import {
 	cleanupAllExportStreams,
 	cleanupNativeVideoExportSessions,
@@ -44,6 +44,7 @@ import {
 } from "./ipc/handlers";
 import { recordingFocus } from "./ipc/recording/focus";
 import { clearRecordingTrashUndo } from "./ipc/recording/library";
+import { setRecordingZoomShortcutActive } from "./ipc/recording/zoomShortcut";
 import { resolveDisplayMediaSource } from "./ipc/register/sourceMapping";
 import { validateAppLocaleRequest } from "./localeIpc";
 import { ensureMediaServer } from "./mediaServer";
@@ -153,9 +154,9 @@ ipcMain.handle("resolve-startup-onboarding", (event, action: unknown) => {
 ignoreBrokenConsolePipe(process.stdout);
 ignoreBrokenConsolePipe(process.stderr);
 
-app.commandLine.appendSwitch("ignore-gpu-blocklist");
-app.commandLine.appendSwitch("enable-unsafe-webgpu");
-app.commandLine.appendSwitch("enable-gpu-rasterization");
+for (const gpuSwitch of getGpuBlocklistOverrideSwitches()) {
+	app.commandLine.appendSwitch(gpuSwitch);
+}
 
 app.on("web-contents-created", (_event, contents) => {
 	if (!shouldHardenWebContentsType(contents.getType())) {
@@ -319,6 +320,21 @@ async function forwardActivationLink(): Promise<boolean> {
 			directory: path.join(app.getPath("appData"), "Recordly-dev", "app-links"),
 			protocol: "recordly-dev",
 		}).forward();
+	// Repeated clicks on the shortcut bring the running app forward instead of
+	// opening another instance with its own recording controls.
+	if (
+		shouldForwardPlainLaunch({
+			platform: process.platform,
+			isPackaged: app.isPackaged,
+			smokeExport: IS_SMOKE_EXPORT,
+		})
+	) {
+		if (await appLinks.forward()) return true;
+		// The relay only listens once startup finishes, so clicks during another
+		// launch's startup find nobody. Electron's lock settles that race: the first
+		// launch keeps it and later ones exit, raising "second-instance" there.
+		return !app.requestSingleInstanceLock({ recordlyDesktopLaunch: true });
+	}
 	return false;
 }
 
@@ -1252,6 +1268,7 @@ app.on("quit", () => {
 
 let nativeExportQuitState: "idle" | "waiting" | "ready" = "idle";
 app.on("will-quit", (event) => {
+	setRecordingZoomShortcutActive(false);
 	if (nativeExportQuitState === "ready") return;
 	if (nativeExportQuitState === "waiting") {
 		event.preventDefault();
@@ -1281,13 +1298,15 @@ app.on("window-all-closed", () => {
 app.on("activate", activateDesktopEntryPoint);
 
 app.on("second-instance", async (_event, commandLine, _workingDirectory, additionalData) => {
-	if ((additionalData as { recordlyRecordingLock?: boolean })?.recordlyRecordingLock === true)
-		return;
 	const authCallback = authCallbacks.find(commandLine);
 	if (authCallback) {
 		const routed = await authCallbacks.route(authCallback);
 		if (isAppQuitting) return;
 		if (routed !== "forwarded") focusOrCreateMainWindow();
+	} else if (
+		(additionalData as { recordlyDesktopLaunch?: boolean })?.recordlyDesktopLaunch === true
+	) {
+		bringAppForward();
 	} else {
 		activateDesktopEntryPoint();
 	}
@@ -1306,7 +1325,7 @@ app.whenReady().then(async () => {
 	}
 	const startupAuthCallback = authCallbacks.find(process.argv);
 	if (!startupAuthCallback && (await forwardActivationLink())) {
-		// A running instance came forward; this protocol launcher has no window.
+		// A running instance came forward; this launcher has no window.
 		app.quit();
 		return;
 	}

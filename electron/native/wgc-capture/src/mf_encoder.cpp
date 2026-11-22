@@ -215,6 +215,11 @@ void MFEncoder::setSampleWrittenCallback(SampleWrittenCallback callback) {
     sampleWrittenCallback_ = std::move(callback);
 }
 
+void MFEncoder::setTimelineOrigin(int64_t timestampHns) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (firstSampleTimeHns_ < 0) firstSampleTimeHns_ = (std::max)(int64_t{0}, timestampHns);
+}
+
 bool MFEncoder::copyToStaging(ID3D11Texture2D* stagingTexture, ID3D11Texture2D* sourceTexture,
                               int contentWidth, int contentHeight) {
     if (!stagingTexture || !sourceTexture || contentWidth <= 0 || contentHeight <= 0) return false;
@@ -431,19 +436,20 @@ bool MFEncoder::commitNv12FrameLocked(int64_t timestampHns) {
 
     // WGC may stop delivering frames while the scene is static; keep the MP4
     // timeline continuous with one duration-bearing sample for each gap.
-    const bool isFirstSample = (firstSampleTimeHns_ < 0);
     int64_t normalizedTimestampHns = 0;
     normalizeWriteTimestampHnsLocked(timestampHns, normalizedTimestampHns);
+    const bool firstFrame = lastFrameBuffer_.empty();
 
-    if (!lastFrameBuffer_.empty() && !extendLastFrameToLocked(normalizedTimestampHns, false)) {
-        if (isFirstSample) firstSampleTimeHns_ = -1;
+    if (!firstFrame && !extendLastFrameToLocked(normalizedTimestampHns, false)) {
         return false;
     }
 
+    // Retain the startup audio clock even if some initial frames fail to encode.
+    // Hold the first valid image over that initial gap with a single sample.
+    const int64_t sampleTimeHns = firstFrame ? 0 : normalizedTimestampHns;
     const int64_t frameDurationHns = 10000000LL / fps_;
-    if (!writeNv12SampleLocked(nv12Buffer_, normalizedTimestampHns, frameDurationHns)) {
-        // Keep the timeline anchored at the first successfully written sample.
-        if (isFirstSample) firstSampleTimeHns_ = -1;
+    const int64_t sampleDurationHns = firstFrame ? normalizedTimestampHns + frameDurationHns : frameDurationHns;
+    if (!writeNv12SampleLocked(nv12Buffer_, sampleTimeHns, sampleDurationHns)) {
         return false;
     }
 

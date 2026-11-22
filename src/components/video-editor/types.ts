@@ -634,6 +634,7 @@ export interface AutoCaptionSettings {
 	fontFamily: string;
 	fontSize: number;
 	bottomOffset: number;
+	horizontalPosition: number;
 	maxWidth: number;
 	maxRows: number;
 	animationStyle: AutoCaptionAnimation;
@@ -651,6 +652,7 @@ export const DEFAULT_AUTO_CAPTION_SETTINGS: AutoCaptionSettings = {
 	fontFamily: getDefaultCaptionFontFamily(),
 	fontSize: 30,
 	bottomOffset: 3,
+	horizontalPosition: 50,
 	maxWidth: 62,
 	maxRows: 1,
 	animationStyle: "none",

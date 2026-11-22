@@ -123,7 +123,8 @@ export type CursorInteractionType =
 	| "double-click"
 	| "right-click"
 	| "middle-click"
-	| "mouseup";
+	| "mouseup"
+	| "manual-zoom";
 
 export interface CursorTelemetryPoint {
 	timeMs: number;

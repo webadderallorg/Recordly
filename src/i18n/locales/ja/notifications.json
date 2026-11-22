@@ -33,6 +33,7 @@
 	"windowsStartFailed": "Windowsのネイティブキャプチャを開始できませんでした。ブラウザのキャプチャに切り替えます。",
 	"microphoneDenied": "マイクの使用が許可されていません。マイク音声なしで録画を続けます。",
 	"systemAudioUnavailable": "この録画対象ではシステム音声を利用できません。システム音声なしで録画を続けます。",
+	"timelineDuplicateNoRoom": "この項目を複製するスペースがありません。",
 	"waylandScreenCastMissing": "Wayland で画面を録画するには ScreenCast ポータルが必要です。デスクトップ環境に対応する画面共有ポータルをインストールするか、X11 セッションに切り替えてから、もう一度お試しください。",
 	"startRecordingFailed": "録画を開始できませんでした",
 	"saveRecordingFailed": "録画を保存できませんでした。",

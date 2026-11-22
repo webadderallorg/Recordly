@@ -36,6 +36,7 @@
 		"show": "Mostrar",
 		"showCursor": "Mostrar cursor",
 		"loopCursor": "Cursor en bucle",
+		"alwaysUsePointerCursor": "Usar siempre el cursor predeterminado",
 		"cursorStyle": "Estilo del cursor",
 		"cursorStyleOptions": {
 			"macos": "macOS",
@@ -253,6 +254,8 @@
 		"animationRise": "Elevar",
 		"animationPop": "Resaltar",
 		"bottomOffset": "Desplazamiento inferior",
+		"horizontalPosition": "Posición horizontal",
+		"verticalPosition": "Posición vertical",
 		"maxWidth": "Ancho máximo",
 		"boxRadius": "Radio del contenedor",
 		"backgroundOpacity": "Opacidad del fondo",

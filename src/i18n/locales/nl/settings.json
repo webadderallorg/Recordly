@@ -36,6 +36,7 @@
 		"show": "Tonen",
 		"showCursor": "Cursor tonen",
 		"loopCursor": "Cursor herhalen",
+		"alwaysUsePointerCursor": "Altijd standaardcursor gebruiken",
 		"cursorStyle": "Cursorstijl",
 		"cursorStyleOptions": {
 			"macos": "macOS",
@@ -253,6 +254,8 @@
 		"animationRise": "Opstijgen",
 		"animationPop": "Verschijnen",
 		"bottomOffset": "Onderste afstand",
+		"horizontalPosition": "Horizontale positie",
+		"verticalPosition": "Verticale positie",
 		"maxWidth": "Maximale breedte",
 		"boxRadius": "Vakstraal",
 		"backgroundOpacity": "Achtergrond-dekking",

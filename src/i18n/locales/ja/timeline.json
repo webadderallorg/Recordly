@@ -1,5 +1,7 @@
 {
 	"zoom": {
+		"selectedOne": "ズームを1件選択中",
+		"selectedCount": "ズームを{{count}}件選択中",
 		"applyAutoZooms": "自動ズームを適用",
 		"cannotPlace": "ここにズームを配置できません",
 		"existsOrNoSpace": "この位置には既にズームがあるか、十分な空きがありません。",

@@ -89,15 +89,16 @@ export function useZoomRegionCommands({
 	);
 
 	const handleZoomSuggested = useCallback(
-		(span: Span, focus: ZoomFocus) => {
+		(span: Span, focus: ZoomFocus, mode: ZoomMode = "auto") => {
+			const depth = mode === "manual" ? DEFAULT_ZOOM_DEPTH : DEFAULT_AUTO_ZOOM_DEPTH;
 			const newRegion: ZoomRegion = {
 				id: `zoom-${nextZoomIdRef.current++}`,
 				startMs: Math.round(span.start),
 				endMs: Math.round(span.end),
-				depth: DEFAULT_AUTO_ZOOM_DEPTH,
-				focus: clampFocusToDepth(focus, DEFAULT_AUTO_ZOOM_DEPTH),
+				depth,
+				focus: clampFocusToDepth(focus, depth),
 				focusSpace: "source",
-				mode: "auto",
+				mode,
 			};
 			setZoomRegions((current) => [...current, newRegion]);
 		},
@@ -163,9 +164,10 @@ export function useZoomRegionCommands({
 		[selectedZoomId, setZoomRegions],
 	);
 	const handleZoomDelete = useCallback(
-		(id: string) => {
-			setZoomRegions((current) => current.filter((region) => region.id !== id));
-			if (selectedZoomId === id) setSelectedZoomId(null);
+		(target: string | readonly string[]) => {
+			const ids = new Set(typeof target === "string" ? [target] : target);
+			setZoomRegions((current) => current.filter((region) => !ids.has(region.id)));
+			if (selectedZoomId && ids.has(selectedZoomId)) setSelectedZoomId(null);
 		},
 		[selectedZoomId, setSelectedZoomId, setZoomRegions],
 	);

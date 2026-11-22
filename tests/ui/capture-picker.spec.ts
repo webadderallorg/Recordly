@@ -128,34 +128,48 @@ test("platforms without area capture keep drag selection on an existing screen",
 	expect(await pick(page)).toMatchObject({ kind: "screen", record: false });
 });
 
-for (const { selected, trigger } of [
-	{ selected: false, trigger: "source" },
-	{ selected: false, trigger: "record" },
-	{ selected: true, trigger: "source" },
+for (const { selected, trigger, platform, canceled = false } of [
+	{ selected: false, trigger: "source", platform: "win32" },
+	{ selected: false, trigger: "record", platform: "win32" },
+	{ selected: false, trigger: "record", platform: "win32", canceled: true },
+	{ selected: false, trigger: "record", platform: "darwin" },
+	{ selected: false, trigger: "record", platform: "linux" },
+	{ selected: true, trigger: "source", platform: "win32" },
 ]) {
-	test(`HUD ${selected ? "keeps the selected source" : "starts without a selected source"} and opens the picker only on ${trigger} click`, async ({
+	test(`HUD picker on ${platform} opens on ${trigger} with ${selected ? "a saved source" : "no saved source"}${canceled ? " and cancels" : ""}`, async ({
 		page,
 	}) => {
 		await installDesktopBridge(page);
 		await installDesktopBridgeOverrides(
 			page,
-			(selected) => {
+			({ selected, platform, canceled }) => {
+				let source = selected ? { id: "screen:1:0", name: "Existing screen" } : null;
 				Object.assign(window.electronAPI, {
-					getSelectedSource: async () =>
-						selected ? { id: "screen:1:0", name: "Existing screen" } : null,
+					getPlatform: async () => platform,
+					getSelectedSource: async () => source,
+					isNativeWindowsCaptureAvailable: async () => ({ available: true }),
+					startNativeScreenRecording: async ({ id }: { id: string }) => {
+						document.documentElement.dataset.captureSource = id;
+						return { success: true };
+					},
+					pauseNativeScreenRecording: async () => ({ success: true }),
+					resumeNativeScreenRecording: async () => ({ success: true }),
+					startCountdown: async () => {
+						document.documentElement.dataset.countdownStarted = "true";
+						return { success: true };
+					},
 					pickCaptureTarget: async () => {
 						const html = document.documentElement;
 						html.dataset.pickerCalls = String(
 							Number(html.dataset.pickerCalls ?? 0) + 1,
 						);
-						return {
-							success: true,
-							source: { id: "window:101:0", name: "Selected window" },
-						};
+						if (canceled) return { success: false, canceled: true };
+						source = { id: "window:101:0", name: "Selected window" };
+						return { success: true, source };
 					},
 				});
 			},
-			selected,
+			{ selected, platform, canceled },
 		);
 		await page.goto("/?windowType=hud-overlay");
 		const control = page.getByRole("button", { name: "Choose recording source" });
@@ -171,8 +185,17 @@ for (const { selected, trigger } of [
 			: page.getByRole("button", { name: "Record", exact: true })
 		).click();
 		await expect(page.locator("html")).toHaveAttribute("data-picker-calls", "1");
-		await expect(control).toContainText("Selected window");
-		await expect(page.getByRole("button", { name: "Record", exact: true })).toBeVisible();
+		if (trigger === "record" && platform !== "linux" && !canceled) {
+			await expect(page.locator("html")).toHaveAttribute(
+				"data-capture-source",
+				"window:101:0",
+			);
+			await expect(page.locator("html")).toHaveAttribute("data-countdown-started", "true");
+		} else {
+			await expect(control).toContainText(canceled ? "Pick source" : "Selected window");
+			await expect(page.getByRole("button", { name: "Record", exact: true })).toBeVisible();
+			await expect(page.locator("html")).not.toHaveAttribute("data-capture-source");
+		}
 	});
 }
 
