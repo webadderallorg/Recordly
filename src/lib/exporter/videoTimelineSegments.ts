@@ -77,7 +77,7 @@ export function sliceVideoSegmentsToFrameWindow(
 		const sourceStart = segmentSourceTime(segment, first - segmentStart, fps);
 		result.push({
 			startSec: sourceStart,
-			// Keep the actual cut boundary for nearest-frame resampling.
+			// Keep the original cut boundary when selecting the presented frame.
 			endSec: segment.endSec,
 			speed: segment.speed,
 			outputStartSec: first / fps,
