@@ -136,6 +136,36 @@ it("shares one download across windows and refuses deletion until it finishes", 
 		expect.objectContaining({ modelId: "whisper-small", status: "error" }),
 	);
 });
+it("continues shared model download for remaining windows when one window closes mid-download", async () => {
+	state.delay = true;
+	let firstDestroyed = false;
+	const first = {
+		isDestroyed: () => firstDestroyed,
+		send: vi.fn(() => {
+			if (firstDestroyed) throw new Error("Object has been destroyed");
+		}),
+	} as unknown as Electron.WebContents;
+	const second = sender();
+	const a = downloadCaptionModel("whisper-small", first);
+	const b = downloadCaptionModel("whisper-small", second);
+	const results = Promise.allSettled([a, b]);
+	await vi.waitFor(() => expect(state.respond).toBeTypeOf("function"));
+
+	firstDestroyed = true;
+	state.respond!();
+
+	expect(state.requests).toHaveLength(1);
+	for (const result of await results) {
+		expect(result).toMatchObject({
+			status: "rejected",
+			reason: expect.objectContaining({ message: expect.stringContaining("integrity") }),
+		});
+	}
+	expect(second.send).toHaveBeenCalledWith(
+		"caption-model-download-progress",
+		expect.objectContaining({ modelId: "whisper-small", status: "error" }),
+	);
+});
 it("reuses installed models and deletes only the selected model", async () => {
 	const base = await installed("whisper-base");
 	const small = await installed("whisper-small");
