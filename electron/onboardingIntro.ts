@@ -42,6 +42,17 @@ export function startOnboardingIntro(
 	let deadline: NodeJS.Timeout;
 	let fadeTimer: NodeJS.Timeout | undefined;
 	let fadingPopup: BrowserWindow | undefined;
+	let releaseBanner: (() => void) | undefined;
+	if (handoff) {
+		const { webContents } = handoff.popup;
+		const bannerStart = new Promise<void>((resolve) => {
+			releaseBanner = resolve;
+		});
+		webContents.ipc.handle("wait-for-onboarding-banner", (event) => {
+			if (event.senderFrame && event.senderFrame === webContents.mainFrame)
+				return bannerStart;
+		});
+	}
 	const sendSoundtrackCue = () => {
 		if (
 			!soundtrackCanStart ||
@@ -84,17 +95,17 @@ export function startOnboardingIntro(
 		if (startedHandoff || !popupReady || !introFinished || popup.isDestroyed()) return;
 		startedHandoff = true;
 		allowSoundtrack();
-		if (!backdrop.isDestroyed() && backdrop.isVisible()) {
+		const animateHandoff = !backdrop.isDestroyed() && backdrop.isVisible();
+		if (animateHandoff) {
 			fadingPopup = popup;
 			popup.setOpacity(0);
 			if (onMac) {
 				popup.setAlwaysOnTop(true, "screen-saver", 1);
 			}
-			show();
-			if (!backdrop.isDestroyed()) fade(popup);
-		} else {
-			show();
 		}
+		show();
+		releaseBanner?.();
+		if (animateHandoff && !backdrop.isDestroyed()) fade(popup);
 	};
 	const finish = (animate: boolean) => {
 		if (introFinished) return;
