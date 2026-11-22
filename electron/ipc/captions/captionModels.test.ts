@@ -151,13 +151,16 @@ it("continues shared model download for remaining windows when one window closes
 	const results = Promise.allSettled([a, b]);
 	await vi.waitFor(() => expect(state.respond).toBeTypeOf("function"));
 
-	// First window closes mid-download
 	firstDestroyed = true;
-
 	state.respond!();
-	await results;
 
-	// Second window still receives progress despite the first window closing
+	expect(state.requests).toHaveLength(1);
+	for (const result of await results) {
+		expect(result).toMatchObject({
+			status: "rejected",
+			reason: expect.objectContaining({ message: expect.stringContaining("integrity") }),
+		});
+	}
 	expect(second.send).toHaveBeenCalledWith(
 		"caption-model-download-progress",
 		expect.objectContaining({ modelId: "whisper-small", status: "error" }),
