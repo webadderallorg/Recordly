@@ -332,6 +332,26 @@ export default async function beforePack(context) {
 			);
 		}
 	}
+	if (
+		(platform === "linux" || platform === "win32") &&
+		process.env.WHISPER_RUNTIME_ALLOW_MISSING !== "1"
+	) {
+		const runtimeDir = path.join(projectDir, "electron/native/bin", `${platform}-${arch}`);
+		const binaryName = platform === "win32" ? "whisper-cli.exe" : "whisper-cli";
+		const manifestPath = path.join(runtimeDir, "whisper-runtime.json");
+		const runtime =
+			(await exists(manifestPath)) && JSON.parse(await readFile(manifestPath, "utf8"));
+		if (
+			runtime?.platform !== platform ||
+			runtime?.arch !== arch ||
+			runtime?.binary !== binaryName ||
+			!(await exists(path.join(runtimeDir, binaryName)))
+		) {
+			throw new Error(
+				`Missing Whisper runtime for ${platform}/${arch}. Stage it with npm run build:whisper-runtime on a matching host, or use WHISPER_RUNTIME_ALLOW_MISSING=1 for a local build without bundled captions.`,
+			);
+		}
+	}
 	// Direct and cross-target packaging can bypass the Windows build script.
 	// Never ship a cached capture executable after its source has changed.
 	if (platform === "win32") {
