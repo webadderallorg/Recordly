@@ -1,11 +1,12 @@
 import type { Span } from "dnd-timeline";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { MinusIcon, Plus } from "@/components/ui/icons";
 import type {
 	SourceAudioTrackMeta,
 	SourceAudioTrackSettings,
 } from "@/components/video-editor/audio/audioTypes";
-import { useScopedT } from "@/contexts/I18nContext";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { selectClipRange } from "../clipMerge";
 import { TimelineLoadingSkeleton } from "../layout/TimelineLoadingSkeleton";
@@ -172,6 +173,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		ref,
 	) {
 		const te = useScopedT("editing");
+		const { t } = useI18n();
 		const totalMs = useMemo(
 			() => Math.max(0, Math.round(videoDuration * 1000)),
 			[videoDuration],
@@ -211,8 +213,9 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 
 		const timelineContainerRef = useRef<HTMLDivElement>(null);
 		const isTimelineFocusedRef = useRef(false);
-		const { setRange, clampedRange, handleTimelineWheel } = useTimelineRange({
+		const { setRange, clampedRange, handleTimelineWheel, zoomIn, zoomOut } = useTimelineRange({
 			totalMs,
+			minimumSpanMs: timelineScale.minVisibleRangeMs,
 			timelineContainerRef,
 		});
 
@@ -426,6 +429,30 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 
 		return (
 			<div className="relative flex-1 min-h-0 flex flex-col bg-transparent overflow-hidden">
+				<div
+					role="group"
+					aria-label={t("shortcuts.actions.zoomTimeline")}
+					className="ml-3 flex w-fit shrink-0 items-center"
+				>
+					<Button
+						onClick={zoomOut}
+						variant="ghost"
+						size="sm"
+						isIconOnly
+						title={t("native.zoomOut")}
+					>
+						<MinusIcon aria-hidden="true" />
+					</Button>
+					<Button
+						onClick={zoomIn}
+						variant="ghost"
+						size="sm"
+						isIconOnly
+						title={t("native.zoomIn")}
+					>
+						<Plus aria-hidden="true" />
+					</Button>
+				</div>
 				{selectedClipIds.length > 1 && onClipMerge && (
 					<div className="absolute right-3 top-1 z-30 flex items-center gap-2 rounded-lg bg-editor-surface/95 px-2 py-1 text-xs text-muted-foreground">
 						<span>
