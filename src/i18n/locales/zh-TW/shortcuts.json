@@ -2,14 +2,14 @@
 	"actions": {
 		"addZoom": "新增縮放",
 		"addTrim": "新增修剪",
-		"addSpeed": "新增速度",
+		"addSpeed": "新增變速",
 		"addAnnotation": "新增註解",
 		"addKeyframe": "新增關鍵影格",
-		"deleteSelected": "刪除所選項目",
+		"deleteSelected": "刪除所選物件",
 		"playPause": "播放或暫停",
-		"cycleForward": "往前切換註解",
-		"cycleBackward": "往後切換註解",
-		"deleteSelectedAlt": "刪除所選項目（Alt）",
+		"cycleForward": "向前切換註解",
+		"cycleBackward": "向後切換註解",
+		"deleteSelectedAlt": "刪除所選物件（Alt）",
 		"panTimeline": "平移時間軸",
 		"zoomTimeline": "縮放時間軸"
 	}
