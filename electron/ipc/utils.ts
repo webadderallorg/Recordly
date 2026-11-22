@@ -1,9 +1,9 @@
-import { getLocalMediaServerPath } from "../../src/lib/localMediaUrl";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app } from "electron";
+import { getLocalMediaServerPath } from "../../src/lib/localMediaUrl";
 import { RECORDINGS_DIR } from "../appPaths";
 import { AUTO_RECORDING_PREFIX, RECORDINGS_SETTINGS_FILE } from "./constants";
 import {
@@ -114,12 +114,16 @@ export async function getRecordingsDir() {
 	return targetDir;
 }
 
-export function getMacPrivacySettingsUrl(pane: "screen" | "accessibility" | "microphone"): string {
+export function getMacPrivacySettingsUrl(
+	pane: "screen" | "accessibility" | "microphone" | "camera",
+): string {
 	if (pane === "screen")
-		return "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
+		return "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ScreenCapture";
 	if (pane === "microphone")
-		return "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
-	return "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
+		return "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Microphone";
+	if (pane === "camera")
+		return "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Camera";
+	return "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility";
 }
 
 export function approveUserPath(filePath: string | null | undefined): void {

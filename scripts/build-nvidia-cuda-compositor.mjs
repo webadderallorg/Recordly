@@ -121,6 +121,23 @@ if (!existsSync(path.join(videoCodecSdkRoot, "Samples", "NvCodec"))) {
 	);
 }
 
+const nvencHeaderPath = [
+	path.join(videoCodecSdkRoot, "Samples", "NvCodec", "NvEncoder", "nvEncodeAPI.h"),
+	path.join(videoCodecSdkRoot, "Interface", "nvEncodeAPI.h"),
+].find((candidate) => existsSync(candidate));
+const nvencApiVersion = nvencHeaderPath
+	? Number(
+			readFileSync(nvencHeaderPath, "utf8").match(
+				/#define\s+NVENCAPI_MAJOR_VERSION\s+(\d+)/,
+			)?.[1],
+		)
+	: 0;
+if (!(nvencApiVersion >= 10)) {
+	fallbackToBundledHelperOrExit(
+		"NVIDIA Video Codec SDK headers with NVENCODE API 10.0 or newer are required to build the helper.",
+	);
+}
+
 function replaceOrThrow(filePath, content, pattern, replacement, label) {
 	const updated = content.replace(pattern, replacement);
 	if (updated === content) {

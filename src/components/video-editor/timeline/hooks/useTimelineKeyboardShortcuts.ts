@@ -1,5 +1,5 @@
 import { type RefObject, useEffect } from "react";
-import { matchesShortcut } from "@/lib/shortcuts";
+import { CLEAR_ALL_ZOOMS_SHORTCUT, matchesShortcut } from "@/lib/shortcuts";
 import type { TimelineShortcutBindings } from "../core/timelineTypes";
 import { resolveDeleteSelectionTarget } from "./utils/timelineSelectionUtils";
 
@@ -23,6 +23,7 @@ interface UseTimelineKeyboardShortcutsParams {
 	handleAddAnnotation: () => void;
 	deleteSelectedKeyframe: () => void;
 	deleteSelectedZoom: () => void;
+	clearAllZooms: () => void;
 	deleteSelectedClip: () => void;
 	deleteSelectedAnnotation: () => void;
 	deleteSelectedAudio: () => void;
@@ -50,6 +51,7 @@ export function useTimelineKeyboardShortcuts({
 	handleAddAnnotation,
 	deleteSelectedKeyframe,
 	deleteSelectedZoom,
+	clearAllZooms,
 	deleteSelectedClip,
 	deleteSelectedAnnotation,
 	deleteSelectedAudio,
@@ -99,7 +101,7 @@ export function useTimelineKeyboardShortcuts({
 				} else if (target === "zoom") {
 					deleteSelectedZoom();
 				} else if (target === "clip") {
-					deleteSelectedClip();
+					if (!e.repeat) deleteSelectedClip();
 				} else if (target === "annotation") {
 					deleteSelectedAnnotation();
 				} else if (target === "audio") {
@@ -114,6 +116,16 @@ export function useTimelineKeyboardShortcuts({
 				return;
 			}
 
+			if (
+				hasAnyZoomBlocks &&
+				matchesShortcut(e, CLEAR_ALL_ZOOMS_SHORTCUT, isMac) &&
+				!Object.values(keyShortcuts).some((binding) => matchesShortcut(e, binding, isMac))
+			) {
+				e.preventDefault();
+				if (!e.repeat) clearAllZooms();
+				return;
+			}
+
 			if (matchesShortcut(e, { key: "a", ctrl: true }, isMac)) {
 				if (!hasAnyZoomBlocks) {
 					return;
@@ -125,7 +137,10 @@ export function useTimelineKeyboardShortcuts({
 
 			if (matchesShortcut(e, keyShortcuts.addKeyframe, isMac)) addKeyframe();
 			if (matchesShortcut(e, keyShortcuts.addZoom, isMac)) handleAddZoom();
-			if (matchesShortcut(e, keyShortcuts.splitClip, isMac)) handleSplitClip();
+			if (matchesShortcut(e, keyShortcuts.splitClip, isMac)) {
+				e.preventDefault();
+				if (!e.repeat) handleSplitClip();
+			}
 			if (matchesShortcut(e, keyShortcuts.addAnnotation, isMac)) {
 				handleAddAnnotation();
 			}
@@ -143,6 +158,7 @@ export function useTimelineKeyboardShortcuts({
 		activateSelectAllZooms,
 		addKeyframe,
 		annotationCount,
+		clearAllZooms,
 		cycleAnnotationsAtCurrentTime,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,

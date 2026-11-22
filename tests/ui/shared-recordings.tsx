@@ -1,7 +1,7 @@
-import { CloudShareButton } from "@/components/video-editor/cloud/CloudShareButton";
-import { I18nProvider } from "@/contexts/I18nContext";
 import { createRoot } from "react-dom/client";
+import { CloudShareButton } from "@/components/video-editor/cloud/CloudShareButton";
 import { SharedRecordings } from "@/components/video-editor/cloud/SharedRecordings";
+import { I18nProvider } from "@/contexts/I18nContext";
 import "@/index.css";
 
 // Local fixture: no account, recording, network request, or real deletion.

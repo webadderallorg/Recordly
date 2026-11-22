@@ -3,11 +3,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { describe, expect, it, vi } from "vitest";
 import ffmpeg from "ffmpeg-static";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../ffmpeg/binary", () => ({ getFfmpegBinaryPath: () => ffmpeg }));
+
 import { createShareThumbnail } from "./shareThumbnail";
+
 const run = promisify(execFile);
 
 describe("shared recording preview", () => {

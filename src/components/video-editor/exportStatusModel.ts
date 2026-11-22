@@ -2,6 +2,8 @@ import type { ExportFormat, ExportPipelineModel, ExportProgress } from "@/lib/ex
 
 export type ExportStatusModel = {
 	isExportSaving: boolean;
+	isGifFinalizing: boolean;
+	exportDisplayProgress: number;
 	isExportPreparing: boolean;
 	isExportFinalizing: boolean;
 	isRenderingAudio: boolean;
@@ -33,6 +35,17 @@ export function resolveExportStatusModel({
 	const isExportPreparing =
 		isExporting && (!exportProgress || exportProgress.phase === "preparing");
 	const isExportFinalizing = exportProgress?.phase === "finalizing";
+	const isGifFinalizing = exportFormat === "gif" && isExportFinalizing;
+	// Encoding can finish after rendering, and file persistence is still pending.
+	// Reserve completion for the successful export result, never a rounded frame count.
+	const rawDisplayProgress = exportProgress?.percentage ?? 0;
+	const exportDisplayProgress = Math.max(
+		0,
+		Math.min(
+			exportFormat === "gif" ? 95 : 99,
+			Number.isFinite(rawDisplayProgress) ? rawDisplayProgress : 0,
+		),
+	);
 	const isRenderingAudio =
 		isExportFinalizing && typeof exportProgress?.audioProgress === "number";
 	const rawFinalizingProgress =
@@ -54,7 +67,7 @@ export function resolveExportStatusModel({
 		exportPipelineModel === "modern" &&
 		!isRenderingAudio;
 	const isExportFinalSaveIndeterminate =
-		isExportMuxingAndSaving && (exportFinalizingPercent ?? 0) >= 98;
+		isGifFinalizing || (isExportMuxingAndSaving && (exportFinalizingPercent ?? 0) >= 98);
 	const isLightningExportInProgress =
 		exportFormat === "mp4" &&
 		exportPipelineModel === "modern" &&
@@ -91,6 +104,8 @@ export function resolveExportStatusModel({
 
 	return {
 		isExportSaving,
+		isGifFinalizing,
+		exportDisplayProgress,
 		isExportPreparing,
 		isExportFinalizing,
 		isRenderingAudio,

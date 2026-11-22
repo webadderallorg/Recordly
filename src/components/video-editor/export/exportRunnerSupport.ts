@@ -1,8 +1,10 @@
 import type { RefObject } from "react";
-import { useCallback } from "react";
 import { toast } from "@/components/ui/toast";
-import type { SupportedMp4Dimensions } from "@/lib/exporter";
+import { translate } from "@/i18n/runtime";
+import type { ExportQuality, SupportedMp4Dimensions } from "@/lib/exporter";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
+import type { ShareResolution } from "../cloud/shareResolution";
+import type { Mp4ExportRouting } from "../mp4ExportRouting";
 import type { getSmokeExportConfig } from "../smokeExportConfig";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
@@ -14,9 +16,10 @@ import type { useExportSession } from "./useExportSession";
 import type { useExportSettings } from "./useExportSettings";
 
 export type ExportRunnerInput = {
+	exportIdentity?: import("../dashboard/libraryExportHistory").LibraryExportIdentity;
+	projectName: string;
 	videoPath: string | null;
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
-	isPlaying: boolean;
 	appearance: ReturnType<typeof useAppearanceState>;
 	timeline: ReturnType<typeof useTimelineState>;
 	exportSettings: ReturnType<typeof useExportSettings>;
@@ -29,42 +32,33 @@ export type ExportRunnerInput = {
 	effectiveShowCursor: boolean;
 	ensureSupportedMp4SourceDimensions: (
 		frameRate: ReturnType<typeof useExportSettings>["mp4FrameRate"],
-		options?: { capTo1080p?: boolean },
+		quality?: ExportQuality,
+		shareResolution?: ShareResolution,
+		route?: Pick<Mp4ExportRouting, "pipelineModel" | "backendPreference">,
 	) => Promise<SupportedMp4Dimensions>;
 	captionSidecarPayload?: PendingExportSave["captionSidecar"];
 	experimentalNvidiaCudaExport: boolean;
 	nvidiaCudaExportAvailable: boolean;
-	remountPreview: () => void;
 };
 
 export function showExportErrorToast(message: string) {
 	const summary = summarizeErrorMessage(message);
-	toast.error(summary, {
-		description: summary === message ? undefined : message,
-		duration: 20_000,
+	toast.error(translate("notifications.exportFailed", "Export failed"), {
+		description: summary === message ? summary : message,
+		duration: Infinity,
 	});
 }
 
-export function useExportSuccessToast() {
-	return useCallback((filePath: string) => {
-		toast.success(`Exported successfully to ${filePath}`, {
-			action: {
-				label: "Show in Folder",
-				onClick: async () => {
-					try {
-						const result = await window.electronAPI.revealInFolder(filePath);
-						if (!result.success) {
-							toast.error(
-								result.error ||
-									result.message ||
-									"Failed to reveal item in folder.",
-							);
-						}
-					} catch (error) {
-						toast.error(`Error revealing in folder: ${String(error)}`);
-					}
-				},
-			},
-		});
-	}, []);
+export function showCaptionSidecarWarning(result: {
+	success: boolean;
+	captionSidecarFailed?: boolean;
+}) {
+	if (!result.success || !result.captionSidecarFailed) return;
+	toast.warning(
+		translate(
+			"notifications.captionFilesSaveFailed",
+			"Video saved, but some caption files could not be saved.",
+		),
+		{ duration: Infinity },
+	);
 }

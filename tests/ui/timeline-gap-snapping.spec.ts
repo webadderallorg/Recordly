@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Locator } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { installDesktopBridge } from "./bridge";
 
 async function prepare(page: Page) {
@@ -11,7 +11,7 @@ async function prepare(page: Page) {
 	const row = (await page.locator('[data-timeline-row="row-clip"]').boundingBox())!;
 	await page.mouse.click(row.x + row.width / 2, row.y - 8);
 	await expect(page.getByTestId("playhead-cap")).toHaveAttribute("aria-label", "Playhead 3.0s");
-	await page.getByRole("button", { name: "Split Clip (C)", exact: true }).click();
+	await page.getByRole("button", { name: /^Split Clip \(/ }).click();
 	await expect(clips).toHaveCount(2);
 	return { clips, row };
 }
@@ -33,6 +33,8 @@ test("zoom ends snap to clip cuts, release, and can span the gutter", async ({ p
 	await expect(zoom).toHaveCount(1);
 	await resizeEnd(page, zoom, first.x + first.width - 4);
 	await expect(zoom).toHaveAttribute("data-end-ms", "3000");
+	// The displayed grip snaps to the cut while the full exit keeps its settling time.
+	expect(Number(await zoom.getAttribute("data-stored-end-ms"))).toBeGreaterThan(3000);
 	let box = (await zoom.boundingBox())!;
 	expect(box.x + box.width).toBeCloseTo(first.x + first.width, 0);
 	await resizeEnd(page, zoom, first.x + first.width - 30);
@@ -88,6 +90,7 @@ test("dragging a zoom soft-snaps its end to the cut without changing duration", 
 	await expect(zoom).toHaveCount(1);
 	const start = Number(await zoom.getAttribute("data-start-ms"));
 	const end = Number(await zoom.getAttribute("data-end-ms"));
+	await zoom.locator(".timeline-block").hover();
 	const box = (await zoom.boundingBox())!;
 	const delta = first.width * ((3000 - (end - start) - start) / 3000) - 4;
 	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);

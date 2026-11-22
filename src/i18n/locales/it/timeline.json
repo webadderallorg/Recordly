@@ -1,5 +1,6 @@
 {
 	"zoom": {
+		"applyAutoZooms": "Applica zoom automatici",
 		"cannotPlace": "Impossibile posizionare lo zoom qui",
 		"existsOrNoSpace": "Uno zoom esiste già in questa posizione o non c'è abbastanza spazio disponibile.",
 		"suggestHandlerUnavailable": "Gestore dei suggerimenti zoom non disponibile",
@@ -37,5 +38,10 @@
 	},
 	"addSpeed": "Aggiungi velocità (S)",
 	"resizeLeft": "Ridimensiona a sinistra",
-	"resizeRight": "Ridimensiona a destra"
+	"resizeRight": "Ridimensiona a destra",
+	"hints": {
+		"splitClip": "Premi {{binding}} per dividere la clip",
+		"addAnnotation": "Premi {{binding}} per aggiungere un’annotazione",
+		"addAudio": "Fai clic sull’icona della musica per aggiungere audio"
+	}
 }

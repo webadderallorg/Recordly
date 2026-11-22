@@ -1,13 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AudioProcessor } from "./audioEncoder";
 import { ModernVideoExporter } from "./modernVideoExporter";
-import type { MuxerFinalizeResult } from "./muxer";
+import { exporterInternals } from "./modernVideoExporter.testSupport";
 
 afterEach(() => {
 	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
 });
-
 describe("modern export audio cancellation", () => {
 	it.each([
 		"audio-render",
@@ -21,7 +20,7 @@ describe("modern export audio cancellation", () => {
 			width: 320,
 			height: 180,
 			frameRate: 30,
-			bitrate: 1_000_000,
+			bitrate: 1000000,
 			wallpaper: "#000000",
 			zoomRegions: [],
 			showShadow: false,
@@ -45,18 +44,46 @@ describe("modern export audio cancellation", () => {
 			if (stage === "video-buffer") exporter.cancel();
 			return new ArrayBuffer(0);
 		});
-		const access = exporter as unknown as {
-			finalizeExportWithFfmpegAudio(
-				video: MuxerFinalizeResult,
-				plan: unknown,
-			): Promise<unknown>;
-		};
+		const access = exporter;
 		await expect(
-			access.finalizeExportWithFfmpegAudio(
+			exporterInternals(access).operations.finalizeExportWithFfmpegAudio(
 				{ mode: "buffer", blob: video },
 				{ audioMode: "edited-track", strategy: "offline-render-fallback" },
 			),
 		).rejects.toThrow("Export cancelled");
 		expect(mux).not.toHaveBeenCalled();
+	});
+});
+describe("modern export startup cancellation", () => {
+	it("does not initialize an encoder after cancellation while diagnostics are pending", async () => {
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///source.mp4",
+			width: 320,
+			height: 180,
+			frameRate: 30,
+			bitrate: 1000000,
+			wallpaper: "#000000",
+			zoomRegions: [],
+			showShadow: false,
+			shadowIntensity: 0,
+			backgroundBlur: 0,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			backendPreference: "webcodecs",
+		});
+		const access = exporter;
+		let resolveDiagnostics!: (value: Record<string, unknown>) => void;
+		vi.spyOn(exporterInternals(access).operations, "collectRuntimeDiagnostics").mockReturnValue(
+			new Promise((resolve) => {
+				resolveDiagnostics = resolve;
+			}),
+		);
+		const initialize = vi
+			.spyOn(exporterInternals(access).operations, "initializeEncoder")
+			.mockRejectedValue(new Error("encoder must not start"));
+		const pending = exporter.export();
+		exporter.cancel();
+		resolveDiagnostics({});
+		await expect(pending).resolves.toMatchObject({ success: false, error: "Export cancelled" });
+		expect(initialize).not.toHaveBeenCalled();
 	});
 });

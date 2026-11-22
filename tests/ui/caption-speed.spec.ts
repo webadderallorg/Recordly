@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Locator } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { installDesktopBridge } from "./bridge";
 
 async function seek(page: Page, clip: Locator, timeMs: number) {

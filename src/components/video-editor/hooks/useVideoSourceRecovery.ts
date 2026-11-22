@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { errorSourceName } from "../project/projectLoadError";
 import { resolveVideoUrl } from "../projectPersistence";
 import type { useProjectState } from "../state/useProjectState";
 
@@ -19,7 +20,9 @@ export function useVideoSourceRecovery(
 			const current = latest.current;
 			const source = current.videoSourcePath;
 			if (!source || attempted.current || !message?.startsWith("Failed to load video")) {
-				current.setError(message);
+				current.setError(
+					message && source ? `${message} — ${errorSourceName(source)}` : message,
+				);
 				return;
 			}
 			attempted.current = true;
@@ -30,7 +33,10 @@ export function useVideoSourceRecovery(
 					remount();
 				})
 				.catch(() => {
-					if (latest.current.videoSourcePath === source) latest.current.setError(message);
+					if (latest.current.videoSourcePath === source)
+						latest.current.setError(
+							message && source ? `${message} — ${errorSourceName(source)}` : message,
+						);
 				});
 		},
 		[remount],

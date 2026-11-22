@@ -1,6 +1,4 @@
-import { Plus } from "@/components/ui/icons";
 import { useState } from "react";
-import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -10,8 +8,10 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
+import { Plus } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "@/components/ui/toast";
 import {
 	addCustomFont,
 	type CustomFont,

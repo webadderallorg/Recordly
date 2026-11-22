@@ -46,6 +46,7 @@ describe("exportStream", () => {
 
 	afterEach(async () => {
 		await cleanupAllExportStreams();
+		vi.restoreAllMocks();
 		await Promise.allSettled(
 			openedTempPaths.map((tempPath) => fs.rm(tempPath, { force: true })),
 		);
@@ -66,6 +67,45 @@ describe("exportStream", () => {
 		const bytes = await readBytes(tempPath);
 		expect(Array.from(bytes)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
 		expect(hasExportStream(streamId)).toBe(false);
+	});
+
+	it("persists every byte when the filesystem accepts only part of a chunk", async () => {
+		const originalOpen = fs.open.bind(fs);
+		vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+			const handle = await originalOpen(...args);
+			const write = handle.write.bind(handle);
+			handle.write = (async (
+				buffer: Uint8Array,
+				offset: number,
+				length: number,
+				position: number,
+			) => write(buffer, offset, Math.min(length, 2), position)) as typeof handle.write;
+			return handle;
+		});
+		const { streamId, tempPath } = await openExportStream();
+		const data = new Uint8Array([1, 2, 3, 4, 5, 6]);
+		await writeToExportStream(streamId, 0, data);
+		const result = await closeExportStream(streamId);
+		expect(Array.from(await readBytes(tempPath))).toEqual(Array.from(data));
+		expect(result.bytesWritten).toBe(data.byteLength);
+	});
+
+	it("rejects a stalled filesystem write and allows abort cleanup", async () => {
+		const originalOpen = fs.open.bind(fs);
+		vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+			const handle = await originalOpen(...args);
+			handle.write = (async () => ({
+				bytesWritten: 0,
+				buffer: new Uint8Array(),
+			})) as typeof handle.write;
+			return handle;
+		});
+		const { streamId, tempPath } = await openExportStream();
+		await expect(writeToExportStream(streamId, 0, new Uint8Array([1, 2]))).rejects.toThrow(
+			/no progress/i,
+		);
+		await closeExportStream(streamId, { abort: true });
+		await expect(fs.access(tempPath)).rejects.toThrow();
 	});
 
 	it("supports out-of-order writes and keeps the watermark at the highest offset", async () => {

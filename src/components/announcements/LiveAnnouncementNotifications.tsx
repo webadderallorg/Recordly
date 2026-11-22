@@ -3,14 +3,14 @@ import { toast } from "@/components/ui/toast";
 import { BUNDLED_ANNOUNCEMENT_FEED } from "@/content/announcements";
 import { useI18n } from "@/contexts/I18nContext";
 import { runAnnouncementAction } from "@/lib/announcementActions";
-import type { AnnouncementAudience } from "@/lib/announcements";
-import { parseAnnouncementFeed, selectAnnouncements } from "@/lib/announcements";
 import {
 	dismissAnnouncements,
 	readAnnouncementImpressionCounts,
 	readDismissedAnnouncementIds,
 	recordAnnouncementImpression,
 } from "@/lib/announcementState";
+import type { AnnouncementAudience } from "@/lib/announcements";
+import { parseAnnouncementFeed, selectAnnouncements } from "@/lib/announcements";
 
 const DEFAULT_NOTIFICATION_DURATION_SECONDS = 10;
 const MAX_NOTIFICATIONS_PER_LOAD = 5;

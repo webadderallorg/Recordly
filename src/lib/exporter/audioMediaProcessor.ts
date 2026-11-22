@@ -1,6 +1,6 @@
 import { WebDemuxer } from "web-demuxer";
-import { AudioTimelineProcessor } from "./audioTimelineProcessor";
 import { DECODE_BACKPRESSURE_LIMIT, OFFLINE_AUDIO_SAMPLE_RATE } from "./audioProcessorShared";
+import { AudioTimelineProcessor } from "./audioTimelineProcessor";
 import { resolveMediaElementSource } from "./localMediaSource";
 
 export class AudioMediaProcessor extends AudioTimelineProcessor {
@@ -239,6 +239,7 @@ export class AudioMediaProcessor extends AudioTimelineProcessor {
 		const source = await resolveMediaElementSource(url);
 		try {
 			const media = document.createElement("video");
+			// Only metadata is read; CORS access to decoded media is unnecessary.
 			media.preload = "metadata";
 			media.src = source.src;
 

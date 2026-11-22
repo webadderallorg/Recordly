@@ -19,6 +19,12 @@ type Input = {
 	projectSaveDialogInputRef: RefObject<HTMLInputElement | null>;
 };
 
+/** Persist editor values, excluding runtime bookkeeping absent from live snapshots. */
+export function buildPersistedEditorState(editor: Partial<ProjectEditorState>) {
+	const { autoFullTrackClipId: _clipId, autoFullTrackClipEndMs: _clipEnd, ...persisted } = editor;
+	return stripPersistedDevMotionBlurSettings(persisted);
+}
+
 export function useProjectSnapshotModel({
 	t,
 	project,
@@ -28,17 +34,14 @@ export function useProjectSnapshotModel({
 	projectNameInputRef,
 	projectSaveDialogInputRef,
 }: Input) {
-	const buildPersistedEditorState = useCallback(
-		(editor: Partial<ProjectEditorState>) => stripPersistedDevMotionBlurSettings(editor),
-		[],
-	);
+	const buildPersistedState = useCallback(buildPersistedEditorState, []);
 	const currentSourcePath = useMemo(
 		() =>
 			project.videoSourcePath ?? (project.videoPath ? fromFileUrl(project.videoPath) : null),
 		[project.videoPath, project.videoSourcePath],
 	);
 	const projectDisplayName = useMemo(() => {
-		const fileName = project.currentProjectPath?.split(/[\\/]/).pop() ?? "Untitled Project";
+		const fileName = project.currentProjectPath?.split(/[\\/]/).pop() ?? "";
 		return (
 			fileName.replace(/\.recordly$/i, "").replace(/\.[^.]+$/, "") ||
 			t("editor.project.untitled", "Untitled Project")
@@ -52,7 +55,6 @@ export function useProjectSnapshotModel({
 		if (!project.isEditingProjectName) return;
 		const frameId = window.requestAnimationFrame(() => {
 			projectNameInputRef.current?.focus();
-			projectNameInputRef.current?.select();
 		});
 		return () => window.cancelAnimationFrame(frameId);
 	}, [project.isEditingProjectName, projectNameInputRef]);
@@ -67,7 +69,7 @@ export function useProjectSnapshotModel({
 
 	const currentPersistedEditorState = useMemo(
 		() =>
-			buildPersistedEditorState({
+			buildPersistedState({
 				wallpaper: appearance.wallpaper,
 				shadowIntensity: appearance.shadowIntensity,
 				backgroundBlur: appearance.backgroundBlur,
@@ -104,6 +106,7 @@ export function useProjectSnapshotModel({
 				cursorClickBounce: appearance.cursorClickBounce,
 				cursorClickBounceDuration: appearance.cursorClickBounceDuration,
 				cursorSway: appearance.cursorSway,
+				cursorIdleHide: appearance.cursorIdleHide,
 				borderRadius: appearance.borderRadius,
 				padding: appearance.padding,
 				cropRegion: appearance.cropRegion,
@@ -157,6 +160,7 @@ export function useProjectSnapshotModel({
 			appearance.cursorClickBounce,
 			appearance.cursorClickBounceDuration,
 			appearance.cursorSway,
+			appearance.cursorIdleHide,
 			appearance.borderRadius,
 			appearance.padding,
 			appearance.cropRegion,
@@ -172,12 +176,12 @@ export function useProjectSnapshotModel({
 			aspectRatio,
 			timeline.sourceAudioTrackSettingsByClip,
 			timeline.defaultSourceAudioTrackSettings,
-			buildPersistedEditorState,
+			buildPersistedState,
 		],
 	);
 
 	return {
-		buildPersistedEditorState,
+		buildPersistedEditorState: buildPersistedState,
 		currentSourcePath,
 		projectDisplayName,
 		currentPersistedEditorState,

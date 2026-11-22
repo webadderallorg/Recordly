@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createSaveBeforeCloseController } from "./saveBeforeClose";
+
 afterEach(() => vi.useRealTimers());
 function fixture(discard = false) {
 	let reply!: (saved: boolean) => void;

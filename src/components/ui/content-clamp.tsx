@@ -1,6 +1,7 @@
 import { Tooltip } from "@heroui/react";
 import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
+
 interface ContentClampProps extends HTMLAttributes<HTMLDivElement> {
 	truncateLength?: number;
 }

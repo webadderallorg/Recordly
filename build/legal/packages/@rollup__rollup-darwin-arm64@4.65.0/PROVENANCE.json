@@ -1,0 +1,7 @@
+{
+	"package": "@rollup/rollup-darwin-arm64",
+	"version": "4.65.0",
+	"npmGitHead": "9aac09a39dc1fa297a7b06f1ad6907f7bd41b310",
+	"licenseUrl": "https://raw.githubusercontent.com/rollup/rollup/9aac09a39dc1fa297a7b06f1ad6907f7bd41b310/LICENSE.md",
+	"sha256": "fa1bd040c5bdeefe65b3821cebf474f2733ce65df13089bd151dda1778e62fe8"
+}

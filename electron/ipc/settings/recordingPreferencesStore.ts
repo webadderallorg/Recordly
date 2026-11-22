@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
+import { RECORDINGS_SETTINGS_FILE } from "../constants";
 import { parseJsonWithByteOrderMark } from "../utils";
 
 export interface RecordingPreferencesPatch {
@@ -7,7 +9,10 @@ export interface RecordingPreferencesPatch {
 	systemAudioEnabled?: boolean;
 	webcamEnabled?: boolean;
 	webcamDeviceId?: string;
+	floatingWebcamPreviewVisible?: boolean;
 }
+
+type RecordingSettingsPatch = RecordingPreferencesPatch & { recordingsDir?: string };
 
 export function createRecordingPreferencesStore(filePath: string) {
 	let operationQueue: Promise<void> = Promise.resolve();
@@ -29,17 +34,29 @@ export function createRecordingPreferencesStore(filePath: string) {
 			await operationQueue;
 			return readFile();
 		},
-		async update(patch: RecordingPreferencesPatch): Promise<void> {
+		async update(patch: RecordingSettingsPatch): Promise<void> {
 			const operation = operationQueue.then(async () => {
 				const existing = await readFile();
-				await fs.writeFile(
-					filePath,
-					JSON.stringify({ ...existing, ...patch }, null, 2),
-					"utf-8",
-				);
+				const temporary = `${filePath}.${randomUUID()}.tmp`;
+				try {
+					await fs.writeFile(
+						temporary,
+						JSON.stringify({ ...existing, ...patch }, null, 2),
+						{
+							encoding: "utf-8",
+							flag: "wx",
+							mode: 0o600,
+						},
+					);
+					await fs.rename(temporary, filePath);
+				} finally {
+					await fs.rm(temporary, { force: true }).catch(() => undefined);
+				}
 			});
 			operationQueue = operation.catch(() => undefined);
 			await operation;
 		},
 	};
 }
+
+export const recordingPreferencesStore = createRecordingPreferencesStore(RECORDINGS_SETTINGS_FILE);

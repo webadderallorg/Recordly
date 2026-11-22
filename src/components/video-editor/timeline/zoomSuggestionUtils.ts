@@ -1,9 +1,20 @@
-import type { CursorTelemetryPoint, ZoomFocus } from "../types";
+import {
+	type ClipRegion,
+	type CursorTelemetryPoint,
+	getClipSourceEndMs,
+	getClipSourceStartMs,
+	type ZoomFocus,
+} from "../types";
+import { getCursorPressIntervals } from "../videoPlayback/cursorPress";
+import { detectInteractionCandidates } from "./cursorInteractionCandidates";
 
-export const MIN_DWELL_DURATION_MS = 450;
-export const MAX_DWELL_DURATION_MS = 2600;
-export const DWELL_MOVE_THRESHOLD = 0.02;
-export const MIN_FRESH_RECORDING_AUTO_ZOOM_SOURCE_ASPECT_RATIO = 1.2;
+export {
+	DWELL_MOVE_THRESHOLD,
+	detectInteractionCandidates,
+	detectZoomDwellCandidates,
+	MAX_DWELL_DURATION_MS,
+	MIN_DWELL_DURATION_MS,
+} from "./cursorInteractionCandidates";
 
 export interface ZoomDwellCandidate {
 	centerTimeMs: number;
@@ -12,6 +23,7 @@ export interface ZoomDwellCandidate {
 }
 
 export interface CursorInteractionCandidate extends ZoomDwellCandidate {
+	endTimeMs?: number;
 	kind:
 		| "dwell"
 		| "click-like"
@@ -40,37 +52,12 @@ export interface InteractionZoomSuggestionResult {
 	suggestions: SuggestedZoomRegion[];
 }
 
-export function shouldAutoApplyFreshRecordingZoomsForSource(
-	sourceWidth?: number,
-	sourceHeight?: number,
-	platform?: string,
-): boolean {
-	// Window capture on Windows legitimately produces portrait and near-square
-	// sources. Click telemetry is already normalized to that captured window, so
-	// its aspect ratio is not a reason to suppress interaction-based zooms.
-	if (platform === "win32") {
-		return true;
-	}
-
-	if (
-		!Number.isFinite(sourceWidth) ||
-		!Number.isFinite(sourceHeight) ||
-		(sourceWidth ?? 0) <= 0 ||
-		(sourceHeight ?? 0) <= 0
-	) {
-		return true;
-	}
-
-	return (
-		(sourceWidth as number) / (sourceHeight as number) >=
-		MIN_FRESH_RECORDING_AUTO_ZOOM_SOURCE_ASPECT_RATIO
-	);
-}
-
 /** Max gap between consecutive clicks before they are split into separate zoom clusters. */
 export const CLICK_CLUSTER_MERGE_GAP_MS = 2500;
+
 /** Padding added before the first click and after the last click in a cluster. */
 export const CLICK_CLUSTER_PAD_MS = 500;
+
 const EXPLICIT_CLICK_TYPES = new Set<NonNullable<CursorTelemetryPoint["interactionType"]>>([
 	"click",
 	"double-click",
@@ -93,6 +80,7 @@ function normalizeTelemetrySample(
 		cx: Math.max(0, Math.min(sample.cx, 1)),
 		cy: Math.max(0, Math.min(sample.cy, 1)),
 		interactionType: sample.interactionType,
+		...(sample.mouseButton ? { mouseButton: sample.mouseButton } : {}),
 		cursorType: sample.cursorType,
 	};
 }
@@ -125,7 +113,7 @@ export function normalizeCursorTelemetry(
 		.sort((a, b) => a.timeMs - b.timeMs)
 		.map((sample) => normalizeTelemetrySample(sample, totalMs));
 
-	const interactions = detectInteractionCandidates(normalized);
+	const interactions = detectInteractionCandidates(normalized, totalMs);
 	for (const candidate of interactions) {
 		if (candidate.kind === "text-selection") {
 			applyCursorTypeInRange(
@@ -148,15 +136,11 @@ export function normalizeCursorTelemetry(
 		}
 	}
 
-	for (const sample of normalized) {
+	for (const { down: sample, up: mouseUp } of getCursorPressIntervals(normalized, totalMs)) {
 		if (sample.interactionType !== "click" && sample.interactionType !== "double-click") {
 			continue;
 		}
 
-		const mouseUp = normalized.find(
-			(candidate) =>
-				candidate.timeMs > sample.timeMs && candidate.interactionType === "mouseup",
-		);
 		if (!mouseUp) {
 			continue;
 		}
@@ -178,147 +162,29 @@ export function normalizeCursorTelemetry(
 	return normalized;
 }
 
-export function detectZoomDwellCandidates(samples: CursorTelemetryPoint[]): ZoomDwellCandidate[] {
-	if (samples.length < 2) {
-		return [];
-	}
-
-	const dwellCandidates: ZoomDwellCandidate[] = [];
-	let runStart = 0;
-
-	const pushRunIfDwell = (startIndex: number, endIndexExclusive: number) => {
-		if (endIndexExclusive - startIndex < 2) {
-			return;
-		}
-
-		const start = samples[startIndex];
-		const end = samples[endIndexExclusive - 1];
-		const runDuration = end.timeMs - start.timeMs;
-		if (runDuration < MIN_DWELL_DURATION_MS || runDuration > MAX_DWELL_DURATION_MS) {
-			return;
-		}
-
-		const runSamples = samples.slice(startIndex, endIndexExclusive);
-		const avgCx = runSamples.reduce((sum, sample) => sum + sample.cx, 0) / runSamples.length;
-		const avgCy = runSamples.reduce((sum, sample) => sum + sample.cy, 0) / runSamples.length;
-
-		dwellCandidates.push({
-			centerTimeMs: Math.round((start.timeMs + end.timeMs) / 2),
-			focus: { cx: avgCx, cy: avgCy },
-			strength: runDuration,
-		});
-	};
-
-	for (let index = 1; index < samples.length; index += 1) {
-		const prev = samples[index - 1];
-		const curr = samples[index];
-		const distance = Math.hypot(curr.cx - prev.cx, curr.cy - prev.cy);
-
-		if (distance > DWELL_MOVE_THRESHOLD) {
-			pushRunIfDwell(runStart, index);
-			runStart = index;
-		}
-	}
-	pushRunIfDwell(runStart, samples.length);
-
-	return dwellCandidates;
-}
-
-export function detectInteractionCandidates(
-	samples: CursorTelemetryPoint[],
-): CursorInteractionCandidate[] {
-	// --- Phase 1: Explicit interaction events (from uiohook telemetry) ---
-	const clickEvents = samples.filter((sample) => isExplicitClickType(sample.interactionType));
-
-	const explicitInteractionCandidates: CursorInteractionCandidate[] = [];
-
-	for (const clickSample of clickEvents) {
-		// Classify what happened AFTER this click by analyzing cursor trajectory
-		const kind = classifyPostClickBehavior(samples, clickSample);
-
-		const baseStrength =
-			kind === "double-click-like"
-				? 1500
-				: kind === "dropdown-open"
-					? 1200
-					: kind === "text-selection"
-						? 1300
-						: kind === "text-field-click"
-							? 1100
-							: 900;
-
-		explicitInteractionCandidates.push({
-			centerTimeMs: Math.round(clickSample.timeMs),
-			focus: { cx: clickSample.cx, cy: clickSample.cy },
-			strength: baseStrength,
-			kind,
-			source: "explicit",
-		});
-	}
-
-	// --- Phase 2: Dwell-based heuristic candidates ---
-	const dwellCandidates = detectZoomDwellCandidates(samples).map<CursorInteractionCandidate>(
-		(candidate) => {
-			if (candidate.strength >= 1100) {
-				return { ...candidate, kind: "text-focus-like", source: "heuristic" };
-			}
-			if (candidate.strength <= 800) {
-				return { ...candidate, kind: "click-like", source: "heuristic" };
-			}
-			return { ...candidate, kind: "dwell", source: "heuristic" };
-		},
-	);
-
-	// --- Phase 3: Synthetic double-click detection from dwell pairs ---
-	const doubleClickCandidates: CursorInteractionCandidate[] = [];
-	const sortedByTime = [...dwellCandidates].sort((a, b) => a.centerTimeMs - b.centerTimeMs);
-
-	for (let index = 1; index < sortedByTime.length; index += 1) {
-		const prev = sortedByTime[index - 1];
-		const curr = sortedByTime[index];
-		const timeGap = curr.centerTimeMs - prev.centerTimeMs;
-		const spatialGap = Math.hypot(curr.focus.cx - prev.focus.cx, curr.focus.cy - prev.focus.cy);
-		const bothShort = prev.strength <= 900 && curr.strength <= 900;
-
-		if (bothShort && timeGap <= 450 && spatialGap <= 0.035) {
-			doubleClickCandidates.push({
-				centerTimeMs: Math.round((prev.centerTimeMs + curr.centerTimeMs) / 2),
-				focus: {
-					cx: (prev.focus.cx + curr.focus.cx) / 2,
-					cy: (prev.focus.cy + curr.focus.cy) / 2,
-				},
-				strength: prev.strength + curr.strength + 500,
-				kind: "double-click-like",
-				source: "heuristic",
-			});
-		}
-	}
-
-	return [...explicitInteractionCandidates, ...dwellCandidates, ...doubleClickCandidates];
-}
-
 /**
- * Groups a sorted list of click timestamps into clusters where consecutive
- * clicks are no more than `mergeGapMs` apart. Returns an array of
- * `{ firstMs, lastMs, focus }` objects, one per cluster.  The focus is taken
- * from the click with the highest interaction strength, falling back to the
- * centroid of all clicks in the cluster.
+ * Groups press intervals into clusters where the next down is no more than
+ * `mergeGapMs` after the previous release. Returns an array of
+ * `{ firstMs, lastMs, anchorMs, focus }` objects, one per cluster. Focus and
+ * anchor time come from the click with the highest interaction strength.
  */
 function buildClickClusters(
 	clicks: CursorInteractionCandidate[],
 	mergeGapMs: number,
-): Array<{ firstMs: number; lastMs: number; focus: ZoomFocus }> {
+): Array<{ firstMs: number; lastMs: number; anchorMs: number; focus: ZoomFocus }> {
 	if (clicks.length === 0) {
 		return [];
 	}
 
 	const sorted = [...clicks].sort((a, b) => a.centerTimeMs - b.centerTimeMs);
-	const clusters: Array<{ firstMs: number; lastMs: number; focus: ZoomFocus }> = [];
+	const clusters: Array<{ firstMs: number; lastMs: number; anchorMs: number; focus: ZoomFocus }> =
+		[];
 
 	let clusterStart = sorted[0].centerTimeMs;
-	let clusterEnd = sorted[0].centerTimeMs;
+	let clusterEnd = sorted[0].endTimeMs ?? sorted[0].centerTimeMs;
 	let bestStrength = sorted[0].strength;
 	let bestFocus = sorted[0].focus;
+	let anchorMs = sorted[0].centerTimeMs;
 	let sumCx = sorted[0].focus.cx;
 	let sumCy = sorted[0].focus.cy;
 	let count = 1;
@@ -329,10 +195,11 @@ function buildClickClusters(
 
 		if (gap <= mergeGapMs) {
 			// Extend current cluster
-			clusterEnd = Math.max(clusterEnd, click.centerTimeMs);
+			clusterEnd = Math.max(clusterEnd, click.endTimeMs ?? click.centerTimeMs);
 			if (click.strength > bestStrength) {
 				bestStrength = click.strength;
 				bestFocus = click.focus;
+				anchorMs = click.centerTimeMs;
 			}
 			sumCx += click.focus.cx;
 			sumCy += click.focus.cy;
@@ -342,12 +209,14 @@ function buildClickClusters(
 			clusters.push({
 				firstMs: clusterStart,
 				lastMs: clusterEnd,
+				anchorMs,
 				focus: bestFocus ?? { cx: sumCx / count, cy: sumCy / count },
 			});
 			clusterStart = click.centerTimeMs;
-			clusterEnd = click.centerTimeMs;
+			clusterEnd = click.endTimeMs ?? click.centerTimeMs;
 			bestStrength = click.strength;
 			bestFocus = click.focus;
+			anchorMs = click.centerTimeMs;
 			sumCx = click.focus.cx;
 			sumCy = click.focus.cy;
 			count = 1;
@@ -358,6 +227,7 @@ function buildClickClusters(
 	clusters.push({
 		firstMs: clusterStart,
 		lastMs: clusterEnd,
+		anchorMs,
 		focus: bestFocus ?? { cx: sumCx / count, cy: sumCy / count },
 	});
 
@@ -366,6 +236,8 @@ function buildClickClusters(
 
 export function buildInteractionZoomSuggestions(params: {
 	cursorTelemetry: CursorTelemetryPoint[];
+	/** Telemetry uses recording time; zoom blocks use the edited timeline. */
+	clipRegions?: ClipRegion[];
 	totalMs: number;
 	defaultDurationMs: number;
 	reservedSpans?: Array<{ start: number; end: number }>;
@@ -375,17 +247,23 @@ export function buildInteractionZoomSuggestions(params: {
 }): InteractionZoomSuggestionResult {
 	const {
 		cursorTelemetry,
+		clipRegions = [],
 		totalMs,
+		defaultDurationMs,
 		reservedSpans = [],
 		mergeGapMs = CLICK_CLUSTER_MERGE_GAP_MS,
 		padMs = CLICK_CLUSTER_PAD_MS,
+		spacingMs = padMs,
 	} = params;
 
 	if (totalMs <= 0) {
 		return { status: "no-slots", suggestions: [] };
 	}
 
-	const normalizedSamples = normalizeCursorTelemetry(cursorTelemetry, totalMs);
+	const normalizedSamples = normalizeCursorTelemetry(
+		cursorTelemetry,
+		clipRegions.length > 0 ? Number.MAX_SAFE_INTEGER : totalMs,
+	);
 	if (normalizedSamples.length === 0) {
 		return { status: "no-telemetry", suggestions: [] };
 	}
@@ -398,7 +276,14 @@ export function buildInteractionZoomSuggestions(params: {
 	}
 
 	// Only use explicit click events (uiohook telemetry) – ignore dwell heuristics
-	const clickCandidates = detectInteractionCandidates(normalizedSamples).filter(
+	const recordingEndMs =
+		clipRegions.length > 0
+			? Math.max(
+					normalizedSamples[normalizedSamples.length - 1].timeMs,
+					...clipRegions.map(getClipSourceEndMs),
+				)
+			: totalMs;
+	const clickCandidates = detectInteractionCandidates(normalizedSamples, recordingEndMs).filter(
 		(candidate) => candidate.source === "explicit",
 	);
 
@@ -406,34 +291,122 @@ export function buildInteractionZoomSuggestions(params: {
 		return { status: "no-interactions", suggestions: [] };
 	}
 
-	// Group nearby clicks into clusters, then derive zoom windows from those clusters
-	const clusters = buildClickClusters(clickCandidates, mergeGapMs);
+	// Project each retained source interval separately. A removed click must not be
+	// snapped onto a cut, and duplicated/reordered source gets its own interactions.
+	const groups =
+		clipRegions.length > 0
+			? [...clipRegions]
+					.sort((a, b) => a.startMs - b.startMs)
+					.map((clip) => {
+						const sourceStart = getClipSourceStartMs(clip);
+						const sourceEnd = getClipSourceEndMs(clip);
+						const speed =
+							Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
+						const candidates = clickCandidates.flatMap((candidate) => {
+							const end = candidate.endTimeMs ?? candidate.centerTimeMs;
+							if (
+								candidate.centerTimeMs >= sourceEnd ||
+								end < sourceStart ||
+								(end === sourceStart && candidate.centerTimeMs < sourceStart)
+							)
+								return [];
+							return [
+								{
+									...candidate,
+									centerTimeMs:
+										clip.startMs +
+										(Math.max(candidate.centerTimeMs, sourceStart) -
+											sourceStart) /
+											speed,
+									endTimeMs:
+										clip.startMs +
+										(Math.min(end, sourceEnd) - sourceStart) / speed,
+								},
+							];
+						});
+						return {
+							candidates,
+							start: Math.max(0, clip.startMs),
+							end: Math.min(totalMs, clip.endMs),
+						};
+					})
+			: [{ candidates: clickCandidates, start: 0, end: totalMs }];
+	if (!groups.some(({ candidates }) => candidates.length > 0)) {
+		return { status: "no-interactions", suggestions: [] };
+	}
 
 	const reserved = [...reservedSpans].sort((a, b) => a.start - b.start);
 	const suggestions: SuggestedZoomRegion[] = [];
 
-	for (const cluster of clusters) {
-		const regionStart = Math.max(0, cluster.firstMs - padMs);
-		const regionEnd = Math.min(totalMs, cluster.lastMs + padMs);
-
-		if (regionEnd <= regionStart) {
-			continue;
-		}
-
-		const hasOverlap = reserved.some(
-			(span) => regionEnd > span.start && regionStart < span.end,
+	const windows = groups
+		.flatMap((group) =>
+			buildClickClusters(group.candidates, mergeGapMs).map((cluster) => ({
+				cluster,
+				lower: group.start,
+				upper: group.end,
+				start: Math.max(group.start, cluster.firstMs - padMs),
+				end: Math.min(group.end, cluster.lastMs + padMs),
+			})),
+		)
+		.filter(
+			({ start, end }) =>
+				end > start && !reserved.some((span) => end > span.start && start < span.end),
 		);
 
-		if (hasOverlap) {
-			continue;
-		}
+	for (const [index, window] of windows.entries()) {
+		const { cluster } = window;
+		// Expand the shorter side so the focus-defining click lands at the midpoint,
+		// preserving every click and the full press/drag through its release.
+		const halfDuration = Math.max(
+			defaultDurationMs / 2,
+			cluster.anchorMs - window.start,
+			window.end - cluster.anchorMs,
+		);
+		const centeredStart = cluster.anchorMs - halfDuration;
+		const centeredEnd = cluster.anchorMs + halfDuration;
+		const blockers = [...reserved, ...windows.slice(index + 1)];
+		const canCenter =
+			centeredStart >= window.lower &&
+			centeredEnd <= window.upper &&
+			!blockers.some(
+				(span) =>
+					centeredEnd + spacingMs > span.start && centeredStart - spacingMs < span.end,
+			);
+		// At a boundary, shift a minimum-duration block into the available space.
+		// Preserve the full padded interaction when a nearby block leaves less room.
+		const lower = Math.max(
+			window.lower,
+			...blockers
+				.filter((span) => span.end <= window.start)
+				.map((span) => span.end + spacingMs),
+		);
+		const upper = Math.min(
+			window.upper,
+			...blockers
+				.filter((span) => span.start >= window.end)
+				.map((span) => span.start - spacingMs),
+		);
+		const duration = Math.min(
+			Math.max(defaultDurationMs, window.end - window.start),
+			upper - lower,
+		);
+		const minStart = Math.max(lower, window.end - duration);
+		const maxStart = Math.min(window.start, upper - duration);
+		const canExpand = duration >= window.end - window.start && minStart <= maxStart;
+		const expandedStart = Math.max(
+			minStart,
+			Math.min(cluster.anchorMs - duration / 2, maxStart),
+		);
+		const regionStart = canCenter ? centeredStart : canExpand ? expandedStart : window.start;
+		const regionEnd = canCenter
+			? centeredEnd
+			: canExpand
+				? expandedStart + duration
+				: window.end;
+		if (reserved.some((span) => regionEnd > span.start && regionStart < span.end)) continue;
 
 		reserved.push({ start: regionStart, end: regionEnd });
-		suggestions.push({
-			start: regionStart,
-			end: regionEnd,
-			focus: cluster.focus,
-		});
+		suggestions.push({ start: regionStart, end: regionEnd, focus: cluster.focus });
 	}
 
 	if (suggestions.length === 0) {
@@ -444,86 +417,4 @@ export function buildInteractionZoomSuggestions(params: {
 	suggestions.sort((a, b) => a.start - b.start);
 
 	return { status: "ok", suggestions };
-}
-
-/**
- * Analyzes cursor movement after a click to classify the interaction pattern.
- *
- * - **dropdown-open**: click followed by slow downward cursor movement (browsing items)
- * - **text-selection**: click followed by primarily horizontal drag movement
- * - **text-field-click**: click followed by cursor staying mostly still (dwell)
- * - **double-click-like**: explicit double-click interaction type
- * - **click-like**: generic click with no recognizable post-click pattern
- */
-function classifyPostClickBehavior(
-	samples: CursorTelemetryPoint[],
-	clickSample: CursorTelemetryPoint,
-): CursorInteractionCandidate["kind"] {
-	// Explicit double-click from uiohook
-	if (clickSample.interactionType === "double-click") {
-		return "double-click-like";
-	}
-
-	const clickTime = clickSample.timeMs;
-
-	// Check for mouseup shortly after (drag detection)
-	const mouseUpAfter = samples.find(
-		(s) =>
-			s.interactionType === "mouseup" && s.timeMs > clickTime && s.timeMs - clickTime < 3000,
-	);
-
-	if (mouseUpAfter) {
-		const dragDx = Math.abs(mouseUpAfter.cx - clickSample.cx);
-		const dragDy = Math.abs(mouseUpAfter.cy - clickSample.cy);
-		const dragDuration = mouseUpAfter.timeMs - clickTime;
-
-		// Text selection: horizontal drag > 3% of screen, mostly horizontal, duration 200ms+
-		if (dragDuration >= 200 && dragDx > 0.03 && dragDx > dragDy * 1.8) {
-			return "text-selection";
-		}
-	}
-
-	// Analyze trajectory in the 400ms-2000ms window after click
-	const moveSamples = samples.filter(
-		(s) =>
-			s.timeMs > clickTime + 100 &&
-			s.timeMs <= clickTime + 2000 &&
-			(s.interactionType === "move" || !s.interactionType),
-	);
-
-	if (moveSamples.length < 3) {
-		// Very few move samples after click = cursor stayed still = text field click
-		return "text-field-click";
-	}
-
-	// Compute displacement from click position
-	let maxDist = 0;
-	let totalAbsDy = 0;
-	let totalAbsDx = 0;
-	for (const s of moveSamples) {
-		const dist = Math.hypot(s.cx - clickSample.cx, s.cy - clickSample.cy);
-		maxDist = Math.max(maxDist, dist);
-		totalAbsDx += Math.abs(s.cx - clickSample.cx);
-		totalAbsDy += Math.abs(s.cy - clickSample.cy);
-	}
-
-	// Cursor barely moved after click: text field click (dwell)
-	if (maxDist < 0.02) {
-		return "text-field-click";
-	}
-
-	// Primarily downward movement after click: dropdown open
-	const lastMoveSample = moveSamples[moveSamples.length - 1];
-	const netDy = lastMoveSample.cy - clickSample.cy;
-
-	if (netDy > 0.03 && totalAbsDy > totalAbsDx * 1.5) {
-		return "dropdown-open";
-	}
-
-	// Primarily horizontal movement: text selection (fallback if no mouseup)
-	if (totalAbsDx > 0.03 && totalAbsDx > totalAbsDy * 1.8) {
-		return "text-selection";
-	}
-
-	return "click-like";
 }
