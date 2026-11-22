@@ -2,6 +2,7 @@
 
 #include <windows.graphics.capture.interop.h>
 #include <Windows.Graphics.Capture.h>
+#include <d3d11_4.h>
 #include <inspectable.h>
 
 #include <winrt/Windows.Foundation.h>
@@ -30,7 +31,8 @@ static int normalizeFramePoolExtent(int value) {
     return normalized;
 }
 
-static constexpr int kFramePoolBuffers = 2;
+// Frames the pool can hold while the consumer is busy; 2 starves easily at high frame rates.
+static constexpr int kFramePoolBuffers = 4;
 
 WgcSession::WgcSession() {}
 
@@ -57,8 +59,28 @@ bool WgcSession::createD3DDevice() {
         &d3dContext_);
 
     if (FAILED(hr)) {
-        std::cerr << "ERROR: D3D11CreateDevice failed: 0x" << std::hex << hr << std::endl;
+        std::cerr << "ERROR: D3D11CreateDevice failed: 0x" << std::hex << hr << std::dec << std::endl;
         return false;
+    }
+
+    // The capture callback and the encoder's readback worker share this immediate context.
+    ComPtr<ID3D11Multithread> multithread;
+    hr = d3dContext_.As(&multithread);
+    if (FAILED(hr) || !multithread) {
+        std::cerr << "ERROR: Failed to query ID3D11Multithread: 0x" << std::hex << hr << std::dec << std::endl;
+        return false;
+    }
+    multithread->SetMultithreadProtected(TRUE);
+
+    // Report which GPU performs the capture; on hybrid laptops this matters for performance.
+    ComPtr<IDXGIDevice> dxgiDevice;
+    ComPtr<IDXGIAdapter> adapter;
+    DXGI_ADAPTER_DESC adapterDesc{};
+    if (SUCCEEDED(d3dDevice_.As(&dxgiDevice)) && SUCCEEDED(dxgiDevice->GetAdapter(&adapter)) &&
+        SUCCEEDED(adapter->GetDesc(&adapterDesc))) {
+        char name[256]{};
+        WideCharToMultiByte(CP_UTF8, 0, adapterDesc.Description, -1, name, sizeof(name) - 1, nullptr, nullptr);
+        std::cerr << "Capture adapter: " << name << std::endl;
     }
 
     return true;
@@ -211,7 +233,7 @@ bool WgcSession::startCapture() {
 
     capturing_ = true;
     fatalError_ = false;
-    lastFrameTimeHns_ = 0;
+    nextFrameDueHns_ = 0;
 
     if (windowHandle_) {
         itemClosedRevoker_ = captureItem_.Closed(
@@ -265,8 +287,8 @@ void WgcSession::resumeAfterPendingFrames(int64_t resumeTimestampHns, const std:
         for (int count = 0; count < kFramePoolBuffers; ++count) {
             if (!readFrame(framePool_, true)) break;
         }
-        lastFrameTimeHns_ = 0;
     }
+    nextFrameDueHns_ = 0;
     resumeTimestampHns_ = resumeTimestampHns;
     resume();
 }
@@ -283,15 +305,27 @@ bool WgcSession::readFrame(
     auto timestamp = frame.SystemRelativeTime();
     int64_t frameTimeHns = std::chrono::duration_cast<std::chrono::duration<int64_t, std::ratio<1, 10000000>>>(timestamp).count();
 
-    // Paused window frames replace the cached image instead of reaching the encoder.
-    const bool rateLimited = !skipFrameRateLimit && lastFrameTimeHns_ > 0 &&
-        (frameTimeHns - lastFrameTimeHns_) < (frameIntervalHns_ * 7 / 10);
-    if (frameTimeHns < resumeTimestampHns_ || rateLimited) {
+    if (frameTimeHns < resumeTimestampHns_) {
         frame.Close();
         recreateFramePoolIfNeeded(contentSize);
         return true;
     }
-    if (!skipFrameRateLimit) lastFrameTimeHns_ = frameTimeHns;
+
+    // Paused window frames replace the cached image instead of reaching the encoder.
+    if (!skipFrameRateLimit) {
+        // Frame rate limiting against a fixed schedule. The display can refresh much faster than
+        // the recording rate (e.g. 165 Hz); a plain "minimum gap" test would let through every
+        // second refresh (~82 fps) and make the encoder do far more work than requested.
+        if (nextFrameDueHns_ == 0) nextFrameDueHns_ = frameTimeHns;
+        if (frameTimeHns + frameIntervalHns_ / 2 < nextFrameDueHns_) {
+            frame.Close();
+            recreateFramePoolIfNeeded(contentSize);
+            return true;
+        }
+        nextFrameDueHns_ += frameIntervalHns_;
+        // After a pause or an idle screen the schedule is stale; restart it from this frame.
+        if (nextFrameDueHns_ < frameTimeHns) nextFrameDueHns_ = frameTimeHns + frameIntervalHns_;
+    }
 
     if (auto access = frame.Surface().try_as<IDirect3DDxgiInterfaceAccess>()) {
         ComPtr<ID3D11Texture2D> texture;
