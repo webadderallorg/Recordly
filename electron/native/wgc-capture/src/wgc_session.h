@@ -30,7 +30,7 @@ public:
     void setFrameCallback(FrameCallback callback, std::function<bool()> isPaused);
     bool startCapture();
     void stopCapture();
-    void resumeAfterPendingFrames(const std::function<void()>& resume);
+    void resumeAfterPendingFrames(int64_t resumeTimestampHns, const std::function<void()>& resume);
     bool hasFatalError() const {
         return fatalError_.load() || (windowHandle_ && !IsWindow(windowHandle_));
     }
@@ -62,6 +62,7 @@ private:
     int framePoolHeight_ = 0;
     int64_t frameIntervalHns_ = 0;
     int64_t lastFrameTimeHns_ = 0;
+    int64_t resumeTimestampHns_ = 0;
     HWND windowHandle_ = nullptr;
 
     bool createD3DDevice();

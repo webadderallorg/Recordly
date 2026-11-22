@@ -22,7 +22,6 @@ static std::atomic<int64_t> g_lastFrameTimestampHns{0};
 static std::atomic<int64_t> g_pauseStartTimestampHns{0};
 static std::atomic<int64_t> g_accumulatedPausedHns{0};
 static std::mutex g_videoMutex;
-static int64_t g_lastResumeTimestampHns = 0;
 static std::mutex g_stopMutex;
 static std::condition_variable g_stopCv;
 static bool g_stopRequested = false;
@@ -437,7 +436,6 @@ int wmain(int argc, wchar_t* argv[]) {
             pendingResumePresentationHns = 0;
             return;
         }
-        if (timestampHns < g_lastResumeTimestampHns) return;
         writeResumedWindowFrame();
         if (writeFrame(texture, contentWidth, contentHeight, adjustedVideoTimestampHns(timestampHns))) {
             pendingResumePresentationHns = 0;
@@ -492,6 +490,11 @@ int wmain(int argc, wchar_t* argv[]) {
     captureSetupComplete = true;
     announceRecordingStarted();
 
+    const auto resumeAudio = [&] {
+        if (audioActive) loopback.resume();
+        if (micActive) micCapture.resume();
+    };
+
     while (!session.hasFatalError()) {
         std::vector<CaptureCommand> commands;
         bool stopRequested;
@@ -505,16 +508,22 @@ int wmain(int argc, wchar_t* argv[]) {
         }
         for (const auto command : commands) {
             if (command == CaptureCommand::Pause && !g_pauseRequested) {
-                std::lock_guard<std::mutex> lock(g_videoMutex);
-                writeResumedWindowFrame();
-                openActivePauseAt(queryPerformanceCounterHns());
-            } else if (command == CaptureCommand::Resume && g_pauseRequested) {
-                session.resumeAfterPendingFrames([&] {
+                {
                     std::lock_guard<std::mutex> lock(g_videoMutex);
-                    g_lastResumeTimestampHns = queryPerformanceCounterHns();
-                    closeActivePauseAt(g_lastResumeTimestampHns);
+                    writeResumedWindowFrame();
+                    openActivePauseAt(queryPerformanceCounterHns());
+                }
+                if (audioActive) loopback.pause();
+                if (micActive) micCapture.pause();
+            } else if (command == CaptureCommand::Resume && g_pauseRequested) {
+                // Frames queued during the drain belong at or after the Resume boundary.
+                const int64_t resumeTimestampHns = queryPerformanceCounterHns();
+                resumeAudio();
+                session.resumeAfterPendingFrames(resumeTimestampHns, [&] {
+                    std::lock_guard<std::mutex> lock(g_videoMutex);
+                    closeActivePauseAt(resumeTimestampHns);
                     if (pausedWindowTimestampHns && !pendingResumePresentationHns) {
-                        pendingResumePresentationHns = adjustedVideoTimestampHns(g_lastResumeTimestampHns);
+                        pendingResumePresentationHns = adjustedVideoTimestampHns(resumeTimestampHns);
                     }
                     writeResumedWindowFrame();
                 });
@@ -522,12 +531,8 @@ int wmain(int argc, wchar_t* argv[]) {
         }
         if (stopRequested) break;
 
-        if (g_pauseRequested) {
-            if (audioActive) loopback.pause();
-            if (micActive) micCapture.pause();
-        } else {
-            if (audioActive) loopback.resume();
-            if (micActive) micCapture.resume();
+        if (!g_pauseRequested) {
+            resumeAudio();
             if (config.windowHandle > 0) {
                 std::lock_guard<std::mutex> lock(g_videoMutex);
                 writeResumedWindowFrame();

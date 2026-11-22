@@ -257,7 +257,7 @@ void WgcSession::onFrameArrived(
     readFrame(sender, cachePausedWindowFrame);
 }
 
-void WgcSession::resumeAfterPendingFrames(const std::function<void()>& resume) {
+void WgcSession::resumeAfterPendingFrames(int64_t resumeTimestampHns, const std::function<void()>& resume) {
     std::lock_guard<std::mutex> lock(frameDeliveryMutex_);
     if (windowHandle_) {
         // Let any callback already in flight finish and drain the frames already queued
@@ -265,7 +265,9 @@ void WgcSession::resumeAfterPendingFrames(const std::function<void()>& resume) {
         for (int count = 0; count < kFramePoolBuffers; ++count) {
             if (!readFrame(framePool_, true)) break;
         }
+        lastFrameTimeHns_ = 0;
     }
+    resumeTimestampHns_ = resumeTimestampHns;
     resume();
 }
 
@@ -282,15 +284,14 @@ bool WgcSession::readFrame(
     int64_t frameTimeHns = std::chrono::duration_cast<std::chrono::duration<int64_t, std::ratio<1, 10000000>>>(timestamp).count();
 
     // Paused window frames replace the cached image instead of reaching the encoder.
-    if (!skipFrameRateLimit) {
-        if (lastFrameTimeHns_ > 0 &&
-            (frameTimeHns - lastFrameTimeHns_) < (frameIntervalHns_ * 7 / 10)) {
-            frame.Close();
-            recreateFramePoolIfNeeded(contentSize);
-            return true;
-        }
-        lastFrameTimeHns_ = frameTimeHns;
+    const bool rateLimited = !skipFrameRateLimit && lastFrameTimeHns_ > 0 &&
+        (frameTimeHns - lastFrameTimeHns_) < (frameIntervalHns_ * 7 / 10);
+    if (frameTimeHns < resumeTimestampHns_ || rateLimited) {
+        frame.Close();
+        recreateFramePoolIfNeeded(contentSize);
+        return true;
     }
+    if (!skipFrameRateLimit) lastFrameTimeHns_ = frameTimeHns;
 
     if (auto access = frame.Surface().try_as<IDirect3DDxgiInterfaceAccess>()) {
         ComPtr<ID3D11Texture2D> texture;
