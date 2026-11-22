@@ -45,8 +45,10 @@ const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 const RENDERER_DIST = path.join(APP_ROOT, "dist");
 const WINDOW_ICON_FILENAME =
 	process.platform === "darwin" ? "recordlymac-512.png" : "recordly-512.png";
+// Resolved here rather than from VITE_PUBLIC: main.ts sets that only after this
+// module loads, so dev would otherwise read stale icons from an old dist build.
 const WINDOW_ICON_PATH = path.join(
-	process.env.VITE_PUBLIC || RENDERER_DIST,
+	VITE_DEV_SERVER_URL ? path.join(APP_ROOT, "public") : RENDERER_DIST,
 	"app-icons",
 	WINDOW_ICON_FILENAME,
 );
