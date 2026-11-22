@@ -4,6 +4,7 @@ import {
 	DECODE_BACKPRESSURE_LIMIT,
 	ENCODE_BACKPRESSURE_LIMIT,
 	MP4_AUDIO_CODEC,
+	resolveAudioTimestampOffsetUs,
 	type TrimLikeRegion,
 } from "./audioProcessorShared";
 import type { VideoMuxer } from "./muxer";
@@ -44,7 +45,7 @@ export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 			{
 				observeChunkTimestampUs: (timestampUs) => {
 					if (sourceTimestampOffsetUs === null) {
-						sourceTimestampOffsetUs = timestampUs;
+						sourceTimestampOffsetUs = resolveAudioTimestampOffsetUs(timestampUs);
 					}
 				},
 				shouldSkipChunk: (timestampMs) => this.isInTrimRegion(timestampMs, sortedTrims),

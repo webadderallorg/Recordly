@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { buildResolvedAudioPlan } from "@/lib/exporter/audioRoutingEngine";
+import {
+	buildResolvedAudioPlan,
+	getSourceTrackIdFromPath,
+} from "@/lib/exporter/audioRoutingEngine";
 import { resolveMediaElementSource } from "@/lib/exporter/localMediaSource";
 import {
 	clampMediaTimeToDuration,
@@ -425,6 +428,7 @@ export function useAudioPreviewSync({
 				duration,
 				audioDuration,
 				sourceAudioFallbackStartDelayMsByPath[sourceAudioPath],
+				getSourceTrackIdFromPath(sourceAudioPath),
 			);
 			const beforeAudioStart = currentTime + 0.001 < startDelaySeconds;
 			const targetTime = clampMediaTimeToDuration(

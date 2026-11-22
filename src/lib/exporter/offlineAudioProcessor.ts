@@ -109,17 +109,16 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 			const buffer = await this.decodeAudioFromUrl(audioPath);
 			if (!buffer) continue;
 
+			const trackId = getSourceTrackIdFromPath(audioPath);
 			companionEntries.push({
 				buffer,
-				trackId: getSourceTrackIdFromPath(audioPath),
-				gain: resolveSourceTrackGain(
-					sourceAudioTrackSettings,
-					getSourceTrackIdFromPath(audioPath),
-				),
+				trackId,
+				gain: resolveSourceTrackGain(sourceAudioTrackSettings, trackId),
 				startDelaySec: estimateCompanionAudioStartDelaySeconds(
 					refDuration,
 					buffer.duration,
 					sourceAudioFallbackStartDelayMsByPath?.[audioPath],
+					trackId,
 				),
 			});
 		}

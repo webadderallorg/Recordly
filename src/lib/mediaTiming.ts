@@ -55,9 +55,14 @@ export function estimateCompanionAudioStartDelaySeconds(
 	timelineDuration?: number | null,
 	audioDuration?: number | null,
 	recordedStartDelayMs?: number | null,
+	trackId?: string | null,
 ): number {
 	if (Number.isFinite(recordedStartDelayMs) && (recordedStartDelayMs ?? 0) >= 0) {
 		return Math.max(0, recordedStartDelayMs ?? 0) / 1000;
+	}
+
+	if (trackId === "system") {
+		return 0;
 	}
 
 	if (!Number.isFinite(timelineDuration) || !Number.isFinite(audioDuration)) {
