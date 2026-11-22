@@ -181,7 +181,7 @@ void WgcSession::recreateFramePoolIfNeeded(
 }
 
 bool WgcSession::initialize(HMONITOR monitor, int fps) {
-    fps_ = fps;
+    fps_ = fps > 0 ? fps : 60;
     frameIntervalHns_ = 10000000LL / fps_;
 
     if (!createD3DDevice()) return false;
@@ -193,11 +193,11 @@ bool WgcSession::initialize(HMONITOR monitor, int fps) {
     }
 
     captureItem_ = createCaptureItemForMonitor(monitor);
-    return initializeWithItem(fps);
+    return initializeWithItem(fps_);
 }
 
 bool WgcSession::initialize(HWND hwnd, int fps) {
-    fps_ = fps;
+    fps_ = fps > 0 ? fps : 60;
     frameIntervalHns_ = 10000000LL / fps_;
 
     if (!createD3DDevice()) return false;
@@ -220,7 +220,7 @@ bool WgcSession::initialize(HWND hwnd, int fps) {
         return false;
     }
     windowHandle_ = hwnd;
-    return initializeWithItem(fps);
+    return initializeWithItem(fps_);
 }
 
 void WgcSession::setFrameCallback(FrameCallback callback, std::function<bool()> isPaused) {
@@ -234,6 +234,7 @@ bool WgcSession::startCapture() {
     capturing_ = true;
     fatalError_ = false;
     nextFrameDueHns_ = 0;
+    hasNextFrameDue_ = false;
 
     if (windowHandle_) {
         itemClosedRevoker_ = captureItem_.Closed(
@@ -289,6 +290,7 @@ void WgcSession::resumeAfterPendingFrames(int64_t resumeTimestampHns, const std:
         }
     }
     nextFrameDueHns_ = 0;
+    hasNextFrameDue_ = false;
     resumeTimestampHns_ = resumeTimestampHns;
     resume();
 }
@@ -316,7 +318,10 @@ bool WgcSession::readFrame(
         // Frame rate limiting against a fixed schedule. The display can refresh much faster than
         // the recording rate (e.g. 165 Hz); a plain "minimum gap" test would let through every
         // second refresh (~82 fps) and make the encoder do far more work than requested.
-        if (nextFrameDueHns_ == 0) nextFrameDueHns_ = frameTimeHns;
+        if (!hasNextFrameDue_) {
+            nextFrameDueHns_ = frameTimeHns;
+            hasNextFrameDue_ = true;
+        }
         if (frameTimeHns + frameIntervalHns_ / 2 < nextFrameDueHns_) {
             frame.Close();
             recreateFramePoolIfNeeded(contentSize);

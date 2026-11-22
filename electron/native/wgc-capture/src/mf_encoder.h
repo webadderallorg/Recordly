@@ -10,6 +10,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -25,19 +26,28 @@ using Microsoft::WRL::ComPtr;
 // can no longer hold up the capture frame pool.
 class MFEncoder {
 public:
+    using SampleWrittenCallback = std::function<void()>;
+
     MFEncoder();
     ~MFEncoder();
 
     bool initialize(const std::wstring& outputPath, int width, int height, int fps,
                     ID3D11Device* device, ID3D11DeviceContext* context);
+    void setSampleWrittenCallback(SampleWrittenCallback callback);
     // Returns true when the frame was accepted for encoding. Returns false when it was
     // dropped (every staging slot busy) or could not be copied.
     bool writeFrame(ID3D11Texture2D* texture, int contentWidth, int contentHeight,
                     int64_t timestampHns);
+    // Drains queued frames, converts this frame synchronously, and returns whether a sample
+    // was actually written to the sink writer. Used where callers must know commit status.
+    bool writeFrameSync(ID3D11Texture2D* texture, int contentWidth, int contentHeight,
+                        int64_t timestampHns);
+    void drain();
     bool extendLastFrameTo(int64_t timestampHns);
     bool finalize();
 
     int64_t droppedFrames() const { return droppedFrames_.load(); }
+    int64_t writtenFrames() const { return writtenFrames_.load(); }
 
 private:
     enum class SlotState { Free, Reserved, Pending };
@@ -46,6 +56,11 @@ private:
         int64_t timestampHns = 0;
         SlotState state = SlotState::Free;
     };
+
+    bool copyToStaging(ID3D11Texture2D* stagingTexture, ID3D11Texture2D* sourceTexture,
+                       int contentWidth, int contentHeight);
+    bool mapAndConvertStaging(ID3D11Texture2D* stagingTexture);
+    bool commitNv12FrameLocked(int64_t timestampHns);
 
     void workerLoop();
     void processSlot(size_t index);
@@ -76,6 +91,8 @@ private:
     bool stopWorker_ = false;
     bool workerBusy_ = false;
     std::atomic<int64_t> droppedFrames_{0};
+    std::atomic<int64_t> writtenFrames_{0};
+    SampleWrittenCallback sampleWrittenCallback_;
 
     // Written only by the worker (and by extendLastFrameTo/finalize after draining).
     std::vector<uint8_t> nv12Buffer_;

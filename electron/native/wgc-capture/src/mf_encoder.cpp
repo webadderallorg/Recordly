@@ -200,12 +200,62 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
     firstSampleTimeHns_ = -1;
     lastSampleEndTimeHns_ = -1;
     droppedFrames_ = 0;
+    writtenFrames_ = 0;
 
     stopWorker_ = false;
     workerBusy_ = false;
     pending_.clear();
     initialized_ = true;
     worker_ = std::thread([this] { workerLoop(); });
+    return true;
+}
+
+void MFEncoder::setSampleWrittenCallback(SampleWrittenCallback callback) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    sampleWrittenCallback_ = std::move(callback);
+}
+
+bool MFEncoder::copyToStaging(ID3D11Texture2D* stagingTexture, ID3D11Texture2D* sourceTexture,
+                              int contentWidth, int contentHeight) {
+    if (!stagingTexture || !sourceTexture || contentWidth <= 0 || contentHeight <= 0) return false;
+
+    D3D11_TEXTURE2D_DESC sourceDesc = {};
+    sourceTexture->GetDesc(&sourceDesc);
+
+    const UINT validWidth = (std::min)(sourceDesc.Width, static_cast<UINT>(contentWidth));
+    const UINT validHeight = (std::min)(sourceDesc.Height, static_cast<UINT>(contentHeight));
+    if (sourceDesc.Width == static_cast<UINT>(width_) &&
+        sourceDesc.Height == static_cast<UINT>(height_) &&
+        validWidth == sourceDesc.Width && validHeight == sourceDesc.Height) {
+        context_->CopyResource(stagingTexture, sourceTexture);
+        return true;
+    }
+
+    if (!resizeCompositeTexture_ || !resizeCompositeView_) return false;
+
+    const FLOAT clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    context_->ClearRenderTargetView(resizeCompositeView_.Get(), clearColor);
+
+    D3D11_BOX sourceBox = {};
+    sourceBox.left = 0;
+    sourceBox.top = 0;
+    sourceBox.front = 0;
+    sourceBox.right = (std::min)(validWidth, static_cast<UINT>(width_));
+    sourceBox.bottom = (std::min)(validHeight, static_cast<UINT>(height_));
+    sourceBox.back = 1;
+
+    if (sourceBox.right == 0 || sourceBox.bottom == 0) return false;
+
+    context_->CopySubresourceRegion(
+        resizeCompositeTexture_.Get(),
+        0,
+        0,
+        0,
+        0,
+        sourceTexture,
+        0,
+        &sourceBox);
+    context_->CopyResource(stagingTexture, resizeCompositeTexture_.Get());
     return true;
 }
 
@@ -234,47 +284,7 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int contentWidth, int conte
         slots_[slotIndex].state = SlotState::Reserved;
     }
 
-    D3D11_TEXTURE2D_DESC sourceDesc = {};
-    texture->GetDesc(&sourceDesc);
-
-    const UINT validWidth = (std::min)(sourceDesc.Width, static_cast<UINT>(contentWidth));
-    const UINT validHeight = (std::min)(sourceDesc.Height, static_cast<UINT>(contentHeight));
-    bool copied = true;
-    if (sourceDesc.Width == static_cast<UINT>(width_) &&
-        sourceDesc.Height == static_cast<UINT>(height_) &&
-        validWidth == sourceDesc.Width && validHeight == sourceDesc.Height) {
-        context_->CopyResource(slots_[slotIndex].texture.Get(), texture);
-    } else if (!resizeCompositeTexture_ || !resizeCompositeView_) {
-        copied = false;
-    } else {
-        const FLOAT clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-        context_->ClearRenderTargetView(resizeCompositeView_.Get(), clearColor);
-
-        D3D11_BOX sourceBox = {};
-        sourceBox.left = 0;
-        sourceBox.top = 0;
-        sourceBox.front = 0;
-        sourceBox.right = (std::min)(validWidth, static_cast<UINT>(width_));
-        sourceBox.bottom = (std::min)(validHeight, static_cast<UINT>(height_));
-        sourceBox.back = 1;
-
-        if (sourceBox.right == 0 || sourceBox.bottom == 0) {
-            copied = false;
-        } else {
-            context_->CopySubresourceRegion(
-                resizeCompositeTexture_.Get(),
-                0,
-                0,
-                0,
-                0,
-                texture,
-                0,
-                &sourceBox);
-            context_->CopyResource(slots_[slotIndex].texture.Get(), resizeCompositeTexture_.Get());
-        }
-    }
-
-    if (!copied) {
+    if (!copyToStaging(slots_[slotIndex].texture.Get(), texture, contentWidth, contentHeight)) {
         std::lock_guard<std::mutex> lock(queueMutex_);
         slots_[slotIndex].state = SlotState::Free;
         return false;
@@ -292,6 +302,49 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int contentWidth, int conte
     }
     queueCv_.notify_one();
     return true;
+}
+
+bool MFEncoder::writeFrameSync(ID3D11Texture2D* texture, int contentWidth, int contentHeight,
+                               int64_t timestampHns) {
+    if (!texture || contentWidth <= 0 || contentHeight <= 0) return false;
+
+    std::lock_guard<std::mutex> captureLock(captureMutex_);
+
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        if (!initialized_ || stopWorker_ || !sinkWriter_ || slots_.empty()) return false;
+    }
+
+    // Wait for any already-queued frames to commit in order so all slots are idle.
+    drainQueue();
+
+    ID3D11Texture2D* staging = slots_[0].texture.Get();
+    if (!copyToStaging(staging, texture, contentWidth, contentHeight)) {
+        return false;
+    }
+
+    context_->Flush();
+
+    if (!mapAndConvertStaging(staging)) {
+        return false;
+    }
+
+    bool committed = false;
+    SampleWrittenCallback callback;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        committed = commitNv12FrameLocked(timestampHns);
+        if (committed) callback = sampleWrittenCallback_;
+    }
+    if (committed) {
+        writtenFrames_.fetch_add(1);
+        if (callback) callback();
+    }
+    return committed;
+}
+
+void MFEncoder::drain() {
+    drainQueue();
 }
 
 namespace {
@@ -347,10 +400,7 @@ void MFEncoder::workerLoop() {
     }
 }
 
-void MFEncoder::processSlot(size_t index) {
-    ID3D11Texture2D* staging = slots_[index].texture.Get();
-    const int64_t timestampHns = slots_[index].timestampHns;
-
+bool MFEncoder::mapAndConvertStaging(ID3D11Texture2D* staging) {
     // Poll instead of blocking: a blocking Map would hold the (multithread-protected) context
     // lock and stall the capture thread for as long as the GPU takes to finish the copy.
     static thread_local ShortSleeper sleeper;
@@ -363,10 +413,7 @@ void MFEncoder::processSlot(size_t index) {
         if (std::chrono::steady_clock::now() > deadline) break;
         sleeper.sleep();
     }
-    if (FAILED(hr)) {
-        droppedFrames_.fetch_add(1);
-        return;
-    }
+    if (FAILED(hr)) return false;
 
     // Convert full-range desktop BGRA to explicitly tagged BT.709 video-range NV12.
     convertBgraToBt709LimitedNv12(
@@ -376,25 +423,58 @@ void MFEncoder::processSlot(size_t index) {
         height_,
         nv12Buffer_);
     context_->Unmap(staging, 0);
+    return true;
+}
 
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!initialized_ || !sinkWriter_) return;
+bool MFEncoder::commitNv12FrameLocked(int64_t timestampHns) {
+    if (!initialized_ || !sinkWriter_) return false;
 
     // WGC may stop delivering frames while the scene is static; keep the MP4
     // timeline continuous with one duration-bearing sample for each gap.
+    const bool isFirstSample = (firstSampleTimeHns_ < 0);
     int64_t normalizedTimestampHns = 0;
     normalizeWriteTimestampHnsLocked(timestampHns, normalizedTimestampHns);
 
     if (!lastFrameBuffer_.empty() && !extendLastFrameToLocked(normalizedTimestampHns, false)) {
-        return;
+        if (isFirstSample) firstSampleTimeHns_ = -1;
+        return false;
     }
 
     const int64_t frameDurationHns = 10000000LL / fps_;
-    if (writeNv12SampleLocked(nv12Buffer_, normalizedTimestampHns, frameDurationHns)) {
-        // Swap rather than copy: nv12Buffer_ is fully rewritten by the next conversion.
-        // The first swap hands back an empty buffer, so restore its size.
-        lastFrameBuffer_.swap(nv12Buffer_);
-        nv12Buffer_.resize(lastFrameBuffer_.size());
+    if (!writeNv12SampleLocked(nv12Buffer_, normalizedTimestampHns, frameDurationHns)) {
+        // Keep the timeline anchored at the first successfully written sample.
+        if (isFirstSample) firstSampleTimeHns_ = -1;
+        return false;
+    }
+
+    // Swap rather than copy: nv12Buffer_ is fully rewritten by the next conversion.
+    // The first swap hands back an empty buffer, so restore its size.
+    lastFrameBuffer_.swap(nv12Buffer_);
+    nv12Buffer_.resize(lastFrameBuffer_.size());
+    return true;
+}
+
+void MFEncoder::processSlot(size_t index) {
+    ID3D11Texture2D* staging = slots_[index].texture.Get();
+    const int64_t timestampHns = slots_[index].timestampHns;
+
+    if (!mapAndConvertStaging(staging)) {
+        droppedFrames_.fetch_add(1);
+        return;
+    }
+
+    bool committed = false;
+    SampleWrittenCallback callback;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        committed = commitNv12FrameLocked(timestampHns);
+        if (committed) callback = sampleWrittenCallback_;
+    }
+    if (committed) {
+        writtenFrames_.fetch_add(1);
+        if (callback) callback();
+    } else {
+        droppedFrames_.fetch_add(1);
     }
 }
 
@@ -543,6 +623,7 @@ bool MFEncoder::finalize() {
         slots_.clear();
         pending_.clear();
     }
+    sampleWrittenCallback_ = nullptr;
     sinkWriter_.Reset();
     resizeCompositeView_.Reset();
     resizeCompositeTexture_.Reset();
