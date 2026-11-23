@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	DEFAULT_SHORTCUTS,
 	FIXED_SHORTCUTS,
+	findConflict,
 	matchesShortcut,
 	mergeWithDefaults,
 	type ShortcutsConfig,
@@ -28,6 +29,32 @@ describe("shortcuts configuration and mergeWithDefaults", () => {
 		const merged = mergeWithDefaults(saved);
 		expect(merged.splitClip).toEqual(DEFAULT_SHORTCUTS.splitClip);
 		expect(merged.addAnnotation).toEqual(DEFAULT_SHORTCUTS.addAnnotation);
+	});
+
+	it("avoids duplicate bindings when a rejected saved shortcut's default is already taken", () => {
+		const merged = mergeWithDefaults({
+			addZoom: { key: "b", ctrl: true },
+			splitClip: { key: "," },
+		});
+		expect(merged.addZoom).toEqual({ key: "b", ctrl: true });
+		expect(merged.splitClip).not.toEqual({ key: "b", ctrl: true });
+		expect(findConflict(merged.splitClip, "splitClip", merged)).toBeNull();
+		expect(findConflict(merged.addZoom, "addZoom", merged)).toBeNull();
+	});
+
+	it("repairs rejected trimStart and trimEnd bindings without colliding with accepted shortcuts", () => {
+		const merged = mergeWithDefaults({
+			addZoom: { key: "q" },
+			trimStart: { key: "," },
+			addAnnotation: { key: "w" },
+			trimEnd: { key: "." },
+		});
+		expect(merged.addZoom).toEqual({ key: "q" });
+		expect(merged.trimStart).toEqual({ key: "q", shift: true });
+		expect(merged.addAnnotation).toEqual({ key: "w" });
+		expect(merged.trimEnd).toEqual({ key: "w", shift: true });
+		expect(findConflict(merged.trimStart, "trimStart", merged)).toBeNull();
+		expect(findConflict(merged.trimEnd, "trimEnd", merged)).toBeNull();
 	});
 
 	it("contains frame stepping and timeline jump in FIXED_SHORTCUTS", () => {

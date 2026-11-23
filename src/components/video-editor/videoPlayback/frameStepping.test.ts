@@ -427,6 +427,21 @@ describe("frameStepping with real decoded presentation timestamps", () => {
 			previousRgb = prevRgb;
 		}
 	});
+
+	it("falls back to an independently estimated frame rate when indexing exceeds maxIndexedPackets", async () => {
+		const decodedFrames = decodeVideoFramesWithFfmpeg(normal30FpsMp4Path);
+		const mp4Bytes = new Uint8Array(await fs.readFile(normal30FpsMp4Path));
+
+		const truncatedTimeline = await loadVideoFrameTimeline(mp4Bytes, { maxIndexedPackets: 5 });
+		expect(truncatedTimeline.presentationTimestamps).toHaveLength(0);
+		expect(truncatedTimeline.frameRate).not.toBeNull();
+		expect(truncatedTimeline.frameRate!).toBeCloseTo(30, 1);
+
+		const completeTimeline = await loadVideoFrameTimeline(mp4Bytes, {
+			maxIndexedPackets: decodedFrames.length,
+		});
+		expect(completeTimeline.presentationTimestamps).toHaveLength(decodedFrames.length);
+	});
 });
 
 describe("normalizePresentationTimestamps & resolveAdjacentFrameTimelineTime", () => {
@@ -523,5 +538,110 @@ describe("normalizePresentationTimestamps & resolveAdjacentFrameTimelineTime", (
 			sourceFrameTimestampsSeconds: pts,
 		});
 		expect(backToClip1).toBeCloseTo(0.35, 6);
+	});
+
+	it("excludes a frame at the clip's exclusive source end when stepping backward across adjacent clips", () => {
+		const pts = [0, 0.5, 1, 1.5];
+		const clips: ClipRegion[] = [
+			{ id: "clip-1", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1 },
+			{ id: "clip-2", startMs: 1000, endMs: 2000, sourceStartMs: 1000, speed: 1 },
+		];
+
+		const stepBack1 = resolveAdjacentFrameTimelineTime({
+			currentTimeSeconds: 1,
+			direction: "backward",
+			timelineDurationSeconds: 2,
+			clipRegions: clips,
+			sourceFrameTimestampsSeconds: pts,
+		});
+		expect(stepBack1).toBeCloseTo(0.5, 6);
+
+		const stepBack2 = resolveAdjacentFrameTimelineTime({
+			currentTimeSeconds: stepBack1,
+			direction: "backward",
+			timelineDurationSeconds: 2,
+			clipRegions: clips,
+			sourceFrameTimestampsSeconds: pts,
+		});
+		expect(stepBack2).toBeCloseTo(0, 6);
+	});
+
+	it("applies clip-boundary navigation and skips gaps in fallback frame-rate stepping", () => {
+		const clips: ClipRegion[] = [
+			{ id: "clip-1", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1 },
+			{ id: "clip-2", startMs: 3000, endMs: 4000, sourceStartMs: 3000, speed: 1 },
+		];
+
+		// Inside active clip: preserve 1/30s delta
+		expect(
+			resolveAdjacentFrameTimelineTime({
+				currentTimeSeconds: 0.5,
+				direction: "forward",
+				timelineDurationSeconds: 4,
+				clipRegions: clips,
+				sourceFrameTimestampsSeconds: null,
+				fallbackFps: 30,
+			}),
+		).toBeCloseTo(0.5 + 1 / 30, 6);
+
+		// Crossing end of clip-1 skips gap directly to start of clip-2 (3.0s)
+		expect(
+			resolveAdjacentFrameTimelineTime({
+				currentTimeSeconds: 0.99,
+				direction: "forward",
+				timelineDurationSeconds: 4,
+				clipRegions: clips,
+				sourceFrameTimestampsSeconds: null,
+				fallbackFps: 30,
+			}),
+		).toBeCloseTo(3, 6);
+
+		// Stepping forward from inside a gap jumps to start of clip-2 (3.0s)
+		expect(
+			resolveAdjacentFrameTimelineTime({
+				currentTimeSeconds: 2,
+				direction: "forward",
+				timelineDurationSeconds: 4,
+				clipRegions: clips,
+				sourceFrameTimestampsSeconds: null,
+				fallbackFps: 30,
+			}),
+		).toBeCloseTo(3, 6);
+
+		// Stepping backward from start of clip-2 (3.0s) skips gap to last frame of clip-1
+		expect(
+			resolveAdjacentFrameTimelineTime({
+				currentTimeSeconds: 3,
+				direction: "backward",
+				timelineDurationSeconds: 4,
+				clipRegions: clips,
+				sourceFrameTimestampsSeconds: null,
+				fallbackFps: 30,
+			}),
+		).toBeCloseTo(1 - 1 / 30, 6);
+
+		// Stepping backward near start of clip-2 clamps to clip-2 start instead of entering gap
+		expect(
+			resolveAdjacentFrameTimelineTime({
+				currentTimeSeconds: 3.01,
+				direction: "backward",
+				timelineDurationSeconds: 4,
+				clipRegions: clips,
+				sourceFrameTimestampsSeconds: null,
+				fallbackFps: 30,
+			}),
+		).toBeCloseTo(3, 6);
+
+		// Stepping backward from inside a gap jumps to last frame of clip-1
+		expect(
+			resolveAdjacentFrameTimelineTime({
+				currentTimeSeconds: 2,
+				direction: "backward",
+				timelineDurationSeconds: 4,
+				clipRegions: clips,
+				sourceFrameTimestampsSeconds: null,
+				fallbackFps: 30,
+			}),
+		).toBeCloseTo(1 - 1 / 30, 6);
 	});
 });

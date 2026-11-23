@@ -185,8 +185,39 @@ export function formatBinding(binding: ShortcutBinding, isMac: boolean): string 
 	return parts.join(" + ");
 }
 
+const FALLBACK_MODIFIERS: Omit<ShortcutBinding, "key">[] = [
+	{},
+	{ shift: true },
+	{ alt: true },
+	{ alt: true, shift: true },
+	{ ctrl: true },
+	{ ctrl: true, shift: true },
+	{ ctrl: true, alt: true },
+	{ ctrl: true, alt: true, shift: true },
+];
+
+function findConflictFreeFallback(
+	action: ShortcutAction,
+	config: ShortcutsConfig,
+): ShortcutBinding {
+	const defaultBinding = DEFAULT_SHORTCUTS[action];
+	if (!findConflict(defaultBinding, action, config)) {
+		return defaultBinding;
+	}
+	for (const modifier of FALLBACK_MODIFIERS) {
+		const binding: ShortcutBinding = { key: defaultBinding.key, ...modifier };
+		if (!findConflict(binding, action, config)) {
+			return binding;
+		}
+	}
+	return defaultBinding;
+}
+
 export function mergeWithDefaults(partial: StoredShortcutsConfig): ShortcutsConfig {
 	const merged = { ...DEFAULT_SHORTCUTS };
+	const accepted = new Set<ShortcutAction>();
+	const rejected = new Set<ShortcutAction>();
+
 	for (const action of SHORTCUT_ACTIONS) {
 		const candidate = partial[action];
 		if (candidate && typeof candidate.key === "string") {
@@ -195,6 +226,9 @@ export function mergeWithDefaults(partial: StoredShortcutsConfig): ShortcutsConf
 			);
 			if (!conflictsWithFixed) {
 				merged[action] = candidate;
+				accepted.add(action);
+			} else {
+				rejected.add(action);
 			}
 		}
 	}
@@ -207,25 +241,14 @@ export function mergeWithDefaults(partial: StoredShortcutsConfig): ShortcutsConf
 	) {
 		merged.splitClip = DEFAULT_SHORTCUTS.splitClip;
 	}
+	const actionsToRepair = new Set<ShortcutAction>(rejected);
 	for (const action of ["trimStart", "trimEnd"] as const) {
-		if (partial[action]) continue;
-		const { key } = DEFAULT_SHORTCUTS[action];
-		const modifiers = [
-			{},
-			{ shift: true },
-			{ alt: true },
-			{ alt: true, shift: true },
-			{ ctrl: true },
-			{ ctrl: true, shift: true },
-			{ ctrl: true, alt: true },
-			{ ctrl: true, alt: true, shift: true },
-		];
-		for (const modifier of modifiers) {
-			const binding = { key, ...modifier };
-			if (findConflict(binding, action, merged)) continue;
-			merged[action] = binding;
-			break;
+		if (!accepted.has(action)) {
+			actionsToRepair.add(action);
 		}
+	}
+	for (const action of actionsToRepair) {
+		merged[action] = findConflictFreeFallback(action, merged);
 	}
 	return merged;
 }

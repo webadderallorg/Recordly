@@ -26,6 +26,7 @@ export interface VideoFrameTimeline {
 export interface LoadVideoFrameTimelineOptions {
 	signal?: AbortSignal;
 	maxMatroskaBytes?: number;
+	maxIndexedPackets?: number;
 }
 
 export interface ResolveAdjacentFrameParams {
@@ -158,18 +159,33 @@ export async function loadVideoFrameTimeline(
 			};
 		}
 
+		const maxIndexedPackets = options.maxIndexedPackets ?? MAX_INDEXED_PACKETS;
 		const sink = new EncodedPacketSink(track);
 		const rawTimestamps: number[] = [];
 		let count = 0;
+		let truncated = false;
 		for await (const packet of sink.packets(undefined, undefined, { metadataOnly: true })) {
 			options.signal?.throwIfAborted();
+			if (count >= maxIndexedPackets) {
+				truncated = true;
+				break;
+			}
 			if (Number.isFinite(packet.timestamp) && packet.timestamp >= 0) {
 				rawTimestamps.push(packet.timestamp);
 			}
 			count++;
-			if (count >= MAX_INDEXED_PACKETS) {
-				break;
-			}
+		}
+
+		if (truncated) {
+			const stats = await track.computePacketStats(180).catch(() => null);
+			options.signal?.throwIfAborted();
+			return {
+				presentationTimestamps: new Float64Array(0),
+				frameRate:
+					stats && Number.isFinite(stats.averagePacketRate) && stats.averagePacketRate > 0
+						? stats.averagePacketRate
+						: null,
+			};
 		}
 
 		const presentationTimestamps = normalizePresentationTimestamps(rawTimestamps);
@@ -195,6 +211,24 @@ function findDisplayedFrameIndex(pts: ArrayLike<number>, sourceSec: number): num
 	while (lo <= hi) {
 		const mid = (lo + hi) >>> 1;
 		if (pts[mid] <= target) {
+			result = mid;
+			lo = mid + 1;
+		} else {
+			hi = mid - 1;
+		}
+	}
+	return result;
+}
+
+/** Largest index `i` such that `pts[i] < sourceSec - FRAME_TIME_EPSILON_SEC`, or `-1`. */
+function findFrameIndexBefore(pts: ArrayLike<number>, sourceSec: number): number {
+	const limit = sourceSec - FRAME_TIME_EPSILON_SEC;
+	let lo = 0;
+	let hi = pts.length - 1;
+	let result = -1;
+	while (lo <= hi) {
+		const mid = (lo + hi) >>> 1;
+		if (pts[mid] < limit) {
 			result = mid;
 			lo = mid + 1;
 		} else {
@@ -233,11 +267,18 @@ function getClipSourceBoundsSeconds(clip: ClipRegion) {
 
 function getLastFrameTimelineInClip(pts: ArrayLike<number>, clip: ClipRegion): number {
 	const { clipStartSec, clipSourceStartSec, clipSourceEndSec } = getClipSourceBoundsSeconds(clip);
-	const lastIdx = findDisplayedFrameIndex(pts, clipSourceEndSec - FRAME_TIME_EPSILON_SEC);
+	const lastIdx = findFrameIndexBefore(pts, clipSourceEndSec);
 	if (lastIdx < 0) {
 		return clipStartSec;
 	}
 	return toTimelineTimeSeconds(clip, Math.max(clipSourceStartSec, pts[lastIdx]));
+}
+
+function getFallbackLastFrameTimelineInClip(clip: ClipRegion, safeFps: number): number {
+	const clipStartSec = clip.startMs / 1000;
+	const clipEndSec = clip.endMs / 1000;
+	const delta = 1 / (safeFps * getSafeClipSpeed(clip));
+	return Math.max(clipStartSec, clipEndSec - delta);
 }
 
 /**
@@ -265,27 +306,6 @@ export function resolveAdjacentFrameTimelineTime({
 		? Math.max(0, Math.min(safeDuration, currentTimeSeconds))
 		: 0;
 
-	const pts = sourceFrameTimestampsSeconds;
-	if (!pts || pts.length === 0) {
-		const safeFps =
-			typeof fallbackFps === "number" && Number.isFinite(fallbackFps) && fallbackFps > 0
-				? Math.max(1, fallbackFps)
-				: DEFAULT_FRAME_STEP_FPS;
-		const activeClip = clipRegions?.find((clip) => {
-			const startSec = clip.startMs / 1000;
-			const endSec = clip.endMs / 1000;
-			return direction === "forward"
-				? safeCurrent >= startSec - FRAME_TIME_EPSILON_SEC &&
-						safeCurrent < endSec - FRAME_TIME_EPSILON_SEC
-				: safeCurrent > startSec + FRAME_TIME_EPSILON_SEC &&
-						safeCurrent <= endSec + FRAME_TIME_EPSILON_SEC;
-		});
-		const delta = 1 / (safeFps * getSafeClipSpeed(activeClip));
-		return direction === "forward"
-			? Math.min(safeDuration, safeCurrent + delta)
-			: Math.max(0, safeCurrent - delta);
-	}
-
 	const clips =
 		clipRegions && clipRegions.length > 0
 			? sortClipRegions([...clipRegions]).filter((clip) => clip.endMs > clip.startMs)
@@ -299,6 +319,77 @@ export function resolveAdjacentFrameTimelineTime({
 					},
 				];
 	if (clips.length === 0) {
+		return 0;
+	}
+
+	const pts = sourceFrameTimestampsSeconds;
+	if (!pts || pts.length === 0) {
+		const safeFps =
+			typeof fallbackFps === "number" && Number.isFinite(fallbackFps) && fallbackFps > 0
+				? Math.max(1, fallbackFps)
+				: DEFAULT_FRAME_STEP_FPS;
+
+		if (direction === "forward") {
+			for (let i = 0; i < clips.length; i++) {
+				const clip = clips[i];
+				const clipStartSec = clip.startMs / 1000;
+				const clipEndSec = clip.endMs / 1000;
+				if (
+					safeCurrent >= clipStartSec - FRAME_TIME_EPSILON_SEC &&
+					safeCurrent < clipEndSec - FRAME_TIME_EPSILON_SEC
+				) {
+					const delta = 1 / (safeFps * getSafeClipSpeed(clip));
+					const candidate = Math.max(clipStartSec, safeCurrent) + delta;
+					if (candidate < clipEndSec - FRAME_TIME_EPSILON_SEC) {
+						return Math.min(safeDuration, candidate);
+					}
+					if (i + 1 < clips.length) {
+						return Math.min(safeDuration, clips[i + 1].startMs / 1000);
+					}
+					return Math.min(safeDuration, clipEndSec);
+				}
+			}
+
+			const nextClip = clips.find(
+				(clip) => clip.startMs / 1000 > safeCurrent + FRAME_TIME_EPSILON_SEC,
+			);
+			return nextClip ? Math.min(safeDuration, nextClip.startMs / 1000) : safeCurrent;
+		}
+
+		// Backward fallback
+		if (safeCurrent <= clips[0].startMs / 1000 + FRAME_TIME_EPSILON_SEC) {
+			return 0;
+		}
+
+		for (let i = 1; i < clips.length; i++) {
+			if (Math.abs(safeCurrent - clips[i].startMs / 1000) <= FRAME_TIME_EPSILON_SEC) {
+				return Math.max(0, getFallbackLastFrameTimelineInClip(clips[i - 1], safeFps));
+			}
+		}
+
+		for (let i = 0; i < clips.length; i++) {
+			const clip = clips[i];
+			const clipStartSec = clip.startMs / 1000;
+			const clipEndSec = clip.endMs / 1000;
+			if (
+				safeCurrent > clipStartSec + FRAME_TIME_EPSILON_SEC &&
+				safeCurrent <= clipEndSec + FRAME_TIME_EPSILON_SEC
+			) {
+				const delta = 1 / (safeFps * getSafeClipSpeed(clip));
+				const candidate = Math.min(clipEndSec, safeCurrent) - delta;
+				if (candidate > clipStartSec + FRAME_TIME_EPSILON_SEC) {
+					return Math.max(0, candidate);
+				}
+				return Math.max(0, clipStartSec);
+			}
+		}
+
+		for (let i = clips.length - 1; i >= 0; i--) {
+			if (clips[i].endMs / 1000 < safeCurrent + FRAME_TIME_EPSILON_SEC) {
+				return Math.max(0, getFallbackLastFrameTimelineInClip(clips[i], safeFps));
+			}
+		}
+
 		return 0;
 	}
 
