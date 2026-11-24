@@ -49,7 +49,10 @@ async function openSignIn(page: Page, onboarding: boolean) {
 		signedIn: false,
 		onboarded: !onboarding,
 	});
-	await page.emulateMedia({ reducedMotion: "reduce" });
+	await page.emulateMedia({
+		colorScheme: onboarding ? "light" : "dark",
+		reducedMotion: "reduce",
+	});
 	await page.route("**/cloud/config", (route) =>
 		route.fulfill({
 			headers: { "Access-Control-Allow-Origin": "*" },
@@ -61,7 +64,7 @@ async function openSignIn(page: Page, onboarding: boolean) {
 		name: onboarding ? "Welcome to Recordly" : "Sign in to Recordly",
 		exact: true,
 	});
-	await expect(dialog.getByRole("button", { name: "Email me a code", exact: true })).toBeVisible({
+	await expect(dialog.getByPlaceholder("you@example.com")).toBeVisible({
 		timeout: 15000,
 	});
 	return dialog;
@@ -73,13 +76,29 @@ for (const onboarding of [true, false]) {
 	}) => {
 		await page.setViewportSize({ width: 600, height: onboarding ? 600 : 800 });
 		const dialog = await openSignIn(page, onboarding);
+		const banner = dialog.locator("[data-recordly-demo]");
+		await expect(banner).toHaveAttribute("data-banner-phase", "still");
+		await expect(banner).toBeInViewport();
+		await expect(banner.locator("..")).toHaveCSS("mask-image", /^linear-gradient/);
+		const email = dialog.getByPlaceholder("you@example.com");
+		const emailCode = dialog.getByRole("button", { name: "Email me a code", exact: true });
+		const privacyPolicy = dialog.getByRole("link", { name: "Privacy Policy", exact: true });
+		await expect(emailCode).toBeHidden();
 		await expectFormFits(dialog);
 		const consent = dialog.locator(".pricing-legal-consent");
 		expect((await consent.boundingBox())!.height).toBeLessThanOrEqual(18);
 		await page.screenshot({
 			path: `test-results/signin-fit-${onboarding ? "onboarding" : "popup"}-600.png`,
 		});
-		await dialog.getByPlaceholder("you@example.com").fill("test@email.com");
+		await email.focus();
+		await expect(emailCode).toBeVisible();
+		await page.keyboard.press("Tab");
+		await expect(emailCode).toBeFocused();
+		await privacyPolicy.focus();
+		await expect(emailCode).toBeHidden();
+		await email.fill("test@email.com");
+		await privacyPolicy.focus();
+		await expect(emailCode).toBeVisible();
 		await dialog
 			.getByRole("button", { name: "Or use password to sign in", exact: true })
 			.click();
@@ -92,14 +111,13 @@ for (const onboarding of [true, false]) {
 		]) {
 			await page.setViewportSize(size);
 			await expectFormFits(dialog);
-			await expect(
-				consent.getByRole("link", { name: "Privacy Policy", exact: true }),
-			).toBeInViewport();
+			await expect(banner).toBeInViewport();
+			await expect(privacyPolicy).toBeInViewport();
 			await page.screenshot({
 				path: `test-results/signin-fit-${onboarding ? "onboarding" : "popup"}-${size.width}x${size.height}.png`,
 			});
 		}
-		await dialog.getByRole("button", { name: "Email me a code", exact: true }).click();
+		await emailCode.click();
 		await expect(dialog.getByText("Enter code sent to test@email.com")).toBeVisible();
 		await expectFormFits(dialog);
 	});

@@ -3,6 +3,12 @@ import { afterEach, expect, it, vi } from "vitest";
 vi.mock("react", () => ({ useCallback: <T>(value: T) => value }));
 vi.mock("@/components/billing/BillingProvider", () => ({ useOptionalBilling: () => null }));
 vi.mock("@/components/billing/captionFileAccess", () => ({ canExportCaptionFiles: () => false }));
+vi.mock("@/components/billing/upgradePrompts", () => ({
+	useExportUpgradePrompt: () => ({
+		scheduleExportUpgradePrompt: vi.fn(),
+		cancelExportUpgradePrompt: vi.fn(),
+	}),
+}));
 vi.mock("@/components/ui/toast", () => ({
 	toast: { info: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));

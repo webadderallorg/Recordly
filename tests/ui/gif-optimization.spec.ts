@@ -114,7 +114,17 @@ for (const plan of ["free", "pro", "loading", "unavailable"] as const) {
 			window.electronAPI.cancelGifOptimization = (id) => native.__cancelGif(id);
 			window.electronAPI.suggestExportFileName = async (name) =>
 				name.replace(/\.gif$/, " 2.gif");
+			const plan = new URLSearchParams(location.search).get("gifPlan");
+			const allowSave =
+				plan === "free"
+					? new Promise<void>((resolve) =>
+							window.addEventListener("test-allow-gif-save", () => resolve(), {
+								once: true,
+							}),
+						)
+					: Promise.resolve();
 			window.electronAPI.saveExportedVideo = async (data) => {
+				await allowSave;
 				const bytes = new Uint8Array(data);
 				const saveCount = Number(document.documentElement.dataset.savedGifCount ?? 0) + 1;
 				document.documentElement.dataset.savedGifCount = String(saveCount);
@@ -137,7 +147,6 @@ for (const plan of ["free", "pro", "loading", "unavailable"] as const) {
 							storageLimitBytes: 1e11,
 						},
 					};
-				const plan = new URLSearchParams(location.search).get("gifPlan");
 				if (plan === "loading") return new Promise<never>(() => undefined);
 				if (plan === "unavailable") return { success: false, error: "Billing unavailable" };
 				return {
@@ -211,20 +220,19 @@ for (const plan of ["free", "pro", "loading", "unavailable"] as const) {
 		await page.getByRole("button", { name: "Export GIF", exact: true }).click();
 		const activity = page.getByRole("region", { name: "Export", exact: true });
 		const pricing = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
-		await expect(activity.locator("p[title]")).toHaveAttribute("title", / 2\.gif$/);
-		await expect(pricing).toHaveCount(0);
+		await expect(page.locator(".editor-export-card p[title]")).toHaveAttribute(
+			"title",
+			/ 2\.gif$/,
+		);
+		if (plan === "free") {
+			await expect(pricing).toBeVisible();
+			await expect(page.locator("html")).not.toHaveAttribute("data-saved-gif-header");
+			await pricing.getByRole("button", { name: "Close", exact: true }).click();
+			await page.evaluate(() => window.dispatchEvent(new Event("test-allow-gif-save")));
+		}
 		await expect(page.getByText("Export complete", { exact: true })).toBeVisible({
 			timeout: 60000,
 		});
-		// A finished export offers Cloud only to users known to be on the free plan.
-		if (plan === "free") {
-			await expect(pricing).toHaveCount(0);
-			await expect(pricing).toBeVisible();
-			await pricing.getByRole("button", { name: "Close", exact: true }).click();
-		} else {
-			// Allow the 1.5-second post-export prompt window to pass.
-			await page.waitForTimeout(2000);
-		}
 		await expect(pricing).toHaveCount(0);
 		await expect(activity.getByTitle("Renamed capture 3.gif", { exact: true })).toBeVisible();
 		expect(await previewCanvas.evaluate((canvas) => canvas.isConnected)).toBe(true);

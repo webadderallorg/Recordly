@@ -138,6 +138,7 @@ test("sign-in keeps all providers visible and marks unavailable providers disabl
 	page.on("request", (request) => {
 		if (request.url().includes("/auth/v1/otp")) codeRequests++;
 	});
+	await email.focus();
 	await expect(emailCode).toBeVisible();
 	await expect(emailCode).toBeEnabled();
 	await emailCode.click();

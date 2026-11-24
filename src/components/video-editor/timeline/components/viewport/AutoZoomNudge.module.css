@@ -1,19 +1,26 @@
 .nudge {
-	animation: auto-zoom-nudge 3s ease-in-out infinite;
+	animation: auto-zoom-nudge 5s ease-in-out;
 }
 
+/* Shake on entry and once more after three seconds. */
 @keyframes auto-zoom-nudge {
 	0%,
-	16%,
+	9.6%,
+	60%,
+	69.6%,
 	100% {
 		transform: translateX(0) rotate(0deg);
 	}
-	3%,
-	9% {
+	1.8%,
+	5.4%,
+	61.8%,
+	65.4% {
 		transform: translateX(-3px) rotate(-1.5deg);
 	}
-	6%,
-	12% {
+	3.6%,
+	7.2%,
+	63.6%,
+	67.2% {
 		transform: translateX(3px) rotate(1.5deg);
 	}
 }

@@ -459,6 +459,7 @@ export function RecordlySignInDialog({
 								configured={configured}
 								busy={busy}
 								compact={onboarding}
+								revealCodeButtonOnEmailInteraction
 								assetBase={import.meta.env.BASE_URL}
 								labels={{
 									checkInbox: ot("checkInbox"),
@@ -680,11 +681,11 @@ export function RecordlySignInDialog({
 							</OnboardingLayout>
 						) : (
 							<>
-								{wide && (
-									<div className="recordly-signin-artwork relative overflow-hidden rounded-2xl md:order-2 md:h-full md:min-h-0">
-										<RecordlyDemoVideo className="absolute inset-0" />
-									</div>
-								)}
+								<div
+									className={`recordly-signin-artwork relative overflow-hidden rounded-2xl ${wide ? "md:order-2 md:h-full md:min-h-0" : "recordly-signin-artwork-compact"}`}
+								>
+									<RecordlyDemoVideo className="absolute inset-0" />
+								</div>
 								{signInContent}
 							</>
 						)}

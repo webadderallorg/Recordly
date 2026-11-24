@@ -1,9 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
 import { useOptionalBilling } from "./BillingProvider";
 
-/** Let the export success state render before the modal appears. */
-export const EXPORT_UPGRADE_PROMPT_DELAY_MS = 1_500;
+const EXPORT_UPGRADE_PROMPT_DELAY_MS = 1_500;
 const EXPORT_UPGRADE_PROMPT_COOLDOWN_MS = 120_000;
 const LAST_EXPORT_UPGRADE_PROMPT_KEY = "recordly.lastExportUpgradePromptAt";
 let lastExportUpgradePromptAt = 0;
@@ -26,9 +25,9 @@ export function isKnownFreePlan({ loading, signedIn, plan }: BillingSnapshot): b
 }
 
 /**
- * Offers Cloud after a free user saves a local export, at most once every two minutes.
+ * Offers Cloud when a free user starts a local export, at most once every two minutes.
  */
-export function useExportUpgradePrompt(exportedFilePath: string | undefined) {
+export function useExportUpgradePrompt() {
 	const billing = useOptionalBilling();
 	const free = billing
 		? isKnownFreePlan({
@@ -40,13 +39,17 @@ export function useExportUpgradePrompt(exportedFilePath: string | undefined) {
 	// The provider recreates these on every render; read the latest at fire time.
 	const latest = useRef({ free, billing });
 	latest.current = { free, billing };
-	const previousPath = useRef(exportedFilePath);
+	const timer = useRef<number | undefined>(undefined);
+	const cancelExportUpgradePrompt = useCallback(() => {
+		window.clearTimeout(timer.current);
+		timer.current = undefined;
+	}, []);
+	useEffect(() => cancelExportUpgradePrompt, [cancelExportUpgradePrompt]);
 
-	useEffect(() => {
-		const finished = Boolean(exportedFilePath) && exportedFilePath !== previousPath.current;
-		previousPath.current = exportedFilePath;
-		if (!finished || !latest.current.free) return;
-		const timer = window.setTimeout(() => {
+	const scheduleExportUpgradePrompt = useCallback(() => {
+		cancelExportUpgradePrompt();
+		timer.current = window.setTimeout(() => {
+			timer.current = undefined;
 			const { free, billing } = latest.current;
 			if (!free || !billing || billing.pricingOpen) return;
 			const now = Date.now();
@@ -60,8 +63,9 @@ export function useExportUpgradePrompt(exportedFilePath: string | undefined) {
 			saveAppSetting(LAST_EXPORT_UPGRADE_PROMPT_KEY, now);
 			billing.openPricing();
 		}, EXPORT_UPGRADE_PROMPT_DELAY_MS);
-		return () => window.clearTimeout(timer);
-	}, [exportedFilePath]);
+	}, [cancelExportUpgradePrompt]);
+
+	return { scheduleExportUpgradePrompt, cancelExportUpgradePrompt };
 }
 
 type UsageSource = {

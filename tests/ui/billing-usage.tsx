@@ -14,8 +14,7 @@ import "@/index.css";
 function Controls() {
 	const { refresh, loading, user, status, openPricing } = useBilling();
 	const [publishing, setPublishing] = useState(false);
-	const [exportCount, setExportCount] = useState(0);
-	useExportUpgradePrompt(exportCount ? `export-${exportCount}.mp4` : undefined);
+	const { scheduleExportUpgradePrompt } = useExportUpgradePrompt();
 	return (
 		<>
 			<output data-testid="usage-endpoint">{CLOUD_SHARE_ENDPOINT}</output>
@@ -27,9 +26,7 @@ function Controls() {
 			<output data-testid="usage-owner">{user?.id ?? "signed-out"}</output>
 			<button onClick={() => void refresh()}>Refresh usage</button>
 			<button onClick={openPricing}>Open test pricing</button>
-			<button onClick={() => setExportCount((count) => count + 1)}>
-				Complete test export
-			</button>
+			<button onClick={scheduleExportUpgradePrompt}>Start test export</button>
 			<button onClick={notifyShareCapacityChanged}>Cloud library changed</button>
 			<button onClick={() => setPublishing(true)}>Open test publish</button>
 			{publishing && user && (

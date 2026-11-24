@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
-// The finished-export prompt is covered per plan in gif-optimization.spec.ts.
+// The local-export prompt is covered per plan in gif-optimization.spec.ts.
 
 /** Opens the editor with Cloud billing reporting the given plan and share count. */
 async function openEditor(page: Page, plan: "free" | "pro", recordings: number, signedIn = true) {

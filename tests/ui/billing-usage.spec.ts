@@ -151,7 +151,7 @@ test("free usage shows the share-link count and progress", async ({ page }) => {
 	await expect(progress).toHaveAttribute("aria-valuemax", "5");
 });
 
-test("local export can reopen the upgrade modal after its two-minute cooldown", async ({
+test("the export click opens the upgrade modal after 1.5 seconds and respects its cooldown", async ({
 	page,
 }) => {
 	await openUsage(page);
@@ -161,23 +161,28 @@ test("local export can reopen the upgrade modal after its two-minute cooldown", 
 	});
 	await expect(page.getByTestId("verified-plan")).toHaveText("free");
 	await expect(page.getByTestId("usage-loading")).toHaveText("false");
-	const firstShownAt = Date.now();
-	await page.clock.setFixedTime(firstShownAt);
-	const finishExport = page.getByRole("button", { name: "Complete test export" });
+	const startExport = page.getByRole("button", { name: "Start test export" });
 	const pricing = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
-	await finishExport.click();
+	await page.clock.install();
+	await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
+	await startExport.press("Enter");
+	await page.clock.runFor(1_499);
+	await expect(pricing).toHaveCount(0);
+	await page.clock.runFor(1);
 	await expect(pricing).toBeVisible();
+	const firstShownAt = await page.evaluate(() => Date.now());
+	await page.clock.resume();
 	await pricing.getByRole("button", { name: "Close", exact: true }).click();
 	await expect(pricing).toHaveCount(0);
 
 	await page.clock.setFixedTime(firstShownAt + 119_999);
-	await finishExport.click();
-	// Allow the post-save prompt timer to run while the clock is just before expiry.
-	await page.waitForTimeout(1000);
+	await startExport.click();
+	// Run the prompt timer while the wall clock is just before the cooldown expires.
+	await page.clock.runFor(1_500);
 	await expect(pricing).toHaveCount(0);
 
 	await page.clock.setFixedTime(firstShownAt + 120_000);
-	await finishExport.click();
+	await startExport.click();
 	await expect(pricing).toBeVisible();
 });
 

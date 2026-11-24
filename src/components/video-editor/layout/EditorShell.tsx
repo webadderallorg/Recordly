@@ -6,7 +6,6 @@ import { RecordlySignInDialog, type SignInReason } from "@/components/auth/Recor
 import { useRecordlyAuth } from "@/components/auth/useRecordlyAuth";
 import { useBilling } from "@/components/billing/BillingProvider";
 import { PricingModal } from "@/components/billing/PricingModal";
-import { useExportUpgradePrompt } from "@/components/billing/upgradePrompts";
 import { AccountProfileContext } from "@/components/ui/account-avatar";
 import { Button } from "@/components/ui/button";
 import { LoadingTransition } from "@/components/ui/loading-transition";
@@ -142,7 +141,6 @@ export function EditorShell(props: Props) {
 		// render. Wait for the new timeline before capturing its unedited baseline.
 		!project.loading && ui.isPreviewReady && ui.duration > 0 && ui.clipInitializedRef.current,
 	);
-	useExportUpgradePrompt(exportSession.exportedFilePath);
 	useAutoApplyZooms({
 		enabled: appearance.autoApplyFreshRecordingAutoZooms,
 		sourcePath: project.videoSourcePath,
