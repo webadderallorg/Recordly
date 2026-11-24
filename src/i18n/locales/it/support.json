@@ -1,4 +1,6 @@
 {
+	"diagnosticsLoading": "Raccolta dei dati diagnostici…",
+	"diagnosticsUnavailable": "Impossibile caricare i dettagli della diagnostica.",
 	"reportTitle": "Invia questo errore e i registri diagnostici all’assistenza Recordly",
 	"reportSending": "Invio registri…",
 	"reportSent": "Segnalazione inviata",

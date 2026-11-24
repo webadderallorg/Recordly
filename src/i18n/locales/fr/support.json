@@ -1,4 +1,6 @@
 {
+	"diagnosticsLoading": "Collecte des données de diagnostic…",
+	"diagnosticsUnavailable": "Impossible de charger les détails du diagnostic.",
 	"reportTitle": "Envoyer cette erreur et les journaux de diagnostic à l’assistance Recordly",
 	"reportSending": "Envoi des journaux…",
 	"reportSent": "Rapport envoyé",

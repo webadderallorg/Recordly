@@ -2,17 +2,21 @@ import { useRef, useState } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
 import { reportError } from "@/lib/feedback/errorReporting";
 
+type ErrorReportButtonProps = {
+	error: string;
+	context?: string;
+	format?: "mp4" | "gif" | "unknown";
+	compact?: boolean;
+	prepareReport?: Parameters<typeof reportError>[3];
+};
+
 export function ErrorReportButton({
 	error,
 	context = "application",
 	format = "unknown",
 	compact = false,
-}: {
-	error: string;
-	context?: string;
-	format?: "mp4" | "gif" | "unknown";
-	compact?: boolean;
-}) {
+	prepareReport,
+}: ErrorReportButtonProps) {
 	// Remount state for a different failure, including while a previous send is pending.
 	return (
 		<ReportAction
@@ -21,6 +25,7 @@ export function ErrorReportButton({
 			context={context}
 			format={format}
 			compact={compact}
+			prepareReport={prepareReport}
 		/>
 	);
 }
@@ -29,7 +34,9 @@ function ReportAction({
 	context,
 	format,
 	compact,
-}: Required<Parameters<typeof ErrorReportButton>[0]>) {
+	prepareReport,
+}: Required<Omit<ErrorReportButtonProps, "prepareReport">> &
+	Pick<ErrorReportButtonProps, "prepareReport">) {
 	const t = useScopedT("support");
 	const [state, setState] = useState<"idle" | "sending" | "sent" | "failed">("idle");
 	const [failure, setFailure] = useState("");
@@ -58,7 +65,7 @@ function ReportAction({
 					setState("sending");
 					setFailure("");
 					try {
-						await reportError(error, context, format);
+						await reportError(error, context, format, prepareReport);
 						setState("sent");
 					} catch {
 						setFailure(t("reportFailed"));

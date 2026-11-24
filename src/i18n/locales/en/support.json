@@ -1,4 +1,6 @@
 {
+	"diagnosticsLoading": "Collecting diagnostics…",
+	"diagnosticsUnavailable": "Could not load diagnostic details.",
 	"reportTitle": "Send this error and diagnostic logs to Recordly support",
 	"reportSending": "Sending logs…",
 	"reportSent": "Report sent",

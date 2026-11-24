@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import { installDesktopBridge } from "./bridge";
+import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 import { productionTest as test } from "./production";
 
 async function expectFormFits(dialog: Locator) {
@@ -49,6 +49,13 @@ async function openSignIn(page: Page, onboarding: boolean) {
 		signedIn: false,
 		onboarded: !onboarding,
 	});
+	if (!onboarding) {
+		await installDesktopBridgeOverrides(page, () => {
+			const getAppSetting = window.electronAPI.getAppSetting;
+			window.electronAPI.getAppSetting = (key) =>
+				key === "recordly.onboarding.signInSkipped" ? true : getAppSetting(key);
+		});
+	}
 	await page.emulateMedia({
 		colorScheme: onboarding ? "light" : "dark",
 		reducedMotion: "reduce",
@@ -60,6 +67,8 @@ async function openSignIn(page: Page, onboarding: boolean) {
 		}),
 	);
 	await page.goto(onboarding ? "/?windowType=onboarding" : "/?windowType=editor");
+	if (!onboarding)
+		await page.getByRole("button", { name: "Recordly account", exact: true }).click();
 	const dialog = page.getByRole("dialog", {
 		name: onboarding ? "Welcome to Recordly" : "Sign in to Recordly",
 		exact: true,
@@ -83,7 +92,7 @@ for (const onboarding of [true, false]) {
 		const email = dialog.getByPlaceholder("you@example.com");
 		const emailCode = dialog.getByRole("button", { name: "Email me a code", exact: true });
 		const privacyPolicy = dialog.getByRole("link", { name: "Privacy Policy", exact: true });
-		await expect(emailCode).toBeHidden();
+		await expect(emailCode).toBeVisible({ visible: onboarding });
 		await expectFormFits(dialog);
 		const consent = dialog.locator(".pricing-legal-consent");
 		expect((await consent.boundingBox())!.height).toBeLessThanOrEqual(18);
@@ -95,7 +104,7 @@ for (const onboarding of [true, false]) {
 		await page.keyboard.press("Tab");
 		await expect(emailCode).toBeFocused();
 		await privacyPolicy.focus();
-		await expect(emailCode).toBeHidden();
+		await expect(emailCode).toBeVisible({ visible: onboarding });
 		await email.fill("test@email.com");
 		await privacyPolicy.focus();
 		await expect(emailCode).toBeVisible();

@@ -1,4 +1,7 @@
 import { EventEmitter } from "node:events";
+import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { BrowserWindow } from "electron";
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 
@@ -39,7 +42,7 @@ class TestWindow extends EventEmitter {
 
 vi.mock("electron", () => ({ BrowserWindow: TestWindow }));
 
-const { startOnboardingIntro } = await import("./onboardingIntro");
+const { getOnboardingInstallStamp, startOnboardingIntro } = await import("./onboardingIntro");
 
 beforeEach(() =>
 	vi.useFakeTimers({
@@ -47,6 +50,20 @@ beforeEach(() =>
 	}),
 );
 afterEach(() => vi.useRealTimers());
+
+it("identifies a replacement executable even when its version stays the same", () => {
+	const directory = mkdtempSync(join(tmpdir(), "recordly-onboarding-install-"));
+	onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
+	const executable = join(directory, "Recordly");
+	const replacement = join(directory, "replacement");
+	const version = "2.0.0-beta.1";
+	writeFileSync(executable, "same version");
+	const original = getOnboardingInstallStamp(executable, version);
+	expect(getOnboardingInstallStamp(executable, version)).toBe(original);
+	writeFileSync(replacement, "same version");
+	renameSync(replacement, executable);
+	expect(getOnboardingInstallStamp(executable, version)).not.toBe(original);
+});
 
 function start(withSoundtrack = true) {
 	const popup = new TestWindow();

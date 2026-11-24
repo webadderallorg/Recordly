@@ -1,6 +1,7 @@
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
+import { beginAppOperation, recordAppDiagnostic } from "@/lib/feedback/diagnostics";
 import { moveProjectShareLink } from "../cloud/projectShareLinks";
 import { moveProjectFolderReferences } from "../dashboard/useProjectFolders";
 import { createProjectData, type EditorProjectData } from "../projectPersistence";
@@ -9,6 +10,7 @@ import { cloneStructured, getErrorMessage } from "../videoEditorUtils";
 import { startProjectAutosave } from "./projectAutosave";
 
 type SaveProjectOptions = {
+	parentOperationId?: string;
 	silent?: boolean;
 	remountPreviewAfterSave?: boolean;
 	refreshLibraryAfterSave?: boolean;
@@ -120,6 +122,7 @@ export function useProjectSaveActions({
 				const captureThumbnail = options?.captureThumbnail ?? true;
 				const refreshLibrary = options?.refreshLibraryAfterSave ?? true;
 				const remount = options?.remountPreviewAfterSave ?? true;
+				const operation = beginAppOperation("project.save", options?.parentOperationId);
 				try {
 					const projectData =
 						currentProjectSnapshot?.videoPath === currentSourcePath
@@ -138,10 +141,12 @@ export function useProjectSaveActions({
 						? undefined
 						: (activePathRef.current ?? undefined);
 
+					if (captureThumbnail) operation.step("capture-thumbnail");
 					const thumbnail = captureThumbnail
 						? ((await captureProjectThumbnail()) ?? undefined)
 						: undefined;
 					if (sessionVersionRef.current !== sessionVersion) return false;
+					operation.step(targetPath ? "write-project" : "create-project");
 					const result = !targetPath
 						? await window.electronAPI.createProjectFile(projectData, thumbnail)
 						: await window.electronAPI.saveProjectFile(
@@ -150,9 +155,12 @@ export function useProjectSaveActions({
 								targetPath,
 								thumbnail,
 							);
-					if (sessionVersionRef.current !== sessionVersion)
+					if (sessionVersionRef.current !== sessionVersion) {
+						operation.finish(result.success ? "succeeded" : "cancelled");
 						return Boolean(result.success);
+					}
 					if (result.canceled) {
+						operation.finish("cancelled");
 						if (!options?.silent)
 							toast.info(
 								translate(
@@ -163,6 +171,7 @@ export function useProjectSaveActions({
 						return false;
 					}
 					if (!result.success) {
+						operation.finish("failed");
 						reportSaveError(
 							translate("notifications.saveProjectFailed", "Failed to save project"),
 							result.message,
@@ -171,6 +180,7 @@ export function useProjectSaveActions({
 						return false;
 					}
 
+					operation.finish("succeeded");
 					if (
 						sessionVersionRef.current !== sessionVersion ||
 						activeSourceRef.current !== currentSourcePath
@@ -201,6 +211,8 @@ export function useProjectSaveActions({
 
 					return true;
 				} catch (error) {
+					operation.finish("failed");
+					recordAppDiagnostic("project save failed", error);
 					if (sessionVersionRef.current !== sessionVersion) return false;
 					reportSaveError(
 						translate(
@@ -213,6 +225,7 @@ export function useProjectSaveActions({
 					);
 					return false;
 				} finally {
+					operation.finish("cancelled");
 					if (remount && sessionVersionRef.current === sessionVersion) remountPreview();
 				}
 			});

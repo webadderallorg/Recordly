@@ -168,14 +168,13 @@ for (const windowType of ["onboarding", "editor"]) {
 	}
 }
 
-test("an explicit real dev editor requires an expired saved account to sign in again", async ({
-	page,
-}) => {
+test("an explicit real dev editor gives an expired account the guest option", async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: true });
 	await page.goto("/?windowType=editor&onboardingPreview=0");
-	await expect(
-		page.getByRole("dialog", { name: "Sign in to Recordly", exact: true }),
-	).toBeVisible({ timeout: 15000 });
+	const onboarding = page.getByRole("dialog", { name: "Welcome to Recordly", exact: true });
+	await expect(onboarding.getByRole("button", { name: "Continue as guest" })).toBeVisible({
+		timeout: 15000,
+	});
 });
 
 productionTest("guest onboarding resumes macOS permissions after restart", async ({ page }) => {
@@ -223,7 +222,7 @@ productionTest("guest onboarding resumes macOS permissions after restart", async
 	await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
 	await expect(tour).not.toBeVisible();
 
-	await page.goto("/?windowType=onboarding&returning=1");
+	await page.goto("/?windowType=onboarding&startup=1");
 	await expect(page.locator("html")).toHaveAttribute("data-startup-action", "continue");
 	await expect(tour).not.toBeVisible();
 	await page.goto("/?windowType=hud-overlay");

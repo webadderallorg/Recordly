@@ -383,25 +383,28 @@ productionTest(
 	},
 );
 
-productionTest("returning accounts without guest mode still require sign-in", async ({ page }) => {
-	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: true });
-	await page.addInitScript(() => sessionStorage.setItem("recordly.demo-session", "1"));
-	await page.goto("/?windowType=editor");
-	const tour = page.getByRole("dialog", { name: "Sign in to Recordly", exact: true });
-	await expect(tour).toBeVisible({ timeout: 20000 });
-	await expect(tour.getByRole("button", { name: "Continue without signing in" })).toHaveCount(0);
-	await expect(tour.getByText("Optional", { exact: true })).toHaveCount(0);
-	await expect(tour.getByText("Sign in to continue", { exact: true })).toHaveCount(0);
-	const pages = tour.getByRole("navigation", { name: "Onboarding pages" });
-	await expect(pages).toHaveCount(0);
-	await expect(tour.getByRole("button", { name: "Start recording" })).toHaveCount(0);
-	await expect(tour.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
-	await page.keyboard.press("Escape");
-	await page.mouse.click(5, 5);
-	await expect(tour).toBeVisible();
-	await page.reload();
-	await expect(tour).toBeVisible();
-});
+productionTest(
+	"an existing signed-out profile gets the same guest onboarding",
+	async ({ page }) => {
+		await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: true });
+		await page.addInitScript(() => sessionStorage.setItem("recordly.demo-session", "1"));
+		await page.goto("/?windowType=editor");
+		const tour = page.getByRole("dialog", { name: "Welcome to Recordly", exact: true });
+		await expect(tour).toBeVisible({ timeout: 20000 });
+		await expect(tour.getByRole("button", { name: "Continue as guest" })).toBeEnabled();
+		await expect(tour.getByText("Optional", { exact: true })).toHaveCount(0);
+		await expect(tour.getByText("Sign in to continue", { exact: true })).toHaveCount(0);
+		const pages = tour.getByRole("navigation", { name: "Onboarding pages" });
+		await expect(pages).toBeVisible();
+		await expect(tour.getByRole("button", { name: "Start recording" })).toHaveCount(0);
+		await expect(tour.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
+		await page.keyboard.press("Escape");
+		await page.mouse.click(5, 5);
+		await expect(tour).toBeVisible();
+		await page.reload();
+		await expect(tour).toBeVisible();
+	},
+);
 
 productionTest(
 	"Supabase email callback advances to permissions only after a session is returned",

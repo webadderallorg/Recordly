@@ -1,4 +1,6 @@
 {
+	"diagnosticsLoading": "진단 정보를 수집하는 중…",
+	"diagnosticsUnavailable": "진단 세부 정보를 불러올 수 없습니다.",
 	"reportTitle": "이 오류와 진단 로그를 Recordly 지원팀에 보내기",
 	"reportSending": "로그 전송 중…",
 	"reportSent": "보고서 전송됨",

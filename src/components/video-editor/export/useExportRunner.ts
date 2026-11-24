@@ -4,6 +4,7 @@ import { canExportCaptionFiles } from "@/components/billing/captionFileAccess";
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
 import type { ExportSettings } from "@/lib/exporter/types";
+import { beginAppOperation } from "@/lib/feedback/diagnostics";
 import { createExportDiagnostics } from "@/lib/feedback/exportDiagnostics";
 import { type LibraryExportIdentity, recordLibraryExport } from "../dashboard/libraryExportHistory";
 import { fromFileUrl } from "../projectMediaPaths";
@@ -36,6 +37,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 			settings: ExportSettings,
 			options?: { destination?: "download" | "share" },
 		): Promise<string | undefined> => {
+			const operation = beginAppOperation("export.run");
 			const runInput = inputRef.current;
 			const exportIdentity = {
 				...runInput.exportIdentity,
@@ -56,6 +58,8 @@ export function useExportRunner(input: ExportRunnerInput) {
 				cancelledExportRunIdRef,
 			} = exportSession;
 			if (!videoPath) {
+				operation.step("missing-media");
+				operation.finish("blocked");
 				toast.error(translate("notifications.noVideo", "No video loaded"));
 				return;
 			}
@@ -63,6 +67,8 @@ export function useExportRunner(input: ExportRunnerInput) {
 			const playback = videoPlaybackRef.current;
 			const video = playback?.video;
 			if (!video) {
+				operation.step("preview-not-ready");
+				operation.finish("blocked");
 				toast.error(translate("notifications.videoNotReady", "Video not ready"));
 				return;
 			}
@@ -86,6 +92,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 			const diagnostics = createExportDiagnostics(
 				settings,
 				options?.destination ?? "download",
+				operation,
 			);
 			setIsExporting(true);
 			setExportProgress(null);
@@ -116,6 +123,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 			const wasPlaying = playback.isPlaying;
 
 			try {
+				operation.step("prepare-preview");
 				if (wasPlaying) {
 					playback.pause();
 				}
@@ -192,6 +200,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 					window.close();
 				}
 			} finally {
+				diagnostics.complete(exportWasCancelled());
 				const wasCancelled = exportWasExplicitlyCancelled();
 				if (wasCancelled) diagnostics.record("canceled");
 				const stillCurrent = !exportWasCancelled();

@@ -63,6 +63,7 @@ export function CloudShareButton(props: Props & { inlineContainer?: HTMLElement 
 		handleUpload,
 		handleCancel,
 		copyShareUrl,
+		openShareUrl,
 	} = useCloudShareController(props);
 
 	const recordingLimit = t("editor.cloud.recordingLimit", RECORDING_LIMIT_MESSAGE);
@@ -102,8 +103,17 @@ export function CloudShareButton(props: Props & { inlineContainer?: HTMLElement 
 			<Label htmlFor="cloud-share-link" className="sr-only">
 				{t("editor.cloud.shareLink", "Share link")}
 			</Label>
-			<div className="share-link-field flex min-w-0 items-center gap-3 rounded-2xl border border-input bg-background p-1.5 pl-3">
-				<LinkSimple aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
+			<div className="share-link-field flex min-w-0 items-center gap-1.5 rounded-2xl border border-input bg-background p-1.5">
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					title={uiText("ui.openLink")}
+					onPress={() => void openShareUrl()}
+					className="size-8 shrink-0 rounded-lg text-muted-foreground"
+				>
+					<LinkSimple aria-hidden="true" className="size-5" />
+				</Button>
 				<input
 					id="cloud-share-link"
 					ref={shareLinkInput}

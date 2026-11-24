@@ -570,9 +570,15 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		) { _, requested in requested }
 		outputSettings[AVVideoCompressionPropertiesKey] = compression
 
+		let transferFunction: String
+		if #available(macOS 15.0, *) {
+			transferFunction = AVVideoTransferFunction_IEC_sRGB
+		} else {
+			transferFunction = AVVideoTransferFunction_ITU_R_709_2
+		}
 		outputSettings[AVVideoColorPropertiesKey] = [
 			AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
-			AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+			AVVideoTransferFunctionKey: transferFunction,
 			AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
 		]
 
@@ -792,6 +798,12 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			if videoPixelBufferAdaptor != nil {
 				appended = appendCroppedVideoFrame(sampleBuffer, at: presentationTime)
 			} else {
+				// ScreenCaptureKit may attach a Rec.709 transfer tag to the requested sRGB frames.
+				if let source = CMSampleBufferGetImageBuffer(sampleBuffer) {
+					CVBufferSetAttachment(
+						source, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_sRGB, .shouldPropagate
+					)
+				}
 				let timing = CMSampleTimingInfo(duration: sampleBuffer.duration, presentationTimeStamp: presentationTime, decodeTimeStamp: sampleBuffer.decodeTimeStamp)
 				if let retimed = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]) {
 					appended = videoInput.append(retimed)
@@ -879,6 +891,13 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			to: destination,
 			bounds: bounds,
 			colorSpace: CGColorSpace(name: CGColorSpace.sRGB)
+		)
+		// Core Image renders sRGB values without color attachments. Describe them for the writer.
+		CVBufferSetAttachment(
+			destination, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate
+		)
+		CVBufferSetAttachment(
+			destination, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_sRGB, .shouldPropagate
 		)
 
 		let appended = adaptor.append(destination, withPresentationTime: presentationTime)

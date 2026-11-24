@@ -21,6 +21,8 @@ export function OnboardingController({
 	authenticationVersion,
 	standalone = false,
 	authCallbackPending = false,
+	initialPermissions = false,
+	finishStartup,
 	onUnlockSavedSignIn,
 }: {
 	requestNonce: number;
@@ -31,6 +33,8 @@ export function OnboardingController({
 	authenticationVersion?: number;
 	standalone?: boolean;
 	authCallbackPending?: boolean;
+	initialPermissions?: boolean;
+	finishStartup?: () => Promise<boolean>;
 	onUnlockSavedSignIn?: () => void;
 }) {
 	// The development tour is optional. Native permission requests and explicit
@@ -42,14 +46,14 @@ export function OnboardingController({
 	);
 	const [open, setOpen] = useState(standalone);
 	const [inlineFallback, setInlineFallback] = useState(false);
-	const [returningSignIn, setReturningSignIn] = useState(false);
 	const [signInSkipped, setSignInSkipped] = useState(hasSkippedOnboardingSignIn);
 	const canContinue = Boolean(user || signInSkipped);
 	const [startWithPermissions, setStartWithPermissions] = useState(
 		() =>
-			standalone &&
-			!preview &&
-			loadAppSetting<boolean>("recordly.onboarding.permissionsRequested") === true,
+			initialPermissions ||
+			(standalone &&
+				!preview &&
+				loadAppSetting<boolean>("recordly.onboarding.permissionsRequested") === true),
 	);
 	const checked = useRef(false);
 	const handledRequest = useRef(0);
@@ -58,7 +62,6 @@ export function OnboardingController({
 		(windowPreview = preview) => {
 			checked.current = true;
 			setPreview(windowPreview);
-			setReturningSignIn(false);
 			if (standalone) setOpen(true);
 			else
 				void window.electronAPI
@@ -120,12 +123,11 @@ export function OnboardingController({
 				};
 			}
 			if (permissionsRequested) setStartWithPermissions(true);
-			if (!preview && !hasAccountAccess && seen && !permissionsRequested) {
-				setReturningSignIn(true);
-				setOpen(true);
-			} else if (!checked.current && (permissionsRequested || !seen)) {
+			if (
+				!checked.current &&
+				(permissionsRequested || !seen || (!preview && !hasAccountAccess))
+			) {
 				// Session updates must not duplicate an in-flight native window request.
-				setReturningSignIn(false);
 				openWindow();
 			}
 			return;
@@ -151,6 +153,16 @@ export function OnboardingController({
 			if (markSeen) saveAppSetting(SEEN_KEY, true);
 		}
 		finishingPermissions.current = true;
+		if (finishStartup) {
+			void finishStartup()
+				.then((finished) => {
+					if (finished) close();
+				})
+				.finally(() => {
+					finishingPermissions.current = false;
+				});
+			return;
+		}
 		let restorePermissionsRequest = false;
 		let previousPreviewDismissal: boolean | null = null;
 		let markedPreviewDismissed = false;
@@ -188,6 +200,7 @@ export function OnboardingController({
 
 	if (
 		startWithPermissions &&
+		!finishStartup &&
 		!preview &&
 		canContinue &&
 		loadAppSetting<boolean>(SEEN_KEY) === true &&
@@ -202,22 +215,6 @@ export function OnboardingController({
 				onClose={() => {
 					close();
 					if (standalone) void window.electronAPI.closeOnboardingWindow();
-				}}
-			/>
-		);
-
-	if (returningSignIn)
-		return (
-			<RecordlySignInDialog
-				open={open}
-				onOpenChange={setOpen}
-				user={user}
-				configured={configured}
-				callbackError={callbackError}
-				requireSignIn
-				onAuthenticated={() => {
-					setReturningSignIn(false);
-					setOpen(false);
 				}}
 			/>
 		);

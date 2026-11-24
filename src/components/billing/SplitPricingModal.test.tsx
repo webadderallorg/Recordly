@@ -40,13 +40,16 @@ it("keeps the pending-payment refresh label", () => {
 it("keeps verified checkout on Get Started", () => {
 	billing({ checkoutAvailable: true, checkoutIntervals: ["monthly"], prices: [price] }); state.billing.catalog = { prices: [price] }; const action = button(); expect(action.children).toBe("Get Started"); action.onPress(); expect(state.startBilling).toHaveBeenCalledWith("checkout", "monthly"); expect(state.refresh).not.toHaveBeenCalled();
 });
-it.each(["loading", "catalogLoading"])("keeps the button label stable during %s", (pending) => {
+it.each(["loading", "catalogLoading"])("keeps verified checkout usable during %s", (pending) => {
 	billing({ checkoutAvailable: true, checkoutIntervals: ["monthly"], prices: [price] });
 	state.billing.catalog = { prices: [price] };
 	state.billing[pending] = true;
-	expect(button()).toMatchObject({ children: "Get Started", isDisabled: true });
-	state.billing[pending] = false;
-	expect(button()).toMatchObject({ children: "Get Started", isDisabled: false });
+	const tree = SplitPricingModal({ onSignIn: vi.fn() });
+	const action = primary(tree);
+	expect(action).toMatchObject({ children: "Get Started", isDisabled: false });
+	expect(notices(tree)).toEqual([]);
+	action?.onPress();
+	expect(state.startBilling).toHaveBeenCalledWith("checkout", "monthly");
 });
 it("keeps available subscription management on the portal action", () => {
 	billing({ plan: "pro", portalAvailable: true }); const action = button(); expect(action.children).toBe("Manage subscription"); action.onPress(); expect(state.startBilling).toHaveBeenCalledWith("portal", "monthly");

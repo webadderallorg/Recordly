@@ -39,6 +39,16 @@ test("copies a share link through the desktop bridge when the browser denies acc
 	await expect(page.getByText("Link copied", { exact: true })).toBeVisible();
 });
 
+test("opens the published URL through the desktop bridge from the link icon", async ({ page }) => {
+	await page.goto("/tests/ui/clipboard-share.html");
+	await page.getByRole("button", { name: "Share", exact: true }).click();
+	await page.getByRole("button", { name: "Open link", exact: true }).press("Enter");
+	await expect(page.locator("html")).toHaveAttribute(
+		"data-opened-url",
+		"https://example.test/s/preview",
+	);
+});
+
 test("selects the actual link for manual copying without a recursive Copy error action", async ({
 	page,
 }) => {

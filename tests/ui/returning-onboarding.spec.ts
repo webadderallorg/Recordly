@@ -3,7 +3,7 @@ import { SAVED_SIGN_IN_LOCKED } from "../../src/lib/auth/savedSignIn";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 import { productionTest } from "./production";
 
-const returningOnboarding = "/?windowType=onboarding&returning=1";
+const startupOnboarding = "/?windowType=onboarding&startup=1";
 
 async function mockStartup(page: Page, signedIn: boolean, onboarded = true) {
 	await installDesktopBridge(page, "preview.mp4", { signedIn, onboarded });
@@ -16,21 +16,22 @@ async function mockStartup(page: Page, signedIn: boolean, onboarded = true) {
 }
 
 productionTest(
-	"Windows first launch opens the recorder immediately after sign-in",
+	"a fresh Windows installation uses the shared welcome screen for an existing profile",
 	async ({ page }) => {
-		await mockStartup(page, false, false);
+		await mockStartup(page, false);
 		await installDesktopBridgeOverrides(page, () => {
 			window.electronAPI.getPlatform = async () => "win32";
 		});
-		await page.goto(`${returningOnboarding}&welcomeSoundtrack=intro`);
+		await page.goto(`${startupOnboarding}&welcomeSoundtrack=intro`);
 		const root = page.locator("html");
 		const dialog = page.getByRole("dialog", { name: "Welcome to Recordly", exact: true });
-		await expect(root).toHaveAttribute("data-startup-action", "show");
-		await expect(dialog.getByRole("navigation")).toHaveCount(0);
+		await expect(dialog.getByRole("button", { name: "Continue as guest" })).toBeEnabled();
+		await expect(dialog.getByRole("navigation")).toBeVisible();
 		await dialog.getByPlaceholder("you@example.com").fill("test@email.com");
 		await dialog.getByRole("button", { name: "Email me a code" }).click();
 		await dialog.locator('input[autocomplete="one-time-code"]').fill("123456", { force: true });
 		await dialog.getByRole("button", { name: "Verify and continue" }).click();
+		await dialog.getByRole("button", { name: "Start recording" }).click();
 		await expect(root).toHaveAttribute("data-startup-action", "continue");
 		await expect(page.getByRole("dialog")).toHaveCount(0);
 	},
@@ -51,7 +52,7 @@ productionTest(
 				return originalGet(key);
 			};
 		});
-		await page.goto(returningOnboarding);
+		await page.goto(startupOnboarding);
 		const root = page.locator("html");
 		await expect(root).toHaveAttribute("data-restoring-session", "true");
 		await expect(root).not.toHaveAttribute("data-startup-action");
@@ -63,7 +64,7 @@ productionTest(
 );
 
 productionTest(
-	"returning signed-out users sign in before getting the recording controls",
+	"signed-out users with an existing profile can choose guest access or sign in",
 	async ({ page }) => {
 		await mockStartup(page, false);
 		await installDesktopBridgeOverrides(page, () => {
@@ -81,7 +82,7 @@ productionTest(
 				return { success: true };
 			};
 		});
-		await page.goto(returningOnboarding);
+		await page.goto(startupOnboarding);
 		const root = page.locator("html");
 		const dialog = page.getByRole("dialog", { name: "Welcome to Recordly" });
 		await expect(dialog).toBeVisible();
@@ -90,7 +91,8 @@ productionTest(
 		await expect(
 			dialog.locator("[data-onboarding-artwork] [data-recordly-demo]"),
 		).toBeVisible();
-		await expect(dialog.getByRole("navigation")).toHaveCount(0);
+		await expect(dialog.getByRole("button", { name: "Continue as guest" })).toBeEnabled();
+		await expect(dialog.getByRole("navigation")).toBeVisible();
 		await dialog.getByRole("button", { name: "Continue with Google", exact: true }).click();
 		await expect(root).toHaveAttribute("data-oauth-redirect", /auth\/callback/);
 		await page.evaluate(() => {
@@ -105,6 +107,7 @@ productionTest(
 		await expect(root).toHaveAttribute("data-callback-ack", "pending");
 		await expect(root).toHaveAttribute("data-startup-action", "show");
 		await page.evaluate(() => window.dispatchEvent(new Event("release-callback-ack")));
+		await dialog.getByRole("button", { name: "Start recording" }).click();
 		await expect(root).toHaveAttribute("data-startup-action", "continue");
 	},
 );
@@ -124,7 +127,7 @@ productionTest(
 			},
 			SAVED_SIGN_IN_LOCKED,
 		);
-		await page.goto(returningOnboarding);
+		await page.goto(startupOnboarding);
 		const dialog = page.getByRole("dialog", { name: "Welcome to Recordly" });
 		await expect(dialog.getByText("Unlock saved sign-in", { exact: true })).toBeVisible();
 		await expect(page.locator("html")).toHaveAttribute("data-startup-action", "show");
@@ -135,7 +138,7 @@ productionTest(
 );
 
 productionTest(
-	"signed-in returning users missing recording access see only the permissions page",
+	"signed-in users missing recording access advance to the shared permissions page",
 	async ({ page }) => {
 		await mockStartup(page, true);
 		await installDesktopBridgeOverrides(page, () => {
@@ -144,8 +147,8 @@ productionTest(
 				trusted: false,
 			});
 		});
-		await page.goto(returningOnboarding);
-		const dialog = page.getByRole("dialog", { name: "Permissions" });
+		await page.goto(startupOnboarding);
+		const dialog = page.getByRole("dialog", { name: "Welcome to Recordly" });
 		await expect(
 			dialog.getByRole("heading", { name: "Allow Recordly to record" }),
 		).toBeVisible();
@@ -154,7 +157,7 @@ productionTest(
 		).toBeVisible();
 		await expect(dialog.getByRole("button", { name: "Start recording" })).toBeDisabled();
 		await expect(page.locator("html")).toHaveAttribute("data-startup-action", "show");
-		await expect(page.getByRole("dialog", { name: "Welcome to Recordly" })).toHaveCount(0);
+		await expect(dialog).toHaveAttribute("data-onboarding-state", "permissions");
 	},
 );
 
@@ -201,7 +204,7 @@ for (const duringPermissionCheck of [true, false]) {
 				},
 				duringPermissionCheck,
 			);
-			await page.goto(returningOnboarding);
+			await page.goto(startupOnboarding);
 			const root = page.locator("html");
 			const start = page.getByRole("button", { name: "Start recording" });
 			if (!duringPermissionCheck) {
@@ -214,6 +217,7 @@ for (const duringPermissionCheck of [true, false]) {
 			await expect(root).not.toHaveAttribute("data-startup-action", "continue");
 			if (!duringPermissionCheck) await expect(start).toBeDisabled();
 			await page.evaluate(() => window.dispatchEvent(new Event("release-callback-ack")));
+			if (!duringPermissionCheck) await start.click();
 			await expect(root).toHaveAttribute("data-startup-action", "continue");
 		},
 	);

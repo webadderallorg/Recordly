@@ -58,8 +58,9 @@ export function ClassicPricingModal({ onSignIn }: { onSignIn: () => void }) {
 	const portalAvailable = Boolean(status?.billing.portalAvailable);
 	const manageSubscription = portalAvailable && (plus || !checkoutReady);
 	const canManage = manageSubscription || checkoutReady;
-	const pricingLoading = loading || (!manageSubscription && catalogLoading);
 	const paymentPending = !plus && awaitingCheckout && !manageSubscription;
+	const pricingLoading =
+		!manageSubscription && (!checkoutReady || paymentPending) && (loading || catalogLoading);
 	const retryPricing = !canManage || paymentPending;
 	const actionLabel =
 		!user || needsSignIn

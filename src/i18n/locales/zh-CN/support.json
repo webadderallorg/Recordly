@@ -1,4 +1,6 @@
 {
+	"diagnosticsLoading": "正在收集诊断信息…",
+	"diagnosticsUnavailable": "无法加载诊断详情。",
 	"reportTitle": "将此错误和诊断日志发送给 Recordly 支持团队",
 	"reportSending": "正在发送日志…",
 	"reportSent": "报告已发送",

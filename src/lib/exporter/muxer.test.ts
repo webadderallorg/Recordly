@@ -1,3 +1,4 @@
+import { EncodedVideoPacketSource } from "mediabunny";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type MuxerTargetMode, VideoMuxer } from "./muxer";
 import type { ExportConfig } from "./types";
@@ -99,6 +100,33 @@ describe("VideoMuxer target selection", () => {
 	afterEach(() => {
 		// biome-ignore lint/suspicious/noExplicitAny: restoring the test globals.
 		(globalThis as any).window = originalWindow;
+	});
+
+	it("writes the canvas transfer while preserving the encoder’s matrix and range", async () => {
+		const addPacket = vi.spyOn(EncodedVideoPacketSource.prototype, "add");
+		try {
+			const muxer = new VideoMuxer(baseConfig, false, "buffer");
+			await muxer.initialize();
+			await muxer.addVideoChunk({} as EncodedVideoChunk, {
+				decoderConfig: {
+					codec: "avc1.640033",
+					colorSpace: {
+						primaries: "smpte170m",
+						matrix: "smpte170m",
+						transfer: "bt709",
+						fullRange: true,
+					},
+				},
+			});
+			expect(addPacket.mock.calls[0]?.[1]?.decoderConfig?.colorSpace).toEqual({
+				primaries: "smpte170m",
+				matrix: "smpte170m",
+				transfer: "iec61966-2-1",
+				fullRange: true,
+			});
+		} finally {
+			addPacket.mockRestore();
+		}
 	});
 
 	it("defaults to BufferTarget when no electronAPI stream IPC is available", async () => {

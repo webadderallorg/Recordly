@@ -1,4 +1,6 @@
 {
+	"diagnosticsLoading": "Diagnostische gegevens verzamelen…",
+	"diagnosticsUnavailable": "De diagnostische details konden niet worden geladen.",
 	"reportTitle": "Deze fout en diagnostische logboeken naar Recordly-ondersteuning sturen",
 	"reportSending": "Logboeken verzenden…",
 	"reportSent": "Melding verzonden",

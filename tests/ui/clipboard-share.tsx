@@ -34,6 +34,10 @@ window.electronAPI = {
 		return { success: true, shareUrl: "https://example.test/s/preview" };
 	},
 	cloudShareCancel: async () => ({ success: true }),
+	openExternalUrl: async (url: string) => {
+		document.documentElement.dataset.openedUrl = url;
+		return { success: true };
+	},
 	writeClipboardText: async (text: string) => {
 		if (fail) return { success: false };
 		document.documentElement.dataset.copiedText = text;

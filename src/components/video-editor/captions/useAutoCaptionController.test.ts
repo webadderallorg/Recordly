@@ -36,7 +36,7 @@ vi.mock("@/contexts/I18nContext", async () => {
 	};
 });
 vi.mock("@/components/ui/toast", () => ({
-	toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() },
+	toast: { error: vi.fn(), info: vi.fn(), success: vi.fn(), dismiss: vi.fn() },
 }));
 beforeEach(() => {
 	state.refs = [];

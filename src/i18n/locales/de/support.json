@@ -1,4 +1,6 @@
 {
+	"diagnosticsLoading": "Diagnosedaten werden erfasst…",
+	"diagnosticsUnavailable": "Die Diagnosedetails konnten nicht geladen werden.",
 	"reportTitle": "Diesen Fehler und Diagnoseprotokolle an den Recordly-Support senden",
 	"reportSending": "Protokolle werden gesendet…",
 	"reportSent": "Bericht gesendet",

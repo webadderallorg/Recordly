@@ -251,13 +251,13 @@ it.each([
 	expect(hud.isVisible()).toBe(true);
 });
 
-it("keeps a returning launch hidden until the startup gate has a page to show", async () => {
+it("keeps onboarding hidden until the startup gate has a page to show", async () => {
 	electron.app.isPackaged = true;
 	const { focusOnboardingWindow, revealStartupOnboardingWindow, showOnboardingWindow } =
 		await import("./windows");
-	const onboarding = showOnboardingWindow({ returning: true }) as unknown as FakeWindow;
+	const onboarding = showOnboardingWindow({ startup: true }) as unknown as FakeWindow;
 	expect(windows).toEqual([onboarding]);
-	expect(onboarding.url).toContain("windowType=onboarding&returning=1");
+	expect(onboarding.url).toContain("windowType=onboarding&startup=1");
 	onboarding.emit("ready-to-show");
 	focusOnboardingWindow();
 	expect(onboarding.show).not.toHaveBeenCalled();
@@ -306,14 +306,17 @@ it.each([
 	electron.app.isPackaged = true;
 	vi.stubEnv("VITE_DEV_SERVER_URL", undefined);
 	const { focusOnboardingWindow, showOnboardingWindow } = await import("./windows");
-	const onboarding = showOnboardingWindow({ intro: true }) as unknown as FakeWindow;
+	const onboarding = showOnboardingWindow({
+		intro: true,
+		startup: true,
+	}) as unknown as FakeWindow;
 	const intro = windows.at(-1)!;
 	expect(intro).not.toBe(onboarding);
 	expect(intro.loadURL).toHaveBeenCalledWith(
 		"http://localhost:9999/?windowType=onboarding-intro",
 	);
 	expect(onboarding.loadURL).toHaveBeenCalledWith(
-		"http://localhost:9999/?windowType=onboarding&welcomeSoundtrack=intro",
+		"http://localhost:9999/?windowType=onboarding&startup=1&welcomeSoundtrack=intro",
 	);
 	focusOnboardingWindow();
 	expect(onboarding.show).not.toHaveBeenCalled();

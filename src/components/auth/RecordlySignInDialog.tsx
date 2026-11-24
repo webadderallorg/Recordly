@@ -7,9 +7,9 @@ import { LegalLinks } from "@/components/billing/LegalLinks";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { SignOut } from "@/components/ui/icons";
 import { RecordlyDemoVideo } from "@/components/ui/RecordlyDemoVideo";
-import { RecordlyMark } from "@/components/ui/RecordlyMark";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { captureAuthFailure, recordAuthEvent, type SignInAction } from "@/lib/auth/authDiagnostics";
+import { beginAppOperation } from "@/lib/feedback/diagnostics";
 import {
 	getEnabledSignInProviders,
 	type RecordlyOAuthProvider,
@@ -41,7 +41,6 @@ export type SignInReason = "account" | "share" | "reauthenticate";
 type Props = {
 	variant?: "compact" | "wide";
 	onboarding?: boolean;
-	signInOnly?: boolean;
 	preview?: boolean;
 	startWithPermissions?: boolean;
 	signInSkipped?: boolean;
@@ -54,11 +53,9 @@ type Props = {
 	configured: boolean;
 	callbackError?: string;
 	onAuthenticated: () => void;
-	recordingStart?: { disabled: boolean; onPress: () => void };
 	finishDisabled?: boolean;
 	onWindowClose?: () => void;
 	onUnlockSavedSignIn?: () => void;
-	requireSignIn?: boolean;
 };
 
 function friendlyAuthError(
@@ -83,7 +80,6 @@ function friendlyAuthError(
 export function RecordlySignInDialog({
 	variant = "compact",
 	onboarding = false,
-	signInOnly = false,
 	preview = false,
 	startWithPermissions = false,
 	signInSkipped = false,
@@ -96,11 +92,9 @@ export function RecordlySignInDialog({
 	configured,
 	callbackError,
 	onAuthenticated,
-	recordingStart,
 	finishDisabled = false,
 	onWindowClose,
 	onUnlockSavedSignIn,
-	requireSignIn = false,
 }: Props) {
 	const { t } = useI18n();
 	const ot = useScopedT("onboarding");
@@ -112,7 +106,6 @@ export function RecordlySignInDialog({
 	// Only a completed interactive sign-in can finish reauthentication.
 	const reauthenticating = reason === "reauthenticate";
 	const user = reauthenticating ? null : signedInUser;
-	const showRecordingStart = Boolean(recordingStart);
 	const [directSignInComplete, setDirectSignInComplete] = useState(false);
 	const openedAuthenticationVersion = useRef<number | undefined>(undefined);
 	useEffect(() => {
@@ -130,15 +123,14 @@ export function RecordlySignInDialog({
 	}, [open, reason, signedInUser, authenticationVersion, directSignInComplete, onAuthenticated]);
 	const awaitingSignIn = useRef(false);
 	const wide = onboarding || variant === "wide";
-	const tour = onboarding && !signInOnly && !recordingStart;
 	const [{ page, direction }, setPage] = useState<{ page: OnboardingStage; direction: number }>({
 		page: "account",
 		direction: 1,
 	});
 	const switchingAccount =
 		tourSignIn?.returnTo === "permissions" ||
-		(preview && tour && page === "account" && Boolean(user));
-	const showSignInForm = !showRecordingStart && (!user || switchingAccount);
+		(preview && onboarding && page === "account" && Boolean(user));
+	const showSignInForm = !user || switchingAccount;
 	const goTo = useCallback((next: OnboardingStage) => {
 		setPage((current) =>
 			current.page === next
@@ -147,7 +139,7 @@ export function RecordlySignInDialog({
 		);
 	}, []);
 	const navigateTo = (next: OnboardingStage) => {
-		if (next === "account" && stage !== "account" && tour && !preview && user) {
+		if (next === "account" && stage !== "account" && onboarding && !preview && user) {
 			setEmail("");
 			setDirectSignInComplete(false);
 			setTourSignIn({ returnTo: "permissions", authenticationVersion });
@@ -155,7 +147,7 @@ export function RecordlySignInDialog({
 		goTo(next);
 	};
 	const [permissionsReady, setPermissionsReady] = useState(false);
-	const requiresSignIn = ((onboarding && !preview) || requireSignIn) && !user;
+	const requiresSignIn = onboarding && !preview && !user;
 	const opened = useRef(false);
 	// Only macOS grants capture permissions up front; Windows and Linux skip that page.
 	// Start from the user agent so Windows and Linux never render the page, then confirm.
@@ -171,7 +163,7 @@ export function RecordlySignInDialog({
 			active = false;
 		};
 	}, []);
-	const canViewPermissions = tour && Boolean(user || preview || signInSkipped);
+	const canViewPermissions = onboarding && Boolean(user || preview || signInSkipped);
 	// Windows and Linux have no permissions page, so their tour ends on the account page.
 	const stage: OnboardingStage =
 		canViewPermissions && page === "permissions" && needsPermissions
@@ -243,16 +235,16 @@ export function RecordlySignInDialog({
 	useEffect(() => {
 		if (!open || opened.current) return;
 		opened.current = true;
-		if (tour && user && !preview) goTo("permissions");
-	}, [open, tour, user, preview, goTo]);
+		if (onboarding && user && !preview) goTo("permissions");
+	}, [open, onboarding, user, preview, goTo]);
 
 	useEffect(() => {
 		if (open && startWithPermissions && canViewPermissions) goTo("permissions");
 	}, [open, startWithPermissions, canViewPermissions, goTo]);
 
 	useEffect(() => {
-		if (!open || recordingStart || reauthenticating) return;
-		if (user && !tour) {
+		if (!open || reauthenticating) return;
+		if (user && !onboarding) {
 			onAuthenticated();
 			return;
 		}
@@ -261,11 +253,11 @@ export function RecordlySignInDialog({
 			awaitingSignIn.current = false;
 			setMessage(undefined);
 			setReportDiagnostic(undefined);
-			if (tour) {
+			if (onboarding) {
 				if (!preview) goTo("permissions");
 			} else onAuthenticated();
 		}
-	}, [open, user, onAuthenticated, tour, preview, goTo, recordingStart, reauthenticating]);
+	}, [open, user, onAuthenticated, onboarding, preview, goTo, reauthenticating]);
 
 	useEffect(() => {
 		if (
@@ -284,6 +276,7 @@ export function RecordlySignInDialog({
 	}, [open, tourSignIn, signedInUser, directSignInComplete, authenticationVersion, goTo]);
 
 	const run = async (label: SignInAction, action: () => Promise<unknown>) => {
+		const operation = beginAppOperation(`auth.sign-in-${label}`);
 		setBusy(label);
 		setMessage(undefined);
 		setReportDiagnostic(undefined);
@@ -291,9 +284,11 @@ export function RecordlySignInDialog({
 		recordAuthEvent(`sign-in-${label}`, "started");
 		try {
 			await action();
+			operation.finish("succeeded");
 			recordAuthEvent(`sign-in-${label}`, "succeeded");
 			return true;
 		} catch (error) {
+			operation.finish("failed");
 			setReportDiagnostic(captureAuthFailure(`sign-in-${label}`, error));
 			setMessage(
 				label === "verify" ? ot("invalidCode") : friendlyAuthError(error, label, t, ot),
@@ -349,16 +344,16 @@ export function RecordlySignInDialog({
 					>
 						{onboarding ? (
 							<OnboardingHeader
-								centered={preview || showSignInForm || showRecordingStart}
+								centered={preview || showSignInForm}
 								title={
-									!showSignInForm && !preview && !showRecordingStart ? (
+									!showSignInForm && !preview ? (
 										ot("yourAccount")
 									) : (
 										<OnboardingHeroTitle text={ot("welcomeTitle")} />
 									)
 								}
 								description={
-									user && !showSignInForm && !showRecordingStart
+									user && !showSignInForm
 										? user.email || ot("signedIn")
 										: undefined
 								}
@@ -371,27 +366,7 @@ export function RecordlySignInDialog({
 							</Modal.Header>
 						)}
 					</motion.div>
-					{showRecordingStart && recordingStart ? (
-						<div data-signin-fields className="recordly-signin-start">
-							{user && (
-								<p
-									role="status"
-									className="grid place-items-center text-center text-sm text-muted"
-								>
-									{ot("signedIn")}
-								</p>
-							)}
-							<Button
-								variant="primary"
-								className="col-start-1 row-start-3 h-11 w-full gap-2 rounded-xl"
-								isDisabled={recordingStart.disabled}
-								onPress={recordingStart.onPress}
-							>
-								<RecordlyMark className="text-white" />
-								{ot("startRecording")}
-							</Button>
-						</div>
-					) : onUnlockSavedSignIn ? (
+					{onUnlockSavedSignIn ? (
 						<div className="flex flex-col gap-3">
 							<Alert status="warning" role="alert">
 								<Alert.Indicator />
@@ -461,7 +436,7 @@ export function RecordlySignInDialog({
 								configured={configured}
 								busy={busy}
 								compact={onboarding}
-								revealCodeButtonOnEmailInteraction
+								revealCodeButtonOnEmailInteraction={!onboarding}
 								assetBase={import.meta.env.BASE_URL}
 								labels={{
 									checkInbox: ot("checkInbox"),
@@ -495,7 +470,7 @@ export function RecordlySignInDialog({
 							/>
 						</>
 					)}
-					{message && !showRecordingStart ? (
+					{message ? (
 						<Alert
 							role={linkSent ? "status" : "alert"}
 							status={linkSent ? "success" : "danger"}
@@ -542,13 +517,7 @@ export function RecordlySignInDialog({
 						transition={transition}
 						aria-label={onboarding ? ot("welcomeLabel") : ot("signInLabel")}
 						data-onboarding-state={
-							onboarding
-								? showRecordingStart
-									? "ready"
-									: stage === "account"
-										? "login"
-										: stage
-								: undefined
+							onboarding ? (stage === "account" ? "login" : stage) : undefined
 						}
 						className={
 							onboarding
@@ -568,89 +537,77 @@ export function RecordlySignInDialog({
 								stage={stage}
 								canViewPermissions={canViewPermissions}
 								showPermissions={needsPermissions}
-								showNavigation={!signInOnly && !recordingStart}
 								footer={
-									tour && (
-										<OnboardingFooter>
-											<div
-												className="flex min-w-0 flex-wrap items-center gap-1"
-												data-onboarding-preview-actions={
-													import.meta.env.DEV && preview
-														? "true"
-														: undefined
+									<OnboardingFooter>
+										<div
+											className="flex min-w-0 flex-wrap items-center gap-1"
+											data-onboarding-preview-actions={
+												import.meta.env.DEV && preview ? "true" : undefined
+											}
+										>
+											<Button
+												variant="ghost"
+												className={
+													stage === "account" ? "invisible" : undefined
 												}
+												aria-hidden={stage === "account" || undefined}
+												isDisabled={stage === "account"}
+												aria-label={ot("backToAccount")}
+												onPress={() => navigateTo("account")}
 											>
-												<Button
-													variant="ghost"
-													className={
-														stage === "account"
-															? "invisible"
-															: undefined
-													}
-													aria-hidden={stage === "account" || undefined}
-													isDisabled={stage === "account"}
-													aria-label={ot("backToAccount")}
-													onPress={() => navigateTo("account")}
-												>
-													<ArrowLeft size={16} /> {ot("back")}
+												<ArrowLeft size={16} /> {ot("back")}
+											</Button>
+											{import.meta.env.DEV && preview && (
+												<Button variant="ghost" onPress={onAuthenticated}>
+													{ot("skipOnboarding", "Skip onboarding")}
 												</Button>
-												{import.meta.env.DEV && preview && (
-													<Button
-														variant="ghost"
-														onPress={onAuthenticated}
-													>
-														{ot("skipOnboarding", "Skip onboarding")}
-													</Button>
-												)}
-											</div>
-											{!permissions && !user && onContinueAsGuest ? (
-												<Button
-													variant="ghost"
-													className="text-muted"
-													isDisabled={disabled || finishDisabled}
-													onPress={() => {
-														setReportDiagnostic(undefined);
-														if (!onContinueAsGuest()) {
-															setMessage(
-																t("notifications.unexpectedError"),
-															);
-															return;
-														}
-														setMessage(undefined);
-														if (needsPermissions)
-															navigateTo("permissions");
-														else onAuthenticated();
-													}}
-												>
-													{ot("continueAsGuest")}
-												</Button>
-											) : (
-												<OnboardingPrimaryAction
-													isDisabled={
-														permissions || !needsPermissions
-															? (permissions && !permissionsReady) ||
-																finishDisabled ||
-																disabled
-															: disabled
-													}
-													onPress={() => {
-														if (permissions || !needsPermissions) {
-															if (
-																(!permissions ||
-																	permissionsReady) &&
-																!finishDisabled
-															)
-																onAuthenticated();
-														} else navigateTo("permissions");
-													}}
-												>
-													{permissions || !needsPermissions
-														? ot("startRecording")
-														: ot("next", "Next")}
-												</OnboardingPrimaryAction>
 											)}
-										</OnboardingFooter>
-									)
+										</div>
+										{!permissions && !user && onContinueAsGuest ? (
+											<Button
+												variant="ghost"
+												className="text-muted"
+												isDisabled={disabled || finishDisabled}
+												onPress={() => {
+													setReportDiagnostic(undefined);
+													if (!onContinueAsGuest()) {
+														setMessage(
+															t("notifications.unexpectedError"),
+														);
+														return;
+													}
+													setMessage(undefined);
+													if (needsPermissions) navigateTo("permissions");
+													else onAuthenticated();
+												}}
+											>
+												{ot("continueAsGuest")}
+											</Button>
+										) : (
+											<OnboardingPrimaryAction
+												isDisabled={
+													permissions || !needsPermissions
+														? (permissions && !permissionsReady) ||
+															finishDisabled ||
+															disabled
+														: disabled
+												}
+												onPress={() => {
+													if (permissions || !needsPermissions) {
+														if (
+															(!permissions || permissionsReady) &&
+															!finishDisabled
+														)
+															onAuthenticated();
+													} else navigateTo("permissions");
+												}}
+											>
+												{permissions || !needsPermissions
+													? ot("startRecording")
+													: ot("next", "Next")}
+											</OnboardingPrimaryAction>
+										)}
+									</OnboardingFooter>
 								}
 								onStageChange={navigateTo}
 							>
@@ -709,7 +666,7 @@ export function RecordlySignInDialog({
 								/>
 							)
 						)}
-						{onboarding && !signInOnly && open && <OnboardingSoundtrack />}
+						{onboarding && open && <OnboardingSoundtrack />}
 					</MotionDialog>
 				</Modal.Container>
 			</Modal.Backdrop>

@@ -1,6 +1,7 @@
 import { Application, Container } from "pixi.js";
 import { useEffect, useRef } from "react";
 import { createVideoBlurFilters } from "@/lib/exporter/videoBlurFilters";
+import { beginAppOperation } from "@/lib/feedback/diagnostics";
 import { destroyPixiApplication } from "@/lib/pixiApplicationLifecycle";
 import { DEFAULT_CURSOR_CONFIG, PixiCursorOverlay, preloadCursorAssets } from "./cursorRenderer";
 import { initializePixiRenderer, toRendererErrorMessage } from "./initializePreviewRenderer";
@@ -78,10 +79,12 @@ export function usePlaybackRenderer(input: usePlaybackRendererInput) {
 
 		let mounted = true;
 		let app: Application | null = null;
+		const operation = beginAppOperation("editor.preview-open");
 
 		(async () => {
 			let cursorOverlayEnabled = true;
 			try {
+				operation.step("cursor-assets");
 				await preloadCursorAssets();
 			} catch (error) {
 				cursorOverlayEnabled = false;
@@ -94,6 +97,7 @@ export function usePlaybackRenderer(input: usePlaybackRendererInput) {
 			// Hover previews may leave while shared cursor assets are still loading.
 			// Do not allocate a GPU context for an already detached preview.
 			if (!mounted) return;
+			operation.step("initialize-pixi");
 			app = await initializePixiRenderer(container);
 
 			app.ticker.maxFPS = 60;
@@ -104,6 +108,7 @@ export function usePlaybackRenderer(input: usePlaybackRendererInput) {
 			}
 
 			appRef.current = app;
+			operation.step("mount-scene");
 			container.appendChild(app.canvas);
 
 			// Camera container - this will be scaled/positioned for zoom
@@ -167,7 +172,9 @@ export function usePlaybackRenderer(input: usePlaybackRendererInput) {
 			}
 
 			setPixiReady(true);
+			operation.finish("succeeded");
 		})().catch((error) => {
+			operation.finish(mounted ? "failed" : "cancelled");
 			if (!mounted) return;
 			console.error("Failed to initialize preview renderer:", error);
 			onErrorRef.current(toRendererErrorMessage(error));
@@ -175,6 +182,7 @@ export function usePlaybackRenderer(input: usePlaybackRendererInput) {
 
 		return () => {
 			mounted = false;
+			operation.finish("cancelled");
 			setPixiReady(false);
 			if (cursorOverlayRef.current) {
 				cursorOverlayRef.current.destroy();
@@ -187,7 +195,17 @@ export function usePlaybackRenderer(input: usePlaybackRendererInput) {
 			motionBlurFilterRef.current?.destroy();
 			zoomBlurFilterRef.current = null;
 			motionBlurFilterRef.current = null;
-			destroyPixiApplication(app, "preview renderer");
+			if (app) {
+				const cleanup = beginAppOperation("editor.preview-close");
+				cleanup.step("destroy-pixi");
+				try {
+					destroyPixiApplication(app, "preview renderer");
+					cleanup.finish("succeeded");
+				} catch (error) {
+					cleanup.finish("failed");
+					throw error;
+				}
+			}
 			appRef.current = null;
 			cameraContainerRef.current = null;
 			videoEffectsContainerRef.current = null;

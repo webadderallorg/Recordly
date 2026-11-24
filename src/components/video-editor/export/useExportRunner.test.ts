@@ -9,7 +9,7 @@ vi.mock("react", () => ({
 vi.mock("@/components/billing/BillingProvider", () => ({ useOptionalBilling: () => null }));
 vi.mock("@/components/ui/toast", () => ({ toast: { error: vi.fn() } }));
 vi.mock("@/lib/feedback/exportDiagnostics", () => ({
-	createExportDiagnostics: () => ({ record: vi.fn() }),
+	createExportDiagnostics: () => ({ record: vi.fn(), complete: vi.fn() }),
 }));
 vi.mock("./exportRunnerSupport", () => ({ showExportErrorToast: vi.fn() }));
 vi.mock("./gifEstimateCache", () => ({ stopGifSizeEstimates: async () => {} }));

@@ -1,5 +1,6 @@
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
+import { beginAppOperation } from "@/lib/feedback/diagnostics";
 import { waitForBrowserCaptureFrame } from "./browserScreenCapture";
 import {
 	AUDIO_BITRATE_SYSTEM,
@@ -226,6 +227,7 @@ export async function startBrowserRecorder(
 	let recordingStarted = !portalStart;
 	recorder.onstop = async () => {
 		if (!recordingStarted) return;
+		const operation = beginAppOperation("recording.browser-finalize");
 		// Also covers MediaRecorder stopping itself after a write/encoder failure.
 		browserFinalizing.current = true;
 		setFinalizing(true);
@@ -237,6 +239,7 @@ export async function startBrowserRecorder(
 			.catch((error) => console.warn("Could not reset recording state", error));
 		cleanupCapturedMedia();
 		if (writer.isCancelled) {
+			operation.finish("cancelled");
 			try {
 				await writer.discard();
 			} finally {
@@ -246,8 +249,10 @@ export async function startBrowserRecorder(
 			return;
 		}
 		try {
+			operation.step("finish-file");
 			const videoResult = await writer.finish(getRecordingDurationMs(Date.now()));
 			if (!videoResult.success) {
+				operation.finish("failed");
 				console.error("Failed to store video:", videoResult.message);
 				await notifyRecordingFinalizationFailure(
 					videoResult.message ||
@@ -260,9 +265,11 @@ export async function startBrowserRecorder(
 			}
 
 			if (videoResult.path) {
+				operation.step("editor-handoff");
 				const finalVideoPath = videoResult.path;
 				// 1. Launch editor immediately (Optimistic UI)
 				await finalizeRecordingSession(finalVideoPath, null);
+				operation.step("finalize-webcam");
 
 				// 2. Background webcam processing
 				await (async () => {
@@ -292,12 +299,15 @@ export async function startBrowserRecorder(
 						}
 					}
 				})();
+				operation.finish("succeeded");
 			} else {
+				operation.finish("failed");
 				await notifyRecordingFinalizationFailure(
 					translate("notifications.saveRecordingFailed", "Failed to save the recording."),
 				);
 			}
 		} catch (error) {
+			operation.finish("failed");
 			console.error("Error saving recording:", error);
 			const message = error instanceof Error ? error.message : String(error);
 			await notifyRecordingFinalizationFailure(

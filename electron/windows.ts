@@ -23,6 +23,7 @@ import {
 import { getHudOverlayTaskbarOptions, supportsX11HudWindowDrag } from "./hudOverlayWindowOptions";
 import { startHudPointerRecovery } from "./hudPointerRecovery";
 import { sendNativeHudCaptureExclusions } from "./ipc/recording/nativeCaptureCommand";
+import { recordAppProcessDiagnostic, startMainDiagnosticOperation } from "./ipc/register/exportDiagnostics";
 import {
 	currentProjectPath,
 	currentRecordingSession,
@@ -1208,7 +1209,9 @@ export function createEditorWindow(): BrowserWindow {
 	registerDesktopPresenceWindow(win);
 	editorWindows.add(win);
 	notifyEditorMode();
+	const opening = startMainDiagnosticOperation("editor.window-open", "editor", win.webContents.id);
 	win.once("closed", () => {
+		opening.finish("cancelled");
 		editorWindows.delete(win);
 		notifyEditorMode();
 	});
@@ -1234,7 +1237,12 @@ export function createEditorWindow(): BrowserWindow {
 	});
 
 	win.webContents.on("did-finish-load", () => {
+		opening.finish("succeeded");
 		console.log(`[PERF:MAIN] Editor Window: did-finish-load in ${Date.now() - perfStart}ms`);
+		void recordAppProcessDiagnostic(
+			"info",
+			`editor document loaded elapsedMs=${Date.now() - perfStart}`,
+		);
 		win?.webContents.send("main-process-message", new Date().toLocaleString());
 		// Fallback for Linux/Wayland where `ready-to-show` may not fire reliably.
 		if (!win.isDestroyed() && !win.isVisible()) {
@@ -1243,16 +1251,40 @@ export function createEditorWindow(): BrowserWindow {
 		}
 	});
 
-	win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
-		console.error("[editor-window] did-fail-load", {
-			errorCode,
-			errorDescription,
-			validatedURL,
-		});
-	});
+	win.webContents.on(
+		"did-fail-load",
+		(_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+			console.error("[editor-window] did-fail-load", {
+				errorCode,
+				errorDescription,
+				validatedURL,
+			});
+			// Chromium uses ERR_ABORTED for deliberately cancelled navigations.
+			if (isMainFrame && errorCode !== -3) {
+				opening.finish("failed");
+				void recordAppProcessDiagnostic(
+					"error",
+					`editor document failed to load code=${errorCode}`,
+				);
+			}
+		},
+	);
 
 	win.webContents.on("render-process-gone", (_event, details) => {
 		console.error("[editor-window] render-process-gone", details);
+		if (details.reason !== "clean-exit") {
+			opening.finish("failed");
+			void recordAppProcessDiagnostic(
+				"error",
+				`editor renderer exited reason=${details.reason} exitCode=${details.exitCode}`,
+			);
+		}
+	});
+	win.on("unresponsive", () => {
+		void recordAppProcessDiagnostic("warn", "editor renderer unresponsive");
+	});
+	win.on("responsive", () => {
+		void recordAppProcessDiagnostic("info", "editor renderer responsive again");
 	});
 
 	win.on("show", () => {
@@ -1271,6 +1303,7 @@ export function createEditorWindow(): BrowserWindow {
 		if (!win.isDestroyed()) win.webContents.send("window-fullscreen-changed", false);
 	});
 
+	opening.step("load-document");
 	if (VITE_DEV_SERVER_URL) {
 		const query = new URLSearchParams(getEditorWindowQuery());
 		win.loadURL(`${VITE_DEV_SERVER_URL}?${query.toString()}`);
@@ -1410,13 +1443,13 @@ export function replayOnboardingIntro(owner: BrowserWindow): boolean {
 export function showOnboardingWindow(options?: {
 	preview?: boolean;
 	intro?: boolean;
-	returning?: boolean;
+	startup?: boolean;
 	permissionsOnly?: boolean;
 }): BrowserWindow {
 	const permissionsOnly = options?.permissionsOnly === true;
 	const query = {
 		windowType: "onboarding",
-		...(options?.returning ? { returning: "1" } : {}),
+		...(options?.startup ? { startup: "1" } : {}),
 		...(permissionsOnly ? { permissionsOnly: "1" } : {}),
 		...(!app.isPackaged && typeof options?.preview === "boolean"
 			? { onboardingPreview: options.preview ? "1" : "0" }
@@ -1467,7 +1500,7 @@ export function showOnboardingWindow(options?: {
 	registerDesktopPresenceWindow(win);
 	if (process.platform !== "darwin") win.setMenu(null);
 	onboardingWindow = win;
-	if (options?.returning) startupOnboarding = { window: win, waiting: true };
+	if (options?.startup) startupOnboarding = { window: win, waiting: true };
 	enforceOnboardingWindowExclusivity(win);
 	win.once("closed", () => {
 		if (onboardingWindow === win) onboardingWindow = null;
@@ -1475,6 +1508,7 @@ export function showOnboardingWindow(options?: {
 	});
 	hideOtherOnboardingWindows(win);
 	const show = () => {
+		if (startupOnboarding?.window === win) startupOnboarding.waiting = false;
 		win.setBounds(bounds);
 		bringOnboardingWindowForward(win);
 	};
@@ -1493,7 +1527,7 @@ export function showOnboardingWindow(options?: {
 		intro.once("closed", () => {
 			if (onboardingIntroWindow === intro) onboardingIntroWindow = null;
 		});
-	} else if (!options?.returning) {
+	} else if (!options?.startup) {
 		win.once("ready-to-show", show);
 	}
 	load(win, playIntro ? { ...query, welcomeSoundtrack: "intro" } : query);

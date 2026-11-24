@@ -1,5 +1,6 @@
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
+import { beginAppOperation } from "@/lib/feedback/diagnostics";
 import { acquireRecorderBrowserStream } from "./acquireRecorderBrowserStream";
 import { isCapturePermissionDismissed, LINUX_PORTAL_SOURCE_ID } from "./browserScreenCapture";
 import type { RecorderContext } from "./recorderContext";
@@ -28,6 +29,7 @@ export function useRecorderStartup(context: RecorderContext) {
 		if (startInFlight.current || recordingActive.current || browserFinalizing.current) {
 			return;
 		}
+		const operation = beginAppOperation("recording.start");
 		const startGeneration = recordingStartGeneration.current + 1;
 		recordingStartGeneration.current = startGeneration;
 		const startWasCancelled = () => recordingStartGeneration.current !== startGeneration;
@@ -36,6 +38,7 @@ export function useRecorderStartup(context: RecorderContext) {
 		let usingLinuxPortal = false;
 		const runCountdown = async () => {
 			if (countdownDelay <= 0) return true;
+			operation.step("countdown");
 			setCountdownActive(true);
 			try {
 				const result = await window.electronAPI.startCountdown(countdownDelay);
@@ -72,13 +75,16 @@ export function useRecorderStartup(context: RecorderContext) {
 		let sessionReservationToken: string | undefined;
 
 		try {
+			operation.step("reserve-session");
 			const reservation = await window.electronAPI.reserveRecordingSession();
 			if (!reservation.success) {
+				operation.finish("blocked");
 				toast.error(reservation.message);
 				return;
 			}
 			sessionReservationToken = reservation.token;
 			if (startWasCancelled()) return;
+			operation.step("prepare-source");
 			const preparedStart = await prepareRecordingStart();
 			if (!preparedStart || startWasCancelled()) {
 				cleanupCapturedMedia();
@@ -102,6 +108,7 @@ export function useRecorderStartup(context: RecorderContext) {
 			let nativeWindowsCaptureStartFailed = false;
 
 			if (useNativeCapture) {
+				operation.step(useNativeWindowsCapture ? "windows-native" : "mac-native");
 				const outcome = await startNativeRecorder(context, {
 					selectedSource,
 					useNativeWindowsCapture,
@@ -120,6 +127,7 @@ export function useRecorderStartup(context: RecorderContext) {
 			}
 
 			if (startWasCancelled()) return;
+			operation.step(usingLinuxPortal ? "portal-capture" : "browser-capture");
 			// The webcam opens while the screen stream is acquired; both must be ready to record.
 			const [{ videoTrack, systemAudioIncluded }] = await Promise.all([
 				acquireRecorderBrowserStream(context, {
@@ -128,6 +136,7 @@ export function useRecorderStartup(context: RecorderContext) {
 				}),
 				webcamReady,
 			]);
+			operation.step("start-browser-recorder");
 			await startBrowserRecorder(context, {
 				videoTrack,
 				systemAudioIncluded,
@@ -141,6 +150,7 @@ export function useRecorderStartup(context: RecorderContext) {
 				usingLinuxPortal &&
 				(await window.electronAPI.isWaylandScreenCastMissing?.().catch(() => false));
 			const portalDismissed = usingLinuxPortal && isCapturePermissionDismissed(error);
+			operation.finish(startWasCancelled() || portalDismissed ? "cancelled" : "failed");
 			if (!startWasCancelled() && (missingWaylandScreenCast || !portalDismissed)) {
 				console.error("Failed to start recording:", error);
 				if (missingWaylandScreenCast) {
@@ -167,6 +177,7 @@ export function useRecorderStartup(context: RecorderContext) {
 			}
 			setRecording(false);
 		} finally {
+			operation.finish(recordingActive.current ? "succeeded" : "cancelled");
 			try {
 				if (startupWasAborted()) {
 					try {

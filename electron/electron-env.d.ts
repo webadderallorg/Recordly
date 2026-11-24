@@ -1314,6 +1314,19 @@ interface Window {
 		getAppVersion: () => Promise<string>;
 		appendExportDiagnostic: (entry: string) => Promise<{ success: boolean }>;
 		getExportDiagnostics: () => Promise<{ success: boolean; logs: string[] }>;
+		appendAppDiagnostics: (entries: string[]) => Promise<{ success: boolean }>;
+		recordOperationDiagnostic: (event: import("../src/shared/operationDiagnostics").OperationEvent) => void;
+		getAppDiagnostics: () => Promise<{
+			success: boolean;
+			logs: string[];
+			operations?: import("../src/shared/operationDiagnostics").OperationEvent[];
+			appRunId?: string;
+			windowId?: number;
+		}>;
+		getSupportDeviceInfo: () => Promise<{
+			success: boolean;
+			device?: import("./supportDeviceInfo").SupportDeviceInfo;
+		}>;
 		getExportRuntimeInfo: () => Promise<{
 			success: boolean;
 			runtime?: RendererExportRuntimeInfo;

@@ -2,6 +2,7 @@
 import { useEffect, useRef } from "react";
 import { toast } from "@/components/ui/toast";
 import { translate as t } from "@/i18n/runtime";
+import { beginAppOperation, setDiagnosticView } from "@/lib/feedback/diagnostics";
 import { getPaddingPreference, loadEditorPreferences } from "../editorPreferences";
 import { fromFileUrl, resolveVideoUrl } from "../projectPersistence";
 import type { getDevOpenRecordingConfig, getSmokeExportConfig } from "../smokeExportConfig";
@@ -51,14 +52,18 @@ export function useInitialEditorSource({
 		initialLoadStartedRef.current = true;
 
 		async function loadInitialData() {
+			const operation = beginAppOperation("editor.open");
 			try {
+				operation.step("recording-handoff");
 				const recording = await window.electronAPI.waitForRecordingEditor?.();
 				if (recording?.error) throw new Error(recording.error);
 				if (smokeConfig.enabled && smokeConfig.projectPath) {
+					operation.step("smoke-project");
 					const result = await window.electronAPI.openProjectFileAtPath(
 						smokeConfig.projectPath,
 					);
 					if (!result.success || !result.project) {
+						operation.finish("failed");
 						project.setError(
 							`Smoke export failed to load project ${smokeConfig.projectPath}: ${result.error || result.message || "unknown error"}`,
 						);
@@ -70,6 +75,7 @@ export function useInitialEditorSource({
 							result.path ?? smokeConfig.projectPath,
 						))
 					) {
+						operation.finish("failed");
 						project.setError(
 							`Smoke export could not apply project ${smokeConfig.projectPath}`,
 						);
@@ -80,10 +86,12 @@ export function useInitialEditorSource({
 						toast.warning(
 							t("editor.projectRecovered", "Recovered the previous saved version"),
 						);
+					operation.finish("succeeded");
 					return;
 				}
 
 				if (!smokeConfig.enabled && devConfig.inputPath) {
+					operation.step("development-media");
 					const sourcePath = fromFileUrl(devConfig.inputPath);
 					const webcamPath = devConfig.webcamInputPath
 						? fromFileUrl(devConfig.webcamInputPath)
@@ -112,11 +120,14 @@ export function useInitialEditorSource({
 						timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 					}));
 					project.setError(null);
+					operation.finish("succeeded");
 					return;
 				}
 
 				if (smokeConfig.enabled) {
+					operation.step("smoke-media");
 					if (!smokeConfig.inputPath) {
+						operation.finish("failed");
 						project.setError("Smoke export input path is missing.");
 						return;
 					}
@@ -152,9 +163,11 @@ export function useInitialEditorSource({
 						height: smokeConfig.webcamSize ?? previous.height ?? previous.size,
 					}));
 					project.setError(null);
+					operation.finish("succeeded");
 					return;
 				}
 
+				operation.step("restore-project");
 				const currentProject = await window.electronAPI.loadCurrentProjectFile();
 				if (
 					currentProject.success &&
@@ -165,6 +178,7 @@ export function useInitialEditorSource({
 						toast.warning(
 							t("editor.projectRecovered", "Recovered the previous saved version"),
 						);
+					operation.finish("succeeded");
 					return;
 				}
 
@@ -173,6 +187,8 @@ export function useInitialEditorSource({
 					currentProject.path &&
 					currentProject.missingRecordingPath
 				) {
+					operation.step("missing-recording");
+					operation.finish("failed");
 					project.setCurrentProjectPath(currentProject.path);
 					project.setError(
 						currentProject.error ||
@@ -181,6 +197,7 @@ export function useInitialEditorSource({
 					);
 					return;
 				}
+				operation.step("restore-recording-session");
 				const sessionResult = await window.electronAPI.getCurrentRecordingSession?.();
 				if (sessionResult?.success && sessionResult.session?.videoPath) {
 					const sourcePath = fromFileUrl(sessionResult.session.videoPath);
@@ -210,13 +227,21 @@ export function useInitialEditorSource({
 						timeOffsetMs:
 							sessionResult.session?.timeOffsetMs ?? DEFAULT_WEBCAM_TIME_OFFSET_MS,
 					}));
+					operation.finish("succeeded");
 					return;
 				}
 
+				operation.step("restore-media");
 				const currentVideo = await window.electronAPI.getCurrentVideoPath();
 				if (!currentVideo.success || !currentVideo.path) {
 					// An empty session is the normal dashboard launch, not a load failure.
+					operation.step("open-home");
+					setDiagnosticView("home");
+					const home = beginAppOperation("home.open", operation.id);
+					home.step("empty-session");
 					project.setProjectBrowserOpen(true);
+					home.finish("succeeded");
+					operation.finish("succeeded");
 					return;
 				}
 				const sourcePath = fromFileUrl(currentVideo.path);
@@ -234,7 +259,9 @@ export function useInitialEditorSource({
 					loop: false,
 					timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 				}));
+				operation.finish("succeeded");
 			} catch (error) {
+				operation.finish("failed");
 				project.setError(`Error loading video: ${String(error)}`);
 			} finally {
 				project.setLoading(false);

@@ -84,9 +84,10 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 	);
 	const portalAvailable = Boolean(status?.billing.portalAvailable);
 	const manageSubscription = portalAvailable && (plus || !checkoutReady);
-	const pricingLoading = loading || (!manageSubscription && catalogLoading);
-	const checkingPricing = Boolean(user && !needsSignIn && pricingLoading);
 	const paymentPending = !plus && awaitingCheckout && !manageSubscription;
+	const pricingLoading =
+		!manageSubscription && (!checkoutReady || paymentPending) && (loading || catalogLoading);
+	const checkingPricing = Boolean(user && !needsSignIn && pricingLoading);
 	const retryPricing = !(manageSubscription || checkoutReady) || paymentPending;
 	const showSubscriptionPricing = !plus && !manageSubscription;
 	const currentPeriodEnd = status?.billing.currentPeriodEnd;

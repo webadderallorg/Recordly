@@ -2,6 +2,8 @@
 #include <Security/Security.h>
 #include <node_api.h>
 
+#define SIGN_IN_CACHE_NAME "Recordly Sign-in Cache"
+
 enum { KEY_BYTES = 32 };
 
 static CFMutableDictionaryRef key_query(void) {
@@ -14,7 +16,7 @@ static CFMutableDictionaryRef key_query(void) {
 }
 
 static napi_value keychain_error(napi_env env) {
-	napi_throw_error(env, NULL, "Recordly Saved Sign-In is unavailable in Keychain.");
+	napi_throw_error(env, NULL, SIGN_IN_CACHE_NAME " is unavailable in Keychain.");
 	return NULL;
 }
 
@@ -47,7 +49,7 @@ static napi_value add_key(napi_env env, napi_callback_info info) {
 		return NULL;
 	}
 	CFMutableDictionaryRef query = key_query();
-	CFDictionarySetValue(query, kSecAttrLabel, CFSTR("Recordly Saved Sign-In"));
+	CFDictionarySetValue(query, kSecAttrLabel, CFSTR(SIGN_IN_CACHE_NAME));
 	CFDataRef data = CFDataCreate(NULL, bytes, KEY_BYTES);
 	CFDictionarySetValue(query, kSecValueData, data);
 	// The default ACL belongs to the calling signed Recordly app. This module

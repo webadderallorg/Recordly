@@ -90,12 +90,20 @@ export function sanitizeExportGpuInfo(
 			.filter((value): value is string => Boolean(value?.trim()))
 			.join(" ") || null;
 	const gpus = Array.isArray(info.gpuDevice)
-		? info.gpuDevice.map((device) => {
+		? info.gpuDevice.slice(0, 4).map((device) => {
 				const vendor = getGpuVendorLabel(device);
+				const reportedDriver =
+					device.driverVersion ??
+					(device.active || info.gpuDevice?.length === 1
+						? info.auxAttributes?.driverVersion
+						: undefined);
+				const driverVersion =
+					typeof reportedDriver === "string" ? reportedDriver.trim() : "";
 				return {
 					name: device.deviceString?.trim() || vendor || "Unknown GPU",
 					vendor,
 					active: typeof device.active === "boolean" ? device.active : null,
+					...(driverVersion && { driverVersion: driverVersion.slice(0, 80) }),
 				};
 			})
 		: [];
@@ -104,15 +112,29 @@ export function sanitizeExportGpuInfo(
 }
 
 /** Captures sanitized hardware and GPU acceleration details for export support reports. */
-export async function getExportHardwareInfo(): Promise<ExportHardwareInfo> {
-	let sanitizedGpuInfo: Pick<ExportHardwareInfo, "machineModel" | "gpus"> = {
-		machineModel: null,
-		gpus: [],
-	};
+export async function getExportHardwareInfo(gpuTimeoutMs?: number): Promise<ExportHardwareInfo> {
+	let timeout: ReturnType<typeof setTimeout> | undefined;
+	let gpuInfoStatus: ExportHardwareInfo["gpuInfoStatus"] = "unavailable";
+	let sanitizedGpuInfo = sanitizeExportGpuInfo(undefined);
 	try {
-		sanitizedGpuInfo = sanitizeExportGpuInfo(await app.getGPUInfo("complete"));
+		const probe = app.getGPUInfo("complete").then((value) => ({ value }));
+		const result =
+			gpuTimeoutMs === undefined
+				? await probe
+				: await Promise.race([
+						probe,
+						new Promise<undefined>((resolve) => {
+							timeout = setTimeout(() => resolve(undefined), gpuTimeoutMs);
+						}),
+					]);
+		if (result) {
+			sanitizedGpuInfo = sanitizeExportGpuInfo(result.value);
+			gpuInfoStatus = sanitizedGpuInfo.gpus.length ? "available" : "unavailable";
+		} else gpuInfoStatus = "timed-out";
 	} catch {
 		// Hardware diagnostics are best effort and must not affect exporting.
+	} finally {
+		clearTimeout(timeout);
 	}
 
 	let gpuFeatureStatus: Record<string, string> = {};
@@ -122,15 +144,17 @@ export async function getExportHardwareInfo(): Promise<ExportHardwareInfo> {
 		// GPU feature status can be unavailable before Chromium finishes GPU initialization.
 	}
 
-	const cpuModel = os.cpus()[0]?.model?.replace(/\s+/g, " ").trim() || null;
+	const cpus = os.cpus();
+	const cpuModel = cpus[0]?.model?.replace(/\s+/g, " ").trim() || null;
 	return {
 		platform: process.platform,
 		release: os.release(),
 		arch: process.arch,
 		cpuModel,
-		logicalProcessors: os.cpus().length,
+		logicalProcessors: cpus.length,
 		totalMemoryGb: Math.round((os.totalmem() / 1024 ** 3) * 10) / 10,
 		machineModel: sanitizedGpuInfo.machineModel,
+		gpuInfoStatus,
 		gpus: sanitizedGpuInfo.gpus,
 		gpuFeatures: {
 			videoDecode: gpuFeatureStatus.video_decode ?? null,

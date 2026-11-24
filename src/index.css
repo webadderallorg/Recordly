@@ -307,7 +307,7 @@
 	outline: none;
 }
 
-/* Only the text field owns the group halo; tabbing to Copy focuses that button. */
+/* Only the text field owns the group halo; the icon buttons have their own focus ring. */
 .share-link-field > input,
 .share-link-field > input:focus-visible {
 	outline: none;
@@ -315,6 +315,13 @@
 }
 .share-link-field > input:not(:focus) {
 	text-overflow: ellipsis;
+}
+
+/* Keep dismissal visible on actionable error toasts, including when the pointer is elsewhere. */
+.toast--danger:is([data-frontmost="true"], [data-expanded="true"]):not([data-exiting="true"])
+	.toast__close-button {
+	pointer-events: auto;
+	opacity: 1;
 }
 
 /* Report sits on the same row as a compact button, so it shares that row's height. */

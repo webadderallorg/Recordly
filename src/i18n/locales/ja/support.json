@@ -1,4 +1,6 @@
 {
+	"diagnosticsLoading": "診断情報を収集中…",
+	"diagnosticsUnavailable": "診断情報を読み込めませんでした。",
 	"reportTitle": "このエラーと診断ログをRecordlyサポートに送信",
 	"reportSending": "ログを送信中…",
 	"reportSent": "レポートを送信しました",

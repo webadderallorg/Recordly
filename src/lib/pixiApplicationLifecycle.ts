@@ -19,6 +19,10 @@ const STAGE_DESTROY_OPTIONS = {
 	textureSource: false,
 } as const;
 
+type PixiBatchPipe = {
+	_activeBatches?: Record<string, { batches: object[] | null; batchIndex: number }> | null;
+};
+
 function reportCleanupError(app: Application, error: unknown): void {
 	const context = destroyContexts.get(app) ?? "Pixi application";
 	console.warn(`[PixiApplication] Failed to clean up ${context}:`, error);
@@ -43,6 +47,15 @@ function destroyFailedApplication(app: Application): void {
 function completeDestroy(app: Application): void {
 	if (completedCleanups.has(app)) return;
 	completedCleanups.add(app);
+
+	// Backport PixiJS #11780 for the locked 8.14 renderer. Batcher.begin() already
+	// pooled the entries past batchIndex. Destroy must only return the live ones.
+	const batchPipe = app.renderer?.renderPipes?.batch as unknown as PixiBatchPipe | undefined;
+	for (const batcher of Object.values(batchPipe?._activeBatches ?? {})) {
+		if (batcher.batches && batcher.batches.length > batcher.batchIndex) {
+			batcher.batches.length = batcher.batchIndex;
+		}
+	}
 
 	if (initializationStates.get(app) !== "initialized") {
 		destroyFailedApplication(app);

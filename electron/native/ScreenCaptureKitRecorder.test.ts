@@ -65,11 +65,38 @@ describe("ScreenCaptureKitRecorder colour metadata", () => {
 		expect(recorderSource).not.toContain("videoCodecType: .h264");
 	});
 
-	it("tags recordings as BT.709", () => {
+	it("writes sRGB transfer on macOS 15 and up, with Rec.709 transfer on older builds", () => {
 		expect(recorderSource).toContain("AVVideoColorPropertiesKey");
 		expect(recorderSource).toContain("AVVideoColorPrimaries_ITU_R_709_2");
-		expect(recorderSource).toContain("AVVideoTransferFunction_ITU_R_709_2");
+		expect(recorderSource).toMatch(
+			/if #available\(macOS 15\.0, \*\) \{\s*transferFunction = AVVideoTransferFunction_IEC_sRGB\s*\} else \{\s*transferFunction = AVVideoTransferFunction_ITU_R_709_2/,
+		);
+		expect(recorderSource).toContain("AVVideoTransferFunctionKey: transferFunction");
 		expect(recorderSource).toContain("AVVideoYCbCrMatrix_ITU_R_709_2");
+	});
+
+	it("describes full-display sRGB pixels before handing them to the writer", () => {
+		const display = recorderSource.slice(
+			recorderSource.indexOf("appended = appendCroppedVideoFrame(sampleBuffer,"),
+			recorderSource.indexOf("appended = videoInput.append(retimed)"),
+		);
+		expect(display).toContain(
+			"source, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_sRGB",
+		);
+	});
+
+	it("describes cropped sRGB pixels before handing them to the writer", () => {
+		const crop = recorderSource.slice(
+			recorderSource.indexOf("private func appendCroppedVideoFrame("),
+			recorderSource.indexOf("let appended = adaptor.append(destination,"),
+		);
+		expect(crop).toContain("colorSpace: CGColorSpace(name: CGColorSpace.sRGB)");
+		expect(crop).toContain(
+			"destination, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2",
+		);
+		expect(crop).toContain(
+			"destination, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_sRGB",
+		);
 	});
 });
 

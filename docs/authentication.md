@@ -12,7 +12,7 @@ Full onboarding plays the welcome music on every opening in both development and
 
 ## macOS saved sign-in
 
-Packaged macOS builds use a Keychain item called **Recordly Saved Sign-In**. An upgrade can still ask to unlock the previous **Recordly Safe Storage** item once. Recordly keeps the existing encrypted session until it has verified that the new item can unlock its replacement. If the migration fails after unlocking the old session, the app continues using the old store and retries on a later launch.
+New Recordly sign-in entries in macOS Keychain use the label **Recordly Sign-in Cache**. An upgrade can still ask to unlock Electron’s **Recordly Safe Storage** item once. Recordly keeps the existing encrypted session until it has verified that the new item can unlock its replacement. If the migration fails after unlocking the old session, the app continues using the old store and retries on a later launch.
 
 Recordly leaves Electron’s original Keychain item in place. Older builds cannot read the new session format; reinstalling an updated build restores access to a migrated session. Development profiles continue to use Electron’s original storage.
 
