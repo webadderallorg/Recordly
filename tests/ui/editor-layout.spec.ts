@@ -121,9 +121,7 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 			expect(left!.x + left!.width).toBeLessThanOrEqual(right!.x);
 			expect(center!.x + center!.width).toBeLessThanOrEqual(right!.x);
 			expect(center!.width).toBeGreaterThanOrEqual(120);
-			const clips = await page
-				.getByRole("button", { name: "Clips", exact: true })
-				.boundingBox();
+			const clips = await page.getByRole("button", { name: "Clips", exact: true }).boundingBox();
 			expect(clips!.x + clips!.width).toBeLessThanOrEqual(right!.x);
 			const buttons = await page.locator(".editor-playback button").evaluateAll((nodes) =>
 				nodes
@@ -268,9 +266,40 @@ test("new zoom blocks default to 1.8x", async ({ page }) => {
 	);
 });
 
+test("the timeline expand control stays hidden with three or fewer tracks", async ({ page }) => {
+	await installDesktopBridge(page, "filmstrip.mp4");
+	await page.goto("/?windowType=editor");
+	await expect(page.locator('[data-variant="clip"]')).toBeVisible({ timeout: 20000 });
+	await expect(page.getByRole("button", { name: "Expand Timeline", exact: true })).toHaveCount(0);
+});
+
 test("the timeline can expand for editing and return to its default height", async ({ page }) => {
 	await page.setViewportSize({ width: 1000, height: 700 });
 	await installDesktopBridge(page, "filmstrip.mp4");
+	await installDesktopBridgeOverrides(page, () => {
+		const videoPath = location.origin + "/tests/ui/fixtures/filmstrip.mp4";
+		const note = (id: string, trackIndex: number) => ({
+			id,
+			startMs: 500,
+			endMs: 1500,
+			type: "text",
+			content: id,
+			position: { x: 20, y: 20 },
+			trackIndex,
+		});
+		window.electronAPI.loadCurrentProjectFile = async () => ({
+			success: true,
+			path: "/projects/tracks.recordly",
+			project: {
+				version: 2,
+				videoPath,
+				editor: {
+					clipRegions: [{ id: "clip-1", startMs: 0, endMs: 6000, speed: 1 }],
+					annotationRegions: [note("annotation-1", 0), note("annotation-2", 1)],
+				},
+			},
+		});
+	});
 	await page.goto("/?windowType=editor");
 	await expect(page.locator('[data-variant="clip"]')).toBeVisible({ timeout: 20000 });
 

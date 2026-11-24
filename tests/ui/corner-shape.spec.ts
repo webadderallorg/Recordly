@@ -12,7 +12,7 @@ test("Recordly uses squircle corners for surfaces and respects explicit round co
 	const artwork = popup.locator("[data-onboarding-artwork]");
 	await expect(artwork).toHaveCSS("corner-top-left-shape", /^(squircle|superellipse\(2\))$/);
 	await expect(artwork).toHaveCSS("border-bottom-left-radius", "0px");
-	await expect(popup.getByRole("button", { name: "Close onboarding window" })).toHaveCSS(
+	await expect(popup.getByRole("button", { name: "Account", exact: true })).toHaveCSS(
 		"corner-top-left-shape",
 		/^(round|superellipse\(1\))$/,
 	);
@@ -70,7 +70,7 @@ test("Recordly uses squircle corners for surfaces and respects explicit round co
 test("toolbar hover stays squircle and the slider thumb stays round", async ({ page }) => {
 	await installDesktopBridge(page);
 	await page.goto("/?windowType=editor");
-	const addLayer = page.getByRole("button", { name: "Add Layer", exact: true });
+	const addLayer = page.getByRole("button", { name: "Add", exact: true });
 	await addLayer.hover();
 	await expect(addLayer).toHaveCSS("corner-top-left-shape", /^(squircle|superellipse\(2\))$/);
 

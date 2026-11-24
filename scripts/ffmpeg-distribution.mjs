@@ -4,12 +4,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { chmod, copyFile, mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { gunzipSync } from "node:zlib";
+import { PINNED_BUILD_ID, supportsPinnedBuild } from "./build-pinned-ffmpeg.mjs";
 import {
 	buildMacFfmpeg,
 	MAC_BUILD_ID,
 	MAC_SOURCE_ARCHIVES,
 } from "./build-redistributable-ffmpeg.mjs";
-import { PINNED_BUILD_ID, supportsPinnedBuild } from "./build-pinned-ffmpeg.mjs";
 import { machoContentHash } from "./macho-content-hash.mjs";
 import { peContentHash } from "./pe-content-hash.mjs";
 
@@ -251,7 +251,12 @@ export async function ensureRedistributableFfmpeg({
 	root = process.cwd(),
 	platform = process.env.npm_config_platform || process.platform,
 	arch = process.env.npm_config_arch || process.arch,
+	buildLinuxFromSource = false,
 } = {}) {
+	if (platform === "linux" && buildLinuxFromSource)
+		throw new Error(
+			"The redistributable FFmpeg installer does not build from source on Linux.",
+		);
 	const binaryPath = path.join(
 		root,
 		"node_modules",

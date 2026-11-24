@@ -51,18 +51,18 @@ for (const returning of [false, true]) {
 		await artwork.evaluate((element) => element.setAttribute("data-layout-check", "same"));
 		await email.fill("test@email.com");
 		await login.getByRole("button", { name: "Email me a code" }).click();
-		await expect(login.getByText(/^Enter code sent to /)).toBeVisible();
-		await completeSupabaseSignIn(page);
+		await login
+			.getByRole("textbox", { name: "Enter code sent to test@email.com" })
+			.fill("123456");
+		await login.getByRole("button", { name: "Verify and continue", exact: true }).click();
 
 		const documentRoot = page.locator("html");
 		if (!returning) {
-			// Windows has no permissions page, so sign-in lands on Upgrade.
-			await expect(login).toHaveAttribute("data-onboarding-state", "upgrade");
+			// Windows has no permissions page, so sign-in finishes on the account page.
+			await expect(login).toHaveAttribute("data-onboarding-state", "login");
 			await expect(artwork).toHaveAttribute("data-layout-check", "same");
 			await expect(documentRoot).not.toHaveAttribute("data-hud-opened");
-			await login
-				.getByRole("button", { name: "Skip and start recording", exact: true })
-				.click();
+			await login.getByRole("button", { name: "Start recording", exact: true }).click();
 			await expect(documentRoot).toHaveAttribute("data-hud-opened", "true");
 			await expect(documentRoot).not.toHaveAttribute("data-dashboard-opened");
 			return;
@@ -122,7 +122,7 @@ test("sign-in keeps all providers visible and marks unavailable providers disabl
 	const emailCode = login.getByRole("button", { name: "Email me a code" });
 	await expect(login.locator("[data-signin-divider]")).toHaveText("or");
 	const passwordSwitch = login.getByRole("button", {
-		name: "Or use password to sign in",
+		name: "Use password",
 		exact: true,
 	});
 	await expect(passwordSwitch).toHaveCount(1);
@@ -140,6 +140,7 @@ test("sign-in keeps all providers visible and marks unavailable providers disabl
 	page.on("request", (request) => {
 		if (request.url().includes("/auth/v1/otp")) codeRequests++;
 	});
+	await email.focus();
 	await expect(emailCode).toBeVisible();
 	await expect(emailCode).toBeEnabled();
 	await emailCode.click();

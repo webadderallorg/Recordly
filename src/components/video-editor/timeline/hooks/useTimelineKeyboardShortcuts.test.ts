@@ -101,6 +101,45 @@ it("keeps an existing custom shortcut when it matches the new duplicate default"
 	expect(duplicate).not.toHaveBeenCalled();
 });
 
+it("copies the selected region and pastes a duplicate once per key press", () => {
+	const copy = vi.fn(() => true);
+	const paste = vi.fn(() => true);
+	const { press } = setup({
+		selectedZoomId: "zoom-1",
+		isTimelineFocusedRef: { current: true },
+		onCopySelectedRegion: copy,
+		onPasteCopiedRegion: paste,
+	});
+	expect(press({ key: "c", metaKey: true }).preventDefault).toHaveBeenCalledOnce();
+	expect(copy).toHaveBeenCalledOnce();
+	expect(press({ key: "v", metaKey: true }).preventDefault).toHaveBeenCalledOnce();
+	expect(press({ key: "v", metaKey: true, repeat: true }).preventDefault).toHaveBeenCalledOnce();
+	expect(paste).toHaveBeenCalledOnce();
+});
+
+it("leaves native paste alone when nothing has been copied", () => {
+	const paste = vi.fn(() => false);
+	const { press } = setup({
+		isTimelineFocusedRef: { current: true },
+		onPasteCopiedRegion: paste,
+	});
+	expect(press({ key: "v", metaKey: true }).preventDefault).not.toHaveBeenCalled();
+	expect(paste).toHaveBeenCalledOnce();
+});
+
+it("keeps a custom shortcut bound to the copy keys", () => {
+	const copy = vi.fn(() => true);
+	const { press, params } = setup({
+		keyShortcuts: { ...DEFAULT_SHORTCUTS, splitClip: { key: "c", ctrl: true } },
+		selectedZoomId: "zoom-1",
+		isTimelineFocusedRef: { current: true },
+		onCopySelectedRegion: copy,
+	});
+	press({ key: "c", metaKey: true });
+	expect(params.handleSplitClip).toHaveBeenCalledOnce();
+	expect(copy).not.toHaveBeenCalled();
+});
+
 describe.each(selections)("delete %s", (selection, action) => {
 	it.each([false, true])("supports both delete keys with timeline focus %s", (focused) => {
 		for (const key of ["Backspace", "Delete"]) {

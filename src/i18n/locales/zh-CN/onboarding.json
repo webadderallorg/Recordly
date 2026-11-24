@@ -1,4 +1,5 @@
 {
+	"continueAsGuest": "以访客身份继续",
 	"simulatePermissions": "模拟权限",
 	"skipOnboarding": "跳过初始设置",
 	"botChecking": "正在进行安全检查…",

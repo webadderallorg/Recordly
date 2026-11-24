@@ -31,6 +31,7 @@ export function RecordlySignInFields({
 	configured,
 	busy,
 	compact = false,
+	revealCodeButtonOnEmailInteraction = false,
 	assetBase = "/",
 	authProtectionConfigUrl,
 	labels,
@@ -46,6 +47,7 @@ export function RecordlySignInFields({
 	configured: boolean;
 	busy?: string;
 	compact?: boolean;
+	revealCodeButtonOnEmailInteraction?: boolean;
 	assetBase?: string;
 	authProtectionConfigUrl?: string;
 	labels: {
@@ -82,6 +84,8 @@ export function RecordlySignInFields({
 	const [code, setCode] = useState("");
 	const [password, setPassword] = useState("");
 	const [passwordMode, setPasswordMode] = useState(false);
+	const [emailFocused, setEmailFocused] = useState(false);
+	const codeSubmitRef = useRef<HTMLButtonElement>(null);
 	const [resendAt, setResendAt] = useState(0);
 	const [now, setNow] = useState(Date.now());
 	const locked = useRef(false);
@@ -157,6 +161,8 @@ export function RecordlySignInFields({
 		});
 	const disabled = Boolean(busy) || checkingProtection;
 	const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+	const showSubmit =
+		passwordMode || !revealCodeButtonOnEmailInteraction || emailFocused || email.trim() !== "";
 	return (
 		<div
 			data-signin-fields
@@ -289,6 +295,15 @@ export function RecordlySignInFields({
 							className={compact ? "h-11" : "h-12"}
 							placeholder={labels.emailPlaceholder}
 							autoComplete="email"
+							onFocus={() => setEmailFocused(true)}
+							onBlur={(event) => {
+								// Keep the revealed button available when focus moves to it.
+								if (
+									!codeSubmitRef.current ||
+									event.relatedTarget !== codeSubmitRef.current
+								)
+									setEmailFocused(false);
+							}}
 						/>
 						<FieldError>{labels.invalidEmail}</FieldError>
 					</TextField>
@@ -403,26 +418,30 @@ export function RecordlySignInFields({
 								/>
 							</TextField>
 						)}
-						<Button
-							type="submit"
-							variant="primary"
-							className={`w-full ${compact ? "h-11 rounded-xl" : "h-12"}`}
-							isDisabled={
-								disabled ||
-								!configured ||
-								(passwordMode && (!validEmail || !password))
-							}
-						>
-							{checkingProtection
-								? (labels.botChecking ?? "A quick security check…")
-								: passwordMode
-									? busy === "password"
-										? labels.signingIn
-										: labels.usePassword
-									: busy === "code"
-										? labels.sendingLink
-										: labels.sendLink}
-						</Button>
+						{showSubmit && (
+							<Button
+								ref={passwordMode ? undefined : codeSubmitRef}
+								type="submit"
+								variant="primary"
+								className={`w-full ${compact ? "h-11 rounded-xl" : "h-12"}`}
+								onBlur={passwordMode ? undefined : () => setEmailFocused(false)}
+								isDisabled={
+									disabled ||
+									!configured ||
+									(passwordMode && (!validEmail || !password))
+								}
+							>
+								{checkingProtection
+									? (labels.botChecking ?? "A quick security check…")
+									: passwordMode
+										? busy === "password"
+											? labels.signingIn
+											: labels.usePassword
+										: busy === "code"
+											? labels.sendingLink
+											: labels.sendLink}
+							</Button>
+						)}
 						{passwordMode && (
 							<p className="text-xs leading-relaxed text-muted">
 								{labels.passwordHelp}

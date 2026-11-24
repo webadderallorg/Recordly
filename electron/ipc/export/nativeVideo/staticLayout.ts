@@ -84,7 +84,6 @@ export async function exportNativeStaticLayoutVideo(
 	const concatListPath = path.join(chunkDirectory, "chunks.txt");
 	const videoOnlyPath = path.join(app.getPath("temp"), `${sessionId}.mp4`);
 	onOutputFile?.(videoOnlyPath);
-	const ffprobePath = getFfprobeBinaryPath();
 	let outputPathToKeep: string | null = null;
 	let videoOutputValidated = false;
 	const metrics: NativeStaticLayoutExportMetrics = {
@@ -94,16 +93,17 @@ export async function exportNativeStaticLayoutVideo(
 		fallbackChunkCount: 0,
 		chunks: [],
 	};
-	const validateRenderedVideoOutput = async () => {
-		await validateNativeVideoOutputFile(ffprobePath, videoOnlyPath, {
-			durationSec: options.durationSec,
-			targetFrames: Math.ceil(options.durationSec * options.frameRate),
-		});
-		videoOutputValidated = true;
-	};
-
 	try {
 		nativeStaticLayoutExportSessions.set(sessionId, session);
+		const ffprobePath = await getFfprobeBinaryPath();
+		if (session.terminating) throw new Error("Native static layout export was cancelled");
+		const validateRenderedVideoOutput = async () => {
+			await validateNativeVideoOutputFile(ffprobePath, videoOnlyPath, {
+				durationSec: options.durationSec,
+				targetFrames: Math.ceil(options.durationSec * options.frameRate),
+			});
+			videoOutputValidated = true;
+		};
 		await fs.mkdir(chunkDirectory, { recursive: true });
 		const sourceInput = await prepareNativeStaticLayoutSourceInput(
 			ffmpegPath,

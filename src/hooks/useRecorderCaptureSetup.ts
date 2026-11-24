@@ -163,7 +163,8 @@ export function useRecorderCaptureSetup(
 
 		recordingSessionTimestamp.current = Date.now();
 		resetRecordingClock(recordingSessionTimestamp.current);
-		await prepareWebcamRecorder();
+		// Opening the camera takes seconds; let it overlap capture startup instead of preceding it.
+		const webcamReady = prepareWebcamRecorder();
 
 		const useNativeMacScreenCapture =
 			platform === "darwin" &&
@@ -244,6 +245,7 @@ export function useRecorderCaptureSetup(
 			useNativeMacScreenCapture,
 			useNativeWindowsCapture,
 			micLabel,
+			webcamReady,
 		};
 	}, [
 		logNativeCaptureDiagnostics,

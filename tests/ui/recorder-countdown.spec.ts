@@ -115,10 +115,9 @@ test("compact microphone and camera selectors preserve their original choices", 
 	await expect(microphone).toHaveText("");
 	await microphone.click();
 	await expect(page.getByText("Microphone", { exact: true })).toBeVisible();
-	await expect(page.getByRole("button", { name: "Computer audio", exact: true })).toHaveAttribute(
-		"aria-pressed",
-		"true",
-	);
+	await expect(
+		page.getByRole("button", { name: "Computer audio", exact: true }),
+	).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByText("Select a microphone to enable", { exact: true })).toBeVisible();
 	await page.keyboard.press("Escape");
 	const camera = page.getByRole("button", { name: "Camera settings", exact: true });

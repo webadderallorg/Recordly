@@ -1,13 +1,15 @@
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { promisify } from "node:util";
 import { app } from "electron";
 import { parseAvailableFfmpegEncoders } from "../nativeVideoArgs/encoding";
 
 const nodeRequire = createRequire(import.meta.url);
-const binaryProblems = new Map<string, string | null>();
-const systemFfmpegCapabilities = new Map<string, boolean>();
+const execFileAsync = promisify(execFile);
+const binaryProblems = new Map<string, Promise<string | null>>();
+const systemFfmpegCapabilities = new Map<string, Promise<boolean>>();
 const FFMPEG_PATH_OVERRIDE_ENV = "RECORDLY_FFMPEG_PATH";
 const BINARY_PROBE_OPTIONS = {
 	timeout: 5000,
@@ -67,103 +69,61 @@ export function loadFfprobeStatic(): string | null {
 	return null;
 }
 
-export function resolveSystemFfmpegBinaryPath(): string | null {
+async function readCommandOutput(command: string, args: string[]): Promise<string | null> {
+	try {
+		const { stdout } = await execFileAsync(command, args, BINARY_PROBE_OPTIONS);
+		return stdout;
+	} catch {
+		return null;
+	}
+}
+
+async function resolveSystemBinaryPath(tool: "ffmpeg" | "ffprobe"): Promise<string | null> {
 	const locator = process.platform === "win32" ? "where" : "which";
-	const result = spawnSync(locator, ["ffmpeg"], {
-		encoding: "utf-8",
-		windowsHide: true,
-	});
+	const output = await readCommandOutput(locator, [tool]);
+	const candidate = output
+		?.split(/\r?\n/)
+		.map((line) => line.trim())
+		.find(Boolean);
+	if (candidate && isExecutableFile(candidate)) return candidate;
 
-	if (result.status === 0) {
-		const candidate = result.stdout
-			.split(/\r?\n/)
-			.map((line: string) => line.trim())
-			.find((line: string) => line.length > 0);
-
-		if (candidate && isExecutableFile(candidate)) {
-			return candidate;
-		}
-	}
-
-	// Fallback: check common install paths directly (Electron's shell may lack full PATH)
+	// Electron's shell may lack the user's PATH.
 	if (process.platform !== "win32") {
-		const commonPaths = [
-			"/opt/homebrew/bin/ffmpeg",
-			"/usr/local/bin/ffmpeg",
-			"/usr/bin/ffmpeg",
-		];
-		for (const p of commonPaths) {
-			if (isExecutableFile(p)) {
-				return p;
-			}
+		for (const directory of ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]) {
+			const filePath = path.join(directory, tool);
+			if (isExecutableFile(filePath)) return filePath;
 		}
 	}
-
 	return null;
 }
 
-export function resolveSystemFfprobeBinaryPath(): string | null {
-	const locator = process.platform === "win32" ? "where" : "which";
-	const result = spawnSync(locator, ["ffprobe"], {
-		encoding: "utf-8",
-		windowsHide: true,
-	});
-
-	if (result.status === 0) {
-		const candidate = result.stdout
-			.split(/\r?\n/)
-			.map((line: string) => line.trim())
-			.find((line: string) => line.length > 0);
-
-		if (candidate && isExecutableFile(candidate)) {
-			return candidate;
-		}
-	}
-
-	if (process.platform !== "win32") {
-		const commonPaths = [
-			"/opt/homebrew/bin/ffprobe",
-			"/usr/local/bin/ffprobe",
-			"/usr/bin/ffprobe",
-		];
-		for (const p of commonPaths) {
-			if (isExecutableFile(p)) {
-				return p;
-			}
-		}
-	}
-
-	return null;
-}
-
-function probeBinary(binaryPath: string, source: string): string | null {
+function probeBinary(binaryPath: string, source: string): Promise<string | null> {
 	const cached = binaryProblems.get(binaryPath);
-	if (cached !== undefined) return cached;
+	if (cached) return cached;
 
-	const result = spawnSync(binaryPath, ["-version"], {
-		stdio: "ignore",
-		...BINARY_PROBE_OPTIONS,
-	});
-	let problem: string | null = null;
-	if (result.error) {
-		problem = (result.error as NodeJS.ErrnoException).code ?? result.error.message;
-	} else if (result.signal) {
-		problem = `terminated by ${result.signal}`;
-	} else if (result.status !== 0) {
-		problem = `exit status ${result.status}`;
-	}
-	if (problem !== null) {
-		console.warn(`[FFmpeg] Skipping unusable ${source} binary ${binaryPath} (${problem}).`);
-	}
-	binaryProblems.set(binaryPath, problem);
-	return problem;
+	const probe = execFileAsync(binaryPath, ["-version"], BINARY_PROBE_OPTIONS).then(
+		() => null,
+		(error: { code?: string | number; signal?: string; killed?: boolean; message: string }) => {
+			const problem = error.killed
+				? "ETIMEDOUT"
+				: error.signal
+					? `terminated by ${error.signal}`
+					: typeof error.code === "number"
+						? `exit status ${error.code}`
+						: (error.code ?? error.message);
+			console.warn(`[FFmpeg] Skipping unusable ${source} binary ${binaryPath} (${problem}).`);
+			return problem;
+		},
+	);
+	binaryProblems.set(binaryPath, probe);
+	return probe;
 }
 
-function resolveBinaryPath(
+async function resolveBinaryPath(
 	tool: "FFmpeg" | "FFprobe",
 	bundledPaths: (string | null)[],
-	resolveSystem: () => string | null,
-): string {
+	resolveSystem: () => Promise<string | null>,
+): Promise<string> {
 	let bundledFailure: string | undefined;
 	for (const candidate of bundledPaths) {
 		if (!candidate) continue;
@@ -171,12 +131,12 @@ function resolveBinaryPath(
 			? candidate.replace(/\.asar([/\\])/, ".asar.unpacked$1")
 			: candidate;
 		if (!existsSync(bundledPath)) continue;
-		const problem = probeBinary(bundledPath, "bundled");
+		const problem = await probeBinary(bundledPath, "bundled");
 		if (problem === null) return bundledPath;
 		bundledFailure ??= problem;
 	}
 
-	const systemBinary = resolveSystem();
+	const systemBinary = await resolveSystem();
 	if (systemBinary) return systemBinary;
 	const command = tool.toLowerCase();
 	if (bundledFailure !== undefined) {
@@ -190,7 +150,7 @@ function resolveBinaryPath(
 	);
 }
 
-function resolveFfmpegPathOverride(): string | null {
+async function resolveFfmpegPathOverride(): Promise<string | null> {
 	const override = process.env[FFMPEG_PATH_OVERRIDE_ENV]?.trim();
 	if (!override) return null;
 	const absolute = path.resolve(override);
@@ -198,62 +158,61 @@ function resolveFfmpegPathOverride(): string | null {
 		console.warn(`[FFmpeg] ${FFMPEG_PATH_OVERRIDE_ENV} is not an executable file: ${absolute}`);
 		return null;
 	}
-	return probeBinary(absolute, FFMPEG_PATH_OVERRIDE_ENV) === null ? absolute : null;
+	return (await probeBinary(absolute, FFMPEG_PATH_OVERRIDE_ENV)) === null ? absolute : null;
 }
 
-function supportsRecordlyExports(binaryPath: string): boolean {
+function supportsRecordlyExports(binaryPath: string): Promise<boolean> {
 	const cached = systemFfmpegCapabilities.get(binaryPath);
 	if (cached !== undefined) return cached;
 
-	const options = { ...BINARY_PROBE_OPTIONS, encoding: "utf8" } as const;
-	const encoderList = spawnSync(binaryPath, ["-hide_banner", "-encoders"], options);
-	const encoders = parseAvailableFfmpegEncoders(encoderList.stdout ?? "");
-	let supported = false;
+	const check = checkRecordlyExportSupport(binaryPath);
+	systemFfmpegCapabilities.set(binaryPath, check);
+	return check;
+}
+
+async function checkRecordlyExportSupport(binaryPath: string): Promise<boolean> {
+	const encoderList = await readCommandOutput(binaryPath, ["-hide_banner", "-encoders"]);
+	const encoders = parseAvailableFfmpegEncoders(encoderList ?? "");
 
 	// Automatic preference must keep software H.264 fallback, audio muxing, and GIF export working.
-	if (
-		encoderList.status === 0 &&
-		["libx264", "aac", "gif", "png", "mjpeg"].every((name) => encoders.has(name))
-	) {
-		const filterList = spawnSync(binaryPath, ["-hide_banner", "-filters"], options);
-		const filters = new Set(
-			Array.from(
-				(filterList.stdout ?? "").matchAll(/^\s*[T.][S.][C.]?\s+(\w+)\s+/gm),
-				(m) => m[1],
-			),
-		);
-		supported =
-			filterList.status === 0 &&
-			["scale", "palettegen", "paletteuse"].every((name) => filters.has(name));
+	if (!["libx264", "aac", "gif", "png", "mjpeg"].every((name) => encoders.has(name))) {
+		return false;
 	}
-	systemFfmpegCapabilities.set(binaryPath, supported);
-	if (supported) binaryProblems.set(binaryPath, null);
+	const filterList = await readCommandOutput(binaryPath, ["-hide_banner", "-filters"]);
+	const filters = new Set(
+		Array.from(
+			(filterList ?? "").matchAll(/^\s*[T.][S.][C.]?\s+(\w+)\s+/gm),
+			(match) => match[1],
+		),
+	);
+	const supported = ["scale", "palettegen", "paletteuse"].every((name) => filters.has(name));
+	if (supported) binaryProblems.set(binaryPath, Promise.resolve(null));
 	return supported;
 }
 
-export function getFfmpegBinaryPath(): string {
-	const override = resolveFfmpegPathOverride();
+export async function getFfmpegBinaryPath(): Promise<string> {
+	const override = await resolveFfmpegPathOverride();
 	if (override) return override;
 
 	if (process.platform === "linux") {
-		const system = resolveSystemFfmpegBinaryPath();
-		if (system && supportsRecordlyExports(system)) return system;
-		return resolveBinaryPath("FFmpeg", [loadFfmpegStatic()], () =>
-			system && probeBinary(system, "system FFmpeg") === null ? system : null,
+		const system = await resolveSystemBinaryPath("ffmpeg");
+		if (system && (await supportsRecordlyExports(system))) return system;
+		return resolveBinaryPath("FFmpeg", [loadFfmpegStatic()], async () =>
+			system && (await probeBinary(system, "system FFmpeg")) === null ? system : null,
 		);
 	}
 
-	return resolveBinaryPath("FFmpeg", [loadFfmpegStatic()], resolveSystemFfmpegBinaryPath);
+	return resolveBinaryPath("FFmpeg", [loadFfmpegStatic()], () =>
+		resolveSystemBinaryPath("ffmpeg"),
+	);
 }
 
-export function getFfprobeBinaryPath(): string {
+export function getFfprobeBinaryPath(): Promise<string> {
 	const sourceBuilt =
 		process.platform === "linux"
 			? path.join(app.getAppPath(), "node_modules", "ffmpeg-static", "ffprobe-recordly")
 			: null;
-	return resolveBinaryPath(
-		"FFprobe",
-		[sourceBuilt, loadFfprobeStatic()],
-		resolveSystemFfprobeBinaryPath,
+	return resolveBinaryPath("FFprobe", [sourceBuilt, loadFfprobeStatic()], () =>
+		resolveSystemBinaryPath("ffprobe"),
 	);
 }

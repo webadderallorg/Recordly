@@ -98,9 +98,7 @@ test("caption model is available in standard settings and the bin clears caption
 		await expect(page.getByRole("option", { name: label, exact: true })).toBeVisible();
 	await page.getByRole("option", { name: "Whisper Base", exact: true }).click();
 
-	await page
-		.getByRole("button", { name: "Download 148 MB & generate captions", exact: true })
-		.click();
+	await page.getByRole("button", { name: "Download 148 MB & generate captions", exact: true }).click();
 	await expect(
 		page.getByRole("button", { name: "Downloading... 0%", exact: true }),
 	).toBeDisabled();

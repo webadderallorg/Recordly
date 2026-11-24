@@ -27,7 +27,6 @@ export interface SettingsPanelProps {
 	advanced?: boolean;
 	panelMode?: "editor" | "background";
 	activeEffectSection?: EditorEffectSection;
-	onDuplicateSelectedRegion?: () => void;
 	selected: string;
 	onWallpaperChange: (path: string) => void;
 	selectedZoomDepth?: ZoomDepth | null;

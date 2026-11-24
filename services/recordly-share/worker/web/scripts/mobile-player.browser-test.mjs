@@ -70,6 +70,10 @@ try {
 				json: path.endsWith("/data")
 					? {
 							video,
+							creator: {
+								name: "Test Creator",
+								avatar_url: "https://images.example.test/avatar.svg",
+							},
 							segments: [
 								{
 									start_time: 0,
@@ -86,6 +90,12 @@ try {
 						: { reactions: [] },
 			});
 		});
+		await page.route("https://images.example.test/avatar.svg", (route) =>
+			route.fulfill({
+				contentType: "image/svg+xml",
+				body: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><circle cx="16" cy="16" r="16" fill="blue"/></svg>',
+			}),
+		);
 		await page.route("**/v/**", (route) =>
 			route.fulfill({
 				path: fileURLToPath(
@@ -104,6 +114,9 @@ try {
 		await page.goto(`${base}/share`);
 		const player = page.getByRole("region", { name: "Video player" });
 		await expect(player).toBeVisible();
+		const identity = page.locator(".viewer-identity");
+		await expect(identity.getByText("Test Creator", { exact: true })).toBeVisible();
+		await expect(identity.locator('img[referrerpolicy="no-referrer"]')).toBeVisible();
 		await expect(page.locator(".recording-meta")).not.toContainText("Invalid Date");
 		await page.addStyleTag({ content: "astro-dev-toolbar {display:none!important}" });
 		for (const size of [

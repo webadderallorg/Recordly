@@ -166,7 +166,7 @@ test("Add Layer imports an external video into the current timeline and handles 
 		};
 	});
 	const clips = page.locator('[data-variant="clip"]');
-	const add = page.getByRole("button", { name: "Add Layer", exact: true });
+	const add = page.getByRole("button", { name: "Add", exact: true });
 	const importVideo = page.getByRole("menuitem", { name: "Import video", exact: true });
 	await expect(clips).toHaveCount(1);
 	await add.click();
@@ -258,7 +258,7 @@ test("an import cannot replace another project that uses the same recording", as
 	await page.goto("/?windowType=editor");
 	const clips = page.locator('[data-variant="clip"]');
 	await expect(clips).toHaveAttribute("data-end-ms", "6000", { timeout: 20000 });
-	await page.getByRole("button", { name: "Add Layer", exact: true }).click();
+	await page.getByRole("button", { name: "Add", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Import video", exact: true }).click();
 	const html = page.locator("html");
 	await expect(html).toHaveAttribute("data-import-finalizing", "true");

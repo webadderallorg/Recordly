@@ -1,7 +1,7 @@
 import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 import { MotionBlurFilter } from "@/lib/exporter/motionBlurFilter";
-import { createVideoBlurFilters } from "@/lib/exporter/videoBlurFilters";
 import { ZoomBlurFilter } from "@/lib/exporter/zoomBlurFilter";
+import { createVideoBlurFilters } from "@/lib/exporter/videoBlurFilters";
 import { drawSquircleOnGraphics } from "@/lib/geometry/squircle";
 
 async function run() {

@@ -253,7 +253,7 @@
 		"processingAudioEdits": "Audio mit Geschwindigkeits-/Overlay-Bearbeitungen wird verarbeitet"
 	},
 	"toolbar": {
-		"addLayer": "Ebene hinzufügen",
+		"addLayer": "Hinzufügen",
 		"splitClip": "Clip teilen (C)",
 		"trimStart": "Anfang bis zur Abspielposition kürzen ({{shortcut}})",
 		"trimEnd": "Ende ab der Abspielposition kürzen ({{shortcut}})"

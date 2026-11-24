@@ -13,6 +13,7 @@ let stopRecording: () => void = () => undefined;
 let onRecordingOwnerLost: () => void = () => undefined;
 let quitting = false;
 let stopIcon: NativeImage | undefined;
+let refreshDockIcon: (() => void) | undefined;
 const primaryWindows = new Map<BrowserWindow, boolean>();
 let dockVisibility: ReturnType<typeof createDockVisibilityController> | undefined;
 
@@ -73,7 +74,7 @@ function applyPresence() {
 	// Create the tray before hiding the usual entry point so controls stay reachable.
 	refreshEntryPoints();
 	if (process.platform === "darwin" && app.dock) {
-		dockVisibility ??= createDockVisibilityController(app.dock);
+		dockVisibility ??= createDockVisibilityController(app.dock, refreshDockIcon);
 		dockVisibility.setVisible(visible());
 		app.dock.setMenu(
 			recording
@@ -118,6 +119,7 @@ export function initializeDesktopPresence(options: {
 	stopRecording: () => void;
 	onRecordingOwnerLost: () => void;
 	stopIcon: NativeImage;
+	refreshDockIcon?: () => void;
 }) {
 	if (initialized) return;
 	initialized = true;
@@ -125,6 +127,7 @@ export function initializeDesktopPresence(options: {
 	stopRecording = options.stopRecording;
 	onRecordingOwnerLost = options.onRecordingOwnerLost;
 	stopIcon = options.stopIcon;
+	refreshDockIcon = options.refreshDockIcon;
 	app.once("before-quit", () => {
 		quitting = true;
 		dockVisibility?.dispose();

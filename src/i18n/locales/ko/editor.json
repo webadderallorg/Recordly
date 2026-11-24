@@ -253,7 +253,7 @@
 		"processingAudioEdits": "속도/오버레이 편집으로 오디오 처리 중"
 	},
 	"toolbar": {
-		"addLayer": "레이어 추가",
+		"addLayer": "추가",
 		"splitClip": "클립 분할 (C)",
 		"trimStart": "재생 헤드까지 시작 부분 자르기 ({{shortcut}})",
 		"trimEnd": "재생 헤드부터 끝 부분 자르기 ({{shortcut}})"

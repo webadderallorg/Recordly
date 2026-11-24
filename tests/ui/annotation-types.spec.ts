@@ -8,7 +8,7 @@ test("annotations retain all type choices while the separate toolbar is hidden",
 	await page.goto("/?windowType=editor");
 	await expect(page.locator("[data-preview-overlay]")).toBeVisible({ timeout: 20000 });
 	await expect(page.getByRole("toolbar", { name: "Annotation tools" })).toHaveCount(0);
-	await page.getByRole("button", { name: "Add Layer", exact: true }).click();
+	await page.getByRole("button", { name: "Add", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Annotation", exact: true }).click();
 	const inspector = page.locator("aside");
 	const picker = inspector.getByRole("grid", { name: "Annotation type" });

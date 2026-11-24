@@ -7,14 +7,13 @@ import { RecordlyMark } from "@/components/ui/RecordlyMark";
 import { useScopedT } from "@/contexts/I18nContext";
 import "./Onboarding.css";
 
-export type OnboardingStage = "account" | "permissions" | "upgrade";
+export type OnboardingStage = "account" | "permissions";
 
 export function OnboardingLayout({
 	stage,
 	onStageChange,
 	canViewPermissions,
 	showPermissions = true,
-	canViewUpgrade,
 	showNavigation = true,
 	carousel = Boolean(onStageChange),
 	footer,
@@ -24,7 +23,6 @@ export function OnboardingLayout({
 	onStageChange?: (stage: OnboardingStage) => void;
 	canViewPermissions: boolean;
 	showPermissions?: boolean;
-	canViewUpgrade?: boolean;
 	showNavigation?: boolean;
 	carousel?: boolean;
 	footer?: ReactNode;
@@ -34,9 +32,6 @@ export function OnboardingLayout({
 	const stages = [
 		{ key: "account", label: t("account") },
 		...(showPermissions ? [{ key: "permissions" as const, label: t("permissions") }] : []),
-		...(canViewUpgrade === undefined
-			? []
-			: [{ key: "upgrade" as const, label: t("upgrade", "Upgrade") }]),
 	] as const;
 	const reduceMotion = useReducedMotion();
 	const withIntro =
@@ -89,10 +84,7 @@ export function OnboardingLayout({
 							type="button"
 							aria-label={label}
 							aria-current={stage === key ? "page" : undefined}
-							disabled={
-								(key === "permissions" && !canViewPermissions) ||
-								(key === "upgrade" && !canViewUpgrade)
-							}
+							disabled={key === "permissions" && !canViewPermissions}
 							onClick={() => onStageChange?.(key)}
 							className="group flex size-8 cursor-pointer items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
 						>

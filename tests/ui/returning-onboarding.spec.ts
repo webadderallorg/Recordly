@@ -5,8 +5,8 @@ import { productionTest } from "./production";
 
 const returningOnboarding = "/?windowType=onboarding&returning=1";
 
-async function mockStartup(page: Page, signedIn: boolean) {
-	await installDesktopBridge(page, "preview.mp4", { signedIn, onboarded: true });
+async function mockStartup(page: Page, signedIn: boolean, onboarded = true) {
+	await installDesktopBridge(page, "preview.mp4", { signedIn, onboarded });
 	await installDesktopBridgeOverrides(page, () => {
 		window.electronAPI.resolveStartupOnboarding = async (action) => {
 			document.documentElement.dataset.startupAction = action;
@@ -14,6 +14,27 @@ async function mockStartup(page: Page, signedIn: boolean) {
 		};
 	});
 }
+
+productionTest(
+	"Windows first launch opens the recorder immediately after sign-in",
+	async ({ page }) => {
+		await mockStartup(page, false, false);
+		await installDesktopBridgeOverrides(page, () => {
+			window.electronAPI.getPlatform = async () => "win32";
+		});
+		await page.goto(`${returningOnboarding}&welcomeSoundtrack=intro`);
+		const root = page.locator("html");
+		const dialog = page.getByRole("dialog", { name: "Welcome to Recordly", exact: true });
+		await expect(root).toHaveAttribute("data-startup-action", "show");
+		await expect(dialog.getByRole("navigation")).toHaveCount(0);
+		await dialog.getByPlaceholder("you@example.com").fill("test@email.com");
+		await dialog.getByRole("button", { name: "Email me a code" }).click();
+		await dialog.locator('input[autocomplete="one-time-code"]').fill("123456", { force: true });
+		await dialog.getByRole("button", { name: "Verify and continue" }).click();
+		await expect(root).toHaveAttribute("data-startup-action", "continue");
+		await expect(page.getByRole("dialog")).toHaveCount(0);
+	},
+);
 
 productionTest(
 	"launch waits for a saved session, then opens the HUD without showing onboarding",
@@ -53,6 +74,12 @@ productionTest(
 				document.documentElement.dataset.callbackAck = "pending";
 				await release;
 			};
+			window.electronAPI.openExternalUrl = async (url) => {
+				const redirect = new URL(url).searchParams.get("redirect_to");
+				if (!redirect) throw new Error("Missing OAuth redirect");
+				document.documentElement.dataset.oauthRedirect = redirect;
+				return { success: true };
+			};
 		});
 		await page.goto(returningOnboarding);
 		const root = page.locator("html");
@@ -64,13 +91,14 @@ productionTest(
 			dialog.locator("[data-onboarding-artwork] [data-recordly-demo]"),
 		).toBeVisible();
 		await expect(dialog.getByRole("navigation")).toHaveCount(0);
-		await dialog.getByPlaceholder("you@example.com").fill("test@email.com");
-		await dialog.getByRole("button", { name: "Email me a code" }).click();
-		await expect(dialog.getByText("Enter code sent to test@email.com")).toBeVisible();
+		await dialog.getByRole("button", { name: "Continue with Google", exact: true }).click();
+		await expect(root).toHaveAttribute("data-oauth-redirect", /auth\/callback/);
 		await page.evaluate(() => {
+			const callback = new URL(document.documentElement.dataset.oauthRedirect!);
+			callback.searchParams.set("code", "ui-auth-code");
 			window.dispatchEvent(
 				new CustomEvent("recordly-test-auth-callback", {
-					detail: "recordly://auth/callback?code=ui-auth-code",
+					detail: callback.toString(),
 				}),
 			);
 		});

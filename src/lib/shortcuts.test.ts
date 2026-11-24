@@ -76,12 +76,26 @@ it("recognizes a macOS Option letter when the shortcut emits a symbol", () => {
 		shiftKey: false,
 	} as KeyboardEvent;
 	expect(matchesShortcut(event, optionW, true)).toBe(false);
-	expect(matchesShortcut(event, optionW, true, true)).toBe(true);
-	expect(matchesShortcut({ ...event, code: "KeyQ" }, optionW, true, true)).toBe(false);
-	expect(matchesShortcut({ ...event, key: "z" }, optionW, true, true)).toBe(false);
-	expect(matchesShortcut({ ...event, shiftKey: true }, optionW, true, true)).toBe(false);
+	expect(matchesShortcut(event, optionW, true, "option")).toBe(true);
+	expect(matchesShortcut({ ...event, code: "KeyQ" }, optionW, true, "option")).toBe(false);
+	expect(matchesShortcut({ ...event, key: "z" }, optionW, true, "option")).toBe(false);
+	expect(matchesShortcut({ ...event, shiftKey: true }, optionW, true, "option")).toBe(false);
 	expect(matchesShortcut(event, { key: "∑", alt: true }, true)).toBe(true);
-	expect(matchesShortcut(event, optionW, false, true)).toBe(false);
+	expect(matchesShortcut(event, optionW, false, "option")).toBe(false);
+});
+
+it("recognizes the primary clipboard letter on a non-Latin layout", () => {
+	const copy = { key: "c", ctrl: true };
+	const event = {
+		key: "с",
+		code: "KeyC",
+		ctrlKey: true,
+		altKey: false,
+		shiftKey: false,
+	} as KeyboardEvent;
+	expect(matchesShortcut(event, copy, false, "primary")).toBe(true);
+	expect(matchesShortcut({ ...event, altKey: true }, copy, false, "primary")).toBe(false);
+	expect(matchesShortcut({ ...event, ctrlKey: false }, copy, false, "primary")).toBe(false);
 });
 
 const providerHooks = vi.hoisted(() => {

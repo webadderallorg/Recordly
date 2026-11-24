@@ -56,7 +56,7 @@ for (const locale of SUPPORTED_LOCALES) {
 		await expect(
 			dialog.getByRole("button", { name: messages.verifyCode, exact: true }),
 		).toBeDisabled();
-		await dialog.getByRole("button", { name: messages.next, exact: true }).click();
+		await dialog.getByRole("button", { name: messages.continueAsGuest, exact: true }).click();
 		await expect(dialog.getByRole("heading", { level: 2 })).toHaveText(
 			messages.allowTitle.replace("{{brand}}", "Recordly"),
 		);
@@ -75,7 +75,7 @@ for (const locale of SUPPORTED_LOCALES) {
 			.click();
 		await expect(dialog.getByRole("alert")).toContainText(messages.permissionFailed);
 		await expect(
-			dialog.getByRole("button", { name: messages.next, exact: true }),
+			dialog.getByRole("button", { name: messages.startRecording, exact: true }),
 		).toBeDisabled();
 		await expect(
 			dialog.getByRole("button", { name: messages.backToAccount, exact: true }),

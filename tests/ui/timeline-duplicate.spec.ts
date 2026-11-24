@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
-test("duplicates zoom, annotation and audio regions without trimming them", async ({ page }) => {
+test("copy/paste and the duplicate shortcut copy regions without trimming them", async ({
+	page,
+}) => {
 	test.setTimeout(60000);
 	await installDesktopBridge(page, "filmstrip.mp4");
 	await installDesktopBridgeOverrides(page, () => {
@@ -75,15 +77,19 @@ test("duplicates zoom, annotation and audio regions without trimming them", asyn
 	const zooms = page.locator('[data-variant="zoom"]');
 	const annotations = page.locator('[data-variant="annotation"]');
 	const audio = page.locator('[data-variant="audio"]');
-	const duplicate = page.getByRole("button", { name: "Duplicate Selected", exact: true });
+	const copyPaste = async () => {
+		await page.keyboard.press("Control+c");
+		await page.keyboard.press("Control+v");
+	};
+	await expect(page.getByRole("button", { name: "Duplicate Selected" })).toHaveCount(0);
 	await expect(zooms).toHaveCount(3);
 	await zooms.and(page.locator('[data-start-ms="500"]')).click();
-	await duplicate.click();
+	await copyPaste();
 	await expect(zooms.and(page.locator('[data-start-ms="2400"][data-end-ms="3400"]'))).toHaveCount(
 		1,
 	);
 	await zooms.and(page.locator('[data-start-ms="5300"]')).click();
-	await duplicate.click();
+	await copyPaste();
 	await expect(page.getByText("There is no room to duplicate this item.")).toBeVisible();
 	await expect(zooms).toHaveCount(4);
 
@@ -94,7 +100,7 @@ test("duplicates zoom, annotation and audio regions without trimming them", asyn
 	).toHaveCount(1);
 
 	await audio.and(page.locator('[data-start-ms="800"]')).click();
-	await duplicate.click();
+	await copyPaste();
 	const audioCopy = audio.and(page.locator('[data-start-ms="2400"][data-end-ms="3200"]'));
 	await expect(audioCopy).toHaveCount(1);
 	await page.keyboard.press("Control+z");

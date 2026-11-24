@@ -253,7 +253,7 @@ async function generateCaptionsForSource(
 		candidates: CaptionAudioCandidate[];
 	},
 ) {
-	const ffmpegPath = getFfmpegBinaryPath();
+	const ffmpegPath = await getFfmpegBinaryPath();
 	const normalizedVideoPath = normalizeVideoSourcePath(options.videoPath);
 	if (!normalizedVideoPath) {
 		throw new Error("Missing source video path.");

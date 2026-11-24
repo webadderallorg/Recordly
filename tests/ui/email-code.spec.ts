@@ -67,7 +67,7 @@ test("password sign-in remains optional alongside email codes", async ({ page })
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
 	await page.goto("/?windowType=onboarding");
 	const dialog = page.getByRole("dialog", { name: "Welcome to Recordly" });
-	await dialog.getByRole("button", { name: "Or use password to sign in", exact: true }).click();
+	await dialog.getByRole("button", { name: "Use password", exact: true }).click();
 	await dialog.getByLabel("Email", { exact: true }).fill("test@email.com");
 	await dialog.getByLabel("Password", { exact: true }).fill("test-only-password");
 	await expect(dialog.getByText(/Forgot your password/)).toBeVisible();

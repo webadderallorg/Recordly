@@ -105,7 +105,7 @@ test("Free accounts can view their plan and upgrade options without starting che
 		Math.abs((await usage.boundingBox())!.width - (await card.boundingBox())!.width),
 	).toBeLessThan(1);
 	await expect(
-		account.getByLabel("Cloud usage", { exact: true }).getByText("2 of 5 used"),
+		account.getByLabel("Cloud usage", { exact: true }).getByText("2 of 5 share links used"),
 	).toBeVisible();
 	await card.getByRole("button", { name: "Upgrade", exact: true }).click();
 	const pricing = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });

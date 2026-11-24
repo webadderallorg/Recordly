@@ -6,6 +6,11 @@ export const FREE_RECORDING_LIMIT = 5;
 export const RECORDING_LIMIT_MESSAGE =
 	"You have 5 cloud recordings. Delete one from Shared before sharing another.";
 
+export interface ShareCapacity {
+	available: boolean;
+	recordingQuota: { used: number; limit: number } | null;
+}
+
 export class ShareSignInRequiredError extends Error {
 	constructor() {
 		super(
@@ -34,7 +39,7 @@ export async function checkShareCapacity(
 	endpoint: string,
 	token: string,
 	refreshToken?: () => Promise<string | undefined>,
-): Promise<boolean> {
+): Promise<ShareCapacity> {
 	try {
 		return await readShareCapacity(endpoint, token);
 	} catch (error) {
@@ -46,7 +51,7 @@ export async function checkShareCapacity(
 	}
 }
 
-async function readShareCapacity(endpoint: string, token: string): Promise<boolean> {
+async function readShareCapacity(endpoint: string, token: string): Promise<ShareCapacity> {
 	let result: CloudBillingResult;
 	try {
 		result =
@@ -92,7 +97,12 @@ async function readShareCapacity(endpoint: string, token: string): Promise<boole
 					),
 			);
 		// This fallback never grants paid capacity from an unverified claim.
-		return legacy.videos.length < FREE_RECORDING_LIMIT;
+		return {
+			available: legacy.videos.length < FREE_RECORDING_LIMIT,
+			recordingQuota: legacy.nextCursor
+				? null
+				: { used: legacy.videos.length, limit: FREE_RECORDING_LIMIT },
+		};
 	}
 	const { usage } = parseCloudBillingStatus(result);
 	if (usage.storageLimitBytes !== null && usage.storageBytes >= usage.storageLimitBytes)
@@ -103,7 +113,13 @@ async function readShareCapacity(endpoint: string, token: string): Promise<boole
 			),
 		);
 	// Pending uploads occupy slots too, matching the backend's atomic quota check.
-	return usage.recordingLimit === null || usage.recordings < usage.recordingLimit;
+	return {
+		available: usage.recordingLimit === null || usage.recordings < usage.recordingLimit,
+		recordingQuota:
+			usage.recordingLimit === null
+				? null
+				: { used: usage.recordings, limit: usage.recordingLimit },
+	};
 }
 
 const capacityListeners = new Set<() => void>();

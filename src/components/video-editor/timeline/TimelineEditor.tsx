@@ -48,6 +48,8 @@ export interface TimelineEditorProps {
 	onZoomSpanChange: (id: string, span: Span) => void;
 	onZoomDelete: (target: string | readonly string[]) => void;
 	onDuplicateSelectedRegion?: () => void;
+	onCopySelectedRegion?: () => boolean;
+	onPasteCopiedRegion?: () => boolean;
 	onClearZooms?: () => void;
 	selectedZoomId: string | null;
 	onSelectZoom: (id: string | null) => void;
@@ -92,6 +94,7 @@ export interface TimelineEditorProps {
 	videoSourcePath?: string | null;
 	cursorTelemetrySourcePath?: string | null;
 	showSourceAudioTrack?: boolean;
+	onTrackCountChange?: (count: number) => void;
 	sourceAudioResourceVersion?: number;
 	onSourceAudioAvailabilityChange?: (available: boolean) => void;
 	sourceAudioTrackSettings?: SourceAudioTrackSettings;
@@ -134,6 +137,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onZoomSpanChange,
 			onZoomDelete,
 			onDuplicateSelectedRegion,
+			onCopySelectedRegion,
+			onPasteCopiedRegion,
 			onClearZooms,
 			selectedZoomId,
 			onSelectZoom,
@@ -173,6 +178,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			videoSourcePath,
 			cursorTelemetrySourcePath,
 			showSourceAudioTrack = false,
+			onTrackCountChange,
 			sourceAudioResourceVersion = 0,
 			onSourceAudioAvailabilityChange,
 			sourceAudioTrackSettings = {},
@@ -353,6 +359,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			currentTimeMs,
 			safeMinDurationMs,
 			onDuplicateSelectedRegion,
+			onCopySelectedRegion,
+			onPasteCopiedRegion,
 			cursorTelemetry: autoZoomTelemetry,
 			zoomRegions,
 			onZoomAdded,
@@ -650,6 +658,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							sourceAudioTracks={sourceAudioTracks}
 							getSourceAudioTrackSettingsForClip={getSourceAudioTrackSettingsForClip}
 							showSourceAudioTrack={showSourceAudioTrack}
+							onTrackCountChange={onTrackCountChange}
 							liveSpanPreviewById={liveZoomPreview.previewSpans}
 							liveHiddenItemIds={Array.from(liveZoomPreview.hiddenZoomIds)}
 							isDragging={isDragging}

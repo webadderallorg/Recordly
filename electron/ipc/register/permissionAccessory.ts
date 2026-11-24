@@ -7,8 +7,20 @@ import { ensurePermissionDragHelperBinary } from "../paths/binaries";
 
 type Permission = "screen" | "accessibility";
 let active:
-	| { close: () => void; window: BrowserWindow; bundle: string; owner: BrowserWindow }
+	| {
+			close: () => void;
+			isClosing: () => boolean;
+			window: BrowserWindow;
+			bundle: string;
+			owner: BrowserWindow;
+			permission: Permission;
+	  }
 	| undefined;
+/**
+ * Clicks and drag starts can briefly change the frontmost app the helper reports.
+ * Hide only once the panel has stayed hidden this long, so it never flashes.
+ */
+export const ACCESSORY_HIDE_DELAY_MS = 400;
 let generation = 0;
 
 /** Derive the dragged bundle in the main process; renderer paths are never accepted. */
@@ -67,6 +79,16 @@ export async function showPermissionAccessory(
 	const testSetup = preview === true && !app.isPackaged;
 	const bundle = runningApplicationBundle(app.getPath("exe"));
 	if (!bundle || (!testSetup && granted(permission))) return;
+	// Asking again for the panel that is already open keeps it; rebuilding the
+	// window would make it disappear and reappear.
+	if (
+		active &&
+		!active.isClosing() &&
+		active.permission === permission &&
+		!active.window.isDestroyed() &&
+		active.owner === BrowserWindow.fromWebContents(sender)
+	)
+		return;
 	closePermissionAccessory();
 	const request = generation;
 	const binary = await ensurePermissionDragHelperBinary();
@@ -109,6 +131,12 @@ export async function showPermissionAccessory(
 	});
 	let loaded = false;
 	let shouldShow = false;
+	let hideTimer: ReturnType<typeof setTimeout> | undefined;
+	const cancelHide = () => {
+		if (hideTimer) clearTimeout(hideTimer);
+		hideTimer = undefined;
+	};
+	accessory.once("closed", cancelHide);
 	accessory.once("ready-to-show", () => {
 		loaded = true;
 		if (shouldShow) accessory.showInactive();
@@ -124,19 +152,26 @@ export async function showPermissionAccessory(
 	await ownAccessory(child, permission, sender, owner, testSetup, accessory, bundle, (event) => {
 		if (accessory.isDestroyed()) return;
 		if (!event.visible) {
-			shouldShow = false;
-			accessory.hide();
+			if (hideTimer) return;
+			hideTimer = setTimeout(() => {
+				hideTimer = undefined;
+				shouldShow = false;
+				if (!accessory.isDestroyed()) accessory.hide();
+			}, ACCESSORY_HIDE_DELAY_MS);
 			return;
 		}
+		cancelHide();
 		if (
 			![event.x, event.y, event.width, event.height].every(Number.isInteger) ||
 			event.width !== 368 ||
 			event.height !== 264
 		)
 			return;
-		accessory.setBounds({ x: event.x!, y: event.y!, width: 368, height: 264 });
+		const bounds = { x: event.x!, y: event.y!, width: 368, height: 264 };
+		const current = accessory.getBounds();
+		if (current.x !== bounds.x || current.y !== bounds.y) accessory.setBounds(bounds);
 		shouldShow = true;
-		if (loaded) accessory.showInactive();
+		if (loaded && !accessory.isVisible()) accessory.showInactive();
 	});
 }
 
@@ -208,7 +243,7 @@ function ownAccessory(
 		poll.unref();
 		lifetime.unref();
 		startup.unref();
-		active = { close, window: accessory, bundle, owner };
+		active = { close, isClosing: () => closing, window: accessory, bundle, owner, permission };
 		accessory.once("closed", close);
 		owner.once("closed", close);
 		sender.once("destroyed", close);
@@ -227,7 +262,7 @@ function ownAccessory(
 					resolve();
 				}
 				if (event === "back") returnToOwner();
-				if (event.startsWith("{")) {
+				if (!closing && event.startsWith("{")) {
 					try {
 						onFrame(JSON.parse(event) as AccessoryFrame);
 					} catch {

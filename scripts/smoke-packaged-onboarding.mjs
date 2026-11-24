@@ -48,7 +48,7 @@ async function checkStartup(label, returning) {
 		if (returning) {
 			await expect(navigation).toHaveCount(0);
 		} else {
-			await expect(navigation.getByRole("button")).toHaveCount(3);
+			await expect(navigation.getByRole("button")).toHaveCount(2);
 			await expect(
 				navigation.getByRole("button", { name: "Account", exact: true }),
 			).toHaveAttribute("aria-current", "page");
@@ -57,7 +57,7 @@ async function checkStartup(label, returning) {
 			).toBeVisible();
 			await expect(
 				navigation.getByRole("button", { name: "Upgrade", exact: true }),
-			).toBeVisible();
+			).toHaveCount(0);
 		}
 		console.log(`[packaged-onboarding] ${label}: passed`);
 	} finally {

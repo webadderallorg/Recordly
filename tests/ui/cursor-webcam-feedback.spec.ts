@@ -249,7 +249,7 @@ test("annotation and application settings fades clear when reaching their last c
 	await page.setViewportSize({ width: 1440, height: 600 });
 	await installDesktopBridge(page, "filmstrip.mp4");
 	await page.goto("/?windowType=editor");
-	await page.getByRole("button", { name: "Add Layer", exact: true }).click();
+	await page.getByRole("button", { name: "Add", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Annotation", exact: true }).click();
 	await checkScrollFade(page.locator("aside .custom-scrollbar").filter({ visible: true }));
 	await page.locator("aside").screenshot({

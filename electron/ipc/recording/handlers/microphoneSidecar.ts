@@ -62,7 +62,7 @@ export function registerMicrophoneSidecar() {
 			try {
 				await fs.writeFile(tempWebmPath, Buffer.from(audioData));
 				await execFileAsync(
-					getFfmpegBinaryPath(),
+					await getFfmpegBinaryPath(),
 					[
 						"-y",
 						"-hide_banner",

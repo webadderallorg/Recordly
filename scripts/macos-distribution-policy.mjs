@@ -14,6 +14,12 @@ export const REQUIRED_MACOS_ENTITLEMENTS = Object.freeze([
 
 const ALLOWED_MACOS_ENTITLEMENTS = new Set(REQUIRED_MACOS_ENTITLEMENTS);
 
+/** A ticket check must still succeed after any temporary Apple network error. */
+export function isRetryableStaplerValidationError(error) {
+	const message = error instanceof Error ? error.message : String(error);
+	return /NSURLErrorDomain Code=-(?:1001|1005|1009)\b/.test(message);
+}
+
 function readCodeSignValue(details, key) {
 	const prefix = `${key}=`;
 	return details

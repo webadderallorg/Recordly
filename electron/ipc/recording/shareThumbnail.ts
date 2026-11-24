@@ -7,7 +7,7 @@ const run = promisify(execFile);
 /** The caller must validate the local export path before decoding it. */
 export async function createShareThumbnail(filePath: string, signal: AbortSignal): Promise<Buffer> {
 	const { stdout } = await run(
-		getFfmpegBinaryPath(),
+		await getFfmpegBinaryPath(),
 		[
 			"-hide_banner",
 			"-loglevel",

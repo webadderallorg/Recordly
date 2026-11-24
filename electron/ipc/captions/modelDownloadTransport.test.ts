@@ -99,3 +99,39 @@ it("aborts an idle request and rejects the download", async () => {
 	await timeout;
 	expect(request.abort).toHaveBeenCalledOnce();
 });
+
+it.each([
+	"socks5h://proxy.test:1080",
+	"invalid://proxy.test",
+	undefined,
+])("honors the wildcard bypass before configuring %s", async (address) => {
+	vi.stubEnv("ALL_PROXY", address);
+	vi.stubEnv("NO_PROXY", "models.test, * ");
+	const directSession = { setProxy: mocks.setProxy };
+	mocks.fromPartition.mockReturnValue(directSession);
+	const request = stubRequest();
+	const { receiveCaptionDownload } = await import("./modelDownloadTransport");
+	const download = receiveCaptionDownload(url, 5, async () => undefined);
+	await vi.waitFor(() => expect(request.end).toHaveBeenCalledOnce());
+	expect(mocks.setProxy).toHaveBeenCalledWith({ mode: "direct" });
+	expect(mocks.request).toHaveBeenCalledWith({ url, redirect: "manual", session: directSession });
+	request.emit("response", Readable.from([]));
+	await download;
+});
+
+it("uses Chromium SOCKS5 for a SOCKS5 hostname proxy and keeps per-host bypass rules", async () => {
+	vi.stubEnv("ALL_PROXY", "socks5h://proxy.test:1080");
+	vi.stubEnv("NO_PROXY", "models.test");
+	mocks.fromPartition.mockReturnValue({ setProxy: mocks.setProxy });
+	const request = stubRequest();
+	const { receiveCaptionDownload } = await import("./modelDownloadTransport");
+	const download = receiveCaptionDownload(url, 5, async () => undefined);
+	await vi.waitFor(() => expect(request.end).toHaveBeenCalledOnce());
+	expect(mocks.setProxy).toHaveBeenCalledWith({
+		mode: "fixed_servers",
+		proxyRules: "socks5://proxy.test:1080",
+		proxyBypassRules: "models.test,.models.test",
+	});
+	request.emit("response", Readable.from([]));
+	await download;
+});

@@ -107,6 +107,23 @@ describe("recording startup coordination", () => {
 		expect(api.releaseRecordingStartup).toHaveBeenCalledWith("owner");
 	});
 
+	it("invalidates pending microphone setup when native startup fails", async () => {
+		const context = createContext();
+		context.prepareRecordingStart.mockResolvedValue({
+			selectedSource: source,
+			useNativeMacScreenCapture: true,
+		});
+		vi.mocked(startNativeRecorder).mockRejectedValueOnce(new Error("Webcam setup failed"));
+		await start(context);
+
+		const [, options] = vi.mocked(startNativeRecorder).mock.calls[0];
+		expect(options.startWasCancelled()).toBe(true);
+		expect(context.stopMicFallbackRecorder).toHaveBeenCalledOnce();
+		expect(context.discardActiveNativeCapture).toHaveBeenCalledOnce();
+		expect(alert).toHaveBeenCalledWith(expect.stringContaining("Webcam setup failed"));
+		expect(api.releaseRecordingStartup).toHaveBeenCalledWith("owner");
+	});
+
 	it("runs countdown after a native Windows fallback before acquiring browser capture", async () => {
 		const order: string[] = [];
 		const context = createContext();
@@ -117,7 +134,7 @@ describe("recording startup coordination", () => {
 		});
 		vi.mocked(startNativeRecorder).mockImplementation(async () => {
 			order.push("native");
-			return "browser-fallback";
+			return "browser-fallback-needs-countdown";
 		});
 		api.startCountdown.mockImplementation(async () => {
 			order.push("countdown");
@@ -261,7 +278,7 @@ describe("recording startup coordination", () => {
 		vi.mocked(startNativeRecorder).mockResolvedValue("browser-fallback");
 		vi.spyOn(Date, "now").mockReturnValue(5000);
 		await start(context);
-		expect(api.startCountdown).toHaveBeenCalledOnce();
+		expect(api.startCountdown).toHaveBeenCalledTimes(nativeFallback ? 0 : 1);
 		expect(context.recordingSessionTimestamp.current).toBe(1000);
 		expect(context.resetRecordingClock).toHaveBeenCalledWith(5000);
 		expect(startBrowserRecorder).toHaveBeenCalledWith(context, expect.any(Object));

@@ -37,6 +37,7 @@ export function createRecordingMicrophoneFallback({
 	getRequestedBrowserMicrophoneProfile: () => string | null;
 }) {
 	let micFallbackRecorder: MediaRecorder | null = null;
+	let pendingMicAcquisition: { stream: MediaStream | null } | null = null;
 	let micFallbackChunks: Blob[] = [];
 	let micFallbackStartDelayMs: number | null = null;
 	let micFallbackTrackSettings: MicrophoneTrackSettingsSnapshot | null = null;
@@ -266,6 +267,11 @@ export function createRecordingMicrophoneFallback({
 	};
 
 	const cleanup = () => {
+		if (pendingMicAcquisition?.stream) {
+			const { stream } = pendingMicAcquisition;
+			pendingMicAcquisition.stream = null;
+			stream.getTracks().forEach((track) => track.stop());
+		}
 		if (micFallbackRecorder) {
 			try {
 				if (micFallbackRecorder.state !== "inactive") {
@@ -294,17 +300,22 @@ export function createRecordingMicrophoneFallback({
 		mainStartedAt: number;
 		startWasCancelled: () => boolean;
 	}): Promise<boolean> => {
-		let unownedMicStream: MediaStream | null = null;
+		const acquisition: { stream: MediaStream | null } = { stream: null };
 		try {
 			const microphoneConstraints = createProcessedMicrophoneConstraints(
 				microphoneDeviceId,
 				getBrowserMicrophoneProfile(),
 			);
-			micFallbackRequestedConstraints = microphoneConstraints;
 			const micStream = await navigator.mediaDevices.getUserMedia(microphoneConstraints);
-			unownedMicStream = micStream;
-			micFallbackTrackSettings = createMicrophoneTrackSettingsSnapshot(micStream);
-			micFallbackAudioInputDevices = await createAudioInputDeviceSnapshot().catch(() => null);
+			acquisition.stream = micStream;
+			if (startWasCancelled()) return false;
+			pendingMicAcquisition = acquisition;
+			const trackSettings = createMicrophoneTrackSettingsSnapshot(micStream);
+			const audioInputDevices = await createAudioInputDeviceSnapshot().catch(() => null);
+			if (startWasCancelled() || !acquisition.stream) return false;
+			micFallbackRequestedConstraints = microphoneConstraints;
+			micFallbackTrackSettings = trackSettings;
+			micFallbackAudioInputDevices = audioInputDevices;
 			console.info("Browser microphone track settings:", micFallbackTrackSettings);
 			console.info("Browser microphone audio input devices:", micFallbackAudioInputDevices);
 			micFallbackChunks = [];
@@ -321,11 +332,11 @@ export function createRecordingMicrophoneFallback({
 			micFallbackRecorderStartedAt = performance.now();
 			recorder.ondataavailable = appendMicFallbackChunk;
 			micFallbackStartDelayMs = Math.max(0, Date.now() - mainStartedAt);
-			if (startWasCancelled()) return false;
 			recorder.start(timesliceMs);
 			micFallbackRecorder = recorder;
-			unownedMicStream = null;
+			acquisition.stream = null;
 		} catch (micError) {
+			if (startWasCancelled()) return false;
 			micFallbackStartDelayMs = null;
 			micFallbackTrackSettings = null;
 			micFallbackRequestedConstraints = null;
@@ -351,7 +362,8 @@ export function createRecordingMicrophoneFallback({
 			);
 		} finally {
 			// Until the recorder owns it, cancellation or setup failure must release the mic.
-			unownedMicStream?.getTracks().forEach((track) => track.stop());
+			if (pendingMicAcquisition === acquisition) pendingMicAcquisition = null;
+			acquisition.stream?.getTracks().forEach((track) => track.stop());
 		}
 		return true;
 	};

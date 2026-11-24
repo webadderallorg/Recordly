@@ -71,6 +71,7 @@ test("localizes the sharing and clipboard flow", async ({ page }) => {
 });
 
 test("rejected free-account sessions offer sign-in instead of a plan refresh", async ({ page }) => {
+	await installDesktopBridge(page, "preview.mp4", { signedIn: false });
 	await page.goto("/tests/ui/clipboard-share.html?session-rejected");
 	await expect(
 		page.getByText("Your cloud session could not be verified. Sign in again to share."),

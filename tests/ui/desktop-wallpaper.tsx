@@ -16,6 +16,7 @@ const result = new Promise<{ success: boolean; path?: string }>((resolve) => {
 const image = fetch("/wallpapers/tahoe-dark.jpg").then(
 	async (response) => new Uint8Array(await response.arrayBuffer()),
 );
+const wallpaperFallback = new URLSearchParams(location.search).get("wallpaper-fallback");
 let desktopRequests = 0;
 Object.assign(window, {
 	electronAPI: {
@@ -27,7 +28,20 @@ Object.assign(window, {
 					: value;
 			}),
 		getAssetBasePath: async () => null,
-		readLocalFile: async () => ({ success: true, data: await image }),
+		readLocalFile: async (path: string) =>
+			wallpaperFallback && path === desktop
+				? { success: false }
+				: { success: true, data: await image },
+		getLocalMediaUrl: async (path: string) =>
+			wallpaperFallback && path === desktop
+				? {
+						success: true,
+						url:
+							wallpaperFallback === "media"
+								? "/wallpapers/tahoe-dark.jpg"
+								: "/missing-wallpaper.jpg",
+					}
+				: { success: false },
 		generateWallpaperThumbnail: async (path: string) => {
 			if (
 				location.search.includes("pending-thumbnail") &&

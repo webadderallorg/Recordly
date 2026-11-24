@@ -220,17 +220,6 @@
 	width: 12px;
 	height: 12px;
 }
-.editor-playback-clip-menu {
-	display: none;
-}
-@container editor-preview (max-width: 900px) {
-	.editor-playback-clip-command {
-		display: none;
-	}
-	.editor-playback-clip-menu {
-		display: inline-flex;
-	}
-}
 @container editor-preview (max-width: 760px) {
 	.editor-playback {
 		grid-template-columns: max-content minmax(max-content, 1fr) max-content;
@@ -240,8 +229,7 @@
 		min-width: 36px;
 		padding-inline: 0;
 	}
-	.editor-playback-add-label,
-	.editor-playback-add-caret {
+	.editor-playback-add-label {
 		display: none;
 	}
 }

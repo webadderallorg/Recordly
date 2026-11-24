@@ -9,6 +9,7 @@ vi.mock("electron", () => ({
 	shell: { openExternal: mocks.openExternal },
 }));
 
+import { parseCloudBillingStatus } from "../../../src/types/cloudBilling";
 import { parseStripeBillingUrl, registerCloudBillingHandlers } from "./cloudBilling";
 
 const endpoint = "https://videos.recordly.dev/api/upload";
@@ -343,4 +344,48 @@ it("rejects foreign main frames and embedded frames before billing networking", 
 	}
 	expect(fetchMock).not.toHaveBeenCalled();
 	expect(mocks.openExternal).not.toHaveBeenCalled();
+});
+
+it("shows an unfinished Plus checkout as a free account that can reach the billing portal", async () => {
+	const incomplete = {
+		billing: {
+			...free.billing,
+			plan: "pro",
+			subscriptionStatus: "incomplete",
+			portalAvailable: true,
+		},
+		usage: { ...free.usage, recordingLimit: null, storageLimitBytes: null },
+	};
+	fetchMock.mockResolvedValue(Response.json(incomplete));
+	const result = await call();
+	expect(result).toMatchObject({
+		success: true,
+		billing: { plan: "free", subscriptionStatus: "incomplete", portalAvailable: true },
+		usage: { recordingLimit: 0, storageLimitBytes: null },
+	});
+	// The renderer validates the bridge result again; that second parse must agree.
+	expect(parseCloudBillingStatus(result)).toMatchObject({
+		billing: { plan: "free" },
+		usage: { recordingLimit: 0 },
+	});
+});
+
+it("names the failing billing step without reflecting provider details", async () => {
+	fetchMock.mockResolvedValueOnce(
+		Response.json({ error: "secret-key-diagnostic" }, { status: 500 }),
+	);
+	expect(await call()).toMatchObject({
+		success: false,
+		error: expect.stringContaining("HTTP 500"),
+	});
+	fetchMock.mockRejectedValueOnce(new TypeError("fetch failed signed-access-token"));
+	const offline = await call();
+	expect(offline).toMatchObject({ error: expect.stringContaining("Could not reach") });
+	expect(JSON.stringify(offline)).not.toContain("signed-access-token");
+	fetchMock.mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"));
+	expect(await call()).toMatchObject({ error: expect.stringContaining("too long") });
+	fetchMock.mockResolvedValueOnce(Response.json({ billing: { plan: "enterprise" } }));
+	expect(await call()).toMatchObject({
+		error: expect.stringContaining("could not read the billing response"),
+	});
 });

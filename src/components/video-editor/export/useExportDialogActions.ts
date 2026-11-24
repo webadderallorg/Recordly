@@ -1,6 +1,7 @@
 import { type RefObject, useCallback } from "react";
 import { useOptionalBilling } from "@/components/billing/BillingProvider";
 import { canExportCaptionFiles } from "@/components/billing/captionFileAccess";
+import { useExportUpgradePrompt } from "@/components/billing/upgradePrompts";
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
 import type { ExportFormat, ExportSettings } from "@/lib/exporter";
@@ -38,6 +39,7 @@ export function useExportDialogActions({
 	recordSuccessfulExport,
 }: UseExportDialogActionsInput) {
 	const billing = useOptionalBilling();
+	const { scheduleExportUpgradePrompt, cancelExportUpgradePrompt } = useExportUpgradePrompt();
 	const handleOpenExportDropdown = useCallback(() => {
 		if (!videoPath) {
 			toast.error(translate("notifications.noVideo", "No video loaded"));
@@ -110,9 +112,9 @@ export function useExportDialogActions({
 		if (!resolvedSettings) return;
 		session.setExportError(null);
 		session.setExportedFilePath(undefined);
-		session.setShowExportDropdown(false);
+		scheduleExportUpgradePrompt();
 		void handleExport(resolvedSettings, { destination: "download" });
-	}, [resolveCurrentSettings, session, handleExport]);
+	}, [resolveCurrentSettings, session, scheduleExportUpgradePrompt, handleExport]);
 
 	const prepareExportForShare = useCallback(async () => {
 		const resolvedSettings = resolveCurrentSettings("mp4");
@@ -123,19 +125,19 @@ export function useExportDialogActions({
 
 	const handleCancelExport = useCallback(() => {
 		if (!session.isExporting) return;
+		cancelExportUpgradePrompt();
 		session.cancelledExportRunIdRef.current = session.exportRunIdRef.current;
 		session.exportRunIdRef.current += 1;
 		session.exporterRef.current?.cancel();
 		session.exporterRef.current = null;
 		toast.info(translate("notifications.exportCanceled", "Export canceled"));
 		session.clearPendingExportSave();
-		session.setShowExportDropdown(false);
 		session.setIsExporting(false);
 		session.setIsOptimizingGif(false);
 		session.setExportProgress(null);
 		session.setExportError(null);
 		session.setExportedFilePath(undefined);
-	}, [session]);
+	}, [session, cancelExportUpgradePrompt]);
 
 	const handleExportDropdownClose = useCallback(() => {
 		session.clearPendingExportSave();

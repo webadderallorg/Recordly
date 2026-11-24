@@ -156,8 +156,10 @@ for (const [index, locale] of SUPPORTED_LOCALES.entries()) {
 		await expect(pricing).toBeVisible();
 		const pricingHeading = pricing.getByRole("heading", { level: 2 });
 		await expect(pricingHeading).toBeVisible();
-		await expect(pricingHeading).toHaveText(billing.upgradeHeading);
-		await expect(pricing.getByText(billing.intro, { exact: true })).toBeVisible();
+		await expect(pricingHeading).toHaveText(
+			billing.upgradeHeading.replace("{{cloud}}", "Cloud"),
+		);
+		await expect(pricing.getByText(billing.outcomeStorageTitle, { exact: true })).toBeVisible();
 		await expect(pricing).not.toContainText(/\b(?:ui|billing|settings)\.[a-zA-Z]/);
 		await page.setViewportSize({ width: 440, height: 820 });
 		await pricing.screenshot({

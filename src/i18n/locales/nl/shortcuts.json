@@ -7,6 +7,8 @@
 		"addKeyframe": "Keyframe toevoegen",
 		"deleteSelected": "Selectie verwijderen",
 		"duplicateSelected": "Selectie dupliceren",
+		"copySelected": "Selectie kopiëren",
+		"paste": "Plakken",
 		"playPause": "Afspelen / Pauzeren",
 		"cycleForward": "Annotaties vooruit doorlopen",
 		"cycleBackward": "Annotaties achteruit doorlopen",

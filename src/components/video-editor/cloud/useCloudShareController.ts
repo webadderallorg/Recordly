@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useOptionalBilling } from "@/components/billing/BillingProvider";
 import { toast } from "@/components/ui/toast";
 import { useI18n } from "@/contexts/I18nContext";
 import { copyTextToClipboard } from "@/lib/clipboard";
@@ -41,6 +42,9 @@ export function useCloudShareController(props: Props) {
 	} = props;
 
 	const { t } = useI18n();
+	// Read through a ref: the billing context is recreated on every render.
+	const openPricing = useRef<(() => void) | undefined>(undefined);
+	openPricing.current = useOptionalBilling()?.openPricing;
 
 	const [internalOpen, setInternalOpen] = useState(false);
 
@@ -190,13 +194,14 @@ export function useCloudShareController(props: Props) {
 
 	const [notes, setNotes] = useState("");
 	const {
-		setCapacityAvailable,
+		setCapacity,
 		checkingCapacity,
 		capacityError,
 		capacityIdentity,
 		setCapacityIdentity,
 		currentCapacityIdentity,
 		verifiedCapacity,
+		recordingQuota,
 		signInRequired,
 		sessionRecovery,
 		recoverSession,
@@ -294,16 +299,22 @@ export function useCloudShareController(props: Props) {
 					),
 				);
 			if (!authToken) throw new Error(t("editor.cloud.signInRequired"));
-			const available = await checkShareCapacity(
+			const capacity = await checkShareCapacity(
 				DEFAULT_CLOUD_ENDPOINT,
 				authToken,
 				recoverSession,
 			);
 			if (!isCurrentAccount()) return;
-			setCapacityAvailable(available);
+			setCapacity(capacity);
 			setCapacityIdentity(currentCapacityIdentity);
-			if (!available)
+			if (!capacity.available) {
+				// A free user asking for one more share is offered Pro.
+				if (openPricing.current) {
+					openPricing.current();
+					return;
+				}
 				throw new Error(t("editor.cloud.recordingLimit", RECORDING_LIMIT_MESSAGE));
+			}
 			if (cancelRequestedRef.current) return;
 			const nextUploadId = crypto.randomUUID();
 			setUploadId(nextUploadId);
@@ -401,7 +412,7 @@ export function useCloudShareController(props: Props) {
 		currentCapacityIdentity,
 		recoverSession,
 		latestAuthToken,
-		setCapacityAvailable,
+		setCapacity,
 		setCapacityIdentity,
 	]);
 
@@ -445,6 +456,7 @@ export function useCloudShareController(props: Props) {
 		currentCapacityIdentity,
 		capacityError,
 		verifiedCapacity,
+		recordingQuota,
 		sessionRecovery,
 		handleOpenChange,
 		handleUpload,

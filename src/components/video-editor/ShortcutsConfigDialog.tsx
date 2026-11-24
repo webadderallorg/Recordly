@@ -48,6 +48,8 @@ export function ShortcutsConfigDialog({
 				"Cycle Annotations Forward": "cycleForward",
 				"Cycle Annotations Backward": "cycleBackward",
 				"Delete Selected (alt)": "deleteSelectedAlt",
+				"Copy Selected": "copySelected",
+				Paste: "paste",
 				"Pan Timeline": "panTimeline",
 				"Zoom Timeline": "zoomTimeline",
 			}[label];

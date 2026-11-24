@@ -45,7 +45,7 @@ test("zoom clips keep their icon and reveal labels as space allows", async ({ pa
 });
 
 test("annotations can be dragged into the canvas background and survive undo", async ({ page }) => {
-	await page.getByRole("button", { name: "Add Layer", exact: true }).click();
+	await page.getByRole("button", { name: "Add", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Annotation", exact: true }).click();
 	const annotation = page.locator("[data-annotation-id]");
 	await expect(annotation).toBeVisible();

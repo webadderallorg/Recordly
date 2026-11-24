@@ -253,7 +253,7 @@
 		"processingAudioEdits": "Audio verwerken met snelheids-/overlay-bewerkingen"
 	},
 	"toolbar": {
-		"addLayer": "Laag toevoegen",
+		"addLayer": "Toevoegen",
 		"splitClip": "Clip splitsen (C)",
 		"trimStart": "Begin tot de afspeelkop inkorten ({{shortcut}})",
 		"trimEnd": "Einde vanaf de afspeelkop inkorten ({{shortcut}})"

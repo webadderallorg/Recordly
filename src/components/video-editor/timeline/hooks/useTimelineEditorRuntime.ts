@@ -36,6 +36,8 @@ interface UseTimelineEditorRuntimeParams {
 	onZoomSpanChange: (id: string, span: Span) => void;
 	onZoomDelete: (target: string | readonly string[]) => void;
 	onDuplicateSelectedRegion?: () => void;
+	onCopySelectedRegion?: () => boolean;
+	onPasteCopiedRegion?: () => boolean;
 	onClearZooms?: () => void;
 	selectedZoomId: string | null;
 	onSelectZoom: (id: string | null) => void;
@@ -93,6 +95,8 @@ export function useTimelineEditorRuntime({
 	onZoomSpanChange,
 	onZoomDelete,
 	onDuplicateSelectedRegion,
+	onCopySelectedRegion,
+	onPasteCopiedRegion,
 	onClearZooms,
 	selectedZoomId,
 	onSelectZoom,
@@ -332,6 +336,8 @@ export function useTimelineEditorRuntime({
 		deleteSelectedAudio,
 		deleteSelectedCaption,
 		onDuplicateSelectedRegion,
+		onCopySelectedRegion,
+		onPasteCopiedRegion,
 		cycleAnnotationsAtCurrentTime,
 	});
 

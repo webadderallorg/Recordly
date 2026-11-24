@@ -96,6 +96,10 @@ it("authenticates and reserves quota before uploading, then saves server-owned p
 			attachments: [expect.objectContaining({ path: expect.stringMatching(/^user-id\//) })],
 		}),
 	);
+	expect(backend.notify).toHaveBeenCalledWith(backend.insert.mock.calls[0][0].id);
+	expect(backend.insert.mock.invocationCallOrder[0]).toBeLessThan(
+		backend.notify.mock.invocationCallOrder[0],
+	);
 });
 it("rejects unauthenticated requests and exhausted quotas before storage", async () => {
 	backend.authenticate.mockResolvedValueOnce(null);

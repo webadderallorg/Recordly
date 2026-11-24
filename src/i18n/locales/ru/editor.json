@@ -202,7 +202,7 @@
 		"processingAudioEdits": "Обработка звука (скорость, наложения)"
 	},
 	"toolbar": {
-		"addLayer": "Добавить слой",
+		"addLayer": "Добавить",
 		"splitClip": "Разрезать клип (C)",
 		"trimStart": "Обрезать начало до указателя ({{shortcut}})",
 		"trimEnd": "Обрезать конец после указателя ({{shortcut}})"

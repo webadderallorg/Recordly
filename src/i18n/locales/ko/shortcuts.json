@@ -7,6 +7,8 @@
 		"addKeyframe": "키프레임 추가",
 		"deleteSelected": "선택 항목 삭제",
 		"duplicateSelected": "선택 항목 복제",
+		"copySelected": "선택 항목 복사",
+		"paste": "붙여넣기",
 		"playPause": "재생 / 일시 정지",
 		"cycleForward": "주석 다음으로 순환",
 		"cycleBackward": "주석 이전으로 순환",
