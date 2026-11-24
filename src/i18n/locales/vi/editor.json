@@ -65,7 +65,7 @@
 		"copyLink": "Sao chép liên kết",
 		"shareLink": "Chia sẻ liên kết",
 		"saveLinkFailed": "Đã tạo trang chia sẻ nhưng không lưu được liên kết trên máy",
-		"verifyPlanFailed": "Không xác minh được gói Cloud của bạn.",
+		"verifyPlanFailed": "Không xác minh được gói của bạn.",
 		"refreshPlan": "Tải lại thông tin gói",
 		"share": "Chia sẻ",
 		"signInToShare": "Đăng nhập để chia sẻ",
@@ -253,7 +253,7 @@
 		"processingAudioEdits": "Đang xử lý âm thanh cùng các chỉnh sửa tốc độ/lớp phủ"
 	},
 	"toolbar": {
-		"addLayer": "Thêm lớp",
+		"addLayer": "Thêm",
 		"splitClip": "Tách đoạn (C)",
 		"trimStart": "Cắt đầu clip đến vị trí phát ({{shortcut}})",
 		"trimEnd": "Cắt cuối clip đến vị trí phát ({{shortcut}})"

@@ -1,4 +1,9 @@
-import { recordFeedbackDiagnostic, redactDiagnostic } from "../feedback/diagnostics";
+import {
+	beginAppOperation,
+	recordAppDiagnostic,
+	recordFeedbackDiagnostic,
+	redactDiagnostic,
+} from "../feedback/diagnostics";
 
 export type SignInAction =
 	| "code"
@@ -62,7 +67,7 @@ export function describeAuthFailure(stage: AuthStage, error: unknown): string {
 
 export function captureAuthFailure(stage: AuthStage, error: unknown): string {
 	const diagnostic = describeAuthFailure(stage, error);
-	recordFeedbackDiagnostic(diagnostic);
+	recordAppDiagnostic(diagnostic);
 	return diagnostic;
 }
 
@@ -70,12 +75,15 @@ export async function traceAuthOperation<T>(
 	stage: AuthStage,
 	action: () => Promise<T>,
 ): Promise<T> {
+	const operation = beginAppOperation(`auth.${stage}`);
 	recordAuthEvent(stage, "started");
 	try {
 		const result = await action();
+		operation.finish("succeeded");
 		recordAuthEvent(stage, "succeeded");
 		return result;
 	} catch (error) {
+		operation.finish("failed");
 		captureAuthFailure(stage, error);
 		throw error;
 	}

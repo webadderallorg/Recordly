@@ -1,6 +1,6 @@
 Subscription ending with Recordly
 
-We're sorry to see you go. Your {{ .PlanName }} subscription won't renew, and you can enjoy your Cloud benefits until the date below.
+We're sorry to see you go. Your {{ .PlanName }} subscription won't renew, and you can enjoy your Plus benefits until the date below.
 
 Plan: {{ .PlanName }}
 Access until: {{ .EndDate }}

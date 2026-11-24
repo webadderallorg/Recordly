@@ -9,7 +9,7 @@ import { UpgradeButton } from "./UpgradeButton";
 
 const supportUrl = "mailto:support@recordly.dev";
 
-/** Account controls use the same verified plan and portal flow as the Cloud screen. */
+/** Account controls use the same verified plan and portal flow as the Plus screen. */
 export function AccountPlanCard() {
 	const { t, locale } = useI18n();
 	const portalHelpId = useId();
@@ -58,7 +58,7 @@ export function AccountPlanCard() {
 				<p role={!billing ? (loading ? "status" : "alert") : undefined}>
 					{billing
 						? plus
-							? t("billing.active", "Your Cloud plan is active.")
+							? t("billing.active", "Your Plus plan is active.")
 							: t("billing.freeActive", "You’re on the Free plan.")
 						: loading
 							? t("billing.loadingPlan", "Loading your plan…")

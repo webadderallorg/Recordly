@@ -12,6 +12,7 @@ import {
 } from "react";
 import { useRecordlyAuth } from "@/components/auth/useRecordlyAuth";
 import {
+	getFreshCloudBillingRead,
 	invalidateCloudBillingReads,
 	readCloudBilling,
 } from "@/components/video-editor/cloud/cloudBillingReads";
@@ -103,7 +104,7 @@ async function readLegacyUsage(token: string): Promise<LegacyUsage> {
 	);
 }
 
-/** The server owns entitlement; checkout return and local storage never grant Cloud. */
+/** The server owns entitlement; checkout return and local storage never grant Plus. */
 export function BillingProvider({ children }: { children: ReactNode }) {
 	const auth = useRecordlyAuth();
 	return <BillingSessionProvider auth={auth}>{children}</BillingSessionProvider>;
@@ -262,9 +263,14 @@ export function BillingSessionProvider({
 					recordingLimit: 5,
 					storageLimitBytes: null,
 				});
-			setLoading(true);
 			const billingAvailable =
 				CLOUD_SHARE_ENDPOINT && typeof window.electronAPI.cloudBilling === "function";
+			const token = auth.accessToken;
+			const cachedStatus =
+				!fresh && billingAvailable && userId && token
+					? getFreshCloudBillingRead(CLOUD_SHARE_ENDPOINT, "status", token)
+					: undefined;
+			if (!cachedStatus) setLoading(true);
 			const pending = { key, owner: accountKey, promise: Promise.resolve() };
 			usageRequest.current = pending;
 			pending.promise = (async () => {
@@ -294,13 +300,9 @@ export function BillingSessionProvider({
 						return;
 					}
 					let result =
-						userId && auth.accessToken
-							? await readCloudBilling(
-									CLOUD_SHARE_ENDPOINT,
-									"status",
-									auth.accessToken,
-									fresh,
-								)
+						userId && token
+							? await (cachedStatus ??
+									readCloudBilling(CLOUD_SHARE_ENDPOINT, "status", token, fresh))
 							: null;
 					if (!current()) return;
 					if (
@@ -547,7 +549,7 @@ export function BillingSessionProvider({
 				refreshAfterSignIn,
 				openPricing: () => {
 					setPricingOpen(true);
-					void refresh(true);
+					void refresh();
 				},
 				pricingOpen,
 				setPricingOpen,

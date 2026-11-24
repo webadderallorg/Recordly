@@ -54,8 +54,11 @@ for (const width of [1440, 760, 700, 420, 320]) {
 				const heading = panel.locator(".dashboard-settings-group h2:visible").first();
 				await expect(heading).toBeVisible();
 				const headingBox = (await heading.boundingBox())!;
+				const headingInset = await heading.evaluate((element) =>
+					parseFloat(getComputedStyle(element.parentElement!).paddingInlineStart),
+				);
 				expect(
-					Math.abs(headingBox.x - baseline.x),
+					Math.abs(headingBox.x - baseline.x - headingInset),
 					`${category} heading left edge`,
 				).toBeLessThan(1);
 				expect(
@@ -66,22 +69,27 @@ for (const width of [1440, 760, 700, 420, 320]) {
 					await panel.evaluate((e) => e.scrollWidth <= e.clientWidth),
 					`${category} overflow`,
 				).toBe(true);
-				const rowInsets = await panel.locator(".settings-row:visible").evaluateAll((rows) =>
-					rows
-						.filter(
-							(row) =>
-								getComputedStyle(row.querySelector(".settings-row-copy")!)
-									.display !== "contents",
-						)
-						.map((row) => {
-							const panel = row.closest('[role="tabpanel"]')!;
-							const copy = row.querySelector(".settings-row-copy")!;
-							return (
-								copy.getBoundingClientRect().left -
-								panel.getBoundingClientRect().left
-							);
-						}),
-				);
+				const rowInsets = await panel
+					.locator(".settings-group .settings-row:visible")
+					.evaluateAll((rows) =>
+						rows
+							.filter(
+								(row) =>
+									getComputedStyle(row.querySelector(".settings-row-copy")!)
+										.display !== "contents",
+							)
+							.map((row) => {
+								const group = row.closest(".settings-group")!;
+								const style = getComputedStyle(group);
+								const copy = row.querySelector(".settings-row-copy")!;
+								return (
+									copy.getBoundingClientRect().left -
+									group.getBoundingClientRect().left -
+									parseFloat(style.paddingInlineStart) -
+									parseFloat(style.borderLeftWidth)
+								);
+							}),
+					);
 				for (const inset of rowInsets)
 					expect(Math.abs(inset), `${category} row inset`).toBeLessThan(1);
 
@@ -90,11 +98,11 @@ for (const width of [1440, 760, 700, 420, 320]) {
 						const style = getComputedStyle(element);
 						return [style.borderLeftWidth, style.borderRightWidth, style.borderRadius];
 					});
-					expect(borders, `${category} has no enclosing section box`).toEqual([
-						"0px",
-						"0px",
-						"0px",
-					]);
+					expect(borders.slice(0, 2), `${category} card borders`).toEqual(["1px", "1px"]);
+					expect(
+						parseFloat(borders[2]),
+						`${category} card has rounded corners`,
+					).toBeGreaterThan(0);
 				}
 				if (category === "Account") {
 					for (const form of await panel.locator(".account-settings-form").all()) {

@@ -7,6 +7,8 @@
 		"addKeyframe": "Добавить ключ",
 		"deleteSelected": "Удалить выбранное",
 		"duplicateSelected": "Дублировать выбранное",
+		"copySelected": "Копировать выбранное",
+		"paste": "Вставить",
 		"playPause": "Воспроизведение / Пауза",
 		"cycleForward": "Следующая аннотация",
 		"cycleBackward": "Предыдущая аннотация",

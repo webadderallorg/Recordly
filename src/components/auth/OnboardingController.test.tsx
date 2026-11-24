@@ -70,6 +70,7 @@ vi.mock("./useRecordlyAuth", () => ({ useRecordlyAuth: vi.fn() }));
 
 const pendingKey = "recordly.onboarding.permissionsRequested";
 const seenKey = "recordly.onboarding.v1.seen";
+const guestKey = "recordly.onboarding.signInSkipped";
 const user = { id: "restored-account" } as User;
 const hud = vi.fn(async () => undefined);
 const closeWindow = vi.fn(async () => undefined);
@@ -108,7 +109,7 @@ beforeEach(() => {
 describe("Windows startup after sign-in", () => {
 	const startup = vi.fn(async (_action: string) => true);
 	const isCallbackPending = vi.fn(() => false);
-	function renderReturning(auth: Partial<ReturnType<typeof useRecordlyAuth>> = {}) {
+	function renderStartup(auth: Partial<ReturnType<typeof useRecordlyAuth>> = {}) {
 		vi.mocked(useRecordlyAuth).mockReturnValue({
 			user: null,
 			loading: false,
@@ -123,50 +124,69 @@ describe("Windows startup after sign-in", () => {
 		});
 		state.index = 0;
 		const child = OnboardingWindow().props.children;
-		const returning = child.type(child.props);
-		const result = returning?.type(returning.props);
+		const controller = child.type(child.props);
+		const result = controller ? controller.type(controller.props) : null;
 		for (const effect of state.effects.splice(0)) effect();
 		return result;
 	}
 
 	beforeEach(() => {
-		window.location.search = "?windowType=onboarding&returning=1";
+		vi.stubEnv("DEV", false);
+		window.location.search = "?windowType=onboarding&startup=1";
 		window.electronAPI.getPlatform = vi.fn(async () => "win32");
-		state.slots[0] = { value: "win32" };
+		state.settings.set(seenKey, true);
 		window.electronAPI.resolveStartupOnboarding = startup;
 		isCallbackPending.mockReturnValue(false);
 	});
 
 	it("waits for Start recording after sign-in and opens the HUD without opening the dashboard", async () => {
-		expect(renderReturning()?.type).toBe(RecordlySignInDialog);
+		expect(renderStartup()).toBeNull();
+		expect(renderStartup()?.props).toMatchObject({
+			onboarding: true,
+			onContinueAsGuest: expect.any(Function),
+		});
 		isCallbackPending.mockReturnValue(true);
-		const waiting = renderReturning({ user, callbackActivity: { pending: true } });
+		const waiting = renderStartup({ user, callbackActivity: { pending: true } });
 		expect(waiting?.type).toBe(RecordlySignInDialog);
-		expect(waiting?.props.recordingStart.disabled).toBe(true);
-		await waiting?.props.recordingStart.onPress();
+		expect(waiting?.props.finishDisabled).toBe(true);
+		waiting?.props.onAuthenticated();
 		expect(startup).not.toHaveBeenCalledWith("continue");
 
 		isCallbackPending.mockReturnValue(false);
-		const ready = renderReturning({ user });
+		const ready = renderStartup({ user });
 		expect(ready?.type).toBe(RecordlySignInDialog);
-		expect(ready?.props.recordingStart.disabled).toBe(false);
+		expect(ready?.props.finishDisabled).toBe(false);
 		expect(startup).not.toHaveBeenCalledWith("continue");
-		await ready?.props.recordingStart.onPress();
+		ready?.props.onAuthenticated();
 		expect(startup.mock.calls.filter(([action]) => action !== "show")).toEqual([["continue"]]);
 		expect(hud).not.toHaveBeenCalled();
 		expect(closeWindow).not.toHaveBeenCalled();
 	});
 
 	it("shows Start recording after a cold-start sign-in callback", () => {
-		const ready = renderReturning({ user, callbackVersion: 1 });
+		expect(renderStartup({ user, callbackVersion: 1 })).toBeNull();
+		const ready = renderStartup({ user, callbackVersion: 1 });
 		expect(ready?.type).toBe(RecordlySignInDialog);
-		expect(ready?.props.recordingStart.disabled).toBe(false);
+		expect(ready?.props.finishDisabled).toBe(false);
 		expect(startup).not.toHaveBeenCalledWith("continue");
 	});
 
 	it("opens the HUD automatically when restoring a saved session", async () => {
-		expect(renderReturning({ user })).toBeNull();
+		expect(renderStartup({ user })).toBeNull();
 		await vi.waitFor(() => expect(startup).toHaveBeenCalledExactlyOnceWith("continue"));
+	});
+
+	it("lets a returning Windows guest retry a failed HUD handoff", async () => {
+		state.settings.set(guestKey, true);
+		startup.mockResolvedValueOnce(false);
+		expect(renderStartup()).toBeNull();
+		await vi.waitFor(() => expect(startup).toHaveBeenCalledWith("continue"));
+		const ready = renderStartup();
+		expect(ready?.props.user).toBeNull();
+		expect(ready?.props.finishDisabled).toBe(false);
+		expect(ready?.props.onContinueAsGuest()).toBe(true);
+		ready?.props.onAuthenticated();
+		expect(startup.mock.calls.filter(([action]) => action === "continue")).toHaveLength(2);
 	});
 });
 
@@ -212,22 +232,36 @@ describe("onboarding account and permission restart", () => {
 		});
 	});
 
-	it("preserves production account gating even if the dev tour was dismissed", () => {
+	it("offers the shared production onboarding even if the dev tour was dismissed", async () => {
 		vi.stubEnv("DEV", false);
 		state.settings.set("recordly.dev.onboardingDismissed", true);
 		state.settings.set(seenKey, true);
 		render({ standalone: false, user: null });
-		const result = render({ standalone: false, user: null });
-		expect(result?.props).toMatchObject({ requireSignIn: true, open: true, user: null });
+		await vi.waitFor(() =>
+			expect(render({ standalone: false, user: null })?.props).toMatchObject({
+				onboarding: true,
+				onContinueAsGuest: expect.any(Function),
+			}),
+		);
 	});
 
-	it("requires production sign-in when a previously restored session expires", () => {
+	it("opens shared onboarding when a previously restored session expires", () => {
 		vi.stubEnv("DEV", false);
 		state.settings.set(seenKey, true);
 		render({ standalone: false });
 		render({ standalone: false, user: null });
-		const result = render({ standalone: false, user: null });
-		expect(result?.props).toMatchObject({ requireSignIn: true, open: true, user: null });
+		expect(window.electronAPI.showOnboardingWindow).toHaveBeenCalledExactlyOnceWith({
+			preview: false,
+		});
+	});
+
+	it("reads the guest choice saved by a separate onboarding window", () => {
+		vi.stubEnv("DEV", false);
+		render({ standalone: false, ready: false, user: null });
+		state.settings.set(seenKey, true);
+		state.settings.set(guestKey, true);
+		render({ standalone: false, user: null });
+		expect(render({ standalone: false, user: null })).toBeNull();
 	});
 
 	it("resumes unfinished first-run permissions after closing and restarting", async () => {

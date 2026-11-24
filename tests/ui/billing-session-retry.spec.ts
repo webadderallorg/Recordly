@@ -35,7 +35,10 @@ async function prepare(page: Page, mode: "transient" | "rejected") {
 						storageLimitBytes: null,
 					},
 				};
-			if (action !== "status") throw new Error("No billing mutation expected");
+			if (action !== "status") {
+				document.documentElement.dataset.billingAction = action;
+				throw new Error("No billing mutation expected");
+			}
 			if (token !== "recovered-session-fixture")
 				return { success: false, httpStatus: 401, error: "Sign in again" };
 			return {
@@ -91,9 +94,9 @@ test("definitively rejected recovery is not repeated by manual refresh", async (
 	await expect(page.getByTestId("usage-loading")).toHaveText("false");
 	await expect(page.locator("html")).toHaveAttribute("data-recovery-calls", "1");
 	await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
-	await expect(
-		page.getByRole("button", { name: "Sign in to continue", exact: true }),
-	).toBeVisible();
+	await page.getByRole("button", { name: "Get Started", exact: true }).click();
+	await expect(page.locator("html")).toHaveAttribute("data-pricing-sign-in", "true");
+	await expect(page.locator("html")).not.toHaveAttribute("data-billing-action");
 });
 
 test("a late old-account failure cannot reset the new account's recovery rejection", async ({

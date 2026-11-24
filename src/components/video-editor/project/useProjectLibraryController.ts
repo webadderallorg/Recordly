@@ -1,6 +1,7 @@
 /* biome-ignore-all lint/correctness/useExhaustiveDependencies: grouped editor domain objects contain the thumbnail renderer dependencies. */
 import { type RefObject, useCallback, useEffect, useRef } from "react";
 import { FrameRenderer } from "@/lib/exporter/frameRenderer";
+import { beginAppOperation, recordAppDiagnostic } from "@/lib/feedback/diagnostics";
 import {
 	captureProjectThumbnailCanvas,
 	getProjectThumbnailRenderSize,
@@ -86,14 +87,19 @@ export function useProjectLibraryController({
 	const thumbnailUpdates = useRef(
 		new Map<string, { thumbnailPath: string; updatedAt: number }>(),
 	);
-	const refreshProjectLibrary = useCallback(async () => {
+	const refreshProjectLibrary = useCallback(async (parentOperationId?: string) => {
+		const operation = beginAppOperation("project.library-load", parentOperationId);
+		const started = performance.now();
+		recordAppDiagnostic("project library load started");
 		setProjectLibraryLoading(true);
 		try {
+			operation.step("list-files");
 			const result = await window.electronAPI.listProjectFiles();
 			if (!result.success) {
 				throw new Error(result.error || "Failed to load project library");
 			}
 
+			operation.step("apply-entries");
 			setProjectLibraryEntries(
 				result.entries.map((entry) => {
 					const ready = thumbnailUpdates.current.get(entry.path);
@@ -107,8 +113,17 @@ export function useProjectLibraryController({
 				if (!paths.has(key)) thumbnailUpdates.current.delete(key);
 			}
 			setProjectLibraryError(null);
+			operation.finish("succeeded");
+			recordAppDiagnostic(
+				`project library loaded count=${result.entries.length} elapsedMs=${Math.round(performance.now() - started)}`,
+			);
 		} catch (projectLibraryError) {
+			operation.finish("failed");
 			console.warn("Unable to refresh project library:", projectLibraryError);
+			recordAppDiagnostic(
+				`project library load failed elapsedMs=${Math.round(performance.now() - started)}`,
+				projectLibraryError,
+			);
 			setProjectLibraryError(
 				projectLibraryError instanceof Error
 					? projectLibraryError.message

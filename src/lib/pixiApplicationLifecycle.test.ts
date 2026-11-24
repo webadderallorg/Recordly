@@ -80,6 +80,24 @@ describe("Pixi application lifecycle", () => {
 		);
 	});
 
+	it("only returns live draw batches from Pixi's named batchers", async () => {
+		const app = createApplication();
+		const activeBatch = { label: "active" };
+		const alreadyPooledBatch = { label: "already pooled" };
+		const batcher = { batches: [activeBatch, alreadyPooledBatch], batchIndex: 1 };
+		Object.assign(app.renderer, {
+			renderPipes: { batch: { _activeBatches: { __proto__: null, default: batcher } } },
+		});
+		const batchesAtDestroy = vi.fn();
+		vi.mocked(app.destroy).mockImplementation(() => batchesAtDestroy([...batcher.batches]));
+
+		await initializePixiApplication(app, {});
+		destroyPixiApplication(app, "export renderer");
+
+		expect(app.destroy).toHaveBeenCalledOnce();
+		expect(batchesAtDestroy).toHaveBeenCalledWith([activeBatch]);
+	});
+
 	it("defers teardown until an in-flight initialization settles", async () => {
 		let finishInitialization: (() => void) | undefined;
 		const app = createApplication(

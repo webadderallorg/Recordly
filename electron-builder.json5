@@ -40,6 +40,7 @@
     "!**/recordly-model.json",
     "!node_modules/ffmpeg-static/ffmpeg.sources/**",
     "!node_modules/ffmpeg-static/ffmpeg.exe.sources/**",
+    "!windows-ffmpeg/**",
     "!node_modules/ffmpeg-static/ffmpeg.ffprobe",
     "!electron/native/bin/**/whisper-bench*",
     "!electron/native/bin/**/whisper-quantize*",
@@ -120,6 +121,9 @@
         }
       ]
     }
+  },
+  "dmg": {
+    "icon": "icons/icons/mac/icon.icns"
   },
   "linux": {
     "target": [

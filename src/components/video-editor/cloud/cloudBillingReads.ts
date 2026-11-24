@@ -14,6 +14,19 @@ type Entry = {
 };
 const reads = new Map<string, Entry>();
 
+function billingReadKey(endpoint: string, action: "status" | "catalog", token?: string): string {
+	return JSON.stringify([endpoint, action, action === "status" ? token : null]);
+}
+
+export function getFreshCloudBillingRead(
+	endpoint: string,
+	action: "status" | "catalog",
+	token?: string,
+): Promise<CloudBillingResult> | undefined {
+	const entry = reads.get(billingReadKey(endpoint, action, token));
+	if (entry && !entry.pending && entry.expiresAt > Date.now()) return entry.promise;
+}
+
 /** Display snapshots only. The service authorizes every mutation and reserves quota itself. */
 export function readCloudBilling(
 	endpoint: string,
@@ -21,7 +34,7 @@ export function readCloudBilling(
 	token?: string,
 	fresh = false,
 ): Promise<CloudBillingResult> {
-	const key = JSON.stringify([endpoint, action, action === "status" ? token : null]);
+	const key = billingReadKey(endpoint, action, token);
 	const existing = reads.get(key);
 	if (existing && (existing.pending || (!fresh && existing.expiresAt > Date.now())))
 		return existing.promise;

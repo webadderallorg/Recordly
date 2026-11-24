@@ -53,6 +53,29 @@ test("desktop image stays visible and selectable without a tag while its thumbna
 	await expect(desktop).toHaveAttribute("aria-pressed", "true");
 });
 
+test("an HTTP editor can display desktop wallpaper when the IPC read fails", async ({ page }) => {
+	await page.goto("/tests/ui/desktop-wallpaper.html?wallpaper-fallback=media");
+	await page.getByRole("button", { name: "Make desktop available", exact: true }).click();
+	const desktop = page.getByRole("button", { name: "Desktop wallpaper", exact: true });
+	const preview = desktop.locator("img");
+	await expect(preview).toHaveAttribute("src", "/wallpapers/tahoe-dark.jpg");
+	await expect
+		.poll(() => preview.evaluate((image: HTMLImageElement) => image.naturalWidth))
+		.toBeGreaterThan(0);
+});
+
+test("an unreadable desktop preview falls back to the desktop icon", async ({ page }) => {
+	await page.goto("/tests/ui/desktop-wallpaper.html?wallpaper-fallback=missing");
+	await page.route("**/missing-wallpaper.jpg", (route) => route.fulfill({ status: 404 }));
+	const failedPreview = page.waitForResponse("**/missing-wallpaper.jpg");
+	await page.getByRole("button", { name: "Make desktop available", exact: true }).click();
+	const desktop = page.getByRole("button", { name: "Desktop wallpaper", exact: true });
+	await expect(desktop).toBeEnabled();
+	expect((await failedPreview).status()).toBe(404);
+	await expect(desktop.locator("svg")).toBeVisible();
+	await expect(desktop.locator("img")).toHaveCount(0);
+});
+
 for (const [mode, expected] of [
 	["restore", "/wallpapers/tahoe-light.jpg"],
 	["explicit", "#112233"],

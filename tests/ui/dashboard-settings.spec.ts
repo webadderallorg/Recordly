@@ -540,7 +540,7 @@ test("account popup contains feedback and settings, and editor controls follow t
 	const feedback = page.getByRole("dialog", { name: "Send feedback", exact: true });
 	await expect(feedback).toBeVisible();
 	await expect(
-		feedback.getByText("Relevant diagnostic logs will be attached.", { exact: true }),
+		feedback.getByText("Diagnostic logs are included with your feedback.", { exact: true }),
 	).toBeVisible();
 	await page.keyboard.press("Escape");
 	for (const theme of ["light", "dark"]) {

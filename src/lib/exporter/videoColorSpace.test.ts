@@ -6,7 +6,7 @@ describe("export colour metadata", () => {
 		expect(EXPORT_CANVAS_COLOR_SPACE).toMatchObject({ matrix: "rgb", fullRange: true });
 		expect(ENCODED_H264_COLOR_SPACE_FALLBACK).toMatchObject({
 			matrix: "bt709",
-			transfer: "bt709",
+			transfer: "iec61966-2-1",
 			fullRange: false,
 		});
 	});

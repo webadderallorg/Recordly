@@ -102,7 +102,7 @@ test("editor loads video, switches tools and edits export options", async ({ pag
 	).toBeVisible();
 	await page.keyboard.press("Escape");
 	await expect(page.getByRole("button", { name: "Open presets", exact: true })).toHaveCount(0);
-	await page.getByRole("button", { name: "Add Layer", exact: true }).click();
+	await page.getByRole("button", { name: "Add", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Annotation", exact: true }).click();
 	await expect
 		.poll(async () => (await page.locator("aside").boundingBox())?.width)

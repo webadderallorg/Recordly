@@ -8,10 +8,14 @@
 
 .onboarding-layout {
 	--onboarding-page-padding: clamp(20px, 5vw, 40px);
-	--onboarding-banner-overlap: clamp(48px, 10vh, 96px);
 	position: relative;
 	isolation: isolate;
 	overflow: hidden;
+}
+
+.onboarding-layout,
+.recordly-signin-dialog {
+	--onboarding-banner-overlap: clamp(48px, 10vh, 96px);
 }
 
 .onboarding-ambience {
@@ -55,13 +59,11 @@
 	animation: onboarding-blob-three 10s ease-in-out infinite alternate;
 }
 
-.onboarding-artwork {
-	/* Artwork owns spare height on both pages and gives up space for controls
-	 * in a small window. */
-	flex: 1 1 clamp(112px, 30vh, 320px);
+.onboarding-artwork,
+.recordly-signin-artwork-compact {
+	flex-basis: clamp(112px, 30vh, 320px);
 	min-height: 64px;
 	margin-bottom: calc(-1 * var(--onboarding-banner-overlap));
-	z-index: -1;
 	/* Fade the video itself so the animated colour underneath remains continuous. */
 	mask-image: linear-gradient(
 		to bottom,
@@ -77,6 +79,12 @@
 		rgb(0 0 0 / 20%) 76%,
 		transparent 100%
 	);
+}
+
+.onboarding-artwork {
+	/* Let artwork fill any height the onboarding controls leave available. */
+	flex-grow: 1;
+	z-index: -1;
 }
 
 .onboarding-body {
@@ -216,6 +224,7 @@
 }
 
 .recordly-signin-content-popup {
+	position: relative;
 	gap: 16px;
 	padding: 20px 16px 16px;
 }
@@ -234,16 +243,11 @@
 	gap: var(--signin-field-spacing);
 }
 
-.recordly-signin-content .recordly-signin-start[data-signin-fields] {
-	display: grid;
-	grid-template-rows: minmax(44px, auto) 1rem auto;
-}
-
 .recordly-signin-content [data-signin-form] {
 	gap: var(--signin-field-spacing);
 }
 
-.recordly-signin-artwork {
+.recordly-signin-artwork:not(.recordly-signin-artwork-compact) {
 	flex: 1 1 144px;
 	min-height: 40px;
 }
@@ -279,8 +283,18 @@
 }
 
 @media (max-height: 500px) {
+	.onboarding-layout[data-onboarding-stage="account"] .onboarding-artwork,
+	.recordly-signin-artwork-compact {
+		/* Reserve room for the form and navigation in short windows. */
+		flex-basis: max(64px, calc(100dvh - 350px));
+	}
+
 	.onboarding-layout[data-onboarding-stage="account"] .onboarding-stage-content {
 		flex-shrink: 1;
+	}
+
+	.onboarding-layout[data-onboarding-stage="account"] .onboarding-body {
+		padding-block: 12px 8px;
 	}
 
 	.recordly-signin-content-popup {
@@ -288,7 +302,8 @@
 		padding-block: 8px;
 	}
 
-	.recordly-signin-content-popup [data-signin-fields] {
+	.recordly-signin-content-popup [data-signin-fields],
+	.onboarding-layout .recordly-signin-content [data-signin-fields] {
 		--signin-field-spacing: 6px;
 	}
 
@@ -354,6 +369,11 @@
 	}
 
 	.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"])
+		.onboarding-artwork {
+		flex-basis: 64px;
+	}
+
+	.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"])
 		.recordly-signin-controls,
 	.onboarding-layout[data-onboarding-stage="account"]:has([data-signin-step="code"])
 		.onboarding-body-content,
@@ -399,10 +419,12 @@
 	min-height: 0;
 }
 
-/* Preserve the demo height during a slide. With only one page, the demo can
- * take the space left over by the controls. */
+/* Match the permissions layout in onboarding and in standalone recovery. */
 .onboarding-layout[data-onboarding-carousel]:has(> .onboarding-navigation)
-.onboarding-stage-content {
+.onboarding-stage-content,
+[data-recording-permissions]
+	.onboarding-layout[data-onboarding-carousel]
+	.onboarding-stage-content {
 	flex: 0 1 min(65%, 380px);
 }
 
@@ -422,26 +444,24 @@
 	scrollbar-gutter: stable;
 }
 
-.onboarding-layout:is([data-onboarding-stage="permissions"], [data-onboarding-stage="upgrade"])
-	.onboarding-body {
+.onboarding-layout[data-onboarding-stage="permissions"] .onboarding-body {
 	scrollbar-gutter: stable both-edges;
 }
 
-.onboarding-layout[data-onboarding-stage="upgrade"] .onboarding-body-content {
-	max-width: 760px;
-}
-
-.onboarding-layout[data-onboarding-stage="upgrade"] .split-upgrade-copy {
-	padding: 0;
-}
-
 .onboarding-carousel-footer {
-	/* Production keeps this slot before sign-in makes the actions available. */
 	min-height: 64px;
+}
+
+[data-recording-permissions] .onboarding-carousel-footer {
+	/* Reserve the space occupied by the page dots in onboarding. */
+	padding-bottom: 40px;
 }
 
 @media (max-width: 520px) {
 	.onboarding-layout[data-onboarding-carousel]:has(> .onboarding-navigation)
+		.onboarding-stage-content,
+	[data-recording-permissions]
+		.onboarding-layout[data-onboarding-carousel]
 		.onboarding-stage-content {
 		flex-basis: min(70%, 420px);
 	}

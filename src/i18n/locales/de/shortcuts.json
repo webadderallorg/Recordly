@@ -7,6 +7,8 @@
 		"addKeyframe": "Keyframe hinzufügen",
 		"deleteSelected": "Ausgewählte löschen",
 		"duplicateSelected": "Auswahl duplizieren",
+		"copySelected": "Auswahl kopieren",
+		"paste": "Einfügen",
 		"playPause": "Wiedergabe / Pause",
 		"cycleForward": "Anmerkungen vorwärts durchlaufen",
 		"cycleBackward": "Anmerkungen rückwärts durchlaufen",

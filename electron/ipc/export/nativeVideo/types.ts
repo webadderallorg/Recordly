@@ -13,12 +13,14 @@ export type ElectronGpuDeviceLike = {
 	vendorId?: number | string;
 	vendorString?: string;
 	deviceString?: string;
+	driverVersion?: string;
 };
 
 export type ElectronGpuInfoLike = {
 	gpuDevice?: ElectronGpuDeviceLike[];
 	machineModelName?: string;
 	machineModelVersion?: string;
+	auxAttributes?: { driverVersion?: string };
 };
 
 export interface ExportHardwareInfo {
@@ -29,10 +31,12 @@ export interface ExportHardwareInfo {
 	logicalProcessors: number;
 	totalMemoryGb: number;
 	machineModel: string | null;
+	gpuInfoStatus: "available" | "unavailable" | "timed-out";
 	gpus: Array<{
 		name: string;
 		vendor: string | null;
 		active: boolean | null;
+		driverVersion?: string;
 	}>;
 	gpuFeatures: {
 		videoDecode: string | null;

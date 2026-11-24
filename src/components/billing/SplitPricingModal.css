@@ -4,7 +4,7 @@
 }
 
 .split-upgrade-modal {
-	width: min(600px, calc(100vw - 48px));
+	width: min(480px, calc(100vw - 48px));
 	max-width: none;
 	max-height: calc(100dvh - 48px);
 	padding: 0;
@@ -40,6 +40,7 @@
 }
 
 .split-upgrade-body {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	gap: 0;
@@ -53,49 +54,68 @@
 .split-upgrade-copy {
 	display: flex;
 	flex-direction: column;
-	gap: 24px;
+	gap: 20px;
 	min-width: 0;
-	padding: 24px;
+	padding: 4px 28px 24px;
 }
 
 .split-upgrade-details {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-	gap: 24px;
-	align-items: center;
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
 }
 
 .split-upgrade-header .recordly-signin-hero {
 	text-wrap: balance;
 }
 
-.split-upgrade-benefits h3 {
-	margin-bottom: 18px;
-	font-size: 12px;
-	font-weight: 600;
-	color: var(--muted);
+/* Accepted payment badges sit quietly under the checkout button. */
+.split-upgrade-purchase .pricing-payment-methods {
+	flex-wrap: nowrap;
+	gap: 8px;
+	max-width: none;
+	padding: 0;
 }
 
-.split-upgrade-benefits ul {
+.split-upgrade-purchase .pricing-payment-method {
+	flex: 0 1 40px;
+	min-width: 0;
+}
+
+.split-upgrade-brand {
+	white-space: nowrap;
+}
+
+.split-upgrade-mark {
+	width: 0.88em;
+	height: 0.88em;
+	vertical-align: -0.08em;
+	color: var(--accent);
+}
+
+.split-upgrade-benefits {
 	display: grid;
-	grid-template-columns: 1fr;
 	gap: 10px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
 }
 
 .split-upgrade-benefits li {
 	display: flex;
 	align-items: flex-start;
 	gap: 10px;
-	font-size: 12px;
-	line-height: 1.5;
-	color: color-mix(in srgb, var(--foreground) 85%, var(--surface));
+	font-size: 13px;
+	font-weight: 400;
+	line-height: 1.45;
+	color: var(--foreground);
 }
 
 .split-upgrade-check {
 	display: grid;
 	place-items: center;
-	flex: 0 0 17px;
-	height: 17px;
+	flex: 0 0 18px;
+	height: 18px;
 	margin-top: 1px;
 	border-radius: 50%;
 	corner-shape: round;
@@ -107,94 +127,53 @@
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
-	margin-top: 0;
 }
 
-.split-upgrade-plans {
-	gap: 0;
-}
-
-.split-upgrade-plan {
-	min-height: 82px;
-	padding: 15px 16px;
-	border: 1px solid var(--separator);
-	border-radius: 14px;
-	background: color-mix(in srgb, var(--foreground) 2%, var(--surface));
-	box-shadow: none;
-}
-
-.split-upgrade-plan[data-selected="true"] {
-	border-color: color-mix(in srgb, var(--accent) 40%, var(--separator));
-	background: color-mix(in srgb, var(--accent) 5%, var(--surface));
-}
-
-.split-upgrade-plan .radio__content {
+.split-upgrade-details > .split-upgrade-price {
 	display: flex;
-	flex: 1;
-	width: 100%;
-	align-items: center;
-	justify-content: space-between;
-	gap: 10px;
-}
-
-.split-upgrade-plan-name {
-	display: flex;
-	flex: 1;
 	flex-direction: column;
-	gap: 3px;
+	align-items: center;
+	align-self: stretch;
+	gap: 4px;
+	text-align: center;
 }
 
-.split-upgrade-plan-name .label {
-	font-size: 14px;
-	font-weight: 600;
-	color: var(--foreground);
+.split-upgrade-price-line {
+	display: flex;
+	align-items: baseline;
+	justify-content: center;
+	gap: 6px;
+	margin: 0;
 }
 
-.split-upgrade-plan-name > span {
+.split-upgrade-price-line .pricing-regular-price {
 	color: var(--muted);
-	font-size: 11px;
-	line-height: 1.4;
-}
-
-.split-upgrade-plan .pricing-price-offer {
-	text-align: end;
-}
-
-.split-upgrade-plan .pricing-price {
-	font-size: 27px;
-	font-weight: 650;
-	letter-spacing: -0.8px;
-	line-height: 1.2;
+	font-size: 1rem;
+	font-weight: 500;
+	text-decoration: line-through;
 	white-space: nowrap;
 }
 
-.split-upgrade-plan .pricing-price span {
-	font-size: 11px;
-	font-weight: 400;
-	letter-spacing: 0;
+.split-upgrade-price .pricing-price {
+	font-size: 2.125rem;
+	font-weight: 650;
+	letter-spacing: -0.035em;
+	line-height: 1.1;
+	white-space: nowrap;
+}
+
+.split-upgrade-price-period {
+	font-size: 0.8125rem;
 	color: var(--muted);
 }
 
-.split-upgrade-plan .pricing-regular-price {
-	justify-content: flex-end;
-	gap: 6px;
-	margin-bottom: 4px;
-}
-
-.split-upgrade-plan .pricing-regular-price del {
-	font-size: 11px;
-	color: var(--muted);
-}
-
-.split-upgrade-plan .pricing-price-banner {
+.split-upgrade-savings {
 	margin: 0;
-	padding: 2px 6px;
-	border-radius: 5px;
-	font-size: 10px;
-	font-weight: 600;
-	line-height: 1.3;
-	background: var(--success-soft);
-	color: var(--success-soft-foreground);
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1.4;
+	color: color-mix(in srgb, var(--success) 65%, var(--foreground));
+	text-wrap: balance;
 }
 
 .split-upgrade-actions {
@@ -207,14 +186,20 @@
 	min-height: 46px;
 }
 
-.split-upgrade-purchase .pricing-payment-methods {
-	padding: 0;
-}
-
 .split-upgrade-purchase .pricing-error,
 .split-upgrade-purchase .pricing-feedback {
 	margin: 0;
 	font-size: 12px;
+	text-align: center;
+	text-wrap: balance;
+}
+
+/* Status reads as a quiet caption above the action, not a card. */
+.split-upgrade-purchase .pricing-feedback {
+	padding: 0;
+	border-radius: 0;
+	background: none;
+	color: var(--muted);
 }
 
 .split-upgrade-body > .onboarding-layout {
@@ -224,65 +209,32 @@
 
 /* Use the sign-in shell's fade, ambience and overlap; only size its slots. */
 .split-upgrade-body .onboarding-artwork {
-	flex: 0 0 clamp(180px, 35dvh, 320px);
+	flex: 0 0 clamp(150px, 28dvh, 260px);
 }
 
 .split-upgrade-body .onboarding-layout[data-onboarding-stage] .onboarding-stage-content {
 	flex: 0 0 auto;
 }
 
-@media (min-width: 601px) and (max-height: 740px) {
-	.split-upgrade-copy {
-		gap: 20px;
-		padding: 24px;
-	}
-	.split-upgrade-benefits ul {
-		gap: 8px;
-	}
-	.split-upgrade-benefits li {
-		font-size: 12px;
-		line-height: 1.4;
-	}
-	.split-upgrade-purchase {
-		gap: 8px;
-	}
-	.split-upgrade-plan {
-		min-height: 70px;
-		padding-block: 10px;
-	}
-}
-
-@media (max-width: 600px) {
-	.split-upgrade-modal {
-		width: min(480px, calc(100vw - 24px));
-		max-height: calc(100dvh - 24px);
-		border-radius: 24px;
-	}
-	.split-upgrade-copy {
-		gap: 24px;
-		padding: 26px;
-	}
+@media (max-height: 740px) {
+	.split-upgrade-copy,
 	.split-upgrade-details {
-		grid-template-columns: 1fr;
-		gap: 24px;
+		gap: 16px;
 	}
-	.split-upgrade-benefits ul {
-		grid-template-columns: 1fr;
-		gap: 11px;
+	.split-upgrade-benefits {
+		gap: 8px;
 	}
-	.split-upgrade-plan {
-		padding-inline: 12px;
+	.split-upgrade-body .onboarding-artwork {
+		flex-basis: clamp(120px, 22dvh, 200px);
 	}
 }
 
-@media (max-width: 360px) {
+@media (max-width: 520px) {
+	.split-upgrade-modal {
+		width: calc(100vw - 24px);
+		max-height: calc(100dvh - 24px);
+	}
 	.split-upgrade-copy {
 		padding-inline: 20px;
-	}
-	.split-upgrade-plan .radio__content {
-		flex-wrap: wrap;
-	}
-	.split-upgrade-plan .pricing-price-offer {
-		flex: 1 0 100%;
 	}
 }

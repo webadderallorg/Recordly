@@ -1,8 +1,10 @@
 import { Card, Modal } from "@heroui/react";
+import { useEffect } from "react";
 import { RecordlyAccountMenu } from "@/components/auth/RecordlyAccountMenu";
 import { UpgradeButton } from "@/components/billing/UpgradeButton";
 import { Button } from "@/components/ui/button";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
+import { beginAppOperation, recordAppDiagnostic } from "@/lib/feedback/diagnostics";
 import { AppFrameHeader } from "../layout/AppFrameHeader";
 import { AppUpdateButton } from "../layout/AppUpdateButton";
 import { DashboardAnnouncements } from "./DashboardAnnouncements";
@@ -16,6 +18,16 @@ import { useDashboardModel } from "./useDashboardModel";
 export function Dashboard(props: DashboardProps) {
 	const { t: uiText } = useUiLocale();
 	const model = useDashboardModel(props);
+	const { section } = model;
+	const { open } = props;
+	useEffect(() => {
+		if (!open) return;
+		const kind = /^(projects|raw|shared|settings)$/.test(section) ? section : "folder";
+		recordAppDiagnostic(`Home section shown kind=${kind}`);
+		const operation = beginAppOperation("home.show-section");
+		operation.step(kind);
+		operation.finish("succeeded");
+	}, [open, section]);
 	const view = { ...props, ...model };
 	return (
 		<>

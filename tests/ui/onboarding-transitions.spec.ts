@@ -68,7 +68,7 @@ for (const [width, height] of [
 				});
 				return samples[0];
 			});
-			await tour.getByRole("button", { name: "Continue", exact: true }).click();
+			await tour.getByRole("button", { name: "Continue as guest", exact: true }).click();
 			await expect(page.locator("html")).toHaveAttribute(
 				"data-permission-check-started",
 				"true",

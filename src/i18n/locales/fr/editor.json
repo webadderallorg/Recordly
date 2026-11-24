@@ -65,7 +65,7 @@
 		"copyLink": "Copier le lien",
 		"shareLink": "Lien de partage",
 		"saveLinkFailed": "Le partage a été créé, mais son lien n’a pas pu être enregistré localement",
-		"verifyPlanFailed": "Impossible de vérifier votre offre cloud.",
+		"verifyPlanFailed": "Impossible de vérifier votre offre.",
 		"refreshPlan": "Actualiser l’offre",
 		"share": "Partager",
 		"signInToShare": "Connectez-vous pour partager",
@@ -253,7 +253,7 @@
 		"processingAudioEdits": "Traitement de l’audio avec modifications de vitesse/superposition"
 	},
 	"toolbar": {
-		"addLayer": "Ajouter une couche",
+		"addLayer": "Ajouter",
 		"splitClip": "Diviser le clip (C)",
 		"trimStart": "Couper le début jusqu'à la tête de lecture ({{shortcut}})",
 		"trimEnd": "Couper la fin après la tête de lecture ({{shortcut}})"

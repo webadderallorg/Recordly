@@ -9,7 +9,7 @@ import {
 	useState,
 } from "react";
 import { getTimeAtClipSeam } from "../../core/clipPresentation";
-import { ZOOM_ROW_ID } from "../../core/constants";
+import { CAPTION_ROW_ID, ZOOM_ROW_ID } from "../../core/constants";
 import { isAnnotationTrackRowId, isAudioTrackRowId } from "../../core/rows";
 import { useTimelinePresentation } from "../../core/TimelinePresentation";
 import {
@@ -54,6 +54,7 @@ export default function TimelineCanvas({
 	sourceAudioTracks = [],
 	getSourceAudioTrackSettingsForClip,
 	showSourceAudioTrack = false,
+	onTrackCountChange,
 	liveSpanPreviewById,
 	liveHiddenItemIds,
 	isDragging = false,
@@ -240,8 +241,12 @@ export default function TimelineCanvas({
 			if (isAudioTrackRowId(item.rowId)) audioRowIds.add(item.rowId);
 		}
 		const sourceAudioRows = showSourceAudioTrack ? sourceAudioTracks.length : 0;
-		return 2 + sourceAudioRows + annotationRowIds.size + audioRowIds.size;
-	}, [items, showSourceAudioTrack, sourceAudioTracks.length]);
+		const captionRows = captionsEnabled || items.some((item) => item.rowId === CAPTION_ROW_ID);
+		return 2 + Number(captionRows) + sourceAudioRows + annotationRowIds.size + audioRowIds.size;
+	}, [items, captionsEnabled, showSourceAudioTrack, sourceAudioTracks.length]);
+	useEffect(() => {
+		onTrackCountChange?.(timelineRowCount);
+	}, [onTrackCountChange, timelineRowCount]);
 	const timelineRowsMinHeightPx = getTimelineRowsMinHeightPx(timelineRowCount);
 	const timelineContentMinHeightPx = getTimelineContentMinHeightPx(timelineRowCount);
 	const sideProperty = direction === "rtl" ? "right" : "left";

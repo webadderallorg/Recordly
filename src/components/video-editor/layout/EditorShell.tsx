@@ -4,6 +4,7 @@ import { OnboardingController } from "@/components/auth/OnboardingController";
 import { RecordlyAccountMenu } from "@/components/auth/RecordlyAccountMenu";
 import { RecordlySignInDialog, type SignInReason } from "@/components/auth/RecordlySignInDialog";
 import { useRecordlyAuth } from "@/components/auth/useRecordlyAuth";
+import { useBilling } from "@/components/billing/BillingProvider";
 import { PricingModal } from "@/components/billing/PricingModal";
 import { AccountProfileContext } from "@/components/ui/account-avatar";
 import { Button } from "@/components/ui/button";
@@ -85,23 +86,32 @@ export function EditorShell(props: Props) {
 		"projects",
 	);
 	const auth = useRecordlyAuth();
-	const resumeShareAfterSignIn = useRef(false);
-	const requestSignIn = (reason: SignInReason, resumeShare = false) => {
+	const { setPricingOpen, refreshAfterSignIn } = useBilling();
+	const resumeAfterSignIn = useRef<"share" | "pricing" | undefined>(undefined);
+	const requestSignIn = (reason: SignInReason, resume?: "share" | "pricing") => {
 		if (reason === "share" && auth.user) {
 			setShareRequestNonce((value) => value + 1);
 			return;
 		}
-		resumeShareAfterSignIn.current = reason === "share" || resumeShare;
+		resumeAfterSignIn.current = resume ?? (reason === "share" ? "share" : undefined);
 		setSignInReason(reason);
 		setSignInOpen(true);
 	};
-	const handleAuthenticated = useCallback(() => {
-		setSignInOpen(false);
-		if (resumeShareAfterSignIn.current) {
-			resumeShareAfterSignIn.current = false;
-			setShareRequestNonce((value) => value + 1);
-		}
+	const handleSignInOpenChange = useCallback((open: boolean) => {
+		if (!open) resumeAfterSignIn.current = undefined;
+		setSignInOpen(open);
 	}, []);
+	const handleAuthenticated = useCallback(() => {
+		const resume = resumeAfterSignIn.current;
+		resumeAfterSignIn.current = undefined;
+		setSignInOpen(false);
+		if (resume === "share") {
+			setShareRequestNonce((value) => value + 1);
+		} else if (resume === "pricing") {
+			setPricingOpen(true);
+			refreshAfterSignIn();
+		}
+	}, [refreshAfterSignIn, setPricingOpen]);
 	const {
 		t,
 		project,
@@ -264,7 +274,7 @@ export function EditorShell(props: Props) {
 	const editorDialogs = (
 		<AccountProfileContext.Provider value={auth.user}>
 			<PricingModal
-				onSignIn={() => requestSignIn(auth.user ? "reauthenticate" : "account")}
+				onSignIn={() => requestSignIn(auth.user ? "reauthenticate" : "account", "pricing")}
 			/>
 			<DashboardSettingsContext.Provider value={dashboardSettingsContent}>
 				<AppSettingsDialog
@@ -400,7 +410,7 @@ export function EditorShell(props: Props) {
 						handleStartExportFromDropdown={dialogActions.handleStartExportFromDropdown}
 						prepareExportForShare={dialogActions.prepareExportForShare}
 						onRequestShareSignIn={() =>
-							requestSignIn(auth.user ? "reauthenticate" : "share", true)
+							requestSignIn(auth.user ? "reauthenticate" : "share", "share")
 						}
 						onRequestFeedbackSignIn={() =>
 							requestSignIn(auth.user ? "reauthenticate" : "account")
@@ -508,7 +518,6 @@ export function EditorShell(props: Props) {
 								currentTime={ui.currentTime}
 								isPlaying={ui.isPlaying}
 								previewVolume={ui.previewVolume}
-								setPreviewVolume={ui.setPreviewVolume}
 								suspendRendering={exportStatus.shouldSuspendPreviewRendering}
 								appearance={appearance}
 								timeline={timeline}
@@ -557,6 +566,8 @@ export function EditorShell(props: Props) {
 								currentTime={ui.currentTime}
 								handleSelectAnnotation={handleSelectAnnotation}
 								onDuplicateSelectedRegion={editing.duplicateSelectedRegion}
+								onCopySelectedRegion={editing.copySelectedRegion}
+								onPasteCopiedRegion={editing.pasteCopiedRegion}
 							/>
 						</AutoZoomNudgeContext.Provider>
 					</div>
@@ -612,7 +623,7 @@ export function EditorShell(props: Props) {
 
 			<RecordlySignInDialog
 				open={signInOpen}
-				onOpenChange={setSignInOpen}
+				onOpenChange={handleSignInOpenChange}
 				reason={signInReason}
 				authenticationVersion={auth.callbackVersion}
 				user={auth.user}

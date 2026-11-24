@@ -9,6 +9,7 @@ import {
 	StreamTarget,
 } from "mediabunny";
 import type { ExportConfig } from "./types";
+import { EXPORT_CANVAS_COLOR_SPACE } from "./videoColorSpace";
 
 /**
  * Chunk boundary used by both the mediabunny StreamTarget and the IPC writer.
@@ -147,6 +148,20 @@ export class VideoMuxer {
 			throw new Error("Muxer not initialized");
 		}
 
+		if (meta?.decoderConfig) {
+			// Some WebCodecs versions label sRGB canvas values as Rec.709.
+			// Preserve the encoder's matrix and range and describe the canvas transfer in MP4.
+			meta = {
+				...meta,
+				decoderConfig: {
+					...meta.decoderConfig,
+					colorSpace: {
+						...meta.decoderConfig.colorSpace,
+						transfer: EXPORT_CANVAS_COLOR_SPACE.transfer,
+					},
+				},
+			};
+		}
 		const packet = EncodedPacket.fromEncodedChunk(chunk);
 		await this.videoSource.add(packet, meta);
 	}

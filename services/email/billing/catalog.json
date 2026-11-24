@@ -16,7 +16,7 @@
 		"action": "Manage subscription",
 		"actionUrl": "{{ .ActionURL }}",
 		"footer": "You received this email because you subscribed to Recordly.",
-		"preheader": "You're in! Your Cloud benefits are ready to use."
+		"preheader": "You're in! Your Plus benefits are ready to use."
 	},
 	{
 		"id": "subscription-plan-changed",
@@ -61,7 +61,7 @@
 		"category": "Subscriptions",
 		"subject": "Your Recordly subscription will end on {{ .EndDate }}",
 		"heading": "Subscription ending with",
-		"message": "We're sorry to see you go. Your {{ .PlanName }} subscription won't renew, and you can enjoy your Cloud benefits until the date below.",
+		"message": "We're sorry to see you go. Your {{ .PlanName }} subscription won't renew, and you can enjoy your Plus benefits until the date below.",
 		"facts": [["Plan", "{{ .PlanName }}"], ["Access until", "{{ .EndDate }}"]],
 		"detail": "For recording retention after your subscription ends, review the Terms of service at https://videos.recordly.dev/terms. Keep local copies of recordings you want to retain.",
 		"action": "Manage subscription",

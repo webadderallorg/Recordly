@@ -32,7 +32,7 @@ async function linked(video: string): Promise<RecordingWebcamSource | undefined>
 }
 async function ffmpeg(args: string[], signal?: AbortSignal) {
 	await run(
-		getFfmpegBinaryPath(),
+		await getFfmpegBinaryPath(),
 		["-hide_banner", "-loglevel", "error", "-nostdin", "-y", ...args],
 		{ signal, timeout: 60 * 60 * 1000, maxBuffer: 1024 * 1024 },
 	);
@@ -58,7 +58,7 @@ export async function composeSequenceWebcam(
 	const next = added ? await linked(added) : undefined;
 	const firstPath = base?.sourcePath || next?.sourcePath;
 	if (!firstPath) return undefined;
-	const meta = await probeNativeVideoMetadata(getFfmpegBinaryPath(), firstPath, signal);
+	const meta = await probeNativeVideoMetadata(await getFfmpegBinaryPath(), firstPath, signal);
 	const width = Math.ceil(meta.width / 2) * 2;
 	const height = Math.ceil(meta.height / 2) * 2;
 	const ranges: Range[] = [];
@@ -71,7 +71,7 @@ export async function composeSequenceWebcam(
 		let filter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p`;
 		if (source?.sourcePath) {
 			const info = await probeNativeVideoMetadata(
-				getFfmpegBinaryPath(),
+				await getFfmpegBinaryPath(),
 				source.sourcePath,
 				signal,
 			);

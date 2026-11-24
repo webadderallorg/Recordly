@@ -77,6 +77,7 @@ vi.mock("@/components/video-editor/cloud/endpoint", () => ({
 	CLOUD_SHARE_ENDPOINT: "https://cloud.test",
 }));
 vi.mock("@/components/video-editor/cloud/cloudBillingReads", () => ({
+	getFreshCloudBillingRead: () => undefined,
 	readCloudBilling: (...args: unknown[]) => state.read(...args),
 	invalidateCloudBillingReads: vi.fn(),
 }));

@@ -4,8 +4,25 @@ import {
 	clusterComments,
 	clusterReactions,
 	clusterTimeline,
+	getCreatorAvatarUrl,
 	timestampParts,
 } from "./shareModel.ts";
+
+test("creator avatars use absolute HTTPS URLs without credentials", () => {
+	assert.equal(
+		getCreatorAvatarUrl("https://images.example.test/avatar.png"),
+		"https://images.example.test/avatar.png",
+	);
+	for (const value of [
+		null,
+		"missing",
+		"/avatar.png",
+		"http://example.test/a",
+		"https://user:pass@example.test/a",
+		"javascript:alert(1)",
+	])
+		assert.equal(getCreatorAvatarUrl(value), undefined);
+});
 
 const comment = (timestamp: number) => ({
 	id: timestamp,

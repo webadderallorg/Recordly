@@ -13,11 +13,17 @@ function mockList(result: unknown) {
 }
 it("blocks five recordings, including incomplete uploads", async () => {
 	mockList({ success: true, videos: Array.from({ length: 5 }, (_, i) => ({ ready: i < 4 })) });
-	expect(await checkShareCapacity("https://example.test/api/upload", "token")).toBe(false);
+	expect(await checkShareCapacity("https://example.test/api/upload", "token")).toEqual({
+		available: false,
+		recordingQuota: { used: 5, limit: 5 },
+	});
 });
 it("allows another share after a slot is freed", async () => {
 	const manage = mockList({ success: true, videos: Array(4).fill({ ready: true }) });
-	expect(await checkShareCapacity("https://example.test/api/upload", "token")).toBe(true);
+	expect(await checkShareCapacity("https://example.test/api/upload", "token")).toEqual({
+		available: true,
+		recordingQuota: { used: 4, limit: 5 },
+	});
 	expect(manage).toHaveBeenCalledWith({
 		endpoint: "https://example.test/api/upload",
 		token: "token",
@@ -43,9 +49,15 @@ it("recovers a rejected session once and checks free capacity with the refreshed
 	const manage = mockList({ success: true, videos: [] });
 	window.electronAPI.cloudBilling = billing;
 	const refresh = vi.fn().mockResolvedValue("refreshed");
-	expect(await checkShareCapacity("https://example.test/api/upload", "expired", refresh)).toBe(
-		true,
+	const capacity = await checkShareCapacity(
+		"https://example.test/api/upload",
+		"expired",
+		refresh,
 	);
+	expect(capacity).toEqual({
+		available: true,
+		recordingQuota: { used: 0, limit: 5 },
+	});
 	expect(refresh).toHaveBeenCalledTimes(1);
 	expect(manage).toHaveBeenCalledWith({
 		endpoint: "https://example.test/api/upload",
@@ -116,7 +128,9 @@ it.each([
 ])("uses legacy quota only when billing route is unsupported (%s)", async (httpStatus) => {
 	const manage = mockList({ success: true, videos: Array(5).fill({ ready: true }) });
 	window.electronAPI.cloudBilling = vi.fn().mockResolvedValue({ success: false, httpStatus });
-	expect(await checkShareCapacity("https://example.test/api/upload", "token")).toBe(false);
+	expect(await checkShareCapacity("https://example.test/api/upload", "token")).toMatchObject({
+		available: false,
+	});
 	expect(manage).toHaveBeenCalledTimes(1);
 });
 
@@ -129,7 +143,9 @@ it("supports an old bridge with an explicitly missing billing IPC handler", asyn
 				"Error invoking remote method 'cloud-billing': Error: No handler registered for 'cloud-billing'",
 			),
 		);
-	expect(await checkShareCapacity("https://example.test/api/upload", "token")).toBe(true);
+	expect(await checkShareCapacity("https://example.test/api/upload", "token")).toMatchObject({
+		available: true,
+	});
 	expect(manage).toHaveBeenCalledTimes(1);
 });
 
@@ -192,9 +208,12 @@ it.each(["pro", "free"])("only verified Plus can have unlimited storage (%s)", a
 		},
 	});
 	if (plan === "pro")
-		expect(await checkShareCapacity("https://example.test/api/upload", "token")).toBe(true);
+		expect(await checkShareCapacity("https://example.test/api/upload", "token")).toEqual({
+			available: true,
+			recordingQuota: null,
+		});
 	else
 		await expect(
 			checkShareCapacity("https://example.test/api/upload", "token"),
-		).rejects.toThrow("Could not verify your cloud plan");
+		).rejects.toThrow("Could not verify your billing plan");
 });

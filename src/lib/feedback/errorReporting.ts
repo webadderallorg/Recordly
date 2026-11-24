@@ -1,5 +1,10 @@
 import type { AppErrorReport } from "../../../services/supabase/functions/_shared/appErrorReport";
-import { collectFeedbackDiagnostics, redactDiagnostic } from "./diagnostics";
+import {
+	beginAppOperation,
+	collectFeedbackDiagnostics,
+	recordAppDiagnostic,
+	redactDiagnostic,
+} from "./diagnostics";
 import { submitExportErrorReport } from "./exportErrorReporting";
 
 export async function buildErrorReport(
@@ -22,6 +27,19 @@ export async function reportError(
 	error: string,
 	context = "application",
 	format: AppErrorReport["format"] = "unknown",
+	prepareReport = () => buildErrorReport(error, context, format),
 ) {
-	await submitExportErrorReport(await buildErrorReport(error, context, format));
+	const operation = beginAppOperation("feedback.report-error");
+	try {
+		operation.step("collect-diagnostics");
+		const report = await prepareReport();
+		operation.step("submit");
+		await submitExportErrorReport(report);
+		operation.finish("succeeded");
+	} catch (error) {
+		operation.finish("failed");
+		recordAppDiagnostic(`[report] submission failed context=${context}`, error);
+		throw error;
+	}
+	recordAppDiagnostic(`[report] submission confirmed context=${context}`);
 }

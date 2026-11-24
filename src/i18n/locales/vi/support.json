@@ -1,4 +1,6 @@
 {
+	"diagnosticsLoading": "Đang thu thập thông tin chẩn đoán…",
+	"diagnosticsUnavailable": "Không thể tải chi tiết chẩn đoán.",
 	"reportTitle": "Gửi lỗi này và nhật ký chẩn đoán cho bộ phận hỗ trợ Recordly",
 	"reportSending": "Đang gửi nhật ký…",
 	"reportSent": "Đã gửi báo cáo",

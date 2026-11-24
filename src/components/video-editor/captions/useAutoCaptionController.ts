@@ -15,6 +15,8 @@ import { resolveVideoUrl } from "../projectPersistence";
 import type { AutoCaptionSettings, CaptionCue } from "../types";
 import { getErrorMessage } from "../videoEditorUtils";
 
+const captionFailureToast = { id: "auto-caption-generation-failed", duration: 10_000 };
+
 type DownloadStatus = "idle" | "downloading" | "downloaded" | "error";
 type Translator = (
 	key: string,
@@ -289,7 +291,7 @@ export function useAutoCaptionController({
 				});
 			}
 			if (!sourcePath) {
-				toast.error(te("noSourceVideo", "No source video is loaded"));
+				toast.error(te("noSourceVideo", "No source video is loaded"), captionFailureToast);
 				return;
 			}
 			let managedModelPath = downloadedWhisperModelPath;
@@ -338,10 +340,12 @@ export function useAutoCaptionController({
 			if (!result.success || !result.cues) {
 				const errorMessage = result.error ? getErrorMessage(result.error) : result.message;
 				toast.error(te("captionsFailed", "Failed to generate captions"), {
+					...captionFailureToast,
 					description: errorMessage,
 				});
 				return;
 			}
+			toast.dismiss(captionFailureToast.id);
 			setAutoCaptions(result.cues);
 			if (result.cues.length > 0) {
 				setAutoCaptionSettings((current) => ({ ...current, enabled: true }));
@@ -353,6 +357,7 @@ export function useAutoCaptionController({
 			);
 		} catch (error) {
 			toast.error(te("captionsFailed", "Failed to generate captions"), {
+				...captionFailureToast,
 				description: getErrorMessage(error),
 			});
 		} finally {

@@ -68,7 +68,7 @@ export function requiredRecordingDurationMs(project: Record<string, unknown>): n
 export async function relinkProjectRecording(
 	projectPath: string,
 	chooseRecording: (missingPath: string) => Promise<string | null>,
-	probe = (file: string) => probeNativeVideoMetadata(getFfmpegBinaryPath(), file),
+	probe = async (file: string) => probeNativeVideoMetadata(await getFfmpegBinaryPath(), file),
 	isCurrent = () => true,
 ) {
 	const target = await requireLibraryProject(projectPath);

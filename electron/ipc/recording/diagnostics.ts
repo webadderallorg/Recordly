@@ -192,7 +192,7 @@ export function summarizeMicrophoneChunkTiming(
 /** Probe the duration of a media file (in seconds) using the container header. */
 export async function probeMediaDurationSeconds(filePath: string): Promise<number> {
 	const start = Date.now();
-	const ffmpegPath = getFfmpegBinaryPath();
+	const ffmpegPath = await getFfmpegBinaryPath();
 	try {
 		await execFileAsync(ffmpegPath, ["-i", filePath, "-hide_banner"], { timeout: 5000 });
 	} catch (error) {
@@ -272,7 +272,7 @@ export async function probeVideoStreamDuration(
 	const start = Date.now();
 	try {
 		const result = await execFileAsync(
-			getFfprobeBinaryPath(),
+			await getFfprobeBinaryPath(),
 			[
 				"-v",
 				"error",
@@ -477,7 +477,7 @@ export async function getCompanionAudioStartDelayMs(companionPath: string) {
 }
 
 export async function hasEmbeddedAudioStream(videoPath: string) {
-	const ffmpegPath = getFfmpegBinaryPath();
+	const ffmpegPath = await getFfmpegBinaryPath();
 	let stderr = "";
 
 	try {
@@ -612,7 +612,7 @@ export async function validateRecordedVideo(videoPath: string) {
 		);
 	}
 
-	const ffmpegPath = getFfmpegBinaryPath();
+	const ffmpegPath = await getFfmpegBinaryPath();
 	let stderr = "";
 
 	try {

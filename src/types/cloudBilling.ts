@@ -137,10 +137,10 @@ export function parseCloudBillingStatus(result: unknown): {
 	usage: CloudBillingUsage;
 } {
 	if (!result || typeof result !== "object" || Array.isArray(result))
-		throw new Error("Could not verify your cloud plan.");
+		throw new Error("Could not verify your billing plan.");
 	const value = result as CloudBillingResult;
 	if (value.success !== true)
-		throw new Error(value.error || "Could not verify your cloud plan. Try again.");
+		throw new Error(value.error || "Could not verify your billing plan. Try again.");
 	const { billing, usage } = value;
 	if (
 		!billing ||
@@ -163,7 +163,9 @@ export function parseCloudBillingStatus(result: unknown): {
 		!Number.isSafeInteger(usage.storageBytes) ||
 		usage.storageBytes < 0 ||
 		!(usage.storageLimitBytes === null
-			? billing.plan === "pro"
+			? // A non-active Plus subscription is normalized to free below and
+				// keeps its subscription status, so this parse stays idempotent.
+				typeof billing.subscriptionStatus === "string"
 			: Number.isSafeInteger(usage.storageLimitBytes) && usage.storageLimitBytes > 0) ||
 		!(
 			usage.recordingLimit === null ||
@@ -176,13 +178,21 @@ export function parseCloudBillingStatus(result: unknown): {
 		new Set(billing.checkoutIntervals).size !== billing.checkoutIntervals.length ||
 		billing.checkoutAvailable !== billing.checkoutIntervals.length > 0
 	)
-		throw new Error("Could not verify your cloud plan. Try again.");
+		throw new Error("Could not verify your billing plan. Try again.");
 	const entitled = billing.plan === "pro" && billing.subscriptionStatus === "active";
-	if ((billing.plan === "pro" && !entitled) || (usage.recordingLimit === null) !== entitled)
-		throw new Error("Could not verify your cloud plan. Try again.");
+	// A Plus subscription that is not active (incomplete after an unfinished
+	// checkout, past_due, unpaid…) is a real account state, not a bad response.
+	// It never grants Cloud here; it is shown as free so the account can still
+	// reach the billing portal to finish or cancel the payment.
+	if (
+		entitled
+			? usage.recordingLimit !== null
+			: billing.plan === "free" && usage.recordingLimit === null
+	)
+		throw new Error("Could not verify your billing plan. Try again.");
 	return {
 		billing: {
-			plan: billing.plan,
+			plan: entitled ? "pro" : "free",
 			subscriptionStatus: billing.subscriptionStatus,
 			currentPeriodEnd: billing.currentPeriodEnd,
 			cancelAtPeriodEnd: billing.cancelAtPeriodEnd,
@@ -193,7 +203,9 @@ export function parseCloudBillingStatus(result: unknown): {
 		},
 		usage: {
 			recordings: usage.recordings,
-			recordingLimit: usage.recordingLimit,
+			// An unlimited claim without an active plan unlocks nothing locally;
+			// the service still enforces the account's real quota.
+			recordingLimit: entitled ? null : (usage.recordingLimit ?? 0),
 			maxRecordingBytes: usage.maxRecordingBytes,
 			storageBytes: usage.storageBytes,
 			storageLimitBytes: usage.storageLimitBytes,

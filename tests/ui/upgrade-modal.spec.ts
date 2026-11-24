@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
-async function openUpgrade(page: Page, yearly = false, classic = false) {
+async function openUpgrade(page: Page, yearly = false) {
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(
 		page,
@@ -57,11 +57,11 @@ async function openUpgrade(page: Page, yearly = false, classic = false) {
 		},
 		{ yearly },
 	);
-	await page.goto(`/tests/ui/billing-usage.html${classic ? "?upgradeModal=classic" : ""}`);
+	await page.goto("/tests/ui/billing-usage.html");
 	await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
-	const dialog = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
+	const dialog = page.getByRole("dialog", { name: "Recordly Plus", exact: true });
 	await expect(page.getByTestId("verified-plan")).toHaveText("free");
-	await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toBeEnabled();
+	await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toBeEnabled();
 	return dialog;
 }
 
@@ -76,21 +76,18 @@ for (const viewport of [
 		await page.setViewportSize(viewport);
 		await page.emulateMedia({ reducedMotion: "reduce" });
 		const dialog = await openUpgrade(page);
-		await expect(
-			dialog.getByRole("heading", { name: /^Unlock Recordly\s*'s full power$/ }),
-		).toBeVisible();
+		const heading = dialog.getByRole("heading", { name: "Upgrade to Plus", exact: true });
+		await expect(heading).toBeVisible();
+		await expect(heading.locator(".split-upgrade-mark")).toBeVisible();
 		await expect(dialog.getByRole("navigation", { name: "Legal and support" })).toHaveCount(0);
 		await expect(dialog.locator(".pricing-legal-consent")).toHaveCount(0);
-		await expect(dialog.getByRole("radio")).toHaveCount(1);
-		await expect(dialog.getByRole("radio", { name: /Monthly/ })).toBeChecked();
-		await expect(dialog.getByRole("region", { name: "Your Cloud benefits" })).toBeVisible();
+		await expect(dialog.getByRole("radio")).toHaveCount(0);
+		await expect(dialog.getByRole("list", { name: "Your Plus benefits" })).toBeVisible();
 		await expect(dialog.locator(".split-upgrade-benefits li")).toHaveText([
-			"Full commercial license",
-			"Share any video with a 24/7 link",
-			"Unlimited cloud storage and bandwidth",
-			"Play cloud videos in FHD 1080p",
-			"Export caption SRT and VTT files",
-			"Priority support service",
+			"Use Recordly for commercial projects",
+			"Share freely with unlimited links",
+			"Store everything on the cloud",
+			"Play cloud videos in clear FHD",
 		]);
 		await expect(
 			dialog.locator("[data-onboarding-artwork] .recordly-banner-light"),
@@ -98,11 +95,44 @@ for (const viewport of [
 		await expect(
 			dialog.locator(".split-upgrade-preview, .split-upgrade-window-bar"),
 		).toHaveCount(0);
-		await expect(dialog.locator(".pricing-price")).toHaveText("$9 USD / month");
+		const price = dialog.locator(".pricing-price");
+		const regularPrice = dialog.locator("s.pricing-regular-price");
+		const period = dialog.locator(".split-upgrade-price-period");
+		await expect(price).toHaveText("$9");
+		await expect(period).toHaveText("per month");
+		await expect(regularPrice).toHaveText("$15");
+		await expect(regularPrice).toHaveCSS("text-decoration-line", "line-through");
+		await expect(dialog.getByText("Cancel anytime", { exact: true })).toHaveCount(0);
+		const discount = dialog.getByText("40% off with early bird pricing", { exact: true });
+		await expect(discount).toBeVisible();
+		const priceBox = (await price.boundingBox())!;
+		const regularPriceBox = (await regularPrice.boundingBox())!;
+		const discountBox = (await discount.boundingBox())!;
+		const periodBox = (await period.boundingBox())!;
+		expect(regularPriceBox.x + regularPriceBox.width).toBeLessThanOrEqual(priceBox.x);
+		expect(periodBox.x).toBeGreaterThanOrEqual(priceBox.x + priceBox.width);
+		expect(periodBox.y).toBeLessThan(priceBox.y + priceBox.height);
+		expect(discountBox.y).toBeGreaterThanOrEqual(
+			Math.max(priceBox.y + priceBox.height, periodBox.y + periodBox.height),
+		);
+		await expect(dialog.locator(".split-upgrade-purchase")).toHaveCSS(
+			"border-top-width",
+			"0px",
+		);
+		const paymentMethods = dialog.locator(".pricing-payment-methods");
+		await expect(paymentMethods.getByRole("img")).toHaveCount(4);
+		await expect(paymentMethods.getByRole("img", { name: "Apple Pay" })).toBeInViewport();
 		expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 		const banner = dialog.locator("[data-onboarding-artwork]");
 		await expect(banner).toBeInViewport();
 		const bannerBox = await banner.boundingBox();
+		const paymentBox = (await paymentMethods.boundingBox())!;
+		const ctaBox = (await dialog.locator(".split-upgrade-cta").boundingBox())!;
+		// Payment badges sit directly under the checkout button, centred on it.
+		expect(paymentBox.y).toBeGreaterThanOrEqual(ctaBox.y + ctaBox.height);
+		expect(
+			Math.abs(paymentBox.x + paymentBox.width / 2 - (ctaBox.x + ctaBox.width / 2)),
+		).toBeLessThan(2);
 		await expect(banner).toHaveCSS("mask-image", /linear-gradient/);
 		expect(
 			await banner.evaluate((el) => Number.parseFloat(getComputedStyle(el).marginBottom)),
@@ -127,15 +157,14 @@ for (const viewport of [
 				"src",
 				new RegExp(`auth/recordly-banner-${theme}\\.png$`),
 			);
-			await page.screenshot({
+			await dialog.screenshot({
 				path: test.info().outputPath(`upgrade-${theme}-${viewport.width}.png`),
 				animations: "disabled",
 			});
 		}
-		const purchase = dialog.getByRole("button", { name: "Get started", exact: true });
+		const purchase = dialog.getByRole("button", { name: "Get Started", exact: true });
 		await dialog.locator(".split-upgrade-purchase").scrollIntoViewIfNeeded();
 		await expect(purchase).toBeInViewport();
-		await expect(dialog.getByRole("img", { name: "Apple Pay", exact: true })).toBeInViewport();
 		await expect(dialog.getByRole("button", { name: "Maybe later", exact: true })).toHaveCount(
 			0,
 		);
@@ -152,22 +181,14 @@ test("the redesign preserves monthly-only checkout when a catalog includes yearl
 	page,
 }) => {
 	const dialog = await openUpgrade(page, true);
-	await expect(dialog.getByRole("radio")).toHaveCount(1);
-	await expect(dialog.locator(".pricing-heading-offer")).toContainText("40% off");
-	await expect(dialog.getByRole("radio", { name: /Monthly/ })).toBeChecked();
-	await dialog.getByRole("button", { name: "Get started", exact: true }).click();
+	await expect(dialog.getByRole("radio")).toHaveCount(0);
+	await expect(
+		dialog.getByText("40% off with early bird pricing", { exact: true }),
+	).toBeVisible();
+	await dialog.getByRole("button", { name: "Get Started", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-billing-action", "checkout");
 	await expect(page.locator("html")).toHaveAttribute("data-billing-interval", "monthly");
-	await expect(dialog.getByRole("radio", { name: /Monthly/ })).toBeDisabled();
-});
-
-test("the original upgrade modal remains available for comparison", async ({ page }) => {
-	const dialog = await openUpgrade(page, false, true);
-	await expect(dialog).toHaveClass(/upgrade-modal/);
 	await expect(
-		dialog.getByRole("heading", { name: "Unlock the full power of Recordly" }),
+		dialog.getByRole("button", { name: "Check payment status", exact: true }),
 	).toBeVisible();
-	await expect(dialog.getByRole("region", { name: "Community testimonials" })).toBeAttached();
-	await dialog.getByRole("button", { name: "Close", exact: true }).click();
-	await expect(dialog).not.toBeVisible();
 });

@@ -70,7 +70,7 @@ export async function runExperimentalNvidiaCudaStaticLayoutExport(
 		RECORDLY_NVIDIA_CUDA_EXPORT_HIGH_PRIORITY:
 			process.env.RECORDLY_NVIDIA_CUDA_EXPORT_HIGH_PRIORITY ?? "1",
 		RECORDLY_FFMPEG_EXE: ffmpegPath,
-		RECORDLY_FFPROBE_EXE: process.env.RECORDLY_FFPROBE_EXE ?? getFfprobeBinaryPath(),
+		RECORDLY_FFPROBE_EXE: process.env.RECORDLY_FFPROBE_EXE ?? (await getFfprobeBinaryPath()),
 		[pathKey]: `${ffmpegDirectory}${path.delimiter}${process.env[pathKey] ?? ""}`,
 	};
 	const powerGuard = startNativeStaticLayoutExportPowerGuard();

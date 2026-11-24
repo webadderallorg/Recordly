@@ -57,18 +57,13 @@ export function WallpaperGrid({
 						>
 							{isVideoWallpaperSource(item.previewUrl) ? (
 								<WallpaperVideoPreview src={item.previewUrl} />
-							) : item.previewUrl ? (
-								<img
-									src={item.previewUrl || undefined}
-									alt=""
-									loading="lazy"
-									decoding="async"
-									draggable={false}
-									className="absolute inset-0 h-full w-full select-none object-cover"
+							) : (
+								<WallpaperImagePreview
+									key={item.previewUrl}
+									src={item.previewUrl}
+									desktop={Boolean(item.badge)}
 								/>
-							) : item.badge ? (
-								<DesktopIcon className="size-4 text-muted" aria-hidden="true" />
-							) : null}
+							)}
 						</ToggleButton>
 						{item.removable && (
 							<Button
@@ -87,6 +82,26 @@ export function WallpaperGrid({
 				);
 			})}
 		</WallpaperGlassGrid>
+	);
+}
+
+function WallpaperImagePreview({ src, desktop }: { src: string; desktop: boolean }) {
+	const [failed, setFailed] = useState(false);
+
+	if (!src || failed) {
+		return desktop ? <DesktopIcon className="size-4 text-muted" aria-hidden="true" /> : null;
+	}
+
+	return (
+		<img
+			src={src}
+			alt=""
+			loading="lazy"
+			decoding="async"
+			draggable={false}
+			onError={() => setFailed(true)}
+			className="absolute inset-0 h-full w-full select-none object-cover"
+		/>
 	);
 }
 

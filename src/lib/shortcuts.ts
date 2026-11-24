@@ -40,6 +40,9 @@ export const CLEAR_ALL_ZOOMS_SHORTCUT: ShortcutBinding = {
 	shift: true,
 };
 
+export const COPY_SELECTED_SHORTCUT: ShortcutBinding = { key: "c", ctrl: true };
+export const PASTE_SHORTCUT: ShortcutBinding = { key: "v", ctrl: true };
+
 export const FIXED_SHORTCUTS: FixedShortcut[] = [
 	{ label: "Cycle Annotations Forward", display: "Tab", bindings: [{ key: "tab" }] },
 	{
@@ -52,6 +55,8 @@ export const FIXED_SHORTCUTS: FixedShortcut[] = [
 		display: "Del / ⌫",
 		bindings: [{ key: "delete" }, { key: "backspace" }],
 	},
+	{ label: "Copy Selected", bindings: [COPY_SELECTED_SHORTCUT] },
+	{ label: "Paste", bindings: [PASTE_SHORTCUT] },
 	{ label: "Clear All Zooms", bindings: [CLEAR_ALL_ZOOMS_SHORTCUT] },
 	{ label: "Pan Timeline", display: "Shift + Scroll", bindings: [] },
 	{ label: "Zoom Timeline", display: "Ctrl + Scroll", bindings: [] },
@@ -116,18 +121,17 @@ export function matchesShortcut(
 	e: KeyboardEvent,
 	binding: ShortcutBinding,
 	isMacPlatform: boolean,
-	allowOptionLetter = false,
+	physicalLetter?: "option" | "primary",
 ): boolean {
 	const key = binding.key.toLowerCase();
 	const reportedKey = e.key.toLowerCase();
-	const optionLetterMatches =
-		allowOptionLetter &&
-		isMacPlatform &&
-		e.altKey &&
+	const physicalLetterMatches =
+		((physicalLetter === "option" && isMacPlatform && e.altKey) ||
+			(physicalLetter === "primary" && binding.ctrl && !e.altKey)) &&
 		/^[a-z]$/.test(key) &&
 		!/^[a-z]$/.test(reportedKey) &&
 		e.code === `Key${key.toUpperCase()}`;
-	if (reportedKey !== key && !optionLetterMatches) return false;
+	if (reportedKey !== key && !physicalLetterMatches) return false;
 
 	const primaryMod = isMacPlatform ? e.metaKey : e.ctrlKey;
 	if (primaryMod !== !!binding.ctrl) return false;

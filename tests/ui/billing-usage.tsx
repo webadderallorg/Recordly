@@ -2,7 +2,8 @@ import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BillingProvider, useBilling } from "@/components/billing/BillingProvider";
 import { CloudUsageCard } from "@/components/billing/CloudUsageCard";
-import { PricingModal } from "@/components/billing/PricingModal";
+import { SplitPricingModal } from "@/components/billing/SplitPricingModal";
+import { useExportUpgradePrompt } from "@/components/billing/upgradePrompts";
 import { CloudShareButton } from "@/components/video-editor/cloud/CloudShareButton";
 import { CLOUD_SHARE_ENDPOINT } from "@/components/video-editor/cloud/endpoint";
 import { notifyShareCapacityChanged } from "@/components/video-editor/cloud/shareCapacity";
@@ -13,6 +14,7 @@ import "@/index.css";
 function Controls() {
 	const { refresh, loading, user, status, openPricing } = useBilling();
 	const [publishing, setPublishing] = useState(false);
+	const { scheduleExportUpgradePrompt } = useExportUpgradePrompt();
 	return (
 		<>
 			<output data-testid="usage-endpoint">{CLOUD_SHARE_ENDPOINT}</output>
@@ -24,6 +26,7 @@ function Controls() {
 			<output data-testid="usage-owner">{user?.id ?? "signed-out"}</output>
 			<button onClick={() => void refresh()}>Refresh usage</button>
 			<button onClick={openPricing}>Open test pricing</button>
+			<button onClick={scheduleExportUpgradePrompt}>Start test export</button>
 			<button onClick={notifyShareCapacityChanged}>Cloud library changed</button>
 			<button onClick={() => setPublishing(true)}>Open test publish</button>
 			{publishing && user && (
@@ -62,7 +65,11 @@ createRoot(document.getElementById("root")!).render(
 			<BillingProvider>
 				<CloudUsageCard />
 				<Controls />
-				<PricingModal onSignIn={() => undefined} />
+				<SplitPricingModal
+					onSignIn={() => {
+						document.documentElement.dataset.pricingSignIn = "true";
+					}}
+				/>
 			</BillingProvider>
 		</I18nProvider>
 	</StrictMode>,

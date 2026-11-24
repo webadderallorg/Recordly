@@ -12,6 +12,31 @@ const pendingActions = new Set<number>();
 const accountRequestsByOwner = new Map<number, Set<AbortController>>();
 const latestTokens = new WeakMap<object, string>();
 
+/** Messages written here, never copied from a provider, so they are safe to show and report. */
+class BillingFailure extends Error {}
+
+function safeParse<T>(parse: () => T): T {
+	try {
+		return parse();
+	} catch {
+		throw new BillingFailure(
+			"Recordly could not read the billing response. Refresh your plan or update Recordly.",
+		);
+	}
+}
+
+/** Name the failing step without reflecting raw network errors, which may include credentials. */
+function billingFailureMessage(failure: unknown): string {
+	if (failure instanceof BillingFailure) return failure.message;
+	const name = failure instanceof Error ? failure.name : "";
+	if (name === "TimeoutError")
+		return "Cloud billing took too long to respond. Check your connection and try again.";
+	if (name === "AbortError") return "Billing window is closed.";
+	if (name === "TypeError")
+		return "Could not reach cloud billing. Check your connection and try again.";
+	return "Could not manage your billing plan. Refresh and try again.";
+}
+
 function hasWhitespaceOrControl(value: string): boolean {
 	return Array.from(value).some((character) => {
 		const code = character.charCodeAt(0);
@@ -40,7 +65,7 @@ export function parseStripeBillingUrl(value: unknown, action: "checkout" | "port
 
 async function boundedJson(response: Response): Promise<unknown> {
 	const reader = response.body?.getReader();
-	if (!reader) throw new Error("Invalid billing response.");
+	if (!reader) throw new BillingFailure("Cloud billing returned an empty response. Try again.");
 	const chunks: Uint8Array[] = [];
 	let length = 0;
 	try {
@@ -50,20 +75,22 @@ async function boundedJson(response: Response): Promise<unknown> {
 			length += value.byteLength;
 			if (length > MAX_RESPONSE_BYTES) {
 				await reader.cancel();
-				throw new Error("Billing response is too large.");
+				throw new BillingFailure(
+					"Cloud billing returned an unexpected response. Try again.",
+				);
 			}
 			chunks.push(value);
 		}
 	} finally {
 		reader.releaseLock();
 	}
-	return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+	return safeParse(() => JSON.parse(Buffer.concat(chunks).toString("utf8")));
 }
 
 function billingError(status: number): string {
 	switch (status) {
 		case 401:
-			return "Sign in again to manage your cloud plan.";
+			return "Sign in again to manage your billing plan.";
 		case 403:
 			return "This billing action is unavailable for your account.";
 		case 409:
@@ -73,7 +100,7 @@ function billingError(status: number): string {
 		case 503:
 			return "Cloud billing is not available right now. Try again later.";
 		default:
-			return "Could not manage your cloud plan. Refresh and try again.";
+			return `Could not manage your billing plan (HTTP ${status}). Refresh and try again.`;
 	}
 }
 
@@ -103,7 +130,7 @@ export function registerCloudBillingHandlers() {
 					Buffer.byteLength(request.token) > 8192 ||
 					hasWhitespaceOrControl(request.token))
 			)
-				return { success: false, error: "Sign in to manage your cloud plan." };
+				return { success: false, error: "Sign in to manage your billing plan." };
 			if (
 				action !== "catalog" &&
 				action !== "status" &&
@@ -169,21 +196,27 @@ export function registerCloudBillingHandlers() {
 			if (action === "catalog")
 				return {
 					success: true,
-					...parseCloudBillingCatalog({ ...(body as object), success: true }),
+					...safeParse(() =>
+						parseCloudBillingCatalog({ ...(body as object), success: true }),
+					),
 				};
 			if (action === "status") {
-				if (!body || typeof body !== "object" || Array.isArray(body))
-					throw new Error("Invalid billing response.");
-				return { success: true, ...parseCloudBillingStatus({ ...body, success: true }) };
+				return {
+					success: true,
+					...safeParse(() => {
+						if (!body || typeof body !== "object" || Array.isArray(body))
+							throw new Error("Invalid billing response.");
+						return parseCloudBillingStatus({ ...body, success: true });
+					}),
+				};
 			}
-			const url = parseStripeBillingUrl((body as { url?: unknown } | null)?.url, action);
+			const url = safeParse(() =>
+				parseStripeBillingUrl((body as { url?: unknown } | null)?.url, action),
+			);
 			await shell.openExternal(url);
 			return { success: true };
-		} catch {
-			return {
-				success: false,
-				error: "Could not manage your cloud plan. Refresh and try again.",
-			};
+		} catch (failure) {
+			return { success: false, error: billingFailureMessage(failure) };
 		} finally {
 			owner.removeListener("destroyed", abandon);
 			const requests = accountRequestsByOwner.get(owner.id);

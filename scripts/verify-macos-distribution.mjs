@@ -23,6 +23,7 @@ import {
 	collectCodeSigningMetadataErrors,
 	collectEntitlementErrors,
 	hasMachOMagic,
+	isRetryableStaplerValidationError,
 } from "./macos-distribution-policy.mjs";
 
 const projectRoot = process.cwd();
@@ -336,7 +337,18 @@ function verifyAppBundle(appPath, label, { arch, check, full, teamId, tempRoot }
 	}
 
 	check(`${label}: stapled notarization ticket`, () => {
-		runProcess("xcrun", ["stapler", "validate", appPath]);
+		for (const delay of [2, 5, 0]) {
+			try {
+				runProcess("xcrun", ["stapler", "validate", appPath]);
+				return;
+			} catch (error) {
+				if (!delay || !isRetryableStaplerValidationError(error)) throw error;
+				console.warn(
+					`[macos-distribution] Apple ticket lookup lost connectivity; retrying in ${delay}s.`,
+				);
+				runProcess("/bin/sleep", [String(delay)]);
+			}
+		}
 	});
 
 	check(`${label}: Gatekeeper execution assessment`, () => {

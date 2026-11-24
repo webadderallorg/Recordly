@@ -17,6 +17,23 @@ afterEach(() => {
 });
 
 describe("export support logs", () => {
+	it("reports the final outcome after recovery and the save dialog", async () => {
+		const { createExportDiagnostics } = await import("./exportDiagnostics");
+		const operation = { id: "example", step: vi.fn(), finish: vi.fn() };
+		const tracker = createExportDiagnostics({ format: "mp4" }, "download", operation);
+		tracker.result({ success: false, error: "backend unavailable" });
+		tracker.record("recovery-started");
+		tracker.result({ success: true });
+		tracker.record("saving");
+		tracker.record("save-canceled");
+		tracker.complete(false);
+		expect(operation.step.mock.calls.flat()).toEqual([
+			"recovery-started",
+			"saving",
+			"save-canceled",
+		]);
+		expect(operation.finish).toHaveBeenCalledExactlyOnceWith("cancelled");
+	});
 	it("persists selected progress, backend and failure details and includes them in feedback after reload", async () => {
 		const { createExportDiagnostics, getExportDiagnosticLogs } = await import(
 			"./exportDiagnostics"

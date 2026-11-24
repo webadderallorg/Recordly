@@ -75,8 +75,8 @@ for (const signedIn of [false, true]) {
 			} else {
 				await expect(tour.getByPlaceholder("you@example.com")).toBeVisible();
 				await expect(
-					tour.getByRole("button", { name: "Continue", exact: true }),
-				).toHaveCount(query ? 0 : 1);
+					tour.getByRole("button", { name: "Continue as guest", exact: true }),
+				).toBeVisible();
 				if (query)
 					await expect(
 						tour.getByRole("button", { name: "Permissions", exact: true }),
@@ -107,16 +107,17 @@ test("automatic first-run dev onboarding is optional", async ({ page }) => {
 
 for (const query of ["", "&onboardingPreview=1"]) {
 	productionTest(
-		`production onboarding requires sign-in (${query || "no query"})`,
+		`production onboarding offers a guest path (${query || "no query"})`,
 		async ({ page }) => {
 			await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
 			await page.goto(`/?windowType=onboarding${query}`);
 			const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 			await expect(tour.getByPlaceholder("you@example.com")).toBeVisible({ timeout: 30000 });
 			await expect(tour.getByRole("button", { name: "Skip onboarding" })).toHaveCount(0);
-			await expect(tour.getByRole("button", { name: "Continue", exact: true })).toHaveCount(
-				0,
-			);
+			await expect(tour.getByRole("button", { name: "Next", exact: true })).toHaveCount(0);
+			await expect(
+				tour.getByRole("button", { name: "Continue as guest", exact: true }),
+			).toBeEnabled();
 			await expect(
 				tour.getByRole("button", { name: "Permissions", exact: true }),
 			).toBeDisabled();
@@ -153,7 +154,7 @@ for (const windowType of ["onboarding", "editor"]) {
 			await page.goto(`/?windowType=${windowType}&onboardingPreview=1`);
 			const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 			if (stage === "permissions") {
-				await tour.getByRole("button", { name: "Continue", exact: true }).click();
+				await tour.getByRole("button", { name: "Continue as guest", exact: true }).click();
 				await expect(
 					tour.getByRole("button", { name: "Start recording", exact: true }),
 				).toBeDisabled();
@@ -167,15 +168,95 @@ for (const windowType of ["onboarding", "editor"]) {
 	}
 }
 
-test("an explicit real dev editor requires an expired saved account to sign in again", async ({
-	page,
-}) => {
+test("an explicit real dev editor gives an expired account the guest option", async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: true });
 	await page.goto("/?windowType=editor&onboardingPreview=0");
-	await expect(
-		page.getByRole("dialog", { name: "Sign in to Recordly", exact: true }),
-	).toBeVisible({ timeout: 15000 });
+	const onboarding = page.getByRole("dialog", { name: "Welcome to Recordly", exact: true });
+	await expect(onboarding.getByRole("button", { name: "Continue as guest" })).toBeVisible({
+		timeout: 15000,
+	});
 });
+
+productionTest("guest onboarding resumes macOS permissions after restart", async ({ page }) => {
+	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.getAppSetting = (key) => JSON.parse(localStorage.getItem(key) || "null");
+		window.electronAPI.setAppSetting = (key, value) => {
+			localStorage.setItem(key, JSON.stringify(value));
+			return true;
+		};
+		window.electronAPI.getScreenRecordingPermissionStatus = async () => {
+			document.documentElement.dataset.screenChecked = "true";
+			return {
+				success: true,
+				status: localStorage.getItem("screen-allowed") ? "granted" : "denied",
+			};
+		};
+		window.electronAPI.openScreenRecordingPreferences = async () => {
+			localStorage.setItem("screen-allowed", "true");
+			return { success: true };
+		};
+		window.electronAPI.resolveStartupOnboarding = async (action) => {
+			document.documentElement.dataset.startupAction = action;
+			return true;
+		};
+	});
+
+	await page.goto("/?windowType=onboarding");
+	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
+	const guest = tour.getByRole("button", { name: "Continue as guest", exact: true });
+	await expect(guest).toBeEnabled();
+	await expect(guest).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+	await guest.focus();
+	await page.keyboard.press("Enter");
+	const start = tour.getByRole("button", { name: "Start recording", exact: true });
+	await expect(start).toBeDisabled();
+	await expect(page.locator("html")).not.toHaveAttribute("data-hud-opened");
+
+	await page.reload();
+	await expect(tour).toHaveAttribute("data-onboarding-state", "permissions");
+	await expect(start).toBeDisabled();
+	await tour.getByRole("button", { name: "Allow Screen Recording", exact: true }).click();
+	await expect(start).toBeEnabled();
+	await start.click();
+	await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
+	await expect(tour).not.toBeVisible();
+
+	await page.goto("/?windowType=onboarding&startup=1");
+	await expect(page.locator("html")).toHaveAttribute("data-startup-action", "continue");
+	await expect(tour).not.toBeVisible();
+	await page.goto("/?windowType=hud-overlay");
+	await expect(page.locator("html")).toHaveAttribute("data-screen-checked", "true");
+	await expect(page.locator("html")).not.toHaveAttribute("data-dashboard-opened");
+});
+
+for (const platform of ["win32", "linux"]) {
+	productionTest(
+		`guest onboarding opens recording controls directly on ${platform}`,
+		async ({ page }) => {
+			await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
+			await installDesktopBridgeOverrides(
+				page,
+				(platform) => {
+					window.electronAPI.getPlatform = async () => platform;
+					window.electronAPI.getAppSetting = (key) =>
+						JSON.parse(localStorage.getItem(key) || "null");
+					window.electronAPI.setAppSetting = (key, value) => {
+						localStorage.setItem(key, JSON.stringify(value));
+						return true;
+					};
+				},
+				platform,
+			);
+			await page.goto("/?windowType=onboarding");
+			const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
+			await expect(tour.getByRole("navigation").getByRole("button")).toHaveCount(1);
+			await tour.getByRole("button", { name: "Continue as guest", exact: true }).click();
+			await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
+			await expect(tour).not.toBeVisible();
+		},
+	);
+}
 
 test("signed-out dev onboarding still waits for real recording permissions", async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
@@ -192,7 +273,7 @@ test("signed-out dev onboarding still waits for real recording permissions", asy
 	});
 	await page.goto("/?windowType=onboarding&onboardingPreview=1");
 	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
-	await tour.getByRole("button", { name: "Continue", exact: true }).click();
+	await tour.getByRole("button", { name: "Continue as guest", exact: true }).click();
 	const start = tour.getByRole("button", { name: "Start recording", exact: true });
 	await expect(start).toBeDisabled();
 	await tour.getByRole("button", { name: "Allow Screen Recording", exact: true }).click();

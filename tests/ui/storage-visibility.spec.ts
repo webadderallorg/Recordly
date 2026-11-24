@@ -52,9 +52,7 @@ for (const storageBytes of [
 		await expect(sidebar.getByText("Loading usage…")).toHaveCount(0);
 		await expect(sidebar.getByText("Cloud recordings", { exact: true })).toHaveCount(0);
 		await expect(sidebar.getByLabel("Cloud usage", { exact: true })).toHaveCount(0);
-		await expect(navigation.getByRole("button", { name: "Upgrade", exact: true })).toHaveCount(
-			0,
-		);
+		await expect(navigation.getByRole("button", { name: "Upgrade", exact: true })).toHaveCount(0);
 	});
 }
 
@@ -94,7 +92,7 @@ for (const signedIn of [false, true]) {
 		const dashboard = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
 		const navigation = dashboard.getByRole("complementary", { name: "Library navigation" });
 		const usage = navigation.getByLabel("Cloud usage", { exact: true });
-		if (signedIn) await expect(usage).toContainText("2 of 5 used");
+		if (signedIn) await expect(usage).toContainText("2 of 5 share links used");
 		else await expect(usage).toHaveCount(0);
 		for (const width of [1440, 800]) {
 			await page.setViewportSize({ width, height: 1000 });
@@ -106,9 +104,7 @@ for (const signedIn of [false, true]) {
 			const upgrade = dashboard.getByRole("button", { name: "Upgrade", exact: true });
 			await expect(upgrade).toHaveCount(1);
 			await expect(upgrade).toBeInViewport({ ratio: 1 });
-			await expect(
-				navigation.getByRole("button", { name: "Upgrade", exact: true }),
-			).toHaveCount(0);
+			await expect(navigation.getByRole("button", { name: "Upgrade", exact: true })).toHaveCount(0);
 		}
 		await navigation.getByRole("button", { name: "Feedback", exact: true }).click();
 		const feedback = page.getByRole("dialog", { name: "Send feedback", exact: true });

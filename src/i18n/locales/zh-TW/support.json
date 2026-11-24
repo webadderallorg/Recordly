@@ -1,4 +1,6 @@
 {
+	"diagnosticsLoading": "正在收集診斷資訊…",
+	"diagnosticsUnavailable": "無法載入診斷詳細資料。",
 	"reportTitle": "將此錯誤和診斷記錄傳送給 Recordly 支援團隊",
 	"reportSending": "正在傳送記錄…",
 	"reportSent": "報告已傳送",

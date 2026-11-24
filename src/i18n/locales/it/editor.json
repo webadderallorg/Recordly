@@ -65,7 +65,7 @@
 		"copyLink": "Copia link",
 		"shareLink": "Link di condivisione",
 		"saveLinkFailed": "La condivisione è stata creata, ma non è stato possibile salvarne il link in locale",
-		"verifyPlanFailed": "Impossibile verificare il tuo piano cloud.",
+		"verifyPlanFailed": "Impossibile verificare il tuo piano.",
 		"refreshPlan": "Aggiorna piano",
 		"share": "Condividi",
 		"signInToShare": "Accedi per condividere",
@@ -253,7 +253,7 @@
 		"processingAudioEdits": "Elaborazione audio con modifiche di velocità/overlay"
 	},
 	"toolbar": {
-		"addLayer": "Aggiungi livello",
+		"addLayer": "Aggiungi",
 		"splitClip": "Dividi clip (C)",
 		"trimStart": "Taglia l'inizio fino alla testina ({{shortcut}})",
 		"trimEnd": "Taglia la fine dalla testina ({{shortcut}})"

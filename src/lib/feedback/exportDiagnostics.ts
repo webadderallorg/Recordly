@@ -1,4 +1,5 @@
 import type { ExportProgress, ExportResult, ExportSettings } from "@/lib/exporter/types";
+import type { startDiagnosticOperation } from "../../shared/operationDiagnostics";
 import { redactDiagnostic } from "./diagnosticRedaction";
 
 const entries: string[] = [];
@@ -40,11 +41,28 @@ export async function getExportDiagnosticLogs(): Promise<string[]> {
 export function createExportDiagnostics(
 	settings: ExportSettings,
 	destination: "download" | "share",
+	operation?: ReturnType<typeof startDiagnosticOperation>,
 ) {
 	const started = performance.now();
 	const attempt = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-	const record = (event: string, fields: Record<string, unknown> = {}) =>
+	let exportOutcome: "succeeded" | "failed" | "cancelled" = "failed";
+	const record = (event: string, fields: Record<string, unknown> = {}) => {
+		if (
+			[
+				"configured",
+				"recovery-started",
+				"saving",
+				"saved",
+				"save-canceled",
+				"save-failed",
+				"exception",
+			].includes(event)
+		)
+			operation?.step(event);
+		if (event === "save-canceled") exportOutcome = "cancelled";
+		if (event === "save-failed" || event === "exception") exportOutcome = "failed";
 		recordExportDiagnostic(event, { attempt, ...fields });
+	};
 	record("started", {
 		format: settings.format,
 		destination,
@@ -62,6 +80,9 @@ export function createExportDiagnostics(
 	let frameCounterEpoch = 0;
 	return {
 		record,
+		complete(cancelled: boolean) {
+			operation?.finish(cancelled ? "cancelled" : exportOutcome);
+		},
 		progress(progress: ExportProgress) {
 			if (
 				phaseHasFrames(progress) &&
@@ -94,6 +115,7 @@ export function createExportDiagnostics(
 			});
 		},
 		result(result: ExportResult) {
+			exportOutcome = result.success ? "succeeded" : "failed";
 			const metrics = result.metrics;
 			const snapshot = metrics?.diagnostics;
 			if (snapshot) {

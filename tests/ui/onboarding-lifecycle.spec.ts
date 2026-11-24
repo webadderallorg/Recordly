@@ -113,6 +113,9 @@ for (const failure of ["hud", "close"] as const) {
 		await expect(
 			permissions.getByRole("heading", { name: "Allow Recordly to record", exact: true }),
 		).toBeVisible();
+		await expect(
+			permissions.getByRole("button", { name: "Close", exact: true }),
+		).toHaveCount(0);
 		await expect(finish).toBeEnabled();
 		await finish.click();
 		await expect(page.locator("html")).toHaveAttribute("data-hud-calls", "1");

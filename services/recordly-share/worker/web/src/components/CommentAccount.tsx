@@ -63,7 +63,7 @@ export default function CommentAccount(props: Props) {
 	return <LocalCommentAccount {...props} />;
 }
 
-// Self-hosted instances keep their existing local accounts separate from Recordly Cloud.
+// Self-hosted instances keep their existing local accounts separate from Recordly’s hosted service.
 function LocalCommentAccount({ onChange, reauthenticate, canComment }: Props) {
 	const [user, setUser] = useState<CommentUser | null>(null);
 	const [loading, setLoading] = useState(true);

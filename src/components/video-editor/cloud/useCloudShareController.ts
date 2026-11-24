@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useOptionalBilling } from "@/components/billing/BillingProvider";
 import { toast } from "@/components/ui/toast";
 import { useI18n } from "@/contexts/I18nContext";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import { beginAppOperation } from "@/lib/feedback/diagnostics";
+import { getErrorMessage } from "../videoEditorUtils";
 import type { Props } from "./cloudShareProps";
 import { CLOUD_SHARE_ENDPOINT as DEFAULT_CLOUD_ENDPOINT } from "./endpoint";
 import {
@@ -41,6 +44,9 @@ export function useCloudShareController(props: Props) {
 	} = props;
 
 	const { t } = useI18n();
+	// Read through a ref: the billing context is recreated on every render.
+	const openPricing = useRef<(() => void) | undefined>(undefined);
+	openPricing.current = useOptionalBilling()?.openPricing;
 
 	const [internalOpen, setInternalOpen] = useState(false);
 
@@ -190,13 +196,14 @@ export function useCloudShareController(props: Props) {
 
 	const [notes, setNotes] = useState("");
 	const {
-		setCapacityAvailable,
+		setCapacity,
 		checkingCapacity,
 		capacityError,
 		capacityIdentity,
 		setCapacityIdentity,
 		currentCapacityIdentity,
 		verifiedCapacity,
+		recordingQuota,
 		signInRequired,
 		sessionRecovery,
 		recoverSession,
@@ -273,6 +280,7 @@ export function useCloudShareController(props: Props) {
 
 	const handleUpload = useCallback(async () => {
 		if (uploadLock.current) return;
+		const operation = beginAppOperation("cloud.publish");
 		uploadLock.current = true;
 		// A generation also catches switching away and back to the same account.
 		const uploadAccountVersion = accountVersion.current;
@@ -286,6 +294,7 @@ export function useCloudShareController(props: Props) {
 		setError(undefined);
 		setShareUrl(undefined);
 		try {
+			operation.step("check-capacity");
 			if (!DEFAULT_CLOUD_ENDPOINT)
 				throw new Error(
 					t(
@@ -294,22 +303,30 @@ export function useCloudShareController(props: Props) {
 					),
 				);
 			if (!authToken) throw new Error(t("editor.cloud.signInRequired"));
-			const available = await checkShareCapacity(
+			const capacity = await checkShareCapacity(
 				DEFAULT_CLOUD_ENDPOINT,
 				authToken,
 				recoverSession,
 			);
 			if (!isCurrentAccount()) return;
-			setCapacityAvailable(available);
+			setCapacity(capacity);
 			setCapacityIdentity(currentCapacityIdentity);
-			if (!available)
+			if (!capacity.available) {
+				// A free user asking for one more share is offered Pro.
+				if (openPricing.current) {
+					operation.finish("blocked");
+					openPricing.current();
+					return;
+				}
 				throw new Error(t("editor.cloud.recordingLimit", RECORDING_LIMIT_MESSAGE));
+			}
 			if (cancelRequestedRef.current) return;
 			const nextUploadId = crypto.randomUUID();
 			setUploadId(nextUploadId);
 			activeUploadId.current = nextUploadId;
 			activeUploadAccountVersion.current = uploadAccountVersion;
 			setPhase("preparing");
+			operation.step("prepare-export");
 			let resolvedFilePath = filePath ?? preparedFileRef.current;
 			if (!resolvedFilePath && window.electronAPI.cloudShareBeginExport) {
 				// Arm the main-process observer before the exporter opens its output.
@@ -335,6 +352,7 @@ export function useCloudShareController(props: Props) {
 			}
 			setProgress((current) => Math.max(current, 70));
 			setPhase("uploading");
+			operation.step("upload");
 			const result = await window.electronAPI.cloudShareUpload({
 				filePath: resolvedFilePath,
 				endpoint: DEFAULT_CLOUD_ENDPOINT,
@@ -345,12 +363,14 @@ export function useCloudShareController(props: Props) {
 			});
 			if (!isCurrentAccount()) return;
 			if (!result.success || !result.shareUrl) {
+				operation.finish(result.canceled ? "cancelled" : "failed");
 				if (!result.canceled) setError(result.error || t("editor.cloud.uploadFailed"));
 				return;
 			}
 			setProgress(100);
 			setShareUrl(result.shareUrl);
 			completed = true;
+			operation.finish("succeeded");
 			const link = {
 				url: result.shareUrl,
 				sharedAt: Date.now(),
@@ -365,8 +385,10 @@ export function useCloudShareController(props: Props) {
 			if (!suppressSuccessToast) toast.success(t("editor.cloud.linkCreated"));
 		} catch (cause) {
 			if (!isCurrentAccount() || cancelRequestedRef.current) return;
+			operation.finish("failed");
 			setError(cause instanceof Error ? cause.message : String(cause));
 		} finally {
+			operation.finish("cancelled");
 			if (
 				!completed &&
 				previousUrl &&
@@ -401,7 +423,7 @@ export function useCloudShareController(props: Props) {
 		currentCapacityIdentity,
 		recoverSession,
 		latestAuthToken,
-		setCapacityAvailable,
+		setCapacity,
 		setCapacityIdentity,
 	]);
 
@@ -424,6 +446,16 @@ export function useCloudShareController(props: Props) {
 			toast.error(t("editor.cloud.copyFailed"), { copyable: false });
 		}
 	}, [shareUrl, t]);
+	const openShareUrl = useCallback(async () => {
+		if (!shareUrl) return;
+		try {
+			const result = await window.electronAPI.openExternalUrl(shareUrl);
+			if (!result.success) throw new Error(result.error);
+		} catch (error) {
+			toast.error(t("ui.couldNotOpenLink2"), { description: getErrorMessage(error) });
+		}
+	}, [shareUrl, t]);
+
 	return {
 		open,
 		setOpen,
@@ -445,10 +477,12 @@ export function useCloudShareController(props: Props) {
 		currentCapacityIdentity,
 		capacityError,
 		verifiedCapacity,
+		recordingQuota,
 		sessionRecovery,
 		handleOpenChange,
 		handleUpload,
 		handleCancel,
 		copyShareUrl,
+		openShareUrl,
 	};
 }

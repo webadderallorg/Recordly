@@ -293,7 +293,7 @@ test("password sign-in also starts its check on submit and forwards the verified
 }, testInfo) => {
 	await page.setViewportSize({ width: 600, height: 600 });
 	await openEmail(page);
-	await page.getByRole("button", { name: "Or use password to sign in", exact: true }).click();
+	await page.getByRole("button", { name: "Use password", exact: true }).click();
 	await page.getByLabel("Password", { exact: true }).fill("test-only-password");
 	await expect(page.locator(frameSelector)).toHaveCount(0);
 	await submit(page).click();
@@ -328,7 +328,7 @@ test("a rejected password stays available for a protected retry without retyping
 		return route.fallback();
 	});
 	await openEmail(page);
-	await page.getByRole("button", { name: "Or use password to sign in", exact: true }).click();
+	await page.getByRole("button", { name: "Use password", exact: true }).click();
 	const password = page.getByLabel("Password", { exact: true });
 	await password.fill("test-only-password");
 	await submit(page).click();

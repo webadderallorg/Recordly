@@ -120,7 +120,7 @@ test("clip deletion and undo ripple connected annotations and imported audio tog
 	const clips = clipsFor(page);
 	const removedDuration = (await spanFor(clips.first())).end;
 	await seekInsideClip(page, clips.nth(2), 0.25);
-	await page.getByRole("button", { name: "Add Layer", exact: true }).click();
+	await page.getByRole("button", { name: "Add", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Annotation", exact: true }).click();
 	const annotation = page.locator('[data-variant="annotation"]');
 	await expect(annotation).toHaveCount(1);
@@ -130,7 +130,7 @@ test("clip deletion and undo ripple connected annotations and imported audio tog
 			path: `${location.origin}/tests/ui/fixtures/filmstrip.mp4`,
 		});
 	});
-	await page.getByRole("button", { name: "Add Layer", exact: true }).click();
+	await page.getByRole("button", { name: "Add", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Audio", exact: true }).click();
 	const audio = page.locator('[data-variant="audio"]');
 	await expect(audio).toHaveCount(1);

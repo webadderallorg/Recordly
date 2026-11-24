@@ -105,10 +105,10 @@ test("Free accounts can view their plan and upgrade options without starting che
 		Math.abs((await usage.boundingBox())!.width - (await card.boundingBox())!.width),
 	).toBeLessThan(1);
 	await expect(
-		account.getByLabel("Cloud usage", { exact: true }).getByText("2 of 5 used"),
+		account.getByLabel("Cloud usage", { exact: true }).getByText("2 of 5 share links used"),
 	).toBeVisible();
 	await card.getByRole("button", { name: "Upgrade", exact: true }).click();
-	const pricing = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
+	const pricing = page.getByRole("dialog", { name: "Recordly Plus", exact: true });
 	await expect(pricing).toBeVisible();
 	await expect(page.locator("html")).not.toHaveAttribute("data-billing-action");
 	await pricing.getByRole("button", { name: "Close", exact: true }).click();
@@ -127,7 +127,7 @@ for (const mode of ["paid", "ending"] as const) {
 		page,
 	}) => {
 		const { account, card } = await openPlan(page, mode);
-		await expect(card.getByText("Your Cloud plan is active.")).toBeVisible();
+		await expect(card.getByText("Your Plus plan is active.")).toBeVisible();
 		await expect(
 			card.getByText(mode === "ending" ? /^It ends on / : /^Current billing period ends on /),
 		).toBeVisible();
@@ -138,7 +138,7 @@ for (const mode of ["paid", "ending"] as const) {
 		await card.getByRole("button", { name: "Manage subscription", exact: true }).click();
 		await expect(page.locator("html")).toHaveAttribute("data-billing-action", "portal");
 		await expect(
-			page.getByRole("dialog", { name: "Recordly Cloud", exact: true }),
+			page.getByRole("dialog", { name: "Recordly Plus", exact: true }),
 		).not.toBeVisible();
 		await account.screenshot({
 			path: test.info().outputPath(`account-plan-${mode}.png`),
@@ -152,7 +152,7 @@ for (const mode of ["complimentary", "paid_no_portal"] as const) {
 		page,
 	}) => {
 		const { card } = await openPlan(page, mode);
-		await expect(card.getByText("Your Cloud plan is active.")).toBeVisible();
+		await expect(card.getByText("Your Plus plan is active.")).toBeVisible();
 		if (mode === "complimentary")
 			await expect(card.getByText(/period ends|It ends on/)).toHaveCount(0);
 		const manage = card.getByRole("button", { name: "Manage subscription", exact: true });
@@ -182,7 +182,7 @@ for (const mode of ["unavailable", "loading"] as const) {
 			card.getByText(
 				mode === "loading"
 					? "Loading your plan…"
-					: "We couldn’t load your plan. Please try again.",
+					: "We couldn’t load your plan. Refresh to try again.",
 				{ exact: true },
 			),
 		).toBeVisible();

@@ -7,6 +7,8 @@
 		"addKeyframe": "添加关键帧",
 		"deleteSelected": "删除选中",
 		"duplicateSelected": "复制所选项",
+		"copySelected": "复制所选项",
+		"paste": "粘贴",
 		"playPause": "播放 / 暂停",
 		"cycleForward": "向前循环切换注释",
 		"cycleBackward": "向后循环切换注释",

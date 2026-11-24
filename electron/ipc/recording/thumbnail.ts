@@ -32,7 +32,7 @@ export async function getRecordingThumbnail(candidate: string): Promise<string> 
 			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 			const generation = queue.then(async () => {
 				const result = await run(
-					getFfmpegBinaryPath(),
+					await getFfmpegBinaryPath(),
 					[
 						"-hide_banner",
 						"-loglevel",

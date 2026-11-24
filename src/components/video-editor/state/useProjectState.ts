@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
+import { setDiagnosticView } from "@/lib/feedback/diagnostics";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import type { EditorProjectData } from "../projectPersistence";
 
@@ -23,6 +24,10 @@ export function useProjectState() {
 	const [lastSavedSnapshot, setLastSavedSnapshot] = useState<EditorProjectData | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+
+	useLayoutEffect(() => {
+		setDiagnosticView(projectBrowserOpen ? "home" : "editor");
+	}, [projectBrowserOpen]);
 
 	return {
 		videoPath,

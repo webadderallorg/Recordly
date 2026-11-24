@@ -18,7 +18,7 @@ const completedKey = "recordly.onboarding.v1.seen";
 const readSettings = async () => JSON.parse(await readFile(settingsPath, "utf8"));
 const writeSettings = (settings) => writeFile(settingsPath, JSON.stringify(settings));
 
-async function checkStartup(label, returning) {
+async function checkStartup(label, freshInstall) {
 	const app = await electron.launch({
 		executablePath: path.resolve(executablePath),
 		args: [`--user-data-dir=${profile}`, "--lang=en", "--mute-audio"],
@@ -39,24 +39,21 @@ async function checkStartup(label, returning) {
 			.poll(() => Boolean(findOnboarding()), { message: label, timeout: 30_000 })
 			.toBe(true);
 		const onboarding = findOnboarding();
-		expect(new URL(onboarding.url()).searchParams.get("returning"), label).toBe(
-			returning ? "1" : null,
-		);
+		const query = new URL(onboarding.url()).searchParams;
+		expect(query.get("startup"), label).toBe("1");
+		const expectIntro =
+			freshInstall && (process.platform === "darwin" || process.platform === "win32");
+		expect(query.get("welcomeSoundtrack"), label).toBe(expectIntro ? "intro" : null);
 		const welcome = onboarding.getByRole("dialog", { name: "Welcome to Recordly" });
 		await expect(welcome).toBeVisible({ timeout: 30_000 });
+		await expect(welcome.getByRole("button", { name: "Continue as guest" })).toBeEnabled();
 		const navigation = welcome.getByRole("navigation");
-		if (returning) {
-			await expect(navigation).toHaveCount(0);
-		} else {
-			await expect(navigation.getByRole("button")).toHaveCount(3);
-			await expect(
-				navigation.getByRole("button", { name: "Account", exact: true }),
-			).toHaveAttribute("aria-current", "page");
+		await expect(
+			navigation.getByRole("button", { name: "Account", exact: true }),
+		).toHaveAttribute("aria-current", "page");
+		if (process.platform === "darwin") {
 			await expect(
 				navigation.getByRole("button", { name: "Permissions", exact: true }),
-			).toBeVisible();
-			await expect(
-				navigation.getByRole("button", { name: "Upgrade", exact: true }),
 			).toBeVisible();
 		}
 		console.log(`[packaged-onboarding] ${label}: passed`);
@@ -67,9 +64,10 @@ async function checkStartup(label, returning) {
 
 try {
 	await writeSettings({ "recordly.locale": "en" });
-	await checkStartup("Clean first run", false);
+	await checkStartup("Clean first run", true);
 	const firstRun = await readSettings();
-	expect(firstRun[introKey]).toBe(true);
+	if (process.platform === "darwin" || process.platform === "win32")
+		expect(firstRun[introKey]).toEqual(expect.any(String));
 	expect(firstRun[completedKey]).not.toBe(true);
 
 	await writeSettings({ ...firstRun, [pendingKey]: true });
@@ -78,8 +76,15 @@ try {
 	expect(interrupted[pendingKey]).toBe(true);
 	expect(interrupted[completedKey]).not.toBe(true);
 
-	await writeSettings({ ...interrupted, [completedKey]: true });
-	await checkStartup("Relaunch after completing setup", true);
+	await writeSettings({ ...interrupted, [pendingKey]: false, [completedKey]: true });
+	await checkStartup("Existing profile on the same installation", false);
+	await writeSettings({
+		...interrupted,
+		[pendingKey]: false,
+		[completedKey]: true,
+		[introKey]: "older-installation",
+	});
+	await checkStartup("Existing profile on a fresh installation", true);
 } finally {
 	await rm(profile, { recursive: true, force: true });
 }

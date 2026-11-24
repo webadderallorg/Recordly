@@ -19,11 +19,6 @@ export function CloudUsageCard({
 	showUpgrade?: boolean;
 }) {
 	const { t, locale } = useI18n();
-	const remaining = (count: number) =>
-		t("billing.remainingCount", "{{number}} recordings remaining", {
-			count,
-			number: new Intl.NumberFormat(locale).format(count),
-		});
 	const { user, status, catalog, fallbackUsage, usagePreview, loading, error, refresh } =
 		useBilling();
 	const usage = status?.usage ?? (fallbackUsage ? null : usagePreview?.usage);
@@ -42,20 +37,14 @@ export function CloudUsageCard({
 			className={`cloud-usage-card ${className}`}
 			aria-label={t("settings.cloudUsage.label", "Cloud usage")}
 		>
-			<Card.Header>
-				<div className="cloud-usage-heading">
-					<Cloud size={16} aria-hidden="true" />
-					<Card.Title
-						aria-label={
-							plus ? t("settings.cloudUsage.plus", "Cloud storage") : undefined
-						}
-					>
-						{plus
-							? t("settings.cloudUsage.plus", "Cloud storage")
-							: t("settings.cloudUsage.recordings", "Cloud recordings")}
-					</Card.Title>
-				</div>
-			</Card.Header>
+			{plus && (
+				<Card.Header>
+					<div className="cloud-usage-heading">
+						<Cloud size={16} aria-hidden="true" />
+						<Card.Title>{t("settings.cloudUsage.plus", "Cloud storage")}</Card.Title>
+					</div>
+				</Card.Header>
+			)}
 			<Card.Content>
 				{!user ? (
 					<p>
@@ -87,22 +76,23 @@ export function CloudUsageCard({
 											used: formatCloudBytes(usage.storageBytes, locale),
 											limit: formatCloudBytes(storageLimit, locale),
 										})
-								: t("settings.cloudUsage.slots", "{{count}} of {{limit}} used", {
-										count: new Intl.NumberFormat(locale).format(
-											recordings ?? 0,
-										),
-										limit: new Intl.NumberFormat(locale).format(limit),
-									})}
+								: t(
+										"settings.cloudUsage.slots",
+										"{{count}} of {{limit}} share links used",
+										{
+											count: new Intl.NumberFormat(locale).format(
+												recordings ?? 0,
+											),
+											limit: new Intl.NumberFormat(locale).format(limit),
+										},
+									)}
 						</p>
 						{!unlimited && (
 							<ProgressBar
 								aria-label={
 									plus
 										? t("settings.cloudUsage.usedLabel", "Cloud storage used")
-										: t(
-												"settings.cloudUsage.slotsLabel",
-												"Cloud recording slots used",
-											)
+										: t("settings.cloudUsage.slotsLabel", "Share links used")
 								}
 								value={Math.min(value, max)}
 								maxValue={Math.max(max, 1)}
@@ -113,16 +103,14 @@ export function CloudUsageCard({
 								</ProgressBar.Track>
 							</ProgressBar>
 						)}
-						<p>
-							{plus
-								? t("billing.recordingCount", "{{number}} cloud recordings", {
-										count: recordings ?? 0,
-										number: new Intl.NumberFormat(locale).format(
-											recordings ?? 0,
-										),
-									})
-								: remaining(Math.max(0, limit - (recordings ?? 0)))}
-						</p>
+						{plus && (
+							<p>
+								{t("billing.recordingCount", "{{number}} cloud recordings", {
+									count: recordings ?? 0,
+									number: new Intl.NumberFormat(locale).format(recordings ?? 0),
+								})}
+							</p>
+						)}
 					</>
 				)}
 				{user && error && !loading && !knownUsage && (

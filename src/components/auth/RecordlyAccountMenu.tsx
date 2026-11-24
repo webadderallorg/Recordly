@@ -116,7 +116,7 @@ export function RecordlyAccountMenu({
 							</span>
 							<span className="mt-1 block text-xs text-muted">
 								{billing.status?.billing.plan === "pro" ? (
-									<span aria-label={t("settings.account.plusPlan", "Cloud plan")}>
+									<span aria-label={t("settings.account.plusPlan", "Plus plan")}>
 										<PlusBadge />
 									</span>
 								) : (

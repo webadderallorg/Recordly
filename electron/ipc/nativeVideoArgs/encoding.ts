@@ -11,6 +11,9 @@ import {
 	type NativeVideoExportStartOptions,
 } from "./types";
 
+const SRGB_TRANSFER = "iec61966-2-1";
+const SRGB_TRANSFER_CHARACTERISTICS = 13;
+
 export function getNativeVideoInputByteSize(width: number, height: number): number {
 	return width * height * NATIVE_EXPORT_INPUT_BYTES_PER_PIXEL;
 }
@@ -145,7 +148,9 @@ export function buildNativeVideoExportArgs(
 		"-i",
 		"pipe:0",
 		"-vf",
-		`vflip,${FFMPEG_FULL_TO_VIDEO_RANGE_FILTER}`,
+		// The canvas uses sRGB. The YUV conversion changes the matrix and range
+		// while keeping the transfer curve. VideoToolbox needs those frame properties.
+		`vflip,${FFMPEG_FULL_TO_VIDEO_RANGE_FILTER}:out_color_matrix=bt709,setparams=range=limited:color_primaries=bt709:color_trc=${SRGB_TRANSFER}:colorspace=bt709`,
 		"-an",
 		"-c:v",
 		encoder,
@@ -173,7 +178,14 @@ export function buildNativeVideoExportArgs(
 	args.push(
 		"-pix_fmt",
 		"yuv420p",
-		...FFMPEG_BT709_VIDEO_COLOR_ARGS,
+		"-colorspace",
+		"bt709",
+		"-color_primaries",
+		"bt709",
+		"-color_trc",
+		SRGB_TRANSFER,
+		"-color_range",
+		"tv",
 		"-movflags",
 		"+faststart",
 		outputPath,
@@ -293,6 +305,12 @@ export function buildNativeH264StreamExportArgs(config: {
 		"-an", // audio handled separately by muxNativeVideoExportAudio
 		"-c:v",
 		"copy",
+		// Electron's encoder can label canvas values as Rec.709 without changing
+		// the transfer curve. Describe the samples consistently in AVC and MP4.
+		"-bsf:v",
+		`h264_metadata=transfer_characteristics=${SRGB_TRANSFER_CHARACTERISTICS}`,
+		"-color_trc",
+		SRGB_TRANSFER,
 		"-movflags",
 		"+faststart",
 		config.outputPath,

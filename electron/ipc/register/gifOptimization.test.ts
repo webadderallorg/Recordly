@@ -21,7 +21,7 @@ beforeEach(() => {
 	mocks.handle.mockReset();
 	mocks.compress.mockReset();
 	mocks.binary.mockReset();
-	mocks.binary.mockReturnValue("/bundled/ffmpeg");
+	mocks.binary.mockResolvedValue("/bundled/ffmpeg");
 	mocks.compress.mockResolvedValue(new Uint8Array([71, 73, 70]));
 	sender = owner();
 	registerGifOptimizationHandlers();
@@ -94,6 +94,7 @@ it("cancels only the matching request owned by the sender", async () => {
 			}),
 	);
 	const pending = optimize({ sender }, "first", gif());
+	await vi.waitFor(() => expect(mocks.compress).toHaveBeenCalledOnce());
 	cancel({ sender: owner(7) }, "first");
 	cancel({ sender }, "other");
 	expect(signal.aborted).toBe(false);
@@ -112,6 +113,7 @@ it("aborts pending work when the owner is destroyed", async () => {
 			}),
 	);
 	const pending = optimize({ sender }, "first", gif());
+	await vi.waitFor(() => expect(mocks.compress).toHaveBeenCalledOnce());
 	sender.emit("destroyed");
 	expect(await pending).toMatchObject({ success: false, error: "GIF optimization canceled" });
 	expect(sender.listenerCount("destroyed")).toBe(0);
@@ -125,9 +127,21 @@ it("does not return bytes if cancellation races with completion", async () => {
 			}),
 	);
 	const pending = optimize({ sender }, "first", gif());
+	await vi.waitFor(() => expect(mocks.compress).toHaveBeenCalledOnce());
 	cancel({ sender }, "first");
 	finish(new Uint8Array([1]));
 	expect(await pending).toMatchObject({ success: false, error: "GIF optimization canceled" });
+});
+it("skips compression if canceled while resolving FFmpeg", async () => {
+	const binary = Promise.withResolvers<string>();
+	mocks.binary.mockReturnValueOnce(binary.promise);
+	const pending = optimize({ sender }, "first", gif());
+	cancel({ sender }, "first");
+	binary.resolve("/bundled/ffmpeg");
+
+	expect(await pending).toMatchObject({ success: false, error: "GIF optimization canceled" });
+	expect(mocks.compress).not.toHaveBeenCalled();
+	expect(sender.listenerCount("destroyed")).toBe(0);
 });
 it("releases listeners and ownership after errors", async () => {
 	mocks.compress.mockRejectedValueOnce(new Error("Encoding failed"));

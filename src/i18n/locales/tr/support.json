@@ -1,4 +1,6 @@
 {
+	"diagnosticsLoading": "Tanılama bilgileri toplanıyor…",
+	"diagnosticsUnavailable": "Tanılama ayrıntıları yüklenemedi.",
 	"reportTitle": "Bu hatayı ve tanılama günlüklerini Recordly desteğe gönder",
 	"reportSending": "Günlükler gönderiliyor…",
 	"reportSent": "Rapor gönderildi",

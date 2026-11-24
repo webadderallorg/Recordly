@@ -52,5 +52,6 @@ export function redactDiagnostic(value: string): string {
 			"[local path]",
 		)
 		.replace(/https?:\/\/[^\s"']+/g, "[url]")
+		.replace(/(^|[\s"'(=])\/(?![/\s])[^"\r\n')]+/gm, "$1[local path]")
 		.slice(0, 2000);
 }

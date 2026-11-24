@@ -1,147 +1,92 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { BillingSessionProvider } from "@/components/billing/BillingProvider";
+import { useCallback, useEffect, useState } from "react";
 import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
+import { hasSkippedOnboardingSignIn } from "@/lib/auth/onboardingSignIn";
 import { hasRequiredRecordingPermissions } from "@/lib/recordingPermissions";
 import { OnboardingController } from "./OnboardingController";
 import { RecordingPermissionsDialog } from "./RecordingPermissionsDialog";
-import { RecordlySignInDialog } from "./RecordlySignInDialog";
 import { useRecordlyAuth } from "./useRecordlyAuth";
 
-function ReturningOnboarding({
-	auth,
-	inlineRecordingStart,
-}: {
-	auth: ReturnType<typeof useRecordlyAuth>;
-	inlineRecordingStart: boolean;
-}) {
-	const signedIn = Boolean(auth.user);
-	const { callbackActivity, callbackVersion, isCallbackPending } = auth;
-	const [showedSignIn, setShowedSignIn] = useState(false);
-	const [needsPermissions, setNeedsPermissions] = useState(false);
-	const needsStartConfirmation = inlineRecordingStart && (showedSignIn || callbackVersion > 0);
-	const view = auth.loading
-		? null
-		: !signedIn
-			? "sign-in"
-			: needsStartConfirmation || needsPermissions
-				? inlineRecordingStart
-					? "ready"
-					: "permissions"
-				: null;
-	const continuing = useRef(false);
-	const close = () => void window.electronAPI.closeOnboardingWindow();
-	const continueToHud = useCallback(async () => {
-		if (!signedIn || continuing.current || isCallbackPending()) return;
-		continuing.current = true;
-		if (loadAppSetting<boolean>("recordly.onboarding.permissionsRequested") === true)
-			saveAppSetting("recordly.onboarding.permissionsRequested", false);
-		if (isCallbackPending()) {
-			continuing.current = false;
-			return;
-		}
+function AccountOnboarding() {
+	const auth = useRecordlyAuth();
+	const query = new URLSearchParams(window.location.search);
+	const startup = query.get("startup") === "1";
+	const withIntro = query.get("welcomeSoundtrack") === "intro";
+	const [showOnboarding, setShowOnboarding] = useState(!startup || withIntro);
+	const [initialPermissions, setInitialPermissions] = useState(false);
+	const { loading, callbackActivity, callbackVersion, isCallbackPending, user } = auth;
+	const hasAccountAccess = Boolean(user) || hasSkippedOnboardingSignIn();
+
+	const finishStartup = useCallback(async () => {
+		if (isCallbackPending()) return false;
+		const pendingKey = "recordly.onboarding.permissionsRequested";
+		const permissionsRequested = loadAppSetting<boolean>(pendingKey) === true;
+		if (permissionsRequested) saveAppSetting(pendingKey, false);
 		try {
-			if (!(await window.electronAPI.resolveStartupOnboarding("continue")))
-				throw new Error("Recording controls could not open.");
+			if (await window.electronAPI.resolveStartupOnboarding("continue")) return true;
 		} catch (error) {
 			console.error("[onboarding] Could not open the recording HUD.", error);
-			continuing.current = false;
-			setNeedsPermissions(true);
 		}
-	}, [signedIn, isCallbackPending]);
+		if (permissionsRequested) saveAppSetting(pendingKey, true);
+		return false;
+	}, [isCallbackPending]);
 
 	useEffect(() => {
-		// A cold launch can carry an OAuth callback. Keep its renderer alive
-		// until the exchange and callback acknowledgement are both finished.
-		if (auth.loading || callbackActivity.pending || !signedIn) return;
-		// On Windows and Linux, a fresh sign-in stops at Start recording.
-		if (needsStartConfirmation) return;
+		if (showOnboarding || loading || callbackActivity.pending) return;
+		if (
+			!hasAccountAccess ||
+			callbackVersion > 0 ||
+			loadAppSetting<boolean>("recordly.onboarding.v1.seen") !== true
+		) {
+			setShowOnboarding(true);
+			return;
+		}
 		let cancelled = false;
 		void hasRequiredRecordingPermissions()
 			.catch(() => false)
-			.then((granted) => {
-				if (cancelled) return;
-				if (granted) void continueToHud();
-				else setNeedsPermissions(true);
+			.then(async (granted) => {
+				if (cancelled || isCallbackPending()) return;
+				if (granted && (await finishStartup())) return;
+				if (cancelled || isCallbackPending()) return;
+				setInitialPermissions(true);
+				setShowOnboarding(true);
 			});
 		return () => {
 			cancelled = true;
 		};
-	}, [auth.loading, callbackActivity, signedIn, continueToHud, needsStartConfirmation]);
+	}, [
+		showOnboarding,
+		loading,
+		callbackActivity,
+		callbackVersion,
+		hasAccountAccess,
+		finishStartup,
+		isCallbackPending,
+	]);
 
 	useEffect(() => {
-		if (view === "sign-in") setShowedSignIn(true);
-		if (view) void window.electronAPI.resolveStartupOnboarding("show");
-	}, [view]);
+		if (startup && !withIntro && showOnboarding)
+			void window.electronAPI.resolveStartupOnboarding("show");
+	}, [startup, withIntro, showOnboarding]);
 
-	if (view === "permissions") {
-		return (
-			<RecordingPermissionsDialog
-				open
-				standalone
-				finishDisabled={callbackActivity.pending}
-				onFinish={continueToHud}
-				onClose={close}
-			/>
-		);
-	}
-	if (view === "sign-in" || view === "ready") {
-		return (
-			<RecordlySignInDialog
-				onboarding
-				signInOnly
-				open
-				user={view === "ready" ? auth.user : null}
-				configured={auth.configured}
-				callbackError={auth.callbackError}
-				onOpenChange={() => undefined}
-				onAuthenticated={() => undefined}
-				recordingStart={
-					inlineRecordingStart
-						? { disabled: callbackActivity.pending, onPress: continueToHud }
-						: undefined
-				}
-				onWindowClose={close}
-				onUnlockSavedSignIn={
-					auth.savedSignInLocked
-						? () => void window.electronAPI.resolveStartupOnboarding("restart")
-						: undefined
-				}
-			/>
-		);
-	}
-	return null;
-}
-
-function AccountOnboarding() {
-	const auth = useRecordlyAuth();
-	const returning = new URLSearchParams(window.location.search).get("returning") === "1";
-	const [platform, setPlatform] = useState<string>();
-	useEffect(() => {
-		if (returning)
-			void window.electronAPI.getPlatform().then(setPlatform, () => setPlatform("darwin"));
-	}, [returning]);
-	const inlineRecordingStart = platform === "win32" || platform === "linux";
-	if (returning && !platform) return null;
-	return returning ? (
-		<ReturningOnboarding auth={auth} inlineRecordingStart={inlineRecordingStart} />
-	) : (
-		<BillingSessionProvider auth={auth}>
-			<OnboardingController
-				requestNonce={0}
-				ready={!auth.loading}
-				user={auth.user}
-				configured={auth.configured}
-				callbackError={auth.callbackError}
-				authenticationVersion={auth.callbackVersion}
-				authCallbackPending={auth.callbackActivity.pending}
-				onUnlockSavedSignIn={
-					!import.meta.env.DEV && auth.savedSignInLocked
-						? () => void window.electronAPI.resolveStartupOnboarding("restart")
-						: undefined
-				}
-				standalone
-			/>
-		</BillingSessionProvider>
+	if (!showOnboarding) return null;
+	return (
+		<OnboardingController
+			requestNonce={0}
+			ready={!auth.loading}
+			user={auth.user}
+			configured={auth.configured}
+			callbackError={auth.callbackError}
+			authenticationVersion={auth.callbackVersion}
+			authCallbackPending={auth.callbackActivity.pending}
+			initialPermissions={initialPermissions}
+			finishStartup={startup ? finishStartup : undefined}
+			onUnlockSavedSignIn={
+				!import.meta.env.DEV && auth.savedSignInLocked
+					? () => void window.electronAPI.resolveStartupOnboarding("restart")
+					: undefined
+			}
+			standalone
+		/>
 	);
 }
 

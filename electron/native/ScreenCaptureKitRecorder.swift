@@ -570,9 +570,15 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		) { _, requested in requested }
 		outputSettings[AVVideoCompressionPropertiesKey] = compression
 
+		let transferFunction: String
+		if #available(macOS 15.0, *) {
+			transferFunction = AVVideoTransferFunction_IEC_sRGB
+		} else {
+			transferFunction = AVVideoTransferFunction_ITU_R_709_2
+		}
 		outputSettings[AVVideoColorPropertiesKey] = [
 			AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
-			AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+			AVVideoTransferFunctionKey: transferFunction,
 			AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
 		]
 
@@ -787,32 +793,28 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				return
 			}
 
-			lastSampleBuffer = sampleBuffer
-			let appended: Bool
+			let accepted: CMSampleBuffer?
 			if videoPixelBufferAdaptor != nil {
-				appended = appendCroppedVideoFrame(sampleBuffer, at: presentationTime)
+				accepted = appendCroppedVideoFrame(sampleBuffer, at: presentationTime) ? sampleBuffer : nil
+			} else if let retimed = try? retimeDisplayFrame(sampleBuffer, at: presentationTime) {
+				accepted = videoInput.append(retimed) ? retimed : nil
 			} else {
-				let timing = CMSampleTimingInfo(duration: sampleBuffer.duration, presentationTimeStamp: presentationTime, decodeTimeStamp: sampleBuffer.decodeTimeStamp)
-				if let retimed = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]) {
-					appended = videoInput.append(retimed)
-				} else {
-					appended = false
-				}
+				accepted = nil
 			}
-			if appended {
-					streamHasVideo = true
-					lastVideoPresentationTime = presentationTime
-					lastVideoDuration = sampleBuffer.duration
-					frameCount += 1
-					if frameCount == 1 {
-						// Signal readiness only after AVAssetWriter has accepted a
-						// real frame, so countdown warm-start cannot pause too early.
-						print("Recording started")
-						fflush(stdout)
-					}
-			} else if frameCount == 0 {
-				// A failed crop/append must not leave an empty interval before frame one.
-				firstSampleTime = .zero
+			guard let accepted else {
+				// A failed append must not leave an empty interval before the first frame.
+				if frameCount == 0 { firstSampleTime = .zero }
+				return
+			}
+			lastSampleBuffer = accepted
+			streamHasVideo = true
+			lastVideoPresentationTime = presentationTime
+			lastVideoDuration = sampleBuffer.duration
+			frameCount += 1
+			if frameCount == 1 {
+				// Signal readiness only after AVAssetWriter has accepted a real frame.
+				print("Recording started")
+				fflush(stdout)
 			}
 			return
 		}
@@ -842,6 +844,21 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 
 		return
+	}
+
+	private func retimeDisplayFrame(_ sampleBuffer: CMSampleBuffer, at presentationTime: CMTime) throws -> CMSampleBuffer? {
+		guard let source = CMSampleBufferGetImageBuffer(sampleBuffer) else { return nil }
+		// ScreenCaptureKit may attach a Rec.709 transfer tag to the requested sRGB frames.
+		CVBufferSetAttachment(
+			source, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_sRGB, .shouldPropagate
+		)
+		let format = try CMVideoFormatDescription(imageBuffer: source)
+		let timing = CMSampleTimingInfo(
+			duration: sampleBuffer.duration,
+			presentationTimeStamp: presentationTime,
+			decodeTimeStamp: sampleBuffer.decodeTimeStamp
+		)
+		return try CMSampleBuffer(imageBuffer: source, formatDescription: format, sampleTiming: timing)
 	}
 
 	private func appendCroppedVideoFrame(_ sampleBuffer: CMSampleBuffer, at presentationTime: CMTime) -> Bool {
@@ -879,6 +896,13 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			to: destination,
 			bounds: bounds,
 			colorSpace: CGColorSpace(name: CGColorSpace.sRGB)
+		)
+		// Core Image renders sRGB values without color attachments. Describe them for the writer.
+		CVBufferSetAttachment(
+			destination, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate
+		)
+		CVBufferSetAttachment(
+			destination, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_sRGB, .shouldPropagate
 		)
 
 		let appended = adaptor.append(destination, withPresentationTime: presentationTime)

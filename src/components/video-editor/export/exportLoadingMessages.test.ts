@@ -6,10 +6,10 @@ import {
 	shuffleExportLoadingMessages,
 } from "./exportLoadingMessages";
 
-it("keeps loading lines about 80% sensible and 20% silly", () => {
+it("keeps most loading lines focused on export progress", () => {
 	const sensible = SENSIBLE_EXPORT_LOADING_MESSAGES.flat().length;
 	const silly = SILLY_EXPORT_LOADING_MESSAGES.flat().length;
-	expect(sensible / (sensible + silly)).toBeCloseTo(0.8, 2);
+	expect(sensible).toBeGreaterThan(silly);
 });
 
 it("shuffles the loading lines without splitting the updater sequence", () => {

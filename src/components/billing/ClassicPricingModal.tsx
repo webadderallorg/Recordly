@@ -58,8 +58,9 @@ export function ClassicPricingModal({ onSignIn }: { onSignIn: () => void }) {
 	const portalAvailable = Boolean(status?.billing.portalAvailable);
 	const manageSubscription = portalAvailable && (plus || !checkoutReady);
 	const canManage = manageSubscription || checkoutReady;
-	const pricingLoading = loading || (!manageSubscription && catalogLoading);
 	const paymentPending = !plus && awaitingCheckout && !manageSubscription;
+	const pricingLoading =
+		!manageSubscription && (!checkoutReady || paymentPending) && (loading || catalogLoading);
 	const retryPricing = !canManage || paymentPending;
 	const actionLabel =
 		!user || needsSignIn
@@ -81,7 +82,7 @@ export function ClassicPricingModal({ onSignIn }: { onSignIn: () => void }) {
 			<Modal.Backdrop variant="blur">
 				<Modal.Container size="lg" scroll="inside">
 					<Modal.Dialog
-						aria-label="Recordly Cloud"
+						aria-label="Recordly Plus"
 						className="pricing-modal upgrade-modal"
 					>
 						<Modal.CloseTrigger
@@ -114,7 +115,7 @@ export function ClassicPricingModal({ onSignIn }: { onSignIn: () => void }) {
 									className="items-scroll"
 									ref={featureTrack}
 									role="region"
-									aria-label={t("benefits", "Cloud benefits")}
+									aria-label={t("benefits", "Plus benefits")}
 									tabIndex={0}
 								>
 									<div className="all-items">
@@ -303,7 +304,7 @@ export function ClassicPricingModal({ onSignIn }: { onSignIn: () => void }) {
 							)}
 							{plus && (
 								<p className="pricing-feedback" role="status">
-									{t("active", "Your Cloud plan is active.")}
+									{t("active", "Your Plus plan is active.")}
 									{status.billing.cancelAtPeriodEnd && currentPeriodEnd
 										? ` ${t("ends", "It ends on {{date}}.", { date: new Date(currentPeriodEnd * 1000).toLocaleDateString(locale) })}`
 										: ""}

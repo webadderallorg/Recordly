@@ -74,7 +74,9 @@ export async function bringSelectedWindowForward(
 			if (!appName) return null;
 			await execFileAsync("open", ["-a", appName], { timeout: 2000 });
 			try {
-				systemPreferences?.isTrustedAccessibilityClient?.(true);
+				// Check silently: the Record permission flow asks for Accessibility in order,
+				// and prompting here stacked a second dialog over the Screen Recording one.
+				if (!systemPreferences?.isTrustedAccessibilityClient?.(false)) return null;
 				const { stdout } = await execFileAsync(
 					"osascript",
 					[

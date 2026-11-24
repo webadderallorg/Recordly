@@ -1,9 +1,15 @@
+import { statSync } from "node:fs";
 import { BrowserWindow, type Rectangle } from "electron";
 
 const INTRO_TIMEOUT_MS = 6000;
 const INTRO_PLAYBACK_TIMEOUT_MS = 10000;
 const POPUP_FADE_MS = 280;
 const BACKDROP_FADE_MS = 2000;
+
+export function getOnboardingInstallStamp(executable: string, version: string): string {
+	const { dev, ino, birthtimeMs, mtimeMs } = statSync(executable, { bigint: true });
+	return `${version}:${dev}:${ino}:${birthtimeMs}:${mtimeMs}`;
+}
 
 export function startOnboardingIntro(
 	bounds: Rectangle,

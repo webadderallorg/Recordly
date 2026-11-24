@@ -12,7 +12,7 @@ export const EXPORT_CANVAS_COLOR_SPACE = {
  */
 export const ENCODED_H264_COLOR_SPACE_FALLBACK = {
 	primaries: "bt709",
-	transfer: "bt709",
+	transfer: EXPORT_CANVAS_COLOR_SPACE.transfer,
 	matrix: "bt709",
 	fullRange: false,
 } as const satisfies VideoColorSpaceInit;

@@ -98,9 +98,7 @@ test("caption model is available in standard settings and the bin clears caption
 		await expect(page.getByRole("option", { name: label, exact: true })).toBeVisible();
 	await page.getByRole("option", { name: "Whisper Base", exact: true }).click();
 
-	await page
-		.getByRole("button", { name: "Download 148 MB & generate captions", exact: true })
-		.click();
+	await page.getByRole("button", { name: "Download 148 MB & generate captions", exact: true }).click();
 	await expect(
 		page.getByRole("button", { name: "Downloading... 0%", exact: true }),
 	).toBeDisabled();
@@ -171,4 +169,55 @@ test("caption model is available in standard settings and the bin clears caption
 	await cursorSize.press("ArrowRight");
 	await expect(cursorSize).toHaveValue(String(Number((previousCursorSize + 0.05).toFixed(2))));
 	expect(errors).toEqual([]);
+});
+
+test("caption failures update one dismissible toast and expire", async ({ page }) => {
+	await installDesktopBridge(page, "filmstrip.mp4");
+	await installDesktopBridgeOverrides(page, () => {
+		let attempts = 0;
+		window.electronAPI.getCurrentVideoPath = async () => ({
+			success: true,
+			path: "/recordings/caption-test.mp4",
+		});
+		window.electronAPI.getLocalMediaUrl = async () => ({
+			success: true,
+			url: `${location.origin}/video?path=%2Frecordings%2Fcaption-test.mp4`,
+		});
+		window.electronAPI.getCaptionModelStatus = async () => ({
+			success: true,
+			exists: true,
+			path: "/models/parakeet-v3",
+		});
+		window.electronAPI.generateAutoCaptions = async () => ({
+			success: false,
+			error: `No audio was found to transcribe (attempt ${++attempts}).`,
+		});
+	});
+	await page.route("**/video?path=*", (route) =>
+		route.fulfill({
+			path: path.resolve("tests/ui/fixtures/filmstrip.mp4"),
+			contentType: "video/mp4",
+		}),
+	);
+	await page.goto("/?windowType=editor");
+	await expect(page.locator('[data-variant="clip"]')).toHaveAttribute("data-end-ms", "6000", {
+		timeout: 20000,
+	});
+	await page.getByRole("radio", { name: "Captions", exact: true }).click();
+	const generate = page.getByRole("button", { name: "Generate Captions", exact: true });
+	const notification = page.locator(".toast").filter({ hasText: "Failed to generate captions" });
+	const close = notification.locator('[data-slot="toast-close"]');
+	await page.clock.install();
+	await generate.click();
+	await expect(notification).toContainText("attempt 1");
+	await expect(close).toHaveCSS("opacity", "1");
+	await generate.click();
+	await expect(notification).toHaveCount(1);
+	await expect(notification).toContainText("attempt 2");
+	await close.click();
+	await expect(notification).toHaveCount(0);
+	await generate.click();
+	await expect(notification).toContainText("attempt 3");
+	await page.clock.fastForward(11_000);
+	await expect(notification).toHaveCount(0);
 });

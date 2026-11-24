@@ -43,11 +43,7 @@ test("Q and W trim the clip to the playhead and undo restores it", async ({ page
 	const endCut = await seekTo(page, 0.5);
 	await page.keyboard.press("w");
 	await expect(clip(page)).toHaveAttribute("data-end-ms", String(endCut));
-	await page.getByRole("button", { name: "Undo", exact: true }).click();
-	await expect(clip(page)).toHaveAttribute("data-end-ms", "6000");
-	const buttonCut = await seekTo(page, 0.5);
-	await page.getByRole("button", { name: "Trim End to Playhead (W)", exact: true }).click();
-	await expect(clip(page)).toHaveAttribute("data-end-ms", String(buttonCut));
+	await expect(page.getByRole("button", { name: /Trim (Start|End) to Playhead/ })).toHaveCount(0);
 });
 
 test("the visible grip starts a trim and an edge snaps to the playhead", async ({ page }) => {
@@ -81,14 +77,4 @@ test("a narrow clip still moves when its longer neighbor is selected", async ({ 
 
 	await expect(clips.first()).toHaveAttribute("data-end-ms", String(6000 - cut));
 	await expect(clips.last()).toHaveAttribute("data-end-ms", "6000");
-});
-
-test("trim actions fit in the compact clip menu", async ({ page }) => {
-	await page.setViewportSize({ width: 800, height: 650 });
-	const cut = await seekTo(page, 0.5);
-	await page.getByRole("button", { name: "Clip", exact: true }).click();
-	await expect(page.getByRole("menuitem", { name: /^Split Clip/ })).toBeVisible();
-	await expect(page.getByRole("menuitem", { name: "Trim Start to Playhead (Q)" })).toBeVisible();
-	await page.getByRole("menuitem", { name: "Trim End to Playhead (W)" }).click();
-	await expect(clip(page)).toHaveAttribute("data-end-ms", String(cut));
 });

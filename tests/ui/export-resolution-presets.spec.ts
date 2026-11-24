@@ -55,10 +55,10 @@ test("an unsupported fixed preset reports an error instead of silently exporting
 	await expect(page.getByTestId("export-result")).toHaveText("1920 × 1080");
 });
 
-test("4K and QHD exports are available without a Cloud subscription", async ({ page }) => {
+test("4K and QHD exports are available without a Plus subscription", async ({ page }) => {
 	await page.goto("/tests/ui/export-resolution-presets.html?free");
 	await expect(
-		page.getByText("Commercial use requires an active Recordly Cloud subscription.", {
+		page.getByText("Commercial use requires an active Recordly Plus subscription.", {
 			exact: true,
 		}),
 	).toHaveCount(0);
@@ -104,7 +104,7 @@ test("custom sizes stay linked, validate even dimensions, and reset to FHD when 
 	await expect(page.getByTestId("export-result")).toHaveText("1920 × 1080");
 });
 
-test("custom exports above QHD are available without a Cloud subscription", async ({ page }) => {
+test("custom exports above QHD are available without a Plus subscription", async ({ page }) => {
 	await page.goto("/tests/ui/export-resolution-presets.html?free");
 	await page.getByText("Advanced", { exact: true }).click();
 	await page.getByRole("row", { name: "Custom", exact: true }).click();
@@ -113,7 +113,9 @@ test("custom exports above QHD are available without a Cloud subscription", asyn
 	await expect(page.getByTestId("export-result")).toHaveText("3840 × 2160");
 });
 
-test("download and sharing honor the visible FPS and active encoding mode", async ({ page }) => {
+test("download and sharing honor the visible FPS and active encoding mode", async ({
+	page,
+}) => {
 	await page.goto("/tests/ui/export-resolution-presets.html");
 	await expect(page.getByRole("grid", { name: "Resolution", exact: true })).toBeVisible();
 	await expect(page.getByRole("row", { name: "Balanced", exact: true })).toHaveCount(0);

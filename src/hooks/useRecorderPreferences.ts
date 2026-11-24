@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "@/components/ui/toast";
+import { translate } from "@/i18n/runtime";
+import { hasSkippedOnboardingSignIn } from "@/lib/auth/onboardingSignIn";
 import { hasRecordlySession } from "@/lib/auth/recordlyAuth";
-import { hasRequiredRecordingPermissions } from "@/lib/recordingPermissions";
+import {
+	hasRequiredRecordingPermissions,
+	requestMissingRecordingPermissions,
+} from "@/lib/recordingPermissions";
 import {
 	type BrowserMicrophoneProfile,
 	DEFAULT_BROWSER_MICROPHONE_PROFILE,
@@ -40,11 +46,23 @@ export function useRecorderPreferences() {
 	});
 
 	const preparePermissions = useCallback(async () => {
-		if (!import.meta.env.DEV && !(await hasRecordlySession().catch(() => false))) {
+		if (
+			!import.meta.env.DEV &&
+			!hasSkippedOnboardingSignIn() &&
+			!(await hasRecordlySession().catch(() => false))
+		) {
 			await window.electronAPI.showProjectDashboard();
 			return false;
 		}
 		if (await hasRequiredRecordingPermissions()) return true;
+		// Dev has no onboarding permissions page, so ask macOS directly from the Record click.
+		if (import.meta.env.DEV) {
+			await requestMissingRecordingPermissions().catch((error) => {
+				console.warn("Failed to request recording permissions:", error);
+				toast.error(translate("onboarding.openSettingsFailed"));
+			});
+			return false;
+		}
 		await window.electronAPI.showRecordingPermissions();
 		return false;
 	}, []);

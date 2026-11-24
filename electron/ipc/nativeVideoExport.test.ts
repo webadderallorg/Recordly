@@ -5,6 +5,7 @@ import {
 	buildNativeConcatArgs,
 	buildNativeCudaOverlayStaticLayoutArgs,
 	buildNativeCudaScaleCpuPadStaticLayoutArgs,
+	buildNativeH264StreamExportArgs,
 	buildNativePrecompositedStaticLayoutArgs,
 	buildNativeStaticBackgroundRenderArgs,
 	buildNativeStaticLayoutChunks,
@@ -163,7 +164,7 @@ describe("native static layout command builders", () => {
 		expect(args).toEqual(expect.arrayContaining([...FFMPEG_BT709_VIDEO_COLOR_ARGS]));
 	});
 
-	it("converts full-range canvas pixels and tags native H.264 as BT.709 video range", () => {
+	it("converts full-range canvas pixels to video range with an sRGB transfer", () => {
 		const args = buildNativeVideoExportArgs(
 			"h264_videotoolbox",
 			{
@@ -179,17 +180,32 @@ describe("native static layout command builders", () => {
 		expect(args).toEqual(
 			expect.arrayContaining([
 				"-vf",
-				"vflip,scale=in_range=full:out_range=tv:sws_dither=bayer",
+				"vflip,scale=in_range=full:out_range=tv:sws_dither=bayer:out_color_matrix=bt709,setparams=range=limited:color_primaries=bt709:color_trc=iec61966-2-1:colorspace=bt709",
 				"-colorspace",
 				"bt709",
 				"-color_primaries",
 				"bt709",
 				"-color_trc",
-				"bt709",
+				"iec61966-2-1",
 				"-color_range",
 				"tv",
 			]),
 		);
+	});
+
+	it("labels the sRGB transfer in the copied H.264 stream and its MP4 container", () => {
+		const args = buildNativeH264StreamExportArgs({ frameRate: 30, outputPath: "out.mp4" });
+		expect(args.slice(-9)).toEqual([
+			"-c:v",
+			"copy",
+			"-bsf:v",
+			"h264_metadata=transfer_characteristics=13",
+			"-color_trc",
+			"iec61966-2-1",
+			"-movflags",
+			"+faststart",
+			"out.mp4",
+		]);
 	});
 
 	it("builds the stable CUDA scale plus CPU pad fallback command", () => {

@@ -1,5 +1,6 @@
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
+import { beginAppOperation } from "@/lib/feedback/diagnostics";
 import { acquireRecorderBrowserStream } from "./acquireRecorderBrowserStream";
 import { isCapturePermissionDismissed, LINUX_PORTAL_SOURCE_ID } from "./browserScreenCapture";
 import type { RecorderContext } from "./recorderContext";
@@ -21,7 +22,6 @@ export function useRecorderStartup(context: RecorderContext) {
 		setCountdownActive,
 		resetRecordingClock,
 		setRecording,
-		nativeScreenRecording,
 		discardActiveNativeCapture,
 		stopMicFallbackRecorder,
 	} = context;
@@ -29,12 +29,16 @@ export function useRecorderStartup(context: RecorderContext) {
 		if (startInFlight.current || recordingActive.current || browserFinalizing.current) {
 			return;
 		}
+		const operation = beginAppOperation("recording.start");
 		const startGeneration = recordingStartGeneration.current + 1;
 		recordingStartGeneration.current = startGeneration;
 		const startWasCancelled = () => recordingStartGeneration.current !== startGeneration;
+		let startupFailed = false;
+		const startupWasAborted = () => startupFailed || startWasCancelled();
 		let usingLinuxPortal = false;
 		const runCountdown = async () => {
 			if (countdownDelay <= 0) return true;
+			operation.step("countdown");
 			setCountdownActive(true);
 			try {
 				const result = await window.electronAPI.startCountdown(countdownDelay);
@@ -71,13 +75,16 @@ export function useRecorderStartup(context: RecorderContext) {
 		let sessionReservationToken: string | undefined;
 
 		try {
+			operation.step("reserve-session");
 			const reservation = await window.electronAPI.reserveRecordingSession();
 			if (!reservation.success) {
+				operation.finish("blocked");
 				toast.error(reservation.message);
 				return;
 			}
 			sessionReservationToken = reservation.token;
 			if (startWasCancelled()) return;
+			operation.step("prepare-source");
 			const preparedStart = await prepareRecordingStart();
 			if (!preparedStart || startWasCancelled()) {
 				cleanupCapturedMedia();
@@ -85,8 +92,13 @@ export function useRecorderStartup(context: RecorderContext) {
 				return;
 			}
 
-			const { selectedSource, useNativeMacScreenCapture, useNativeWindowsCapture, micLabel } =
-				preparedStart;
+			const {
+				selectedSource,
+				useNativeMacScreenCapture,
+				useNativeWindowsCapture,
+				micLabel,
+				webcamReady,
+			} = preparedStart;
 			usingLinuxPortal = selectedSource.id === LINUX_PORTAL_SOURCE_ID;
 			const useNativeCapture = useNativeMacScreenCapture || useNativeWindowsCapture;
 			const shouldWarmStartNativeCapture = useNativeCapture && countdownDelay > 0;
@@ -96,40 +108,53 @@ export function useRecorderStartup(context: RecorderContext) {
 			let nativeWindowsCaptureStartFailed = false;
 
 			if (useNativeCapture) {
+				operation.step(useNativeWindowsCapture ? "windows-native" : "mac-native");
 				const outcome = await startNativeRecorder(context, {
 					selectedSource,
 					useNativeWindowsCapture,
 					micLabel,
 					shouldWarmStartNativeCapture,
-					startWasCancelled,
+					startWasCancelled: startupWasAborted,
+					webcamReady,
 				});
-				if (outcome === "finished") return;
+				if (outcome === "failed") {
+					operation.finish(startWasCancelled() ? "cancelled" : "failed");
+					return;
+				}
+				if (outcome === "finished" || startWasCancelled()) return;
+				if (outcome === "browser-fallback-needs-countdown") {
+					if (!(await runCountdown())) return;
+				} else if (shouldWarmStartNativeCapture) {
+					resetRecordingClock(Date.now());
+				}
 				nativeWindowsCaptureStartFailed = true;
 			}
 
 			if (startWasCancelled()) return;
-			if (nativeWindowsCaptureStartFailed && !(await runCountdown())) return;
-
-			if (startWasCancelled()) return;
-			const { videoTrack, systemAudioIncluded } = await acquireRecorderBrowserStream(
-				context,
-				{
+			operation.step(usingLinuxPortal ? "portal-capture" : "browser-capture");
+			// The webcam opens while the screen stream is acquired; both must be ready to record.
+			const [{ videoTrack, systemAudioIncluded }] = await Promise.all([
+				acquireRecorderBrowserStream(context, {
 					selectedSource,
 					nativeWindowsCaptureStartFailed,
-				},
-			);
+				}),
+				webcamReady,
+			]);
+			operation.step("start-browser-recorder");
 			await startBrowserRecorder(context, {
 				videoTrack,
 				systemAudioIncluded,
-				startWasCancelled,
+				startWasCancelled: startupWasAborted,
 				runPortalCountdown: usingLinuxPortal ? runCountdown : undefined,
 			});
 		} catch (error) {
+			startupFailed = true;
 			const missingWaylandScreenCast =
 				!startWasCancelled() &&
 				usingLinuxPortal &&
 				(await window.electronAPI.isWaylandScreenCastMissing?.().catch(() => false));
 			const portalDismissed = usingLinuxPortal && isCapturePermissionDismissed(error);
+			operation.finish(startWasCancelled() || portalDismissed ? "cancelled" : "failed");
 			if (!startWasCancelled() && (missingWaylandScreenCast || !portalDismissed)) {
 				console.error("Failed to start recording:", error);
 				if (missingWaylandScreenCast) {
@@ -155,20 +180,10 @@ export function useRecorderStartup(context: RecorderContext) {
 				}
 			}
 			setRecording(false);
-			if (nativeScreenRecording.current) {
-				await discardActiveNativeCapture();
-			}
-			try {
-				await window.electronAPI?.setRecordingState(false);
-			} catch (stateError) {
-				console.warn("Failed to reset main-process recording state:", stateError);
-			} finally {
-				cleanupCapturedMedia();
-				await stopWebcamRecorder();
-			}
 		} finally {
+			operation.finish(recordingActive.current ? "succeeded" : "cancelled");
 			try {
-				if (startWasCancelled()) {
+				if (startupWasAborted()) {
 					try {
 						await discardActiveNativeCapture();
 					} finally {
@@ -182,7 +197,7 @@ export function useRecorderStartup(context: RecorderContext) {
 					}
 				}
 			} catch (error) {
-				console.warn("Failed to clean up canceled recording startup:", error);
+				console.warn("Failed to clean up recording startup:", error);
 			}
 			try {
 				await window.electronAPI.finishRecordingStartup();

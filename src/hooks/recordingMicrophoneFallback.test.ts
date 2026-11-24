@@ -189,9 +189,34 @@ describe("browser microphone fallback capture", () => {
 		resolveStream(stream);
 		await expect(pending).resolves.toBe(false);
 		expect(track.stop).toHaveBeenCalledOnce();
-		expect(recorder().start).not.toHaveBeenCalled();
+		expect(enumerateDevices).not.toHaveBeenCalled();
+		expect(FakeMediaRecorder.instances).toHaveLength(0);
 		await expect(fallback.stop()).resolves.toBeNull();
 		expect(toast.error).not.toHaveBeenCalled();
+	});
+
+	it("releases the microphone if startup is aborted during device enumeration", async () => {
+		let finishEnumeration!: (devices: MediaDeviceInfo[]) => void;
+		enumerateDevices.mockReturnValue(
+			new Promise<MediaDeviceInfo[]>((resolve) => {
+				finishEnumeration = resolve;
+			}),
+		);
+		let cancelled = false;
+		const fallback = createFallback();
+		const pending = fallback.start({
+			mainStartedAt: 10_000,
+			startWasCancelled: () => cancelled,
+		});
+		await vi.waitFor(() => expect(enumerateDevices).toHaveBeenCalledOnce());
+		cancelled = true;
+		fallback.cleanup();
+		expect(track.stop).toHaveBeenCalledOnce();
+		finishEnumeration([]);
+		await expect(pending).resolves.toBe(false);
+		expect(track.stop).toHaveBeenCalledOnce();
+		expect(FakeMediaRecorder.instances).toHaveLength(0);
+		expect(fallback.trackSettings).toBeNull();
 	});
 
 	it.each([
@@ -373,7 +398,7 @@ describe("browser microphone fallback capture", () => {
 		now = 1_250;
 		fallback.pause();
 		now = 1_500;
-		await expect(fallback.storeSidecar(fallback.stop(), "/first.mp4")).resolves.toBeUndefined();
+		await expect(fallback.storeSidecar(fallback.stop(), "/first.mp4")).resolves.toBe(false);
 		expect(toast.error).toHaveBeenCalledWith(
 			"Disk full. Recording was saved without the fallback microphone track.",
 			{ id: "recording-microphone-sidecar-error", duration: 10_000 },

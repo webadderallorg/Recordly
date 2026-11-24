@@ -7,6 +7,8 @@
 		"addKeyframe": "Ajouter une image clé",
 		"deleteSelected": "Supprimer la sélection",
 		"duplicateSelected": "Dupliquer la sélection",
+		"copySelected": "Copier la sélection",
+		"paste": "Coller",
 		"playPause": "Lecture / Pause",
 		"cycleForward": "Parcourir les annotations vers l’avant",
 		"cycleBackward": "Parcourir les annotations vers l’arrière",

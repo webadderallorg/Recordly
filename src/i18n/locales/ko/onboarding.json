@@ -1,4 +1,5 @@
 {
+	"continueAsGuest": "게스트로 계속",
 	"simulatePermissions": "권한 시뮬레이션",
 	"skipOnboarding": "초기 설정 건너뛰기",
 	"botChecking": "간단한 보안 확인 중…",

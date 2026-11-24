@@ -54,8 +54,7 @@ function Fixture() {
 		exportSettings.setExportPipelineModel(query.has("legacy") ? "legacy" : "modern");
 		if (query.has("gif")) exportSettings.setExportFormat("gif");
 		exportSession.setShowExportDropdown(true);
-		exportSession.setIsExporting(!query.has("saved") && !query.has("link"));
-		if (query.has("saved")) exportSession.setExportedFilePath("/tmp/export.gif");
+		exportSession.setIsExporting(!query.has("link"));
 		exportSession.setIsOptimizingGif(query.has("optimizing"));
 		exportSession.setExportProgress({
 			phase: query.has("preparing")
@@ -82,12 +81,24 @@ function Fixture() {
 		exportSettings.setExportFormat,
 		exportSession.setShowExportDropdown,
 		exportSession.setIsExporting,
-		exportSession.setExportedFilePath,
 		exportSession.setIsOptimizingGif,
 		exportSession.setExportProgress,
 	]);
 	return (
 		<main className="p-8 flex justify-end">
+			{query.has("finish-save") && (
+				<button
+					type="button"
+					onClick={() => {
+						exportSession.setExportedFilePath(
+							`/tmp/export.${exportSettings.exportFormat}`,
+						);
+						exportSession.setIsExporting(false);
+					}}
+				>
+					Finish saving
+				</button>
+			)}
 			<button
 				type="button"
 				onClick={() => {

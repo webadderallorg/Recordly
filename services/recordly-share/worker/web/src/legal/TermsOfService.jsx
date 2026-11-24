@@ -2,7 +2,7 @@ import { RecordlyLegalDocument as Legal } from "./RecordlyLegalDocument";
 
 export const termsTitle = "Terms of service";
 export const termsDescription =
-	"The terms for Recordly accounts, cloud sharing and Cloud subscriptions.";
+	"The terms for Recordly accounts, cloud sharing and Plus subscriptions.";
 
 export default function TermsOfService() {
 	return (
@@ -53,34 +53,34 @@ export default function TermsOfService() {
 				service hosts published media; it is not a backup service for editable Recordly
 				projects. Keep your own copies of important work.
 			</p>
-			<h2>5. Free and Cloud services</h2>
+			<h2>5. Free and Plus services</h2>
 			<p>
 				The desktop recording and editing features remain available under the software’s
 				licence. Optional hosted services have the limits displayed in the app and at
 				checkout. At launch, Free allows five stored cloud recordings of up to 1 GB each,
-				normally expiring after 7 days. Cloud includes unlimited cloud storage and playback
-				bandwidth, with up to 10 GB per recording. Cloud allows 200 new uploads per rolling
+				normally expiring after 7 days. Plus includes unlimited cloud storage and playback
+				bandwidth, with up to 10 GB per recording. Plus allows 200 new uploads per rolling
 				seven days, including admitted uploads later canceled or deleted. Daily
 				upload-capacity and abuse protections also apply. GB means one billion bytes.
 				Reserved and incomplete uploads may count toward capacity.
 			</p>
 			<p>
-				Cloud recordings have no scheduled expiry while Cloud is active. A verified upgrade
-				also protects eligible recordings still stored at the time of upgrade. When Cloud
+				Cloud recordings have no scheduled expiry while Plus is active. A verified upgrade
+				also protects eligible recordings still stored at the time of upgrade. When Plus
 				ends, those recordings expire after a seven-day grace period. Save a copy or renew
 				before that deadline. Upgrading cannot recover deleted files. New uploads after
-				Cloud ends follow the Free limits; stored recordings continue to count toward
+				Plus ends follow the Free limits; stored recordings continue to count toward
 				applicable limits.
 			</p>
 			<p>
-				“No expiry” applies only while Cloud is active. Cloud recordings expire seven days
-				after Cloud ends. It does not prevent deletion you request, lawful removal or
+				“No expiry” applies only while Plus is active. Cloud recordings expire seven days
+				after Plus ends. It does not prevent deletion you request, lawful removal or
 				removal necessary to address serious abuse. It is not a guarantee of uninterrupted
 				service or a separate disaster-recovery copy.
 			</p>
 			<h2>6. Prices, renewals and cancellation</h2>
 			<p>
-				Cloud is a recurring subscription. Current pricing and any promotional offers appear
+				Plus is a recurring subscription. Current pricing and any promotional offers appear
 				in Recordly. Checkout displays the amount, currency, interval and any applicable
 				taxes before you pay. Your payment provider or bank may apply currency-conversion
 				fees.

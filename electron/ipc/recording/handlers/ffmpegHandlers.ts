@@ -47,7 +47,7 @@ export function registerFfmpegHandlers(
 				let ffProc: ChildProcessWithoutNullStreams | null = null;
 				try {
 					const recordingsDir = await getRecordingsDir();
-					const ffmpegPath = getFfmpegBinaryPath();
+					const ffmpegPath = await getFfmpegBinaryPath();
 					const outputPath = path.join(recordingsDir, `recording-${Date.now()}.mp4`);
 					const args = await buildFfmpegCaptureArgs(source, outputPath);
 

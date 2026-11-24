@@ -1,5 +1,5 @@
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from "react";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { toast } from "@/components/ui/toast";
 import type { useI18n } from "@/contexts/I18nContext";
 import type { useShortcuts } from "@/contexts/ShortcutsContext";
@@ -49,6 +49,14 @@ type Input = {
 	handleUndo: () => void;
 	handleRedo: () => void;
 };
+
+type CopiedTimelineRegion =
+	| { kind: "zoom"; region: ReturnType<typeof useTimelineState>["zoomRegions"][number] }
+	| {
+			kind: "annotation";
+			region: ReturnType<typeof useTimelineState>["annotationRegions"][number];
+	  }
+	| { kind: "audio"; region: ReturnType<typeof useTimelineState>["audioRegions"][number] };
 
 export function useTimelineEditingController(input: Input) {
 	const { timeline } = input;
@@ -192,50 +200,72 @@ export function useTimelineEditingController(input: Input) {
 		nextAnnotationZIndexRef: input.nextAnnotationZIndexRef,
 	});
 
-	const duplicateSelectedRegion = () => {
-		const totalMs = Math.round(projection.timelineDuration * 1000);
+	const copiedRegionRef = useRef<CopiedTimelineRegion | null>(null);
+
+	const getSelectedRegion = (): CopiedTimelineRegion | null => {
 		const zoom = timeline.zoomRegions.find(({ id }) => id === timeline.selectedZoomId);
+		if (zoom) return { kind: "zoom", region: zoom };
 		const annotation = timeline.annotationRegions.find(
 			({ id }) => id === timeline.selectedAnnotationId,
 		);
+		if (annotation) return { kind: "annotation", region: annotation };
 		const audioRegion = timeline.audioRegions.find(({ id }) => id === timeline.selectedAudioId);
+		if (audioRegion) return { kind: "audio", region: audioRegion };
+		return null;
+	};
 
-		if (zoom) {
-			const span = placeSpanAfter(zoom, totalMs, timeline.zoomRegions);
+	const copySelectedRegion = () => {
+		const selected = getSelectedRegion();
+		if (!selected) return false;
+		copiedRegionRef.current = selected;
+		return true;
+	};
+
+	/** Places a copy after the source and returns it, or null when there is no room. */
+	const insertRegionCopy = (copied: CopiedTimelineRegion): CopiedTimelineRegion | null => {
+		const totalMs = Math.round(projection.timelineDuration * 1000);
+
+		if (copied.kind === "zoom") {
+			const span = placeSpanAfter(copied.region, totalMs, timeline.zoomRegions);
 			if (span) {
-				const id = `zoom-${input.nextZoomIdRef.current++}`;
-				timeline.setZoomRegions((current) => [...current, { ...zoom, ...span, id }]);
-				zoomCommands.handleSelectZoom(id);
-				return;
+				const region = {
+					...copied.region,
+					...span,
+					id: `zoom-${input.nextZoomIdRef.current++}`,
+				};
+				timeline.setZoomRegions((current) => [...current, region]);
+				zoomCommands.handleSelectZoom(region.id);
+				return { kind: "zoom", region };
 			}
-		} else if (annotation) {
-			const span = placeSpanAfter(annotation, totalMs);
+		} else if (copied.kind === "annotation") {
+			const span = placeSpanAfter(copied.region, totalMs);
 			if (span) {
-				const id = `annotation-${input.nextAnnotationIdRef.current++}`;
-				const zIndex = input.nextAnnotationZIndexRef.current++;
-				timeline.setAnnotationRegions((current) => [
-					...current,
-					{ ...annotation, ...span, id, zIndex },
-				]);
-				handleSelectAnnotation(id);
-				return;
-			}
-		} else if (audioRegion) {
-			const sameTrack = timeline.audioRegions.filter(
-				(region) => (region.trackIndex ?? 0) === (audioRegion.trackIndex ?? 0),
-			);
-			const span = placeSpanAfter(audioRegion, totalMs, sameTrack);
-			if (span) {
-				const id = `audio-${input.nextAudioIdRef.current++}`;
-				timeline.setAudioRegions((current) => [
-					...current,
-					{ ...audioRegion, ...span, id },
-				]);
-				audioCommands.handleSelectAudio(id);
-				return;
+				const region = {
+					...copied.region,
+					...span,
+					id: `annotation-${input.nextAnnotationIdRef.current++}`,
+					zIndex: input.nextAnnotationZIndexRef.current++,
+				};
+				timeline.setAnnotationRegions((current) => [...current, region]);
+				handleSelectAnnotation(region.id);
+				return { kind: "annotation", region };
 			}
 		} else {
-			return;
+			const trackIndex = copied.region.trackIndex ?? 0;
+			const sameTrack = timeline.audioRegions.filter(
+				(region) => (region.trackIndex ?? 0) === trackIndex,
+			);
+			const span = placeSpanAfter(copied.region, totalMs, sameTrack);
+			if (span) {
+				const region = {
+					...copied.region,
+					...span,
+					id: `audio-${input.nextAudioIdRef.current++}`,
+				};
+				timeline.setAudioRegions((current) => [...current, region]);
+				audioCommands.handleSelectAudio(region.id);
+				return { kind: "audio", region };
+			}
 		}
 
 		toast.warning(
@@ -244,6 +274,20 @@ export function useTimelineEditingController(input: Input) {
 				"There is no room to duplicate this item.",
 			),
 		);
+		return null;
+	};
+
+	const pasteCopiedRegion = () => {
+		const copied = copiedRegionRef.current;
+		if (!copied) return false;
+		// Chain repeated pastes so each copy lands after the previous one.
+		copiedRegionRef.current = insertRegionCopy(copied) ?? copied;
+		return true;
+	};
+
+	const duplicateSelectedRegion = () => {
+		const selected = getSelectedRegion();
+		if (selected) insertRegionCopy(selected);
 	};
 
 	useEditorGlobalInteractions({
@@ -268,5 +312,7 @@ export function useTimelineEditingController(input: Input) {
 		annotationCommands,
 		handleSelectAnnotation,
 		duplicateSelectedRegion,
+		copySelectedRegion,
+		pasteCopiedRegion,
 	};
 }

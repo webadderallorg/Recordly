@@ -126,7 +126,7 @@ export async function muxNativeVideoExportAudio(
 		};
 	}
 
-	const ffmpegPath = getFfmpegBinaryPath();
+	const ffmpegPath = await getFfmpegBinaryPath();
 	const metrics: NativeVideoAudioMuxMetrics = {};
 	const tempArtifacts: string[] = [];
 	let audioInputPath = options.audioSourcePath ?? null;

@@ -45,6 +45,10 @@ import {
 import { recordingFocus } from "./ipc/recording/focus";
 import { clearRecordingTrashUndo } from "./ipc/recording/library";
 import { setRecordingZoomShortcutActive } from "./ipc/recording/zoomShortcut";
+import {
+	drainAppProcessDiagnostics,
+	installAppProcessDiagnostics,
+} from "./ipc/register/exportDiagnostics";
 import { resolveDisplayMediaSource } from "./ipc/register/sourceMapping";
 import { validateAppLocaleRequest } from "./localeIpc";
 import { ensureMediaServer } from "./mediaServer";
@@ -54,6 +58,7 @@ import {
 	isInternalRendererTarget,
 	shouldHardenWebContentsType,
 } from "./navigationPolicy";
+import { getOnboardingInstallStamp } from "./onboardingIntro";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
 import { createReleaseVersionCatalog } from "./releaseVersions";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
@@ -153,6 +158,7 @@ ipcMain.handle("resolve-startup-onboarding", (event, action: unknown) => {
 
 ignoreBrokenConsolePipe(process.stdout);
 ignoreBrokenConsolePipe(process.stderr);
+installAppProcessDiagnostics();
 
 for (const gpuSwitch of getGpuBlocklistOverrideSwitches()) {
 	app.commandLine.appendSwitch(gpuSwitch);
@@ -519,8 +525,7 @@ function createWindow() {
 
 	if (app.isPackaged) {
 		// Relaunching from System Settings must not skip the rest of the first-run tour.
-		const returning = readAppSetting("recordly.onboarding.v1.seen") === true;
-		showOnboardingWindow({ intro: !returning && claimFirstRunIntro(), returning });
+		showOnboardingWindow({ intro: claimFirstRunIntro(), startup: true });
 		return;
 	}
 
@@ -558,12 +563,21 @@ function createRecordingControls() {
 }
 
 function claimFirstRunIntro() {
-	if (firstRunIntroStarted) return false;
+	if (firstRunIntroStarted || (process.platform !== "darwin" && process.platform !== "win32"))
+		return false;
 	firstRunIntroStarted = true;
 	const introStartedKey = "recordly.onboarding.introStarted";
-	if (readAppSetting(introStartedKey) === true) return false;
+	let installation: string | true = true;
 	try {
-		writeAppSetting(introStartedKey, true);
+		// Replacing the app can keep its version and user profile. Track the
+		// installed executable so the next launch gets the reveal in that case too.
+		installation = getOnboardingInstallStamp(process.execPath, app.getVersion());
+	} catch (error) {
+		console.warn("[onboarding] Could not identify the installed app", error);
+	}
+	if (readAppSetting(introStartedKey) === installation) return false;
+	try {
+		writeAppSetting(introStartedKey, installation);
 	} catch (error) {
 		console.warn("[onboarding] Could not save reveal progress", error);
 	}
@@ -839,12 +853,12 @@ function getTrayIcon(filename: string) {
 }
 
 function syncDockIcon() {
-	// The packaged app uses the native icon from its macOS bundle.
+	// Packaged builds use the system-rendered Icon Composer asset in the app bundle.
 	if (process.platform !== "darwin" || app.isPackaged || !app.dock) {
 		return;
 	}
 
-	const dockIcon = getAppImage("app-icons/recordly-solid-blue-512.png");
+	const dockIcon = getAppImage(getPlatformAppIconFilename(512));
 	if (!dockIcon.isEmpty()) {
 		app.dock.setIcon(dockIcon);
 	}
@@ -1266,25 +1280,26 @@ app.on("quit", () => {
 	void appLinks.close();
 });
 
-let nativeExportQuitState: "idle" | "waiting" | "ready" = "idle";
+let quitCleanupState: "idle" | "waiting" | "ready" = "idle";
 app.on("will-quit", (event) => {
 	setRecordingZoomShortcutActive(false);
-	if (nativeExportQuitState === "ready") return;
-	if (nativeExportQuitState === "waiting") {
+	if (quitCleanupState === "ready") return;
+	if (quitCleanupState === "waiting") {
 		event.preventDefault();
 		return;
 	}
 	const cleanup = cleanupNativeVideoExportSessions();
-	if (!cleanup) return;
+	const diagnosticWrites = drainAppProcessDiagnostics();
+	if (!cleanup && !diagnosticWrites) return;
 	event.preventDefault();
-	nativeExportQuitState = "waiting";
+	quitCleanupState = "waiting";
 	let timeout: NodeJS.Timeout | undefined;
 	const deadline = new Promise<void>((resolve) => {
 		timeout = setTimeout(resolve, 3000);
 	});
-	void Promise.race([cleanup, deadline]).finally(() => {
+	void Promise.race([Promise.allSettled([cleanup, diagnosticWrites]), deadline]).finally(() => {
 		clearTimeout(timeout);
-		nativeExportQuitState = "ready";
+		quitCleanupState = "ready";
 		app.quit();
 	});
 });
@@ -1424,6 +1439,7 @@ app.whenReady().then(async () => {
 	});
 	syncDockIcon();
 	initializeDesktopPresence({
+		refreshDockIcon: syncDockIcon,
 		refreshEntryPoints: refreshTrayPresence,
 		stopRecording: requestStopRecording,
 		onRecordingOwnerLost: () => {

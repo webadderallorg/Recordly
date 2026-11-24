@@ -109,8 +109,6 @@ describe("floating webcam preview lifecycle and pointer ownership", () => {
 		harness.effects = [];
 		options = {
 			webcamEnabled: true,
-			showWebcamControls: true,
-			webcamPopoverOpen: false,
 			hudOverlayMousePassthroughSupported: true,
 			hudBarRef: { current: null },
 		};

@@ -12,10 +12,12 @@ const PROXY_DEFAULT_PORTS = new Map([
 
 type CaptionProxy = {
 	session: Session;
-	host: string;
-	port: number;
-	username: string;
-	password: string;
+	credentials?: {
+		host: string;
+		port: number;
+		username: string;
+		password: string;
+	};
 };
 
 // Electron documents IncomingMessage as a Readable, but its declaration omits that base class.
@@ -51,12 +53,24 @@ function proxyForCaptionDownloads(): Promise<CaptionProxy> | undefined {
 	]
 		.find((value) => value?.trim())
 		?.trim();
-	if (!address) return;
-	configuredProxy ??= configureProxy(address, env.no_proxy ?? env.NO_PROXY).catch((error) => {
+	const bypassRules = chromiumBypassRules(env.no_proxy ?? env.NO_PROXY);
+	const configuration = bypassRules?.split(",").includes("*")
+		? configureDirectDownload
+		: address
+			? () => configureProxy(address, bypassRules)
+			: undefined;
+	if (!configuration) return;
+	configuredProxy ??= configuration().catch((error) => {
 		configuredProxy = undefined;
 		throw error;
 	});
 	return configuredProxy;
+}
+
+async function configureDirectDownload(): Promise<CaptionProxy> {
+	const downloadSession = session.fromPartition("recordly-caption-downloads", { cache: false });
+	await downloadSession.setProxy({ mode: "direct" });
+	return { session: downloadSession };
 }
 
 async function configureProxy(address: string, bypassRules?: string): Promise<CaptionProxy> {
@@ -66,22 +80,26 @@ async function configureProxy(address: string, bypassRules?: string): Promise<Ca
 	} catch {
 		throw new Error("The caption download proxy address is invalid.");
 	}
-	const defaultPort = PROXY_DEFAULT_PORTS.get(proxy.protocol);
+	// Chromium's SOCKS5 transport already resolves hostnames at the proxy.
+	const protocol = proxy.protocol === "socks5h:" ? "socks5:" : proxy.protocol;
+	const defaultPort = PROXY_DEFAULT_PORTS.get(protocol);
 	if (!defaultPort || !proxy.hostname) {
 		throw new Error("The caption download proxy type is unsupported.");
 	}
 	const downloadSession = session.fromPartition("recordly-caption-downloads", { cache: false });
 	await downloadSession.setProxy({
 		mode: "fixed_servers",
-		proxyRules: `${proxy.protocol}//${proxy.host}`,
-		proxyBypassRules: chromiumBypassRules(bypassRules),
+		proxyRules: `${protocol}//${proxy.host}`,
+		proxyBypassRules: bypassRules,
 	});
 	return {
 		session: downloadSession,
-		host: proxy.hostname.replace(/^\[|\]$/g, "").toLowerCase(),
-		port: Number(proxy.port || defaultPort),
-		username: decodeURIComponent(proxy.username),
-		password: decodeURIComponent(proxy.password),
+		credentials: {
+			host: proxy.hostname.replace(/^\[|\]$/g, "").toLowerCase(),
+			port: Number(proxy.port || defaultPort),
+			username: decodeURIComponent(proxy.username),
+			password: decodeURIComponent(proxy.password),
+		},
 	};
 }
 
@@ -94,21 +112,22 @@ export async function receiveCaptionDownload(
 		throw new Error("Caption model downloads require HTTPS.");
 	const proxy = await proxyForCaptionDownloads();
 	const request = net.request({ url, redirect: "manual", session: proxy?.session });
-	if (proxy && (proxy.username || proxy.password)) {
+	const credentials = proxy?.credentials;
+	if (credentials && (credentials.username || credentials.password)) {
 		let sentCredentials = false;
 		request.on("login", (auth, reply) => {
 			const host = auth.host.replace(/^\[|\]$/g, "").toLowerCase();
 			if (
 				!auth.isProxy ||
 				sentCredentials ||
-				host !== proxy.host ||
-				auth.port !== proxy.port
+				host !== credentials.host ||
+				auth.port !== credentials.port
 			) {
 				reply();
 				return;
 			}
 			sentCredentials = true;
-			reply(proxy.username, proxy.password);
+			reply(credentials.username, credentials.password);
 		});
 	}
 

@@ -16,7 +16,7 @@ async function captureSignInReports(page: Page) {
 }
 
 for (const returning of [false, true]) {
-	test(`Windows ${returning ? "returning sign-in waits for Start recording" : "first-run sign-in opens the optional upgrade"}`, async ({
+	test(`Windows ${returning ? "existing profiles" : "new profiles"} use the same sign-in and Start recording flow`, async ({
 		page,
 	}) => {
 		test.slow();
@@ -33,7 +33,7 @@ for (const returning of [false, true]) {
 				document.documentElement.dataset.dashboardOpened = "true";
 			};
 		});
-		await page.goto(`/?windowType=onboarding${returning ? "&returning=1" : ""}`, {
+		await page.goto("/?windowType=onboarding&startup=1", {
 			waitUntil: "commit",
 		});
 		const login = page.getByRole("dialog", { name: "Welcome to Recordly" });
@@ -47,41 +47,22 @@ for (const returning of [false, true]) {
 				),
 			)
 			.toBeLessThan(2);
-		const emailBounds = (await email.boundingBox())!;
 		await artwork.evaluate((element) => element.setAttribute("data-layout-check", "same"));
+		await expect(login.getByRole("button", { name: "Continue as guest" })).toBeEnabled();
 		await email.fill("test@email.com");
 		await login.getByRole("button", { name: "Email me a code" }).click();
-		await expect(login.getByText(/^Enter code sent to /)).toBeVisible();
-		await completeSupabaseSignIn(page);
+		await login
+			.getByRole("textbox", { name: "Enter code sent to test@email.com" })
+			.fill("123456");
+		await login.getByRole("button", { name: "Verify and continue", exact: true }).click();
 
 		const documentRoot = page.locator("html");
-		if (!returning) {
-			// Windows has no permissions page, so sign-in lands on Upgrade.
-			await expect(login).toHaveAttribute("data-onboarding-state", "upgrade");
-			await expect(artwork).toHaveAttribute("data-layout-check", "same");
-			await expect(documentRoot).not.toHaveAttribute("data-hud-opened");
-			await login
-				.getByRole("button", { name: "Skip and start recording", exact: true })
-				.click();
-			await expect(documentRoot).toHaveAttribute("data-hud-opened", "true");
-			await expect(documentRoot).not.toHaveAttribute("data-dashboard-opened");
-			return;
-		}
-
-		const start = page.getByRole("button", { name: "Start recording", exact: true });
+		// Windows has no permissions page, so sign-in finishes on the account page.
+		const start = login.getByRole("button", { name: "Start recording", exact: true });
 		await expect(start).toBeEnabled();
-		await expect(page.getByText("You’re signed in and ready to continue.")).toBeVisible();
-		await expect(login).toHaveAttribute("data-onboarding-state", "ready");
+		await expect(login).toHaveAttribute("data-onboarding-state", "login");
 		await expect(artwork).toHaveAttribute("data-layout-check", "same");
 		await expect(email).toHaveCount(0);
-		await expect(start.locator("span[aria-hidden=true]")).toHaveCSS(
-			"background-color",
-			"rgb(255, 255, 255)",
-		);
-		const startBounds = (await start.boundingBox())!;
-		expect(Math.abs(startBounds.x - emailBounds.x)).toBeLessThan(2);
-		expect(Math.abs(startBounds.width - emailBounds.width)).toBeLessThan(2);
-		expect(Math.abs(startBounds.y - emailBounds.y)).toBeLessThan(35);
 		await expect(documentRoot).not.toHaveAttribute("data-hud-opened");
 		await start.click();
 		await expect(documentRoot).toHaveAttribute("data-hud-opened", "true");
@@ -122,7 +103,7 @@ test("sign-in keeps all providers visible and marks unavailable providers disabl
 	const emailCode = login.getByRole("button", { name: "Email me a code" });
 	await expect(login.locator("[data-signin-divider]")).toHaveText("or");
 	const passwordSwitch = login.getByRole("button", {
-		name: "Or use password to sign in",
+		name: "Use password",
 		exact: true,
 	});
 	await expect(passwordSwitch).toHaveCount(1);
@@ -140,6 +121,7 @@ test("sign-in keeps all providers visible and marks unavailable providers disabl
 	page.on("request", (request) => {
 		if (request.url().includes("/auth/v1/otp")) codeRequests++;
 	});
+	await email.focus();
 	await expect(emailCode).toBeVisible();
 	await expect(emailCode).toBeEnabled();
 	await emailCode.click();
@@ -311,7 +293,7 @@ for (const [label, provider] of [
 	});
 }
 
-test("restored Supabase sessions show the account and sign-out requires authentication again", async ({
+test("restored Supabase sessions show the account and sign-out offers guest onboarding", async ({
 	page,
 }) => {
 	await installDesktopBridge(page);
@@ -326,36 +308,37 @@ test("restored Supabase sessions show the account and sign-out requires authenti
 	const logout = page.waitForRequest((request) => request.url().includes("/auth/v1/logout"));
 	await account.getByRole("button", { name: "Log out", exact: true }).click();
 	await logout;
-	const login = page.getByRole("dialog", { name: "Sign in to Recordly", exact: true });
+	const login = page.getByRole("dialog", { name: "Welcome to Recordly", exact: true });
 	await expect(login).toBeVisible();
 	await page.reload();
 	await expect(login).toBeVisible();
-	await expect(login.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
+	await expect(
+		login.getByRole("button", { name: "Continue as guest", exact: true }),
+	).toBeEnabled();
 });
 
-test("returning users sign in through a compact popup with the requested copy", async ({
-	page,
-}) => {
+test("existing signed-out profiles sign in through shared onboarding", async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: true });
 	await page.goto("/?windowType=editor");
-	const login = page.getByRole("dialog", { name: "Sign in to Recordly", exact: true });
+	const login = page.getByRole("dialog", { name: "Welcome to Recordly", exact: true });
 	await expect(login).toBeVisible({ timeout: 20000 });
 	await expect(
 		login.getByRole("heading", {
-			name: "Sign into Recordly",
+			name: "Welcome to Recordly",
 			exact: true,
 		}),
 	).toBeVisible();
-	await page.screenshot({ path: "test-results/signin-polished.png", animations: "disabled" });
 	await expect(login.getByRole("heading")).toHaveCount(1);
 	await expect(login.getByText("Sign in to get started", { exact: true })).toHaveCount(0);
-	await expect(login.getByRole("navigation", { name: "Onboarding pages" })).toHaveCount(0);
+	await expect(login.getByRole("navigation", { name: "Onboarding pages" })).toBeVisible();
+	await expect(login.getByRole("button", { name: "Continue as guest" })).toBeEnabled();
 	await page.keyboard.press("Escape");
 	await expect(login).toBeVisible();
 	await login.getByRole("textbox", { name: /^Email\*?$/ }).fill("test@email.com");
 	await login.getByRole("button", { name: "Email me a code" }).click();
-	await expect(login.getByText(/^Enter code sent to /)).toBeVisible();
-	await completeSupabaseSignIn(page);
+	await login.getByRole("textbox", { name: "Enter code sent to test@email.com" }).fill("123456");
+	await login.getByRole("button", { name: "Verify and continue", exact: true }).click();
+	await login.getByRole("button", { name: "Start recording", exact: true }).click();
 	await expect(login).not.toBeVisible();
 	await page.getByRole("button", { name: "Recordly account", exact: true }).click();
 	await expect(page.getByRole("dialog", { name: "Account menu", exact: true })).toBeVisible();

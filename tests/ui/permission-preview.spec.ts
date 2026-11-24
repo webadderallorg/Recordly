@@ -31,12 +31,13 @@ for (const width of [390, 760]) {
 		await page.goto("/?windowType=onboarding&onboardingPreview=1");
 		const onboarding = page.getByRole("dialog", { name: "Welcome to Recordly" });
 		const next = onboarding.getByRole("button", { name: "Next", exact: true });
+		const start = onboarding.getByRole("button", { name: "Start recording", exact: true });
 		await expect(next).toBeVisible({ timeout: 30000 });
 		const before = (await next.boundingBox())!;
 		await next.click();
 		await expect(onboarding).toHaveAttribute("data-onboarding-state", "permissions");
-		await expect(next).toBeDisabled();
-		const after = (await next.boundingBox())!;
+		await expect(start).toBeDisabled();
+		const after = (await start.boundingBox())!;
 		expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(1);
 		expect(Math.abs(after.x + after.width - before.x - before.width)).toBeLessThanOrEqual(1);
 		const controls = onboarding.locator("[data-permission-preview-controls]");
@@ -48,7 +49,7 @@ for (const width of [390, 760]) {
 		await expect(page.locator("html")).toHaveAttribute("data-screen-opened", "true");
 		await onboarding.getByRole("button", { name: "Allow Accessibility", exact: true }).click();
 		await expect(page.locator("html")).toHaveAttribute("data-accessibility-opened", "true");
-		await expect(next).toBeDisabled();
+		await expect(start).toBeDisabled();
 		await expect(onboarding.getByText(/^If the drag panel doesn't appear/)).toBeVisible();
 		await expect(page.getByRole("dialog")).toHaveCount(1);
 		await expect(page.getByText("Drop Recordly here to add it.")).toHaveCount(0);
@@ -77,17 +78,18 @@ test("dev simulation resets granted rows and uses their normal Allow buttons", a
 	await page.goto("/?windowType=onboarding&onboardingPreview=1");
 	const onboarding = page.getByRole("dialog", { name: "Welcome to Recordly" });
 	const next = onboarding.getByRole("button", { name: "Next", exact: true });
+	const start = onboarding.getByRole("button", { name: "Start recording", exact: true });
 	await next.click();
 	await expect(
 		onboarding.getByRole("status", { name: "Screen Recording: Allowed" }),
 	).toBeVisible();
-	await expect(next).toBeEnabled();
+	await expect(start).toBeEnabled();
 	const controls = onboarding.locator("[data-permission-preview-controls]");
 	await expect(controls.getByRole("button")).toHaveCount(1);
 	const simulate = controls.getByRole("button", { name: "Simulate permissions", exact: true });
 	await simulate.click();
 	await expect(onboarding.getByRole("status", { name: /Allowed/ })).toHaveCount(0);
-	await expect(next).toBeDisabled();
+	await expect(start).toBeDisabled();
 	// Automatic status refresh must not undo the reset before the user clicks a row.
 	await page.evaluate(() => window.dispatchEvent(new Event("focus")));
 	await page.clock.runFor(3100);
@@ -102,13 +104,13 @@ test("dev simulation resets granted rows and uses their normal Allow buttons", a
 	await expect(
 		onboarding.getByRole("status", { name: "Screen Recording: Allowed", exact: true }),
 	).toBeVisible();
-	await expect(next).toBeDisabled();
+	await expect(start).toBeDisabled();
 	await onboarding.getByRole("button", { name: "Allow Accessibility", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-accessibility-opened", "true");
-	await expect(next).toBeEnabled();
+	await expect(start).toBeEnabled();
 	await simulate.click();
 	await expect(onboarding.getByRole("status", { name: /Allowed/ })).toHaveCount(0);
-	await expect(next).toBeDisabled();
+	await expect(start).toBeDisabled();
 	await onboarding.screenshot({ path: test.info().outputPath("simulate-permissions-reset.png") });
 });
 

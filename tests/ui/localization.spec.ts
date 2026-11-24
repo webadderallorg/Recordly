@@ -152,12 +152,14 @@ for (const [index, locale] of SUPPORTED_LOCALES.entries()) {
 		await expect(upgrade).toBeVisible();
 		await expect(upgrade.getByText(upgradeLabel, { exact: true })).toBeVisible();
 		await upgrade.click();
-		const pricing = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
+		const pricing = page.getByRole("dialog", { name: "Recordly Plus", exact: true });
 		await expect(pricing).toBeVisible();
 		const pricingHeading = pricing.getByRole("heading", { level: 2 });
 		await expect(pricingHeading).toBeVisible();
-		await expect(pricingHeading).toHaveText(billing.upgradeHeading);
-		await expect(pricing.getByText(billing.intro, { exact: true })).toBeVisible();
+		await expect(pricingHeading).toHaveText(
+			billing.upgradeHeading.replace("{{plus}}", "Plus"),
+		);
+		await expect(pricing.getByText(billing.outcomeStorageTitle, { exact: true })).toBeVisible();
 		await expect(pricing).not.toContainText(/\b(?:ui|billing|settings)\.[a-zA-Z]/);
 		await page.setViewportSize({ width: 440, height: 820 });
 		await pricing.screenshot({

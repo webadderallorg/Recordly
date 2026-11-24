@@ -89,7 +89,7 @@ Resend (or the equivalent `multipart/alternative` parts with SMTP).
 
 ```js
 const message = renderBillingEmail(activationTemplate, {
-  PlanName: "Recordly Cloud",
+  PlanName: "Recordly Plus",
   Amount: formattedActualPrice,
   Interval: formattedActualBillingInterval,
   RenewalDate: formattedActualRenewalDate,

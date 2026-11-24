@@ -27,7 +27,7 @@ Set `OWNER_USER_ID` to the deployment owner’s Supabase user ID. Only that user
 
 The Worker validates Supabase access tokens before accepting uploads. `API_SECRET` remains a server-side library-administration password. An API-secret upload fallback can be enabled only for isolated local tests by setting `ALLOW_API_SECRET_UPLOADS=true`; do not enable it in production.
 
-Anyone with a valid link can watch and read comments, subject to the recording password and availability. Posting comments requires a signed-in account on this self-hosted instance; these accounts are separate from Recordly Cloud. Authors can edit their own comment text and delete their own comments. Turning off feedback prevents new comments and edits while still allowing authors to delete their comments. Account, IP and recording rate limits and comment-length limits remain enabled.
+Anyone with a valid link can watch and read comments, subject to the recording password and availability. Posting comments requires a signed-in account on this self-hosted instance; these accounts are separate from Recordly’s hosted service. Authors can edit their own comment text and delete their own comments. Turning off feedback prevents new comments and edits while still allowing authors to delete their comments. Account, IP and recording rate limits and comment-length limits remain enabled.
 
 ## Deployment
 

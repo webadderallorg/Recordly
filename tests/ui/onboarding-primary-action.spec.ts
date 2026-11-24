@@ -8,11 +8,12 @@ for (const side of [600, 760]) {
 		}) => {
 			await page.setViewportSize({ width: side, height: side });
 			await page.emulateMedia({ reducedMotion });
-			await installDesktopBridge(page, "preview.mp4", { signedIn: false });
+			await installDesktopBridge(page, "preview.mp4", { signedIn: true });
 			await page.goto("/?windowType=onboarding&onboardingPreview=1");
 			const dialog = page.getByRole("dialog", { name: "Welcome to Recordly" });
 			const primary = dialog.locator("[data-onboarding-primary-action]");
-			await expect(primary).toHaveAccessibleName("Continue");
+			await expect(primary).toHaveAccessibleName("Next");
+			await expect(dialog.getByRole("button", { name: "Continue as guest" })).toHaveCount(0);
 			// Measure after the modal itself finishes opening.
 			await expect
 				.poll(() =>
@@ -120,7 +121,7 @@ for (const side of [600, 760]) {
 				animations: "disabled",
 			});
 			await dialog.getByRole("button", { name: "Back to account" }).click();
-			await expect(primary).toHaveAccessibleName("Continue");
+			await expect(primary).toHaveAccessibleName("Next");
 			await expect(primary).toHaveAttribute("data-persistent-button", "true");
 		});
 	}
