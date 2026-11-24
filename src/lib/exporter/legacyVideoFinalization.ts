@@ -174,6 +174,15 @@ export async function finalizeExportWithFfmpegAudio(
 				audioPlan.strategy === "filtergraph-fast-path")
 				? audioPlan.audioSourcePath
 				: null,
+		audioSourceCodec:
+			audioPlan.audioMode === "copy-source" ||
+			audioPlan.audioMode === "trim-source" ||
+			(audioPlan.audioMode === "edited-track" &&
+				audioPlan.strategy === "filtergraph-fast-path")
+				? "audioSourceCodec" in audioPlan
+					? audioPlan.audioSourceCodec
+					: undefined
+				: undefined,
 		trimSegments: audioPlan.audioMode === "trim-source" ? audioPlan.trimSegments : undefined,
 		editedTrackStrategy:
 			audioPlan.audioMode === "edited-track" ? audioPlan.strategy : undefined,

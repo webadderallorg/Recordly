@@ -219,31 +219,49 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 		}
 
 		if (sortedTrims.length === 0) {
-			let audioConfig: AudioDecoderConfig;
+			let audioConfig: AudioDecoderConfig | null = null;
 			try {
 				audioConfig = (await demuxer.getDecoderConfig("audio")) as AudioDecoderConfig;
 			} catch {
-				console.warn("[AudioProcessor] No audio track found, skipping");
-				return;
+				// Fast demux config failed; fall through to transcode / offline rendering
 			}
 
-			const audioStream =
-				typeof readEndSec === "number"
-					? demuxer.read("audio", 0, readEndSec)
-					: demuxer.read("audio");
+			if (audioConfig) {
+				const audioStream =
+					typeof readEndSec === "number"
+						? demuxer.read("audio", 0, readEndSec)
+						: demuxer.read("audio");
 
-			const copiedSourceAudio = await this.passthroughAudioStream(
-				audioStream as ReadableStream<EncodedAudioChunk>,
-				audioConfig,
-				muxer,
-			);
+				const copiedSourceAudio = await this.passthroughAudioStream(
+					audioStream as ReadableStream<EncodedAudioChunk>,
+					audioConfig,
+					muxer,
+				);
 
-			if (copiedSourceAudio) {
-				return;
+				if (copiedSourceAudio) {
+					return;
+				}
 			}
 		}
 
-		await this.processTrimOnlyAudio(demuxer, muxer, sortedTrims, readEndSec);
+		if (!(await this.processTrimOnlyAudio(demuxer, muxer, sortedTrims, readEndSec))) {
+			if (this.cancelled) return;
+			console.warn(
+				"[AudioProcessor] Could not transcode audio track with fast demux; trying offline rendering",
+			);
+			await this.renderAndMuxOfflineAudio(
+				videoUrl,
+				sortedTrims,
+				sortedSpeedRegions,
+				sortedAudioRegions,
+				sortedSourceAudioFallbackPaths,
+				sourceAudioFallbackStartDelayMsByPath,
+				sourceAudioTrackSettings,
+				clipRegions,
+				muxer,
+				sourceAudioTrackSettingsByClip,
+			);
+		}
 	}
 
 	async renderEditedAudioTrack(
