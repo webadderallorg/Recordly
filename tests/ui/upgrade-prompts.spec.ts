@@ -3,12 +3,15 @@ import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 // The finished-export prompt is covered per plan in gif-optimization.spec.ts.
 
-/** Opens the editor signed in, with Cloud billing reporting the given plan and share count. */
-async function openEditor(page: Page, plan: "free" | "pro", recordings: number) {
-	await installDesktopBridge(page);
+/** Opens the editor with Cloud billing reporting the given plan and share count. */
+async function openEditor(page: Page, plan: "free" | "pro", recordings: number, signedIn = true) {
+	await installDesktopBridge(page, "preview.mp4", { signedIn, onboarded: true });
 	await installDesktopBridgeOverrides(
 		page,
 		({ plan, recordings }) => {
+			const getAppSetting = window.electronAPI.getAppSetting;
+			window.electronAPI.getAppSetting = (key) =>
+				key === "recordly.dev.onboardingDismissed" ? true : getAppSetting(key);
 			const prices = [{ interval: "monthly" as const, unitAmount: 900, currency: "usd" }];
 			window.electronAPI.cloudBilling = async ({ action }) => {
 				if (action === "catalog")
@@ -23,7 +26,10 @@ async function openEditor(page: Page, plan: "free" | "pro", recordings: number) 
 							storageLimitBytes: 1e11,
 						},
 					};
-				if (action !== "status") return { success: true };
+				if (action !== "status") {
+					if (action === "checkout") document.documentElement.dataset.checkout = "true";
+					return { success: true };
+				}
 				return {
 					success: true,
 					billing: {
@@ -65,6 +71,34 @@ test("opening the editor does not show the upgrade modal", async ({ page }) => {
 	await openEditor(page, "free", 0);
 	await page.waitForTimeout(2500);
 	await expect(pricing(page)).toHaveCount(0);
+});
+
+test("signing in from Get Started returns to pricing before checkout", async ({ page }) => {
+	await openEditor(page, "free", 0, false);
+	const upgrade = page.getByRole("button", { name: "Upgrade", exact: true });
+	const modal = pricing(page);
+	const getStarted = modal.getByRole("button", { name: "Get Started", exact: true });
+	const signIn = page.getByRole("dialog", { name: "Sign in to Recordly", exact: true });
+
+	await upgrade.click();
+	await getStarted.click();
+	await expect(signIn).toBeVisible();
+	await signIn.getByRole("button", { name: "Close", exact: true }).click();
+	await expect(signIn).toHaveCount(0);
+	await expect(modal).toHaveCount(0);
+
+	await upgrade.click();
+	await getStarted.click();
+	await signIn.getByRole("textbox", { name: /^Email\*?$/ }).fill("test@email.com");
+	await signIn.getByRole("button", { name: "Email me a code" }).click();
+	await signIn.getByRole("textbox", { name: "Enter code sent to test@email.com" }).fill("123456");
+	await signIn.getByRole("button", { name: "Verify and continue", exact: true }).click();
+	await expect(signIn).toHaveCount(0);
+	await expect(modal).toBeVisible();
+	await expect(getStarted).toBeEnabled();
+	await expect(page.locator("html")).not.toHaveAttribute("data-checkout");
+	await getStarted.click();
+	await expect(page.locator("html")).toHaveAttribute("data-checkout", "true");
 });
 
 test("free users see how many of their shares they have used", async ({ page }) => {

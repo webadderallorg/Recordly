@@ -3,7 +3,7 @@ import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
 import { useOptionalBilling } from "./BillingProvider";
 
 /** Let the export success state render before the modal appears. */
-export const EXPORT_UPGRADE_PROMPT_DELAY_MS = 600;
+export const EXPORT_UPGRADE_PROMPT_DELAY_MS = 1_500;
 const EXPORT_UPGRADE_PROMPT_COOLDOWN_MS = 120_000;
 const LAST_EXPORT_UPGRADE_PROMPT_KEY = "recordly.lastExportUpgradePromptAt";
 let lastExportUpgradePromptAt = 0;

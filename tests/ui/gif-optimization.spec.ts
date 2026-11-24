@@ -218,11 +218,12 @@ for (const plan of ["free", "pro", "loading", "unavailable"] as const) {
 		});
 		// A finished export offers Cloud only to users known to be on the free plan.
 		if (plan === "free") {
+			await expect(pricing).toHaveCount(0);
 			await expect(pricing).toBeVisible();
 			await pricing.getByRole("button", { name: "Close", exact: true }).click();
 		} else {
-			// The modal opens 600 ms after saving, so wait past that window.
-			await page.waitForTimeout(1000);
+			// Allow the 1.5-second post-export prompt window to pass.
+			await page.waitForTimeout(2000);
 		}
 		await expect(pricing).toHaveCount(0);
 		await expect(activity.getByTitle("Renamed capture 3.gif", { exact: true })).toBeVisible();
@@ -252,7 +253,7 @@ for (const plan of ["free", "pro", "loading", "unavailable"] as const) {
 				timeout: 60000,
 			});
 			await expect(activity.getByText("Export complete", { exact: true })).toBeVisible();
-			await page.waitForTimeout(1000);
+			await page.waitForTimeout(2000);
 			await expect(pricing).toHaveCount(0);
 		}
 	});
