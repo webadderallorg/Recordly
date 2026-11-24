@@ -16,6 +16,8 @@ const mocks = await vi.hoisted(async () => {
 			destroy: vi.fn(),
 			showInactive: vi.fn(),
 			setBounds: vi.fn(),
+			getBounds: vi.fn(() => ({ x: 0, y: 0, width: 368, height: 264 })),
+			isVisible: vi.fn(() => false),
 			setVisibleOnAllWorkspaces: vi.fn(),
 			loadURL: vi.fn(async () => undefined),
 			webContents: Object.assign(new EventEmitter(), {
@@ -57,6 +59,7 @@ vi.mock("electron", () => ({
 
 import { BrowserWindow, type WebContents } from "electron";
 import {
+	ACCESSORY_HIDE_DELAY_MS,
 	closePermissionAccessory,
 	dismissPermissionAccessory,
 	runningApplicationBundle,
@@ -273,7 +276,34 @@ it("shows the HeroUI window only after it paints and follows validated Settings 
 		height: 264,
 	});
 	child.stdout.write('{"visible":false}\n');
+	expect(mocks.window.hide).not.toHaveBeenCalled();
+	await vi.advanceTimersByTimeAsync(ACCESSORY_HIDE_DELAY_MS);
 	expect(mocks.window.hide).toHaveBeenCalledOnce();
+});
+
+it("does not flash when Settings briefly loses the front during a click or drag", async () => {
+	await launch();
+	mocks.window.emit("ready-to-show");
+	child.stdout.write('{"visible":true,"x":120,"y":400,"width":368,"height":264}\n');
+	mocks.window.isVisible.mockReturnValue(true);
+	mocks.window.getBounds.mockReturnValue({ x: 120, y: 400, width: 368, height: 264 });
+	mocks.window.showInactive.mockClear();
+	mocks.window.setBounds.mockClear();
+	child.stdout.write('{"visible":false}\n');
+	await vi.advanceTimersByTimeAsync(ACCESSORY_HIDE_DELAY_MS / 2);
+	child.stdout.write('{"visible":true,"x":120,"y":400,"width":368,"height":264}\n');
+	await vi.advanceTimersByTimeAsync(ACCESSORY_HIDE_DELAY_MS);
+	expect(mocks.window.hide).not.toHaveBeenCalled();
+	expect(mocks.window.showInactive).not.toHaveBeenCalled();
+	expect(mocks.window.setBounds).not.toHaveBeenCalled();
+});
+
+it("keeps the open panel instead of rebuilding it when the same permission is requested again", async () => {
+	await launch();
+	await showPermissionAccessory("accessibility", sender);
+	expect(BrowserWindow).toHaveBeenCalledOnce();
+	expect(mocks.spawn).toHaveBeenCalledOnce();
+	expect(mocks.window.destroy).not.toHaveBeenCalled();
 });
 
 it("only drags the running app from the accessory, using Recordly artwork", async () => {

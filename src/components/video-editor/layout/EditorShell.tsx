@@ -5,6 +5,7 @@ import { RecordlyAccountMenu } from "@/components/auth/RecordlyAccountMenu";
 import { RecordlySignInDialog, type SignInReason } from "@/components/auth/RecordlySignInDialog";
 import { useRecordlyAuth } from "@/components/auth/useRecordlyAuth";
 import { PricingModal } from "@/components/billing/PricingModal";
+import { useExportUpgradePrompt } from "@/components/billing/upgradePrompts";
 import { AccountProfileContext } from "@/components/ui/account-avatar";
 import { Button } from "@/components/ui/button";
 import { LoadingTransition } from "@/components/ui/loading-transition";
@@ -131,6 +132,7 @@ export function EditorShell(props: Props) {
 		// render. Wait for the new timeline before capturing its unedited baseline.
 		!project.loading && ui.isPreviewReady && ui.duration > 0 && ui.clipInitializedRef.current,
 	);
+	useExportUpgradePrompt(exportSession.exportedFilePath);
 	useAutoApplyZooms({
 		enabled: appearance.autoApplyFreshRecordingAutoZooms,
 		sourcePath: project.videoSourcePath,
@@ -508,7 +510,6 @@ export function EditorShell(props: Props) {
 								currentTime={ui.currentTime}
 								isPlaying={ui.isPlaying}
 								previewVolume={ui.previewVolume}
-								setPreviewVolume={ui.setPreviewVolume}
 								suspendRendering={exportStatus.shouldSuspendPreviewRendering}
 								appearance={appearance}
 								timeline={timeline}
@@ -557,6 +558,8 @@ export function EditorShell(props: Props) {
 								currentTime={ui.currentTime}
 								handleSelectAnnotation={handleSelectAnnotation}
 								onDuplicateSelectedRegion={editing.duplicateSelectedRegion}
+								onCopySelectedRegion={editing.copySelectedRegion}
+								onPasteCopiedRegion={editing.pasteCopiedRegion}
 							/>
 						</AutoZoomNudgeContext.Provider>
 					</div>

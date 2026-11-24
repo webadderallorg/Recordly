@@ -26,7 +26,7 @@ export function registerRecordingFiles() {
 		if (!/\.webm$/i.test(filePath)) return filePath;
 		let finishedPath = filePath;
 		try {
-			finishedPath = await finishWebmRecording(getFfmpegBinaryPath(), filePath);
+			finishedPath = await finishWebmRecording(await getFfmpegBinaryPath(), filePath);
 		} catch (error) {
 			console.warn("Recording post-processing failed; preserving source", error);
 		}

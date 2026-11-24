@@ -5,7 +5,7 @@ interface DockVisibility {
 }
 
 /** macOS process transformations must not overlap or rapidly reverse. */
-export function createDockVisibilityController(dock: DockVisibility) {
+export function createDockVisibilityController(dock: DockVisibility, onShow?: () => void) {
 	let desired = dock.isVisible();
 	let pending = false;
 	let disposed = false;
@@ -32,6 +32,9 @@ export function createDockVisibilityController(dock: DockVisibility) {
 		pending = true;
 		void dock
 			.show()
+			.then(() => {
+				if (!disposed && desired) onShow?.();
+			})
 			.catch((error) => console.warn("Could not show Recordly in the Dock:", error))
 			.finally(() => {
 				pending = false;

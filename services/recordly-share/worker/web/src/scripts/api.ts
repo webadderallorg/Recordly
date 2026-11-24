@@ -26,7 +26,12 @@ export interface Chapter {
 }
 
 export interface ShareData {
-	creator?: { name: string; bio?: string | null; website?: string | null } | null;
+	creator?: {
+		name: string;
+		avatar_url?: string | null;
+		bio?: string | null;
+		website?: string | null;
+	} | null;
 	video: VideoInfo;
 	segments: Segment[];
 	chapters: Chapter[];

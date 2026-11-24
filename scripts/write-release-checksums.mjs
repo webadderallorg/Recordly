@@ -31,6 +31,9 @@ function isReleaseArtifact(fileName) {
 	if (fileName.startsWith("latest") && fileName.endsWith(".yml")) {
 		return true;
 	}
+	if (/^ffmpeg-sources-(?:macos|linux|windows)-(?:x64|arm64)\.tar\.gz$/.test(fileName)) {
+		return true;
+	}
 
 	return releaseArtifactExtensions.has(path.extname(fileName));
 }

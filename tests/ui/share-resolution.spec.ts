@@ -31,7 +31,7 @@ test("upgrade modal explains shared video quality", async ({ page }, testInfo) =
 		dialog
 			.getByRole("list", { name: "Your Cloud benefits" })
 			.getByRole("listitem")
-			.filter({ hasText: "Share videos in high-definition 1080p" }),
+			.filter({ hasText: "Crisp 1080p playback." }),
 	).toBeVisible();
 	await page.screenshot({ path: testInfo.outputPath("share-quality-upgrade.png") });
 });

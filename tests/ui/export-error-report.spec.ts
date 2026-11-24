@@ -147,6 +147,7 @@ for (const engine of ["lightning", "native"]) {
 		page,
 	}) => {
 		await page.setViewportSize({ width: 760, height: 480 });
+		await page.emulateMedia({ reducedMotion: "reduce" });
 		const reports: Record<string, unknown>[] = [];
 		let releaseFirst: (() => void) | undefined;
 		await page.route("**/functions/v1/submit-export-error", async (route) => {

@@ -85,8 +85,13 @@ export function useRecorderStartup(context: RecorderContext) {
 				return;
 			}
 
-			const { selectedSource, useNativeMacScreenCapture, useNativeWindowsCapture, micLabel } =
-				preparedStart;
+			const {
+				selectedSource,
+				useNativeMacScreenCapture,
+				useNativeWindowsCapture,
+				micLabel,
+				webcamReady,
+			} = preparedStart;
 			usingLinuxPortal = selectedSource.id === LINUX_PORTAL_SOURCE_ID;
 			const useNativeCapture = useNativeMacScreenCapture || useNativeWindowsCapture;
 			const shouldWarmStartNativeCapture = useNativeCapture && countdownDelay > 0;
@@ -102,6 +107,7 @@ export function useRecorderStartup(context: RecorderContext) {
 					micLabel,
 					shouldWarmStartNativeCapture,
 					startWasCancelled,
+					webcamReady,
 				});
 				if (outcome === "finished") return;
 				nativeWindowsCaptureStartFailed = true;
@@ -111,13 +117,14 @@ export function useRecorderStartup(context: RecorderContext) {
 			if (nativeWindowsCaptureStartFailed && !(await runCountdown())) return;
 
 			if (startWasCancelled()) return;
-			const { videoTrack, systemAudioIncluded } = await acquireRecorderBrowserStream(
-				context,
-				{
+			// The webcam opens while the screen stream is acquired; both must be ready to record.
+			const [{ videoTrack, systemAudioIncluded }] = await Promise.all([
+				acquireRecorderBrowserStream(context, {
 					selectedSource,
 					nativeWindowsCaptureStartFailed,
-				},
-			);
+				}),
+				webcamReady,
+			]);
 			await startBrowserRecorder(context, {
 				videoTrack,
 				systemAudioIncluded,

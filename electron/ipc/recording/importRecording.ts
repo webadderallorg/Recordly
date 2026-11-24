@@ -21,13 +21,13 @@ import { composeSequenceWebcam, sequenceWebcamOutputs } from "./sequenceWebcam";
 const run = promisify(execFile);
 async function ffmpeg(args: string[], signal?: AbortSignal) {
 	await run(
-		getFfmpegBinaryPath(),
+		await getFfmpegBinaryPath(),
 		["-hide_banner", "-loglevel", "error", "-nostdin", "-y", ...args],
 		{ signal, timeout: 60 * 60 * 1000, maxBuffer: 1024 * 1024, windowsHide: true },
 	);
 }
 async function probe(file: string, signal?: AbortSignal) {
-	const meta = await probeNativeVideoMetadata(getFfmpegBinaryPath(), file, signal);
+	const meta = await probeNativeVideoMetadata(await getFfmpegBinaryPath(), file, signal);
 	return {
 		width: meta.width,
 		height: meta.height,

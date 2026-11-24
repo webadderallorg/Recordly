@@ -33,6 +33,7 @@ dist-ssr
 *.sln
 *.sw?
 release/**
+/windows-ffmpeg/
 *.kiro/
 # npx electron-builder --mac --win
 .tmp/

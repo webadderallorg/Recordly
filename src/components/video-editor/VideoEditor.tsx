@@ -347,7 +347,6 @@ function VideoEditorContent() {
 	);
 	const settingsPanelProps = useEditorSettingsPanelProps({
 		activeEffectSection,
-		onDuplicateSelectedRegion: editing.duplicateSelectedRegion,
 		appearance,
 		timeline,
 		zoomCommands,

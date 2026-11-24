@@ -78,10 +78,7 @@ test("Generate captions downloads once and continues without a second click", as
 	});
 	await page.goto("/?windowType=editor");
 	await page.getByRole("radio", { name: "Captions", exact: true }).click();
-	const download = page.getByRole("button", {
-		name: "Download 670 MB & generate captions",
-		exact: true,
-	});
+	const download = page.getByRole("button", { name: "Download 670 MB & generate captions", exact: true });
 	await expect(download).toBeVisible();
 	await expect(page.getByRole("button", { name: "Download Model", exact: true })).toHaveCount(0);
 	await page.screenshot({ path: testInfo.outputPath("captions.png"), animations: "disabled" });
@@ -141,9 +138,6 @@ test("export shows FPS alongside resolution and keeps CUDA under Advanced", asyn
 		"true",
 	);
 	await fps.getByRole("row", { name: "30", exact: true }).click();
-	await expect(fps.getByRole("row", { name: "30", exact: true })).toHaveAttribute(
-		"aria-selected",
-		"true",
-	);
+	await expect(fps.getByRole("row", { name: "30", exact: true })).toHaveAttribute("aria-selected", "true");
 	await expect(page.getByRole("switch", { name: "NVIDIA CUDA", exact: true })).toHaveCount(0);
 });

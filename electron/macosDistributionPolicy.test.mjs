@@ -6,6 +6,7 @@ import {
 	collectEntitlementErrors,
 	expectedMachOArchitecture,
 	hasMachOMagic,
+	isRetryableStaplerValidationError,
 	parseLipoArchitectures,
 } from "../scripts/macos-distribution-policy.mjs";
 
@@ -20,6 +21,17 @@ TeamIdentifier=A1B2C3D4E5
 `;
 
 describe("macOS distribution signing policy", () => {
+	it("retries temporary Apple ticket network errors without retrying invalid tickets", () => {
+		expect(
+			isRetryableStaplerValidationError(
+				new Error("NSURLErrorDomain Code=-1005 The network connection was lost"),
+			),
+		).toBe(true);
+		expect(
+			isRetryableStaplerValidationError(new Error("The validate action failed! Error 68.")),
+		).toBe(false);
+		expect(isRetryableStaplerValidationError(new Error("No stapled ticket found"))).toBe(false);
+	});
 	it("accepts a valid Developer ID signature", () => {
 		expect(collectCodeSigningMetadataErrors(validCodeSigningDetails, "A1B2C3D4E5")).toEqual([]);
 	});

@@ -54,6 +54,7 @@ export default function TimelineCanvas({
 	sourceAudioTracks = [],
 	getSourceAudioTrackSettingsForClip,
 	showSourceAudioTrack = false,
+	onTrackCountChange,
 	liveSpanPreviewById,
 	liveHiddenItemIds,
 	isDragging = false,
@@ -242,6 +243,9 @@ export default function TimelineCanvas({
 		const sourceAudioRows = showSourceAudioTrack ? sourceAudioTracks.length : 0;
 		return 2 + sourceAudioRows + annotationRowIds.size + audioRowIds.size;
 	}, [items, showSourceAudioTrack, sourceAudioTracks.length]);
+	useEffect(() => {
+		onTrackCountChange?.(timelineRowCount);
+	}, [onTrackCountChange, timelineRowCount]);
 	const timelineRowsMinHeightPx = getTimelineRowsMinHeightPx(timelineRowCount);
 	const timelineContentMinHeightPx = getTimelineContentMinHeightPx(timelineRowCount);
 	const sideProperty = direction === "rtl" ? "right" : "left";

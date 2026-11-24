@@ -1,5 +1,15 @@
 import type { Comment, Reaction } from "./api";
 
+export function getCreatorAvatarUrl(value: unknown) {
+	if (typeof value !== "string") return undefined;
+	try {
+		const url = new URL(value);
+		if (url.protocol === "https:" && !url.username && !url.password) return url.href;
+	} catch {
+		return undefined;
+	}
+}
+
 /** Keep dense timestamp markers usable at every track width. */
 function clusterMarkers<T extends { timestamp: number }>(
 	comments: T[],

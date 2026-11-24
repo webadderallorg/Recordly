@@ -163,7 +163,9 @@ export function parseCloudBillingStatus(result: unknown): {
 		!Number.isSafeInteger(usage.storageBytes) ||
 		usage.storageBytes < 0 ||
 		!(usage.storageLimitBytes === null
-			? billing.plan === "pro"
+			? // A non-active Plus subscription is normalized to free below and
+				// keeps its subscription status, so this parse stays idempotent.
+				billing.plan === "pro" || typeof billing.subscriptionStatus === "string"
 			: Number.isSafeInteger(usage.storageLimitBytes) && usage.storageLimitBytes > 0) ||
 		!(
 			usage.recordingLimit === null ||
@@ -178,11 +180,19 @@ export function parseCloudBillingStatus(result: unknown): {
 	)
 		throw new Error("Could not verify your cloud plan. Try again.");
 	const entitled = billing.plan === "pro" && billing.subscriptionStatus === "active";
-	if ((billing.plan === "pro" && !entitled) || (usage.recordingLimit === null) !== entitled)
+	// A Plus subscription that is not active (incomplete after an unfinished
+	// checkout, past_due, unpaid…) is a real account state, not a bad response.
+	// It never grants Cloud here; it is shown as free so the account can still
+	// reach the billing portal to finish or cancel the payment.
+	if (
+		entitled
+			? usage.recordingLimit !== null
+			: billing.plan === "free" && usage.recordingLimit === null
+	)
 		throw new Error("Could not verify your cloud plan. Try again.");
 	return {
 		billing: {
-			plan: billing.plan,
+			plan: entitled ? "pro" : "free",
 			subscriptionStatus: billing.subscriptionStatus,
 			currentPeriodEnd: billing.currentPeriodEnd,
 			cancelAtPeriodEnd: billing.cancelAtPeriodEnd,
@@ -193,7 +203,9 @@ export function parseCloudBillingStatus(result: unknown): {
 		},
 		usage: {
 			recordings: usage.recordings,
-			recordingLimit: usage.recordingLimit,
+			// An unlimited claim without an active plan unlocks nothing locally;
+			// the service still enforces the account's real quota.
+			recordingLimit: entitled ? null : (usage.recordingLimit ?? 0),
 			maxRecordingBytes: usage.maxRecordingBytes,
 			storageBytes: usage.storageBytes,
 			storageLimitBytes: usage.storageLimitBytes,

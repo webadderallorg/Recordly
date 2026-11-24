@@ -35,11 +35,11 @@ function ReportAction({
 	const [failure, setFailure] = useState("");
 	const sending = useRef(false);
 	return (
-		<span data-error-report>
-			{" "}
+		<span data-error-report className={compact ? "flex shrink-0" : undefined}>
+			{!compact && " "}
 			<button
 				type="button"
-				className="inline cursor-pointer rounded-sm border-0 bg-transparent p-0 align-baseline text-inherit underline underline-offset-2 hover:opacity-80 focus-visible:ring-2 focus-visible:ring-current aria-disabled:cursor-default aria-disabled:opacity-50"
+				className={`${compact ? "inline-flex h-8 items-center whitespace-nowrap" : "inline align-baseline"} cursor-pointer rounded-sm border-0 bg-transparent p-0 text-inherit underline underline-offset-2 hover:opacity-80 focus-visible:ring-2 focus-visible:ring-current aria-disabled:cursor-default aria-disabled:opacity-50`}
 				// Keep focus inside the containing dialog while preventing duplicate sends.
 				aria-disabled={state === "sending" || state === "sent"}
 				title={failure || t("reportTitle")}

@@ -7,6 +7,8 @@
 		"addKeyframe": "新增關鍵影格",
 		"deleteSelected": "刪除所選物件",
 		"duplicateSelected": "複製所選項目",
+		"copySelected": "複製所選項目",
+		"paste": "貼上",
 		"playPause": "播放或暫停",
 		"cycleForward": "向前切換註解",
 		"cycleBackward": "向後切換註解",

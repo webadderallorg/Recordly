@@ -399,10 +399,12 @@
 	min-height: 0;
 }
 
-/* Preserve the demo height during a slide. With only one page, the demo can
- * take the space left over by the controls. */
+/* Match the permissions layout in onboarding and in standalone recovery. */
 .onboarding-layout[data-onboarding-carousel]:has(> .onboarding-navigation)
-.onboarding-stage-content {
+.onboarding-stage-content,
+[data-recording-permissions]
+	.onboarding-layout[data-onboarding-carousel]
+	.onboarding-stage-content {
 	flex: 0 1 min(65%, 380px);
 }
 
@@ -422,17 +424,8 @@
 	scrollbar-gutter: stable;
 }
 
-.onboarding-layout:is([data-onboarding-stage="permissions"], [data-onboarding-stage="upgrade"])
-	.onboarding-body {
+.onboarding-layout[data-onboarding-stage="permissions"] .onboarding-body {
 	scrollbar-gutter: stable both-edges;
-}
-
-.onboarding-layout[data-onboarding-stage="upgrade"] .onboarding-body-content {
-	max-width: 760px;
-}
-
-.onboarding-layout[data-onboarding-stage="upgrade"] .split-upgrade-copy {
-	padding: 0;
 }
 
 .onboarding-carousel-footer {
@@ -440,8 +433,16 @@
 	min-height: 64px;
 }
 
+[data-recording-permissions] .onboarding-carousel-footer {
+	/* Reserve the space occupied by the page dots in onboarding. */
+	padding-bottom: 40px;
+}
+
 @media (max-width: 520px) {
 	.onboarding-layout[data-onboarding-carousel]:has(> .onboarding-navigation)
+		.onboarding-stage-content,
+	[data-recording-permissions]
+		.onboarding-layout[data-onboarding-carousel]
 		.onboarding-stage-content {
 		flex-basis: min(70%, 420px);
 	}

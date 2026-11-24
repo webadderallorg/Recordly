@@ -388,7 +388,7 @@ export function useProjectOpenActions({
 		} finally {
 			opening.current = false;
 		}
-	}, [project.error, project.videoPath, saveProject, setIsPlaying, videoPlaybackRef]);
+	}, [videoPlaybackRef, setIsPlaying, project.videoPath, project.error, saveProject]);
 
 	useEffect(() => {
 		const openRequestedDashboard = () => {

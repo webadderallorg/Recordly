@@ -304,7 +304,7 @@ export function registerExportHandlers() {
 					throw new Error("Native export requires positive, even output dimensions");
 				}
 
-				const ffmpegPath = getFfmpegBinaryPath();
+				const ffmpegPath = await getFfmpegBinaryPath();
 				const inputMode = options.inputMode ?? "rawvideo";
 				const sessionId = `recordly-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 				const outputPath = path.join(app.getPath("temp"), `${sessionId}.mp4`);
@@ -439,7 +439,7 @@ export function registerExportHandlers() {
 				"Native metadata probe",
 			);
 			const metadata = await probeNativeVideoMetadata(
-				getFfmpegBinaryPath(),
+				await getFfmpegBinaryPath(),
 				resolvedFilePath,
 			);
 			return {
@@ -495,7 +495,7 @@ export function registerExportHandlers() {
 				const sanitizedOptions = await sanitizeNativeStaticLayoutExportOptions(options);
 
 				const result = await exportNativeStaticLayoutVideo(
-					getFfmpegBinaryPath(),
+					await getFfmpegBinaryPath(),
 					sanitizedOptions,
 					(progress) => {
 						if (event.sender.isDestroyed()) {

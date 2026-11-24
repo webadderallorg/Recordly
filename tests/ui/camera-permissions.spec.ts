@@ -17,11 +17,7 @@ test("opening Camera settings requests access once instead of prompting from the
 		window.electronAPI.getEditorMode = async () => false;
 		window.electronAPI.getMediaPermissionStatus = async () => {
 			document.documentElement.dataset.cameraChecked = "true";
-			return {
-				success: true,
-				microphone: "granted",
-				camera: granted ? "granted" : "not-determined",
-			};
+			return { success: true, microphone: "granted", camera: granted ? "granted" : "not-determined" };
 		};
 		window.electronAPI.requestMediaPermission = async (device) => {
 			document.documentElement.dataset.cameraPermissionRequests = String(
@@ -131,9 +127,7 @@ test("editor mode never opens the camera and releases an active recorder preview
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
 		window.electronAPI.getMediaPermissionStatus = async () => ({
-			success: true,
-			microphone: "granted",
-			camera: "granted",
+			success: true, microphone: "granted", camera: "granted",
 		});
 		let visible: ((value: boolean) => void) | undefined;
 		window.electronAPI.getRecordingPreferences = async () => ({
@@ -188,9 +182,7 @@ test("camera options preview preserves saved squircle rounding", async ({ page }
 	await installDesktopBridge(page);
 	await installDesktopBridgeOverrides(page, () => {
 		window.electronAPI.getMediaPermissionStatus = async () => ({
-			success: true,
-			microphone: "granted",
-			camera: "granted",
+			success: true, microphone: "granted", camera: "granted",
 		});
 		const getAppSetting = window.electronAPI.getAppSetting;
 		window.electronAPI.getAppSetting = (key) =>
@@ -244,9 +236,7 @@ test("camera options preview preserves saved squircle rounding", async ({ page }
 	expect(await page.locator("html").getAttribute("data-shape-camera-requests")).toBeNull();
 	await page.getByRole("button", { name: "Camera settings", exact: true }).click();
 	await expect(page.locator("[data-floating-webcam-preview]")).toHaveCount(0);
-	const camera = page
-		.getByRole("dialog", { name: "Camera settings", exact: true })
-		.locator("video");
+	const camera = page.getByRole("dialog", { name: "Camera settings", exact: true }).locator("video");
 	await expect(camera).toBeVisible();
 	await expect(page.locator("html")).toHaveAttribute("data-shape-camera-requests", "1");
 	await expect

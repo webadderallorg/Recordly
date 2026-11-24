@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { hasRecordlySession } from "@/lib/auth/recordlyAuth";
-import { hasRequiredRecordingPermissions } from "@/lib/recordingPermissions";
+import {
+	hasRequiredRecordingPermissions,
+	requestMissingRecordingPermissions,
+} from "@/lib/recordingPermissions";
 import {
 	type BrowserMicrophoneProfile,
 	DEFAULT_BROWSER_MICROPHONE_PROFILE,
@@ -45,6 +48,13 @@ export function useRecorderPreferences() {
 			return false;
 		}
 		if (await hasRequiredRecordingPermissions()) return true;
+		// Dev has no onboarding permissions page, so ask macOS directly from the Record click.
+		if (import.meta.env.DEV) {
+			await requestMissingRecordingPermissions().catch((error) => {
+				console.warn("Failed to request recording permissions:", error);
+			});
+			return false;
+		}
 		await window.electronAPI.showRecordingPermissions();
 		return false;
 	}, []);

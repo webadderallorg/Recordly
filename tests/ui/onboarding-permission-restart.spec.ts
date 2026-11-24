@@ -68,39 +68,24 @@ for (const [environment, run] of [
 				tour.getByRole("status", { name: "Screen Recording: Allowed" }),
 			).toBeVisible();
 			const pages = tour.getByRole("navigation");
-			await expect(pages.getByRole("button")).toHaveCount(3);
+			await expect(pages.getByRole("button")).toHaveCount(2);
 			await expect(pages.getByRole("button", { name: "Permissions" })).toHaveAttribute(
 				"aria-current",
 				"page",
 			);
-			await expect(pages.getByRole("button", { name: "Upgrade" })).toBeDisabled();
+			await expect(pages.getByRole("button", { name: "Upgrade" })).toHaveCount(0);
 			await expect(
 				tour.getByRole("button", { name: "Start recording", exact: true }),
-			).toHaveCount(0);
+			).toBeDisabled();
 			await tour.getByRole("button", { name: "Allow Accessibility", exact: true }).click();
 			await page.evaluate(() => window.dispatchEvent(new Event("focus")));
 			await expect(tour.getByText("Allowed", { exact: true })).toHaveCount(2);
-			const next = tour.getByRole("button", { name: "Next", exact: true });
+			const next = tour.getByRole("button", { name: "Start recording", exact: true });
 			await expect(next).toBeDisabled();
 			await expect(page.locator("[data-permissions-confetti]")).toHaveCount(0);
 			await page.evaluate(() => window.dispatchEvent(new Event("test-settings-closed")));
 			await expect(next).toBeEnabled();
-			const measure = () =>
-				Promise.all([
-					tour.locator("[data-onboarding-artwork]").boundingBox(),
-					tour.locator(".onboarding-carousel-footer").boundingBox(),
-					pages.boundingBox(),
-				]);
-			const permissionsLayout = await measure();
 			await next.click();
-			await expect(pages.getByRole("button", { name: "Upgrade" })).toHaveAttribute(
-				"aria-current",
-				"page",
-			);
-			await expect.poll(measure).toEqual(permissionsLayout);
-			await tour
-				.getByRole("button", { name: "Skip and start recording", exact: true })
-				.click();
 			await expect
 				.poll(() =>
 					page.evaluate(() =>

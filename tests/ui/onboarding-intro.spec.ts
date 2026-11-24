@@ -70,7 +70,6 @@ for (const mode of ["glass", "fallback", "reduced motion"] as const) {
 		const expectedMode = mode === "fallback" ? "fallback" : "glass";
 		await expect(html).toHaveAttribute("data-intro-stages", "ready");
 		const intro = page.locator(".onboarding-intro");
-		const brand = intro.locator(".onboarding-intro-brand");
 		const logo = page.locator(".onboarding-intro-logo");
 		await expect(logo).toHaveAttribute("data-mode", expectedMode);
 		await expect(intro).toHaveText("");
@@ -86,9 +85,9 @@ for (const mode of ["glass", "fallback", "reduced motion"] as const) {
 		expect(await logoCenter()).toBeCloseTo(screenCenter, 0);
 		await expect(html).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 		await expect(page.locator("body")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-		await expect(page.locator(".onboarding-intro-backdrop")).toHaveCSS("position", "absolute");
-		await expect(brand).toHaveAttribute("data-releasing", "true");
+		await expect(logo).toHaveAttribute("data-phase", "holding");
 		await expect(intro).toHaveText("");
+		await expect(logo).toHaveCSS("opacity", "1");
 		expect(await logoCenter()).toBeCloseTo(screenCenter, 0);
 		if (expectedMode === "glass") {
 			const showsDesktopIcon = await logo
@@ -121,7 +120,8 @@ for (const mode of ["glass", "fallback", "reduced motion"] as const) {
 				});
 			expect(showsDesktopIcon).toBe(true);
 		}
+		await expect(logo).toHaveAttribute("data-phase", "releasing");
 		await expect(html).toHaveAttribute("data-intro-stages", "ready,finished");
-		await expect(brand).toHaveCSS("opacity", "0");
+		await expect(logo).toHaveCSS("opacity", "0");
 	});
 }

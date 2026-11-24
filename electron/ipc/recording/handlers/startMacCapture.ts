@@ -53,29 +53,6 @@ export async function startMacCapture(
 	let captProc: ChildProcessWithoutNullStreams | null = null;
 
 	try {
-		const recordingsDir = await getRecordingsDir();
-
-		// Warm up TCC: trigger an Electron-level screen capture API call so macOS
-		// activates the screen-recording grant for this process tree before the
-		// native helper binary spawns and calls SCStream.startCapture().
-		try {
-			await desktopCapturer.getSources({
-				types: ["screen"],
-				thumbnailSize: { width: 1, height: 1 },
-			});
-		} catch {
-			// non-fatal – the helper will report its own TCC status
-		}
-
-		// Ensure microphone TCC is granted for this process tree when mic capture
-		// is requested, so the child helper inherits the grant.
-		if (options?.capturesMicrophone) {
-			const micStatus = systemPreferences.getMediaAccessStatus("microphone");
-			if (micStatus !== "granted") {
-				await systemPreferences.askForMediaAccess("microphone");
-			}
-		}
-
 		const appName = normalizeDesktopSourceName(String(source?.appName ?? ""));
 		const ownAppName = normalizeDesktopSourceName(app.getName());
 		if (
@@ -90,7 +67,25 @@ export async function startMacCapture(
 			};
 		}
 
-		const helperPath = await ensureNativeCaptureHelperBinary();
+		// These pre-spawn steps are independent; running them together trims click-to-record latency.
+		const [recordingsDir, helperPath] = await Promise.all([
+			getRecordingsDir(),
+			ensureNativeCaptureHelperBinary(),
+			// Warm up TCC: trigger an Electron-level screen capture API call so macOS
+			// activates the screen-recording grant for this process tree before the
+			// native helper binary spawns and calls SCStream.startCapture().
+			desktopCapturer
+				.getSources({ types: ["screen"], thumbnailSize: { width: 1, height: 1 } })
+				.catch(() => {
+					// non-fatal – the helper will report its own TCC status
+				}),
+			// Ensure microphone TCC is granted for this process tree when mic capture
+			// is requested, so the child helper inherits the grant.
+			options?.capturesMicrophone &&
+			systemPreferences.getMediaAccessStatus("microphone") !== "granted"
+				? systemPreferences.askForMediaAccess("microphone")
+				: undefined,
+		]);
 		const timestamp = Date.now();
 		const outputPath = path.join(recordingsDir, `recording-${timestamp}.mp4`);
 		const capturesSystemAudio = Boolean(options?.capturesSystemAudio);

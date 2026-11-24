@@ -253,7 +253,7 @@
 		"processingAudioEdits": "正在处理带有速度/叠加编辑的音频"
 	},
 	"toolbar": {
-		"addLayer": "添加图层",
+		"addLayer": "添加",
 		"splitClip": "拆分片段 (C)",
 		"trimStart": "将开头剪到播放头 ({{shortcut}})",
 		"trimEnd": "将结尾剪到播放头 ({{shortcut}})"

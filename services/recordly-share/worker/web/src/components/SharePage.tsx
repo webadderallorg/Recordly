@@ -21,6 +21,7 @@ import {
 	type ShareData,
 	verifyPassword,
 } from "../scripts/api";
+import { getCreatorAvatarUrl } from "../scripts/shareModel";
 import ShareDetails from "./ShareDetails";
 import ShareFeedback from "./ShareFeedback";
 import SharePlayer from "./SharePlayer";
@@ -105,6 +106,8 @@ function Recording({ data }: { data: ShareData }) {
 	}
 
 	const { video } = data;
+	const creatorName = data.creator?.name?.trim() || "Recordly creator";
+	const creatorAvatarUrl = getCreatorAvatarUrl(data.creator?.avatar_url);
 	return (
 		<div className="recording-app" data-mobile-view={mobileView}>
 			<header className="viewer-header">
@@ -150,14 +153,17 @@ function Recording({ data }: { data: ShareData }) {
 					<section className="viewer-data" aria-label="Recording information">
 						<div className="viewer-data-heading">
 							<div className="viewer-identity">
-								<Avatar
-									aria-label={data.creator?.name || "Recordly creator"}
-									size="sm"
-								>
+								<Avatar aria-hidden="true" size="sm">
+									{creatorAvatarUrl && (
+										<Avatar.Image
+											src={creatorAvatarUrl}
+											alt=""
+											referrerPolicy="no-referrer"
+										/>
+									)}
 									<Avatar.Fallback>
-										{data.creator?.name &&
-										data.creator.name !== "Recordly creator" ? (
-											data.creator.name
+										{creatorName !== "Recordly creator" ? (
+											creatorName
 												.split(/\s+/)
 												.filter(Boolean)
 												.slice(0, 2)
@@ -170,9 +176,7 @@ function Recording({ data }: { data: ShareData }) {
 									</Avatar.Fallback>
 								</Avatar>
 								<div>
-									<p className="creator-name">
-										{data.creator?.name || "Recordly creator"}
-									</p>
+									<p className="creator-name">{creatorName}</p>
 									<p className="recording-meta">
 										<span>{formatDate(video.created_at)}</span>
 										<span>

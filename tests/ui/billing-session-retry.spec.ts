@@ -92,7 +92,7 @@ test("definitively rejected recovery is not repeated by manual refresh", async (
 	await expect(page.locator("html")).toHaveAttribute("data-recovery-calls", "1");
 	await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
 	await expect(
-		page.getByRole("button", { name: "Sign in to continue", exact: true }),
+		page.getByRole("button", { name: "Get Started", exact: true }),
 	).toBeVisible();
 });
 

@@ -59,6 +59,18 @@ export function registerPermissionHandlers() {
 		};
 	});
 
+	ipcMain.handle("request-accessibility-permission", () => {
+		if (process.platform !== "darwin") {
+			return { success: true, trusted: true, prompted: false };
+		}
+
+		return {
+			success: true,
+			trusted: systemPreferences.isTrustedAccessibilityClient(true),
+			prompted: true,
+		};
+	});
+
 	ipcMain.handle("get-screen-recording-permission-status", () => {
 		if (process.platform !== "darwin") {
 			return { success: true, status: "granted" };

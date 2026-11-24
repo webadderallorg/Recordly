@@ -38,6 +38,7 @@ export interface TimelineCanvasProps {
 	sourceAudioTracks?: SourceAudioTrackWithPeaks[];
 	getSourceAudioTrackSettingsForClip?: (clipId: string | null) => SourceAudioTrackSettings;
 	showSourceAudioTrack?: boolean;
+	onTrackCountChange?: (count: number) => void;
 	liveSpanPreviewById?: Record<string, { start: number; end: number }>;
 	liveHiddenItemIds?: string[];
 	isDragging?: boolean;

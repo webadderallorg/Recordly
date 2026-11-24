@@ -253,7 +253,7 @@
 		"processingAudioEdits": "Hız/kaplama düzenlemeleriyle ses işleniyor"
 	},
 	"toolbar": {
-		"addLayer": "Katman Ekle",
+		"addLayer": "Ekle",
 		"splitClip": "Klibi Böl (C)",
 		"trimStart": "Başlangıcı oynatma konumuna kırp ({{shortcut}})",
 		"trimEnd": "Sonu oynatma konumuna kırp ({{shortcut}})"

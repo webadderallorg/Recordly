@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BillingProvider, useOptionalBilling } from "@/components/billing/BillingProvider";
-import { PricingModal } from "@/components/billing/PricingModal";
+import { SplitPricingModal } from "@/components/billing/SplitPricingModal";
 import { getShareResolution } from "@/components/video-editor/cloud/shareResolution";
 import { ExportSettingsMenu } from "@/components/video-editor/ExportSettingsMenu";
 import { loadEditorPreferences } from "@/components/video-editor/editorPreferences";
@@ -140,7 +140,7 @@ function Fixture() {
 					>
 						Retry caption save
 					</button>
-					<PricingModal onSignIn={() => undefined} />
+					<SplitPricingModal onSignIn={() => undefined} />
 				</>
 			)}
 			<button type="button" onClick={() => void prepareExportForShare()}>

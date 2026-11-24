@@ -253,7 +253,7 @@
 		"processingAudioEdits": "Processando áudio com edições de velocidade/sobreposição"
 	},
 	"toolbar": {
-		"addLayer": "Adicionar camada",
+		"addLayer": "Adicionar",
 		"splitClip": "Dividir clipe (C)",
 		"trimStart": "Cortar o início até o cursor de reprodução ({{shortcut}})",
 		"trimEnd": "Cortar o final a partir do cursor de reprodução ({{shortcut}})"

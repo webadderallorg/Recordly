@@ -99,5 +99,16 @@
 	"featureLinkSharing": "Her videoyu 7/24 bağlantıyla paylaşın",
 	"featurePlayback": "Bulut videolarını FHD 1080p kalitesinde oynatın",
 	"featureCaptionExport": "Altyazı SRT ve VTT dosyalarını dışa aktarın",
-	"featurePrioritySupport": "Öncelikli destek hizmeti"
+	"featurePrioritySupport": "Öncelikli destek hizmeti",
+	"outcomeLinksTitle": "Dosya değil, bağlantı gönderin.",
+	"outcomeLinksDetail": "Herkes indirmeden anında izleyebilir.",
+	"outcomeStorageTitle": "Yer açmak için video silmenize gerek yok.",
+	"outcomeStorageDetail": "Sınırsız depolama, sınırsız izlenme.",
+	"outcomeLicenseTitle": "Müşteri işlerinde ve ücretli işlerde kullanın.",
+	"outcomeLicenseDetail": "Tam ticari lisans.",
+	"outcomePlaybackTitle": "İzleyiciler her ayrıntıyı görür.",
+	"outcomePlaybackDetail": "Net 1080p oynatma.",
+	"outcomeCaptionsTitle": "Altyazılarınızı her yerde kullanın.",
+	"outcomeCaptionsDetail": "SRT ve VTT dosyası dışa aktarma.",
+	"cancelAnytime": "İstediğiniz zaman iptal edin."
 }

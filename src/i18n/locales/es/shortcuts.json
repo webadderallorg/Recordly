@@ -7,6 +7,8 @@
 		"addKeyframe": "Agregar Fotograma clave",
 		"deleteSelected": "Eliminar seleccionado",
 		"duplicateSelected": "Duplicar selección",
+		"copySelected": "Copiar selección",
+		"paste": "Pegar",
 		"playPause": "Reproducir / Pausar",
 		"cycleForward": "Recorrer anotaciones hacia adelante",
 		"cycleBackward": "Recorrer anotaciones hacia atrás",

@@ -1,5 +1,11 @@
 import { type RefObject, useEffect } from "react";
-import { CLEAR_ALL_ZOOMS_SHORTCUT, matchesShortcut, type ShortcutBinding } from "@/lib/shortcuts";
+import {
+	CLEAR_ALL_ZOOMS_SHORTCUT,
+	COPY_SELECTED_SHORTCUT,
+	matchesShortcut,
+	PASTE_SHORTCUT,
+	type ShortcutBinding,
+} from "@/lib/shortcuts";
 import type { TimelineShortcutBindings } from "../core/timelineTypes";
 import { resolveDeleteSelectionTarget } from "./utils/timelineSelectionUtils";
 
@@ -33,6 +39,8 @@ interface UseTimelineKeyboardShortcutsParams {
 	deleteSelectedAudio: () => void;
 	deleteSelectedCaption: () => void;
 	onDuplicateSelectedRegion?: () => void;
+	onCopySelectedRegion?: () => boolean;
+	onPasteCopiedRegion?: () => boolean;
 	cycleAnnotationsAtCurrentTime: (backward?: boolean) => boolean;
 }
 
@@ -66,6 +74,8 @@ export function useTimelineKeyboardShortcuts({
 	deleteSelectedAudio,
 	deleteSelectedCaption,
 	onDuplicateSelectedRegion,
+	onCopySelectedRegion,
+	onPasteCopiedRegion,
 	cycleAnnotationsAtCurrentTime,
 }: UseTimelineKeyboardShortcutsParams) {
 	useEffect(() => {
@@ -166,6 +176,28 @@ export function useTimelineKeyboardShortcuts({
 				return;
 			}
 
+			const isClipboardShortcut = (binding: ShortcutBinding) =>
+				matchesShortcut(e, binding, isMac) &&
+				!Object.values(keyShortcuts).some((other) => matchesShortcut(e, other, isMac));
+			if (
+				onCopySelectedRegion &&
+				!selectAllBlocksActive &&
+				!selectedKeyframeId &&
+				(selectedZoomId || selectedAnnotationId || selectedAudioId) &&
+				isClipboardShortcut(COPY_SELECTED_SHORTCUT)
+			) {
+				if (onCopySelectedRegion()) e.preventDefault();
+				return;
+			}
+			if (onPasteCopiedRegion && isClipboardShortcut(PASTE_SHORTCUT)) {
+				if (e.repeat) {
+					e.preventDefault();
+					return;
+				}
+				if (onPasteCopiedRegion()) e.preventDefault();
+				return;
+			}
+
 			if (
 				hasAnyZoomBlocks &&
 				matchesShortcut(e, CLEAR_ALL_ZOOMS_SHORTCUT, isMac) &&
@@ -227,6 +259,8 @@ export function useTimelineKeyboardShortcuts({
 		isTimelineFocusedRef,
 		keyShortcuts,
 		onDuplicateSelectedRegion,
+		onCopySelectedRegion,
+		onPasteCopiedRegion,
 		selectAllBlocksActive,
 		selectedZoomIds,
 		selectedAnnotationId,

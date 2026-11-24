@@ -6,6 +6,7 @@ import { recoverBillingSession } from "@/lib/auth/recoverBillingSession";
 import { CLOUD_SHARE_ENDPOINT as DEFAULT_CLOUD_ENDPOINT } from "./endpoint";
 import {
 	checkShareCapacity,
+	type ShareCapacity,
 	ShareEmailVerificationRequiredError,
 	ShareSignInRequiredError,
 	subscribeShareCapacityChanges,
@@ -31,7 +32,7 @@ export function useCloudShareCapacity({
 }: CloudShareCapacityInput) {
 	const { t } = useI18n();
 
-	const [capacityAvailable, setCapacityAvailable] = useState<boolean | null>(null);
+	const [capacity, setCapacity] = useState<ShareCapacity | null>(null);
 
 	const [checkingCapacity, setCheckingCapacity] = useState(false);
 
@@ -41,8 +42,7 @@ export function useCloudShareCapacity({
 
 	const currentCapacityIdentity = `${accountId ?? ""}:${authToken ?? ""}`;
 
-	const verifiedCapacity =
-		capacityIdentity === currentCapacityIdentity ? capacityAvailable : null;
+	const verifiedCapacity = capacityIdentity === currentCapacityIdentity ? capacity : null;
 
 	const latestAuthToken = useRef(authToken);
 
@@ -92,7 +92,7 @@ export function useCloudShareCapacity({
 	}, [accountId, authToken, accountVersion]);
 
 	useEffect(() => {
-		setCapacityAvailable(null);
+		setCapacity(null);
 		setCheckingCapacity(false);
 		setSignInRequired(false);
 		if (!authToken || !DEFAULT_CLOUD_ENDPOINT) return;
@@ -107,14 +107,14 @@ export function useCloudShareCapacity({
 			}
 			pending = true;
 			const request = ++generation;
-			setCapacityAvailable(null);
+			setCapacity(null);
 			setCapacityError(undefined);
 			setCheckingCapacity(true);
 			void checkShareCapacity(DEFAULT_CLOUD_ENDPOINT, authToken, recoverSession)
-				.then((available) => {
+				.then((result) => {
 					if (active && request === generation) {
 						sessionRecovery.current.attempted = false;
-						setCapacityAvailable(available);
+						setCapacity(result);
 						setCapacityIdentity(currentCapacityIdentity);
 					}
 				})
@@ -124,7 +124,7 @@ export function useCloudShareCapacity({
 							cause instanceof ShareSignInRequiredError ||
 								cause instanceof ShareEmailVerificationRequiredError,
 						);
-						setCapacityAvailable(null);
+						setCapacity(null);
 						setCapacityIdentity(currentCapacityIdentity);
 						setCapacityError(
 							cause instanceof Error
@@ -216,13 +216,14 @@ export function useCloudShareCapacity({
 		};
 	}, [uploading, accountId, accountVersion, activeUploadId, activeUploadAccountVersion]);
 	return {
-		setCapacityAvailable,
+		setCapacity,
 		checkingCapacity,
 		capacityError,
 		capacityIdentity,
 		setCapacityIdentity,
 		currentCapacityIdentity,
-		verifiedCapacity,
+		verifiedCapacity: verifiedCapacity?.available ?? null,
+		recordingQuota: verifiedCapacity?.recordingQuota ?? null,
 		signInRequired,
 		sessionRecovery,
 		recoverSession,

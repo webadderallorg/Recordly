@@ -110,7 +110,6 @@ export function useExportDialogActions({
 		if (!resolvedSettings) return;
 		session.setExportError(null);
 		session.setExportedFilePath(undefined);
-		session.setShowExportDropdown(false);
 		void handleExport(resolvedSettings, { destination: "download" });
 	}, [resolveCurrentSettings, session, handleExport]);
 
@@ -129,7 +128,6 @@ export function useExportDialogActions({
 		session.exporterRef.current = null;
 		toast.info(translate("notifications.exportCanceled", "Export canceled"));
 		session.clearPendingExportSave();
-		session.setShowExportDropdown(false);
 		session.setIsExporting(false);
 		session.setIsOptimizingGif(false);
 		session.setExportProgress(null);

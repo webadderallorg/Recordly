@@ -151,7 +151,7 @@ export async function getRenderableAssetUrl(asset: string): Promise<string> {
 				: availableAsset;
 
 	const localFilePath = toLocalFilePath(resolvedAsset);
-	if (!localFilePath || typeof window === "undefined" || !window.electronAPI?.readLocalFile) {
+	if (!localFilePath || typeof window === "undefined") {
 		return resolvedAsset;
 	}
 
@@ -161,21 +161,28 @@ export async function getRenderableAssetUrl(asset: string): Promise<string> {
 	}
 
 	try {
-		const result = await window.electronAPI.readLocalFile(localFilePath);
-		if (!result.success || !result.data) {
-			return resolvedAsset;
+		const result = await window.electronAPI?.readLocalFile?.(localFilePath);
+		if (result?.success && result.data?.byteLength) {
+			const bytes =
+				result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data);
+			const dataUrl = `data:${getMimeTypeForAsset(localFilePath)};base64,${toBase64(bytes)}`;
+			localFileDataUrlCache.set(resolvedAsset, dataUrl);
+			return dataUrl;
 		}
-
-		const bytes = result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data);
-		const dataUrl = `data:${getMimeTypeForAsset(localFilePath)};base64,${toBase64(bytes)}`;
-		localFileDataUrlCache.set(resolvedAsset, dataUrl);
-		return dataUrl;
 	} catch {
-		return resolvedAsset;
+		// Try the local media server if the IPC read fails.
 	}
+
+	// Chromium blocks file URLs in the packaged editor's loopback renderer.
+	return window.location?.protocol?.startsWith("http")
+		? resolveLocalMediaUrl(localFilePath, resolvedAsset)
+		: resolvedAsset;
 }
 
-async function resolveLocalMediaUrl(filePath: string): Promise<string> {
+async function resolveLocalMediaUrl(
+	filePath: string,
+	fallbackUrl = toFileUrl(filePath),
+): Promise<string> {
 	if (typeof window !== "undefined" && window.electronAPI?.getLocalMediaUrl) {
 		try {
 			const result = await window.electronAPI.getLocalMediaUrl(filePath);
@@ -187,7 +194,7 @@ async function resolveLocalMediaUrl(filePath: string): Promise<string> {
 		}
 	}
 
-	return toFileUrl(filePath);
+	return fallbackUrl;
 }
 
 function isBundledAssetPath(asset: string): boolean {

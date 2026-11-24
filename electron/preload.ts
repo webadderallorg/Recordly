@@ -783,6 +783,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getAccessibilityPermissionStatus: () => {
 		return ipcRenderer.invoke("get-accessibility-permission-status");
 	},
+	requestAccessibilityPermission: () => {
+		return ipcRenderer.invoke("request-accessibility-permission");
+	},
 	getScreenRecordingPermissionStatus: () => {
 		return ipcRenderer.invoke("get-screen-recording-permission-status");
 	},

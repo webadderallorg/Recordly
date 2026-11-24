@@ -36,11 +36,9 @@ test("startup clears a pending permission request when both macOS grants already
 		};
 	});
 	await page.goto("/?windowType=editor");
-	await expect
-		.poll(() =>
-			page.evaluate(() => localStorage.getItem("recordly.onboarding.permissionsRequested")),
-		)
-		.toBe("false");
+	await expect.poll(() => page.evaluate(() =>
+		localStorage.getItem("recordly.onboarding.permissionsRequested"),
+	)).toBe("false");
 	await expect(page.locator("html")).not.toHaveAttribute("data-permission-window-opened");
 	await expect(page.getByRole("dialog", { name: "Permissions", exact: true })).toHaveCount(0);
 	await expect(page.getByRole("button", { name: "Home", exact: true })).toBeVisible();
@@ -57,11 +55,19 @@ test("a recording permission request opens recovery and can be closed and reopen
 		};
 	});
 	const permissions = page.getByRole("dialog", { name: "Permissions", exact: true });
-	for (let attempt = 0; attempt < 2; attempt++) {
+	for (const width of [760, 390]) {
+		await page.setViewportSize({ width, height: 650 });
 		await page.goto("/?windowType=onboarding&permissionsOnly=1");
 		await expect(permissions).toBeVisible({ timeout: 15000 });
 		await expect(permissions.getByRole("navigation")).toHaveCount(0);
 		await expect(permissions.getByRole("button", { name: "Back to account" })).toHaveCount(0);
+		await expect(permissions.locator(".onboarding-carousel-footer")).toHaveCSS(
+			"padding-bottom",
+			"40px",
+		);
+		await expect(
+			permissions.getByRole("button", { name: "Start recording", exact: true }),
+		).toBeInViewport({ ratio: 1 });
 		await permissions.getByRole("button", { name: "Close", exact: true }).click();
 		await expect(page).toHaveURL(/windowType=hud-overlay$/);
 		await expect(permissions).not.toBeVisible();
@@ -115,9 +121,8 @@ for (const standalone of [false, true]) {
 		await expect(
 			permissions.getByRole("heading", { name: "Allow Recordly to record" }),
 		).toBeVisible();
-		await expect(
-			permissions.locator("[data-onboarding-artwork] .recordly-banner-preview"),
-		).toBeInViewport();
+		await expect(permissions.locator("[data-onboarding-artwork] .recordly-banner-preview"))
+			.toBeInViewport();
 		await expect(permissions.getByRole("navigation")).toHaveCount(0);
 		await expect(permissions.getByRole("button", { name: "Back to account" })).toHaveCount(0);
 		await expect(permissions.getByPlaceholder("you@example.com")).toHaveCount(0);
@@ -127,19 +132,16 @@ for (const standalone of [false, true]) {
 		const start = permissions.getByRole("button", { name: "Start recording", exact: true });
 		await expect(start).toBeDisabled();
 		expect((await start.boundingBox())!.height).toBe(44);
-		expect(
-			(await permissions
-				.getByRole("button", { name: "Allow Screen Recording", exact: true })
-				.boundingBox())!.height,
-		).toBe(44);
+		expect((await permissions.getByRole("button", { name: "Allow Screen Recording", exact: true }).boundingBox())!.height).toBe(44);
 		await permissions
 			.getByRole("button", { name: "Allow Screen Recording", exact: true })
 			.click();
-		await expect(
-			permissions.getByRole("status", { name: "Screen Recording: Allowed" }),
-		).toBeVisible();
+		await expect(permissions.getByRole("status", { name: "Screen Recording: Allowed" }))
+			.toBeVisible();
 		await expect(start).toBeDisabled();
-		await permissions.getByRole("button", { name: "Allow Accessibility", exact: true }).click();
+		await permissions
+			.getByRole("button", { name: "Allow Accessibility", exact: true })
+			.click();
 		await expect(start).toBeEnabled();
 		await permissions.screenshot({ path: test.info().outputPath("permission-recovery.png") });
 		await start.click();

@@ -12,7 +12,8 @@ function fixture(initiallyVisible = true) {
 			visible = false;
 		}),
 	};
-	return { dock, controller: createDockVisibilityController(dock) };
+	const onShow = vi.fn();
+	return { dock, onShow, controller: createDockVisibilityController(dock, onShow) };
 }
 
 afterEach(() => vi.useRealTimers());
@@ -46,6 +47,16 @@ describe("macOS Dock visibility", () => {
 		expect(dock.hide).not.toHaveBeenCalled();
 		await vi.advanceTimersByTimeAsync(1);
 		expect(dock.hide).toHaveBeenCalledOnce();
+	});
+
+	it("refreshes the icon after macOS finishes showing the Dock tile", async () => {
+		vi.useFakeTimers();
+		const { dock, controller, onShow } = fixture(false);
+		controller.setVisible(true);
+		expect(onShow).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(dock.isVisible()).toBe(true);
+		expect(onShow).toHaveBeenCalledOnce();
 	});
 
 	it("coalesces rapid preference changes and spaces opposing transformations", async () => {

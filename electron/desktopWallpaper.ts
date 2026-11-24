@@ -223,9 +223,10 @@ async function encodeDesktopWallpaper(
 	run: CommandRunner,
 ): Promise<{ bytes: Buffer; extension: "png" | "jpg" }> {
 	if (aerialVideo) {
+		const ffmpegPath = await getFfmpegBinaryPath();
 		const bytes = await convertToJpeg(directory, (output) =>
 			run(
-				getFfmpegBinaryPath(),
+				ffmpegPath,
 				[
 					"-hide_banner",
 					"-loglevel",

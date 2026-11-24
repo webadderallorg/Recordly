@@ -17,6 +17,7 @@ export type Props = {
 	authToken?: string;
 	accountId?: string;
 	inline?: boolean;
+	inlineContainer?: HTMLElement | null;
 	onBusyChange?: (busy: boolean) => void;
 	onRequestSignIn?: () => void;
 	suppressSuccessToast?: boolean;

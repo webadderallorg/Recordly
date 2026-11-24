@@ -1,6 +1,6 @@
 import { type RefObject, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { CaretDown, CaretUpIcon } from "@/components/ui/icons";
+import { CaretUpIcon } from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import { retimeCaptionFragment } from "../captionTimeline";
@@ -37,15 +37,21 @@ type Props = {
 	currentTime: number;
 	handleSelectAnnotation: (id: string | null) => void;
 	onDuplicateSelectedRegion: () => void;
+	onCopySelectedRegion: () => boolean;
+	onPasteCopiedRegion: () => boolean;
 };
+
+const EXPANDABLE_TRACK_THRESHOLD = 3;
 
 export function EditorTimelinePanel(props: Props) {
 	const t = useScopedT("editor");
-	const [expanded, setExpanded] = useState(false);
+	const [expandRequested, setExpandRequested] = useState(false);
+	const [trackCount, setTrackCount] = useState(0);
+	const canExpand = trackCount > EXPANDABLE_TRACK_THRESHOLD;
+	const expanded = canExpand && expandRequested;
 	const toggleLabel = expanded
 		? t("timeline.collapse", "Collapse Timeline")
 		: t("timeline.expand", "Expand Timeline");
-	const ToggleIcon = expanded ? CaretDown : CaretUpIcon;
 	const {
 		timelineRef,
 		timeline,
@@ -70,25 +76,31 @@ export function EditorTimelinePanel(props: Props) {
 			ref={props.panelRef}
 			tabIndex={-1}
 			data-timeline-panel
-			className="relative outline-none flex flex-shrink-0 flex-col bg-transparent px-4 pb-4"
+			data-expanded={expanded || undefined}
+			className="relative outline-none flex flex-shrink-0 flex-col bg-transparent px-4 pb-4 transition-[height,max-height] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none"
 			style={{
 				height: expanded ? "48%" : "calc(22% + 8px)",
 				minHeight: 188,
-				maxHeight: expanded ? undefined : 288,
+				maxHeight: expanded ? "100%" : 288,
 			}}
 		>
-			<Button
-				type="button"
-				variant="ghost"
-				size="icon"
-				className="absolute top-0 left-1/2 z-40 h-5 w-10 -translate-x-1/2 -translate-y-1/2 rounded-md border border-separator bg-editor-bg text-muted-foreground"
-				title={toggleLabel}
-				aria-label={toggleLabel}
-				aria-expanded={expanded}
-				onClick={() => setExpanded((value) => !value)}
-			>
-				<ToggleIcon className="size-3" aria-hidden="true" />
-			</Button>
+			{canExpand ? (
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					className="absolute top-0 left-1/2 z-40 h-5 w-10 -translate-x-1/2 -translate-y-1/2 rounded-md border border-separator bg-editor-bg text-muted-foreground animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
+					title={toggleLabel}
+					aria-label={toggleLabel}
+					aria-expanded={expanded}
+					onClick={() => setExpandRequested(!expanded)}
+				>
+					<CaretUpIcon
+						className={`size-3 transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
+						aria-hidden="true"
+					/>
+				</Button>
+			) : null}
 			<TimelineEditor
 				zoomPresentationOptions={props.zoomPresentationOptions}
 				ref={timelineRef}
@@ -107,6 +119,8 @@ export function EditorTimelinePanel(props: Props) {
 				onZoomSpanChange={zoomCommands.handleZoomSpanChange}
 				onZoomDelete={zoomCommands.handleZoomDelete}
 				onDuplicateSelectedRegion={props.onDuplicateSelectedRegion}
+				onCopySelectedRegion={props.onCopySelectedRegion}
+				onPasteCopiedRegion={props.onPasteCopiedRegion}
 				onClearZooms={zoomCommands.handleClearZooms}
 				selectedZoomId={timeline.selectedZoomId}
 				onSelectZoom={zoomCommands.handleSelectZoom}
@@ -189,6 +203,7 @@ export function EditorTimelinePanel(props: Props) {
 						);
 					}
 				}}
+				onTrackCountChange={setTrackCount}
 				showSourceAudioTrack={timeline.clipRegions.some((clip) => clip.showSourceAudio)}
 				sourceAudioResourceVersion={timeline.sourceAudioFallbackRefreshKey}
 				sourceAudioTrackSettings={audio.getSourceAudioTrackSettingsForClip(

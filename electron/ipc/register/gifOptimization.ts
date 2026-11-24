@@ -32,8 +32,10 @@ export function registerGifOptimizationHandlers() {
 		active.set(owner.id, { requestId, controller });
 		owner.once("destroyed", abandon);
 		try {
+			const ffmpegPath = await getFfmpegBinaryPath();
+			controller.signal.throwIfAborted();
 			const output = await compressGifBuffer(new Uint8Array(data), {
-				ffmpegPath: getFfmpegBinaryPath(),
+				ffmpegPath,
 				signal: controller.signal,
 			});
 			if (controller.signal.aborted || owner.isDestroyed()) {

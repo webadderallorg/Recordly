@@ -56,13 +56,11 @@ for (const returning of [false, true]) {
 
 		const documentRoot = page.locator("html");
 		if (!returning) {
-			// Windows has no permissions page, so sign-in lands on Upgrade.
-			await expect(login).toHaveAttribute("data-onboarding-state", "upgrade");
+			// Windows has no permissions page, so sign-in finishes on the account page.
+			await expect(login).toHaveAttribute("data-onboarding-state", "login");
 			await expect(artwork).toHaveAttribute("data-layout-check", "same");
 			await expect(documentRoot).not.toHaveAttribute("data-hud-opened");
-			await login
-				.getByRole("button", { name: "Skip and start recording", exact: true })
-				.click();
+			await login.getByRole("button", { name: "Start recording", exact: true }).click();
 			await expect(documentRoot).toHaveAttribute("data-hud-opened", "true");
 			await expect(documentRoot).not.toHaveAttribute("data-dashboard-opened");
 			return;

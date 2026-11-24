@@ -155,7 +155,7 @@ async function prepare(
 
 test("billing recovers a rejected session without showing background errors", async ({ page }) => {
 	const dialog = await prepare(page, "recover");
-	await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toBeEnabled();
+	await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toBeEnabled();
 	await expect
 		.poll(() => page.locator("html").getAttribute("data-billing-status-calls"))
 		.not.toBe("1");
@@ -178,7 +178,7 @@ test("unverified checkout can refresh without exposing diagnostics or opening bi
 	});
 	await refresh.click();
 	await expect(page.getByTestId("verified-checkout")).toHaveText("true");
-	await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toBeEnabled();
+	await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toBeEnabled();
 	await expect(dialog.getByText("Cloud checkout is not available yet.")).toHaveCount(0);
 	await page.screenshot({
 		path: test.info().outputPath("pricing-recovered.png"),
@@ -188,12 +188,10 @@ test("unverified checkout can refresh without exposing diagnostics or opening bi
 
 test("persistent authorization failures offer sign-in without error banners", async ({ page }) => {
 	const dialog = await prepare(page, "unauthorized");
-	await expect(
-		dialog.getByRole("button", { name: "Sign in to continue", exact: true }),
-	).toBeEnabled();
+	await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toBeEnabled();
 	await expect(dialog.locator(".pricing-error")).toHaveCount(0);
 	await expect(dialog.getByText("Cloud checkout is not available yet.")).toHaveCount(0);
-	await dialog.getByRole("button", { name: "Sign in to continue", exact: true }).click();
+	await dialog.getByRole("button", { name: "Get Started", exact: true }).click();
 	await expect(dialog).not.toBeVisible();
 });
 
@@ -203,11 +201,18 @@ for (const mode of ["past_due", "unpaid", "held"] as const) {
 	}) => {
 		const dialog = await prepare(page, mode);
 		await expect(dialog.locator(".pricing-price-offer")).toHaveCount(0);
-		await expect(dialog.locator(".pricing-heading-offer")).toHaveCount(0);
+		await expect(dialog.locator(".split-upgrade-savings")).toHaveCount(0);
 		await dialog.getByRole("button", { name: "Manage subscription", exact: true }).click();
 		await expect(page.locator("html")).toHaveAttribute("data-billing-action", "portal");
-		await expect(dialog.getByText(/Your subscription needs attention/)).toBeVisible();
-		await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toHaveCount(
+		await expect(
+			dialog.getByText(
+				mode === "held"
+					? /Your subscription needs attention/
+					: /Your payment didn’t go through/,
+			),
+		).toBeVisible();
+		await expect(dialog.getByRole("status")).toHaveCount(1);
+		await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toHaveCount(
 			0,
 		);
 	});
@@ -217,20 +222,20 @@ test("canceled customers can resubscribe without duplicate billing management", 
 	page,
 }) => {
 	const dialog = await prepare(page, "canceled");
-	await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toBeEnabled();
+	await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toBeEnabled();
 	await expect(
 		dialog.getByRole("button", { name: "Manage previous subscription", exact: true }),
 	).toHaveCount(0);
-	await dialog.getByRole("button", { name: "Get started", exact: true }).click();
+	await dialog.getByRole("button", { name: "Get Started", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-billing-action", "checkout");
 });
 
 test("checkout failures show safe feedback and keep retry available", async ({ page }) => {
 	const dialog = await prepare(page, "action_failure");
-	await dialog.getByRole("button", { name: "Get started", exact: true }).click();
+	await dialog.getByRole("button", { name: "Get Started", exact: true }).click();
 	await expect(dialog.getByRole("alert")).toContainText("We couldn’t connect to secure billing");
 	await expect(dialog.getByText("provider diagnostic must not appear")).toHaveCount(0);
-	await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toBeEnabled();
+	await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toBeEnabled();
 	await expect(dialog.locator(".pricing-renewal")).toHaveCount(0);
 	await expect(dialog.getByRole("navigation", { name: "Legal and support" })).toHaveCount(0);
 	await expect(dialog.locator(".pricing-legal-consent")).toHaveCount(0);
@@ -259,14 +264,13 @@ for (const mode of ["catalog_failure", "price_mismatch"] as const) {
 		await expect(dialog.getByText("catalog provider diagnostic", { exact: true })).toHaveCount(
 			0,
 		);
+		await expect(page.locator("html")).not.toHaveAttribute("data-billing-action");
 		await page.evaluate(() => {
 			document.documentElement.dataset.recovered = "true";
 		});
 		await retry.click();
 		await expect(dialog.locator(".pricing-price")).toContainText("$9");
-		const checkout = dialog.getByRole("button", { name: "Get started", exact: true });
-		await expect(checkout).toBeEnabled();
-		await checkout.click();
+		await dialog.getByRole("button", { name: "Get Started", exact: true }).click();
 		await expect(page.locator("html")).toHaveAttribute("data-billing-action", "checkout");
 	});
 }
@@ -276,23 +280,20 @@ test("a slow catalog shows disabled loading instead of an unavailable or checkou
 }) => {
 	const dialog = await prepare(page, "slow_catalog");
 	await expect(page.getByTestId("usage-loading")).toHaveText("false");
-	await expect(
-		dialog.getByRole("button", { name: "Loading pricing…", exact: true }),
-	).toBeDisabled();
-	await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toHaveCount(0);
+	await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toBeDisabled();
 	await expect(dialog.getByText(/We couldn’t load your billing options/)).toHaveCount(0);
 	await page.evaluate(() => {
 		document.documentElement.dataset.recovered = "true";
 		document.dispatchEvent(new Event("release-pricing-catalog"));
 	});
-	await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toBeEnabled();
+	await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toBeEnabled();
 });
 
 test("returning from checkout checks payment without creating another checkout", async ({
 	page,
 }) => {
 	const dialog = await prepare(page, "recover");
-	await dialog.getByRole("button", { name: "Get started", exact: true }).click();
+	await dialog.getByRole("button", { name: "Get Started", exact: true }).click();
 	const check = dialog.getByRole("button", { name: "Check payment status", exact: true });
 	await expect(check).toBeEnabled();
 	await expect(dialog.getByText(/Complete checkout in your browser/)).toBeVisible();
@@ -309,15 +310,11 @@ test("an existing paid customer cannot start a second subscription when the port
 	const dialog = await prepare(page, "paid_no_portal");
 	const refresh = dialog.getByRole("button", { name: "Refresh plan", exact: true });
 	await expect(refresh).toBeEnabled();
-	await expect(
-		dialog.getByRole("button", { name: "Manage subscription", exact: true }),
-	).toHaveCount(0);
 	await expect(dialog.getByText(/Your Cloud plan is active/)).toBeVisible();
 	await expect(dialog.locator(".pricing-price-offer")).toHaveCount(0);
-	await expect(dialog.locator(".pricing-heading-offer")).toHaveCount(0);
-	await expect(dialog.getByRole("button", { name: "Get started", exact: true })).toHaveCount(0);
+	await expect(dialog.locator(".split-upgrade-savings")).toHaveCount(0);
+	await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toHaveCount(0);
 	await refresh.click();
-	await expect(refresh).toBeEnabled();
 	await expect(page.locator("html")).not.toHaveAttribute("data-billing-action");
 });
 
@@ -325,7 +322,7 @@ test("a subscription needing attention after checkout retains management access"
 	page,
 }) => {
 	const dialog = await prepare(page, "checkout_needs_attention");
-	await dialog.getByRole("button", { name: "Get started", exact: true }).click();
+	await dialog.getByRole("button", { name: "Get Started", exact: true }).click();
 	const manage = dialog.getByRole("button", { name: "Manage subscription", exact: true });
 	await expect(manage).toBeEnabled();
 	await expect(

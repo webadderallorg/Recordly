@@ -7,6 +7,8 @@
 		"addKeyframe": "キーフレームを追加",
 		"deleteSelected": "選択項目を削除",
 		"duplicateSelected": "選択項目を複製",
+		"copySelected": "選択項目をコピー",
+		"paste": "貼り付け",
 		"playPause": "再生 / 一時停止",
 		"cycleForward": "注釈の選択を次に切り替え",
 		"cycleBackward": "注釈の選択を前に切り替え",

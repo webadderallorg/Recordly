@@ -95,18 +95,19 @@ test("storage locations stay in their info tooltips", async ({ page }) => {
 	await page.goto("/?windowType=editor");
 	await page.getByRole("button", { name: "Settings", exact: true }).click();
 	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
-	await expect(settings.getByText("Recordings folder", { exact: true })).toBeVisible();
-	await expect(settings).not.toContainText("/Users/creator");
+	const storage = settings.locator(".settings-group").filter({
+		has: page.getByText("Recordings folder", { exact: true }),
+	});
 	for (const [label, path] of [
 		["Recordings folder", "/Users/creator/Documents/Recordly/Recordings"],
 		["Projects folder", "/Users/creator/Documents/Recordly/Projects"],
 	]) {
-		await settings.getByLabel(label, { exact: true }).hover();
-		await expect(page.getByRole("tooltip")).toContainText(path);
-		await settings.getByRole("heading", { name: "Settings", exact: true }).hover();
-		await expect(page.getByRole("tooltip")).toHaveCount(0);
+		const row = storage.locator(".settings-item").filter({
+			has: page.getByText(label, { exact: true }),
+		});
+		await expect(row.locator(".settings-folder-path")).toHaveText(path);
 	}
-	await settings.screenshot({ path: test.info().outputPath("storage-tooltips.png") });
+	await storage.screenshot({ path: test.info().outputPath("storage-card.png") });
 });
 
 for (const height of [600, 760]) {

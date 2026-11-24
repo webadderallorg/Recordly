@@ -24,13 +24,15 @@ for (const colorScheme of ["light", "dark"] as const) {
 			await expect(
 				page.getByRole("heading", { name: "Drag to System Settings", exact: true }),
 			).toBeVisible();
-			const drag = page.getByRole("button", {
+			const dragButton = page.getByRole("button", {
 				name: `Drag Recordly ${name} to System Settings`,
 				exact: true,
 			});
-			await expect(drag).toBeVisible();
+			await expect(dragButton).toBeVisible();
 			await expect(page.getByText("Electron", { exact: true })).toHaveCount(0);
-			await expect(drag.locator('img[src="/app-icons/recordlymac-128.png"]')).toBeVisible();
+			const appIcon = dragButton.locator("img");
+			await expect(appIcon).toBeVisible();
+			await expect(appIcon).toHaveJSProperty("naturalWidth", 128);
 			expect(
 				await page
 					.locator(".card")

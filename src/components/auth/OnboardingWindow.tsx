@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BillingSessionProvider } from "@/components/billing/BillingProvider";
 import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
 import { hasRequiredRecordingPermissions } from "@/lib/recordingPermissions";
 import { OnboardingController } from "./OnboardingController";
@@ -125,23 +124,21 @@ function AccountOnboarding() {
 	return returning ? (
 		<ReturningOnboarding auth={auth} inlineRecordingStart={inlineRecordingStart} />
 	) : (
-		<BillingSessionProvider auth={auth}>
-			<OnboardingController
-				requestNonce={0}
-				ready={!auth.loading}
-				user={auth.user}
-				configured={auth.configured}
-				callbackError={auth.callbackError}
-				authenticationVersion={auth.callbackVersion}
-				authCallbackPending={auth.callbackActivity.pending}
-				onUnlockSavedSignIn={
-					!import.meta.env.DEV && auth.savedSignInLocked
-						? () => void window.electronAPI.resolveStartupOnboarding("restart")
-						: undefined
-				}
-				standalone
-			/>
-		</BillingSessionProvider>
+		<OnboardingController
+			requestNonce={0}
+			ready={!auth.loading}
+			user={auth.user}
+			configured={auth.configured}
+			callbackError={auth.callbackError}
+			authenticationVersion={auth.callbackVersion}
+			authCallbackPending={auth.callbackActivity.pending}
+			onUnlockSavedSignIn={
+				!import.meta.env.DEV && auth.savedSignInLocked
+					? () => void window.electronAPI.resolveStartupOnboarding("restart")
+					: undefined
+			}
+			standalone
+		/>
 	);
 }
 

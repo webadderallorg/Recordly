@@ -40,6 +40,9 @@ export const CLEAR_ALL_ZOOMS_SHORTCUT: ShortcutBinding = {
 	shift: true,
 };
 
+export const COPY_SELECTED_SHORTCUT: ShortcutBinding = { key: "c", ctrl: true };
+export const PASTE_SHORTCUT: ShortcutBinding = { key: "v", ctrl: true };
+
 export const FIXED_SHORTCUTS: FixedShortcut[] = [
 	{ label: "Cycle Annotations Forward", display: "Tab", bindings: [{ key: "tab" }] },
 	{
@@ -52,6 +55,8 @@ export const FIXED_SHORTCUTS: FixedShortcut[] = [
 		display: "Del / ⌫",
 		bindings: [{ key: "delete" }, { key: "backspace" }],
 	},
+	{ label: "Copy Selected", bindings: [COPY_SELECTED_SHORTCUT] },
+	{ label: "Paste", bindings: [PASTE_SHORTCUT] },
 	{ label: "Clear All Zooms", bindings: [CLEAR_ALL_ZOOMS_SHORTCUT] },
 	{ label: "Pan Timeline", display: "Shift + Scroll", bindings: [] },
 	{ label: "Zoom Timeline", display: "Ctrl + Scroll", bindings: [] },

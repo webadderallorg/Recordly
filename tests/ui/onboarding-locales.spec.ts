@@ -75,7 +75,7 @@ for (const locale of SUPPORTED_LOCALES) {
 			.click();
 		await expect(dialog.getByRole("alert")).toContainText(messages.permissionFailed);
 		await expect(
-			dialog.getByRole("button", { name: messages.next, exact: true }),
+			dialog.getByRole("button", { name: messages.startRecording, exact: true }),
 		).toBeDisabled();
 		await expect(
 			dialog.getByRole("button", { name: messages.backToAccount, exact: true }),

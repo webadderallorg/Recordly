@@ -113,7 +113,9 @@ test("custom exports above QHD are available without a Cloud subscription", asyn
 	await expect(page.getByTestId("export-result")).toHaveText("3840 × 2160");
 });
 
-test("download and sharing honor the visible FPS and active encoding mode", async ({ page }) => {
+test("download and sharing honor the visible FPS and active encoding mode", async ({
+	page,
+}) => {
 	await page.goto("/tests/ui/export-resolution-presets.html");
 	await expect(page.getByRole("grid", { name: "Resolution", exact: true })).toBeVisible();
 	await expect(page.getByRole("row", { name: "Balanced", exact: true })).toHaveCount(0);

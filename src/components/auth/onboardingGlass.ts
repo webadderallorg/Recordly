@@ -36,6 +36,7 @@ const RELEASE_TIME = 1.7;
 const RIPPLE_START = timeToReach(0.85, RESPONSE) - 0.01;
 const TILE_START = timeToReach(0.92, RESPONSE) - 0.01;
 const REVEAL_DURATION_SECONDS = RELEASE_TIME + 0.95;
+const REVEAL_PLAYBACK_RATE = 1.06;
 
 // The droplet expands, settles into a rounded tile, then releases the mark.
 function frameAt(T: number) {
@@ -286,7 +287,8 @@ export function playOnboardingGlass(
 		let start: number | undefined;
 		const tick = (now: number) => {
 			start ??= now;
-			const time = Math.min(REVEAL_DURATION_SECONDS, (now - start) / 1000);
+			const elapsed = (now - start) / 1000;
+			const time = Math.min(REVEAL_DURATION_SECONDS, elapsed * REVEAL_PLAYBACK_RATE);
 			const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
 			const size = Math.max(1, Math.round(canvas.clientWidth * ratio));
 			if (canvas.width !== size || canvas.height !== size)

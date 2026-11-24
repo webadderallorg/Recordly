@@ -839,12 +839,12 @@ function getTrayIcon(filename: string) {
 }
 
 function syncDockIcon() {
-	// The packaged app uses the native icon from its macOS bundle.
+	// Packaged builds use the system-rendered Icon Composer asset in the app bundle.
 	if (process.platform !== "darwin" || app.isPackaged || !app.dock) {
 		return;
 	}
 
-	const dockIcon = getAppImage("app-icons/recordly-solid-blue-512.png");
+	const dockIcon = getAppImage(getPlatformAppIconFilename(512));
 	if (!dockIcon.isEmpty()) {
 		app.dock.setIcon(dockIcon);
 	}
@@ -1424,6 +1424,7 @@ app.whenReady().then(async () => {
 	});
 	syncDockIcon();
 	initializeDesktopPresence({
+		refreshDockIcon: syncDockIcon,
 		refreshEntryPoints: refreshTrayPresence,
 		stopRecording: requestStopRecording,
 		onRecordingOwnerLost: () => {

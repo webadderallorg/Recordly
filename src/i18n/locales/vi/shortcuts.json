@@ -7,6 +7,8 @@
 		"addKeyframe": "Thêm khung hình chính",
 		"deleteSelected": "Xóa mục đã chọn",
 		"duplicateSelected": "Nhân bản mục đã chọn",
+		"copySelected": "Sao chép mục đã chọn",
+		"paste": "Dán",
 		"playPause": "Phát / Tạm dừng",
 		"cycleForward": "Chuyển chú thích tiếp theo",
 		"cycleBackward": "Chuyển chú thích trước đó",

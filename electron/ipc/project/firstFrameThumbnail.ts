@@ -12,7 +12,7 @@ let queue = Promise.resolve();
 export function createProjectFirstFrameThumbnail(sourcePath: string): Promise<Buffer> {
 	const task = queue.then(async () => {
 		const result = await run(
-			getFfmpegBinaryPath(),
+			await getFfmpegBinaryPath(),
 			[
 				"-hide_banner",
 				"-loglevel",

@@ -253,7 +253,7 @@
 		"processingAudioEdits": "Processing audio with speed/overlay edits"
 	},
 	"toolbar": {
-		"addLayer": "Add Layer",
+		"addLayer": "Add",
 		"splitClip": "Split Clip (C)",
 		"trimStart": "Trim Start to Playhead ({{shortcut}})",
 		"trimEnd": "Trim End to Playhead ({{shortcut}})"
