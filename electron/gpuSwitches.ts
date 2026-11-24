@@ -44,10 +44,12 @@ export function getGpuSwitches(
 	}
 
 	if (platform === "linux") {
-		return {
-			useGl: shouldForceLinuxEgl(env) ? "egl" : undefined,
-			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
-		};
+		const disableFeatures = ["VaapiVideoDecoder", "VaapiVideoEncoder"];
+		if (shouldForceLinuxEgl(env)) {
+			// Chromium rejects --use-gl=egl (GPU process exits); ANGLE's GL backend works.
+			return { useGl: "angle", useAngle: "gl", disableFeatures };
+		}
+		return { useGl: undefined, disableFeatures };
 	}
 
 	return {};

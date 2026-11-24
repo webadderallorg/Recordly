@@ -84,6 +84,16 @@ describe("getGpuSwitches", () => {
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		});
 	});
+
+	it("maps the EGL opt-in to ANGLE's GL backend instead of the removed --use-gl=egl", () => {
+		expect(
+			getGpuSwitches("linux", { XDG_SESSION_TYPE: "x11", RECORDLY_FORCE_EGL: "1" }),
+		).toEqual({
+			useGl: "angle",
+			useAngle: "gl",
+			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
+		});
+	});
 });
 
 describe("getGpuBlocklistOverrideSwitches", () => {
