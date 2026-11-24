@@ -51,8 +51,10 @@ for (const returning of [false, true]) {
 		await artwork.evaluate((element) => element.setAttribute("data-layout-check", "same"));
 		await email.fill("test@email.com");
 		await login.getByRole("button", { name: "Email me a code" }).click();
-		await expect(login.getByText(/^Enter code sent to /)).toBeVisible();
-		await completeSupabaseSignIn(page);
+		await login
+			.getByRole("textbox", { name: "Enter code sent to test@email.com" })
+			.fill("123456");
+		await login.getByRole("button", { name: "Verify and continue", exact: true }).click();
 
 		const documentRoot = page.locator("html");
 		if (!returning) {
