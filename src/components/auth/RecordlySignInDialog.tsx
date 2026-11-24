@@ -44,6 +44,8 @@ type Props = {
 	signInOnly?: boolean;
 	preview?: boolean;
 	startWithPermissions?: boolean;
+	signInSkipped?: boolean;
+	onContinueAsGuest?: () => boolean;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	reason?: SignInReason;
@@ -84,6 +86,8 @@ export function RecordlySignInDialog({
 	signInOnly = false,
 	preview = false,
 	startWithPermissions = false,
+	signInSkipped = false,
+	onContinueAsGuest,
 	open,
 	onOpenChange,
 	user: signedInUser,
@@ -167,7 +171,7 @@ export function RecordlySignInDialog({
 			active = false;
 		};
 	}, []);
-	const canViewPermissions = tour && (Boolean(user) || preview);
+	const canViewPermissions = tour && Boolean(user || preview || signInSkipped);
 	// Windows and Linux have no permissions page, so their tour ends on the account page.
 	const stage: OnboardingStage =
 		canViewPermissions && page === "permissions" && needsPermissions
@@ -242,10 +246,9 @@ export function RecordlySignInDialog({
 		if (tour && user && !preview) goTo("permissions");
 	}, [open, tour, user, preview, goTo]);
 
-	const hasSignedInUser = Boolean(signedInUser);
 	useEffect(() => {
-		if (open && tour && startWithPermissions && hasSignedInUser) goTo("permissions");
-	}, [open, tour, startWithPermissions, hasSignedInUser, goTo]);
+		if (open && startWithPermissions && canViewPermissions) goTo("permissions");
+	}, [open, startWithPermissions, canViewPermissions, goTo]);
 
 	useEffect(() => {
 		if (!open || recordingStart || reauthenticating) return;
@@ -564,7 +567,7 @@ export function RecordlySignInDialog({
 								showPermissions={needsPermissions}
 								showNavigation={!signInOnly && !recordingStart}
 								footer={
-									canViewPermissions && (
+									tour && (
 										<OnboardingFooter>
 											<div
 												className="flex min-w-0 flex-wrap items-center gap-1"
@@ -597,28 +600,52 @@ export function RecordlySignInDialog({
 													</Button>
 												)}
 											</div>
-											<OnboardingPrimaryAction
-												isDisabled={
-													permissions || !needsPermissions
-														? (permissions && !permissionsReady) ||
-															finishDisabled ||
-															disabled
-														: disabled
-												}
-												onPress={() => {
-													if (permissions || !needsPermissions) {
-														if (
-															(!permissions || permissionsReady) &&
-															!finishDisabled
-														)
-															onAuthenticated();
-													} else navigateTo("permissions");
-												}}
-											>
-												{permissions || !needsPermissions
-													? ot("startRecording")
-													: ot("next", "Next")}
-											</OnboardingPrimaryAction>
+											{!permissions && !user && onContinueAsGuest ? (
+												<Button
+													variant="ghost"
+													className="text-muted"
+													isDisabled={disabled || finishDisabled}
+													onPress={() => {
+														setReportDiagnostic(undefined);
+														if (!onContinueAsGuest()) {
+															setMessage(
+																t("notifications.unexpectedError"),
+															);
+															return;
+														}
+														setMessage(undefined);
+														if (needsPermissions)
+															navigateTo("permissions");
+														else onAuthenticated();
+													}}
+												>
+													{ot("continueAsGuest")}
+												</Button>
+											) : (
+												<OnboardingPrimaryAction
+													isDisabled={
+														permissions || !needsPermissions
+															? (permissions && !permissionsReady) ||
+																finishDisabled ||
+																disabled
+															: disabled
+													}
+													onPress={() => {
+														if (permissions || !needsPermissions) {
+															if (
+																(!permissions ||
+																	permissionsReady) &&
+																!finishDisabled
+															)
+																onAuthenticated();
+														} else navigateTo("permissions");
+													}}
+												>
+													{permissions || !needsPermissions
+														? ot("startRecording")
+														: ot("next", "Next")}
+												</OnboardingPrimaryAction>
+											)}
 										</OnboardingFooter>
 									)
 								}

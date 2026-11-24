@@ -1,4 +1,5 @@
 {
+	"continueAsGuest": "ゲストとして続行",
 	"simulatePermissions": "アクセス権限をシミュレート",
 	"skipOnboarding": "初期設定をスキップ",
 	"botChecking": "セキュリティを確認中…",

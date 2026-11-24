@@ -429,7 +429,6 @@
 }
 
 .onboarding-carousel-footer {
-	/* Production keeps this slot before sign-in makes the actions available. */
 	min-height: 64px;
 }
 

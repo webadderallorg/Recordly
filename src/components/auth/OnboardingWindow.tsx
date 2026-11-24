@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
+import { hasSkippedOnboardingSignIn } from "@/lib/auth/onboardingSignIn";
 import { hasRequiredRecordingPermissions } from "@/lib/recordingPermissions";
 import { OnboardingController } from "./OnboardingController";
 import { RecordingPermissionsDialog } from "./RecordingPermissionsDialog";
@@ -14,13 +15,15 @@ function ReturningOnboarding({
 	inlineRecordingStart: boolean;
 }) {
 	const signedIn = Boolean(auth.user);
+	const canContinue = signedIn || hasSkippedOnboardingSignIn();
 	const { callbackActivity, callbackVersion, isCallbackPending } = auth;
 	const [showedSignIn, setShowedSignIn] = useState(false);
 	const [needsPermissions, setNeedsPermissions] = useState(false);
-	const needsStartConfirmation = inlineRecordingStart && (showedSignIn || callbackVersion > 0);
+	const needsStartConfirmation =
+		signedIn && inlineRecordingStart && (showedSignIn || callbackVersion > 0);
 	const view = auth.loading
 		? null
-		: !signedIn
+		: !canContinue
 			? "sign-in"
 			: needsStartConfirmation || needsPermissions
 				? inlineRecordingStart
@@ -30,7 +33,7 @@ function ReturningOnboarding({
 	const continuing = useRef(false);
 	const close = () => void window.electronAPI.closeOnboardingWindow();
 	const continueToHud = useCallback(async () => {
-		if (!signedIn || continuing.current || isCallbackPending()) return;
+		if (!canContinue || continuing.current || isCallbackPending()) return;
 		continuing.current = true;
 		if (loadAppSetting<boolean>("recordly.onboarding.permissionsRequested") === true)
 			saveAppSetting("recordly.onboarding.permissionsRequested", false);
@@ -46,12 +49,12 @@ function ReturningOnboarding({
 			continuing.current = false;
 			setNeedsPermissions(true);
 		}
-	}, [signedIn, isCallbackPending]);
+	}, [canContinue, isCallbackPending]);
 
 	useEffect(() => {
 		// A cold launch can carry an OAuth callback. Keep its renderer alive
 		// until the exchange and callback acknowledgement are both finished.
-		if (auth.loading || callbackActivity.pending || !signedIn) return;
+		if (auth.loading || callbackActivity.pending || !canContinue) return;
 		// On Windows and Linux, a fresh sign-in stops at Start recording.
 		if (needsStartConfirmation) return;
 		let cancelled = false;
@@ -65,7 +68,7 @@ function ReturningOnboarding({
 		return () => {
 			cancelled = true;
 		};
-	}, [auth.loading, callbackActivity, signedIn, continueToHud, needsStartConfirmation]);
+	}, [auth.loading, callbackActivity, canContinue, continueToHud, needsStartConfirmation]);
 
 	useEffect(() => {
 		if (view === "sign-in") setShowedSignIn(true);

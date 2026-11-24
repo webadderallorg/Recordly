@@ -82,7 +82,7 @@ for (const signedIn of [false, true]) {
 		await expect(email).toHaveValue("person@example.com");
 		expect(await email.boundingBox()).toEqual(before);
 		await expect(email).toHaveValue("person@example.com");
-		await tour.getByRole("button", { name: "Continue", exact: true }).click();
+		await tour.getByRole("button", { name: "Continue as guest", exact: true }).click();
 		await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
 		await page.evaluate(() => window.dispatchEvent(new Event("test-release-auth")));
 		await expect(tour).toHaveAttribute("data-onboarding-state", "permissions");

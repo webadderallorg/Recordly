@@ -212,19 +212,18 @@ productionTest(
 				return true;
 			};
 		});
-		await page.goto("/?windowType=editor");
+		await page.goto("/?windowType=onboarding");
 		const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
 		await expect(tour).toBeVisible({ timeout: 15000 });
 		await expect(tour.getByRole("heading", { name: "Allow Recordly to record" })).toBeVisible();
-		await expect(page.locator("[data-permissions-confetti]")).toBeVisible();
+		await tour.getByRole("button", { name: "Back to account" }).click();
+		await expect(tour.getByRole("button", { name: "Continue as guest" })).toHaveCount(0);
+		await tour.getByRole("button", { name: "Next", exact: true }).click();
 		await tour.getByRole("button", { name: "Start recording", exact: true }).click();
 		await expect
 			.poll(() => page.evaluate(() => localStorage.getItem("recordly.onboarding.v1.seen")))
 			.toBe("true");
-		await page.reload();
-		await expect(page.getByRole("button", { name: "Home", exact: true })).toBeVisible({
-			timeout: 15000,
-		});
+		await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
 		await expect(tour).not.toBeVisible();
 	},
 );
@@ -384,7 +383,7 @@ productionTest(
 	},
 );
 
-productionTest("sign-in is mandatory even after onboarding was completed", async ({ page }) => {
+productionTest("returning accounts without guest mode still require sign-in", async ({ page }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: true });
 	await page.addInitScript(() => sessionStorage.setItem("recordly.demo-session", "1"));
 	await page.goto("/?windowType=editor");
@@ -675,7 +674,9 @@ for (const signedIn of [true, false]) {
 		await expect(audio).toHaveJSProperty("paused", false);
 		await pausedMusic.click();
 		await expect(audio).toHaveJSProperty("muted", false);
-		await tour.getByRole("button", { name: "Next", exact: true }).click();
+		await tour
+			.getByRole("button", { name: signedIn ? "Next" : "Continue as guest", exact: true })
+			.click();
 		await expect(tour).toHaveAttribute("data-onboarding-state", "permissions");
 		await tour.getByRole("button", { name: "Back to account" }).click();
 		await expect(tour.getByPlaceholder("you@example.com")).toBeVisible();

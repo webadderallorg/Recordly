@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { hasSkippedOnboardingSignIn } from "@/lib/auth/onboardingSignIn";
 import { hasRecordlySession } from "@/lib/auth/recordlyAuth";
 import {
 	hasRequiredRecordingPermissions,
@@ -43,7 +44,11 @@ export function useRecorderPreferences() {
 	});
 
 	const preparePermissions = useCallback(async () => {
-		if (!import.meta.env.DEV && !(await hasRecordlySession().catch(() => false))) {
+		if (
+			!import.meta.env.DEV &&
+			!hasSkippedOnboardingSignIn() &&
+			!(await hasRecordlySession().catch(() => false))
+		) {
 			await window.electronAPI.showProjectDashboard();
 			return false;
 		}
