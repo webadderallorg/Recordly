@@ -73,4 +73,12 @@ describe("parseCloudBillingStatus", () => {
 			),
 		).toThrow();
 	});
+
+	it("rejects unlimited storage for a Plus plan without a subscription status", () => {
+		expect(() =>
+			parseCloudBillingStatus(
+				status({ plan: "pro" }, { recordingLimit: null, storageLimitBytes: null }),
+			),
+		).toThrow();
+	});
 });

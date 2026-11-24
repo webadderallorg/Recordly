@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "@/components/ui/toast";
+import { translate } from "@/i18n/runtime";
 import { hasSkippedOnboardingSignIn } from "@/lib/auth/onboardingSignIn";
 import { hasRecordlySession } from "@/lib/auth/recordlyAuth";
 import {
@@ -57,6 +59,7 @@ export function useRecorderPreferences() {
 		if (import.meta.env.DEV) {
 			await requestMissingRecordingPermissions().catch((error) => {
 				console.warn("Failed to request recording permissions:", error);
+				toast.error(translate("onboarding.openSettingsFailed"));
 			});
 			return false;
 		}

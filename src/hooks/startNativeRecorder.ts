@@ -176,35 +176,36 @@ export async function startNativeRecorder(
 			const mainStartedAt = Date.now();
 			microphoneFallback.resetStartDelay();
 			resetRecordingClock(mainStartedAt);
-			await webcamReady;
-			if (startWasCancelled()) {
-				return "finished";
-			}
-			beginWebcamCapture();
-			webcamTimeOffsetMs.current =
-				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
+			const startWebcam = async () => {
+				await webcamReady;
+				if (startWasCancelled()) return;
+				beginWebcamCapture();
+				webcamTimeOffsetMs.current =
+					webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
+			};
 
 			// When native mic capture is unavailable or explicitly bypassed,
 			// record mic via browser getUserMedia as a sidecar file.
-			if (nativeResult.microphoneFallbackRequired && microphoneEnabled) {
+			const startMicrophone = async () => {
+				if (!nativeResult.microphoneFallbackRequired || !microphoneEnabled) return true;
 				if (useNativeWindowsCapture) {
 					await window.electronAPI
 						.beginWindowsRecordingCursorCapture?.()
 						.catch((error) => {
 							console.warn("Could not start early Windows cursor capture:", error);
 						});
-					if (startWasCancelled()) return "finished";
+					if (startWasCancelled()) return false;
 				}
 				void logNativeCaptureDiagnostics("start-browser-microphone-fallback");
 				console.info("Using browser microphone processing for this recording.");
-				const microphoneStarted = await microphoneFallback.start({
+				return microphoneFallback.start({
 					microphoneDeviceId,
 					mainStartedAt,
 					startWasCancelled,
 				});
-				if (!microphoneStarted) return "finished";
-			}
-			if (startWasCancelled()) {
+			};
+			const [microphoneStarted] = await Promise.all([startMicrophone(), startWebcam()]);
+			if (!microphoneStarted || startWasCancelled()) {
 				await stopMicFallbackRecorder();
 				await stopWebcamRecorder();
 				cleanupCapturedMedia();
@@ -234,6 +235,17 @@ export async function startNativeRecorder(
 			return "finished";
 		}
 
+		if (countdown) {
+			const result = await countdown;
+			countdown = null;
+			if (startWasCancelled()) return "finished";
+			if (result.cancelled) {
+				cleanupCapturedMedia();
+				await stopWebcamRecorder();
+				return "finished";
+			}
+			if (!result.success) return "browser-fallback-needs-countdown";
+		}
 		return "browser-fallback";
 	} finally {
 		if (countdown) {

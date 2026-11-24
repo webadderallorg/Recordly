@@ -98,7 +98,7 @@ function ReturningOnboarding({
 				onOpenChange={() => undefined}
 				onAuthenticated={() => undefined}
 				recordingStart={
-					inlineRecordingStart
+					view === "ready"
 						? { disabled: callbackActivity.pending, onPress: continueToHud }
 						: undefined
 				}

@@ -70,6 +70,7 @@ vi.mock("./useRecordlyAuth", () => ({ useRecordlyAuth: vi.fn() }));
 
 const pendingKey = "recordly.onboarding.permissionsRequested";
 const seenKey = "recordly.onboarding.v1.seen";
+const guestKey = "recordly.onboarding.signInSkipped";
 const user = { id: "restored-account" } as User;
 const hud = vi.fn(async () => undefined);
 const closeWindow = vi.fn(async () => undefined);
@@ -168,6 +169,18 @@ describe("Windows startup after sign-in", () => {
 		expect(renderReturning({ user })).toBeNull();
 		await vi.waitFor(() => expect(startup).toHaveBeenCalledExactlyOnceWith("continue"));
 	});
+
+	it("lets a returning Windows guest retry a failed HUD handoff", async () => {
+		state.settings.set(guestKey, true);
+		startup.mockResolvedValueOnce(false);
+		expect(renderReturning()).toBeNull();
+		await vi.waitFor(() => expect(startup).toHaveBeenCalledWith("continue"));
+		const ready = renderReturning();
+		expect(ready?.props.user).toBeNull();
+		expect(ready?.props.recordingStart.disabled).toBe(false);
+		await ready?.props.recordingStart.onPress();
+		expect(startup.mock.calls.filter(([action]) => action === "continue")).toHaveLength(2);
+	});
 });
 
 describe("onboarding account and permission restart", () => {
@@ -228,6 +241,15 @@ describe("onboarding account and permission restart", () => {
 		render({ standalone: false, user: null });
 		const result = render({ standalone: false, user: null });
 		expect(result?.props).toMatchObject({ requireSignIn: true, open: true, user: null });
+	});
+
+	it("reads the guest choice saved by a separate onboarding window", () => {
+		vi.stubEnv("DEV", false);
+		render({ standalone: false, ready: false, user: null });
+		state.settings.set(seenKey, true);
+		state.settings.set(guestKey, true);
+		render({ standalone: false, user: null });
+		expect(render({ standalone: false, user: null })).toBeNull();
 	});
 
 	it("resumes unfinished first-run permissions after closing and restarting", async () => {

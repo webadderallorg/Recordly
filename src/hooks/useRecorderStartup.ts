@@ -109,12 +109,14 @@ export function useRecorderStartup(context: RecorderContext) {
 					startWasCancelled,
 					webcamReady,
 				});
-				if (outcome === "finished") return;
+				if (outcome === "finished" || startWasCancelled()) return;
+				if (outcome === "browser-fallback-needs-countdown") {
+					if (!(await runCountdown())) return;
+				} else if (shouldWarmStartNativeCapture) {
+					resetRecordingClock(Date.now());
+				}
 				nativeWindowsCaptureStartFailed = true;
 			}
-
-			if (startWasCancelled()) return;
-			if (nativeWindowsCaptureStartFailed && !(await runCountdown())) return;
 
 			if (startWasCancelled()) return;
 			// The webcam opens while the screen stream is acquired; both must be ready to record.

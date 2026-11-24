@@ -142,7 +142,7 @@ export function useTimelineKeyboardShortcuts({
 			// Keep literal bindings ahead of a physical-letter fallback for Option.
 			const matchesTrim = (binding: ShortcutBinding) =>
 				matchesShortcut(e, binding, isMac) ||
-				(matchesShortcut(e, binding, isMac, true) &&
+				(matchesShortcut(e, binding, isMac, "option") &&
 					!Object.values(keyShortcuts).some((other) => matchesShortcut(e, other, isMac)));
 			// Trimming to the playhead works wherever the playhead was set, like Delete.
 			if (keyShortcuts.trimStart && matchesTrim(keyShortcuts.trimStart)) {
@@ -177,7 +177,7 @@ export function useTimelineKeyboardShortcuts({
 			}
 
 			const isClipboardShortcut = (binding: ShortcutBinding) =>
-				matchesShortcut(e, binding, isMac) &&
+				matchesShortcut(e, binding, isMac, "primary") &&
 				!Object.values(keyShortcuts).some((other) => matchesShortcut(e, other, isMac));
 			if (
 				onCopySelectedRegion &&

@@ -163,8 +163,11 @@ test("the export click opens the upgrade modal after 1.5 seconds and respects it
 	await expect(page.getByTestId("usage-loading")).toHaveText("false");
 	const startExport = page.getByRole("button", { name: "Start test export" });
 	const pricing = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
-	await page.clock.install();
-	await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
+	const clockAt = Date.now();
+	await page.clock.install({ time: clockAt });
+	await page.clock.setFixedTime(clockAt);
+	await page.clock.pauseAt(clockAt);
+	await page.clock.setSystemTime(clockAt);
 	await startExport.press("Enter");
 	await page.clock.runFor(1_499);
 	await expect(pricing).toHaveCount(0);
@@ -181,8 +184,13 @@ test("the export click opens the upgrade modal after 1.5 seconds and respects it
 	await page.clock.runFor(1_500);
 	await expect(pricing).toHaveCount(0);
 
-	await page.clock.setFixedTime(firstShownAt + 120_000);
-	await startExport.click();
+	const beforeExpiry = firstShownAt + 119_500;
+	await page.clock.setFixedTime(beforeExpiry);
+	await page.clock.pauseAt(beforeExpiry);
+	await page.clock.setSystemTime(beforeExpiry);
+	await startExport.press("Enter");
+	// The attempt begins inside the cooldown and becomes eligible when the timer fires.
+	await page.clock.runFor(1_500);
 	await expect(pricing).toBeVisible();
 });
 
@@ -770,9 +778,18 @@ test("unavailable checkout offers a pricing refresh without starting payment", a
 	await page.getByRole("button", { name: "Refresh usage", exact: true }).click();
 	await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
 	const dialog = page.getByRole("dialog", { name: "Recordly Cloud" });
-	await expect(dialog.getByRole("button", { name: "Retry loading pricing" })).toBeEnabled();
+	const retry = dialog.getByRole("button", { name: "Retry loading pricing" });
+	await expect(retry).toBeEnabled();
 	await expect(dialog.getByRole("button", { name: "Get Started" })).toHaveCount(0);
 	await expect(page.getByTestId("verified-checkout")).toHaveText("false");
+	await expect(page.locator("html")).not.toHaveAttribute("data-billing-action");
+	const statusCalls = await page.evaluate(() => window.billingUsageTest.state.statusCalls);
+	await retry.click();
+	await expect
+		.poll(() => page.evaluate(() => window.billingUsageTest.state.statusCalls))
+		.toBeGreaterThan(statusCalls);
+	await expect(retry).toBeEnabled();
+	await expect(page.locator("html")).not.toHaveAttribute("data-billing-action");
 });
 
 for (const subscription of [

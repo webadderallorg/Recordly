@@ -9,6 +9,7 @@ type Permission = "screen" | "accessibility";
 let active:
 	| {
 			close: () => void;
+			isClosing: () => boolean;
 			window: BrowserWindow;
 			bundle: string;
 			owner: BrowserWindow;
@@ -82,6 +83,7 @@ export async function showPermissionAccessory(
 	// window would make it disappear and reappear.
 	if (
 		active &&
+		!active.isClosing() &&
 		active.permission === permission &&
 		!active.window.isDestroyed() &&
 		active.owner === BrowserWindow.fromWebContents(sender)
@@ -241,7 +243,7 @@ function ownAccessory(
 		poll.unref();
 		lifetime.unref();
 		startup.unref();
-		active = { close, window: accessory, bundle, owner, permission };
+		active = { close, isClosing: () => closing, window: accessory, bundle, owner, permission };
 		accessory.once("closed", close);
 		owner.once("closed", close);
 		sender.once("destroyed", close);
@@ -260,7 +262,7 @@ function ownAccessory(
 					resolve();
 				}
 				if (event === "back") returnToOwner();
-				if (event.startsWith("{")) {
+				if (!closing && event.startsWith("{")) {
 					try {
 						onFrame(JSON.parse(event) as AccessoryFrame);
 					} catch {

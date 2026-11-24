@@ -77,6 +77,7 @@ describe("startNativeRecorder countdown overlap", () => {
 		resolveNative({ success: true });
 		await vi.waitFor(() => expect(api.pauseNativeScreenRecording).toHaveBeenCalled());
 		expect(api.resumeNativeScreenRecording).not.toHaveBeenCalled();
+		expect(context.setRecording).not.toHaveBeenCalledWith(true);
 
 		resolveCountdown({ success: true });
 		await expect(started).resolves.toBe("finished");
@@ -104,5 +105,38 @@ describe("startNativeRecorder countdown overlap", () => {
 		await expect(started).resolves.toBe("finished");
 		expect(api.startCountdown).not.toHaveBeenCalled();
 		expect(api.pauseNativeScreenRecording).not.toHaveBeenCalled();
+	});
+
+	it("keeps the completed countdown when Windows capture falls back", async () => {
+		const started = startNativeRecorder(createContext(), {
+			...options,
+			useNativeWindowsCapture: true,
+		});
+		resolveCountdown({ success: true });
+		resolveNative({ success: false });
+		await expect(started).resolves.toBe("browser-fallback");
+		expect(api.startCountdown).toHaveBeenCalledOnce();
+		expect(api.cancelCountdown).not.toHaveBeenCalled();
+	});
+
+	it("starts the fallback mic while the webcam is opening", async () => {
+		const context = createContext();
+		context.microphoneEnabled = true;
+		vi.mocked(context.microphoneFallback.start).mockResolvedValue(true);
+		let openWebcam!: () => void;
+		const webcamReady = new Promise<void>((resolve) => {
+			openWebcam = resolve;
+		});
+		const started = startNativeRecorder(context, {
+			...options,
+			shouldWarmStartNativeCapture: false,
+			webcamReady,
+		});
+		resolveNative({ success: true, microphoneFallbackRequired: true });
+		await vi.waitFor(() => expect(context.microphoneFallback.start).toHaveBeenCalledOnce());
+		expect(context.beginWebcamCapture).not.toHaveBeenCalled();
+		openWebcam();
+		await expect(started).resolves.toBe("finished");
+		expect(context.beginWebcamCapture).toHaveBeenCalledOnce();
 	});
 });

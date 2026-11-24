@@ -22,7 +22,8 @@ export async function requestMissingRecordingPermissions(): Promise<void> {
 	if ((await api.getPlatform()) !== "darwin") return;
 	const screen = await api.getScreenRecordingPermissionStatus();
 	if (!screen.success || screen.status !== "granted") {
-		await api.openScreenRecordingPreferences();
+		const result = await api.openScreenRecordingPreferences();
+		if (!result.success) throw new Error(result.error ?? "Could not open System Settings.");
 		return;
 	}
 	const accessibility = await api.getAccessibilityPermissionStatus();

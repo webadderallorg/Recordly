@@ -69,8 +69,7 @@ export function CloudShareButton(props: Props & { inlineContainer?: HTMLElement 
 	const billing = useOptionalBilling();
 	const shareUsage = authToken && billing ? getFreeShareUsage(billing) : null;
 	// A full free allowance offers Pro instead of a dead-end disabled button.
-	const atShareLimit =
-		verifiedCapacity === false || (shareUsage !== null && shareUsage.used >= shareUsage.limit);
+	const atShareLimit = verifiedCapacity === false;
 	const shareLabel = shareUsage
 		? `${t("editor.cloud.share", "Share")} (${Math.min(shareUsage.used, shareUsage.limit)}/${shareUsage.limit})`
 		: t("editor.cloud.share", "Share");

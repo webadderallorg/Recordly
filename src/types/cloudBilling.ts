@@ -165,7 +165,7 @@ export function parseCloudBillingStatus(result: unknown): {
 		!(usage.storageLimitBytes === null
 			? // A non-active Plus subscription is normalized to free below and
 				// keeps its subscription status, so this parse stays idempotent.
-				billing.plan === "pro" || typeof billing.subscriptionStatus === "string"
+				typeof billing.subscriptionStatus === "string"
 			: Number.isSafeInteger(usage.storageLimitBytes) && usage.storageLimitBytes > 0) ||
 		!(
 			usage.recordingLimit === null ||

@@ -117,7 +117,7 @@ describe("recording startup coordination", () => {
 		});
 		vi.mocked(startNativeRecorder).mockImplementation(async () => {
 			order.push("native");
-			return "browser-fallback";
+			return "browser-fallback-needs-countdown";
 		});
 		api.startCountdown.mockImplementation(async () => {
 			order.push("countdown");
@@ -261,7 +261,7 @@ describe("recording startup coordination", () => {
 		vi.mocked(startNativeRecorder).mockResolvedValue("browser-fallback");
 		vi.spyOn(Date, "now").mockReturnValue(5000);
 		await start(context);
-		expect(api.startCountdown).toHaveBeenCalledOnce();
+		expect(api.startCountdown).toHaveBeenCalledTimes(nativeFallback ? 0 : 1);
 		expect(context.recordingSessionTimestamp.current).toBe(1000);
 		expect(context.resetRecordingClock).toHaveBeenCalledWith(5000);
 		expect(startBrowserRecorder).toHaveBeenCalledWith(context, expect.any(Object));

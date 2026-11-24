@@ -65,7 +65,11 @@ createRoot(document.getElementById("root")!).render(
 			<BillingProvider>
 				<CloudUsageCard />
 				<Controls />
-				<SplitPricingModal onSignIn={() => undefined} />
+				<SplitPricingModal
+					onSignIn={() => {
+						document.documentElement.dataset.pricingSignIn = "true";
+					}}
+				/>
 			</BillingProvider>
 		</I18nProvider>
 	</StrictMode>,

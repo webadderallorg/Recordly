@@ -94,6 +94,7 @@ export function OnboardingController({
 	useEffect(() => {
 		if (!ready) return;
 		if (checked.current && (preview || standalone)) return;
+		const hasAccountAccess = canContinue || hasSkippedOnboardingSignIn();
 		if (!standalone) {
 			// A preview dismissal survives renderer/window recreation without marking
 			// production onboarding complete or replaying a stale permission request.
@@ -101,7 +102,7 @@ export function OnboardingController({
 			const permissionsRequested =
 				!preview && loadAppSetting<boolean>("recordly.onboarding.permissionsRequested");
 			const seen = loadAppSetting<boolean>(SEEN_KEY);
-			if (canContinue && seen && permissionsRequested && !checked.current) {
+			if (hasAccountAccess && seen && permissionsRequested && !checked.current) {
 				let cancelled = false;
 				void hasRequiredRecordingPermissions()
 					.catch(() => false)
@@ -119,7 +120,7 @@ export function OnboardingController({
 				};
 			}
 			if (permissionsRequested) setStartWithPermissions(true);
-			if (!preview && !canContinue && seen && !permissionsRequested) {
+			if (!preview && !hasAccountAccess && seen && !permissionsRequested) {
 				setReturningSignIn(true);
 				setOpen(true);
 			} else if (!checked.current && (permissionsRequested || !seen)) {
@@ -134,7 +135,7 @@ export function OnboardingController({
 			setOpen(true);
 			return;
 		}
-		if (preview || !canContinue) {
+		if (preview || !hasAccountAccess) {
 			setOpen(true);
 			return;
 		}

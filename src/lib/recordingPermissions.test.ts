@@ -35,6 +35,14 @@ describe("requestMissingRecordingPermissions", () => {
 		expect(api.requestAccessibilityPermission).toHaveBeenCalledOnce();
 	});
 
+	it("reports when Screen Recording settings cannot open", async () => {
+		api.openScreenRecordingPreferences.mockResolvedValue({
+			success: false,
+			error: "Settings unavailable",
+		});
+		await expect(requestMissingRecordingPermissions()).rejects.toThrow("Settings unavailable");
+	});
+
 	it("does nothing outside macOS", async () => {
 		api.getPlatform.mockResolvedValue("win32");
 		await requestMissingRecordingPermissions();

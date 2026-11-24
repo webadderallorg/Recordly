@@ -112,7 +112,7 @@ export function RecordlySignInDialog({
 	// Only a completed interactive sign-in can finish reauthentication.
 	const reauthenticating = reason === "reauthenticate";
 	const user = reauthenticating ? null : signedInUser;
-	const showRecordingStart = Boolean(user && recordingStart);
+	const showRecordingStart = Boolean(recordingStart);
 	const [directSignInComplete, setDirectSignInComplete] = useState(false);
 	const openedAuthenticationVersion = useRef<number | undefined>(undefined);
 	useEffect(() => {
@@ -138,7 +138,7 @@ export function RecordlySignInDialog({
 	const switchingAccount =
 		tourSignIn?.returnTo === "permissions" ||
 		(preview && tour && page === "account" && Boolean(user));
-	const showSignInForm = !user || switchingAccount;
+	const showSignInForm = !showRecordingStart && (!user || switchingAccount);
 	const goTo = useCallback((next: OnboardingStage) => {
 		setPage((current) =>
 			current.page === next
@@ -373,12 +373,14 @@ export function RecordlySignInDialog({
 					</motion.div>
 					{showRecordingStart && recordingStart ? (
 						<div data-signin-fields className="recordly-signin-start">
-							<p
-								role="status"
-								className="grid place-items-center text-center text-sm text-muted"
-							>
-								{ot("signedIn")}
-							</p>
+							{user && (
+								<p
+									role="status"
+									className="grid place-items-center text-center text-sm text-muted"
+								>
+									{ot("signedIn")}
+								</p>
+							)}
 							<Button
 								variant="primary"
 								className="col-start-1 row-start-3 h-11 w-full gap-2 rounded-xl"

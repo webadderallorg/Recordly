@@ -121,18 +121,17 @@ export function matchesShortcut(
 	e: KeyboardEvent,
 	binding: ShortcutBinding,
 	isMacPlatform: boolean,
-	allowOptionLetter = false,
+	physicalLetter?: "option" | "primary",
 ): boolean {
 	const key = binding.key.toLowerCase();
 	const reportedKey = e.key.toLowerCase();
-	const optionLetterMatches =
-		allowOptionLetter &&
-		isMacPlatform &&
-		e.altKey &&
+	const physicalLetterMatches =
+		((physicalLetter === "option" && isMacPlatform && e.altKey) ||
+			(physicalLetter === "primary" && binding.ctrl && !e.altKey)) &&
 		/^[a-z]$/.test(key) &&
 		!/^[a-z]$/.test(reportedKey) &&
 		e.code === `Key${key.toUpperCase()}`;
-	if (reportedKey !== key && !optionLetterMatches) return false;
+	if (reportedKey !== key && !physicalLetterMatches) return false;
 
 	const primaryMod = isMacPlatform ? e.metaKey : e.ctrlKey;
 	if (primaryMod !== !!binding.ctrl) return false;

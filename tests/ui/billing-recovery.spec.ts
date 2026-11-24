@@ -24,9 +24,11 @@ async function prepare(
 		page,
 		({ mode }) => {
 			let calls = 0;
+			let catalogCalls = 0;
 			const prices = [{ interval: "monthly", unitAmount: 900, currency: "usd" }];
 			window.electronAPI.cloudBilling = async ({ action }) => {
 				if (action === "catalog") {
+					document.documentElement.dataset.billingCatalogCalls = String(++catalogCalls);
 					if (
 						mode === "catalog_failure" &&
 						document.documentElement.dataset.recovered !== "true"
@@ -36,11 +38,12 @@ async function prepare(
 						mode === "slow_catalog" &&
 						document.documentElement.dataset.recovered !== "true"
 					)
-						await new Promise((resolve) =>
+						await new Promise((resolve) => {
 							document.addEventListener("release-pricing-catalog", resolve, {
 								once: true,
-							}),
-						);
+							});
+							document.documentElement.dataset.catalogPending = "true";
+						});
 					return {
 						success: true,
 						prices,
@@ -259,12 +262,22 @@ for (const mode of ["catalog_failure", "price_mismatch"] as const) {
 		const dialog = await prepare(page, mode);
 		const retry = dialog.getByRole("button", { name: "Retry loading pricing", exact: true });
 		await expect(retry).toBeEnabled();
+		const attribute = mode === "catalog_failure" ? "billingCatalogCalls" : "billingStatusCalls";
+		const previousCalls = await page.evaluate(
+			(key) => Number(document.documentElement.dataset[key]),
+			attribute,
+		);
 		await retry.click();
+		await expect
+			.poll(() =>
+				page.evaluate((key) => Number(document.documentElement.dataset[key]), attribute),
+			)
+			.toBeGreaterThan(previousCalls);
+		await expect(retry).toBeEnabled();
 		await expect(page.locator("html")).not.toHaveAttribute("data-billing-action");
 		await expect(dialog.getByText("catalog provider diagnostic", { exact: true })).toHaveCount(
 			0,
 		);
-		await expect(page.locator("html")).not.toHaveAttribute("data-billing-action");
 		await page.evaluate(() => {
 			document.documentElement.dataset.recovered = "true";
 		});
@@ -280,6 +293,7 @@ test("a slow catalog shows disabled loading instead of an unavailable or checkou
 }) => {
 	const dialog = await prepare(page, "slow_catalog");
 	await expect(page.getByTestId("usage-loading")).toHaveText("false");
+	await expect(page.locator("html")).toHaveAttribute("data-catalog-pending", "true");
 	await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toBeDisabled();
 	await expect(dialog.getByText(/We couldn’t load your billing options/)).toHaveCount(0);
 	await page.evaluate(() => {

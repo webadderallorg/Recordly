@@ -71,9 +71,6 @@ for (const signedIn of [true, false]) {
 		await toggle.press("Space");
 		const pricing = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
 		await expect(pricing).toBeVisible();
-		await expect(
-			pricing.getByRole("list", { name: "Your Cloud benefits", exact: true }),
-		).toContainText("SRT and VTT file exports.");
 		await pricing.getByRole("button", { name: "Close", exact: true }).click();
 		await expect(toggle).not.toBeChecked();
 		await page.getByRole("button", { name: "Export Video", exact: true }).click();

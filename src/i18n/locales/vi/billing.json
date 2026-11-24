@@ -17,7 +17,7 @@
 	"earlyBirdSavings": "Giảm {{percent}}% khi đăng ký sớm",
 	"previousSubscription": "Quản lý gói đăng ký trước đây",
 	"regularPrice": "Giá thông thường {{price}} USD mỗi tháng",
-	"perMonth": "USD/tháng",
+	"perMonth": "mỗi tháng",
 	"renewal": "Thu {{price}} USD mỗi tháng. Gói tự động gia hạn cho đến khi bạn hủy. Để tránh lần gia hạn tiếp theo, hãy hủy trong mục Quản lý gói đăng ký.",
 	"connectionError": "Không thể kết nối với hệ thống thanh toán bảo mật. Hãy thử lại hoặc liên hệ hỗ trợ nếu lỗi vẫn tiếp diễn.",
 	"unavailable": "Tạm thời chưa thể thanh toán. Hãy tải lại các lựa chọn để kiểm tra hoặc liên hệ hỗ trợ.",
