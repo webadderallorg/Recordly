@@ -21,7 +21,6 @@ export function useRecorderStartup(context: RecorderContext) {
 		setCountdownActive,
 		resetRecordingClock,
 		setRecording,
-		nativeScreenRecording,
 		discardActiveNativeCapture,
 		stopMicFallbackRecorder,
 	} = context;
@@ -32,6 +31,8 @@ export function useRecorderStartup(context: RecorderContext) {
 		const startGeneration = recordingStartGeneration.current + 1;
 		recordingStartGeneration.current = startGeneration;
 		const startWasCancelled = () => recordingStartGeneration.current !== startGeneration;
+		let startupFailed = false;
+		const startupWasAborted = () => startupFailed || startWasCancelled();
 		let usingLinuxPortal = false;
 		const runCountdown = async () => {
 			if (countdownDelay <= 0) return true;
@@ -106,7 +107,7 @@ export function useRecorderStartup(context: RecorderContext) {
 					useNativeWindowsCapture,
 					micLabel,
 					shouldWarmStartNativeCapture,
-					startWasCancelled,
+					startWasCancelled: startupWasAborted,
 					webcamReady,
 				});
 				if (outcome === "finished" || startWasCancelled()) return;
@@ -130,10 +131,11 @@ export function useRecorderStartup(context: RecorderContext) {
 			await startBrowserRecorder(context, {
 				videoTrack,
 				systemAudioIncluded,
-				startWasCancelled,
+				startWasCancelled: startupWasAborted,
 				runPortalCountdown: usingLinuxPortal ? runCountdown : undefined,
 			});
 		} catch (error) {
+			startupFailed = true;
 			const missingWaylandScreenCast =
 				!startWasCancelled() &&
 				usingLinuxPortal &&
@@ -164,20 +166,9 @@ export function useRecorderStartup(context: RecorderContext) {
 				}
 			}
 			setRecording(false);
-			if (nativeScreenRecording.current) {
-				await discardActiveNativeCapture();
-			}
-			try {
-				await window.electronAPI?.setRecordingState(false);
-			} catch (stateError) {
-				console.warn("Failed to reset main-process recording state:", stateError);
-			} finally {
-				cleanupCapturedMedia();
-				await stopWebcamRecorder();
-			}
 		} finally {
 			try {
-				if (startWasCancelled()) {
+				if (startupWasAborted()) {
 					try {
 						await discardActiveNativeCapture();
 					} finally {
@@ -191,7 +182,7 @@ export function useRecorderStartup(context: RecorderContext) {
 					}
 				}
 			} catch (error) {
-				console.warn("Failed to clean up canceled recording startup:", error);
+				console.warn("Failed to clean up recording startup:", error);
 			}
 			try {
 				await window.electronAPI.finishRecordingStartup();
