@@ -87,7 +87,15 @@ export async function decodeVideoStreamAttempt(
 
 	const waitForBackpressureProgress = () =>
 		new Promise<void>((resolve) => {
-			backpressureWaiters.add(resolve);
+			// Chromium hardware decoders can omit or delay ondequeue events under load.
+			// Recheck periodically so decode backpressure cannot deadlock.
+			const wake = () => {
+				clearTimeout(timer);
+				backpressureWaiters.delete(wake);
+				resolve();
+			};
+			const timer = setTimeout(wake, 50);
+			backpressureWaiters.add(wake);
 		});
 
 	console.log(

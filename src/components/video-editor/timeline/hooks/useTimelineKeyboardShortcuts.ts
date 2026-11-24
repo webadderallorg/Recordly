@@ -1,5 +1,5 @@
 import { type RefObject, useEffect } from "react";
-import { CLEAR_ALL_ZOOMS_SHORTCUT, matchesShortcut } from "@/lib/shortcuts";
+import { CLEAR_ALL_ZOOMS_SHORTCUT, matchesShortcut, type ShortcutBinding } from "@/lib/shortcuts";
 import type { TimelineShortcutBindings } from "../core/timelineTypes";
 import { resolveDeleteSelectionTarget } from "./utils/timelineSelectionUtils";
 
@@ -17,9 +17,13 @@ interface UseTimelineKeyboardShortcutsParams {
 	selectedAudioId?: string | null;
 	selectedCaptionId?: string | null;
 	selectAllBlocksActive: boolean;
+	selectedZoomIds?: readonly string[];
+	clearSelectedBlocks?: () => void;
 	addKeyframe: () => void;
 	handleAddZoom: () => void;
 	handleSplitClip: () => void;
+	handleTrimStart?: () => void;
+	handleTrimEnd?: () => void;
 	handleAddAnnotation: () => void;
 	deleteSelectedKeyframe: () => void;
 	deleteSelectedZoom: () => void;
@@ -46,9 +50,13 @@ export function useTimelineKeyboardShortcuts({
 	selectedAudioId,
 	selectedCaptionId,
 	selectAllBlocksActive,
+	selectedZoomIds = [],
+	clearSelectedBlocks,
 	addKeyframe,
 	handleAddZoom,
 	handleSplitClip,
+	handleTrimStart,
+	handleTrimEnd,
 	handleAddAnnotation,
 	deleteSelectedKeyframe,
 	deleteSelectedZoom,
@@ -88,6 +96,7 @@ export function useTimelineKeyboardShortcuts({
 			) {
 				const target = resolveDeleteSelectionTarget({
 					selectAllBlocksActive,
+					selectedZoomIds,
 					selectedKeyframeId,
 					selectedZoomId,
 					selectedClipId,
@@ -111,6 +120,29 @@ export function useTimelineKeyboardShortcuts({
 				} else if (target === "caption") {
 					deleteSelectedCaption();
 				}
+				return;
+			}
+
+			if (e.key === "Escape" && (selectAllBlocksActive || selectedZoomIds.length > 0)) {
+				e.preventDefault();
+				clearSelectedBlocks?.();
+				return;
+			}
+
+			// Keep literal bindings ahead of a physical-letter fallback for Option.
+			const matchesTrim = (binding: ShortcutBinding) =>
+				matchesShortcut(e, binding, isMac) ||
+				(matchesShortcut(e, binding, isMac, true) &&
+					!Object.values(keyShortcuts).some((other) => matchesShortcut(e, other, isMac)));
+			// Trimming to the playhead works wherever the playhead was set, like Delete.
+			if (keyShortcuts.trimStart && matchesTrim(keyShortcuts.trimStart)) {
+				e.preventDefault();
+				if (!e.repeat) handleTrimStart?.();
+				return;
+			}
+			if (keyShortcuts.trimEnd && matchesTrim(keyShortcuts.trimEnd)) {
+				e.preventDefault();
+				if (!e.repeat) handleTrimEnd?.();
 				return;
 			}
 
@@ -177,6 +209,7 @@ export function useTimelineKeyboardShortcuts({
 		addKeyframe,
 		annotationCount,
 		clearAllZooms,
+		clearSelectedBlocks,
 		cycleAnnotationsAtCurrentTime,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
@@ -187,12 +220,15 @@ export function useTimelineKeyboardShortcuts({
 		handleAddAnnotation,
 		handleAddZoom,
 		handleSplitClip,
+		handleTrimEnd,
+		handleTrimStart,
 		hasAnyZoomBlocks,
 		isMac,
 		isTimelineFocusedRef,
 		keyShortcuts,
 		onDuplicateSelectedRegion,
 		selectAllBlocksActive,
+		selectedZoomIds,
 		selectedAnnotationId,
 		selectedAudioId,
 		selectedCaptionId,

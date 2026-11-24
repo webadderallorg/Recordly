@@ -702,7 +702,7 @@ interface Window {
 			startDelayMsByPath?: Record<string, number>;
 			error?: string;
 		}>;
-		setRecordingState: (recording: boolean) => Promise<void>;
+		setRecordingState: (recording: boolean, startedAtMs?: number) => Promise<void>;
 		getCursorTelemetry: (videoPath?: string) => Promise<{
 			success: boolean;
 			samples: CursorTelemetryPoint[];
@@ -1054,6 +1054,7 @@ interface Window {
 		resolveStartupOnboarding: (action: "show" | "continue" | "restart") => Promise<boolean>;
 		reportOnboardingIntro: (stage: "ready" | "finished" | "skipped") => void;
 		onOnboardingIntroShown: (callback: () => void) => () => void;
+		waitForOnboardingBanner: () => Promise<void>;
 		onOnboardingSoundtrackStart: (callback: () => void) => () => void;
 		createProjectFile: (
 			data: unknown,

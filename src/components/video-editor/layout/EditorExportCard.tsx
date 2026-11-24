@@ -23,6 +23,7 @@ type Props = {
 	onDismiss: () => void;
 	onRetrySave: () => void;
 	onRevealFile: () => void;
+	onRecordNew?: () => void;
 };
 
 export function EditorExportCard({
@@ -36,6 +37,7 @@ export function EditorExportCard({
 	onDismiss,
 	onRetrySave,
 	onRevealFile,
+	onRecordNew,
 }: Props) {
 	const { isExporting, exportError, exportedFilePath, hasPendingExportSave } = session;
 	const { exportDisplayProgress, exportPhaseLabel, exportHeadlines } = status;
@@ -130,6 +132,11 @@ export function EditorExportCard({
 						<Button type="button" variant="outline" size="sm" onClick={onRevealFile}>
 							{t("editor.actions.showInFolder", "Show In Folder")}
 						</Button>
+						{exportedFilePath && !hasPendingExportSave && onRecordNew && (
+							<Button type="button" size="sm" onClick={onRecordNew}>
+								{t("ui.recordNew", "Record new")}
+							</Button>
+						)}
 					</div>
 				</>
 			)}

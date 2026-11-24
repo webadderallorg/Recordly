@@ -188,7 +188,7 @@
 }
 @container editor-header (max-width: 860px) {
 	.editor-header-end {
-		gap: 8px;
+		gap: 4px;
 	}
 	.editor-header-start > [role="separator"] {
 		margin-inline: 8px;
@@ -219,6 +219,17 @@
 	inset-inline-end: 6px;
 	width: 12px;
 	height: 12px;
+}
+.editor-playback-clip-menu {
+	display: none;
+}
+@container editor-preview (max-width: 900px) {
+	.editor-playback-clip-command {
+		display: none;
+	}
+	.editor-playback-clip-menu {
+		display: inline-flex;
+	}
 }
 @container editor-preview (max-width: 760px) {
 	.editor-playback {

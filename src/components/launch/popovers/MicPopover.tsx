@@ -42,6 +42,15 @@ export function MicPopover({
 		setting: t("recording.audioSettings", "Audio settings"),
 		value: activeSources.length > 0 ? activeSources.join(", ") : t("recording.off"),
 	});
+	const describeSource = (setting: string, enabled: boolean) =>
+		t("recording.settingValue", "{{setting}}: {{value}}", {
+			setting,
+			value: t(enabled ? "recording.on" : "recording.off"),
+		});
+	const description = [
+		describeSource(t("recording.microphone"), microphoneEnabled),
+		describeSource(t("recording.systemAudio"), systemAudioEnabled),
+	].join(". ");
 
 	return (
 		<HudPopover
@@ -60,6 +69,7 @@ export function MicPopover({
 			align="start"
 			label={t("recording.audioSettings", "Audio settings")}
 			tooltip={tooltip}
+			description={description}
 		>
 			<DropdownItem
 				icon={

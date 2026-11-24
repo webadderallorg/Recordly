@@ -576,6 +576,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("onboarding-intro-shown", listener);
 		return () => ipcRenderer.removeListener("onboarding-intro-shown", listener);
 	},
+	waitForOnboardingBanner: () => ipcRenderer.invoke("wait-for-onboarding-banner"),
 	onOnboardingSoundtrackStart: (callback: () => void) => {
 		const listener = () => callback();
 		ipcRenderer.on("onboarding-soundtrack-start", listener);
@@ -728,8 +729,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	beginWindowsRecordingCursorCapture: () =>
 		ipcRenderer.invoke("begin-windows-recording-cursor-capture"),
-	setRecordingState: (recording: boolean) => {
-		return ipcRenderer.invoke("set-recording-state", recording);
+	setRecordingState: (recording: boolean, startedAtMs?: number) => {
+		return ipcRenderer.invoke("set-recording-state", recording, startedAtMs);
 	},
 	setCursorScale: (scale: number) => {
 		return ipcRenderer.invoke("set-cursor-scale", scale);

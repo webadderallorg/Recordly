@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { initializeEncoder } from "./legacyVideoEncoding";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { encodeRenderedFrame, initializeEncoder } from "./legacyVideoEncoding";
 import { probeSupportedMp4Dimensions } from "./mp4Support";
 
 const support = vi.fn();
@@ -97,4 +97,70 @@ it("reports failure when no full-size codec is supported", async () => {
 	const state = context();
 	await expect(initializeEncoder(state)).rejects.toThrow("Video encoding not supported");
 	expect(state.encoder!.configure).not.toHaveBeenCalled();
+});
+
+describe("encodeRenderedFrame backpressure and watchdog", () => {
+	it("throws encoderError immediately if present on context", async () => {
+		const error = new Error("Encoder initialization failed");
+		const state = {
+			renderer: { getCanvas: () => ({}) },
+			encoder: { encodeQueueSize: 0, state: "configured", encode: vi.fn() },
+			config: { maxEncodeQueue: 10 },
+			cancelled: false,
+			encodeQueue: 0,
+			encoderError: error,
+		};
+		await expect(encodeRenderedFrame(state as never, 0, 16667, 0)).rejects.toBe(error);
+	});
+
+	it("times out when the encoder queue remains full without progress for 30s", async () => {
+		vi.useFakeTimers();
+		try {
+			vi.stubGlobal(
+				"VideoFrame",
+				class {
+					close = vi.fn();
+				},
+			);
+			const state = {
+				renderer: { getCanvas: () => ({}) },
+				encoder: { encodeQueueSize: 250, state: "configured", encode: vi.fn() },
+				config: { maxEncodeQueue: 240 },
+				cancelled: false,
+				encodeQueue: 0,
+			};
+			const assertion = expect(
+				encodeRenderedFrame(state as never, 0, 16667, 0),
+			).rejects.toThrow("WebCodecs encoder made no progress for 30 seconds");
+			await vi.advanceTimersByTimeAsync(31_000);
+			await assertion;
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("encodes frame once queue capacity becomes available", async () => {
+		const close = vi.fn();
+		vi.stubGlobal(
+			"VideoFrame",
+			class {
+				close = close;
+			},
+		);
+		const encode = vi.fn();
+		const state = {
+			renderer: { getCanvas: () => ({}) },
+			encoder: { encodeQueueSize: 10, state: "configured", encode },
+			config: { maxEncodeQueue: 5 },
+			cancelled: false,
+			encodeQueue: 0,
+		};
+		setTimeout(() => {
+			state.encoder.encodeQueueSize = 2;
+		}, 10);
+		await encodeRenderedFrame(state as never, 0, 16667, 0);
+		expect(encode).toHaveBeenCalledTimes(1);
+		expect(close).toHaveBeenCalledTimes(1);
+		expect(state.encodeQueue).toBe(1);
+	});
 });

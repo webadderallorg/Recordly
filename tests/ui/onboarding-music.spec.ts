@@ -36,16 +36,27 @@ for (const standalone of [false, true]) {
 	});
 }
 
-test("soundtrack begins on the logo signal and continues while the banner starts", async ({
+test("soundtrack starts at the logo and the banner waits for the onboarding window", async ({
 	page,
 }) => {
 	await installDesktopBridge(page, "preview.mp4", { signedIn: false, onboarded: false });
 	await installDesktopBridgeOverrides(page, () => {
+		const decode = HTMLImageElement.prototype.decode;
+		HTMLImageElement.prototype.decode = function () {
+			if (this.classList.contains("recordly-banner-dark"))
+				return new Promise(() => undefined);
+			return decode.call(this);
+		};
 		window.electronAPI.onOnboardingSoundtrackStart = (callback) => {
 			document.documentElement.dataset.soundtrackReady = "true";
 			window.addEventListener("test-logo-start", callback);
 			return () => window.removeEventListener("test-logo-start", callback);
 		};
+		window.electronAPI.waitForOnboardingBanner = () =>
+			new Promise<void>((resolve) => {
+				document.documentElement.dataset.bannerReady = "true";
+				window.addEventListener("test-banner-start", () => resolve(), { once: true });
+			});
 	});
 	await page.goto("/?windowType=onboarding&welcomeSoundtrack=intro");
 	const tour = page.getByRole("dialog", { name: "Welcome to Recordly" });
@@ -54,13 +65,21 @@ test("soundtrack begins on the logo signal and continues while the banner starts
 	await expect(page.locator("html")).toHaveAttribute("data-soundtrack-ready", "true");
 	await expect(audio).toHaveJSProperty("paused", true);
 	await expect(audio).toHaveJSProperty("currentTime", 0);
+	await expect(page.locator("html")).toHaveAttribute("data-banner-ready", "true");
 	await page.evaluate(() => window.dispatchEvent(new Event("test-logo-start")));
 	await expect(audio).toHaveJSProperty("paused", false);
-	await expect(banner).toHaveAttribute("data-banner-phase", "video");
 	await expect
 		.poll(() => audio.evaluate((el: HTMLAudioElement) => el.currentTime))
 		.toBeGreaterThan(1);
-	await expect(banner.locator("video")).toHaveJSProperty("muted", true);
+	const video = banner.locator("video");
+	await expect(banner).toHaveAttribute("data-banner-phase", "loading");
+	await expect(video).toHaveJSProperty("currentTime", 0);
+
+	await page.evaluate(() => window.dispatchEvent(new Event("test-banner-start")));
+	await expect(banner).toHaveAttribute("data-banner-phase", "still");
+	await expect(video).toHaveJSProperty("currentTime", 0);
+	await expect(banner).toHaveAttribute("data-banner-phase", "video");
+	await expect(video).toHaveJSProperty("muted", true);
 });
 
 test("soundtrack loops after the full track ends", async ({ page }) => {

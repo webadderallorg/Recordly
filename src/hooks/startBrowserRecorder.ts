@@ -18,20 +18,61 @@ import type { RecorderContext } from "./recorderContext";
 import { RecordingFileWriter } from "./recordingFileWriter";
 import { getVideoExtensionForMimeType } from "./recordingMimeType";
 
+const PORTAL_RECORDER_START_TIMEOUT_MS = 2000;
+
+function observeRecorderStart(recorder: MediaRecorder, requestedAt: number) {
+	const events = new AbortController();
+	const cancel = () => events.abort();
+	const startedAt = new Promise<number | null>((resolve) => {
+		const timeout = setTimeout(() => {
+			// Keep the existing clock if Chromium is recording but its event is delayed.
+			if (recorder.state === "recording") resolve(requestedAt);
+			cancel();
+		}, PORTAL_RECORDER_START_TIMEOUT_MS);
+		events.signal.addEventListener(
+			"abort",
+			() => {
+				clearTimeout(timeout);
+				resolve(null);
+			},
+			{ once: true },
+		);
+		const options = { once: true, signal: events.signal };
+		recorder.addEventListener(
+			"start",
+			() => {
+				resolve(Date.now());
+				cancel();
+			},
+			options,
+		);
+		recorder.addEventListener("error", cancel, options);
+		recorder.addEventListener("stop", cancel, options);
+	});
+	return { startedAt, cancel };
+}
+
 function startScreenRecorder(
 	stream: MediaStream,
 	videoTrack: MediaStreamTrack,
 	mimeTypes: string[],
 	bitrates: { videoBitsPerSecond: number; audioBitsPerSecond: number | undefined },
+	waitForStart: boolean,
 ) {
 	const startWithType = (mimeType?: string) => {
 		const recorder = new MediaRecorder(
 			stream,
 			createBrowserRecordingOptions({ ...bitrates, mimeType }),
 		);
-		const startedAt = Date.now();
-		recorder.start(RECORDER_TIMESLICE_MS);
-		return { recorder, mimeType, startedAt };
+		const requestedAt = Date.now();
+		const portalStart = waitForStart ? observeRecorderStart(recorder, requestedAt) : undefined;
+		try {
+			recorder.start(RECORDER_TIMESLICE_MS);
+		} catch (error) {
+			portalStart?.cancel();
+			throw error;
+		}
+		return { recorder, mimeType, requestedAt, portalStart };
 	};
 
 	for (const mimeType of mimeTypes.slice(0, -1)) {
@@ -151,7 +192,7 @@ export async function startBrowserRecorder(
 			? AUDIO_BITRATE_SYSTEM
 			: AUDIO_BITRATE_VOICE
 		: undefined;
-	const { recorder, mimeType, startedAt } = startScreenRecorder(
+	const { recorder, mimeType, requestedAt, portalStart } = startScreenRecorder(
 		capturedStream,
 		videoTrack,
 		getMimeTypes(),
@@ -159,6 +200,7 @@ export async function startBrowserRecorder(
 			audioBitsPerSecond,
 			videoBitsPerSecond,
 		},
+		Boolean(runPortalCountdown),
 	);
 
 	console.log(
@@ -181,7 +223,9 @@ export async function startBrowserRecorder(
 	screenWriter.current = writer;
 	mediaRecorder.current = recorder;
 	recorder.ondataavailable = (event) => writer.write(event.data);
+	let recordingStarted = !portalStart;
 	recorder.onstop = async () => {
+		if (!recordingStarted) return;
 		// Also covers MediaRecorder stopping itself after a write/encoder failure.
 		browserFinalizing.current = true;
 		setFinalizing(true);
@@ -274,13 +318,38 @@ export async function startBrowserRecorder(
 	recorder.onerror = () => {
 		setRecording(false);
 	};
+	const startedAt = portalStart ? await portalStart.startedAt : requestedAt;
+	if (
+		portalStart &&
+		(startWasCancelled() || startedAt === null || recorder.state === "inactive")
+	) {
+		writer.cancel();
+		recorder.ondataavailable = null;
+		recorder.onstop = null;
+		recorder.onerror = null;
+		if (recorder.state !== "inactive") recorder.stop();
+		mediaRecorder.current = null;
+		screenWriter.current = null;
+		await writer.discard();
+		if (startWasCancelled()) return;
+		throw new Error(
+			translate(
+				"notifications.noFrames",
+				"No video frames were captured. Please record again.",
+			),
+		);
+	}
+
+	recordingStarted = true;
+	const clockStartedAt = startedAt ?? requestedAt;
 	beginWebcamCapture();
-	resetRecordingClock(startedAt);
+	resetRecordingClock(clockStartedAt);
 	webcamTimeOffsetMs.current =
-		webcamStartTime.current === null ? 0 : webcamStartTime.current - startedAt;
+		webcamStartTime.current === null ? 0 : webcamStartTime.current - clockStartedAt;
 	setRecording(true);
 	try {
-		await window.electronAPI?.setRecordingState(true);
+		if (portalStart) await window.electronAPI?.setRecordingState(true, clockStartedAt);
+		else await window.electronAPI?.setRecordingState(true);
 	} catch (stateError) {
 		console.warn("Failed to notify main process that recording started:", stateError);
 	}

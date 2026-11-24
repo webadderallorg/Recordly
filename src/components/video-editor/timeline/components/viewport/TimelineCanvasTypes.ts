@@ -1,4 +1,4 @@
-import { type MouseEventHandler } from "react";
+import { type MouseEventHandler, type RefObject } from "react";
 import type {
 	SourceAudioTrackSettings,
 	SourceAudioTrackWithPeaks,
@@ -31,6 +31,8 @@ export interface TimelineCanvasProps {
 	selectedAudioId?: string | null;
 	selectedCaptionId?: string | null;
 	selectAllBlocksActive?: boolean;
+	selectedZoomIds?: readonly string[];
+	onSelectZoomIds?: (ids: string[]) => void;
 	onClearBlockSelection?: () => void;
 	keyframes?: { id: string; time: number }[];
 	sourceAudioTracks?: SourceAudioTrackWithPeaks[];
@@ -46,7 +48,10 @@ export interface TimelineCanvasRowsProps {
 	videoPath?: string | null;
 	items: TimelineRenderItem[];
 	videoDurationMs: number;
+	playheadMsRef: RefObject<number>;
 	selectAllBlocksActive: boolean;
+	selectedZoomIds?: readonly string[];
+	onSelectZoomIds?: (ids: string[]) => void;
 	selectedZoomId: string | null;
 	selectedClipId?: string | null;
 	selectedClipIds?: string[];

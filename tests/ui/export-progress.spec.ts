@@ -198,6 +198,16 @@ test("GIF completion is shown after the file has been saved", async ({ page }) =
 	await expect(dialog).toHaveCount(0);
 });
 
+test("a saved export can start a new recording from its completion card", async ({ page }) => {
+	await page.goto("/tests/ui/export-progress.html?complete-frames");
+	const dialog = page.getByRole("region", { name: "Export", exact: true });
+	await expect(dialog.getByRole("progressbar", { name: "Exporting" })).toBeVisible();
+	await expect(dialog.getByRole("button", { name: "Record new" })).toHaveCount(0);
+	await page.goto("/tests/ui/export-progress.html?saved");
+	await dialog.getByRole("button", { name: "Record new" }).click({ timeout: 4000 });
+	await expect(page.locator("html")).toHaveAttribute("data-record-new", "true");
+});
+
 test("link preparation shows overall share progress and remains cancellable", async ({ page }) => {
 	await page.goto("/tests/ui/export-progress.html?link");
 	const publish = page.getByRole("dialog", { name: "Publish", exact: true });

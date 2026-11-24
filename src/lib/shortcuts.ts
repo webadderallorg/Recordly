@@ -1,6 +1,8 @@
 export const SHORTCUT_ACTIONS = [
 	"addZoom",
 	"splitClip",
+	"trimStart",
+	"trimEnd",
 	"addAnnotation",
 	"addKeyframe",
 	"deleteSelected",
@@ -89,6 +91,8 @@ export function findConflict(
 export const DEFAULT_SHORTCUTS: ShortcutsConfig = {
 	addZoom: { key: "z" },
 	splitClip: { key: "b", ctrl: true },
+	trimStart: { key: "q" },
+	trimEnd: { key: "w" },
 	addAnnotation: { key: "a" },
 	addKeyframe: { key: "f" },
 	deleteSelected: { key: "d", ctrl: true },
@@ -99,6 +103,8 @@ export const DEFAULT_SHORTCUTS: ShortcutsConfig = {
 export const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
 	addZoom: "Add Zoom",
 	splitClip: "Split Clip",
+	trimStart: "Trim Start to Playhead",
+	trimEnd: "Trim End to Playhead",
 	addAnnotation: "Add Annotation",
 	addKeyframe: "Add Keyframe",
 	deleteSelected: "Delete Selected",
@@ -110,8 +116,18 @@ export function matchesShortcut(
 	e: KeyboardEvent,
 	binding: ShortcutBinding,
 	isMacPlatform: boolean,
+	allowOptionLetter = false,
 ): boolean {
-	if (e.key.toLowerCase() !== binding.key.toLowerCase()) return false;
+	const key = binding.key.toLowerCase();
+	const reportedKey = e.key.toLowerCase();
+	const optionLetterMatches =
+		allowOptionLetter &&
+		isMacPlatform &&
+		e.altKey &&
+		/^[a-z]$/.test(key) &&
+		!/^[a-z]$/.test(reportedKey) &&
+		e.code === `Key${key.toUpperCase()}`;
+	if (reportedKey !== key && !optionLetterMatches) return false;
 
 	const primaryMod = isMacPlatform ? e.metaKey : e.ctrlKey;
 	if (primaryMod !== !!binding.ctrl) return false;
@@ -156,6 +172,26 @@ export function mergeWithDefaults(partial: StoredShortcutsConfig): ShortcutsConf
 		!findConflict(DEFAULT_SHORTCUTS.splitClip, "splitClip", merged)
 	) {
 		merged.splitClip = DEFAULT_SHORTCUTS.splitClip;
+	}
+	for (const action of ["trimStart", "trimEnd"] as const) {
+		if (partial[action]) continue;
+		const { key } = DEFAULT_SHORTCUTS[action];
+		const modifiers = [
+			{},
+			{ shift: true },
+			{ alt: true },
+			{ alt: true, shift: true },
+			{ ctrl: true },
+			{ ctrl: true, shift: true },
+			{ ctrl: true, alt: true },
+			{ ctrl: true, alt: true, shift: true },
+		];
+		for (const modifier of modifiers) {
+			const binding = { key, ...modifier };
+			if (findConflict(binding, action, merged)) continue;
+			merged[action] = binding;
+			break;
+		}
 	}
 	return merged;
 }

@@ -1,5 +1,13 @@
 import { useTimelineContext } from "dnd-timeline";
-import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type MouseEvent,
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { getTimeAtClipSeam } from "../../core/clipPresentation";
 import { ZOOM_ROW_ID } from "../../core/constants";
 import { isAnnotationTrackRowId, isAudioTrackRowId } from "../../core/rows";
@@ -39,6 +47,8 @@ export default function TimelineCanvas({
 	selectedAudioId,
 	selectedCaptionId,
 	selectAllBlocksActive = false,
+	selectedZoomIds,
+	onSelectZoomIds,
 	onClearBlockSelection,
 	keyframes = [],
 	sourceAudioTracks = [],
@@ -52,6 +62,10 @@ export default function TimelineCanvas({
 	const { setTimelineRef, style, sidebarWidth, direction, range, valueToPixels, pixelsToValue } =
 		useTimelineContext();
 	const { clips: clipPresentation } = useTimelinePresentation();
+	const playheadMsRef = useRef(currentTimeMs);
+	useLayoutEffect(() => {
+		playheadMsRef.current = currentTimeMs;
+	}, [currentTimeMs]);
 	const localTimelineRef = useRef<HTMLDivElement | null>(null);
 	const [isSeeking, setIsSeeking] = useState(false);
 	const [autoZoomDismissal, setAutoZoomDismissal] = useState<{
@@ -323,7 +337,10 @@ export default function TimelineCanvas({
 					videoPath={videoPath}
 					items={items}
 					videoDurationMs={videoDurationMs}
+					playheadMsRef={playheadMsRef}
 					selectAllBlocksActive={selectAllBlocksActive}
+					selectedZoomIds={selectedZoomIds}
+					onSelectZoomIds={onSelectZoomIds}
 					selectedZoomId={selectedZoomId}
 					selectedClipId={selectedClipId}
 					selectedClipIds={selectedClipIds}

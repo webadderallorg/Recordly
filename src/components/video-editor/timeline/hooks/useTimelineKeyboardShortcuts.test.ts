@@ -223,3 +223,41 @@ describe.each([true, false])("split shortcut, macOS=%s", (isMac) => {
 		expect(unfocused.params.handleSplitClip).not.toHaveBeenCalled();
 	});
 });
+
+describe("trim to playhead", () => {
+	it("trims with Q and W without timeline focus", () => {
+		const handleTrimStart = vi.fn();
+		const handleTrimEnd = vi.fn();
+		const { press } = setup({ handleTrimStart, handleTrimEnd });
+		expect(press({ key: "q" }).preventDefault).toHaveBeenCalled();
+		press({ key: "w" });
+		expect(handleTrimStart).toHaveBeenCalledTimes(1);
+		expect(handleTrimEnd).toHaveBeenCalledTimes(1);
+	});
+
+	it("runs an Option letter trim unless the resulting character has a saved shortcut", () => {
+		const optionW = { key: "∑", code: "KeyW", altKey: true };
+		const handleTrimEnd = vi.fn();
+		const keyShortcuts = { ...DEFAULT_SHORTCUTS, trimEnd: { key: "w", alt: true } };
+		const trim = setup({ keyShortcuts, handleTrimEnd });
+		expect(trim.press(optionW).preventDefault).toHaveBeenCalledOnce();
+		expect(handleTrimEnd).toHaveBeenCalledOnce();
+
+		const custom = setup({
+			keyShortcuts: { ...keyShortcuts, addAnnotation: { key: "∑", alt: true } },
+			isTimelineFocusedRef: { current: true },
+			handleTrimEnd,
+		});
+		custom.press(optionW);
+		expect(custom.params.handleAddAnnotation).toHaveBeenCalledOnce();
+		expect(handleTrimEnd).toHaveBeenCalledOnce();
+	});
+
+	it("leaves Q and W alone while typing and with Cmd held", () => {
+		const handleTrimStart = vi.fn();
+		const { press } = setup({ handleTrimStart });
+		press({ key: "q", target: new Input() });
+		press({ key: "q", metaKey: true });
+		expect(handleTrimStart).not.toHaveBeenCalled();
+	});
+});

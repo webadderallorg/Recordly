@@ -14,6 +14,8 @@
 		"dwellPointsOverlap": "Detected dwell points overlap existing zoom regions.",
 		"addedSuggestions": "Added {{count}} interaction-based zoom suggestion(s)",
 		"label": "Zoom {{index}}",
+		"selectedOne": "1 zoom selected",
+		"selectedCount": "{{count}} zooms selected",
 		"addZoom": "Add Zoom (Z)",
 		"suggestZooms": "Suggest Zooms from Cursor"
 	},

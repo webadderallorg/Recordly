@@ -22,6 +22,8 @@ import {
 	SpeakerLow,
 	SpeakerX,
 	Trash,
+	TrimEnd,
+	TrimStart,
 } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -154,6 +156,13 @@ export function EditorPreviewPanel(props: Props) {
 	)
 		? clearZoomsLabel
 		: `${clearZoomsLabel} (${formatBinding(CLEAR_ALL_ZOOMS_SHORTCUT, isMac)})`;
+	const splitClipLabel = `${uiText("editing.splitClip", "Split Clip")} (${formatBinding(shortcuts.splitClip, isMac)})`;
+	const trimStartLabel = t("editor.toolbar.trimStart", undefined, {
+		shortcut: formatBinding(shortcuts.trimStart, isMac),
+	});
+	const trimEndLabel = t("editor.toolbar.trimEnd", undefined, {
+		shortcut: formatBinding(shortcuts.trimEnd, isMac),
+	});
 	const playbackResolutionLabel = t("editor.playback.resolution");
 	const currentTimestamp = formatPlaybackTime(projection.timelinePlayheadTime);
 	const durationTimestamp = formatPlaybackTime(projection.timelineDuration);
@@ -372,11 +381,52 @@ export function EditorPreviewPanel(props: Props) {
 						onClick={() => timelineRef.current?.splitClip()}
 						variant="ghost"
 						size="icon"
-						className="h-9 w-9"
-						title={`${uiText("editing.splitClip", "Split Clip")} (${formatBinding(shortcuts.splitClip, isMac)})`}
+						className="editor-playback-clip-command h-9 w-9"
+						title={splitClipLabel}
 					>
 						<Scissors className="h-4 w-4" />
 					</Button>
+					<Button
+						onClick={() => timelineRef.current?.trimStart()}
+						variant="ghost"
+						size="icon"
+						className="editor-playback-clip-command h-9 w-9"
+						title={trimStartLabel}
+					>
+						<TrimStart className="h-4 w-4" />
+					</Button>
+					<Button
+						onClick={() => timelineRef.current?.trimEnd()}
+						variant="ghost"
+						size="icon"
+						className="editor-playback-clip-command h-9 w-9"
+						title={trimEndLabel}
+					>
+						<TrimEnd className="h-4 w-4" />
+					</Button>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon"
+								className="editor-playback-clip-menu h-9 w-9"
+								title={uiText("editing.clip", "Clip")}
+							>
+								<Scissors className="h-4 w-4" />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="start">
+							<DropdownMenuItem onSelect={() => timelineRef.current?.splitClip()}>
+								{splitClipLabel}
+							</DropdownMenuItem>
+							<DropdownMenuItem onSelect={() => timelineRef.current?.trimStart()}>
+								{trimStartLabel}
+							</DropdownMenuItem>
+							<DropdownMenuItem onSelect={() => timelineRef.current?.trimEnd()}>
+								{trimEndLabel}
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
 					<Button
 						onClick={() => timelineRef.current?.suggestZooms()}
 						variant="ghost"

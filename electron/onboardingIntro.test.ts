@@ -4,7 +4,14 @@ import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 
 class TestWindow extends EventEmitter {
 	webContents = Object.assign(new EventEmitter(), {
-		ipc: new EventEmitter(),
+		ipc: Object.assign(new EventEmitter(), {
+			handle: vi.fn<
+				(
+					channel: string,
+					handler: (event: { senderFrame: object }) => Promise<void> | undefined,
+				) => void
+			>(),
+		}),
 		mainFrame: {},
 		send: vi.fn(),
 	});
@@ -80,6 +87,33 @@ it("starts the soundtrack at logo reveal and keeps the same playback through han
 	stage("finished");
 	expect(show).toHaveBeenCalledOnce();
 	expect(popup.webContents.send).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+	"finished",
+	"skipped",
+])("starts the banner when onboarding appears after an intro that %s", async (outcome) => {
+	const { backdrop, popup, show, stage } = start();
+	const [channel, waitForBanner] = popup.webContents.ipc.handle.mock.calls[0];
+	expect(channel).toBe("wait-for-onboarding-banner");
+	expect(waitForBanner({ senderFrame: {} })).toBeUndefined();
+	const frame = { senderFrame: popup.webContents.mainFrame };
+	const started = vi.fn();
+	void waitForBanner(frame)?.then(started);
+
+	stage("ready");
+	await vi.advanceTimersByTimeAsync(1200);
+	expect(started).not.toHaveBeenCalled();
+	stage(outcome);
+	await Promise.resolve();
+	expect(show).not.toHaveBeenCalled();
+	expect(started).not.toHaveBeenCalled();
+	popup.emit("ready-to-show");
+	await Promise.resolve();
+	expect(show).toHaveBeenCalledBefore(started);
+	expect(started).toHaveBeenCalledOnce();
+	expect(backdrop.setOpacity).not.toHaveBeenCalled();
+	await expect(waitForBanner(frame)).resolves.toBeUndefined();
 });
 
 it("shows the logo during a popup reload and starts audio from the replacement document", () => {

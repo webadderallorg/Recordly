@@ -666,6 +666,50 @@ describe("StreamingVideoDecoder decode failures", () => {
 		}
 	});
 
+	it("recovers from decode backpressure even when the browser omits ondequeue events", async () => {
+		mockDemuxerRead.mockImplementation(
+			() =>
+				new ReadableStream({
+					start(controller) {
+						for (let i = 0; i < 4; i++) controller.enqueue({ timestamp: i * 33_333 });
+						controller.close();
+					},
+				}),
+		);
+		const submitted = vi.fn();
+		const flushed = vi.fn();
+		class NoOndequeueDecoder {
+			state = "configured";
+			decodeQueueSize = 0;
+			ondequeue: ((event: Event) => void) | null = null;
+			configure() {}
+			decode() {
+				submitted();
+				this.decodeQueueSize++;
+				setTimeout(() => {
+					this.decodeQueueSize--;
+				}, 10);
+			}
+			async flush() {
+				flushed();
+			}
+			close() {
+				this.state = "closed";
+			}
+		}
+		vi.stubGlobal("VideoDecoder", NoOndequeueDecoder);
+		const decoder = new StreamingVideoDecoder({ maxDecodeQueue: 1 });
+		await decoder.loadMetadata("/tmp/buffered.mp4");
+		const completion = decoder.decodeAll(30, undefined, undefined, vi.fn());
+		try {
+			await vi.waitFor(() => expect(flushed).toHaveBeenCalledOnce(), { timeout: 1000 });
+			expect(submitted).toHaveBeenCalledTimes(4);
+		} finally {
+			decoder.cancel();
+			await completion;
+		}
+	});
+
 	it("reports and cleans up a decoder that never emits a frame or reports an error", async () => {
 		const readerCancelled = vi.fn();
 		mockDemuxerRead.mockImplementation(

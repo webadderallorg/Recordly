@@ -1,5 +1,7 @@
 {
 	"zoom": {
+		"selectedOne": "1 yakınlaştırma seçildi",
+		"selectedCount": "{{count}} yakınlaştırma seçildi",
 		"applyAutoZooms": "Otomatik yakınlaştırmaları uygula",
 		"cannotPlace": "Yakınlaştırma buraya yerleştirilemiyor",
 		"existsOrNoSpace": "Bu konumda zaten bir yakınlaştırma var veya yeterli alan yok.",
