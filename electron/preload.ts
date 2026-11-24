@@ -205,6 +205,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	hudOverlaySetIgnoreMouse: (ignore: boolean) => {
 		ipcRenderer.send("hud-overlay-set-ignore-mouse", ignore);
 	},
+	openMicrophoneNameDialog: (label: string, name: string) =>
+		ipcRenderer.invoke("microphone-name:open", label, name),
+	getMicrophoneNameDialog: () => ipcRenderer.invoke("microphone-name:initial"),
+	submitMicrophoneName: (name: string) => ipcRenderer.send("microphone-name:save", name),
 	hudOverlaySetPopoverOpen: (open: boolean) => {
 		ipcRenderer.send("hud-overlay-set-popover-open", open);
 	},

@@ -38,6 +38,8 @@
 		"window": "ウインドウ",
 		"noSourcesFound": "録画対象が見つかりません",
 		"microphone": "マイク",
+		"renameMicrophone": "{{name}} の名前を変更",
+		"microphoneNameFailed": "マイクの名前を保存できませんでした。",
 		"turnOffMicrophone": "マイクをオフにする",
 		"selectMicToEnable": "使用するマイクを選択",
 		"noMicrophonesFound": "マイクが見つかりません",

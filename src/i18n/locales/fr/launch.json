@@ -38,6 +38,8 @@
 		"window": "Fenêtre",
 		"noSourcesFound": "Aucune source trouvée",
 		"microphone": "Microphone",
+		"renameMicrophone": "Renommer {{name}}",
+		"microphoneNameFailed": "Impossible d’enregistrer le nom du micro.",
 		"turnOffMicrophone": "Désactiver le microphone",
 		"selectMicToEnable": "Sélectionnez un microphone à activer",
 		"noMicrophonesFound": "Aucun microphone trouvé",

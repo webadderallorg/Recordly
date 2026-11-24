@@ -38,6 +38,8 @@
 		"window": "Janela",
 		"noSourcesFound": "Nenhuma fonte encontrada",
 		"microphone": "Microfone",
+		"renameMicrophone": "Renomear {{name}}",
+		"microphoneNameFailed": "Não foi possível salvar o nome do microfone.",
 		"turnOffMicrophone": "Desligar microfone",
 		"selectMicToEnable": "Selecione um microfone para ativar",
 		"noMicrophonesFound": "Nenhum microfone encontrado",

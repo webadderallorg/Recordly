@@ -38,6 +38,8 @@
 		"window": "Cửa sổ",
 		"noSourcesFound": "Không tìm thấy nguồn",
 		"microphone": "Micrô",
+		"renameMicrophone": "Đổi tên {{name}}",
+		"microphoneNameFailed": "Không thể lưu tên micrô.",
 		"turnOffMicrophone": "Tắt micrô",
 		"selectMicToEnable": "Chọn micrô để bật",
 		"noMicrophonesFound": "Không tìm thấy micrô",

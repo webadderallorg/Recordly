@@ -1,6 +1,15 @@
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 import { MicrophoneSlashIcon, SpeakerHighIcon, SpeakerXIcon } from "@/components/ui/icons";
+import { toast } from "@/components/ui/toast";
 import { useScopedT } from "@/contexts/I18nContext";
+import { saveAppSetting } from "@/lib/appSettings";
+import {
+	canNameMicrophone,
+	findMicrophoneName,
+	loadMicrophoneNames,
+	MICROPHONE_NAMES_KEY,
+	updateMicrophoneName,
+} from "@/lib/microphoneNames";
 import styles from "../LaunchWindow.module.css";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import type { DeviceOption } from "./launchPopoverTypes";
@@ -34,6 +43,30 @@ export function MicPopover({
 	const t = useScopedT("launch");
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
 	const open = isOpen(POPOVER_ID);
+	const [names, setNames] = useState(loadMicrophoneNames);
+	async function rename(device: DeviceOption, currentName: string) {
+		try {
+			const value = await window.electronAPI.openMicrophoneNameDialog(
+				device.label,
+				currentName,
+			);
+			if (value === null) return;
+			const next = updateMicrophoneName(
+				device,
+				devices,
+				names,
+				window.location.origin,
+				value,
+			);
+			if (saveAppSetting(MICROPHONE_NAMES_KEY, next)) {
+				setNames(next);
+				return;
+			}
+		} catch (error) {
+			console.error("Could not rename microphone", error);
+		}
+		toast.error(t("recording.microphoneNameFailed", "Could not save the microphone name."));
+	}
 	const activeSources = [
 		microphoneEnabled ? t("recording.microphone") : null,
 		systemAudioEnabled ? t("recording.systemAudio") : null,
@@ -97,18 +130,32 @@ export function MicPopover({
 					{t("recording.selectMicToEnable")}
 				</div>
 			)}
-			{devices.map((device) => (
-				<MicDeviceRow
-					key={device.deviceId}
-					device={device}
-					selected={
-						microphoneEnabled &&
-						(microphoneDeviceId === device.deviceId ||
-							selectedDeviceId === device.deviceId)
-					}
-					onSelect={() => onSelectDevice(device.deviceId)}
-				/>
-			))}
+			{devices.map((device) => {
+				const name = findMicrophoneName(
+					device,
+					devices,
+					names,
+					window.location.origin,
+				)?.name;
+				return (
+					<MicDeviceRow
+						key={device.deviceId}
+						device={device}
+						customName={name}
+						onRename={
+							canNameMicrophone(device)
+								? () => void rename(device, name ?? "")
+								: undefined
+						}
+						selected={
+							microphoneEnabled &&
+							(microphoneDeviceId === device.deviceId ||
+								selectedDeviceId === device.deviceId)
+						}
+						onSelect={() => onSelectDevice(device.deviceId)}
+					/>
+				);
+			})}
 			{devices.length === 0 && (
 				<div className="text-center text-xs text-[var(--launch-text-muted)] py-4">
 					{t("recording.noMicrophonesFound")}

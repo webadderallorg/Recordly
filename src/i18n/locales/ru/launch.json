@@ -26,6 +26,8 @@
 		"window": "Окно",
 		"noSourcesFound": "Источники изображения не найдены",
 		"microphone": "Микрофон",
+		"renameMicrophone": "Переименовать {{name}}",
+		"microphoneNameFailed": "Не удалось сохранить название микрофона.",
 		"turnOffMicrophone": "Выключить микрофон",
 		"selectMicToEnable": "Выберите микрофон для записи звука",
 		"noMicrophonesFound": "Нет доступных микрофонов",

@@ -38,6 +38,8 @@
 		"window": "Fenster",
 		"noSourcesFound": "Keine Quellen gefunden",
 		"microphone": "Mikrofon",
+		"renameMicrophone": "{{name}} umbenennen",
+		"microphoneNameFailed": "Der Mikrofonname konnte nicht gespeichert werden.",
 		"turnOffMicrophone": "Mikrofon ausschalten",
 		"selectMicToEnable": "Mikrofon zum Aktivieren auswählen",
 		"noMicrophonesFound": "Keine Mikrofone gefunden",

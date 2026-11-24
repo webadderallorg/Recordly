@@ -38,6 +38,8 @@
 		"window": "視窗",
 		"noSourcesFound": "找不到可錄製的來源",
 		"microphone": "麥克風",
+		"renameMicrophone": "重新命名{{name}}",
+		"microphoneNameFailed": "無法儲存麥克風名稱。",
 		"turnOffMicrophone": "關閉麥克風",
 		"selectMicToEnable": "選擇要啟用的麥克風",
 		"noMicrophonesFound": "找不到麥克風",

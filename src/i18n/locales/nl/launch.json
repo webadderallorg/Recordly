@@ -38,6 +38,8 @@
 		"window": "Venster",
 		"noSourcesFound": "Geen bronnen gevonden",
 		"microphone": "Microfoon",
+		"renameMicrophone": "Naam van {{name}} wijzigen",
+		"microphoneNameFailed": "De microfoonnaam kon niet worden opgeslagen.",
 		"turnOffMicrophone": "Microfoon uitschakelen",
 		"selectMicToEnable": "Selecteer een microfoon om in te schakelen",
 		"noMicrophonesFound": "Geen microfoons gevonden",
