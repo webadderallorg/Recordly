@@ -327,7 +327,7 @@ describe("MP4 recovery has one persistence boundary", () => {
 	});
 });
 
-describe("Cloud caption-file exports", () => {
+describe("Plus caption-file exports", () => {
 	const sidecar = { format: "both" as const, cues: [{ startMs: 0, endMs: 1000, text: "Hello" }] };
 	function withCaptionFiles(
 		state: "active" | "free" | "loading" | "signed-out" | "expired" | "needs-sign-in",
@@ -363,7 +363,7 @@ describe("Cloud caption-file exports", () => {
 			undefined,
 		);
 	});
-	it("passes both caption formats to the save for an active Cloud account", async () => {
+	it("passes both caption formats to the save for an active Plus account", async () => {
 		await runMp4Export(withCaptionFiles("active"));
 		expect(mocks.saveBlob).toHaveBeenCalledWith(
 			expect.any(Blob),
@@ -504,7 +504,7 @@ it.each([
 		expected,
 	);
 });
-describe("local exports without a Cloud subscription", () => {
+describe("local exports without a Plus subscription", () => {
 	it.each([
 		"high",
 		"source",

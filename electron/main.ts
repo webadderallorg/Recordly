@@ -45,7 +45,10 @@ import {
 import { recordingFocus } from "./ipc/recording/focus";
 import { clearRecordingTrashUndo } from "./ipc/recording/library";
 import { setRecordingZoomShortcutActive } from "./ipc/recording/zoomShortcut";
-import { installAppProcessDiagnostics } from "./ipc/register/exportDiagnostics";
+import {
+	drainAppProcessDiagnostics,
+	installAppProcessDiagnostics,
+} from "./ipc/register/exportDiagnostics";
 import { resolveDisplayMediaSource } from "./ipc/register/sourceMapping";
 import { validateAppLocaleRequest } from "./localeIpc";
 import { ensureMediaServer } from "./mediaServer";
@@ -1277,25 +1280,26 @@ app.on("quit", () => {
 	void appLinks.close();
 });
 
-let nativeExportQuitState: "idle" | "waiting" | "ready" = "idle";
+let quitCleanupState: "idle" | "waiting" | "ready" = "idle";
 app.on("will-quit", (event) => {
 	setRecordingZoomShortcutActive(false);
-	if (nativeExportQuitState === "ready") return;
-	if (nativeExportQuitState === "waiting") {
+	if (quitCleanupState === "ready") return;
+	if (quitCleanupState === "waiting") {
 		event.preventDefault();
 		return;
 	}
 	const cleanup = cleanupNativeVideoExportSessions();
-	if (!cleanup) return;
+	const diagnosticWrites = drainAppProcessDiagnostics();
+	if (!cleanup && !diagnosticWrites) return;
 	event.preventDefault();
-	nativeExportQuitState = "waiting";
+	quitCleanupState = "waiting";
 	let timeout: NodeJS.Timeout | undefined;
 	const deadline = new Promise<void>((resolve) => {
 		timeout = setTimeout(resolve, 3000);
 	});
-	void Promise.race([cleanup, deadline]).finally(() => {
+	void Promise.race([Promise.allSettled([cleanup, diagnosticWrites]), deadline]).finally(() => {
 		clearTimeout(timeout);
-		nativeExportQuitState = "ready";
+		quitCleanupState = "ready";
 		app.quit();
 	});
 });

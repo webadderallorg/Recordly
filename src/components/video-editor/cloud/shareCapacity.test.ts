@@ -215,5 +215,5 @@ it.each(["pro", "free"])("only verified Plus can have unlimited storage (%s)", a
 	else
 		await expect(
 			checkShareCapacity("https://example.test/api/upload", "token"),
-		).rejects.toThrow("Could not verify your cloud plan");
+		).rejects.toThrow("Could not verify your billing plan");
 });

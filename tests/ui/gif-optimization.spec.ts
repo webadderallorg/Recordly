@@ -219,7 +219,7 @@ for (const plan of ["free", "pro", "loading", "unavailable"] as const) {
 			await page.screenshot({ path: "test-results/gif-estimate-editor.png" });
 		await page.getByRole("button", { name: "Export GIF", exact: true }).click();
 		const activity = page.getByRole("region", { name: "Export", exact: true });
-		const pricing = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
+		const pricing = page.getByRole("dialog", { name: "Recordly Plus", exact: true });
 		await expect(page.locator(".editor-export-card p[title]")).toHaveAttribute(
 			"title",
 			/ 2\.gif$/,

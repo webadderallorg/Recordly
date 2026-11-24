@@ -13,6 +13,13 @@ describe("feedback diagnostics", () => {
 	});
 	it("bounds individual log entries", () =>
 		expect(redactDiagnostic("x".repeat(5000))).toHaveLength(2000));
+	it("redacts absolute project paths while retaining relative app frames", () => {
+		expect(
+			redactDiagnostic(
+				'Could not open "/srv/client project/private.recordly"\nat (src/Dashboard.tsx:83:5)',
+			),
+		).toBe('Could not open "[local path]"\nat (src/Dashboard.tsx:83:5)');
+	});
 	it("enforces attachment count, total size, and nonempty files", () => {
 		const file = (size: number) => ({ size }) as File;
 		expect(validateAttachments(Array.from({ length: 6 }, () => file(1)))).toBeTruthy();
@@ -23,6 +30,59 @@ describe("feedback diagnostics", () => {
 		expect(validateAttachments([file(0)])).toBeTruthy();
 		expect(validateAttachments([file(100)])).toBeNull();
 	});
+});
+
+it("keeps a pending operation after completed operations fill recent history", async () => {
+	vi.resetModules();
+	vi.stubGlobal("window", { location: { href: "http://localhost/?windowType=editor" } });
+	vi.stubGlobal("navigator", { platform: "MacIntel", userAgent: "Electron" });
+	try {
+		const { beginAppOperation, collectFeedbackDiagnostics, recordReactCrash } = await import(
+			"./diagnostics"
+		);
+		const opening = beginAppOperation("home.open");
+		opening.step("read-library");
+		for (let index = 0; index < 100; index++)
+			beginAppOperation("project.refresh").finish("succeeded");
+		recordReactCrash(new Error("Home failed"));
+		const report = JSON.parse(await collectFeedbackDiagnostics());
+		expect(report.operationHistory).toHaveLength(180);
+		expect(report.crash.activeOperations).toEqual([
+			expect.objectContaining({ name: "home.open", stage: "read-library" }),
+		]);
+	} finally {
+		vi.unstubAllGlobals();
+	}
+});
+
+it("retries a repeated diagnostic after the in-flight write fails", async () => {
+	vi.resetModules();
+	vi.useFakeTimers();
+	let finish!: (result: { success: boolean }) => void;
+	const appendAppDiagnostics = vi
+		.fn()
+		.mockResolvedValue({ success: true })
+		.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		);
+	vi.stubGlobal("window", { electronAPI: { appendAppDiagnostics } });
+	try {
+		const { recordAppDiagnostic } = await import("./diagnostics");
+		recordAppDiagnostic("Disk temporarily unavailable");
+		recordAppDiagnostic("Disk temporarily unavailable");
+		expect(appendAppDiagnostics).toHaveBeenCalledOnce();
+		finish({ success: false });
+		await vi.advanceTimersByTimeAsync(200);
+		expect(appendAppDiagnostics).toHaveBeenCalledTimes(2);
+		recordAppDiagnostic("Disk temporarily unavailable");
+		expect(appendAppDiagnostics).toHaveBeenCalledTimes(2);
+	} finally {
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+	}
 });
 
 it("bounds final JSON bytes for Unicode, escapes, and oversized metadata", async () => {

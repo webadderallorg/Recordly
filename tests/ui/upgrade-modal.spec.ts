@@ -59,7 +59,7 @@ async function openUpgrade(page: Page, yearly = false) {
 	);
 	await page.goto("/tests/ui/billing-usage.html");
 	await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
-	const dialog = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
+	const dialog = page.getByRole("dialog", { name: "Recordly Plus", exact: true });
 	await expect(page.getByTestId("verified-plan")).toHaveText("free");
 	await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toBeEnabled();
 	return dialog;
@@ -76,13 +76,13 @@ for (const viewport of [
 		await page.setViewportSize(viewport);
 		await page.emulateMedia({ reducedMotion: "reduce" });
 		const dialog = await openUpgrade(page);
-		const heading = dialog.getByRole("heading", { name: "Upgrade to Cloud", exact: true });
+		const heading = dialog.getByRole("heading", { name: "Upgrade to Plus", exact: true });
 		await expect(heading).toBeVisible();
 		await expect(heading.locator(".split-upgrade-mark")).toBeVisible();
 		await expect(dialog.getByRole("navigation", { name: "Legal and support" })).toHaveCount(0);
 		await expect(dialog.locator(".pricing-legal-consent")).toHaveCount(0);
 		await expect(dialog.getByRole("radio")).toHaveCount(0);
-		await expect(dialog.getByRole("list", { name: "Your Cloud benefits" })).toBeVisible();
+		await expect(dialog.getByRole("list", { name: "Your Plus benefits" })).toBeVisible();
 		await expect(dialog.locator(".split-upgrade-benefits li")).toHaveText([
 			"Use Recordly for commercial projects",
 			"Share freely with unlimited links",

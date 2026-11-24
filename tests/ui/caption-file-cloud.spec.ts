@@ -69,7 +69,7 @@ for (const signedIn of [true, false]) {
 		const toggle = await openCaptionExport(page, "free", signedIn);
 		await expect(toggle).not.toBeChecked();
 		await toggle.press("Space");
-		const pricing = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
+		const pricing = page.getByRole("dialog", { name: "Recordly Plus", exact: true });
 		await expect(pricing).toBeVisible();
 		await pricing.getByRole("button", { name: "Close", exact: true }).click();
 		await expect(toggle).not.toBeChecked();

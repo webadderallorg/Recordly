@@ -5,7 +5,7 @@ import { renderBillingEmail } from "./render-billing-email.mjs";
 
 const catalog = JSON.parse(fs.readFileSync(new URL("./billing/catalog.json", import.meta.url)));
 const values = {
-	PlanName: "Recordly Cloud",
+	PlanName: "Recordly Plus",
 	PreviousPlan: "Recordly Free",
 	Amount: "US$9.00",
 	Interval: "month",

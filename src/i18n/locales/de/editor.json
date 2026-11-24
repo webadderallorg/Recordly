@@ -65,7 +65,7 @@
 		"copyLink": "Link kopieren",
 		"shareLink": "Freigabelink",
 		"saveLinkFailed": "Die Freigabe wurde erstellt, aber ihr Link konnte nicht lokal gespeichert werden",
-		"verifyPlanFailed": "Dein Cloud-Tarif konnte nicht überprüft werden.",
+		"verifyPlanFailed": "Dein Tarif konnte nicht überprüft werden.",
 		"refreshPlan": "Tarif aktualisieren",
 		"share": "Teilen",
 		"signInToShare": "Zum Teilen anmelden",

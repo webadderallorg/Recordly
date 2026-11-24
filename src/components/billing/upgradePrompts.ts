@@ -25,7 +25,7 @@ export function isKnownFreePlan({ loading, signedIn, plan }: BillingSnapshot): b
 }
 
 /**
- * Offers Cloud when a free user starts a local export, at most once every two minutes.
+ * Offers Plus when a free user starts a local export, at most once every two minutes.
  */
 export function useExportUpgradePrompt() {
 	const billing = useOptionalBilling();

@@ -269,10 +269,15 @@ export function useRecorderStop(
 							hideOverlayCursorByDefault: hideEditorOverlayCursorByDefault.current,
 							captureSourceKind: stopCaptureSourceKind,
 						});
+						const failedSidecar =
+							(microphoneResult.status === "fulfilled" && !microphoneResult.value) ||
+							(muxResult.status === "fulfilled" &&
+								muxResult.value?.success === false);
 						supplemental.finish(
-							[webcamResult, microphoneResult, muxResult].some(
-								({ status }) => status === "rejected",
-							)
+							failedSidecar ||
+								[webcamResult, microphoneResult, muxResult].some(
+									({ status }) => status === "rejected",
+								)
 								? "failed"
 								: "succeeded",
 						);

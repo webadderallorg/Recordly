@@ -34,7 +34,7 @@ function billingFailureMessage(failure: unknown): string {
 	if (name === "AbortError") return "Billing window is closed.";
 	if (name === "TypeError")
 		return "Could not reach cloud billing. Check your connection and try again.";
-	return "Could not manage your cloud plan. Refresh and try again.";
+	return "Could not manage your billing plan. Refresh and try again.";
 }
 
 function hasWhitespaceOrControl(value: string): boolean {
@@ -90,7 +90,7 @@ async function boundedJson(response: Response): Promise<unknown> {
 function billingError(status: number): string {
 	switch (status) {
 		case 401:
-			return "Sign in again to manage your cloud plan.";
+			return "Sign in again to manage your billing plan.";
 		case 403:
 			return "This billing action is unavailable for your account.";
 		case 409:
@@ -100,7 +100,7 @@ function billingError(status: number): string {
 		case 503:
 			return "Cloud billing is not available right now. Try again later.";
 		default:
-			return `Could not manage your cloud plan (HTTP ${status}). Refresh and try again.`;
+			return `Could not manage your billing plan (HTTP ${status}). Refresh and try again.`;
 	}
 }
 
@@ -130,7 +130,7 @@ export function registerCloudBillingHandlers() {
 					Buffer.byteLength(request.token) > 8192 ||
 					hasWhitespaceOrControl(request.token))
 			)
-				return { success: false, error: "Sign in to manage your cloud plan." };
+				return { success: false, error: "Sign in to manage your billing plan." };
 			if (
 				action !== "catalog" &&
 				action !== "status" &&

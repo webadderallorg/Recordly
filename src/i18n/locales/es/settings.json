@@ -471,7 +471,7 @@
 		"menu": "Menú de la cuenta",
 		"manage": "Gestionar cuenta",
 		"settingsLabel": "Ajustes de la cuenta",
-		"plusPlan": "Plan Cloud",
+		"plusPlan": "Plan Plus",
 		"yourAccount": "Tu cuenta",
 		"loggingOut": "Cerrando sesión…",
 		"logOut": "Cerrar sesión",
@@ -584,7 +584,7 @@
 	},
 	"cloudUsage": {
 		"label": "Uso de la nube",
-		"plus": "Almacenamiento en la nube Cloud",
+		"plus": "Almacenamiento en la nube Plus",
 		"recordings": "Grabaciones en la nube",
 		"signIn": "Inicia sesión para compartir grabaciones y ver tu uso de la nube.",
 		"loading": "Cargando uso…",

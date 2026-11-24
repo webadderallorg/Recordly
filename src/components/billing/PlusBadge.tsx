@@ -9,7 +9,7 @@ export function PlusBadge({
 }) {
 	return (
 		<span className={`plus-badge ${className}`} data-size={size}>
-			<span className="plus-badge__label">CLOUD</span>
+			<span className="plus-badge__label">PLUS</span>
 		</span>
 	);
 }

@@ -48,8 +48,8 @@ export function PlusFeatureDetails({
 					}),
 				]
 			: []),
-		t("featureLinks", "Shared links stay live while Cloud is active"),
-		t("featureExisting", "Keep existing cloud recordings while Cloud is active"),
+		t("featureLinks", "Shared links stay live while Plus is active"),
+		t("featureExisting", "Keep existing cloud recordings while Plus is active"),
 		t("featureFuture", "More features to come..."),
 	];
 	const featureIcons = [
@@ -66,7 +66,7 @@ export function PlusFeatureDetails({
 	return (
 		<section
 			className="plus-feature-details"
-			aria-label={t("benefitsPricing", "Cloud benefits and pricing")}
+			aria-label={t("benefitsPricing", "Plus benefits and pricing")}
 		>
 			<div className="plus-plan-badges">
 				<PlusBadge size="lg" />
@@ -74,7 +74,7 @@ export function PlusFeatureDetails({
 			{pricing && <div className="plus-plan-pricing">{pricing}</div>}
 			{action && <div className="plus-plan-action">{action}</div>}
 			<div className="plus-feature-group">
-				<ul aria-label={t("yourBenefits", "Your Cloud benefits")}>
+				<ul aria-label={t("yourBenefits", "Your Plus benefits")}>
 					{plusFeatures.map((feature, index) => {
 						const Icon = featureIcons[index];
 						return (

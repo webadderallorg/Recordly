@@ -398,7 +398,7 @@ describe("browser microphone fallback capture", () => {
 		now = 1_250;
 		fallback.pause();
 		now = 1_500;
-		await expect(fallback.storeSidecar(fallback.stop(), "/first.mp4")).resolves.toBeUndefined();
+		await expect(fallback.storeSidecar(fallback.stop(), "/first.mp4")).resolves.toBe(false);
 		expect(toast.error).toHaveBeenCalledWith(
 			"Disk full. Recording was saved without the fallback microphone track.",
 			{ id: "recording-microphone-sidecar-error", duration: 10_000 },

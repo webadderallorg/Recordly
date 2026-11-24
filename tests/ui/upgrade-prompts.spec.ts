@@ -65,7 +65,7 @@ async function openShareLink(page: Page) {
 	return publish;
 }
 
-const pricing = (page: Page) => page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
+const pricing = (page: Page) => page.getByRole("dialog", { name: "Recordly Plus", exact: true });
 
 test("opening the editor does not show the upgrade modal", async ({ page }) => {
 	await openEditor(page, "free", 0);

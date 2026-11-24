@@ -14,11 +14,13 @@ export { redactDiagnostic } from "./diagnosticRedaction";
 
 const entries: string[] = [];
 const pending = new Map<string, string>();
+const persisting = new Set<string>();
 const recentlyPersisted = new Map<string, number>();
 const MAX_PENDING_LOGS = 30;
 const MAX_LOGS = 150;
 const relatedCrashes: CrashDiagnostic[] = [];
 const operations: OperationEvent[] = [];
+const inFlightOperations = new Map<string, OperationEvent>();
 let installed = false;
 let flushTimer: ReturnType<typeof setTimeout> | undefined;
 let firstCrash: CrashDiagnostic | undefined;
@@ -35,6 +37,14 @@ export function beginAppOperation(name: string, parentOperationId?: string) {
 		(event) => {
 			operations.push(event);
 			if (operations.length > OPERATION_HISTORY_LIMIT) operations.shift();
+			inFlightOperations.delete(event.operationId);
+			if (event.phase !== "finish") {
+				inFlightOperations.set(event.operationId, event);
+				if (inFlightOperations.size > OPERATION_HISTORY_LIMIT) {
+					const oldest = inFlightOperations.keys().next().value;
+					if (oldest !== undefined) inFlightOperations.delete(oldest);
+				}
+			}
 			if (typeof window !== "undefined")
 				window.electronAPI?.recordOperationDiagnostic?.(event);
 		},
@@ -48,12 +58,7 @@ export function beginAppOperation(name: string, parentOperationId?: string) {
 }
 
 function activeOperations() {
-	const active = new Map<string, OperationEvent>();
-	for (const event of operations) {
-		active.delete(event.operationId);
-		if (event.phase !== "finish") active.set(event.operationId, event);
-	}
-	return [...active.values()]
+	return [...inFlightOperations.values()]
 		.slice(-8)
 		.map(({ name, stage, operationId }) => ({ name, stage, operationId }));
 }
@@ -110,14 +115,34 @@ function flushAppDiagnostics() {
 	clearTimeout(flushTimer);
 	flushTimer = undefined;
 	if (!pending.size) return;
-	const batch = [...pending.values()];
-	const now = Date.now();
-	for (const summary of pending.keys()) recentlyPersisted.set(summary, now);
-	for (const [summary, savedAt] of recentlyPersisted)
-		if (now - savedAt >= 1000 || recentlyPersisted.size > MAX_LOGS)
-			recentlyPersisted.delete(summary);
-	pending.clear();
-	void window.electronAPI?.appendAppDiagnostics?.(batch).catch(() => undefined);
+	const batch = [...pending].filter(([summary]) => !persisting.has(summary));
+	if (!batch.length || !window.electronAPI?.appendAppDiagnostics) return;
+	for (const [summary] of batch) {
+		pending.delete(summary);
+		persisting.add(summary);
+	}
+	const complete = (success: boolean) => {
+		const now = Date.now();
+		for (const [summary] of batch) {
+			persisting.delete(summary);
+			if (success) {
+				recentlyPersisted.set(summary, now);
+				pending.delete(summary);
+			}
+		}
+		for (const [summary, savedAt] of recentlyPersisted)
+			if (now - savedAt >= 1000 || recentlyPersisted.size > MAX_LOGS)
+				recentlyPersisted.delete(summary);
+		if (pending.size) flushTimer ??= setTimeout(flushAppDiagnostics, 200);
+	};
+	try {
+		void window.electronAPI.appendAppDiagnostics(batch.map(([, entry]) => entry)).then(
+			(result) => complete(result.success),
+			() => complete(false),
+		);
+	} catch {
+		complete(false);
+	}
 }
 
 function record(level: string, args: unknown[], persistence?: "batched" | "immediate") {

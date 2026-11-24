@@ -65,7 +65,7 @@
 		"copyLink": "링크 복사",
 		"shareLink": "공유 링크",
 		"saveLinkFailed": "공유가 생성되었지만 링크를 로컬에 저장할 수 없습니다",
-		"verifyPlanFailed": "클라우드 요금제를 확인할 수 없습니다.",
+		"verifyPlanFailed": "요금제를 확인할 수 없습니다.",
 		"refreshPlan": "요금제 새로 고침",
 		"share": "공유",
 		"signInToShare": "공유하려면 로그인",

@@ -471,7 +471,7 @@
 		"menu": "帳號選單",
 		"manage": "管理帳號",
 		"settingsLabel": "帳號設定",
-		"plusPlan": "Cloud 方案",
+		"plusPlan": "Plus 方案",
 		"yourAccount": "你的帳號",
 		"loggingOut": "正在登出…",
 		"logOut": "登出",
@@ -584,7 +584,7 @@
 	},
 	"cloudUsage": {
 		"label": "雲端用量",
-		"plus": "Cloud 雲端儲存空間",
+		"plus": "Plus 雲端儲存空間",
 		"recordings": "雲端錄製內容",
 		"signIn": "登入以分享錄製內容並查看雲端用量。",
 		"loading": "正在載入用量…",

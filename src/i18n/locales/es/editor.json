@@ -65,7 +65,7 @@
 		"copyLink": "Copiar enlace",
 		"shareLink": "Compartir enlace",
 		"saveLinkFailed": "Se creó el recurso compartido, pero no se pudo guardar su enlace localmente",
-		"verifyPlanFailed": "No se pudo verificar tu plan de la nube.",
+		"verifyPlanFailed": "No se pudo verificar tu plan.",
 		"refreshPlan": "Actualizar plan",
 		"share": "Compartir",
 		"signInToShare": "Inicia sesión para compartir",

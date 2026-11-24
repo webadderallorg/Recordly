@@ -117,6 +117,10 @@ export function useRecorderStartup(context: RecorderContext) {
 					startWasCancelled: startupWasAborted,
 					webcamReady,
 				});
+				if (outcome === "failed") {
+					operation.finish(startWasCancelled() ? "cancelled" : "failed");
+					return;
+				}
 				if (outcome === "finished" || startWasCancelled()) return;
 				if (outcome === "browser-fallback-needs-countdown") {
 					if (!(await runCountdown())) return;

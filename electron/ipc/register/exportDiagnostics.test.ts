@@ -28,9 +28,11 @@ vi.mock("../../rendererServer", () => ({
 
 import {
 	collectExportRuntimeInfo,
+	drainAppProcessDiagnostics,
 	installAppProcessDiagnostics,
 	recordAppProcessDiagnostic,
 	registerExportDiagnosticHandlers,
+	startMainDiagnosticOperation,
 } from "./exportDiagnostics";
 
 const frame = { url: "http://127.0.0.1:43820/?windowType=editor" };
@@ -334,4 +336,20 @@ it("preserves redacted main-process exceptions for a subsequent report", async (
 		),
 	]);
 	expect(result.logs[0]).not.toContain("private.txt");
+});
+
+it("drains queued operations and already-started app log writes before quitting", async () => {
+	const operation = startMainDiagnosticOperation("app.quit", "editor");
+	operation.finish("succeeded");
+	void recordAppProcessDiagnostic("info", "normal quit");
+	const drain = drainAppProcessDiagnostics();
+	expect(drain).toBeDefined();
+	await drain;
+	const report = await handler("app-diagnostics:read")(event);
+	expect(report.logs).toEqual([expect.stringContaining("normal quit")]);
+	expect(report.operations).toEqual([
+		expect.objectContaining({ name: "app.quit", phase: "start" }),
+		expect.objectContaining({ name: "app.quit", phase: "finish", outcome: "succeeded" }),
+	]);
+	expect(drainAppProcessDiagnostics()).toBeUndefined();
 });

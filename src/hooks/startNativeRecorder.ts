@@ -123,7 +123,7 @@ export async function startNativeRecorder(
 				setRecording(false);
 				cleanupCapturedMedia();
 				await stopWebcamRecorder();
-				return "finished";
+				return "failed";
 			}
 		}
 

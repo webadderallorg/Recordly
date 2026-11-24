@@ -11,7 +11,7 @@ builds require an explicit endpoint to enable cloud sharing.
 `npm run env:pull` fills in public sign-in settings and copies the repository's
 Cloud endpoint into `.env` when that setting is missing or blank. Recordly's
 GitHub variable points to `https://videos.recordly.dev/api/upload`. Local builds
-using the pulled endpoint publish to the production Recordly Cloud service.
+using the pulled endpoint publish to the production Recordly cloud service.
 
 To publish to a local Worker, set
 `VITE_CLOUD_SHARE_ENDPOINT=http://localhost:8787/api/upload` in `.env`.
@@ -20,7 +20,7 @@ To publish to a local Worker, set
 `.env.local` or a mode-specific file such as `.env.development.local`. Those
 settings take precedence over `.env`.
 
-Production releases use the same Recordly Cloud endpoint. The service must be
+Production releases use the same Recordly cloud endpoint. The service must be
 deployed and verified before release. Publishing requires the user's Recordly
 access token. No share API secret is exposed in the app. Hosted deployment and
 subscription operations are maintained with the separate private service.
@@ -42,7 +42,7 @@ The service provides R2 video storage, D1 metadata, range streaming, a responsiv
 
 ## Comments
 
-Anyone with a valid link can watch a public recording. Leaving timestamped comments requires a signed-in account; Recordly Cloud uses the viewer’s verified Recordly account and profile name. The server derives comment authorship from the session, and viewers can edit or delete their own comments. Account and IP rate limits and the 2,000-character comment limit apply. The self-hosted worker requires a separate, signed-in account local to that instance; a supplied display name alone does not authorize a comment.
+Anyone with a valid link can watch a public recording. Leaving timestamped comments requires a signed-in account; Recordly’s hosted service uses the viewer’s verified Recordly account and profile name. The server derives comment authorship from the session, and viewers can edit or delete their own comments. Account and IP rate limits and the 2,000-character comment limit apply. The self-hosted worker requires a separate, signed-in account local to that instance; a supplied display name alone does not authorize a comment.
 
 ## Third-party licensing
 

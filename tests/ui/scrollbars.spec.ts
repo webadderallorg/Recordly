@@ -13,7 +13,7 @@ for (const theme of ["light", "dark"]) {
 			.getByRole("button", { name: /^Upgrade(?:,|$)/ })
 			.first()
 			.click();
-		const modal = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
+		const modal = page.getByRole("dialog", { name: "Recordly Plus", exact: true });
 		await expect(modal).toBeVisible();
 		const body = modal.locator(".pricing-body");
 		await expect(body).toHaveCSS("scrollbar-width", "none");

@@ -53,7 +53,7 @@ function MonthlyPrice({ price }: { price: CloudBillingPrice }) {
 	);
 }
 
-/** Cloud upgrade using Recordly styling and the verified billing catalog. */
+/** Plus upgrade using Recordly styling and the verified billing catalog. */
 export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 	const t = useScopedT("billing");
 	const { locale, t: appT } = useI18n();
@@ -97,7 +97,7 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 	// One status line at most: stacked notices read as noise next to a single action.
 	const notice = plus
 		? [
-				t("active", "Your Cloud plan is active."),
+				t("active", "Your Plus plan is active."),
 				status.billing.cancelAtPeriodEnd && currentPeriodEnd
 					? t("ends", "It ends on {{date}}.", {
 							date: new Date(currentPeriodEnd * 1000).toLocaleDateString(locale),
@@ -105,7 +105,7 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 					: "",
 				t(
 					"noExpiry",
-					"Cloud recordings have no expiry while Cloud is active. They expire 7 days after Cloud ends.",
+					"Cloud recordings have no expiry while Plus is active. They expire 7 days after Plus ends.",
 				),
 				portalAvailable
 					? t(
@@ -120,7 +120,7 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 			? paymentFailed
 				? t(
 						"paymentFailed",
-						"Your payment didn’t go through. Update your payment method to start Cloud.",
+						"Your payment didn’t go through. Update your payment method to start Plus.",
 					)
 				: t(
 						"attention",
@@ -148,8 +148,8 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 							: t("retryPricing", "Retry loading pricing");
 	const pending = Boolean(busy) || checkingPricing;
 	const [headingBefore, headingAfter] = (
-		showSubscriptionPricing ? t("upgradeHeading", "Upgrade to {{cloud}}") : "{{cloud}}"
-	).split("{{cloud}}");
+		showSubscriptionPricing ? t("upgradeHeading", "Upgrade to {{plus}}") : "{{plus}}"
+	).split("{{plus}}");
 	const benefits = [
 		t("outcomeLicenseTitle", "Use Recordly for commercial projects"),
 		t("outcomeLinksTitle", "Share freely with unlimited links"),
@@ -161,7 +161,7 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 		<Modal isOpen={pricingOpen} onOpenChange={setPricingOpen}>
 			<Modal.Backdrop variant="blur" className="split-upgrade-backdrop">
 				<Modal.Container size="lg" scroll="inside">
-					<Modal.Dialog aria-label="Recordly Cloud" className="split-upgrade-modal">
+					<Modal.Dialog aria-label="Recordly Plus" className="split-upgrade-modal">
 						<Modal.CloseTrigger
 							className="split-upgrade-close"
 							aria-label={appT("common.actions.close", "Close")}
@@ -181,7 +181,7 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 													{headingBefore}
 													<span className="split-upgrade-brand">
 														<RecordlyMark className="split-upgrade-mark" />{" "}
-														Cloud
+														Plus
 													</span>
 													{headingAfter}
 												</span>
@@ -194,7 +194,7 @@ export function SplitPricingModal({ onSignIn }: { onSignIn: () => void }) {
 										)}
 										<ul
 											className="split-upgrade-benefits"
-											aria-label={t("yourBenefits", "Your Cloud benefits")}
+											aria-label={t("yourBenefits", "Your Plus benefits")}
 										>
 											{benefits.map((benefit) => (
 												<li key={benefit}>

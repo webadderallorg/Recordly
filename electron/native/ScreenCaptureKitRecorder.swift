@@ -793,38 +793,28 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				return
 			}
 
-			lastSampleBuffer = sampleBuffer
-			let appended: Bool
+			let accepted: CMSampleBuffer?
 			if videoPixelBufferAdaptor != nil {
-				appended = appendCroppedVideoFrame(sampleBuffer, at: presentationTime)
+				accepted = appendCroppedVideoFrame(sampleBuffer, at: presentationTime) ? sampleBuffer : nil
+			} else if let retimed = try? retimeDisplayFrame(sampleBuffer, at: presentationTime) {
+				accepted = videoInput.append(retimed) ? retimed : nil
 			} else {
-				// ScreenCaptureKit may attach a Rec.709 transfer tag to the requested sRGB frames.
-				if let source = CMSampleBufferGetImageBuffer(sampleBuffer) {
-					CVBufferSetAttachment(
-						source, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_sRGB, .shouldPropagate
-					)
-				}
-				let timing = CMSampleTimingInfo(duration: sampleBuffer.duration, presentationTimeStamp: presentationTime, decodeTimeStamp: sampleBuffer.decodeTimeStamp)
-				if let retimed = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]) {
-					appended = videoInput.append(retimed)
-				} else {
-					appended = false
-				}
+				accepted = nil
 			}
-			if appended {
-					streamHasVideo = true
-					lastVideoPresentationTime = presentationTime
-					lastVideoDuration = sampleBuffer.duration
-					frameCount += 1
-					if frameCount == 1 {
-						// Signal readiness only after AVAssetWriter has accepted a
-						// real frame, so countdown warm-start cannot pause too early.
-						print("Recording started")
-						fflush(stdout)
-					}
-			} else if frameCount == 0 {
-				// A failed crop/append must not leave an empty interval before frame one.
-				firstSampleTime = .zero
+			guard let accepted else {
+				// A failed append must not leave an empty interval before the first frame.
+				if frameCount == 0 { firstSampleTime = .zero }
+				return
+			}
+			lastSampleBuffer = accepted
+			streamHasVideo = true
+			lastVideoPresentationTime = presentationTime
+			lastVideoDuration = sampleBuffer.duration
+			frameCount += 1
+			if frameCount == 1 {
+				// Signal readiness only after AVAssetWriter has accepted a real frame.
+				print("Recording started")
+				fflush(stdout)
 			}
 			return
 		}
@@ -854,6 +844,21 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 
 		return
+	}
+
+	private func retimeDisplayFrame(_ sampleBuffer: CMSampleBuffer, at presentationTime: CMTime) throws -> CMSampleBuffer? {
+		guard let source = CMSampleBufferGetImageBuffer(sampleBuffer) else { return nil }
+		// ScreenCaptureKit may attach a Rec.709 transfer tag to the requested sRGB frames.
+		CVBufferSetAttachment(
+			source, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_sRGB, .shouldPropagate
+		)
+		let format = try CMVideoFormatDescription(imageBuffer: source)
+		let timing = CMSampleTimingInfo(
+			duration: sampleBuffer.duration,
+			presentationTimeStamp: presentationTime,
+			decodeTimeStamp: sampleBuffer.decodeTimeStamp
+		)
+		return try CMSampleBuffer(imageBuffer: source, formatDescription: format, sampleTiming: timing)
 	}
 
 	private func appendCroppedVideoFrame(_ sampleBuffer: CMSampleBuffer, at presentationTime: CMTime) -> Bool {

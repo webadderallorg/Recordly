@@ -104,7 +104,7 @@ async function readLegacyUsage(token: string): Promise<LegacyUsage> {
 	);
 }
 
-/** The server owns entitlement; checkout return and local storage never grant Cloud. */
+/** The server owns entitlement; checkout return and local storage never grant Plus. */
 export function BillingProvider({ children }: { children: ReactNode }) {
 	const auth = useRecordlyAuth();
 	return <BillingSessionProvider auth={auth}>{children}</BillingSessionProvider>;

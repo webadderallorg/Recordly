@@ -68,7 +68,7 @@ it("shows one payment notice, not a stale checkout prompt, after an unfinished c
 	billing({ subscriptionStatus: "incomplete", portalAvailable: true });
 	state.billing.awaitingCheckout = true;
 	const tree = SplitPricingModal({ onSignIn: vi.fn() });
-	expect(notices(tree)).toEqual(["Your payment didn’t go through. Update your payment method to start Cloud."]);
+	expect(notices(tree)).toEqual(["Your payment didn’t go through. Update your payment method to start Plus."]);
 	expect(primary(tree)?.children).toBe("Manage subscription");
 });
 it("shows the billing error instead of a status notice", () => {

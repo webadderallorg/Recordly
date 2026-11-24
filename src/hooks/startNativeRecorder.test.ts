@@ -66,6 +66,15 @@ describe("startNativeRecorder countdown overlap", () => {
 		};
 		vi.stubGlobal("window", { electronAPI: api });
 	});
+
+	it("returns a failure when native capture has already notified the user", async () => {
+		const context = createContext();
+		const started = startNativeRecorder(context, options);
+		resolveNative({ success: false, userNotified: true });
+		await expect(started).resolves.toBe("failed");
+		expect(context.cleanupCapturedMedia).toHaveBeenCalledOnce();
+		expect(api.cancelCountdown).toHaveBeenCalledOnce();
+	});
 	afterEach(() => vi.unstubAllGlobals());
 
 	it("shows the countdown while capture warms up and records only after it ends", async () => {

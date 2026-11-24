@@ -65,7 +65,7 @@
 		"copyLink": "リンクをコピー",
 		"shareLink": "共有リンク",
 		"saveLinkFailed": "共有ページを作成しましたが、リンクをローカルに保存できませんでした",
-		"verifyPlanFailed": "クラウドプランを確認できませんでした。",
+		"verifyPlanFailed": "プランを確認できませんでした。",
 		"refreshPlan": "プラン情報を更新",
 		"share": "共有",
 		"signInToShare": "ログインして共有",

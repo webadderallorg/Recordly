@@ -137,10 +137,10 @@ export function parseCloudBillingStatus(result: unknown): {
 	usage: CloudBillingUsage;
 } {
 	if (!result || typeof result !== "object" || Array.isArray(result))
-		throw new Error("Could not verify your cloud plan.");
+		throw new Error("Could not verify your billing plan.");
 	const value = result as CloudBillingResult;
 	if (value.success !== true)
-		throw new Error(value.error || "Could not verify your cloud plan. Try again.");
+		throw new Error(value.error || "Could not verify your billing plan. Try again.");
 	const { billing, usage } = value;
 	if (
 		!billing ||
@@ -178,7 +178,7 @@ export function parseCloudBillingStatus(result: unknown): {
 		new Set(billing.checkoutIntervals).size !== billing.checkoutIntervals.length ||
 		billing.checkoutAvailable !== billing.checkoutIntervals.length > 0
 	)
-		throw new Error("Could not verify your cloud plan. Try again.");
+		throw new Error("Could not verify your billing plan. Try again.");
 	const entitled = billing.plan === "pro" && billing.subscriptionStatus === "active";
 	// A Plus subscription that is not active (incomplete after an unfinished
 	// checkout, past_due, unpaid…) is a real account state, not a bad response.
@@ -189,7 +189,7 @@ export function parseCloudBillingStatus(result: unknown): {
 			? usage.recordingLimit !== null
 			: billing.plan === "free" && usage.recordingLimit === null
 	)
-		throw new Error("Could not verify your cloud plan. Try again.");
+		throw new Error("Could not verify your billing plan. Try again.");
 	return {
 		billing: {
 			plan: entitled ? "pro" : "free",

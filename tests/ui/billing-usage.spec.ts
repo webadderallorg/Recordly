@@ -162,7 +162,7 @@ test("the export click opens the upgrade modal after 1.5 seconds and respects it
 	await expect(page.getByTestId("verified-plan")).toHaveText("free");
 	await expect(page.getByTestId("usage-loading")).toHaveText("false");
 	const startExport = page.getByRole("button", { name: "Start test export" });
-	const pricing = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
+	const pricing = page.getByRole("dialog", { name: "Recordly Plus", exact: true });
 	const clockAt = Date.now();
 	await page.clock.install({ time: clockAt });
 	await page.clock.setFixedTime(clockAt);
@@ -197,14 +197,14 @@ test("the export click opens the upgrade modal after 1.5 seconds and respects it
 test("export offers a commercial-use tip and Cloud upgrade without the old disclaimer", async ({
 	page,
 }) => {
-	const notice = "Commercial use requires an active Recordly Cloud subscription.";
+	const notice = "Commercial use requires an active Recordly Plus subscription.";
 	await openUsage(page);
 	await page.evaluate(() => {
 		window.billingUsageTest.releaseStatus(2);
 		window.billingUsageTest.releaseCatalog();
 	});
 	await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
-	const dialog = page.getByRole("dialog", { name: "Recordly Cloud" });
+	const dialog = page.getByRole("dialog", { name: "Recordly Plus" });
 	await expect(dialog).toBeVisible();
 	await expect(dialog.getByText(notice, { exact: true })).toHaveCount(0);
 	await expect(
@@ -220,7 +220,7 @@ test("export offers a commercial-use tip and Cloud upgrade without the old discl
 	await expect(page.getByTestId("export-result")).toHaveText("1920 × 1080");
 	await page.goto("/tests/ui/export-resolution-presets.html?free&captions");
 	await page.getByRole("button", { name: "Upgrade", exact: true }).click();
-	await expect(page.getByRole("dialog", { name: "Recordly Cloud", exact: true })).toBeVisible();
+	await expect(page.getByRole("dialog", { name: "Recordly Plus", exact: true })).toBeVisible();
 });
 
 test("regular pricing follows the catalog and hides ended promotions", async ({ page }) => {
@@ -230,7 +230,7 @@ test("regular pricing follows the catalog and hides ended promotions", async ({ 
 		window.billingUsageTest.releaseCatalog();
 	});
 	await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
-	const dialog = page.getByRole("dialog", { name: "Recordly Cloud" });
+	const dialog = page.getByRole("dialog", { name: "Recordly Plus" });
 	await expect(dialog.locator(".pricing-price-offer")).toHaveText("$15 per month");
 	await expect(dialog.locator(".split-upgrade-savings")).toHaveCount(0);
 	await expect(dialog.locator(".pricing-regular-price")).toHaveCount(0);
@@ -251,7 +251,7 @@ for (const plan of ["paid", "complimentary"] as const) {
 		await expect(page.getByRole("button", { name: "Manage plan", exact: true })).toHaveCount(0);
 		await expect(page.getByRole("button", { name: /^Upgrade\b/ })).toHaveCount(0);
 		await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
-		await expect(page.getByRole("heading", { name: "Cloud", exact: true })).toBeVisible();
+		await expect(page.getByRole("heading", { name: "Plus", exact: true })).toBeVisible();
 		await expect(page.locator(".pricing-price-offer")).toHaveCount(0);
 		await expect(page.locator(".split-upgrade-savings")).toHaveCount(0);
 		const portal = page.getByRole("button", { name: "Manage subscription", exact: true });
@@ -405,7 +405,7 @@ test("opening pricing uses preloaded results without waiting on new billing read
 		window.billingUsageTest.state.holdStatus = true;
 	});
 	await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
-	const dialog = page.getByRole("dialog", { name: "Recordly Cloud" });
+	const dialog = page.getByRole("dialog", { name: "Recordly Plus" });
 	await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toBeEnabled();
 	await expect(dialog.getByText("Loading pricing…", { exact: true })).toHaveCount(0);
 	expect(await page.evaluate(() => window.billingUsageTest.state.statusCalls)).toBe(1);
@@ -594,7 +594,7 @@ test("changed offer amounts update price, renewal copy and promotion percentage"
 		window.billingUsageTest.releaseCatalog();
 	});
 	await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
-	const dialog = page.getByRole("dialog", { name: "Recordly Cloud" });
+	const dialog = page.getByRole("dialog", { name: "Recordly Plus" });
 	await expect(dialog.locator(".pricing-price")).toHaveText("$12");
 	await expect(dialog.locator("s.pricing-regular-price")).toHaveText("$15");
 	await expect(dialog.locator(".split-upgrade-savings")).toHaveText(
@@ -607,7 +607,7 @@ test("pending catalog does not advertise a fabricated price or promotion", async
 	await openUsage(page);
 	await page.evaluate(() => window.billingUsageTest.releaseStatus(2));
 	await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
-	const dialog = page.getByRole("dialog", { name: "Recordly Cloud" });
+	const dialog = page.getByRole("dialog", { name: "Recordly Plus" });
 	await expect(dialog.locator(".pricing-price")).toHaveCount(0);
 	await expect(dialog.locator(".split-upgrade-savings")).toHaveCount(0);
 	await expect(dialog.locator(".pricing-renewal")).toHaveCount(0);
@@ -685,7 +685,7 @@ test("checkout return stays Free until confirmed, then enables subscription mana
 	});
 	await dialog.getByRole("button", { name: "Check payment status", exact: true }).click();
 	await expect(page.getByTestId("verified-plan")).toHaveText("pro");
-	await expect(dialog.getByText(/Your Cloud plan is active/)).toBeVisible();
+	await expect(dialog.getByText(/Your Plus plan is active/)).toBeVisible();
 	await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toHaveCount(0);
 	await dialog.getByRole("button", { name: "Manage subscription", exact: true }).click();
 	expect(
@@ -777,7 +777,7 @@ test("unavailable checkout offers a pricing refresh without starting payment", a
 	});
 	await page.getByRole("button", { name: "Refresh usage", exact: true }).click();
 	await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
-	const dialog = page.getByRole("dialog", { name: "Recordly Cloud" });
+	const dialog = page.getByRole("dialog", { name: "Recordly Plus" });
 	const retry = dialog.getByRole("button", { name: "Retry loading pricing" });
 	await expect(retry).toBeEnabled();
 	await expect(dialog.getByRole("button", { name: "Get Started" })).toHaveCount(0);
@@ -805,9 +805,9 @@ for (const subscription of [
 			window.billingUsageTest.releaseCatalog();
 		});
 		await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
-		const dialog = page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
+		const dialog = page.getByRole("dialog", { name: "Recordly Plus", exact: true });
 		await expect(
-			dialog.getByText("Your Cloud plan is active.", { exact: false }),
+			dialog.getByText("Your Plus plan is active.", { exact: false }),
 		).toBeVisible();
 		await expect(dialog.locator(".pricing-price-offer")).toHaveCount(0);
 		await expect(dialog.locator(".split-upgrade-savings")).toHaveCount(0);

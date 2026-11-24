@@ -1066,7 +1066,11 @@ export function hideUpdateToastWindow(): void {
 	restoreHudAfterUpdateToast();
 }
 
-function loadPackagedRendererWindow(win: BrowserWindow, query: Record<string, string>) {
+function loadPackagedRendererWindow(
+	win: BrowserWindow,
+	query: Record<string, string>,
+	onFileLoadFailure?: () => void,
+) {
 	const queryString = new URLSearchParams(query).toString();
 	const indexHtmlPath = path.join(RENDERER_DIST, "index.html");
 	const packagedRendererBaseUrl = getPackagedRendererBaseUrl();
@@ -1078,7 +1082,11 @@ function loadPackagedRendererWindow(win: BrowserWindow, query: Record<string, st
 		}
 
 		console.log("[editor-window] load-file", indexHtmlPath);
-		void win.loadFile(indexHtmlPath, { query });
+		void win.loadFile(indexHtmlPath, { query }).catch((error) => {
+			if (win.isDestroyed()) return;
+			console.error("[editor-window] bundled renderer failed to load", error);
+			onFileLoadFailure?.();
+		});
 	};
 
 	if (!packagedRendererBaseUrl) {
@@ -1261,7 +1269,7 @@ export function createEditorWindow(): BrowserWindow {
 			});
 			// Chromium uses ERR_ABORTED for deliberately cancelled navigations.
 			if (isMainFrame && errorCode !== -3) {
-				opening.finish("failed");
+				if (VITE_DEV_SERVER_URL) opening.finish("failed");
 				void recordAppProcessDiagnostic(
 					"error",
 					`editor document failed to load code=${errorCode}`,
@@ -1308,7 +1316,7 @@ export function createEditorWindow(): BrowserWindow {
 		const query = new URLSearchParams(getEditorWindowQuery());
 		win.loadURL(`${VITE_DEV_SERVER_URL}?${query.toString()}`);
 	} else {
-		loadPackagedRendererWindow(win, getEditorWindowQuery());
+		loadPackagedRendererWindow(win, getEditorWindowQuery(), () => opening.finish("failed"));
 	}
 
 	return win;

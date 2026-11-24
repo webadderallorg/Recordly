@@ -65,7 +65,7 @@
 		"copyLink": "Copy link",
 		"shareLink": "Share link",
 		"saveLinkFailed": "Share created, but its link could not be saved locally",
-		"verifyPlanFailed": "Could not verify your cloud plan.",
+		"verifyPlanFailed": "Could not verify your billing plan.",
 		"refreshPlan": "Refresh plan",
 		"share": "Share",
 		"signInToShare": "Sign in to share",

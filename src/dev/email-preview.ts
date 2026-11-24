@@ -86,7 +86,7 @@ function render() {
 		OldPhone: "your previous phone number",
 		Provider: "Google",
 		FactorType: "authenticator app",
-		PlanName: "Recordly Cloud",
+		PlanName: "Recordly Plus",
 		PreviousPlan: "Recordly Free",
 		Amount: "US$9.00",
 		Interval: "month",

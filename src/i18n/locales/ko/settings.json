@@ -471,7 +471,7 @@
 		"menu": "계정 메뉴",
 		"manage": "계정 관리",
 		"settingsLabel": "계정 설정",
-		"plusPlan": "Cloud 요금제",
+		"plusPlan": "Plus 요금제",
 		"yourAccount": "내 계정",
 		"loggingOut": "로그아웃 중…",
 		"logOut": "로그아웃",
@@ -584,7 +584,7 @@
 	},
 	"cloudUsage": {
 		"label": "클라우드 사용량",
-		"plus": "Cloud 클라우드 저장 공간",
+		"plus": "Plus 클라우드 저장 공간",
 		"recordings": "클라우드 녹화",
 		"signIn": "로그인하여 녹화를 공유하고 클라우드 사용량을 확인하세요.",
 		"loading": "사용량 불러오는 중…",

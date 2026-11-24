@@ -45,7 +45,7 @@ export function collectExportRuntimeInfo(): RendererExportRuntimeInfo {
 
 function createDiagnosticLog(filename: string, maxEntries: number, maxAgeMs?: number) {
 	// One queue across all renderer windows prevents competing read/modify/write operations.
-	let writes: Promise<{ success: boolean } | undefined> = Promise.resolve(undefined);
+	let writes: Promise<{ success: boolean }> | undefined;
 	const logPath = () => path.join(app.getPath("logs"), filename);
 	const read = async (): Promise<string[]> => {
 		try {
@@ -64,7 +64,7 @@ function createDiagnosticLog(filename: string, maxEntries: number, maxAgeMs?: nu
 		}
 	};
 	const append = (entries: string[]) => {
-		const write = writes.then(async () => {
+		const write = (writes ?? Promise.resolve()).then(async () => {
 			let release: (() => Promise<void>) | undefined;
 			try {
 				const directory = app.getPath("logs");
@@ -92,10 +92,15 @@ function createDiagnosticLog(filename: string, maxEntries: number, maxAgeMs?: nu
 			}
 		});
 		writes = write;
+		const clearCompletedWrite = () => {
+			if (writes === write) writes = undefined;
+		};
+		void write.then(clearCompletedWrite, clearCompletedWrite);
 		return write;
 	};
 	return {
 		append,
+		pendingWrite: () => writes,
 		async snapshot() {
 			await writes;
 			return { success: true, logs: await read() };
@@ -120,6 +125,12 @@ function flushOperations() {
 	clearTimeout(operationFlush);
 	operationFlush = undefined;
 	if (pendingOperations.length) void operationLog.append(pendingOperations.splice(0));
+}
+
+export function drainAppProcessDiagnostics() {
+	flushOperations();
+	const writes = [exportLog.pendingWrite(), appLog.pendingWrite(), operationLog.pendingWrite()];
+	return writes.some(Boolean) ? Promise.allSettled(writes) : undefined;
 }
 
 function recordOperation(event: OperationEvent, windowId?: number) {
@@ -160,7 +171,6 @@ export function recordAppProcessDiagnostic(level: "info" | "warn" | "error", mes
 }
 
 export function installAppProcessDiagnostics() {
-	app.on("will-quit", flushOperations);
 	app.on("render-process-gone", (_event, contents, details) => {
 		if (details.reason === "clean-exit") return;
 		const operation = startMainDiagnosticOperation(

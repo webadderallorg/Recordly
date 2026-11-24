@@ -65,7 +65,7 @@
 		"copyLink": "复制链接",
 		"shareLink": "分享链接",
 		"saveLinkFailed": "分享已创建，但无法将链接保存到本地",
-		"verifyPlanFailed": "无法验证你的云端方案。",
+		"verifyPlanFailed": "无法验证你的方案。",
 		"refreshPlan": "刷新方案",
 		"share": "分享",
 		"signInToShare": "登录以分享",

@@ -62,7 +62,7 @@ async function prepare(
 						return {
 							success: false,
 							httpStatus: 401,
-							error: "Sign in again to manage your cloud plan.",
+							error: "Sign in again to manage your billing plan.",
 						};
 					const needsAttention =
 						mode === "checkout_needs_attention" &&
@@ -153,7 +153,7 @@ async function prepare(
 	);
 	await page.goto("/tests/ui/billing-usage.html");
 	await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
-	return page.getByRole("dialog", { name: "Recordly Cloud", exact: true });
+	return page.getByRole("dialog", { name: "Recordly Plus", exact: true });
 }
 
 test("billing recovers a rejected session without showing background errors", async ({ page }) => {
@@ -162,7 +162,7 @@ test("billing recovers a rejected session without showing background errors", as
 	await expect
 		.poll(() => page.locator("html").getAttribute("data-billing-status-calls"))
 		.not.toBe("1");
-	await expect(dialog.getByText("Sign in again to manage your cloud plan.")).toHaveCount(0);
+	await expect(dialog.getByText("Sign in again to manage your billing plan.")).toHaveCount(0);
 	await expect(dialog.getByText("Cloud checkout is not available yet.")).toHaveCount(0);
 	await expect(dialog.locator(".pricing-error")).toHaveCount(0);
 });
@@ -324,7 +324,7 @@ test("an existing paid customer cannot start a second subscription when the port
 	const dialog = await prepare(page, "paid_no_portal");
 	const refresh = dialog.getByRole("button", { name: "Refresh plan", exact: true });
 	await expect(refresh).toBeEnabled();
-	await expect(dialog.getByText(/Your Cloud plan is active/)).toBeVisible();
+	await expect(dialog.getByText(/Your Plus plan is active/)).toBeVisible();
 	await expect(dialog.locator(".pricing-price-offer")).toHaveCount(0);
 	await expect(dialog.locator(".split-upgrade-savings")).toHaveCount(0);
 	await expect(dialog.getByRole("button", { name: "Get Started", exact: true })).toHaveCount(0);

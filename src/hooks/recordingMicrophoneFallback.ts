@@ -189,7 +189,7 @@ export function createRecordingMicrophoneFallback({
 			micFallbackAudioInputDevices = null;
 			micFallbackRecorderMetadata = null;
 			resetMicFallbackTimingDiagnostics();
-			return;
+			return true;
 		}
 
 		try {
@@ -245,7 +245,9 @@ export function createRecordingMicrophoneFallback({
 					),
 					{ id: MICROPHONE_SIDECAR_ERROR_TOAST_ID, duration: 10000 },
 				);
+				return false;
 			}
+			return true;
 		} catch (error) {
 			console.warn("Failed to store microphone sidecar:", error);
 			toast.error(
@@ -256,6 +258,7 @@ export function createRecordingMicrophoneFallback({
 				),
 				{ id: MICROPHONE_SIDECAR_ERROR_TOAST_ID, duration: 10000 },
 			);
+			return false;
 		} finally {
 			micFallbackStartDelayMs = null;
 			micFallbackTrackSettings = null;
