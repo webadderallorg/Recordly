@@ -235,6 +235,13 @@ for (const plan of ["free", "pro", "loading", "unavailable"] as const) {
 		await expect(page.getByText(/Saved .+\([\d.]+% smaller\)/)).toBeVisible();
 		await expect(page.getByText("Optimization unavailable. Original GIF kept.")).toHaveCount(0);
 
+		if (plan === "pro") {
+			const recordNew = { name: "Record new", exact: true };
+			await expect(page.getByRole("banner").getByRole("button", recordNew)).toHaveCount(0);
+			await activity.getByRole("button", recordNew).click();
+			await expect(page.locator("html")).toHaveAttribute("data-hud-opened", "true");
+		}
+
 		if (plan === "free") {
 			await expect(page.locator("html")).toHaveAttribute("data-saved-gif-count", "1");
 			await activity.hover();

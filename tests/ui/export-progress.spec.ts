@@ -5,8 +5,7 @@ test("progress starts empty, moves smoothly forwards through stages, and resets 
 	page,
 }) => {
 	await page.goto("/tests/ui/export-progress.html?modern&preparing");
-	const publish = page.getByRole("dialog", { name: "Publish", exact: true });
-	const dialog = publish.getByRole("region", { name: "Export", exact: true });
+	const dialog = page.getByRole("region", { name: "Export", exact: true });
 	const bar = dialog.getByRole("progressbar", { name: "Exporting" });
 	const fill = dialog.locator(".export-progress-fill");
 	await expect(bar.locator(".progress-bar__track")).toHaveCSS("height", "6px");
@@ -87,8 +86,8 @@ for (const mode of ["modern", "legacy", "gif"]) {
 		page,
 	}) => {
 		await page.goto(`/tests/ui/export-progress.html?${mode}`);
-		const publish = page.getByRole("dialog", { name: "Publish", exact: true });
-		const dialog = publish.getByRole("region", { name: "Export", exact: true });
+		const publish = page.getByRole("button", { name: "Publish", exact: true });
+		const dialog = page.getByRole("region", { name: "Export", exact: true });
 		await expect(dialog.getByRole("progressbar", { name: "Exporting" })).toHaveAttribute(
 			"aria-valuenow",
 			"42",
@@ -116,9 +115,7 @@ for (const mode of ["modern", "legacy", "gif"]) {
 		const headline = dialog.locator(".export-progress-headline");
 		await expect(headline).toBeVisible();
 		await expect(dialog).not.toContainText("Tip:");
-		await expect(
-			publish.getByRole("row", { name: "Create share link", exact: true }),
-		).toHaveAttribute("aria-disabled", "true");
+		await expect(publish).toBeDisabled();
 		await expect(dialog).not.toContainText(
 			/Breeze|Path:|WebGPU|Native skipped|Render speed|Processing audio|Lightning export|Promotional announcement|Extra announcement content/,
 		);
@@ -141,13 +138,13 @@ for (const mode of ["modern", "legacy", "gif"]) {
 		const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
 		await expect(cancel).toBeVisible();
 		await cancel.press("Escape");
-		await expect(publish).toBeVisible();
+		await expect(dialog).toBeVisible();
 		if (mode === "modern")
-			await publish.screenshot({ path: "test-results/export-progress.png" });
+			await dialog.screenshot({ path: "test-results/export-progress.png" });
 		await cancel.press("Enter");
 		await expect(page.locator("html")).toHaveAttribute("data-cancelled", "true");
 		await expect(dialog).toHaveCount(0);
-		await expect(publish).toBeVisible();
+		await expect(publish).toBeEnabled();
 	});
 }
 
@@ -200,29 +197,30 @@ for (const [query, extension] of [
 ]) {
 	test(`${extension} save completion stays on Save to device in Publish`, async ({ page }) => {
 		await page.goto(`/tests/ui/export-progress.html?${query}&saving&finish-save`);
-		const dialog = page.getByRole("dialog", { name: "Publish", exact: true });
+		const dialog = page.getByRole("region", { name: "Export", exact: true });
 		await expect(dialog.getByRole("progressbar")).toBeVisible();
+		const recordNew = dialog.getByRole("button", { name: "Record new", exact: true });
+		await expect(recordNew).toHaveCount(0);
 		await page
 			.locator("button")
 			.filter({ hasText: /^Finish saving$/ })
 			.evaluate((button: HTMLButtonElement) => button.click());
-		await expect(
-			dialog.getByRole("row", { name: "Save to device", exact: true }),
-		).toHaveAttribute("aria-selected", "true");
 		await expect(dialog.getByText("Export complete", { exact: true })).toBeVisible();
-		await expect(dialog.getByText(`export.${extension}`, { exact: true })).toBeVisible();
+		await expect(dialog.getByTitle(`export.${extension}`, { exact: true })).toBeVisible();
 		await expect(
 			dialog.getByRole("button", { name: "Show In Folder", exact: true }),
 		).toBeVisible();
-		await expect(dialog.getByRole("button", { name: "Record new", exact: true })).toHaveCount(
-			0,
-		);
+		await expect(recordNew).toBeVisible();
+		await recordNew.click();
+		await expect(page.locator("html")).toHaveAttribute("data-record-new", "true");
 		await expect(dialog.getByRole("progressbar")).toHaveCount(0);
-		await dialog.getByRole("button", { name: "Show In Folder", exact: true }).press("Escape");
+		await dialog.hover();
+		await dialog.getByRole("button", { name: "Close", exact: true }).click();
 		await expect(dialog).toHaveCount(0);
 		await page.getByRole("button", { name: "Publish", exact: true }).click();
+		const publish = page.getByRole("dialog", { name: "Publish", exact: true });
 		await expect(
-			dialog.getByRole("row", { name: "Save to device", exact: true }),
+			publish.getByRole("row", { name: "Save to device", exact: true }),
 		).toHaveAttribute("aria-selected", "true");
 	});
 }
