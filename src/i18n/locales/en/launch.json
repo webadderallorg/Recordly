@@ -38,6 +38,8 @@
 		"window": "Window",
 		"noSourcesFound": "No sources found",
 		"microphone": "Microphone",
+		"renameMicrophone": "Rename {{name}}",
+		"microphoneNameFailed": "Could not save the microphone name.",
 		"turnOffMicrophone": "Turn Off Microphone",
 		"selectMicToEnable": "Select a microphone to enable",
 		"noMicrophonesFound": "No microphones found",

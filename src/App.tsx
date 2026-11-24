@@ -6,6 +6,7 @@ import { EditorLoadingSkeleton } from "./components/video-editor/layout/EditorLo
 import { useI18n } from "./contexts/I18nContext";
 import { getStartupView } from "./lib/startupView";
 
+const MicrophoneNameWindow = lazy(() => import("./components/launch/MicrophoneNameWindow"));
 const HudWindow = lazy(() => import("./components/launch/HudWindow"));
 const SourceSelector = lazy(() =>
 	import("./components/launch/SourceSelector").then((module) => ({
@@ -85,6 +86,9 @@ export default function App() {
 
 	let content;
 	switch (windowType) {
+		case "microphone-name":
+			content = <MicrophoneNameWindow />;
+			break;
 		case "hud-overlay":
 			content = <HudWindow />;
 			break;

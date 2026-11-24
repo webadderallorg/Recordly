@@ -6,6 +6,7 @@ export interface MicrophoneDevice {
 	deviceId: string;
 	label: string;
 	groupId: string;
+	labelUnavailable?: boolean;
 }
 
 const listMicrophones = createInputDeviceLister("audioinput");
@@ -47,6 +48,7 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 								id: device.deviceId.slice(0, 8),
 							}),
 						groupId: device.groupId,
+						...(!device.label.trim() && { labelUnavailable: true }),
 					}));
 					setDevices(audioInputs);
 					setSelectedDeviceId((currentDeviceId) => {

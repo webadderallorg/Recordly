@@ -38,6 +38,8 @@
 		"window": "Pencere",
 		"noSourcesFound": "Kaynak bulunamadı",
 		"microphone": "Mikrofon",
+		"renameMicrophone": "{{name}} için adı değiştir",
+		"microphoneNameFailed": "Mikrofon adı kaydedilemedi.",
 		"turnOffMicrophone": "Mikrofonu Kapat",
 		"selectMicToEnable": "Etkinleştirmek için bir mikrofon seçin",
 		"noMicrophonesFound": "Mikrofon bulunamadı",

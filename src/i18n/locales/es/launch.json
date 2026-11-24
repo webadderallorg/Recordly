@@ -38,6 +38,8 @@
 		"window": "Ventana",
 		"noSourcesFound": "No se encontraron fuentes",
 		"microphone": "Micrófono",
+		"renameMicrophone": "Cambiar el nombre de {{name}}",
+		"microphoneNameFailed": "No se pudo guardar el nombre del micrófono.",
 		"turnOffMicrophone": "Desactivar micrófono",
 		"selectMicToEnable": "Selecciona un micrófono para activar",
 		"noMicrophonesFound": "No se encontraron micrófonos",

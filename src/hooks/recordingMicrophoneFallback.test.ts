@@ -545,7 +545,12 @@ describe("microphone device label permission", () => {
 		await flush();
 		expect(getUserMedia).toHaveBeenCalledOnce();
 		expect(microphoneHooks.states[0]).toEqual([
-			{ deviceId: "microphone-1", groupId: "group-1", label: "Micrófono micropho" },
+			{
+				deviceId: "microphone-1",
+				groupId: "group-1",
+				labelUnavailable: true,
+				label: "Micrófono micropho",
+			},
 		]);
 		expect(stop).toHaveBeenCalledOnce();
 	});
@@ -563,6 +568,7 @@ describe("microphone device label permission", () => {
 			expect(microphoneHooks.states[0]).toContainEqual({
 				deviceId: "second",
 				groupId: "group-1",
+				labelUnavailable: true,
 				label: "Micrófono second",
 			});
 		}
@@ -625,6 +631,7 @@ describe("microphone device label permission", () => {
 			{
 				deviceId: connected.deviceId,
 				groupId: connected.groupId,
+				labelUnavailable: true,
 				label: "Micrófono micropho",
 			},
 		]);

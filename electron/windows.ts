@@ -30,12 +30,14 @@ import {
 	nativeCaptureProcess,
 } from "./ipc/state";
 import type { CaptureArea } from "./ipc/types";
+import { showMicrophoneNameDialog } from "./microphoneNameDialog";
 import { nativeT } from "./nativeI18n";
 import { startOnboardingIntro } from "./onboardingIntro";
 import { permissionAccessoryWindowOwners } from "./permissionAccessoryWindowOwner";
 import { recordingEditorLoading } from "./recordingEditorLoading";
 import { outsideRecordingRects } from "./recordingFocus";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
+import { isTrustedRenderer } from "./trustedRenderer";
 
 const electronWindowsDir = path.dirname(fileURLToPath(import.meta.url));
 const nodeRequire = createRequire(import.meta.url);
@@ -650,6 +652,20 @@ function notifyEditorMode() {
 		hudOverlayWindow.webContents.send("editor-mode-changed", getHudEditorMode());
 	}
 }
+ipcMain.handle("microphone-name:open", (event, label: unknown, name: unknown) => {
+	const hud = getHudOverlayWindow();
+	if (
+		!hud ||
+		event.sender !== hud.webContents ||
+		!isTrustedRenderer(event) ||
+		typeof label !== "string" ||
+		!label ||
+		typeof name !== "string"
+	)
+		return null;
+	return showMicrophoneNameDialog(hud, path.join(electronWindowsDir, "preload.js"), label, name);
+});
+
 ipcMain.handle("get-editor-mode", getHudEditorMode);
 
 export function createHudOverlayWindow(): BrowserWindow {

@@ -38,6 +38,8 @@
 		"window": "窗口",
 		"noSourcesFound": "未找到源",
 		"microphone": "麦克风",
+		"renameMicrophone": "重命名{{name}}",
+		"microphoneNameFailed": "无法保存麦克风名称。",
 		"turnOffMicrophone": "关闭麦克风",
 		"selectMicToEnable": "选择一个麦克风以启用",
 		"noMicrophonesFound": "未找到麦克风",

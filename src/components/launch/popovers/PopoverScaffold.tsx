@@ -1,4 +1,5 @@
 import { ToggleButton } from "@heroui/react";
+import { Pen2Icon } from "@solar-icons/react/linear/pen-2";
 import {
 	type AriaAttributes,
 	cloneElement,
@@ -11,6 +12,7 @@ import { AudioLevelMeter } from "@/components/ui/audio-level-meter";
 import { Button } from "@/components/ui/button";
 import { MicrophoneIcon, MicrophoneSlashIcon } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useI18n } from "@/contexts/I18nContext";
 import { useAudioLevelMeter } from "@/hooks/useAudioLevelMeter";
 import { HudTooltip } from "../HudTooltip";
 import styles from "../LaunchWindow.module.css";
@@ -64,33 +66,69 @@ export function MicDeviceRow({
 	device,
 	selected,
 	onSelect,
+	customName,
+	onRename,
 }: {
 	device: DeviceOption;
 	selected: boolean;
 	onSelect: () => void;
+	customName?: string;
+	onRename?: () => void;
 }) {
+	const { t } = useI18n();
 	const { level } = useAudioLevelMeter({
 		enabled: true,
 		deviceId: device.deviceId,
 	});
 
 	return (
-		<ToggleButton
-			variant="ghost"
-			isSelected={selected}
-			className="w-full justify-start gap-3"
-			onClick={onSelect}
-		>
-			<span className="shrink-0">
-				{selected ? (
-					<MicrophoneIcon weight="fill" size={16} />
-				) : (
-					<MicrophoneSlashIcon size={16} />
-				)}
-			</span>
-			<span className="truncate flex-1">{device.label}</span>
-			<AudioLevelMeter level={level} className="w-16 shrink-0" />
-		</ToggleButton>
+		<div className="flex items-center gap-1">
+			<ToggleButton
+				variant="ghost"
+				isSelected={selected}
+				className="h-auto min-w-0 flex-1 justify-start gap-2 py-2"
+				onClick={onSelect}
+			>
+				<span className="shrink-0">
+					{selected ? (
+						<MicrophoneIcon weight="fill" size={16} />
+					) : (
+						<MicrophoneSlashIcon size={16} />
+					)}
+				</span>
+				<span className="min-w-0 flex-1 text-left" title={device.label}>
+					<span
+						className={
+							customName
+								? "line-clamp-2 whitespace-normal break-words leading-tight"
+								: "block truncate"
+						}
+						title={customName || device.label}
+					>
+						{customName || device.label}
+					</span>
+					{customName && customName !== device.label && (
+						<span className="block truncate text-xs text-muted-foreground">
+							{device.label}
+						</span>
+					)}
+				</span>
+				<AudioLevelMeter level={level} className="w-10 shrink-0" />
+			</ToggleButton>
+			{onRename && (
+				<Button
+					variant="ghost"
+					size="icon"
+					className="size-7 shrink-0"
+					title={t("launch.recording.renameMicrophone", "Rename {{name}}", {
+						name: device.label,
+					})}
+					onClick={onRename}
+				>
+					<Pen2Icon size={14} />
+				</Button>
+			)}
+		</div>
 	);
 }
 
