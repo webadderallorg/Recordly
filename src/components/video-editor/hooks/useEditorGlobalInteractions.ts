@@ -12,6 +12,10 @@ type Input = {
 	handleUndo: () => void;
 	handleRedo: () => void;
 	startPlayback: () => void;
+	stepFrameBackward?: () => void;
+	stepFrameForward?: () => void;
+	stepTimeSeconds?: (seconds: number) => void;
+	handlePreviewSkip?: (direction: "backward" | "forward") => void;
 };
 
 export function useEditorGlobalInteractions({
@@ -22,6 +26,10 @@ export function useEditorGlobalInteractions({
 	handleUndo,
 	handleRedo,
 	startPlayback,
+	stepFrameBackward,
+	stepFrameForward,
+	stepTimeSeconds,
+	handlePreviewSkip,
 }: Input) {
 	const heldPlaybackKey = useRef<string | null>(null);
 
@@ -72,6 +80,54 @@ export function useEditorGlobalInteractions({
 				}
 				return;
 			}
+
+			const inProtectedWidget = Boolean(
+				target?.closest?.(
+					'[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [role="slider"], [role="tab"], [role="radiogroup"]',
+				),
+			);
+
+			if (!editable && !inProtectedWidget) {
+				if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+					if (event.key === "ArrowLeft" && handlePreviewSkip) {
+						event.preventDefault();
+						handlePreviewSkip("backward");
+						return;
+					}
+					if (event.key === "ArrowRight" && handlePreviewSkip) {
+						event.preventDefault();
+						handlePreviewSkip("forward");
+						return;
+					}
+				}
+
+				if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+					if (event.key === "ArrowLeft" && stepTimeSeconds) {
+						event.preventDefault();
+						stepTimeSeconds(-1);
+						return;
+					}
+					if (event.key === "ArrowRight" && stepTimeSeconds) {
+						event.preventDefault();
+						stepTimeSeconds(1);
+						return;
+					}
+				}
+
+				if (!event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+					if ((event.key === "," || event.key === "ArrowLeft") && stepFrameBackward) {
+						event.preventDefault();
+						stepFrameBackward();
+						return;
+					}
+					if ((event.key === "." || event.key === "ArrowRight") && stepFrameForward) {
+						event.preventDefault();
+						stepFrameForward();
+						return;
+					}
+				}
+			}
+
 			if (!matchesShortcut(event, shortcuts.playPause, isMac) || editable) return;
 			consumePlaybackKey(event);
 			if (event.repeat) return;
@@ -89,7 +145,18 @@ export function useEditorGlobalInteractions({
 			window.removeEventListener("keyup", handleKeyUp, { capture: true });
 			window.removeEventListener("blur", releasePlaybackKey);
 		};
-	}, [shortcuts, isMac, handleUndo, handleRedo, startPlayback, videoPlaybackRef]);
+	}, [
+		shortcuts,
+		isMac,
+		handleUndo,
+		handleRedo,
+		startPlayback,
+		videoPlaybackRef,
+		stepFrameBackward,
+		stepFrameForward,
+		stepTimeSeconds,
+		handlePreviewSkip,
+	]);
 
 	useEffect(() => {
 		if (

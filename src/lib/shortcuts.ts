@@ -58,6 +58,30 @@ export const FIXED_SHORTCUTS: FixedShortcut[] = [
 	{ label: "Copy Selected", bindings: [COPY_SELECTED_SHORTCUT] },
 	{ label: "Paste", bindings: [PASTE_SHORTCUT] },
 	{ label: "Clear All Zooms", bindings: [CLEAR_ALL_ZOOMS_SHORTCUT] },
+	{
+		label: "Step Backward 1 Frame",
+		bindings: [{ key: "," }, { key: "arrowleft" }],
+	},
+	{
+		label: "Step Forward 1 Frame",
+		bindings: [{ key: "." }, { key: "arrowright" }],
+	},
+	{
+		label: "Step Backward 1s",
+		bindings: [{ key: "arrowleft", shift: true }],
+	},
+	{
+		label: "Step Forward 1s",
+		bindings: [{ key: "arrowright", shift: true }],
+	},
+	{
+		label: "Jump to Previous Keyframe",
+		bindings: [{ key: "arrowleft", alt: true }],
+	},
+	{
+		label: "Jump to Next Keyframe",
+		bindings: [{ key: "arrowright", alt: true }],
+	},
 	{ label: "Pan Timeline", display: "Shift + Scroll", bindings: [] },
 	{ label: "Zoom Timeline", display: "Ctrl + Scroll", bindings: [] },
 ];
@@ -164,8 +188,14 @@ export function formatBinding(binding: ShortcutBinding, isMac: boolean): string 
 export function mergeWithDefaults(partial: StoredShortcutsConfig): ShortcutsConfig {
 	const merged = { ...DEFAULT_SHORTCUTS };
 	for (const action of SHORTCUT_ACTIONS) {
-		if (partial[action]) {
-			merged[action] = partial[action] as ShortcutBinding;
+		const candidate = partial[action];
+		if (candidate && typeof candidate.key === "string") {
+			const conflictsWithFixed = FIXED_SHORTCUTS.some((fixed) =>
+				fixed.bindings.some((b) => bindingsEqual(b, candidate)),
+			);
+			if (!conflictsWithFixed) {
+				merged[action] = candidate;
+			}
 		}
 	}
 	// Saved configurations include the previous C default. Upgrade that binding

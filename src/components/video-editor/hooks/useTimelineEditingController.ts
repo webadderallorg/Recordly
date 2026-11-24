@@ -20,6 +20,7 @@ import { useCursorTelemetry } from "./useCursorTelemetry";
 import { useEditorGlobalInteractions } from "./useEditorGlobalInteractions";
 import { useEditorPlaybackControls } from "./useEditorPlaybackControls";
 import { useTimelineProjection } from "./useTimelineProjection";
+import { useVideoFrameTimeline } from "./useVideoFrameTimeline";
 import { useZoomRegionCommands } from "./useZoomRegionCommands";
 
 type Input = {
@@ -105,6 +106,10 @@ export function useTimelineEditingController(input: Input) {
 		summarizeErrorMessage,
 		onSourceFallbackLoadError: handleSourceFallbackLoadError,
 	});
+	const frameTimeline = useVideoFrameTimeline({
+		videoPath: input.videoPath,
+		videoSourcePath: input.videoSourcePath,
+	});
 	const playback = useEditorPlaybackControls({
 		videoPlaybackRef: input.videoPlaybackRef,
 		timelineRef: input.timelineRef,
@@ -113,6 +118,8 @@ export function useTimelineEditingController(input: Input) {
 		zoomRegions: projection.effectiveZoomRegions,
 		timelinePlayheadTime: projection.timelinePlayheadTime,
 		timelineDuration: projection.timelineDuration,
+		sourceFrameTimestamps: frameTimeline.presentationTimestamps,
+		sourceFrameRate: frameTimeline.frameRate,
 	});
 	const captionCommands = useCaptionCommands({
 		clipRegions: timeline.clipRegions,
@@ -298,6 +305,10 @@ export function useTimelineEditingController(input: Input) {
 		handleUndo: input.handleUndo,
 		handleRedo: input.handleRedo,
 		startPlayback: playback.startPlayback,
+		stepFrameBackward: playback.stepFrameBackward,
+		stepFrameForward: playback.stepFrameForward,
+		stepTimeSeconds: playback.stepTimeSeconds,
+		handlePreviewSkip: playback.handlePreviewSkip,
 	});
 
 	return {

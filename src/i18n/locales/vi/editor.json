@@ -197,7 +197,10 @@
 		"panTimeline": "Di chuyển dòng thời gian",
 		"zoomTimeline": "Thu phóng dòng thời gian",
 		"cycleAnnotations": "Chuyển qua các chú thích",
-		"tab": "Tab"
+		"tab": "Tab",
+		"stepFrame": "Di chuyển 1 khung hình",
+		"stepSecond": "Di chuyển 1 giây",
+		"jumpKeyframe": "Nhảy đến khung hình chính"
 	},
 	"actions": {
 		"saveAgain": "Lưu lại",

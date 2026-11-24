@@ -197,7 +197,10 @@
 		"panTimeline": "タイムラインを移動",
 		"zoomTimeline": "タイムラインを拡大・縮小",
 		"cycleAnnotations": "注釈の選択を切り替え",
-		"tab": "Tab"
+		"tab": "Tab",
+		"stepFrame": "1フレーム移動",
+		"stepSecond": "1秒移動",
+		"jumpKeyframe": "キーフレームへ移動"
 	},
 	"actions": {
 		"saveAgain": "もう一度保存",
