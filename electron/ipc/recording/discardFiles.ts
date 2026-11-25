@@ -1,9 +1,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+/** Strip a single trailing file extension without turning extensionless names into `""`. */
+export function stripFileExtension(filePath: string) {
+	const extension = path.extname(filePath);
+	return extension ? filePath.slice(0, -extension.length) : filePath;
+}
+
 /** Caller must first validate that this is an auto-generated recording path. */
 export async function discardRecordingFiles(videoPath: string) {
-	const base = videoPath.slice(0, -path.extname(videoPath).length);
+	const base = stripFileExtension(videoPath);
 	const files = [
 		videoPath,
 		`${videoPath}.cursor.json`,

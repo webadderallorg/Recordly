@@ -6,6 +6,7 @@ import type { RecordingLibraryEntry } from "../../../src/types/recordingLibrary"
 import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
 import { rememberApprovedLocalReadPath } from "../project/manager";
 import { getRecordingsDir } from "../utils";
+import { stripFileExtension } from "./discardFiles";
 
 let mutation = Promise.resolve();
 const undoBatches = new Map<string, { bundle: string; files: string[] }>();
@@ -103,7 +104,7 @@ export function listRecordings(includeSources = false): Promise<RecordingLibrary
 
 // Only capture sidecars belonging to this exact recording, never adjacent recordings or projects.
 function belongsToRecording(name: string, video: string) {
-	const stem = video.slice(0, -path.extname(video).length);
+	const stem = stripFileExtension(video);
 	return (
 		name === video ||
 		name === `${video}.cursor.json` ||

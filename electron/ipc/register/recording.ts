@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import fs from "node:fs/promises";
 import { dialog, ipcMain, shell } from "electron";
 import { isTrustedRenderer } from "../../trustedRenderer";
+import { discardRecordingFiles } from "../recording/discardFiles";
 import { registerCursorHandlers } from "../recording/handlers/cursorHandlers";
 import { registerFfmpegHandlers } from "../recording/handlers/ffmpegHandlers";
 import { registerMicrophoneSidecar } from "../recording/handlers/microphoneSidecar";
@@ -19,7 +19,6 @@ import { RecordingProcessGuard } from "../recording/processGuard";
 import { RecordingSessionLock } from "../recording/sessionLock";
 import { WindowsRecordingFinalizer } from "../recording/windowsFinalizer";
 import { setWindowsPendingVideoPath, windowsPendingVideoPath } from "../state";
-import { getTelemetryPathForVideo } from "../utils";
 
 export function registerRecordingHandlers(
 	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
@@ -64,21 +63,7 @@ export function registerRecordingHandlers(
 				: result,
 		discard: async (videoPath) => {
 			setWindowsPendingVideoPath(null);
-			const base = videoPath.replace(/\.mp4$/i, "");
-			const files = [
-				videoPath,
-				getTelemetryPathForVideo(videoPath),
-				`${base}.recording-diagnostics.json`,
-				...[
-					".system.m4a",
-					".mic.m4a",
-					".system.wav",
-					".mic.wav",
-					".system.wav.json",
-					".mic.wav.json",
-				].map((suffix) => `${base}${suffix}`),
-			];
-			await Promise.all(files.map((file) => fs.rm(file, { force: true })));
+			await discardRecordingFiles(videoPath);
 		},
 		reset: () => setRecordingState(false),
 		report: async (result) => {
