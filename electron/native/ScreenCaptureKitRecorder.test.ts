@@ -35,10 +35,15 @@ describe("ScreenCaptureKitRecorder finalization coordination", () => {
 });
 
 describe("ScreenCaptureKitRecorder resume timing", () => {
-	it("anchors warm-start resume timing to video before accepting audio", () => {
+	it("computes pause duration on resume, rejects pre-resume samples, and anchors audio to first video frame", () => {
 		expect(recorderSource).toContain(
-			"guard outputType == .screen, let pauseStartedHostTime else",
+			"let resumedHostTime = CMClockGetTime(CMClockGetHostTimeClock())",
 		);
+		expect(recorderSource).toContain(
+			"if let lastResumeHostTime, CMTimeCompare(sampleTime, lastResumeHostTime) < 0",
+		);
+		expect(recorderSource).toContain("if firstSampleTime == .zero");
+		expect(recorderSource).not.toContain("pendingResumeAdjustment");
 	});
 
 	it("drops non-monotonic video and audio samples", () => {

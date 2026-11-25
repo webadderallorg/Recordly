@@ -359,7 +359,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var isRecording = false
 	private var isPaused = false
 	private var pauseStartedHostTime: CMTime?
-	private var pendingResumeAdjustment = false
+	private var lastResumeHostTime: CMTime?
 	private var accumulatedPausedDuration: CMTime = .zero
 	private var sessionStarted = false
 	private var frameCount = 0
@@ -683,7 +683,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		isRecording = true
 		isPaused = false
 		pauseStartedHostTime = nil
-		pendingResumeAdjustment = false
+		lastResumeHostTime = nil
 		accumulatedPausedDuration = .zero
 		frameCount = 0
 		firstSampleTime = .zero
@@ -707,7 +707,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				}
 				self.isPaused = true
 				self.pauseStartedHostTime = CMClockGetTime(CMClockGetHostTimeClock())
-				self.pendingResumeAdjustment = false
+				self.lastResumeHostTime = nil
 				continuation.resume(returning: true)
 			}
 		}
@@ -720,8 +720,19 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 					continuation.resume(returning: self.isRecording && !self.isPaused)
 					return
 				}
+				let resumedHostTime = CMClockGetTime(CMClockGetHostTimeClock())
+				// Compute the pause duration from the host clock on resume instead of
+				// waiting for the next changed video frame, so audio over a static
+				// screen is preserved and idle time before a frame does not drift.
+				if self.firstSampleTime != .zero, let pauseStartedHostTime = self.pauseStartedHostTime {
+					let pauseGap = resumedHostTime - pauseStartedHostTime
+					if pauseGap > .zero {
+						self.accumulatedPausedDuration = self.accumulatedPausedDuration + pauseGap
+					}
+				}
+				self.pauseStartedHostTime = nil
+				self.lastResumeHostTime = resumedHostTime
 				self.isPaused = false
-				self.pendingResumeAdjustment = true
 				continuation.resume(returning: true)
 			}
 		}
@@ -1223,7 +1234,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		frameCount = 0
 		isPaused = false
 		pauseStartedHostTime = nil
-		pendingResumeAdjustment = false
+		lastResumeHostTime = nil
 		accumulatedPausedDuration = .zero
 		capturesSystemAudio = false
 		capturesMicrophone = false
@@ -1277,20 +1288,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 
 		let sampleTime = sampleBuffer.presentationTimeStamp
-		if pendingResumeAdjustment {
-			// Audio and video callbacks share this queue but their timestamps can be
-			// offset slightly. Anchor the post-countdown adjustment to video and drop
-			// audio until that anchor exists; otherwise the first audio callback can
-			// make the following video timestamp move backwards and fail the writer.
-			guard outputType == .screen, let pauseStartedHostTime else {
-				return nil
-			}
-			let pauseGap = sampleTime - pauseStartedHostTime
-			if pauseGap > .zero {
-				accumulatedPausedDuration = accumulatedPausedDuration + pauseGap
-			}
-			self.pauseStartedHostTime = nil
-			pendingResumeAdjustment = false
+		if let lastResumeHostTime, CMTimeCompare(sampleTime, lastResumeHostTime) < 0 {
+			return nil
 		}
 
 		if outputType == .screen {
@@ -1333,7 +1332,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	/// repeat is stamped slightly in the past, so a real frame still on its way stays
 	/// newer than it. Runs on the recorder queue.
 	private func appendStillFrameIfIdle() {
-		guard isRecording, recoveryTask == nil, captureFailure == nil, frameCount > 0, !isPaused, !pendingResumeAdjustment,
+		guard isRecording, recoveryTask == nil, captureFailure == nil, frameCount > 0, !isPaused,
 			  let lastSampleBuffer,
 			  let videoInput,
 			  assetWriter?.status == .writing,
@@ -1355,10 +1354,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 	}
 
-	/// Where the recording ends: now, or where it was paused. Nil before the first
-	/// frame, and after a resume that no frame has anchored yet.
+	/// Where the recording ends: now, or where it was paused. Nil before the first frame.
 	private func timelineTimeOfStop() -> CMTime? {
-		guard !pendingResumeAdjustment else { return nil }
 		let stopHostTime = isPaused ? pauseStartedHostTime : CMClockGetTime(CMClockGetHostTimeClock())
 		return stopHostTime.flatMap { timelineTime(atHostTime: $0) }
 	}
