@@ -21,6 +21,10 @@ vi.mock("node:fs/promises", () => ({
 }));
 
 vi.mock("electron", () => ({
+	app: {
+		getPath: () => "/recordly-test",
+		getAppPath: () => "/recordly-test",
+	},
 	ipcMain: {
 		handle: (channel: string, handler: (...args: unknown[]) => unknown) => {
 			mocks.handlers.set(channel, handler);
