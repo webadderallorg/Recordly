@@ -1,3 +1,4 @@
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -220,5 +221,48 @@ rl.on("line", (line) => {
 		});
 		expect(mocks.discardRecordingFiles).toHaveBeenCalledWith(outputPath);
 		expect(mocks.validateRecordedVideo).not.toHaveBeenCalled();
+	});
+
+	it("does not send SIGINT when stdin.write reports backpressure on stop", async () => {
+		await writeFakeHelper(`
+const fs = require("node:fs");
+const readline = require("node:readline");
+const args = process.argv.slice(2);
+const videoIdx = args.indexOf("--record-video");
+const videoPath = args[videoIdx + 1];
+fs.writeFileSync(videoPath, "webm-bytes");
+console.log("STREAM:node=42:id=-:source=Monitor:size=1920x1080:position=0,0:space=StreamLocal");
+console.log("VIDEO_START:1700000000000");
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+	if (line === "stop") {
+		console.log("VIDEO_DONE:" + videoPath);
+		process.exit(0);
+	}
+});
+process.on("SIGINT", () => process.exit(1));
+`);
+		let capturedChild: ChildProcessWithoutNullStreams | undefined;
+		const outputPath = await startLinuxPortalCapture({
+			systemAudio: false,
+			trackProcess: (child) => {
+				capturedChild = child as ChildProcessWithoutNullStreams;
+			},
+		});
+		expect(capturedChild).toBeDefined();
+		const child = capturedChild!;
+		const originalWrite = child.stdin.write.bind(child.stdin) as (...args: unknown[]) => boolean;
+		vi.spyOn(child.stdin, "write").mockImplementation(((...args: unknown[]) => {
+			originalWrite(...args);
+			return false;
+		}) as typeof child.stdin.write);
+		const killSpy = vi.spyOn(child, "kill");
+
+		await expect(stopLinuxPortalCapture()).resolves.toEqual({
+			success: true,
+			path: outputPath,
+			message: "Linux portal capture complete",
+		});
+		expect(killSpy).not.toHaveBeenCalled();
 	});
 });

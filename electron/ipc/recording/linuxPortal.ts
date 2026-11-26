@@ -429,7 +429,7 @@ export async function stopLinuxPortalCapture(): Promise<{
 			child.stdin.writable
 		) {
 			try {
-				sentStdin = child.stdin.write("stop\n", (error?: Error | null) => {
+				child.stdin.write("stop\n", (error?: Error | null) => {
 					if (error) {
 						try {
 							child.kill("SIGINT");
@@ -438,6 +438,7 @@ export async function stopLinuxPortalCapture(): Promise<{
 						}
 					}
 				});
+				sentStdin = true;
 			} catch {
 				sentStdin = false;
 			}

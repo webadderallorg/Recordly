@@ -209,8 +209,9 @@ fn run(
 
     if let Some(audio) = &audio
         && let Ok(mut recorder) = audio.lock()
+        && let Err(error) = recorder.finish()
     {
-        recorder.finish();
+        eprintln!("ERROR:failed to finalize system audio: {error:#}");
     }
 
     let _ = pipeline.set_state(gst::State::Null);

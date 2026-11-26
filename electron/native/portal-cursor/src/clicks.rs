@@ -10,6 +10,7 @@ use std::time::Instant;
 
 const EV_SYN: u16 = 0;
 const SYN_REPORT: u16 = 0;
+const SYN_DROPPED: u16 = 3;
 const EV_KEY: u16 = 1;
 const EV_ABS: u16 = 3;
 const ABS_X: u16 = 0;
@@ -70,9 +71,18 @@ struct ActiveTap {
     max_fingers: u8,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum TapButtonMap {
+    #[default]
+    Lrm,
+    Lmr,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct TouchTapTracker {
     geometry: TouchpadGeometry,
+    button_map: TapButtonMap,
+    dropping: bool,
     cur_x: Option<i32>,
     cur_y: Option<i32>,
     tool_bits: u8,
@@ -85,15 +95,32 @@ pub(crate) struct TouchTapTracker {
 }
 
 impl TouchTapTracker {
+    #[cfg(test)]
     pub(crate) fn new(geometry: TouchpadGeometry) -> Self {
+        Self::with_button_map(geometry, TapButtonMap::default())
+    }
+
+    pub(crate) fn with_button_map(geometry: TouchpadGeometry, button_map: TapButtonMap) -> Self {
         Self {
             geometry,
+            button_map,
             ..Self::default()
         }
     }
 
     pub(crate) fn is_touching(&self) -> bool {
         self.touch_down || self.active.is_some()
+    }
+
+    fn reset_after_drop(&mut self) {
+        self.dropping = true;
+        self.tool_bits = 0;
+        self.touch_down = false;
+        self.pending_touch_down = None;
+        self.pending_touch_up = None;
+        self.physical_buttons_held = 0;
+        self.pending_physical_button = false;
+        self.active = None;
     }
 
     fn set_tool_bit(&mut self, bit: u8, active: bool) {
@@ -157,6 +184,16 @@ impl TouchTapTracker {
         instant: Instant,
         cursor: (f64, f64),
     ) -> Option<CompletedTap> {
+        if event_type == EV_SYN && code == SYN_DROPPED {
+            self.reset_after_drop();
+            return None;
+        }
+        if self.dropping {
+            if event_type == EV_SYN && code == SYN_REPORT {
+                self.dropping = false;
+            }
+            return None;
+        }
         match event_type {
             EV_ABS => match code {
                 ABS_X => self.cur_x = Some(value),
@@ -192,63 +229,66 @@ impl TouchTapTracker {
                 }
                 _ => {}
             },
-            EV_SYN if code == SYN_REPORT => {
-                if let Some((down_at, down_cursor)) = self.pending_touch_down.take() {
-                    let saw_physical =
-                        self.physical_buttons_held > 0 || self.pending_physical_button;
-                    self.active = Some(ActiveTap {
-                        down_at,
-                        down_cursor,
-                        start_x: self.cur_x,
-                        start_y: self.cur_y,
-                        moved: false,
-                        saw_physical_button: saw_physical,
-                        max_fingers: self.current_fingers().max(1),
-                    });
-                }
-                self.pending_physical_button = false;
-
-                let fingers = self.current_fingers();
-                let moved = self.active.as_ref().is_some_and(|active| {
-                    self.exceeded_move_threshold(active.start_x, active.start_y)
-                });
-                if let Some(active) = self.active.as_mut() {
-                    if fingers > active.max_fingers {
-                        active.max_fingers = fingers;
-                    }
-                    if moved {
-                        active.moved = true;
-                    }
-                }
-
-                if let Some((up_at, up_cursor)) = self.pending_touch_up.take()
-                    && let Some(active) = self.active.take()
-                {
-                    let duration_ms = up_at.saturating_duration_since(active.down_at).as_millis();
-                    let cursor_drift = (up_cursor.0 - active.down_cursor.0)
-                        .hypot(up_cursor.1 - active.down_cursor.1);
-                    if !active.saw_physical_button
-                        && !active.moved
-                        && duration_ms <= TAP_MAX_DURATION_MS
-                        && cursor_drift <= TAP_MAX_CURSOR_DRIFT
-                    {
-                        let button_code = match active.max_fingers {
-                            1 => BTN_LEFT,
-                            2 => BTN_RIGHT,
-                            3 => BTN_MIDDLE,
-                            _ => return None,
-                        };
-                        return Some(CompletedTap {
-                            button_code,
-                            down_at: active.down_at,
-                            down_cursor: active.down_cursor,
-                            up_at,
-                            up_cursor,
-                        });
-                    }
-                }
-            }
+            EV_SYN if code == SYN_REPORT => return self.handle_syn_report(),
             _ => {}
+        }
+        None
+    }
+
+    fn handle_syn_report(&mut self) -> Option<CompletedTap> {
+        if let Some((down_at, down_cursor)) = self.pending_touch_down.take() {
+            let saw_physical = self.physical_buttons_held > 0 || self.pending_physical_button;
+            self.active = Some(ActiveTap {
+                down_at,
+                down_cursor,
+                start_x: self.cur_x,
+                start_y: self.cur_y,
+                moved: false,
+                saw_physical_button: saw_physical,
+                max_fingers: self.current_fingers().max(1),
+            });
+        }
+        self.pending_physical_button = false;
+
+        let fingers = self.current_fingers();
+        let moved = self
+            .active
+            .as_ref()
+            .is_some_and(|active| self.exceeded_move_threshold(active.start_x, active.start_y));
+        if let Some(active) = self.active.as_mut() {
+            if fingers > active.max_fingers {
+                active.max_fingers = fingers;
+            }
+            if moved {
+                active.moved = true;
+            }
+        }
+
+        if let Some((up_at, up_cursor)) = self.pending_touch_up.take()
+            && let Some(active) = self.active.take()
+        {
+            let duration_ms = up_at.saturating_duration_since(active.down_at).as_millis();
+            let cursor_drift =
+                (up_cursor.0 - active.down_cursor.0).hypot(up_cursor.1 - active.down_cursor.1);
+            if !active.saw_physical_button
+                && !active.moved
+                && duration_ms <= TAP_MAX_DURATION_MS
+                && cursor_drift <= TAP_MAX_CURSOR_DRIFT
+            {
+                let button_code = match (active.max_fingers, self.button_map) {
+                    (1, _) => BTN_LEFT,
+                    (2, TapButtonMap::Lrm) | (3, TapButtonMap::Lmr) => BTN_RIGHT,
+                    (3, TapButtonMap::Lrm) | (2, TapButtonMap::Lmr) => BTN_MIDDLE,
+                    _ => return None,
+                };
+                return Some(CompletedTap {
+                    button_code,
+                    down_at: active.down_at,
+                    down_cursor: active.down_cursor,
+                    up_at,
+                    up_cursor,
+                });
+            }
         }
         None
     }
@@ -275,6 +315,11 @@ pub fn start(
         return;
     };
     let tap_enabled = touchpad_tap_enabled();
+    let tap_button_map = if tap_enabled {
+        touchpad_tap_button_map()
+    } else {
+        TapButtonMap::Lrm
+    };
     let mut matched_devices = 0usize;
     let mut devices = 0usize;
     for entry in entries.flatten() {
@@ -299,7 +344,9 @@ pub fn start(
         let Ok(file) = File::open(&path) else {
             continue;
         };
-        let tap_tracker = is_touchpad.then(|| TouchTapTracker::new(query_touchpad_geometry(&file)));
+        let tap_tracker = is_touchpad.then(|| {
+            TouchTapTracker::with_button_map(query_touchpad_geometry(&file), tap_button_map)
+        });
         let context = ClickContext {
             samples: Arc::clone(samples),
             anchor: Arc::clone(anchor),
@@ -330,6 +377,7 @@ fn read_device(mut file: File, mut tap_tracker: Option<TouchTapTracker>, context
     let mut buffer = [0u8; 24];
     let mut last_left_click: Option<(Instant, f64, f64)> = None;
     let mut touch_down_guard: Option<(bool, i64, bool)> = None;
+    let mut syn_dropping = false;
 
     loop {
         if file.read_exact(&mut buffer).is_err() {
@@ -373,27 +421,29 @@ fn read_device(mut file: File, mut tap_tracker: Option<TouchTapTracker>, context
                         .map_or((true, 0), |pause| pause.snapshot());
                     let up_visible = context.cursor_visible.load(Ordering::SeqCst);
                     if !down_paused && !up_paused && down_visible && up_visible {
-                        emit_button_event(
+                        emit_completed_tap(
                             context,
-                            tap.button_code,
-                            1,
-                            tap.down_at,
-                            tap.down_cursor,
+                            tap,
                             down_paused_ns,
-                            &mut last_left_click,
-                        );
-                        emit_button_event(
-                            context,
-                            tap.button_code,
-                            0,
-                            tap.up_at,
-                            tap.up_cursor,
                             up_paused_ns,
                             &mut last_left_click,
                         );
                     }
                 }
             }
+        }
+
+        if event_type == EV_SYN {
+            if code == SYN_DROPPED {
+                syn_dropping = true;
+                touch_down_guard = None;
+            } else if code == SYN_REPORT {
+                syn_dropping = false;
+            }
+            continue;
+        }
+        if syn_dropping {
+            continue;
         }
 
         if event_type != EV_KEY {
@@ -416,58 +466,123 @@ fn read_device(mut file: File, mut tap_tracker: Option<TouchTapTracker>, context
 
         emit_button_event(
             context,
-            code,
-            value,
-            event_instant,
-            current_pos(),
-            accumulated_ns,
+            ButtonSampleInput {
+                code,
+                value,
+                event_instant,
+                cursor: current_pos(),
+                accumulated_paused_ns: accumulated_ns,
+            },
             &mut last_left_click,
         );
     }
 }
 
-fn emit_button_event(
-    context: &ClickContext,
+#[derive(Clone, Copy)]
+struct ButtonSampleInput {
     code: u16,
     value: i32,
     event_instant: Instant,
-    (cx, cy): (f64, f64),
+    cursor: (f64, f64),
     accumulated_paused_ns: i64,
-    last_left_click: &mut Option<(Instant, f64, f64)>,
-) {
-    let Some((anchor_pts, anchor_paused_ns, anchor_instant)) =
-        context.anchor.lock().ok().and_then(|guard| {
-            guard
-                .as_ref()
-                .map(|anchor| (anchor.pts_ns, anchor.paused_ns, anchor.instant))
-        })
-    else {
-        return;
-    };
-    let pts_ns = compute_click_pts_ns(
-        anchor_pts,
-        anchor_paused_ns,
-        anchor_instant,
-        event_instant,
-        accumulated_paused_ns,
-    );
-    let interaction =
-        resolve_click_interaction(code, value, event_instant, cx, cy, last_left_click);
-    let mouse_button = mouse_button_for_code(code);
+}
 
-    if context.verbose {
-        eprintln!("[clicks] code={code} value={value} type={interaction}");
+fn read_anchor(context: &ClickContext) -> Option<Anchor> {
+    context.anchor.lock().ok().and_then(|guard| *guard)
+}
+
+fn build_button_sample(
+    anchor: Anchor,
+    input: ButtonSampleInput,
+    verbose: bool,
+    last_left_click: &mut Option<(Instant, f64, f64)>,
+) -> telemetry::RawSample {
+    let pts_ns = compute_click_pts_ns(
+        anchor.pts_ns,
+        anchor.paused_ns,
+        anchor.instant,
+        input.event_instant,
+        input.accumulated_paused_ns,
+    );
+    let interaction = resolve_click_interaction(
+        input.code,
+        input.value,
+        input.event_instant,
+        input.cursor.0,
+        input.cursor.1,
+        last_left_click,
+    );
+    let mouse_button = mouse_button_for_code(input.code);
+
+    if verbose {
+        eprintln!(
+            "[clicks] code={} value={} type={interaction}",
+            input.code, input.value
+        );
     }
 
+    telemetry::RawSample {
+        pts_ns,
+        cx: input.cursor.0,
+        cy: input.cursor.1,
+        cursor_type: None,
+        interaction_type: Some(interaction.to_owned()),
+        mouse_button,
+    }
+}
+
+fn emit_button_event(
+    context: &ClickContext,
+    input: ButtonSampleInput,
+    last_left_click: &mut Option<(Instant, f64, f64)>,
+) {
+    let Some(anchor) = read_anchor(context) else {
+        return;
+    };
+    let sample = build_button_sample(anchor, input, context.verbose, last_left_click);
     if let Ok(mut collected) = context.samples.lock() {
-        collected.push(telemetry::RawSample {
-            pts_ns,
-            cx,
-            cy,
-            cursor_type: None,
-            interaction_type: Some(interaction.to_owned()),
-            mouse_button,
-        });
+        collected.push(sample);
+    }
+}
+
+fn emit_completed_tap(
+    context: &ClickContext,
+    tap: CompletedTap,
+    down_paused_ns: i64,
+    up_paused_ns: i64,
+    last_left_click: &mut Option<(Instant, f64, f64)>,
+) {
+    let Some(anchor) = read_anchor(context) else {
+        return;
+    };
+    let down_sample = build_button_sample(
+        anchor,
+        ButtonSampleInput {
+            code: tap.button_code,
+            value: 1,
+            event_instant: tap.down_at,
+            cursor: tap.down_cursor,
+            accumulated_paused_ns: down_paused_ns,
+        },
+        context.verbose,
+        last_left_click,
+    );
+    let up_sample = build_button_sample(
+        anchor,
+        ButtonSampleInput {
+            code: tap.button_code,
+            value: 0,
+            event_instant: tap.up_at,
+            cursor: tap.up_cursor,
+            accumulated_paused_ns: up_paused_ns,
+        },
+        context.verbose,
+        last_left_click,
+    );
+
+    if let Ok(mut collected) = context.samples.lock() {
+        collected.push(down_sample);
+        collected.push(up_sample);
     }
 }
 
@@ -596,6 +711,35 @@ fn touchpad_tap_enabled() -> bool {
         .output()
         .is_ok_and(|output| {
             output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "true"
+        })
+}
+
+pub(crate) fn parse_tap_button_map(raw: &str) -> TapButtonMap {
+    let normalized = raw.trim().trim_matches('\'').trim();
+    if normalized.eq_ignore_ascii_case("lmr") {
+        TapButtonMap::Lmr
+    } else {
+        TapButtonMap::Lrm
+    }
+}
+
+fn touchpad_tap_button_map() -> TapButtonMap {
+    if let Ok(value) = std::env::var("RECORDLY_PORTAL_TOUCHPAD_TAP_BUTTON_MAP")
+        && !value.trim().is_empty()
+    {
+        return parse_tap_button_map(&value);
+    }
+    Command::new("gsettings")
+        .args([
+            "get",
+            "org.gnome.desktop.peripherals.touchpad",
+            "tap-button-map",
+        ])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map_or(TapButtonMap::Lrm, |output| {
+            parse_tap_button_map(&String::from_utf8_lossy(&output.stdout))
         })
 }
 
@@ -966,5 +1110,167 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn honors_gnome_lmr_tap_button_map() {
+        assert_eq!(parse_tap_button_map("'lmr'\n"), TapButtonMap::Lmr);
+        assert_eq!(parse_tap_button_map("'lrm'\n"), TapButtonMap::Lrm);
+        assert_eq!(parse_tap_button_map("'default'"), TapButtonMap::Lrm);
+        assert_eq!(parse_tap_button_map(""), TapButtonMap::Lrm);
+
+        let t0 = Instant::now();
+        let mut tracker = TouchTapTracker::with_button_map(touchpad_geometry(), TapButtonMap::Lmr);
+
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, t0, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 1, t0, (0.5, 0.5));
+        tracker.handle_event(EV_SYN, SYN_REPORT, 0, t0, (0.5, 0.5));
+        let up1 = t0 + Duration::from_millis(60);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 0, up1, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 0, up1, (0.5, 0.5));
+        assert_eq!(
+            tracker
+                .handle_event(EV_SYN, SYN_REPORT, 0, up1, (0.5, 0.5))
+                .unwrap()
+                .button_code,
+            BTN_LEFT
+        );
+
+        let at2 = t0 + Duration::from_millis(200);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, at2, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_DOUBLETAP, 1, at2, (0.5, 0.5));
+        tracker.handle_event(EV_SYN, SYN_REPORT, 0, at2, (0.5, 0.5));
+        let up2 = at2 + Duration::from_millis(60);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 0, up2, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_DOUBLETAP, 0, up2, (0.5, 0.5));
+        assert_eq!(
+            tracker
+                .handle_event(EV_SYN, SYN_REPORT, 0, up2, (0.5, 0.5))
+                .unwrap()
+                .button_code,
+            BTN_MIDDLE
+        );
+
+        let at3 = t0 + Duration::from_millis(400);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, at3, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_TRIPLETAP, 1, at3, (0.5, 0.5));
+        tracker.handle_event(EV_SYN, SYN_REPORT, 0, at3, (0.5, 0.5));
+        let up3 = at3 + Duration::from_millis(60);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 0, up3, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_TRIPLETAP, 0, up3, (0.5, 0.5));
+        assert_eq!(
+            tracker
+                .handle_event(EV_SYN, SYN_REPORT, 0, up3, (0.5, 0.5))
+                .unwrap()
+                .button_code,
+            BTN_RIGHT
+        );
+    }
+
+    #[test]
+    fn recovers_from_syn_dropped_without_getting_stuck_on_physical_buttons() {
+        let t0 = Instant::now();
+        let mut tracker = TouchTapTracker::new(touchpad_geometry());
+
+        // Start a touch with a physical button press whose release gets dropped.
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, t0, (0.4, 0.4));
+        tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 1, t0, (0.4, 0.4));
+        tracker.handle_event(EV_KEY, BTN_LEFT, 1, t0, (0.4, 0.4));
+        tracker.handle_event(EV_SYN, SYN_REPORT, 0, t0, (0.4, 0.4));
+        assert!(tracker.is_touching());
+
+        // SYN_DROPPED resets held button counts and cancels the incomplete tap.
+        assert_eq!(
+            tracker.handle_event(
+                EV_SYN,
+                SYN_DROPPED,
+                0,
+                t0 + Duration::from_millis(20),
+                (0.4, 0.4)
+            ),
+            None
+        );
+        assert!(!tracker.is_touching());
+
+        // Events prior to the resync SYN_REPORT are ignored.
+        tracker.handle_event(
+            EV_KEY,
+            BTN_TOUCH,
+            1,
+            t0 + Duration::from_millis(25),
+            (0.4, 0.4),
+        );
+        tracker.handle_event(
+            EV_SYN,
+            SYN_REPORT,
+            0,
+            t0 + Duration::from_millis(30),
+            (0.4, 0.4),
+        );
+        assert!(!tracker.is_touching());
+
+        // Subsequent clean tap works normally instead of staying suppressed.
+        let tap_down = t0 + Duration::from_millis(100);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, tap_down, (0.4, 0.4));
+        tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 1, tap_down, (0.4, 0.4));
+        tracker.handle_event(EV_SYN, SYN_REPORT, 0, tap_down, (0.4, 0.4));
+        let tap_up = tap_down + Duration::from_millis(60);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 0, tap_up, (0.4, 0.4));
+        tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 0, tap_up, (0.4, 0.4));
+        let completed = tracker
+            .handle_event(EV_SYN, SYN_REPORT, 0, tap_up, (0.4, 0.4))
+            .unwrap();
+        assert_eq!(completed.button_code, BTN_LEFT);
+    }
+
+    #[test]
+    fn emit_completed_tap_appends_both_edges_with_separate_timestamps_and_positions() {
+        let t0 = Instant::now();
+        let samples = Arc::new(Mutex::new(Vec::new()));
+        let anchor = Arc::new(Mutex::new(None));
+        let context = ClickContext {
+            samples: Arc::clone(&samples),
+            anchor: Arc::clone(&anchor),
+            pause: Arc::new(Mutex::new(PauseState::default())),
+            last_position: Arc::new(Mutex::new(None)),
+            cursor_visible: Arc::new(AtomicBool::new(true)),
+            verbose: false,
+        };
+        let tap = CompletedTap {
+            button_code: BTN_MIDDLE,
+            down_at: t0 + Duration::from_millis(500),
+            down_cursor: (0.25, 0.35),
+            up_at: t0 + Duration::from_millis(560),
+            up_cursor: (0.26, 0.36),
+        };
+        let mut last_left_click = None;
+
+        emit_completed_tap(&context, tap, 0, 5_000_000, &mut last_left_click);
+        assert!(samples.lock().unwrap().is_empty());
+
+        *anchor.lock().unwrap() = Some(Anchor {
+            pts_ns: 2_000_000_000,
+            paused_ns: 0,
+            epoch_ms: 1_700_000_000_000,
+            instant: t0,
+        });
+        emit_completed_tap(&context, tap, 0, 5_000_000, &mut last_left_click);
+
+        let collected = samples.lock().unwrap();
+        assert_eq!(collected.len(), 2);
+        assert_eq!(collected[0].pts_ns, 2_500_000_000);
+        assert_eq!(
+            collected[0].interaction_type.as_deref(),
+            Some("middle-click")
+        );
+        assert_eq!(collected[0].mouse_button, Some(3));
+        assert!((collected[0].cx - 0.25).abs() < f64::EPSILON);
+        assert!((collected[0].cy - 0.35).abs() < f64::EPSILON);
+
+        assert_eq!(collected[1].pts_ns, 2_555_000_000);
+        assert_eq!(collected[1].interaction_type.as_deref(), Some("mouseup"));
+        assert_eq!(collected[1].mouse_button, Some(3));
+        assert!((collected[1].cx - 0.26).abs() < f64::EPSILON);
+        assert!((collected[1].cy - 0.36).abs() < f64::EPSILON);
     }
 }

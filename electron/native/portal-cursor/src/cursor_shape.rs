@@ -57,19 +57,36 @@ impl PixelFormat {
 
     #[must_use]
     pub fn to_i420(self, width: u32, height: u32, data: &[u8]) -> Option<Vec<u8>> {
-        let pixel_count = (width as usize).checked_mul(height as usize)?;
+        if width == 0 || height == 0 {
+            return None;
+        }
+        let width_usize = usize::try_from(width).ok()?;
+        let height_usize = usize::try_from(height).ok()?;
+        let pixel_count = width_usize.checked_mul(height_usize)?;
         let bpp = self.bytes_per_pixel();
         if data.len() < pixel_count.checked_mul(bpp)? {
             return None;
         }
-        let mut luma = vec![0u8; pixel_count];
-        let chroma_count = (width.div_ceil(2) as usize).checked_mul(height.div_ceil(2) as usize)?;
-        let mut u_plane = vec![0u8; chroma_count];
-        let mut v_plane = vec![0u8; chroma_count];
 
-        for y in 0..height as usize {
-            for x in 0..width as usize {
-                let offset = (y * width as usize + x) * bpp;
+        // Match GStreamer's default GST_VIDEO_FORMAT_I420 plane strides and offsets
+        // (rows padded to 4-byte multiples, luma height rounded up to an even row count).
+        let y_stride = width_usize.checked_next_multiple_of(4)?;
+        let y_height = height_usize.checked_next_multiple_of(2)?;
+        let y_plane_size = y_stride.checked_mul(y_height)?;
+        let uv_stride = width_usize.div_ceil(2).checked_next_multiple_of(4)?;
+        let uv_height = height_usize.div_ceil(2);
+        let uv_plane_size = uv_stride.checked_mul(uv_height)?;
+        let total_size = y_plane_size.checked_add(uv_plane_size.checked_mul(2)?)?;
+
+        let mut output = vec![0u8; total_size];
+        let (luma, chroma) = output.split_at_mut(y_plane_size);
+        let (u_plane, v_plane) = chroma.split_at_mut(uv_plane_size);
+
+        for y in 0..height_usize {
+            let src_row_base = y * width_usize;
+            let dst_row_base = y * y_stride;
+            for x in 0..width_usize {
+                let offset = (src_row_base + x) * bpp;
                 let pixel = &data[offset..offset + bpp];
                 let (r, g, b) = match self {
                     Self::Rgb24 | Self::Rgba | Self::Rgbx => (pixel[0], pixel[1], pixel[2]),
@@ -81,22 +98,18 @@ impl PixelFormat {
                 let g = i32::from(g);
                 let b = i32::from(b);
                 let luma_value = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
-                luma[y * width as usize + x] = clamp_u8(luma_value);
+                luma[dst_row_base + x] = clamp_u8(luma_value);
 
                 if x % 2 == 0 && y % 2 == 0 {
                     let u_value = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
                     let v_value = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
-                    let index = (y / 2) * (width.div_ceil(2) as usize) + (x / 2);
+                    let index = (y / 2) * uv_stride + (x / 2);
                     u_plane[index] = clamp_u8(u_value);
                     v_plane[index] = clamp_u8(v_value);
                 }
             }
         }
 
-        let mut output = Vec::with_capacity(pixel_count + 2 * chroma_count);
-        output.extend_from_slice(&luma);
-        output.extend_from_slice(&u_plane);
-        output.extend_from_slice(&v_plane);
         Some(output)
     }
 }
@@ -541,11 +554,52 @@ mod tests {
             0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255,
         ];
         let i420 = PixelFormat::Bgra.to_i420(2, 2, &data).unwrap();
-        assert_eq!(i420.len(), 6);
+        assert_eq!(i420.len(), 16);
         assert_eq!(i420[0], 16);
-        assert_eq!(i420[3], 235);
-        assert_eq!(i420[4], 128);
-        assert_eq!(i420[5], 128);
+        assert_eq!(i420[1], 16);
+        assert_eq!(i420[4], 235);
+        assert_eq!(i420[5], 235);
+        assert_eq!(i420[8], 128);
+        assert_eq!(i420[12], 128);
+    }
+
+    #[test]
+    fn converts_non_aligned_and_odd_dimensions_to_gstreamer_i420_layout() {
+        let white_bgra = |w: u32, h: u32| -> Vec<u8> {
+            let count = usize::try_from(w).unwrap() * usize::try_from(h).unwrap();
+            let mut data = Vec::with_capacity(count * 4);
+            for _ in 0..count {
+                data.extend_from_slice(&[255, 255, 255, 255]);
+            }
+            data
+        };
+
+        let buf_1366 = PixelFormat::Bgra
+            .to_i420(1366, 768, &white_bgra(1366, 768))
+            .unwrap();
+        assert_eq!(buf_1366.len(), 1_575_936);
+        assert_eq!(buf_1366[0], 235);
+        assert_eq!(buf_1366[1365], 235);
+        assert_eq!(buf_1366[1366], 0);
+        assert_eq!(buf_1366[767 * 1368 + 1365], 235);
+        assert_eq!(buf_1366[1_050_624], 128);
+        assert_eq!(buf_1366[1_313_280], 128);
+
+        let buf_3x3 = PixelFormat::Bgra.to_i420(3, 3, &white_bgra(3, 3)).unwrap();
+        assert_eq!(buf_3x3.len(), 32);
+        assert_eq!(buf_3x3[2 * 4 + 2], 235);
+        assert_eq!(buf_3x3[16 + 4 + 1], 128);
+        assert_eq!(buf_3x3[24 + 4 + 1], 128);
+
+        let buf_1210 = PixelFormat::Bgra
+            .to_i420(1210, 701, &white_bgra(1210, 701))
+            .unwrap();
+        assert_eq!(buf_1210.len(), 1_277_640);
+        assert_eq!(buf_1210[850_824], 128);
+        assert_eq!(buf_1210[1_064_232], 128);
+
+        assert!(PixelFormat::Bgra.to_i420(0, 10, &[]).is_none());
+        assert!(PixelFormat::Bgra.to_i420(10, 0, &[]).is_none());
     }
 
     #[test]

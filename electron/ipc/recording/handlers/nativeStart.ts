@@ -35,10 +35,17 @@ export function registerNativeStart(context: RecordingHandlerContext) {
 			if (process.platform === "win32")
 				return await startWindowsCapture(context, source, options);
 			if (process.platform === "linux" && isLinuxPortalCaptureEnabled()) {
+				const capturesSystemAudio = options?.capturesSystemAudio;
+				if (capturesSystemAudio !== undefined && typeof capturesSystemAudio !== "boolean") {
+					return {
+						success: false,
+						message: "Invalid capturesSystemAudio option for Linux portal capture",
+					};
+				}
 				const ownerSession = ownerRecovery.sessionToken;
 				try {
 					await startLinuxPortalCapture({
-						systemAudio: Boolean(options?.capturesSystemAudio),
+						systemAudio: capturesSystemAudio === true,
 						trackProcess: (child) => recordingProcessGuard.track(child),
 						onUnexpectedExit: () => {
 							if (ownerRecovery.sessionToken === ownerSession) {
