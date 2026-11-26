@@ -24,6 +24,7 @@ pub enum Command {
 #[derive(Clone, Copy)]
 pub(crate) struct Anchor {
     pub pts_ns: i64,
+    pub paused_ns: i64,
     pub epoch_ms: i64,
     pub instant: Instant,
 }
@@ -541,10 +542,11 @@ fn normalization_rect(state: &CaptureState) -> geometry::Rect {
     }
 }
 
-fn ensure_anchor(state: &CaptureState, pts: i64) -> Anchor {
+fn ensure_anchor(state: &CaptureState, pts: i64, paused_ns: i64) -> Anchor {
     let mut anchor = state.anchor.lock().expect("anchor mutex poisoned");
     *anchor.get_or_insert(Anchor {
         pts_ns: pts,
+        paused_ns,
         epoch_ms: epoch_now_ms(),
         instant: Instant::now(),
     })
@@ -580,7 +582,12 @@ fn finalize_video(
     }
 }
 
-fn push_video_frame(buffer: &mut pw::buffer::Buffer, pts: i64, state: &mut CaptureState) {
+fn push_video_frame(
+    buffer: &mut pw::buffer::Buffer,
+    pts: i64,
+    paused_ns: i64,
+    state: &mut CaptureState,
+) {
     let Some(video) = state.config.video.clone() else {
         return;
     };
@@ -594,7 +601,7 @@ fn push_video_frame(buffer: &mut pw::buffer::Buffer, pts: i64, state: &mut Captu
 
     if timeline.first_pts.is_none() {
         timeline.first_pts = Some(pts);
-        let anchor = ensure_anchor(state, pts);
+        let anchor = ensure_anchor(state, pts, paused_ns);
         let start_epoch_ms = anchor.epoch_ms + (pts - anchor.pts_ns).div_euclid(1_000_000);
         state
             .config
@@ -691,12 +698,17 @@ fn handle_process(stream: &pw::stream::Stream, state: &mut CaptureState) {
     let pts = if raw_pts > 0 {
         raw_pts - paused_ns
     } else if let Some(anchor) = existing_anchor(state) {
-        anchor.pts_ns + (Instant::now() - anchor.instant).as_nanos() as i64 - paused_ns
+        let pause_since_anchor = paused_ns.saturating_sub(anchor.paused_ns);
+        anchor.pts_ns
+            + Instant::now()
+                .saturating_duration_since(anchor.instant)
+                .as_nanos() as i64
+            - pause_since_anchor
     } else {
         return;
     };
 
-    push_video_frame(&mut buffer, pts, state);
+    push_video_frame(&mut buffer, pts, paused_ns, state);
 
     let Some(cursor) = buffer.find_meta::<MetaCursor>() else {
         return;
@@ -754,7 +766,7 @@ fn handle_process(stream: &pw::stream::Stream, state: &mut CaptureState) {
         }
     }
 
-    let _ = ensure_anchor(state, pts);
+    let _ = ensure_anchor(state, pts, paused_ns);
 
     if let Ok(mut collected) = state.raw_samples.lock() {
         collected.push(telemetry::RawSample {
@@ -763,6 +775,7 @@ fn handle_process(stream: &pw::stream::Stream, state: &mut CaptureState) {
             cy,
             cursor_type: Some(cursor_type.to_owned()),
             interaction_type: None,
+            mouse_button: None,
         });
     }
 

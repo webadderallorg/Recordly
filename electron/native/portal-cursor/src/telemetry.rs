@@ -13,6 +13,8 @@ pub struct Sample {
     pub cy: f64,
     #[serde(rename = "interactionType", skip_serializing_if = "Option::is_none")]
     pub interaction_type: Option<String>,
+    #[serde(rename = "mouseButton", skip_serializing_if = "Option::is_none")]
+    pub mouse_button: Option<u8>,
     #[serde(rename = "cursorType", skip_serializing_if = "Option::is_none")]
     pub cursor_type: Option<String>,
 }
@@ -24,6 +26,7 @@ impl Sample {
             cx,
             cy,
             interaction_type: None,
+            mouse_button: None,
             cursor_type: None,
         }
     }
@@ -35,6 +38,11 @@ impl Sample {
 
     pub fn with_interaction_type(mut self, interaction_type: impl Into<String>) -> Self {
         self.interaction_type = Some(interaction_type.into());
+        self
+    }
+
+    pub fn with_mouse_button(mut self, mouse_button: u8) -> Self {
+        self.mouse_button = Some(mouse_button);
         self
     }
 }
@@ -72,6 +80,7 @@ pub struct RawSample {
     pub cy: f64,
     pub cursor_type: Option<String>,
     pub interaction_type: Option<String>,
+    pub mouse_button: Option<u8>,
 }
 
 pub fn resolve_samples(
@@ -91,6 +100,7 @@ pub fn resolve_samples(
             cx: item.cx,
             cy: item.cy,
             interaction_type: item.interaction_type.clone(),
+            mouse_button: item.mouse_button,
             cursor_type: item.cursor_type.clone(),
         })
         .collect()
@@ -104,6 +114,7 @@ pub fn normalize_samples(samples: &mut Vec<Sample>) {
             && left.cy == right.cy
             && left.cursor_type == right.cursor_type
             && left.interaction_type == right.interaction_type
+            && left.mouse_button == right.mouse_button
     });
 }
 
@@ -127,14 +138,18 @@ mod tests {
     fn serializes_the_recordly_schema() {
         let samples = vec![
             Sample::new(0, 0.5, 0.5).with_cursor_type("arrow"),
-            Sample::new(33, 0.25, 0.75).with_interaction_type("click"),
+            Sample::new(33, 0.25, 0.75)
+                .with_interaction_type("click")
+                .with_mouse_button(1),
         ];
         let json: serde_json::Value = serde_json::from_str(&to_json(&samples)).unwrap();
         assert_eq!(json["version"], 2);
         assert_eq!(json["samples"][0]["timeMs"], 0);
         assert_eq!(json["samples"][0]["cursorType"], "arrow");
         assert!(json["samples"][0].get("interactionType").is_none());
+        assert!(json["samples"][0].get("mouseButton").is_none());
         assert_eq!(json["samples"][1]["interactionType"], "click");
+        assert_eq!(json["samples"][1]["mouseButton"], 1);
         assert!(json["samples"][1].get("cursorType").is_none());
     }
 
@@ -194,6 +209,7 @@ mod tests {
                 cy: 0.2,
                 cursor_type: Some("arrow".to_owned()),
                 interaction_type: None,
+                mouse_button: None,
             },
             RawSample {
                 pts_ns: 1_500_000_000,
@@ -201,12 +217,14 @@ mod tests {
                 cy: 0.4,
                 cursor_type: Some("text".to_owned()),
                 interaction_type: Some("click".to_owned()),
+                mouse_button: Some(1),
             },
         ];
         let samples = resolve_samples(&raw, 1_000_000_000, 1_700_000_000_500, 1_700_000_000_000);
         assert_eq!(samples[0].time_ms, 500);
         assert_eq!(samples[1].time_ms, 1000);
         assert_eq!(samples[1].cursor_type.as_deref(), Some("text"));
+        assert_eq!(samples[1].mouse_button, Some(1));
     }
 
     #[test]
@@ -217,6 +235,7 @@ mod tests {
             cy: 0.5,
             cursor_type: None,
             interaction_type: None,
+            mouse_button: None,
         }];
         let samples = resolve_samples(&raw, 1_000_000_000, 1_700_000_000_000, 0);
         assert_eq!(samples[0].time_ms, 1000);

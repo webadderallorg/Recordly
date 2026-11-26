@@ -316,7 +316,7 @@ pub fn recordly_type_for_name(name: &str) -> Option<&'static str> {
     let base = name.trim_end_matches(".cur").trim_end_matches(".ani");
     Some(match base {
         "default" | "left_ptr" | "arrow" | "top_left_arrow" => "arrow",
-        "text" | "xterm" | "vertical-text" => "text",
+        "text" | "xterm" | "ibeam" | "vertical-text" => "text",
         "pointer" | "hand2" | "pointing_hand" | "hand" => "pointer",
         "crosshair" | "cross" | "tcross" | "cell" | "precision" => "crosshair",
         "openhand" | "open_hand" | "grab" | "hand1" | "fleur" => "open-hand",
@@ -333,9 +333,13 @@ pub fn recordly_type_for_name(name: &str) -> Option<&'static str> {
 }
 
 const MAX_ALPHA_SCORE: u64 = 24;
+const MAX_SCALED_ALPHA_SCORE: u64 = 36;
 const MAX_HOTSPOT_DRIFT: f64 = 0.2;
 
 pub fn classify(cursor: &DecodedCursor, theme: &[ThemeCursor]) -> Option<&'static str> {
+    if cursor.width == 0 || cursor.height == 0 {
+        return None;
+    }
     let mut best: Option<(u64, &'static str)> = None;
     for theme_cursor in theme {
         let Some(recordly_type) = recordly_type_for_name(&theme_cursor.name) else {
@@ -355,8 +359,91 @@ pub fn classify(cursor: &DecodedCursor, theme: &[ThemeCursor]) -> Option<&'stati
             }
         }
     }
+    if let Some((score, recordly_type)) = best
+        && score <= MAX_ALPHA_SCORE
+    {
+        return Some(recordly_type);
+    }
+
+    classify_scaled(cursor, theme)
+}
+
+fn classify_scaled(cursor: &DecodedCursor, theme: &[ThemeCursor]) -> Option<&'static str> {
+    let mut best: Option<(u64, &'static str)> = None;
+    for theme_cursor in theme {
+        let Some(recordly_type) = recordly_type_for_name(&theme_cursor.name) else {
+            continue;
+        };
+        let Some(image) = closest_size_image(&theme_cursor.images, cursor.width, cursor.height)
+        else {
+            continue;
+        };
+        if !hotspot_matches(cursor, image) {
+            continue;
+        }
+        let score = alpha_difference_scaled(cursor, image);
+        match best {
+            Some((best_score, _)) if best_score <= score => {}
+            _ => best = Some((score, recordly_type)),
+        }
+    }
     let (score, recordly_type) = best?;
-    (score <= MAX_ALPHA_SCORE).then_some(recordly_type)
+    (score <= MAX_SCALED_ALPHA_SCORE).then_some(recordly_type)
+}
+
+fn closest_size_image(
+    images: &[XcursorImage],
+    target_width: u32,
+    target_height: u32,
+) -> Option<&XcursorImage> {
+    images
+        .iter()
+        .filter(|image| image.width > 0 && image.height > 0)
+        .min_by_key(|image| {
+            let distance =
+                image.width.abs_diff(target_width) + image.height.abs_diff(target_height);
+            let area = u64::from(image.width) * u64::from(image.height);
+            (distance, std::cmp::Reverse(area))
+        })
+}
+
+fn alpha_difference_scaled(cursor: &DecodedCursor, image: &XcursorImage) -> u64 {
+    let dst_w = cursor.width as f64;
+    let dst_h = cursor.height as f64;
+    let src_w = image.width as f64;
+    let src_h = image.height as f64;
+    let mut total = 0u64;
+
+    for y in 0..cursor.height as usize {
+        let fy = (((y as f64 + 0.5) * src_h / dst_h) - 0.5).clamp(0.0, src_h - 1.0);
+        for x in 0..cursor.width as usize {
+            let fx = (((x as f64 + 0.5) * src_w / dst_w) - 0.5).clamp(0.0, src_w - 1.0);
+            let expected = sample_xcursor_alpha(image, fx, fy).round() as i32;
+            let actual = cursor.rgba[(y * cursor.width as usize + x) * 4 + 3] as i32;
+            total += (expected - actual).unsigned_abs() as u64;
+        }
+    }
+
+    total / (cursor.width as u64 * cursor.height as u64).max(1)
+}
+
+fn sample_xcursor_alpha(image: &XcursorImage, fx: f64, fy: f64) -> f64 {
+    let w = image.width as usize;
+    let h = image.height as usize;
+    let x0 = (fx.floor() as usize).min(w - 1);
+    let y0 = (fy.floor() as usize).min(h - 1);
+    let x1 = (x0 + 1).min(w - 1);
+    let y1 = (y0 + 1).min(h - 1);
+    let tx = fx - x0 as f64;
+    let ty = fy - y0 as f64;
+    let alpha_at = |x: usize, y: usize| -> f64 { ((image.pixels[y * w + x] >> 24) & 0xff) as f64 };
+    let a00 = alpha_at(x0, y0);
+    let a10 = alpha_at(x1, y0);
+    let a01 = alpha_at(x0, y1);
+    let a11 = alpha_at(x1, y1);
+    let top = a00 + (a10 - a00) * tx;
+    let bottom = a01 + (a11 - a01) * tx;
+    top + (bottom - top) * ty
 }
 
 fn hotspot_matches(cursor: &DecodedCursor, image: &XcursorImage) -> bool {
@@ -525,5 +612,106 @@ mod tests {
         assert_eq!(recordly_type_for_name("wayland-cursor"), None);
         assert_eq!(recordly_type_for_name("pointer"), Some("pointer"));
         assert_eq!(recordly_type_for_name("not-allowed"), Some("not-allowed"));
+    }
+
+    #[test]
+    fn classifies_fractionally_scaled_cursors_against_nearest_theme_size() {
+        let make_alpha_grid = |w: u32, h: u32, alpha_fn: &dyn Fn(u32, u32) -> u8| -> Vec<u32> {
+            let mut pixels = Vec::with_capacity((w * h) as usize);
+            for y in 0..h {
+                for x in 0..w {
+                    pixels.push((u32::from(alpha_fn(x, y)) << 24) | 0x00ff_ffff);
+                }
+            }
+            pixels
+        };
+        let ibeam_alpha = |x: u32, y: u32, w: u32, h: u32| -> u8 {
+            let cx = w / 2;
+            let bar_half = (w / 6).max(1);
+            let stem_half = (w / 12).max(1);
+            let cap = (h / 8).max(1);
+            let in_stem = x >= cx.saturating_sub(stem_half) && x <= cx + stem_half;
+            let in_top = y < cap && x >= cx.saturating_sub(bar_half) && x <= cx + bar_half;
+            let in_bot = y + cap >= h && x >= cx.saturating_sub(bar_half) && x <= cx + bar_half;
+            if in_stem || in_top || in_bot { 0xff } else { 0x00 }
+        };
+        let arrow_alpha = |x: u32, y: u32, w: u32, _h: u32| -> u8 {
+            if x >= 4 && y >= 4 && x <= y && x < w * 2 / 3 && y < w * 3 / 4 {
+                0xff
+            } else {
+                0x00
+            }
+        };
+
+        let theme = vec![
+            ThemeCursor {
+                name: "default".to_owned(),
+                images: vec![
+                    XcursorImage {
+                        width: 24,
+                        height: 24,
+                        xhot: 4,
+                        yhot: 4,
+                        pixels: make_alpha_grid(24, 24, &|x, y| arrow_alpha(x, y, 24, 24)),
+                    },
+                    XcursorImage {
+                        width: 48,
+                        height: 48,
+                        xhot: 8,
+                        yhot: 8,
+                        pixels: make_alpha_grid(48, 48, &|x, y| arrow_alpha(x, y, 48, 48)),
+                    },
+                ],
+            },
+            ThemeCursor {
+                name: "text".to_owned(),
+                images: vec![
+                    XcursorImage {
+                        width: 24,
+                        height: 24,
+                        xhot: 12,
+                        yhot: 12,
+                        pixels: make_alpha_grid(24, 24, &|x, y| ibeam_alpha(x, y, 24, 24)),
+                    },
+                    XcursorImage {
+                        width: 48,
+                        height: 48,
+                        xhot: 24,
+                        yhot: 24,
+                        pixels: make_alpha_grid(48, 48, &|x, y| ibeam_alpha(x, y, 48, 48)),
+                    },
+                ],
+            },
+        ];
+
+        // 40x40 fractional HiDPI (1.667x of 24px) matches 48x48 ibeam instead of falling back to arrow.
+        let mut rgba = Vec::with_capacity(40 * 40 * 4);
+        for y in 0..40 {
+            for x in 0..40 {
+                let a = ibeam_alpha(x, y, 40, 40);
+                rgba.extend_from_slice(&[a, a, a, a]);
+            }
+        }
+        let scaled_ibeam = DecodedCursor {
+            width: 40,
+            height: 40,
+            hotspot_x: 20,
+            hotspot_y: 20,
+            rgba,
+        };
+        assert_eq!(classify(&scaled_ibeam, &theme), Some("text"));
+
+        // An unknown shape at 40x40 with matching hotspot still gets rejected rather than misclassified.
+        assert_eq!(
+            classify(
+                &DecodedCursor {
+                    hotspot_x: 20,
+                    hotspot_y: 20,
+                    ..solid_cursor(40, 40, 0xff)
+                },
+                &theme
+            ),
+            None
+        );
     }
 }
