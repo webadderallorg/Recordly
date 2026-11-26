@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+const MAX_AUDIO_BUFFERS: u32 = 64;
 const SAMPLE_RATE: u32 = 48_000;
 const CHANNELS: u16 = 2;
 const BYTES_PER_SAMPLE: u16 = 2;
@@ -56,7 +57,7 @@ impl AudioRecorder {
         let appsink = gst::ElementFactory::make("appsink")
             .name("system-audio-sink")
             .property("sync", false)
-            .property("max-buffers", 64u32)
+            .property("max-buffers", MAX_AUDIO_BUFFERS)
             .build()
             .context("failed to create appsink")?
             .downcast::<gst_app::AppSink>()
@@ -117,7 +118,10 @@ impl AudioRecorder {
     }
 
     pub fn poll(&mut self, paused: bool) {
-        while let Some(sample) = self.appsink.try_pull_sample(gst::ClockTime::ZERO) {
+        for _ in 0..MAX_AUDIO_BUFFERS {
+            let Some(sample) = self.appsink.try_pull_sample(gst::ClockTime::ZERO) else {
+                break;
+            };
             if paused || self.limit_reached || self.failed.load(Ordering::SeqCst) {
                 continue;
             }
@@ -127,7 +131,8 @@ impl AudioRecorder {
                 let bytes = mapped.as_slice();
                 let (to_write, hit_limit) = clamp_wav_chunk_len(self.data_bytes, bytes.len());
                 if to_write > 0 {
-                    if self.file.write_all(&bytes[..to_write]).is_err() {
+                    if let Err(error) = self.file.write_all(&bytes[..to_write]) {
+                        eprintln!("ERROR:system audio write failed: {error}");
                         self.failed.store(true, Ordering::SeqCst);
                         break;
                     }

@@ -5,11 +5,13 @@ use pw::properties::properties;
 use pw::spa;
 use pw::spa::buffer::meta::{MetaBitmap, MetaCursor, MetaHeader};
 use recordly_portal_cursor::{cursor_shape, geometry, telemetry};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -64,7 +66,8 @@ pub(crate) fn duration_to_ns(duration: Duration) -> i64 {
 
 pub struct CaptureConfig {
     pub node_id: u32,
-    pub stream_rect: geometry::Rect,
+    pub stream_rect: Option<geometry::Rect>,
+    pub start_paused: bool,
     pub position_space: geometry::PositionSpace,
     pub start_epoch_ms: Arc<AtomicI64>,
     pub output: Option<PathBuf>,
@@ -96,6 +99,7 @@ struct CaptureState {
     current_type: Option<&'static str>,
     video_size: Option<(u32, u32)>,
     video_format: Option<cursor_shape::PixelFormat>,
+    ready: bool,
     timeline: Arc<Mutex<VideoTimeline>>,
     anchor: Arc<Mutex<Option<Anchor>>>,
     pause: Arc<Mutex<PauseState>>,
@@ -109,13 +113,18 @@ struct CaptureState {
 pub fn spawn(
     fd: OwnedFd,
     config: CaptureConfig,
+    finished: tokio::sync::oneshot::Sender<()>,
 ) -> Result<(pw::channel::Sender<Command>, JoinHandle<Result<()>>)> {
     let (sender, receiver) = pw::channel::channel::<Command>();
     let raw_samples = Arc::new(Mutex::new(Vec::<telemetry::RawSample>::new()));
     let anchor = Arc::new(Mutex::new(None::<Anchor>));
     let last_position = Arc::new(Mutex::new(None::<(f64, f64)>));
     let cursor_visible = Arc::new(AtomicBool::new(false));
-    let pause = Arc::new(Mutex::new(PauseState::default()));
+    let mut pause_state = PauseState::default();
+    if config.start_paused {
+        pause_state.pause();
+    }
+    let pause = Arc::new(Mutex::new(pause_state));
     let timeline = Arc::new(Mutex::new(VideoTimeline::default()));
     let timer_frame_interval_ns = configure_keepalive_interval_ns();
 
@@ -141,7 +150,11 @@ pub fn spawn(
 
     let handle = std::thread::Builder::new()
         .name("recordly-pipewire-capture".into())
-        .spawn(move || run_capture_thread(fd, receiver, thread_context))
+        .spawn(move || {
+            let result = run_capture_thread(fd, receiver, thread_context);
+            let _ = finished.send(());
+            result
+        })
         .context("failed to spawn the PipeWire capture thread")?;
 
     Ok((sender, handle))
@@ -162,7 +175,9 @@ fn configure_keepalive_interval_ns() -> i64 {
     std::env::var("RECORDLY_PORTAL_CURSOR_KEEPALIVE_MS")
         .ok()
         .and_then(|value| value.parse::<i64>().ok())
-        .map_or(FRAME_INTERVAL_NS, |millis| millis * 1_000_000)
+        .filter(|millis| *millis > 0)
+        .and_then(|millis| millis.checked_mul(1_000_000))
+        .unwrap_or(FRAME_INTERVAL_NS)
 }
 
 fn run_capture_thread(
@@ -223,6 +238,7 @@ fn run_capture_thread(
         current_type: None,
         video_size: None,
         video_format: None,
+        ready: false,
         timeline: Arc::clone(&timeline),
         anchor: Arc::clone(&anchor),
         pause: Arc::clone(&pause),
@@ -233,7 +249,8 @@ fn run_capture_thread(
         last: None,
     };
 
-    let listener = register_stream_listener(&stream, state)?;
+    let capture_error = Rc::new(Cell::new(None));
+    let listener = register_stream_listener(&stream, state, &mainloop, Rc::clone(&capture_error))?;
     let format_pod_bytes = build_enum_format_pod()?;
     let pod = spa::pod::Pod::from_bytes(&format_pod_bytes)
         .context("failed to parse the serialized EnumFormat pod")?;
@@ -270,19 +287,36 @@ fn run_capture_thread(
         write_captured_telemetry(path, &raw_samples, &anchor, &start_epoch, verbose)?;
     }
 
+    if let Some(error) = capture_error.take() {
+        anyhow::bail!("{error}");
+    }
     Ok(())
 }
 
 fn register_stream_listener(
     stream: &pw::stream::Stream,
     state: CaptureState,
+    mainloop: &pw::main_loop::MainLoopRc,
+    capture_error: Rc<Cell<Option<String>>>,
 ) -> Result<pw::stream::StreamListener<CaptureState>> {
+    let error_loop = mainloop.clone();
     stream
         .add_local_listener_with_user_data(state)
-        .state_changed(|_, state, old, new| {
+        .state_changed(move |_, state, old, new| {
             if state.config.verbose {
                 eprintln!("[pw] state {old:?} -> {new:?}");
             }
+            let error = match new {
+                pw::stream::StreamState::Error(error) => error,
+                pw::stream::StreamState::Unconnected
+                    if !matches!(old, pw::stream::StreamState::Unconnected) =>
+                {
+                    "the PipeWire stream disconnected".to_owned()
+                }
+                _ => return,
+            };
+            capture_error.set(Some(error));
+            error_loop.quit();
         })
         .param_changed(|stream, state, id, param| {
             handle_param_changed(stream, state, id, param);
@@ -316,8 +350,15 @@ fn handle_param_changed(
     }
     let mut format = spa::param::video::VideoInfoRaw::default();
     if format.parse(param).is_ok() {
-        state.video_size = Some((format.size().width, format.size().height));
-        state.video_format = cursor_shape::PixelFormat::from_spa(format.format().as_raw());
+        let size = Some((format.size().width, format.size().height));
+        let pixel_format = cursor_shape::PixelFormat::from_spa(format.format().as_raw());
+        if (size != state.video_size || pixel_format != state.video_format)
+            && let Ok(mut timeline) = state.timeline.lock()
+        {
+            timeline.last_frame = None;
+        }
+        state.video_size = size;
+        state.video_format = pixel_format;
         if let (Some(video), Some(_pixel_format)) = (&state.config.video, state.video_format) {
             video.set_video_caps("I420", format.size().width, format.size().height);
         }
@@ -616,29 +657,16 @@ fn request_buffer_metadata(stream: &pw::stream::Stream) -> Result<()> {
     Ok(())
 }
 
-fn normalization_rect(state: &CaptureState) -> geometry::Rect {
+fn normalization_rect(state: &CaptureState) -> Option<geometry::Rect> {
+    let pixel_rect = state.video_size.and_then(|(width, height)| {
+        geometry::stream_rect(
+            None,
+            Some((i32::try_from(width).ok()?, i32::try_from(height).ok()?)),
+        )
+    });
     match state.config.position_space {
-        geometry::PositionSpace::Global => state.config.stream_rect,
-        geometry::PositionSpace::StreamLocal => {
-            let (width, height) = state.video_size.map_or(
-                (
-                    state.config.stream_rect.width,
-                    state.config.stream_rect.height,
-                ),
-                |(width, height)| {
-                    (
-                        i32::try_from(width).unwrap_or(i32::MAX),
-                        i32::try_from(height).unwrap_or(i32::MAX),
-                    )
-                },
-            );
-            geometry::Rect {
-                x: 0,
-                y: 0,
-                width,
-                height,
-            }
-        }
+        geometry::PositionSpace::Global => state.config.stream_rect.or(pixel_rect),
+        geometry::PositionSpace::StreamLocal => pixel_rect.or(state.config.stream_rect),
     }
 }
 
@@ -694,7 +722,13 @@ fn push_video_frame(
     let Some(video) = state.config.video.clone() else {
         return;
     };
-    let Some(frame) = extract_frame(buffer, state) else {
+    let (Some((width, height)), Some(format)) = (state.video_size, state.video_format) else {
+        return;
+    };
+    let Some((data, stride)) = frame_data(buffer, width, height, format.bytes_per_pixel()) else {
+        return;
+    };
+    let Some(frame) = format.to_i420(width, height, data, stride) else {
         return;
     };
 
@@ -702,6 +736,20 @@ fn push_video_frame(
         return;
     };
 
+    let first_pts = timeline.first_pts.unwrap_or(pts);
+    let mut timeline_pts = pts - first_pts;
+    if let Some(last_pts) = timeline.last_pts
+        && timeline_pts <= last_pts
+    {
+        timeline_pts = last_pts + 1_000_000;
+    }
+    let frame_buffer = VideoHandle::frame_buffer(frame);
+    if let Err(error) = video.push_buffer(timeline_pts, &frame_buffer) {
+        if state.config.verbose {
+            eprintln!("[video] frame push failed: {error:#}");
+        }
+        return;
+    }
     if timeline.first_pts.is_none() {
         timeline.first_pts = Some(pts);
         let anchor = ensure_anchor(state, pts, paused_ns);
@@ -714,63 +762,44 @@ fn push_video_frame(
         let _ = std::io::stdout().flush();
     }
 
-    let first_pts = timeline.first_pts.unwrap_or(pts);
-    let mut timeline_pts = pts - first_pts;
-    if let Some(last_pts) = timeline.last_pts
-        && timeline_pts <= last_pts
-    {
-        timeline_pts = last_pts + 1_000_000;
-    }
-    let frame_buffer = VideoHandle::frame_buffer(frame);
-    let push_result = video.push_buffer(timeline_pts, &frame_buffer);
     timeline.last_frame = Some(frame_buffer);
     timeline.last_pts = Some(timeline_pts);
     timeline.last_push = Some(Instant::now());
+    drop(timeline);
+    report_ready(state);
+}
 
-    if let Err(error) = push_result
-        && state.config.verbose
-    {
-        eprintln!("[video] frame push failed: {error:#}");
+fn report_ready(state: &mut CaptureState) {
+    if !state.ready {
+        state.ready = true;
+        println!("READY");
+        let _ = std::io::stdout().flush();
     }
 }
 
-fn extract_frame(buffer: &mut pw::buffer::Buffer, state: &CaptureState) -> Option<Vec<u8>> {
-    let (width, height) = state.video_size?;
-    let format = state.video_format?;
+fn frame_data<'a>(
+    buffer: &'a mut pw::buffer::Buffer<'_>,
+    width: u32,
+    height: u32,
+    bytes_per_pixel: usize,
+) -> Option<(&'a [u8], i32)> {
     let data = buffer.datas_mut().first_mut()?;
     let chunk = data.chunk();
     let size = chunk.size() as usize;
-    if size == 0 {
-        return None;
-    }
     let offset = chunk.offset() as usize;
-    let strided = chunk.stride();
+    let stride = chunk.stride();
     let mapped = data.data()?;
-
-    let row_bytes = width as usize * format.bytes_per_pixel();
-    let stride = strided.unsigned_abs() as usize;
-    if stride < row_bytes {
+    let row_bytes = (width as usize).checked_mul(bytes_per_pixel)?;
+    let last_row = (height as usize).checked_sub(1)?;
+    let row_stride = stride.unsigned_abs() as usize;
+    if row_bytes == 0 || row_stride < row_bytes {
         return None;
     }
-
-    let source = if strided >= 0 && stride == row_bytes {
-        let end = offset.checked_add(row_bytes.checked_mul(height as usize)?)?;
-        mapped.get(offset..end)?.to_vec()
-    } else {
-        let mut frame = Vec::with_capacity(row_bytes * height as usize);
-        for row in 0..height as usize {
-            let source_row = if strided > 0 {
-                row
-            } else {
-                height as usize - 1 - row
-            };
-            let start = offset.checked_add(source_row.checked_mul(stride)?)?;
-            frame.extend_from_slice(mapped.get(start..start + row_bytes)?);
-        }
-        frame
-    };
-
-    format.to_i420(width, height, &source)
+    let required = last_row.checked_mul(row_stride)?.checked_add(row_bytes)?;
+    if size < required {
+        return None;
+    }
+    Some((mapped.get(offset..offset.checked_add(required)?)?, stride))
 }
 
 fn handle_process(stream: &pw::stream::Stream, state: &mut CaptureState) {
@@ -786,20 +815,24 @@ fn handle_process(stream: &pw::stream::Stream, state: &mut CaptureState) {
         );
     }
 
-    let paused_ns = {
-        let pause = state
-            .pause
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if pause.paused {
-            return;
-        }
-        pause.accumulated_ns
-    };
-
+    let (paused, paused_ns) = state
+        .pause
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .snapshot();
     let Some(pts) = resolve_buffer_pts(&mut buffer, state, paused_ns) else {
         return;
     };
+    if paused {
+        // During countdown, verify the source can deliver a frame without writing pre-roll.
+        if !state.ready
+            && let (Some((width, height)), Some(format)) = (state.video_size, state.video_format)
+            && frame_data(&mut buffer, width, height, format.bytes_per_pixel()).is_some()
+        {
+            report_ready(state);
+        }
+        return;
+    }
 
     push_video_frame(&mut buffer, pts, paused_ns, state);
     record_cursor_metadata(&mut buffer, pts, paused_ns, state);
@@ -862,11 +895,12 @@ fn record_cursor_metadata(
     }
     state.last = Some(key);
 
-    let Some((cx, cy)) = geometry::normalize_to_stream(
-        (position.x, position.y),
-        normalization_rect(state),
-        state.config.position_space,
-    ) else {
+    let Some(rect) = normalization_rect(state) else {
+        return;
+    };
+    let Some((cx, cy)) =
+        geometry::normalize_to_stream((position.x, position.y), rect, state.config.position_space)
+    else {
         return;
     };
 

@@ -56,15 +56,19 @@ impl PixelFormat {
     }
 
     #[must_use]
-    pub fn to_i420(self, width: u32, height: u32, data: &[u8]) -> Option<Vec<u8>> {
+    pub fn to_i420(self, width: u32, height: u32, data: &[u8], stride: i32) -> Option<Vec<u8>> {
         if width == 0 || height == 0 {
             return None;
         }
         let width_usize = usize::try_from(width).ok()?;
         let height_usize = usize::try_from(height).ok()?;
-        let pixel_count = width_usize.checked_mul(height_usize)?;
         let bpp = self.bytes_per_pixel();
-        if data.len() < pixel_count.checked_mul(bpp)? {
+        let row_bytes = width_usize.checked_mul(bpp)?;
+        let row_stride = stride.unsigned_abs() as usize;
+        let required = (height_usize - 1)
+            .checked_mul(row_stride)?
+            .checked_add(row_bytes)?;
+        if row_stride < row_bytes || data.len() < required {
             return None;
         }
 
@@ -83,10 +87,11 @@ impl PixelFormat {
         let (u_plane, v_plane) = chroma.split_at_mut(uv_plane_size);
 
         for y in 0..height_usize {
-            let src_row_base = y * width_usize;
+            let src_row = if stride >= 0 { y } else { height_usize - 1 - y };
+            let src_row_base = src_row * row_stride;
             let dst_row_base = y * y_stride;
             for x in 0..width_usize {
-                let offset = (src_row_base + x) * bpp;
+                let offset = src_row_base + x * bpp;
                 let pixel = &data[offset..offset + bpp];
                 let (r, g, b) = match self {
                     Self::Rgb24 | Self::Rgba | Self::Rgbx => (pixel[0], pixel[1], pixel[2]),
@@ -553,7 +558,7 @@ mod tests {
         let data = [
             0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255,
         ];
-        let i420 = PixelFormat::Bgra.to_i420(2, 2, &data).unwrap();
+        let i420 = PixelFormat::Bgra.to_i420(2, 2, &data, 8).unwrap();
         assert_eq!(i420.len(), 16);
         assert_eq!(i420[0], 16);
         assert_eq!(i420[1], 16);
@@ -561,6 +566,16 @@ mod tests {
         assert_eq!(i420[5], 235);
         assert_eq!(i420[8], 128);
         assert_eq!(i420[12], 128);
+    }
+
+    #[test]
+    fn reads_padded_and_bottom_up_frames_without_repacking() {
+        let bytes = [0, 0, 0, 255, 99, 99, 99, 99, 255, 255, 255, 255];
+        let top_down = PixelFormat::Bgra.to_i420(1, 2, &bytes, 8).unwrap();
+        let bottom_up = PixelFormat::Bgra.to_i420(1, 2, &bytes, -8).unwrap();
+        assert_eq!((top_down[0], top_down[4]), (16, 235));
+        assert_eq!((bottom_up[0], bottom_up[4]), (235, 16));
+        assert!(PixelFormat::Bgra.to_i420(1, 2, &bytes[..11], 8).is_none());
     }
 
     #[test]
@@ -575,7 +590,7 @@ mod tests {
         };
 
         let buf_1366 = PixelFormat::Bgra
-            .to_i420(1366, 768, &white_bgra(1366, 768))
+            .to_i420(1366, 768, &white_bgra(1366, 768), 1366 * 4)
             .unwrap();
         assert_eq!(buf_1366.len(), 1_575_936);
         assert_eq!(buf_1366[0], 235);
@@ -585,21 +600,23 @@ mod tests {
         assert_eq!(buf_1366[1_050_624], 128);
         assert_eq!(buf_1366[1_313_280], 128);
 
-        let buf_3x3 = PixelFormat::Bgra.to_i420(3, 3, &white_bgra(3, 3)).unwrap();
+        let buf_3x3 = PixelFormat::Bgra
+            .to_i420(3, 3, &white_bgra(3, 3), 3 * 4)
+            .unwrap();
         assert_eq!(buf_3x3.len(), 32);
         assert_eq!(buf_3x3[2 * 4 + 2], 235);
         assert_eq!(buf_3x3[16 + 4 + 1], 128);
         assert_eq!(buf_3x3[24 + 4 + 1], 128);
 
         let buf_1210 = PixelFormat::Bgra
-            .to_i420(1210, 701, &white_bgra(1210, 701))
+            .to_i420(1210, 701, &white_bgra(1210, 701), 1210 * 4)
             .unwrap();
         assert_eq!(buf_1210.len(), 1_277_640);
         assert_eq!(buf_1210[850_824], 128);
         assert_eq!(buf_1210[1_064_232], 128);
 
-        assert!(PixelFormat::Bgra.to_i420(0, 10, &[]).is_none());
-        assert!(PixelFormat::Bgra.to_i420(10, 0, &[]).is_none());
+        assert!(PixelFormat::Bgra.to_i420(0, 10, &[], 0).is_none());
+        assert!(PixelFormat::Bgra.to_i420(10, 0, &[], 40).is_none());
     }
 
     #[test]

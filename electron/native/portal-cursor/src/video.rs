@@ -8,13 +8,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+const STOP_DRAIN_TIMEOUT: Duration = Duration::from_secs(8);
 
 pub struct VideoConfig {
     pub output: PathBuf,
     pub encoder: String,
     pub bitrate_kbps: u32,
     pub system_audio: bool,
+    pub start_paused: bool,
     pub verbose: bool,
 }
 
@@ -74,11 +77,14 @@ impl VideoHandle {
     }
 }
 
-pub fn spawn(config: VideoConfig) -> Result<VideoHandle> {
+pub fn spawn(
+    config: VideoConfig,
+    finished: tokio::sync::oneshot::Sender<()>,
+) -> Result<VideoHandle> {
     let (ready_tx, ready_rx) = mpsc::channel::<Result<gst_app::AppSrc>>();
     let stop = Arc::new(AtomicBool::new(false));
     let errors = Arc::new(Mutex::new(None));
-    let audio_pause = Arc::new(AtomicBool::new(false));
+    let audio_pause = Arc::new(AtomicBool::new(config.start_paused));
 
     let thread_stop = Arc::clone(&stop);
     let thread_errors = Arc::clone(&errors);
@@ -86,13 +92,15 @@ pub fn spawn(config: VideoConfig) -> Result<VideoHandle> {
     let join = std::thread::Builder::new()
         .name("recordly-video-capture".into())
         .spawn(move || {
-            run(
+            let result = run(
                 &config,
                 thread_stop,
                 &thread_errors,
                 &thread_audio_pause,
                 &ready_tx,
-            )
+            );
+            let _ = finished.send(());
+            result
         })
         .context("failed to spawn the video capture thread")?;
 
@@ -192,20 +200,42 @@ fn run(
     let timeout_appsrc = appsrc.clone();
     let timeout_audio = audio.clone();
     let timeout_audio_pause = Arc::clone(audio_pause);
-    gst::glib::timeout_add_local(Duration::from_millis(10), move || {
-        if let Some(audio) = &timeout_audio
+    let timeout_loop = main_loop.clone();
+    let timeout_errors = Arc::clone(errors);
+    let mut eos_queued_at: Option<Instant> = None;
+    let timer = gst::glib::timeout_add_local(Duration::from_millis(10), move || {
+        if eos_queued_at.is_none()
+            && let Some(audio) = &timeout_audio
             && let Ok(mut recorder) = audio.lock()
         {
             recorder.poll(timeout_audio_pause.load(Ordering::SeqCst));
         }
         if stop.load(Ordering::SeqCst) {
-            let _ = timeout_appsrc.end_of_stream();
-            return gst::glib::ControlFlow::Break;
+            let error = match eos_queued_at {
+                Some(started) if started.elapsed() >= STOP_DRAIN_TIMEOUT => {
+                    Some("timed out draining the encoder and muxer".to_owned())
+                }
+                Some(_) => None,
+                None => match timeout_appsrc.end_of_stream() {
+                    Ok(_) => {
+                        eos_queued_at = Some(Instant::now());
+                        None
+                    }
+                    Err(error) => Some(format!("failed to queue end-of-stream: {error:?}")),
+                },
+            };
+            if let Some(error) = error {
+                if let Ok(mut slot) = timeout_errors.lock() {
+                    *slot = Some(error);
+                }
+                timeout_loop.quit();
+            }
         }
         gst::glib::ControlFlow::Continue
     });
 
     main_loop.run();
+    timer.remove();
 
     if let Some(audio) = &audio
         && let Ok(mut recorder) = audio.lock()
@@ -219,7 +249,9 @@ fn run(
     if config.verbose {
         eprintln!("[video] finished {}", config.output.display());
     }
-    println!("VIDEO_DONE:{}", config.output.display());
+    if errors.lock().is_ok_and(|slot| slot.is_none()) {
+        println!("VIDEO_DONE:{}", config.output.display());
+    }
     let _ = std::io::stdout().flush();
     Ok(())
 }
@@ -235,6 +267,13 @@ fn build_pipeline(config: &VideoConfig) -> Result<(gst::Pipeline, gst_app::AppSr
     appsrc.set_is_live(false);
     appsrc.set_property("do-timestamp", false);
     appsrc.set_property("block", false);
+    // Bound the upstream queue even when negotiation or a downstream sink stalls.
+    if appsrc.find_property("leaky-type").is_none() {
+        bail!("Wayland capture requires GStreamer 1.20 or newer");
+    }
+    appsrc.set_max_bytes(0);
+    appsrc.set_property("max-buffers", 2u64);
+    appsrc.set_property_from_str("leaky-type", "downstream");
 
     let queue = make("queue")?;
     queue.set_property("max-size-buffers", 4u32);

@@ -62,6 +62,13 @@ pub struct Cli {
 
     #[arg(
         long,
+        requires = "record_video",
+        help = "Wait for resume before recording"
+    )]
+    pub start_paused: bool,
+
+    #[arg(
+        long,
         value_name = "MS",
         help = "Epoch milliseconds of the recording start used to align sample timestamps"
     )]

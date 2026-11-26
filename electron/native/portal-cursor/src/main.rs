@@ -6,7 +6,7 @@ mod portal;
 mod video;
 
 use anyhow::{Context, Result};
-use ashpd::desktop::screencast::CursorMode;
+use ashpd::desktop::{ResponseError, screencast::CursorMode};
 use clap::Parser;
 use cli::{Cli, PositionSpaceArg};
 use pipewire_capture::{CaptureConfig, Command};
@@ -37,6 +37,14 @@ fn main() {
 
     match runtime.block_on(run(&cli)) {
         Ok(code) => std::process::exit(code),
+        Err(error)
+            if matches!(
+                error.downcast_ref::<ashpd::Error>(),
+                Some(ashpd::Error::Response(ResponseError::Cancelled))
+            ) =>
+        {
+            std::process::exit(4);
+        }
         Err(error) => {
             eprintln!("ERROR:{error:#}");
             std::process::exit(1);
@@ -50,7 +58,7 @@ async fn run(cli: &Cli) -> Result<i32> {
 
     if cli.probe {
         println!(
-            "CAPABILITY:cursor-modes={modes} metadata={}",
+            "CAPABILITY:cursor-modes={modes} metadata={} protocol=2",
             u8::from(metadata_supported)
         );
         let _ = std::io::stdout().flush();
@@ -84,18 +92,19 @@ async fn run(cli: &Cli) -> Result<i32> {
         );
     }
 
-    let stream_rect = geometry::stream_rect(stream.position, stream.size)
-        .context("the portal stream did not report a usable size")?;
+    let stream_rect = geometry::stream_rect(stream.position, stream.size);
     let position_space = resolve_cli_position_space(cli);
     print_stream_banner(&stream, position_space);
 
     let start_epoch = Arc::new(AtomicI64::new(cli.start_epoch_ms.unwrap_or(0)));
     let telemetry_output = resolve_telemetry_output(cli);
-    let video_handle = spawn_video_recorder(cli)?;
+    let (video_finished_tx, mut video_finished) = tokio::sync::oneshot::channel();
+    let video_handle = spawn_video_recorder(cli, video_finished_tx)?;
 
     let config = CaptureConfig {
         node_id: stream.node_id,
         stream_rect,
+        start_paused: cli.start_paused,
         position_space,
         start_epoch_ms: Arc::clone(&start_epoch),
         output: telemetry_output,
@@ -105,35 +114,47 @@ async fn run(cli: &Cli) -> Result<i32> {
         print_events: cli.print,
         verbose: cli.verbose,
     };
-    let (sender, handle) = pipewire_capture::spawn(connected.fd, config)?;
+    let (capture_finished_tx, mut capture_finished) = tokio::sync::oneshot::channel();
+    let (sender, handle) = pipewire_capture::spawn(connected.fd, config, capture_finished_tx)?;
 
     let stdin_commands = forward_stdin_commands(&sender);
-    tokio::select! {
+    let interrupted = tokio::select! {
         result = tokio::signal::ctrl_c() => {
             result.context("failed to listen for Ctrl-C")?;
+            false
         }
-        () = stdin_commands => {}
-    }
+        () = stdin_commands => false,
+        _ = &mut capture_finished => true,
+        _ = &mut video_finished, if video_handle.is_some() => true,
+    };
 
     if cli.verbose {
         eprintln!("[main] stopping capture");
     }
 
     let _ = sender.send(Command::Quit);
+    let mut failed = interrupted;
     match handle.join() {
         Ok(Ok(())) => {}
-        Ok(Err(error)) => eprintln!("ERROR:pipewire capture failed: {error:#}"),
-        Err(_) => eprintln!("ERROR:the pipewire capture thread panicked"),
+        Ok(Err(error)) => {
+            eprintln!("ERROR:pipewire capture failed: {error:#}");
+            failed = true;
+        }
+        Err(_) => {
+            eprintln!("ERROR:the pipewire capture thread panicked");
+            failed = true;
+        }
     }
 
     if let Some(video_handle) = video_handle
         && let Err(error) = video_handle.stop()
     {
         eprintln!("ERROR:video capture failed: {error:#}");
+        failed = true;
     }
 
     connected.session.close().await.ok();
-    Ok(0)
+    Ok(i32::from(failed))
 }
 
 async fn connect_portal(cli: &Cli) -> Result<portal::Connected> {
@@ -217,15 +238,22 @@ fn resolve_telemetry_output(cli: &Cli) -> Option<std::path::PathBuf> {
     }
 }
 
-fn spawn_video_recorder(cli: &Cli) -> Result<Option<Arc<video::VideoHandle>>> {
+fn spawn_video_recorder(
+    cli: &Cli,
+    finished: tokio::sync::oneshot::Sender<()>,
+) -> Result<Option<Arc<video::VideoHandle>>> {
     match &cli.record_video {
-        Some(video_path) => Ok(Some(Arc::new(video::spawn(video::VideoConfig {
-            output: video_path.clone(),
-            encoder: cli.video_encoder.clone(),
-            bitrate_kbps: cli.video_bitrate,
-            system_audio: cli.system_audio,
-            verbose: cli.verbose,
-        })?))),
+        Some(video_path) => Ok(Some(Arc::new(video::spawn(
+            video::VideoConfig {
+                output: video_path.clone(),
+                encoder: cli.video_encoder.clone(),
+                bitrate_kbps: cli.video_bitrate,
+                system_audio: cli.system_audio,
+                start_paused: cli.start_paused,
+                verbose: cli.verbose,
+            },
+            finished,
+        )?))),
         None => Ok(None),
     }
 }
@@ -253,14 +281,11 @@ async fn forward_stdin_commands(sender: &pipewire::channel::Sender<Command>) {
 
     while let Some(command) = stdin_rx.recv().await {
         let forwarded = match command {
-            StdinCommand::Stop => Command::Quit,
+            StdinCommand::Stop => return,
             StdinCommand::Pause => Command::Pause,
             StdinCommand::Resume => Command::Resume,
         };
         let _ = sender.send(forwarded);
-        if matches!(command, StdinCommand::Stop) {
-            return;
-        }
     }
     std::future::pending::<()>().await;
 }

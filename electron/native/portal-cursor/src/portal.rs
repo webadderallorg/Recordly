@@ -77,7 +77,7 @@ pub async fn connect(
         .await
         .context("Start request failed")?
         .response()
-        .context("screen cast selection was cancelled or denied")?;
+        .context("the ScreenCast portal did not start the selected source")?;
 
     let restore_token = response.restore_token().map(str::to_owned);
     let streams: Vec<StreamInfo> = response

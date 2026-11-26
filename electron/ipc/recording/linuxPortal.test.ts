@@ -42,6 +42,7 @@ import {
 	isLinuxPortalCaptureActive,
 	isLinuxPortalCaptureEnabled,
 	killLinuxPortalCaptureProcess,
+	LinuxPortalSelectionCancelled,
 	parsePortalProbeOutput,
 	pauseLinuxPortalCapture,
 	probeLinuxPortalCapture,
@@ -105,13 +106,19 @@ describe("linuxPortal capture backend", () => {
 	});
 
 	it("parses probe capability output cleanly", () => {
-		expect(parsePortalProbeOutput("CAPABILITY:cursor-modes=7 metadata=1\n", 0)).toEqual({
+		expect(
+			parsePortalProbeOutput("CAPABILITY:cursor-modes=7 metadata=1 protocol=2\n", 0),
+		).toEqual({
 			available: true,
 			cursorModes: 7,
 			message: undefined,
 		});
 		expect(
-			parsePortalProbeOutput("CAPABILITY:cursor-modes=3 metadata=0\n", 3, "no meta"),
+			parsePortalProbeOutput(
+				"CAPABILITY:cursor-modes=3 metadata=0 protocol=2\n",
+				3,
+				"no meta",
+			),
 		).toEqual({
 			available: false,
 			cursorModes: 3,
@@ -126,7 +133,7 @@ describe("linuxPortal capture backend", () => {
 
 	it("probes helper capability and handles missing binaries", async () => {
 		await expect(probeLinuxPortalCapture()).resolves.toMatchObject({ available: false });
-		await writeFakeHelper(`console.log("CAPABILITY:cursor-modes=7 metadata=1");`);
+		await writeFakeHelper(`console.log("CAPABILITY:cursor-modes=7 metadata=1 protocol=2");`);
 		await expect(probeLinuxPortalCapture()).resolves.toEqual({
 			available: true,
 			cursorModes: 7,
@@ -144,6 +151,7 @@ const videoPath = args[videoIdx + 1];
 fs.writeFileSync(videoPath, "webm-bytes");
 console.log("STREAM:node=42:id=-:source=Monitor:size=1920x1080:position=0,0:space=StreamLocal");
 console.log("VIDEO_START:1700000000000");
+console.log("READY");
 const rl = readline.createInterface({ input: process.stdin });
 rl.on("line", (line) => {
 	if (line === "pause") console.log("PAUSED");
@@ -176,10 +184,97 @@ process.on("SIGINT", () => process.exit(0));
 		expect(mocks.setCurrentProjectPath).toHaveBeenCalledWith(null);
 	});
 
-	it("notifies onUnexpectedExit and clears state if the helper dies after startup", async () => {
+	it("rejects a helper that fails after portal selection but before readiness", async () => {
+		await writeFakeHelper(`
+console.log("STREAM:node=42");
+console.error("ERROR:could not start encoder");
+process.exitCode = 1;
+`);
+		const onUnexpectedExit = vi.fn();
+		await expect(
+			startLinuxPortalCapture({ systemAudio: false, onUnexpectedExit }),
+		).rejects.toThrow("could not start encoder");
+		expect(onUnexpectedExit).not.toHaveBeenCalled();
+		expect(isLinuxPortalCaptureActive()).toBe(false);
+	});
+
+	it.each([
+		{
+			label: "header only",
+			dataSize: 0,
+			writtenSize: 0,
+			error: "without the requested system audio",
+		},
+		{
+			label: "truncated",
+			dataSize: 16,
+			writtenSize: 8,
+			error: "without the requested system audio",
+		},
+		{
+			label: "valid but interrupted",
+			dataSize: 8,
+			writtenSize: 8,
+			error: "incomplete system audio",
+		},
+	])("reports $label system audio while keeping the video", async ({
+		dataSize,
+		writtenSize,
+		error,
+	}) => {
+		await writeFakeHelper(`
+const fs = require("node:fs");
+const readline = require("node:readline");
+const video = process.argv[process.argv.indexOf("--record-video") + 1];
+const wav = Buffer.alloc(44 + ${writtenSize});
+wav.write("RIFF");
+wav.writeUInt32LE(36 + ${dataSize}, 4);
+wav.write("WAVE", 8);
+wav.writeUInt16LE(4, 32);
+wav.write("data", 36);
+wav.writeUInt32LE(${dataSize}, 40);
+fs.writeFileSync(video.replace(/\\.webm$/, ".system.wav"), wav);
+console.log("READY");
+readline.createInterface({input: process.stdin}).on("line", line => {
+	if (line === "stop") {
+		console.error("ERROR:system audio capture failed");
+		process.exitCode = 0;
+		process.stdin.destroy();
+	}
+});
+`);
+		const video = await startLinuxPortalCapture({ systemAudio: true });
+		const audio = video.replace(/\.webm$/, ".system.wav");
+		await expect(stopLinuxPortalCapture()).resolves.toMatchObject({
+			success: true,
+			path: video,
+			error: expect.stringContaining(error),
+		});
+		expect(mocks.recordNativeCaptureDiagnostics).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				processOutput: expect.stringContaining("system audio capture failed"),
+			}),
+		);
+		if (writtenSize > 0 && writtenSize === dataSize) {
+			expect(mocks.rememberApprovedLocalReadPath).toHaveBeenCalledWith(audio);
+		} else {
+			expect(mocks.rememberApprovedLocalReadPath).not.toHaveBeenCalledWith(audio);
+			await expect(fs.access(audio)).rejects.toMatchObject({ code: "ENOENT" });
+		}
+	});
+
+	it("uses a distinct status for cancellation by the portal", async () => {
+		await writeFakeHelper("process.exitCode = 4;");
+		await expect(startLinuxPortalCapture({ systemAudio: false })).rejects.toBeInstanceOf(
+			LinuxPortalSelectionCancelled,
+		);
+	});
+
+	it("keeps the output available for recovery when the helper dies after startup", async () => {
 		await writeFakeHelper(`
 console.log("STREAM:node=42:id=-:source=Monitor:size=1920x1080:position=0,0:space=StreamLocal");
 console.log("VIDEO_START:1700000000000");
+console.log("READY");
 setTimeout(() => process.exit(2), 50);
 `);
 		let resolveExited!: () => void;
@@ -192,6 +287,12 @@ setTimeout(() => process.exit(2), 50);
 			onUnexpectedExit: () => resolveExited(),
 		});
 		await exited;
+		expect(isLinuxPortalCaptureActive()).toBe(true);
+		await expect(stopLinuxPortalCapture()).resolves.toMatchObject({
+			success: true,
+			path: expect.stringMatching(/\.webm$/),
+			error: expect.stringContaining("ended unexpectedly"),
+		});
 		expect(isLinuxPortalCaptureActive()).toBe(false);
 	});
 
@@ -199,6 +300,8 @@ setTimeout(() => process.exit(2), 50);
 		await writeFakeHelper(`
 const readline = require("node:readline");
 console.log("STREAM:node=42:id=-:source=Monitor:size=1920x1080:position=0,0:space=StreamLocal");
+if (!process.argv.includes("--start-paused")) process.exit(2);
+console.log("READY");
 const rl = readline.createInterface({ input: process.stdin });
 rl.on("line", (line) => {
 	if (line === "pause") console.log("PAUSED");
@@ -210,10 +313,10 @@ rl.on("line", (line) => {
 
 		const outputPath = await startLinuxPortalCapture({
 			systemAudio: false,
+			startPaused: true,
 			trackProcess,
 		});
 		expect(trackProcess).toHaveBeenCalledOnce();
-		await expect(pauseLinuxPortalCapture()).resolves.toEqual({ success: true });
 
 		await expect(stopLinuxPortalCapture()).resolves.toEqual({
 			success: true,
@@ -221,6 +324,31 @@ rl.on("line", (line) => {
 		});
 		expect(mocks.discardRecordingFiles).toHaveBeenCalledWith(outputPath);
 		expect(mocks.validateRecordedVideo).not.toHaveBeenCalled();
+	});
+
+	it("waits for the first video frame when resuming after countdown", async () => {
+		await writeFakeHelper(`
+console.log("READY");
+const rl = require("node:readline").createInterface({ input: process.stdin });
+rl.on("line", line => {
+	if (line === "resume") {
+		console.log("RESUMED");
+		setTimeout(() => console.log("VIDEO_START:1700000000000"), 30);
+	} else if (line === "stop") process.exit(0);
+});
+`);
+		let firstVideoFrame = false;
+		await startLinuxPortalCapture({
+			systemAudio: false,
+			startPaused: true,
+			trackProcess: (child) =>
+				child.stdout.on("data", (chunk: Buffer) => {
+					if (chunk.toString().includes("VIDEO_START:")) firstVideoFrame = true;
+				}),
+		});
+		await expect(resumeLinuxPortalCapture()).resolves.toEqual({ success: true });
+		expect(firstVideoFrame).toBe(true);
+		await stopLinuxPortalCapture();
 	});
 
 	it("does not send SIGINT when stdin.write reports backpressure on stop", async () => {
@@ -233,6 +361,7 @@ const videoPath = args[videoIdx + 1];
 fs.writeFileSync(videoPath, "webm-bytes");
 console.log("STREAM:node=42:id=-:source=Monitor:size=1920x1080:position=0,0:space=StreamLocal");
 console.log("VIDEO_START:1700000000000");
+console.log("READY");
 const rl = readline.createInterface({ input: process.stdin });
 rl.on("line", (line) => {
 	if (line === "stop") {
@@ -251,7 +380,9 @@ process.on("SIGINT", () => process.exit(1));
 		});
 		expect(capturedChild).toBeDefined();
 		const child = capturedChild!;
-		const originalWrite = child.stdin.write.bind(child.stdin) as (...args: unknown[]) => boolean;
+		const originalWrite = child.stdin.write.bind(child.stdin) as (
+			...args: unknown[]
+		) => boolean;
 		vi.spyOn(child.stdin, "write").mockImplementation(((...args: unknown[]) => {
 			originalWrite(...args);
 			return false;

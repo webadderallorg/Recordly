@@ -139,7 +139,10 @@ export function useRecorderStartup(context: RecorderContext) {
 					return;
 				}
 				if (outcome === "finished" || startWasCancelled()) return;
-				if (outcome === "browser-fallback-needs-countdown") {
+				if (
+					outcome === "browser-fallback-needs-countdown" ||
+					(useNativeLinuxPortalCapture && !usingLinuxPortal)
+				) {
 					if (!(await runCountdown())) return;
 				} else if (shouldWarmStartNativeCapture) {
 					resetRecordingClock(Date.now());

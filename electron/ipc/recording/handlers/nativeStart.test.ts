@@ -26,6 +26,7 @@ vi.mock("../../register/sources", () => ({
 	bringSelectedWindowForward: mocks.bringSelectedWindowForward,
 }));
 vi.mock("../linuxPortal", () => ({
+	LinuxPortalSelectionCancelled: class extends Error {},
 	isLinuxPortalCaptureEnabled: mocks.isLinuxPortalCaptureEnabled,
 	startLinuxPortalCapture: mocks.startLinuxPortalCapture,
 }));
@@ -36,6 +37,7 @@ vi.mock("./startWindowsCapture", () => ({
 	startWindowsCapture: mocks.startWindowsCapture,
 }));
 
+import { LinuxPortalSelectionCancelled } from "../linuxPortal";
 import { registerNativeStart } from "./nativeStart";
 
 const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
@@ -95,14 +97,22 @@ describe("registerNativeStart", () => {
 		expect(mocks.startLinuxPortalCapture).not.toHaveBeenCalled();
 	});
 
+	it("tells the renderer when the user dismissed the Linux portal", async () => {
+		mocks.startLinuxPortalCapture.mockRejectedValueOnce(new LinuxPortalSelectionCancelled());
+		await expect(getStartHandler()(trustedEvent, source)).resolves.toEqual({
+			success: false,
+			captureCancelled: true,
+		});
+	});
+
 	it("passes boolean capturesSystemAudio cleanly on Linux portal start", async () => {
 		const handler = getStartHandler();
-		await expect(
-			handler(trustedEvent, source, { capturesSystemAudio: true }),
-		).resolves.toEqual({
-			success: true,
-			microphoneFallbackRequired: false,
-		});
+		await expect(handler(trustedEvent, source, { capturesSystemAudio: true })).resolves.toEqual(
+			{
+				success: true,
+				microphoneFallbackRequired: false,
+			},
+		);
 		expect(mocks.startLinuxPortalCapture).toHaveBeenLastCalledWith(
 			expect.objectContaining({ systemAudio: true }),
 		);

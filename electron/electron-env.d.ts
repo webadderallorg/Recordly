@@ -326,6 +326,7 @@ interface Window {
 				capturesMicrophone?: boolean;
 				microphoneDeviceId?: string;
 				microphoneLabel?: string;
+				startLinuxCapturePaused?: boolean;
 			},
 		) => Promise<{
 			success: boolean;
@@ -333,6 +334,7 @@ interface Window {
 			message?: string;
 			error?: string;
 			userNotified?: boolean;
+			captureCancelled?: boolean;
 			microphoneFallbackRequired?: boolean;
 			systemAudioCaptureUnavailable?: boolean;
 		}>;
@@ -1316,7 +1318,9 @@ interface Window {
 		appendExportDiagnostic: (entry: string) => Promise<{ success: boolean }>;
 		getExportDiagnostics: () => Promise<{ success: boolean; logs: string[] }>;
 		appendAppDiagnostics: (entries: string[]) => Promise<{ success: boolean }>;
-		recordOperationDiagnostic: (event: import("../src/shared/operationDiagnostics").OperationEvent) => void;
+		recordOperationDiagnostic: (
+			event: import("../src/shared/operationDiagnostics").OperationEvent,
+		) => void;
 		getAppDiagnostics: () => Promise<{
 			success: boolean;
 			logs: string[];

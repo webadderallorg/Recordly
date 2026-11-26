@@ -65,11 +65,14 @@ export function registerNativeControls(
 			}
 		}
 
+		if (process.platform === "linux" && isLinuxPortalCaptureActive()) {
+			const token = ownerRecovery.sessionToken;
+			const result = await ownerRecovery.stop();
+			ownerRecovery.complete(token);
+			return result;
+		}
 		if (process.platform !== "darwin") {
-			return {
-				success: false,
-				message: "Native screen recording recovery is only available on macOS.",
-			};
+			return { success: false, message: "No recoverable native recording was found." };
 		}
 
 		const recovered = await recoverNativeMacCaptureOutput();

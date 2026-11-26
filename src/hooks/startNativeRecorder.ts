@@ -91,6 +91,7 @@ export async function startNativeRecorder(
 			capturesMicrophone: microphoneEnabled,
 			microphoneDeviceId,
 			microphoneLabel: micLabel,
+			...(shouldPostStartCountdown ? { startLinuxCapturePaused: true } : {}),
 		});
 		if (nativeResult.success && startWasCancelled()) {
 			nativeScreenRecording.current = true;
@@ -119,7 +120,7 @@ export async function startNativeRecorder(
 				}
 			} else if (useNativeLinuxPortalCapture) {
 				const reason = nativeResult.error ?? nativeResult.message ?? "";
-				if (/cancel|denied/i.test(reason)) {
+				if (nativeResult.captureCancelled) {
 					setRecording(false);
 					cleanupCapturedMedia();
 					await stopWebcamRecorder();
@@ -148,16 +149,16 @@ export async function startNativeRecorder(
 			nativeWindowsRecording.current = useNativeWindowsCapture;
 			if (shouldWarmStartNativeCapture || shouldPostStartCountdown) {
 				nativeWarmStartActive.current = true;
-				const pauseResult = await window.electronAPI.pauseNativeScreenRecording();
-				if (startWasCancelled()) {
-					return "finished";
-				}
-				if (!pauseResult.success) {
-					throw new Error(
-						pauseResult.error ??
-							pauseResult.message ??
-							"Failed to pause native capture before countdown",
-					);
+				if (shouldWarmStartNativeCapture) {
+					const pauseResult = await window.electronAPI.pauseNativeScreenRecording();
+					if (startWasCancelled()) return "finished";
+					if (!pauseResult.success) {
+						throw new Error(
+							pauseResult.error ??
+								pauseResult.message ??
+								"Failed to pause native capture before countdown",
+						);
+					}
 				}
 
 				const countdownResult = await (countdown ?? startCountdown());

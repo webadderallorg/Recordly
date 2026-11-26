@@ -15,6 +15,8 @@ import {
 import { discardRecordingFiles } from "./discardFiles";
 import { attachNativeCaptureStdinLifecycle } from "./nativeCaptureCommand";
 
+export class LinuxPortalSelectionCancelled extends Error {}
+
 export type LinuxPortalProbeResult = {
 	available: boolean;
 	cursorModes?: number;
@@ -22,6 +24,7 @@ export type LinuxPortalProbeResult = {
 };
 
 const START_TIMEOUT_MS = 180_000;
+const READY_TIMEOUT_MS = 20_000;
 const PROBE_TIMEOUT_MS = 5_000;
 const COMMAND_TIMEOUT_MS = 5_000;
 const STOP_TIMEOUT_MS = 30_000;
@@ -36,6 +39,7 @@ let captureError = "";
 let capturePaused = false;
 let captureStopRequested = false;
 let captureVideoStarted = false;
+let captureAudioFailed = false;
 
 function appendBounded(current: string, chunk: string): string {
 	const combined = current + chunk;
@@ -52,6 +56,7 @@ function resetCaptureState(): void {
 	capturePaused = false;
 	captureStopRequested = false;
 	captureVideoStarted = false;
+	captureAudioFailed = false;
 }
 
 export function isLinuxPortalCaptureEnabled(
@@ -74,7 +79,9 @@ export function parsePortalProbeOutput(
 	code: number | null,
 	stderr?: string,
 ): LinuxPortalProbeResult {
-	const match = stdout.match(/CAPABILITY:cursor-modes=(\d+)\s+metadata=(\d)/);
+	const match = stdout.match(
+		/^CAPABILITY:cursor-modes=(\d+)\s+metadata=([01])\s+protocol=2\r?$/m,
+	);
 	const cursorModes = match ? Number(match[1]) : undefined;
 	return {
 		available: code === 0 && match?.[2] === "1",
@@ -85,7 +92,6 @@ export function parsePortalProbeOutput(
 
 export function killLinuxPortalCaptureProcess(): void {
 	const child = captureProcess;
-	captureStopRequested = true;
 	resetCaptureState();
 	if (child) {
 		try {
@@ -143,7 +149,11 @@ function sendPortalCommand(
 
 		const onStdout = (chunk: Buffer) => {
 			stdoutBuffer = appendBounded(stdoutBuffer, chunk.toString());
-			if (markerPattern.test(stdoutBuffer)) {
+			// A countdown starts the helper paused. Wait for real video after resuming.
+			if (
+				markerPattern.test(stdoutBuffer) &&
+				(command !== "resume\n" || captureVideoStarted)
+			) {
 				acknowledged = true;
 				maybeComplete();
 			}
@@ -217,9 +227,6 @@ export async function resumeLinuxPortalCapture(): Promise<{
 	if (!captureProcess) {
 		return { success: false, message: "No Linux portal capture is active." };
 	}
-	if (!capturePaused) {
-		return { success: true };
-	}
 	try {
 		await sendPortalCommand(captureProcess, "resume\n", "RESUMED");
 		capturePaused = false;
@@ -284,6 +291,7 @@ export async function probeLinuxPortalCapture(): Promise<LinuxPortalProbeResult>
 
 export async function startLinuxPortalCapture(options: {
 	systemAudio: boolean;
+	startPaused?: boolean;
 	onUnexpectedExit?: () => void;
 	trackProcess?: (child: ChildProcessWithoutNullStreams) => void;
 }): Promise<string> {
@@ -314,6 +322,7 @@ export async function startLinuxPortalCapture(options: {
 			"--start-epoch-ms",
 			String(timestamp),
 			...(options.systemAudio ? ["--system-audio"] : []),
+			...(options.startPaused ? ["--start-paused"] : []),
 			...(process.env.RECORDLY_LINUX_PORTAL_CURSOR_PERSIST === "1" ? [] : ["--no-persist"]),
 		],
 		{ stdio: ["pipe", "pipe", "pipe"] },
@@ -327,26 +336,30 @@ export async function startLinuxPortalCapture(options: {
 	captureSystemAudioPath = systemAudioPath;
 	captureOutput = "";
 	captureError = "";
-	capturePaused = false;
+	capturePaused = options.startPaused === true;
 	captureStopRequested = false;
 	captureVideoStarted = false;
+	captureAudioFailed = false;
 
 	let started = false;
 	child.stdout.on("data", (chunk: Buffer) => {
+		if (captureProcess !== child) return;
 		captureOutput = appendBounded(captureOutput, chunk.toString());
 		if (/^VIDEO_START:/m.test(captureOutput)) {
 			captureVideoStarted = true;
 		}
 	});
 	child.stderr.on("data", (chunk: Buffer) => {
+		if (captureProcess !== child) return;
 		captureError = appendBounded(captureError, chunk.toString());
+		if (/^ERROR:(?:system audio|failed to finalize system audio)/m.test(captureError)) {
+			captureAudioFailed = true;
+		}
 	});
 	child.once("close", () => {
 		const wasUnexpected = started && !captureStopRequested && captureProcess === child;
-		if (captureProcess === child) {
-			resetCaptureState();
-		}
 		if (wasUnexpected) {
+			// Keep the closed child and its output paths available to the recovery IPC.
 			options.onUnexpectedExit?.();
 		}
 	});
@@ -361,6 +374,9 @@ export async function startLinuxPortalCapture(options: {
 		} catch {
 			// ignore
 		}
+		const processOutput = [captureOutput.trim(), captureError.trim()]
+			.filter(Boolean)
+			.join("\n");
 		if (captureProcess === child) {
 			resetCaptureState();
 		}
@@ -370,8 +386,7 @@ export async function startLinuxPortalCapture(options: {
 			helperPath: binary,
 			outputPath,
 			systemAudioPath,
-			processOutput:
-				[captureOutput.trim(), captureError.trim()].filter(Boolean).join("\n") || undefined,
+			processOutput: processOutput || undefined,
 			error: String(error),
 		});
 		throw error;
@@ -405,13 +420,6 @@ export async function stopLinuxPortalCapture(): Promise<{
 
 	const wasPausedBeforeFirstFrame = capturePaused && !captureVideoStarted;
 	captureStopRequested = true;
-	captureProcess = null;
-	captureVideoPath = null;
-	captureBinaryPath = null;
-	captureSystemAudioPath = null;
-	capturePaused = false;
-	captureVideoStarted = false;
-
 	const exited =
 		child.exitCode !== null || child.signalCode !== null
 			? Promise.resolve()
@@ -465,13 +473,19 @@ export async function stopLinuxPortalCapture(): Promise<{
 		timer.unref?.();
 	});
 
+	let processOutput = "";
+	let helperError = "";
+	let audioFailed = false;
 	try {
 		await Promise.race([exited, timeout]);
 	} finally {
+		processOutput = [captureOutput.trim(), captureError.trim()].filter(Boolean).join("\n");
+		helperError = captureError.trim();
+		audioFailed = captureAudioFailed;
 		if (timer) {
 			clearTimeout(timer);
 		}
-		captureStopRequested = false;
+		if (captureProcess === child) resetCaptureState();
 	}
 
 	if (wasPausedBeforeFirstFrame) {
@@ -490,21 +504,38 @@ export async function stopLinuxPortalCapture(): Promise<{
 		validation = await validateRecordedVideo(outputPath);
 	} catch (error) {
 		const size = await getFileSizeIfPresent(outputPath);
-		if ((size ?? 0) < 1024 && captureError.trim()) {
-			throw new Error(captureError.trim());
+		if ((size ?? 0) < 1024 && helperError) {
+			throw new Error(helperError);
 		}
 		throw error;
 	}
 
 	await rememberApprovedLocalReadPath(outputPath);
-	const resolvedSystemAudioPath =
-		systemAudioPath && (await getFileSizeIfPresent(systemAudioPath)) ? systemAudioPath : null;
-	if (resolvedSystemAudioPath) {
-		await rememberApprovedLocalReadPath(resolvedSystemAudioPath);
+	let audioWarning: string | undefined;
+	let resolvedSystemAudioPath: string | null = null;
+	if (systemAudioPath) {
+		if (await hasPortalAudioSamples(systemAudioPath)) {
+			resolvedSystemAudioPath = systemAudioPath;
+			await rememberApprovedLocalReadPath(systemAudioPath);
+		} else {
+			await fs.rm(systemAudioPath, { force: true }).catch((error) => {
+				console.warn("Could not remove an invalid Wayland audio sidecar:", error);
+			});
+		}
+		if (!resolvedSystemAudioPath || audioFailed) {
+			audioWarning = resolvedSystemAudioPath
+				? "The recording was saved with incomplete system audio."
+				: "The recording was saved without the requested system audio.";
+		}
 	}
+	const processError =
+		child.exitCode !== 0 || child.signalCode
+			? "Wayland screen capture ended unexpectedly. The available footage was saved."
+			: undefined;
 	setCurrentVideoPath(outputPath);
 	setCurrentProjectPath(null);
 
+	const warning = [processError, audioWarning].filter(Boolean).join(" ");
 	recordNativeCaptureDiagnostics({
 		backend: "linux-portal",
 		phase: "stop",
@@ -512,14 +543,49 @@ export async function stopLinuxPortalCapture(): Promise<{
 		outputPath,
 		systemAudioPath: resolvedSystemAudioPath,
 		fileSizeBytes: validation.fileSizeBytes,
-		processOutput: captureOutput.trim() || undefined,
+		processOutput: processOutput || undefined,
+		error: warning || undefined,
 	});
 
 	return {
 		success: true,
 		path: outputPath,
 		message: "Linux portal capture complete",
+		...(warning ? { error: warning } : {}),
 	};
+}
+
+// The native helper writes a fixed 44-byte PCM header. A successful file open
+// alone is insufficient because the helper creates that header before capturing audio.
+async function hasPortalAudioSamples(audioPath: string) {
+	try {
+		const file = await fs.open(audioPath, "r");
+		try {
+			const header = Buffer.alloc(44);
+			const { bytesRead } = await file.read(header, 0, header.length, 0);
+			if (
+				bytesRead !== header.length ||
+				header.toString("ascii", 0, 4) !== "RIFF" ||
+				header.toString("ascii", 8, 12) !== "WAVE" ||
+				header.toString("ascii", 36, 40) !== "data"
+			)
+				return false;
+			const dataSize = header.readUInt32LE(40);
+			const frameSize = header.readUInt16LE(32);
+			const stat = await file.stat();
+			return (
+				frameSize > 0 &&
+				dataSize >= frameSize &&
+				dataSize % frameSize === 0 &&
+				header.readUInt32LE(4) === dataSize + 36 &&
+				stat.size >= dataSize + header.length
+			);
+		} finally {
+			await file.close();
+		}
+	} catch {
+		return false;
+	}
 }
 
 function waitForStart(child: ChildProcessWithoutNullStreams): Promise<void> {
@@ -541,12 +607,28 @@ function waitForStart(child: ChildProcessWithoutNullStreams): Promise<void> {
 			}
 		};
 
+		let selected = false;
 		const onData = () => {
-			if (/^STREAM:/m.test(captureOutput)) {
+			if (/^READY\r?$/m.test(captureOutput)) {
 				finish();
+			} else if (!selected && /^STREAM:/m.test(captureOutput)) {
+				selected = true;
+				clearTimeout(timer);
+				timer = setTimeout(() => {
+					finish(new Error("Timed out preparing the selected Wayland stream."));
+				}, READY_TIMEOUT_MS);
+				timer.unref?.();
 			}
 		};
 		const onClose = (code: number | null) => {
+			if (code === 4) {
+				finish(
+					new LinuxPortalSelectionCancelled(
+						"The Wayland screen share dialog was cancelled.",
+					),
+				);
+				return;
+			}
 			finish(
 				new Error(
 					captureError.trim() || `The portal capture helper exited with code ${code}.`,
@@ -556,8 +638,8 @@ function waitForStart(child: ChildProcessWithoutNullStreams): Promise<void> {
 		const onError = (error: Error) => {
 			finish(new Error(`Failed to spawn the portal capture helper: ${error.message}`));
 		};
-		const timer = setTimeout(() => {
-			finish(new Error("Timed out waiting for the screen share dialog."));
+		let timer = setTimeout(() => {
+			finish(new Error("Timed out waiting for Wayland screen capture to start."));
 		}, START_TIMEOUT_MS);
 		timer.unref?.();
 

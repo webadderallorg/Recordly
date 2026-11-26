@@ -651,6 +651,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			capturesMicrophone?: boolean;
 			microphoneDeviceId?: string;
 			microphoneLabel?: string;
+			startLinuxCapturePaused?: boolean;
 		},
 	) => {
 		return invokeWithDiagnostics("start-native-screen-recording", source, options);

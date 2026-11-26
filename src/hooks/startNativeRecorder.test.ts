@@ -161,7 +161,11 @@ describe("startNativeRecorder countdown overlap", () => {
 		expect(api.startCountdown).not.toHaveBeenCalled();
 
 		resolveNative({ success: true, microphoneFallbackRequired: false });
-		await vi.waitFor(() => expect(api.pauseNativeScreenRecording).toHaveBeenCalledOnce());
+		expect(api.startNativeScreenRecording).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ startLinuxCapturePaused: true }),
+		);
+		expect(api.pauseNativeScreenRecording).not.toHaveBeenCalled();
 		await vi.waitFor(() => expect(api.startCountdown).toHaveBeenCalledExactlyOnceWith(3));
 		expect(api.resumeNativeScreenRecording).not.toHaveBeenCalled();
 
@@ -180,7 +184,7 @@ describe("startNativeRecorder countdown overlap", () => {
 			useNativeLinuxPortalCapture: true,
 			shouldPostStartCountdown: true,
 		});
-		resolveNative({ success: false, error: "screen cast selection was cancelled or denied" });
+		resolveNative({ success: false, captureCancelled: true });
 		await expect(started).resolves.toBe("failed");
 		expect(api.startCountdown).not.toHaveBeenCalled();
 		expect(context.cleanupCapturedMedia).toHaveBeenCalledOnce();
@@ -196,7 +200,7 @@ describe("startNativeRecorder countdown overlap", () => {
 			useNativeLinuxPortalCapture: true,
 			shouldPostStartCountdown: true,
 		});
-		resolveNative({ success: false, error: "Failed to spawn helper" });
+		resolveNative({ success: false, error: "Filesink failed: permission denied" });
 		await expect(started).resolves.toBe("browser-fallback");
 		expect(api.startCountdown).not.toHaveBeenCalled();
 		warn.mockRestore();

@@ -47,6 +47,7 @@ export type NativeMacRecordingOptions = {
 	capturesMicrophone?: boolean;
 	microphoneDeviceId?: string;
 	microphoneLabel?: string;
+	startLinuxCapturePaused?: boolean;
 };
 
 export type WindowBounds = {
