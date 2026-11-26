@@ -28,15 +28,19 @@ export async function startNativeRecorder(
 	{
 		selectedSource,
 		useNativeWindowsCapture,
+		useNativeLinuxPortalCapture = false,
 		micLabel,
 		shouldWarmStartNativeCapture,
+		shouldPostStartCountdown = false,
 		startWasCancelled,
 		webcamReady,
 	}: {
 		selectedSource: ProcessedDesktopSource;
 		useNativeWindowsCapture: boolean;
+		useNativeLinuxPortalCapture?: boolean;
 		micLabel?: string;
 		shouldWarmStartNativeCapture: boolean;
+		shouldPostStartCountdown?: boolean;
 		startWasCancelled: () => boolean;
 		/** Webcam opening runs while ScreenCaptureKit starts; await before beginning its capture. */
 		webcamReady?: Promise<void>;
@@ -113,6 +117,18 @@ export async function startNativeRecorder(
 						),
 					);
 				}
+			} else if (useNativeLinuxPortalCapture) {
+				const reason = nativeResult.error ?? nativeResult.message ?? "";
+				if (/cancel|denied/i.test(reason)) {
+					setRecording(false);
+					cleanupCapturedMedia();
+					await stopWebcamRecorder();
+					return "failed";
+				}
+				console.warn(
+					"Native Linux portal capture failed, falling back to browser capture:",
+					reason,
+				);
 			} else if (!nativeResult.userNotified) {
 				throw new Error(
 					nativeResult.error ??
@@ -130,7 +146,7 @@ export async function startNativeRecorder(
 		if (nativeResult.success) {
 			nativeScreenRecording.current = true;
 			nativeWindowsRecording.current = useNativeWindowsCapture;
-			if (shouldWarmStartNativeCapture) {
+			if (shouldWarmStartNativeCapture || shouldPostStartCountdown) {
 				nativeWarmStartActive.current = true;
 				const pauseResult = await window.electronAPI.pauseNativeScreenRecording();
 				if (startWasCancelled()) {
