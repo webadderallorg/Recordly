@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
-import { ipcMain } from "electron";
+import { type IpcMainInvokeEvent, ipcMain } from "electron";
+import { isTrustedRenderer } from "../../../trustedRenderer";
 import {
 	normalizeCursorTelemetrySamples,
 	pauseCursorCaptureAtBoundary,
@@ -16,6 +17,23 @@ import {
 } from "../../utils";
 import { getSystemCursorAssets } from "./systemCursorAssets";
 
+function assertTrustedCursorCaller(event: IpcMainInvokeEvent) {
+	if (!isTrustedRenderer(event)) {
+		throw new Error("Untrusted recording caller");
+	}
+}
+
+function resolveTargetVideoPath(videoPath: unknown): { valid: boolean; path: string | null } {
+	if (videoPath !== undefined && videoPath !== null && typeof videoPath !== "string") {
+		return { valid: false, path: null };
+	}
+
+	return {
+		valid: true,
+		path: normalizeVideoSourcePath(videoPath ?? currentVideoPath),
+	};
+}
+
 function normalizeRendererTimestampMs(value: unknown) {
 	const nowMs = Date.now();
 	if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -26,7 +44,8 @@ function normalizeRendererTimestampMs(value: unknown) {
 }
 
 export function registerCursorHandlers() {
-	ipcMain.handle("get-system-cursor-assets", async () => {
+	ipcMain.handle("get-system-cursor-assets", async (event) => {
+		assertTrustedCursorCaller(event);
 		try {
 			return { success: true, cursors: await getSystemCursorAssets() };
 		} catch (error) {
@@ -35,19 +54,32 @@ export function registerCursorHandlers() {
 		}
 	});
 
-	ipcMain.handle("pause-cursor-capture", (_, pausedAtMs?: unknown) => {
+	ipcMain.handle("pause-cursor-capture", (event, pausedAtMs?: unknown) => {
+		assertTrustedCursorCaller(event);
 		pauseCursorCaptureAtBoundary(normalizeRendererTimestampMs(pausedAtMs));
 		return { success: true };
 	});
 
-	ipcMain.handle("resume-cursor-capture", (_, resumedAtMs?: unknown) => {
+	ipcMain.handle("resume-cursor-capture", (event, resumedAtMs?: unknown) => {
+		assertTrustedCursorCaller(event);
 		resumeCursorCapture(normalizeRendererTimestampMs(resumedAtMs));
 		sampleCursorPoint();
 		return { success: true };
 	});
 
-	ipcMain.handle("get-cursor-telemetry", async (_, videoPath?: string) => {
-		const targetVideoPath = normalizeVideoSourcePath(videoPath ?? currentVideoPath);
+	ipcMain.handle("get-cursor-telemetry", async (event, videoPath?: unknown) => {
+		assertTrustedCursorCaller(event);
+		const resolved = resolveTargetVideoPath(videoPath);
+		if (!resolved.valid) {
+			return {
+				success: false,
+				message: "Invalid video path for cursor telemetry",
+				error: "Invalid video path",
+				samples: [],
+			};
+		}
+
+		const targetVideoPath = resolved.path;
 		if (!targetVideoPath) {
 			return { success: true, samples: [] };
 		}
@@ -83,31 +115,51 @@ export function registerCursorHandlers() {
 		}
 	});
 
-	ipcMain.handle(
-		"set-cursor-telemetry",
-		async (_, videoPath: string | undefined, samples: CursorTelemetryPoint[]) => {
-			const targetVideoPath = normalizeVideoSourcePath(videoPath ?? currentVideoPath);
-			if (!targetVideoPath) {
-				return {
-					success: false,
-					samples: [],
-					message: "No video path available for cursor telemetry",
-					error: "Missing video path",
-				};
-			}
+	ipcMain.handle("set-cursor-telemetry", async (event, videoPath: unknown, samples: unknown) => {
+		assertTrustedCursorCaller(event);
+		const resolved = resolveTargetVideoPath(videoPath);
+		if (!resolved.valid) {
+			return {
+				success: false,
+				samples: [],
+				message: "Invalid video path for cursor telemetry",
+				error: "Invalid video path",
+			};
+		}
 
-			try {
-				const normalizedSamples = await writeCursorTelemetry(targetVideoPath, samples);
-				return { success: true, samples: normalizedSamples };
-			} catch (error) {
-				console.error("Failed to save cursor telemetry:", error);
-				return {
-					success: false,
-					samples: [],
-					message: "Failed to save cursor telemetry",
-					error: String(error),
-				};
-			}
-		},
-	);
+		if (!Array.isArray(samples)) {
+			return {
+				success: false,
+				samples: [],
+				message: "Invalid cursor telemetry samples",
+				error: "Expected an array of cursor samples",
+			};
+		}
+
+		const targetVideoPath = resolved.path;
+		if (!targetVideoPath) {
+			return {
+				success: false,
+				samples: [],
+				message: "No video path available for cursor telemetry",
+				error: "Missing video path",
+			};
+		}
+
+		try {
+			const normalizedSamples = await writeCursorTelemetry(
+				targetVideoPath,
+				samples as CursorTelemetryPoint[],
+			);
+			return { success: true, samples: normalizedSamples };
+		} catch (error) {
+			console.error("Failed to save cursor telemetry:", error);
+			return {
+				success: false,
+				samples: [],
+				message: "Failed to save cursor telemetry",
+				error: String(error),
+			};
+		}
+	});
 }
