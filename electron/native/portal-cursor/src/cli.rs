@@ -13,6 +13,10 @@ pub enum PositionSpaceArg {
     version,
     about = "Wayland ScreenCast portal cursor-metadata helper for Recordly"
 )]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "CLI flags mapped directly by clap::Parser"
+)]
 pub struct Cli {
     #[arg(long, help = "Check xdg-desktop-portal cursor mode support and exit")]
     pub probe: bool,

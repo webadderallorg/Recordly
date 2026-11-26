@@ -41,8 +41,8 @@ impl AudioRecorder {
             "caps",
             gst::Caps::builder("audio/x-raw")
                 .field("format", "S16LE")
-                .field("rate", SAMPLE_RATE as i32)
-                .field("channels", CHANNELS as i32)
+                .field("rate", i32::try_from(SAMPLE_RATE).unwrap_or(i32::MAX))
+                .field("channels", i32::from(CHANNELS))
                 .build(),
         );
         let appsink = gst::ElementFactory::make("appsink")
@@ -110,7 +110,8 @@ impl AudioRecorder {
                     self.failed.store(true, Ordering::SeqCst);
                     break;
                 }
-                self.data_bytes = self.data_bytes.saturating_add(bytes.len() as u32);
+                let byte_len = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
+                self.data_bytes = self.data_bytes.saturating_add(byte_len);
             }
         }
     }
@@ -143,7 +144,7 @@ fn patch_wav_header(file: &mut File, data_bytes: u32) -> std::io::Result<()> {
 
 pub fn wav_header(data_bytes: u32) -> [u8; HEADER_SIZE as usize] {
     let mut header = [0u8; HEADER_SIZE as usize];
-    let byte_rate = SAMPLE_RATE * CHANNELS as u32 * BYTES_PER_SAMPLE as u32;
+    let byte_rate = SAMPLE_RATE * u32::from(CHANNELS) * u32::from(BYTES_PER_SAMPLE);
     let block_align = CHANNELS * BYTES_PER_SAMPLE;
     header[0..4].copy_from_slice(b"RIFF");
     header[4..8].copy_from_slice(&(data_bytes.saturating_add(HEADER_SIZE - 8)).to_le_bytes());

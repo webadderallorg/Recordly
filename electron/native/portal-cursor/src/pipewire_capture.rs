@@ -40,14 +40,14 @@ impl PauseState {
     fn pause(&mut self) {
         if !self.paused {
             self.paused = true;
-            self.pause_started = Some(std::time::Instant::now());
+            self.pause_started = Some(Instant::now());
         }
     }
 
     fn resume(&mut self) {
         if self.paused {
             if let Some(started) = self.pause_started.take() {
-                self.accumulated_ns += started.elapsed().as_nanos() as i64;
+                self.accumulated_ns += duration_to_ns(started.elapsed());
             }
             self.paused = false;
         }
@@ -56,6 +56,10 @@ impl PauseState {
     pub(crate) fn snapshot(&self) -> (bool, i64) {
         (self.paused, self.accumulated_ns)
     }
+}
+
+pub(crate) fn duration_to_ns(duration: Duration) -> i64 {
+    i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX)
 }
 
 pub struct CaptureConfig {
@@ -108,324 +112,414 @@ pub fn spawn(
 ) -> Result<(pw::channel::Sender<Command>, JoinHandle<Result<()>>)> {
     let (sender, receiver) = pw::channel::channel::<Command>();
     let raw_samples = Arc::new(Mutex::new(Vec::<telemetry::RawSample>::new()));
-    let thread_samples = Arc::clone(&raw_samples);
     let anchor = Arc::new(Mutex::new(None::<Anchor>));
-    let thread_anchor = Arc::clone(&anchor);
     let last_position = Arc::new(Mutex::new(None::<(f64, f64)>));
-    let thread_position = Arc::clone(&last_position);
-    let click_position = Arc::clone(&last_position);
     let cursor_visible = Arc::new(AtomicBool::new(false));
-    let thread_visible = Arc::clone(&cursor_visible);
-    let click_visible = Arc::clone(&cursor_visible);
     let pause = Arc::new(Mutex::new(PauseState::default()));
-    let thread_pause = Arc::clone(&pause);
-    let command_pause = Arc::clone(&pause);
     let timeline = Arc::new(Mutex::new(VideoTimeline::default()));
-    let thread_timeline = Arc::clone(&timeline);
-    let timer_timeline = Arc::clone(&timeline);
-    let timer_pause = Arc::clone(&pause);
-    let timer_video = config.video.clone();
-    let timer_verbose = config.verbose;
-    let timer_frame_interval_ns: i64 = std::env::var("RECORDLY_PORTAL_CURSOR_KEEPALIVE_MS")
-        .ok()
-        .and_then(|value| value.parse::<i64>().ok())
-        .map(|millis| millis * 1_000_000)
-        .unwrap_or(FRAME_INTERVAL_NS);
-    let quit_video = config.video.clone();
-    let command_video = config.video.clone();
-    let start_epoch = Arc::clone(&config.start_epoch_ms);
-    let output = config.output.clone();
-    let verbose = config.verbose;
+    let timer_frame_interval_ns = configure_keepalive_interval_ns();
 
     crate::clicks::start(
-        Arc::clone(&raw_samples),
-        Arc::clone(&anchor),
-        Arc::clone(&pause),
-        click_position,
-        click_visible,
-        verbose,
+        &raw_samples,
+        &anchor,
+        &pause,
+        &last_position,
+        &cursor_visible,
+        config.verbose,
     );
+
+    let thread_context = CaptureThreadContext {
+        config,
+        raw_samples,
+        anchor,
+        pause,
+        last_position,
+        cursor_visible,
+        timeline,
+        timer_frame_interval_ns,
+    };
 
     let handle = std::thread::Builder::new()
         .name("recordly-pipewire-capture".into())
-        .spawn(move || -> Result<()> {
-            pw::init();
-
-            let theme_name = config
-                .cursor_theme
-                .clone()
-                .unwrap_or_else(cursor_shape::detect_theme);
-            let theme = cursor_shape::load_theme(&theme_name);
-            if verbose {
-                eprintln!("[shape] theme {theme_name} ({} cursor files)", theme.len());
-            }
-
-            let mainloop = pw::main_loop::MainLoopRc::new(None)
-                .context("failed to create PipeWire main loop")?;
-            let context = pw::context::ContextRc::new(&mainloop, None)
-                .context("failed to create PipeWire context")?;
-            let core = context
-                .connect_fd_rc(fd, None)
-                .context("failed to connect to the portal PipeWire remote")?;
-
-            let props = properties! {
-                *pw::keys::MEDIA_TYPE => "Video",
-                *pw::keys::MEDIA_CATEGORY => "Capture",
-                *pw::keys::MEDIA_ROLE => "Screen",
-            };
-            let stream = pw::stream::StreamBox::new(&core, "recordly-portal-cursor", props)
-                .context("failed to create PipeWire stream")?;
-
-            let node_id = config.node_id;
-            let state = CaptureState {
-                config,
-                raw_samples: thread_samples,
-                theme,
-                type_by_cursor_id: HashMap::new(),
-                current_type: None,
-                video_size: None,
-                video_format: None,
-                timeline: thread_timeline,
-                anchor: thread_anchor,
-                pause: thread_pause,
-                last_position: thread_position,
-                cursor_visible: thread_visible,
-                buffer_count: 0,
-                cursor_meta_count: 0,
-                last: None,
-            };
-
-            let listener = stream
-                .add_local_listener_with_user_data(state)
-                .state_changed(|_, state, old, new| {
-                    if state.config.verbose {
-                        eprintln!("[pw] state {old:?} -> {new:?}");
-                    }
-                })
-                .param_changed(|stream, state, id, param| {
-                    let Some(param) = param else {
-                        return;
-                    };
-                    if id != spa::param::ParamType::Format.as_raw() {
-                        return;
-                    }
-                    let Ok((media_type, media_subtype)) =
-                        spa::param::format_utils::parse_format(param)
-                    else {
-                        return;
-                    };
-                    if media_type != spa::param::format::MediaType::Video
-                        || media_subtype != spa::param::format::MediaSubtype::Raw
-                    {
-                        return;
-                    }
-                    let mut format = spa::param::video::VideoInfoRaw::default();
-                    if format.parse(param).is_ok() {
-                        state.video_size = Some((format.size().width, format.size().height));
-                        state.video_format =
-                            cursor_shape::PixelFormat::from_spa(format.format().as_raw());
-                        if let (Some(video), Some(_pixel_format)) =
-                            (&state.config.video, state.video_format)
-                        {
-                            video.set_video_caps("I420", format.size().width, format.size().height);
-                        }
-                        if state.config.verbose {
-                            eprintln!(
-                                "[pw] video format {:#010x} {}x{}",
-                                format.format().as_raw(),
-                                format.size().width,
-                                format.size().height
-                            );
-                        }
-                        if let Err(error) = request_buffer_metadata(stream) {
-                            eprintln!("[pw] failed to request buffer metadata: {error:#}");
-                        }
-                    }
-                })
-                .process(|stream, state| {
-                    handle_process(stream, state);
-                })
-                .register()
-                .context("failed to register the PipeWire stream listener")?;
-
-            let format = spa::pod::object!(
-                spa::utils::SpaTypes::ObjectParamFormat,
-                spa::param::ParamType::EnumFormat,
-                spa::pod::property!(
-                    spa::param::format::FormatProperties::MediaType,
-                    Id,
-                    spa::param::format::MediaType::Video
-                ),
-                spa::pod::property!(
-                    spa::param::format::FormatProperties::MediaSubtype,
-                    Id,
-                    spa::param::format::MediaSubtype::Raw
-                ),
-                spa::pod::property!(
-                    spa::param::format::FormatProperties::VideoFormat,
-                    Choice,
-                    Enum,
-                    Id,
-                    spa::param::video::VideoFormat::BGRx,
-                    spa::param::video::VideoFormat::BGRx,
-                    spa::param::video::VideoFormat::BGRA,
-                    spa::param::video::VideoFormat::RGBA,
-                    spa::param::video::VideoFormat::RGBx,
-                    spa::param::video::VideoFormat::RGB,
-                ),
-                spa::pod::property!(
-                    spa::param::format::FormatProperties::VideoSize,
-                    Choice,
-                    Range,
-                    Rectangle,
-                    spa::utils::Rectangle {
-                        width: 1920,
-                        height: 1080
-                    },
-                    spa::utils::Rectangle {
-                        width: 1,
-                        height: 1
-                    },
-                    spa::utils::Rectangle {
-                        width: 16384,
-                        height: 16384
-                    }
-                ),
-                spa::pod::property!(
-                    spa::param::format::FormatProperties::VideoFramerate,
-                    Choice,
-                    Range,
-                    Fraction,
-                    spa::utils::Fraction { num: 60, denom: 1 },
-                    spa::utils::Fraction { num: 0, denom: 1 },
-                    spa::utils::Fraction {
-                        num: 1000,
-                        denom: 1
-                    }
-                ),
-            );
-            let values = spa::pod::serialize::PodSerializer::serialize(
-                std::io::Cursor::new(Vec::new()),
-                &spa::pod::Value::Object(format),
-            )
-            .context("failed to serialize the EnumFormat pod")?
-            .0
-            .into_inner();
-            let pod = spa::pod::Pod::from_bytes(&values)
-                .context("failed to parse the serialized EnumFormat pod")?;
-
-            stream
-                .connect(
-                    spa::utils::Direction::Input,
-                    Some(node_id),
-                    pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS,
-                    &mut [pod],
-                )
-                .context("failed to connect the PipeWire stream")?;
-
-            let quit_loop = mainloop.clone();
-            let quit_timeline = Arc::clone(&timeline);
-            let _receiver = receiver.attach(mainloop.loop_(), move |command| match command {
-                Command::Quit => {
-                    finalize_video(&quit_video, &quit_timeline, &command_pause);
-                    quit_loop.quit();
-                }
-                Command::Pause => {
-                    if let Ok(mut pause) = command_pause.lock() {
-                        pause.pause();
-                    }
-                    if let Some(video) = &command_video {
-                        video.set_paused(true);
-                    }
-                    println!("PAUSED");
-                    let _ = std::io::stdout().flush();
-                }
-                Command::Resume => {
-                    if let Ok(mut pause) = command_pause.lock() {
-                        pause.resume();
-                    }
-                    if let Some(video) = &command_video {
-                        video.set_paused(false);
-                    }
-                    println!("RESUMED");
-                    let _ = std::io::stdout().flush();
-                }
-            });
-
-            let keepalive_timer = mainloop.loop_().add_timer(move |_| {
-                let Some(video) = timer_video.clone() else {
-                    return;
-                };
-                let paused = timer_pause.lock().map(|pause| pause.paused).unwrap_or(true);
-                let Ok(mut timeline) = timer_timeline.lock() else {
-                    return;
-                };
-                if paused {
-                    timeline.last_push = Some(Instant::now());
-                    return;
-                }
-                let Some(last_frame) = timeline.last_frame.clone() else {
-                    return;
-                };
-                if timer_frame_interval_ns <= 0 {
-                    return;
-                }
-                let last_pts = timeline.last_pts.unwrap_or(0);
-                let elapsed = timeline.last_push.unwrap_or_else(Instant::now).elapsed();
-                if elapsed < Duration::from_nanos(timer_frame_interval_ns as u64) {
-                    return;
-                }
-                let next_pts = last_pts + timer_frame_interval_ns;
-                if video.push_buffer(next_pts, &last_frame).is_ok() {
-                    if timer_verbose && next_pts % (FRAME_INTERVAL_NS * 30) < FRAME_INTERVAL_NS {
-                        eprintln!("[video] keepalive active");
-                    }
-                    timeline.last_pts = Some(next_pts);
-                    timeline.last_push = Some(Instant::now());
-                }
-            });
-            let _ = keepalive_timer.update_timer(Some(TIMER_TICK), Some(TIMER_TICK));
-
-            mainloop.run();
-
-            drop(listener);
-
-            if let Some(path) = output.as_deref() {
-                let raw = raw_samples
-                    .lock()
-                    .map(|guard| guard.clone())
-                    .unwrap_or_default();
-                let (anchor_pts, anchor_epoch) = anchor
-                    .lock()
-                    .ok()
-                    .and_then(|guard| guard.as_ref().map(|a| (a.pts_ns, a.epoch_ms)))
-                    .unwrap_or((0, 0));
-                let start_epoch_ms = start_epoch.load(Ordering::SeqCst);
-                let mut collected =
-                    telemetry::resolve_samples(&raw, anchor_pts, anchor_epoch, start_epoch_ms);
-                telemetry::normalize_samples(&mut collected);
-                telemetry::write_document(path, &collected)
-                    .with_context(|| format!("failed to write {}", path.display()))?;
-                if verbose {
-                    eprintln!(
-                        "[telemetry] wrote {} samples to {}",
-                        collected.len(),
-                        path.display()
-                    );
-                }
-            }
-
-            Ok(())
-        })
+        .spawn(move || run_capture_thread(fd, receiver, thread_context))
         .context("failed to spawn the PipeWire capture thread")?;
 
     Ok((sender, handle))
 }
 
+struct CaptureThreadContext {
+    config: CaptureConfig,
+    raw_samples: Arc<Mutex<Vec<telemetry::RawSample>>>,
+    anchor: Arc<Mutex<Option<Anchor>>>,
+    pause: Arc<Mutex<PauseState>>,
+    last_position: Arc<Mutex<Option<(f64, f64)>>>,
+    cursor_visible: Arc<AtomicBool>,
+    timeline: Arc<Mutex<VideoTimeline>>,
+    timer_frame_interval_ns: i64,
+}
+
+fn configure_keepalive_interval_ns() -> i64 {
+    std::env::var("RECORDLY_PORTAL_CURSOR_KEEPALIVE_MS")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .map_or(FRAME_INTERVAL_NS, |millis| millis * 1_000_000)
+}
+
+fn run_capture_thread(
+    fd: OwnedFd,
+    receiver: pw::channel::Receiver<Command>,
+    context: CaptureThreadContext,
+) -> Result<()> {
+    pw::init();
+
+    let CaptureThreadContext {
+        config,
+        raw_samples,
+        anchor,
+        pause,
+        last_position,
+        cursor_visible,
+        timeline,
+        timer_frame_interval_ns,
+    } = context;
+
+    let verbose = config.verbose;
+    let output = config.output.clone();
+    let start_epoch = Arc::clone(&config.start_epoch_ms);
+    let command_video = config.video.clone();
+    let timer_video = config.video.clone();
+
+    let theme_name = config
+        .cursor_theme
+        .clone()
+        .unwrap_or_else(cursor_shape::detect_theme);
+    let theme = cursor_shape::load_theme(&theme_name);
+    if verbose {
+        eprintln!("[shape] theme {theme_name} ({} cursor files)", theme.len());
+    }
+
+    let mainloop =
+        pw::main_loop::MainLoopRc::new(None).context("failed to create PipeWire main loop")?;
+    let pw_context = pw::context::ContextRc::new(&mainloop, None)
+        .context("failed to create PipeWire context")?;
+    let core = pw_context
+        .connect_fd_rc(fd, None)
+        .context("failed to connect to the portal PipeWire remote")?;
+
+    let props = properties! {
+        *pw::keys::MEDIA_TYPE => "Video",
+        *pw::keys::MEDIA_CATEGORY => "Capture",
+        *pw::keys::MEDIA_ROLE => "Screen",
+    };
+    let stream = pw::stream::StreamBox::new(&core, "recordly-portal-cursor", props)
+        .context("failed to create PipeWire stream")?;
+
+    let node_id = config.node_id;
+    let state = CaptureState {
+        config,
+        raw_samples: Arc::clone(&raw_samples),
+        theme,
+        type_by_cursor_id: HashMap::new(),
+        current_type: None,
+        video_size: None,
+        video_format: None,
+        timeline: Arc::clone(&timeline),
+        anchor: Arc::clone(&anchor),
+        pause: Arc::clone(&pause),
+        last_position,
+        cursor_visible,
+        buffer_count: 0,
+        cursor_meta_count: 0,
+        last: None,
+    };
+
+    let listener = register_stream_listener(&stream, state)?;
+    let format_pod_bytes = build_enum_format_pod()?;
+    let pod = spa::pod::Pod::from_bytes(&format_pod_bytes)
+        .context("failed to parse the serialized EnumFormat pod")?;
+
+    stream
+        .connect(
+            spa::utils::Direction::Input,
+            Some(node_id),
+            pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS,
+            &mut [pod],
+        )
+        .context("failed to connect the PipeWire stream")?;
+
+    let _receiver = attach_command_receiver(
+        receiver,
+        &mainloop,
+        command_video,
+        Arc::clone(&timeline),
+        Arc::clone(&pause),
+    );
+    let _keepalive_timer = attach_keepalive_timer(
+        &mainloop,
+        timer_video,
+        timeline,
+        pause,
+        timer_frame_interval_ns,
+        verbose,
+    );
+
+    mainloop.run();
+    drop(listener);
+
+    if let Some(path) = output.as_deref() {
+        write_captured_telemetry(path, &raw_samples, &anchor, &start_epoch, verbose)?;
+    }
+
+    Ok(())
+}
+
+fn register_stream_listener(
+    stream: &pw::stream::Stream,
+    state: CaptureState,
+) -> Result<pw::stream::StreamListener<CaptureState>> {
+    stream
+        .add_local_listener_with_user_data(state)
+        .state_changed(|_, state, old, new| {
+            if state.config.verbose {
+                eprintln!("[pw] state {old:?} -> {new:?}");
+            }
+        })
+        .param_changed(|stream, state, id, param| {
+            handle_param_changed(stream, state, id, param);
+        })
+        .process(|stream, state| {
+            handle_process(stream, state);
+        })
+        .register()
+        .context("failed to register the PipeWire stream listener")
+}
+
+fn handle_param_changed(
+    stream: &pw::stream::Stream,
+    state: &mut CaptureState,
+    id: u32,
+    param: Option<&spa::pod::Pod>,
+) {
+    let Some(param) = param else {
+        return;
+    };
+    if id != spa::param::ParamType::Format.as_raw() {
+        return;
+    }
+    let Ok((media_type, media_subtype)) = spa::param::format_utils::parse_format(param) else {
+        return;
+    };
+    if media_type != spa::param::format::MediaType::Video
+        || media_subtype != spa::param::format::MediaSubtype::Raw
+    {
+        return;
+    }
+    let mut format = spa::param::video::VideoInfoRaw::default();
+    if format.parse(param).is_ok() {
+        state.video_size = Some((format.size().width, format.size().height));
+        state.video_format = cursor_shape::PixelFormat::from_spa(format.format().as_raw());
+        if let (Some(video), Some(_pixel_format)) = (&state.config.video, state.video_format) {
+            video.set_video_caps("I420", format.size().width, format.size().height);
+        }
+        if state.config.verbose {
+            eprintln!(
+                "[pw] video format {:#010x} {}x{}",
+                format.format().as_raw(),
+                format.size().width,
+                format.size().height
+            );
+        }
+        if let Err(error) = request_buffer_metadata(stream) {
+            eprintln!("[pw] failed to request buffer metadata: {error:#}");
+        }
+    }
+}
+
+fn build_enum_format_pod() -> Result<Vec<u8>> {
+    let format = spa::pod::object!(
+        spa::utils::SpaTypes::ObjectParamFormat,
+        spa::param::ParamType::EnumFormat,
+        spa::pod::property!(
+            spa::param::format::FormatProperties::MediaType,
+            Id,
+            spa::param::format::MediaType::Video
+        ),
+        spa::pod::property!(
+            spa::param::format::FormatProperties::MediaSubtype,
+            Id,
+            spa::param::format::MediaSubtype::Raw
+        ),
+        spa::pod::property!(
+            spa::param::format::FormatProperties::VideoFormat,
+            Choice,
+            Enum,
+            Id,
+            spa::param::video::VideoFormat::BGRx,
+            spa::param::video::VideoFormat::BGRx,
+            spa::param::video::VideoFormat::BGRA,
+            spa::param::video::VideoFormat::RGBA,
+            spa::param::video::VideoFormat::RGBx,
+            spa::param::video::VideoFormat::RGB,
+        ),
+        spa::pod::property!(
+            spa::param::format::FormatProperties::VideoSize,
+            Choice,
+            Range,
+            Rectangle,
+            spa::utils::Rectangle {
+                width: 1920,
+                height: 1080
+            },
+            spa::utils::Rectangle {
+                width: 1,
+                height: 1
+            },
+            spa::utils::Rectangle {
+                width: 16384,
+                height: 16384
+            }
+        ),
+        spa::pod::property!(
+            spa::param::format::FormatProperties::VideoFramerate,
+            Choice,
+            Range,
+            Fraction,
+            spa::utils::Fraction { num: 60, denom: 1 },
+            spa::utils::Fraction { num: 0, denom: 1 },
+            spa::utils::Fraction {
+                num: 1000,
+                denom: 1
+            }
+        ),
+    );
+    Ok(spa::pod::serialize::PodSerializer::serialize(
+        std::io::Cursor::new(Vec::new()),
+        &spa::pod::Value::Object(format),
+    )
+    .context("failed to serialize the EnumFormat pod")?
+    .0
+    .into_inner())
+}
+
+fn attach_command_receiver(
+    receiver: pw::channel::Receiver<Command>,
+    mainloop: &pw::main_loop::MainLoopRc,
+    video: Option<Arc<VideoHandle>>,
+    timeline: Arc<Mutex<VideoTimeline>>,
+    pause: Arc<Mutex<PauseState>>,
+) -> pw::channel::AttachedReceiver<'_, Command> {
+    let quit_loop = mainloop.clone();
+    receiver.attach(mainloop.loop_(), move |command| match command {
+        Command::Quit => {
+            finalize_video(video.as_deref(), &timeline, &pause);
+            quit_loop.quit();
+        }
+        Command::Pause => {
+            if let Ok(mut state) = pause.lock() {
+                state.pause();
+            }
+            if let Some(video) = &video {
+                video.set_paused(true);
+            }
+            println!("PAUSED");
+            let _ = std::io::stdout().flush();
+        }
+        Command::Resume => {
+            if let Ok(mut state) = pause.lock() {
+                state.resume();
+            }
+            if let Some(video) = &video {
+                video.set_paused(false);
+            }
+            println!("RESUMED");
+            let _ = std::io::stdout().flush();
+        }
+    })
+}
+
+fn attach_keepalive_timer(
+    mainloop: &pw::main_loop::MainLoopRc,
+    video: Option<Arc<VideoHandle>>,
+    timeline: Arc<Mutex<VideoTimeline>>,
+    pause: Arc<Mutex<PauseState>>,
+    frame_interval_ns: i64,
+    verbose: bool,
+) -> pw::loop_::TimerSource<'_> {
+    let timer = mainloop.loop_().add_timer(move |_| {
+        let Some(video) = video.as_deref() else {
+            return;
+        };
+        let paused = pause.lock().map_or(true, |state| state.paused);
+        let Ok(mut timeline) = timeline.lock() else {
+            return;
+        };
+        if paused {
+            timeline.last_push = Some(Instant::now());
+            return;
+        }
+        let Some(last_frame) = timeline.last_frame.clone() else {
+            return;
+        };
+        let Ok(interval_u64) = u64::try_from(frame_interval_ns) else {
+            return;
+        };
+        if interval_u64 == 0 {
+            return;
+        }
+        let last_pts = timeline.last_pts.unwrap_or(0);
+        let elapsed = timeline.last_push.unwrap_or_else(Instant::now).elapsed();
+        if elapsed < Duration::from_nanos(interval_u64) {
+            return;
+        }
+        let next_pts = last_pts + frame_interval_ns;
+        if video.push_buffer(next_pts, &last_frame).is_ok() {
+            if verbose && next_pts % (FRAME_INTERVAL_NS * 30) < FRAME_INTERVAL_NS {
+                eprintln!("[video] keepalive active");
+            }
+            timeline.last_pts = Some(next_pts);
+            timeline.last_push = Some(Instant::now());
+        }
+    });
+    let _ = timer.update_timer(Some(TIMER_TICK), Some(TIMER_TICK));
+    timer
+}
+
+fn write_captured_telemetry(
+    path: &Path,
+    raw_samples: &Arc<Mutex<Vec<telemetry::RawSample>>>,
+    anchor: &Arc<Mutex<Option<Anchor>>>,
+    start_epoch: &Arc<AtomicI64>,
+    verbose: bool,
+) -> Result<()> {
+    let raw = raw_samples
+        .lock()
+        .map(|guard| guard.clone())
+        .unwrap_or_default();
+    let (anchor_pts, anchor_epoch) = anchor
+        .lock()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(|a| (a.pts_ns, a.epoch_ms)))
+        .unwrap_or((0, 0));
+    let start_epoch_ms = start_epoch.load(Ordering::SeqCst);
+    let mut collected = telemetry::resolve_samples(&raw, anchor_pts, anchor_epoch, start_epoch_ms);
+    telemetry::normalize_samples(&mut collected);
+    telemetry::write_document(path, &collected)
+        .with_context(|| format!("failed to write {}", path.display()))?;
+    if verbose {
+        eprintln!(
+            "[telemetry] wrote {} samples to {}",
+            collected.len(),
+            path.display()
+        );
+    }
+    Ok(())
+}
+
 fn cursor_meta_size(width: i32, height: i32) -> i32 {
-    let base = std::mem::size_of::<pw::spa::sys::spa_meta_cursor>()
+    let base_bytes = std::mem::size_of::<pw::spa::sys::spa_meta_cursor>()
         + std::mem::size_of::<pw::spa::sys::spa_meta_bitmap>();
-    (base as i32).saturating_add(width.saturating_mul(height).saturating_mul(4))
+    let base = i32::try_from(base_bytes).unwrap_or(i32::MAX);
+    base.saturating_add(width.saturating_mul(height).saturating_mul(4))
 }
 
 fn meta_property(key: u32, value: spa::pod::Value) -> spa::pod::Property {
@@ -462,7 +556,8 @@ fn request_buffer_metadata(stream: &pw::stream::Stream) -> Result<()> {
     let cursor = cursor_meta_size(64, 64);
     let cursor_min = cursor_meta_size(1, 1);
     let cursor_max = cursor_meta_size(1024, 1024);
-    let header = std::mem::size_of::<pw::spa::sys::spa_meta_header>() as i32;
+    let header =
+        i32::try_from(std::mem::size_of::<pw::spa::sys::spa_meta_header>()).unwrap_or(i32::MAX);
 
     let objects = vec![
         spa::pod::Object {
@@ -525,13 +620,18 @@ fn normalization_rect(state: &CaptureState) -> geometry::Rect {
     match state.config.position_space {
         geometry::PositionSpace::Global => state.config.stream_rect,
         geometry::PositionSpace::StreamLocal => {
-            let (width, height) = state
-                .video_size
-                .map(|(width, height)| (width as i32, height as i32))
-                .unwrap_or((
+            let (width, height) = state.video_size.map_or(
+                (
                     state.config.stream_rect.width,
                     state.config.stream_rect.height,
-                ));
+                ),
+                |(width, height)| {
+                    (
+                        i32::try_from(width).unwrap_or(i32::MAX),
+                        i32::try_from(height).unwrap_or(i32::MAX),
+                    )
+                },
+            );
             geometry::Rect {
                 x: 0,
                 y: 0,
@@ -543,7 +643,10 @@ fn normalization_rect(state: &CaptureState) -> geometry::Rect {
 }
 
 fn ensure_anchor(state: &CaptureState, pts: i64, paused_ns: i64) -> Anchor {
-    let mut anchor = state.anchor.lock().expect("anchor mutex poisoned");
+    let mut anchor = state
+        .anchor
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     *anchor.get_or_insert(Anchor {
         pts_ns: pts,
         paused_ns,
@@ -557,14 +660,14 @@ fn existing_anchor(state: &CaptureState) -> Option<Anchor> {
 }
 
 fn finalize_video(
-    video: &Option<Arc<VideoHandle>>,
+    video: Option<&VideoHandle>,
     timeline: &Arc<Mutex<VideoTimeline>>,
     pause: &Arc<Mutex<PauseState>>,
 ) {
-    let Some(video) = video.clone() else {
+    let Some(video) = video else {
         return;
     };
-    let paused = pause.lock().map(|pause| pause.paused).unwrap_or(true);
+    let paused = pause.lock().map_or(true, |pause| pause.paused);
     if paused {
         return;
     }
@@ -684,32 +787,47 @@ fn handle_process(stream: &pw::stream::Stream, state: &mut CaptureState) {
     }
 
     let paused_ns = {
-        let pause = state.pause.lock().expect("pause mutex poisoned");
+        let pause = state
+            .pause
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if pause.paused {
             return;
         }
         pause.accumulated_ns
     };
 
-    let raw_pts = buffer
-        .find_meta::<MetaHeader>()
-        .map(|header| header.pts())
-        .unwrap_or(0);
-    let pts = if raw_pts > 0 {
-        raw_pts - paused_ns
-    } else if let Some(anchor) = existing_anchor(state) {
-        let pause_since_anchor = paused_ns.saturating_sub(anchor.paused_ns);
-        anchor.pts_ns
-            + Instant::now()
-                .saturating_duration_since(anchor.instant)
-                .as_nanos() as i64
-            - pause_since_anchor
-    } else {
+    let Some(pts) = resolve_buffer_pts(&mut buffer, state, paused_ns) else {
         return;
     };
 
     push_video_frame(&mut buffer, pts, paused_ns, state);
+    record_cursor_metadata(&mut buffer, pts, paused_ns, state);
+}
 
+fn resolve_buffer_pts(
+    buffer: &mut pw::buffer::Buffer,
+    state: &CaptureState,
+    paused_ns: i64,
+) -> Option<i64> {
+    let raw_pts = buffer.find_meta::<MetaHeader>().map_or(0, MetaHeader::pts);
+    if raw_pts > 0 {
+        return Some(raw_pts - paused_ns);
+    }
+    let anchor = existing_anchor(state)?;
+    let pause_since_anchor = paused_ns.saturating_sub(anchor.paused_ns);
+    Some(
+        anchor.pts_ns + duration_to_ns(Instant::now().saturating_duration_since(anchor.instant))
+            - pause_since_anchor,
+    )
+}
+
+fn record_cursor_metadata(
+    buffer: &mut pw::buffer::Buffer,
+    pts: i64,
+    paused_ns: i64,
+    state: &mut CaptureState,
+) {
     let Some(cursor) = buffer.find_meta::<MetaCursor>() else {
         return;
     };
@@ -859,6 +977,7 @@ fn export_ppm(dir: &Path, id: u32, cursor: &cursor_shape::DecodedCursor) -> std:
 fn epoch_now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as i64)
-        .unwrap_or(0)
+        .map_or(0, |duration| {
+            i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
+        })
 }

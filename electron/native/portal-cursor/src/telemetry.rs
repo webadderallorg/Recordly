@@ -20,6 +20,7 @@ pub struct Sample {
 }
 
 impl Sample {
+    #[must_use]
     pub fn new(time_ms: u64, cx: f64, cy: f64) -> Self {
         Self {
             time_ms,
@@ -31,16 +32,19 @@ impl Sample {
         }
     }
 
+    #[must_use]
     pub fn with_cursor_type(mut self, cursor_type: impl Into<String>) -> Self {
         self.cursor_type = Some(cursor_type.into());
         self
     }
 
+    #[must_use]
     pub fn with_interaction_type(mut self, interaction_type: impl Into<String>) -> Self {
         self.interaction_type = Some(interaction_type.into());
         self
     }
 
+    #[must_use]
     pub fn with_mouse_button(mut self, mouse_button: u8) -> Self {
         self.mouse_button = Some(mouse_button);
         self
@@ -53,6 +57,12 @@ struct Document<'a> {
     samples: &'a [Sample],
 }
 
+/// Serializes cursor telemetry samples into formatted JSON.
+///
+/// # Panics
+///
+/// Panics if serializing the fixed cursor document schema fails.
+#[must_use]
 pub fn to_json(samples: &[Sample]) -> String {
     serde_json::to_string_pretty(&Document {
         version: VERSION,
@@ -61,13 +71,25 @@ pub fn to_json(samples: &[Sample]) -> String {
     .expect("cursor telemetry serialization cannot fail")
 }
 
+/// Atomically writes cursor telemetry samples to `path`.
+///
+/// # Errors
+///
+/// Returns an I/O error if creating parent directories, serializing/writing the file, syncing it,
+/// or renaming it into place fails.
 pub fn write_document(path: &Path, samples: &[Sample]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     let temporary = path.with_extension("cursor.json.tmp");
     let mut file = fs::File::create(&temporary)?;
-    file.write_all(to_json(samples).as_bytes())?;
+    serde_json::to_writer_pretty(
+        &mut file,
+        &Document {
+            version: VERSION,
+            samples,
+        },
+    )?;
     file.write_all(b"\n")?;
     file.sync_all()?;
     fs::rename(temporary, path)
@@ -83,6 +105,7 @@ pub struct RawSample {
     pub mouse_button: Option<u8>,
 }
 
+#[must_use]
 pub fn resolve_samples(
     raw: &[RawSample],
     anchor_pts_ns: i64,
@@ -110,24 +133,30 @@ pub fn normalize_samples(samples: &mut Vec<Sample>) {
     samples.sort_by_key(|sample| sample.time_ms);
     samples.dedup_by(|left, right| {
         left.time_ms == right.time_ms
-            && left.cx == right.cx
-            && left.cy == right.cy
+            && left.cx.to_bits() == right.cx.to_bits()
+            && left.cy.to_bits() == right.cy.to_bits()
             && left.cursor_type == right.cursor_type
             && left.interaction_type == right.interaction_type
             && left.mouse_button == right.mouse_button
     });
 }
 
+#[must_use]
 pub fn map_pts_to_time_ms(
     pts_ns: i64,
     anchor_pts_ns: i64,
     anchor_epoch_ms: i64,
     start_epoch_ms: Option<i64>,
 ) -> u64 {
-    let delta_ms = (pts_ns - anchor_pts_ns) as f64 / 1_000_000.0;
+    let delta_ns = i128::from(pts_ns) - i128::from(anchor_pts_ns);
+    let offset_ms = if delta_ns >= 0 {
+        (delta_ns + 500_000) / 1_000_000
+    } else {
+        (delta_ns - 500_000) / 1_000_000
+    };
     let start_ms = start_epoch_ms.unwrap_or(anchor_epoch_ms);
-    let time_ms = anchor_epoch_ms as f64 + delta_ms - start_ms as f64;
-    time_ms.max(0.0).round() as u64
+    let time_ms = i128::from(anchor_epoch_ms) + offset_ms - i128::from(start_ms);
+    u64::try_from(time_ms.max(0)).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]

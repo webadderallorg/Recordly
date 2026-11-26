@@ -12,6 +12,7 @@ pub struct Rect {
     pub height: i32,
 }
 
+#[must_use]
 pub fn stream_rect(position: Option<(i32, i32)>, size: Option<(i32, i32)>) -> Option<Rect> {
     let (width, height) = size?;
     if width <= 0 || height <= 0 {
@@ -26,10 +27,12 @@ pub fn stream_rect(position: Option<(i32, i32)>, size: Option<(i32, i32)>) -> Op
     })
 }
 
+#[must_use]
 pub fn resolve_space(requested: Option<PositionSpace>) -> PositionSpace {
     requested.unwrap_or(PositionSpace::StreamLocal)
 }
 
+#[must_use]
 pub fn normalize_to_stream(
     cursor: (i32, i32),
     stream: Rect,
@@ -46,8 +49,8 @@ pub fn normalize_to_stream(
         PositionSpace::Global => cursor.1 - stream.y,
         PositionSpace::StreamLocal => cursor.1,
     };
-    let cx = (local_x as f64 / stream.width as f64).clamp(0.0, 1.0);
-    let cy = (local_y as f64 / stream.height as f64).clamp(0.0, 1.0);
+    let cx = (f64::from(local_x) / f64::from(stream.width)).clamp(0.0, 1.0);
+    let cy = (f64::from(local_y) / f64::from(stream.height)).clamp(0.0, 1.0);
     Some((cx, cy))
 }
 
@@ -138,7 +141,7 @@ mod tests {
             height: 1080,
         };
         let (cx, cy) = normalize_to_stream((-200, 5000), stream, PositionSpace::Global).unwrap();
-        assert_eq!(cx, 0.0);
-        assert_eq!(cy, 1.0);
+        assert!((cx - 0.0).abs() < f64::EPSILON);
+        assert!((cy - 1.0).abs() < f64::EPSILON);
     }
 }

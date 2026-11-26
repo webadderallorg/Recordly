@@ -1,6 +1,9 @@
 use anyhow::{Context, Result, bail};
-use ashpd::desktop::screencast::{CursorMode, Screencast, SelectSourcesOptions, SourceType};
-use ashpd::desktop::{PersistMode, Session};
+use ashpd::desktop::screencast::{
+    CursorMode, OpenPipeWireRemoteOptions, Screencast, SelectSourcesOptions, SourceType,
+    StartCastOptions,
+};
+use ashpd::desktop::{CreateSessionOptions, PersistMode, Session};
 use std::os::fd::OwnedFd;
 
 #[derive(Debug, Clone)]
@@ -47,7 +50,7 @@ pub async fn connect(
     }
 
     let session = screencast
-        .create_session(Default::default())
+        .create_session(CreateSessionOptions::default())
         .await
         .context("CreateSession failed")?;
 
@@ -70,7 +73,7 @@ pub async fn connect(
         .context("SelectSources was rejected")?;
 
     let response = screencast
-        .start(&session, None, Default::default())
+        .start(&session, None, StartCastOptions::default())
         .await
         .context("Start request failed")?
         .response()
@@ -94,7 +97,7 @@ pub async fn connect(
     }
 
     let fd = screencast
-        .open_pipe_wire_remote(&session, Default::default())
+        .open_pipe_wire_remote(&session, OpenPipeWireRemoteOptions::default())
         .await
         .context("OpenPipeWireRemote failed")?;
 

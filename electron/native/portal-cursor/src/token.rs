@@ -2,6 +2,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+#[must_use]
 pub fn default_path() -> PathBuf {
     let base = std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
@@ -11,6 +12,7 @@ pub fn default_path() -> PathBuf {
     base.join("recordly").join("portal-screencast.token")
 }
 
+#[must_use]
 pub fn load(path: &Path) -> Option<String> {
     fs::read_to_string(path)
         .ok()
@@ -18,6 +20,12 @@ pub fn load(path: &Path) -> Option<String> {
         .filter(|token| !token.is_empty())
 }
 
+/// Atomically writes a portal restore token to `path`.
+///
+/// # Errors
+///
+/// Returns an I/O error if creating parent directories, writing the temporary file, syncing it, or
+/// renaming it into place fails.
 pub fn store(path: &Path, token: &str) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;

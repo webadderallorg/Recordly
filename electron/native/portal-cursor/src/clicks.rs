@@ -32,6 +32,11 @@ const TAP_MAX_MOVE_MM: f64 = 3.0;
 const TAP_MAX_MOVE_NORM: f64 = 0.03;
 const TAP_MAX_CURSOR_DRIFT: f64 = 0.015;
 
+const TOOL_FINGER_BIT: u8 = 1 << 0;
+const TOOL_DOUBLETAP_BIT: u8 = 1 << 1;
+const TOOL_TRIPLETAP_BIT: u8 = 1 << 2;
+const TOOL_QUADTAP_BIT: u8 = 1 << 3;
+
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct AbsAxis {
     pub min: i32,
@@ -70,10 +75,7 @@ pub(crate) struct TouchTapTracker {
     geometry: TouchpadGeometry,
     cur_x: Option<i32>,
     cur_y: Option<i32>,
-    tool_finger: bool,
-    tool_doubletap: bool,
-    tool_tripletap: bool,
-    tool_quadtap: bool,
+    tool_bits: u8,
     touch_down: bool,
     pending_touch_down: Option<(Instant, (f64, f64))>,
     pending_touch_up: Option<(Instant, (f64, f64))>,
@@ -94,17 +96,23 @@ impl TouchTapTracker {
         self.touch_down || self.active.is_some()
     }
 
-    fn current_fingers(&self) -> u8 {
-        if self.tool_quadtap {
-            4
-        } else if self.tool_tripletap {
-            3
-        } else if self.tool_doubletap {
-            2
-        } else if self.tool_finger {
-            1
+    fn set_tool_bit(&mut self, bit: u8, active: bool) {
+        if active {
+            self.tool_bits |= bit;
         } else {
-            0
+            self.tool_bits &= !bit;
+        }
+    }
+
+    fn current_fingers(&self) -> u8 {
+        if self.tool_bits & TOOL_QUADTAP_BIT != 0 {
+            4
+        } else if self.tool_bits & TOOL_TRIPLETAP_BIT != 0 {
+            3
+        } else if self.tool_bits & TOOL_DOUBLETAP_BIT != 0 {
+            2
+        } else {
+            u8::from(self.tool_bits & TOOL_FINGER_BIT != 0)
         }
     }
 
@@ -112,13 +120,11 @@ impl TouchTapTracker {
         let dx = self
             .cur_x
             .zip(start_x)
-            .map(|(cur, start)| (cur - start).abs() as f64)
-            .unwrap_or(0.0);
+            .map_or(0.0, |(cur, start)| f64::from((cur - start).abs()));
         let dy = self
             .cur_y
             .zip(start_y)
-            .map(|(cur, start)| (cur - start).abs() as f64)
-            .unwrap_or(0.0);
+            .map_or(0.0, |(cur, start)| f64::from((cur - start).abs()));
         if dx == 0.0 && dy == 0.0 {
             return false;
         }
@@ -126,19 +132,19 @@ impl TouchTapTracker {
             && ax.resolution > 0
             && ay.resolution > 0
         {
-            let mm_x = dx / ax.resolution as f64;
-            let mm_y = dy / ay.resolution as f64;
+            let mm_x = dx / f64::from(ax.resolution);
+            let mm_y = dy / f64::from(ay.resolution);
             return mm_x.hypot(mm_y) > TAP_MAX_MOVE_MM;
         }
         let norm_x = self
             .geometry
             .x
-            .and_then(|ax| (ax.max > ax.min).then_some(dx / (ax.max - ax.min) as f64))
+            .and_then(|ax| (ax.max > ax.min).then_some(dx / f64::from(ax.max - ax.min)))
             .unwrap_or(0.0);
         let norm_y = self
             .geometry
             .y
-            .and_then(|ay| (ay.max > ay.min).then_some(dy / (ay.max - ay.min) as f64))
+            .and_then(|ay| (ay.max > ay.min).then_some(dy / f64::from(ay.max - ay.min)))
             .unwrap_or(0.0);
         norm_x.hypot(norm_y) > TAP_MAX_MOVE_NORM
     }
@@ -158,10 +164,10 @@ impl TouchTapTracker {
                 _ => {}
             },
             EV_KEY => match code {
-                BTN_TOOL_FINGER => self.tool_finger = value != 0,
-                BTN_TOOL_DOUBLETAP => self.tool_doubletap = value != 0,
-                BTN_TOOL_TRIPLETAP => self.tool_tripletap = value != 0,
-                BTN_TOOL_QUADTAP => self.tool_quadtap = value != 0,
+                BTN_TOOL_FINGER => self.set_tool_bit(TOOL_FINGER_BIT, value != 0),
+                BTN_TOOL_DOUBLETAP => self.set_tool_bit(TOOL_DOUBLETAP_BIT, value != 0),
+                BTN_TOOL_TRIPLETAP => self.set_tool_bit(TOOL_TRIPLETAP_BIT, value != 0),
+                BTN_TOOL_QUADTAP => self.set_tool_bit(TOOL_QUADTAP_BIT, value != 0),
                 BTN_TOUCH => {
                     if value != 0 {
                         if !self.touch_down {
@@ -218,9 +224,7 @@ impl TouchTapTracker {
                 if let Some((up_at, up_cursor)) = self.pending_touch_up.take()
                     && let Some(active) = self.active.take()
                 {
-                    let duration_ms = up_at
-                        .saturating_duration_since(active.down_at)
-                        .as_millis();
+                    let duration_ms = up_at.saturating_duration_since(active.down_at).as_millis();
                     let cursor_drift = (up_cursor.0 - active.down_cursor.0)
                         .hypot(up_cursor.1 - active.down_cursor.1);
                     if !active.saw_physical_button
@@ -260,11 +264,11 @@ struct ClickContext {
 }
 
 pub fn start(
-    samples: Arc<Mutex<Vec<telemetry::RawSample>>>,
-    anchor: Arc<Mutex<Option<Anchor>>>,
-    pause: Arc<Mutex<PauseState>>,
-    last_position: Arc<Mutex<Option<(f64, f64)>>>,
-    cursor_visible: Arc<AtomicBool>,
+    samples: &Arc<Mutex<Vec<telemetry::RawSample>>>,
+    anchor: &Arc<Mutex<Option<Anchor>>>,
+    pause: &Arc<Mutex<PauseState>>,
+    last_position: &Arc<Mutex<Option<(f64, f64)>>>,
+    cursor_visible: &Arc<AtomicBool>,
     verbose: bool,
 ) {
     let Ok(entries) = fs::read_dir("/dev/input") else {
@@ -297,17 +301,17 @@ pub fn start(
         };
         let tap_tracker = is_touchpad.then(|| TouchTapTracker::new(query_touchpad_geometry(&file)));
         let context = ClickContext {
-            samples: Arc::clone(&samples),
-            anchor: Arc::clone(&anchor),
-            pause: Arc::clone(&pause),
-            last_position: Arc::clone(&last_position),
-            cursor_visible: Arc::clone(&cursor_visible),
+            samples: Arc::clone(samples),
+            anchor: Arc::clone(anchor),
+            pause: Arc::clone(pause),
+            last_position: Arc::clone(last_position),
+            cursor_visible: Arc::clone(cursor_visible),
             verbose,
         };
         std::thread::Builder::new()
             .name(format!("recordly-clicks-{name}"))
             .spawn(move || {
-                read_device(file, tap_tracker, context);
+                read_device(file, tap_tracker, &context);
             })
             .ok();
         devices += 1;
@@ -322,11 +326,7 @@ pub fn start(
     }
 }
 
-fn read_device(
-    mut file: File,
-    mut tap_tracker: Option<TouchTapTracker>,
-    context: ClickContext,
-) {
+fn read_device(mut file: File, mut tap_tracker: Option<TouchTapTracker>, context: &ClickContext) {
     let mut buffer = [0u8; 24];
     let mut last_left_click: Option<(Instant, f64, f64)> = None;
     let mut touch_down_guard: Option<(bool, i64, bool)> = None;
@@ -359,8 +359,7 @@ fn read_device(
                 let (paused, paused_ns) = context
                     .pause
                     .lock()
-                    .map(|pause| pause.snapshot())
-                    .unwrap_or((true, 0));
+                    .map_or((true, 0), |pause| pause.snapshot());
                 let visible = context.cursor_visible.load(Ordering::SeqCst);
                 touch_down_guard = Some((paused, paused_ns, visible));
             } else if !tracker.is_touching() {
@@ -371,12 +370,11 @@ fn read_device(
                     let (up_paused, up_paused_ns) = context
                         .pause
                         .lock()
-                        .map(|pause| pause.snapshot())
-                        .unwrap_or((true, 0));
+                        .map_or((true, 0), |pause| pause.snapshot());
                     let up_visible = context.cursor_visible.load(Ordering::SeqCst);
                     if !down_paused && !up_paused && down_visible && up_visible {
                         emit_button_event(
-                            &context,
+                            context,
                             tap.button_code,
                             1,
                             tap.down_at,
@@ -385,7 +383,7 @@ fn read_device(
                             &mut last_left_click,
                         );
                         emit_button_event(
-                            &context,
+                            context,
                             tap.button_code,
                             0,
                             tap.up_at,
@@ -411,14 +409,13 @@ fn read_device(
         let (paused, accumulated_ns) = context
             .pause
             .lock()
-            .map(|pause| pause.snapshot())
-            .unwrap_or((true, 0));
+            .map_or((true, 0), |pause| pause.snapshot());
         if paused || !context.cursor_visible.load(Ordering::SeqCst) {
             continue;
         }
 
         emit_button_event(
-            &context,
+            context,
             code,
             value,
             event_instant,
@@ -438,11 +435,8 @@ fn emit_button_event(
     accumulated_paused_ns: i64,
     last_left_click: &mut Option<(Instant, f64, f64)>,
 ) {
-    let Some((anchor_pts, anchor_paused_ns, anchor_instant)) = context
-        .anchor
-        .lock()
-        .ok()
-        .and_then(|guard| {
+    let Some((anchor_pts, anchor_paused_ns, anchor_instant)) =
+        context.anchor.lock().ok().and_then(|guard| {
             guard
                 .as_ref()
                 .map(|anchor| (anchor.pts_ns, anchor.paused_ns, anchor.instant))
@@ -523,9 +517,9 @@ pub(crate) fn compute_click_pts_ns(
     event_instant: Instant,
     accumulated_paused_ns: i64,
 ) -> i64 {
-    let elapsed_ns = event_instant
-        .saturating_duration_since(anchor_instant)
-        .as_nanos() as i64;
+    let elapsed_ns = crate::pipewire_capture::duration_to_ns(
+        event_instant.saturating_duration_since(anchor_instant),
+    );
     let pause_since_anchor = accumulated_paused_ns.saturating_sub(anchor_paused_ns);
     anchor_pts + elapsed_ns - pause_since_anchor
 }
@@ -552,11 +546,13 @@ fn query_abs_axis(file: &File, code: u16) -> Option<AbsAxis> {
     }
 
     let mut info = InputAbsInfo::default();
+    // SAFETY: `file.as_raw_fd()` borrows a valid open evdev descriptor, `EVIOCGABS(code)` writes
+    // one kernel `struct input_absinfo`, and `InputAbsInfo` is `#[repr(C)]` layout-compatible.
     let rc = unsafe {
         ioctl(
             file.as_raw_fd(),
             EVIOCGABS_BASE + c_ulong::from(code),
-            &mut info as *mut InputAbsInfo,
+            &raw mut info,
         )
     };
     if rc < 0 {
@@ -592,12 +588,15 @@ fn touchpad_tap_enabled() -> bool {
         }
     }
     Command::new("gsettings")
-        .args(["get", "org.gnome.desktop.peripherals.touchpad", "tap-to-click"])
+        .args([
+            "get",
+            "org.gnome.desktop.peripherals.touchpad",
+            "tap-to-click",
+        ])
         .output()
-        .map(|output| {
+        .is_ok_and(|output| {
             output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "true"
         })
-        .unwrap_or(false)
 }
 
 pub(crate) fn bitmap_has_bit(bitmap: &str, bit: u16) -> bool {
@@ -609,9 +608,7 @@ pub(crate) fn bitmap_has_bit(bitmap: &str, bit: u16) -> bool {
         return false;
     }
     let hex = words[words.len() - 1 - word_idx];
-    usize::from_str_radix(hex, 16)
-        .map(|value| (value & (1usize << bit_idx)) != 0)
-        .unwrap_or(false)
+    usize::from_str_radix(hex, 16).is_ok_and(|value| (value & (1usize << bit_idx)) != 0)
 }
 
 pub(crate) fn key_bitmap_has_button(bitmap: &str, code: u16) -> bool {
@@ -626,13 +623,11 @@ pub(crate) fn is_touchpad_capabilities(key_bitmap: &str, props_bitmap: &str) -> 
 
 fn device_has_pointer_buttons(event_name: &str) -> bool {
     let path = format!("/sys/class/input/{event_name}/device/capabilities/key");
-    fs::read_to_string(path)
-        .map(|bitmap| {
-            key_bitmap_has_button(&bitmap, BTN_LEFT)
-                || key_bitmap_has_button(&bitmap, BTN_RIGHT)
-                || key_bitmap_has_button(&bitmap, BTN_MIDDLE)
-        })
-        .unwrap_or(false)
+    fs::read_to_string(path).is_ok_and(|bitmap| {
+        key_bitmap_has_button(&bitmap, BTN_LEFT)
+            || key_bitmap_has_button(&bitmap, BTN_RIGHT)
+            || key_bitmap_has_button(&bitmap, BTN_MIDDLE)
+    })
 }
 
 fn device_is_touchpad(event_name: &str) -> bool {
@@ -736,15 +731,36 @@ mod tests {
         let mut tracker = TouchTapTracker::new(touchpad_geometry());
 
         // Single-finger tap where ABS_X/ABS_Y arrive before BTN_TOUCH=1 in the same SYN frame.
-        assert_eq!(tracker.handle_event(EV_ABS, ABS_X, 500, t0, (0.3, 0.4)), None);
-        assert_eq!(tracker.handle_event(EV_ABS, ABS_Y, 400, t0, (0.3, 0.4)), None);
-        assert_eq!(tracker.handle_event(EV_KEY, BTN_TOUCH, 1, t0, (0.3, 0.4)), None);
-        assert_eq!(tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 1, t0, (0.3, 0.4)), None);
-        assert_eq!(tracker.handle_event(EV_SYN, SYN_REPORT, 0, t0, (0.3, 0.4)), None);
+        assert_eq!(
+            tracker.handle_event(EV_ABS, ABS_X, 500, t0, (0.3, 0.4)),
+            None
+        );
+        assert_eq!(
+            tracker.handle_event(EV_ABS, ABS_Y, 400, t0, (0.3, 0.4)),
+            None
+        );
+        assert_eq!(
+            tracker.handle_event(EV_KEY, BTN_TOUCH, 1, t0, (0.3, 0.4)),
+            None
+        );
+        assert_eq!(
+            tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 1, t0, (0.3, 0.4)),
+            None
+        );
+        assert_eq!(
+            tracker.handle_event(EV_SYN, SYN_REPORT, 0, t0, (0.3, 0.4)),
+            None
+        );
 
         let t_up = t0 + Duration::from_millis(80);
-        assert_eq!(tracker.handle_event(EV_KEY, BTN_TOUCH, 0, t_up, (0.3, 0.4)), None);
-        assert_eq!(tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 0, t_up, (0.3, 0.4)), None);
+        assert_eq!(
+            tracker.handle_event(EV_KEY, BTN_TOUCH, 0, t_up, (0.3, 0.4)),
+            None
+        );
+        assert_eq!(
+            tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 0, t_up, (0.3, 0.4)),
+            None
+        );
         assert_eq!(
             tracker.handle_event(EV_SYN, SYN_REPORT, 0, t_up, (0.3, 0.4)),
             Some(CompletedTap {
@@ -757,34 +773,34 @@ mod tests {
         );
 
         // Two-finger tap -> BTN_RIGHT.
-        let t1 = t0 + Duration::from_millis(300);
-        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, t1, (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_TOOL_DOUBLETAP, 1, t1, (0.5, 0.5));
-        tracker.handle_event(EV_SYN, SYN_REPORT, 0, t1, (0.5, 0.5));
-        let t1_up = t1 + Duration::from_millis(70);
-        tracker.handle_event(EV_KEY, BTN_TOUCH, 0, t1_up, (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_TOOL_DOUBLETAP, 0, t1_up, (0.5, 0.5));
+        let double_at = t0 + Duration::from_millis(300);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, double_at, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_DOUBLETAP, 1, double_at, (0.5, 0.5));
+        tracker.handle_event(EV_SYN, SYN_REPORT, 0, double_at, (0.5, 0.5));
+        let double_up = double_at + Duration::from_millis(70);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 0, double_up, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_DOUBLETAP, 0, double_up, (0.5, 0.5));
         let two = tracker
-            .handle_event(EV_SYN, SYN_REPORT, 0, t1_up, (0.5, 0.5))
+            .handle_event(EV_SYN, SYN_REPORT, 0, double_up, (0.5, 0.5))
             .unwrap();
         assert_eq!(two.button_code, BTN_RIGHT);
 
         // Three-finger tap -> BTN_MIDDLE.
-        let t2 = t0 + Duration::from_millis(700);
-        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, t2, (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_TOOL_TRIPLETAP, 1, t2, (0.5, 0.5));
-        tracker.handle_event(EV_SYN, SYN_REPORT, 0, t2, (0.5, 0.5));
-        let t2_up = t2 + Duration::from_millis(90);
-        tracker.handle_event(EV_KEY, BTN_TOUCH, 0, t2_up, (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_TOOL_TRIPLETAP, 0, t2_up, (0.5, 0.5));
+        let triple_at = t0 + Duration::from_millis(700);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, triple_at, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_TRIPLETAP, 1, triple_at, (0.5, 0.5));
+        tracker.handle_event(EV_SYN, SYN_REPORT, 0, triple_at, (0.5, 0.5));
+        let triple_up = triple_at + Duration::from_millis(90);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 0, triple_up, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_TRIPLETAP, 0, triple_up, (0.5, 0.5));
         let three = tracker
-            .handle_event(EV_SYN, SYN_REPORT, 0, t2_up, (0.5, 0.5))
+            .handle_event(EV_SYN, SYN_REPORT, 0, triple_up, (0.5, 0.5))
             .unwrap();
         assert_eq!(three.button_code, BTN_MIDDLE);
     }
 
     #[test]
-    fn touchpad_tap_rejects_slides_drifts_holds_four_fingers_and_physical_clicks() {
+    fn touchpad_tap_rejects_slides_and_drifts() {
         let t0 = Instant::now();
         let mut tracker = TouchTapTracker::new(touchpad_geometry());
 
@@ -794,58 +810,160 @@ mod tests {
         tracker.handle_event(EV_KEY, BTN_TOUCH, 1, t0, (0.5, 0.5));
         tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 1, t0, (0.5, 0.5));
         tracker.handle_event(EV_SYN, SYN_REPORT, 0, t0, (0.5, 0.5));
-        tracker.handle_event(EV_ABS, ABS_X, 560, t0 + Duration::from_millis(30), (0.5, 0.5));
-        tracker.handle_event(EV_SYN, SYN_REPORT, 0, t0 + Duration::from_millis(30), (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_TOUCH, 0, t0 + Duration::from_millis(60), (0.5, 0.5));
+        tracker.handle_event(
+            EV_ABS,
+            ABS_X,
+            560,
+            t0 + Duration::from_millis(30),
+            (0.5, 0.5),
+        );
+        tracker.handle_event(
+            EV_SYN,
+            SYN_REPORT,
+            0,
+            t0 + Duration::from_millis(30),
+            (0.5, 0.5),
+        );
+        tracker.handle_event(
+            EV_KEY,
+            BTN_TOUCH,
+            0,
+            t0 + Duration::from_millis(60),
+            (0.5, 0.5),
+        );
         assert_eq!(
-            tracker.handle_event(EV_SYN, SYN_REPORT, 0, t0 + Duration::from_millis(60), (0.5, 0.5)),
+            tracker.handle_event(
+                EV_SYN,
+                SYN_REPORT,
+                0,
+                t0 + Duration::from_millis(60),
+                (0.5, 0.5)
+            ),
             None
         );
 
         // Cursor drift > 0.015 rejected.
-        let t1 = t0 + Duration::from_millis(200);
-        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, t1, (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 1, t1, (0.5, 0.5));
-        tracker.handle_event(EV_SYN, SYN_REPORT, 0, t1, (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_TOUCH, 0, t1 + Duration::from_millis(60), (0.53, 0.5));
+        let drift_at = t0 + Duration::from_millis(200);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, drift_at, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 1, drift_at, (0.5, 0.5));
+        tracker.handle_event(EV_SYN, SYN_REPORT, 0, drift_at, (0.5, 0.5));
+        tracker.handle_event(
+            EV_KEY,
+            BTN_TOUCH,
+            0,
+            drift_at + Duration::from_millis(60),
+            (0.53, 0.5),
+        );
         assert_eq!(
-            tracker.handle_event(EV_SYN, SYN_REPORT, 0, t1 + Duration::from_millis(60), (0.53, 0.5)),
+            tracker.handle_event(
+                EV_SYN,
+                SYN_REPORT,
+                0,
+                drift_at + Duration::from_millis(60),
+                (0.53, 0.5)
+            ),
             None
         );
+    }
+
+    #[test]
+    fn touchpad_tap_rejects_holds_four_fingers_and_physical_clicks() {
+        let t0 = Instant::now();
+        let mut tracker = TouchTapTracker::new(touchpad_geometry());
 
         // Duration > 220ms rejected.
-        let t2 = t0 + Duration::from_millis(500);
-        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, t2, (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 1, t2, (0.5, 0.5));
-        tracker.handle_event(EV_SYN, SYN_REPORT, 0, t2, (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_TOUCH, 0, t2 + Duration::from_millis(260), (0.5, 0.5));
+        let hold_at = t0 + Duration::from_millis(500);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, hold_at, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 1, hold_at, (0.5, 0.5));
+        tracker.handle_event(EV_SYN, SYN_REPORT, 0, hold_at, (0.5, 0.5));
+        tracker.handle_event(
+            EV_KEY,
+            BTN_TOUCH,
+            0,
+            hold_at + Duration::from_millis(260),
+            (0.5, 0.5),
+        );
         assert_eq!(
-            tracker.handle_event(EV_SYN, SYN_REPORT, 0, t2 + Duration::from_millis(260), (0.5, 0.5)),
+            tracker.handle_event(
+                EV_SYN,
+                SYN_REPORT,
+                0,
+                hold_at + Duration::from_millis(260),
+                (0.5, 0.5)
+            ),
             None
         );
 
         // Four-finger tap rejected.
-        let t3 = t0 + Duration::from_millis(900);
-        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, t3, (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_TOOL_QUADTAP, 1, t3, (0.5, 0.5));
-        tracker.handle_event(EV_SYN, SYN_REPORT, 0, t3, (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_TOUCH, 0, t3 + Duration::from_millis(50), (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_TOOL_QUADTAP, 0, t3 + Duration::from_millis(50), (0.5, 0.5));
+        let quad_at = t0 + Duration::from_millis(900);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, quad_at, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_QUADTAP, 1, quad_at, (0.5, 0.5));
+        tracker.handle_event(EV_SYN, SYN_REPORT, 0, quad_at, (0.5, 0.5));
+        tracker.handle_event(
+            EV_KEY,
+            BTN_TOUCH,
+            0,
+            quad_at + Duration::from_millis(50),
+            (0.5, 0.5),
+        );
+        tracker.handle_event(
+            EV_KEY,
+            BTN_TOOL_QUADTAP,
+            0,
+            quad_at + Duration::from_millis(50),
+            (0.5, 0.5),
+        );
         assert_eq!(
-            tracker.handle_event(EV_SYN, SYN_REPORT, 0, t3 + Duration::from_millis(50), (0.5, 0.5)),
+            tracker.handle_event(
+                EV_SYN,
+                SYN_REPORT,
+                0,
+                quad_at + Duration::from_millis(50),
+                (0.5, 0.5)
+            ),
             None
         );
 
         // Physical clickpad BTN_LEFT suppresses duplicate tap.
-        let t4 = t0 + Duration::from_millis(1200);
-        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, t4, (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 1, t4, (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_LEFT, 1, t4 + Duration::from_millis(10), (0.5, 0.5));
-        tracker.handle_event(EV_SYN, SYN_REPORT, 0, t4 + Duration::from_millis(10), (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_LEFT, 0, t4 + Duration::from_millis(60), (0.5, 0.5));
-        tracker.handle_event(EV_KEY, BTN_TOUCH, 0, t4 + Duration::from_millis(70), (0.5, 0.5));
+        let press_at = t0 + Duration::from_millis(1200);
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, press_at, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_FINGER, 1, press_at, (0.5, 0.5));
+        tracker.handle_event(
+            EV_KEY,
+            BTN_LEFT,
+            1,
+            press_at + Duration::from_millis(10),
+            (0.5, 0.5),
+        );
+        tracker.handle_event(
+            EV_SYN,
+            SYN_REPORT,
+            0,
+            press_at + Duration::from_millis(10),
+            (0.5, 0.5),
+        );
+        tracker.handle_event(
+            EV_KEY,
+            BTN_LEFT,
+            0,
+            press_at + Duration::from_millis(60),
+            (0.5, 0.5),
+        );
+        tracker.handle_event(
+            EV_KEY,
+            BTN_TOUCH,
+            0,
+            press_at + Duration::from_millis(70),
+            (0.5, 0.5),
+        );
         assert_eq!(
-            tracker.handle_event(EV_SYN, SYN_REPORT, 0, t4 + Duration::from_millis(70), (0.5, 0.5)),
+            tracker.handle_event(
+                EV_SYN,
+                SYN_REPORT,
+                0,
+                press_at + Duration::from_millis(70),
+                (0.5, 0.5)
+            ),
             None
         );
     }

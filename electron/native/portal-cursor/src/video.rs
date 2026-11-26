@@ -32,8 +32,8 @@ impl VideoHandle {
     pub fn set_video_caps(&self, format: &str, width: u32, height: u32) {
         let caps = gst::Caps::builder("video/x-raw")
             .field("format", format)
-            .field("width", width as i32)
-            .field("height", height as i32)
+            .field("width", i32::try_from(width).unwrap_or(i32::MAX))
+            .field("height", i32::try_from(height).unwrap_or(i32::MAX))
             .field("framerate", gst::Fraction::new(30, 1))
             .build();
         self.appsrc.set_caps(Some(&caps));
@@ -49,9 +49,9 @@ impl VideoHandle {
 
     pub fn push_buffer(&self, pts_ns: i64, buffer: &FrameBuffer) -> Result<()> {
         let mut buffer = buffer.clone();
-        buffer
-            .make_mut()
-            .set_pts(gst::ClockTime::from_nseconds(pts_ns.max(0) as u64));
+        buffer.make_mut().set_pts(gst::ClockTime::from_nseconds(
+            u64::try_from(pts_ns.max(0)).unwrap_or(0),
+        ));
         self.appsrc
             .push_buffer(buffer)
             .map_err(|error| anyhow!("failed to push a frame to GStreamer: {error:?}"))?;
@@ -87,11 +87,11 @@ pub fn spawn(config: VideoConfig) -> Result<VideoHandle> {
         .name("recordly-video-capture".into())
         .spawn(move || {
             run(
-                config,
+                &config,
                 thread_stop,
-                thread_errors,
-                thread_audio_pause,
-                ready_tx,
+                &thread_errors,
+                &thread_audio_pause,
+                &ready_tx,
             )
         })
         .context("failed to spawn the video capture thread")?;
@@ -117,38 +117,34 @@ pub fn spawn(config: VideoConfig) -> Result<VideoHandle> {
 }
 
 fn run(
-    config: VideoConfig,
+    config: &VideoConfig,
     stop: Arc<AtomicBool>,
-    errors: Arc<Mutex<Option<String>>>,
-    audio_pause: Arc<AtomicBool>,
-    ready_tx: mpsc::Sender<Result<gst_app::AppSrc>>,
+    errors: &Arc<Mutex<Option<String>>>,
+    audio_pause: &Arc<AtomicBool>,
+    ready_tx: &mpsc::Sender<Result<gst_app::AppSrc>>,
 ) -> Result<()> {
     if let Err(error) = gst::init() {
         let _ = ready_tx.send(Err(anyhow!("failed to initialize GStreamer: {error}")));
         return Err(anyhow!("failed to initialize GStreamer: {error}"));
     }
 
-    let pipeline = match build_pipeline(&config) {
+    let (pipeline, appsrc) = match build_pipeline(config) {
         Ok(pipeline) => pipeline,
         Err(error) => {
             let _ = ready_tx.send(Err(anyhow!("{error:#}")));
             return Err(error);
         }
     };
-    let (pipeline, appsrc) = pipeline;
 
     let main_loop = gst::glib::MainLoop::new(None, false);
-    let bus = match pipeline.bus() {
-        Some(bus) => bus,
-        None => {
-            let error = anyhow!("video pipeline has no bus");
-            let _ = ready_tx.send(Err(anyhow!("{error:#}")));
-            return Err(error);
-        }
+    let Some(bus) = pipeline.bus() else {
+        let error = anyhow!("video pipeline has no bus");
+        let _ = ready_tx.send(Err(anyhow!("{error:#}")));
+        return Err(error);
     };
 
     let loop_handle = main_loop.clone();
-    let watch_errors = Arc::clone(&errors);
+    let watch_errors = Arc::clone(errors);
     let _watch = bus.add_watch_local(move |_, message| {
         match message.view() {
             gst::MessageView::Eos(_) => loop_handle.quit(),
@@ -195,7 +191,7 @@ fn run(
 
     let timeout_appsrc = appsrc.clone();
     let timeout_audio = audio.clone();
-    let timeout_audio_pause = Arc::clone(&audio_pause);
+    let timeout_audio_pause = Arc::clone(audio_pause);
     gst::glib::timeout_add_local(Duration::from_millis(10), move || {
         if let Some(audio) = &timeout_audio
             && let Ok(mut recorder) = audio.lock()
@@ -269,7 +265,7 @@ fn build_pipeline(config: &VideoConfig) -> Result<(gst::Pipeline, gst_app::AppSr
             encoder.set_property("lag-in-frames", 0i32);
             encoder.set_property(
                 "target-bitrate",
-                config.bitrate_kbps.saturating_mul(1000) as i32,
+                i32::try_from(config.bitrate_kbps.saturating_mul(1000)).unwrap_or(i32::MAX),
             );
             make("webmmux")?
         }

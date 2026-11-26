@@ -16,6 +16,7 @@ pub enum PixelFormat {
 }
 
 impl PixelFormat {
+    #[must_use]
     pub fn from_spa(raw: u32) -> Option<Self> {
         Some(match raw {
             7 => Self::Rgbx,
@@ -31,6 +32,7 @@ impl PixelFormat {
         })
     }
 
+    #[must_use]
     pub fn gst_format_name(self) -> &'static str {
         match self {
             Self::Rgb24 => "RGB",
@@ -45,6 +47,7 @@ impl PixelFormat {
         }
     }
 
+    #[must_use]
     pub fn bytes_per_pixel(self) -> usize {
         match self {
             Self::Rgb24 => 3,
@@ -52,6 +55,7 @@ impl PixelFormat {
         }
     }
 
+    #[must_use]
     pub fn to_i420(self, width: u32, height: u32, data: &[u8]) -> Option<Vec<u8>> {
         let pixel_count = (width as usize).checked_mul(height as usize)?;
         let bpp = self.bytes_per_pixel();
@@ -68,28 +72,23 @@ impl PixelFormat {
                 let offset = (y * width as usize + x) * bpp;
                 let pixel = &data[offset..offset + bpp];
                 let (r, g, b) = match self {
-                    Self::Rgb24 => (pixel[0], pixel[1], pixel[2]),
-                    Self::Rgba => (pixel[0], pixel[1], pixel[2]),
-                    Self::Bgra => (pixel[2], pixel[1], pixel[0]),
-                    Self::Argb => (pixel[1], pixel[2], pixel[3]),
-                    Self::Abgr => (pixel[3], pixel[2], pixel[1]),
-                    Self::Rgbx => (pixel[0], pixel[1], pixel[2]),
-                    Self::Bgrx => (pixel[2], pixel[1], pixel[0]),
-                    Self::Xrgb => (pixel[1], pixel[2], pixel[3]),
-                    Self::Xbgr => (pixel[3], pixel[2], pixel[1]),
+                    Self::Rgb24 | Self::Rgba | Self::Rgbx => (pixel[0], pixel[1], pixel[2]),
+                    Self::Bgra | Self::Bgrx => (pixel[2], pixel[1], pixel[0]),
+                    Self::Argb | Self::Xrgb => (pixel[1], pixel[2], pixel[3]),
+                    Self::Abgr | Self::Xbgr => (pixel[3], pixel[2], pixel[1]),
                 };
-                let r = r as i32;
-                let g = g as i32;
-                let b = b as i32;
+                let r = i32::from(r);
+                let g = i32::from(g);
+                let b = i32::from(b);
                 let luma_value = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
-                luma[y * width as usize + x] = luma_value.clamp(0, 255) as u8;
+                luma[y * width as usize + x] = clamp_u8(luma_value);
 
                 if x % 2 == 0 && y % 2 == 0 {
                     let u_value = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
                     let v_value = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
                     let index = (y / 2) * (width.div_ceil(2) as usize) + (x / 2);
-                    u_plane[index] = u_value.clamp(0, 255) as u8;
-                    v_plane[index] = v_value.clamp(0, 255) as u8;
+                    u_plane[index] = clamp_u8(u_value);
+                    v_plane[index] = clamp_u8(v_value);
                 }
             }
         }
@@ -102,6 +101,10 @@ impl PixelFormat {
     }
 }
 
+fn clamp_u8(value: i32) -> u8 {
+    u8::try_from(value.clamp(0, 255)).unwrap_or(0)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecodedCursor {
     pub width: u32,
@@ -111,6 +114,7 @@ pub struct DecodedCursor {
     pub rgba: Vec<u8>,
 }
 
+#[must_use]
 pub fn decode_bitmap(
     format: PixelFormat,
     width: u32,
@@ -148,12 +152,11 @@ pub fn decode_bitmap(
             let offset = row_start + column * bytes_per_pixel;
             let pixel = &data[offset..offset + bytes_per_pixel];
             let (red, green, blue, alpha) = match format {
-                PixelFormat::Rgb24 => (pixel[0], pixel[1], pixel[2], u8::MAX),
+                PixelFormat::Rgb24 | PixelFormat::Rgbx => (pixel[0], pixel[1], pixel[2], u8::MAX),
                 PixelFormat::Rgba => (pixel[0], pixel[1], pixel[2], pixel[3]),
                 PixelFormat::Bgra => (pixel[2], pixel[1], pixel[0], pixel[3]),
                 PixelFormat::Argb => (pixel[1], pixel[2], pixel[3], pixel[0]),
                 PixelFormat::Abgr => (pixel[3], pixel[2], pixel[1], pixel[0]),
-                PixelFormat::Rgbx => (pixel[0], pixel[1], pixel[2], u8::MAX),
                 PixelFormat::Bgrx => (pixel[2], pixel[1], pixel[0], u8::MAX),
                 PixelFormat::Xrgb => (pixel[1], pixel[2], pixel[3], u8::MAX),
                 PixelFormat::Xbgr => (pixel[3], pixel[2], pixel[1], u8::MAX),
@@ -184,6 +187,7 @@ pub struct XcursorImage {
 const XCURSOR_IMAGE_TYPE: u32 = 0xfffd_0002;
 const XCURSOR_IMAGE_HEADER_SIZE: u32 = 36;
 
+#[must_use]
 pub fn parse_xcursor(data: &[u8]) -> Option<Vec<XcursorImage>> {
     if data.len() < 16 || &data[0..4] != b"Xcur" {
         return None;
@@ -247,6 +251,7 @@ pub struct ThemeCursor {
     pub images: Vec<XcursorImage>,
 }
 
+#[must_use]
 pub fn load_theme(theme: &str) -> Vec<ThemeCursor> {
     for directory in theme_cursor_dirs(theme) {
         let Ok(entries) = fs::read_dir(&directory) else {
@@ -295,6 +300,7 @@ fn theme_cursor_dirs(theme: &str) -> Vec<PathBuf> {
         .collect()
 }
 
+#[must_use]
 pub fn detect_theme() -> String {
     if let Ok(output) = Command::new("gsettings")
         .args(["get", "org.gnome.desktop.interface", "cursor-theme"])
@@ -312,6 +318,7 @@ pub fn detect_theme() -> String {
     std::env::var("XCURSOR_THEME").unwrap_or_else(|_| "Adwaita".to_owned())
 }
 
+#[must_use]
 pub fn recordly_type_for_name(name: &str) -> Option<&'static str> {
     let base = name.trim_end_matches(".cur").trim_end_matches(".ani");
     Some(match base {
@@ -336,6 +343,7 @@ const MAX_ALPHA_SCORE: u64 = 24;
 const MAX_SCALED_ALPHA_SCORE: u64 = 36;
 const MAX_HOTSPOT_DRIFT: f64 = 0.2;
 
+#[must_use]
 pub fn classify(cursor: &DecodedCursor, theme: &[ThemeCursor]) -> Option<&'static str> {
     if cursor.width == 0 || cursor.height == 0 {
         return None;
@@ -408,52 +416,79 @@ fn closest_size_image(
 }
 
 fn alpha_difference_scaled(cursor: &DecodedCursor, image: &XcursorImage) -> u64 {
-    let dst_w = cursor.width as f64;
-    let dst_h = cursor.height as f64;
-    let src_w = image.width as f64;
-    let src_h = image.height as f64;
+    let dst_w = f64::from(cursor.width);
+    let dst_h = f64::from(cursor.height);
+    let src_w = f64::from(image.width);
+    let src_h = f64::from(image.height);
     let mut total = 0u64;
 
-    for y in 0..cursor.height as usize {
-        let fy = (((y as f64 + 0.5) * src_h / dst_h) - 0.5).clamp(0.0, src_h - 1.0);
-        for x in 0..cursor.width as usize {
-            let fx = (((x as f64 + 0.5) * src_w / dst_w) - 0.5).clamp(0.0, src_w - 1.0);
-            let expected = sample_xcursor_alpha(image, fx, fy).round() as i32;
-            let actual = cursor.rgba[(y * cursor.width as usize + x) * 4 + 3] as i32;
-            total += (expected - actual).unsigned_abs() as u64;
+    for y in 0..cursor.height {
+        let fy = (((f64::from(y) + 0.5) * src_h / dst_h) - 0.5).clamp(0.0, src_h - 1.0);
+        let row_offset =
+            usize::try_from(y).unwrap_or(0) * usize::try_from(cursor.width).unwrap_or(0);
+        for x in 0..cursor.width {
+            let fx = (((f64::from(x) + 0.5) * src_w / dst_w) - 0.5).clamp(0.0, src_w - 1.0);
+            let expected = sample_xcursor_alpha(image, fx, fy);
+            let actual = cursor.rgba[(row_offset + usize::try_from(x).unwrap_or(0)) * 4 + 3];
+            total += u64::from(expected.abs_diff(actual));
         }
     }
 
-    total / (cursor.width as u64 * cursor.height as u64).max(1)
+    total / (u64::from(cursor.width) * u64::from(cursor.height)).max(1)
 }
 
-fn sample_xcursor_alpha(image: &XcursorImage, fx: f64, fy: f64) -> f64 {
-    let w = image.width as usize;
-    let h = image.height as usize;
-    let x0 = (fx.floor() as usize).min(w - 1);
-    let y0 = (fy.floor() as usize).min(h - 1);
+fn xcursor_alpha(pixel: u32) -> u8 {
+    u8::try_from((pixel >> 24) & 0xff).unwrap_or(0)
+}
+
+fn floor_clamped_index(coord: f64, dim: u32) -> usize {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "coord is clamped within [0.0, dim - 1.0]"
+    )]
+    let index = coord.floor().clamp(0.0, f64::from(dim - 1)) as u32;
+    usize::try_from(index).unwrap_or(0)
+}
+
+fn round_alpha_to_u8(alpha: f64) -> u8 {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "alpha is clamped within [0.0, 255.0]"
+    )]
+    let value = alpha.round().clamp(0.0, 255.0) as u8;
+    value
+}
+
+fn sample_xcursor_alpha(image: &XcursorImage, fx: f64, fy: f64) -> u8 {
+    let w = usize::try_from(image.width).unwrap_or(1);
+    let h = usize::try_from(image.height).unwrap_or(1);
+    let x0 = floor_clamped_index(fx, image.width).min(w - 1);
+    let y0 = floor_clamped_index(fy, image.height).min(h - 1);
     let x1 = (x0 + 1).min(w - 1);
     let y1 = (y0 + 1).min(h - 1);
-    let tx = fx - x0 as f64;
-    let ty = fy - y0 as f64;
-    let alpha_at = |x: usize, y: usize| -> f64 { ((image.pixels[y * w + x] >> 24) & 0xff) as f64 };
+    let tx = fx - f64::from(u32::try_from(x0).unwrap_or(0));
+    let ty = fy - f64::from(u32::try_from(y0).unwrap_or(0));
+    let alpha_at =
+        |x: usize, y: usize| -> f64 { f64::from(xcursor_alpha(image.pixels[y * w + x])) };
     let a00 = alpha_at(x0, y0);
     let a10 = alpha_at(x1, y0);
     let a01 = alpha_at(x0, y1);
     let a11 = alpha_at(x1, y1);
     let top = a00 + (a10 - a00) * tx;
     let bottom = a01 + (a11 - a01) * tx;
-    top + (bottom - top) * ty
+    round_alpha_to_u8(top + (bottom - top) * ty)
 }
 
 fn hotspot_matches(cursor: &DecodedCursor, image: &XcursorImage) -> bool {
     if image.width == 0 || image.height == 0 {
         return false;
     }
-    let expected_x = image.xhot as f64 / image.width as f64;
-    let expected_y = image.yhot as f64 / image.height as f64;
-    let actual_x = cursor.hotspot_x as f64 / cursor.width as f64;
-    let actual_y = cursor.hotspot_y as f64 / cursor.height as f64;
+    let expected_x = f64::from(image.xhot) / f64::from(image.width);
+    let expected_y = f64::from(image.yhot) / f64::from(image.height);
+    let actual_x = f64::from(cursor.hotspot_x) / f64::from(cursor.width);
+    let actual_y = f64::from(cursor.hotspot_y) / f64::from(cursor.height);
     (expected_x - actual_x).abs() <= MAX_HOTSPOT_DRIFT
         && (expected_y - actual_y).abs() <= MAX_HOTSPOT_DRIFT
 }
@@ -461,11 +496,11 @@ fn hotspot_matches(cursor: &DecodedCursor, image: &XcursorImage) -> bool {
 fn alpha_difference(cursor: &DecodedCursor, image: &XcursorImage) -> u64 {
     let mut total = 0u64;
     for (index, pixel) in image.pixels.iter().enumerate() {
-        let expected = (pixel >> 24) as i32;
-        let actual = cursor.rgba[index * 4 + 3] as i32;
-        total += (expected - actual).unsigned_abs() as u64;
+        let expected = xcursor_alpha(*pixel);
+        let actual = cursor.rgba[index * 4 + 3];
+        total += u64::from(expected.abs_diff(actual));
     }
-    total / (cursor.width as u64 * cursor.height as u64).max(1)
+    total / (u64::from(cursor.width) * u64::from(cursor.height)).max(1)
 }
 
 #[cfg(test)]
@@ -633,7 +668,11 @@ mod tests {
             let in_stem = x >= cx.saturating_sub(stem_half) && x <= cx + stem_half;
             let in_top = y < cap && x >= cx.saturating_sub(bar_half) && x <= cx + bar_half;
             let in_bot = y + cap >= h && x >= cx.saturating_sub(bar_half) && x <= cx + bar_half;
-            if in_stem || in_top || in_bot { 0xff } else { 0x00 }
+            if in_stem || in_top || in_bot {
+                0xff
+            } else {
+                0x00
+            }
         };
         let arrow_alpha = |x: u32, y: u32, w: u32, _h: u32| -> u8 {
             if x >= 4 && y >= 4 && x <= y && x < w * 2 / 3 && y < w * 3 / 4 {
