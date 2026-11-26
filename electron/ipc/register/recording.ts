@@ -64,7 +64,7 @@ export function registerRecordingHandlers(
 				: result,
 		discard: async (videoPath) => {
 			setWindowsPendingVideoPath(null);
-			const base = videoPath.replace(/\.mp4$/i, "");
+			const base = videoPath.replace(/\.[^.]+$/u, "");
 			const files = [
 				videoPath,
 				getTelemetryPathForVideo(videoPath),

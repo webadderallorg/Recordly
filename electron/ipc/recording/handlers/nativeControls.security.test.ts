@@ -29,6 +29,12 @@ vi.mock("../../project/manager", () => ({
 }));
 vi.mock("../../state", () => ({ approvedLocalReadPaths: mocks.approved }));
 vi.mock("../diagnostics", () => ({ getCompanionAudioFallbackInfo: mocks.fallback }));
+vi.mock("../linuxPortal", () => ({
+	isLinuxPortalCaptureActive: vi.fn(() => false),
+	pauseLinuxPortalCapture: vi.fn(),
+	probeLinuxPortalCapture: vi.fn(),
+	resumeLinuxPortalCapture: vi.fn(),
+}));
 vi.mock("../mac", () => ({
 	recoverNativeMacCaptureOutput: vi.fn(),
 	waitForNativeCaptureCommand: vi.fn(),
@@ -38,6 +44,7 @@ vi.mock("../windows", () => ({
 	recoverNativeWindowsCaptureOutput: vi.fn(),
 }));
 
+import { probeLinuxPortalCapture } from "../linuxPortal";
 import { isNativeWindowsCaptureAvailable } from "../windows";
 import { registerNativeControls } from "./nativeControls";
 
@@ -101,6 +108,7 @@ it.each([
 	"pause-native-screen-recording",
 	"resume-native-screen-recording",
 	"is-native-windows-capture-available",
+	"is-native-linux-portal-capture-available",
 	"get-last-native-capture-diagnostics",
 ])("rejects foreign and embedded callers before handling %s", async (channel) => {
 	const handler = new Map(vi.mocked(ipcMain.handle).mock.calls).get(channel)!;
@@ -115,12 +123,21 @@ it.each([
 		);
 	}
 	expect(isNativeWindowsCaptureAvailable).not.toHaveBeenCalled();
+	expect(probeLinuxPortalCapture).not.toHaveBeenCalled();
 });
 
 it("allows the trusted document to inspect native Windows capture availability", async () => {
 	vi.mocked(isNativeWindowsCaptureAvailable).mockResolvedValueOnce(true);
 	const handler = new Map(vi.mocked(ipcMain.handle).mock.calls).get(
 		"is-native-windows-capture-available",
+	)!;
+	await expect(handler(trusted)).resolves.toEqual({ available: true });
+});
+
+it("allows the trusted document to inspect native Linux portal capture availability", async () => {
+	vi.mocked(probeLinuxPortalCapture).mockResolvedValueOnce({ available: true });
+	const handler = new Map(vi.mocked(ipcMain.handle).mock.calls).get(
+		"is-native-linux-portal-capture-available",
 	)!;
 	await expect(handler(trusted)).resolves.toEqual({ available: true });
 });

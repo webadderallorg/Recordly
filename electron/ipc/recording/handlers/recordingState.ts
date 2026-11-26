@@ -24,6 +24,7 @@ import {
 	windowsNativeCaptureActive,
 } from "../../state";
 import { recordingFocus } from "../focus";
+import { isLinuxPortalCaptureActive } from "../linuxPortal";
 import { setRecordingZoomShortcutActive } from "../zoomShortcut";
 
 import type { RecordingHandlerContext } from "./handlerContext";
@@ -70,8 +71,12 @@ export function applyRecordingState(
 	ownerRecovery.setUserRecording(recording, ownerId);
 	if (recording) {
 		void recordingFocus.start(selectedSource);
-		if (!windowsNativeCaptureActive || !isCursorCaptureActive)
+		if (
+			!isLinuxPortalCaptureActive() &&
+			(!windowsNativeCaptureActive || !isCursorCaptureActive)
+		) {
 			startRecordingCursorCapture(recordingStartedAtMs);
+		}
 	} else {
 		setIsCursorCaptureActive(false);
 		stopCursorCapture();

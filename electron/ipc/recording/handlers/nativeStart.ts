@@ -3,6 +3,7 @@ import { isTrustedRenderer } from "../../../trustedRenderer";
 import { beginHudCaptureProtection } from "../../../windows";
 import { bringSelectedWindowForward } from "../../register/sources";
 import { type NativeMacRecordingOptions, type SelectedSource } from "../../types";
+import { isLinuxPortalCaptureEnabled, startLinuxPortalCapture } from "../linuxPortal";
 import type { RecordingHandlerContext } from "./handlerContext";
 import { startMacCapture } from "./startMacCapture";
 import { startWindowsCapture } from "./startWindowsCapture";
@@ -33,6 +34,30 @@ export function registerNativeStart(context: RecordingHandlerContext) {
 				: null;
 			if (process.platform === "win32")
 				return await startWindowsCapture(context, source, options);
+			if (process.platform === "linux" && isLinuxPortalCaptureEnabled()) {
+				const ownerSession = ownerRecovery.sessionToken;
+				try {
+					await startLinuxPortalCapture({
+						systemAudio: Boolean(options?.capturesSystemAudio),
+						trackProcess: (child) => recordingProcessGuard.track(child),
+						onUnexpectedExit: () => {
+							if (ownerRecovery.sessionToken === ownerSession) {
+								ownerRecovery.captureExited();
+							}
+						},
+					});
+					return {
+						success: true,
+						microphoneFallbackRequired: Boolean(options?.capturesMicrophone),
+					};
+				} catch (error) {
+					return {
+						success: false,
+						message: "Failed to start Linux portal capture",
+						error: String(error),
+					};
+				}
+			}
 			return await startMacCapture(context, source, options, visibleWindowBounds);
 		},
 	);

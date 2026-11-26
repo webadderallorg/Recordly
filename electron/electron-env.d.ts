@@ -1304,6 +1304,7 @@ interface Window {
 		setExportInProgress: (active: boolean) => void;
 		onRequestSaveBeforeClose: (callback: () => Promise<boolean>) => () => void;
 		isNativeWindowsCaptureAvailable: () => Promise<{ available: boolean }>;
+		isNativeLinuxPortalCaptureAvailable: () => Promise<{ available: boolean }>;
 		muxNativeWindowsRecording: (expectedDurationMs?: number) => Promise<{
 			success: boolean;
 			path?: string;

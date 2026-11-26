@@ -1328,6 +1328,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	isNativeWindowsCaptureAvailable: () =>
 		ipcRenderer.invoke("is-native-windows-capture-available"),
+	isNativeLinuxPortalCaptureAvailable: () =>
+		ipcRenderer.invoke("is-native-linux-portal-capture-available"),
 	muxNativeWindowsRecording: (expectedDurationMs?: number) =>
 		invokeWithDiagnostics("mux-native-windows-recording", expectedDurationMs),
 	hideOsCursor: () => ipcRenderer.invoke("hide-cursor"),

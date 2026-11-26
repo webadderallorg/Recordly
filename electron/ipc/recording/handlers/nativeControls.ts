@@ -17,6 +17,12 @@ import {
 	windowsNativeCaptureActive,
 } from "../../state";
 import { getCompanionAudioFallbackInfo } from "../diagnostics";
+import {
+	isLinuxPortalCaptureActive,
+	pauseLinuxPortalCapture,
+	probeLinuxPortalCapture,
+	resumeLinuxPortalCapture,
+} from "../linuxPortal";
 import { recoverNativeMacCaptureOutput } from "../mac";
 import { sendNativeCaptureCommand } from "../nativeCaptureCommand";
 import { isNativeWindowsCaptureAvailable, recoverNativeWindowsCaptureOutput } from "../windows";
@@ -101,6 +107,10 @@ export function registerNativeControls(
 			}
 		}
 
+		if (process.platform === "linux" && isLinuxPortalCaptureActive()) {
+			return await pauseLinuxPortalCapture();
+		}
+
 		if (process.platform !== "darwin") {
 			return {
 				success: false,
@@ -153,6 +163,10 @@ export function registerNativeControls(
 			}
 		}
 
+		if (process.platform === "linux" && isLinuxPortalCaptureActive()) {
+			return await resumeLinuxPortalCapture();
+		}
+
 		if (process.platform !== "darwin") {
 			return {
 				success: false,
@@ -184,6 +198,11 @@ export function registerNativeControls(
 	ipcMain.handle("is-native-windows-capture-available", async (event) => {
 		if (!isTrustedRenderer(event)) throw new Error("Untrusted recording caller");
 		return { available: await isNativeWindowsCaptureAvailable() };
+	});
+
+	ipcMain.handle("is-native-linux-portal-capture-available", async (event) => {
+		if (!isTrustedRenderer(event)) throw new Error("Untrusted recording caller");
+		return { available: (await probeLinuxPortalCapture()).available };
 	});
 
 	ipcMain.handle("get-last-native-capture-diagnostics", async (event) => {

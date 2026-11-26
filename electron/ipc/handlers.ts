@@ -33,6 +33,7 @@ import {
 
 export { cleanupAllExportStreams } from "./export/exportStream";
 export { cleanupNativeVideoExportSessions } from "./export/native-video";
+export { killLinuxPortalCaptureProcess } from "./recording/linuxPortal";
 
 /** Returns the currently selected source ID for setDisplayMediaRequestHandler */
 export function getSelectedSourceId(): string | null {

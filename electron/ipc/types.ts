@@ -57,7 +57,7 @@ export type WindowBounds = {
 };
 
 export type NativeCaptureDiagnostics = {
-	backend: "windows-wgc" | "mac-screencapturekit" | "browser-store" | "ffmpeg";
+	backend: "windows-wgc" | "mac-screencapturekit" | "linux-portal" | "browser-store" | "ffmpeg";
 	phase: "availability" | "start" | "stop" | "mux";
 	timestamp: string;
 	sourceId?: string | null;
