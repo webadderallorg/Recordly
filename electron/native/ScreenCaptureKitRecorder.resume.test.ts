@@ -72,6 +72,9 @@ Task {
     try? await Task.sleep(nanoseconds: 40_000_000)
     let paused = await harness.pauseCapture()
     check(paused && harness.isPaused, "pauseCapture should succeed")
+    let pauseStartHost = harness.queue.sync { harness.pauseStartedHostTime! }
+    let measuredActiveInterval = CMTimeSubtract(pauseStartHost, startHost).seconds
+    check(measuredActiveInterval >= 0.03, "expected positive pre-pause active interval, got \\(measuredActiveInterval)")
 
     try? await Task.sleep(nanoseconds: 150_000_000)
     let resumed = await harness.resumeCapture()
@@ -79,7 +82,12 @@ Task {
 
     let pausedDuration = harness.queue.sync { harness.accumulatedPausedDuration.seconds }
     let resumeHost = harness.queue.sync { harness.lastResumeHostTime! }
-    check(pausedDuration >= 0.13 && pausedDuration < 0.25, "accumulatedPausedDuration should reflect ~150ms pause, got \\(pausedDuration)")
+    let measuredPauseInterval = CMTimeSubtract(resumeHost, pauseStartHost).seconds
+    check(measuredPauseInterval >= 0.13, "expected positive pause interval, got \\(measuredPauseInterval)")
+    check(
+        abs(pausedDuration - measuredPauseInterval) < 0.001,
+        "accumulatedPausedDuration (\\(pausedDuration)) must match lastResumeHostTime - pauseStartedHostTime (\\(measuredPauseInterval))"
+    )
 
     // Samples captured during the pause window must be dropped.
     let preResumeAudio = CMTimeAdd(resumeHost, CMTime(seconds: -0.02, preferredTimescale: 1_000_000_000))
@@ -95,7 +103,11 @@ Task {
     }
     check(postResumeAudioPts != nil, "audio during static screen after resume must be accepted")
     let audioTimeline = postResumeAudioPts!.seconds
-    check(audioTimeline >= 0.04 && audioTimeline < 0.12, "audio timeline should advance only by active elapsed time (~60ms), got \\(audioTimeline)")
+    let expectedAudioTimeline = measuredActiveInterval + 0.02
+    check(
+        abs(audioTimeline - expectedAudioTimeline) < 0.001,
+        "audio timeline (\\(audioTimeline)) must match measured active interval plus 0.02s (\\(expectedAudioTimeline))"
+    )
 
     // A screen frame arriving much later must NOT treat the static post-resume interval as paused time.
     let delayedScreenHost = CMTimeAdd(resumeHost, CMTime(seconds: 0.50, preferredTimescale: 1_000_000_000))
@@ -104,7 +116,11 @@ Task {
     }
     check(delayedScreenPts != nil, "delayed post-resume video frame must be accepted")
     let screenTimeline = delayedScreenPts!.seconds
-    check(screenTimeline >= 0.52 && screenTimeline < 0.62, "video timeline should preserve static post-resume duration (~540ms), got \\(screenTimeline)")
+    let expectedScreenTimeline = measuredActiveInterval + 0.50
+    check(
+        abs(screenTimeline - expectedScreenTimeline) < 0.001,
+        "video timeline (\\(screenTimeline)) must preserve static post-resume duration (\\(expectedScreenTimeline))"
+    )
     let pausedDurationAfterVideo = harness.queue.sync { harness.accumulatedPausedDuration.seconds }
     check(abs(pausedDurationAfterVideo - pausedDuration) < 0.001, "video arrival must not inflate accumulatedPausedDuration")
 
