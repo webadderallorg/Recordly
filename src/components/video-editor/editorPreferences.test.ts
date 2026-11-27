@@ -702,6 +702,30 @@ describe("editorPreferences", () => {
 
 		expect(saveEditorPresets([])).toBe(false);
 	});
+
+	it("does not replace the browser copy when the preferred desktop store rejects a preset write", () => {
+		const localStorage = createStorageMock({ [EDITOR_PRESETS_STORAGE_KEY]: "[]" });
+		vi.stubGlobal("localStorage", localStorage);
+		vi.stubGlobal("electronAPI", { getAppSetting: () => [], setAppSetting: () => false });
+		expect(
+			saveEditorPresets([
+				{
+					id: "new-preset",
+					name: "New preset",
+					createdAt: "2026-05-01T00:00:00.000Z",
+					updatedAt: "2026-05-01T00:00:00.000Z",
+					snapshot: {
+						...DEFAULT_EDITOR_PREFERENCES,
+						padding: DEFAULT_PADDING,
+						cropRegion: DEFAULT_CROP_REGION,
+						autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
+					},
+				},
+			]),
+		).toBe(false);
+		expect(localStorage.getItem(EDITOR_PRESETS_STORAGE_KEY)).toBe("[]");
+		expect(loadEditorPresets()).toEqual([]);
+	});
 });
 
 describe("source-specific webcam metadata", () => {

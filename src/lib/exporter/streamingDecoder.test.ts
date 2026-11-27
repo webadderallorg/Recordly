@@ -485,16 +485,20 @@ describe("StreamingVideoDecoder decode failures", () => {
 		expect(decoder.getEffectiveDuration(undefined, undefined, clips)).toBe(1.2);
 	});
 	it.each([
-		false,
-		true,
-	])("stops each short clip run before decoding the source tail (reordered: %s)", async (reordered) => {
+		{ reordered: false, stuck: false },
+		{ reordered: true, stuck: false },
+		{ reordered: false, stuck: true },
+	])("stops short clips before the source tail (reordered: $reordered, cancellation stuck: $stuck)", async ({
+		reordered,
+		stuck,
+	}) => {
 		const info = await mockDemuxerGetMediaInfo();
 		mockDemuxerGetMediaInfo.mockResolvedValueOnce({
 			...info,
 			duration: 100,
 			streams: info.streams.map((stream) => ({ ...stream, duration: 100 })),
 		});
-		const readerCancelled = vi.fn();
+		const readerCancelled = vi.fn(() => (stuck ? new Promise<void>(() => {}) : undefined));
 		mockDemuxerRead.mockImplementation(() => {
 			let index = 0;
 			return new ReadableStream({
@@ -565,6 +569,7 @@ describe("StreamingVideoDecoder decode failures", () => {
 		}
 		expect(decoded).toBeLessThan(120);
 		expect(readerCancelled).toHaveBeenCalledTimes(reordered ? 2 : 1);
+		if (stuck) expect(mockDemuxerDestroy).toHaveBeenCalledOnce();
 		for (const close of closes) expect(close).toHaveBeenCalledTimes(1);
 	});
 

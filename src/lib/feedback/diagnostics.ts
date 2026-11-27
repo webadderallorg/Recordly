@@ -6,8 +6,8 @@ import {
 	type OperationEvent,
 	startDiagnosticOperation,
 } from "../../shared/operationDiagnostics";
-import { captureCrash, type CrashDiagnostic, type CrashView } from "./crashDiagnostics";
-import { redactDiagnostic } from "./diagnosticRedaction";
+import { type CrashDiagnostic, type CrashView, captureCrash } from "./crashDiagnostics";
+import { redactDiagnostic, redactDiagnosticLogEntry } from "./diagnosticRedaction";
 import { summarizeExportDiagnostics } from "./exportDiagnosticSummary";
 import { getExportDiagnosticLogs } from "./exportDiagnostics";
 
@@ -263,9 +263,9 @@ export function feedbackDiagnostics(
 		windowId: desktop?.windowId,
 		operationHistoryVersion: 1,
 	};
-	const chronological = [...new Set([...entries, ...persistedLogs].map(redactDiagnostic))].sort(
-		(a, b) => a.slice(0, 24).localeCompare(b.slice(0, 24)),
-	);
+	const chronological = [
+		...new Set([...entries, ...persistedLogs].map(redactDiagnosticLogEntry)),
+	].sort((a, b) => a.slice(0, 24).localeCompare(b.slice(0, 24)));
 	const lastSeen = new Map<string, number>();
 	const logs = chronological.filter((entry) => {
 		const timestamp = Date.parse(entry.slice(0, 24));

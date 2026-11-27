@@ -42,25 +42,27 @@ export function useAppearanceState(preferences: EditorPreferences) {
 			: preferences.wallpaper,
 	);
 	const [defaultWallpaper, setDefaultWallpaper] = useState(DEFAULT_WALLPAPER_PATH);
-	const wallpaperChanged = useRef(false);
+	const usesDefaultWallpaper = useRef(preferences.wallpaper === DESKTOP_WALLPAPER);
 	const setWallpaper = useCallback<Dispatch<SetStateAction<string>>>((value) => {
-		wallpaperChanged.current = true;
+		usesDefaultWallpaper.current = false;
 		setWallpaperState(value);
 	}, []);
+	const resetWallpaper = useCallback(() => {
+		usesDefaultWallpaper.current = true;
+		setWallpaperState(defaultWallpaper);
+	}, [defaultWallpaper]);
 	useEffect(() => {
 		let active = true;
 		void getDesktopWallpaperPath().then((path) => {
 			if (!active || !path) return;
 			setDefaultWallpaper(path);
 			// Restoring a project or picking a background wins over a late OS response.
-			if (preferences.wallpaper === DESKTOP_WALLPAPER && !wallpaperChanged.current) {
-				setWallpaperState(path);
-			}
+			if (usesDefaultWallpaper.current) setWallpaperState(path);
 		});
 		return () => {
 			active = false;
 		};
-	}, [preferences.wallpaper]);
+	}, []);
 	const [shadowIntensity, setShadowIntensity] = useState(preferences.shadowIntensity);
 	const [backgroundBlur, setBackgroundBlur] = useState(preferences.backgroundBlur);
 	const [zoomMotionBlur, setZoomMotionBlur] = useState(preferences.zoomMotionBlur);
@@ -155,6 +157,7 @@ export function useAppearanceState(preferences: EditorPreferences) {
 	return {
 		wallpaper,
 		defaultWallpaper,
+		resetWallpaper,
 		setWallpaper,
 		shadowIntensity,
 		setShadowIntensity,

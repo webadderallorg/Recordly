@@ -513,7 +513,7 @@ export async function decodeVideoStreamAttempt(
 		} catch (error) {
 			// A worker can stop responding before acknowledging the stream cancellation.
 			context.discardDemuxer();
-			if (!context.cancelled) recordFirstDecodeError(error);
+			if (!context.cancelled && !outputComplete) recordFirstDecodeError(error);
 		}
 		for (const frame of pendingFrames) frame.close();
 		pendingFrames.length = 0;

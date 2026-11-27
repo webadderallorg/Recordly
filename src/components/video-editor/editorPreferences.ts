@@ -1,5 +1,5 @@
 import { DESKTOP_WALLPAPER } from "@/lib/desktopWallpaper";
-import { loadAppSetting, saveAppSetting } from "../../lib/appSettings";
+import { hasElectronAppSettings, loadAppSetting, saveAppSetting } from "../../lib/appSettings";
 import { normalizeCustomGradients } from "./customGradients";
 import { type ExportPreferences, normalizeExportPreferences } from "./exportPreferences";
 import {
@@ -592,12 +592,10 @@ export function loadEditorPresets(): EditorPreset[] {
 export function saveEditorPresets(presets: EditorPreset[]): boolean {
 	try {
 		const normalized = normalizeEditorPresets(presets);
-		const persistedToAppSettings = saveAppSetting(EDITOR_PRESETS_STORAGE_KEY, normalized);
-		const persistedToLocalStorage = saveLocalStorageJson(
-			EDITOR_PRESETS_STORAGE_KEY,
-			normalized,
-		);
-		return persistedToAppSettings || persistedToLocalStorage;
+		const hasDesktopStore = hasElectronAppSettings();
+		if (hasDesktopStore && !saveAppSetting(EDITOR_PRESETS_STORAGE_KEY, normalized))
+			return false;
+		return saveLocalStorageJson(EDITOR_PRESETS_STORAGE_KEY, normalized) || hasDesktopStore;
 	} catch {
 		// Ignore storage failures so editor controls still work.
 		return false;

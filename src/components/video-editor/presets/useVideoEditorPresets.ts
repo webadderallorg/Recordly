@@ -89,8 +89,9 @@ export function useVideoEditorPresets({
 	);
 
 	const applySnapshot = useCallback(
-		(snapshot: EditorPresetSnapshot) => {
-			appearance.setWallpaper(snapshot.wallpaper);
+		(snapshot: EditorPresetSnapshot, options?: { useDefaultWallpaper: boolean }) => {
+			if (options?.useDefaultWallpaper) appearance.resetWallpaper();
+			else appearance.setWallpaper(snapshot.wallpaper);
 			appearance.setShadowIntensity(snapshot.shadowIntensity);
 			appearance.setBackgroundBlur(snapshot.backgroundBlur);
 			appearance.setZoomMotionBlur(snapshot.zoomMotionBlur);

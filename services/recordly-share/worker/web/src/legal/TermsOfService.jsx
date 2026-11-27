@@ -68,15 +68,15 @@ export default function TermsOfService() {
 				Cloud recordings have no scheduled expiry while Plus is active. A verified upgrade
 				also protects eligible recordings still stored at the time of upgrade. When Plus
 				ends, those recordings expire after a seven-day grace period. Save a copy or renew
-				before that deadline. Upgrading cannot recover deleted files. New uploads after
-				Plus ends follow the Free limits; stored recordings continue to count toward
-				applicable limits.
+				before that deadline. Upgrading cannot recover deleted files. New uploads after Plus
+				ends follow the Free limits; stored recordings continue to count toward applicable
+				limits.
 			</p>
 			<p>
 				“No expiry” applies only while Plus is active. Cloud recordings expire seven days
-				after Plus ends. It does not prevent deletion you request, lawful removal or
-				removal necessary to address serious abuse. It is not a guarantee of uninterrupted
-				service or a separate disaster-recovery copy.
+				after Plus ends. It does not prevent deletion you request, lawful removal or removal
+				necessary to address serious abuse. It is not a guarantee of uninterrupted service
+				or a separate disaster-recovery copy.
 			</p>
 			<h2>6. Prices, renewals and cancellation</h2>
 			<p>

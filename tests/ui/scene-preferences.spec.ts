@@ -103,6 +103,7 @@ test("the toolbar can save a first preset and confirm its deletion in Edit", asy
 	const cancel = page.getByRole("button", { name: "Cancel", exact: true });
 	await expect(cancel).toBeFocused();
 	await cancel.press("Enter");
+	await expect(deletePreset).toBeFocused();
 	await page.getByRole("button", { name: "Done", exact: true }).click();
 	await expect(preset).toBeVisible();
 	await edit.click();
@@ -210,6 +211,40 @@ for (const [captureSourceKind, expectedPadding] of [
 		);
 		await toolbar.click();
 		await expect(defaultPreset).toHaveAttribute("aria-current", "true");
+	});
+}
+
+for (const [selection, expected] of [
+	["Default", /macos-hello-black\.jpg/],
+	["manual background", /tahoe-dark\.jpg/],
+] as const) {
+	test(`a late desktop wallpaper respects the ${selection} selection`, async ({ page }) => {
+		await installSceneBridge(page, { wallpaper: "#112233" });
+		await installDesktopBridgeOverrides(page, () => {
+			window.electronAPI.getDesktopWallpaper = () =>
+				new Promise((resolve) => {
+					window.addEventListener(
+						"resolve-test-wallpaper",
+						() => {
+							resolve({ success: true, path: "/wallpapers/macos-hello-black.jpg" });
+						},
+						{ once: true },
+					);
+				});
+		});
+		await openScene(page, "/?windowType=editor");
+		await page.getByRole("button", { name: "Open presets", exact: true }).click();
+		await page.getByRole("button", { name: "Default", exact: true }).click();
+		const background = page.locator("[data-preview-background]");
+		await expect(background).toHaveCSS("background-image", /tahoe-light\.jpg/);
+		if (selection === "manual background") {
+			await page.getByRole("button", { name: "Tahoe Dark", exact: true }).click();
+		}
+		await page.evaluate(() => window.dispatchEvent(new Event("resolve-test-wallpaper")));
+		await expect(
+			page.getByRole("button", { name: "Desktop wallpaper", exact: true }),
+		).toBeEnabled();
+		await expect(background).toHaveCSS("background-image", expected);
 	});
 }
 

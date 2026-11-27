@@ -18,7 +18,10 @@ interface UseEditorPresetsParams {
 	t: Translator;
 	currentSnapshot: EditorPresetSnapshot;
 	defaultSnapshot: EditorPresetSnapshot;
-	applySnapshot: (snapshot: EditorPresetSnapshot) => void;
+	applySnapshot: (
+		snapshot: EditorPresetSnapshot,
+		options?: { useDefaultWallpaper: boolean },
+	) => void;
 	editorPresets: EditorPreset[];
 	setEditorPresets: Dispatch<SetStateAction<EditorPreset[]>>;
 }
@@ -43,19 +46,29 @@ export function useEditorPresets({
 		() => serializeEditorPresetSnapshot(defaultSnapshot),
 		[defaultSnapshot],
 	);
+	const savedSignatures = useMemo(
+		() =>
+			new Map(
+				editorPresets.map(({ id, snapshot }) => [
+					id,
+					serializeEditorPresetSnapshot(snapshot),
+				]),
+			),
+		[editorPresets],
+	);
 	const matchesDefault = currentSignatures.withoutWebcam === defaultSignature;
 	const currentEditorPreset = useMemo(() => {
-		const matches = ({ snapshot }: EditorPreset) =>
-			serializeEditorPresetSnapshot(snapshot) ===
+		const matches = ({ id, snapshot }: EditorPreset) =>
+			savedSignatures.get(id) ===
 			(snapshot.webcam ? currentSignatures.withWebcam : currentSignatures.withoutWebcam);
 		const selected = editorPresets.find((preset) => preset.id === activePresetId);
 		if (selected && matches(selected)) return selected;
 		return matchesDefault ? null : (editorPresets.find(matches) ?? null);
-	}, [activePresetId, currentSignatures, editorPresets, matchesDefault]);
+	}, [activePresetId, currentSignatures, editorPresets, matchesDefault, savedSignatures]);
 
 	const handleApplyDefaultPreset = useCallback(() => {
 		setActivePresetId(null);
-		applySnapshot(defaultSnapshot);
+		applySnapshot(defaultSnapshot, { useDefaultWallpaper: true });
 	}, [applySnapshot, defaultSnapshot]);
 
 	const handleApplyEditorPreset = useCallback(

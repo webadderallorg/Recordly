@@ -6,7 +6,7 @@ import type {
 	ExportSettings,
 } from "@/lib/exporter/types";
 import { newDiagnosticId, type startDiagnosticOperation } from "../../shared/operationDiagnostics";
-import { redactDiagnostic } from "./diagnosticRedaction";
+import { redactDiagnostic, redactDiagnosticLogEntry } from "./diagnosticRedaction";
 
 const entries: string[] = [];
 let writes: Promise<unknown> = Promise.resolve();
@@ -26,8 +26,9 @@ function failureDetails(message: string) {
 /** Keep export details out of the progress UI, but available in support reports. */
 export function recordExportDiagnostic(event: string, details: Record<string, unknown> = {}) {
 	// Callers must explicitly select diagnostic fields, never pass project/config objects.
-	const message = redactDiagnostic(`[export] ${event} ${JSON.stringify(details)}`).slice(0, 1900);
-	const entry = `${new Date().toISOString()} info: ${message}`;
+	const entry = redactDiagnosticLogEntry(
+		`${new Date().toISOString()} info: [export] ${event} ${JSON.stringify(details)}`,
+	);
 	entries.push(entry);
 	if (entries.length > 60) entries.shift();
 	if (typeof window !== "undefined" && window.electronAPI?.appendExportDiagnostic) {

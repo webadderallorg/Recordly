@@ -101,7 +101,7 @@ test("editor loads video, switches tools and edits export options", async ({ pag
 		page.getByRole("button", { name: "Aspect ratio: 1:1", exact: true }),
 	).toBeVisible();
 	await page.keyboard.press("Escape");
-	await expect(page.getByRole("button", { name: "Open presets", exact: true })).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Open presets", exact: true })).toBeVisible();
 	await page.getByRole("button", { name: "Add", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Annotation", exact: true }).click();
 	await expect

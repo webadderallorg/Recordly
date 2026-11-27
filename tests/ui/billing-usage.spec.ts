@@ -816,9 +816,7 @@ for (const subscription of [
 		});
 		await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
 		const dialog = page.getByRole("dialog", { name: "Recordly Plus", exact: true });
-		await expect(
-			dialog.getByText("Your Plus plan is active.", { exact: false }),
-		).toBeVisible();
+		await expect(dialog.getByText("Your Plus plan is active.", { exact: false })).toBeVisible();
 		await expect(dialog.locator(".pricing-price-offer")).toHaveCount(0);
 		await expect(dialog.locator(".split-upgrade-savings")).toHaveCount(0);
 		await expect(dialog.getByText(/USD \/ month/)).toHaveCount(0);

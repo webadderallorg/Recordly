@@ -102,6 +102,15 @@ describe("local media path policy", () => {
 		await expect(manager.loadRecentProjectPaths()).resolves.toEqual([recent, offline]);
 	});
 
+	it("distinguishes an empty project library from a dangling project directory", async () => {
+		const manager = await import("./manager");
+		const projects = await manager.getProjectsDirPath();
+		await fs.mkdir(path.dirname(projects), { recursive: true });
+		expect((await manager.listProjectLibraryEntries()).warning).toBeUndefined();
+		await fs.symlink(path.join(tempRoot, "offline-projects"), projects, "junction");
+		expect((await manager.listProjectLibraryEntries()).warning).toContain("ENOENT");
+	});
+
 	it("restores uploaded webcam media and its edge style from disk after a restart", async () => {
 		const manager = await import("./manager");
 		const { writeProjectFileAtomically } = await import("./atomicSave");

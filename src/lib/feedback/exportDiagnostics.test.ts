@@ -17,6 +17,36 @@ afterEach(() => {
 });
 
 describe("export support logs", () => {
+	it("keeps the completed outcome when JSON escaping exhausts the diagnostic budget", async () => {
+		const { createExportDiagnostics, getExportDiagnosticLogs } = await import(
+			"./exportDiagnostics"
+		);
+		const { redactDiagnosticLogEntry } = await import("./diagnosticRedaction");
+		const { summarizeExportDiagnostics } = await import("./exportDiagnosticSummary");
+		const tracker = createExportDiagnostics({ format: "mp4" }, "download");
+		const escaped = '"'.repeat(450);
+		tracker.beginAttempt("modern");
+		tracker.stage("finalize-output-file");
+		tracker.record("video-reader-retry", { reason: escaped });
+		tracker.record("renderer-media-failure", {
+			asset: "webcam",
+			mediaStage: "decode",
+			code: "RENDER_MEDIA_TIMEOUT",
+			reason: escaped,
+		});
+		tracker.record("save-failed", { error: `ENOSPC ${escaped}` });
+		tracker.complete(false);
+
+		const logs = (await getExportDiagnosticLogs()).map(redactDiagnosticLogEntry);
+		expect(logs.find((line) => line.includes("[export] complete"))?.length).toBeLessThan(2000);
+		expect(summarizeExportDiagnostics(logs, [])).toEqual([
+			expect.objectContaining({
+				status: "failed",
+				stage: "finalize-output-file",
+				code: "ENOSPC",
+			}),
+		]);
+	});
 	it("keeps the final cause and last retry in the report after older checkpoints rotate out", async () => {
 		const { createExportDiagnostics, getExportDiagnosticLogs, recordExportDiagnostic } =
 			await import("./exportDiagnostics");

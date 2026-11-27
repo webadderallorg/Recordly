@@ -64,7 +64,8 @@ export function EditorPresetMenu({ t, presets }: Props) {
 	const cancelRef = useRef<HTMLButtonElement>(null);
 	const editRef = useRef<HTMLButtonElement>(null);
 	const saveRef = useRef<HTMLButtonElement>(null);
-	const previousView = useRef<View["kind"]>("browse");
+	const deleteButtons = useRef(new Map<string, HTMLButtonElement>());
+	const previousView = useRef<View>({ kind: "browse" });
 	const label = t("editor.presets.label", "Presets");
 	const saveLabel = t("editor.presets.saveCurrentAs", "Save current as new");
 	const editLabel = t("editor.presets.edit", "Edit");
@@ -74,17 +75,22 @@ export function EditorPresetMenu({ t, presets }: Props) {
 	const editing = view.kind === "edit";
 
 	useEffect(() => {
-		if (open && previousView.current !== view.kind) {
+		const previous = previousView.current;
+		if (open && previous.kind !== view.kind) {
 			if (view.kind === "save") nameRef.current?.focus();
 			if (view.kind === "delete") cancelRef.current?.focus();
-			if (view.kind === "edit") editRef.current?.focus();
+			if (view.kind === "edit") {
+				const button =
+					previous.kind === "delete" ? deleteButtons.current.get(previous.id) : null;
+				(button ?? editRef.current)?.focus();
+			}
 			if (view.kind === "browse") {
-				const action = previousView.current === "edit" ? editRef : saveRef;
+				const action = previous.kind === "edit" ? editRef : saveRef;
 				action.current?.focus();
 			}
 		}
-		previousView.current = view.kind;
-	}, [open, view.kind]);
+		previousView.current = view;
+	}, [open, view]);
 
 	const showPresets = () => {
 		setView({ kind: "browse" });
@@ -178,6 +184,14 @@ export function EditorPresetMenu({ t, presets }: Props) {
 														{presetName}
 													</span>
 													<Button
+														ref={(button) => {
+															if (button)
+																deleteButtons.current.set(
+																	id,
+																	button,
+																);
+															else deleteButtons.current.delete(id);
+														}}
 														type="button"
 														variant="destructive-soft"
 														size="icon"

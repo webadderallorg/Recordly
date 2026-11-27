@@ -494,7 +494,12 @@ export async function listProjectLibraryEntries(
 		}
 	} catch (error) {
 		// A new library can be empty. An inaccessible library should still show its recent files.
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") warning = String(error);
+		if (
+			(error as NodeJS.ErrnoException).code !== "ENOENT" ||
+			!(await isAbsentProjectsDir(projectsDir))
+		) {
+			warning = String(error);
+		}
 	}
 
 	const recentProjectPaths = await loadRecentProjectPaths();
@@ -517,6 +522,20 @@ export async function listProjectLibraryEntries(
 		entries,
 		warning,
 	};
+}
+
+async function isAbsentProjectsDir(projectsDir: string): Promise<boolean> {
+	try {
+		// lstat detects a dangling link, which readdir also reports as ENOENT.
+		await fs.lstat(projectsDir);
+		return false;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false;
+		return fs.stat(path.dirname(projectsDir)).then(
+			(directory) => directory.isDirectory(),
+			() => false,
+		);
+	}
 }
 
 export function isLoadableProjectData(projectData: unknown): projectData is {

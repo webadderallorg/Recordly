@@ -3,12 +3,12 @@ import { installDesktopBridge } from "./bridge";
 
 test("HUD close requests a native hide immediately", async ({ page }) => {
 	await installDesktopBridge(page);
-	await page.addInitScript(() => {
+	await page.goto("/?windowType=hud-overlay");
+	await page.evaluate(() => {
 		window.electronAPI.hudOverlayHide = () => {
 			document.documentElement.dataset.hudHidden = "true";
 		};
 	});
-	await page.goto("/?windowType=hud-overlay");
 	const close = page.getByRole("button", { name: "Hide HUD", exact: true });
 	await expect(close).toBeEnabled();
 	const hidden = await close.evaluate((button: HTMLButtonElement) => {

@@ -14,6 +14,10 @@ function getElectronSettingsApi(): ElectronSettingsApi | null {
 	return api;
 }
 
+export function hasElectronAppSettings(): boolean {
+	return getElectronSettingsApi() !== null;
+}
+
 export function loadAppSetting<T>(key: string): T | null {
 	const api = getElectronSettingsApi();
 	if (!api) {

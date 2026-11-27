@@ -53,9 +53,9 @@ test("preview zoom keeps rendering while a modern MP4 export is active", async (
 	await page.getByRole("button", { name: "Export Video", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-encoder-waiting", "true");
 	await page.getByRole("button", { name: "Play", exact: true }).click();
-	await expect.poll(async () => (await annotation.boundingBox())?.width ?? 0).toBeGreaterThan(
-		initialWidth * 1.3,
-	);
+	await expect
+		.poll(async () => (await annotation.boundingBox())?.width ?? 0)
+		.toBeGreaterThan(initialWidth * 1.3);
 	await expect(page.getByRole("progressbar", { name: "Exporting", exact: true })).toBeVisible();
 });
 

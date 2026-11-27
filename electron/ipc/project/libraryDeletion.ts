@@ -3,7 +3,7 @@ import { canonicalSourceReference } from "./canonicalSourceReference";
 
 type Sources = { sourcePaths: string[]; sourcePathsComplete: boolean };
 export type LibraryDeletionDependencies = {
-	list: () => Promise<{ entries: Array<{ path: string }> }>;
+	list: () => Promise<{ entries: Array<{ path: string }>; warning?: string }>;
 	readSources: (
 		path: string,
 		kind: "primary" | "recovery",
@@ -14,6 +14,13 @@ export type LibraryDeletionDependencies = {
 	activeSources?: () => string[] | Promise<string[]>;
 };
 const key = (value: string) => path.resolve(value).replace(/\\/g, "/").toLowerCase();
+
+async function listProjectsForSourceDeletion(deps: LibraryDeletionDependencies) {
+	const { entries, warning } = await deps.list();
+	if (warning)
+		throw new Error("The project library could not be checked. Source files were kept.");
+	return entries;
+}
 
 /** Companion media is owned by the same capture, including separate microphone/webcam tracks. */
 export function recordingUsesSources(file: string, references: ReadonlySet<string>): boolean {
@@ -45,7 +52,7 @@ export async function protectedLibrarySources(
 			throw new Error("Active source files could not be checked. Source files were kept.");
 		}
 	}
-	for (const entry of (await deps.list()).entries) {
+	for (const entry of await listProjectsForSourceDeletion(deps)) {
 		if (excluding.has(path.resolve(entry.path))) continue;
 		for (const file of [entry.path, ...(await deps.backupPaths(entry.path))]) {
 			const data = await deps.readSources(
@@ -73,7 +80,9 @@ export async function prepareLibraryDeletion(paths: unknown, deps: LibraryDeleti
 	)
 		throw new Error("Invalid project selection");
 	const selected = [...new Set((paths as string[]).map((file) => path.resolve(file)))];
-	const allowed = new Set((await deps.list()).entries.map((entry) => path.resolve(entry.path)));
+	const allowed = new Set(
+		(await listProjectsForSourceDeletion(deps)).map((entry) => path.resolve(entry.path)),
+	);
 	if (selected.some((file) => !allowed.has(file)))
 		throw new Error("Project is not in the library");
 	const sources = new Map<string, Set<string>>();

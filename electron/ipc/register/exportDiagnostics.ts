@@ -4,7 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import { app, ipcMain, type WebContents } from "electron";
 import { lock } from "proper-lockfile";
-import { redactDiagnostic } from "../../../src/lib/feedback/diagnosticRedaction";
+import {
+	redactDiagnostic,
+	redactDiagnosticLogEntry,
+} from "../../../src/lib/feedback/diagnosticRedaction";
 import {
 	diagnosticSurface,
 	type DiagnosticSurface,
@@ -57,7 +60,7 @@ function createDiagnosticLog(filename: string, maxEntries: number, maxAgeMs?: nu
 						.filter((value): value is string => typeof value === "string")
 						.filter((entry) => !oldest || entry.slice(0, 24) >= oldest)
 						.slice(-maxEntries)
-						.map((value) => redactDiagnostic(value))
+						.map(redactDiagnosticLogEntry)
 				: [];
 		} catch {
 			return [];
@@ -75,7 +78,7 @@ function createDiagnosticLog(filename: string, maxEntries: number, maxAgeMs?: nu
 					retries: { retries: 3, minTimeout: 20, maxTimeout: 80 },
 					onCompromised: () => undefined,
 				});
-				const logs = [...(await read()), ...entries.map(redactDiagnostic)].slice(
+				const logs = [...(await read()), ...entries.map(redactDiagnosticLogEntry)].slice(
 					-maxEntries,
 				);
 				while (Buffer.byteLength(JSON.stringify(logs), "utf8") > 120_000 && logs.length)

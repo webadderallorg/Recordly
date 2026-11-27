@@ -23,7 +23,10 @@ import {
 import { getHudOverlayTaskbarOptions, supportsX11HudWindowDrag } from "./hudOverlayWindowOptions";
 import { startHudPointerRecovery } from "./hudPointerRecovery";
 import { sendNativeHudCaptureExclusions } from "./ipc/recording/nativeCaptureCommand";
-import { recordAppProcessDiagnostic, startMainDiagnosticOperation } from "./ipc/register/exportDiagnostics";
+import {
+	recordAppProcessDiagnostic,
+	startMainDiagnosticOperation,
+} from "./ipc/register/exportDiagnostics";
 import {
 	currentProjectPath,
 	currentRecordingSession,
@@ -1209,7 +1212,11 @@ export function createEditorWindow(): BrowserWindow {
 	registerDesktopPresenceWindow(win);
 	editorWindows.add(win);
 	notifyEditorMode();
-	const opening = startMainDiagnosticOperation("editor.window-open", "editor", win.webContents.id);
+	const opening = startMainDiagnosticOperation(
+		"editor.window-open",
+		"editor",
+		win.webContents.id,
+	);
 	win.once("closed", () => {
 		opening.finish("cancelled");
 		editorWindows.delete(win);
