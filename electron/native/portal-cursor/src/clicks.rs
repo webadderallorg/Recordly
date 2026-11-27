@@ -372,6 +372,13 @@ pub fn start(
     }
 }
 
+#[derive(Clone, Copy)]
+struct InputTiming {
+    instant: Instant,
+    paused: bool,
+    paused_ns: i64,
+}
+
 fn read_device(
     mut file: impl Read,
     mut tap_tracker: Option<TouchTapTracker>,
@@ -379,7 +386,8 @@ fn read_device(
 ) {
     let mut buffer = [0u8; 24];
     let mut last_left_click: Option<(Instant, f64, f64)> = None;
-    let mut touch_down_guard: Option<(bool, i64)> = None;
+    let mut touch_down_timing: Option<InputTiming> = None;
+    let mut touch_up_timing: Option<InputTiming> = None;
     let mut pressed_positions = [None; 3];
     let mut syn_dropping = false;
 
@@ -390,7 +398,21 @@ fn read_device(
         let event_type = u16::from_le_bytes([buffer[16], buffer[17]]);
         let code = u16::from_le_bytes([buffer[18], buffer[19]]);
         let value = i32::from_le_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]);
-        let event_instant = Instant::now();
+        let timing = if event_type == EV_KEY
+            && matches!(code, BTN_TOUCH | BTN_LEFT | BTN_RIGHT | BTN_MIDDLE)
+            && let Ok(pause) = context.pause.lock()
+        {
+            // Read the instant and pause together so Resume cannot move an earlier event back in time.
+            let instant = Instant::now();
+            let (paused, paused_ns) = pause.timing_at(instant);
+            Some(InputTiming {
+                instant,
+                paused,
+                paused_ns,
+            })
+        } else {
+            None
+        };
 
         let current_pos = || {
             context
@@ -403,38 +425,35 @@ fn read_device(
         if let Some(tracker) = tap_tracker.as_mut()
             && matches!(event_type, EV_SYN | EV_KEY | EV_ABS)
         {
-            let was_touching = tracker.is_touching();
             let position = if event_type == EV_KEY && code == BTN_TOUCH {
+                if value != 0 && !tracker.touch_down {
+                    touch_down_timing = timing;
+                    touch_up_timing = None;
+                } else if value == 0 && tracker.touch_down {
+                    touch_up_timing = timing;
+                }
                 current_pos()
             } else {
                 None
             };
+            let event_instant = timing.map_or_else(Instant::now, |timing| timing.instant);
             let completed_tap =
                 tracker.handle_event(event_type, code, value, event_instant, position);
-            if !was_touching && tracker.is_touching() {
-                let (paused, paused_ns) = context
-                    .pause
-                    .lock()
-                    .map_or((true, 0), |pause| pause.snapshot());
-                touch_down_guard = Some((paused, paused_ns));
-            } else if !tracker.is_touching() {
-                let down_guard = touch_down_guard.take();
-                if let Some(tap) = completed_tap
-                    && let Some((down_paused, down_paused_ns)) = down_guard
+            if !tracker.is_touching() {
+                let down = touch_down_timing.take();
+                let up = touch_up_timing.take();
+                if let (Some(tap), Some(down), Some(up)) = (completed_tap, down, up)
+                    && !down.paused
+                    && !up.paused
+                    && down.paused_ns == up.paused_ns
                 {
-                    let (up_paused, up_paused_ns) = context
-                        .pause
-                        .lock()
-                        .map_or((true, 0), |pause| pause.snapshot());
-                    if !down_paused && !up_paused && down_paused_ns == up_paused_ns {
-                        emit_completed_tap(
-                            context,
-                            tap,
-                            down_paused_ns,
-                            up_paused_ns,
-                            &mut last_left_click,
-                        );
-                    }
+                    emit_completed_tap(
+                        context,
+                        tap,
+                        down.paused_ns,
+                        up.paused_ns,
+                        &mut last_left_click,
+                    );
                 }
             }
         }
@@ -442,7 +461,8 @@ fn read_device(
         if event_type == EV_SYN {
             if code == SYN_DROPPED {
                 syn_dropping = true;
-                touch_down_guard = None;
+                touch_down_timing = None;
+                touch_up_timing = None;
             } else if code == SYN_REPORT {
                 syn_dropping = false;
             }
@@ -462,10 +482,14 @@ fn read_device(
             continue;
         };
 
-        let (paused, accumulated_ns) = context
-            .pause
-            .lock()
-            .map_or((true, 0), |pause| pause.timing_at(event_instant));
+        let Some(InputTiming {
+            instant: event_instant,
+            paused,
+            paused_ns,
+        }) = timing
+        else {
+            continue;
+        };
         let pressed_position = &mut pressed_positions[usize::from(button - 1)];
         let cursor = match value {
             1 if !paused => current_pos(),
@@ -490,7 +514,7 @@ fn read_device(
                 value,
                 event_instant,
                 cursor,
-                accumulated_paused_ns: accumulated_ns,
+                accumulated_paused_ns: paused_ns,
             },
             &mut last_left_click,
         );
@@ -847,10 +871,10 @@ mod tests {
         }
     }
 
-    fn left_button_event(value: i32) -> [u8; 24] {
+    fn input_event(event_type: u16, code: u16, value: i32) -> [u8; 24] {
         let mut event = [0u8; 24];
-        event[16..18].copy_from_slice(&EV_KEY.to_le_bytes());
-        event[18..20].copy_from_slice(&BTN_LEFT.to_le_bytes());
+        event[16..18].copy_from_slice(&event_type.to_le_bytes());
+        event[18..20].copy_from_slice(&code.to_le_bytes());
         event[20..24].copy_from_slice(&value.to_le_bytes());
         event
     }
@@ -858,7 +882,7 @@ mod tests {
     #[test]
     fn records_a_click_only_after_a_real_cursor_position_is_known() {
         let context = click_context();
-        let event = left_button_event(1);
+        let event = input_event(EV_KEY, BTN_LEFT, 1);
         read_device(std::io::Cursor::new(event), None, &context);
         assert!(context.samples.lock().unwrap().is_empty());
 
@@ -888,7 +912,7 @@ mod tests {
                     position: (0.2, 0.8),
                     cursor_type: "arrow",
                 });
-                output.copy_from_slice(&left_button_event(value));
+                output.copy_from_slice(&input_event(EV_KEY, BTN_LEFT, value));
                 Ok(output.len())
             }
         }
@@ -906,6 +930,54 @@ mod tests {
         assert_eq!(samples.len(), 2);
         assert_eq!(samples[1].interaction_type.as_deref(), Some("mouseup"));
         assert_eq!((samples[1].cx, samples[1].cy), (0.2, 0.8));
+    }
+
+    #[test]
+    fn uses_the_touch_edge_timing_when_a_pause_precedes_the_report() {
+        struct TouchEvents<'a> {
+            index: usize,
+            pause_before_touch_up: bool,
+            pause: &'a Mutex<PauseState>,
+        }
+
+        impl Read for TouchEvents<'_> {
+            fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+                let events = [
+                    input_event(EV_KEY, BTN_TOUCH, 1),
+                    input_event(EV_SYN, SYN_REPORT, 0),
+                    input_event(EV_KEY, BTN_TOUCH, 0),
+                    input_event(EV_SYN, SYN_REPORT, 0),
+                ];
+                let Some(event) = events.get(self.index) else {
+                    return Ok(0);
+                };
+                let pause_at = if self.pause_before_touch_up { 2 } else { 3 };
+                if self.index == pause_at {
+                    self.pause.lock().unwrap().pause();
+                }
+                self.index += 1;
+                output.copy_from_slice(event);
+                Ok(output.len())
+            }
+        }
+
+        for (pause_before_touch_up, expected_events) in [(false, 2), (true, 0)] {
+            let context = click_context();
+            *context.last_cursor.lock().unwrap() = Some(CursorSnapshot {
+                position: (0.2, 0.8),
+                cursor_type: "arrow",
+            });
+            read_device(
+                TouchEvents {
+                    index: 0,
+                    pause_before_touch_up,
+                    pause: &context.pause,
+                },
+                Some(TouchTapTracker::new(touchpad_geometry())),
+                &context,
+            );
+            assert_eq!(context.samples.lock().unwrap().len(), expected_events);
+        }
     }
 
     #[test]

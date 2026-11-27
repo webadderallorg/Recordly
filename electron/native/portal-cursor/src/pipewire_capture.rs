@@ -39,7 +39,7 @@ pub(crate) struct PauseState {
 }
 
 impl PauseState {
-    fn pause(&mut self) {
+    pub(crate) fn pause(&mut self) {
         if !self.paused {
             self.paused = true;
             self.pause_started = Some(Instant::now());
