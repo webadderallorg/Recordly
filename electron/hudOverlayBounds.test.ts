@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	getHudOverlayWindowBounds,
 	getX11HudRecordingShape,
+	isHudPositionOnDisplays,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
@@ -227,5 +228,24 @@ describe("shouldExpandHudOverlayFallback", () => {
 				webcamPreviewVisible: true,
 			}),
 		).toBe(false);
+	});
+});
+
+describe("isHudPositionOnDisplays", () => {
+	const displays = [
+		{ x: 0, y: 0, width: 1920, height: 1080 },
+		{ x: -1280, y: 0, width: 1280, height: 720 },
+	];
+
+	it("returns true when the saved HUD position sits inside an active display work area", () => {
+		expect(isHudPositionOnDisplays({ x: 0, y: 0 }, displays)).toBe(true);
+		expect(isHudPositionOnDisplays({ x: -640, y: 360 }, displays)).toBe(true);
+	});
+
+	it("returns false when the position falls on exclusive outer edges or a removed display", () => {
+		expect(isHudPositionOnDisplays({ x: 1920, y: 0 }, displays)).toBe(false);
+		expect(isHudPositionOnDisplays({ x: 0, y: 1080 }, displays)).toBe(false);
+		expect(isHudPositionOnDisplays({ x: 2560, y: 200 }, displays)).toBe(false);
+		expect(isHudPositionOnDisplays({ x: 100, y: 100 }, [])).toBe(false);
 	});
 });

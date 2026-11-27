@@ -91,6 +91,24 @@ export function shouldExpandHudOverlayFallback({
 	return fallbackExpanded || (recordingActive && webcamPreviewVisible);
 }
 
+export interface HudOverlayPosition {
+	x: number;
+	y: number;
+}
+
+export function isHudPositionOnDisplays(
+	position: HudOverlayPosition,
+	workAreas: ReadonlyArray<HudOverlayWorkArea>,
+): boolean {
+	return workAreas.some(
+		(workArea) =>
+			position.x >= workArea.x &&
+			position.x < workArea.x + workArea.width &&
+			position.y >= workArea.y &&
+			position.y < workArea.y + workArea.height,
+	);
+}
+
 export function resizeHudOverlayFallbackBounds(
 	workArea: HudOverlayWorkArea,
 	currentBounds: HudOverlayWorkArea,

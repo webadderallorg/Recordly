@@ -17,6 +17,7 @@ import {
 	getX11HudRecordingShape,
 	type HudOverlayRegion,
 	type HudOverlayWorkArea,
+	isHudPositionOnDisplays,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
@@ -837,30 +838,28 @@ export function createHudOverlayWindow(): BrowserWindow {
 	const handleDisplayRemoved = () => {
 		hudUserPosition = null;
 		x11HudDraggedBounds = undefined;
-		if (useX11HudWindowDrag()) applyHudOverlayBounds();
+		applyHudOverlayBounds();
 	};
 	const handleDisplayMetricsChanged = () => {
-		if (hudUserPosition) {
-			const displays = screen.getAllDisplays();
-			const onScreen = displays.some(
-				(d) =>
-					hudUserPosition!.x >= d.workArea.x &&
-					hudUserPosition!.x < d.workArea.x + d.workArea.width &&
-					hudUserPosition!.y >= d.workArea.y &&
-					hudUserPosition!.y < d.workArea.y + d.workArea.height,
-			);
-			if (!onScreen) {
-				hudUserPosition = null;
-			}
+		if (
+			hudUserPosition &&
+			!isHudPositionOnDisplays(
+				hudUserPosition,
+				screen.getAllDisplays().map((display) => display.workArea),
+			)
+		) {
+			hudUserPosition = null;
 		}
 		applyHudOverlayBounds();
 	};
+	screen.on("display-added", handleDisplayMetricsChanged);
 	screen.on("display-removed", handleDisplayRemoved);
 	screen.on("display-metrics-changed", handleDisplayMetricsChanged);
 
 	win.on("closed", () => {
 		stopPointerRecovery();
 		ipcMain.removeListener("hud-overlay-renderer-ready", handleHudRendererReady);
+		screen.removeListener("display-added", handleDisplayMetricsChanged);
 		screen.removeListener("display-removed", handleDisplayRemoved);
 		screen.removeListener("display-metrics-changed", handleDisplayMetricsChanged);
 		if (hudOverlayWindow === win) {
