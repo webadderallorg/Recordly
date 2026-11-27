@@ -17,6 +17,22 @@ afterEach(() => {
 });
 
 describe("export support logs", () => {
+	it("redacts prefixed token keys before writing structured export logs", async () => {
+		const { getExportDiagnosticLogs, recordExportDiagnostic } = await import(
+			"./exportDiagnostics"
+		);
+		recordExportDiagnostic("configured", {
+			access_token: "opaque-access-value",
+			nested: { authToken: "opaque-auth-value", width: 1920 },
+		});
+		const [entry] = await getExportDiagnosticLogs();
+		expect(append).toHaveBeenCalledWith(entry);
+		expect(JSON.parse(entry.slice(entry.indexOf("{")))).toEqual({
+			access_token: "[redacted]",
+			nested: { authToken: "[redacted]", width: 1920 },
+		});
+	});
+
 	it("keeps the completed outcome when JSON escaping exhausts the diagnostic budget", async () => {
 		const { createExportDiagnostics, getExportDiagnosticLogs } = await import(
 			"./exportDiagnostics"

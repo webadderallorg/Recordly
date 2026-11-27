@@ -63,7 +63,8 @@ export function redactDiagnosticLogEntry(line: string): string {
 	const [, prefix, event, json] = match;
 	try {
 		const fields: Record<string, unknown> = JSON.parse(json, (key, value: unknown) => {
-			return /^(?:code[_-]?verifier|code[_-]?challenge|authorization[_-]?code|captcha(?:[_-]?response)?|otp|token|password|secret|authorization|api[_-]?key)$/i.test(
+			// Match suffixes like the plain-text redactor, including access_token and authToken.
+			return /(?:code[_-]?verifier|code[_-]?challenge|authorization[_-]?code|captcha(?:[_-]?response)?|otp|token|password|secret|authorization|api[_-]?key)$/i.test(
 				key,
 			)
 				? "[redacted]"

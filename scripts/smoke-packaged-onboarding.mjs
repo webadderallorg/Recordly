@@ -90,20 +90,27 @@ async function checkStartup(label, freshInstall) {
 				navigation.getByRole("button", { name: "Permissions", exact: true }),
 			).toBeVisible();
 		}
-		console.log(`[packaged-onboarding] ${label}: passed`);
 	} finally {
+		const gracePeriod = browser ? 5_000 : 0;
+		const terminateTimer = setTimeout(() => app.kill(), gracePeriod);
+		const killTimer = setTimeout(() => app.kill("SIGKILL"), gracePeriod + 5_000);
 		try {
-			await browser?.close();
-		} finally {
-			app.kill();
-			const killTimer = setTimeout(() => app.kill("SIGKILL"), 5_000);
-			try {
-				await exited;
-			} finally {
-				clearTimeout(killTimer);
+			if (browser?.isConnected()) {
+				// Electron quits through its normal lifecycle without replying to Browser.close.
+				void browser
+					.newBrowserCDPSession()
+					.then((session) => session.send("Browser.close"))
+					.catch(() => undefined);
 			}
+			await exited;
+		} finally {
+			clearTimeout(terminateTimer);
+			clearTimeout(killTimer);
+			await browser?.close();
 		}
 	}
+	expect(app.exitCode, `${label} shut down cleanly`).toBe(0);
+	console.log(`[packaged-onboarding] ${label}: passed`);
 }
 
 try {
