@@ -171,7 +171,7 @@ export function buildLoopedCursorTelemetry(
 
 	const firstSample = boundedSamples[0];
 	const lastSample = boundedSamples[boundedSamples.length - 1];
-	const maxFreezeWindowMs = timelineEndMs - firstSample.timeMs;
+	const maxFreezeWindowMs = timelineEndMs - timelineStartClampedMs;
 	if (maxFreezeWindowMs <= 1) {
 		return boundedSamples;
 	}
@@ -183,7 +183,11 @@ export function buildLoopedCursorTelemetry(
 		Math.max(0, freezeDurationMs - 1),
 	);
 	const returnMotionDurationMs = Math.max(1, freezeDurationMs - clampedSettleDurationMs);
-	const sourceStartMs = firstSample.timeMs;
+	const sourceStartMs = timelineStartClampedMs;
+	const startingPoint = interpolateCursorPosition(samples, timelineStartClampedMs) ?? {
+		cx: firstSample.cx,
+		cy: firstSample.cy,
+	};
 	let lastTransitionMs: number | undefined;
 	for (let index = boundedSamples.length - 1; index >= 0; index -= 1) {
 		if (boundedSamples[index].cursorVisible !== undefined) {
@@ -204,9 +208,9 @@ export function buildLoopedCursorTelemetry(
 	const startingCursorType = findFirstStableCursorType(boundedSamples);
 	const loopedSamples: CursorTelemetryPoint[] = [
 		{
-			...firstSample,
 			timeMs: timelineStartClampedMs,
-			interactionType: undefined,
+			cx: startingPoint.cx,
+			cy: startingPoint.cy,
 			cursorType: startingCursorType,
 			...(lastTransitionMs !== undefined ? { cursorVisible: true } : {}),
 		},
@@ -214,7 +218,16 @@ export function buildLoopedCursorTelemetry(
 
 	for (const sample of boundedSamples) {
 		const progress = clamp((sample.timeMs - sourceStartMs) / sourceDurationMs, 0, 1);
-		const mappedTimeMs = Math.round(timelineStartClampedMs + motionDurationMs * progress);
+		let mappedTimeMs = Math.round(timelineStartClampedMs + motionDurationMs * progress);
+		if (
+			sample.timeMs > sourceStartMs &&
+			mappedTimeMs <= timelineStartClampedMs &&
+			sample.cursorVisible !== undefined &&
+			loopedSamples[0]?.cursorVisible !== undefined &&
+			sample.cursorVisible !== loopedSamples[0].cursorVisible
+		) {
+			mappedTimeMs = Math.min(motionEndMs, timelineStartClampedMs + 1);
+		}
 
 		const previous = loopedSamples[loopedSamples.length - 1];
 		if (mappedTimeMs <= previous.timeMs) {
@@ -247,8 +260,8 @@ export function buildLoopedCursorTelemetry(
 		const timeMs = Math.round(returnMotionStartMs + returnMotionDurationMs * progress);
 		loopedSamples.push({
 			timeMs,
-			cx: returnStartPoint.cx + (firstSample.cx - returnStartPoint.cx) * easedProgress,
-			cy: returnStartPoint.cy + (firstSample.cy - returnStartPoint.cy) * easedProgress,
+			cx: returnStartPoint.cx + (startingPoint.cx - returnStartPoint.cx) * easedProgress,
+			cy: returnStartPoint.cy + (startingPoint.cy - returnStartPoint.cy) * easedProgress,
 			interactionType: progress > 0 ? "move" : undefined,
 			cursorType:
 				progress >= 1
@@ -274,8 +287,8 @@ export function buildLoopedCursorTelemetry(
 			const timeMs = Math.round(settleStartMs + clampedSettleDurationMs * progress);
 			loopedSamples.push({
 				timeMs,
-				cx: firstSample.cx,
-				cy: firstSample.cy,
+				cx: startingPoint.cx,
+				cy: startingPoint.cy,
 				interactionType: "move",
 				cursorType: startingCursorType,
 			});

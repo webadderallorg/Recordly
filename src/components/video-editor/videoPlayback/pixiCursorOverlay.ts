@@ -207,7 +207,7 @@ export class PixiCursorOverlay {
 		);
 		const target = interpolateCursorPosition(samples, timeMs);
 		if (!target) {
-			if (this.visuals.container.visible) this.reset();
+			this.reset();
 			return;
 		}
 

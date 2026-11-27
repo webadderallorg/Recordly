@@ -149,14 +149,12 @@ impl TouchTapTracker {
     }
 
     fn exceeded_move_threshold(&self, start_x: Option<i32>, start_y: Option<i32>) -> bool {
-        let dx = self
-            .cur_x
-            .zip(start_x)
-            .map_or(0.0, |(cur, start)| f64::from((cur - start).abs()));
-        let dy = self
-            .cur_y
-            .zip(start_y)
-            .map_or(0.0, |(cur, start)| f64::from((cur - start).abs()));
+        let dx = self.cur_x.zip(start_x).map_or(0.0, |(cur, start)| {
+            (f64::from(cur) - f64::from(start)).abs()
+        });
+        let dy = self.cur_y.zip(start_y).map_or(0.0, |(cur, start)| {
+            (f64::from(cur) - f64::from(start)).abs()
+        });
         if dx == 0.0 && dy == 0.0 {
             return false;
         }
@@ -171,12 +169,12 @@ impl TouchTapTracker {
         let norm_x = self
             .geometry
             .x
-            .and_then(|ax| (ax.max > ax.min).then_some(dx / f64::from(ax.max - ax.min)))
+            .and_then(|ax| (ax.max > ax.min).then(|| dx / (f64::from(ax.max) - f64::from(ax.min))))
             .unwrap_or(0.0);
         let norm_y = self
             .geometry
             .y
-            .and_then(|ay| (ay.max > ay.min).then_some(dy / f64::from(ay.max - ay.min)))
+            .and_then(|ay| (ay.max > ay.min).then(|| dy / (f64::from(ay.max) - f64::from(ay.min))))
             .unwrap_or(0.0);
         norm_x.hypot(norm_y) > TAP_MAX_MOVE_NORM
     }
@@ -460,6 +458,101 @@ fn handle_tap_tracker_event(
     }
 }
 
+fn release_pressed_buttons(
+    pressed_positions: &mut [Option<(f64, f64)>; 3],
+    context: &ClickContext,
+    last_left_click: &mut Option<(Instant, f64, f64)>,
+) {
+    if !pressed_positions.iter().any(Option::is_some) {
+        return;
+    }
+    let Ok(pause) = context.pause.lock() else {
+        return;
+    };
+    let instant = Instant::now();
+    let (_, accumulated_paused_ns) = pause.timing_at(instant);
+    // A release may have been lost. End recorded presses before exiting or syncing
+    // so the editor cannot keep rendering a held button through later footage.
+    for (position, code) in pressed_positions
+        .iter_mut()
+        .zip([BTN_LEFT, BTN_RIGHT, BTN_MIDDLE])
+    {
+        if let Some(cursor) = position.take() {
+            emit_button_event(
+                context,
+                ButtonSampleInput {
+                    code,
+                    value: 0,
+                    event_instant: instant,
+                    cursor,
+                    accumulated_paused_ns,
+                },
+                last_left_click,
+            );
+        }
+    }
+}
+
+fn handle_pointer_button_event(
+    raw: RawInputEvent,
+    pressed_positions: &mut [Option<(f64, f64)>; 3],
+    context: &ClickContext,
+    last_left_click: &mut Option<(Instant, f64, f64)>,
+) {
+    if raw.event_type != EV_KEY || (raw.value != 0 && raw.value != 1) {
+        return;
+    }
+    let Some(button) = mouse_button_for_code(raw.code) else {
+        return;
+    };
+    let Some(InputTiming {
+        instant: event_instant,
+        paused,
+        paused_ns,
+    }) = raw.timing
+    else {
+        return;
+    };
+    let current_pos = || {
+        context
+            .last_cursor
+            .lock()
+            .ok()
+            .and_then(|cursor| cursor.map(|snapshot| snapshot.position))
+    };
+    let pressed_position = &mut pressed_positions[usize::from(button - 1)];
+    let cursor = match raw.value {
+        1 if !paused => current_pos(),
+        0 => pressed_position.take().map(|position| {
+            // Balance a recorded press even if the pointer has left the source.
+            if paused {
+                position
+            } else {
+                current_pos().unwrap_or(position)
+            }
+        }),
+        _ => None,
+    };
+    let Some(cursor) = cursor else {
+        return;
+    };
+
+    let emitted = emit_button_event(
+        context,
+        ButtonSampleInput {
+            code: raw.code,
+            value: raw.value,
+            event_instant,
+            cursor,
+            accumulated_paused_ns: paused_ns,
+        },
+        last_left_click,
+    );
+    if raw.value == 1 && emitted {
+        *pressed_position = Some(cursor);
+    }
+}
+
 fn read_device(
     mut file: impl Read,
     mut tap_tracker: Option<TouchTapTracker>,
@@ -476,36 +569,24 @@ fn read_device(
 
     loop {
         if file.read_exact(&mut buffer).is_err() {
+            release_pressed_buttons(&mut pressed_positions, context, &mut last_left_click);
             return;
         }
         let event_type = u16::from_le_bytes([buffer[16], buffer[17]]);
         let code = u16::from_le_bytes([buffer[18], buffer[19]]);
         let value = i32::from_le_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]);
         let timing = read_input_timing(event_type, code, &context.pause);
-
-        let current_pos = || {
-            context
-                .last_cursor
-                .lock()
-                .ok()
-                .and_then(|cursor| cursor.map(|snapshot| snapshot.position))
+        let raw = RawInputEvent {
+            event_type,
+            code,
+            value,
+            timing,
         };
 
         if let Some(tracker) = tap_tracker.as_mut()
             && matches!(event_type, EV_SYN | EV_KEY | EV_ABS)
         {
-            handle_tap_tracker_event(
-                tracker,
-                &mut tap_state,
-                RawInputEvent {
-                    event_type,
-                    code,
-                    value,
-                    timing,
-                },
-                context,
-                &mut last_left_click,
-            );
+            handle_tap_tracker_event(tracker, &mut tap_state, raw, context, &mut last_left_click);
         }
 
         if event_type == EV_SYN {
@@ -514,89 +595,14 @@ fn read_device(
                 tap_state.down_timing = None;
                 tap_state.up_timing = None;
                 last_left_click = None;
-                if pressed_positions.iter().any(Option::is_some)
-                    && let Ok(pause) = context.pause.lock()
-                {
-                    let instant = Instant::now();
-                    let (_, accumulated_paused_ns) = pause.timing_at(instant);
-                    // A release may have been lost. End the recorded presses at the gap so
-                    // the editor cannot keep rendering a held button through later footage.
-                    for (position, code) in pressed_positions
-                        .iter_mut()
-                        .zip([BTN_LEFT, BTN_RIGHT, BTN_MIDDLE])
-                    {
-                        if let Some(cursor) = position.take() {
-                            emit_button_event(
-                                context,
-                                ButtonSampleInput {
-                                    code,
-                                    value: 0,
-                                    event_instant: instant,
-                                    cursor,
-                                    accumulated_paused_ns,
-                                },
-                                &mut last_left_click,
-                            );
-                        }
-                    }
-                }
+                release_pressed_buttons(&mut pressed_positions, context, &mut last_left_click);
             } else if code == SYN_REPORT {
                 syn_dropping = false;
             }
             continue;
         }
-        if syn_dropping {
-            continue;
-        }
-
-        if event_type != EV_KEY {
-            continue;
-        }
-        if value != 0 && value != 1 {
-            continue;
-        }
-        let Some(button) = mouse_button_for_code(code) else {
-            continue;
-        };
-
-        let Some(InputTiming {
-            instant: event_instant,
-            paused,
-            paused_ns,
-        }) = timing
-        else {
-            continue;
-        };
-        let pressed_position = &mut pressed_positions[usize::from(button - 1)];
-        let cursor = match value {
-            1 if !paused => current_pos(),
-            0 => pressed_position.take().map(|position| {
-                // Balance a recorded press even if the pointer has left the source.
-                if paused {
-                    position
-                } else {
-                    current_pos().unwrap_or(position)
-                }
-            }),
-            _ => None,
-        };
-        let Some(cursor) = cursor else {
-            continue;
-        };
-
-        let emitted = emit_button_event(
-            context,
-            ButtonSampleInput {
-                code,
-                value,
-                event_instant,
-                cursor,
-                accumulated_paused_ns: paused_ns,
-            },
-            &mut last_left_click,
-        );
-        if value == 1 && emitted {
-            *pressed_position = Some(cursor);
+        if !syn_dropping {
+            handle_pointer_button_event(raw, &mut pressed_positions, context, &mut last_left_click);
         }
     }
 }
@@ -950,8 +956,100 @@ mod tests {
         });
         read_device(std::io::Cursor::new(event), None, &context);
         let samples = context.samples.lock().unwrap();
-        assert_eq!(samples.len(), 1);
+        assert_eq!(samples.len(), 2);
+        assert_eq!(samples[0].interaction_type.as_deref(), Some("click"));
         assert_eq!((samples[0].cx, samples[0].cy), (0.2, 0.8));
+        assert_eq!(samples[1].interaction_type.as_deref(), Some("mouseup"));
+        assert_eq!((samples[1].cx, samples[1].cy), (0.2, 0.8));
+    }
+
+    #[test]
+    fn releases_only_recorded_buttons_when_device_disconnects() {
+        struct DisconnectingMouse {
+            events: Vec<[u8; 24]>,
+            index: usize,
+        }
+
+        impl Read for DisconnectingMouse {
+            fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+                if let Some(event) = self.events.get(self.index) {
+                    self.index += 1;
+                    output.copy_from_slice(event);
+                    return Ok(output.len());
+                }
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "disconnected",
+                ))
+            }
+        }
+
+        let context = click_context();
+        *context.last_cursor.lock().unwrap() = Some(CursorSnapshot {
+            position: (0.4, 0.6),
+            cursor_type: "arrow",
+        });
+        read_device(
+            DisconnectingMouse {
+                events: vec![
+                    input_event(EV_KEY, BTN_LEFT, 1),
+                    input_event(EV_KEY, BTN_RIGHT, 1),
+                    input_event(EV_KEY, BTN_RIGHT, 0),
+                ],
+                index: 0,
+            },
+            None,
+            &context,
+        );
+        let samples = context.samples.lock().unwrap();
+        let recorded: Vec<_> = samples
+            .iter()
+            .map(|sample| (sample.mouse_button, sample.interaction_type.as_deref()))
+            .collect();
+        assert_eq!(
+            recorded,
+            [
+                (Some(1), Some("click")),
+                (Some(2), Some("right-click")),
+                (Some(2), Some("mouseup")),
+                (Some(1), Some("mouseup")),
+            ],
+        );
+    }
+
+    #[test]
+    fn touchpad_move_threshold_widens_i32_extremes_and_degenerate_bounds() {
+        let mut degenerate = TouchTapTracker::new(TouchpadGeometry {
+            x: Some(AbsAxis {
+                min: i32::MAX,
+                max: i32::MIN,
+                resolution: 0,
+            }),
+            y: Some(AbsAxis {
+                min: 0,
+                max: 0,
+                resolution: 0,
+            }),
+        });
+        degenerate.cur_x = Some(i32::MAX);
+        degenerate.cur_y = Some(i32::MIN);
+        assert!(!degenerate.exceeded_move_threshold(Some(i32::MIN), Some(i32::MAX)));
+
+        let mut wide = TouchTapTracker::new(TouchpadGeometry {
+            x: Some(AbsAxis {
+                min: i32::MIN,
+                max: i32::MAX,
+                resolution: 0,
+            }),
+            y: Some(AbsAxis {
+                min: 0,
+                max: 100,
+                resolution: 0,
+            }),
+        });
+        wide.cur_x = Some(i32::MAX);
+        wide.cur_y = Some(0);
+        assert!(wide.exceeded_move_threshold(Some(i32::MIN), Some(0)));
     }
 
     #[test]

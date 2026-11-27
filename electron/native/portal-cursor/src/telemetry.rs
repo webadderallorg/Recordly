@@ -116,16 +116,12 @@ fn create_unique_temp_file(destination: &Path) -> std::io::Result<(std::path::Pa
         .parent()
         .filter(|dir| !dir.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    let stem = destination
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("cursor");
     let pid = std::process::id();
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_nanos());
     for attempt in 0..32u32 {
-        let candidate = parent.join(format!(".{stem}.{pid}.{nanos}.{attempt}.tmp"));
+        let candidate = parent.join(format!(".cursor-telemetry.{pid}.{nanos}.{attempt}.tmp"));
         match fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -413,6 +409,31 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(&target).unwrap()).unwrap();
         assert_eq!(parsed["version"], 2);
         assert_eq!(parsed["samples"][0]["timeMs"], 10);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_document_supports_max_length_destination_filename() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_nanos());
+        let dir = std::env::temp_dir().join(format!(
+            "recordly-telemetry-max-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+
+        let max_name = format!("{}.cursor.json", "a".repeat(243));
+        assert_eq!(max_name.len(), 255);
+        let target = dir.join(max_name);
+        let samples = vec![Sample::new(15, 0.5, 0.5).with_cursor_type("arrow")];
+        write_document(&target, &samples).unwrap();
+
+        let parsed: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&target).unwrap()).unwrap();
+        assert_eq!(parsed["version"], 2);
+        assert_eq!(parsed["samples"][0]["timeMs"], 15);
 
         let _ = fs::remove_dir_all(&dir);
     }

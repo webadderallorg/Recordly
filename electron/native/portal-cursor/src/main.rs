@@ -80,11 +80,12 @@ async fn run(cli: &Cli) -> Result<i32> {
     }
 
     let telemetry_output = resolve_telemetry_output(cli);
-    if let (Some(video_path), Some(telemetry_path)) =
-        (cli.record_video.as_deref(), telemetry_output.as_deref())
-        && paths_collide(video_path, telemetry_path)
-    {
-        eprintln!("ERROR:--output cannot match --record-video");
+    if let Err(message) = validate_output_paths(
+        cli.record_video.as_deref(),
+        telemetry_output.as_deref(),
+        cli.system_audio,
+    ) {
+        eprintln!("ERROR:{message}");
         return Ok(1);
     }
 
@@ -247,6 +248,32 @@ fn paths_collide(left: &Path, right: &Path) -> bool {
     normalize_comparison_path(left) == normalize_comparison_path(right)
 }
 
+fn validate_output_paths(
+    video_path: Option<&Path>,
+    telemetry_path: Option<&Path>,
+    system_audio: bool,
+) -> std::result::Result<(), &'static str> {
+    let audio_path = video_path
+        .filter(|_| system_audio)
+        .map(audio::wav_path_for_video);
+    if let (Some(video), Some(telemetry)) = (video_path, telemetry_path)
+        && paths_collide(video, telemetry)
+    {
+        return Err("--output cannot match --record-video");
+    }
+    if let (Some(audio), Some(telemetry)) = (audio_path.as_deref(), telemetry_path)
+        && paths_collide(audio, telemetry)
+    {
+        return Err("--output cannot match --system-audio output");
+    }
+    if let (Some(video), Some(audio)) = (video_path, audio_path.as_deref())
+        && paths_collide(video, audio)
+    {
+        return Err("--record-video cannot match --system-audio output");
+    }
+    Ok(())
+}
+
 fn resolve_cli_position_space(cli: &Cli) -> geometry::PositionSpace {
     let requested = cli.position_space.map(|space| match space {
         PositionSpaceArg::Global => geometry::PositionSpace::Global,
@@ -363,5 +390,26 @@ mod tests {
             &dir.join("capture.webm"),
             &dir.join("capture.webm.cursor.json")
         ));
+    }
+
+    #[test]
+    fn rejects_telemetry_paths_colliding_with_video_or_system_audio() {
+        let dir = std::env::temp_dir().join(format!("recordly-outputs-{}", std::process::id()));
+        let video = dir.join("capture.webm");
+        let audio = dir.join("capture.system.wav");
+        let telemetry = dir.join("capture.webm.cursor.json");
+
+        assert!(validate_output_paths(Some(&video), Some(&video), false).is_err());
+        assert!(validate_output_paths(Some(&video), Some(&audio), true).is_err());
+        assert!(
+            validate_output_paths(
+                Some(&video),
+                Some(&dir.join("./sub/../capture.system.wav")),
+                true
+            )
+            .is_err()
+        );
+        assert!(validate_output_paths(Some(&video), Some(&audio), false).is_ok());
+        assert!(validate_output_paths(Some(&video), Some(&telemetry), true).is_ok());
     }
 }
