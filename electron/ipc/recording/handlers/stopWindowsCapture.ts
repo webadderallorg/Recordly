@@ -37,36 +37,13 @@ import {
 	writeWindowsRecordingDiagnostics,
 } from "./nativeCaptureSupport";
 
-function replaceMp4Extension(filePath: string, suffix: string): string | null {
-	return /\.mp4$/i.test(filePath) ? filePath.replace(/\.mp4$/i, suffix) : null;
-}
-
-async function moveCompanionAudioFile(
-	tempAudioPath: string | null,
-	finalAudioPath: string,
-	onStagedPath: (tempAudioPath: string) => void,
-) {
-	if (!tempAudioPath) {
-		return;
-	}
-	onStagedPath(tempAudioPath);
-	if (await pathExists(tempAudioPath)) {
-		await moveFileWithOverwrite(tempAudioPath, finalAudioPath);
-		const tempJson = `${tempAudioPath}.json`;
-		if (await pathExists(tempJson)) {
-			await moveFileWithOverwrite(tempJson, `${finalAudioPath}.json`);
-		}
-	}
-}
+const mp4Extension = /\.mp4$/i;
 
 export async function stopWindowsCapture() {
 	let stagedTempVideoPath = windowsCaptureTempPath;
-	let stagedTempSystemAudioPath = windowsCaptureTempPath
-		? replaceMp4Extension(windowsCaptureTempPath, ".system.wav")
-		: null;
-	let stagedTempMicAudioPath = windowsCaptureTempPath
-		? replaceMp4Extension(windowsCaptureTempPath, ".mic.wav")
-		: null;
+	let stagedTempSystemAudioPath =
+		windowsCaptureTempPath?.replace(mp4Extension, ".system.wav") ?? null;
+	let stagedTempMicAudioPath = windowsCaptureTempPath?.replace(mp4Extension, ".mic.wav") ?? null;
 	try {
 		if (!windowsCaptureProcess) {
 			throw new Error("Native Windows capture process is not running");
@@ -81,16 +58,6 @@ export async function stopWindowsCapture() {
 		proc.stdin.write("stop\n");
 		const tempVideoPath = await waitForWindowsCaptureStop(proc);
 		stagedTempVideoPath = tempVideoPath;
-
-		// waitForWindowsCaptureStop only resolves after the helper process closes, so
-		// clear live process/active flags immediately to prevent post-exit move or
-		// validation failures from looking like an active capture that needs killing.
-		setWindowsCaptureProcess(null);
-		setWindowsNativeCaptureActive(false);
-		setNativeScreenRecordingActive(false);
-		setWindowsCaptureStopRequested(false);
-		setWindowsCapturePaused(false);
-
 		const finalVideoPath = preferredVideoPath ?? tempVideoPath;
 
 		// Native Windows capture results are initially written to a safe temporary path
@@ -100,29 +67,41 @@ export async function stopWindowsCapture() {
 			await moveFileWithOverwrite(tempVideoPath, finalVideoPath);
 		}
 
-		if (windowsSystemAudioPath) {
-			await moveCompanionAudioFile(
-				replaceMp4Extension(tempVideoPath, ".system.wav"),
-				windowsSystemAudioPath,
-				(tempAudioPath) => {
-					stagedTempSystemAudioPath = tempAudioPath;
-				},
-			);
+		const hasMp4Extension = mp4Extension.test(tempVideoPath);
+		if (windowsSystemAudioPath && hasMp4Extension) {
+			const tempAudioPath = tempVideoPath.replace(mp4Extension, ".system.wav");
+			stagedTempSystemAudioPath = tempAudioPath;
+			const finalAudioPath = windowsSystemAudioPath;
+			if (await pathExists(tempAudioPath)) {
+				await moveFileWithOverwrite(tempAudioPath, finalAudioPath);
+				const tempJson = tempAudioPath + ".json";
+				if (await pathExists(tempJson)) {
+					await moveFileWithOverwrite(tempJson, finalAudioPath + ".json");
+				}
+			}
 		}
 
-		if (windowsMicAudioPath) {
-			await moveCompanionAudioFile(
-				replaceMp4Extension(tempVideoPath, ".mic.wav"),
-				windowsMicAudioPath,
-				(tempAudioPath) => {
-					stagedTempMicAudioPath = tempAudioPath;
-				},
-			);
+		if (windowsMicAudioPath && hasMp4Extension) {
+			const tempMicPath = tempVideoPath.replace(mp4Extension, ".mic.wav");
+			stagedTempMicAudioPath = tempMicPath;
+			const finalMicPath = windowsMicAudioPath;
+			if (await pathExists(tempMicPath)) {
+				await moveFileWithOverwrite(tempMicPath, finalMicPath);
+				const tempJson = tempMicPath + ".json";
+				if (await pathExists(tempJson)) {
+					await moveFileWithOverwrite(tempJson, finalMicPath + ".json");
+				}
+			}
 		}
 		const validation = await validateRecordedVideo(finalVideoPath);
 
+		setWindowsCaptureProcess(null);
+		setWindowsNativeCaptureActive(false);
+		setNativeScreenRecordingActive(false);
 		setWindowsCaptureTargetPath(null);
 		setWindowsCaptureTempPath(null);
+		setWindowsCaptureStopRequested(false);
+		setWindowsCapturePaused(false);
 		setWindowsOrphanedMicAudioPath(null);
 		await cleanupWindowsOrphanedMicAudioPath(preferredOrphanedMicAudioPath);
 		setWindowsPendingVideoPath(finalVideoPath);

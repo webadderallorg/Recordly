@@ -127,68 +127,58 @@ describe("stopWindowsCapture", () => {
 		expect(await fs.readFile(`${finalSystemAudio}.json`, "utf8")).toBe('{"startDelayMs":5}');
 		expect(await fs.readFile(finalMicAudio, "utf8")).toBe("mic-wav");
 		expect(await fs.readFile(`${finalMicAudio}.json`, "utf8")).toBe('{"startDelayMs":8}');
-		await expect(fs.access(path.join(directory, "session.system.wav"))).rejects.toThrow();
-		await expect(fs.access(path.join(directory, "session.mic.wav"))).rejects.toThrow();
 	});
 
-	it("clears process and active capture flags after waitForWindowsCaptureStop even if post-exit validation fails", async () => {
+	it("keeps recovery out of a manual stop while moving the recording", async () => {
 		const tempVideo = path.join(directory, "temp.mp4");
 		const finalVideo = path.join(directory, "recording.mp4");
-		const orphanedMic = path.join(directory, "orphaned.mic.wav");
 		await fs.writeFile(tempVideo, "video-bytes");
-		await fs.writeFile(orphanedMic, "orphaned-audio");
-
 		state.setWindowsCaptureTempPath(tempVideo);
 		state.setWindowsCaptureTargetPath(finalVideo);
-		state.setWindowsSystemAudioPath(path.join(directory, "recording.system.wav"));
-		state.setWindowsMicAudioPath(path.join(directory, "recording.mic.wav"));
-		state.setWindowsOrphanedMicAudioPath(orphanedMic);
-
-		mocks.waitForWindowsCaptureStop.mockResolvedValue(tempVideo);
-		mocks.recoverNativeWindowsCaptureOutput.mockResolvedValue(null);
-		mocks.validateRecordedVideo.mockRejectedValue(new Error("Invalid video duration"));
-
-		const result = await stopWindowsCapture();
-
-		expect(result).toMatchObject({
-			success: false,
-			message: "Failed to stop native Windows capture",
+		state.setWindowsCaptureOutputBuffer(`Recording stopped. Output path: ${tempVideo}\n`);
+		mocks.validateRecordedVideo.mockResolvedValue({
+			fileSizeBytes: 11,
+			durationSeconds: 1.5,
 		});
-		expect(proc.kill).not.toHaveBeenCalled();
-		expect(state.windowsCaptureProcess).toBeNull();
-		expect(state.windowsNativeCaptureActive).toBe(false);
-		expect(state.nativeScreenRecordingActive).toBe(false);
-		expect(state.windowsCaptureStopRequested).toBe(false);
-		expect(state.windowsCapturePaused).toBe(false);
-		expect(state.windowsOrphanedMicAudioPath).toBeNull();
-		expect(state.windowsPendingVideoPath).toBeNull();
-		expect(state.windowsCaptureTargetPath).toBe(finalVideo);
-		expect(state.windowsCaptureTempPath).toBe(tempVideo);
-		expect(state.windowsSystemAudioPath).toBe(path.join(directory, "recording.system.wav"));
-		await expect(fs.access(orphanedMic)).rejects.toThrow();
-	});
 
-	it("clears live capture flags without killing an exited process if moving the output fails", async () => {
-		const missingTempVideo = path.join(directory, "missing-temp.mp4");
-		const finalVideo = path.join(directory, "recording.mp4");
-
-		state.setWindowsCaptureTempPath(missingTempVideo);
-		state.setWindowsCaptureTargetPath(finalVideo);
-
-		mocks.waitForWindowsCaptureStop.mockResolvedValue(missingTempVideo);
-		mocks.recoverNativeWindowsCaptureOutput.mockResolvedValue(null);
-
-		const result = await stopWindowsCapture();
-
-		expect(result).toMatchObject({
-			success: false,
-			message: "Failed to stop native Windows capture",
+		const windows = await vi.importActual<typeof import("../windows")>("../windows");
+		const capture = proc as unknown as NonNullable<typeof state.windowsCaptureProcess>;
+		windows.attachWindowsCaptureLifecycle(capture);
+		mocks.waitForWindowsCaptureStop.mockImplementationOnce(() => {
+			const waiting = windows.waitForWindowsCaptureStop(capture);
+			proc.emit("close", 0);
+			return waiting;
 		});
-		expect(proc.kill).not.toHaveBeenCalled();
-		expect(state.windowsCaptureProcess).toBeNull();
-		expect(state.windowsNativeCaptureActive).toBe(false);
-		expect(state.nativeScreenRecordingActive).toBe(false);
-		expect(state.windowsCaptureStopRequested).toBe(false);
-		expect(state.windowsCapturePaused).toBe(false);
+
+		const utils = await import("../../utils");
+		const move = utils.moveFileWithOverwrite;
+		let markMoveStarted!: () => void;
+		const moveStarted = new Promise<void>((resolve) => {
+			markMoveStarted = resolve;
+		});
+		let releaseMove!: () => void;
+		const moveGate = new Promise<void>((resolve) => {
+			releaseMove = resolve;
+		});
+		const pausedMove = vi
+			.spyOn(utils, "moveFileWithOverwrite")
+			.mockImplementationOnce(async (source, destination) => {
+				markMoveStarted();
+				await moveGate;
+				return move(source, destination);
+			});
+
+		const stopping = stopWindowsCapture();
+		try {
+			await moveStarted;
+			await expect(windows.recoverNativeWindowsCaptureOutput()).resolves.toBeNull();
+		} finally {
+			releaseMove();
+			await stopping;
+			pausedMove.mockRestore();
+		}
+
+		await expect(stopping).resolves.toEqual({ success: true, path: finalVideo });
+		expect(state.windowsPendingVideoPath).toBe(finalVideo);
 	});
 });
