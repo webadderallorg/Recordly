@@ -376,7 +376,7 @@ export function ExportSettingsMenu({
 						)}
 					</div>
 				)}
-				{billing?.status?.billing.plan !== "pro" && (
+				{import.meta.env.PROD && billing?.status?.billing.plan !== "pro" && (
 					<div className="space-y-1">
 						<p className="text-xs text-muted">
 							<Button

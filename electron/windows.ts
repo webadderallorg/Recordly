@@ -57,7 +57,7 @@ const WINDOW_ICON_PATH = path.join(
 let hudOverlayWindow: BrowserWindow | null = null;
 let x11HudDraggedBounds: HudOverlayWorkArea | undefined;
 let x11HudRecordingShapeKey = "";
-let hiddenLinuxHud: { window: BrowserWindow; restoreOnActivation: boolean } | null = null;
+let hiddenHud: { window: BrowserWindow; restoreOnActivation: boolean } | null = null;
 let hudOverlayHiddenFromCapture = true;
 let hudOverlayCaptureProtectionLoaded = false;
 let hudOverlayFallbackExpanded = false;
@@ -513,17 +513,11 @@ ipcMain.on("hud-overlay-drag", (event, phase: string, screenX: number, screenY: 
 	}
 });
 
-ipcMain.on("hud-overlay-hide", () => {
+ipcMain.on("hud-overlay-hide", (event) => {
 	const window = getHudOverlayWindow();
-	if (!window) return;
-
-	if (process.platform === "linux") {
-		// Wayland compositors and X11's non-focusable HUD can stay mapped after minimize().
-		hiddenLinuxHud = { window, restoreOnActivation: true };
-		window.hide();
-		return;
-	}
-	window.minimize();
+	if (!window || window.webContents !== event.sender || !window.isVisible()) return;
+	hiddenHud = { window, restoreOnActivation: true };
+	window.hide();
 });
 
 ipcMain.handle("get-hud-overlay-capture-protection", () => {
@@ -700,7 +694,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 	}
 
 	const showHudWindow = () => {
-		if (hasShownHudWindow || win.isDestroyed()) {
+		if (hasShownHudWindow || win.isDestroyed() || hiddenHud?.window === win) {
 			return;
 		}
 		if (
@@ -738,17 +732,13 @@ export function createHudOverlayWindow(): BrowserWindow {
 	win.on("show", () => {
 		if (!win.isDestroyed()) {
 			applyHudOverlayCaptureProtectionToWindow(win, hudOverlayHiddenFromCapture);
-			if (hiddenLinuxHud?.window === win) {
-				hiddenLinuxHud = null;
-				win.webContents.send("hud-overlay-restored");
-			}
+			if (hiddenHud?.window === win) hiddenHud = null;
 			if (process.platform === "win32" && recordingFocusWindows.length > 0)
 				raiseHudAboveRecordingFocus();
 		}
 	});
 	win.on("restore", () => {
 		if (!win.isDestroyed()) {
-			win.webContents.send("hud-overlay-restored");
 			if (process.platform === "win32" && recordingFocusWindows.length > 0)
 				raiseHudAboveRecordingFocus();
 		}
@@ -873,7 +863,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 		if (hudOverlayWindow === win) {
 			hudOverlayWindow = null;
 			x11HudRecordingShapeKey = "";
-			hiddenLinuxHud = null;
+			hiddenHud = null;
 			hudOverlayInteractiveBounds = null;
 			recordingPreparationActive = false;
 			hudCaptureStarting = false;
@@ -894,16 +884,18 @@ export function getHudOverlayWindow(): BrowserWindow | null {
 	return hudOverlayWindow && !hudOverlayWindow.isDestroyed() ? hudOverlayWindow : null;
 }
 
+export function isHudHiddenByUser(): boolean {
+	const hud = getHudOverlayWindow();
+	return Boolean(hud && hiddenHud?.window === hud && !hud.isVisible());
+}
+
 export function shouldRestoreHiddenHudOnActivation(): boolean {
-	return (
-		hiddenLinuxHud?.restoreOnActivation === true &&
-		hiddenLinuxHud.window === getHudOverlayWindow()
-	);
+	return hiddenHud?.restoreOnActivation === true && isHudHiddenByUser();
 }
 
 export function cancelHiddenHudRestoreOnActivation(): void {
-	if (hiddenLinuxHud) {
-		hiddenLinuxHud.restoreOnActivation = false;
+	if (hiddenHud) {
+		hiddenHud.restoreOnActivation = false;
 	}
 }
 

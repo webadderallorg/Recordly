@@ -101,6 +101,13 @@ export default function TermsOfService() {
 			</p>
 			<h2>7. Acceptable use</h2>
 			<p>
+				You are responsible for the content you upload, store or share, including its
+				legality and any rights, permissions and consents you need. Recordly provides
+				hosting and sharing tools. Any review of an individual recording is limited to the
+				circumstances described in our <a href="/privacy">privacy policy</a>. Our
+				obligations under applicable law continue to apply.
+			</p>
+			<p>
 				Do not use the service for unlawful content, child sexual abuse material, threats,
 				harassment, infringement, non-consensual intimate material, malware or disclosure of
 				information you are not entitled to publish. Do not evade storage limits or security

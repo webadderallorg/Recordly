@@ -12,7 +12,9 @@ vi.mock("@/components/billing/upgradePrompts", () => ({
 vi.mock("@/components/ui/toast", () => ({
 	toast: { info: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
-vi.mock("@/lib/feedback/exportDiagnostics", () => ({ recordExportDiagnostic: vi.fn() }));
+vi.mock("@/lib/feedback/exportDiagnostics", () => ({
+	createExportDiagnostics: () => ({ record: vi.fn(), complete: vi.fn(), stage: vi.fn() }),
+}));
 
 import { toast } from "@/components/ui/toast";
 import { useExportDialogActions } from "./useExportDialogActions";

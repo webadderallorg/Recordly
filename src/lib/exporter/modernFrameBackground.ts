@@ -12,13 +12,18 @@ import {
 	configureHighQuality2DContext,
 	drawSourceCoverToCanvas,
 } from "./modernFrameUtils";
+import {
+	loadExportWallpaperImage,
+	reportRendererMediaFailure,
+	resolveExportWallpaper,
+} from "./rendererMedia";
 
 /** Owns background resources for one export renderer. */
 export class FrameBackground {
 	constructor(
 		private readonly context: Pick<
 			FrameRenderContext,
-			"backgroundPlayback" | "scene" | "config" | "textures"
+			"backgroundPlayback" | "scene" | "config" | "textures" | "mediaSignal"
 		>,
 	) {}
 
@@ -59,17 +64,25 @@ export class FrameBackground {
 	async setupBackground(): Promise<void> {
 		this.resetBackgroundLayer();
 
-		const wallpaper = await this.resolveWallpaperForExport(this.context.config.wallpaper);
-
+		const asset = isVideoWallpaperSource(this.context.config.wallpaper)
+			? "video-wallpaper"
+			: "wallpaper-image";
 		try {
+			const wallpaper = await resolveExportWallpaper(
+				() => this.resolveWallpaperForExport(this.context.config.wallpaper),
+				this.context.mediaSignal,
+			);
 			if (isVideoWallpaperSource(wallpaper)) {
 				let videoSrc = wallpaper;
 				if (wallpaper.startsWith("/") && !wallpaper.startsWith("//")) {
-					videoSrc = await getAssetPath(wallpaper.replace(/^\//, ""));
+					videoSrc = await resolveExportWallpaper(
+						() => getAssetPath(wallpaper.replace(/^\//, "")),
+						this.context.mediaSignal,
+					);
 				}
 
 				try {
-					const frameSource = new ForwardFrameSource();
+					const frameSource = new ForwardFrameSource(this.context.mediaSignal);
 					const metadata = await frameSource.initialize(videoSrc);
 					this.context.backgroundPlayback.backgroundForwardFrameSource = frameSource;
 					this.context.backgroundPlayback.backgroundForwardFrameSourceUrl = videoSrc;
@@ -83,6 +96,13 @@ export class FrameBackground {
 					this.context.backgroundPlayback.lastSyncedBackgroundLoopTimeSec = null;
 					return;
 				} catch (error) {
+					this.context.mediaSignal?.throwIfAborted();
+					reportRendererMediaFailure(
+						"video-wallpaper",
+						"load",
+						error,
+						this.context.config.onDiagnostic,
+					);
 					console.warn(
 						"[FrameRenderer] Decoder-backed video wallpaper unavailable during export; falling back to media element sync:",
 						error,
@@ -115,28 +135,10 @@ export class FrameBackground {
 				wallpaper.startsWith("/") ||
 				wallpaper.startsWith("http")
 			) {
-				const img = new Image();
-				const imageUrl = await this.resolveWallpaperImageUrl(wallpaper);
-				if (
-					imageUrl.startsWith("http") &&
-					window.location.origin &&
-					!imageUrl.startsWith(window.location.origin)
-				) {
-					img.crossOrigin = "anonymous";
-				}
-
-				await new Promise<void>((resolve, reject) => {
-					img.onload = () => resolve();
-					img.onerror = (err) => {
-						console.error(
-							"[FrameRenderer] Failed to load background image:",
-							imageUrl,
-							err,
-						);
-						reject(new Error(`Failed to load background image: ${imageUrl}`));
-					};
-					img.src = imageUrl;
-				});
+				const img = await loadExportWallpaperImage(
+					() => this.resolveWallpaperImageUrl(wallpaper),
+					this.context.mediaSignal,
+				);
 
 				drawSourceCoverToCanvas(
 					bgCtx,
@@ -181,6 +183,8 @@ export class FrameBackground {
 				this.context.config.height / 2,
 			);
 		} catch (error) {
+			this.context.mediaSignal?.throwIfAborted();
+			reportRendererMediaFailure(asset, "load", error, this.context.config.onDiagnostic);
 			console.error("[FrameRenderer] Error setting up background, using fallback:", error);
 			const fallback = document.createElement("canvas");
 			fallback.width = this.context.config.width;

@@ -109,6 +109,8 @@ export class FrameRenderer {
 	protected pendingMediaCancellations = new Set<() => void>();
 
 	protected mediaCancelled = false;
+	private readonly mediaAbortController = new AbortController();
+	protected readonly mediaSignal = this.mediaAbortController.signal;
 
 	protected backgroundForwardFrameSource: ForwardFrameSource | null = null;
 
@@ -255,6 +257,7 @@ export class FrameRenderer {
 	}
 
 	cancelPendingMedia(): void {
+		this.mediaAbortController.abort();
 		return cancelPendingMediaOperation(this.context);
 	}
 

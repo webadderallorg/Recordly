@@ -30,7 +30,7 @@ import {
 	rememberApprovedLocalReadPath,
 } from "../project/manager";
 import { setCurrentProjectPath } from "../state";
-import { approveUserPath, getRecordingsDir } from "../utils";
+import { approveUserPath, getDirectoryForDialog, getRecordingsDirPath } from "../utils";
 import { registerWallpaperVideoHandler } from "./wallpaperVideo";
 
 const VIDEO_FILE_EXTENSIONS = ["webm", "mp4", "mov", "m4v", "avi", "mkv"];
@@ -138,10 +138,9 @@ export function registerCaptionHandlers() {
 	ipcMain.handle("open-video-file-picker", async (_, options?: OpenVideoFilePickerOptions) => {
 		try {
 			const includeProjects = Boolean(options?.includeProjects);
-			const recordingsDir = await getRecordingsDir();
 			const result = await dialog.showOpenDialog({
 				title: includeProjects ? "Import Media or Recordly Project" : "Select Video File",
-				defaultPath: recordingsDir,
+				defaultPath: await getDirectoryForDialog(await getRecordingsDirPath()),
 				filters: [
 					...(includeProjects
 						? [

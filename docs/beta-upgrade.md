@@ -16,10 +16,12 @@ Copy the whole settings folder while Recordly is closed. Keep that backup outsid
 
 ## Open a v1.4 project in the beta
 
-New projects start with the 2.0 editor and export defaults. The beta retains
-your saved presets, custom backgrounds, and caption tool paths. Existing
-projects keep their saved edits and use 2.0 defaults for fields they do not
-specify.
+New projects keep your saved background, blur, shadow, and corner radius.
+Screen captures start at 0% padding and window captures at 25%, with separate
+preferences for each. Webcam settings use the new shape defaults on upgrade.
+Open **Presets** in the editor toolbar to save or apply a scene preset.
+Existing projects keep their saved edits and use 2.0 defaults for fields they
+do not specify.
 
 1. Open the existing project and check its clip timing, audio, webcam, captions, and effects.
 2. Before making edits, choose **File → Save Project As…** (⌘⇧S on macOS; Ctrl+Shift+S on Windows/Linux) and save the beta copy under a new name, separate from the original v1.4 project. Keep the original unchanged.

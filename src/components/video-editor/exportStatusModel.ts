@@ -12,7 +12,6 @@ export type ExportStatusModel = {
 	isExportMuxingAndSaving: boolean;
 	isExportFinalSaveIndeterminate: boolean;
 	isLightningExportInProgress: boolean;
-	shouldSuspendPreviewRendering: boolean;
 	isLegacyExportInProgress: boolean;
 	renderSpeedFps: string | null;
 	runtimeLabel: string | null;
@@ -72,8 +71,6 @@ export function resolveExportStatusModel({
 		exportFormat === "mp4" &&
 		exportPipelineModel === "modern" &&
 		(isExporting || exportProgress !== null);
-	const shouldSuspendPreviewRendering =
-		isExporting && exportFormat === "mp4" && exportPipelineModel === "modern";
 	const isLegacyExportInProgress =
 		exportFormat === "mp4" &&
 		exportPipelineModel === "legacy" &&
@@ -114,7 +111,6 @@ export function resolveExportStatusModel({
 		isExportMuxingAndSaving,
 		isExportFinalSaveIndeterminate,
 		isLightningExportInProgress,
-		shouldSuspendPreviewRendering,
 		isLegacyExportInProgress,
 		renderSpeedFps,
 		runtimeLabel,

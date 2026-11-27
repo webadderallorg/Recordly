@@ -86,6 +86,8 @@ export function createCursorOverlayVisuals() {
 	}
 
 	const cursorMotionBlurFilter: MotionBlurFilter = new MotionBlurFilter([0, 0], 5, 0);
+	const cursorIdleBlurFilter = new BlurFilter({ strength: 0, quality: 2 });
+	cursorIdleBlurFilter.enabled = false;
 
 	container.filters = null;
 
@@ -106,6 +108,7 @@ export function createCursorOverlayVisuals() {
 		cursorShadowFilters,
 		cursorSprites,
 		cursorMotionBlurFilter,
+		cursorIdleBlurFilter,
 	};
 }
 export type CursorOverlayVisuals = ReturnType<typeof createCursorOverlayVisuals>;

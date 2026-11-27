@@ -28,6 +28,7 @@ export async function renderExportFrames(
 	const decodeLoopStartedAt = getNowMs();
 
 	try {
+		session.config.onStage?.("decode-frame", 0);
 		await session.browser.streamingDecoder!.decodeAll(
 			session.config.frameRate,
 			session.config.trimRegions,
@@ -42,6 +43,7 @@ export async function renderExportFrames(
 					const timestamp = frameIndex * frameDuration;
 					const sourceTimestampUs = sourceTimestampMs * 1000;
 					const cursorTimestampUs = cursorTimestampMs * 1000;
+					session.config.onStage?.("render-frame", frameIndex);
 					const renderStartedAt = getNowMs();
 					control.inRendererStage = true;
 					try {
@@ -61,6 +63,10 @@ export async function renderExportFrames(
 						return;
 					}
 
+					session.config.onStage?.(
+						useNativeEncoder ? "submit-native-frame" : "encode-frame",
+						frameIndex,
+					);
 					if (useNativeEncoder) {
 						control.inNativeStage = true;
 						await hooks.encodeRenderedFrameNative(timestamp, frameDuration, frameIndex);
@@ -71,6 +77,7 @@ export async function renderExportFrames(
 					frameIndex++;
 					session.metrics.processedFrameCount = frameIndex;
 					session.progress.reportProgress(frameIndex, totalFrames, "extracting");
+					session.config.onStage?.("decode-frame", frameIndex);
 				} finally {
 					session.metrics.frameCallbackTimeMs += getNowMs() - callbackStartedAt;
 				}

@@ -2,6 +2,8 @@ export const NATIVE_EXPORT_ENGINE_NAME = "Breeze";
 export const MEDIA_SOURCE_RETRY_ERROR_TOKENS = [
 	"readavpacket",
 	"get_media_info",
+	"video reader worker failed",
+	"reading video decoder configuration timed out",
 	"avfoundation",
 	"failed after 3 attempts",
 	"pipeline failed",

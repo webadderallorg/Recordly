@@ -46,6 +46,9 @@ const REGULAR_MOTION_VALUES = {
 
 const SMOOTH_MOTION_SPEED = 0.7;
 
+// Presets saved before the strength change used 2× with the same timings.
+const PREVIOUS_CURSOR_CLICK_BOUNCE = 2;
+
 // Published projects store preset values, so retain the old Smooth identity
 // when its complete tuple predates the current Cinematic tuning.
 const LEGACY_SMOOTH_MOTION_VALUES: CursorMotionPresetSelectionInput = {
@@ -56,7 +59,7 @@ const LEGACY_SMOOTH_MOTION_VALUES: CursorMotionPresetSelectionInput = {
 	cursorSpringStiffnessMultiplier: 0.92,
 	cursorSpringDampingMultiplier: 1.36,
 	cursorSpringMassMultiplier: 1.29,
-	cursorClickBounce: 2,
+	cursorClickBounce: PREVIOUS_CURSOR_CLICK_BOUNCE,
 	cursorClickBounceDuration: 350,
 };
 
@@ -95,7 +98,8 @@ export function getMatchingCursorMotionPresetId(
 			preset.cursorSpringStiffnessMultiplier === values.cursorSpringStiffnessMultiplier &&
 			preset.cursorSpringDampingMultiplier === values.cursorSpringDampingMultiplier &&
 			preset.cursorSpringMassMultiplier === values.cursorSpringMassMultiplier &&
-			preset.cursorClickBounce === values.cursorClickBounce &&
+			(preset.cursorClickBounce === values.cursorClickBounce ||
+				values.cursorClickBounce === PREVIOUS_CURSOR_CLICK_BOUNCE) &&
 			preset.cursorClickBounceDuration === values.cursorClickBounceDuration
 		) {
 			return presetId;

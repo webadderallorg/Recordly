@@ -41,17 +41,21 @@ export function useAppearanceState(preferences: EditorPreferences) {
 			? DEFAULT_WALLPAPER_PATH
 			: preferences.wallpaper,
 	);
+	const [defaultWallpaper, setDefaultWallpaper] = useState(DEFAULT_WALLPAPER_PATH);
 	const wallpaperChanged = useRef(false);
 	const setWallpaper = useCallback<Dispatch<SetStateAction<string>>>((value) => {
 		wallpaperChanged.current = true;
 		setWallpaperState(value);
 	}, []);
 	useEffect(() => {
-		if (preferences.wallpaper !== DESKTOP_WALLPAPER) return;
 		let active = true;
 		void getDesktopWallpaperPath().then((path) => {
+			if (!active || !path) return;
+			setDefaultWallpaper(path);
 			// Restoring a project or picking a background wins over a late OS response.
-			if (active && path && !wallpaperChanged.current) setWallpaperState(path);
+			if (preferences.wallpaper === DESKTOP_WALLPAPER && !wallpaperChanged.current) {
+				setWallpaperState(path);
+			}
 		});
 		return () => {
 			active = false;
@@ -150,6 +154,7 @@ export function useAppearanceState(preferences: EditorPreferences) {
 
 	return {
 		wallpaper,
+		defaultWallpaper,
 		setWallpaper,
 		shadowIntensity,
 		setShadowIntensity,

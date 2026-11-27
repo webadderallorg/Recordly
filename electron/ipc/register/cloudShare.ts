@@ -15,6 +15,7 @@ import { isOwnedExportPath } from "../export/exportStream";
 import { startGrowingShareUpload } from "../growingShareUpload";
 import { isAllowedLocalReadPath } from "../project/manager";
 import { createShareThumbnail } from "../recording/shareThumbnail";
+import { startMainDiagnosticOperation } from "./exportDiagnostics";
 
 const MAX_CONTROL_RESPONSE_BYTES = 1024 * 1024;
 const MAX_AUTH_TOKEN_BYTES = 8192;
@@ -250,6 +251,13 @@ export function registerCloudShareHandlers() {
 				uploadId?: unknown;
 			},
 		) => {
+			if (!isTrustedRenderer(event))
+				return { success: false, error: "Untrusted sharing request." };
+			const operation = startMainDiagnosticOperation(
+				"cloud.share-upload",
+				"editor",
+				event.sender.id,
+			);
 			let uploadId: string | undefined;
 			let activeUpload: ActiveUpload | undefined;
 			let unpublishedReservation:
@@ -257,8 +265,7 @@ export function registerCloudShareHandlers() {
 				| undefined;
 			let finalizationAttempted = false;
 			try {
-				if (!isTrustedRenderer(event))
-					return { success: false, error: "Untrusted sharing request." };
+				operation.step("validate-request");
 				const endpoint = normalizeCloudEndpoint(input?.endpoint);
 				const token = typeof input.token === "string" ? input.token.trim() : "";
 				if (!validUploadToken(token))
@@ -286,6 +293,7 @@ export function registerCloudShareHandlers() {
 				activeUploads.set(uploadId, activeUpload);
 				if (!existing) trackUploadLifetime(uploadId, activeUpload, event.sender);
 				const getToken = () => activeUpload!.token;
+				operation.step("read-export");
 				if (typeof input?.filePath !== "string" || input.filePath.trim().length === 0) {
 					throw new Error("Export a video before sharing it.");
 				}
@@ -310,12 +318,14 @@ export function registerCloudShareHandlers() {
 					resolvedPath,
 					controller.signal,
 				).catch(() => undefined);
+				if (activeUpload.growing) operation.step("finish-background-upload");
 				const growingTicket = await activeUpload.growing?.finish(resolvedPath);
 				controller.signal.throwIfAborted();
 				const controlHeaders: Record<string, string> = {
 					"content-type": "application/json",
 				};
 				controlHeaders.authorization = `Bearer ${getToken()}`;
+				if (!growingTicket) operation.step("request-upload");
 				const ticketResponse = growingTicket
 					? undefined
 					: await fetch(endpoint, {
@@ -381,6 +391,7 @@ export function registerCloudShareHandlers() {
 					ticket.shareCode !== undefined &&
 					new URL(ticket.uploadUrl).origin === endpointOrigin;
 
+				if (!growingTicket) operation.step("send-video");
 				if (growingTicket) {
 					sendProgress(stat.size);
 				} else if (canUseMultipart) {
@@ -438,6 +449,7 @@ export function registerCloudShareHandlers() {
 				}
 
 				if (ticket.finalizeUrl) {
+					operation.step("finalize-link");
 					const finalizeHeaders: Record<string, string> = {
 						"content-type": "application/json",
 					};
@@ -464,6 +476,7 @@ export function registerCloudShareHandlers() {
 					}
 				}
 				if (ticket.shareCode) {
+					operation.step("upload-thumbnail");
 					try {
 						const thumbnail = await thumbnailPromise;
 						if (!thumbnail) throw new Error("Video poster unavailable");
@@ -495,13 +508,16 @@ export function registerCloudShareHandlers() {
 					}
 				}
 
+				operation.finish("succeeded");
 				return { success: true, uploadId, shareUrl: ticket.shareUrl };
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
+				const canceled = message.includes("aborted");
+				operation.finish(canceled ? "cancelled" : "failed");
 				return {
 					success: false,
 					uploadId,
-					canceled: message.includes("aborted"),
+					canceled,
 					error: message,
 				};
 			} finally {

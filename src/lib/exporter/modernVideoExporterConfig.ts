@@ -82,6 +82,7 @@ export interface VideoExporterConfig extends ExportConfig {
 	previewWidth?: number;
 	previewHeight?: number;
 	onProgress?: (progress: ExportProgress) => void;
+	onBackendAttempt?: (attempt: import("./types").ExportBackendAttempt) => void;
 	preferredEncoderPath?: SupportedMp4EncoderPath | null;
 	/** Internal recovery route; never changes resolution, timing or bitrate. */
 	forceSoftwareEncoding?: boolean;

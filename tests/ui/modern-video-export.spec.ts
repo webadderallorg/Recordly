@@ -1,6 +1,119 @@
 import { expect, test } from "@playwright/test";
 import type { ExportProgress } from "../../src/lib/exporter/types";
 
+test("a crashed video reader restarts immediately and produces a playable MP4", async ({
+	page,
+}, testInfo) => {
+	await page.addInitScript(() => {
+		const BrowserWorker = window.Worker;
+		let demuxerCount = 0;
+		window.Worker = class extends BrowserWorker {
+			constructor(url: string | URL, options?: WorkerOptions) {
+				if (options?.name !== "web-demuxer") {
+					super(url, options);
+					return;
+				}
+				performance.mark(`video-reader-${++demuxerCount}`);
+				const failingUrl =
+					demuxerCount === 1
+						? URL.createObjectURL(
+								new Blob(['throw new Error("Injected reader crash")'], {
+									type: "text/javascript",
+								}),
+							)
+						: null;
+				super(failingUrl ?? url, options);
+				if (failingUrl) {
+					this.addEventListener("error", () => URL.revokeObjectURL(failingUrl), {
+						once: true,
+					});
+				}
+			}
+		};
+	});
+	await page.route("**/video?path=/fixtures/filmstrip.mp4", async (route) => {
+		const response = await route.fetch({
+			url: new URL("/tests/ui/fixtures/filmstrip.mp4", route.request().url()).href,
+		});
+		await route.fulfill({ response });
+	});
+	await page.route("**/tests/ui/wasm/web-demuxer.wasm", async (route) => {
+		// A slow but healthy local reader can need more than a one-second startup budget.
+		await new Promise((resolve) => setTimeout(resolve, 1200));
+		await route.fulfill({
+			path: "public/wasm/web-demuxer.wasm",
+			contentType: "application/wasm",
+		});
+	});
+	await page.goto("/tests/ui/modern-video-export.html?local-media");
+	await page.getByRole("button", { name: "Export real MP4", exact: true }).click();
+	const report = page.locator("#result");
+	await expect(report).toHaveAttribute("data-state", "done", { timeout: 25_000 });
+	const result = JSON.parse(await report.innerText());
+	const retryDelayMs = await page.evaluate(() => {
+		return performance.measure("video-reader-retry", "video-reader-1", "video-reader-2")
+			.duration;
+	});
+	await testInfo.attach("reader-recovery.json", {
+		body: JSON.stringify({ retryDelayMs, result }, null, 2),
+		contentType: "application/json",
+	});
+	expect(retryDelayMs).toBeLessThan(6_000);
+	expect(result.error, JSON.stringify(result)).toBeUndefined();
+	expect(result.success).toBe(true);
+	expect(result.output).toMatchObject({ container: "mp4", codec: "avc", frameCount: 90 });
+	expect(result.playback.advanced).toBe(true);
+	expect(result.metrics.metadataLoadMs).toBeGreaterThan(1_000);
+	expect(result.readerDiagnostics).toEqual([
+		expect.stringContaining(
+			'"code":"VIDEO_READER_WORKER_ERROR","reason":"Uncaught Error: Injected reader crash"',
+		),
+		expect.stringContaining("[export] video-reader-retry"),
+	]);
+	expect(result.exportSummary).toMatchObject({
+		status: "succeeded",
+		route: "modern",
+		stage: "finalize-mp4-container",
+		lastCompletedFrame: 90,
+		recoveryCount: 1,
+		lastRecovery: {
+			route: "video-reader",
+			reason: expect.stringContaining("VIDEO_READER_WORKER_ERROR"),
+		},
+	});
+});
+
+test("a wallpaper image that never responds falls back and leaves a support diagnostic", async ({
+	page,
+}) => {
+	test.setTimeout(45_000);
+	let wallpaperRequested = false;
+	await page.route("**/unresponsive-wallpaper.png", () => {
+		wallpaperRequested = true;
+	});
+	await page.route("**/tests/ui/wasm/web-demuxer.wasm", (route) =>
+		route.fulfill({ path: "public/wasm/web-demuxer.wasm", contentType: "application/wasm" }),
+	);
+	await page.goto("/tests/ui/modern-video-export.html?stall-wallpaper");
+	await page.getByRole("button", { name: "Export real MP4", exact: true }).click();
+	const report = page.locator("#result");
+	await expect(report).toHaveAttribute("data-state", "done", { timeout: 35_000 });
+	const result = JSON.parse(await report.innerText());
+	expect(wallpaperRequested).toBe(true);
+	expect(result.error, JSON.stringify(result)).toBeUndefined();
+	expect(result.output).toMatchObject({ container: "mp4", frameCount: 90 });
+	expect(result.playback.advanced).toBe(true);
+	expect(result.exportSummary).toMatchObject({
+		status: "succeeded",
+		lastMediaFailure: {
+			asset: "wallpaper-image",
+			mediaStage: "load",
+			code: "RENDER_MEDIA_TIMEOUT",
+			reason: "Timed out loading wallpaper image",
+		},
+	});
+});
+
 test("real WebCodecs export finishes with reordered clips from one source", async ({
 	page,
 }, testInfo) => {

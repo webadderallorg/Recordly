@@ -140,6 +140,13 @@ for (const engine of ["lightning", "native"]) {
 		await expect(menu.getByRole("button", { name: "Report sent", exact: true })).toBeDisabled();
 		expect(reports).toHaveLength(1);
 		expect(reports[0]).toMatchObject({ context: "export", format: "mp4" });
+		const diagnostics = JSON.parse(reports[0].logs as string);
+		expect(diagnostics.recentExports[0]).toMatchObject({
+			status: "failed",
+			stage: "initialize-video-encoder",
+			route: "modern",
+			reason: expect.stringContaining("encoder unavailable"),
+		});
 		expect(reports[0].error).toContain("Diagnostic tail: full failure retained");
 		expect(JSON.stringify(reports[0])).not.toContain("Alice");
 	});

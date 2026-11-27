@@ -88,7 +88,9 @@ describe("resolveMediaElementSource", () => {
 			const source = await createFallbackDemuxerSource("https://example.com/video.mp4");
 
 			expect(source).toBeInstanceOf(File);
-			expect(fetchMock).toHaveBeenCalledWith("https://example.com/video.mp4");
+			expect(fetchMock).toHaveBeenCalledWith("https://example.com/video.mp4", {
+				signal: undefined,
+			});
 		} finally {
 			vi.unstubAllGlobals();
 		}

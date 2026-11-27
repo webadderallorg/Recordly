@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useI18n } from "@/contexts/I18nContext";
 import { recordlyAuth } from "@/lib/auth/recordlyAuth";
 import { recoverBillingSession } from "@/lib/auth/recoverBillingSession";
+import { beginAppOperation } from "@/lib/feedback/diagnostics";
 import { CLOUD_SHARE_ENDPOINT as DEFAULT_CLOUD_ENDPOINT } from "./endpoint";
 import {
 	checkShareCapacity,
@@ -107,12 +108,15 @@ export function useCloudShareCapacity({
 			}
 			pending = true;
 			const request = ++generation;
+			const operation = beginAppOperation("cloud.share-capacity");
+			operation.step("check-storage");
 			setCapacity(null);
 			setCapacityError(undefined);
 			setCheckingCapacity(true);
 			void checkShareCapacity(DEFAULT_CLOUD_ENDPOINT, authToken, recoverSession)
 				.then((result) => {
 					if (active && request === generation) {
+						operation.finish("succeeded");
 						sessionRecovery.current.attempted = false;
 						setCapacity(result);
 						setCapacityIdentity(currentCapacityIdentity);
@@ -120,6 +124,7 @@ export function useCloudShareCapacity({
 				})
 				.catch((cause) => {
 					if (active && request === generation) {
+						operation.finish("failed");
 						setSignInRequired(
 							cause instanceof ShareSignInRequiredError ||
 								cause instanceof ShareEmailVerificationRequiredError,
@@ -137,6 +142,7 @@ export function useCloudShareCapacity({
 					}
 				})
 				.finally(() => {
+					operation.finish("cancelled");
 					pending = false;
 					if (active && request === generation) {
 						setCheckingCapacity(false);

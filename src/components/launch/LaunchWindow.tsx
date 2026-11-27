@@ -23,7 +23,6 @@ import { canToggleFloatingWebcamPreview } from "./floatingWebcamPreview";
 import { HudTooltip } from "./HudTooltip";
 import { useCameraPermission } from "./hooks/useCameraPermission";
 import { useHudBarDrag } from "./hooks/useHudBarDrag";
-import { useHudHideAnimation } from "./hooks/useHudHideAnimation";
 import { useHudStateTransition } from "./hooks/useHudStateTransition";
 import { useLaunchHudInteractionState } from "./hooks/useLaunchHudInteractionState";
 import { useLaunchWindowActions } from "./hooks/useLaunchWindowActions";
@@ -87,7 +86,6 @@ function LaunchWindowContent() {
 	const { elapsed, formatTime } = useRecordingTimer(recording, paused);
 	const hudContentRef = useRef<HTMLDivElement>(null);
 	const hudBarRef = useRef<HTMLDivElement>(null);
-	const hideHud = useHudHideAnimation(hudBarRef);
 
 	const { selectedSource, hasSelectedSource, syncSelectedSource } = useLaunchWindowActions();
 	const sourceDescriptionId = useId();
@@ -512,7 +510,7 @@ function LaunchWindowContent() {
 					variant="ghost"
 					size="icon"
 					iconSize="lg"
-					onClick={hideHud}
+					onClick={() => window.electronAPI?.hudOverlayHide?.()}
 					disabled={countdownActive}
 					aria-label={t("recording.hideHud")}
 				>

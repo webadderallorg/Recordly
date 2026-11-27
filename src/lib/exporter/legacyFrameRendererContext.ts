@@ -25,9 +25,10 @@ import type { MotionBlurFilter } from "@/lib/exporter/motionBlurFilter";
 import type { ZoomBlurFilter } from "@/lib/exporter/zoomBlurFilter";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import type { SourceRedactionCanvas } from "./sourceRedaction";
+import type { ExportDiagnosticCallbacks } from "./types";
 import type { WebcamFrameSource } from "./webcamFrameSource";
 
-export interface FrameRenderConfig {
+export interface FrameRenderConfig extends Pick<ExportDiagnosticCallbacks, "onDiagnostic"> {
 	/** Sparse samples seek optional media directly instead of scanning their prefix. */
 	preferMediaElementSampling?: boolean;
 	timelineEffects?: boolean;
@@ -192,6 +193,7 @@ export interface LegacyFrameRendererContext {
 	compositeCtx: CanvasRenderingContext2D | null;
 	pendingMediaCancellations: Set<() => void>;
 	mediaCancelled: boolean;
+	readonly mediaSignal?: AbortSignal;
 	backgroundForwardFrameSource: ForwardFrameSource | null;
 	backgroundForwardFrameSourceUrl: string | null;
 	backgroundForwardFrameDurationSec: number | null;

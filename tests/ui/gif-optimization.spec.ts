@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import { expect, test } from "@playwright/test";
 import { compressGifBuffer } from "../../electron/ipc/export/gifOptimization";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+import { productionTest } from "./production";
 
 const ffmpegPath = createRequire(import.meta.url)("ffmpeg-static") as string;
 
@@ -92,7 +93,8 @@ for (const target of ["met", "missed", "failed"] as const) {
 }
 
 for (const plan of ["free", "pro", "loading", "unavailable"] as const) {
-	test(`optimized local GIF exports work when billing is ${plan}`, async ({ page }) => {
+	const exportTest = plan === "free" ? productionTest : test;
+	exportTest(`optimized local GIF exports work when billing is ${plan}`, async ({ page }) => {
 		test.setTimeout(90000);
 		await installDesktopBridge(page);
 		await installDesktopBridgeOverrides(page, () => {

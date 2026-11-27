@@ -427,6 +427,14 @@ describe("legacy motion preset compatibility", () => {
 		cursorClickBounceDuration: 350,
 	};
 
+	it.each(["focused", "smooth"] as const)("keeps the %s preset saved with 2× strength", (id) => {
+		const saved = { ...CURSOR_MOTION_PRESETS[id], cursorClickBounce: 2 };
+		expect(getMatchingCursorMotionPresetId(saved)).toBe(id);
+		const result = normalizeProjectEditor(saved);
+		expect(getMatchingCursorMotionPresetId(result)).toBe(id);
+		expect(result.cursorClickBounce).toBe(2.5);
+	});
+
 	it("loads a published Smooth tuple as Cinematic rather than Focused", () => {
 		expect(getMatchingCursorMotionPresetId(legacySmooth)).toBe("smooth");
 		const result = normalizeProjectEditor(legacySmooth);
@@ -449,6 +457,7 @@ describe("legacy motion preset compatibility", () => {
 		).toBeNull();
 		const focused = CURSOR_MOTION_PRESETS.focused;
 		expect(normalizeProjectEditor({})).toMatchObject({
+			cursorClickBounce: 2.5,
 			zoomInDurationMs: focused.zoomInDurationMs,
 			zoomOutDurationMs: focused.zoomOutDurationMs,
 			cursorSpringStiffnessMultiplier: focused.cursorSpringStiffnessMultiplier,

@@ -60,6 +60,7 @@ export async function finalizeExportAttempt(
 		stageStartedAt = getNowMs();
 		session.progress.reportFinalizingProgress(totalFrames, 99);
 		if (session.native.nativeH264Encoder) {
+			session.config.onStage?.("flush-native-input-encoder");
 			await session.progress.measureFinalizationStage("nativeEncoderFlushMs", async () => {
 				await session.progress.awaitWithFinalizationTimeout(
 					session.native.nativeH264Encoder!.flush(),
@@ -67,6 +68,7 @@ export async function finalizeExportAttempt(
 				);
 			});
 		}
+		session.config.onStage?.("finish-native-encode");
 		const finishResult = await hooks.finishNativeVideoExport(nativeAudioPlan);
 		session.metrics.finalizationTimeMs = getNowMs() - stageStartedAt;
 		if (!finishResult.success || (!finishResult.tempFilePath && !finishResult.blob)) {
@@ -83,6 +85,7 @@ export async function finalizeExportAttempt(
 
 	stageStartedAt = getNowMs();
 	if (session.browser.encoder && session.browser.encoder.state === "configured") {
+		session.config.onStage?.("flush-video-encoder");
 		session.progress.reportFinalizingProgress(totalFrames, 97);
 		await session.progress.measureFinalizationStage("encoderFlushMs", async () => {
 			try {
@@ -97,6 +100,7 @@ export async function finalizeExportAttempt(
 	}
 
 	session.progress.reportFinalizingProgress(totalFrames, 98);
+	session.config.onStage?.("drain-muxer-queue");
 	await session.progress.measureFinalizationStage("queuedMuxingMs", async () => {
 		await session.progress.awaitWithFinalizationTimeout(
 			session.flow.pendingMuxing,
@@ -125,6 +129,7 @@ export async function finalizeExportAttempt(
 				session.progress.reportFinalizingProgress(totalFrames, 99, progress);
 			});
 			session.progress.reportFinalizingProgress(totalFrames, 99);
+			session.config.onStage?.("process-audio");
 			await session.progress.measureFinalizationStage("audioProcessingMs", async () => {
 				await session.progress.awaitWithFinalizationTimeout(
 					session.browser.audioProcessor!.process(
@@ -150,6 +155,7 @@ export async function finalizeExportAttempt(
 	}
 
 	session.progress.reportFinalizingProgress(totalFrames, 99);
+	session.config.onStage?.("finalize-mp4-container");
 	const muxerResult = await session.progress.measureFinalizationStage(
 		"muxerFinalizeMs",
 		async () =>
@@ -163,6 +169,7 @@ export async function finalizeExportAttempt(
 	);
 
 	if (shouldUseFfmpegAudioFallback) {
+		session.config.onStage?.("mux-audio-with-ffmpeg");
 		console.warn(
 			shouldUsePitchPreservingFfmpegAudio
 				? "[VideoExporter] Using FFmpeg audio muxing for pitch-preserving speed edits."

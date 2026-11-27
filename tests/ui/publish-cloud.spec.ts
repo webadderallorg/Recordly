@@ -270,6 +270,57 @@ for (const destination of ["Save to device", "Create share link"]) {
 	});
 }
 
+for (const { stage, context, query, error } of [
+	{
+		stage: "storage check",
+		context: "cloud-share-capacity",
+		query: "failed-capacity",
+		error: /Fixture cloud storage check failed/,
+	},
+	{
+		stage: "video preview",
+		context: "cloud-share-preview",
+		query: "controlled&switch",
+		error: /Published video preview failed/,
+	},
+]) {
+	test(`Publish can report a failed ${stage} without sending automatically`, async ({ page }) => {
+		const reports: Record<string, unknown>[] = [];
+		await page.route("**/functions/v1/submit-export-error", async (route) => {
+			reports.push(route.request().postDataJSON());
+			await route.fulfill({ json: { success: true } });
+		});
+		await page.route("https://example.test/v/preview", (route) => route.abort());
+		await page.goto(`/tests/ui/publish.html?${query}`);
+		await page.getByRole("button", { name: "Publish", exact: true }).click();
+		await page.getByRole("row", { name: "Create share link", exact: true }).click();
+		const publish = page.getByRole("dialog", { name: "Publish", exact: true });
+		if (context === "cloud-share-preview") {
+			await publish.getByRole("button", { name: "Share", exact: true }).click();
+			await expect(publish.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "85");
+			await page
+				.getByRole("button", { name: "Fixture finish upload", exact: true })
+				.evaluate((button: HTMLButtonElement) => button.click());
+			await expect(
+				publish.getByRole("button", { name: "Copy link", exact: true }),
+			).toBeEnabled();
+		} else {
+			await expect(
+				publish.getByRole("button", { name: "Try again", exact: true }),
+			).toBeEnabled();
+		}
+		const report = publish.getByRole("button", { name: "Report Error", exact: true });
+		await expect(report).toBeVisible();
+		expect(reports).toHaveLength(0);
+		await report.click();
+		await expect(
+			publish.getByRole("button", { name: "Report sent", exact: true }),
+		).toBeVisible();
+		expect(reports).toHaveLength(1);
+		expect(reports[0]).toMatchObject({ context, error: expect.stringMatching(error) });
+	});
+}
+
 test("publishing omits file-size estimates for both destinations", async ({ page }) => {
 	await page.goto("/tests/ui/publish.html");
 	await page.getByRole("button", { name: "Publish", exact: true }).click();
@@ -291,7 +342,9 @@ test("Publish keeps one inline progress bar from export to link creation", async
 	await expect(progress).toHaveCount(1);
 	await expect(progress).toHaveAttribute("aria-valuenow", "35");
 	await expect(menu.getByRole("status")).toContainText("Preparing the current edit…");
-	await expect(page.getByRole("region", { name: "Create link", exact: true })).toHaveCount(0);
+	await expect(page.getByRole("progressbar", { name: "Create link", exact: true })).toHaveCount(
+		1,
+	);
 	await expect(page.locator(".export-animation")).toHaveCount(0);
 	await expect(page.locator("body")).toHaveAttribute("data-share-armed-before-export", "true");
 	await expect(progress).toBeVisible();

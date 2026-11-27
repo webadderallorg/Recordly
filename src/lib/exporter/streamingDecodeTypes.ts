@@ -8,7 +8,9 @@ export type OnFrameCallback = (
 ) => Promise<void>;
 
 export interface StreamingDecodeContext {
-	demuxer: WebDemuxer;
+	readonly demuxer: WebDemuxer | null;
+	discardDemuxer(): void;
+	readonly signal: AbortSignal;
 	decoder: VideoDecoder | null;
 	readonly cancelled: boolean;
 	readonly metadata: DecodedVideoInfo;

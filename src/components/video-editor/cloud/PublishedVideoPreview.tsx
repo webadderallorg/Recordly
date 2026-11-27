@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
 import { Button } from "@/components/ui/button";
 import { Play } from "@/components/ui/icons";
 import { useI18n } from "@/contexts/I18nContext";
@@ -7,7 +8,7 @@ export function PublishedVideoPreview({ url }: { url: string }) {
 	const video = useRef<HTMLVideoElement>(null);
 	const [started, setStarted] = useState(false);
 	const [posterFailed, setPosterFailed] = useState(false);
-	const [failed, setFailed] = useState(false);
+	const [error, setError] = useState<string>();
 	let parsed: URL;
 	try {
 		parsed = new URL(url);
@@ -29,7 +30,14 @@ export function PublishedVideoPreview({ url }: { url: string }) {
 				playsInline
 				controls={started}
 				onPlay={() => setStarted(true)}
-				onError={() => setFailed(true)}
+				onError={({ currentTarget }) => {
+					const code = currentTarget.error?.code;
+					setError(
+						code
+							? `Published video preview failed (media error ${code}).`
+							: "Published video preview failed.",
+					);
+				}}
 			/>
 			{!posterFailed && (
 				<img
@@ -39,16 +47,16 @@ export function PublishedVideoPreview({ url }: { url: string }) {
 					onError={() => setPosterFailed(true)}
 				/>
 			)}
-			{failed ? (
-				<p
-					role="status"
-					className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-white"
-				>
-					{t(
-						"editor.cloud.previewUnavailable",
-						"Preview unavailable. Your share link is below.",
-					)}
-				</p>
+			{error ? (
+				<div className="absolute inset-0 flex flex-col items-center justify-center gap-1 p-4 text-center text-xs text-white">
+					<p role="status">
+						{t(
+							"editor.cloud.previewUnavailable",
+							"Preview unavailable. Your share link is below.",
+						)}
+					</p>
+					<ErrorReportButton error={error} context="cloud-share-preview" />
+				</div>
 			) : (
 				!started && (
 					<Button
@@ -57,7 +65,12 @@ export function PublishedVideoPreview({ url }: { url: string }) {
 						aria-label={t("editor.cloud.playPreview", "Play video preview")}
 						className="absolute left-1/2 top-1/2 size-14 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#8fa8b9]/90 text-white shadow-none hover:bg-[#7c97aa]"
 						onClick={() => {
-							void video.current?.play().catch(() => setFailed(true));
+							void video.current?.play().catch(() => {
+								setError(
+									(current) =>
+										current ?? "Published video preview could not start.",
+								);
+							});
 						}}
 					>
 						<Play weight="fill" className="size-6" />

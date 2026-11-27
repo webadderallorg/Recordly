@@ -108,6 +108,7 @@ export async function exportNativeStaticLayout(
 	}
 
 	const sourcePath = hooks.getNativeVideoSourcePath();
+	session.config.onStage?.("prepare-native-audio");
 	const audioOptions = await hooks.getNativeStaticLayoutAudioOptions(audioPlan, totalFrames);
 	if (!sourcePath || !audioOptions) {
 		session.native.nativeStaticLayoutSkipReason = !sourcePath
@@ -118,6 +119,7 @@ export async function exportNativeStaticLayout(
 		];
 		return null;
 	}
+	session.config.onStage?.("prepare-native-background");
 	const background = await hooks.resolveNativeStaticLayoutBackground();
 	if (!background) {
 		session.native.nativeStaticLayoutSkipReason =
@@ -330,6 +332,7 @@ export async function exportNativeStaticLayout(
 
 	try {
 		session.throwIfCancelled();
+		session.config.onStage?.("run-native-compositor");
 		const result = await window.electronAPI.nativeStaticLayoutExport({
 			sessionId,
 			inputPath: sourcePath,

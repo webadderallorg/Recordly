@@ -187,14 +187,17 @@ export class GifExporter {
 
 			// Initialize streaming decoder and load video metadata
 			this.streamingDecoder = new StreamingVideoDecoder({
+				onDiagnostic: this.config.onDiagnostic,
 				maxDecodeQueue: this.config.maxDecodeQueue ?? 4,
 				maxPendingFrames: this.config.maxPendingFrames ?? 4,
 			});
+			this.config.onStage?.("read-source-metadata");
 			const videoInfo = await this.streamingDecoder.loadMetadata(this.config.videoUrl);
 			if (this.cancelled) throw new Error("Export cancelled");
 
 			// Initialize frame renderer
 			this.renderer = new FrameRenderer(buildGifFrameRendererConfig(this.config, videoInfo));
+			this.config.onStage?.("initialize-renderer");
 			await this.renderer.initialize();
 			if (this.cancelled) throw new Error("Export cancelled");
 
@@ -209,6 +212,7 @@ export class GifExporter {
 			// Calculate frame delay in milliseconds (gif.js uses ms)
 			const frameDelay = Math.round(1000 / this.config.frameRate);
 			let draining = false;
+			this.config.onStage?.("create-gif-encoder");
 			this.encoder = new StreamingGifEncoder({
 				width: this.config.width,
 				height: this.config.height,
@@ -231,6 +235,7 @@ export class GifExporter {
 			const frameDurationUs = 1_000_000 / this.config.frameRate;
 
 			// Stream decode and process frames — no seeking!
+			this.config.onStage?.("decode-frame", 0);
 			await this.streamingDecoder.decodeAll(
 				this.config.frameRate,
 				this.config.trimRegions,
@@ -242,6 +247,7 @@ export class GifExporter {
 
 					const sourceTimestampUs = sourceTimestampMs * 1000;
 					const cursorTimestampUs = cursorTimestampMs * 1000;
+					this.config.onStage?.("render-frame", frameIndex);
 					await this.renderer!.renderFrame(
 						videoFrame,
 						sourceTimestampUs,
@@ -251,8 +257,10 @@ export class GifExporter {
 					);
 
 					if (this.cancelled) throw new Error("Export cancelled");
+					this.config.onStage?.("encode-gif-frame", frameIndex);
 					await this.encoder!.addFrame(this.renderer!.getCanvas(), frameDelay);
 					frameIndex++;
+					this.config.onStage?.("decode-frame", frameIndex);
 				},
 				this.config.clipRegions,
 			);
@@ -272,6 +280,7 @@ export class GifExporter {
 				phase: "finalizing",
 				renderFps: this.lastRenderFps,
 			});
+			this.config.onStage?.("finish-gif-container");
 			const blob = await this.encoder.finish();
 
 			return { success: true, blob };
@@ -326,6 +335,7 @@ export class GifExporter {
 		if (this.streamingDecoder) {
 			this.streamingDecoder.cancel();
 		}
+		this.renderer?.cancelPendingMedia();
 		this.encoder?.abort();
 		// Cleanup belongs to export() finally, after any in-flight render settles.
 	}

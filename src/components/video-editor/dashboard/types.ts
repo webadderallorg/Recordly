@@ -13,6 +13,8 @@ export type DashboardProps = {
 	error: string | null;
 	errorSource?: string;
 	errorRecordingSource?: string;
+	onLocateRecording?: () => void;
+	locatingRecording?: boolean;
 	onSignIn: () => void;
 	onDeleteProjects: (
 		paths: string[],

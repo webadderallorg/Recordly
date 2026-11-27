@@ -78,7 +78,6 @@ type Props = {
 	currentTime: number;
 	isPlaying: boolean;
 	previewVolume: number;
-	suspendRendering: boolean;
 	appearance: ReturnType<typeof useAppearanceState>;
 	timeline: ReturnType<typeof useTimelineState>;
 	audio: ReturnType<typeof useVideoEditorAudio>;
@@ -120,7 +119,6 @@ export function EditorPreviewPanel(props: Props) {
 		currentTime,
 		isPlaying,
 		previewVolume,
-		suspendRendering,
 		appearance,
 		timeline,
 		audio,
@@ -262,7 +260,7 @@ export function EditorPreviewPanel(props: Props) {
 									isPlaying={isPlaying && !isCropping}
 									previewVolume={previewVolume}
 									previewResolutionScale={Number(playbackResolution) || 1}
-									suspendRendering={suspendRendering || isCropping}
+									suspendRendering={isCropping}
 									appearance={appearance}
 									timeline={timeline}
 									audio={audio}

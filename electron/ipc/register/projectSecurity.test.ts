@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { ipcMain } from "electron";
 import { beforeEach, expect, it, vi } from "vitest";
 
@@ -8,12 +11,15 @@ const mocks = vi.hoisted(() => ({
 	replace: vi.fn(),
 	resolveSession: vi.fn(),
 	persistSession: vi.fn(),
+	recordingsDirPath: vi.fn(),
+	chooseDirectory: vi.fn(),
+	persistRecordingsDirectory: vi.fn(),
 }));
 vi.mock("electron", () => ({
 	app: { isPackaged: false, getPath: () => "/recordly-user", getAppPath: () => "/recordly" },
 	ipcMain: { handle: vi.fn() },
 	BrowserWindow: { getAllWindows: () => [] },
-	dialog: {},
+	dialog: { showOpenDialog: mocks.chooseDirectory },
 	shell: {},
 }));
 vi.mock("../../mediaServer", () => ({
@@ -27,6 +33,11 @@ vi.mock("../project/manager", () => ({
 	resolveApprovedLocalMediaPath: mocks.resolve,
 	rememberApprovedLocalReadPath: mocks.remember,
 	replaceApprovedSessionLocalReadPaths: mocks.replace,
+	persistRecordingsDirectorySetting: mocks.persistRecordingsDirectory,
+}));
+vi.mock("../utils", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../utils")>()),
+	getRecordingsDirPath: mocks.recordingsDirPath,
 }));
 vi.mock("../project/session", () => ({
 	resolveRecordingSession: mocks.resolveSession,
@@ -46,8 +57,42 @@ beforeEach(() => {
 	mocks.replace.mockClear();
 	mocks.resolveSession.mockReset().mockResolvedValue(null);
 	mocks.persistSession.mockReset().mockResolvedValue(undefined);
+	mocks.recordingsDirPath.mockReset();
+	mocks.chooseDirectory.mockReset();
+	mocks.persistRecordingsDirectory.mockReset().mockResolvedValue(undefined);
 	registerProjectHandlers();
 	handlers = new Map(vi.mocked(ipcMain.handle).mock.calls);
+});
+
+it("lets a user replace an unavailable recordings folder", async () => {
+	const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-folder-picker-"));
+	try {
+		const unavailable = path.join(temporary, "not-a-directory");
+		await fs.writeFile(unavailable, "unavailable");
+		const current = path.join(unavailable, "recordings");
+		const selected = path.join(temporary, "new-recordings");
+		mocks.recordingsDirPath.mockResolvedValue(current);
+		mocks.chooseDirectory.mockResolvedValue({ canceled: false, filePaths: [selected] });
+
+		await expect(handlers.get("get-recordings-directory")!(trusted)).resolves.toMatchObject({
+			success: true,
+			path: current,
+		});
+		await expect(handlers.get("choose-recordings-directory")!(trusted)).resolves.toMatchObject({
+			success: true,
+			path: selected,
+		});
+		expect(mocks.chooseDirectory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				defaultPath: undefined,
+				properties: expect.arrayContaining(["openDirectory"]),
+			}),
+		);
+		expect((await fs.stat(selected)).isDirectory()).toBe(true);
+		expect(mocks.persistRecordingsDirectory).toHaveBeenCalledExactlyOnceWith(selected);
+	} finally {
+		await fs.rm(temporary, { recursive: true, force: true });
+	}
 });
 
 it.each([

@@ -273,10 +273,11 @@
 	"presets": {
 		"open": "Voorinstellingen openen",
 		"label": "Voorinstellingen",
-		"saveCurrentAs": "Huidige voorinstelling opslaan als",
+		"saveCurrentAs": "Opslaan als voorinstelling",
+		"edit": "Bewerk",
 		"namePlaceholder": "Naam van voorinstelling",
 		"savedList": "Opgeslagen voorinstellingen",
-		"empty": "Nog geen voorinstellingen.",
+		"default": "Standaard",
 		"deleteAriaLabel": "Voorinstelling {{name}} verwijderen",
 		"toasts": {
 			"applied": "Voorinstelling ‘{{name}}’ toegepast",

@@ -1,3 +1,4 @@
+import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -107,11 +108,26 @@ async function loadRecordingsDirectorySetting() {
 	}
 }
 
-export async function getRecordingsDir() {
+export async function getRecordingsDirPath() {
 	await loadRecordingsDirectorySetting();
-	const targetDir = customRecordingsDir ?? RECORDINGS_DIR;
+	return customRecordingsDir ?? RECORDINGS_DIR;
+}
+
+export async function getRecordingsDir() {
+	const targetDir = await getRecordingsDirPath();
 	await fs.mkdir(targetDir, { recursive: true });
 	return targetDir;
+}
+
+export async function getDirectoryForDialog(directory: string): Promise<string | undefined> {
+	try {
+		if (!(await fs.stat(directory)).isDirectory()) return undefined;
+		await fs.access(directory, fsConstants.R_OK | fsConstants.X_OK);
+		return directory;
+	} catch {
+		// Let the OS choose a starting folder if the preferred one is unavailable.
+		return undefined;
+	}
 }
 
 export function getMacPrivacySettingsUrl(

@@ -273,10 +273,11 @@
 	"presets": {
 		"open": "Apri preimpostazioni",
 		"label": "Preimpostazioni",
-		"saveCurrentAs": "Salva la preimpostazione attuale come",
+		"saveCurrentAs": "Salva come preimpostazione",
+		"edit": "Modifica",
 		"namePlaceholder": "Nome della preimpostazione",
 		"savedList": "Preimpostazioni salvate",
-		"empty": "Non ci sono ancora preimpostazioni.",
+		"default": "Predefinito",
 		"deleteAriaLabel": "Elimina preimpostazione {{name}}",
 		"toasts": {
 			"applied": "Preimpostazione «{{name}}» applicata",

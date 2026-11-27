@@ -57,6 +57,14 @@ export async function prepareExportAttempt(
 	session.native.nativeStaticLayoutBackgroundSkipReason = null;
 	session.sourceVideoInfo = null;
 	session.metrics.totalExportStartTimeMs = getNowMs();
+	const startNativeEncoder = () => {
+		session.config.onStage?.("start-native-encoder");
+		return hooks.tryStartNativeVideoExport();
+	};
+	const initializeWebCodecs = () => {
+		session.config.onStage?.("initialize-video-encoder");
+		return hooks.initializeEncoder();
+	};
 	const runtimePlatform = hooks.getRuntimePlatform();
 	// Forced software constrains routing too, including cloud and native fallbacks.
 	const backendPreference =
@@ -108,7 +116,7 @@ export async function prepareExportAttempt(
 		(backendPreference === "auto" && shouldPreferNativeAutoBackend(runtimePlatform))
 	) {
 		stageStartedAt = getNowMs();
-		useNativeEncoder = await hooks.tryStartNativeVideoExport();
+		useNativeEncoder = await startNativeEncoder();
 		session.metrics.nativeSessionStartTimeMs = getNowMs() - stageStartedAt;
 
 		if (!useNativeEncoder) {
@@ -117,11 +125,11 @@ export async function prepareExportAttempt(
 				session.native.lastNativeExportError,
 			);
 			stageStartedAt = getNowMs();
-			await hooks.initializeEncoder();
+			await initializeWebCodecs();
 		}
 	} else {
 		try {
-			const configuredWebCodecsPath = await hooks.initializeEncoder();
+			const configuredWebCodecsPath = await initializeWebCodecs();
 			if (
 				backendPreference === "auto" &&
 				configuredWebCodecsPath.hardwareAcceleration === "prefer-software"
@@ -130,7 +138,7 @@ export async function prepareExportAttempt(
 					"[VideoExporter] Auto backend resolved to a software WebCodecs encoder; trying Breeze native export instead.",
 				);
 				stageStartedAt = getNowMs();
-				useNativeEncoder = await hooks.tryStartNativeVideoExport();
+				useNativeEncoder = await startNativeEncoder();
 				session.metrics.nativeSessionStartTimeMs = getNowMs() - stageStartedAt;
 				if (useNativeEncoder) {
 					session.browser.disposeEncoder(session.flow, session.metrics);
@@ -149,7 +157,7 @@ export async function prepareExportAttempt(
 			session.browser.disposeEncoder(session.flow, session.metrics);
 
 			stageStartedAt = getNowMs();
-			useNativeEncoder = await hooks.tryStartNativeVideoExport();
+			useNativeEncoder = await startNativeEncoder();
 			session.metrics.nativeSessionStartTimeMs = getNowMs() - stageStartedAt;
 
 			if (!useNativeEncoder) {
@@ -186,6 +194,7 @@ export async function prepareExportAttempt(
 	});
 
 	if (shouldTryNativeStaticLayout && !useNativeEncoder) {
+		session.config.onStage?.("probe-native-source");
 		const nativeVideoInfo = await hooks.loadNativeStaticLayoutVideoInfo();
 		if (nativeVideoInfo) {
 			session.sourceVideoInfo = nativeVideoInfo;
@@ -208,16 +217,19 @@ export async function prepareExportAttempt(
 	}
 
 	session.browser.streamingDecoder = new StreamingVideoDecoder({
+		onDiagnostic: session.config.onDiagnostic,
 		maxDecodeQueue: session.config.maxDecodeQueue ?? session.backpressureProfile.maxDecodeQueue,
 		maxPendingFrames:
 			session.config.maxPendingFrames ?? session.backpressureProfile.maxPendingFrames,
 	});
 	stageStartedAt = getNowMs();
+	session.config.onStage?.("read-source-metadata");
 	const videoInfo = await session.browser.streamingDecoder.loadMetadata(session.config.videoUrl, {
 		useFallbackMediaSource: control.useFallbackMediaSource,
 	});
 	session.sourceVideoInfo = videoInfo;
 	session.metrics.metadataLoadTimeMs = getNowMs() - stageStartedAt;
+	session.config.onStage?.("plan-audio");
 	const nativeAudioPlan = hooks.buildNativeAudioPlan(videoInfo);
 	const shouldUsePitchPreservingFfmpegAudio =
 		nativeAudioPlan.audioMode === "edited-track" &&
@@ -252,7 +264,7 @@ export async function prepareExportAttempt(
 
 	if (shouldDeferNativeEncoderStart && !useNativeEncoder) {
 		stageStartedAt = getNowMs();
-		useNativeEncoder = await hooks.tryStartNativeVideoExport();
+		useNativeEncoder = await startNativeEncoder();
 		session.metrics.nativeSessionStartTimeMs = getNowMs() - stageStartedAt;
 		if (useNativeEncoder) {
 			session.flow.maxNativeWriteInFlight = Math.max(
@@ -279,13 +291,15 @@ export async function prepareExportAttempt(
 				encodingMode: session.config.encodingMode,
 			});
 			session.flow.maxNativeWriteInFlight = 1;
-			await hooks.initializeEncoder();
+			await initializeWebCodecs();
 		}
 	}
 
 	stageStartedAt = getNowMs();
+	session.config.onStage?.("initialize-renderer");
 	control.inRendererStage = true;
 	session.browser.renderer = new ModernFrameRenderer({
+		onDiagnostic: session.config.onDiagnostic,
 		timelineEffects: session.config.clipRegions !== undefined,
 		width: session.config.width,
 		height: session.config.height,
@@ -358,6 +372,7 @@ export async function prepareExportAttempt(
 			session.config,
 			hasAudio && !shouldUseFfmpegAudioFallback,
 		);
+		session.config.onStage?.("initialize-mp4-container");
 		await session.browser.muxer.initialize();
 	}
 

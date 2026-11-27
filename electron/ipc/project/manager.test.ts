@@ -82,6 +82,26 @@ describe("local media path policy", () => {
 		await expect(getRecordingsDir()).resolves.toBe(target);
 	});
 
+	it("keeps recent projects available when the recordings directory cannot be opened", async () => {
+		const manager = await import("./manager");
+		const unavailable = path.join(tempRoot, "unavailable");
+		await fs.writeFile(unavailable, "not a directory");
+		await manager.persistRecordingsDirectorySetting(path.join(unavailable, "recordings"));
+		const recent = path.join(tempRoot, "Recent.recordly");
+		const offline = path.join(unavailable, "Offline.recordly");
+		await fs.writeFile(
+			recent,
+			JSON.stringify({ version: 1, videoPath: "video.mp4", editor: {} }),
+		);
+		await manager.saveRecentProjectPaths([recent, offline]);
+
+		const { entries, warning } = await manager.listProjectLibraryEntries();
+		expect(entries.map((entry) => entry.path)).toEqual([recent]);
+		expect(warning).toContain("ENOTDIR");
+		await expect(manager.requireLibraryProject(recent)).resolves.toBe(recent);
+		await expect(manager.loadRecentProjectPaths()).resolves.toEqual([recent, offline]);
+	});
+
 	it("restores uploaded webcam media and its edge style from disk after a restart", async () => {
 		const manager = await import("./manager");
 		const { writeProjectFileAtomically } = await import("./atomicSave");

@@ -20,6 +20,7 @@ import {
 import {
 	cacheProjectThumbnail,
 	getProjectsDir,
+	getProjectsDirPath,
 	getProjectThumbnailPath,
 	getProjectThumbnailPaths,
 	isLoadableProjectData,
@@ -64,7 +65,9 @@ import {
 import type { RecordingSessionData } from "../types";
 import {
 	approveUserPath,
+	getDirectoryForDialog,
 	getRecordingsDir,
+	getRecordingsDirPath,
 	isAutoRecordingPath,
 	normalizePath,
 	normalizeVideoSourcePath,
@@ -534,7 +537,7 @@ export function registerProjectHandlers() {
 
 	handle("get-recordings-directory", async () => {
 		try {
-			const recordingsDir = await getRecordingsDir();
+			const recordingsDir = await getRecordingsDirPath();
 			return {
 				success: true,
 				path: recordingsDir,
@@ -552,10 +555,10 @@ export function registerProjectHandlers() {
 
 	handle("choose-recordings-directory", async () => {
 		try {
-			const current = await getRecordingsDir();
+			const current = await getRecordingsDirPath();
 			const result = await dialog.showOpenDialog({
 				title: nativeT("chooseRecordings"),
-				defaultPath: current,
+				defaultPath: await getDirectoryForDialog(current),
 				properties: ["openDirectory", "createDirectory", "promptToCreate"],
 			});
 
@@ -799,10 +802,9 @@ export function registerProjectHandlers() {
 
 	handle("load-project-file", async () => {
 		try {
-			const projectsDir = await getProjectsDir();
 			const result = await dialog.showOpenDialog({
 				title: nativeT("openRecordlyProject"),
-				defaultPath: projectsDir,
+				defaultPath: await getDirectoryForDialog(await getProjectsDirPath()),
 				filters: [
 					{
 						name: nativeT("recordlyProject"),
@@ -850,7 +852,7 @@ export function registerProjectHandlers() {
 		try {
 			return {
 				success: true,
-				path: await getProjectsDir(),
+				path: await getProjectsDirPath(),
 			};
 		} catch (error) {
 			return {
@@ -990,6 +992,7 @@ export function registerProjectHandlers() {
 				success: true,
 				projectsDir: library.projectsDir,
 				entries: library.entries,
+				warning: library.warning,
 			};
 		} catch (error) {
 			return {

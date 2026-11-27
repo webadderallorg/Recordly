@@ -27,6 +27,9 @@ window.electronAPI = {
 		return { success: true };
 	},
 	cloudShareManage: async ({ token }: { token: string }) => {
+		if (new URLSearchParams(location.search).has("failed-capacity")) {
+			return { success: false, error: "Fixture cloud storage check failed" };
+		}
 		if (new URLSearchParams(location.search).has("controlled-capacity")) {
 			document.documentElement.dataset.capacityChecks = String(++capacityChecks);
 			await new Promise<void>((resolve) => pendingCapacityChecks.push(resolve));

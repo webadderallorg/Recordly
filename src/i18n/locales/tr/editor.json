@@ -273,10 +273,11 @@
 	"presets": {
 		"open": "Hazır ayarları aç",
 		"label": "Hazır Ayarlar",
-		"saveCurrentAs": "Mevcut olanı farklı kaydet",
+		"saveCurrentAs": "Hazır ayar olarak kaydet",
+		"edit": "Düzenle",
 		"namePlaceholder": "Ayar adı",
 		"savedList": "Kayıtlı hazır ayarlar",
-		"empty": "Henüz hazır ayar yok.",
+		"default": "Varsayılan",
 		"deleteAriaLabel": "{{name}} hazır ayarını sil",
 		"toasts": {
 			"applied": "\"{{name}}\" hazır ayarı uygulandı",

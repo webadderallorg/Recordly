@@ -96,6 +96,37 @@ it("sends only after explicit submission without session auth, cookies, or a ref
 	expect(JSON.parse(options.body)).toEqual(JSON.parse(JSON.stringify(report)));
 	expect(options.signal).toBeInstanceOf(AbortSignal);
 });
+it("accepts a confirmed report when the response takes longer than ten seconds", async () => {
+	vi.useFakeTimers();
+	const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation((duration) => {
+		const controller = new AbortController();
+		setTimeout(() => controller.abort(new DOMException("Timed out", "TimeoutError")), duration);
+		return controller.signal;
+	});
+	try {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				(_url: string, { signal }: RequestInit) =>
+					new Promise<Response>((resolve, reject) => {
+						setTimeout(() => resolve(Response.json({ success: true })), 12_000);
+						signal?.addEventListener("abort", () => reject(signal.reason), {
+							once: true,
+						});
+					}),
+			),
+		);
+		const confirmed = submitExportErrorReport(buildExportErrorReport("Export failed")).then(
+			() => true,
+			() => false,
+		);
+		await vi.advanceTimersByTimeAsync(12_000);
+		expect(await confirmed).toBe(true);
+	} finally {
+		timeout.mockRestore();
+		vi.useRealTimers();
+	}
+});
 it.each([
 	429, 500, 200,
 ])("does not claim success after an unconfirmed/failed response (%s)", async (status) => {

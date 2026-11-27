@@ -273,10 +273,11 @@
 	"presets": {
 		"open": "Ouvrir les préréglages",
 		"label": "Préréglages",
-		"saveCurrentAs": "Enregistrer le préréglage actuel sous",
+		"saveCurrentAs": "Enregistrer comme préréglage",
+		"edit": "Modifier",
 		"namePlaceholder": "Nom du préréglage",
 		"savedList": "Préréglages enregistrés",
-		"empty": "Aucun préréglage pour le moment.",
+		"default": "Par défaut",
 		"deleteAriaLabel": "Supprimer le préréglage {{name}}",
 		"toasts": {
 			"applied": "Préréglage « {{name}} » appliqué",

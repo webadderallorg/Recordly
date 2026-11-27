@@ -45,6 +45,7 @@ export async function decodeVideoStream(
 		// and renderer/encoder callback failures must propagate without replay.
 		if (
 			context.cancelled ||
+			!context.demuxer ||
 			callbackFailed ||
 			context.decoder !== null ||
 			codec.includes("av01") ||

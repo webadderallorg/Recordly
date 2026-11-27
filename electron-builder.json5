@@ -4,6 +4,12 @@
   "appId": "dev.recordly.app",
   "electronUpdaterCompatibility": ">=2.16",
   "asar": true,
+  "electronFuses": {
+    "enableNodeOptionsEnvironmentVariable": false,
+    "enableNodeCliInspectArguments": false,
+    "enableEmbeddedAsarIntegrityValidation": true,
+    "onlyLoadAppFromAsar": true
+  },
   "asarUnpack": [
     "node_modules/ffmpeg-static/**",
     "node_modules/ffprobe-static/**",

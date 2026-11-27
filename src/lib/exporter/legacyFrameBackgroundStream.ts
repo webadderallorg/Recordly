@@ -1,6 +1,7 @@
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import type { LegacyFrameRendererContext } from "./legacyFrameRendererContext";
+import { reportRendererMediaFailure } from "./rendererMedia";
 
 export function closeBackgroundDecodedFrame(
 	context: Pick<LegacyFrameRendererContext, "backgroundDecodedFrame">,
@@ -20,6 +21,7 @@ export async function restartBackgroundForwardFrameSource(
 		| "backgroundForwardFrameSource"
 		| "backgroundForwardFrameDurationSec"
 		| "lastSyncedBackgroundLoopTimeSec"
+		| "mediaSignal"
 	>,
 ): Promise<void> {
 	const sourceUrl = context.backgroundForwardFrameSourceUrl;
@@ -27,7 +29,7 @@ export async function restartBackgroundForwardFrameSource(
 		return;
 	}
 
-	const nextSource = new ForwardFrameSource();
+	const nextSource = new ForwardFrameSource(context.mediaSignal);
 	const metadata = await nextSource.initialize(sourceUrl);
 	const previousSource = context.backgroundForwardFrameSource;
 
@@ -57,6 +59,8 @@ export async function syncBackgroundFrame(
 		| "backgroundDecodedFrame"
 		| "drawBackgroundSourceToCanvas"
 		| "syncBackgroundVideo"
+		| "config"
+		| "mediaSignal"
 	>,
 	timeSeconds: number,
 ): Promise<void> {
@@ -75,6 +79,13 @@ export async function syncBackgroundFrame(
 			try {
 				await context.restartBackgroundForwardFrameSource();
 			} catch (error) {
+				context.mediaSignal?.throwIfAborted();
+				reportRendererMediaFailure(
+					"video-wallpaper",
+					"decode",
+					error,
+					context.config.onDiagnostic,
+				);
 				console.warn(
 					"[FrameRenderer] Unable to restart looping video wallpaper decoder during export:",
 					error,
@@ -87,6 +98,13 @@ export async function syncBackgroundFrame(
 			decodedFrame =
 				await context.backgroundForwardFrameSource.getFrameAtTime(normalizedTargetTime);
 		} catch (error) {
+			context.mediaSignal?.throwIfAborted();
+			reportRendererMediaFailure(
+				"video-wallpaper",
+				"decode",
+				error,
+				context.config.onDiagnostic,
+			);
 			console.warn(
 				"[FrameRenderer] Decoder-backed video wallpaper failed during export; falling back to media element sync:",
 				error,
@@ -125,6 +143,13 @@ export async function syncBackgroundFrame(
 				}
 				return;
 			} catch (error) {
+				context.mediaSignal?.throwIfAborted();
+				reportRendererMediaFailure(
+					"video-wallpaper",
+					"decode",
+					error,
+					context.config.onDiagnostic,
+				);
 				console.warn(
 					"[FrameRenderer] Unable to wrap looping video wallpaper at decoded EOF during export:",
 					error,

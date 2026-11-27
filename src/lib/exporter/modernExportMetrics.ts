@@ -75,11 +75,13 @@ export class ModernExportMetrics {
 	}
 
 	recordBackendAttempt(attempt: Omit<ExportBackendAttempt, "elapsedMs">): void {
-		this.backendAttempts.push({
+		const entry = {
 			...attempt,
 			elapsedMs: Math.round(Math.max(0, this.now() - this.diagnosticStartedAt)),
 			reason: attempt.reason ? redactDiagnostic(attempt.reason).slice(0, 300) : undefined,
-		});
+		};
+		this.backendAttempts.push(entry);
+		this.session.config.onBackendAttempt?.(entry);
 		// Retain the initial failure as well as the most recent fallback attempts.
 		if (this.backendAttempts.length > 24) this.backendAttempts.splice(8, 1);
 	}

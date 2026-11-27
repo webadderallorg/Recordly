@@ -157,3 +157,8 @@ export function getCursorIdleOpacity(
 	const previous = intervals[lo - 2];
 	return intervalOpacity(idle) * (previous ? intervalOpacity(previous) : 1);
 }
+
+export function getCursorIdleBlurPx(opacity: number, cursorHeight: number): number {
+	// Match the captions' blur relative to the size of the artwork.
+	return opacity > 0 ? (1 - opacity) * cursorHeight * 0.18 : 0;
+}

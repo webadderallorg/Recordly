@@ -97,7 +97,8 @@ export async function submitExportErrorReport(report: SupportErrorReport): Promi
 		credentials: "omit",
 		referrerPolicy: "no-referrer",
 		body: JSON.stringify(report),
-		signal: AbortSignal.timeout(10_000),
+		// Allow the same response window as feedback submissions before giving up.
+		signal: AbortSignal.timeout(60_000),
 	});
 	if (response.status === 429) throw new Error("Reporting is busy. Please try again later.");
 	const body = response.ok ? await response.json().catch(() => null) : null;

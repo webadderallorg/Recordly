@@ -1,5 +1,5 @@
-import packageInfo from "../../../package.json";
 import type { SupportDeviceInfo } from "../../../electron/supportDeviceInfo";
+import packageInfo from "../../../package.json";
 import {
 	diagnosticSurface,
 	OPERATION_HISTORY_LIMIT,
@@ -8,6 +8,7 @@ import {
 } from "../../shared/operationDiagnostics";
 import { captureCrash, type CrashDiagnostic, type CrashView } from "./crashDiagnostics";
 import { redactDiagnostic } from "./diagnosticRedaction";
+import { summarizeExportDiagnostics } from "./exportDiagnosticSummary";
 import { getExportDiagnosticLogs } from "./exportDiagnostics";
 
 export { redactDiagnostic } from "./diagnosticRedaction";
@@ -276,14 +277,16 @@ export function feedbackDiagnostics(
 		return true;
 	});
 	const encoder = new TextEncoder();
-	let payload = JSON.stringify({ ...metadata, operationHistory, logs });
+	const recentExports = summarizeExportDiagnostics(logs, operationHistory, desktop?.appRunId);
+	const summary = recentExports.length ? recentExports : undefined;
+	let payload = JSON.stringify({ ...metadata, recentExports: summary, operationHistory, logs });
 	while (
 		encoder.encode(payload).byteLength > MAX_DIAGNOSTIC_BYTES &&
 		(logs.length || operationHistory.length)
 	) {
 		if (logs.length) logs.shift();
 		else operationHistory.shift();
-		payload = JSON.stringify({ ...metadata, operationHistory, logs });
+		payload = JSON.stringify({ ...metadata, recentExports: summary, operationHistory, logs });
 	}
 	return payload;
 }

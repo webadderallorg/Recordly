@@ -16,9 +16,9 @@ import type {
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
 import type { CursorIdleHideSettings } from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
-import type { ExportRenderBackend } from "./types";
+import type { ExportDiagnosticCallbacks, ExportRenderBackend } from "./types";
 
-export interface FrameRenderConfig {
+export interface FrameRenderConfig extends Pick<ExportDiagnosticCallbacks, "onDiagnostic"> {
 	timelineEffects?: boolean;
 	width: number;
 	height: number;

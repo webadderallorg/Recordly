@@ -27,7 +27,7 @@ import {
 } from "../state";
 import type { ProjectLibraryEntry, RecordingSessionData } from "../types";
 import {
-	getRecordingsDir,
+	getRecordingsDirPath,
 	normalizePath,
 	normalizeVideoSourcePath,
 	parseJsonWithByteOrderMark,
@@ -211,8 +211,12 @@ export async function replaceApprovedSessionLocalReadPaths(
 	return true;
 }
 
+export async function getProjectsDirPath() {
+	return path.join(await getRecordingsDirPath(), PROJECTS_DIRECTORY_NAME);
+}
+
 export async function getProjectsDir() {
-	const projectsDir = path.join(await getRecordingsDir(), PROJECTS_DIRECTORY_NAME);
+	const projectsDir = await getProjectsDirPath();
 	await fs.mkdir(projectsDir, { recursive: true });
 	return projectsDir;
 }
@@ -330,7 +334,7 @@ export async function requireLibraryProject(projectPath: string) {
 	if (typeof projectPath !== "string") throw new Error("Invalid project path");
 	const normalized = normalizePath(projectPath);
 	if (!hasProjectFileExtension(normalized)) throw new Error("Project is not in the library");
-	const projectsDir = normalizePath(await getProjectsDir());
+	const projectsDir = normalizePath(await getProjectsDirPath());
 	if (path.dirname(normalized) === projectsDir && (await fs.lstat(normalized)).isFile())
 		return normalized;
 	const recent = await loadRecentProjectPaths();
@@ -470,11 +474,14 @@ export async function buildProjectLibraryEntry(
 export async function listProjectLibraryEntries(
 	onThumbnailReady?: (ready: ProjectThumbnailReady) => void,
 ) {
-	const projectsDir = await getProjectsDir();
+	const projectsDir = await getProjectsDirPath();
 	const projectPaths: string[] = [];
+	let directoryReadable = false;
+	let warning: string | undefined;
 
 	try {
 		const entries = await fs.readdir(projectsDir, { withFileTypes: true });
+		directoryReadable = true;
 		for (const entry of entries) {
 			if (!entry.isFile()) {
 				continue;
@@ -485,8 +492,9 @@ export async function listProjectLibraryEntries(
 				projectPaths.push(entryPath);
 			}
 		}
-	} catch {
-		// Ignore directory read failures and fall back to recent files.
+	} catch (error) {
+		// A new library can be empty. An inaccessible library should still show its recent files.
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") warning = String(error);
 	}
 
 	const recentProjectPaths = await loadRecentProjectPaths();
@@ -501,11 +509,13 @@ export async function listProjectLibraryEntries(
 		.filter((entry): entry is ProjectLibraryEntry => entry != null)
 		.sort((left, right) => right.updatedAt - left.updatedAt);
 
-	await saveRecentProjectPaths(entries.map((entry) => entry.path));
+	// Keep remembered paths if the recordings folder is offline or inaccessible.
+	if (directoryReadable) await saveRecentProjectPaths(entries.map((entry) => entry.path));
 
 	return {
 		projectsDir,
 		entries,
+		warning,
 	};
 }
 

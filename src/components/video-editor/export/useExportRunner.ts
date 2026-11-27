@@ -38,6 +38,11 @@ export function useExportRunner(input: ExportRunnerInput) {
 			options?: { destination?: "download" | "share" },
 		): Promise<string | undefined> => {
 			const operation = beginAppOperation("export.run");
+			const diagnostics = createExportDiagnostics(
+				settings,
+				options?.destination ?? "download",
+				operation,
+			);
 			const runInput = inputRef.current;
 			const exportIdentity = {
 				...runInput.exportIdentity,
@@ -58,8 +63,8 @@ export function useExportRunner(input: ExportRunnerInput) {
 				cancelledExportRunIdRef,
 			} = exportSession;
 			if (!videoPath) {
-				operation.step("missing-media");
-				operation.finish("blocked");
+				diagnostics.block("missing-media");
+				diagnostics.complete(false);
 				toast.error(translate("notifications.noVideo", "No video loaded"));
 				return;
 			}
@@ -67,8 +72,8 @@ export function useExportRunner(input: ExportRunnerInput) {
 			const playback = videoPlaybackRef.current;
 			const video = playback?.video;
 			if (!video) {
-				operation.step("preview-not-ready");
-				operation.finish("blocked");
+				diagnostics.block("preview-not-ready");
+				diagnostics.complete(false);
 				toast.error(translate("notifications.videoNotReady", "Video not ready"));
 				return;
 			}
@@ -89,11 +94,6 @@ export function useExportRunner(input: ExportRunnerInput) {
 					.catch(() => undefined);
 			};
 
-			const diagnostics = createExportDiagnostics(
-				settings,
-				options?.destination ?? "download",
-				operation,
-			);
 			setIsExporting(true);
 			setExportProgress(null);
 			exportSession.setGifOptimization(null);
@@ -120,19 +120,14 @@ export function useExportRunner(input: ExportRunnerInput) {
 			}
 			const smokeExportStartedAt = smokeExportConfig.enabled ? performance.now() : null;
 
-			const wasPlaying = playback.isPlaying;
-
 			try {
-				operation.step("prepare-preview");
-				if (wasPlaying) {
-					playback.pause();
-				}
-
 				// Drain preview estimates before real exports claim decoder/GPU/encoder resources.
+				diagnostics.stage("drain-gif-preview");
 				await stopGifSizeEstimates();
 				if (exportWasCancelled()) return;
 
 				// Get preview CONTAINER dimensions for scaling
+				diagnostics.stage("prepare-preview");
 				const playbackRef = videoPlaybackRef.current;
 				const containerElement = playbackRef?.containerRef?.current;
 				const previewWidth = containerElement?.clientWidth || 1920;
@@ -180,7 +175,15 @@ export function useExportRunner(input: ExportRunnerInput) {
 								"notifications.unexpectedError",
 								"An unexpected error occurred",
 							);
-				diagnostics.record("exception", { error: errorMessage });
+				const cause =
+					error instanceof Error
+						? (error as Error & { cause?: unknown }).cause
+						: undefined;
+				diagnostics.record("exception", {
+					error: errorMessage,
+					errorName: error instanceof Error ? error.name : undefined,
+					cause: cause instanceof Error ? cause.message : undefined,
+				});
 				if (smokeExportConfig.enabled) {
 					await writeSmokeExportReport(smokeExportConfig.outputPath, {
 						success: false,
@@ -200,10 +203,12 @@ export function useExportRunner(input: ExportRunnerInput) {
 					window.close();
 				}
 			} finally {
-				diagnostics.complete(exportWasCancelled());
 				const wasCancelled = exportWasExplicitlyCancelled();
-				if (wasCancelled) diagnostics.record("canceled");
 				const stillCurrent = !exportWasCancelled();
+				diagnostics.complete(
+					!stillCurrent,
+					stillCurrent ? undefined : wasCancelled ? "user" : "superseded",
+				);
 				if (stillCurrent) {
 					setIsExporting(false);
 					exporterRef.current = null;
@@ -217,11 +222,6 @@ export function useExportRunner(input: ExportRunnerInput) {
 					currentPreview?.video === video
 				) {
 					currentPreview.regenerateFrame();
-					if (wasPlaying) {
-						void currentPreview.play().catch((error) => {
-							console.warn("Could not resume preview playback after export:", error);
-						});
-					}
 				}
 			}
 		},

@@ -273,10 +273,11 @@
 	"presets": {
 		"open": "Open presets",
 		"label": "Presets",
-		"saveCurrentAs": "Save current preset as",
+		"saveCurrentAs": "Save current as new",
+		"edit": "Edit",
 		"namePlaceholder": "Preset name",
 		"savedList": "Saved presets",
-		"empty": "No presets yet.",
+		"default": "Default",
 		"deleteAriaLabel": "Delete preset {{name}}",
 		"toasts": {
 			"applied": "Applied preset \"{{name}}\"",

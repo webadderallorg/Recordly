@@ -273,10 +273,11 @@
 	"presets": {
 		"open": "打开预设",
 		"label": "预设",
-		"saveCurrentAs": "将当前预设另存为",
+		"saveCurrentAs": "保存为预设",
+		"edit": "编辑",
 		"namePlaceholder": "预设名称",
 		"savedList": "已保存的预设",
-		"empty": "暂无预设。",
+		"default": "默认",
 		"deleteAriaLabel": "删除预设 {{name}}",
 		"toasts": {
 			"applied": "已应用预设“{{name}}”",

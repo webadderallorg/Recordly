@@ -6,7 +6,7 @@ import {
 	getStatefulCursorAsset,
 } from "./cursorAssetRegistry";
 import { drawClickEffectOnCanvas } from "./cursorClickEffects";
-import { getCursorIdleOpacity } from "./cursorIdleVisibility";
+import { getCursorIdleBlurPx, getCursorIdleOpacity } from "./cursorIdleVisibility";
 import { interpolateCursorPosition } from "./cursorPosition";
 import {
 	CURSOR_SVG_DROP_SHADOW_FILTER,
@@ -41,6 +41,7 @@ export function drawCursorOnCanvas(
 	if (!projectedTarget.visible) return;
 
 	smoothedState.update(projectedTarget.cx, projectedTarget.cy, timeMs);
+	if (idleOpacity === 0) return;
 
 	const px = viewport.x + smoothedState.x * viewport.width;
 	const py = viewport.y + smoothedState.y * viewport.height;
@@ -81,10 +82,14 @@ export function drawCursorOnCanvas(
 	);
 	const effectHeight = h * getCursorStyleSizeMultiplier(config.style);
 	const drawHeight = effectHeight * bounceScale;
+	const idleBlurPx = getCursorIdleBlurPx(idleOpacity, effectHeight);
+	const idleBlur = idleBlurPx > 0 ? `blur(${idleBlurPx}px)` : "";
 	if (isPressed && config.clickEffect !== "burst") {
 		clickEffectPx = px;
 		clickEffectPy = py;
 	}
+	ctx.save();
+	if (idleBlur) ctx.filter = idleBlur;
 	drawClickEffectOnCanvas(
 		ctx,
 		config.clickEffect,
@@ -97,9 +102,10 @@ export function drawCursorOnCanvas(
 		config.clickEffectColor,
 	);
 
-	ctx.save();
 	if (!hasBakedCursorShadow(config.style, asset)) {
-		ctx.filter = CURSOR_SVG_DROP_SHADOW_FILTER;
+		ctx.filter = idleBlur
+			? `${CURSOR_SVG_DROP_SHADOW_FILTER} ${idleBlur}`
+			: CURSOR_SVG_DROP_SHADOW_FILTER;
 	}
 	if (config.style === "pixel-hand") {
 		ctx.imageSmoothingEnabled = false;

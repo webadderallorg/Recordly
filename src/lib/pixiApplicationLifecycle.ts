@@ -1,3 +1,5 @@
+// Pixi’s CSP-compatible renderer uses prewritten functions instead of compiling JavaScript at runtime.
+import "pixi.js/unsafe-eval";
 import type { Application, Container } from "pixi.js";
 
 type PixiInitializationState = "initializing" | "initialized" | "failed";

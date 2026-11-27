@@ -14,6 +14,7 @@ import {
 import { drawClickEffectGraphics } from "./cursorClickEffects";
 import {
 	type CursorIdleHideSettings,
+	getCursorIdleBlurPx,
 	getCursorIdleOpacity,
 	normalizeCursorIdleHideSettings,
 } from "./cursorIdleVisibility";
@@ -108,6 +109,7 @@ export class PixiCursorOverlay {
 	setFilterResolution(resolution: number) {
 		const filterResolution = Math.max(1, resolution);
 		this.visuals.cursorMotionBlurFilter.resolution = filterResolution;
+		this.visuals.cursorIdleBlurFilter.resolution = filterResolution;
 		this.visuals.customCursorShadowFilter.resolution = filterResolution;
 		for (const filter of Object.values(this.visuals.cursorShadowFilters)) {
 			filter.resolution = filterResolution;
@@ -269,11 +271,8 @@ export class PixiCursorOverlay {
 		}
 
 		this.visuals.container.visible = true;
-		this.visuals.container.alpha = getCursorIdleOpacity(
-			rawSamples,
-			timeMs,
-			this.config.idleHide,
-		);
+		const idleOpacity = getCursorIdleOpacity(rawSamples, timeMs, this.config.idleHide);
+		this.visuals.container.alpha = idleOpacity;
 		this.cursorVisible = shouldShowCursorSprite;
 
 		let px = viewport.x + projectedTarget.cx * viewport.width;
@@ -315,6 +314,10 @@ export class PixiCursorOverlay {
 			1 - Math.sin(clickBounceProgress * Math.PI) * (0.08 * this.config.clickBounce),
 		);
 		const scaledH = h * getCursorStyleSizeMultiplier(this.config.style);
+		const idleBlurPx = getCursorIdleBlurPx(idleOpacity, scaledH);
+		const idleBlur = this.visuals.cursorIdleBlurFilter;
+		idleBlur.enabled = idleBlurPx > 0;
+		if (idleBlur.enabled) idleBlur.strength = idleBlurPx;
 		const swayRotation = this.updateCursorSway(px, py, timeMs, shouldFreezeCursorMotion);
 
 		if (isPressed && this.config.clickEffect !== "burst") {
@@ -437,13 +440,17 @@ export class PixiCursorOverlay {
 		this.visuals.cursorMotionBlurFilter.velocity = velocity;
 		this.visuals.cursorMotionBlurFilter.kernelSize = kernelSize;
 		this.visuals.cursorMotionBlurFilter.offset = offset;
-		const hasActiveBlur =
+		const hasMotionBlur =
 			this.config.motionBlur > 0 &&
 			this.visuals.cursorMotionBlurFilter.enabled !== false &&
 			(velocity.x !== 0 || velocity.y !== 0);
-		this.visuals.container.filters = hasActiveBlur
-			? [this.visuals.cursorMotionBlurFilter]
-			: null;
+		const motionBlur = this.visuals.cursorMotionBlurFilter;
+		const idleBlur = this.visuals.cursorIdleBlurFilter;
+		if (idleBlur.enabled) {
+			this.visuals.container.filters = hasMotionBlur ? [motionBlur, idleBlur] : [idleBlur];
+		} else {
+			this.visuals.container.filters = hasMotionBlur ? [motionBlur] : null;
+		}
 	}
 
 	private updateCursorSway(px: number, py: number, timeMs: number, freeze: boolean) {
@@ -520,6 +527,7 @@ export class PixiCursorOverlay {
 		this.lastRenderedTimeMs = null;
 		this.swayRotation = 0;
 		resetSpringState(this.swaySpring, 0);
+		this.visuals.cursorIdleBlurFilter.enabled = false;
 		this.syncCursorMotionBlurFilter({ x: 0, y: 0 }, 5, 0);
 	}
 
@@ -530,6 +538,7 @@ export class PixiCursorOverlay {
 			shadowFilter.destroy();
 		}
 		this.visuals.cursorMotionBlurFilter.destroy();
+		this.visuals.cursorIdleBlurFilter.destroy();
 		this.visuals.container.destroy({ children: true });
 	}
 }

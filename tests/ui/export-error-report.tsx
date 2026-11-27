@@ -13,6 +13,7 @@ import { EditorExportMenu } from "@/components/video-editor/layout/EditorExportM
 import { I18nProvider, useI18n } from "@/contexts/I18nContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { installFeedbackDiagnostics } from "@/lib/feedback/diagnostics";
+import { createExportDiagnostics } from "@/lib/feedback/exportDiagnostics";
 import "@/index.css";
 installFeedbackDiagnostics();
 console.error("Report test: decoder log /Users/Alice/private.mp4 alice@example.com");
@@ -71,7 +72,13 @@ function FailedExportMenu() {
 		<main className="flex justify-between p-8">
 			<Button
 				onClick={() => {
-					exportSession.setExportError(exportFailure());
+					const error = exportFailure();
+					const diagnostics = createExportDiagnostics({ format: "mp4" }, "download");
+					diagnostics.beginAttempt("modern");
+					diagnostics.stage("initialize-video-encoder");
+					diagnostics.result({ success: false, error });
+					diagnostics.complete(false);
+					exportSession.setExportError(error);
 					exportSession.setShowExportDropdown(true);
 					exportSession.setHasPendingExportSave(scenario.has("pending"));
 				}}
