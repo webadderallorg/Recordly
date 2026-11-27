@@ -197,7 +197,10 @@
 		"panTimeline": "平移時間軸",
 		"zoomTimeline": "縮放時間軸",
 		"cycleAnnotations": "依序切換註解",
-		"tab": "Tab"
+		"tab": "Tab",
+		"stepFrame": "移動 1 影格",
+		"stepSecond": "移動 1 秒",
+		"jumpKeyframe": "跳轉至關鍵影格"
 	},
 	"actions": {
 		"saveAgain": "再次儲存",

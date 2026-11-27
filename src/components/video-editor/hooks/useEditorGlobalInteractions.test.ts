@@ -8,6 +8,11 @@ vi.mock("react", () => ({
 }));
 class Element {
 	isContentEditable = false;
+	constructor(private readonly closestSelectorMatch?: string) {}
+	closest(selector: string) {
+		if (!this.closestSelectorMatch) return null;
+		return selector.includes(this.closestSelectorMatch) ? this : null;
+	}
 }
 class Input extends Element {}
 class Textarea extends Element {}
@@ -116,5 +121,114 @@ describe("editor playback shortcut", () => {
 		send("keyup", { key: "k", code: "KeyK", metaKey: false });
 		send("keydown", { key: "k", code: "KeyK", metaKey: true });
 		expect(playback.pause).toHaveBeenCalledOnce();
+	});
+});
+
+describe("editor frame-by-frame and timeline stepping shortcuts", () => {
+	function setupStepping() {
+		vi.stubGlobal("HTMLInputElement", Input);
+		vi.stubGlobal("HTMLTextAreaElement", Textarea);
+		vi.stubGlobal("HTMLSelectElement", Select);
+		const handlers = new Map<string, (event: KeyboardEvent) => void>();
+		vi.stubGlobal("window", {
+			addEventListener: (name: string, handler: (event: KeyboardEvent) => void) =>
+				handlers.set(name, handler),
+			removeEventListener: vi.fn(),
+		});
+		const stepFrameBackward = vi.fn();
+		const stepFrameForward = vi.fn();
+		const stepTimeSeconds = vi.fn();
+		const handlePreviewSkip = vi.fn();
+
+		useEditorGlobalInteractions({
+			timeline: {},
+			videoPlaybackRef: { current: { video: {}, isPlaying: false, pause: vi.fn() } },
+			shortcuts: DEFAULT_SHORTCUTS,
+			isMac: true,
+			startPlayback: vi.fn(),
+			handleUndo: vi.fn(),
+			handleRedo: vi.fn(),
+			stepFrameBackward,
+			stepFrameForward,
+			stepTimeSeconds,
+			handlePreviewSkip,
+		} as unknown as Parameters<typeof useEditorGlobalInteractions>[0]);
+
+		const send = (type = "keydown", options: Record<string, unknown> = {}) => {
+			const event = {
+				key: "",
+				code: "",
+				target: new Element(),
+				metaKey: false,
+				ctrlKey: false,
+				shiftKey: false,
+				altKey: false,
+				repeat: false,
+				preventDefault: vi.fn(),
+				stopImmediatePropagation: vi.fn(),
+				...options,
+			};
+			handlers.get(type)!(event as unknown as KeyboardEvent);
+			return event;
+		};
+
+		return {
+			send,
+			stepFrameBackward,
+			stepFrameForward,
+			stepTimeSeconds,
+			handlePreviewSkip,
+		};
+	}
+
+	it("steps 1 frame backward with comma or ArrowLeft without passing an fps argument", () => {
+		const { send, stepFrameBackward } = setupStepping();
+		const e1 = send("keydown", { key: "," });
+		expect(e1.preventDefault).toHaveBeenCalled();
+		expect(stepFrameBackward).toHaveBeenNthCalledWith(1);
+
+		const e2 = send("keydown", { key: "ArrowLeft" });
+		expect(e2.preventDefault).toHaveBeenCalled();
+		expect(stepFrameBackward).toHaveBeenNthCalledWith(2);
+	});
+
+	it("steps 1 frame forward with period or ArrowRight without passing an fps argument", () => {
+		const { send, stepFrameForward } = setupStepping();
+		const e1 = send("keydown", { key: "." });
+		expect(e1.preventDefault).toHaveBeenCalled();
+		expect(stepFrameForward).toHaveBeenNthCalledWith(1);
+
+		const e2 = send("keydown", { key: "ArrowRight" });
+		expect(e2.preventDefault).toHaveBeenCalled();
+		expect(stepFrameForward).toHaveBeenNthCalledWith(2);
+	});
+
+	it("steps 1 second with Shift + Arrow keys", () => {
+		const { send, stepTimeSeconds } = setupStepping();
+		send("keydown", { key: "ArrowLeft", shiftKey: true });
+		expect(stepTimeSeconds).toHaveBeenCalledWith(-1);
+
+		send("keydown", { key: "ArrowRight", shiftKey: true });
+		expect(stepTimeSeconds).toHaveBeenCalledWith(1);
+	});
+
+	it("skips between timeline elements with Alt + Arrow keys", () => {
+		const { send, handlePreviewSkip } = setupStepping();
+		send("keydown", { key: "ArrowLeft", altKey: true });
+		expect(handlePreviewSkip).toHaveBeenNthCalledWith(1, "backward");
+
+		send("keydown", { key: "ArrowRight", altKey: true });
+		expect(handlePreviewSkip).toHaveBeenNthCalledWith(2, "forward");
+	});
+
+	it("does not step frames when typing in input, textarea, inline crop, dialogs, or sliders", () => {
+		const { send, stepFrameForward, stepFrameBackward } = setupStepping();
+		send("keydown", { key: ".", target: new Input() });
+		send("keydown", { key: "ArrowLeft", target: new Textarea() });
+		send("keydown", { key: "ArrowRight", target: new Element("[data-inline-crop]") });
+		send("keydown", { key: "ArrowLeft", target: new Element('[role="dialog"]') });
+		send("keydown", { key: "ArrowRight", target: new Element('[role="slider"]') });
+		expect(stepFrameForward).not.toHaveBeenCalled();
+		expect(stepFrameBackward).not.toHaveBeenCalled();
 	});
 });

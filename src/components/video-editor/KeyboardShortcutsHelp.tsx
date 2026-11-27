@@ -85,6 +85,24 @@ export function KeyboardShortcutsHelp() {
 							</span>
 							<Kbd>{t("keyboardShortcuts.tab")}</Kbd>
 						</div>
+						<div className="flex items-center justify-between mt-1.5">
+							<span className="text-muted-foreground">
+								{t("keyboardShortcuts.stepFrame")}
+							</span>
+							<Kbd>, / . / ← / →</Kbd>
+						</div>
+						<div className="flex items-center justify-between mt-1.5">
+							<span className="text-muted-foreground">
+								{t("keyboardShortcuts.stepSecond")}
+							</span>
+							<Kbd>{isMac ? "⇧" : "Shift"} + ← / →</Kbd>
+						</div>
+						<div className="flex items-center justify-between mt-1.5">
+							<span className="text-muted-foreground">
+								{t("keyboardShortcuts.jumpKeyframe")}
+							</span>
+							<Kbd>{isMac ? "⌥" : "Alt"} + ← / →</Kbd>
+						</div>
 					</div>
 				</div>
 			</PopoverContent>

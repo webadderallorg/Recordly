@@ -197,7 +197,10 @@
 		"panTimeline": "Zaman Çizelgesini Kaydır",
 		"zoomTimeline": "Zaman Çizelgesini Yakınlaştır",
 		"cycleAnnotations": "Açıklamalar Arasında Geç",
-		"tab": "Sekme"
+		"tab": "Sekme",
+		"stepFrame": "1 Kare Git",
+		"stepSecond": "1 Saniye Git",
+		"jumpKeyframe": "Anahtar Kareye Atla"
 	},
 	"actions": {
 		"saveAgain": "Tekrar Kaydet",
