@@ -10,7 +10,7 @@ import {
 	createElectronDevLifecycle,
 	type ElectronDevQueue,
 } from "./scripts/electronDevProcessLifecycle";
-import { prepareElectronDevRuntime } from "./scripts/electronDevRuntime";
+import { getElectronDevArgs, prepareElectronDevRuntime } from "./scripts/electronDevRuntime";
 
 function rendererContentSecurityPolicy(mode: string): Plugin {
 	const env = loadEnv(mode, __dirname, "VITE_");
@@ -152,7 +152,7 @@ export default defineConfig(({ mode }) => ({
 								void lifecycle
 									.mainBuilt(async () => {
 										prepareElectronDevRuntime(__dirname);
-										await startup();
+										await startup(getElectronDevArgs());
 									})
 									.catch((error) =>
 										console.error(
@@ -195,7 +195,7 @@ export default defineConfig(({ mode }) => ({
 								void lifecycle
 									.preloadBuilt(async () => {
 										prepareElectronDevRuntime(__dirname);
-										await startup();
+										await startup(getElectronDevArgs());
 									})
 									.then(reload)
 									.catch((error) =>
