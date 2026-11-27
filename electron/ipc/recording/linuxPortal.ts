@@ -299,7 +299,14 @@ export async function startLinuxPortalCapture(options: {
 		throw new Error("Linux portal capture is not enabled.");
 	}
 	if (captureProcess) {
-		throw new Error("A Linux portal capture is already active.");
+		if (
+			!captureStopRequested ||
+			(captureProcess.exitCode === null && captureProcess.signalCode === null)
+		) {
+			throw new Error("A Linux portal capture is already active.");
+		}
+		// Starting again abandons the failed finalization, but leaves its files in Projects.
+		resetCaptureState();
 	}
 	const binary = getLinuxPortalCaptureBinaryPath();
 	await fs.access(binary, fsConstants.X_OK);
@@ -473,25 +480,22 @@ export async function stopLinuxPortalCapture(): Promise<{
 		timer.unref?.();
 	});
 
-	let processOutput = "";
-	let helperError = "";
-	let audioFailed = false;
 	try {
 		await Promise.race([exited, timeout]);
 	} finally {
-		processOutput = [captureOutput.trim(), captureError.trim()].filter(Boolean).join("\n");
-		helperError = captureError.trim();
-		audioFailed = captureAudioFailed;
-		if (timer) {
-			clearTimeout(timer);
-		}
-		if (captureProcess === child) resetCaptureState();
+		if (timer) clearTimeout(timer);
 	}
 
+	// Retain the stopped session until validation and approval succeed, so
+	// recovery can retry the same file after a transient stop or validation error.
+	const helperError = captureError.trim();
+	const processOutput = [captureOutput.trim(), helperError].filter(Boolean).join("\n");
+	const audioFailed = captureAudioFailed;
 	if (wasPausedBeforeFirstFrame) {
 		const size = await getFileSizeIfPresent(outputPath);
 		if ((size ?? 0) < 1024) {
 			await discardRecordingFiles(outputPath).catch(() => undefined);
+			if (captureProcess === child) resetCaptureState();
 			return {
 				success: true,
 				message: "Linux portal capture cancelled before recording started",
@@ -547,6 +551,7 @@ export async function stopLinuxPortalCapture(): Promise<{
 		error: warning || undefined,
 	});
 
+	if (captureProcess === child) resetCaptureState();
 	return {
 		success: true,
 		path: outputPath,

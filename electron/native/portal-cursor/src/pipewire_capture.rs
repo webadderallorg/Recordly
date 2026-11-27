@@ -83,8 +83,15 @@ type CursorKey = (u32, i32, i32, i32, i32, Option<(u32, u32, u32, i32)>);
 const FRAME_INTERVAL_NS: i64 = 33_333_333;
 const TIMER_TICK: Duration = Duration::from_millis(10);
 
+struct StartupFrame {
+    buffer: crate::video::FrameBuffer,
+    raw_pts_ns: i64,
+    received_at: Instant,
+}
+
 #[derive(Default)]
 struct VideoTimeline {
+    startup_frame: Option<StartupFrame>,
     first_pts: Option<i64>,
     last_frame: Option<crate::video::FrameBuffer>,
     last_pts: Option<i64>,
@@ -270,6 +277,8 @@ fn run_capture_thread(
         command_video,
         Arc::clone(&timeline),
         Arc::clone(&pause),
+        Arc::clone(&anchor),
+        Arc::clone(&start_epoch),
     );
     let _keepalive_timer = attach_keepalive_timer(
         &mainloop,
@@ -356,6 +365,7 @@ fn handle_param_changed(
             && let Ok(mut timeline) = state.timeline.lock()
         {
             timeline.last_frame = None;
+            timeline.startup_frame = None;
         }
         state.video_size = size;
         state.video_format = pixel_format;
@@ -448,6 +458,8 @@ fn attach_command_receiver(
     video: Option<Arc<VideoHandle>>,
     timeline: Arc<Mutex<VideoTimeline>>,
     pause: Arc<Mutex<PauseState>>,
+    anchor: Arc<Mutex<Option<Anchor>>>,
+    start_epoch: Arc<AtomicI64>,
 ) -> pw::channel::AttachedReceiver<'_, Command> {
     let quit_loop = mainloop.clone();
     receiver.attach(mainloop.loop_(), move |command| match command {
@@ -466,10 +478,25 @@ fn attach_command_receiver(
             let _ = std::io::stdout().flush();
         }
         Command::Resume => {
-            if let Ok(mut state) = pause.lock() {
+            let resumed_pause_ns = pause.lock().ok().map(|mut state| {
                 state.resume();
-            }
+                state.accumulated_ns
+            });
             if let Some(video) = &video {
+                if let Some(paused_ns) = resumed_pause_ns
+                    && let Ok(mut timeline) = timeline.lock()
+                    && let Some(frame) = timeline.startup_frame.take()
+                {
+                    let pts = frame
+                        .raw_pts_ns
+                        .saturating_add(duration_to_ns(frame.received_at.elapsed()))
+                        .saturating_sub(paused_ns);
+                    // Submit the latest available pixels at the resume time. A static
+                    // compositor may not send another frame until something changes.
+                    if let Ok(true) = queue_video_frame(video, &mut timeline, frame.buffer, pts) {
+                        report_video_started(&anchor, &start_epoch, pts, paused_ns);
+                    }
+                }
                 video.set_paused(false);
             }
             println!("RESUMED");
@@ -670,9 +697,8 @@ fn normalization_rect(state: &CaptureState) -> Option<geometry::Rect> {
     }
 }
 
-fn ensure_anchor(state: &CaptureState, pts: i64, paused_ns: i64) -> Anchor {
-    let mut anchor = state
-        .anchor
+fn ensure_anchor(anchor: &Mutex<Option<Anchor>>, pts: i64, paused_ns: i64) -> Anchor {
+    let mut anchor = anchor
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     *anchor.get_or_insert(Anchor {
@@ -713,60 +739,83 @@ fn finalize_video(
     }
 }
 
+fn get_video_frame(
+    buffer: &mut pw::buffer::Buffer<'_>,
+    state: &CaptureState,
+) -> Option<crate::video::FrameBuffer> {
+    let (width, height) = state.video_size?;
+    let format = state.video_format?;
+    let (data, stride) = frame_data(buffer, width, height, format.bytes_per_pixel())?;
+    format
+        .to_i420(width, height, data, stride)
+        .map(VideoHandle::frame_buffer)
+}
+
 fn push_video_frame(
-    buffer: &mut pw::buffer::Buffer,
+    buffer: &mut pw::buffer::Buffer<'_>,
     pts: i64,
     paused_ns: i64,
     state: &mut CaptureState,
 ) {
-    let Some(video) = state.config.video.clone() else {
+    let Some(video) = &state.config.video else {
         return;
     };
-    let (Some((width, height)), Some(format)) = (state.video_size, state.video_format) else {
+    let Some(frame) = get_video_frame(buffer, state) else {
         return;
     };
-    let Some((data, stride)) = frame_data(buffer, width, height, format.bytes_per_pixel()) else {
-        return;
-    };
-    let Some(frame) = format.to_i420(width, height, data, stride) else {
-        return;
-    };
-
     let Ok(mut timeline) = state.timeline.lock() else {
         return;
     };
+    match queue_video_frame(video, &mut timeline, frame, pts) {
+        Ok(true) => {
+            report_video_started(&state.anchor, &state.config.start_epoch_ms, pts, paused_ns)
+        }
+        Ok(false) => {}
+        Err(error) => {
+            if state.config.verbose {
+                eprintln!("[video] frame push failed: {error:#}");
+            }
+            return;
+        }
+    }
+    drop(timeline);
+    report_ready(state);
+}
 
-    let first_pts = timeline.first_pts.unwrap_or(pts);
-    let mut timeline_pts = pts - first_pts;
+fn queue_video_frame(
+    video: &VideoHandle,
+    timeline: &mut VideoTimeline,
+    frame: crate::video::FrameBuffer,
+    pts: i64,
+) -> Result<bool> {
+    let first = timeline.first_pts.is_none();
+    let mut timeline_pts = pts - timeline.first_pts.unwrap_or(pts);
     if let Some(last_pts) = timeline.last_pts
         && timeline_pts <= last_pts
     {
         timeline_pts = last_pts + 1_000_000;
     }
-    let frame_buffer = VideoHandle::frame_buffer(frame);
-    if let Err(error) = video.push_buffer(timeline_pts, &frame_buffer) {
-        if state.config.verbose {
-            eprintln!("[video] frame push failed: {error:#}");
-        }
-        return;
-    }
-    if timeline.first_pts.is_none() {
+    video.push_buffer(timeline_pts, &frame)?;
+    if first {
         timeline.first_pts = Some(pts);
-        let anchor = ensure_anchor(state, pts, paused_ns);
-        let start_epoch_ms = anchor.epoch_ms + (pts - anchor.pts_ns).div_euclid(1_000_000);
-        state
-            .config
-            .start_epoch_ms
-            .store(start_epoch_ms, Ordering::SeqCst);
-        println!("VIDEO_START:{start_epoch_ms}");
-        let _ = std::io::stdout().flush();
     }
-
-    timeline.last_frame = Some(frame_buffer);
+    timeline.last_frame = Some(frame);
     timeline.last_pts = Some(timeline_pts);
     timeline.last_push = Some(Instant::now());
-    drop(timeline);
-    report_ready(state);
+    Ok(first)
+}
+
+fn report_video_started(
+    anchor: &Mutex<Option<Anchor>>,
+    start_epoch: &AtomicI64,
+    pts: i64,
+    paused_ns: i64,
+) {
+    let anchor = ensure_anchor(anchor, pts, paused_ns);
+    let start_epoch_ms = anchor.epoch_ms + (pts - anchor.pts_ns).div_euclid(1_000_000);
+    start_epoch.store(start_epoch_ms, Ordering::SeqCst);
+    println!("VIDEO_START:{start_epoch_ms}");
+    let _ = std::io::stdout().flush();
 }
 
 fn report_ready(state: &mut CaptureState) {
@@ -820,20 +869,37 @@ fn handle_process(stream: &pw::stream::Stream, state: &mut CaptureState) {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .snapshot();
-    let Some(pts) = resolve_buffer_pts(&mut buffer, state, paused_ns) else {
-        return;
-    };
     if paused {
-        // During countdown, verify the source can deliver a frame without writing pre-roll.
-        if !state.ready
-            && let (Some((width, height)), Some(format)) = (state.video_size, state.video_format)
-            && frame_data(&mut buffer, width, height, format.bytes_per_pixel()).is_some()
+        if let Some(cursor) = buffer.find_meta::<MetaCursor>()
+            && cursor.id() != 0
+            && cursor.bitmap().is_some()
         {
+            // Position-only updates after resume can refer to a bitmap sent while paused.
+            resolve_cursor_type(cursor, state);
+        }
+        let raw_pts_ns = buffer.find_meta::<MetaHeader>().map_or(0, MetaHeader::pts);
+        let received_at = Instant::now();
+        if state.config.start_paused
+            && raw_pts_ns > 0
+            && let Ok(mut timeline) = state.timeline.lock()
+            && timeline.first_pts.is_none()
+            && let Some(buffer) = get_video_frame(&mut buffer, state)
+        {
+            // Keep only the latest countdown frame in memory. Do not encode pre-roll.
+            timeline.startup_frame = Some(StartupFrame {
+                buffer,
+                raw_pts_ns,
+                received_at,
+            });
+            drop(timeline);
             report_ready(state);
         }
         return;
     }
 
+    let Some(pts) = resolve_buffer_pts(&mut buffer, state, paused_ns) else {
+        return;
+    };
     push_video_frame(&mut buffer, pts, paused_ns, state);
     record_cursor_metadata(&mut buffer, pts, paused_ns, state);
 }
@@ -918,7 +984,7 @@ fn record_cursor_metadata(
         }
     }
 
-    let _ = ensure_anchor(state, pts, paused_ns);
+    let _ = ensure_anchor(&state.anchor, pts, paused_ns);
 
     if let Ok(mut collected) = state.raw_samples.lock() {
         collected.push(telemetry::RawSample {

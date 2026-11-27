@@ -52,6 +52,7 @@ import {
 } from "./linuxPortal";
 
 const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+const unix = it.skipIf(process.platform === "win32");
 const originalSessionType = process.env.XDG_SESSION_TYPE;
 const originalWaylandDisplay = process.env.WAYLAND_DISPLAY;
 const originalDisableFlag = process.env.RECORDLY_LINUX_PORTAL_CURSOR;
@@ -131,7 +132,7 @@ describe("linuxPortal capture backend", () => {
 		});
 	});
 
-	it("probes helper capability and handles missing binaries", async () => {
+	unix("probes helper capability and handles missing binaries", async () => {
 		await expect(probeLinuxPortalCapture()).resolves.toMatchObject({ available: false });
 		await writeFakeHelper(`console.log("CAPABILITY:cursor-modes=7 metadata=1 protocol=2");`);
 		await expect(probeLinuxPortalCapture()).resolves.toEqual({
@@ -141,7 +142,7 @@ describe("linuxPortal capture backend", () => {
 		});
 	});
 
-	it("runs start, pause, resume, and stop lifecycle against the helper protocol", async () => {
+	unix("runs start, pause, resume, and stop lifecycle against the helper protocol", async () => {
 		await writeFakeHelper(`
 const fs = require("node:fs");
 const readline = require("node:readline");
@@ -184,7 +185,7 @@ process.on("SIGINT", () => process.exit(0));
 		expect(mocks.setCurrentProjectPath).toHaveBeenCalledWith(null);
 	});
 
-	it("rejects a helper that fails after portal selection but before readiness", async () => {
+	unix("rejects a helper that fails after portal selection but before readiness", async () => {
 		await writeFakeHelper(`
 console.log("STREAM:node=42");
 console.error("ERROR:could not start encoder");
@@ -198,7 +199,7 @@ process.exitCode = 1;
 		expect(isLinuxPortalCaptureActive()).toBe(false);
 	});
 
-	it.each([
+	unix.each([
 		{
 			label: "header only",
 			dataSize: 0,
@@ -217,12 +218,10 @@ process.exitCode = 1;
 			writtenSize: 8,
 			error: "incomplete system audio",
 		},
-	])("reports $label system audio while keeping the video", async ({
-		dataSize,
-		writtenSize,
-		error,
-	}) => {
-		await writeFakeHelper(`
+	])(
+		"reports $label system audio while keeping the video",
+		async ({ dataSize, writtenSize, error }) => {
+			await writeFakeHelper(`
 const fs = require("node:fs");
 const readline = require("node:readline");
 const video = process.argv[process.argv.indexOf("--record-video") + 1];
@@ -243,34 +242,35 @@ readline.createInterface({input: process.stdin}).on("line", line => {
 	}
 });
 `);
-		const video = await startLinuxPortalCapture({ systemAudio: true });
-		const audio = video.replace(/\.webm$/, ".system.wav");
-		await expect(stopLinuxPortalCapture()).resolves.toMatchObject({
-			success: true,
-			path: video,
-			error: expect.stringContaining(error),
-		});
-		expect(mocks.recordNativeCaptureDiagnostics).toHaveBeenLastCalledWith(
-			expect.objectContaining({
-				processOutput: expect.stringContaining("system audio capture failed"),
-			}),
-		);
-		if (writtenSize > 0 && writtenSize === dataSize) {
-			expect(mocks.rememberApprovedLocalReadPath).toHaveBeenCalledWith(audio);
-		} else {
-			expect(mocks.rememberApprovedLocalReadPath).not.toHaveBeenCalledWith(audio);
-			await expect(fs.access(audio)).rejects.toMatchObject({ code: "ENOENT" });
-		}
-	});
+			const video = await startLinuxPortalCapture({ systemAudio: true });
+			const audio = video.replace(/\.webm$/, ".system.wav");
+			await expect(stopLinuxPortalCapture()).resolves.toMatchObject({
+				success: true,
+				path: video,
+				error: expect.stringContaining(error),
+			});
+			expect(mocks.recordNativeCaptureDiagnostics).toHaveBeenLastCalledWith(
+				expect.objectContaining({
+					processOutput: expect.stringContaining("system audio capture failed"),
+				}),
+			);
+			if (writtenSize > 0 && writtenSize === dataSize) {
+				expect(mocks.rememberApprovedLocalReadPath).toHaveBeenCalledWith(audio);
+			} else {
+				expect(mocks.rememberApprovedLocalReadPath).not.toHaveBeenCalledWith(audio);
+				await expect(fs.access(audio)).rejects.toMatchObject({ code: "ENOENT" });
+			}
+		},
+	);
 
-	it("uses a distinct status for cancellation by the portal", async () => {
+	unix("uses a distinct status for cancellation by the portal", async () => {
 		await writeFakeHelper("process.exitCode = 4;");
 		await expect(startLinuxPortalCapture({ systemAudio: false })).rejects.toBeInstanceOf(
 			LinuxPortalSelectionCancelled,
 		);
 	});
 
-	it("keeps the output available for recovery when the helper dies after startup", async () => {
+	unix("keeps the output available for recovery when the helper dies after startup", async () => {
 		await writeFakeHelper(`
 console.log("STREAM:node=42:id=-:source=Monitor:size=1920x1080:position=0,0:space=StreamLocal");
 console.log("VIDEO_START:1700000000000");
@@ -296,8 +296,33 @@ setTimeout(() => process.exit(2), 50);
 		expect(isLinuxPortalCaptureActive()).toBe(false);
 	});
 
-	it("discards empty stub files when stopped while paused before first video frame", async () => {
+	unix("retains the recording when validation fails and recovers it on retry", async () => {
 		await writeFakeHelper(`
+console.log("READY");
+console.log("VIDEO_START:1700000000000");
+const rl = require("node:readline").createInterface({ input: process.stdin });
+rl.on("line", line => {
+	if (line === "stop") process.exit(0);
+});
+`);
+		mocks.validateRecordedVideo.mockRejectedValueOnce(new Error("FFmpeg could not start"));
+		const videoPath = await startLinuxPortalCapture({ systemAudio: false });
+
+		await expect(stopLinuxPortalCapture()).rejects.toThrow("FFmpeg could not start");
+		expect(isLinuxPortalCaptureActive()).toBe(true);
+		await expect(stopLinuxPortalCapture()).resolves.toMatchObject({
+			success: true,
+			path: videoPath,
+		});
+		expect(mocks.validateRecordedVideo).toHaveBeenNthCalledWith(1, videoPath);
+		expect(mocks.validateRecordedVideo).toHaveBeenNthCalledWith(2, videoPath);
+		expect(isLinuxPortalCaptureActive()).toBe(false);
+	});
+
+	unix(
+		"discards empty stub files when stopped while paused before first video frame",
+		async () => {
+			await writeFakeHelper(`
 const readline = require("node:readline");
 console.log("STREAM:node=42:id=-:source=Monitor:size=1920x1080:position=0,0:space=StreamLocal");
 if (!process.argv.includes("--start-paused")) process.exit(2);
@@ -308,25 +333,26 @@ rl.on("line", (line) => {
 	else if (line === "stop") process.exit(0);
 });
 `);
-		mocks.getFileSizeIfPresent.mockResolvedValueOnce(0);
-		const trackProcess = vi.fn();
+			mocks.getFileSizeIfPresent.mockResolvedValueOnce(0);
+			const trackProcess = vi.fn();
 
-		const outputPath = await startLinuxPortalCapture({
-			systemAudio: false,
-			startPaused: true,
-			trackProcess,
-		});
-		expect(trackProcess).toHaveBeenCalledOnce();
+			const outputPath = await startLinuxPortalCapture({
+				systemAudio: false,
+				startPaused: true,
+				trackProcess,
+			});
+			expect(trackProcess).toHaveBeenCalledOnce();
 
-		await expect(stopLinuxPortalCapture()).resolves.toEqual({
-			success: true,
-			message: "Linux portal capture cancelled before recording started",
-		});
-		expect(mocks.discardRecordingFiles).toHaveBeenCalledWith(outputPath);
-		expect(mocks.validateRecordedVideo).not.toHaveBeenCalled();
-	});
+			await expect(stopLinuxPortalCapture()).resolves.toEqual({
+				success: true,
+				message: "Linux portal capture cancelled before recording started",
+			});
+			expect(mocks.discardRecordingFiles).toHaveBeenCalledWith(outputPath);
+			expect(mocks.validateRecordedVideo).not.toHaveBeenCalled();
+		},
+	);
 
-	it("waits for the first video frame when resuming after countdown", async () => {
+	unix("waits for the first video frame when resuming after countdown", async () => {
 		await writeFakeHelper(`
 console.log("READY");
 const rl = require("node:readline").createInterface({ input: process.stdin });
@@ -351,7 +377,7 @@ rl.on("line", line => {
 		await stopLinuxPortalCapture();
 	});
 
-	it("does not send SIGINT when stdin.write reports backpressure on stop", async () => {
+	unix("does not send SIGINT when stdin.write reports backpressure on stop", async () => {
 		await writeFakeHelper(`
 const fs = require("node:fs");
 const readline = require("node:readline");

@@ -67,9 +67,17 @@ export function registerNativeControls(
 
 		if (process.platform === "linux" && isLinuxPortalCaptureActive()) {
 			const token = ownerRecovery.sessionToken;
-			const result = await ownerRecovery.stop();
-			ownerRecovery.complete(token);
-			return result;
+			let recovered = false;
+			try {
+				const result = await ownerRecovery.stop();
+				recovered = result.success;
+				return result;
+			} finally {
+				if (ownerRecovery.sessionToken === token) {
+					if (recovered) ownerRecovery.complete(token);
+					else ownerRecovery.captureExited();
+				}
+			}
 		}
 		if (process.platform !== "darwin") {
 			return { success: false, message: "No recoverable native recording was found." };
