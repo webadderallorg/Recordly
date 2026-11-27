@@ -37,11 +37,13 @@ import {
 	writeWindowsRecordingDiagnostics,
 } from "./nativeCaptureSupport";
 
+const mp4Extension = /\.mp4$/i;
+
 export async function stopWindowsCapture() {
 	let stagedTempVideoPath = windowsCaptureTempPath;
 	let stagedTempSystemAudioPath =
-		windowsCaptureTempPath?.replace(/\.mp4$/i, ".system.wav") ?? null;
-	let stagedTempMicAudioPath = windowsCaptureTempPath?.replace(/\.mp4$/i, ".mic.wav") ?? null;
+		windowsCaptureTempPath?.replace(mp4Extension, ".system.wav") ?? null;
+	let stagedTempMicAudioPath = windowsCaptureTempPath?.replace(mp4Extension, ".mic.wav") ?? null;
 	try {
 		if (!windowsCaptureProcess) {
 			throw new Error("Native Windows capture process is not running");
@@ -65,8 +67,9 @@ export async function stopWindowsCapture() {
 			await moveFileWithOverwrite(tempVideoPath, finalVideoPath);
 		}
 
-		if (windowsSystemAudioPath && tempVideoPath.endsWith(".mp4")) {
-			const tempAudioPath = tempVideoPath.replace(".mp4", ".system.wav");
+		const hasMp4Extension = mp4Extension.test(tempVideoPath);
+		if (windowsSystemAudioPath && hasMp4Extension) {
+			const tempAudioPath = tempVideoPath.replace(mp4Extension, ".system.wav");
 			stagedTempSystemAudioPath = tempAudioPath;
 			const finalAudioPath = windowsSystemAudioPath;
 			if (await pathExists(tempAudioPath)) {
@@ -78,8 +81,8 @@ export async function stopWindowsCapture() {
 			}
 		}
 
-		if (windowsMicAudioPath && tempVideoPath.endsWith(".mp4")) {
-			const tempMicPath = tempVideoPath.replace(".mp4", ".mic.wav");
+		if (windowsMicAudioPath && hasMp4Extension) {
+			const tempMicPath = tempVideoPath.replace(mp4Extension, ".mic.wav");
 			stagedTempMicAudioPath = tempMicPath;
 			const finalMicPath = windowsMicAudioPath;
 			if (await pathExists(tempMicPath)) {
