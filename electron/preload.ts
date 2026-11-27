@@ -646,6 +646,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			capturesMicrophone?: boolean;
 			microphoneDeviceId?: string;
 			microphoneLabel?: string;
+			startLinuxCapturePaused?: boolean;
 		},
 	) => {
 		return invokeWithDiagnostics("start-native-screen-recording", source, options);
@@ -1323,6 +1324,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	isNativeWindowsCaptureAvailable: () =>
 		ipcRenderer.invoke("is-native-windows-capture-available"),
+	isNativeLinuxPortalCaptureAvailable: () =>
+		ipcRenderer.invoke("is-native-linux-portal-capture-available"),
 	muxNativeWindowsRecording: (expectedDurationMs?: number) =>
 		invokeWithDiagnostics("mux-native-windows-recording", expectedDurationMs),
 	hideOsCursor: () => ipcRenderer.invoke("hide-cursor"),

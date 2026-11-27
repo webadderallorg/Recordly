@@ -148,4 +148,61 @@ describe("startNativeRecorder countdown overlap", () => {
 		await expect(started).resolves.toBe("finished");
 		expect(context.beginWebcamCapture).toHaveBeenCalledOnce();
 	});
+
+	it("runs Linux portal countdown only after portal selection succeeds", async () => {
+		const context = createContext();
+		const started = startNativeRecorder(context, {
+			...options,
+			selectedSource: { id: "screen:linux-portal" } as ProcessedDesktopSource,
+			shouldWarmStartNativeCapture: false,
+			useNativeLinuxPortalCapture: true,
+			shouldPostStartCountdown: true,
+		});
+		expect(api.startCountdown).not.toHaveBeenCalled();
+
+		resolveNative({ success: true, microphoneFallbackRequired: false });
+		expect(api.startNativeScreenRecording).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ startLinuxCapturePaused: true }),
+		);
+		expect(api.pauseNativeScreenRecording).not.toHaveBeenCalled();
+		await vi.waitFor(() => expect(api.startCountdown).toHaveBeenCalledExactlyOnceWith(3));
+		expect(api.resumeNativeScreenRecording).not.toHaveBeenCalled();
+
+		resolveCountdown({ success: true });
+		await expect(started).resolves.toBe("finished");
+		expect(api.resumeNativeScreenRecording).toHaveBeenCalledOnce();
+		expect(context.setRecording).toHaveBeenCalledWith(true);
+	});
+
+	it("returns failed without browser fallback when the Linux portal dialog is cancelled", async () => {
+		const context = createContext();
+		const started = startNativeRecorder(context, {
+			...options,
+			selectedSource: { id: "screen:linux-portal" } as ProcessedDesktopSource,
+			shouldWarmStartNativeCapture: false,
+			useNativeLinuxPortalCapture: true,
+			shouldPostStartCountdown: true,
+		});
+		resolveNative({ success: false, captureCancelled: true });
+		await expect(started).resolves.toBe("failed");
+		expect(api.startCountdown).not.toHaveBeenCalled();
+		expect(context.cleanupCapturedMedia).toHaveBeenCalledOnce();
+	});
+
+	it("falls back to browser capture when Linux portal startup fails unexpectedly", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const context = createContext();
+		const started = startNativeRecorder(context, {
+			...options,
+			selectedSource: { id: "screen:linux-portal" } as ProcessedDesktopSource,
+			shouldWarmStartNativeCapture: false,
+			useNativeLinuxPortalCapture: true,
+			shouldPostStartCountdown: true,
+		});
+		resolveNative({ success: false, error: "Filesink failed: permission denied" });
+		await expect(started).resolves.toBe("browser-fallback");
+		expect(api.startCountdown).not.toHaveBeenCalled();
+		warn.mockRestore();
+	});
 });

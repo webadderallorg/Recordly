@@ -16,14 +16,19 @@ export function detectZoomDwellCandidates(samples: CursorTelemetryPoint[]): Zoom
 	const dwellCandidates: ZoomDwellCandidate[] = [];
 	let runStart = 0;
 
-	const pushRunIfDwell = (startIndex: number, endIndexExclusive: number) => {
+	const pushRunIfDwell = (
+		startIndex: number,
+		endIndexExclusive: number,
+		endTimeMsOverride?: number,
+	) => {
 		if (endIndexExclusive - startIndex < 2) {
 			return;
 		}
 
 		const start = samples[startIndex];
 		const end = samples[endIndexExclusive - 1];
-		const runDuration = end.timeMs - start.timeMs;
+		const endTimeMs = endTimeMsOverride ?? end.timeMs;
+		const runDuration = endTimeMs - start.timeMs;
 		if (runDuration < MIN_DWELL_DURATION_MS || runDuration > MAX_DWELL_DURATION_MS) {
 			return;
 		}
@@ -33,23 +38,31 @@ export function detectZoomDwellCandidates(samples: CursorTelemetryPoint[]): Zoom
 		const avgCy = runSamples.reduce((sum, sample) => sum + sample.cy, 0) / runSamples.length;
 
 		dwellCandidates.push({
-			centerTimeMs: Math.round((start.timeMs + end.timeMs) / 2),
+			centerTimeMs: Math.round((start.timeMs + endTimeMs) / 2),
 			focus: { cx: avgCx, cy: avgCy },
 			strength: runDuration,
 		});
 	};
 
+	let visible = samples[0].cursorVisible !== false;
 	for (let index = 1; index < samples.length; index += 1) {
 		const prev = samples[index - 1];
 		const curr = samples[index];
-		const distance = Math.hypot(curr.cx - prev.cx, curr.cy - prev.cy);
-
-		if (distance > DWELL_MOVE_THRESHOLD) {
+		if (curr.cursorVisible !== undefined) {
+			if (visible) {
+				pushRunIfDwell(runStart, index, curr.cursorVisible ? undefined : curr.timeMs);
+			}
+			visible = curr.cursorVisible;
+			runStart = index;
+		} else if (
+			visible &&
+			Math.hypot(curr.cx - prev.cx, curr.cy - prev.cy) > DWELL_MOVE_THRESHOLD
+		) {
 			pushRunIfDwell(runStart, index);
 			runStart = index;
 		}
 	}
-	pushRunIfDwell(runStart, samples.length);
+	if (visible) pushRunIfDwell(runStart, samples.length);
 
 	return dwellCandidates;
 }

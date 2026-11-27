@@ -44,6 +44,8 @@ vite.config.js
 vite.config.d.ts
 
 # Native capture build artifacts
+electron/native/portal-cursor/target/
+electron/native/bin/linux-*/recordly-portal-cursor
 electron/native/wgc-capture/build/
 electron/native/cursor-monitor/build/
 electron/native/gpu-export-probe/build/

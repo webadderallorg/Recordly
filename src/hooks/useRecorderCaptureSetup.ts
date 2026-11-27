@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
+import { LINUX_PORTAL_SOURCE_ID } from "./browserScreenCapture";
 import { shouldUseNativeWindowsCaptureForSource } from "./recorderCaptureOptions";
 import type { RecorderServices } from "./recorderContext";
 import {
@@ -207,6 +208,23 @@ export function useRecorderCaptureSetup(
 			}
 		}
 
+		let useNativeLinuxPortalCapture = false;
+		if (
+			platform === "linux" &&
+			(selectedSource.id === LINUX_PORTAL_SOURCE_ID ||
+				selectedSource.id?.startsWith("screen:") ||
+				selectedSource.id?.startsWith("window:")) &&
+			typeof window.electronAPI.isNativeLinuxPortalCaptureAvailable === "function"
+		) {
+			try {
+				const linuxPortalResult =
+					await window.electronAPI.isNativeLinuxPortalCaptureAvailable();
+				useNativeLinuxPortalCapture = linuxPortalResult.available;
+			} catch {
+				useNativeLinuxPortalCapture = false;
+			}
+		}
+
 		let micLabel: string | undefined;
 		if ((useNativeMacScreenCapture || useNativeWindowsCapture) && microphoneEnabled) {
 			try {
@@ -244,6 +262,7 @@ export function useRecorderCaptureSetup(
 			selectedSource,
 			useNativeMacScreenCapture,
 			useNativeWindowsCapture,
+			useNativeLinuxPortalCapture,
 			micLabel,
 			webcamReady,
 		};

@@ -96,24 +96,41 @@ export function useRecorderStartup(context: RecorderContext) {
 				selectedSource,
 				useNativeMacScreenCapture,
 				useNativeWindowsCapture,
+				useNativeLinuxPortalCapture = false,
 				micLabel,
 				webcamReady,
 			} = preparedStart;
 			usingLinuxPortal = selectedSource.id === LINUX_PORTAL_SOURCE_ID;
-			const useNativeCapture = useNativeMacScreenCapture || useNativeWindowsCapture;
-			const shouldWarmStartNativeCapture = useNativeCapture && countdownDelay > 0;
-			if (!usingLinuxPortal && !shouldWarmStartNativeCapture && !(await runCountdown()))
+			const useNativeCapture =
+				useNativeMacScreenCapture || useNativeWindowsCapture || useNativeLinuxPortalCapture;
+			const shouldWarmStartNativeCapture =
+				(useNativeMacScreenCapture || useNativeWindowsCapture) && countdownDelay > 0;
+			const shouldPostStartCountdown = useNativeLinuxPortalCapture && countdownDelay > 0;
+			if (
+				!usingLinuxPortal &&
+				!useNativeLinuxPortalCapture &&
+				!shouldWarmStartNativeCapture &&
+				!(await runCountdown())
+			)
 				return;
 
 			let nativeWindowsCaptureStartFailed = false;
 
 			if (useNativeCapture) {
-				operation.step(useNativeWindowsCapture ? "windows-native" : "mac-native");
+				operation.step(
+					useNativeWindowsCapture
+						? "windows-native"
+						: useNativeLinuxPortalCapture
+							? "linux-portal-native"
+							: "mac-native",
+				);
 				const outcome = await startNativeRecorder(context, {
 					selectedSource,
 					useNativeWindowsCapture,
+					useNativeLinuxPortalCapture,
 					micLabel,
 					shouldWarmStartNativeCapture,
+					shouldPostStartCountdown,
 					startWasCancelled: startupWasAborted,
 					webcamReady,
 				});
@@ -122,12 +139,15 @@ export function useRecorderStartup(context: RecorderContext) {
 					return;
 				}
 				if (outcome === "finished" || startWasCancelled()) return;
-				if (outcome === "browser-fallback-needs-countdown") {
+				if (
+					outcome === "browser-fallback-needs-countdown" ||
+					(useNativeLinuxPortalCapture && !usingLinuxPortal)
+				) {
 					if (!(await runCountdown())) return;
 				} else if (shouldWarmStartNativeCapture) {
 					resetRecordingClock(Date.now());
 				}
-				nativeWindowsCaptureStartFailed = true;
+				nativeWindowsCaptureStartFailed = useNativeWindowsCapture;
 			}
 
 			if (startWasCancelled()) return;

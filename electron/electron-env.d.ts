@@ -325,6 +325,7 @@ interface Window {
 				capturesMicrophone?: boolean;
 				microphoneDeviceId?: string;
 				microphoneLabel?: string;
+				startLinuxCapturePaused?: boolean;
 			},
 		) => Promise<{
 			success: boolean;
@@ -332,6 +333,7 @@ interface Window {
 			message?: string;
 			error?: string;
 			userNotified?: boolean;
+			captureCancelled?: boolean;
 			microphoneFallbackRequired?: boolean;
 			systemAudioCaptureUnavailable?: boolean;
 		}>;
@@ -1305,6 +1307,7 @@ interface Window {
 		setExportInProgress: (active: boolean) => void;
 		onRequestSaveBeforeClose: (callback: () => Promise<boolean>) => () => void;
 		isNativeWindowsCaptureAvailable: () => Promise<{ available: boolean }>;
+		isNativeLinuxPortalCaptureAvailable: () => Promise<{ available: boolean }>;
 		muxNativeWindowsRecording: (expectedDurationMs?: number) => Promise<{
 			success: boolean;
 			path?: string;
@@ -1415,6 +1418,8 @@ interface CursorTelemetryPoint {
 	timeMs: number;
 	cx: number;
 	cy: number;
+	/** Compositor visibility transition. Missing values retain the current state. */
+	cursorVisible?: boolean;
 	pressure?: number;
 	interactionType?:
 		| "move"

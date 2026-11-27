@@ -17,6 +17,12 @@ import {
 	windowsNativeCaptureActive,
 } from "../../state";
 import { getCompanionAudioFallbackInfo } from "../diagnostics";
+import {
+	isLinuxPortalCaptureActive,
+	pauseLinuxPortalCapture,
+	probeLinuxPortalCapture,
+	resumeLinuxPortalCapture,
+} from "../linuxPortal";
 import { recoverNativeMacCaptureOutput } from "../mac";
 import { sendNativeCaptureCommand } from "../nativeCaptureCommand";
 import { isNativeWindowsCaptureAvailable, recoverNativeWindowsCaptureOutput } from "../windows";
@@ -59,11 +65,22 @@ export function registerNativeControls(
 			}
 		}
 
+		if (process.platform === "linux" && isLinuxPortalCaptureActive()) {
+			const token = ownerRecovery.sessionToken;
+			let recovered = false;
+			try {
+				const result = await ownerRecovery.stop();
+				recovered = result.success;
+				return result;
+			} finally {
+				if (ownerRecovery.sessionToken === token) {
+					if (recovered) ownerRecovery.complete(token);
+					else ownerRecovery.captureExited();
+				}
+			}
+		}
 		if (process.platform !== "darwin") {
-			return {
-				success: false,
-				message: "Native screen recording recovery is only available on macOS.",
-			};
+			return { success: false, message: "No recoverable native recording was found." };
 		}
 
 		const recovered = await recoverNativeMacCaptureOutput();
@@ -99,6 +116,10 @@ export function registerNativeControls(
 					error: String(error),
 				};
 			}
+		}
+
+		if (process.platform === "linux" && isLinuxPortalCaptureActive()) {
+			return await pauseLinuxPortalCapture();
 		}
 
 		if (process.platform !== "darwin") {
@@ -153,6 +174,10 @@ export function registerNativeControls(
 			}
 		}
 
+		if (process.platform === "linux" && isLinuxPortalCaptureActive()) {
+			return await resumeLinuxPortalCapture();
+		}
+
 		if (process.platform !== "darwin") {
 			return {
 				success: false,
@@ -184,6 +209,11 @@ export function registerNativeControls(
 	ipcMain.handle("is-native-windows-capture-available", async (event) => {
 		if (!isTrustedRenderer(event)) throw new Error("Untrusted recording caller");
 		return { available: await isNativeWindowsCaptureAvailable() };
+	});
+
+	ipcMain.handle("is-native-linux-portal-capture-available", async (event) => {
+		if (!isTrustedRenderer(event)) throw new Error("Untrusted recording caller");
+		return { available: (await probeLinuxPortalCapture()).available };
 	});
 
 	ipcMain.handle("get-last-native-capture-diagnostics", async (event) => {

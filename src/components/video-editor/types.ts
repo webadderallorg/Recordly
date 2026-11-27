@@ -24,6 +24,8 @@ export interface CursorTelemetryPoint {
 	timeMs: number;
 	cx: number;
 	cy: number;
+	/** Compositor visibility transition. Missing values retain the current state. */
+	cursorVisible?: boolean;
 	pressure?: number;
 	interactionType?:
 		| "move"

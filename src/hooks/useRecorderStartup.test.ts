@@ -135,7 +135,11 @@ describe("recording startup coordination", () => {
 		vi.mocked(startNativeRecorder).mockResolvedValueOnce("failed");
 		await start(context);
 		expect(api.recordOperationDiagnostic).toHaveBeenCalledWith(
-			expect.objectContaining({ name: "recording.start", phase: "finish", outcome: "failed" }),
+			expect.objectContaining({
+				name: "recording.start",
+				phase: "finish",
+				outcome: "failed",
+			}),
 		);
 		expect(acquireRecorderBrowserStream).not.toHaveBeenCalled();
 		expect(alert).not.toHaveBeenCalled();
@@ -299,5 +303,27 @@ describe("recording startup coordination", () => {
 		expect(context.recordingSessionTimestamp.current).toBe(1000);
 		expect(context.resetRecordingClock).toHaveBeenCalledWith(5000);
 		expect(startBrowserRecorder).toHaveBeenCalledWith(context, expect.any(Object));
+	});
+
+	it("routes native Linux portal capture with post-start countdown instead of pre-capture countdown", async () => {
+		const context = createContext();
+		context.prepareRecordingStart.mockResolvedValue({
+			selectedSource: portalSource,
+			useNativeMacScreenCapture: false,
+			useNativeWindowsCapture: false,
+			useNativeLinuxPortalCapture: true,
+		});
+		await start(context);
+		expect(api.startCountdown).not.toHaveBeenCalled();
+		expect(startNativeRecorder).toHaveBeenCalledWith(
+			context,
+			expect.objectContaining({
+				useNativeLinuxPortalCapture: true,
+				shouldWarmStartNativeCapture: false,
+				shouldPostStartCountdown: true,
+			}),
+		);
+		expect(acquireRecorderBrowserStream).not.toHaveBeenCalled();
+		expect(api.releaseRecordingStartup).toHaveBeenCalledWith("owner");
 	});
 });

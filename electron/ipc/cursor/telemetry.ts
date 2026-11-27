@@ -46,7 +46,9 @@ export function normalizeCursorTelemetrySamples(rawSamples: unknown): CursorTele
 	return samples
 		.filter(
 			(sample: Partial<CursorTelemetryPoint> | null) =>
-				sample?.interactionType === "manual-zoom" || pointerCount++ < MAX_CURSOR_SAMPLES,
+				sample?.interactionType === "manual-zoom" ||
+				typeof sample?.cursorVisible === "boolean" ||
+				pointerCount++ < MAX_CURSOR_SAMPLES,
 		)
 		.filter((sample: unknown) => Boolean(sample && typeof sample === "object"))
 		.map((sample: unknown) => {
@@ -78,6 +80,9 @@ export function normalizeCursorTelemetrySamples(rawSamples: unknown): CursorTele
 					? { mouseButton: point.mouseButton }
 					: {}),
 				cursorType: isCursorVisualType(point.cursorType) ? point.cursorType : undefined,
+				...(typeof point.cursorVisible === "boolean"
+					? { cursorVisible: point.cursorVisible }
+					: {}),
 			};
 		})
 		.sort((a, b) => a.timeMs - b.timeMs);

@@ -82,6 +82,16 @@ vi.mock("../project/manager", () => ({
 vi.mock("../ffmpeg/binary", () => ({
 	getFfmpegBinaryPath: () => "/ffmpeg-test",
 }));
+const isLinuxPortalActive = vi.hoisted(() => vi.fn(() => false));
+vi.mock("../recording/linuxPortal", async () => {
+	const actual = await vi.importActual<typeof import("../recording/linuxPortal")>(
+		"../recording/linuxPortal",
+	);
+	return {
+		...actual,
+		isLinuxPortalCaptureActive: isLinuxPortalActive,
+	};
+});
 vi.mock("../recording/windows", () => ({
 	isNativeWindowsCaptureAvailable: vi.fn(),
 	recoverNativeWindowsCaptureOutput: mocks.recoverWindows,
@@ -137,6 +147,7 @@ describe("recording IPC composition", () => {
 				"get-recorded-video-path",
 				"get-system-cursor-assets",
 				"get-video-audio-fallback-paths",
+				"is-native-linux-portal-capture-available",
 				"is-native-windows-capture-available",
 				"mux-native-windows-recording",
 				"open-recording-file-stream",
@@ -245,6 +256,29 @@ describe("recording IPC composition", () => {
 			recording: false,
 			sourceName: "Second screen",
 		});
+	});
+
+	it("skips Electron cursor telemetry polling while native Linux portal capture is active", () => {
+		const changed = vi.fn();
+		registerRecordingHandlers(changed);
+		const event = { sender: sender() };
+		setSelectedSource({ id: "screen:1:0", name: "GNOME Portal" });
+		isLinuxPortalActive.mockReturnValue(true);
+		try {
+			invoke("set-recording-state", event, true);
+			expect(isCursorCaptureActive).toBe(false);
+			expect(mocks.startTelemetry).not.toHaveBeenCalled();
+			expect(changed).toHaveBeenLastCalledWith(true, "GNOME Portal");
+			expect(mocks.broadcast).toHaveBeenLastCalledWith("recording-state-changed", {
+				recording: true,
+				sourceName: "GNOME Portal",
+			});
+			invoke("set-recording-state", event, false);
+			expect(mocks.showCursor).toHaveBeenCalledOnce();
+			expect(changed).toHaveBeenLastCalledWith(false, "GNOME Portal");
+		} finally {
+			isLinuxPortalActive.mockReturnValue(false);
+		}
 	});
 
 	it.each([

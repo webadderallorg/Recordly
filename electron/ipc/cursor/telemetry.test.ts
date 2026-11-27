@@ -275,3 +275,52 @@ describe("cursor telemetry pause clock", () => {
 		});
 	});
 });
+
+it("preserves Wayland cursor visibility transitions through the sidecar reader", () => {
+	const samples = normalizeCursorTelemetrySamples({
+		version: CURSOR_TELEMETRY_VERSION,
+		samples: [
+			{ timeMs: 0, cx: 0.2, cy: 0.3, cursorVisible: true },
+			{ timeMs: 100, cx: 0.2, cy: 0.3, cursorVisible: false },
+			{ timeMs: 150, cx: 0.2, cy: 0.3, cursorVisible: "true", interactionType: "mouseup" },
+			{ timeMs: 200, cx: 0.5, cy: 0.6, cursorVisible: true },
+		],
+	});
+	expect(samples.map(({ cursorVisible }) => cursorVisible)).toEqual([
+		true,
+		false,
+		undefined,
+		true,
+	]);
+	expect(samples[2]).toMatchObject({ interactionType: "mouseup" });
+});
+
+it("retains cursor visibility edges beyond the ordinary telemetry limit", () => {
+	const position = { cx: 0.25, cy: 0.5 };
+	const ordinary = Array.from({ length: MAX_CURSOR_SAMPLES + 1 }, (_, timeMs) => ({
+		...position,
+		timeMs: timeMs + 1,
+	}));
+	const hide = { ...position, timeMs: MAX_CURSOR_SAMPLES + 2, cursorVisible: false };
+	const show = { ...position, timeMs: MAX_CURSOR_SAMPLES + 3, cursorVisible: true };
+	const marker = {
+		...position,
+		timeMs: MAX_CURSOR_SAMPLES + 4,
+		interactionType: "manual-zoom",
+	};
+	const samples = normalizeCursorTelemetrySamples([
+		{ ...position, timeMs: 0, cursorVisible: true },
+		...ordinary,
+		hide,
+		show,
+		marker,
+	]);
+	expect(samples.map((sample) => sample.timeMs)).toEqual([
+		0,
+		...ordinary.slice(0, MAX_CURSOR_SAMPLES).map((sample) => sample.timeMs),
+		hide.timeMs,
+		show.timeMs,
+		marker.timeMs,
+	]);
+	expect(samples.slice(-3)).toMatchObject([hide, show, marker]);
+});

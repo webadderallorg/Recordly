@@ -3,6 +3,7 @@ import type {
 	CursorStyle,
 	CursorTelemetryPoint,
 } from "@/components/video-editor/types";
+import { isRecordedCursorVisible } from "@/components/video-editor/videoPlayback/cursorPosition";
 import { getCursorPressState } from "@/components/video-editor/videoPlayback/cursorPress";
 import { projectCursorPositionToViewport } from "@/components/video-editor/videoPlayback/cursorViewport";
 import { resolvePixelGlovePose } from "@/components/video-editor/videoPlayback/pixelGloveMotion";
@@ -15,6 +16,7 @@ export type NativeStaticLayoutCursorTelemetrySample = {
 	cursorType?: CursorTelemetryPoint["cursorType"];
 	interactionType?: string;
 	mouseButton?: 1 | 2 | 3;
+	cursorVisible?: boolean;
 	cursorTypeIndex?: number;
 	bounceScale?: number;
 	visible?: boolean;
@@ -63,6 +65,7 @@ function sanitizeCursorTelemetry(telemetry: NativeStaticLayoutCursorTelemetrySam
 			cursorType: sample.cursorType,
 			interactionType: sample.interactionType as CursorTelemetryPoint["interactionType"],
 			mouseButton: sample.mouseButton,
+			cursorVisible: sample.cursorVisible,
 		}))
 		.sort((left, right) => left.timeMs - right.timeMs);
 }
@@ -116,6 +119,7 @@ function createMonotonicCursorRenderSampler(
 		}
 
 		const projectedPosition = projectCursorPositionToViewport(position, options.sourceCrop);
+		const visible = projectedPosition.visible && isRecordedCursorVisible(samples, timeMs);
 		const press = getCursorPressState(
 			samples as CursorTelemetryPoint[],
 			timeMs,
@@ -140,7 +144,7 @@ function createMonotonicCursorRenderSampler(
 					Math.sin(press.bounceProgress * Math.PI) *
 						(0.08 * Math.max(0, options.clickBounce ?? DEFAULT_CLICK_BOUNCE)),
 			),
-			...(options.sourceCrop ? { visible: projectedPosition.visible } : {}),
+			...(options.sourceCrop || !visible ? { visible } : {}),
 		};
 	};
 }
@@ -150,14 +154,18 @@ function pushCursorSample(
 	sample: NativeStaticLayoutCursorTelemetrySample,
 ) {
 	const previous = samples[samples.length - 1];
+	const previousVisible = previous?.visible ?? true;
+	const beforePrevious = samples[samples.length - 2];
 	if (
 		previous &&
+		// Keep the first frame of each visibility run as well as its tail.
+		(!beforePrevious || (beforePrevious.visible ?? true) === previousVisible) &&
 		Math.abs(previous.cx - sample.cx) <= CURSOR_POSITION_EPSILON &&
 		Math.abs(previous.cy - sample.cy) <= CURSOR_POSITION_EPSILON &&
 		previous.cursorTypeIndex === sample.cursorTypeIndex &&
 		Math.abs((previous.bounceScale ?? 1) - (sample.bounceScale ?? 1)) <=
 			CURSOR_BOUNCE_EPSILON &&
-		(previous.visible ?? true) === (sample.visible ?? true)
+		previousVisible === (sample.visible ?? true)
 	) {
 		previous.timeMs = sample.timeMs;
 		return;

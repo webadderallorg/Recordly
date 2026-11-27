@@ -24,6 +24,24 @@ describe("buildNativeStaticLayoutCursorTelemetry", () => {
 		expect(applyDefaultCursorShape(source, false)).toBe(source);
 	});
 
+	it("keeps both visibility edges when it compacts stationary samples", () => {
+		const samples = buildNativeStaticLayoutCursorTelemetry(
+			[
+				{ timeMs: 0, cx: 0.5, cy: 0.5, cursorVisible: true },
+				{ timeMs: 100, cx: 0.5, cy: 0.5, cursorVisible: false },
+				{ timeMs: 400, cx: 0.5, cy: 0.5, cursorVisible: true },
+			],
+			{ frameRate: 20, durationSec: 1 },
+		)!;
+		expect(samples.map(({ timeMs, visible }) => [timeMs, visible ?? true])).toEqual([
+			[50, true],
+			[100, false],
+			[350, false],
+			[400, true],
+			[1000, true],
+		]);
+	});
+
 	it("keeps legacy cursor indexes and appends the Windows move and diagonal cursors", () => {
 		const cursorTypes = [
 			"resize-ew",

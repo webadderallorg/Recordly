@@ -39,6 +39,7 @@ import {
 	cleanupAllExportStreams,
 	cleanupNativeVideoExportSessions,
 	getSelectedSourceId,
+	killLinuxPortalCaptureProcess,
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
@@ -1275,6 +1276,7 @@ app.on("before-quit", () => {
 		console.warn("Could not clear recording undo cache", error),
 	);
 	killWindowsCaptureProcess();
+	killLinuxPortalCaptureProcess();
 	showCursor();
 	void cleanupAllExportStreams();
 });

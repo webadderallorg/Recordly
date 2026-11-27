@@ -209,9 +209,7 @@ export class PixiCursorOverlay {
 		);
 		const target = interpolateCursorPosition(samples, timeMs);
 		if (!target) {
-			this.visuals.container.visible = false;
-			this.cursorVisible = false;
-			this.visuals.clickRingGraphics.clear();
+			this.reset();
 			return;
 		}
 
