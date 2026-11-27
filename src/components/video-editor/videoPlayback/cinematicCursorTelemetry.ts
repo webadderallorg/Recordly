@@ -90,7 +90,10 @@ export function prepareCinematicCursorTelemetry(
 	for (let i = 1; i < samples.length; i++) {
 		const sample = samples[i];
 		const previous = samples[i - 1];
-		if (sample.cx === previous.cx && sample.cy === previous.cy) {
+		if (
+			sample.cursorVisible !== undefined ||
+			(sample.cx === previous.cx && sample.cy === previous.cy)
+		) {
 			straighten(anchor, i - 1);
 			anchor = i;
 			continue;

@@ -82,6 +82,9 @@ function normalizeTelemetrySample(
 		interactionType: sample.interactionType,
 		...(sample.mouseButton ? { mouseButton: sample.mouseButton } : {}),
 		cursorType: sample.cursorType,
+		...(typeof sample.cursorVisible === "boolean"
+			? { cursorVisible: sample.cursorVisible }
+			: {}),
 	};
 }
 

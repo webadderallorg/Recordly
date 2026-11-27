@@ -96,6 +96,7 @@ export function getNativeStaticLayoutCursorTelemetry(
 			cursorType?: CursorTelemetryPoint["cursorType"];
 			cursorTypeIndex?: number;
 			bounceScale?: number;
+			visible?: boolean;
 	  }>
 	| undefined {
 	const telemetry = config.cursorTelemetry ?? [];

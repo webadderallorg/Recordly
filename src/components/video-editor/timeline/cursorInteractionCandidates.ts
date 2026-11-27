@@ -39,17 +39,23 @@ export function detectZoomDwellCandidates(samples: CursorTelemetryPoint[]): Zoom
 		});
 	};
 
+	let visible = samples[0].cursorVisible !== false;
 	for (let index = 1; index < samples.length; index += 1) {
 		const prev = samples[index - 1];
 		const curr = samples[index];
-		const distance = Math.hypot(curr.cx - prev.cx, curr.cy - prev.cy);
-
-		if (distance > DWELL_MOVE_THRESHOLD) {
+		if (curr.cursorVisible !== undefined) {
+			if (visible) pushRunIfDwell(runStart, index);
+			visible = curr.cursorVisible;
+			runStart = index;
+		} else if (
+			visible &&
+			Math.hypot(curr.cx - prev.cx, curr.cy - prev.cy) > DWELL_MOVE_THRESHOLD
+		) {
 			pushRunIfDwell(runStart, index);
 			runStart = index;
 		}
 	}
-	pushRunIfDwell(runStart, samples.length);
+	if (visible) pushRunIfDwell(runStart, samples.length);
 
 	return dwellCandidates;
 }

@@ -35,7 +35,10 @@ export function drawCursorOnCanvas(
 
 	samples = prepareCinematicCursorTelemetry(samples, config.smoothingFactor, config.springTuning);
 	const target = interpolateCursorPosition(samples, timeMs);
-	if (!target) return;
+	if (!target) {
+		smoothedState.reset();
+		return;
+	}
 
 	const projectedTarget = projectCursorPositionToViewport(target, viewport.sourceCrop);
 	if (!projectedTarget.visible) return;

@@ -275,3 +275,22 @@ describe("cursor telemetry pause clock", () => {
 		});
 	});
 });
+
+it("preserves Wayland cursor visibility transitions through the sidecar reader", () => {
+	const samples = normalizeCursorTelemetrySamples({
+		version: CURSOR_TELEMETRY_VERSION,
+		samples: [
+			{ timeMs: 0, cx: 0.2, cy: 0.3, cursorVisible: true },
+			{ timeMs: 100, cx: 0.2, cy: 0.3, cursorVisible: false },
+			{ timeMs: 150, cx: 0.2, cy: 0.3, cursorVisible: "true", interactionType: "mouseup" },
+			{ timeMs: 200, cx: 0.5, cy: 0.6, cursorVisible: true },
+		],
+	});
+	expect(samples.map(({ cursorVisible }) => cursorVisible)).toEqual([
+		true,
+		false,
+		undefined,
+		true,
+	]);
+	expect(samples[2]).toMatchObject({ interactionType: "mouseup" });
+});

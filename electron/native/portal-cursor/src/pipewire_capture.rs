@@ -4,6 +4,7 @@ use pipewire as pw;
 use pw::properties::properties;
 use pw::spa;
 use pw::spa::buffer::meta::{MetaBitmap, MetaCursor, MetaHeader};
+use recordly_portal_cursor::telemetry::{CursorSnapshot, RecordedCursor};
 use recordly_portal_cursor::{cursor_shape, geometry, telemetry};
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -94,12 +95,6 @@ pub struct CaptureConfig {
     pub video: Option<Arc<VideoHandle>>,
     pub print_events: bool,
     pub verbose: bool,
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct CursorSnapshot {
-    pub position: (f64, f64),
-    pub cursor_type: &'static str,
 }
 
 type CursorKey = (u32, i32, i32, i32, i32, Option<(u32, u32, u32, i32)>);
@@ -223,6 +218,7 @@ struct CaptureState {
     buffer_count: u64,
     cursor_meta_count: u64,
     last: Option<CursorKey>,
+    recorded_cursor: Rc<Cell<RecordedCursor>>,
 }
 
 impl CaptureState {
@@ -232,6 +228,7 @@ impl CaptureState {
         raw_samples: &Arc<Mutex<Vec<telemetry::RawSample>>>,
         last_cursor: &Arc<Mutex<Option<CursorSnapshot>>>,
         sync: &VideoSync,
+        recorded_cursor: Rc<Cell<RecordedCursor>>,
     ) -> Self {
         Self {
             config,
@@ -250,6 +247,7 @@ impl CaptureState {
             buffer_count: 0,
             cursor_meta_count: 0,
             last: None,
+            recorded_cursor,
         }
     }
 }
@@ -364,7 +362,15 @@ fn run_capture_thread(
 
     let node_id = config.node_id;
     let command_sync = VideoSync::new(command_video, &timeline, &pause, &anchor);
-    let state = CaptureState::new(config, theme, &raw_samples, &last_cursor, &command_sync);
+    let recorded_cursor = Rc::new(Cell::new(RecordedCursor::default()));
+    let state = CaptureState::new(
+        config,
+        theme,
+        &raw_samples,
+        &last_cursor,
+        &command_sync,
+        Rc::clone(&recorded_cursor),
+    );
 
     let capture_error = Rc::new(Cell::new(None));
     let listener = register_stream_listener(&stream, state, &mainloop, Rc::clone(&capture_error))?;
@@ -386,12 +392,21 @@ fn run_capture_thread(
         receiver,
         &mainloop,
         command_sync,
-        move |pts, paused_ns| {
+        move |first_frame_pts, paused_ns| {
             let (anchor, epoch, samples, cursor) = &resume_sync;
-            if let Some(cursor) = cursor.lock().ok().and_then(|c| *c) {
-                append_cursor_sample(samples, pts, cursor);
+            let pts = if let Some(pts) = first_frame_pts {
+                report_video_started(anchor, epoch, pts, paused_ns);
+                Some(pts)
+            } else {
+                anchor
+                    .lock()
+                    .ok()
+                    .and_then(|guard| *guard)
+                    .map(|anchor| anchor.input_pts_ns(Instant::now(), paused_ns))
+            };
+            if let (Some(pts), Ok(cursor)) = (pts, cursor.lock()) {
+                append_cursor_sample(samples, &recorded_cursor, pts, *cursor);
             }
-            report_video_started(anchor, epoch, pts, paused_ns);
         },
         move |instant, paused_ns| {
             let (anchor, cursor, samples, last_zoom_at) = &zoom_sync;
@@ -627,7 +642,7 @@ fn attach_command_receiver(
     receiver: pw::channel::Receiver<Command>,
     mainloop: &pw::main_loop::MainLoopRc,
     sync: VideoSync,
-    on_start: impl Fn(i64, i64) + 'static,
+    on_resume: impl Fn(Option<i64>, i64) + 'static,
     on_zoom: impl Fn(Instant, i64) + 'static,
 ) -> pw::channel::AttachedReceiver<'_, Command> {
     let quit_loop = mainloop.clone();
@@ -648,7 +663,9 @@ fn attach_command_receiver(
         }
         Command::Resume => {
             if let Ok(mut state) = sync.pause.lock() {
+                let was_paused = state.paused;
                 state.resume();
+                let mut first_frame_pts = None;
                 if let Some(video) = &sync.video {
                     if let Ok(mut timeline) = sync.timeline.lock()
                         && let Some(frame) = timeline.startup_frame.take()
@@ -661,10 +678,13 @@ fn attach_command_receiver(
                         // compositor may not send another frame until something changes.
                         if let Ok(true) = queue_video_frame(video, &mut timeline, frame.buffer, pts)
                         {
-                            on_start(pts, state.accumulated_ns);
+                            first_frame_pts = Some(pts);
                         }
                     }
                     video.set_paused(false);
+                }
+                if was_paused {
+                    on_resume(first_frame_pts, state.accumulated_ns);
                 }
             }
             println!("RESUMED");
@@ -962,6 +982,11 @@ fn push_video_frame(
     match queue_video_frame(video, &mut timeline, frame, pts) {
         Ok(true) => {
             report_video_started(&state.anchor, &state.config.start_epoch_ms, pts, paused_ns);
+            if buffer.find_meta::<MetaCursor>().is_none()
+                && let Ok(cursor) = state.last_cursor.lock()
+            {
+                append_cursor_sample(&state.raw_samples, &state.recorded_cursor, pts, *cursor);
+            }
         }
         Ok(false) => {}
         Err(error) => {
@@ -1162,6 +1187,7 @@ fn record_cursor_metadata(
     if cursor.id() == 0 {
         let _ = cache_cursor(cursor, state);
         state.last = None;
+        let _ = record_cursor_sample(state, pts, paused_ns, None);
         return;
     }
 
@@ -1187,11 +1213,14 @@ fn record_cursor_metadata(
     if state.last == Some(key) && cursor.bitmap().is_none() {
         return;
     }
-    let Some(snapshot) = cache_cursor(cursor, state) else {
+    let snapshot = cache_cursor(cursor, state);
+    if record_cursor_sample(state, pts, paused_ns, snapshot) {
+        state.last = Some(key);
+    }
+
+    let Some(snapshot) = snapshot else {
         return;
     };
-    state.last = Some(key);
-
     let cursor_type = snapshot.cursor_type;
 
     if state.current_type != Some(cursor_type) {
@@ -1201,10 +1230,6 @@ fn record_cursor_metadata(
             let _ = std::io::stdout().flush();
         }
     }
-
-    let _ = ensure_anchor(&state.anchor, pts, paused_ns);
-
-    append_cursor_sample(&state.raw_samples, pts, snapshot);
 
     if state.config.print_events {
         let bitmap_text = match bitmap {
@@ -1245,26 +1270,41 @@ fn append_zoom_marker(
         cx: cursor.position.0,
         cy: cursor.position.1,
         cursor_type: None,
+        cursor_visible: None,
         interaction_type: Some("manual-zoom".to_owned()),
         mouse_button: None,
     });
     last_marker_at.set(Some(instant));
 }
 
+fn record_cursor_sample(
+    state: &CaptureState,
+    pts_ns: i64,
+    paused_ns: i64,
+    cursor: Option<CursorSnapshot>,
+) -> bool {
+    // For video captures, wait for the encoded timeline before publishing cursor state.
+    if state.config.video.is_none() {
+        let _ = ensure_anchor(&state.anchor, pts_ns, paused_ns);
+    } else if existing_anchor(state).is_none() {
+        return false;
+    }
+    append_cursor_sample(&state.raw_samples, &state.recorded_cursor, pts_ns, cursor);
+    true
+}
+
 fn append_cursor_sample(
     samples: &Mutex<Vec<telemetry::RawSample>>,
+    recorded_cursor: &Cell<RecordedCursor>,
     pts_ns: i64,
-    cursor: CursorSnapshot,
+    cursor: Option<CursorSnapshot>,
 ) {
-    if let Ok(mut collected) = samples.lock() {
-        collected.push(telemetry::RawSample {
-            pts_ns,
-            cx: cursor.position.0,
-            cy: cursor.position.1,
-            cursor_type: Some(cursor.cursor_type.to_owned()),
-            interaction_type: None,
-            mouse_button: None,
-        });
+    let mut recorded = recorded_cursor.get();
+    if let Some(sample) = recorded.sample(pts_ns, cursor)
+        && let Ok(mut collected) = samples.lock()
+    {
+        collected.push(sample);
+        recorded_cursor.set(recorded);
     }
 }
 
@@ -1274,18 +1314,20 @@ fn cache_cursor(cursor: &MetaCursor, state: &mut CaptureState) -> Option<CursorS
     } else {
         let cursor_type = resolve_cursor_type(cursor, state);
         let position = cursor.position();
-        normalization_rect(state)
-            .and_then(|rect| {
-                geometry::normalize_to_stream(
-                    (position.x, position.y),
-                    rect,
-                    state.config.position_space,
-                )
-            })
-            .map(|position| CursorSnapshot {
-                position,
-                cursor_type,
-            })
+        cursor_type.and_then(|cursor_type| {
+            normalization_rect(state)
+                .and_then(|rect| {
+                    geometry::normalize_to_stream(
+                        (position.x, position.y),
+                        rect,
+                        state.config.position_space,
+                    )
+                })
+                .map(|position| CursorSnapshot {
+                    position,
+                    cursor_type,
+                })
+        })
     };
     if let Ok(mut last) = state.last_cursor.lock() {
         *last = snapshot;
@@ -1293,24 +1335,28 @@ fn cache_cursor(cursor: &MetaCursor, state: &mut CaptureState) -> Option<CursorS
     snapshot
 }
 
-fn resolve_cursor_type(cursor: &MetaCursor, state: &mut CaptureState) -> &'static str {
-    if let Some(bitmap) = cursor.bitmap()
-        && let Some(decoded) = decode_spa_bitmap(
+fn resolve_cursor_type(cursor: &MetaCursor, state: &mut CaptureState) -> Option<&'static str> {
+    if let Some(bitmap) = cursor.bitmap() {
+        if bitmap.size().width == 0 || bitmap.size().height == 0 {
+            // An empty bitmap clears the sprite. Position-only updates retain that state.
+            state.type_by_cursor_id.insert(cursor.id(), None);
+        } else if let Some(decoded) = decode_spa_bitmap(
             bitmap,
             cursor.hotspot(),
             state.config.export_bitmap.as_deref(),
             cursor.id(),
-        )
-    {
-        let classified = cursor_shape::classify(&decoded, &state.theme);
-        state.type_by_cursor_id.insert(cursor.id(), classified);
+        ) {
+            let classified = cursor_shape::classify(&decoded, &state.theme).unwrap_or("arrow");
+            state
+                .type_by_cursor_id
+                .insert(cursor.id(), Some(classified));
+        }
     }
     state
         .type_by_cursor_id
         .get(&cursor.id())
         .copied()
-        .flatten()
-        .unwrap_or("arrow")
+        .unwrap_or(Some("arrow"))
 }
 
 fn decode_spa_bitmap(

@@ -17,6 +17,8 @@ pub struct Sample {
     pub mouse_button: Option<u8>,
     #[serde(rename = "cursorType", skip_serializing_if = "Option::is_none")]
     pub cursor_type: Option<String>,
+    #[serde(rename = "cursorVisible", skip_serializing_if = "Option::is_none")]
+    pub cursor_visible: Option<bool>,
 }
 
 impl Sample {
@@ -29,6 +31,7 @@ impl Sample {
             interaction_type: None,
             mouse_button: None,
             cursor_type: None,
+            cursor_visible: None,
         }
     }
 
@@ -145,8 +148,45 @@ pub struct RawSample {
     pub cx: f64,
     pub cy: f64,
     pub cursor_type: Option<String>,
+    pub cursor_visible: Option<bool>,
     pub interaction_type: Option<String>,
     pub mouse_button: Option<u8>,
+}
+
+#[derive(Clone, Copy)]
+pub struct CursorSnapshot {
+    pub position: (f64, f64),
+    pub cursor_type: &'static str,
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct RecordedCursor {
+    visible: Option<bool>,
+    position: (f64, f64),
+}
+
+impl RecordedCursor {
+    #[must_use]
+    pub fn sample(&mut self, pts_ns: i64, cursor: Option<CursorSnapshot>) -> Option<RawSample> {
+        let visible = cursor.is_some();
+        let visibility_changed = self.visible != Some(visible);
+        self.visible = Some(visible);
+        if let Some(cursor) = cursor {
+            self.position = cursor.position;
+        } else if !visibility_changed {
+            return None;
+        }
+
+        Some(RawSample {
+            pts_ns,
+            cx: self.position.0,
+            cy: self.position.1,
+            cursor_type: cursor.map(|snapshot| snapshot.cursor_type.to_owned()),
+            cursor_visible: visibility_changed.then_some(visible),
+            interaction_type: None,
+            mouse_button: None,
+        })
+    }
 }
 
 #[must_use]
@@ -169,6 +209,7 @@ pub fn resolve_samples(
             interaction_type: item.interaction_type.clone(),
             mouse_button: item.mouse_button,
             cursor_type: item.cursor_type.clone(),
+            cursor_visible: item.cursor_visible,
         })
         .collect()
 }
@@ -180,6 +221,7 @@ pub fn normalize_samples(samples: &mut Vec<Sample>) {
             && left.cx.to_bits() == right.cx.to_bits()
             && left.cy.to_bits() == right.cy.to_bits()
             && left.cursor_type == right.cursor_type
+            && left.cursor_visible == right.cursor_visible
             && left.interaction_type == right.interaction_type
             && left.mouse_button == right.mouse_button
     });
@@ -281,6 +323,7 @@ mod tests {
                 cx: 0.1,
                 cy: 0.2,
                 cursor_type: Some("arrow".to_owned()),
+                cursor_visible: None,
                 interaction_type: None,
                 mouse_button: None,
             },
@@ -289,6 +332,7 @@ mod tests {
                 cx: 0.3,
                 cy: 0.4,
                 cursor_type: Some("text".to_owned()),
+                cursor_visible: None,
                 interaction_type: Some("click".to_owned()),
                 mouse_button: Some(1),
             },
@@ -301,12 +345,47 @@ mod tests {
     }
 
     #[test]
+    fn saves_visibility_edges_and_omits_visibility_from_ordinary_samples() {
+        let mut recorded = RecordedCursor::default();
+        let arrow = CursorSnapshot {
+            position: (0.25, 0.75),
+            cursor_type: "arrow",
+        };
+        let mut raw = vec![
+            recorded.sample(0, None).unwrap(),
+            recorded.sample(100_000_000, Some(arrow)).unwrap(),
+            recorded.sample(200_000_000, Some(arrow)).unwrap(),
+            recorded.sample(300_000_000, None).unwrap(),
+        ];
+        assert!(recorded.sample(400_000_000, None).is_none());
+        raw.push(recorded.sample(500_000_000, Some(arrow)).unwrap());
+
+        let mut samples = resolve_samples(&raw, 0, 0, 0);
+        normalize_samples(&mut samples);
+        let json: serde_json::Value = serde_json::from_str(&to_json(&samples)).unwrap();
+        let samples = json["samples"].as_array().unwrap();
+        assert_eq!(samples[0]["cursorVisible"], false);
+        assert_eq!(samples[1]["cursorVisible"], true);
+        assert!(
+            !samples[2]
+                .as_object()
+                .unwrap()
+                .contains_key("cursorVisible")
+        );
+        assert_eq!(samples[3]["cursorVisible"], false);
+        assert_eq!(samples[3]["cx"], 0.25);
+        assert_eq!(samples[4]["cursorVisible"], true);
+        assert_eq!(samples[4]["cursorType"], "arrow");
+    }
+
+    #[test]
     fn falls_back_to_anchor_when_start_epoch_is_unset() {
         let raw = vec![RawSample {
             pts_ns: 2_000_000_000,
             cx: 0.5,
             cy: 0.5,
             cursor_type: None,
+            cursor_visible: None,
             interaction_type: None,
             mouse_button: None,
         }];

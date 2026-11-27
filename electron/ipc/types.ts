@@ -131,6 +131,8 @@ export interface CursorTelemetryPoint {
 	timeMs: number;
 	cx: number;
 	cy: number;
+	/** Compositor visibility transition. Missing values retain the current state. */
+	cursorVisible?: boolean;
 	interactionType?: CursorInteractionType;
 	/** Button whose down/up transition this sample records. */
 	mouseButton?: 1 | 2 | 3;

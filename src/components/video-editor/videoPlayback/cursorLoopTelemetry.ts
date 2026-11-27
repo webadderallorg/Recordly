@@ -1,3 +1,4 @@
+import { isRecordedCursorVisible } from "./cursorPosition";
 import type { CursorTelemetryPoint, TrimRegion } from "../types";
 
 const LOOP_CURSOR_FREEZE_DURATION_MS = 670;
@@ -153,7 +154,11 @@ export function buildLoopedCursorTelemetry(
 
 	const timelineEndMs = Math.max(0, Math.round(totalDurationMs));
 	const timelineStartClampedMs = clamp(Math.round(timelineStartMs), 0, timelineEndMs);
-	if (timelineEndMs <= timelineStartClampedMs) {
+	if (
+		timelineEndMs <= timelineStartClampedMs ||
+		!isRecordedCursorVisible(samples, timelineStartClampedMs) ||
+		!isRecordedCursorVisible(samples, timelineEndMs)
+	) {
 		return samples;
 	}
 
@@ -179,7 +184,18 @@ export function buildLoopedCursorTelemetry(
 	);
 	const returnMotionDurationMs = Math.max(1, freezeDurationMs - clampedSettleDurationMs);
 	const sourceStartMs = firstSample.timeMs;
-	const sourceEndMs = Math.max(sourceStartMs, findLastMovingSampleTime(boundedSamples));
+	let lastTransitionMs: number | undefined;
+	for (let index = boundedSamples.length - 1; index >= 0; index -= 1) {
+		if (boundedSamples[index].cursorVisible !== undefined) {
+			lastTransitionMs = boundedSamples[index].timeMs;
+			break;
+		}
+	}
+	const sourceEndMs = Math.max(
+		sourceStartMs,
+		findLastMovingSampleTime(boundedSamples),
+		lastTransitionMs ?? sourceStartMs,
+	);
 	const sourceDurationMs = Math.max(1, sourceEndMs - sourceStartMs);
 	// Keep remapped times in source-time coordinates so cursor lookups
 	// (which always use video.currentTime, i.e. source time) stay correct
@@ -192,6 +208,7 @@ export function buildLoopedCursorTelemetry(
 			timeMs: timelineStartClampedMs,
 			interactionType: undefined,
 			cursorType: startingCursorType,
+			...(lastTransitionMs !== undefined ? { cursorVisible: true } : {}),
 		},
 	];
 
@@ -199,10 +216,14 @@ export function buildLoopedCursorTelemetry(
 		const progress = clamp((sample.timeMs - sourceStartMs) / sourceDurationMs, 0, 1);
 		const mappedTimeMs = Math.round(timelineStartClampedMs + motionDurationMs * progress);
 
-		if (mappedTimeMs <= loopedSamples[loopedSamples.length - 1].timeMs) {
+		const previous = loopedSamples[loopedSamples.length - 1];
+		if (mappedTimeMs <= previous.timeMs) {
 			loopedSamples[loopedSamples.length - 1] = {
 				...sample,
-				timeMs: loopedSamples[loopedSamples.length - 1].timeMs,
+				timeMs: previous.timeMs,
+				...(sample.cursorVisible === undefined && previous.cursorVisible !== undefined
+					? { cursorVisible: previous.cursorVisible }
+					: {}),
 			};
 			continue;
 		}

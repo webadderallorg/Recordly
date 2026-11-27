@@ -92,7 +92,9 @@ export function getCursorIdleIntervals(
 			if (sample.mouseButton) held.delete(sample.mouseButton);
 			else held.clear();
 		}
-		const interaction = Boolean(sample.interactionType && sample.interactionType !== "move");
+		const interaction =
+			sample.cursorVisible !== undefined ||
+			Boolean(sample.interactionType && sample.interactionType !== "move");
 		const stateChanged = Boolean(
 			sample.cursorType && cursorType && sample.cursorType !== cursorType,
 		);

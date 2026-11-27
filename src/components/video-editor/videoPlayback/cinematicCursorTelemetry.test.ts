@@ -183,3 +183,17 @@ it("keeps Focused paths intact and caches separately from Cinematic when switchi
 	samples.push(point(300));
 	expect(focus()).toHaveLength(5);
 });
+
+it("keeps the recorded cursor hidden until it reappears, including when seeking", () => {
+	const samples: CursorTelemetryPoint[] = [
+		{ timeMs: 20, cx: 0.2, cy: 0.3, cursorVisible: true },
+		{ timeMs: 100, cx: 0.2, cy: 0.3, cursorVisible: false },
+		{ timeMs: 140, cx: 0.2, cy: 0.3, interactionType: "mouseup" },
+		{ timeMs: 300, cx: 0.5, cy: 0.6, cursorVisible: true },
+	];
+	expect(interpolateCursorPosition(samples, 300)).toEqual({ cx: 0.5, cy: 0.6 });
+	expect(interpolateCursorPosition(samples, 299)).toBeNull();
+	expect(interpolateCursorPosition(samples, 100)).toBeNull();
+	expect(interpolateCursorPosition(samples, 99)).toEqual({ cx: 0.2, cy: 0.3 });
+	expect(interpolateCursorPosition(samples, 0)).toBeNull();
+});

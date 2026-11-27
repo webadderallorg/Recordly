@@ -78,6 +78,9 @@ export function normalizeCursorTelemetrySamples(rawSamples: unknown): CursorTele
 					? { mouseButton: point.mouseButton }
 					: {}),
 				cursorType: isCursorVisualType(point.cursorType) ? point.cursorType : undefined,
+				...(typeof point.cursorVisible === "boolean"
+					? { cursorVisible: point.cursorVisible }
+					: {}),
 			};
 		})
 		.sort((a, b) => a.timeMs - b.timeMs);

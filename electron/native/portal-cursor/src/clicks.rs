@@ -1,5 +1,5 @@
-use crate::pipewire_capture::{Anchor, CursorSnapshot, PauseState};
-use recordly_portal_cursor::telemetry;
+use crate::pipewire_capture::{Anchor, PauseState};
+use recordly_portal_cursor::telemetry::{self, CursorSnapshot};
 use std::fs::{self, File};
 use std::io::Read;
 use std::os::unix::fs::FileTypeExt;
@@ -513,6 +513,33 @@ fn read_device(
                 syn_dropping = true;
                 tap_state.down_timing = None;
                 tap_state.up_timing = None;
+                last_left_click = None;
+                if pressed_positions.iter().any(Option::is_some)
+                    && let Ok(pause) = context.pause.lock()
+                {
+                    let instant = Instant::now();
+                    let (_, accumulated_paused_ns) = pause.timing_at(instant);
+                    // A release may have been lost. End the recorded presses at the gap so
+                    // the editor cannot keep rendering a held button through later footage.
+                    for (position, code) in pressed_positions
+                        .iter_mut()
+                        .zip([BTN_LEFT, BTN_RIGHT, BTN_MIDDLE])
+                    {
+                        if let Some(cursor) = position.take() {
+                            emit_button_event(
+                                context,
+                                ButtonSampleInput {
+                                    code,
+                                    value: 0,
+                                    event_instant: instant,
+                                    cursor,
+                                    accumulated_paused_ns,
+                                },
+                                &mut last_left_click,
+                            );
+                        }
+                    }
+                }
             } else if code == SYN_REPORT {
                 syn_dropping = false;
             }
@@ -616,6 +643,7 @@ fn build_button_sample(
         cx: input.cursor.0,
         cy: input.cursor.1,
         cursor_type: None,
+        cursor_visible: None,
         interaction_type: Some(interaction.to_owned()),
         mouse_button,
     }
@@ -924,6 +952,42 @@ mod tests {
         let samples = context.samples.lock().unwrap();
         assert_eq!(samples.len(), 1);
         assert_eq!((samples[0].cx, samples[0].cy), (0.2, 0.8));
+    }
+
+    #[test]
+    fn balances_recorded_buttons_at_an_evdev_gap() {
+        let context = click_context();
+        *context.last_cursor.lock().unwrap() = Some(CursorSnapshot {
+            position: (0.2, 0.8),
+            cursor_type: "arrow",
+        });
+        let events = [
+            input_event(EV_KEY, BTN_LEFT, 1),
+            input_event(EV_KEY, BTN_RIGHT, 1),
+            input_event(EV_SYN, SYN_DROPPED, 0),
+            input_event(EV_KEY, BTN_MIDDLE, 1),
+            input_event(EV_SYN, SYN_REPORT, 0),
+            input_event(EV_KEY, BTN_RIGHT, 0),
+            input_event(EV_KEY, BTN_LEFT, 1),
+            input_event(EV_KEY, BTN_LEFT, 0),
+        ];
+        read_device(std::io::Cursor::new(events.concat()), None, &context);
+        let samples = context.samples.lock().unwrap();
+        let recorded: Vec<_> = samples
+            .iter()
+            .map(|sample| (sample.mouse_button, sample.interaction_type.as_deref()))
+            .collect();
+        assert_eq!(
+            recorded,
+            [
+                (Some(1), Some("click")),
+                (Some(2), Some("right-click")),
+                (Some(1), Some("mouseup")),
+                (Some(2), Some("mouseup")),
+                (Some(1), Some("click")),
+                (Some(1), Some("mouseup")),
+            ],
+        );
     }
 
     #[test]
