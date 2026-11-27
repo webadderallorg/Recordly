@@ -273,10 +273,11 @@
 	"presets": {
 		"open": "프리셋 열기",
 		"label": "프리셋",
-		"saveCurrentAs": "현재 프리셋을 다른 이름으로 저장",
+		"saveCurrentAs": "프리셋으로 저장",
+		"edit": "편집",
 		"namePlaceholder": "프리셋 이름",
 		"savedList": "저장된 프리셋",
-		"empty": "아직 프리셋이 없습니다.",
+		"default": "기본값",
 		"deleteAriaLabel": "{{name}} 프리셋 삭제",
 		"toasts": {
 			"applied": "“{{name}}” 프리셋을 적용했습니다",

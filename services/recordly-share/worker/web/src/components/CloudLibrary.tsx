@@ -332,10 +332,12 @@ export default function CloudLibrary({ authConfig, commentAccount }: Props = {})
 												Recordly
 											</Modal.Heading>
 										</div>
-										<p className="text-balance text-sm leading-relaxed text-muted">
-											{commentAccount
-												? "Sign in to leave feedback or manage your comments. Watching stays open to everyone with the link."
-												: copy.tagline}
+										<p className="text-balance text-sm leading-relaxed">
+											<span className="text-muted">
+												{commentAccount
+													? "Sign in to leave feedback or manage your comments. Watching stays open to everyone with the link."
+													: "Beautiful screen recordings. Just press record."}
+											</span>
 										</p>
 									</Modal.Header>
 									<RecordlySignInFields

@@ -1,4 +1,4 @@
-import { WebDemuxer } from "web-demuxer";
+import type { WebDemuxer } from "web-demuxer";
 import {
 	type ClipRegion,
 	findClipAtTimelineTime,
@@ -7,8 +7,9 @@ import {
 	type TrimRegion,
 } from "@/components/video-editor/types";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
-import { createFallbackDemuxerSource, resolveMediaResourceUrl } from "./localMediaSource";
 import { decodeVideoStream } from "./streamingDecodePipeline";
+import type { ExportDiagnosticCallbacks } from "./types";
+import { loadVideoDemuxerMetadata } from "./videoDemuxerMetadata";
 import {
 	buildClipDecodeRuns,
 	computeVideoSegments,
@@ -53,17 +54,24 @@ type OnFrameCallback = (
 export class StreamingVideoDecoder {
 	private demuxer: WebDemuxer | null = null;
 	private decoder: VideoDecoder | null = null;
-	private cancelled = false;
+	private readonly abortController = new AbortController();
 	private cancellationHandlers = new Set<() => void>();
 	private metadata: DecodedVideoInfo | null = null;
 	private pendingFrames: VideoFrame[] = [];
 	private readonly maxDecodeQueue: number;
 	private readonly maxPendingFrames: number;
+	private readonly onDiagnostic?: ExportDiagnosticCallbacks["onDiagnostic"];
+
+	private get cancelled() {
+		return this.abortController.signal.aborted;
+	}
 
 	constructor(options?: {
 		maxDecodeQueue?: number;
 		maxPendingFrames?: number;
+		onDiagnostic?: ExportDiagnosticCallbacks["onDiagnostic"];
 	}) {
+		this.onDiagnostic = options?.onDiagnostic;
 		this.maxDecodeQueue = Math.max(
 			1,
 			Math.floor(options?.maxDecodeQueue ?? DEFAULT_MAX_DECODE_QUEUE),
@@ -89,47 +97,15 @@ export class StreamingVideoDecoder {
 			this.decoder = null;
 		}
 
-		if (this.demuxer) {
-			try {
-				this.demuxer.destroy();
-			} catch {
-				// Ignore cleanup errors while reloading metadata.
-			}
-			this.demuxer = null;
-		}
-
-		const resourceUrl = await resolveMediaResourceUrl(videoUrl);
-
-		// Relative URL so it resolves correctly in both dev (http) and packaged (file://) builds
-		const wasmUrl = new URL("./wasm/web-demuxer.wasm", window.location.href).href;
-		const loadMediaInfo = async (source: string | File) => {
-			this.demuxer = new WebDemuxer({ wasmFilePath: wasmUrl });
-			await this.demuxer.load(source);
-			return this.demuxer.getMediaInfo();
-		};
-
-		let mediaInfo;
-		if (options.useFallbackMediaSource) {
-			mediaInfo = await loadMediaInfo(await createFallbackDemuxerSource(videoUrl));
-		} else {
-			try {
-				mediaInfo = await loadMediaInfo(resourceUrl);
-			} catch (error) {
-				console.warn(
-					"[StreamingVideoDecoder] Direct source load failed, retrying with a fresh media source:",
-					error,
-				);
-				const currentDemuxer = this.demuxer;
-				if (currentDemuxer) {
-					try {
-						(currentDemuxer as unknown as { destroy: () => void }).destroy();
-					} catch {
-						// Ignore cleanup errors before fallback re-init.
-					}
-				}
-				mediaInfo = await loadMediaInfo(await createFallbackDemuxerSource(videoUrl));
-			}
-		}
+		this.discardDemuxer();
+		this.metadata = null;
+		const { demuxer, mediaInfo } = await loadVideoDemuxerMetadata(
+			videoUrl,
+			this.abortController.signal,
+			options.useFallbackMediaSource,
+			this.onDiagnostic,
+		);
+		this.demuxer = demuxer;
 
 		const videoStream = mediaInfo.streams.find((s) => s.codec_type_string === "video");
 		const audioStream = mediaInfo.streams.find((s) => s.codec_type_string === "audio");
@@ -177,6 +153,16 @@ export class StreamingVideoDecoder {
 					: undefined,
 		};
 
+		const { width, height, duration, codec, hasAudio } = this.metadata;
+		this.onDiagnostic?.("source-metadata", {
+			width,
+			height,
+			duration,
+			codec,
+			hasAudio,
+			frameRate,
+			frameRateSource,
+		});
 		return this.metadata;
 	}
 
@@ -193,7 +179,11 @@ export class StreamingVideoDecoder {
 
 		const owner = this;
 		const context = {
-			demuxer: this.demuxer,
+			get demuxer() {
+				return owner.demuxer;
+			},
+			discardDemuxer: () => this.discardDemuxer(),
+			signal: this.abortController.signal,
 			metadata: this.metadata,
 			pendingFrames: this.pendingFrames,
 			maxDecodeQueue: this.maxDecodeQueue,
@@ -297,7 +287,11 @@ export class StreamingVideoDecoder {
 		const endFrame = Math.min(totalFrames, startFrame + frameCount);
 		const owner = this;
 		const context = {
-			demuxer: this.demuxer,
+			get demuxer() {
+				return owner.demuxer;
+			},
+			discardDemuxer: () => this.discardDemuxer(),
+			signal: this.abortController.signal,
 			metadata: this.metadata,
 			pendingFrames: this.pendingFrames,
 			maxDecodeQueue: this.maxDecodeQueue,
@@ -378,12 +372,22 @@ export class StreamingVideoDecoder {
 	}
 
 	cancel(): void {
-		this.cancelled = true;
+		this.abortController.abort();
 		for (const handler of this.cancellationHandlers) handler();
 	}
 
 	getDemuxer() {
 		return this.demuxer;
+	}
+
+	private discardDemuxer() {
+		const demuxer = this.demuxer;
+		this.demuxer = null;
+		try {
+			demuxer?.destroy();
+		} catch {
+			// Preserve the original failure if the worker is already gone.
+		}
 	}
 
 	destroy(): void {
@@ -398,14 +402,7 @@ export class StreamingVideoDecoder {
 			this.decoder = null;
 		}
 
-		if (this.demuxer) {
-			try {
-				this.demuxer.destroy();
-			} catch {
-				/* ignore */
-			}
-			this.demuxer = null;
-		}
+		this.discardDemuxer();
 
 		for (const frame of this.pendingFrames) {
 			try {

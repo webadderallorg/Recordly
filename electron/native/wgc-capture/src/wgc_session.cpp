@@ -137,6 +137,22 @@ bool WgcSession::initializeWithItem(int fps) {
 
     session_.IsCursorCaptureEnabled(false);
 
+    // Windows 11 24H2 can composite qualifying popups inside the captured window's bounds.
+    // The SDK guard preserves older builds, and QueryInterface handles older Windows runtimes.
+#if defined(____x_ABI_CWindows_CGraphics_CCapture_CIGraphicsCaptureSession6_INTERFACE_DEFINED__)
+    if (windowHandle_) {
+        if (auto secondaryWindows = session_.try_as<
+                winrt::Windows::Graphics::Capture::IGraphicsCaptureSession6>()) {
+            try {
+                secondaryWindows.IncludeSecondaryWindows(true);
+            } catch (winrt::hresult_error const& e) {
+                std::cerr << "WARNING: Could not include secondary windows: 0x"
+                          << std::hex << e.code() << std::dec << std::endl;
+            }
+        }
+    }
+#endif
+
     // IsBorderRequired is only available on Windows 11+ (build 22000). propagating an hresult_error results in Native Windows capture failure
     try {
         session_.IsBorderRequired(false);

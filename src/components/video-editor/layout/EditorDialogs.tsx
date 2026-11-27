@@ -46,6 +46,8 @@ interface EditorDialogsProps {
 	projectError: string | null;
 	projectErrorSource?: string;
 	projectErrorRecordingSource?: string;
+	onLocateRecording?: () => void;
+	locatingRecording?: boolean;
 	onDashboardSignIn: () => void;
 	onDeleteProjects: (
 		paths: string[],
@@ -89,6 +91,8 @@ export function EditorDialogs({
 	projectError,
 	projectErrorSource,
 	projectErrorRecordingSource,
+	onLocateRecording,
+	locatingRecording,
 	onDashboardSignIn,
 	onDeleteProjects,
 	onRenameProject,
@@ -221,6 +225,8 @@ export function EditorDialogs({
 				error={projectError}
 				errorSource={projectErrorSource}
 				errorRecordingSource={projectErrorRecordingSource}
+				onLocateRecording={onLocateRecording}
+				locatingRecording={locatingRecording}
 				onSignIn={onDashboardSignIn}
 				onDeleteProjects={onDeleteProjects}
 				onRenameProject={onRenameProject}

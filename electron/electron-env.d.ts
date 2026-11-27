@@ -251,7 +251,6 @@ interface Window {
 		hudOverlayDrag: (phase: "start" | "move" | "end", screenX: number, screenY: number) => void;
 		hudOverlayHide: () => void;
 		hudOverlayClose: () => void;
-		onHudOverlayRestored: (callback: () => void) => () => void;
 		getEditorMode: () => Promise<boolean>;
 		onEditorModeChanged: (callback: (inEditor: boolean) => void) => () => void;
 		hudOverlayRendererReady: () => void;
@@ -796,6 +795,7 @@ interface Window {
 			path?: string;
 			message?: string;
 			captionSidecarFailed?: boolean;
+			error?: string;
 			canceled?: boolean;
 		}>;
 		writeExportedVideoToPath: (
@@ -1101,6 +1101,7 @@ interface Window {
 		listProjectFiles: () => Promise<{
 			success: boolean;
 			projectsDir?: string | null;
+			warning?: string;
 			entries: Array<{
 				path: string;
 				name: string;
@@ -1315,7 +1316,9 @@ interface Window {
 		appendExportDiagnostic: (entry: string) => Promise<{ success: boolean }>;
 		getExportDiagnostics: () => Promise<{ success: boolean; logs: string[] }>;
 		appendAppDiagnostics: (entries: string[]) => Promise<{ success: boolean }>;
-		recordOperationDiagnostic: (event: import("../src/shared/operationDiagnostics").OperationEvent) => void;
+		recordOperationDiagnostic: (
+			event: import("../src/shared/operationDiagnostics").OperationEvent,
+		) => void;
 		getAppDiagnostics: () => Promise<{
 			success: boolean;
 			logs: string[];

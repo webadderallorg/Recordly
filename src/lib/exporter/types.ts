@@ -1,4 +1,9 @@
-export interface ExportConfig {
+export interface ExportDiagnosticCallbacks {
+	onStage?: (stage: string, frame?: number) => void;
+	onDiagnostic?: (event: string, details: Record<string, unknown>) => void;
+}
+
+export interface ExportConfig extends ExportDiagnosticCallbacks {
 	/** Cloud delivery uses smaller encoding budgets; local exports omit this. */
 	deliveryProfile?: "cloud";
 	width: number;

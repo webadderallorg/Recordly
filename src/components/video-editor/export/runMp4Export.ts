@@ -104,6 +104,7 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 	});
 	const sharing = options?.destination === "share";
 	const plan = billingRef.current;
+	diagnostics.stage("validate-output-dimensions");
 	const supportedSourceDimensions = await ensureSupportedMp4SourceDimensions(
 		selectedMp4FrameRate,
 		sharing ? "source" : quality,
@@ -159,6 +160,9 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 		maxEncodeQueue: smokeExportConfig.maxEncodeQueue,
 		maxDecodeQueue: smokeExportConfig.maxDecodeQueue,
 		maxPendingFrames: smokeExportConfig.maxPendingFrames,
+		onStage: diagnostics.stage,
+		onDiagnostic: diagnostics.record,
+		onBackendAttempt: diagnostics.backend,
 		...buildExportRenderOptions({
 			appearance,
 			timeline,
@@ -204,8 +208,13 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 		setActiveExporter: (exporter) => {
 			exporterRef.current = exporter;
 		},
+		onAttemptStart: diagnostics.beginAttempt,
 		onAttemptResult: (route, attemptResult) => {
-			diagnostics.record("pipeline-attempt", { route, success: attemptResult.success });
+			diagnostics.record("pipeline-attempt", {
+				route,
+				success: attemptResult.success,
+				failureStage: attemptResult.failureStage,
+			});
 			diagnostics.result(attemptResult);
 		},
 		onRecovery: (attempt) => {
@@ -224,6 +233,9 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 		success: result.success,
 	});
 	if (exportWasCancelled()) return { exit: true };
+	if (result.success && !result.blob && !result.tempFilePath) {
+		diagnostics.record("exception", { error: "Exporter succeeded without an output file" });
+	}
 	const smokeExportElapsedMs =
 		smokeExportStartedAt !== null
 			? Math.round(performance.now() - smokeExportStartedAt)
@@ -232,9 +244,10 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 	if (result.success && (result.blob || result.tempFilePath)) {
 		const fileName = getExportFileName(input.projectName, "mp4");
 		if (options?.destination === "share") {
+			diagnostics.stage("prepare-share-file");
 			if (result.tempFilePath) return { exit: true, path: result.tempFilePath };
 			if (result.blob) {
-				const tempPath = await streamExportBlobToTempFile(result.blob, "mp4");
+				const tempPath = await streamExportBlobToTempFile(result.blob, "mp4", diagnostics);
 				if (tempPath) return { exit: true, path: tempPath };
 			}
 			throw new Error(
@@ -251,12 +264,14 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 				? captionSidecarPayload
 				: undefined;
 		diagnostics.record("saving");
+		diagnostics.stage(result.tempFilePath ? "finalize-output-file" : "write-output-file");
 		markExportAsSaving();
 
 		let saveResult: {
 			success: boolean;
 			path?: string;
 			message?: string;
+			error?: string;
 			canceled?: boolean;
 			captionSidecarFailed?: boolean;
 		};
@@ -297,6 +312,7 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 				fileName,
 				smokeExportConfig.enabled ? smokeExportConfig.outputPath : null,
 				sidecarForThisExport,
+				diagnostics,
 			);
 			if (exportWasCancelled()) {
 				await discardCancelledTemp(blobSave.pendingSave);
@@ -342,7 +358,7 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 				),
 			);
 		} else if (saveResult.success && saveResult.path) {
-			diagnostics.record("saved");
+			diagnostics.record("saved", { captionSidecarFailed: saveResult.captionSidecarFailed });
 			if (smokeExportConfig.enabled) {
 				await writeSmokeExportReport(smokeExportConfig.outputPath, {
 					success: true,
@@ -392,6 +408,7 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 			}
 			diagnostics.record("save-failed", {
 				error:
+					saveResult.error ||
 					saveResult.message ||
 					translate("notifications.saveVideoFailed", "Failed to save video"),
 			});

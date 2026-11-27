@@ -76,6 +76,7 @@ export async function exportMp4WithRecovery(options: {
 	config: VideoExporterConfig;
 	isCancelled: () => boolean;
 	setActiveExporter: (exporter: Mp4Exporter) => void;
+	onAttemptStart?: (route: Mp4ExportRoute) => void;
 	onAttemptResult?: (route: Mp4ExportRoute, result: ExportResult) => void;
 	onRecovery?: (recovery: Mp4RecoveryAttempt) => void;
 	discardTempFile?: (path: string) => Promise<void>;
@@ -92,6 +93,7 @@ export async function exportMp4WithRecovery(options: {
 	};
 	const attempt = async (route: Mp4ExportRoute, config: VideoExporterConfig) => {
 		if (options.isCancelled()) return cancelled();
+		options.onAttemptStart?.(route);
 		const exporter = await create(route, config);
 		if (options.isCancelled()) {
 			exporter.cancel();

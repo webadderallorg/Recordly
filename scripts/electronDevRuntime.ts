@@ -1,6 +1,20 @@
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
+
+export function getElectronDevArgs(): string[] {
+	const args = [".", "--no-sandbox"];
+	if (process.platform === "darwin" && Number.parseInt(os.release(), 10) >= 27) {
+		// macOS registers Chromium's camera utility as a foreground app, even
+		// when it just enumerates devices. In-process capture uses shared memory.
+		args.push(
+			"--enable-features=RunVideoCaptureServiceInBrowserProcess",
+			"--disable-video-capture-use-gpu-memory-buffer",
+		);
+	}
+	return args;
+}
 
 /** Restore the launch metadata changed by earlier Recordly dev runs. */
 export function prepareElectronDevRuntime(projectRoot: string): void {

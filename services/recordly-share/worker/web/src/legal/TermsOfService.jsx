@@ -68,15 +68,15 @@ export default function TermsOfService() {
 				Cloud recordings have no scheduled expiry while Plus is active. A verified upgrade
 				also protects eligible recordings still stored at the time of upgrade. When Plus
 				ends, those recordings expire after a seven-day grace period. Save a copy or renew
-				before that deadline. Upgrading cannot recover deleted files. New uploads after
-				Plus ends follow the Free limits; stored recordings continue to count toward
-				applicable limits.
+				before that deadline. Upgrading cannot recover deleted files. New uploads after Plus
+				ends follow the Free limits; stored recordings continue to count toward applicable
+				limits.
 			</p>
 			<p>
 				“No expiry” applies only while Plus is active. Cloud recordings expire seven days
-				after Plus ends. It does not prevent deletion you request, lawful removal or
-				removal necessary to address serious abuse. It is not a guarantee of uninterrupted
-				service or a separate disaster-recovery copy.
+				after Plus ends. It does not prevent deletion you request, lawful removal or removal
+				necessary to address serious abuse. It is not a guarantee of uninterrupted service
+				or a separate disaster-recovery copy.
 			</p>
 			<h2>6. Prices, renewals and cancellation</h2>
 			<p>
@@ -100,6 +100,13 @@ export default function TermsOfService() {
 				Free and Cloud rules above.
 			</p>
 			<h2>7. Acceptable use</h2>
+			<p>
+				You are responsible for the content you upload, store or share, including its
+				legality and any rights, permissions and consents you need. Recordly provides
+				hosting and sharing tools. Any review of an individual recording is limited to the
+				circumstances described in our <a href="/privacy">privacy policy</a>. Our
+				obligations under applicable law continue to apply.
+			</p>
 			<p>
 				Do not use the service for unlawful content, child sexual abuse material, threats,
 				harassment, infringement, non-consensual intimate material, malware or disclosure of

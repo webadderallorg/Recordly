@@ -47,6 +47,7 @@ export function useExportUpgradePrompt() {
 	useEffect(() => cancelExportUpgradePrompt, [cancelExportUpgradePrompt]);
 
 	const scheduleExportUpgradePrompt = useCallback(() => {
+		if (import.meta.env.DEV) return;
 		cancelExportUpgradePrompt();
 		timer.current = window.setTimeout(() => {
 			timer.current = undefined;

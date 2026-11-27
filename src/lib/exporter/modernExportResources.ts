@@ -76,6 +76,7 @@ export class ModernBrowserResources {
 	}
 	cancel(): void {
 		this.streamingDecoder?.cancel();
+		this.renderer?.cancelPendingMedia();
 		this.audioProcessor?.cancel();
 	}
 }

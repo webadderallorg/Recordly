@@ -1,8 +1,13 @@
 import { type Dispatch, type SetStateAction, useCallback, useMemo, useState } from "react";
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
-import { type EditorPresetSnapshot, loadEditorPresets } from "../editorPreferences";
+import {
+	type EditorPresetSnapshot,
+	getDefaultEditorPresetSnapshot,
+	loadEditorPresets,
+} from "../editorPreferences";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
+import type { CaptureSourceKind } from "../types";
 import { useEditorPresets } from "./useEditorPresets";
 
 type Input = {
@@ -11,6 +16,7 @@ type Input = {
 	timeline: ReturnType<typeof useTimelineState>;
 	aspectRatio: AspectRatio;
 	setAspectRatio: Dispatch<SetStateAction<AspectRatio>>;
+	captureSourceKind: CaptureSourceKind | null;
 };
 
 export function useVideoEditorPresets({
@@ -19,11 +25,14 @@ export function useVideoEditorPresets({
 	timeline,
 	aspectRatio,
 	setAspectRatio,
+	captureSourceKind,
 }: Input) {
 	const [editorPresets, setEditorPresets] = useState(() => loadEditorPresets());
-	const [activeEditorPresetId, setActiveEditorPresetId] = useState<string | null>(null);
-	const [presetPopoverOpen, setPresetPopoverOpen] = useState(false);
-	const [presetNameDraft, setPresetNameDraft] = useState("");
+	const { defaultWallpaper } = appearance;
+	const defaultSnapshot = useMemo(
+		() => getDefaultEditorPresetSnapshot(captureSourceKind, defaultWallpaper),
+		[captureSourceKind, defaultWallpaper],
+	);
 
 	const currentSnapshot = useMemo<EditorPresetSnapshot>(
 		() => ({
@@ -80,8 +89,9 @@ export function useVideoEditorPresets({
 	);
 
 	const applySnapshot = useCallback(
-		(snapshot: EditorPresetSnapshot) => {
-			appearance.setWallpaper(snapshot.wallpaper);
+		(snapshot: EditorPresetSnapshot, options?: { useDefaultWallpaper: boolean }) => {
+			if (options?.useDefaultWallpaper) appearance.resetWallpaper();
+			else appearance.setWallpaper(snapshot.wallpaper);
 			appearance.setShadowIntensity(snapshot.shadowIntensity);
 			appearance.setBackgroundBlur(snapshot.backgroundBlur);
 			appearance.setZoomMotionBlur(snapshot.zoomMotionBlur);
@@ -120,12 +130,15 @@ export function useVideoEditorPresets({
 			appearance.setBorderRadius(snapshot.borderRadius);
 			appearance.setPadding({ ...snapshot.padding });
 			appearance.setCropRegion({ ...snapshot.cropRegion });
-			appearance.setWebcam((current) => ({
-				...snapshot.webcam,
-				sourcePath: current.sourcePath,
-				visibleRanges: current.visibleRanges,
-				loop: current.loop,
-			}));
+			const webcam = snapshot.webcam;
+			if (webcam) {
+				appearance.setWebcam((current) => ({
+					...webcam,
+					sourcePath: current.sourcePath,
+					visibleRanges: current.visibleRanges,
+					loop: current.loop,
+				}));
+			}
 			setAspectRatio(snapshot.aspectRatio);
 			timeline.setAutoCaptionSettings({ ...snapshot.autoCaptionSettings });
 		},
@@ -135,22 +148,13 @@ export function useVideoEditorPresets({
 	const actions = useEditorPresets({
 		t,
 		currentSnapshot,
+		defaultSnapshot,
 		applySnapshot,
 		editorPresets,
 		setEditorPresets,
-		activePresetId: activeEditorPresetId,
-		setActivePresetId: setActiveEditorPresetId,
-		presetPopoverOpen,
-		presetNameDraft,
-		setPresetNameDraft,
 	});
 	return {
 		editorPresets,
-		activeEditorPresetId,
-		presetPopoverOpen,
-		setPresetPopoverOpen,
-		presetNameDraft,
-		setPresetNameDraft,
 		...actions,
 	};
 }

@@ -69,6 +69,8 @@ export function CloudShareButton(props: Props & { inlineContainer?: HTMLElement 
 	const recordingLimit = t("editor.cloud.recordingLimit", RECORDING_LIMIT_MESSAGE);
 	const billing = useOptionalBilling();
 	const shareUsage = authToken && billing ? getFreeShareUsage(billing) : null;
+	const currentCapacityError =
+		capacityIdentity === currentCapacityIdentity ? capacityError : undefined;
 	// A full free allowance offers Pro instead of a dead-end disabled button.
 	const atShareLimit = verifiedCapacity === false;
 	const shareLabel = shareUsage
@@ -199,12 +201,11 @@ export function CloudShareButton(props: Props & { inlineContainer?: HTMLElement 
 			</div>
 			{authToken && !checkingCapacity && verifiedCapacity === null && !error && (
 				<p className="text-xs text-muted-foreground">
-					{capacityIdentity === currentCapacityIdentity && capacityError
-						? capacityError
-						: t(
-								"editor.cloud.checkStorageFailed",
-								"Could not check cloud storage. Try again.",
-							)}{" "}
+					{currentCapacityError ??
+						t(
+							"editor.cloud.checkStorageFailed",
+							"Could not check cloud storage. Try again.",
+						)}{" "}
 					<button
 						type="button"
 						className="underline"
@@ -220,6 +221,12 @@ export function CloudShareButton(props: Props & { inlineContainer?: HTMLElement 
 							? t("editor.cloud.checkSignIn", "Check sign-in")
 							: t("common.actions.retry", "Try again")}
 					</button>
+					{currentCapacityError && (
+						<ErrorReportButton
+							error={currentCapacityError}
+							context="cloud-share-capacity"
+						/>
+					)}
 				</p>
 			)}
 			{error || verifiedCapacity === false ? (
@@ -250,9 +257,7 @@ export function CloudShareButton(props: Props & { inlineContainer?: HTMLElement 
 						Boolean(authToken) &&
 						!(atShareLimit && billing) &&
 						// Pending checks do not block the action; handleUpload verifies before export.
-						(verifiedCapacity === false ||
-							(capacityIdentity === currentCapacityIdentity &&
-								Boolean(capacityError)))
+						(verifiedCapacity === false || Boolean(currentCapacityError))
 					}
 					onClick={() => {
 						if (!authToken && onRequestSignIn) onRequestSignIn();

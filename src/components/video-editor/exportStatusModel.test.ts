@@ -23,7 +23,6 @@ describe("resolveExportStatusModel", () => {
 
 		expect(status.isExportPreparing).toBe(true);
 		expect(status.isLightningExportInProgress).toBe(true);
-		expect(status.shouldSuspendPreviewRendering).toBe(true);
 		expect(status.renderSpeedFps).toBeNull();
 		expect(status.exportDisplayProgress).toBe(0);
 	});
@@ -77,7 +76,6 @@ describe("resolveExportStatusModel", () => {
 
 		expect(status.isLegacyExportInProgress).toBe(true);
 		expect(status.isLightningExportInProgress).toBe(false);
-		expect(status.shouldSuspendPreviewRendering).toBe(false);
 	});
 
 	it("derives finalizing progress from render progress and clamps the display value", () => {

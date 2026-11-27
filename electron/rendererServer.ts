@@ -96,6 +96,9 @@ async function servePackagedRendererRequest(
 
 		response.writeHead(200, {
 			"X-Content-Type-Options": "nosniff",
+			...(path.extname(filePath) === ".html" && {
+				"Content-Security-Policy": "frame-ancestors 'none'",
+			}),
 			"Cache-Control": getCacheControl(filePath),
 			"Content-Type": getContentType(filePath),
 		});

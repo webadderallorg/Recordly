@@ -4,17 +4,21 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
-import { prepareElectronDevRuntime } from "../scripts/electronDevRuntime";
+import { getElectronDevArgs, prepareElectronDevRuntime } from "../scripts/electronDevRuntime";
 import { getGpuSwitches } from "./gpuSwitches";
 
-it.skipIf(process.platform !== "darwin")(
-	"launches normally with working microphone and out-of-process camera capture on macOS",
-	() => {
+it.skipIf(process.platform !== "darwin").each(["standard", "development"] as const)(
+	"captures microphone and camera on macOS with the %s launcher",
+	(launcher) => {
 		const directory = mkdtempSync(path.join(tmpdir(), "recordly-media-policy-"));
 		try {
 			const require = createRequire(import.meta.url);
 			const electron = require("electron") as string;
 			prepareElectronDevRuntime(process.cwd());
+			const args = launcher === "development" ? getElectronDevArgs().slice(1) : [];
+			const inProcessCamera = args.includes(
+				"--enable-features=RunVideoCaptureServiceInBrowserProcess",
+			);
 			const { useAngle, disableFeatures } = getGpuSwitches("darwin", {});
 			writeFileSync(
 				path.join(directory, "index.html"),
@@ -61,7 +65,10 @@ app.whenReady().then(async () => {
 });
 `,
 			);
-			const result = spawnSync(electron, [script], { encoding: "utf8", timeout: 20_000 });
+			const result = spawnSync(electron, [script, ...args], {
+				encoding: "utf8",
+				timeout: 20_000,
+			});
 			expect(result.status, result.stderr).toBe(0);
 			const line = result.stdout.split("\n").find((value) => value.startsWith("RESULT:"));
 			expect(line).toBeDefined();
@@ -74,12 +81,12 @@ app.whenReady().then(async () => {
 				observed.helpers.some(
 					(helper: { name: string }) => helper.name === "Video Capture",
 				),
-			).toBe(true);
+			).toBe(!inProcessCamera);
 			// The standard video capture worker can register a Dock icon on macOS 27.
 			expect(
 				observed.helpers.every(
 					(helper: { name: string; foreground: boolean }) =>
-						helper.name === "Video Capture" || !helper.foreground,
+						(!inProcessCamera && helper.name === "Video Capture") || !helper.foreground,
 				),
 			).toBe(true);
 		} finally {

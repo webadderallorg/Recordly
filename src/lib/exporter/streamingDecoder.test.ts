@@ -485,16 +485,20 @@ describe("StreamingVideoDecoder decode failures", () => {
 		expect(decoder.getEffectiveDuration(undefined, undefined, clips)).toBe(1.2);
 	});
 	it.each([
-		false,
-		true,
-	])("stops each short clip run before decoding the source tail (reordered: %s)", async (reordered) => {
+		{ reordered: false, stuck: false },
+		{ reordered: true, stuck: false },
+		{ reordered: false, stuck: true },
+	])("stops short clips before the source tail (reordered: $reordered, cancellation stuck: $stuck)", async ({
+		reordered,
+		stuck,
+	}) => {
 		const info = await mockDemuxerGetMediaInfo();
 		mockDemuxerGetMediaInfo.mockResolvedValueOnce({
 			...info,
 			duration: 100,
 			streams: info.streams.map((stream) => ({ ...stream, duration: 100 })),
 		});
-		const readerCancelled = vi.fn();
+		const readerCancelled = vi.fn(() => (stuck ? new Promise<void>(() => {}) : undefined));
 		mockDemuxerRead.mockImplementation(() => {
 			let index = 0;
 			return new ReadableStream({
@@ -565,6 +569,7 @@ describe("StreamingVideoDecoder decode failures", () => {
 		}
 		expect(decoded).toBeLessThan(120);
 		expect(readerCancelled).toHaveBeenCalledTimes(reordered ? 2 : 1);
+		if (stuck) expect(mockDemuxerDestroy).toHaveBeenCalledOnce();
 		for (const close of closes) expect(close).toHaveBeenCalledTimes(1);
 	});
 
@@ -710,8 +715,11 @@ describe("StreamingVideoDecoder decode failures", () => {
 		}
 	});
 
-	it("reports and cleans up a decoder that never emits a frame or reports an error", async () => {
-		const readerCancelled = vi.fn();
+	it.each([
+		false,
+		true,
+	])("reports a missing first frame even if reader cancellation hangs (%s)", async (stuck) => {
+		const readerCancelled = vi.fn(() => (stuck ? new Promise<void>(() => {}) : undefined));
 		mockDemuxerRead.mockImplementation(
 			() =>
 				new ReadableStream({
@@ -744,9 +752,14 @@ describe("StreamingVideoDecoder decode failures", () => {
 			failure = error;
 		});
 		try {
-			await vi.advanceTimersByTimeAsync(29_999);
+			await vi.advanceTimersByTimeAsync(7_999);
 			expect(failure).toBeUndefined();
 			await vi.advanceTimersByTimeAsync(1);
+			if (stuck) {
+				expect(failure).toBeUndefined();
+				await vi.advanceTimersByTimeAsync(1000);
+				expect(mockDemuxerDestroy).toHaveBeenCalledOnce();
+			}
 			expect(failure).toMatchObject({
 				message: expect.stringContaining("Timed out waiting for a decoded video frame"),
 				cause: expect.objectContaining({ name: "TimeoutError" }),
@@ -757,6 +770,29 @@ describe("StreamingVideoDecoder decode failures", () => {
 		} finally {
 			decoder.cancel();
 			await completion;
+			vi.useRealTimers();
+		}
+	});
+
+	it.each([
+		false,
+		true,
+	])("ends a stuck decoder configuration request (cancelled: %s)", async (cancelled) => {
+		vi.useFakeTimers();
+		try {
+			mockDemuxerGetDecoderConfig.mockImplementationOnce(() => new Promise(() => {}));
+			const decoder = new StreamingVideoDecoder();
+			await decoder.loadMetadata("/tmp/stalled.mp4");
+			const completion = decoder.decodeAll(30, undefined, undefined, vi.fn());
+			const checked = cancelled
+				? expect(completion).resolves.toBeUndefined()
+				: expect(completion).rejects.toMatchObject({ name: "TimeoutError" });
+			if (cancelled) decoder.cancel();
+			else await vi.advanceTimersByTimeAsync(10_000);
+			await checked;
+			expect(mockDemuxerDestroy).toHaveBeenCalledOnce();
+			expect(mockDemuxerRead).not.toHaveBeenCalled();
+		} finally {
 			vi.useRealTimers();
 		}
 	});
@@ -1221,6 +1257,8 @@ describe("StreamingVideoDecoder local media loading", () => {
 		});
 	});
 
+	afterEach(() => vi.useRealTimers());
+
 	it("loads loopback media-server URLs directly into WebDemuxer", async () => {
 		const decoder = new StreamingVideoDecoder();
 		await decoder.loadMetadata("http://127.0.0.1:43123/video?path=%2Ftmp%2Fcapture.mp4");
@@ -1266,6 +1304,53 @@ describe("StreamingVideoDecoder local media loading", () => {
 			"http://127.0.0.1:4321/video?path=%2Ftmp%2Fretry.mp4",
 		);
 		expect(window.electronAPI.readLocalFile).not.toHaveBeenCalled();
+	});
+
+	it("terminates a stuck worker and retries metadata on a fresh one", async () => {
+		vi.useFakeTimers();
+		mockDemuxerLoad.mockImplementationOnce(() => new Promise(() => {}));
+		const decoder = new StreamingVideoDecoder();
+		const metadata = decoder.loadMetadata("/tmp/stalled.mp4");
+
+		await vi.advanceTimersByTimeAsync(8_000);
+		await expect(metadata).resolves.toMatchObject({ duration: 4 });
+		expect(mockDemuxerDestroy).toHaveBeenCalledOnce();
+		expect(mockDemuxerLoad).toHaveBeenCalledTimes(2);
+		decoder.destroy();
+	});
+
+	it("reports a timeout when neither worker returns source metadata", async () => {
+		vi.useFakeTimers();
+		mockDemuxerGetMediaInfo
+			.mockImplementationOnce(() => new Promise(() => {}))
+			.mockImplementationOnce(() => new Promise(() => {}));
+		const decoder = new StreamingVideoDecoder();
+		const rejected = expect(decoder.loadMetadata("/tmp/stalled.mp4")).rejects.toMatchObject({
+			name: "TimeoutError",
+			message: "Reading video metadata timed out",
+		});
+
+		await vi.advanceTimersByTimeAsync(16_000);
+		await rejected;
+		expect(mockDemuxerDestroy).toHaveBeenCalledTimes(2);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("cancels a pending metadata request without starting a retry", async () => {
+		vi.useFakeTimers();
+		mockDemuxerGetMediaInfo.mockImplementationOnce(() => new Promise(() => {}));
+		const decoder = new StreamingVideoDecoder();
+		const rejected = expect(decoder.loadMetadata("/tmp/stalled.mp4")).rejects.toMatchObject({
+			name: "AbortError",
+		});
+
+		await vi.advanceTimersByTimeAsync(0);
+		expect(mockDemuxerGetMediaInfo).toHaveBeenCalledOnce();
+		decoder.cancel();
+		await rejected;
+		expect(mockDemuxerLoad).toHaveBeenCalledOnce();
+		expect(mockDemuxerDestroy).toHaveBeenCalledOnce();
+		expect(vi.getTimerCount()).toBe(0);
 	});
 });
 

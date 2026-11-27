@@ -100,6 +100,14 @@ export function registerDesktopPresenceWindow(
 	win.on("ready-to-show", () => applyWindow(win, taskbarEligible));
 	win.once("closed", () => primaryWindows.delete(win));
 	if (controlsRecording) {
+		if (process.platform === "win32") {
+			// Hiding the HUD removes its taskbar entry. Update the tray as it comes and goes.
+			win.on("hide", refreshEntryPoints);
+			win.on("show", refreshEntryPoints);
+			win.once("closed", () => {
+				if (!quitting) refreshEntryPoints();
+			});
+		}
 		const restoreAfterLoss = () => {
 			if (recording && !quitting) onRecordingOwnerLost();
 		};

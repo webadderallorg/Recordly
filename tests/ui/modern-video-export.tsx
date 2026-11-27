@@ -19,6 +19,8 @@ import {
 	resolveSupportedMp4EncoderPath,
 } from "@/lib/exporter/mp4Support";
 import type { ExportProgress, ExportResult } from "@/lib/exporter/types";
+import { collectFeedbackDiagnostics } from "@/lib/feedback/diagnostics";
+import { createExportDiagnostics, getExportDiagnosticLogs } from "@/lib/feedback/exportDiagnostics";
 
 async function inspectMp4(blob: Blob) {
 	const input = new Input({ source: new BlobSource(blob), formats: [MP4] });
@@ -298,8 +300,14 @@ async function exportVideo(scenario: ExportScenario) {
 		throw new Error(
 			"[H264_UNAVAILABLE] This browser has no H.264 encoder for 320 × 180 at 15 FPS",
 		);
-	const videoUrl = new URL("./fixtures/filmstrip.mp4", import.meta.url).href;
-	const response = await fetch(videoUrl);
+	const fixtureUrl = new URL("./fixtures/filmstrip.mp4", import.meta.url).href;
+	const params = new URLSearchParams(location.search);
+	const localMedia = params.has("local-media");
+	const stallWallpaper = params.has("stall-wallpaper");
+	const videoUrl = localMedia
+		? new URL("/video?path=/fixtures/filmstrip.mp4", location.origin).href
+		: fixtureUrl;
+	const response = await fetch(fixtureUrl);
 	if (!response.ok) throw new Error(`Filmstrip fixture could not load: ${response.status}`);
 	const source = await inspectMp4(await response.blob());
 	const progress: ExportProgress[] = [];
@@ -339,6 +347,10 @@ async function exportVideo(scenario: ExportScenario) {
 			: hasBlur
 				? edgeBlurSettings()
 				: { zoomRegions: [] };
+	const diagnostics =
+		localMedia || stallWallpaper
+			? createExportDiagnostics({ format: "mp4" }, "download")
+			: undefined;
 	const config: VideoExporterConfig = {
 		...size,
 		videoUrl,
@@ -346,7 +358,9 @@ async function exportVideo(scenario: ExportScenario) {
 		backendPreference: "webcodecs",
 		preferredEncoderPath: path,
 		encodingMode: "balanced",
-		wallpaper: "#101010",
+		wallpaper: stallWallpaper
+			? new URL("/tests/ui/unresponsive-wallpaper.png", location.origin).href
+			: "#101010",
 		...effects,
 		// At full 1.5× zoom the blur sampling regions intersect the right edge by
 		// 0.25px and the bottom edge by 0.5px. Integer canvas sizing must retain them.
@@ -360,7 +374,13 @@ async function exportVideo(scenario: ExportScenario) {
 		borderRadius: 0,
 		cropRegion: { x: 0, y: 0, width: 1, height: 1 },
 		showCursor: false,
-		onProgress: (update) => progress.push(update),
+		onProgress: (update) => {
+			progress.push(update);
+			diagnostics?.progress(update);
+		},
+		onStage: diagnostics?.stage,
+		onDiagnostic: diagnostics?.record,
+		onBackendAttempt: diagnostics?.backend,
 	};
 	if (scenario === "encoder-recovery") return exportWithSoftwareRecovery(config);
 	const factorySettings: Array<{
@@ -435,7 +455,10 @@ async function exportVideo(scenario: ExportScenario) {
 			return { scenario, cancelled: true, result, attempts, factorySettings, recovery };
 		}
 	} else {
+		diagnostics?.beginAttempt("modern");
 		result = await new ModernVideoExporter(config).export();
+		diagnostics?.result(result);
+		diagnostics?.complete(false);
 	}
 	if (!result.success || !result.blob)
 		throw new Error(result.error || "The real exporter did not return an MP4 Blob");
@@ -461,6 +484,12 @@ async function exportVideo(scenario: ExportScenario) {
 					: clipSampleTimes,
 		),
 		metrics: result.metrics,
+		readerDiagnostics: (await getExportDiagnosticLogs()).filter((log) =>
+			log.includes("video-reader-"),
+		),
+		exportSummary: diagnostics
+			? JSON.parse(await collectFeedbackDiagnostics()).recentExports[0]
+			: undefined,
 		progress,
 	};
 }

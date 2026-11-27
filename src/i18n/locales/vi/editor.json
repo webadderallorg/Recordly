@@ -273,10 +273,11 @@
 	"presets": {
 		"open": "Mở danh sách mẫu",
 		"label": "Mẫu có sẵn",
-		"saveCurrentAs": "Lưu thiết lập hiện tại thành mẫu",
+		"saveCurrentAs": "Lưu thành mẫu",
+		"edit": "Sửa",
 		"namePlaceholder": "Tên mẫu",
 		"savedList": "Mẫu đã lưu",
-		"empty": "Chưa có mẫu nào.",
+		"default": "Mặc định",
 		"deleteAriaLabel": "Xóa mẫu {{name}}",
 		"toasts": {
 			"applied": "Đã áp dụng mẫu “{{name}}”",

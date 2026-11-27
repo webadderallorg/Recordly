@@ -67,8 +67,8 @@ test("4K and QHD exports are available without a Plus subscription", async ({ pa
 		exact: true,
 	});
 	await expect(personalUse).toHaveCount(0);
-	await expect(page.getByRole("button", { name: "Upgrade", exact: true })).toBeVisible();
-	await expect(page.getByText("Upgrade for commercial use", { exact: true })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Upgrade", exact: true })).toHaveCount(0);
+	await expect(page.getByText("Upgrade for commercial use", { exact: true })).toHaveCount(0);
 	await page.screenshot({
 		path: test.info().outputPath("personal-use-export.png"),
 		animations: "disabled",
@@ -113,9 +113,7 @@ test("custom exports above QHD are available without a Plus subscription", async
 	await expect(page.getByTestId("export-result")).toHaveText("3840 × 2160");
 });
 
-test("download and sharing honor the visible FPS and active encoding mode", async ({
-	page,
-}) => {
+test("download and sharing honor the visible FPS and active encoding mode", async ({ page }) => {
 	await page.goto("/tests/ui/export-resolution-presets.html");
 	await expect(page.getByRole("grid", { name: "Resolution", exact: true })).toBeVisible();
 	await expect(page.getByRole("row", { name: "Balanced", exact: true })).toHaveCount(0);

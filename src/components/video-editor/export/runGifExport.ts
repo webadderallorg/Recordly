@@ -43,6 +43,7 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 	} = exportSession;
 
 	// GIF Export
+	diagnostics.beginAttempt("gif");
 	const { GifExporter } = await import("@/lib/exporter/gifExporter");
 	if (exportWasCancelled()) return { exit: true };
 	const gifExporter = new GifExporter({
@@ -52,6 +53,8 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 		frameRate: settings.gifConfig.frameRate,
 		loop: settings.gifConfig.loop,
 		sizePreset: settings.gifConfig.sizePreset,
+		onStage: diagnostics.stage,
+		onDiagnostic: diagnostics.record,
 		...buildExportRenderOptions({
 			appearance,
 			timeline,
@@ -82,6 +85,7 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 	if (result.success && result.blob) {
 		let exportBlob = result.blob;
 		if (settings.gifConfig.optimizeSize) {
+			diagnostics.stage("optimize-gif");
 			const controller = new AbortController();
 			exporterRef.current = { cancel: () => controller.abort() };
 			setExportProgress({
@@ -111,7 +115,8 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 			phase: "saving",
 		}));
 		if (options?.destination === "share") {
-			const tempPath = await streamExportBlobToTempFile(exportBlob, "gif");
+			diagnostics.stage("prepare-share-file");
+			const tempPath = await streamExportBlobToTempFile(exportBlob, "gif", diagnostics);
 			if (!tempPath)
 				throw new Error(
 					translate(
@@ -122,11 +127,14 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 			return { exit: true, path: tempPath };
 		}
 		diagnostics.record("saving");
+		diagnostics.stage("write-output-file");
 
 		const { saveResult, pendingSave } = await saveExportBlob(
 			exportBlob,
 			fileName,
 			smokeExportConfig.enabled ? smokeExportConfig.outputPath : null,
+			undefined,
+			diagnostics,
 		);
 		if (exportWasCancelled()) {
 			await discardCancelledTemp(pendingSave);
@@ -159,8 +167,9 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 		} else {
 			diagnostics.record("save-failed", {
 				error:
-					translate("notifications.saveGifFailed", "Failed to save GIF") +
-					(saveResult.message ? `: ${saveResult.message}` : ""),
+					saveResult.error ||
+					saveResult.message ||
+					translate("notifications.saveGifFailed", "Failed to save GIF"),
 			});
 			setExportError(
 				translate("notifications.saveGifFailed", "Failed to save GIF") +
@@ -176,6 +185,8 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 			}
 		}
 	} else {
+		if (result.success)
+			diagnostics.record("exception", { error: "GIF exporter succeeded without output" });
 		setExportError(
 			translate("notifications.gifExportFailed", "GIF export failed") +
 				(result.error ? `: ${result.error}` : ""),

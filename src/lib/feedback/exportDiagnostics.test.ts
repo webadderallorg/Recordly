@@ -17,6 +17,166 @@ afterEach(() => {
 });
 
 describe("export support logs", () => {
+	it("redacts prefixed token keys before writing structured export logs", async () => {
+		const { getExportDiagnosticLogs, recordExportDiagnostic } = await import(
+			"./exportDiagnostics"
+		);
+		recordExportDiagnostic("configured", {
+			access_token: "opaque-access-value",
+			nested: { authToken: "opaque-auth-value", width: 1920 },
+		});
+		const [entry] = await getExportDiagnosticLogs();
+		expect(append).toHaveBeenCalledWith(entry);
+		expect(JSON.parse(entry.slice(entry.indexOf("{")))).toEqual({
+			access_token: "[redacted]",
+			nested: { authToken: "[redacted]", width: 1920 },
+		});
+	});
+
+	it("keeps the completed outcome when JSON escaping exhausts the diagnostic budget", async () => {
+		const { createExportDiagnostics, getExportDiagnosticLogs } = await import(
+			"./exportDiagnostics"
+		);
+		const { redactDiagnosticLogEntry } = await import("./diagnosticRedaction");
+		const { summarizeExportDiagnostics } = await import("./exportDiagnosticSummary");
+		const tracker = createExportDiagnostics({ format: "mp4" }, "download");
+		const escaped = '"'.repeat(450);
+		tracker.beginAttempt("modern");
+		tracker.stage("finalize-output-file");
+		tracker.record("video-reader-retry", { reason: escaped });
+		tracker.record("renderer-media-failure", {
+			asset: "webcam",
+			mediaStage: "decode",
+			code: "RENDER_MEDIA_TIMEOUT",
+			reason: escaped,
+		});
+		tracker.record("save-failed", { error: `ENOSPC ${escaped}` });
+		tracker.complete(false);
+
+		const logs = (await getExportDiagnosticLogs()).map(redactDiagnosticLogEntry);
+		expect(logs.find((line) => line.includes("[export] complete"))?.length).toBeLessThan(2000);
+		expect(summarizeExportDiagnostics(logs, [])).toEqual([
+			expect.objectContaining({
+				status: "failed",
+				stage: "finalize-output-file",
+				code: "ENOSPC",
+			}),
+		]);
+	});
+	it("keeps the final cause and last retry in the report after older checkpoints rotate out", async () => {
+		const { createExportDiagnostics, getExportDiagnosticLogs, recordExportDiagnostic } =
+			await import("./exportDiagnostics");
+		const tracker = createExportDiagnostics({ format: "mp4" }, "download");
+		tracker.beginAttempt("modern");
+		tracker.record("source-metadata", {
+			width: 3840,
+			height: 2160,
+			duration: 20,
+			codec: "h264",
+		});
+		tracker.record("configured", { width: 1920, height: 1080, frameRate: 30 });
+		tracker.record("video-reader-retry", { reason: "Video reader worker failed" });
+		tracker.record("renderer-media-failure", {
+			asset: "webcam",
+			mediaStage: "decode",
+			code: "RENDER_MEDIA_TIMEOUT",
+			reason: "Timed out waiting for webcam frame",
+		});
+		for (let i = 0; i < 70; i++) recordExportDiagnostic("progress", { currentFrame: i });
+		tracker.stage("finalize-output-file");
+		tracker.record("save-failed", {
+			error: "ENOSPC: no space left on device, rename '/Users/alice/private.mov'",
+		});
+		tracker.complete(false);
+		read.mockResolvedValue({ success: true, logs: await getExportDiagnosticLogs() });
+		vi.resetModules();
+		const { collectFeedbackDiagnostics } = await import("./diagnostics");
+		const report = JSON.parse(await collectFeedbackDiagnostics());
+		expect(report.recentExports).toEqual([
+			expect.objectContaining({
+				status: "failed",
+				stage: "finalize-output-file",
+				route: "modern",
+				code: "ENOSPC",
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				recoveryCount: 1,
+				source: { width: 3840, height: 2160, duration: 20, codec: "h264" },
+				lastRecovery: { route: "video-reader", reason: "Video reader worker failed" },
+				lastMediaFailure: {
+					asset: "webcam",
+					mediaStage: "decode",
+					code: "RENDER_MEDIA_TIMEOUT",
+					reason: "Timed out waiting for webcam frame",
+				},
+			}),
+		]);
+		expect(JSON.stringify(report)).not.toContain("private.mov");
+	});
+
+	it("records the in-flight frame during silence and correlates a renderer crash to that export", async () => {
+		vi.useFakeTimers();
+		Object.assign(window, { setInterval });
+		const { createExportDiagnostics, getExportDiagnosticLogs } = await import(
+			"./exportDiagnostics"
+		);
+		const { summarizeExportDiagnostics } = await import("./exportDiagnosticSummary");
+		const operation = { id: "0123456789abcdef", step: vi.fn(), finish: vi.fn() };
+		const tracker = createExportDiagnostics({ format: "gif" }, "download", operation);
+		tracker.beginAttempt("gif");
+		tracker.stage("render-frame", 150);
+		await vi.advanceTimersByTimeAsync(15_000);
+		const logs = await getExportDiagnosticLogs();
+		expect(summarizeExportDiagnostics(logs, [])).toEqual([
+			expect.objectContaining({
+				status: "no-progress",
+				stage: "render-frame",
+				frame: 150,
+				idleMs: 15_000,
+			}),
+		]);
+		const timestamp = new Date().toISOString();
+		const common = {
+			timestamp,
+			appRunId: "1234567890abcdef",
+			windowId: 9,
+			surface: "editor" as const,
+			sequence: 1,
+		};
+		const [crashed] = summarizeExportDiagnostics(logs, [
+			{
+				...common,
+				name: "export.run",
+				source: "renderer",
+				phase: "start",
+				operationId: operation.id,
+			},
+			{
+				...common,
+				name: "app.renderer-exit",
+				source: "main",
+				phase: "finish",
+				stage: "oom",
+				outcome: "failed",
+				operationId: "234567890abcdef1",
+			},
+		]);
+		expect(crashed).toMatchObject({
+			status: "interrupted",
+			interruption: "oom",
+			stage: "render-frame",
+			frame: 150,
+		});
+		tracker.stage("encode-gif-frame", 150);
+		tracker.complete(true, "user");
+		expect(vi.getTimerCount()).toBe(0);
+		expect(summarizeExportDiagnostics(await getExportDiagnosticLogs(), [])[0]).toMatchObject({
+			status: "cancelled",
+			cancellation: "user",
+		});
+	});
+
 	it("reports the final outcome after recovery and the save dialog", async () => {
 		const { createExportDiagnostics } = await import("./exportDiagnostics");
 		const operation = { id: "example", step: vi.fn(), finish: vi.fn() };

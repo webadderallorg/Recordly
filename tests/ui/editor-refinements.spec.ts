@@ -133,8 +133,7 @@ test("project dashboard fits long names and editor overlays dismiss with current
 	await expect(projects).toBeVisible();
 	await projects.getByRole("button", { name: "Resume Untitled Project", exact: true }).click();
 	await expect(projects).toHaveCount(0);
-	// Preset creation is intentionally unavailable in the current editor header.
-	await expect(page.getByRole("button", { name: "Open presets", exact: true })).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Open presets", exact: true })).toBeVisible();
 	await page.getByRole("button", { name: "Publish", exact: true }).click();
 	await page.getByRole("row", { name: "Save to device", exact: true }).click();
 	await expect(page.getByRole("grid", { name: "Format", exact: true })).toBeVisible();

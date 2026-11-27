@@ -1,8 +1,9 @@
-import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo } from "react";
+import { type Dispatch, type SetStateAction, useCallback, useMemo, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import {
 	type EditorPreset,
 	type EditorPresetSnapshot,
+	normalizeEditorPresetSnapshot,
 	saveEditorPresets,
 	serializeEditorPresetSnapshot,
 } from "../editorPreferences";
@@ -16,56 +17,59 @@ type Translator = (
 interface UseEditorPresetsParams {
 	t: Translator;
 	currentSnapshot: EditorPresetSnapshot;
-	applySnapshot: (snapshot: EditorPresetSnapshot) => void;
+	defaultSnapshot: EditorPresetSnapshot;
+	applySnapshot: (
+		snapshot: EditorPresetSnapshot,
+		options?: { useDefaultWallpaper: boolean },
+	) => void;
 	editorPresets: EditorPreset[];
 	setEditorPresets: Dispatch<SetStateAction<EditorPreset[]>>;
-	activePresetId: string | null;
-	setActivePresetId: Dispatch<SetStateAction<string | null>>;
-	presetPopoverOpen: boolean;
-	presetNameDraft: string;
-	setPresetNameDraft: Dispatch<SetStateAction<string>>;
 }
 
 export function useEditorPresets({
 	t,
 	currentSnapshot,
+	defaultSnapshot,
 	applySnapshot,
 	editorPresets,
 	setEditorPresets,
-	activePresetId,
-	setActivePresetId,
-	presetPopoverOpen,
-	presetNameDraft,
-	setPresetNameDraft,
 }: UseEditorPresetsParams) {
-	const currentSignature = useMemo(
-		() => serializeEditorPresetSnapshot(currentSnapshot),
+	const [activePresetId, setActivePresetId] = useState<string | null>(null);
+	const currentSignatures = useMemo(
+		() => ({
+			withWebcam: serializeEditorPresetSnapshot(currentSnapshot),
+			withoutWebcam: serializeEditorPresetSnapshot({ ...currentSnapshot, webcam: undefined }),
+		}),
 		[currentSnapshot],
 	);
-	const currentEditorPreset = useMemo(
-		() => editorPresets.find((preset) => preset.id === activePresetId) ?? null,
-		[activePresetId, editorPresets],
+	const defaultSignature = useMemo(
+		() => serializeEditorPresetSnapshot(defaultSnapshot),
+		[defaultSnapshot],
 	);
+	const savedSignatures = useMemo(
+		() =>
+			new Map(
+				editorPresets.map(({ id, snapshot }) => [
+					id,
+					serializeEditorPresetSnapshot(snapshot),
+				]),
+			),
+		[editorPresets],
+	);
+	const matchesDefault = currentSignatures.withoutWebcam === defaultSignature;
+	const currentEditorPreset = useMemo(() => {
+		const matches = ({ id, snapshot }: EditorPreset) =>
+			savedSignatures.get(id) ===
+			(snapshot.webcam ? currentSignatures.withWebcam : currentSignatures.withoutWebcam);
+		const selected = editorPresets.find((preset) => preset.id === activePresetId);
+		if (selected && matches(selected)) return selected;
+		return matchesDefault ? null : (editorPresets.find(matches) ?? null);
+	}, [activePresetId, currentSignatures, editorPresets, matchesDefault, savedSignatures]);
 
-	useEffect(() => {
-		if (
-			currentEditorPreset &&
-			serializeEditorPresetSnapshot(currentEditorPreset.snapshot) === currentSignature
-		) {
-			return;
-		}
-
-		const matchingPreset =
-			editorPresets.find(
-				(preset) => serializeEditorPresetSnapshot(preset.snapshot) === currentSignature,
-			) ?? null;
-		const nextActiveId = matchingPreset?.id ?? null;
-		if (nextActiveId !== activePresetId) setActivePresetId(nextActiveId);
-	}, [activePresetId, currentEditorPreset, currentSignature, editorPresets, setActivePresetId]);
-
-	useEffect(() => {
-		if (!presetPopoverOpen) setPresetNameDraft("");
-	}, [presetPopoverOpen, setPresetNameDraft]);
+	const handleApplyDefaultPreset = useCallback(() => {
+		setActivePresetId(null);
+		applySnapshot(defaultSnapshot, { useDefaultWallpaper: true });
+	}, [applySnapshot, defaultSnapshot]);
 
 	const handleApplyEditorPreset = useCallback(
 		(presetId: string) => {
@@ -79,7 +83,7 @@ export function useEditorPresets({
 				}),
 			);
 		},
-		[applySnapshot, editorPresets, setActivePresetId, t],
+		[applySnapshot, editorPresets, t],
 	);
 
 	const handleSaveEditorPreset = useCallback(
@@ -110,7 +114,7 @@ export function useEditorPresets({
 				name: normalizedName,
 				createdAt: timestamp,
 				updatedAt: timestamp,
-				snapshot: currentSnapshot,
+				snapshot: normalizeEditorPresetSnapshot(currentSnapshot),
 			};
 			const nextPresets = [nextPreset, ...editorPresets];
 			if (!saveEditorPresets(nextPresets)) {
@@ -131,13 +135,13 @@ export function useEditorPresets({
 			);
 			return true;
 		},
-		[currentSnapshot, editorPresets, setActivePresetId, setEditorPresets, t],
+		[currentSnapshot, editorPresets, setEditorPresets, t],
 	);
 
 	const handleDeleteEditorPreset = useCallback(
 		(presetId: string) => {
 			const preset = editorPresets.find((item) => item.id === presetId);
-			if (!preset) return;
+			if (!preset) return false;
 			const nextPresets = editorPresets.filter((item) => item.id !== presetId);
 			if (!saveEditorPresets(nextPresets)) {
 				toast.error(
@@ -146,7 +150,7 @@ export function useEditorPresets({
 						"Could not delete that preset. Check your browser storage settings and try again.",
 					),
 				);
-				return;
+				return false;
 			}
 			setEditorPresets(nextPresets);
 			if (preset.id === activePresetId) setActivePresetId(null);
@@ -155,18 +159,17 @@ export function useEditorPresets({
 					name: preset.name,
 				}),
 			);
+			return true;
 		},
-		[activePresetId, editorPresets, setActivePresetId, setEditorPresets, t],
+		[activePresetId, editorPresets, setEditorPresets, t],
 	);
-
-	const handleSavePresetSubmit = useCallback(() => {
-		if (handleSaveEditorPreset(presetNameDraft)) setPresetNameDraft("");
-	}, [handleSaveEditorPreset, presetNameDraft, setPresetNameDraft]);
 
 	return {
 		currentEditorPreset,
+		isDefaultPresetCurrent: matchesDefault && !currentEditorPreset,
+		handleApplyDefaultPreset,
 		handleApplyEditorPreset,
 		handleDeleteEditorPreset,
-		handleSavePresetSubmit,
+		handleSaveEditorPreset,
 	};
 }

@@ -46,7 +46,11 @@ vi.mock("../project/manager", () => ({
 	rememberApprovedLocalReadPath: state.approveSelected,
 }));
 vi.mock("../state", () => ({ setCurrentProjectPath: state.setProjectPath }));
-vi.mock("../utils", () => ({ approveUserPath: state.approveLiteral, getRecordingsDir: vi.fn() }));
+vi.mock("../utils", () => ({
+	approveUserPath: state.approveLiteral,
+	getRecordingsDirPath: vi.fn().mockResolvedValue("/unavailable-recordings"),
+	getDirectoryForDialog: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("./wallpaperVideo", () => ({ registerWallpaperVideoHandler: vi.fn() }));
 
 import { registerCaptionHandlers } from "./captions";
@@ -71,6 +75,9 @@ it("approves a timeline import without clearing the open project path", async ()
 		path: "/selected.mp4",
 	});
 	expect(state.approveSelected).toHaveBeenCalledExactlyOnceWith("/selected.mp4");
+	expect(state.pickFile).toHaveBeenCalledWith(
+		expect.objectContaining({ defaultPath: undefined }),
+	);
 	expect(state.setProjectPath).not.toHaveBeenCalled();
 
 	await expect(pick({})).resolves.toMatchObject({ success: true, kind: "media" });

@@ -61,6 +61,7 @@ import {
 	withCaptionSidecarMessage,
 	writeCaptionSidecarsBestEffort,
 } from "./exportCaptionSidecars";
+import { recordAppProcessDiagnostic, startMainDiagnosticOperation } from "./exportDiagnostics";
 
 function getPartialExportDestinationPath(destinationPath: string) {
 	const parsed = path.parse(destinationPath);
@@ -362,6 +363,10 @@ export function registerExportHandlers() {
 							}
 
 							session.processError = processError;
+							void recordAppProcessDiagnostic(
+								"error",
+								`[native-export] FFmpeg spawn failed encoder=${encoderName} input=${inputMode} ${processError.message}`,
+							);
 							reject(processError);
 						});
 						ffmpegProcess.stdin.once("error", (error) => {
@@ -386,6 +391,16 @@ export function registerExportHandlers() {
 								resolve();
 								return;
 							}
+							const stderrTail = session.stderrOutput
+								.trim()
+								.split(/\r?\n/)
+								.slice(-4)
+								.join(" | ")
+								.slice(-700);
+							void recordAppProcessDiagnostic(
+								"error",
+								`[native-export] FFmpeg exit encoder=${encoderName} input=${inputMode} code=${code} signal=${signal ?? "none"} ${stderrTail}`,
+							);
 
 							reject(
 								new Error(
@@ -401,7 +416,7 @@ export function registerExportHandlers() {
 				void session.completionPromise.catch(() => undefined);
 
 				ffmpegProcess.stderr.on("data", (chunk: Buffer) => {
-					session.stderrOutput += chunk.toString();
+					session.stderrOutput = (session.stderrOutput + chunk.toString()).slice(-8192);
 				});
 
 				nativeVideoExportSessions.set(sessionId, session);
@@ -882,10 +897,17 @@ export function registerExportHandlers() {
 			fileName: string,
 			captionSidecar?: CaptionSidecarPayload,
 		) => {
+			const operation = startMainDiagnosticOperation(
+				"export.save-file",
+				"editor",
+				event.sender.id,
+			);
 			try {
+				operation.step("prepare-output");
 				const sidecarPayload = parseCaptionSidecarPayload(captionSidecar);
 				const sizeError = getInMemoryExportTooLargeMessage(videoData.byteLength);
 				if (sizeError) {
+					operation.finish("blocked");
 					return {
 						success: false,
 						message: sizeError,
@@ -909,11 +931,13 @@ export function registerExportHandlers() {
 					properties: ["createDirectory", "showOverwriteConfirmation"],
 				};
 
+				operation.step("await-save-dialog");
 				const result = parentWindow
 					? await dialog.showSaveDialog(parentWindow, saveDialogOptions)
 					: await dialog.showSaveDialog(saveDialogOptions);
 
 				if (result.canceled || !result.filePath) {
+					operation.finish("cancelled");
 					return {
 						success: false,
 						canceled: true,
@@ -921,6 +945,7 @@ export function registerExportHandlers() {
 					};
 				}
 
+				operation.step("write-output-file");
 				const destinationPath = await saveExportToAvailablePath(
 					getSelectedExportPath(
 						result.filePath,
@@ -930,11 +955,13 @@ export function registerExportHandlers() {
 					(destination) => fs.writeFile(destination, Buffer.from(videoData)),
 					getCaptionSidecarExtensions(sidecarPayload),
 				);
+				if (sidecarPayload) operation.step("write-caption-sidecars");
 				const captionSidecarResult = await writeCaptionSidecarsBestEffort(
 					destinationPath,
 					sidecarPayload,
 				);
 				approveUserPath(destinationPath);
+				operation.finish("succeeded");
 
 				return {
 					success: true,
@@ -946,6 +973,7 @@ export function registerExportHandlers() {
 					captionSidecarFailed: Boolean(captionSidecarResult.error),
 				};
 			} catch (error) {
+				operation.finish("failed");
 				console.error("Failed to save exported video:", error);
 				return {
 					success: false,
@@ -1018,22 +1046,31 @@ export function registerExportHandlers() {
 				captionSidecar?: CaptionSidecarPayload;
 			},
 		) => {
+			const operation = startMainDiagnosticOperation(
+				"export.save-file",
+				"editor",
+				event.sender.id,
+			);
 			const tempPath = payload?.tempPath;
 			const fileName = payload?.fileName;
 			if (typeof tempPath !== "string" || typeof fileName !== "string") {
+				operation.finish("blocked");
 				return { success: false, error: "Invalid finalize-exported-video payload" };
 			}
 
 			if (!isTempPathSafe(tempPath) || !isOwnedExportPath(tempPath)) {
+				operation.finish("blocked");
 				return {
 					success: false,
 					error: "Temp path is not an app-managed export temp",
 				};
 			}
 
+			operation.step("check-temp-output");
 			try {
 				await fs.access(tempPath);
 			} catch {
+				operation.finish("failed");
 				return {
 					success: false,
 					error: `Exported video temp file is missing: ${tempPath}`,
@@ -1041,16 +1078,20 @@ export function registerExportHandlers() {
 			}
 
 			try {
+				operation.step("prepare-output");
 				const sidecarPayload = parseCaptionSidecarPayload(payload.captionSidecar);
 				if (payload.outputPath) {
 					const resolvedPath = path.resolve(payload.outputPath);
+					operation.step("write-output-file");
 					await moveExportedTempFile(tempPath, resolvedPath);
 					releaseOwnedExportPath(tempPath);
+					if (sidecarPayload) operation.step("write-caption-sidecars");
 					const captionSidecarResult = await writeCaptionSidecarsBestEffort(
 						resolvedPath,
 						sidecarPayload,
 					);
 					approveUserPath(resolvedPath);
+					operation.finish("succeeded");
 					return {
 						success: true,
 						path: resolvedPath,
@@ -1078,11 +1119,13 @@ export function registerExportHandlers() {
 					properties: ["createDirectory", "showOverwriteConfirmation"],
 				};
 
+				operation.step("await-save-dialog");
 				const result = parentWindow
 					? await dialog.showSaveDialog(parentWindow, saveDialogOptions)
 					: await dialog.showSaveDialog(saveDialogOptions);
 
 				if (result.canceled || !result.filePath) {
+					operation.finish("cancelled");
 					// Leave the temp file in place so the renderer can offer "Save Again"
 					// without re-rendering. The renderer owns cleanup on discard.
 					return {
@@ -1092,6 +1135,7 @@ export function registerExportHandlers() {
 					};
 				}
 
+				operation.step("write-output-file");
 				const destinationPath = await saveExportToAvailablePath(
 					getSelectedExportPath(
 						result.filePath,
@@ -1102,11 +1146,13 @@ export function registerExportHandlers() {
 					getCaptionSidecarExtensions(sidecarPayload),
 				);
 				releaseOwnedExportPath(tempPath);
+				if (sidecarPayload) operation.step("write-caption-sidecars");
 				const captionSidecarResult = await writeCaptionSidecarsBestEffort(
 					destinationPath,
 					sidecarPayload,
 				);
 				approveUserPath(destinationPath);
+				operation.finish("succeeded");
 
 				return {
 					success: true,
@@ -1119,6 +1165,7 @@ export function registerExportHandlers() {
 					captionSidecarFailed: Boolean(captionSidecarResult.error),
 				};
 			} catch (error) {
+				operation.finish("failed");
 				console.error("Failed to finalize exported video:", error);
 				return {
 					success: false,

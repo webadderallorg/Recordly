@@ -97,6 +97,7 @@ import {
 	getStartupOnboardingWindow,
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
+	isHudHiddenByUser,
 	isHudOverlayMousePassthroughSupported,
 	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
 	replayOnboardingIntro,
@@ -833,7 +834,11 @@ function createTray() {
 }
 
 function shouldUseTray() {
-	return process.platform === "linux" || desktopPresenceNeedsTray();
+	return (
+		process.platform === "linux" ||
+		(process.platform === "win32" && isHudHiddenByUser()) ||
+		desktopPresenceNeedsTray()
+	);
 }
 
 function getPublicAssetPath(filename: string) {

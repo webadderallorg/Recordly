@@ -26,6 +26,7 @@ export async function runModernExport(session: Session, hooks: Hooks): Promise<E
 	session.metrics.mediaSourceRetryAttempted = false;
 	session.metrics.diagnosticStartedAt = getNowMs();
 	session.metrics.backendAttempts = [];
+	session.config.onStage?.("collect-runtime-diagnostics");
 	session.metrics.runtimeDiagnostics = await hooks.collectRuntimeDiagnostics();
 	if (session.cancelled) {
 		return { success: false, error: "Export cancelled" };
@@ -36,6 +37,7 @@ export async function runModernExport(session: Session, hooks: Hooks): Promise<E
 		control.inNativeStage = false;
 		control.inRendererStage = false;
 		try {
+			session.config.onStage?.("prepare-pipeline");
 			const prepared = await prepareExportAttempt(session, hooks, control);
 			if (prepared.kind === "complete") return prepared.result;
 			await renderExportFrames(session, hooks, control, prepared.plan);

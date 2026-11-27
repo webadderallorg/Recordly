@@ -16,7 +16,7 @@ test("cursor idle toggle stays available in basic and advanced settings without 
 	await expect(page.getByRole("switch", { name: "Scale on click", exact: true })).toBeVisible();
 	await expect(
 		page.getByRole("slider", { name: "Scale on click strength", exact: true }),
-	).toBeVisible();
+	).toHaveValue("2.5");
 	for (const name of ["Idle detection", "Fade delay", "Fade duration", "Movement tolerance"])
 		await expect(page.getByRole("slider", { name, exact: true })).toHaveCount(0);
 	await hide.press("Space");

@@ -1,6 +1,64 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
+test("preview zoom keeps rendering while a modern MP4 export is active", async ({ page }) => {
+	test.setTimeout(60_000);
+	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.loadCurrentProjectFile = async () => ({
+			success: true,
+			path: "/projects/export-preview.recordly",
+			project: {
+				version: 2,
+				videoPath: `${location.origin}/tests/ui/fixtures/preview.mp4`,
+				editor: {
+					clipRegions: [{ id: "clip", startMs: 0, endMs: 6000, speed: 1 }],
+					zoomRegions: [
+						{
+							id: "zoom",
+							startMs: 1200,
+							endMs: 5200,
+							depth: 4,
+							mode: "manual",
+							focus: { cx: 0.5, cy: 0.5 },
+						},
+					],
+					annotationRegions: [
+						{
+							id: "note",
+							startMs: 0,
+							endMs: 6000,
+							type: "text",
+							content: "Preview zoom",
+							position: { x: 50, y: 50 },
+						},
+					],
+				},
+			},
+		});
+		window.electronAPI.nativeVideoExportStart = () => {
+			document.documentElement.dataset.encoderWaiting = "true";
+			return new Promise(() => {
+				// Keep the export active until the preview assertions finish.
+			});
+		};
+	});
+	await page.goto("/?windowType=editor");
+	const annotation = page.locator('[data-annotation-id="note"]');
+	await expect(annotation).toBeVisible({ timeout: 20_000 });
+	const initialWidth = (await annotation.boundingBox())!.width;
+
+	await page.getByRole("button", { name: "Publish", exact: true }).click();
+	await page.getByRole("row", { name: "Save to device", exact: true }).click();
+	await page.getByRole("button", { name: "Export Video", exact: true }).click();
+	await expect(page.locator("html")).toHaveAttribute("data-encoder-waiting", "true");
+	await page.getByRole("button", { name: "Play", exact: true }).click();
+	await expect
+		.poll(async () => (await annotation.boundingBox())?.width ?? 0)
+		.toBeGreaterThan(initialWidth * 1.3);
+	await expect(page.getByRole("progressbar", { name: "Exporting", exact: true })).toBeVisible();
+});
+
 test("new text and masks stay inside the visible preview during a corner-focused zoom", async ({
 	page,
 }) => {

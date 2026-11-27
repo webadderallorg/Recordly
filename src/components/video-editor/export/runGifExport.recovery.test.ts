@@ -41,7 +41,7 @@ function context() {
 			gifConfig: { width: 320, height: 180, frameRate: 15, loop: true, sizePreset: "medium" },
 		},
 		options: { destination: "download" },
-		diagnostics: { record: vi.fn(), result: vi.fn() },
+		diagnostics: { record: vi.fn(), result: vi.fn(), stage: vi.fn(), beginAttempt: vi.fn() },
 		exportWasCancelled: () => false,
 		discardCancelledTemp: discard,
 	};

@@ -94,6 +94,7 @@ import { MusicNotesIcon as MusicNotesBold } from "@solar-icons/react/bold/music-
 import { NotificationUnreadIcon as NotificationUnreadBold } from "@solar-icons/react/bold/notification-unread";
 import { PaletteIcon as PaletteBold } from "@solar-icons/react/bold/palette";
 import { PauseIcon as PauseBold } from "@solar-icons/react/bold/pause";
+import { PenIcon as PenBold } from "@solar-icons/react/bold/pen";
 import { PlayIcon as PlayBold } from "@solar-icons/react/bold/play";
 import { QuestionCircleIcon as QuestionCircleBold } from "@solar-icons/react/bold/question-circle";
 import { RefreshIcon as RefreshBold } from "@solar-icons/react/bold/refresh";
@@ -174,6 +175,7 @@ import { MusicNotesIcon as MusicNotesLinear } from "@solar-icons/react/linear/mu
 import { NotificationUnreadIcon as NotificationUnreadLinear } from "@solar-icons/react/linear/notification-unread";
 import { PaletteIcon as PaletteLinear } from "@solar-icons/react/linear/palette";
 import { PauseIcon as PauseLinear } from "@solar-icons/react/linear/pause";
+import { PenIcon as PenLinear } from "@solar-icons/react/linear/pen";
 import { PlayIcon as PlayLinear } from "@solar-icons/react/linear/play";
 import { QuestionCircleIcon as QuestionCircleLinear } from "@solar-icons/react/linear/question-circle";
 import { RefreshIcon as RefreshLinear } from "@solar-icons/react/linear/refresh";
@@ -261,6 +263,7 @@ export const MoonIcon = solar(MoonLinear, MoonBold);
 export const MusicNotes = solar(MusicNotesLinear, MusicNotesBold);
 export const Pause = solar(PauseLinear, PauseBold);
 export const PauseIcon = solar(PauseLinear, PauseBold);
+export const Pen = solar(PenLinear, PenBold);
 export const Play = solar(PlayLinear, PlayBold);
 export const PlayIcon = solar(PlayLinear, PlayBold);
 export const Plus = solar(AddLinear, AddBold);

@@ -1,7 +1,7 @@
 import { getWebcamMediaTargetTimeSeconds } from "@/components/video-editor/videoPlayback/webcamSync";
 import type { LegacyFrameRendererContext } from "./legacyFrameRendererContext";
-import { resolveMediaElementSource } from "./localMediaSource";
 import { WEBCAM_MEDIA_ELEMENT_READY_TIMEOUT_MS } from "./modernFrameUtils";
+import { reportRendererMediaFailure, resolveRendererMediaElementSource } from "./rendererMedia";
 import { WebcamFrameSource } from "./webcamFrameSource";
 
 export async function setupWebcamSource(
@@ -18,6 +18,7 @@ export async function setupWebcamSource(
 		| "webcamSeekPromise"
 		| "pendingMediaCancellations"
 		| "mediaCancelled"
+		| "mediaSignal"
 	>,
 	preferMediaElementSampling = context.config.preferMediaElementSampling,
 ): Promise<void> {
@@ -44,7 +45,11 @@ export async function setupWebcamSource(
 	context.cleanupWebcamSource = null;
 
 	if (!preferMediaElementSampling) {
-		const frameSource = new WebcamFrameSource(webcamUrl, context.config.webcam.loop === true);
+		const frameSource = new WebcamFrameSource(
+			webcamUrl,
+			context.config.webcam.loop === true,
+			context.mediaSignal,
+		);
 		try {
 			await frameSource.initialize();
 			context.webcamForwardFrameSource = frameSource;
@@ -55,7 +60,9 @@ export async function setupWebcamSource(
 			context.lastSyncedWebcamTime = null;
 			return;
 		} catch (error) {
-			await frameSource.destroy();
+			frameSource.destroy();
+			context.mediaSignal?.throwIfAborted();
+			reportRendererMediaFailure("webcam", "load", error, context.config.onDiagnostic);
 			console.warn(
 				"[FrameRenderer] Decoder-backed webcam source unavailable during export; falling back to media element sync:",
 				error,
@@ -63,7 +70,18 @@ export async function setupWebcamSource(
 		}
 	}
 
-	const webcamSource = await resolveMediaElementSource(webcamUrl);
+	let webcamSource: Awaited<ReturnType<typeof resolveRendererMediaElementSource>>;
+	try {
+		webcamSource = await resolveRendererMediaElementSource(
+			webcamUrl,
+			"webcam",
+			context.mediaSignal,
+		);
+	} catch (error) {
+		context.mediaSignal?.throwIfAborted();
+		reportRendererMediaFailure("webcam", "fallback", error, context.config.onDiagnostic);
+		return;
+	}
 	context.cleanupWebcamSource = webcamSource.revoke;
 
 	const video = document.createElement("video");
@@ -108,7 +126,15 @@ export async function setupWebcamSource(
 		video.addEventListener("canplaythrough", onReady, { once: true });
 		video.addEventListener("error", onError, { once: true });
 		context.pendingMediaCancellations.add(onError);
-		readyTimeout = window.setTimeout(onError, WEBCAM_MEDIA_ELEMENT_READY_TIMEOUT_MS);
+		readyTimeout = window.setTimeout(() => {
+			reportRendererMediaFailure(
+				"webcam",
+				"fallback",
+				new DOMException("Timed out waiting for webcam fallback", "TimeoutError"),
+				context.config.onDiagnostic,
+			);
+			onError();
+		}, WEBCAM_MEDIA_ELEMENT_READY_TIMEOUT_MS);
 	}).catch((error) => {
 		console.warn("[FrameRenderer] Webcam overlay unavailable during export:", error);
 		context.webcamVideoElement = null;
@@ -145,6 +171,7 @@ export async function syncWebcamFrame(
 		| "webcamFrameCacheCtx"
 		| "pendingMediaCancellations"
 		| "mediaCancelled"
+		| "mediaSignal"
 	>,
 	targetTime: number,
 ): Promise<void> {
@@ -166,6 +193,8 @@ export async function syncWebcamFrame(
 			if (decodedFrame) context.lastSyncedWebcamTime = clampedTime;
 			return;
 		} catch (error) {
+			context.mediaSignal?.throwIfAborted();
+			reportRendererMediaFailure("webcam", "decode", error, context.config.onDiagnostic);
 			console.warn(
 				"[FrameRenderer] Webcam decoder failed; retrying media element sync:",
 				error,

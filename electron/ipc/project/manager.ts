@@ -27,7 +27,7 @@ import {
 } from "../state";
 import type { ProjectLibraryEntry, RecordingSessionData } from "../types";
 import {
-	getRecordingsDir,
+	getRecordingsDirPath,
 	normalizePath,
 	normalizeVideoSourcePath,
 	parseJsonWithByteOrderMark,
@@ -211,8 +211,12 @@ export async function replaceApprovedSessionLocalReadPaths(
 	return true;
 }
 
+export async function getProjectsDirPath() {
+	return path.join(await getRecordingsDirPath(), PROJECTS_DIRECTORY_NAME);
+}
+
 export async function getProjectsDir() {
-	const projectsDir = path.join(await getRecordingsDir(), PROJECTS_DIRECTORY_NAME);
+	const projectsDir = await getProjectsDirPath();
 	await fs.mkdir(projectsDir, { recursive: true });
 	return projectsDir;
 }
@@ -330,7 +334,7 @@ export async function requireLibraryProject(projectPath: string) {
 	if (typeof projectPath !== "string") throw new Error("Invalid project path");
 	const normalized = normalizePath(projectPath);
 	if (!hasProjectFileExtension(normalized)) throw new Error("Project is not in the library");
-	const projectsDir = normalizePath(await getProjectsDir());
+	const projectsDir = normalizePath(await getProjectsDirPath());
 	if (path.dirname(normalized) === projectsDir && (await fs.lstat(normalized)).isFile())
 		return normalized;
 	const recent = await loadRecentProjectPaths();
@@ -470,11 +474,14 @@ export async function buildProjectLibraryEntry(
 export async function listProjectLibraryEntries(
 	onThumbnailReady?: (ready: ProjectThumbnailReady) => void,
 ) {
-	const projectsDir = await getProjectsDir();
-	const projectPaths: string[] = [];
+	const projectsDir = await getProjectsDirPath();
+	const projectPaths = new Set<string>();
+	let directoryReadable = false;
+	let warning: string | undefined;
 
 	try {
 		const entries = await fs.readdir(projectsDir, { withFileTypes: true });
+		directoryReadable = true;
 		for (const entry of entries) {
 			if (!entry.isFile()) {
 				continue;
@@ -482,31 +489,59 @@ export async function listProjectLibraryEntries(
 
 			const entryPath = path.join(projectsDir, entry.name);
 			if (hasProjectFileExtension(entryPath)) {
-				projectPaths.push(entryPath);
+				projectPaths.add(entryPath);
 			}
 		}
-	} catch {
-		// Ignore directory read failures and fall back to recent files.
+	} catch (error) {
+		// A new library can be empty. An inaccessible library should still show its recent files.
+		if (
+			(error as NodeJS.ErrnoException).code !== "ENOENT" ||
+			!(await isAbsentProjectsDir(projectsDir))
+		) {
+			warning = String(error);
+		}
 	}
 
 	const recentProjectPaths = await loadRecentProjectPaths();
 	const candidatePaths = Array.from(new Set([...projectPaths, ...recentProjectPaths]));
-	const entries = (
-		await Promise.all(
-			candidatePaths.map((candidatePath) =>
-				buildProjectLibraryEntry(candidatePath, projectsDir, onThumbnailReady),
-			),
-		)
-	)
+	const candidates = await Promise.all(
+		candidatePaths.map((candidatePath) =>
+			buildProjectLibraryEntry(candidatePath, projectsDir, onThumbnailReady),
+		),
+	);
+	if (
+		!warning &&
+		candidates.some((entry, index) => !entry && projectPaths.has(candidatePaths[index]))
+	) {
+		warning = "Some projects in the library could not be checked.";
+	}
+	const entries = candidates
 		.filter((entry): entry is ProjectLibraryEntry => entry != null)
 		.sort((left, right) => right.updatedAt - left.updatedAt);
 
-	await saveRecentProjectPaths(entries.map((entry) => entry.path));
+	// Keep remembered paths when the project directory or one of its entries is unavailable.
+	if (directoryReadable && !warning)
+		await saveRecentProjectPaths(entries.map((entry) => entry.path));
 
 	return {
 		projectsDir,
 		entries,
+		warning,
 	};
+}
+
+async function isAbsentProjectsDir(projectsDir: string): Promise<boolean> {
+	try {
+		// lstat detects a dangling link, which readdir also reports as ENOENT.
+		await fs.lstat(projectsDir);
+		return false;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false;
+		return fs.stat(path.dirname(projectsDir)).then(
+			(directory) => directory.isDirectory(),
+			() => false,
+		);
+	}
 }
 
 export function isLoadableProjectData(projectData: unknown): projectData is {

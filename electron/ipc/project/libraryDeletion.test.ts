@@ -254,6 +254,18 @@ function fixture(overrides: Partial<LibraryDeletionDependencies> = {}) {
 	} satisfies LibraryDeletionDependencies;
 }
 describe("library deletion source planning", () => {
+	it("keeps sources when the listing is incomplete even if the selected project is visible", async () => {
+		const deps = fixture({
+			list: async () => ({
+				entries: [{ path: selectedProject }],
+				warning: "Offline library",
+			}),
+		});
+		await expect(protectedLibrarySources(deps)).rejects.toThrow("Source files were kept");
+		await expect(prepareLibraryDeletion([selectedProject], deps)).rejects.toThrow(
+			"Source files were kept",
+		);
+	});
 	it("includes only selected managed captures and companions, preserving unselected references", async () => {
 		const plan = await prepareLibraryDeletion([selectedProject], fixture());
 		expect(Object.keys(plan.sourceOwners)).toEqual([capture, microphone]);

@@ -1,12 +1,21 @@
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import { ForwardFrameSource } from "./forwardFrameSource";
-import { resolveMediaElementSource } from "./localMediaSource";
 import type { FrameRenderContext } from "./modernFrameRenderer";
 import { BACKGROUND_MEDIA_ELEMENT_READY_TIMEOUT_MS } from "./modernFrameUtils";
+import {
+	reportRendererMediaFailure,
+	resolveRendererMediaElementSource,
+	waitForRendererMediaElement,
+} from "./rendererMedia";
 
 /** Owns background playback resources for one export renderer. */
 export class FrameBackgroundPlayback {
-	constructor(private readonly context: Pick<FrameRenderContext, "textures" | "background">) {}
+	constructor(
+		private readonly context: Pick<
+			FrameRenderContext,
+			"textures" | "background" | "mediaSignal" | "config"
+		>,
+	) {}
 
 	backgroundForwardFrameSource: ForwardFrameSource | null = null;
 
@@ -39,7 +48,7 @@ export class FrameBackgroundPlayback {
 			return;
 		}
 
-		const nextSource = new ForwardFrameSource();
+		const nextSource = new ForwardFrameSource(this.context.mediaSignal);
 		const metadata = await nextSource.initialize(sourceUrl);
 		const previousSource = this.backgroundForwardFrameSource;
 
@@ -72,6 +81,13 @@ export class FrameBackgroundPlayback {
 				try {
 					await this.restartBackgroundForwardFrameSource();
 				} catch (error) {
+					this.context.mediaSignal.throwIfAborted();
+					reportRendererMediaFailure(
+						"video-wallpaper",
+						"decode",
+						error,
+						this.context.config.onDiagnostic,
+					);
 					console.warn(
 						"[FrameRenderer] Unable to restart looping video wallpaper decoder during export:",
 						error,
@@ -84,6 +100,13 @@ export class FrameBackgroundPlayback {
 				decodedFrame =
 					await this.backgroundForwardFrameSource.getFrameAtTime(normalizedTargetTime);
 			} catch (error) {
+				this.context.mediaSignal.throwIfAborted();
+				reportRendererMediaFailure(
+					"video-wallpaper",
+					"decode",
+					error,
+					this.context.config.onDiagnostic,
+				);
 				console.warn(
 					"[FrameRenderer] Decoder-backed video wallpaper failed during export; falling back to media element sync:",
 					error,
@@ -132,6 +155,13 @@ export class FrameBackgroundPlayback {
 					}
 					return;
 				} catch (error) {
+					this.context.mediaSignal.throwIfAborted();
+					reportRendererMediaFailure(
+						"video-wallpaper",
+						"decode",
+						error,
+						this.context.config.onDiagnostic,
+					);
 					console.warn(
 						"[FrameRenderer] Unable to wrap looping video wallpaper at decoded EOF during export:",
 						error,
@@ -321,10 +351,21 @@ export class FrameBackgroundPlayback {
 		this.cleanupBackgroundSource?.();
 		this.cleanupBackgroundSource = null;
 
-		let backgroundSource: Awaited<ReturnType<typeof resolveMediaElementSource>>;
+		let backgroundSource: Awaited<ReturnType<typeof resolveRendererMediaElementSource>>;
 		try {
-			backgroundSource = await resolveMediaElementSource(videoSrc);
+			backgroundSource = await resolveRendererMediaElementSource(
+				videoSrc,
+				"video-wallpaper",
+				this.context.mediaSignal,
+			);
 		} catch (error) {
+			this.context.mediaSignal.throwIfAborted();
+			reportRendererMediaFailure(
+				"video-wallpaper",
+				"fallback",
+				error,
+				this.context.config.onDiagnostic,
+			);
 			console.warn(
 				"[FrameRenderer] Unable to resolve video wallpaper fallback source:",
 				error,
@@ -342,50 +383,25 @@ export class FrameBackgroundPlayback {
 		video.src = backgroundSource.src;
 		video.load();
 
-		const ready = await new Promise<boolean>((resolve) => {
-			let settled = false;
-			let timeoutId: ReturnType<typeof setTimeout> | null = null;
+		const ready = await waitForRendererMediaElement(
+			video,
+			this.context.mediaSignal,
+			BACKGROUND_MEDIA_ELEMENT_READY_TIMEOUT_MS,
+		).then(
+			() => true,
+			(error: unknown) => {
+				if (!this.context.mediaSignal.aborted)
+					reportRendererMediaFailure(
+						"video-wallpaper",
+						"fallback",
+						error,
+						this.context.config.onDiagnostic,
+					);
+				return false;
+			},
+		);
 
-			function cleanup() {
-				if (timeoutId !== null) {
-					clearTimeout(timeoutId);
-				}
-				video.removeEventListener("loadeddata", onReady);
-				video.removeEventListener("canplay", onReady);
-				video.removeEventListener("error", onError);
-			}
-
-			function settle(value: boolean) {
-				if (settled) {
-					return;
-				}
-				settled = true;
-				cleanup();
-				resolve(value);
-			}
-			function onReady() {
-				if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-					return;
-				}
-				settle(true);
-			}
-			function onError() {
-				settle(false);
-			}
-
-			video.addEventListener("loadeddata", onReady);
-			video.addEventListener("canplay", onReady);
-			video.addEventListener("error", onError);
-			timeoutId = setTimeout(() => {
-				console.warn(
-					`[FrameRenderer] Video wallpaper media element fallback did not become ready within ${BACKGROUND_MEDIA_ELEMENT_READY_TIMEOUT_MS}ms`,
-				);
-				settle(false);
-			}, BACKGROUND_MEDIA_ELEMENT_READY_TIMEOUT_MS);
-			onReady();
-		});
-
-		if (!ready) {
+		if (!ready || this.context.mediaSignal.aborted) {
 			console.warn(`[FrameRenderer] Failed to load video wallpaper: ${errorLabel}`);
 			try {
 				video.pause();
@@ -394,10 +410,11 @@ export class FrameBackgroundPlayback {
 			} catch {
 				// Ignore media element teardown errors on failed fallback.
 			}
-			backgroundSource.revoke();
 			if (this.cleanupBackgroundSource === backgroundSource.revoke) {
+				backgroundSource.revoke();
 				this.cleanupBackgroundSource = null;
 			}
+			this.context.mediaSignal.throwIfAborted();
 			return false;
 		}
 

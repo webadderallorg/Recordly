@@ -15,9 +15,15 @@ import type {
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
 import type { CursorIdleHideSettings } from "@/components/video-editor/videoPlayback/cursorIdleVisibility";
-import type { ExportProgress, GIF_SIZE_PRESETS, GifFrameRate, GifSizePreset } from "./types";
+import type {
+	ExportDiagnosticCallbacks,
+	ExportProgress,
+	GIF_SIZE_PRESETS,
+	GifFrameRate,
+	GifSizePreset,
+} from "./types";
 
-export interface GifExporterConfig {
+export interface GifExporterConfig extends ExportDiagnosticCallbacks {
 	clipRegions?: import("@/components/video-editor/types").ClipRegion[];
 	videoUrl: string;
 	width: number;
@@ -125,6 +131,7 @@ export function buildGifFrameRendererConfig(
 	videoInfo: { width: number; height: number },
 ) {
 	return {
+		onDiagnostic: config.onDiagnostic,
 		width: config.width,
 		timelineEffects: config.clipRegions !== undefined,
 		height: config.height,

@@ -1,13 +1,14 @@
-import packageInfo from "../../../package.json";
 import type { SupportDeviceInfo } from "../../../electron/supportDeviceInfo";
+import packageInfo from "../../../package.json";
 import {
 	diagnosticSurface,
 	OPERATION_HISTORY_LIMIT,
 	type OperationEvent,
 	startDiagnosticOperation,
 } from "../../shared/operationDiagnostics";
-import { captureCrash, type CrashDiagnostic, type CrashView } from "./crashDiagnostics";
-import { redactDiagnostic } from "./diagnosticRedaction";
+import { type CrashDiagnostic, type CrashView, captureCrash } from "./crashDiagnostics";
+import { redactDiagnostic, redactDiagnosticLogEntry } from "./diagnosticRedaction";
+import { summarizeExportDiagnostics } from "./exportDiagnosticSummary";
 import { getExportDiagnosticLogs } from "./exportDiagnostics";
 
 export { redactDiagnostic } from "./diagnosticRedaction";
@@ -262,9 +263,9 @@ export function feedbackDiagnostics(
 		windowId: desktop?.windowId,
 		operationHistoryVersion: 1,
 	};
-	const chronological = [...new Set([...entries, ...persistedLogs].map(redactDiagnostic))].sort(
-		(a, b) => a.slice(0, 24).localeCompare(b.slice(0, 24)),
-	);
+	const chronological = [
+		...new Set([...entries, ...persistedLogs].map(redactDiagnosticLogEntry)),
+	].sort((a, b) => a.slice(0, 24).localeCompare(b.slice(0, 24)));
 	const lastSeen = new Map<string, number>();
 	const logs = chronological.filter((entry) => {
 		const timestamp = Date.parse(entry.slice(0, 24));
@@ -276,14 +277,16 @@ export function feedbackDiagnostics(
 		return true;
 	});
 	const encoder = new TextEncoder();
-	let payload = JSON.stringify({ ...metadata, operationHistory, logs });
+	const recentExports = summarizeExportDiagnostics(logs, operationHistory, desktop?.appRunId);
+	const summary = recentExports.length ? recentExports : undefined;
+	let payload = JSON.stringify({ ...metadata, recentExports: summary, operationHistory, logs });
 	while (
 		encoder.encode(payload).byteLength > MAX_DIAGNOSTIC_BYTES &&
 		(logs.length || operationHistory.length)
 	) {
 		if (logs.length) logs.shift();
 		else operationHistory.shift();
-		payload = JSON.stringify({ ...metadata, operationHistory, logs });
+		payload = JSON.stringify({ ...metadata, recentExports: summary, operationHistory, logs });
 	}
 	return payload;
 }

@@ -12,11 +12,17 @@ export interface PendingExportSave {
 	};
 }
 
+type SaveDiagnostics = Pick<
+	ReturnType<typeof import("@/lib/feedback/exportDiagnostics").createExportDiagnostics>,
+	"stage" | "record"
+>;
+
 const EXPORT_BLOB_STREAM_CHUNK_BYTES = 16 * 1024 * 1024;
 
 export async function streamExportBlobToTempFile(
 	blob: Blob,
 	extension: string,
+	diagnostics?: SaveDiagnostics,
 ): Promise<string | null> {
 	if (
 		typeof window === "undefined" ||
@@ -27,6 +33,7 @@ export async function streamExportBlobToTempFile(
 		return null;
 	}
 
+	diagnostics?.stage("open-temp-output");
 	const openResult = await window.electronAPI.openExportStream({ extension });
 	if (!openResult.success || !openResult.streamId || !openResult.tempPath) {
 		throw new Error(openResult.error || "Failed to open export stream");
@@ -35,6 +42,7 @@ export async function streamExportBlobToTempFile(
 	const { streamId } = openResult;
 	let position = 0;
 	try {
+		diagnostics?.stage("write-temp-output");
 		while (position < blob.size) {
 			const chunk = blob.slice(position, position + EXPORT_BLOB_STREAM_CHUNK_BYTES);
 			const chunkBuffer = await chunk.arrayBuffer();
@@ -49,6 +57,7 @@ export async function streamExportBlobToTempFile(
 			position += chunkBuffer.byteLength;
 		}
 
+		diagnostics?.stage("close-temp-output");
 		const closeResult = await window.electronAPI.closeExportStream(streamId);
 		if (!closeResult.success || !closeResult.tempPath) {
 			throw new Error(closeResult.error || "Failed to close export stream");
@@ -69,6 +78,7 @@ export async function saveExportBlob(
 	fileName: string,
 	outputPath: string | null = null,
 	captionSidecar?: PendingExportSave["captionSidecar"],
+	diagnostics?: SaveDiagnostics,
 ) {
 	const extension = fileName.split(".").pop()?.toLowerCase() || "bin";
 	const hasExportStreamApi =
@@ -79,8 +89,9 @@ export async function saveExportBlob(
 	let streamError: unknown = null;
 
 	try {
-		const tempFilePath = await streamExportBlobToTempFile(blob, extension);
+		const tempFilePath = await streamExportBlobToTempFile(blob, extension, diagnostics);
 		if (tempFilePath) {
+			diagnostics?.stage("finalize-output-file");
 			return {
 				saveResult: await window.electronAPI.finalizeExportedVideo({
 					tempPath: tempFilePath,
@@ -93,6 +104,9 @@ export async function saveExportBlob(
 		}
 	} catch (error) {
 		streamError = error;
+		diagnostics?.record("temp-output-failed", {
+			error: error instanceof Error ? error.message : String(error),
+		});
 		console.warn("[export] Temp-file blob save failed", error);
 	}
 
@@ -105,7 +119,7 @@ export async function saveExportBlob(
 			hasExportStreamApi,
 			streamError,
 		});
-		throw new Error(message);
+		throw Object.assign(new Error(message), { cause: streamError });
 	}
 
 	console.warn("[export] Falling back to in-memory blob save", {
@@ -114,7 +128,9 @@ export async function saveExportBlob(
 		extension,
 		hasExportStreamApi,
 	});
+	diagnostics?.stage("buffer-output-file");
 	const arrayBuffer = await blob.arrayBuffer();
+	diagnostics?.stage("save-buffered-output");
 	return {
 		saveResult: outputPath
 			? await window.electronAPI.writeExportedVideoToPath(

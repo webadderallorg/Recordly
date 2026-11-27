@@ -37,6 +37,8 @@ export function DashboardGrid({
 	error,
 	errorSource,
 	errorRecordingSource,
+	onLocateRecording,
+	locatingRecording,
 	section,
 	settingsCategory,
 	settingsRequest,
@@ -78,6 +80,8 @@ export function DashboardGrid({
 	| "error"
 	| "errorSource"
 	| "errorRecordingSource"
+	| "onLocateRecording"
+	| "locatingRecording"
 	| "section"
 	| "setSection"
 	| "settingsCategory"
@@ -145,7 +149,17 @@ export function DashboardGrid({
 								})}
 							</p>
 						)}
-						<div className="mt-3">
+						<div className="mt-3 flex flex-wrap items-center gap-2">
+							{onLocateRecording && (
+								<Button
+									variant="secondary"
+									size="sm"
+									onClick={onLocateRecording}
+									disabled={locatingRecording}
+								>
+									{uiText("notifications.locateRecording", "Locate recording")}
+								</Button>
+							)}
 							<ErrorReportButton error={error} context="project-load" />
 						</div>
 						<details className="mt-2 text-muted-foreground">

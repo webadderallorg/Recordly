@@ -1,5 +1,6 @@
 import type { SpeedRegion, TrimRegion } from "@/components/video-editor/types";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
+import { withMediaDeadline } from "./mediaDeadline";
 import {
 	buildVideoDecodeFailure,
 	getDecodedFrameTimelineOffsetUs,
@@ -12,6 +13,7 @@ import type {
 	StreamingDecodeContext,
 } from "./streamingDecodeTypes";
 import { getVideoDecoderConfig } from "./videoDecoderConfig";
+import { getVideoDemuxerSignal } from "./videoDemuxerSignal";
 import {
 	computeVideoSegments,
 	segmentFrameCount,
@@ -25,7 +27,9 @@ const STARTUP_STABILIZATION_SECONDS = 1.25;
 const STARTUP_MAX_DECODE_QUEUE = 12;
 
 const STARTUP_MAX_PENDING_FRAMES = 28;
+const FIRST_DECODED_FRAME_WAIT_MS = 8_000;
 const DECODE_FRAME_WAIT_MS = 30_000;
+const DECODE_STOP_WAIT_MS = 1000;
 
 export async function decodeVideoStreamAttempt(
 	context: StreamingDecodeContext,
@@ -38,11 +42,19 @@ export async function decodeVideoStreamAttempt(
 	readWindow?: DecodeReadWindow,
 	forceSoftwareDecode = false,
 ): Promise<void> {
-	if (!context.demuxer || !context.metadata) {
+	const demuxer = context.demuxer;
+	if (!demuxer || !context.metadata) {
 		throw new Error("Must call loadMetadata() before decodeAll()");
 	}
 
-	const decoderConfig = await getVideoDecoderConfig(context.demuxer);
+	let decoderConfig: VideoDecoderConfig;
+	try {
+		decoderConfig = await getVideoDecoderConfig(demuxer, context.signal);
+	} catch (error) {
+		context.discardDemuxer();
+		if (context.cancelled) return;
+		throw error;
+	}
 	const codec = context.metadata.codec.toLowerCase();
 	const shouldPreferSoftwareDecode =
 		forceSoftwareDecode || codec.includes("av01") || codec.includes("av1");
@@ -186,16 +198,21 @@ export async function decodeVideoStreamAttempt(
 		}
 		if (decodeDone) return Promise.resolve(null);
 		return new Promise((resolve) => {
-			const timeout = setTimeout(() => {
-				frameResolve = null;
-				recordFirstDecodeError(
-					new DOMException(
-						"Timed out waiting for a decoded video frame.",
-						"TimeoutError",
-					),
-				);
-				resolve(null);
-			}, DECODE_FRAME_WAIT_MS);
+			const timeout = setTimeout(
+				() => {
+					frameResolve = null;
+					recordFirstDecodeError(
+						new DOMException(
+							"Timed out waiting for a decoded video frame.",
+							"TimeoutError",
+						),
+					);
+					resolve(null);
+				},
+				firstDecodedFrameTimestampUs === null
+					? FIRST_DECODED_FRAME_WAIT_MS
+					: DECODE_FRAME_WAIT_MS,
+			);
 			frameResolve = (frame) => {
 				clearTimeout(timeout);
 				resolve(frame);
@@ -214,7 +231,7 @@ export async function decodeVideoStreamAttempt(
 	// read() seeks backwards to a keyframe. Keep timestamps in the source's PTS
 	// domain: the existing timeline offset below retains the seek position.
 	const mediaStartSec = context.metadata.mediaStartTime ?? 0;
-	const reader = context.demuxer
+	const reader = demuxer
 		.read(
 			"video",
 			readWindow ? Math.max(0, mediaStartSec + readWindow.startSec) : 0,
@@ -236,6 +253,13 @@ export async function decodeVideoStreamAttempt(
 		});
 	};
 	const removeCancellationHandler = context.onCancel?.(stop);
+	const workerFailure = getVideoDemuxerSignal(demuxer);
+	const onWorkerFailure = () => {
+		recordFirstDecodeError(workerFailure?.reason);
+		stop();
+	};
+	workerFailure?.addEventListener("abort", onWorkerFailure, { once: true });
+	if (workerFailure?.aborted) onWorkerFailure();
 	if (context.cancelled) stop();
 
 	// Feed chunks to decoder in background with backpressure
@@ -471,14 +495,26 @@ export async function decodeVideoStreamAttempt(
 		// or waiting on a demux read while the renderer has finished/failed.
 		stop();
 		removeCancellationHandler?.();
+		workerFailure?.removeEventListener("abort", onWorkerFailure);
 		currentFrame?.close();
 		heldFrame?.close();
 		if (context.decoder) {
 			context.decoder.ondequeue = null;
 			if (context.decoder.state !== "closed") context.decoder.close();
 		}
-		await readerCancellation;
-		await feedPromise;
+		try {
+			await withMediaDeadline(
+				async () => {
+					await readerCancellation;
+					await feedPromise;
+				},
+				{ timeoutMs: DECODE_STOP_WAIT_MS, message: "Stopping the video reader timed out" },
+			);
+		} catch (error) {
+			// A worker can stop responding before acknowledging the stream cancellation.
+			context.discardDemuxer();
+			if (!context.cancelled && !outputComplete) recordFirstDecodeError(error);
+		}
 		for (const frame of pendingFrames) frame.close();
 		pendingFrames.length = 0;
 		context.decoder = null;

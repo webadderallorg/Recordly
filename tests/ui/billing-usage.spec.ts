@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { installDesktopBridge } from "./bridge";
+import { productionTest } from "./production";
 
 declare global {
 	interface Window {
@@ -151,9 +152,20 @@ test("free usage shows the share-link count and progress", async ({ page }) => {
 	await expect(progress).toHaveAttribute("aria-valuemax", "5");
 });
 
-test("the export click opens the upgrade modal after 1.5 seconds and respects its cooldown", async ({
-	page,
-}) => {
+test("starting an export in development skips the upgrade modal", async ({ page }) => {
+	await openUsage(page);
+	await page.evaluate(() => {
+		window.billingUsageTest.releaseStatus(0);
+		window.billingUsageTest.releaseCatalog();
+	});
+	await expect(page.getByTestId("verified-plan")).toHaveText("free");
+	await page.clock.install();
+	await page.getByRole("button", { name: "Start test export" }).click();
+	await page.clock.runFor(1_500);
+	await expect(page.getByRole("dialog", { name: "Recordly Plus", exact: true })).toHaveCount(0);
+});
+
+productionTest("production export upgrades use a delay and a cooldown", async ({ page }) => {
 	await openUsage(page);
 	await page.evaluate(() => {
 		window.billingUsageTest.releaseStatus(0);
@@ -194,9 +206,7 @@ test("the export click opens the upgrade modal after 1.5 seconds and respects it
 	await expect(pricing).toBeVisible();
 });
 
-test("export offers a commercial-use tip and Cloud upgrade without the old disclaimer", async ({
-	page,
-}) => {
+productionTest("production export offers a commercial-use upgrade", async ({ page }) => {
 	const notice = "Commercial use requires an active Recordly Plus subscription.";
 	await openUsage(page);
 	await page.evaluate(() => {
@@ -806,9 +816,7 @@ for (const subscription of [
 		});
 		await page.getByRole("button", { name: "Open test pricing", exact: true }).click();
 		const dialog = page.getByRole("dialog", { name: "Recordly Plus", exact: true });
-		await expect(
-			dialog.getByText("Your Plus plan is active.", { exact: false }),
-		).toBeVisible();
+		await expect(dialog.getByText("Your Plus plan is active.", { exact: false })).toBeVisible();
 		await expect(dialog.locator(".pricing-price-offer")).toHaveCount(0);
 		await expect(dialog.locator(".split-upgrade-savings")).toHaveCount(0);
 		await expect(dialog.getByText(/USD \/ month/)).toHaveCount(0);

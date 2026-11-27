@@ -18,6 +18,7 @@ import type { ExportRenderBackend } from "./types";
 
 export interface FrameRenderContext {
 	config: FrameRenderConfig;
+	readonly mediaSignal: AbortSignal;
 	currentVideoTime: number;
 	scene: FrameScene;
 	textures: FrameTextures;
@@ -36,6 +37,8 @@ export interface FrameRenderContext {
 /** Coordinates effect owners while preserving frame order and the exporter API. */
 export class FrameRenderer implements FrameRenderContext {
 	config: FrameRenderConfig;
+	private readonly mediaAbortController = new AbortController();
+	readonly mediaSignal = this.mediaAbortController.signal;
 	currentVideoTime = 0;
 	readonly scene: FrameScene;
 	readonly textures: FrameTextures;
@@ -242,7 +245,12 @@ export class FrameRenderer implements FrameRenderContext {
 		return this.scene.rendererBackend;
 	}
 
+	cancelPendingMedia(): void {
+		this.mediaAbortController.abort();
+	}
+
 	destroy(): void {
+		this.cancelPendingMedia();
 		destroyFrameRenderer(this);
 	}
 }

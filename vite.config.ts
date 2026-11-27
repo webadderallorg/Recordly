@@ -1,15 +1,66 @@
 import type { ChildProcess } from "node:child_process";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import { treeKillSync } from "vite-plugin-electron";
 import electron from "vite-plugin-electron/simple";
 import {
 	createElectronDevLifecycle,
 	type ElectronDevQueue,
 } from "./scripts/electronDevProcessLifecycle";
-import { prepareElectronDevRuntime } from "./scripts/electronDevRuntime";
+import { getElectronDevArgs, prepareElectronDevRuntime } from "./scripts/electronDevRuntime";
+
+function rendererContentSecurityPolicy(mode: string): Plugin {
+	const env = loadEnv(mode, __dirname, "VITE_");
+	const origins = [env.VITE_SUPABASE_URL, env.VITE_CLOUD_SHARE_ENDPOINT].flatMap((value) => {
+		try {
+			const url = new URL(value);
+			return url.protocol === "https:" && !url.username && !url.password ? [url.origin] : [];
+		} catch {
+			return [];
+		}
+	});
+	const loopback = "http://127.0.0.1:* http://localhost:*";
+	const cloud = [...new Set(["https://videos.recordly.dev", ...origins])].join(" ");
+	return {
+		name: "recordly-renderer-content-security-policy",
+		apply: "build",
+		transformIndexHtml: {
+			order: "post",
+			handler(html) {
+				// Approve the checked-in boot script without allowing arbitrary inline scripts.
+				const hashes = Array.from(
+					html.matchAll(/<script>([\s\S]*?)<\/script>/gi),
+					([, script]) =>
+						`'sha256-${createHash("sha256").update(script.replace(/\r\n?/g, "\n")).digest("base64")}'`,
+				);
+				const content = [
+					"default-src 'self'",
+					["script-src 'self' 'wasm-unsafe-eval'", ...hashes].join(" "),
+					"object-src 'none'",
+					"base-uri 'none'",
+					"form-action 'none'",
+					"worker-src 'self' blob:",
+					`connect-src 'self' blob: data: ${loopback} ${cloud} https://fonts.googleapis.com https://fonts.gstatic.com https://api.openverse.org https://upload.wikimedia.org`,
+					`frame-src 'self' ${loopback} ${cloud}`,
+					`img-src 'self' blob: data: file: https: ${loopback}`,
+					`media-src 'self' blob: data: file: ${loopback} ${cloud}`,
+					"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+					"font-src 'self' blob: data: https://fonts.gstatic.com",
+				].join("; ");
+				return [
+					{
+						tag: "meta",
+						attrs: { "http-equiv": "Content-Security-Policy", content },
+						injectTo: "head-prepend",
+					},
+				];
+			},
+		},
+	};
+}
 
 function electronMainCjsOutputPlugin(): Plugin {
 	return {
@@ -91,6 +142,7 @@ export default defineConfig(({ mode }) => ({
 	server: process.env.RECORDLY_UI_TEST_RUN === "1" ? { hmr: false, watch: null } : undefined,
 	plugins: [
 		react(),
+		rendererContentSecurityPolicy(mode),
 		...(mode === "ui" || process.env.RECORDLY_RENDERER_ONLY === "1"
 			? []
 			: [
@@ -100,7 +152,7 @@ export default defineConfig(({ mode }) => ({
 								void lifecycle
 									.mainBuilt(async () => {
 										prepareElectronDevRuntime(__dirname);
-										await startup();
+										await startup(getElectronDevArgs());
 									})
 									.catch((error) =>
 										console.error(
@@ -143,7 +195,7 @@ export default defineConfig(({ mode }) => ({
 								void lifecycle
 									.preloadBuilt(async () => {
 										prepareElectronDevRuntime(__dirname);
-										await startup();
+										await startup(getElectronDevArgs());
 									})
 									.then(reload)
 									.catch((error) =>

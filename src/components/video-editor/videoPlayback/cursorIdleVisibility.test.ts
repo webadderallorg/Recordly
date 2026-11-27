@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CursorTelemetryPoint } from "../types";
 import {
 	DEFAULT_CURSOR_IDLE_HIDE,
+	getCursorIdleBlurPx,
 	getCursorIdleOpacity,
 	normalizeCursorIdleHideSettings,
 } from "./cursorIdleVisibility";
@@ -34,6 +35,16 @@ describe("cursor idle visibility", () => {
 				idleThresholdMs: 1000,
 			}),
 		).toBe(0);
+	});
+	it("blurs the cursor on both sides of a hidden pause and stays sharp when visible", () => {
+		const samples = [point(0), point(3000), point(3200, 0.8)];
+		const blurAt = (timeMs: number) => getCursorIdleBlurPx(opacity(samples, timeMs), 40);
+		expect(blurAt(500)).toBe(0);
+		expect(blurAt(650)).toBeCloseTo(3.6);
+		expect(blurAt(750)).toBeGreaterThan(blurAt(650));
+		expect(blurAt(1000)).toBe(0);
+		expect(blurAt(3075)).toBeCloseTo(3.6);
+		expect(blurAt(3150)).toBe(0);
 	});
 	it("fades initial and trailing idle periods and evaluates backwards seeks deterministically", () => {
 		const samples = [point(0), point(2500)];

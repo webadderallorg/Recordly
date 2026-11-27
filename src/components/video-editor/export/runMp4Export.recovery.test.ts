@@ -110,7 +110,14 @@ function context(destination: "download" | "share" = "download") {
 		options: { destination },
 		billingRef: { current: null },
 		exportWasCancelled: () => cancelled,
-		diagnostics: { record: vi.fn(), result: vi.fn(), progress: vi.fn() },
+		diagnostics: {
+			record: vi.fn(),
+			result: vi.fn(),
+			progress: vi.fn(),
+			stage: vi.fn(),
+			beginAttempt: vi.fn(),
+			backend: vi.fn(),
+		},
 		previewWidth: 320,
 		previewHeight: 180,
 		effectiveShadowIntensity: 0,
@@ -230,7 +237,8 @@ describe("project-named output", () => {
 			expect.any(Blob),
 			`Product Walkthrough.${format}`,
 			null,
-			...(format === "mp4" ? [undefined] : []),
+			undefined,
+			value.diagnostics,
 		);
 	});
 	it("keeps the project filename for a canceled disk-backed MP4 save", async () => {
@@ -361,6 +369,7 @@ describe("Plus caption-file exports", () => {
 			expect.any(String),
 			null,
 			undefined,
+			expect.any(Object),
 		);
 	});
 	it("passes both caption formats to the save for an active Plus account", async () => {
@@ -370,6 +379,7 @@ describe("Plus caption-file exports", () => {
 			expect.any(String),
 			null,
 			sidecar,
+			expect.any(Object),
 		);
 	});
 	it("rechecks the account after rendering and omits caption files if access changed", async () => {
@@ -384,6 +394,7 @@ describe("Plus caption-file exports", () => {
 			expect.any(String),
 			null,
 			undefined,
+			expect.any(Object),
 		);
 	});
 });

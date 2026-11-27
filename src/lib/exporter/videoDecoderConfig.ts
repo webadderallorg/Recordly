@@ -1,4 +1,6 @@
 import type { WebAVStream, WebDemuxer, WebMediaInfo } from "web-demuxer";
+import { withMediaDeadline } from "./mediaDeadline";
+import { getVideoDemuxerSignal } from "./videoDemuxerSignal";
 
 // Level, maximum picture size, sample rate, bitrate (kbps), and dimension.
 // https://www.webmproject.org/vp9/levels/
@@ -122,7 +124,18 @@ async function repairAvcConfig(
 	return { ...config, codec: `${prefix}.${suffix}` };
 }
 
-export async function getVideoDecoderConfig(demuxer: WebDemuxer): Promise<VideoDecoderConfig> {
+export function getVideoDecoderConfig(
+	demuxer: WebDemuxer,
+	signal?: AbortSignal,
+): Promise<VideoDecoderConfig> {
+	return withMediaDeadline(() => readVideoDecoderConfig(demuxer), {
+		signal: getVideoDemuxerSignal(demuxer, signal),
+		timeoutMs: 10_000,
+		message: "Reading video decoder configuration timed out",
+	});
+}
+
+async function readVideoDecoderConfig(demuxer: WebDemuxer): Promise<VideoDecoderConfig> {
 	const config = await demuxer.getDecoderConfig("video");
 	if (
 		/^(?:h264|avc[13](?:\..*)?)$/i.test(config.codec) &&

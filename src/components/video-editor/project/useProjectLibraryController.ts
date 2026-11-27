@@ -112,7 +112,9 @@ export function useProjectLibraryController({
 			for (const key of thumbnailUpdates.current.keys()) {
 				if (!paths.has(key)) thumbnailUpdates.current.delete(key);
 			}
-			setProjectLibraryError(null);
+			setProjectLibraryError(result.warning ?? null);
+			if (result.warning)
+				recordAppDiagnostic("project library folder unavailable", result.warning);
 			operation.finish("succeeded");
 			recordAppDiagnostic(
 				`project library loaded count=${result.entries.length} elapsedMs=${Math.round(performance.now() - started)}`,

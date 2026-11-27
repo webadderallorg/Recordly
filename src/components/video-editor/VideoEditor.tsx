@@ -161,6 +161,7 @@ function VideoEditorContent() {
 		timeline,
 		aspectRatio,
 		setAspectRatio,
+		captureSourceKind: sessionCaptureSourceKind,
 	});
 	const { refreshProjectLibrary, captureProjectThumbnail } = useProjectLibraryController({
 		project,

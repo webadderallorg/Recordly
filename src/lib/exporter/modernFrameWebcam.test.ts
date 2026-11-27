@@ -213,11 +213,12 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 		expect(getForwardFrameAtTimeMock).toHaveBeenNthCalledWith(2, 0.25);
 	});
 
-	it("falls back to media-element webcam sync when packet streaming fails after initialize", async () => {
+	it("reports a webcam frame timeout and falls back to media-element sync", async () => {
 		getForwardFrameAtTimeMock.mockRejectedValueOnce(
-			new Error("readAVPacket pipeline failed: Failed after 3 attempts"),
+			new DOMException("Timed out waiting for the first decoded frame", "TimeoutError"),
 		);
 		const renderer = createRenderer();
+		renderer.config.onDiagnostic = vi.fn();
 		renderer.config.webcam = {
 			...DEFAULT_WEBCAM_OVERLAY,
 			enabled: true,
@@ -230,6 +231,12 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 		expect(cancelForwardFrameSourceMock).toHaveBeenCalled();
 		expect(destroyForwardFrameSourceMock).toHaveBeenCalled();
 		expect(resolveMediaElementSourceMock).toHaveBeenCalledWith("file:///tmp/webcam.webm");
+		expect(renderer.config.onDiagnostic).toHaveBeenCalledWith("renderer-media-failure", {
+			asset: "webcam",
+			mediaStage: "decode",
+			code: "RENDER_MEDIA_TIMEOUT",
+			reason: "Timed out waiting for the first decoded frame",
+		});
 		expect(renderer.webcamMedia.webcamForwardFrameSource).toBeNull();
 		expect(renderer.webcamMedia.webcamVideoElement).toBeTruthy();
 	});

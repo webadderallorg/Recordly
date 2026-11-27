@@ -26,9 +26,6 @@ import { AppUpdateButton } from "./AppUpdateButton";
 import { EditorExportMenu } from "./EditorExportMenu";
 import { EditorPresetMenu } from "./EditorPresetMenu";
 
-// Keep the preset implementation available for future use.
-const SHOW_PRESETS_BUTTON = false;
-
 type Props = {
 	accountMenu?: ReactNode;
 	projectRevision?: string;
@@ -260,7 +257,8 @@ export function EditorHeader(props: Props) {
 						<Undo2 mirrored className="h-4 w-4" />
 					</Button>
 				</div>
-				{SHOW_PRESETS_BUTTON && <EditorPresetMenu t={t} presets={presets} />}
+				<EditorPresetMenu t={t} presets={presets} />
+				<Separator orientation="vertical" className="h-5 shrink-0 self-center" />
 				<FeedbackDialog
 					showLabel={false}
 					className="h-9 w-9 min-w-9"

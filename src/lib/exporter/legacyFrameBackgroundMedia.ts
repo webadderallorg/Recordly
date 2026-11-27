@@ -1,6 +1,6 @@
 import type { LegacyFrameRendererContext } from "./legacyFrameRendererContext";
 import { BACKGROUND_MEDIA_ELEMENT_READY_TIMEOUT_MS } from "./legacyFrameRendererContext";
-import { resolveMediaElementSource } from "./localMediaSource";
+import { reportRendererMediaFailure, resolveRendererMediaElementSource } from "./rendererMedia";
 
 export async function loadBackgroundMediaElementSource(
 	context: Pick<
@@ -10,6 +10,8 @@ export async function loadBackgroundMediaElementSource(
 		| "cleanupBackgroundSource"
 		| "pendingMediaCancellations"
 		| "mediaCancelled"
+		| "mediaSignal"
+		| "config"
 		| "lastSyncedBackgroundLoopTimeSec"
 		| "drawVideoFrameToBackground"
 	>,
@@ -30,10 +32,21 @@ export async function loadBackgroundMediaElementSource(
 	context.cleanupBackgroundSource?.();
 	context.cleanupBackgroundSource = null;
 
-	let backgroundSource: Awaited<ReturnType<typeof resolveMediaElementSource>>;
+	let backgroundSource: Awaited<ReturnType<typeof resolveRendererMediaElementSource>>;
 	try {
-		backgroundSource = await resolveMediaElementSource(videoSrc);
+		backgroundSource = await resolveRendererMediaElementSource(
+			videoSrc,
+			"video-wallpaper",
+			context.mediaSignal,
+		);
 	} catch (error) {
+		context.mediaSignal?.throwIfAborted();
+		reportRendererMediaFailure(
+			"video-wallpaper",
+			"fallback",
+			error,
+			context.config.onDiagnostic,
+		);
 		console.warn("[FrameRenderer] Unable to resolve video wallpaper fallback source:", error);
 		return false;
 	}
@@ -86,6 +99,12 @@ export async function loadBackgroundMediaElementSource(
 		video.addEventListener("canplay", onReady);
 		video.addEventListener("error", onError);
 		timeoutId = setTimeout(() => {
+			reportRendererMediaFailure(
+				"video-wallpaper",
+				"fallback",
+				new DOMException("Timed out waiting for video wallpaper fallback", "TimeoutError"),
+				context.config.onDiagnostic,
+			);
 			console.warn(
 				`[FrameRenderer] Video wallpaper media element fallback did not become ready within ${BACKGROUND_MEDIA_ELEMENT_READY_TIMEOUT_MS}ms`,
 			);

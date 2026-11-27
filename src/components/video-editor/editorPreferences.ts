@@ -1,5 +1,5 @@
 import { DESKTOP_WALLPAPER } from "@/lib/desktopWallpaper";
-import { loadAppSetting, saveAppSetting } from "../../lib/appSettings";
+import { hasElectronAppSettings, loadAppSetting, saveAppSetting } from "../../lib/appSettings";
 import { normalizeCustomGradients } from "./customGradients";
 import { type ExportPreferences, normalizeExportPreferences } from "./exportPreferences";
 import {
@@ -14,7 +14,9 @@ import {
 	type CaptureSourceKind,
 	DEFAULT_PADDING,
 	DEFAULT_WINDOW_PADDING,
+	getDefaultPaddingForCaptureSource,
 	type Padding,
+	WEBCAM_ROUNDNESS_VERSION,
 } from "./types";
 
 type PersistedEditorControls = Pick<
@@ -73,7 +75,7 @@ type PresetWebcamSettings = Omit<
 export interface EditorPresetSnapshot extends Omit<PersistedEditorControls, "webcam"> {
 	borderRadiusUnit: "percent";
 	cropRegion: PresetCropRegion;
-	webcam: PresetWebcamSettings;
+	webcam?: PresetWebcamSettings;
 	autoCaptionSettings: PresetAutoCaptionSettings;
 }
 
@@ -204,7 +206,7 @@ function normalizePresetAutoCaptionSettings(value: unknown): PresetAutoCaptionSe
 	}).autoCaptionSettings;
 }
 
-function normalizeEditorPresetSnapshot(candidate: unknown): EditorPresetSnapshot {
+export function normalizeEditorPresetSnapshot(candidate: unknown): EditorPresetSnapshot {
 	const normalizedPreferences = normalizeEditorPreferences(candidate);
 	const raw =
 		candidate && typeof candidate === "object"
@@ -217,20 +219,34 @@ function normalizeEditorPresetSnapshot(candidate: unknown): EditorPresetSnapshot
 		{ ...normalizedPreferences, padding: raw.padding },
 		{ ...normalizedPreferences, padding: DEFAULT_PADDING },
 	);
+	const { webcam: normalizedWebcam, ...sceneControls } = normalizedControls;
 	const {
 		sourcePath: _sourcePath,
 		visibleRanges: _visibleRanges,
 		loop: _loop,
 		...webcam
-	} = normalizedControls.webcam;
+	} = normalizedWebcam;
 
 	return {
-		...normalizedControls,
+		...sceneControls,
 		borderRadiusUnit: "percent",
-		webcam,
+		// Only apply webcam values saved with the current shape system.
+		...(raw.webcam?.roundnessVersion === WEBCAM_ROUNDNESS_VERSION ? { webcam } : {}),
 		cropRegion: normalizedCropRegion,
 		autoCaptionSettings: normalizePresetAutoCaptionSettings(raw.autoCaptionSettings),
 	};
+}
+
+export function getDefaultEditorPresetSnapshot(
+	captureSourceKind: CaptureSourceKind | null,
+	wallpaper: string,
+): EditorPresetSnapshot {
+	return normalizeEditorPresetSnapshot({
+		...DEFAULT_EDITOR_PREFERENCES,
+		padding: getDefaultPaddingForCaptureSource(captureSourceKind),
+		wallpaper,
+		webcam: undefined,
+	});
 }
 
 function normalizePresetName(value: unknown): string | null {
@@ -411,10 +427,8 @@ export function normalizeEditorPreferences(
 	candidate: unknown,
 	fallback: EditorPreferences = DEFAULT_EDITOR_PREFERENCES,
 ): EditorPreferences {
-	const { padding: legacyPadding, ...raw } =
-		candidate && typeof candidate === "object"
-			? (candidate as Partial<EditorPreferences> & { padding?: unknown })
-			: {};
+	const raw =
+		candidate && typeof candidate === "object" ? (candidate as Partial<EditorPreferences>) : {};
 	const controls =
 		raw.borderRadiusUnit === "percent" || typeof raw.borderRadius !== "number"
 			? raw
@@ -434,8 +448,7 @@ export function normalizeEditorPreferences(
 	return {
 		...normalizedControls,
 		screenPadding: normalizePadding(raw.screenPadding, fallback.screenPadding),
-		// Carry shared padding forward for windows only; screens start at zero.
-		windowPadding: normalizePadding(raw.windowPadding ?? legacyPadding, fallback.windowPadding),
+		windowPadding: normalizePadding(raw.windowPadding, fallback.windowPadding),
 		...normalizeExportPreferences({ ...fallback, ...raw }),
 		borderRadiusUnit: "percent",
 		customAspectWidth: normalizePositiveIntegerString(
@@ -485,9 +498,13 @@ export function loadEditorPreferences(): EditorPreferences {
 	const previous = readStoredEditorPreferences(LEGACY_EDITOR_PREFERENCES_STORAGE_KEY);
 	if (!previous) return DEFAULT_EDITOR_PREFERENCES;
 
-	// Older versions wrote their defaults alongside user values. Start with the
-	// new controls but retain window padding, the resource library, and caption tools.
+	// Retain the saved scene appearance while adopting the new export and motion defaults.
 	const {
+		wallpaper,
+		shadowIntensity,
+		backgroundBlur,
+		borderRadius,
+		screenPadding,
 		windowPadding,
 		customWallpapers,
 		customGradients,
@@ -497,6 +514,11 @@ export function loadEditorPreferences(): EditorPreferences {
 	} = normalizeEditorPreferences(previous);
 	return {
 		...DEFAULT_EDITOR_PREFERENCES,
+		wallpaper,
+		shadowIntensity,
+		backgroundBlur,
+		borderRadius,
+		screenPadding,
 		windowPadding,
 		customWallpapers,
 		customGradients,
@@ -570,12 +592,10 @@ export function loadEditorPresets(): EditorPreset[] {
 export function saveEditorPresets(presets: EditorPreset[]): boolean {
 	try {
 		const normalized = normalizeEditorPresets(presets);
-		const persistedToAppSettings = saveAppSetting(EDITOR_PRESETS_STORAGE_KEY, normalized);
-		const persistedToLocalStorage = saveLocalStorageJson(
-			EDITOR_PRESETS_STORAGE_KEY,
-			normalized,
-		);
-		return persistedToAppSettings || persistedToLocalStorage;
+		const hasDesktopStore = hasElectronAppSettings();
+		if (hasDesktopStore && !saveAppSetting(EDITOR_PRESETS_STORAGE_KEY, normalized))
+			return false;
+		return saveLocalStorageJson(EDITOR_PRESETS_STORAGE_KEY, normalized) || hasDesktopStore;
 	} catch {
 		// Ignore storage failures so editor controls still work.
 		return false;

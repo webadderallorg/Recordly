@@ -273,10 +273,11 @@
 	"presets": {
 		"open": "Vorlagen öffnen",
 		"label": "Vorlagen",
-		"saveCurrentAs": "Aktuelle Vorlage speichern als",
+		"saveCurrentAs": "Als Vorlage speichern",
+		"edit": "Bearbeiten",
 		"namePlaceholder": "Name der Vorlage",
 		"savedList": "Gespeicherte Vorlagen",
-		"empty": "Noch keine Vorlagen vorhanden.",
+		"default": "Standard",
 		"deleteAriaLabel": "Vorlage {{name}} löschen",
 		"toasts": {
 			"applied": "Vorlage „{{name}}“ angewendet",

@@ -5,12 +5,18 @@ import { drawCssGradientBackground } from "./cssGradientBackground";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import type { LegacyFrameRendererContext } from "./legacyFrameRendererContext";
 import { configureHighQuality2DContext } from "./legacyFrameRendererContext";
+import {
+	loadExportWallpaperImage,
+	reportRendererMediaFailure,
+	resolveExportWallpaper,
+} from "./rendererMedia";
 
 export async function setupBackground(
 	context: Pick<
 		LegacyFrameRendererContext,
 		| "resolveWallpaperForExport"
 		| "config"
+		| "mediaSignal"
 		| "backgroundCtx"
 		| "backgroundForwardFrameSource"
 		| "backgroundForwardFrameSourceUrl"
@@ -25,8 +31,6 @@ export async function setupBackground(
 		| "resolveWallpaperImageUrl"
 	>,
 ): Promise<void> {
-	const wallpaper = await context.resolveWallpaperForExport(context.config.wallpaper);
-
 	// Create background canvas for separate rendering (not affected by zoom)
 	const bgCanvas = document.createElement("canvas");
 	bgCanvas.width = context.config.width;
@@ -55,17 +59,27 @@ export async function setupBackground(
 	}
 	context.backgroundSeekPromise = null;
 
+	const asset = isVideoWallpaperSource(context.config.wallpaper)
+		? "video-wallpaper"
+		: "wallpaper-image";
 	try {
+		const wallpaper = await resolveExportWallpaper(
+			() => context.resolveWallpaperForExport(context.config.wallpaper),
+			context.mediaSignal,
+		);
 		// Check for video wallpaper first
 		if (isVideoWallpaperSource(wallpaper)) {
 			let videoSrc = wallpaper;
 			if (wallpaper.startsWith("/") && !wallpaper.startsWith("//")) {
-				videoSrc = await getAssetPath(wallpaper.replace(/^\//, ""));
+				videoSrc = await resolveExportWallpaper(
+					() => getAssetPath(wallpaper.replace(/^\//, "")),
+					context.mediaSignal,
+				);
 			}
 
 			if (!context.config.preferMediaElementSampling) {
 				try {
-					const frameSource = new ForwardFrameSource();
+					const frameSource = new ForwardFrameSource(context.mediaSignal);
 					const metadata = await frameSource.initialize(videoSrc);
 					context.backgroundForwardFrameSource = frameSource;
 					context.backgroundForwardFrameSourceUrl = videoSrc;
@@ -80,6 +94,13 @@ export async function setupBackground(
 					context.backgroundSprite = bgCanvas;
 					return;
 				} catch (error) {
+					context.mediaSignal?.throwIfAborted();
+					reportRendererMediaFailure(
+						"video-wallpaper",
+						"load",
+						error,
+						context.config.onDiagnostic,
+					);
 					console.warn(
 						"[FrameRenderer] Decoder-backed video wallpaper unavailable during export; falling back to media element sync:",
 						error,
@@ -102,29 +123,10 @@ export async function setupBackground(
 			wallpaper.startsWith("http")
 		) {
 			// Image background
-			const img = new Image();
-			const imageUrl = await context.resolveWallpaperImageUrl(wallpaper);
-			// Don't set crossOrigin for same-origin images to avoid CORS taint.
-			if (
-				imageUrl.startsWith("http") &&
-				window.location.origin &&
-				!imageUrl.startsWith(window.location.origin)
-			) {
-				img.crossOrigin = "anonymous";
-			}
-
-			await new Promise<void>((resolve, reject) => {
-				img.onload = () => resolve();
-				img.onerror = (err) => {
-					console.error(
-						"[FrameRenderer] Failed to load background image:",
-						imageUrl,
-						err,
-					);
-					reject(new Error(`Failed to load background image: ${imageUrl}`));
-				};
-				img.src = imageUrl;
-			});
+			const img = await loadExportWallpaperImage(
+				() => context.resolveWallpaperImageUrl(wallpaper),
+				context.mediaSignal,
+			);
 
 			// Draw the image using cover and center positioning
 			const imgAspect = img.width / img.height;
@@ -157,6 +159,8 @@ export async function setupBackground(
 			bgCtx.fillRect(0, 0, context.config.width, context.config.height);
 		}
 	} catch (error) {
+		context.mediaSignal?.throwIfAborted();
+		reportRendererMediaFailure(asset, "load", error, context.config.onDiagnostic);
 		console.error("[FrameRenderer] Error setting up background, using fallback:", error);
 		bgCtx.fillStyle = "#000000";
 		bgCtx.fillRect(0, 0, context.config.width, context.config.height);

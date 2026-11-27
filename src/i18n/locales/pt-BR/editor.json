@@ -273,10 +273,11 @@
 	"presets": {
 		"open": "Abrir predefinições",
 		"label": "Predefinições",
-		"saveCurrentAs": "Salvar a predefinição atual como",
+		"saveCurrentAs": "Salvar como predefinição",
+		"edit": "Editar",
 		"namePlaceholder": "Nome da predefinição",
 		"savedList": "Predefinições salvas",
-		"empty": "Ainda não há predefinições.",
+		"default": "Padrão",
 		"deleteAriaLabel": "Excluir predefinição {{name}}",
 		"toasts": {
 			"applied": "Predefinição “{{name}}” aplicada",

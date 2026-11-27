@@ -89,37 +89,42 @@ describe("editorPreferences", () => {
 		Reflect.deleteProperty(globalThis, "electronAPI");
 	});
 
-	it("starts from 2.0 defaults while retaining v1.4 padding for windows and the resource library", () => {
+	it("retains the saved 1.4 scene appearance and resource library while upgrading export defaults", () => {
 		const legacyKey = "recordly.editor.preferences";
 		const legacy = {
 			wallpaper: "/wallpapers/tahoe-light.jpg",
 			shadowIntensity: 0.67,
+			backgroundBlur: 3.5,
+			borderRadius: 12,
+			borderRadiusUnit: "percent",
 			exportQuality: "source",
-			padding: 0,
+			padding: 30,
+			webcam: { enabled: true, size: 75, roundness: 100 },
 			customWallpapers: ["/fixtures/background.jpg"],
 			whisperModelPath: "/fixtures/whisper.bin",
 		};
 		const settings = stubElectronSettings({ [legacyKey]: legacy });
 
-		expect(loadEditorPreferences()).toMatchObject({
-			wallpaper: DEFAULT_EDITOR_PREFERENCES.wallpaper,
-			shadowIntensity: DEFAULT_EDITOR_PREFERENCES.shadowIntensity,
-			exportQuality: "medium",
-			advancedExportSettings: false,
+		const migrated = {
+			wallpaper: legacy.wallpaper,
+			shadowIntensity: legacy.shadowIntensity,
+			backgroundBlur: legacy.backgroundBlur,
+			borderRadius: legacy.borderRadius,
+			borderRadiusUnit: "percent",
 			screenPadding: DEFAULT_PADDING,
-			windowPadding: DEFAULT_PADDING,
-			customWallpapers: legacy.customWallpapers,
-			whisperModelPath: legacy.whisperModelPath,
-		});
-
-		saveEditorPreferences({ shadowIntensity: 0.8 });
-		const saved = {
-			shadowIntensity: 0.8,
-			screenPadding: DEFAULT_PADDING,
-			windowPadding: DEFAULT_PADDING,
+			windowPadding: DEFAULT_WINDOW_PADDING,
+			webcam: DEFAULT_EDITOR_PREFERENCES.webcam,
 			customWallpapers: legacy.customWallpapers,
 			whisperModelPath: legacy.whisperModelPath,
 		};
+		expect(loadEditorPreferences()).toMatchObject({
+			...migrated,
+			exportQuality: "medium",
+			advancedExportSettings: false,
+		});
+
+		saveEditorPreferences({ shadowIntensity: 0.8, backgroundBlur: 0 });
+		const saved = { ...migrated, shadowIntensity: 0.8, backgroundBlur: 0 };
 		expect(settings.get(EDITOR_PREFERENCES_STORAGE_KEY)).toMatchObject(saved);
 		expect(loadEditorPreferences()).toMatchObject(saved);
 		expect(settings.get(legacyKey)).toEqual(legacy);
@@ -136,7 +141,7 @@ describe("editorPreferences", () => {
 			}),
 		);
 		expect(loadEditorPreferences()).toMatchObject({
-			shadowIntensity: DEFAULT_EDITOR_PREFERENCES.shadowIntensity,
+			shadowIntensity: 0.67,
 			customWallpapers: ["/fixtures/background.jpg"],
 		});
 	});
@@ -513,7 +518,7 @@ describe("editorPreferences", () => {
 		expect(DEFAULT_WINDOW_PADDING.top).toBe(25);
 	});
 
-	it("migrates legacy shared padding to windows only and saves it under the new key", () => {
+	it("starts both capture kinds at their own defaults when only legacy shared padding exists", () => {
 		const padding = { top: 30, bottom: 5, left: 15, right: 20, linked: false };
 		const settings = stubElectronSettings({
 			[EDITOR_PREFERENCES_STORAGE_KEY]: { padding },
@@ -521,13 +526,13 @@ describe("editorPreferences", () => {
 
 		const prefs = loadEditorPreferences();
 		expect(getPaddingPreference(prefs, "screen")).toEqual(DEFAULT_PADDING);
-		expect(getPaddingPreference(prefs, "window")).toEqual(padding);
+		expect(getPaddingPreference(prefs, "window")).toEqual(DEFAULT_WINDOW_PADDING);
 
-		saveEditorPreferences({ screenPadding: DEFAULT_WINDOW_PADDING });
+		saveEditorPreferences({ screenPadding: padding });
 		expect(settings.get(EDITOR_PREFERENCES_STORAGE_KEY)).not.toHaveProperty("padding");
 		expect(loadEditorPreferences()).toMatchObject({
-			screenPadding: DEFAULT_WINDOW_PADDING,
-			windowPadding: padding,
+			screenPadding: padding,
+			windowPadding: DEFAULT_WINDOW_PADDING,
 		});
 	});
 
@@ -697,9 +702,56 @@ describe("editorPreferences", () => {
 
 		expect(saveEditorPresets([])).toBe(false);
 	});
+
+	it("does not replace the browser copy when the preferred desktop store rejects a preset write", () => {
+		const localStorage = createStorageMock({ [EDITOR_PRESETS_STORAGE_KEY]: "[]" });
+		vi.stubGlobal("localStorage", localStorage);
+		vi.stubGlobal("electronAPI", { getAppSetting: () => [], setAppSetting: () => false });
+		expect(
+			saveEditorPresets([
+				{
+					id: "new-preset",
+					name: "New preset",
+					createdAt: "2026-05-01T00:00:00.000Z",
+					updatedAt: "2026-05-01T00:00:00.000Z",
+					snapshot: {
+						...DEFAULT_EDITOR_PREFERENCES,
+						padding: DEFAULT_PADDING,
+						cropRegion: DEFAULT_CROP_REGION,
+						autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
+					},
+				},
+			]),
+		).toBe(false);
+		expect(localStorage.getItem(EDITOR_PRESETS_STORAGE_KEY)).toBe("[]");
+		expect(loadEditorPresets()).toEqual([]);
+	});
 });
 
 describe("source-specific webcam metadata", () => {
+	it("drops legacy webcam options from saved presets and keeps their scene settings", () => {
+		vi.stubGlobal(
+			"localStorage",
+			createStorageMock({
+				[EDITOR_PRESETS_STORAGE_KEY]: JSON.stringify([
+					{
+						id: "legacy-scene",
+						name: "Legacy scene",
+						snapshot: {
+							padding: 30,
+							backgroundBlur: 3,
+							webcam: { enabled: true, size: 75 },
+						},
+					},
+				]),
+			}),
+		);
+		const snapshot = loadEditorPresets()[0].snapshot;
+		expect(snapshot).toMatchObject({ padding: { top: 30 }, backgroundBlur: 3 });
+		expect(snapshot).not.toHaveProperty("webcam");
+		vi.unstubAllGlobals();
+	});
+
 	it("does not copy imported source ranges into a reusable style preset", () => {
 		vi.stubGlobal("localStorage", createStorageMock());
 		saveEditorPresets([
@@ -722,6 +774,10 @@ describe("source-specific webcam metadata", () => {
 		]);
 		expect(loadEditorPresets()[0].snapshot.webcam).not.toHaveProperty("visibleRanges");
 		expect(loadEditorPresets()[0].snapshot.webcam).not.toHaveProperty("sourcePath");
+		expect(loadEditorPresets()[0].snapshot.webcam).toMatchObject({
+			shape: "circle",
+			roundnessVersion: 1,
+		});
 	});
 });
 

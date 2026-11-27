@@ -1,6 +1,23 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge } from "./bridge";
 
+test("HUD close requests a native hide immediately", async ({ page }) => {
+	await installDesktopBridge(page);
+	await page.goto("/?windowType=hud-overlay");
+	await page.evaluate(() => {
+		window.electronAPI.hudOverlayHide = () => {
+			document.documentElement.dataset.hudHidden = "true";
+		};
+	});
+	const close = page.getByRole("button", { name: "Hide HUD", exact: true });
+	await expect(close).toBeEnabled();
+	const hidden = await close.evaluate((button: HTMLButtonElement) => {
+		button.click();
+		return document.documentElement.dataset.hudHidden;
+	});
+	expect(hidden).toBe("true");
+});
+
 for (const reducedMotion of ["reduce", "no-preference"] as const) {
 	test(`HUD morphs between ready and recording with ${reducedMotion} motion`, async ({
 		page,

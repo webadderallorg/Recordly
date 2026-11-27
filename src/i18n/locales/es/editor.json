@@ -273,10 +273,11 @@
 	"presets": {
 		"open": "Abrir ajustes preestablecidos",
 		"label": "Ajustes preestablecidos",
-		"saveCurrentAs": "Guardar el ajuste actual como",
+		"saveCurrentAs": "Guardar como ajuste preestablecido",
+		"edit": "Editar",
 		"namePlaceholder": "Nombre del ajuste",
 		"savedList": "Ajustes guardados",
-		"empty": "Aún no hay ajustes preestablecidos.",
+		"default": "Predeterminado",
 		"deleteAriaLabel": "Eliminar ajuste {{name}}",
 		"toasts": {
 			"applied": "Se aplicó el ajuste «{{name}}»",

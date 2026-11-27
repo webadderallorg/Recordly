@@ -9,7 +9,12 @@ vi.mock("react", () => ({
 vi.mock("@/components/billing/BillingProvider", () => ({ useOptionalBilling: () => null }));
 vi.mock("@/components/ui/toast", () => ({ toast: { error: vi.fn() } }));
 vi.mock("@/lib/feedback/exportDiagnostics", () => ({
-	createExportDiagnostics: () => ({ record: vi.fn(), complete: vi.fn() }),
+	createExportDiagnostics: () => ({
+		record: vi.fn(),
+		complete: vi.fn(),
+		stage: vi.fn(),
+		block: vi.fn(),
+	}),
 }));
 vi.mock("./exportRunnerSupport", () => ({ showExportErrorToast: vi.fn() }));
 vi.mock("./gifEstimateCache", () => ({ stopGifSizeEstimates: async () => {} }));
@@ -55,14 +60,14 @@ function setup(isPlaying: boolean) {
 afterEach(() => vi.resetAllMocks());
 
 describe("export preview recovery", () => {
-	it("regenerates the frame and resumes playback when export returns a share file early", async () => {
+	it("keeps playback running when an export returns a share file", async () => {
 		vi.mocked(runMp4Export).mockResolvedValue({ exit: true, path: "/staged/export.mp4" });
 		const { exportRecording, playback, exportSession } = setup(true);
 
 		await expect(exportRecording()).resolves.toBe("/staged/export.mp4");
-		expect(playback.pause).toHaveBeenCalledOnce();
+		expect(playback.pause).not.toHaveBeenCalled();
 		expect(playback.regenerateFrame).toHaveBeenCalledOnce();
-		expect(playback.play).toHaveBeenCalledOnce();
+		expect(playback.play).not.toHaveBeenCalled();
 		expect(exportSession.setIsExporting).toHaveBeenLastCalledWith(false);
 	});
 
@@ -101,7 +106,7 @@ describe("export preview recovery", () => {
 
 		await exportRecording();
 		expect(playback.regenerateFrame).toHaveBeenCalledTimes(Number(regenerate));
-		expect(playback.play).toHaveBeenCalledTimes(Number(regenerate));
+		expect(playback.play).not.toHaveBeenCalled();
 		expect(exportSession.setIsExporting).not.toHaveBeenCalledWith(false);
 	});
 });

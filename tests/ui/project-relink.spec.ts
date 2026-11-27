@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { installDesktopBridge } from "./bridge";
+import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
 test("missing startup recording can be located without autosaving an empty edit", async ({
 	page,
 }) => {
 	await installDesktopBridge(page);
-	await page.addInitScript(() => {
+	await installDesktopBridgeOverrides(page, () => {
 		const failSave = async () => {
 			document.documentElement.dataset.unexpectedSave = "true";
 			return { success: false, error: "Recovery must preserve the saved edits" };
@@ -67,4 +67,34 @@ test("missing startup recording can be located without autosaving an empty edit"
 		"/projects/Keep my edits.recordly",
 	);
 	await expect(page.locator("html")).not.toHaveAttribute("data-unexpected-save", "true");
+});
+
+test("Home can locate the unavailable recording of the startup project", async ({ page }) => {
+	await installDesktopBridge(page, undefined, { signedIn: false, onboarded: true });
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.loadCurrentProjectFile = async () => ({
+			success: false,
+			path: "/projects/Missing recording.recordly",
+			missingRecordingPath: "/disconnected/original.mp4",
+			message: "Project video file not found: /disconnected/original.mp4",
+		});
+		window.electronAPI.relinkProjectRecording = async (path) => {
+			document.documentElement.dataset.relinkedProject = path;
+			return { success: false, canceled: true };
+		};
+	});
+	await page.goto("/?windowType=editor");
+	const startupError = page.getByRole("dialog", {
+		name: "The project’s recording is unavailable",
+	});
+	await startupError.getByRole("button", { name: "Close", exact: true }).click();
+	await page.getByRole("button", { name: "Home", exact: true }).click();
+	const home = page.getByRole("dialog", { name: "Projects dashboard" });
+	await expect(home.getByRole("alert")).toContainText("The project’s recording is unavailable");
+	await home.getByRole("button", { name: "Locate recording", exact: true }).click();
+	await expect(page.locator("html")).toHaveAttribute(
+		"data-relinked-project",
+		"/projects/Missing recording.recordly",
+	);
+	await expect(home.getByRole("button", { name: "Locate recording", exact: true })).toBeEnabled();
 });

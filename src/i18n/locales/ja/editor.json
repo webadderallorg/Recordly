@@ -273,10 +273,11 @@
 	"presets": {
 		"open": "プリセットを開く",
 		"label": "プリセット",
-		"saveCurrentAs": "現在の設定をプリセットとして保存",
+		"saveCurrentAs": "プリセットとして保存",
+		"edit": "編集",
 		"namePlaceholder": "プリセット名",
 		"savedList": "保存済みプリセット",
-		"empty": "プリセットはまだありません。",
+		"default": "デフォルト",
 		"deleteAriaLabel": "プリセット「{{name}}」を削除",
 		"toasts": {
 			"applied": "プリセット「{{name}}」を適用しました",

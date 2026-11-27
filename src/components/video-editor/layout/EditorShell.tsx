@@ -221,6 +221,19 @@ export function EditorShell(props: Props) {
 		openActions,
 		hasUnsavedChanges,
 	} = projectController;
+	const missingRecordingProjectPath =
+		project.error && isMissingProjectRecording(project.error)
+			? project.currentProjectPath
+			: null;
+	const locateRecording = missingRecordingProjectPath
+		? () => {
+				if (retryingSource) return;
+				setRetryingSource(true);
+				void openActions
+					.handleRelinkProjectRecording(missingRecordingProjectPath)
+					.finally(() => setRetryingSource(false));
+			}
+		: undefined;
 	const protectedSnapshotRef = useRef(lifecycle.currentProjectSnapshot);
 	protectedSnapshotRef.current = lifecycle.currentProjectSnapshot;
 	const getProtectedSourcePaths = useCallback(
@@ -312,6 +325,8 @@ export function EditorShell(props: Props) {
 					projectLibraryError={project.projectLibraryError}
 					onRetryLibraryLoad={projectController.refreshProjectLibrary}
 					projectError={project.error}
+					onLocateRecording={locateRecording}
+					locatingRecording={retryingSource}
 					projectErrorRecordingSource={project.videoSourcePath ?? undefined}
 					projectErrorSource={
 						project.currentProjectPath ?? project.videoSourcePath ?? undefined
@@ -518,7 +533,6 @@ export function EditorShell(props: Props) {
 								currentTime={ui.currentTime}
 								isPlaying={ui.isPlaying}
 								previewVolume={ui.previewVolume}
-								suspendRendering={exportStatus.shouldSuspendPreviewRendering}
 								appearance={appearance}
 								timeline={timeline}
 								audio={audio}
@@ -603,17 +617,7 @@ export function EditorShell(props: Props) {
 					source={errorSource ?? undefined}
 					onRetry={project.videoSourcePath ? () => void retrySource() : undefined}
 					retrying={retryingSource}
-					onLocate={
-						isMissingProjectRecording(project.error) && project.currentProjectPath
-							? () => {
-									if (retryingSource) return;
-									setRetryingSource(true);
-									void projectController.openActions
-										.handleRelinkProjectRecording(project.currentProjectPath!)
-										.finally(() => setRetryingSource(false));
-								}
-							: undefined
-					}
+					onLocate={locateRecording}
 					onDismiss={() =>
 						project.error &&
 						setDismissedError({ message: project.error, source: errorSource })

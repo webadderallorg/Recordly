@@ -66,13 +66,16 @@ export async function runLegacyVideoExport(
 
 		// Initialize streaming decoder and load video metadata
 		context.streamingDecoder = new StreamingVideoDecoder({
+			onDiagnostic: context.config.onDiagnostic,
 			maxDecodeQueue: context.config.maxDecodeQueue,
 			maxPendingFrames: context.config.maxPendingFrames,
 		});
+		context.config.onStage?.("read-source-metadata");
 		const videoInfo = await context.streamingDecoder.loadMetadata(context.config.videoUrl);
 		const shouldUseExperimentalNativeExport = context.shouldUseExperimentalNativeExport();
 		const audioPlan = context.buildNativeAudioPlan(videoInfo);
 		const nativeAudioPlan = shouldUseExperimentalNativeExport ? audioPlan : null;
+		if (shouldUseExperimentalNativeExport) context.config.onStage?.("start-native-encoder");
 		let useNativeEncoder = shouldUseExperimentalNativeExport
 			? await context.tryStartNativeVideoExport()
 			: false;
@@ -87,11 +90,14 @@ export async function runLegacyVideoExport(
 				!(await isAacAudioEncodingSupported()));
 
 		if (!useNativeEncoder) {
+			context.config.onStage?.("initialize-video-encoder");
 			await context.initializeEncoder();
 		}
 
 		// Initialize frame renderer
+		context.config.onStage?.("initialize-renderer");
 		context.renderer = new FrameRenderer({
+			onDiagnostic: context.config.onDiagnostic,
 			timelineEffects: context.config.clipRegions !== undefined,
 			width: context.config.width,
 			height: context.config.height,
@@ -156,6 +162,7 @@ export async function runLegacyVideoExport(
 		const hasAudio = videoInfo.hasAudio || hasAudioRegions || hasSourceAudioFallback;
 
 		if (!useNativeEncoder) {
+			context.config.onStage?.("initialize-mp4-container");
 			context.muxer = new VideoMuxer(
 				context.config,
 				hasAudio && !shouldUseFfmpegAudioFallback,
@@ -184,6 +191,7 @@ export async function runLegacyVideoExport(
 		let frameIndex = 0;
 
 		// Stream decode and process frames — no seeking!
+		context.config.onStage?.("decode-frame", 0);
 		await context.streamingDecoder.decodeAll(
 			context.config.frameRate,
 			context.config.trimRegions,
@@ -196,6 +204,7 @@ export async function runLegacyVideoExport(
 				const timestamp = frameIndex * frameDuration;
 				const sourceTimestampUs = sourceTimestampMs * 1000;
 				const cursorTimestampUs = cursorTimestampMs * 1000;
+				context.config.onStage?.("render-frame", frameIndex);
 				await context.renderer!.renderFrame(
 					videoFrame,
 					sourceTimestampUs,
@@ -204,6 +213,10 @@ export async function runLegacyVideoExport(
 					timestamp,
 				);
 
+				context.config.onStage?.(
+					useNativeEncoder ? "submit-native-frame" : "encode-frame",
+					frameIndex,
+				);
 				if (useNativeEncoder) {
 					await context.encodeRenderedFrameNative(timestamp, frameDuration, frameIndex);
 				} else {
@@ -212,6 +225,7 @@ export async function runLegacyVideoExport(
 				frameIndex++;
 				context.processedFrameCount = frameIndex;
 				context.reportProgress(frameIndex, totalFrames);
+				context.config.onStage?.("decode-frame", frameIndex);
 			},
 			context.config.clipRegions,
 		);
@@ -238,6 +252,7 @@ export async function runLegacyVideoExport(
 
 		if (useNativeEncoder && nativeAudioPlan) {
 			if (context.nativeH264Encoder) {
+				context.config.onStage?.("flush-native-input-encoder");
 				await context.measureFinalizationStage("nativeEncoderFlushMs", async () => {
 					await context.nativeH264Encoder!.flush();
 					await context.awaitPendingNativeWrites();
@@ -249,6 +264,7 @@ export async function runLegacyVideoExport(
 				context.nativeH264Encoder = null;
 			}
 			context.reportFinalizingProgress(totalFrames, 99, 0);
+			context.config.onStage?.("finish-native-encode");
 			const result = await context.finishNativeVideoExport(nativeAudioPlan, totalFrames);
 			context.finalizationTimeMs = context.getNowMs() - finalizationStartedAt;
 			return {
@@ -260,6 +276,7 @@ export async function runLegacyVideoExport(
 		// Finalize encoding
 		if (context.encoder && context.encoder.state === "configured") {
 			context.reportFinalizingProgress(totalFrames, 97);
+			context.config.onStage?.("flush-video-encoder");
 			await context.measureFinalizationStage("encoderFlushMs", async () => {
 				await context.awaitWithFinalizationTimeout(
 					context.encoder!.flush(),
@@ -270,6 +287,7 @@ export async function runLegacyVideoExport(
 
 		// Wait for queued muxing operations to complete
 		context.reportFinalizingProgress(totalFrames, 98);
+		context.config.onStage?.("drain-muxer-queue");
 		await context.measureFinalizationStage("queuedMuxingMs", async () => {
 			await context.awaitWithFinalizationTimeout(
 				context.pendingMuxing,
@@ -290,6 +308,7 @@ export async function runLegacyVideoExport(
 					context.reportFinalizingProgress(totalFrames, 99, progress);
 				});
 				context.reportFinalizingProgress(totalFrames, 99, 0);
+				context.config.onStage?.("process-audio");
 				await context.measureFinalizationStage("audioProcessingMs", async () => {
 					await context.awaitWithFinalizationTimeout(
 						context.audioProcessor!.process(
@@ -316,6 +335,7 @@ export async function runLegacyVideoExport(
 
 		// Finalize muxer and get output (temp path for streaming, blob for legacy)
 		context.reportFinalizingProgress(totalFrames, 99);
+		context.config.onStage?.("finalize-mp4-container");
 		const muxerResult = await context.measureFinalizationStage("muxerFinalizeMs", async () =>
 			context.awaitWithFinalizationTimeout(
 				context.muxer!.finalize(),
@@ -330,6 +350,7 @@ export async function runLegacyVideoExport(
 					? "[VideoExporter] Using FFmpeg audio muxing for pitch-preserving speed edits."
 					: "[VideoExporter] Browser AAC encoding is unavailable; falling back to FFmpeg audio muxing.",
 			);
+			context.config.onStage?.("mux-audio-with-ffmpeg");
 			const result = await context.finalizeExportWithFfmpegAudio(
 				muxerResult,
 				audioPlan,

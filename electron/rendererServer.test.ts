@@ -35,7 +35,9 @@ describe("packaged renderer assets", () => {
 		expect(media.headers.get("content-type")).toBe("video/mp4");
 		expect(media.headers.get("x-content-type-options")).toBe("nosniff");
 		expect(await media.text()).toBe("video");
-		expect(await (await fetch(base)).text()).toContain("Recordly");
+		const document = await fetch(base);
+		expect(document.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+		expect(await document.text()).toContain("Recordly");
 		const escaped = await fetch(`${base}/__recordly_assets/%2e%2e%2fprivate.txt`);
 		expect(await escaped.text()).not.toContain("secret");
 		expect(
