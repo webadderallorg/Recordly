@@ -543,13 +543,7 @@ fn build_button_sample(
     verbose: bool,
     last_left_click: &mut Option<(Instant, f64, f64)>,
 ) -> telemetry::RawSample {
-    let pts_ns = compute_click_pts_ns(
-        anchor.pts_ns,
-        anchor.paused_ns,
-        anchor.instant,
-        input.event_instant,
-        input.accumulated_paused_ns,
-    );
+    let pts_ns = anchor.input_pts_ns(input.event_instant, input.accumulated_paused_ns);
     let interaction = resolve_click_interaction(
         input.code,
         input.value,
@@ -675,20 +669,6 @@ fn mouse_button_for_code(code: u16) -> Option<u8> {
         BTN_MIDDLE => Some(3),
         _ => None,
     }
-}
-
-pub(crate) fn compute_click_pts_ns(
-    anchor_pts: i64,
-    anchor_paused_ns: i64,
-    anchor_instant: Instant,
-    event_instant: Instant,
-    accumulated_paused_ns: i64,
-) -> i64 {
-    let elapsed_ns = crate::pipewire_capture::duration_to_ns(
-        event_instant.saturating_duration_since(anchor_instant),
-    );
-    let pause_since_anchor = accumulated_paused_ns.saturating_sub(anchor_paused_ns);
-    anchor_pts + elapsed_ns - pause_since_anchor
 }
 
 #[repr(C)]
@@ -1036,27 +1016,22 @@ mod tests {
     #[test]
     fn computes_click_pts_without_double_subtracting_countdown_pause() {
         let t0 = Instant::now();
-        let pre_anchor_pause = 3_000_000_000;
-        let anchor_pts = 2_000_000_000;
+        let anchor = Anchor {
+            pts_ns: 2_000_000_000,
+            paused_ns: 3_000_000_000,
+            epoch_ms: 0,
+            instant: t0,
+        };
         assert_eq!(
-            compute_click_pts_ns(
-                anchor_pts,
-                pre_anchor_pause,
-                t0,
-                t0 + Duration::from_secs(1),
-                pre_anchor_pause
-            ),
-            anchor_pts + 1_000_000_000
+            anchor.input_pts_ns(t0 + Duration::from_secs(1), anchor.paused_ns),
+            anchor.pts_ns + 1_000_000_000
         );
         assert_eq!(
-            compute_click_pts_ns(
-                anchor_pts,
-                pre_anchor_pause,
-                t0,
+            anchor.input_pts_ns(
                 t0 + Duration::from_secs(4),
-                pre_anchor_pause + 2_000_000_000
+                anchor.paused_ns + 2_000_000_000
             ),
-            anchor_pts + 2_000_000_000
+            anchor.pts_ns + 2_000_000_000
         );
     }
 

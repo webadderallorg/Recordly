@@ -13,7 +13,10 @@ import {
 	validateRecordedVideo,
 } from "./diagnostics";
 import { discardRecordingFiles } from "./discardFiles";
-import { attachNativeCaptureStdinLifecycle } from "./nativeCaptureCommand";
+import {
+	attachNativeCaptureStdinLifecycle,
+	sendNativeCaptureCommand,
+} from "./nativeCaptureCommand";
 
 export class LinuxPortalSelectionCancelled extends Error {}
 
@@ -40,6 +43,7 @@ let capturePaused = false;
 let captureStopRequested = false;
 let captureVideoStarted = false;
 let captureAudioFailed = false;
+const zoomMarkerWrites = new WeakSet<ChildProcessWithoutNullStreams>();
 
 function appendBounded(current: string, chunk: string): string {
 	const combined = current + chunk;
@@ -80,7 +84,7 @@ export function parsePortalProbeOutput(
 	stderr?: string,
 ): LinuxPortalProbeResult {
 	const match = stdout.match(
-		/^CAPABILITY:cursor-modes=(\d+)\s+metadata=([01])\s+protocol=2\r?$/m,
+		/^CAPABILITY:cursor-modes=(\d+)\s+metadata=([01])\s+protocol=3\r?$/m,
 	);
 	const cursorModes = match ? Number(match[1]) : undefined;
 	return {
@@ -88,6 +92,29 @@ export function parsePortalProbeOutput(
 		cursorModes,
 		message: stderr?.trim() || undefined,
 	};
+}
+
+export async function captureLinuxPortalZoomMarker() {
+	const child = captureProcess;
+	if (
+		!child ||
+		!captureVideoStarted ||
+		capturePaused ||
+		captureStopRequested ||
+		zoomMarkerWrites.has(child) ||
+		child.exitCode !== null ||
+		child.signalCode !== null
+	) {
+		return;
+	}
+	zoomMarkerWrites.add(child);
+	try {
+		await sendNativeCaptureCommand(child, "mark-zoom\n");
+	} catch (error) {
+		console.warn("Could not mark a Wayland recording zoom:", error);
+	} finally {
+		zoomMarkerWrites.delete(child);
+	}
 }
 
 export function killLinuxPortalCaptureProcess(): void {

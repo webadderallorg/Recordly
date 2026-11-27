@@ -39,6 +39,7 @@ vi.mock("./discardFiles", () => ({
 }));
 
 import {
+	captureLinuxPortalZoomMarker,
 	isLinuxPortalCaptureActive,
 	isLinuxPortalCaptureEnabled,
 	killLinuxPortalCaptureProcess,
@@ -108,7 +109,7 @@ describe("linuxPortal capture backend", () => {
 
 	it("parses probe capability output cleanly", () => {
 		expect(
-			parsePortalProbeOutput("CAPABILITY:cursor-modes=7 metadata=1 protocol=2\n", 0),
+			parsePortalProbeOutput("CAPABILITY:cursor-modes=7 metadata=1 protocol=3\n", 0),
 		).toEqual({
 			available: true,
 			cursorModes: 7,
@@ -116,7 +117,7 @@ describe("linuxPortal capture backend", () => {
 		});
 		expect(
 			parsePortalProbeOutput(
-				"CAPABILITY:cursor-modes=3 metadata=0 protocol=2\n",
+				"CAPABILITY:cursor-modes=3 metadata=0 protocol=3\n",
 				3,
 				"no meta",
 			),
@@ -125,6 +126,9 @@ describe("linuxPortal capture backend", () => {
 			cursorModes: 3,
 			message: "no meta",
 		});
+		expect(
+			parsePortalProbeOutput("CAPABILITY:cursor-modes=7 metadata=1 protocol=2\n", 0),
+		).toMatchObject({ available: false });
 		expect(parsePortalProbeOutput("unexpected", 1)).toEqual({
 			available: false,
 			cursorModes: undefined,
@@ -134,7 +138,7 @@ describe("linuxPortal capture backend", () => {
 
 	unix("probes helper capability and handles missing binaries", async () => {
 		await expect(probeLinuxPortalCapture()).resolves.toMatchObject({ available: false });
-		await writeFakeHelper(`console.log("CAPABILITY:cursor-modes=7 metadata=1 protocol=2");`);
+		await writeFakeHelper(`console.log("CAPABILITY:cursor-modes=7 metadata=1 protocol=3");`);
 		await expect(probeLinuxPortalCapture()).resolves.toEqual({
 			available: true,
 			cursorModes: 7,
@@ -374,6 +378,41 @@ rl.on("line", line => {
 		});
 		await expect(resumeLinuxPortalCapture()).resolves.toEqual({ success: true });
 		expect(firstVideoFrame).toBe(true);
+		await stopLinuxPortalCapture();
+	});
+
+	unix("forwards manual zoom only after video starts and while recording", async () => {
+		await writeFakeHelper(`
+console.log("READY");
+const rl = require("node:readline").createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+	if (line === "pause") console.log("PAUSED");
+	else if (line === "resume") {
+		console.log("VIDEO_START:1700000000000");
+		console.log("RESUMED");
+	} else if (line === "stop") process.exit(0);
+});
+`);
+		let capturedChild: ChildProcessWithoutNullStreams | undefined;
+		await startLinuxPortalCapture({
+			systemAudio: false,
+			startPaused: true,
+			trackProcess: (child) => {
+				capturedChild = child;
+			},
+		});
+		const write = vi.spyOn(capturedChild!.stdin, "write");
+		await captureLinuxPortalZoomMarker();
+		expect(write).not.toHaveBeenCalled();
+
+		await resumeLinuxPortalCapture();
+		await captureLinuxPortalZoomMarker();
+		expect(write).toHaveBeenLastCalledWith("mark-zoom\n", expect.any(Function));
+
+		await pauseLinuxPortalCapture();
+		write.mockClear();
+		await captureLinuxPortalZoomMarker();
+		expect(write).not.toHaveBeenCalled();
 		await stopLinuxPortalCapture();
 	});
 

@@ -1,5 +1,6 @@
 import { globalShortcut } from "electron";
 import { captureRecordingZoomMarker } from "../cursor/telemetry";
+import { captureLinuxPortalZoomMarker, isLinuxPortalCaptureActive } from "./linuxPortal";
 
 const accelerator = "CommandOrControl+Alt+Z";
 let registered = false;
@@ -16,6 +17,10 @@ export function setRecordingZoomShortcutActive(active: boolean) {
 
 	try {
 		registered = globalShortcut.register(accelerator, () => {
+			if (isLinuxPortalCaptureActive()) {
+				void captureLinuxPortalZoomMarker();
+				return;
+			}
 			const now = Date.now();
 			if (now - lastMarkerAt >= 500 && captureRecordingZoomMarker(now)) {
 				lastMarkerAt = now;

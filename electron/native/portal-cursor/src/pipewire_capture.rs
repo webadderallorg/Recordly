@@ -21,6 +21,7 @@ pub enum Command {
     Quit,
     Pause,
     Resume,
+    MarkZoom,
 }
 
 #[derive(Clone, Copy)]
@@ -29,6 +30,13 @@ pub(crate) struct Anchor {
     pub paused_ns: i64,
     pub epoch_ms: i64,
     pub instant: Instant,
+}
+
+impl Anchor {
+    pub(crate) fn input_pts_ns(self, event: Instant, accumulated_paused_ns: i64) -> i64 {
+        let elapsed_ns = duration_to_ns(event.saturating_duration_since(self.instant));
+        self.pts_ns + elapsed_ns - accumulated_paused_ns.saturating_sub(self.paused_ns)
+    }
 }
 
 #[derive(Default)]
@@ -277,6 +285,10 @@ fn run_capture_thread(
     let resume_anchor = Arc::clone(&anchor);
     let resume_epoch = Arc::clone(&start_epoch);
     let resume_samples = Arc::clone(&raw_samples);
+    let resume_cursor = Arc::clone(&last_cursor);
+    let zoom_anchor = Arc::clone(&anchor);
+    let zoom_samples = Arc::clone(&raw_samples);
+    let last_zoom_at = Cell::new(None);
     let _receiver = attach_command_receiver(
         receiver,
         &mainloop,
@@ -284,10 +296,26 @@ fn run_capture_thread(
         Arc::clone(&timeline),
         Arc::clone(&pause),
         move |pts, paused_ns| {
-            if let Some(cursor) = last_cursor.lock().ok().and_then(|cursor| *cursor) {
+            if let Some(cursor) = resume_cursor.lock().ok().and_then(|cursor| *cursor) {
                 append_cursor_sample(&resume_samples, pts, cursor);
             }
             report_video_started(&resume_anchor, &resume_epoch, pts, paused_ns);
+        },
+        move |instant, paused_ns| {
+            let anchor = zoom_anchor.lock().ok().and_then(|anchor| *anchor);
+            let cursor = last_cursor.lock().ok().and_then(|cursor| *cursor);
+            if let (Some(anchor), Some(cursor)) = (anchor, cursor)
+                && let Ok(mut samples) = zoom_samples.lock()
+            {
+                append_zoom_marker(
+                    &mut samples,
+                    &last_zoom_at,
+                    anchor,
+                    cursor,
+                    instant,
+                    paused_ns,
+                );
+            }
         },
     );
     let _keepalive_timer = attach_keepalive_timer(
@@ -469,6 +497,7 @@ fn attach_command_receiver(
     timeline: Arc<Mutex<VideoTimeline>>,
     pause: Arc<Mutex<PauseState>>,
     on_start: impl Fn(i64, i64) + 'static,
+    on_zoom: impl Fn(Instant, i64) + 'static,
 ) -> pw::channel::AttachedReceiver<'_, Command> {
     let quit_loop = mainloop.clone();
     receiver.attach(mainloop.loop_(), move |command| match command {
@@ -509,6 +538,16 @@ fn attach_command_receiver(
             }
             println!("RESUMED");
             let _ = std::io::stdout().flush();
+        }
+        Command::MarkZoom => {
+            if let Ok(state) = pause.lock()
+                && !state.paused
+                && timeline
+                    .lock()
+                    .is_ok_and(|timeline| timeline.first_pts.is_some())
+            {
+                on_zoom(Instant::now(), state.accumulated_ns);
+            }
         }
     })
 }
@@ -1005,6 +1044,31 @@ fn record_cursor_metadata(
     }
 }
 
+fn append_zoom_marker(
+    samples: &mut Vec<telemetry::RawSample>,
+    last_marker_at: &Cell<Option<Instant>>,
+    anchor: Anchor,
+    cursor: CursorSnapshot,
+    instant: Instant,
+    paused_ns: i64,
+) {
+    if last_marker_at
+        .get()
+        .is_some_and(|last| instant.saturating_duration_since(last) < Duration::from_millis(500))
+    {
+        return;
+    }
+    samples.push(telemetry::RawSample {
+        pts_ns: anchor.input_pts_ns(instant, paused_ns),
+        cx: cursor.position.0,
+        cy: cursor.position.1,
+        cursor_type: None,
+        interaction_type: Some("manual-zoom".to_owned()),
+        mouse_button: None,
+    });
+    last_marker_at.set(Some(instant));
+}
+
 fn append_cursor_sample(
     samples: &Mutex<Vec<telemetry::RawSample>>,
     pts_ns: i64,
@@ -1110,4 +1174,44 @@ fn epoch_now_ms() -> i64 {
         .map_or(0, |duration| {
             i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn writes_manual_zoom_at_the_cursor_on_the_recording_timeline() {
+        let start = Instant::now();
+        let anchor = Anchor {
+            pts_ns: 1_000_000_000,
+            paused_ns: 3_000_000_000,
+            epoch_ms: 1000,
+            instant: start,
+        };
+        let cursor = CursorSnapshot {
+            position: (0.25, 0.75),
+            cursor_type: "arrow",
+        };
+        let last = Cell::new(None);
+        let mut samples = Vec::new();
+
+        for wall_ms in [3000, 3250, 3500] {
+            append_zoom_marker(
+                &mut samples,
+                &last,
+                anchor,
+                cursor,
+                start + Duration::from_millis(wall_ms),
+                5_000_000_000,
+            );
+        }
+
+        assert_eq!(samples.len(), 2);
+        assert_eq!(samples[0].pts_ns, 2_000_000_000);
+        assert_eq!(samples[1].pts_ns, 2_500_000_000);
+        assert_eq!((samples[0].cx, samples[0].cy), cursor.position);
+        assert_eq!(samples[0].interaction_type.as_deref(), Some("manual-zoom"));
+        assert_eq!(samples[0].mouse_button, None);
+    }
 }

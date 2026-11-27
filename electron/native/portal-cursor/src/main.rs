@@ -19,6 +19,7 @@ enum StdinCommand {
     Stop,
     Pause,
     Resume,
+    MarkZoom,
 }
 
 fn main() {
@@ -58,7 +59,7 @@ async fn run(cli: &Cli) -> Result<i32> {
 
     if cli.probe {
         println!(
-            "CAPABILITY:cursor-modes={modes} metadata={} protocol=2",
+            "CAPABILITY:cursor-modes={modes} metadata={} protocol=3",
             u8::from(metadata_supported)
         );
         let _ = std::io::stdout().flush();
@@ -269,6 +270,7 @@ async fn forward_stdin_commands(sender: &pipewire::channel::Sender<Command>) {
                     "stop" | "quit" => StdinCommand::Stop,
                     "pause" => StdinCommand::Pause,
                     "resume" => StdinCommand::Resume,
+                    "mark-zoom" => StdinCommand::MarkZoom,
                     _ => continue,
                 };
                 let stop = matches!(command, StdinCommand::Stop);
@@ -284,6 +286,7 @@ async fn forward_stdin_commands(sender: &pipewire::channel::Sender<Command>) {
             StdinCommand::Stop => return,
             StdinCommand::Pause => Command::Pause,
             StdinCommand::Resume => Command::Resume,
+            StdinCommand::MarkZoom => Command::MarkZoom,
         };
         let _ = sender.send(forwarded);
     }
