@@ -111,6 +111,24 @@ describe("local media path policy", () => {
 		expect((await manager.listProjectLibraryEntries()).warning).toContain("ENOENT");
 	});
 
+	it("reports an incomplete library when an enumerated project cannot be inspected", async () => {
+		const manager = await import("./manager");
+		const project = path.join(await manager.getProjectsDir(), "Unavailable.recordly");
+		await fs.writeFile(project, "{}");
+		await manager.saveRecentProjectPaths([project]);
+		const stat = vi
+			.spyOn(fs, "stat")
+			.mockRejectedValueOnce(new Error("Could not stat project"));
+		try {
+			const { entries, warning } = await manager.listProjectLibraryEntries();
+			expect(entries).toEqual([]);
+			expect(warning).toBe("Some projects in the library could not be checked.");
+			expect(await manager.loadRecentProjectPaths()).toEqual([project]);
+		} finally {
+			stat.mockRestore();
+		}
+	});
+
 	it("restores uploaded webcam media and its edge style from disk after a restart", async () => {
 		const manager = await import("./manager");
 		const { writeProjectFileAtomically } = await import("./atomicSave");

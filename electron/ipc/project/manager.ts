@@ -475,7 +475,7 @@ export async function listProjectLibraryEntries(
 	onThumbnailReady?: (ready: ProjectThumbnailReady) => void,
 ) {
 	const projectsDir = await getProjectsDirPath();
-	const projectPaths: string[] = [];
+	const projectPaths = new Set<string>();
 	let directoryReadable = false;
 	let warning: string | undefined;
 
@@ -489,7 +489,7 @@ export async function listProjectLibraryEntries(
 
 			const entryPath = path.join(projectsDir, entry.name);
 			if (hasProjectFileExtension(entryPath)) {
-				projectPaths.push(entryPath);
+				projectPaths.add(entryPath);
 			}
 		}
 	} catch (error) {
@@ -504,18 +504,24 @@ export async function listProjectLibraryEntries(
 
 	const recentProjectPaths = await loadRecentProjectPaths();
 	const candidatePaths = Array.from(new Set([...projectPaths, ...recentProjectPaths]));
-	const entries = (
-		await Promise.all(
-			candidatePaths.map((candidatePath) =>
-				buildProjectLibraryEntry(candidatePath, projectsDir, onThumbnailReady),
-			),
-		)
-	)
+	const candidates = await Promise.all(
+		candidatePaths.map((candidatePath) =>
+			buildProjectLibraryEntry(candidatePath, projectsDir, onThumbnailReady),
+		),
+	);
+	if (
+		!warning &&
+		candidates.some((entry, index) => !entry && projectPaths.has(candidatePaths[index]))
+	) {
+		warning = "Some projects in the library could not be checked.";
+	}
+	const entries = candidates
 		.filter((entry): entry is ProjectLibraryEntry => entry != null)
 		.sort((left, right) => right.updatedAt - left.updatedAt);
 
-	// Keep remembered paths if the recordings folder is offline or inaccessible.
-	if (directoryReadable) await saveRecentProjectPaths(entries.map((entry) => entry.path));
+	// Keep remembered paths when the project directory or one of its entries is unavailable.
+	if (directoryReadable && !warning)
+		await saveRecentProjectPaths(entries.map((entry) => entry.path));
 
 	return {
 		projectsDir,
