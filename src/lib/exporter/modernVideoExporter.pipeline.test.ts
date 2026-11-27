@@ -19,6 +19,7 @@ vi.mock("./modernFrameRenderer", () => ({
 		initialize = mocks.initialize;
 		renderFrame = mocks.render;
 		getRendererBackend = mocks.backend;
+		cancelPendingMedia() {}
 		destroy() {}
 	},
 }));
@@ -70,6 +71,7 @@ function exporter() {
 	exporterInternals(probe).session.browser.renderer = {
 		getCanvas: () => ({ width: 2, height: 2 }) as HTMLCanvasElement,
 		capturePixelsForNativeExport: () => new Uint8ClampedArray(16),
+		cancelPendingMedia() {},
 		destroy() {},
 	} as unknown as FrameRenderer;
 	return { instance, probe };
