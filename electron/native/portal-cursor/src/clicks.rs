@@ -4,7 +4,6 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::os::unix::fs::FileTypeExt;
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -299,7 +298,6 @@ struct ClickContext {
     anchor: Arc<Mutex<Option<Anchor>>>,
     pause: Arc<Mutex<PauseState>>,
     last_position: Arc<Mutex<Option<(f64, f64)>>>,
-    cursor_visible: Arc<AtomicBool>,
     verbose: bool,
 }
 
@@ -308,7 +306,6 @@ pub fn start(
     anchor: &Arc<Mutex<Option<Anchor>>>,
     pause: &Arc<Mutex<PauseState>>,
     last_position: &Arc<Mutex<Option<(f64, f64)>>>,
-    cursor_visible: &Arc<AtomicBool>,
     verbose: bool,
 ) {
     let Ok(entries) = fs::read_dir("/dev/input") else {
@@ -352,7 +349,6 @@ pub fn start(
             anchor: Arc::clone(anchor),
             pause: Arc::clone(pause),
             last_position: Arc::clone(last_position),
-            cursor_visible: Arc::clone(cursor_visible),
             verbose,
         };
         std::thread::Builder::new()
@@ -373,7 +369,11 @@ pub fn start(
     }
 }
 
-fn read_device(mut file: File, mut tap_tracker: Option<TouchTapTracker>, context: &ClickContext) {
+fn read_device(
+    mut file: impl Read,
+    mut tap_tracker: Option<TouchTapTracker>,
+    context: &ClickContext,
+) {
     let mut buffer = [0u8; 24];
     let mut last_left_click: Option<(Instant, f64, f64)> = None;
     let mut touch_down_guard: Option<(bool, i64, bool)> = None;
@@ -394,22 +394,26 @@ fn read_device(mut file: File, mut tap_tracker: Option<TouchTapTracker>, context
                 .lock()
                 .ok()
                 .and_then(|position| *position)
-                .unwrap_or((0.5, 0.5))
         };
 
         if let Some(tracker) = tap_tracker.as_mut()
             && matches!(event_type, EV_SYN | EV_KEY | EV_ABS)
         {
             let was_touching = tracker.is_touching();
-            let completed_tap =
-                tracker.handle_event(event_type, code, value, event_instant, current_pos());
+            let position = current_pos();
+            let completed_tap = tracker.handle_event(
+                event_type,
+                code,
+                value,
+                event_instant,
+                position.unwrap_or_default(),
+            );
             if !was_touching && tracker.is_touching() {
                 let (paused, paused_ns) = context
                     .pause
                     .lock()
                     .map_or((true, 0), |pause| pause.snapshot());
-                let visible = context.cursor_visible.load(Ordering::SeqCst);
-                touch_down_guard = Some((paused, paused_ns, visible));
+                touch_down_guard = Some((paused, paused_ns, position.is_some()));
             } else if !tracker.is_touching() {
                 let down_guard = touch_down_guard.take();
                 if let Some(tap) = completed_tap
@@ -419,8 +423,7 @@ fn read_device(mut file: File, mut tap_tracker: Option<TouchTapTracker>, context
                         .pause
                         .lock()
                         .map_or((true, 0), |pause| pause.snapshot());
-                    let up_visible = context.cursor_visible.load(Ordering::SeqCst);
-                    if !down_paused && !up_paused && down_visible && up_visible {
+                    if !down_paused && !up_paused && down_visible && position.is_some() {
                         emit_completed_tap(
                             context,
                             tap,
@@ -460,9 +463,12 @@ fn read_device(mut file: File, mut tap_tracker: Option<TouchTapTracker>, context
             .pause
             .lock()
             .map_or((true, 0), |pause| pause.snapshot());
-        if paused || !context.cursor_visible.load(Ordering::SeqCst) {
+        if paused {
             continue;
         }
+        let Some(cursor) = current_pos() else {
+            continue;
+        };
 
         emit_button_event(
             context,
@@ -470,7 +476,7 @@ fn read_device(mut file: File, mut tap_tracker: Option<TouchTapTracker>, context
                 code,
                 value,
                 event_instant,
-                cursor: current_pos(),
+                cursor,
                 accumulated_paused_ns: accumulated_ns,
             },
             &mut last_left_click,
@@ -802,6 +808,35 @@ mod tests {
                 resolution: 13,
             }),
         }
+    }
+
+    #[test]
+    fn records_a_click_only_after_a_real_cursor_position_is_known() {
+        let context = ClickContext {
+            samples: Arc::new(Mutex::new(Vec::new())),
+            anchor: Arc::new(Mutex::new(Some(Anchor {
+                pts_ns: 0,
+                paused_ns: 0,
+                epoch_ms: 0,
+                instant: Instant::now(),
+            }))),
+            pause: Arc::new(Mutex::new(PauseState::default())),
+            last_position: Arc::new(Mutex::new(None)),
+            verbose: false,
+        };
+        let mut event = [0u8; 24];
+        event[16..18].copy_from_slice(&EV_KEY.to_le_bytes());
+        event[18..20].copy_from_slice(&BTN_LEFT.to_le_bytes());
+        event[20..24].copy_from_slice(&1i32.to_le_bytes());
+
+        read_device(std::io::Cursor::new(event), None, &context);
+        assert!(context.samples.lock().unwrap().is_empty());
+
+        *context.last_position.lock().unwrap() = Some((0.2, 0.8));
+        read_device(std::io::Cursor::new(event), None, &context);
+        let samples = context.samples.lock().unwrap();
+        assert_eq!(samples.len(), 1);
+        assert_eq!((samples[0].cx, samples[0].cy), (0.2, 0.8));
     }
 
     #[test]
@@ -1233,7 +1268,6 @@ mod tests {
             anchor: Arc::clone(&anchor),
             pause: Arc::new(Mutex::new(PauseState::default())),
             last_position: Arc::new(Mutex::new(None)),
-            cursor_visible: Arc::new(AtomicBool::new(true)),
             verbose: false,
         };
         let tap = CompletedTap {

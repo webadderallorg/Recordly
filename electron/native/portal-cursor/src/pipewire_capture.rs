@@ -12,7 +12,7 @@ use std::io::Write;
 use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -111,7 +111,6 @@ struct CaptureState {
     anchor: Arc<Mutex<Option<Anchor>>>,
     pause: Arc<Mutex<PauseState>>,
     last_position: Arc<Mutex<Option<(f64, f64)>>>,
-    cursor_visible: Arc<AtomicBool>,
     buffer_count: u64,
     cursor_meta_count: u64,
     last: Option<CursorKey>,
@@ -126,7 +125,6 @@ pub fn spawn(
     let raw_samples = Arc::new(Mutex::new(Vec::<telemetry::RawSample>::new()));
     let anchor = Arc::new(Mutex::new(None::<Anchor>));
     let last_position = Arc::new(Mutex::new(None::<(f64, f64)>));
-    let cursor_visible = Arc::new(AtomicBool::new(false));
     let mut pause_state = PauseState::default();
     if config.start_paused {
         pause_state.pause();
@@ -140,7 +138,6 @@ pub fn spawn(
         &anchor,
         &pause,
         &last_position,
-        &cursor_visible,
         config.verbose,
     );
 
@@ -150,7 +147,6 @@ pub fn spawn(
         anchor,
         pause,
         last_position,
-        cursor_visible,
         timeline,
         timer_frame_interval_ns,
     };
@@ -173,7 +169,6 @@ struct CaptureThreadContext {
     anchor: Arc<Mutex<Option<Anchor>>>,
     pause: Arc<Mutex<PauseState>>,
     last_position: Arc<Mutex<Option<(f64, f64)>>>,
-    cursor_visible: Arc<AtomicBool>,
     timeline: Arc<Mutex<VideoTimeline>>,
     timer_frame_interval_ns: i64,
 }
@@ -200,7 +195,6 @@ fn run_capture_thread(
         anchor,
         pause,
         last_position,
-        cursor_visible,
         timeline,
         timer_frame_interval_ns,
     } = context;
@@ -250,7 +244,6 @@ fn run_capture_thread(
         anchor: Arc::clone(&anchor),
         pause: Arc::clone(&pause),
         last_position,
-        cursor_visible,
         buffer_count: 0,
         cursor_meta_count: 0,
         last: None,
@@ -870,12 +863,14 @@ fn handle_process(stream: &pw::stream::Stream, state: &mut CaptureState) {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .snapshot();
     if paused {
-        if let Some(cursor) = buffer.find_meta::<MetaCursor>()
-            && cursor.id() != 0
-            && cursor.bitmap().is_some()
-        {
-            // Position-only updates after resume can refer to a bitmap sent while paused.
-            resolve_cursor_type(cursor, state);
+        if let Some(cursor) = buffer.find_meta::<MetaCursor>() {
+            let _ = cache_cursor_position(cursor, state);
+            if cursor.id() != 0 && cursor.bitmap().is_some() {
+                // Position-only updates after resume can refer to a bitmap sent while paused.
+                resolve_cursor_type(cursor, state);
+            }
+            // Cache live cursor state while paused, but emit it only on the recording timeline.
+            state.last = None;
         }
         let raw_pts_ns = buffer.find_meta::<MetaHeader>().map_or(0, MetaHeader::pts);
         let received_at = Instant::now();
@@ -932,10 +927,10 @@ fn record_cursor_metadata(
     };
     state.cursor_meta_count += 1;
     if cursor.id() == 0 {
-        state.cursor_visible.store(false, Ordering::SeqCst);
+        let _ = cache_cursor_position(cursor, state);
+        state.last = None;
         return;
     }
-    state.cursor_visible.store(true, Ordering::SeqCst);
 
     let position = cursor.position();
     let hotspot = cursor.hotspot();
@@ -959,20 +954,10 @@ fn record_cursor_metadata(
     if state.last == Some(key) {
         return;
     }
+    let Some((cx, cy)) = cache_cursor_position(cursor, state) else {
+        return;
+    };
     state.last = Some(key);
-
-    let Some(rect) = normalization_rect(state) else {
-        return;
-    };
-    let Some((cx, cy)) =
-        geometry::normalize_to_stream((position.x, position.y), rect, state.config.position_space)
-    else {
-        return;
-    };
-
-    if let Ok(mut last) = state.last_position.lock() {
-        *last = Some((cx, cy));
-    }
 
     let cursor_type = resolve_cursor_type(cursor, state);
 
@@ -1015,6 +1000,25 @@ fn record_cursor_metadata(
         );
         let _ = std::io::stdout().flush();
     }
+}
+
+fn cache_cursor_position(cursor: &MetaCursor, state: &CaptureState) -> Option<(f64, f64)> {
+    let position = if cursor.id() == 0 {
+        None
+    } else {
+        let position = cursor.position();
+        normalization_rect(state).and_then(|rect| {
+            geometry::normalize_to_stream(
+                (position.x, position.y),
+                rect,
+                state.config.position_space,
+            )
+        })
+    };
+    if let Ok(mut last) = state.last_position.lock() {
+        *last = position;
+    }
+    position
 }
 
 fn resolve_cursor_type(cursor: &MetaCursor, state: &mut CaptureState) -> &'static str {
