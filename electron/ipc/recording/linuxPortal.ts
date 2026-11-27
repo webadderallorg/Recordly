@@ -353,8 +353,6 @@ export async function startLinuxPortalCapture(options: {
 			outputPath,
 			"--output",
 			`${outputPath}.cursor.json`,
-			"--start-epoch-ms",
-			String(timestamp),
 			...(options.systemAudio ? ["--system-audio"] : []),
 			...(options.startPaused ? ["--start-paused"] : []),
 			...(process.env.RECORDLY_LINUX_PORTAL_CURSOR_PERSIST === "1" ? [] : ["--no-persist"]),

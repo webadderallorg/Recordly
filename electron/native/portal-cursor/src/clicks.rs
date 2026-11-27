@@ -19,6 +19,7 @@ const BTN_LEFT: u16 = 0x110;
 const BTN_RIGHT: u16 = 0x111;
 const BTN_MIDDLE: u16 = 0x112;
 const BTN_TOOL_FINGER: u16 = 0x145;
+const BTN_TOOL_QUINTTAP: u16 = 0x148;
 const BTN_TOUCH: u16 = 0x14a;
 const BTN_TOOL_DOUBLETAP: u16 = 0x14d;
 const BTN_TOOL_TRIPLETAP: u16 = 0x14e;
@@ -36,6 +37,7 @@ const TOOL_FINGER_BIT: u8 = 1 << 0;
 const TOOL_DOUBLETAP_BIT: u8 = 1 << 1;
 const TOOL_TRIPLETAP_BIT: u8 = 1 << 2;
 const TOOL_QUADTAP_BIT: u8 = 1 << 3;
+const TOOL_QUINTTAP_BIT: u8 = 1 << 4;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct AbsAxis {
@@ -133,7 +135,9 @@ impl TouchTapTracker {
     }
 
     fn current_fingers(&self) -> u8 {
-        if self.tool_bits & TOOL_QUADTAP_BIT != 0 {
+        if self.tool_bits & TOOL_QUINTTAP_BIT != 0 {
+            5
+        } else if self.tool_bits & TOOL_QUADTAP_BIT != 0 {
             4
         } else if self.tool_bits & TOOL_TRIPLETAP_BIT != 0 {
             3
@@ -206,6 +210,7 @@ impl TouchTapTracker {
                 BTN_TOOL_DOUBLETAP => self.set_tool_bit(TOOL_DOUBLETAP_BIT, value != 0),
                 BTN_TOOL_TRIPLETAP => self.set_tool_bit(TOOL_TRIPLETAP_BIT, value != 0),
                 BTN_TOOL_QUADTAP => self.set_tool_bit(TOOL_QUADTAP_BIT, value != 0),
+                BTN_TOOL_QUINTTAP => self.set_tool_bit(TOOL_QUINTTAP_BIT, value != 0),
                 BTN_TOUCH => {
                     if value != 0 {
                         if !self.touch_down {
@@ -379,6 +384,82 @@ struct InputTiming {
     paused_ns: i64,
 }
 
+struct TapTrackerState {
+    down_timing: Option<InputTiming>,
+    up_timing: Option<InputTiming>,
+}
+
+#[derive(Clone, Copy)]
+struct RawInputEvent {
+    event_type: u16,
+    code: u16,
+    value: i32,
+    timing: Option<InputTiming>,
+}
+
+fn read_input_timing(event_type: u16, code: u16, pause: &Mutex<PauseState>) -> Option<InputTiming> {
+    if event_type == EV_KEY
+        && matches!(code, BTN_TOUCH | BTN_LEFT | BTN_RIGHT | BTN_MIDDLE)
+        && let Ok(pause) = pause.lock()
+    {
+        // Read the instant and pause together so Resume cannot move an earlier event back in time.
+        let instant = Instant::now();
+        let (paused, paused_ns) = pause.timing_at(instant);
+        Some(InputTiming {
+            instant,
+            paused,
+            paused_ns,
+        })
+    } else {
+        None
+    }
+}
+
+fn handle_tap_tracker_event(
+    tracker: &mut TouchTapTracker,
+    tap_state: &mut TapTrackerState,
+    input: RawInputEvent,
+    context: &ClickContext,
+    last_left_click: &mut Option<(Instant, f64, f64)>,
+) {
+    let position = if input.event_type == EV_KEY && input.code == BTN_TOUCH {
+        if input.value != 0 && !tracker.touch_down {
+            tap_state.down_timing = input.timing;
+            tap_state.up_timing = None;
+        } else if input.value == 0 && tracker.touch_down {
+            tap_state.up_timing = input.timing;
+        }
+        context
+            .last_cursor
+            .lock()
+            .ok()
+            .and_then(|cursor| cursor.map(|snapshot| snapshot.position))
+    } else {
+        None
+    };
+    let event_instant = input
+        .timing
+        .map_or_else(Instant::now, |timing| timing.instant);
+    let completed_tap = tracker.handle_event(
+        input.event_type,
+        input.code,
+        input.value,
+        event_instant,
+        position,
+    );
+    if !tracker.is_touching() {
+        let down = tap_state.down_timing.take();
+        let up = tap_state.up_timing.take();
+        if let (Some(tap), Some(down), Some(up)) = (completed_tap, down, up)
+            && !down.paused
+            && !up.paused
+            && down.paused_ns == up.paused_ns
+        {
+            emit_completed_tap(context, tap, down.paused_ns, up.paused_ns, last_left_click);
+        }
+    }
+}
+
 fn read_device(
     mut file: impl Read,
     mut tap_tracker: Option<TouchTapTracker>,
@@ -386,8 +467,10 @@ fn read_device(
 ) {
     let mut buffer = [0u8; 24];
     let mut last_left_click: Option<(Instant, f64, f64)> = None;
-    let mut touch_down_timing: Option<InputTiming> = None;
-    let mut touch_up_timing: Option<InputTiming> = None;
+    let mut tap_state = TapTrackerState {
+        down_timing: None,
+        up_timing: None,
+    };
     let mut pressed_positions = [None; 3];
     let mut syn_dropping = false;
 
@@ -398,21 +481,7 @@ fn read_device(
         let event_type = u16::from_le_bytes([buffer[16], buffer[17]]);
         let code = u16::from_le_bytes([buffer[18], buffer[19]]);
         let value = i32::from_le_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]);
-        let timing = if event_type == EV_KEY
-            && matches!(code, BTN_TOUCH | BTN_LEFT | BTN_RIGHT | BTN_MIDDLE)
-            && let Ok(pause) = context.pause.lock()
-        {
-            // Read the instant and pause together so Resume cannot move an earlier event back in time.
-            let instant = Instant::now();
-            let (paused, paused_ns) = pause.timing_at(instant);
-            Some(InputTiming {
-                instant,
-                paused,
-                paused_ns,
-            })
-        } else {
-            None
-        };
+        let timing = read_input_timing(event_type, code, &context.pause);
 
         let current_pos = || {
             context
@@ -425,44 +494,25 @@ fn read_device(
         if let Some(tracker) = tap_tracker.as_mut()
             && matches!(event_type, EV_SYN | EV_KEY | EV_ABS)
         {
-            let position = if event_type == EV_KEY && code == BTN_TOUCH {
-                if value != 0 && !tracker.touch_down {
-                    touch_down_timing = timing;
-                    touch_up_timing = None;
-                } else if value == 0 && tracker.touch_down {
-                    touch_up_timing = timing;
-                }
-                current_pos()
-            } else {
-                None
-            };
-            let event_instant = timing.map_or_else(Instant::now, |timing| timing.instant);
-            let completed_tap =
-                tracker.handle_event(event_type, code, value, event_instant, position);
-            if !tracker.is_touching() {
-                let down = touch_down_timing.take();
-                let up = touch_up_timing.take();
-                if let (Some(tap), Some(down), Some(up)) = (completed_tap, down, up)
-                    && !down.paused
-                    && !up.paused
-                    && down.paused_ns == up.paused_ns
-                {
-                    emit_completed_tap(
-                        context,
-                        tap,
-                        down.paused_ns,
-                        up.paused_ns,
-                        &mut last_left_click,
-                    );
-                }
-            }
+            handle_tap_tracker_event(
+                tracker,
+                &mut tap_state,
+                RawInputEvent {
+                    event_type,
+                    code,
+                    value,
+                    timing,
+                },
+                context,
+                &mut last_left_click,
+            );
         }
 
         if event_type == EV_SYN {
             if code == SYN_DROPPED {
                 syn_dropping = true;
-                touch_down_timing = None;
-                touch_up_timing = None;
+                tap_state.down_timing = None;
+                tap_state.up_timing = None;
             } else if code == SYN_REPORT {
                 syn_dropping = false;
             }
@@ -1272,6 +1322,40 @@ mod tests {
                 SYN_REPORT,
                 0,
                 press_at + Duration::from_millis(70),
+                (0.5, 0.5)
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn touchpad_tap_rejects_five_fingers() {
+        let t0 = Instant::now();
+        let mut tracker = TouchTapTracker::new(touchpad_geometry());
+
+        tracker.handle_event(EV_KEY, BTN_TOUCH, 1, t0, (0.5, 0.5));
+        tracker.handle_event(EV_KEY, BTN_TOOL_QUINTTAP, 1, t0, (0.5, 0.5));
+        tracker.handle_event(EV_SYN, SYN_REPORT, 0, t0, (0.5, 0.5));
+        tracker.handle_event(
+            EV_KEY,
+            BTN_TOUCH,
+            0,
+            t0 + Duration::from_millis(50),
+            (0.5, 0.5),
+        );
+        tracker.handle_event(
+            EV_KEY,
+            BTN_TOOL_QUINTTAP,
+            0,
+            t0 + Duration::from_millis(50),
+            (0.5, 0.5),
+        );
+        assert_eq!(
+            tracker.handle_event(
+                EV_SYN,
+                SYN_REPORT,
+                0,
+                t0 + Duration::from_millis(50),
                 (0.5, 0.5)
             ),
             None

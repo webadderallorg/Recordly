@@ -178,24 +178,7 @@ fn run(
     }
     let _ = ready_tx.send(Ok(appsrc.clone()));
 
-    let audio = if config.system_audio {
-        let audio_failed = Arc::new(AtomicBool::new(false));
-        let audio_path = crate::audio::wav_path_for_video(&config.output);
-        match crate::audio::AudioRecorder::start(&audio_path, audio_failed) {
-            Ok(recorder) => {
-                if config.verbose {
-                    eprintln!("[audio] recording to {}", audio_path.display());
-                }
-                Some(Arc::new(Mutex::new(recorder)))
-            }
-            Err(error) => {
-                eprintln!("ERROR:system audio unavailable: {error:#}");
-                None
-            }
-        }
-    } else {
-        None
-    };
+    let audio = start_system_audio(config);
 
     let timeout_appsrc = appsrc.clone();
     let timeout_audio = audio.clone();
@@ -254,6 +237,26 @@ fn run(
     }
     let _ = std::io::stdout().flush();
     Ok(())
+}
+
+fn start_system_audio(config: &VideoConfig) -> Option<Arc<Mutex<crate::audio::AudioRecorder>>> {
+    if !config.system_audio {
+        return None;
+    }
+    let audio_failed = Arc::new(AtomicBool::new(false));
+    let audio_path = crate::audio::wav_path_for_video(&config.output);
+    match crate::audio::AudioRecorder::start(&audio_path, audio_failed) {
+        Ok(recorder) => {
+            if config.verbose {
+                eprintln!("[audio] recording to {}", audio_path.display());
+            }
+            Some(Arc::new(Mutex::new(recorder)))
+        }
+        Err(error) => {
+            eprintln!("ERROR:system audio unavailable: {error:#}");
+            None
+        }
+    }
 }
 
 fn build_pipeline(config: &VideoConfig) -> Result<(gst::Pipeline, gst_app::AppSrc)> {

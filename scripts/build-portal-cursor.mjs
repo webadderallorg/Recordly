@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmod, copyFile, mkdir } from "node:fs/promises";
+import { chmod, copyFile, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 
 const projectRoot = process.cwd();
@@ -13,6 +13,7 @@ const crateDir = path.join(projectRoot, "electron", "native", "portal-cursor");
 const archTag = process.arch === "arm64" ? "linux-arm64" : "linux-x64";
 const outputDir = path.join(projectRoot, "electron", "native", "bin", archTag);
 const binaryName = "recordly-portal-cursor";
+const target = path.join(outputDir, binaryName);
 const required = process.env.CI === "true" || process.env.RECORDLY_PORTAL_CURSOR_REQUIRED === "1";
 
 const installInstructions = [
@@ -33,6 +34,7 @@ if (cargoCheck.status !== 0 || pkgConfigCheck.status !== 0) {
 	if (required) {
 		throw new Error(installInstructions);
 	}
+	await rm(target, { force: true });
 	console.warn(
 		`[build-portal-cursor] ${installInstructions}\n[build-portal-cursor] Skipping portal-cursor build; Recordly will fall back to browser capture.`,
 	);
@@ -41,8 +43,14 @@ if (cargoCheck.status !== 0 || pkgConfigCheck.status !== 0) {
 
 const build = spawnSync(
 	"cargo",
-	["build", "--release", "--manifest-path", path.join(crateDir, "Cargo.toml")],
-	{ stdio: "inherit" },
+	[
+		"build",
+		"--release",
+		"--message-format=json-render-diagnostics",
+		"--manifest-path",
+		path.join(crateDir, "Cargo.toml"),
+	],
+	{ stdio: ["inherit", "pipe", "inherit"], encoding: "utf8" },
 );
 
 if (build.status !== 0) {
@@ -50,9 +58,25 @@ if (build.status !== 0) {
 	throw new Error(`Failed to build ${binaryName}${details}.\n${installInstructions}`);
 }
 
+let builtExecutable;
+for (const line of (build.stdout ?? "").split(/\r?\n/)) {
+	if (!line.startsWith("{")) continue;
+	try {
+		const message = JSON.parse(line);
+		if (
+			message?.reason === "compiler-artifact" &&
+			message?.target?.name === binaryName &&
+			typeof message?.executable === "string"
+		) {
+			builtExecutable = message.executable;
+		}
+	} catch {
+		// Ignore non-JSON lines emitted by cargo or build scripts.
+	}
+}
+
 await mkdir(outputDir, { recursive: true });
-const source = path.join(crateDir, "target", "release", binaryName);
-const target = path.join(outputDir, binaryName);
+const source = builtExecutable ?? path.join(crateDir, "target", "release", binaryName);
 await copyFile(source, target);
 await chmod(target, 0o755);
 console.log(`[build-portal-cursor] Staged ${binaryName} (${archTag}) -> ${target}`);

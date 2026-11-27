@@ -12,6 +12,7 @@ use cli::{Cli, PositionSpaceArg};
 use pipewire_capture::{CaptureConfig, Command};
 use recordly_portal_cursor::{geometry, token};
 use std::io::{BufRead, Write};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
 
@@ -78,6 +79,15 @@ async fn run(cli: &Cli) -> Result<i32> {
         return Ok(1);
     }
 
+    let telemetry_output = resolve_telemetry_output(cli);
+    if let (Some(video_path), Some(telemetry_path)) =
+        (cli.record_video.as_deref(), telemetry_output.as_deref())
+        && paths_collide(video_path, telemetry_path)
+    {
+        eprintln!("ERROR:--output cannot match --record-video");
+        return Ok(1);
+    }
+
     let connected = connect_portal(cli).await?;
     let stream = connected
         .streams
@@ -98,7 +108,6 @@ async fn run(cli: &Cli) -> Result<i32> {
     print_stream_banner(&stream, position_space);
 
     let start_epoch = Arc::new(AtomicI64::new(cli.start_epoch_ms.unwrap_or(0)));
-    let telemetry_output = resolve_telemetry_output(cli);
     let (video_finished_tx, mut video_finished) = tokio::sync::oneshot::channel();
     let video_handle = spawn_video_recorder(cli, video_finished_tx)?;
 
@@ -184,16 +193,58 @@ async fn connect_portal(cli: &Cli) -> Result<portal::Connected> {
 
     if !cli.no_persist
         && let Some(value) = connected.restore_token.as_deref()
+        && let Err(error) = token::store(&token_path, value)
     {
-        token::store(&token_path, value).with_context(|| {
-            format!(
-                "failed to write the restore token to {}",
-                token_path.display()
-            )
-        })?;
+        eprintln!(
+            "[portal] failed to write the restore token to {}: {error}",
+            token_path.display()
+        );
     }
 
     Ok(connected)
+}
+
+fn normalize_comparison_path(path: &Path) -> PathBuf {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else if let Ok(cwd) = std::env::current_dir() {
+        cwd.join(path)
+    } else {
+        path.to_path_buf()
+    };
+    if let Ok(canonical) = std::fs::canonicalize(&absolute) {
+        return canonical;
+    }
+    let resolved = if let (Some(parent), Some(file_name)) =
+        (absolute.parent(), absolute.file_name())
+        && let Ok(canonical_parent) = std::fs::canonicalize(parent)
+    {
+        canonical_parent.join(file_name)
+    } else {
+        absolute
+    };
+    let mut normalized = PathBuf::new();
+    for component in resolved.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if matches!(
+                    normalized.components().next_back(),
+                    Some(std::path::Component::Normal(_))
+                ) {
+                    normalized.pop();
+                } else if !normalized.is_absolute() {
+                    normalized.push(component);
+                }
+            }
+            _ => normalized.push(component),
+        }
+    }
+    normalized
+}
+
+fn paths_collide(left: &Path, right: &Path) -> bool {
+    normalize_comparison_path(left) == normalize_comparison_path(right)
 }
 
 fn resolve_cli_position_space(cli: &Cli) -> geometry::PositionSpace {
@@ -291,4 +342,26 @@ async fn forward_stdin_commands(sender: &pipewire::channel::Sender<Command>) {
         let _ = sender.send(forwarded);
     }
     std::future::pending::<()>().await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_colliding_video_and_telemetry_paths() {
+        let dir = std::env::temp_dir().join(format!("recordly-paths-{}", std::process::id()));
+        assert!(paths_collide(
+            &dir.join("capture.webm"),
+            &dir.join("capture.webm")
+        ));
+        assert!(paths_collide(
+            &dir.join("./sub/../capture.webm"),
+            &dir.join("capture.webm")
+        ));
+        assert!(!paths_collide(
+            &dir.join("capture.webm"),
+            &dir.join("capture.webm.cursor.json")
+        ));
+    }
 }

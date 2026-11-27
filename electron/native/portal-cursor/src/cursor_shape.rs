@@ -400,13 +400,9 @@ fn classify_scaled(cursor: &DecodedCursor, theme: &[ThemeCursor]) -> Option<&'st
         let Some(recordly_type) = recordly_type_for_name(&theme_cursor.name) else {
             continue;
         };
-        let Some(image) = closest_size_image(&theme_cursor.images, cursor.width, cursor.height)
-        else {
+        let Some(image) = closest_size_image(&theme_cursor.images, cursor) else {
             continue;
         };
-        if !hotspot_matches(cursor, image) {
-            continue;
-        }
         let score = alpha_difference_scaled(cursor, image);
         match best {
             Some((best_score, _)) if best_score <= score => {}
@@ -417,17 +413,16 @@ fn classify_scaled(cursor: &DecodedCursor, theme: &[ThemeCursor]) -> Option<&'st
     (score <= MAX_SCALED_ALPHA_SCORE).then_some(recordly_type)
 }
 
-fn closest_size_image(
-    images: &[XcursorImage],
-    target_width: u32,
-    target_height: u32,
-) -> Option<&XcursorImage> {
+fn closest_size_image<'a>(
+    images: &'a [XcursorImage],
+    cursor: &DecodedCursor,
+) -> Option<&'a XcursorImage> {
     images
         .iter()
-        .filter(|image| image.width > 0 && image.height > 0)
+        .filter(|image| image.width > 0 && image.height > 0 && hotspot_matches(cursor, image))
         .min_by_key(|image| {
             let distance =
-                image.width.abs_diff(target_width) + image.height.abs_diff(target_height);
+                image.width.abs_diff(cursor.width) + image.height.abs_diff(cursor.height);
             let area = u64::from(image.width) * u64::from(image.height);
             (distance, std::cmp::Reverse(area))
         })
@@ -720,31 +715,33 @@ mod tests {
         assert_eq!(recordly_type_for_name("not-allowed"), Some("not-allowed"));
     }
 
+    fn make_alpha_grid(w: u32, h: u32, alpha_fn: &dyn Fn(u32, u32) -> u8) -> Vec<u32> {
+        let mut pixels = Vec::with_capacity((w * h) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                pixels.push((u32::from(alpha_fn(x, y)) << 24) | 0x00ff_ffff);
+            }
+        }
+        pixels
+    }
+
+    fn ibeam_alpha(x: u32, y: u32, w: u32, h: u32) -> u8 {
+        let cx = w / 2;
+        let bar_half = (w / 6).max(1);
+        let stem_half = (w / 12).max(1);
+        let cap = (h / 8).max(1);
+        let in_stem = x >= cx.saturating_sub(stem_half) && x <= cx + stem_half;
+        let in_top = y < cap && x >= cx.saturating_sub(bar_half) && x <= cx + bar_half;
+        let in_bot = y + cap >= h && x >= cx.saturating_sub(bar_half) && x <= cx + bar_half;
+        if in_stem || in_top || in_bot {
+            0xff
+        } else {
+            0x00
+        }
+    }
+
     #[test]
     fn classifies_fractionally_scaled_cursors_against_nearest_theme_size() {
-        let make_alpha_grid = |w: u32, h: u32, alpha_fn: &dyn Fn(u32, u32) -> u8| -> Vec<u32> {
-            let mut pixels = Vec::with_capacity((w * h) as usize);
-            for y in 0..h {
-                for x in 0..w {
-                    pixels.push((u32::from(alpha_fn(x, y)) << 24) | 0x00ff_ffff);
-                }
-            }
-            pixels
-        };
-        let ibeam_alpha = |x: u32, y: u32, w: u32, h: u32| -> u8 {
-            let cx = w / 2;
-            let bar_half = (w / 6).max(1);
-            let stem_half = (w / 12).max(1);
-            let cap = (h / 8).max(1);
-            let in_stem = x >= cx.saturating_sub(stem_half) && x <= cx + stem_half;
-            let in_top = y < cap && x >= cx.saturating_sub(bar_half) && x <= cx + bar_half;
-            let in_bot = y + cap >= h && x >= cx.saturating_sub(bar_half) && x <= cx + bar_half;
-            if in_stem || in_top || in_bot {
-                0xff
-            } else {
-                0x00
-            }
-        };
         let arrow_alpha = |x: u32, y: u32, w: u32, _h: u32| -> u8 {
             if x >= 4 && y >= 4 && x <= y && x < w * 2 / 3 && y < w * 3 / 4 {
                 0xff
@@ -822,6 +819,47 @@ mod tests {
                 &theme
             ),
             None
+        );
+    }
+
+    #[test]
+    fn classifies_scaled_cursor_when_nearest_size_hotspot_mismatches() {
+        let mut rgba = Vec::with_capacity(40 * 40 * 4);
+        for y in 0..40 {
+            for x in 0..40 {
+                let a = ibeam_alpha(x, y, 40, 40);
+                rgba.extend_from_slice(&[a, a, a, a]);
+            }
+        }
+        let scaled_ibeam = DecodedCursor {
+            width: 40,
+            height: 40,
+            hotspot_x: 20,
+            hotspot_y: 20,
+            rgba,
+        };
+        let mismatched_nearest_theme = vec![ThemeCursor {
+            name: "text".to_owned(),
+            images: vec![
+                XcursorImage {
+                    width: 24,
+                    height: 24,
+                    xhot: 12,
+                    yhot: 12,
+                    pixels: make_alpha_grid(24, 24, &|x, y| ibeam_alpha(x, y, 24, 24)),
+                },
+                XcursorImage {
+                    width: 48,
+                    height: 48,
+                    xhot: 0,
+                    yhot: 0,
+                    pixels: make_alpha_grid(48, 48, &|x, y| ibeam_alpha(x, y, 48, 48)),
+                },
+            ],
+        }];
+        assert_eq!(
+            classify(&scaled_ibeam, &mismatched_nearest_theme),
+            Some("text")
         );
     }
 }

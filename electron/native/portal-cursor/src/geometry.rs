@@ -42,15 +42,15 @@ pub fn normalize_to_stream(
         return None;
     }
     let local_x = match space {
-        PositionSpace::Global => cursor.0 - stream.x,
-        PositionSpace::StreamLocal => cursor.0,
+        PositionSpace::Global => f64::from(cursor.0) - f64::from(stream.x),
+        PositionSpace::StreamLocal => f64::from(cursor.0),
     };
     let local_y = match space {
-        PositionSpace::Global => cursor.1 - stream.y,
-        PositionSpace::StreamLocal => cursor.1,
+        PositionSpace::Global => f64::from(cursor.1) - f64::from(stream.y),
+        PositionSpace::StreamLocal => f64::from(cursor.1),
     };
-    let cx = (f64::from(local_x) / f64::from(stream.width)).clamp(0.0, 1.0);
-    let cy = (f64::from(local_y) / f64::from(stream.height)).clamp(0.0, 1.0);
+    let cx = (local_x / f64::from(stream.width)).clamp(0.0, 1.0);
+    let cy = (local_y / f64::from(stream.height)).clamp(0.0, 1.0);
     Some((cx, cy))
 }
 
@@ -143,5 +143,19 @@ mod tests {
         let (cx, cy) = normalize_to_stream((-200, 5000), stream, PositionSpace::Global).unwrap();
         assert!((cx - 0.0).abs() < f64::EPSILON);
         assert!((cy - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn widens_global_coordinates_before_subtracting_origin() {
+        let stream = Rect {
+            x: -1,
+            y: 1,
+            width: 1920,
+            height: 1080,
+        };
+        let (cx, cy) =
+            normalize_to_stream((i32::MAX, i32::MIN), stream, PositionSpace::Global).unwrap();
+        assert!((cx - 1.0).abs() < f64::EPSILON);
+        assert!((cy - 0.0).abs() < f64::EPSILON);
     }
 }

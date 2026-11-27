@@ -114,6 +114,90 @@ struct StartupFrame {
 }
 
 #[derive(Default)]
+enum PtsClock {
+    #[default]
+    Undecided,
+    Header,
+    MonotonicFallback(Instant),
+}
+
+impl PtsClock {
+    fn resolve_raw(&mut self, raw_pts: i64, now: Instant) -> Option<i64> {
+        match *self {
+            Self::Header => (raw_pts > 0).then_some(raw_pts),
+            Self::Undecided if raw_pts > 0 => {
+                *self = Self::Header;
+                Some(raw_pts)
+            }
+            Self::Undecided => {
+                *self = Self::MonotonicFallback(now);
+                Some(1_000_000_000)
+            }
+            Self::MonotonicFallback(start) => Some(
+                1_000_000_000_i64
+                    .saturating_add(duration_to_ns(now.saturating_duration_since(start))),
+            ),
+        }
+    }
+
+    fn resolve_active(
+        &mut self,
+        raw_pts: i64,
+        paused_ns: i64,
+        anchor: Option<Anchor>,
+        now: Instant,
+    ) -> Option<i64> {
+        match *self {
+            Self::Undecided | Self::Header if raw_pts > 0 => {
+                *self = Self::Header;
+                Some(raw_pts - paused_ns)
+            }
+            Self::Header => {
+                let anchor = anchor?;
+                let pause_since_anchor = paused_ns.saturating_sub(anchor.paused_ns);
+                Some(
+                    anchor.pts_ns + duration_to_ns(now.saturating_duration_since(anchor.instant))
+                        - pause_since_anchor,
+                )
+            }
+            Self::Undecided => {
+                *self = Self::MonotonicFallback(now);
+                Some(1_000_000_000_i64.saturating_sub(paused_ns))
+            }
+            Self::MonotonicFallback(start) => Some(
+                1_000_000_000_i64
+                    .saturating_add(duration_to_ns(now.saturating_duration_since(start)))
+                    .saturating_sub(paused_ns),
+            ),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct VideoSync {
+    video: Option<Arc<VideoHandle>>,
+    timeline: Arc<Mutex<VideoTimeline>>,
+    pause: Arc<Mutex<PauseState>>,
+    anchor: Arc<Mutex<Option<Anchor>>>,
+}
+
+impl VideoSync {
+    fn new(
+        video: Option<Arc<VideoHandle>>,
+        timeline: &Arc<Mutex<VideoTimeline>>,
+        pause: &Arc<Mutex<PauseState>>,
+        anchor: &Arc<Mutex<Option<Anchor>>>,
+    ) -> Self {
+        Self {
+            video,
+            timeline: Arc::clone(timeline),
+            pause: Arc::clone(pause),
+            anchor: Arc::clone(anchor),
+        }
+    }
+}
+
+#[derive(Default)]
 struct VideoTimeline {
     startup_frame: Option<StartupFrame>,
     first_pts: Option<i64>,
@@ -131,6 +215,7 @@ struct CaptureState {
     video_size: Option<(u32, u32)>,
     video_format: Option<cursor_shape::PixelFormat>,
     ready: bool,
+    pts_clock: PtsClock,
     timeline: Arc<Mutex<VideoTimeline>>,
     anchor: Arc<Mutex<Option<Anchor>>>,
     pause: Arc<Mutex<PauseState>>,
@@ -138,6 +223,35 @@ struct CaptureState {
     buffer_count: u64,
     cursor_meta_count: u64,
     last: Option<CursorKey>,
+}
+
+impl CaptureState {
+    fn new(
+        config: CaptureConfig,
+        theme: Vec<cursor_shape::ThemeCursor>,
+        raw_samples: &Arc<Mutex<Vec<telemetry::RawSample>>>,
+        last_cursor: &Arc<Mutex<Option<CursorSnapshot>>>,
+        sync: &VideoSync,
+    ) -> Self {
+        Self {
+            config,
+            raw_samples: Arc::clone(raw_samples),
+            theme,
+            type_by_cursor_id: HashMap::new(),
+            current_type: None,
+            video_size: None,
+            video_format: None,
+            ready: false,
+            pts_clock: PtsClock::default(),
+            timeline: Arc::clone(&sync.timeline),
+            anchor: Arc::clone(&sync.anchor),
+            pause: Arc::clone(&sync.pause),
+            last_cursor: Arc::clone(last_cursor),
+            buffer_count: 0,
+            cursor_meta_count: 0,
+            last: None,
+        }
+    }
 }
 
 pub fn spawn(
@@ -191,13 +305,20 @@ struct CaptureThreadContext {
     timer_frame_interval_ns: i64,
 }
 
+fn parse_keepalive_interval_ns(raw: &str) -> i64 {
+    raw.trim()
+        .parse::<i64>()
+        .ok()
+        .filter(|millis| *millis >= 0)
+        .and_then(|millis| millis.checked_mul(1_000_000))
+        .unwrap_or(FRAME_INTERVAL_NS)
+}
+
 fn configure_keepalive_interval_ns() -> i64 {
     std::env::var("RECORDLY_PORTAL_CURSOR_KEEPALIVE_MS")
         .ok()
-        .and_then(|value| value.parse::<i64>().ok())
-        .filter(|millis| *millis > 0)
-        .and_then(|millis| millis.checked_mul(1_000_000))
-        .unwrap_or(FRAME_INTERVAL_NS)
+        .as_deref()
+        .map_or(FRAME_INTERVAL_NS, parse_keepalive_interval_ns)
 }
 
 fn run_capture_thread(
@@ -223,14 +344,7 @@ fn run_capture_thread(
     let command_video = config.video.clone();
     let timer_video = config.video.clone();
 
-    let theme_name = config
-        .cursor_theme
-        .clone()
-        .unwrap_or_else(cursor_shape::detect_theme);
-    let theme = cursor_shape::load_theme(&theme_name);
-    if verbose {
-        eprintln!("[shape] theme {theme_name} ({} cursor files)", theme.len());
-    }
+    let theme = load_capture_theme(&config);
 
     let mainloop =
         pw::main_loop::MainLoopRc::new(None).context("failed to create PipeWire main loop")?;
@@ -249,67 +363,46 @@ fn run_capture_thread(
         .context("failed to create PipeWire stream")?;
 
     let node_id = config.node_id;
-    let state = CaptureState {
-        config,
-        raw_samples: Arc::clone(&raw_samples),
-        theme,
-        type_by_cursor_id: HashMap::new(),
-        current_type: None,
-        video_size: None,
-        video_format: None,
-        ready: false,
-        timeline: Arc::clone(&timeline),
-        anchor: Arc::clone(&anchor),
-        pause: Arc::clone(&pause),
-        last_cursor: Arc::clone(&last_cursor),
-        buffer_count: 0,
-        cursor_meta_count: 0,
-        last: None,
-    };
+    let command_sync = VideoSync::new(command_video, &timeline, &pause, &anchor);
+    let state = CaptureState::new(config, theme, &raw_samples, &last_cursor, &command_sync);
 
     let capture_error = Rc::new(Cell::new(None));
     let listener = register_stream_listener(&stream, state, &mainloop, Rc::clone(&capture_error))?;
-    let format_pod_bytes = build_enum_format_pod()?;
-    let pod = spa::pod::Pod::from_bytes(&format_pod_bytes)
-        .context("failed to parse the serialized EnumFormat pod")?;
+    connect_stream_to_pod(&stream, node_id)?;
 
-    stream
-        .connect(
-            spa::utils::Direction::Input,
-            Some(node_id),
-            pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS,
-            &mut [pod],
-        )
-        .context("failed to connect the PipeWire stream")?;
-
-    let resume_anchor = Arc::clone(&anchor);
-    let resume_epoch = Arc::clone(&start_epoch);
-    let resume_samples = Arc::clone(&raw_samples);
-    let resume_cursor = Arc::clone(&last_cursor);
-    let zoom_anchor = Arc::clone(&anchor);
-    let zoom_samples = Arc::clone(&raw_samples);
-    let last_zoom_at = Cell::new(None);
+    let resume_sync = (
+        Arc::clone(&anchor),
+        Arc::clone(&start_epoch),
+        Arc::clone(&raw_samples),
+        Arc::clone(&last_cursor),
+    );
+    let zoom_sync = (
+        Arc::clone(&anchor),
+        Arc::clone(&last_cursor),
+        Arc::clone(&raw_samples),
+        Cell::new(None),
+    );
     let _receiver = attach_command_receiver(
         receiver,
         &mainloop,
-        command_video,
-        Arc::clone(&timeline),
-        Arc::clone(&pause),
+        command_sync,
         move |pts, paused_ns| {
-            if let Some(cursor) = resume_cursor.lock().ok().and_then(|cursor| *cursor) {
-                append_cursor_sample(&resume_samples, pts, cursor);
+            let (anchor, epoch, samples, cursor) = &resume_sync;
+            if let Some(cursor) = cursor.lock().ok().and_then(|c| *c) {
+                append_cursor_sample(samples, pts, cursor);
             }
-            report_video_started(&resume_anchor, &resume_epoch, pts, paused_ns);
+            report_video_started(anchor, epoch, pts, paused_ns);
         },
         move |instant, paused_ns| {
-            let anchor = zoom_anchor.lock().ok().and_then(|anchor| *anchor);
-            let cursor = last_cursor.lock().ok().and_then(|cursor| *cursor);
-            if let (Some(anchor), Some(cursor)) = (anchor, cursor)
-                && let Ok(mut samples) = zoom_samples.lock()
+            let (anchor, cursor, samples, last_zoom_at) = &zoom_sync;
+            if let (Some(anchor), Some(cursor)) = (
+                anchor.lock().ok().and_then(|a| *a),
+                cursor.lock().ok().and_then(|c| *c),
+            ) && let Ok(mut collected) = samples.lock()
             {
                 append_zoom_marker(
-                    &mut samples,
-                    &last_zoom_at,
+                    &mut collected,
+                    last_zoom_at,
                     anchor,
                     cursor,
                     instant,
@@ -320,9 +413,7 @@ fn run_capture_thread(
     );
     let _keepalive_timer = attach_keepalive_timer(
         &mainloop,
-        timer_video,
-        timeline,
-        pause,
+        VideoSync::new(timer_video, &timeline, &pause, &anchor),
         timer_frame_interval_ns,
         verbose,
     );
@@ -338,6 +429,32 @@ fn run_capture_thread(
         anyhow::bail!("{error}");
     }
     Ok(())
+}
+
+fn load_capture_theme(config: &CaptureConfig) -> Vec<cursor_shape::ThemeCursor> {
+    let theme_name = config
+        .cursor_theme
+        .clone()
+        .unwrap_or_else(cursor_shape::detect_theme);
+    let theme = cursor_shape::load_theme(&theme_name);
+    if config.verbose {
+        eprintln!("[shape] theme {theme_name} ({} cursor files)", theme.len());
+    }
+    theme
+}
+
+fn connect_stream_to_pod(stream: &pw::stream::Stream, node_id: u32) -> Result<()> {
+    let format_pod_bytes = build_enum_format_pod()?;
+    let pod = spa::pod::Pod::from_bytes(&format_pod_bytes)
+        .context("failed to parse the serialized EnumFormat pod")?;
+    stream
+        .connect(
+            spa::utils::Direction::Input,
+            Some(node_id),
+            pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS,
+            &mut [pod],
+        )
+        .context("failed to connect the PipeWire stream")
 }
 
 fn register_stream_listener(
@@ -399,11 +516,12 @@ fn handle_param_changed(
     if format.parse(param).is_ok() {
         let size = Some((format.size().width, format.size().height));
         let pixel_format = cursor_shape::PixelFormat::from_spa(format.format().as_raw());
-        if (size != state.video_size || pixel_format != state.video_format)
-            && let Ok(mut timeline) = state.timeline.lock()
-        {
-            timeline.last_frame = None;
-            timeline.startup_frame = None;
+        if size != state.video_size || pixel_format != state.video_format {
+            if let Ok(mut timeline) = state.timeline.lock() {
+                timeline.last_frame = None;
+                timeline.startup_frame = None;
+            }
+            state.last = None;
         }
         state.video_size = size;
         state.video_format = pixel_format;
@@ -490,36 +608,49 @@ fn build_enum_format_pod() -> Result<Vec<u8>> {
     .into_inner())
 }
 
+fn active_timeline_pts(
+    anchor: Anchor,
+    first_pts: i64,
+    now: Instant,
+    paused_ns: i64,
+    last_pts: i64,
+) -> i64 {
+    let active_elapsed = duration_to_ns(now.saturating_duration_since(anchor.instant))
+        .saturating_sub(paused_ns.saturating_sub(anchor.paused_ns));
+    let current_pts = anchor.pts_ns.saturating_add(active_elapsed);
+    current_pts
+        .saturating_sub(first_pts)
+        .max(last_pts.saturating_add(1_000_000))
+}
+
 fn attach_command_receiver(
     receiver: pw::channel::Receiver<Command>,
     mainloop: &pw::main_loop::MainLoopRc,
-    video: Option<Arc<VideoHandle>>,
-    timeline: Arc<Mutex<VideoTimeline>>,
-    pause: Arc<Mutex<PauseState>>,
+    sync: VideoSync,
     on_start: impl Fn(i64, i64) + 'static,
     on_zoom: impl Fn(Instant, i64) + 'static,
 ) -> pw::channel::AttachedReceiver<'_, Command> {
     let quit_loop = mainloop.clone();
     receiver.attach(mainloop.loop_(), move |command| match command {
         Command::Quit => {
-            finalize_video(video.as_deref(), &timeline, &pause);
+            finalize_video(&sync);
             quit_loop.quit();
         }
         Command::Pause => {
-            if let Ok(mut state) = pause.lock() {
+            if let Ok(mut state) = sync.pause.lock() {
                 state.pause();
             }
-            if let Some(video) = &video {
+            if let Some(video) = &sync.video {
                 video.set_paused(true);
             }
             println!("PAUSED");
             let _ = std::io::stdout().flush();
         }
         Command::Resume => {
-            if let Ok(mut state) = pause.lock() {
+            if let Ok(mut state) = sync.pause.lock() {
                 state.resume();
-                if let Some(video) = &video {
-                    if let Ok(mut timeline) = timeline.lock()
+                if let Some(video) = &sync.video {
+                    if let Ok(mut timeline) = sync.timeline.lock()
                         && let Some(frame) = timeline.startup_frame.take()
                     {
                         let pts = frame
@@ -540,9 +671,10 @@ fn attach_command_receiver(
             let _ = std::io::stdout().flush();
         }
         Command::MarkZoom => {
-            if let Ok(state) = pause.lock()
+            if let Ok(state) = sync.pause.lock()
                 && !state.paused
-                && timeline
+                && sync
+                    .timeline
                     .lock()
                     .is_ok_and(|timeline| timeline.first_pts.is_some())
             {
@@ -554,18 +686,19 @@ fn attach_command_receiver(
 
 fn attach_keepalive_timer(
     mainloop: &pw::main_loop::MainLoopRc,
-    video: Option<Arc<VideoHandle>>,
-    timeline: Arc<Mutex<VideoTimeline>>,
-    pause: Arc<Mutex<PauseState>>,
+    sync: VideoSync,
     frame_interval_ns: i64,
     verbose: bool,
 ) -> pw::loop_::TimerSource<'_> {
     let timer = mainloop.loop_().add_timer(move |_| {
-        let Some(video) = video.as_deref() else {
+        let Some(video) = sync.video.as_deref() else {
             return;
         };
-        let paused = pause.lock().map_or(true, |state| state.paused);
-        let Ok(mut timeline) = timeline.lock() else {
+        let (paused, paused_ns) = sync
+            .pause
+            .lock()
+            .map_or((true, 0), |state| state.snapshot());
+        let Ok(mut timeline) = sync.timeline.lock() else {
             return;
         };
         if paused {
@@ -582,17 +715,24 @@ fn attach_keepalive_timer(
             return;
         }
         let last_pts = timeline.last_pts.unwrap_or(0);
-        let elapsed = timeline.last_push.unwrap_or_else(Instant::now).elapsed();
+        let now = Instant::now();
+        let elapsed = now.saturating_duration_since(timeline.last_push.unwrap_or(now));
         if elapsed < Duration::from_nanos(interval_u64) {
             return;
         }
-        let next_pts = last_pts + frame_interval_ns;
+        let anchor = sync.anchor.lock().ok().and_then(|guard| *guard);
+        let next_pts = match (anchor, timeline.first_pts) {
+            (Some(anchor), Some(first_pts)) => {
+                active_timeline_pts(anchor, first_pts, now, paused_ns, last_pts)
+            }
+            _ => last_pts + frame_interval_ns,
+        };
         if video.push_buffer(next_pts, &last_frame).is_ok() {
             if verbose && next_pts % (FRAME_INTERVAL_NS * 30) < FRAME_INTERVAL_NS {
                 eprintln!("[video] keepalive active");
             }
             timeline.last_pts = Some(next_pts);
-            timeline.last_push = Some(Instant::now());
+            timeline.last_push = Some(now);
         }
     });
     let _ = timer.update_timer(Some(TIMER_TICK), Some(TIMER_TICK));
@@ -760,29 +900,35 @@ fn existing_anchor(state: &CaptureState) -> Option<Anchor> {
     state.anchor.lock().ok().and_then(|anchor| *anchor)
 }
 
-fn finalize_video(
-    video: Option<&VideoHandle>,
-    timeline: &Arc<Mutex<VideoTimeline>>,
-    pause: &Arc<Mutex<PauseState>>,
-) {
-    let Some(video) = video else {
+fn finalize_video(sync: &VideoSync) {
+    let Some(video) = sync.video.as_deref() else {
         return;
     };
-    let paused = pause.lock().map_or(true, |pause| pause.paused);
+    let (paused, paused_ns) = sync
+        .pause
+        .lock()
+        .map_or((true, 0), |pause| pause.snapshot());
     if paused {
         return;
     }
-    let Ok(mut timeline) = timeline.lock() else {
+    let Ok(mut timeline) = sync.timeline.lock() else {
         return;
     };
     let Some(last_frame) = timeline.last_frame.clone() else {
         return;
     };
     let last_pts = timeline.last_pts.unwrap_or(0);
-    let next_pts = last_pts + FRAME_INTERVAL_NS;
+    let now = Instant::now();
+    let anchor = sync.anchor.lock().ok().and_then(|guard| *guard);
+    let next_pts = match (anchor, timeline.first_pts) {
+        (Some(anchor), Some(first_pts)) => {
+            active_timeline_pts(anchor, first_pts, now, paused_ns, last_pts)
+        }
+        _ => last_pts + FRAME_INTERVAL_NS,
+    };
     if video.push_buffer(next_pts, &last_frame).is_ok() {
         timeline.last_pts = Some(next_pts);
-        timeline.last_push = Some(Instant::now());
+        timeline.last_push = Some(now);
     }
 }
 
@@ -815,7 +961,7 @@ fn push_video_frame(
     };
     match queue_video_frame(video, &mut timeline, frame, pts) {
         Ok(true) => {
-            report_video_started(&state.anchor, &state.config.start_epoch_ms, pts, paused_ns)
+            report_video_started(&state.anchor, &state.config.start_epoch_ms, pts, paused_ns);
         }
         Ok(false) => {}
         Err(error) => {
@@ -860,7 +1006,7 @@ fn report_video_started(
 ) {
     let anchor = ensure_anchor(anchor, pts, paused_ns);
     let start_epoch_ms = anchor.epoch_ms + (pts - anchor.pts_ns).div_euclid(1_000_000);
-    start_epoch.store(start_epoch_ms, Ordering::SeqCst);
+    let _ = start_epoch.compare_exchange(0, start_epoch_ms, Ordering::SeqCst, Ordering::SeqCst);
     println!("VIDEO_START:{start_epoch_ms}");
     let _ = std::io::stdout().flush();
 }
@@ -873,6 +1019,40 @@ fn report_ready(state: &mut CaptureState) {
     }
 }
 
+#[derive(Clone, Copy)]
+struct FrameLayout {
+    width: u32,
+    height: u32,
+    bytes_per_pixel: usize,
+}
+
+fn slice_valid_frame(
+    mapped: &[u8],
+    raw_offset: u32,
+    chunk_size: u32,
+    stride: i32,
+    layout: FrameLayout,
+) -> Option<(&[u8], i32)> {
+    if mapped.is_empty() {
+        return None;
+    }
+    let offset = usize::try_from(raw_offset).ok()? % mapped.len();
+    let valid_len = usize::try_from(chunk_size).ok()?.min(mapped.len() - offset);
+    let row_bytes = usize::try_from(layout.width)
+        .ok()?
+        .checked_mul(layout.bytes_per_pixel)?;
+    let last_row = usize::try_from(layout.height).ok()?.checked_sub(1)?;
+    let row_stride = stride.unsigned_abs() as usize;
+    if row_bytes == 0 || row_stride < row_bytes {
+        return None;
+    }
+    let required = last_row.checked_mul(row_stride)?.checked_add(row_bytes)?;
+    if valid_len < required {
+        return None;
+    }
+    Some((mapped.get(offset..offset.checked_add(required)?)?, stride))
+}
+
 fn frame_data<'a>(
     buffer: &'a mut pw::buffer::Buffer<'_>,
     width: u32,
@@ -881,21 +1061,21 @@ fn frame_data<'a>(
 ) -> Option<(&'a [u8], i32)> {
     let data = buffer.datas_mut().first_mut()?;
     let chunk = data.chunk();
-    let size = chunk.size() as usize;
-    let offset = chunk.offset() as usize;
+    let chunk_size = chunk.size();
+    let raw_offset = chunk.offset();
     let stride = chunk.stride();
     let mapped = data.data()?;
-    let row_bytes = (width as usize).checked_mul(bytes_per_pixel)?;
-    let last_row = (height as usize).checked_sub(1)?;
-    let row_stride = stride.unsigned_abs() as usize;
-    if row_bytes == 0 || row_stride < row_bytes {
-        return None;
-    }
-    let required = last_row.checked_mul(row_stride)?.checked_add(row_bytes)?;
-    if size < required {
-        return None;
-    }
-    Some((mapped.get(offset..offset.checked_add(required)?)?, stride))
+    slice_valid_frame(
+        mapped,
+        raw_offset,
+        chunk_size,
+        stride,
+        FrameLayout {
+            width,
+            height,
+            bytes_per_pixel,
+        },
+    )
 }
 
 fn handle_process(stream: &pw::stream::Stream, state: &mut CaptureState) {
@@ -923,21 +1103,28 @@ fn handle_process(stream: &pw::stream::Stream, state: &mut CaptureState) {
             // Cache live cursor state while paused, but emit it only on the recording timeline.
             state.last = None;
         }
-        let raw_pts_ns = buffer.find_meta::<MetaHeader>().map_or(0, MetaHeader::pts);
+        let raw_pts = buffer.find_meta::<MetaHeader>().map_or(0, MetaHeader::pts);
         let received_at = Instant::now();
+        let mut startup_cached = false;
         if state.config.start_paused
-            && raw_pts_ns > 0
+            && state
+                .timeline
+                .lock()
+                .is_ok_and(|timeline| timeline.first_pts.is_none())
+            && let Some(frame_buffer) = get_video_frame(&mut buffer, state)
+            && let Some(raw_pts_ns) = state.pts_clock.resolve_raw(raw_pts, received_at)
             && let Ok(mut timeline) = state.timeline.lock()
             && timeline.first_pts.is_none()
-            && let Some(buffer) = get_video_frame(&mut buffer, state)
         {
             // Keep only the latest countdown frame in memory. Do not encode pre-roll.
             timeline.startup_frame = Some(StartupFrame {
-                buffer,
+                buffer: frame_buffer,
                 raw_pts_ns,
                 received_at,
             });
-            drop(timeline);
+            startup_cached = true;
+        }
+        if startup_cached {
             report_ready(state);
         }
         return;
@@ -952,19 +1139,14 @@ fn handle_process(stream: &pw::stream::Stream, state: &mut CaptureState) {
 
 fn resolve_buffer_pts(
     buffer: &mut pw::buffer::Buffer,
-    state: &CaptureState,
+    state: &mut CaptureState,
     paused_ns: i64,
 ) -> Option<i64> {
     let raw_pts = buffer.find_meta::<MetaHeader>().map_or(0, MetaHeader::pts);
-    if raw_pts > 0 {
-        return Some(raw_pts - paused_ns);
-    }
-    let anchor = existing_anchor(state)?;
-    let pause_since_anchor = paused_ns.saturating_sub(anchor.paused_ns);
-    Some(
-        anchor.pts_ns + duration_to_ns(Instant::now().saturating_duration_since(anchor.instant))
-            - pause_since_anchor,
-    )
+    let anchor = existing_anchor(state);
+    state
+        .pts_clock
+        .resolve_active(raw_pts, paused_ns, anchor, Instant::now())
 }
 
 fn record_cursor_metadata(
@@ -1002,7 +1184,7 @@ fn record_cursor_metadata(
         hotspot.y,
         bitmap,
     );
-    if state.last == Some(key) {
+    if state.last == Some(key) && cursor.bitmap().is_none() {
         return;
     }
     let Some(snapshot) = cache_cursor(cursor, state) else {
@@ -1213,5 +1395,121 @@ mod tests {
         assert_eq!((samples[0].cx, samples[0].cy), cursor.position);
         assert_eq!(samples[0].interaction_type.as_deref(), Some("manual-zoom"));
         assert_eq!(samples[0].mouse_button, None);
+    }
+
+    #[test]
+    fn parses_keepalive_interval_allowing_zero_and_rejecting_overflow() {
+        assert_eq!(parse_keepalive_interval_ns("0"), 0);
+        assert_eq!(parse_keepalive_interval_ns(" 50 "), 50_000_000);
+        assert_eq!(parse_keepalive_interval_ns("-5"), FRAME_INTERVAL_NS);
+        assert_eq!(
+            parse_keepalive_interval_ns("9223372036855"),
+            FRAME_INTERVAL_NS
+        );
+        assert_eq!(parse_keepalive_interval_ns("invalid"), FRAME_INTERVAL_NS);
+    }
+
+    #[test]
+    fn validates_pipewire_chunk_bounds_and_wraps_offset() {
+        let layout = FrameLayout {
+            width: 4,
+            height: 2,
+            bytes_per_pixel: 4,
+        };
+        let mapped = vec![7u8; 32];
+
+        // Short chunk carrying only one row (16 bytes out of 32) is rejected.
+        assert!(slice_valid_frame(&mapped, 0, 16, 16, layout).is_none());
+
+        // offset == mapped.len() wraps modulo capacity to 0 cleanly.
+        let (wrapped, stride) = slice_valid_frame(&mapped, 32, 32, 16, layout).unwrap();
+        assert_eq!(wrapped.len(), 32);
+        assert_eq!(stride, 16);
+
+        // Padded-stride frame fits cleanly when valid chunk covers last row's pixels.
+        let padded = vec![9u8; 24 + 16];
+        let (sliced, padded_stride) = slice_valid_frame(&padded, 0, 40, 24, layout).unwrap();
+        assert_eq!(sliced.len(), 40);
+        assert_eq!(padded_stride, 24);
+    }
+
+    #[test]
+    fn computes_active_timeline_pts_across_pauses() {
+        let start = Instant::now();
+        let anchor = Anchor {
+            pts_ns: 5_000_000_000,
+            paused_ns: 3_000_000_000,
+            epoch_ms: 1_700_000_000_000,
+            instant: start,
+        };
+        // 65s wall elapsed since anchor minus 5s newly accumulated pause = 60s active PTS.
+        let pts = active_timeline_pts(
+            anchor,
+            5_000_000_000,
+            start + Duration::from_secs(65),
+            8_000_000_000,
+            10_000_000_000,
+        );
+        assert_eq!(pts, 60_000_000_000);
+
+        // Stays strictly monotonic even if last_pts is ahead of active elapsed.
+        let clamped = active_timeline_pts(
+            anchor,
+            5_000_000_000,
+            start + Duration::from_millis(5),
+            3_000_000_000,
+            10_000_000,
+        );
+        assert_eq!(clamped, 11_000_000);
+    }
+
+    #[test]
+    fn pts_clock_keeps_consistent_monotonic_origin_when_header_pts_is_missing() {
+        let t0 = Instant::now();
+        let mut fallback = PtsClock::default();
+        let paused_raw = fallback.resolve_raw(0, t0).unwrap();
+        assert_eq!(paused_raw, 1_000_000_000);
+
+        // Even if a later buffer carries a large header PTS, origin does not jump.
+        let active1 = fallback.resolve_active(
+            9_000_000_000_000,
+            2_000_000_000,
+            None,
+            t0 + Duration::from_millis(2_500),
+        );
+        let active2 =
+            fallback.resolve_active(0, 2_000_000_000, None, t0 + Duration::from_millis(2_533));
+        assert_eq!(active1, Some(1_500_000_000));
+        assert_eq!(active2, Some(1_533_000_000));
+
+        // When header PTS is present initially, missing subsequent headers interpolate from anchor.
+        let mut header = PtsClock::default();
+        assert_eq!(
+            header.resolve_active(4_000_000_000, 0, None, t0),
+            Some(4_000_000_000)
+        );
+        let anchor = Anchor {
+            pts_ns: 4_000_000_000,
+            paused_ns: 0,
+            epoch_ms: 1_700_000_000_000,
+            instant: t0,
+        };
+        assert_eq!(
+            header.resolve_active(0, 0, Some(anchor), t0 + Duration::from_millis(50)),
+            Some(4_050_000_000)
+        );
+    }
+
+    #[test]
+    fn preserves_explicit_start_epoch_and_writes_measured_when_unset() {
+        let unset = AtomicI64::new(0);
+        let anchor_unset = Mutex::new(None);
+        report_video_started(&anchor_unset, &unset, 1_000_000_000, 0);
+        assert!(unset.load(Ordering::SeqCst) > 0);
+
+        let explicit = AtomicI64::new(1_700_000_000_555);
+        let anchor_explicit = Mutex::new(None);
+        report_video_started(&anchor_explicit, &explicit, 1_000_000_000, 0);
+        assert_eq!(explicit.load(Ordering::SeqCst), 1_700_000_000_555);
     }
 }
