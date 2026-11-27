@@ -252,7 +252,7 @@ struct CaptureState {
     timeline: Arc<Mutex<VideoTimeline>>,
     anchor: Arc<Mutex<Option<Anchor>>>,
     pause: Arc<Mutex<PauseState>>,
-    last_cursor: Arc<Mutex<Option<CursorSnapshot>>>,
+    cursor_history: Arc<Mutex<telemetry::CursorHistory>>,
     last_raw_cursor: Option<RawCursorState>,
     buffer_count: u64,
     cursor_meta_count: u64,
@@ -266,7 +266,7 @@ impl CaptureState {
         config: CaptureConfig,
         theme: Vec<cursor_shape::ThemeCursor>,
         raw_samples: &Arc<Mutex<Vec<telemetry::RawSample>>>,
-        last_cursor: &Arc<Mutex<Option<CursorSnapshot>>>,
+        cursor_history: &Arc<Mutex<telemetry::CursorHistory>>,
         sync: &VideoSync,
         recorded_cursor: Rc<Cell<RecordedCursor>>,
         last_media_pts: Rc<Cell<Option<i64>>>,
@@ -284,7 +284,7 @@ impl CaptureState {
             timeline: Arc::clone(&sync.timeline),
             anchor: Arc::clone(&sync.anchor),
             pause: Arc::clone(&sync.pause),
-            last_cursor: Arc::clone(last_cursor),
+            cursor_history: Arc::clone(cursor_history),
             last_raw_cursor: None,
             buffer_count: 0,
             cursor_meta_count: 0,
@@ -303,7 +303,7 @@ pub fn spawn(
     let (sender, receiver) = pw::channel::channel::<Command>();
     let raw_samples = Arc::new(Mutex::new(Vec::<telemetry::RawSample>::new()));
     let anchor = Arc::new(Mutex::new(None::<Anchor>));
-    let last_cursor = Arc::new(Mutex::new(None::<CursorSnapshot>));
+    let cursor_history = Arc::new(Mutex::new(telemetry::CursorHistory::default()));
     let mut pause_state = PauseState::default();
     if config.start_paused {
         pause_state.pause();
@@ -312,14 +312,20 @@ pub fn spawn(
     let timeline = Arc::new(Mutex::new(VideoTimeline::default()));
     let timer_frame_interval_ns = configure_keepalive_interval_ns();
 
-    crate::clicks::start(&raw_samples, &anchor, &pause, &last_cursor, config.verbose);
+    crate::clicks::start(
+        &raw_samples,
+        &anchor,
+        &pause,
+        &cursor_history,
+        config.verbose,
+    );
 
     let thread_context = CaptureThreadContext {
         config,
         raw_samples,
         anchor,
         pause,
-        last_cursor,
+        cursor_history,
         timeline,
         timer_frame_interval_ns,
     };
@@ -341,7 +347,7 @@ struct CaptureThreadContext {
     raw_samples: Arc<Mutex<Vec<telemetry::RawSample>>>,
     anchor: Arc<Mutex<Option<Anchor>>>,
     pause: Arc<Mutex<PauseState>>,
-    last_cursor: Arc<Mutex<Option<CursorSnapshot>>>,
+    cursor_history: Arc<Mutex<telemetry::CursorHistory>>,
     timeline: Arc<Mutex<VideoTimeline>>,
     timer_frame_interval_ns: i64,
 }
@@ -374,7 +380,7 @@ fn run_capture_thread(
         raw_samples,
         anchor,
         pause,
-        last_cursor,
+        cursor_history,
         timeline,
         timer_frame_interval_ns,
     } = context;
@@ -411,7 +417,7 @@ fn run_capture_thread(
         config,
         theme,
         &raw_samples,
-        &last_cursor,
+        &cursor_history,
         &command_sync,
         Rc::clone(&recorded_cursor),
         Rc::clone(&last_media_pts),
@@ -429,7 +435,7 @@ fn run_capture_thread(
             anchor: Arc::clone(&anchor),
             start_epoch: Arc::clone(&start_epoch),
             raw_samples: Arc::clone(&raw_samples),
-            last_cursor: Arc::clone(&last_cursor),
+            cursor_history: Arc::clone(&cursor_history),
             recorded_cursor,
             last_media_pts,
         },
@@ -458,7 +464,7 @@ struct CaptureCommandShared {
     anchor: Arc<Mutex<Option<Anchor>>>,
     start_epoch: Arc<AtomicI64>,
     raw_samples: Arc<Mutex<Vec<telemetry::RawSample>>>,
-    last_cursor: Arc<Mutex<Option<CursorSnapshot>>>,
+    cursor_history: Arc<Mutex<telemetry::CursorHistory>>,
     recorded_cursor: Rc<Cell<RecordedCursor>>,
     last_media_pts: Rc<Cell<Option<i64>>>,
 }
@@ -473,13 +479,13 @@ fn attach_capture_commands(
         Arc::clone(&shared.anchor),
         shared.start_epoch,
         Arc::clone(&shared.raw_samples),
-        Arc::clone(&shared.last_cursor),
+        Arc::clone(&shared.cursor_history),
         shared.recorded_cursor,
         shared.last_media_pts,
     );
     let zoom_sync = (
         shared.anchor,
-        shared.last_cursor,
+        shared.cursor_history,
         shared.raw_samples,
         Cell::new(None),
     );
@@ -504,7 +510,7 @@ fn attach_capture_commands(
             if let Some(pts) = pts {
                 last_media_pts.set(Some(pts));
                 if let Ok(cursor) = cursor.lock() {
-                    append_cursor_sample(samples, recorded_cursor, pts, *cursor);
+                    append_cursor_sample(samples, recorded_cursor, pts, cursor.current());
                 }
             }
         },
@@ -512,7 +518,7 @@ fn attach_capture_commands(
             let (anchor, cursor, samples, last_zoom_at) = &zoom_sync;
             if let (Some(anchor), Some(cursor)) = (
                 anchor.lock().ok().and_then(|a| *a),
-                cursor.lock().ok().and_then(|c| *c),
+                cursor.lock().ok().and_then(|c| c.current()),
             ) && let Ok(mut collected) = samples.lock()
             {
                 append_zoom_marker(
@@ -628,8 +634,8 @@ fn handle_param_changed(
             let rect = normalization_rect(state);
             let snapshot =
                 normalize_raw_cursor(state.last_raw_cursor, rect, state.config.position_space);
-            if let Ok(mut last) = state.last_cursor.lock() {
-                *last = snapshot;
+            if let Ok(mut history) = state.cursor_history.lock() {
+                history.record(Instant::now(), snapshot);
             }
         }
         if let (Some(video), Some(_pixel_format)) = (&state.config.video, state.video_format) {
@@ -1086,13 +1092,13 @@ fn push_video_frame(
                     paused_ns,
                 );
                 if buffer.find_meta::<MetaCursor>().is_none()
-                    && let Ok(cursor) = state.last_cursor.lock()
+                    && let Ok(cursor) = state.cursor_history.lock()
                 {
                     append_cursor_sample(
                         &state.raw_samples,
                         &state.recorded_cursor,
                         media_pts,
-                        *cursor,
+                        cursor.current(),
                     );
                 }
             }
@@ -1271,10 +1277,15 @@ fn handle_process(stream: &pw::stream::Stream, state: &mut CaptureState) {
     let Some(pts) = resolve_buffer_pts(&mut buffer, state, paused_ns) else {
         return;
     };
+    let cursor = buffer
+        .find_meta::<MetaCursor>()
+        .and_then(|cursor| observe_cursor(cursor, state));
     let media_pts = push_video_frame(&mut buffer, pts, paused_ns, state).unwrap_or(pts);
     state.pts_clock.observe_active(media_pts);
     state.last_media_pts.set(Some(media_pts));
-    record_cursor_metadata(&mut buffer, media_pts, paused_ns, state);
+    if let Some(cursor) = cursor {
+        record_cursor_metadata(cursor, media_pts, paused_ns, state);
+    }
 }
 
 fn resolve_buffer_pts(
@@ -1299,23 +1310,20 @@ fn resolve_buffer_pts(
         .resolve_active(raw_pts, paused_ns, anchor, Instant::now())
 }
 
-fn record_cursor_metadata(
-    buffer: &mut pw::buffer::Buffer,
-    pts: i64,
-    paused_ns: i64,
-    state: &mut CaptureState,
-) {
-    let Some(cursor) = buffer.find_meta::<MetaCursor>() else {
-        return;
-    };
+enum CursorObservation {
+    Hidden,
+    Updated {
+        key: CursorKey,
+        snapshot: Option<CursorSnapshot>,
+    },
+}
+
+fn observe_cursor(cursor: &MetaCursor, state: &mut CaptureState) -> Option<CursorObservation> {
     state.cursor_meta_count += 1;
     if cursor.id() == 0 {
         let _ = cache_cursor(cursor, state);
-        state.last = None;
-        let _ = record_cursor_sample(state, pts, paused_ns, None);
-        return;
+        return Some(CursorObservation::Hidden);
     }
-
     let position = cursor.position();
     let hotspot = cursor.hotspot();
     let bitmap = cursor.bitmap().map(|bitmap| {
@@ -1335,10 +1343,25 @@ fn record_cursor_metadata(
         hotspot.y,
         bitmap,
     );
-    if state.last == Some(key) && cursor.bitmap().is_none() {
-        return;
+    if state.last == Some(key) && bitmap.is_none() {
+        return None;
     }
+
     let snapshot = cache_cursor(cursor, state);
+    Some(CursorObservation::Updated { key, snapshot })
+}
+
+fn record_cursor_metadata(
+    cursor: CursorObservation,
+    pts: i64,
+    paused_ns: i64,
+    state: &mut CaptureState,
+) {
+    let CursorObservation::Updated { key, snapshot } = cursor else {
+        state.last = None;
+        let _ = record_cursor_sample(state, pts, paused_ns, None);
+        return;
+    };
     if record_cursor_sample(state, pts, paused_ns, snapshot) {
         state.last = Some(key);
     }
@@ -1357,21 +1380,14 @@ fn record_cursor_metadata(
     }
 
     if state.config.print_events {
+        let (id, x, y, hotspot_x, hotspot_y, bitmap) = key;
         let bitmap_text = match bitmap {
             None => "-".to_owned(),
             Some((format, width, height, stride)) => {
                 format!("{width}x{height}@{format:#010x}+{stride}")
             }
         };
-        println!(
-            "CURSOR:{pts}:{}:{}:{}:{}:{}:{}",
-            position.x,
-            position.y,
-            cursor.id(),
-            hotspot.x,
-            hotspot.y,
-            bitmap_text
-        );
+        println!("CURSOR:{pts}:{x}:{y}:{id}:{hotspot_x}:{hotspot_y}:{bitmap_text}");
         let _ = std::io::stdout().flush();
     }
 }
@@ -1448,6 +1464,10 @@ fn normalize_raw_cursor(
 }
 
 fn cache_cursor(cursor: &MetaCursor, state: &mut CaptureState) -> Option<CursorSnapshot> {
+    let history = Arc::clone(&state.cursor_history);
+    // Publish the observation before an input reader can look up this time.
+    let mut history = history.lock().ok();
+    let observed_at = Instant::now();
     if cursor.id() == 0 {
         state.last_raw_cursor = None;
     } else {
@@ -1460,8 +1480,8 @@ fn cache_cursor(cursor: &MetaCursor, state: &mut CaptureState) -> Option<CursorS
     }
     let rect = normalization_rect(state);
     let snapshot = normalize_raw_cursor(state.last_raw_cursor, rect, state.config.position_space);
-    if let Ok(mut last) = state.last_cursor.lock() {
-        *last = snapshot;
+    if let Some(history) = history.as_mut() {
+        history.record(observed_at, snapshot);
     }
     snapshot
 }

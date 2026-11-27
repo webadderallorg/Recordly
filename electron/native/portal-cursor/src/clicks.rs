@@ -1,5 +1,5 @@
 use crate::pipewire_capture::{Anchor, PauseState};
-use recordly_portal_cursor::telemetry::{self, CursorSnapshot};
+use recordly_portal_cursor::telemetry;
 use std::fs::{self, File};
 use std::io::Read;
 use std::os::unix::fs::FileTypeExt;
@@ -303,7 +303,7 @@ struct ClickContext {
     samples: Arc<Mutex<Vec<telemetry::RawSample>>>,
     anchor: Arc<Mutex<Option<Anchor>>>,
     pause: Arc<Mutex<PauseState>>,
-    last_cursor: Arc<Mutex<Option<CursorSnapshot>>>,
+    cursor_history: Arc<Mutex<telemetry::CursorHistory>>,
     verbose: bool,
 }
 
@@ -311,7 +311,7 @@ pub fn start(
     samples: &Arc<Mutex<Vec<telemetry::RawSample>>>,
     anchor: &Arc<Mutex<Option<Anchor>>>,
     pause: &Arc<Mutex<PauseState>>,
-    last_cursor: &Arc<Mutex<Option<CursorSnapshot>>>,
+    cursor_history: &Arc<Mutex<telemetry::CursorHistory>>,
     verbose: bool,
 ) {
     let Ok(entries) = fs::read_dir("/dev/input") else {
@@ -355,7 +355,7 @@ pub fn start(
             samples: Arc::clone(samples),
             anchor: Arc::clone(anchor),
             pause: Arc::clone(pause),
-            last_cursor: Arc::clone(last_cursor),
+            cursor_history: Arc::clone(cursor_history),
             verbose,
         };
         std::thread::Builder::new()
@@ -495,11 +495,9 @@ fn handle_tap_tracker_event(
         } else if input.value == 0 && tracker.touch_down {
             tap_state.up_timing = input.timing;
         }
-        context
-            .last_cursor
-            .lock()
-            .ok()
-            .and_then(|cursor| cursor.map(|snapshot| snapshot.position))
+        input
+            .timing
+            .and_then(|timing| cursor_position_at(context, timing.instant))
     } else {
         None
     };
@@ -581,13 +579,7 @@ fn handle_pointer_button_event(
     else {
         return;
     };
-    let current_pos = || {
-        context
-            .last_cursor
-            .lock()
-            .ok()
-            .and_then(|cursor| cursor.map(|snapshot| snapshot.position))
-    };
+    let current_pos = || cursor_position_at(context, event_instant);
     let pressed_position = &mut pressed_positions[usize::from(button - 1)];
     let cursor = match raw.value {
         1 if !paused => current_pos(),
@@ -703,6 +695,10 @@ struct ButtonSampleInput {
 
 fn read_anchor(context: &ClickContext) -> Option<Anchor> {
     context.anchor.lock().ok().and_then(|guard| *guard)
+}
+
+fn cursor_position_at(context: &ClickContext, instant: Instant) -> Option<(f64, f64)> {
+    context.cursor_history.lock().ok()?.position_at(instant)
 }
 
 fn build_button_sample(
@@ -1021,9 +1017,19 @@ mod tests {
                 instant: Instant::now(),
             }))),
             pause: Arc::new(Mutex::new(PauseState::default())),
-            last_cursor: Arc::new(Mutex::new(None)),
+            cursor_history: Arc::new(Mutex::new(telemetry::CursorHistory::default())),
             verbose: false,
         }
+    }
+
+    fn record_cursor(context: &ClickContext, at: Instant, position: (f64, f64)) {
+        context.cursor_history.lock().unwrap().record(
+            at,
+            Some(telemetry::CursorSnapshot {
+                position,
+                cursor_type: "arrow",
+            }),
+        );
     }
 
     fn input_event(event_type: u16, code: u16, value: i32) -> [u8; 24] {
@@ -1035,18 +1041,18 @@ mod tests {
     }
 
     #[test]
-    fn timestamps_buffered_clicks_at_the_kernel_time_and_excludes_preroll() {
+    fn timestamps_and_positions_buffered_clicks_at_the_kernel_time() {
         let origin = Instant::now() - Duration::from_secs(1);
         let clock = EvdevClock {
             kernel_time: Duration::from_secs(30),
             instant: origin,
         };
         let context = click_context();
-        context.anchor.lock().unwrap().as_mut().unwrap().instant = origin;
-        *context.last_cursor.lock().unwrap() = Some(CursorSnapshot {
-            position: (0.2, 0.8),
-            cursor_type: "arrow",
-        });
+        context.anchor.lock().unwrap().as_mut().unwrap().instant =
+            origin + Duration::from_millis(40);
+        record_cursor(&context, origin + Duration::from_millis(100), (0.2, 0.3));
+        record_cursor(&context, origin + Duration::from_millis(150), (0.4, 0.5));
+        record_cursor(&context, origin + Duration::from_millis(180), (0.8, 0.9));
 
         let timed_event = |code, value, seconds: i64, micros: i64| {
             let mut event = input_event(EV_KEY, code, value);
@@ -1057,6 +1063,8 @@ mod tests {
         let events = [
             timed_event(BTN_RIGHT, 1, 29, 995_000),
             timed_event(BTN_RIGHT, 0, 30, 50_000),
+            timed_event(BTN_MIDDLE, 1, 30, 60_000),
+            timed_event(BTN_MIDDLE, 0, 30, 70_000),
             timed_event(BTN_LEFT, 1, 30, 120_000),
             timed_event(BTN_LEFT, 0, 30, 175_000),
         ];
@@ -1070,11 +1078,70 @@ mod tests {
         let samples = context.samples.lock().unwrap();
         let recorded: Vec<_> = samples
             .iter()
-            .map(|sample| (sample.pts_ns, sample.interaction_type.as_deref()))
+            .map(|sample| {
+                (
+                    sample.pts_ns,
+                    sample.interaction_type.as_deref(),
+                    (sample.cx, sample.cy),
+                )
+            })
             .collect();
         assert_eq!(
             recorded,
-            [(120_000_000, Some("click")), (175_000_000, Some("mouseup"))]
+            [
+                (80_000_000, Some("click"), (0.2, 0.3)),
+                (135_000_000, Some("mouseup"), (0.4, 0.5)),
+            ]
+        );
+    }
+
+    #[test]
+    fn uses_the_recorded_cursor_at_each_buffered_touch_edge() {
+        let context = click_context();
+        let origin = read_anchor(&context).unwrap().instant;
+        record_cursor(&context, origin + Duration::from_millis(100), (0.2, 0.3));
+        record_cursor(&context, origin + Duration::from_millis(150), (0.21, 0.31));
+        record_cursor(&context, origin + Duration::from_millis(180), (0.8, 0.9));
+
+        let mut tracker = TouchTapTracker::new(touchpad_geometry());
+        let mut tap_state = TapTrackerState {
+            down_timing: None,
+            up_timing: None,
+        };
+        let mut last_left_click = None;
+        for (event_type, event_code, value, ms) in [
+            (EV_KEY, BTN_TOUCH, 1, 120),
+            (EV_SYN, SYN_REPORT, 0, 120),
+            (EV_KEY, BTN_TOUCH, 0, 175),
+            (EV_SYN, SYN_REPORT, 0, 175),
+        ] {
+            handle_tap_tracker_event(
+                &mut tracker,
+                &mut tap_state,
+                RawInputEvent {
+                    event_type,
+                    code: event_code,
+                    value,
+                    timing: (event_type == EV_KEY).then_some(InputTiming {
+                        instant: origin + Duration::from_millis(ms),
+                        paused: false,
+                        paused_ns: 0,
+                    }),
+                },
+                &context,
+                &mut last_left_click,
+            );
+        }
+
+        let samples = context.samples.lock().unwrap();
+        assert_eq!(samples.len(), 2);
+        assert_eq!(
+            (samples[0].pts_ns, samples[0].cx, samples[0].cy),
+            (120_000_000, 0.2, 0.3)
+        );
+        assert_eq!(
+            (samples[1].pts_ns, samples[1].cx, samples[1].cy),
+            (175_000_000, 0.21, 0.31)
         );
     }
 
@@ -1105,10 +1172,7 @@ mod tests {
         read_device(std::io::Cursor::new(event), None, &context, None);
         assert!(context.samples.lock().unwrap().is_empty());
 
-        *context.last_cursor.lock().unwrap() = Some(CursorSnapshot {
-            position: (0.2, 0.8),
-            cursor_type: "arrow",
-        });
+        record_cursor(&context, Instant::now(), (0.2, 0.8));
         read_device(std::io::Cursor::new(event), None, &context, None);
         let samples = context.samples.lock().unwrap();
         assert_eq!(samples.len(), 2);
@@ -1140,10 +1204,7 @@ mod tests {
         }
 
         let context = click_context();
-        *context.last_cursor.lock().unwrap() = Some(CursorSnapshot {
-            position: (0.4, 0.6),
-            cursor_type: "arrow",
-        });
+        record_cursor(&context, Instant::now(), (0.4, 0.6));
         read_device(
             DisconnectingMouse {
                 events: vec![
@@ -1211,10 +1272,7 @@ mod tests {
     #[test]
     fn balances_recorded_buttons_at_an_evdev_gap() {
         let context = click_context();
-        *context.last_cursor.lock().unwrap() = Some(CursorSnapshot {
-            position: (0.2, 0.8),
-            cursor_type: "arrow",
-        });
+        record_cursor(&context, Instant::now(), (0.2, 0.8));
         let events = [
             input_event(EV_KEY, BTN_LEFT, 1),
             input_event(EV_KEY, BTN_RIGHT, 1),
@@ -1248,7 +1306,7 @@ mod tests {
     fn balances_a_recorded_press_when_the_cursor_disappears() {
         struct ButtonEvents<'a> {
             buttons: std::array::IntoIter<i32, 2>,
-            cursor: &'a Mutex<Option<CursorSnapshot>>,
+            cursor: &'a Mutex<telemetry::CursorHistory>,
         }
 
         impl Read for ButtonEvents<'_> {
@@ -1256,10 +1314,13 @@ mod tests {
                 let Some(value) = self.buttons.next() else {
                     return Ok(0);
                 };
-                *self.cursor.lock().unwrap() = (value == 1).then_some(CursorSnapshot {
-                    position: (0.2, 0.8),
-                    cursor_type: "arrow",
-                });
+                self.cursor.lock().unwrap().record(
+                    Instant::now(),
+                    (value == 1).then_some(telemetry::CursorSnapshot {
+                        position: (0.2, 0.8),
+                        cursor_type: "arrow",
+                    }),
+                );
                 output.copy_from_slice(&input_event(EV_KEY, BTN_LEFT, value));
                 Ok(output.len())
             }
@@ -1269,7 +1330,7 @@ mod tests {
         read_device(
             ButtonEvents {
                 buttons: [1, 0].into_iter(),
-                cursor: &context.last_cursor,
+                cursor: &context.cursor_history,
             },
             None,
             &context,
@@ -1312,10 +1373,7 @@ mod tests {
 
         for (pause_before_touch_up, expected_events) in [(false, 2), (true, 0)] {
             let context = click_context();
-            *context.last_cursor.lock().unwrap() = Some(CursorSnapshot {
-                position: (0.2, 0.8),
-                cursor_type: "arrow",
-            });
+            record_cursor(&context, Instant::now(), (0.2, 0.8));
             read_device(
                 TouchEvents {
                     index: 0,
@@ -1802,7 +1860,7 @@ mod tests {
             samples: Arc::clone(&samples),
             anchor: Arc::clone(&anchor),
             pause: Arc::new(Mutex::new(PauseState::default())),
-            last_cursor: Arc::new(Mutex::new(None)),
+            cursor_history: Arc::new(Mutex::new(telemetry::CursorHistory::default())),
             verbose: false,
         };
         let tap = CompletedTap {

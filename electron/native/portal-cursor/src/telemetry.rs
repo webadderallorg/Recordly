@@ -2,6 +2,7 @@ use serde::Serialize;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
+use std::time::Instant;
 
 pub const VERSION: u32 = 2;
 
@@ -149,10 +150,39 @@ pub struct RawSample {
     pub mouse_button: Option<u8>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct CursorSnapshot {
     pub position: (f64, f64),
     pub cursor_type: &'static str,
+}
+
+/// Cursor updates in observation order on the same monotonic timeline as evdev.
+#[derive(Default)]
+pub struct CursorHistory {
+    observations: Vec<(Instant, Option<CursorSnapshot>)>,
+}
+
+impl CursorHistory {
+    pub fn record(&mut self, observed_at: Instant, cursor: Option<CursorSnapshot>) {
+        if cursor != self.current() {
+            self.observations.push((observed_at, cursor));
+        }
+    }
+
+    #[must_use]
+    pub fn current(&self) -> Option<CursorSnapshot> {
+        self.observations.last().and_then(|(_, cursor)| *cursor)
+    }
+
+    #[must_use]
+    pub fn position_at(&self, instant: Instant) -> Option<(f64, f64)> {
+        let end = self
+            .observations
+            .partition_point(|(observed_at, _)| *observed_at <= instant);
+        self.observations[..end]
+            .last()
+            .and_then(|(_, cursor)| cursor.map(|snapshot| snapshot.position))
+    }
 }
 
 #[derive(Clone, Copy, Default)]
