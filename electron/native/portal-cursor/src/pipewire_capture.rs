@@ -58,6 +58,16 @@ impl PauseState {
     pub(crate) fn snapshot(&self) -> (bool, i64) {
         (self.paused, self.accumulated_ns)
     }
+
+    pub(crate) fn timing_at(&self, event_time: Instant) -> (bool, i64) {
+        let current_pause_ns = self.pause_started.map_or(0, |start| {
+            duration_to_ns(event_time.saturating_duration_since(start))
+        });
+        (
+            self.paused,
+            self.accumulated_ns.saturating_add(current_pause_ns),
+        )
+    }
 }
 
 pub(crate) fn duration_to_ns(duration: Duration) -> i64 {
@@ -76,6 +86,12 @@ pub struct CaptureConfig {
     pub video: Option<Arc<VideoHandle>>,
     pub print_events: bool,
     pub verbose: bool,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct CursorSnapshot {
+    pub position: (f64, f64),
+    pub cursor_type: &'static str,
 }
 
 type CursorKey = (u32, i32, i32, i32, i32, Option<(u32, u32, u32, i32)>);
@@ -110,7 +126,7 @@ struct CaptureState {
     timeline: Arc<Mutex<VideoTimeline>>,
     anchor: Arc<Mutex<Option<Anchor>>>,
     pause: Arc<Mutex<PauseState>>,
-    last_position: Arc<Mutex<Option<(f64, f64)>>>,
+    last_cursor: Arc<Mutex<Option<CursorSnapshot>>>,
     buffer_count: u64,
     cursor_meta_count: u64,
     last: Option<CursorKey>,
@@ -124,7 +140,7 @@ pub fn spawn(
     let (sender, receiver) = pw::channel::channel::<Command>();
     let raw_samples = Arc::new(Mutex::new(Vec::<telemetry::RawSample>::new()));
     let anchor = Arc::new(Mutex::new(None::<Anchor>));
-    let last_position = Arc::new(Mutex::new(None::<(f64, f64)>));
+    let last_cursor = Arc::new(Mutex::new(None::<CursorSnapshot>));
     let mut pause_state = PauseState::default();
     if config.start_paused {
         pause_state.pause();
@@ -133,20 +149,14 @@ pub fn spawn(
     let timeline = Arc::new(Mutex::new(VideoTimeline::default()));
     let timer_frame_interval_ns = configure_keepalive_interval_ns();
 
-    crate::clicks::start(
-        &raw_samples,
-        &anchor,
-        &pause,
-        &last_position,
-        config.verbose,
-    );
+    crate::clicks::start(&raw_samples, &anchor, &pause, &last_cursor, config.verbose);
 
     let thread_context = CaptureThreadContext {
         config,
         raw_samples,
         anchor,
         pause,
-        last_position,
+        last_cursor,
         timeline,
         timer_frame_interval_ns,
     };
@@ -168,7 +178,7 @@ struct CaptureThreadContext {
     raw_samples: Arc<Mutex<Vec<telemetry::RawSample>>>,
     anchor: Arc<Mutex<Option<Anchor>>>,
     pause: Arc<Mutex<PauseState>>,
-    last_position: Arc<Mutex<Option<(f64, f64)>>>,
+    last_cursor: Arc<Mutex<Option<CursorSnapshot>>>,
     timeline: Arc<Mutex<VideoTimeline>>,
     timer_frame_interval_ns: i64,
 }
@@ -194,7 +204,7 @@ fn run_capture_thread(
         raw_samples,
         anchor,
         pause,
-        last_position,
+        last_cursor,
         timeline,
         timer_frame_interval_ns,
     } = context;
@@ -243,7 +253,7 @@ fn run_capture_thread(
         timeline: Arc::clone(&timeline),
         anchor: Arc::clone(&anchor),
         pause: Arc::clone(&pause),
-        last_position,
+        last_cursor: Arc::clone(&last_cursor),
         buffer_count: 0,
         cursor_meta_count: 0,
         last: None,
@@ -264,14 +274,21 @@ fn run_capture_thread(
         )
         .context("failed to connect the PipeWire stream")?;
 
+    let resume_anchor = Arc::clone(&anchor);
+    let resume_epoch = Arc::clone(&start_epoch);
+    let resume_samples = Arc::clone(&raw_samples);
     let _receiver = attach_command_receiver(
         receiver,
         &mainloop,
         command_video,
         Arc::clone(&timeline),
         Arc::clone(&pause),
-        Arc::clone(&anchor),
-        Arc::clone(&start_epoch),
+        move |pts, paused_ns| {
+            if let Some(cursor) = last_cursor.lock().ok().and_then(|cursor| *cursor) {
+                append_cursor_sample(&resume_samples, pts, cursor);
+            }
+            report_video_started(&resume_anchor, &resume_epoch, pts, paused_ns);
+        },
     );
     let _keepalive_timer = attach_keepalive_timer(
         &mainloop,
@@ -451,8 +468,7 @@ fn attach_command_receiver(
     video: Option<Arc<VideoHandle>>,
     timeline: Arc<Mutex<VideoTimeline>>,
     pause: Arc<Mutex<PauseState>>,
-    anchor: Arc<Mutex<Option<Anchor>>>,
-    start_epoch: Arc<AtomicI64>,
+    on_start: impl Fn(i64, i64) + 'static,
 ) -> pw::channel::AttachedReceiver<'_, Command> {
     let quit_loop = mainloop.clone();
     receiver.attach(mainloop.loop_(), move |command| match command {
@@ -471,26 +487,25 @@ fn attach_command_receiver(
             let _ = std::io::stdout().flush();
         }
         Command::Resume => {
-            let resumed_pause_ns = pause.lock().ok().map(|mut state| {
+            if let Ok(mut state) = pause.lock() {
                 state.resume();
-                state.accumulated_ns
-            });
-            if let Some(video) = &video {
-                if let Some(paused_ns) = resumed_pause_ns
-                    && let Ok(mut timeline) = timeline.lock()
-                    && let Some(frame) = timeline.startup_frame.take()
-                {
-                    let pts = frame
-                        .raw_pts_ns
-                        .saturating_add(duration_to_ns(frame.received_at.elapsed()))
-                        .saturating_sub(paused_ns);
-                    // Submit the latest available pixels at the resume time. A static
-                    // compositor may not send another frame until something changes.
-                    if let Ok(true) = queue_video_frame(video, &mut timeline, frame.buffer, pts) {
-                        report_video_started(&anchor, &start_epoch, pts, paused_ns);
+                if let Some(video) = &video {
+                    if let Ok(mut timeline) = timeline.lock()
+                        && let Some(frame) = timeline.startup_frame.take()
+                    {
+                        let pts = frame
+                            .raw_pts_ns
+                            .saturating_add(duration_to_ns(frame.received_at.elapsed()))
+                            .saturating_sub(state.accumulated_ns);
+                        // Submit the latest available pixels at the resume time. A static
+                        // compositor may not send another frame until something changes.
+                        if let Ok(true) = queue_video_frame(video, &mut timeline, frame.buffer, pts)
+                        {
+                            on_start(pts, state.accumulated_ns);
+                        }
                     }
+                    video.set_paused(false);
                 }
-                video.set_paused(false);
             }
             println!("RESUMED");
             let _ = std::io::stdout().flush();
@@ -864,11 +879,8 @@ fn handle_process(stream: &pw::stream::Stream, state: &mut CaptureState) {
         .snapshot();
     if paused {
         if let Some(cursor) = buffer.find_meta::<MetaCursor>() {
-            let _ = cache_cursor_position(cursor, state);
-            if cursor.id() != 0 && cursor.bitmap().is_some() {
-                // Position-only updates after resume can refer to a bitmap sent while paused.
-                resolve_cursor_type(cursor, state);
-            }
+            // Position-only updates after resume can refer to a bitmap sent while paused.
+            let _ = cache_cursor(cursor, state);
             // Cache live cursor state while paused, but emit it only on the recording timeline.
             state.last = None;
         }
@@ -927,7 +939,7 @@ fn record_cursor_metadata(
     };
     state.cursor_meta_count += 1;
     if cursor.id() == 0 {
-        let _ = cache_cursor_position(cursor, state);
+        let _ = cache_cursor(cursor, state);
         state.last = None;
         return;
     }
@@ -954,12 +966,12 @@ fn record_cursor_metadata(
     if state.last == Some(key) {
         return;
     }
-    let Some((cx, cy)) = cache_cursor_position(cursor, state) else {
+    let Some(snapshot) = cache_cursor(cursor, state) else {
         return;
     };
     state.last = Some(key);
 
-    let cursor_type = resolve_cursor_type(cursor, state);
+    let cursor_type = snapshot.cursor_type;
 
     if state.current_type != Some(cursor_type) {
         state.current_type = Some(cursor_type);
@@ -971,16 +983,7 @@ fn record_cursor_metadata(
 
     let _ = ensure_anchor(&state.anchor, pts, paused_ns);
 
-    if let Ok(mut collected) = state.raw_samples.lock() {
-        collected.push(telemetry::RawSample {
-            pts_ns: pts,
-            cx,
-            cy,
-            cursor_type: Some(cursor_type.to_owned()),
-            interaction_type: None,
-            mouse_button: None,
-        });
-    }
+    append_cursor_sample(&state.raw_samples, pts, snapshot);
 
     if state.config.print_events {
         let bitmap_text = match bitmap {
@@ -1002,23 +1005,46 @@ fn record_cursor_metadata(
     }
 }
 
-fn cache_cursor_position(cursor: &MetaCursor, state: &CaptureState) -> Option<(f64, f64)> {
-    let position = if cursor.id() == 0 {
+fn append_cursor_sample(
+    samples: &Mutex<Vec<telemetry::RawSample>>,
+    pts_ns: i64,
+    cursor: CursorSnapshot,
+) {
+    if let Ok(mut collected) = samples.lock() {
+        collected.push(telemetry::RawSample {
+            pts_ns,
+            cx: cursor.position.0,
+            cy: cursor.position.1,
+            cursor_type: Some(cursor.cursor_type.to_owned()),
+            interaction_type: None,
+            mouse_button: None,
+        });
+    }
+}
+
+fn cache_cursor(cursor: &MetaCursor, state: &mut CaptureState) -> Option<CursorSnapshot> {
+    let snapshot = if cursor.id() == 0 {
         None
     } else {
+        let cursor_type = resolve_cursor_type(cursor, state);
         let position = cursor.position();
-        normalization_rect(state).and_then(|rect| {
-            geometry::normalize_to_stream(
-                (position.x, position.y),
-                rect,
-                state.config.position_space,
-            )
-        })
+        normalization_rect(state)
+            .and_then(|rect| {
+                geometry::normalize_to_stream(
+                    (position.x, position.y),
+                    rect,
+                    state.config.position_space,
+                )
+            })
+            .map(|position| CursorSnapshot {
+                position,
+                cursor_type,
+            })
     };
-    if let Ok(mut last) = state.last_position.lock() {
-        *last = position;
+    if let Ok(mut last) = state.last_cursor.lock() {
+        *last = snapshot;
     }
-    position
+    snapshot
 }
 
 fn resolve_cursor_type(cursor: &MetaCursor, state: &mut CaptureState) -> &'static str {
