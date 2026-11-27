@@ -5,7 +5,7 @@ use std::io::Read;
 use std::os::unix::fs::FileTypeExt;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 const EV_SYN: u16 = 0;
 const SYN_REPORT: u16 = 0;
@@ -347,6 +347,7 @@ pub fn start(
         let Ok(file) = File::open(&path) else {
             continue;
         };
+        let clock = EvdevClock::for_device(&file);
         let tap_tracker = is_touchpad.then(|| {
             TouchTapTracker::with_button_map(query_touchpad_geometry(&file), tap_button_map)
         });
@@ -360,7 +361,7 @@ pub fn start(
         std::thread::Builder::new()
             .name(format!("recordly-clicks-{name}"))
             .spawn(move || {
-                read_device(file, tap_tracker, &context);
+                read_device(file, tap_tracker, &context, clock);
             })
             .ok();
         devices += 1;
@@ -372,6 +373,69 @@ pub fn start(
     }
     if verbose {
         eprintln!("[clicks] listening on {devices} input devices (tap_enabled={tap_enabled})");
+    }
+}
+
+#[derive(Clone, Copy)]
+struct EvdevClock {
+    kernel_time: Duration,
+    instant: Instant,
+}
+
+impl EvdevClock {
+    #[cfg(target_os = "linux")]
+    fn for_device(file: &File) -> Option<Self> {
+        use std::os::fd::AsRawFd;
+
+        const EVIOCSCLOCKID: u32 = 0x4004_45a0; // _IOW('E', 0xa0, int)
+        let clock_id = libc::CLOCK_MONOTONIC;
+        let mut now = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        // SAFETY: evdev reads a clockid_t from the valid pointer passed to EVIOCSCLOCKID.
+        if unsafe { libc::ioctl(file.as_raw_fd(), EVIOCSCLOCKID as _, &raw const clock_id) } != 0 {
+            return None;
+        }
+        let before = Instant::now();
+        // SAFETY: clock_gettime writes to a valid timespec.
+        if unsafe { libc::clock_gettime(clock_id, &raw mut now) } != 0 {
+            return None;
+        }
+        let after = Instant::now();
+        Some(Self {
+            kernel_time: Duration::new(
+                u64::try_from(now.tv_sec).ok()?,
+                u32::try_from(now.tv_nsec).ok()?,
+            ),
+            // Bracket the sample so the binding to Instant doesn't include ioctl latency.
+            instant: before + after.duration_since(before) / 2,
+        })
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn for_device(_file: &File) -> Option<Self> {
+        None
+    }
+
+    fn event_instant(self, event: &[u8; 24], received_at: Instant) -> Instant {
+        // The first two native-endian words of the 64-bit input_event are seconds and microseconds.
+        let (Ok(seconds), Ok(micros)) = (
+            u64::try_from(i64::from_ne_bytes(event[..8].try_into().unwrap())),
+            u32::try_from(i64::from_ne_bytes(event[8..16].try_into().unwrap())),
+        ) else {
+            return received_at;
+        };
+        if micros >= 1_000_000 || (seconds == 0 && micros == 0) {
+            return received_at;
+        }
+        let kernel_time = Duration::new(seconds, micros * 1000);
+        let event_time = if let Some(elapsed) = kernel_time.checked_sub(self.kernel_time) {
+            self.instant.checked_add(elapsed)
+        } else {
+            self.instant.checked_sub(self.kernel_time - kernel_time)
+        };
+        event_time.unwrap_or(received_at).min(received_at)
     }
 }
 
@@ -395,13 +459,17 @@ struct RawInputEvent {
     timing: Option<InputTiming>,
 }
 
-fn read_input_timing(event_type: u16, code: u16, pause: &Mutex<PauseState>) -> Option<InputTiming> {
+fn read_input_timing(
+    event_type: u16,
+    code: u16,
+    pause: &Mutex<PauseState>,
+    event_instant: impl FnOnce() -> Instant,
+) -> Option<InputTiming> {
     if event_type == EV_KEY
         && matches!(code, BTN_TOUCH | BTN_LEFT | BTN_RIGHT | BTN_MIDDLE)
         && let Ok(pause) = pause.lock()
     {
-        // Read the instant and pause together so Resume cannot move an earlier event back in time.
-        let instant = Instant::now();
+        let instant = event_instant();
         let (paused, paused_ns) = pause.timing_at(instant);
         Some(InputTiming {
             instant,
@@ -462,6 +530,7 @@ fn release_pressed_buttons(
     pressed_positions: &mut [Option<(f64, f64)>; 3],
     context: &ClickContext,
     last_left_click: &mut Option<(Instant, f64, f64)>,
+    instant: Instant,
 ) {
     if !pressed_positions.iter().any(Option::is_some) {
         return;
@@ -469,7 +538,6 @@ fn release_pressed_buttons(
     let Ok(pause) = context.pause.lock() else {
         return;
     };
-    let instant = Instant::now();
     let (_, accumulated_paused_ns) = pause.timing_at(instant);
     // A release may have been lost. End recorded presses before exiting or syncing
     // so the editor cannot keep rendering a held button through later footage.
@@ -557,6 +625,7 @@ fn read_device(
     mut file: impl Read,
     mut tap_tracker: Option<TouchTapTracker>,
     context: &ClickContext,
+    clock: Option<EvdevClock>,
 ) {
     let mut buffer = [0u8; 24];
     let mut last_left_click: Option<(Instant, f64, f64)> = None;
@@ -569,13 +638,24 @@ fn read_device(
 
     loop {
         if file.read_exact(&mut buffer).is_err() {
-            release_pressed_buttons(&mut pressed_positions, context, &mut last_left_click);
+            release_pressed_buttons(
+                &mut pressed_positions,
+                context,
+                &mut last_left_click,
+                Instant::now(),
+            );
             return;
         }
-        let event_type = u16::from_le_bytes([buffer[16], buffer[17]]);
-        let code = u16::from_le_bytes([buffer[18], buffer[19]]);
-        let value = i32::from_le_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]);
-        let timing = read_input_timing(event_type, code, &context.pause);
+        let event_type = u16::from_ne_bytes([buffer[16], buffer[17]]);
+        let code = u16::from_ne_bytes([buffer[18], buffer[19]]);
+        let value = i32::from_ne_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]);
+        let event_instant = || {
+            let received_at = Instant::now();
+            clock.map_or(received_at, |clock| {
+                clock.event_instant(&buffer, received_at)
+            })
+        };
+        let timing = read_input_timing(event_type, code, &context.pause, event_instant);
         let raw = RawInputEvent {
             event_type,
             code,
@@ -595,7 +675,12 @@ fn read_device(
                 tap_state.down_timing = None;
                 tap_state.up_timing = None;
                 last_left_click = None;
-                release_pressed_buttons(&mut pressed_positions, context, &mut last_left_click);
+                release_pressed_buttons(
+                    &mut pressed_positions,
+                    context,
+                    &mut last_left_click,
+                    event_instant(),
+                );
             } else if code == SYN_REPORT {
                 syn_dropping = false;
             }
@@ -663,6 +748,9 @@ fn emit_button_event(
     let Some(anchor) = read_anchor(context) else {
         return false;
     };
+    if input.event_instant < anchor.instant {
+        return false;
+    }
     let Ok(mut collected) = context.samples.lock() else {
         return false;
     };
@@ -685,6 +773,9 @@ fn emit_completed_tap(
     let Some(anchor) = read_anchor(context) else {
         return;
     };
+    if tap.down_at < anchor.instant {
+        return;
+    }
     let down_sample = build_button_sample(
         anchor,
         ButtonSampleInput {
@@ -937,24 +1028,88 @@ mod tests {
 
     fn input_event(event_type: u16, code: u16, value: i32) -> [u8; 24] {
         let mut event = [0u8; 24];
-        event[16..18].copy_from_slice(&event_type.to_le_bytes());
-        event[18..20].copy_from_slice(&code.to_le_bytes());
-        event[20..24].copy_from_slice(&value.to_le_bytes());
+        event[16..18].copy_from_slice(&event_type.to_ne_bytes());
+        event[18..20].copy_from_slice(&code.to_ne_bytes());
+        event[20..24].copy_from_slice(&value.to_ne_bytes());
         event
+    }
+
+    #[test]
+    fn timestamps_buffered_clicks_at_the_kernel_time_and_excludes_preroll() {
+        let origin = Instant::now() - Duration::from_secs(1);
+        let clock = EvdevClock {
+            kernel_time: Duration::from_secs(30),
+            instant: origin,
+        };
+        let context = click_context();
+        context.anchor.lock().unwrap().as_mut().unwrap().instant = origin;
+        *context.last_cursor.lock().unwrap() = Some(CursorSnapshot {
+            position: (0.2, 0.8),
+            cursor_type: "arrow",
+        });
+
+        let timed_event = |code, value, seconds: i64, micros: i64| {
+            let mut event = input_event(EV_KEY, code, value);
+            event[..8].copy_from_slice(&seconds.to_ne_bytes());
+            event[8..16].copy_from_slice(&micros.to_ne_bytes());
+            event
+        };
+        let events = [
+            timed_event(BTN_RIGHT, 1, 29, 995_000),
+            timed_event(BTN_RIGHT, 0, 30, 50_000),
+            timed_event(BTN_LEFT, 1, 30, 120_000),
+            timed_event(BTN_LEFT, 0, 30, 175_000),
+        ];
+        read_device(
+            std::io::Cursor::new(events.concat()),
+            None,
+            &context,
+            Some(clock),
+        );
+
+        let samples = context.samples.lock().unwrap();
+        let recorded: Vec<_> = samples
+            .iter()
+            .map(|sample| (sample.pts_ns, sample.interaction_type.as_deref()))
+            .collect();
+        assert_eq!(
+            recorded,
+            [(120_000_000, Some("click")), (175_000_000, Some("mouseup"))]
+        );
+    }
+
+    #[test]
+    fn falls_back_to_receipt_time_for_invalid_or_future_input_times() {
+        let instant = Instant::now();
+        let clock = EvdevClock {
+            kernel_time: Duration::from_secs(30),
+            instant,
+        };
+        let mut event = input_event(EV_KEY, BTN_LEFT, 1);
+        let received_at = instant + Duration::from_millis(100);
+        assert_eq!(clock.event_instant(&event, received_at), received_at);
+
+        event[..8].copy_from_slice(&30_i64.to_ne_bytes());
+        event[8..16].copy_from_slice(&1_000_000_i64.to_ne_bytes());
+        assert_eq!(clock.event_instant(&event, received_at), received_at);
+
+        event[..8].copy_from_slice(&31_i64.to_ne_bytes());
+        event[8..16].copy_from_slice(&0_i64.to_ne_bytes());
+        assert_eq!(clock.event_instant(&event, received_at), received_at);
     }
 
     #[test]
     fn records_a_click_only_after_a_real_cursor_position_is_known() {
         let context = click_context();
         let event = input_event(EV_KEY, BTN_LEFT, 1);
-        read_device(std::io::Cursor::new(event), None, &context);
+        read_device(std::io::Cursor::new(event), None, &context, None);
         assert!(context.samples.lock().unwrap().is_empty());
 
         *context.last_cursor.lock().unwrap() = Some(CursorSnapshot {
             position: (0.2, 0.8),
             cursor_type: "arrow",
         });
-        read_device(std::io::Cursor::new(event), None, &context);
+        read_device(std::io::Cursor::new(event), None, &context, None);
         let samples = context.samples.lock().unwrap();
         assert_eq!(samples.len(), 2);
         assert_eq!(samples[0].interaction_type.as_deref(), Some("click"));
@@ -1000,6 +1155,7 @@ mod tests {
             },
             None,
             &context,
+            None,
         );
         let samples = context.samples.lock().unwrap();
         let recorded: Vec<_> = samples
@@ -1069,7 +1225,7 @@ mod tests {
             input_event(EV_KEY, BTN_LEFT, 1),
             input_event(EV_KEY, BTN_LEFT, 0),
         ];
-        read_device(std::io::Cursor::new(events.concat()), None, &context);
+        read_device(std::io::Cursor::new(events.concat()), None, &context, None);
         let samples = context.samples.lock().unwrap();
         let recorded: Vec<_> = samples
             .iter()
@@ -1117,6 +1273,7 @@ mod tests {
             },
             None,
             &context,
+            None,
         );
         let samples = context.samples.lock().unwrap();
         assert_eq!(samples.len(), 2);
@@ -1167,6 +1324,7 @@ mod tests {
                 },
                 Some(TouchTapTracker::new(touchpad_geometry())),
                 &context,
+                None,
             );
             assert_eq!(context.samples.lock().unwrap().len(), expected_events);
         }

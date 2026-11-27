@@ -40,42 +40,59 @@ impl Anchor {
     }
 }
 
+struct PauseBoundary {
+    instant: Instant,
+    paused: bool,
+    paused_ns: i64,
+}
+
 #[derive(Default)]
 pub(crate) struct PauseState {
-    paused: bool,
-    accumulated_ns: i64,
-    pause_started: Option<std::time::Instant>,
+    boundaries: Vec<PauseBoundary>,
 }
 
 impl PauseState {
     pub(crate) fn pause(&mut self) {
-        if !self.paused {
-            self.paused = true;
-            self.pause_started = Some(Instant::now());
-        }
+        self.set_paused_at(true, Instant::now());
     }
 
     fn resume(&mut self) {
-        if self.paused {
-            if let Some(started) = self.pause_started.take() {
-                self.accumulated_ns += duration_to_ns(started.elapsed());
-            }
-            self.paused = false;
+        self.set_paused_at(false, Instant::now());
+    }
+
+    fn set_paused_at(&mut self, paused: bool, instant: Instant) {
+        let (was_paused, paused_ns) = self.timing_at(instant);
+        if was_paused != paused {
+            self.boundaries.push(PauseBoundary {
+                instant,
+                paused,
+                paused_ns,
+            });
         }
     }
 
     pub(crate) fn snapshot(&self) -> (bool, i64) {
-        (self.paused, self.accumulated_ns)
+        self.boundaries
+            .last()
+            .map_or((false, 0), |boundary| (boundary.paused, boundary.paused_ns))
     }
 
     pub(crate) fn timing_at(&self, event_time: Instant) -> (bool, i64) {
-        let current_pause_ns = self.pause_started.map_or(0, |start| {
-            duration_to_ns(event_time.saturating_duration_since(start))
-        });
-        (
-            self.paused,
-            self.accumulated_ns.saturating_add(current_pause_ns),
-        )
+        // A buffered input can arrive after either edge of a pause.
+        let boundary_index = self
+            .boundaries
+            .partition_point(|boundary| boundary.instant <= event_time);
+        let Some(boundary) = self.boundaries[..boundary_index].last() else {
+            return (false, 0);
+        };
+        let paused_ns = if boundary.paused {
+            boundary.paused_ns.saturating_add(duration_to_ns(
+                event_time.saturating_duration_since(boundary.instant),
+            ))
+        } else {
+            boundary.paused_ns
+        };
+        (boundary.paused, paused_ns)
     }
 }
 
@@ -738,8 +755,9 @@ fn attach_command_receiver(
         }
         Command::Resume => {
             if let Ok(mut state) = sync.pause.lock() {
-                let was_paused = state.paused;
+                let (was_paused, _) = state.snapshot();
                 state.resume();
+                let (_, paused_ns) = state.snapshot();
                 let mut first_frame_pts = None;
                 if let Some(video) = &sync.video {
                     if let Ok(mut timeline) = sync.timeline.lock()
@@ -748,7 +766,7 @@ fn attach_command_receiver(
                         let pts = frame
                             .raw_pts_ns
                             .saturating_add(duration_to_ns(frame.received_at.elapsed()))
-                            .saturating_sub(state.accumulated_ns);
+                            .saturating_sub(paused_ns);
                         // Submit the latest available pixels at the resume time. A static
                         // compositor may not send another frame until something changes.
                         if let Ok(queued) =
@@ -761,7 +779,7 @@ fn attach_command_receiver(
                     video.set_paused(false);
                 }
                 if was_paused {
-                    on_resume(first_frame_pts, state.accumulated_ns);
+                    on_resume(first_frame_pts, paused_ns);
                 }
             }
             println!("RESUMED");
@@ -769,13 +787,13 @@ fn attach_command_receiver(
         }
         Command::MarkZoom => {
             if let Ok(state) = sync.pause.lock()
-                && !state.paused
+                && let (false, paused_ns) = state.snapshot()
                 && sync
                     .timeline
                     .lock()
                     .is_ok_and(|timeline| timeline.first_pts.is_some())
             {
-                on_zoom(Instant::now(), state.accumulated_ns);
+                on_zoom(Instant::now(), paused_ns);
             }
         }
     })
@@ -1670,6 +1688,27 @@ mod tests {
         let anchor_explicit = Mutex::new(None);
         report_video_started(&anchor_explicit, &explicit, 1_000_000_000, 0);
         assert_eq!(explicit.load(Ordering::SeqCst), 1_700_000_000_555);
+    }
+
+    #[test]
+    fn buffered_input_uses_the_pause_state_at_its_original_time() {
+        let origin = Instant::now();
+        let at = |millis| origin + Duration::from_millis(millis);
+        let mut pause = PauseState::default();
+        pause.set_paused_at(true, at(200));
+        pause.set_paused_at(false, at(500));
+        pause.set_paused_at(true, at(700));
+        pause.set_paused_at(false, at(900));
+        pause.set_paused_at(true, at(1100));
+
+        assert_eq!(pause.snapshot(), (true, 500_000_000));
+        assert_eq!(pause.timing_at(at(199)), (false, 0));
+        assert_eq!(pause.timing_at(at(200)), (true, 0));
+        assert_eq!(pause.timing_at(at(400)), (true, 200_000_000));
+        assert_eq!(pause.timing_at(at(500)), (false, 300_000_000));
+        assert_eq!(pause.timing_at(at(750)), (true, 350_000_000));
+        assert_eq!(pause.timing_at(at(1000)), (false, 500_000_000));
+        assert_eq!(pause.timing_at(at(1200)), (true, 600_000_000));
     }
 
     #[test]

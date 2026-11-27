@@ -946,6 +946,7 @@ dependencies = [
  "clap",
  "gstreamer",
  "gstreamer-app",
+ "libc",
  "pipewire",
  "serde",
  "serde_json",

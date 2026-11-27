@@ -171,7 +171,20 @@ export function buildLoopedCursorTelemetry(
 
 	const firstSample = boundedSamples[0];
 	const lastSample = boundedSamples[boundedSamples.length - 1];
-	const maxFreezeWindowMs = timelineEndMs - timelineStartClampedMs;
+	let lastTransitionMs: number | undefined;
+	for (let index = boundedSamples.length - 1; index >= 0; index -= 1) {
+		if (boundedSamples[index].cursorVisible !== undefined) {
+			lastTransitionMs = boundedSamples[index].timeMs;
+			break;
+		}
+	}
+	const hasVisibilityTransitions = lastTransitionMs !== undefined;
+	const sourceStartMs = hasVisibilityTransitions ? timelineStartClampedMs : firstSample.timeMs;
+	const maxFreezeWindowMs = timelineEndMs - sourceStartMs;
+	if (hasVisibilityTransitions && maxFreezeWindowMs <= LOOP_CURSOR_FREEZE_DURATION_MS) {
+		// The return would leave no time for the original visibility changes.
+		return samples;
+	}
 	if (maxFreezeWindowMs <= 1) {
 		return boundedSamples;
 	}
@@ -183,18 +196,9 @@ export function buildLoopedCursorTelemetry(
 		Math.max(0, freezeDurationMs - 1),
 	);
 	const returnMotionDurationMs = Math.max(1, freezeDurationMs - clampedSettleDurationMs);
-	const sourceStartMs = timelineStartClampedMs;
-	const startingPoint = interpolateCursorPosition(samples, timelineStartClampedMs) ?? {
-		cx: firstSample.cx,
-		cy: firstSample.cy,
-	};
-	let lastTransitionMs: number | undefined;
-	for (let index = boundedSamples.length - 1; index >= 0; index -= 1) {
-		if (boundedSamples[index].cursorVisible !== undefined) {
-			lastTransitionMs = boundedSamples[index].timeMs;
-			break;
-		}
-	}
+	const startingPoint = hasVisibilityTransitions
+		? (interpolateCursorPosition(samples, timelineStartClampedMs) ?? firstSample)
+		: firstSample;
 	const sourceEndMs = Math.max(
 		sourceStartMs,
 		findLastMovingSampleTime(boundedSamples),
@@ -208,13 +212,21 @@ export function buildLoopedCursorTelemetry(
 	const startingCursorType = findFirstStableCursorType(boundedSamples);
 	const loopedSamples: CursorTelemetryPoint[] = [
 		{
+			...firstSample,
 			timeMs: timelineStartClampedMs,
 			cx: startingPoint.cx,
 			cy: startingPoint.cy,
+			interactionType: undefined,
 			cursorType: startingCursorType,
-			...(lastTransitionMs !== undefined ? { cursorVisible: true } : {}),
+			...(hasVisibilityTransitions ? { cursorVisible: true } : {}),
 		},
 	];
+
+	let lastVisibilityEdge = {
+		visible: true,
+		sourceTimeMs: sourceStartMs,
+		loopTimeMs: timelineStartClampedMs,
+	};
 
 	for (const sample of boundedSamples) {
 		const progress = clamp((sample.timeMs - sourceStartMs) / sourceDurationMs, 0, 1);
@@ -230,7 +242,25 @@ export function buildLoopedCursorTelemetry(
 		}
 
 		const previous = loopedSamples[loopedSamples.length - 1];
-		if (mappedTimeMs <= previous.timeMs) {
+		const timeMs = Math.max(mappedTimeMs, previous.timeMs);
+		if (
+			sample.cursorVisible !== undefined &&
+			sample.cursorVisible !== lastVisibilityEdge.visible
+		) {
+			// Keep the recorded timing if remapping would erase a real visibility interval.
+			if (
+				timeMs === lastVisibilityEdge.loopTimeMs &&
+				sample.timeMs > lastVisibilityEdge.sourceTimeMs
+			) {
+				return samples;
+			}
+			lastVisibilityEdge = {
+				visible: sample.cursorVisible,
+				sourceTimeMs: sample.timeMs,
+				loopTimeMs: timeMs,
+			};
+		}
+		if (timeMs === previous.timeMs) {
 			loopedSamples[loopedSamples.length - 1] = {
 				...sample,
 				timeMs: previous.timeMs,
@@ -243,7 +273,7 @@ export function buildLoopedCursorTelemetry(
 
 		loopedSamples.push({
 			...sample,
-			timeMs: mappedTimeMs,
+			timeMs,
 		});
 	}
 

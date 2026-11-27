@@ -51,4 +51,52 @@ describe("buildLoopedCursorTelemetry", () => {
 			compressedLooped.find((sample) => sample.cursorVisible === false)?.timeMs,
 		).toBeGreaterThan(50);
 	});
+	it.each([
+		650, 720, 721,
+	])("keeps source visibility when the return would erase edges in the window ending at %i ms", (endMs) => {
+		const samples: CursorTelemetryPoint[] = [
+			{ timeMs: 0, cx: 0.25, cy: 0.25, cursorVisible: true },
+			{ timeMs: 100, cx: 0.25, cy: 0.25, cursorVisible: false },
+			{ timeMs: 400, cx: 0.5, cy: 0.5, cursorVisible: true },
+			{ timeMs: 600, cx: 0.75, cy: 0.75 },
+		];
+		const looped = buildLoopedCursorTelemetry(samples, endMs, 50);
+		expect(isRecordedCursorVisible(looped, 50)).toBe(true);
+		expect(isRecordedCursorVisible(looped, 100)).toBe(false);
+		expect(isRecordedCursorVisible(looped, 400)).toBe(true);
+	});
+
+	it("retains close hide and show events even when a longer loop rounds them to the same time", () => {
+		const samples: CursorTelemetryPoint[] = [
+			{ timeMs: 0, cx: 0.25, cy: 0.25, cursorVisible: true },
+			{ timeMs: 100, cx: 0.25, cy: 0.25, cursorVisible: false },
+			{ timeMs: 101, cx: 0.5, cy: 0.5, cursorVisible: true },
+			{ timeMs: 990, cx: 0.75, cy: 0.75 },
+		];
+		const looped = buildLoopedCursorTelemetry(samples, 1000, 50);
+		expect(isRecordedCursorVisible(looped, 100)).toBe(false);
+		expect(isRecordedCursorVisible(looped, 101)).toBe(true);
+	});
+
+	it("still loops when a hide and show already share the same source timestamp", () => {
+		const samples: CursorTelemetryPoint[] = [
+			{ timeMs: 0, cx: 0.25, cy: 0.25, cursorVisible: true },
+			{ timeMs: 100, cx: 0.25, cy: 0.25, cursorVisible: false },
+			{ timeMs: 100, cx: 0.5, cy: 0.5, cursorVisible: true },
+			{ timeMs: 990, cx: 0.75, cy: 0.75 },
+		];
+		const looped = buildLoopedCursorTelemetry(samples, 1000, 50);
+		expect(looped.at(-1)).toMatchObject({ timeMs: 1000, cx: 0.25, cy: 0.25 });
+	});
+
+	it("uses the first in-window position for legacy recordings", () => {
+		const samples: CursorTelemetryPoint[] = [
+			{ timeMs: 0, cx: 0.1, cy: 0.2 },
+			{ timeMs: 200, cx: 0.5, cy: 0.6 },
+			{ timeMs: 1000, cx: 0.9, cy: 0.8 },
+		];
+		const looped = buildLoopedCursorTelemetry(samples, 1000, 50);
+		expect(looped[0]).toMatchObject({ timeMs: 50, cx: 0.5, cy: 0.6 });
+		expect(looped.at(-1)).toMatchObject({ timeMs: 1000, cx: 0.5, cy: 0.6 });
+	});
 });
