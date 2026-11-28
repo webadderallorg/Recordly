@@ -3,9 +3,12 @@ import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
+import { resolveHttpByteRange } from "./httpByteRange";
 import { approvedLocalReadPaths } from "./ipc/state";
 import { getMediaContentType } from "./mediaTypes";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
+
+export { resolveHttpByteRange } from "./httpByteRange";
 
 const mediaCapabilitySecret = randomBytes(32);
 
@@ -30,48 +33,6 @@ function isTrustedMediaOrigin(origin: string): boolean {
 
 let mediaServerBaseUrl: string | null = null;
 let mediaServerStartPromise: Promise<string> | null = null;
-
-export function resolveHttpByteRange(
-	rangeHeader: string,
-	fileSize: number,
-): { start: number; end: number } | null {
-	const match = rangeHeader.trim().match(/^bytes=(\d*)-(\d*)$/);
-	if (!match || (!match[1] && !match[2])) {
-		return null;
-	}
-
-	if (fileSize === 0) {
-		return null;
-	}
-
-	if (!match[1] && match[2]) {
-		// Suffix range: bytes=-500
-		const suffixLength = Number.parseInt(match[2], 10);
-		if (Number.isNaN(suffixLength) || suffixLength <= 0) {
-			return null;
-		}
-
-		return {
-			start: Math.max(0, fileSize - suffixLength),
-			end: fileSize - 1,
-		};
-	}
-
-	const start = Number.parseInt(match[1], 10);
-	if (Number.isNaN(start) || start < 0 || start >= fileSize) {
-		return null;
-	}
-
-	const requestedEnd = match[2] ? Number.parseInt(match[2], 10) : fileSize - 1;
-	if (Number.isNaN(requestedEnd) || requestedEnd < start) {
-		return null;
-	}
-
-	return {
-		start,
-		end: Math.min(requestedEnd, fileSize - 1),
-	};
-}
 
 async function resolveRealPath(filePath: string): Promise<string | null> {
 	try {

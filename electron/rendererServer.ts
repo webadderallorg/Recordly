@@ -1,6 +1,8 @@
+import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
+import { resolveHttpByteRange } from "./httpByteRange";
 
 const MIME_TYPES: Record<string, string> = {
 	".css": "text/css; charset=utf-8",
@@ -65,6 +67,28 @@ function resolveRequestedFilePath(rootDir: string, requestPathname: string): str
 	return resolvedFilePath;
 }
 
+function pipeFileStream(
+	filePath: string,
+	response: ServerResponse,
+	range?: { start: number; end: number },
+): void {
+	const stream = range ? createReadStream(filePath, range) : createReadStream(filePath);
+	response.once("close", () => {
+		if (!stream.destroyed) {
+			stream.destroy();
+		}
+	});
+	stream.on("error", () => {
+		if (!response.headersSent) {
+			response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+			response.end("Internal Server Error");
+			return;
+		}
+		response.destroy();
+	});
+	stream.pipe(response);
+}
+
 async function servePackagedRendererRequest(
 	rootDir: string,
 	assetRoot: string,
@@ -92,15 +116,56 @@ async function servePackagedRendererRequest(
 		}
 
 		const filePath = resolvedFilePath;
-		const fileContents = await fs.readFile(filePath);
+		const stat = await fs.stat(filePath);
+		if (!stat.isFile()) {
+			response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+			response.end("Not Found");
+			return;
+		}
 
-		response.writeHead(200, {
+		const fileSize = stat.size;
+		const baseHeaders: Record<string, string> = {
 			"X-Content-Type-Options": "nosniff",
 			...(path.extname(filePath) === ".html" && {
 				"Content-Security-Policy": "frame-ancestors 'none'",
 			}),
 			"Cache-Control": getCacheControl(filePath),
 			"Content-Type": getContentType(filePath),
+			"Accept-Ranges": "bytes",
+		};
+
+		const rangeHeader = request.headers.range;
+		if (rangeHeader) {
+			const byteRange = resolveHttpByteRange(rangeHeader, fileSize);
+			if (!byteRange) {
+				response.writeHead(416, {
+					"X-Content-Type-Options": "nosniff",
+					"Content-Range": `bytes */${fileSize}`,
+				});
+				response.end();
+				return;
+			}
+
+			const { start, end } = byteRange;
+			const chunkSize = end - start + 1;
+			response.writeHead(206, {
+				...baseHeaders,
+				"Content-Range": `bytes ${start}-${end}/${fileSize}`,
+				"Content-Length": String(chunkSize),
+			});
+
+			if (request.method === "HEAD") {
+				response.end();
+				return;
+			}
+
+			pipeFileStream(filePath, response, { start, end });
+			return;
+		}
+
+		response.writeHead(200, {
+			...baseHeaders,
+			"Content-Length": String(fileSize),
 		});
 
 		if (request.method === "HEAD") {
@@ -108,8 +173,12 @@ async function servePackagedRendererRequest(
 			return;
 		}
 
-		response.end(fileContents);
+		pipeFileStream(filePath, response);
 	} catch (error) {
+		if (response.headersSent) {
+			response.destroy();
+			return;
+		}
 		if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
 			response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
 			response.end("Not Found");
