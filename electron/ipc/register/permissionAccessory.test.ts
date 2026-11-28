@@ -62,6 +62,7 @@ import {
 	ACCESSORY_HIDE_DELAY_MS,
 	closePermissionAccessory,
 	dismissPermissionAccessory,
+	preloadPermissionAccessories,
 	runningApplicationBundle,
 	showPermissionAccessory,
 	startPermissionAccessoryDrag,
@@ -97,8 +98,11 @@ beforeEach(() => {
 	}) as unknown as WebContents;
 });
 afterEach(() => {
+	preloadPermissionAccessories(sender, []);
 	closePermissionAccessory();
 	child.emit("exit", 0);
+	mocks.window.removeAllListeners();
+	mocks.window.webContents.removeAllListeners();
 	vi.useRealTimers();
 	Object.defineProperty(process, "platform", { value: platform });
 });
@@ -110,6 +114,30 @@ async function launch() {
 	child.stdout.write("dy\n");
 	await pending;
 }
+
+it("preloads a hidden panel and reuses it on Allow before starting the helper", async () => {
+	preloadPermissionAccessories(sender, ["accessibility"]);
+	expect(BrowserWindow).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ show: false }));
+	expect(mocks.spawn).not.toHaveBeenCalled();
+	mocks.window.emit("ready-to-show");
+	expect(mocks.window.showInactive).not.toHaveBeenCalled();
+	await launch();
+	child.stdout.write('{"visible":true,"x":120,"y":400,"width":368,"height":264}\n');
+	expect(mocks.window.showInactive).toHaveBeenCalledOnce();
+	expect(BrowserWindow).toHaveBeenCalledOnce();
+	expect(mocks.binary).toHaveBeenCalledOnce();
+	expect(mocks.spawn).toHaveBeenCalledOnce();
+});
+
+it("keeps a preloaded panel through iframe navigation and releases it on a new main document", () => {
+	preloadPermissionAccessories(sender, ["accessibility"]);
+	sender.emit("did-start-navigation", { isMainFrame: false });
+	expect(mocks.window.destroy).not.toHaveBeenCalled();
+	sender.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false });
+	expect(mocks.window.destroy).toHaveBeenCalledOnce();
+	expect(mocks.spawn).not.toHaveBeenCalled();
+	expect(sender.listenerCount("destroyed")).toBe(0);
+});
 
 it("only derives a top-level app from its Contents/MacOS executable", () => {
 	expect(runningApplicationBundle("/Applications/My Recorder.app/Contents/MacOS/Recordly")).toBe(

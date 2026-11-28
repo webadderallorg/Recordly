@@ -6,6 +6,22 @@ import { getPackagedRendererBaseUrl } from "../../rendererServer";
 import { ensurePermissionDragHelperBinary } from "../paths/binaries";
 
 type Permission = "screen" | "accessibility";
+type PreparedAccessory = ReturnType<typeof createAccessoryWindow> & {
+	sender: WebContents;
+	binary: Promise<string>;
+	forget: () => void;
+	dispose: () => void;
+};
+const prepared = new Map<Permission, PreparedAccessory>();
+let resolvingHelper: Promise<string> | undefined;
+
+function resolveHelper() {
+	resolvingHelper ??= ensurePermissionDragHelperBinary().finally(() => {
+		resolvingHelper = undefined;
+	});
+	return resolvingHelper;
+}
+
 let active:
 	| {
 			close: () => void;
@@ -66,6 +82,59 @@ export function dismissPermissionAccessory(sender: WebContents) {
 	return { success: true };
 }
 
+export function preloadPermissionAccessories(sender: WebContents, permissions: Permission[]) {
+	if (process.platform !== "darwin" || sender.isDestroyed()) return;
+	const owner = BrowserWindow.fromWebContents(sender);
+	const rendererURL = process.env.VITE_DEV_SERVER_URL || getPackagedRendererBaseUrl();
+	if (!owner || owner.isDestroyed() || !rendererURL) return;
+
+	for (const [permission, panel] of prepared) {
+		if (panel.sender === sender && !permissions.includes(permission)) panel.dispose();
+	}
+	for (const permission of permissions) {
+		const existing = prepared.get(permission);
+		if (existing?.sender === sender && !existing.window.isDestroyed()) continue;
+		if (active?.owner === owner && active.permission === permission && !active.isClosing())
+			continue;
+		existing?.dispose();
+		const panel = createAccessoryWindow(permission, owner, rendererURL);
+		const binary = resolveHelper();
+		const forget = () => {
+			sender.removeListener("destroyed", dispose);
+			sender.removeListener("did-start-navigation", onNavigation);
+			panel.window.removeListener("closed", forget);
+			if (prepared.get(permission)?.forget === forget) prepared.delete(permission);
+		};
+		const dispose = () => {
+			forget();
+			if (!panel.window.isDestroyed()) panel.window.destroy();
+		};
+		const onNavigation = (
+			event: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>,
+		) => {
+			if (event.isMainFrame && !event.isSameDocument) dispose();
+		};
+		prepared.set(permission, { ...panel, sender, binary, forget, dispose });
+		sender.once("destroyed", dispose);
+		sender.on("did-start-navigation", onNavigation);
+		panel.window.once("closed", forget);
+		void binary.catch(dispose);
+	}
+}
+
+export function preloadMissingPermissionAccessories(sender: WebContents) {
+	if (process.platform !== "darwin") return;
+	try {
+		const permissions: Permission[] = ["screen", "accessibility"];
+		preloadPermissionAccessories(
+			sender,
+			permissions.filter((permission) => !granted(permission)),
+		);
+	} catch (error) {
+		console.warn("Could not preload the permission drag accessory:", error);
+	}
+}
+
 // This helper must not request permission for itself. Electron remains the TCC
 // authority and its running application bundle is the sole drag payload.
 export async function showPermissionAccessory(
@@ -79,6 +148,8 @@ export async function showPermissionAccessory(
 	const testSetup = preview === true && !app.isPackaged;
 	const bundle = runningApplicationBundle(app.getPath("exe"));
 	if (!bundle || (!testSetup && granted(permission))) return;
+	const owner = BrowserWindow.fromWebContents(sender);
+	if (!owner || owner.isDestroyed()) return;
 	// Asking again for the panel that is already open keeps it; rebuilding the
 	// window would make it disappear and reappear.
 	if (
@@ -86,18 +157,46 @@ export async function showPermissionAccessory(
 		!active.isClosing() &&
 		active.permission === permission &&
 		!active.window.isDestroyed() &&
-		active.owner === BrowserWindow.fromWebContents(sender)
+		active.owner === owner
 	)
 		return;
 	closePermissionAccessory();
 	const request = generation;
-	const binary = await ensurePermissionDragHelperBinary();
-	if (request !== generation || sender.isDestroyed() || (!testSetup && granted(permission)))
+	const warm = prepared.get(permission);
+	const binary = await (warm?.sender === sender ? warm.binary : resolveHelper());
+	if (
+		request !== generation ||
+		sender.isDestroyed() ||
+		owner.isDestroyed() ||
+		(!testSetup && granted(permission))
+	)
 		return;
-	const owner = BrowserWindow.fromWebContents(sender);
-	if (!owner || owner.isDestroyed()) return;
 	const rendererURL = process.env.VITE_DEV_SERVER_URL || getPackagedRendererBaseUrl();
 	if (!rendererURL) return;
+	const preload = prepared.get(permission);
+	const panel =
+		preload?.sender === sender && !preload.window.isDestroyed()
+			? preload
+			: createAccessoryWindow(permission, owner, rendererURL);
+	if (panel === preload) preload.forget();
+	const child = spawn(
+		binary,
+		["--app-bundle", bundle, "--permission", permission, "--parent-pid", String(process.pid)],
+		{ stdio: ["pipe", "pipe", "pipe"] },
+	);
+	await ownAccessory(
+		child,
+		permission,
+		sender,
+		owner,
+		testSetup,
+		panel.window,
+		bundle,
+		panel.onFrame,
+	);
+}
+
+function createAccessoryWindow(permission: Permission, owner: BrowserWindow, rendererURL: string) {
 	const accessory = new BrowserWindow({
 		width: 368,
 		height: 264,
@@ -141,15 +240,10 @@ export async function showPermissionAccessory(
 		loaded = true;
 		if (shouldShow) accessory.showInactive();
 	});
-	void accessory.loadURL(url.toString()).catch(() => accessory.destroy());
-	const child = spawn(
-		binary,
-		["--app-bundle", bundle, "--permission", permission, "--parent-pid", String(process.pid)],
-		{
-			stdio: ["pipe", "pipe", "pipe"],
-		},
-	);
-	await ownAccessory(child, permission, sender, owner, testSetup, accessory, bundle, (event) => {
+	void accessory.loadURL(url.toString()).catch(() => {
+		if (!accessory.isDestroyed()) accessory.destroy();
+	});
+	const onFrame = (event: AccessoryFrame) => {
 		if (accessory.isDestroyed()) return;
 		if (!event.visible) {
 			if (hideTimer) return;
@@ -172,7 +266,8 @@ export async function showPermissionAccessory(
 		if (current.x !== bounds.x || current.y !== bounds.y) accessory.setBounds(bounds);
 		shouldShow = true;
 		if (loaded && !accessory.isVisible()) accessory.showInactive();
-	});
+	};
+	return { window: accessory, onFrame };
 }
 
 type AccessoryFrame = { visible: boolean; x?: number; y?: number; width?: number; height?: number };

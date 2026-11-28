@@ -798,6 +798,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	openScreenRecordingPreferences: (preview?: boolean) => {
 		return invokeWithDiagnostics("open-screen-recording-preferences", preview);
 	},
+	preloadPermissionAccessories: (permissions: ("screen" | "accessibility")[]) =>
+		ipcRenderer.invoke("preload-permission-accessories", permissions),
+	requestRecordingPermissionPrompt: (permission: "screen" | "accessibility") =>
+		invokeWithDiagnostics("request-recording-permission-prompt", permission),
 	startPermissionAccessoryDrag: () => ipcRenderer.invoke("start-permission-accessory-drag"),
 	closePermissionAccessory: () => ipcRenderer.invoke("close-permission-accessory"),
 	openAccessibilityPreferences: (preview?: boolean) => {

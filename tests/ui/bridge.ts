@@ -154,6 +154,8 @@ export async function installDesktopBridge(
 					},
 					openScreenRecordingPreferences: success,
 					openAccessibilityPreferences: success,
+					preloadPermissionAccessories: async () => undefined,
+					requestRecordingPermissionPrompt: success,
 					getScreenRecordingPermissionStatus: async () => ({
 						success: true,
 						status: "granted",

@@ -14,6 +14,8 @@ import {
 } from "./OnboardingLayout";
 import { PermissionsConfetti } from "./PermissionsConfetti";
 
+type Permission = "screen" | "accessibility";
+
 export function OnboardingPermissions({
 	onBack,
 	onFinish,
@@ -38,8 +40,8 @@ export function OnboardingPermissions({
 		screen: false,
 		accessibility: false,
 	});
-	const [busy, setBusy] = useState<string>();
-	const [settingsOpenedFor, setSettingsOpenedFor] = useState<"screen" | "accessibility">();
+	const [busy, setBusy] = useState<Permission>();
+	const [allowClicked, setAllowClicked] = useState({ screen: false, accessibility: false });
 	const [statusError, setStatusError] = useState<string>();
 	const [requestError, setRequestError] = useState<string>();
 	const error = requestError ?? statusError;
@@ -55,6 +57,21 @@ export function OnboardingPermissions({
 		screen: screenGranted && !(canSimulate && simulatedMissing.screen),
 		accessibility: accessibilityGranted && !(canSimulate && simulatedMissing.accessibility),
 	};
+	const preloadScreen = !granted.screen;
+	const preloadAccessibility = !granted.accessibility;
+	useEffect(() => {
+		if (platform !== "mac") return;
+		const permissions: Permission[] = [];
+		if (preloadScreen) permissions.push("screen");
+		if (preloadAccessibility) permissions.push("accessibility");
+		void window.electronAPI.preloadPermissionAccessories(permissions).catch(() => undefined);
+	}, [platform, preloadScreen, preloadAccessibility]);
+	useEffect(() => {
+		if (platform !== "mac") return;
+		return () => {
+			void window.electronAPI.preloadPermissionAccessories([]).catch(() => undefined);
+		};
+	}, [platform]);
 	const canFinish =
 		!statusError &&
 		platform !== "checking" &&
@@ -122,19 +139,26 @@ export function OnboardingPermissions({
 			document.removeEventListener("visibilitychange", visible);
 		};
 	}, [platform, refresh, t]);
-	const allow = async (permission: "screen" | "accessibility") => {
+	const allow = async (permission: Permission) => {
 		if (busy) return;
 		const testSetup = canSimulate && simulatedMissing[permission];
 		setBusy(permission);
 		try {
-			const opened = await (permission === "screen"
-				? window.electronAPI.openScreenRecordingPreferences(testSetup || undefined)
-				: window.electronAPI.openAccessibilityPreferences(testSetup || undefined));
-			if (!opened.success) throw new Error(t("openSettingsFailed"));
-			setSettingsOpenedFor(permission);
+			if (allowClicked[permission]) {
+				const result =
+					await window.electronAPI.requestRecordingPermissionPrompt(permission);
+				if (!result.success) throw new Error(t("permissionFailed"));
+			} else {
+				setAllowClicked((current) => ({ ...current, [permission]: true }));
+				const opened = await (permission === "screen"
+					? window.electronAPI.openScreenRecordingPreferences(testSetup || undefined)
+					: window.electronAPI.openAccessibilityPreferences(testSetup || undefined));
+				if (!opened.success) throw new Error(t("openSettingsFailed"));
+				if (testSetup)
+					setSimulatedMissing((current) => ({ ...current, [permission]: false }));
+			}
 			await refresh();
 			setRequestError(undefined);
-			if (testSetup) setSimulatedMissing((current) => ({ ...current, [permission]: false }));
 		} catch {
 			setRequestError(t("permissionFailed"));
 		} finally {
@@ -193,6 +217,7 @@ export function OnboardingPermissions({
 							isDisabled={Boolean(busy)}
 							onPress={() => {
 								setSimulatedMissing({ screen: true, accessibility: true });
+								setAllowClicked({ screen: false, accessibility: false });
 								setRequestError(undefined);
 								setStatusError(undefined);
 							}}
@@ -250,29 +275,25 @@ export function OnboardingPermissions({
 										className="onboarding-permission-button w-full rounded-xl text-accent"
 										isDisabled={Boolean(busy)}
 										onPress={() => void allow(key)}
-										aria-label={t("allowPermission", undefined, {
-											permission: name,
-										})}
+										aria-label={t(
+											allowClicked[key]
+												? "openPermissionPromptLabel"
+												: "allowPermission",
+											undefined,
+											{
+												permission: name,
+											},
+										)}
 									>
-										{busy === key
-											? t("opening")
-											: t("allowPermission", undefined, {
-													permission: name,
-												})}
+										{allowClicked[key]
+											? t("openPermissionPrompt")
+											: t("allowPermission", undefined, { permission: name })}
 									</Button>
 								)}
 							</div>
 						</motion.div>
 					))}
 				</div>
-				{settingsOpenedFor && !granted[settingsOpenedFor] && (
-					<p role="status" className="text-sm text-muted">
-						{t(
-							"permissionDragFallback",
-							"If the drag panel doesn't appear, click + in the System Settings list, select Recordly, then turn it on.",
-						)}
-					</p>
-				)}
 				{error && (
 					<p role="alert" className="text-sm text-danger">
 						{error} <ErrorReportButton error={error} />

@@ -1,11 +1,16 @@
-import { app, ipcMain, shell, systemPreferences } from "electron";
+import { app, desktopCapturer, ipcMain, shell, systemPreferences } from "electron";
 import { isTrustedRenderer } from "../../trustedRenderer";
 import { getMacPrivacySettingsUrl } from "../utils";
 import {
 	dismissPermissionAccessory,
+	preloadPermissionAccessories,
 	showPermissionAccessory,
 	startPermissionAccessoryDrag,
 } from "./permissionAccessory";
+
+function isRecordingPermission(value: unknown): value is "screen" | "accessibility" {
+	return value === "screen" || value === "accessibility";
+}
 
 async function presentDragAccessory(
 	permission: "screen" | "accessibility",
@@ -21,6 +26,45 @@ async function presentDragAccessory(
 }
 
 export function registerPermissionHandlers() {
+	ipcMain.handle("preload-permission-accessories", (event, permissions: unknown) => {
+		if (
+			event?.sender &&
+			isTrustedRenderer(event) &&
+			Array.isArray(permissions) &&
+			permissions.length <= 2 &&
+			permissions.every(isRecordingPermission)
+		) {
+			preloadPermissionAccessories(event.sender, permissions);
+		}
+	});
+	ipcMain.handle("request-recording-permission-prompt", async (event, permission: unknown) => {
+		if (
+			!event?.sender ||
+			!isTrustedRenderer(event) ||
+			!isRecordingPermission(permission) ||
+			process.platform !== "darwin"
+		) {
+			return { success: false };
+		}
+		try {
+			if (permission === "accessibility") {
+				systemPreferences.isTrustedAccessibilityClient(true);
+			} else if (systemPreferences.getMediaAccessStatus("screen") !== "granted") {
+				// Electron requests macOS consent before enumerating sources, including without thumbnails.
+				try {
+					await desktopCapturer.getSources({
+						types: ["screen"],
+						thumbnailSize: { width: 0, height: 0 },
+					});
+				} catch {
+					// Source enumeration can be denied while macOS is asking for permission.
+				}
+			}
+			return { success: true };
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
+	});
 	ipcMain.handle("start-permission-accessory-drag", ({ sender }) =>
 		startPermissionAccessoryDrag(sender),
 	);
