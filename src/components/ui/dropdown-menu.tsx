@@ -1,6 +1,15 @@
 import { Dropdown, Kbd, Label, Separator } from "@heroui/react";
 import { type ComponentProps, type ReactNode } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
+import { SlidingHighlightGroup } from "./sliding-highlight";
+
+export function SlidingDropdownMenu(props: ComponentProps<typeof Dropdown.Menu>) {
+	return (
+		<SlidingHighlightGroup items='[data-slot="menu-item"]'>
+			<Dropdown.Menu {...props} />
+		</SlidingHighlightGroup>
+	);
+}
 export function DropdownMenu({
 	open,
 	modal: _modal,
@@ -27,7 +36,7 @@ export function DropdownMenuContent({
 			placement={align === "center" ? "bottom" : `bottom ${align}`}
 			offset={sideOffset}
 		>
-			<Dropdown.Menu aria-label={t("actions")}>{children}</Dropdown.Menu>
+			<SlidingDropdownMenu aria-label={t("actions")}>{children}</SlidingDropdownMenu>
 		</Dropdown.Popover>
 	);
 }

@@ -72,6 +72,7 @@ type Props = {
 
 export function EditorShell(props: Props) {
 	const { t: uiText } = useUiLocale();
+	const addMenuTriggerRef = useRef<HTMLButtonElement>(null);
 	const [onboardingRequest, setOnboardingRequest] = useState(0);
 	const showOnboarding = useCallback(() => {
 		setAppSettingsOpen(false);
@@ -388,8 +389,6 @@ export function EditorShell(props: Props) {
 								className="size-9 rounded-full"
 							/>
 						}
-						clipsOpen={library.open}
-						onToggleClips={() => library.setOpen((open) => !open)}
 						t={t}
 						headerLeftControlsPaddingClass={headerLeftControlsPaddingClass}
 						project={project}
@@ -409,7 +408,6 @@ export function EditorShell(props: Props) {
 						handleRedo={history.handleRedo}
 						handleProjectNameSubmit={saveActions.handleProjectNameSubmit}
 						closeProjectNameEditor={saveActions.closeProjectNameEditor}
-						presets={presets}
 						exportSettings={exportSettings}
 						exportSession={exportSession}
 						exportDimensions={exportDimensions}
@@ -488,9 +486,16 @@ export function EditorShell(props: Props) {
 					>
 						<div className="relative z-10 flex min-h-0 flex-1 pt-3">
 							<EditorSidebar
+								presets={presets}
 								panelContent={
 									library.open ? (
-										<RecordingLibraryPanel library={library} />
+										<RecordingLibraryPanel
+											library={library}
+											onClose={() => {
+												library.setOpen(false);
+												addMenuTriggerRef.current?.focus();
+											}}
+										/>
 									) : undefined
 								}
 								t={t}
@@ -517,8 +522,10 @@ export function EditorShell(props: Props) {
 							/>
 							<EditorPreviewPanel
 								t={t}
-								onImportVideoClip={() => void library.importVideoFile()}
-								canImportVideoClip={
+								addMenuTriggerRef={addMenuTriggerRef}
+								onOpenClips={() => library.setOpen(true)}
+								onImportVideoFile={() => void library.importVideoFile()}
+								canImportVideoFile={
 									Boolean(project.videoSourcePath) &&
 									!library.busy &&
 									!library.importing

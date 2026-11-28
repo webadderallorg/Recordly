@@ -1,5 +1,6 @@
 import { Button, Tooltip } from "@heroui/react";
 import { PauseIcon, PlayIcon, Trash } from "@/components/ui/icons";
+import { SlidingHighlight } from "@/components/ui/sliding-highlight";
 import { useScopedT } from "@/contexts/I18nContext";
 import styles from "./LaunchWindow.module.css";
 
@@ -28,8 +29,9 @@ export function RecordingControls({
 		<div
 			role="group"
 			aria-label={captureT("recordingControls")}
-			className={styles.captureControls}
+			className={`${styles.captureControls} sliding-highlight-group`}
 		>
+			<SlidingHighlight items=".button--ghost" />
 			<Tooltip>
 				<Button
 					isIconOnly

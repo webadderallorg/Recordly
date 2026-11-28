@@ -1,4 +1,3 @@
-import { Tabs as HeroTabs } from "@heroui/react";
 import {
 	createContext,
 	type ReactNode,
@@ -96,7 +95,6 @@ export function SettingsSections({
 		(category) => category !== "developer" || import.meta.env.DEV,
 	);
 	const active = available.includes(selected) ? selected : available[0];
-	const CategoryList = narrow ? TabsList : HeroTabs.List;
 	const scrollFade = useScrollFade(panel, active);
 	useLayoutEffect(() => {
 		if (active && panel.current) panel.current.scrollTop = 0;
@@ -113,7 +111,8 @@ export function SettingsSections({
 					className="dashboard-settings-tabs"
 				>
 					<div className="dashboard-settings-navigation">
-						<CategoryList
+						<TabsList
+							scrollable={narrow}
 							aria-label={t("settings.categories.label", "Settings sections")}
 							className="dashboard-settings-tab-list"
 						>
@@ -126,7 +125,7 @@ export function SettingsSections({
 									</TabsTrigger>
 								);
 							})}
-						</CategoryList>
+						</TabsList>
 						{sidebarFooter && (
 							<div className="dashboard-settings-sidebar-footer">
 								{sidebarFooter(setSelected)}

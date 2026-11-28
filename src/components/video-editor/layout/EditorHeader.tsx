@@ -11,26 +11,23 @@ import { useFocusRing } from "react-aria";
 import { UpgradeButton } from "@/components/billing/UpgradeButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { Button } from "@/components/ui/button";
-import { FilmStrip, House, ArrowCounterClockwise as Undo2 } from "@/components/ui/icons";
+import { House, ArrowCounterClockwise as Undo2 } from "@/components/ui/icons";
+import { SlidingHighlight } from "@/components/ui/sliding-highlight";
 import type { useI18n } from "@/contexts/I18nContext";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import type { useExportDimensions } from "../export/useExportDimensions";
 import type { useExportSession } from "../export/useExportSession";
 import type { useExportSettings } from "../export/useExportSettings";
 import type { useExportStatusViewModel } from "../export/useExportStatusViewModel";
-import type { useVideoEditorPresets } from "../presets/useVideoEditorPresets";
 import type { useProjectState } from "../state/useProjectState";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 import { AppFrameHeader } from "./AppFrameHeader";
 import { AppUpdateButton } from "./AppUpdateButton";
 import { EditorExportMenu } from "./EditorExportMenu";
-import { EditorPresetMenu } from "./EditorPresetMenu";
 
 type Props = {
 	accountMenu?: ReactNode;
 	projectRevision?: string;
-	clipsOpen: boolean;
-	onToggleClips: () => void;
 	t: ReturnType<typeof useI18n>["t"];
 	headerLeftControlsPaddingClass: string;
 	project: ReturnType<typeof useProjectState>;
@@ -47,7 +44,6 @@ type Props = {
 	handleRedo: () => void;
 	handleProjectNameSubmit: (event?: FormEvent<HTMLFormElement>) => void;
 	closeProjectNameEditor: () => void;
-	presets: ReturnType<typeof useVideoEditorPresets>;
 	exportSettings: ReturnType<typeof useExportSettings>;
 	exportSession: ReturnType<typeof useExportSession>;
 	exportDimensions: ReturnType<typeof useExportDimensions>;
@@ -87,7 +83,6 @@ export function EditorHeader(props: Props) {
 		handleRedo,
 		handleProjectNameSubmit,
 		closeProjectNameEditor,
-		presets,
 		exportSettings,
 		exportSession,
 		exportDimensions,
@@ -128,8 +123,9 @@ export function EditorHeader(props: Props) {
 	return (
 		<AppFrameHeader className="editor-header">
 			<div
-				className={`editor-header-start flex min-w-0 items-center gap-1 ${headerLeftControlsPaddingClass}`}
+				className={`editor-header-start sliding-highlight-group flex min-w-0 items-center gap-1 ${headerLeftControlsPaddingClass}`}
 			>
+				<SlidingHighlight items=".button--ghost" />
 				<span className="contents" title={uiText("ui.home")}>
 					<Button
 						ref={projectBrowserTriggerRef}
@@ -207,26 +203,10 @@ export function EditorHeader(props: Props) {
 						</Button>
 					)}
 				</div>
-				<Separator orientation="vertical" className="mx-3 h-5 shrink-0 self-center" />
-				<span className="contents" title={uiText("ui.clips")}>
-					<Button
-						variant="ghost"
-						size="sm"
-						className={`editor-header-icon-button h-8 shrink-0 gap-2 rounded-lg border px-3 text-xs font-medium transition-colors ${props.clipsOpen ? "border-foreground/20 bg-foreground/10 text-foreground" : "border-border bg-transparent text-muted hover:bg-foreground/5 hover:text-foreground"}`}
-						aria-label={uiText("ui.clips")}
-						aria-expanded={props.clipsOpen}
-						onClick={props.onToggleClips}
-					>
-						<FilmStrip
-							weight={props.clipsOpen ? "fill" : "regular"}
-							className="size-4"
-						/>
-						<span className="editor-header-button-label">{uiText("ui.clips")}</span>
-					</Button>
-				</span>
 			</div>
 
-			<div className="editor-header-end flex min-w-0 items-center justify-self-end gap-3">
+			<div className="editor-header-end sliding-highlight-group flex min-w-0 items-center justify-self-end gap-3">
+				<SlidingHighlight items=".button--ghost" />
 				<UpgradeButton
 					label={uiText("billing.upgradeButtonLabel", "Upgrade")}
 					variant="secondary"
@@ -257,7 +237,6 @@ export function EditorHeader(props: Props) {
 						<Undo2 mirrored className="h-4 w-4" />
 					</Button>
 				</div>
-				<EditorPresetMenu t={t} presets={presets} />
 				<Separator orientation="vertical" className="h-5 shrink-0 self-center" />
 				<FeedbackDialog
 					showLabel={false}

@@ -65,6 +65,8 @@
 	"clearFilters": "필터 지우기",
 	"viewAll": "모두 보기",
 	"importVideo": "동영상 가져오기",
+	"importFromClips": "클립에서 가져오기",
+	"importFromDevice": "기기에서 가져오기…",
 	"libraryNavigation": "라이브러리 탐색",
 	"originalRecordings": "원본 녹화",
 	"folders": "폴더",

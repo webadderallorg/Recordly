@@ -65,6 +65,8 @@
 	"clearFilters": "フィルターを解除",
 	"viewAll": "すべて表示",
 	"importVideo": "動画を読み込む",
+	"importFromClips": "クリップから読み込む",
+	"importFromDevice": "デバイスから読み込む…",
 	"libraryNavigation": "ライブラリのナビゲーション",
 	"originalRecordings": "元の録画",
 	"folders": "フォルダー",

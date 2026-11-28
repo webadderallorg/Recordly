@@ -1,20 +1,16 @@
-import {
-	Button,
-	Card,
-	Label,
-	Switch,
-	ToggleButton,
-	ToggleButtonGroup,
-	Tooltip,
-} from "@heroui/react";
+import { Button, Card, Label, Separator, Switch, ToggleButton, Tooltip } from "@heroui/react";
 import type { ComponentProps, ReactNode } from "react";
 import { useMemo, useRef, useState } from "react";
 import { Camera, ClosedCaptioning, Cursor, FrameCorners, Gear } from "@/components/ui/icons";
+import { SlidingHighlightGroup } from "@/components/ui/sliding-highlight";
+import { SlidingToggleButtonGroup } from "@/components/ui/toggle-group";
 import type { useI18n } from "@/contexts/I18nContext";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import ExtensionManager from "../ExtensionManager";
+import type { useVideoEditorPresets } from "../presets/useVideoEditorPresets";
 import { SettingsPanel } from "../SettingsPanel";
 import type { EditorEffectSection } from "../types";
+import { EditorPresetMenu } from "./EditorPresetMenu";
 
 function IconRailTooltip({ label, children }: { label: string; children: ReactNode }) {
 	const [open, setOpen] = useState(false);
@@ -43,6 +39,7 @@ function IconRailTooltip({ label, children }: { label: string; children: ReactNo
 
 type Props = {
 	panelContent?: ReactNode;
+	presets: ReturnType<typeof useVideoEditorPresets>;
 	t: ReturnType<typeof useI18n>["t"];
 	activeSection: EditorEffectSection;
 	setActiveSection: (section: EditorEffectSection) => void;
@@ -57,6 +54,7 @@ export function EditorSidebar({
 	onOpenSettings,
 	settingsPanelProps,
 	panelContent,
+	presets,
 }: Props) {
 	const { t: uiText } = useUiLocale();
 	const [advancedSections, setAdvancedSections] = useState<Record<string, boolean>>({});
@@ -92,7 +90,8 @@ export function EditorSidebar({
 				aria-label={t("settings.sections.title", "Editor tools")}
 				className="flex w-16 shrink-0 flex-col items-center gap-3 py-2.5"
 			>
-				<ToggleButtonGroup
+				<SlidingToggleButtonGroup
+					previewSelection
 					orientation="vertical"
 					isDetached
 					className="w-full items-center gap-2"
@@ -123,8 +122,15 @@ export function EditorSidebar({
 							</ToggleButton>
 						</IconRailTooltip>
 					))}
-				</ToggleButtonGroup>
-				<div className="mt-auto">
+				</SlidingToggleButtonGroup>
+				<SlidingHighlightGroup
+					items="button.button--ghost"
+					className="mt-auto flex flex-col items-center gap-2"
+				>
+					<IconRailTooltip label={t("editor.presets.label", "Presets")}>
+						<EditorPresetMenu t={t} presets={presets} />
+					</IconRailTooltip>
+					<Separator className="w-5" />
 					<IconRailTooltip label={uiText("ui.settings")}>
 						<Button
 							variant="ghost"
@@ -135,7 +141,7 @@ export function EditorSidebar({
 							<Gear weight="fill" className="size-5" aria-hidden="true" />
 						</Button>
 					</IconRailTooltip>
-				</div>
+				</SlidingHighlightGroup>
 			</nav>
 			<aside
 				aria-label={panelContent ? uiText("ui.clips") : undefined}

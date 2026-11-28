@@ -2,15 +2,24 @@ import { Assets, Texture } from "pixi.js";
 import minimalCursorUrl from "@/assets/cursors/custom/minimal-cursor.svg";
 import touchCursorUrl from "@/assets/cursors/custom/touch-cursor.svg";
 import { getRenderableAssetUrl } from "@/lib/assetPath";
+import { withMediaDeadline } from "@/lib/exporter/mediaDeadline";
 import { clamp, LoadedCursorAsset, SingleCursorStyle } from "./cursorRenderConfig";
 
 export const MIN_RASTERIZED_CURSOR_HEIGHT = 512;
+const CURSOR_ASSET_TIMEOUT_MS = 8_000;
+
+function loadCursorTexture(url: string) {
+	return withMediaDeadline(() => Assets.load(url), {
+		timeoutMs: CURSOR_ASSET_TIMEOUT_MS,
+		message: "Timed out loading cursor texture",
+	});
+}
 
 export async function createPixelGloveAsset(
 	url: string,
 	anchor: { x: number; y: number },
 ): Promise<LoadedCursorAsset> {
-	await Assets.load(url);
+	await loadCursorTexture(url);
 	const image = await loadImage(url);
 	const texture = Texture.from(url);
 	texture.source.scaleMode = "nearest";
@@ -33,7 +42,7 @@ export async function createCursorStyleAsset(style: SingleCursorStyle): Promise<
 		const sourceCtx = sourceCanvas.getContext("2d")!;
 		sourceCtx.drawImage(image, 0, 0);
 		const trimmed = trimCanvasToAlpha(sourceCanvas, { x: 40, y: 22 });
-		await Assets.load(trimmed.dataUrl);
+		await loadCursorTexture(trimmed.dataUrl);
 		const trimmedImage = await loadImage(trimmed.dataUrl);
 		const texture = configureCursorTexture(Texture.from(trimmed.dataUrl));
 
@@ -58,8 +67,11 @@ export async function createCursorPackAsset(
 	url: string,
 	anchor: { x: number; y: number },
 ): Promise<LoadedCursorAsset> {
-	const renderableUrl = await getRenderableAssetUrl(url);
-	await Assets.load(renderableUrl);
+	const renderableUrl = await withMediaDeadline(() => getRenderableAssetUrl(url), {
+		timeoutMs: CURSOR_ASSET_TIMEOUT_MS,
+		message: "Timed out resolving cursor image",
+	});
+	await loadCursorTexture(renderableUrl);
 	const image = await loadImage(renderableUrl);
 	const texture = configureCursorTexture(Texture.from(renderableUrl));
 
@@ -87,7 +99,7 @@ export async function createRasterizedCursorAsset(
 	sourceCanvas.height = Math.max(1, Math.round(image.naturalHeight * rasterScale));
 	const sourceCtx = sourceCanvas.getContext("2d");
 	if (!sourceCtx) {
-		await Assets.load(url);
+		await loadCursorTexture(url);
 		const texture = configureCursorTexture(Texture.from(url));
 		return {
 			hasBakedShadow: options.hasBakedShadow,
@@ -104,7 +116,7 @@ export async function createRasterizedCursorAsset(
 
 	if (options.preserveCanvas) {
 		const dataUrl = sourceCanvas.toDataURL("image/png");
-		await Assets.load(dataUrl);
+		await loadCursorTexture(dataUrl);
 		const rasterizedImage = await loadImage(dataUrl);
 		const texture = configureCursorTexture(Texture.from(dataUrl));
 		return {
@@ -121,7 +133,7 @@ export async function createRasterizedCursorAsset(
 		x: sourceCanvas.width * clamp(anchor.x, 0, 1),
 		y: sourceCanvas.height * clamp(anchor.y, 0, 1),
 	});
-	await Assets.load(trimmed.dataUrl);
+	await loadCursorTexture(trimmed.dataUrl);
 	const trimmedImage = await loadImage(trimmed.dataUrl);
 	const texture = configureCursorTexture(Texture.from(trimmed.dataUrl));
 
@@ -141,14 +153,34 @@ export async function createRasterizedCursorAsset(
 	};
 }
 
-export function loadImage(dataUrl: string) {
-	return new Promise<HTMLImageElement>((resolve, reject) => {
-		const image = new Image();
-		image.onload = () => resolve(image);
-		image.onerror = () =>
-			reject(new Error(`Failed to load cursor image: ${dataUrl.slice(0, 128)}`));
-		image.src = dataUrl;
-	});
+export function loadImage(url: string) {
+	return withMediaDeadline(
+		(signal) =>
+			new Promise<HTMLImageElement>((resolve, reject) => {
+				const image = new Image();
+				const cleanup = () => {
+					image.onload = null;
+					image.onerror = null;
+					signal.removeEventListener("abort", abort);
+				};
+				const abort = () => {
+					cleanup();
+					image.removeAttribute("src");
+					reject(signal.reason);
+				};
+				image.onload = () => {
+					cleanup();
+					resolve(image);
+				};
+				image.onerror = () => {
+					cleanup();
+					reject(new Error("Failed to load cursor image"));
+				};
+				signal.addEventListener("abort", abort, { once: true });
+				image.src = url;
+			}),
+		{ timeoutMs: CURSOR_ASSET_TIMEOUT_MS, message: "Timed out loading cursor image" },
+	);
 }
 
 export function configureCursorTexture(texture: Texture) {
@@ -262,7 +294,7 @@ export async function createInvertedCursorAsset(
 	ctx.putImageData(imageData, 0, 0);
 
 	const dataUrl = canvas.toDataURL("image/png");
-	await Assets.load(dataUrl);
+	await loadCursorTexture(dataUrl);
 	const image = await loadImage(dataUrl);
 	const texture = configureCursorTexture(Texture.from(dataUrl));
 

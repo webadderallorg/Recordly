@@ -1,6 +1,11 @@
 import { expect, type Page, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
+async function openClips(page: Page) {
+	await page.getByRole("button", { name: "Add", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Import from Clips", exact: true }).click();
+}
+
 async function setup(page: Page) {
 	await installDesktopBridge(page, "filmstrip.mp4");
 	await installDesktopBridgeOverrides(page, () => {
@@ -65,7 +70,7 @@ test("Clips supports selection, remove all, undo and real timeline drag insertio
 	await setup(page);
 	await expect(page.locator('[data-variant="clip"] img').first()).toBeVisible();
 	await expect(page.getByLabel("Loading preview")).toHaveCount(0);
-	await page.getByRole("button", { name: "Clips", exact: true }).click();
+	await openClips(page);
 	await expect(page.getByLabel("Select first.mp4")).toBeVisible();
 	const panel = page.getByRole("complementary", { name: "Clips" });
 	await panel.getByRole("button", { name: "Open recordings folder", exact: true }).click();
@@ -82,22 +87,14 @@ test("Clips supports selection, remove all, undo and real timeline drag insertio
 				.evaluate((image: HTMLImageElement) => image.naturalWidth),
 		)
 		.toBeGreaterThan(0);
-	await expect(panel.getByText("first.mp4", { exact: true })).toBeVisible();
-	const videosButton = page.getByRole("button", { name: "Clips", exact: true });
-	expect((await videosButton.boundingBox())!.x).toBeGreaterThan(
-		(await page.getByRole("button", { name: "Rename project", exact: true }).boundingBox())!.x,
-	);
 	expect((await panel.boundingBox())!.x).toBeLessThan(100);
-	await expect(videosButton).toHaveAttribute("aria-expanded", "true");
-	await panel
-		.locator('[data-recording-path="/recordings/first.mp4"] [data-slot="checkbox-control"]')
-		.click();
-	await expect(page.getByLabel("Select first.mp4")).toBeChecked();
+	await panel.getByLabel("Select first.mp4").click();
+	await expect(panel.getByLabel("Select first.mp4")).toHaveAttribute("aria-pressed", "true");
 	await panel.getByRole("button", { name: "Move selected videos to Trash", exact: true }).click();
 	await expect(page.getByLabel("Select first.mp4")).toHaveCount(0);
 	await page.keyboard.press("Meta+z");
 	await expect(page.getByLabel("Select first.mp4")).toBeVisible();
-	await panel.locator('[data-slot="checkbox-control"]').first().click();
+	await panel.getByText("Select all", { exact: true }).click();
 	await panel.getByRole("button", { name: "Move selected videos to Trash", exact: true }).click();
 	await expect(panel.getByText("Your recordings appear here")).toBeVisible();
 	await page.keyboard.press("Control+z");
@@ -120,17 +117,16 @@ test("Clips supports selection, remove all, undo and real timeline drag insertio
 	await expect(page.locator("[data-webcam-overlay]")).toBeHidden();
 	await page.keyboard.press("Meta+Shift+z");
 	await expect(clip).toHaveCount(2);
-	await panel.getByRole("searchbox", { name: "Search videos" }).fill("first");
-	await expect(panel.locator("[data-recording-path]")).toHaveCount(1);
-	await panel.getByRole("searchbox", { name: "Search videos" }).fill("");
+	await expect(panel.getByRole("searchbox")).toHaveCount(0);
 	await expect(panel.locator("[data-recording-path]")).toHaveCount(2);
 	await expect(panel.getByRole("img", { name: "Preview of second.mp4" })).toBeVisible();
 	await page.screenshot({
 		path: test.info().outputPath("videos-panel.png"),
 		animations: "disabled",
 	});
-	await page.getByRole("radio", { name: "Scene", exact: true }).click();
+	await panel.getByRole("button", { name: "Close Clips", exact: true }).click();
 	await expect(panel).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Add", exact: true })).toBeFocused();
 	await expect(page.getByRole("slider", { name: "Blur", exact: true })).toBeVisible();
 	expect(errors).toEqual([]);
 });
@@ -167,7 +163,7 @@ test("Add Layer imports an external video into the current timeline and handles 
 	});
 	const clips = page.locator('[data-variant="clip"]');
 	const add = page.getByRole("button", { name: "Add", exact: true });
-	const importVideo = page.getByRole("menuitem", { name: "Import video", exact: true });
+	const importVideo = page.getByRole("menuitem", { name: "Import from device…", exact: true });
 	await expect(clips).toHaveCount(1);
 	await add.click();
 	await importVideo.click();
@@ -259,7 +255,7 @@ test("an import cannot replace another project that uses the same recording", as
 	const clips = page.locator('[data-variant="clip"]');
 	await expect(clips).toHaveAttribute("data-end-ms", "6000", { timeout: 20000 });
 	await page.getByRole("button", { name: "Add", exact: true }).click();
-	await page.getByRole("menuitem", { name: "Import video", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Import from device…", exact: true }).click();
 	const html = page.locator("html");
 	await expect(html).toHaveAttribute("data-import-finalizing", "true");
 
@@ -451,61 +447,136 @@ test("HUD source control and Linux source rows have no default gray fill or outl
 	await expect(row).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 });
 
-test("Clips shows original filenames and truncates long names beside real still previews", async ({
-	page,
-}) => {
+test("Clips shows duration and recording details in a flat, filterable grid", async ({ page }) => {
+	test.setTimeout(60_000);
 	await setup(page);
 	await page.evaluate(() => {
+		const now = Date.now();
+		const day = 86_400_000;
+		const recordings = [
+			...Array.from({ length: 18 }, (_, index) => ({
+				name: `recent-${index}.mp4`,
+				createdAt: now - index * 1000,
+			})),
+			{ name: "last-month.mp4", createdAt: now - 14 * day },
+			{ name: "older-recording.mp4", createdAt: now - 40 * day },
+		];
 		window.electronAPI.listRecordings = async () => ({
 			success: true,
-			value: [
-				"recording-1789866953739.mp4",
-				"client-onboarding-walkthrough-with-a-very-long-file-name.mp4",
-			].map((name) => ({
+			value: recordings.map(({ name, createdAt }) => ({
 				path: `/recordings/${name}`,
 				name,
 				bytes: 1024,
-				createdAt: Date.now(),
+				createdAt,
+				fileCreatedAt: Date.UTC(2020, 6, 15, 12),
 				url: "",
 			})),
 		});
+		window.electronAPI.probeNativeVideoMetadata = async () => ({
+			success: true,
+			metadata: {
+				width: 1920,
+				height: 1080,
+				duration: 125,
+				frameRate: 30,
+				codec: "h264",
+				hasAudio: false,
+			},
+		});
+		let imported = 0;
+		window.electronAPI.importRecording = async (_current, path) => {
+			document.documentElement.dataset.importOrder =
+				(document.documentElement.dataset.importOrder || "") + path + ";";
+			const url = `${location.origin}/tests/ui/fixtures/filmstrip.mp4`;
+			return {
+				success: true,
+				value: {
+					path: `/sequence-${++imported}.mp4`,
+					url,
+					sourceStartMs: 6000 + (imported - 1) * 1000,
+					durationMs: 1000,
+					totalDurationMs: 6000 + imported * 1000,
+				},
+			};
+		};
 	});
-	const toggle = page.getByRole("button", { name: "Clips", exact: true });
-	await toggle.click();
-	await toggle.click();
+	await openClips(page);
 	const panel = page.getByRole("complementary", { name: "Clips" });
-	await expect(panel.getByText("recording-1789866953739.mp4", { exact: true })).toBeVisible();
-	const name = panel.getByText("client-onboarding-walkthrough-with-a-very-long-file-name.mp4", {
-		exact: true,
-	});
-	await expect(name).toBeVisible();
-	expect(
-		await name.evaluate((node) => ({
-			overflow: getComputedStyle(node).textOverflow,
-			clipped: node.scrollWidth > node.clientWidth,
-		})),
-	).toEqual({ overflow: "ellipsis", clipped: true });
-	await expect(panel.locator("img")).toHaveCount(2);
-	await expect
-		.poll(() =>
-			panel
-				.locator("img")
-				.evaluateAll((images) =>
-					images.every((image) => (image as HTMLImageElement).naturalWidth > 0),
-				),
-		)
-		.toBe(true);
-	expect(await panel.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+	const cards = panel.locator("[data-recording-path]");
+	const recent = panel.getByLabel("Select recent-0.mp4");
+	const older = panel.getByLabel("Select older-recording.mp4");
+	const importButton = panel.getByRole("button", { name: "Import", exact: true });
+	await expect(cards).toHaveCount(20);
+	await expect(importButton).toBeDisabled();
+	await expect(recent.locator("[data-thumbnail-duration]")).toHaveText("2:05");
+	await expect(panel.getByRole("heading", { level: 3 })).toHaveCount(0);
+	await expect(panel.getByRole("img", { name: "Preview of recent-0.mp4" })).toBeVisible();
+	await expect(panel.getByRole("button", { name: /^Show details/ })).toHaveCount(0);
+	await recent.hover();
+	const tooltip = page.getByRole("tooltip");
+	await expect(tooltip.getByText("recent-0.mp4", { exact: true })).toBeVisible();
+	await expect(tooltip.locator("time")).toHaveAttribute("datetime", "2020-07-15T12:00:00.000Z");
+	await expect(tooltip).toContainText("Last created");
+	await expect(tooltip).toContainText("kB");
+	const allDates = panel.getByRole("button", { name: "Time filters, All", exact: true });
+	await allDates.hover();
+	await expect(tooltip).toHaveCount(0);
+	await allDates.press("Tab");
+	await expect(recent).toBeFocused();
+	await expect(tooltip.getByText("recent-0.mp4", { exact: true })).toBeVisible();
+	await expect(recent).toHaveAttribute("aria-pressed", "false");
+	await expect(older).not.toBeInViewport();
+	await older.click();
+	await expect(older).toBeInViewport();
+	const previous = (await panel.getByLabel("Select last-month.mp4").boundingBox())!;
+	const last = (await older.boundingBox())!;
+	expect(last.y).toBe(previous.y);
+	expect(last.x).toBeGreaterThan(previous.x);
+	await expect(importButton).toBeInViewport();
+
+	await allDates.click();
+	await expect(page.getByRole("menu", { name: "Time filters" })).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(allDates).toBeFocused();
+	await allDates.click();
+	await page.getByRole("menuitemradio", { name: "Last 7 days" }).press("Space");
+	await expect(cards).toHaveCount(18);
+	await expect(recent).toBeInViewport();
+	await expect(panel.getByLabel("Select all videos")).not.toBeChecked();
+	const lastWeek = panel.getByRole("button", { name: "Time filters, Last 7 days", exact: true });
+	await page.keyboard.press("Escape");
+	await expect(lastWeek).toBeFocused();
+	await lastWeek.click();
+	await page.getByRole("menuitemradio", { name: "Last 30 days" }).click();
+	await expect(cards).toHaveCount(19);
+	await expect(panel.getByText("1 selected")).toBeVisible();
+
+	await recent.press("Space");
+	const rangeEnd = panel.getByLabel("Select recent-2.mp4");
+	await rangeEnd.click({ modifiers: ["Shift"] });
+	await expect(panel.getByLabel("Select recent-1.mp4")).toHaveAttribute("aria-pressed", "true");
+	await expect(panel.getByText("4 selected")).toBeVisible();
+	await panel.getByLabel("Select recent-1.mp4").click();
+	await rangeEnd.click();
+	await expect(panel.getByText("2 selected")).toBeVisible();
 	await page.screenshot({
-		path: test.info().outputPath("videos-filenames.png"),
+		path: test.info().outputPath("clips-gallery.png"),
 		animations: "disabled",
 	});
+	await importButton.click();
+	await expect(page.locator('[data-variant="clip"]')).toHaveCount(3);
+	await expect(page.locator("html")).toHaveAttribute(
+		"data-import-order",
+		"/recordings/recent-0.mp4;/recordings/older-recording.mp4;",
+	);
+	await expect(importButton).toBeDisabled();
 });
 
 for (const enabled of [true, false]) {
 	test(`imported recordings stay unzoomed with automatic zooms ${enabled ? "on" : "off"}`, async ({
 		page,
 	}) => {
+		test.setTimeout(60_000);
 		await setup(page);
 		await installDesktopBridgeOverrides(page, () => {
 			const get = window.electronAPI.getAppSetting;
@@ -535,7 +606,7 @@ for (const enabled of [true, false]) {
 		if (enabled) await expect(automatic).toBeChecked();
 		else await expect(automatic).not.toBeChecked();
 		await page.keyboard.press("Escape");
-		await page.getByRole("button", { name: "Clips", exact: true }).click();
+		await openClips(page);
 		await page.evaluate(() => {
 			let count = 0;
 			window.electronAPI.importRecording = async (current, path) => {
@@ -563,9 +634,9 @@ for (const enabled of [true, false]) {
 			});
 		});
 		const panel = page.getByRole("complementary", { name: "Clips" });
-		await panel.locator('[data-slot="checkbox-control"]').first().click();
-		await expect(page.getByLabel("Select first.mp4")).toBeChecked();
-		await expect(page.getByLabel("Select second.mp4")).toBeChecked();
+		await panel.getByText("Select all", { exact: true }).click();
+		await expect(page.getByLabel("Select first.mp4")).toHaveAttribute("aria-pressed", "true");
+		await expect(page.getByLabel("Select second.mp4")).toHaveAttribute("aria-pressed", "true");
 		await panel
 			.locator('[data-recording-path="/recordings/second.mp4"]')
 			.dragTo(page.locator('[data-variant="clip"]'), {
@@ -615,14 +686,13 @@ test("cancelling a batch keeps completed clips and stops the remaining import", 
 		};
 	});
 	const panel = page.getByRole("complementary", { name: "Clips" });
-	await panel.locator('[data-slot="checkbox-control"]').first().click();
-	await panel
-		.locator('[data-recording-path="/recordings/second.mp4"]')
-		.dragTo(page.locator('[data-variant="clip"]'), {
-			targetPosition: { x: 5, y: 15 },
-		});
+	await openClips(page);
+	await panel.getByText("Select all", { exact: true }).click();
+	await panel.getByRole("button", { name: "Import", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-pending-import", "true");
 	await page.getByRole("button", { name: "Cancel", exact: true }).click();
 	await expect(page.getByText("Adding video…")).toHaveCount(0);
 	await expect(page.locator('[data-variant="clip"]')).toHaveCount(2);
+	await expect(panel.getByLabel("Select first.mp4")).toHaveAttribute("aria-pressed", "false");
+	await expect(panel.getByLabel("Select second.mp4")).toHaveAttribute("aria-pressed", "true");
 });

@@ -196,7 +196,8 @@
 		"completePercent": "Готово: {{percent}}%",
 		"issue": "Ошибка экспорта",
 		"complete": "Экспорт завершён",
-		"savedSuccessfully": "Файл сохранён"
+		"savedSuccessfully": "Файл сохранён",
+		"webcamOmitted": "Не удалось прочитать запись с веб-камеры, поэтому в этом экспорте нет наложения веб-камеры."
 	},
 	"export": {
 		"processingAudioEdits": "Обработка звука (скорость, наложения)"

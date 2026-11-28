@@ -2,7 +2,9 @@ import { Dropdown } from "@heroui/react";
 import { ArrowDown, ArrowUp, Broom, CheckSquare } from "@phosphor-icons/react";
 import { useId } from "react";
 import { Button } from "@/components/ui/button";
+import { SlidingDropdownMenu } from "@/components/ui/dropdown-menu";
 import { CaretDown, Trash } from "@/components/ui/icons";
+import { SlidingHighlight } from "@/components/ui/sliding-highlight";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import type { LibrarySort } from "./librarySort";
 import type { DashboardProps } from "./types";
@@ -94,22 +96,25 @@ export function DashboardFilters({
 		<>
 			<div className="flex flex-wrap items-center gap-3 px-7 pb-7 lg:px-10">
 				<div className="flex flex-wrap gap-2" aria-label={uiText("ui.timeFilters")}>
-					{[
-						["all", uiText("ui.all")],
-						["week", uiText("ui.last7Days")],
-						["month", uiText("ui.last30Days")],
-					].map(([id, label]) => (
-						<Button
-							key={id}
-							variant="ghost"
-							size="sm"
-							aria-pressed={period === id}
-							onClick={() => setPeriod(id)}
-							className={`h-7 rounded-lg px-3 text-xs ${period === id ? "bg-default/60 text-foreground" : "text-muted-foreground"}`}
-						>
-							{label}
-						</Button>
-					))}
+					<div className="sliding-highlight-group sliding-highlight-neutral flex flex-wrap gap-2 [--sliding-selection-opacity:60%]">
+						<SlidingHighlight selection />
+						{[
+							["all", uiText("ui.all")],
+							["week", uiText("ui.last7Days")],
+							["month", uiText("ui.last30Days")],
+						].map(([id, label]) => (
+							<Button
+								key={id}
+								variant="ghost"
+								size="sm"
+								aria-pressed={period === id}
+								onClick={() => setPeriod(id)}
+								className={`h-7 rounded-lg px-3 text-xs ${period === id ? "bg-default/60 text-foreground" : "text-muted-foreground"}`}
+							>
+								{label}
+							</Button>
+						))}
+					</div>
 					{!hideSelection && (
 						<Button
 							variant="ghost"
@@ -144,7 +149,8 @@ export function DashboardFilters({
 						</Button>
 					)}
 				</div>
-				<div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+				<div className="sliding-highlight-group ml-auto flex flex-wrap items-center justify-end gap-2">
+					<SlidingHighlight />
 					{sortMetadataLoading && (
 						<span role="status" className="text-xs text-muted-foreground">
 							{uiText("ui.readingMediaInfo", "Reading media info…")}
@@ -167,7 +173,7 @@ export function DashboardFilters({
 							offset={6}
 							className="w-60 min-w-0 max-w-[calc(100vw-24px)] rounded-xl p-1"
 						>
-							<Dropdown.Menu
+							<SlidingDropdownMenu
 								aria-label={
 									isRaw ? uiText("ui.sortRawFiles") : uiText("ui.sortProjects")
 								}
@@ -191,7 +197,7 @@ export function DashboardFilters({
 										<span className="flex-1">{option.label}</span>
 									</Dropdown.Item>
 								))}
-							</Dropdown.Menu>
+							</SlidingDropdownMenu>
 						</Dropdown.Popover>
 					</Dropdown>
 					<Button
@@ -217,7 +223,8 @@ export function DashboardFilters({
 				</div>
 			</div>
 			{selecting && (
-				<div className="flex flex-wrap items-center gap-3 px-7 pb-5 text-xs lg:px-10">
+				<div className="sliding-highlight-group flex flex-wrap items-center gap-3 px-7 pb-5 text-xs lg:px-10">
+					<SlidingHighlight items=".button--ghost" />
 					<Button
 						variant="ghost"
 						size="sm"

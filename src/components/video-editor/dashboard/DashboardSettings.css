@@ -91,12 +91,9 @@ html[data-theme="dark"] :is(.dashboard-settings-page, .app-settings-dialog) {
 	white-space: normal;
 }
 .dashboard-settings-tab-list .tabs__tab[aria-selected="true"] {
-	background: color-mix(in oklab, var(--accent) 12%, transparent);
+	background: transparent;
 	color: var(--accent);
 	font-weight: 600;
-}
-.dashboard-settings-tab-list .tabs__indicator {
-	display: none;
 }
 .dashboard-settings-tab-panel {
 	container: settings-content / inline-size;
@@ -765,7 +762,7 @@ html[data-theme="dark"] .dashboard-settings {
 	.dashboard-settings-navigation {
 		overflow: clip;
 	}
-	.dashboard-settings-navigation > .dashboard-settings-tab-list {
+	.dashboard-settings-navigation > .sliding-tabs-list {
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;

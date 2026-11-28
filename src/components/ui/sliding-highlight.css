@@ -1,0 +1,98 @@
+.sliding-highlight-group {
+	position: relative;
+	isolation: isolate;
+}
+
+.sliding-highlight {
+	position: absolute;
+	z-index: -1;
+	inset: 0 auto auto 0;
+	pointer-events: none;
+	background: var(--default);
+	opacity: 0;
+	transform-origin: top left;
+}
+
+.sliding-highlight[data-visible] {
+	opacity: 1;
+}
+
+.sliding-highlight-group[data-sliding-highlight-ready]:has(
+		> .sliding-highlight:not([data-selection], [data-preview])
+	) {
+	.button--ghost:not([data-pressed]) {
+		--button-bg-hover: transparent;
+	}
+
+	.toggle-button--ghost:not([data-selected]) {
+		--toggle-button-bg-hover: transparent;
+	}
+
+	.toggle-button-group .toggle-button[data-hovered="true"]:not([data-selected], [data-pressed]) {
+		background-color: transparent;
+	}
+}
+
+.sliding-highlight-group[data-sliding-highlight-ready]
+	:is([data-slot="menu-item"], [data-slot="list-box-item"]) {
+	background-color: transparent;
+}
+
+.sliding-highlight[data-selection] {
+	z-index: 1;
+	background: var(--sliding-selected-background, var(--accent-soft));
+}
+
+.sliding-highlight[data-preview] {
+	background: var(--default);
+}
+
+.sliding-highlight-group[data-sliding-highlight-ready]:has(> .sliding-highlight[data-preview]) {
+	> .sliding-highlight[data-selection] {
+		z-index: -1;
+	}
+
+	.toggle-button--ghost {
+		--toggle-button-bg-hover: transparent;
+		--toggle-button-bg-pressed: transparent;
+	}
+}
+
+.sliding-highlight-neutral > .sliding-highlight[data-selection] {
+	z-index: -1;
+	background: color-mix(
+		in oklab,
+		var(--default) var(--sliding-selection-opacity, 50%),
+		transparent
+	);
+}
+
+.sliding-highlight-neutral[data-sliding-highlight-ready]
+	> :is([aria-current="page"], [aria-pressed="true"], [data-selected="true"]):not(
+		[data-drag-over]
+	) {
+	background-color: transparent;
+}
+
+.sliding-highlight-group[data-sliding-highlight-ready]:has(> .sliding-highlight[data-selection]) {
+	.tag[data-selected="true"] {
+		background-color: transparent;
+	}
+
+	.toggle-button[data-selected="true"] {
+		--toggle-button-bg-selected: transparent;
+		--toggle-button-bg-selected-hover: transparent;
+		--toggle-button-bg-selected-pressed: transparent;
+	}
+}
+
+.sliding-tabs-list {
+	--sliding-selected-background: color-mix(in oklab, var(--accent) 12%, transparent);
+}
+
+@media (hover: hover) {
+	.sliding-highlight-group:has(.tag[data-selected="true"][data-hovered="true"])
+		> .sliding-highlight[data-selection] {
+		background: var(--accent-soft-hover);
+	}
+}

@@ -15,6 +15,7 @@ const focusEntry = new URLSearchParams(location.search).has("focusEntry");
 const zoomDuration = Number(new URLSearchParams(location.search).get("zoomDuration")) || 3000;
 const pan = new URLSearchParams(location.search).has("pan");
 const shortPan = new URLSearchParams(location.search).has("shortPan");
+const touchingPan = new URLSearchParams(location.search).has("touchingPan");
 const slowCamera = new URLSearchParams(location.search).has("slowCamera");
 const panDepth = new URLSearchParams(location.search).get("panDepth");
 const preset =
@@ -38,8 +39,8 @@ const zooms = pan
 			},
 			{
 				id: "next",
-				startMs: shortPan ? 2695 : 3000,
-				endMs: shortPan ? 3695 : 5000,
+				startMs: touchingPan ? 2000 : 2500,
+				endMs: shortPan ? 3500 : 5000,
 				depth: shortPan || panDepth === "deeper" ? (3 as const) : (2 as const),
 				focus: { cx: 0.65, cy: 0.5 },
 				mode: "manual" as const,
@@ -138,7 +139,7 @@ function Preview() {
 					<button onClick={() => playback.current?.seekTimeline(1.9)}>
 						Seek outgoing end
 					</button>
-					<button onClick={() => playback.current?.seekTimeline(2.5)}>
+					<button onClick={() => playback.current?.seekTimeline(2.25)}>
 						Seek pan midpoint
 					</button>
 					<button onClick={() => playback.current?.seekTimeline(zooms[1].startMs / 1000)}>

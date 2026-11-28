@@ -19,7 +19,8 @@ test("edits the inline crop in source pixels and keeps those values after Done",
 	page,
 }) => {
 	await openCrop(page);
-	await page.getByRole("button", { name: "Pixels", exact: true }).click({ timeout: 2000 });
+	const detailsButton = page.getByRole("button", { name: /^Crop details/ });
+	await detailsButton.click();
 	const left = page.getByRole("spinbutton", { name: "Left (px)", exact: true });
 	const top = page.getByRole("spinbutton", { name: "Top (px)", exact: true });
 	const width = page.getByRole("spinbutton", { name: "Width (px)", exact: true });
@@ -55,21 +56,29 @@ test("edits the inline crop in source pixels and keeps those values after Done",
 	expect(y).toBeCloseTo((27 / source.height) * 100, 5);
 	expect(w).toBeCloseTo((cropWidth / source.width) * 100, 5);
 	expect(h).toBeCloseTo((cropHeight / source.height) * 100, 5);
+	await expect(detailsButton).toContainText(`${cropWidth} × ${cropHeight} px`);
 
+	await width.fill(String(cropWidth - 3));
 	await page.getByRole("button", { name: "Done", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Crop", exact: true })).toBeFocused();
 	await page.getByRole("button", { name: "Crop", exact: true }).click();
-	await page.getByRole("button", { name: "Pixels", exact: true }).click();
+	await detailsButton.click();
 	await expect(left).toHaveValue("31");
 	await expect(top).toHaveValue("27");
-	await expect(width).toHaveValue(String(cropWidth));
+	await expect(width).toHaveValue(String(cropWidth - 3));
 	await expect(height).toHaveValue(String(cropHeight));
+	await page.keyboard.press("Escape");
+	await expect(page.getByRole("dialog", { name: "Crop details", exact: true })).toHaveCount(0);
+	await expect(detailsButton).toBeFocused();
+	await expect(page.getByTestId("crop-surface")).toBeVisible();
 });
 
-test("crops directly in the preview, Shift snaps to square, cancel restores and done keeps it", async ({
+test("Shift preserves the starting crop ratio, cancel restores and done keeps it", async ({
 	page,
 }) => {
 	await openCrop(page);
 	await expect(page.getByRole("dialog")).toHaveCount(0);
+	await expect(page.getByText(/Hold Shift/)).toHaveCount(0);
 	await page.keyboard.press("Space");
 	await expect
 		.poll(() =>
@@ -80,28 +89,36 @@ test("crops directly in the preview, Shift snaps to square, cancel restores and 
 		)
 		.toBe(true);
 	const original = await selection(page);
-	const corner = await page
-		.getByLabel("Resize crop: bottom right", { exact: true })
-		.boundingBox();
+	const cornerHandle = page.getByLabel("Resize crop: bottom right", { exact: true });
+	let corner = await cornerHandle.boundingBox();
 	await page.mouse.move(corner!.x + corner!.width / 2, corner!.y + corner!.height / 2);
 	await page.mouse.down();
-	await page.mouse.move(original.x + original.width * 0.7, original.y + original.height * 0.7, {
-		steps: 5,
-	});
+	await page.mouse.move(original.x + original.width * 0.8, original.y + original.height * 0.95);
+	await page.mouse.up();
+	const startingCrop = await selection(page);
+	const startingRatio = startingCrop.width / startingCrop.height;
+	expect(startingRatio).not.toBeCloseTo(original.width / original.height, 1);
+
+	const selectionRatio = async () => {
+		const box = await selection(page);
+		return box.width / box.height;
+	};
+	const dragX = startingCrop.x + startingCrop.width * 0.6;
+	const dragY = startingCrop.y + startingCrop.height * 0.85;
+	corner = await cornerHandle.boundingBox();
+	await page.mouse.move(corner!.x + corner!.width / 2, corner!.y + corner!.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(dragX, dragY, { steps: 5 });
+	const freeformRatio = await selectionRatio();
+	expect(freeformRatio).not.toBeCloseTo(startingRatio, 1);
+
 	await page.keyboard.down("Shift");
-	await expect
-		.poll(async () => {
-			const box = await selection(page);
-			return Math.abs(box.width - box.height);
-		})
-		.toBeLessThan(1);
+	await expect.poll(selectionRatio).toBeCloseTo(startingRatio, 2);
+	await page.mouse.move(dragX - 20, dragY, { steps: 3 });
+	await expect.poll(selectionRatio).toBeCloseTo(startingRatio, 2);
+	await page.mouse.move(dragX, dragY);
 	await page.keyboard.up("Shift");
-	await expect
-		.poll(async () => {
-			const box = await selection(page);
-			return box.width / box.height;
-		})
-		.toBeGreaterThan(1.2);
+	await expect.poll(selectionRatio).toBeCloseTo(freeformRatio, 2);
 	await page.keyboard.down("Shift");
 	await page.mouse.up();
 	await page.keyboard.up("Shift");
@@ -109,7 +126,7 @@ test("crops directly in the preview, Shift snaps to square, cancel restores and 
 	await expect(page.getByTestId("crop-surface")).toHaveCount(0);
 	await page.getByRole("button", { name: "Crop", exact: true }).click();
 	const saved = await selection(page);
-	expect(Math.abs(saved.width - saved.height)).toBeLessThan(1);
+	expect(saved.width / saved.height).toBeCloseTo(startingRatio, 2);
 	await page
 		.locator("[data-inline-crop]")
 		.getByRole("button", { name: "Reset", exact: true })
@@ -122,19 +139,48 @@ test("crops directly in the preview, Shift snaps to square, cancel restores and 
 	expect(restored.height).toBeCloseTo(saved.height, 0);
 });
 
-test("custom aspect ratio uses a compact dialog, locks resizing and supports moving", async ({
+test("switches visible crop presets and enters custom ratios from the size control", async ({
 	page,
 }) => {
 	await openCrop(page);
-	await page.getByRole("button", { name: "Aspect ratio", exact: true }).click();
-	await expect(page.getByRole("dialog")).toBeVisible();
-	await page.screenshot({ path: test.info().outputPath("recordly-crop-ratio.png") });
-	await page.getByRole("spinbutton", { name: "Width", exact: true }).fill("0");
+	const detailsButton = page.getByRole("button", { name: /^Crop details/ });
+	await page.screenshot({
+		path: test.info().outputPath("recordly-crop-toolbar.png"),
+		animations: "disabled",
+	});
+	const details = page.getByRole("dialog", { name: "Crop details", exact: true });
+	const widePreset = page.getByRole("radio", { name: "16:9", exact: true });
+	const squarePreset = page.getByRole("radio", { name: "1:1", exact: true });
+	await expect(details).toHaveCount(0);
+	await widePreset.click();
+	const landscape = await selection(page);
+	await squarePreset.press("Space");
+	const square = await selection(page);
+	expect(square.width / square.height).toBeCloseTo(1, 2);
+	await page.screenshot({
+		path: test.info().outputPath("recordly-crop-square.png"),
+		animations: "disabled",
+	});
+	await widePreset.click();
+	const landscapeAgain = await selection(page);
+	expect(landscapeAgain.width).toBeCloseTo(landscape.width, 0);
+	expect(landscapeAgain.height).toBeCloseTo(landscape.height, 0);
+	await expect(widePreset).toBeChecked();
+	await detailsButton.click();
+	await expect(details).toBeVisible();
+	await page.screenshot({
+		path: test.info().outputPath("recordly-crop-details.png"),
+		animations: "disabled",
+	});
+
+	const custom = details.getByRole("textbox", { name: "Custom · Aspect ratio", exact: true });
+	await custom.fill("0:2");
 	await expect(page.getByRole("button", { name: "Apply", exact: true })).toBeDisabled();
-	await page.getByRole("spinbutton", { name: "Width", exact: true }).fill("3");
-	await page.getByRole("spinbutton", { name: "Height", exact: true }).fill("2");
-	await page.getByRole("button", { name: "Apply", exact: true }).click();
-	await expect(page.getByRole("dialog")).toHaveCount(0);
+	await custom.fill("3:2");
+	await custom.press("Enter");
+	await expect(detailsButton).toContainText("3:2");
+	await page.keyboard.press("Escape");
+	await expect(details).toHaveCount(0);
 	let box = await selection(page);
 	expect(box.width / box.height).toBeCloseTo(1.5, 2);
 	const handle = await page
@@ -154,7 +200,26 @@ test("custom aspect ratio uses a compact dialog, locks resizing and supports mov
 	expect(moved.width).toBeCloseTo(box.width, 0);
 	expect(moved.height).toBeCloseTo(box.height, 0);
 	expect(moved.x).toBeGreaterThan(box.x + 10);
-	await page.screenshot({ path: test.info().outputPath("recordly-inline-crop.png") });
+	await page.emulateMedia({ colorScheme: "dark" });
+	await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+	await page.screenshot({
+		path: test.info().outputPath("recordly-crop-dark.png"),
+		animations: "disabled",
+	});
+	await page.setViewportSize({ width: 800, height: 600 });
+	await expect(widePreset).toBeInViewport({ ratio: 1 });
+	await detailsButton.click();
+	await expect(details).toBeInViewport({ ratio: 1 });
+	const panelBounds = await details.boundingBox();
+	const viewerBounds = await page.getByTestId("crop-surface").boundingBox();
+	expect(panelBounds!.x + panelBounds!.width).toBeLessThanOrEqual(viewerBounds!.x);
+	await expect(page.getByRole("button", { name: "Done", exact: true })).toBeInViewport({
+		ratio: 1,
+	});
+	await page.screenshot({
+		path: test.info().outputPath("recordly-crop-compact.png"),
+		animations: "disabled",
+	});
 });
 
 for (const ratio of [1, 3]) {
@@ -168,10 +233,16 @@ for (const ratio of [1, 3]) {
 			.check();
 		await page.keyboard.press("Escape");
 		await page.getByRole("button", { name: "Crop", exact: true }).click();
-		await page.getByRole("button", { name: "Aspect ratio", exact: true }).click();
-		await page.getByRole("spinbutton", { name: "Width", exact: true }).fill(String(ratio));
-		await page.getByRole("spinbutton", { name: "Height", exact: true }).fill("1");
-		await page.getByRole("button", { name: "Apply", exact: true }).click();
+		if (ratio === 1) {
+			await page.getByRole("radio", { name: "1:1", exact: true }).click();
+		} else {
+			await page.getByRole("button", { name: /^Crop details/ }).click();
+			const details = page.getByRole("dialog", { name: "Crop details", exact: true });
+			await details
+				.getByRole("textbox", { name: "Custom · Aspect ratio", exact: true })
+				.fill("3:1");
+			await details.getByRole("button", { name: "Apply", exact: true }).click();
+		}
 		await page.getByRole("button", { name: "Done", exact: true }).click();
 		const frame = page.locator(".editor-preview-frame");
 		const canvas = frame.locator("canvas").first();

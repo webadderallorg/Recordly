@@ -203,7 +203,7 @@ for (const { width, height, theme, signedIn } of [
 	{ width: 1280, height: 760, theme: "light", signedIn: true },
 	{ width: 1000, height: 600, theme: "light", signedIn: false },
 ] as const) {
-	test(`Feedback Socials and Contact open Recordly accounts (${theme}, ${width}×${height}, signedIn=${signedIn})`, async ({
+	test(`Feedback keeps community links off the form (${theme}, ${width}×${height}, signedIn=${signedIn})`, async ({
 		page,
 	}) => {
 		test.setTimeout(60000);
@@ -211,12 +211,6 @@ for (const { width, height, theme, signedIn } of [
 		await page.emulateMedia({ reducedMotion: "reduce", colorScheme: theme });
 		await installDesktopBridge(page, undefined, { signedIn });
 		await page.addInitScript((value) => localStorage.setItem("recordly.theme", value), theme);
-		await installDesktopBridgeOverrides(page, () => {
-			window.electronAPI.openExternalUrl = async (url) => {
-				document.documentElement.dataset.openedCommunityUrl = url;
-				return { success: true };
-			};
-		});
 		await page.goto("/?windowType=editor");
 		await page.getByRole("button", { name: "Home", exact: true }).click();
 		const home = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
@@ -224,75 +218,32 @@ for (const { width, height, theme, signedIn } of [
 		await expect(home.getByRole("button", { name: "Contact", exact: true })).toHaveCount(0);
 		await home.getByRole("button", { name: "Feedback", exact: true }).click();
 		const feedback = page.getByRole("dialog", { name: "Send feedback", exact: true });
-		if (signedIn)
-			await feedback
-				.getByRole("textbox", { name: "Description" })
-				.fill("Keep my feedback draft");
-		const socials = feedback.getByRole("button", { name: "Socials", exact: true });
-		await expect(socials).toBeInViewport({ ratio: 1 });
-		const contact = feedback.getByRole("button", { name: "Contact", exact: true });
-		await expect(contact).toBeInViewport({ ratio: 1 });
-		const socialsBox = (await socials.boundingBox())!;
-		const contactBox = (await contact.boundingBox())!;
-		expect(contactBox.y).toBe(socialsBox.y);
-		expect(contactBox.x).toBeGreaterThanOrEqual(socialsBox.x + socialsBox.width);
-
-		await expect(home.getByRole("button", { name: "YouTube", exact: true })).toHaveCount(0);
-		await socials.click();
-		const links = page.getByRole("dialog", { name: "Socials", exact: true });
-		await expect(links).toBeVisible();
-		const url = page.url();
-		for (const [name, label, target] of [
-			["Join Discord", "Discord", "https://discord.gg/sdv2FBVNgE"],
-			["GitHub", "GitHub", "https://github.com/webadderallorg/Recordly"],
-			["X", "X", "https://x.com/RecordlyHQ"],
-			["YouTube", "YouTube", "https://www.youtube.com/@recordlydev"],
-		]) {
-			const button = links.getByRole("button", { name, exact: true });
-			await expect(button).toHaveText(label);
-			await expect(button).toBeInViewport({ ratio: 1 });
-			if (name === "YouTube") {
-				await button.focus();
-				await page.keyboard.press("Enter");
-			} else {
-				await button.click();
-			}
-			await expect(page.locator("html")).toHaveAttribute("data-opened-community-url", target);
-			await expect(page).toHaveURL(url);
+		await expect(
+			feedback.getByRole("button", { name: /^(Contact|Socials|Join Discord)$/ }),
+		).toHaveCount(0);
+		const optIn = feedback.getByRole("checkbox", {
+			name: "Reply to my feedback (shares email)",
+		});
+		if (signedIn) {
+			const description = feedback.getByRole("textbox", { name: "Description" });
+			await description.fill("Keep my feedback draft");
+			await expect(
+				feedback.getByText("Reply to my feedback (shares email)", { exact: true }),
+			).toBeInViewport({ ratio: 1 });
+			await optIn.press("Space");
+			await expect(optIn).toBeChecked();
+			await page.keyboard.press("Escape");
+			await home.getByRole("button", { name: "Feedback", exact: true }).click();
+			await expect(description).toHaveValue("Keep my feedback draft");
+			await expect(optIn).not.toBeChecked();
+		} else {
+			await expect(optIn).toHaveCount(0);
 		}
-		await links.screenshot({ path: test.info().outputPath(`socials-${theme}.png`) });
-		await page.keyboard.press("Escape");
-		await expect(links).toBeHidden();
-		await expect(socials).toBeFocused();
-		await expect(feedback).toBeVisible();
 		await feedback.screenshot({ path: test.info().outputPath(`feedback-${theme}.png`) });
-		await contact.click();
-		const contactDialog = page.getByRole("dialog", { name: "Contact", exact: true });
-		await expect(contactDialog).toBeVisible();
-		for (const email of ["support@recordly.dev", "youngchen3442@gmail.com"]) {
-			const emailButton = contactDialog.getByRole("button", { name: email, exact: true });
-			await expect(emailButton).toBeInViewport({ ratio: 1 });
-			await emailButton.focus();
-			await page.keyboard.press("Enter");
-			await expect(page.locator("html")).toHaveAttribute(
-				"data-opened-community-url",
-				`mailto:${email}`,
-			);
-			await expect(page).toHaveURL(url);
-		}
-		await contactDialog.screenshot({ path: test.info().outputPath(`contact-${theme}.png`) });
-		await page.keyboard.press("Escape");
-		await expect(contactDialog).toBeHidden();
-		await expect(contact).toBeFocused();
-		await expect(feedback).toBeVisible();
-		if (signedIn)
-			await expect(feedback.getByRole("textbox", { name: "Description" })).toHaveValue(
-				"Keep my feedback draft",
-			);
 	});
 }
 
-test("Japanese library keeps a single Upgrade action and feedback contains Socials", async ({
+test("Japanese library keeps a single Upgrade action and localizes feedback consent", async ({
 	page,
 }) => {
 	test.setTimeout(60000);
@@ -310,15 +261,9 @@ test("Japanese library keeps a single Upgrade action and feedback contains Socia
 	await expect(header.getByRole("button", { name: "アップグレード", exact: true })).toBeVisible();
 	await home.getByRole("button", { name: "フィードバック", exact: true }).click();
 	const feedback = page.getByRole("dialog", { name: "フィードバックを送信", exact: true });
-	const socials = feedback.getByRole("button", { name: "SNS", exact: true });
-	await expect(socials).toBeVisible();
-	await socials.click();
-	const modal = page.getByRole("dialog", { name: "SNS", exact: true });
-	await expect(modal.getByRole("button", { name: "YouTube", exact: true })).toBeInViewport({
-		ratio: 1,
-	});
-	await modal.screenshot({ path: test.info().outputPath("socials-ja.png") });
-	await modal.getByRole("button", { name: "閉じる", exact: true }).click();
-	await expect(modal).toBeHidden();
-	await expect(socials).toBeFocused();
+	await expect(
+		feedback.getByText("フィードバックへの返信を希望する（メールアドレスを共有）", {
+			exact: true,
+		}),
+	).toBeInViewport({ ratio: 1 });
 });

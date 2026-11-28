@@ -310,11 +310,11 @@
 		"right": "Phải",
 		"openEditor": "Mở trình chỉnh sửa vùng cắt",
 		"details": "Chi tiết vùng cắt",
-		"inlineHint": "Kéo cạnh hoặc góc · Giữ Shift để cắt thành hình vuông",
 		"aspectRatio": "Tỷ lệ khung hình",
 		"ratioWidth": "Chiều rộng",
 		"ratioHeight": "Chiều cao",
-		"ratioHint": "Chọn tỷ lệ có sẵn hoặc nhập tỷ lệ riêng (từ 1:20 đến 20:1).",
+		"ratioHint": "Nhập tỷ lệ từ 1:20 đến 20:1, ví dụ 16:9.",
+		"customRatio": "Tùy chỉnh",
 		"freeform": "Tự do",
 		"pixelFields": "Điểm ảnh"
 	},

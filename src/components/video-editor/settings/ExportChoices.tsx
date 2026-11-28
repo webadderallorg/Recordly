@@ -1,6 +1,7 @@
 import { Label, Tag, TagGroup } from "@heroui/react";
 import type { ReactNode } from "react";
 import { PlusBadge } from "@/components/billing/PlusBadge";
+import { SlidingTagList } from "@/components/ui/choice-group";
 export function ExportChoices<T extends string | number>({
 	label,
 	value,
@@ -40,7 +41,7 @@ export function ExportChoices<T extends string | number>({
 				}}
 				size="lg"
 			>
-				<TagGroup.List
+				<SlidingTagList
 					className="grid w-full gap-2"
 					style={{
 						gridTemplateColumns: `repeat(${columns ?? options.length}, minmax(0, 1fr))`,
@@ -71,7 +72,7 @@ export function ExportChoices<T extends string | number>({
 							</span>
 						</Tag>
 					))}
-				</TagGroup.List>
+				</SlidingTagList>
 			</TagGroup>
 		</div>
 	);

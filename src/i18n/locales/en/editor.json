@@ -246,6 +246,7 @@
 		"savingVideo": "Saving video…",
 		"errorCopied": "Error copied",
 		"nvidiaCudaFallback": "NVIDIA CUDA export failed. Recordly is trying another export path.",
+		"webcamOmitted": "The webcam recording couldn't be read, so this export doesn't include the webcam overlay.",
 		"errorCopyFailed": "Couldn't copy. Select the error text and copy it manually.",
 		"copyError": "Copy error"
 	},

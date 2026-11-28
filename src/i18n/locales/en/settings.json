@@ -310,11 +310,11 @@
 		"right": "Right",
 		"openEditor": "Open Crop Editor",
 		"details": "Crop details",
-		"inlineHint": "Drag edges or corners · Hold Shift for a square",
 		"aspectRatio": "Aspect ratio",
 		"ratioWidth": "Width",
 		"ratioHeight": "Height",
-		"ratioHint": "Choose a preset or enter your own ratio (1:20 to 20:1).",
+		"ratioHint": "Enter a ratio from 1:20 to 20:1, such as 16:9.",
+		"customRatio": "Custom",
 		"freeform": "Freeform",
 		"pixelFields": "Pixels"
 	},

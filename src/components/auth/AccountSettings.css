@@ -200,12 +200,8 @@
 	white-space: normal;
 }
 
-.account-settings-tabs .tabs__indicator {
-	display: none;
-}
-
 .account-settings-tabs .tabs__tab[aria-selected="true"] {
-	background: color-mix(in oklab, var(--accent) 12%, transparent);
+	background: transparent;
 	color: var(--accent);
 	font-weight: 600;
 }

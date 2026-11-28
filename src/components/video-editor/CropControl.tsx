@@ -1,4 +1,4 @@
-import { type PointerEvent, useEffect, useId, useRef } from "react";
+import { type PointerEvent, useEffect, useRef } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
 import { type CropHandle, dragCrop } from "./cropGeometry";
 import type { CropRegion } from "./types";
@@ -25,10 +25,10 @@ export function CropControl({
 		x: number;
 		y: number;
 		crop: CropRegion;
+		ratio: number;
 		dx: number;
 		dy: number;
 	} | null>(null);
-	const maskId = useId();
 	const sourceRatio = (videoElement?.videoWidth || 1920) / (videoElement?.videoHeight || 1080);
 
 	useEffect(() => {
@@ -68,7 +68,7 @@ export function CropControl({
 						active.handle,
 						active.dx,
 						active.dy,
-						event.type === "keydown" ? 1 : lockedRatio,
+						lockedRatio ?? (event.type === "keydown" ? active.ratio : null),
 						sourceRatio,
 					),
 				);
@@ -90,6 +90,7 @@ export function CropControl({
 			x: event.clientX,
 			y: event.clientY,
 			crop: cropRegion,
+			ratio: (cropRegion.width * sourceRatio) / cropRegion.height,
 			dx: 0,
 			dy: 0,
 		};
@@ -107,10 +108,13 @@ export function CropControl({
 				active.handle,
 				active.dx,
 				active.dy,
-				event.shiftKey ? 1 : lockedRatio,
+				lockedRatio ?? (event.shiftKey ? active.ratio : null),
 				sourceRatio,
 			),
 		);
+	};
+	const stop = () => {
+		drag.current = null;
 	};
 	return (
 		<div
@@ -123,42 +127,15 @@ export function CropControl({
 				touchAction: "none",
 			}}
 			onPointerMove={move}
-			onPointerUp={() => {
-				drag.current = null;
-			}}
-			onPointerCancel={() => {
-				drag.current = null;
-			}}
-			onLostPointerCapture={() => {
-				drag.current = null;
-			}}
+			onPointerUp={stop}
+			onPointerCancel={stop}
+			onLostPointerCapture={stop}
 		>
 			<canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
-			<svg className="pointer-events-none absolute inset-0 h-full w-full">
-				<defs>
-					<mask id={maskId}>
-						<rect width="100%" height="100%" fill="white" />
-						<rect
-							x={`${cropRegion.x * 100}%`}
-							y={`${cropRegion.y * 100}%`}
-							width={`${cropRegion.width * 100}%`}
-							height={`${cropRegion.height * 100}%`}
-							fill="black"
-						/>
-					</mask>
-				</defs>
-				<rect
-					width="100%"
-					height="100%"
-					fill="black"
-					fillOpacity="0.6"
-					mask={`url(#${maskId})`}
-				/>
-			</svg>
 			<div
 				data-testid="crop-selection"
 				aria-label={te("moveCrop", "Move crop")}
-				className="absolute cursor-move border-2 border-white"
+				className="crop-selection absolute cursor-move"
 				style={{
 					left: `${cropRegion.x * 100}%`,
 					top: `${cropRegion.y * 100}%`,
@@ -167,51 +144,29 @@ export function CropControl({
 				}}
 				onPointerDown={(event) => start(event, "move")}
 			>
-				{[1, 2].map((line) => (
-					<div key={line} className="pointer-events-none absolute inset-0">
-						<div
-							className="absolute h-full border-l border-white/30"
-							style={{ left: `${(line * 100) / 3}%` }}
-						/>
-						<div
-							className="absolute w-full border-t border-white/30"
-							style={{ top: `${(line * 100) / 3}%` }}
-						/>
-					</div>
-				))}
 				{handles.map((handle) => (
 					<div
 						key={handle}
 						aria-label={te(`crop${handle}`)}
+						data-crop-handle={handle}
 						className="absolute z-10"
 						style={{
 							left: handle.includes("w") ? 0 : handle.includes("e") ? "100%" : "50%",
 							top: handle.includes("n") ? 0 : handle.includes("s") ? "100%" : "50%",
-							width: handle === "n" || handle === "s" ? "calc(100% - 20px)" : 20,
-							height: handle === "e" || handle === "w" ? "calc(100% - 20px)" : 20,
+							width:
+								handle === "n" || handle === "s"
+									? "max(0px, calc(100% - 28px))"
+									: 28,
+							height:
+								handle === "e" || handle === "w"
+									? "max(0px, calc(100% - 28px))"
+									: 28,
 							transform: "translate(-50%, -50%)",
 							cursor: `${handle}-resize`,
 						}}
 						onPointerDown={(event) => start(event, handle)}
 					>
-						<span
-							className="absolute left-1/2 top-1/2 block rounded-sm bg-white shadow"
-							style={{
-								transform: "translate(-50%, -50%)",
-								width:
-									handle.length === 2
-										? 10
-										: handle === "n" || handle === "s"
-											? 24
-											: 4,
-								height:
-									handle.length === 2
-										? 10
-										: handle === "e" || handle === "w"
-											? 24
-											: 4,
-							}}
-						/>
+						<span className="crop-grip" aria-hidden="true" />
 					</div>
 				))}
 			</div>

@@ -151,8 +151,8 @@ test("recorder countdown and native source selection keep the HUD responsive", a
 	await page.getByRole("button", { name: "5 sec", exact: true }).click();
 	await expect(page.getByRole("dialog")).toHaveCount(0);
 	await expect(
-		page.getByRole("button", { name: "Countdown delay: 5s", exact: true }),
-	).toBeVisible();
+		page.getByRole("button", { name: "Countdown delay", exact: true }),
+	).toHaveAccessibleDescription("5 seconds");
 	const source = page.getByRole("button", { name: "Choose recording source", exact: true });
 	await expect(source).toContainText("Built-in Display");
 	await source.click();

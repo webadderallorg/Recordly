@@ -12,14 +12,11 @@ import { getTimeAtClipSeam } from "../../core/clipPresentation";
 import { CAPTION_ROW_ID, ZOOM_ROW_ID } from "../../core/constants";
 import { isAnnotationTrackRowId, isAudioTrackRowId } from "../../core/rows";
 import { useTimelinePresentation } from "../../core/TimelinePresentation";
-import {
-	getTimelineContentMinHeightPx,
-	getTimelineRowsMinHeightPx,
-	TIMELINE_AXIS_HEIGHT_PX,
-} from "../../timelineLayout";
+import { getTimelineContentMinHeightPx, getTimelineRowsMinHeightPx } from "../../timelineLayout";
 import PlaybackCursor from "../playhead/PlaybackCursor";
 import { TimelineCanvasRows } from "./TimelineCanvasRows";
 import type { TimelineCanvasProps } from "./TimelineCanvasTypes";
+import TimelineRuler from "./TimelineRuler";
 import { useTimelineHover } from "./useTimelineHover";
 export default function TimelineCanvas({
 	videoPath,
@@ -307,7 +304,7 @@ export default function TimelineCanvas({
 			onMouseMove={handleTimelineMouseMove}
 			onMouseLeave={handleTimelineMouseLeave}
 		>
-			<div aria-hidden="true" style={{ height: TIMELINE_AXIS_HEIGHT_PX, flexShrink: 0 }} />
+			<TimelineRuler videoDurationMs={videoDurationMs} />
 			<PlaybackCursor
 				clips={clipPresentation}
 				currentTimeMs={currentTimeMs}

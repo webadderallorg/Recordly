@@ -89,6 +89,7 @@ export function listRecordings(includeSources = false): Promise<RecordingLibrary
 				name: entry.name,
 				bytes: stat.size,
 				createdAt: stat.mtimeMs,
+				fileCreatedAt: stat.birthtimeMs > 0 ? stat.birthtimeMs : undefined,
 				url: buildMediaUrl(server, filePath),
 			});
 		}

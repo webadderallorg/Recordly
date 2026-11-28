@@ -310,11 +310,11 @@
 		"right": "右",
 		"openEditor": "切り抜きエディターを開く",
 		"details": "切り抜きの詳細",
-		"inlineHint": "辺や角をドラッグ · Shiftを押しながら操作すると正方形",
 		"aspectRatio": "縦横比",
 		"ratioWidth": "幅",
 		"ratioHeight": "高さ",
-		"ratioHint": "プリセットを選ぶか、比率を入力してください（1:20〜20:1）。",
+		"ratioHint": "1:20から20:1までの比率を入力してください（例：16:9）。",
+		"customRatio": "カスタム",
 		"freeform": "自由",
 		"pixelFields": "ピクセル"
 	},

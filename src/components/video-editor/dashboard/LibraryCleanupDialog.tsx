@@ -2,6 +2,7 @@ import { Checkbox, Dropdown, Label, Modal } from "@heroui/react";
 import { CaretDown } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { SlidingDropdownMenu } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -167,7 +168,7 @@ export function LibraryCleanupDialog({
 											<CaretDown className="size-4 shrink-0" />
 										</Button>
 										<Dropdown.Popover>
-											<Dropdown.Menu
+											<SlidingDropdownMenu
 												aria-label={t("ui.cleanup.find", "Find")}
 												selectionMode="multiple"
 												selectedKeys={rules}
@@ -201,7 +202,7 @@ export function LibraryCleanupDialog({
 														{option.label}
 													</Dropdown.Item>
 												))}
-											</Dropdown.Menu>
+											</SlidingDropdownMenu>
 										</Dropdown.Popover>
 									</Dropdown>
 								</div>

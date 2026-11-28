@@ -1,5 +1,22 @@
 import { ToggleButton, ToggleButtonGroup } from "@heroui/react";
 import { type ComponentProps } from "react";
+import { SlidingHighlightGroup } from "./sliding-highlight";
+
+export function SlidingToggleButtonGroup({
+	previewSelection,
+	...props
+}: ComponentProps<typeof ToggleButtonGroup> & { previewSelection?: boolean }) {
+	return (
+		<SlidingHighlightGroup
+			items=".toggle-button"
+			selection={props.selectionMode !== "multiple"}
+			previewSelection={previewSelection}
+			className={props.fullWidth ? "w-full" : "inline-flex max-w-full"}
+		>
+			<ToggleButtonGroup {...props} />
+		</SlidingHighlightGroup>
+	);
+}
 
 type Props = Omit<ComponentProps<typeof ToggleButtonGroup>, "onSelectionChange" | "size"> & {
 	value?: string | string[];
@@ -24,7 +41,7 @@ export function ToggleGroup({
 	...props
 }: Props) {
 	return (
-		<ToggleButtonGroup
+		<SlidingToggleButtonGroup
 			{...props}
 			selectionMode={type}
 			selectedKeys={keys(value)}

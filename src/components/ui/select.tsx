@@ -2,6 +2,15 @@ import { Select as HeroSelect, Label, ListBox, Separator } from "@heroui/react";
 import { type ComponentProps, type ReactNode } from "react";
 import { useI18n } from "@/contexts/I18nContext";
 import { cn } from "@/lib/utils";
+import { SlidingHighlightGroup } from "./sliding-highlight";
+
+export function SlidingListBox(props: ComponentProps<typeof ListBox>) {
+	return (
+		<SlidingHighlightGroup items='[data-slot="list-box-item"]'>
+			<ListBox {...props} />
+		</SlidingHighlightGroup>
+	);
+}
 export function Select({
 	value,
 	defaultValue,
@@ -61,7 +70,7 @@ export function SelectContent({
 }: ComponentProps<typeof HeroSelect.Popover>) {
 	return (
 		<HeroSelect.Popover {...props} className={cn("max-h-80", className)}>
-			<ListBox>{children}</ListBox>
+			<SlidingListBox>{children}</SlidingListBox>
 		</HeroSelect.Popover>
 	);
 }

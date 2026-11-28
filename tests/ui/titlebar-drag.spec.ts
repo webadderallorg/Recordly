@@ -43,21 +43,21 @@ for (const width of [1440, 800]) {
 		await installDesktopBridge(page);
 		await page.goto("/?windowType=editor");
 		const editor = page.locator(".editor-header");
-		const clips = editor.getByRole("button", { name: "Clips", exact: true });
-		await expect(clips).toBeVisible({ timeout: 30000 });
+		const renameProject = editor.getByRole("button", { name: "Rename project", exact: true });
+		await expect(renameProject).toBeVisible({ timeout: 30000 });
 		await expectDraggableGap(
 			editor,
 			editor.getByRole("button", { name: "Home", exact: true }),
-			editor.getByRole("button", { name: "Rename project", exact: true }),
+			renameProject,
 		);
 		if (width === 1440) {
 			await expectDraggableGap(
 				editor,
-				clips,
+				renameProject,
 				editor.getByRole("button", { name: /^Upgrade(?:,|$)/ }),
 			);
 		}
-		await editor.getByRole("button", { name: "Rename project", exact: true }).click();
+		await renameProject.click();
 		await expect(editor.getByRole("textbox", { name: "Project name", exact: true })).toHaveCSS(
 			"-webkit-app-region",
 			"no-drag",

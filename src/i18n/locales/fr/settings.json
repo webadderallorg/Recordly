@@ -292,11 +292,11 @@
 		"right": "Droite",
 		"openEditor": "Ouvrir l’éditeur de recadrage",
 		"details": "Détails du recadrage",
-		"inlineHint": "Faites glisser les bords ou les coins · Maintenez Maj pour un carré",
 		"aspectRatio": "Format d’image",
 		"ratioWidth": "Largeur",
 		"ratioHeight": "Hauteur",
-		"ratioHint": "Choisissez un préréglage ou saisissez votre propre format (de 1:20 à 20:1).",
+		"ratioHint": "Saisissez un rapport entre 1:20 et 20:1, par exemple 16:9.",
+		"customRatio": "Personnalisée",
 		"freeform": "Libre",
 		"pixelFields": "Pixels"
 	},

@@ -1,22 +1,34 @@
-import { type Dispatch, type RefObject, type SetStateAction, useState } from "react";
+import {
+	type Dispatch,
+	type RefObject,
+	type SetStateAction,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
 	Crop,
+	FilmStrip,
+	FolderOpen,
 	MagicWand,
 	MagnifyingGlassPlus,
 	MinusIcon,
+	MusicNotes,
 	Pause,
 	Play,
 	Plus,
 	Scissors,
 	SkipBack,
 	SkipForward,
+	TextT,
 	Trash,
 } from "@/components/ui/icons";
 import {
@@ -27,6 +39,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SlidingHighlight } from "@/components/ui/sliding-highlight";
 import type { useI18n } from "@/contexts/I18nContext";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
@@ -99,8 +112,10 @@ type Props = {
 	setCurrentTime: Dispatch<SetStateAction<number>>;
 	setIsPlaying: Dispatch<SetStateAction<boolean>>;
 	setError: (message: string | null) => void;
-	onImportVideoClip: () => void;
-	canImportVideoClip: boolean;
+	addMenuTriggerRef: RefObject<HTMLButtonElement | null>;
+	onOpenClips: () => void;
+	onImportVideoFile: () => void;
+	canImportVideoFile: boolean;
 };
 
 export function EditorPreviewPanel(props: Props) {
@@ -141,6 +156,16 @@ export function EditorPreviewPanel(props: Props) {
 		setIsPlaying,
 		setError,
 	} = props;
+	const cropButton = useRef<HTMLButtonElement>(null);
+	const cropWasOpen = useRef(false);
+	const importFromClipsLabel = t("ui.importFromClips");
+	const importFromDeviceLabel = t("ui.importFromDevice");
+	const annotationLabel = t("timeline.annotation.label");
+	const audioLabel = t("timeline.audio.label");
+	useEffect(() => {
+		if (cropWasOpen.current && !isCropping) cropButton.current?.focus();
+		cropWasOpen.current = isCropping;
+	}, [isCropping]);
 	const clearZoomsLabel = t("settings.zoom.clearAllZooms");
 	const clearZoomsTitle = Object.values(shortcuts).some((binding) =>
 		bindingsEqual(binding, CLEAR_ALL_ZOOMS_SHORTCUT),
@@ -158,7 +183,14 @@ export function EditorPreviewPanel(props: Props) {
 		<div className="editor-preview-panel flex min-h-0 min-w-0 flex-1 flex-col">
 			<div className="flex min-h-0 flex-1 flex-col">
 				<div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-					<div className="flex h-10 shrink-0 items-center justify-center gap-3">
+					<div
+						className={
+							isCropping
+								? "hidden"
+								: "sliding-highlight-group flex h-10 shrink-0 items-center justify-center gap-3"
+						}
+					>
+						<SlidingHighlight />
 						<AspectRatioPicker
 							value={aspectRatio}
 							onChange={setAspectRatio}
@@ -167,14 +199,14 @@ export function EditorPreviewPanel(props: Props) {
 						/>
 						<div className="h-4 w-px bg-foreground/20" />
 						<Button
+							ref={cropButton}
 							variant="ghost"
 							size="sm"
 							onClick={() => {
 								setIsPlaying(false);
 								handleOpenCropEditor();
 							}}
-							disabled={!videoPath || !isPreviewReady || isCropping}
-							aria-pressed={isCropping}
+							disabled={!videoPath || !isPreviewReady}
 							className="h-7 gap-1.5 px-2 text-xs"
 						>
 							<Crop className="h-3.5 w-3.5" />
@@ -294,10 +326,12 @@ export function EditorPreviewPanel(props: Props) {
 			</div>
 
 			<div className="editor-playback relative grid min-h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 px-4">
-				<div className="editor-playback-tools z-10 flex min-w-0 items-center gap-2">
+				<div className="editor-playback-tools sliding-highlight-group z-10 flex min-w-0 items-center gap-2">
+					<SlidingHighlight />
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button
+								ref={props.addMenuTriggerRef}
 								variant="ghost"
 								size="sm"
 								className="editor-playback-add-layer h-9 gap-2 px-3"
@@ -312,13 +346,29 @@ export function EditorPreviewPanel(props: Props) {
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="start">
 							<DropdownMenuItem
-								onClick={props.onImportVideoClip}
-								disabled={!props.canImportVideoClip}
-								className="cursor-pointer text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+								onClick={props.onOpenClips}
+								textValue={importFromClipsLabel}
 							>
-								{t("ui.importVideo")}
+								<FilmStrip
+									className="size-4 shrink-0 text-muted-foreground"
+									aria-hidden="true"
+								/>
+								{importFromClipsLabel}
 							</DropdownMenuItem>
 							<DropdownMenuItem
+								onClick={props.onImportVideoFile}
+								disabled={!props.canImportVideoFile}
+								textValue={importFromDeviceLabel}
+							>
+								<FolderOpen
+									className="size-4 shrink-0 text-muted-foreground"
+									aria-hidden="true"
+								/>
+								{importFromDeviceLabel}
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem
+								textValue={annotationLabel}
 								onClick={() => {
 									const nextTrack =
 										timeline.annotationRegions.length > 0
@@ -330,11 +380,15 @@ export function EditorPreviewPanel(props: Props) {
 											: 0;
 									timelineRef.current?.addAnnotation(nextTrack);
 								}}
-								className="cursor-pointer text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
 							>
-								{t("timeline.annotation.label")}
+								<TextT
+									className="size-4 shrink-0 text-muted-foreground"
+									aria-hidden="true"
+								/>
+								{annotationLabel}
 							</DropdownMenuItem>
 							<DropdownMenuItem
+								textValue={audioLabel}
 								onClick={() => {
 									const nextTrack =
 										timeline.audioRegions.length > 0
@@ -346,9 +400,12 @@ export function EditorPreviewPanel(props: Props) {
 											: 0;
 									timelineRef.current?.addAudio(nextTrack);
 								}}
-								className="cursor-pointer text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
 							>
-								{t("timeline.audio.label")}
+								<MusicNotes
+									className="size-4 shrink-0 text-muted-foreground"
+									aria-hidden="true"
+								/>
+								{audioLabel}
 							</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
@@ -383,7 +440,8 @@ export function EditorPreviewPanel(props: Props) {
 				</div>
 
 				<div className="editor-playback-center z-10 flex items-center justify-center">
-					<div className="pointer-events-auto flex items-center gap-1.5">
+					<div className="sliding-highlight-group pointer-events-auto flex items-center gap-1.5">
+						<SlidingHighlight />
 						<span
 							role="timer"
 							aria-label={currentTimestamp}
@@ -446,7 +504,8 @@ export function EditorPreviewPanel(props: Props) {
 					</div>
 				</div>
 
-				<div className="editor-playback-volume z-10 ml-auto flex items-center gap-1">
+				<div className="editor-playback-volume sliding-highlight-group z-10 ml-auto flex items-center gap-1">
+					<SlidingHighlight items="button.button--ghost" />
 					<div
 						role="group"
 						aria-label={t("shortcuts.actions.zoomTimeline")}

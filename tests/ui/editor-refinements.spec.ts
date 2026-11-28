@@ -35,7 +35,9 @@ test("clip filmstrip decodes different source frames and zoom blocks use the ava
 	const zoom = page.locator('[data-timeline-item][data-variant="zoom"] .timeline-block');
 	await expect(zoom).toBeVisible();
 	expect((await zoom.boundingBox())!.height).toBeGreaterThan(50);
-	await expect(page.locator(".timeline-axis")).toHaveCount(0);
+	const ruler = page.getByTestId("timeline-ruler");
+	await expect(ruler.getByText(/^0:00(?:\.0+)?$/)).toBeVisible();
+	await expect(ruler.getByText(/^\d+:\d{2}/).nth(1)).toBeVisible();
 	await page.screenshot({
 		path: "test-results/editor-filmstrip-zoom.png",
 		animations: "disabled",

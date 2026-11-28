@@ -85,7 +85,8 @@ test("zoom hover, adaptive lanes, clip edges, volume and playhead", async ({ pag
 		"box-shadow",
 		"none",
 	);
-	await expect(page.locator(".timeline-axis")).toHaveCount(0);
+	const timestamps = page.getByTestId("timeline-ruler").getByText(/^\d+:\d{2}/);
+	await expect.poll(() => timestamps.count()).toBeGreaterThan(1);
 	await page.screenshot({ path: "test-results/timeline-redesign.png", animations: "disabled" });
 	await page.mouse.move(600, 200);
 	await expect(cap).toHaveCSS("width", "16px");

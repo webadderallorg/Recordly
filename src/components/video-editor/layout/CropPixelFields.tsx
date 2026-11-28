@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { useI18n } from "@/contexts/I18nContext";
 import { dragCrop } from "../cropGeometry";
@@ -22,7 +22,7 @@ function CropPixelInput({
 		<label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
 			{label}
 			<Input
-				className="h-7 min-w-0 tabular-nums"
+				className="h-8 min-w-0 tabular-nums"
 				type="number"
 				inputMode="numeric"
 				step={1}
@@ -49,40 +49,19 @@ function CropPixelInput({
 }
 
 export function CropPixelFields({
-	videoElement,
+	source,
 	crop,
 	lockedRatio,
 	onCropChange,
 }: {
-	videoElement: HTMLVideoElement | null;
+	source: { width: number; height: number };
 	crop: CropRegion;
 	lockedRatio: number | null;
 	onCropChange: (crop: CropRegion) => void;
 }) {
 	const { t } = useI18n();
-	const [source, setSource] = useState(() => ({
-		width: videoElement?.videoWidth ?? 0,
-		height: videoElement?.videoHeight ?? 0,
-	}));
-	useEffect(() => {
-		const updateSource = () => {
-			setSource({
-				width: videoElement?.videoWidth ?? 0,
-				height: videoElement?.videoHeight ?? 0,
-			});
-		};
-		updateSource();
-		videoElement?.addEventListener("loadedmetadata", updateSource);
-		videoElement?.addEventListener("resize", updateSource);
-		return () => {
-			videoElement?.removeEventListener("loadedmetadata", updateSource);
-			videoElement?.removeEventListener("resize", updateSource);
-		};
-	}, [videoElement]);
 
 	const fields = [
-		{ key: "x", handle: "w", axis: "width", label: t("settings.crop.left", "Left"), min: 0 },
-		{ key: "y", handle: "n", axis: "height", label: t("settings.crop.top", "Top"), min: 0 },
 		{
 			key: "width",
 			handle: "e",
@@ -97,10 +76,16 @@ export function CropPixelFields({
 			label: t("settings.crop.ratioHeight", "Height"),
 			min: 1,
 		},
+		{ key: "x", handle: "w", axis: "width", label: t("settings.crop.left", "Left"), min: 0 },
+		{ key: "y", handle: "n", axis: "height", label: t("settings.crop.top", "Top"), min: 0 },
 	] as const;
 
 	return (
-		<div className="mx-auto grid w-full max-w-md shrink-0 grid-cols-4 gap-2">
+		<div
+			role="group"
+			aria-label={t("settings.crop.pixelFields", "Pixels")}
+			className="grid grid-cols-2 gap-2"
+		>
 			{fields.map(({ key, handle, axis, label, min }) => (
 				<CropPixelInput
 					key={`${key}-${source.width}-${source.height}`}

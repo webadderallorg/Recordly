@@ -292,11 +292,11 @@
 		"right": "Direita",
 		"openEditor": "Abrir editor de corte",
 		"details": "Detalhes do recorte",
-		"inlineHint": "Arraste bordas ou cantos · Segure Shift para um quadrado",
 		"aspectRatio": "Proporção",
 		"ratioWidth": "Largura",
 		"ratioHeight": "Altura",
-		"ratioHint": "Escolha uma predefinição ou insira sua própria proporção (1:20 a 20:1).",
+		"ratioHint": "Insira uma proporção de 1:20 a 20:1, por exemplo, 16:9.",
+		"customRatio": "Personalizada",
 		"freeform": "Livre",
 		"pixelFields": "Pixels"
 	},

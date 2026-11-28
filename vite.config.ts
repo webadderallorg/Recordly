@@ -138,8 +138,14 @@ export default defineConfig(({ mode }) => ({
 				"node_modules",
 				mode === "ui" || process.env.RECORDLY_RENDERER_ONLY === "1" ? ".vite-ui" : ".vite",
 			),
-	// Keep browser scenarios stable while other workers edit the shared checkout.
-	server: process.env.RECORDLY_UI_TEST_RUN === "1" ? { hmr: false, watch: null } : undefined,
+	server: {
+		// A normal Electron launch must share one loopback address and port with other dev launches.
+		...(mode !== "ui" && process.env.RECORDLY_RENDERER_ONLY !== "1"
+			? { host: "127.0.0.1", strictPort: true }
+			: {}),
+		// Keep browser scenarios stable while other workers edit the shared checkout.
+		...(process.env.RECORDLY_UI_TEST_RUN === "1" ? { hmr: false, watch: null } : {}),
+	},
 	plugins: [
 		react(),
 		rendererContentSecurityPolicy(mode),

@@ -7,6 +7,7 @@ export interface RecordingLibraryEntry {
 	path: string;
 	name: string;
 	createdAt: number;
+	fileCreatedAt?: number;
 	bytes: number;
 	url: string;
 }
