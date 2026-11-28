@@ -134,6 +134,103 @@ describe("ScreenCaptureKitRecorder window capture", () => {
 		expect(recorderSource).toContain("try await activeStream.updateContentFilter(filter)");
 		expect(recorderSource).toContain("self.windowCropRect = cropRect");
 	});
+
+	it("stops only when the window closes, not when it is minimized or on another Space", () => {
+		const validation = recorderSource.slice(
+			recorderSource.indexOf("private func startWindowValidationIfNeeded"),
+		);
+		expect(validation).toContain(
+			"SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)",
+		);
+		expect(validation).not.toContain("onScreenWindowsOnly: true");
+		expect(validation).toContain("guard window.isOnScreen else { continue }");
+	});
+
+	it("holds an earlier window frame while the window is off screen", () => {
+		expect(recorderSource).toContain("if !Self.isWindowOnScreen(trackedWindowId) {");
+		expect(recorderSource).toContain("[.optionIncludingWindow], windowId");
+		expect(recorderSource).toContain(
+			"guard let held = lastCroppedPixelBuffer else { return false }",
+		);
+		expect(recorderSource).toContain("queuePendingCrop(held, at: presentationTime)");
+		expect(recorderSource).toContain(
+			"CMTimeGetSeconds(CMTimeSubtract(now, lastTrackedWindowCheckTime)) > 0.25",
+		);
+	});
+
+	it("watches the window on its own queue while frames are not arriving", () => {
+		expect(recorderSource).toContain(
+			"DispatchSource.makeTimerSource(queue: windowVisibilityQueue)",
+		);
+		expect(recorderSource).toContain(
+			"if !Self.isWindowOnScreen(windowId) { windowLeftScreen.withLock { $0 = true } }",
+		);
+		const write = recorderSource.slice(
+			recorderSource.indexOf("private func writePendingCroppedFrames"),
+		);
+		expect(write.indexOf("markTrackedWindowHidden()")).toBeGreaterThan(-1);
+		expect(write.indexOf("markTrackedWindowHidden()")).toBeLessThan(
+			write.indexOf("adaptor.append("),
+		);
+		// The timer keeps watching until the queued crops are checked at stop.
+		const finalize = recorderSource.slice(
+			recorderSource.indexOf("private func finalizeCapture"),
+		);
+		expect(finalize.indexOf("try await self.finishCapture(")).toBeGreaterThan(-1);
+		expect(finalize.indexOf("visibilityTimer?.cancel()")).toBeGreaterThan(
+			finalize.indexOf("try await self.finishCapture("),
+		);
+	});
+
+	it("queues still-frame repeats behind the crops still waiting", () => {
+		const still = recorderSource.slice(
+			recorderSource.indexOf("private func appendStillFrameIfIdle"),
+		);
+		expect(still).toContain("queuePendingCrop(pixelBuffer, at: repeatTime)");
+		expect(still).not.toContain(
+			"adaptor.append(pixelBuffer, withPresentationTime: repeatTime)",
+		);
+	});
+
+	it("delays window crops so frames from the hide animation can be replaced", () => {
+		expect(recorderSource).toContain(
+			"private static let windowCropDelay = CMTime(value: 6, timescale: 10)",
+		);
+		expect(recorderSource).toContain(
+			"for index in pendingCroppedFrames.indices { pendingCroppedFrames[index].buffer = held }",
+		);
+		// Crops are only written once they have waited the full delay.
+		expect(recorderSource).not.toContain("pendingCroppedFrames.count >");
+		expect(recorderSource).toContain(
+			"minimumCropInterval = CMTime(seconds: delaySeconds / Double(maxCrops), preferredTimescale: 6000)",
+		);
+		// The visibility check replaces queued crops before any is written.
+		const append = recorderSource.slice(
+			recorderSource.indexOf("private func appendCroppedVideoFrame"),
+		);
+		expect(append.indexOf("if !Self.isWindowOnScreen(trackedWindowId) {")).toBeGreaterThan(-1);
+		expect(append.indexOf("if !Self.isWindowOnScreen(trackedWindowId) {")).toBeLessThan(
+			append.indexOf("writePendingCroppedFrames(before:"),
+		);
+		expect(recorderSource).toContain(
+			"kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange",
+		);
+		const finish = recorderSource.slice(recorderSource.indexOf("private func finishCapture"));
+		expect(finish.indexOf("replacePendingCropsWithHeldFrame()")).toBeGreaterThan(-1);
+		// The stop wait keeps checking the window, so a quick hide and return is seen.
+		const waitCheck =
+			"if !Self.isWindowOnScreen(trackedWindowId) { windowLeftScreen.withLock { $0 = true } }";
+		expect(finish.indexOf(waitCheck)).toBeGreaterThan(-1);
+		expect(finish.indexOf(waitCheck)).toBeLessThan(
+			finish.indexOf("replacePendingCropsWithHeldFrame()"),
+		);
+		expect(finish.indexOf("replacePendingCropsWithHeldFrame()")).toBeLessThan(
+			finish.indexOf("for frame in pendingCroppedFrames {"),
+		);
+		expect(finish.indexOf("for frame in pendingCroppedFrames {")).toBeLessThan(
+			finish.indexOf("if let originalBuffer = lastSampleBuffer"),
+		);
+	});
 });
 
 describe("ScreenCaptureKitRecorder first frame timing", () => {

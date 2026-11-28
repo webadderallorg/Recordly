@@ -3,6 +3,7 @@ import ScreenCaptureKit
 import AVFoundation
 import CoreGraphics
 import CoreImage
+import os
 
 struct CaptureConfig: Codable {
 	let fps: Int?
@@ -332,6 +333,22 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var excludedProcessIds = Set<Int32>()
 	private var captureDisplayId: CGDirectDisplayID?
 	private var lastCroppedPixelBuffer: CVPixelBuffer?
+	// macOS reports a window off screen only after its minimize or Space animation
+	// ends, so window crops wait here before being written and can be swapped for
+	// the held frame when that report comes. Area recordings write crops at once.
+	private static let windowCropDelay = CMTime(value: 6, timescale: 10)
+	private static let pendingCroppedFramesByteLimit = 512 * 1024 * 1024
+	private var pendingCroppedFrames: [(buffer: CVPixelBuffer, time: CMTime)] = []
+	private var pendingCroppedFrameDelay: CMTime = .zero
+	private var newestPendingCropHostTime: CMTime = .invalid
+	// A window too large for the delay's worth of crops under the byte limit gets a
+	// new crop only this often, and the frames between repeat the last one.
+	private var minimumCropInterval: CMTime = .zero
+	private var lastRenderedCropTime: CMTime = .invalid
+	private var isTrackedWindowHidden = false
+	private var trackedWindowShownTime: CMTime = .invalid
+	private var trackedWindowReturnTime: CMTime = .invalid
+	private var lastTrackedWindowCheckTime: CMTime = .invalid
 	private let imageContext = CIContext(options: [.cacheIntermediates: false])
 	private var systemAudioWriter: AVAssetWriter?
 	private var systemAudioInput: AVAssetWriterInput?
@@ -367,6 +384,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var microphoneOutputURL: URL?
 	private var trackedWindowId: UInt32?
 	private var windowValidationTask: Task<Void, Never>?
+	private var windowVisibilityTimer: DispatchSourceTimer?
+	private let windowVisibilityQueue = DispatchQueue(label: "recordly.screencapturekit.window-visibility")
+	private let windowLeftScreen = OSAllocatedUnfairLock(initialState: false)
 	private var isFinalizing = false
 	private var interactiveStopParticipated = false
 	private var finalizationWaiters: [CheckedContinuation<CaptureFinalizationResult, Never>] = []
@@ -501,6 +521,16 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			streamConfig.width = max(2, Int(display.frame.width) * scaleFactor)
 			streamConfig.height = max(2, Int(display.frame.height) * scaleFactor)
 			streamConfig.pixelFormat = kCVPixelFormatType_32BGRA
+			if config.windowId != nil {
+				pendingCroppedFrameDelay = Self.windowCropDelay
+				// Crops are 420v, 1.5 bytes per pixel. One more is in the writer.
+				let frameBytes = outputWidth * outputHeight * 3 / 2
+				let maxCrops = max(1, Self.pendingCroppedFramesByteLimit / frameBytes - 1)
+				let delaySeconds = CMTimeGetSeconds(Self.windowCropDelay)
+				if Int(delaySeconds * Double(requestedFPS)) > maxCrops {
+					minimumCropInterval = CMTime(seconds: delaySeconds / Double(maxCrops), preferredTimescale: 6000)
+				}
+			}
 		} else {
 			trackedWindowId = nil
 			windowCropRect = nil
@@ -546,11 +576,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 
 		let sourceVideoFormat = try CMVideoFormatDescription(
-			videoCodecType: CMFormatDescription.MediaSubType(
-				rawValue: windowCropRect == nil
-					? kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
-					: kCVPixelFormatType_32BGRA
-			),
+			videoCodecType: CMFormatDescription.MediaSubType(rawValue: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
 			width: outputWidth,
 			height: outputHeight
 		)
@@ -599,7 +625,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			AVAssetWriterInputPixelBufferAdaptor(
 				assetWriterInput: videoInput,
 				sourcePixelBufferAttributes: [
-					kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+					kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+					kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: Any],
 					kCVPixelBufferWidthKey as String: outputWidth,
 					kCVPixelBufferHeightKey as String: outputHeight,
 				]
@@ -691,6 +718,21 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		lastVideoDuration = .zero
 		startWindowValidationIfNeeded()
 		startStillFrameTimer()
+
+		// No frames arrive while the screen is still, and a crop render can block the
+		// recorder queue for seconds, so a timer on its own queue also watches the window.
+		// Otherwise a window that hides meanwhile is only checked once it is back, and
+		// its queued hide animation would be written.
+		if let windowId = trackedWindowId {
+			windowLeftScreen.withLock { $0 = false }
+			let timer = DispatchSource.makeTimerSource(queue: windowVisibilityQueue)
+			timer.schedule(deadline: .now(), repeating: .milliseconds(50))
+			timer.setEventHandler { [windowLeftScreen] in
+				if !Self.isWindowOnScreen(windowId) { windowLeftScreen.withLock { $0 = true } }
+			}
+			timer.resume()
+			windowVisibilityTimer = timer
+		}
 	}
 
 	func stopCapture() async throws -> String {
@@ -878,6 +920,47 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			  let pool = adaptor.pixelBufferPool,
 			  let source = CMSampleBufferGetImageBuffer(sampleBuffer) else { return false }
 
+		// While the window is minimized or on another Space, the display shows other
+		// content, so hold an earlier frame of the window instead of cropping it. This
+		// is checked per frame because the 0.5s window poll would let that content in.
+		// The hold lasts a second past its return to cover the restore animation.
+		if let trackedWindowId {
+			// Frames can be handled late and in a burst after a slow render, so the
+			// hold below is timed by the clock rather than by frame times.
+			let now = CMClockGetTime(CMClockGetHostTimeClock())
+			defer { lastTrackedWindowCheckTime = now }
+			if !Self.isWindowOnScreen(trackedWindowId) {
+				markTrackedWindowHidden()
+			} else if isTrackedWindowHidden {
+				// Frames of the return animation can arrive a second after macOS reports
+				// the window back, so a pause in frames restarts the second, for up to 2s.
+				if !trackedWindowReturnTime.isValid {
+					trackedWindowReturnTime = now
+					trackedWindowShownTime = now
+				} else if CMTimeGetSeconds(CMTimeSubtract(now, lastTrackedWindowCheckTime)) > 0.25,
+						  CMTimeGetSeconds(CMTimeSubtract(now, trackedWindowReturnTime)) < 2 {
+					trackedWindowShownTime = now
+				}
+				if CMTimeGetSeconds(CMTimeSubtract(now, trackedWindowShownTime)) >= 1 {
+					isTrackedWindowHidden = false
+				}
+			}
+			if isTrackedWindowHidden {
+				writePendingCroppedFrames(before: CMTimeSubtract(presentationTime, pendingCroppedFrameDelay))
+				guard let held = lastCroppedPixelBuffer else { return false }
+				queuePendingCrop(held, at: presentationTime)
+				return true
+			}
+		}
+
+		if let newest = pendingCroppedFrames.last,
+		   lastRenderedCropTime.isValid,
+		   CMTimeCompare(CMTimeSubtract(presentationTime, lastRenderedCropTime), minimumCropInterval) < 0 {
+			queuePendingCrop(newest.buffer, at: presentationTime)
+			writePendingCroppedFrames(before: CMTimeSubtract(presentationTime, pendingCroppedFrameDelay))
+			return true
+		}
+
 		var destination: CVPixelBuffer?
 		guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &destination) == kCVReturnSuccess,
 			  let destination else { return false }
@@ -902,6 +985,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				y: destinationSize.height / sourceRect.height
 			))
 		let bounds = CGRect(origin: .zero, size: destinationSize)
+		CVBufferSetAttachment(
+			destination, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate
+		)
 		imageContext.render(
 			image,
 			to: destination,
@@ -916,9 +1002,51 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			destination, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_sRGB, .shouldPropagate
 		)
 
-		let appended = adaptor.append(destination, withPresentationTime: presentationTime)
-		if appended { lastCroppedPixelBuffer = destination }
-		return appended
+		queuePendingCrop(destination, at: presentationTime)
+		lastRenderedCropTime = presentationTime
+		writePendingCroppedFrames(before: CMTimeSubtract(presentationTime, pendingCroppedFrameDelay))
+		// False only when the first frame failed, so the recording start can reset.
+		return lastCroppedPixelBuffer != nil
+	}
+
+	private func queuePendingCrop(_ buffer: CVPixelBuffer, at presentationTime: CMTime) {
+		pendingCroppedFrames.append((buffer, presentationTime))
+		newestPendingCropHostTime = CMClockGetTime(CMClockGetHostTimeClock())
+	}
+
+	/// The queued crops can show the hide animation, so replace them before any is
+	/// written.
+	private func markTrackedWindowHidden() {
+		if !isTrackedWindowHidden { replacePendingCropsWithHeldFrame() }
+		isTrackedWindowHidden = true
+		trackedWindowShownTime = .invalid
+		trackedWindowReturnTime = .invalid
+	}
+
+	/// The last written frame is from before any crop still waiting in the queue.
+	private func replacePendingCropsWithHeldFrame() {
+		guard let held = lastCroppedPixelBuffer else { return }
+		for index in pendingCroppedFrames.indices { pendingCroppedFrames[index].buffer = held }
+	}
+
+	/// Writes queued crops up to `limit`, and the first frame of the recording right
+	/// away so it reaches the writer.
+	private func writePendingCroppedFrames(before limit: CMTime) {
+		guard let adaptor = videoPixelBufferAdaptor else { return }
+		if windowLeftScreen.withLock({ leftScreen in defer { leftScreen = false }; return leftScreen }) {
+			markTrackedWindowHidden()
+		}
+		while let frame = pendingCroppedFrames.first,
+			  lastCroppedPixelBuffer == nil || CMTimeCompare(frame.time, limit) <= 0 {
+			guard adaptor.assetWriterInput.isReadyForMoreMediaData else { return }
+			pendingCroppedFrames.removeFirst()
+			// finishCapture repeats lastCroppedPixelBuffer as the tail frame.
+			if adaptor.append(frame.buffer, withPresentationTime: frame.time) {
+				lastCroppedPixelBuffer = frame.buffer
+			} else if lastCroppedPixelBuffer == nil {
+				return
+			}
+		}
 	}
 
 	func stream(_ stream: SCStream, didStopWithError error: Error) {
@@ -1087,6 +1215,11 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				pendingRecovery?.cancel()
 				self.windowValidationTask?.cancel()
 				self.windowValidationTask = nil
+				// Kept running until the last queued crops are checked, so a window that
+				// leaves during the wait at stop is still seen.
+				let visibilityTimer = self.windowVisibilityTimer
+				self.windowVisibilityTimer = nil
+				let windowId = self.trackedWindowId
 				self.trackedWindowId = nil
 				self.finalizationWaiters.append(continuation)
 
@@ -1094,10 +1227,11 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 					await pendingRecovery?.value
 					let outputResult: Result<String, Error>
 					do {
-						outputResult = .success(try await self.finishCapture())
+						outputResult = .success(try await self.finishCapture(trackedWindowId: windowId))
 					} catch {
 						outputResult = .failure(error)
 					}
+					visibilityTimer?.cancel()
 
 					self.queue.async {
 						let finalizationResult = CaptureFinalizationResult(
@@ -1117,7 +1251,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 	}
 
-	private func finishCapture() async throws -> String {
+	private func finishCapture(trackedWindowId: UInt32?) async throws -> String {
 
 		if let activeStream = stream {
 			do {
@@ -1129,6 +1263,29 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		stream = nil
 		let videoEndTime = lastVideoPresentationTime + (lastSampleBuffer.map { frameDuration(for: $0) } ?? .zero)
 		let endTime = stopTimelineTime.map { max($0, videoEndTime) } ?? resolvedCaptureEndTime(videoEndTime: videoEndTime)
+
+		// Write the window crops still waiting in the queue. A hide that was under way
+		// at stop is only reported once the newest crop has waited the full delay.
+		if let adaptor = videoPixelBufferAdaptor {
+			if let trackedWindowId, !pendingCroppedFrames.isEmpty {
+				// A quick Space switch and back can leave the window off screen for less
+				// than the 50ms timer interval, so the wait checks it more often.
+				while CMTimeCompare(CMTimeSubtract(CMClockGetTime(CMClockGetHostTimeClock()), newestPendingCropHostTime), pendingCroppedFrameDelay) < 0 {
+					if !Self.isWindowOnScreen(trackedWindowId) { windowLeftScreen.withLock { $0 = true } }
+					try? await Task.sleep(nanoseconds: 5_000_000)
+				}
+				if isTrackedWindowHidden || windowLeftScreen.withLock({ $0 }) || !Self.isWindowOnScreen(trackedWindowId) {
+					replacePendingCropsWithHeldFrame()
+				}
+			}
+			for frame in pendingCroppedFrames {
+				guard await waitUntilReady(adaptor.assetWriterInput, of: assetWriter) else { break }
+				if adaptor.append(frame.buffer, withPresentationTime: frame.time) {
+					lastCroppedPixelBuffer = frame.buffer
+				}
+			}
+			pendingCroppedFrames.removeAll()
+		}
 
 		// The tail frame only gives the last captured frame its full duration, so
 		// it must never put the file at risk.  Appending to an input whose encoder
@@ -1212,6 +1369,15 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		windowCropDisplayId = nil
 		excludedProcessIds.removeAll()
 		lastCroppedPixelBuffer = nil
+		pendingCroppedFrames.removeAll()
+		pendingCroppedFrameDelay = .zero
+		newestPendingCropHostTime = .invalid
+		minimumCropInterval = .zero
+		lastRenderedCropTime = .invalid
+		isTrackedWindowHidden = false
+		trackedWindowShownTime = .invalid
+		trackedWindowReturnTime = .invalid
+		lastTrackedWindowCheckTime = .invalid
 		systemAudioWriter = nil
 		systemAudioInput = nil
 		microphoneOnlyWriter = nil
@@ -1341,9 +1507,15 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		let repeatTime = now - CMTime(seconds: 0.1, preferredTimescale: 600)
 		guard CMTimeCompare(repeatTime - lastVideoPresentationTime, CMTime(seconds: 1, preferredTimescale: 600)) >= 0 else { return }
 		let appended: Bool
-		if let adaptor = videoPixelBufferAdaptor {
-			guard let pixelBuffer = lastCroppedPixelBuffer else { return }
-			appended = adaptor.append(pixelBuffer, withPresentationTime: repeatTime)
+		if videoPixelBufferAdaptor != nil {
+			// Crops still waiting in the queue are older than the repeat, so it goes
+			// through the queue too. A hidden window repeats the held frame.
+			guard let pixelBuffer = isTrackedWindowHidden
+				? lastCroppedPixelBuffer
+				: pendingCroppedFrames.last?.buffer ?? lastCroppedPixelBuffer else { return }
+			queuePendingCrop(pixelBuffer, at: repeatTime)
+			writePendingCroppedFrames(before: CMTimeSubtract(repeatTime, pendingCroppedFrameDelay))
+			appended = true
 		} else {
 			let timing = CMSampleTimingInfo(duration: lastSampleBuffer.duration, presentationTimeStamp: repeatTime, decodeTimeStamp: lastSampleBuffer.decodeTimeStamp)
 			guard let repeated = try? CMSampleBuffer(copying: lastSampleBuffer, withNewTiming: [timing]) else { return }
@@ -1511,11 +1683,13 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
 				let availableContent: SCShareableContent
 				do {
-					availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+					availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
 				} catch {
 					continue
 				}
 
+				// Only a closed window ends the recording. A minimized window or one on
+				// another Space is still listed, just not on screen.
 				guard let window = availableContent.windows.first(where: { $0.windowID == trackedWindowId }) else {
 					print("WINDOW_UNAVAILABLE")
 					fflush(stdout)
@@ -1535,6 +1709,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 					}
 					return
 				}
+
+				// An off-screen window keeps its last frame, so leave the crop as it is.
+				guard window.isOnScreen else { continue }
 
 				guard let display = Self.captureDisplay(for: window.frame, from: availableContent.displays) else {
 					continue
@@ -1580,6 +1757,11 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				}
 			}
 		}
+	}
+
+	private static func isWindowOnScreen(_ windowId: UInt32) -> Bool {
+		let info = CGWindowListCopyWindowInfo([.optionIncludingWindow], windowId) as? [[String: Any]]
+		return info?.first?[kCGWindowIsOnscreen as String] as? Bool ?? false
 	}
 
 	private static func captureDisplay(for frame: CGRect, from displays: [SCDisplay]) -> SCDisplay? {
