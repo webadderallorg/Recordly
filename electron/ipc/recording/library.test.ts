@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -81,9 +82,14 @@ it("lists recordings, moves recordings and their companions to Trash with revers
 	])
 		await fs.writeFile(name, "fixture");
 	await fs.symlink(first, path.join(state.root, "linked.mp4"));
-	expect((await listRecordings()).map((entry) => entry.path).sort()).toEqual(
-		[first, second].sort(),
-	);
+	await fs.utimes(first, 1, 1);
+	const entries = await listRecordings();
+	expect(entries.map((entry) => entry.path)).toEqual([second, first]);
+	const firstStat = await fs.stat(first);
+	expect(entries[1]).toMatchObject({
+		createdAt: firstStat.mtimeMs,
+		fileCreatedAt: firstStat.birthtimeMs > 0 ? firstStat.birthtimeMs : undefined,
+	});
 	await setRecordingsRemoved([first, second], true);
 	expect(await listRecordings()).toEqual([]);
 	await expect(fs.access(first)).rejects.toThrow();
@@ -236,10 +242,30 @@ it("imports different-sized recordings with playable video, separate audio, stab
 	);
 	const original = await fs.readFile(base);
 	await listRecordings();
+	const stat = await fs.stat(base);
+	const previousThumbnailKey = createHash("sha256")
+		.update(`${base}:${stat.mtimeMs}:${stat.size}`)
+		.digest("hex");
+	const thumbnailDirectory = path.join(state.root, "recording-thumbnails");
+	await fs.mkdir(thumbnailDirectory);
+	await fs.writeFile(path.join(thumbnailDirectory, `${previousThumbnailKey}.jpg`), "old preview");
 	const thumbnail = await getRecordingThumbnail(base);
 	expect(thumbnail).toMatch(/^data:image\/jpeg;base64,/);
 	const jpeg = Buffer.from(thumbnail.split(",")[1], "base64");
-	expect([...jpeg.subarray(0, 2)]).toEqual([0xff, 0xd8]);
+	const preview = path.join(state.root, "preview.jpg");
+	await fs.writeFile(preview, jpeg);
+	const { stdout: dimensions } = await run(require("ffprobe-static").path, [
+		"-v",
+		"error",
+		"-select_streams",
+		"v:0",
+		"-show_entries",
+		"stream=width,height",
+		"-of",
+		"csv=p=0:s=x",
+		preview,
+	]);
+	expect(dimensions.trim()).toBe("384x216");
 	expect(await getRecordingThumbnail(base)).toBe(thumbnail);
 	await expect(getRecordingThumbnail("/tmp/unapproved.mp4")).rejects.toThrow("outside");
 	const result = await importRecording(base, added);

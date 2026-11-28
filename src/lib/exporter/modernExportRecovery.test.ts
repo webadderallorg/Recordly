@@ -312,3 +312,25 @@ describe("MP4 recovery cancellation", () => {
 		expect(result.result).toMatchObject({ success: false, error: "Export cancelled" });
 	});
 });
+
+describe("remembered recovery route", () => {
+	it.each([
+		["compatibility", "legacy"],
+		["software", "modern"],
+	] as const)("starts on %s and does not stack another recovery on it", async (route, model) => {
+		const created: string[] = [];
+		const outcome = await exportMp4WithRecovery({
+			...options(async (attemptRoute) => {
+				created.push(attemptRoute);
+				return exporter(rendererFailure);
+			}),
+			initialRoute: route,
+		});
+		expect(created).toEqual([route]);
+		expect(outcome).toMatchObject({
+			pipelineModel: model,
+			recovery: null,
+			result: rendererFailure,
+		});
+	});
+});

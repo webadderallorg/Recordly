@@ -190,9 +190,6 @@
 	.editor-header-end {
 		gap: 4px;
 	}
-	.editor-header-start > [role="separator"] {
-		margin-inline: 8px;
-	}
 	.editor-header .editor-header-icon-button {
 		width: 36px;
 		min-width: 36px;

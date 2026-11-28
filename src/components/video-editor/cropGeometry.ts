@@ -59,7 +59,7 @@ export function dragCrop(
 				? right - left
 				: (bottom - top) * r;
 		const max = Math.min(maxWidth, maxHeight * r);
-		const width = clamp(requestedWidth, Math.min(MIN, max), max);
+		const width = clamp(requestedWidth, Math.min(MIN, crop.width, max), max);
 		const height = width / r;
 		left = west ? ax - width : east ? ax : ax - width / 2;
 		right = left + width;

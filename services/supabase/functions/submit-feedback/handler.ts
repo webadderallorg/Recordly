@@ -7,8 +7,10 @@ const headers = {
 	"Access-Control-Allow-Methods": "POST, OPTIONS",
 	"Content-Type": "application/json",
 };
+export type FeedbackAccount = { id: string; email?: string };
+
 export interface FeedbackBackend {
-	authenticate(token: string): Promise<string | null>;
+	authenticate(token: string): Promise<FeedbackAccount | null>;
 	reserve(userId: string, files: number, bytes: number): Promise<boolean>;
 	upload(path: string, file: File): Promise<void>;
 	insert(report: Record<string, unknown>): Promise<void>;
@@ -17,8 +19,12 @@ export interface FeedbackBackend {
 }
 export const feedbackJson = (status: number, payload: object) =>
 	new Response(JSON.stringify(payload), { status, headers });
-const reply = (status: number, code?: string) =>
-	feedbackJson(status, code ? { code } : { success: true });
+const reply = (status: number, code: string) => feedbackJson(status, { code });
+
+export const feedbackReceipt = (replyEmail?: string | null) => ({
+	success: true,
+	...(replyEmail ? { replyEmail } : {}),
+});
 
 // Bound the actual body, not just the caller's Content-Length header.
 export async function readBoundedBody(request: Request, limit: number) {
@@ -89,8 +95,9 @@ export function feedbackHandler(backend: FeedbackBackend) {
 		if (!token) return reply(401, "SIGN_IN_REQUIRED");
 		const uploaded: string[] = [];
 		try {
-			const userId = await backend.authenticate(token);
-			if (!userId) return reply(401, "SIGN_IN_REQUIRED");
+			const account = await backend.authenticate(token);
+			if (!account) return reply(401, "SIGN_IN_REQUIRED");
+			const userId = account.id;
 			let form: FormData;
 			try {
 				form = await readForm(request);
@@ -124,14 +131,16 @@ export function feedbackHandler(backend: FeedbackBackend) {
 				uploaded.push(path);
 				metadata.push({ path, name: file.name, size: file.size, type: file.type });
 			}
+			const replyEmail = form.get("replyForAccountId") === userId ? account.email : undefined;
 			await backend.insert({
 				id,
 				user_id: userId,
 				...payload,
 				attachments: metadata,
+				...(replyEmail ? { reply_email: replyEmail } : {}),
 			});
 			await notifySavedFeedback(backend.notify, id);
-			return reply(200);
+			return feedbackJson(200, feedbackReceipt(replyEmail));
 		} catch {
 			if (uploaded.length) await backend.remove(uploaded).catch(() => undefined);
 			return reply(500, "SUBMISSION_FAILED");

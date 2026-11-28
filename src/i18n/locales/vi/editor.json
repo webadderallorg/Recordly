@@ -246,6 +246,7 @@
 		"savingVideo": "Đang lưu video…",
 		"errorCopied": "Đã sao chép thông báo lỗi",
 		"nvidiaCudaFallback": "Xuất bằng NVIDIA CUDA thất bại. Recordly đang thử chế độ xuất khác.",
+		"webcamOmitted": "Không đọc được bản ghi webcam, nên bản xuất này không có lớp phủ webcam.",
 		"errorCopyFailed": "Không sao chép được. Hãy chọn nội dung lỗi rồi sao chép thủ công.",
 		"copyError": "Sao chép lỗi"
 	},

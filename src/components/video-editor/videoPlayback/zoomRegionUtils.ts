@@ -164,7 +164,7 @@ function getConnectedRegionPairs(regions: ZoomRegion[], options: DominantRegionO
 			: DEFAULT_CONNECTED_ZOOM_GAP_MS;
 
 		if (
-			gapMs <= 0 ||
+			gapMs < 0 ||
 			gapMs > gapLimit ||
 			currentRegion.endMs <= currentRegion.startMs ||
 			nextRegion.endMs <= nextRegion.startMs
@@ -188,9 +188,12 @@ function getConnectedRegionPairs(regions: ZoomRegion[], options: DominantRegionO
 			options.connectedZoomDurationMs,
 			DEFAULT_CONNECTED_ZOOM_DURATION_MS,
 		);
-		// Connected pans belong to the gap, never to either zoom block.
-		const transitionStart = currentRegion.endMs;
-		const transitionEnd = Math.min(nextRegion.startMs, transitionStart + targetDurationMs);
+		// At a shared edge, use the tail of the outgoing block to reach the next framing.
+		const transitionEnd = Math.min(nextRegion.startMs, currentRegion.endMs + targetDurationMs);
+		const transitionStart =
+			gapMs === 0
+				? Math.max(currentRegion.startMs, transitionEnd - targetDurationMs)
+				: currentRegion.endMs;
 		if (transitionEnd <= transitionStart) continue;
 
 		pairs.push({

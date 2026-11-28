@@ -246,6 +246,7 @@
 		"encodingGif": "Finalizando GIF…",
 		"errorCopied": "Error copiado",
 		"nvidiaCudaFallback": "La exportación con NVIDIA CUDA falló. Recordly está probando otra forma de exportar.",
+		"webcamOmitted": "No se pudo leer la grabación de la cámara web, así que esta exportación no incluye la superposición de la cámara.",
 		"errorCopyFailed": "No se pudo copiar. Selecciona el texto del error y cópialo manualmente.",
 		"copyError": "Copiar error"
 	},

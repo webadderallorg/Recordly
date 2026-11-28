@@ -1,5 +1,6 @@
-import { ToggleButton, ToggleButtonGroup } from "@heroui/react";
+import { ToggleButton } from "@heroui/react";
 import { FilmSlate as Film, Image } from "@/components/ui/icons";
+import { SlidingToggleButtonGroup } from "@/components/ui/toggle-group";
 import { useScopedT } from "@/contexts/I18nContext";
 import type { ExportFormat } from "@/lib/exporter/types";
 
@@ -39,7 +40,7 @@ export function FormatSelector({
 	];
 
 	return (
-		<ToggleButtonGroup
+		<SlidingToggleButtonGroup
 			aria-label={t("format.title", "Export format")}
 			selectionMode="single"
 			disallowEmptySelection
@@ -62,6 +63,6 @@ export function FormatSelector({
 					<span className="text-xs opacity-70">{option.description}</span>
 				</ToggleButton>
 			))}
-		</ToggleButtonGroup>
+		</SlidingToggleButtonGroup>
 	);
 }

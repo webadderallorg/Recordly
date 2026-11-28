@@ -3,6 +3,7 @@ import { EyeSlash } from "@phosphor-icons/react";
 import { TextFormatIcon } from "@solar-icons/react/bold/text-format";
 import { type ReactNode, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { SlidingHighlight } from "@/components/ui/sliding-highlight";
 import { useScopedT } from "@/contexts/I18nContext";
 import type { AnnotationType } from "../types";
 
@@ -52,7 +53,7 @@ export function AnnotationToolbar({ disabled, onAdd }: Props) {
 				role="toolbar"
 				aria-label={te("annotationTools", "Annotation tools")}
 				aria-orientation="vertical"
-				className="flex flex-col items-center gap-1 rounded-2xl border border-foreground/5 bg-surface p-1 shadow-sm"
+				className="sliding-highlight-group flex flex-col items-center gap-1 rounded-2xl border border-foreground/5 bg-surface p-1 shadow-sm"
 				onKeyDown={(event) => {
 					if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
 					const buttons = Array.from(
@@ -73,6 +74,7 @@ export function AnnotationToolbar({ disabled, onAdd }: Props) {
 					buttons[next]?.focus();
 				}}
 			>
+				<SlidingHighlight items="button" />
 				{tools.map(({ type, label }) => (
 					<div
 						key={type}

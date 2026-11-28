@@ -121,6 +121,16 @@ export interface ExportFfmpegAudioMuxBreakdown {
 	}>;
 }
 
+/**
+ * A slower route that replaced a failed fast path inside one export. A successful
+ * export that needed one tells the runner to start on it next time on this device.
+ */
+export type ExportFallback =
+	| "webgl-renderer"
+	| "rawvideo-native"
+	| "webcodecs-encoder"
+	| "software-video-decode";
+
 export interface ExportBackendAttempt {
 	route: "native-stream" | "native-static-layout" | "webcodecs" | "media-source" | "renderer";
 	status: "attempted" | "selected" | "unavailable" | "failed" | "retry" | "skipped";
@@ -202,6 +212,8 @@ export interface ExportMetrics {
 	averageNativeWriteMs?: number;
 	effectiveDurationSec?: number;
 	finalizationStageMs?: ExportFinalizationStageMetrics;
+	/** Fallbacks this export needed, in the order they were taken. */
+	fallbacks?: ExportFallback[];
 }
 
 export interface ExportResult {

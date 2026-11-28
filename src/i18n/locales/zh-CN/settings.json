@@ -292,11 +292,11 @@
 		"right": "右",
 		"openEditor": "打开裁剪编辑器",
 		"details": "裁剪详情",
-		"inlineHint": "拖动边缘或角落 · 按住 Shift 以裁剪为正方形",
 		"aspectRatio": "宽高比",
 		"ratioWidth": "宽度",
 		"ratioHeight": "高度",
-		"ratioHint": "选择预设或输入自定义比例（1:20 到 20:1）。",
+		"ratioHint": "输入 1:20 到 20:1 之间的比例，例如 16:9。",
+		"customRatio": "自定义",
 		"freeform": "自由",
 		"pixelFields": "像素"
 	},

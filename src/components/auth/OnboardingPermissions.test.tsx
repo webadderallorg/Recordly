@@ -101,6 +101,8 @@ function render(onFinish = vi.fn()) {
 const alert = () => render().find((node) => node.props?.role === "alert");
 const allow = () =>
 	render().find((node) => node.props?.["aria-label"] === "allowPermission:screen")!;
+const openPrompt = () =>
+	render().find((node) => node.props?.["aria-label"] === "openPermissionPromptLabel:screen")!;
 beforeEach(() => {
 	state.slots = [];
 	state.effects = [];
@@ -124,6 +126,8 @@ beforeEach(() => {
 			getAccessibilityPermissionStatus: vi.fn(async () => ({ success: true, trusted: true })),
 			openScreenRecordingPreferences: vi.fn(async () => ({ success: false })),
 			openAccessibilityPreferences: vi.fn(async () => ({ success: true })),
+			preloadPermissionAccessories: vi.fn(async () => undefined),
+			requestRecordingPermissionPrompt: vi.fn(async () => ({ success: true })),
 		},
 	});
 });
@@ -163,13 +167,46 @@ it("keeps a failed permission request visible through successful status polls an
 	await vi.advanceTimersByTimeAsync(3000);
 	await flush();
 	expect(alert()?.props.children[0]).toBe("permissionFailed");
-	vi.mocked(window.electronAPI.openScreenRecordingPreferences).mockResolvedValue({
-		success: true,
-	});
-	allow().props.onPress();
+	openPrompt().props.onPress();
 	await flush();
 	expect(alert()).toBeUndefined();
 });
+it("shows Open prompt immediately while Allow is still opening System Settings", async () => {
+	let finishOpening!: (result: { success: boolean }) => void;
+	vi.mocked(window.electronAPI.openScreenRecordingPreferences).mockReturnValue(
+		new Promise((resolve) => {
+			finishOpening = resolve;
+		}),
+	);
+	vi.mocked(window.electronAPI.getAccessibilityPermissionStatus).mockResolvedValue({
+		success: true,
+		trusted: false,
+		prompted: false,
+	});
+	render();
+	await flush();
+	allow().props.onPress();
+	expect(window.electronAPI.preloadPermissionAccessories).toHaveBeenCalledExactlyOnceWith([
+		"screen",
+		"accessibility",
+	]);
+	expect(openPrompt().props.children).toBe("openPermissionPrompt");
+	expect(openPrompt().props.isDisabled).toBe(true);
+	expect(
+		render().some((node) => node.props?.["aria-label"] === "allowPermission:accessibility"),
+	).toBe(true);
+	expect(window.electronAPI.requestRecordingPermissionPrompt).not.toHaveBeenCalled();
+	finishOpening({ success: true });
+	await flush();
+	expect(openPrompt().props.isDisabled).toBe(false);
+	openPrompt().props.onPress();
+	await flush();
+	expect(window.electronAPI.requestRecordingPermissionPrompt).toHaveBeenCalledExactlyOnceWith(
+		"screen",
+	);
+	expect(window.electronAPI.openScreenRecordingPreferences).toHaveBeenCalledOnce();
+});
+
 it("opens Accessibility Settings directly and leaves finish locked until the grant is observed", async () => {
 	vi.mocked(window.electronAPI.getScreenRecordingPermissionStatus).mockResolvedValue({
 		success: true,
@@ -187,7 +224,6 @@ it("opens Accessibility Settings directly and leaves finish locked until the gra
 	);
 	await accessibility?.props.onPress();
 	expect(window.electronAPI.openAccessibilityPreferences).toHaveBeenCalledOnce();
-	expect(render().some((node) => node.props?.children === "permissionDragFallback")).toBe(true);
 	expect(render().find((node) => node.type === "primary")?.props.isDisabled).toBe(true);
 	vi.mocked(window.electronAPI.getAccessibilityPermissionStatus).mockResolvedValue({
 		success: true,
@@ -195,7 +231,6 @@ it("opens Accessibility Settings directly and leaves finish locked until the gra
 		prompted: false,
 	});
 	await vi.advanceTimersByTimeAsync(3000);
-	expect(render().some((node) => node.props?.children === "permissionDragFallback")).toBe(false);
 	expect(render().find((node) => node.type === "primary")?.props.isDisabled).toBe(false);
 });
 it("clears a stale failed-request report after status checks verify all permissions recovered", async () => {

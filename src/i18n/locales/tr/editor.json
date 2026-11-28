@@ -246,6 +246,7 @@
 		"savingVideo": "Video kaydediliyor…",
 		"errorCopied": "Hata kopyalandı",
 		"nvidiaCudaFallback": "NVIDIA CUDA ile dışa aktarma başarısız oldu. Recordly başka bir dışa aktarma yolu deniyor.",
+		"webcamOmitted": "Web kamerası kaydı okunamadı, bu nedenle bu dışa aktarma web kamerası katmanını içermiyor.",
 		"errorCopyFailed": "Kopyalanamadı. Hata metnini seçip manuel olarak kopyalayın.",
 		"copyError": "Hatayı kopyala"
 	},

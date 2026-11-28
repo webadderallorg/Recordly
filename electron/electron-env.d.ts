@@ -772,6 +772,10 @@ interface Window {
 		openScreenRecordingPreferences: (
 			preview?: boolean,
 		) => Promise<{ success: boolean; error?: string }>;
+		preloadPermissionAccessories: (permissions: ("screen" | "accessibility")[]) => Promise<void>;
+		requestRecordingPermissionPrompt: (
+			permission: "screen" | "accessibility",
+		) => Promise<{ success: boolean; error?: string }>;
 		startPermissionAccessoryDrag: () => Promise<{ success: boolean }>;
 		closePermissionAccessory: () => Promise<{ success: boolean }>;
 		openAccessibilityPreferences: (

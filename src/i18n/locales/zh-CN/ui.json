@@ -65,6 +65,8 @@
 	"clearFilters": "清除筛选",
 	"viewAll": "查看全部",
 	"importVideo": "导入视频",
+	"importFromClips": "从片段导入",
+	"importFromDevice": "从设备导入…",
 	"libraryNavigation": "资料库导航",
 	"originalRecordings": "原始录制",
 	"folders": "文件夹",

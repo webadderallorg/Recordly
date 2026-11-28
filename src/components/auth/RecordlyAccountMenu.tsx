@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ChatWarning } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SlidingHighlightGroup } from "@/components/ui/sliding-highlight";
 import type { SettingsSection } from "@/components/video-editor/SettingsSections";
 import { useI18n } from "@/contexts/I18nContext";
 import { signOutRecordly } from "@/lib/auth/recordlyAuth";
@@ -100,123 +101,127 @@ export function RecordlyAccountMenu({
 					aria-label={t("settings.account.menu", "Account menu")}
 					className="w-[280px] rounded-2xl border border-border bg-background p-2 shadow-xl"
 				>
-					<Button
-						variant="ghost"
-						className="h-auto w-full justify-start gap-3 rounded-xl p-3 text-left"
-						aria-label={t("settings.account.manage", "Manage account")}
-						onClick={() => {
-							setOpen(false);
-							setAccountOpen(true);
-						}}
-					>
-						<AccountAvatar user={user} className="size-9" />
-						<span className="min-w-0 flex-1">
-							<span className="block truncate text-sm font-medium">
-								{profile.name}
-							</span>
-							<span className="mt-1 block text-xs text-muted">
-								{billing.status?.billing.plan === "pro" ? (
-									<span aria-label={t("settings.account.plusPlan", "Plus plan")}>
-										<PlusBadge />
-									</span>
-								) : (
-									t("settings.account.yourAccount", "Your account")
-								)}
-							</span>
-						</span>
-					</Button>
-					<div className="my-2 border-t border-border" />
-					<Button
-						variant="ghost"
-						className="h-11 w-full justify-start gap-3 rounded-xl px-3 text-sm font-normal"
-						onClick={() => {
-							setOpen(false);
-							setFeedbackOpen(true);
-						}}
-					>
-						<ChatWarning weight="fill" className="size-5" />
-						{t("settings.account.feedback", "Feedback")}
-					</Button>
-					<Button
-						variant="ghost"
-						className="h-11 w-full justify-start gap-3 rounded-xl px-3 text-sm font-normal"
-						onClick={() => {
-							setOpen(false);
-							onSettings();
-						}}
-					>
-						<GearSix className="size-5" />
-						{t("settings.account.settings", "Settings")}
-					</Button>
-
-					<Button
-						variant="ghost"
-						className="h-11 w-full justify-start gap-3 rounded-xl px-3 text-sm font-normal"
-						onClick={() => {
-							setOpen(false);
-							onSettings("appearance");
-						}}
-					>
-						<Palette className="size-5" />
-						{t("settings.appPreferences.appearance", "Appearance")}
-					</Button>
-
-					<Button
-						variant="ghost"
-						className="h-11 w-full justify-start gap-3 rounded-xl px-3 text-sm font-normal"
-						disabled={openingRawFolder}
-						onClick={async () => {
-							if (openingRawFolder) return;
-							setOpeningRawFolder(true);
-							setError(undefined);
-							try {
-								const result = await window.electronAPI.openRecordingsFolder();
-								if (!result?.success) throw new Error("Open folder failed");
+					<SlidingHighlightGroup>
+						<Button
+							variant="ghost"
+							className="h-auto w-full justify-start gap-3 rounded-xl p-3 text-left"
+							aria-label={t("settings.account.manage", "Manage account")}
+							onClick={() => {
 								setOpen(false);
-							} catch {
-								setError(
-									t(
-										"settings.appPreferences.openFolderFailed",
-										"Could not open this folder.",
-									),
-								);
-							} finally {
-								setOpeningRawFolder(false);
-							}
-						}}
-					>
-						<FolderOpen className="size-5" />
-						{t("ui.openRawFiles", "Open raw folder")}
-					</Button>
-
-					<Button
-						variant="ghost"
-						className="h-11 w-full justify-start gap-3 rounded-xl px-3 text-sm font-normal"
-						disabled={busy}
-						onClick={async () => {
-							if (busy) return;
-							setBusy(true);
-							setError(undefined);
-							try {
-								await signOutRecordly();
+								setAccountOpen(true);
+							}}
+						>
+							<AccountAvatar user={user} className="size-9" />
+							<span className="min-w-0 flex-1">
+								<span className="block truncate text-sm font-medium">
+									{profile.name}
+								</span>
+								<span className="mt-1 block text-xs text-muted">
+									{billing.status?.billing.plan === "pro" ? (
+										<span
+											aria-label={t("settings.account.plusPlan", "Plus plan")}
+										>
+											<PlusBadge />
+										</span>
+									) : (
+										t("settings.account.yourAccount", "Your account")
+									)}
+								</span>
+							</span>
+						</Button>
+						<div className="my-2 border-t border-border" />
+						<Button
+							variant="ghost"
+							className="h-11 w-full justify-start gap-3 rounded-xl px-3 text-sm font-normal"
+							onClick={() => {
 								setOpen(false);
-							} catch {
-								setError(t("support.signOutFailure"));
-							} finally {
-								setBusy(false);
-							}
-						}}
-					>
-						<SignOut className="size-5" />
-						{busy
-							? t("settings.account.loggingOut", "Logging out…")
-							: t("settings.account.logOut", "Log out")}
-					</Button>
-					{error && (
-						<p role="alert" className="px-3 py-2 text-xs text-danger">
-							{error} <ErrorReportButton error={error} />
-						</p>
-					)}
+								setFeedbackOpen(true);
+							}}
+						>
+							<ChatWarning weight="fill" className="size-5" />
+							{t("settings.account.feedback", "Feedback")}
+						</Button>
+						<Button
+							variant="ghost"
+							className="h-11 w-full justify-start gap-3 rounded-xl px-3 text-sm font-normal"
+							onClick={() => {
+								setOpen(false);
+								onSettings();
+							}}
+						>
+							<GearSix className="size-5" />
+							{t("settings.account.settings", "Settings")}
+						</Button>
+
+						<Button
+							variant="ghost"
+							className="h-11 w-full justify-start gap-3 rounded-xl px-3 text-sm font-normal"
+							onClick={() => {
+								setOpen(false);
+								onSettings("appearance");
+							}}
+						>
+							<Palette className="size-5" />
+							{t("settings.appPreferences.appearance", "Appearance")}
+						</Button>
+
+						<Button
+							variant="ghost"
+							className="h-11 w-full justify-start gap-3 rounded-xl px-3 text-sm font-normal"
+							disabled={openingRawFolder}
+							onClick={async () => {
+								if (openingRawFolder) return;
+								setOpeningRawFolder(true);
+								setError(undefined);
+								try {
+									const result = await window.electronAPI.openRecordingsFolder();
+									if (!result?.success) throw new Error("Open folder failed");
+									setOpen(false);
+								} catch {
+									setError(
+										t(
+											"settings.appPreferences.openFolderFailed",
+											"Could not open this folder.",
+										),
+									);
+								} finally {
+									setOpeningRawFolder(false);
+								}
+							}}
+						>
+							<FolderOpen className="size-5" />
+							{t("ui.openRawFiles", "Open raw folder")}
+						</Button>
+
+						<Button
+							variant="ghost"
+							className="h-11 w-full justify-start gap-3 rounded-xl px-3 text-sm font-normal"
+							disabled={busy}
+							onClick={async () => {
+								if (busy) return;
+								setBusy(true);
+								setError(undefined);
+								try {
+									await signOutRecordly();
+									setOpen(false);
+								} catch {
+									setError(t("support.signOutFailure"));
+								} finally {
+									setBusy(false);
+								}
+							}}
+						>
+							<SignOut className="size-5" />
+							{busy
+								? t("settings.account.loggingOut", "Logging out…")
+								: t("settings.account.logOut", "Log out")}
+						</Button>
+						{error && (
+							<p role="alert" className="px-3 py-2 text-xs text-danger">
+								{error} <ErrorReportButton error={error} />
+							</p>
+						)}
+					</SlidingHighlightGroup>
 				</PopoverContent>
 			</Popover>
 			<FeedbackDialog

@@ -22,10 +22,12 @@ export async function runModernExport(session: Session, hooks: Hooks): Promise<E
 		inNativeStage: false,
 		inRendererStage: false,
 	};
-	session.native.forceRawvideoNativeRetry = false;
+	// A device that needed raw frames last time starts there instead of rediscovering it.
+	session.native.forceRawvideoNativeRetry = session.config.preferRawvideoNative === true;
 	session.metrics.mediaSourceRetryAttempted = false;
 	session.metrics.diagnosticStartedAt = getNowMs();
 	session.metrics.backendAttempts = [];
+	session.metrics.fallbacks.clear();
 	session.config.onStage?.("collect-runtime-diagnostics");
 	session.metrics.runtimeDiagnostics = await hooks.collectRuntimeDiagnostics();
 	if (session.cancelled) {
@@ -52,6 +54,7 @@ export async function runModernExport(session: Session, hooks: Hooks): Promise<E
 				// Renderer initialization can succeed before a bind group fails on the first frame.
 				// Rebuild the whole pipeline: frames and GPU resources cannot be reused safely.
 				control.retryWithWebgl = true;
+				session.metrics.recordFallback("webgl-renderer");
 				retryExport = true;
 				session.metrics.recordBackendAttempt({
 					route: "renderer",
@@ -69,6 +72,7 @@ export async function runModernExport(session: Session, hooks: Hooks): Promise<E
 				(control.inNativeStage || session.native.nativeEncoderError)
 			) {
 				session.native.forceRawvideoNativeRetry = true;
+				session.metrics.recordFallback("rawvideo-native");
 				retryExport = true;
 				session.metrics.recordBackendAttempt({
 					route: "native-stream",
@@ -87,6 +91,7 @@ export async function runModernExport(session: Session, hooks: Hooks): Promise<E
 				control.nativeFailure = hooks.buildLightningExportError(
 					session.native.nativeEncoderError ?? error,
 				);
+				session.metrics.recordFallback("webcodecs-encoder");
 				console.error(
 					"[VideoExporter] Native export failed; restarting once with WebCodecs.\n" +
 						control.nativeFailure,

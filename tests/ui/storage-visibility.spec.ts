@@ -52,12 +52,14 @@ for (const storageBytes of [
 		await expect(sidebar.getByText("Loading usage…")).toHaveCount(0);
 		await expect(sidebar.getByText("Cloud recordings", { exact: true })).toHaveCount(0);
 		await expect(sidebar.getByLabel("Cloud usage", { exact: true })).toHaveCount(0);
-		await expect(navigation.getByRole("button", { name: "Upgrade", exact: true })).toHaveCount(0);
+		await expect(navigation.getByRole("button", { name: "Upgrade", exact: true })).toHaveCount(
+			0,
+		);
 	});
 }
 
 for (const signedIn of [false, true]) {
-	test(`${signedIn ? "Free" : "Signed-out"} library header upgrade fits and relocated socials open through Feedback`, async ({
+	test(`${signedIn ? "Free" : "Signed-out"} library header upgrade fits and opens Feedback`, async ({
 		page,
 	}) => {
 		await installDesktopBridge(page, "preview.mp4", { signedIn, onboarded: true });
@@ -82,10 +84,6 @@ for (const signedIn of [false, true]) {
 					storageLimitBytes: 100_000_000_000,
 				},
 			});
-			window.electronAPI.openExternalUrl = async (url: string) => {
-				document.documentElement.dataset.openedExternalUrl = url;
-				return { success: true };
-			};
 		});
 		await page.goto("/?windowType=editor");
 		await page.getByRole("button", { name: "Home", exact: true }).click();
@@ -104,25 +102,16 @@ for (const signedIn of [false, true]) {
 			const upgrade = dashboard.getByRole("button", { name: "Upgrade", exact: true });
 			await expect(upgrade).toHaveCount(1);
 			await expect(upgrade).toBeInViewport({ ratio: 1 });
-			await expect(navigation.getByRole("button", { name: "Upgrade", exact: true })).toHaveCount(0);
+			await expect(
+				navigation.getByRole("button", { name: "Upgrade", exact: true }),
+			).toHaveCount(0);
 		}
 		await navigation.getByRole("button", { name: "Feedback", exact: true }).click();
 		const feedback = page.getByRole("dialog", { name: "Send feedback", exact: true });
 		await expect(feedback).toBeVisible();
-		await feedback.getByRole("button", { name: "Socials", exact: true }).click();
-		const socials = page.getByRole("dialog", { name: "Socials", exact: true });
-		for (const { name, url } of [
-			{ name: "Join Discord", url: "https://discord.gg/sdv2FBVNgE" },
-			{ name: "GitHub", url: "https://github.com/webadderallorg/Recordly" },
-		]) {
-			const link = socials.getByRole("button", { name, exact: true });
-			await expect(link).toBeVisible();
-			await link.click();
-			await expect(page.locator("html")).toHaveAttribute("data-opened-external-url", url);
-		}
-		await page.keyboard.press("Escape");
-		await expect(socials).toHaveCount(0);
-		await expect(feedback).toBeVisible();
+		await expect(
+			feedback.getByRole("button", { name: /^(Contact|Socials|Join Discord)$/ }),
+		).toHaveCount(0);
 		await page.keyboard.press("Escape");
 		await expect(feedback).toHaveCount(0);
 		await navigation.getByRole("button", { name: "Settings", exact: true }).click();

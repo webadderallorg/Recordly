@@ -1,6 +1,6 @@
 import type { SpeedRegion, TrimRegion } from "@/components/video-editor/types";
 import { decodeVideoStreamAttempt } from "./streamingDecodeAttempt";
-import { buildVideoDecodeRecoveryFailure } from "./streamingDecoderSupport";
+import { buildVideoDecodeRecoveryFailure, isDecodedFrameTimeout } from "./streamingDecoderSupport";
 import type {
 	DecodeReadWindow,
 	OnFrameCallback,
@@ -8,6 +8,10 @@ import type {
 } from "./streamingDecodeTypes";
 
 import { type VideoSegment } from "./videoTimelineSegments";
+
+/** Decoder failures that a software decoder can plausibly get past. */
+const SOFTWARE_REPLAYABLE_FAILURE =
+	/^\[VIDEO_DECODE_ENCODING_ERROR\]|^\[VIDEO_DECODER_RESOURCE_EXHAUSTED\]/;
 
 export async function decodeVideoStream(
 	context: StreamingDecodeContext,
@@ -37,6 +41,7 @@ export async function decodeVideoStream(
 			},
 			segmentsOverride,
 			readWindow,
+			context.forceSoftwareDecode === true,
 		);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -45,12 +50,13 @@ export async function decodeVideoStream(
 		// and renderer/encoder callback failures must propagate without replay.
 		if (
 			context.cancelled ||
+			context.forceSoftwareDecode === true ||
 			!context.demuxer ||
 			callbackFailed ||
 			context.decoder !== null ||
 			codec.includes("av01") ||
 			codec.includes("av1") ||
-			!/^\[VIDEO_DECODE_ENCODING_ERROR\]|^\[VIDEO_DECODER_RESOURCE_EXHAUSTED\]/.test(message)
+			(!SOFTWARE_REPLAYABLE_FAILURE.test(message) && !isDecodedFrameTimeout(error))
 		) {
 			throw error;
 		}
@@ -75,6 +81,7 @@ export async function decodeVideoStream(
 				readWindow,
 				true,
 			);
+			if (!context.cancelled) context.onSoftwareDecodeFallback?.();
 		} catch (softwareError) {
 			const softwareMessage =
 				softwareError instanceof Error ? softwareError.message : String(softwareError);

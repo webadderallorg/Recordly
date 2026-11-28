@@ -2,6 +2,7 @@ import { Dropdown } from "@heroui/react";
 import { Globe } from "@phosphor-icons/react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { SlidingDropdownMenu } from "@/components/ui/dropdown-menu";
 import { Check, DotsThree, FolderSimple, Plus } from "@/components/ui/icons";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { CloudShareButton } from "../cloud/CloudShareButton";
@@ -275,7 +276,7 @@ export function ProjectCard({
 										{uiText("ui.addFolder")}
 									</Button>
 									<Dropdown.Popover>
-										<Dropdown.Menu
+										<SlidingDropdownMenu
 											aria-label={uiText("ui.assignProjectFolder")}
 										>
 											{folders.map((item) => (
@@ -312,7 +313,7 @@ export function ProjectCard({
 													{uiText("ui.createAFolderInTheSidebar")}
 												</Dropdown.Item>
 											)}
-										</Dropdown.Menu>
+										</SlidingDropdownMenu>
 									</Dropdown.Popover>
 								</Dropdown>
 							</>
@@ -329,7 +330,7 @@ export function ProjectCard({
 						<DotsThree weight="bold" className="size-5" />
 					</Button>
 					<Dropdown.Popover>
-						<Dropdown.Menu aria-label={uiText("ui.projectOptions")}>
+						<SlidingDropdownMenu aria-label={uiText("ui.projectOptions")}>
 							<Dropdown.Item
 								id="open"
 								isDisabled={Boolean(webUrl) && !webReady}
@@ -406,7 +407,7 @@ export function ProjectCard({
 											: uiText("ui.deleteProject")}
 								</Dropdown.Item>
 							)}
-						</Dropdown.Menu>
+						</SlidingDropdownMenu>
 					</Dropdown.Popover>
 				</Dropdown>
 			</div>

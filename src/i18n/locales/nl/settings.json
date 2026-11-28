@@ -292,11 +292,11 @@
 		"right": "Rechts",
 		"openEditor": "Bijsnijdeditor openen",
 		"details": "Bijsnijddetails",
-		"inlineHint": "Sleep randen of hoeken · Houd Shift ingedrukt voor een vierkant",
 		"aspectRatio": "Beeldverhouding",
 		"ratioWidth": "Breedte",
 		"ratioHeight": "Hoogte",
-		"ratioHint": "Kies een voorinstelling of voer een eigen verhouding in (1:20 tot 20:1).",
+		"ratioHint": "Voer een verhouding van 1:20 tot 20:1 in, bijvoorbeeld 16:9.",
+		"customRatio": "Aangepast",
 		"freeform": "Vrij",
 		"pixelFields": "Pixels"
 	},

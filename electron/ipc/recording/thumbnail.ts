@@ -9,10 +9,13 @@ import { resolveApprovedLocalMediaPath } from "../project/manager";
 import { getRecordingsDir } from "../utils";
 
 const run = promisify(execFile);
+const THUMBNAIL_FILTER =
+	"scale=384:216:force_original_aspect_ratio=increase:flags=lanczos,crop=384:216";
+const THUMBNAIL_QUALITY = "3";
 const pending = new Map<string, Promise<string>>();
 let queue = Promise.resolve();
 
-/** Decode one small still, never a video player per library row. */
+/** Decode one still per recording for the library. */
 export async function getRecordingThumbnail(candidate: string): Promise<string> {
 	const root = await fs.realpath(await getRecordingsDir());
 	const file = await resolveApprovedLocalMediaPath(candidate);
@@ -20,7 +23,11 @@ export async function getRecordingThumbnail(candidate: string): Promise<string> 
 		throw new Error("Recording is outside the Videos library");
 	const stat = await fs.stat(file);
 	if (!stat.isFile()) throw new Error("Recording is not a file");
-	const key = createHash("sha256").update(`${file}:${stat.mtimeMs}:${stat.size}`).digest("hex");
+	const key = createHash("sha256")
+		.update(
+			JSON.stringify([file, stat.mtimeMs, stat.size, THUMBNAIL_FILTER, THUMBNAIL_QUALITY]),
+		)
+		.digest("hex");
 	const existing = pending.get(key);
 	if (existing) return existing;
 	const cache = path.join(app.getPath("userData"), "recording-thumbnails", `${key}.jpg`);
@@ -46,9 +53,9 @@ export async function getRecordingThumbnail(candidate: string): Promise<string> 
 						"1",
 						"-an",
 						"-vf",
-						"scale=160:90:force_original_aspect_ratio=increase,crop=160:90",
+						THUMBNAIL_FILTER,
 						"-q:v",
-						"5",
+						THUMBNAIL_QUALITY,
 						"-f",
 						"image2pipe",
 						"-c:v",

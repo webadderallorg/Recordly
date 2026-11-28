@@ -9,9 +9,11 @@ const mocks = vi.hoisted(() => ({
 	sources: vi.fn(),
 	open: vi.fn(),
 	accessory: vi.fn(),
+	preload: vi.fn(),
 }));
 vi.mock("./permissionAccessory", () => ({
 	showPermissionAccessory: mocks.accessory,
+	preloadPermissionAccessories: mocks.preload,
 	startPermissionAccessoryDrag: vi.fn(),
 	dismissPermissionAccessory: vi.fn(),
 }));
@@ -55,6 +57,43 @@ beforeEach(() => {
 });
 it("does not prompt or open settings merely by registering permission handlers", () => {
 	expect(mocks.sources).not.toHaveBeenCalled();
+	expect(mocks.open).not.toHaveBeenCalled();
+});
+
+it("preloads panels only for trusted renderers without opening settings or prompting", async () => {
+	const preload = mocks.handlers.get("preload-permission-accessories")!;
+	const event = settingsEvent();
+	await preload(settingsEvent("https://example.com/"), ["screen"]);
+	await preload(event, ["camera"]);
+	await preload(event, ["screen", "accessibility"]);
+	expect(mocks.preload).toHaveBeenCalledExactlyOnceWith(event.sender, [
+		"screen",
+		"accessibility",
+	]);
+	expect(mocks.open).not.toHaveBeenCalled();
+	expect(mocks.sources).not.toHaveBeenCalled();
+	expect(mocks.accessibility).not.toHaveBeenCalled();
+});
+
+it("uses the native macOS prompt for the selected missing permission", async () => {
+	const request = mocks.handlers.get("request-recording-permission-prompt")!;
+	const event = settingsEvent();
+	mocks.status.mockReturnValue("denied");
+	mocks.sources.mockRejectedValueOnce(new Error("Permission pending"));
+	expect(await request(settingsEvent("https://example.com/"), "screen")).toEqual({
+		success: false,
+	});
+	expect(await request(event, "camera")).toEqual({ success: false });
+	expect(await request(event, "screen")).toEqual({ success: true });
+	expect(mocks.sources).toHaveBeenCalledExactlyOnceWith({
+		types: ["screen"],
+		thumbnailSize: { width: 0, height: 0 },
+	});
+	mocks.status.mockReturnValue("granted");
+	await request(event, "screen");
+	expect(mocks.sources).toHaveBeenCalledOnce();
+	expect(await request(event, "accessibility")).toEqual({ success: true });
+	expect(mocks.accessibility).toHaveBeenCalledExactlyOnceWith(true);
 	expect(mocks.open).not.toHaveBeenCalled();
 });
 

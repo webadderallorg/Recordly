@@ -246,6 +246,7 @@
 		"encodingGif": "GIF を仕上げ中…",
 		"errorCopied": "エラーをコピーしました",
 		"nvidiaCudaFallback": "NVIDIA CUDA での書き出しに失敗しました。Recordly は別の書き出し方法を試しています。",
+		"webcamOmitted": "Webカメラの録画を読み込めなかったため、この書き出しにはWebカメラのオーバーレイが含まれていません。",
 		"errorCopyFailed": "コピーできませんでした。エラーテキストを選択して手動でコピーしてください。",
 		"copyError": "エラーをコピー"
 	},

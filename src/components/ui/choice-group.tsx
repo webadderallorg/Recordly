@@ -1,5 +1,14 @@
 import { Tag, TagGroup } from "@heroui/react";
 import type { ComponentProps, ReactNode } from "react";
+import { SlidingHighlightGroup } from "./sliding-highlight";
+
+export function SlidingTagList(props: ComponentProps<typeof TagGroup.List>) {
+	return (
+		<SlidingHighlightGroup items=".tag" selection>
+			<TagGroup.List {...props} />
+		</SlidingHighlightGroup>
+	);
+}
 
 /** Mutually exclusive settings, with HeroUI's keyboard-accessible tag selection. */
 export function ChoiceGroup({
@@ -35,9 +44,9 @@ export function ChoiceGroup({
 				}
 			}}
 		>
-			<TagGroup.List className={className ?? "flex flex-wrap gap-2"}>
+			<SlidingTagList className={className ?? "flex flex-wrap gap-2"}>
 				{children}
-			</TagGroup.List>
+			</SlidingTagList>
 		</TagGroup>
 	);
 }

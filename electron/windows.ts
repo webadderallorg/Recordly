@@ -27,6 +27,7 @@ import {
 	recordAppProcessDiagnostic,
 	startMainDiagnosticOperation,
 } from "./ipc/register/exportDiagnostics";
+import { preloadMissingPermissionAccessories } from "./ipc/register/permissionAccessory";
 import {
 	currentProjectPath,
 	currentRecordingSession,
@@ -1463,6 +1464,17 @@ export function showOnboardingWindow(options?: {
 			: {}),
 	};
 	const load = (win: BrowserWindow, query: Record<string, string>) => {
+		if (process.platform === "darwin" && query.windowType === "onboarding") {
+			// Start alongside the welcome renderer. Later navigation releases the warm panel.
+			const preloadPanels = (
+				event: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>,
+			) => {
+				if (!event.isMainFrame || event.isSameDocument) return;
+				win.webContents.removeListener("did-start-navigation", preloadPanels);
+				preloadMissingPermissionAccessories(win.webContents);
+			};
+			win.webContents.on("did-start-navigation", preloadPanels);
+		}
 		if (VITE_DEV_SERVER_URL) {
 			void win
 				.loadURL(`${VITE_DEV_SERVER_URL}?${new URLSearchParams(query)}`)

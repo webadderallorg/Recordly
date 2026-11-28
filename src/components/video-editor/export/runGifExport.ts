@@ -4,6 +4,7 @@ import { buildExportRenderOptions } from "./buildExportRenderOptions";
 import type { ExportBranchContext, ExportBranchOutcome } from "./exportBranchContext";
 import { getExportFileName } from "./exportFileName";
 import { saveExportBlob, streamExportBlobToTempFile } from "./exportPersistence";
+import { trackOmittedExportLayers } from "./exportRunnerSupport";
 export async function runGifExport(context: ExportBranchContext): Promise<ExportBranchOutcome> {
 	const {
 		input,
@@ -46,6 +47,7 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 	diagnostics.beginAttempt("gif");
 	const { GifExporter } = await import("@/lib/exporter/gifExporter");
 	if (exportWasCancelled()) return { exit: true };
+	const omittedLayers = trackOmittedExportLayers(diagnostics.record);
 	const gifExporter = new GifExporter({
 		videoUrl: videoPath,
 		width: settings.gifConfig.width,
@@ -54,7 +56,7 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 		loop: settings.gifConfig.loop,
 		sizePreset: settings.gifConfig.sizePreset,
 		onStage: diagnostics.stage,
-		onDiagnostic: diagnostics.record,
+		onDiagnostic: omittedLayers.onDiagnostic,
 		...buildExportRenderOptions({
 			appearance,
 			timeline,
@@ -81,6 +83,7 @@ export async function runGifExport(context: ExportBranchContext): Promise<Export
 	const result = await gifExporter.export();
 	diagnostics.result(result);
 	if (exportWasCancelled()) return { exit: true };
+	omittedLayers.warnIfOmitted(result);
 
 	if (result.success && result.blob) {
 		let exportBlob = result.blob;

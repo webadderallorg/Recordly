@@ -292,11 +292,11 @@
 		"right": "오른쪽",
 		"openEditor": "자르기 편집기 열기",
 		"details": "자르기 세부 정보",
-		"inlineHint": "가장자리나 모서리 드래그 · 정사각형은 Shift 누르기",
 		"aspectRatio": "종횡비",
 		"ratioWidth": "너비",
 		"ratioHeight": "높이",
-		"ratioHint": "프리셋을 선택하거나 원하는 비율을 입력하세요(1:20~20:1).",
+		"ratioHint": "1:20부터 20:1까지의 비율을 입력하세요(예: 16:9).",
+		"customRatio": "사용자 지정",
 		"freeform": "자유형",
 		"pixelFields": "픽셀"
 	},

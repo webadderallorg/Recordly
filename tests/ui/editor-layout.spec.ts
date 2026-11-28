@@ -1,5 +1,146 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
+
+async function recordHighlightMotion(page: Page) {
+	await page.evaluate(() => {
+		const animate = Element.prototype.animate;
+		Element.prototype.animate = function (...args) {
+			if (this.classList.contains("sliding-highlight")) {
+				const options = args[1];
+				const id = typeof options === "object" ? options.id : undefined;
+				if (id === "highlight-enter" || id === "highlight-slide") {
+					const counter =
+						id === "highlight-enter" ? "data-enter-count" : "data-slide-count";
+					this.setAttribute(counter, String(Number(this.getAttribute(counter)) + 1));
+				}
+			}
+			return animate.apply(this, args);
+		};
+	});
+}
+
+test("the highlight slides only between neighboring timeline controls and Add menu items", async ({
+	page,
+}) => {
+	await installDesktopBridge(page);
+	await page.goto("/?windowType=editor");
+	await recordHighlightMotion(page);
+	const tools = page.locator(".editor-playback-tools");
+	const toolbarHighlight = tools.locator(".sliding-highlight");
+	const add = tools.getByRole("button", { name: "Add", exact: true });
+	await expect(add).toBeVisible({ timeout: 20000 });
+	await add.hover();
+	await expect(toolbarHighlight).toHaveAttribute("data-visible", "");
+	await expect(toolbarHighlight).toHaveAttribute("data-enter-count", "1");
+	await expect(toolbarHighlight).not.toHaveAttribute("data-slide-count");
+	await tools.getByRole("button", { name: /^Add Zoom/ }).hover();
+	await expect(toolbarHighlight).toHaveAttribute("data-slide-count", "1");
+	await tools.getByRole("button", { name: "Suggest Zooms from Cursor" }).hover();
+	await expect(toolbarHighlight).toHaveAttribute("data-slide-count", "1");
+	await expect(toolbarHighlight).toHaveAttribute("data-enter-count", "2");
+
+	await add.click();
+	const menu = page.getByRole("menu");
+	const menuHighlight = menu.locator("..").locator(".sliding-highlight");
+	await menu.getByRole("menuitem", { name: "Import from Clips" }).hover();
+	await expect(menuHighlight).toHaveAttribute("data-visible", "");
+	await expect(menuHighlight).toHaveAttribute("data-enter-count", "1");
+	await menu.getByRole("menuitem", { name: "Import from device…" }).hover();
+	await expect(menuHighlight).toHaveAttribute("data-slide-count", "1");
+	await page.keyboard.press("ArrowDown");
+	await expect(menu.getByRole("menuitem", { name: "Annotation" })).toBeFocused();
+	await expect(menuHighlight).toHaveAttribute("data-slide-count", "2");
+
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	await page.keyboard.press("ArrowDown");
+	const audio = menu.getByRole("menuitem", { name: "Audio", exact: true });
+	await expect(audio).toBeFocused();
+	await expect(menuHighlight).toHaveAttribute("data-slide-count", "2");
+	const [highlightBounds, audioBounds] = await Promise.all([
+		menuHighlight.boundingBox(),
+		audio.boundingBox(),
+	]);
+	expect(highlightBounds!.y).toBeCloseTo(audioBounds!.y, 0);
+	await page.keyboard.press("Escape");
+	await expect(add).toBeFocused();
+});
+
+test("the same highlight follows editor choices, Settings tabs and Home sort options", async ({
+	page,
+}) => {
+	await installDesktopBridge(page);
+	await page.goto("/?windowType=editor");
+	await recordHighlightMotion(page);
+
+	const editorTools = page.getByRole("navigation", { name: "Editor tools" });
+	const railHighlight = editorTools.locator('.sliding-highlight[data-selection="true"]');
+	const railPreview = editorTools.locator(".sliding-highlight[data-preview]");
+	const scene = editorTools.getByRole("radio", { name: "Scene" });
+	const cursor = editorTools.getByRole("radio", { name: "Cursor" });
+	await expect(scene).toBeChecked({
+		timeout: 45000,
+	});
+	const presets = editorTools.getByRole("button", { name: "Open presets", exact: true });
+	const settingsButton = editorTools.getByRole("button", { name: "Settings", exact: true });
+	const footer = editorTools.locator(".sliding-highlight-group").filter({
+		has: page.getByRole("button", { name: "Open presets", exact: true }),
+	});
+	await expect(
+		page.locator(".editor-header").getByRole("button", { name: "Open presets" }),
+	).toHaveCount(0);
+	const [presetsBounds, dividerBounds, settingsBounds] = await Promise.all([
+		presets.boundingBox(),
+		footer.getByRole("separator").boundingBox(),
+		settingsButton.boundingBox(),
+	]);
+	expect(dividerBounds!.y).toBeGreaterThan(presetsBounds!.y + presetsBounds!.height);
+	expect(settingsBounds!.y).toBeGreaterThan(dividerBounds!.y + dividerBounds!.height);
+	const footerGap = settingsBounds!.y - presetsBounds!.y - presetsBounds!.height;
+	expect(footerGap).toBeGreaterThan(16);
+	expect(footerGap).toBeLessThanOrEqual(32);
+	await presets.hover();
+	await settingsButton.hover();
+	await expect(footer.locator(".sliding-highlight")).toHaveAttribute("data-slide-count", "1");
+	await presets.click();
+	await expect(page.getByRole("dialog", { name: "Presets", exact: true })).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(presets).toBeFocused();
+	await expect(page.locator("[data-wallpaper-glass-theme] .sliding-highlight")).toHaveCount(0);
+
+	await expect(railHighlight).toHaveAttribute("data-visible", "");
+	await cursor.hover();
+	await expect(railPreview).toHaveAttribute("data-enter-count", "1");
+	await expect(cursor).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+	await editorTools.getByRole("radio", { name: "Webcam" }).hover();
+	await expect(railPreview).toHaveAttribute("data-slide-count", "1");
+	await expect(scene).toBeChecked();
+	await cursor.click();
+	await expect(railHighlight).toHaveAttribute("data-slide-count", "1");
+	await expect(cursor).toBeChecked();
+	await expect(railPreview).not.toHaveAttribute("data-visible");
+	await editorTools.getByRole("radio", { name: "Captions" }).click();
+	await expect(railHighlight).toHaveAttribute("data-enter-count", "1");
+
+	await settingsButton.click();
+	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+	const tabs = settings.getByRole("tablist", { name: "Settings sections" });
+	const tabHighlight = tabs.locator("..").locator(".sliding-highlight[data-selection]");
+	await expect(tabHighlight).toHaveAttribute("data-visible", "");
+	const tab = tabs.getByRole("tab", { selected: true });
+	await tab.press("ArrowDown");
+	await expect(tabHighlight).toHaveAttribute("data-slide-count", "1");
+	await page.keyboard.press("Escape");
+
+	await page.getByRole("button", { name: "Home", exact: true }).click();
+	await page.getByRole("button", { name: "Sort projects" }).click();
+	const sortMenu = page.getByRole("menu", { name: "Sort projects" });
+	const sortOptions = sortMenu.getByRole("menuitemradio");
+	const sortHighlight = sortMenu.locator("..").locator(".sliding-highlight");
+	await sortOptions.first().hover();
+	await expect(sortHighlight).toHaveAttribute("data-visible", "");
+	await sortOptions.nth(1).hover();
+	await expect(sortHighlight).toHaveAttribute("data-slide-count", "1");
+});
 
 test("advanced controls preserve values and remember each section's view", async ({ page }) => {
 	await installDesktopBridge(page);
@@ -121,8 +262,7 @@ test("header breadcrumb fits long names, native chrome and compact windows", asy
 			expect(left!.x + left!.width).toBeLessThanOrEqual(right!.x);
 			expect(center!.x + center!.width).toBeLessThanOrEqual(right!.x);
 			expect(center!.width).toBeGreaterThanOrEqual(120);
-			const clips = await page.getByRole("button", { name: "Clips", exact: true }).boundingBox();
-			expect(clips!.x + clips!.width).toBeLessThanOrEqual(right!.x);
+			await expect(page.getByRole("button", { name: "Clips", exact: true })).toHaveCount(0);
 			const buttons = await page.locator(".editor-playback button").evaluateAll((nodes) =>
 				nodes
 					.filter((n) => n.getBoundingClientRect().width > 0)

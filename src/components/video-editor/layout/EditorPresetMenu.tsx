@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { BookmarkSimple, CaretDown, Check, Pen, Plus, Trash } from "@/components/ui/icons";
+import { BookmarkSimple, Check, Pen, Plus, Trash } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
+import { SlidingHighlightGroup } from "@/components/ui/sliding-highlight";
 import type { useI18n } from "@/contexts/I18nContext";
 import type { useVideoEditorPresets } from "../presets/useVideoEditorPresets";
 
@@ -31,6 +32,7 @@ function PresetOption({
 		<Button
 			type="button"
 			variant={current ? "secondary" : "ghost"}
+			data-preset-option
 			size="sm"
 			aria-current={current || undefined}
 			className="h-8 w-full min-w-0 justify-start gap-2 px-2.5 text-sm"
@@ -107,19 +109,14 @@ export function EditorPresetMenu({ t, presets }: Props) {
 				<Button
 					variant="ghost"
 					type="button"
-					title={t("editor.presets.open", "Open presets")}
-					className="editor-header-icon-button h-9 shrink-0 gap-1.5 px-2.5 text-xs"
+					size="icon"
+					aria-label={t("editor.presets.open", "Open presets")}
 				>
-					<BookmarkSimple className="size-4 shrink-0" weight="fill" aria-hidden="true" />
-					<span className="editor-header-button-label">{label}</span>
-					<CaretDown
-						className="editor-header-button-label size-3 shrink-0"
-						aria-hidden="true"
-					/>
+					<BookmarkSimple className="size-5" weight="fill" aria-hidden="true" />
 				</Button>
 			</PopoverTrigger>
 
-			<PopoverContent align="end" aria-label={label} className="w-[272px] p-2">
+			<PopoverContent side="right" align="end" aria-label={label} className="w-[272px] p-2">
 				{view.kind === "delete" ? (
 					<div className="space-y-3 p-2">
 						<h3 className="break-words text-sm font-medium">
@@ -167,70 +164,79 @@ export function EditorPresetMenu({ t, presets }: Props) {
 							</>
 						)}
 						{editorPresets.length > 0 && (
-							<ul
-								aria-label={t("editor.presets.savedList", "Saved presets")}
-								className="custom-scrollbar max-h-56 space-y-0.5 overflow-y-auto overscroll-contain"
-							>
-								{editorPresets.map(({ id, name: presetName }) => {
-									const current = id === currentEditorPreset?.id;
-									return (
-										<li key={id} className="flex min-w-0 items-center gap-1">
-											{editing ? (
-												<>
-													<span
-														className="min-w-0 flex-1 truncate px-2.5 text-sm"
-														title={presetName}
-													>
-														{presetName}
-													</span>
-													<Button
-														ref={(button) => {
-															if (button)
-																deleteButtons.current.set(
-																	id,
-																	button,
-																);
-															else deleteButtons.current.delete(id);
-														}}
-														type="button"
-														variant="destructive-soft"
-														size="icon"
-														className="size-8 min-w-8 shrink-0 p-0"
-														title={t(
-															"editor.presets.deleteAriaLabel",
-															"Delete preset {{name}}",
-															{ name: presetName },
-														)}
-														onPress={() =>
-															setView({
-																kind: "delete",
-																id,
-																name: presetName,
-															})
-														}
-													>
-														<Trash
-															className="size-3.5"
-															aria-hidden="true"
+							<div className="custom-scrollbar max-h-56 overflow-y-auto overscroll-contain">
+								<SlidingHighlightGroup items="[data-preset-option]">
+									<ul
+										aria-label={t("editor.presets.savedList", "Saved presets")}
+										className="space-y-0.5"
+									>
+										{editorPresets.map(({ id, name: presetName }) => {
+											const current = id === currentEditorPreset?.id;
+											return (
+												<li
+													key={id}
+													className="flex min-w-0 items-center gap-1"
+												>
+													{editing ? (
+														<>
+															<span
+																className="min-w-0 flex-1 truncate px-2.5 text-sm"
+																title={presetName}
+															>
+																{presetName}
+															</span>
+															<Button
+																ref={(button) => {
+																	if (button)
+																		deleteButtons.current.set(
+																			id,
+																			button,
+																		);
+																	else
+																		deleteButtons.current.delete(
+																			id,
+																		);
+																}}
+																type="button"
+																variant="destructive-soft"
+																size="icon"
+																className="size-8 min-w-8 shrink-0 p-0"
+																title={t(
+																	"editor.presets.deleteAriaLabel",
+																	"Delete preset {{name}}",
+																	{ name: presetName },
+																)}
+																onPress={() =>
+																	setView({
+																		kind: "delete",
+																		id,
+																		name: presetName,
+																	})
+																}
+															>
+																<Trash
+																	className="size-3.5"
+																	aria-hidden="true"
+																/>
+															</Button>
+														</>
+													) : (
+														<PresetOption
+															name={presetName}
+															current={current}
+															onSelect={() => {
+																handleApplyEditorPreset(id);
+																changeOpen(false);
+															}}
 														/>
-													</Button>
-												</>
-											) : (
-												<PresetOption
-													name={presetName}
-													current={current}
-													onSelect={() => {
-														handleApplyEditorPreset(id);
-														changeOpen(false);
-													}}
-												/>
-											)}
-										</li>
-									);
-								})}
-							</ul>
+													)}
+												</li>
+											);
+										})}
+									</ul>
+								</SlidingHighlightGroup>
+							</div>
 						)}
-
 						{view.kind === "save" ? (
 							<form
 								className="space-y-2 px-1 pt-2"

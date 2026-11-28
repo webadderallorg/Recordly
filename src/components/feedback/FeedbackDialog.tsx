@@ -1,9 +1,13 @@
-import { Button, Description, Form, TextArea, TextField } from "@heroui/react";
-import { Paperclip } from "@phosphor-icons/react";
+import { Button, Checkbox, Description, Form, Label, TextArea, TextField } from "@heroui/react";
+import { Check, Paperclip } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRecordlyAuth } from "@/components/auth/useRecordlyAuth";
 import { ErrorReportButton } from "@/components/feedback/ErrorReportButton";
-import { FeedbackLinks } from "@/components/feedback/FeedbackLinks";
+import {
+	DiscordIcon,
+	openExternalLink,
+	RECORDLY_DISCORD_URL,
+} from "@/components/feedback/FeedbackLinks";
 import {
 	Dialog,
 	DialogContent,
@@ -32,7 +36,7 @@ import styles from "./FeedbackDialog.module.css";
 const sentiments = [
 	{ value: "loving", emoji: "🥰", label: "Loving" },
 	{ value: "neutral", emoji: "😐", label: "Neutral" },
-	{ value: "angry", emoji: "😠", label: "Angry" },
+	{ value: "angry", emoji: "🙁", label: "Frowning" },
 ] as const;
 
 export function FeedbackDialog({
@@ -58,7 +62,8 @@ export function FeedbackDialog({
 		setInternalOpen(value);
 		onOpenChange?.(value);
 	};
-	const userId = auth.user?.id;
+	const user = auth.user;
+	const userId = user?.id;
 	const { sentiment, message, files } = useSyncExternalStore(subscribeFeedbackDraft, () =>
 		getFeedbackDraft(userId),
 	);
@@ -74,12 +79,21 @@ export function FeedbackDialog({
 	const [error, setError] = useState("");
 	const [sending, setSending] = useState(false);
 	const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-	const [sent, setSent] = useState(false);
+	const [replyAccountId, setReplyAccountId] = useState<string>();
+	const allowReply = Boolean(user?.email && replyAccountId === userId);
+	const [receipt, setReceipt] = useState<{
+		userId: string;
+		allowReply: boolean;
+		replyEmail?: string;
+	}>();
+	const sent = receipt?.userId === userId ? receipt : undefined;
+	const sentHeading = useRef<HTMLHeadingElement>(null);
 	const sendingRef = useRef(false);
 	const picker = useRef<HTMLInputElement>(null);
 	useEffect(() => {
 		if (!open) return;
-		setSent(false);
+		setReceipt(undefined);
+		setReplyAccountId(undefined);
 		if (userId) {
 			const draft = getFeedbackDraft(userId);
 			// Spaces in a saved draft suppress the native placeholder despite looking empty.
@@ -90,9 +104,11 @@ export function FeedbackDialog({
 	}, [open, userId]);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset submission feedback when the signed-in account changes.
 	useEffect(() => {
-		setSent(false);
 		setError("");
 	}, [userId]);
+	useEffect(() => {
+		if (open && sent) sentHeading.current?.focus();
+	}, [open, sent]);
 	function addFiles(incoming: File[]) {
 		const next = [...files, ...incoming];
 		const issue = validateAttachments(next);
@@ -132,18 +148,48 @@ export function FeedbackDialog({
 				</span>
 			)}
 			<DialogContent className={styles.dialog}>
-				<DialogHeader className={styles.header}>
-					<DialogTitle>
-						{sent
-							? t("common.feedback.thanks", "Thanks for your feedback")
-							: t("common.feedback.send", "Send feedback")}
-					</DialogTitle>
-				</DialogHeader>
+				{!sent && (
+					<DialogHeader className={styles.header}>
+						<DialogTitle>{t("common.feedback.send", "Send feedback")}</DialogTitle>
+					</DialogHeader>
+				)}
 				{sent ? (
-					<Button size="sm" className={styles.submit} onPress={() => setOpen(false)}>
-						{t("common.actions.done", "Done")}
-					</Button>
-				) : !auth.user ? (
+					<div className={styles.confirmation}>
+						<Check className={styles.check} aria-hidden="true" />
+						<DialogTitle ref={sentHeading} tabIndex={-1} className={styles.sentTitle}>
+							{t("common.feedback.sentTitle", "Support request sent")}
+						</DialogTitle>
+						<Description className={styles.sentDescription}>
+							{t(
+								"common.feedback.sentDescription",
+								"Your ticket has been logged for Recordly.",
+							)}
+							{sent.allowReply &&
+								(sent.replyEmail
+									? ` ${t(
+											"common.feedback.replyConfirmation",
+											"I’ll reach out from {{senderEmail}}.",
+											{
+												senderEmail: "youngchen3442@gmail.com",
+											},
+										)}`
+									: ` ${t("common.feedback.replyUnavailable", "Your email couldn't be shared.")}`)}
+						</Description>
+						<Button
+							variant="tertiary"
+							className={styles.discord}
+							onPress={() =>
+								void openExternalLink(
+									RECORDLY_DISCORD_URL,
+									t("editor.feedback.openFailed", "Failed to open link."),
+								)
+							}
+						>
+							<DiscordIcon className="size-4 text-muted-foreground" />
+							{t("editing.joinDiscord", "Join Discord")}
+						</Button>
+					</div>
+				) : !user ? (
 					<div className="flex flex-col gap-4">
 						<Description>
 							{t("common.feedback.signInRequired", "Sign in to send feedback.")}
@@ -186,22 +232,22 @@ export function FeedbackDialog({
 								operation.step("collect-diagnostics");
 								const logs = await collectFeedbackDiagnostics();
 								operation.step("submit");
-								await submitFeedback({
+								const replyEmail = await submitFeedback({
 									title: `${sentiments.find((item) => item.value === sentiment)?.emoji ?? ""} ${message}`,
 									subject: "other",
 									message,
 									files,
 									logs,
+									replyForAccountId: allowReply ? user.id : undefined,
 									onUploadProgress: setUploadProgress,
 								});
 								operation.finish("succeeded");
-								setSent(true);
-								if (userId)
-									updateFeedbackDraft(userId, {
-										sentiment: DEFAULT_FEEDBACK_SENTIMENT,
-										message: "",
-										files: [],
-									});
+								setReceipt({ userId: user.id, allowReply, replyEmail });
+								updateFeedbackDraft(user.id, {
+									sentiment: DEFAULT_FEEDBACK_SENTIMENT,
+									message: "",
+									files: [],
+								});
 							} catch (error) {
 								operation.finish("failed");
 								setError(feedbackErrorMessage(error));
@@ -323,6 +369,28 @@ export function FeedbackDialog({
 						<Description className={styles.diagnostics}>
 							{t("common.feedback.diagnostics", "Diagnostic logs will be attached.")}
 						</Description>
+						{user.email && (
+							<Checkbox
+								variant="secondary"
+								isSelected={allowReply}
+								isDisabled={sending}
+								onChange={(checked) =>
+									setReplyAccountId(checked ? userId : undefined)
+								}
+							>
+								<Checkbox.Content>
+									<Checkbox.Control className={styles.replyControl}>
+										<Checkbox.Indicator />
+									</Checkbox.Control>
+									<Label className="text-xs leading-relaxed">
+										{t(
+											"common.feedback.allowReply",
+											"Reply to my feedback (shares email)",
+										)}
+									</Label>
+								</Checkbox.Content>
+							</Checkbox>
+						)}
 						{uploadProgress !== null && (
 							<progress
 								className="w-full"
@@ -348,9 +416,6 @@ export function FeedbackDialog({
 						</Button>
 					</Form>
 				)}
-				<div className={styles.footer}>
-					<FeedbackLinks />
-				</div>
 			</DialogContent>
 		</Dialog>
 	);

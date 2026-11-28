@@ -3,6 +3,7 @@ import { clampMediaTimeToDuration } from "@/lib/mediaTiming";
 import type { FrameRenderContext } from "./modernFrameRenderer";
 import { WEBCAM_MEDIA_ELEMENT_READY_TIMEOUT_MS } from "./modernFrameUtils";
 import {
+	reportRendererLayerOmitted,
 	reportRendererMediaFailure,
 	resolveRendererMediaElementSource,
 	waitForRendererMediaElement,
@@ -70,6 +71,7 @@ export class FrameWebcamMedia {
 				this.context.config.onDiagnostic,
 			);
 			console.warn("[FrameRenderer] Unable to resolve webcam media element source:", error);
+			reportRendererLayerOmitted("webcam", this.context.config.onDiagnostic);
 			return false;
 		}
 		this.cleanupWebcamSource = webcamSource.revoke;
@@ -114,6 +116,7 @@ export class FrameWebcamMedia {
 		this.disposeWebcamMediaElement(video);
 		this.clearWebcamMediaElement();
 		this.context.mediaSignal.throwIfAborted();
+		reportRendererLayerOmitted("webcam", this.context.config.onDiagnostic);
 		return false;
 	}
 

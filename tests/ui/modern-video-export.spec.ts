@@ -114,6 +114,26 @@ test("a wallpaper image that never responds falls back and leaves a support diag
 	});
 });
 
+test("an unresponsive cursor image does not hold export at zero frames", async ({ page }) => {
+	test.setTimeout(40_000);
+	let cursorRequested = false;
+	await page.route("**/cursors/macos/ibeamstroke-1__50-50.svg", () => {
+		cursorRequested = true;
+	});
+	await page.route("**/tests/ui/wasm/web-demuxer.wasm", (route) =>
+		route.fulfill({ path: "public/wasm/web-demuxer.wasm", contentType: "application/wasm" }),
+	);
+	await page.goto("/tests/ui/modern-video-export.html");
+	await page.getByRole("button", { name: "Export real MP4", exact: true }).click();
+	const report = page.locator("#result");
+	await expect.poll(() => cursorRequested).toBe(true);
+	await expect(report).toHaveAttribute("data-state", "done", { timeout: 20_000 });
+	const result = JSON.parse(await report.innerText());
+	expect(result.error, JSON.stringify(result)).toBeUndefined();
+	expect(result.output).toMatchObject({ container: "mp4", frameCount: 90 });
+	expect(result.playback.advanced).toBe(true);
+});
+
 test("real WebCodecs export finishes with reordered clips from one source", async ({
 	page,
 }, testInfo) => {

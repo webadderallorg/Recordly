@@ -1,5 +1,6 @@
 import { Tabs as HeroTabs } from "@heroui/react";
 import { type ComponentProps } from "react";
+import { SlidingHighlightGroup } from "./sliding-highlight";
 
 type TabsProps = Omit<ComponentProps<typeof HeroTabs>, "onSelectionChange"> & {
 	value?: string;
@@ -16,12 +17,16 @@ export function Tabs({ value, defaultValue, onValueChange, ...props }: TabsProps
 		/>
 	);
 }
-export function TabsList(props: ComponentProps<typeof HeroTabs.List>) {
-	return (
-		<HeroTabs.ListContainer>
+export function TabsList({
+	scrollable = true,
+	...props
+}: ComponentProps<typeof HeroTabs.List> & { scrollable?: boolean }) {
+	const list = (
+		<SlidingHighlightGroup className="sliding-tabs-list" items='[role="tab"]' selection>
 			<HeroTabs.List {...props} />
-		</HeroTabs.ListContainer>
+		</SlidingHighlightGroup>
 	);
+	return scrollable ? <HeroTabs.ListContainer>{list}</HeroTabs.ListContainer> : list;
 }
 export function TabsTrigger({
 	value,
@@ -37,7 +42,6 @@ export function TabsTrigger({
 	return (
 		<HeroTabs.Tab {...props} id={value} isDisabled={disabled}>
 			{children}
-			<HeroTabs.Indicator />
 		</HeroTabs.Tab>
 	);
 }

@@ -292,11 +292,11 @@
 		"right": "Destra",
 		"openEditor": "Apri editor di ritaglio",
 		"details": "Dettagli del ritaglio",
-		"inlineHint": "Trascina bordi o angoli · Tieni premuto Maiusc per un quadrato",
 		"aspectRatio": "Proporzioni",
 		"ratioWidth": "Larghezza",
 		"ratioHeight": "Altezza",
-		"ratioHint": "Scegli un predefinito o inserisci le tue proporzioni (da 1:20 a 20:1).",
+		"ratioHint": "Inserisci un formato da 1:20 a 20:1, ad esempio 16:9.",
+		"customRatio": "Personalizzata",
 		"freeform": "Libero",
 		"pixelFields": "Pixel"
 	},

@@ -65,6 +65,8 @@
 	"clearFilters": "Filtreleri temizle",
 	"viewAll": "Tümünü görüntüle",
 	"importVideo": "Videoyu içe aktar",
+	"importFromClips": "Kliplerden içe aktar",
+	"importFromDevice": "Cihazdan içe aktar…",
 	"libraryNavigation": "Kitaplıkta gezinme",
 	"originalRecordings": "Orijinal kayıtlar",
 	"folders": "Klasörler",

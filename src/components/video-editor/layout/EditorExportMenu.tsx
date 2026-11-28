@@ -1,3 +1,4 @@
+import { SlidingTagList } from "@/components/ui/choice-group";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import "./EditorExportMenu.css";
 import { Tag, TagGroup } from "@heroui/react";
@@ -274,7 +275,7 @@ export function EditorExportMenu(props: Props) {
 												setDestination(keys.has("link") ? "link" : "local");
 										}}
 									>
-										<TagGroup.List className="flex gap-2">
+										<SlidingTagList className="flex gap-2">
 											<Tag
 												id="link"
 												textValue={shareLinkLabel}
@@ -313,7 +314,7 @@ export function EditorExportMenu(props: Props) {
 													</>
 												)}
 											</Tag>
-										</TagGroup.List>
+										</SlidingTagList>
 									</TagGroup>
 								</div>
 							)}

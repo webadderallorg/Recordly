@@ -36,7 +36,11 @@
 	"feedback": {
 		"trigger": "피드백",
 		"send": "피드백 보내기",
-		"thanks": "피드백을 보내 주셔서 감사합니다",
+		"allowReply": "내 피드백에 답장 받기(이메일 주소 공유)",
+		"sentTitle": "지원 요청을 보냈습니다",
+		"sentDescription": "Recordly에 지원 요청이 접수되었습니다.",
+		"replyConfirmation": "{{senderEmail}} 주소에서 연락드리겠습니다.",
+		"replyUnavailable": "이메일 주소를 공유할 수 없었습니다.",
 		"signInRequired": "피드백을 보내려면 로그인하세요.",
 		"openHome": "홈을 열어 로그인하세요.",
 		"orEmail": "또는 이메일",
@@ -66,7 +70,7 @@
 		"sentiment": "기분이 어떠신가요?",
 		"loving": "아주 좋아요",
 		"neutral": "보통이에요",
-		"angry": "화가 나요"
+		"angry": "아쉬워요"
 	},
 	"announcements": {
 		"openFailed": "링크를 열지 못했습니다.",

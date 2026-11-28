@@ -65,6 +65,9 @@ vi.mock("node:module", () => ({ createRequire: () => () => electron }));
 vi.mock("./appPaths", () => ({ USER_DATA_PATH: "/tmp/recordly-onboarding-test" }));
 vi.mock("./desktopPresence", () => ({ registerDesktopPresenceWindow: vi.fn() }));
 vi.mock("./ipc/state", () => ({}));
+vi.mock("./ipc/register/permissionAccessory", () => ({
+	preloadMissingPermissionAccessories: vi.fn(),
+}));
 vi.mock("./onboardingIntro", () => ({
 	startOnboardingIntro: vi.fn(
 		(_bounds: unknown, _preload: unknown, load: (intro: FakeWindow) => void) => {
@@ -100,6 +103,29 @@ it("preserves existing work without closing its window and suppresses attempts t
 	expect(editor.isVisible()).toBe(true);
 	editor.show();
 	expect(editor.isVisible()).toBe(true);
+});
+
+it("preloads the macOS drag panels when onboarding starts navigating", async () => {
+	const platform = process.platform;
+	Object.defineProperty(process, "platform", { value: "darwin" });
+	onTestFinished(() => {
+		Object.defineProperty(process, "platform", { value: platform });
+	});
+	const { showOnboardingWindow } = await import("./windows");
+	const { preloadMissingPermissionAccessories } = await import(
+		"./ipc/register/permissionAccessory"
+	);
+	const onboarding = showOnboardingWindow();
+	expect(onboarding.isVisible()).toBe(false);
+	onboarding.webContents.emit("did-start-navigation", { isMainFrame: false });
+	expect(preloadMissingPermissionAccessories).not.toHaveBeenCalled();
+	onboarding.webContents.emit("did-start-navigation", {
+		isMainFrame: true,
+		isSameDocument: false,
+	});
+	expect(preloadMissingPermissionAccessories).toHaveBeenCalledExactlyOnceWith(
+		onboarding.webContents,
+	);
 });
 
 it("suppresses late-created windows until onboarding closes", async () => {

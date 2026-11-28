@@ -218,6 +218,8 @@ export async function prepareExportAttempt(
 
 	session.browser.streamingDecoder = new StreamingVideoDecoder({
 		onDiagnostic: session.config.onDiagnostic,
+		forceSoftwareDecode: session.config.forceSoftwareVideoDecode === true,
+		onSoftwareDecodeFallback: () => session.metrics.recordFallback("software-video-decode"),
 		maxDecodeQueue: session.config.maxDecodeQueue ?? session.backpressureProfile.maxDecodeQueue,
 		maxPendingFrames:
 			session.config.maxPendingFrames ?? session.backpressureProfile.maxPendingFrames,

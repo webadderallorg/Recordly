@@ -10,6 +10,8 @@ const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
 const FIRST_FRAME_WAIT_MS = 8_000;
 const NEXT_FRAME_WAIT_MS = 30_000;
+// Hardware decoders can drain their queue without an output or a dequeue event.
+const DECODE_CAPACITY_RECHECK_MS = 50;
 
 export interface ForwardFrameSourceMetadata {
 	width: number;
@@ -148,6 +150,8 @@ export class ForwardFrameSource {
 			}
 			this.decoder.configure(decoderConfig);
 		}
+		// Output alone cannot wake the feed: a decoder may need more input before frame one.
+		this.decoder.ondequeue = () => this.notifyDecoderCapacityAvailable();
 
 		const readEndSec =
 			Math.max(
@@ -249,7 +253,13 @@ export class ForwardFrameSource {
 
 	private waitForDecoderCapacity(): Promise<void> {
 		return new Promise((resolve) => {
-			this.decodeCapacityWaiters.add(resolve);
+			const wake = () => {
+				clearTimeout(timer);
+				this.decodeCapacityWaiters.delete(wake);
+				resolve();
+			};
+			const timer = setTimeout(wake, DECODE_CAPACITY_RECHECK_MS);
+			this.decodeCapacityWaiters.add(wake);
 		});
 	}
 
@@ -382,6 +392,7 @@ export class ForwardFrameSource {
 		this.pendingFrames = [];
 
 		if (this.decoder) {
+			this.decoder.ondequeue = null;
 			try {
 				if (this.decoder.state === "configured") {
 					this.decoder.close();

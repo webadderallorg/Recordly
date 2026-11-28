@@ -3,6 +3,7 @@ import type { normalizeLightningRuntimePlatform } from "./backendPolicy";
 import type { ExportRuntimeDiagnostics, ModernExportSession } from "./modernExportSession";
 import type {
 	ExportBackendAttempt,
+	ExportFallback,
 	ExportDiagnosticSnapshot,
 	ExportEncodeBackend,
 	ExportFinalizationStageMetrics,
@@ -22,6 +23,7 @@ export class ModernExportMetrics {
 	encoderName: string | null = null;
 	diagnosticStartedAt = 0;
 	backendAttempts: ExportBackendAttempt[] = [];
+	readonly fallbacks = new Set<ExportFallback>();
 	diagnosticEncoder: ExportDiagnosticSnapshot["encoder"];
 	diagnosticMuxer: ExportDiagnosticSnapshot["muxer"];
 	totalExportStartTimeMs = 0;
@@ -72,6 +74,10 @@ export class ModernExportMetrics {
 		this.encoderName = null;
 		this.diagnosticEncoder = undefined;
 		this.diagnosticMuxer = undefined;
+	}
+
+	recordFallback(fallback: ExportFallback): void {
+		this.fallbacks.add(fallback);
 	}
 
 	recordBackendAttempt(attempt: Omit<ExportBackendAttempt, "elapsedMs">): void {
@@ -147,6 +153,7 @@ export class ModernExportMetrics {
 					: undefined,
 			effectiveDurationSec: this.session.effectiveDurationSec || undefined,
 			finalizationStageMs: hasFinalizationStageMetrics ? this.finalizationStageMs : undefined,
+			fallbacks: this.fallbacks.size > 0 ? [...this.fallbacks] : undefined,
 			averageFrameCallbackMs:
 				this.processedFrameCount > 0
 					? this.frameCallbackTimeMs / safeFrameCount

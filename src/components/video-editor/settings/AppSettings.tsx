@@ -4,6 +4,7 @@ import { ApplicationSettings } from "@/components/auth/ApplicationSettings";
 import { RecordingPermissionsSettings } from "@/components/auth/RecordingPermissionsSettings";
 import { ChoiceGroup, ChoiceItem } from "@/components/ui/choice-group";
 import { LanguageFlag } from "@/components/ui/language-flag";
+import { SlidingListBox } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/components/video-editor/SettingsRow";
 import { SettingsCategory, SettingsSections } from "@/components/video-editor/SettingsSections";
@@ -153,7 +154,7 @@ export function AppSettings(props: Props) {
 						</HeroSelect.Trigger>
 					</SettingsRow>
 					<HeroSelect.Popover className="settings-language-popover max-h-80">
-						<ListBox>
+						<SlidingListBox>
 							{SUPPORTED_LOCALES.map((candidateLocale) => (
 								<ListBox.Item
 									key={candidateLocale}
@@ -165,7 +166,7 @@ export function AppSettings(props: Props) {
 									<ListBox.ItemIndicator />
 								</ListBox.Item>
 							))}
-						</ListBox>
+						</SlidingListBox>
 					</HeroSelect.Popover>
 				</HeroSelect>
 				<ApplicationSettings />

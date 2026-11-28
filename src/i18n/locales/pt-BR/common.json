@@ -36,7 +36,11 @@
 	"feedback": {
 		"trigger": "Comentários",
 		"send": "Enviar comentários",
-		"thanks": "Obrigado pelos comentários",
+		"allowReply": "Responder ao meu feedback (compartilha meu e-mail)",
+		"sentTitle": "Solicitação de suporte enviada",
+		"sentDescription": "Sua solicitação foi registrada no Recordly.",
+		"replyConfirmation": "Entrarei em contato com você pelo endereço {{senderEmail}}.",
+		"replyUnavailable": "Não foi possível compartilhar seu e-mail.",
 		"signInRequired": "Entre para enviar comentários.",
 		"openHome": "Abra a página inicial para entrar.",
 		"orEmail": "Ou envie um e-mail para",
@@ -66,7 +70,7 @@
 		"sentiment": "Como você se sente?",
 		"loving": "Adorando",
 		"neutral": "Neutro",
-		"angry": "Irritado"
+		"angry": "Decepcionado"
 	},
 	"announcements": {
 		"openFailed": "Não foi possível abrir o link.",

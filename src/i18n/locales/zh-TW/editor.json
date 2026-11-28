@@ -246,6 +246,7 @@
 		"encodingGif": "正在完成 GIF…",
 		"errorCopied": "已複製錯誤",
 		"nvidiaCudaFallback": "NVIDIA CUDA 匯出失敗。Recordly 正在嘗試其他匯出方式。",
+		"webcamOmitted": "無法讀取網路攝影機錄影，因此這次匯出不包含網路攝影機疊加層。",
 		"errorCopyFailed": "無法複製。請選取錯誤文字並手動複製。",
 		"copyError": "複製錯誤"
 	},

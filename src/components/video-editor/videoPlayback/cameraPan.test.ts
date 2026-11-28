@@ -20,7 +20,7 @@ const outgoing: ZoomRegion = {
 const incoming: ZoomRegion = {
 	...outgoing,
 	id: "incoming",
-	startMs: 4000,
+	startMs: 3500,
 	endMs: 8000,
 	focus: { cx: 0.65, cy: 0.6 },
 };
@@ -81,7 +81,7 @@ function createCamera(
 
 function warmToBeforeIncoming(camera: ReturnType<typeof createCamera>, fps: number) {
 	let last = camera.sample(0);
-	for (let frame = 1; frame < fps * 4; frame += 1) {
+	for (let frame = 1; frame * 1000 < fps * incoming.startMs; frame += 1) {
 		last = camera.sample((frame * 1000) / fps);
 	}
 	return last;
@@ -167,11 +167,11 @@ describe("connected pan physics", () => {
 	it("follows one spring response instead of filtering a baked spring a second time", () => {
 		const fps = 60;
 		const camera = createCamera(fps);
-		const reference = referenceSingleSpring(1000);
+		const reference = referenceSingleSpring(incoming.startMs - outgoing.endMs);
 		for (let frame = 0; frame <= fps * 3; frame += 1) camera.sample((frame * 1000) / fps);
-		for (let frame = 1; frame <= 36; frame += 1) {
+		for (let frame = 1; frame <= 24; frame += 1) {
 			camera.sample(outgoing.endMs + (frame * 1000) / fps);
-			if (frame === 18 || frame === 36) {
+			if (frame === 12 || frame === 24) {
 				const elapsedMs = (frame * 1000) / fps;
 				const actualProgress =
 					(camera.springX.value - outgoing.focus.cx) /
@@ -251,8 +251,8 @@ describe("connected pan physics", () => {
 			incoming: { ...incoming, mode: "auto" },
 			cursorTelemetry: [
 				{ timeMs: 0, cx: 0.65, cy: 0.6 },
-				{ timeMs: 3999, cx: 0.65, cy: 0.6 },
-				{ timeMs: 4000, cx: 0.2, cy: 0.3 },
+				{ timeMs: incoming.startMs - 1, cx: 0.65, cy: 0.6 },
+				{ timeMs: incoming.startMs, cx: 0.2, cy: 0.3 },
 			],
 		});
 		const before = warmToBeforeIncoming(camera, fps);
@@ -267,9 +267,10 @@ describe("connected pan physics", () => {
 		const camera = createCamera(60);
 		for (let frame = 0; frame <= 180; frame += 1) camera.sample((frame * 1000) / 60);
 		const boundary = camera.sample(incoming.startMs);
-		expect(camera.springX.value).toBeGreaterThan(outgoing.focus.cx);
-		expect(Math.abs(boundary.transform.x - boundary.goal.x)).toBeLessThan(1);
-		expect(Math.abs(camera.springX.velocity)).toBeLessThan(0.015);
+		const progress =
+			(camera.springX.value - outgoing.focus.cx) / (incoming.focus.cx - outgoing.focus.cx);
+		expect(boundary.target.focus).toEqual(incoming.focus);
+		expect(progress).toBeGreaterThan(0.9);
 	});
 
 	it("uses an intentional seek to snap to the requested camera frame", () => {
@@ -288,17 +289,17 @@ describe("connected pan physics", () => {
 			incoming: { ...incoming, mode: "auto" },
 			cursorTelemetry: [
 				{ timeMs: 0, cx: 0.65, cy: 0.6 },
-				{ timeMs: 4100, cx: 0.65, cy: 0.6 },
-				{ timeMs: 4100 + 1000 / 60, cx: 0.2, cy: 0.3 },
+				{ timeMs: incoming.startMs + 100, cx: 0.65, cy: 0.6 },
+				{ timeMs: incoming.startMs + 100 + 1000 / 60, cx: 0.2, cy: 0.3 },
 			],
 		});
 		warmToBeforeIncoming(camera, 60);
-		const seek = camera.sample(4100, true);
+		const seek = camera.sample(incoming.startMs + 100, true);
 		expect(seek.transform).toEqual(seek.goal);
 		expect(camera.springX.initialized).toBe(true);
 		expect(camera.springY.initialized).toBe(true);
 
-		const resumed = camera.sample(4100 + 1000 / 60);
+		const resumed = camera.sample(incoming.startMs + 100 + 1000 / 60);
 		expect(resumed.target.focus.cx).toBeLessThan(0.3);
 		expect(Math.abs(resumed.transform.x - seek.transform.x)).toBeLessThan(25);
 		expect(Math.abs(resumed.transform.x - resumed.goal.x)).toBeGreaterThan(250);

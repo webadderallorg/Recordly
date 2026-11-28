@@ -65,6 +65,8 @@
 	"clearFilters": "Filter löschen",
 	"viewAll": "Alle anzeigen",
 	"importVideo": "Video importieren",
+	"importFromClips": "Aus Clips importieren",
+	"importFromDevice": "Vom Gerät importieren…",
 	"libraryNavigation": "Bibliotheksnavigation",
 	"originalRecordings": "Originalaufnahmen",
 	"folders": "Ordner",

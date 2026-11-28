@@ -7,6 +7,8 @@ export interface TimelineScaleConfig {
 	minVisibleRangeMs: number;
 }
 
+const TARGET_TIMESTAMP_SPACING_PX = 160;
+
 const SCALE_CANDIDATES = [
 	{ intervalSeconds: 0.05, gridSeconds: 0.01 },
 	{ intervalSeconds: 0.1, gridSeconds: 0.02 },
@@ -35,7 +37,9 @@ export function calculateAxisScale(
 	gridMs: number;
 } {
 	const visibleSeconds = visibleRangeMs / 1000;
-	const markerCount = widthPx ? Math.max(2, Math.floor(widthPx / 80)) : TARGET_MARKER_COUNT;
+	const markerCount = widthPx
+		? Math.max(2, Math.floor(widthPx / TARGET_TIMESTAMP_SPACING_PX))
+		: TARGET_MARKER_COUNT;
 	const candidate =
 		SCALE_CANDIDATES.find((scaleCandidate) => {
 			if (visibleSeconds <= 0) {

@@ -730,10 +730,13 @@ describe("StreamingVideoDecoder decode failures", () => {
 				}),
 		);
 		const closed = vi.fn();
+		const configured = vi.fn();
 		class StalledDecoder {
 			state = "configured";
 			decodeQueueSize = 0;
-			configure() {}
+			configure(config: VideoDecoderConfig) {
+				configured(config.hardwareAcceleration);
+			}
 			decode() {
 				this.decodeQueueSize++;
 			}
@@ -756,17 +759,156 @@ describe("StreamingVideoDecoder decode failures", () => {
 			expect(failure).toBeUndefined();
 			await vi.advanceTimersByTimeAsync(1);
 			if (stuck) {
+				// The reader is gone, so a software replay could not read either.
 				expect(failure).toBeUndefined();
 				await vi.advanceTimersByTimeAsync(1000);
 				expect(mockDemuxerDestroy).toHaveBeenCalledOnce();
+				expect(failure).toMatchObject({
+					message: expect.stringContaining("Timed out waiting for a decoded video frame"),
+					cause: expect.objectContaining({ name: "TimeoutError" }),
+				});
+				expect(readerCancelled).toHaveBeenCalledOnce();
+				expect(closed).toHaveBeenCalledOnce();
+				expect(configured).toHaveBeenCalledTimes(1);
+			} else {
+				// The decoder held input without output: replay once with software decoding.
+				expect(failure).toBeUndefined();
+				expect(configured).toHaveBeenLastCalledWith("prefer-software");
+				await vi.advanceTimersByTimeAsync(8_000);
+				expect(failure).toMatchObject({
+					message: expect.stringMatching(
+						/^\[VIDEO_DECODE_RECOVERY_FAILED\][\s\S]*Timed out waiting for a decoded video frame[\s\S]*Software decoder failure: \[VIDEO_DECODE_FAILED\][\s\S]*Timed out waiting for a decoded video frame/,
+					),
+				});
+				expect(readerCancelled).toHaveBeenCalledTimes(2);
+				expect(closed).toHaveBeenCalledTimes(2);
 			}
-			expect(failure).toMatchObject({
-				message: expect.stringContaining("Timed out waiting for a decoded video frame"),
-				cause: expect.objectContaining({ name: "TimeoutError" }),
-			});
-			expect(readerCancelled).toHaveBeenCalledOnce();
-			expect(closed).toHaveBeenCalledOnce();
 			expect(onFrame).not.toHaveBeenCalled();
+		} finally {
+			decoder.cancel();
+			await completion;
+			vi.useRealTimers();
+		}
+	});
+
+	describe("remembered software decoding", () => {
+		// Hardware decoding holds every chunk without output; software decoding works.
+		function stubHardwareStallDecoder(configured: string[]) {
+			vi.stubGlobal(
+				"VideoDecoder",
+				class {
+					state = "unconfigured";
+					decodeQueueSize = 0;
+					private software = false;
+					constructor(private callbacks: { output: (frame: VideoFrame) => void }) {}
+					configure(config: VideoDecoderConfig) {
+						configured.push(config.hardwareAcceleration ?? "default");
+						this.software = config.hardwareAcceleration === "prefer-software";
+						this.state = "configured";
+					}
+					decode(chunk: EncodedVideoChunk) {
+						if (!this.software) {
+							this.decodeQueueSize++;
+							return;
+						}
+						this.callbacks.output({
+							timestamp: chunk.timestamp,
+							close() {},
+						} as unknown as VideoFrame);
+					}
+					async flush() {}
+					close() {
+						this.state = "closed";
+					}
+				},
+			);
+			mockDemuxerRead.mockImplementation(
+				() =>
+					new ReadableStream({
+						start(controller) {
+							for (let i = 0; i < 130; i++)
+								controller.enqueue({ timestamp: i * 33_333 });
+							controller.close();
+						},
+					}),
+			);
+		}
+
+		it("reports when a software replay rescued a stalled hardware decode", async () => {
+			const configured: string[] = [];
+			stubHardwareStallDecoder(configured);
+			vi.useFakeTimers();
+			try {
+				const rescued = vi.fn();
+				const decoder = new StreamingVideoDecoder({ onSoftwareDecodeFallback: rescued });
+				await decoder.loadMetadata("/tmp/stall.mp4");
+				const onFrame = vi.fn(async () => {});
+				const completion = decoder.decodeAll(30, undefined, undefined, onFrame);
+				await vi.advanceTimersByTimeAsync(8_000);
+				await completion;
+				expect(configured).toEqual(["default", "prefer-software"]);
+				expect(onFrame).toHaveBeenCalledTimes(120);
+				expect(rescued).toHaveBeenCalledOnce();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("starts in software when this device needed it before", async () => {
+			const configured: string[] = [];
+			stubHardwareStallDecoder(configured);
+			const rescued = vi.fn();
+			const decoder = new StreamingVideoDecoder({
+				forceSoftwareDecode: true,
+				onSoftwareDecodeFallback: rescued,
+			});
+			await decoder.loadMetadata("/tmp/stall.mp4");
+			const onFrame = vi.fn(async () => {});
+			await decoder.decodeAll(30, undefined, undefined, onFrame);
+			expect(configured).toEqual(["prefer-software"]);
+			expect(onFrame).toHaveBeenCalledTimes(120);
+			expect(rescued).not.toHaveBeenCalled();
+		});
+	});
+
+	it("fails a stalled reader without replaying it through software decoding", async () => {
+		mockDemuxerRead.mockImplementation(
+			() =>
+				new ReadableStream({
+					start(controller) {
+						controller.enqueue({ timestamp: 0 });
+					},
+					pull: () => new Promise<void>(() => {}),
+				}),
+		);
+		const configured = vi.fn();
+		class WaitingDecoder {
+			state = "configured";
+			decodeQueueSize = 0;
+			configure(config: VideoDecoderConfig) {
+				configured(config.hardwareAcceleration);
+			}
+			decode() {}
+			close() {
+				this.state = "closed";
+			}
+		}
+		vi.stubGlobal("VideoDecoder", WaitingDecoder);
+		vi.useFakeTimers();
+		const decoder = new StreamingVideoDecoder();
+		await decoder.loadMetadata("/tmp/stalled-reader.mp4");
+		let failure: unknown;
+		const completion = decoder.decodeAll(30, undefined, undefined, vi.fn()).catch((error) => {
+			failure = error;
+		});
+		try {
+			await vi.advanceTimersByTimeAsync(8_000);
+			expect(failure).toMatchObject({
+				message: expect.stringMatching(
+					/^\[VIDEO_DECODE_FAILED\] .*Timed out waiting for video data from the reader/,
+				),
+			});
+			expect(configured).toHaveBeenCalledTimes(1);
 		} finally {
 			decoder.cancel();
 			await completion;

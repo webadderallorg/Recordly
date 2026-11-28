@@ -1,6 +1,7 @@
 import { Dropdown, Input } from "@heroui/react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { SlidingDropdownMenu } from "@/components/ui/dropdown-menu";
 import { DotsThree } from "@/components/ui/icons";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { FolderColors } from "./FolderColors";
@@ -59,6 +60,7 @@ export function FolderRow({
 				event.stopPropagation();
 				onDropProject(event.dataTransfer.getData(PROJECT_DRAG_TYPE));
 			}}
+			data-selected={active || undefined}
 			className={`folder-row group flex h-10 items-center gap-1 rounded-lg px-1 ${dragOver ? "bg-accent/15 ring-2 ring-accent" : active ? "bg-default/70" : "hover:bg-default/40"}`}
 		>
 			<FolderColors
@@ -114,14 +116,14 @@ export function FolderRow({
 					<DotsThree className="size-4" />
 				</Button>
 				<Dropdown.Popover>
-					<Dropdown.Menu aria-label={uiText("ui.folderOptions")}>
+					<SlidingDropdownMenu aria-label={uiText("ui.folderOptions")}>
 						<Dropdown.Item id="rename" onAction={edit}>
 							{uiText("ui.rename")}
 						</Dropdown.Item>
 						<Dropdown.Item id="remove" onAction={onRemove}>
 							{uiText("ui.removeFolder")}
 						</Dropdown.Item>
-					</Dropdown.Menu>
+					</SlidingDropdownMenu>
 				</Dropdown.Popover>
 			</Dropdown>
 		</div>

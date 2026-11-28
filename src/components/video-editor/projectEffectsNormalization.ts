@@ -75,7 +75,7 @@ export function normalizeProjectEffects(editor: Partial<ProjectEditorState>) {
 		: DEFAULT_MOTION_PRESET.zoomOutDurationMs;
 
 	const normalizedConnectedZoomGapMs = isFiniteNumber(editor.connectedZoomGapMs)
-		? clamp(editor.connectedZoomGapMs, 0, 5000)
+		? clamp(editor.connectedZoomGapMs, 0, DEFAULT_CONNECTED_ZOOM_GAP_MS)
 		: DEFAULT_CONNECTED_ZOOM_GAP_MS;
 
 	const normalizedConnectedZoomDurationMs = isFiniteNumber(editor.connectedZoomDurationMs)

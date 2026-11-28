@@ -103,7 +103,7 @@ describe("connected zoom duration", () => {
 		[100, 200, 100],
 		[3000, 500, 100],
 		[100, 200, 3000],
-		[6400, 695, 1000],
+		[6400, 500, 1000],
 	])("shares one uncompressed envelope across blocks %i / gap %i / %i", (firstDuration, gap, lastDuration) => {
 		const first = { ...region, startMs: 789, endMs: 789 + firstDuration };
 		const last = {
@@ -132,9 +132,9 @@ describe("connected zoom duration", () => {
 		}
 	});
 
-	it("reaches the saved project's second 1.8x target before its full fixed exit", () => {
+	it("reaches the second 1.8x target before its full fixed exit", () => {
 		const first = { ...region, startMs: 789, endMs: 7189, depth: 3 as const };
-		const last = { ...first, id: "last", startMs: 7884, endMs: 8884 };
+		const last = { ...first, id: "last", startMs: 7689, endMs: 8689 };
 		const settings = { ...options, ...CURSOR_MOTION_PRESETS.focused };
 		const exitMs = getZoomTransitionDurationMs(settings.zoomOutDurationMs);
 		expect(findDominantRegion([first, last], last.startMs, settings).strength).toBe(1);
@@ -155,7 +155,7 @@ describe("connected zoom duration", () => {
 	});
 
 	it("uses the configured goal duration without adding a simulated spring tail", () => {
-		const later = { ...next, startMs: 5500, endMs: 8000 };
+		const later = { ...next, endMs: 8000 };
 		const settings = { ...options, connectedZoomDurationMs: 200 };
 		const mid = findDominantRegion([region, later], 4100, settings);
 		expect(mid.transition?.progress).toBeGreaterThan(0.9);
@@ -169,11 +169,12 @@ describe("connected zoom duration", () => {
 
 	it.each([
 		undefined,
+		1500,
 		5000,
 		Number.POSITIVE_INFINITY,
 		Number.NaN,
-	])("never connects zooms more than 1.5 seconds apart (setting %s)", (connectedZoomGapMs) => {
-		const atLimit = { ...next, startMs: region.endMs + 1500, endMs: 9000 };
+	])("never connects zooms more than 0.5 seconds apart (setting %s)", (connectedZoomGapMs) => {
+		const atLimit = { ...next, startMs: region.endMs + 500, endMs: 9000 };
 		const tooFar = { ...atLimit, startMs: atLimit.startMs + 1 };
 		const settings = { ...options, connectedZoomGapMs };
 		expect(
@@ -232,23 +233,36 @@ describe("connected zoom duration", () => {
 	});
 
 	it("holds the incoming framing when the pan finishes before a longer gap ends", () => {
-		const later = { ...next, startMs: 5500, endMs: 8000 };
-		const panEnd = region.endMs + options.connectedZoomDurationMs;
-		expect(panEnd).toBeLessThan(later.startMs);
-		const result = findDominantRegion([region, later], panEnd + 10, options);
+		const settings = { ...options, connectedZoomDurationMs: 200 };
+		const panEnd = region.endMs + settings.connectedZoomDurationMs;
+		expect(panEnd).toBeLessThan(next.startMs);
+		const result = findDominantRegion([region, next], panEnd + 10, settings);
 		expect(result.transition).toBeNull();
 		expect(result.region?.id).toBe("next");
 		expect(result.strength).toBe(1);
 		expect(result.completedTransition?.progress).toBe(1);
 	});
 
-	it("does not invent a pan interval for touching or overlapping blocks", () => {
-		for (const startMs of [3900, 4000]) {
-			const touching = { ...next, startMs };
-			const result = findDominantRegion([region, touching], 4000, options);
-			expect(result.transition).toBeNull();
-			expect(result.completedTransition).toBeUndefined();
-		}
+	it("glides into a touching block without releasing the zoom at the seam", () => {
+		const touching = { ...next, startMs: region.endMs };
+		const zooms = [region, touching];
+		const start = findDominantRegion(zooms, 3000, options);
+		const midpoint = findDominantRegion(zooms, 3500, options);
+		const seam = findDominantRegion(zooms, region.endMs, options);
+		expect(start.blendedScale).toBe(1.5);
+		expect(midpoint.blendedScale).toBeGreaterThan(1.5);
+		expect(midpoint.blendedScale).toBeLessThan(2.2);
+		expect(midpoint.strength).toBe(1);
+		expect(seam.region?.id).toBe(touching.id);
+		expect(seam.completedTransition?.progress).toBe(1);
+		expect(seam.strength).toBe(1);
+	});
+
+	it("does not connect overlapping blocks", () => {
+		const overlapping = { ...next, startMs: 3900 };
+		const result = findDominantRegion([region, overlapping], 4000, options);
+		expect(result.transition).toBeNull();
+		expect(result.completedTransition).toBeUndefined();
 	});
 
 	it("obeys the connection gap limit", () => {
@@ -259,11 +273,9 @@ describe("connected zoom duration", () => {
 		expect(result.region).toBeNull();
 	});
 
-	it.each([
-		4550, 4600,
-	])("does not resurrect a connected exit after an unconnected block at %i interrupts it", (startMs) => {
+	it("does not resurrect a connected exit after an overlapping block interrupts it", () => {
 		const short = { ...next, endMs: 4600 };
-		const last = { ...short, id: "last", startMs, endMs: 4700, depth: 3 as const };
+		const last = { ...short, id: "last", startMs: 4550, endMs: 4700, depth: 3 as const };
 		expect(findDominantRegion([region, short, last], 4601, options).region?.id).toBe(last.id);
 		for (const time of [4700, 4701, 5000]) {
 			expect(findDominantRegion([region, short, last], time, options).strength).toBe(0);

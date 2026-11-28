@@ -21,10 +21,19 @@ for (const width of [390, 760]) {
 			});
 			window.electronAPI.openScreenRecordingPreferences = async (preview) => {
 				document.documentElement.dataset.screenOpened = String(preview);
+				await new Promise<void>((resolve) => {
+					window.addEventListener("finish-opening-screen-settings", () => resolve(), {
+						once: true,
+					});
+				});
 				return { success: true };
 			};
 			window.electronAPI.openAccessibilityPreferences = async (preview) => {
 				document.documentElement.dataset.accessibilityOpened = String(preview);
+				return { success: true };
+			};
+			window.electronAPI.requestRecordingPermissionPrompt = async (permission) => {
+				document.documentElement.dataset.promptRequested = permission;
 				return { success: true };
 			};
 		});
@@ -47,10 +56,26 @@ for (const width of [390, 760]) {
 			.getByRole("button", { name: "Allow Screen Recording", exact: true })
 			.click();
 		await expect(page.locator("html")).toHaveAttribute("data-screen-opened", "true");
+		const openScreenPrompt = onboarding.getByRole("button", {
+			name: "Open prompt for Screen Recording",
+		});
+		await expect(openScreenPrompt).toHaveText("Open prompt");
+		await expect(openScreenPrompt).toBeDisabled();
+		await expect(page.locator("html")).not.toHaveAttribute("data-prompt-requested");
+		await page.evaluate(() =>
+			window.dispatchEvent(new Event("finish-opening-screen-settings")),
+		);
+		await openScreenPrompt.click();
+		await expect(page.locator("html")).toHaveAttribute("data-prompt-requested", "screen");
 		await onboarding.getByRole("button", { name: "Allow Accessibility", exact: true }).click();
 		await expect(page.locator("html")).toHaveAttribute("data-accessibility-opened", "true");
+		await onboarding.getByRole("button", { name: "Open prompt for Accessibility" }).click();
+		await expect(page.locator("html")).toHaveAttribute(
+			"data-prompt-requested",
+			"accessibility",
+		);
 		await expect(start).toBeDisabled();
-		await expect(onboarding.getByText(/^If the drag panel doesn't appear/)).toBeVisible();
+		await expect(onboarding.getByText(/^If the drag panel doesn't appear/)).toHaveCount(0);
 		await expect(page.getByRole("dialog")).toHaveCount(1);
 		await expect(page.getByText("Drop Recordly here to add it.")).toHaveCount(0);
 		await expect(onboarding.getByRole("status", { name: /Allowed/ })).toHaveCount(0);

@@ -1,11 +1,18 @@
-import { feedbackJson, feedbackPayload, notifySavedFeedback, readBoundedBody } from "./handler.ts";
+import {
+	type FeedbackAccount,
+	feedbackJson,
+	feedbackPayload,
+	feedbackReceipt,
+	notifySavedFeedback,
+	readBoundedBody,
+} from "./handler.ts";
 
 export const CHUNK_BYTES = 6 * 1024 * 1024;
 const MAX_BYTES = 50 * 1024 * 1024;
 export const FEEDBACK_BUCKET = "feedback-attachments";
 export type Attachment = { name: string; type: string; size: number };
 export interface UploadBackend {
-	authenticate(token: string): Promise<string | null>;
+	authenticate(token: string): Promise<FeedbackAccount | null>;
 	prepare(user: string, id: string, files: Attachment[]): Promise<string>;
 	find(
 		user: string,
@@ -15,8 +22,9 @@ export interface UploadBackend {
 	finish(
 		user: string,
 		id: string,
-		payload: NonNullable<ReturnType<typeof feedbackPayload>>,
+		payload: NonNullable<ReturnType<typeof feedbackPayload>> & { reply_email?: string },
 	): Promise<string>;
+	savedReplyEmail(user: string, id: string): Promise<string | null>;
 	create(path: string, size: number): Promise<string>;
 	offset(url: string, size: number): Promise<number>;
 	append(url: string, start: number, data: Uint8Array<ArrayBuffer>): Promise<number | null>;
@@ -51,8 +59,9 @@ export function feedbackUploads(backend: UploadBackend) {
 		if (!token) return reject(401, "SIGN_IN_REQUIRED");
 		if (!uuid.test(id)) return reject(400, "INVALID_FEEDBACK");
 		try {
-			const user = await backend.authenticate(token);
-			if (!user) return reject(401, "SIGN_IN_REQUIRED");
+			const account = await backend.authenticate(token);
+			if (!account) return reject(401, "SIGN_IN_REQUIRED");
+			const user = account.id;
 			if (action === "prepare" || action === "finish") {
 				let body;
 				try {
@@ -75,8 +84,12 @@ export function feedbackUploads(backend: UploadBackend) {
 					const manifest = files.map(({ name, type, size }) => ({ name, type, size }));
 					const state = await backend.prepare(user, id, manifest);
 					if (state === "limit") return reject(429, "FEEDBACK_LIMIT");
-					if (state === "ready" || state === "saved")
-						return feedbackJson(200, { success: true, saved: state === "saved" });
+					if (state === "ready")
+						return feedbackJson(200, { success: true, saved: false });
+					if (state === "saved") {
+						const replyEmail = await backend.savedReplyEmail(user, id);
+						return feedbackJson(200, { ...feedbackReceipt(replyEmail), saved: true });
+					}
 					return reject(409, "UPLOAD_EXPIRED");
 				}
 				const payload = feedbackPayload(
@@ -86,10 +99,21 @@ export function feedbackUploads(backend: UploadBackend) {
 					body?.logs ?? null,
 				);
 				if (!payload) return reject(400, "INVALID_FEEDBACK");
-				const state = await backend.finish(user, id, payload);
-				if (state === "new") await notifySavedFeedback(backend.notify, id);
-				if (state === "new" || state === "saved")
-					return feedbackJson(200, { success: true });
+				const replyEmail = body?.replyForAccountId === user ? account.email : undefined;
+				const state = await backend.finish(user, id, {
+					...payload,
+					...(replyEmail ? { reply_email: replyEmail } : {}),
+				});
+				if (state === "new") {
+					await notifySavedFeedback(backend.notify, id);
+					return feedbackJson(200, feedbackReceipt(replyEmail));
+				}
+				if (state === "saved") {
+					return feedbackJson(
+						200,
+						feedbackReceipt(await backend.savedReplyEmail(user, id)),
+					);
+				}
 				return reject(409, state === "incomplete" ? "UPLOAD_INCOMPLETE" : "UPLOAD_EXPIRED");
 			}
 			if (action !== "offset" && action !== "chunk") return reject(400, "INVALID_FEEDBACK");

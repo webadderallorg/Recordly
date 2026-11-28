@@ -36,7 +36,11 @@
 	"feedback": {
 		"trigger": "Feedback",
 		"send": "Feedback verzenden",
-		"thanks": "Bedankt voor je feedback",
+		"allowReply": "Reageer op mijn feedback (deelt mijn e-mailadres)",
+		"sentTitle": "Ondersteuningsverzoek verzonden",
+		"sentDescription": "Je verzoek is geregistreerd bij Recordly.",
+		"replyConfirmation": "Ik neem contact met je op vanaf {{senderEmail}}.",
+		"replyUnavailable": "Je e-mailadres kon niet worden gedeeld.",
 		"signInRequired": "Meld je aan om feedback te verzenden.",
 		"openHome": "Open Start om je aan te melden.",
 		"orEmail": "Of mail naar",
@@ -66,7 +70,7 @@
 		"sentiment": "Hoe voel je je?",
 		"loving": "Enthousiast",
 		"neutral": "Neutraal",
-		"angry": "Boos"
+		"angry": "Teleurgesteld"
 	},
 	"announcements": {
 		"openFailed": "Link kon niet worden geopend.",

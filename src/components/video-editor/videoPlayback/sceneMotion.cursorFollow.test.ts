@@ -137,19 +137,20 @@ describe("automatic zoom camera lifecycle", () => {
 			focus: { cx: 0.35, cy: 0.5 },
 			mode: "auto",
 		};
-		const second: ZoomRegion = { ...first, id: "second", startMs: 3500, endMs: 6000, depth: 3 };
+		const second: ZoomRegion = { ...first, id: "second", startMs: 2500, endMs: 6000, depth: 3 };
 		const last: ZoomRegion = {
 			...first,
 			id: "last",
-			startMs: 7500,
+			startMs: 6500,
 			endMs: 10000,
 			depth: 4,
 			focus: { cx: 0.4, cy: 0.5 },
 		};
-		const panDuration = 1000;
+		const panDuration = 200;
 		const args = {
 			zoomRegions: [first, second, last],
 			connectZooms: true,
+			connectedZoomDurationMs: panDuration,
 			zoomInDurationMs: 200,
 			zoomOutDurationMs: 300,
 			cursorTelemetry: [{ timeMs: 0, cx: 0.8, cy: 0.5 }],
@@ -171,25 +172,27 @@ describe("automatic zoom camera lifecycle", () => {
 			focus: { cx: 0.35, cy: 0.5 },
 			mode: "auto",
 		};
-		const second: ZoomRegion = { ...first, id: "next", startMs: 5500, endMs: 8000, depth: 3 };
-		const end = 4000 + 1000;
+		const second: ZoomRegion = { ...first, id: "next", startMs: 4500, endMs: 8000, depth: 3 };
+		const panDuration = 200;
+		const end = first.endMs + panDuration;
 		const args = {
 			zoomRegions: [first, second],
 			connectZooms: true,
+			connectedZoomDurationMs: panDuration,
 			zoomInDurationMs: 200,
 			zoomOutDurationMs: 300,
 			cursorFollowCamera: createCursorFollowCameraState(),
 			cursorTelemetry: [
 				{ timeMs: 0, cx: 0.8, cy: 0.5 },
-				{ timeMs: 5300, cx: 0.8, cy: 0.5 },
-				{ timeMs: 5400, cx: 0.2, cy: 0.5 },
+				{ timeMs: 4300, cx: 0.8, cy: 0.5 },
+				{ timeMs: 4400, cx: 0.2, cy: 0.5 },
 			],
 		};
 		for (const timeMs of [3999, 4000, end - 1]) resolveSceneZoomTarget({ ...args, timeMs });
 		const held = resolveSceneZoomTarget({ ...args, timeMs: end }).focus;
-		expect(resolveSceneZoomTarget({ ...args, timeMs: 5400 }).focus).toEqual(held);
-		expect(resolveSceneZoomTarget({ ...args, timeMs: 5499 }).focus).toEqual(held);
-		expect(resolveSceneZoomTarget({ ...args, timeMs: 5500 }).focus).not.toEqual(held);
+		expect(resolveSceneZoomTarget({ ...args, timeMs: 4400 }).focus).toEqual(held);
+		expect(resolveSceneZoomTarget({ ...args, timeMs: 4499 }).focus).toEqual(held);
+		expect(resolveSceneZoomTarget({ ...args, timeMs: 4500 }).focus).not.toEqual(held);
 	});
 
 	it("preserves live automatic framing at both connected handoff boundaries", () => {

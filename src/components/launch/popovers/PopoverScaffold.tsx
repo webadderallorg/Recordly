@@ -11,6 +11,7 @@ import { AudioLevelMeter } from "@/components/ui/audio-level-meter";
 import { Button } from "@/components/ui/button";
 import { MicrophoneIcon, MicrophoneSlashIcon } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SlidingHighlightGroup } from "@/components/ui/sliding-highlight";
 import { useAudioLevelMeter } from "@/hooks/useAudioLevelMeter";
 import { HudTooltip } from "../HudTooltip";
 import styles from "../LaunchWindow.module.css";
@@ -150,7 +151,9 @@ export function HudPopover({
 				usePortal={false}
 				onMouseEnter={onMouseEnter}
 			>
-				{children}
+				<SlidingHighlightGroup items=".button--ghost, .toggle-button--ghost">
+					{children}
+				</SlidingHighlightGroup>
 			</PopoverContent>
 		</Popover>
 	);

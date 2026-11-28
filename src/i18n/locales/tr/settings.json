@@ -310,11 +310,11 @@
 		"right": "Sağ",
 		"openEditor": "Kırpma Düzenleyicisini Aç",
 		"details": "Kırpma ayrıntıları",
-		"inlineHint": "Kenarları veya köşeleri sürükleyin · Kare için Shift tuşunu basılı tutun",
 		"aspectRatio": "En boy oranı",
 		"ratioWidth": "Genişlik",
 		"ratioHeight": "Yükseklik",
-		"ratioHint": "Bir hazır ayar seçin veya kendi oranınızı girin (1:20 ile 20:1 arası).",
+		"ratioHint": "1:20 ile 20:1 arasında bir oran girin (ör. 16:9).",
+		"customRatio": "Özel",
 		"freeform": "Serbest",
 		"pixelFields": "Piksel"
 	},

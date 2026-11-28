@@ -10,6 +10,7 @@ import {
 	VideoCameraSlashIcon,
 	XIcon,
 } from "@/components/ui/icons";
+import { SlidingHighlight } from "@/components/ui/sliding-highlight";
 import { toast } from "@/components/ui/toast";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
@@ -358,8 +359,9 @@ function LaunchWindowContent() {
 		<div
 			role="group"
 			aria-label={captureT("recordingSetup")}
-			className={styles.recordingControls}
+			className={`${styles.recordingControls} sliding-highlight-group`}
 		>
+			<SlidingHighlight items=".button--ghost" />
 			<RecordButton
 				countdownActive={countdownActive}
 				countdownDelay={countdownDelay}

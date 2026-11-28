@@ -6,6 +6,10 @@ import {
 } from "../../services/supabase/functions/submit-feedback/uploads";
 import { installDesktopBridge, installDesktopBridgeOverrides } from "./bridge";
 
+const replyEmail = "test@email.com";
+const replySender = "youngchen3442@gmail.com";
+const accountId = "00000000-0000-4000-8000-000000000001";
+
 for (const clearSelection of [false, true]) {
 	test(`feedback submits ${clearSelection ? "without an emoji after clearing Neutral" : "with Neutral by default"}`, async ({
 		page,
@@ -23,6 +27,11 @@ for (const clearSelection of [false, true]) {
 			.getByRole("button", { name: "Feedback", exact: true })
 			.click();
 		const modal = page.getByRole("dialog", { name: "Send feedback", exact: true });
+		const reply = modal.getByRole("checkbox", { name: "Reply to my feedback (shares email)" });
+		await expect(reply).not.toBeChecked();
+		await expect(
+			modal.getByRole("button", { name: /^(Contact|Socials|Join Discord)$/ }),
+		).toHaveCount(0);
 		const neutral = modal.getByRole("button", { name: "Neutral", exact: true });
 		await expect(neutral).toHaveAttribute("aria-pressed", "true");
 		if (clearSelection) {
@@ -36,61 +45,43 @@ for (const clearSelection of [false, true]) {
 			.getByLabel("Description", { exact: true })
 			.fill("Please add more keyboard shortcuts.");
 		await modal.getByRole("button", { name: "Send feedback", exact: true }).click();
+		const confirmation = page.getByRole("dialog", {
+			name: "Support request sent",
+			exact: true,
+		});
 		await expect(
-			page.getByRole("dialog", { name: "Thanks for your feedback", exact: true }),
+			confirmation.getByText("Your ticket has been logged for Recordly.", { exact: true }),
 		).toBeVisible();
+		await expect(confirmation).not.toContainText(replySender);
+		await expect(confirmation.getByRole("button", { name: "Join Discord" })).toBeVisible();
+		expect(requestBody).not.toContain('name="replyForAccountId"');
 		expect(requestBody).toContain(
 			`name="title"\r\n\r\n${clearSelection ? "" : "😐 "}Please add more keyboard shortcuts.`,
 		);
 		if (clearSelection) {
-			await page.getByRole("button", { name: "Done", exact: true }).click();
+			await page.getByRole("button", { name: "Close", exact: true }).click();
 			await page.getByRole("button", { name: "Recordly account", exact: true }).click();
 			await page
 				.getByRole("dialog", { name: "Account menu", exact: true })
 				.getByRole("button", { name: "Feedback", exact: true })
 				.click();
 			await expect(neutral).toHaveAttribute("aria-pressed", "true");
+			await expect(reply).not.toBeChecked();
 		}
 	});
 }
 
-for (const signedIn of [false, true]) {
-	test(`feedback offers Contact without duplicate email when signed ${signedIn ? "in" : "out"}`, async ({
-		page,
-	}) => {
-		await installDesktopBridge(page, undefined, { signedIn });
-		await installDesktopBridgeOverrides(page, () => {
-			window.electronAPI.openExternalUrl = async (url: string) => {
-				document.documentElement.dataset.openedExternalUrl = url;
-				return { success: true };
-			};
-		});
-		await page.goto("/?windowType=editor");
-		if (signedIn) {
-			await page.getByRole("button", { name: "Recordly account", exact: true }).click();
-			await page
-				.getByRole("dialog", { name: "Account menu", exact: true })
-				.getByRole("button", { name: "Feedback", exact: true })
-				.click();
-		} else {
-			await page.getByRole("button", { name: "Feedback", exact: true }).click();
-		}
-		const modal = page.getByRole("dialog", { name: "Send feedback", exact: true });
-		await expect(
-			modal.getByRole("link", { name: "support@recordly.dev", exact: true }),
-		).toHaveCount(0);
-		await modal.getByRole("button", { name: "Contact", exact: true }).click();
-		const contact = page.getByRole("dialog", { name: "Contact", exact: true });
-		const email = contact.getByRole("button", { name: "support@recordly.dev", exact: true });
-		await email.click();
-		await expect(page.locator("html")).toHaveAttribute(
-			"data-opened-external-url",
-			"mailto:support@recordly.dev",
-		);
-		await page.keyboard.press("Escape");
-		await expect(modal).toBeVisible();
-	});
-}
+test("signed-out feedback keeps the sign-in prompt without community links", async ({ page }) => {
+	await installDesktopBridge(page, undefined, { signedIn: false });
+	await page.goto("/?windowType=editor");
+	await page.getByRole("button", { name: "Feedback", exact: true }).click();
+	const modal = page.getByRole("dialog", { name: "Send feedback", exact: true });
+	await expect(modal.getByText("Sign in to send feedback.")).toBeVisible();
+	await expect(modal.getByRole("checkbox")).toHaveCount(0);
+	await expect(
+		modal.getByRole("button", { name: /^(Contact|Socials|Join Discord)$/ }),
+	).toHaveCount(0);
+});
 
 test("feedback preserves a draft on failure, supports attachments, and includes diagnostics automatically", async ({
 	page,
@@ -103,10 +94,11 @@ test("feedback preserves a draft on failure, supports attachments, and includes 
 		.getByRole("button", { name: "Feedback", exact: true })
 		.click();
 	const modal = page.getByRole("dialog", { name: "Send feedback", exact: true });
+	const frowning = modal.getByRole("button", { name: "Frowning", exact: true });
 	await expect(modal.getByLabel("Subject", { exact: true })).toHaveCount(0);
-	await expect(modal.locator("label")).toHaveCount(0);
 	await modal.getByRole("button", { name: "Loving", exact: true }).click();
-	await modal.getByRole("button", { name: "Angry", exact: true }).click();
+	await expect(frowning).toContainText("🙁");
+	await frowning.click();
 	await expect(modal.getByRole("button", { name: "Loving", exact: true })).toHaveAttribute(
 		"aria-pressed",
 		"false",
@@ -125,7 +117,7 @@ test("feedback preserves a draft on failure, supports attachments, and includes 
 	await expect(
 		modal.getByText("Diagnostic logs will be attached.", { exact: true }),
 	).toBeVisible();
-	await expect(modal.getByRole("checkbox")).toHaveCount(0);
+	await expect(modal.getByRole("checkbox")).not.toBeChecked();
 	await expect(modal.getByLabel("Title", { exact: true })).toHaveCount(0);
 	await modal.getByRole("button", { name: "Send feedback", exact: true }).click();
 	await expect(modal.getByRole("alert")).toHaveText(
@@ -150,10 +142,7 @@ test("feedback preserves a draft on failure, supports attachments, and includes 
 			),
 		)
 		.toBe("transparent");
-	await expect(modal.getByRole("button", { name: "Angry", exact: true })).toHaveAttribute(
-		"aria-pressed",
-		"true",
-	);
+	await expect(frowning).toHaveAttribute("aria-pressed", "true");
 	await modal.getByLabel("Description", { exact: true }).fill("Export stops early (updated)");
 	await expect(modal.getByRole("alert")).toHaveCount(0);
 	await modal.getByRole("button", { name: "Send feedback", exact: true }).click();
@@ -172,10 +161,7 @@ test("feedback preserves a draft on failure, supports attachments, and includes 
 		.getByRole("button", { name: "Feedback", exact: true })
 		.click();
 	await expect(page.getByRole("dialog", { name: "Send feedback", exact: true })).toBeVisible();
-	await expect(modal.getByRole("button", { name: "Angry", exact: true })).toHaveAttribute(
-		"aria-pressed",
-		"true",
-	);
+	await expect(frowning).toHaveAttribute("aria-pressed", "true");
 	await expect(modal.getByLabel("Description", { exact: true })).toHaveValue(
 		"Updated reproduction steps.",
 	);
@@ -193,11 +179,12 @@ test("large feedback uploads resume from the last saved chunk without creating a
 	let reports = 0;
 	let notifications = 0;
 	const handle = feedbackUploads({
-		authenticate: async (token) => (token.endsWith(".ui-test-signature") ? "test-user" : null),
+		authenticate: async (token) =>
+			token.endsWith(".ui-test-signature") ? { id: accountId, email: replyEmail } : null,
 		prepare: async (_user, id, files) => {
 			ids.add(id);
 			expect(files).toEqual([{ name: "recording.webm", size, type: "video/webm" }]);
-			return "ready";
+			return reports ? "saved" : "ready";
 		},
 		find: async () => ({
 			files: [{ name: "recording.webm", size, type: "video/webm" }],
@@ -216,11 +203,13 @@ test("large feedback uploads resume from the last saved chunk without creating a
 			if (chunks.length === 1) return null; // The chunk arrived, but the app didn't receive confirmation.
 			return savedBytes;
 		},
-		finish: async () => {
+		finish: async (_user, _id, payload) => {
+			expect(payload.reply_email).toBe(replyEmail);
 			expect(savedBytes).toBe(size);
 			reports++;
 			return "new";
 		},
+		savedReplyEmail: async () => replyEmail,
 		notify: async () => {
 			notifications++;
 		},
@@ -235,6 +224,10 @@ test("large feedback uploads resume from the last saved chunk without creating a
 			}),
 			new URL(req.url()),
 		);
+		if (result.ok && new URL(req.url()).searchParams.get("upload") === "finish") {
+			await route.abort(); // The report was saved before the connection was lost.
+			return;
+		}
 		await route.fulfill({
 			status: result.status,
 			headers: Object.fromEntries(result.headers),
@@ -257,12 +250,19 @@ test("large feedback uploads resume from the last saved chunk without creating a
 		mimeType: "video/webm",
 		buffer: Buffer.alloc(size),
 	});
+	const reply = modal.getByRole("checkbox", { name: "Reply to my feedback (shares email)" });
+	await reply.press("Space");
+	await expect(reply).toBeChecked();
 	const send = modal.getByRole("button", { name: "Send feedback", exact: true });
 	await send.click();
 	await expect(modal.getByRole("alert")).toContainText("Could not send feedback");
 	await expect(modal.getByText("recording.webm", { exact: true })).toBeVisible();
 	await send.click();
-	await expect(page.getByRole("dialog", { name: "Thanks for your feedback" })).toBeVisible();
+	await expect(modal.getByRole("alert")).toContainText("Could not send feedback");
+	await send.click();
+	await expect(page.getByRole("dialog", { name: "Support request sent" })).toContainText(
+		`I’ll reach out from ${replySender}.`,
+	);
 	expect(chunks).toEqual([CHUNK_BYTES, CHUNK_BYTES, 11]);
 	expect(ids.size).toBe(1);
 	expect(reports).toBe(1);
@@ -272,7 +272,15 @@ test("large feedback uploads resume from the last saved chunk without creating a
 test("feedback stores its attachment and saved export logs through the handler", async ({
 	page,
 }) => {
+	await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+	await page.addInitScript(() => localStorage.setItem("recordly.theme", "dark"));
 	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		window.electronAPI.openExternalUrl = async (url) => {
+			document.documentElement.dataset.openedExternalUrl = url;
+			return { success: true };
+		};
+	});
 	await page.addInitScript(() => {
 		window.electronAPI.getExportDiagnostics = async () => ({
 			success: true,
@@ -285,7 +293,8 @@ test("feedback stores its attachment and saved export logs through the handler",
 	const uploads = new Map<string, string>();
 	const attachment = Buffer.from("Reproduction steps");
 	const handle = feedbackHandler({
-		authenticate: async (token) => (token.endsWith(".ui-test-signature") ? "test-user" : null),
+		authenticate: async (token) =>
+			token.endsWith(".ui-test-signature") ? { id: accountId, email: replyEmail } : null,
 		reserve: async (_userId, files, bytes) => files === 1 && bytes === attachment.length,
 		upload: async (path, file) => {
 			uploads.set(path, await file.text());
@@ -327,16 +336,28 @@ test("feedback stores its attachment and saved export logs through the handler",
 		mimeType: "text/plain",
 		buffer: attachment,
 	});
+	const reply = modal.getByRole("checkbox", { name: "Reply to my feedback (shares email)" });
+	await expect(reply).not.toBeChecked();
+	await modal.getByText("Reply to my feedback (shares email)", { exact: true }).click();
+	await expect(reply).toBeChecked();
 	await modal.getByRole("button", { name: "Send feedback", exact: true }).click();
-	await expect(
-		page.getByRole("dialog", { name: "Thanks for your feedback", exact: true }),
-	).toBeVisible();
+	const confirmation = page.getByRole("dialog", { name: "Support request sent", exact: true });
+	await expect(confirmation).toContainText(`I’ll reach out from ${replySender}.`);
+	await expect(confirmation).not.toContainText(replyEmail);
+	await expect(confirmation.getByRole("heading")).toBeFocused();
+	await confirmation.screenshot({ path: test.info().outputPath("feedback-sent.png") });
+	await confirmation.getByRole("button", { name: "Join Discord", exact: true }).click();
+	await expect(page.locator("html")).toHaveAttribute(
+		"data-opened-external-url",
+		"https://discord.gg/sdv2FBVNgE",
+	);
 	expect(stored).toHaveLength(1);
 	expect(uploads.size).toBe(1);
 	const [path, contents] = [...uploads.entries()][0];
 	expect(contents).toBe("Reproduction steps");
 	expect(stored[0]).toMatchObject({
-		user_id: "test-user",
+		user_id: accountId,
+		reply_email: replyEmail,
 		title: "😐 The exporter stopped before completion.",
 		attachments: [{ path, name: "notes.txt", size: attachment.length, type: "text/plain" }],
 		logs: expect.stringMatching(/\[export\] failed.*Breeze.*Encoder stopped/),

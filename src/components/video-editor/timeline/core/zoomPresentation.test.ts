@@ -66,7 +66,7 @@ describe("zoom block presentation", () => {
 			depth: 3,
 			focus: { cx: 0.35, cy: 0.5 },
 		};
-		const last = { ...first, id: "last", startMs: 7884, endMs: 7884 + duration };
+		const last = { ...first, id: "last", startMs: 7689, endMs: 7689 + duration };
 		const span = { start: last.startMs, end: last.endMs };
 		const display = getZoomDisplaySpan(span, timing);
 		expect(display.end).toBeGreaterThan(span.start);

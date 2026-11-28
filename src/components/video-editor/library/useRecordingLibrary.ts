@@ -144,7 +144,7 @@ export function useRecordingLibrary(
 			let sourcePath = source;
 			let insertAt = Math.min(before.length, Math.max(0, index ?? before.length));
 			let id = "";
-			let completed = 0;
+			const importedPaths: string[] = [];
 			for (const path of [...new Set(typeof paths === "string" ? [paths] : paths)]) {
 				if (cancelled.current) break;
 				const result = await window.electronAPI.importRecording(sourcePath, path, webcam);
@@ -153,7 +153,7 @@ export function useRecordingLibrary(
 					if (cancelled.current) break;
 					throw new Error(result.error);
 				}
-				completed++;
+				importedPaths.push(path);
 				media = result.value;
 				sourcePath = media.path;
 				if (media.webcam) webcam = { ...webcam, ...media.webcam, enabled: true };
@@ -209,11 +209,16 @@ export function useRecordingLibrary(
 			project.setVideoPath(media.url);
 			ui.setIsPreviewReady(false);
 			ui.setPreviewVersion((version) => version + 1);
+			setSelected((previous) => {
+				const next = new Set(previous);
+				for (const path of importedPaths) next.delete(path);
+				return next;
+			});
 			toast.success(
-				completed === 1
+				importedPaths.length === 1
 					? te("videoAddedToTimeline", "Video added to timeline")
 					: te("videosAddedToTimeline", "{{count}} videos added to timeline", {
-							count: completed,
+							count: importedPaths.length,
 						}),
 			);
 		} catch (error) {

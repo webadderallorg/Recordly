@@ -37,6 +37,28 @@ test("the camera reaches the incoming framing when preview frames are delayed", 
 	});
 });
 
+test("touching zoom blocks pan across their shared edge in preview", async ({ page }) => {
+	await installDesktopBridge(page, "filmstrip.mp4");
+	await page.goto("/tests/ui/paused-motion.html?pan&touchingPan");
+	const main = page.locator("main");
+	const video = page.locator("video").first();
+	await expect(main).toHaveAttribute("data-ready", "true");
+	await page.getByRole("button", { name: "Play across pan", exact: true }).click();
+	await expect.poll(() => video.evaluate((v) => v.currentTime)).toBeGreaterThanOrEqual(2.05);
+	await expect.poll(() => video.evaluate((v) => v.paused)).toBe(true);
+	const frames = JSON.parse((await main.getAttribute("data-pan-samples"))!) as Array<{
+		time: number;
+		offset: number;
+		scale: number;
+	}>;
+	const before = frames.filter(({ time }) => time > 1.8 && time < 2);
+	const after = frames.filter(({ time }) => time >= 2);
+	expect(before.length).toBeGreaterThan(0);
+	expect(after.length).toBeGreaterThan(0);
+	expect(Math.min(...[...before, ...after].map(({ scale }) => scale))).toBeGreaterThan(1.49);
+	expect(after.at(-1)!.offset).toBeLessThan(before[0].offset - 1);
+});
+
 test("a short second connected 1.8x block arrives before its full exit", async ({ page }) => {
 	await installDesktopBridge(page, "filmstrip.mp4");
 	await page.goto("/tests/ui/paused-motion.html?pan&shortPan&visualBounds");
@@ -54,19 +76,19 @@ test("a short second connected 1.8x block arrives before its full exit", async (
 	const visibleEnd = Number(await zoom.getAttribute("data-end-ms"));
 	const storedEnd = Number(await zoom.getAttribute("data-stored-end-ms"));
 	expect(visibleEnd).toBeGreaterThan(3400);
-	expect(storedEnd).toBe(3695);
+	expect(storedEnd).toBe(3500);
 	await page.getByRole("button", { name: "Seek outgoing end", exact: true }).click();
 	await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.seeking)).toBe(false);
 	await page.getByRole("button", { name: "Play across pan", exact: true }).click();
 	await expect
 		.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime))
-		.toBeGreaterThanOrEqual(2.745);
+		.toBeGreaterThanOrEqual(2.55);
 	await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
 	const frames = JSON.parse((await main.getAttribute("data-pan-samples"))!) as Array<{
 		time: number;
 		scale: number;
 	}>;
-	const arriving = frames.filter((frame) => frame.time >= 2.65 && frame.time <= 2.75);
+	const arriving = frames.filter((frame) => frame.time >= 2.45 && frame.time <= 2.55);
 	expect(arriving.length).toBeGreaterThan(0);
 	expect(Math.max(...arriving.map((frame) => frame.scale))).toBeGreaterThan(1.77);
 	await page.getByRole("button", { name: "Resume through zoom-out", exact: true }).click();
@@ -79,9 +101,9 @@ test("a short second connected 1.8x block arrives before its full exit", async (
 		time: number;
 		scale: number;
 	}>;
-	expect(
-		allFrames.some((frame) => frame.time > 3.695 && frame.time < 3.799 && frame.scale > 1),
-	).toBe(true);
+	expect(allFrames.some((frame) => frame.time > 3.5 && frame.time < 3.6 && frame.scale > 1)).toBe(
+		true,
+	);
 });
 
 for (const preset of ["focused", "smooth"]) {
@@ -191,18 +213,18 @@ for (const panDepth of ["same", "deeper", "wider"]) {
 		const outgoingScale = Number(await main.getAttribute("data-camera-scale"));
 		await seek("Seek outgoing end", 1.9);
 		await expect.poll(readOffset).toBeCloseTo(outgoing, 1);
-		await seek("Seek incoming start", 3);
+		await seek("Seek incoming start", 2.5);
 		await expect.poll(readOffset).toBeLessThan(-20);
 		const incoming = await readOffset();
 		const incomingScale = Number(await main.getAttribute("data-camera-scale"));
-		await seek("Seek pan midpoint", 2.5);
+		await seek("Seek pan midpoint", 2.25);
 		await expect.poll(readOffset).toBeGreaterThan(incoming);
 		expect(await readOffset()).toBeLessThan(outgoing);
 		await seek("Seek outgoing end", 1.9);
 		await page.getByRole("button", { name: "Play across pan", exact: true }).click();
 		await expect
 			.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime))
-			.toBeGreaterThanOrEqual(3.05);
+			.toBeGreaterThanOrEqual(2.55);
 		await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
 		const arriving = await readOffset();
 		// The camera keeps moving after the pan goal reaches the incoming block.
@@ -219,8 +241,8 @@ for (const panDepth of ["same", "deeper", "wider"]) {
 			offset: number;
 			scale: number;
 		}>;
-		const before = frames.filter((f) => f.time > 2.9 && f.time < 3);
-		const after = frames.filter((f) => f.time >= 3 && f.time < 3.1);
+		const before = frames.filter((f) => f.time > 2.35 && f.time < 2.5);
+		const after = frames.filter((f) => f.time >= 2.5 && f.time < 2.65);
 		expect(before.length).toBeGreaterThan(1);
 		expect(after.length).toBeGreaterThan(1);
 		const crossing = Math.abs(after[0].offset - before.at(-1)!.offset);

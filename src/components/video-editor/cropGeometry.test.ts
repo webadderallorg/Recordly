@@ -5,7 +5,7 @@ import { type CropHandle, dragCrop, fitCropRatio } from "./cropGeometry";
 const full = { x: 0, y: 0, width: 1, height: 1 };
 const handles: CropHandle[] = ["n", "s", "e", "w", "nw", "ne", "sw", "se", "move"];
 describe("direct crop geometry", () => {
-	it("snaps to a pixel square on landscape and portrait sources", () => {
+	it("supports an explicit square ratio on landscape and portrait sources", () => {
 		for (const source of [16 / 9, 9 / 16]) {
 			for (const handle of handles.filter((handle) => handle !== "move")) {
 				const crop = dragCrop(full, handle, -0.15, -0.2, 1, source);
@@ -17,6 +17,14 @@ describe("direct crop geometry", () => {
 		const crop = dragCrop(full, "nw", 0.2, 0.3, 1, 16 / 9);
 		expect(crop.x + crop.width).toBeCloseTo(1);
 		expect(crop.y + crop.height).toBeCloseTo(1);
+	});
+	it("preserves a narrow crop when its ratio is locked without moving the pointer", () => {
+		const initial = { x: 0.1, y: 0.2, width: 0.01, height: 0.3 };
+		const source = 16 / 9;
+		const ratio = (initial.width * source) / initial.height;
+		const crop = dragCrop(initial, "e", 0, 0, ratio, source);
+		expect(crop.width).toBeCloseTo(initial.width, 8);
+		expect(crop.height).toBeCloseTo(initial.height, 8);
 	});
 	it("fits custom ratios about the existing crop center", () => {
 		const crop = fitCropRatio({ x: 0.2, y: 0.1, width: 0.6, height: 0.8 }, 9 / 16, 16 / 9);

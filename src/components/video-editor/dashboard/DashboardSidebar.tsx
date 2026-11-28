@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { Button } from "@/components/ui/button";
 import { ChatWarning, Cloud, GearSix, House, Plus } from "@/components/ui/icons";
+import { SlidingHighlight } from "@/components/ui/sliding-highlight";
 import { useI18n as useUiLocale } from "@/contexts/I18nContext";
 import { FolderRow } from "./FolderRow";
 import { RecordNewButton } from "./RecordNewButton";
@@ -50,7 +51,8 @@ export function DashboardSidebar({
 				className="flex min-h-0 w-48 shrink-0 flex-col bg-transparent px-4 pb-5 pt-3 lg:w-56"
 			>
 				<RecordNewButton busy={busy} run={run} className="mb-5 w-full" />
-				<nav className="space-y-1">
+				<nav className="sliding-highlight-group sliding-highlight-neutral space-y-1">
+					<SlidingHighlight selection />
 					<Button
 						variant="ghost"
 						className={navClass(section === "projects")}
@@ -103,27 +105,31 @@ export function DashboardSidebar({
 						<Plus className="size-3.5" />
 					</Button>
 				</div>
-				<div className="min-h-0 flex-1 overflow-y-auto space-y-1">
-					{folders.map((folder) => (
-						<FolderRow
-							key={folder.id}
-							folder={folder}
-							active={section === folder.id}
-							onDropProject={(path) => addToFolder(path, folder.id)}
-							onSelect={() => setSection(folder.id)}
-							onChange={(next) =>
-								save(folders.map((item) => (item.id === next.id ? next : item)))
-							}
-							onRemove={() => {
-								save(folders.filter((item) => item.id !== folder.id));
-								if (section === folder.id) setSection("projects");
-							}}
-							colors={metadata.colors}
-							onColors={(colors) => update({ ...metadata, colors })}
-						/>
-					))}
+				<div className="min-h-0 flex-1 overflow-y-auto">
+					<div className="sliding-highlight-group sliding-highlight-neutral space-y-1 [--sliding-selection-opacity:70%]">
+						<SlidingHighlight items=":scope > .folder-row" selection />
+						{folders.map((folder) => (
+							<FolderRow
+								key={folder.id}
+								folder={folder}
+								active={section === folder.id}
+								onDropProject={(path) => addToFolder(path, folder.id)}
+								onSelect={() => setSection(folder.id)}
+								onChange={(next) =>
+									save(folders.map((item) => (item.id === next.id ? next : item)))
+								}
+								onRemove={() => {
+									save(folders.filter((item) => item.id !== folder.id));
+									if (section === folder.id) setSection("projects");
+								}}
+								colors={metadata.colors}
+								onColors={(colors) => update({ ...metadata, colors })}
+							/>
+						))}
+					</div>
 				</div>
-				<div className="flex min-h-0 flex-col gap-1 pt-6">
+				<div className="sliding-highlight-group flex min-h-0 flex-col gap-1 pt-6">
+					<SlidingHighlight />
 					<div className="min-h-0 overflow-y-auto">
 						<SidebarCards onSignIn={onSignIn} />
 					</div>

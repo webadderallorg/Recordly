@@ -429,11 +429,11 @@ describe("findDominantRegion", () => {
 	it("keeps the next region active during the connected transition", () => {
 		const regions: ZoomRegion[] = [
 			{ id: "a", startMs: 1000, endMs: 3000, depth: 2, focus: { cx: 0.2, cy: 0.2 } },
-			{ id: "b", startMs: 4300, endMs: 7000, depth: 3, focus: { cx: 0.7, cy: 0.7 } },
+			{ id: "b", startMs: 3500, endMs: 7000, depth: 3, focus: { cx: 0.7, cy: 0.7 } },
 		];
 
 		// The connected handoff stays zoomed while crossing the gap before b starts.
-		const result = findDominantRegion(regions, 4250, { connectZooms: true });
+		const result = findDominantRegion(regions, 3450, { connectZooms: true });
 		expect(result.strength).toBe(1);
 		expect(result.region).not.toBeNull();
 		expect(result.region!.id).toBe("b");

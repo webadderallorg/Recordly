@@ -36,7 +36,11 @@
 	"feedback": {
 		"trigger": "反馈",
 		"send": "发送反馈",
-		"thanks": "感谢你的反馈",
+		"allowReply": "回复我的反馈（共享邮箱地址）",
+		"sentTitle": "支持请求已发送",
+		"sentDescription": "你的请求已在 Recordly 登记。",
+		"replyConfirmation": "我会使用 {{senderEmail}} 给你发邮件。",
+		"replyUnavailable": "未能共享你的邮箱地址。",
 		"signInRequired": "登录以发送反馈。",
 		"openHome": "打开首页以登录。",
 		"orEmail": "或发送邮件至",
@@ -66,7 +70,7 @@
 		"sentiment": "你的感受如何？",
 		"loving": "很喜欢",
 		"neutral": "一般",
-		"angry": "生气"
+		"angry": "不满意"
 	},
 	"announcements": {
 		"openFailed": "无法打开链接。",

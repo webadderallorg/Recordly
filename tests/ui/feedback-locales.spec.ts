@@ -12,7 +12,7 @@ function catalog(locale: string, namespace: string) {
 	);
 }
 
-test("feedback links fit all supported languages", async ({ page }) => {
+test("feedback reply opt-in fits all supported languages", async ({ page }) => {
 	test.setTimeout(180000);
 	await page.setViewportSize({ width: 1000, height: 600 });
 	await page.emulateMedia({ reducedMotion: "reduce" });
@@ -20,35 +20,26 @@ test("feedback links fit all supported languages", async ({ page }) => {
 	await page.goto("/?windowType=editor");
 	for (const locale of SUPPORTED_LOCALES) {
 		await page.evaluate((value) => localStorage.setItem("recordly.locale", value), locale);
-		await page.reload();
+		await page.reload({ waitUntil: "domcontentloaded" });
 		const common = catalog(locale, "common");
-		await page.getByRole("button", { name: catalog(locale, "ui").home, exact: true }).click();
+		await page
+			.getByRole("button", { name: catalog(locale, "ui").home, exact: true })
+			.press("Enter");
 		const home = page.getByRole("dialog", {
 			name: catalog(locale, "ui").projectsDashboard,
 			exact: true,
 		});
 		await home.getByRole("button", { name: common.feedback.trigger, exact: true }).click();
 		const feedback = page.getByRole("dialog", { name: common.feedback.send, exact: true });
-		await expect(
-			feedback.getByRole("link", { name: "support@recordly.dev", exact: true }),
-		).toHaveCount(0);
-		const buttons = [
-			feedback.getByRole("button", { name: catalog(locale, "editor").socials, exact: true }),
-			feedback.getByRole("button", { name: catalog(locale, "billing").contact, exact: true }),
-		];
-		for (const button of buttons) {
-			await expect(button).toBeInViewport({ ratio: 1 });
-			expect(
-				await button.evaluate((element) => element.scrollWidth <= element.clientWidth),
-				locale,
-			).toBe(true);
-			const name = await button.innerText();
-			await button.click();
-			const dialog = page.getByRole("dialog", { name, exact: true });
-			await expect(dialog).toBeVisible();
-			await page.keyboard.press("Escape");
-			await expect(button).toBeFocused();
-		}
-		await feedback.screenshot({ path: test.info().outputPath(`feedback-${locale}.png`) });
+		const optIn = feedback.getByRole("checkbox", {
+			name: common.feedback.allowReply,
+			exact: true,
+		});
+		await expect(optIn).toBeVisible();
+		await expect(optIn).not.toBeChecked();
+		expect(
+			await feedback.evaluate((element) => element.scrollWidth <= element.clientWidth),
+			locale,
+		).toBe(true);
 	}
 });
