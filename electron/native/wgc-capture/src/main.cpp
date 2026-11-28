@@ -408,9 +408,14 @@ int wmain(int argc, wchar_t* argv[]) {
         }
     };
 
+    // WGC stamps a window's first frame with the time that window last presented, which can be
+    // seconds before capture started when the window is idle. Used as the timeline origin, that
+    // stale stamp holds the first image over the gap and puts audio and clicks seconds late.
+    std::atomic<int64_t> captureStartHns{0};
     session.setFrameCallback([&](ID3D11Texture2D* texture, int contentWidth, int contentHeight,
                                  int64_t timestampHns) {
         std::lock_guard<std::mutex> lock(g_videoMutex);
+        timestampHns = (std::max)(timestampHns, captureStartHns.load());
         g_lastFrameTimestampHns = timestampHns;
         if (videoStopped) return;
         int64_t expectedFirstVideoTimestampHns = -1;
@@ -487,6 +492,7 @@ int wmain(int argc, wchar_t* argv[]) {
     }
 
     // Start video capture, then audio immediately after for sync
+    captureStartHns = queryPerformanceCounterHns();
     if (!session.startCapture()) {
         std::cerr << "ERROR: Failed to start WGC capture" << std::endl;
         return 1;
