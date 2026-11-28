@@ -11,7 +11,7 @@ it("enforces the large upload threshold, quota and exact chunk length before wri
 	const prepare = vi.fn().mockResolvedValueOnce("limit").mockResolvedValueOnce("ready");
 	const append = vi.fn().mockResolvedValue(size);
 	const handle = feedbackUploads({
-		authenticate: async () => "user-id",
+		authenticate: async () => ({ id: "user-id" }),
 		prepare,
 		find: async () => ({
 			files: [{ name: "large.dat", type: "", size }],
@@ -20,6 +20,7 @@ it("enforces the large upload threshold, quota and exact chunk length before wri
 		append,
 		saveUrl: vi.fn(),
 		finish: vi.fn(),
+		savedReplyEmail: vi.fn(),
 		create: vi.fn(),
 		offset: vi.fn(),
 		notify: vi.fn(),
@@ -62,12 +63,18 @@ const backend = {
 	notify: vi.fn(),
 };
 const handle = feedbackHandler(backend);
-function request(files = [new File(["notes"], "notes.txt")], logs = "logs") {
+function request(
+	files = [new File(["notes"], "notes.txt")],
+	logs = "logs",
+	replyForAccountId?: string,
+) {
 	const body = new FormData();
 	body.set("title", "Bug");
 	body.set("subject", "bug");
 	body.set("message", "Steps");
 	body.set("logs", logs);
+	if (replyForAccountId) body.set("replyForAccountId", replyForAccountId);
+	body.set("reply_email", "untrusted@example.test");
 	for (const file of files) body.append("files", file);
 	return new Request("https://example.test", {
 		method: "POST",
@@ -77,7 +84,7 @@ function request(files = [new File(["notes"], "notes.txt")], logs = "logs") {
 }
 beforeEach(() => {
 	vi.resetAllMocks();
-	backend.authenticate.mockResolvedValue("user-id");
+	backend.authenticate.mockResolvedValue({ id: "user-id", email: "account@example.test" });
 	backend.reserve.mockResolvedValue(true);
 	backend.upload.mockResolvedValue(undefined);
 	backend.insert.mockResolvedValue(undefined);
@@ -85,7 +92,10 @@ beforeEach(() => {
 	backend.notify.mockResolvedValue(undefined);
 });
 it("authenticates and reserves quota before uploading, then saves server-owned paths", async () => {
-	expect((await handle(request())).status).toBe(200);
+	const response = await handle(request());
+	expect(response.status).toBe(200);
+	expect(await response.json()).toEqual({ success: true });
+	expect(backend.insert.mock.calls[0][0]).not.toHaveProperty("reply_email");
 	expect(backend.reserve).toHaveBeenCalledWith("user-id", 1, 5);
 	expect(backend.reserve.mock.invocationCallOrder[0]).toBeLessThan(
 		backend.upload.mock.invocationCallOrder[0],
@@ -100,6 +110,17 @@ it("authenticates and reserves quota before uploading, then saves server-owned p
 	expect(backend.insert.mock.invocationCallOrder[0]).toBeLessThan(
 		backend.notify.mock.invocationCallOrder[0],
 	);
+});
+it("shares the authenticated account email with the explicit reply opt-in", async () => {
+	const response = await handle(request([], "logs", "user-id"));
+	expect(response.status).toBe(200);
+	expect(await response.json()).toEqual({ success: true, replyEmail: "account@example.test" });
+	expect(backend.insert.mock.calls[0][0]).toHaveProperty("reply_email", "account@example.test");
+});
+it("omits the reply email when the signed-in account no longer matches the opt-in", async () => {
+	const response = await handle(request([], "logs", "previous-account"));
+	expect(await response.json()).toEqual({ success: true });
+	expect(backend.insert.mock.calls[0][0]).not.toHaveProperty("reply_email");
 });
 it("rejects unauthenticated requests and exhausted quotas before storage", async () => {
 	backend.authenticate.mockResolvedValueOnce(null);

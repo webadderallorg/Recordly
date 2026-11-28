@@ -38,12 +38,14 @@ begin
   update storage.objects set metadata = '{"size":52428800}' where name = upload_path;
   if public.finish_feedback_upload(b, report, payload) <> 'invalid'
      then raise exception 'Finalization ownership failure'; end if;
-  if public.finish_feedback_upload(a, report, payload) <> 'new'
+  if public.finish_feedback_upload(a, report, payload || '{"reply_email":"account@example.test"}') <> 'new'
      then raise exception 'Complete upload did not finalize'; end if;
   if public.finish_feedback_upload(a, report, payload) <> 'saved'
      then raise exception 'Finalize retry did not recognize the existing report'; end if;
   if (select attachments->0->>'path' from public.feedback_reports where id = report) is distinct from upload_path
      then raise exception 'Finalized report lost attachment metadata'; end if;
+  if (select reply_email from public.feedback_reports where id = report) is distinct from 'account@example.test'
+     then raise exception 'Finalization did not preserve the original reply email'; end if;
   if public.prepare_feedback_upload(b, gen_random_uuid(), manifest) <> 'ready'
      or public.prepare_feedback_upload(c, gen_random_uuid(), manifest) <> 'limit'
      or not public.reserve_feedback_quota(d, 0, 0)

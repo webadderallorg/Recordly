@@ -36,7 +36,11 @@
 	"feedback": {
 		"trigger": "Commentaires",
 		"send": "Envoyer des commentaires",
-		"thanks": "Merci pour vos commentaires",
+		"allowReply": "Répondre à mon avis (partage mon adresse e-mail)",
+		"sentTitle": "Demande d’assistance envoyée",
+		"sentDescription": "Votre demande a été enregistrée pour Recordly.",
+		"replyConfirmation": "Je vous contacterai depuis l’adresse {{senderEmail}}.",
+		"replyUnavailable": "Votre adresse e-mail n’a pas pu être partagée.",
 		"signInRequired": "Connectez-vous pour envoyer des commentaires.",
 		"openHome": "Ouvrez l’accueil pour vous connecter.",
 		"orEmail": "Ou écrivez à",
@@ -66,7 +70,7 @@
 		"sentiment": "Que ressentez-vous ?",
 		"loving": "J’adore",
 		"neutral": "Neutre",
-		"angry": "En colère"
+		"angry": "Déçu"
 	},
 	"announcements": {
 		"openFailed": "Impossible d’ouvrir le lien.",

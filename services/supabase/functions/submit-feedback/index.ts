@@ -11,7 +11,7 @@ const client = createClient(supabaseUrl, serviceKey, {
 const bucket = client.storage.from(FEEDBACK_BUCKET);
 async function authenticate(token: string) {
 	const { data, error } = await client.auth.getUser(token);
-	return error ? null : (data.user?.id ?? null);
+	return error || !data.user ? null : { id: data.user.id, email: data.user.email };
 }
 async function notify(id: string) {
 	const { data, error } = await client.rpc("take_feedback_notification");
@@ -89,6 +89,16 @@ const uploads = feedbackUploads({
 		});
 		if (error) throw error;
 		return data;
+	},
+	async savedReplyEmail(user, id) {
+		const { data, error } = await client
+			.from("feedback_reports")
+			.select("reply_email")
+			.eq("id", id)
+			.eq("user_id", user)
+			.maybeSingle();
+		if (error) throw error;
+		return data?.reply_email ?? null;
 	},
 });
 

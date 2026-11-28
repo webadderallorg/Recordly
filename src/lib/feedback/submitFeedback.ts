@@ -60,12 +60,16 @@ export function normalizeFeedbackTitle(value: string) {
 	}
 	return title.trimEnd();
 }
+
+type FeedbackReceipt = { success?: boolean; replyEmail?: string };
+
 export async function submitFeedback(input: {
 	title: string;
 	subject: string;
 	message: string;
 	files: File[];
 	logs: string | null;
+	replyForAccountId?: string;
 	onUploadProgress?: (percent: number) => void;
 }) {
 	const client = recordlyAuth;
@@ -80,6 +84,7 @@ export async function submitFeedback(input: {
 		subject: input.subject,
 		message: input.message.trim(),
 		logs: input.logs,
+		...(input.replyForAccountId ? { replyForAccountId: input.replyForAccountId } : {}),
 	};
 	async function invoke<T>(body: object | Blob | FormData, query = "") {
 		const result = await client?.functions.invoke<T>(`submit-feedback${query}`, {
@@ -112,10 +117,11 @@ export async function submitFeedback(input: {
 		body.set("subject", payload.subject);
 		body.set("message", payload.message);
 		if (payload.logs !== null) body.set("logs", payload.logs);
+		if (payload.replyForAccountId) body.set("replyForAccountId", payload.replyForAccountId);
 		for (const file of input.files) body.append("files", file);
-		const result = await invoke<{ success?: boolean }>(body);
+		const result = await invoke<FeedbackReceipt>(body);
 		if (result?.success !== true) throw new Error("Feedback submission was not confirmed");
-		return;
+		return result.replyEmail;
 	}
 
 	const userId = data.user.id;
@@ -123,13 +129,14 @@ export async function submitFeedback(input: {
 	const id = existing?.userId === userId ? existing.id : crypto.randomUUID();
 	drafts.set(input.files, { id, userId });
 	const query = (action: string, other = "") => `?upload=${action}&id=${id}${other}`;
-	const prepared = await invoke<{ success?: boolean; saved?: boolean }>(
+	const prepared = await invoke<FeedbackReceipt & { saved?: boolean }>(
 		{
 			files: input.files.map(({ name, type, size }) => ({ name, type, size })),
 		},
 		query("prepare"),
 	);
 	if (prepared?.success !== true) throw new Error("Feedback upload was not initialized");
+	let replyEmail = prepared.replyEmail;
 	if (!prepared.saved) {
 		let uploaded = 0;
 		for (const [index, file] of input.files.entries()) {
@@ -160,8 +167,10 @@ export async function submitFeedback(input: {
 			}
 			uploaded += file.size;
 		}
-		const result = await invoke<{ success?: boolean }>(payload, query("finish"));
+		const result = await invoke<FeedbackReceipt>(payload, query("finish"));
 		if (result?.success !== true) throw new Error("Feedback submission was not confirmed");
+		replyEmail = result.replyEmail;
 	}
 	drafts.delete(input.files);
+	return replyEmail;
 }

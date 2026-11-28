@@ -93,6 +93,10 @@
 	white-space: normal;
 }
 
+:global(.checkbox):not([data-selected="true"]) .replyControl {
+	border: 1px solid var(--muted);
+}
+
 .submit {
 	width: 100%;
 	height: auto;
@@ -101,10 +105,38 @@
 	white-space: normal;
 }
 
-.footer {
-	margin-top: -4px;
-	padding-top: 10px;
-	border-top: 1px solid var(--separator);
+.confirmation {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 12px;
+	padding-block: 6px 20px;
+	text-align: center;
+}
+
+.check {
+	width: 26px;
+	height: 26px;
+	margin-bottom: 10px;
+	color: var(--success);
+}
+
+.sentTitle {
+	font-size: 22px;
+	line-height: 1.25;
+}
+
+.sentDescription {
+	overflow-wrap: anywhere;
+	font-size: var(--text-sm);
+	line-height: 1.5;
+}
+
+.discord {
+	min-height: 36px;
+	margin-top: 8px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-xl);
 }
 
 @media (max-height: 680px) {

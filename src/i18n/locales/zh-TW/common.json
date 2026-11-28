@@ -36,7 +36,11 @@
 	"feedback": {
 		"trigger": "意見回饋",
 		"send": "傳送意見回饋",
-		"thanks": "感謝你的意見回饋",
+		"allowReply": "回覆我的意見回饋（分享電子郵件地址）",
+		"sentTitle": "支援請求已送出",
+		"sentDescription": "你的請求已在 Recordly 登記。",
+		"replyConfirmation": "我會使用 {{senderEmail}} 寄信給你。",
+		"replyUnavailable": "無法分享你的電子郵件地址。",
 		"signInRequired": "登入以傳送意見回饋。",
 		"openHome": "開啟首頁以登入。",
 		"orEmail": "或寄送郵件至",
@@ -66,7 +70,7 @@
 		"sentiment": "你的感受如何？",
 		"loving": "很喜歡",
 		"neutral": "普通",
-		"angry": "生氣"
+		"angry": "不滿意"
 	},
 	"announcements": {
 		"openFailed": "無法開啟連結。",
