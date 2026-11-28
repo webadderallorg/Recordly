@@ -18,6 +18,10 @@ export interface StreamingDecodeContext {
 	readonly maxDecodeQueue: number;
 	readonly maxPendingFrames: number;
 	onCancel?: (handler: () => void) => () => void;
+	/** Start with the software decoder; a remembered hardware stall makes a replay pointless. */
+	readonly forceSoftwareDecode?: boolean;
+	/** The software replay finished a decode that the default decoder could not. */
+	onSoftwareDecodeFallback?: () => void;
 }
 
 export interface DecodeReadWindow {

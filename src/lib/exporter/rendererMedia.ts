@@ -23,6 +23,16 @@ export function reportRendererMediaFailure(
 	});
 }
 
+export const RENDERER_LAYER_OMITTED_EVENT = "renderer-layer-omitted";
+
+/** Every fallback failed: the export continues, but this layer is missing from the output. */
+export function reportRendererLayerOmitted(
+	asset: "webcam",
+	record: NonNullable<ExportDiagnosticCallbacks["onDiagnostic"]> = recordExportDiagnostic,
+) {
+	record(RENDERER_LAYER_OMITTED_EVENT, { asset });
+}
+
 export function resolveExportWallpaper(resolveUrl: () => Promise<string>, signal?: AbortSignal) {
 	return withMediaDeadline(resolveUrl, {
 		signal,

@@ -186,6 +186,63 @@ it("shows one NVIDIA fallback warning and saves when the fallback succeeds", asy
 	expect(input.exportSession.setExportedFilePath).toHaveBeenCalledWith("/saved/export.mp4");
 });
 
+describe("omitted webcam layer", () => {
+	const webcamOmitted =
+		"The webcam recording couldn't be read, so this export doesn't include the webcam overlay.";
+	const omitWebcam = () => {
+		const config = mocks.modernConstruct.mock.calls.at(-1)?.[0] as {
+			onDiagnostic: (event: string, details: Record<string, unknown>) => void;
+		};
+		config.onDiagnostic("renderer-layer-omitted", { asset: "webcam" });
+		config.onDiagnostic("renderer-layer-omitted", { asset: "webcam" });
+	};
+
+	it("tells the user once when a successful export left the webcam out", async () => {
+		const { value, input } = context();
+		mocks.modernExport.mockImplementationOnce(async () => {
+			omitWebcam();
+			return { success: true, blob: new Blob(["mp4"]) };
+		});
+		await runMp4Export(value);
+		expect(toast.warning).toHaveBeenCalledExactlyOnceWith(webcamOmitted, {
+			duration: Infinity,
+		});
+		expect(value.diagnostics.record).toHaveBeenCalledWith("renderer-layer-omitted", {
+			asset: "webcam",
+		});
+		expect(input.exportSession.setExportedFilePath).toHaveBeenCalledWith("/saved/export.mp4");
+	});
+
+	it("does not warn when only a replaced attempt lost the webcam", async () => {
+		const { value } = context();
+		mocks.modernExport.mockImplementationOnce(async () => {
+			omitWebcam();
+			return {
+				success: false,
+				error: "WebGL texture upload failed",
+				failureStage: "renderer",
+			};
+		});
+		await runMp4Export(value);
+		expect(mocks.legacyExport).toHaveBeenCalledOnce();
+		expect(toast.warning).not.toHaveBeenCalled();
+	});
+
+	it("does not warn about an export that failed", async () => {
+		const { value } = context();
+		mocks.modernExport.mockImplementationOnce(async () => {
+			omitWebcam();
+			return {
+				success: false,
+				error: "[VIDEO_DECODE_FAILED] stalled",
+				failureStage: "pipeline",
+			};
+		});
+		await runMp4Export(value);
+		expect(toast.warning).not.toHaveBeenCalled();
+	});
+});
+
 describe("project-named output", () => {
 	it("exports project defaults and all clip audio overrides regardless of selection", async () => {
 		const { value } = context();

@@ -3,8 +3,10 @@ import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import { withMediaDeadline } from "./mediaDeadline";
 import {
 	buildVideoDecodeFailure,
+	DECODED_FRAME_TIMEOUT_MESSAGE,
 	getDecodedFrameTimelineOffsetUs,
 	preserveFirstVideoDecodeFailure,
+	VIDEO_READ_TIMEOUT_MESSAGE,
 	type VideoDecodeFailureContext,
 } from "./streamingDecoderSupport";
 import type {
@@ -123,6 +125,8 @@ export async function decodeVideoStreamAttempt(
 	let firstDecodedFrameTimestampUs: number | null = null;
 	let decodedFrameTimelineOffsetUs = 0;
 	let submittedChunkCount = 0;
+	// Separates a stalled reader from a decoder that holds input without producing frames.
+	let feedAwaitingRead = false;
 	let lastSubmittedChunk: EncodedVideoChunk | undefined;
 	let lastSubmittedChunkIndex: number | undefined;
 	const preferredDecoderConfig = shouldPreferSoftwareDecode
@@ -203,7 +207,9 @@ export async function decodeVideoStreamAttempt(
 					frameResolve = null;
 					recordFirstDecodeError(
 						new DOMException(
-							"Timed out waiting for a decoded video frame.",
+							feedAwaitingRead || submittedChunkCount === 0
+								? VIDEO_READ_TIMEOUT_MESSAGE
+								: DECODED_FRAME_TIMEOUT_MESSAGE,
 							"TimeoutError",
 						),
 					);
@@ -266,7 +272,10 @@ export async function decodeVideoStreamAttempt(
 	const feedPromise = (async () => {
 		try {
 			while (!stopped && !context.cancelled && !decodeError && !outputComplete) {
-				const { done, value: chunk } = await reader.read();
+				feedAwaitingRead = true;
+				const { done, value: chunk } = await reader.read().finally(() => {
+					feedAwaitingRead = false;
+				});
 				if (done || !chunk) break;
 
 				if (!loggedSteadyStateBackpressure && exportFrameIndex >= startupFrameBudget) {

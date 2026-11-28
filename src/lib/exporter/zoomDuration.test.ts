@@ -195,10 +195,8 @@ describe("zoom duration across rendering paths", () => {
 		const config = createConfig(frameRate);
 		config.connectZooms = true;
 		config.zoomOutDurationMs = 200 / 0.7;
-		config.zoomRegions = [
-			{ ...region, id: "first", startMs: 789, endMs: 7189 },
-			{ ...region, id: "second", startMs: 7884, endMs: 8884 },
-		];
+		const second = { ...region, id: "second", startMs: 7689, endMs: 8689 };
+		config.zoomRegions = [{ ...region, id: "first", startMs: 789, endMs: 7189 }, second];
 		const renderers = createSequentialRenderers(config);
 		const native = getNativeStaticLayoutZoomTelemetry(
 			config,
@@ -216,9 +214,9 @@ describe("zoom duration across rendering paths", () => {
 			};
 			for (const [name, pose] of Object.entries(poses)) {
 				expect(pose.scale, name).toBeCloseTo(sample.scale, 8);
-				if (sample.timeMs >= 7884 && sample.timeMs < 7934)
+				if (sample.timeMs >= second.startMs && sample.timeMs < second.startMs + 50)
 					arrivalScale = Math.max(arrivalScale, pose.scale);
-				if (sample.timeMs > 8884 && sample.timeMs < 8988) {
+				if (sample.timeMs > second.endMs && sample.timeMs < second.endMs + 100) {
 					expect(pose.scale, name).toBeGreaterThan(1);
 					tailFrames += 1;
 				}
@@ -263,12 +261,24 @@ describe("zoom duration across rendering paths", () => {
 		expect(firstPositive).toBe(true);
 	});
 
-	it("starts pans in the gap and carries settling motion through the incoming block", () => {
+	it.each([
+		{ panStart: 4000, incomingStart: 4500 },
+		{ panStart: 3000, incomingStart: 4000 },
+	])("pans from $panStart ms and settles through the block at $incomingStart ms", ({
+		panStart,
+		incomingStart,
+	}) => {
 		const config = createConfig(60);
 		config.connectZooms = true;
 		config.zoomRegions = [
 			region,
-			{ ...region, id: "next", startMs: 5000, endMs: 8000, focus: { cx: 0.35, cy: 0.6 } },
+			{
+				...region,
+				id: "next",
+				startMs: incomingStart,
+				endMs: 8000,
+				focus: { cx: 0.35, cy: 0.6 },
+			},
 		];
 		const renderers = createSequentialRenderers(config);
 		const native = getNativeStaticLayoutZoomTelemetry(config, layout, 511)!;
@@ -288,7 +298,7 @@ describe("zoom duration across rendering paths", () => {
 				expect(transform.y, message).toBeCloseTo(y, 9);
 				history[name] ??= [];
 				history[name].push({ ...transform, timeMs });
-				if (timeMs >= 2200 && timeMs <= 4000 + 1e-6) {
+				if (timeMs >= 2200 && timeMs <= panStart + 1e-6) {
 					expect(transform.scale, message).toBe(1.8);
 					expect(transform.x, message).toBeCloseTo(-580, 7);
 					expect(transform.y, message).toBeCloseTo(-132, 7);
@@ -297,15 +307,16 @@ describe("zoom duration across rendering paths", () => {
 		}
 		for (const [name, frames] of Object.entries(history)) {
 			const at = (timeMs: number) => frames.find((f) => Math.abs(f.timeMs - timeMs) < 1)!;
-			expect(at(4500).x, name).toBeGreaterThan(-580);
-			expect(at(4500).x, name).toBeLessThan(-130);
+			const midpoint = (panStart + incomingStart) / 2;
+			expect(at(midpoint).x, name).toBeGreaterThan(-580);
+			expect(at(midpoint).x, name).toBeLessThan(-130);
 			// The target reaches the block first; the camera still has momentum.
-			const boundary = at(5000);
+			const boundary = at(incomingStart);
 			expect(boundary.x, name).toBeLessThan(-130.5);
-			expect(at(5050).x, name).toBeGreaterThan(boundary.x);
-			expect(at(5200).x, name).toBeGreaterThan(at(5050).x);
-			expect(at(6000).x, name).toBeCloseTo(-130, 7);
-			expect(at(6000).y, name).toBeCloseTo(-348, 7);
+			expect(at(incomingStart + 50).x, name).toBeGreaterThan(boundary.x);
+			expect(at(incomingStart + 200).x, name).toBeGreaterThan(at(incomingStart + 50).x);
+			expect(at(incomingStart + 1000).x, name).toBeCloseTo(-130, 7);
+			expect(at(incomingStart + 1000).y, name).toBeCloseTo(-348, 7);
 			const boundaryIndex = frames.indexOf(boundary);
 			const beforeStep = boundary.x - frames[boundaryIndex - 1].x;
 			const afterStep = frames[boundaryIndex + 1].x - boundary.x;

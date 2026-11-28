@@ -1,7 +1,11 @@
 import { getWebcamMediaTargetTimeSeconds } from "@/components/video-editor/videoPlayback/webcamSync";
 import type { LegacyFrameRendererContext } from "./legacyFrameRendererContext";
 import { WEBCAM_MEDIA_ELEMENT_READY_TIMEOUT_MS } from "./modernFrameUtils";
-import { reportRendererMediaFailure, resolveRendererMediaElementSource } from "./rendererMedia";
+import {
+	reportRendererLayerOmitted,
+	reportRendererMediaFailure,
+	resolveRendererMediaElementSource,
+} from "./rendererMedia";
 import { WebcamFrameSource } from "./webcamFrameSource";
 
 export async function setupWebcamSource(
@@ -80,6 +84,7 @@ export async function setupWebcamSource(
 	} catch (error) {
 		context.mediaSignal?.throwIfAborted();
 		reportRendererMediaFailure("webcam", "fallback", error, context.config.onDiagnostic);
+		reportRendererLayerOmitted("webcam", context.config.onDiagnostic);
 		return;
 	}
 	context.cleanupWebcamSource = webcamSource.revoke;
@@ -154,6 +159,7 @@ export async function setupWebcamSource(
 	context.webcamFrameCacheCanvas = null;
 	context.webcamFrameCacheCtx = null;
 	context.lastSyncedWebcamTime = null;
+	if (!context.mediaCancelled) reportRendererLayerOmitted("webcam", context.config.onDiagnostic);
 }
 
 export async function syncWebcamFrame(

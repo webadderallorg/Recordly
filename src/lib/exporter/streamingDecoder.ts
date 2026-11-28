@@ -61,6 +61,8 @@ export class StreamingVideoDecoder {
 	private readonly maxDecodeQueue: number;
 	private readonly maxPendingFrames: number;
 	private readonly onDiagnostic?: ExportDiagnosticCallbacks["onDiagnostic"];
+	private readonly forceSoftwareDecode: boolean;
+	private readonly onSoftwareDecodeFallback?: () => void;
 
 	private get cancelled() {
 		return this.abortController.signal.aborted;
@@ -70,8 +72,12 @@ export class StreamingVideoDecoder {
 		maxDecodeQueue?: number;
 		maxPendingFrames?: number;
 		onDiagnostic?: ExportDiagnosticCallbacks["onDiagnostic"];
+		forceSoftwareDecode?: boolean;
+		onSoftwareDecodeFallback?: () => void;
 	}) {
 		this.onDiagnostic = options?.onDiagnostic;
+		this.forceSoftwareDecode = options?.forceSoftwareDecode === true;
+		this.onSoftwareDecodeFallback = options?.onSoftwareDecodeFallback;
 		this.maxDecodeQueue = Math.max(
 			1,
 			Math.floor(options?.maxDecodeQueue ?? DEFAULT_MAX_DECODE_QUEUE),
@@ -188,6 +194,8 @@ export class StreamingVideoDecoder {
 			pendingFrames: this.pendingFrames,
 			maxDecodeQueue: this.maxDecodeQueue,
 			maxPendingFrames: this.maxPendingFrames,
+			forceSoftwareDecode: this.forceSoftwareDecode,
+			onSoftwareDecodeFallback: this.onSoftwareDecodeFallback,
 			onCancel(handler: () => void) {
 				owner.cancellationHandlers.add(handler);
 				return () => {
@@ -296,6 +304,8 @@ export class StreamingVideoDecoder {
 			pendingFrames: this.pendingFrames,
 			maxDecodeQueue: this.maxDecodeQueue,
 			maxPendingFrames: this.maxPendingFrames,
+			forceSoftwareDecode: this.forceSoftwareDecode,
+			onSoftwareDecodeFallback: this.onSoftwareDecodeFallback,
 			onCancel(handler: () => void) {
 				owner.cancellationHandlers.add(handler);
 				return () => {

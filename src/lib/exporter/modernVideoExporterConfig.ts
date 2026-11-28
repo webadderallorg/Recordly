@@ -86,4 +86,8 @@ export interface VideoExporterConfig extends ExportConfig {
 	preferredEncoderPath?: SupportedMp4EncoderPath | null;
 	/** Internal recovery route; never changes resolution, timing or bitrate. */
 	forceSoftwareEncoding?: boolean;
+	/** Remembered route: start native export with raw frames instead of browser H.264. */
+	preferRawvideoNative?: boolean;
+	/** Remembered route: decode the source with the software decoder from the start. */
+	forceSoftwareVideoDecode?: boolean;
 }

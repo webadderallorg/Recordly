@@ -5,6 +5,8 @@ export function exportCloudVideo(options: Parameters<typeof exportMp4WithRecover
 	return exportMp4WithRecovery({
 		...options,
 		pipelineModel: "modern",
+		// Cloud delivery owns its encoder route; remembered outer routes describe local exports.
+		initialRoute: undefined,
 		config: {
 			...options.config,
 			deliveryProfile: "cloud",

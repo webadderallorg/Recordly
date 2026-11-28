@@ -367,6 +367,7 @@ it("restarts a WebGPU runtime rendering failure once using fresh WebGL resources
 			height: 2,
 		}),
 	);
+	expect(result.metrics?.fallbacks).toEqual(["webgl-renderer"]);
 });
 it("cancels a renderer waiting on an unresponsive native IPC frame write", async () => {
 	browserEncoder();
@@ -422,6 +423,46 @@ it("retries a native browser encoding runtime failure once with raw FFmpeg and p
 		expect.objectContaining({ inputMode: "rawvideo", width: 2, height: 2, frameRate: 30 }),
 	);
 	expect(result.metrics?.diagnostics?.encoder?.api).toBe("ffmpeg");
+	expect(result.metrics?.fallbacks).toEqual(["rawvideo-native"]);
+});
+it("starts with raw FFmpeg frames when this device needed them before", async () => {
+	browserEncoder();
+	const { start } = bridge();
+	vi.stubGlobal("navigator", { platform: "Linux" });
+	vi.stubGlobal("window", {
+		electronAPI: {
+			nativeVideoExportStart: start,
+			nativeVideoExportCancel: vi.fn(async () => ({ success: true })),
+			nativeVideoExportFinish: vi.fn(async () => ({
+				success: true,
+				tempPath: "/tmp/export.mp4",
+			})),
+		},
+	});
+	mocks.render.mockResolvedValue();
+	mocks.backend.mockReturnValue("webgl");
+	mocks.decode.mockImplementation(async (_fps, _trim, _speed, onFrame) => {
+		await onFrame({ timestamp: 0, close() {} }, 0, 0, 0);
+	});
+	const instance = new ModernVideoExporter({
+		...config,
+		backendPreference: "breeze",
+		preferRawvideoNative: true,
+	} as never);
+	vi.spyOn(
+		exporterInternals(instance).operations,
+		"tryExportNativeStaticLayout",
+	).mockResolvedValue(null);
+	vi.spyOn(
+		exporterInternals(instance).operations,
+		"encodeRenderedFrameNative",
+	).mockResolvedValue();
+	const result = await instance.export();
+	expect(result.success).toBe(true);
+	expect(start).toHaveBeenCalledOnce();
+	expect(start).toHaveBeenCalledWith(expect.objectContaining({ inputMode: "rawvideo" }));
+	// Starting on the remembered route is not a new fallback to remember.
+	expect(result.metrics?.fallbacks).toBeUndefined();
 });
 it("reports failure after the single WebGL retry also fails", async () => {
 	mocks.render.mockRejectedValue(new Error("renderer unavailable"));

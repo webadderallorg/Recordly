@@ -23,6 +23,24 @@ export interface VideoDecodeFailureContext {
 	decodeQueueSize?: number;
 }
 
+/** The decoder held submitted input but produced no frame before the deadline. */
+export const DECODED_FRAME_TIMEOUT_MESSAGE = "Timed out waiting for a decoded video frame.";
+/** The reader delivered no further input before the deadline. */
+export const VIDEO_READ_TIMEOUT_MESSAGE = "Timed out waiting for video data from the reader.";
+
+/**
+ * A decoder that silently holds input is a decoder failure, so a software
+ * replay can recover it. A stalled reader would stall the replay too.
+ */
+export function isDecodedFrameTimeout(error: unknown): boolean {
+	const cause = error instanceof Error ? (error as Error & { cause?: unknown }).cause : error;
+	return (
+		cause instanceof DOMException &&
+		cause.name === "TimeoutError" &&
+		cause.message === DECODED_FRAME_TIMEOUT_MESSAGE
+	);
+}
+
 /** Maps WebCodecs failures to stable support-facing identifiers. */
 export function getVideoDecodeFailureCode(error: unknown): string {
 	const name = error instanceof DOMException ? error.name : "";

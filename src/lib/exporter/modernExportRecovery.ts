@@ -73,6 +73,8 @@ export const createMp4Exporter: Mp4ExporterFactory = async (route, config) => {
 
 export async function exportMp4WithRecovery(options: {
 	pipelineModel: ExportPipelineModel;
+	/** Start on a route that recovered this device before; it gets no further outer recovery. */
+	initialRoute?: Extract<Mp4ExportRoute, "software" | "compatibility">;
 	config: VideoExporterConfig;
 	isCancelled: () => boolean;
 	setActiveExporter: (exporter: Mp4Exporter) => void;
@@ -121,13 +123,16 @@ export async function exportMp4WithRecovery(options: {
 		return result;
 	};
 
-	const primary = await attempt(options.pipelineModel, options.config);
+	const primaryRoute = options.initialRoute ?? options.pipelineModel;
+	const primaryPipelineModel: ExportPipelineModel =
+		primaryRoute === "compatibility" || primaryRoute === "legacy" ? "legacy" : "modern";
+	const primary = await attempt(primaryRoute, options.config);
 	if (options.isCancelled()) {
 		await discard(primary);
-		return { result: cancelled(), pipelineModel: options.pipelineModel, recovery: null };
+		return { result: cancelled(), pipelineModel: primaryPipelineModel, recovery: null };
 	}
-	const recovery = options.pipelineModel === "modern" ? selectMp4Recovery(primary) : null;
-	if (!recovery) return { result: primary, pipelineModel: options.pipelineModel, recovery: null };
+	const recovery = primaryRoute === "modern" ? selectMp4Recovery(primary) : null;
+	if (!recovery) return { result: primary, pipelineModel: primaryPipelineModel, recovery: null };
 	await discard(primary);
 	if (options.isCancelled()) {
 		return { result: cancelled(), pipelineModel: options.pipelineModel, recovery: null };

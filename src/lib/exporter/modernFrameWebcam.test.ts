@@ -239,6 +239,11 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 		});
 		expect(renderer.webcamMedia.webcamForwardFrameSource).toBeNull();
 		expect(renderer.webcamMedia.webcamVideoElement).toBeTruthy();
+		// The fallback still draws the webcam, so the export output is not missing a layer.
+		expect(renderer.config.onDiagnostic).not.toHaveBeenCalledWith(
+			"renderer-layer-omitted",
+			expect.anything(),
+		);
 	});
 
 	it("tears down the media-element fallback when readiness times out", async () => {
@@ -286,6 +291,7 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 
 		try {
 			const renderer = createRenderer();
+			renderer.config.onDiagnostic = vi.fn();
 			renderer.config.webcam = {
 				...DEFAULT_WEBCAM_OVERLAY,
 				enabled: true,
@@ -303,6 +309,10 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 			expect(revoke).toHaveBeenCalled();
 			expect(renderer.webcamMedia.webcamForwardFrameSource).toBeNull();
 			expect(renderer.webcamMedia.webcamVideoElement).toBeNull();
+			const omitted = vi
+				.mocked(renderer.config.onDiagnostic!)
+				.mock.calls.filter(([event]) => event === "renderer-layer-omitted");
+			expect(omitted).toEqual([["renderer-layer-omitted", { asset: "webcam" }]]);
 		} finally {
 			globalThis.document.createElement = originalCreateElement;
 			vi.useRealTimers();

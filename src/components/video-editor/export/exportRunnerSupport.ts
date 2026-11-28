@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import { toast } from "@/components/ui/toast";
 import { translate } from "@/i18n/runtime";
 import type { ExportQuality, SupportedMp4Dimensions } from "@/lib/exporter";
+import { RENDERER_LAYER_OMITTED_EVENT } from "@/lib/exporter/rendererMedia";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import type { ShareResolution } from "../cloud/shareResolution";
 import type { Mp4ExportRouting } from "../mp4ExportRouting";
@@ -47,6 +48,36 @@ export function showExportErrorToast(message: string) {
 		description: summary === message ? summary : message,
 		duration: Infinity,
 	});
+}
+
+/**
+ * An unreadable webcam doesn't fail the export, but the result then differs from the edit.
+ * Track the renderer's omission signal per attempt so the user hears about it.
+ */
+export function trackOmittedExportLayers(
+	record: (event: string, details?: Record<string, unknown>) => void,
+) {
+	let webcamOmitted = false;
+	return {
+		onDiagnostic(event: string, details: Record<string, unknown>) {
+			if (event === RENDERER_LAYER_OMITTED_EVENT && details.asset === "webcam")
+				webcamOmitted = true;
+			record(event, details);
+		},
+		resetAttempt() {
+			webcamOmitted = false;
+		},
+		warnIfOmitted(result: { success: boolean }) {
+			if (!result.success || !webcamOmitted) return;
+			toast.warning(
+				translate(
+					"editor.exportStatus.webcamOmitted",
+					"The webcam recording couldn't be read, so this export doesn't include the webcam overlay.",
+				),
+				{ duration: Infinity },
+			);
+		},
+	};
 }
 
 export function showCaptionSidecarWarning(result: {

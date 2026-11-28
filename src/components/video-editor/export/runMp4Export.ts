@@ -10,6 +10,7 @@ import { getShareResolution } from "../cloud/shareResolution";
 import { resolveMp4ExportRouting } from "../mp4ExportRouting";
 import { resolveMp4ExportSettings } from "../mp4ExportSettings";
 import { buildExportRenderOptions } from "./buildExportRenderOptions";
+import { prepareExportRouteMemory } from "./exportRouteMemory";
 import type { ExportBranchContext, ExportBranchOutcome } from "./exportBranchContext";
 import { getExportFileName } from "./exportFileName";
 import {
@@ -18,7 +19,11 @@ import {
 	streamExportBlobToTempFile,
 	writeSmokeExportReport,
 } from "./exportPersistence";
-import { showCaptionSidecarWarning, showExportErrorToast } from "./exportRunnerSupport";
+import {
+	showCaptionSidecarWarning,
+	showExportErrorToast,
+	trackOmittedExportLayers,
+} from "./exportRunnerSupport";
 export async function runMp4Export(context: ExportBranchContext): Promise<ExportBranchOutcome> {
 	const {
 		input,
@@ -144,6 +149,7 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 	});
 	const sourceAudioTrackSettingsForExport = timeline.defaultSourceAudioTrackSettings;
 	let reportedNvidiaFallback = false;
+	const omittedLayers = trackOmittedExportLayers(diagnostics.record);
 
 	const exporterConfig = {
 		videoUrl: videoPath,
@@ -161,7 +167,7 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 		maxDecodeQueue: smokeExportConfig.maxDecodeQueue,
 		maxPendingFrames: smokeExportConfig.maxPendingFrames,
 		onStage: diagnostics.stage,
-		onDiagnostic: diagnostics.record,
+		onDiagnostic: omittedLayers.onDiagnostic,
 		onBackendAttempt: diagnostics.backend,
 		...buildExportRenderOptions({
 			appearance,
@@ -197,42 +203,66 @@ export async function runMp4Export(context: ExportBranchContext): Promise<Export
 		sourceAudioTrackSettingsByClip: timeline.sourceAudioTrackSettingsByClip,
 	};
 
-	const {
-		result,
-		pipelineModel: actualPipelineModel,
-		recovery,
-	} = await (sharing ? exportCloudVideo : exportMp4WithRecovery)({
-		pipelineModel,
+	// Start where this device last needed to be, instead of rediscovering each fallback.
+	const routeMemory = prepareExportRouteMemory({
 		config: { ...exporterConfig, backendPreference },
-		isCancelled: exportWasCancelled,
-		setActiveExporter: (exporter) => {
-			exporterRef.current = exporter;
-		},
-		onAttemptStart: diagnostics.beginAttempt,
-		onAttemptResult: (route, attemptResult) => {
-			diagnostics.record("pipeline-attempt", {
-				route,
-				success: attemptResult.success,
-				failureStage: attemptResult.failureStage,
-			});
-			diagnostics.result(attemptResult);
-		},
-		onRecovery: (attempt) => {
-			diagnostics.record("recovery-started", {
-				route: attempt.route,
-				initialError: attempt.initialError,
-			});
-			setExportProgress((previous) => previous && { ...previous, phase: "preparing" });
-		},
-		discardTempFile: (tempFilePath) =>
-			discardCancelledTemp({ fileName: "export.mp4", tempFilePath }),
+		delivery: sharing ? "cloud" : "download",
+		record: diagnostics.record,
+		enabled: !smokeExportConfig.enabled && (sharing || pipelineModel === "modern"),
 	});
+	routeMemory.startBackgroundProbe();
+	let exportRun: Awaited<ReturnType<typeof exportMp4WithRecovery>> | undefined;
+	try {
+		exportRun = await (sharing ? exportCloudVideo : exportMp4WithRecovery)({
+			pipelineModel,
+			initialRoute: routeMemory.initialRoute,
+			config: routeMemory.config,
+			isCancelled: exportWasCancelled,
+			setActiveExporter: (exporter) => {
+				exporterRef.current = exporter;
+			},
+			onAttemptStart: (route) => {
+				omittedLayers.resetAttempt();
+				diagnostics.beginAttempt(route);
+			},
+			onAttemptResult: (route, attemptResult) => {
+				diagnostics.record("pipeline-attempt", {
+					route,
+					success: attemptResult.success,
+					failureStage: attemptResult.failureStage,
+				});
+				diagnostics.result(attemptResult);
+			},
+			onRecovery: (attempt) => {
+				diagnostics.record("recovery-started", {
+					route: attempt.route,
+					initialError: attempt.initialError,
+				});
+				setExportProgress((previous) => previous && { ...previous, phase: "preparing" });
+			},
+			discardTempFile: (tempFilePath) =>
+				discardCancelledTemp({ fileName: "export.mp4", tempFilePath }),
+		});
+	} finally {
+		routeMemory.finish(
+			exportRun
+				? {
+						result: exportRun.result,
+						recoveryRoute: exportRun.recovery?.route,
+						cancelled: exportWasCancelled(),
+					}
+				: // An unexpected rejection proves nothing about the routes.
+					{ result: { success: false }, cancelled: true },
+		);
+	}
+	const { result, pipelineModel: actualPipelineModel, recovery } = exportRun;
 	diagnostics.record("pipeline-completed", {
 		pipelineModel: actualPipelineModel,
 		recovery: recovery?.route,
 		success: result.success,
 	});
 	if (exportWasCancelled()) return { exit: true };
+	omittedLayers.warnIfOmitted(result);
 	if (result.success && !result.blob && !result.tempFilePath) {
 		diagnostics.record("exception", { error: "Exporter succeeded without an output file" });
 	}
