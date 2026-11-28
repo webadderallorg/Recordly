@@ -82,6 +82,7 @@ describe("packaged renderer assets", () => {
 
 		const rangeCases = [
 			{ header: "bytes=0-3", range: "bytes 0-3/10", length: "4", body: "0123" },
+			{ header: "Bytes=0-3", range: "bytes 0-3/10", length: "4", body: "0123" },
 			{ header: "bytes=2-", range: "bytes 2-9/10", length: "8", body: "23456789" },
 			{ header: "bytes=-3", range: "bytes 7-9/10", length: "3", body: "789" },
 			{ header: "bytes=2-999", range: "bytes 2-9/10", length: "8", body: "23456789" },
@@ -98,15 +99,25 @@ describe("packaged renderer assets", () => {
 			expect(await res.text()).toBe(testCase.body);
 		}
 
-		const headRange = await fetch(`${base}/__recordly_assets/wallpapers/seek.mp4`, {
-			method: "HEAD",
-			headers: { Range: "bytes=0-3" },
+		for (const range of ["bytes=0-3", "bytes=100-200"]) {
+			const headRange = await fetch(`${base}/__recordly_assets/wallpapers/seek.mp4`, {
+				method: "HEAD",
+				headers: { Range: range },
+			});
+			expect(headRange.status).toBe(200);
+			expect(headRange.headers.get("content-range")).toBeNull();
+			expect(headRange.headers.get("content-length")).toBe("10");
+			expect(headRange.headers.get("accept-ranges")).toBe("bytes");
+			expect(await headRange.text()).toBe("");
+		}
+
+		const unknownUnit = await fetch(`${base}/__recordly_assets/wallpapers/seek.mp4`, {
+			headers: { Range: "items=0-3" },
 		});
-		expect(headRange.status).toBe(206);
-		expect(headRange.headers.get("content-range")).toBe("bytes 0-3/10");
-		expect(headRange.headers.get("content-length")).toBe("4");
-		expect(headRange.headers.get("accept-ranges")).toBe("bytes");
-		expect(await headRange.text()).toBe("");
+		expect(unknownUnit.status).toBe(200);
+		expect(unknownUnit.headers.get("content-range")).toBeNull();
+		expect(unknownUnit.headers.get("content-length")).toBe("10");
+		expect(await unknownUnit.text()).toBe("0123456789");
 
 		for (const badRange of ["bytes=100-200", "bytes=0-1,2-3"]) {
 			const unsatisfiable = await fetch(`${base}/__recordly_assets/wallpapers/seek.mp4`, {

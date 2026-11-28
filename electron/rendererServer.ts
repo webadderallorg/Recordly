@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
-import { resolveHttpByteRange } from "./httpByteRange";
+import { isHttpByteRangeHeader, resolveHttpByteRange } from "./httpByteRange";
 
 const MIME_TYPES: Record<string, string> = {
 	".css": "text/css; charset=utf-8",
@@ -72,6 +72,9 @@ function pipeFileStream(
 	response: ServerResponse,
 	range?: { start: number; end: number },
 ): void {
+	if (response.destroyed) {
+		return;
+	}
 	const stream = range ? createReadStream(filePath, range) : createReadStream(filePath);
 	response.once("close", () => {
 		if (!stream.destroyed) {
@@ -135,7 +138,7 @@ async function servePackagedRendererRequest(
 		};
 
 		const rangeHeader = request.headers.range;
-		if (rangeHeader) {
+		if (request.method === "GET" && rangeHeader && isHttpByteRangeHeader(rangeHeader)) {
 			const byteRange = resolveHttpByteRange(rangeHeader, fileSize);
 			if (!byteRange) {
 				response.writeHead(416, {
@@ -153,11 +156,6 @@ async function servePackagedRendererRequest(
 				"Content-Range": `bytes ${start}-${end}/${fileSize}`,
 				"Content-Length": String(chunkSize),
 			});
-
-			if (request.method === "HEAD") {
-				response.end();
-				return;
-			}
 
 			pipeFileStream(filePath, response, { start, end });
 			return;

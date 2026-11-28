@@ -156,4 +156,17 @@ describe("resolveHttpByteRange", () => {
 			end: 999,
 		});
 	});
+
+	it("matches byte range units case-insensitively", async () => {
+		const { resolveHttpByteRange } = await import("./mediaServer");
+
+		expect(resolveHttpByteRange("Bytes=0-3", 10)).toEqual({
+			start: 0,
+			end: 3,
+		});
+		expect(resolveHttpByteRange("BYTES=-4", 10)).toEqual({
+			start: 6,
+			end: 9,
+		});
+	});
 });

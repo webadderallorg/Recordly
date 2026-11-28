@@ -1,8 +1,12 @@
+export function isHttpByteRangeHeader(rangeHeader: string): boolean {
+	return /^bytes=/i.test(rangeHeader.trim());
+}
+
 export function resolveHttpByteRange(
 	rangeHeader: string,
 	fileSize: number,
 ): { start: number; end: number } | null {
-	const match = rangeHeader.trim().match(/^bytes=(\d*)-(\d*)$/);
+	const match = rangeHeader.trim().match(/^bytes=(\d*)-(\d*)$/i);
 	if (!match || (!match[1] && !match[2])) {
 		return null;
 	}
