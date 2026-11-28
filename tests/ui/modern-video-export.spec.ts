@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { ExportProgress } from "../../src/lib/exporter/types";
 
@@ -529,5 +530,80 @@ test("a real WebCodecs encoder failure recovers with software H.264 or reports i
 		expect(result.bytes).toBeUndefined();
 		expect(result.output).toBeUndefined();
 	}
+	expect(pageErrors).toEqual([]);
+});
+
+test("real ModernVideoExporter succeeds under the strict packaged Content Security Policy without unsafe-eval", async ({
+	page,
+}) => {
+	test.setTimeout(90_000);
+	const pageErrors: string[] = [];
+	const consoleErrors: string[] = [];
+	page.on("pageerror", (error) => pageErrors.push(error.message));
+	page.on("console", (message) => {
+		if (message.type() === "error") consoleErrors.push(message.text());
+	});
+	await page.addInitScript(() => {
+		(window as Window & { __cspViolations?: string[] }).__cspViolations = [];
+		window.addEventListener("securitypolicyviolation", (event) => {
+			(window as Window & { __cspViolations?: string[] }).__cspViolations?.push(
+				`${event.violatedDirective}: ${event.blockedURI || event.sample}`,
+			);
+		});
+	});
+	await page.route("**/tests/ui/modern-video-export.html", async (route) => {
+		const response = await route.fetch();
+		const html = await response.text();
+		const hashes = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
+			.filter(([, attributes]) => !/(^|\s)src\s*=/i.test(attributes))
+			.map(
+				([, , script]) =>
+					`'sha256-${createHash("sha256").update(script.replace(/\r\n?/g, "\n")).digest("base64")}'`,
+			);
+		const policy = [
+			"default-src 'self'",
+			["script-src 'self' 'wasm-unsafe-eval'", ...hashes].join(" "),
+			"object-src 'none'",
+			"base-uri 'none'",
+			"form-action 'none'",
+			"worker-src 'self' blob:",
+			"connect-src 'self' blob: data: http://127.0.0.1:* http://localhost:*",
+			"img-src 'self' blob: data:",
+			"media-src 'self' blob: data: http://127.0.0.1:* http://localhost:*",
+			"style-src 'self' 'unsafe-inline'",
+			"font-src 'self' blob: data:",
+		].join("; ");
+		await route.fulfill({
+			response,
+			body: html.replace(
+				/<head>/i,
+				`<head><meta http-equiv="Content-Security-Policy" content="${policy}" />`,
+			),
+		});
+	});
+	await page.route("**/tests/ui/wasm/web-demuxer.wasm", (route) =>
+		route.fulfill({ path: "public/wasm/web-demuxer.wasm", contentType: "application/wasm" }),
+	);
+	await page.goto("/tests/ui/modern-video-export.html");
+	await page.getByRole("button", { name: "Export real MP4", exact: true }).click();
+	await expect(page.locator("#result")).toHaveAttribute("data-state", "done", {
+		timeout: 75_000,
+	});
+	const result = JSON.parse(await page.locator("#result").innerText());
+	const cspViolations = await page.evaluate(
+		() => (window as Window & { __cspViolations?: string[] }).__cspViolations ?? [],
+	);
+	const unexpectedConsoleErrors = consoleErrors.filter(
+		(text) =>
+			!/^WebSocket connection to 'ws:\/\/(?:127\.0\.0\.1|localhost):\d+\/.*ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS/.test(
+				text,
+			) && !text.startsWith("[vite] failed to connect to websocket."),
+	);
+	expect(result.error, JSON.stringify(result)).toBeUndefined();
+	expect(result.success).toBe(true);
+	expect(result.output).toMatchObject({ container: "mp4", codec: "avc", frameCount: 90 });
+	expect(result.playback.advanced).toBe(true);
+	expect(cspViolations).toEqual([]);
+	expect(unexpectedConsoleErrors).toEqual([]);
 	expect(pageErrors).toEqual([]);
 });

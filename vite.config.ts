@@ -11,6 +11,7 @@ import {
 	type ElectronDevQueue,
 } from "./scripts/electronDevProcessLifecycle";
 import { getElectronDevArgs, prepareElectronDevRuntime } from "./scripts/electronDevRuntime";
+import { webDemuxerCspPlugin } from "./scripts/webDemuxerCspPlugin";
 
 function rendererContentSecurityPolicy(mode: string): Plugin {
 	const env = loadEnv(mode, __dirname, "VITE_");
@@ -142,6 +143,7 @@ export default defineConfig(({ mode }) => ({
 	server: process.env.RECORDLY_UI_TEST_RUN === "1" ? { hmr: false, watch: null } : undefined,
 	plugins: [
 		react(),
+		webDemuxerCspPlugin(),
 		rendererContentSecurityPolicy(mode),
 		...(mode === "ui" || process.env.RECORDLY_RENDERER_ONLY === "1"
 			? []
@@ -243,6 +245,7 @@ export default defineConfig(({ mode }) => ({
 		// replace shared React chunks while an editor is already using the old ones.
 		include: ["use-sync-external-store/shim", "dnd-timeline"],
 		exclude: [
+			"web-demuxer",
 			"react-icons/bs",
 			"react-icons/fa",
 			"react-icons/fa6",
